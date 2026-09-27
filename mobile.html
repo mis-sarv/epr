@@ -622,12 +622,20 @@
                     <option value="">-- Select Vendor --</option>
                 </select>
             </div>
-            <!-- Populated from the purchasers who actually have a PIN set; an
-                 Admin sets those in STORE.html > Settings > Change Passwords. -->
+            <!-- Fixed list — the same names as STORE.html's PR form "Purchaser
+                 Name" dropdown — so it opens instantly instead of waiting on a
+                 server lookup. Each purchaser's PIN is still checked on login;
+                 an Admin sets PINs in STORE.html > Settings > Change Passwords. -->
             <div class="form-group" id="loginPurchaserGroup" style="display:none;">
                 <label>Purchaser Name</label>
                 <select id="loginPurchaser" class="form-select">
                     <option value="">-- Select Purchaser --</option>
+                    <option value="KHUSHBOO">KHUSHBOO</option>
+                    <option value="SATINDER JI">SATINDER JI</option>
+                    <option value="ANKUR JI">ANKUR JI</option>
+                    <option value="PARKASH JI">PARKASH JI</option>
+                    <option value="DEEPAK VERMA">DEEPAK VERMA</option>
+                    <option value="PRIYA VERMA">PRIYA VERMA</option>
                 </select>
             </div>
             <div class="form-group">
@@ -712,6 +720,7 @@
                             <th id="rate-col-header" style="display:none;">Rate</th>
                             <th id="disc-col-header" style="display:none;">Disc%</th>
                             <th id="vendor-col-header" style="display:none;">Vendor</th>
+                            <th id="gst-col-header" style="display:none;" title="GST % for this item on the PO — editable while generating the PO">GST%</th>
                         </tr>
                     </thead>
                     <tbody id="modal-item-tbody">
@@ -774,6 +783,30 @@
                 <input type="date" id="deliveryDateInput" class="form-select">
                 <div id="deliveryDateHint" style="display:none; font-size:0.72rem; color:#6b7280; margin-top:4px;">
                     Approve karte hi har approved vendor ka PO isi Delivery Date ke saath ban jayega aur seedha MD approval ke liye jayega.
+                </div>
+            </div>
+
+            <!-- PO charges, entered by the Purchaser while generating the PO.
+                 Same fields as STORE.html's Build PO: Freight, Loading / Other
+                 Exp. and the GST % those charges carry. -->
+            <div class="form-group" id="poChargesGroup" style="display:none;">
+                <label>PO Charges (&#8377;) <small style="font-weight:500;color:#6b7280;">— optional</small></label>
+                <div style="display:grid; grid-template-columns:1fr 1fr 74px; gap:6px;">
+                    <div>
+                        <div style="font-size:0.68rem;color:#6b7280;font-weight:600;margin-bottom:2px;">Freight</div>
+                        <input type="number" id="poFreightInput" class="form-select" min="0" step="0.01" placeholder="0" inputmode="decimal">
+                    </div>
+                    <div>
+                        <div style="font-size:0.68rem;color:#6b7280;font-weight:600;margin-bottom:2px;">Loading / Other Exp.</div>
+                        <input type="number" id="poOtherExpInput" class="form-select" min="0" step="0.01" placeholder="0" inputmode="decimal">
+                    </div>
+                    <div>
+                        <div style="font-size:0.68rem;color:#6b7280;font-weight:600;margin-bottom:2px;">GST %</div>
+                        <input type="number" id="poChargesGstInput" class="form-select" min="0" max="100" step="0.01" value="18" inputmode="decimal" title="GST % on Freight + Loading / Other Exp.">
+                    </div>
+                </div>
+                <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
+                    Ye charges PO ke total me judenge (in par GST % alag lagega). Items alag-alag vendors ke hon to charges pehle PO par lagenge.
                 </div>
             </div>
 
@@ -1008,8 +1041,111 @@
 
     // ── Native PDF renderers — ported verbatim from STORE.html so a
     //    signature captured here regenerates the exact same PDF. ──
+    /* ── Purchase Requirement PDF: invoice-style header ──────────────────
+       REQUEST DETAILS and REQUESTED BY as two boxed groups side by side, an
+       "ITEMS REQUIRED" bar over the items, Overall Remarks under them.
+       Printed On / Total Items / Total Qty / Purpose / Last Date Used /
+       Request Date are not printed. Identical to STORE.html's helpers. */
+    const PR_TEAL=[13,92,83];
+    /* Designation / Contact have no column on the PR header — only the PDF
+       snapshot carries them, and a snapshot that never got them printed them
+       blank. Anything missing is filled from Employee Master by the PR's
+       Employee Code. Same rule as STORE.html's withPrRequester_(). */
+    async function withPrRequester_(d){
+        const code = String(d.empCode||d.employee_code||'').trim();
+        const has = d.designation && d.department && (d.contact||d.contact_no) && (d.personName||d.requested_by);
+        if(!code || has) return d;
+        let emp = null;
+        try{
+            const q = await SB.from('employees').select('person_name,designation,department,contact_no').ilike('emp_code', code).limit(1);
+            if(!q.error) emp = (q.data||[])[0] || null;
+        }catch(e){ console.warn('[MOBILE PDF] Employee lookup for PR skipped:', e.message||e); }
+        if(!emp) return d;
+        return {...d,
+            personName: d.personName||d.requested_by||emp.person_name||'',
+            designation: d.designation||emp.designation||'',
+            department: d.department||emp.department||'',
+            contact: d.contact||d.contact_no||emp.contact_no||''};
+    }
+    function prHeaderGroups_(d){
+        return [
+            {title:'REQUEST DETAILS',rows:[
+                ['Requirement No',d.reqNo||'—'],
+                ['Date & Time',pStamp(d.ts||new Date())],
+                ['Required By',fmtDate_(d.requiredByDate||d.required_by)||'—'],
+                ['Priority',d.priority||'Normal'],
+                ['Machine / Line',d.machine||'—'],
+                ['Purchaser',d.generatedBy||d.purchaserName||'—'],
+                ['Status',d.status||'Pending'],
+            ]},
+            {title:'REQUESTED BY',rows:[
+                ['Name',d.personName||d.requested_by||'—'],
+                ['Employee Code',d.empCode||d.employee_code||'—'],
+                ['Designation',d.designation||'—'],
+                ['Department',d.department||'—'],
+                ['Contact No',d.contact||d.contact_no||'—'],
+            ]},
+        ];
+    }
+    function drawPrHeaderBlocks_(doc,d,M,W,pageW,y){
+        const gap=6,boxW=(W-gap)/2,groups=prHeaderGroups_(d);
+        const n=Math.max(...groups.map(g=>g.rows.length));
+        const priColor={urgent:[220,38,38],critical:[220,38,38],high:[234,88,12]}[String(d.priority||'').toLowerCase()]||[15,23,42];
+        let bottom=y;
+        groups.forEach((g,gi)=>{
+            const x=M+gi*(boxW+gap);
+            doc.setFillColor(...PR_TEAL);doc.rect(x,y,boxW,6,'F');
+            doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(255,255,255);
+            doc.text(g.title,x+3,y+4.2);
+            doc.setTextColor(0,0,0);
+            // Both boxes get the same number of rows so they end level.
+            const rows=g.rows.concat(Array.from({length:n-g.rows.length},()=>['','']));
+            doc.autoTable({
+                startY:y+6,body:rows,theme:'plain',
+                margin:{left:x,right:pageW-(x+boxW)},tableWidth:boxW,
+                styles:{fontSize:7.8,cellPadding:{top:1.1,bottom:1.1,left:3,right:2},textColor:[15,23,42],valign:'middle'},
+                columnStyles:{0:{cellWidth:boxW*0.34,textColor:[71,85,105]},1:{fontStyle:'bold'}},
+                didParseCell:h=>{
+                    if(h.section!=='body')return;
+                    if(h.row.index%2===1)h.cell.styles.fillColor=[248,250,252];
+                    if(gi===0&&h.row.index===3&&h.column.index===1)h.cell.styles.textColor=priColor;
+                },
+                didDrawCell:h=>{
+                    if(h.section!=='body'||h.column.index!==0||h.row.index===n-1)return;
+                    doc.setDrawColor(226,232,240);doc.setLineWidth(0.15);
+                    doc.line(x,h.cell.y+h.cell.height,x+boxW,h.cell.y+h.cell.height);
+                }
+            });
+            const fy=doc.lastAutoTable.finalY;
+            doc.setDrawColor(...PR_TEAL);doc.setLineWidth(0.35);doc.rect(x,y,boxW,fy-y);
+            bottom=Math.max(bottom,fy);
+        });
+        return bottom+5;
+    }
+    function drawPrSectionBar_(doc,title,M,W,y){
+        doc.setFillColor(...PR_TEAL);doc.rect(M,y,W,6,'F');
+        doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(255,255,255);
+        doc.text(title,M+3,y+4.2);
+        doc.setTextColor(0,0,0);
+        return y+6;
+    }
+    function drawPrRemarksBox_(doc,d,M,W,pageH,y){
+        const txt=String(d.overallRemarks||d.notes||'').trim()||'—';
+        doc.setFont(undefined,'normal');doc.setFontSize(8);
+        const lines=doc.splitTextToSize(txt,W-6);
+        const h=6+lines.length*3.8+3;
+        if(y+h>pageH-M-4){doc.addPage();y=M;}
+        doc.setFillColor(241,245,249);doc.rect(M,y,W,5.5,'F');
+        doc.setFont(undefined,'bold');doc.setFontSize(8);doc.setTextColor(...PR_TEAL);
+        doc.text('OVERALL REMARKS',M+3,y+3.9);
+        doc.setFont(undefined,'normal');doc.setTextColor(0,0,0);
+        doc.text(lines,M+3,y+9);
+        doc.setDrawColor(203,213,225);doc.setLineWidth(0.3);doc.rect(M,y,W,h);
+        return y+h;
+    }
     async function buildRequirementNativePdfBlob(d){
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
+        d = await withPrRequester_(d); // fill Designation / Department / Contact from Employee Master if missing
         const {jsPDF}=window.jspdf;
         const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
         const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
@@ -1030,7 +1166,6 @@
         }));
         const totalGW=items.reduce((s,r)=>s+(r.grossWeight!=null?r.grossWeight:0),0);
         const totalQty=items.reduce((s,r)=>s+r.qty,0);
-        const totalIssued=items.reduce((s,r)=>s+r.issued,0);
 
         let y=M;
         doc.setFillColor(255,242,0);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
@@ -1044,47 +1179,21 @@
         doc.setTextColor(0,0,0);
         y+=8;
 
-        const priColor={urgent:[220,38,38],critical:[220,38,38],high:[234,88,12]}[String(d.priority||'').toLowerCase()]||[0,0,0];
-        const infoRows=[
-            ['Timestamp',pStamp(d.ts||new Date()),'Department',d.department||''],
-            ['Requirement No',d.reqNo||'','Contact No',d.contact||d.contact_no||''],
-            ['Request Date',fmtDate_(d.date||d.request_date),'Machine / Line',d.machine||''],
-            ['Required By Date',fmtDate_(d.requiredByDate||d.required_by),'Purpose',d.purpose||''],
-            ['Priority',d.priority||'Normal','Overall Remarks',d.overallRemarks||d.notes||''],
-            ['Person Name',d.personName||d.requested_by||'','Total Items',String(items.length)],
-            ['Employee Code',d.empCode||d.employee_code||'','Total Qty',String(totalQty)],
-            ['Designation',d.designation||'','Status',d.status||'Pending'],
-            ['Purchaser Name',d.generatedBy||d.purchaserName||'','Printed On',pStamp()],
-            ['Last Date Used',fmtDate_(d.lastDateUsed),'',''],
-        ];
-        const lw=W*0.15,vw=W*0.35;
-        doc.autoTable({
-            startY:y, body:infoRows, theme:'grid',
-            margin:{left:M,right:pageW-(M+W)}, tableWidth:W,
-            styles:{fontSize:7.5,cellPadding:1.3,lineColor:[0,0,0],lineWidth:0.15,textColor:[0,0,0],valign:'middle'},
-            columnStyles:{
-                0:{cellWidth:lw,fillColor:[243,243,243],fontStyle:'bold',halign:'center'},
-                1:{cellWidth:vw,fontStyle:'bold'},
-                2:{cellWidth:lw,fillColor:[243,243,243],fontStyle:'bold',halign:'center'},
-                3:{cellWidth:vw,fontStyle:'bold'},
-            },
-            didParseCell:(hook)=>{
-                if(hook.row.index===4&&hook.column.index===1)hook.cell.styles.textColor=priColor;
-            }
-        });
-        y=doc.lastAutoTable.finalY+4;
+        y=drawPrHeaderBlocks_(doc,d,M,W,pageW,y);
 
         const TEAL=[13,92,83],SUBTOTAL_BG=[207,226,247];
+        y=drawPrSectionBar_(doc,'ITEMS REQUIRED',M,W,y);
         const head=[
             [
                 {content:'SUBTOTAL >>',colSpan:6,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
                 {content:String(totalQty),styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
-                {content:String(totalIssued),styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
                 {content:'',styles:{fillColor:SUBTOTAL_BG}},
                 {content:totalGW>0?totalGW+' kg':'',styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
-                {content:'VENDOR RATE',colSpan:4,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
+                // Exactly the three vendor columns — spanning four added a
+                // blank 14th column at the right edge. Same as STORE.html.
+                {content:'VENDOR RATE',colSpan:3,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
             ],
-            ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','Qty Issued','UOM','Weight','V1','V2','V3']
+            ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','UOM','Weight','V1','V2','V3']
         ];
         const rateTxt=v=>(v!=null&&pNum(v)>0)?nNum_(v):'';
         const discTxt=v=>(v!=null&&pNum(v)>0)?' (-'+pNum(v)+'%)':'';
@@ -1098,7 +1207,7 @@
             if(!nm&&!fig)return '';
             return (nm?nm+'\n':'')+(fig||'—');
         };
-        const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),String(r.issued),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),vCell(r,0),vCell(r,1),vCell(r,2)]);
+        const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),vCell(r,0),vCell(r,1),vCell(r,2)]);
         // PR-level field, kept only as a fallback for a PR approved before
         // per-item vendor assignment existed.
         const approvedIdx=(d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?d.approvedVendorIndex:-1;
@@ -1111,12 +1220,12 @@
             margin:{left:M,right:pageW-(M+W)}, tableWidth:W,
             styles:{fontSize:7,cellPadding:1.3,overflow:'linebreak',textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.2,valign:'middle'},
             headStyles:{fillColor:TEAL,textColor:[255,255,255],fontStyle:'bold',halign:'center',lineWidth:0.2,lineColor:[0,0,0]},
-            columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:12,halign:'center',fontStyle:'bold'},8:{cellWidth:10,halign:'center'},9:{cellWidth:14,halign:'center'},10:{cellWidth:24},11:{cellWidth:24},12:{cellWidth:24}},
+            columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:10,halign:'center'},8:{cellWidth:14,halign:'center'},9:{cellWidth:26},10:{cellWidth:26},11:{cellWidth:26}},
             theme:'grid',
             didParseCell:(hook)=>{
                 if(hook.section!=='body')return;
                 const rowIdx=items[hook.row.index]&&items[hook.row.index].approvedVendorIndex;
-                if(rowIdx!=null&&rowIdx>=0&&hook.column.index===10+rowIdx){
+                if(rowIdx!=null&&rowIdx>=0&&hook.column.index===9+rowIdx){
                     hook.cell.styles.fillColor=APPROVED_GREEN;hook.cell.styles.fontStyle='bold';
                 }
             }
@@ -1124,7 +1233,8 @@
         // No separate "Approved Vendor (per item)" table: the chosen vendor is
         // already marked on each item row (green V1..V3 cell above). Same as
         // STORE.html's PR PDF.
-        y=doc.lastAutoTable.finalY+16;
+        y=drawPrRemarksBox_(doc,d,M,W,pageH,doc.lastAutoTable.finalY+4);
+        y+=16;
         if(y>pageH-20){doc.addPage();y=M+16;}
 
         const sigs=d.signatures||{};
@@ -1510,34 +1620,13 @@
             });
         }catch(e){ console.warn('[MOBILE] Vendor list load failed:', e.message||e); }
     }
-    async function loadLoginPurchaserOptions(){
-        const sel = document.getElementById('loginPurchaser');
-        if(!sel) return;
-        sel.innerHTML = '<option value="">-- Select Purchaser --</option>';
-        try{
-            const q = await SB.rpc('list_purchasers_with_pin');
-            if(q.error) throw q.error;
-            const rows = q.data || [];
-            if(!rows.length){
-                sel.innerHTML = '<option value="">-- Kisi purchaser ka PIN set nahi hai --</option>';
-                return;
-            }
-            rows.forEach(r=>{
-                const name = typeof r === 'string' ? r : r.purchaser_name;
-                if(!name) return;
-                const opt = document.createElement('option');
-                opt.value = name; opt.textContent = name;
-                sel.appendChild(opt);
-            });
-        }catch(e){ console.warn('[MOBILE] Purchaser list load failed:', e.message||e); }
-    }
     document.getElementById('loginRole').addEventListener('change', function(){
         const isVendor = this.value === 'vendor';
         const isPurchaser = this.value === 'purchaser';
         document.getElementById('loginVendorGroup').style.display = isVendor ? 'block' : 'none';
         document.getElementById('loginPurchaserGroup').style.display = isPurchaser ? 'block' : 'none';
         if(isVendor) loadLoginVendorOptions();
-        if(isPurchaser) loadLoginPurchaserOptions();
+        // Purchaser names are a fixed list in the markup — nothing to fetch.
     });
     async function attemptLogin(){
         const role = document.getElementById('loginRole').value;
@@ -1639,7 +1728,7 @@
         document.getElementById('loginVendorGroup').style.display = 'none';
         document.getElementById('loginPurchaserGroup').style.display = 'none';
         document.getElementById('loginVendor').innerHTML = '<option value="">-- Select Vendor --</option>';
-        document.getElementById('loginPurchaser').innerHTML = '<option value="">-- Select Purchaser --</option>';
+        document.getElementById('loginPurchaser').value = ''; // keep the fixed list, just clear the pick
         document.getElementById('loginScreen').style.display = 'flex';
     }
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
@@ -2187,15 +2276,17 @@
         if(lq.error){ console.error(lq.error); return; }
         viLines = lq.data || [];
         const snap = entry.pdf_snapshot || {};
-        const vendors = (snap.vendors && snap.vendors.length === 4) ? snap.vendors : [{},{},{},{}];
+        const vendors = (Array.isArray(snap.vendors) && snap.vendors.length) ? snap.vendors : [{},{},{},{}];
 
-        // Each row's own four vendors. item.vendors is the real store; the
-        // PR-level array is only the fallback for snapshots written before
-        // vendors moved onto the line.
+        // Each row's own vendors. item.vendors is the real store (three slots,
+        // V1-V3 — this used to demand exactly four, so every row fell back to
+        // the PR-level rollup and repeated the same vendors); the PR-level
+        // array is only the fallback for snapshots written before vendors
+        // moved onto the line.
         const snapItemsForV = snap.items || [];
         viRowVendors = viLines.map((_,i)=>{
             const it = snapItemsForV[i];
-            const src = (it && Array.isArray(it.vendors) && it.vendors.length === 4) ? it.vendors : vendors;
+            const src = (it && Array.isArray(it.vendors) && it.vendors.length) ? it.vendors : vendors;
             return [0,1,2].map(k => ({...(src[k]||{})}));
         });
 
@@ -2522,7 +2613,7 @@
                 // quotes actually landed rather than what this phone had typed.
                 viRowVendors = viLines.map((_,i)=>{
                     const it = (base.items||[])[i];
-                    const src = (it && Array.isArray(it.vendors) && it.vendors.length === 4) ? it.vendors : (base.vendors||[]);
+                    const src = (it && Array.isArray(it.vendors) && it.vendors.length) ? it.vendors : (base.vendors||[]);
                     return [0,1,2].map(k => ({...((src||[])[k]||{})}));
                 });
                 refreshViItemVendorPickers();
@@ -2626,7 +2717,17 @@
         const perItem = Array.isArray(vendorIdxSource);
         const vendorHeader = document.getElementById('vendor-col-header');
         if(vendorHeader) vendorHeader.style.display = (perItem && showRateColumn) ? '' : 'none';
+        // GST% per item is editable only while the Purchaser generates the PO.
+        const gstEdit = gstEditMode();
+        const gstHeader = document.getElementById('gst-col-header');
+        if(gstHeader) gstHeader.style.display = gstEdit ? '' : 'none';
         const tbody = document.getElementById('modal-item-tbody');
+        // Typed GST values live in prItemGst, so the many re-renders of this
+        // table (vendor picks, saves) never lose them.
+        tbody.oninput = e => {
+            const inp = e.target.closest && e.target.closest('.po-gst-input');
+            if(inp) prItemGst[+inp.dataset.row] = inp.value;
+        };
         tbody.innerHTML = items.map((item,i) => {
             const rowVendorIdx = perItem
                 ? (vendorIdxSource[i]!=null ? pNum(vendorIdxSource[i]) : -1)
@@ -2660,8 +2761,32 @@
                 ${rateCell}
                 ${discCell}
                 ${vendorCell}
+                ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal" value="${escText(prItemGst[i] ?? '')}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;"></td>` : ''}
             </tr>`;
-        }).join('') || `<tr><td colspan="11" style="text-align:center;color:#999;">No items</td></tr>`;
+        }).join('') || `<tr><td colspan="12" style="text-align:center;color:#999;">No items</td></tr>`;
+    }
+    /* GST% per PO line. Pre-filled from the PR line (tax_pct) or the Item
+       Master (gst_pct), editable by the Purchaser in the PO Generate step, and
+       used as each line's GST when the PO is generated. */
+    let prItemGst = [];
+    function gstEditMode(){
+        return prApprovalMakesPo() && !modalViewOnly && modalTab === 'POGEN';
+    }
+    async function prLineGstDefaults_(lines){
+        const gstById = {};
+        const ids = [...new Set((lines||[]).map(l => l.item_id).filter(Boolean))];
+        if(ids.length){
+            try{
+                const iq = await SB.from('items').select('id,gst_pct').in('id', ids);
+                if(!iq.error) (iq.data||[]).forEach(it => { gstById[it.id] = it.gst_pct; });
+            }catch(e){ console.warn('[MOBILE] Item GST lookup skipped:', e.message||e); }
+        }
+        return (lines||[]).map(l => {
+            if(l.tax_pct != null && l.tax_pct !== '') return pNum(l.tax_pct);
+            const raw = gstById[l.item_id];
+            if(raw == null || String(raw).trim() === '') return SARV_DEFAULT_GST;
+            const n = Number(raw); return isNaN(n) ? SARV_DEFAULT_GST : n;
+        });
     }
 
     /* opts.viewOnly — read-only: nothing to fill, sign or approve (a tab this
@@ -2754,6 +2879,8 @@
             // previously the vendor dropdown simply never appeared.
             await renderVendorInfoForm(entry);
             showRateColumn = true;
+            // PO Generate: pre-fill each item's editable GST% (viLines is loaded now).
+            prItemGst = gstEditMode() ? await prLineGstDefaults_(viLines) : [];
             // In the Vendor Info tab filling the grid IS the task, so it opens expanded.
             if(modalTab === 'VI'){
                 if(viBody) viBody.style.display = 'block';
@@ -2800,6 +2927,11 @@
         document.getElementById('deliveryDateHint').style.display = prApprovalMakesPo() ? 'block' : 'none';
         dlvInput.value = entry.delivery_date || '';
         dlvInput.min = localIsoDate_();
+        // PO charges — only in the PO Generate step, fresh each time.
+        document.getElementById('poChargesGroup').style.display = gstEditMode() ? 'block' : 'none';
+        document.getElementById('poFreightInput').value = '';
+        document.getElementById('poOtherExpInput').value = '';
+        document.getElementById('poChargesGstInput').value = String(SARV_DEFAULT_GST);
 
         // Sign / approve only where this role acts on this record. The Vendor
         // Info step is quotes only — approving (which makes the PO) is done
@@ -2978,7 +3110,10 @@
         }
         return res;
     }
-    async function autoGeneratePosFromPr(req, snap, deliveryDate, purchaserSig){
+    /* opts (from the PO Generate step): gstByRow — the Purchaser's GST% per
+       PR line (falls back to PR line / Item Master GST); freight, other,
+       chargesGst — PO charges and the GST % they carry. */
+    async function autoGeneratePosFromPr(req, snap, deliveryDate, purchaserSig, opts = {}){
         const lq = await SB.from('purchase_requirement_lines').select('*').eq('requirement_id', req.id).order('id');
         if(lq.error) throw lq.error;
         const lines = lq.data || [];
@@ -3045,7 +3180,9 @@
                 itemName: name, itemDesc: it.desc || '', make: it.make || '',
                 qty: available, uom: it.uom || '',
                 unitPrice: rate, discountPercent: disc, netUnitPrice: net,
-                billBasis: 'QTY', taxPct: gstOf(line),
+                billBasis: 'QTY',
+                taxPct: (opts.gstByRow && opts.gstByRow[i] != null && String(opts.gstByRow[i]).trim() !== '' && !isNaN(Number(opts.gstByRow[i])))
+                    ? Number(opts.gstByRow[i]) : gstOf(line),
                 total: Math.round(available * net * 100) / 100,
                 grossWeight: (line.gross_weight != null && line.gross_weight !== '') ? pNum(line.gross_weight) : pNum(it.grossWeight),
             });
@@ -3061,11 +3198,13 @@
                 poNo, poDate: localIsoDate_(), deliveryDate,
                 vendorName: g.vendor.name, vendorMail: g.vendor.email, vendorContact: g.vendor.contact, vendorAddress: g.vendor.address,
                 paymentTerms: SARV_PO_PAYMENT_TERMS, locationContact: SARV_PO_LOCATION_CONTACT,
-                // No freight / other expense at approval time — same as a PO
-                // built in STORE.html with those fields left at 0.
-                freight: 0, otherExpense: 0,
+                // Freight / Loading-Other are a charge on ONE order: when the
+                // PR splits into several vendor POs they ride on the first PO
+                // only — same rule as STORE.html's Build PO.
+                freight: first ? pNum(opts.freight) : 0,
+                otherExpense: first ? pNum(opts.other) : 0,
                 otherExpenseLabel: first ? 'Labour/Loading/Other Exp.' : '',
-                gstPercent: first ? SARV_DEFAULT_GST : 0,
+                gstPercent: first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0,
                 importantNotes: '',
                 items: g.items,
                 // The PR's Store Incharge signature carries over; the Purchaser
@@ -3073,11 +3212,14 @@
                 signatures: {...(storeSig ? {store: storeSig} : {}), gmCeo: gmSig},
             };
             d.subtotal = g.items.reduce((s,x) => s + pNum(x.total), 0);
-            d.gstAmount = g.items.reduce((s,x) => s + pNum(x.total) * pNum(x.taxPct) / 100, 0);
-            d.grandTotal = d.subtotal + d.gstAmount;
+            // GST: each line at its own rate, plus the charges at theirs —
+            // same maths as STORE.html's generateOnePo_().
+            d.gstAmount = g.items.reduce((s,x) => s + pNum(x.total) * pNum(x.taxPct) / 100, 0)
+                + (d.freight + d.otherExpense) * d.gstPercent / 100;
+            d.grandTotal = d.subtotal + d.freight + d.otherExpense + d.gstAmount;
             first = false;
 
-            const payload = {po_no:d.poNo, po_date:d.poDate, vendor_name:d.vendorName||null, vendor_mail:d.vendorMail||null, vendor_address:d.vendorAddress||null, vendor_contact:d.vendorContact||null, delivery_date:d.deliveryDate||null, payment_terms:d.paymentTerms, location_contact:d.locationContact||null, total_items:d.items.length, total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0), subtotal:d.subtotal, gst_percent:d.gstPercent, gst_amount:d.gstAmount, freight:0, other_expense:0, other_expense_label:d.otherExpenseLabel||null, grand_total:d.grandTotal, important_notes:null, status:'GM/CEO Approved', approvals:d.signatures, linked_req_nos:req.req_no};
+            const payload = {po_no:d.poNo, po_date:d.poDate, vendor_name:d.vendorName||null, vendor_mail:d.vendorMail||null, vendor_address:d.vendorAddress||null, vendor_contact:d.vendorContact||null, delivery_date:d.deliveryDate||null, payment_terms:d.paymentTerms, location_contact:d.locationContact||null, total_items:d.items.length, total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0), subtotal:d.subtotal, gst_percent:d.gstPercent, gst_amount:d.gstAmount, freight:d.freight, other_expense:d.otherExpense, other_expense_label:d.otherExpenseLabel||null, grand_total:d.grandTotal, important_notes:null, status:'GM/CEO Approved', approvals:d.signatures, linked_req_nos:req.req_no};
             const ins = await sbSaveDroppingMissingColumns_(payload, p => SB.from('purchase_orders').insert(p).select().single(), ['po_no']);
             if(ins.error) throw ins.error;
             const row = ins.data;
@@ -3109,7 +3251,10 @@
             poNo: po.po_no, poDate: po.po_date, deliveryDate: effDeliveryDate,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
             paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
-            otherExpenseLabel: 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            otherExpenseLabel: po.other_expense_label || 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            // Saved GST total (per-line rates + charges). Without it the PDF
+            // re-derived GST as one flat % over everything and misprinted it.
+            gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
@@ -3227,7 +3372,10 @@
             poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
             paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
-            otherExpenseLabel: 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            otherExpenseLabel: po.other_expense_label || 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            // Saved GST total (per-line rates + charges). Without it the PDF
+            // re-derived GST as one flat % over everything and misprinted it.
+            gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
@@ -3389,7 +3537,10 @@
             poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
             paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
-            otherExpenseLabel: 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            otherExpenseLabel: po.other_expense_label || 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            // Saved GST total (per-line rates + charges). Without it the PDF
+            // re-derived GST as one flat % over everything and misprinted it.
+            gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
@@ -3472,6 +3623,21 @@
             }).map(it => it.name);
             if(noRate.length){ alert('In items ke approved vendor ka Rate 0 hai — pehle Vendor Rate & Info me rate bharein:\n• ' + noRate.join('\n• ')); return; }
         }
+        // PO Generate: the Purchaser's per-item GST% and the PO charges.
+        let poOpts = {};
+        if(makesPo){
+            const badGst = viDisplayItems.filter((_,i) => {
+                const v = prItemGst[i];
+                const n = Number(v);
+                return v == null || String(v).trim() === '' || isNaN(n) || n < 0 || n > 100;
+            }).map(it => it.name);
+            if(badGst.length){ alert('GST% 0 se 100 ke beech bharein:\n• ' + badGst.join('\n• ')); return; }
+            const numOf = id => { const v = String(document.getElementById(id).value||'').trim(); return v === '' ? 0 : Number(v); };
+            const freight = numOf('poFreightInput'), other = numOf('poOtherExpInput'), chargesGst = numOf('poChargesGstInput');
+            if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. 0 ya usse zyada hona chahiye.'); return; }
+            if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
+            poOpts = {gstByRow: prItemGst.slice(), freight, other, chargesGst};
+        }
         const remarks = document.getElementById('remarksInput').value;
         const sig = { name: canvas.toDataURL('image/png'), time: pStamp(), remarks };
         // When a Purchaser signs the GM/CEO stage, the record says so. The
@@ -3490,7 +3656,7 @@
                     // approved and its POs can be raised from STORE.html.
                     setBusy(true, 'Generating PO...');
                     try{
-                        const made = await autoGeneratePosFromPr(currentEntry, prSnap, deliveryDate, sig);
+                        const made = await autoGeneratePosFromPr(currentEntry, prSnap, deliveryDate, sig, poOpts);
                         poMsg = made.length
                             ? '✅ PR approved.\n\nPO generate hue aur MD approval ke liye bhej diye gaye:\n• ' + made.map(m => m.poNo + ' — ' + m.vendorName).join('\n• ')
                             : '✅ PR approved. (Is PR ke saare items ka PO pehle se bana hua hai — naya PO nahi bana.)';
