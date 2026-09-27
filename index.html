@@ -100,6 +100,18 @@ body {
             height: 100%;
             overflow: hidden;
         }
+        /* Inward / Outward open as plain block boxes (see activatePanel), so
+           their card grows with its content — header, Item Configurations,
+           remarks, photos. With the panel's overflow:hidden everything past
+           the screen height was clipped: rows added at the bottom of Item
+           Configurations simply vanished. The panel itself scrolls instead. */
+        #storeInterface #inwardPanel,
+        #storeInterface #outwardPanel {
+            overflow-y: auto;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+            padding-right: 4px;
+        }
 
         #storeInterface .card {
             background: var(--card-bg);
@@ -2144,6 +2156,22 @@ body {
   #sarvHomeDashboard .sarv-home-text b{display:block;font-size:13.5px;color:#0f172a;font-weight:800;}
   #sarvHomeDashboard .sarv-home-text small{display:block;font-size:11px;color:#64748b;margin-top:2px;}
   #sarvHomeDashboard .sarv-home-arrow{flex:0 0 auto;color:#94a3b8;font-size:18px;}
+  /* Hindi help for the home buttons — a hover card, and a message shown on
+     click before the screen opens (see SARV_HOME_HELP). */
+  #sarvHomeTip{position:fixed;z-index:40000;max-width:340px;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.28);font-size:12.5px;line-height:1.55;pointer-events:none;}
+  #sarvHomeTip b{display:block;color:#fff;font-size:13.5px;margin-bottom:5px;}
+  #sarvHomeTip ul{margin:0;padding-left:17px;}
+  #sarvHomeTip li{margin:2px 0;}
+  #sarvHomeIntro{position:fixed;inset:0;z-index:40001;background:rgba(15,23,42,.66);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;cursor:pointer;animation:sarvIntroIn .15s ease-out;}
+  @keyframes sarvIntroIn{from{opacity:0}to{opacity:1}}
+  #sarvHomeIntro .card{background:#fff;border-radius:16px;max-width:560px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;}
+  #sarvHomeIntro .hd{background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;padding:16px 20px;font-size:17px;font-weight:800;display:flex;align-items:center;gap:10px;}
+  #sarvHomeIntro .bd{padding:14px 22px 6px;color:#1e293b;font-size:14px;line-height:1.7;}
+  #sarvHomeIntro .bd ul{margin:0;padding-left:20px;}
+  #sarvHomeIntro .bd li{margin:5px 0;}
+  #sarvHomeIntro .ft{padding:10px 22px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  #sarvHomeIntro .tap{font-size:12.5px;font-weight:800;color:#0369a1;}
+  #sarvHomeIntro .skip{font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px;cursor:pointer;}
 </style>
 <div id="sarvHomeDashboard">
   <div class="sarv-home-hero" style="position:relative;">
@@ -2207,7 +2235,7 @@ body {
     </button>
     <button type="button" class="sarv-home-row" data-go="APPROVAL_APP">
       <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></span>
-      <span class="sarv-home-text"><b>Approval App</b><small>GM/CEO → MD → Vendor Verified sign-off</small></span>
+      <span class="sarv-home-text"><b>Approval App</b><small>Purchaser → MD → PO Sender (mobile)</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
   </div>
@@ -4288,6 +4316,11 @@ body {
         <div class="modal-box" style="max-width: 1320px; width: 100%; max-height: 92vh; overflow-y: auto;">
             <h3 class="modal-title">💰 Vendor Rate &amp; Info — <span id="p_viReqNo" style="color:#6d28d9;">-</span></h3>
             <p class="modal-sub">Har item ke apne 3 vendor (V1&ndash;V3) chuno aur unke rate bharo, phir us item ka <b>Selected Vendor</b> chuno &mdash; usi ke against uss item ka PO banega.</p>
+            <!-- Shown to non-Admin logins: the Purchaser fills Vendor Info on
+                 mobile; here only an Admin may change it. -->
+            <div id="p_viAdminNote" style="display:none; margin:6px 0 10px; padding:8px 12px; background:#f1f5f9; border:1px dashed #94a3b8; border-radius:8px; font-size:12px; font-weight:700; color:#475569;">
+                &#128065; View only &mdash; ye Vendor Info Purchaser ne bhari hai. Isme badlav sirf <b>Admin</b> login se ho sakta hai.
+            </div>
 
             <div class="section-header-row">
                 <h4 class="section-title" style="font-size:12px;">Item-wise Vendor Rate &amp; Vendor Details</h4>
@@ -5272,10 +5305,15 @@ function onEmpCodeInput(val){
   s('p_reqDesignation', emp.designation||'');
   // Department select
   const dept=byId('p_reqDepartment');
-  if(dept&&emp.department){
-    const opts=[...dept.options].map(o=>o.value.toLowerCase());
-    const idx=opts.indexOf((emp.department||'').toLowerCase());
-    if(idx>=0)dept.selectedIndex=idx;
+  if(dept){
+    const want=String(emp.department||'').trim();
+    const opts=[...dept.options].map(o=>o.value.trim().toLowerCase());
+    let idx=want?opts.indexOf(want.toLowerCase()):0;
+    // A department Employee Master has but this fixed list doesn't used to be
+    // dropped silently — the PR (and its PDF) then printed no Department.
+    // Add it as an option instead, so whatever the master says is kept.
+    if(want&&idx<0){dept.add(new Option(want,want));idx=dept.options.length-1;}
+    dept.selectedIndex=idx<0?0:idx;
   }
   s('p_reqContact', emp.contact_no||'');
   renderReqEmpDetails();
@@ -6157,6 +6195,14 @@ function activatePanel(id){
       nextNo('OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e)e.value=no;}).catch(()=>{});
       refreshSerialNo('OUTWARD').catch(()=>{});
     }
+    // Supplier / Party Name dropdowns: if the startup preload didn't land
+    // (slow network, etc.), fill them now rather than waiting for someone to
+    // refresh Supplier Master.
+    if((id==='inwardPanel'||id==='outwardPanel')&&!(sarvSupplierCatalog||[]).length){
+      fetchAllRows('suppliers',SARV_SUPPLIER_COLS,'supplier_name')
+        .then(data=>{if(data&&data.length)refreshSupplierDatalist(data);})
+        .catch(e=>console.warn('[SARV] Supplier list load failed:',e.message||e));
+    }
   }
   // ── Auto-load master data when navigating to masterDataPanel ─
   if(id==='masterDataPanel'&&SB_READY){
@@ -6219,7 +6265,7 @@ function addOutwardItemRow(){
  const tb=byId('outwardItemTableBody');if(!tb)return;const tr=document.createElement('tr');tr.innerHTML=`
  <td class="out-sr-no">—</td><td><input class="table-input out-item-name" placeholder="Type item name..." list="dl-out-item-name"></td>
  <td><input class="table-input out-item-desc" placeholder="Auto from Master" disabled></td><td><input class="table-input out-item-make" placeholder="Brand / OEM"></td>
- <td><input class="table-input out-item-cat" placeholder="Auto from Master" disabled></td><td><input class="table-input out-machine-name" placeholder="Machine"></td><td><input class="table-input out-machine-no" placeholder="No."></td>
+ <td><input class="table-input out-item-cat" placeholder="Auto from Master" disabled></td><td><input class="table-input out-machine-name" placeholder="Select machine..." title="Machine Master list se select karein — Machine No. apne-aap bhar jayega"></td><td><input class="table-input out-machine-no" placeholder="No." title="Machine Master list se select karein"></td>
  <td><input type="number" class="table-input out-qty" value="0" min="0" step=".01"></td><td><input class="table-input out-qty-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input out-weight" value="0" min="0" step=".001"></td><td><select class="table-input out-wunit"><option>KGS</option><option>GMS</option><option>LBS</option></select></td><td><button class="delete-btn">✕</button></td>`;
  tb.appendChild(tr);
  tr.querySelector('.delete-btn').onclick=()=>{tr.remove();updateOutTotals()};
@@ -6231,6 +6277,8 @@ function addOutwardItemRow(){
    oiName.addEventListener('input',function(){if(lookupItem(this.value))applyItemAutofill(this.value,tr,'outward');});
    lockToMasterList(oiName,itemNameMasterValues);
  }
+ // Machine Name + No. — Machine Master list only; a pick fills both.
+ attachMachinePair_(tr,'.out-machine-name','.out-machine-no');
  updateOutTotals();
 }
 /* Serial No. (Auto) — the running count of entries of this kind, i.e. the
@@ -6383,7 +6431,7 @@ function addPurchaseMainRow(){
    <td><input class="table-input col-desc" placeholder="Auto from Master" disabled></td>
    <td><input class="table-input col-make" placeholder="Make / Brand"></td>
    <td><input class="table-input col-cat" placeholder="Auto from Master" disabled></td>
-   <td><input class="table-input col-machine" placeholder="e.g. Loom-3 / M-12" list="dl-inw-machine-name" autocomplete="off"></td>
+   <td><input class="table-input col-machine" placeholder="Select machine..." list="dl-inw-machine-name" autocomplete="off" title="Machine Master list se select karein"></td>
    <td><input type="number" class="table-input col-qty" min="0" step="any"></td>
    <td><input class="table-input col-uom" placeholder="Auto from Master" readonly style="background:#f1f5f9;"></td>
    <td><input type="number" class="table-input col-grossweight" min="0" step="any"></td>
@@ -6403,6 +6451,7 @@ function addPurchaseMainRow(){
    pcName.addEventListener('input',function(){if(lookupItem(this.value))applyItemAutofill(this.value,tr,'purchase');});
    lockToMasterList(pcName,itemNameMasterValues);
  }
+ lockMachineField_(tr.querySelector('.col-machine')); // Machine Master list only
  refreshPurchaseTotals();
 }
 function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
@@ -6411,7 +6460,12 @@ async function saveStoreInward(){if(!SB_READY)return showToast('Supabase URL/key
 async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
 function bindOriginalControls(){
   const add=(id,fn)=>{const e=byId(id);if(e)e.addEventListener('click',fn)};
-  add('addNewItemBtn',addNewRow);add('outAddNewItemBtn',addOutwardItemRow);add('p_addItemBtn',addPurchaseMainRow);
+  // A row added from the button is scrolled into view with its Item Name
+  // focused — with many items the new row lands below the visible area.
+  const showNewRow=(bodyId,sel)=>{const rows=byId(bodyId)?.querySelectorAll('tr:not(.po-info-row)');const tr=rows&&rows[rows.length-1];if(!tr)return;tr.scrollIntoView({block:'nearest',behavior:'smooth'});tr.querySelector(sel)?.focus({preventScroll:true});};
+  add('addNewItemBtn',()=>{addNewRow();showNewRow('itemTableBody','.item-name');});
+  add('outAddNewItemBtn',()=>{addOutwardItemRow();showNewRow('outwardItemTableBody','.out-item-name');});
+  add('p_addItemBtn',addPurchaseMainRow);
   // Enter on a filled Item Configurations row (Item Name + Qty > 0) jumps to
   // the next row's Item Name, pressing + Add New Item first when this is the
   // last row. An unfilled row ignores Enter — that is also what keeps an
@@ -6682,10 +6736,128 @@ function sarvNavigateFromHome(target){
   }
   sarvLockNavToSection();
 }
+/* ── Home page help, in Hindi ────────────────────────────────────────
+   Hover a home button → a card says what that screen is for. Click it →
+   the same details come up first as a message; one click anywhere closes
+   it and only then does the screen open. "दोबारा न दिखाएं" skips the click
+   message for that button on this browser (the hover card stays). */
+const SARV_HOME_HELP={
+  PR:{icon:'📝',title:'Purchase Requirement (PR)',points:[
+    'नई खरीद ज़रूरत (PR) बनाएं — Employee Code डालते ही नाम, पद, विभाग और संपर्क अपने-आप भर जाएंगे।',
+    'हर आइटम का नाम, मात्रा, UOM, मशीन और वज़न भरें; आइटम की कैटेगरी से Purchaser अपने-आप चुना जाएगा।',
+    'Priority और Required By Date चुनें, फिर Submit करें — PR नंबर बनेगा और PR की PDF तैयार होगी।',
+    'इसके बाद Purchaser मोबाइल ऐप में Vendor Info भरकर PR approve करेगा।']},
+  PO:{icon:'🛒',title:'PO Generation',points:[
+    'Pending PR की सूची देखें — "Vendor Rate & Info" से हर आइटम के V1 / V2 / V3 वेंडर और रेट देखें (बदलाव सिर्फ़ Admin कर सकता है)।',
+    'Approved PR के आइटम चुनकर PO बनाएं — Delivery Date ज़रूरी है; Freight / अन्य खर्च जोड़ सकते हैं।',
+    'बने हुए PO की सूची, स्टेटस और PDF देखें; WhatsApp से वेंडर को PO भेजें।',
+    'सिर्फ़ Pending / Rejected PR edit हो सकती है — Admin सभी PR edit कर सकता है।']},
+  IN:{icon:'📥',title:'Material Inward',points:[
+    'सप्लायर से आया माल दर्ज करें — Supplier Name, Invoice No. और Invoice Date ज़रूरी हैं।',
+    'PO चुनने पर उसके आइटम और रेट अपने-आप आ जाएंगे; मात्रा, वज़न और Bill Basis (QTY / WEIGHT) भरें।',
+    'दाईं ओर Freight, Round off और GST का पूरा हिसाब दिखेगा; Submit से पहले Preview दिखेगा।',
+    'सेव होते ही स्टॉक बढ़ेगा और Inward की PDF बनेगी।']},
+  IN_NB:{icon:'📦',title:'Inward (NB) — Non-Billable',points:[
+    'बिना बिल वाला आया माल दर्ज करें (जैसे सैंपल, रिपेयर होकर वापस आया माल)।',
+    'इसमें हर आइटम का GST हमेशा 0% रहता है।',
+    'बाकी तरीका Material Inward जैसा ही है — आइटम और मात्रा भरें, Preview देखकर Submit करें।',
+    'इसका नंबर अलग NB सीरीज़ में बनता है।']},
+  OUT:{icon:'📤',title:'Material Outward',points:[
+    'स्टोर से बाहर जाने वाला माल दर्ज करें — Party Name, Location और Target Return Date ज़रूरी हैं।',
+    'Nature of Dispatch चुनें — "Repair" में भेजा गया माल Repair Tracker में ट्रैक होगा।',
+    'OUTWARD में स्टॉक कम होने पर भी entry हो सकती है (Balance माइनस में जा सकता है)।',
+    'Preview देखकर Submit करें — स्टॉक घटेगा और Outward की PDF बनेगी।']},
+  ISSUE:{icon:'🧾',title:'Issue',points:[
+    'विभाग / मशीन को इस्तेमाल के लिए स्टोर से माल जारी (Issue) करें।',
+    'Receiver का Employee Code डालें — नाम, पद और विभाग अपने-आप भरेंगे; Lot No. और Machine भरें।',
+    'ISSUE में स्टॉक से ज़्यादा मात्रा जारी नहीं हो सकती।',
+    'Preview देखकर Submit करें — स्टॉक घटेगा और Issue की PDF बनेगी।']},
+  REPORTS:{icon:'🔍',title:'Print History / Reports',points:[
+    'सभी Inward / Outward / Issue रिकॉर्ड खोजें — नंबर, सप्लायर, आइटम या तारीख से।',
+    'हर रिकॉर्ड की 1-पेज / 2-पेज PDF खोलें और दोबारा प्रिंट करें।',
+    'Admin: रिकॉर्ड Edit ✏️ या Cancel ❌ कर सकता है, और CSV डाउनलोड कर सकता है।',
+    'Cancel किया गया रिकॉर्ड लाल रंग में "CANCELLED" दिखेगा।']},
+  TRACKER:{icon:'📊',title:'Item Tracker',points:[
+    'किसी भी आइटम का पूरा लेन-देन (In / Out) तारीख-वार देखें।',
+    'आइटम, कैटेगरी, पार्टी और तारीख से फ़िल्टर करें।',
+    'Opening, Total In, Total Out और Closing Balance दिखेगा।',
+    'लेजर को PDF या CSV में डाउनलोड करें।']},
+  MASTER:{icon:'🗂️',title:'Master Data',points:[
+    'Item Master: आइटम जोड़ें / बदलें — कोड, नाम, विवरण, UOM, GST% और MSV (न्यूनतम स्टॉक)।',
+    'हर आइटम का IN, OUT और Balance स्टॉक; MSV से नीचे वाले आइटम लाल दिखेंगे।',
+    'Supplier Master: सप्लायर का नाम, फ़ोन, ईमेल, GST, शहर और वेंडर PIN।',
+    'Employee Master: कर्मचारी का कोड, नाम, पद, विभाग और संपर्क नंबर।']},
+  REPAIR:{icon:'🔧',title:'Repair Tracker',points:[
+    'रिपेयर के लिए बाहर भेजे गए माल को ट्रैक करें।',
+    'कितना भेजा, कितना वापस आया और कितना बाकी है — Outward नंबर के साथ देखें।',
+    'Pending / Partial / Received स्टेटस से फ़िल्टर करें।',
+    'रिपेयर होकर आया माल Material Inward में "Repaired" चुनकर दर्ज करें।']},
+  APPROVAL_APP:{icon:'📱',title:'Approval App (मोबाइल)',points:[
+    'मोबाइल Approval ऐप नए टैब में खुलेगा — Purchaser, MD और PO Sender के लिए।',
+    'Purchaser: Vendor Info (V1 / V2 / V3 रेट) भरकर PR approve करता है — उसी समय PO बन जाता है।',
+    'MD: PO approve या reject करता है।',
+    'PO Sender: MD-approved PO WhatsApp से वेंडर को भेजता है।']},
+};
+const SARV_HOME_SKIP_KEY='sarv_home_intro_skip';
+function sarvHomeSkipped_(){try{return JSON.parse(localStorage.getItem(SARV_HOME_SKIP_KEY)||'{}')||{};}catch(e){return {};}}
+function sarvHomeHelpHtml_(h){
+  return '<ul>'+h.points.map(p=>'<li>'+escText(p)+'</li>').join('')+'</ul>';
+}
+function sarvHomeTipShow_(btn){
+  const h=SARV_HOME_HELP[btn.dataset.go];if(!h)return;
+  let tip=byId('sarvHomeTip');
+  if(!tip){tip=document.createElement('div');tip.id='sarvHomeTip';document.body.appendChild(tip);}
+  tip.innerHTML='<b>'+h.icon+' '+escText(h.title)+'</b>'+sarvHomeHelpHtml_(h);
+  tip.hidden=false;
+  // Beside the button when there is room, otherwise below it.
+  const r=btn.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=r.right+12,y=r.top;
+  if(x+tw>innerWidth-8){x=Math.max(8,Math.min(r.left,innerWidth-tw-8));y=r.bottom+8;}
+  if(y+th>innerHeight-8)y=Math.max(8,innerHeight-th-8);
+  tip.style.left=x+'px';tip.style.top=y+'px';
+}
+function sarvHomeTipHide_(){const t=byId('sarvHomeTip');if(t)t.hidden=true;}
+// Shows the Hindi details, then runs `go` once they are dismissed.
+function sarvHomeIntro_(key,go){
+  const h=SARV_HOME_HELP[key];
+  sarvHomeTipHide_();
+  if(!h||sarvHomeSkipped_()[key])return go();
+  const ov=document.createElement('div');
+  ov.id='sarvHomeIntro';
+  ov.innerHTML='<div class="card"><div class="hd"><span>'+h.icon+'</span><span>'+escText(h.title)+'</span></div>'
+    +'<div class="bd">'+sarvHomeHelpHtml_(h)+'</div>'
+    +'<div class="ft"><span class="tap">👆 कहीं भी एक बार क्लिक करें — आगे बढ़ें</span>'
+    +'<label class="skip"><input type="checkbox"> ये संदेश दोबारा न दिखाएं</label></div></div>';
+  document.body.appendChild(ov);
+  const done=()=>{
+    document.removeEventListener('keydown',onKey,true);
+    ov.remove();
+    go();
+  };
+  const onKey=e=>{if(e.key==='Escape'||e.key==='Enter'){e.preventDefault();done();}};
+  // The "don't show again" tick is the one click that doesn't close it.
+  const skip=ov.querySelector('.skip');
+  skip.addEventListener('click',e=>{
+    e.stopPropagation();
+    const cb=skip.querySelector('input');
+    const s=sarvHomeSkipped_();
+    if(cb.checked)s[key]=true;else delete s[key];
+    try{localStorage.setItem(SARV_HOME_SKIP_KEY,JSON.stringify(s));}catch(err){}
+  });
+  ov.addEventListener('click',done);
+  document.addEventListener('keydown',onKey,true);
+}
 document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
-  byId('sarvHomeDashboard')?.addEventListener('click',e=>{const b=e.target.closest('.sarv-home-row');if(b)sarvNavigateFromHome(b.dataset.go);});
+  const home=byId('sarvHomeDashboard');
+  home?.addEventListener('click',e=>{const b=e.target.closest('.sarv-home-row');if(b)sarvHomeIntro_(b.dataset.go,()=>sarvNavigateFromHome(b.dataset.go));});
+  home?.querySelectorAll('.sarv-home-row').forEach(b=>{
+    b.addEventListener('mouseenter',()=>sarvHomeTipShow_(b));
+    b.addEventListener('mouseleave',sarvHomeTipHide_);
+    b.addEventListener('focus',()=>sarvHomeTipShow_(b));
+    b.addEventListener('blur',sarvHomeTipHide_);
+  });
   // Restore a previous login so the PIN isn't asked again on every reload —
   // only an explicit Logout (sarvLogout, via the role badge) clears it.
   try{
@@ -6806,6 +6978,16 @@ document.addEventListener('DOMContentLoaded',()=>{
   };
 
   window.getPhotos=function(key){ return stores[key]?.files||[]; };
+  // Entry Type drafts (makeEntryDrafts_): hand the current photos over to a
+  // draft and empty the preview, then give a draft's photos back.
+  window.takePhotos=function(key){
+    if(!stores[key])return [];
+    const files=stores[key].files;stores[key].files=[];renderPreviews(key);return files;
+  };
+  window.putPhotos=function(key,files){
+    if(!stores[key])return;
+    stores[key].files=files||[];renderPreviews(key);
+  };
   // Used by clearInwardForm / clearOutwardForm after a save — without this the
   // store kept the previous entry's photos and attached them to the next one.
   window.clearPhotos=function(key){
@@ -7667,10 +7849,70 @@ window.deleteEmployee=async function(id){
 ================================================================ */
 let sarvMachineCatalog=[]; // Global machine cache — feeds the Machine Name datalist
 
+/* A machine is Machine Name + Machine No. (the pair is unique; one name can
+   have several numbers), so every pick-list shows "NAME | NO." and a pick
+   fills both halves. Only active Machine Master rows are offered, and no
+   machine field anywhere accepts anything that is not on that list. */
+const machineCombo_=m=>{const n=String(m.machine_name||'').trim(),no=String(m.machine_no||'').trim();return no?n+' | '+no:n;};
+const machineKey_=v=>String(v||'').trim().toLowerCase();
+function findMachine_(val){const v=machineKey_(val);return v?sarvMachineCatalog.find(m=>machineKey_(machineCombo_(m))===v)||null:null;}
+function machinesByName_(name){const v=machineKey_(name);return v?sarvMachineCatalog.filter(m=>machineKey_(m.machine_name)===v):[];}
+function machinesByNo_(no){const v=machineKey_(no);return v?sarvMachineCatalog.filter(m=>machineKey_(m.machine_no)===v):[];}
+// Valid text for a single "Machine" box: the "NAME | NO." pick, or a bare name.
+function machineValidValues_(){return [...new Set(sarvMachineCatalog.flatMap(m=>[machineCombo_(m),String(m.machine_name||'').trim()]))];}
 function refreshMachineDatalist(machines){
-  sarvMachineCatalog=machines;
+  sarvMachineCatalog=(machines||[]).filter(m=>m&&m.is_active!==false&&String(m.machine_name||'').trim());
   const dl=byId('dl-inw-machine-name');
-  if(dl)dl.innerHTML=machines.map(m=>`<option value="${escText(m.machine_name)}">${escText(m.machine_no||'')}</option>`).join('');
+  if(dl)dl.innerHTML=sarvMachineCatalog.map(m=>`<option value="${escText(machineCombo_(m))}"></option>`).join('');
+}
+// A single "Machine" box (PR rows, Inward) — list only. Until the Machine
+// Master has loaded there is nothing to check against, so it is not blanked.
+function lockMachineField_(el){
+  if(!el)return;
+  el.setAttribute('list','dl-inw-machine-name');el.autocomplete='off';
+  lockToMasterList(el,()=>sarvMachineCatalog.length?machineValidValues_():[el.value]);
+}
+/* Machine Name + Machine No. pair on an Issue row. Picking "NAME | NO." in
+   either box fills both; typing a name that has only one machine, or a number
+   that belongs to only one, fills the other box too. On leaving a box the
+   pair must exist in Machine Master — otherwise it is cleared. */
+function attachMachinePair_(tr,nameSel,noSel){
+  const nameEl=tr.querySelector(nameSel),noEl=tr.querySelector(noSel);
+  if(!nameEl||!noEl||nameEl.dataset.machinePair)return;
+  nameEl.dataset.machinePair='1';
+  [nameEl,noEl].forEach(el=>{el.setAttribute('list','dl-inw-machine-name');el.autocomplete='off';});
+  const put=m=>{nameEl.value=String(m.machine_name||'').trim();noEl.value=String(m.machine_no||'').trim();};
+  const resolve=el=>{
+    const m=findMachine_(el.value);if(m){put(m);return true;}
+    const list=el===nameEl?machinesByName_(el.value):machinesByNo_(el.value);
+    if(list.length===1){put(list[0]);return true;}
+    return false;
+  };
+  [nameEl,noEl].forEach(el=>{
+    el.addEventListener('input',()=>{if(findMachine_(el.value))resolve(el);});
+    el.addEventListener('change',()=>resolve(el));
+  });
+  nameEl.addEventListener('blur',()=>{
+    if(!sarvMachineCatalog.length)return;
+    const v=nameEl.value.trim();
+    if(!v){noEl.value='';return;}
+    if(findMachine_(v)){resolve(nameEl);return;}
+    if(!machinesByName_(v).length){
+      nameEl.value='';noEl.value='';
+      showToast('❌ Machine "'+escText(v)+'" Machine Master me nahi hai — list se hi select karein','warn');
+    }
+  });
+  noEl.addEventListener('blur',()=>{
+    if(!sarvMachineCatalog.length)return;
+    const no=noEl.value.trim();if(!no)return;
+    if(findMachine_(no)){resolve(noEl);return;}
+    const n=nameEl.value.trim();
+    if(!n){if(!resolve(noEl)){noEl.value='';showToast('❌ Machine No. "'+escText(no)+'" Machine Master me nahi hai — list se hi select karein','warn');}return;}
+    if(!sarvMachineCatalog.some(m=>machineKey_(m.machine_name)===machineKey_(n)&&machineKey_(m.machine_no)===machineKey_(no))){
+      noEl.value='';
+      showToast('❌ "'+escText(n)+'" ki Machine No. "'+escText(no)+'" Machine Master me nahi hai — list se hi select karein','warn');
+    }
+  });
 }
 
 window.loadMachineMaster=async function(){
@@ -7804,7 +8046,7 @@ async function initItemTrackerFilters(){
       if(rows&&rows.length)refreshItemDatalist(rows);
     }
     if(!(sarvSupplierCatalog||[]).length){
-      const rows=await fetchAllRows('suppliers','*','supplier_name').catch(()=>[]);
+      const rows=await fetchAllRows('suppliers',SARV_SUPPLIER_COLS,'supplier_name').catch(()=>[]);
       if(rows&&rows.length)refreshSupplierDatalist(rows);
     }
     const items=sarvItemCatalog||[];
@@ -8110,7 +8352,7 @@ window.loadReports=async function(){
       const{data,error}=await q;
       if(!error&&data)data.forEach(e=>{
         const lines=e.inward_lines||[];
-        results.push({type:e.entry_type||'INWARD',kind:'inward',no:e.document_no,invoice:e.invoice_no||'—',date:e.receiving_date||e.created_at?.slice(0,10)||'',party:e.supplier_name||e.po_number||'—',receiver:'—',amount:lines.reduce((s,l)=>s+(+l.line_total||0),0),qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||''});
+        results.push({type:e.entry_type||'INWARD',kind:'inward',no:e.document_no,invoice:e.invoice_no||'—',date:e.receiving_date||e.created_at?.slice(0,10)||'',party:e.supplier_name||e.po_number||'—',receiver:'—',amount:lines.reduce((s,l)=>s+(+l.line_total||0),0),qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||'',createdAt:e.created_at||''});
       });
     }
     // ── Outward entries ───────────────────────────────────────
@@ -8125,7 +8367,7 @@ window.loadReports=async function(){
       const{data,error}=await q;
       if(!error&&data)data.forEach(e=>{
         const lines=e.outward_lines||[];
-        results.push({type:e.entry_type||'OUTWARD',kind:'outward',no:e.document_no,invoice:e.gate_pass_no||'—',date:e.outward_date||e.created_at?.slice(0,10)||'',party:e.party_name||'—',receiver:e.receiver_name||'—',amount:0,qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||''});
+        results.push({type:e.entry_type||'OUTWARD',kind:'outward',no:e.document_no,invoice:e.gate_pass_no||'—',date:e.outward_date||e.created_at?.slice(0,10)||'',party:e.party_name||'—',receiver:e.receiver_name||'—',amount:0,qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||'',createdAt:e.created_at||''});
       });
     }
     // ── PDF links (from shared pdf_documents index) ─────────────
@@ -8142,7 +8384,10 @@ window.loadReports=async function(){
     }catch(e){console.warn('[SARV] pdf_documents lookup skipped:',e.message||e);}
     // ── Search filter ─────────────────────────────────────────
     const filtered=search?results.filter(r=>[r.no,r.invoice,r.party,r.receiver,r.items].some(v=>(v||'').toLowerCase().includes(search))):results;
-    filtered.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    // Newest saved entry first — by when it was saved (created_at), not by its
+    // receiving / outward date, so a back-dated entry still lands on top the
+    // moment it is saved. Inward and Outward are merged into one list here.
+    filtered.sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
     sarvLastReportsFiltered=filtered;
     if(statusEl)statusEl.textContent=filtered.length+' records found';
     if(!filtered.length){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
@@ -8370,7 +8615,8 @@ async function loadInwardForEdit(id,no){
   const e=h.data, lines=lq.data||[];
 
   activatePanel('inwardPanel');
-  clearInwardForm();                       // also clears any previous edit state
+  window.sarvInwardDrafts?.stash();        // keep whatever was being typed
+  clearInwardForm(true);                   // also clears any previous edit state
   sarvEditingInwardId=e.id;
   sarvEditingInwardNo=e.document_no||no||'';
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
@@ -8434,6 +8680,16 @@ async function loadInwardForEdit(id,no){
     sr('.bill-basis-field',(pNum(line.weight)>0&&byWt<byQty)?'WEIGHT':'QTY');
   });
   if(!lines.length)addNewRow();
+  // Freight and Round off live on the header (freight_exp / round_off). They
+  // used to be kept only inside the PDF, so an edited record came back without
+  // them and its regenerated PDF silently dropped the round-off from the Final
+  // Amount. A database still missing the columns is flagged instead.
+  if('round_off' in e||'freight_exp' in e){
+    set('freightExp',pNum(e.freight_exp));
+    set('roundOffInput',pNum(e.round_off).toFixed(2));
+  }else{
+    showToast('⚠️ Is database me Freight / Round off save nahi hote — edit karne se pehle dono dobara bharein (freight_exp, round_off columns add karein)','warn');
+  }
   applyInwardNbGstLock();
   updateStoreTotals();
   refreshStoreEditUi();
@@ -8449,7 +8705,8 @@ async function loadOutwardForEdit(id,no){
   const e=h.data, lines=lq.data||[];
 
   activatePanel('outwardPanel');
-  clearOutwardForm();
+  window.sarvOutwardDrafts?.stash();       // keep whatever was being typed
+  clearOutwardForm(true);
   sarvEditingOutwardId=e.id;
   sarvEditingOutwardNo=e.document_no||no||'';
 
@@ -8569,6 +8826,10 @@ window.addEventListener('DOMContentLoaded',()=>{
   lockToMasterList(byId('p_poVendorField'),()=>sarvSupplierCatalog.map(s=>s.supplier_name));
   lockToMasterList(byId('p_reqEmpCode'),()=>sarvEmployeeCatalog.map(e=>e.emp_code));
   lockToMasterList(byId('outReceiverEmpCode'),()=>sarvEmployeeCatalog.map(e=>e.emp_code));
+  lockMachineField_(byId('inwMachineName'));   // Machine Master list only
+  // Outward / Issue rows created before this point get their machine pair wired too.
+  document.querySelectorAll('#outwardItemTableBody tr').forEach(tr=>attachMachinePair_(tr,'.out-machine-name','.out-machine-no'));
+  document.querySelectorAll('#p_itemTableBody tr').forEach(tr=>lockMachineField_(tr.querySelector('.col-machine')));
   // Invoice Date and Target Return Date must start blank/un-selected so the
   // mandatory-field check below actually forces the user to pick one.
   document.querySelectorAll('input[type=date]').forEach(e=>{if(!e.value&&e.id!=='invoiceDate'&&e.id!=='outTargetReturnDate')e.value=today()});
@@ -8592,10 +8853,13 @@ window.addEventListener('DOMContentLoaded',()=>{
     // soon as an item's category is known. Failing silently is fine — the
     // field just stays manual.
     loadCategoryPurchasers().catch(()=>{});
-    // Pre-load supplier catalog for Supplier/Party/Vendor name auto-fill
-    fetchAllRows('suppliers','*','supplier_name')
+    // Pre-load supplier catalog for Supplier/Party/Vendor name auto-fill.
+    // Explicit columns, never '*': pin_hash is not readable by this key, and
+    // selecting it fails the whole query — which is what left the Inward /
+    // Outward supplier dropdowns empty until Supplier Master was refreshed.
+    fetchAllRows('suppliers',SARV_SUPPLIER_COLS,'supplier_name')
       .then(data=>{if(data&&data.length)refreshSupplierDatalist(data);})
-      .catch(()=>{});
+      .catch(e=>console.warn('[SARV] Supplier list preload failed:',e.message||e));
     // Pre-load machine catalog for Machine Name auto-fill (Inward/PR forms)
     fetchAllRows('machines','*','machine_name')
       .then(data=>{if(data&&data.length)refreshMachineDatalist(data);})
@@ -8608,9 +8872,40 @@ window.addEventListener('DOMContentLoaded',()=>{
     const sel=byId(selectId);const show=!!sel&&sel.value==='ISSUE';
     groupIds.forEach(id=>{const g=byId(id);if(g)g.style.display=show?'':'none';});
   };
+  // ── Entry Type drafts: INWARD / INWARD NB and OUTWARD / ISSUE each keep
+  //    their own form, like separate tabs (see makeEntryDrafts_) ──────────
+  window.sarvInwardDrafts=makeEntryDrafts_({
+    selectId:'entryTypeSelect',rootIds:['inwardPanel','sidebarPanel'],tbodyId:'itemTableBody',photoKey:'inward',
+    skipIds:['entryTypeSelect','regEntryNo','serialNoField'],
+    newRow:addNewRow,
+    extraSave:()=>({
+      po:getSelectedPoNos(),repair:getSelectedRepairOutNos(),
+      poLock:!!byId('supplierName')?.readOnly,
+      poDetails:byId('inwardPoDetails')?.innerHTML||'',poDetailsShown:(byId('inwardPoDetails')?.style.display||'none')!=='none'
+    }),
+    extraRestore:(x,vals)=>{
+      // Nature of Inward's change handler resets gate pass / repair UI, so it
+      // runs first and gate pass is written back after it.
+      const nat=byId('inwNatureOfInward');if(nat)nat.dispatchEvent(new Event('change'));
+      const gp=byId('gatePassNo');if(gp&&vals&&'gatePassNo' in vals)gp.value=vals.gatePassNo;
+      setSelectedPoNos(x?x.po:[]);togglePoNumberPanel(false);
+      setSelectedRepairOutNos(x?x.repair:[]);
+      setInwardPoLock(!!(x&&x.poLock));
+      const box=byId('inwardPoDetails');if(box){box.innerHTML=x?x.poDetails:'';box.style.display=(x&&x.poDetailsShown)?'':'none';}
+      updateStoreTotals();
+    }
+  });
+  window.sarvOutwardDrafts=makeEntryDrafts_({
+    selectId:'outEntryTypeSelect',rootIds:['outwardPanel'],tbodyId:'outwardItemTableBody',photoKey:'outward',
+    skipIds:['outEntryTypeSelect','outRegEntryNo','outSerialField'],
+    newRow:addOutwardItemRow,
+    extraRestore:()=>{showOutStockWarning(null);updateOutTotals();}
+  });
   // ── Entry Type → Serial No + Theme (Inward) ──────────────
   const etSel=byId('entryTypeSelect');
   if(etSel){etSel.addEventListener('change',function(){
+    // Park this type's form and bring up the chosen type's own one first.
+    window.sarvInwardDrafts.switchTo(this.value);
     const type=this.value, kind=type==='INWARD NB'?'NB':'INWARD';
     if(SB_READY)nextNo(kind).then(no=>{const e=byId('regEntryNo');if(e)e.value=no;}).catch(()=>{});
     const panel=byId('inwardPanel');
@@ -8624,6 +8919,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   // ── Entry Type → Serial No + Theme (Outward) ─────────────
   const otSel=byId('outEntryTypeSelect');
   if(otSel){otSel.addEventListener('change',function(){
+    window.sarvOutwardDrafts.switchTo(this.value);
     const type=this.value, kind=type==='ISSUE'?'ISSUE':'OUTWARD';
     if(SB_READY)nextNo(kind).then(no=>{const e=byId('outRegEntryNo');if(e)e.value=no;}).catch(()=>{});
     const panel=byId('outwardPanel');
@@ -9409,7 +9705,6 @@ window.addEventListener('DOMContentLoaded',()=>{
      '<td>'+pEsc(r.cat)+'</td>'+
      '<td class="c">'+pEsc(r.machineNo)+'</td>'+
      '<td class="c b">'+pEsc(r.qty)+'</td>'+
-     '<td class="c b">'+pEsc(r.issued)+'</td>'+
      '<td class="c">'+pEsc(r.uom)+'</td>'+
      '<td class="c">'+(r.grossWeight!=null?pEsc(r.grossWeight):'')+'</td>'+
      rateCell(r.rates.V1,r.discounts.V1,0,r)+rateCell(r.rates.V2,r.discounts.V2,1,r)+rateCell(r.rates.V3,r.discounts.V3,2,r)+
@@ -9439,8 +9734,30 @@ window.addEventListener('DOMContentLoaded',()=>{
      /* Vendor name above the figure inside each V-column cell — the columns
         no longer share one legend, so every cell has to name its own vendor. */
      +'.items td.vcol .vnm { display:block; font-size:8px; line-height:1.1; color:#334155; font-weight:600; }'
-     +'.items td.vcol .vfig { display:block; font-size:10.5px; line-height:1.2; }';
-   const info=(l,v)=>'<td class="lbl">'+l+'</td><td class="val">'+pEsc(v)+'</td>';
+     +'.items td.vcol .vfig { display:block; font-size:10.5px; line-height:1.2; }'
+     /* Invoice-style header: two boxed groups side by side, same layout as the
+        native PDF (drawPrHeaderBlocks_). */
+     +'.grp-wrap { display:flex; gap:18px; margin-top:8px; }'
+     +'.grp { flex:1; border:1.3px solid #0d5c53; }'
+     +'.grp h4 { margin:0; background:#0d5c53; color:#fff; font-size:11px; letter-spacing:0.6px; padding:5px 9px; }'
+     +'.grp table td { border:none; border-bottom:1px solid #e2e8f0; padding:4px 9px; font-size:10.5px; }'
+     +'.grp table tr:nth-child(even) td { background:#f8fafc; }'
+     +'.grp table tr:last-child td { border-bottom:none; }'
+     +'.grp td.k { width:34%; color:#475569; }'
+     +'.grp td.v { font-weight:bold; color:#0f172a; }'
+     +'.sec-bar { margin-top:10px; background:#0d5c53; color:#fff; font-weight:bold; font-size:11px; letter-spacing:0.6px; padding:5px 9px; }'
+     +'.remarks { margin-top:10px; border:1px solid #cbd5e1; }'
+     +'.remarks h4 { margin:0; background:#f1f5f9; color:#0d5c53; font-size:10.5px; padding:4px 9px; }'
+     +'.remarks div { padding:6px 9px; font-size:10.5px; white-space:pre-wrap; }';
+   // Both boxes get the same number of rows so they end level.
+   const grpHtml=(()=>{
+     const groups=prHeaderGroups_(d);
+     const n=Math.max(...groups.map(g=>g.rows.length));
+     return '<div class="grp-wrap">'+groups.map((g,gi)=>'<div class="grp"><h4>'+g.title+'</h4><table><tbody>'
+       +g.rows.concat(Array.from({length:n-g.rows.length},()=>['',''])).map((r,ri)=>'<tr><td class="k">'+pEsc(r[0])+'</td><td class="v"'
+         +((gi===0&&ri===3)?' style="'+priorityStyle_(d.priority)+'"':'')+'>'+(r[1]===''?'&nbsp;':pEsc(r[1]))+'</td></tr>').join('')
+       +'</tbody></table></div>').join('')+'</div>';
+   })();
    const sigs=d.signatures||(d.vendorSignature?{store:d.vendorSignature}:{});
    /* Caption for the GM/CEO signature column on a PURCHASE REQUIREMENT.
       A Purchaser signs at that stage from mobile.html, and the PR must then
@@ -9473,21 +9790,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'
      +'<div class="title-bar">'+pEsc(SARV_COMPANY.fullName)+' UNIT-2</div>'
      +'<div class="subtitle-bar">PURCHASE REQUIREMENT</div>'
-     +'<table class="info"><tbody>'
-     +'<tr>'+info('Timestamp',pStamp(d.ts||new Date()))+'<td class="spacer"></td>'+info('Department',d.department||'')+'</tr>'
-     +'<tr>'+info('Requirement No',d.reqNo||'')+'<td class="spacer"></td>'+info('Contact No',d.contact||d.contact_no||'')+'</tr>'
-     +'<tr>'+info('Request Date',fmtDate_(d.date||d.request_date))+'<td class="spacer"></td>'+info('Machine / Line',d.machine||'')+'</tr>'
-     +'<tr>'+info('Required By Date',fmtDate_(d.requiredByDate||d.required_by))+'<td class="spacer"></td><td class="lbl">&nbsp;</td><td class="val">&nbsp;</td></tr>'
-     +'<tr><td class="lbl">Priority</td><td class="val" style="'+priorityStyle_(d.priority)+'">'+pEsc(d.priority||'Normal')+'</td><td class="spacer"></td>'+info('Overall Remarks',d.overallRemarks||d.notes||'')+'</tr>'
-     +'<tr>'+info('Person Name',d.personName||d.requested_by||'')+'<td class="spacer"></td><td class="lbl">Total Items</td><td class="val" style="text-align:left;font-weight:bold;">'+pEsc(items.length)+'</td></tr>'
-     +'<tr>'+info('Employee Code',d.empCode||d.employee_code||'')+'<td class="spacer"></td><td class="lbl">Total Qty</td><td class="val" style="text-align:left;font-weight:bold;">'+pEsc(totalQty)+'</td></tr>'
-     +'<tr>'+info('Designation',d.designation||'')+'<td class="spacer"></td><td class="lbl">Status</td><td class="val" style="text-align:left;font-weight:bold;">'+pEsc(d.status||'Pending')+'</td></tr>'
-     +'<tr>'+info('Purchaser Name',d.generatedBy||d.purchaserName||'')+'<td class="spacer"></td><td class="lbl">Printed On</td><td class="val">'+pStamp()+'</td></tr>'
-     +'</tbody></table>'
-     +'<table class="items" style="margin-top:10px;"><thead>'
-     +'<tr class="subtotal-row"><td colspan="6">SUBTOTAL &gt;&gt;</td><td>'+pEsc(totalQty)+'</td><td>'+pEsc(d.totalIssued||0)+'</td><td></td><td>'+(totalGW>0?pEsc(totalGW)+' kg':'')+'</td><td colspan="4">VENDOR RATE (rate, and disc% in brackets)</td></tr>'
-     +'<tr class="items-head"><th style="width:3%;">Sr No</th><th style="width:12%;">Item Name</th><th style="width:12%;">Item Description</th><th style="width:7%;">Make / Brand</th><th style="width:8%;">Category</th><th style="width:7%;">Machine</th><th style="width:4%;">Qty</th><th style="width:5%;">Qty Issued</th><th style="width:4%;">UOM</th><th style="width:5%;">Weight</th><th style="width:11%;">V1</th><th style="width:11%;">V2</th><th style="width:11%;">V3</th></tr>'
+     +grpHtml
+     +'<div class="sec-bar">ITEMS REQUIRED</div>'
+     +'<table class="items"><thead>'
+     +'<tr class="subtotal-row"><td colspan="6">SUBTOTAL &gt;&gt;</td><td>'+pEsc(totalQty)+'</td><td></td><td>'+(totalGW>0?pEsc(totalGW)+' kg':'')+'</td><td colspan="3">VENDOR RATE (rate, and disc% in brackets)</td></tr>'
+     +'<tr class="items-head"><th style="width:3%;">Sr No</th><th style="width:13%;">Item Name</th><th style="width:13%;">Item Description</th><th style="width:7%;">Make / Brand</th><th style="width:8%;">Category</th><th style="width:7%;">Machine</th><th style="width:5%;">Qty</th><th style="width:4%;">UOM</th><th style="width:5%;">Weight</th><th style="width:11.6%;">V1</th><th style="width:11.7%;">V2</th><th style="width:11.7%;">V3</th></tr>'
      +'</thead><tbody>'+itemRowsHtml+'</tbody></table>'
+     +'<div class="remarks"><h4>OVERALL REMARKS</h4><div>'+pEsc(String(d.overallRemarks||d.notes||'').trim()||'—')+'</div></div>'
      +'<table style="margin-top:26px;border-collapse:collapse;width:100%;"><tr>'
      // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
      // MD / Vendor Verified belong to the PO chain and are not printed here.
@@ -9498,11 +9807,125 @@ window.addEventListener('DOMContentLoaded',()=>{
      +'</body></html>';
  }
 
+ /* ── Purchase Requirement PDF: invoice-style header ────────────────────
+    Two boxed groups side by side — REQUEST DETAILS (the requirement: number,
+    dates, priority, who buys it, status) and REQUESTED BY (the person who
+    raised it) — each under its own teal heading band, label : value rows.
+    Printed On, Total Items, Total Qty, Purpose, Last Date Used and Request
+    Date are deliberately not printed. The same helpers live in mobile.html
+    so a PR PDF regenerated on either side is identical. */
+ const PR_TEAL=[13,92,83];
+ /* Requested By details come from the PR, but Designation / Contact have no
+    column on the PR header — they live only in the PDF snapshot, and a PR
+    whose snapshot never got them (older PRs, an edit, a regenerate from
+    mobile) printed them blank. Anything still missing is filled from
+    Employee Master by the PR's Employee Code. The in-memory catalog is tried
+    first; the database is asked only when that misses. */
+ async function withPrRequester_(d){
+   const code=String(d.empCode||d.employee_code||'').trim();
+   const has=d.designation&&d.department&&(d.contact||d.contact_no)&&(d.personName||d.requested_by);
+   if(!code||has)return d;
+   let emp=lookupEmployee(code);
+   if(!emp&&SB_READY){
+     try{const q=await SB.from('employees').select('person_name,designation,department,contact_no').ilike('emp_code',code).limit(1);if(!q.error)emp=(q.data||[])[0]||null;}
+     catch(e){console.warn('[SARV PDF] Employee lookup for PR skipped:',e.message||e);}
+   }
+   if(!emp)return d;
+   return {...d,
+     personName:d.personName||d.requested_by||emp.person_name||'',
+     designation:d.designation||emp.designation||'',
+     department:d.department||emp.department||'',
+     contact:d.contact||d.contact_no||emp.contact_no||''};
+ }
+ function prHeaderGroups_(d){
+   // Synchronous callers (the HTML variant) still get the catalog fallback.
+   const needEmp=!d.designation||!d.department||!(d.contact||d.contact_no);
+   const emp=(needEmp&&lookupEmployee(d.empCode||d.employee_code))||{};
+   d={...d,designation:d.designation||emp.designation||'',department:d.department||emp.department||'',contact:d.contact||d.contact_no||emp.contact_no||'',personName:d.personName||d.requested_by||emp.person_name||''};
+   return [
+     {title:'REQUEST DETAILS',rows:[
+       ['Requirement No',d.reqNo||'—'],
+       ['Date & Time',pStamp(d.ts||new Date())],
+       ['Required By',fmtDate_(d.requiredByDate||d.required_by)||'—'],
+       ['Priority',d.priority||'Normal'],
+       ['Machine / Line',d.machine||'—'],
+       ['Purchaser',d.generatedBy||d.purchaserName||'—'],
+       ['Status',d.status||'Pending'],
+     ]},
+     {title:'REQUESTED BY',rows:[
+       ['Name',d.personName||d.requested_by||'—'],
+       ['Employee Code',d.empCode||d.employee_code||'—'],
+       ['Designation',d.designation||'—'],
+       ['Department',d.department||'—'],
+       ['Contact No',d.contact||d.contact_no||'—'],
+     ]},
+   ];
+ }
+ function drawPrHeaderBlocks_(doc,d,M,W,pageW,y){
+   const gap=6,boxW=(W-gap)/2,groups=prHeaderGroups_(d);
+   const n=Math.max(...groups.map(g=>g.rows.length));
+   const priColor={urgent:[220,38,38],critical:[220,38,38],high:[234,88,12]}[String(d.priority||'').toLowerCase()]||[15,23,42];
+   let bottom=y;
+   groups.forEach((g,gi)=>{
+     const x=M+gi*(boxW+gap);
+     doc.setFillColor(...PR_TEAL);doc.rect(x,y,boxW,6,'F');
+     doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(255,255,255);
+     doc.text(g.title,x+3,y+4.2);
+     doc.setTextColor(0,0,0);
+     // Both boxes get the same number of rows so they end level.
+     const rows=g.rows.concat(Array.from({length:n-g.rows.length},()=>['','']));
+     doc.autoTable({
+       startY:y+6,body:rows,theme:'plain',
+       margin:{left:x,right:pageW-(x+boxW)},tableWidth:boxW,
+       styles:{fontSize:7.8,cellPadding:{top:1.1,bottom:1.1,left:3,right:2},textColor:[15,23,42],valign:'middle'},
+       columnStyles:{0:{cellWidth:boxW*0.34,textColor:[71,85,105]},1:{fontStyle:'bold'}},
+       didParseCell:h=>{
+         if(h.section!=='body')return;
+         if(h.row.index%2===1)h.cell.styles.fillColor=[248,250,252];
+         if(gi===0&&h.row.index===3&&h.column.index===1)h.cell.styles.textColor=priColor;
+       },
+       didDrawCell:h=>{
+         if(h.section!=='body'||h.column.index!==0||h.row.index===n-1)return;
+         doc.setDrawColor(226,232,240);doc.setLineWidth(0.15);
+         doc.line(x,h.cell.y+h.cell.height,x+boxW,h.cell.y+h.cell.height);
+       }
+     });
+     const fy=doc.lastAutoTable.finalY;
+     doc.setDrawColor(...PR_TEAL);doc.setLineWidth(0.35);doc.rect(x,y,boxW,fy-y);
+     bottom=Math.max(bottom,fy);
+   });
+   return bottom+5;
+ }
+ // Full-width teal heading bar, e.g. "ITEMS REQUIRED" over the items table.
+ function drawPrSectionBar_(doc,title,M,W,y){
+   doc.setFillColor(...PR_TEAL);doc.rect(M,y,W,6,'F');
+   doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(255,255,255);
+   doc.text(title,M+3,y+4.2);
+   doc.setTextColor(0,0,0);
+   return y+6;
+ }
+ // Overall Remarks, printed under the items rather than squeezed into the header.
+ function drawPrRemarksBox_(doc,d,M,W,pageH,y){
+   const txt=String(d.overallRemarks||d.notes||'').trim()||'—';
+   doc.setFont(undefined,'normal');doc.setFontSize(8);
+   const lines=doc.splitTextToSize(txt,W-6);
+   const h=6+lines.length*3.8+3;
+   if(y+h>pageH-M-4){doc.addPage();y=M;}
+   doc.setFillColor(241,245,249);doc.rect(M,y,W,5.5,'F');
+   doc.setFont(undefined,'bold');doc.setFontSize(8);doc.setTextColor(...PR_TEAL);
+   doc.text('OVERALL REMARKS',M+3,y+3.9);
+   doc.setFont(undefined,'normal');doc.setTextColor(0,0,0);
+   doc.text(lines,M+3,y+9);
+   doc.setDrawColor(203,213,225);doc.setLineWidth(0.3);doc.rect(M,y,W,h);
+   return y+h;
+ }
+
  /* Native jsPDF/autoTable renderer for the Purchase Requirement — same
     vector-drawing approach used for Store Inward/Outward and the PO, so
     the saved PDF always matches what the preview shows. */
  async function buildRequirementNativePdfBlob(d){
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
+   d=await withPrRequester_(d); // fill Designation / Department / Contact from Employee Master if missing
    const {jsPDF}=window.jspdf;
    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
@@ -9522,7 +9945,6 @@ window.addEventListener('DOMContentLoaded',()=>{
    }));
    const totalGW=items.reduce((s,r)=>s+(r.grossWeight!=null?r.grossWeight:0),0);
    const totalQty=items.reduce((s,r)=>s+r.qty,0);
-   const totalIssued=items.reduce((s,r)=>s+r.issued,0);
 
    let y=M;
    doc.setFillColor(255,242,0);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
@@ -9536,46 +9958,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.setTextColor(0,0,0);
    y+=8;
 
-   const priColor={urgent:[220,38,38],critical:[220,38,38],high:[234,88,12]}[String(d.priority||'').toLowerCase()]||[0,0,0];
-   const infoRows=[
-     ['Timestamp',pStamp(d.ts||new Date()),'Department',d.department||''],
-     ['Requirement No',d.reqNo||'','Contact No',d.contact||d.contact_no||''],
-     ['Request Date',fmtDate_(d.date||d.request_date),'Machine / Line',d.machine||''],
-     ['Required By Date',fmtDate_(d.requiredByDate||d.required_by),'',''],
-     ['Priority',d.priority||'Normal','Overall Remarks',d.overallRemarks||d.notes||''],
-     ['Person Name',d.personName||d.requested_by||'','Total Items',String(items.length)],
-     ['Employee Code',d.empCode||d.employee_code||'','Total Qty',String(totalQty)],
-     ['Designation',d.designation||'','Status',d.status||'Pending'],
-     ['Purchaser Name',d.generatedBy||d.purchaserName||'','Printed On',pStamp()],
-   ];
-   const lw=W*0.15,vw=W*0.35;
-   doc.autoTable({
-     startY:y, body:infoRows, theme:'grid',
-     margin:{left:M,right:pageW-(M+W)}, tableWidth:W,
-     styles:{fontSize:7.5,cellPadding:1.3,lineColor:[0,0,0],lineWidth:0.15,textColor:[0,0,0],valign:'middle'},
-     columnStyles:{
-       0:{cellWidth:lw,fillColor:[243,243,243],fontStyle:'bold',halign:'center'},
-       1:{cellWidth:vw,fontStyle:'bold'},
-       2:{cellWidth:lw,fillColor:[243,243,243],fontStyle:'bold',halign:'center'},
-       3:{cellWidth:vw,fontStyle:'bold'},
-     },
-     didParseCell:(hook)=>{
-       if(hook.row.index===4&&hook.column.index===1)hook.cell.styles.textColor=priColor;
-     }
-   });
-   y=doc.lastAutoTable.finalY+4;
+   y=drawPrHeaderBlocks_(doc,d,M,W,pageW,y);
 
    const TEAL=[13,92,83],SUBTOTAL_BG=[207,226,247];
+   y=drawPrSectionBar_(doc,'ITEMS REQUIRED',M,W,y);
    const head=[
      [
        {content:'SUBTOTAL >>',colSpan:6,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
        {content:String(totalQty),styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
-       {content:String(totalIssued),styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
        {content:'',styles:{fillColor:SUBTOTAL_BG}},
        {content:totalGW>0?totalGW+' kg':'',styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
-       {content:'VENDOR RATE',colSpan:4,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
+       // Spans exactly the three vendor columns — it used to span four, which
+       // added a blank 14th column at the right edge of the table.
+       {content:'VENDOR RATE',colSpan:3,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
      ],
-     ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','Qty Issued','UOM','Weight','V1','V2','V3']
+     ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','UOM','Weight','V1','V2','V3']
    ];
    const rateTxt=v=>(v!=null&&pNum(v)>0)?nNum_(v):'';
    const discTxt=v=>(v!=null&&pNum(v)>0)?' (-'+pNum(v)+'%)':'';
@@ -9589,7 +9986,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(!nm&&!fig)return '';
      return (nm?nm+'\n':'')+(fig||'—');
    };
-   const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),String(r.issued),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),vCell(r,0),vCell(r,1),vCell(r,2)]);
+   const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),vCell(r,0),vCell(r,1),vCell(r,2)]);
    // PR-level field, kept only as a fallback for a PR approved before
    // per-item vendor assignment existed.
    const approvedIdx=(d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?d.approvedVendorIndex:-1;
@@ -9599,19 +9996,20 @@ window.addEventListener('DOMContentLoaded',()=>{
      margin:{left:M,right:pageW-(M+W)}, tableWidth:W,
      styles:{fontSize:7,cellPadding:1.3,overflow:'linebreak',textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.2,valign:'middle'},
      headStyles:{fillColor:TEAL,textColor:[255,255,255],fontStyle:'bold',halign:'center',lineWidth:0.2,lineColor:[0,0,0]},
-     columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:12,halign:'center',fontStyle:'bold'},8:{cellWidth:10,halign:'center'},9:{cellWidth:14,halign:'center'},10:{cellWidth:24},11:{cellWidth:24},12:{cellWidth:24}},
+     columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:10,halign:'center'},8:{cellWidth:14,halign:'center'},9:{cellWidth:26},10:{cellWidth:26},11:{cellWidth:26}},
      theme:'grid',
      didParseCell:(hook)=>{
        if(hook.section!=='body')return;
        const rowIdx=items[hook.row.index]&&items[hook.row.index].approvedVendorIndex;
-       if(rowIdx!=null&&rowIdx>=0&&hook.column.index===10+rowIdx){
+       if(rowIdx!=null&&rowIdx>=0&&hook.column.index===9+rowIdx){
          hook.cell.styles.fillColor=APPROVED_GREEN;hook.cell.styles.fontStyle='bold';
        }
      }
    });
    // No separate "Approved Vendor (per item)" table: the chosen vendor is
    // already marked on each item row (green V1..V3 cell above).
-   y=doc.lastAutoTable.finalY+16;
+   y=drawPrRemarksBox_(doc,d,M,W,pageH,doc.lastAutoTable.finalY+4);
+   y+=16;
    if(y>pageH-20){doc.addPage();y=M+16;}
 
    // Store Incharge (Vendor Info popup) -> GM/CEO -> MD -> Vendor Verified,
@@ -10431,6 +10829,14 @@ window.addEventListener('DOMContentLoaded',()=>{
        if(h.error&&/column/i.test(h.error.message||''))h=await SB.from('inward_entries').insert(slim).select().single();
        if(h.error)throw h.error;
      }
+     // Freight + Round off stored on the header so an Admin edit brings them
+     // back (see loadInwardForEdit). Written separately and best-effort: a
+     // database without these columns must not lose the rest of the header to
+     // the full→slim fallback above.
+     try{
+       const fr=await SB.from('inward_entries').update({freight_exp:pNum(pVal('freightExp')),round_off:pNum(pVal('roundOffInput'))}).eq('id',h.data.id);
+       if(fr.error)console.warn('[SARV] Freight / Round off not stored on the header (add freight_exp, round_off columns):',fr.error.message);
+     }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
      let ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom,r.itemId);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.total,po_line_id:r.poLineId||null,repair_outward_no:r.repairOutNo||null})}
      // repair_outward_no is what credits each outward when one repair return
      // covers several — gate_pass_no can only ever name one. Dropped on DBs
@@ -10525,6 +10931,31 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
    if(!validateRequiredFields([{id:'outPartyName',label:'Party Name'},{id:'outLocation',label:'Location'},{id:'outTargetReturnDate',label:'Target Return Date'}]))return;
    const rows=rowDataOutward();if(!rows.length)return showToast('At least one outward item required','warn');
+   // ISSUE: every item row must name the machine it is issued to — Machine
+   // Name AND Machine No., as a pair that exists in Machine Master. Missing /
+   // unknown ones are outlined red and nothing is saved until they're picked.
+   if(pVal('outEntryTypeSelect')==='ISSUE'){
+     const bad=[];
+     pRows('#outwardItemTableBody tr').forEach(tr=>{
+       const nm=(tr.querySelector('.out-item-name')?.value||'').trim(),qty=pNum(tr.querySelector('.out-qty')?.value);
+       if(!nm||!(qty>0))return;
+       const mn=tr.querySelector('.out-machine-name'),mo=tr.querySelector('.out-machine-no');
+       const n=(mn?.value||'').trim(),no=(mo?.value||'').trim();
+       const known=!sarvMachineCatalog.length||sarvMachineCatalog.some(m=>machineKey_(m.machine_name)===machineKey_(n)&&machineKey_(m.machine_no)===machineKey_(no));
+       [mn,mo].forEach(el=>{if(el){el.style.border='';el.style.background='';}});
+       if(!n||!no||!known){
+         if(mn&&(!n||!known)){mn.style.border='2px solid #dc2626';mn.style.background='#fef2f2';}
+         if(mo&&(!no||!known)){mo.style.border='2px solid #dc2626';mo.style.background='#fef2f2';}
+         [mn,mo].forEach(el=>el&&el.addEventListener('input',function(){mn.style.border='';mn.style.background='';mo.style.border='';mo.style.background='';},{once:true}));
+         bad.push({tr,nm,why:(!n||!no)?'Machine Name / No. khaali':'Machine Master me nahi'});
+       }
+     });
+     if(bad.length){
+       const f=bad[0].tr.querySelector((bad[0].tr.querySelector('.out-machine-name')?.value||'').trim()?'.out-machine-no':'.out-machine-name');
+       f?.scrollIntoView({block:'nearest',behavior:'smooth'});f?.focus();
+       return showToast('⚠️ ISSUE ke liye har item par Machine Name & Machine No. (Machine Master list se) zaroori hai:<br>'+bad.map(b=>'• '+escText(b.nm)+' — '+b.why).join('<br>'),'warn');
+     }
+   }
    // Stock guard runs before ANY write — a blocked entry must leave no
    // outward_entries header behind.
    showOutStockWarning(null);
@@ -10532,7 +10963,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    // they are excluded from the stock check — otherwise the entry would be
    // counted against itself and every re-save would look short.
    const outEditId=sarvEditingOutwardId, outEditNo=sarvEditingOutwardNo;
-   try{
+   // Entry Type OUTWARD is allowed to go out whatever the balance — even if it
+   // takes the item's Bal Qty negative. Only ISSUE is held to stock on hand.
+   if(pVal('outEntryTypeSelect')!=='OUTWARD')try{
      const short=await outwardStockShortfalls(rows,outEditId);
      if(short.length){
        showOutStockWarning(short);
@@ -10626,8 +11059,23 @@ window.addEventListener('DOMContentLoaded',()=>{
      // the buyer the PR is booked against. The mobile Purchaser login filters
      // on this column, so it has to be stored, not just put in the PDF.
      const payload={request_date:pVal('p_reqDate')||today(),required_by:pVal('p_requiredByDate')||null,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority')||'Normal',notes:pVal('p_overallRemarks')||null};
-     let h,no;
+     let h,no,wasRejected=false;
      if(sarvEditingRequirementId){
+       // Re-checked against the stored status: the PR may have been approved
+       // (on mobile) while it sat open here. Non-Admin may only save a Pending
+       // or Rejected PR.
+       const cur=await SB.from('purchase_requirements').select('status,approvals').eq('id',sarvEditingRequirementId).single();
+       if(cur.error)throw cur.error;
+       if(!canEditPr_(cur.data))throw new Error('Ye PR ab "'+(cur.data.status||'')+'" hai — sirf Pending / Rejected PR edit ho sakti hai. Admin login se update karein.');
+       // A corrected Rejected PR goes back into the flow as Pending, with the
+       // approval chain cleared so the Purchaser signs it afresh. The Store
+       // Incharge's own signature is kept.
+       if(String(cur.data.status||'').trim()==='Rejected'){
+         wasRejected=true;
+         const keep=cur.data.approvals&&cur.data.approvals.store?{store:cur.data.approvals.store}:{};
+         payload.status='Pending';
+         payload.approvals=keep;
+       }
        h=await SB.from('purchase_requirements').update(payload).eq('id',sarvEditingRequirementId).select().single();if(h.error)throw h.error;no=h.data.req_no;
        const del=await SB.from('purchase_requirement_lines').delete().eq('requirement_id',h.data.id);if(del.error)throw del.error;
      }else{
@@ -10643,7 +11091,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      setMsg('Generating PR PDF...');
      const d=collectRequirementData(no,rows),pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
-     showToast('✅ Requirement saved: '+no);
+     showToast(wasRejected?('✅ '+no+' update ho gayi — Rejected se wapas PENDING me bhej di gayi'):('✅ Requirement saved: '+no));
      await refreshPendingRequirements();
      // ── Clear form after save ──────────────────────────────────
      clearPrForm();
@@ -10655,7 +11103,59 @@ window.addEventListener('DOMContentLoaded',()=>{
  }
 
  /* ── Form clear helpers ─────────────────────────────────── */
- function clearInwardForm(){
+ /* ================================================================
+    ENTRY TYPE DRAFTS — INWARD / INWARD NB and OUTWARD / ISSUE
+    Each Entry Type keeps its own form, like separate tabs: what is typed
+    under INWARD is not on screen under INWARD NB, and switching back brings
+    it all back. On a switch the current type's field values, item rows (the
+    live <tr> nodes, so their autofill listeners and PO links survive),
+    photos and any extra state (PO / repair picks) are parked, and the chosen
+    type's own draft — or a fresh form — is put up instead.
+ ================================================================ */
+ function makeEntryDrafts_(cfg){
+   const skip=new Set(cfg.skipIds||[]);
+   const fields=()=>(cfg.rootIds||[]).flatMap(r=>[...(byId(r)?.querySelectorAll('input[id],select[id],textarea[id]')||[])])
+     .filter(el=>!skip.has(el.id)&&el.type!=='file'&&!el.closest('#'+cfg.tbodyId));
+   const readVals=()=>{const v={};fields().forEach(el=>{v[el.id]=(el.type==='checkbox'||el.type==='radio')?el.checked:el.value;});return v;};
+   const writeVals=v=>{fields().forEach(el=>{if(!(el.id in v))return;if(el.type==='checkbox'||el.type==='radio')el.checked=!!v[el.id];else el.value=v[el.id];});};
+   const pristine=readVals();   // the form as a fresh entry opens
+   const drafts={};
+   let current=byId(cfg.selectId)?.value||'';
+   function take(){
+     const tb=byId(cfg.tbodyId),frag=document.createDocumentFragment();
+     if(tb)while(tb.firstChild)frag.appendChild(tb.firstChild);
+     return {vals:readVals(),frag,photos:window.takePhotos?window.takePhotos(cfg.photoKey):[],extra:cfg.extraSave?cfg.extraSave():null};
+   }
+   function give(d){
+     writeVals(d?d.vals:pristine);
+     const tb=byId(cfg.tbodyId);
+     if(tb){tb.innerHTML='';if(d&&d.frag&&d.frag.childNodes.length)tb.appendChild(d.frag);else cfg.newRow();}
+     if(window.putPhotos)window.putPhotos(cfg.photoKey,d?d.photos:[]);
+     if(cfg.extraRestore)cfg.extraRestore(d?d.extra:null,d?d.vals:pristine);
+   }
+   return {
+     // Entry Type changed: park the old type, show the new one's draft.
+     switchTo(type){
+       if(!type||type===current)return;
+       drafts[current]=take();
+       const d=drafts[type];delete drafts[type];
+       give(d||null);
+       current=type;
+     },
+     // An edit is about to load over the form — keep what was typed.
+     stash(){drafts[current]=take();},
+     // Called after the form is cleared (a save, a cancelled edit). The
+     // Entry Type box is back on its default, so its parked draft — if any —
+     // comes back instead of sitting hidden where the next switch would
+     // overwrite it with a blank form.
+     reset(restore=true){
+       const t=byId(cfg.selectId)?.value||'';
+       if(restore&&drafts[t]){const d=drafts[t];delete drafts[t];give(d);}
+       current=t;
+     }
+   };
+ }
+ function clearInwardForm(forEdit){
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];
@@ -10677,12 +11177,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    // the files behind, so the next entry inherited the previous one's photos.
    if(window.clearPhotos)window.clearPhotos('inward');
    updateStoreTotals();
+   window.sarvInwardDrafts?.reset(forEdit!==true);
    // The !sarvEditingInwardId guard matters: loading a record for edit clears
    // the form first and then writes the record's own number into the box. This
    // lookup resolves later, and without the guard it would overwrite it.
    if(SB_READY){nextNo('INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
  }
- function clearOutwardForm(){
+ function clearOutwardForm(forEdit){
    sarvEditingOutwardId=null;sarvEditingOutwardNo='';
    refreshStoreEditUi();
    ['outPartyName','outLocation','outReceiverName','outTargetReturnDate','outGatePassNo',
@@ -10696,6 +11197,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const tb=byId('outwardItemTableBody');if(tb){tb.innerHTML='';addOutwardItemRow();}
    if(window.clearPhotos)window.clearPhotos('outward');
    updateOutTotals();
+   window.sarvOutwardDrafts?.reset(forEdit!==true);
    // Guarded for the same reason as the Inward side — see clearInwardForm.
    if(SB_READY){nextNo('OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e&&!sarvEditingOutwardId)e.value=no;}).catch(()=>{});refreshSerialNo('OUTWARD').catch(()=>{});}
  }
@@ -10892,9 +11394,20 @@ window.addEventListener('DOMContentLoaded',()=>{
  // their ORIGINAL array index in data-index — everything downstream (Build PO,
  // Edit PR, the selection counter) looks items up by that index, so filtering
  // must not renumber them.
+ /* PR edit rule for the PO Generation desk: a PR can be edited only while it
+    is still Pending. Once the Purchaser has approved it (POs may already be
+    built from it) it is locked — except for an Admin login, who can edit any
+    PR. Checked on the button, on the click, and again on save. */
+ function canEditPr_(req){
+   if(isAdmin())return true;
+   const st=String((req&&req.status)||'Pending').trim();
+   // A Rejected PR is open for correction too — saving the edit sends it back
+   // to Pending (see the requirement save).
+   return st===''||st==='Pending'||st==='Rejected';
+ }
  function renderPendingRequirementsTable(){
    const tb=byId('p_poPendingBody');if(!tb)return;tb.innerHTML='';
-   const statusColors={'Pending':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Cancelled':'#dc2626'};
+   const statusColors={'Pending':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
    let shown=0;
    sarvPendingRequirements.forEach((x,i)=>{
      if(!poPendingMatches(x))return;
@@ -10919,7 +11432,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      const pickCell=x.poEligible
        ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'">'
        :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="PO sirf GM/CEO Approved (ya aage) requirements se hi build ho sakta hai">';
-     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td><button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'">✎ Edit PR</button></td>';tb.appendChild(tr);
+     // Only a still-Pending PR is editable; once approved it is locked for
+     // everyone except Admin (see canEditPr_).
+     const editCell=canEditPr_(x.req)
+       ?'<button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'">✎ Edit PR</button>'
+       :'<button type="button" class="btn btn-sm" disabled title="Sirf Pending / Rejected PR edit ho sakti hai — '+pEsc(statusVal)+' PR sirf Admin login se edit hogi" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Edit PR</button>';
+     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
    });
    if(!shown){
      const total=sarvPendingRequirements.length;
@@ -11023,13 +11541,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    // The PR-level vendors array is the LEGACY shape: one set of four for the
    // whole requirement. Per-item vendors live on item.vendors now, so it is
    // only the fallback for snapshots written before that existed.
-   const legacyVendors=(snapshot.vendors&&snapshot.vendors.length===4)?snapshot.vendors:[{},{},{},{}];
+   const legacyVendors=(Array.isArray(snapshot.vendors)&&snapshot.vendors.length)?snapshot.vendors:[{},{},{},{}];
    (snapshot.items||[]).forEach((it,i)=>{
      const l=(lq.data||[])[i];if(!l)return;
      snapRatesByLine[l.id]=it.rates||{};
      snapDiscByLine[l.id]=it.discounts||{};
      snapApprovedByLine[l.id]=(it.approvedVendorIndex!=null)?pNum(it.approvedVendorIndex):prLevelApproved;
-     snapVendorsByLine[l.id]=(Array.isArray(it.vendors)&&it.vendors.length===4)?it.vendors:legacyVendors;
+     // The item's OWN quoting vendors whenever it has any. Both apps save
+     // three slots (V1-V3); this used to demand exactly four, so every row
+     // fell back to the PR-level rollup and showed the same vendors on every
+     // item instead of what was actually picked per cell.
+     snapVendorsByLine[l.id]=(Array.isArray(it.vendors)&&it.vendors.length)?it.vendors:legacyVendors;
    });
    if(byId('p_viReqNo'))byId('p_viReqNo').textContent=reqNo;
    // Every row's four vendor slots, held here rather than read back off the
@@ -11202,9 +11724,19 @@ window.addEventListener('DOMContentLoaded',()=>{
    const sig=(rq.data.approvals&&rq.data.approvals.store)||snapshot.signatures?.store||snapshot.vendorSignature;
    if(window.loadVendorInfoSignature)window.loadVendorInfoSignature(sig&&sig.name);
    if(byId('p_viSignTimeField'))byId('p_viSignTimeField').textContent=(sig&&sig.time)||'--';
+   // Only an Admin may change Vendor Info from STORE.html — everyone else sees
+   // exactly what the Purchaser filled, read-only. Disabling each select also
+   // locks its search box (makeSearchableSelect mirrors `disabled`).
+   const viCanEdit=isAdmin();
+   byId('p_viItemsBody')?.querySelectorAll('input,select').forEach(el=>{el.disabled=!viCanEdit;});
+   const viSaveBtn=byId('p_viSaveBtn');if(viSaveBtn)viSaveBtn.style.display=viCanEdit?'':'none';
+   const viSignCanvas=byId('p_viSignCanvas');if(viSignCanvas)viSignCanvas.style.pointerEvents=viCanEdit?'':'none';
+   const viSignClear=byId('p_viSignClearBtn');if(viSignClear)viSignClear.style.display=viCanEdit?'':'none';
+   const viNote=byId('p_viAdminNote');if(viNote)viNote.style.display=viCanEdit?'none':'block';
    byId('p_vendorInfoModal')?.classList.add('active');
  }
  async function saveVendorInfo(){
+   if(!isAdmin())return showToast('⛔ Vendor Info sirf Admin login se update ho sakti hai','warn');
    const state=sarvVendorInfoState;if(!state)return showToast('Pehle Vendor Info kholo','warn');
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
    if(!byId('p_viItemsBody'))return;
@@ -11336,6 +11868,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Purchaser Name falls back to the PDF snapshot for PRs saved before the
    // purchaser_name column existed; without it an edit would blank the field.
    set('p_reqGeneratedBy',req.purchaser_name||(req.pdf_snapshot&&req.pdf_snapshot.generatedBy)||'');
+   // Designation / Contact have no column on the PR header, so an edit used
+   // to leave them blank and the re-saved PDF lost them. Refill the requester
+   // from the snapshot, then from Employee Master for anything still missing.
+   {
+     const snap=req.pdf_snapshot||{},emp=lookupEmployee(req.employee_code)||{};
+     set('p_reqDesignation',snap.designation||emp.designation||'');
+     set('p_reqContact',snap.contact||snap.contact_no||emp.contact_no||'');
+     const deptWant=String(req.department||snap.department||emp.department||'').trim(),deptSel=byId('p_reqDepartment');
+     if(deptSel&&deptWant){
+       if(![...deptSel.options].some(o=>o.value.trim().toLowerCase()===deptWant.toLowerCase()))deptSel.add(new Option(deptWant,deptWant));
+       deptSel.value=[...deptSel.options].find(o=>o.value.trim().toLowerCase()===deptWant.toLowerCase()).value;
+     }
+     if(!byId('p_reqPersonName')?.value)set('p_reqPersonName',snap.personName||emp.person_name||'');
+     renderReqEmpDetails();
+   }
    renderReqEmpDetails();
    const tb=byId('p_itemTableBody');if(tb)tb.innerHTML='';
    const lines=sarvPendingRequirements.filter(y=>y.req.id===req.id).map(y=>({...y.line,item_name:y.name,item:y.item,grossWeight:y.grossWeight,machine:y.machine||y.line.machine||''}));
@@ -11421,7 +11968,9 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function refreshGeneratedPoList(){
    if(!SB_READY)return;const tb=byId('p_poListBody');if(!tb)return;
    const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});if(q.error){console.warn('[SARV] PO list unavailable:',q.error.message);return}
-   sarvGeneratedPos=q.data||[];
+   // Sorted by PO No., newest number on top. Numeric-aware, so PO/U-2/100
+   // comes before PO/U-2/99 (a plain text sort would put it after).
+   sarvGeneratedPos=(q.data||[]).sort((a,b)=>String(b.po_no||'').localeCompare(String(a.po_no||''),undefined,{numeric:true,sensitivity:'base'}));
    // Line items feed the expandable detail row under each PO only — the
    // collapsed row stays PO-level (no Item Name / Description columns), so a
    // multi-line PO doesn't turn into one unreadable comma-joined cell.
@@ -11937,7 +12486,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(pending&&!pending.dataset.poBound){
      pending.addEventListener('change',e=>{if(e.target.matches('.sarv-po-pick'))updatePoSelectionCount()});
      pending.addEventListener('click',e=>{
-       const editBtn=e.target.closest('.sarv-edit-pr');if(editBtn){populateRequirementEditor(sarvPendingRequirements[+editBtn.dataset.index]);return;}
+       const editBtn=e.target.closest('.sarv-edit-pr');if(editBtn){
+         const x=sarvPendingRequirements[+editBtn.dataset.index];
+         if(x&&!canEditPr_(x.req))return showToast('⛔ Sirf Pending / Rejected PR edit ho sakti hai — '+pEsc(x.req.status||'')+' PR ko sirf Admin login edit kar sakta hai','warn');
+         populateRequirementEditor(x);return;}
        const viBtn=e.target.closest('.sarv-vendor-info');if(viBtn)openVendorInfoModal(viBtn.dataset.req).catch(dbError);
      });
      pending.dataset.poBound='1';
