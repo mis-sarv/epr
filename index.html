@@ -1661,6 +1661,95 @@ body {
         #fullPurchasePanel td { padding: 4px 5px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
         #fullPurchasePanel tbody tr:hover { background: #f8fafc; }
 
+        /* ============================================================
+           VENDOR RATE & INFO — one merged grid (#p_viGrid)
+           ------------------------------------------------------------
+           V1-V3 are PER ITEM, not per PR. Item 1 can be quoted by three
+           companies and item 2 by three completely different ones, because
+           that is how the quotes actually arrive. So each row carries its
+           own three {Vendor, Rate, Disc%} triples, and "Selected Vendor"
+           picks which of THAT ROW's three the item is bought from — that
+           choice is what a PO is raised against.
+
+           Freezing: only the Item / Qty / UOM block is pinned left, plus
+           both header rows pinned top. Selected Vendor scrolls with the
+           quote groups rather than being pinned.
+           Two things this depends on:
+             - border-collapse must be `separate`. Chrome and Safari drop
+               collapsed borders on sticky cells, so the grid paints its
+               own per-cell borders instead.
+             - the left offsets below are hard px and must match the
+               <colgroup> widths exactly, which is why the table is
+               table-layout:fixed at a fixed 1238px rather than 100%.
+               1238 = 190+48+54 (frozen) + 118 (selected) + 3x(140+76+60).
+           ============================================================ */
+        #fullPurchasePanel #p_viGrid {
+            border-collapse: separate;
+            border-spacing: 0;
+            table-layout: fixed;
+            width: 1238px;
+        }
+        #fullPurchasePanel #p_viGrid th,
+        #fullPurchasePanel #p_viGrid td {
+            background: #fff;
+            border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #eef2f7;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #fullPurchasePanel #p_viGrid thead th { position: sticky; z-index: 3; background: #f1f5f9; }
+        /* Row 1 = the V1..V3 group bands (fixed height so row 2's offset is
+           exact), row 2 = Vendor / Rate / Disc% within each band. */
+        #fullPurchasePanel #p_viGrid thead tr:first-child th { top: 0; height: 28px; padding: 3px 5px; }
+        #fullPurchasePanel #p_viGrid thead tr:nth-child(2) th { top: 28px; }
+        /* Alternating tint so a row's four vendor groups stay visually
+           separable once the table is scrolled sideways. */
+        #fullPurchasePanel #p_viGrid .vi-band { text-align: center; background: #e0e7ff; color: #3730a3; font-size: 11px; }
+        #fullPurchasePanel #p_viGrid .vi-band.alt { background: #ede9fe; color: #5b21b6; }
+        #fullPurchasePanel #p_viGrid td.vi-g-alt,
+        #fullPurchasePanel #p_viGrid th.vi-g-alt { background: #faf9ff; }
+        #fullPurchasePanel #p_viGrid .vi-row-vendor,
+        #fullPurchasePanel #p_viGrid .ss-input { width: 100%; font-size: 11px; padding: 3px 4px; }
+        /* Frozen left block. z-index has to beat the header's own 3 where
+           the two overlap, or the corner cells scroll under the rates. */
+        #fullPurchasePanel #p_viGrid .vi-c1 { position: sticky; left: 0; z-index: 2; }
+        #fullPurchasePanel #p_viGrid .vi-c2 { position: sticky; left: 190px; z-index: 2; }
+        #fullPurchasePanel #p_viGrid .vi-c3 { position: sticky; left: 238px; z-index: 2; box-shadow: 2px 0 4px -2px rgba(15,23,42,0.18); }
+        #fullPurchasePanel #p_viGrid thead .vi-c1,
+        #fullPurchasePanel #p_viGrid thead .vi-c2,
+        #fullPurchasePanel #p_viGrid thead .vi-c3 { z-index: 6; }
+        /* Selected Vendor scrolls with the quote groups — deliberately NOT
+           sticky. Tinted so it still reads as the decision column. */
+        #fullPurchasePanel #p_viGrid .vi-sel { background: #fffbeb; }
+        /* The per-item vendor picker. Highlighted once it actually holds a
+           choice, so an un-assigned row is visible at a glance down the
+           frozen column instead of having to be hunted for. */
+        #fullPurchasePanel #p_viGrid .vi-item-vendor { width: 100%; font-size: 11px; padding: 3px 4px; }
+        #fullPurchasePanel #p_viGrid .vi-item-vendor.is-set { background: #ecfdf5; border-color: #6ee7b7; font-weight: 700; color: #047857; }
+        /* The first row's picker fills every other row, so it is marked as the
+           master rather than looking like just another item's choice. */
+        #fullPurchasePanel #p_viGrid .vi-item-vendor.is-master { border-color: #6d28d9; box-shadow: 0 0 0 2px rgba(109,40,217,0.12); }
+        /* A left accent rather than a text badge: the item cell is nowrap +
+           overflow:hidden, so a floated label would be clipped by any long
+           item name. The ring on the picker, the tooltip and the line above
+           the table carry the actual explanation. */
+        #fullPurchasePanel #p_viGrid tbody tr:first-child .vi-c1 { box-shadow: inset 3px 0 0 #6d28d9; }
+        /* tr:hover sets the row background, but the frozen cells carry their
+           own opaque background (they must, to hide what slides under them),
+           so the hover has to be repainted on the cells themselves. */
+        #fullPurchasePanel #p_viGrid tbody tr:hover td { background: #f8fafc; }
+        #fullPurchasePanel #p_viGrid tbody .vi-c1 { font-weight: 600; color: #0f172a; white-space: nowrap; }
+        /* The row-1 corner spans the whole frozen block, so it carries the
+           boundary shadow itself — .vi-c3 is not one of its cells. */
+        #fullPurchasePanel #p_viGrid .vi-corner {
+            text-align: right;
+            color: #475569;
+            box-shadow: 2px 0 4px -2px rgba(15,23,42,0.18);
+        }
+        #fullPurchasePanel #p_viGrid .vi-vendor-head { padding: 4px 5px; background: #eef2ff; }
+        #fullPurchasePanel #p_viGrid .vi-vendor-head select { text-transform: none; font-weight: 600; }
+        #fullPurchasePanel #p_viGrid .vi-disc-head { background: #e0e7ff; color: #3730a3; }
+
         #fullPurchasePanel .table-input,
 #fullPurchasePanel .table-select {
             width: 100%;
@@ -1976,14 +2065,27 @@ body {
         }
         #fullPurchasePanel .p_priority-btn:hover { border-color: #94a3b8; }
         #fullPurchasePanel .p_priority-btn.active { border-color: #0284c7; background: #e0f2fe; color: #0369a1; box-shadow: 0 0 0 2px rgba(2,132,199,0.15); }
-        #fullPurchasePanel /* #8 remove up/down spinner buttons on PO unit price */
-        .po-unitprice::-webkit-outer-spin-button,
-#fullPurchasePanel .po-unitprice::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        #fullPurchasePanel .po-unitprice { -moz-appearance: textfield; appearance: textfield; }
+        /* No up/down spinner buttons on ANY numeric input, app-wide. */
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
     
 #storeInterface { flex: 1 1 auto; width: 100%; min-width: 0; }
-#fullPurchasePanel { width: 100%; min-width: 0; }</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
+#fullPurchasePanel { width: 100%; min-width: 0; }
+/* Item Master: drag the right edge of Code / Item Name / Description to resize. */
+#itemMasterTable th.im-resizable { position: relative; }
+#itemMasterTable .im-col-resizer { position: absolute; top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize; z-index: 2; touch-action: none; }
+#itemMasterTable .im-col-resizer::after { content: ''; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 1px; background: #64748b; }
+#itemMasterTable .im-col-resizer:hover::after, #itemMasterTable .im-col-resizer.active::after { top: 0; bottom: 0; width: 2px; background: #38bdf8; }
+#itemMasterTable td { overflow-wrap: anywhere; }
+/* Searchable select (makeSearchableSelect) */
+.ss-input { box-sizing: border-box; cursor: text; }
+.ss-list { position: fixed; z-index: 2147483000; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 240px; overflow-y: auto; font-size: 12px; }
+.ss-list .ss-opt { padding: 6px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; }
+.ss-list .ss-opt:hover { background: #f1f5f9; }
+.ss-list .ss-opt.hl { background: #e0f2fe; color: #0369a1; font-weight: 700; }
+.ss-list .ss-empty { padding: 6px 8px; color: #94a3b8; }</style><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
 <style>
   /* Self-contained — must render correctly regardless of whether
      #storeInterface or #fullPurchasePanel (each toggles the other to
@@ -2585,8 +2687,8 @@ body {
                                 <th style="width:11%;">Receiver Name</th>
                                 <th style="width:7%;">Amount</th>
                                 <th style="width:8%;">Total Qty</th>
-                                <th style="width:22%; text-align:center;">PDF / Items</th>
-                                <th style="width:4%; text-align:center;">Edit</th>
+                                <th style="width:20%; text-align:center;">PDF / Items</th>
+                                <th style="width:6%; text-align:center;">Edit / Cancel</th>
                             </tr>
                         </thead>
                         <tbody id="searchResultsBody">
@@ -2918,6 +3020,19 @@ body {
                                 </select>
                             </div>
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Make / Brand</label><input type="text" class="form-control" id="mi_make" placeholder="e.g. LOCAL / IMPORTED"></div>
+                            <!-- GST lives on the ITEM, not on each entry line: the
+                                 rate for a given part never changes from one PO to
+                                 the next, so it is set once here and auto-filled
+                                 into Inward rows and PO lines. -->
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">GST %</label>
+                                <select class="form-control" id="mi_gst" style="height:28px;font-size:11px;">
+                                    <option value="18" selected>18</option>
+                                    <option value="0">0</option>
+                                    <option value="5">5</option>
+                                    <option value="12">12</option>
+                                    <option value="28">28</option>
+                                </select>
+                            </div>
                             <div class="form-group" style="margin:0; display:flex; align-items:flex-end; gap:6px;">
                                 <button class="btn btn-primary" id="addItemBtn" onclick="addMasterItem()" style="flex:1; height:32px; font-size:11px;">&#10133; Add Item</button>
                                 <!-- Only visible while an existing item is loaded for editing -->
@@ -2951,14 +3066,15 @@ body {
                         <button class="btn" onclick="exportTableCSV('itemMasterBody','SARV_Item_Master_'+today()+'.csv',1)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">&#128190; Download CSV</button>
                     </div>
                     <div class="table-container" style="max-height:calc(100vh - 320px); min-height:340px; overflow-y:auto;">
-                        <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                        <table id="itemMasterTable" style="width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed;">
                             <thead><tr style="background:#0f172a; color:#fff; position:sticky; top:0;">
                                 <th style="padding:6px; width:4%;">#</th>
-                                <th onclick="sortItemMaster('code')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span></th>
-                                <th onclick="sortItemMaster('name')" style="padding:6px; width:14%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span></th>
-                                <th style="padding:6px; width:14%;">Description</th>
+                                <th class="im-resizable" data-col="code" onclick="sortItemMaster('code')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="name" onclick="sortItemMaster('name')" style="padding:6px; width:14%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="desc" style="padding:6px; width:14%; user-select:none;" title="Right edge drag karke width badlein (double-click = reset)">Description<span class="im-col-resizer"></span></th>
                                 <th onclick="sortItemMaster('cat')" style="padding:6px; width:8%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Category<span id="imSort-cat" style="margin-left:3px;">&#8693;</span></th>
                                 <th style="padding:6px; width:7%;">Rate</th>
+                                <th style="padding:6px; width:5%; background:#ede9fe; color:#0f172a;" title="GST % for this item — auto-fills Inward rows and PO lines">GST %</th>
                                 <th style="padding:6px; width:5%;">UOM</th>
                                 <th style="padding:6px; width:7%;">Make</th>
                                 <th onclick="sortItemMaster('msv')" style="padding:6px; width:7%; background:#FDE68A; color:#0f172a; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click: chhote&rarr;bade / bade&rarr;chhote sort">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span></th>
@@ -2968,7 +3084,7 @@ body {
                                 <th style="padding:6px; width:5%;">&#128465;</th>
                             </tr></thead>
                             <tbody id="itemMasterBody">
-                                <tr><td colspan="13" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
+                                <tr><td colspan="14" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3818,10 +3934,6 @@ body {
                         <div style="font-size:11px; color:#0369a1; font-weight:700; margin-bottom:4px;">PO GENERATION PENDING</div>
                         <div id="p_kpiPoGenPending" style="font-size:22px; font-weight:800; color:#0284c7;">0</div>
                     </div>
-                    <div class="repair-card" style="background:#f5f3ff; border:1.5px solid #ddd6fe; border-radius:8px; padding:12px; text-align:center;">
-                        <div style="font-size:11px; color:#5b21b6; font-weight:700; margin-bottom:4px;">PO GM APPROVAL PENDING</div>
-                        <div id="p_kpiPoGmPending" style="font-size:22px; font-weight:800; color:#7c3aed;">0</div>
-                    </div>
                     <div class="repair-card" style="background:#fdf4ff; border:1.5px solid #f5d0fe; border-radius:8px; padding:12px; text-align:center;">
                         <div style="font-size:11px; color:#86198f; font-weight:700; margin-bottom:4px;">PO MD APPROVAL PENDING</div>
                         <div id="p_kpiPoMdPending" style="font-size:22px; font-weight:800; color:#c026d3;">0</div>
@@ -4003,8 +4115,8 @@ body {
                     <input type="date" class="form-control" id="p_poDateField" readonly title="PO Date is always today's date and cannot be changed" style="font-weight:700; background:#e2e8f0; color:#0284c7; cursor:not-allowed;">
                 </div>
                 <div class="form-group">
-                    <label>Delivery Date</label>
-                    <input type="date" class="form-control" id="p_poDeliveryField">
+                    <label>Delivery Date <span class="req">*</span></label>
+                    <input type="date" class="form-control" id="p_poDeliveryField" title="Purchaser selects the Delivery Date — it prints on the PO PDF">
                 </div>
             </div>
 
@@ -4169,32 +4281,60 @@ body {
 
     <!-- ============ VENDOR RATE & INFO MODAL ============ -->
     <div class="modal-overlay" id="p_vendorInfoModal">
-        <div class="modal-box" style="max-width: 900px; width: 100%; max-height: 92vh; overflow-y: auto;">
+        <!-- The grid is 1514px, wider than any laptop, so horizontal scrolling
+             is the normal way to read it and the frozen Item / Selected Vendor
+             block is what makes that work. 1320px max-width shows three of the
+             four quote groups at once on a full-HD screen. -->
+        <div class="modal-box" style="max-width: 1320px; width: 100%; max-height: 92vh; overflow-y: auto;">
             <h3 class="modal-title">💰 Vendor Rate &amp; Info — <span id="p_viReqNo" style="color:#6d28d9;">-</span></h3>
-            <p class="modal-sub">Vendor rate bharo, vendor details fill karo, sign karo aur PR PDF re-generate karo.</p>
+            <p class="modal-sub">Har item ke apne 3 vendor (V1&ndash;V3) chuno aur unke rate bharo, phir us item ka <b>Selected Vendor</b> chuno &mdash; usi ke against uss item ka PO banega.</p>
 
             <div class="section-header-row">
-                <h4 class="section-title" style="font-size:12px;">Item-wise Vendor Rate</h4>
+                <h4 class="section-title" style="font-size:12px;">Item-wise Vendor Rate &amp; Vendor Details</h4>
+                <span style="font-size:10px;color:#64748b;font-weight:600;">Har item ke V1&ndash;V3 alag ho sakte hain &mdash; pehle item ki choices sabhi items par apply ho jaati hain</span>
             </div>
-            <div class="table-container" style="max-height:220px;">
-                <table>
-                    <thead><tr><th>Item Name</th><th style="text-align:center;">Qty</th><th style="text-align:center;">UOM</th>
-                      <th style="text-align:center;">V1 Rate</th><th style="text-align:center;background:#e0e7ff;color:#3730a3;" title="V1 discount %">V1 Disc%</th>
-                      <th style="text-align:center;">V2 Rate</th><th style="text-align:center;background:#e0e7ff;color:#3730a3;" title="V2 discount %">V2 Disc%</th>
-                      <th style="text-align:center;">V3 Rate</th><th style="text-align:center;background:#e0e7ff;color:#3730a3;" title="V3 discount %">V3 Disc%</th>
-                      <th style="text-align:center;">V4 Rate</th><th style="text-align:center;background:#e0e7ff;color:#3730a3;" title="V4 discount %">V4 Disc%</th>
-                    </tr></thead>
+            <!-- ONE table, not two. Each row carries its own four quoting
+                 vendors with their rate and discount beside them, so who V3 is
+                 and what V3 quoted for THIS item are never on separate scrolls.
+                 Email ID, Contact and Remarks have no inputs: email and phone
+                 are read from Supplier Master on save, and the phone is shown
+                 inside the dropdown itself, the one moment it is needed.
+                 Item / Qty / UOM / Selected Vendor and both header rows are
+                 frozen — see the #p_viGrid CSS. -->
+            <div class="table-container" style="max-height:400px;">
+                <table id="p_viGrid">
+                    <colgroup>
+                        <col style="width:190px;"><col style="width:48px;"><col style="width:54px;"><col style="width:118px;">
+                        <col style="width:140px;"><col style="width:76px;"><col style="width:60px;">
+                        <col style="width:140px;"><col style="width:76px;"><col style="width:60px;">
+                        <col style="width:140px;"><col style="width:76px;"><col style="width:60px;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="vi-c1 vi-corner" colspan="3">Quotes &rarr;</th>
+                            <th class="vi-sel" style="text-align:center;">&nbsp;</th>
+                            <th class="vi-band" colspan="3">V1</th>
+                            <th class="vi-band alt" colspan="3">V2</th>
+                            <th class="vi-band" colspan="3">V3</th>
+                        </tr>
+                        <tr>
+                            <th class="vi-c1">Item Name</th>
+                            <th class="vi-c2" style="text-align:center;">Qty</th>
+                            <th class="vi-c3" style="text-align:center;">UOM</th>
+                            <!-- Per-item, not per-PR: each row carries its own
+                                 three quoting vendors, and this picks which of
+                                 THAT row's three the item is bought from. That
+                                 choice is what the PO is raised against — POs
+                                 are split by it automatically. Scrolls with the
+                                 quote groups (not frozen). The first row is the
+                                 master — see openVendorInfoModal(). -->
+                            <th class="vi-sel" style="text-align:center;" title="Is item ka PO isi vendor ke against banega. Pehle item par chunne se wahi sabhi items par lag jayega — phir kisi bhi item ko alag kar sakte hain">Selected Vendor</th>
+                            <th style="text-align:center;">Vendor</th><th style="text-align:center;">Rate</th><th class="vi-disc-head" style="text-align:center;" title="V1 discount %">Disc%</th>
+                            <th class="vi-g-alt" style="text-align:center;">Vendor</th><th class="vi-g-alt" style="text-align:center;">Rate</th><th class="vi-disc-head" style="text-align:center;" title="V2 discount %">Disc%</th>
+                            <th style="text-align:center;">Vendor</th><th style="text-align:center;">Rate</th><th class="vi-disc-head" style="text-align:center;" title="V3 discount %">Disc%</th>
+                        </tr>
+                    </thead>
                     <tbody id="p_viItemsBody"></tbody>
-                </table>
-            </div>
-
-            <div class="section-header-row" style="margin-top:12px;">
-                <h4 class="section-title" style="font-size:12px;">Vendor Details</h4>
-            </div>
-            <div class="table-container" style="max-height:200px;">
-                <table>
-                    <thead><tr><th style="width:6%;">Sr</th><th>Vendor Name</th><th>Email ID</th><th>Contact</th><th>Remarks</th></tr></thead>
-                    <tbody id="p_viVendorsBody"></tbody>
                 </table>
             </div>
 
@@ -4843,6 +4983,98 @@ const SB_READY = !SUPABASE_URL.includes('YOUR_PROJECT') && !SUPABASE_ANON_KEY.in
 const SB = SB_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const byId = id => document.getElementById(id);
 const escText = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+/* Searchable <select>: a text box sits over the (hidden) select, typing
+   filters its options, and only an option from the list can be taken — free
+   text is thrown away and the box goes back to the current choice. The select
+   stays the single source of truth: a pick sets its value and fires 'change',
+   and code that sets .value, rebuilds the options or toggles disabled is
+   mirrored straight back into the box, so no caller has to know about it. */
+const ssList_=(()=>{let el=null;return()=>{if(!el){el=document.createElement('div');el.className='ss-list';el.hidden=true;document.body.appendChild(el);}return el;};})();
+function makeSearchableSelect(sel){
+  if(!sel||sel.dataset.ssDone)return;
+  sel.dataset.ssDone='1';
+  const inp=document.createElement('input');
+  inp.type='text';inp.autocomplete='off';inp.className='ss-input'+(sel.classList.contains('table-input')?' table-input':'');
+  sel.insertAdjacentElement('afterend',inp);
+  sel.style.display='none';
+  const native=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value');
+  const sync=()=>{
+    const o=sel.selectedOptions[0];
+    inp.value=(o&&o.value!=='')?o.textContent.trim():'';
+    inp.placeholder=(sel.options[0]&&sel.options[0].value==='')?sel.options[0].textContent.trim():'Search...';
+    inp.disabled=sel.disabled;inp.title=sel.title||inp.value;
+  };
+  Object.defineProperty(sel,'value',{configurable:true,get(){return native.get.call(sel);},set(v){native.set.call(sel,v);sync();}});
+  new MutationObserver(sync).observe(sel,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','title']});
+  sync();
+  let open=false,hl=0,shown=[];
+  const list=ssList_();
+  const place=()=>{
+    const r=inp.getBoundingClientRect(),w=Math.min(Math.max(r.width,240),innerWidth-8);
+    list.style.width=w+'px';
+    list.style.left=Math.max(4,Math.min(r.left,innerWidth-w-4))+'px';
+    const below=innerHeight-r.bottom;
+    list.style.top=(below<200&&r.top>below)?Math.max(4,r.top-2-Math.min(list.scrollHeight,240))+'px':(r.bottom+2)+'px';
+  };
+  const render=()=>{
+    const q=inp.value.trim().toLowerCase();
+    shown=[...sel.options].filter(o=>!q||o.textContent.toLowerCase().includes(q)||o.value.toLowerCase().includes(q));
+    hl=Math.min(hl,Math.max(0,shown.length-1));
+    list.innerHTML=shown.length?shown.map((o,i)=>'<div class="ss-opt'+(i===hl?' hl':'')+'" data-i="'+i+'">'+escText(o.textContent.trim())+'</div>').join(''):'<div class="ss-empty">List me nahi mila</div>';
+    place();
+    list.querySelector('.ss-opt.hl')?.scrollIntoView({block:'nearest'});
+  };
+  const close=()=>{
+    if(!open)return;open=false;list.hidden=true;
+    document.removeEventListener('pointerdown',outside,true);
+    removeEventListener('scroll',place,true);removeEventListener('resize',place);
+    sync(); // whatever was typed but not picked is discarded
+  };
+  const pick=o=>{
+    if(o&&o.value!==native.get.call(sel)){native.set.call(sel,o.value);sel.dispatchEvent(new Event('change',{bubbles:true}));}
+    close();
+  };
+  const outside=e=>{if(e.target!==inp&&!list.contains(e.target))close();};
+  const openList=()=>{
+    if(open||inp.disabled)return;open=true;
+    list.onmousedown=e=>e.preventDefault(); // keep focus in the box
+    list.onclick=e=>{const d=e.target.closest('.ss-opt');if(d)pick(shown[+d.dataset.i]);};
+    hl=Math.max(0,[...sel.options].indexOf(sel.selectedOptions[0]));
+    inp.select();list.hidden=false;render();
+    document.addEventListener('pointerdown',outside,true);
+    addEventListener('scroll',place,true);addEventListener('resize',place);
+  };
+  inp.addEventListener('focus',openList);
+  inp.addEventListener('click',openList);
+  inp.addEventListener('input',()=>{if(!open)openList();hl=0;render();});
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!open)return openList();if(shown.length){hl=(hl+(e.key==='ArrowDown'?1:-1)+shown.length)%shown.length;render();}}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&shown[hl])pick(shown[hl]);}
+    else if(e.key==='Escape'){if(open){e.preventDefault();close();}}
+    else if(e.key==='Tab')close();
+  });
+}
+/* Clicking into an editable box that only holds a zero ("0", "0.00") empties
+   it, so a figure can be typed straight in without deleting the 0 first. Left
+   empty, the original zero goes back on blur, so every total/save path still
+   reads 0 exactly as before. Delegated on document, so rows added later are
+   covered too. */
+(function zeroClearOnFocus(){
+  const isZero=v=>/^\s*0+(\.0+)?\s*$/.test(v);
+  document.addEventListener('focusin',e=>{
+    const el=e.target;
+    if(!(el instanceof HTMLInputElement)||(el.type!=='number'&&el.type!=='text'))return;
+    if(el.readOnly||el.disabled||!isZero(el.value))return;
+    el.dataset.zeroCleared=el.value;
+    el.value='';
+  });
+  document.addEventListener('focusout',e=>{
+    const el=e.target;
+    if(!(el instanceof HTMLInputElement)||el.dataset.zeroCleared==null)return;
+    if(el.value==='')el.value=el.dataset.zeroCleared;
+    delete el.dataset.zeroCleared;
+  });
+})();
 function showToast(message, type='success'){
   // #storeInterface and #fullPurchasePanel are toggled with display:none on
   // whichever one isn't active (see activatePanel()) — #toastStack lives
@@ -5093,6 +5325,13 @@ function applyItemAutofill(nameVal,tr,prefix,lockName=false){
     s('.item-uom',  item.uom||'');
     const pe=g('.list-price-field'); if(pe&&(pe.value===''||pe.value==='0'))pe.value=item.rate||0;
     const re=g('.rate-field');       if(re&&(re.value===''||re.value==='0'))re.value=item.rate||0;
+    // GST now comes off the Item Master rather than being picked per line —
+    // the rate belongs to the part, so the row follows whatever the master
+    // says for it. ensureSelectOption_ covers a rate not in the fixed list.
+    const ge=g('.item-gst-field');
+    if(ge){const gv=String(itemGst_(item));
+      if(![...ge.options].some(o=>o.value===gv))ge.add(new Option(gv,gv));
+      ge.value=gv;}
     updateStoreTotals();
   } else if(prefix==='outward'){
     s('.out-item-desc', item.description||'');
@@ -5874,6 +6113,10 @@ function inwardPoOverrides(rows){
 async function ensureItem(name, description='', make='', category='', uom='PCS', itemId=''){
   name=(name||'').trim(); if(!name)return null;
   if(itemId){
+    // Deliberately NOT selecting gst_pct here: naming a column that does not
+    // exist makes PostgREST reject the whole query, which would break every
+    // save on a database that predates it. The Item Master cache reads `*`,
+    // so itemGst_() still resolves the rate for auto-fill.
     const byId=await SB.from('items').select('id,item_code,name,uom').eq('id',itemId).maybeSingle();
     if(!byId.error&&byId.data)return byId.data;
   }
@@ -6169,6 +6412,26 @@ async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/ke
 function bindOriginalControls(){
   const add=(id,fn)=>{const e=byId(id);if(e)e.addEventListener('click',fn)};
   add('addNewItemBtn',addNewRow);add('outAddNewItemBtn',addOutwardItemRow);add('p_addItemBtn',addPurchaseMainRow);
+  // Enter on a filled Item Configurations row (Item Name + Qty > 0) jumps to
+  // the next row's Item Name, pressing + Add New Item first when this is the
+  // last row. An unfilled row ignores Enter — that is also what keeps an
+  // Enter used to pick an Item Name from the datalist from jumping away.
+  const inwBody=byId('itemTableBody');
+  if(inwBody&&!inwBody.dataset.enterBound){
+    inwBody.dataset.enterBound='1';
+    inwBody.addEventListener('keydown',e=>{
+      if(e.key!=='Enter'||e.shiftKey||e.ctrlKey||e.altKey||e.isComposing)return;
+      const tr=e.target.closest('tr');
+      if(!tr||tr.classList.contains('po-info-row'))return;
+      if(!(tr.querySelector('.item-name')?.value||'').trim()||!(pNum(tr.querySelector('.qty-field')?.value)>0))return;
+      e.preventDefault();
+      const itemRows=()=>[...inwBody.querySelectorAll('tr:not(.po-info-row)')];
+      let next=itemRows()[itemRows().indexOf(tr)+1];
+      if(!next){byId('addNewItemBtn')?.click();const all=itemRows();next=all[all.length-1];}
+      const first=next&&next!==tr?next.querySelector('.item-name'):null;
+      if(first){first.focus();first.scrollIntoView({block:'nearest'});}
+    });
+  }
   // addItemBtn already has onclick="addMasterItem()" in HTML — do NOT re-bind here
   add('submitBtn',()=>saveInwardWithPdf().catch(dbError));add('outSubmitBtn',()=>saveOutwardWithPdf().catch(dbError));add('p_submitBtn',()=>saveRequirementWithPdf().catch(dbError));
   add('p_backToStoreBtn',()=>sarvGoHome());
@@ -6643,6 +6906,35 @@ function itemMsv_(it){
   const n=Number(raw);
   return isNaN(n)?null:n;
 }
+/* GST % held on the Item Master row. A part's GST rate is a property of the
+   part, not of the day it was bought, so it is set once on the item and read
+   back here by every entry form. 18 is the default for an item saved before
+   the column existed — the same number those forms hard-coded previously, so
+   nothing changes for existing data until someone sets a rate explicitly.
+   SARV_DEFAULT_GST is the single place that default lives. */
+const SARV_DEFAULT_GST=18;
+/* items.gst_pct is a new column. Rather than make every Item Master save fail
+   on a database that predates it, the write is retried once without the field
+   and the user is told what to run. Same spirit as the pdf_snapshot handling
+   on purchase_requirements. Returns {error, droppedGst}. */
+async function saveItemRow_(payload,editingId){
+  const run=p=>editingId
+    ? SB.from('items').update(p).eq('id',editingId)
+    : SB.from('items').insert(p);
+  let r=await run(payload);
+  if(r.error&&/gst_pct/i.test(r.error.message||'')&&/column|does not exist|schema cache/i.test(r.error.message||'')){
+    const {gst_pct,...without}=payload;
+    r=await run(without);
+    return {error:r.error,droppedGst:!r.error};
+  }
+  return {error:r.error,droppedGst:false};
+}
+function itemGst_(it){
+  const raw=it&&it.gst_pct;
+  if(raw==null||String(raw).trim()==='')return SARV_DEFAULT_GST;
+  const n=Number(raw);
+  return isNaN(n)?SARV_DEFAULT_GST:n;
+}
 function isBelowMsv_(row){
   const msv=itemMsv_(row.it);
   return msv!=null&&msv>0&&row.bal<msv;
@@ -6717,14 +7009,14 @@ window.renderItemMasterTable=function(){
   const filterActive=catFilterActive||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
   if(!sarvItemMasterRows.length){
-    tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
+    tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
     return;
   }
   if(!rows.length){
     const why=msvFilter==='BELOW'?'Koi item MSV se neeche nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
              :msvFilter==='ABOVE'?'Koi item MSV se upar nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
              :'No items match this search / category filter.';
-    tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)+'</td></tr>';
+    tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)+'</td></tr>';
     return;
   }
   let totalIn=0,totalOut=0,totalBal=0;
@@ -6739,11 +7031,12 @@ window.renderItemMasterTable=function(){
     const below=isBelowMsv_(row);
     return `<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;" data-id="${it.id}">
         <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
-        <td style="padding:5px 6px;font-weight:700;color:#0369a1;white-space:nowrap;">${escText(it.item_code)}</td>
+        <td style="padding:5px 6px;font-weight:700;color:#0369a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escText(it.item_code)}">${escText(it.item_code)}</td>
         <td style="padding:5px 6px;font-weight:700;">${escText(it.name)}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(it.description||'—')}</td>
         <td style="padding:5px 6px;">${escText(it.category||'—')}</td>
         <td style="padding:5px 6px;text-align:right;">₹${Number(it.rate||0).toFixed(2)}</td>
+        <td style="padding:5px 6px;text-align:center;background:#f5f3ff;font-weight:700;color:#5b21b6;">${itemGst_(it)}%</td>
         <td style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
         <td style="padding:5px 6px;text-align:center;background:#fffbeb;font-weight:700;color:#92400e;">${msv!=null?msv:'—'}</td>
@@ -6761,7 +7054,7 @@ window.renderItemMasterTable=function(){
   // earlier — at Make. MSV then sits between Make and IN Qty, unsummed because
   // a minimum stock level isn't meaningful as a total.
   const totalsRow=`<tr style="background:#1e293b;color:#fff;font-weight:800;">
-      <td colspan="8" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
+      <td colspan="9" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
       <td style="padding:6px;text-align:center;background:#78350f;">—</td>
       <td style="padding:6px;text-align:center;background:#0c4a3e;">${totalIn}</td>
       <td style="padding:6px;text-align:center;background:#7c2d12;">${totalOut}</td>
@@ -6770,6 +7063,54 @@ window.renderItemMasterTable=function(){
     </tr>`;
   tb.innerHTML=totalsRow+bodyRows;
 };
+/* Item Master column resize — Code / Item Name / Description. Drag a header's
+   right edge; double-click the edge to go back to the default width. Widths
+   are remembered per browser. The table is table-layout:fixed, so a width set
+   on the <th> is exactly what the column gets. A drag must not also count as
+   a click on the header, or Code / Item Name would re-sort on every resize. */
+(function initItemMasterColResize(){
+  const KEY='sarv_im_colw', MIN=40;
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){}
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}};
+  function init(){
+    const table=byId('itemMasterTable');
+    if(!table)return;
+    let justResized=false;
+    // Capture phase runs before the <th>'s own onclick, so the sort is skipped.
+    table.addEventListener('click',e=>{if(justResized){e.stopPropagation();e.preventDefault();}},true);
+    table.querySelectorAll('th.im-resizable').forEach(th=>{
+      const col=th.dataset.col, grip=th.querySelector('.im-col-resizer');
+      const defaultW=th.style.width;
+      if(saved[col])th.style.width=saved[col]+'px';
+      if(!grip)return;
+      grip.addEventListener('pointerdown',e=>{
+        e.preventDefault(); e.stopPropagation();
+        justResized=true;
+        const startX=e.clientX, startW=th.getBoundingClientRect().width;
+        grip.classList.add('active');
+        grip.setPointerCapture(e.pointerId);
+        const move=ev=>{th.style.width=Math.max(MIN,Math.round(startW+ev.clientX-startX))+'px';};
+        const up=()=>{
+          grip.classList.remove('active');
+          grip.removeEventListener('pointermove',move);
+          grip.removeEventListener('pointerup',up);
+          grip.removeEventListener('pointercancel',up);
+          saved[col]=parseInt(th.style.width,10); save();
+          setTimeout(()=>{justResized=false;},0);
+        };
+        grip.addEventListener('pointermove',move);
+        grip.addEventListener('pointerup',up);
+        grip.addEventListener('pointercancel',up);
+      });
+      grip.addEventListener('dblclick',e=>{
+        e.stopPropagation();
+        th.style.width=defaultW; delete saved[col]; save();
+      });
+    });
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 /* Several Item Master rows are allowed to carry the SAME name (same part,
    different spec / make / description). A native <datalist> reports which
    option the user picked ONLY through that option's value, so same-named
@@ -6836,8 +7177,8 @@ function refreshSupplierDatalist(suppliers){
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
   try{
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
@@ -6857,7 +7198,7 @@ window.loadItemMaster=async function(){
     updateItemMasterCatFilterBtnLabel();
     renderItemMasterTable();
     refreshItemDatalist(items);
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
 };
 
 /* ── Item Master edit (Admin only) ────────────────────────────────
@@ -6893,8 +7234,10 @@ window.editMasterItem=function(id){
   // on the first option, so anything unknown is added to the dropdown first.
   ensureSelectOption_('mi_category',it.category);
   ensureSelectOption_('mi_uom',it.uom||'PCS');
+  ensureSelectOption_('mi_gst',String(itemGst_(it)));
   set('mi_category',it.category||'');
   set('mi_uom',it.uom||'PCS');
+  set('mi_gst',String(itemGst_(it)));
   const head=byId('mi_formHeading');
   if(head)head.innerHTML='&#9999;&#65039; Editing Item — <span style="color:#b45309;">'+escText(it.item_code||'')+'</span>';
   const btn=byId('addItemBtn');if(btn)btn.innerHTML='&#128190; Update Item';
@@ -6980,13 +7323,18 @@ window.addMasterItem=async function(){
       sub_category:(byId('mi_minStockQty')?.value||'').trim()||null,
       rate:Number(byId('mi_rate')?.value||0),
       uom:(byId('mi_uom')?.value||'PCS').trim()||'PCS',
-      make:(byId('mi_make')?.value||'').trim()||null
+      make:(byId('mi_make')?.value||'').trim()||null,
+      // Per-item GST. Dropped and retried without it if the column is not in
+      // the database yet (see the catch below), so this save never fails on a
+      // schema that predates it.
+      gst_pct:Number(byId('mi_gst')?.value||SARV_DEFAULT_GST)
     };
     if(editingId){
       // item_code is deliberately left out of the payload — it is the handle
       // this item is known by and does not follow a rename.
-      const {error}=await SB.from('items').update(payload).eq('id',editingId);
+      const {error,droppedGst}=await saveItemRow_(payload,editingId);
       if(error)throw error;
+      if(droppedGst)showToast('⚠️ GST save nahi hua — items table me gst_pct column nahi hai. Baaki sab save ho gaya.','warn');
       const renamed=!!oldName&&oldName.trim().toUpperCase()!==name;
       // IN / OUT / PR lines point at item_id and read the name back through a
       // join, so they already show the new name — nothing to copy there. Only
@@ -7013,7 +7361,8 @@ window.addMasterItem=async function(){
       cancelItemEdit();
     }else{
       const newCode=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
-      const {error}=await SB.from('items').insert({item_code:newCode,...payload});
+      const {error,droppedGst}=await saveItemRow_({item_code:newCode,...payload},null);
+      if(droppedGst)showToast('⚠️ GST save nahi hua — items table me gst_pct column nahi hai. Baaki sab save ho gaya.','warn');
       if(error)throw error;
       showToast(`✅ "${name}" added to Item Master!`);
       cancelItemEdit();   // same field reset the add path always did
@@ -7752,7 +8101,7 @@ window.loadReports=async function(){
     // ── Inward entries ────────────────────────────────────────
     const fetchInward=['ALL','INWARD','INWARD_ONLY','INWARD NB'].includes(typeF);
     if(fetchInward){
-      let q=SB.from('inward_entries').select(`id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,created_at,inward_lines(qty,rate,line_total,items(name))`).order('created_at',{ascending:false}).limit(300);
+      let q=SB.from('inward_entries').select(`id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,notes,created_at,inward_lines(qty,rate,line_total,items(name))`).order('created_at',{ascending:false}).limit(300);
       if(typeF==='INWARD_ONLY')q=q.eq('entry_type','INWARD');
       else if(typeF==='INWARD NB')q=q.eq('entry_type','INWARD NB');
       else if(typeF==='INWARD')q=q.in('entry_type',['INWARD','INWARD NB']);
@@ -7761,13 +8110,13 @@ window.loadReports=async function(){
       const{data,error}=await q;
       if(!error&&data)data.forEach(e=>{
         const lines=e.inward_lines||[];
-        results.push({type:e.entry_type||'INWARD',kind:'inward',no:e.document_no,invoice:e.invoice_no||'—',date:e.receiving_date||e.created_at?.slice(0,10)||'',party:e.supplier_name||e.po_number||'—',receiver:'—',amount:lines.reduce((s,l)=>s+(+l.line_total||0),0),qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id});
+        results.push({type:e.entry_type||'INWARD',kind:'inward',no:e.document_no,invoice:e.invoice_no||'—',date:e.receiving_date||e.created_at?.slice(0,10)||'',party:e.supplier_name||e.po_number||'—',receiver:'—',amount:lines.reduce((s,l)=>s+(+l.line_total||0),0),qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||''});
       });
     }
     // ── Outward entries ───────────────────────────────────────
     const fetchOutward=['ALL','OUTWARD','OUTWARD_ONLY','ISSUE'].includes(typeF);
     if(fetchOutward){
-      let q=SB.from('outward_entries').select(`id,document_no,entry_type,outward_date,gate_pass_no,party_name,receiver_name,created_at,outward_lines(qty,items(name))`).order('created_at',{ascending:false}).limit(300);
+      let q=SB.from('outward_entries').select(`id,document_no,entry_type,outward_date,gate_pass_no,party_name,receiver_name,notes,created_at,outward_lines(qty,items(name))`).order('created_at',{ascending:false}).limit(300);
       if(typeF==='OUTWARD_ONLY')q=q.eq('entry_type','OUTWARD');
       else if(typeF==='ISSUE')q=q.eq('entry_type','ISSUE');
       else if(typeF==='OUTWARD')q=q.in('entry_type',['OUTWARD','ISSUE']);
@@ -7776,7 +8125,7 @@ window.loadReports=async function(){
       const{data,error}=await q;
       if(!error&&data)data.forEach(e=>{
         const lines=e.outward_lines||[];
-        results.push({type:e.entry_type||'OUTWARD',kind:'outward',no:e.document_no,invoice:e.gate_pass_no||'—',date:e.outward_date||e.created_at?.slice(0,10)||'',party:e.party_name||'—',receiver:e.receiver_name||'—',amount:0,qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id});
+        results.push({type:e.entry_type||'OUTWARD',kind:'outward',no:e.document_no,invoice:e.gate_pass_no||'—',date:e.outward_date||e.created_at?.slice(0,10)||'',party:e.party_name||'—',receiver:e.receiver_name||'—',amount:0,qty:lines.reduce((s,l)=>s+(+l.qty||0),0),items:lines.map(l=>l.items?.name||'').filter(Boolean).slice(0,3).join(', '),id:e.id,cancelled:isStoreRecordCancelled_(e.notes),notes:e.notes||''});
       });
     }
     // ── PDF links (from shared pdf_documents index) ─────────────
@@ -7803,9 +8152,12 @@ window.loadReports=async function(){
     const canEdit=isAdmin();
     tb.innerHTML=filtered.map(r=>{
       const col=tc[r.type]||'#64748b';
-      return `<tr style="font-size:11px;border-bottom:1px solid #f1f5f9;">
+      // A cancelled record stays listed (its number is never reused) but is
+      // struck through, badged, and has no Edit / Cancel left.
+      const cxBadge=r.cancelled?`<div style="margin-top:2px;"><span title="${escText(r.notes)}" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;font-size:8.5px;font-weight:800;white-space:nowrap;">❌ CANCELLED</span></div>`:'';
+      return `<tr style="font-size:11px;border-bottom:1px solid #f1f5f9;${r.cancelled?'background:#fef2f2;opacity:.75;':''}">
         <td style="padding:5px 6px;"><span style="background:${col}18;color:${col};border:1px solid ${col}33;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;white-space:nowrap;">${escText(r.type)}</span></td>
-        <td style="padding:5px 6px;font-weight:800;color:#0284c7;white-space:nowrap;">${escText(r.no||'—')}</td>
+        <td style="padding:5px 6px;font-weight:800;color:${r.cancelled?'#b91c1c':'#0284c7'};white-space:nowrap;${r.cancelled?'text-decoration:line-through;':''}">${escText(r.no||'—')}${cxBadge}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(r.invoice)}</td>
         <td style="padding:5px 6px;white-space:nowrap;">${escText(r.date)}</td>
         <td style="padding:5px 6px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escText(r.party)}">${escText(r.party)}</td>
@@ -7822,7 +8174,7 @@ window.loadReports=async function(){
           </div>
         </td>
         <td style="padding:5px 6px;text-align:center;">
-          ${canEdit?`<button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Is Record No. ki poori entry edit mode me kholein" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">&#9999;&#65039;</button>`:'<span style="color:#cbd5e1;">—</span>'}
+          ${(canEdit&&!r.cancelled)?`<div style="display:flex;gap:4px;justify-content:center;"><button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Is Record No. ki poori entry edit mode me kholein" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">&#9999;&#65039;</button><button type="button" data-cancel-kind="${escText(r.kind)}" data-cancel-id="${escText(r.id)}" data-cancel-no="${escText(r.no||'')}" title="Is Record No. ko cancel karein (Admin only)" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;cursor:pointer;">&#10060;</button></div>`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
     }).join('');
@@ -7832,7 +8184,90 @@ window.loadReports=async function(){
     tb.querySelectorAll('button[data-edit-id]').forEach(b=>{
       b.addEventListener('click',()=>editStoreRecord(b.dataset.editKind,b.dataset.editId,b.dataset.editNo));
     });
+    tb.querySelectorAll('button[data-cancel-id]').forEach(b=>{
+      b.addEventListener('click',()=>cancelStoreRecord(b.dataset.cancelKind,b.dataset.cancelId,b.dataset.cancelNo).catch(dbError));
+    });
   }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#ef4444;">❌ Error loading reports</td></tr>';}
+};
+
+/* ================================================================
+   RECORD CANCEL — Print History / Reports → ❌  (Admin only)
+
+   The record is voided, not deleted: the header stays under its Record No.
+   (so the number is never handed out again and the PDFs remain), its notes
+   are stamped "❌ CANCELLED …" with the date, reason and the items it
+   carried, and its item lines are removed. Removing the lines is what makes
+   every stock figure correct on its own — Item Master balance, Item Ledger,
+   the outward stock guard, PO receipts and the repair tracker all read
+   inward_lines / outward_lines, so none of them needs to learn a new flag.
+
+   Refused when it would corrupt something downstream:
+     • an Inward whose stock has already gone out (balance would go negative);
+     • an Outward that a Repair Return inward has already been received on.
+================================================================ */
+const SARV_CANCEL_MARK='❌ CANCELLED';
+function isStoreRecordCancelled_(notes){return String(notes||'').startsWith(SARV_CANCEL_MARK);}
+window.cancelStoreRecord=async function(kind,id,no){
+  if(!isAdmin())return showToast('⛔ Sirf Admin login record cancel kar sakta hai','warn');
+  if(!SB_READY)return;
+  const isIn=kind==='inward';
+  if((isIn&&sarvEditingInwardId===id)||(!isIn&&sarvEditingOutwardId===id))
+    return showToast('⚠️ '+no+' abhi edit mode me khula hai — pehle edit band karein','warn');
+  const hTable=isIn?'inward_entries':'outward_entries', lTable=isIn?'inward_lines':'outward_lines', fk=isIn?'inward_id':'outward_id';
+  const h=await SB.from(hTable).select('*').eq('id',id).single();
+  if(h.error)throw h.error;
+  if(isStoreRecordCancelled_(h.data.notes))return showToast(no+' pehle se cancelled hai','warn');
+  const lq=await SB.from(lTable).select('*, items(name,uom)').eq(fk,id);
+  if(lq.error)throw lq.error;
+  const lines=lq.data||[];
+
+  if(isIn){
+    // The goods this inward brought in must still be in the store.
+    const short=await outwardStockShortfalls(lines.map(l=>({itemName:l.items?.name||'',qty:pNum(l.qty)})),null);
+    if(short.length)return showToast('⛔ '+escText(no)+' cancel nahi ho sakta — is inward ka maal issue/outward ho chuka hai:<br>'+short.map(s=>escText(s.name)+': Stock '+nNum_(s.stock)+' &lt; '+nNum_(s.want)).join('<br>'),'error');
+  }else{
+    // A repair return already booked against this outward would be orphaned.
+    let returned=false;
+    const r1=await SB.from('inward_lines').select('id').eq('repair_outward_no',no).limit(1);
+    if(!r1.error&&(r1.data||[]).length)returned=true;
+    if(!returned){
+      const r2=await SB.from('inward_entries').select('id,notes').eq('nature_of_inward','Repaired').eq('gate_pass_no',no);
+      if(!r2.error&&(r2.data||[]).some(e=>!isStoreRecordCancelled_(e.notes)))returned=true;
+    }
+    if(returned)return showToast('⛔ '+escText(no)+' cancel nahi ho sakta — is outward ke against Repair Return inward ho chuka hai. Pehle wo inward cancel karein.','error');
+  }
+
+  const itemsTxt=lines.map(l=>(l.items?.name||'Item')+' × '+pNum(l.qty)+' '+(l.uom||l.items?.uom||'')).join(', ');
+  // Explicit yes/no first — a cancel reverses stock, so it must never happen
+  // on a stray click.
+  if(!confirm('⚠️ Kya aap sach me '+no+' ko CANCEL karna chahte hain?\n\n'
+    +'Type: '+(h.data.entry_type||(isIn?'INWARD':'OUTWARD'))+'\n'
+    +'Party: '+((isIn?h.data.supplier_name:h.data.party_name)||'—')+'\n'
+    +'Items: '+(itemsTxt||'—')+'\n\n'
+    +'• Stock se ye qty '+(isIn?'hat':'wapas aa')+' jayegi\n'
+    +'• Record No. list me CANCELLED dikhega aur edit nahi ho payega\n'
+    +'• Ye wapas undo nahi hoga'))return;
+  const reason=prompt('Cancel '+no+' — reason likhein (zaroori):');
+  if(reason===null)return;
+  if(!reason.trim())return showToast('Reason likhna zaroori hai — cancel nahi hua','warn');
+
+  const stamp=SARV_CANCEL_MARK+' on '+pStamp()+' by Admin — Reason: '+reason.trim()+' | Items: '+(itemsTxt||'—')+(h.data.notes?' | Earlier notes: '+h.data.notes:'');
+  const u=await SB.from(hTable).update({notes:stamp}).eq('id',id);
+  if(u.error)throw u.error;
+  const del=await SB.from(lTable).delete().eq(fk,id);
+  if(del.error){
+    // Put the notes back so the record doesn't read cancelled with its stock still counted.
+    await SB.from(hTable).update({notes:h.data.notes||null}).eq('id',id);
+    throw del.error;
+  }
+  // PO receipts are recomputed from the inward lines that remain.
+  if(isIn){
+    try{await syncPoReceiptsForLines(lines.map(l=>l.po_line_id));}
+    catch(e){console.warn('[SARV] PO receipt recompute after cancel failed:',e.message||e);}
+  }
+  showToast('✅ '+escText(no)+' cancel ho gaya — stock update ho gaya');
+  await loadReports();
+  if(typeof loadItemMaster==='function')loadItemMaster().catch(()=>{});
 };
 
 /* ================================================================
@@ -8401,6 +8836,13 @@ window.addEventListener('DOMContentLoaded',()=>{
  // PO renderers (native jsPDF + HTML fallback) and mobile.html's approval
  // reprint can never drift apart.
  const SARV_PO_ANTI_CORRUPTION_NOTE = 'Our company maintains a strict zero-tolerance policy for corruption. If any employee requests a commission, kickback, or unauthorized payment, please report it immediately. Verified reports will be rewarded with Smart prize worth INR 11,000.';
+ /* Who the PO's gmCeo signature slot belongs to. There is no GM/CEO approval
+    on POs any more — the Purchaser approves it themselves — so the slot is
+    "Purchaser", captioned with their name once they have signed. Only an
+    older PO actually signed by a GM/CEO (a signature with no signedBy) keeps
+    "GM / CEO", so historic PDFs still say who really signed. Same helper in
+    mobile.html. */
+ const poGmRole_=s=>(s&&!String(s.signedBy||'').trim())?'GM / CEO':'Purchaser';
 
  // Company logo printed at the top-right of the Purchase Order PDF.
  // Inlined as a data URI so the PDF renders identically offline and from
@@ -8542,7 +8984,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        inTotWeight += pNum(it.weight);
        inTotGross  += pNum(it.total||it.line_total);
        const itDiscPct=pNum(it.discountPct);
-       if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.qty);
+       if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoney(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoney(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoney(it.total||it.line_total)+'</td></tr>';
      });
@@ -8932,6 +9374,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      qty:pNum(it.qty), issued:pNum(it.issued||it.qtyIssued||0), uom:it.uom||'',
      grossWeight:(it.grossWeight!=null&&it.grossWeight!=='')?pNum(it.grossWeight):null,
      rates:it.rates||{}, discounts:it.discounts||{},
+     // THIS item's own four quoting vendors; the PR-level array is only the
+     // fallback for snapshots written before vendors moved onto the line.
+     vendors:(Array.isArray(it.vendors)&&it.vendors.length)?it.vendors:(d.vendors||[]),
      approvedVendorIndex:(it.approvedVendorIndex!=null)?pNum(it.approvedVendorIndex):((d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?pNum(d.approvedVendorIndex):-1)
    }));
    const totalGW=items.reduce((s,r)=>s+(r.grossWeight!=null?r.grossWeight:0),0);
@@ -8940,14 +9385,22 @@ window.addEventListener('DOMContentLoaded',()=>{
    // PR-level field, kept only as the fallback for a PR approved before
    // per-item vendor assignment existed.
    const approvedIdx=(d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?d.approvedVendorIndex:-1;
-   // Every distinct vendor slot an item was actually approved against — one
-   // PR can now be split across several vendors, item by item.
-   const usedVendorIdx=new Set(items.map(r=>r.approvedVendorIndex).filter(v=>v!=null&&v>=0));
-   if(approvedIdx>=0)usedVendorIdx.add(approvedIdx);
    const APPROVED_BG='background:#c5e1a5;font-weight:bold;';
-   // Highlight follows THAT row's own approved vendor, not one vendor for the
-   // whole sheet, so a split PR shows each item against the vendor it went to.
-   const rateCell=(v,disc,vi,rowIdx)=>'<td class="vcol"'+(vi===rowIdx?' style="'+APPROVED_BG+'"':'')+'>'+pEsc(rateTxt(v)+discTxt(disc))+'</td>';
+   /* Each V-column cell now names the vendor it belongs to, on its own line
+      above the figure. V1 on one row and V1 on the next are different
+      companies, so a bare number under a "V1" heading would be unreadable —
+      there is no longer one legend that can explain the columns. Highlight
+      still follows THAT row's own approved vendor. */
+   const vendorCellName=(r,vi)=>String(((r.vendors||[])[vi]||{}).name||'').trim();
+   const rateCell=(v,disc,vi,r)=>{
+     const nm=vendorCellName(r,vi);
+     const fig=rateTxt(v)+discTxt(disc);
+     const on=(vi===r.approvedVendorIndex);
+     return '<td class="vcol"'+(on?' style="'+APPROVED_BG+'"':'')+'>'
+       +(nm?'<span class="vnm">'+pEsc(nm)+'</span>':'')
+       +(fig?'<span class="vfig">'+pEsc(fig)+'</span>':(nm?'<span class="vfig">&mdash;</span>':''))
+       +'</td>';
+   };
    const itemRowsHtml=items.map(r=>'<tr>'+
      '<td class="c sr">'+pEsc(r.sr)+'</td>'+
      '<td>'+pEsc(r.name)+'</td>'+
@@ -8959,13 +9412,11 @@ window.addEventListener('DOMContentLoaded',()=>{
      '<td class="c b">'+pEsc(r.issued)+'</td>'+
      '<td class="c">'+pEsc(r.uom)+'</td>'+
      '<td class="c">'+(r.grossWeight!=null?pEsc(r.grossWeight):'')+'</td>'+
-     rateCell(r.rates.V1,r.discounts.V1,0,r.approvedVendorIndex)+rateCell(r.rates.V2,r.discounts.V2,1,r.approvedVendorIndex)+rateCell(r.rates.V3,r.discounts.V3,2,r.approvedVendorIndex)+rateCell(r.rates.V4,r.discounts.V4,3,r.approvedVendorIndex)+
+     rateCell(r.rates.V1,r.discounts.V1,0,r)+rateCell(r.rates.V2,r.discounts.V2,1,r)+rateCell(r.rates.V3,r.discounts.V3,2,r)+
    '</tr>').join('');
    const vendors=d.vendors||[];
-   // The approved V1..V4 row is filled light green end-to-end — including the
-   // Sr cell, whose class would otherwise keep the teal header colour — so the
-   // HTML fallback matches the native renderer's highlight exactly.
-   const vendorRows=['V1','V2','V3','V4'].map((v,i)=>{const info=vendors[i]||{};const isUsed=usedVendorIdx.has(i);const rowStyle=isUsed?' style="'+APPROVED_BG+'"':'';const srStyle=isUsed?' style="'+APPROVED_BG+'color:#000;text-align:center;"':'';return '<tr'+rowStyle+'><td class="vsr"'+srStyle+'>'+v+'</td><td'+rowStyle+'>'+pEsc(info.name||'')+'</td><td'+rowStyle+'>'+pEsc(info.email||'')+'</td><td'+rowStyle+'>'+pEsc(info.contact||'')+'</td><td'+rowStyle+'>'+pEsc(info.remarks||'')+'</td></tr>';}).join('');
+   // No separate "Approved Vendor (per item)" table: the chosen vendor is
+   // already marked on each item row (green V1..V3 cell).
    const totalQty=items.reduce((s,r)=>s+r.qty,0);
    const css='@page { size: A4 landscape; margin: 8mm; }'
      +'body { font-family: Arial, "Segoe UI", sans-serif; font-size: 11px; margin: 0; color: #000; }'
@@ -8985,10 +9436,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      +'.items td.b { font-weight:bold; }'
      +'.items td.sr { width:3%; font-weight:bold; }'
      +'.items td.vcol { background:#ffffff; }'
-     +'.vendor-table { margin-top:14px; }'
-     +'.vendor-table th { background:#0d5c53; color:#fff; padding:6px 5px; font-size:10px; font-weight:bold; text-align:center; letter-spacing:0.3px; }'
-     +'.vendor-table td.vsr { background:#0d5c53; color:#fff; font-weight:bold; text-align:center; width:5%; }'
-     +'.vendor-table td { height: 22px; }';
+     /* Vendor name above the figure inside each V-column cell — the columns
+        no longer share one legend, so every cell has to name its own vendor. */
+     +'.items td.vcol .vnm { display:block; font-size:8px; line-height:1.1; color:#334155; font-weight:600; }'
+     +'.items td.vcol .vfig { display:block; font-size:10.5px; line-height:1.2; }';
    const info=(l,v)=>'<td class="lbl">'+l+'</td><td class="val">'+pEsc(v)+'</td>';
    const sigs=d.signatures||(d.vendorSignature?{store:d.vendorSignature}:{});
    /* Caption for the GM/CEO signature column on a PURCHASE REQUIREMENT.
@@ -8997,7 +9448,9 @@ window.addEventListener('DOMContentLoaded',()=>{
       would put a signature on the document that nobody actually gave.
       mobile.html writes sig.signedBy when a Purchaser approves; anything
       signed by the GM/CEO has no such field and keeps the old caption.
-      PO signature footers are untouched — no Purchaser signs those. */
+      The PO footers now follow the same rule: a PO generated from a
+      Purchaser-approved PR reprints that signature in the GM/CEO position
+      and goes straight to MD (see purchaserSignForReqs_). */
    const prGmCeoLabel_=sign=>{
      const by=String((sign&&sign.signedBy)||'').trim();
      return by||'GM / CEO';
@@ -9033,9 +9486,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      +'</tbody></table>'
      +'<table class="items" style="margin-top:10px;"><thead>'
      +'<tr class="subtotal-row"><td colspan="6">SUBTOTAL &gt;&gt;</td><td>'+pEsc(totalQty)+'</td><td>'+pEsc(d.totalIssued||0)+'</td><td></td><td>'+(totalGW>0?pEsc(totalGW)+' kg':'')+'</td><td colspan="4">VENDOR RATE (rate, and disc% in brackets)</td></tr>'
-     +'<tr class="items-head"><th style="width:3%;">Sr No</th><th style="width:12%;">Item Name</th><th style="width:12%;">Item Description</th><th style="width:7%;">Make / Brand</th><th style="width:8%;">Category</th><th style="width:7%;">Machine</th><th style="width:4%;">Qty</th><th style="width:5%;">Qty Issued</th><th style="width:4%;">UOM</th><th style="width:5%;">Weight</th><th style="width:8%;">V1</th><th style="width:8%;">V2</th><th style="width:8%;">V3</th><th style="width:8%;">V4</th></tr>'
+     +'<tr class="items-head"><th style="width:3%;">Sr No</th><th style="width:12%;">Item Name</th><th style="width:12%;">Item Description</th><th style="width:7%;">Make / Brand</th><th style="width:8%;">Category</th><th style="width:7%;">Machine</th><th style="width:4%;">Qty</th><th style="width:5%;">Qty Issued</th><th style="width:4%;">UOM</th><th style="width:5%;">Weight</th><th style="width:11%;">V1</th><th style="width:11%;">V2</th><th style="width:11%;">V3</th></tr>'
      +'</thead><tbody>'+itemRowsHtml+'</tbody></table>'
-     +'<table class="vendor-table"><thead><tr><th style="width:5%;">Sr No</th><th style="width:30%;">VENDOR NAME</th><th style="width:20%;">EMAIL_ID</th><th style="width:15%;">CONTACT</th><th style="width:30%;">REMARKS</th></tr></thead><tbody>'+vendorRows+'</tbody></table>'
      +'<table style="margin-top:26px;border-collapse:collapse;width:100%;"><tr>'
      // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
      // MD / Vendor Verified belong to the PO chain and are not printed here.
@@ -9063,6 +9515,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      qty:pNum(it.qty), issued:pNum(it.issued||it.qtyIssued||0), uom:it.uom||'',
      grossWeight:(it.grossWeight!=null&&it.grossWeight!=='')?pNum(it.grossWeight):null,
      rates:it.rates||{}, discounts:it.discounts||{},
+     // THIS item's own four quoting vendors; the PR-level array is only the
+     // fallback for snapshots written before vendors moved onto the line.
+     vendors:(Array.isArray(it.vendors)&&it.vendors.length)?it.vendors:(d.vendors||[]),
      approvedVendorIndex:(it.approvedVendorIndex!=null)?pNum(it.approvedVendorIndex):((d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?pNum(d.approvedVendorIndex):-1)
    }));
    const totalGW=items.reduce((s,r)=>s+(r.grossWeight!=null?r.grossWeight:0),0);
@@ -9120,25 +9575,31 @@ window.addEventListener('DOMContentLoaded',()=>{
        {content:totalGW>0?totalGW+' kg':'',styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
        {content:'VENDOR RATE',colSpan:4,styles:{fillColor:SUBTOTAL_BG,textColor:[10,58,94],fontStyle:'bold',halign:'center'}},
      ],
-     ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','Qty Issued','UOM','Weight','V1','V2','V3','V4']
+     ['Sr No','Item Name','Item Description','Make / Brand','Category','Machine','Qty','Qty Issued','UOM','Weight','V1','V2','V3']
    ];
    const rateTxt=v=>(v!=null&&pNum(v)>0)?nNum_(v):'';
    const discTxt=v=>(v!=null&&pNum(v)>0)?' (-'+pNum(v)+'%)':'';
-   const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),String(r.issued),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),rateTxt(r.rates.V1)+discTxt(r.discounts.V1),rateTxt(r.rates.V2)+discTxt(r.discounts.V2),rateTxt(r.rates.V3)+discTxt(r.discounts.V3),rateTxt(r.rates.V4)+discTxt(r.discounts.V4)]);
+   /* Each V-column cell carries its own vendor's name above the figure: V1 on
+      one row and V1 on the next are different companies now, so a bare number
+      under a "V1" heading could not be read. Same treatment as the HTML
+      fallback's .vnm / .vfig spans. */
+   const vCell=(r,i)=>{
+     const nm=String(((r.vendors||[])[i]||{}).name||'').trim();
+     const fig=rateTxt(r.rates['V'+(i+1)])+discTxt(r.discounts['V'+(i+1)]);
+     if(!nm&&!fig)return '';
+     return (nm?nm+'\n':'')+(fig||'—');
+   };
+   const body=items.map(r=>[String(r.sr),r.name,r.desc,r.make,r.cat,r.machineNo,String(r.qty),String(r.issued),r.uom,(r.grossWeight!=null?String(r.grossWeight):''),vCell(r,0),vCell(r,1),vCell(r,2)]);
    // PR-level field, kept only as a fallback for a PR approved before
    // per-item vendor assignment existed.
    const approvedIdx=(d.approvedVendorIndex!=null&&d.approvedVendorIndex>=0)?d.approvedVendorIndex:-1;
-   // Every distinct vendor slot actually used by an item — different items can
-   // now carry different approved vendors on the same PR.
-   const usedVendorIdx=new Set(items.map(r=>r.approvedVendorIndex).filter(v=>v!=null&&v>=0));
-   if(approvedIdx>=0)usedVendorIdx.add(approvedIdx);
    const APPROVED_GREEN=[197,225,165]; // pista green — approved vendor highlight
    doc.autoTable({
      head,body,startY:y,
      margin:{left:M,right:pageW-(M+W)}, tableWidth:W,
      styles:{fontSize:7,cellPadding:1.3,overflow:'linebreak',textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.2,valign:'middle'},
      headStyles:{fillColor:TEAL,textColor:[255,255,255],fontStyle:'bold',halign:'center',lineWidth:0.2,lineColor:[0,0,0]},
-     columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:12,halign:'center',fontStyle:'bold'},8:{cellWidth:10,halign:'center'},9:{cellWidth:14,halign:'center'},10:{cellWidth:18},11:{cellWidth:18},12:{cellWidth:18},13:{cellWidth:18}},
+     columnStyles:{0:{cellWidth:9,halign:'center'},6:{cellWidth:12,halign:'center',fontStyle:'bold'},7:{cellWidth:12,halign:'center',fontStyle:'bold'},8:{cellWidth:10,halign:'center'},9:{cellWidth:14,halign:'center'},10:{cellWidth:24},11:{cellWidth:24},12:{cellWidth:24}},
      theme:'grid',
      didParseCell:(hook)=>{
        if(hook.section!=='body')return;
@@ -9148,25 +9609,8 @@ window.addEventListener('DOMContentLoaded',()=>{
        }
      }
    });
-   y=doc.lastAutoTable.finalY+5;
-   if(y>pageH-40){doc.addPage();y=M;}
-
-   const vendors=d.vendors||[];
-   const vHead=[['Sr No','Vendor Name','Email ID','Contact','Remarks']];
-   const vBody=['V1','V2','V3','V4'].map((v,i)=>{const info=vendors[i]||{};return [v,info.name||'',info.email||'',info.contact||'',info.remarks||'']});
-   doc.autoTable({
-     head:vHead,body:vBody,startY:y,
-     margin:{left:M,right:pageW-(M+W)},tableWidth:W,
-     styles:{fontSize:7.5,cellPadding:1.6,minCellHeight:6,lineColor:[0,0,0],lineWidth:0.2,textColor:[0,0,0]},
-     headStyles:{fillColor:TEAL,textColor:[255,255,255],fontStyle:'bold',halign:'center',lineWidth:0.2,lineColor:[0,0,0]},
-     columnStyles:{0:{cellWidth:12,halign:'center',fontStyle:'bold',fillColor:TEAL,textColor:[255,255,255]},1:{cellWidth:W*0.30},2:{cellWidth:W*0.20},3:{cellWidth:W*0.15},4:{cellWidth:'auto'}},
-     theme:'grid',
-     didParseCell:(hook)=>{
-       if(hook.section==='body'&&usedVendorIdx.has(hook.row.index)){
-         hook.cell.styles.fillColor=APPROVED_GREEN;hook.cell.styles.textColor=[0,0,0];hook.cell.styles.fontStyle='bold';
-       }
-     }
-   });
+   // No separate "Approved Vendor (per item)" table: the chosen vendor is
+   // already marked on each item row (green V1..V3 cell above).
    y=doc.lastAutoTable.finalY+16;
    if(y>pageH-20){doc.addPage();y=M+16;}
 
@@ -9236,8 +9680,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      else{inner='<div class="sig-name">'+pEsc(data)+'</div>'+(time?'<div class="sig-time">'+pEsc(time)+'</div>':'');}
      return '<td class="sig-cell">'+inner+'<div class="sig-line"></div><div class="sig-role">'+pEsc(role)+'</div>'+(comment?'<div class="sig-comment">"'+pEsc(comment)+'"</div>':'')+'</td>';
    }
+   // A Purchaser's approval carried over from the PR signs this slot, so the
+   // caption is their name — printing "GM / CEO" over it would put a
+   // signature on the document that nobody actually gave. signedBy is only
+   // set when a Purchaser signed; a real GM/CEO approval keeps the caption.
+   const gmLabel=String((s.gmCeo&&s.gmCeo.signedBy)||'').trim()||'GM / CEO';
    return '<div class="sig-footer"><table class="sig-table"><tbody><tr>'+
-     cell('Store Incharge',s.store||{})+cell('GM / CEO',s.gmCeo||{})+cell('MD',s.md||{})+cell('Vendor Verified',s.vendor||{})+
+     cell('Store Incharge',s.store||{})+cell(gmLabel,s.gmCeo||{})+cell('MD',s.md||{})+cell('Vendor Verified',s.vendor||{})+
    '</tr></tbody></table></div>';
  }
 
@@ -9316,24 +9765,24 @@ window.addEventListener('DOMContentLoaded',()=>{
   const grandRow='<tr><td style="'+SL+'background:#fde68a;font-size:13px;font-weight:900;">GRAND TOTAL (₹)</td><td style="'+SV+'background:#fde68a;font-size:13px;font-weight:900;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pMoney(grand)+'</td></tr>';
 
   // ── Signature footer (all inline) ─────────────────────────
-  function sigCell(role,sign){
+  // Only the two approvals that matter on a PO: the Purchaser (left) and MD
+  // (right). No box, no dividers — just the signature over its line and caption.
+  function sigCell(role,sign,name){
     const data=String(sign&&sign.name||'').trim();
     const time=sign&&sign.time||'';
     const comment=String(sign&&sign.comment||'').trim();
     let inner;
-    // Vendor Verified is the vendor's own counter-signature, not an internal
-    // approval step — its box stays blank when unsigned (the spacer keeps the
-    // four cells the same height) instead of reading "PENDING APPROVAL".
-    if(!data){inner=role==='Vendor Verified'
-      ?'<div style="margin-bottom:30px;height:13px;"></div>'
-      :'<div style="color:#b45309;font-style:italic;font-size:10px;font-weight:bold;margin-bottom:30px;">PENDING APPROVAL</div>';}
-    else if(data.indexOf('data:image/')===0){inner='<img src="'+data+'" style="max-width:140px;max-height:56px;display:block;margin:0 auto 2px auto;"><div style="color:#6b7280;font-size:9px;">'+pEsc(time)+'</div>';}
+    if(!data){inner='<div style="color:#b45309;font-style:italic;font-size:10px;font-weight:bold;margin-bottom:30px;">PENDING APPROVAL</div>';}
+    else if(data.indexOf('data:image/')===0){inner='<img src="'+data+'" style="max-width:160px;max-height:56px;display:block;margin:0 auto 2px auto;"><div style="color:#6b7280;font-size:9px;">'+pEsc(time)+'</div>';}
     else{inner='<div style="color:#047857;font-weight:bold;font-size:11px;margin-bottom:14px;">'+pEsc(data)+'</div>'+(time?'<div style="color:#6b7280;font-size:9px;">'+pEsc(time)+'</div>':'');}
-    return '<td style="border:none;text-align:center;padding:4px 6px 6px;width:25%;vertical-align:bottom;height:80px;">'+inner+'<div style="border-top:1px solid #000;margin:6px 0 4px;"></div><div style="font-weight:bold;font-size:10.5px;margin-bottom:2px;">'+pEsc(role)+'</div>'+(comment?'<div style="font-size:9px;font-style:italic;">"'+pEsc(comment)+'"</div>':'')+'</td>';
+    return '<td style="border:none;text-align:center;padding:4px 6px 6px;width:36%;vertical-align:bottom;height:80px;">'+inner+'<div style="border-top:1px solid #000;margin:6px 0 4px;"></div><div style="font-weight:bold;font-size:10.5px;margin-bottom:2px;">'+pEsc(role.toUpperCase())+'</div>'+(name?'<div style="font-size:9.5px;">'+pEsc(name)+'</div>':'')+(comment?'<div style="font-size:9px;font-style:italic;">"'+pEsc(comment)+'"</div>':'')+'</td>';
   }
   const sigs=d.signatures||{};
-  const sigFooter='<div style="margin-top:22px;'+B2+'padding:10px 14px 6px;"><table style="width:100%;border-collapse:collapse;"><tbody><tr>'+
-    sigCell('Store Incharge',sigs.store||{})+sigCell('GM / CEO',sigs.gmCeo||{})+sigCell('MD',sigs.md||{})+sigCell('Vendor Verified',sigs.vendor||{})+
+  const purchaserName=String((sigs.gmCeo&&sigs.gmCeo.signedBy)||'').trim();
+  const sigFooter='<div style="margin-top:22px;padding:10px 0 6px;"><table style="width:100%;border-collapse:collapse;"><tbody><tr>'+
+    sigCell(poGmRole_(sigs.gmCeo),sigs.gmCeo||{},purchaserName)+
+    '<td style="border:none;width:28%;"></td>'+
+    sigCell('MD',sigs.md||{},'')+
   '</tr></tbody></table></div>';
 
   // ── CSS: minimal, only for @page ──────────────────────────
@@ -9414,7 +9863,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     // ── Approval remarks (GM/CEO and MD, one line each) ───────
     +'<div style="font-weight:bold;margin:10px 0 4px;font-size:11px;">IMPORTANT NOTES:</div>'
     +'<div style="background:#fff200;border:1px solid #d4b800;padding:6px 8px;font-weight:700;font-size:11px;white-space:pre-wrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
-    +'<div style="margin-bottom:3px;">GM / CEO: '+pEsc(sigRemark_(sigs.gmCeo)||'—')+'</div>'
+    +'<div style="margin-bottom:3px;">'+poGmRole_(sigs.gmCeo)+': '+pEsc(sigRemark_(sigs.gmCeo)||'—')+'</div>'
     +'<div style="margin-bottom:3px;">MD: '+pEsc(sigRemark_(sigs.md)||'—')+'</div>'
     +'<div>'+pEsc(SARV_PO_ANTI_CORRUPTION_NOTE)+'</div>'
     +'</div>'
@@ -9612,7 +10061,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // appear on every PO.
    const poSigs=d.signatures||{};
    const notesLines=[]
-     .concat(doc.splitTextToSize('GM / CEO: '+(sigRemark_(poSigs.gmCeo)||'—'),W-4))
+     .concat(doc.splitTextToSize(poGmRole_(poSigs.gmCeo)+': '+(sigRemark_(poSigs.gmCeo)||'—'),W-4))
      .concat(doc.splitTextToSize('MD: '+(sigRemark_(poSigs.md)||'—'),W-4))
      .concat(doc.splitTextToSize(SARV_PO_ANTI_CORRUPTION_NOTE,W-4));
    const notesH=Math.max(8,notesLines.length*3.6+3);
@@ -9630,43 +10079,44 @@ window.addEventListener('DOMContentLoaded',()=>{
 
    poFit_(32);
    const sigs=d.signatures||{};
-   const sigRoles=[['Store Incharge',sigs.store],['GM / CEO',sigs.gmCeo],['MD',sigs.md],['Vendor Verified',sigs.vendor]];
-   const segW=W/4,sigTop=y;
-   doc.setDrawColor(0,0,0);doc.setLineWidth(0.4);doc.rect(M,sigTop,W,26);
-   sigRoles.forEach(([role,sign],i)=>{
-     const cx=M+segW*i;
-     const data=String((sign&&sign.name)||'').trim();
-     const time=(sign&&sign.time)||'';
+   // Only the Purchaser (left) and MD (right) sign a PO — no box and no
+   // dividers, just each signature over its line and caption. The Purchaser's
+   // own name goes under their caption (signedBy is set only when a Purchaser
+   // signed; an old PO a real GM/CEO signed keeps "GM / CEO").
+   const colW=W*0.36,sigTop=y;
+   const sigCols=[
+     {x:M,role:poGmRole_(sigs.gmCeo),name:String((sigs.gmCeo&&sigs.gmCeo.signedBy)||'').trim(),sign:sigs.gmCeo},
+     {x:M+W-colW,role:'MD',name:'',sign:sigs.md},
+   ];
+   sigCols.forEach(c=>{
+     const mid=c.x+colW/2;
+     const data=String((c.sign&&c.sign.name)||'').trim();
+     const time=(c.sign&&c.sign.time)||'';
      if(!data){
-       // Vendor Verified is the vendor's own counter-signature, not an
-       // internal approval step — its box is left blank when unsigned rather
-       // than reading "PENDING APPROVAL" back at the vendor.
-       if(role!=='Vendor Verified'){
-         doc.setFont(undefined,'italic');doc.setFontSize(7.5);doc.setTextColor(180,83,9);
-         doc.text('PENDING APPROVAL',cx+segW/2,sigTop+9,{align:'center'});
-         doc.setTextColor(0,0,0);
-       }
+       doc.setFont(undefined,'italic');doc.setFontSize(7.5);doc.setTextColor(180,83,9);
+       doc.text('PENDING APPROVAL',mid,sigTop+9,{align:'center'});
+       doc.setTextColor(0,0,0);
      } else if(data.indexOf('data:image/')===0){
        try{
          const dim=doc.getImageProperties(data);
-         const maxW=segW-8,maxH=10;
+         const maxW=colW-8,maxH=12;
          let iw=maxW,ih=iw*dim.height/dim.width;
          if(ih>maxH){ih=maxH;iw=ih*dim.width/dim.height;}
-         doc.addImage(data,dim.fileType||'PNG',cx+(segW-iw)/2,sigTop+2,iw,ih);
+         doc.addImage(data,dim.fileType||'PNG',c.x+(colW-iw)/2,sigTop+1,iw,ih);
        }catch(e){}
-       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),cx+segW/2,sigTop+13,{align:'center'});doc.setTextColor(0,0,0);}
+       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+15,{align:'center'});doc.setTextColor(0,0,0);}
      } else {
        doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(4,120,87);
-       doc.text(data,cx+segW/2,sigTop+8,{align:'center'});
+       doc.text(data,mid,sigTop+8,{align:'center'});
        doc.setTextColor(0,0,0);
-       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),cx+segW/2,sigTop+12,{align:'center'});doc.setTextColor(0,0,0);}
+       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+12,{align:'center'});doc.setTextColor(0,0,0);}
      }
-     doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);doc.line(cx+4,sigTop+16,cx+segW-4,sigTop+16);
+     doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);doc.line(c.x+4,sigTop+17,c.x+colW-4,sigTop+17);
      doc.setFont(undefined,'bold');doc.setFontSize(7.5);
-     doc.text(role.toUpperCase(),cx+segW/2,sigTop+20,{align:'center'});
-     if(i>0){doc.setLineWidth(0.25);doc.line(cx,sigTop,cx,sigTop+26);}
+     doc.text(c.role.toUpperCase(),mid,sigTop+21,{align:'center'});
+     if(c.name){doc.setFont(undefined,'normal');doc.setFontSize(7);doc.text(c.name,mid,sigTop+25,{align:'center'});}
    });
-   y=sigTop+26+6;
+   y=sigTop+28+4;
 
    poFit_(5);
    doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(71,85,105);
@@ -9819,8 +10269,14 @@ window.addEventListener('DOMContentLoaded',()=>{
    return result;
  }
  function collectInwardData(no,rows){
-   const base=rows.reduce((s,x)=>s+pNum(x.rate)*pNum(x.qty),0), tax=rows.reduce((s,x)=>s+pNum(x.rate)*pNum(x.qty)*pNum(x.tax)/100,0);
-   return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),poNum:getSelectedPoNos().join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable:base,finalAmt:base+tax,gstRate:rows.length?rows.reduce((s,x)=>s+pNum(x.tax),0)/rows.length:0,
+   // Same maths as updateStoreTotals(): each row's total already honours its
+   // Bill Basis (WEIGHT → Gross Wt × rate, QTY → Qty × rate), so the summary
+   // must add those up rather than re-deriving rate × qty.
+   const base=rows.reduce((s,x)=>s+pNum(x.total),0);
+   const gstRate=base>0?rows.reduce((s,x)=>s+pNum(x.tax)*pNum(x.total),0)/base:0;
+   const freight=pNum(pVal('freightExp')), roundOff=pNum(pVal('roundOffInput'));
+   const taxable=base+freight, tax=taxable*gstRate/100;
+   return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),poNum:getSelectedPoNos().join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
      // Freight Calculator + billing extras. These were computed on screen but
      // never reached the PDF, so the printed copy always showed blanks/zeros
      // for Net Weight, Gross Weight, freight rate and cost-per-unit.
@@ -9865,6 +10321,53 @@ window.addEventListener('DOMContentLoaded',()=>{
    showToast('⚠️ '+missing.map(f=>f.label).join(', ')+' compulsory hai — highlighted field(s) fill karein','warn');
    return false;
  }
+ /* Pre-submit preview for Inward / Outward. Runs after every validation and
+    password check, before anything is written: the entry is rendered exactly
+    as its Account Copy will print (same buildStorePdfCopyHtml the PDF uses,
+    photos included), and resolves true only on "Confirm & Submit". Back, ✕,
+    Esc or a click outside resolve false and leave the form untouched. The
+    document number isn't allocated yet on a new entry, so it reads as
+    "auto on submit". */
+ function confirmStoreEntryPreview(kind,d,items){
+   return new Promise(resolve=>{
+     let ov=byId('sarvEntryPreviewOverlay');
+     if(!ov){
+       ov=document.createElement('div');
+       ov.id='sarvEntryPreviewOverlay';
+       ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);z-index:30001;display:none;align-items:center;justify-content:center;padding:16px;';
+       ov.innerHTML='<div style="background:#fff;width:min(1000px,96vw);height:min(92vh,900px);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
+         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
+         +'<strong id="sarvEntryPreviewTitle" style="font-size:14px;">Preview</strong>'
+         +'<button type="button" data-act="back" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;" title="Back to form">✕</button></div>'
+         +'<div style="padding:8px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e;font-weight:600;">⚠️ Submit karne se pehle entry check karein — sab sahi ho to <b>Confirm &amp; Submit</b>, warna <b>Back / Edit</b> karke form me sudharein.</div>'
+         +'<iframe id="sarvEntryPreviewFrame" title="Entry preview" style="border:0;flex:1;width:100%;background:#f1f5f9;"></iframe>'
+         +'<div style="display:flex;justify-content:flex-end;gap:10px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;">'
+         +'<button type="button" class="btn" data-act="back" style="background:#e2e8f0;color:#334155;font-weight:700;padding:0 18px;height:36px;">✏️ Back / Edit</button>'
+         +'<button type="button" class="btn" data-act="ok" style="background:var(--btn-success-grad,#16a34a);color:#fff;font-weight:800;padding:0 22px;height:36px;border:none;">✅ Confirm &amp; Submit</button>'
+         +'</div></div>';
+       document.body.appendChild(ov);
+     }
+     const isOut=kind==='OUTWARD'||kind==='ISSUE';
+     const images=window.getPhotos?window.getPhotos(isOut?'outward':'inward'):[];
+     const no=d.inwardNo||d.outwardNo;
+     byId('sarvEntryPreviewTitle').textContent='🔍 '+(isOut?'Outward':'Inward')+' Preview — '+no;
+     byId('sarvEntryPreviewFrame').srcdoc=buildStorePdfCopyHtml(kind,d,items,'ACCOUNT COPY',images||[]);
+     const finish=ok=>{
+       ov.style.display='none';
+       ov.onclick=null;document.removeEventListener('keydown',onKey,true);
+       resolve(ok);
+     };
+     const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish(false);}};
+     ov.onclick=e=>{
+       const act=e.target.closest('[data-act]')?.dataset.act;
+       if(act==='ok')finish(true);
+       else if(act==='back'||e.target===ov)finish(false);
+     };
+     document.addEventListener('keydown',onKey,true);
+     ov.style.display='flex';
+     ov.querySelector('[data-act="ok"]')?.focus();
+   });
+ }
  async function saveInwardWithPdf(){
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
@@ -9896,6 +10399,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    // re-filed under a brand new number and the old one left orphaned.
    const editId=sarvEditingInwardId, editNo=sarvEditingInwardNo;
    if(btn&&btn.disabled)return; // already processing — ignore double-click
+   if(btn)btn.disabled=true; // no second submit while the preview is open
+   const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rows),rows);
+   if(btn)btn.disabled=false;
+   if(!okToSave)return;
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=editId?'⏳ Updating...':'⏳ Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=editId?('Updating '+editNo+'…'):'Saving Inward entry…';overlay.classList.add('active');}
    try{
@@ -10040,6 +10547,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText'),btn=byId('outSubmitBtn');
    if(btn&&btn.disabled)return; // already processing — ignore double-click
+   if(btn)btn.disabled=true; // no second submit while the preview is open
+   const okToSave=await confirmStoreEntryPreview('OUTWARD',collectOutwardData(outEditId?outEditNo:'(Auto on Submit)'),rows);
+   if(btn)btn.disabled=false;
+   if(!okToSave)return;
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=outEditId?'⏳ Updating...':'⏳ Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=outEditId?('Updating '+outEditNo+'…'):'Saving Outward entry…';overlay.classList.add('active');}
    try{
@@ -10320,7 +10831,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Purchaser's mobile form? Drives the Vendor Info button's colour, so a
      // PR still waiting for rates is distinguishable at a glance from one
      // that has them but no approved vendor picked.
-     const vendorInfoFilled=(snapshot.vendors||[]).some(v=>v&&String(v.name||'').trim());
+     // Quotes can now sit on the items rather than the PR, so check both.
+     const vendorInfoFilled=(snapshot.vendors||[]).some(v=>v&&String(v.name||'').trim())
+       ||(snapshot.items||[]).some(it=>Array.isArray(it&&it.vendors)&&it.vendors.some(v=>v&&String(v.name||'').trim()));
      const reqLines=(lq.data||[]).filter(line=>line.requirement_id===req.id);
      reqLines.forEach((line,index)=>{
        const item=itemMap.get(line.item_id)||{},name=line.item_name||line.name||item.name||'Item';
@@ -10335,7 +10848,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        // into the PO has to come from the vendor that item was approved
        // against, not from one vendor for the whole PR.
        const itemApprovedIdx=(snapItem&&snapItem.approvedVendorIndex!=null)?pNum(snapItem.approvedVendorIndex):approvedIdx;
-       const approvedVendor=itemApprovedIdx>=0?(snapshot.vendors&&snapshot.vendors[itemApprovedIdx])||null:null;
+       // V1-V4 belong to the ITEM, so the index resolves against this item's
+       // own vendors array. snapshot.vendors is only the legacy fallback for
+       // PRs saved before vendors moved onto the line.
+       const itemVendorList=(snapItem&&Array.isArray(snapItem.vendors)&&snapItem.vendors.length)
+         ? snapItem.vendors
+         : (snapshot.vendors||[]);
+       const approvedVendor=itemApprovedIdx>=0?(itemVendorList[itemApprovedIdx])||null:null;
        const approvedRate=(approvedVendor&&snapItem&&snapItem.rates)?pNum(snapItem.rates['V'+(itemApprovedIdx+1)])||null:null;
        const approvedDiscount=(approvedVendor&&snapItem&&snapItem.discounts)?pNum(snapItem.discounts['V'+(itemApprovedIdx+1)])||0:0;
        const poEligible=['GM/CEO Approved','MD Approved','Vendor Verified'].includes(req.status);
@@ -10419,8 +10938,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // ---- Top-of-panel PO lifecycle cards (from Generated POs) ----
    set('p_kpiPoGenPending',sarvPendingRequirements.filter(x=>x.poEligible).length);
-   set('p_kpiPoGmPending',sarvGeneratedPos.filter(p=>(p.status||'Generated')==='Generated').length);
-   set('p_kpiPoMdPending',sarvGeneratedPos.filter(p=>p.status==='GM/CEO Approved').length);
+   // No GM/CEO step on POs any more — mobile.html's MD list takes both a
+   // purchaser-approved PO ("GM/CEO Approved") and a plain "Generated" one.
+   set('p_kpiPoMdPending',sarvGeneratedPos.filter(p=>['Generated','GM/CEO Approved'].includes(p.status||'Generated')).length);
    // MD has signed it off, so it's ready to go out — it stops counting the
    // moment WhatsApp Send is pressed, not when the vendor verifies.
    set('p_kpiPoPartyPending',sarvGeneratedPos.filter(p=>p.status==='MD Approved'&&!isPoPartySent(p)).length);
@@ -10462,18 +10982,25 @@ window.addEventListener('DOMContentLoaded',()=>{
    const picked=[...document.querySelectorAll('#p_poPendingBody .sarv-po-pick:checked')],qty=picked.reduce((s,e)=>s+pNum(sarvPendingRequirements[+e.dataset.index]?.available),0);
    ['p_poSelCount','p_poSelCount2'].forEach(id=>{if(byId(id))byId(id).textContent=picked.length});
    if(byId('p_poSelQty'))byId('p_poSelQty').textContent=qty;
-   // A PO can only go to one vendor — if the checked lines' approved
-   // vendors differ, block "Build PO" until the selection is consistent.
+   /* Lines going to different vendors no longer block the build. Each PO is
+      still raised on ONE vendor; generateCurrentPoPdf() splits the selection
+      by approved vendor and issues one PO per vendor in a single pass, so a
+      mixed selection is a normal thing to do and the strip just says how many
+      orders it will produce. */
    const items=picked.map(e=>sarvPendingRequirements[+e.dataset.index]).filter(Boolean);
    const vendorNames=[...new Set(items.map(x=>(x.approvedVendor?.name||'').trim().toLowerCase()).filter(Boolean))];
    const mixedVendors=vendorNames.length>1;
    const btn=byId('p_poBuildBtn');
    if(btn){
-     btn.disabled=!picked.length||mixedVendors;
-     btn.title=mixedVendors?'Selected requirements have different approved vendors — PO can only be built for one vendor at a time':'';
+     btn.disabled=!picked.length;
+     btn.title=mixedVendors?(vendorNames.length+' vendors selected — '+vendorNames.length+' separate POs will be generated, one per vendor'):'';
    }
    const warn=byId('p_poMixedVendorWarning');
-   if(warn)warn.style.display=mixedVendors?'inline':'none';
+   if(warn){
+     warn.style.display=mixedVendors?'inline':'none';
+     warn.textContent=mixedVendors?('ℹ️ '+vendorNames.length+' vendors → '+vendorNames.length+' alag PO banenge'):'';
+     warn.style.color='#0369a1';
+   }
  }
 
  /* ── Vendor Rate & Info popup (per-requirement) ────────────── */
@@ -10487,25 +11014,59 @@ window.addEventListener('DOMContentLoaded',()=>{
    sarvVendorInfoState={req:rq.data,lines:lq.data||[]};
    const snapshot=rq.data.pdf_snapshot||{};
    const snapRatesByLine={},snapDiscByLine={};
-   (snapshot.items||[]).forEach((it,i)=>{const l=(lq.data||[])[i];if(l){snapRatesByLine[l.id]=it.rates||{};snapDiscByLine[l.id]=it.discounts||{};}});
+   // approvedVendorIndex is per ITEM, not per PR: two lines on one requirement
+   // can be bought from two different vendors. A PR-level index is still
+   // honoured as the fallback for snapshots written before the per-item field
+   // existed, which is the same precedence the PDF builders use.
+   const snapApprovedByLine={},snapVendorsByLine={};
+   const prLevelApproved=(snapshot.approvedVendorIndex!=null&&snapshot.approvedVendorIndex>=0)?pNum(snapshot.approvedVendorIndex):-1;
+   // The PR-level vendors array is the LEGACY shape: one set of four for the
+   // whole requirement. Per-item vendors live on item.vendors now, so it is
+   // only the fallback for snapshots written before that existed.
+   const legacyVendors=(snapshot.vendors&&snapshot.vendors.length===4)?snapshot.vendors:[{},{},{},{}];
+   (snapshot.items||[]).forEach((it,i)=>{
+     const l=(lq.data||[])[i];if(!l)return;
+     snapRatesByLine[l.id]=it.rates||{};
+     snapDiscByLine[l.id]=it.discounts||{};
+     snapApprovedByLine[l.id]=(it.approvedVendorIndex!=null)?pNum(it.approvedVendorIndex):prLevelApproved;
+     snapVendorsByLine[l.id]=(Array.isArray(it.vendors)&&it.vendors.length===4)?it.vendors:legacyVendors;
+   });
    if(byId('p_viReqNo'))byId('p_viReqNo').textContent=reqNo;
+   // Every row's four vendor slots, held here rather than read back off the
+   // DOM, so Remarks (which has no input) survives a save and the cascade has
+   // something to copy. Keyed by line id, same as the rate maps.
+   const rowVendors={};
+   (lq.data||[]).forEach(line=>{
+     const src=snapVendorsByLine[line.id]||legacyVendors;
+     rowVendors[line.id]=[0,1,2].map(i=>({...(src[i]||{})}));
+   });
+   sarvVendorInfoState.rowVendors=rowVendors;
    const itemsBody=byId('p_viItemsBody');
    if(itemsBody){
      itemsBody.innerHTML=(lq.data||[]).map(line=>{
        const rates=snapRatesByLine[line.id]||{};
        const discs=snapDiscByLine[line.id]||{};
        const name=line.item_name||line.items?.name||'Item';
-       return '<tr data-line-id="'+line.id+'"><td>'+escText(name)+'</td><td style="text-align:center;">'+pNum(line.requested_qty)+'</td><td style="text-align:center;">'+escText(line.uom||line.items?.uom||'PCS')+'</td>'
-         +['V1','V2','V3','V4'].map(v=>
-           '<td><input type="number" class="table-input vi-rate" data-vendor="'+v+'" min="0" step="0.01" value="'+pNum(rates[v]||0)+'"></td>'
-           +'<td><input type="number" class="table-input vi-disc" data-vendor="'+v+'" min="0" max="100" step="0.01" value="'+pNum(discs[v]||0)+'"></td>'
-         ).join('')
+       const appr=(snapApprovedByLine[line.id]!=null)?snapApprovedByLine[line.id]:prLevelApproved;
+       // vi-c1..c4 are what pin this row's identity block and its vendor
+       // decision to the left edge while the four quote groups scroll; title=
+       // keeps a long name readable once the fixed column ellipsises it.
+       return '<tr data-line-id="'+line.id+'"><td class="vi-c1" title="'+escText(name)+'">'+escText(name)+'</td><td class="vi-c2" style="text-align:center;">'+pNum(line.requested_qty)+'</td><td class="vi-c3" style="text-align:center;">'+escText(line.uom||line.items?.uom||'PCS')+'</td>'
+         +'<td class="vi-sel"><select class="table-input vi-item-vendor" data-approved="'+appr+'"></select></td>'
+         +['V1','V2','V3'].map((v,gi)=>{
+           const alt=(gi%2===1)?' vi-g-alt':'';
+           return '<td class="'+alt.trim()+'"><select class="table-input vi-row-vendor'+alt+'" data-slot="'+gi+'"></select></td>'
+             +'<td class="'+alt.trim()+'"><input type="number" class="table-input vi-rate" data-vendor="'+v+'" min="0" step="0.01" value="'+pNum(rates[v]||0)+'"></td>'
+             +'<td><input type="number" class="table-input vi-disc" data-vendor="'+v+'" min="0" max="100" step="0.01" value="'+pNum(discs[v]||0)+'"></td>';
+         }).join('')
          +'</tr>';
      }).join('');
    }
-   const vendors=(snapshot.vendors&&snapshot.vendors.length===4)?snapshot.vendors:[{},{},{},{}];
-   const vendorsBody=byId('p_viVendorsBody');
-   if(vendorsBody){
+   // Kept for the legacy rollup written back on save; per-item vendors are the
+   // real store now. See saveVendorInfo().
+   const vendors=legacyVendors;
+   sarvVendorInfoState.vendors=vendors;
+   {
      // Vendor Name must be picked from Supplier Master, not typed — make
      // sure the master cache is loaded before building the dropdowns.
      if(!sarvSupplierCatalog.length&&SB_READY){
@@ -10514,29 +11075,128 @@ window.addEventListener('DOMContentLoaded',()=>{
      }
      const sortedSuppliers=[...sarvSupplierCatalog].sort((a,b)=>String(a.supplier_name||'').localeCompare(String(b.supplier_name||'')));
      const findSupplier=name=>sortedSuppliers.find(s=>String(s.supplier_name||'').trim().toUpperCase()===String(name||'').trim().toUpperCase());
+     // The phone rides inside the option label. There is no Contact field on
+     // this form any more, so the dropdown is the only place it can be seen —
+     // and the moment of picking is the moment it is wanted. The option VALUE
+     // stays the bare supplier_name, so everything that reads this select
+     // (saveVendorInfo, the PO builder, the snapshot) is untouched.
+     const supplierLabel=s=>{const ph=String(s.phone||'').trim();return s.supplier_name+(ph?'  —  ☎ '+ph:'  —  (no contact)')};
      const supplierOptionsHtml=name=>{
        const matched=name&&findSupplier(name);
        let html='<option value="">-- Select Supplier --</option>';
        if(name&&!matched)html+='<option value="'+escText(name)+'" selected>'+escText(name)+' (not in Supplier Master)</option>';
-       html+=sortedSuppliers.map(s=>'<option value="'+escText(s.supplier_name)+'"'+(matched&&s.id===matched.id?' selected':'')+'>'+escText(s.supplier_name)+'</option>').join('');
+       html+=sortedSuppliers.map(s=>'<option value="'+escText(s.supplier_name)+'"'+(matched&&s.id===matched.id?' selected':'')+'>'+escText(supplierLabel(s))+'</option>').join('');
        return html;
      };
-     vendorsBody.innerHTML=['V1','V2','V3','V4'].map((v,i)=>{
-       const info=vendors[i]||{};
-       return '<tr><td style="text-align:center;font-weight:800;">'+v+'</td>'
-         +'<td><select class="table-input vi-vendor-name">'+supplierOptionsHtml(info.name)+'</select></td>'
-         +'<td><input type="email" class="table-input vi-vendor-email" placeholder="email@example.com" value="'+escText(info.email||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;"></td>'
-         +'<td><input type="text" class="table-input vi-vendor-contact" placeholder="Phone" value="'+escText(info.contact||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;"></td>'
-         +'<td><input type="text" class="table-input vi-vendor-remarks" placeholder="Remarks" value="'+escText(info.remarks||'')+'"></td>'
-         +'</tr>';
-     }).join('');
-     vendorsBody.querySelectorAll('.vi-vendor-name').forEach(sel=>{
-       sel.addEventListener('change',()=>{
-         const tr=sel.closest('tr'),supplier=findSupplier(sel.value);
-         const emailEl=tr?.querySelector('.vi-vendor-email'),contactEl=tr?.querySelector('.vi-vendor-contact');
-         if(emailEl)emailEl.value=supplier?.email||'';
-         if(contactEl)contactEl.value=supplier?.phone||'';
+     const rowEls=[...document.querySelectorAll('#p_viItemsBody tr')];
+     const lineIdOf=tr=>tr.dataset.lineId;
+
+     /* Each row's "Selected Vendor" lists THAT ROW's own four vendors by name,
+        so the choice reads as a company rather than a slot number. Rebuilt
+        whenever any vendor on the row changes, or it would go on offering
+        whoever used to sit in that slot. The chosen index lives on
+        data-approved, never on the option text, so re-labelling can never
+        disturb an existing choice. */
+     const refreshRowApprovedPicker=tr=>{
+       const sel=tr.querySelector('.vi-item-vendor');if(!sel)return;
+       const vs=rowVendors[lineIdOf(tr)]||[{},{},{},{}];
+       const cur=(sel.dataset.approved!=null&&sel.dataset.approved!=='')?parseInt(sel.dataset.approved,10):-1;
+       sel.innerHTML='<option value="-1">-- Not selected --</option>'
+         +['V1','V2','V3'].map((v,i)=>{
+           const nm=String((vs[i]||{}).name||'').trim();
+           return '<option value="'+i+'"'+(i===cur?' selected':'')+'>'+escText(v+(nm?' — '+nm:' (not selected)'))+'</option>';
+         }).join('');
+       sel.value=String(cur);
+       sel.classList.toggle('is-set',cur>=0);
+     };
+     const markApproved=(tr,idx)=>{
+       const sel=tr.querySelector('.vi-item-vendor');if(!sel)return;
+       sel.dataset.approved=String(idx);
+       refreshRowApprovedPicker(tr);
+     };
+     // Writing a vendor into a slot keeps the whole Supplier Master record,
+     // not just the name: email and contact are what a PO is raised on, and
+     // reading them here means they are already correct at save time.
+     const setRowVendor=(tr,slot,name)=>{
+       const sup=findSupplier(name);
+       const prev=(rowVendors[lineIdOf(tr)]||[])[slot]||{};
+       const same=name&&String(prev.name||'').trim().toUpperCase()===String(name).trim().toUpperCase();
+       rowVendors[lineIdOf(tr)][slot]={
+         name:String(name||'').trim(),
+         email:String(sup?.email||(same?prev.email:'')||'').trim(),
+         contact:String(sup?.phone||(same?prev.contact:'')||'').trim(),
+         // Remarks has no input on the grid; carry it while the slot holds
+         // the same vendor rather than blanking it.
+         remarks:same?String(prev.remarks||'').trim():'',
+       };
+     };
+
+     /* Row 1 is the MASTER row, for BOTH the four quoting vendors and the
+        Selected Vendor. The same four companies quoting every line is the
+        normal case, so filling row 1 fills the whole grid in one pass; any
+        other row changes only itself, so the exceptions are corrected
+        afterwards without losing the bulk fill. Two deliberate limits, same
+        as before: clearing a master field is never cascaded (one stray click
+        must not wipe the grid), and a cascade that overwrites rows already
+        holding something different says so, so bulk-filling cannot quietly
+        undo per-item work. */
+     rowEls.forEach((tr,row)=>{
+       const isMaster=row===0;
+       // --- the four quoting-vendor pickers on this row ---
+       tr.querySelectorAll('.vi-row-vendor').forEach(sel=>{
+         const slot=+sel.dataset.slot;
+         const vs=rowVendors[lineIdOf(tr)]||[{},{},{},{}];
+         sel.innerHTML=supplierOptionsHtml((vs[slot]||{}).name);
+         makeSearchableSelect(sel); // type to search, but only a Supplier Master pick is accepted
+         const syncTitle=()=>{sel.title=(sel.selectedOptions[0]?.textContent||('V'+(slot+1))).trim()};
+         syncTitle();
+         if(isMaster)sel.classList.add('is-master');
+         sel.onchange=()=>{
+           syncTitle();
+           setRowVendor(tr,slot,sel.value);
+           refreshRowApprovedPicker(tr);
+           if(!isMaster||!String(sel.value||'').trim())return;
+           const others=rowEls.slice(1);
+           if(!others.length)return;
+           let replaced=0;
+           others.forEach(otr=>{
+             const osel=otr.querySelector('.vi-row-vendor[data-slot="'+slot+'"]');if(!osel)return;
+             const had=String(osel.value||'').trim();
+             if(had&&had.toUpperCase()!==String(sel.value).trim().toUpperCase())replaced++;
+             osel.value=sel.value;
+             osel.title=(osel.selectedOptions[0]?.textContent||'').trim();
+             setRowVendor(otr,slot,sel.value);
+             refreshRowApprovedPicker(otr);
+           });
+           showToast('V'+(slot+1)+' = '+escText(sel.value)+' sabhi '+rowEls.length+' items par lag gaya'
+             +(replaced?' ('+replaced+' item ka alag V'+(slot+1)+' replace hua)':'')
+             +'. Kisi bhi item ka V'+(slot+1)+' alag rakh sakte hain.');
+         };
        });
+       // --- this row's Selected Vendor ---
+       const appr=tr.querySelector('.vi-item-vendor');
+       if(appr){
+         appr.title=isMaster
+           ? 'Is item ka PO isi vendor ke against banega. Yahan chunne par wahi slot sabhi items par lag jayega — baad me kisi bhi item ko alag kar sakte hain'
+           : 'Is item ka PO isi vendor ke against banega';
+         if(isMaster)appr.classList.add('is-master');
+         refreshRowApprovedPicker(tr);
+         appr.onchange=()=>{
+           const idx=pNum(appr.value);
+           markApproved(tr,idx);
+           if(!isMaster||idx<0)return;
+           const others=rowEls.slice(1);
+           if(!others.length)return;
+           const replaced=others.filter(otr=>{
+             const s=otr.querySelector('.vi-item-vendor');
+             return s&&pNum(s.value)>=0&&pNum(s.value)!==idx;
+           }).length;
+           others.forEach(otr=>markApproved(otr,idx));
+           showToast('Selected Vendor = V'+(idx+1)+' sabhi '+rowEls.length+' items par lag gaya'
+             +(replaced?' ('+replaced+' item ki alag choice replace hui)':'')
+             +'. Har item apne V'+(idx+1)+' vendor ke against jayega.');
+         };
+       }
      });
    }
    const sig=(rq.data.approvals&&rq.data.approvals.store)||snapshot.signatures?.store||snapshot.vendorSignature;
@@ -10547,34 +11207,58 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function saveVendorInfo(){
    const state=sarvVendorInfoState;if(!state)return showToast('Pehle Vendor Info kholo','warn');
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
-   const vendorsBody=byId('p_viVendorsBody');if(!vendorsBody)return;
+   if(!byId('p_viItemsBody'))return;
+   const rowVendors=state.rowVendors||{};
    const overlay=byId('p_syncOverlay'),msgEl=byId('p_syncMsg'),saveBtn=byId('p_viSaveBtn');
    const setMsg=t=>{if(msgEl)msgEl.textContent=t};
    if(saveBtn)saveBtn.disabled=true;
    if(overlay){setMsg('Saving vendor info...');overlay.classList.add('active');}
    try{
-     const vendors=[...vendorsBody.querySelectorAll('tr')].map(tr=>({
-       name:(tr.querySelector('.vi-vendor-name')?.value||'').trim(),
-       email:(tr.querySelector('.vi-vendor-email')?.value||'').trim(),
-       contact:(tr.querySelector('.vi-vendor-contact')?.value||'').trim(),
-       remarks:(tr.querySelector('.vi-vendor-remarks')?.value||'').trim(),
-     }));
+     // Vendors are PER ITEM now: each row's four slots live in state.rowVendors,
+     // written by the grid's pickers (which also pull email/contact from
+     // Supplier Master, so those can never drift out of step with the master
+     // the way two typed copies could).
+     //
+     // `vendors` below is the PR-level LEGACY rollup, still written so anything
+     // that has not been moved to the per-item shape keeps working: it is the
+     // distinct set of vendors actually approved across the items, padded to
+     // four. Readers that understand item.vendors ignore it.
+     const emptyV={name:'',email:'',contact:'',remarks:''};
+     const rollup=[];
+     const seenRollup=new Set();
      const canvas=byId('p_viSignCanvas');
      const sigDataUrl=canvas?canvas.toDataURL('image/png'):'';
      const storeSignature={name:sigDataUrl,time:pStamp()};
      if(byId('p_viSignTimeField'))byId('p_viSignTimeField').textContent=storeSignature.time;
      const itemRows=[...(byId('p_viItemsBody')?.querySelectorAll('tr')||[])];
-     const rateByLineId={},discByLineId={};
+     const rateByLineId={},discByLineId={},apprByLineId={},vendorsByLineId={};
      itemRows.forEach(tr=>{
        const lineId=tr.dataset.lineId;if(!lineId)return;
        const rates={},discounts={};
-       ['V1','V2','V3','V4'].forEach(v=>{
+       ['V1','V2','V3'].forEach(v=>{
          rates[v]=pNum(tr.querySelector('.vi-rate[data-vendor="'+v+'"]')?.value);
          discounts[v]=pNum(tr.querySelector('.vi-disc[data-vendor="'+v+'"]')?.value);
        });
        rateByLineId[lineId]=rates;
        discByLineId[lineId]=discounts;
+       // This row's own four quoting vendors, normalised so every slot is a
+       // full record even when empty.
+       const rowV=[0,1,2].map(i=>({...emptyV,...((rowVendors[lineId]||[])[i]||{})}));
+       vendorsByLineId[lineId]=rowV;
+       // This line's approved vendor, indexing into ITS OWN four. Emptying a
+       // slot the line still points at would leave it approved against
+       // nobody, so the choice drops back to -1 rather than dangling.
+       const sel=tr.querySelector('.vi-item-vendor');
+       let idx=sel?pNum(sel.value):-1;
+       if(idx<0||idx>3||!rowV[idx]||!rowV[idx].name)idx=-1;
+       apprByLineId[lineId]=idx;
+       if(idx>=0){
+         const key=rowV[idx].name.trim().toUpperCase();
+         if(key&&!seenRollup.has(key)){seenRollup.add(key);rollup.push({...rowV[idx]});}
+       }
      });
+     while(rollup.length<4)rollup.push({...emptyV});
+     const vendors=rollup.slice(0,4);
      // Build a fresh full snapshot (existing pdf_snapshot as base, so fields
      // the live form never persists — designation/contact/purchaser name/
      // last-date-used — survive this regenerate) with the new vendor data
@@ -10606,6 +11290,16 @@ window.addEventListener('DOMContentLoaded',()=>{
          grossWeight:(line.gross_weight!=null&&line.gross_weight!=='')?pNum(line.gross_weight):pNum((base.items||[])[li]?.grossWeight||0),
          rates:rateByLineId[line.id]||{},
          discounts:discByLineId[line.id]||{},
+         // THIS item's own four quoting vendors. V1 on one line and V1 on the
+         // next are not the same company any more, so the vendor identities
+         // have to travel with the item, next to the rates they priced.
+         vendors:vendorsByLineId[line.id]||[{...emptyV},{...emptyV},{...emptyV},{...emptyV}],
+         // This snapshot is rebuilt from scratch on every save, so anything
+         // not written here is lost. approvedVendorIndex used to be omitted,
+         // which meant re-saving vendor info silently cleared whichever
+         // vendor each line had been approved against (set here, or from the
+         // phone). It indexes into this item's OWN vendors array.
+         approvedVendorIndex:(apprByLineId[line.id]!=null)?apprByLineId[line.id]:-1,
        })),
        vendors,
        // GM/CEO -> MD -> Vendor Verified come from the approval chain
@@ -10882,6 +11576,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    resetPoBuildForm();
    const set=(id,v)=>{const e=byId(id);if(e)e.value=v??''};
    set('p_poNoField',po.po_no);set('p_poDateField',po.po_date);set('p_poDeliveryField',po.delivery_date);
+   // An edited PO is measured against its OWN date, not today's.
+   if(byId('p_poDeliveryField'))byId('p_poDeliveryField').min=po.po_date||'';
    set('p_poVendorField',po.vendor_name);set('p_poVendorMailField',po.vendor_mail);set('p_poVendorContactField',po.vendor_contact);
    set('p_poVendorAddressField',po.vendor_address);set('p_poGstPctField',po.gst_percent||0);set('p_poFreightField',po.freight||0);
    set('p_poOtherExpField',po.other_expense||0);
@@ -10902,7 +11598,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        const pend=sarvPendingRequirements.find(p=>String(p.req?.req_no||'').trim()===String(x.req_no||'').trim()&&String(p.name||'').trim().toLowerCase()===String(x.item_name||'').trim().toLowerCase());
        const reqQty=pend?pNum(pend.requested):pNum(x.ordered_qty);
        const availQty=pNum(x.ordered_qty)+(pend?pNum(pend.available):0);
-       tr.innerHTML='<td style="text-align:center;">'+(i+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req_no||'')+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.item_name||'')+'"></td><td><input class="table-input po-item-desc" value="'+pEsc(x.item_description||'')+'"></td><td><input class="table-input po-make" value="'+pEsc(x.make||'')+'"></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+reqQty+'</td><td class="po-available">'+availQty+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+availQty+'" value="'+pNum(x.ordered_qty)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.uom||'')+'"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+pNum(x.gross_weight||0)+'"></td><td><select class="table-input chip-select po-billbasis">'+basisSel+'</select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.unit_price)+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.discount_pct||0)+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="Discount was fixed during Vendor Rate approval — cannot change here"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.tax_pct||18)+'" title="GST % for this item"></td><td class="po-line-total">'+pMoney(x.line_total)+'</td>';
+       tr.innerHTML='<td style="text-align:center;">'+(i+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req_no||'')+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.item_name||'')+'"></td><td><input class="table-input po-item-desc" value="'+pEsc(x.item_description||'')+'"></td><td><input class="table-input po-make" value="'+pEsc(x.make||'')+'"></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+reqQty+'</td><td class="po-available">'+availQty+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+availQty+'" value="'+pNum(x.ordered_qty)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.uom||'')+'"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+pNum(x.gross_weight||0)+'"></td><td><select class="table-input chip-select po-billbasis">'+basisSel+'</select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.unit_price)+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.discount_pct||0)+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="Discount was fixed during Vendor Rate approval — cannot change here"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.tax_pct||SARV_DEFAULT_GST)+'" title="GST % for this item"></td><td class="po-line-total">'+pMoney(x.line_total)+'</td>';
        tb.appendChild(tr);
        const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
        tr.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',recalc));
@@ -10963,7 +11659,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    // so far. Editing an existing PO must not reset a status the approval
    // chain has already advanced past.
    const mergedApprovals={...(existing.data?.approvals||{}),store:d.signatures?.store};
-   const payload={po_no:d.poNo,po_date:d.poDate||null,vendor_name:d.vendorName||null,vendor_mail:d.vendorMail||null,vendor_address:d.vendorAddress||null,vendor_contact:d.vendorContact||null,delivery_date:d.deliveryDate||null,payment_terms:d.paymentTerms||null,location_contact:d.locationContact||null,total_items:d.items.length,total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0),subtotal:d.subtotal||0,gst_percent:d.gstPercent||0,gst_amount:d.gstAmount||0,freight:d.freight||0,other_expense:d.otherExpense||0,other_expense_label:d.otherExpenseLabel||null,grand_total:d.grandTotal||0,important_notes:d.importantNotes||null,status:existing.data?.status||'Generated',approvals:mergedApprovals,linked_req_nos:[...new Set(d.items.map(x=>x.reqNo).filter(Boolean))].join(', ')};
+   /* A Purchaser's signature carried over from the source PR goes into the
+      GM/CEO slot — see purchaserSignForReqs_(). It is only written on a NEW
+      PO and only when that slot is still empty, so it can never overwrite a
+      real GM/CEO approval already recorded by the chain.
+
+      The status then starts at "GM/CEO Approved" rather than "Generated",
+      which is exactly what puts the PO in MD's pending list on mobile.html
+      (fetchList: md -> status = 'GM/CEO Approved') and keeps it out of the
+      GM/CEO list. That is the whole point — the Purchaser already approved
+      this purchase on the PR, so the PO should not wait for a second one. */
+   const carriedPurchaser=d.signatures?.gmCeo;
+   const purchaserCarried=!!(carriedPurchaser&&String(carriedPurchaser.signedBy||'').trim()&&!mergedApprovals.gmCeo);
+   if(purchaserCarried)mergedApprovals.gmCeo={...carriedPurchaser};
+   const nextStatus=existing.data?.status||(purchaserCarried?'GM/CEO Approved':'Generated');
+   const payload={po_no:d.poNo,po_date:d.poDate||null,vendor_name:d.vendorName||null,vendor_mail:d.vendorMail||null,vendor_address:d.vendorAddress||null,vendor_contact:d.vendorContact||null,delivery_date:d.deliveryDate||null,payment_terms:d.paymentTerms||null,location_contact:d.locationContact||null,total_items:d.items.length,total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0),subtotal:d.subtotal||0,gst_percent:d.gstPercent||0,gst_amount:d.gstAmount||0,freight:d.freight||0,other_expense:d.otherExpense||0,other_expense_label:d.otherExpenseLabel||null,grand_total:d.grandTotal||0,important_notes:d.importantNotes||null,status:nextStatus,approvals:mergedApprovals,linked_req_nos:[...new Set(d.items.map(x=>x.reqNo).filter(Boolean))].join(', ')};
    // location_contact is what the PO PDF's "Contact For Location & query" box
    // prints. Persisting it is what lets mobile.html reprint that box after an
    // approval; a DB without the column just has it dropped by the retry helper
@@ -11057,7 +11767,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // the actual weight can differ from what was estimated on the PR.
    const prGw=(x.grossWeight!=null&&x.grossWeight!=='')?pNum(x.grossWeight):pNum(x.line.gross_weight||0);
    const gwAttrs=prGw>0?' style="background:#fef9c3;font-weight:700;color:#854d0e;" title="PR se auto-filled Gross Weight — change kar sakte hain"':' title="Gross weight (kg) — WEIGHT bill basis par isi se amount banega"';
-   tr.innerHTML='<td style="text-align:center;">'+(tb.children.length+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req.req_no)+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.name)+'" readonly></td><td><input class="table-input po-item-desc" value="'+pEsc(x.line.specification||x.item.description||'')+'" readonly></td><td><input class="table-input po-make" value="'+pEsc(x.item.make||'')+'" readonly></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+pNum(x.line.requested_qty)+'</td><td class="po-available">'+pNum(x.available)+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+pNum(x.available)+'" value="'+pNum(x.available)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.line.uom||x.item.uom||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+prGw+'"'+gwAttrs+'></td><td><select class="table-input chip-select po-billbasis"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.approvedRate||0)+'"'+rateAttrs+' title="'+(locked?'Approved rate — GM/CEO chosen vendor, cannot change':'')+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.approvedDiscount||0)+'"'+discAttrs+' title="'+discTitle+'"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.line.tax_pct||18)+'" title="GST % for this item"></td><td class="po-line-total">₹0.00</td>';
+   tr.innerHTML='<td style="text-align:center;">'+(tb.children.length+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req.req_no)+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.name)+'" readonly></td><td><input class="table-input po-item-desc" value="'+pEsc(x.line.specification||x.item.description||'')+'" readonly></td><td><input class="table-input po-make" value="'+pEsc(x.item.make||'')+'" readonly></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+pNum(x.line.requested_qty)+'</td><td class="po-available">'+pNum(x.available)+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+pNum(x.available)+'" value="'+pNum(x.available)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.line.uom||x.item.uom||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+prGw+'"'+gwAttrs+'></td><td><select class="table-input chip-select po-billbasis"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.approvedRate||0)+'"'+rateAttrs+' title="'+(locked?'Approved rate — GM/CEO chosen vendor, cannot change':'')+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.approvedDiscount||0)+'"'+discAttrs+' title="'+discTitle+'"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.line.tax_pct||itemGst_(x.item))+'" title="GST % Item Master se aaya hai"></td><td class="po-line-total">₹0.00</td>';
    tb.appendChild(tr);
    if(x.approvedVendor)tr.dataset.approvedVendor=JSON.stringify(x.approvedVendor);
    const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
@@ -11082,8 +11792,14 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(!vendor)vendor=v;
      vendorNames.add(String(v.name||'').trim().toUpperCase());
    }
+   /* A mixed selection is no longer an error. A PO is still raised on ONE
+      vendor, but generateCurrentPoPdf() now splits the picked rows by their
+      approved vendor and produces one PO per vendor in a single pass, so the
+      user is told what will happen rather than being sent away to do it by
+      hand. The vendor fields below show the first group; each PO is built
+      from its own group's vendor, not from what is on screen. */
    if(vendorNames.size>1){
-     showToast('⚠️ Selected items ke approved vendor alag-alag hain ('+[...vendorNames].join(' / ')+') — ek PO sirf ek vendor ka ban sakta hai. Vendor-wise alag PO banayein.','warn');
+     showToast('ℹ️ '+vendorNames.size+' alag vendor select hue ('+[...vendorNames].join(' / ')+') — Generate dabane par har vendor ka ALAG PO apne aap ban jayega.');
    }
    const lockFields=['p_poVendorField','p_poVendorMailField','p_poVendorContactField'];
    if(vendor){
@@ -11266,6 +11982,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  function resetPoBuildForm(){
    ['p_poNoField','p_poDeliveryField','p_poVendorField','p_poVendorMailField','p_poVendorContactField','p_poVendorAddressField'].forEach(id=>{const e=byId(id);if(e)e.value='';});
    if(byId('p_poDateField'))byId('p_poDateField').value=today();
+   // The picker greys out anything before the PO Date.
+   if(byId('p_poDeliveryField'))byId('p_poDeliveryField').min=today();
    if(byId('p_poLocationContactField'))byId('p_poLocationContactField').value=SARV_PO_LOCATION_CONTACT;
    if(byId('p_poGstPctField'))byId('p_poGstPctField').value='18';
    if(byId('p_poFreightField'))byId('p_poFreightField').value='0';
@@ -11280,32 +11998,158 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(window.clearPoAttachments)window.clearPoAttachments();
    const modal=byId('p_poBuildModal');if(modal)modal.classList.remove('active');
  }
+ /* Reads ONE build-table row into a PO line. Split out of
+    generateCurrentPoPdf so the rows can be grouped by vendor first and each
+    group turned into its own PO. */
+ function poRowToItem_(r){
+   const q=s=>r.querySelector(s),cells=[...r.children].map(x=>x.innerText.trim());
+   if(q('.po-item-name')){
+     const qty=pNum(q('.po-qty')?.value),price=pNum(q('.po-unitprice')?.value),disc=pNum(q('.po-discount')?.value);
+     const grossWeight=pNum(q('.po-grossweight')?.value),billBasis=q('.po-billbasis')?.value||'QTY',taxPct=pNum(q('.po-gst')?.value),netUnitPrice=price*(1-disc/100);
+     const billUnits=billBasis==='WEIGHT'?grossWeight:qty;
+     return {reqNo:q('.po-req-no')?.value||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight};
+   }
+   const vals=[...r.querySelectorAll('input,select')].map(x=>x.value);
+   return {itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8])};
+ }
+
+ /* The Purchaser's approval on the SOURCE requirement, to be reprinted in the
+    PO's GM/CEO position.
+
+    A Purchaser signs the PR at the gmCeo stage (mobile.html sets
+    signedBy/signedAs when they do). That signature is what released the PR
+    for ordering, so re-using it on the PO is the same person approving the
+    same purchase — the PO does not need a second GM/CEO pass, and goes
+    straight to MD. Only a signature that carries signedBy is taken: a PR
+    signed by the actual GM/CEO is left alone so the PO still follows the
+    normal chain. */
+ async function purchaserSignForReqs_(reqNos){
+   const wanted=[...new Set((reqNos||[]).map(x=>String(x||'').trim()).filter(Boolean))];
+   if(!wanted.length||!SB_READY)return null;
+   try{
+     const q=await SB.from('purchase_requirements').select('req_no,approvals').in('req_no',wanted);
+     if(q.error)throw q.error;
+     for(const row of (q.data||[])){
+       const g=row&&row.approvals&&row.approvals.gmCeo;
+       if(g&&String(g.name||'').trim()&&String(g.signedBy||'').trim())return {...g};
+     }
+   }catch(e){console.warn('[SARV PO] Purchaser signature lookup skipped:',e.message||e);}
+   return null;
+ }
+
+ /* Builds, persists, renders and uploads ONE purchase order for one vendor.
+    Returns {artifact, blob, html, d, record}. */
+ async function generateOnePo_(vendor,items,opts,setMsg){
+   const {poNo,carryCharges,images}=opts;
+   const d={
+     poNo,
+     poDate:pVal('p_poDateField')||today(),
+     deliveryDate:pVal('p_poDeliveryField'),
+     vendorName:vendor.name||pVal('p_poVendorField'),
+     vendorMail:vendor.email||'',
+     vendorContact:vendor.contact||'',
+     vendorAddress:vendor.address||pVal('p_poVendorAddressField'),
+     paymentTerms:pVal('p_poPaymentTermsField'),
+     locationContact:pVal('p_poLocationContactField'),
+     // Freight and Other Expense are entered once for the whole build, but
+     // they are a charge on ONE order. Putting them on every split PO would
+     // invent money that nobody agreed to, so they ride on the first PO only.
+     freight:carryCharges?pNum(pVal('p_poFreightField')):0,
+     otherExpense:carryCharges?pNum(pVal('p_poOtherExpField')):0,
+     otherExpenseLabel:carryCharges?pVal('p_poOtherLabelField'):'',
+     gstPercent:carryCharges?pNum(pVal('p_poGstPctField')):0,
+     importantNotes:pVal('p_poNotesField'),
+     items,
+     signatures:{store:{name:byId('p_poStoreSignCanvas')?.toDataURL('image/png'),time:pStamp()}}
+   };
+   // The Purchaser who released the source PR signs in the GM/CEO position,
+   // so the PO goes straight to MD (see purchaserSignForReqs_ and
+   // persistPurchaseOrder's status rule).
+   if(opts.purchaserSign)d.signatures.gmCeo={...opts.purchaserSign};
+   // GST on items is per-line (x.taxPct); d.gstPercent only covers freight + other.
+   d.subtotal=items.reduce((s,x)=>s+pNum(x.total),0);
+   d.gstAmount=items.reduce((s,x)=>s+pNum(x.total)*pNum(x.taxPct||0)/100,0)+(d.freight+d.otherExpense)*d.gstPercent/100;
+   d.grandTotal=d.subtotal+d.freight+d.otherExpense+d.gstAmount;
+
+   const record=await persistPurchaseOrder(d);
+   // GM/CEO -> MD -> Vendor Verified come from the approval chain (captured
+   // via mobile.html or desktop); the Store Incharge pad is always this
+   // session's own signature, and the Purchaser's stays whatever was just
+   // written rather than being reset by a record with no approvals yet.
+   if(record?.approvals)d.signatures={...d.signatures,...record.approvals,store:d.signatures.store};
+   const html=buildPoPdfHtml(d,images);
+   let blob;
+   try{ blob=await buildPoNativePdfBlob(d,images); }
+   catch(e){ console.warn('[SARV PDF] PO native PDF generation failed, falling back to HTML capture:',e.message||e); blob=await pdfBlobFromHtml(html,d.poNo+'_'+(d.vendorName||'Vendor')+'.pdf','portrait'); }
+   setMsg('Uploading '+d.poNo+'...');
+   const artifact=await uploadPdfArtifact(blob,'PO',d.poNo,'PO');
+   artifact.html=html;
+   await indexPdfArtifact('PO',record?.id||null,d.poNo,'PO',artifact);
+   if(record&&artifact.url)await SB.from('purchase_orders').update({pdf_url:artifact.url,updated_at:new Date().toISOString()}).eq('id',record.id);
+   return {artifact,blob,html,d,record};
+ }
+
  async function generateCurrentPoPdf(){
-   const items=pRows('#p_poBuildBody tr').map(r=>{const q=s=>r.querySelector(s),cells=[...r.children].map(x=>x.innerText.trim());if(q('.po-item-name')){const qty=pNum(q('.po-qty')?.value),price=pNum(q('.po-unitprice')?.value),disc=pNum(q('.po-discount')?.value);const grossWeight=pNum(q('.po-grossweight')?.value),billBasis=q('.po-billbasis')?.value||'QTY',taxPct=pNum(q('.po-gst')?.value),netUnitPrice=price*(1-disc/100);const billUnits=billBasis==='WEIGHT'?grossWeight:qty;return {reqNo:q('.po-req-no')?.value||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight}}const vals=[...r.querySelectorAll('input,select')].map(x=>x.value);return {itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8])}}).filter(x=>x.itemName&&x.qty);
-   if(!items.length)return showToast('Add at least one PO item before generating','warn');
+   // Rows are kept WITH their element so each can be grouped by the vendor
+   // its item was approved against — one PO per vendor, generated in one go.
+   const rows=pRows('#p_poBuildBody tr')
+     .map(r=>({el:r,item:poRowToItem_(r)}))
+     .filter(x=>x.item.itemName&&x.item.qty);
+   if(!rows.length)return showToast('Add at least one PO item before generating','warn');
+   // The Purchaser sets the Delivery Date here — there is no GM/CEO step on
+   // mobile any more to fill it in later, so the PO PDF must not go out
+   // without one. It can't be earlier than the PO's own date.
+   if(!validateRequiredFields([{id:'p_poDeliveryField',label:'Delivery Date'}]))return;
+   const poDateVal=pVal('p_poDateField')||today();
+   if(pVal('p_poDeliveryField')<poDateVal){
+     highlightRequiredField('p_poDeliveryField');byId('p_poDeliveryField')?.focus();
+     return showToast('⚠️ Delivery Date PO Date ('+fmtDate_(poDateVal)+') se pehle ki nahi ho sakti','warn');
+   }
+
+   /* Group by approved vendor. A PO is raised on ONE vendor, and a PR's items
+      can each be approved against a different one, so a mixed selection is no
+      longer an error to be corrected by hand — it simply produces one PO per
+      vendor. Rows with no approved vendor fall back to whatever is typed in
+      the vendor field, which is the manual/legacy path. */
+   const groups=new Map();
+   rows.forEach(({el,item})=>{
+     let v=null;
+     if(el.dataset.approvedVendor){try{v=JSON.parse(el.dataset.approvedVendor);}catch(e){v=null;}}
+     const name=String((v&&v.name)||pVal('p_poVendorField')||'').trim();
+     const key=name.toUpperCase()||'(UNASSIGNED)';
+     if(!groups.has(key))groups.set(key,{vendor:{name,email:(v&&v.email)||pVal('p_poVendorMailField'),contact:(v&&v.contact)||pVal('p_poVendorContactField'),address:pVal('p_poVendorAddressField')},items:[]});
+     groups.get(key).items.push(item);
+   });
+   const groupList=[...groups.values()];
+
    const overlay=byId('p_syncOverlay'),msgEl=byId('p_syncMsg'),genBtns=['p_poBuildConfirmBtn'].map(byId).filter(Boolean);
    const setMsg=t=>{if(msgEl)msgEl.textContent=t};
    genBtns.forEach(b=>b.disabled=true);
-   if(overlay){setMsg('Saving Purchase Order...');overlay.classList.add('active');}
+   if(overlay){setMsg(groupList.length>1?('Generating '+groupList.length+' POs...'):'Saving Purchase Order...');overlay.classList.add('active');}
    try{
-     const d={poNo:pVal('p_poNoField')||await nextNo('PO'),poDate:pVal('p_poDateField')||today(),deliveryDate:pVal('p_poDeliveryField'),vendorName:pVal('p_poVendorField'),vendorMail:pVal('p_poVendorMailField'),vendorContact:pVal('p_poVendorContactField'),vendorAddress:pVal('p_poVendorAddressField'),paymentTerms:pVal('p_poPaymentTermsField'),locationContact:pVal('p_poLocationContactField'),freight:pNum(pVal('p_poFreightField')),otherExpense:pNum(pVal('p_poOtherExpField')),otherExpenseLabel:pVal('p_poOtherLabelField'),gstPercent:pNum(pVal('p_poGstPctField')),grandTotal:pNum(byId('p_poGrandTotalView')?.textContent),importantNotes:pVal('p_poNotesField'),items,signatures:{store:{name:byId('p_poStoreSignCanvas')?.toDataURL('image/png'),time:pStamp()}}};
-     // GST on items is per-line (x.taxPct); d.gstPercent now only covers freight + other expense.
-     d.subtotal=items.reduce((s,x)=>s+pNum(x.total),0);
-     d.gstAmount=items.reduce((s,x)=>s+pNum(x.total)*pNum(x.taxPct||0)/100,0)+(d.freight+d.otherExpense)*d.gstPercent/100;
-     if(!d.grandTotal)d.grandTotal=d.subtotal+d.freight+d.otherExpense+d.gstAmount;
-     const poRecord=await persistPurchaseOrder(d);await loadOpenPoDropdown();
-     // GM/CEO -> MD -> Vendor Verified come from the approval chain (captured
-     // via mobile.html or desktop); the Store Incharge pad above is always
-     // this session's own signature.
-     if(poRecord?.approvals)d.signatures={...poRecord.approvals,store:d.signatures.store};
      const images=window.getPoAttachDataUrls?window.getPoAttachDataUrls():await readPdfImages('p_poAttachFileInput');
-     setMsg('Generating PO PDF...');
-     const poHtml=buildPoPdfHtml(d,images);
-     let blob;
-     try{ blob=await buildPoNativePdfBlob(d,images); }
-     catch(e){ console.warn('[SARV PDF] PO native PDF generation failed, falling back to HTML capture:',e.message||e); blob=await pdfBlobFromHtml(poHtml,d.poNo+'_'+(d.vendorName||'Vendor')+'.pdf','portrait'); }
-     setMsg('Uploading PDF...');
-     const artifact=await uploadPdfArtifact(blob,'PO',d.poNo,'PO');artifact.html=poHtml;await indexPdfArtifact('PO',poRecord?.id||null,d.poNo,'PO',artifact);if(poRecord&&artifact.url)await SB.from('purchase_orders').update({pdf_url:artifact.url,updated_at:new Date().toISOString()}).eq('id',poRecord.id);sarvPdfState.current={kind:'PO',data:d,items,images,result:{PO:artifact}};downloadBlob(blob,d.poNo+'_'+(d.vendorName||'Vendor')+'.pdf');showSarvPdfPreview(blob,d.poNo+'_'+(d.vendorName||'Vendor')+'.pdf',poHtml);await refreshGeneratedPoList();await refreshPendingRequirements();resetPoBuildForm();showToast(artifact.url?'PO PDF generated and uploaded':'PO PDF generated locally');
+     const purchaserSign=await purchaserSignForReqs_(rows.map(x=>x.item.reqNo));
+     const made=[];
+     for(let i=0;i<groupList.length;i++){
+       const g=groupList[i];
+       setMsg('Generating PO '+(i+1)+' of '+groupList.length+' — '+(g.vendor.name||'Vendor')+'...');
+       // The form's PO number is used for the first order; the rest draw their
+       // own, so a split never reuses one number across vendors.
+       const poNo=(i===0&&pVal('p_poNoField'))?pVal('p_poNoField'):await nextNo('PO');
+       made.push(await generateOnePo_(g.vendor,g.items,{poNo,carryCharges:i===0,images,purchaserSign},setMsg));
+     }
+     await loadOpenPoDropdown();
+     // Every PO is downloaded; the preview shows the first, which is the one
+     // the vendor fields on screen still describe.
+     made.forEach(m=>downloadBlob(m.blob,m.d.poNo+'_'+(m.d.vendorName||'Vendor')+'.pdf'));
+     const first=made[0];
+     sarvPdfState.current={kind:'PO',data:first.d,items:first.d.items,images,result:{PO:first.artifact}};
+     showSarvPdfPreview(first.blob,first.d.poNo+'_'+(first.d.vendorName||'Vendor')+'.pdf',first.html);
+     await refreshGeneratedPoList();await refreshPendingRequirements();resetPoBuildForm();
+     const sentToMd=purchaserSign?' MD approval ke liye bhej diya gaya.':'';
+     showToast(made.length>1
+       ? '✅ '+made.length+' PO generate hue (vendor-wise): '+made.map(m=>pEsc(m.d.poNo)+' — '+pEsc(m.d.vendorName||'Vendor')).join(', ')+'.'+sentToMd
+       : '✅ PO '+pEsc(first.d.poNo)+' generate ho gaya.'+sentToMd);
    } finally {
      if(overlay)overlay.classList.remove('active');
      genBtns.forEach(b=>b.disabled=false);
