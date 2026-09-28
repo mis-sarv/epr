@@ -682,6 +682,13 @@
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;">
             <span id="searchCount"></span>
+            <!-- Live status: says whether the list is updating itself, so nobody
+                 is left wondering whether what they are looking at is current.
+                 Tap to force a refresh now. -->
+            <span id="liveStatus" title="List apne aap update hoti hai — tap karke abhi refresh karein"
+                  style="margin-left:auto;font-size:0.68rem;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:12px;padding:2px 9px;cursor:pointer;white-space:nowrap;display:none;">
+                <span id="liveDot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;vertical-align:middle;margin-right:5px;"></span><span id="liveText">Live</span>
+            </span>
         </div>
     </div>
 
@@ -1698,7 +1705,7 @@
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('loginPin').value = '';
             try{localStorage.setItem(MOBILE_LOGIN_STORAGE_KEY, JSON.stringify({stage:myStage, vendorName:myVendorName, purchaserName:myPurchaserName}));}catch(e){}
-            renderList();
+            renderList().then(liveStart);   // list is on screen — now keep it current by itself
         }catch(e){
             if(/does not exist|relation/i.test(e.message||'')) err.textContent = '⚠️ role_pins / suppliers table missing — migration run karein';
             else err.textContent = e.message || String(e);
@@ -1735,8 +1742,159 @@
             else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
         }
     }
+    /* ══ LIVE LIST ═══════════════════════════════════════════════════
+       The list keeps itself current so nobody has to pull-to-refresh.
+
+       Two mechanisms, deliberately both:
+       • Supabase Realtime on purchase_requirements / purchase_orders — the
+         instant path. A PR approved on another phone, or a PO generated in
+         STORE.html, lands here within a second.
+       • A polling floor every LIVE_POLL_MS. Realtime only delivers for tables
+         added to the `supabase_realtime` publication in the Supabase dashboard;
+         where that was never done it silently never fires, and a list that
+         "updates itself" only sometimes is worse than one that plainly does.
+         Polling also covers a dropped socket, a sleeping phone and flaky mobile
+         data. It is cheap — two capped selects off an already-warm connection.
+
+       A refresh is SILENT: loadDashboard() into the cache, then paintList().
+       renderList() is not used because it blanks the list to "⏳ Loading..."
+       first, which would flicker the screen every few seconds.
+
+       It never runs while the user is in the middle of something — an open
+       modal (half-drawn signature, typed GST, unsaved Qty), a busy overlay, or
+       a backgrounded tab. Those cases set a pending flag and refresh the moment
+       the way is clear, so nothing is merely skipped. */
+    const LIVE_POLL_MS = 15000;
+    let livePollTimer = null, liveChannel = null;
+    let liveBusy = false, livePending = false, liveOn = false;
+
+    function liveSetStatus_(text, ok){
+        const wrap = document.getElementById('liveStatus');
+        if(!wrap) return;
+        wrap.style.display = myStage ? '' : 'none';
+        const dot = document.getElementById('liveDot'), lbl = document.getElementById('liveText');
+        if(lbl) lbl.textContent = text;
+        if(dot) dot.style.background = ok ? '#16a34a' : '#d97706';
+        wrap.style.color = ok ? '#166534' : '#92400e';
+        wrap.style.background = ok ? '#dcfce7' : '#fef3c7';
+        wrap.style.borderColor = ok ? '#86efac' : '#fcd34d';
+    }
+    // Is it safe to repaint the list right now?
+    function liveCanRefresh_(){
+        if(!myStage || !liveOn) return false;
+        if(document.hidden) return false;
+        // getComputedStyle, not style.display: both overlays start hidden from
+        // the stylesheet, where their inline style is still the empty string.
+        const shown = id => {
+            const el = document.getElementById(id);
+            return !!el && getComputedStyle(el).display !== 'none';
+        };
+        if(shown('approvalModal')) return false;   // mid-signature / unsaved edits
+        if(shown('busyOverlay')) return false;     // a save or PDF build in flight
+        return true;
+    }
+    /* A cheap fingerprint of what the list actually shows. Repainting on every
+       tick would fight the user's taps and reset their scroll for nothing, so
+       the paint only happens when this string changes. Status and the PO/PDF
+       tags are in it because those are what move a card between tabs. */
+    function liveSignature_(){
+        const part = (rows, noCol) => (rows||[]).map(r =>
+            [r[noCol], r.status, r.pdf_url, (r._poNos||[]).join('+'), r.party_sent_at,
+             r.updated_at, r.delivery_date].join('~')
+        ).join('|');
+        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no');
+    }
+    let liveLastSig = '';
+    async function liveRefresh_(force){
+        if(liveBusy){ livePending = true; return; }
+        if(!force && !liveCanRefresh_()){ livePending = true; return; }
+        if(force && !myStage) return;
+        liveBusy = true;
+        try{
+            await loadDashboard();
+            const sig = liveSignature_();
+            // Scroll is restored around the repaint: paintList() rebuilds every
+            // card, which otherwise jumps a scrolled list back to the top.
+            if(sig !== liveLastSig || force){
+                const y = window.scrollY;
+                paintList();          // also brings liveLastSig level with `dash`
+                window.scrollTo(0, y);
+            }
+            liveSetStatus_('Live', true);
+        }catch(e){
+            console.warn('[MOBILE] Live refresh failed:', e.message||e);
+            liveSetStatus_('Offline', false);
+        }finally{
+            liveBusy = false;
+            if(livePending && liveCanRefresh_()){ livePending = false; liveRefresh_(); }
+        }
+    }
+    // Realtime: any change to either table is a reason to re-read. The payload
+    // is deliberately ignored — loadDashboard() already applies this login's
+    // scope, PDF links and PO tagging, and rebuilding from it is what keeps a
+    // realtime update and a polled one identical.
+    function liveSubscribe_(){
+        // SB is a top-level const, not a window property — testing window.SB
+        // here would always be undefined and silently kill Realtime.
+        if(liveChannel || !SB || typeof SB.channel !== 'function') return;
+        try{
+            liveChannel = SB.channel('sarv-mobile-live')
+                .on('postgres_changes', {event:'*', schema:'public', table:'purchase_requirements'}, () => liveNudge_())
+                .on('postgres_changes', {event:'*', schema:'public', table:'purchase_orders'}, () => liveNudge_())
+                .subscribe();
+        }catch(e){
+            // Realtime not available — polling alone carries it.
+            console.warn('[MOBILE] Realtime subscribe skipped:', e.message||e);
+            liveChannel = null;
+        }
+    }
+    function liveUnsubscribe_(){
+        if(!liveChannel) return;
+        try{ SB.removeChannel(liveChannel); }catch(e){}
+        liveChannel = null;
+    }
+    function liveStart(){
+        liveOn = true;
+        liveLastSig = liveSignature_();
+        liveSetStatus_('Live', true);
+        liveSubscribe_();
+        if(livePollTimer) clearInterval(livePollTimer);
+        livePollTimer = setInterval(() => liveRefresh_(), LIVE_POLL_MS);
+    }
+    function liveStop(){
+        liveOn = false;
+        livePending = false;
+        if(livePollTimer){ clearInterval(livePollTimer); livePollTimer = null; }
+        // A nudge already in flight would otherwise fire after logout.
+        if(liveDebounce){ clearTimeout(liveDebounce); liveDebounce = null; }
+        liveUnsubscribe_();
+        const wrap = document.getElementById('liveStatus');
+        if(wrap) wrap.style.display = 'none';
+    }
+    /* Several triggers can land at once — approving a PR writes the PR and then
+       each of its POs, and every one of those is a realtime event. Coalesce them
+       into one read instead of hammering the database with near-identical
+       queries. 400ms is below the threshold where it reads as a delay. */
+    let liveDebounce = null;
+    function liveNudge_(){
+        if(liveDebounce) clearTimeout(liveDebounce);
+        liveDebounce = setTimeout(() => { liveDebounce = null; liveRefresh_(); }, 400);
+    }
+    // Coming back to the app is the moment the list is most likely stale —
+    // a backgrounded tab gets its timers throttled or frozen, so catch up now
+    // rather than waiting for the next tick.
+    document.addEventListener('visibilitychange', () => { if(!document.hidden) liveNudge_(); });
+    window.addEventListener('online', () => liveNudge_());
+    // Tapping the Live chip forces a refresh — the manual escape hatch, for
+    // when someone wants to be sure right now.
+    document.getElementById('liveStatus')?.addEventListener('click', () => {
+        liveSetStatus_('Refreshing…', true);
+        liveRefresh_(true);
+    });
+
     function logoutRole(){
         if(!confirm('Do you want to log out?')) return;
+        liveStop();
         myStage = null;
         myVendorName = null;
         myPurchaserName = null;
@@ -1776,7 +1934,7 @@
             document.getElementById('roleBadge').textContent =
                 (myPurchaserName ? 'Purchaser — '+myPurchaserName : STAGE_LABEL[myStage] + (myVendorName?' — '+myVendorName:'')) + ' ⏻';
             document.getElementById('loginScreen').style.display = 'none';
-            renderList();
+            renderList().then(liveStart);   // restored session: go live straight away
         }catch(e){}
     })();
 
@@ -2082,6 +2240,10 @@
         if(!listDiv) return;
         syncStageTabsUi();
         if(!myStage) return;
+        // Whatever caused this paint, the screen now matches `dash` — so the
+        // live refresh's change detector is level with it and won't repaint once
+        // more for nothing on its next tick.
+        liveLastSig = liveSignature_();
         const tab = currentStageTab, cfg = STAGE_TABS[tab], done = currentView === 'done';
         const canAct = canActIn(tab);
         currentModule = cfg.module;
@@ -3103,7 +3265,10 @@
         currentEntry = null;
         // Something was saved from the modal (e.g. Vendor Info) — reload so the
         // record moves to the tab it now belongs in.
-        if(dashDirty){ dashDirty = false; renderList(); }
+        if(dashDirty){ dashDirty = false; renderList(); return; }
+        // The modal was the only thing holding the live refresh back — anything
+        // that arrived while it was open is applied now, not at the next tick.
+        if(livePending){ livePending = false; liveRefresh_(); }
     }
 
     // ── Approve: write approvals + advance status + regenerate PDF ─
