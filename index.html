@@ -2156,6 +2156,14 @@ body {
   #sarvHomeDashboard .sarv-home-text b{display:block;font-size:13.5px;color:#0f172a;font-weight:800;}
   #sarvHomeDashboard .sarv-home-text small{display:block;font-size:11px;color:#64748b;margin-top:2px;}
   #sarvHomeDashboard .sarv-home-arrow{flex:0 0 auto;color:#94a3b8;font-size:18px;}
+  /* Inward (NB) is the non-billable receipt — painted red so it can never be
+     mistaken for the ordinary billable "Material Inward" row right above it. */
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"]{background:#dc2626;border-color:#b91c1c;box-shadow:0 4px 10px rgba(220,38,38,.28);}
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"]:hover{border-color:#fecaca;box-shadow:0 6px 16px rgba(220,38,38,.40);}
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"] .sarv-home-icon{background:rgba(255,255,255,.18);color:#fff;}
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"] .sarv-home-text b{color:#fff;}
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"] .sarv-home-text small{color:#fee2e2;}
+  #sarvHomeDashboard .sarv-home-row[data-go="IN_NB"] .sarv-home-arrow{color:#fecaca;}
   /* Hindi help for the home buttons — a hover card, and a message shown on
      click before the screen opens (see SARV_HOME_HELP). */
   #sarvHomeTip{position:fixed;z-index:40000;max-width:340px;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.28);font-size:12.5px;line-height:1.55;pointer-events:none;}
@@ -2172,6 +2180,19 @@ body {
   #sarvHomeIntro .ft{padding:10px 22px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
   #sarvHomeIntro .tap{font-size:12.5px;font-weight:800;color:#0369a1;}
   #sarvHomeIntro .skip{font-size:12px;color:#64748b;display:flex;align-items:center;gap:6px;cursor:pointer;}
+  /* Inward (NB) confirmation code — the form only opens once the exact word is
+     typed, so a non-billable receipt can never be started by a stray click. */
+  #sarvNbGate{position:fixed;inset:0;z-index:40002;background:rgba(69,10,10,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:sarvIntroIn .15s ease-out;}
+  #sarvNbGate .card{background:#fff;border-radius:16px;max-width:460px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden;}
+  #sarvNbGate .hd{background:linear-gradient(135deg,#991b1b,#dc2626);color:#fff;padding:16px 20px;font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:10px;}
+  #sarvNbGate .bd{padding:16px 20px 6px;color:#1e293b;font-size:13.5px;line-height:1.7;}
+  #sarvNbGate input{width:100%;margin-top:10px;padding:11px 13px;font-size:15px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border:2px solid #fca5a5;border-radius:10px;color:#0f172a;box-sizing:border-box;}
+  #sarvNbGate input:focus{outline:none;border-color:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,.18);}
+  #sarvNbGate .err{min-height:17px;margin-top:7px;font-size:12px;font-weight:800;color:#b91c1c;}
+  #sarvNbGate .ft{padding:4px 20px 18px;display:flex;justify-content:flex-end;gap:9px;}
+  #sarvNbGate .ft button{padding:9px 18px;border-radius:9px;border:0;font-size:13px;font-weight:800;cursor:pointer;}
+  #sarvNbGate .ft .cancel{background:#e2e8f0;color:#334155;}
+  #sarvNbGate .ft .ok{background:#dc2626;color:#fff;}
 </style>
 <div id="sarvHomeDashboard">
   <div class="sarv-home-hero" style="position:relative;">
@@ -5556,6 +5577,44 @@ async function loadOpenPoDropdown(){
   sarvSelectedPoNos=sarvSelectedPoNos.filter(no=>sarvPoCatalog.some(p=>p.po_no===no));
   renderPoNumberPanel();
 }
+/* Returns fn(poLine) -> the Item Master row behind that line, or {}.
+   Resolved by item_id first (as a string, so a uuid and a numeric id both look
+   up the same way), then by item name.
+   A plain read on `items` is used rather than a PostgREST embed, so this works
+   whether or not purchase_order_lines declares its item_id foreign key — an
+   undeclared relationship makes an embedded select fail outright and would take
+   the whole PO load down with it. Anything the read misses falls back to the
+   in-memory Item Master cache. */
+async function poLineItemResolver_(lines){
+  const byId=new Map();
+  const ids=[...new Set((lines||[]).map(l=>l&&l.item_id).filter(Boolean).map(String))];
+  if(ids.length){
+    try{
+      const q=await SB.from('items').select('*').in('id',ids);
+      if(q.error)throw q.error;
+      (q.data||[]).forEach(it=>byId.set(String(it.id),it));
+    }catch(e){console.warn('[SARV] PO line item lookup failed, using cached Item Master:',e.message||e);}
+  }
+  // The NAME fallback is not optional: every PO generated before item_id started
+  // being written carries NULL there, so an id-only resolve finds nothing for
+  // them and the row would fall back to the PO line's own stale copies — the
+  // exact wrong text this is meant to stop showing. lookupItem() is the same
+  // name resolver the entry forms use (case-insensitive, handles item_code and
+  // the "NAME [CODE]" form), and it reads sarvItemCatalog — so make sure that
+  // cache is actually loaded before leaning on it.
+  if(!(sarvItemCatalog||[]).length){
+    try{
+      const rows=await fetchAllRows('items','*','name');
+      if(rows&&rows.length)refreshItemDatalist(rows);
+    }catch(e){console.warn('[SARV] Item Master load for PO resolve failed:',e.message||e);}
+  }
+  ids.forEach(id=>{
+    if(byId.has(id))return;
+    const c=(sarvItemCatalog||[]).find(it=>String(it.id)===id);
+    if(c)byId.set(id,c);
+  });
+  return line=>byId.get(String(line&&line.item_id||''))||lookupItem(line&&line.item_name)||{};
+}
 async function loadPoIntoInward(poNo){
   const box=byId('inwardPoDetails');
   // Every ticked PO is loaded, each item row tagged with the PO it belongs to
@@ -5588,14 +5647,34 @@ async function loadPoIntoInward(poNo){
   if(q.error){showToast('PO lines load nahi ho paaye: '+q.error.message,'error');return}
   const poById={};pos.forEach(p=>{poById[p.id]=p});
   const lines=q.data||[],tb=byId('itemTableBody');if(tb)tb.innerHTML='';
+  // Item Description and Category come from the Item Master and NOWHERE else.
+  // Both boxes are disabled and read "Auto from Master", so whatever they show
+  // is taken as the master's word. The PO line's own item_description is a copy
+  // frozen when the order was raised — on existing orders it holds the PR's
+  // remark text, and `department` was never populated at all, which is why
+  // Category read "General" on every PO receipt. Falling back to either one
+  // re-displays exactly that wrong data, so there is no fallback: an item the
+  // Master cannot resolve leaves both boxes blank and is reported below, which
+  // is honest, whereas stale text silently passes itself off as master data.
+  const itemOf=await poLineItemResolver_(lines);
+  const unresolved=[];
   lines.forEach(line=>{
     addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
     const pending=Math.max(0,Number(line.ordered_qty||0)-Number(line.received_qty||0));
     tr.dataset.poLineId=line.id;tr.dataset.poOrderedQty=line.ordered_qty||0;tr.dataset.poReceivedQty=line.received_qty||0;
     tr.dataset.poNo=poById[line.purchase_order_id]?.po_no||'';
     tr.dataset.poUnitPrice=line.unit_price||0;
+    const it=itemOf(line);
+    if(!it.id)unresolved.push(line.item_name||'(no name)');
+    // Pin the row to the Item Master row this line resolved to, so the receipt
+    // posts to that same item instead of being re-resolved by name at save time
+    // (which would pick the first of any same-named duplicates — see
+    // ensureItem). rowDataInward reads this back as `itemId`. Taken from the
+    // resolved item, not line.item_id, so a legacy line that carries no item_id
+    // still gets pinned once the name resolves it.
+    if(it.id||line.item_id)tr.dataset.itemId=it.id||line.item_id;
     const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};
-    set('.item-name',line.item_name);set('.item-desc',line.item_description);set('.item-make',line.make);set('.item-cat',line.department||'General');set('.qty-field',pending);set('.item-uom',line.uom||'');set('.list-price-field',line.unit_price||0);set('.rate-field',line.unit_price||0);set('.item-gst-field',line.tax_pct||0);
+    set('.item-name',line.item_name||it.name||'');set('.item-desc',it.description||'');set('.item-make',it.make||line.make||'');set('.item-cat',it.category||'');set('.qty-field',pending);set('.item-uom',line.uom||it.uom||'');set('.list-price-field',line.unit_price||0);set('.rate-field',line.unit_price||0);set('.item-gst-field',line.tax_pct||0);
     // Weight is prefilled from the PO line's Gross Wt (kg) so a WEIGHT-billed
     // receipt totals correctly out of the box; it stays editable because the
     // actually-received weight can differ from what was ordered.
@@ -5605,6 +5684,14 @@ async function loadPoIntoInward(poNo){
   applyInwardNbGstLock();
   updateStoreTotals();
   setInwardPoLock(true);
+  // Say which items the Master could not resolve, rather than leaving someone
+  // to wonder why Description / Category came up blank. These are the rows to
+  // fix in Item Master (or whose PO line names a deleted / renamed item).
+  if(unresolved.length){
+    const names=[...new Set(unresolved)];
+    console.warn('[SARV] PO lines not found in Item Master:',names.join(', '));
+    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+  }
   if(box){
     const ordered=pos.reduce((s,p)=>s+pNum(p.total_qty),0),received=pos.reduce((s,p)=>s+pNum(p.received_qty),0);
     box.innerHTML='PO <b>'+escText(pos.map(p=>p.po_no).join(', '))+'</b> · Vendor: <b>'+escText(po.vendor_name||'-')+'</b> · Ordered: <b>'+ordered+'</b> · Already received: <b>'+received+'</b> · Enter received quantity in the item rows.';
@@ -6850,11 +6937,62 @@ function sarvHomeIntro_(key,go){
   ov.addEventListener('click',done);
   document.addEventListener('keydown',onKey,true);
 }
+/* ── Inward (NB) confirmation code ────────────────────────────────────
+   A non-billable receipt carries no bill and no GST, so it must never be
+   opened by a mis-click on the home page. The word below has to be typed out
+   in full; only then does the Inward (NB) form open. Anything else — a wrong
+   word, Cancel or Escape — leaves the user on Home. */
+const SARV_NB_GATE_CODE='WITHOUTGSTBILL';
+function sarvNbCodeGate_(go){
+  const ov=document.createElement('div');
+  ov.id='sarvNbGate';
+  ov.innerHTML='<div class="card"><div class="hd"><span>🔒</span><span>Inward (NB) — Non-Billable</span></div>'
+    // SARV_NB_GATE_CODE is never printed anywhere on this card — not as a hint,
+    // not as the placeholder, and not in the error below. A passkey shown on
+    // screen is no passkey. type="password" keeps it off the screen while it is
+    // being typed too.
+    +'<div class="bd">Passkey:'
+    +'<input type="text" autocomplete="off" spellcheck="false" placeholder="••••••••">'
+    +'<div class="err"></div></div>'
+    +'<div class="ft"><button type="button" class="cancel">Cancel</button>'
+    +'<button type="button" class="ok">Open Form</button></div></div>';
+  document.body.appendChild(ov);
+  const inp=ov.querySelector('input'), err=ov.querySelector('.err');
+  const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
+  const submit=()=>{
+    // Case and stray spaces are forgiven; the word itself is not. BOTH sides are
+    // folded, so SARV_NB_GATE_CODE can be written in any case and still match —
+    // comparing a folded input against an unfolded constant would lock the form
+    // shut for good.
+    const fold=s=>String(s||'').trim().toUpperCase().replace(/\s+/g,'');
+    if(fold(inp.value)===fold(SARV_NB_GATE_CODE)){close();go();return;}
+    err.textContent='❌ Passkey galat hai — dobara likhein';
+    inp.select();inp.focus();
+  };
+  const onKey=e=>{
+    if(e.key==='Escape'){e.preventDefault();close();}
+    else if(e.key==='Enter'){e.preventDefault();submit();}
+  };
+  ov.querySelector('.ok').addEventListener('click',submit);
+  ov.querySelector('.cancel').addEventListener('click',close);
+  // A click on the backdrop closes it too, but one inside the card must not.
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  inp.addEventListener('input',()=>{err.textContent='';});
+  document.addEventListener('keydown',onKey,true);
+  inp.focus();
+}
 document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
   const home=byId('sarvHomeDashboard');
-  home?.addEventListener('click',e=>{const b=e.target.closest('.sarv-home-row');if(b)sarvHomeIntro_(b.dataset.go,()=>sarvNavigateFromHome(b.dataset.go));});
+  home?.addEventListener('click',e=>{
+    const b=e.target.closest('.sarv-home-row');if(!b)return;
+    const go=b.dataset.go;
+    const open=()=>sarvNavigateFromHome(go);
+    // Inward (NB) asks for its confirmation word last — right before the form
+    // opens, after the Hindi details have been read.
+    sarvHomeIntro_(go,go==='IN_NB'?()=>sarvNbCodeGate_(open):open);
+  });
   home?.querySelectorAll('.sarv-home-row').forEach(b=>{
     b.addEventListener('mouseenter',()=>sarvHomeTipShow_(b));
     b.addEventListener('mouseleave',sarvHomeTipHide_);
@@ -8547,27 +8685,36 @@ let sarvEditingOutwardId=null, sarvEditingOutwardNo='';
 // PO lines the record pointed at when it was opened — kept so that a line
 // the Admin deletes during the edit still gets its PO receipt recomputed.
 let sarvEditingInwardPoLineIds=[];
+/* ── Entry Type is one-shot per session ───────────────────────────────
+   The Inward and Outward panels each serve two entry types, and mixing them up
+   after work has already been saved is how an INWARD lands in the NB series (or
+   an OUTWARD in ISSUE). So the very first successful submit pins that panel's
+   Entry Type: it stays on the type that was saved and the dropdown goes dead.
+   Switching type means going back to Home and picking that section, which sets
+   the type itself. */
+let sarvInwardTypePinned=false, sarvOutwardTypePinned=false;
+const SARV_TYPE_PINNED_MSG='Entry submit ho chuki hai — Entry Type ab change nahi hoga. Dusra type chahiye to Home par jaakar wo section chunein';
 
-function lockEntryTypeForEdit_(sel,locked){
+function lockEntryTypeForEdit_(sel,locked,why){
   if(!sel)return;
   sel.disabled=locked;
   sel.style.background=locked?'#f1f5f9':'';
   sel.style.cursor=locked?'not-allowed':'pointer';
-  sel.title=locked?'Edit mode me Entry Type change nahi ho sakta — Record No. isi series ka hai':'';
+  sel.title=locked?(why||'Edit mode me Entry Type change nahi ho sakta — Record No. isi series ka hai'):'';
 }
 function refreshStoreEditUi(){
   const inOn=!!sarvEditingInwardId, outOn=!!sarvEditingOutwardId;
   const ib=byId('inwEditBanner');     if(ib)ib.style.display=inOn?'flex':'none';
   const ibn=byId('inwEditBannerNo');  if(ibn)ibn.textContent=sarvEditingInwardNo||'';
   const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('💾 Update '+(sarvEditingInwardNo||'Inward')):'Submit Inward';
-  lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn);
+  lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn||sarvInwardTypePinned,inOn?'':SARV_TYPE_PINNED_MSG);
   const ob=byId('outEditBanner');     if(ob)ob.style.display=outOn?'flex':'none';
   const obn=byId('outEditBannerNo');  if(obn)obn.textContent=sarvEditingOutwardNo||'';
   // Submit label carries the entry-type wording too, so an ISSUE reads
   // "Submit Issue". Both concerns land on the same element, so they are
   // resolved in one place rather than overwriting each other.
   const osb=byId('outSubmitBtn');     if(osb)osb.textContent=outOn?('💾 Update '+(sarvEditingOutwardNo||'Outward')):('Submit '+outwardWord_());
-  lockEntryTypeForEdit_(byId('outEntryTypeSelect'),outOn);
+  lockEntryTypeForEdit_(byId('outEntryTypeSelect'),outOn||sarvOutwardTypePinned,outOn?'':SARV_TYPE_PINNED_MSG);
 }
 
 /* ── ISSUE vs OUTWARD wording ─────────────────────────────────────
@@ -8661,6 +8808,10 @@ async function loadInwardForEdit(id,no){
     if(line.po_line_id)tr.dataset.poLineId=line.po_line_id;
     if(poNos.length===1)tr.dataset.poNo=poNos[0];
     if(line.repair_outward_no)tr.dataset.repairOutNo=line.repair_outward_no;
+    // Keep the line bound to the exact Item Master row it was saved against.
+    // Without this the update re-resolves by name through ensureItem and can
+    // rebind the line to a different item that happens to share the name.
+    if(line.item_id)tr.dataset.itemId=line.item_id;
     const it=line.items||{};
     const sr=(s,v)=>{const el=tr.querySelector(s);if(el)el.value=v??''};
     sr('.item-name',it.name||'');
@@ -8742,6 +8893,9 @@ async function loadOutwardForEdit(id,no){
   lines.forEach(line=>{
     addOutwardItemRow();
     const tr=tb&&tb.lastElementChild;if(!tr)return;
+    // Same as the Inward side — pin the row to the saved item so an update
+    // cannot rebind it to a same-named duplicate.
+    if(line.item_id)tr.dataset.itemId=line.item_id;
     const it=line.items||{};
     const sr=(s,v)=>{const el=tr.querySelector(s);if(el)el.value=v??''};
     sr('.out-item-name',it.name||'');
@@ -10862,6 +11016,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Repair-Return inward — refresh the Repair Items Tracker so the
      // received/balance figures for the matching outward update immediately.
      if(pVal('inwNatureOfInward')==='Repaired')loadRepairTracker().catch(()=>{});
+     // One entry is saved, so this panel's Entry Type is settled for good —
+     // pinned BEFORE the clear so the cleared form keeps the saved type.
+     sarvInwardTypePinned=true;
      // ── Clear form after save ──────────────────────────────────
      clearInwardForm();
      return h.data;
@@ -11019,6 +11176,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      // entry (and its sent/balance figures) show up immediately, not only
      // after manually opening that tab and clicking Refresh.
      if(pVal('outNatureOfDispatch')==='Repair')loadRepairTracker().catch(()=>{});
+     // Entry Type is settled for this panel now — pinned before the clear so
+     // the cleared form stays on the type that was just saved.
+     sarvOutwardTypePinned=true;
      // ── Clear form after save ──────────────────────────────────
      clearOutwardForm();
      return h.data;
@@ -11168,7 +11328,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    // .value='' doesn't reliably clear a multi-select — deselect explicitly.
    setSelectedPoNos([]);togglePoNumberPanel(false);
    const rd=byId('receivingDate');if(rd)rd.value=today();
-   const et=byId('entryTypeSelect');if(et){et.value='INWARD';byId('inwardPanel')?.classList.remove('theme-nb','theme-issue');}
+   // Entry Type goes back to INWARD on a clear — unless the panel's type is
+   // pinned by an earlier submit, in which case the saved type stays put
+   // (theme, GST lock and Record No. series all follow it).
+   const et=byId('entryTypeSelect');
+   if(et){
+     if(!sarvInwardTypePinned)et.value='INWARD';
+     byId('inwardPanel')?.classList.remove('theme-nb','theme-issue');
+     if(et.value==='INWARD NB')byId('inwardPanel')?.classList.add('theme-nb');
+   }
    const nat=byId('inwNatureOfInward');
    if(nat){nat.value='Purchase';nat.dispatchEvent(new Event('change'));}
    const gp=byId('gatePassNo');if(gp){gp.readOnly=false;gp.style.background='';gp.title='';}
@@ -11184,7 +11352,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    // The !sarvEditingInwardId guard matters: loading a record for edit clears
    // the form first and then writes the record's own number into the box. This
    // lookup resolves later, and without the guard it would overwrite it.
-   if(SB_READY){nextNo('INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
+   // Record No. comes from the series the (possibly pinned) Entry Type belongs
+   // to — an INWARD NB form must not be handed an INWARD number.
+   if(SB_READY){nextNo((byId('entryTypeSelect')?.value||'')==='INWARD NB'?'NB':'INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
  }
  function clearOutwardForm(forEdit){
    sarvEditingOutwardId=null;sarvEditingOutwardNo='';
@@ -11193,16 +11363,22 @@ window.addEventListener('DOMContentLoaded',()=>{
     'outTransport','outRemarks','outReceiverEmpCode','outDesignation','outDepartment'].forEach(id=>{const e=byId(id);if(e)e.value='';});
    sarvLastOutPartyCity='';   // fields are blank again, so nothing is "auto-filled"
    const od=byId('outDate');if(od)od.value=today();
-   const et=byId('outEntryTypeSelect');if(et){et.value='OUTWARD';byId('outwardPanel')?.classList.remove('theme-nb','theme-issue');}
-   // Entry Type just went back to OUTWARD, so the wording has to follow —
-   // otherwise a cleared form would keep saying ISSUE.
+   // Same rule as the Inward side — a pinned type survives the clear.
+   const et=byId('outEntryTypeSelect');
+   if(et){
+     if(!sarvOutwardTypePinned)et.value='OUTWARD';
+     byId('outwardPanel')?.classList.remove('theme-nb','theme-issue');
+     if(et.value==='ISSUE')byId('outwardPanel')?.classList.add('theme-issue');
+   }
+   // Whatever Entry Type the cleared form ended up on, the on-screen wording
+   // has to follow it — otherwise the form reads as the wrong document.
    applyOutwardWording();
    const tb=byId('outwardItemTableBody');if(tb){tb.innerHTML='';addOutwardItemRow();}
    if(window.clearPhotos)window.clearPhotos('outward');
    updateOutTotals();
    window.sarvOutwardDrafts?.reset(forEdit!==true);
    // Guarded for the same reason as the Inward side — see clearInwardForm.
-   if(SB_READY){nextNo('OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e&&!sarvEditingOutwardId)e.value=no;}).catch(()=>{});refreshSerialNo('OUTWARD').catch(()=>{});}
+   if(SB_READY){nextNo((byId('outEntryTypeSelect')?.value||'')==='ISSUE'?'ISSUE':'OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e&&!sarvEditingOutwardId)e.value=no;}).catch(()=>{});refreshSerialNo('OUTWARD').catch(()=>{});}
  }
  function clearPrForm(){
    ['p_requiredByDate','p_reqPersonName','p_reqEmpCode','p_reqDesignation','p_reqDepartment','p_reqContact','p_reqGeneratedBy','p_overallRemarks'].forEach(id=>{const e=byId(id);if(e)e.value='';});
@@ -11304,7 +11480,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      // fetchAllRows pages past the 1000-row cap — otherwise items beyond
      // #1000 resolve to {} here and show blank Make/Category in the PR
      // and Build-PO tables.
-     fetchAllRows('items','id,name,description,make,category').then(data=>({data})).catch(error=>({data:[],error})),
+     // '*' rather than a column list: Build PO reads uom and gst_pct off these
+     // rows too (appendPoBuildRow — "UOM Item Master se locked hai" and
+     // itemGst_), and naming gst_pct explicitly would make PostgREST reject the
+     // whole query on a database that predates that column. With a short list
+     // both silently fell back — every PO line got the default GST instead of
+     // the item's own rate.
+     fetchAllRows('items','*').then(data=>({data})).catch(error=>({data:[],error})),
      SB.from('purchase_order_lines').select('req_no,item_id,item_name,ordered_qty,purchase_order_id')
    ]);
    if(rq.error||lq.error){console.warn('[SARV] Pending PR list unavailable:',rq.error?.message||lq.error?.message);return}
@@ -11897,7 +12079,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      // against. Without it, re-saving an edited PR would re-resolve by name and
      // could bind the line to a different item that happens to share the name.
      if(line.item_id)tr.dataset.itemId=line.item_id;
-     const setRow=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};setRow('.col-name',line.item_name);setRow('.col-desc',line.specification||line.item?.description||'');setRow('.col-make',line.item?.make||'');setRow('.col-cat',line.item?.category||'General');setRow('.col-machine',line.machine||'');setRow('.col-qty',line.requested_qty);setRow('.col-uom',line.uom||'Pcs');setRow('.col-grossweight',pNum(line.grossWeight)||'');setRow('.col-rem',line.specification||'')});
+     // Item Description is the Item Master's own description; Item Remarks is
+     // what the requester typed, and that is what `specification` holds. Falling
+     // back to specification for .col-desc put the remark in BOTH columns, so a
+     // reopened PR showed the remark as the item's description and reprinted it
+     // that way.
+     const setRow=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};setRow('.col-name',line.item_name);setRow('.col-desc',line.item?.description||'');setRow('.col-make',line.item?.make||'');setRow('.col-cat',line.item?.category||'General');setRow('.col-machine',line.machine||'');setRow('.col-qty',line.requested_qty);setRow('.col-uom',line.uom||'Pcs');setRow('.col-grossweight',pNum(line.grossWeight)||'');setRow('.col-rem',line.specification||'')});
    refreshPurchaseTotals();const btn=byId('p_submitBtn');if(btn)btn.textContent='💾 Update Requirement';showToast('PR '+req.req_no+' edit ke liye open hai');
  }
  // Plain wa.me links can only pre-fill text — WhatsApp's click-to-chat API
@@ -12152,6 +12339,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        const availQty=pNum(x.ordered_qty)+(pend?pNum(pend.available):0);
        tr.innerHTML='<td style="text-align:center;">'+(i+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req_no||'')+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.item_name||'')+'"></td><td><input class="table-input po-item-desc" value="'+pEsc(x.item_description||'')+'"></td><td><input class="table-input po-make" value="'+pEsc(x.make||'')+'"></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+reqQty+'</td><td class="po-available">'+availQty+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+availQty+'" value="'+pNum(x.ordered_qty)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.uom||'')+'"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+pNum(x.gross_weight||0)+'"></td><td><select class="table-input chip-select po-billbasis">'+basisSel+'</select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.unit_price)+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.discount_pct||0)+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="Discount was fixed during Vendor Rate approval — cannot change here"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.tax_pct||SARV_DEFAULT_GST)+'" title="GST % for this item"></td><td class="po-line-total">'+pMoney(x.line_total)+'</td>';
        tb.appendChild(tr);
+       // Generate PO deletes and re-inserts every line, so anything not carried
+       // on the row is lost on an edit. item_id and department have no visible
+       // column — they travel on the dataset, same as in appendPoBuildRow.
+       // A line saved before item_id was written falls back to the Item Master
+       // row its name resolves to, so editing an old PO repairs the link.
+       tr.dataset.itemId=x.item_id||lookupItem(x.item_name)?.id||'';
+       tr.dataset.department=x.department||'';
        const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
        tr.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',recalc));
        tr.querySelector('.po-billbasis')?.addEventListener('change',recalc);
@@ -12321,6 +12515,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    const gwAttrs=prGw>0?' style="background:#fef9c3;font-weight:700;color:#854d0e;" title="PR se auto-filled Gross Weight — change kar sakte hain"':' title="Gross weight (kg) — WEIGHT bill basis par isi se amount banega"';
    tr.innerHTML='<td style="text-align:center;">'+(tb.children.length+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req.req_no)+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.name)+'" readonly></td><td><input class="table-input po-item-desc" value="'+pEsc(x.line.specification||x.item.description||'')+'" readonly></td><td><input class="table-input po-make" value="'+pEsc(x.item.make||'')+'" readonly></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+pNum(x.line.requested_qty)+'</td><td class="po-available">'+pNum(x.available)+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+pNum(x.available)+'" value="'+pNum(x.available)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.line.uom||x.item.uom||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+prGw+'"'+gwAttrs+'></td><td><select class="table-input chip-select po-billbasis"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.approvedRate||0)+'"'+rateAttrs+' title="'+(locked?'Approved rate — GM/CEO chosen vendor, cannot change':'')+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.approvedDiscount||0)+'"'+discAttrs+' title="'+discTitle+'"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.line.tax_pct||itemGst_(x.item))+'" title="GST % Item Master se aaya hai"></td><td class="po-line-total">₹0.00</td>';
    tb.appendChild(tr);
+   // The Item Master row and the requesting department ride along on the build
+   // row so poRowToItem_ can put them on the saved PO line. Without item_id the
+   // PO line has no link back to `items` at all — which is what left every
+   // Store-generated PO with a NULL item_id, and Inward with nothing to read
+   // Description / Category against (see loadPoIntoInward).
+   tr.dataset.itemId=x.line.item_id||x.item.id||'';
+   tr.dataset.department=x.req.department||'';
    if(x.approvedVendor)tr.dataset.approvedVendor=JSON.stringify(x.approvedVendor);
    const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
    tr.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',recalc));
@@ -12562,10 +12763,14 @@ window.addEventListener('DOMContentLoaded',()=>{
      const qty=pNum(q('.po-qty')?.value),price=pNum(q('.po-unitprice')?.value),disc=pNum(q('.po-discount')?.value);
      const grossWeight=pNum(q('.po-grossweight')?.value),billBasis=q('.po-billbasis')?.value||'QTY',taxPct=pNum(q('.po-gst')?.value),netUnitPrice=price*(1-disc/100);
      const billUnits=billBasis==='WEIGHT'?grossWeight:qty;
-     return {reqNo:q('.po-req-no')?.value||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight};
+     // itemId / department are not columns in the build table — they are carried
+     // on the row's dataset (appendPoBuildRow, openPoEditor) precisely so they
+     // reach the saved PO line. persistPurchaseOrder reads them as item_id and
+     // department.
+     return {reqNo:q('.po-req-no')?.value||'',itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight};
    }
    const vals=[...r.querySelectorAll('input,select')].map(x=>x.value);
-   return {itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8])};
+   return {itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8])};
  }
 
  /* The Purchaser's approval on the SOURCE requirement, to be reprinted in the
