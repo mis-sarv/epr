@@ -5366,8 +5366,10 @@ function applyItemAutofill(nameVal,tr,prefix,lockName=false){
     // GST now comes off the Item Master rather than being picked per line —
     // the rate belongs to the part, so the row follows whatever the master
     // says for it. ensureSelectOption_ covers a rate not in the fixed list.
+    // INWARD NB is the exception: its GST stays pinned at 0 (applyInwardNbGstLock).
     const ge=g('.item-gst-field');
-    if(ge){const gv=String(itemGst_(item));
+    const isNb=(byId('entryTypeSelect')?.value||'')==='INWARD NB';
+    if(ge&&!isNb){const gv=String(itemGst_(item));
       if(![...ge.options].some(o=>o.value===gv))ge.add(new Option(gv,gv));
       ge.value=gv;}
     updateStoreTotals();
@@ -5600,6 +5602,7 @@ async function loadPoIntoInward(poNo){
     if(line.gross_weight!=null&&line.gross_weight!=='')set('.weight-field',pNum(line.gross_weight));
     appendPoInfoRow(tr,tb);
   });
+  applyInwardNbGstLock();
   updateStoreTotals();
   setInwardPoLock(true);
   if(box){
