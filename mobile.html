@@ -441,6 +441,22 @@
         /* Selected Vendor scrolls with the quote groups — deliberately NOT
            sticky. Tinted so it still reads as the decision column. */
         .item-table.vi-grid .vi-sel { background: #fffbeb; }
+        /* Qty / Gross Weight — the requirement figures the Purchaser may
+           correct while quoting. Green so they read as editable requirement
+           data, distinct from the vendors' quoted numbers alongside. */
+        .item-table.vi-grid .vi-qtyh { background: #d1fae5; color: #065f46; }
+        .item-table.vi-grid .vi-qtyc { background: #f0fdf9; }
+        .item-table.vi-grid .vi-qty,
+        .item-table.vi-grid .vi-weight {
+            width: 100%;
+            font-size: 0.72rem;
+            padding: 4px;
+            border: 1px solid #6ee7b7;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #fff;
+            text-align: right;
+        }
         .item-table.vi-grid .vi-corner {
             text-align: right;
             color: #6b7280;
@@ -721,6 +737,8 @@
                             <th id="disc-col-header" style="display:none;">Disc%</th>
                             <th id="vendor-col-header" style="display:none;">Vendor</th>
                             <th id="gst-col-header" style="display:none;" title="GST % for this item on the PO — editable while generating the PO">GST%</th>
+                            <th id="basis-col-header" style="display:none;" title="Amount kis par bane — Qty par ya Gross Weight par">Bill On</th>
+                            <th id="amt-col-header" style="display:none;" title="Net rate (rate − disc%) × Qty ya Weight — yahi PO line ka amount hai">Amount</th>
                         </tr>
                     </thead>
                     <tbody id="modal-item-tbody">
@@ -2293,15 +2311,19 @@
         // Column widths have to be declared, not inferred: the frozen Item and
         // Selected-Vendor columns' sticky left offsets are hard 0 / 118px
         // against hard widths, and table-layout:fixed keeps the two agreeing.
+        // Qty and Wt (kg) sit right after the frozen Item column. Only .vi-c1 is
+        // actually sticky (left:0), so inserting here shifts no sticky offset.
         document.getElementById('viRateCols').innerHTML =
-            '<col style="width:118px;"><col style="width:104px;">' +
+            '<col style="width:118px;"><col style="width:62px;"><col style="width:70px;"><col style="width:104px;">' +
             VI_SLOTS.map(()=>'<col style="width:126px;"><col style="width:68px;"><col style="width:49px;">').join('');
 
         // Header row 1 — the V1..V3 group bands. The vendor PICKERS are no
         // longer here: each item row carries its own four, because V1 on one
         // line and V1 on the next are different companies now.
         document.getElementById('viVendorHead').innerHTML =
-            '<th class="vi-c1 vi-corner">Quotes &rarr;</th><th class="vi-sel">&nbsp;</th>' +
+            '<th class="vi-c1 vi-corner">Quotes &rarr;</th>' +
+            '<th class="vi-qtyh" colspan="2" style="text-align:center;">Requirement</th>' +
+            '<th class="vi-sel">&nbsp;</th>' +
             VI_SLOTS.map((v,i)=>
                 `<th class="vi-band${i%2?' alt':''}" colspan="3">${escText(v)}</th>`
             ).join('');
@@ -2309,6 +2331,8 @@
         // Header row 2 — Vendor / Rate / % within each band.
         document.getElementById('viRateHead').innerHTML =
             '<th class="vi-c1">Item</th>' +
+            '<th class="vi-qtyh" style="text-align:center;" title="Requirement Qty — Purchaser ise theek kar sakta hai. Save karne par PR line par hi update hoti hai">Qty</th>' +
+            '<th class="vi-qtyh" style="text-align:center;" title="Gross Weight (kg) — WEIGHT bill basis par PO ka amount isi se banega">Wt kg</th>' +
             '<th class="vi-sel" style="text-align:center;" title="Is item ka PO isi vendor ke against banega. Pehle item par chunne se wahi sabhi items par lag jayega">Selected</th>' +
             VI_SLOTS.map((v,i)=>{
                 const alt = i%2 ? ' class="vi-g-alt"' : '';
@@ -2322,8 +2346,18 @@
             const rates = (snapItems[i] && snapItems[i].rates) || {};
             const discs = (snapItems[i] && snapItems[i].discounts) || {};
             const name = line.item_name || (line.items && line.items.name) || 'Item';
-            const qtyLine = pNumM(line.requested_qty) + ' ' + (line.uom||(line.items&&line.items.uom)||'');
-            return `<tr data-row="${i}"><td class="vi-c1" style="font-size:0.7rem;line-height:1.25;" title="${escText(name)} — ${escText(qtyLine)}"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#222;">${escText(name)}</span><span style="color:#6b7280;">${escText(qtyLine)}</span></td>` +
+            const uom = line.uom || (line.items && line.items.uom) || '';
+            // Qty now has its own editable box, so the item cell's sub-line
+            // carries the UOM — that is the unit the box has no room to label.
+            const qtyLine = pNumM(line.requested_qty) + ' ' + uom;
+            // Gross Weight on a PR raised before the line column existed lives
+            // only in the snapshot — same fallback fetchItems() uses.
+            const wt = (line.gross_weight!=null && line.gross_weight!=='')
+                ? pNumM(line.gross_weight)
+                : pNumM((snapItems[i]||{}).grossWeight);
+            return `<tr data-row="${i}"><td class="vi-c1" style="font-size:0.7rem;line-height:1.25;" title="${escText(name)} — ${escText(qtyLine)}"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#222;">${escText(name)}</span><span style="color:#6b7280;">${escText(uom||'-')}</span></td>` +
+                `<td class="vi-qtyc"><input type="number" class="vi-qty" data-row="${i}" min="0" step="any" inputmode="decimal" value="${pNumM(line.requested_qty)}"></td>` +
+                `<td class="vi-qtyc"><input type="number" class="vi-weight" data-row="${i}" min="0" step="any" inputmode="decimal" value="${wt}"></td>` +
                 `<td class="vi-sel"><select class="vi-item-vendor" data-row="${i}"></select></td>` +
                 VI_SLOTS.map((v,gi)=>{
                     const alt = gi%2 ? ' vi-g-alt' : '';
@@ -2533,6 +2567,27 @@
         }
 
         const rowEls = [...document.querySelectorAll('#viRateBody tr')];
+        // Qty / Gross Weight the Purchaser corrected on the grid.
+        const qtyByRow = rowEls.map(tr => pNumM(tr.querySelector('.vi-qty')?.value));
+        const wtByRow  = rowEls.map(tr => pNumM(tr.querySelector('.vi-weight')?.value));
+        // A zero or negative Qty is not an order — it is a line that should have
+        // been removed from the PR. Every offending box is marked and the first
+        // one brought into view, same treatment a missing Rate gets below.
+        rowEls.forEach(tr => tr.querySelectorAll('.vi-qty, .vi-weight').forEach(inp => { inp.style.borderColor = ''; inp.style.background = ''; }));
+        const badQty = [];
+        let firstBadQty = null;
+        rowEls.forEach((tr,i) => {
+            const nameOf = () => viLines[i] ? (viLines[i].item_name || (viLines[i].items && viLines[i].items.name) || ('Item ' + (i+1))) : ('Item ' + (i+1));
+            const mark = sel => { const inp = tr.querySelector(sel); if(inp){ inp.style.borderColor = '#dc2626'; inp.style.background = '#fef2f2'; firstBadQty = firstBadQty || inp; } };
+            if(!(qtyByRow[i] > 0)){ mark('.vi-qty'); badQty.push(nameOf() + ' — Qty'); }
+            if(wtByRow[i] < 0){ mark('.vi-weight'); badQty.push(nameOf() + ' — Weight'); }
+        });
+        if(badQty.length){
+            show('Qty 0 se zyada aur Weight 0 ya usse zyada honi chahiye:\n• ' + badQty.join('\n• '));
+            err.style.whiteSpace = 'pre-line';
+            if(firstBadQty){ firstBadQty.scrollIntoView({block:'nearest', inline:'center'}); firstBadQty.focus(); }
+            return;
+        }
         const ratesByRow = rowEls.map(tr=>{
             const rates = {}, discounts = {};
             VI_SLOTS.forEach(v=>{
@@ -2622,6 +2677,29 @@
                 show('Is PR par vendor info pehle se save hai — ise sirf STORE.html se badla ja sakta hai.');
                 return;
             }
+            /* The corrected Qty / Gross Weight go on the requirement LINE, not
+               just into the snapshot. Everything downstream reads the line:
+               STORE.html's Build PO takes requested_qty as the orderable
+               figure, autoGeneratePosFromPr prices against gross_weight, and
+               the pending-PR list computes what is still un-ordered from it. A
+               snapshot-only write would leave all three on the old numbers
+               while the PDF showed the new ones.
+               Only changed rows are written, and gross_weight is dropped if
+               this database does not have that column yet. */
+            for(let i = 0; i < viLines.length; i++){
+                const line = viLines[i];
+                if(!line || !line.id) continue;
+                const q = qtyByRow[i], w = wtByRow[i];
+                if(pNumM(line.requested_qty) === q && pNumM(line.gross_weight) === w) continue;
+                const lu = await sbSaveDroppingMissingColumns_(
+                    {requested_qty: q, gross_weight: w},
+                    p => SB.from('purchase_requirement_lines').update(p).eq('id', line.id),
+                    ['requested_qty']
+                );
+                if(lu.error) throw lu.error;
+                line.requested_qty = q;
+                line.gross_weight = w;
+            }
             const d = {
                 ...base,
                 reqNo: req.req_no,
@@ -2678,6 +2756,12 @@
             // they read from have to move to the just-saved figures too.
             currentItemRates = d.items.map(it => it.rates || {});
             currentItemDiscs = d.items.map(it => it.discounts || {});
+            // The PO Generate tab prices against viDisplayItems, which
+            // fetchItems() built when the modal opened. Move it to the figures
+            // just saved, or that tab would keep billing the old Qty / Weight
+            // until the PR is closed and reopened.
+            viDisplayItems = viDisplayItems.map((it,i) =>
+                (i < viLines.length) ? {...it, qty: qtyByRow[i], weight: wtByRow[i]} : it);
             // itemVendorIndex is NOT reset here. The grid now carries a
             // per-item vendor picker, so a purchaser can assign vendors in the
             // same pass as the rates; blanking it on save would throw that
@@ -2721,12 +2805,27 @@
         const gstEdit = gstEditMode();
         const gstHeader = document.getElementById('gst-col-header');
         if(gstHeader) gstHeader.style.display = gstEdit ? '' : 'none';
+        // Bill On / Amount appear in the same step as GST% — they are the other
+        // half of the same decision, so they share gstEditMode()'s gate.
+        const basisHeader = document.getElementById('basis-col-header');
+        if(basisHeader) basisHeader.style.display = gstEdit ? '' : 'none';
+        const amtHeader = document.getElementById('amt-col-header');
+        if(amtHeader) amtHeader.style.display = gstEdit ? '' : 'none';
         const tbody = document.getElementById('modal-item-tbody');
         // Typed GST values live in prItemGst, so the many re-renders of this
         // table (vendor picks, saves) never lose them.
         tbody.oninput = e => {
             const inp = e.target.closest && e.target.closest('.po-gst-input');
             if(inp) prItemGst[+inp.dataset.row] = inp.value;
+        };
+        // Bill On is a <select>, so it reports on change, not input. Only the
+        // amount cells are rewritten — a full re-render would blow away a GST%
+        // box mid-edit.
+        tbody.onchange = e => {
+            const sel = e.target.closest && e.target.closest('.po-basis-input');
+            if(!sel) return;
+            prItemBasis[+sel.dataset.row] = sel.value;
+            refreshPoAmountCells_();
         };
         tbody.innerHTML = items.map((item,i) => {
             const rowVendorIdx = perItem
@@ -2762,15 +2861,48 @@
                 ${discCell}
                 ${vendorCell}
                 ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal" value="${escText(prItemGst[i] ?? '')}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;"></td>` : ''}
+                ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
+                ${gstEdit ? `<td class="po-amt-cell" data-row="${i}" style="text-align:right;font-weight:800;color:#166534;white-space:nowrap;">${escText(nNum_(poRowAmount_(i)))}</td>` : ''}
             </tr>`;
-        }).join('') || `<tr><td colspan="12" style="text-align:center;color:#999;">No items</td></tr>`;
+        }).join('') || `<tr><td colspan="13" style="text-align:center;color:#999;">No items</td></tr>`;
     }
     /* GST% per PO line. Pre-filled from the PR line (tax_pct) or the Item
        Master (gst_pct), editable by the Purchaser in the PO Generate step, and
        used as each line's GST when the PO is generated. */
     let prItemGst = [];
+    /* Bill Basis per PO line — 'QTY' or 'WEIGHT'. Decides which column the
+       line's amount is priced on, exactly as STORE.html's Build PO does it.
+       Set by the Purchaser in the PO Generate step and passed to
+       autoGeneratePosFromPr as opts.basisByRow. */
+    let prItemBasis = [];
     function gstEditMode(){
         return prApprovalMakesPo() && !modalViewOnly && modalTab === 'POGEN';
+    }
+    /* ── PO Generate amount: net rate × billed units ──────────────────
+       Net rate is the approved vendor's quote minus that vendor's own discount;
+       billed units are Qty or Gross Weight, whichever Bill On says. This is the
+       same arithmetic autoGeneratePosFromPr writes as the line's line_total, so
+       the figure the Purchaser signs off is the figure the PO carries. A row
+       with no approved vendor prices at 0 — there is no rate to bill on yet. */
+    function poRowNetRate_(i){
+        const idx = itemVendorIndex[i];
+        if(idx == null || idx < 0) return 0;
+        const r = pNum((currentItemRates[i] || {})['V' + (idx + 1)]);
+        const d = pNum((currentItemDiscs[i] || {})['V' + (idx + 1)]);
+        return r * (1 - d / 100);
+    }
+    function poRowUnits_(i){
+        const it = viDisplayItems[i] || {};
+        return (prItemBasis[i] === 'WEIGHT') ? pNum(it.weight) : pNum(it.qty);
+    }
+    function poRowAmount_(i){
+        return Math.round(poRowNetRate_(i) * poRowUnits_(i) * 100) / 100;
+    }
+    // Rewrites just the Amount cells, leaving every input in the row alone.
+    function refreshPoAmountCells_(){
+        document.querySelectorAll('#modal-item-tbody .po-amt-cell').forEach(td=>{
+            td.textContent = nNum_(poRowAmount_(+td.dataset.row));
+        });
     }
     async function prLineGstDefaults_(lines){
         const gstById = {};
@@ -2839,7 +2971,7 @@
         const prLevelApprovedIdx = (snapshot.approvedVendorIndex != null) ? snapshot.approvedVendorIndex : -1;
 
         const tbody = document.getElementById('modal-item-tbody');
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;">Loading items...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#999;">Loading items...</td></tr>';
         const items = await fetchItems(entry);
         viDisplayItems = items;
         // pdf_snapshot.items is always rebuilt from these same DB lines in
@@ -2881,6 +3013,13 @@
             showRateColumn = true;
             // PO Generate: pre-fill each item's editable GST% (viLines is loaded now).
             prItemGst = gstEditMode() ? await prLineGstDefaults_(viLines) : [];
+            // Bill On defaults to QTY, which is how every PO was priced before
+            // this existed — so an untouched PO Generate produces exactly the
+            // same figures it did before. WEIGHT is opt-in per line.
+            prItemBasis = gstEditMode() ? viLines.map(l => {
+                const b = String((l && l.bill_basis) || '').toUpperCase();
+                return b === 'WEIGHT' ? 'WEIGHT' : 'QTY';
+            }) : [];
             // In the Vendor Info tab filling the grid IS the task, so it opens expanded.
             if(modalTab === 'VI'){
                 if(viBody) viBody.style.display = 'block';
@@ -3111,8 +3250,10 @@
         return res;
     }
     /* opts (from the PO Generate step): gstByRow — the Purchaser's GST% per
-       PR line (falls back to PR line / Item Master GST); freight, other,
-       chargesGst — PO charges and the GST % they carry. */
+       PR line (falls back to PR line / Item Master GST); basisByRow — 'QTY' or
+       'WEIGHT' per line, which decides whether the amount is priced on Qty or
+       on Gross Weight (defaults to QTY, the only behaviour there used to be);
+       freight, other, chargesGst — PO charges and the GST % they carry. */
     async function autoGeneratePosFromPr(req, snap, deliveryDate, purchaserSig, opts = {}){
         const lq = await SB.from('purchase_requirement_lines').select('*').eq('requirement_id', req.id).order('id');
         if(lq.error) throw lq.error;
@@ -3175,16 +3316,30 @@
                     address: String(sup.city || '').trim(),
                 }, items: []});
             }
+            // Gross Weight on the PR covers the FULL requested qty, so a partial
+            // order carries only its share — billing the whole weight on each of
+            // two split POs would charge for it twice.
+            const gwFull = (line.gross_weight != null && line.gross_weight !== '') ? pNum(line.gross_weight) : pNum(it.grossWeight);
+            const reqQty = pNum(line.requested_qty);
+            const gw = (reqQty > 0 && available < reqQty)
+                ? Math.round(gwFull * available / reqQty * 1000) / 1000
+                : gwFull;
+            /* Bill Basis: the Purchaser's per-line choice of what the amount is
+               priced on. A WEIGHT line with no weight falls back to QTY rather
+               than going out at zero — approveRecord blocks that case up front,
+               but this is the last gate before a PO is written. */
+            const basis = (String((opts.basisByRow || [])[i] || '').toUpperCase() === 'WEIGHT' && gw > 0) ? 'WEIGHT' : 'QTY';
+            const billUnits = (basis === 'WEIGHT') ? gw : available;
             groups.get(key).items.push({
                 reqNo: req.req_no, itemId: line.item_id || null,
                 itemName: name, itemDesc: it.desc || '', make: it.make || '',
                 qty: available, uom: it.uom || '',
                 unitPrice: rate, discountPercent: disc, netUnitPrice: net,
-                billBasis: 'QTY',
+                billBasis: basis,
                 taxPct: (opts.gstByRow && opts.gstByRow[i] != null && String(opts.gstByRow[i]).trim() !== '' && !isNaN(Number(opts.gstByRow[i])))
                     ? Number(opts.gstByRow[i]) : gstOf(line),
-                total: Math.round(available * net * 100) / 100,
-                grossWeight: (line.gross_weight != null && line.gross_weight !== '') ? pNum(line.gross_weight) : pNum(it.grossWeight),
+                total: Math.round(billUnits * net * 100) / 100,
+                grossWeight: gw,
             });
         });
 
@@ -3223,7 +3378,12 @@
             const ins = await sbSaveDroppingMissingColumns_(payload, p => SB.from('purchase_orders').insert(p).select().single(), ['po_no']);
             if(ins.error) throw ins.error;
             const row = ins.data;
-            const poLines = d.items.map((x,i) => ({purchase_order_id:row.id, line_no:i+1, req_no:x.reqNo, item_id:x.itemId, item_name:x.itemName||'Item', item_description:x.itemDesc||null, make:x.make||null, department:null, ordered_qty:pNum(x.qty), received_qty:0, uom:x.uom||null, unit_price:pNum(x.unitPrice), discount_pct:pNum(x.discountPercent), tax_pct:pNum(x.taxPct), line_total:pNum(x.total), gross_weight:x.grossWeight||null, bill_basis:'QTY'}));
+            // bill_basis MUST carry the line's own basis, not a hardcoded 'QTY':
+            // the amount was priced on it, and every later reader — the PDF
+            // rebuilt from the DB, STORE.html's PO editor and its Inward receipt
+            // — takes this column as the word on how the line is billed. Saving
+            // QTY on a WEIGHT-priced line makes line_total unexplainable.
+            const poLines = d.items.map((x,i) => ({purchase_order_id:row.id, line_no:i+1, req_no:x.reqNo, item_id:x.itemId, item_name:x.itemName||'Item', item_description:x.itemDesc||null, make:x.make||null, department:req.department||null, ordered_qty:pNum(x.qty), received_qty:0, uom:x.uom||null, unit_price:pNum(x.unitPrice), discount_pct:pNum(x.discountPercent), tax_pct:pNum(x.taxPct), line_total:pNum(x.total), gross_weight:x.grossWeight||null, bill_basis:x.billBasis||'QTY'}));
             const li = await sbSaveDroppingMissingColumns_(poLines, rows => SB.from('purchase_order_lines').insert(rows), ['purchase_order_id','item_name','ordered_qty']);
             if(li.error){
                 // A PO header with no lines would reach MD empty — take it back out.
@@ -3632,11 +3792,21 @@
                 return v == null || String(v).trim() === '' || isNaN(n) || n < 0 || n > 100;
             }).map(it => it.name);
             if(badGst.length){ alert('GST% 0 se 100 ke beech bharein:\n• ' + badGst.join('\n• ')); return; }
+            // A WEIGHT-billed line prices on Gross Weight, so one with no weight
+            // would go out at zero amount. Caught here, where both the weight
+            // (Vendor Rate & Info) and the Bill On switch are one tap away.
+            const noWeight = viDisplayItems
+                .filter((it,i) => prItemBasis[i] === 'WEIGHT' && !(pNum(it.weight) > 0))
+                .map(it => it.name);
+            if(noWeight.length){
+                alert('Ye items WEIGHT par bill ho rahe hain lekin Gross Weight 0 hai — "Vendor Rate & Info" me Wt kg bharein, ya Bill On ko QTY karein:\n• ' + noWeight.join('\n• '));
+                return;
+            }
             const numOf = id => { const v = String(document.getElementById(id).value||'').trim(); return v === '' ? 0 : Number(v); };
             const freight = numOf('poFreightInput'), other = numOf('poOtherExpInput'), chargesGst = numOf('poChargesGstInput');
             if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. 0 ya usse zyada hona chahiye.'); return; }
             if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
-            poOpts = {gstByRow: prItemGst.slice(), freight, other, chargesGst};
+            poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(), freight, other, chargesGst};
         }
         const remarks = document.getElementById('remarksInput').value;
         const sig = { name: canvas.toDataURL('image/png'), time: pStamp(), remarks };
