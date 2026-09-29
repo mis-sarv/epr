@@ -490,6 +490,50 @@ body {
             height: 26px;
         }
 
+        /* Per-row actions: ＋ adds a line right under this one, ✕ removes it. */
+        /* "Add New Item" under the Item Name header — opens the master-item
+           popup, as opposed to the section button that adds a table row. */
+        #storeInterface .th-new-item-btn {
+            margin-top: 3px;
+            color: #fff;
+            background: #0284c7;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 9px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        #storeInterface .th-new-item-btn:hover {
+            background: #0369a1;
+        }
+
+        #storeInterface .row-actions {
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        #storeInterface .add-row-btn {
+            color: #fff;
+            background: #16a34a;
+            border: none;
+            border-radius: 4px;
+            width: 18px;
+            height: 18px;
+            line-height: 1;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            margin-right: 6px;
+            padding: 0;
+        }
+
+        #storeInterface .add-row-btn:hover {
+            background: #15803d;
+        }
+
         #storeInterface .delete-btn {
             color: #ef4444;
             cursor: pointer;
@@ -2430,7 +2474,7 @@ body {
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 12%;">Item Name <span style="color:#dc2626;">★</span></th>
+                                <th style="width: 12%;">Item Name <span style="color:#dc2626;">★</span><br><button type="button" class="th-new-item-btn" onclick="openNewItemMasterModal('inward')" title="Naya item Item Master me add karein — list me turant aa jayega">+ Add New Item</button></th>
                                 <th style="width: 16%;">Item Description</th>
                                 <th style="width: 9%;">MAKE</th>
                                 <th style="width: 8%;">Category</th>
@@ -2577,7 +2621,7 @@ body {
                         <thead>
                             <tr>
                                 <th style="width: 4%; text-align: center;">Sr.</th>
-                                <th style="width: 13%;">Item Name <span style="color:#dc2626;">★</span></th>
+                                <th style="width: 13%;">Item Name <span style="color:#dc2626;">★</span><br><button type="button" class="th-new-item-btn" onclick="openNewItemMasterModal('outward')" title="Naya item Item Master me add karein — list me turant aa jayega">+ Add New Item</button></th>
                                 <th style="width: 17%;">Item Description</th>
                                 <th style="width: 9%;">MAKE</th>
                                 <th style="width: 9%;">Category</th>
@@ -5679,6 +5723,9 @@ async function loadPoIntoInward(poNo){
     // receipt totals correctly out of the box; it stays editable because the
     // actually-received weight can differ from what was ordered.
     if(line.gross_weight!=null&&line.gross_weight!=='')set('.weight-field',pNum(line.gross_weight));
+    // Bill Basis follows the PO line as well: a WEIGHT-billed order arriving
+    // as a QTY receipt would re-cost itself the moment it was received.
+    if(line.bill_basis)set('.bill-basis-field',line.bill_basis);
     appendPoInfoRow(tr,tb);
   });
   applyInwardNbGstLock();
@@ -6317,7 +6364,10 @@ function bindNavigation(){
   if(initial){document.querySelectorAll('#fullPurchasePanel .tab-content').forEach(x=>x.style.display='none');initial.style.display='block';initial.classList.add('active')}
   const cs=byId('connectionStatus')||byId('syncStatus'); if(cs)cs.textContent=SB_READY?'Supabase online':'Supabase setup required';
 }
-function addNewRow(){
+/* afterTr — the row whose ＋ button was pressed. The new line then lands
+   directly under it (and under its PO strip, when there is one) instead of at
+   the end of the table; every other caller passes nothing and still appends. */
+function addNewRow(afterTr){
  const tb=byId('itemTableBody');if(!tb)return;const tr=document.createElement('tr');tr.innerHTML=`
  <td><input type="text" class="table-input item-name" placeholder="Type item name..." list="dl-item-name" autocomplete="off"></td>
  <td><input type="text" class="table-input item-desc" placeholder="Auto from Master" disabled></td>
@@ -6332,9 +6382,12 @@ function addNewRow(){
  <td><input type="number" class="table-input discount-field" value="0" min="0" max="100" step=".01"></td>
  <td><input type="number" class="table-input rate-field" value="0" disabled></td>
  <td><select class="table-input chip-select item-gst-field"><option>5</option><option>12</option><option>18</option><option>28</option><option>0</option></select></td>
- <td class="row-total-cell">₹0.00</td><td><button class="delete-btn">✕</button></td>`;
- tb.appendChild(tr);
+ <td class="row-total-cell">₹0.00</td><td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-btn" title="Ye row hatayein">✕</button></td>`;
+ let anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
+ if(anchor){const nx=anchor.nextElementSibling;if(nx&&nx.classList.contains('po-info-row'))anchor=nx;}
+ if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
  tr.querySelector('.delete-btn').onclick=()=>{tr.remove();updateStoreTotals()};
+ tr.querySelector('.add-row-btn').onclick=()=>{const nr=addNewRow(tr);nr?.querySelector('.item-name')?.focus();};
  tr.querySelectorAll('input,select').forEach(x=>x.oninput=()=>updateStoreTotals());
  // Auto-fill from Item Master when item name is selected
  const niName=tr.querySelector('.item-name');
@@ -6350,15 +6403,19 @@ function addNewRow(){
  // A fresh row defaults to 5% GST — pin it back to 0 if this is an INWARD NB.
  applyInwardNbGstLock();
  updateStoreTotals();
+ return tr;
 }
-function addOutwardItemRow(){
+function addOutwardItemRow(afterTr){
  const tb=byId('outwardItemTableBody');if(!tb)return;const tr=document.createElement('tr');tr.innerHTML=`
  <td class="out-sr-no">—</td><td><input class="table-input out-item-name" placeholder="Type item name..." list="dl-out-item-name"></td>
  <td><input class="table-input out-item-desc" placeholder="Auto from Master" disabled></td><td><input class="table-input out-item-make" placeholder="Brand / OEM"></td>
  <td><input class="table-input out-item-cat" placeholder="Auto from Master" disabled></td><td><input class="table-input out-machine-name" placeholder="Select machine..." title="Machine Master list se select karein — Machine No. apne-aap bhar jayega"></td><td><input class="table-input out-machine-no" placeholder="No." title="Machine Master list se select karein"></td>
- <td><input type="number" class="table-input out-qty" value="0" min="0" step=".01"></td><td><input class="table-input out-qty-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input out-weight" value="0" min="0" step=".001"></td><td><select class="table-input out-wunit"><option>KGS</option><option>GMS</option><option>LBS</option></select></td><td><button class="delete-btn">✕</button></td>`;
- tb.appendChild(tr);
+ <td><input type="number" class="table-input out-qty" value="0" min="0" step=".01"></td><td><input class="table-input out-qty-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input out-weight" value="0" min="0" step=".001"></td><td><select class="table-input out-wunit"><option>KGS</option><option>GMS</option><option>LBS</option></select></td><td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-btn" title="Ye row hatayein">✕</button></td>`;
+ let anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
+ if(anchor){const nx=anchor.nextElementSibling;if(nx&&nx.classList.contains('po-info-row'))anchor=nx;}
+ if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
  tr.querySelector('.delete-btn').onclick=()=>{tr.remove();updateOutTotals()};
+ tr.querySelector('.add-row-btn').onclick=()=>{const nr=addOutwardItemRow(tr);nr?.querySelector('.out-item-name')?.focus();};
  tr.querySelectorAll('input').forEach(x=>x.oninput=updateOutTotals);
  // Auto-fill from Item Master when out item name is selected
  const oiName=tr.querySelector('.out-item-name');
@@ -6370,6 +6427,7 @@ function addOutwardItemRow(){
  // Machine Name + No. — Machine Master list only; a pick fills both.
  attachMachinePair_(tr,'.out-machine-name','.out-machine-no');
  updateOutTotals();
+ return tr;
 }
 /* Serial No. (Auto) — the running count of entries of this kind, i.e. the
    number THIS entry will be once saved. Distinct from the Inward/Outward No.,
@@ -7243,18 +7301,200 @@ const SARV_DEFAULT_GST=18;
    on a database that predates it, the write is retried once without the field
    and the user is told what to run. Same spirit as the pdf_snapshot handling
    on purchase_requirements. Returns {error, droppedGst}. */
+let sarvGstColumnWarned=false;
+/* Shown once per session, with the exact migration, instead of the same vague
+   line on every single item save. */
+function warnGstColumnMissing_(){
+  if(sarvGstColumnWarned)return;
+  sarvGstColumnWarned=true;
+  showToast('⚠️ GST% save nahi hua — items table me <b>gst_pct</b> column hi nahi hai.<br>'
+    +'Supabase → SQL Editor me ek baar ye chalayein:<br>'
+    +"<code>alter table items add column gst_pct numeric default 5;</code><br>"
+    +"<code>notify pgrst, 'reload schema';</code><br>"
+    +'Uske baad item dobara save karein — GST tab se save hone lagega.','warn');
+}
 async function saveItemRow_(payload,editingId){
   const run=p=>editingId
     ? SB.from('items').update(p).eq('id',editingId)
     : SB.from('items').insert(p);
+  const missingGst=e=>!!e&&/gst_pct/i.test(e.message||'')&&/column|does not exist|schema cache/i.test(e.message||'');
   let r=await run(payload);
-  if(r.error&&/gst_pct/i.test(r.error.message||'')&&/column|does not exist|schema cache/i.test(r.error.message||'')){
+  /* PostgREST reports a column it has not re-read yet exactly like a column
+     that does not exist, so one error covers both "gst_pct is missing" and
+     "gst_pct was just added and the schema cache is stale". The stale cache is
+     by far the common case and a single retry clears it, so the GST really
+     does get saved instead of being dropped on the spot. */
+  if(missingGst(r.error)){
+    await new Promise(res=>setTimeout(res,700));
+    r=await run(payload);
+  }
+  if(missingGst(r.error)){
     const {gst_pct,...without}=payload;
     r=await run(without);
     return {error:r.error,droppedGst:!r.error};
   }
   return {error:r.error,droppedGst:false};
 }
+/* ── "Add New Item" popup (Item Configurations) ───────────────────
+   The Item Name column only offers what the Item Master already holds, so a
+   part that wasn't there yet meant leaving the half-typed entry, opening Item
+   Master, adding it, and coming back. This popup writes the same items row —
+   through saveItemRow_, so the gst_pct retry/fallback applies here too —
+   refreshes the shared datalists and drops the new name straight into the
+   entry that asked for it. */
+let sarvNewItemTarget='inward';
+function openNewItemMasterModal(target){
+  sarvNewItemTarget=(target==='outward')?'outward':'inward';
+  let ov=byId('sarvNewItemModal');
+  if(!ov){
+    const FLD='class="form-control" style="height:30px;font-size:12px;"';
+    const lbl=t=>'<label style="display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:2px;">'+t+'</label>';
+    // One cell of the form grid. span=2 makes it run the full width.
+    const cell=(t,inner,span)=>'<div'+(span===2?' style="grid-column:1 / -1;"':'')+'>'+lbl(t)+inner+'</div>';
+    const txt=(id,ph,extra)=>'<input type="text" id="'+id+'" placeholder="'+ph+'" '+(extra||'')+' '+FLD+'>';
+    const num=(id,ph,step)=>'<input type="number" id="'+id+'" placeholder="'+ph+'" min="0" step="'+step+'" '+FLD+'>';
+    const sel=id=>'<select id="'+id+'" '+FLD+'></select>';
+    ov=document.createElement('div');
+    ov.id='sarvNewItemModal';
+    ov.className='secure-modal-overlay';
+    ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:31000;';
+    /* Laid out the way the Item Master form reads: identity first (name,
+       description), then classification (category, make), then how it is
+       counted (UOM, MSV), then how it is priced (GST, rate). */
+    ov.innerHTML='<div class="secure-modal-box" style="max-width:520px;width:94vw;">'
+      +'<h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">&#10133; Add New Item</h3>'
+      +'<p style="margin:0 0 14px;font-size:11px;color:#64748b;">Item Master me save hoga aur Item Name list me turant dikhne lagega.</p>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;">'
+        +cell('Item Name <span style="color:#dc2626;">&#9733;</span>',
+              txt('ni_name','Type karein — saved items suggest honge','list="dl-ni-item-name" autocomplete="off"')
+              +'<datalist id="dl-ni-item-name"></datalist>'
+              +'<div id="ni_nameHint" style="min-height:13px;margin-top:3px;font-size:10px;font-weight:700;"></div>',2)
+        +cell('Item Description',txt('ni_desc','Type karein — saved descriptions suggest honge','list="dl-ni-item-desc" autocomplete="off"')+'<datalist id="dl-ni-item-desc"></datalist>',2)
+        +cell('Category',sel('ni_cat'))
+        +cell('Make / Brand',txt('ni_make','optional'))
+        +cell('UOM',sel('ni_uom'))
+        +cell('Minimum Stock Qty (MSV)',num('ni_msv','optional','any'))
+        +cell('GST %',sel('ni_gst'))
+        +cell('Rate (&#8377;)',num('ni_rate','0','.01'))
+      +'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'
+      +'<button type="button" id="ni_cancel" class="btn" style="background:#e2e8f0;color:#0f172a;">Cancel</button>'
+      +'<button type="button" id="ni_save" class="btn btn-primary">&#128190; Save Item</button>'
+      +'</div></div>';
+    // Mounted inside #storeInterface rather than on <body>: .secure-modal-box,
+    // .btn and .form-control are all scoped to that panel, so a body-level
+    // popup would come out unstyled.
+    (byId('storeInterface')||document.body).appendChild(ov);
+    byId('ni_cancel').onclick=closeNewItemMasterModal;
+    byId('ni_save').onclick=saveNewItemFromModal_;
+    ov.addEventListener('click',e=>{if(e.target===ov)closeNewItemMasterModal();});
+    const nameBox=byId('ni_name');
+    nameBox.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveNewItemFromModal_();}});
+    // The suggestion list is there to stop a second copy of an item being
+    // created, so the moment what is typed matches one, say so — the save
+    // refuses it anyway, and this says why before the button is pressed.
+    nameBox.addEventListener('input',refreshNewItemNameHint_);
+  }
+  // The dropdown under Item Name is the live Item Master list, so a part that
+  // already exists is offered rather than entered a second time.
+  const dl=byId('dl-ni-item-name');
+  if(dl)dl.innerHTML=(sarvItemCatalog||[]).map(it=>
+    '<option value="'+escText(String(it.name||''))+'">'+escText([it.make,it.category].filter(Boolean).join(' — '))+'</option>').join('');
+  /* Item Description draws on what is already in the master too, so the same
+     spec is worded the same way every time instead of ten near-copies. One
+     entry per distinct description, labelled with the item it came from. */
+  const dd=byId('dl-ni-item-desc');
+  if(dd){
+    const seen=new Set(), opts=[];
+    (sarvItemCatalog||[]).forEach(it=>{
+      const d=String(it.description||'').trim(); if(!d) return;
+      const key=d.toUpperCase(); if(seen.has(key)) return;
+      seen.add(key);
+      opts.push('<option value="'+escText(d)+'">'+escText(String(it.name||''))+'</option>');
+    });
+    dd.innerHTML=opts.join('');
+  }
+  // Category / UOM / GST choices are mirrored off the Item Master form, so both
+  // screens always offer exactly the same lists without a second copy to keep.
+  const mirror=(from,to,fallback)=>{const s=byId(from),d=byId(to);if(d)d.innerHTML=s?s.innerHTML:fallback;};
+  mirror('mi_category','ni_cat','<option value="">— Select —</option>');
+  mirror('mi_uom','ni_uom','<option>PCS</option>');
+  mirror('mi_gst','ni_gst','<option>5</option><option>12</option><option>18</option><option>28</option><option>0</option>');
+  ['ni_name','ni_desc','ni_make','ni_msv'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+  if(byId('ni_rate'))byId('ni_rate').value='0';
+  if(byId('ni_cat'))byId('ni_cat').value='';
+  if(byId('ni_gst'))byId('ni_gst').value=String(SARV_DEFAULT_GST);
+  refreshNewItemNameHint_();
+  ov.style.display='flex';
+  setTimeout(()=>byId('ni_name')?.focus(),60);
+}
+function newItemDuplicate_(name){
+  const key=String(name||'').trim().toUpperCase();
+  if(!key)return null;
+  return (sarvItemCatalog||[]).find(it=>String(it.name||'').trim().toUpperCase()===key)||null;
+}
+function refreshNewItemNameHint_(){
+  const hint=byId('ni_nameHint');if(!hint)return;
+  const dup=newItemDuplicate_(byId('ni_name')?.value);
+  hint.style.color='#b45309';
+  hint.textContent=dup?('⚠️ Ye item pehle se master me hai ('+(dup.item_code||dup.uom||'')+') — list me se select karein'):'';
+}
+function closeNewItemMasterModal(){const ov=byId('sarvNewItemModal');if(ov)ov.style.display='none';}
+async function saveNewItemFromModal_(){
+  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+  const name=(byId('ni_name')?.value||'').trim().toUpperCase();
+  if(!name){showToast('❌ Item Name required!','error');byId('ni_name')?.focus();return;}
+  // Same rule the Item Master screen applies: one name, one master row.
+  if(newItemDuplicate_(name))
+    return showToast('⚠️ "'+name+'" pehle se Item Master me hai — list me se select karein','warn');
+  const btn=byId('ni_save');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Saving…';}
+  try{
+    const payload={
+      name,
+      description:(byId('ni_desc')?.value||'').trim()||null,
+      category:byId('ni_cat')?.value||null,
+      make:(byId('ni_make')?.value||'').trim()||null,
+      // Minimum Stock Qty (MSV) rides in sub_category, exactly as the Item
+      // Master form stores it — a column of its own would need a migration
+      // and would orphan everything already saved there.
+      sub_category:(byId('ni_msv')?.value||'').trim()||null,
+      uom:(byId('ni_uom')?.value||'PCS').trim()||'PCS',
+      rate:Number(byId('ni_rate')?.value||0),
+      gst_pct:Number(byId('ni_gst')?.value||SARV_DEFAULT_GST)
+    };
+    const code=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
+    const {error,droppedGst}=await saveItemRow_({item_code:code,...payload},null);
+    if(error)throw error;
+    if(droppedGst)warnGstColumnMissing_();
+    // The shared catalog is refreshed first so the new name already resolves
+    // when it lands in the row below; the heavier Item Master reload follows.
+    const q=await SB.from('items').select('*').order('name');
+    if(!q.error&&q.data)refreshItemDatalist(q.data);
+    closeNewItemMasterModal();
+    fillNewItemIntoEntryRow_(name);
+    showToast('✅ "'+name+'" Item Master me add ho gaya');
+    if(typeof loadItemMaster==='function')loadItemMaster().catch(()=>{});
+  }catch(e){dbError(e);}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='&#128190; Save Item';}}
+}
+/* Drops the new name into the first empty Item Name box of the entry that
+   asked for it, adding a row when every one is filled, and runs the normal
+   autofill so Description / Category / UOM / GST arrive with it. */
+function fillNewItemIntoEntryRow_(name){
+  const isOut=(sarvNewItemTarget==='outward');
+  const tb=byId(isOut?'outwardItemTableBody':'itemTableBody');
+  const sel=isOut?'.out-item-name':'.item-name';
+  if(!tb)return;
+  let box=[...tb.querySelectorAll(sel)].find(el=>!String(el.value||'').trim());
+  if(!box){const tr=isOut?addOutwardItemRow():addNewRow();box=tr&&tr.querySelector(sel);}
+  if(!box)return;
+  box.value=name;
+  applyItemAutofill(name,box.closest('tr'),isOut?'outward':'inward',true);
+  box.focus();
+  if(isOut)updateOutTotals();else updateStoreTotals();
+}
+window.openNewItemMasterModal=openNewItemMasterModal;
 function itemGst_(it){
   const raw=it&&it.gst_pct;
   if(raw==null||String(raw).trim()==='')return SARV_DEFAULT_GST;
@@ -7660,7 +7900,7 @@ window.addMasterItem=async function(){
       // this item is known by and does not follow a rename.
       const {error,droppedGst}=await saveItemRow_(payload,editingId);
       if(error)throw error;
-      if(droppedGst)showToast('⚠️ GST save nahi hua — items table me gst_pct column nahi hai. Baaki sab save ho gaya.','warn');
+      if(droppedGst)warnGstColumnMissing_();
       const renamed=!!oldName&&oldName.trim().toUpperCase()!==name;
       // IN / OUT / PR lines point at item_id and read the name back through a
       // join, so they already show the new name — nothing to copy there. Only
@@ -7688,7 +7928,7 @@ window.addMasterItem=async function(){
     }else{
       const newCode=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
       const {error,droppedGst}=await saveItemRow_({item_code:newCode,...payload},null);
-      if(droppedGst)showToast('⚠️ GST save nahi hua — items table me gst_pct column nahi hai. Baaki sab save ho gaya.','warn');
+      if(droppedGst)warnGstColumnMissing_();
       if(error)throw error;
       showToast(`✅ "${name}" added to Item Master!`);
       cancelItemEdit();   // same field reset the add path always did
@@ -8830,11 +9070,12 @@ async function loadInwardForEdit(id,no){
     sr('.list-price-field',pNum(line.rate));
     sr('.discount-field',0);
     sr('.rate-field',pNum(line.rate));
-    // Bill Basis isn't stored, so it is inferred from whichever of qty / weight
+    // Bill Basis is stored per line now. A record saved before that column
+    // existed has none, so it is still inferred from whichever of qty / weight
     // reproduces the saved line total — that keeps the amounts identical.
     const rate=pNum(line.rate),tot=pNum(line.line_total);
     const byQty=Math.abs(rate*pNum(line.qty)-tot), byWt=Math.abs(rate*pNum(line.weight)-tot);
-    sr('.bill-basis-field',(pNum(line.weight)>0&&byWt<byQty)?'WEIGHT':'QTY');
+    sr('.bill-basis-field',line.bill_basis||((pNum(line.weight)>0&&byWt<byQty)?'WEIGHT':'QTY'));
   });
   if(!lines.length)addNewRow();
   // Freight and Round off live on the header (freight_exp / round_off). They
@@ -9263,6 +9504,29 @@ window.addEventListener('DOMContentLoaded',()=>{
     the plain 2dp pMoney/nNum_ so they read exactly as the entry form shows
     them. */
  const pMoneyX = v => '₹' + pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:4});
+ /* PO ke against Inward: the entry form shows a strip under every item line
+    (PO No. + Order / Pending / Received / Excess Qty), and it now prints as a
+    sub-row under the same item so the copy in hand says what the screen said.
+    Pending is what was still due BEFORE this receipt; Excess is how far this
+    receipt takes the line past the order. Returns '' for a non-PO row, which
+    simply prints no sub-row. */
+ function poStripParts_(it){
+   if(!it||!it.poNo)return null;
+   const ordered=pNum(it.poOrderedQty), already=pNum(it.poReceivedQty);
+   // An Admin edit reopens the record with the PO number but not the PO's
+   // ordered/received figures (loadInwardForEdit restores po_line_id only), so
+   // the form shows no strip there — and neither should the print, rather than
+   // a row of zeroes.
+   if(ordered<=0)return null;
+   return {poNo:String(it.poNo),ordered,already,
+     pending:Math.max(0,ordered-already),
+     excess:Math.max(0,(already+pNum(it.qty))-ordered)};
+ }
+ function poStripText_(it){
+   const p=poStripParts_(it);if(!p)return '';
+   return 'PO: '+p.poNo+'   |   Order Qty: '+p.ordered+'   |   Pending Qty: '+p.pending
+     +'   |   Received Qty: '+p.already+'   |   Excess Qty: '+p.excess;
+ }
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
    if(!v)return '';
@@ -9454,6 +9718,18 @@ window.addEventListener('DOMContentLoaded',()=>{
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
+       // PO ke against: item ke theek neeche wahi strip jo entry form dikhata hai.
+       const poStrip=poStripParts_(it);
+       if(poStrip){
+         const chip=(lbl,val,color)=>'<span style="margin-right:12px;white-space:nowrap;">'+lbl+': <b style="color:'+color+';">'+val+'</b></span>';
+         itemRows+='<tr style="background:#f8fafc;"><td colspan="7" style="padding:2px 6px;font-size:8px;color:#334155;">'
+           +'<b style="color:#1d4ed8;margin-right:12px;">PO: '+pEsc(poStrip.poNo)+'</b>'
+           +chip('Order Qty',poStrip.ordered,'#0f172a')
+           +chip('Pending Qty',poStrip.pending,poStrip.pending>0?'#b45309':'#16a34a')
+           +chip('Received Qty',poStrip.already,'#0f766e')
+           +chip('Excess Qty',poStrip.excess,poStrip.excess>0?'#dc2626':'#64748b')
+           +'</td></tr>';
+       }
      });
      itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+(inTotWeight%1===0?inTotWeight:+inTotWeight.toFixed(4))+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
    }
@@ -9657,10 +9933,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    let head,body,foot;
    if(!isOut){
      head=[['Material Configuration / Specs','Qty','Weight','List Price','Disc%','Rate','Total']];
-     body=items.map(it=>{
+     body=[];
+     items.forEach(it=>{
        const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
-       return [spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)];
+       body.push([spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
+       // PO ke against: item ke theek neeche uski PO strip, poori width me.
+       const poStrip=poStripText_(it);
+       if(poStrip)body.push([{content:poStrip,colSpan:7,
+         styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],textColor:[30,64,175],cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
      foot=[['TOTAL — '+items.length+' item(s)',String(totQty),String(totWt),'','','',nNumX_(totAmt)]];
@@ -10773,7 +11054,76 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(overlay)overlay.style.display='none';
     if(sarvPdfPreviewUrl){URL.revokeObjectURL(sarvPdfPreviewUrl);sarvPdfPreviewUrl='';}
   }
-  function showSarvPdfPreview(blob,filename='Generated PDF',previewHtml=''){
+  /* ── Store In/Out: send first, print after ───────────────────────
+     A saved entry has to reach the party on WhatsApp before anyone can print
+     it, so no copy leaves the store that the office was never sent. The flag
+     is keyed by document number and kept in localStorage: no schema change is
+     needed and a reload still remembers what has already gone out. */
+  const STORE_SENT_KEY='sarvStoreEntrySent';
+  function storeSentSet_(){try{const raw=localStorage.getItem(STORE_SENT_KEY);return new Set(raw?JSON.parse(raw):[])}catch(e){return new Set()}}
+  function isStoreEntrySent_(no){return !!no&&storeSentSet_().has(no)}
+  function markStoreEntrySent_(no){
+    if(!no)return;
+    try{const s=storeSentSet_();s.add(no);localStorage.setItem(STORE_SENT_KEY,JSON.stringify([...s]))}catch(e){}
+  }
+  // What the preview modal is showing right now, for its Send / Print buttons.
+  let sarvPdfShareCtx=null;
+  function applyStorePrintGate_(){
+    const wa=byId('sarvPdfWaBtn'),pr=byId('sarvPdfPrintBtn');
+    if(!wa||!pr)return;
+    const ctx=sarvPdfShareCtx;
+    // PR / PO / ledger previews pass no context and keep the old
+    // download-only header.
+    if(!ctx){wa.style.display='none';pr.style.display='none';return;}
+    wa.style.display='';pr.style.display='';
+    const sent=isStoreEntrySent_(ctx.docNo);
+    wa.innerHTML=sent?'&#128242; Dobara Bhejein':'&#128242; Send via WhatsApp';
+    pr.disabled=!sent;
+    pr.style.opacity=sent?'1':'.45';
+    pr.style.cursor=sent?'pointer':'not-allowed';
+    pr.title=sent?('Print '+ctx.docNo):'Pehle WhatsApp par bhejein — uske baad print khulega';
+  }
+  /* WhatsApp's click-to-chat link can only carry text, so the Web Share API is
+     the only web standard that hands it a real file — that is the path taken
+     here, and no PDF URL ever goes into the message. Desktop browsers have no
+     such API: there the file is downloaded and WhatsApp Web opened so it can
+     be attached with the 📎 button, still without a link. */
+  async function sendStoreEntryWhatsapp_(){
+    const ctx=sarvPdfShareCtx;if(!ctx)return;
+    if(!ctx.blob)return showToast('⚠️ PDF file ready nahi hai — attach nahi ho sakti','warn');
+    const file=new File([ctx.blob],ctx.filename,{type:'application/pdf'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file],title:ctx.docNo,text:ctx.text||ctx.docNo});
+        markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
+        showToast('✅ '+ctx.docNo+' bhej diya — ab print kar sakte hain');
+        return;
+      }catch(e){
+        if(e.name==='AbortError')return; // share sheet band kar diya — kuch mat badlo
+        console.warn('[SARV] Native PDF share failed:',e.message||e);
+      }
+    }
+    downloadBlob(ctx.blob,ctx.filename);
+    window.open('https://web.whatsapp.com/','_blank');
+    markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
+    showToast('📎 PDF download ho gayi — WhatsApp me chat kholkar yahi file attach karein (link nahi)','warn');
+  }
+  function printStoreEntryPdf_(){
+    const ctx=sarvPdfShareCtx;if(!ctx)return;
+    if(!isStoreEntrySent_(ctx.docNo))return showToast('⛔ Pehle WhatsApp par bhejein — uske baad hi print milega','warn');
+    // Printed from the generated file itself, so the paper copy is exactly the
+    // PDF that was sent. Only a failed PDF build falls back to HTML printing.
+    if(!ctx.blob)return window.triggerSystemPrint('BOTH');
+    const url=URL.createObjectURL(ctx.blob);
+    const w=window.open(url,'_blank');
+    if(!w){URL.revokeObjectURL(url);return showToast('Print ke liye pop-ups allow karein','warn');}
+    setTimeout(()=>{try{w.focus();w.print()}catch(e){}},900);
+    setTimeout(()=>URL.revokeObjectURL(url),120000);
+  }
+  /* share — passed only by the Store Inward / Outward save path, as
+     {docNo, text}. Every other caller leaves it null and gets the plain
+     download-only preview it always had. */
+  function showSarvPdfPreview(blob,filename='Generated PDF',previewHtml='',share=null){
     if(!blob&&!previewHtml){showToast('PDF preview unavailable','warn');return;}
     let overlay=byId('sarvPdfViewerOverlay');
     if(!overlay){
@@ -10784,11 +11134,15 @@ window.addEventListener('DOMContentLoaded',()=>{
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
         +'<strong id="sarvPdfViewerTitle" style="font-size:14px;">PDF Preview</strong>'
         +'<div style="display:flex;gap:8px;align-items:center;">'
+        +'<button type="button" id="sarvPdfWaBtn" style="display:none;color:#fff;background:#25d366;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128242; Send via WhatsApp</button>'
+        +'<button type="button" id="sarvPdfPrintBtn" style="display:none;color:#fff;background:#475569;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128424; Print</button>'
         +'<a id="sarvPdfDownloadBtn" href="#" download style="color:#fff;background:#0284c7;border-radius:6px;padding:7px 11px;text-decoration:none;font-size:12px;font-weight:700;">⬇ Download PDF</a>'
         +'<button type="button" id="sarvPdfViewerClose" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;">✕</button>'
         +'</div></div><iframe id="sarvPdfViewerFrame" title="PDF preview" style="border:0;flex:1;width:100%;background:#fff;"></iframe></div>';
       document.body.appendChild(overlay);
       byId('sarvPdfViewerClose')?.addEventListener('click',closeSarvPdfPreview);
+      byId('sarvPdfWaBtn')?.addEventListener('click',sendStoreEntryWhatsapp_);
+      byId('sarvPdfPrintBtn')?.addEventListener('click',printStoreEntryPdf_);
       overlay.addEventListener('click',e=>{if(e.target===overlay)closeSarvPdfPreview();});
     }
     if(sarvPdfPreviewUrl){URL.revokeObjectURL(sarvPdfPreviewUrl);sarvPdfPreviewUrl='';}
@@ -10806,6 +11160,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       else { download.removeAttribute('href'); download.style.display='none'; }
     }
     overlay.style.display='flex';
+    sarvPdfShareCtx=share?{...share,blob,filename}:null;
+    applyStorePrintGate_();
   }
   async function generateStorePdfs(kind,d,items,recordId,photoInput){
     // The photo engine's store is the source of truth: it holds BOTH camera and
@@ -11027,11 +11383,20 @@ window.addEventListener('DOMContentLoaded',()=>{
        const fr=await SB.from('inward_entries').update({freight_exp:pNum(pVal('freightExp')),round_off:pNum(pVal('roundOffInput'))}).eq('id',h.data.id);
        if(fr.error)console.warn('[SARV] Freight / Round off not stored on the header (add freight_exp, round_off columns):',fr.error.message);
      }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
-     let ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom,r.itemId);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.total,po_line_id:r.poLineId||null,repair_outward_no:r.repairOutNo||null})}
+     let ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom,r.itemId);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.total,bill_basis:r.billBasis||'QTY',po_line_id:r.poLineId||null,repair_outward_no:r.repairOutNo||null})}
      // repair_outward_no is what credits each outward when one repair return
      // covers several — gate_pass_no can only ever name one. Dropped on DBs
      // without the column (multi-select is disabled there anyway).
      let ins=await SB.from('inward_lines').insert(ls);
+     /* Bill Basis used to be inferred on reopen from whichever of qty / weight
+        reproduced the saved line total. That guess broke a WEIGHT-billed line
+        whose figures happened to read as a QTY line, and the Admin's update
+        then re-costed the whole entry on Qty — wrong item totals, Taxable
+        Value and Final Amount in the regenerated PDF. It is stored per line
+        now; a database without the column simply drops it and falls back to
+        the old inference, so nothing breaks before the migration:
+          alter table inward_lines add column bill_basis text; */
+     if(ins.error&&/bill_basis/i.test(ins.error.message||'')){ls=ls.map(({bill_basis,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/repair_outward_no|column/i.test(ins.error.message||'')){ls=ls.map(({repair_outward_no,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/po_line_id|column/i.test(ins.error.message||'')){ls=ls.map(({po_line_id,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}if(ins.error)throw ins.error;
      if(editId){
@@ -11044,7 +11409,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      }
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput');
-     {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''));}
+     {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
+       /* Send-before-print: the preview now carries a WhatsApp Send button
+          that attaches this very PDF, and Print stays locked until it goes. */
+       {docNo:no,text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
      showToast(editId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Inward saved: '+no));
      // Repair-Return inward — refresh the Repair Items Tracker so the
      // received/balance figures for the matching outward update immediately.
@@ -11203,7 +11571,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      const ls=[];for(const r of rows){const it=await ensureItem(r.itemName,r.itemDesc,r.make,r.category,r.qtyUom,r.itemId);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.qtyUom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput');
-     {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''));}
+     {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
+       {docNo:no,text:'OUTWARD '+no+' — '+(d.partyName||'-')+(d.gatePass?(' | Gate Pass '+d.gatePass):'')});}
      showToast(outEditId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Outward saved: '+no));
      // Repair-nature outward — refresh the Repair Items Tracker so this
      // entry (and its sent/balance figures) show up immediately, not only
@@ -12634,6 +13003,12 @@ window.addEventListener('DOMContentLoaded',()=>{
  window.saveStoreInward=saveInwardWithPdf;window.saveStoreOutward=saveOutwardWithPdf;window.saveFullPurchaseRequirement=saveRequirementWithPdf;
   window.triggerSystemPrint=async function(mode){
     const c=sarvPdfState.current;if(!c)return showToast('Save or generate a record first','warn');
+    // Send-before-print applies to these copy buttons too: a Store entry that
+    // has not gone out on WhatsApp yet cannot be printed from here either.
+    if(c.kind==='INWARD'||c.kind==='OUTWARD'||c.kind==='ISSUE'){
+      const docNo=c.data?.inwardNo||c.data?.outwardNo||'';
+      if(docNo&&!isStoreEntrySent_(docNo))return showToast('⛔ '+docNo+' pehle WhatsApp par bhejein — uske baad hi print milega','warn');
+    }
     let html;
     if(c.kind==='REQUIREMENT'){
       html=buildRequirementPdfHtml(c.data);
