@@ -1464,7 +1464,7 @@
             ['Freight / Transport',nNum_(freight)],
             [String(d.otherExpenseLabel||'Labour Other Exp.'),nNum_(other)],
             ['Taxable Value',nNum_(taxable)],
-            ['GST (item-wise + freight/other @ '+gstPct+'%)',nNum_(gstAmt)],
+            ['GST(item-wise + freight/other)',nNum_(gstAmt)],
         ];
         doc.setFontSize(8.5);
         sumRows.forEach(([l,v])=>{
