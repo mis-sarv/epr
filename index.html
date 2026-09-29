@@ -2747,6 +2747,11 @@ body {
                         &#128196; All Records</button>
                     <button class="btn" id="clearSearchBtn"
                         style="background:#e2e8f0; color:#475569; white-space:nowrap; flex-shrink:0;">&#10005; Clear</button>
+                    <button class="btn" id="poDetailsReportBtn" onclick="openPoDetailsReport()"
+                        title="PO ke against kya order hua aur kya receive hua — CSV / PDF"
+                        style="background:#7c3aed; color:#fff; white-space:nowrap; flex-shrink:0; border:none;">
+                        &#128203; PO Details
+                    </button>
                     <button class="btn" id="excelDownloadBtn" onclick="downloadFilteredExcel()" title="Admin only"
                         style="background:#16a34a; color:#fff; white-space:nowrap; flex-shrink:0; display:none; border:none;">
                         &#128190; Download CSV
@@ -5771,9 +5776,13 @@ function renderPoInfoRow(tr,info){
   const cell=info.querySelector('td');if(!cell)return;
   const ordered=pNum(tr.dataset.poOrderedQty);
   const already=pNum(tr.dataset.poReceivedQty);
-  const pending=Math.max(0,ordered-already);
   const nowQty=pNum(tr.querySelector('.qty-field')?.value);
-  const excess=Math.max(0,(already+nowQty)-ordered);
+  // Received counts the qty being entered right now as well, so Pending is
+  // what will still be due once this receipt is saved and Excess is how far
+  // it goes past the order. Both move as the qty is typed.
+  const received=already+nowQty;
+  const pending=Math.max(0,ordered-received);
+  const excess=Math.max(0,received-ordered);
   const pill=(lbl,val,color)=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
     +'<span style="color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+lbl+'</span>'
     +'<b style="color:'+color+';font-size:11px;">'+val+'</b></span>';
@@ -5781,11 +5790,11 @@ function renderPoInfoRow(tr,info){
     +'<span style="color:#1d4ed8;font-weight:800;font-size:10px;">'+escText(tr.dataset.poNo||'—')+'</span>'
     +pill('Order Qty',ordered,'#0f172a')
     +pill('Pending Qty',pending,pending>0?'#b45309':'#16a34a')
-    +pill('Received Qty',already,'#0f766e')
+    +pill('Received Qty',received,'#0f766e')
     +pill('Excess Qty',excess,excess>0?'#dc2626':'#94a3b8')
     +'</div>';
 }
-// Re-renders only the live figure (Excess) as quantities are typed.
+// Re-renders the live figures (Received / Pending / Excess) as qty is typed.
 function refreshPoInfoRows(){
   document.querySelectorAll('#itemTableBody tr.po-info-row').forEach(info=>{
     const tr=info.previousElementSibling;
@@ -8636,6 +8645,309 @@ function exportItemLedgerCsv(){
   showToast('CSV downloaded');
 }
 
+/* ================================================================
+   PO DETAILS REPORT — Print History / Reports → 📋 PO Details
+   One row per PO line, showing what was ordered against what has actually
+   been received, in both Qty and Weight:
+     PO Rate / Rec. Rate are AFTER discount, i.e. what the line really costs.
+     Pending = PO − Received. Excess is the same figure the other way round,
+     so a short line reads Pending 2900 / Excess −2900 and an over-receipt
+     reads Pending −50 / Excess 50. Both columns are kept because the store
+     reads shortfalls off one and over-receipts off the other.
+   Receipts are summed from inward_lines.po_line_id, which is the only place
+   the received WEIGHT exists; purchase_order_lines.received_qty is the
+   fallback for records saved before that column existed.
+================================================================ */
+let sarvPoDetailsRows=[];          // every line, unfiltered
+function poDetailsFilters_(){
+  return {
+    po:(byId('pod_po')?.value||'').trim().toLowerCase(),
+    supplier:(byId('pod_supplier')?.value||'').trim().toLowerCase(),
+    item:(byId('pod_item')?.value||'').trim().toLowerCase(),
+    from:byId('pod_from')?.value||'',
+    to:byId('pod_to')?.value||'',
+    status:byId('pod_status')?.value||'ALL'
+  };
+}
+function poDetailsFiltered_(){
+  const f=poDetailsFilters_();
+  return sarvPoDetailsRows.filter(r=>{
+    if(f.po&&!String(r.poNo).toLowerCase().includes(f.po))return false;
+    if(f.supplier&&!String(r.supplier).toLowerCase().includes(f.supplier))return false;
+    if(f.item&&!(String(r.itemName).toLowerCase().includes(f.item)||String(r.category).toLowerCase().includes(f.item)))return false;
+    if(f.from&&(!r.poDate||r.poDate<f.from))return false;
+    if(f.to&&(!r.poDate||r.poDate>f.to))return false;
+    if(f.status==='PENDING'&&!(r.pendingQty>0))return false;
+    if(f.status==='EXCESS'&&!(r.excessQty>0))return false;
+    if(f.status==='COMPLETE'&&r.pendingQty!==0)return false;
+    if(f.status==='NOTRECEIVED'&&r.recQty!==0)return false;
+    return true;
+  });
+}
+function poDetailsFilterText_(){
+  const f=poDetailsFilters_(),bits=[];
+  if(f.po)bits.push('PO: '+f.po.toUpperCase());
+  if(f.supplier)bits.push('Supplier: '+f.supplier.toUpperCase());
+  if(f.item)bits.push('Item/Category: '+f.item.toUpperCase());
+  if(f.from||f.to)bits.push('PO Date: '+(f.from||'…')+' → '+(f.to||'…'));
+  if(f.status!=='ALL')bits.push('Status: '+f.status);
+  return bits.length?bits.join('   ·   '):'All POs — no filter applied';
+}
+async function loadPoDetailsReport(){
+  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+  const body=byId('pod_tbody');
+  if(body)body.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">⏳ Loading…</td></tr>';
+  try{
+    const [pos,poLines,inwLines,items]=await Promise.all([
+      fetchAllRows('purchase_orders','id,po_no,po_date,vendor_name'),
+      fetchAllRows('purchase_order_lines','*'),
+      // po_line_id is what ties a receipt back to its order line; a database
+      // without it simply returns nothing useful here and the PO line's own
+      // received_qty takes over below.
+      fetchAllRows('inward_lines','po_line_id,qty,weight,rate').catch(()=>[]),
+      fetchAllRows('items','id,name,category')
+    ]);
+    const poById={};(pos||[]).forEach(p=>{poById[p.id]=p});
+    const itemById={};(items||[]).forEach(i=>{itemById[i.id]=i});
+    const recByLine={};
+    (inwLines||[]).forEach(l=>{
+      if(!l.po_line_id)return;
+      const b=recByLine[l.po_line_id]||(recByLine[l.po_line_id]={qty:0,weight:0,rateWt:0});
+      const q=pNum(l.qty);
+      b.qty+=q;b.weight+=pNum(l.weight);b.rateWt+=pNum(l.rate)*q;
+    });
+    sarvPoDetailsRows=(poLines||[]).map(line=>{
+      const po=poById[line.purchase_order_id]||{};
+      const it=itemById[line.item_id]||{};
+      const rec=recByLine[line.id];
+      const poQty=pNum(line.ordered_qty), poWeight=pNum(line.gross_weight);
+      const disc=pNum(line.discount_pct);
+      const poRate=pNum(line.unit_price)*(1-disc/100);
+      // No linked receipts: fall back to the PO line's own counter. Weight has
+      // no such fallback, so it stays 0 rather than inventing a figure.
+      const recQty=rec?rec.qty:pNum(line.received_qty);
+      const recWeight=rec?rec.weight:0;
+      // Received rate is averaged over the received qty — several receipts on
+      // one line can legitimately land at different rates.
+      const recRate=rec&&rec.qty>0?rec.rateWt/rec.qty:(rec?poRate:0);
+      return {
+        poNo:po.po_no||'',poDate:po.po_date||'',supplier:po.vendor_name||'',
+        itemName:line.item_name||it.name||'',
+        category:it.category||'',
+        uom:line.uom||'pcs',
+        poQty,poWeight,poRate,
+        recQty,recWeight,recRate,
+        pendingQty:poQty-recQty,pendingWeight:poWeight-recWeight,
+        excessQty:recQty-poQty,excessWeight:recWeight-poWeight,
+        lineNo:pNum(line.line_no)
+      };
+    }).sort((a,b)=>String(b.poDate||'').localeCompare(String(a.poDate||''))
+      ||String(a.poNo).localeCompare(String(b.poNo))||a.lineNo-b.lineNo);
+    renderPoDetailsReport();
+  }catch(e){
+    dbError(e);
+    if(body)body.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#ef4444;">❌ '+escText(e.message||e)+'</td></tr>';
+  }
+}
+function renderPoDetailsReport(){
+  const tb=byId('pod_tbody');if(!tb)return;
+  const rows=poDetailsFiltered_();
+  const status=byId('pod_status_text');
+  if(status)status.textContent=rows.length?(rows.length+' PO line(s)'):'No PO lines match this filter';
+  if(!rows.length){tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">Koi PO line nahi mili — filter badal kar dekhein</td></tr>';return;}
+  const TD='padding:4px 6px;border:1px solid #e2e8f0;font-size:11px;';
+  const R=TD+'text-align:right;white-space:nowrap;';
+  const num=(v,unit)=>v===0||v?nNum_(v)+(unit?' '+unit:''):'';
+  // Sign colouring: a shortfall is amber, an over-receipt red — the same
+  // reading the store gets off the entry form's PO strip.
+  const signed=(v,unit,goodWhenZero)=>'<td style="'+R+(v>0?'color:#b45309;font-weight:700;':(v<0?'color:#dc2626;font-weight:700;':(goodWhenZero?'color:#16a34a;':'')))+'">'+num(v,unit)+'</td>';
+  let last='';
+  tb.innerHTML=rows.map(r=>{
+    // PO No. / Date print once per order, the way the reference sheet reads.
+    const head=(r.poNo!==last);last=r.poNo;
+    return '<tr>'
+      +'<td style="'+TD+'font-weight:800;color:#1d4ed8;white-space:nowrap;">'+(head?escText(r.poNo):'')+'</td>'
+      +'<td style="'+TD+'font-weight:700;color:#1d4ed8;white-space:nowrap;">'+(head?escText(fmtDate_(r.poDate)):'')+'</td>'
+      +'<td style="'+TD+'font-weight:700;color:#1d4ed8;">'+escText(r.supplier)+'</td>'
+      +'<td style="'+TD+'">'+escText(r.itemName)+'</td>'
+      +'<td style="'+TD+'">'+escText(r.category)+'</td>'
+      +'<td style="'+R+'background:#fef9c3;">'+num(r.poQty,r.uom)+'</td>'
+      +'<td style="'+R+'background:#fef9c3;">'+num(r.poWeight,'kg')+'</td>'
+      +'<td style="'+R+'background:#fed7aa;">'+num(r.poRate)+'</td>'
+      +'<td style="'+R+'background:#dcfce7;">'+num(r.recQty,r.uom)+'</td>'
+      +'<td style="'+R+'background:#dcfce7;">'+num(r.recWeight,'kg')+'</td>'
+      +'<td style="'+R+'background:#dcfce7;">'+num(r.recRate)+'</td>'
+      +signed(r.pendingQty,r.uom,true)
+      +signed(r.pendingWeight,'kg',true)
+      +signed(r.excessQty,r.uom,false)
+      +signed(r.excessWeight,'kg',false)
+      +'</tr>';
+  }).join('');
+}
+const POD_HEAD=['PO NO.','PO DATE','Supplier Name','Item Name','Category',
+  'PO QTY','PO Weight','PO RATE (AFTER DISC%)','REC. QTY','REC. Weight',
+  'REC. RATE (AFTER DISC%)','PENDING QTY','PENDING Weight','Excess Qty','Excess Weight'];
+function downloadPoDetailsCsv(){
+  const rows=poDetailsFiltered_();
+  if(!rows.length)return showToast('⚠️ Export ke liye koi data nahi — pehle filter check karein','warn');
+  const n=v=>(v===0||v)?Number(v.toFixed?v.toFixed(3):v):'';
+  // Every column is filled on every row here, unlike the screen and the PDF:
+  // a CSV with blanks in the PO No. column cannot be sorted or pivoted.
+  const data=rows.map(r=>[r.poNo,r.poDate,r.supplier,r.itemName,r.category,
+    n(r.poQty),n(r.poWeight),n(r.poRate),n(r.recQty),n(r.recWeight),n(r.recRate),
+    n(r.pendingQty),n(r.pendingWeight),n(r.excessQty),n(r.excessWeight)]);
+  downloadCSV('PO_Details_'+today()+'.csv',[POD_HEAD,...data]);
+  showToast('📥 CSV downloaded — '+rows.length+' PO lines');
+}
+async function downloadPoDetailsPdf(){
+  const rows=poDetailsFiltered_();
+  if(!rows.length)return showToast('⚠️ PDF ke liye koi data nahi — pehle filter check karein','warn');
+  if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua','error');
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+  const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
+  const M=8,W=pageW-M*2;
+  let y=M;
+  try{
+    const logoW=24,logoH=logoW*161/320;
+    doc.addImage(SARV_LOGO_DATA_URL,'PNG',pageW-M-logoW,y,logoW,logoH);
+  }catch(e){}
+  doc.setFont(undefined,'bold');doc.setFontSize(13);doc.setTextColor(10,58,94);
+  doc.text(SARV_COMPANY.fullName,M,y+5);
+  doc.setFontSize(9.5);doc.setTextColor(0,0,0);
+  doc.text(SARV_COMPANY.unit+' — PO DETAILS (ORDERED vs RECEIVED)',M,y+10.5);
+  doc.setFont(undefined,'normal');doc.setFontSize(7);doc.setTextColor(71,85,105);
+  doc.text(doc.splitTextToSize(poDetailsFilterText_(),W-30),M,y+15);
+  doc.text('Printed On: '+pStamp()+'   ·   '+rows.length+' PO line(s)',M,y+19.5);
+  doc.setTextColor(0,0,0);
+  y+=23;
+  const num=(v,unit)=>(v===0||v)?nNum_(v)+(unit?' '+unit:''):'';
+  let last='';
+  const body=rows.map(r=>{
+    const head=(r.poNo!==last);last=r.poNo;
+    return [head?r.poNo:'',head?fmtDate_(r.poDate):'',r.supplier,r.itemName,r.category,
+      num(r.poQty,r.uom),num(r.poWeight,'kg'),num(r.poRate),
+      num(r.recQty,r.uom),num(r.recWeight,'kg'),num(r.recRate),
+      num(r.pendingQty,r.uom),num(r.pendingWeight,'kg'),
+      num(r.excessQty,r.uom),num(r.excessWeight,'kg')];
+  });
+  const sum=k=>rows.reduce((s,r)=>s+pNum(r[k]),0);
+  const foot=[[{content:'TOTAL — '+rows.length+' line(s)',colSpan:5,styles:{halign:'right',fontStyle:'bold'}},
+    num(sum('poQty')),num(sum('poWeight'),'kg'),'',
+    num(sum('recQty')),num(sum('recWeight'),'kg'),'',
+    num(sum('pendingQty')),num(sum('pendingWeight'),'kg'),
+    num(sum('excessQty')),num(sum('excessWeight'),'kg')]];
+  doc.autoTable({
+    head:[POD_HEAD],body,foot,startY:y,
+    margin:{left:M,right:M,top:M},tableWidth:W,
+    styles:{fontSize:6,cellPadding:1.1,overflow:'linebreak',textColor:[0,0,0],lineColor:[203,213,225],lineWidth:0.15,valign:'middle'},
+    headStyles:{fillColor:[226,232,240],textColor:[15,23,42],fontStyle:'bold',halign:'center',fontSize:5.6,lineWidth:0.15},
+    footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',halign:'right',lineWidth:0.15},
+    columnStyles:{0:{cellWidth:22,fontStyle:'bold'},1:{cellWidth:17},2:{cellWidth:30},3:{cellWidth:38},4:{cellWidth:20},
+      5:{cellWidth:16,halign:'right'},6:{cellWidth:16,halign:'right'},7:{cellWidth:15,halign:'right'},
+      8:{cellWidth:16,halign:'right'},9:{cellWidth:16,halign:'right'},10:{cellWidth:15,halign:'right'},
+      11:{cellWidth:16,halign:'right'},12:{cellWidth:16,halign:'right'},
+      13:{cellWidth:14,halign:'right'},14:{cellWidth:14,halign:'right'}},
+    theme:'grid',
+    // The reference sheet colours the column groups, which is what makes it
+    // readable at this width — ordered (amber), received (green), what is
+    // still owed (blue) and what came over (pink).
+    didParseCell:h=>{
+      if(h.section==='head'){
+        const c=h.column.index;
+        if(c>=5&&c<=6)h.cell.styles.fillColor=[254,249,195];
+        else if(c===7)h.cell.styles.fillColor=[254,215,170];
+        else if(c>=8&&c<=10)h.cell.styles.fillColor=[187,247,208];
+        else if(c>=11&&c<=12)h.cell.styles.fillColor=[186,230,253];
+        else if(c>=13)h.cell.styles.fillColor=[254,205,211];
+        return;
+      }
+      if(h.section!=='body')return;
+      const c=h.column.index, r=rows[h.row.index];
+      if(!r)return;
+      if(c>=5&&c<=6)h.cell.styles.fillColor=[254,252,232];
+      else if(c===7)h.cell.styles.fillColor=[255,237,213];
+      else if(c>=8&&c<=10)h.cell.styles.fillColor=[240,253,244];
+      const v=c===11?r.pendingQty:c===12?r.pendingWeight:c===13?r.excessQty:c===14?r.excessWeight:null;
+      if(v!==null&&v!==0){h.cell.styles.textColor=v>0?[180,83,9]:[220,38,38];h.cell.styles.fontStyle='bold';}
+    }
+  });
+  const pages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);doc.setFontSize(6.5);doc.setTextColor(100,116,139);
+    doc.text(SARV_COMPANY.juris,M,pageH-5);
+    doc.text('Page '+i+' of '+pages,pageW-M,pageH-5,{align:'right'});
+  }
+  const name='PO_Details_'+today()+'.pdf';
+  const blob=doc.output('blob');
+  downloadBlob(blob,name);
+  showSarvPdfPreview(blob,name,'');
+  showToast('📄 PO Details PDF ready');
+}
+function closePoDetailsReport(){const ov=byId('poDetailsOverlay');if(ov)ov.style.display='none';}
+function openPoDetailsReport(){
+  let ov=byId('poDetailsOverlay');
+  if(!ov){
+    const IN='class="form-control" style="height:28px;font-size:11px;"';
+    ov=document.createElement('div');
+    ov.id='poDetailsOverlay';
+    ov.className='secure-modal-overlay';
+    ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:29000;padding:14px;';
+    ov.innerHTML='<div style="background:#fff;width:min(1500px,98vw);height:min(94vh,940px);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
+        +'<strong style="font-size:14px;">&#128203; PO Details — Ordered vs Received</strong>'
+        +'<span id="pod_status_text" style="font-size:11px;color:#cbd5e1;font-weight:600;"></span>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="pod_csv" style="background:#16a34a;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128190; CSV</button>'
+        +'<button type="button" id="pod_pdf" style="background:#dc2626;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128196; PDF</button>'
+        +'<button type="button" id="pod_close" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;">&#10005;</button>'
+      +'</div>'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">'
+        +'<input type="text" id="pod_po" placeholder="&#128269; PO No." '+IN+' style="height:28px;font-size:11px;width:140px;">'
+        +'<input type="text" id="pod_supplier" placeholder="&#128269; Supplier" '+IN+' style="height:28px;font-size:11px;width:170px;">'
+        +'<input type="text" id="pod_item" placeholder="&#128269; Item / Category" '+IN+' style="height:28px;font-size:11px;width:190px;">'
+        +'<label style="font-size:10px;font-weight:700;color:#475569;">FROM</label>'
+        +'<input type="date" id="pod_from" '+IN+' style="height:28px;font-size:11px;width:130px;">'
+        +'<label style="font-size:10px;font-weight:700;color:#475569;">TO</label>'
+        +'<input type="date" id="pod_to" '+IN+' style="height:28px;font-size:11px;width:130px;">'
+        +'<select id="pod_status" '+IN+' style="height:28px;font-size:11px;width:150px;">'
+          +'<option value="ALL">All Lines</option>'
+          +'<option value="PENDING">Pending only</option>'
+          +'<option value="EXCESS">Excess only</option>'
+          +'<option value="COMPLETE">Fully received</option>'
+          +'<option value="NOTRECEIVED">Nothing received</option>'
+        +'</select>'
+        +'<button type="button" id="pod_clear" class="btn" style="background:#e2e8f0;color:#475569;height:28px;padding:0 12px;font-size:11px;">&#10005; Clear</button>'
+        +'<button type="button" id="pod_reload" class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px;">&#128260; Refresh</button>'
+      +'</div>'
+      +'<div style="flex:1;overflow:auto;padding:0 10px 10px;">'
+        +'<table style="width:100%;border-collapse:collapse;min-width:1350px;">'
+        +'<thead><tr>'+POD_HEAD.map((h,i)=>{
+            const bg=i>=5&&i<=6?'#fef9c3':i===7?'#fed7aa':i>=8&&i<=10?'#bbf7d0':i>=11&&i<=12?'#bae6fd':i>=13?'#fecdd3':'#f1f5f9';
+            return '<th style="position:sticky;top:0;z-index:1;background:'+bg+';border:1px solid #cbd5e1;padding:5px 6px;font-size:10px;font-weight:800;color:#0f172a;">'+h+'</th>';
+          }).join('')+'</tr></thead>'
+        +'<tbody id="pod_tbody"></tbody></table>'
+      +'</div></div>';
+    (byId('storeInterface')||document.body).appendChild(ov);
+    byId('pod_close').onclick=closePoDetailsReport;
+    byId('pod_csv').onclick=downloadPoDetailsCsv;
+    byId('pod_pdf').onclick=downloadPoDetailsPdf;
+    byId('pod_reload').onclick=()=>loadPoDetailsReport();
+    byId('pod_clear').onclick=()=>{
+      ['pod_po','pod_supplier','pod_item','pod_from','pod_to'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+      if(byId('pod_status'))byId('pod_status').value='ALL';
+      renderPoDetailsReport();
+    };
+    // Filters run against the already-loaded lines, so typing re-renders
+    // instantly instead of going back to the database on every keystroke.
+    ['pod_po','pod_supplier','pod_item'].forEach(id=>byId(id)?.addEventListener('input',renderPoDetailsReport));
+    ['pod_from','pod_to','pod_status'].forEach(id=>byId(id)?.addEventListener('change',renderPoDetailsReport));
+    ov.addEventListener('click',e=>{if(e.target===ov)closePoDetailsReport();});
+  }
+  ov.style.display='flex';
+  loadPoDetailsReport();
+}
+window.openPoDetailsReport=openPoDetailsReport;
 async function exportItemLedgerPdf(){
   if(!sarvItemLedger.length)return showToast('Pehle ledger generate karein','warn');
   if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua','error');
@@ -9507,9 +9819,10 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* PO ke against Inward: the entry form shows a strip under every item line
     (PO No. + Order / Pending / Received / Excess Qty), and it now prints as a
     sub-row under the same item so the copy in hand says what the screen said.
-    Pending is what was still due BEFORE this receipt; Excess is how far this
-    receipt takes the line past the order. Returns '' for a non-PO row, which
-    simply prints no sub-row. */
+    Received counts what had already come in PLUS the qty on this entry, so
+    Pending is what is still due AFTER this receipt and Excess is how far this
+    receipt takes the line past the order. Exactly one of the two can be
+    non-zero. Returns null for a non-PO row, which simply prints no sub-row. */
  function poStripParts_(it){
    if(!it||!it.poNo)return null;
    const ordered=pNum(it.poOrderedQty), already=pNum(it.poReceivedQty);
@@ -9518,14 +9831,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    // the form shows no strip there — and neither should the print, rather than
    // a row of zeroes.
    if(ordered<=0)return null;
-   return {poNo:String(it.poNo),ordered,already,
-     pending:Math.max(0,ordered-already),
-     excess:Math.max(0,(already+pNum(it.qty))-ordered)};
+   const received=already+pNum(it.qty);
+   return {poNo:String(it.poNo),ordered,already,received,
+     pending:Math.max(0,ordered-received),
+     excess:Math.max(0,received-ordered)};
  }
  function poStripText_(it){
    const p=poStripParts_(it);if(!p)return '';
    return 'PO: '+p.poNo+'   |   Order Qty: '+p.ordered+'   |   Pending Qty: '+p.pending
-     +'   |   Received Qty: '+p.already+'   |   Excess Qty: '+p.excess;
+     +'   |   Received Qty: '+p.received+'   |   Excess Qty: '+p.excess;
  }
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
@@ -9726,7 +10040,7 @@ window.addEventListener('DOMContentLoaded',()=>{
            +'<b style="color:#1d4ed8;margin-right:12px;">PO: '+pEsc(poStrip.poNo)+'</b>'
            +chip('Order Qty',poStrip.ordered,'#0f172a')
            +chip('Pending Qty',poStrip.pending,poStrip.pending>0?'#b45309':'#16a34a')
-           +chip('Received Qty',poStrip.already,'#0f766e')
+           +chip('Received Qty',poStrip.received,'#0f766e')
            +chip('Excess Qty',poStrip.excess,poStrip.excess>0?'#dc2626':'#64748b')
            +'</td></tr>';
        }
@@ -9939,9 +10253,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        const discPct=pNum(it.discountPct);
        body.push([spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
        // PO ke against: item ke theek neeche uski PO strip, poori width me.
-       const poStrip=poStripText_(it);
+       const poBits=poStripParts_(it), poStrip=poStripText_(it);
        if(poStrip)body.push([{content:poStrip,colSpan:7,
-         styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],textColor:[30,64,175],cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
+         styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
+           // Over-receipt turns the whole strip red — a single cell cannot
+           // colour just its Excess figure the way the HTML copy does.
+           textColor:(poBits&&poBits.excess>0)?[220,38,38]:[30,64,175],
+           cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
      foot=[['TOTAL — '+items.length+' item(s)',String(totQty),String(totWt),'','','',nNumX_(totAmt)]];
