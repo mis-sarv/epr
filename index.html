@@ -9258,7 +9258,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     read differently from the form the user just filled. These keep whatever
     precision the figure actually has, up to 4dp, with 2dp as the floor so a
     plain amount still prints as ₹1,200.00. Rounding is display-only; the
-    maths behind it (rowDataInward / collectInwardData) stays exact. */
+    maths behind it (rowDataInward / collectInwardData) stays exact. FINAL NET
+    AMOUNT and Cost on Yarn / Kg are the two deliberate exceptions — they keep
+    the plain 2dp pMoney/nNum_ so they read exactly as the entry form shows
+    them. */
  const pMoneyX = v => '₹' + pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:4});
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
@@ -9488,7 +9491,7 @@ window.addEventListener('DOMContentLoaded',()=>{
          '<tr><td class="lbl">Gross Weight:</td><td class="val">'+pEsc(d.grossWeight||d.calcGrossWeight||0)+' KGS</td></tr>'+
          '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoneyX(d.freightRate||d.calcFreightRate)+'</td></tr>'+
          '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoneyX(d.freight||d.freightExp)+'</td></tr>'+
-         '<tr><td class="lbl" style="color:#047857">Cost on Yarn / Kg:</td><td class="val" style="color:#047857">'+pMoneyX(d.costOnYarn||d.calcCostOnYarn)+'</td></tr>'+
+         '<tr><td class="lbl" style="color:#047857">Cost on Yarn / Kg:</td><td class="val" style="color:#047857">'+pMoney(d.costOnYarn||d.calcCostOnYarn)+'</td></tr>'+
        '</table></div>'+
        '<table class="tot">'+
          (inTotDiscount>0?'<tr><td style="color:#b91c1c">Total Discounted Amt:</td><td style="text-align:right;color:#b91c1c;font-weight:600">- '+pMoneyX(inTotDiscount)+'</td></tr>':'')+
@@ -9497,7 +9500,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           '<tr><td>Taxable Value:</td><td style="text-align:right;font-weight:700">'+pMoneyX(d.taxable)+'</td></tr>'+
          '<tr><td>Total Applied Tax ('+(pNum(d.gstRate)%1===0?pNum(d.gstRate):pNum(d.gstRate).toFixed(2))+'% GST):</td><td style="text-align:right">'+pMoneyX(d.totalTax)+'</td></tr>'+
           '<tr><td>Round off. (+/-):</td><td style="text-align:right">'+pMoneyX(d.roundOff)+'</td></tr>'+
-          '<tr class="grand"><td>FINAL NET AMOUNT:</td><td style="text-align:right">'+pMoneyX(d.finalAmt)+'</td></tr>'+
+          '<tr class="grand"><td>FINAL NET AMOUNT:</td><td style="text-align:right">'+pMoney(d.finalAmt)+'</td></tr>'+
        '</table>'+
      '</div>'+remarks+footer+'</div>';
  }
@@ -9697,7 +9700,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Gross Weight:',(d.grossWeight||d.calcGrossWeight||0)+' KGS'],
        ['Freight Rate / Kg:',nNumX_(d.freightRate||d.calcFreightRate)],
        ['Total Freight Amt:',nNumX_(d.freight||d.freightExp)],
-       ['Cost on Yarn / Kg:',nNumX_(d.costOnYarn||d.calcCostOnYarn)]
+       ['Cost on Yarn / Kg:',nNum_(d.costOnYarn||d.calcCostOnYarn)]
      ];
      let fy=yy+8;
      frLines.forEach(([l,v])=>{doc.text(l,x+2,fy);doc.text(String(v),x+boxW-2,fy,{align:'right'});fy+=3.6;});
@@ -9715,7 +9718,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      doc.setFillColor(241,245,249); doc.rect(totX,ty-2.6,boxW,4.4,'F');
      doc.setFont(undefined,'bold'); doc.setFontSize(8); doc.setTextColor(0,0,0);
      doc.text('FINAL NET AMOUNT:',totX+2,ty+0.6);
-     doc.text(nMoneyX_(d.finalAmt),totX+boxW-2,ty+0.6,{align:'right'});
+     doc.text(nMoney_(d.finalAmt),totX+boxW-2,ty+0.6,{align:'right'});
      yy=yy+26;
    } else {
      doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
@@ -10845,11 +10848,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    const freight=pNum(pVal('freightExp')), roundOff=pNum(pVal('roundOffInput'));
    const taxable=base+freight, tax=taxable*gstRate/100;
    /* Freight Calculator figures are re-derived here instead of being scraped
-      back out of the on-screen boxes: those boxes are formatted to 2dp, so the
-      PDF inherited a rounded Cost on Yarn / Kg. Same maths as the calculator
-      in updateStoreTotals() — Net Weight is the sum of the item rows, Freight
-      Amt is Gross Weight x Rate, and the per-kg cost spreads that over the
-      net weight. */
+      back out of the on-screen boxes, which are already formatted to 2dp. The
+      PDF rounds Cost on Yarn / Kg for printing, but the value it carries is
+      exact. Same maths as the calculator in updateStoreTotals() — Net Weight
+      is the sum of the item rows, Freight Amt is Gross Weight x Rate, and the
+      per-kg cost spreads that over the net weight. */
    const netWeight=rows.reduce((s,x)=>s+pNum(x.weight),0);
    const grossWeight=pNum(pVal('calcGrossWeight')), freightRate=pNum(pVal('calcFreightRate'));
    const freightAmt=grossWeight*freightRate;
