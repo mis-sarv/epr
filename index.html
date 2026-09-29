@@ -6466,7 +6466,10 @@ function updateStoreTotals(){
   const freightRate=+byId('calcFreightRate')?.value||0;
   const calcFrt=grossWt*freightRate;
   if(byId('calcFreightAmt'))byId('calcFreightAmt').value=m(calcFrt);
-  if(byId('calcCostOnYarn'))byId('calcCostOnYarn').value=netWt>0?m(finalAmt/netWt):'₹0.00';
+  // Cost on Yarn / Kg = Freight Amt / Net Weight (Items), per the store
+  // team spec. Guarded so a zero net weight shows 0, not Infinity.
+  const costOnYarn=netWt>0?calcFrt/netWt:0;
+  if(byId('calcCostOnYarn'))byId('calcCostOnYarn').value=m(costOnYarn);
   // Inward totals strip. These used to be written to `totalItemCount` /
   // `totalQty`, ids that no longer exist in the markup, so the whole strip sat
   // frozen at its static zeros — and `outTotalCount` here was pushing the
