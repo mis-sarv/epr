@@ -9252,6 +9252,14 @@ window.addEventListener('DOMContentLoaded',()=>{
  const pNum = v => Number.isFinite(Number(v)) ? Number(v) : 0;
  const pRound = v => Math.round((pNum(v) + Number.EPSILON) * 100) / 100;
  const pMoney = v => '₹' + pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+ /* Inward PDF formatter. Entry-form values routinely carry more than two
+    decimals — a list price of 285.7555, a weight of 1050.255, a net rate left
+    over from a % discount — and clipping those to 2dp made the printed copy
+    read differently from the form the user just filled. These keep whatever
+    precision the figure actually has, up to 4dp, with 2dp as the floor so a
+    plain amount still prints as ₹1,200.00. Rounding is display-only; the
+    maths behind it (rowDataInward / collectInwardData) stays exact. */
+ const pMoneyX = v => '₹' + pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:4});
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
    if(!v)return '';
@@ -9442,9 +9450,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        const itDiscPct=pNum(it.discountPct);
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
-       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoney(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoney(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoney(it.total||it.line_total)+'</td></tr>';
+       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
      });
-     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:inTotQty.toFixed(2))+'</td><td style="text-align:center;font-weight:800;">'+(inTotWeight%1===0?inTotWeight:inTotWeight.toFixed(2))+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoney(inTotGross)+'</td></tr>';
+     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+(inTotWeight%1===0?inTotWeight:+inTotWeight.toFixed(4))+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
    }
    const ts=regenTs_();
    const footer=isSupplier
@@ -9478,18 +9486,18 @@ window.addEventListener('DOMContentLoaded',()=>{
        '<div class="box"><h4>🚚 Freight Calculator Summary</h4><table>'+
          '<tr><td class="lbl">Net Weight (Items):</td><td class="val">'+pEsc(d.netWeight||inTotWeight||'-')+'</td></tr>'+
          '<tr><td class="lbl">Gross Weight:</td><td class="val">'+pEsc(d.grossWeight||d.calcGrossWeight||0)+' KGS</td></tr>'+
-         '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoney(d.freightRate||d.calcFreightRate)+'</td></tr>'+
-         '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoney(d.freight||d.freightExp)+'</td></tr>'+
-         '<tr><td class="lbl" style="color:#047857">Cost on Yarn / Kg:</td><td class="val" style="color:#047857">'+pMoney(d.costOnYarn||d.calcCostOnYarn)+'</td></tr>'+
+         '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoneyX(d.freightRate||d.calcFreightRate)+'</td></tr>'+
+         '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoneyX(d.freight||d.freightExp)+'</td></tr>'+
+         '<tr><td class="lbl" style="color:#047857">Cost on Yarn / Kg:</td><td class="val" style="color:#047857">'+pMoneyX(d.costOnYarn||d.calcCostOnYarn)+'</td></tr>'+
        '</table></div>'+
        '<table class="tot">'+
-         (inTotDiscount>0?'<tr><td style="color:#b91c1c">Total Discounted Amt:</td><td style="text-align:right;color:#b91c1c;font-weight:600">- '+pMoney(inTotDiscount)+'</td></tr>':'')+
-          '<tr><td>Items Base Total:</td><td style="text-align:right">'+pMoney(d.baseTotal||inTotGross)+'</td></tr>'+
-          '<tr><td>Freight Expenses (+):</td><td style="text-align:right">'+pMoney(d.freight||d.freightExp)+'</td></tr>'+
-          '<tr><td>Taxable Value:</td><td style="text-align:right;font-weight:700">'+pMoney(d.taxable)+'</td></tr>'+
-         '<tr><td>Total Applied Tax ('+(pNum(d.gstRate)%1===0?pNum(d.gstRate):pNum(d.gstRate).toFixed(2))+'% GST):</td><td style="text-align:right">'+pMoney(d.totalTax)+'</td></tr>'+
-          '<tr><td>Round off. (+/-):</td><td style="text-align:right">'+pMoney(d.roundOff)+'</td></tr>'+
-          '<tr class="grand"><td>FINAL NET AMOUNT:</td><td style="text-align:right">'+pMoney(d.finalAmt)+'</td></tr>'+
+         (inTotDiscount>0?'<tr><td style="color:#b91c1c">Total Discounted Amt:</td><td style="text-align:right;color:#b91c1c;font-weight:600">- '+pMoneyX(inTotDiscount)+'</td></tr>':'')+
+          '<tr><td>Items Base Total:</td><td style="text-align:right">'+pMoneyX(d.baseTotal||inTotGross)+'</td></tr>'+
+          '<tr><td>Freight Expenses (+):</td><td style="text-align:right">'+pMoneyX(d.freight||d.freightExp)+'</td></tr>'+
+          '<tr><td>Taxable Value:</td><td style="text-align:right;font-weight:700">'+pMoneyX(d.taxable)+'</td></tr>'+
+         '<tr><td>Total Applied Tax ('+(pNum(d.gstRate)%1===0?pNum(d.gstRate):pNum(d.gstRate).toFixed(2))+'% GST):</td><td style="text-align:right">'+pMoneyX(d.totalTax)+'</td></tr>'+
+          '<tr><td>Round off. (+/-):</td><td style="text-align:right">'+pMoneyX(d.roundOff)+'</td></tr>'+
+          '<tr class="grand"><td>FINAL NET AMOUNT:</td><td style="text-align:right">'+pMoneyX(d.finalAmt)+'</td></tr>'+
        '</table>'+
      '</div>'+remarks+footer+'</div>';
  }
@@ -9589,6 +9597,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  // "Rs." prefix is reserved for the FINAL NET AMOUNT line only.
  const nNum_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
  const nMoney_=v=>'Rs. '+nNum_(v);
+ const nNumX_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:4});
+ const nMoneyX_=v=>'Rs. '+nNumX_(v);
 
  function drawStoreCopyNative_(doc,kind,d,items,title,x,y,w,areaH){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
@@ -9647,10 +9657,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      body=items.map(it=>{
        const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
-       return [spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNum_(it.listPrice),discPct>0?discPct+'%':'-',nNum_(it.rate),nNum_(it.total)];
+       return [spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)];
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
-     foot=[['TOTAL — '+items.length+' item(s)',String(totQty),String(totWt),'','','',nNum_(totAmt)]];
+     foot=[['TOTAL — '+items.length+' item(s)',String(totQty),String(totWt),'','','',nNumX_(totAmt)]];
    } else {
      head=[['Item Name / Description','Make / Category','Machine','Qty','Weight']];
      body=items.map(it=>[
@@ -9685,27 +9695,27 @@ window.addEventListener('DOMContentLoaded',()=>{
      const frLines=[
        ['Net Weight (Items):',netWeight+' KGS'],
        ['Gross Weight:',(d.grossWeight||d.calcGrossWeight||0)+' KGS'],
-       ['Freight Rate / Kg:',nNum_(d.freightRate||d.calcFreightRate)],
-       ['Total Freight Amt:',nNum_(d.freight||d.freightExp)],
-       ['Cost on Yarn / Kg:',nNum_(d.costOnYarn||d.calcCostOnYarn)]
+       ['Freight Rate / Kg:',nNumX_(d.freightRate||d.calcFreightRate)],
+       ['Total Freight Amt:',nNumX_(d.freight||d.freightExp)],
+       ['Cost on Yarn / Kg:',nNumX_(d.costOnYarn||d.calcCostOnYarn)]
      ];
      let fy=yy+8;
      frLines.forEach(([l,v])=>{doc.text(l,x+2,fy);doc.text(String(v),x+boxW-2,fy,{align:'right'});fy+=3.6;});
      const totX=x+halfW+4;
      doc.rect(totX,yy,boxW,24);
      const totLines=[
-       ['Items Base Total:',nNum_(d.baseTotal)],
-       ['Freight Expenses (+):',nNum_(d.freight||d.freightExp)],
-       ['Taxable Value:',nNum_(d.taxable)],
-       ['Total Applied Tax ('+pNum(d.gstRate).toFixed(1)+'% GST):',nNum_(d.totalTax)],
-       ['Round off (+/-):',nNum_(d.roundOff)]
+       ['Items Base Total:',nNumX_(d.baseTotal)],
+       ['Freight Expenses (+):',nNumX_(d.freight||d.freightExp)],
+       ['Taxable Value:',nNumX_(d.taxable)],
+       ['Total Applied Tax ('+pNum(d.gstRate).toFixed(1)+'% GST):',nNumX_(d.totalTax)],
+       ['Round off (+/-):',nNumX_(d.roundOff)]
      ];
      let ty=yy+4;
      totLines.forEach(([l,v])=>{doc.text(l,totX+2,ty);doc.text(String(v),totX+boxW-2,ty,{align:'right'});ty+=3.4;});
      doc.setFillColor(241,245,249); doc.rect(totX,ty-2.6,boxW,4.4,'F');
      doc.setFont(undefined,'bold'); doc.setFontSize(8); doc.setTextColor(0,0,0);
      doc.text('FINAL NET AMOUNT:',totX+2,ty+0.6);
-     doc.text(nMoney_(d.finalAmt),totX+boxW-2,ty+0.6,{align:'right'});
+     doc.text(nMoneyX_(d.finalAmt),totX+boxW-2,ty+0.6,{align:'right'});
      yy=yy+26;
    } else {
      doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
@@ -10834,15 +10844,22 @@ window.addEventListener('DOMContentLoaded',()=>{
    const gstRate=base>0?rows.reduce((s,x)=>s+pNum(x.tax)*pNum(x.total),0)/base:0;
    const freight=pNum(pVal('freightExp')), roundOff=pNum(pVal('roundOffInput'));
    const taxable=base+freight, tax=taxable*gstRate/100;
+   /* Freight Calculator figures are re-derived here instead of being scraped
+      back out of the on-screen boxes: those boxes are formatted to 2dp, so the
+      PDF inherited a rounded Cost on Yarn / Kg. Same maths as the calculator
+      in updateStoreTotals() — Net Weight is the sum of the item rows, Freight
+      Amt is Gross Weight x Rate, and the per-kg cost spreads that over the
+      net weight. */
+   const netWeight=rows.reduce((s,x)=>s+pNum(x.weight),0);
+   const grossWeight=pNum(pVal('calcGrossWeight')), freightRate=pNum(pVal('calcFreightRate'));
+   const freightAmt=grossWeight*freightRate;
+   const costOnYarn=netWeight>0?freightAmt/netWeight:0;
    return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),poNum:getSelectedPoNos().join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
      // Freight Calculator + billing extras. These were computed on screen but
      // never reached the PDF, so the printed copy always showed blanks/zeros
      // for Net Weight, Gross Weight, freight rate and cost-per-unit.
      freightExp:pNum(pVal('freightExp')),roundOff:pNum(pVal('roundOffInput')),
-     netWeight:pNum(pVal('calcNetWeight')),grossWeight:pNum(pVal('calcGrossWeight')),
-     freightRate:pNum(pVal('calcFreightRate')),
-     freightAmt:pNum(String(pVal('calcFreightAmt')).replace(/[^0-9.\-]/g,'')),
-     costOnYarn:pNum(String(pVal('calcCostOnYarn')).replace(/[^0-9.\-]/g,''))};
+     netWeight,grossWeight,freightRate,freightAmt,costOnYarn};
  }
  function collectOutwardData(no){return {outwardNo:no,entryType:pVal('outEntryTypeSelect'),date:pVal('outDate'),natureOfDispatch:pVal('outNatureOfDispatch'),partyName:pVal('outPartyName'),location:pVal('outLocation'),targetReturnDate:pVal('outTargetReturnDate'),transport:pVal('outTransport'),gatePass:pVal('outGatePassNo'),lotNo:pVal('outLotNo'),receiverName:pVal('outReceiverName'),designation:pVal('outDesignation'),department:pVal('outDepartment'),remarks:pVal('outRemarks')}}
  function collectRequirementData(no,rows){return {reqNo:no,ts:new Date(),date:pVal('p_reqDate'),requiredByDate:pVal('p_requiredByDate'),priority:pVal('p_priority'),generatedBy:pVal('p_reqGeneratedBy'),personName:pVal('p_reqPersonName'),empCode:pVal('p_reqEmpCode'),designation:pVal('p_reqDesignation'),department:pVal('p_reqDepartment'),contact:pVal('p_reqContact'),overallRemarks:pVal('p_overallRemarks'),items:rows.map(x=>({name:x.name,desc:x.description,make:x.make,category:x.category,machine:x.machine,qty:x.qty,uom:x.uom,grossWeight:x.grossWeight,remarks:x.specification}))}}
@@ -10861,7 +10878,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0).map(x=>({...x,total:pRound(x.rate*(x.billBasis==='WEIGHT'?x.weight:x.qty))}))}
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0).map(x=>{
+    /* The saved record and the PDF must match the entry form's Final Amount to
+       the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
+       the net rate rounded to 2dp for display, and pRound() clipped each line
+       total on top of that — the two errors then compounded through Taxable
+       Value, GST and Final Amount. Derive the net rate exactly the way
+       updateStoreTotals() does and keep the line total at full precision;
+       rounding to 2dp happens only where the figure is printed. */
+    const rate=x.listPrice-x.listPrice*x.discountPct/100;
+    return {...x,rate,total:rate*(x.billBasis==='WEIGHT'?x.weight:x.qty)};
+  })}
  function rowDataOutward(){return pRows('#outwardItemTableBody tr').map(r=>({itemName:r.querySelector('.out-item-name')?.value||'',itemDesc:r.querySelector('.out-item-desc')?.value||'',make:r.querySelector('.out-item-make')?.value||'',category:r.querySelector('.out-item-cat')?.value||'',machineName:r.querySelector('.out-machine-name')?.value||'',machineNo:r.querySelector('.out-machine-no')?.value||'',qty:pNum(r.querySelector('.out-qty')?.value),qtyUom:r.querySelector('.out-qty-uom')?.value||'',weight:pNum(r.querySelector('.out-weight')?.value),wUnit:r.querySelector('.out-wunit')?.value||'',itemId:r.dataset.itemId||''})).filter(x=>x.itemName&&x.qty>0)}
  function highlightRequiredField(id){
    const e=byId(id);if(!e)return;
