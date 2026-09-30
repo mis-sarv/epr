@@ -13001,7 +13001,16 @@ window.addEventListener('DOMContentLoaded',()=>{
        // `approvals` is the single shared column both surfaces read/write.
        signatures:{...(state.req.approvals||{}),store:storeSignature},
      };
-     const upd=await SB.from('purchase_requirements').update({pdf_snapshot:d,approvals:d.signatures}).eq('id',state.req.id);
+     /* Vendor Info ka apna timestamp — purchase_requirements.vendor_info_saved_at.
+        created_at PR banne ka waqt hai; ye wo waqt hai jab rates/vendors bhare
+        gaye. Jis database me abhi column nahi hai wahan save na ruke, isliye
+        error par ek baar bina us column ke dobara. */
+     const vendorInfoPatch={pdf_snapshot:d,approvals:d.signatures};
+     let upd=await SB.from('purchase_requirements').update({...vendorInfoPatch,vendor_info_saved_at:new Date().toISOString()}).eq('id',state.req.id);
+     if(upd.error&&/vendor_info_saved_at/i.test(upd.error.message||'')){
+       console.warn('[SARV] vendor_info_saved_at column missing — us column ke bina save kiya');
+       upd=await SB.from('purchase_requirements').update(vendorInfoPatch).eq('id',state.req.id);
+     }
      if(upd.error){
        if(/column|does not exist/i.test(upd.error.message||''))showToast('⚠️ pdf_snapshot column missing — VENDOR_INFO_MIGRATION.sql run karein','warn');
        else dbError(upd.error);
