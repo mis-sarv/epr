@@ -2907,7 +2907,14 @@
                 // Store In-charge's pad signature rides along untouched.
                 signatures: {...(req.approvals||{}), ...(base.signatures && base.signatures.store ? {store: base.signatures.store} : {})},
             };
-            const upd = await SB.from('purchase_requirements').update({pdf_snapshot:d}).eq('id', req.id);
+            /* Vendor Info ka apna timestamp — purchase_requirements
+               .vendor_info_saved_at. Jis database me abhi ye column nahi hai
+               wahan save na ruke, isliye error par ek baar bina uske dobara. */
+            let upd = await SB.from('purchase_requirements').update({pdf_snapshot:d, vendor_info_saved_at:new Date().toISOString()}).eq('id', req.id);
+            if(upd.error && /vendor_info_saved_at/i.test(upd.error.message||'')){
+                console.warn('[SARV] vendor_info_saved_at column missing — us column ke bina save kiya');
+                upd = await SB.from('purchase_requirements').update({pdf_snapshot:d}).eq('id', req.id);
+            }
             if(upd.error) throw upd.error;
 
             // Keep the open modal in step so the Approved Vendor dropdown can
