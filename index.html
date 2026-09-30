@@ -2584,7 +2584,7 @@ body {
                         <label>Location <span style="color:#dc2626; font-weight:800;">★</span></label>
                         <input type="text" class="form-control" id="outLocation" placeholder="City / Site" list="dl-outLocation" autocomplete="off">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" id="outTargetReturnDateGroup">
                         <label>Target Return Date <span style="color:#dc2626; font-weight:800;">★</span></label>
                         <input type="date" class="form-control" id="outTargetReturnDate">
                     </div>
@@ -5334,6 +5334,9 @@ function lockToMasterList(el,getValidValues){
   if(!el||el.dataset.masterLock)return;
   el.dataset.masterLock='1';
   el.addEventListener('blur',function(){
+    // A field the form itself has locked (a fixed ISSUE value) holds a value
+    // nobody typed, so it is exempt — the check is here to stop typos.
+    if(this.readOnly||this.disabled)return;
     const val=(this.value||'').trim();
     if(!val)return;
     const ok=getValidValues().some(v=>(v||'').trim().toLowerCase()===val.toLowerCase());
@@ -6563,6 +6566,7 @@ const OUTWARD_MODE_LABELS={
   'Repair':'Repair (Returnable)',
   'Transfer':'Stock Transfer',
   'Sample':'Sample Dispatch',
+  'CONSUMABLE':'Consumable Issue',
 };
 // Mirrors the Nature of Dispatch selection into the Outward Mode stat box,
 // which until now was a hard-coded "Non-Returnable Dispatch" that never moved.
@@ -6572,11 +6576,59 @@ function updateOutwardModeText(){
   const val=sel?.value||'';
   el.textContent=val?(OUTWARD_MODE_LABELS[val]||val):'—';
 }
+/* ── ISSUE: fixed header fields ───────────────────────────────────────
+   An ISSUE is always this unit drawing its own consumables and carrying them
+   by hand, so these header fields never vary from entry to entry. On ISSUE they
+   are pre-filled and locked rather than left as free text, and Target Return
+   Date is hidden outright — a consumable is never coming back. OUTWARD is
+   untouched: the same fields stay fully editable there. */
+const ISSUE_FIXED_FIELDS={
+  outPartyName:'SARV INDIA HOME FURNISHING UNIT-II',
+  outLocation:'UNIT-2',
+  outTransport:'BY HAND'
+};
+const ISSUE_FIXED_NATURE='CONSUMABLE';
+const ISSUE_FIXED_TITLE='ISSUE entry me yeh field fixed hai — change nahi ho sakta';
+function applyIssueFixedFields(){
+  const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
+  Object.keys(ISSUE_FIXED_FIELDS).forEach(id=>{
+    const el=byId(id);if(!el)return;
+    // The datalist and the field's own cursor are remembered once, so unlocking
+    // can hand both back.
+    if(el.dataset.issueCursor===undefined)el.dataset.issueCursor=el.style.cursor;
+    if(!el.dataset.issueList&&el.getAttribute('list'))el.dataset.issueList=el.getAttribute('list');
+    if(isIssue){
+      el.value=ISSUE_FIXED_FIELDS[id];
+      el.readOnly=true;
+      el.removeAttribute('list');            // no dropdown to pick a different one
+      el.style.background='#f1f5f9';el.style.cursor='not-allowed';el.title=ISSUE_FIXED_TITLE;
+    }else{
+      el.readOnly=false;
+      if(el.dataset.issueList)el.setAttribute('list',el.dataset.issueList);
+      el.style.background='';el.style.cursor=el.dataset.issueCursor||'';el.title='';
+    }
+  });
+  // Nature of Dispatch is CONSUMABLE-only on ISSUE, the usual four on OUTWARD.
+  populateNatureOfDispatch();
+  // Target Return Date is meaningless for a consumable issue — hidden, and
+  // blanked so a value left over from an OUTWARD draft can't be saved.
+  const grp=byId('outTargetReturnDateGroup'),trd=byId('outTargetReturnDate');
+  if(grp)grp.style.display=isIssue?'none':'';
+  if(isIssue&&trd)trd.value='';
+}
 function populateNatureOfDispatch(){
   const sel=byId('outNatureOfDispatch');if(!sel)return;
+  const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
   const cur=sel.value;
-  sel.innerHTML=['Non-Returnable','Repair','Transfer','Sample'].map(o=>`<option value="${o}">${o}</option>`).join('');
-  if(cur&&[...sel.options].some(o=>o.value===cur))sel.value=cur;
+  const opts=isIssue?[ISSUE_FIXED_NATURE]:['Non-Returnable','Repair','Transfer','Sample'];
+  sel.innerHTML=opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  if(isIssue){
+    sel.value=ISSUE_FIXED_NATURE;
+    sel.disabled=true;sel.style.background='#f1f5f9';sel.style.cursor='not-allowed';sel.title=ISSUE_FIXED_TITLE;
+  }else{
+    sel.disabled=false;sel.style.background='';sel.style.cursor='pointer';sel.title='';
+    if(cur&&opts.includes(cur))sel.value=cur;
+  }
   if(!sel.dataset.modeBound){
     sel.addEventListener('change',updateOutwardModeText);
     sel.dataset.modeBound='1';
@@ -9282,6 +9334,9 @@ function outwardWord_(){
 }
 function applyOutwardWording(){
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
+  // The Party / Location / Transport / Nature lock and the hidden Target Return
+  // Date follow the Entry Type, exactly like the wording does.
+  applyIssueFixedFields();
   const W=isIssue?'ISSUE':'OUTWARD';
   const t=(id,txt)=>{const e=byId(id);if(e)e.textContent=txt;};
   t('outDeskTitle','SIHF-II - '+W+' DESK');
@@ -9443,7 +9498,13 @@ async function loadOutwardForEdit(id,no){
   set('outLotNo',e.lot_no);
   set('outRemarks',e.notes);
   const nod=byId('outNatureOfDispatch');
-  if(nod&&e.nature_of_dispatch){nod.value=e.nature_of_dispatch;nod.dispatchEvent(new Event('change'));}
+  // A locked ISSUE dropdown only carries CONSUMABLE, so an older record saved
+  // under a different Nature keeps its own value rather than reading as blank.
+  if(nod&&e.nature_of_dispatch){
+    if(![...nod.options].some(o=>o.value===e.nature_of_dispatch))
+      nod.add(new Option(e.nature_of_dispatch,e.nature_of_dispatch),0);
+    nod.value=e.nature_of_dispatch;nod.dispatchEvent(new Event('change'));
+  }
 
   const tb=byId('outwardItemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
@@ -9612,7 +9673,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     selectId:'outEntryTypeSelect',rootIds:['outwardPanel'],tbodyId:'outwardItemTableBody',photoKey:'outward',
     skipIds:['outEntryTypeSelect','outRegEntryNo','outSerialField'],
     newRow:addOutwardItemRow,
-    extraRestore:()=>{showOutStockWarning(null);updateOutTotals();}
+    extraRestore:()=>{showOutStockWarning(null);updateOutTotals();applyIssueFixedFields();}
   });
   // ── Entry Type → Serial No + Theme (Inward) ──────────────
   const etSel=byId('entryTypeSelect');
@@ -10131,7 +10192,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Party Name:</td><td><strong>'+pEsc(d.partyName||d.party_name||'-')+'</strong></td></tr>'+
         '<tr><td class="lbl">Location:</td><td>'+pEsc(d.location||'-')+'</td></tr>'+
-        '<tr><td class="lbl">Target Return:</td><td>'+fmtDate_(d.targetReturnDate||d.target_return_date)+'</td></tr>'+
+        // Dropped rather than printed empty — an ISSUE has no Target Return Date.
+        ((d.targetReturnDate||d.target_return_date)?'<tr><td class="lbl">Target Return:</td><td>'+fmtDate_(d.targetReturnDate||d.target_return_date)+'</td></tr>':'')+
         '<tr><td class="lbl">Transport:</td><td>'+pEsc(d.transport||'-')+'</td></tr>'+
         (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
      '</table></div></div>'+
@@ -10235,7 +10297,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.lotNo)leftPairs.push(['Lot No.:',d.lotNo]);
      rightPairs.push(['Party Name:',d.partyName||'-']);
      rightPairs.push(['Location:',d.location||'-']);
-     rightPairs.push(['Target Return:',fmtDate_(d.targetReturnDate)]);
+     // Dropped rather than printed empty — an ISSUE has no Target Return Date.
+     if(d.targetReturnDate)rightPairs.push(['Target Return:',fmtDate_(d.targetReturnDate)]);
      rightPairs.push(['Transport:',d.transport||'-']);
    }
    doc.setFontSize(8);
@@ -11808,7 +11871,11 @@ window.addEventListener('DOMContentLoaded',()=>{
  }
  async function saveOutwardWithPdf(){
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
-   if(!validateRequiredFields([{id:'outPartyName',label:'Party Name'},{id:'outLocation',label:'Location'},{id:'outTargetReturnDate',label:'Target Return Date'}]))return;
+   // Target Return Date is hidden on an ISSUE (consumables don't come back),
+   // so it is only a required field while the form is an OUTWARD.
+   const outReq=[{id:'outPartyName',label:'Party Name'},{id:'outLocation',label:'Location'}];
+   if(pVal('outEntryTypeSelect')!=='ISSUE')outReq.push({id:'outTargetReturnDate',label:'Target Return Date'});
+   if(!validateRequiredFields(outReq))return;
    const rows=rowDataOutward();if(!rows.length)return showToast('At least one outward item required','warn');
    // ISSUE: every item row must name the machine it is issued to — Machine
    // Name AND Machine No., as a pair that exists in Machine Master. Missing /
@@ -13172,6 +13239,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    const nameVal=(byId('outPartyName')?.value||'').trim();
    const locEl=byId('outLocation');
    if(!locEl)return;
+   // On an ISSUE the Location is a fixed, locked value — the supplier's City
+   // must not overwrite it.
+   if(locEl.readOnly)return;
    const supplier=sarvSupplierCatalog.find(s=>String(s.supplier_name||'').trim().toUpperCase()===nameVal.toUpperCase());
    if(!supplier)return;
    const city=String(supplier.city||'').trim();
