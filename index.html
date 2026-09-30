@@ -11449,45 +11449,223 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   // What the preview modal is showing right now, for its Send / Print buttons.
   let sarvPdfShareCtx=null;
+  /* ── Recipient number ────────────────────────────────────────────
+     "Jise bhejna chahiye" — the number is resolved from the masters the entry
+     already names (Outward/Issue: the receiver employee's Contact No, else the
+     party's Supplier Master phone; Inward: the supplier's phone), shown for
+     confirmation and still editable. Numbers typed by hand are remembered so
+     the next entry offers them. */
+  const STORE_WA_NUMS_KEY='sarvStoreWaNumbers';
+  function storeWaDigits_(v){
+    const d=String(v||'').replace(/[^0-9]/g,'');
+    if(!d)return '';
+    // Bare 10-digit Indian mobiles need the country code; anything longer is
+    // assumed to already carry one.
+    return d.length===10?'91'+d:d.replace(/^0+/,'');
+  }
+  function storeWaRecentNums_(){
+    try{const raw=localStorage.getItem(STORE_WA_NUMS_KEY);return raw?JSON.parse(raw):[]}catch(e){return []}
+  }
+  function storeWaRememberNum_(phone){
+    if(!phone)return;
+    try{
+      const list=[phone,...storeWaRecentNums_().filter(x=>x!==phone)].slice(0,8);
+      localStorage.setItem(STORE_WA_NUMS_KEY,JSON.stringify(list));
+    }catch(e){}
+  }
+  // Suggestions for this entry, best match first: {phone, label}
+  function storeWaSuggestions_(ctx){
+    const out=[],seen=new Set();
+    const add=(raw,label)=>{
+      const p=storeWaDigits_(raw);
+      if(!p||seen.has(p))return;
+      seen.add(p);out.push({phone:p,label});
+    };
+    const emp=(sarvEmployeeCatalog||[]).find(e=>
+      String(e.person_name||'').trim().toUpperCase()===String(ctx.receiver||'').trim().toUpperCase());
+    if(emp)add(emp.contact_no,(emp.person_name||'Receiver')+' (Employee Master)');
+    const sup=(sarvSupplierCatalog||[]).find(s=>
+      String(s.supplier_name||'').trim().toUpperCase()===String(ctx.party||'').trim().toUpperCase());
+    if(sup)add(sup.phone,(sup.supplier_name||'Party')+' (Supplier Master)');
+    storeWaRecentNums_().forEach(p=>add(p,'Recently used'));
+    return out;
+  }
+  /* Asks who this copy goes to. Resolves to a country-coded number, or '' if
+     the user backs out. */
+  function pickWhatsappRecipient_(ctx){
+    return new Promise(resolve=>{
+      const sug=storeWaSuggestions_(ctx);
+      let ov=byId('sarvWaPickOverlay');
+      if(!ov){
+        ov=document.createElement('div');
+        ov.id='sarvWaPickOverlay';
+        ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);z-index:30002;display:none;align-items:center;justify-content:center;padding:16px;';
+        document.body.appendChild(ov);
+      }
+      ov.innerHTML='<div style="background:#fff;width:min(460px,96vw);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;">'
+        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">&#128242; Kise bhejna hai? &mdash; '+escText(ctx.docNo||'')+'</div>'
+        +'<div style="padding:14px 16px;">'
+        +'<label style="display:block;font-size:11px;font-weight:800;color:#334155;margin-bottom:5px;">WhatsApp Number (country code ke saath, e.g. 919812345678)</label>'
+        +'<input id="sarvWaPhoneInput" type="tel" inputmode="numeric" value="'+escText(sug[0]?.phone||'')+'" placeholder="91XXXXXXXXXX" '
+          +'style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:.5px;">'
+        +(sug.length?'<div style="margin-top:10px;font-size:10.5px;font-weight:800;color:#64748b;">MASTER / RECENT</div>'
+            +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:5px;">'
+            +sug.map(s=>'<button type="button" data-num="'+escText(s.phone)+'" style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;">'
+                +escText(s.phone)+' &middot; '+escText(s.label)+'</button>').join('')
+            +'</div>':'<div style="margin-top:9px;font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 9px;">'
+            +'Is entry ke Party / Receiver ka number Master me nahi mila &mdash; number type karein.</div>')
+        +'</div>'
+        +'<div style="display:flex;justify-content:flex-end;gap:9px;padding:11px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;">'
+        +'<button type="button" data-act="cancel" style="background:#e2e8f0;color:#334155;border:0;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;">Cancel</button>'
+        +'<button type="button" data-act="ok" style="background:#25d366;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">&#128242; WhatsApp Kholein</button>'
+        +'</div></div>';
+      const input=byId('sarvWaPhoneInput');
+      const finish=val=>{
+        ov.style.display='none';ov.onclick=null;
+        document.removeEventListener('keydown',onKey,true);
+        resolve(val);
+      };
+      const submit=()=>{
+        const p=storeWaDigits_(input?.value);
+        if(!p||p.length<10){
+          showToast('⚠️ Poora WhatsApp number daalein (country code ke saath)','warn');
+          input?.focus();return;
+        }
+        storeWaRememberNum_(p);finish(p);
+      };
+      const onKey=e=>{
+        if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish('');}
+        else if(e.key==='Enter'&&byId('sarvWaPhoneInput')){e.preventDefault();submit();}
+      };
+      ov.onclick=e=>{
+        const num=e.target.closest('[data-num]')?.dataset.num;
+        if(num){if(input)input.value=num;return;}
+        const act=e.target.closest('[data-act]')?.dataset.act;
+        if(act==='ok')submit();
+        else if(act==='cancel'||e.target===ov)finish('');
+      };
+      document.addEventListener('keydown',onKey,true);
+      ov.style.display='flex';
+      input?.focus();input?.select();
+    });
+  }
+  /* WhatsApp Web gives a page no way to know whether the message actually went,
+     so on that path the send is confirmed by the person who sent it. Print is
+     unlocked only on "Haan, bhej diya" — "Abhi nahi" leaves the entry locked. */
+  function confirmWhatsappSent_(ctx){
+    return new Promise(resolve=>{
+      let ov=byId('sarvWaSentOverlay');
+      if(!ov){
+        ov=document.createElement('div');
+        ov.id='sarvWaSentOverlay';
+        ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);z-index:30002;display:none;align-items:center;justify-content:center;padding:16px;';
+        document.body.appendChild(ov);
+      }
+      ov.innerHTML='<div style="background:#fff;width:min(470px,96vw);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;">'
+        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">&#128242; WhatsApp par bhej diya?</div>'
+        +'<div style="padding:14px 16px;font-size:12px;color:#334155;line-height:1.65;">'
+        +'<b>'+escText(ctx.docNo||'')+'</b> ki PDF download ho gayi hai aur WhatsApp Web khul gaya hai.'
+        +'<div style="margin:10px 0;background:#f8fafc;border-left:3px solid #25d366;padding:8px 11px;border-radius:5px;">'
+        +'1. WhatsApp me <b>&#128206; Attach &rarr; Document</b> dabayein<br>'
+        +'2. Downloads me se <b>'+escText(ctx.filename||'ye PDF')+'</b> chunein<br>'
+        +'3. <b>Send</b> dabayein</div>'
+        +'<div style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 9px;font-size:11px;">'
+        +'Browser khud file attach nahi kar sakta &mdash; attach karke Send dabane ke baad hi niche "Haan" dabayein. '
+        +'Print tabhi khulega.</div></div>'
+        +'<div style="display:flex;justify-content:flex-end;gap:9px;padding:11px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;">'
+        +'<button type="button" data-act="no" style="background:#e2e8f0;color:#334155;border:0;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;">Abhi nahi</button>'
+        +'<button type="button" data-act="yes" style="background:#16a34a;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">&#10003; Haan, bhej diya</button>'
+        +'</div></div>';
+      const finish=ok=>{
+        ov.style.display='none';ov.onclick=null;
+        document.removeEventListener('keydown',onKey,true);
+        resolve(ok);
+      };
+      const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish(false);}};
+      ov.onclick=e=>{
+        const act=e.target.closest('[data-act]')?.dataset.act;
+        if(act==='yes')finish(true);
+        else if(act==='no'||e.target===ov)finish(false);
+      };
+      document.addEventListener('keydown',onKey,true);
+      ov.style.display='flex';
+    });
+  }
+  /* The Drive-link bar sits outside the preview modal, so it is gated on its
+     own. A non-Store document (PR / PO) is never gated. */
+  function applyStoreLinkGate_(kind,no){
+    const isStore=kind==='INWARD'||kind==='OUTWARD'||kind==='ISSUE';
+    const open=!isStore||isStoreEntrySent_(no);
+    [byId('dlbLink'),byId('dlbLinkTwoPage')].forEach(a=>{
+      if(!a)return;
+      a.style.display=(a.dataset.gateUrl&&open)?'inline-block':'none';
+    });
+  }
   function applyStorePrintGate_(){
-    const wa=byId('sarvPdfWaBtn'),pr=byId('sarvPdfPrintBtn');
+    const wa=byId('sarvPdfWaBtn'),pr=byId('sarvPdfPrintBtn'),dl=byId('sarvPdfDownloadBtn'),hint=byId('sarvPdfGateHint');
     if(!wa||!pr)return;
     const ctx=sarvPdfShareCtx;
     // PR / PO / ledger previews pass no context and keep the old
     // download-only header.
-    if(!ctx){wa.style.display='none';pr.style.display='none';return;}
-    wa.style.display='';pr.style.display='';
+    if(!ctx){
+      wa.style.display='none';pr.style.display='none';
+      if(hint)hint.style.display='none';
+      if(dl)dl.style.display=dl.getAttribute('href')?'':'none';
+      return;
+    }
     const sent=isStoreEntrySent_(ctx.docNo);
+    wa.style.display='';
     wa.innerHTML=sent?'&#128242; Dobara Bhejein':'&#128242; Send via WhatsApp';
-    pr.disabled=!sent;
-    pr.style.opacity=sent?'1':'.45';
-    pr.style.cursor=sent?'pointer':'not-allowed';
-    pr.title=sent?('Print '+ctx.docNo):'Pehle WhatsApp par bhejein — uske baad print khulega';
+    /* Until the entry has gone out, WhatsApp Send is the only thing on this
+       header. Print AND Download are hidden outright rather than greyed out —
+       a downloadable PDF is a printable PDF, so leaving Download open would
+       have been a way straight past the gate. */
+    pr.style.display=sent?'':'none';
+    if(dl)dl.style.display=(sent&&dl.getAttribute('href'))?'':'none';
+    if(hint){
+      hint.style.display=sent?'none':'';
+      hint.textContent='🔒 Print / Download WhatsApp par bhejne ke baad khulega';
+    }
+    // The out-of-modal Drive links follow the same gate.
+    applyStoreLinkGate_(sarvPdfState.current?.kind||"",ctx.docNo);
   }
-  /* WhatsApp's click-to-chat link can only carry text, so the Web Share API is
-     the only web standard that hands it a real file — that is the path taken
-     here, and no PDF URL ever goes into the message. Desktop browsers have no
-     such API: there the file is downloaded and WhatsApp Web opened so it can
-     be attached with the 📎 button, still without a link. */
+  /* WhatsApp's click-to-chat link can only carry text — there is no API, on any
+     platform, that lets a web page attach a file to WhatsApp or press Send for
+     the user. The Web Share API is the one standard that hands WhatsApp a real
+     file, so it is tried first (mobile Chrome/Safari over HTTPS): the PDF
+     arrives as a real attachment. Desktop browsers have no such API, so there
+     the PDF is downloaded, WhatsApp Web opens on the chosen recipient's chat
+     with the message (and the PDF's permanent link) pre-filled, and the 📎
+     attach is the one manual step that cannot be automated away. */
   async function sendStoreEntryWhatsapp_(){
     const ctx=sarvPdfShareCtx;if(!ctx)return;
-    if(!ctx.blob)return showToast('⚠️ PDF file ready nahi hai — attach nahi ho sakti','warn');
-    const file=new File([ctx.blob],ctx.filename,{type:'application/pdf'});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){
+    if(!ctx.blob&&!ctx.pdfUrl)return showToast('⚠️ PDF file ready nahi hai — attach nahi ho sakti','warn');
+    const phone=await pickWhatsappRecipient_(ctx);
+    if(!phone)return;                       // picker se back — kuch nahi bheja
+    const msg=(ctx.text||ctx.docNo||'')+(ctx.pdfUrl?('\nPDF: '+ctx.pdfUrl):'');
+    const pdfFile=()=>new File([ctx.blob],ctx.filename,{type:'application/pdf'});
+    if(ctx.blob&&navigator.canShare&&navigator.canShare({files:[pdfFile()]})){
       try{
-        await navigator.share({files:[file],title:ctx.docNo,text:ctx.text||ctx.docNo});
+        await navigator.share({files:[pdfFile()],title:ctx.docNo,text:msg});
         markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
         showToast('✅ '+ctx.docNo+' bhej diya — ab print kar sakte hain');
         return;
       }catch(e){
-        if(e.name==='AbortError')return; // share sheet band kar diya — kuch mat badlo
+        if(e.name==='AbortError')return;    // share sheet band kar diya
         console.warn('[SARV] Native PDF share failed:',e.message||e);
       }
     }
-    downloadBlob(ctx.blob,ctx.filename);
-    window.open('https://web.whatsapp.com/','_blank');
-    markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
-    showToast('📎 PDF download ho gayi — WhatsApp me chat kholkar yahi file attach karein (link nahi)','warn');
+    if(ctx.blob)downloadBlob(ctx.blob,ctx.filename);
+    window.open('https://web.whatsapp.com/send?phone='+encodeURIComponent(phone)
+      +'&text='+encodeURIComponent(msg),'_blank');
+    // The gate turns only on the sender's own confirmation — see
+    // confirmWhatsappSent_.
+    if(await confirmWhatsappSent_(ctx)){
+      markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
+      showToast('✅ '+ctx.docNo+' bhej diya — ab print kar sakte hain');
+    }else{
+      showToast('🔒 '+ctx.docNo+' abhi bheja nahi gaya — Print band hai','warn');
+    }
   }
   function printStoreEntryPdf_(){
     const ctx=sarvPdfShareCtx;if(!ctx)return;
@@ -11502,8 +11680,9 @@ window.addEventListener('DOMContentLoaded',()=>{
     setTimeout(()=>URL.revokeObjectURL(url),120000);
   }
   /* share — passed only by the Store Inward / Outward save path, as
-     {docNo, text}. Every other caller leaves it null and gets the plain
-     download-only preview it always had. */
+     {docNo, text, party, receiver, pdfUrl}. It is what turns on the
+     send-before-print gate and the recipient picker. Every other caller leaves
+     it null and gets the plain download-only preview it always had. */
   function showSarvPdfPreview(blob,filename='Generated PDF',previewHtml='',share=null){
     if(!blob&&!previewHtml){showToast('PDF preview unavailable','warn');return;}
     let overlay=byId('sarvPdfViewerOverlay');
@@ -11516,6 +11695,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         +'<strong id="sarvPdfViewerTitle" style="font-size:14px;">PDF Preview</strong>'
         +'<div style="display:flex;gap:8px;align-items:center;">'
         +'<button type="button" id="sarvPdfWaBtn" style="display:none;color:#fff;background:#25d366;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128242; Send via WhatsApp</button>'
+        +'<span id="sarvPdfGateHint" style="display:none;font-size:11px;font-weight:700;color:#fca5a5;">&#128274; Print / Download WhatsApp par bhejne ke baad khulega</span>'
         +'<button type="button" id="sarvPdfPrintBtn" style="display:none;color:#fff;background:#475569;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128424; Print</button>'
         +'<a id="sarvPdfDownloadBtn" href="#" download style="color:#fff;background:#0284c7;border-radius:6px;padding:7px 11px;text-decoration:none;font-size:12px;font-weight:700;">⬇ Download PDF</a>'
         +'<button type="button" id="sarvPdfViewerClose" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;">✕</button>'
@@ -11573,7 +11753,14 @@ window.addEventListener('DOMContentLoaded',()=>{
       }
     }
    sarvPdfState.current={kind,data:d,items,images,result}; sarvPdfState.blobs={...sarvPdfState.blobs,[no]:result}; sarvPdfState.urls[no]=result;
-   const one=result.SINGLE?.url||'', two=result.TWO_PAGE?.url||''; if(byId('dlbLink')){byId('dlbLink').href=one||'#';byId('dlbLink').style.display=one?'inline-block':'none'}if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href=two||'#';byId('dlbLinkTwoPage').style.display=two?'inline-block':'none'}
+   /* The Drive-link bar's two anchors open the stored PDF in a new tab, which
+      is a print away — so on a Store entry they follow the same send-first gate
+      as the Print buttons. Their href is set either way; only the visibility
+      waits, and applyStoreLinkGate_ reveals them the moment the entry goes. */
+   const one=result.SINGLE?.url||'', two=result.TWO_PAGE?.url||'';
+   if(byId('dlbLink')){byId('dlbLink').href=one||'#';byId('dlbLink').dataset.gateUrl=one?'1':'';}
+   if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href=two||'#';byId('dlbLinkTwoPage').dataset.gateUrl=two?'1':'';}
+   applyStoreLinkGate_(kind,no);
    return result;
  }
  function collectInwardData(no,rows){
@@ -11791,9 +11978,11 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput');
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
-       /* Send-before-print: the preview now carries a WhatsApp Send button
-          that attaches this very PDF, and Print stays locked until it goes. */
-       {docNo:no,text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
+       /* Send-before-print: the preview's only button is WhatsApp Send until
+          this PDF has gone out — party/receiver feed the recipient picker and
+          pdfUrl is the permanent link that rides along in the message. */
+       {docNo:no,party:d.supplier,receiver:'',pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
+        text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
      showToast(editId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Inward saved: '+no));
      // Repair-Return inward — refresh the Repair Items Tracker so the
      // received/balance figures for the matching outward update immediately.
@@ -11957,7 +12146,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput');
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
-       {docNo:no,text:'OUTWARD '+no+' — '+(d.partyName||'-')+(d.gatePass?(' | Gate Pass '+d.gatePass):'')});}
+       {docNo:no,party:d.partyName,receiver:d.receiverName,pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
+        text:(d.entryType==='ISSUE'?'ISSUE ':'OUTWARD ')+no+' — '+(d.partyName||'-')+(d.receiverName?(' | Receiver '+d.receiverName):'')+(d.gatePass?(' | Gate Pass '+d.gatePass):'')});}
      showToast(outEditId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Outward saved: '+no));
      // Repair-nature outward — refresh the Repair Items Tracker so this
      // entry (and its sent/balance figures) show up immediately, not only
