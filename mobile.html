@@ -627,6 +627,7 @@
                 <label>Approving As</label>
                 <select id="loginRole" class="form-select">
                     <option value="">-- Select Role --</option>
+                    <option value="gm">GM</option>
                     <option value="md">MD</option>
                     <option value="purchaser">Purchaser</option>
                     <option value="poSender">PO Sender</option>
@@ -652,6 +653,7 @@
                     <option value="PARKASH JI">PARKASH JI</option>
                     <option value="DEEPAK VERMA">DEEPAK VERMA</option>
                     <option value="PRIYA VERMA">PRIYA VERMA</option>
+                    <option value="FIELD BOY">FIELD BOY</option>
                 </select>
             </div>
             <div class="form-group">
@@ -708,12 +710,22 @@
         <div class="stage-tab" data-tab="SENT" onclick="switchStageTab('SENT')">
             <span class="st-ico">&#128228;</span><span class="st-lbl">PO Sent to Vendor</span><span class="st-count" id="cnt-SENT">0</span>
         </div>
+        <!-- GM and MD: Store entries (Inward / Inward NB / Outward) to be
+             checked against their items. GM checks first, then the same entry
+             surfaces for MD. See STORE_STAGES. -->
+        <div class="stage-tab" data-tab="STORE" onclick="switchStageTab('STORE')">
+            <span class="st-ico">&#128230;</span><span class="st-lbl">Store Check</span><span class="st-count" id="cnt-STORE">0</span>
+        </div>
+        <!-- Purchaser: what has actually arrived against the POs raised from
+             their own PRs, split Pending / Partially Received / Received. -->
+        <div class="stage-tab" data-tab="RECV" onclick="switchStageTab('RECV')">
+            <span class="st-ico">&#128229;</span><span class="st-lbl">PO Receipts</span><span class="st-count" id="cnt-RECV">0</span>
+        </div>
     </nav>
     <div class="sub-bar">
-        <div class="seg">
-            <button type="button" data-view="pending" class="active" onclick="switchView('pending')">Pending</button>
-            <button type="button" data-view="done" onclick="switchView('done')">Done</button>
-        </div>
+        <!-- Buttons are rebuilt per tab — PO Receipts has three sections, the
+             rest have two. See VIEWS_FOR_TAB / syncStageTabsUi. -->
+        <div class="seg" id="viewSeg"></div>
         <span id="accessNote" class="access-note"></span>
     </div>
 
@@ -729,10 +741,22 @@
             <div class="req-meta-info" id="modal-meta-info"></div>
 
             <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; display: block;">Item Details</label>
+            <!-- FIELD BOY only: how many items on this PR are ticked off, and
+                 that every tick is already saved (there is no Save button). -->
+            <div id="fbChecklistBar" style="display:none; margin-bottom:8px; border:1px solid #bbf7d0; background:#f0fdf4; border-radius:8px; padding:8px 10px;">
+                <div id="fbChecklistText" style="font-size:0.78rem; font-weight:800; color:#166534;"></div>
+                <div style="height:6px; background:#dcfce7; border-radius:4px; margin-top:6px; overflow:hidden;">
+                    <div id="fbChecklistFill" style="height:100%; width:0%; background:#16a34a; transition:width .2s;"></div>
+                </div>
+                <div id="fbChecklistNote" style="font-size:0.68rem; color:#15803d; margin-top:5px; font-weight:600;">
+                    Jo item mil gaya uske saamne ✔ tick karein — har tick turant save hota hai. Saare items tick hote hi ye PR Done me chali jayegi.
+                </div>
+            </div>
             <div class="table-container">
                 <table class="item-table">
                     <thead>
                         <tr>
+                            <th id="done-col-header" style="display:none;" title="Item mil gaya — tick karte hi save ho jata hai">&#10004;</th>
                             <th>Sr</th>
                             <th>Item Name</th>
                             <th>Description</th>
@@ -879,6 +903,45 @@
                 <button class="btn" id="approveBtn" onclick="approveEntry()" style="flex:1; width:auto;" disabled>✔ Approve & Sign</button>
                 <button class="btn" id="rejectBtn" onclick="rejectEntry()" style="flex:1; width:auto; background:#dc3545;">✖ Reject</button>
             </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Store Check / PO Receipts modal ──────────────────────────────
+         Kept apart from the approval modal above on purpose. That one is built
+         entirely around a PR / PO and its signature pad; a store entry has
+         neither an approval chain nor a signature, and a PO receipt is a
+         read-only tally. Threading two more record shapes through openModal
+         would mean a branch at nearly every line of it. -->
+    <div class="modal-overlay" id="storeModal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span id="storeModalTitle">Entry Details</span>
+                <button class="close-btn" onclick="closeStoreModal()">×</button>
+            </div>
+            <div class="req-meta-info" id="storeModalMeta"></div>
+            <!-- Every document behind this entry: its own PDF, plus the PO and
+                 PR it was raised against. Filled on open — see storeModalDocs_. -->
+            <div id="storeModalDocs" style="display:none; margin:8px 0 4px; border:1px solid #d7dde5; border-radius:8px; padding:8px 10px; background:#fbfcfe;">
+                <div style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:2px;">📎 Documents</div>
+                <div id="storeModalDocsBody" style="font-size:0.78rem;"></div>
+            </div>
+            <label style="font-size:0.85rem; font-weight:600; margin:8px 0 6px; display:block;">Item Details</label>
+            <div class="table-container">
+                <table class="item-table">
+                    <thead><tr id="storeModalHead"></tr></thead>
+                    <tbody id="storeModalBody"></tbody>
+                </table>
+            </div>
+            <div class="mode-note" id="storeModalNote" style="display:none;"></div>
+            <!-- GM / MD only. One button, no signature: this is a physical
+                 verification of what the store wrote down, not an approval. -->
+            <div id="storeCheckBox" style="display:none; margin-top:12px;">
+                <div class="form-group">
+                    <label>Remarks <small style="font-weight:500;color:#6b7280;">— optional</small></label>
+                    <textarea id="storeCheckRemarks" rows="2" placeholder="Koi note ho to likhein..."></textarea>
+                </div>
+                <button class="btn" id="storeCheckBtn" style="background:#16a34a;">&#10004; Check Done</button>
             </div>
         </div>
     </div>
@@ -1596,8 +1659,14 @@
     }
 
     // ── Approval chain config ────────────────────────────────────
-    const STAGE_LABEL = {gmCeo:'GM / CEO', md:'MD', vendor:'Vendor Verified', poSender:'PO Sender'};
-    const STAGE_ROLE_PIN = {gmCeo:'USER_GM_PIN', md:'USER_MD_PIN', vendor:'VENDOR_VERIFY_PIN', poSender:'PO_SENDER_PIN'};
+    /* 'gm' is its OWN stage, deliberately not reusing 'gmCeo'. gmCeo means "the
+       PR approval stage a Purchaser signs" everywhere in this file (see
+       myPurchaserName below), and a GM login carrying that stage with no
+       purchaser name would be mistaken for a half-built Purchaser session —
+       including by the restore guard, which drops exactly that shape. The GM
+       login does one job: the Store Check tab. */
+    const STAGE_LABEL = {gm:'GM', gmCeo:'GM / CEO', md:'MD', vendor:'Vendor Verified', poSender:'PO Sender'};
+    const STAGE_ROLE_PIN = {gm:'USER_GM_PIN', gmCeo:'USER_GM_PIN', md:'USER_MD_PIN', vendor:'VENDOR_VERIFY_PIN', poSender:'PO_SENDER_PIN'};
     const STAGE_RESULT_STATUS = {gmCeo:'GM/CEO Approved', md:'MD Approved', vendor:'Vendor Verified'};
     /* What to call the signed-in user on screen. A Purchaser signs at the
        gmCeo stage, so STAGE_LABEL alone would call them "GM / CEO". */
@@ -1628,23 +1697,74 @@
          VI    Vendor Info   PR, no quotes yet          → Purchaser fills them
          POGEN PO Generate   PR, quotes in, unapproved  → Purchaser approves = POs made
          MD    MD Approval   PO waiting for MD          → MD approves / rejects
-         SENT  PO Sent       MD-approved PO, not sent   → PO Sender sends on WhatsApp */
+         SENT  PO Sent       MD-approved PO, not sent   → PO Sender sends on WhatsApp
+         STORE Store Check   Inward / NB / Outward entry → GM checks, then MD
+         RECV  PO Receipts   Purchaser's own POs         → what has arrived (read-only) */
     const STAGE_TABS = {
-        VI:    {module:'PR', actor:'purchaser', title:'Vendor Info',       action:'Vendor & rates bharein'},
-        POGEN: {module:'PR', actor:'purchaser', title:'PO Generate',       action:'Delivery Date + sign → PO banega'},
-        MD:    {module:'PO', actor:'md',        title:'MD Approval',       action:'MD approve / reject karein'},
-        SENT:  {module:'PO', actor:'poSender',  title:'PO Sent to Vendor', action:'WhatsApp se vendor ko bhejein'},
+        VI:    {module:'PR',    actor:'purchaser', title:'Vendor Info',       action:'Vendor & rates bharein'},
+        POGEN: {module:'PR',    actor:'purchaser', title:'PO Generate',       action:'Delivery Date + sign → PO banega'},
+        MD:    {module:'PO',    actor:'md',        title:'MD Approval',       action:'MD approve / reject karein'},
+        SENT:  {module:'PO',    actor:'poSender',  title:'PO Sent to Vendor', action:'WhatsApp se vendor ko bhejein'},
+        STORE: {module:'STORE', actor:'gmMd',      title:'Store Check',       action:'Entry kholkar items check karein, phir Check Done'},
+        RECV:  {module:'RECV',  actor:'purchaser', title:'PO Receipts',       action:'Aapke PO par kitna maal aaya — khud update hota hai'},
     };
-    const ACTOR_LABEL = {purchaser:'Purchaser', md:'MD', poSender:'PO Sender'};
+    const ACTOR_LABEL = {purchaser:'Purchaser', md:'MD', poSender:'PO Sender', gm:'GM', gmMd:'GM / MD'};
+    /* Which sections the sub-bar offers, per tab. PO Receipts is the only one
+       with three: a receipt is not done-or-not, it is nothing / some / all. */
+    const VIEWS_FOR_TAB = {
+        RECV:  [{v:'pending', l:'Pending'}, {v:'partial', l:'Partially Received'}, {v:'received', l:'Received'}],
+        STORE: [{v:'pending', l:'Pending'}, {v:'done', l:'Complete'}],
+        _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
+    };
+    function viewsForTab(tab){ return VIEWS_FOR_TAB[tab] || VIEWS_FOR_TAB._; }
+    /* Which tabs each role gets. Only the two new tabs are scoped — MD and PO
+       Sender keep every tab they already had, read-only where it isn't theirs.
+       GM is a new login with exactly one job, so it gets exactly one tab. */
+    const ALL_TABS = ['VI','POGEN','MD','SENT','STORE','RECV'];
+    function visibleTabsForRole(){
+        if(!myStage) return ['VI','POGEN','MD','SENT'];
+        if(isFieldBoy()) return ['VI'];
+        switch(myRoleKey()){
+            case 'gm':        return ['STORE'];
+            case 'purchaser': return ['VI','POGEN','RECV'];
+            case 'md':        return ['VI','POGEN','MD','SENT','STORE'];
+            default:          return ['VI','POGEN','MD','SENT'];   // poSender — unchanged
+        }
+    }
+    /* ── FIELD BOY ────────────────────────────────────────────────────
+       A Purchaser whose PRs never become purchase orders: they buy the items
+       over the counter and hand them in, so there is no vendor to quote, no
+       rate to approve and no PO to raise. Their whole job is their own PR list,
+       worked as a per-item checklist — so the three PO tabs are HIDDEN for them
+       rather than shown read-only, and the Vendor Rate & Info grid is replaced
+       by the checklist. Matched on the Purchaser Name, which is what the login
+       and purchase_requirements.purchaser_name both carry. */
+    const FIELD_BOY_NAME = 'FIELD BOY';
+    function isFieldBoy(){ return String(myPurchaserName||'').trim().toUpperCase() === FIELD_BOY_NAME; }
+    // Every item on this PR has been ticked off — what moves it to Done.
+    function prFieldAllDone(r){ return !!(((r && r.pdf_snapshot) || {}).fieldChecklist || {}).allDone; }
+    function prFieldProgress(r){
+        const c = ((r && r.pdf_snapshot) || {}).fieldChecklist || {};
+        return {done: pNum(c.done), total: pNum(c.total)};
+    }
     let currentStageTab = 'VI';
-    let currentView = 'pending';        // 'pending' | 'done'
-    let dash = {prs:[], pos:[]};        // everything this login may see, loaded once per refresh
+    let currentView = 'pending';        // 'pending' | 'done' | 'partial' | 'received'
+    // Everything this login may see, loaded once per refresh.
+    //   store = inward_entries + outward_entries awaiting / carrying a GM-MD check
+    let dash = {prs:[], pos:[], store:[]};
     let dashDirty = false;              // something saved in the modal — reload on close
     let modalViewOnly = false, modalTab = null;
     function myRoleKey(){ return myPurchaserName ? 'purchaser' : myStage; }
-    function canActIn(tab){ return !!myStage && STAGE_TABS[tab].actor === myRoleKey(); }
+    function canActIn(tab){
+        if(!myStage || !STAGE_TABS[tab]) return false;
+        const actor = STAGE_TABS[tab].actor;
+        // Store Check is worked by two roles in turn, not one — GM first, MD
+        // after. Which of the two stages is theirs is storeStageFor() below.
+        if(actor === 'gmMd') return myRoleKey() === 'gm' || myRoleKey() === 'md';
+        return actor === myRoleKey();
+    }
     function defaultTabForRole(){
-        return {purchaser:'VI', md:'MD', poSender:'SENT'}[myRoleKey()] || 'VI';
+        return {purchaser:'VI', gm:'STORE', md:'MD', poSender:'SENT'}[myRoleKey()] || 'VI';
     }
     // Search bar state. Declared up here with the rest of the module state so
     // paintList() can never reach it inside its temporal dead zone.
@@ -1740,13 +1860,39 @@
     /* Called on login, restore and logout: every role gets all four stage
        tabs and lands on the one it works in (Purchaser → Vendor Info,
        MD → MD Approval, PO Sender → PO Sent). What a role may DO in each tab
-       is decided per tab by canActIn(), not by hiding tabs. */
+       is decided per tab by canActIn(), not by hiding tabs — the one exception
+       is FIELD BOY, for whom the three PO tabs are hidden outright. */
     function applyPurchaserScope(){
+        applyRoleTabScope();
         currentStageTab = myStage ? defaultTabForRole() : 'VI';
+        if(!visibleTabsForRole().includes(currentStageTab)) currentStageTab = visibleTabsForRole()[0] || 'VI';
         currentView = 'pending';
         currentModule = STAGE_TABS[currentStageTab].module;
-        dash = {prs:[], pos:[]};
+        dash = {prs:[], pos:[], store:[]};
         syncStageTabsUi();
+    }
+    /* Tabs a role has no job in are hidden, not greyed: a FIELD BOY would only
+       ever see three empty PO lists, a GM has nothing to do outside Store Check,
+       and a Purchaser has no business on the MD / PO Sender screens. A read-only
+       tab still invites a tap and then explains it was pointless. */
+    function applyRoleTabScope(){
+        const show = visibleTabsForRole();
+        document.querySelectorAll('.stage-tab').forEach(el => {
+            el.style.display = show.includes(el.dataset.tab) ? '' : 'none';
+        });
+    }
+    // Rebuilds the Pending / Done (or Pending / Partially / Received) buttons.
+    function renderViewSeg(){
+        const seg = document.getElementById('viewSeg');
+        if(!seg) return;
+        const views = viewsForTab(currentStageTab);
+        // A tab switch can leave currentView on a section the new tab lacks.
+        if(!views.some(v => v.v === currentView)) currentView = views[0].v;
+        seg.innerHTML = views.map(v =>
+            `<button type="button" data-view="${v.v}"${v.v===currentView?' class="active"':''}>${escText(v.l)}</button>`
+        ).join('');
+        seg.querySelectorAll('button').forEach(b =>
+            b.addEventListener('click', () => switchView(b.dataset.view)));
     }
     // Tab highlight, "your tab" marking, pending counts and the access note.
     function syncStageTabsUi(){
@@ -1758,11 +1904,13 @@
             const c = document.getElementById('cnt-' + t);
             if(c){ c.textContent = n > 99 ? '99+' : String(n); c.classList.toggle('zero', n === 0); }
         });
-        document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('active', b.dataset.view === currentView));
+        renderViewSeg();
         const note = document.getElementById('accessNote');
         if(note){
             const cfg = STAGE_TABS[currentStageTab];
             if(!myStage){ note.textContent = ''; note.className = 'access-note'; }
+            // Field Boy's one tab is a tick list, not a quote sheet.
+            else if(isFieldBoy()){ note.textContent = '☑ PR kholkar jo item mil gaya use tick karein'; note.className = 'access-note act'; }
             else if(canActIn(currentStageTab)){ note.textContent = '✍️ ' + cfg.action; note.className = 'access-note act'; }
             else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
         }
@@ -1815,6 +1963,7 @@
             return !!el && getComputedStyle(el).display !== 'none';
         };
         if(shown('approvalModal')) return false;   // mid-signature / unsaved edits
+        if(shown('storeModal')) return false;      // mid-check / reading the items
         if(shown('busyOverlay')) return false;     // a save or PDF build in flight
         return true;
     }
@@ -1825,9 +1974,17 @@
     function liveSignature_(){
         const part = (rows, noCol) => (rows||[]).map(r =>
             [r[noCol], r.status, r.pdf_url, (r._poNos||[]).join('+'), r.party_sent_at,
-             r.updated_at, r.delivery_date].join('~')
+             r.updated_at, r.delivery_date,
+             // PO Receipts moves a card between its three sections on these two.
+             r.received_qty, r.total_qty, (r._inwards||[]).length].join('~')
         ).join('|');
-        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no');
+        // Store Check: which of the two checks are on each entry is what moves a
+        // card from Pending to Complete, so it belongs in the fingerprint.
+        const storePart = (dash.store||[]).map(e =>
+            [e._kind, e.document_no, e.entry_type,
+             storeCheckedBy(e,'gm') ? 1 : 0, storeCheckedBy(e,'md') ? 1 : 0].join('~')
+        ).join('|');
+        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart;
     }
     let liveLastSig = '';
     async function liveRefresh_(force){
@@ -1866,6 +2023,11 @@
             liveChannel = SB.channel('sarv-mobile-live')
                 .on('postgres_changes', {event:'*', schema:'public', table:'purchase_requirements'}, () => liveNudge_())
                 .on('postgres_changes', {event:'*', schema:'public', table:'purchase_orders'}, () => liveNudge_())
+                // Store Check and PO Receipts both move on these two tables — an
+                // inward booked in STORE.html has to reach this phone the same
+                // second a PO approval does.
+                .on('postgres_changes', {event:'*', schema:'public', table:'inward_entries'}, () => liveNudge_())
+                .on('postgres_changes', {event:'*', schema:'public', table:'outward_entries'}, () => liveNudge_())
                 .subscribe();
         }catch(e){
             // Realtime not available — polling alone carries it.
@@ -1937,6 +2099,7 @@
     document.getElementById('viSaveBtn')?.addEventListener('click', () => saveVendorInfoMobile());
     document.getElementById('viRejectBtn')?.addEventListener('click', () => viRejectPr());
     document.getElementById('viHoldBtn')?.addEventListener('click', () => viToggleHold());
+    document.getElementById('storeCheckBtn')?.addEventListener('click', () => storeCheckDone());
     document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
     // Restore a previous login so the PIN isn't asked again on every reload —
     // only an explicit Logout (logoutRole, via the role badge) clears it.
@@ -1975,16 +2138,64 @@
     // Both only re-paint from `dash` — switching never re-queries.
     function switchStageTab(tab){
         if(!STAGE_TABS[tab]) return;
+        // Tabs hidden for this role are refused here too, so a stale tap (or the
+        // console) can't land someone on a list that isn't theirs.
+        if(!visibleTabsForRole().includes(tab)) return;
         currentStageTab = tab;
         currentModule = STAGE_TABS[tab].module;
-        currentView = 'pending';
+        currentView = viewsForTab(tab)[0].v;
         document.getElementById('list').scrollTop = 0;
         paintList();
     }
     function switchView(view){
-        currentView = view === 'done' ? 'done' : 'pending';
+        const views = viewsForTab(currentStageTab).map(v => v.v);
+        currentView = views.includes(view) ? view : views[0];
         document.getElementById('list').scrollTop = 0;
         paintList();
+    }
+
+    /* ══ STORE CHECK (GM → MD) ═══════════════════════════════════════
+       A store entry — Inward, Inward (NB) or Outward — is physically verified
+       against its items by the GM, and then by the MD. Two stages, in that
+       order: nothing reaches the MD until the GM has signed it off, which is
+       what makes this a check rather than two independent opinions.
+
+       Stored in a `store_checks` jsonb column on inward_entries /
+       outward_entries, one column for both stages, mirroring the `approvals`
+       column PRs and POs already use:
+         {"gm":{by,at,remarks}, "md":{by,at,remarks}}
+       It is a verification, not an approval — no signature, no status change,
+       and the entry's own stock effect is untouched either way. */
+    const STORE_STAGES = ['gm','md'];
+    // ISSUE is a consumable draw by this unit on itself — not one of the three
+    // document types this check covers.
+    const STORE_ENTRY_TYPES = ['INWARD','INWARD NB','OUTWARD'];
+    function storeChecks(e){ const c = (e && e.store_checks) || {}; return (typeof c === 'object') ? c : {}; }
+    function storeCheckedBy(e, stage){ const c = storeChecks(e)[stage]; return (c && typeof c === 'object') ? c : null; }
+    // Which of the two stages this login owns. A Purchaser is never either.
+    function storeStageFor(){ const k = myRoleKey(); return (k === 'gm' || k === 'md') ? k : null; }
+    /* Is this entry waiting on me?
+         GM — nobody has checked it yet.
+         MD — the GM has, and the MD has not. The GM's check is the gate. */
+    function storeAwaitsMe(e){
+        const s = storeStageFor();
+        if(!s) return false;
+        if(s === 'gm') return !storeCheckedBy(e, 'gm');
+        return !!storeCheckedBy(e, 'gm') && !storeCheckedBy(e, 'md');
+    }
+    // Complete = I have checked it. Each role's own section, not a shared one.
+    function storeDoneForMe(e){
+        const s = storeStageFor();
+        return !!s && !!storeCheckedBy(e, s);
+    }
+    function storeDocNo(e){ return (e && e.document_no) || ''; }
+    function storeIsInward(e){ return (e && e._kind) === 'INWARD'; }
+    // One line of "where this entry stands", for the card and the modal.
+    function storeStageText(e){
+        const gm = storeCheckedBy(e,'gm'), md = storeCheckedBy(e,'md');
+        if(md) return '✔ GM & MD — dono check kar chuke hain';
+        if(gm) return '✔ GM checked' + (gm.at ? ' (' + gm.at + ')' : '') + ' · MD check pending';
+        return '⏳ GM check pending';
     }
 
     // ── Data fetch ───────────────────────────────────────────────
@@ -2002,14 +2213,47 @@
         || ['MD Approved','Vendor Verified'].includes(p.status||'');
     // Which records a tab lists, from the one loaded `dash`. Pending = the
     // work waiting at that step; Done = records that have passed it.
+    /* Where a PO stands on receipt, from the figures STORE.html already keeps
+       current on purchase_orders (received_qty / status are rewritten after every
+       inward — see its syncPoReceiptsForLines). Nothing is computed from the
+       inward rows here, so this view simply follows what the store books. */
+    function poReceiptBucket(p){
+        const st = String((p && p.status) || '');
+        if(st === 'Received' || st === 'Closed (Short)') return 'received';
+        const ordered = pNum(p && p.total_qty), got = pNum(p && p.received_qty);
+        if(ordered > 0 && got >= ordered) return 'received';
+        if(got > 0) return 'partial';
+        return 'pending';
+    }
     function tabRows(tab, view){
-        const {prs, pos} = dash;
+        const {prs, pos, store} = dash;
         const pending = view !== 'done';
         switch(tab){
+            /* Store Check is per ROLE, not per entry: an entry the GM has signed
+               off is Complete for the GM and Pending for the MD at the same time.
+               storeAwaitsMe / storeDoneForMe hold that asymmetry. */
+            case 'STORE': return pending ? (store||[]).filter(storeAwaitsMe)
+                                         : (store||[]).filter(storeDoneForMe);
+            /* PO Receipts has no pending/done pair — the section IS the receipt
+               state, so the view name is matched against it directly. A dead PO
+               is never going to be received, so it is left out of all three. */
+            case 'RECV': {
+                const want = ['pending','partial','received'].includes(view) ? view : 'pending';
+                return (pos||[]).filter(p => !PO_DEAD(p) && poReceiptBucket(p) === want);
+            }
+            /* FIELD BOY has only this tab, and "done" for them is not vendor info
+               filled — it is every item on the PR ticked off the checklist. Their
+               PRs therefore split on that flag alone, so nothing of theirs can
+               fall out of both views. */
+            case 'VI':
+                if(isFieldBoy()){
+                    return pending ? prs.filter(r => !PR_DEAD(r) && !prFieldAllDone(r))
+                                   : prs.filter(r => !PR_DEAD(r) && prFieldAllDone(r));
+                }
             // A held PR is listed here whatever its vendor-info state, so it can
             // never end up parked in a tab that doesn't show it — this is the
             // only screen with the control to release it.
-            case 'VI':    return pending ? prs.filter(r => PR_HELD(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
+                          return pending ? prs.filter(r => PR_HELD(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
                                          : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r));
             case 'POGEN': return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
                                          : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
@@ -2049,8 +2293,58 @@
            read-only, not in the counts, not in a live refresh. Dropping it here
            (the single source every tab reads) covers all of them at once. */
         if(myStage === 'poSender') pos = pos.filter(PO_MD_APPROVED);
+        const store = await loadStoreEntries_();
         await Promise.all([attachPdfUrls_(prs, 'REQUIREMENT', 'req_no'), attachPdfUrls_(pos, 'PO', 'po_no'), tagRequirementsWithPos(prs)]);
-        dash = {prs, pos};
+        // A Purchaser's PO Receipts cards name the inward documents that fed each
+        // PO. inward_entries.po_number already carries the comma-joined PO list,
+        // so one query covers it — no per-line join.
+        if(myRoleKey() === 'purchaser') await attachInwardsToPos_(pos);
+        dash = {prs, pos, store};
+    }
+    /* Inward + Outward entries for the Store Check tab, normalised into one list
+       with _kind so the card and the modal can tell them apart. Only fetched for
+       the two roles that have that tab — nobody else pays for these queries. */
+    async function loadStoreEntries_(){
+        if(!storeStageFor()) return [];
+        const [iq, oq] = await Promise.all([
+            SB.from('inward_entries').select('*').order('id', {ascending:false}).limit(200),
+            SB.from('outward_entries').select('*').order('id', {ascending:false}).limit(200),
+        ]);
+        if(iq.error) console.warn('[MOBILE] Inward entries unavailable:', iq.error.message);
+        if(oq.error) console.warn('[MOBILE] Outward entries unavailable:', oq.error.message);
+        const mark = (rows, kind) => (rows || [])
+            .filter(e => STORE_ENTRY_TYPES.includes(String(e.entry_type || (kind === 'INWARD' ? 'INWARD' : 'OUTWARD'))))
+            .map(e => ({...e, _kind: kind}));
+        const all = [...mark(iq.data, 'INWARD'), ...mark(oq.data, 'OUTWARD')];
+        // Newest first across both tables — the two queries are each sorted but
+        // concatenating them is not, so the dates are what order the list.
+        all.sort((a,b) => String(b._kind === 'INWARD' ? (b.receiving_date||'') : (b.outward_date||''))
+                 .localeCompare(String(a._kind === 'INWARD' ? (a.receiving_date||'') : (a.outward_date||''))));
+        // The entry's own PDF, so the checker can read what the store printed
+        // instead of taking the on-screen rows on trust.
+        await attachStorePdfUrls_(all);
+        return all;
+    }
+    async function attachInwardsToPos_(pos){
+        pos.forEach(p => { p._inwards = []; });
+        if(!pos.length) return;
+        try{
+            const q = await SB.from('inward_entries')
+                .select('document_no,entry_type,receiving_date,po_number')
+                .not('po_number','is',null).order('id', {ascending:false}).limit(400);
+            if(q.error) throw q.error;
+            const rows = q.data || [];
+            // Each receipt's own PDF, so a Purchaser can open the document that
+            // actually credited their PO rather than only the order itself.
+            const pdfs = await fetchPdfUrls_('INWARD', rows.map(r => r.document_no), 'SINGLE');
+            rows.forEach(r => { r.pdf_url = pdfs[r.document_no] || null; });
+            const byPo = {};
+            rows.forEach(e => {
+                String(e.po_number||'').split(',').map(s => s.trim()).filter(Boolean)
+                    .forEach(no => { (byPo[no] = byPo[no] || []).push(e); });
+            });
+            pos.forEach(p => { p._inwards = byPo[p.po_no] || []; });
+        }catch(e){ console.warn('[MOBILE] PO→Inward lookup skipped:', e.message||e); }
     }
     // Same canonical PDF source STORE.html's PO Generation panel uses
     // (pdf_documents, not the parent table's own pdf_url column) — that
@@ -2070,6 +2364,45 @@
                 }
             }catch(e){ console.warn('[MOBILE] pdf_documents lookup skipped:', e.message||e); }
         }
+    }
+    /* document_no → public_url, for any document type.
+
+       The variant convention differs by type and this is the one place that has
+       to know it: a PR or PO stores a single variant NAMED after its type
+       ('REQUIREMENT' / 'PO'), while a store entry is saved twice — 'SINGLE'
+       (A4 landscape, both copies side by side) and 'TWO_PAGE' (portrait, one
+       copy per page). So no variant filter is sent; the rows come back and the
+       preferred variant is picked here, with any other variant as the fallback
+       rather than showing nothing. */
+    async function fetchPdfUrls_(docType, docNos, preferVariant){
+        const nos = [...new Set((docNos||[]).filter(Boolean))];
+        const out = {};
+        if(!nos.length) return out;
+        try{
+            const q = await SB.from('pdf_documents').select('document_no,public_url,variant')
+                .eq('document_type', docType).in('document_no', nos);
+            if(q.error) throw q.error;
+            (q.data||[]).forEach(p => {
+                if(!p.public_url) return;
+                const cur = out[p.document_no];
+                // First row wins unless a later one is the variant we asked for.
+                if(!cur || (preferVariant && p.variant === preferVariant)) out[p.document_no] = p.public_url;
+            });
+        }catch(e){ console.warn('[MOBILE] pdf lookup skipped ('+docType+'):', e.message||e); }
+        return out;
+    }
+    /* Store entries keep their PDF under document_type INWARD or OUTWARD — an
+       Inward (NB) is still saved as INWARD, and an ISSUE as OUTWARD, because
+       that is the `kind` STORE.html passes to generateStorePdfs. */
+    async function attachStorePdfUrls_(rows){
+        rows.forEach(e => { e.pdf_url = null; });
+        const inw = rows.filter(storeIsInward), out = rows.filter(e => !storeIsInward(e));
+        const [mi, mo] = await Promise.all([
+            fetchPdfUrls_('INWARD',  inw.map(e => e.document_no), 'SINGLE'),
+            fetchPdfUrls_('OUTWARD', out.map(e => e.document_no), 'SINGLE'),
+        ]);
+        inw.forEach(e => { if(mi[e.document_no]) e.pdf_url = mi[e.document_no]; });
+        out.forEach(e => { if(mo[e.document_no]) e.pdf_url = mo[e.document_no]; });
     }
 
     // Every Purchase Requirement a PO was built from, with its PDF link.
@@ -2203,6 +2536,9 @@
             // line — same fallback STORE.html uses.
             const snapItems = (record.pdf_snapshot && record.pdf_snapshot.items) || [];
             return (data||[]).map((l,i)=>({
+                // The line's own id — the FIELD BOY checklist keys off this, so a
+                // tick stays on the right item even if lines are added later.
+                lineId: l.id,
                 name: l.item_name || l.items?.name || '',
                 desc: l.specification || l.items?.description || '',
                 make: l.items?.make || '',
@@ -2252,6 +2588,10 @@
         return [
             item.req_no, item.po_no, item.vendor_name, item.supplier_name, item.purchaser_name,
             item.requested_by, item.department, item.status, item.linked_req_nos, ...(item._poNos||[]),
+            // Store Check / PO Receipts rows — a store entry's own number, type
+            // and party, and the inward documents tagged onto a PO.
+            item.document_no, item.entry_type, item.party_name, item.invoice_no, item.gate_pass_no,
+            ...((item._inwards||[]).map(x => x.document_no)),
             ...(item.req_no ? prQuotedVendorNames(item) : [])
         ].some(v => String(v || '').toLowerCase().includes(searchTerm));
     }
@@ -2301,17 +2641,27 @@
         if(countEl) countEl.textContent = searchTerm ? rows.length + ' of ' + all.length + ' shown' : '';
 
         if(all.length === 0) {
-            listDiv.innerHTML = done
-                ? `<p class="empty-msg">${escText(cfg.title)} — abhi koi done entry nahi.</p>`
-                : (canAct
-                    ? `<p class="empty-msg">🎉 ${escText(cfg.title)} me aapka koi kaam pending nahi hai.</p>`
-                    : `<p class="empty-msg">${escText(cfg.title)} me koi pending entry nahi.</p>`);
+            // PO Receipts' three sections are states, not stages, so "koi kaam
+            // pending nahi" would be the wrong thing to say in two of them.
+            const secLabel = (viewsForTab(tab).find(v => v.v === currentView) || {}).l || '';
+            listDiv.innerHTML = cfg.module === 'RECV'
+                ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
+                : (done
+                    ? `<p class="empty-msg">${escText(cfg.title)} — abhi koi ${escText(secLabel.toLowerCase()||'done')} entry nahi.</p>`
+                    : (canAct
+                        ? `<p class="empty-msg">🎉 ${escText(cfg.title)} me aapka koi kaam pending nahi hai.</p>`
+                        : `<p class="empty-msg">${escText(cfg.title)} me koi pending entry nahi.</p>`));
             return;
         }
         if(rows.length === 0) {
             listDiv.innerHTML = `<p class="empty-msg">Is search se koi entry match nahi hui.</p>`;
             return;
         }
+
+        // The two new tabs carry record shapes the PR/PO card below knows nothing
+        // about, so they draw their own cards and return.
+        if(cfg.module === 'STORE'){ paintStoreList_(listDiv, rows); return; }
+        if(cfg.module === 'RECV'){ paintRecvList_(listDiv, rows); return; }
 
         listDiv.innerHTML = '';
         rows.forEach(item => {
@@ -2342,13 +2692,19 @@
             if(vendorNames.length) tags.push(`<span class="vendor-filled-tag" style="margin-top:0;">✅ Vendors: ${escText(vendorNames.join(', '))}</span>`);
             if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">🧾 ${escText(item._poNos.join(', '))}</span>`);
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
+            // How far down the checklist this PR is, without opening it.
+            if(isPr && isFieldBoy()){
+                const p = prFieldProgress(item);
+                if(p.total > 0) tags.push(`<span class="tag ${p.done >= p.total ? 'sent' : 'po'}">☑ ${p.done}/${p.total} items</span>`);
+            }
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
             if(item.pdf_url) html += `<a class="pdf-link" href="${escText(item.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 View PDF</a>`;
 
             // What happens next, in one line.
             if(done){
                 const doneText = {
-                    VI:    '✔ Vendor info bhari ja chuki hai',
+                    VI:    isFieldBoy() ? ('✔ Saare items receive ho gaye (' + prFieldProgress(item).total + ')')
+                                        : '✔ Vendor info bhari ja chuki hai',
                     POGEN: '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ' — PO ban gaya' : ''),
                     MD:    '✔ MD approved',
                     SENT:  '✔ Vendor ko bheja ja chuka hai',
@@ -2359,6 +2715,9 @@
                 // saying "fill the rates" here would point at the wrong thing.
                 const hi = prHoldInfo(item);
                 html += `<div class="card-action wait">⏸ Hold par — kholkar Hold hatayein${hi && hi.remarks ? ' · ' + escText(hi.remarks) : ''}</div>`;
+            } else if(isPr && isFieldBoy() && canAct){
+                const p = prFieldProgress(item);
+                html += `<div class="card-action act">☑ ${escText('Tap karein — items tick karein' + (p.total ? ' (' + p.done + '/' + p.total + ')' : ''))}</div>`;
             } else if(canAct){
                 html += `<div class="card-action act">✍️ ${escText(tab === 'SENT' ? cfg.action : 'Tap karein — ' + cfg.action)}</div>`;
             } else {
@@ -2400,6 +2759,340 @@
             }
             listDiv.appendChild(card);
         });
+    }
+
+    /* One PDF link. stopPropagation matters on a card: without it the tap would
+       open the modal behind the new tab. */
+    function pdfLink_(url, label){
+        return `<a class="pdf-link" href="${escText(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 ${escText(label)}</a>`;
+    }
+    // A row of links, or a plain line saying which ones aren't there yet.
+    function pdfLinkRow_(links, emptyNote){
+        const have = links.filter(l => l && l.url);
+        const miss = links.filter(l => l && !l.url).map(l => l.label);
+        let html = '';
+        // No margin-top here: .pdf-link already carries its own 6px, so adding
+        // one to the container would double the gap above the first row.
+        if(have.length) html += `<div style="display:flex;flex-wrap:wrap;gap:0 12px;">`
+            + have.map(l => pdfLink_(l.url, l.label)).join('') + `</div>`;
+        if(miss.length) html += `<div style="font-size:0.68rem;color:#94a3b8;margin-top:4px;">`
+            + escText((emptyNote || 'PDF nahi mila') + ': ' + miss.join(', ')) + `</div>`;
+        return html;
+    }
+
+    /* ── Store Check cards ────────────────────────────────────────────
+       One card per Inward / Inward (NB) / Outward entry, with the stage line so
+       GM and MD can both see at a glance who still has to look at it. */
+    function paintStoreList_(listDiv, rows){
+        listDiv.innerHTML = '';
+        const mine = storeStageFor();
+        rows.forEach(e => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.onclick = () => openStoreModal(e);
+            const inw = storeIsInward(e);
+            const date = inw ? (e.receiving_date||'') : (e.outward_date||'');
+            const party = inw ? (e.supplier_name||'-') : (e.party_name||'-');
+            let html = `<div class="card-header"><span>${escText(storeDocNo(e)||'-')}</span>`
+                     + `<span style="font-size:0.72rem;font-weight:800;color:${inw?'#0284c7':'#b45309'};">${escText(e.entry_type||(inw?'INWARD':'OUTWARD'))}</span></div>`;
+            html += `<div class="card-detail">${inw?'Supplier':'Party'}: <b>${escText(party)}</b></div>`;
+            html += `<div class="card-detail">Date: <b>${escText(date||'-')}</b>`
+                  + (inw && e.invoice_no ? ' · Invoice: <b>'+escText(e.invoice_no)+'</b>' : '')
+                  + (!inw && e.nature_of_dispatch ? ' · '+escText(e.nature_of_dispatch) : '')
+                  + (inw && e.nature_of_inward ? ' · '+escText(e.nature_of_inward) : '')
+                  + `</div>`;
+            const tags = [];
+            if(storeCheckedBy(e,'gm')) tags.push(`<span class="tag sent">✔ GM</span>`);
+            if(storeCheckedBy(e,'md')) tags.push(`<span class="tag sent">✔ MD</span>`);
+            if(e.req_no) tags.push(`<span class="tag po">📝 ${escText(e.req_no)}</span>`);
+            if(e.po_number) tags.push(`<span class="tag po">🧾 ${escText(e.po_number)}</span>`);
+            if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
+            // The entry's own PDF, straight off the card. The linked PO / PR
+            // documents are resolved when the entry is opened — see openStoreModal.
+            if(e.pdf_url) html += pdfLink_(e.pdf_url, (e.entry_type||'Entry') + ' PDF');
+            html += `<div class="card-detail" style="margin-top:4px;">${escText(storeStageText(e))}</div>`;
+            html += storeAwaitsMe(e)
+                ? `<div class="card-action act">☑ Tap karein — items check karke Check Done</div>`
+                : (storeDoneForMe(e)
+                    ? `<div class="card-action done">✔ Aapka check ho chuka hai</div>`
+                    : `<div class="card-action wait">⏳ ${escText(mine === 'md' ? 'GM ke check ka intezaar' : 'Aapka kaam nahi')}</div>`);
+            card.innerHTML = html;
+            listDiv.appendChild(card);
+        });
+    }
+    /* ── PO Receipts cards (Purchaser) ────────────────────────────────
+       Ordered vs received on each of their own POs, and the inward documents
+       that made up the difference. Read-only: the figures are the store's. */
+    function paintRecvList_(listDiv, rows){
+        listDiv.innerHTML = '';
+        rows.forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.onclick = () => openRecvModal(p);
+            const ordered = pNum(p.total_qty), got = pNum(p.received_qty);
+            const left = Math.max(0, ordered - got);
+            const pct = ordered > 0 ? Math.min(100, Math.round(got / ordered * 100)) : 0;
+            const bucket = poReceiptBucket(p);
+            const col = bucket === 'received' ? '#16a34a' : (bucket === 'partial' ? '#d97706' : '#64748b');
+            let html = `<div class="card-header"><span>${escText(p.po_no||'-')}</span><span>${escText(nMoney_(p.grand_total))}</span></div>`;
+            html += `<div class="card-detail">Vendor: <b>${escText(p.vendor_name||'-')}</b></div>`;
+            if(p.linked_req_nos) html += `<div class="card-detail">PR: <b>${escText(p.linked_req_nos)}</b></div>`;
+            html += `<div class="card-detail">Ordered: <b>${escText(nNum_(ordered))}</b> · Received: <b style="color:${col};">${escText(nNum_(got))}</b> · Pending: <b>${escText(nNum_(left))}</b></div>`;
+            html += `<div style="height:6px;background:#e9edf2;border-radius:4px;margin-top:6px;overflow:hidden;">`
+                  + `<div style="height:100%;width:${pct}%;background:${col};"></div></div>`;
+            html += `<div class="card-detail" style="margin-top:6px;">Status: ${statusBadge(p.status)}</div>`;
+            const inws = p._inwards || [];
+            if(inws.length){
+                html += `<div class="card-tags">${inws.slice(0,4).map(x =>
+                    `<span class="tag sent">📥 ${escText(x.document_no||'')}${x.receiving_date?' · '+escText(x.receiving_date):''}</span>`
+                ).join('')}${inws.length>4?`<span class="tag po">+${inws.length-4} more</span>`:''}</div>`;
+            }
+            /* The order itself, plus every receipt booked against it. Shown on
+               the card, not only in the modal: checking what arrived against a PO
+               is the whole job of this tab, so the documents are one tap away. */
+            html += pdfLinkRow_(
+                [{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}]
+                    .concat(inws.map(x => ({url: x.pdf_url, label: 'Inward ' + (x.document_no||'')}))),
+                'PDF abhi nahi bana');
+            html += `<div class="card-action ${bucket==='received'?'done':'wait'}">${escText(
+                bucket === 'received' ? '✔ Poora maal aa gaya'
+                : (bucket === 'partial' ? '◑ Kuch maal aa gaya — baaki pending'
+                                        : '⏳ Abhi koi maal nahi aaya'))}</div>`;
+            card.innerHTML = html;
+            listDiv.appendChild(card);
+        });
+    }
+
+    /* ══ STORE CHECK / PO RECEIPTS MODAL ═════════════════════════════
+       Its own modal (#storeModal), separate from the approval one — see the
+       comment on that markup for why. */
+    let storeEntry = null, storeMode = null;   // 'STORE' | 'RECV'
+    function closeStoreModal(){
+        document.getElementById('storeModal').style.display = 'none';
+        storeEntry = null; storeMode = null;
+        if(dashDirty){ dashDirty = false; renderList(); return; }
+        if(livePending){ livePending = false; liveRefresh_(); }
+    }
+    function storeModalShell_(title, metaHtml, headHtml, bodyHtml){
+        document.getElementById('storeModalTitle').textContent = title;
+        document.getElementById('storeModalMeta').innerHTML = metaHtml;
+        document.getElementById('storeModalHead').innerHTML = headHtml;
+        document.getElementById('storeModalBody').innerHTML = bodyHtml;
+        // Each open starts with no documents listed; they are resolved after.
+        document.getElementById('storeModalDocs').style.display = 'none';
+        document.getElementById('storeModalDocsBody').innerHTML = '';
+        document.getElementById('storeModal').style.display = 'flex';
+    }
+    function storeModalDocs_(html){
+        const box = document.getElementById('storeModalDocs');
+        const body = document.getElementById('storeModalDocsBody');
+        if(!box || !body) return;
+        body.innerHTML = html || '';
+        box.style.display = html ? 'block' : 'none';
+    }
+    /* Every document behind a store entry: the entry's own PDF, the PO(s) it was
+       booked against, and the PR(s) behind those. PR numbers come from the
+       entry's own req_no (a FIELD BOY receipt booked straight off a PR) AND from
+       the POs' linked_req_nos, because an ordinary receipt names only the PO.
+       Resolved on open rather than for the whole list: three extra queries per
+       entry would be three per CARD on a 200-row list. */
+    async function storeEntryDocsHtml_(e){
+        const poNos = String(e.po_number||'').split(',').map(s => s.trim()).filter(Boolean);
+        const reqNos = String(e.req_no||'').split(',').map(s => s.trim()).filter(Boolean);
+        let poMap = {}, prMap = {};
+        try{
+            if(poNos.length){
+                poMap = await fetchPdfUrls_('PO', poNos, 'PO');
+                // The PRs behind those POs — the entry itself never names them.
+                const pq = await SB.from('purchase_orders').select('po_no,linked_req_nos').in('po_no', poNos);
+                if(!pq.error) (pq.data||[]).forEach(p =>
+                    String(p.linked_req_nos||'').split(',').map(s => s.trim()).filter(Boolean)
+                        .forEach(n => { if(!reqNos.includes(n)) reqNos.push(n); }));
+            }
+            if(reqNos.length) prMap = await fetchPdfUrls_('REQUIREMENT', reqNos, 'REQUIREMENT');
+        }catch(err){ console.warn('[MOBILE] linked doc lookup skipped:', err.message||err); }
+        const links = [{url: e.pdf_url, label: (e.entry_type||'Entry') + ' ' + (e.document_no||'')}];
+        poNos.forEach(no => links.push({url: poMap[no], label: 'PO ' + no}));
+        reqNos.forEach(no => links.push({url: prMap[no], label: 'PR ' + no}));
+        const row = pdfLinkRow_(links, 'PDF abhi nahi bana');
+        return row || '<span style="color:#94a3b8;">Is entry se koi document linked nahi hai.</span>';
+    }
+    async function openStoreModal(e){
+        storeEntry = e; storeMode = 'STORE';
+        const inw = storeIsInward(e);
+        const date = inw ? (e.receiving_date||'') : (e.outward_date||'');
+        const meta = [
+            ['Entry Type', e.entry_type || (inw?'INWARD':'OUTWARD')],
+            [inw?'Supplier':'Party', inw ? (e.supplier_name||'-') : (e.party_name||'-')],
+            ['Date', date||'-'],
+            inw ? ['Invoice', e.invoice_no||'-'] : ['Location', e.location||'-'],
+            inw ? ['Nature of Inward', e.nature_of_inward||'-'] : ['Nature of Dispatch', e.nature_of_dispatch||'-'],
+            inw ? ['PO Number', e.po_number||'Without PO'] : ['Gate Pass', e.gate_pass_no||'-'],
+            inw && e.req_no ? ['PR Number', e.req_no] : null,
+            !inw ? ['Receiver', e.receiver_name||'-'] : null,
+            ['Check', storeStageText(e)],
+        ].filter(Boolean);
+        const metaHtml = meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
+        const head = ['Sr','Item Name','Description','Make','Qty','UOM','Weight'].map(h=>`<th>${h}</th>`).join('');
+        storeModalShell_(storeDocNo(e)+' — Items', metaHtml, head,
+            `<tr><td colspan="7" style="text-align:center;color:#999;">Loading items...</td></tr>`);
+        // Check Done only where this entry is actually waiting on me.
+        const box = document.getElementById('storeCheckBox');
+        box.style.display = storeAwaitsMe(e) ? 'block' : 'none';
+        document.getElementById('storeCheckRemarks').value = '';
+        const btn = document.getElementById('storeCheckBtn');
+        btn.disabled = false;
+        btn.textContent = '✔ Check Done' + (storeStageFor() === 'md' ? ' (MD)' : ' (GM)');
+        const note = document.getElementById('storeModalNote');
+        if(storeAwaitsMe(e)){ note.style.display = 'none'; }
+        else{
+            note.innerHTML = storeDoneForMe(e)
+                ? '✔ <b>Aapka check ho chuka hai</b> — ' + escText(storeStageText(e))
+                : '👁 <b>View only</b> — ' + escText(storeStageText(e));
+            note.style.display = 'block';
+        }
+        // Documents and items load together; neither blocks the other.
+        storeEntryDocsHtml_(e).then(html => {
+            // The modal may have been closed, or another entry opened, meanwhile.
+            if(storeMode === 'STORE' && storeEntry === e) storeModalDocs_(html);
+        });
+        const lines = await fetchStoreLines_(e);
+        if(storeMode !== 'STORE' || storeEntry !== e) return;
+        document.getElementById('storeModalBody').innerHTML = lines.length
+            ? lines.map((l,i)=>`<tr>
+                <td>${i+1}</td>
+                <td><b>${escText(l.name)}</b></td>
+                <td>${escText(l.desc||'-')}</td>
+                <td>${escText(l.make||'-')}</td>
+                <td><b>${escText(nNum_(l.qty))}</b></td>
+                <td>${escText(l.uom||'-')}</td>
+                <td>${pNum(l.weight)>0?escText(nNum_(l.weight))+' KGS':'-'}</td>
+              </tr>`).join('')
+            : `<tr><td colspan="7" style="text-align:center;color:#999;">Is entry me koi item nahi mila</td></tr>`;
+    }
+    async function fetchStoreLines_(e){
+        const inw = storeIsInward(e);
+        const table = inw ? 'inward_lines' : 'outward_lines';
+        const fk = inw ? 'inward_id' : 'outward_id';
+        try{
+            const q = await SB.from(table).select('*, items(name,description,make,category,uom)').eq(fk, e.id).order('id');
+            if(q.error) throw q.error;
+            return (q.data||[]).map(l => ({
+                name: l.item_name || l.items?.name || '',
+                desc: l.item_description || l.items?.description || '',
+                make: l.make || l.items?.make || '',
+                qty: l.qty, uom: l.uom || l.items?.uom || '', weight: l.weight || 0,
+            }));
+        }catch(err){
+            console.warn('[MOBILE] Store lines load failed:', err.message||err);
+            return [];
+        }
+    }
+    /* Writes my stage's check onto the entry. One jsonb column holds both, so
+       the whole object is re-sent — and it is read back off the row in `dash`
+       first, so a check the OTHER role added since this list loaded is not
+       overwritten by this one. */
+    async function storeCheckDone(){
+        const e = storeEntry;
+        if(!e || storeMode !== 'STORE') return;
+        const stage = storeStageFor();
+        if(!stage || !storeAwaitsMe(e)) return;
+        const remarks = String(document.getElementById('storeCheckRemarks').value||'').trim();
+        const docNo = storeDocNo(e);
+        if(!confirm('"'+docNo+'" ke saare items check kar liye?\n\n'
+            + (stage === 'gm' ? 'GM check lagne ke baad ye entry MD ke paas jayegi.'
+                              : 'MD check lagne ke baad ye entry Complete ho jayegi.'))) return;
+        const btn = document.getElementById('storeCheckBtn');
+        btn.disabled = true;
+        setBusy(true, 'Check save kar rahe hain...');
+        try{
+            const table = storeIsInward(e) ? 'inward_entries' : 'outward_entries';
+            // Re-read, so the other role's check (added since this load) survives.
+            let current = storeChecks(e);
+            try{
+                const fresh = await SB.from(table).select('store_checks').eq('id', e.id).maybeSingle();
+                if(!fresh.error && fresh.data && fresh.data.store_checks && typeof fresh.data.store_checks === 'object')
+                    current = fresh.data.store_checks;
+            }catch(_){}
+            const checks = {...current, [stage]: {by: STAGE_LABEL[myStage] || stage.toUpperCase(), at: pStamp(), remarks}};
+            const upd = await SB.from(table).update({store_checks: checks}).eq('id', e.id);
+            if(upd.error){
+                if(/store_checks|column/i.test(upd.error.message||''))
+                    throw new Error('Is database me store_checks column nahi hai — STORE_CHECK_MIGRATION.sql run karein, tab tak check save nahi hoga.');
+                throw upd.error;
+            }
+            e.store_checks = checks;   // keep the loaded row level with the database
+            dashDirty = false;         // reloaded right below
+            closeStoreModal();
+            await renderList();
+            alert('✔ ' + docNo + ' check ho gaya.\n\n'
+                + (stage === 'gm' ? 'Ab ye entry MD ke paas check ke liye jayegi.'
+                                  : 'Ye entry Complete section me chali gayi.'));
+        }catch(err){
+            alert('Error: ' + (err.message || err));
+        }finally{
+            setBusy(false);
+            const b = document.getElementById('storeCheckBtn');
+            if(b) b.disabled = false;
+        }
+    }
+    /* PO Receipts detail: ordered vs received per line, plus the inward
+       documents booked against this PO. Read-only throughout. */
+    async function openRecvModal(p){
+        storeEntry = p; storeMode = 'RECV';
+        const ordered = pNum(p.total_qty), got = pNum(p.received_qty);
+        const metaHtml = [
+            ['PO Number', p.po_no||'-'],
+            ['Vendor', p.vendor_name||'-'],
+            ['PO Date', p.po_date||'-'],
+            ['Delivery Date', p.delivery_date||'-'],
+            ['PR', p.linked_req_nos||'-'],
+            ['Ordered / Received', nNum_(ordered) + ' / ' + nNum_(got)],
+            ['Status', p.status||'-'],
+            ['Inward Entries', (p._inwards||[]).length
+                ? (p._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
+                : 'abhi koi inward nahi'],
+        ].map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
+        const head = ['Sr','Item Name','Ordered','Received','Pending','UOM'].map(h=>`<th>${h}</th>`).join('');
+        storeModalShell_((p.po_no||'PO')+' — Receipts', metaHtml, head,
+            `<tr><td colspan="6" style="text-align:center;color:#999;">Loading lines...</td></tr>`);
+        document.getElementById('storeCheckBox').style.display = 'none';
+        const note = document.getElementById('storeModalNote');
+        note.innerHTML = '👁 <b>View only</b> — ye figures Store ki Inward entries se khud update hote hain.';
+        note.style.display = 'block';
+        /* The order, every receipt against it, and the PRs it came from. The
+           inward PDFs are already on the row (attachInwardsToPos_); only the PR
+           ones need a lookup, and linked_req_nos is on the PO itself. */
+        (async () => {
+            let prMap = {};
+            const reqNos = String(p.linked_req_nos||'').split(',').map(s => s.trim()).filter(Boolean);
+            if(reqNos.length) prMap = await fetchPdfUrls_('REQUIREMENT', reqNos, 'REQUIREMENT');
+            const links = [{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}]
+                .concat((p._inwards||[]).map(x => ({url: x.pdf_url, label: 'Inward ' + (x.document_no||'')})))
+                .concat(reqNos.map(no => ({url: prMap[no], label: 'PR ' + no})));
+            if(storeMode === 'RECV' && storeEntry === p)
+                storeModalDocs_(pdfLinkRow_(links, 'PDF abhi nahi bana'));
+        })().catch(err => console.warn('[MOBILE] receipt docs skipped:', err.message||err));
+        let rowsHtml = `<tr><td colspan="6" style="text-align:center;color:#999;">PO lines load nahi ho paayin</td></tr>`;
+        try{
+            const q = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', p.id).order('line_no');
+            if(q.error) throw q.error;
+            const lines = q.data || [];
+            rowsHtml = lines.length ? lines.map((l,i)=>{
+                const o = pNum(l.ordered_qty), r = pNum(l.received_qty), left = Math.max(0, o - r);
+                const col = left <= 0 ? '#16a34a' : (r > 0 ? '#d97706' : '#64748b');
+                return `<tr>
+                    <td>${i+1}</td>
+                    <td><b>${escText(l.item_name||'')}</b></td>
+                    <td><b>${escText(nNum_(o))}</b></td>
+                    <td><b style="color:${col};">${escText(nNum_(r))}</b></td>
+                    <td>${escText(nNum_(left))}</td>
+                    <td>${escText(l.uom||'-')}</td>
+                </tr>`;
+            }).join('') : `<tr><td colspan="6" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+        }catch(err){ console.warn('[MOBILE] PO lines load failed:', err.message||err); }
+        // The modal may have been closed while that query was in flight.
+        if(storeMode === 'RECV' && storeEntry === p) document.getElementById('storeModalBody').innerHTML = rowsHtml;
     }
 
     // ── Modal ────────────────────────────────────────────────────
@@ -2752,6 +3445,114 @@
     }
 
     function pNumM(v){ const n = Number(v); return isNaN(n) ? 0 : n; }
+
+    /* ══ FIELD BOY ITEM CHECKLIST ════════════════════════════════════
+       A FIELD BOY PR is fulfilled item by item over the counter, so the work is
+       a tick list, not a quote sheet. Every tick is written straight to the PR
+       the moment it is made — there is no Save button to forget, and a phone
+       that dies mid-list loses nothing.
+
+       Stored in pdf_snapshot.fieldChecklist (jsonb that already exists) rather
+       than a new column on purchase_requirement_lines, so this needs no
+       migration and degrades to "nothing ticked" on any PR that predates it:
+         {byLine:{"<line id>":true,…}, done:n, total:n, allDone:bool, by, at}
+       byLine is keyed by LINE ID, not row position — a PR edited in STORE.html
+       can gain or lose lines, and a positional key would then silently move
+       every tick onto the wrong item. done/total/allDone are denormalised onto
+       the same object so the list can split Pending from Done without fetching
+       every PR's lines. */
+    let fbChecklist = {};        // line id → true, for the PR open in the modal
+    let fbSaveChain = Promise.resolve();   // ticks serialise; last write wins
+    function fbChecklistMode(){
+        return currentModule === 'PR' && isFieldBoy() && modalTab === 'VI';
+    }
+    // Loads the open PR's ticks into fbChecklist, dropping any key whose line no
+    // longer exists so a deleted item can't keep a PR from ever reading as done.
+    function fbLoadChecklist(entry, items){
+        const saved = (((entry && entry.pdf_snapshot) || {}).fieldChecklist || {}).byLine || {};
+        const live = new Set(items.map(it => String(it.lineId)));
+        fbChecklist = {};
+        Object.keys(saved).forEach(k => { if(saved[k] && live.has(String(k))) fbChecklist[String(k)] = true; });
+    }
+    function fbCounts(items){
+        const total = items.length;
+        const done = items.filter(it => fbChecklist[String(it.lineId)]).length;
+        return {done, total, allDone: total > 0 && done === total};
+    }
+    // Progress bar + wording. Also the only place that says "saved".
+    function fbRenderBar(items){
+        const bar = document.getElementById('fbChecklistBar');
+        if(!bar) return;
+        const on = fbChecklistMode();
+        bar.style.display = on ? 'block' : 'none';
+        const hdr = document.getElementById('done-col-header');
+        if(hdr) hdr.style.display = on ? '' : 'none';
+        if(!on) return;
+        const {done, total, allDone} = fbCounts(items);
+        document.getElementById('fbChecklistText').textContent =
+            allDone ? ('✅ Saare ' + total + ' items receive ho gaye — PR complete')
+                    : ('☑ ' + done + ' / ' + total + ' items receive ho gaye');
+        document.getElementById('fbChecklistFill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+        const note = document.getElementById('fbChecklistNote');
+        if(note) note.style.display = modalViewOnly ? 'none' : '';
+    }
+    /* One tick. The checkbox is turned off while the write is in flight so a
+       double-tap can't queue two conflicting versions, and it is put back to
+       whatever actually got saved — if the write fails the tick visibly undoes
+       itself rather than lying about being stored. */
+    async function fbToggleItem(rowIdx, want, inputEl){
+        const req = currentEntry;
+        if(!req || !fbChecklistMode() || modalViewOnly) return;
+        const items = viDisplayItems || [];
+        const it = items[rowIdx];
+        if(!it || it.lineId == null) return;
+        const key = String(it.lineId);
+        const before = !!fbChecklist[key];
+        if(want) fbChecklist[key] = true; else delete fbChecklist[key];
+        fbRenderBar(items);
+        if(inputEl) inputEl.disabled = true;
+        const run = async () => {
+            try{
+                const c = await fbSaveChecklist(req, items);
+                // Last item ticked — say so and let the list move it to Done.
+                if(c.allDone){
+                    dashDirty = false;   // reloaded right below, not by closeModal
+                    closeModal();
+                    await renderList();
+                    alert('✅ PR ' + (req.req_no||'') + ' ke saare ' + c.total + ' items receive ho gaye.\n\nYe PR ab Done section me hai.');
+                }
+            }catch(e){
+                if(before) fbChecklist[key] = true; else delete fbChecklist[key];
+                fbRenderBar(items);
+                alert('Tick save nahi hua — dobara koshish karein.\n' + (e.message || e));
+            }finally{
+                if(inputEl){ inputEl.disabled = false; inputEl.checked = !!fbChecklist[key]; }
+            }
+        };
+        fbSaveChain = fbSaveChain.then(run, run);
+        return fbSaveChain;
+    }
+    /* Writes the whole map every time rather than one key. The PR's snapshot is
+       a single jsonb column, so there is no cheaper partial update — and sending
+       the full picture means a tick that lands out of order still leaves the
+       stored counts agreeing with the stored ticks. */
+    async function fbSaveChecklist(req, items){
+        const {done, total, allDone} = fbCounts(items);
+        const snap = {...(req.pdf_snapshot || {})};
+        snap.fieldChecklist = {
+            byLine: {...fbChecklist},
+            done, total, allDone,
+            by: myPurchaserName || 'FIELD BOY',
+            at: pStamp(),
+        };
+        const upd = await SB.from('purchase_requirements').update({pdf_snapshot: snap}).eq('id', req.id);
+        if(upd.error) throw upd.error;
+        // Keep the loaded row level with the database so the list and a re-open
+        // of this modal both show what was just saved, with no extra fetch.
+        req.pdf_snapshot = snap;
+        dashDirty = true;
+        return snap.fieldChecklist;
+    }
 
     function toggleVendorInfo(){
         const body = document.getElementById('vendorInfoBody');
@@ -3167,11 +3968,16 @@
         // amount cells are rewritten — a full re-render would blow away a GST%
         // box mid-edit.
         tbody.onchange = e => {
+            // FIELD BOY checklist tick — saved immediately, see fbToggleItem.
+            const chk = e.target.closest && e.target.closest('.fb-done-input');
+            if(chk){ fbToggleItem(+chk.dataset.row, chk.checked, chk); return; }
             const sel = e.target.closest && e.target.closest('.po-basis-input');
             if(!sel) return;
             prItemBasis[+sel.dataset.row] = sel.value;
             refreshPoAmountCells_();
         };
+        // FIELD BOY only: a tick box per item, ahead of the Sr column.
+        const fbOn = fbChecklistMode();
         tbody.innerHTML = items.map((item,i) => {
             const rowVendorIdx = perItem
                 ? (vendorIdxSource[i]!=null ? pNum(vendorIdxSource[i]) : -1)
@@ -3194,7 +4000,9 @@
                         : `<td><span style="color:#94a3b8;">not set</span></td>`;
                 }
             }
-            return `<tr>
+            const fbDone = fbOn && !!fbChecklist[String(item.lineId)];
+            return `<tr${fbDone ? ' style="background:#f0fdf4;"' : ''}>
+                ${fbOn ? `<td style="text-align:center;"><input type="checkbox" class="fb-done-input" data-row="${i}"${fbDone?' checked':''}${modalViewOnly?' disabled':''} style="width:22px;height:22px;accent-color:#16a34a;"${item.lineId==null?' disabled title="Is line ka id nahi mila"':''}></td>` : ''}
                 <td>${i+1}</td>
                 <td><b>${escText(item.name)}</b></td>
                 <td>${escText(item.desc||'-')}</td>
@@ -3209,7 +4017,8 @@
                 ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
                 ${gstEdit ? `<td class="po-amt-cell" data-row="${i}" style="text-align:right;font-weight:800;color:#166534;white-space:nowrap;">${escText(nNum_(poRowAmount_(i)))}</td>` : ''}
             </tr>`;
-        }).join('') || `<tr><td colspan="13" style="text-align:center;color:#999;">No items</td></tr>`;
+        }).join('') || `<tr><td colspan="14" style="text-align:center;color:#999;">No items</td></tr>`;
+        fbRenderBar(items);
     }
     /* GST% per PO line. Pre-filled from the PR line (tax_pct) or the Item
        Master (gst_pct), editable by the Purchaser in the PO Generate step, and
@@ -3318,9 +4127,12 @@
         const prLevelApprovedIdx = (snapshot.approvedVendorIndex != null) ? snapshot.approvedVendorIndex : -1;
 
         const tbody = document.getElementById('modal-item-tbody');
-        tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:#999;">Loading items...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:#999;">Loading items...</td></tr>';
         const items = await fetchItems(entry);
         viDisplayItems = items;
+        // Ticks for this PR, before the rows are drawn — renderItemRows reads
+        // fbChecklist directly to decide which boxes come up checked.
+        if(currentModule === 'PR') fbLoadChecklist(entry, items);
         // pdf_snapshot.items is always rebuilt from these same DB lines in
         // this same order (see approvePR / STORE.html's saveVendorInfo), so
         // index correspondence is safe here — same convention used there.
@@ -3352,7 +4164,14 @@
             : itemVendorIndex;
 
         let showRateColumn = false;
-        if(currentModule === 'PR' && myStage === 'gmCeo' && !modalViewOnly){
+        /* FIELD BOY: no vendor grid at all. Filling it would move the PR into PO
+           Generate — a tab they cannot see — so the PR would simply vanish from
+           their list. The item checklist is their whole interaction with the PR;
+           Reject / Hold stay, for an item they cannot get. */
+        if(currentModule === 'PR' && isFieldBoy() && !modalViewOnly){
+            if(viPanel) viPanel.style.display = 'none';
+            if(modalTab === 'VI') renderViDecisionBar(entry);
+        } else if(currentModule === 'PR' && myStage === 'gmCeo' && !modalViewOnly){
             // Vendor Rate & Info is editable at this stage, so a PR with no
             // quotes on it yet can be filled in and moved forward from here —
             // previously the vendor dropdown simply never appeared.
@@ -3434,6 +4253,11 @@
             modeNote.innerHTML = '👁 <b>View only</b> — ' + escText(cfg.actor && canActIn(modalTab)
                 ? 'ye entry is stage se aage badh chuki hai.'
                 : (ACTOR_LABEL[cfg.actor] || '') + ' is stage ka kaam karte hain.');
+            modeNote.style.display = 'block';
+        } else if(quotesOnly && isFieldBoy()){
+            // Field Boy has no vendor step, so the standard "fill the rates"
+            // note would send them looking for a panel that isn't there.
+            modeNote.innerHTML = '☑ Jo item le aaye hain uske saamne tick karein — har tick turant save hota hai. Is PR ka koi PO nahi banta; saare items tick hote hi PR <b>Done</b> me chali jayegi.';
             modeNote.style.display = 'block';
         } else if(quotesOnly){
             modeNote.innerHTML = '💰 Vendor, rate aur Selected Vendor bhar kar <b>Save Vendor Info</b> dabayein. Save hote hi ye PR <b>PO Generate</b> tab me chali jayegi — wahan Delivery Date + sign karke PO banega.';
