@@ -848,10 +848,12 @@
                 <div class="signature-pad-container">
                     <canvas id="sigPad"></canvas>
                 </div>
+                <!-- Approve stays disabled until the pad carries ink — syncApproveBtn(). -->
+                <div id="sigRequiredHint" style="margin-top:6px; font-size:12px; color:#dc3545; font-weight:600;">✍️ Approve karne ke liye yahan sign karna zaroori hai.</div>
             </div>
 
             <div style="display:flex; gap:8px;">
-                <button class="btn" id="approveBtn" onclick="approveEntry()" style="flex:1; width:auto;">✔ Approve & Sign</button>
+                <button class="btn" id="approveBtn" onclick="approveEntry()" style="flex:1; width:auto;" disabled>✔ Approve & Sign</button>
                 <button class="btn" id="rejectBtn" onclick="rejectEntry()" style="flex:1; width:auto; background:#dc3545;">✖ Reject</button>
             </div>
             </div>
@@ -1963,6 +1965,10 @@
     // ── Data fetch ───────────────────────────────────────────────
     const PR_OPEN = r => !r.status || r.status === 'Pending';
     const PO_DEAD = p => ['Rejected','Cancelled'].includes(p.status||'');
+    /* MD has signed this PO. "Vendor Verified" is a legacy status that only ever
+       followed MD approval, so it counts as signed too. */
+    const PO_MD_APPROVED = p => !!(p.approvals||{}).md
+        || ['MD Approved','Vendor Verified'].includes(p.status||'');
     // Which records a tab lists, from the one loaded `dash`. Pending = the
     // work waiting at that step; Done = records that have passed it.
     function tabRows(tab, view){
@@ -1989,8 +1995,8 @@
        first), each with its PDF link, and every PR tagged with the live POs
        raised from it. A Purchaser is scoped to the PRs booked in their own
        name — purchaser_name is the "Purchaser Name" on the New PR form, NOT
-       requested_by — and to the POs raised from those PRs. MD and PO Sender
-       see everything. */
+       requested_by — and to the POs raised from those PRs. MD sees everything;
+       a PO Sender sees only POs MD has already approved. */
     async function loadDashboard(){
         let prq = SB.from('purchase_requirements').select('*').order('req_no', {ascending:false}).limit(200);
         if(myPurchaserName) prq = prq.eq('purchaser_name', myPurchaserName);
@@ -2004,6 +2010,11 @@
             const own = new Set(prs.map(r => r.req_no));
             pos = pos.filter(p => String(p.linked_req_nos||'').split(',').map(s => s.trim()).some(n => own.has(n)));
         }
+        /* A PO Sender's work starts at MD approval, so a PO MD has not signed
+           yet must not surface anywhere in their interface — not in the MD tab
+           read-only, not in the counts, not in a live refresh. Dropping it here
+           (the single source every tab reads) covers all of them at once. */
+        if(myStage === 'poSender') pos = pos.filter(PO_MD_APPROVED);
         await Promise.all([attachPdfUrls_(prs, 'REQUIREMENT', 'req_no'), attachPdfUrls_(pos, 'PO', 'po_no'), tagRequirementsWithPos(prs)]);
         dash = {prs, pos};
     }
@@ -2138,7 +2149,10 @@
                 (byReq[l.req_no] = byReq[l.req_no] || new Map()).set(po.id, po);
             });
             rows.forEach(r => {
-                const pos = [...(byReq[r.req_no] || new Map()).values()];
+                let pos = [...(byReq[r.req_no] || new Map()).values()];
+                // Same rule as loadDashboard: a PO Sender must not even see the
+                // NUMBER of a PO MD hasn't signed yet, tagged on its PR card.
+                if(myStage === 'poSender') pos = pos.filter(PO_MD_APPROVED);
                 r._poLive = pos;
                 r._poNos = pos.map(p => p.po_no);
             });
@@ -3265,6 +3279,9 @@
         clearSignature();
         document.getElementById('approvalModal').style.display = 'flex';
         if(showApproval) resizeCanvas();
+        // resizeCanvas() rebuilt the bitmap — restate "unsigned" against the new one.
+        clearSignature();
+        document.getElementById('rejectBtn').disabled = false;
     }
 
     function closeModal() {
@@ -3916,7 +3933,13 @@
 
     async function approveEntry() {
         if(!currentEntry || !myStage || modalViewOnly || modalTab === 'VI') return;
-        if(!hasDrawn) { alert('Please provide a signature before approving.'); return; }
+        // Purchaser / MD must actually draw on the pad. A tap, or a pad that was
+        // cleared again, leaves no ink — that cannot approve anything.
+        if(!hasDrawn || !sigHasInk()) {
+            alert('Signature Pad par apna sign banayein — sign ke bina approval nahi ho sakta.');
+            syncApproveBtn();
+            return;
+        }
         // Approval (and the PO built from it) uses the SAVED vendor figures, so
         // edits sitting unsaved in a reopened grid would silently not count.
         if(currentModule === 'PR' && viDirty && (currentEntry.pdf_snapshot||{}).vendorInfoReopened){
@@ -4017,7 +4040,8 @@
             alert('Error: ' + (e.message || e));
         }finally{
             setBusy(false);
-            document.getElementById('approveBtn').disabled = false;
+            // Back to whatever the pad says — not unconditionally enabled.
+            syncApproveBtn();
         }
     }
 
@@ -4071,10 +4095,60 @@
         return { x: e.clientX - rect.left, y: e.clientY - rect.top };
     }
 
-    function startDrawing(e) { e.preventDefault(); isDrawing = true; hasDrawn = true; const coords = getCoordinates(e); ctx.beginPath(); ctx.moveTo(coords.x, coords.y); }
-    function draw(e) { e.preventDefault(); if (!isDrawing) return; const coords = getCoordinates(e); ctx.lineTo(coords.x, coords.y); ctx.stroke(); }
+    /* A tap, or a single dot, is not a signature — so hasDrawn is set by draw()
+       and only once the strokes add up to SIG_MIN_STROKE_PX of travel. Tracked
+       as a running length because measuring the canvas pixels on every pointer
+       move would make the pad crawl on a phone; sigHasInk() does that once, at
+       approve time. */
+    const SIG_MIN_STROKE_PX = 24;   // CSS px of total travel
+    const SIG_MIN_INK_PX = 40;      // device px of ink on the bitmap
+    let inkLen = 0, lastX = 0, lastY = 0;
+
+    function startDrawing(e) {
+        e.preventDefault(); isDrawing = true;
+        const c = getCoordinates(e);
+        lastX = c.x; lastY = c.y;
+        ctx.beginPath(); ctx.moveTo(c.x, c.y);
+    }
+    function draw(e) {
+        e.preventDefault();
+        if (!isDrawing) return;
+        const c = getCoordinates(e);
+        ctx.lineTo(c.x, c.y); ctx.stroke();
+        inkLen += Math.hypot(c.x - lastX, c.y - lastY);
+        lastX = c.x; lastY = c.y;
+        if(!hasDrawn && inkLen >= SIG_MIN_STROKE_PX){ hasDrawn = true; syncApproveBtn(); }
+    }
     function stopDrawing(e) { if(e) e.preventDefault(); isDrawing = false; ctx.closePath(); }
-    function clearSignature() { ctx.clearRect(0, 0, canvas.width, canvas.height); hasDrawn = false; }
+    function clearSignature() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hasDrawn = false; inkLen = 0; isDrawing = false;
+        syncApproveBtn();
+    }
+
+    /* Does the pad actually carry ink? hasDrawn is only a flag the stroke
+       handler set; this reads the bitmap, so a cleared or untouched pad can
+       never be approved even if that flag were somehow stale. */
+    function sigHasInk() {
+        if(!canvas.width || !canvas.height) return false;
+        try{
+            const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+            let ink = 0;
+            for(let i = 3; i < d.length; i += 4){ if(d[i] > 0 && ++ink > SIG_MIN_INK_PX) return true; }
+            return false;
+        }catch(e){ return hasDrawn; }   // nothing cross-origin is drawn here
+    }
+    /* Approve stays disabled until the pad is signed, so a Purchaser / MD sees
+       up front that a signature is required. approveEntry() re-checks anyway. */
+    function syncApproveBtn() {
+        const btn = document.getElementById('approveBtn');
+        if(!btn) return;
+        const signed = hasDrawn && sigHasInk();
+        btn.disabled = !signed;
+        btn.title = signed ? '' : 'Pehle Signature Pad par sign karein';
+        const hint = document.getElementById('sigRequiredHint');
+        if(hint) hint.style.display = signed ? 'none' : 'block';
+    }
 
     canvas.addEventListener('mousedown', startDrawing);
     canvas.addEventListener('mousemove', draw);
