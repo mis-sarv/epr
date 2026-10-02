@@ -2410,6 +2410,24 @@ body {
                             <div id="poNumberPanel" style="display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;min-width:260px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:230px;overflow-y:auto;padding:6px;"></div>
                         </div>
                     </div>
+                    <!-- Shown only while PO Number reads "Without PO". A FIELD BOY
+                         PR never becomes a PO — the items are bought over the
+                         counter and handed in — so the receipt is booked against
+                         the PR itself. Only FIELD BOY requirements are listed, and
+                         several can be ticked into one receipt, the same way the
+                         PO picker above works. See syncInwPrField / loadPrsIntoInward. -->
+                    <div class="form-group" id="inwPrNoFieldGroup" style="display:none;">
+                        <label>PR Number <span id="inwPrNoStar" style="color:#dc2626;font-weight:800;">&#9733;</span>
+                            <small style="color:#94a3b8;font-weight:500;">(FIELD BOY ki PRs)</small>
+                        </label>
+                        <div id="prNumberWidget" style="position:relative;">
+                            <button type="button" class="form-control" id="prNumberBtn" style="text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                                <span id="prNumberBtnText" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Select PR</span>
+                                <span style="color:#94a3b8;font-size:10px;">&#9662;</span>
+                            </button>
+                            <div id="prNumberPanel" style="display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;min-width:300px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:230px;overflow-y:auto;padding:6px;"></div>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label>Invoice Number <span style="color:#dc2626; font-weight:800;">★</span></label>
                         <input type="text" class="form-control" id="invoiceNumber" placeholder="INV-5678" list="dl-invoiceNumber" autocomplete="off">
@@ -3414,6 +3432,7 @@ body {
                                     <option value="PURCHASER::PARKASH JI">Purchaser &mdash; PARKASH JI</option>
                                     <option value="PURCHASER::DEEPAK VERMA">Purchaser &mdash; DEEPAK VERMA</option>
                                     <option value="PURCHASER::PRIYA VERMA">Purchaser &mdash; PRIYA VERMA</option>
+                                    <option value="PURCHASER::FIELD BOY">Purchaser &mdash; FIELD BOY</option>
                                 </optgroup>
                             </select>
                         </div>
@@ -3946,6 +3965,7 @@ body {
                             <option value="PARKASH JI">PARKASH JI</option>
                             <option value="DEEPAK VERMA">DEEPAK VERMA</option>
                             <option value="PRIYA VERMA">PRIYA VERMA</option>
+                            <option value="FIELD BOY">FIELD BOY</option>
                         </select>
                     </div>
                 </div>
@@ -5656,6 +5676,230 @@ function updatePoNumberBtnText(){
   const el=byId('poNumberBtnText');if(!el)return;
   el.textContent=!sarvSelectedPoNos.length?'Without PO'
     :(sarvSelectedPoNos.length===1?sarvSelectedPoNos[0]:sarvSelectedPoNos.length+' POs selected');
+  // The one place that knows whether a PO is ticked — so the PR box follows it.
+  syncInwPrField();
+}
+/* ══ WITHOUT PO → RECEIVE AGAINST A PR ═══════════════════════════════
+   A PR raised against Purchaser "FIELD BOY" never becomes a purchase order:
+   the items are bought over the counter and handed straight in. Such a receipt
+   used to be booked with PO Number "Without PO" and nothing at all tying it to
+   the requirement it satisfied, so the PR stayed open for ever and nobody could
+   tell which entry had met it.
+
+   So: while PO Number reads "Without PO", a PR Number box appears and picking a
+   PR fills the item rows exactly as a PO does.
+
+   REQUIRED, not merely offered — but only on a Purchase. A repair Return links
+   to its Outward and a Transfer comes from another unit; neither has a PR, and
+   demanding one would block both. If you want it compulsory on every nature,
+   change inwPrRequired_() to drop the nature test. */
+/* Only FIELD BOY requirements are offered here. Every other Purchaser's PR goes
+   through the normal quote → approve → PO route, so receiving one "without PO"
+   would be a way around the order it is supposed to have. Matched on
+   purchase_requirements.purchaser_name, the same column the mobile Purchaser
+   login filters on. */
+const INW_PR_PURCHASER='FIELD BOY';
+let sarvPrCatalog=[];
+let sarvSelectedPrNos=[];
+function getSelectedPrNos(){ return [...sarvSelectedPrNos]; }
+// What goes into the saved record's req_no — comma-joined, like po_number.
+function inwPrSelected_(){
+  if(sarvEditingInwardId)return inwardEditPrNumber_()||'';
+  return sarvSelectedPrNos.join(', ');
+}
+// An edit never re-ticks the picker, so the record's own PR numbers are read
+// back off the widget label — exactly how inwardEditPoNumber_ does it for POs.
+function inwardEditPrNumber_(){
+  const txt=(byId('prNumberBtnText')?.textContent||'').trim();
+  return (!txt||txt==='Select PR')?null:txt;
+}
+function inwPrFieldOn_(){
+  /* On an edit the PO picker is deliberately never re-ticked, so
+     sarvSelectedPoNos is empty whatever the record actually carries — reading it
+     there would demand a PR for every PO-based entry being corrected. The saved
+     record's own PO number, off the widget label, is the answer in that case. */
+  if(sarvEditingInwardId)return !inwardEditPoNumber_();
+  return !sarvSelectedPoNos.length;
+}
+function inwPrRequired_(){
+  return inwPrFieldOn_() && (byId('inwNatureOfInward')?.value||'Purchase')==='Purchase';
+}
+function lookupPr_(no){
+  const n=String(no||'').trim().toUpperCase();
+  if(!n)return null;
+  return sarvPrCatalog.find(p=>String(p.req_no||'').trim().toUpperCase()===n)||null;
+}
+// Shows / hides the widget and keeps the ★ honest about whether it is compulsory.
+function syncInwPrField(){
+  const grp=byId('inwPrNoFieldGroup'),btn=byId('prNumberBtn');
+  if(!grp||!btn)return;
+  const on=inwPrFieldOn_();
+  grp.style.display=on?'':'none';
+  // A PO was ticked after PRs had been picked — the PO's rows now own the form,
+  // so the stale PR link goes with them.
+  if(!on&&sarvSelectedPrNos.length){
+    sarvSelectedPrNos=[];
+    updatePrNumberBtnText();
+    togglePrNumberPanel(false);
+    renderInwPrDetails_([]);
+  }
+  const star=byId('inwPrNoStar');
+  if(star)star.style.display=inwPrRequired_()?'':'none';
+  btn.title=inwPrRequired_()
+    ?'Without PO par receive karne ke liye kam se kam ek PR select karna zaroori hai'
+    :'Optional — is receipt ko kisi PR se jodna ho to tick karein';
+}
+async function loadPrDropdown_(){
+  if(!SB_READY)return;
+  const q=await SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(400);
+  if(q.error){console.warn('[SARV] PR dropdown unavailable:',q.error.message);return}
+  const want=INW_PR_PURCHASER.toUpperCase();
+  sarvPrCatalog=(q.data||[]).filter(p=>
+    // FIELD BOY's own requirements only — see INW_PR_PURCHASER above.
+    String(p.purchaser_name||'').trim().toUpperCase()===want
+    // A Cancelled or Rejected requirement is settled; nothing is received on it.
+    && !['Cancelled','Rejected'].includes(String(p.status||''))
+  );
+  // Drop any ticked PR that is no longer on offer.
+  sarvSelectedPrNos=sarvSelectedPrNos.filter(no=>sarvPrCatalog.some(p=>p.req_no===no));
+  renderPrNumberPanel();
+}
+/* Checkbox list, same shape and behaviour as the PO Number picker — one receipt
+   can cover several FIELD BOY requirements, so this is a multi-pick. */
+function renderPrNumberPanel(){
+  const panel=byId('prNumberPanel');if(!panel)return;
+  if(!sarvPrCatalog.length){
+    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
+      +escText(INW_PR_PURCHASER)+' ke naam par koi open PR nahi hai.</div>';
+  }else{
+    panel.innerHTML=sarvPrCatalog.map(p=>{
+      const checked=sarvSelectedPrNos.includes(p.req_no)?' checked':'';
+      const sub=[p.department||'',p.status||'Pending',p.request_date||''].filter(Boolean).join(' — ');
+      return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
+        +'<input type="checkbox" class="sarv-pr-opt" value="'+escText(p.req_no)+'"'+checked+'>'
+        +'<span>'+escText(p.req_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(sub)+'</span></span>'
+        +'</label>';
+    }).join('');
+  }
+  panel.querySelectorAll('.sarv-pr-opt').forEach(cb=>{
+    cb.addEventListener('change',()=>{
+      sarvSelectedPrNos=[...panel.querySelectorAll('.sarv-pr-opt:checked')].map(x=>x.value);
+      // highlightRequiredField() paints the button red and clears itself on an
+      // input/change event the button never fires — so a tick clears it here.
+      const b=byId('prNumberBtn');
+      if(b&&sarvSelectedPrNos.length){b.style.border='';b.style.background='';}
+      updatePrNumberBtnText();
+      loadPrsIntoInward().catch(dbError);
+    });
+  });
+  updatePrNumberBtnText();
+}
+function updatePrNumberBtnText(){
+  const el=byId('prNumberBtnText');if(!el)return;
+  el.textContent=!sarvSelectedPrNos.length?'Select PR'
+    :(sarvSelectedPrNos.length===1?sarvSelectedPrNos[0]:sarvSelectedPrNos.length+' PRs selected');
+}
+function setSelectedPrNos(list){
+  sarvSelectedPrNos=[...new Set((list||[]).filter(Boolean))];
+  renderPrNumberPanel();
+}
+function togglePrNumberPanel(show){
+  const panel=byId('prNumberPanel');if(!panel)return;
+  const open=(show==null)?panel.style.display==='none':show;
+  if(open)renderPrNumberPanel();
+  panel.style.display=open?'block':'none';
+}
+function renderInwPrDetails_(prs,lineCount){
+  const box=byId('inwardPoDetails');
+  if(!box)return;
+  const list=(prs||[]).filter(Boolean);
+  if(!list.length){box.style.display='none';box.innerHTML='';return}
+  const depts=[...new Set(list.map(p=>String(p.department||'').trim()).filter(Boolean))];
+  box.innerHTML='PR <b>'+escText(list.map(p=>p.req_no).join(', '))+'</b>'
+    +' · Purchaser: <b>'+escText(INW_PR_PURCHASER)+'</b>'
+    +' · Dept: <b>'+escText(depts.join(', ')||'-')+'</b>'
+    +' · Items: <b>'+pNum(lineCount)+'</b>'
+    +' · Rate aur GST bill se bharein — PR me rate nahi hota.';
+  box.style.display='block';
+}
+/* Fills the item rows from a PR, the PO loader's counterpart. Three deliberate
+   differences:
+   • Supplier Name is NOT locked and NOT filled — a counter purchase can be from
+     any shop, and the PR names no vendor.
+   • Rate comes from the approved vendor's quote when the PR carries one, else 0
+     for the bill to be typed in. A PR has no price of its own.
+   • No per-row PO status strip and no setInwardPoLock(true) — there is no
+     ordered / received ledger to post back against. */
+async function loadPrsIntoInward(){
+  const prs=getSelectedPrNos().map(n=>lookupPr_(n)).filter(Boolean);
+  const tb=byId('itemTableBody');
+  // Everything unticked — put the form back to a blank single row, the same way
+  // loadPoIntoInward does when the last PO comes off.
+  if(!prs.length){
+    renderInwPrDetails_([]);
+    if(tb){tb.innerHTML='';addNewRow();}
+    setInwardPoLock(false);
+    updateStoreTotals();
+    return;
+  }
+  // One query for every ticked PR, then the lines are laid out PR by PR so the
+  // rows read in the same order as the picker.
+  const q=await SB.from('purchase_requirement_lines').select('*').in('requirement_id',prs.map(p=>p.id)).order('id');
+  if(q.error){showToast('PR lines load nahi ho paaye: '+q.error.message,'error');return}
+  const allLines=q.data||[];
+  const byReq=new Map(prs.map(p=>[String(p.id),[]]));
+  allLines.forEach(l=>{const k=String(l.requirement_id);if(byReq.has(k))byReq.get(k).push(l);});
+  const empty=prs.filter(p=>!(byReq.get(String(p.id))||[]).length).map(p=>p.req_no);
+  if(empty.length)showToast('⚠️ In PR me koi item nahi hai: '+empty.join(', '),'warn');
+  if(tb)tb.innerHTML='';
+  // Same Item-Master-only resolve the PO loader uses, so Description and
+  // Category are the Master's word rather than a frozen copy on the line.
+  const itemOf=await poLineItemResolver_(allLines);
+  const unresolved=[];
+  let total=0;
+  prs.forEach(pr=>{
+    const lines=byReq.get(String(pr.id))||[];
+    const snap=pr.pdf_snapshot||{};
+    lines.forEach((line,i)=>{
+      addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
+      total++;
+      const it=itemOf(line);
+      if(!it.id)unresolved.push(line.item_name||'(no name)');
+      if(it.id||line.item_id)tr.dataset.itemId=it.id||line.item_id;
+      // Which requirement this row came from — shown nowhere yet, but it is what
+      // any later per-line PR link would be built on.
+      tr.dataset.reqNo=pr.req_no||'';
+      const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};
+      // The approved vendor's quote, if this PR was ever quoted. A FIELD BOY PR
+      // never is, so this lands on 0 and the bill's rate is typed in.
+      const si=(snap.items||[])[i]||{};
+      const idx=(si.approvedVendorIndex!=null)?pNum(si.approvedVendorIndex):-1;
+      const rate=idx>=0?pNum((si.rates||{})['V'+(idx+1)]):0;
+      set('.item-name',line.item_name||it.name||'');
+      set('.item-desc',it.description||'');
+      set('.item-make',it.make||'');
+      set('.item-cat',it.category||'');
+      set('.qty-field',pNum(line.requested_qty));
+      set('.item-uom',line.uom||it.uom||'');
+      set('.list-price-field',rate);
+      set('.rate-field',rate);
+      set('.item-gst-field',pNum(it.gst_pct));
+      if(line.gross_weight!=null&&line.gross_weight!=='')set('.weight-field',pNum(line.gross_weight));
+    });
+  });
+  if(!total&&tb)addNewRow();   // every ticked PR was empty — leave a usable row
+  // Supplier stays hand-entered, so the PO lock must be OFF — a previous PO
+  // receipt on this form may have left it on.
+  setInwardPoLock(false);
+  applyInwardNbGstLock();
+  updateStoreTotals();
+  if(unresolved.length){
+    const names=[...new Set(unresolved)];
+    console.warn('[SARV] PR lines not found in Item Master:',names.join(', '));
+    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+  }
+  renderInwPrDetails_(prs,total);
+  if(total)showToast('✅ '+prs.length+' PR ke '+total+' item load ho gaye — Qty aur Rate check karke Submit karein');
 }
 function setSelectedPoNos(list){
   sarvSelectedPoNos=[...new Set((list||[]).filter(Boolean))];
@@ -6240,7 +6484,7 @@ async function updatePoReceipt(poNos,rows){
       :(totals.received>=totals.ordered&&totals.ordered>0?'Received':totals.received>0?'Partially Received':(po.status||'Generated'));
     const u=await SB.from('purchase_orders').update({received_qty:totals.received,status,updated_at:new Date().toISOString()}).eq('id',po.id);if(u.error)throw u.error;
   }
-  await loadOpenPoDropdown();await refreshGeneratedPoList();
+  await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
 }
 /* ================================================================
    EDIT PASSWORD GATE — backs over-receipt / rate-override on a PO.
@@ -6803,8 +7047,21 @@ function bindOriginalControls(){
       }
       if(isRepair)loadRepairOutwardDropdown().catch(dbError);
       else setSelectedRepairOutNos([]);
+      // PR Number is compulsory on a Purchase only, so its ★ follows the Nature.
+      syncInwPrField();
     });
     natureSel.dataset.natureBound='1';
+  }
+  /* PR Number checkbox dropdown — only live while PO Number reads "Without PO".
+     Nothing is typed, so there is no invalid value to validate: the list only
+     ever offers FIELD BOY's own open requirements. */
+  const prBtn=byId('prNumberBtn');
+  if(prBtn&&!prBtn.dataset.prBound){
+    prBtn.addEventListener('click',e=>{e.stopPropagation();togglePrNumberPanel()});
+    // Clicking anywhere else closes it; clicks inside the panel must not.
+    byId('prNumberPanel')?.addEventListener('click',e=>e.stopPropagation());
+    document.addEventListener('click',()=>togglePrNumberPanel(false));
+    prBtn.dataset.prBound='1';
   }
   // Repair Outward checkbox dropdown — same open/close pattern as the PO picker.
   const repairBtn=byId('repairOutwardBtn');
@@ -9607,6 +9864,17 @@ async function loadInwardForEdit(id,no){
   const poNos=String(e.po_number||'').split(',').map(s=>s.trim()).filter(Boolean);
   const poBtn=byId('poNumberBtnText');
   if(poBtn)poBtn.textContent=poNos.length?poNos.join(', '):'Without PO';
+  /* The PR this receipt was booked against, shown the same way — displayed, not
+     re-driven. Re-firing the picker would reload the PR's REQUESTED quantities
+     over the ones actually received. Only the box is filled; no 'change'. */
+  { const prLbl=byId('prNumberBtnText');
+    if(prLbl)prLbl.textContent=e.req_no?String(e.req_no):'Select PR';
+    const grp=byId('inwPrNoFieldGroup');
+    // Driven off the saved record, not off sarvSelectedPoNos — an edit never
+    // re-ticks the PO picker, so that array is empty here either way.
+    if(grp)grp.style.display=(poNos.length||!e.req_no)?'none':'';
+    renderInwPrDetails_([]);
+  }
 
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
@@ -9784,7 +10052,7 @@ async function syncPoReceiptsForLines(lineIds){
     const u=await SB.from('purchase_orders').update({received_qty:t.received,status,updated_at:new Date().toISOString()}).eq('id',poId);
     if(u.error)throw u.error;
   }
-  await loadOpenPoDropdown();await refreshGeneratedPoList();
+  await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
 }
 // Downloads the currently filtered Reports result set as CSV, straight
 // from the database rows (not just what's rendered in the table) — Admin
@@ -12100,6 +12368,16 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function saveInwardWithPdf(){
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
+   /* Without PO, a Purchase receipt has to say which requirement it met —
+      otherwise the PR it satisfied stays open with nothing linking the two.
+      Checked here as well as on the field, because the box can be left blank. */
+   if(inwPrRequired_()&&!inwPrSelected_()){
+     highlightRequiredField('prNumberBtn');
+     const el=byId('prNumberBtn');
+     el?.scrollIntoView({behavior:'smooth',block:'center'});
+     togglePrNumberPanel(true);
+     return showToast('⚠️ PO ke bina receive karne ke liye kam se kam ek PR Number tick karna zaroori hai ('+escText(INW_PR_PURCHASER)+' ki PR)','warn');
+   }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    // Receiving more than the PO's pending qty, or at a different rate than the
    // PO, needs the Edit Password — everything else saves straight through.
@@ -12141,14 +12419,32 @@ window.addEventListener('DOMContentLoaded',()=>{
      // would rebuild the rows from the PO), so the record's existing PO number
      // is read back off the widget's label instead.
      const poNumberVal=editId?inwardEditPoNumber_():(selectedPoNos.join(', ')||null);
-     const full={...base,po_number:poNumberVal,supplier_name:pVal('supplierName')||null,gate_pass_no:pVal('gatePassNo')||null,lot_no:pVal('lotNo')||null,machine_name:pVal('inwMachineName')||null,nature_of_inward:pVal('inwNatureOfInward')||null};
+     const withNature={...base,po_number:poNumberVal,supplier_name:pVal('supplierName')||null,gate_pass_no:pVal('gatePassNo')||null,lot_no:pVal('lotNo')||null,machine_name:pVal('inwMachineName')||null,nature_of_inward:pVal('inwNatureOfInward')||null};
+     // The requirement this receipt was booked against, when it came in without
+     // a PO. Its own column, so it degrades on its own (see the shapes below)
+     // rather than taking nature_of_inward / lot_no down with it.
+     const full={...withNature,req_no:(inwPrFieldOn_()?(inwPrSelected_()||null):null)};
      const slim={...base,po_number:poNumberVal,supplier_name:pVal('supplierName')||null};
+     /* Widest shape first. The middle one matters: a database that has
+        nature_of_inward but not req_no must not fall all the way to slim, which
+        would silently stop storing the Nature of Inward. */
+     const inwShapes=[full,withNature,slim];
+     const inwColErr=e=>/column/i.test(e?.message||'');
+     let inwShapeUsed=0;
+     async function writeInwHeader(run){
+       let r;
+       for(let i=0;i<inwShapes.length;i++){
+         inwShapeUsed=i;
+         r=await run(inwShapes[i]);
+         if(!r.error||!inwColErr(r.error))return r;
+       }
+       return r;
+     }
      let h;
      if(editId){
        // Primary-key update: one row in, one row out — a second header for the
        // same Record No. is impossible.
-       h=await SB.from('inward_entries').update(full).eq('id',editId).select().maybeSingle();
-       if(h.error&&/column/i.test(h.error.message||''))h=await SB.from('inward_entries').update(slim).eq('id',editId).select().maybeSingle();
+       h=await writeInwHeader(p=>SB.from('inward_entries').update(p).eq('id',editId).select().maybeSingle());
        if(h.error)throw h.error;
        if(!h.data)throw new Error(editNo+' database me nahi mila — ho sakta hai kisi ne delete kar diya ho. Kuch save nahi hua.');
        // Old lines go before the new ones land, so a row the Admin removed
@@ -12156,10 +12452,12 @@ window.addEventListener('DOMContentLoaded',()=>{
        const del=await SB.from('inward_lines').delete().eq('inward_id',editId);
        if(del.error)throw del.error;
      }else{
-       h=await SB.from('inward_entries').insert(full).select().single();
-       if(h.error&&/column/i.test(h.error.message||''))h=await SB.from('inward_entries').insert(slim).select().single();
+       h=await writeInwHeader(p=>SB.from('inward_entries').insert(p).select().single());
        if(h.error)throw h.error;
      }
+     // Said plainly rather than left to be noticed later: the PR link printed on
+     // this entry but is not stored, so Reports can't trace the receipt back.
+     if(inwShapeUsed>0&&full.req_no)showToast('⚠️ Is database me PR link save nahi hota — inward_entries me req_no column add karein (INWARD_PR_LINK_MIGRATION.sql)','warn');
      // Freight + Round off stored on the header so an Admin edit brings them
      // back (see loadInwardForEdit). Written separately and best-effort: a
      // database without these columns must not lose the rest of the header to
@@ -12576,6 +12874,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     'inwMachineName','lotNo','gatePassNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
    // .value='' doesn't reliably clear a multi-select — deselect explicitly.
    setSelectedPoNos([]);togglePoNumberPanel(false);
+   // The PR link belongs to the entry that was just saved, not to the next one.
+   setSelectedPrNos([]);togglePrNumberPanel(false);
+   { const b=byId('prNumberBtn'); if(b){b.style.border='';b.style.background='';} }
+   renderInwPrDetails_([]);
+   syncInwPrField();
    const rd=byId('receivingDate');if(rd)rd.value=today();
    // Entry Type goes back to INWARD on a clear — unless the panel's type is
    // pinned by an earlier submit, in which case the saved type stays put
@@ -14015,6 +14318,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    // ── Auto-load on panel init ────────────────────────────────
    if(SB_READY){
      loadOpenPoDropdown().catch(dbError);
+     // Fills the PR Number datalist the Inward form offers while "Without PO".
+     loadPrDropdown_().catch(dbError);
      refreshPendingRequirements().catch(dbError);
      refreshGeneratedPoList().catch(dbError);
    }
