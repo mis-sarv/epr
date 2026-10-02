@@ -2237,6 +2237,21 @@ body {
   #sarvNbGate .ft button{padding:9px 18px;border-radius:9px;border:0;font-size:13px;font-weight:800;cursor:pointer;}
   #sarvNbGate .ft .cancel{background:#e2e8f0;color:#334155;}
   #sarvNbGate .ft .ok{background:#dc2626;color:#fff;}
+
+  /* Nature chooser — asked on the way in from Home, so the entry form opens
+     with its Nature already settled and locked (see sarvNatureGate_). */
+  #sarvNatureGate{position:fixed;inset:0;z-index:40002;background:rgba(15,23,42,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:18px;animation:sarvIntroIn .15s ease-out;}
+  #sarvNatureGate .card{background:#fff;border-radius:16px;max-width:520px;width:100%;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden;}
+  #sarvNatureGate .hd{background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;padding:16px 20px;font-size:16.5px;font-weight:800;display:flex;align-items:center;gap:10px;}
+  #sarvNatureGate .bd{padding:18px 20px 8px;}
+  #sarvNatureGate .q{font-size:15px;font-weight:800;color:#0f172a;margin-bottom:4px;}
+  #sarvNatureGate .hint{font-size:11.5px;color:#64748b;margin-bottom:14px;}
+  #sarvNatureGate .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+  #sarvNatureGate .opts button{padding:16px 12px;border-radius:12px;border:2px solid #cbd5e1;background:#f8fafc;color:#0f172a;font-size:14px;font-weight:800;cursor:pointer;transition:border-color .12s,box-shadow .12s,transform .1s;}
+  #sarvNatureGate .opts button:hover{transform:translateY(-1px);}
+  #sarvNatureGate .opts button small{display:block;margin-top:4px;font-size:10.5px;font-weight:600;color:#64748b;}
+  #sarvNatureGate .ft{padding:14px 20px 18px;display:flex;justify-content:flex-end;}
+  #sarvNatureGate .ft .cancel{padding:9px 18px;border-radius:9px;border:0;background:#e2e8f0;color:#334155;font-size:13px;font-weight:800;cursor:pointer;}
 </style>
 <div id="sarvHomeDashboard">
   <div class="sarv-home-hero" style="position:relative;">
@@ -5850,6 +5865,9 @@ function setInwardPoLock(locked){
   document.querySelectorAll('#itemTableBody .item-name').forEach(el=>lock(el,'PO ke against Item Name PO se aata hai — change nahi kar sakte'));
   const nat=byId('inwNatureOfInward');
   if(nat){nat.disabled=locked;nat.style.background=locked?'#f1f5f9':'';nat.title=locked?'PO ke against Nature of Inward hamesha Purchase hota hai':'';}
+  // Unlocking above hands the Nature dropdown back; a Nature pinned from the
+  // Home chooser outranks that, so it is re-asserted here.
+  if(!locked)applyHomeNatureLocks();
 }
 let sarvRepairOutwardCatalog=[];
 /* ── Repair Outward picker ────────────────────────────────────────
@@ -6674,6 +6692,9 @@ function populateNatureOfDispatch(){
     sel.addEventListener('change',updateOutwardModeText);
     sel.dataset.modeBound='1';
   }
+  // The options were just rebuilt and the select handed back — a Nature pinned
+  // from the Home chooser is put back on top of that.
+  if(!isIssue)applyHomeNatureLocks();
   updateOutwardModeText();
 }
 function addPurchaseMainRow(){
@@ -6942,7 +6963,12 @@ async function sarvAttemptLogin(){
     else show(e.message||String(e));
   }
 }
+/* Asked here rather than on each caller, because both ways out — the Home page's
+   Logout button and the role badge in the header — land on this one function.
+   The badge in particular sits next to the nav links, so a mis-click used to
+   drop the session and send the user back to the PIN screen with no warning. */
 function sarvLogout(){
+  if(!confirm('Do you want Log out ?\n\nDobara kaam karne ke liye PIN phir se daalna padega.'))return;
   sarvCurrentRole=null;
   try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);}catch(e){}
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
@@ -6957,6 +6983,9 @@ function sarvLockNavToSection(){
 function sarvGoHome(){
   const dash=byId('sarvHomeDashboard');if(dash)dash.style.display='block';
   const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent='👤 '+(SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—');
+  // The Nature picked on the way in belongs to that visit only — coming back
+  // Home means picking again (or not going through the chooser at all).
+  releaseHomeNatureLocks();
   sarvUnlockNav();
 }
 function sarvNavigateFromHome(target){
@@ -6987,6 +7016,9 @@ function sarvNavigateFromHome(target){
     case 'TRACKER': activatePanel('itemTrackerPanel'); break;
     case 'APPROVAL_APP': window.open('mobile.html','_blank'); sarvGoHome(); return;
   }
+  // Whatever the chooser answered on the way in is applied — and locked — only
+  // now, after the Entry Type change handler has rebuilt the form's dropdowns.
+  applyHomeNatureLocks();
   sarvLockNavToSection();
 }
 /* ── Home page help, in Hindi ────────────────────────────────────────
@@ -7004,20 +7036,24 @@ const SARV_HOME_HELP={
     'Pending PR की सूची देखें — "Vendor Rate & Info" से हर आइटम के V1 / V2 / V3 वेंडर और रेट देखें (बदलाव सिर्फ़ Admin कर सकता है)।',
     'Approved PR के आइटम चुनकर PO बनाएं — Delivery Date ज़रूरी है; Freight / अन्य खर्च जोड़ सकते हैं।',
     'बने हुए PO की सूची, स्टेटस और PDF देखें; WhatsApp से वेंडर को PO भेजें।',
-    'सिर्फ़ Pending / Rejected PR edit हो सकती है — Admin सभी PR edit कर सकता है।']},
+    'Pending / Rejected / Hold PR कोई भी edit कर सकता है — save करने पर वह वापस PENDING हो जाती है; बाक़ी स्टेटस सिर्फ़ Admin।',
+    'Purchaser मोबाइल ऐप के Vendor Info टैब से PR को Reject या Hold कर सकता है; Hold हटने तक उसका PO नहीं बनेगा।']},
   IN:{icon:'📥',title:'Material Inward',points:[
     'सप्लायर से आया माल दर्ज करें — Supplier Name, Invoice No. और Invoice Date ज़रूरी हैं।',
-    'PO चुनने पर उसके आइटम और रेट अपने-आप आ जाएंगे; मात्रा, वज़न और Bill Basis (QTY / WEIGHT) भरें।',
+    'आगे बढ़ने पर पहले "Nature of Inward ?" पूछा जाएगा (Purchase / Return / Transfer) — वही फ़ॉर्म में lock हो जाएगा।',
+    'PO चुनने पर उसके आइटम और रेट अपने-आप आ जाएंगे; मात्रा, वज़न और Bill Basis (QTY / WEIGHT) भरें। PO सिर्फ़ Purchase के साथ चुना जा सकता है।',
     'दाईं ओर Freight, Round off और GST का पूरा हिसाब दिखेगा; Submit से पहले Preview दिखेगा।',
     'सेव होते ही स्टॉक बढ़ेगा और Inward की PDF बनेगी।']},
   IN_NB:{icon:'📦',title:'Inward (NB) — Non-Billable',points:[
     'बिना बिल वाला आया माल दर्ज करें (जैसे सैंपल, रिपेयर होकर वापस आया माल)।',
     'इसमें हर आइटम का GST हमेशा 0% रहता है।',
+    'Passkey के बाद "Nature of Inward ?" पूछा जाएगा (Purchase / Return / Transfer) — वही फ़ॉर्म में lock हो जाएगा।',
     'बाकी तरीका Material Inward जैसा ही है — आइटम और मात्रा भरें, Preview देखकर Submit करें।',
     'इसका नंबर अलग NB सीरीज़ में बनता है।']},
   OUT:{icon:'📤',title:'Material Outward',points:[
     'स्टोर से बाहर जाने वाला माल दर्ज करें — Party Name, Location और Target Return Date ज़रूरी हैं।',
-    'Nature of Dispatch चुनें — "Repair" में भेजा गया माल Repair Tracker में ट्रैक होगा।',
+    'आगे बढ़ने पर पहले "Nature of Dispatch ?" पूछा जाएगा (Non-Returnable / Repair / Transfer / Sample) — वही फ़ॉर्म में lock हो जाएगा।',
+    '"Repair" में भेजा गया माल Repair Tracker में ट्रैक होगा।',
     'OUTWARD में स्टॉक कम होने पर भी entry हो सकती है (Balance माइनस में जा सकता है)।',
     'Preview देखकर Submit करें — स्टॉक घटेगा और Outward की PDF बनेगी।']},
   ISSUE:{icon:'🧾',title:'Issue',points:[
@@ -7144,6 +7180,120 @@ function sarvNbCodeGate_(go){
   document.addEventListener('keydown',onKey,true);
   inp.focus();
 }
+/* ── Nature chooser on the way in from Home ───────────────────────────
+   Material Inward / Inward (NB) / Material Outward each ask what KIND of
+   movement this is before the form opens, and the answer is then locked on the
+   form. Deciding it up front is the point: the Nature drives which fields the
+   entry needs (a Repair return needs its outward picked, a Repair dispatch is
+   what the Repair Tracker follows), and those used to be reachable only by
+   remembering to change a dropdown halfway down a half-filled form.
+   Issue is deliberately not here — an ISSUE is always CONSUMABLE. */
+const SARV_NATURE_GATE={
+  IN:    {kind:'inward', icon:'📥', title:'Material Inward', q:'Nature of Inward?'},
+  IN_NB: {kind:'inward', icon:'📦', title:'Inward (NB) — Non-Billable', q:'Nature of Inward?'},
+  OUT:   {kind:'outward',icon:'📤', title:'Material Outward', q:'Nature of Dispatch?'},
+};
+/* value = exactly what the form's own dropdown stores (so "Return" is saved as
+   Repaired, the value inwNatureOfInward has always used). */
+const SARV_NATURE_OPTS={
+  inward:[
+    {v:'Purchase', l:'Purchase', c:'#0369a1', note:'Supplier se khareeda hua maal'},
+    {v:'Repaired', l:'Return',   c:'#b45309', note:'Repair hokar wapas aaya maal'},
+    {v:'Transfer', l:'Transfer', c:'#6d28d9', note:'Dusre unit se aaya stock'},
+  ],
+  outward:[
+    {v:'Non-Returnable', l:'Non-Returnable', c:'#0f766e', note:'Wapas nahi aayega'},
+    {v:'Repair',         l:'Repair',         c:'#b45309', note:'Repair Tracker me chalega'},
+    {v:'Transfer',       l:'Transfer',       c:'#6d28d9', note:'Dusre unit ko bheja'},
+    {v:'Sample',         l:'Sample',         c:'#0369a1', note:'Sample dispatch'},
+  ],
+};
+function sarvNatureLabel_(kind,value){
+  const o=(SARV_NATURE_OPTS[kind]||[]).find(x=>x.v===value);
+  return o?o.l:(value||'');
+}
+/* Asks, then calls go(). Cancel / Escape / a backdrop click answer nothing and
+   leave the user on Home — the same rule the Inward (NB) passkey follows. */
+function sarvNatureGate_(key,go){
+  const cfg=SARV_NATURE_GATE[key];
+  if(!cfg)return go();
+  const opts=SARV_NATURE_OPTS[cfg.kind]||[];
+  const ov=document.createElement('div');
+  ov.id='sarvNatureGate';
+  ov.innerHTML='<div class="card"><div class="hd"><span>'+cfg.icon+'</span><span>'+escText(cfg.title)+'</span></div>'
+    +'<div class="bd"><div class="q">'+escText(cfg.q)+'</div>'
+    +'<div class="hint">Ek option chunein — form isi par lock hokar khulega, entry ke beech me badla nahi ja sakega.</div>'
+    +'<div class="opts">'
+    +opts.map(o=>'<button type="button" data-v="'+escText(o.v)+'" style="border-color:'+o.c+';color:'+o.c+';">'
+        +escText(o.l)+'<small>'+escText(o.note)+'</small></button>').join('')
+    +'</div></div>'
+    +'<div class="ft"><button type="button" class="cancel">Cancel</button></div></div>';
+  document.body.appendChild(ov);
+  const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
+  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();close();}};
+  ov.querySelectorAll('.opts button').forEach(b=>b.addEventListener('click',()=>{
+    sarvHomeNature[cfg.kind]=b.dataset.v;
+    close();
+    go();
+  }));
+  ov.querySelector('.cancel').addEventListener('click',close);
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  document.addEventListener('keydown',onKey,true);
+  ov.querySelector('.opts button')?.focus();
+}
+/* What the chooser picked, for as long as this visit to the section lasts.
+   Cleared on the way back Home (sarvGoHome) and when an existing record is
+   opened for edit — an edit must show that record's own Nature. */
+let sarvHomeNature={inward:null,outward:null};
+let sarvNatureLockBusy=false;   // applyHomeNatureLocks fires 'change' — don't re-enter
+/* Re-asserts the pin. Called wherever something else may have touched these
+   two dropdowns: on arrival from Home, after a save clears the form, and at
+   the end of setInwardPoLock / populateNatureOfDispatch, both of which
+   re-enable their select as part of their own rules. */
+function applyHomeNatureLocks(){
+  if(sarvNatureLockBusy)return;
+  sarvNatureLockBusy=true;
+  try{
+    const pin=(el,val,kind)=>{
+      if(!el||!val)return;
+      if(![...el.options].some(o=>o.value===val))el.add(new Option(sarvNatureLabel_(kind,val),val));
+      if(el.value!==val){el.value=val;el.dispatchEvent(new Event('change'));}
+      el.disabled=true;el.style.background='#f1f5f9';el.style.cursor='not-allowed';
+      el.title='Home page par "'+sarvNatureLabel_(kind,val)+'" chuna gaya hai — is entry me badla nahi ja sakta';
+    };
+    const inw=sarvHomeNature.inward;
+    pin(byId('inwNatureOfInward'),inw,'inward');
+    /* An inward booked against a PO is always a Purchase receipt — loadPoIntoInward
+       forces the Nature back to Purchase. With a Return / Transfer pinned, leaving
+       the PO picker live would let that silently overwrite the locked choice, so
+       the picker is taken off instead. */
+    if(inw){
+      const off=inw!=='Purchase', poBtn=byId('poNumberBtn');
+      if(off&&sarvSelectedPoNos.length){setSelectedPoNos([]);togglePoNumberPanel(false);}
+      if(poBtn){
+        poBtn.disabled=off;
+        poBtn.style.background=off?'#f1f5f9':'';
+        poBtn.style.cursor=off?'not-allowed':'pointer';
+        poBtn.title=off?('Nature of Inward "'+sarvNatureLabel_('inward',inw)+'" hai — PO ke against sirf Purchase inward hota hai'):'';
+      }
+    }
+    // ISSUE owns its own Nature (always CONSUMABLE) — a pin never overrides it.
+    if((byId('outEntryTypeSelect')?.value||'')!=='ISSUE')pin(byId('outNatureOfDispatch'),sarvHomeNature.outward,'outward');
+  }finally{
+    sarvNatureLockBusy=false;
+  }
+}
+/* Drops the pins and hands both dropdowns back. Whatever runs next
+   (populateNatureOfDispatch / setInwardPoLock) re-applies its own rules. */
+function releaseHomeNatureLocks(){
+  sarvHomeNature={inward:null,outward:null};
+  ['inwNatureOfInward','outNatureOfDispatch'].forEach(id=>{
+    const el=byId(id);if(!el)return;
+    el.disabled=false;el.style.background='';el.style.cursor='';el.title='';
+  });
+  const poBtn=byId('poNumberBtn');
+  if(poBtn){poBtn.disabled=false;poBtn.style.background='';poBtn.style.cursor='pointer';poBtn.title='';}
+}
 document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
@@ -7152,9 +7302,12 @@ document.addEventListener('DOMContentLoaded',()=>{
     const b=e.target.closest('.sarv-home-row');if(!b)return;
     const go=b.dataset.go;
     const open=()=>sarvNavigateFromHome(go);
-    // Inward (NB) asks for its confirmation word last — right before the form
-    // opens, after the Hindi details have been read.
-    sarvHomeIntro_(go,go==='IN_NB'?()=>sarvNbCodeGate_(open):open);
+    // Inward / Inward (NB) / Outward ask what KIND of movement this is, last of
+    // all — the answer is what the form opens locked on.
+    const withNature=SARV_NATURE_GATE[go]?(()=>sarvNatureGate_(go,open)):open;
+    // Inward (NB) asks for its confirmation word before that: no point choosing
+    // a Nature for a form the passkey may not open.
+    sarvHomeIntro_(go,go==='IN_NB'?()=>sarvNbCodeGate_(withNature):withNature);
   });
   home?.querySelectorAll('.sarv-home-row').forEach(b=>{
     b.addEventListener('mouseenter',()=>sarvHomeTipShow_(b));
@@ -9416,6 +9569,9 @@ async function loadInwardForEdit(id,no){
   const e=h.data, lines=lq.data||[];
 
   activatePanel('inwardPanel');
+  // An existing record shows ITS OWN Nature of Inward, so a Nature pinned by the
+  // Home chooser is dropped before the record is loaded over the form.
+  releaseHomeNatureLocks();
   window.sarvInwardDrafts?.stash();        // keep whatever was being typed
   clearInwardForm(true);                   // also clears any previous edit state
   sarvEditingInwardId=e.id;
@@ -9511,6 +9667,9 @@ async function loadOutwardForEdit(id,no){
   const e=h.data, lines=lq.data||[];
 
   activatePanel('outwardPanel');
+  // Same rule as the Inward side — the record's own Nature of Dispatch wins over
+  // anything the Home chooser pinned for a fresh entry.
+  releaseHomeNatureLocks();
   window.sarvOutwardDrafts?.stash();       // keep whatever was being typed
   clearOutwardForm(true);
   sarvEditingOutwardId=e.id;
@@ -12305,22 +12464,29 @@ window.addEventListener('DOMContentLoaded',()=>{
      // the buyer the PR is booked against. The mobile Purchaser login filters
      // on this column, so it has to be stored, not just put in the PDF.
      const payload={request_date:pVal('p_reqDate')||today(),required_by:pVal('p_requiredByDate')||null,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority')||'Normal',notes:pVal('p_overallRemarks')||null};
-     let h,no,wasRejected=false;
+     let h,no,reopenedFrom='';
      if(sarvEditingRequirementId){
        // Re-checked against the stored status: the PR may have been approved
-       // (on mobile) while it sat open here. Non-Admin may only save a Pending
-       // or Rejected PR.
-       const cur=await SB.from('purchase_requirements').select('status,approvals').eq('id',sarvEditingRequirementId).single();
+       // (on mobile) while it sat open here. Non-Admin may only save a Pending,
+       // Rejected or Hold PR.
+       const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot').eq('id',sarvEditingRequirementId).single();
        if(cur.error)throw cur.error;
-       if(!canEditPr_(cur.data))throw new Error('Ye PR ab "'+(cur.data.status||'')+'" hai — sirf Pending / Rejected PR edit ho sakti hai. Admin login se update karein.');
-       // A corrected Rejected PR goes back into the flow as Pending, with the
-       // approval chain cleared so the Purchaser signs it afresh. The Store
-       // Incharge's own signature is kept.
-       if(String(cur.data.status||'').trim()==='Rejected'){
-         wasRejected=true;
+       if(!canEditPr_(cur.data))throw new Error('Ye PR ab "'+(cur.data.status||'')+'" hai — sirf Pending / Rejected / Hold PR edit ho sakti hai. Admin login se update karein.');
+       /* A corrected Rejected PR goes back into the flow as Pending, with the
+          approval chain cleared so the Purchaser signs it afresh. The Store
+          Incharge's own signature is kept. A Hold is treated the same way: the
+          Purchaser parked it for a fix, and this save IS the fix — leaving it on
+          Hold would strand a PR nobody can move. The hold note is dropped with
+          it, so the Purchaser's mobile list stops showing a stale reason. */
+       const curStatus=String(cur.data.status||'').trim();
+       if(curStatus==='Rejected'||curStatus==='Hold'){
+         reopenedFrom=curStatus;
          const keep=cur.data.approvals&&cur.data.approvals.store?{store:cur.data.approvals.store}:{};
          payload.status='Pending';
          payload.approvals=keep;
+         if(curStatus==='Hold'&&cur.data.pdf_snapshot&&typeof cur.data.pdf_snapshot==='object'){
+           payload.pdf_snapshot={...cur.data.pdf_snapshot,hold:null,status:'Pending'};
+         }
        }
        h=await SB.from('purchase_requirements').update(payload).eq('id',sarvEditingRequirementId).select().single();if(h.error)throw h.error;no=h.data.req_no;
        const del=await SB.from('purchase_requirement_lines').delete().eq('requirement_id',h.data.id);if(del.error)throw del.error;
@@ -12337,7 +12503,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      setMsg('Generating PR PDF...');
      const d=collectRequirementData(no,rows),pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
-     showToast(wasRejected?('✅ '+no+' update ho gayi — Rejected se wapas PENDING me bhej di gayi'):('✅ Requirement saved: '+no));
+     showToast(reopenedFrom?('✅ '+no+' update ho gayi — '+reopenedFrom+' se wapas PENDING me bhej di gayi'):('✅ Requirement saved: '+no));
      await refreshPendingRequirements();
      // ── Clear form after save ──────────────────────────────────
      clearPrForm();
@@ -12679,13 +12845,16 @@ window.addEventListener('DOMContentLoaded',()=>{
  function canEditPr_(req){
    if(isAdmin())return true;
    const st=String((req&&req.status)||'Pending').trim();
-   // A Rejected PR is open for correction too — saving the edit sends it back
-   // to Pending (see the requirement save).
-   return st===''||st==='Pending'||st==='Rejected';
+   /* Rejected and Hold are both the Purchaser handing the PR back for a fix, so
+      both are open for correction to anyone at this desk — no Admin login
+      needed. Saving the edit sends either one back to Pending (see the
+      requirement save). Hold is set from the Purchaser's mobile Vendor Info
+      tab; a held PR cannot become a PO until the hold comes off there. */
+   return st===''||st==='Pending'||st==='Rejected'||st==='Hold';
  }
  function renderPendingRequirementsTable(){
    const tb=byId('p_poPendingBody');if(!tb)return;tb.innerHTML='';
-   const statusColors={'Pending':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
+   const statusColors={'Pending':'#64748b','Hold':'#d97706','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
    let shown=0;
    sarvPendingRequirements.forEach((x,i)=>{
      if(!poPendingMatches(x))return;
@@ -12710,11 +12879,16 @@ window.addEventListener('DOMContentLoaded',()=>{
      const pickCell=x.poEligible
        ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'">'
        :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="PO sirf GM/CEO Approved (ya aage) requirements se hi build ho sakta hai">';
-     // Only a still-Pending PR is editable; once approved it is locked for
-     // everyone except Admin (see canEditPr_).
+     /* Pending, Rejected and Hold are editable by anyone here; once the
+        Purchaser has approved it (POs may already be built) it is Admin-only —
+        see canEditPr_. A Rejected / Hold PR is called out on the button so it
+        reads as work waiting, not as a dead record. */
+     const needsFix=['Rejected','Hold'].includes(statusVal);
      const editCell=canEditPr_(x.req)
-       ?'<button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'">✎ Edit PR</button>'
-       :'<button type="button" class="btn btn-sm" disabled title="Sirf Pending / Rejected PR edit ho sakti hai — '+pEsc(statusVal)+' PR sirf Admin login se edit hogi" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Edit PR</button>';
+       ?'<button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'"'
+         +(needsFix?' title="'+pEsc(statusVal)+' PR — sudhar kar save karein, wapas PENDING ho jayegi" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
+         +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
+       :'<button type="button" class="btn btn-sm" disabled title="Sirf Pending / Rejected / Hold PR edit ho sakti hai — '+pEsc(statusVal)+' PR sirf Admin login se edit hogi" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Edit PR</button>';
      const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
    });
    if(!shown){
@@ -13803,7 +13977,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      pending.addEventListener('click',e=>{
        const editBtn=e.target.closest('.sarv-edit-pr');if(editBtn){
          const x=sarvPendingRequirements[+editBtn.dataset.index];
-         if(x&&!canEditPr_(x.req))return showToast('⛔ Sirf Pending / Rejected PR edit ho sakti hai — '+pEsc(x.req.status||'')+' PR ko sirf Admin login edit kar sakta hai','warn');
+         if(x&&!canEditPr_(x.req))return showToast('⛔ Sirf Pending / Rejected / Hold PR edit ho sakti hai — '+pEsc(x.req.status||'')+' PR ko sirf Admin login edit kar sakta hai','warn');
          populateRequirementEditor(x);return;}
        const viBtn=e.target.closest('.sarv-vendor-info');if(viBtn)openVendorInfoModal(viBtn.dataset.req).catch(dbError);
      });
