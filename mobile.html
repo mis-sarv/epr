@@ -796,6 +796,29 @@
                 </div>
             </div>
 
+            <!-- The Purchaser's other two calls on a PR, sitting right under the
+                 Vendor Rate & Info toggle because they are what you reach for
+                 INSTEAD of chasing quotes: send the PR back (Reject) or park it
+                 (Hold) until whatever is unclear is settled. Only in the Vendor
+                 Info tab — PO Generate has the sign / approve flow instead.
+                 A reason is compulsory for both; the PR's own Remarks box lives
+                 in the approval section, which is hidden at this stage. -->
+            <div id="viDecisionBar" style="display:none; margin-bottom:12px; border:1px solid #d7dde5; border-radius:8px; padding:10px 12px; background:#fcfcfd;">
+                <div id="viHoldNote" style="display:none; background:#fff7e6; border:1px solid #fcd34d; border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:0.74rem; color:#92400e; font-weight:600;"></div>
+                <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">
+                    Reason / Remarks <span style="color:#dc3545;">*</span>
+                </label>
+                <textarea id="viDecisionRemarks" rows="2" placeholder="Reject ya Hold ki wajah likhein..." style="width:100%;"></textarea>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button class="btn" id="viRejectBtn" style="flex:1; width:auto; background:#dc3545;">&#10006; Reject PR</button>
+                    <button class="btn" id="viHoldBtn" style="flex:1; width:auto; background:#d97706;">&#9208; Hold</button>
+                </div>
+                <div style="font-size:0.7rem; color:#6b7280; margin-top:6px;">
+                    <b>Reject</b> — PR wapas Store ko; wahan sudhar kar dobara bhejenge.
+                    <b>Hold</b> — PR yahin ruki rahegi, PO nahi banega; jab chahein Hold hata dein.
+                </div>
+            </div>
+
             <div class="req-meta-info" id="approvedVendorInfo" style="display:none;"></div>
 
             <!-- Why there is nothing to sign here: read-only view, or the
@@ -1912,6 +1935,8 @@
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
     document.getElementById('vendorInfoToggle')?.addEventListener('click', toggleVendorInfo);
     document.getElementById('viSaveBtn')?.addEventListener('click', () => saveVendorInfoMobile());
+    document.getElementById('viRejectBtn')?.addEventListener('click', () => viRejectPr());
+    document.getElementById('viHoldBtn')?.addEventListener('click', () => viToggleHold());
     document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
     // Restore a previous login so the PIN isn't asked again on every reload —
     // only an explicit Logout (logoutRole, via the role badge) clears it.
@@ -1964,6 +1989,12 @@
 
     // ── Data fetch ───────────────────────────────────────────────
     const PR_OPEN = r => !r.status || r.status === 'Pending';
+    /* Parked by a Purchaser from the Vendor Info tab. A held PR is deliberately
+       NOT "open": it stays out of PO Generate, so no PO can be raised off it
+       while the hold stands. The Vendor Info tab keeps listing it — that is
+       where the hold was put on and the only place it can be taken off. */
+    const PR_HELD = r => (r.status||'') === 'Hold';
+    const PR_DEAD = r => ['Rejected','Cancelled'].includes(r.status||'');
     const PO_DEAD = p => ['Rejected','Cancelled'].includes(p.status||'');
     /* MD has signed this PO. "Vendor Verified" is a legacy status that only ever
        followed MD approval, so it counts as signed too. */
@@ -1975,10 +2006,13 @@
         const {prs, pos} = dash;
         const pending = view !== 'done';
         switch(tab){
-            case 'VI':    return pending ? prs.filter(r => PR_OPEN(r) && !prVendorInfoFilled(r))
-                                         : prs.filter(r => prVendorInfoFilled(r) && !['Rejected','Cancelled'].includes(r.status||''));
+            // A held PR is listed here whatever its vendor-info state, so it can
+            // never end up parked in a tab that doesn't show it — this is the
+            // only screen with the control to release it.
+            case 'VI':    return pending ? prs.filter(r => PR_HELD(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
+                                         : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r));
             case 'POGEN': return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
-                                         : prs.filter(r => (r.approvals||{}).gmCeo && !['Rejected','Cancelled'].includes(r.status||''));
+                                         : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
             // No GM/CEO step on POs: a purchaser-approved PO arrives as "GM/CEO
             // Approved", one that never carried a Purchaser signature stays
             // "Generated" — MD takes both.
@@ -2187,7 +2221,7 @@
     }
 
     // ── List rendering ───────────────────────────────────────────
-    const STATUS_COLORS = {'Pending':'#64748b','Generated':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Partially Received':'#d97706','Received':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
+    const STATUS_COLORS = {'Pending':'#64748b','Hold':'#d97706','Generated':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Partially Received':'#d97706','Received':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
     function statusBadge(status){
         const val = status || 'Pending';
         const c = STATUS_COLORS[val] || '#64748b';
@@ -2320,6 +2354,11 @@
                     SENT:  '✔ Vendor ko bheja ja chuka hai',
                 }[tab];
                 html += `<div class="card-action done">${escText(doneText)}</div>`;
+            } else if(isPr && PR_HELD(item)){
+                // A held PR is in the list only so the hold can be taken off —
+                // saying "fill the rates" here would point at the wrong thing.
+                const hi = prHoldInfo(item);
+                html += `<div class="card-action wait">⏸ Hold par — kholkar Hold hatayein${hi && hi.remarks ? ' · ' + escText(hi.remarks) : ''}</div>`;
             } else if(canAct){
                 html += `<div class="card-action act">✍️ ${escText(tab === 'SENT' ? cfg.action : 'Tap karein — ' + cfg.action)}</div>`;
             } else {
@@ -2723,11 +2762,134 @@
         if(chev) chev.innerHTML = open ? '&#9662;' : '&#9652;';
     }
 
+    /* ── Vendor Info step: Reject / Hold ──────────────────────────
+       Two decisions a Purchaser can take on a PR before any quotes are chased.
+       Both need a written reason, and both are reversible in their own way:
+       a Hold comes off from this same button, a Reject is corrected and
+       re-sent from STORE.html's PO Generation desk (Edit PR → saving a
+       Rejected PR puts it back to Pending). */
+    // Who put this PR on hold, when and why — written into pdf_snapshot.hold.
+    function prHoldInfo(req){
+        const h = ((req && req.pdf_snapshot) || {}).hold;
+        return (h && typeof h === 'object') ? h : null;
+    }
+    /* Shows the bar only where the decision belongs: the Vendor Info step of a
+       PR, for the role that acts there, not in a read-only view. Passing null
+       (every other modal) hides it. */
+    function renderViDecisionBar(entry){
+        const bar = document.getElementById('viDecisionBar');
+        if(!bar) return;
+        const show = !!entry && currentModule === 'PR' && !modalViewOnly && modalTab === 'VI' && canActIn('VI');
+        bar.style.display = show ? 'block' : 'none';
+        if(!show) return;
+        document.getElementById('viDecisionRemarks').value = '';
+        const held = PR_HELD(entry), info = prHoldInfo(entry);
+        const note = document.getElementById('viHoldNote');
+        note.style.display = held ? 'block' : 'none';
+        if(held){
+            note.innerHTML = '&#9208; <b>Ye PR Hold par hai.</b>'
+                + (info && info.by ? ' Hold kiya: <b>' + escText(info.by) + '</b>' : '')
+                + (info && info.at ? ' — ' + escText(info.at) : '')
+                + (info && info.remarks ? '<br>Wajah: ' + escText(info.remarks) : '')
+                + '<br>Hold hatane tak is PR ka PO nahi ban sakta.';
+        }
+        const holdBtn = document.getElementById('viHoldBtn');
+        holdBtn.innerHTML = held ? '&#9654; Hold Hatao' : '&#9208; Hold';
+        holdBtn.style.background = held ? '#16a34a' : '#d97706';
+        // A PR already on hold is rejected by first releasing it — one decision
+        // at a time keeps the reason attached to the right action.
+        const rejBtn = document.getElementById('viRejectBtn');
+        rejBtn.disabled = held;
+        rejBtn.style.opacity = held ? '0.5' : '';
+        rejBtn.style.cursor = held ? 'not-allowed' : '';
+        rejBtn.title = held ? 'Pehle Hold hatayein, phir reject karein' : '';
+    }
+    // The reason both buttons insist on. Returns '' when it is missing.
+    function viDecisionReason(){
+        return String(document.getElementById('viDecisionRemarks')?.value || '').trim();
+    }
+    async function viRejectPr(){
+        if(!currentEntry || currentModule !== 'PR' || modalViewOnly || modalTab !== 'VI') return;
+        if(PR_HELD(currentEntry)) return alert('Ye PR Hold par hai — pehle "Hold Hatao" dabayein, phir reject karein.');
+        const reason = viDecisionReason();
+        if(!reason) return alert('Reject karne ki wajah likhna zaroori hai.');
+        // Captured before closeModal() clears currentEntry.
+        const req = currentEntry, docNo = req.req_no || '';
+        if(!confirm('PR ' + docNo + ' reject karein?\n\nYe PR Store ke paas wapas chali jayegi — wahan sudhar kar dobara bheji ja sakti hai.\n\nWajah: ' + reason)) return;
+        setBusy(true, 'Rejecting PR...');
+        try{
+            // The Purchaser signs the gmCeo stage, and gmCeo has no stage before
+            // it — so rejectPR() marks the PR "Rejected" rather than sending it
+            // one step back. Same path the PO Generate tab's Reject uses.
+            await rejectPR(req, 'gmCeo', reason);
+            dashDirty = false;
+            closeModal();
+            await renderList();
+            alert('✖ PR ' + docNo + ' reject ho gayi. Store isme sudhar karke dobara bhej sakta hai.');
+        }catch(e){
+            alert('Error: ' + (e.message || e));
+        }finally{
+            setBusy(false);
+        }
+    }
+    async function viToggleHold(){
+        if(!currentEntry || currentModule !== 'PR' || modalViewOnly || modalTab !== 'VI') return;
+        const req = currentEntry, held = PR_HELD(req), docNo = req.req_no || '';
+        const reason = viDecisionReason();
+        if(!reason) return alert(held ? 'Hold hatane ki wajah likhein.' : 'Hold karne ki wajah likhein.');
+        if(!confirm(held
+            ? ('PR ' + docNo + ' ka Hold hatayein?\n\nPR wapas pending list me aa jayegi.\n\nWajah: ' + reason)
+            : ('PR ' + docNo + ' ko Hold par rakhein?\n\nJab tak Hold hai, is PR ka PO nahi banega.\n\nWajah: ' + reason))) return;
+        setBusy(true, held ? 'Hold hata rahe hain...' : 'PR hold kar rahe hain...');
+        try{
+            await setPrHold(req, !held, reason);
+            dashDirty = false;
+            closeModal();
+            await renderList();
+            alert(held ? ('▶ PR ' + docNo + ' ka Hold hat gaya.') : ('⏸ PR ' + docNo + ' Hold par rakh di gayi.'));
+        }catch(e){
+            alert('Error: ' + (e.message || e));
+        }finally{
+            setBusy(false);
+        }
+    }
+    /* Hold is only a status plus a note — no approval is given or taken, so the
+       approvals column and the PR's PDF are both left exactly as they are. The
+       PDF is a record of what was requested and signed; parking the paperwork
+       for a day is not an event on that document. */
+    async function setPrHold(req, on, remarks){
+        const who = myPurchaserName || STAGE_LABEL[myStage] || 'Purchaser';
+        const snap = {...(req.pdf_snapshot || {})};
+        let newStatus;
+        if(on){
+            newStatus = 'Hold';
+            // prevStatus is what the release goes back to. Only Pending (or a
+            // blank status) can reach the Vendor Info tab, but it is recorded
+            // rather than assumed.
+            snap.hold = {by: who, at: pStamp(), remarks: remarks || '', prevStatus: req.status || 'Pending'};
+        } else {
+            const prev = (prHoldInfo(req) || {}).prevStatus;
+            newStatus = (prev && prev !== 'Hold') ? prev : 'Pending';
+            snap.hold = null;
+            snap.releasedHold = {by: who, at: pStamp(), remarks: remarks || ''};
+        }
+        snap.status = newStatus;
+        const upd = await SB.from('purchase_requirements')
+            .update({status: newStatus, pdf_snapshot: snap}).eq('id', req.id);
+        if(upd.error) throw upd.error;
+    }
+
     async function saveVendorInfoMobile(){
         if(!currentEntry) return;
         const err = document.getElementById('viError');
         const show = m => { err.textContent = m; err.style.display = 'block'; };
         err.style.display = 'none';
+        // A held PR is parked on purpose. Saving quotes would push it straight
+        // into PO Generate, which is exactly what the hold is there to stop.
+        if(PR_HELD(currentEntry)){
+            show('Ye PR Hold par hai — pehle niche "▶ Hold Hatao" dabayein, phir vendor info save karein.');
+            return;
+        }
         const btn = document.getElementById('viSaveBtn');
 
         // Vendors are PER ITEM: each row's four slots are in viRowVendors,
@@ -3120,6 +3282,8 @@
         if(viBody) viBody.style.display = 'none';
         const viChev = document.getElementById('vendorInfoChevron');
         if(viChev) viChev.innerHTML = '&#9662;';
+        // Reject / Hold: hidden until the Vendor Info step turns it on below.
+        renderViDecisionBar(null);
         const docNo = currentModule === 'PR' ? entry.req_no : entry.po_no;
         document.getElementById('modal-header-title').innerText = `${docNo} Details`;
 
@@ -3207,6 +3371,9 @@
             if(modalTab === 'VI'){
                 if(viBody) viBody.style.display = 'block';
                 if(viChev) viChev.innerHTML = '&#9652;';
+                // Reject / Hold belong to this step only, and only to the role
+                // acting in it — a read-only visitor gets neither.
+                renderViDecisionBar(entry);
             }
         } else if(currentModule === 'PR' && (prLevelApprovedIdx >= 0 || displayVendorIndex.some(v=>v>=0))){
             showRateColumn = true;
