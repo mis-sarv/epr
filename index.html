@@ -2568,9 +2568,11 @@ body {
                         <input type="text" class="form-control" id="outRegEntryNo" placeholder="Auto Generated" disabled style="font-weight:700; background-color:#f1f5f9; color:#0284c7;">
                     </div>
                     <div class="form-group">
-                        <label>Nature of Dispatch</label>
+                        <label>Nature of Dispatch <span style="color:#dc2626; font-weight:800;">★</span></label>
                         <select class="form-control" id="outNatureOfDispatch">
-                            <!-- options populated by JS based on entry type -->
+                            <!-- options populated by JS based on entry type.
+                                 On OUTWARD it opens unselected and submit is
+                                 blocked until one is picked — populateNatureOfDispatch(). -->
                         </select>
                     </div>
                 </div>
@@ -2649,18 +2651,23 @@ body {
                     <span style="font-size:10px; color:#94a3b8; white-space:nowrap;">→ Receiver Name, Designation, Department auto-fill</span>
                 </div>
 
+                <!-- Receiver Name / Designation / Department are NOT typed. They
+                     are filled only from Employee Master via the Emp Code box
+                     above (onOutEmpCodeInput), so what is dispatched always
+                     matches a real employee record — and on an edit they come
+                     back pre-filled from the saved entry. -->
                 <div class="grid-4">
                     <div class="form-group">
                         <label>Receiver Name <span style="color:#dc2626; font-weight:800;">★</span></label>
-                        <input type="text" class="form-control" id="outReceiverName" placeholder="Person receiving" list="dl-outReceiverName" autocomplete="off">
+                        <input type="text" class="form-control" id="outReceiverName" placeholder="Emp Code se auto-fill" readonly tabindex="-1" autocomplete="off" title="Emp Code se auto-fill hota hai — type nahi kar sakte" style="background:#f1f5f9; cursor:not-allowed;">
                     </div>
                     <div class="form-group">
                         <label>Designation</label>
-                        <input type="text" class="form-control" id="outDesignation" placeholder="e.g. Maintenance Head" list="dl-outDesignation" autocomplete="off">
+                        <input type="text" class="form-control" id="outDesignation" placeholder="Emp Code se auto-fill" readonly tabindex="-1" autocomplete="off" title="Emp Code se auto-fill hota hai — type nahi kar sakte" style="background:#f1f5f9; cursor:not-allowed;">
                     </div>
                     <div class="form-group">
                         <label>Department <span style="color:#dc2626; font-weight:800;">★</span></label>
-                        <input type="text" class="form-control" id="outDepartment" placeholder="e.g. Spinning / QA" list="dl-outDepartment" autocomplete="off">
+                        <input type="text" class="form-control" id="outDepartment" placeholder="Emp Code se auto-fill" readonly tabindex="-1" autocomplete="off" title="Emp Code se auto-fill hota hai — type nahi kar sakte" style="background:#f1f5f9; cursor:not-allowed;">
                     </div>
                     <div class="form-group" style="justify-content:flex-end;">
                         <button class="btn btn-success" id="outSubmitBtn" style="height:34px; padding:6px 14px; font-size:12px; border-radius:6px;">Submit Outward</button>
@@ -5303,7 +5310,16 @@ function lookupItem(name){
 }
 function lookupEmployee(code){
   const c=(code||'').trim().toUpperCase();
+  if(!c)return null;
   return sarvEmployeeCatalog.find(e=>(e.emp_code||'').toUpperCase()===c)||null;
+}
+/* Fallback for records that stored only the receiver's NAME (Designation /
+   Department had no column on outward_entries until now, and no Emp Code was
+   kept either) — used when reopening such an entry for edit. */
+function lookupEmployeeByName(name){
+  const n=(name||'').trim().toLowerCase();
+  if(!n)return null;
+  return sarvEmployeeCatalog.find(e=>(e.person_name||'').trim().toLowerCase()===n)||null;
 }
 function lookupSupplier(name){
   const n=(name||'').trim().toLowerCase();
@@ -5393,12 +5409,28 @@ function onEmpCodeInput(val){
   showToast(`✅ ${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
 }
 
+/* The three Receiver fields are read-only, so this is the ONLY thing that
+   fills them on a fresh entry (loadOutwardForEdit() fills them on an edit).
+   Because they are set programmatically, no 'input' event fires, so a required
+   highlight left on them by validateRequiredFields() is cleared by hand here —
+   and the locked grey look is restored with it. */
+const OUT_RECEIVER_FIELDS=['outReceiverName','outDesignation','outDepartment'];
+function setOutReceiverField(id,v){
+  const e=byId(id);if(!e)return;
+  e.value=v==null?'':v;
+  e.style.border='';e.style.background='#f1f5f9';
+}
 function onOutEmpCodeInput(val){
-  const emp=lookupEmployee(val); if(!emp)return;
-  const s=(id,v)=>{const e=byId(id);if(e&&v!=null)e.value=v;};
-  s('outReceiverName', emp.person_name||'');
-  s('outDesignation',  emp.designation||'');
-  s('outDepartment',   emp.department||'');
+  const emp=lookupEmployee(val);
+  if(!emp){
+    // Code box emptied — drop the stale employee with it, since nothing else
+    // can correct these fields now that they can't be typed in.
+    if(!(val||'').trim())OUT_RECEIVER_FIELDS.forEach(id=>setOutReceiverField(id,''));
+    return;
+  }
+  setOutReceiverField('outReceiverName', emp.person_name||'');
+  setOutReceiverField('outDesignation',  emp.designation||'');
+  setOutReceiverField('outDepartment',   emp.department||'');
   showToast(`✅ ${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
 }
 /* lockName: only true once the user has actually COMMITTED a pick (the
@@ -6621,13 +6653,22 @@ function populateNatureOfDispatch(){
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
   const cur=sel.value;
   const opts=isIssue?[ISSUE_FIXED_NATURE]:['Non-Returnable','Repair','Transfer','Sample'];
-  sel.innerHTML=opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  /* OUTWARD opens with nothing selected. The first option used to be picked by
+     default, so "Non-Returnable" went out on every entry nobody touched this
+     dropdown on — a Repair dispatch then never reached the Repair Tracker.
+     An unselected placeholder forces a deliberate pick; saveOutwardWithPdf()
+     refuses to submit while it is still empty. ISSUE is always CONSUMABLE, so
+     it keeps its single locked option and needs no placeholder. */
+  sel.innerHTML=(isIssue?'':'<option value="">-- Select Nature of Dispatch --</option>')
+    +opts.map(o=>`<option value="${o}">${o}</option>`).join('');
   if(isIssue){
     sel.value=ISSUE_FIXED_NATURE;
     sel.disabled=true;sel.style.background='#f1f5f9';sel.style.cursor='not-allowed';sel.title=ISSUE_FIXED_TITLE;
   }else{
-    sel.disabled=false;sel.style.background='';sel.style.cursor='pointer';sel.title='';
-    if(cur&&opts.includes(cur))sel.value=cur;
+    sel.disabled=false;sel.style.background='';sel.style.cursor='pointer';
+    sel.title='Compulsory — dispatch ki nature select karein';
+    // Only an earlier real pick is carried over; otherwise it stays unselected.
+    sel.value=(cur&&opts.includes(cur))?cur:'';
   }
   if(!sel.dataset.modeBound){
     sel.addEventListener('change',updateOutwardModeText);
@@ -9491,12 +9532,29 @@ async function loadOutwardForEdit(id,no){
   set('outRegEntryNo',e.document_no||'');
   set('outPartyName',e.party_name);
   set('outLocation',e.location);
-  set('outReceiverName',e.receiver_name);
   set('outTargetReturnDate',e.target_return_date);
   set('outGatePassNo',e.gate_pass_no);
   set('outTransport',e.transport);
   set('outLotNo',e.lot_no);
   set('outRemarks',e.notes);
+  /* Receiver block comes back pre-filled. The three fields are read-only, so
+     this is the only way they can carry the saved values. Designation /
+     Department are read off the header when it has them; an entry saved before
+     those columns existed (or on a database still without them) falls back to
+     Employee Master — by the saved Emp Code, else by the Receiver Name. */
+  set('outReceiverEmpCode',e.receiver_emp_code);
+  setOutReceiverField('outReceiverName',e.receiver_name);
+  let outDesig=e.receiver_designation||'', outDept=e.receiver_department||'';
+  if(!outDesig||!outDept){
+    const emp=lookupEmployee(e.receiver_emp_code)||lookupEmployeeByName(e.receiver_name);
+    if(emp){
+      outDesig=outDesig||emp.designation||'';
+      outDept =outDept ||emp.department ||'';
+      if(!e.receiver_emp_code&&emp.emp_code)set('outReceiverEmpCode',emp.emp_code);
+    }
+  }
+  setOutReceiverField('outDesignation',outDesig);
+  setOutReceiverField('outDepartment',outDept);
   const nod=byId('outNatureOfDispatch');
   // A locked ISSUE dropdown only carries CONSUMABLE, so an older record saved
   // under a different Nature keeps its own value rather than reading as blank.
@@ -12063,8 +12121,28 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Target Return Date is hidden on an ISSUE (consumables don't come back),
    // so it is only a required field while the form is an OUTWARD.
    const outReq=[{id:'outPartyName',label:'Party Name'},{id:'outLocation',label:'Location'}];
-   if(pVal('outEntryTypeSelect')!=='ISSUE')outReq.push({id:'outTargetReturnDate',label:'Target Return Date'});
+   if(pVal('outEntryTypeSelect')!=='ISSUE'){
+     outReq.push({id:'outTargetReturnDate',label:'Target Return Date'});
+     // The dropdown opens unselected on OUTWARD, so the pick has to be checked
+     // here — nothing else stops a blank Nature of Dispatch from being saved.
+     outReq.push({id:'outNatureOfDispatch',label:'Nature of Dispatch'});
+   }
    if(!validateRequiredFields(outReq))return;
+   /* Receiver Name / Department carry a ★ but were never actually checked. They
+      are read-only now, so an empty one means no employee was picked — and the
+      field itself can't be fixed, the Emp Code box can. That is what gets
+      highlighted and focused. */
+   {
+     const missing=[{id:'outReceiverName',label:'Receiver Name'},{id:'outDepartment',label:'Department'}]
+       .filter(f=>!pVal(f.id).trim());
+     if(missing.length){
+       missing.forEach(f=>highlightRequiredField(f.id));
+       const code=byId('outReceiverEmpCode');
+       if(code){highlightRequiredField('outReceiverEmpCode');code.scrollIntoView({behavior:'smooth',block:'center'});code.focus();}
+       return showToast('⚠️ Receiver '+missing.map(f=>f.label).join(' / ')
+         +' khaali hai — Emp Code box me employee ka code daalein, teeno field khud bhar jayenge','warn');
+     }
+   }
    const rows=rowDataOutward();if(!rows.length)return showToast('At least one outward item required','warn');
    // ISSUE: every item row must name the machine it is issued to — Machine
    // Name AND Machine No., as a pair that exists in Machine Master. Missing /
@@ -12126,22 +12204,50 @@ window.addEventListener('DOMContentLoaded',()=>{
      // hand out a fresh one and leave the original orphaned.
      const no=outEditId?outEditNo:await nextNo(pVal('outEntryTypeSelect')==='ISSUE'?'ISSUE':'OUTWARD');
      const outBase={document_no:no,entry_type:pVal('outEntryTypeSelect')||'OUTWARD',outward_date:pVal('outDate')||today(),party_name:pVal('outPartyName')||'Unknown',location:pVal('outLocation')||null,receiver_name:pVal('outReceiverName')||null,target_return_date:pVal('outTargetReturnDate')||null,gate_pass_no:pVal('outGatePassNo')||null,transport:pVal('outTransport')||null,notes:pVal('outRemarks')||null};
-     const outFull={...outBase,nature_of_dispatch:pVal('outNatureOfDispatch')||null,lot_no:pVal('outLotNo')||null};
+     /* Receiver Designation / Department / Emp Code used to live only inside the
+        PDF, so reopening an entry for edit brought back a bare Receiver Name and
+        the other two printed blank on the regenerated copy. They are stored on
+        the header now. A database still missing the columns falls back to
+        outBase below, exactly as nature_of_dispatch / lot_no already do. */
+     const outFull={...outBase,nature_of_dispatch:pVal('outNatureOfDispatch')||null,lot_no:pVal('outLotNo')||null,
+       receiver_designation:pVal('outDesignation')||null,receiver_department:pVal('outDepartment')||null,
+       receiver_emp_code:pVal('outReceiverEmpCode')||null};
+     /* Shapes to try, widest first. The middle one matters: a database that has
+        nature_of_dispatch / lot_no but not the new receiver columns must not be
+        dropped all the way to outBase, or Nature of Dispatch would silently stop
+        being saved and Repair dispatches would vanish from the Repair Tracker. */
+     const outNoReceiver={...outFull};
+     ['receiver_designation','receiver_department','receiver_emp_code'].forEach(k=>delete outNoReceiver[k]);
+     const outShapes=[outFull,outNoReceiver,outBase];
+     const isColErr=e=>/nature_of_dispatch|lot_no|receiver_designation|receiver_department|receiver_emp_code|column/i.test(e?.message||'');
+     // Walks the shapes until one is accepted; a non-column error stops at once.
+     let outShapeUsed=0;
+     async function writeOutHeader(run){
+       let r;
+       for(let i=0;i<outShapes.length;i++){
+         outShapeUsed=i;
+         r=await run(outShapes[i]);
+         if(!r.error||!isColErr(r.error))return r;
+       }
+       return r;
+     }
      let h;
      if(outEditId){
        // Primary-key update — a second header for the same Record No. is
        // impossible, and the old lines go before the new ones land.
-       h=await SB.from('outward_entries').update(outFull).eq('id',outEditId).select().maybeSingle();
-       if(h.error&&/nature_of_dispatch|lot_no|column/i.test(h.error.message||''))h=await SB.from('outward_entries').update(outBase).eq('id',outEditId).select().maybeSingle();
+       h=await writeOutHeader(p=>SB.from('outward_entries').update(p).eq('id',outEditId).select().maybeSingle());
        if(h.error)throw h.error;
        if(!h.data)throw new Error(outEditNo+' database me nahi mila — ho sakta hai kisi ne delete kar diya ho. Kuch save nahi hua.');
        const del=await SB.from('outward_lines').delete().eq('outward_id',outEditId);
        if(del.error)throw del.error;
      }else{
-       h=await SB.from('outward_entries').insert(outFull).select().single();
-       if(h.error&&/nature_of_dispatch|lot_no|column/i.test(h.error.message||''))h=await SB.from('outward_entries').insert(outBase).select().single();
+       h=await writeOutHeader(p=>SB.from('outward_entries').insert(p).select().single());
        if(h.error)throw h.error;
      }
+     // The receiver columns aren't there yet, so Designation / Department print
+     // on this PDF but won't come back when the entry is reopened for edit.
+     // Said plainly rather than left to be discovered on the next edit.
+     if(outShapeUsed>0)showToast('⚠️ Is database me Receiver Designation / Department save nahi hote — edit me dobara Emp Code daalna padega (receiver_designation, receiver_department, receiver_emp_code columns add karein)','warn');
      const ls=[];for(const r of rows){const it=await ensureItem(r.itemName,r.itemDesc,r.make,r.category,r.qtyUom,r.itemId);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.qtyUom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput');
@@ -12338,6 +12444,16 @@ window.addEventListener('DOMContentLoaded',()=>{
    refreshStoreEditUi();
    ['outPartyName','outLocation','outReceiverName','outTargetReturnDate','outGatePassNo',
     'outTransport','outRemarks','outReceiverEmpCode','outDesignation','outDepartment'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+   // A required-field highlight repaints the box white/red; the read-only
+   // receiver fields have to get their locked grey look back with the clear.
+   OUT_RECEIVER_FIELDS.forEach(id=>setOutReceiverField(id,''));
+   const empBox=byId('outReceiverEmpCode');if(empBox){empBox.style.border='';empBox.style.background='';}
+   /* Nature of Dispatch goes back to unselected, like every other field. Cleared
+      BEFORE applyOutwardWording() below, because populateNatureOfDispatch()
+      carries the current pick over and would otherwise hand the last entry's
+      Nature to the next one. */
+   const nodSel=byId('outNatureOfDispatch');
+   if(nodSel){nodSel.value='';nodSel.style.border='';nodSel.style.background='';}
    sarvLastOutPartyCity='';   // fields are blank again, so nothing is "auto-filled"
    const od=byId('outDate');if(od)od.value=today();
    // Same rule as the Inward side — a pinned type survives the clear.
