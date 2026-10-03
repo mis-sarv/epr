@@ -1799,7 +1799,10 @@
         switch(myRoleKey()){
             case 'gm':        return ['STORE'];
             case 'purchaser': return ['VI','POGEN','RECV'];
-            case 'md':        return ['VI','POGEN','MD','SENT','STORE'];
+            // MD gets PO Receipts too — scoped to every PO, not one
+            // purchaser's. Read-only there, same as the Purchaser: nothing is
+            // approved or signed in that tab by anyone.
+            case 'md':        return ['VI','POGEN','MD','SENT','STORE','RECV'];
             default:          return ['VI','POGEN','MD','SENT'];   // poSender — unchanged
         }
     }
@@ -1956,6 +1959,17 @@
         document.querySelectorAll('.stage-tab').forEach(el => {
             el.style.display = show.includes(el.dataset.tab) ? '' : 'none';
         });
+        /* The grid is sized to how many tabs this role actually has, instead of
+           the stylesheet's fixed four. Hidden tabs still occupy no cell, so a
+           fixed four left every role with an incomplete row — MD's six would
+           sit 4 + 2 with two empty cells beside them, and a Purchaser's three
+           left one. Five or six wrap to two even rows of three; four or fewer
+           share one row. */
+        const nav = document.getElementById('stageTabs');
+        if(nav){
+            const n = show.length;
+            nav.style.gridTemplateColumns = 'repeat(' + (n <= 1 ? 1 : (n <= 4 ? n : 3)) + ', 1fr)';
+        }
     }
     // Rebuilds the Pending / Done (or Pending / Partially / Received) buttons.
     function renderViewSeg(){
@@ -2023,6 +2037,17 @@
             if(!myStage){ note.textContent = ''; note.className = 'access-note'; }
             // Field Boy's one tab is a tick list, not a quote sheet.
             else if(isFieldBoy()){ note.textContent = '☑ PR kholkar jo item mil gaya use tick karein'; note.className = 'access-note act'; }
+            /* PO Receipts is a tracker, not a task: nothing is approved or
+               signed there by anyone, so neither role gets a "your job" note
+               and neither gets told it is somebody else's. Only the scope
+               differs — a Purchaser sees the POs raised from their own PRs,
+               MD sees every one. STAGE_TABS.RECV.action is phrased for the
+               Purchaser ("Aapke PO"), so it is not reused here. */
+            else if(currentStageTab === 'RECV'){
+                note.textContent = '👁 ' + (myPurchaserName ? 'Aapke PO' : 'Sabhi PO')
+                    + ' par kitna maal aaya — Store ki Inward entries se khud update hota hai';
+                note.className = 'access-note view';
+            }
             else if(canActIn(currentStageTab)){ note.textContent = '✍️ ' + cfg.action; note.className = 'access-note act'; }
             else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
         }
@@ -2500,10 +2525,13 @@
         // A Purchaser's PO Receipts cards name the inward documents that fed each
         // PO. inward_entries.po_number already carries the comma-joined PO list,
         // so one query covers it — no per-line join.
-        /* Purchaser only — they are the one role with the PO Receipts tab.
-           The lines are what that tab judges each order by (poReceiptBucket),
-           and the inward documents are what its cards name. */
-        if(myRoleKey() === 'purchaser') await Promise.all([attachInwardsToPos_(pos), attachPoLinesToPos_(pos)]);
+        /* The two roles with the PO Receipts tab. The lines are what that tab
+           judges each order by (poReceiptBucket) — without them it would fall
+           back to the header totals, i.e. the aggregate reading this was built
+           to replace — and the inward documents are what its cards name.
+           Nobody else pays for these two queries. */
+        if(['purchaser','md'].includes(myRoleKey()))
+            await Promise.all([attachInwardsToPos_(pos), attachPoLinesToPos_(pos)]);
         dash = {prs, pos, store};
     }
     /* Every line of these POs, so PO Receipts can judge an order item by item
