@@ -4223,7 +4223,7 @@ body {
                                     <th style="text-align:center;">Qty</th>
                                     <th style="text-align:right;">Grand Total</th>
                                     <th>Status</th>
-                                    <th style="text-align:center;">Received Qty</th>
+                                    <th style="text-align:center;" title="Received / Ordered. PO ka status har item ki receiving dekh kar banta hai — row click karke item-wise breakdown dekhein.">Received / Ordered</th>
                                     <th>PDF</th>
                                     <th>WhatsApp</th>
                                     <th>Action</th>
@@ -6000,11 +6000,17 @@ async function loadPoIntoInward(poNo){
   // Master cannot resolve leaves both boxes blank and is reported below, which
   // is honest, whereas stale text silently passes itself off as master data.
   const itemOf=await poLineItemResolver_(lines);
+  // Weight already received against these lines — the PO line has no counter
+  // for it, so it is summed off the earlier inwards. Needed for the Weight
+  // figures on each row's PO strip (see poStripParts_).
+  const poRecWt=await poReceivedWeights_(lines.map(l=>l.id));
   const unresolved=[];
   lines.forEach(line=>{
     addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
     const pending=Math.max(0,Number(line.ordered_qty||0)-Number(line.received_qty||0));
     tr.dataset.poLineId=line.id;tr.dataset.poOrderedQty=line.ordered_qty||0;tr.dataset.poReceivedQty=line.received_qty||0;
+    tr.dataset.poOrderedWeight=pNum(line.gross_weight);
+    tr.dataset.poReceivedWeight=pNum(poRecWt[line.id]);
     tr.dataset.poNo=poById[line.purchase_order_id]?.po_no||'';
     tr.dataset.poUnitPrice=line.unit_price||0;
     const it=itemOf(line);
@@ -6066,27 +6072,66 @@ function appendPoInfoRow(tr,tb){
   if(del)del.onclick=()=>{info.remove();tr.remove();updateStoreTotals()};
   renderPoInfoRow(tr,info);
 }
+/* What an item row hands poStripParts_ — gathered in one place so the live
+   on-screen strip is fed exactly the same figures the printed sub-row is. */
+function poStripInputFromRow_(tr){
+  return {
+    poNo:tr.dataset.poNo||'',
+    poOrderedQty:tr.dataset.poOrderedQty, poReceivedQty:tr.dataset.poReceivedQty,
+    poOrderedWeight:tr.dataset.poOrderedWeight, poReceivedWeight:tr.dataset.poReceivedWeight,
+    qty:pNum(tr.querySelector('.qty-field')?.value),
+    weight:pNum(tr.querySelector('.weight-field')?.value)
+  };
+}
 function renderPoInfoRow(tr,info){
   const cell=info.querySelector('td');if(!cell)return;
-  const ordered=pNum(tr.dataset.poOrderedQty);
-  const already=pNum(tr.dataset.poReceivedQty);
-  const nowQty=pNum(tr.querySelector('.qty-field')?.value);
-  // Received counts the qty being entered right now as well, so Pending is
-  // what will still be due once this receipt is saved and Excess is how far
-  // it goes past the order. Both move as the qty is typed.
-  const received=already+nowQty;
-  const pending=Math.max(0,ordered-received);
-  const excess=Math.max(0,received-ordered);
+  // Built through poStripParts_, the same function both PDF builders call, so
+  // the strip on screen and the sub-row on the print can never disagree. Qty
+  // and Weight both count what is being typed right now, so Pending / Excess
+  // move as the row is filled in.
+  const p=poStripParts_(poStripInputFromRow_(tr));
+  // Nothing measurable to report (no PO number, or an ordered qty of 0): the
+  // strip is hidden rather than left as an empty grey band.
+  if(!p){cell.innerHTML='';info.style.display='none';return;}
+  info.style.display='';
   const pill=(lbl,val,color)=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
     +'<span style="color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+lbl+'</span>'
     +'<b style="color:'+color+';font-size:11px;">'+val+'</b></span>';
-  cell.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;">'
-    +'<span style="color:#1d4ed8;font-weight:800;font-size:10px;">'+escText(tr.dataset.poNo||'—')+'</span>'
-    +pill('Order Qty',ordered,'#0f172a')
-    +pill('Pending Qty',pending,pending>0?'#b45309':'#16a34a')
-    +pill('Received Qty',received,'#0f766e')
-    +pill('Excess Qty',excess,excess>0?'#dc2626':'#94a3b8')
-    +'</div>';
+  const tag=t=>'<span style="color:#1d4ed8;font-weight:800;font-size:10px;">'+escText(t)+'</span>';
+  const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
+    +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
+  cell.innerHTML=line(false,
+      tag(p.poNo||'—')
+      +pill('Order Qty',p.ordered,'#0f172a')
+      +pill('Pending Qty',p.pending,p.pending>0?'#b45309':'#16a34a')
+      +pill('Received Qty',p.received,'#0f766e')
+      +pill('Excess Qty',p.excess,p.excess>0?'#dc2626':'#94a3b8'))
+    // Weight on its own line under the quantities, in the same order.
+    +(p.hasWeight?line(true,
+      tag('Weight (KGS)')
+      +pill('Order Wt',nNum_(p.ordWt),'#0f172a')
+      +pill('Pending Wt',nNum_(p.pendWt),p.pendWt>0?'#b45309':'#16a34a')
+      +pill('Received Wt',nNum_(p.recWt),'#0f766e')
+      +pill('Excess Wt',nNum_(p.excWt),p.excWt>0?'#dc2626':'#94a3b8')):'');
+}
+/* Weight already booked in against each of these PO lines.
+   purchase_order_lines keeps a received_qty counter but has no received-weight
+   column, so the only record of received weight is the inward lines themselves
+   — the same source the PO Details report sums. Best-effort: a database whose
+   inward_lines has no po_line_id yields zeros, and the weight figures are then
+   simply not printed rather than the PO load failing. */
+async function poReceivedWeights_(lineIds){
+  const ids=[...new Set((lineIds||[]).filter(Boolean))];
+  const out={};ids.forEach(i=>{out[i]=0});
+  if(!ids.length)return out;
+  try{
+    const q=await SB.from('inward_lines').select('po_line_id,weight').in('po_line_id',ids);
+    if(q.error)throw q.error;
+    (q.data||[]).forEach(r=>{
+      if(Object.prototype.hasOwnProperty.call(out,r.po_line_id))out[r.po_line_id]+=pNum(r.weight);
+    });
+  }catch(e){console.warn('[SARV] PO received-weight lookup skipped:',e.message||e);}
+  return out;
 }
 // Re-renders the live figures (Received / Pending / Excess) as qty is typed.
 function refreshPoInfoRows(){
@@ -6462,6 +6507,49 @@ window.renderRepairTrackerTable=function(){
   }).join('');
 };
 
+/* ================================================================
+   PO RECEIPT STATUS — decided ITEM BY ITEM, never on PO totals.
+   ────────────────────────────────────────────────────────────────
+   A PO is "Received" only when EVERY ordered line has had its full
+   quantity booked in. Both receipt paths used to add the PO's lines up and
+   compare two totals, which let an over-receipt on one item pay for a
+   shortfall on another: order 10 bolts + 10 nuts, take in 20 bolts and no
+   nuts, and received (20) >= ordered (20) marked the whole PO Received with
+   the nuts still outstanding. The same two totals also drove the Short Close
+   button out of sight and dropped the PO off the Generated POs list.
+
+   `lines` is every purchase_order_lines row of one PO; `currentStatus` is what
+   the header holds now, which is what a PO with nothing received keeps (it is
+   still Generated / GM-CEO Approved / MD Approved — receiving has not started,
+   so there is nothing for this function to say about it).
+
+   A line ordered as 0 has nothing outstanding and so cannot hold the PO open;
+   if NO line carries an ordered qty there is nothing to receive against and the
+   status is left alone rather than being called Received on an empty promise. */
+function poReceiptStatus_(lines,currentStatus){
+  const cur=currentStatus||'Generated';
+  // A short-closed PO stays closed — a later or corrected receipt must not
+  // reopen what an Admin deliberately shut.
+  if(cur==='Closed (Short)')return cur;
+  const rows=lines||[];
+  if(!rows.length)return cur;
+  let anyOrdered=false,anyReceived=false,allComplete=true;
+  rows.forEach(l=>{
+    const ord=pNum(l.ordered_qty),rec=pNum(l.received_qty);
+    if(rec>0)anyReceived=true;
+    if(ord>0){anyOrdered=true;if(rec<ord)allComplete=false;}
+  });
+  if(!anyOrdered)return cur;
+  if(allComplete)return 'Received';
+  return anyReceived?'Partially Received':cur;
+}
+// Per-line receipt state, for the item-wise breakdown under a PO row.
+function poLineReceipt_(l){
+  const ordered=pNum(l&&l.ordered_qty),received=pNum(l&&l.received_qty);
+  const balance=ordered-received;
+  return {ordered,received,balance,
+    state:ordered<=0?'—':(received<=0?'PENDING':(balance>0?'PARTIAL':(balance<0?'EXCESS':'FULL')))};
+}
 // Rows carry their own PO (tr.dataset.poNo), so one Inward can post receipts
 // back across several selected POs at once.
 async function updatePoReceipt(poNos,rows){
@@ -6478,11 +6566,12 @@ async function updatePoReceipt(poNos,rows){
   for(const poNo of (touched.length?touched:wanted)){
     const po=sarvPoCatalog.find(x=>x.po_no===poNo);if(!po)continue;
     const q=await SB.from('purchase_order_lines').select('ordered_qty,received_qty').eq('purchase_order_id',po.id);if(q.error)throw q.error;
-    const totals=(q.data||[]).reduce((a,x)=>({ordered:a.ordered+pNum(x.ordered_qty),received:a.received+pNum(x.received_qty)}),{ordered:0,received:0});
-    // A short-closed PO stays closed — receipts must not reopen it.
-    const status=(po.status==='Closed (Short)')?po.status
-      :(totals.received>=totals.ordered&&totals.ordered>0?'Received':totals.received>0?'Partially Received':(po.status||'Generated'));
-    const u=await SB.from('purchase_orders').update({received_qty:totals.received,status,updated_at:new Date().toISOString()}).eq('id',po.id);if(u.error)throw u.error;
+    const lines=q.data||[];
+    // Status from the lines item by item (poReceiptStatus_); received_qty stays
+    // the plain sum, because that column is a quantity, not a verdict.
+    const received=lines.reduce((s,x)=>s+pNum(x.received_qty),0);
+    const status=poReceiptStatus_(lines,po.status);
+    const u=await SB.from('purchase_orders').update({received_qty:received,status,updated_at:new Date().toISOString()}).eq('id',po.id);if(u.error)throw u.error;
   }
   await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
 }
@@ -10032,12 +10121,56 @@ async function loadInwardForEdit(id,no){
     renderInwPrDetails_([]);
   }
 
+  /* The PO figures behind each saved line, so a reopened receipt shows — and
+     prints — the same item-wise PO sub-row the original did. The picker is
+     deliberately not re-ticked above, so these are read from the PO lines
+     themselves, keyed by the po_line_id each inward line already carries.
+     Without this the rows came back with a po_line_id and nothing else, so
+     poStripParts_ bailed on ordered<=0 and the regenerated PDF printed no PO
+     sub-row at all — and with more than one PO on the receipt the rows did not
+     even get a PO number. */
+  const poLineIds=[...new Set(lines.map(l=>l.po_line_id).filter(Boolean))];
+  const poLineInfo={};
+  if(poLineIds.length){
+    try{
+      const pl=await SB.from('purchase_order_lines')
+        .select('id,purchase_order_id,ordered_qty,received_qty,gross_weight').in('id',poLineIds);
+      if(pl.error)throw pl.error;
+      const poIds=[...new Set((pl.data||[]).map(l=>l.purchase_order_id).filter(Boolean))];
+      const nameById={};
+      if(poIds.length){
+        const pq=await SB.from('purchase_orders').select('id,po_no').in('id',poIds);
+        if(pq.error)throw pq.error;
+        (pq.data||[]).forEach(p=>{nameById[p.id]=p.po_no||''});
+      }
+      const recWt=await poReceivedWeights_(poLineIds);
+      (pl.data||[]).forEach(l=>{poLineInfo[l.id]={
+        poNo:nameById[l.purchase_order_id]||'',
+        ordered:pNum(l.ordered_qty),received:pNum(l.received_qty),
+        ordWt:pNum(l.gross_weight),recWt:pNum(recWt[l.id])
+      }});
+    }catch(err){console.warn('[SARV] PO line figures for edit skipped:',err.message||err);}
+  }
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
     addNewRow();
     const tr=tb&&tb.lastElementChild;if(!tr)return;
     if(line.po_line_id)tr.dataset.poLineId=line.po_line_id;
-    if(poNos.length===1)tr.dataset.poNo=poNos[0];
+    const pi=line.po_line_id?poLineInfo[line.po_line_id]:null;
+    if(pi){
+      tr.dataset.poOrderedQty=pi.ordered;
+      tr.dataset.poOrderedWeight=pi.ordWt;
+      /* "Already received" has to mean BEFORE this entry. The stored counters
+         include this entry's own lines, so this line's own qty and weight are
+         taken back out — otherwise reopening a receipt would count it twice
+         and report the line as over-received. */
+      tr.dataset.poReceivedQty=Math.max(0,pi.received-pNum(line.qty));
+      tr.dataset.poReceivedWeight=Math.max(0,pi.recWt-pNum(line.weight));
+      if(pi.poNo)tr.dataset.poNo=pi.poNo;
+    }
+    // Falls back to the header's single PO for a line saved before po_line_id
+    // was recorded.
+    if(!tr.dataset.poNo&&poNos.length===1)tr.dataset.poNo=poNos[0];
     if(line.repair_outward_no)tr.dataset.repairOutNo=line.repair_outward_no;
     // Keep the line bound to the exact Item Master row it was saved against.
     // Without this the update re-resolves by name through ensureItem and can
@@ -10064,6 +10197,11 @@ async function loadInwardForEdit(id,no){
     const rate=pNum(line.rate),tot=pNum(line.line_total);
     const byQty=Math.abs(rate*pNum(line.qty)-tot), byWt=Math.abs(rate*pNum(line.weight)-tot);
     sr('.bill-basis-field',line.bill_basis||((pNum(line.weight)>0&&byWt<byQty)?'WEIGHT':'QTY'));
+    /* The PO strip on screen as well, now that the figures behind it are
+       restored — so what the regenerated PDF will print can be checked here
+       first. Added after the fields are filled, because it reads the qty and
+       weight boxes to work out Pending / Excess. */
+    if(tb&&pi&&pi.ordered>0)appendPoInfoRow(tr,tb);
   });
   if(!lines.length)addNewRow();
   // Freight and Round off live on the header (freight_exp / round_off). They
@@ -10178,6 +10316,38 @@ function inwardEditPoNumber_(){
   const txt=(byId('poNumberBtnText')?.textContent||'').trim();
   return (!txt||txt==='Without PO')?null:txt;
 }
+/* Every PO this inward is booked against, for the printed "PO Reference".
+   Three sources, unioned, because none of them is reliable on its own:
+
+   • the PO picker — the normal path for a new entry;
+   • the picker's LABEL — an Admin edit deliberately never re-ticks the picker
+     (re-ticking would rebuild the rows from the PO's ordered quantities and
+     throw away what was actually received), so getSelectedPoNos() is empty on
+     every edit. The saved record reads the label instead (see writeInwHeader);
+     the PDF did not, which is why regenerating the print for an edited receipt
+     dropped the PO Reference to "-";
+   • each item row's own PO number — the last word on what the lines are
+     actually posted against, and the only source still standing if the header
+     widget is blank for any other reason.
+
+   Deduped case-insensitively and sorted, so a receipt against two POs prints
+   both rather than whichever one the header happened to hold. */
+function inwardPoRefList_(rows){
+  const out=[];
+  const add=v=>String(v||'').split(',').map(s=>s.trim()).filter(Boolean)
+    .forEach(n=>{if(!out.some(x=>x.toUpperCase()===n.toUpperCase()))out.push(n)});
+  const sel=getSelectedPoNos();
+  sel.forEach(add);
+  /* The label is read only when the picker is empty — i.e. the edit path.
+     With a live selection it can read "3 POs selected", which is a summary,
+     not a PO number. */
+  if(!sel.length){
+    const lbl=inwardEditPoNumber_();
+    if(lbl&&!/^\d+\s+POs?\s+selected$/i.test(lbl))add(lbl);
+  }
+  (rows||[]).forEach(r=>add(r&&r.poNo));
+  return out.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
+}
 
 /* Recomputes received_qty for the given PO lines straight from inward_lines,
    then rolls each affected PO's total and status up from its own lines.
@@ -10200,12 +10370,13 @@ async function syncPoReceiptsForLines(lineIds){
   for(const poId of poIds){
     const lq=await SB.from('purchase_order_lines').select('ordered_qty,received_qty').eq('purchase_order_id',poId);
     if(lq.error)throw lq.error;
-    const t=(lq.data||[]).reduce((a,x)=>({ordered:a.ordered+pNum(x.ordered_qty),received:a.received+pNum(x.received_qty)}),{ordered:0,received:0});
+    const lines=lq.data||[];
     const po=sarvPoCatalog.find(x=>x.id===poId);
-    // A short-closed PO stays closed — a corrected receipt must not reopen it.
-    const status=(po&&po.status==='Closed (Short)')?po.status
-      :(t.received>=t.ordered&&t.ordered>0?'Received':t.received>0?'Partially Received':((po&&po.status)||'Generated'));
-    const u=await SB.from('purchase_orders').update({received_qty:t.received,status,updated_at:new Date().toISOString()}).eq('id',poId);
+    // Same item-wise rule as updatePoReceipt — one function, so an edited
+    // receipt can never grade a PO differently from the original one.
+    const received=lines.reduce((s,x)=>s+pNum(x.received_qty),0);
+    const status=poReceiptStatus_(lines,po&&po.status);
+    const u=await SB.from('purchase_orders').update({received_qty:received,status,updated_at:new Date().toISOString()}).eq('id',poId);
     if(u.error)throw u.error;
   }
   await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
@@ -10528,20 +10699,43 @@ window.addEventListener('DOMContentLoaded',()=>{
  function poStripParts_(it){
    if(!it||!it.poNo)return null;
    const ordered=pNum(it.poOrderedQty), already=pNum(it.poReceivedQty);
-   // An Admin edit reopens the record with the PO number but not the PO's
-   // ordered/received figures (loadInwardForEdit restores po_line_id only), so
-   // the form shows no strip there — and neither should the print, rather than
-   // a row of zeroes.
+   // No ordered qty means the row is not really tied to a PO line we can
+   // measure against, so nothing is reported rather than a row of zeroes.
    if(ordered<=0)return null;
    const received=already+pNum(it.qty);
+   /* The same four figures again on WEIGHT. Order Wt is the PO line's ordered
+      gross weight; received weight has no counter column on the PO line, so it
+      is the weight already booked in by earlier inwards (poReceivedWeights_)
+      plus the weight on this row.
+      Reported only when the PO line actually carries an ordered gross weight:
+      a qty-only order has no weight to be short or over on, and four zeroes
+      would read as "nothing received". */
+   const ordWt=pNum(it.poOrderedWeight), alreadyWt=pNum(it.poReceivedWeight);
+   const recWt=alreadyWt+pNum(it.weight);
    return {poNo:String(it.poNo),ordered,already,received,
      pending:Math.max(0,ordered-received),
-     excess:Math.max(0,received-ordered)};
+     excess:Math.max(0,received-ordered),
+     hasWeight:ordWt>0,ordWt,alreadyWt,recWt,
+     pendWt:Math.max(0,ordWt-recWt),
+     excWt:Math.max(0,recWt-ordWt)};
  }
+ // One cell of text for the native PDF. The weight figures go on a SECOND
+ // LINE — autoTable honours \n — so Qty and Weight read as two parallel rows
+ // of the same four headings instead of one unreadable eight-figure run.
  function poStripText_(it){
    const p=poStripParts_(it);if(!p)return '';
-   return 'PO: '+p.poNo+'   |   Order Qty: '+p.ordered+'   |   Pending Qty: '+p.pending
+   const q='PO: '+p.poNo+'   |   Order Qty: '+p.ordered+'   |   Pending Qty: '+p.pending
      +'   |   Received Qty: '+p.received+'   |   Excess Qty: '+p.excess;
+   if(!p.hasWeight)return q;
+   return q+'\nWeight (KGS)   |   Order Wt: '+nNum_(p.ordWt)+'   |   Pending Wt: '+nNum_(p.pendWt)
+     +'   |   Received Wt: '+nNum_(p.recWt)+'   |   Excess Wt: '+nNum_(p.excWt);
+ }
+ /* "PO/U-2/0001, PO/U-2/0002  (2 POs)" for the printed PO Reference. The count
+    makes a multi-PO receipt unmistakable, and a single PO prints unadorned. */
+ function poRefDisplay_(v){
+   const list=String(v||'').split(',').map(s=>s.trim()).filter(Boolean);
+   if(!list.length)return '-';
+   return list.length===1?list[0]:(list.join(', ')+'  ('+list.length+' POs)');
  }
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
@@ -10738,12 +10932,24 @@ window.addEventListener('DOMContentLoaded',()=>{
        const poStrip=poStripParts_(it);
        if(poStrip){
          const chip=(lbl,val,color)=>'<span style="margin-right:12px;white-space:nowrap;">'+lbl+': <b style="color:'+color+';">'+val+'</b></span>';
+         // Qty on the first line, Weight on a second one under it in the same
+         // Order / Pending / Received / Excess order, so the two read as two
+         // parallel rows of the same four headings.
          itemRows+='<tr style="background:#f8fafc;"><td colspan="7" style="padding:2px 6px;font-size:8px;color:#334155;">'
-           +'<b style="color:#1d4ed8;margin-right:12px;">PO: '+pEsc(poStrip.poNo)+'</b>'
-           +chip('Order Qty',poStrip.ordered,'#0f172a')
-           +chip('Pending Qty',poStrip.pending,poStrip.pending>0?'#b45309':'#16a34a')
-           +chip('Received Qty',poStrip.received,'#0f766e')
-           +chip('Excess Qty',poStrip.excess,poStrip.excess>0?'#dc2626':'#64748b')
+           +'<div>'
+             +'<b style="color:#1d4ed8;margin-right:12px;">PO: '+pEsc(poStrip.poNo)+'</b>'
+             +chip('Order Qty',poStrip.ordered,'#0f172a')
+             +chip('Pending Qty',poStrip.pending,poStrip.pending>0?'#b45309':'#16a34a')
+             +chip('Received Qty',poStrip.received,'#0f766e')
+             +chip('Excess Qty',poStrip.excess,poStrip.excess>0?'#dc2626':'#64748b')
+           +'</div>'
+           +(poStrip.hasWeight?('<div style="margin-top:1px;">'
+             +'<b style="color:#1d4ed8;margin-right:12px;">Weight (KGS)</b>'
+             +chip('Order Wt',nNum_(poStrip.ordWt),'#0f172a')
+             +chip('Pending Wt',nNum_(poStrip.pendWt),poStrip.pendWt>0?'#b45309':'#16a34a')
+             +chip('Received Wt',nNum_(poStrip.recWt),'#0f766e')
+             +chip('Excess Wt',nNum_(poStrip.excWt),poStrip.excWt>0?'#dc2626':'#64748b')
+           +'</div>'):'')
            +'</td></tr>';
        }
      });
@@ -10768,7 +10974,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Invoice Number:</td><td>'+pEsc(d.invoiceNum||d.invoice_no||'-')+'</td></tr>'+
        '<tr><td class="lbl">Invoice Date:</td><td>'+fmtDate_(d.invoiceDate||d.invoice_date)+'</td></tr>'+
-       '<tr><td class="lbl">PO Reference:</td><td>'+pEsc(d.poNum||d.po_number||'-')+'</td></tr>'+
+       '<tr><td class="lbl">PO Reference:</td><td style="word-break:break-word;"><strong>'+pEsc(poRefDisplay_(d.poNum||d.po_number))+'</strong></td></tr>'+
        (d.gatePass||d.gate_pass_no?'<tr><td class="lbl">Gate Pass:</td><td>'+pEsc(d.gatePass||d.gate_pass_no)+'</td></tr>':'')+
        (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
        (d.natureOfInward?'<tr><td class="lbl">Nature of Inward:</td><td><strong>'+pEsc(d.natureOfInward)+'</strong></td></tr>':'')+
@@ -10926,7 +11132,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.machineName)leftPairs.push(['Machine:',d.machineName]);
      rightPairs.push(['Invoice Number:',d.invoiceNum||'-']);
      rightPairs.push(['Invoice Date:',fmtDate_(d.invoiceDate)]);
-     rightPairs.push(['PO Reference:',d.poNum||'-']);
+     rightPairs.push(['PO Reference:',poRefDisplay_(d.poNum)]);
      if(d.gatePass)rightPairs.push(['Gate Pass:',d.gatePass]);
      if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
      if(d.natureOfInward)rightPairs.push(['Nature of Inward:',d.natureOfInward]);
@@ -10944,8 +11150,20 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    doc.setFontSize(8);
    let ly=yy,ry=yy;
-   leftPairs.forEach(([lbl,val])=>{doc.setFont(undefined,'bold');doc.text(lbl,x,ly);doc.setFont(undefined,'normal');doc.text(String(val),x+26,ly);ly+=4.2;});
-   rightPairs.forEach(([lbl,val])=>{doc.setFont(undefined,'bold');doc.text(lbl,x+halfW+4,ry);doc.setFont(undefined,'normal');doc.text(String(val),x+halfW+4+26,ry);ry+=4.2;});
+   /* Values are wrapped to the width their column actually has, and the next
+      pair is pushed down by however many lines that took. A receipt against
+      several POs makes "PO Reference" longer than the column; printed as one
+      doc.text() line it ran off the page edge and the PO numbers past the
+      first were simply lost from the print. */
+   const pair=(lbl,val,lx,avail,ty)=>{
+     doc.setFont(undefined,'bold');doc.text(lbl,lx,ty);
+     doc.setFont(undefined,'normal');
+     const ls=doc.splitTextToSize(String(val),Math.max(20,avail-26));
+     doc.text(ls,lx+26,ty);
+     return ty+4.2*Math.max(1,ls.length);
+   };
+   leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,x,halfW,ly);});
+   rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,x+halfW+4,halfW,ry);});
    yy=Math.max(ly,ry)+2;
    // Items table
    let head,body,foot;
@@ -10961,8 +11179,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        if(poStrip)body.push([{content:poStrip,colSpan:7,
          styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
            // Over-receipt turns the whole strip red — a single cell cannot
-           // colour just its Excess figure the way the HTML copy does.
-           textColor:(poBits&&poBits.excess>0)?[220,38,38]:[30,64,175],
+           // colour just its Excess figure the way the HTML copy does. Either
+           // excess counts: qty or weight.
+           textColor:(poBits&&(poBits.excess>0||poBits.excWt>0))?[220,38,38]:[30,64,175],
            cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
@@ -12422,7 +12641,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    const grossWeight=pNum(pVal('calcGrossWeight')), freightRate=pNum(pVal('calcFreightRate'));
    const freightAmt=grossWeight*freightRate;
    const costOnYarn=netWeight>0?freightAmt/netWeight:0;
-   return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),poNum:getSelectedPoNos().join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
+   return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),
+     // Not getSelectedPoNos() alone — that is empty on every Admin edit, which
+     // is what used to print "PO Reference: -". See inwardPoRefList_.
+     poNum:inwardPoRefList_(rows).join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
      // Freight Calculator + billing extras. These were computed on screen but
      // never reached the PDF, so the printed copy always showed blanks/zeros
      // for Net Weight, Gross Weight, freight rate and cost-per-unit.
@@ -12446,7 +12668,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0).map(x=>{
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0).map(x=>{
     /* The saved record and the PDF must match the entry form's Final Amount to
        the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
        the net rate rounded to 2dp for display, and pRound() clipped each line
@@ -13896,23 +14118,85 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Sorted by PO No., newest number on top. Numeric-aware, so PO/U-2/100
    // comes before PO/U-2/99 (a plain text sort would put it after).
    sarvGeneratedPos=(q.data||[]).sort((a,b)=>String(b.po_no||'').localeCompare(String(a.po_no||''),undefined,{numeric:true,sensitivity:'base'}));
-   // Line items feed the expandable detail row under each PO only — the
-   // collapsed row stays PO-level (no Item Name / Description columns), so a
-   // multi-line PO doesn't turn into one unreadable comma-joined cell.
-   // Best-effort: the list still renders if this lookup fails.
+   /* Line items drive three things: the expandable item-wise detail row, the
+      Received / Ordered figure on the collapsed row, and the status reconcile
+      below. The collapsed row itself stays PO-level (no Item Name /
+      Description columns), so a multi-line PO doesn't turn into one unreadable
+      comma-joined cell. Best-effort: the list still renders if this lookup
+      fails — only the reconcile is withheld, since it must never run on a
+      partial line set. */
    const poLineMap={};
+   let linesLoaded=false;
    try{
      const poIds=sarvGeneratedPos.map(po=>po.id).filter(Boolean);
      if(poIds.length){
-       const ll=await SB.from('purchase_order_lines').select('*').in('purchase_order_id',poIds).order('line_no');
-       if(!ll.error)(ll.data||[]).forEach(l=>{
+       /* Paged through fetchAllRows, not one plain select: Supabase caps a
+          single response at 1000 rows, and a truncated line set makes a fully
+          received PO look part-received. That was only a display glitch while
+          these rows fed the expandable detail; now that the status below is
+          re-graded from them, a truncated page would write that mistake into
+          the database. */
+       const all=await fetchAllRows('purchase_order_lines','*','id',q=>q.in('purchase_order_id',poIds));
+       all.forEach(l=>{
          const m=poLineMap[l.purchase_order_id]=poLineMap[l.purchase_order_id]||{lines:[]};
          m.lines.push(l);
        });
+       // Paged by id for a stable window; the detail table wants PR line order.
+       Object.keys(poLineMap).forEach(k=>poLineMap[k].lines
+         .sort((a,b)=>pNum(a.line_no)-pNum(b.line_no)||pNum(a.id)-pNum(b.id)));
      }
+     linesLoaded=true;
    }catch(e){console.warn('[SARV] PO line item lookup skipped:',e.message||e);}
    sarvPoLineMap=poLineMap;
+   // Only with a complete line set in hand — see reconcilePoReceiptStatuses_.
+   if(linesLoaded)await reconcilePoReceiptStatuses_(poLineMap);
    renderGeneratedPoTable();
+ }
+ /* Re-grades every listed PO against its OWN LINES and writes back the ones
+    that disagree. Two things make this worth doing on load rather than only at
+    receipt time:
+
+    • POs already carrying a wrong status. The old rule compared PO totals, so
+      an over-receipt on one item could mark a PO Received with another item
+      still outstanding. Those rows are in the database now, and fixing the
+      receipt path alone would never go back and correct them.
+    • Receipts posted from somewhere that did not recompute — a line edited
+      directly, or an inward deleted — leave the header out of step with its
+      lines. The lines are the record; the header is a summary of them.
+
+    Deliberately narrow:
+    • Cancelled / Rejected / Closed (Short) are decisions somebody made, not
+      receipt states, so they are left exactly as they are.
+    • A PO whose lines did not come back is skipped rather than guessed at.
+    • poReceiptStatus_ returns the current status when nothing is received, so a
+      Generated / GM-CEO Approved / MD Approved PO is never demoted by this. */
+ async function reconcilePoReceiptStatuses_(poLineMap){
+   const DECIDED=['Cancelled','Rejected','Closed (Short)'];
+   const fixes=[];
+   sarvGeneratedPos.forEach(po=>{
+     if(!po||!po.id||DECIDED.includes(po.status||''))return;
+     const lines=(poLineMap[po.id]||{}).lines;
+     if(!lines||!lines.length)return;
+     const status=poReceiptStatus_(lines,po.status);
+     const received=lines.reduce((s,l)=>s+pNum(l.received_qty),0);
+     if(status===(po.status||'Generated')&&received===pNum(po.received_qty))return;
+     fixes.push({po,status,received});
+   });
+   if(!fixes.length)return;
+   let ok=0;
+   for(const f of fixes){
+     try{
+       const u=await SB.from('purchase_orders')
+         .update({received_qty:f.received,status:f.status,updated_at:new Date().toISOString()})
+         .eq('id',f.po.id);
+       if(u.error)throw u.error;
+       // The loaded row is kept level with the database, so the table rendered
+       // immediately after this shows the corrected status without a refetch.
+       f.po.status=f.status;f.po.received_qty=f.received;
+       ok++;
+     }catch(e){console.warn('[SARV] PO status reconcile failed for '+f.po.po_no+':',e.message||e);}
+   }
+   if(ok)showToast('🔄 '+ok+' PO ka status item-wise receiving ke hisaab se update kiya gaya');
  }
  // Split out of refreshGeneratedPoList so the search box and Status dropdown
  // re-render from the already-loaded sarvGeneratedPos instead of refetching on
@@ -13954,6 +14238,15 @@ window.addEventListener('DOMContentLoaded',()=>{
          :'<button type="button" class="btn btn-sm" disabled title="GM/CEO approval ke baad sirf Admin login cancel kar sakta hai" style="padding:3px 10px;font-size:11px;background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Locked</button>'))
        +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Short quantity par PO band karein" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">&#9989; Close</button>':'');
      const lm=poLineMap[po.id]||{lines:[]};
+     /* Received reads "got / ordered", so the number behind the status badge is
+        visible without expanding the PO. Ordered is summed off the lines when
+        they are loaded rather than read from purchase_orders.total_qty, which
+        is written once at generation and does not follow a later line edit. */
+     const rcvOrd=lm.lines.length?lm.lines.reduce((s,l)=>s+pNum(l.ordered_qty),0):pNum(po.total_qty);
+     const rcvGot=pNum(po.received_qty);
+     const rcvCol=(rcvOrd>0&&rcvGot>=rcvOrd)?'#16a34a':(rcvGot>0?'#d97706':'#64748b');
+     const rcvCell='<td style="text-align:center;white-space:nowrap;"><b style="color:'+rcvCol+';">'+rcvGot+'</b>'
+       +'<span style="color:#94a3b8;"> / '+rcvOrd+'</span></td>';
      // Once sent, the button stays usable (you can resend) but reads as sent,
      // so the PO PARTY SEND PENDING card and this list agree at a glance.
      const partySent=isPoPartySent(po);
@@ -13964,12 +14257,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      const tr=document.createElement('tr');
      tr.className='sarv-po-row';tr.dataset.poId=po.id;tr.style.cursor='pointer';
      tr.title='Click karke is PO ke saare items dekhein';
-     tr.innerHTML='<td><span class="sarv-po-caret" style="color:#94a3b8;font-weight:800;">&#9656;</span> '+pEsc(po.po_no)+'</td><td>'+pEsc(po.po_date||'')+'</td><td>'+pEsc(po.vendor_name||'')+'</td><td>'+pEsc(po.linked_req_nos||'')+'</td><td style="text-align:center;">'+pNum(po.total_items)+'</td><td style="text-align:center;">'+pNum(po.total_qty)+'</td><td style="text-align:right;">'+pMoney(po.grand_total)+'</td><td>'+statusBadge+'</td><td style="text-align:center;">'+pNum(po.received_qty)+'</td><td>'+((po.pdf_url)?'<a href="'+pEsc(po.pdf_url)+'" target="_blank" rel="noopener">Open</a>':'—')+'</td><td>'+waCell+'</td><td>'+actionCell+'</td>';
+     tr.innerHTML='<td><span class="sarv-po-caret" style="color:#94a3b8;font-weight:800;">&#9656;</span> '+pEsc(po.po_no)+'</td><td>'+pEsc(po.po_date||'')+'</td><td>'+pEsc(po.vendor_name||'')+'</td><td>'+pEsc(po.linked_req_nos||'')+'</td><td style="text-align:center;">'+pNum(po.total_items)+'</td><td style="text-align:center;">'+pNum(po.total_qty)+'</td><td style="text-align:right;">'+pMoney(po.grand_total)+'</td><td>'+statusBadge+'</td>'+rcvCell+'<td>'+((po.pdf_url)?'<a href="'+pEsc(po.pdf_url)+'" target="_blank" rel="noopener">Open</a>':'—')+'</td><td>'+waCell+'</td><td>'+actionCell+'</td>';
      tb.appendChild(tr);
      // Collapsed item-detail row, revealed by clicking the PO row.
      const det=document.createElement('tr');
      det.className='sarv-po-items';det.dataset.poId=po.id;det.style.display='none';
-     det.innerHTML='<td colspan="12" style="background:#f8fafc;padding:8px 14px;">'+buildPoItemsDetailHtml(lm.lines)+'</td>';
+     det.innerHTML='<td colspan="12" style="background:#f8fafc;padding:8px 14px;">'+buildPoItemsDetailHtml(lm.lines,po)+'</td>';
      tb.appendChild(det);
    });
    if(!visiblePos.length){
@@ -13982,27 +14275,65 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(c)c.textContent=visiblePos.length===openPos.length?visiblePos.length:visiblePos.length+' / '+openPos.length;
    renderPoKpiCards();
  }
- // Sr-wise item breakdown shown under a PO row when it's expanded.
- function buildPoItemsDetailHtml(lines){
+ /* Sr-wise item breakdown shown under a PO row when it's expanded. This is the
+    item-wise receiving check in readable form: Ordered / Received / Pending per
+    line, each line's own verdict, and a footer saying what those verdicts add
+    up to — which is exactly the status poReceiptStatus_ puts on the header, so
+    the badge in the collapsed row can always be traced to a line here. */
+ const PO_LINE_STATE_STYLE={
+   FULL:   {bg:'#dcfce7',fg:'#15803d',txt:'&#10004; Full'},
+   PARTIAL:{bg:'#fef3c7',fg:'#b45309',txt:'&#9681; Partial'},
+   PENDING:{bg:'#f1f5f9',fg:'#64748b',txt:'&#8987; Pending'},
+   EXCESS: {bg:'#fee2e2',fg:'#b91c1c',txt:'&#9650; Excess'},
+   '—':    {bg:'transparent',fg:'#94a3b8',txt:'&mdash;'}
+ };
+ function buildPoItemsDetailHtml(lines,po){
    if(!lines||!lines.length)return '<div style="color:#94a3b8;font-size:11px;">Is PO ke items nahi mile.</div>';
    const th='padding:4px 6px;background:#e2e8f0;font-size:10px;font-weight:800;text-align:left;';
    const td='padding:4px 6px;font-size:11px;border-bottom:1px solid #e2e8f0;';
-   const rows=lines.map((l,i)=>'<tr>'
+   const tf='padding:5px 6px;font-size:11px;font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;';
+   const tot={ordered:0,received:0,balance:0};
+   const rows=lines.map((l,i)=>{
+     const r=poLineReceipt_(l),st=PO_LINE_STATE_STYLE[r.state]||PO_LINE_STATE_STYLE['—'];
+     tot.ordered+=r.ordered;tot.received+=r.received;
+     // Totalled as what is still OWED, so one item's excess cannot cancel
+     // another item's shortfall the way a plain ordered-minus-received would.
+     tot.balance+=Math.max(0,r.balance);
+     return '<tr>'
      +'<td style="'+td+'text-align:center;">'+(i+1)+'</td>'
      +'<td style="'+td+'font-weight:700;">'+pEsc(l.item_name||'—')+'</td>'
      +'<td style="'+td+'color:#64748b;">'+pEsc(l.item_description||'—')+'</td>'
      +'<td style="'+td+'">'+pEsc(l.make||'—')+'</td>'
-     +'<td style="'+td+'text-align:center;">'+pNum(l.ordered_qty)+' '+pEsc(l.uom||'')+'</td>'
-     +'<td style="'+td+'text-align:center;color:#16a34a;font-weight:700;">'+pNum(l.received_qty)+'</td>'
+     +'<td style="'+td+'text-align:center;">'+r.ordered+' '+pEsc(l.uom||'')+'</td>'
+     +'<td style="'+td+'text-align:center;color:#16a34a;font-weight:700;">'+r.received+'</td>'
+     +'<td style="'+td+'text-align:center;font-weight:800;color:'+(r.balance>0?'#dc2626':(r.balance<0?'#b91c1c':'#64748b'))+';">'
+       +(r.balance>0?r.balance:(r.balance<0?'+'+(-r.balance):'0'))+'</td>'
+     +'<td style="'+td+'text-align:center;"><span style="background:'+st.bg+';color:'+st.fg+';border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;white-space:nowrap;">'+st.txt+'</span></td>'
      +'<td style="'+td+'text-align:center;">'+pEsc(l.bill_basis||'QTY')+'</td>'
      +'<td style="'+td+'text-align:right;">'+pMoney(l.unit_price)+'</td>'
      +'<td style="'+td+'text-align:center;">'+pNum(l.discount_pct||0)+'%</td>'
      +'<td style="'+td+'text-align:center;">'+pNum(l.tax_pct||0)+'%</td>'
      +'<td style="'+td+'text-align:right;font-weight:800;">'+pMoney(l.line_total)+'</td>'
-   +'</tr>').join('');
+   +'</tr>';}).join('');
+   // The verdict these lines produce — the same call the header is graded by.
+   const verdict=poReceiptStatus_(lines,po&&po.status);
+   const vc=verdict==='Received'?'#16a34a':(verdict==='Partially Received'?'#d97706':'#64748b');
+   const note=tot.balance>0
+     ? (lines.filter(l=>poLineReceipt_(l).balance>0).length+' item par '+nNum_(tot.balance)+' qty baaki hai')
+     : 'Saare items poore receive ho gaye';
    return '<table style="width:100%;border-collapse:collapse;">'
-     +'<thead><tr><th style="'+th+'width:4%;text-align:center;">Sr</th><th style="'+th+'width:18%;">Item Name</th><th style="'+th+'width:20%;">Description</th><th style="'+th+'width:10%;">Make</th><th style="'+th+'width:10%;text-align:center;">Ordered</th><th style="'+th+'width:8%;text-align:center;">Received</th><th style="'+th+'width:7%;text-align:center;">Basis</th><th style="'+th+'width:8%;text-align:right;">Rate</th><th style="'+th+'width:5%;text-align:center;">Disc%</th><th style="'+th+'width:5%;text-align:center;">GST%</th><th style="'+th+'width:10%;text-align:right;">Amount</th></tr></thead>'
-     +'<tbody>'+rows+'</tbody></table>';
+     +'<thead><tr><th style="'+th+'width:4%;text-align:center;">Sr</th><th style="'+th+'width:15%;">Item Name</th><th style="'+th+'width:13%;">Description</th><th style="'+th+'width:7%;">Make</th><th style="'+th+'width:9%;text-align:center;">Ordered</th><th style="'+th+'width:8%;text-align:center;">Received</th><th style="'+th+'width:8%;text-align:center;">Pending</th><th style="'+th+'width:9%;text-align:center;">Receipt</th><th style="'+th+'width:5%;text-align:center;">Basis</th><th style="'+th+'width:7%;text-align:right;">Rate</th><th style="'+th+'width:4%;text-align:center;">Disc%</th><th style="'+th+'width:4%;text-align:center;">GST%</th><th style="'+th+'width:7%;text-align:right;">Amount</th></tr></thead>'
+     +'<tbody>'+rows+'</tbody>'
+     +'<tfoot><tr>'
+       +'<td style="'+tf+'" colspan="4">TOTAL &mdash; '+lines.length+' item(s)</td>'
+       +'<td style="'+tf+'text-align:center;">'+nNum_(tot.ordered)+'</td>'
+       +'<td style="'+tf+'text-align:center;color:#16a34a;">'+nNum_(tot.received)+'</td>'
+       +'<td style="'+tf+'text-align:center;color:'+(tot.balance>0?'#dc2626':'#64748b')+';">'+nNum_(tot.balance)+'</td>'
+       +'<td style="'+tf+'text-align:center;color:'+vc+';" colspan="6">'+pEsc(verdict)+'</td>'
+     +'</tr>'
+     +'<tr><td colspan="13" style="padding:5px 6px;font-size:10.5px;color:#475569;background:#f8fafc;">'
+       +'&#8505;&#65039; PO status har item ka receiving dekh kar banta hai &mdash; '+pEsc(note)+'.</td></tr>'
+     +'</tfoot></table>';
  }
  // "Show Received" toggle — Admin-only, sits above the Generated POs table.
  function renderPoListDoneToggle(doneCount){
