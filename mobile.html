@@ -945,6 +945,35 @@
             </div>
         </div>
     </div>
+
+    <!-- ── PO Sender PIN gate ───────────────────────────────────────────
+         Sending a PO is the one step on this screen that leaves the building:
+         the vendor has the document and the card flips to Sent. The login PIN
+         may have been typed hours ago on a phone that has stayed unlocked
+         since, so the PO Sender re-enters it for each send. Checked on the
+         server by the same verify_role_pin RPC the login uses — no PIN or hash
+         ever reaches this page. -->
+    <div class="modal-overlay" id="poSendPinModal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span>&#128274; PO Sender PIN</span>
+                <button class="close-btn" onclick="closePoSendPinGate()">×</button>
+            </div>
+            <div class="req-meta-info" id="poSendPinSubtitle" style="font-weight:700;"></div>
+            <div style="font-size:0.76rem; color:#6b7280; margin:8px 0 10px;">
+                Vendor ko PO bhejne se pehle apna <b>PO Sender PIN</b> daalein. Yahi PIN login me use hota hai.
+            </div>
+            <div class="form-group">
+                <label>PIN <span style="color:#dc3545;">*</span></label>
+                <input type="password" id="poSendPin" class="form-select" placeholder="Enter PO Sender PIN" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="err-banner" id="poSendPinError"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="poSendPinBtn" style="flex:1; width:auto; background:#25d366;">&#10004; Verify &amp; Send</button>
+                <button class="btn" id="poSendPinCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -1964,6 +1993,7 @@
         };
         if(shown('approvalModal')) return false;   // mid-signature / unsaved edits
         if(shown('storeModal')) return false;      // mid-check / reading the items
+        if(shown('poSendPinModal')) return false;  // PIN typed in — don't swap the PO under it
         if(shown('busyOverlay')) return false;     // a save or PDF build in flight
         return true;
     }
@@ -2082,6 +2112,7 @@
     function logoutRole(){
         if(!confirm('Do you want to log out?')) return;
         liveStop();
+        closePoSendPinGate();   // otherwise it would sit on top of the login screen
         myStage = null;
         myVendorName = null;
         myPurchaserName = null;
@@ -2101,6 +2132,9 @@
     document.getElementById('viHoldBtn')?.addEventListener('click', () => viToggleHold());
     document.getElementById('storeCheckBtn')?.addEventListener('click', () => storeCheckDone());
     document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
+    document.getElementById('poSendPinBtn')?.addEventListener('click', () => confirmPoSendPin());
+    document.getElementById('poSendPinCancelBtn')?.addEventListener('click', closePoSendPinGate);
+    document.getElementById('poSendPin')?.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmPoSendPin(); });
     // Restore a previous login so the PIN isn't asked again on every reload —
     // only an explicit Logout (logoutRole, via the role badge) clears it.
     (function restoreMobileLogin(){
@@ -2487,6 +2521,80 @@
         window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(fallbackMsg), '_blank');
     }
 
+    /* ── PIN gate in front of that send ──────────────────────────────────
+       Required on every tap of Send via WhatsApp, including a re-send from the
+       Done section: a gate that let the second tap through would be no gate at
+       all — the same PO is one tab away. Nothing is cached, so a PIN verified
+       for one PO does not open the next one. */
+    let poSendPinPo_ = null;
+    const PO_SEND_PIN_BTN_LABEL = '✔ Verify & Send';
+    function openPoSendPinGate(po){
+        poSendPinPo_ = po;
+        document.getElementById('poSendPinSubtitle').textContent =
+            (po.po_no || 'PO') + '  →  ' + (po.vendor_name || 'Vendor');
+        poSendPinSay_('');
+        const inp = document.getElementById('poSendPin');
+        inp.value = '';
+        poSendPinBusy_(false);
+        document.getElementById('poSendPinModal').style.display = 'flex';
+        setTimeout(() => inp.focus(), 50);
+    }
+    function closePoSendPinGate(){
+        poSendPinPo_ = null;
+        document.getElementById('poSendPinModal').style.display = 'none';
+        document.getElementById('poSendPin').value = '';
+        poSendPinSay_('');
+    }
+    function poSendPinSay_(msg){
+        const err = document.getElementById('poSendPinError');
+        err.textContent = msg || '';
+        err.style.display = msg ? 'block' : 'none';
+    }
+    function poSendPinBusy_(on){
+        const btn = document.getElementById('poSendPinBtn');
+        btn.disabled = !!on;
+        btn.textContent = on ? '⏳ Checking...' : PO_SEND_PIN_BTN_LABEL;
+    }
+    async function confirmPoSendPin(){
+        // Held on to before anything can clear it — closePoSendPinGate() below
+        // nulls poSendPinPo_.
+        const po = poSendPinPo_;
+        if(!po) return closePoSendPinGate();
+        const inp = document.getElementById('poSendPin');
+        const pin = inp.value;
+        poSendPinSay_('');
+        if(!pin){ poSendPinSay_('PIN enter karein'); inp.focus(); return; }
+        poSendPinBusy_(true);
+        try{
+            // Existence first, same as the login — so "PIN set nahi hai" stays
+            // distinguishable from "Galat PIN".
+            const roleKey = STAGE_ROLE_PIN.poSender;
+            const e1 = await SB.rpc('role_pin_exists', { p_role: roleKey });
+            if(e1.error) throw e1.error;
+            if(!e1.data){
+                poSendPinSay_('PO Sender ka PIN set nahi hai — desktop app ke Settings > Change Passwords me set karein.');
+                poSendPinBusy_(false); return;
+            }
+            const v = await SB.rpc('verify_role_pin', { p_role: roleKey, p_pin: pin });
+            if(v.error) throw v.error;
+            if(!v.data){
+                poSendPinSay_('Galat PIN');
+                inp.value = ''; inp.focus();
+                poSendPinBusy_(false); return;
+            }
+        }catch(e){
+            poSendPinSay_(/does not exist|relation/i.test(e.message||'')
+                ? '⚠️ role_pins table missing — migration run karein'
+                : (e.message || String(e)));
+            poSendPinBusy_(false); return;
+        }
+        // PIN is good. The share sheet has to open from inside this same tap
+        // (mobile browsers refuse a share that is not tied to a gesture), so
+        // the send is fired straight away with nothing awaited in between.
+        closePoSendPinGate();
+        sendPoWhatsappMobile(po);
+    }
+
     // Marks every Purchase Requirement in `rows` with the live PO numbers
     // already built from it (r._poNos). Once a PO exists the requirement's
     // approvals are locked in downstream, so cancelling one would leave the
@@ -2730,7 +2838,9 @@
                 waBtn.className = 'btn';
                 waBtn.style.cssText = 'margin-top:8px;background:#25d366;';
                 waBtn.textContent = isPoSentMobile(item) ? '💬 Send Again via WhatsApp' : '💬 Send via WhatsApp';
-                waBtn.onclick = (e) => { e.stopPropagation(); sendPoWhatsappMobile(item); };
+                waBtn.title = 'PO Sender PIN maangi jayegi';
+                // PIN first — see openPoSendPinGate().
+                waBtn.onclick = (e) => { e.stopPropagation(); openPoSendPinGate(item); };
                 card.appendChild(waBtn);
             }
             // Cancel My Approval lives in the Done view of the tab where that
