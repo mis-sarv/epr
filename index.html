@@ -9162,6 +9162,34 @@ function exportItemLedgerCsv(){
    fallback for records saved before that column existed.
 ================================================================ */
 let sarvPoDetailsRows=[];          // every line, unfiltered
+/* Every status a purchase_orders row can carry, in the order the flow runs:
+   raised → approved → received, then the three dead-ends. Kept separate from
+   the line-level Pending / Excess filter next to it — that one asks "how much
+   of this line arrived", this one asks "where is the order itself". Nothing
+   ticked = every status, which is how the report behaved before the filter
+   existed. */
+const POD_PO_STATUSES=['Generated','GM/CEO Approved','MD Approved','Vendor Verified',
+  'Partially Received','Received','Closed (Short)','Rejected','Cancelled'];
+const POD_NO_STATUS='(no status)';   // rows whose PO carries a blank/null status
+let sarvPodStatusSel=new Set();
+/* How many PO lines sit on each status right now. Counted over every loaded
+   line, not the filtered view, so the figure next to a status says how much
+   ticking it would bring in. */
+function podStatusCounts_(){
+  const c={};
+  sarvPoDetailsRows.forEach(r=>{const k=r.poStatus||POD_NO_STATUS;c[k]=(c[k]||0)+1;});
+  return c;
+}
+/* The canonical list above, plus anything the database actually holds that it
+   doesn't name — a status added by a later migration, or a legacy spelling,
+   still gets a tickbox instead of being silently unreachable. */
+function podStatusList_(){
+  const counts=podStatusCounts_();
+  const extra=Object.keys(counts).filter(s=>s!==POD_NO_STATUS&&!POD_PO_STATUSES.includes(s)).sort();
+  const list=[...POD_PO_STATUSES,...extra];
+  if(counts[POD_NO_STATUS])list.push(POD_NO_STATUS);
+  return list;
+}
 function poDetailsFilters_(){
   return {
     po:(byId('pod_po')?.value||'').trim().toLowerCase(),
@@ -9169,7 +9197,8 @@ function poDetailsFilters_(){
     item:(byId('pod_item')?.value||'').trim().toLowerCase(),
     from:byId('pod_from')?.value||'',
     to:byId('pod_to')?.value||'',
-    status:byId('pod_status')?.value||'ALL'
+    status:byId('pod_status')?.value||'ALL',
+    poStatus:sarvPodStatusSel
   };
 }
 function poDetailsFiltered_(){
@@ -9180,6 +9209,7 @@ function poDetailsFiltered_(){
     if(f.item&&!(String(r.itemName).toLowerCase().includes(f.item)||String(r.category).toLowerCase().includes(f.item)))return false;
     if(f.from&&(!r.poDate||r.poDate<f.from))return false;
     if(f.to&&(!r.poDate||r.poDate>f.to))return false;
+    if(f.poStatus.size&&!f.poStatus.has(r.poStatus||POD_NO_STATUS))return false;
     if(f.status==='PENDING'&&!(r.pendingQty>0))return false;
     if(f.status==='EXCESS'&&!(r.excessQty>0))return false;
     if(f.status==='COMPLETE'&&r.pendingQty!==0)return false;
@@ -9193,16 +9223,63 @@ function poDetailsFilterText_(){
   if(f.supplier)bits.push('Supplier: '+f.supplier.toUpperCase());
   if(f.item)bits.push('Item/Category: '+f.item.toUpperCase());
   if(f.from||f.to)bits.push('PO Date: '+(f.from||'…')+' → '+(f.to||'…'));
+  // Fully ticked narrows nothing, so it is not worth a line in the PDF header.
+  if(f.poStatus.size&&f.poStatus.size<podStatusList_().length)bits.push('PO Status: '+[...f.poStatus].join(' / '));
   if(f.status!=='ALL')bits.push('Status: '+f.status);
   return bits.length?bits.join('   ·   '):'All POs — no filter applied';
+}
+/* ── "PO Status" multi-pick ──────────────────────────────────────────
+   Same button-plus-checkbox-panel shape as the Item Master category filter,
+   because a native <select multiple> cannot be read at a glance in a 28px
+   filter bar and needs ctrl-click to pick a second value. */
+function updatePodStatusBtnLabel(){
+  const btn=byId('pod_po_status_btn');if(!btn)return;
+  const n=sarvPodStatusSel.size, total=podStatusList_().length;
+  // Everything ticked filters nothing out, so it reads the same as nothing
+  // ticked — "All" — and the button stays neutral instead of looking armed.
+  const narrowing=n>0&&n<total;
+  btn.innerHTML='&#128278; PO Status: '+(narrowing?(n===1?escText([...sarvPodStatusSel][0]):n+' of '+total):'All')+' &#9662;';
+  btn.style.background=narrowing?'#fee2e2':'#eef2ff';
+  btn.style.color=narrowing?'#b91c1c':'#4338ca';
+  btn.style.borderColor=narrowing?'#fca5a5':'transparent';
+}
+function buildPodStatusFilterUI(){
+  const list=byId('pod_po_status_list');if(!list)return;
+  const counts=podStatusCounts_();
+  list.innerHTML=podStatusList_().map(s=>{
+    const n=counts[s]||0;
+    // A status with nothing on it stays tickable but is greyed, so the list
+    // reads as "these are all the statuses" and not "these are the ones left".
+    return '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:3px 0;'+(n?'':'opacity:.45;')+'">'
+      +'<input type="checkbox" value="'+escText(s)+'"'+(sarvPodStatusSel.has(s)?' checked':'')+'>'
+      +'<span style="flex:1;">'+escText(s)+'</span>'
+      +'<span style="font-size:9.5px;font-weight:800;color:'+(n?'#475569':'#cbd5e1')+';">'+n+'</span>'
+      +'</label>';
+  }).join('');
+  list.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.addEventListener('change',()=>{
+    if(cb.checked)sarvPodStatusSel.add(cb.value);else sarvPodStatusSel.delete(cb.value);
+    updatePodStatusBtnLabel();renderPoDetailsReport();
+  }));
+}
+/* Tick All / Clear. Tick-All is there to start from everything and untick the
+   two or three you don't want; Clear goes back to the unfiltered report. Both
+   end up showing every line, which is why the button label below calls a
+   fully-ticked selection "All" too. */
+function setPodStatusFilterAll(all){
+  sarvPodStatusSel=all?new Set(podStatusList_()):new Set();
+  buildPodStatusFilterUI();updatePodStatusBtnLabel();renderPoDetailsReport();
+}
+function togglePodStatusFilter(){
+  const p=byId('pod_po_status_panel');if(!p)return;
+  p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';
 }
 async function loadPoDetailsReport(){
   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
   const body=byId('pod_tbody');
-  if(body)body.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">⏳ Loading…</td></tr>';
+  if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">⏳ Loading…</td></tr>';
   try{
     const [pos,poLines,inwLines,items]=await Promise.all([
-      fetchAllRows('purchase_orders','id,po_no,po_date,vendor_name'),
+      fetchAllRows('purchase_orders','id,po_no,po_date,vendor_name,status'),
       fetchAllRows('purchase_order_lines','*'),
       // po_line_id is what ties a receipt back to its order line; a database
       // without it simply returns nothing useful here and the PO line's own
@@ -9235,21 +9312,30 @@ async function loadPoDetailsReport(){
       const recRate=rec&&rec.qty>0?rec.rateWt/rec.qty:(rec?poRate:0);
       return {
         poNo:po.po_no||'',poDate:po.po_date||'',supplier:po.vendor_name||'',
+        poStatus:po.status||'',
         itemName:line.item_name||it.name||'',
         category:it.category||'',
         uom:line.uom||'pcs',
         poQty,poWeight,poRate,
         recQty,recWeight,recRate,
         pendingQty:poQty-recQty,pendingWeight:poWeight-recWeight,
-        excessQty:recQty-poQty,excessWeight:recWeight-poWeight,
+        // Excess is "how much came OVER the order" — a short receipt is not
+        // negative excess, it is no excess at all (the shortfall is already
+        // reported in the PENDING columns). Clamped at 0 here, at the single
+        // place the figures are built, so the screen, the CSV, the PDF, the
+        // PDF totals and the "Excess only" filter all agree.
+        excessQty:Math.max(0,recQty-poQty),excessWeight:Math.max(0,recWeight-poWeight),
         lineNo:pNum(line.line_no)
       };
     }).sort((a,b)=>String(b.poDate||'').localeCompare(String(a.poDate||''))
       ||String(a.poNo).localeCompare(String(b.poNo))||a.lineNo-b.lineNo);
+    // Counts next to each status, and any status the data holds that the
+    // canonical list doesn't name, only exist once the lines are in.
+    buildPodStatusFilterUI();updatePodStatusBtnLabel();
     renderPoDetailsReport();
   }catch(e){
     dbError(e);
-    if(body)body.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#ef4444;">❌ '+escText(e.message||e)+'</td></tr>';
+    if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#ef4444;">❌ '+escText(e.message||e)+'</td></tr>';
   }
 }
 function renderPoDetailsReport(){
@@ -9257,7 +9343,7 @@ function renderPoDetailsReport(){
   const rows=poDetailsFiltered_();
   const status=byId('pod_status_text');
   if(status)status.textContent=rows.length?(rows.length+' PO line(s)'):'No PO lines match this filter';
-  if(!rows.length){tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">Koi PO line nahi mili — filter badal kar dekhein</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="'+POD_HEAD.length+'" style="text-align:center;padding:18px;color:#94a3b8;">Koi PO line nahi mili — filter badal kar dekhein</td></tr>';return;}
   const TD='padding:4px 6px;border:1px solid #e2e8f0;font-size:11px;';
   const R=TD+'text-align:right;white-space:nowrap;';
   const num=(v,unit)=>v===0||v?nNum_(v)+(unit?' '+unit:''):'';
@@ -9270,6 +9356,10 @@ function renderPoDetailsReport(){
     const head=(r.poNo!==last);last=r.poNo;
     return '<tr>'
       +'<td style="'+TD+'font-weight:800;color:#1d4ed8;white-space:nowrap;">'+(head?escText(r.poNo):'')+'</td>'
+      // Printed on every line, not once per order like the PO No. beside it:
+      // with a filter on, a group's first row can scroll out of view and the
+      // rest would then look status-less.
+      +'<td style="'+TD+podStatusStyle_(r.poStatus)+'white-space:nowrap;">'+escText(r.poStatus||'—')+'</td>'
       +'<td style="'+TD+'font-weight:700;color:#1d4ed8;white-space:nowrap;">'+(head?escText(fmtDate_(r.poDate)):'')+'</td>'
       +'<td style="'+TD+'font-weight:700;color:#1d4ed8;">'+escText(r.supplier)+'</td>'
       +'<td style="'+TD+'">'+escText(r.itemName)+'</td>'
@@ -9287,16 +9377,44 @@ function renderPoDetailsReport(){
       +'</tr>';
   }).join('');
 }
-const POD_HEAD=['PO NO.','PO DATE','Supplier Name','Item Name','Category',
+/* Column order. STATUS sits second, right beside the PO number it belongs to —
+   it is a property of the order, not of the line, and reading it next to the
+   number is what tells you whether the Pending figures further right are still
+   owed or were cancelled. Every index-based rule downstream (the column group
+   colours on screen and in the PDF, the PDF column widths and its TOTAL row's
+   colSpan) is keyed off this array's positions, so they all shift together. */
+const POD_HEAD=['PO NO.','STATUS','PO DATE','Supplier Name','Item Name','Category',
   'PO QTY','PO Weight','PO RATE (AFTER DISC%)','REC. QTY','REC. Weight',
   'REC. RATE (AFTER DISC%)','PENDING QTY','PENDING Weight','Excess Qty','Excess Weight'];
+/* Colour groups, by POD_HEAD index: ordered (amber), rate (orange), received
+   (green), still owed (blue), came over (pink). One place, so the screen's
+   sticky header and the PDF's header cannot drift apart when a column moves.
+   `tint` asks for the washed-out fill the PDF puts behind the body cells of
+   the first three groups. '' means "this column is in no group" — each surface
+   then falls back to its own neutral. */
+function podColGroup_(i,tint){
+  if(i>=6&&i<=7)  return tint?'#fefce8':'#fef9c3';
+  if(i===8)       return tint?'#ffedd5':'#fed7aa';
+  if(i>=9&&i<=11) return tint?'#f0fdf4':'#bbf7d0';
+  if(i>=12&&i<=13)return tint?'':'#bae6fd';
+  if(i>=14)       return tint?'':'#fecdd3';
+  return '';
+}
+// Dead orders read red, a short-close amber, a fully-received one green.
+function podStatusStyle_(s){
+  if(s==='Cancelled'||s==='Rejected')return 'color:#b91c1c;background:#fef2f2;font-weight:800;';
+  if(s==='Closed (Short)')           return 'color:#b45309;background:#fffbeb;font-weight:800;';
+  if(s==='Received')                 return 'color:#15803d;background:#f0fdf4;font-weight:800;';
+  if(s==='Partially Received')       return 'color:#0369a1;background:#f0f9ff;font-weight:700;';
+  return 'color:#475569;font-weight:700;';
+}
 function downloadPoDetailsCsv(){
   const rows=poDetailsFiltered_();
   if(!rows.length)return showToast('⚠️ Export ke liye koi data nahi — pehle filter check karein','warn');
   const n=v=>(v===0||v)?Number(v.toFixed?v.toFixed(3):v):'';
   // Every column is filled on every row here, unlike the screen and the PDF:
   // a CSV with blanks in the PO No. column cannot be sorted or pivoted.
-  const data=rows.map(r=>[r.poNo,r.poDate,r.supplier,r.itemName,r.category,
+  const data=rows.map(r=>[r.poNo,r.poStatus,r.poDate,r.supplier,r.itemName,r.category,
     n(r.poQty),n(r.poWeight),n(r.poRate),n(r.recQty),n(r.recWeight),n(r.recRate),
     n(r.pendingQty),n(r.pendingWeight),n(r.excessQty),n(r.excessWeight)]);
   downloadCSV('PO_Details_'+today()+'.csv',[POD_HEAD,...data]);
@@ -9328,14 +9446,16 @@ async function downloadPoDetailsPdf(){
   let last='';
   const body=rows.map(r=>{
     const head=(r.poNo!==last);last=r.poNo;
-    return [head?r.poNo:'',head?fmtDate_(r.poDate):'',r.supplier,r.itemName,r.category,
+    return [head?r.poNo:'',r.poStatus||'—',head?fmtDate_(r.poDate):'',r.supplier,r.itemName,r.category,
       num(r.poQty,r.uom),num(r.poWeight,'kg'),num(r.poRate),
       num(r.recQty,r.uom),num(r.recWeight,'kg'),num(r.recRate),
       num(r.pendingQty,r.uom),num(r.pendingWeight,'kg'),
       num(r.excessQty,r.uom),num(r.excessWeight,'kg')];
   });
   const sum=k=>rows.reduce((s,r)=>s+pNum(r[k]),0);
-  const foot=[[{content:'TOTAL — '+rows.length+' line(s)',colSpan:5,styles:{halign:'right',fontStyle:'bold'}},
+  // colSpan covers the descriptive columns up to Category — PO No. through to
+  // Category, which is the first six now that STATUS is among them.
+  const foot=[[{content:'TOTAL — '+rows.length+' line(s)',colSpan:6,styles:{halign:'right',fontStyle:'bold'}},
     num(sum('poQty')),num(sum('poWeight'),'kg'),'',
     num(sum('recQty')),num(sum('recWeight'),'kg'),'',
     num(sum('pendingQty')),num(sum('pendingWeight'),'kg'),
@@ -9346,32 +9466,46 @@ async function downloadPoDetailsPdf(){
     styles:{fontSize:6,cellPadding:1.1,overflow:'linebreak',textColor:[0,0,0],lineColor:[203,213,225],lineWidth:0.15,valign:'middle'},
     headStyles:{fillColor:[226,232,240],textColor:[15,23,42],fontStyle:'bold',halign:'center',fontSize:5.6,lineWidth:0.15},
     footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',halign:'right',lineWidth:0.15},
-    columnStyles:{0:{cellWidth:22,fontStyle:'bold'},1:{cellWidth:17},2:{cellWidth:30},3:{cellWidth:38},4:{cellWidth:20},
-      5:{cellWidth:16,halign:'right'},6:{cellWidth:16,halign:'right'},7:{cellWidth:15,halign:'right'},
-      8:{cellWidth:16,halign:'right'},9:{cellWidth:16,halign:'right'},10:{cellWidth:15,halign:'right'},
-      11:{cellWidth:16,halign:'right'},12:{cellWidth:16,halign:'right'},
-      13:{cellWidth:14,halign:'right'},14:{cellWidth:14,halign:'right'}},
+    // 281mm of usable landscape width, all of it allotted. STATUS is paid for
+    // out of the five text columns beside it (PO No. 22→20, Date 17→16,
+    // Supplier 30→26, Item 38→32, Category 20→17); the figure columns keep
+    // their widths so the numbers stay unwrapped.
+    columnStyles:{0:{cellWidth:20,fontStyle:'bold'},1:{cellWidth:16},2:{cellWidth:16},
+      3:{cellWidth:26},4:{cellWidth:32},5:{cellWidth:17},
+      6:{cellWidth:16,halign:'right'},7:{cellWidth:16,halign:'right'},8:{cellWidth:15,halign:'right'},
+      9:{cellWidth:16,halign:'right'},10:{cellWidth:16,halign:'right'},11:{cellWidth:15,halign:'right'},
+      12:{cellWidth:16,halign:'right'},13:{cellWidth:16,halign:'right'},
+      14:{cellWidth:14,halign:'right'},15:{cellWidth:14,halign:'right'}},
     theme:'grid',
     // The reference sheet colours the column groups, which is what makes it
     // readable at this width — ordered (amber), received (green), what is
-    // still owed (blue) and what came over (pink).
+    // still owed (blue) and what came over (pink). Group boundaries come from
+    // podColGroup_ so they follow POD_HEAD rather than being re-counted here.
     didParseCell:h=>{
+      const hex=v=>[parseInt(v.slice(1,3),16),parseInt(v.slice(3,5),16),parseInt(v.slice(5,7),16)];
       if(h.section==='head'){
-        const c=h.column.index;
-        if(c>=5&&c<=6)h.cell.styles.fillColor=[254,249,195];
-        else if(c===7)h.cell.styles.fillColor=[254,215,170];
-        else if(c>=8&&c<=10)h.cell.styles.fillColor=[187,247,208];
-        else if(c>=11&&c<=12)h.cell.styles.fillColor=[186,230,253];
-        else if(c>=13)h.cell.styles.fillColor=[254,205,211];
+        // Ungrouped columns keep headStyles' own neutral fill.
+        const g=podColGroup_(h.column.index,false);
+        if(g)h.cell.styles.fillColor=hex(g);
         return;
       }
       if(h.section!=='body')return;
       const c=h.column.index, r=rows[h.row.index];
       if(!r)return;
-      if(c>=5&&c<=6)h.cell.styles.fillColor=[254,252,232];
-      else if(c===7)h.cell.styles.fillColor=[255,237,213];
-      else if(c>=8&&c<=10)h.cell.styles.fillColor=[240,253,244];
-      const v=c===11?r.pendingQty:c===12?r.pendingWeight:c===13?r.excessQty:c===14?r.excessWeight:null;
+      const tint=podColGroup_(c,true);
+      if(tint)h.cell.styles.fillColor=hex(tint);
+      // STATUS: the same reading as on screen, so a cancelled order is as
+      // obvious on paper as it is in the browser.
+      if(c===1){
+        const s=r.poStatus;
+        if(s==='Cancelled'||s==='Rejected'){h.cell.styles.textColor=[185,28,28];h.cell.styles.fillColor=[254,242,242];h.cell.styles.fontStyle='bold';}
+        else if(s==='Closed (Short)'){h.cell.styles.textColor=[180,83,9];h.cell.styles.fillColor=[255,251,235];h.cell.styles.fontStyle='bold';}
+        else if(s==='Received'){h.cell.styles.textColor=[21,128,61];h.cell.styles.fillColor=[240,253,244];h.cell.styles.fontStyle='bold';}
+        else if(s==='Partially Received'){h.cell.styles.textColor=[3,105,161];h.cell.styles.fillColor=[240,249,255];}
+        else h.cell.styles.textColor=[71,85,105];
+        return;
+      }
+      const v=c===12?r.pendingQty:c===13?r.pendingWeight:c===14?r.excessQty:c===15?r.excessWeight:null;
       if(v!==null&&v!==0){h.cell.styles.textColor=v>0?[180,83,9]:[220,38,38];h.cell.styles.fontStyle='bold';}
     }
   });
@@ -9420,15 +9554,26 @@ function openPoDetailsReport(){
           +'<option value="COMPLETE">Fully received</option>'
           +'<option value="NOTRECEIVED">Nothing received</option>'
         +'</select>'
+        +'<div style="position:relative;">'
+          +'<button type="button" id="pod_po_status_btn" class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid transparent;height:28px;padding:0 10px;font-size:11px;white-space:nowrap;">&#128278; PO Status: All &#9662;</button>'
+          +'<div id="pod_po_status_panel" style="display:none;position:absolute;top:31px;left:0;z-index:30;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);padding:8px 10px;min-width:230px;">'
+            +'<div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Show only these POs</div>'
+            +'<div id="pod_po_status_list" style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#0f172a;max-height:260px;overflow-y:auto;"></div>'
+            +'<div style="display:flex;justify-content:space-between;gap:6px;margin-top:8px;">'
+              +'<button type="button" id="pod_po_status_all" style="font-size:10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;cursor:pointer;">Tick all</button>'
+              +'<button type="button" id="pod_po_status_none" style="font-size:10px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:4px;padding:2px 8px;cursor:pointer;">Clear</button>'
+            +'</div>'
+            +'<div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4;">Kuch bhi tick na ho to saare PO dikhte hain. Right side ka number us status ki PO line count hai.</div>'
+          +'</div>'
+        +'</div>'
         +'<button type="button" id="pod_clear" class="btn" style="background:#e2e8f0;color:#475569;height:28px;padding:0 12px;font-size:11px;">&#10005; Clear</button>'
         +'<button type="button" id="pod_reload" class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px;">&#128260; Refresh</button>'
       +'</div>'
       +'<div style="flex:1;overflow:auto;padding:0 10px 10px;">'
-        +'<table style="width:100%;border-collapse:collapse;min-width:1350px;">'
-        +'<thead><tr>'+POD_HEAD.map((h,i)=>{
-            const bg=i>=5&&i<=6?'#fef9c3':i===7?'#fed7aa':i>=8&&i<=10?'#bbf7d0':i>=11&&i<=12?'#bae6fd':i>=13?'#fecdd3':'#f1f5f9';
-            return '<th style="position:sticky;top:0;z-index:1;background:'+bg+';border:1px solid #cbd5e1;padding:5px 6px;font-size:10px;font-weight:800;color:#0f172a;">'+h+'</th>';
-          }).join('')+'</tr></thead>'
+        +'<table style="width:100%;border-collapse:collapse;min-width:1470px;">'
+        +'<thead><tr>'+POD_HEAD.map((h,i)=>
+            '<th style="position:sticky;top:0;z-index:1;background:'+(podColGroup_(i,false)||'#f1f5f9')+';border:1px solid #cbd5e1;padding:5px 6px;font-size:10px;font-weight:800;color:#0f172a;">'+h+'</th>'
+          ).join('')+'</tr></thead>'
         +'<tbody id="pod_tbody"></tbody></table>'
       +'</div></div>';
     (byId('storeInterface')||document.body).appendChild(ov);
@@ -9439,8 +9584,19 @@ function openPoDetailsReport(){
     byId('pod_clear').onclick=()=>{
       ['pod_po','pod_supplier','pod_item','pod_from','pod_to'].forEach(id=>{const e=byId(id);if(e)e.value='';});
       if(byId('pod_status'))byId('pod_status').value='ALL';
-      renderPoDetailsReport();
+      byId('pod_po_status_panel').style.display='none';
+      setPodStatusFilterAll(false);   // also re-renders
     };
+    byId('pod_po_status_btn').onclick=togglePodStatusFilter;
+    byId('pod_po_status_all').onclick=()=>setPodStatusFilterAll(true);
+    byId('pod_po_status_none').onclick=()=>setPodStatusFilterAll(false);
+    // Tap anywhere else to put the panel away. Scoped to this overlay's own
+    // button/panel so the Item Master filter's identical handler is untouched.
+    document.addEventListener('click',e=>{
+      const p=byId('pod_po_status_panel'),b=byId('pod_po_status_btn');
+      if(p&&p.style.display==='block'&&!p.contains(e.target)&&e.target!==b&&!b.contains(e.target))p.style.display='none';
+    });
+    buildPodStatusFilterUI();updatePodStatusBtnLabel();
     // Filters run against the already-loaded lines, so typing re-renders
     // instantly instead of going back to the database on every keystroke.
     ['pod_po','pod_supplier','pod_item'].forEach(id=>byId(id)?.addEventListener('input',renderPoDetailsReport));
