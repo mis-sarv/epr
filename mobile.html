@@ -204,6 +204,27 @@
             cursor: pointer;
         }
         .seg button.active { background: #fff; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+        /* Store Check's type row. Four chips with counts can outrun a narrow
+           phone, so the row scrolls sideways instead of wrapping into two
+           ragged lines — and the seg must not shrink to make that fit. */
+        .store-type-bar { justify-content: flex-start; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+        .store-type-bar::-webkit-scrollbar { display: none; }
+        .store-type-bar .seg { flex: 0 0 auto; }
+        .store-type-bar .seg button { padding: 5px 11px; white-space: nowrap; }
+        .seg-n {
+            display: inline-block;
+            min-width: 16px;
+            margin-left: 5px;
+            padding: 0 4px;
+            border-radius: 9px;
+            background: #dbe3ec;
+            color: #475569;
+            font-size: 0.66rem;
+            font-weight: 800;
+            text-align: center;
+        }
+        .seg button.active .seg-n { background: var(--primary); color: #fff; }
+        .seg-n.zero { background: transparent; color: #b6c0cc; }
         .access-note {
             font-size: 0.68rem;
             font-weight: 700;
@@ -727,6 +748,17 @@
              rest have two. See VIEWS_FOR_TAB / syncStageTabsUi. -->
         <div class="seg" id="viewSeg"></div>
         <span id="accessNote" class="access-note"></span>
+    </div>
+
+    <!-- Store Check sub-tabs: which document type the list shows. A second row
+         rather than more buttons in the bar above, because the two are different
+         questions — which document type, and which section of it — and stacking
+         them in one strip would read as a single eight-way choice. The number on
+         each chip is how many cards tapping it puts on screen, i.e. it already
+         accounts for the Pending / Complete section above. See
+         STORE_TYPE_TABS / renderStoreTypeSeg. -->
+    <div class="sub-bar store-type-bar" id="storeTypeBar" style="display:none;">
+        <div class="seg" id="storeTypeSeg"></div>
     </div>
 
     <div class="list-container" id="list"></div>
@@ -1746,6 +1778,17 @@
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
     function viewsForTab(tab){ return VIEWS_FOR_TAB[tab] || VIEWS_FOR_TAB._; }
+    /* Store Check's sub-tabs, one per document type. 'All' leads because the
+       three types are three different books kept by the same store and a
+       checker's first question is usually "what is waiting", not "what inward
+       is waiting" — and without it the tab could no longer show everything at
+       once, which is what it did before these sub-tabs existed. */
+    const STORE_TYPE_TABS = [
+        {v:'ALL',       l:'All'},
+        {v:'INWARD',    l:'Inward'},
+        {v:'INWARD NB', l:'Inward NB'},
+        {v:'OUTWARD',   l:'Outward'},
+    ];
     /* Which tabs each role gets. Only the two new tabs are scoped — MD and PO
        Sender keep every tab they already had, read-only where it isn't theirs.
        GM is a new login with exactly one job, so it gets exactly one tab. */
@@ -1778,6 +1821,9 @@
     }
     let currentStageTab = 'VI';
     let currentView = 'pending';        // 'pending' | 'done' | 'partial' | 'received'
+    // Store Check sub-tab: 'ALL' | 'INWARD' | 'INWARD NB' | 'OUTWARD'. Kept
+    // across tab switches, so coming back to Store Check lands where you left.
+    let storeTypeFilter = 'ALL';
     // Everything this login may see, loaded once per refresh.
     //   store = inward_entries + outward_entries awaiting / carrying a GM-MD check
     let dash = {prs:[], pos:[], store:[]};
@@ -1896,6 +1942,7 @@
         currentStageTab = myStage ? defaultTabForRole() : 'VI';
         if(!visibleTabsForRole().includes(currentStageTab)) currentStageTab = visibleTabsForRole()[0] || 'VI';
         currentView = 'pending';
+        storeTypeFilter = 'ALL';   // a fresh login does not inherit the last one's sub-tab
         currentModule = STAGE_TABS[currentStageTab].module;
         dash = {prs:[], pos:[], store:[]};
         syncStageTabsUi();
@@ -1923,6 +1970,41 @@
         seg.querySelectorAll('button').forEach(b =>
             b.addEventListener('click', () => switchView(b.dataset.view)));
     }
+    /* Store Check's type row, rebuilt whenever the tab or section changes so the
+       counts stay honest. Hidden outside Store Check — it is the only tab whose
+       records come in more than one document type. */
+    function renderStoreTypeSeg(){
+        const bar = document.getElementById('storeTypeBar');
+        const seg = document.getElementById('storeTypeSeg');
+        if(!bar || !seg) return;
+        const on = !!myStage && currentStageTab === 'STORE';
+        bar.style.display = on ? 'flex' : 'none';
+        if(!on){ seg.innerHTML = ''; return; }
+        // Counted inside the section on screen, not across both, so a chip's
+        // number is exactly how many cards tapping it would show.
+        const rows = tabRows('STORE', currentView);
+        seg.innerHTML = STORE_TYPE_TABS.map(t => {
+            const n = t.v === 'ALL' ? rows.length : rows.filter(e => storeEntryType(e) === t.v).length;
+            return `<button type="button" data-type="${escText(t.v)}"${t.v === storeTypeFilter ? ' class="active"' : ''}>`
+                 + `${escText(t.l)}<span class="seg-n${n ? '' : ' zero'}">${n > 99 ? '99+' : n}</span></button>`;
+        }).join('');
+        seg.querySelectorAll('button').forEach(b =>
+            b.addEventListener('click', () => switchStoreType(b.dataset.type)));
+    }
+    function switchStoreType(v){
+        if(!STORE_TYPE_TABS.some(t => t.v === v) || v === storeTypeFilter) return;
+        storeTypeFilter = v;
+        const list = document.getElementById('list');
+        if(list) list.scrollTop = 0;   // same as a tab / section switch
+        paintList();
+    }
+    /* What the list actually draws: the tab's records, narrowed by any sub-tab.
+       Deliberately separate from tabRows() — the badge on a stage tab counts
+       that tab's WHOLE workload, which a sub-tab must not quietly shrink. */
+    function listRows(tab, view){
+        const rows = tabRows(tab, view);
+        return tab === 'STORE' ? rows.filter(storeTypeMatches) : rows;
+    }
     // Tab highlight, "your tab" marking, pending counts and the access note.
     function syncStageTabsUi(){
         document.querySelectorAll('.stage-tab').forEach(el => {
@@ -1934,6 +2016,7 @@
             if(c){ c.textContent = n > 99 ? '99+' : String(n); c.classList.toggle('zero', n === 0); }
         });
         renderViewSeg();
+        renderStoreTypeSeg();   // after renderViewSeg: it may have corrected currentView
         const note = document.getElementById('accessNote');
         if(note){
             const cfg = STAGE_TABS[currentStageTab];
@@ -2014,7 +2097,16 @@
             [e._kind, e.document_no, e.entry_type,
              storeCheckedBy(e,'gm') ? 1 : 0, storeCheckedBy(e,'md') ? 1 : 0].join('~')
         ).join('|');
-        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart;
+        /* PO Receipts now moves a card on its LINES, not on the header totals
+           above, so the line tally belongs in the fingerprint — a receipt that
+           completes one item without changing received_qty enough to shift the
+           header would otherwise leave the card sitting in the wrong section
+           until the next full reload. */
+        const recvPart = (dash.pos||[]).map(p => {
+            const t = poLineTally_(p._lines);
+            return [p.po_no, poReceiptBucket(p), t.pending, t.received, t.itemsPending].join('~');
+        }).join('|');
+        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart + '#' + recvPart;
     }
     let liveLastSig = '';
     async function liveRefresh_(force){
@@ -2197,7 +2289,9 @@
        Stored in a `store_checks` jsonb column on inward_entries /
        outward_entries, one column for both stages, mirroring the `approvals`
        column PRs and POs already use:
-         {"gm":{by,at,remarks}, "md":{by,at,remarks}}
+         {"gm":{by,at,atIso,remarks}, "md":{by,at,atIso,remarks}}
+       `at` is the DD/MM/YYYY HH:MM:SS stamp the screens print; `atIso` is the
+       same moment sortable. Rows checked before atIso existed simply lack it.
        It is a verification, not an approval — no signature, no status change,
        and the entry's own stock effect is untouched either way. */
     const STORE_STAGES = ['gm','md'];
@@ -2224,12 +2318,46 @@
     }
     function storeDocNo(e){ return (e && e.document_no) || ''; }
     function storeIsInward(e){ return (e && e._kind) === 'INWARD'; }
+    /* Which of the three document types this entry is — the axis the sub-tabs
+       split on. loadStoreEntries_ accepts a row with a blank entry_type by
+       falling back to its table (inward_entries → INWARD), but does not write
+       that back onto the row, so the same fallback is applied here. */
+    function storeEntryType(e){
+        const t = String((e && e.entry_type) || '').trim().toUpperCase();
+        return STORE_ENTRY_TYPES.includes(t) ? t : (storeIsInward(e) ? 'INWARD' : 'OUTWARD');
+    }
+    function storeTypeMatches(e){ return storeTypeFilter === 'ALL' || storeEntryType(e) === storeTypeFilter; }
+
+    /* ── When each stage checked it ───────────────────────────────────
+       store_checks[stage].at is written by storeCheckDone as a DD/MM/YYYY
+       HH:MM:SS string, so it is printed as stored rather than re-parsed. `by`
+       is the role label on a GM / MD login, so repeating it next to the stage
+       name would read "GM — GM"; only a different signer is worth naming. */
+    function storeCheckStamp_(e, stage){
+        const c = storeCheckedBy(e, stage);
+        if(!c) return '';
+        const who = String(c.by || '').trim();
+        return [c.at || '', (who && who.toUpperCase() !== stage.toUpperCase()) ? who : '']
+            .filter(Boolean).join(' · ');
+    }
+    // Day and time only — a card tag has no room for the seconds `at` carries.
+    function storeCheckShort_(e, stage){
+        const c = storeCheckedBy(e, stage);
+        const at = String((c && c.at) || '').trim();
+        if(!at) return '';
+        const m = at.match(/^(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})/);
+        return m ? (m[1] + ' ' + m[2]) : at;
+    }
     // One line of "where this entry stands", for the card and the modal.
     function storeStageText(e){
-        const gm = storeCheckedBy(e,'gm'), md = storeCheckedBy(e,'md');
-        if(md) return '✔ GM & MD — dono check kar chuke hain';
-        if(gm) return '✔ GM checked' + (gm.at ? ' (' + gm.at + ')' : '') + ' · MD check pending';
-        return '⏳ GM check pending';
+        const gmTxt = storeCheckedBy(e,'gm')
+            ? ('✔ GM ' + (storeCheckStamp_(e,'gm') || 'checked'))
+            : '⏳ GM check pending';
+        const mdTxt = storeCheckedBy(e,'md')
+            ? ('✔ MD ' + (storeCheckStamp_(e,'md') || 'checked'))
+            // Nothing to say about the MD until the GM has opened the gate.
+            : (storeCheckedBy(e,'gm') ? '⏳ MD check pending' : '');
+        return mdTxt ? (gmTxt + '  ·  ' + mdTxt) : gmTxt;
     }
 
     // ── Data fetch ───────────────────────────────────────────────
@@ -2247,13 +2375,53 @@
         || ['MD Approved','Vendor Verified'].includes(p.status||'');
     // Which records a tab lists, from the one loaded `dash`. Pending = the
     // work waiting at that step; Done = records that have passed it.
-    /* Where a PO stands on receipt, from the figures STORE.html already keeps
-       current on purchase_orders (received_qty / status are rewritten after every
-       inward — see its syncPoReceiptsForLines). Nothing is computed from the
-       inward rows here, so this view simply follows what the store books. */
+    /* ── PO receipt position, ITEM BY ITEM ────────────────────────────
+       `pending` is the sum of what each LINE still owes — max(0, ordered −
+       received) per line — not ordered-minus-received across the whole order.
+       Summing two header totals lets an over-receipt on one item pay for an
+       item that never arrived: order 10 bolts + 10 nuts, take in 20 bolts and
+       no nuts, and received (20) >= ordered (20) called the PO fully Received
+       with the nuts still outstanding. `excess` is kept separately for the
+       same reason — the two must never net each other off. */
+    function poLineTally_(lines){
+        const t = {ordered:0, received:0, pending:0, excess:0,
+                   itemsTotal:0, itemsPending:0, itemsFull:0, itemsNone:0, anyOrdered:false};
+        (lines||[]).forEach(l => {
+            const ord = pNum(l.ordered_qty), rec = pNum(l.received_qty);
+            t.ordered  += ord;
+            t.received += rec;
+            t.pending  += Math.max(0, ord - rec);
+            t.excess   += Math.max(0, rec - ord);
+            t.itemsTotal++;
+            if(ord > 0) t.anyOrdered = true;
+            // A line ordered as 0 has nothing outstanding, so it counts as
+            // settled and cannot hold the order open.
+            if(ord > 0 && rec < ord){ t.itemsPending++; if(rec <= 0) t.itemsNone++; }
+            else t.itemsFull++;
+        });
+        return t;
+    }
+    /* Which of the three sections a PO belongs in. Decided from its own lines
+       whenever they are loaded (attachPoLinesToPos_), so a PO is "Received"
+       only when EVERY ordered item has arrived in full.
+
+       The header figures are the fallback, not the first choice: they are a
+       summary STORE.html rewrites after each inward, and one written by the old
+       aggregate rule can still say "Received" while a line is short. They are
+       used only where the lines are genuinely unavailable — another role's
+       hidden tab badge, or a failed lookup. */
     function poReceiptBucket(p){
         const st = String((p && p.status) || '');
-        if(st === 'Received' || st === 'Closed (Short)') return 'received';
+        // Short-close is a decision somebody took: the store has stopped
+        // expecting the rest, so the order is finished whatever its lines say.
+        if(st === 'Closed (Short)') return 'received';
+        const lines = (p && p._lines) || null;
+        if(lines && lines.length){
+            const t = poLineTally_(lines);
+            if(t.anyOrdered) return t.itemsPending === 0 ? 'received'
+                                  : (t.received > 0 ? 'partial' : 'pending');
+        }
+        if(st === 'Received') return 'received';
         const ordered = pNum(p && p.total_qty), got = pNum(p && p.received_qty);
         if(ordered > 0 && got >= ordered) return 'received';
         if(got > 0) return 'partial';
@@ -2332,8 +2500,46 @@
         // A Purchaser's PO Receipts cards name the inward documents that fed each
         // PO. inward_entries.po_number already carries the comma-joined PO list,
         // so one query covers it — no per-line join.
-        if(myRoleKey() === 'purchaser') await attachInwardsToPos_(pos);
+        /* Purchaser only — they are the one role with the PO Receipts tab.
+           The lines are what that tab judges each order by (poReceiptBucket),
+           and the inward documents are what its cards name. */
+        if(myRoleKey() === 'purchaser') await Promise.all([attachInwardsToPos_(pos), attachPoLinesToPos_(pos)]);
         dash = {prs, pos, store};
+    }
+    /* Every line of these POs, so PO Receipts can judge an order item by item
+       instead of on its two header totals.
+
+       Paged: Supabase caps one response at 1000 rows, and a truncated line set
+       would make a part-received PO look complete — exactly the mistake this
+       is here to prevent. On failure the rows are left at null rather than [],
+       so poReceiptBucket falls back to the header figures instead of reading
+       "no lines" as "nothing ordered". */
+    async function attachPoLinesToPos_(pos){
+        pos.forEach(p => { p._lines = null; });   // null = not loaded, [] = loaded and empty
+        const ids = pos.map(p => p.id).filter(Boolean);
+        if(!ids.length) return;
+        try{
+            const PAGE = 1000;
+            const all = [];
+            for(let from = 0; ; from += PAGE){
+                const q = await SB.from('purchase_order_lines')
+                    .select('id,purchase_order_id,line_no,item_name,uom,ordered_qty,received_qty')
+                    .in('purchase_order_id', ids).order('id').range(from, from + PAGE - 1);
+                if(q.error) throw q.error;
+                const rows = q.data || [];
+                all.push(...rows);
+                if(rows.length < PAGE) break;
+            }
+            const byPo = {};
+            all.forEach(l => { (byPo[l.purchase_order_id] = byPo[l.purchase_order_id] || []).push(l); });
+            // Paged by id for a stable window; the modal wants PO line order.
+            Object.keys(byPo).forEach(k => byPo[k]
+                .sort((a,b) => pNum(a.line_no) - pNum(b.line_no) || pNum(a.id) - pNum(b.id)));
+            pos.forEach(p => { p._lines = byPo[p.id] || []; });
+        }catch(e){
+            console.warn('[MOBILE] PO line lookup skipped:', e.message||e);
+            pos.forEach(p => { p._lines = null; });
+        }
     }
     /* Inward + Outward entries for the Store Check tab, normalised into one list
        with _kind so the card and the modal can tell them apart. Only fetched for
@@ -2743,7 +2949,7 @@
         const tab = currentStageTab, cfg = STAGE_TABS[tab], done = currentView === 'done';
         const canAct = canActIn(tab);
         currentModule = cfg.module;
-        const all = tabRows(tab, currentView);
+        const all = listRows(tab, currentView);
         const rows = all.filter(matchesSearch);
         const countEl = document.getElementById('searchCount');
         if(countEl) countEl.textContent = searchTerm ? rows.length + ' of ' + all.length + ' shown' : '';
@@ -2752,6 +2958,14 @@
             // PO Receipts' three sections are states, not stages, so "koi kaam
             // pending nahi" would be the wrong thing to say in two of them.
             const secLabel = (viewsForTab(tab).find(v => v.v === currentView) || {}).l || '';
+            // On a sub-tab, say which book is empty — "koi kaam pending nahi"
+            // would read as "nothing anywhere" while two other types still have
+            // entries waiting.
+            if(cfg.module === 'STORE' && storeTypeFilter !== 'ALL'){
+                const tl = (STORE_TYPE_TABS.find(t => t.v === storeTypeFilter) || {}).l || storeTypeFilter;
+                listDiv.innerHTML = `<p class="empty-msg">${escText(tl)} — is section me koi entry nahi. Doosre sub-tab dekhein.</p>`;
+                return;
+            }
             listDiv.innerHTML = cfg.module === 'RECV'
                 ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
                 : (done
@@ -2912,8 +3126,13 @@
                   + (inw && e.nature_of_inward ? ' · '+escText(e.nature_of_inward) : '')
                   + `</div>`;
             const tags = [];
-            if(storeCheckedBy(e,'gm')) tags.push(`<span class="tag sent">✔ GM</span>`);
-            if(storeCheckedBy(e,'md')) tags.push(`<span class="tag sent">✔ MD</span>`);
+            // Each stage's tag carries when it was checked, so the card answers
+            // "has it been checked, and when" without being opened.
+            STORE_STAGES.forEach(s => {
+                if(!storeCheckedBy(e, s)) return;
+                const when = storeCheckShort_(e, s);
+                tags.push(`<span class="tag sent">✔ ${s.toUpperCase()}${when ? ' · ' + escText(when) : ''}</span>`);
+            });
             if(e.req_no) tags.push(`<span class="tag po">📝 ${escText(e.req_no)}</span>`);
             if(e.po_number) tags.push(`<span class="tag po">🧾 ${escText(e.po_number)}</span>`);
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
@@ -2939,15 +3158,35 @@
             const card = document.createElement('div');
             card.className = 'card';
             card.onclick = () => openRecvModal(p);
-            const ordered = pNum(p.total_qty), got = pNum(p.received_qty);
-            const left = Math.max(0, ordered - got);
-            const pct = ordered > 0 ? Math.min(100, Math.round(got / ordered * 100)) : 0;
+            /* Figures off the LINES where they are loaded, so Pending is the
+               sum of what each item still owes rather than the difference of
+               two header totals (see poLineTally_). The header is the fallback
+               for a PO whose lines could not be fetched. */
+            const lines = p._lines || null;
+            const t = (lines && lines.length) ? poLineTally_(lines) : null;
+            const ordered = t ? t.ordered : pNum(p.total_qty);
+            const got     = t ? t.received : pNum(p.received_qty);
+            const left    = t ? t.pending : Math.max(0, ordered - got);
             const bucket = poReceiptBucket(p);
             const col = bucket === 'received' ? '#16a34a' : (bucket === 'partial' ? '#d97706' : '#64748b');
+            // Progress is "items settled / items ordered" when the lines are in
+            // hand — a bar driven by quantity reads near-full on a PO where one
+            // big item arrived and three small ones never did.
+            const pct = t
+                ? (t.itemsTotal > 0 ? Math.round(t.itemsFull / t.itemsTotal * 100) : 0)
+                : (ordered > 0 ? Math.min(100, Math.round(got / ordered * 100)) : 0);
             let html = `<div class="card-header"><span>${escText(p.po_no||'-')}</span><span>${escText(nMoney_(p.grand_total))}</span></div>`;
             html += `<div class="card-detail">Vendor: <b>${escText(p.vendor_name||'-')}</b></div>`;
             if(p.linked_req_nos) html += `<div class="card-detail">PR: <b>${escText(p.linked_req_nos)}</b></div>`;
             html += `<div class="card-detail">Ordered: <b>${escText(nNum_(ordered))}</b> · Received: <b style="color:${col};">${escText(nNum_(got))}</b> · Pending: <b>${escText(nNum_(left))}</b></div>`;
+            if(t){
+                // The item-wise line, which is what actually decides the section.
+                html += `<div class="card-detail">Items: <b>${t.itemsFull}/${t.itemsTotal}</b> poore`
+                     + (t.itemsPending ? ` · <b style="color:#d97706;">${t.itemsPending}</b> item pending`
+                          + (t.itemsNone ? ` (${t.itemsNone} par kuch nahi aaya)` : '') : '')
+                     + (t.excess > 0 ? ` · <b style="color:#dc2626;">${escText(nNum_(t.excess))}</b> excess` : '')
+                     + `</div>`;
+            }
             html += `<div style="height:6px;background:#e9edf2;border-radius:4px;margin-top:6px;overflow:hidden;">`
                   + `<div style="height:100%;width:${pct}%;background:${col};"></div></div>`;
             html += `<div class="card-detail" style="margin-top:6px;">Status: ${statusBadge(p.status)}</div>`;
@@ -2964,10 +3203,16 @@
                 [{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}]
                     .concat(inws.map(x => ({url: x.pdf_url, label: 'Inward ' + (x.document_no||'')}))),
                 'PDF abhi nahi bana');
-            html += `<div class="card-action ${bucket==='received'?'done':'wait'}">${escText(
-                bucket === 'received' ? '✔ Poora maal aa gaya'
-                : (bucket === 'partial' ? '◑ Kuch maal aa gaya — baaki pending'
-                                        : '⏳ Abhi koi maal nahi aaya'))}</div>`;
+            // Says which items are short, not just that something is — that is
+            // the figure a Purchaser chases the vendor on.
+            const actionText = bucket === 'received'
+                ? (String(p.status||'') === 'Closed (Short)'
+                    ? '✔ Short close — baaki qty ab nahi aayegi'
+                    : '✔ Saare items poore aa gaye')
+                : (bucket === 'partial'
+                    ? '◑ Kuch aa gaya — ' + (t ? t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty baaki' : 'baaki pending')
+                    : '⏳ Abhi kuch nahi aaya' + (t ? ' — ' + t.itemsTotal + ' item pending' : ''));
+            html += `<div class="card-action ${bucket==='received'?'done':'wait'}">${escText(actionText)}</div>`;
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
@@ -3040,7 +3285,12 @@
             inw ? ['PO Number', e.po_number||'Without PO'] : ['Gate Pass', e.gate_pass_no||'-'],
             inw && e.req_no ? ['PR Number', e.req_no] : null,
             !inw ? ['Receiver', e.receiver_name||'-'] : null,
-            ['Check', storeStageText(e)],
+            // Each stage on its own line with its timestamp, and its remark
+            // under it — the one place the full record of the check is shown.
+            ['GM Check', storeCheckedBy(e,'gm') ? ('✔ ' + (storeCheckStamp_(e,'gm') || 'checked')) : '⏳ Pending'],
+            (storeCheckedBy(e,'gm')||{}).remarks ? ['GM Remarks', storeCheckedBy(e,'gm').remarks] : null,
+            ['MD Check', storeCheckedBy(e,'md') ? ('✔ ' + (storeCheckStamp_(e,'md') || 'checked')) : '⏳ Pending'],
+            (storeCheckedBy(e,'md')||{}).remarks ? ['MD Remarks', storeCheckedBy(e,'md').remarks] : null,
         ].filter(Boolean);
         const metaHtml = meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
         const head = ['Sr','Item Name','Description','Make','Qty','UOM','Weight'].map(h=>`<th>${h}</th>`).join('');
@@ -3124,7 +3374,16 @@
                 if(!fresh.error && fresh.data && fresh.data.store_checks && typeof fresh.data.store_checks === 'object')
                     current = fresh.data.store_checks;
             }catch(_){}
-            const checks = {...current, [stage]: {by: STAGE_LABEL[myStage] || stage.toUpperCase(), at: pStamp(), remarks}};
+            /* `at` is the human stamp every screen prints. `atIso` is the same
+               moment in a sortable, timezone-explicit form — `at` is
+               DD/MM/YYYY, which cannot be compared or re-parsed reliably, so a
+               later report that wants to order checks by time has something to
+               read. Rows checked before this field existed simply lack it. */
+            const now = new Date();
+            const checks = {...current, [stage]: {
+                by: STAGE_LABEL[myStage] || stage.toUpperCase(),
+                at: pStamp(now), atIso: now.toISOString(), remarks
+            }};
             const upd = await SB.from(table).update({store_checks: checks}).eq('id', e.id);
             if(upd.error){
                 if(/store_checks|column/i.test(upd.error.message||''))
@@ -3148,9 +3407,28 @@
     }
     /* PO Receipts detail: ordered vs received per line, plus the inward
        documents booked against this PO. Read-only throughout. */
+    // Per-line receipt verdict, the same words the card's summary counts.
+    const RECV_LINE_STATE = {
+        FULL:   {bg:'#dcfce7', fg:'#15803d', txt:'✔ Full'},
+        PARTIAL:{bg:'#fef3c7', fg:'#b45309', txt:'◐ Partial'},
+        PENDING:{bg:'#f1f5f9', fg:'#64748b', txt:'⌛ Pending'},
+        EXCESS: {bg:'#fee2e2', fg:'#b91c1c', txt:'▲ Excess'},
+        NONE:   {bg:'transparent', fg:'#94a3b8', txt:'—'},
+    };
+    function recvLineState_(l){
+        const ord = pNum(l && l.ordered_qty), rec = pNum(l && l.received_qty);
+        if(ord <= 0) return 'NONE';
+        if(rec > ord) return 'EXCESS';
+        if(rec >= ord) return 'FULL';
+        return rec > 0 ? 'PARTIAL' : 'PENDING';
+    }
     async function openRecvModal(p){
         storeEntry = p; storeMode = 'RECV';
-        const ordered = pNum(p.total_qty), got = pNum(p.received_qty);
+        // Header totals only as a fallback — the tally off the lines is what
+        // this tab's sections are decided by. See poLineTally_.
+        const pre = (p._lines && p._lines.length) ? poLineTally_(p._lines) : null;
+        const ordered = pre ? pre.ordered : pNum(p.total_qty);
+        const got     = pre ? pre.received : pNum(p.received_qty);
         const metaHtml = [
             ['PO Number', p.po_no||'-'],
             ['Vendor', p.vendor_name||'-'],
@@ -3158,14 +3436,18 @@
             ['Delivery Date', p.delivery_date||'-'],
             ['PR', p.linked_req_nos||'-'],
             ['Ordered / Received', nNum_(ordered) + ' / ' + nNum_(got)],
+            // The item-wise reading, which is what puts this PO in its section.
+            pre ? ['Items Complete', pre.itemsFull + ' of ' + pre.itemsTotal
+                    + (pre.itemsPending ? '  ·  ' + pre.itemsPending + ' item par ' + nNum_(pre.pending) + ' qty pending' : '')] : null,
+            pre && pre.excess > 0 ? ['Excess Received', nNum_(pre.excess)] : null,
             ['Status', p.status||'-'],
             ['Inward Entries', (p._inwards||[]).length
                 ? (p._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
                 : 'abhi koi inward nahi'],
-        ].map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
-        const head = ['Sr','Item Name','Ordered','Received','Pending','UOM'].map(h=>`<th>${h}</th>`).join('');
+        ].filter(Boolean).map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
+        const head = ['Sr','Item Name','Ordered','Received','Pending','UOM','Receipt'].map(h=>`<th>${h}</th>`).join('');
         storeModalShell_((p.po_no||'PO')+' — Receipts', metaHtml, head,
-            `<tr><td colspan="6" style="text-align:center;color:#999;">Loading lines...</td></tr>`);
+            `<tr><td colspan="7" style="text-align:center;color:#999;">Loading lines...</td></tr>`);
         document.getElementById('storeCheckBox').style.display = 'none';
         const note = document.getElementById('storeModalNote');
         note.innerHTML = '👁 <b>View only</b> — ye figures Store ki Inward entries se khud update hote hain.';
@@ -3183,23 +3465,57 @@
             if(storeMode === 'RECV' && storeEntry === p)
                 storeModalDocs_(pdfLinkRow_(links, 'PDF abhi nahi bana'));
         })().catch(err => console.warn('[MOBILE] receipt docs skipped:', err.message||err));
-        let rowsHtml = `<tr><td colspan="6" style="text-align:center;color:#999;">PO lines load nahi ho paayin</td></tr>`;
+        let rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">PO lines load nahi ho paayin</td></tr>`;
         try{
-            const q = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', p.id).order('line_no');
-            if(q.error) throw q.error;
-            const lines = q.data || [];
-            rowsHtml = lines.length ? lines.map((l,i)=>{
-                const o = pNum(l.ordered_qty), r = pNum(l.received_qty), left = Math.max(0, o - r);
-                const col = left <= 0 ? '#16a34a' : (r > 0 ? '#d97706' : '#64748b');
-                return `<tr>
-                    <td>${i+1}</td>
-                    <td><b>${escText(l.item_name||'')}</b></td>
-                    <td><b>${escText(nNum_(o))}</b></td>
-                    <td><b style="color:${col};">${escText(nNum_(r))}</b></td>
-                    <td>${escText(nNum_(left))}</td>
-                    <td>${escText(l.uom||'-')}</td>
-                </tr>`;
-            }).join('') : `<tr><td colspan="6" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+            /* Already loaded for the whole list (attachPoLinesToPos_), so the
+               modal normally opens without another round trip; refetched only
+               when that lookup was skipped or failed. */
+            let lines = p._lines;
+            if(!lines){
+                const q = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', p.id).order('line_no');
+                if(q.error) throw q.error;
+                lines = q.data || [];
+                p._lines = lines;   // and the card's figures catch up on the next paint
+            }
+            if(!lines.length){
+                rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+            }else{
+                const t = poLineTally_(lines);
+                rowsHtml = lines.map((l,i)=>{
+                    const o = pNum(l.ordered_qty), r = pNum(l.received_qty);
+                    // What this line still OWES. An over-receipt shows as 0
+                    // pending with an Excess badge, never as a negative that
+                    // could offset another line.
+                    const left = Math.max(0, o - r);
+                    const st = RECV_LINE_STATE[recvLineState_(l)] || RECV_LINE_STATE.NONE;
+                    return `<tr>
+                        <td>${i+1}</td>
+                        <td><b>${escText(l.item_name||'')}</b></td>
+                        <td><b>${escText(nNum_(o))}</b></td>
+                        <td><b style="color:${st.fg};">${escText(nNum_(r))}</b></td>
+                        <td><b style="color:${left > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(left))}</b></td>
+                        <td>${escText(l.uom||'-')}</td>
+                        <td><span style="background:${st.bg};color:${st.fg};border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:800;white-space:nowrap;">${st.txt}</span></td>
+                    </tr>`;
+                }).join('')
+                // The totals these lines add up to, and the verdict they
+                // produce — the same call that placed this PO in its section.
+                + `<tr style="background:#f1f5f9;font-weight:800;">
+                    <td colspan="2">TOTAL — ${t.itemsTotal} item(s)</td>
+                    <td>${escText(nNum_(t.ordered))}</td>
+                    <td style="color:#16a34a;">${escText(nNum_(t.received))}</td>
+                    <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(t.pending))}</td>
+                    <td></td>
+                    <td style="color:${poReceiptBucket(p) === 'received' ? '#16a34a' : (poReceiptBucket(p) === 'partial' ? '#d97706' : '#64748b')};">
+                        ${escText(poReceiptBucket(p) === 'received' ? 'Received' : (poReceiptBucket(p) === 'partial' ? 'Partial' : 'Pending'))}</td>
+                   </tr>`
+                + `<tr><td colspan="7" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
+                    + escText('ℹ️ Section har item ki pending dekh kar tay hota hai — '
+                        + (t.itemsPending ? t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty baaki hai.'
+                                          : 'saare items poore aa gaye hain.'))
+                    + (t.excess > 0 ? escText('  Excess: ' + nNum_(t.excess) + ' (kisi aur item ki kami poori nahi karta).') : '')
+                  + `</td></tr>`;
+            }
         }catch(err){ console.warn('[MOBILE] PO lines load failed:', err.message||err); }
         // The modal may have been closed while that query was in flight.
         if(storeMode === 'RECV' && storeEntry === p) document.getElementById('storeModalBody').innerHTML = rowsHtml;
