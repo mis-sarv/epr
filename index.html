@@ -856,6 +856,155 @@ body {
             text-align: center;
         }
 
+        /* ============================================================
+           PIN MODAL AT BODY LEVEL
+           ------------------------------------------------------------
+           #pwdGateModal is deliberately NOT inside #storeInterface any
+           more (see the comment on the element itself): that container
+           is display:none whenever the Purchase panel is open, which
+           made the PIN prompt impossible to show from there.
+
+           But .secure-modal-box, .form-control and .btn are all scoped
+           to #storeInterface, so a modal outside it would render as an
+           unstyled slab. These rules give that one modal its own copy
+           of exactly what it needs. Written as #pwdGateModal ... so
+           nothing else on the page is touched.
+        ============================================================ */
+        #pwdGateModal .secure-modal-box {
+            background: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            width: 420px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+            text-align: center;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+        #pwdGateModal .form-group { text-align: left; }
+        #pwdGateModal .form-control {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #0f172a;
+            background: #f8fafc;
+            outline: none;
+            height: 34px;
+            font-weight: 500;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
+        }
+        #pwdGateModal .form-control:focus {
+            border-color: #0284c7;
+            background: #fff;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02), 0 0 0 3px rgba(2,132,199,0.15);
+        }
+        #pwdGateModal .btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: inherit;
+        }
+        #pwdGateModal .btn-primary { background: #0284c7; color: #fff; }
+        #pwdGateModal .btn-primary:hover { background: #0369a1; }
+
+        /* ============================================================
+           INFORM TO REQUESTER — CONFIRM DIALOG (#fuConfirmModal)
+           Self-contained, like the PIN modal above: it sits outside
+           #storeInterface, so it cannot borrow that panel's styles.
+        ============================================================ */
+        /* Dead centre of the VIEWPORT, every time. Restated here rather than
+           left to .secure-modal-overlay: this dialog has to be reachable from
+           either panel, at any scroll position, and a confirm box that opens
+           at the top of a long page is one somebody scrolls past and misses.
+           place-items does the centring; overflow-y lets a tall dialog scroll
+           on a short screen instead of running off the bottom. */
+        #fuConfirmModal {
+            position: fixed; inset: 0;
+            display: none;
+            place-items: center;
+            overflow-y: auto; padding: 20px 16px; box-sizing: border-box;
+        }
+        #fuConfirmModal.open { display: grid; }
+        #fuConfirmModal .fu-dlg {
+            background: #fff; border-radius: 12px; width: 430px; max-width: 94vw;
+            box-shadow: 0 24px 48px -12px rgba(15,23,42,.45); overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0f172a;
+            margin: auto;
+        }
+        #fuConfirmModal .fu-dlg-head {
+            display: flex; gap: 12px; align-items: center;
+            padding: 16px 18px; background: #0f172a; color: #fff;
+        }
+        #fuConfirmModal .fu-dlg-icon { font-size: 26px; line-height: 1; }
+        #fuConfirmModal .fu-dlg-head h3 { margin: 0; font-size: 15px; font-weight: 800; }
+        #fuConfirmModal .fu-dlg-head p { margin: 2px 0 0; font-size: 11px; color: #94a3b8; font-weight: 600; }
+        #fuConfirmModal .fu-dlg-body { padding: 16px 18px; }
+        #fuConfirmModal .fu-dlg-rows { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        #fuConfirmModal .fu-dlg-rows td {
+            padding: 5px 0; font-size: 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top;
+        }
+        #fuConfirmModal .fu-dlg-rows td.k {
+            color: #64748b; font-weight: 700; font-size: 10px; text-transform: uppercase;
+            letter-spacing: .3px; width: 38%; white-space: nowrap; padding-right: 10px;
+        }
+        #fuConfirmModal .fu-dlg-rows td.v { font-weight: 700; word-break: break-word; }
+        /* The Inward row is what this dialog exists to show, so it is the one
+           that reads loudest. */
+        #fuConfirmModal .fu-dlg-rows tr.hi td.v { color: #be185d; }
+        #fuConfirmModal .fu-dlg-rows tr.hi td.k { color: #be185d; }
+        #fuConfirmModal .fu-dlg-note {
+            background: #fef3c7; border: 1px solid #fbbf24; border-radius: 6px;
+            padding: 8px 11px; font-size: 11px; color: #92400e; font-weight: 600;
+            margin-bottom: 13px; line-height: 1.5;
+        }
+        #fuConfirmModal .fu-dlg-note.danger { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+        #fuConfirmModal .fu-dlg-field label {
+            display: block; font-size: 10px; font-weight: 800; color: #475569;
+            text-transform: uppercase; letter-spacing: .3px; margin-bottom: 4px;
+        }
+        #fuConfirmModal .fu-dlg-field input {
+            width: 100%; box-sizing: border-box; height: 38px; padding: 0 12px;
+            border: 1.5px solid #cbd5e1; border-radius: 7px; background: #f8fafc;
+            font-size: 16px; letter-spacing: 3px; text-align: center; color: #0f172a;
+            font-family: inherit; outline: none;
+        }
+        #fuConfirmModal .fu-dlg-field input:focus { border-color: #0284c7; background: #fff; }
+        #fuConfirmModal .fu-dlg-err {
+            display: none; margin-top: 10px; background: #fef2f2; border: 1px solid #fca5a5;
+            border-radius: 6px; padding: 7px 11px; font-size: 11.5px; color: #dc2626;
+            font-weight: 700; text-align: center;
+        }
+        #fuConfirmModal .fu-dlg-foot {
+            display: flex; gap: 10px; padding: 13px 18px; background: #f8fafc;
+            border-top: 1px solid #e2e8f0;
+        }
+        #fuConfirmModal .fu-dlg-btn {
+            flex: 1; height: 36px; border-radius: 7px; border: none; cursor: pointer;
+            font-size: 12px; font-weight: 800; font-family: inherit;
+            text-transform: uppercase; letter-spacing: .4px;
+        }
+        #fuConfirmModal .fu-dlg-btn.cancel { background: #e2e8f0; color: #475569; flex: 0 0 110px; }
+        #fuConfirmModal .fu-dlg-btn.ok { background: #16a34a; color: #fff; }
+        #fuConfirmModal .fu-dlg-btn.ok:hover { background: #15803d; }
+        #fuConfirmModal .fu-dlg-btn.ok.danger { background: #dc2626; }
+        #fuConfirmModal .fu-dlg-btn.ok.danger:hover { background: #b91c1c; }
+        #fuConfirmModal .fu-dlg-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+        /* The Inward number used to be printed on this button. It is not any
+           more: the button now sits on the receipt's OWN row, directly across
+           from the Inward No. column, so repeating the number on it would just
+           say the same thing twice in the same line. */
+
         #storeInterface /* SIGNATURE CANVAS BOX STYLING */
         .canvas-container {
             border: 2px dashed #cbd5e1;
@@ -2102,21 +2251,37 @@ body {
         #fullPurchasePanel .po-followup-table .fu-nodoc { color: #94a3b8; }
         #fullPurchasePanel .po-followup-table .fu-tick { color: #15803d; font-weight: 800; font-size: 13px; }
         #fullPurchasePanel .po-followup-table .fu-dash { color: #b91c1c; font-weight: 800; }
+        /* Waiting on somebody else's app. Distinct from a dash, which means
+           "nothing to do here" — these say the step exists and has not happened. */
+        #fullPurchasePanel .po-followup-table .fu-wait { color: #94a3b8; font-size: 11px; font-weight: 700; white-space: nowrap; }
+        /* Merged (rowspan) cells sit against the rows they cover, so they get a
+           hairline on the right and sit top-aligned-but-centred vertically —
+           otherwise a PR spanning five receipts reads as five loose cells. */
+        #fullPurchasePanel .po-followup-table td[rowspan] { border-right: 1px solid #cbd5e1; }
         #fullPurchasePanel .po-followup-table .fu-status {
             display: inline-block; border-radius: 4px; padding: 2px 7px;
             font-size: 10px; font-weight: 800; white-space: nowrap;
         }
-        /* The three sign-off boxes. Styled as a real checkbox + caption so
-           it is obvious they are the only cells anyone can act on. */
-        #fullPurchasePanel .po-followup-table .fu-check {
+        /* Inform to Requester. A BUTTON, not a checkbox — see fuInformCell_:
+           a checkbox would show "done" before the PIN had even been asked for.
+           Nothing here changes until the write comes back. */
+        #fullPurchasePanel .po-followup-table .fu-flag {
             display: inline-flex; align-items: center; gap: 5px;
-            background: #fff; border: 1px solid #94a3b8; border-radius: 4px;
-            padding: 2px 7px; cursor: pointer; font-size: 10px; font-weight: 700;
-            color: #334155;
+            background: #fff; border: 1.5px solid #94a3b8; border-radius: 4px;
+            padding: 3px 9px; cursor: pointer; font-size: 10px; font-weight: 800;
+            color: #334155; white-space: nowrap; font-family: inherit;
         }
-        #fullPurchasePanel .po-followup-table .fu-check input { margin: 0; cursor: pointer; }
-        #fullPurchasePanel .po-followup-table .fu-check.done { background: #dcfce7; border-color: #16a34a; color: #15803d; }
-        #fullPurchasePanel .po-followup-table .fu-check.locked { opacity: .55; cursor: not-allowed; }
+        #fullPurchasePanel .po-followup-table .fu-flag:hover:not(:disabled) { background: #eff6ff; border-color: #2563eb; color: #1d4ed8; }
+        /* Done and locked. Non-Admins get the padlock and a disabled button;
+           an Admin gets the same green but an open padlock they can click. */
+        #fullPurchasePanel .po-followup-table .fu-flag.done {
+            background: #dcfce7; border-color: #16a34a; color: #15803d;
+        }
+        #fullPurchasePanel .po-followup-table .fu-flag:disabled { cursor: not-allowed; opacity: .9; }
+        #fullPurchasePanel .po-followup-table .fu-flag.done.admin { cursor: pointer; }
+        #fullPurchasePanel .po-followup-table .fu-flag.done.admin:hover { background: #fef2f2; border-color: #dc2626; color: #b91c1c; }
+        #fullPurchasePanel .po-followup-table .fu-lockicon { opacity: .75; }
+        #fullPurchasePanel .po-followup-table .fu-unlock { opacity: .85; }
         #fullPurchasePanel .po-followup-table tbody tr:hover { background: #f8fafc; }
         #fullPurchasePanel .req-row:hover { background: #ecfeff; }
         #fullPurchasePanel .req-row.selected { background: #e0f2fe; }
@@ -2180,6 +2345,22 @@ body {
 #itemMasterTable .im-col-resizer::after { content: ''; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 1px; background: #64748b; }
 #itemMasterTable .im-col-resizer:hover::after, #itemMasterTable .im-col-resizer.active::after { top: 0; bottom: 0; width: 2px; background: #38bdf8; }
 #itemMasterTable td { overflow-wrap: anywhere; }
+/* The item list's own scrollbar, on the right of the list rather than of the
+   page. Kept permanently visible (overflow-y:scroll, not auto) and widened,
+   because an overlay scrollbar that only appears mid-drag gives no clue that
+   there are 4000 more rows below. The gutter is reserved either way, so the
+   header columns do not shift the moment the list becomes scrollable. */
+#itemMasterBox { scrollbar-width: auto; scrollbar-color: #64748b #e2e8f0; }
+#itemMasterBox::-webkit-scrollbar { width: 14px; height: 12px; }
+#itemMasterBox::-webkit-scrollbar-track { background: #e2e8f0; border-radius: 7px; }
+#itemMasterBox::-webkit-scrollbar-thumb {
+    background: #64748b; border-radius: 7px; border: 3px solid #e2e8f0;
+}
+#itemMasterBox::-webkit-scrollbar-thumb:hover { background: #0f172a; }
+/* Collapsible "Add New Item". The caret rotates instead of swapping glyphs so
+   the header does not jump a pixel as it opens. */
+#mi_formToggle:hover { background: #e0f2fe; border-radius: 8px; }
+#mi_formToggle.open #mi_formCaret { transform: rotate(90deg); }
 /* ============================================================
    ITEM MASTER COLUMN FILTERS
    ------------------------------------------------------------
@@ -3195,11 +3376,24 @@ body {
 
                 <!-- ═══ ITEM MASTER SUB-TAB ═══ -->
                 <div id="itemMasterSub">
-                    <!-- Add Item Form -->
-                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:12px; margin-bottom:12px;">
-                        <!-- Header doubles as the edit indicator: while an item is loaded
-                             for editing it names the Item Code being changed. -->
-                        <div id="mi_formHeading" style="font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase; margin-bottom:8px;">&#10133; Add New Item</div>
+                    <!-- Add Item Form — collapsible.
+                         Most visits to this tab are to LOOK something up, not to add a
+                         part, and the form was eating two rows of screen before the list
+                         even started. Collapsed by default; the choice is remembered per
+                         browser, and loading an item for editing opens it again on its
+                         own (see editMasterItem). -->
+                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; margin-bottom:12px;">
+                        <!-- Header doubles as the toggle AND as the edit indicator: while
+                             an item is loaded for editing it names the Item Code being
+                             changed, so a collapsed form can never hide the fact that an
+                             edit is in progress. -->
+                        <div id="mi_formToggle" onclick="toggleAddItemForm()" title="Add New Item form kholein / band karein"
+                             style="display:flex; align-items:center; gap:8px; padding:9px 12px; cursor:pointer; user-select:none;">
+                            <span id="mi_formCaret" style="font-size:11px; color:#0369a1; transition:transform .15s;">&#9656;</span>
+                            <div id="mi_formHeading" style="flex:1; font-size:11px; font-weight:700; color:#0369a1; text-transform:uppercase;">&#10133; Add New Item</div>
+                            <span id="mi_formHint" style="font-size:10px; font-weight:700; color:#0ea5e9; white-space:nowrap;">Click to open</span>
+                        </div>
+                        <div id="mi_formBody" style="display:none; padding:0 12px 12px;">
                         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Item Name *</label><input type="text" class="form-control" id="mi_itemName" placeholder="e.g. MINK YARN"></div>
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Description</label><input type="text" class="form-control" id="mi_itemDesc" placeholder="e.g. 100GM CONE"></div>
@@ -3307,6 +3501,7 @@ body {
                                 <button class="btn" id="mi_cancelEditBtn" onclick="cancelItemEdit()" style="display:none; height:32px; font-size:11px; padding:0 10px; background:#e2e8f0; color:#475569;">&#10005;</button>
                             </div>
                         </div>
+                        </div><!-- /mi_formBody -->
                     </div>
                     <!-- Suggestions for Item Size / Material Type, rebuilt from what the
                          Item Master already holds (refreshItemAttributeDatalists_). They
@@ -3343,7 +3538,15 @@ body {
                          is invisible — the only clue would be a row count that looks
                          wrong, which is exactly how people conclude their data is gone. -->
                     <div id="imFilterChips" style="display:none; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                    <div class="table-container" style="max-height:calc(100vh - 320px); min-height:340px; overflow-y:auto;">
+                    <!-- The list takes whatever height is left on the screen, measured for
+                         real by fitItemListHeight_ rather than guessed at with a fixed
+                         calc(). That guess was what made the list a short window in the
+                         middle of the page: it could not know how tall the toolbar had
+                         wrapped, whether the filter chips were showing, or — now — whether
+                         the Add New Item form was open. The scrollbar on the right is
+                         widened and always drawn (see #itemMasterBox) so it reads as the
+                         list's own, not the page's. -->
+                    <div class="table-container" id="itemMasterBox" style="min-height:220px; overflow-y:scroll; overflow-x:auto;">
                         <table id="itemMasterTable" style="width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed;">
                             <thead><tr style="background:#0f172a; color:#fff; position:sticky; top:0;">
                                 <th style="padding:6px; width:4%;">#</th>
@@ -3963,26 +4166,6 @@ body {
     </div>
 
     <!-- ═══ v8: PASSWORD GATE MODAL ═══ -->
-    <div class="secure-modal-overlay" id="pwdGateModal" style="display:none; z-index:3100;">
-        <div class="secure-modal-box" style="max-width:400px; width:92vw;">
-            <div style="text-align:center; margin-bottom:16px;">
-                <div style="font-size:36px;">&#128272;</div>
-                <h3 style="margin:8px 0 4px; color:#0f172a; font-size:16px;" id="pwdGateTitle">Authorization Required</h3>
-                <p style="margin:0; font-size:11px; color:#64748b;" id="pwdGateSubtitle">Enter edit password to unlock this record</p>
-            </div>
-            <div style="background:#fef3c7; border:1px solid #fbbf24; border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:11px; color:#92400e; font-weight:600; white-space:pre-line;" id="pwdGateRecordInfo">Record: &mdash;</div>
-            <div class="form-group" style="margin-bottom:14px;">
-                <label style="font-size:10px; font-weight:700; color:#475569; text-transform:uppercase;">Edit Password</label>
-                <input type="password" id="pwdGateInput" class="form-control" placeholder="Enter edit password..." style="text-align:center; font-size:16px; letter-spacing:3px;" autocomplete="off">
-            </div>
-            <div id="pwdGateError" style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; padding:8px 12px; font-size:12px; color:#dc2626; font-weight:600; margin-bottom:12px; text-align:center;"></div>
-            <div style="display:flex; gap:10px;">
-                <button class="btn" id="pwdGateCancelBtn" style="flex:1; background:#cbd5e1; color:#1e293b;">Cancel</button>
-                <button class="btn btn-primary" id="pwdGateVerifyBtn" style="flex:1;">&#128275; Verify &amp; Edit</button>
-            </div>
-            <div style="margin-top:10px; font-size:10px; color:#94a3b8; text-align:center;">&#9888;&#65039; 3 wrong attempts = 5 min lockout. All attempts are logged.</div>
-        </div>
-    </div>
 
     <!-- ═══ v8: EDIT MODAL ═══ -->
     <div class="secure-modal-overlay" id="editModal" style="display:none; z-index:3200;">
@@ -4029,6 +4212,70 @@ body {
 
 
     </div>
+
+<!-- ═══ AUTHORIZATION PIN MODAL — body level, on purpose ═══════════════
+     This used to sit inside #storeInterface. activatePanel() hides that whole
+     element (display:none) whenever the Purchase panel is open, so a modal
+     nested inside it could not be shown from there however hard askSecret
+     tried: setting a descendant's own display does nothing while an ancestor
+     is hidden. The PIN prompt simply never appeared, askSecret's promise never
+     resolved, and every PIN-gated action in #fullPurchasePanel — the Follow-Up
+     Report's Inform to Requester among them — looked like a dead button.
+     Kept a sibling of both panels so it is reachable from either. ══════════ -->
+    <div class="secure-modal-overlay" id="pwdGateModal" style="display:none; z-index:3100;">
+        <div class="secure-modal-box" style="max-width:400px; width:92vw;">
+            <div style="text-align:center; margin-bottom:16px;">
+                <div style="font-size:36px;">&#128272;</div>
+                <h3 style="margin:8px 0 4px; color:#0f172a; font-size:16px;" id="pwdGateTitle">Authorization Required</h3>
+                <p style="margin:0; font-size:11px; color:#64748b;" id="pwdGateSubtitle">Enter edit password to unlock this record</p>
+            </div>
+            <div style="background:#fef3c7; border:1px solid #fbbf24; border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:11px; color:#92400e; font-weight:600; white-space:pre-line;" id="pwdGateRecordInfo">Record: &mdash;</div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label style="font-size:10px; font-weight:700; color:#475569; text-transform:uppercase;">Edit Password</label>
+                <input type="password" id="pwdGateInput" class="form-control" placeholder="Enter edit password..." style="text-align:center; font-size:16px; letter-spacing:3px;" autocomplete="off">
+            </div>
+            <div id="pwdGateError" style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; padding:8px 12px; font-size:12px; color:#dc2626; font-weight:600; margin-bottom:12px; text-align:center;"></div>
+            <div style="display:flex; gap:10px;">
+                <button class="btn" id="pwdGateCancelBtn" style="flex:1; background:#cbd5e1; color:#1e293b;">Cancel</button>
+                <button class="btn btn-primary" id="pwdGateVerifyBtn" style="flex:1;">&#128275; Verify &amp; Edit</button>
+            </div>
+            <div style="margin-top:10px; font-size:10px; color:#94a3b8; text-align:center;">&#9888;&#65039; 3 wrong attempts = 5 min lockout. All attempts are logged.</div>
+        </div>
+    </div>
+
+<!-- ═══ INFORM TO REQUESTER — CONFIRM DIALOG ════════════════════════════
+     Its own popup rather than the generic PIN box, because this one decision
+     needs the person to SEE what they are confirming: which PR, who asked for
+     it, and — the part that actually matters — which Inward the material came
+     in on. Telling the wrong requester their goods have arrived is the exact
+     mistake a bare "enter your PIN" prompt invites.
+     Body level, same as #pwdGateModal and for the same reason: #storeInterface
+     is display:none while the Purchase panel is open. ════════════════════ -->
+<div class="secure-modal-overlay" id="fuConfirmModal" style="display:none; z-index:3400;">
+    <div class="fu-dlg">
+        <div class="fu-dlg-head">
+            <div class="fu-dlg-icon" id="fuDlgIcon">&#128226;</div>
+            <div>
+                <h3 id="fuDlgTitle">Inform to Requester — Confirm</h3>
+                <p id="fuDlgSubtitle">PR &mdash;</p>
+            </div>
+        </div>
+        <div class="fu-dlg-body">
+            <table class="fu-dlg-rows" id="fuDlgRows"></table>
+            <div class="fu-dlg-note" id="fuDlgNote"></div>
+            <div class="fu-dlg-field">
+                <label id="fuDlgPinLabel">PIN</label>
+                <input type="password" id="fuDlgPin" placeholder="Enter PIN" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="fu-dlg-err" id="fuDlgError"></div>
+        </div>
+        <div class="fu-dlg-foot">
+            <button type="button" class="fu-dlg-btn cancel" id="fuDlgCancelBtn">Cancel</button>
+            <button type="button" class="fu-dlg-btn ok" id="fuDlgOkBtn">&#9989; Confirm</button>
+        </div>
+    </div>
+</div>
+
 <section id="fullPurchasePanel" class="main-panel" style="display:none;">
 
     <header>
@@ -4383,7 +4630,7 @@ body {
                     <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto;">
                         <div class="form-group">
                             <label>Search (PR / PO / Inward / Requester / Vendor)</label>
-                            <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR/26-27/596 or GOURAV">
+                            <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR608, PO793, 1913 ya GOURAV" title="Chhota number (PR608) aur poora number (PR/26-27/608) — dono se search chalti hai">
                         </div>
                         <div class="form-group">
                             <label>PO Status</label>
@@ -4421,10 +4668,20 @@ body {
                         <span class="totals-pill"><span class="lbl">Requester Informed</span><span class="val" id="p_poRepInformed">0</span></span>
                     </div>
 
-                    <div style="font-size:11px;color:#64748b;margin:-4px 0 8px;">
-                        &#128196; PR No. / PO No. / Inward No. par click karke uski PDF khulti hai &middot;
-                        &#9745; Inform to Requester, Bill Checked by GM aur Bill Checked by MD tick karne par Role PIN maanga jayega &mdash; baaki saari details apne aap bharti hain.
+                    <div style="font-size:11px;color:#64748b;margin:-4px 0 8px;line-height:1.6;">
+                        &#128196; Number chhote roop me dikhte hain (<b>PR/26-27/608 &rarr; PR608</b>, <b>PO/U-2/793 &rarr; PO793</b>,
+                        <b>SIHF-II/2026-27/1913 &rarr; 1913</b>, <b>NB/2/2026-27/1250 &rarr; NB1250</b>) &mdash;
+                        poora number hover par dikhta hai, aur click karne par us document ki PDF khulti hai.<br>
+                        &#8681; Ek PR ke kai PO hon ya ek PO ke kai Inward, to har PO / Inward ki apni row banti hai; PR aur PO wale columns un rows par merge rehte hain.<br>
+                        &#9745; Sirf <b>Inform to Requester</b> haath se tick hota hai &mdash; apne role ka PIN lagta hai, aur
+                        tick hote hi wo <b>&#128274; lock</b> ho jaata hai; hatane ke liye <b>Admin login + Admin PIN</b> chahiye.
+                        <b>MD Approved</b>, <b>PO Sent to Vendor</b> aur <b>Bill Checked by GM / MD</b> mobile app ke
+                        PO Sender aur Store Check se apne aap update hote hain.
                     </div>
+                    <!-- Link audit. Silent when every PO reaches its PR through its own
+                         lines, which is the only way the two can be trusted to match.
+                         Speaks up the moment something had to be guessed at. -->
+                    <div id="p_poRepDiag" style="display:none; font-size:11px; margin:0 0 8px; padding:7px 10px; border-radius:6px; background:#fffbeb; border:1px solid #fde68a; color:#92400e;"></div>
 
                     <div class="table-container" style="max-height: 540px;">
                         <table class="po-followup-table">
@@ -4434,14 +4691,15 @@ body {
                                     <th style="background:#fde9d9;">PR Requested By</th>
                                     <th style="background:#d9ead3; text-align:center;">Vendor Info.</th>
                                     <th style="background:#d9ead3; text-align:center;">PO Generate</th>
-                                    <th style="background:#fbd5c0;">PO No.</th>
+                                    <th style="background:#fbd5c0;" title="Hover karke dekhein is PO par is PR ke kaunse item hain">PO No.</th>
+                                    <th style="background:#fbd5c0;">Vendor</th>
                                     <th style="background:#d9ead3; text-align:center;">MD Approved</th>
-                                    <th style="background:#d9ead3; text-align:center;">PO Sent to Vendor</th>
+                                    <th style="background:#d9ead3; text-align:center;" title="mobile app me PO Sender ke WhatsApp par bhejte hi apne aap ✔ ho jata hai">PO Sent to Vendor</th>
                                     <th style="background:#e2efda;">PO Status</th>
                                     <th style="background:#f9cedc;">Inward No.</th>
                                     <th style="background:#dbe5f1; text-align:center;">Inform to Requester</th>
-                                    <th style="background:#dbe5f1; text-align:center;">Bill Checked by GM</th>
-                                    <th style="background:#dbe5f1; text-align:center;">Bill Checked by MD</th>
+                                    <th style="background:#dbe5f1; text-align:center;" title="mobile app ke Store Check tab me GM ke check karte hi apne aap ✔ ho jata hai">Bill Checked by GM</th>
+                                    <th style="background:#dbe5f1; text-align:center;" title="GM ke check ke baad MD ke Store Check karte hi apne aap ✔ ho jata hai">Bill Checked by MD</th>
                                 </tr>
                             </thead>
                             <tbody id="p_poReportBody"></tbody>
@@ -5916,6 +6174,10 @@ function updatePoNumberBtnText(){
 const INW_PR_PURCHASER='FIELD BOY';
 let sarvPrCatalog=[];
 let sarvSelectedPrNos=[];
+/* Pending qty per PR, keyed by req_no: {qty, items, unknown?}. `qty` is the sum
+   of each LINE's own shortfall and `items` how many lines still have one — a PR
+   is offered in the picker only while qty > 0. Filled by prPendingByReq_. */
+let sarvPrPending={};
 function getSelectedPrNos(){ return [...sarvSelectedPrNos]; }
 // What goes into the saved record's req_no — comma-joined, like po_number.
 function inwPrSelected_(){
@@ -5969,30 +6231,83 @@ async function loadPrDropdown_(){
   const q=await SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(400);
   if(q.error){console.warn('[SARV] PR dropdown unavailable:',q.error.message);return}
   const want=INW_PR_PURCHASER.toUpperCase();
-  sarvPrCatalog=(q.data||[]).filter(p=>
+  const candidates=(q.data||[]).filter(p=>
     // FIELD BOY's own requirements only — see INW_PR_PURCHASER above.
     String(p.purchaser_name||'').trim().toUpperCase()===want
     // A Cancelled or Rejected requirement is settled; nothing is received on it.
     && !['Cancelled','Rejected'].includes(String(p.status||''))
   );
+  /* A PR whose every item has already come in full has nothing left to
+     receive, so it is dropped from the list rather than offered and then
+     rejected at Submit. Pending is counted PER ITEM and only shortfalls add up
+     — one item received in excess must not cancel out another that is still
+     owed, or a PR with real pending work would disappear.
+
+     The entry being edited is excluded from the "already received" history, so
+     reopening a receipt never makes its own PR vanish from under it. */
+  let pending={};
+  try{ pending=await prPendingByReq_(candidates,sarvEditingInwardId); }
+  catch(e){
+    // A lookup that cannot run must not empty the list — hiding a PR that has
+    // real work left is far worse than listing one that is finished. `unknown`
+    // says so, and the picker prints the PR without a pending count.
+    console.warn('[SARV] PR pending lookup skipped — showing all open PRs:',e.message||e);
+    candidates.forEach(p=>{pending[p.req_no]={unknown:true,qty:0,items:0}});
+  }
+  sarvPrPending=pending;
+  sarvPrCatalog=candidates.filter(p=>{
+    const v=pending[p.req_no];
+    return !v||v.unknown||pNum(v.qty)>0;
+  });
   // Drop any ticked PR that is no longer on offer.
   sarvSelectedPrNos=sarvSelectedPrNos.filter(no=>sarvPrCatalog.some(p=>p.req_no===no));
   renderPrNumberPanel();
+}
+async function prPendingByReq_(prs,excludeInwardId){
+  const out={};
+  const list=(prs||[]).filter(p=>p&&p.id);
+  list.forEach(p=>{out[p.req_no]={qty:0,items:0}});
+  if(!list.length)return out;
+  const lq=await SB.from('purchase_requirement_lines')
+    .select('requirement_id,item_id,requested_qty').in('requirement_id',list.map(p=>p.id));
+  if(lq.error)throw lq.error;
+  const already=await prReceivedQtys_(list.map(p=>p.req_no),excludeInwardId);
+  const noById={};list.forEach(p=>{noById[String(p.id)]=p.req_no});
+  (lq.data||[]).forEach(l=>{
+    const no=noById[String(l.requirement_id)];if(!no)return;
+    const got=(already[String(no).toUpperCase()+'|'+String(l.item_id||'')]||{}).qty||0;
+    const short=Math.max(0,pNum(l.requested_qty)-pNum(got));
+    if(short>0){out[no].qty+=short;out[no].items++;}
+  });
+  return out;
 }
 /* Checkbox list, same shape and behaviour as the PO Number picker — one receipt
    can cover several FIELD BOY requirements, so this is a multi-pick. */
 function renderPrNumberPanel(){
   const panel=byId('prNumberPanel');if(!panel)return;
   if(!sarvPrCatalog.length){
+    // Said precisely: there may well be PRs, all of them fully received. That
+    // reads very differently from "no PRs exist" when somebody is hunting for
+    // one they raised yesterday.
     panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
-      +escText(INW_PR_PURCHASER)+' ke naam par koi open PR nahi hai.</div>';
+      +escText(INW_PR_PURCHASER)+' ki koi aisi PR nahi hai jiska maal abhi aana baaki ho.<br>'
+      +'<span style="color:#64748b;">Jo PR poori receive ho chuki hain wo yahan nahi dikhtin.</span></div>';
   }else{
     panel.innerHTML=sarvPrCatalog.map(p=>{
       const checked=sarvSelectedPrNos.includes(p.req_no)?' checked':'';
       const sub=[p.department||'',p.status||'Pending',p.request_date||''].filter(Boolean).join(' — ');
+      /* How much is still owed on this PR. Shown because the list now hides
+         finished PRs: without it a short list looks like missing data, and with
+         it the reason is on the row itself. */
+      const pend=sarvPrPending[p.req_no];
+      const pendTxt=(pend&&!pend.unknown&&pend.items)
+        ? '<span style="margin-left:auto;background:#fef3c7;color:#92400e;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:800;white-space:nowrap;">'
+          +pend.items+' item · '+nNum_(pend.qty)+' pending</span>'
+        : '';
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
         +'<input type="checkbox" class="sarv-pr-opt" value="'+escText(p.req_no)+'"'+checked+'>'
         +'<span>'+escText(p.req_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(sub)+'</span></span>'
+        +pendTxt
         +'</label>';
     }).join('');
   }
@@ -6037,14 +6352,68 @@ function renderInwPrDetails_(prs,lineCount){
     +' · Rate aur GST bill se bharein — PR me rate nahi hota.';
   box.style.display='block';
 }
+/* How much of each PR item has ALREADY been booked in, before this entry.
+   The PO side gets this for free from purchase_order_lines.received_qty; a
+   requirement has no such counter, so it is summed off the receipts themselves.
+
+   Exactness, and its one limit:
+     • inward_lines.req_no, when the database has that column, says which PR a
+       LINE belongs to — that is exact, and it is what gets used.
+     • Without it the receipt's header req_no is the only link. On a receipt
+       covering ONE PR that is still exact. On a receipt covering several, a
+       line cannot be attributed to one of them, so it is counted against each —
+       which can overstate "already received". Running
+       INWARD_PR_LINE_LINK_MIGRATION.sql removes that case entirely.
+   Cancelled receipts are skipped: their lines are deleted on cancel anyway,
+   this is the same belt-and-braces the stock views use. */
+async function prReceivedQtys_(prNos,excludeInwardId){
+  const want=new Set((prNos||[]).map(n=>String(n||'').trim().toUpperCase()).filter(Boolean));
+  const out={};
+  if(!want.size||!SB_READY)return out;
+  const add=(prNo,itemId,qty,weight)=>{
+    if(!prNo||!itemId)return;
+    const k=prNo+'|'+itemId;
+    const o=out[k]=out[k]||{qty:0,weight:0};
+    o.qty+=pNum(qty);o.weight+=pNum(weight);
+  };
+  try{
+    // Only receipts that name a PR at all — on a store running mostly on POs
+    // that is a small slice of the table.
+    const run=cols=>SB.from('inward_entries').select('id,req_no,notes,inward_lines('+cols+')').not('req_no','is',null);
+    let q=await run('item_id,qty,weight,req_no');
+    // A database without inward_lines.req_no rejects the whole select, not just
+    // that column, so the narrower shape is tried before giving up.
+    if(q.error&&/req_no|column/i.test(q.error.message||''))q=await run('item_id,qty,weight');
+    if(q.error)throw q.error;
+    (q.data||[]).forEach(e=>{
+      // The entry being edited must not count itself as history.
+      if(excludeInwardId&&String(e.id)===String(excludeInwardId))return;
+      if(isStoreRecordCancelled_(e.notes))return;
+      const onEntry=String(e.req_no||'').split(',').map(s=>s.trim().toUpperCase()).filter(n=>want.has(n));
+      if(!onEntry.length)return;
+      (e.inward_lines||[]).forEach(l=>{
+        const own=String(l.req_no||'').trim().toUpperCase();
+        if(own&&want.has(own)){add(own,l.item_id,l.qty,l.weight);return;}   // exact
+        onEntry.forEach(pr=>add(pr,l.item_id,l.qty,l.weight));              // header-level
+      });
+    });
+  }catch(e){
+    // A lookup that cannot run means the strip shows 0 already-received, which
+    // is visibly "no history" rather than a wrong number.
+    console.warn('[SARV] PR received-qty lookup skipped:',e.message||e);
+  }
+  return out;
+}
 /* Fills the item rows from a PR, the PO loader's counterpart. Three deliberate
    differences:
    • Supplier Name is NOT locked and NOT filled — a counter purchase can be from
      any shop, and the PR names no vendor.
    • Rate comes from the approved vendor's quote when the PR carries one, else 0
      for the bill to be typed in. A PR has no price of its own.
-   • No per-row PO status strip and no setInwardPoLock(true) — there is no
-     ordered / received ledger to post back against. */
+   • setInwardPoLock(true) is NOT applied — there is no ordered ledger to post
+     back against, so item names stay editable.
+   What it DOES share with the PO loader is the per-row status strip: Required /
+   Pending / Received / Excess against the requirement line. */
 async function loadPrsIntoInward(){
   const prs=getSelectedPrNos().map(n=>lookupPr_(n)).filter(Boolean);
   const tb=byId('itemTableBody');
@@ -6070,6 +6439,9 @@ async function loadPrsIntoInward(){
   // Same Item-Master-only resolve the PO loader uses, so Description and
   // Category are the Master's word rather than a frozen copy on the line.
   const itemOf=await poLineItemResolver_(allLines);
+  // What has already come in against these PRs — the "Received" figure on each
+  // row's strip. Fetched once for all ticked PRs rather than per line.
+  const already=await prReceivedQtys_(prs.map(p=>p.req_no),sarvEditingInwardId);
   const unresolved=[];
   let total=0;
   prs.forEach(pr=>{
@@ -6081,9 +6453,18 @@ async function loadPrsIntoInward(){
       const it=itemOf(line);
       if(!it.id)unresolved.push(line.item_name||'(no name)');
       if(it.id||line.item_id)tr.dataset.itemId=it.id||line.item_id;
-      // Which requirement this row came from — shown nowhere yet, but it is what
-      // any later per-line PR link would be built on.
+      // Which requirement this row came from. Drives the per-row PR strip, goes
+      // into the printed PR Reference, and is saved onto the inward line.
       tr.dataset.reqNo=pr.req_no||'';
+      /* The three figures the strip needs beyond the qty being typed:
+         what the PR asked for, and what has already been received against it.
+         Mirrors the poOrderedQty / poReceivedQty datasets on a PO row. */
+      tr.dataset.prRequiredQty=pNum(line.requested_qty);
+      tr.dataset.prRequiredWeight=pNum(line.gross_weight);
+      { const k=String(pr.req_no||'').toUpperCase()+'|'+(it.id||line.item_id||'');
+        const a=already[k]||{qty:0,weight:0};
+        tr.dataset.prReceivedQty=a.qty;
+        tr.dataset.prReceivedWeight=a.weight; }
       const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};
       // The approved vendor's quote, if this PR was ever quoted. A FIELD BOY PR
       // never is, so this lands on 0 and the bill's rate is typed in.
@@ -6100,6 +6481,10 @@ async function loadPrsIntoInward(){
       set('.rate-field',rate);
       set('.item-gst-field',pNum(it.gst_pct));
       if(line.gross_weight!=null&&line.gross_weight!=='')set('.weight-field',pNum(line.gross_weight));
+      // The PR status strip, directly under its item row — the same sub-row a
+      // PO receipt gets. Added last, once the datasets and the qty are in, so
+      // its first render already has real figures.
+      if(tb&&pNum(line.requested_qty)>0)appendPoInfoRow(tr,tb);
     });
   });
   if(!total&&tb)addNewRow();   // every ticked PR was empty — leave a usable row
@@ -6294,6 +6679,12 @@ function poStripInputFromRow_(tr){
     poNo:tr.dataset.poNo||'',
     poOrderedQty:tr.dataset.poOrderedQty, poReceivedQty:tr.dataset.poReceivedQty,
     poOrderedWeight:tr.dataset.poOrderedWeight, poReceivedWeight:tr.dataset.poReceivedWeight,
+    // The PR side of the same row. Only one of the two is ever filled — the PR
+    // picker is hidden the moment a PO is ticked — so docStripParts_ can simply
+    // try PO first and fall through to PR.
+    prNo:tr.dataset.reqNo||'',
+    prRequiredQty:tr.dataset.prRequiredQty, prReceivedQty:tr.dataset.prReceivedQty,
+    prRequiredWeight:tr.dataset.prRequiredWeight, prReceivedWeight:tr.dataset.prReceivedWeight,
     qty:pNum(tr.querySelector('.qty-field')?.value),
     weight:pNum(tr.querySelector('.weight-field')?.value)
   };
@@ -6304,27 +6695,30 @@ function renderPoInfoRow(tr,info){
   // the strip on screen and the sub-row on the print can never disagree. Qty
   // and Weight both count what is being typed right now, so Pending / Excess
   // move as the row is filled in.
-  const p=poStripParts_(poStripInputFromRow_(tr));
-  // Nothing measurable to report (no PO number, or an ordered qty of 0): the
-  // strip is hidden rather than left as an empty grey band.
+  const p=docStripParts_(poStripInputFromRow_(tr));
+  // Nothing measurable to report (no PO / PR number, or an ordered qty of 0):
+  // the strip is hidden rather than left as an empty grey band.
   if(!p){cell.innerHTML='';info.style.display='none';return;}
   info.style.display='';
   const pill=(lbl,val,color)=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
     +'<span style="color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+lbl+'</span>'
     +'<b style="color:'+color+';font-size:11px;">'+val+'</b></span>';
-  const tag=t=>'<span style="color:#1d4ed8;font-weight:800;font-size:10px;">'+escText(t)+'</span>';
+  // PR strips are green so the two kinds of receipt are told apart at a glance
+  // without having to read the number.
+  const accent=p.kind==='PR'?'#15803d':'#1d4ed8';
+  const tag=t=>'<span style="color:'+accent+';font-weight:800;font-size:10px;">'+escText(t)+'</span>';
   const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
     +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
   cell.innerHTML=line(false,
-      tag(p.poNo||'—')
-      +pill('Order Qty',p.ordered,'#0f172a')
+      tag(p.tag||'—')
+      +pill(p.ordLabel,p.ordered,'#0f172a')
       +pill('Pending Qty',p.pending,p.pending>0?'#b45309':'#16a34a')
       +pill('Received Qty',p.received,'#0f766e')
       +pill('Excess Qty',p.excess,p.excess>0?'#dc2626':'#94a3b8'))
     // Weight on its own line under the quantities, in the same order.
     +(p.hasWeight?line(true,
       tag('Weight (KGS)')
-      +pill('Order Wt',nNum_(p.ordWt),'#0f172a')
+      +pill(p.ordWtLabel,nNum_(p.ordWt),'#0f172a')
       +pill('Pending Wt',nNum_(p.pendWt),p.pendWt>0?'#b45309':'#16a34a')
       +pill('Received Wt',nNum_(p.recWt),'#0f766e')
       +pill('Excess Wt',nNum_(p.excWt),p.excWt>0?'#dc2626':'#94a3b8')):'');
@@ -6878,13 +7272,29 @@ async function verifyEditPassword(reason){
   return true;
 }
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
-function inwardPoOverrides(rows){
+/* Everything this receipt does that goes BEYOND the document it is booked
+   against. Each one needs the Edit Password before it can be saved.
+
+   Two reasons, and both are read through docStripParts_ — the same function
+   that draws the Excess figure on the row's sub-row and prints it on the PDF.
+   So the rule is exactly what the user can already see: if the strip says
+   Excess, the save asks for a password. Nothing to keep in step by hand.
+
+   • EXCESS QTY — more than the PO's or the PR's pending quantity. A PR
+     receipt is held to the same rule a PO receipt is; previously only POs
+     were checked, so a "without PO" entry could over-receive silently.
+   • RATE — a PO line's agreed price changed on the way in. PR has no agreed
+     price (the bill's rate is typed in), so this one is PO-only. */
+function inwardDocOverrides(rows){
   const out=[];
-  rows.forEach(r=>{
-    if(!r.poLineId)return;
-    const pending=Math.max(0,pNum(r.poOrderedQty)-pNum(r.poReceivedQty));
-    if(pNum(r.qty)>pending)out.push(r.name+': qty '+pNum(r.qty)+' > pending '+pending);
-    if(r.poUnitPrice!=null&&r.poUnitPrice!==''&&Math.abs(pNum(r.rate)-pNum(r.poUnitPrice))>0.001)
+  (rows||[]).forEach(r=>{
+    const p=docStripParts_(r);
+    if(p&&p.excess>0){
+      const pending=Math.max(0,p.ordered-p.already);
+      out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
+        +', pending sirf '+pending+'  (excess '+p.excess+')');
+    }
+    if(r.poLineId&&r.poUnitPrice!=null&&r.poUnitPrice!==''&&Math.abs(pNum(r.rate)-pNum(r.poUnitPrice))>0.001)
       out.push(r.name+': rate '+pNum(r.rate)+' ≠ PO rate '+pNum(r.poUnitPrice));
   });
   return out;
@@ -6952,6 +7362,10 @@ function activatePanel(id){
     }
   }
   // ── Auto-load master data when navigating to masterDataPanel ─
+  /* Layout first, and outside the SB_READY gate: the Item Master tab is the one
+     shown by default here, so its Add form and list height have to be set up
+     even on a visit where no data loads. */
+  if(id==='masterDataPanel'){initAddItemForm_();fitItemListHeight_();}
   if(id==='masterDataPanel'&&SB_READY){
     loadItemMaster().catch(()=>{});
     loadSupplierMaster().catch(()=>{});
@@ -7389,6 +7803,10 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
     btn.style.color=active?'#0369a1':'#64748b';
     btn.style.borderBottom=active?'2px solid #0284c7':'none';
   });
+  /* Before the SB_READY gate on purpose: the Add form's remembered state and
+     the list's height are pure layout, and a panel that is only usable once
+     Supabase answers would otherwise open as a letterbox. */
+  if(id==='itemMasterSub'){initAddItemForm_();fitItemListHeight_();}
   if(!SB_READY)return;
   if(id==='itemMasterSub')    loadItemMaster().catch(()=>{});
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
@@ -8066,6 +8484,63 @@ let sarvItemMasterRows=[];      // [{it, inQty, outQty, bal, catKey}]
 // memory instead of refetching on every keystroke — same pattern as
 // sarvItemMasterRows / renderItemMasterTable above.
 let sarvSupplierMasterRows=[], sarvEmployeeMasterRows=[], sarvMachineMasterRows=[];
+
+/* ================================================================
+   ITEM MASTER — COLLAPSIBLE ADD FORM + FULL-HEIGHT LIST
+   ----------------------------------------------------------------
+   Two halves of the same idea: this tab is opened far more often to
+   LOOK something up than to add a part, so the list gets the screen
+   and the form gets out of the way until it is asked for.
+================================================================ */
+const IM_ADD_FORM_KEY='sarv_im_addform_open';
+function isAddItemFormOpen_(){
+  const b=byId('mi_formBody');
+  return !!b&&b.style.display!=='none';
+}
+/* open===undefined flips it. remember===false opens it WITHOUT changing the
+   saved preference — that is for the Edit button, which has to show the form
+   whatever the user normally keeps it at, but should not quietly decide they
+   now want it open every visit. The list is re-fitted afterwards, because the
+   form opening or closing is exactly what changes how much room is left. */
+window.setAddItemForm=function(open,remember){
+  const body=byId('mi_formBody'),head=byId('mi_formToggle'),hint=byId('mi_formHint');
+  if(!body)return;
+  const want=(open===undefined)?!isAddItemFormOpen_():!!open;
+  body.style.display=want?'block':'none';
+  if(head)head.classList.toggle('open',want);
+  if(hint)hint.textContent=want?'Click to close':'Click to open';
+  if(remember!==false){try{localStorage.setItem(IM_ADD_FORM_KEY,want?'1':'0');}catch(e){}}
+  fitItemListHeight_();
+};
+window.toggleAddItemForm=function(){setAddItemForm();};
+/* Restores the remembered state. Default CLOSED on a browser that has never
+   been told otherwise — the list is the reason people come here. */
+function initAddItemForm_(){
+  let open=false;
+  try{open=localStorage.getItem(IM_ADD_FORM_KEY)==='1';}catch(e){}
+  setAddItemForm(open);
+}
+/* Gives the item list every pixel left below it, measured rather than guessed.
+   A fixed calc(100vh - 320px) could not know how tall the toolbar had wrapped
+   on a narrow window, whether the filter chips were showing, or whether the Add
+   form was open — so it was either too short (a letterbox in the middle of the
+   page) or too tall (the last rows unreachable under the viewport).
+   Called on load, on every toggle, on resize, and whenever the tab is shown. */
+function fitItemListHeight_(){
+  const box=byId('itemMasterBox');
+  if(!box||!box.offsetParent)return;        // tab not visible — nothing to measure
+  const top=box.getBoundingClientRect().top;
+  // Breathing room under the table so the card's own border/padding is not
+  // pressed against the bottom of the window.
+  const h=Math.max(220,Math.round(window.innerHeight-top-24));
+  /* maxHeight only, never a fixed height: a short list should shrink to its
+     rows rather than leave a tall empty box under them. The scrollbar gutter
+     is reserved regardless (overflow-y:scroll in the CSS), so the columns do
+     not shift when the list crosses from fitting to not fitting. */
+  box.style.maxHeight=h+'px';
+}
+window.addEventListener('resize',fitItemListHeight_);
+
 /* ================================================================
    ITEM MASTER — PER-COLUMN FILTERS (Excel-style, and DEPENDENT)
    ----------------------------------------------------------------
@@ -8777,6 +9252,9 @@ window.renderItemMasterTable=function(){
   }
   updateItemMasterSortIndicators_();
   imRenderFilterIndicators_();
+  // The chip bar appears and disappears with the filters, which moves the top
+  // of the list — so the height is re-fitted on every render, not just on load.
+  fitItemListHeight_();
   const activeCols=imActiveCols_();
   const filterActive=activeCols.length>0||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
@@ -9036,6 +9514,11 @@ window.editMasterItem=function(id){
   if(head)head.innerHTML='&#9999;&#65039; Editing Item — <span style="color:#b45309;">'+escText(it.item_code||'')+'</span>';
   const btn=byId('addItemBtn');if(btn)btn.innerHTML='&#128190; Update Item';
   const cancel=byId('mi_cancelEditBtn');if(cancel)cancel.style.display='';
+  // The form may be collapsed — an edit that filled fields nobody could see
+  // would look like the Edit button did nothing. Opened without remembering,
+  // so the user's normal preference survives the edit (cancelItemEdit puts it
+  // back).
+  setAddItemForm(true,false);
   byId('mi_itemName')?.scrollIntoView({behavior:'smooth',block:'center'});
   showToast('✏️ '+(it.item_code||it.name)+' edit ke liye khula — badlaav karke Update Item dabayein');
 };
@@ -9059,6 +9542,9 @@ window.cancelItemEdit=function(){
   const head=byId('mi_formHeading');if(head)head.innerHTML='&#10133; Add New Item';
   const btn=byId('addItemBtn');if(btn)btn.innerHTML='&#10133; Add Item';
   const cancel=byId('mi_cancelEditBtn');if(cancel)cancel.style.display='none';
+  // Back to however the user normally keeps the form — editMasterItem opened it
+  // without remembering, so this is what undoes that.
+  initAddItemForm_();
 };
 
 /* Rewrites the item_name copy that purchase_order_lines keeps. Rows are matched
@@ -10789,6 +11275,43 @@ async function loadInwardForEdit(id,no){
       }});
     }catch(err){console.warn('[SARV] PO line figures for edit skipped:',err.message||err);}
   }
+  /* The same rebuild for a PR receipt, for the same reason: without it a
+     reopened "without PO" entry comes back with its PR number and nothing
+     behind it, so prStripParts_ bails on required<=0 and the regenerated PDF
+     prints no PR sub-row at all.
+
+     The requirement's own lines give Required Qty / Weight, matched to each
+     saved inward line by item. prReceivedQtys_ gives what came in BEFORE this
+     entry — it is told to leave this record out, so reopening a receipt never
+     counts its own quantities as history. */
+  const prNos=String(e.req_no||'').split(',').map(s=>s.trim()).filter(Boolean);
+  const prLineInfo={};
+  let prAlready={};
+  if(prNos.length){
+    try{
+      const pq=await SB.from('purchase_requirements').select('id,req_no').in('req_no',prNos);
+      if(pq.error)throw pq.error;
+      const prIds=(pq.data||[]).map(p=>p.id);
+      const noById={};(pq.data||[]).forEach(p=>{noById[p.id]=p.req_no||''});
+      if(prIds.length){
+        const pl=await SB.from('purchase_requirement_lines')
+          .select('requirement_id,item_id,requested_qty,gross_weight').in('requirement_id',prIds);
+        if(pl.error)throw pl.error;
+        (pl.data||[]).forEach(l=>{
+          if(!l.item_id)return;
+          // Keyed by item alone: a saved inward line records which item it is,
+          // not which requirement line, so the item is the only handle back.
+          const k=String(l.item_id);
+          const cur=prLineInfo[k]||{prNo:noById[l.requirement_id]||'',required:0,reqWt:0};
+          cur.required+=pNum(l.requested_qty);
+          cur.reqWt+=pNum(l.gross_weight);
+          if(!cur.prNo)cur.prNo=noById[l.requirement_id]||'';
+          prLineInfo[k]=cur;
+        });
+      }
+      prAlready=await prReceivedQtys_(prNos,id);
+    }catch(err){console.warn('[SARV] PR line figures for edit skipped:',err.message||err);}
+  }
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
     addNewRow();
@@ -10835,11 +11358,31 @@ async function loadInwardForEdit(id,no){
     const rate=pNum(line.rate),tot=pNum(line.line_total);
     const byQty=Math.abs(rate*pNum(line.qty)-tot), byWt=Math.abs(rate*pNum(line.weight)-tot);
     sr('.bill-basis-field',line.bill_basis||((pNum(line.weight)>0&&byWt<byQty)?'WEIGHT':'QTY'));
-    /* The PO strip on screen as well, now that the figures behind it are
+    /* The PR figures behind this line, when the receipt was booked without a
+       PO. Set after the fields above so the strip's first render already sees
+       the restored qty / weight. inward_lines.req_no is preferred where the
+       database has it — it names the line's OWN requirement; otherwise the
+       header's single PR is the answer, and with several PRs on one receipt
+       there is nothing to pick between them, so the strip is left off rather
+       than guessed at. */
+    if(!pi&&prNos.length){
+      const info=prLineInfo[String(line.item_id||'')];
+      const own=String(line.req_no||'').trim();
+      const prNo=own||(prNos.length===1?prNos[0]:(info&&info.prNo)||'');
+      if(info&&info.required>0&&prNo){
+        tr.dataset.reqNo=prNo;
+        tr.dataset.prRequiredQty=info.required;
+        tr.dataset.prRequiredWeight=info.reqWt;
+        const a=prAlready[prNo.toUpperCase()+'|'+String(line.item_id||'')]||{qty:0,weight:0};
+        tr.dataset.prReceivedQty=a.qty;
+        tr.dataset.prReceivedWeight=a.weight;
+      }
+    }
+    /* The PO / PR strip on screen as well, now that the figures behind it are
        restored — so what the regenerated PDF will print can be checked here
        first. Added after the fields are filled, because it reads the qty and
        weight boxes to work out Pending / Excess. */
-    if(tb&&pi&&pi.ordered>0)appendPoInfoRow(tr,tb);
+    if(tb&&((pi&&pi.ordered>0)||pNum(tr.dataset.prRequiredQty)>0))appendPoInfoRow(tr,tb);
   });
   if(!lines.length)addNewRow();
   // Freight and Round off live on the header (freight_exp / round_off). They
@@ -10984,6 +11527,24 @@ function inwardPoRefList_(rows){
     if(lbl&&!/^\d+\s+POs?\s+selected$/i.test(lbl))add(lbl);
   }
   (rows||[]).forEach(r=>add(r&&r.poNo));
+  return out.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
+}
+/* The same union for the PR side, and for the same reason: an Admin edit never
+   re-ticks the PR picker either, so getSelectedPrNos() is empty there and the
+   printed PR Reference would come out "-" on every reprint of an edited
+   receipt. The picker, then its label, then each row's own PR number. */
+function inwardPrRefList_(rows){
+  const out=[];
+  const add=v=>String(v||'').split(',').map(s=>s.trim()).filter(Boolean)
+    .forEach(n=>{if(!out.some(x=>x.toUpperCase()===n.toUpperCase()))out.push(n)});
+  const sel=getSelectedPrNos();
+  sel.forEach(add);
+  if(!sel.length){
+    // "3 PRs selected" is a summary the picker shows, not a PR number.
+    const lbl=inwardEditPrNumber_();
+    if(lbl&&!/^\d+\s+PRs?\s+selected$/i.test(lbl))add(lbl);
+  }
+  (rows||[]).forEach(r=>add(r&&r.prNo));
   return out.sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
 }
 
@@ -11357,15 +11918,57 @@ window.addEventListener('DOMContentLoaded',()=>{
      pendWt:Math.max(0,ordWt-recWt),
      excWt:Math.max(0,recWt-ordWt)};
  }
+ /* ── The same strip, measured against a PR instead of a PO ──────────
+    A receipt booked "without PO" is booked against a FIELD BOY requirement, and
+    it deserves exactly the same four figures the PO strip gives: what was
+    asked for, what has already come in, what this entry brings, and what is
+    still owed or over. Only the source of the first number differs — a PO line's
+    ordered_qty there, a requirement line's requested_qty here. */
+ function prStripParts_(it){
+   if(!it||!it.prNo)return null;
+   const required=pNum(it.prRequiredQty), already=pNum(it.prReceivedQty);
+   // Nothing measurable to report (no requested qty on the line), so the strip
+   // is withheld rather than printed as a row of zeroes.
+   if(required<=0)return null;
+   const received=already+pNum(it.qty);
+   const reqWt=pNum(it.prRequiredWeight), alreadyWt=pNum(it.prReceivedWeight);
+   const recWt=alreadyWt+pNum(it.weight);
+   return {prNo:String(it.prNo),required,already,received,
+     pending:Math.max(0,required-received),
+     excess:Math.max(0,received-required),
+     hasWeight:reqWt>0,reqWt,alreadyWt,recWt,
+     pendWt:Math.max(0,reqWt-recWt),
+     excWt:Math.max(0,recWt-reqWt)};
+ }
+ /* What every strip renderer actually consumes — the live row on screen, the
+    HTML print and the native print alike. One shape for both documents, so a
+    PR receipt gets the identical strip a PO receipt gets and the three
+    renderers stay three copies of ONE layout rather than six of two.
+
+    A row can only be against one of the two: the PR picker is hidden the moment
+    a PO is ticked (syncInwPrField), so PO is simply tried first. */
+ function docStripParts_(it){
+   const po=poStripParts_(it);
+   if(po)return {kind:'PO',tag:'PO: '+po.poNo,no:po.poNo,ordLabel:'Order Qty',ordWtLabel:'Order Wt',
+     ordered:po.ordered,already:po.already,received:po.received,pending:po.pending,excess:po.excess,
+     hasWeight:po.hasWeight,ordWt:po.ordWt,alreadyWt:po.alreadyWt,recWt:po.recWt,
+     pendWt:po.pendWt,excWt:po.excWt};
+   const pr=prStripParts_(it);
+   if(pr)return {kind:'PR',tag:'PR: '+pr.prNo,no:pr.prNo,ordLabel:'Required Qty',ordWtLabel:'Required Wt',
+     ordered:pr.required,already:pr.already,received:pr.received,pending:pr.pending,excess:pr.excess,
+     hasWeight:pr.hasWeight,ordWt:pr.reqWt,alreadyWt:pr.alreadyWt,recWt:pr.recWt,
+     pendWt:pr.pendWt,excWt:pr.excWt};
+   return null;
+ }
  // One cell of text for the native PDF. The weight figures go on a SECOND
  // LINE — autoTable honours \n — so Qty and Weight read as two parallel rows
  // of the same four headings instead of one unreadable eight-figure run.
- function poStripText_(it){
-   const p=poStripParts_(it);if(!p)return '';
-   const q='PO: '+p.poNo+'   |   Order Qty: '+p.ordered+'   |   Pending Qty: '+p.pending
+ function docStripText_(it){
+   const p=docStripParts_(it);if(!p)return '';
+   const q=p.tag+'   |   '+p.ordLabel+': '+p.ordered+'   |   Pending Qty: '+p.pending
      +'   |   Received Qty: '+p.received+'   |   Excess Qty: '+p.excess;
    if(!p.hasWeight)return q;
-   return q+'\nWeight (KGS)   |   Order Wt: '+nNum_(p.ordWt)+'   |   Pending Wt: '+nNum_(p.pendWt)
+   return q+'\nWeight (KGS)   |   '+p.ordWtLabel+': '+nNum_(p.ordWt)+'   |   Pending Wt: '+nNum_(p.pendWt)
      +'   |   Received Wt: '+nNum_(p.recWt)+'   |   Excess Wt: '+nNum_(p.excWt);
  }
  /* "PO/U-2/0001, PO/U-2/0002  (2 POs)" for the printed PO Reference. The count
@@ -11374,6 +11977,29 @@ window.addEventListener('DOMContentLoaded',()=>{
    const list=String(v||'').split(',').map(s=>s.trim()).filter(Boolean);
    if(!list.length)return '-';
    return list.length===1?list[0]:(list.join(', ')+'  ('+list.length+' POs)');
+ }
+ function prRefDisplay_(v){
+   const list=String(v||'').split(',').map(s=>s.trim()).filter(Boolean);
+   if(!list.length)return '-';
+   return list.length===1?list[0]:(list.join(', ')+'  ('+list.length+' PRs)');
+ }
+ /* The reference line(s) printed in the inward's meta block.
+
+    A receipt booked against a PR has no PO, so printing "PO Reference: -" on it
+    said nothing and hid the one number that WOULD identify it. It now prints
+    "PR Reference:" instead. Both are printed only in the odd case where a
+    record carries both (an older entry, or one edited across the two) — a
+    reference that exists should never be dropped just because the other kind
+    is present. */
+ function inwRefRows_(d){
+   const po=String((d&&(d.poNum||d.po_number))||'').trim();
+   const pr=String((d&&(d.prNum||d.req_no||d.reqNo))||'').trim();
+   const rows=[];
+   if(po)rows.push(['PO Reference:',poRefDisplay_(po)]);
+   if(pr)rows.push(['PR Reference:',prRefDisplay_(pr)]);
+   // Neither — keep the row so the block's two columns stay the same height.
+   if(!rows.length)rows.push(['PO Reference:','-']);
+   return rows;
  }
  const pEsc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  function pDate(v){
@@ -11566,27 +12192,30 @@ window.addEventListener('DOMContentLoaded',()=>{
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
-       // PO ke against: item ke theek neeche wahi strip jo entry form dikhata hai.
-       const poStrip=poStripParts_(it);
-       if(poStrip){
+       /* PO / PR ke against: item ke theek neeche wahi strip jo entry form
+          dikhata hai. docStripParts_ dono ko ek hi shakl deta hai, isliye yahan
+          sirf label aur rang badalta hai — layout ek hi hai. */
+       const strip=docStripParts_(it);
+       if(strip){
+         const accent=strip.kind==='PR'?'#15803d':'#1d4ed8';
          const chip=(lbl,val,color)=>'<span style="margin-right:12px;white-space:nowrap;">'+lbl+': <b style="color:'+color+';">'+val+'</b></span>';
          // Qty on the first line, Weight on a second one under it in the same
          // Order / Pending / Received / Excess order, so the two read as two
          // parallel rows of the same four headings.
          itemRows+='<tr style="background:#f8fafc;"><td colspan="7" style="padding:2px 6px;font-size:8px;color:#334155;">'
            +'<div>'
-             +'<b style="color:#1d4ed8;margin-right:12px;">PO: '+pEsc(poStrip.poNo)+'</b>'
-             +chip('Order Qty',poStrip.ordered,'#0f172a')
-             +chip('Pending Qty',poStrip.pending,poStrip.pending>0?'#b45309':'#16a34a')
-             +chip('Received Qty',poStrip.received,'#0f766e')
-             +chip('Excess Qty',poStrip.excess,poStrip.excess>0?'#dc2626':'#64748b')
+             +'<b style="color:'+accent+';margin-right:12px;">'+pEsc(strip.tag)+'</b>'
+             +chip(strip.ordLabel,strip.ordered,'#0f172a')
+             +chip('Pending Qty',strip.pending,strip.pending>0?'#b45309':'#16a34a')
+             +chip('Received Qty',strip.received,'#0f766e')
+             +chip('Excess Qty',strip.excess,strip.excess>0?'#dc2626':'#64748b')
            +'</div>'
-           +(poStrip.hasWeight?('<div style="margin-top:1px;">'
-             +'<b style="color:#1d4ed8;margin-right:12px;">Weight (KGS)</b>'
-             +chip('Order Wt',nNum_(poStrip.ordWt),'#0f172a')
-             +chip('Pending Wt',nNum_(poStrip.pendWt),poStrip.pendWt>0?'#b45309':'#16a34a')
-             +chip('Received Wt',nNum_(poStrip.recWt),'#0f766e')
-             +chip('Excess Wt',nNum_(poStrip.excWt),poStrip.excWt>0?'#dc2626':'#64748b')
+           +(strip.hasWeight?('<div style="margin-top:1px;">'
+             +'<b style="color:'+accent+';margin-right:12px;">Weight (KGS)</b>'
+             +chip(strip.ordWtLabel,nNum_(strip.ordWt),'#0f172a')
+             +chip('Pending Wt',nNum_(strip.pendWt),strip.pendWt>0?'#b45309':'#16a34a')
+             +chip('Received Wt',nNum_(strip.recWt),'#0f766e')
+             +chip('Excess Wt',nNum_(strip.excWt),strip.excWt>0?'#dc2626':'#64748b')
            +'</div>'):'')
            +'</td></tr>';
        }
@@ -11612,7 +12241,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Invoice Number:</td><td>'+pEsc(d.invoiceNum||d.invoice_no||'-')+'</td></tr>'+
        '<tr><td class="lbl">Invoice Date:</td><td>'+fmtDate_(d.invoiceDate||d.invoice_date)+'</td></tr>'+
-       '<tr><td class="lbl">PO Reference:</td><td style="word-break:break-word;"><strong>'+pEsc(poRefDisplay_(d.poNum||d.po_number))+'</strong></td></tr>'+
+       inwRefRows_(d).map(function(p){return '<tr><td class="lbl">'+pEsc(p[0])+'</td><td style="word-break:break-word;"><strong>'+pEsc(p[1])+'</strong></td></tr>'}).join('')+
        (d.gatePass||d.gate_pass_no?'<tr><td class="lbl">Gate Pass:</td><td>'+pEsc(d.gatePass||d.gate_pass_no)+'</td></tr>':'')+
        (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
        (d.natureOfInward?'<tr><td class="lbl">Nature of Inward:</td><td><strong>'+pEsc(d.natureOfInward)+'</strong></td></tr>':'')+
@@ -11770,7 +12399,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.machineName)leftPairs.push(['Machine:',d.machineName]);
      rightPairs.push(['Invoice Number:',d.invoiceNum||'-']);
      rightPairs.push(['Invoice Date:',fmtDate_(d.invoiceDate)]);
-     rightPairs.push(['PO Reference:',poRefDisplay_(d.poNum)]);
+     inwRefRows_(d).forEach(p=>rightPairs.push(p));
      if(d.gatePass)rightPairs.push(['Gate Pass:',d.gatePass]);
      if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
      if(d.natureOfInward)rightPairs.push(['Nature of Inward:',d.natureOfInward]);
@@ -11812,14 +12441,16 @@ window.addEventListener('DOMContentLoaded',()=>{
        const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
        body.push([spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
-       // PO ke against: item ke theek neeche uski PO strip, poori width me.
-       const poBits=poStripParts_(it), poStrip=poStripText_(it);
-       if(poStrip)body.push([{content:poStrip,colSpan:7,
+       // PO / PR ke against: item ke theek neeche uski strip, poori width me.
+       const bits=docStripParts_(it), stripTxt=docStripText_(it);
+       if(stripTxt)body.push([{content:stripTxt,colSpan:7,
          styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
            // Over-receipt turns the whole strip red — a single cell cannot
            // colour just its Excess figure the way the HTML copy does. Either
-           // excess counts: qty or weight.
-           textColor:(poBits&&(poBits.excess>0||poBits.excWt>0))?[220,38,38]:[30,64,175],
+           // excess counts: qty or weight. Otherwise blue for a PO, green for a
+           // PR, matching the on-screen strip.
+           textColor:(bits&&(bits.excess>0||bits.excWt>0))?[220,38,38]
+             :(bits&&bits.kind==='PR')?[21,128,61]:[30,64,175],
            cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
@@ -13282,7 +13913,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),
      // Not getSelectedPoNos() alone — that is empty on every Admin edit, which
      // is what used to print "PO Reference: -". See inwardPoRefList_.
-     poNum:inwardPoRefList_(rows).join(', '),invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
+     poNum:inwardPoRefList_(rows).join(', '),
+     // The PR this receipt was booked against, printed as "PR Reference:" where
+     // a PO receipt prints "PO Reference:" — see inwRefRows_.
+     prNum:inwardPrRefList_(rows).join(', '),
+     invoiceNum:pVal('invoiceNumber'),invoiceDate:pVal('invoiceDate'),gatePass:pVal('gatePassNo'),lotNo:pVal('lotNo'),machineName:pVal('inwMachineName'),natureOfInward:pVal('inwNatureOfInward'),remarks:pVal('inwRemarks'),baseTotal:base,totalTax:tax,taxable,finalAmt:taxable+tax+roundOff,gstRate,
      // Freight Calculator + billing extras. These were computed on screen but
      // never reached the PDF, so the printed copy always showed blanks/zeros
      // for Net Weight, Gross Weight, freight rate and cost-per-unit.
@@ -13306,7 +13941,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0).map(x=>{
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight)})).filter(x=>x.name&&x.qty>0).map(x=>{
     /* The saved record and the PDF must match the entry form's Final Amount to
        the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
        the net rate rounded to 2dp for display, and pRound() clipped each line
@@ -13395,13 +14030,19 @@ window.addEventListener('DOMContentLoaded',()=>{
      return showToast('⚠️ PO ke bina receive karne ke liye kam se kam ek PR Number tick karna zaroori hai ('+escText(INW_PR_PURCHASER)+' ki PR)','warn');
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
-   // Receiving more than the PO's pending qty, or at a different rate than the
-   // PO, needs the Edit Password — everything else saves straight through.
    const selectedPoNos=getSelectedPoNos();
-   if(selectedPoNos.length){
-     const overrides=inwardPoOverrides(rows);
-     if(overrides.length&&!await verifyEditPassword('PO se alag values mili:\n• '+overrides.join('\n• ')))
-       return showToast('⛔ Edit Password ke bina PO se zyada qty / alag rate save nahi hoga','warn');
+   /* Excess qty — on a PO or on a PR — and a changed PO rate both need the
+      Edit Password.
+
+      Checked on EVERY save, not only when the PO picker has something ticked.
+      That `if(selectedPoNos.length)` guard used to wrap this, and an Admin edit
+      never re-ticks the picker: the check was being skipped on exactly the path
+      where a quantity is most likely to be changed. Each row carries its own PO
+      / PR figures, so the rows are the right thing to ask. */
+   {
+     const overrides=inwardDocOverrides(rows);
+     if(overrides.length&&!await verifyEditPassword('PO / PR se zyada qty mili:\n• '+overrides.join('\n• ')))
+       return showToast('⛔ Edit Password ke bina excess qty / PO se alag rate save nahi hoga','warn');
    }
    // A taxable INWARD with a 0% line needs authorisation — it usually means a
    // mis-keyed GST rather than a genuinely exempt receipt. INWARD NB is exempt
@@ -13482,7 +14123,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        const fr=await SB.from('inward_entries').update({freight_exp:pNum(pVal('freightExp')),round_off:pNum(pVal('roundOffInput'))}).eq('id',h.data.id);
        if(fr.error)console.warn('[SARV] Freight / Round off not stored on the header (add freight_exp, round_off columns):',fr.error.message);
      }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
-     let ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom,r.itemId);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.total,bill_basis:r.billBasis||'QTY',po_line_id:r.poLineId||null,repair_outward_no:r.repairOutNo||null})}
+     /* req_no on the LINE, not just the header. A receipt covering two
+        requirements has no other way to say which of them a given item belongs
+        to, and without that the PR sub-row's "already received" has to count
+        the line against both. Dropped on a database without the column (see
+        the fallback chain below), where the header's req_no still carries the
+        link exactly as before. */
+     let ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom,r.itemId);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.total,bill_basis:r.billBasis||'QTY',po_line_id:r.poLineId||null,repair_outward_no:r.repairOutNo||null,req_no:r.prNo||null})}
      // repair_outward_no is what credits each outward when one repair return
      // covers several — gate_pass_no can only ever name one. Dropped on DBs
      // without the column (multi-select is disabled there anyway).
@@ -13495,6 +14142,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         now; a database without the column simply drops it and falls back to
         the old inference, so nothing breaks before the migration:
           alter table inward_lines add column bill_basis text; */
+     if(ins.error&&/\breq_no\b/i.test(ins.error.message||'')){ls=ls.map(({req_no,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/bill_basis/i.test(ins.error.message||'')){ls=ls.map(({bill_basis,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/repair_outward_no|column/i.test(ins.error.message||'')){ls=ls.map(({repair_outward_no,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/po_line_id|column/i.test(ins.error.message||'')){ls=ls.map(({po_line_id,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}if(ins.error)throw ins.error;
@@ -13521,6 +14169,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      // One entry is saved, so this panel's Entry Type is settled for good —
      // pinned BEFORE the clear so the cleared form keeps the saved type.
      sarvInwardTypePinned=true;
+     /* This receipt may have just finished off a PR. The picker only lists PRs
+        with something still pending, so it is reloaded here — otherwise a
+        fully-received PR stays on offer until the page is refreshed, and the
+        next entry could be booked against a requirement with nothing left on
+        it. Best-effort: a save is already committed, and a stale picker must
+        not be reported as a failed save. */
+     loadPrDropdown_().catch(e=>console.warn('[SARV] PR picker refresh skipped:',e.message||e));
      // ── Clear form after save ──────────────────────────────────
      clearInwardForm();
      return h.data;
@@ -13795,7 +14450,15 @@ window.addEventListener('DOMContentLoaded',()=>{
        const curStatus=String(cur.data.status||'').trim();
        if(curStatus==='Rejected'||curStatus==='Hold'){
          reopenedFrom=curStatus;
-         const keep=cur.data.approvals&&cur.data.approvals.store?{store:cur.data.approvals.store}:{};
+         /* The APPROVAL chain is cleared; the follow-up sign-offs are not.
+            "Inform to Requester" records that somebody was told their material
+            had arrived — that happened, and re-opening the PR for a correction
+            does not un-happen it. Clearing it here would silently undo a locked
+            sign-off that only an Admin is allowed to lift. */
+         const prev=cur.data.approvals||{};
+         const keep={};
+         if(prev.store)keep.store=prev.store;
+         if(prev.followup)keep.followup=prev.followup;
          payload.status='Pending';
          payload.approvals=keep;
          if(curStatus==='Hold'&&cur.data.pdf_snapshot&&typeof cur.data.pdf_snapshot==='object'){
@@ -14992,35 +15655,51 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* ================================================================
     PR -> PO -> INWARD FOLLOW-UP REPORT  (PO tab, third sub-panel)
     ----------------------------------------------------------------
-    One line per PURCHASE REQUIREMENT, tracing it all the way through:
+    Traces every PURCHASE REQUIREMENT through the whole chain:
     vendor quotes filled -> PO raised -> MD approved -> PO sent to the
-    party -> material inwarded -> requester told -> bill checked.
+    party -> material inwarded -> bill checked -> requester told.
 
-    Everything on the line is DERIVED from records that already exist
+    ONE ROW PER (PR, PO, INWARD). A PR answered by two POs gets two
+    rows; a PO received in three lots gets three. The columns that
+    belong to the PR (its number, who asked, Vendor Info, PO Generate,
+    Inform to Requester) are merged down the group with rowspan, and
+    the PO's own columns merge down its receipts — so the sheet reads
+    as one block per PR, not as the same PR repeated with a different
+    tail. It also means the Inform-to-Requester box appears ONCE per
+    PR, which matters: it is one stored flag, and three checkboxes
+    writing to it would be three ways to confuse people.
+
+    Almost everything is DERIVED from records that already exist
     (purchase_requirements / purchase_orders / purchase_order_lines /
-    inward_entries), so the sheet fills itself as the work happens and
-    there is nothing to key in twice.
+    inward_entries), so the sheet fills itself as the work happens:
 
-    The only exceptions are the three sign-off boxes on the right. Those
-    are decisions a person makes, not states a record can report, so they
-    are stored — and because they are sign-offs, each one is gated behind
-    a Role PIN verified on the server (see togglePoFollowupFlag).
+      • MD Approved        <- purchase_orders.approvals.md / status
+      • PO Sent to Vendor  <- purchase_orders.party_sent_at, which
+                              mobile.html's PO Sender writes the moment
+                              it sends the PO on WhatsApp
+      • Bill Checked by GM <- inward_entries.store_checks.gm
+      • Bill Checked by MD <- inward_entries.store_checks.md, both
+                              written by mobile.html's Store Check tab
 
-    Storage note: the sign-offs live in purchase_requirements.approvals
-    under a `followup` key, which is the same jsonb column the Store /
-    GM / MD signatures already use. That keeps this feature working on a
-    database that has had no migration run against it — there is no
-    bill-check column anywhere to write to.
+    The ONE thing a person still ticks here is Inform to Requester —
+    telling the requester their material is in is an act, not a state
+    any record can report — and it is gated behind a server-verified
+    Role PIN (see togglePoFollowupFlag). It lives in
+    purchase_requirements.approvals under a `followup` key, the same
+    jsonb column the Store / GM / MD signatures already use, so no
+    migration is needed for it.
  ================================================================ */
+ // Flat display rows, one per (PR, PO, Inward) — what the table renders.
  let sarvPoFollowupRows=[];
- /* role:null means "whatever role is logged in right now must re-enter
-    its OWN PIN" — informing the requester is the purchaser's own act, so
-    it is not tied to one designation. The two bill checks are, so they
-    name the role whose PIN unlocks them. */
+ // The same data grouped by PR. Filters and the summary pills work on these,
+ // so a PR is never half-shown: it matches or it does not.
+ let sarvPoFollowupGroups=[];
+ /* role:null means "whatever role is logged in right now must re-enter its OWN
+    PIN" — informing the requester is the purchaser's own act, not one
+    designation's. The two bill checks used to live here as well; they are read
+    off mobile.html's Store Check now and are no longer anybody's checkbox. */
  const PO_FOLLOWUP_FLAGS={
-   informRequester:{label:'Inform to Requester',role:null},
-   billGm:{label:'Bill Checked by GM',role:'USER_GM_PIN'},
-   billMd:{label:'Bill Checked by MD',role:'USER_MD_PIN'}
+   informRequester:{label:'Inform to Requester',role:null}
  };
  const PO_FOLLOWUP_STATUS_STYLE={
    'Generated':{bg:'#e2e8f0',fg:'#334155'},
@@ -15033,13 +15712,41 @@ window.addEventListener('DOMContentLoaded',()=>{
    'Rejected':{bg:'#ef4444',fg:'#ffffff'},
    'Cancelled':{bg:'#fecaca',fg:'#991b1b'}
  };
- // 'Received' reads as FULLY RECEIVED on this sheet, the way the store
- // writes it by hand — the status itself is left untouched in the DB.
+ // 'Received' reads as FULLY RECEIVED on this sheet, the way the store writes
+ // it by hand — the status itself is left untouched in the database.
  const PO_FOLLOWUP_STATUS_TEXT={'Received':'FULLY RECEIVED'};
 
- /* pdf_documents is the shared index every panel reads its PDF links
-    from. Chunked because a long-running store can easily have more
-    document numbers than PostgREST will accept in one .in() list. */
+ /* ── Short document numbers ───────────────────────────────────────
+    The full numbers carry a year and a series that are the same on every row,
+    so printing them in full spent most of three columns repeating context and
+    pushed the columns that actually differ off the screen:
+
+      PR/26-27/608          -> PR608
+      PO/U-2/793            -> PO793
+      SIHF-II/2026-27/1913  -> 1913
+      NB/2/2026-27/1250     -> NB1250
+
+    The serial is the last `/` segment. PR and PO are labelled by what they are.
+    An inward keeps an NB marker — an NB is a different book from a regular
+    inward and the two series can hold the same serial — and is otherwise bare.
+    Nothing is lost: the full number is the link's tooltip, it is what the
+    search box still matches, and it is what the CSV exports. */
+ function shortDocNo_(no,kind){
+   const s=String(no||'').trim();
+   if(!s)return '';
+   const parts=s.split('/').map(x=>x.trim()).filter(Boolean);
+   if(parts.length<2)return s;                       // not a series number — leave it alone
+   const serial=parts[parts.length-1];
+   if(!serial)return s;
+   if(kind==='PR')return 'PR'+serial;
+   if(kind==='PO')return 'PO'+serial;
+   // Inward: the book is in the FIRST segment (NB/… vs SIHF-II/…).
+   return /^NB\b/i.test(parts[0])?('NB'+serial):serial;
+ }
+
+ /* pdf_documents is the shared index every panel reads its PDF links from.
+    Chunked because a long-running store can easily have more document numbers
+    than PostgREST will accept in one .in() list. */
  async function poFollowupPdfMap_(nos){
    const map={},list=[...new Set((nos||[]).filter(Boolean).map(String))];
    for(let i=0;i<list.length;i+=200){
@@ -15060,22 +15767,22 @@ window.addEventListener('DOMContentLoaded',()=>{
    for(const v of (prefer||[]))if(m[v])return m[v];
    const k=Object.keys(m);return k.length?m[k[0]]:'';
  }
- // Comma-joined columns (po_number, linked_req_nos, req_no) all split the
- // same way, so one helper keeps the three readings consistent.
+ // Comma-joined columns (po_number, linked_req_nos, req_no) all split the same
+ // way, so one helper keeps the three readings consistent.
  function poFollowupSplit_(v){return String(v||'').split(',').map(s=>s.trim()).filter(Boolean)}
 
- /* A PO counts as MD-approved either because MD actually signed it or
-    because it has since moved PAST that stage — a received PO cannot
-    have skipped the approval, and reading only the signature would show
-    an old PO as un-approved forever. */
+ /* A PO counts as MD-approved either because MD actually signed it or because
+    it has since moved PAST that stage — a received PO cannot have skipped the
+    approval, and reading only the signature would show an old PO as
+    un-approved forever. */
  function poFollowupMdApproved_(po){
    if(!po)return false;
    const md=po.approvals&&po.approvals.md;
    if(md&&(md.signedBy||md.dataUrl||md.signedAt))return true;
    return ['MD Approved','Vendor Verified','Partially Received','Received','Closed (Short)'].includes(po.status||'');
  }
- // Same test the Build-PO table uses: quotes may sit on the PR or, since
- // the Purchaser can quote per item on mobile, on the items.
+ // Same test the Build-PO table uses: quotes may sit on the PR or, since the
+ // Purchaser can quote per item on mobile, on the items.
  function poFollowupVendorInfoFilled_(req){
    const snap=(req&&req.pdf_snapshot)||{};
    return (snap.vendors||[]).some(v=>v&&String(v.name||'').trim())
@@ -15086,69 +15793,145 @@ window.addEventListener('DOMContentLoaded',()=>{
    const v=f[key];
    return (v&&(v.at||v.by))?v:null;
  }
+ /* ── Inform to Requester, PER INWARD ──────────────────────────────
+    One sign-off per RECEIPT, not per PR. A requirement answered in three lots
+    is three separate phone calls, and a single tick covering all of them could
+    only ever mean "someone was told something" — which is not a record.
+
+    Stored as  approvals.followup.informByInward = { "<inward doc no>": {by,role,at} }
+    on purchase_requirements, beside the other follow-up keys.
+
+    The older PR-level tick lived at approvals.followup.informRequester as one
+    flat {by,role,at}. It is still READ, and counts for every receipt on that
+    PR, so nothing signed off before this change is lost or has to be redone.
+    Nothing new is ever written there. */
+ const FU_INFORM_KEY='informByInward';
+ const FU_INFORM_LEGACY_KEY='informRequester';
+ function poFollowupInformState_(req,inwardNo){
+   const f=(req&&req.approvals&&req.approvals.followup)||{};
+   const map=f[FU_INFORM_KEY];
+   const no=String(inwardNo||'').trim();
+   if(no&&map&&typeof map==='object'){
+     const e=map[no];
+     if(e&&(e.at||e.by))return e;
+   }
+   // Legacy PR-wide tick — applies to every receipt on this PR.
+   const old=f[FU_INFORM_LEGACY_KEY];
+   if(old&&(old.at||old.by))return {...old,legacy:true};
+   return null;
+ }
+ // Every receipt on this PR has been reported to the requester. A PR with no
+ // receipt yet is NOT informed — there is nothing to inform anyone about.
+ function poFollowupAllInformed_(g){
+   const list=(g&&g.allInwards)||[];
+   return list.length>0&&list.every(i=>!!poFollowupInformState_(g.req,i.document_no));
+ }
+ /* ── Bill check, straight off mobile.html's Store Check ────────────
+    The Store Check tab has the GM verify a store entry against its items and
+    then the MD, and writes both into a `store_checks` jsonb column on
+    inward_entries:  {"gm":{by,at,atIso,remarks}, "md":{...}}
+    That IS the bill check, so this report reads it rather than asking anyone
+    to tick the same thing twice. On a database without the column the value
+    simply comes back undefined and the cell reads as pending. */
+ function inwStoreCheck_(inw,stage){
+   const c=(inw&&inw.store_checks)||{};
+   const v=c&&typeof c==='object'?c[stage]:null;
+   return (v&&typeof v==='object')?v:null;
+ }
+ function inwStoreCheckText_(inw,stage){
+   const c=inwStoreCheck_(inw,stage);
+   if(!c)return '';
+   return [String(c.by||'').trim(),String(c.at||'').trim()].filter(Boolean).join(' · ');
+ }
 
  async function refreshPoFollowupReport(){
    if(!SB_READY)return;
    const tb=byId('p_poReportBody');if(!tb)return;
-   tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
-   /* Every one of these goes through fetchAllRows. A plain select is capped
-      at 1000 rows by PostgREST, and on a follow-up sheet a truncated page
-      does not just hide a line — it makes a PR that HAS a PO read as "PO
-      not generated", which is exactly the mistake this report exists to
-      catch. Each table degrades on its own: a lookup that fails leaves its
-      own columns blank rather than taking the whole sheet down. */
+   tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   /* Every one of these goes through fetchAllRows. A plain select is capped at
+      1000 rows by PostgREST, and on a follow-up sheet a truncated page does not
+      just hide a line — it makes a PR that HAS a PO read as "PO not generated",
+      which is exactly the mistake this report exists to catch. Each table
+      degrades on its own: a lookup that fails leaves its own columns blank
+      rather than taking the whole sheet down. */
    const skip=(what)=>e=>{console.warn('[SARV] Follow-up '+what+' skipped:',e.message||e);return[]};
    const [reqsRaw,pos,plRows,inwRows]=await Promise.all([
      fetchAllRows('purchase_requirements','*','id').catch(e=>{dbError(e);return null}),
      fetchAllRows('purchase_orders','*','id').catch(skip('PO headers')),
-     fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no','id').catch(skip('PO lines')),
+     // item_name / ordered_qty come along so the PO cell can SHOW which of this
+     // PR's items are on that PO — the link is then auditable from the sheet
+     // instead of being taken on trust.
+     fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no,line_no,item_name,ordered_qty','id').catch(skip('PO lines')),
      fetchAllRows('inward_entries','*','id').catch(skip('inward'))
    ]);
    if(!reqsRaw)return;   // the PR list is the sheet itself — without it there is nothing to show
-   // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a
-   // plain text sort would put /600 before /99).
+   // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a plain
+   // text sort would put /600 before /99).
    const reqs=reqsRaw.slice().sort((a,b)=>String(b.req_no||'').localeCompare(String(a.req_no||''),undefined,{numeric:true,sensitivity:'base'}));
    const poById={},poByNo={};
    pos.forEach(po=>{poById[po.id]=po;if(po.po_no)poByNo[po.po_no]=po});
-   /* PR -> POs. The line table is authoritative (that is where a PO
-      records which PR each item came from); linked_req_nos on the header
-      is the fallback for a PO saved before those lines existed. */
+
+   /* ── PR -> POs, strictly by the PO's own LINES ──────────────────
+      purchase_order_lines.req_no is where a PO records which PR each item came
+      from, so it is the only thing that can answer "is this PR's item actually
+      on this PO". purchase_orders.linked_req_nos is a comma-joined summary
+      written once at generation; it can name a PR whose items were later
+      edited off the PO, and trusting it is what put POs against the wrong PRs.
+
+      So: a PO that HAS lines is matched only by its lines. linked_req_nos is
+      used for a PO with no lines at all, which only happens on rows that
+      predate that table — without it those POs would vanish from the sheet. */
+   const linesByPo={};
+   plRows.forEach(l=>{
+     if(!l.purchase_order_id)return;
+     (linesByPo[l.purchase_order_id]=linesByPo[l.purchase_order_id]||[]).push(l);
+   });
+   // PR -> PO id -> the lines of that PR on that PO. Drives both the match and
+   // the "which items" tooltip.
+   const linesByReqPo={};
+   plRows.forEach(l=>{
+     const r=String(l.req_no||'').trim();
+     if(!r||!l.purchase_order_id||!poById[l.purchase_order_id])return;
+     ((linesByReqPo[r]=linesByReqPo[r]||{})[l.purchase_order_id]=linesByReqPo[r][l.purchase_order_id]||[]).push(l);
+   });
    const posByReq={};
    const addPoToReq=(reqNo,po)=>{
      if(!reqNo||!po)return;
      const list=posByReq[reqNo]=posByReq[reqNo]||[];
      if(!list.some(x=>x.id===po.id))list.push(po);
    };
-   plRows.forEach(l=>addPoToReq(String(l.req_no||'').trim(),poById[l.purchase_order_id]));
-   pos.forEach(po=>poFollowupSplit_(po.linked_req_nos).forEach(r=>addPoToReq(r,po)));
-
-   /* PR -> Inwards. Two routes in, because material can arrive against a
-      PO or straight against the PR (inward_entries.req_no, for stores
-      that run without a PO on small items). */
-   const inwByReq={};
-   const addInwToReq=(reqNo,inw)=>{
-     if(!reqNo||!inw)return;
-     const list=inwByReq[reqNo]=inwByReq[reqNo]||[];
-     if(!list.some(x=>x.id===inw.id))list.push(inw);
-   };
-   // Which PRs each PO covers, resolved once — the inward loop below would
-   // otherwise re-scan every PO line for every receipt.
+   Object.keys(linesByReqPo).forEach(r=>Object.keys(linesByReqPo[r]).forEach(poId=>addPoToReq(r,poById[poId])));
+   let legacyPoLinks=0;
+   pos.forEach(po=>{
+     if((linesByPo[po.id]||[]).length)return;        // has lines — they already decided
+     poFollowupSplit_(po.linked_req_nos).forEach(r=>{legacyPoLinks++;addPoToReq(r,po)});
+   });
+   // Which PRs each PO really covers, by its lines. Used for the inward link.
    const reqNosByPoId={};
    plRows.forEach(l=>{
      const r=String(l.req_no||'').trim();if(!r||!l.purchase_order_id)return;
-     const s=reqNosByPoId[l.purchase_order_id]=reqNosByPoId[l.purchase_order_id]||new Set();
-     s.add(r);
+     (reqNosByPoId[l.purchase_order_id]=reqNosByPoId[l.purchase_order_id]||new Set()).add(r);
    });
+
+   /* ── Inwards ───────────────────────────────────────────────────
+      Two routes in. Against a PO (inward_entries.po_number, comma-joined) —
+      that receipt belongs to THAT PO's row, not to the PR at large. Or straight
+      against the PR (inward_entries.req_no), for material taken in without a
+      PO; those get their own rows with a blank PO. A cancelled receipt is not
+      a receipt and is left out of both. */
+   const inwByPoId={},looseInwByReq={};
+   const pushUniq=(arr,x)=>{if(!arr.some(y=>y.id===x.id))arr.push(x)};
    inwRows.forEach(inw=>{
-     if(isStoreRecordCancelled_(inw.notes))return;   // a cancelled receipt is not a receipt
-     poFollowupSplit_(inw.req_no).forEach(r=>addInwToReq(r,inw));
-     poFollowupSplit_(inw.po_number).forEach(poNo=>{
+     if(isStoreRecordCancelled_(inw.notes))return;
+     const poNos=poFollowupSplit_(inw.po_number);
+     let attached=false;
+     poNos.forEach(poNo=>{
        const po=poByNo[poNo];if(!po)return;
-       poFollowupSplit_(po.linked_req_nos).forEach(r=>addInwToReq(r,inw));
-       // A PO whose header never carried linked_req_nos is still reachable
-       // through its own lines.
-       (reqNosByPoId[po.id]||new Set()).forEach(r=>addInwToReq(r,inw));
+       pushUniq(inwByPoId[po.id]=inwByPoId[po.id]||[],inw);
+       attached=true;
      });
+     if(attached)return;                             // already on its PO's row(s)
+     poFollowupSplit_(inw.req_no).forEach(r=>pushUniq(looseInwByReq[r]=looseInwByReq[r]||[],inw));
    });
 
    const pdfMap=await poFollowupPdfMap_([
@@ -15156,57 +15939,125 @@ window.addEventListener('DOMContentLoaded',()=>{
      ...pos.map(p=>p.po_no),
      ...inwRows.map(i=>i.document_no)
    ]);
+   const inwUrl=i=>poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||'';
 
-   sarvPoFollowupRows=reqs.map(req=>{
+   sarvPoFollowupGroups=reqs.map(req=>{
      const rPos=(posByReq[req.req_no]||[]).slice()
        .sort((a,b)=>String(a.po_no||'').localeCompare(String(b.po_no||''),undefined,{numeric:true}));
-     const rInw=(inwByReq[req.req_no]||[]).slice()
-       .sort((a,b)=>String(a.document_no||'').localeCompare(String(b.document_no||''),undefined,{numeric:true}));
      /* Cancelled / Rejected POs stay listed — the number was used, and the
-        sheet has to show WHY nothing arrived against it — but they are not
-        what decides whether a live PO exists for this PR. */
+        sheet has to show WHY nothing arrived against it — but they are not what
+        decides whether a live PO exists for this PR. */
      const livePos=rPos.filter(p=>!['Cancelled','Rejected'].includes(p.status||''));
      const decidePos=livePos.length?livePos:rPos;
+     const poBlocks=rPos.map(po=>({
+       po,
+       // What of THIS PR is on THIS PO. Empty only for a legacy PO matched by
+       // linked_req_nos, which is said so in the cell.
+       lines:((linesByReqPo[req.req_no]||{})[po.id]||[]).slice()
+         .sort((a,b)=>pNum(a.line_no)-pNum(b.line_no)||pNum(a.id)-pNum(b.id)),
+       inwards:(inwByPoId[po.id]||[]).slice()
+         .sort((a,b)=>String(a.document_no||'').localeCompare(String(b.document_no||''),undefined,{numeric:true})),
+       url:po.pdf_url||poFollowupPdfUrl_(pdfMap,po.po_no,['PO','SINGLE'])
+     }));
+     const loose=(looseInwByReq[req.req_no]||[]).slice()
+       .sort((a,b)=>String(a.document_no||'').localeCompare(String(b.document_no||''),undefined,{numeric:true}));
+     const allInw=poBlocks.reduce((a,b)=>a.concat(b.inwards),[]).concat(loose);
      return {
        req,
-       pos:rPos,
-       inwards:rInw,
+       poBlocks,
+       looseInwards:loose,
+       allInwards:allInw,
        vendorInfo:poFollowupVendorInfoFilled_(req),
        poGenerated:livePos.length>0,
        mdApproved:decidePos.length>0&&decidePos.every(poFollowupMdApproved_),
        poSent:decidePos.length>0&&decidePos.every(isPoPartySent),
        statuses:[...new Set(decidePos.map(p=>p.status||'Generated'))],
        prPdf:poFollowupPdfUrl_(pdfMap,req.req_no,['REQUIREMENT','SINGLE','TWO_PAGE'])||req.pdf_url||req.pdf_url_single||'',
-       poPdfs:rPos.map(p=>({no:p.po_no||'',url:p.pdf_url||poFollowupPdfUrl_(pdfMap,p.po_no,['PO','SINGLE'])})),
-       inwPdfs:rInw.map(i=>({no:i.document_no||'',url:poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||''}))
+       vendors:[...new Set(rPos.map(p=>String(p.vendor_name||'').trim()).filter(Boolean))],
+       inwUrlOf:inwUrl
      };
    });
+
+   /* ── Flatten to display rows ───────────────────────────────────
+      One row per (PR, PO, Inward). rowSpan tells the renderer how far each
+      merged cell reaches; poFirst / poSpan do the same for the PO's own block.
+      A PR with nothing against it still gets one row — "PO pending" is a thing
+      this report exists to show, and a PR that vanished because it had no PO
+      would defeat the point. */
+   sarvPoFollowupRows=[];
+   sarvPoFollowupGroups.forEach(g=>{
+     const units=[];
+     g.poBlocks.forEach(b=>{
+       if(b.inwards.length)b.inwards.forEach(i=>units.push({block:b,inward:i}));
+       else units.push({block:b,inward:null});
+     });
+     g.looseInwards.forEach(i=>units.push({block:null,inward:i}));
+     if(!units.length)units.push({block:null,inward:null});
+     g.rowCount=units.length;
+     units.forEach((u,idx)=>{
+       const key=u.block?('po:'+u.block.po.id):'none';
+       const prevKey=idx?(units[idx-1].block?('po:'+units[idx-1].block.po.id):'none'):null;
+       const poFirst=key!==prevKey;
+       let poSpan=0;
+       if(poFirst)for(let j=idx;j<units.length;j++){
+         const k=units[j].block?('po:'+units[j].block.po.id):'none';
+         if(k!==key)break;poSpan++;
+       }
+       sarvPoFollowupRows.push({group:g,req:g.req,block:u.block,po:u.block?u.block.po:null,
+         inward:u.inward,groupFirst:idx===0,rowSpan:units.length,poFirst,poSpan});
+     });
+   });
+   /* ── Link audit, shown on the sheet rather than only in the console ──
+      Two things can make a PR / PO pairing less than certain, and both are
+      worth saying out loud instead of leaving someone to notice a wrong row:
+        • a PO with no lines at all, matched by linked_req_nos — a guess
+        • a PO line with no req_no, which belongs to NO PR and is therefore
+          invisible here however correct the PO is
+      Everything else came from purchase_order_lines.req_no and is exact. */
+   const orphanLines=plRows.filter(l=>l.purchase_order_id&&poById[l.purchase_order_id]&&!String(l.req_no||'').trim());
+   const orphanPoNos=[...new Set(orphanLines.map(l=>(poById[l.purchase_order_id]||{}).po_no).filter(Boolean))];
+   renderPoFollowupDiag_(legacyPoLinks,orphanPoNos);
    fillPoFollowupRequesterFilter();
    renderPoFollowupReport();
  }
+ function renderPoFollowupDiag_(legacyPoLinks,orphanPoNos){
+   const el=byId('p_poRepDiag');if(!el)return;
+   const parts=[];
+   if(legacyPoLinks)parts.push('<b>'+legacyPoLinks+'</b> PO link purane tareeke se (<code>linked_req_nos</code>) joda gaya — '
+     +'un POs ki <code>purchase_order_lines</code> me koi row hi nahi hai. Aise PO ke number par hover karein, wahan likha hoga.');
+   if(orphanPoNos.length)parts.push('<b>'+orphanPoNos.length+'</b> PO me kuch lines par <code>req_no</code> khali hai, '
+     +'isliye wo lines kisi bhi PR ke saath nahi dikhengi: '
+     +orphanPoNos.slice(0,8).map(n=>pEsc(shortDocNo_(n,'PO'))).join(', ')+(orphanPoNos.length>8?' …':''));
+   if(!parts.length){el.style.display='none';el.innerHTML='';return;}
+   el.style.display='block';
+   el.innerHTML='&#9888;&#65039; <b>PR &rarr; PO link audit</b><br>'+parts.join('<br>')
+     +'<br><span style="color:#b45309;">Baaki saare PO apni hi lines ke <code>req_no</code> se jude hain &mdash; wo exact hain. '
+     +'Theek karne ke liye <code>FOLLOWUP_AUTO_COLUMNS_MIGRATION.sql</code> ke neeche di gayi queries chalayein.</span>';
+ }
 
- // Rebuilt from the loaded rows rather than hard-coded, so a new
- // purchaser shows up in the dropdown the first time they raise a PR.
+ // Rebuilt from the loaded rows rather than hard-coded, so a new purchaser
+ // shows up in the dropdown the first time they raise a PR.
  function fillPoFollowupRequesterFilter(){
    const sel=byId('p_poRepRequester');if(!sel)return;
    const keep=sel.value;
-   const names=[...new Set(sarvPoFollowupRows.map(r=>String(r.req.requested_by||'').trim()).filter(Boolean))]
+   const names=[...new Set(sarvPoFollowupGroups.map(g=>String(g.req.requested_by||'').trim()).filter(Boolean))]
      .sort((a,b)=>a.localeCompare(b));
    sel.innerHTML='<option value="">All</option>'+names.map(n=>'<option>'+pEsc(n)+'</option>').join('');
    if(names.includes(keep))sel.value=keep;
  }
 
  const fuTick_=ok=>ok?'<span class="fu-tick">&#10004;</span>':'<span class="fu-dash">&ndash;</span>';
- /* A number with no indexed PDF is still PRINTED — it just isn't a link.
-    A dead link would read as "broken"; plain text reads as "PDF nahi
-    bani", which is the truth. */
- function fuDocCell_(entries){
-   const list=(entries||[]).filter(e=>e&&String(e.no||'').trim());
-   if(!list.length)return '<span class="fu-nodoc">&ndash;</span>';
-   return list.map(e=>e.url
-     ? '<a class="fu-doc" href="'+pEsc(e.url)+'" target="_blank" rel="noopener" title="'+pEsc(e.no)+' ki PDF kholein">'+pEsc(e.no)+'</a>'
-     : '<span class="fu-doc" style="color:#64748b;" title="Is document ki PDF abhi generate / index nahi hui">'+pEsc(e.no)+'</span>'
-   ).join(',<br>');
+ /* A number with no indexed PDF is still PRINTED — it just isn't a link. A dead
+    link would read as "broken"; plain text reads as "PDF nahi bani", which is
+    the truth. The short form is what shows; the full number is the tooltip. */
+ function fuDocLink_(no,url,kind,extraTitle){
+   const full=String(no||'').trim();
+   if(!full)return '<span class="fu-nodoc">&ndash;</span>';
+   const short=shortDocNo_(full,kind)||full;
+   const tip=full+(extraTitle?('\n'+extraTitle):'');
+   return url
+     ? '<a class="fu-doc" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nPDF kholne ke liye click karein')+'">'+pEsc(short)+'</a>'
+     : '<span class="fu-doc" style="color:#64748b;" title="'+pEsc(tip+'\n(Is document ki PDF abhi generate / index nahi hui)')+'">'+pEsc(short)+'</span>';
  }
  function fuStatusCell_(statuses){
    if(!statuses||!statuses.length)return '<span class="fu-nodoc">&ndash;</span>';
@@ -15215,141 +16066,439 @@ window.addEventListener('DOMContentLoaded',()=>{
      return '<span class="fu-status" style="background:'+st.bg+';color:'+st.fg+';">'+pEsc(PO_FOLLOWUP_STATUS_TEXT[s]||s)+'</span>';
    }).join(' ');
  }
- function fuCheckCell_(row,key){
-   const meta=PO_FOLLOWUP_FLAGS[key],st=poFollowupFlagState_(row.req,key),on=!!st;
+ /* The one control on this sheet a person operates.
+
+    A BUTTON, not a checkbox. A checkbox toggles itself the instant it is
+    clicked, so the screen says "done" before the PIN has been asked for, let
+    alone accepted — every failure path then has to put it back, and any one of
+    them that is missed leaves a tick nobody saved. A button changes nothing on
+    its own: the tick appears only after the write has gone through.
+
+    ONCE DONE IT LOCKS. Telling the requester their material is in is a thing
+    that either happened or did not, so it is not a tick to be swung back and
+    forth — only an Admin can take it off, and that still costs an Admin PIN. */
+ /* Every Inward this PR's material actually came in on, short form. Printed on
+    the control itself and listed again in the confirm dialog, because "inform
+    the requester" means telling them about THESE receipts — and a sign-off with
+    no receipt behind it is the one case worth catching before it is made. */
+ /* The Inform-to-Requester control for ONE receipt, sitting on that receipt's
+    own row — directly across from its Inward No.
+
+    It used to be one button merged down the whole PR with the inward numbers
+    printed on it. That read as "these receipts", but it stored one tick: a PR
+    received in three lots could only be all-informed or none-informed, while
+    the actual work is three separate calls made on three different days.
+    One row, one receipt, one button.
+
+    No inward on this row means there is nothing to report yet, so there is no
+    button — a dash, and a tooltip saying what will bring one. */
+ function fuInformCell_(group,inward){
+   const meta=PO_FOLLOWUP_FLAGS[FU_INFORM_LEGACY_KEY];
+   if(!inward)
+     return '<span class="fu-nodoc" title="Is row par koi inward nahi hai — maal aane par yahan Done button aa jayega">&ndash;</span>';
+   const no=inward.document_no||'';
+   const shortNo=shortDocNo_(no,'INWARD')||no;
+   const st=poFollowupInformState_(group.req,no);
+   const data=' data-req="'+pEsc(group.req.req_no||'')+'" data-inw="'+pEsc(no)+'"';
+   if(st){
+     const admin=isAdmin();
+     const title=meta.label+' ✔ '+(st.by||'—')+(st.at?' • '+pStamp(st.at):'')
+       +'\nInward: '+no
+       +(st.legacy?'\n(Purani PR-level entry — is PR ke har inward par lagu hai)':'')
+       +(admin?'\n\nAdmin ho — hatane ke liye click karein (Admin PIN lagega).'
+              :'\n\n🔒 Lock ho chuka hai. Sirf Admin login ise hata sakta hai.');
+     return '<button type="button" class="fu-flag done'+(admin?' admin':'')+'"'+data+' data-on="1"'
+       +(admin?'':' disabled')+' title="'+pEsc(title)+'">&#10004; Done'
+       +(admin?' <span class="fu-unlock">&#128275;</span>':' <span class="fu-lockicon">&#128274;</span>')
+       +'</button>';
+   }
    const needs=meta.role?(SARV_ROLE_LABEL[meta.role]||meta.role)+' ka PIN':'aapke apne role ka PIN';
-   const title=on
-     ? meta.label+' ✔ '+(st.by||'—')+(st.at?' • '+pStamp(st.at):'')+' (hatane ke liye phir se '+needs+' lagega)'
-     : meta.label+' tick karne ke liye '+needs+' chahiye';
-   return '<label class="fu-check'+(on?' done':'')+'" title="'+pEsc(title)+'">'
-     +'<input type="checkbox" class="sarv-fu-check" data-req="'+pEsc(row.req.req_no||'')+'" data-key="'+key+'"'+(on?' checked':'')+'>'
-     +'<span>'+(on?'Done':'Check')+'</span></label>';
+   return '<button type="button" class="fu-flag"'+data+' data-on="0"'
+     +' title="'+pEsc(meta.label+' — Inward '+shortNo+' ('+no+')'
+       +'\n\nClick karne par '+needs+' maanga jayega.\nEk baar done hone ke baad sirf Admin hata sakta hai.')+'">'
+     +'&#9744; Done</button>';
  }
- // What the "Only Incomplete Follow-Up" filter means: anything still
- // owed on this PR, whether that is a PO nobody raised or a bill nobody
- // checked.
- function poFollowupIncomplete_(r){
-   if(!r.poGenerated)return true;
-   if(!r.mdApproved||!r.poSent)return true;
-   if(!r.statuses.every(s=>['Received','Closed (Short)'].includes(s)))return true;
-   return Object.keys(PO_FOLLOWUP_FLAGS).some(k=>!poFollowupFlagState_(r.req,k));
+ /* GM / MD bill check for ONE receipt. Read-only by design — mobile.html's
+    Store Check tab is where it is done, and a second place to tick it would be
+    a second truth. The MD cell says "GM pending" rather than a bare dash while
+    the GM has not signed, because that is the gate the mobile app enforces. */
+ function fuBillCell_(inward,stage){
+   if(!inward)return '<span class="fu-nodoc" title="Is row par koi inward nahi hai — check karne ko kuch nahi">&ndash;</span>';
+   const c=inwStoreCheck_(inward,stage);
+   if(c){
+     return '<span class="fu-tick" title="'+pEsc((stage==='gm'?'GM':'MD')+' Store Check ✔ '+(inwStoreCheckText_(inward,stage)||'checked'))+'">&#10004;</span>';
+   }
+   if(stage==='md'&&!inwStoreCheck_(inward,'gm'))
+     return '<span class="fu-wait" title="MD ka check GM ke baad hi aata hai — abhi GM pending hai">&#9203; GM</span>';
+   return '<span class="fu-wait" title="mobile.html ke Store Check tab me '+(stage==='gm'?'GM':'MD')+' ke check karne par yahan apne aap ✔ aa jayega">&#9203;</span>';
  }
- function poFollowupVisibleRows(){
+ // What the "Only Incomplete Follow-Up" filter means: anything still owed on
+ // this PR, whether that is a PO nobody raised or a bill nobody checked.
+ function poFollowupIncomplete_(g){
+   if(!g.poGenerated)return true;
+   if(!g.mdApproved||!g.poSent)return true;
+   if(!g.statuses.every(s=>['Received','Closed (Short)'].includes(s)))return true;
+   if(!g.allInwards.length)return true;
+   if(g.allInwards.some(i=>!inwStoreCheck_(i,'gm')||!inwStoreCheck_(i,'md')))return true;
+   // Every RECEIPT has to have been reported, not just one of them.
+   return !poFollowupAllInformed_(g);
+ }
+ /* Filtering is per PR, not per row: a PR matches or it does not, and all of
+    its rows come with it. Showing one PO of a PR and silently dropping the
+    other would be the most misleading thing this sheet could do. */
+ function poFollowupVisibleGroups(){
    const term=(byId('p_poRepSearch')?.value||'').trim().toLowerCase();
    const status=byId('p_poRepStatus')?.value||'';
    const requester=byId('p_poRepRequester')?.value||'';
    const pendingOnly=byId('p_poRepPending')?.value==='1';
-   return sarvPoFollowupRows.filter(r=>{
-     if(requester&&String(r.req.requested_by||'').trim()!==requester)return false;
-     if(status==='__NOPO__'){if(r.poGenerated)return false}
-     else if(status&&!r.statuses.includes(status))return false;
-     if(pendingOnly&&!poFollowupIncomplete_(r))return false;
+   return sarvPoFollowupGroups.filter(g=>{
+     if(requester&&String(g.req.requested_by||'').trim()!==requester)return false;
+     if(status==='__NOPO__'){if(g.poGenerated)return false}
+     else if(status&&!g.statuses.includes(status))return false;
+     if(pendingOnly&&!poFollowupIncomplete_(g))return false;
      if(!term)return true;
-     return [r.req.req_no,r.req.requested_by,r.req.department,
-       r.pos.map(p=>(p.po_no||'')+' '+(p.vendor_name||'')).join(' '),
-       r.inwards.map(i=>i.document_no).join(' '),r.statuses.join(' ')]
+     // Both forms are searchable — PR608 finds it and so does PR/26-27/608.
+     const nos=[g.req.req_no,shortDocNo_(g.req.req_no,'PR')]
+       .concat(g.poBlocks.map(b=>b.po.po_no)).concat(g.poBlocks.map(b=>shortDocNo_(b.po.po_no,'PO')))
+       .concat(g.allInwards.map(i=>i.document_no)).concat(g.allInwards.map(i=>shortDocNo_(i.document_no,'INWARD')));
+     return nos.concat([g.req.requested_by,g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
  }
  function renderPoFollowupReport(){
    const tb=byId('p_poReportBody');if(!tb)return;
-   const rows=poFollowupVisibleRows();
-   tb.innerHTML=rows.length?rows.map(r=>
-     '<tr>'
-     +'<td style="background:#fdf2e9;font-weight:700;">'+fuDocCell_([{no:r.req.req_no||'—',url:r.prPdf}])+'</td>'
-     +'<td style="background:#fdf2e9;font-weight:700;color:#7c2d12;">'+pEsc(r.req.requested_by||'—')+'</td>'
-     +'<td class="fu-center">'+fuTick_(r.vendorInfo)+'</td>'
-     +'<td class="fu-center">'+fuTick_(r.poGenerated)+'</td>'
-     +'<td style="background:#fdf0e6;">'+fuDocCell_(r.poPdfs)+'</td>'
-     +'<td class="fu-center">'+fuTick_(r.mdApproved)+'</td>'
-     +'<td class="fu-center">'+fuTick_(r.poSent)+'</td>'
-     +'<td>'+fuStatusCell_(r.statuses)+'</td>'
-     +'<td style="background:#fdeaf0;">'+fuDocCell_(r.inwPdfs)+'</td>'
-     +'<td class="fu-center">'+fuCheckCell_(r,'informRequester')+'</td>'
-     +'<td class="fu-center">'+fuCheckCell_(r,'billGm')+'</td>'
-     +'<td class="fu-center">'+fuCheckCell_(r,'billMd')+'</td>'
-     +'</tr>').join('')
-     : '<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:18px;">'
-       +(sarvPoFollowupRows.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
+   const groups=poFollowupVisibleGroups();
+   const visible=new Set(groups.map(g=>g.req.req_no));
+   const rows=sarvPoFollowupRows.filter(r=>visible.has(r.req.req_no));
+   const prCell='background:#fdf2e9;font-weight:700;';
+   tb.innerHTML=rows.length?rows.map(r=>{
+     const g=r.group,b=r.block,po=r.po;
+     // A merged cell is written once, by the row it starts on; the rows it
+     // covers write nothing at all for that column.
+     const pr=(html,style)=>r.groupFirst?('<td rowspan="'+r.rowSpan+'" style="'+(style||'')+'vertical-align:middle;">'+html+'</td>'):'';
+     const poCell=(html,style)=>r.poFirst?('<td rowspan="'+r.poSpan+'" style="'+(style||'')+'vertical-align:middle;">'+html+'</td>'):'';
+     // Which of this PR's items ride on this PO — what makes the link checkable
+     // from the sheet rather than taken on trust.
+     const itemsTip=b?(b.lines.length
+       ? 'Is PO par is PR ke '+b.lines.length+' item:\n'+b.lines.map(l=>'• '+(l.item_name||'Item')+' × '+pNum(l.ordered_qty)).join('\n')
+       : 'Is PO ki koi line is PR se match nahi hui — purana PO hai, linked_req_nos se joda gaya hai'):'';
+     return '<tr'+(r.groupFirst?' style="border-top:2px solid #cbd5e1;"':'')+'>'
+       +pr(fuDocLink_(g.req.req_no,g.prPdf,'PR'),prCell)
+       +pr('<span style="color:#7c2d12;">'+pEsc(g.req.requested_by||'—')+'</span>',prCell)
+       +pr(fuTick_(g.vendorInfo),'text-align:center;')
+       +pr(fuTick_(g.poGenerated),'text-align:center;')
+       +poCell(po?fuDocLink_(po.po_no,b.url,'PO',itemsTip):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
+       +poCell(po?('<span style="color:#9a3412;font-weight:700;">'+pEsc(po.vendor_name||'—')+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
+       +poCell(po?fuTick_(poFollowupMdApproved_(po)):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
+       +poCell(po?fuSentCell_(po):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
+       +poCell(po?fuStatusCell_([po.status||'Generated']):'<span class="fu-nodoc">&ndash;</span>','')
+       +'<td style="background:#fdeaf0;">'+(r.inward?fuDocLink_(r.inward.document_no,g.inwUrlOf(r.inward),'INWARD'):'<span class="fu-nodoc">&ndash;</span>')+'</td>'
+       // Per receipt, not merged down the PR — it sits across from the Inward
+       // No. in the previous column, which is the receipt it refers to.
+       +'<td class="fu-center">'+fuInformCell_(g,r.inward)+'</td>'
+       +'<td class="fu-center">'+fuBillCell_(r.inward,'gm')+'</td>'
+       +'<td class="fu-center">'+fuBillCell_(r.inward,'md')+'</td>'
+       +'</tr>';
+   }).join('')
+     : '<tr><td colspan="13" style="text-align:center;color:#94a3b8;padding:18px;">'
+       +(sarvPoFollowupGroups.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
-   set('p_poRepCount',rows.length===sarvPoFollowupRows.length?rows.length:rows.length+' / '+sarvPoFollowupRows.length);
-   set('p_poRepNoPo',rows.filter(r=>!r.poGenerated).length);
-   set('p_poRepDone',rows.filter(r=>r.statuses.length&&r.statuses.every(s=>['Received','Closed (Short)'].includes(s))).length);
-   set('p_poRepInformed',rows.filter(r=>poFollowupFlagState_(r.req,'informRequester')).length);
+   // Counted in PRs, not rows — "12 of 40" meaning rows would be unreadable
+   // once one PR can occupy five of them.
+   set('p_poRepCount',(groups.length===sarvPoFollowupGroups.length?String(groups.length):groups.length+' / '+sarvPoFollowupGroups.length)
+     +' PR · '+rows.length+' rows');
+   set('p_poRepNoPo',groups.filter(g=>!g.poGenerated).length);
+   set('p_poRepDone',groups.filter(g=>g.statuses.length&&g.statuses.every(s=>['Received','Closed (Short)'].includes(s))).length);
+   // Counted in RECEIPTS now, not PRs — the sign-off is per inward, so "12"
+   // meaning twelve PRs would not match anything on screen.
+   set('p_poRepInformed',rows.filter(r=>r.inward&&poFollowupInformState_(r.req,r.inward.document_no)).length
+     +' / '+rows.filter(r=>!!r.inward).length);
+   // Idempotent — see bindPoFollowupFlagClicks_. Here as well as at startup so
+   // the buttons are live even if this panel is reached some other way.
+   bindPoFollowupFlagClicks_();
+ }
+ /* PO Sent to Vendor. Nobody ticks this either: mobile.html's PO Sender writes
+    purchase_orders.party_sent_at the moment it sends the PO on WhatsApp, and
+    STORE.html's own Send button writes the same column — so the tick appears
+    here by itself whichever app did the sending. */
+ function fuSentCell_(po){
+   if(!po)return '<span class="fu-nodoc">&ndash;</span>';
+   if(po.party_sent_at)
+     return '<span class="fu-tick" title="'+pEsc('Vendor ko bheja gaya: '+pStamp(po.party_sent_at))+'">&#10004;</span>';
+   /* isPoPartySent also honours a browser-local fallback, used only on a
+      database without the party_sent_at column. It is marked differently
+      because that record lives in ONE browser — a send done from the phone is
+      invisible here, and a tick that cannot be trusted should not look like one
+      that can. */
+   if(isPoPartySent(po))
+     return '<span class="fu-tick" style="color:#b45309;" title="Is browser me sent mark hai, lekin database me party_sent_at column nahi hai — mobile se bheja gaya PO yahan nahi dikhega. PO_FOLLOWUP note dekhein.">&#10004;?</span>';
+   return '<span class="fu-wait" title="mobile.html ke PO Sender ke WhatsApp par bhejte hi yahan apne aap ✔ aa jayega">&#9203;</span>';
  }
 
- /* The one thing on this sheet that WRITES. Gated on a server-verified
-    Role PIN, not on who is logged in: a sign-off has to be the named
-    role's own act, and a browser claiming to be the GM cannot authorise
-    anything. Un-ticking is gated the same way — withdrawing a sign-off
-    is as much a decision as making one. */
- async function togglePoFollowupFlag(reqNo,key,wantOn,checkbox){
-   const meta=PO_FOLLOWUP_FLAGS[key];
-   const revert=()=>{if(checkbox)checkbox.checked=!wantOn};
-   if(!meta)return revert();
-   if(!SB_READY){showToast('Supabase URL/key configure karein','warn');return revert()}
-   const row=sarvPoFollowupRows.find(r=>String(r.req.req_no||'')===String(reqNo));
-   if(!row){showToast('Yeh PR list me nahi mila — Reload karein','warn');return revert()}
-   const role=meta.role||sarvCurrentRole;
-   if(!role){showToast('Pehle login karein','warn');return revert()}
+ /* The Inform-to-Requester confirm popup.
+
+    Same contract as askSecret — resolves to the typed PIN, or null if the
+    person backed out — but it SHOWS the record first: which PR, who raised it,
+    which PO, and which Inward the goods came in on. That last line is the whole
+    point. A bare "enter your PIN" box gives somebody no way to notice they are
+    about to tell the wrong person their material has arrived.
+
+    Built on its own element rather than reusing #pwdGateModal so the two can
+    never fight over the same DOM, and so this one can carry a details table. */
+ function fuAskConfirm_(opts){
+   const o=opts||{};
+   return new Promise(resolve=>{
+     const modal=byId('fuConfirmModal'),input=byId('fuDlgPin');
+     if(!modal||!input){
+       // No dialog in the DOM — fall back to the generic PIN box rather than
+       // leaving the action dead. askSecret has its own prompt() fallback.
+       askSecret({title:o.title,subtitle:o.subtitle,recordInfo:o.fallbackInfo||'',label:o.pinLabel,confirmText:o.confirmText})
+         .then(resolve);
+       return;
+     }
+     const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v==null?'':v};
+     set('fuDlgTitle',o.title||'Confirm');
+     set('fuDlgSubtitle',o.subtitle||'');
+     set('fuDlgPinLabel',o.pinLabel||'PIN');
+     const icon=byId('fuDlgIcon');if(icon)icon.innerHTML=o.icon||'&#128226;';
+     const rows=byId('fuDlgRows');
+     if(rows)rows.innerHTML=(o.rows||[]).map(r=>
+       '<tr'+(r[2]?' class="hi"':'')+'><td class="k">'+pEsc(r[0])+'</td><td class="v">'+pEsc(r[1]||'—')+'</td></tr>').join('');
+     const note=byId('fuDlgNote');
+     if(note){note.innerHTML=o.note||'';note.style.display=o.note?'block':'none';
+       note.classList.toggle('danger',!!o.danger);}
+     const ok=byId('fuDlgOkBtn'),cancel=byId('fuDlgCancelBtn'),err=byId('fuDlgError');
+     if(ok){ok.innerHTML=o.confirmText||'&#9989; Confirm';ok.classList.toggle('danger',!!o.danger);ok.disabled=false;}
+     if(err){err.style.display='none';err.textContent='';}
+     input.value='';
+     /* Shown by CLASS, not by setting display inline — the element carries an
+        inline `display:none` from its markup, and an inline style cannot be
+        beaten by a stylesheet rule. Clearing it lets #fuConfirmModal.open's
+        `display:grid` (and with it the centring) actually take effect. */
+     modal.style.display='';
+     modal.classList.add('open');
+     setTimeout(()=>input.focus(),60);
+     const cleanup=()=>{
+       modal.classList.remove('open');
+       modal.style.display='none';
+       ok&&ok.removeEventListener('click',onOk);
+       cancel&&cancel.removeEventListener('click',onCancel);
+       input.removeEventListener('keydown',onKey);
+       modal.removeEventListener('mousedown',onBackdrop);
+     };
+     const onOk=()=>{const v=input.value;cleanup();resolve(v);};
+     const onCancel=()=>{cleanup();resolve(null);};
+     const onKey=e=>{
+       if(e.key==='Enter'){e.preventDefault();onOk();}
+       else if(e.key==='Escape'){e.preventDefault();onCancel();}
+     };
+     // Clicking the dark backdrop closes it; clicking inside the card does not.
+     const onBackdrop=e=>{if(e.target===modal)onCancel();};
+     ok&&ok.addEventListener('click',onOk);
+     cancel&&cancel.addEventListener('click',onCancel);
+     input.addEventListener('keydown',onKey);
+     modal.addEventListener('mousedown',onBackdrop);
+   });
+ }
+ /* Binds the Done / Check buttons, ONCE, by delegation on the tbody — the
+    tbody survives every render, the buttons inside it do not.
+
+    Called both from bindSarvPdfControls at startup AND from the end of every
+    render. The dataset flag makes the second call free, and it means the
+    buttons cannot end up dead if the startup pass is ever missed — which is
+    exactly what left the PIN prompt never appearing: a control that silently
+    does nothing looks identical to one that is broken somewhere deep. */
+ function bindPoFollowupFlagClicks_(){
+   const body=byId('p_poReportBody');
+   if(!body||body.dataset.fuBound)return;
+   body.addEventListener('click',e=>{
+     const btn=e.target.closest('.fu-flag');
+     if(!btn||btn.disabled)return;
+     e.preventDefault();
+     // Disabled for the round trip so a double-click cannot start two PIN
+     // prompts for the same PR.
+     btn.dataset.label=btn.innerHTML;
+     btn.disabled=true;btn.textContent='…';
+     togglePoFollowupFlag(btn.dataset.req,btn.dataset.inw,btn.dataset.on!=='1',btn)
+       .catch(err=>{btn.disabled=false;btn.innerHTML=btn.dataset.label||'';dbError(err)});
+   });
+   body.dataset.fuBound='1';
+ }
+ /* The one thing on this sheet that WRITES.
+
+    Gated on a server-verified Role PIN, not on who is logged in: a sign-off has
+    to be the named role's own act, and a browser claiming to be the GM cannot
+    authorise anything.
+
+    Three rules, in order:
+      • Not done yet  → anyone logged in may do it, with their OWN role's PIN.
+      • Already done  → LOCKED. Only an Admin login may take it off.
+      • Admin undoing → still costs the Admin PIN. Being logged in as Admin is
+        a claim the browser makes; the PIN is the part the server checks.
+
+    Nothing on screen changes until the write has come back clean — the button
+    is redrawn from the saved record, never from the click. */
+ async function togglePoFollowupFlag(reqNo,inwardNo,wantOn,btn){
+   const meta=PO_FOLLOWUP_FLAGS[FU_INFORM_LEGACY_KEY];
+   // dataset.label holds the button's innerHTML (it carries a padlock span), so
+   // it has to go back as innerHTML — textContent would print the markup.
+   const unbusy=()=>{if(btn){btn.disabled=false;if(btn.dataset.label)btn.innerHTML=btn.dataset.label;}};
+   if(!meta)return;
+   if(!SB_READY){showToast('Supabase URL/key configure karein','warn');return unbusy()}
+   const g=sarvPoFollowupGroups.find(x=>String(x.req.req_no||'')===String(reqNo));
+   if(!g){showToast('Yeh PR list me nahi mila — Reload karein','warn');return unbusy()}
+   const no=String(inwardNo||'').trim();
+   if(!no){showToast('Is row par koi inward nahi hai','warn');return unbusy()}
+
+   // What the RECORD says, not what the button said — the sheet may have been
+   // sitting open while somebody else ticked it.
+   const priorFlag=poFollowupInformState_(g.req,no);
+   if(!!priorFlag===!!wantOn){renderPoFollowupReport();return}
+
+   /* Taking a sign-off OFF is Admin-only. The button is already disabled for
+      everyone else, so reaching here without Admin means the click came from
+      somewhere else — it is refused on its own merits rather than trusted. */
+   if(!wantOn&&!isAdmin()){
+     showToast('🔒 '+meta.label+' lock ho chuka hai — sirf Admin login ise hata sakta hai','warn');
+     return unbusy();
+   }
+   // Ticking uses the logged-in user's own role PIN; unticking uses the Admin's.
+   const role=wantOn?(meta.role||sarvCurrentRole):'ADMIN_PIN';
+   if(!role){showToast('Pehle login karein — apne role ke PIN se hi tick hota hai','warn');return unbusy()}
    const roleLabel=SARV_ROLE_LABEL[role]||role;
    try{
      const ex=await SB.rpc('role_pin_exists',{p_role:role});
      if(ex.error)throw ex.error;
-     if(!ex.data){showToast('⚠️ '+roleLabel+' ka PIN set nahi hai — Settings > Change Passwords me set karein','warn');return revert()}
+     if(!ex.data){
+       showToast('⚠️ '+roleLabel+' ka PIN set nahi hai — Master Data > Settings > Change Passwords me set karein, tab tak ye tick nahi hoga','warn');
+       return unbusy();
+     }
    }catch(e){
      // A check that cannot run must never be read as a pass.
-     showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return revert();
+     showToast('PIN check nahi ho paaya: '+(e.message||e),'error');return unbusy();
    }
-   const entered=await askSecret({
-     title:meta.label+(wantOn?' — Confirm':' — Undo'),
-     subtitle:(wantOn?'Tick karne':'Tick hatane')+' ke liye '+roleLabel+' ka PIN daalein',
-     recordInfo:'PR: '+(row.req.req_no||'—')+'  •  Requested by: '+(row.req.requested_by||'—'),
-     label:roleLabel+' PIN',
-     confirmText:wantOn?'&#9989; Confirm':'&#8630; Undo'
+   /* The popup names THIS receipt before asking for the PIN — the PR it answers,
+      who raised it, the PO it was ordered on, and the Inward itself. The Inward
+      line is highlighted because it is the one that can be wrong in a way
+      nobody notices afterwards. */
+   const inwRow=(g.allInwards||[]).find(i=>String(i.document_no||'')===no)||{};
+   const poOfInward=(g.poBlocks||[]).find(b=>(b.inwards||[]).some(i=>String(i.document_no||'')===no));
+   const poTxt=poOfInward
+     ? (shortDocNo_(poOfInward.po.po_no,'PO')+'   ('+(poOfInward.po.po_no||'')+')')
+     : '— (PO ke bina seedha PR par receive hua)';
+   const dlgRows=[
+     ['Inward No.',(shortDocNo_(no,'INWARD')||no)+'   ('+no+')',true],
+     ['Receiving Date',inwRow.receiving_date||'—'],
+     ['Supplier',inwRow.supplier_name||'—'],
+     ['PR No.',shortDocNo_(g.req.req_no,'PR')+'   ('+(g.req.req_no||'—')+')'],
+     ['Requested By',g.req.requested_by||'—'],
+     ['Department',g.req.department||'—'],
+     ['PO No.',poTxt]
+   ];
+   if(!wantOn&&priorFlag)
+     dlgRows.push(['Abhi Tick Hai',(priorFlag.by||'—')+(priorFlag.at?' • '+pStamp(priorFlag.at):'')
+       +(priorFlag.legacy?'   (purani PR-level entry)':'')]);
+   const note=wantOn
+     ? 'Confirm karne par <b>sirf is Inward</b> ka tick lagega aur <b>lock</b> ho jayega. Hatane ke liye Admin login aur Admin PIN chahiye hoga.'
+     : (priorFlag&&priorFlag.legacy
+         ? '⚠️ Ye purani <b>PR-level</b> entry hai jo is PR ke <b>har inward</b> par lagu hai. Hatane par is PR ke saare inward ka tick hat jayega.'
+         : 'Is Inward ka lock hata kar tick wapas le liya jayega. Baad me koi bhi user dobara tick kar sakta hai.');
+   const entered=await fuAskConfirm_({
+     title:meta.label+(wantOn?' — Confirm':' — Unlock & Undo'),
+     subtitle:(wantOn?'Requester ko inform karne ke baad confirm karein':'Lock hata kar tick wapas lein'),
+     icon:wantOn?'&#128226;':'&#128275;',
+     rows:dlgRows,note,
+     danger:!wantOn,
+     pinLabel:roleLabel+' PIN',
+     confirmText:wantOn?'&#9989; Confirm':'&#128275; Unlock &amp; Undo',
+     fallbackInfo:'Inward: '+no+'  •  PR: '+(g.req.req_no||'—')
    });
-   if(entered==null)return revert();                 // cancelled
-   if(!String(entered).trim()){showToast('PIN khali nahi ho sakta','warn');return revert()}
+   if(entered==null)return unbusy();                 // cancelled
+   if(!String(entered).trim()){showToast('PIN khali nahi ho sakta','warn');return unbusy()}
    try{
      const v=await SB.rpc('verify_role_pin',{p_role:role,p_pin:String(entered).trim()});
      if(v.error)throw v.error;
-     if(!v.data){showToast('❌ Galat '+roleLabel+' PIN','error');return revert()}
-   }catch(e){showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return revert()}
+     if(!v.data){showToast('❌ Galat '+roleLabel+' PIN','error');return unbusy()}
+   }catch(e){showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return unbusy()}
    try{
-     /* Re-read approvals immediately before merging. Two people working
-        the same sheet from two machines would otherwise overwrite each
-        other's sign-offs, because this column also carries the Store /
-        GM / MD signatures and a stale copy would put those back too. */
-     const cur=await SB.from('purchase_requirements').select('approvals').eq('id',row.req.id).single();
+     /* Re-read approvals immediately before merging. Two people working the
+        same sheet from two machines would otherwise overwrite each other's
+        sign-offs, because this column also carries the Store / GM / MD
+        signatures and a stale copy would put those back too. */
+     const cur=await SB.from('purchase_requirements').select('approvals').eq('id',g.req.id).single();
      if(cur.error)throw cur.error;
      const approvals={...((cur.data&&cur.data.approvals)||{})};
      const followup={...(approvals.followup||{})};
-     if(wantOn)followup[key]={by:roleLabel,role,at:new Date().toISOString()};
-     else delete followup[key];
+     const map={...(followup[FU_INFORM_KEY]||{})};
+     if(wantOn){
+       map[no]={by:roleLabel,role,at:new Date().toISOString()};
+     }else{
+       delete map[no];
+       /* Undoing a LEGACY PR-wide tick. It covers every receipt on this PR, so
+          it cannot be unticked for one of them — it goes, and the receipts that
+          were meant to stay ticked are written back individually. Said plainly
+          in the dialog's note before the PIN is asked for. */
+       if(priorFlag&&priorFlag.legacy){
+         delete followup[FU_INFORM_LEGACY_KEY];
+         (g.allInwards||[]).forEach(i=>{
+           const other=String(i.document_no||'');
+           if(other&&other!==no&&!map[other])map[other]={...priorFlag,legacy:undefined};
+         });
+       }
+     }
+     followup[FU_INFORM_KEY]=map;
      approvals.followup=followup;
-     const u=await SB.from('purchase_requirements').update({approvals}).eq('id',row.req.id);
+     const u=await SB.from('purchase_requirements').update({approvals}).eq('id',g.req.id).select('id,approvals').single();
      if(u.error)throw u.error;
-     row.req.approvals=approvals;                    // keep the loaded row level with the DB
-     showToast((wantOn?'✅ ':'↩️ ')+meta.label+' — '+(row.req.req_no||'')+(wantOn?' tick ho gaya':' tick hata diya'));
+     /* Written AND read back. A jsonb update that the database quietly dropped
+        (an RLS policy, a trigger) would otherwise show as a tick that
+        disappears on the next Reload, which is the hardest kind of bug to
+        believe. The loaded row is set from what came back, not from what was
+        sent, so the screen can only ever show what is actually stored. */
+     const saved=(u.data&&u.data.approvals)||approvals;
+     g.req.approvals=saved;
+     const ok=!!poFollowupInformState_(g.req,no)===!!wantOn;
+     if(!ok){
+       showToast('⚠️ '+meta.label+' database me save nahi hua — purchase_requirements.approvals par write permission check karein','error');
+     }else{
+       showToast((wantOn?'✅ ':'🔓 ')+meta.label+' — Inward '+(shortDocNo_(no,'INWARD')||no)
+         +(wantOn?' tick ho gaya aur lock ho gaya':' ka lock hata kar tick wapas le liya'));
+     }
    }catch(e){
-     dbError(e);return revert();
+     dbError(e);return unbusy();
    }
    renderPoFollowupReport();
  }
 
  function exportPoFollowupCsv(){
-   const rows=poFollowupVisibleRows();
+   const visible=new Set(poFollowupVisibleGroups().map(g=>g.req.req_no));
+   const rows=sarvPoFollowupRows.filter(r=>visible.has(r.req.req_no));
    if(!rows.length)return showToast('Export karne ke liye koi row nahi hai','warn');
-   const head=['PR No.','PR Requested By','Vendor Info.','PO Generate','PO No.','MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
+   /* FULL document numbers in the file, short ones only on screen. A CSV is a
+      record that gets filed, mailed and matched against other systems, and
+      PR608 cannot be matched back to a year or a series. Both are exported so
+      neither reading is lost. */
+   const head=['PR No.','PR Short','PR Requested By','Vendor Info.','PO Generate','PO No.','PO Short','Vendor',
+     'MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inward Short',
+     'Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
    const yn=v=>v?'Yes':'No';
-   const flag=(r,k)=>{const s=poFollowupFlagState_(r.req,k);return s?('Yes — '+(s.by||'')+(s.at?' '+pStamp(s.at):'')):'No'};
    const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
-   const body=rows.map(r=>[
-     r.req.req_no||'',r.req.requested_by||'',yn(r.vendorInfo),yn(r.poGenerated),
-     r.pos.map(p=>p.po_no).filter(Boolean).join(' | '),yn(r.mdApproved),yn(r.poSent),
-     r.statuses.join(' | '),r.inwards.map(i=>i.document_no).filter(Boolean).join(' | '),
-     flag(r,'informRequester'),flag(r,'billGm'),flag(r,'billMd')
-   ].map(esc).join(','));
+   const bill=(i,s)=>{if(!i)return '';const c=inwStoreCheck_(i,s);return c?('Yes — '+(inwStoreCheckText_(i,s)||'checked')):'No'};
+   const body=rows.map(r=>{
+     const g=r.group,po=r.po,i=r.inward;
+     // Per receipt — a row with no inward has nothing to have been informed of.
+     const f=i?poFollowupInformState_(g.req,i.document_no):null;
+     return [
+       g.req.req_no||'',shortDocNo_(g.req.req_no,'PR'),g.req.requested_by||'',
+       yn(g.vendorInfo),yn(g.poGenerated),
+       po?(po.po_no||''):'',po?shortDocNo_(po.po_no,'PO'):'',po?(po.vendor_name||''):'',
+       po?yn(poFollowupMdApproved_(po)):'',po?(po.party_sent_at?('Yes — '+pStamp(po.party_sent_at)):(isPoPartySent(po)?'Yes (local only)':'No')):'',
+       po?(po.status||'Generated'):'',
+       i?(i.document_no||''):'',i?shortDocNo_(i.document_no,'INWARD'):'',
+       f?('Yes — '+(f.by||'')+(f.at?' '+pStamp(f.at):'')):'No',
+       bill(i,'gm'),bill(i,'md')
+     ].map(esc).join(',');
+   });
    const csv=head.map(esc).join(',')+'\n'+body.join('\n');
    // BOM so Excel opens the Hindi text and the PR numbers correctly.
    const a=document.createElement('a');
@@ -15765,21 +16914,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // rows, Reload is what goes back to the database.
    ['p_poRepSearch','p_poRepStatus','p_poRepRequester','p_poRepPending']
      .forEach(id=>onFilter(id,renderPoFollowupReport));
-   const repBody=byId('p_poReportBody');
-   if(repBody&&!repBody.dataset.fuBound){
-     /* Delegated, because the whole tbody is replaced on every render and a
-        listener bound to a checkbox would not survive that. The box is put
-        back to where it was until the PIN clears — togglePoFollowupFlag
-        reverts it on every failure path, so a cancelled prompt can never
-        leave a tick on screen that was never saved. */
-     repBody.addEventListener('change',e=>{
-       const ck=e.target.closest('.sarv-fu-check');if(!ck)return;
-       togglePoFollowupFlag(ck.dataset.req,ck.dataset.key,ck.checked,ck).catch(err=>{
-         ck.checked=!ck.checked;dbError(err);
-       });
-     });
-     repBody.dataset.fuBound='1';
-   }
+   bindPoFollowupFlagClicks_();
    on('p_poAddPrItemsBtn',async()=>{
      const panel=byId('p_poAddItemsPickerPanel');if(!panel)return;
      if(panel.style.display!=='none'){panel.style.display='none';return;}
