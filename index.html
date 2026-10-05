@@ -6685,6 +6685,11 @@ function poStripInputFromRow_(tr){
     prNo:tr.dataset.reqNo||'',
     prRequiredQty:tr.dataset.prRequiredQty, prReceivedQty:tr.dataset.prReceivedQty,
     prRequiredWeight:tr.dataset.prRequiredWeight, prReceivedWeight:tr.dataset.prReceivedWeight,
+    // The PO's agreed price and the rate being entered — docStripRateNote_
+    // compares the two, so the live strip can warn about an over-rate before
+    // Submit instead of only the printed copy recording it afterwards.
+    poUnitPrice:tr.dataset.poUnitPrice,
+    rate:pNum(tr.querySelector('.rate-field')?.value),
     qty:pNum(tr.querySelector('.qty-field')?.value),
     weight:pNum(tr.querySelector('.weight-field')?.value)
   };
@@ -6709,6 +6714,7 @@ function renderPoInfoRow(tr,info){
   const tag=t=>'<span style="color:'+accent+';font-weight:800;font-size:10px;">'+escText(t)+'</span>';
   const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
     +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
+  const rateNote=docStripRateNote_(p);
   cell.innerHTML=line(false,
       tag(p.tag||'—')
       +pill(p.ordLabel,p.ordered,'#0f172a')
@@ -6718,10 +6724,15 @@ function renderPoInfoRow(tr,info){
     // Weight on its own line under the quantities, in the same order.
     +(p.hasWeight?line(true,
       tag('Weight (KGS)')
-      +pill(p.ordWtLabel,nNum_(p.ordWt),'#0f172a')
-      +pill('Pending Wt',nNum_(p.pendWt),p.pendWt>0?'#b45309':'#16a34a')
-      +pill('Received Wt',nNum_(p.recWt),'#0f766e')
-      +pill('Excess Wt',nNum_(p.excWt),p.excWt>0?'#dc2626':'#94a3b8')):'');
+      +pill(p.ordWtLabel,nWt_(p.ordWt),'#0f172a')
+      +pill('Pending Wt',nWt_(p.pendWt),p.pendWt>0?'#b45309':'#16a34a')
+      +pill('Received Wt',nWt_(p.recWt),'#0f766e')
+      +pill('Excess Wt',nWt_(p.excWt),p.excWt>0?'#dc2626':'#94a3b8')):'')
+    /* Third line, same as the printed copy — the rate the PO agreed, shown the
+       moment the entry goes past it. On screen it is a warning before Submit;
+       on the PDF it is the record. Same function builds both, so they cannot
+       say different things. */
+    +(rateNote?'<div style="margin-top:3px;font-size:10px;color:#dc2626;font-weight:800;">'+escText(rateNote)+'</div>':'');
 }
 /* Weight already booked in against each of these PO lines.
    purchase_order_lines keeps a received_qty counter but has no received-weight
@@ -7287,6 +7298,11 @@ async function verifyEditPassword(reason){
      price (the bill's rate is typed in), so this one is PO-only. */
 function inwardDocOverrides(rows){
   const out=[];
+  /* Is this receipt booked against a PO at all? Read the same three ways the
+     printed PO Reference is (picker, its label on an edit, and each row's own
+     PO number), so an Admin edit — where the picker is deliberately never
+     re-ticked — is judged the same as a fresh entry. */
+  const poBased=inwardPoRefList_(rows).length>0;
   (rows||[]).forEach(r=>{
     const p=docStripParts_(r);
     if(p&&p.excess>0){
@@ -7296,6 +7312,17 @@ function inwardDocOverrides(rows){
     }
     if(r.poLineId&&r.poUnitPrice!=null&&r.poUnitPrice!==''&&Math.abs(pNum(r.rate)-pNum(r.poUnitPrice))>0.001)
       out.push(r.name+': rate '+pNum(r.rate)+' ≠ PO rate '+pNum(r.poUnitPrice));
+    /* An ITEM THAT IS NOT ON THE PO. Rows loaded from the PO carry its line's
+       id; a row typed in with + Add Row carries nothing. Receiving something
+       the PO never ordered is a bigger decision than receiving too much of
+       something it did — it has no agreed rate, no approval behind it, and
+       nothing on the PO to reconcile against — so it is gated the same way.
+
+       `savedLine` keeps this honest on an edit: a line restored from the saved
+       record is not "just added", even when it has no PO link because it
+       predates the po_line_id column. */
+    if(poBased&&!r.poLineId&&!r.savedLine)
+      out.push(r.name+': PO par ye item hai hi nahi — extra item add kiya gaya hai (qty '+pNum(r.qty)+')');
   });
   return out;
 }
@@ -11316,6 +11343,13 @@ async function loadInwardForEdit(id,no){
   lines.forEach(line=>{
     addNewRow();
     const tr=tb&&tb.lastElementChild;if(!tr)return;
+    /* This row came OUT of the saved record — it is not something somebody
+       added to the form just now. inwardDocOverrides uses this to tell an
+       item added to a PO receipt from one the record already had: a line
+       saved before po_line_id existed has no PO link either, and without this
+       marker every edit of such an old record would demand a password for
+       items nobody touched. */
+    tr.dataset.savedLine='1';
     if(line.po_line_id)tr.dataset.poLineId=line.po_line_id;
     const pi=line.po_line_id?poLineInfo[line.po_line_id]:null;
     if(pi){
@@ -11911,12 +11945,22 @@ window.addEventListener('DOMContentLoaded',()=>{
       would read as "nothing received". */
    const ordWt=pNum(it.poOrderedWeight), alreadyWt=pNum(it.poReceivedWeight);
    const recWt=alreadyWt+pNum(it.weight);
+   /* The PO's agreed unit price, and whether this receipt is being billed
+      above it. Carried on the strip so the printed copy can name the rate the
+      PO actually agreed — the entered rate is already in the row's Rate
+      column, but the figure it should be compared against is on a document
+      the person reading this PDF does not have in front of them. */
+   const poRate=(it.poUnitPrice!=null&&it.poUnitPrice!=='')?pNum(it.poUnitPrice):null;
+   const rate=pNum(it.rate);
+   // A paisa of float drift is not an overcharge.
+   const rateOver=poRate!=null&&rate>poRate+0.001;
    return {poNo:String(it.poNo),ordered,already,received,
      pending:Math.max(0,ordered-received),
      excess:Math.max(0,received-ordered),
      hasWeight:ordWt>0,ordWt,alreadyWt,recWt,
      pendWt:Math.max(0,ordWt-recWt),
-     excWt:Math.max(0,recWt-ordWt)};
+     excWt:Math.max(0,recWt-ordWt),
+     poRate,rate,rateOver};
  }
  /* ── The same strip, measured against a PR instead of a PO ──────────
     A receipt booked "without PO" is booked against a FIELD BOY requirement, and
@@ -11952,13 +11996,33 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(po)return {kind:'PO',tag:'PO: '+po.poNo,no:po.poNo,ordLabel:'Order Qty',ordWtLabel:'Order Wt',
      ordered:po.ordered,already:po.already,received:po.received,pending:po.pending,excess:po.excess,
      hasWeight:po.hasWeight,ordWt:po.ordWt,alreadyWt:po.alreadyWt,recWt:po.recWt,
-     pendWt:po.pendWt,excWt:po.excWt};
+     pendWt:po.pendWt,excWt:po.excWt,
+     poRate:po.poRate,rate:po.rate,rateOver:po.rateOver};
    const pr=prStripParts_(it);
+   // A PR carries no agreed price — the bill's rate is typed in — so there is
+   // nothing for a PR receipt to be "above".
    if(pr)return {kind:'PR',tag:'PR: '+pr.prNo,no:pr.prNo,ordLabel:'Required Qty',ordWtLabel:'Required Wt',
      ordered:pr.required,already:pr.already,received:pr.received,pending:pr.pending,excess:pr.excess,
      hasWeight:pr.hasWeight,ordWt:pr.reqWt,alreadyWt:pr.alreadyWt,recWt:pr.recWt,
-     pendWt:pr.pendWt,excWt:pr.excWt};
+     pendWt:pr.pendWt,excWt:pr.excWt,
+     poRate:null,rate:pNum(it.rate),rateOver:false};
    return null;
+ }
+ /* The third line of the sub-row: what the PO actually agreed to pay.
+
+    Printed only when this receipt has gone past the PO in one of the two ways
+    that cost money — more quantity than was ordered, or a higher rate than was
+    agreed. Both are already authorised at Submit (inwardDocOverrides asks for
+    the Edit Password), but authorising something is not the same as recording
+    it: whoever checks this bill later needs the PO's own figure on the page,
+    not just the one that was charged. */
+ function docStripRateNote_(p){
+   if(!p||p.kind!=='PO'||p.poRate==null)return '';
+   if(!(p.excess>0||p.rateOver))return '';
+   const bits=['PO Actual Rate: '+nMoney_(p.poRate)];
+   if(p.rateOver)bits.push('billed '+nMoney_(p.rate)+' — '+nMoney_(p.rate-p.poRate)+' higher');
+   if(p.excess>0)bits.push('extra qty '+p.excess+' is PO par ordered nahi thi');
+   return '('+bits.join('   |   ')+')';
  }
  // One cell of text for the native PDF. The weight figures go on a SECOND
  // LINE — autoTable honours \n — so Qty and Weight read as two parallel rows
@@ -11968,8 +12032,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    const q=p.tag+'   |   '+p.ordLabel+': '+p.ordered+'   |   Pending Qty: '+p.pending
      +'   |   Received Qty: '+p.received+'   |   Excess Qty: '+p.excess;
    if(!p.hasWeight)return q;
-   return q+'\nWeight (KGS)   |   '+p.ordWtLabel+': '+nNum_(p.ordWt)+'   |   Pending Wt: '+nNum_(p.pendWt)
-     +'   |   Received Wt: '+nNum_(p.recWt)+'   |   Excess Wt: '+nNum_(p.excWt);
+   return q+'\nWeight (KGS)   |   '+p.ordWtLabel+': '+nWt_(p.ordWt)+'   |   Pending Wt: '+nWt_(p.pendWt)
+     +'   |   Received Wt: '+nWt_(p.recWt)+'   |   Excess Wt: '+nWt_(p.excWt);
  }
  /* "PO/U-2/0001, PO/U-2/0002  (2 POs)" for the printed PO Reference. The count
     makes a multi-PO receipt unmistakable, and a single PO prints unadorned. */
@@ -12191,13 +12255,14 @@ window.addEventListener('DOMContentLoaded',()=>{
        const itDiscPct=pNum(it.discountPct);
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
-       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
+       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
        /* PO / PR ke against: item ke theek neeche wahi strip jo entry form
           dikhata hai. docStripParts_ dono ko ek hi shakl deta hai, isliye yahan
           sirf label aur rang badalta hai — layout ek hi hai. */
        const strip=docStripParts_(it);
        if(strip){
          const accent=strip.kind==='PR'?'#15803d':'#1d4ed8';
+         const rateNote=docStripRateNote_(strip);
          const chip=(lbl,val,color)=>'<span style="margin-right:12px;white-space:nowrap;">'+lbl+': <b style="color:'+color+';">'+val+'</b></span>';
          // Qty on the first line, Weight on a second one under it in the same
          // Order / Pending / Received / Excess order, so the two read as two
@@ -12212,15 +12277,18 @@ window.addEventListener('DOMContentLoaded',()=>{
            +'</div>'
            +(strip.hasWeight?('<div style="margin-top:1px;">'
              +'<b style="color:'+accent+';margin-right:12px;">Weight (KGS)</b>'
-             +chip(strip.ordWtLabel,nNum_(strip.ordWt),'#0f172a')
-             +chip('Pending Wt',nNum_(strip.pendWt),strip.pendWt>0?'#b45309':'#16a34a')
-             +chip('Received Wt',nNum_(strip.recWt),'#0f766e')
-             +chip('Excess Wt',nNum_(strip.excWt),strip.excWt>0?'#dc2626':'#64748b')
+             +chip(strip.ordWtLabel,nWt_(strip.ordWt),'#0f172a')
+             +chip('Pending Wt',nWt_(strip.pendWt),strip.pendWt>0?'#b45309':'#16a34a')
+             +chip('Received Wt',nWt_(strip.recWt),'#0f766e')
+             +chip('Excess Wt',nWt_(strip.excWt),strip.excWt>0?'#dc2626':'#64748b')
            +'</div>'):'')
+           // Third line — the PO's own rate, in red, when this receipt went
+           // past the PO on quantity or on price.
+           +(rateNote?('<div style="margin-top:1px;color:#dc2626;font-weight:800;">'+pEsc(rateNote)+'</div>'):'')
            +'</td></tr>';
        }
      });
-     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+(inTotWeight%1===0?inTotWeight:+inTotWeight.toFixed(4))+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
+     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+nWt_(inTotWeight)+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
    }
    const ts=regenTs_();
    const footer=isSupplier
@@ -12252,7 +12320,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      '</tr></thead><tbody>'+itemRows+'</tbody></table>'+
      '<div class="summary">'+
        '<div class="box"><h4>🚚 Freight Calculator Summary</h4><table>'+
-         '<tr><td class="lbl">Net Weight (Items):</td><td class="val">'+pEsc(d.netWeight||inTotWeight||'-')+'</td></tr>'+
+         '<tr><td class="lbl">Net Weight (Items):</td><td class="val">'+pEsc(d.netWeight!=null&&d.netWeight!==''?nWt_(d.netWeight):(inTotWeight?nWt_(inTotWeight):'-'))+'</td></tr>'+
          '<tr><td class="lbl">Gross Weight:</td><td class="val">'+pEsc(d.grossWeight||d.calcGrossWeight||0)+' KGS</td></tr>'+
          '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoneyX(d.freightRate||d.calcFreightRate)+'</td></tr>'+
          '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoneyX(d.freight||d.freightExp)+'</td></tr>'+
@@ -12285,7 +12353,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      items.forEach(function(it){
        outTotQty    += pNum(it.qty);
        outTotWeight += pNum(it.weight);
-       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small></td><td>'+pEsc(it.make||'-')+'<br><small style="color:#555">'+pEsc(it.cat||it.category||'')+'</small></td><td>'+pEsc(it.machineName||it.machine||'-')+'<br><small style="color:#555">'+pEsc(it.machineNo||'')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||it.qtyUom||'')+'</td><td style="text-align:center;">'+pEsc(it.weight||0)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td></tr>';
+       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small></td><td>'+pEsc(it.make||'-')+'<br><small style="color:#555">'+pEsc(it.cat||it.category||'')+'</small></td><td>'+pEsc(it.machineName||it.machine||'-')+'<br><small style="color:#555">'+pEsc(it.machineNo||'')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||it.qtyUom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td></tr>';
      });
      itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td></td><td></td><td style="text-align:center;font-weight:800;">'+(outTotQty%1===0?outTotQty:outTotQty.toFixed(2))+' '+qUom+'</td><td style="text-align:center;font-weight:800;">'+(outTotWeight%1===0?outTotWeight:outTotWeight.toFixed(2))+' '+wUom+'</td></tr>';
    }
@@ -12367,6 +12435,13 @@ window.addEventListener('DOMContentLoaded',()=>{
  const nNum_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
  const nMoney_=v=>'Rs. '+nNum_(v);
  const nNumX_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:4});
+ /* Weight, printed to at most THREE decimals and with no trailing zeros.
+    A weighbridge or a counter scale reads to grams at best, so the 4th decimal
+    place was never measured — it is float noise from summing the rows
+    (0.1+0.2 = 0.30000000000000004), and printing it makes a tidy figure look
+    like a suspiciously precise one. minimumFractionDigits:0 keeps a whole
+    number whole: 25 stays "25", not "25.000". */
+ const nWt_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:3});
  const nMoneyX_=v=>'Rs. '+nNumX_(v);
 
  function drawStoreCopyNative_(doc,kind,d,items,title,x,y,w,areaH){
@@ -12440,7 +12515,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      items.forEach(it=>{
        const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
-       body.push([spec,pNum(it.qty)+' '+(it.uom||''),pNum(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
+       body.push([spec,pNum(it.qty)+' '+(it.uom||''),nWt_(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
        // PO / PR ke against: item ke theek neeche uski strip, poori width me.
        const bits=docStripParts_(it), stripTxt=docStripText_(it);
        if(stripTxt)body.push([{content:stripTxt,colSpan:7,
@@ -12452,9 +12527,19 @@ window.addEventListener('DOMContentLoaded',()=>{
            textColor:(bits&&(bits.excess>0||bits.excWt>0))?[220,38,38]
              :(bits&&bits.kind==='PR')?[21,128,61]:[30,64,175],
            cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
+       /* Third line — the PO's agreed rate, in red. A SEPARATE row rather than
+          a third \n inside the cell above: autoTable colours a whole cell at
+          once, so inside it this line could only share that cell's colour.
+          Drawn with no top padding, so it reads as the strip's own last line
+          rather than as a row of its own. */
+       const rateNote=docStripRateNote_(bits);
+       if(rateNote)body.push([{content:rateNote,colSpan:7,
+         styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
+           textColor:[220,38,38],
+           cellPadding:{top:0,bottom:0.8,left:1.6,right:1.6}}}]);
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
-     foot=[['TOTAL — '+items.length+' item(s)',String(totQty),String(totWt),'','','',nNumX_(totAmt)]];
+     foot=[['TOTAL — '+items.length+' item(s)',String(totQty),nWt_(totWt),'','','',nNumX_(totAmt)]];
    } else {
      head=[['Item Name / Description','Make / Category','Machine','Qty','Weight']];
      body=items.map(it=>[
@@ -12462,10 +12547,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        (it.make||'-')+(it.category?'\n'+it.category:''),
        (it.machineName||'-')+(it.machineNo?' / '+it.machineNo:''),
        pNum(it.qty)+' '+(it.qtyUom||''),
-       pNum(it.weight)+' '+(it.wUnit||'KGS')
+       nWt_(it.weight)+' '+(it.wUnit||'KGS')
      ]);
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0);
-     foot=[['TOTAL — '+items.length+' item(s)','','',String(totQty),String(totWt)]];
+     foot=[['TOTAL — '+items.length+' item(s)','','',String(totQty),nWt_(totWt)]];
    }
    doc.autoTable({
      head,body,foot,startY:yy,
@@ -13030,6 +13115,44 @@ window.addEventListener('DOMContentLoaded',()=>{
  // ─────────────────────────────────────────────────────────────
  // PURCHASE ORDER PDF — exact port of buildPOHtml_ + buildSignFooter_
  // ─────────────────────────────────────────────────────────────
+ /* The DESCRIPTION cell of a PO line: Item Name, Description, Size, Material.
+
+    Four facts, each on its own line rather than run together, because a vendor
+    reads this column to pick the right part off a shelf — "1/2 INCH" and
+    "SS 304" are what separate the thing being ordered from three others with
+    the same name, and buried mid-sentence they get skimmed past.
+
+    Blank ones are DROPPED, not printed as "Size: -": a dash reads as a value
+    somebody checked, where the truth is that nobody recorded one. A description
+    that only repeats the name is dropped too. */
+ function poItemDescParts_(it){
+   const out=[];
+   const name=String((it&&(it.itemName||it.name))||'').trim();
+   const desc=String((it&&(it.itemDesc||it.description))||'').trim();
+   const size=String((it&&(it.itemSize||it.item_size))||'').trim();
+   const mat =String((it&&(it.materialType||it.material_type))||'').trim();
+   if(name)out.push(name);
+   if(desc&&desc.toUpperCase()!==name.toUpperCase())out.push(desc);
+   const sm=[];
+   if(size)sm.push('Size: '+size);
+   if(mat)sm.push('Material: '+mat);
+   if(sm.length)out.push(sm.join('   |   '));
+   return out.length?out:['-'];
+ }
+ // Native PDF: autoTable honours \n, so the parts stack inside the one cell.
+ function poItemDescText_(it){return poItemDescParts_(it).join('\n')}
+ // HTML PDF: the name leads in bold, Size / Material trail in a smaller grey
+ // line, so the cell has a shape rather than being three equal sentences.
+ function poItemDescHtml_(it){
+   const p=poItemDescParts_(it);
+   const name=String((it&&(it.itemName||it.name))||'').trim();
+   return p.map((line,i)=>{
+     if(i===0&&name)return '<b>'+pEsc(line)+'</b>';
+     if(/^Size: |^Material: /.test(line))
+       return '<span style="font-size:10px;color:#334155;">'+pEsc(line)+'</span>';
+     return '<span style="font-size:10px;">'+pEsc(line)+'</span>';
+   }).join('<br>');
+ }
  function buildPoSignFooter_(sigs){
    const s=sigs||{};
    function cell(role,sign){
@@ -13079,7 +13202,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     const gw=(it.grossWeight!=null&&it.grossWeight!=='')?pNum(it.grossWeight):null;
     const basis=it.billBasis||'QTY';
     const total=pNum(it.total)||Math.round(netUp*(basis==='WEIGHT'?pNum(gw):qty)*100)/100;
-    return{sr:i+1,desc:(it.itemName||'')+(it.itemDesc?' - '+it.itemDesc:''),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
+    return{sr:i+1,desc:poItemDescHtml_(it),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
   });
   const totalGW=items.reduce((s,r)=>s+(r.gw!=null?r.gw:0),0);
   // Always show Rate/Disc%/Net Rate columns — a fixed layout avoids a PO
@@ -13104,7 +13227,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   // ── Item rows (all inline) ─────────────────────────────────
   const itemRows=items.map(r=>'<tr>'+
     '<td style="'+CELL+'text-align:center;">'+r.sr+'</td>'+
-    '<td style="'+CELL+'">'+pEsc(r.desc)+'</td>'+
+    // Already escaped and marked up by poItemDescHtml_ — not re-escaped here.
+    '<td style="'+CELL+'line-height:1.35;">'+r.desc+'</td>'+
     '<td style="'+CELL+'text-align:center;">'+pEsc(r.make)+'</td>'+
     '<td style="'+CELL+'text-align:center;">'+pEsc(r.qty)+' '+pEsc(r.uom)+'</td>'+
     '<td style="'+CELL+'text-align:center;">'+(r.gw!=null?r.gw:'')+'</td>'+
@@ -13222,7 +13346,14 @@ window.addEventListener('DOMContentLoaded',()=>{
     +sumRows+grandRow
     +'</tbody></table>'
 
-    // ── Approval remarks (GM/CEO and MD, one line each) ───────
+    /* ── Approval remarks + signatures ────────────────────────
+       Wrapped in one page-break-inside:avoid block. In the browser-print /
+       html2pdf path there is no measuring pass to shrink things with (that is
+       the native renderer's job — see buildPoNativePdfBlob), so the most this
+       copy can do is refuse to let the notes and the two signatures be split
+       across sheets. A PO whose signature page arrives alone is the failure
+       worth preventing here. */
+    +'<div style="page-break-inside:avoid;break-inside:avoid;">'
     +'<div style="font-weight:bold;margin:10px 0 4px;font-size:11px;">IMPORTANT NOTES:</div>'
     +'<div style="background:#fff200;border:1px solid #d4b800;padding:6px 8px;font-weight:700;font-size:11px;white-space:pre-wrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
     +'<div style="margin-bottom:3px;">'+poGmRole_(sigs.gmCeo)+': '+pEsc(sigRemark_(sigs.gmCeo)||'—')+'</div>'
@@ -13234,7 +13365,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     +sigFooter
 
     +'<div style="margin-top:18px;text-align:center;font-size:10px;color:#475569;">'+pEsc(SARV_COMPANY.juris)+'</div>'
-    +'</div>'
+    +'</div>'      // /page-break-inside:avoid (notes + signatures + jurisdiction)
+    +'</div>'      // /outer border box
     +buildPoAttachPages_(images)
     +'</body></html>';
 
@@ -13244,14 +13376,78 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* Native jsPDF/autoTable renderer for the Purchase Order — same
     vector-drawing approach used for Store Inward/Outward, so the saved
     PDF always matches what the preview shows (no html2canvas capture). */
+ /* ── PO PDF: fit the whole order on ONE sheet where it honestly can ──
+    A purchase order is a single document. Letting IMPORTANT NOTES and the two
+    signatures slide onto a second sheet because the content ran four
+    millimetres long produces a PO whose signatures are on a page by
+    themselves — which is exactly the page that goes missing.
+
+    So the document is rendered, measured, and if only the TAIL overflowed it
+    is re-rendered a little tighter until it fits. Each attempt is a complete
+    render into a fresh jsPDF; nothing is reflowed in place.
+
+    The one case that is NOT squeezed is a genuinely long item list. If the
+    items table alone needs more than one page, shrinking the type would only
+    make a long PO unreadable instead of short — so the natural size is kept
+    and it runs onto page 2, where drawPoPageHeader repeats the company header,
+    the vendor block and the shipping box, so each sheet stands on its own.
+
+    Scales stop at 0.72: past that the rate and amount columns stop being
+    reliably readable, and an unreadable PO that fits is worth less than a
+    readable one that does not. If nothing fits, the natural render is used. */
  async function buildPoNativePdfBlob(d, images=[]){
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
+   const SCALES=[1,0.93,0.86,0.79,0.72];
+   let natural=null,chosen=null;
+   for(const s of SCALES){
+     const r=renderPoDoc_(d,s);
+     if(!natural)natural=r;
+     // A long item list belongs on several pages, not under a magnifying glass.
+     if(r.tablePages>1){chosen=natural;break;}
+     if(r.bodyPages<=1){chosen=r;break;}
+   }
+   if(!chosen)chosen=natural;
+   const doc=chosen.doc;
+   /* Attachments are appended AFTER the fit is decided, so their pages never
+      count against it — a PO with two photos is still a one-page PO. */
+   const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
+   const M=8, W=pageW-M*2;
+   for(const img of images){
+     if(!img||!img.dataUrl||String(img.dataUrl).indexOf('data:image')!==0)continue;
+     doc.addPage();
+     doc.setFont(undefined,'bold');doc.setFontSize(12);doc.setTextColor(0,0,0);
+     doc.text('ATTACHMENTS',pageW/2,M+6,{align:'center'});
+     doc.setDrawColor(0,0,0);doc.setLineWidth(0.4);doc.line(M,M+9,pageW-M,M+9);
+     try{
+       const dim=doc.getImageProperties(img.dataUrl);
+       const maxW=W,maxH=pageH-M*2-20;
+       let iw=maxW,ih=iw*dim.height/dim.width;
+       if(ih>maxH){ih=maxH;iw=ih*dim.width/dim.height;}
+       doc.addImage(img.dataUrl,dim.fileType||'JPEG',M+(W-iw)/2,M+14,iw,ih);
+     }catch(e){}
+     if(img.name){doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(String(img.name),pageW/2,pageH-M-4,{align:'center'});doc.setTextColor(0,0,0);}
+   }
+   return doc.output('blob');
+ }
+ /* One complete render at a given scale. S multiplies every font size and
+    every vertical measurement in the tail and the items table; the company
+    header block is left alone, because shrinking the letterhead to win four
+    millimetres is the wrong four millimetres.
+    Returns the document plus what the caller needs to judge it:
+      bodyPages  — pages used before attachments
+      tablePages — how many pages the items table itself spanned */
+ function renderPoDoc_(d,S){
    const {jsPDF}=window.jspdf;
    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const M=8, W=pageW-M*2;
    const AMBER=[253,230,138];
    const GRAY_HEAD=[209,213,219]; // items table header — gray theme
+   // Font sizes have a floor: below ~5pt nothing is readable at any zoom, and
+   // a number nobody can read is worse than a second page.
+   const fs=n=>Math.max(5,Math.round(n*S*100)/100);
+   const sp=n=>Math.round(n*S*100)/100;   // heights and vertical gaps
+   let tablePages=0;
    doc.setTextColor(0,0,0);
 
    const items=(d.items||[]).map((it,i)=>{
@@ -13260,7 +13456,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const gw=(it.grossWeight!=null&&it.grossWeight!=='')?pNum(it.grossWeight):null;
      const basis=it.billBasis||'QTY';
      const total=pNum(it.total)||Math.round(netUp*(basis==='WEIGHT'?pNum(gw):qty)*100)/100;
-     return{sr:i+1,desc:(it.itemName||'')+(it.itemDesc?' - '+it.itemDesc:''),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
+     return{sr:i+1,desc:poItemDescText_(it),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
    });
    const totalGW=items.reduce((s,r)=>s+(r.gw!=null?r.gw:0),0);
    const totalQty=items.reduce((s,r)=>s+r.qty,0);
@@ -13383,14 +13579,17 @@ window.addEventListener('DOMContentLoaded',()=>{
      // default, so the column header row repeats too.
      margin:{left:M,right:pageW-(M+W),top:y},
      tableWidth:W,
-     styles:{fontSize:7.5,cellPadding:1.4,overflow:'linebreak',textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.25,valign:'middle'},
+     styles:{fontSize:fs(7.5),cellPadding:sp(1.4),overflow:'linebreak',textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.25,valign:'middle'},
      headStyles:{fillColor:GRAY_HEAD,textColor:[0,0,0],fontStyle:'bold',halign:'center',lineWidth:0.3,lineColor:[0,0,0]},
      footStyles:{fillColor:AMBER,textColor:[0,0,0],fontStyle:'bold',lineWidth:0.3,lineColor:[0,0,0]},
      columnStyles,
      theme:'grid',
-     didDrawPage:(data)=>{if(data.pageNumber>1)drawPoPageHeader();}
+     // Counted here rather than inferred afterwards: this hook fires once per
+     // page the TABLE draws on, which is exactly the number the fit decision
+     // needs to tell "long item list" from "tail spilled over".
+     didDrawPage:(data)=>{tablePages++;if(data.pageNumber>1)drawPoPageHeader();}
    });
-   y=doc.lastAutoTable.finalY+4;
+   y=doc.lastAutoTable.finalY+sp(4);
    const labelW=W*0.7;
    const sumRows=[
      ['Subtotal',nNum_(subtotal)],
@@ -13399,25 +13598,26 @@ window.addEventListener('DOMContentLoaded',()=>{
      ['Taxable Value',nNum_(taxable)],
      ['GST (item-wise + freight/other @ '+gstPct+'%)',nNum_(gstAmt)],
    ];
-   doc.setFontSize(8.5);
+   const rowH=sp(5.5),grandH=sp(7);
+   doc.setFontSize(fs(8.5));
    sumRows.forEach(([l,v])=>{
-     poFit_(5.5);
-     doc.setFillColor(249,250,251);doc.rect(M,y,W,5.5,'F');
-     doc.setDrawColor(0,0,0);doc.setLineWidth(0.2);doc.rect(M,y,W,5.5);
+     poFit_(rowH);
+     doc.setFillColor(249,250,251);doc.rect(M,y,W,rowH,'F');
+     doc.setDrawColor(0,0,0);doc.setLineWidth(0.2);doc.rect(M,y,W,rowH);
      doc.setFont(undefined,'bold');
-     doc.setFontSize(8.5);
-     doc.text(l,M+labelW-2,y+3.8,{align:'right'});
-     doc.text(String(v),M+W-2,y+3.8,{align:'right'});
-     y+=5.5;
+     doc.setFontSize(fs(8.5));
+     doc.text(l,M+labelW-2,y+rowH*0.69,{align:'right'});
+     doc.text(String(v),M+W-2,y+rowH*0.69,{align:'right'});
+     y+=rowH;
    });
-   poFit_(7);
-   doc.setFillColor(AMBER[0],AMBER[1],AMBER[2]);doc.rect(M,y,W,7,'F');doc.rect(M,y,W,7);
-   doc.setFont(undefined,'bold');doc.setFontSize(10.5);
-   doc.text('GRAND TOTAL',M+labelW-2,y+5,{align:'right'});
-   doc.text(nMoney_(grand),M+W-2,y+5,{align:'right'});
-   y+=11;
+   poFit_(grandH);
+   doc.setFillColor(AMBER[0],AMBER[1],AMBER[2]);doc.rect(M,y,W,grandH,'F');doc.rect(M,y,W,grandH);
+   doc.setFont(undefined,'bold');doc.setFontSize(fs(10.5));
+   doc.text('GRAND TOTAL',M+labelW-2,y+grandH*0.71,{align:'right'});
+   doc.text(nMoney_(grand),M+W-2,y+grandH*0.71,{align:'right'});
+   y+=grandH+sp(4);
 
-   doc.setFontSize(8);
+   doc.setFontSize(fs(8));
    // GM/CEO and MD approval remarks, one line each, then the standing
    // anti-corruption declaration (SARV_PO_ANTI_CORRUPTION_NOTE) that must
    // appear on every PO.
@@ -13426,20 +13626,22 @@ window.addEventListener('DOMContentLoaded',()=>{
      .concat(doc.splitTextToSize(poGmRole_(poSigs.gmCeo)+': '+(sigRemark_(poSigs.gmCeo)||'—'),W-4))
      .concat(doc.splitTextToSize('MD: '+(sigRemark_(poSigs.md)||'—'),W-4))
      .concat(doc.splitTextToSize(SARV_PO_ANTI_CORRUPTION_NOTE,W-4));
-   const notesH=Math.max(8,notesLines.length*3.6+3);
+   const lineH=sp(3.6);
+   const notesH=Math.max(sp(8),notesLines.length*lineH+sp(3));
    // Heading + box travel together, so the label never ends a page alone.
-   poFit_(4+notesH);
-   doc.setFont(undefined,'bold');doc.setFontSize(8.5);
+   poFit_(sp(4)+notesH);
+   doc.setFont(undefined,'bold');doc.setFontSize(fs(8.5));
    doc.text('IMPORTANT NOTES:',M,y);
-   y+=2;
-   doc.setFontSize(8);
+   y+=sp(2);
+   doc.setFontSize(fs(8));
    doc.setFillColor(255,242,0);doc.rect(M,y,W,notesH,'F');
    doc.setDrawColor(212,184,0);doc.setLineWidth(0.3);doc.rect(M,y,W,notesH);
    doc.setFont(undefined,'bold');doc.setTextColor(0,0,0);
-   doc.text(notesLines,M+2,y+4.5);
-   y+=notesH+6;
+   doc.text(notesLines,M+2,y+sp(4.5),{lineHeightFactor:1.15});
+   y+=notesH+sp(6);
 
-   poFit_(32);
+   // The two signatures are never split from each other or from the notes.
+   poFit_(sp(32));
    const sigs=d.signatures||{};
    // Only the Purchaser (left) and MD (right) sign a PO — no box and no
    // dividers, just each signature over its line and caption. The Purchaser's
@@ -13455,53 +13657,40 @@ window.addEventListener('DOMContentLoaded',()=>{
      const data=String((c.sign&&c.sign.name)||'').trim();
      const time=(c.sign&&c.sign.time)||'';
      if(!data){
-       doc.setFont(undefined,'italic');doc.setFontSize(7.5);doc.setTextColor(180,83,9);
-       doc.text('PENDING APPROVAL',mid,sigTop+9,{align:'center'});
+       doc.setFont(undefined,'italic');doc.setFontSize(fs(7.5));doc.setTextColor(180,83,9);
+       doc.text('PENDING APPROVAL',mid,sigTop+sp(9),{align:'center'});
        doc.setTextColor(0,0,0);
      } else if(data.indexOf('data:image/')===0){
        try{
          const dim=doc.getImageProperties(data);
-         const maxW=colW-8,maxH=12;
+         const maxW=colW-8,maxH=sp(12);
          let iw=maxW,ih=iw*dim.height/dim.width;
          if(ih>maxH){ih=maxH;iw=ih*dim.width/dim.height;}
-         doc.addImage(data,dim.fileType||'PNG',c.x+(colW-iw)/2,sigTop+1,iw,ih);
+         doc.addImage(data,dim.fileType||'PNG',c.x+(colW-iw)/2,sigTop+sp(1),iw,ih);
        }catch(e){}
-       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+15,{align:'center'});doc.setTextColor(0,0,0);}
+       if(time){doc.setFont(undefined,'normal');doc.setFontSize(fs(6.5));doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+sp(15),{align:'center'});doc.setTextColor(0,0,0);}
      } else {
-       doc.setFont(undefined,'bold');doc.setFontSize(8.5);doc.setTextColor(4,120,87);
-       doc.text(data,mid,sigTop+8,{align:'center'});
+       doc.setFont(undefined,'bold');doc.setFontSize(fs(8.5));doc.setTextColor(4,120,87);
+       doc.text(data,mid,sigTop+sp(8),{align:'center'});
        doc.setTextColor(0,0,0);
-       if(time){doc.setFont(undefined,'normal');doc.setFontSize(6.5);doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+12,{align:'center'});doc.setTextColor(0,0,0);}
+       if(time){doc.setFont(undefined,'normal');doc.setFontSize(fs(6.5));doc.setTextColor(100,116,139);doc.text(String(time),mid,sigTop+sp(12),{align:'center'});doc.setTextColor(0,0,0);}
      }
-     doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);doc.line(c.x+4,sigTop+17,c.x+colW-4,sigTop+17);
-     doc.setFont(undefined,'bold');doc.setFontSize(7.5);
-     doc.text(c.role.toUpperCase(),mid,sigTop+21,{align:'center'});
-     if(c.name){doc.setFont(undefined,'normal');doc.setFontSize(7);doc.text(c.name,mid,sigTop+25,{align:'center'});}
+     doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);doc.line(c.x+4,sigTop+sp(17),c.x+colW-4,sigTop+sp(17));
+     doc.setFont(undefined,'bold');doc.setFontSize(fs(7.5));
+     doc.text(c.role.toUpperCase(),mid,sigTop+sp(21),{align:'center'});
+     if(c.name){doc.setFont(undefined,'normal');doc.setFontSize(fs(7));doc.text(c.name,mid,sigTop+sp(25),{align:'center'});}
    });
    y=sigTop+28+4;
 
-   poFit_(5);
-   doc.setFont(undefined,'normal');doc.setFontSize(7.5);doc.setTextColor(71,85,105);
+   poFit_(sp(5));
+   doc.setFont(undefined,'normal');doc.setFontSize(fs(7.5));doc.setTextColor(71,85,105);
    doc.text(String(SARV_COMPANY.juris||''),pageW/2,y,{align:'center'});
    doc.setTextColor(0,0,0);
 
-   for(const img of images){
-     if(!img||!img.dataUrl||String(img.dataUrl).indexOf('data:image')!==0)continue;
-     doc.addPage();
-     doc.setFont(undefined,'bold');doc.setFontSize(12);
-     doc.text('ATTACHMENTS',pageW/2,M+6,{align:'center'});
-     doc.setDrawColor(0,0,0);doc.setLineWidth(0.4);doc.line(M,M+9,pageW-M,M+9);
-     try{
-       const dim=doc.getImageProperties(img.dataUrl);
-       const maxW=W,maxH=pageH-M*2-20;
-       let iw=maxW,ih=iw*dim.height/dim.width;
-       if(ih>maxH){ih=maxH;iw=ih*dim.width/dim.height;}
-       doc.addImage(img.dataUrl,dim.fileType||'JPEG',M+(W-iw)/2,M+14,iw,ih);
-     }catch(e){}
-     if(img.name){doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(String(img.name),pageW/2,pageH-M-4,{align:'center'});doc.setTextColor(0,0,0);}
-   }
-
-   return doc.output('blob');
+   // Attachments are NOT added here — buildPoNativePdfBlob appends them to
+   // whichever render it settles on, so a photo can never be the reason a PO
+   // is judged "too long for one page".
+   return {doc,bodyPages:doc.getNumberOfPages(),tablePages};
  }
 
  function readPdfImages(inputId){
@@ -13941,7 +14130,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight)})).filter(x=>x.name&&x.qty>0).map(x=>{
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight),savedLine:r.dataset.savedLine||''})).filter(x=>x.name&&x.qty>0).map(x=>{
     /* The saved record and the PDF must match the entry form's Final Amount to
        the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
        the net rate rounded to 2dp for display, and pRound() clipped each line
@@ -14031,8 +14220,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    const selectedPoNos=getSelectedPoNos();
-   /* Excess qty — on a PO or on a PR — and a changed PO rate both need the
-      Edit Password.
+   /* Three things need the Edit Password before this receipt can be saved:
+        • excess qty — on a PO or on a PR
+        • a rate that differs from the PO's agreed price
+        • an item the PO never ordered, added with + Add Row
+      All three come back from inwardDocOverrides, which reads them off the
+      same figures the row's own sub-row shows on screen.
 
       Checked on EVERY save, not only when the PO picker has something ticked.
       That `if(selectedPoNos.length)` guard used to wrap this, and an Admin edit
@@ -14041,8 +14234,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       / PR figures, so the rows are the right thing to ask. */
    {
      const overrides=inwardDocOverrides(rows);
-     if(overrides.length&&!await verifyEditPassword('PO / PR se zyada qty mili:\n• '+overrides.join('\n• ')))
-       return showToast('⛔ Edit Password ke bina excess qty / PO se alag rate save nahi hoga','warn');
+     if(overrides.length&&!await verifyEditPassword('PO / PR se alag values mili:\n• '+overrides.join('\n• ')))
+       return showToast('⛔ Edit Password ke bina extra item / excess qty / PO se alag rate save nahi hoga','warn');
    }
    // A taxable INWARD with a 0% line needs authorisation — it usually means a
    // mis-keyed GST rather than a genuinely exempt receipt. INWARD NB is exempt
@@ -16579,6 +16772,15 @@ window.addEventListener('DOMContentLoaded',()=>{
        // row its name resolves to, so editing an old PO repairs the link.
        tr.dataset.itemId=x.item_id||lookupItem(x.item_name)?.id||'';
        tr.dataset.department=x.department||'';
+       /* Size / Material, same deal — no visible column, so they ride the
+          dataset or the edit would silently drop them from the regenerated
+          PDF. The saved line is preferred (that is what this PO was raised
+          with); the Item Master is the fallback for a line saved before these
+          columns existed, so an old PO picks them up the first time it is
+          edited rather than printing a bare name forever. */
+       { const im=lookupItem(x.item_name)||{};
+         tr.dataset.itemSize=x.item_size||itemSize_(im)||'';
+         tr.dataset.materialType=x.material_type||itemMaterial_(im)||''; }
        const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
        tr.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',recalc));
        tr.querySelector('.po-billbasis')?.addEventListener('change',recalc);
@@ -16668,7 +16870,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      row=ins.data;
    }
    await SB.from('purchase_order_lines').delete().eq('purchase_order_id',row.id);
-   let lines=d.items.map((x,i)=>({purchase_order_id:row.id,line_no:i+1,req_no:x.reqNo||null,item_id:x.itemId||null,item_name:x.itemName||x.name||'Item',item_description:x.itemDesc||x.description||null,make:x.make||null,department:x.department||null,ordered_qty:pNum(x.qty),received_qty:0,uom:x.uom||null,unit_price:pNum(x.unitPrice),discount_pct:pNum(x.discountPercent||x.discPct||0),tax_pct:pNum(x.taxPct||x.tax),line_total:pNum(x.total),gross_weight:(x.grossWeight!=null&&x.grossWeight!=='')?pNum(x.grossWeight):null,bill_basis:x.billBasis||'QTY'}));
+   let lines=d.items.map((x,i)=>({purchase_order_id:row.id,line_no:i+1,req_no:x.reqNo||null,item_id:x.itemId||null,item_name:x.itemName||x.name||'Item',item_description:x.itemDesc||x.description||null,make:x.make||null,department:x.department||null,ordered_qty:pNum(x.qty),received_qty:0,uom:x.uom||null,unit_price:pNum(x.unitPrice),discount_pct:pNum(x.discountPercent||x.discPct||0),tax_pct:pNum(x.taxPct||x.tax),line_total:pNum(x.total),gross_weight:(x.grossWeight!=null&&x.grossWeight!=='')?pNum(x.grossWeight):null,bill_basis:x.billBasis||'QTY',item_size:x.itemSize||null,material_type:x.materialType||null}));
    // Drops only the columns this database genuinely lacks (see
    // sbSaveDroppingMissingColumns_) instead of guessing at bill_basis /
    // gross_weight / discount_pct in a fixed order.
@@ -16758,6 +16960,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Description / Category against (see loadPoIntoInward).
    tr.dataset.itemId=x.line.item_id||x.item.id||'';
    tr.dataset.department=x.req.department||'';
+   /* Size and Material come off the Item Master row and ride along to the PO
+      PDF's Description cell. They are not editable here on purpose — they
+      describe the PART, so changing one on a PO would mean ordering a
+      different item under the same name. Fix it in Item Master instead. */
+   tr.dataset.itemSize=itemSize_(x.item)||'';
+   tr.dataset.materialType=itemMaterial_(x.item)||'';
    if(x.approvedVendor)tr.dataset.approvedVendor=JSON.stringify(x.approvedVendor);
    const recalc=()=>{tr.querySelector('.po-line-total').textContent=pMoney(poLineAmount(tr));recomputePoBuildTotals();};
    tr.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',recalc));
@@ -17021,10 +17229,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      // on the row's dataset (appendPoBuildRow, openPoEditor) precisely so they
      // reach the saved PO line. persistPurchaseOrder reads them as item_id and
      // department.
-     return {reqNo:q('.po-req-no')?.value||'',itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight};
+     return {reqNo:q('.po-req-no')?.value||'',itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:q('.po-item-name')?.value||'',itemDesc:q('.po-item-desc')?.value||'',make:q('.po-make')?.value||'',qty,uom:q('.po-uom')?.value||'',unitPrice:price,discountPercent:disc,netUnitPrice,billBasis,taxPct,total:pRound(billUnits*netUnitPrice),grossWeight,itemSize:r.dataset.itemSize||'',materialType:r.dataset.materialType||''};
    }
    const vals=[...r.querySelectorAll('input,select')].map(x=>x.value);
-   return {itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8])};
+   return {itemId:r.dataset.itemId||'',department:r.dataset.department||'',itemName:vals[0]||cells[2]||cells[1]||'',itemDesc:vals[1]||'',make:vals[2]||cells[3]||'',qty:pNum(vals[3]||cells[3]),uom:vals[4]||cells[4]||'PCS',unitPrice:pNum(vals[5]||cells[5]),discountPercent:pNum(vals[6]),netUnitPrice:pNum(vals[5]||cells[5])*(1-pNum(vals[6])/100),total:pNum(vals[7]||cells[7]),grossWeight:pNum(vals[8]),itemSize:r.dataset.itemSize||'',materialType:r.dataset.materialType||''};
  }
 
  /* The Purchaser's approval on the SOURCE requirement, to be reprinted in the
@@ -17153,7 +17361,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        made.push(await generateOnePo_(g.vendor,g.items,{poNo,carryCharges:i===0,images,purchaserSign},setMsg));
      }
      await loadOpenPoDropdown();
-     // Every PO is downloaded; the preview shows the first, which is the one
+     // Every PO is downloaded; the preview shows the first, which is the one 
      // the vendor fields on screen still describe.
      made.forEach(m=>downloadBlob(m.blob,m.d.poNo+'_'+(m.d.vendorName||'Vendor')+'.pdf'));
      const first=made[0];
