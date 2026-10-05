@@ -2073,6 +2073,51 @@ body {
         #fullPurchasePanel .req-list-table th,
 #fullPurchasePanel .req-list-table td { white-space: nowrap; }
         #fullPurchasePanel .req-row { cursor: pointer; }
+
+        /* ============================================================
+           PR -> PO -> INWARD FOLLOW-UP REPORT (#p_poReportPanel)
+           ------------------------------------------------------------
+           Laid out like the printed follow-up sheet the store already
+           keeps by hand: one line per PR, colour-banded column groups,
+           and every document number a link to its own PDF. Nothing here
+           is typed in — the only clickable inputs are the three sign-off
+           boxes, and those are PIN-gated (see togglePoFollowupFlag).
+        ============================================================ */
+        #fullPurchasePanel .po-followup-table { min-width: 1280px; }
+        #fullPurchasePanel .po-followup-table th { white-space: nowrap; border-right: 1px solid #cbd5e1; }
+        #fullPurchasePanel .po-followup-table td {
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            font-size: 11px;
+            padding: 5px 6px;
+        }
+        #fullPurchasePanel .po-followup-table td.fu-center { text-align: center; }
+        /* The document-number cells. A number that has no PDF yet still
+           shows as plain text, so a missing link reads as "not generated"
+           rather than as a dead link. */
+        #fullPurchasePanel .po-followup-table a.fu-doc {
+            color: #1d4ed8; font-weight: 700; text-decoration: none;
+        }
+        #fullPurchasePanel .po-followup-table a.fu-doc:hover { text-decoration: underline; }
+        #fullPurchasePanel .po-followup-table .fu-nodoc { color: #94a3b8; }
+        #fullPurchasePanel .po-followup-table .fu-tick { color: #15803d; font-weight: 800; font-size: 13px; }
+        #fullPurchasePanel .po-followup-table .fu-dash { color: #b91c1c; font-weight: 800; }
+        #fullPurchasePanel .po-followup-table .fu-status {
+            display: inline-block; border-radius: 4px; padding: 2px 7px;
+            font-size: 10px; font-weight: 800; white-space: nowrap;
+        }
+        /* The three sign-off boxes. Styled as a real checkbox + caption so
+           it is obvious they are the only cells anyone can act on. */
+        #fullPurchasePanel .po-followup-table .fu-check {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #fff; border: 1px solid #94a3b8; border-radius: 4px;
+            padding: 2px 7px; cursor: pointer; font-size: 10px; font-weight: 700;
+            color: #334155;
+        }
+        #fullPurchasePanel .po-followup-table .fu-check input { margin: 0; cursor: pointer; }
+        #fullPurchasePanel .po-followup-table .fu-check.done { background: #dcfce7; border-color: #16a34a; color: #15803d; }
+        #fullPurchasePanel .po-followup-table .fu-check.locked { opacity: .55; cursor: not-allowed; }
+        #fullPurchasePanel .po-followup-table tbody tr:hover { background: #f8fafc; }
         #fullPurchasePanel .req-row:hover { background: #ecfeff; }
         #fullPurchasePanel .req-row.selected { background: #e0f2fe; }
 
@@ -2135,6 +2180,81 @@ body {
 #itemMasterTable .im-col-resizer::after { content: ''; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 1px; background: #64748b; }
 #itemMasterTable .im-col-resizer:hover::after, #itemMasterTable .im-col-resizer.active::after { top: 0; bottom: 0; width: 2px; background: #38bdf8; }
 #itemMasterTable td { overflow-wrap: anywhere; }
+/* ============================================================
+   ITEM MASTER COLUMN FILTERS
+   ------------------------------------------------------------
+   One ▾ button per header. The panel itself is a single element
+   parked on <body> and moved under whichever button was clicked:
+   the table scrolls inside a container with its own overflow and
+   a sticky <thead>, so a panel living inside the <th> would be
+   clipped by the first and dragged around by the second.
+============================================================ */
+#itemMasterTable .im-fbtn {
+    display: inline-block; margin-left: 4px; padding: 0 3px;
+    border-radius: 3px; cursor: pointer; font-size: 9px; line-height: 1.6;
+    color: inherit; opacity: .55; vertical-align: middle;
+}
+#itemMasterTable .im-fbtn:hover { opacity: 1; background: rgba(148,163,184,.35); }
+/* An applied filter has to be obvious from the header alone — otherwise the
+   only sign that rows are being hidden is a row count nobody is watching. */
+#itemMasterTable .im-fbtn.on {
+    opacity: 1; background: #16a34a; color: #fff; font-weight: 800;
+    box-shadow: 0 0 0 1.5px #bbf7d0;
+}
+#imFilterPanel {
+    position: fixed; z-index: 2147483100; display: none;
+    background: #fff; border: 1px solid #94a3b8; border-radius: 8px;
+    box-shadow: 0 12px 32px rgba(15,23,42,.28);
+    width: 268px; font-size: 11px; color: #0f172a;
+}
+#imFilterPanel .imf-head {
+    padding: 7px 10px; border-bottom: 1px solid #e2e8f0; background: #f1f5f9;
+    border-radius: 8px 8px 0 0; font-weight: 800; font-size: 11px; color: #0f172a;
+}
+#imFilterPanel .imf-sub { font-weight: 600; color: #64748b; font-size: 10px; margin-top: 2px; }
+#imFilterPanel .imf-body { padding: 8px 10px; }
+#imFilterPanel input[type=text], #imFilterPanel input[type=number] {
+    width: 100%; box-sizing: border-box; height: 26px; padding: 0 7px;
+    border: 1px solid #cbd5e1; border-radius: 5px; font-size: 11px; background: #fff; color: #0f172a;
+}
+#imFilterPanel .imf-range { display: flex; gap: 6px; margin-bottom: 7px; }
+#imFilterPanel .imf-list {
+    max-height: 210px; overflow-y: auto; margin-top: 6px;
+    border: 1px solid #e2e8f0; border-radius: 5px; padding: 4px 6px; background: #fff;
+}
+#imFilterPanel .imf-opt { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+#imFilterPanel .imf-opt:hover { background: #f1f5f9; }
+#imFilterPanel .imf-opt span.t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#imFilterPanel .imf-opt span.n { color: #94a3b8; font-size: 10px; }
+/* A value that is only still listed because it is ticked — the other columns'
+   filters have taken every row that carried it. Shown rather than dropped, or
+   it could never be unticked. */
+#imFilterPanel .imf-opt.gone span.t { color: #94a3b8; font-style: italic; }
+#imFilterPanel .imf-foot {
+    display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;
+    border-radius: 0 0 8px 8px;
+}
+#imFilterPanel .imf-btn {
+    flex: 1; height: 26px; border-radius: 5px; border: 1px solid transparent;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+}
+#imFilterPanel .imf-apply  { background: #16a34a; color: #fff; }
+#imFilterPanel .imf-remove { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+#imFilterPanel .imf-cancel { background: #e2e8f0; color: #475569; flex: 0 0 62px; }
+#imFilterPanel .imf-mini {
+    background: none; border: none; color: #0369a1; font-size: 10px;
+    font-weight: 700; cursor: pointer; padding: 0;
+}
+#imFilterChips .imf-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
+    border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 10px; font-weight: 700;
+}
+#imFilterChips .imf-chip button {
+    background: none; border: none; color: #047857; cursor: pointer;
+    font-size: 11px; line-height: 1; padding: 1px 4px; border-radius: 8px;
+}
+#imFilterChips .imf-chip button:hover { background: #a7f3d0; }
 /* Searchable select (makeSearchableSelect) */
 .ss-input { box-sizing: border-box; cursor: text; }
 .ss-list { position: fixed; z-index: 2147483000; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 240px; overflow-y: auto; font-size: 12px; }
@@ -3171,6 +3291,16 @@ body {
                                     <option value="28">28</option>
                                 </select>
                             </div>
+                            <!-- Size / Material / Standard Order Qty are properties of the
+                                 PART, the same way GST and UOM are — a 1/2" BSP nipple in
+                                 SS 304 is a different part from the brass one, and the
+                                 quantity it is sensibly bought in does not change from one
+                                 PO to the next. Kept free text (with suggestions) rather
+                                 than a closed list, because the store buys across far too
+                                 many trades for any fixed dropdown to hold. -->
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Item Size</label><input type="text" class="form-control" id="mi_itemSize" list="dl-mi-itemSize" placeholder="e.g. 1/2 INCH, M8 x 40, 24&quot;" autocomplete="off"></div>
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Material Type</label><input type="text" class="form-control" id="mi_materialType" list="dl-mi-materialType" placeholder="e.g. SS 304, MS, BRASS" autocomplete="off"></div>
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;" title="Is item ko normally kitni qty me mangwaya jaata hai — PR / PO par suggestion ke liye">STANDARD ORDER QTY</label><input type="number" class="form-control" id="mi_stdOrderQty" placeholder="e.g. 10" min="0" step="any"></div>
                             <div class="form-group" style="margin:0; display:flex; align-items:flex-end; gap:6px;">
                                 <button class="btn btn-primary" id="addItemBtn" onclick="addMasterItem()" style="flex:1; height:32px; font-size:11px;">&#10133; Add Item</button>
                                 <!-- Only visible while an existing item is loaded for editing -->
@@ -3178,22 +3308,27 @@ body {
                             </div>
                         </div>
                     </div>
+                    <!-- Suggestions for Item Size / Material Type, rebuilt from what the
+                         Item Master already holds (refreshItemAttributeDatalists_). They
+                         start out empty and fill themselves as items are added, so the
+                         store's own vocabulary is what gets offered back — and nothing
+                         is ever blocked, because these are plain text inputs. -->
+                    <datalist id="dl-mi-itemSize"></datalist>
+                    <datalist id="dl-mi-materialType"></datalist>
 
                     <!-- Item List -->
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
                         <input type="text" class="form-control" id="itemMasterSearch" placeholder="&#128269; Search items..." style="flex:1; min-width:160px; height:30px; font-size:11px;" oninput="renderItemMasterTable()">
-                        <div style="position:relative;">
-                            <button type="button" class="btn" id="itemMasterCatFilterBtn" onclick="toggleItemMasterCatFilter()" style="background:#eef2ff; color:#4338ca; font-size:10px; height:28px; padding:0 10px; white-space:nowrap;">&#127991;&#65039; Category: All &#9662;</button>
-                            <div id="itemMasterCatFilterPanel" style="display:none; position:absolute; top:32px; right:0; z-index:20; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:8px 10px; min-width:210px; max-height:280px; overflow-y:auto;">
-                                <div style="display:flex; justify-content:space-between; margin-bottom:6px; gap:6px;">
-                                    <button type="button" onclick="setAllItemMasterCatFilter(true)" style="font-size:10px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:4px; padding:2px 8px; cursor:pointer;">All</button>
-                                    <button type="button" onclick="setAllItemMasterCatFilter(false)" style="font-size:10px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; border-radius:4px; padding:2px 8px; cursor:pointer;">None</button>
-                                </div>
-                                <div id="itemMasterCatFilterList" style="display:flex; flex-direction:column; gap:2px; font-size:11px;"></div>
-                            </div>
-                        </div>
+                        <!-- The old standalone Category dropdown lived here. It is gone
+                             because Category now has a column filter of its own in the
+                             header, like every other column — and unlike this one, that
+                             filter is dependent on the rest. Two Category filters that
+                             both applied would have been a trap. -->
                         <!-- Stock-level filter. Items with no MSV set can't be judged
-                             against one, so they fall out of both filtered views. -->
+                             against one, so they fall out of both filtered views.
+                             Kept separate from the column filters on purpose: it asks
+                             "balance vs this item's OWN MSV", a comparison between two
+                             columns that no list of values can express. -->
                         <select class="form-control" id="itemMasterMsvFilter" onchange="renderItemMasterTable()" title="Balance ko MSV ke against filter karein" style="width:150px; height:28px; font-size:10px; font-weight:700; padding:0 6px; flex-shrink:0;">
                             <option value="ALL">&#128202; Stock: All</option>
                             <option value="BELOW">&#128308; Below the MSV</option>
@@ -3203,26 +3338,34 @@ body {
                         <button class="btn" onclick="loadItemMaster()" style="background:#e0f2fe; color:#0369a1; font-size:10px; height:28px; padding:0 10px;">&#128260; Refresh</button>
                         <button class="btn" onclick="exportTableCSV('itemMasterBody','SARV_Item_Master_'+today()+'.csv',1)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">&#128190; Download CSV</button>
                     </div>
+                    <!-- Every column filter currently applied, each removable on its own,
+                         plus one Clear All. Without this a filter set three columns ago
+                         is invisible — the only clue would be a row count that looks
+                         wrong, which is exactly how people conclude their data is gone. -->
+                    <div id="imFilterChips" style="display:none; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
                     <div class="table-container" style="max-height:calc(100vh - 320px); min-height:340px; overflow-y:auto;">
                         <table id="itemMasterTable" style="width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed;">
                             <thead><tr style="background:#0f172a; color:#fff; position:sticky; top:0;">
                                 <th style="padding:6px; width:4%;">#</th>
-                                <th class="im-resizable" data-col="code" onclick="sortItemMaster('code')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span><span class="im-col-resizer"></span></th>
-                                <th class="im-resizable" data-col="name" onclick="sortItemMaster('name')" style="padding:6px; width:14%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span><span class="im-col-resizer"></span></th>
-                                <th class="im-resizable" data-col="desc" style="padding:6px; width:14%; user-select:none;" title="Right edge drag karke width badlein (double-click = reset)">Description<span class="im-col-resizer"></span></th>
-                                <th onclick="sortItemMaster('cat')" style="padding:6px; width:8%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Category<span id="imSort-cat" style="margin-left:3px;">&#8693;</span></th>
-                                <th style="padding:6px; width:7%;">Rate</th>
-                                <th style="padding:6px; width:5%; background:#ede9fe; color:#0f172a;" title="GST % for this item — auto-fills Inward rows and PO lines">GST %</th>
-                                <th style="padding:6px; width:5%;">UOM</th>
-                                <th style="padding:6px; width:7%;">Make</th>
-                                <th onclick="sortItemMaster('msv')" style="padding:6px; width:7%; background:#FDE68A; color:#0f172a; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click: chhote&rarr;bade / bade&rarr;chhote sort">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span></th>
-                                <th onclick="sortItemMaster('in')" style="padding:6px; width:6%; background:#0CF2C6; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span></th>
-                                <th onclick="sortItemMaster('out')" style="padding:6px; width:6%; background:#FF9105; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span></th>
-                                <th onclick="sortItemMaster('bal')" style="padding:6px; width:7%; background:#00C8FF; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span></th>
-                                <th style="padding:6px; width:5%;">&#128465;</th>
+                                <th class="im-resizable" data-col="code" onclick="sortItemMaster('code')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-code" data-fcol="code" onclick="imOpenFilter(event,'code')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="name" onclick="sortItemMaster('name')" style="padding:6px; width:11%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-name" data-fcol="name" onclick="imOpenFilter(event,'name')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="desc" style="padding:6px; width:10%; user-select:none;" title="Right edge drag karke width badlein (double-click = reset)">Description<span class="im-fbtn" id="imF-desc" data-fcol="desc" onclick="imOpenFilter(event,'desc')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th onclick="sortItemMaster('cat')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Category<span id="imSort-cat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-cat" data-fcol="cat" onclick="imOpenFilter(event,'cat')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('size')" style="padding:6px; width:6%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Item Size — e.g. 1/2 INCH, M8 x 40. Click: A&rarr;Z / Z&rarr;A sort">Size<span id="imSort-size" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-size" data-fcol="size" onclick="imOpenFilter(event,'size')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('mat')" style="padding:6px; width:7%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Material Type — e.g. SS 304, MS, BRASS. Click: A&rarr;Z / Z&rarr;A sort">Material<span id="imSort-mat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-mat" data-fcol="mat" onclick="imOpenFilter(event,'mat')" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:6%;">Rate<span class="im-fbtn" id="imF-rate" data-fcol="rate" onclick="imOpenFilter(event,'rate')" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:4%; background:#ede9fe; color:#0f172a;" title="GST % for this item — auto-fills Inward rows and PO lines">GST %<span class="im-fbtn" id="imF-gst" data-fcol="gst" onclick="imOpenFilter(event,'gst')" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:4%;">UOM<span class="im-fbtn" id="imF-uom" data-fcol="uom" onclick="imOpenFilter(event,'uom')" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:6%;">Make<span class="im-fbtn" id="imF-make" data-fcol="make" onclick="imOpenFilter(event,'make')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('msv')" style="padding:6px; width:6%; background:#FDE68A; color:#0f172a; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click: chhote&rarr;bade / bade&rarr;chhote sort">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-msv" data-fcol="msv" onclick="imOpenFilter(event,'msv')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('soq')" style="padding:6px; width:6%; background:#FBCFE8; color:#0f172a; cursor:pointer; user-select:none;" title="Standard Order Qty — is item ko normally kitni qty me mangwaya jaata hai. Click: chhote&rarr;bade / bade&rarr;chhote sort">STD ORDER QTY<span id="imSort-soq" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-soq" data-fcol="soq" onclick="imOpenFilter(event,'soq')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('in')" style="padding:6px; width:5%; background:#0CF2C6; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-in" data-fcol="in" onclick="imOpenFilter(event,'in')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('out')" style="padding:6px; width:5%; background:#FF9105; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-out" data-fcol="out" onclick="imOpenFilter(event,'out')" title="Filter">&#9662;</span></th>
+                                <th onclick="sortItemMaster('bal')" style="padding:6px; width:6%; background:#00C8FF; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-bal" data-fcol="bal" onclick="imOpenFilter(event,'bal')" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:4%;">&#128465;</th>
                             </tr></thead>
                             <tbody id="itemMasterBody">
-                                <tr><td colspan="14" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
+                                <tr><td colspan="17" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4096,6 +4239,7 @@ body {
                 <div style="display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
                     <button class="btn btn-primary btn-sm" id="p_poSubPendingBtn">📦 Pending Items (Build PO)</button>
                     <button class="btn btn-neutral btn-sm" id="p_poSubListBtn">📜 Generated POs</button>
+                    <button class="btn btn-neutral btn-sm" id="p_poSubReportBtn" title="PR se PO se Inward tak — har PR ki ek line me poori follow-up position">📋 Follow-Up Report</button>
                 </div>
 
                 <!-- ==== Sub-panel A: Pending items selection ==== -->
@@ -4230,6 +4374,77 @@ body {
                                 </tr>
                             </thead>
                             <tbody id="p_poListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ==== Sub-panel C: PR → PO → Inward Follow-Up Report ==== -->
+                <div id="p_poReportPanel" style="display:none;">
+                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto;">
+                        <div class="form-group">
+                            <label>Search (PR / PO / Inward / Requester / Vendor)</label>
+                            <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR/26-27/596 or GOURAV">
+                        </div>
+                        <div class="form-group">
+                            <label>PO Status</label>
+                            <select class="form-control" id="p_poRepStatus">
+                                <option value="">All</option>
+                                <option value="__NOPO__">PO Not Generated</option>
+                                <option>Generated</option><option>GM/CEO Approved</option><option>MD Approved</option>
+                                <option>Vendor Verified</option><option>Partially Received</option>
+                                <option>Received</option><option>Closed (Short)</option><option>Rejected</option><option>Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Requested By</label>
+                            <select class="form-control" id="p_poRepRequester"><option value="">All</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>Pending Only</label>
+                            <select class="form-control" id="p_poRepPending" title="Sirf woh PR dikhayein jinka koi na koi step abhi baaki hai">
+                                <option value="">Show All</option>
+                                <option value="1">Only Incomplete Follow-Up</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button class="btn btn-primary" id="p_poRepRefreshBtn" style="height: 34px;">&#128260; Reload</button>
+                        </div>
+                        <div>
+                            <button class="btn btn-neutral" id="p_poRepCsvBtn" style="height: 34px;">&#128190; Export CSV</button>
+                        </div>
+                    </div>
+
+                    <div class="items-total-strip">
+                        <span class="totals-pill"><span class="lbl">Showing</span><span class="val" id="p_poRepCount">0</span></span>
+                        <span class="totals-pill highlight"><span class="lbl">PO Pending</span><span class="val" id="p_poRepNoPo">0</span></span>
+                        <span class="totals-pill success"><span class="lbl">Fully Received</span><span class="val" id="p_poRepDone">0</span></span>
+                        <span class="totals-pill"><span class="lbl">Requester Informed</span><span class="val" id="p_poRepInformed">0</span></span>
+                    </div>
+
+                    <div style="font-size:11px;color:#64748b;margin:-4px 0 8px;">
+                        &#128196; PR No. / PO No. / Inward No. par click karke uski PDF khulti hai &middot;
+                        &#9745; Inform to Requester, Bill Checked by GM aur Bill Checked by MD tick karne par Role PIN maanga jayega &mdash; baaki saari details apne aap bharti hain.
+                    </div>
+
+                    <div class="table-container" style="max-height: 540px;">
+                        <table class="po-followup-table">
+                            <thead>
+                                <tr>
+                                    <th style="background:#fde9d9;">PR No.</th>
+                                    <th style="background:#fde9d9;">PR Requested By</th>
+                                    <th style="background:#d9ead3; text-align:center;">Vendor Info.</th>
+                                    <th style="background:#d9ead3; text-align:center;">PO Generate</th>
+                                    <th style="background:#fbd5c0;">PO No.</th>
+                                    <th style="background:#d9ead3; text-align:center;">MD Approved</th>
+                                    <th style="background:#d9ead3; text-align:center;">PO Sent to Vendor</th>
+                                    <th style="background:#e2efda;">PO Status</th>
+                                    <th style="background:#f9cedc;">Inward No.</th>
+                                    <th style="background:#dbe5f1; text-align:center;">Inform to Requester</th>
+                                    <th style="background:#dbe5f1; text-align:center;">Bill Checked by GM</th>
+                                    <th style="background:#dbe5f1; text-align:center;">Bill Checked by MD</th>
+                                </tr>
+                            </thead>
+                            <tbody id="p_poReportBody"></tbody>
                         </table>
                     </div>
                 </div>
@@ -7851,36 +8066,381 @@ let sarvItemMasterRows=[];      // [{it, inQty, outQty, bal, catKey}]
 // memory instead of refetching on every keystroke — same pattern as
 // sarvItemMasterRows / renderItemMasterTable above.
 let sarvSupplierMasterRows=[], sarvEmployeeMasterRows=[], sarvMachineMasterRows=[];
-let sarvItemMasterCats=[];      // distinct category buckets present in the data
-let sarvItemMasterSelectedCats=new Set(); // categories currently checked in the filter
+/* ================================================================
+   ITEM MASTER — PER-COLUMN FILTERS (Excel-style, and DEPENDENT)
+   ----------------------------------------------------------------
+   Every column header carries a ▾ button. It opens a list of the
+   values actually present in that column, each tickable, plus a
+   Min / Max pair on the numeric columns. Apply commits it; Remove
+   Filter clears that one column; the chip bar under the toolbar
+   clears any of them, or all at once.
 
-function toggleItemMasterCatFilter(){
-  const p=byId('itemMasterCatFilterPanel');if(!p)return;
-  p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';
+   DEPENDENT is the point of it. The list a column offers is built
+   from the rows that survive EVERY OTHER filter — the search box
+   and the Stock (MSV) dropdown included — never from the full
+   table. So picking Category = ELECTRICAL leaves the Make list
+   showing only the makes that actually occur in ELECTRICAL items,
+   and a combination that would return nothing is simply not
+   offered. The one exception is a value that is already ticked:
+   it stays listed, greyed, even when the other filters have taken
+   every row carrying it, because a value you cannot see is a value
+   you can never untick.
+
+   This replaced the standalone Category dropdown that used to sit
+   in the toolbar. Category is a column like any other now; two
+   Category filters that both applied would have been a trap.
+================================================================ */
+/* How each filterable column is read. `get` returns the value used for
+   matching and grouping — null meaning "not set", which is offered in the
+   list as (Blank) so "show me the items with no Material" is askable.
+   `numeric` adds the Min / Max row and sorts the value list by number. */
+const SARV_IM_FILTER_COLS={
+  code:{label:'Code',               numeric:false,get:r=>r.it.item_code},
+  name:{label:'Item Name',          numeric:false,get:r=>r.it.name},
+  desc:{label:'Description',        numeric:false,get:r=>r.it.description},
+  cat: {label:'Category',           numeric:false,get:r=>r.catKey},
+  size:{label:'Size',               numeric:false,get:r=>itemSize_(r.it)},
+  mat: {label:'Material',           numeric:false,get:r=>itemMaterial_(r.it)},
+  rate:{label:'Rate',               numeric:true, get:r=>Number(r.it.rate||0)},
+  gst: {label:'GST %',              numeric:true, get:r=>itemGst_(r.it)},
+  uom: {label:'UOM',                numeric:false,get:r=>r.it.uom||'PCS'},
+  make:{label:'Make',               numeric:false,get:r=>r.it.make},
+  msv: {label:'MIN STOCK QTY (MSV)',numeric:true, get:r=>itemMsv_(r.it)},
+  soq: {label:'STD ORDER QTY',      numeric:true, get:r=>itemStdOrderQty_(r.it)},
+  in:  {label:'IN Qty',             numeric:true, get:r=>r.inQty},
+  out: {label:'OUT Qty',            numeric:true, get:r=>r.outQty},
+  bal: {label:'Balance Qty',        numeric:true, get:r=>r.bal}
+};
+const IM_BLANK='(Blank)';
+/* Applied filters, by column id: {values:Set<string>|null, min:number|null,
+   max:number|null}. values===null means no value restriction — different from
+   an empty Set, which means "nothing ticked", i.e. show nothing. */
+let sarvImFilters={};
+// Which column's panel is open, and the state being edited in it. Kept apart
+// from sarvImFilters so Cancel really cancels.
+let sarvImPanelCol=null, sarvImDraft=null;
+
+// The display string a value is grouped and matched under. One function, used
+// by the option list, the row test and the chip labels alike, so the three can
+// never disagree about what "4" or "" means.
+function imCellKey_(col,row){
+  const v=SARV_IM_FILTER_COLS[col].get(row);
+  if(v==null||String(v).trim()==='')return IM_BLANK;
+  return String(v).trim();
 }
+// Numeric value for the Min / Max test. null = nothing to compare, which a
+// range always rejects (an item with no MSV is neither above nor below one).
+function imCellNum_(col,row){
+  if(!SARV_IM_FILTER_COLS[col].numeric)return null;
+  const v=SARV_IM_FILTER_COLS[col].get(row);
+  if(v==null||String(v).trim()==='')return null;
+  const n=Number(v);
+  return isNaN(n)?null:n;
+}
+function imHasFilter_(col){
+  const f=sarvImFilters[col];
+  return !!f&&(f.values!=null||f.min!=null||f.max!=null);
+}
+function imActiveCols_(){return Object.keys(SARV_IM_FILTER_COLS).filter(imHasFilter_)}
+function imColPass_(col,row){
+  const f=sarvImFilters[col];
+  if(!f)return true;
+  if(f.values&&!f.values.has(imCellKey_(col,row)))return false;
+  if(f.min!=null||f.max!=null){
+    const n=imCellNum_(col,row);
+    if(n==null)return false;
+    if(f.min!=null&&n<f.min)return false;
+    if(f.max!=null&&n>f.max)return false;
+  }
+  return true;
+}
+/* The non-column filters — the search box and the Stock/MSV dropdown. Pulled
+   out so the dependent option lists apply them too; a value that only occurs
+   in rows the search has already hidden is not a value worth offering. */
+function imBasePass_(row){
+  const q=(byId('itemMasterSearch')?.value||'').toLowerCase().trim();
+  const msvFilter=byId('itemMasterMsvFilter')?.value||'ALL';
+  if(msvFilter!=='ALL'){
+    const msv=itemMsv_(row.it);
+    // No MSV set — there is nothing to be below or above, so it shows in neither.
+    if(msv==null||msv<=0)return false;
+    if(msvFilter==='BELOW'&&!(row.bal<msv))return false;
+    if(msvFilter==='ABOVE'&&!(row.bal>=msv))return false;
+  }
+  if(q){
+    const hay=[row.it.item_code,row.it.name,row.it.description,row.it.category,row.it.sub_category,row.it.make,
+      row.it.item_size,row.it.material_type].map(x=>String(x||'').toLowerCase()).join(' ');
+    if(!hay.includes(q))return false;
+  }
+  return true;
+}
+// exceptCol is what makes the filters dependent: a column's own filter is left
+// out when working out what that column should still be offering.
+function imRowPass_(row,exceptCol){
+  if(!imBasePass_(row))return false;
+  return Object.keys(SARV_IM_FILTER_COLS).every(c=>c===exceptCol||imColPass_(c,row));
+}
+/* The value list for one column: what is left after every OTHER filter, with
+   a count each. Sorted by number on numeric columns and alphabetically
+   elsewhere; (Blank) always sinks to the bottom, where it reads as the
+   leftover rather than as a value in its own right. */
+function imOptionsFor_(col){
+  const counts=new Map();
+  sarvItemMasterRows.forEach(row=>{
+    if(!imRowPass_(row,col))return;
+    const k=imCellKey_(col,row);
+    counts.set(k,(counts.get(k)||0)+1);
+  });
+  const numeric=SARV_IM_FILTER_COLS[col].numeric;
+  const list=[...counts.entries()].map(([value,count])=>({value,count}));
+  list.sort((a,b)=>{
+    if(a.value===IM_BLANK)return 1;
+    if(b.value===IM_BLANK)return -1;
+    return numeric?(Number(a.value)-Number(b.value))
+                  :String(a.value).localeCompare(String(b.value),undefined,{numeric:true,sensitivity:'base'});
+  });
+  return list;
+}
+
+window.imOpenFilter=function(ev,col){
+  // Without this the click reaches the <th> and re-sorts the column underneath
+  // the panel that just opened.
+  if(ev){ev.stopPropagation();ev.preventDefault();}
+  if(!SARV_IM_FILTER_COLS[col])return;
+  if(sarvImPanelCol===col){imCloseFilterPanel();return;}   // same button closes it
+  sarvImPanelCol=col;
+  const cur=sarvImFilters[col];
+  sarvImDraft={
+    values:cur&&cur.values?new Set(cur.values):null,
+    min:cur&&cur.min!=null?cur.min:null,
+    max:cur&&cur.max!=null?cur.max:null,
+    search:'',
+    /* The option list is worked out once, here, not on every keystroke in the
+       panel's search box. Nothing the panel does can change it: the draft is
+       not applied until Apply, and a column's own filter is excluded from its
+       own list anyway. On a master with thousands of items, recomputing it per
+       keystroke was the one thing in here that would have felt slow. */
+    options:imOptionsFor_(col),
+    // The header button this panel hangs off. Kept so every re-render (search,
+    // Select All, Clear) can re-anchor itself — the panel changes height as the
+    // list narrows, and one that never re-positioned would grow off-screen.
+    anchor:(ev&&ev.currentTarget)||byId('imF-'+col)
+  };
+  imRenderFilterPanel_();
+};
+function imEnsureFilterPanel_(){
+  let p=byId('imFilterPanel');
+  if(p)return p;
+  p=document.createElement('div');
+  p.id='imFilterPanel';
+  // On <body> rather than inside the <th>: the table scrolls in a container
+  // with its own overflow and a sticky header, which would clip it.
+  document.body.appendChild(p);
+  // A click inside the panel must never reach the document-level closer below.
+  p.addEventListener('click',e=>e.stopPropagation());
+  return p;
+}
+function imPositionFilterPanel_(anchor){
+  const p=byId('imFilterPanel');if(!p)return;
+  const btn=anchor||byId('imF-'+sarvImPanelCol);
+  const r=btn?btn.getBoundingClientRect():{left:120,top:100,bottom:120};
+  const w=p.offsetWidth||268,h=p.offsetHeight||320;
+  // Kept inside the viewport: a filter on the last column would otherwise open
+  // off the right edge, and one near the bottom would run off-screen.
+  let left=Math.min(Math.max(8,r.left-10),Math.max(8,window.innerWidth-w-8));
+  let top=r.bottom+4;
+  if(top+h>window.innerHeight-8)top=Math.max(8,r.top-h-4);
+  p.style.left=left+'px';p.style.top=top+'px';
+  // Measured while hidden (see imRenderFilterPanel_), shown once it is parked
+  // where it belongs — otherwise it flashes at the previous column's position.
+  p.style.visibility='visible';
+}
+function imRenderFilterPanel_(){
+  const col=sarvImPanelCol;if(!col)return;
+  const p=imEnsureFilterPanel_(),meta=SARV_IM_FILTER_COLS[col];
+  const opts=sarvImDraft.options||[];
+  const present=new Set(opts.map(o=>o.value));
+  // Ticked values the other filters have emptied out are appended, greyed, so
+  // they can still be unticked. Without this the panel could strand a filter.
+  const extra=sarvImDraft.values
+    ? [...sarvImDraft.values].filter(v=>!present.has(v)).sort().map(v=>({value:v,count:0,gone:true}))
+    : [];
+  const all=opts.concat(extra);
+  const term=(sarvImDraft.search||'').toLowerCase();
+  const shown=term?all.filter(o=>o.value.toLowerCase().includes(term)):all;
+  // values===null is "no restriction", which reads as everything ticked.
+  const ticked=v=>sarvImDraft.values?sarvImDraft.values.has(v):true;
+  const LIMIT=400;
+  const clipped=shown.length>LIMIT?shown.slice(0,LIMIT):shown;
+  const rowsHtml=clipped.length?clipped.map(o=>
+      '<label class="imf-opt'+(o.gone?' gone':'')+'">'
+      +'<input type="checkbox" data-v="'+escText(o.value)+'"'+(ticked(o.value)?' checked':'')+'>'
+      +'<span class="t" title="'+escText(o.value)+'">'+escText(o.value)+'</span>'
+      +'<span class="n">'+(o.gone?'0':o.count)+'</span></label>').join('')
+    : '<div style="color:#94a3b8;padding:6px 2px;">'+(term?'Is search par koi value nahi mili.':'Baaki filters ke baad is column me koi value nahi bachi.')+'</div>';
+  const clipNote=shown.length>LIMIT
+    ? '<div style="color:#b45309;font-size:10px;padding:4px 2px 0;">Pehli '+LIMIT+' values dikh rahi hain ('+shown.length+' me se) — upar search karke chhota karein.</div>'
+    : '';
+  const rangeHtml=meta.numeric
+    ? '<div class="imf-range">'
+      +'<input type="number" id="imfMin" placeholder="Min" step="any" value="'+(sarvImDraft.min!=null?sarvImDraft.min:'')+'">'
+      +'<input type="number" id="imfMax" placeholder="Max" step="any" value="'+(sarvImDraft.max!=null?sarvImDraft.max:'')+'">'
+      +'</div>'
+    : '';
+  p.innerHTML=
+     '<div class="imf-head">'+escText(meta.label)
+    +'<div class="imf-sub">'+opts.length+' value(s) &middot; baaki filters ke hisaab se</div></div>'
+    +'<div class="imf-body">'+rangeHtml
+    +'<input type="text" id="imfSearch" placeholder="&#128269; Values me search..." value="'+escText(sarvImDraft.search||'')+'">'
+    +'<div style="display:flex;justify-content:space-between;margin-top:6px;">'
+    +'<button type="button" class="imf-mini" id="imfAll">&#9745; Select All</button>'
+    +'<button type="button" class="imf-mini" id="imfNone" style="color:#b91c1c;">&#9744; Clear</button></div>'
+    +'<div class="imf-list" id="imfList">'+rowsHtml+'</div>'+clipNote
+    +'</div>'
+    +'<div class="imf-foot">'
+    +'<button type="button" class="imf-btn imf-apply" id="imfApply">&#10004; Apply</button>'
+    +'<button type="button" class="imf-btn imf-remove" id="imfRemove">&#10006; Remove Filter</button>'
+    +'<button type="button" class="imf-btn imf-cancel" id="imfCancel">Cancel</button>'
+    +'</div>';
+  // Laid out so it can be measured, but not yet visible — imPositionFilterPanel_
+  // at the bottom of this function reveals it once it has somewhere to be.
+  p.style.visibility='hidden';
+  p.style.display='block';
+
+  // Ticking a box only ever edits the draft — nothing filters until Apply.
+  // Until the first tick values is null ("all"), so it is materialised from
+  // what is currently shown as checked rather than starting empty, or the
+  // first untick would wipe every other value too.
+  const listEl=byId('imfList');
+  listEl.addEventListener('change',e=>{
+    const cb=e.target.closest('input[type=checkbox]');if(!cb)return;
+    if(!sarvImDraft.values)sarvImDraft.values=new Set(all.map(o=>o.value));
+    if(cb.checked)sarvImDraft.values.add(cb.dataset.v);else sarvImDraft.values.delete(cb.dataset.v);
+  });
+  const search=byId('imfSearch');
+  search.addEventListener('input',()=>{
+    sarvImDraft.search=search.value;
+    const at=search.selectionStart;
+    imRenderFilterPanel_();
+    const s2=byId('imfSearch');if(s2){s2.focus();try{s2.setSelectionRange(at,at)}catch(e){}}
+  });
+  // Select All / Clear act on WHAT IS SHOWN, so a search narrows what they
+  // touch — same as Excel, and the only reading that is useful on a long list.
+  byId('imfAll').addEventListener('click',()=>{
+    if(!sarvImDraft.values)sarvImDraft.values=new Set(all.map(o=>o.value));
+    clipped.forEach(o=>sarvImDraft.values.add(o.value));
+    if(!term&&sarvImDraft.values.size>=all.length)sarvImDraft.values=null;   // everything = no restriction
+    imRenderFilterPanel_();
+  });
+  byId('imfNone').addEventListener('click',()=>{
+    if(!sarvImDraft.values)sarvImDraft.values=new Set(all.map(o=>o.value));
+    clipped.forEach(o=>sarvImDraft.values.delete(o.value));
+    imRenderFilterPanel_();
+  });
+  if(meta.numeric){
+    const rd=()=>{
+      const mn=byId('imfMin').value.trim(),mx=byId('imfMax').value.trim();
+      sarvImDraft.min=mn===''?null:Number(mn);
+      sarvImDraft.max=mx===''?null:Number(mx);
+    };
+    byId('imfMin').addEventListener('input',rd);
+    byId('imfMax').addEventListener('input',rd);
+  }
+  byId('imfApply').addEventListener('click',imApplyFilter);
+  byId('imfRemove').addEventListener('click',()=>imRemoveFilter(col));
+  byId('imfCancel').addEventListener('click',imCloseFilterPanel);
+  imPositionFilterPanel_(sarvImDraft.anchor);
+}
+window.imApplyFilter=function(){
+  const col=sarvImPanelCol;if(!col)return;
+  const d=sarvImDraft||{};
+  let {min,max}=d;
+  if(min!=null&&isNaN(min))min=null;
+  if(max!=null&&isNaN(max))max=null;
+  // A reversed range is a slip, not a request for an empty table.
+  if(min!=null&&max!=null&&min>max){const t=min;min=max;max=t;}
+  /* Everything ticked is the same as no filter, so it is stored as none. That
+     is what keeps the header badge and the chip bar honest — a green funnel
+     that hides nothing is worse than no badge at all. */
+  let values=d.values;
+  if(values){
+    const opts=(d.options||[]).map(o=>o.value);
+    if(opts.length&&values.size===opts.length&&opts.every(v=>values.has(v)))values=null;
+  }
+  if(values==null&&min==null&&max==null){imRemoveFilter(col);return;}
+  if(values&&values.size===0){
+    showToast('⚠️ Is column me koi value tick nahi hai — aise filter karne par list khali rahegi','warn');
+  }
+  sarvImFilters[col]={values:values?new Set(values):null,min,max};
+  imCloseFilterPanel();
+  renderItemMasterTable();
+};
+window.imRemoveFilter=function(col){
+  delete sarvImFilters[col];
+  if(sarvImPanelCol===col)imCloseFilterPanel();
+  renderItemMasterTable();
+};
+window.imClearAllFilters=function(){
+  sarvImFilters={};
+  imCloseFilterPanel();
+  renderItemMasterTable();
+};
+function imCloseFilterPanel(){
+  const p=byId('imFilterPanel');if(p)p.style.display='none';
+  sarvImPanelCol=null;sarvImDraft=null;
+}
+// Click anywhere else, Escape, or a scroll/resize that would leave the panel
+// floating away from its header — all close it.
 document.addEventListener('click',e=>{
-  const panel=byId('itemMasterCatFilterPanel'),btn=byId('itemMasterCatFilterBtn');
-  if(panel&&panel.style.display==='block'&&!panel.contains(e.target)&&e.target!==btn)panel.style.display='none';
+  if(!sarvImPanelCol)return;
+  if(e.target.closest&&e.target.closest('.im-fbtn'))return;   // handled by imOpenFilter
+  imCloseFilterPanel();
 });
-function buildItemMasterCatFilterUI(){
-  const list=byId('itemMasterCatFilterList');if(!list)return;
-  list.innerHTML=sarvItemMasterCats.length?sarvItemMasterCats.map(c=>{
-    const checked=sarvItemMasterSelectedCats.has(c)?'checked':'';
-    return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:2px 0;"><input type="checkbox" value="${escText(c)}" ${checked} onchange="onItemMasterCatToggle(this)"> ${escText(c)}</label>`;
-  }).join(''):'<div style="color:#94a3b8;padding:4px 0;">No categories yet</div>';
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sarvImPanelCol)imCloseFilterPanel()});
+window.addEventListener('resize',()=>{if(sarvImPanelCol)imCloseFilterPanel()});
+/* Capture phase, because a scroll inside the table container does not bubble.
+   The panel's OWN value list is excluded — it scrolls, and closing the panel
+   the moment someone scrolls its list would make a long list unusable. */
+document.addEventListener('scroll',e=>{
+  if(!sarvImPanelCol)return;
+  const p=byId('imFilterPanel'),t=e.target;
+  if(p&&t&&t.nodeType===1&&p.contains(t))return;
+  imCloseFilterPanel();
+},true);
+
+/* What each applied filter looks like in a chip and in the header's tooltip. */
+function imFilterSummary_(col){
+  const f=sarvImFilters[col];if(!f)return '';
+  const parts=[];
+  if(f.min!=null||f.max!=null){
+    parts.push(f.min!=null&&f.max!=null?(f.min+'–'+f.max):(f.min!=null?('≥ '+f.min):('≤ '+f.max)));
+  }
+  if(f.values){
+    const v=[...f.values];
+    parts.push(v.length===0?'none':v.length<=2?v.join(', '):(v.length+' selected'));
+  }
+  return parts.join(' · ');
 }
-window.onItemMasterCatToggle=function(cb){
-  if(cb.checked)sarvItemMasterSelectedCats.add(cb.value);else sarvItemMasterSelectedCats.delete(cb.value);
-  updateItemMasterCatFilterBtnLabel();renderItemMasterTable();
-};
-window.setAllItemMasterCatFilter=function(all){
-  sarvItemMasterSelectedCats=all?new Set(sarvItemMasterCats):new Set();
-  buildItemMasterCatFilterUI();updateItemMasterCatFilterBtnLabel();renderItemMasterTable();
-};
-function updateItemMasterCatFilterBtnLabel(){
-  const btn=byId('itemMasterCatFilterBtn');if(!btn)return;
-  const total=sarvItemMasterCats.length,sel=sarvItemMasterSelectedCats.size;
-  btn.textContent=(sel===total)?'\u{1F3F7}️ Category: All ▾':(sel===0?'\u{1F3F7}️ Category: None ▾':`\u{1F3F7}️ Category: ${sel} selected ▾`);
+// Header badges + the chip bar, rebuilt on every render so they can never drift
+// from what is actually being applied.
+function imRenderFilterIndicators_(){
+  Object.keys(SARV_IM_FILTER_COLS).forEach(col=>{
+    const btn=byId('imF-'+col);if(!btn)return;
+    const on=imHasFilter_(col);
+    btn.classList.toggle('on',on);
+    btn.innerHTML=on?'&#9776;':'&#9662;';
+    btn.title=on?(SARV_IM_FILTER_COLS[col].label+' filter: '+imFilterSummary_(col)+' — click karke badlein ya hatayein')
+                 :('Filter '+SARV_IM_FILTER_COLS[col].label);
+  });
+  const bar=byId('imFilterChips');if(!bar)return;
+  const cols=imActiveCols_();
+  if(!cols.length){bar.style.display='none';bar.innerHTML='';return;}
+  bar.style.display='flex';
+  bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#475569;">&#128269; FILTERS:</span>'
+    +cols.map(c=>'<span class="imf-chip">'+escText(SARV_IM_FILTER_COLS[c].label)+': '+escText(imFilterSummary_(c))
+      +'<button type="button" onclick="imRemoveFilter(\''+c+'\')" title="Is column ka filter hatayein">&#10006;</button></span>').join('')
+    +'<button type="button" onclick="imClearAllFilters()" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'
+    +'border-radius:12px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters ('+cols.length+')</button>';
 }
 /* Minimum Stock Value for an item row. Stored in items.sub_category, which is
    free text — blank or legacy non-numeric content means "no MSV set", and such
@@ -7898,43 +8458,67 @@ function itemMsv_(it){
    nothing changes for existing data until someone sets a rate explicitly.
    SARV_DEFAULT_GST is the single place that default lives. */
 const SARV_DEFAULT_GST=18;
-/* items.gst_pct is a new column. Rather than make every Item Master save fail
-   on a database that predates it, the write is retried once without the field
-   and the user is told what to run. Same spirit as the pdf_snapshot handling
-   on purchase_requirements. Returns {error, droppedGst}. */
-let sarvGstColumnWarned=false;
-/* Shown once per session, with the exact migration, instead of the same vague
-   line on every single item save. */
-function warnGstColumnMissing_(){
-  if(sarvGstColumnWarned)return;
-  sarvGstColumnWarned=true;
-  showToast('⚠️ GST% save nahi hua — items table me <b>gst_pct</b> column hi nahi hai.<br>'
+/* Columns on `items` that a database may simply not have yet, with the DDL
+   that adds each one. Every save drops whichever of these the server says it
+   does not know about and retries, so the rest of the item still saves and the
+   user is told exactly what to run. gst_pct was the first; Item Size, Material
+   Type and Standard Order Qty arrived with ITEM_MASTER_FIELDS_MIGRATION.sql
+   and are handled the same way rather than each growing its own special case. */
+const SARV_ITEM_OPTIONAL_COLUMNS={
+  gst_pct:      {label:'GST %',              ddl:'alter table items add column gst_pct numeric default 18;'},
+  item_size:    {label:'Item Size',          ddl:'alter table items add column item_size text;'},
+  material_type:{label:'Material Type',      ddl:'alter table items add column material_type text;'},
+  std_order_qty:{label:'Standard Order Qty', ddl:'alter table items add column std_order_qty numeric;'}
+};
+/* Shown once per session PER COLUMN, with the exact migration, instead of the
+   same vague line on every single item save. */
+const sarvItemColumnWarned=new Set();
+function warnItemColumnsMissing_(cols){
+  const fresh=(cols||[]).filter(c=>SARV_ITEM_OPTIONAL_COLUMNS[c]&&!sarvItemColumnWarned.has(c));
+  if(!fresh.length)return;
+  fresh.forEach(c=>sarvItemColumnWarned.add(c));
+  showToast('⚠️ '+fresh.map(c=>SARV_ITEM_OPTIONAL_COLUMNS[c].label).join(' / ')+' save nahi hua — items table me '
+    +fresh.map(c=>'<b>'+c+'</b>').join(', ')+' column hi nahi hai.<br>'
     +'Supabase → SQL Editor me ek baar ye chalayein:<br>'
-    +"<code>alter table items add column gst_pct numeric default 5;</code><br>"
+    +fresh.map(c=>'<code>'+SARV_ITEM_OPTIONAL_COLUMNS[c].ddl+'</code>').join('<br>')+'<br>'
     +"<code>notify pgrst, 'reload schema';</code><br>"
-    +'Uske baad item dobara save karein — GST tab se save hone lagega.','warn');
+    +'Uske baad item dobara save karein — ye fields tab se save hone lagengi.','warn');
+}
+// Kept as a thin wrapper: older call sites still ask specifically about GST.
+function warnGstColumnMissing_(){warnItemColumnsMissing_(['gst_pct'])}
+/* Which optional column, if any, an error is complaining about. PostgREST
+   reports a column it has not re-read yet exactly like a column that does not
+   exist, so one test covers both "the column is missing" and "the column was
+   just added and the schema cache is stale". */
+function missingItemColumn_(e){
+  const msg=(e&&e.message)||'';
+  if(!/column|does not exist|schema cache/i.test(msg))return null;
+  return Object.keys(SARV_ITEM_OPTIONAL_COLUMNS).find(c=>new RegExp('\\b'+c+'\\b','i').test(msg))||null;
 }
 async function saveItemRow_(payload,editingId){
   const run=p=>editingId
     ? SB.from('items').update(p).eq('id',editingId)
     : SB.from('items').insert(p);
-  const missingGst=e=>!!e&&/gst_pct/i.test(e.message||'')&&/column|does not exist|schema cache/i.test(e.message||'');
-  let r=await run(payload);
-  /* PostgREST reports a column it has not re-read yet exactly like a column
-     that does not exist, so one error covers both "gst_pct is missing" and
-     "gst_pct was just added and the schema cache is stale". The stale cache is
-     by far the common case and a single retry clears it, so the GST really
-     does get saved instead of being dropped on the spot. */
-  if(missingGst(r.error)){
+  let body={...payload},dropped=[];
+  let r=await run(body);
+  /* The stale schema cache is by far the common case and a single retry clears
+     it, so a column that really is there does get saved instead of being
+     dropped on the spot. One retry for the whole payload, then the loop below
+     peels off genuinely-absent columns one at a time — PostgREST only ever
+     names the first one it trips over. */
+  if(missingItemColumn_(r.error)){
     await new Promise(res=>setTimeout(res,700));
-    r=await run(payload);
+    r=await run(body);
   }
-  if(missingGst(r.error)){
-    const {gst_pct,...without}=payload;
-    r=await run(without);
-    return {error:r.error,droppedGst:!r.error};
+  // Bounded by the number of optional columns, so a server that keeps
+  // complaining can never spin this forever.
+  for(let i=0;i<Object.keys(SARV_ITEM_OPTIONAL_COLUMNS).length&&r.error;i++){
+    const col=missingItemColumn_(r.error);
+    if(!col||!(col in body))break;
+    delete body[col];dropped.push(col);
+    r=await run(body);
   }
-  return {error:r.error,droppedGst:false};
+  return {error:r.error,dropped:r.error?[]:dropped,droppedGst:!r.error&&dropped.includes('gst_pct')};
 }
 /* ── "Add New Item" popup (Item Configurations) ───────────────────
    The Item Name column only offers what the Item Master already holds, so a
@@ -8065,9 +8649,9 @@ async function saveNewItemFromModal_(){
       gst_pct:Number(byId('ni_gst')?.value||SARV_DEFAULT_GST)
     };
     const code=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
-    const {error,droppedGst}=await saveItemRow_({item_code:code,...payload},null);
+    const {error,dropped}=await saveItemRow_({item_code:code,...payload},null);
     if(error)throw error;
-    if(droppedGst)warnGstColumnMissing_();
+    warnItemColumnsMissing_(dropped);
     // The shared catalog is refreshed first so the new name already resolves
     // when it lands in the row below; the heavier Item Master reload follows.
     const q=await SB.from('items').select('*').order('name');
@@ -8102,6 +8686,33 @@ function itemGst_(it){
   const n=Number(raw);
   return isNaN(n)?SARV_DEFAULT_GST:n;
 }
+/* Item Size / Material Type / Standard Order Qty — three more properties that
+   belong to the PART rather than to a particular purchase. Read through
+   helpers for the same reason itemMsv_ exists: on a database where the
+   migration has not been run yet the column simply is not on the row, and
+   every caller has to treat that as "not set" rather than as undefined. */
+/* Feeds the Item Size / Material Type suggestion lists from what the master
+   already holds, so the store's own vocabulary gets offered back instead of a
+   dropdown someone has to maintain. Both inputs stay free text — a suggestion
+   list never rejects anything typed past it. */
+function refreshItemAttributeDatalists_(items){
+  const fill=(dlId,vals)=>{
+    const dl=byId(dlId);if(!dl)return;
+    dl.innerHTML=[...new Set(vals.filter(Boolean))]
+      .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}))
+      .map(v=>'<option value="'+escText(v)+'">').join('');
+  };
+  fill('dl-mi-itemSize',(items||[]).map(itemSize_));
+  fill('dl-mi-materialType',(items||[]).map(itemMaterial_));
+}
+function itemSize_(it){const v=it&&it.item_size;return String(v==null?'':v).trim()||null}
+function itemMaterial_(it){const v=it&&it.material_type;return String(v==null?'':v).trim()||null}
+function itemStdOrderQty_(it){
+  const raw=it&&it.std_order_qty;
+  if(raw==null||String(raw).trim()==='')return null;
+  const n=Number(raw);
+  return isNaN(n)?null:n;
+}
 function isBelowMsv_(row){
   const msv=itemMsv_(row.it);
   return msv!=null&&msv>0&&row.bal<msv;
@@ -8113,7 +8724,10 @@ const SARV_ITEM_SORTERS={
   code:{text:true, get:r=>r.it.item_code},
   name:{text:true, get:r=>r.it.name},
   cat: {text:true, get:r=>r.it.category},
+  size:{text:true, get:r=>itemSize_(r.it)},
+  mat: {text:true, get:r=>itemMaterial_(r.it)},
   msv: {text:false,get:r=>itemMsv_(r.it)},
+  soq: {text:false,get:r=>itemStdOrderQty_(r.it)},
   in:  {text:false,get:r=>r.inQty},
   out: {text:false,get:r=>r.outQty},
   bal: {text:false,get:r=>r.bal}
@@ -8138,23 +8752,12 @@ window.renderItemMasterTable=function(){
   const tb=byId('itemMasterBody'),cnt=byId('itemMasterCount');
   if(!tb)return;
   const q=(byId('itemMasterSearch')?.value||'').toLowerCase().trim();
-  const catFilterActive=sarvItemMasterSelectedCats.size!==sarvItemMasterCats.length;
   const msvFilter=byId('itemMasterMsvFilter')?.value||'ALL';
-  const rows=sarvItemMasterRows.filter(row=>{
-    if(catFilterActive&&!sarvItemMasterSelectedCats.has(row.catKey))return false;
-    if(msvFilter!=='ALL'){
-      const msv=itemMsv_(row.it);
-      // No MSV set — there is nothing to be below or above, so it shows in neither.
-      if(msv==null||msv<=0)return false;
-      if(msvFilter==='BELOW'&&!(row.bal<msv))return false;
-      if(msvFilter==='ABOVE'&&!(row.bal>=msv))return false;
-    }
-    if(q){
-      const hay=[row.it.item_code,row.it.name,row.it.description,row.it.category,row.it.sub_category,row.it.make].map(x=>String(x||'').toLowerCase()).join(' ');
-      if(!hay.includes(q))return false;
-    }
-    return true;
-  });
+  /* The search box and the Stock dropdown live in imBasePass_, the column
+     filters in imColPass_, and imRowPass_ puts them together — the same three
+     functions the dependent option lists use. One code path, so what a column
+     filter OFFERS and what the table then SHOWS can never disagree. */
+  const rows=sarvItemMasterRows.filter(row=>imRowPass_(row,null));
   const sorter=SARV_ITEM_SORTERS[sarvItemMasterSort.key];
   if(sorter){
     const dir=sarvItemMasterSort.dir;
@@ -8173,17 +8776,27 @@ window.renderItemMasterTable=function(){
     });
   }
   updateItemMasterSortIndicators_();
-  const filterActive=catFilterActive||!!q||msvFilter!=='ALL';
+  imRenderFilterIndicators_();
+  const activeCols=imActiveCols_();
+  const filterActive=activeCols.length>0||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
   if(!sarvItemMasterRows.length){
-    tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
+    tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
     return;
   }
   if(!rows.length){
-    const why=msvFilter==='BELOW'?'Koi item MSV se neeche nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
-             :msvFilter==='ABOVE'?'Koi item MSV se upar nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
-             :'No items match this search / category filter.';
-    tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)+'</td></tr>';
+    /* An empty list has to say WHICH filter emptied it, and give the way out
+       in the same breath. "No items match" on its own is how someone decides
+       their Item Master has lost its data. */
+    const why=activeCols.length
+      ? 'In column filters ke baad koi item nahi bacha: '
+        +activeCols.map(c=>SARV_IM_FILTER_COLS[c].label+' ('+imFilterSummary_(c)+')').join(', ')
+      : msvFilter==='BELOW'?'Koi item MSV se neeche nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
+      : msvFilter==='ABOVE'?'Koi item MSV se upar nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
+      : 'Is search par koi item nahi mila.';
+    tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
+      +(activeCols.length?'<br><button type="button" onclick="imClearAllFilters()" style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters</button>':'')
+      +'</td></tr>';
     return;
   }
   let totalIn=0,totalOut=0,totalBal=0;
@@ -8195,6 +8808,7 @@ window.renderItemMasterTable=function(){
     // the sort use, so the red low-stock flag and the "Below the MSV" view can
     // never disagree about what counts as below.
     const msv=itemMsv_(it);
+    const soq=itemStdOrderQty_(it);
     const below=isBelowMsv_(row);
     return `<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;" data-id="${it.id}">
         <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
@@ -8202,11 +8816,14 @@ window.renderItemMasterTable=function(){
         <td style="padding:5px 6px;font-weight:700;">${escText(it.name)}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(it.description||'—')}</td>
         <td style="padding:5px 6px;">${escText(it.category||'—')}</td>
+        <td style="padding:5px 6px;text-align:center;background:#ecfeff;font-weight:700;color:#0e7490;">${escText(itemSize_(it)||'—')}</td>
+        <td style="padding:5px 6px;background:#ecfeff;color:#155e75;">${escText(itemMaterial_(it)||'—')}</td>
         <td style="padding:5px 6px;text-align:right;">₹${Number(it.rate||0).toFixed(2)}</td>
         <td style="padding:5px 6px;text-align:center;background:#f5f3ff;font-weight:700;color:#5b21b6;">${itemGst_(it)}%</td>
         <td style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
         <td style="padding:5px 6px;text-align:center;background:#fffbeb;font-weight:700;color:#92400e;">${msv!=null?msv:'—'}</td>
+        <td style="padding:5px 6px;text-align:center;background:#fdf2f8;font-weight:700;color:#9d174d;">${soq!=null?soq:'—'}</td>
         <td style="padding:5px 6px;text-align:center;background:#f0fdf4;font-weight:700;color:#166534;">${inQty}</td>
         <td style="padding:5px 6px;text-align:center;background:#fef2f2;font-weight:700;color:#dc2626;">${outQty}</td>
         <td style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'#eff6ff'};font-weight:800;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${bal} is below the minimum stock qty of ${msv}"`:''}>${bal}${below?' &#9888;':''}</td>
@@ -8217,12 +8834,14 @@ window.renderItemMasterTable=function(){
   }).join('');
   // Subtotal row pinned at the top of the item list, above all rows,
   // reflecting whatever the current search/category filter is showing.
-  // colspan is 8 (was 9): Sub Cat dropped off, so the label stops one column
-  // earlier — at Make. MSV then sits between Make and IN Qty, unsummed because
-  // a minimum stock level isn't meaningful as a total.
+  // colspan is 11: the label runs from # through Make. MSV and Standard Order
+  // Qty then sit between Make and IN Qty, both unsummed — a minimum stock
+  // level and a standard order size are per-item settings, and adding them up
+  // across the list would be a number that means nothing.
   const totalsRow=`<tr style="background:#1e293b;color:#fff;font-weight:800;">
-      <td colspan="9" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
+      <td colspan="11" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
       <td style="padding:6px;text-align:center;background:#78350f;">—</td>
+      <td style="padding:6px;text-align:center;background:#831843;">—</td>
       <td style="padding:6px;text-align:center;background:#0c4a3e;">${totalIn}</td>
       <td style="padding:6px;text-align:center;background:#7c2d12;">${totalOut}</td>
       <td style="padding:6px;text-align:center;background:#1e3a5f;color:${totalBal<0?'#fca5a5':'#fff'};">${totalBal}</td>
@@ -8344,8 +8963,8 @@ function refreshSupplierDatalist(suppliers){
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
   try{
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
@@ -8359,13 +8978,16 @@ window.loadItemMaster=async function(){
       const inQty=inMap[it.id]||0,outQty=outMap[it.id]||0;
       return {it,inQty,outQty,bal:inQty-outQty,catKey:(it.category&&it.category.trim())?it.category.trim():'(No Category)'};
     });
-    sarvItemMasterCats=[...new Set(sarvItemMasterRows.map(r=>r.catKey))].sort((a,b)=>a.localeCompare(b));
-    sarvItemMasterSelectedCats=new Set(sarvItemMasterCats); // default: all categories shown
-    buildItemMasterCatFilterUI();
-    updateItemMasterCatFilterBtnLabel();
+    /* Column filters deliberately SURVIVE a Refresh. Someone narrowing down to
+       one vendor's electricals and then hitting Refresh wants the same view
+       back with fresh numbers, not a reset. The chip bar above the table keeps
+       saying what is applied, so a filter can never go on quietly hiding rows
+       after a reload. A value that no longer exists simply matches nothing —
+       the chip is still there to clear. */
     renderItemMasterTable();
     refreshItemDatalist(items);
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
+    refreshItemAttributeDatalists_(items);
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
 };
 
 /* ── Item Master edit (Admin only) ────────────────────────────────
@@ -8397,6 +9019,11 @@ window.editMasterItem=function(id){
   set('mi_minStockQty',it.sub_category);
   set('mi_rate',it.rate!=null?it.rate:0);
   set('mi_make',it.make);
+  // Read through the helpers, so an item saved before these columns existed
+  // loads as blank instead of as the string "undefined".
+  set('mi_itemSize',itemSize_(it));
+  set('mi_materialType',itemMaterial_(it));
+  set('mi_stdOrderQty',itemStdOrderQty_(it));
   // A category or UOM that isn't one of the listed options would silently land
   // on the first option, so anything unknown is added to the dropdown first.
   ensureSelectOption_('mi_category',it.category);
@@ -8424,7 +9051,8 @@ function ensureSelectOption_(selId,val){
 }
 window.cancelItemEdit=function(){
   sarvEditingItemId=null;
-  ['mi_itemName','mi_itemDesc','mi_minStockQty','mi_make'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+  ['mi_itemName','mi_itemDesc','mi_minStockQty','mi_make','mi_itemSize','mi_materialType','mi_stdOrderQty']
+    .forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('mi_rate'))byId('mi_rate').value='0';
   if(byId('mi_uom'))byId('mi_uom').value='PCS';
   if(byId('mi_category'))byId('mi_category').value='';
@@ -8494,14 +9122,24 @@ window.addMasterItem=async function(){
       // Per-item GST. Dropped and retried without it if the column is not in
       // the database yet (see the catch below), so this save never fails on a
       // schema that predates it.
-      gst_pct:Number(byId('mi_gst')?.value||SARV_DEFAULT_GST)
+      gst_pct:Number(byId('mi_gst')?.value||SARV_DEFAULT_GST),
+      /* Size / Material / Standard Order Qty — columns of their OWN, unlike
+         MSV, which still rides in the legacy sub_category. These are new, so
+         there is no existing data to orphan and no reason to overload a
+         column. Each is dropped-and-retried by saveItemRow_ on a database
+         where ITEM_MASTER_FIELDS_MIGRATION.sql has not been run yet.
+         Blank saves as NULL, not as '' or 0 — "not recorded" and "zero" are
+         different answers, and only NULL reads back as the first one. */
+      item_size:(byId('mi_itemSize')?.value||'').trim()||null,
+      material_type:(byId('mi_materialType')?.value||'').trim()||null,
+      std_order_qty:(byId('mi_stdOrderQty')?.value||'').trim()===''?null:Number(byId('mi_stdOrderQty').value)
     };
     if(editingId){
       // item_code is deliberately left out of the payload — it is the handle
       // this item is known by and does not follow a rename.
-      const {error,droppedGst}=await saveItemRow_(payload,editingId);
+      const {error,dropped}=await saveItemRow_(payload,editingId);
       if(error)throw error;
-      if(droppedGst)warnGstColumnMissing_();
+      warnItemColumnsMissing_(dropped);
       const renamed=!!oldName&&oldName.trim().toUpperCase()!==name;
       // IN / OUT / PR lines point at item_id and read the name back through a
       // join, so they already show the new name — nothing to copy there. Only
@@ -8528,9 +9166,9 @@ window.addMasterItem=async function(){
       cancelItemEdit();
     }else{
       const newCode=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
-      const {error,droppedGst}=await saveItemRow_({item_code:newCode,...payload},null);
-      if(droppedGst)warnGstColumnMissing_();
+      const {error,dropped}=await saveItemRow_({item_code:newCode,...payload},null);
       if(error)throw error;
+      warnItemColumnsMissing_(dropped);
       showToast(`✅ "${name}" added to Item Master!`);
       cancelItemEdit();   // same field reset the add path always did
     }
@@ -14351,6 +14989,386 @@ window.addEventListener('DOMContentLoaded',()=>{
    btn.style.background=sarvShowReceivedPos?'#0f766e':'#fff';
    btn.style.color=sarvShowReceivedPos?'#fff':'#0f766e';
  }
+ /* ================================================================
+    PR -> PO -> INWARD FOLLOW-UP REPORT  (PO tab, third sub-panel)
+    ----------------------------------------------------------------
+    One line per PURCHASE REQUIREMENT, tracing it all the way through:
+    vendor quotes filled -> PO raised -> MD approved -> PO sent to the
+    party -> material inwarded -> requester told -> bill checked.
+
+    Everything on the line is DERIVED from records that already exist
+    (purchase_requirements / purchase_orders / purchase_order_lines /
+    inward_entries), so the sheet fills itself as the work happens and
+    there is nothing to key in twice.
+
+    The only exceptions are the three sign-off boxes on the right. Those
+    are decisions a person makes, not states a record can report, so they
+    are stored — and because they are sign-offs, each one is gated behind
+    a Role PIN verified on the server (see togglePoFollowupFlag).
+
+    Storage note: the sign-offs live in purchase_requirements.approvals
+    under a `followup` key, which is the same jsonb column the Store /
+    GM / MD signatures already use. That keeps this feature working on a
+    database that has had no migration run against it — there is no
+    bill-check column anywhere to write to.
+ ================================================================ */
+ let sarvPoFollowupRows=[];
+ /* role:null means "whatever role is logged in right now must re-enter
+    its OWN PIN" — informing the requester is the purchaser's own act, so
+    it is not tied to one designation. The two bill checks are, so they
+    name the role whose PIN unlocks them. */
+ const PO_FOLLOWUP_FLAGS={
+   informRequester:{label:'Inform to Requester',role:null},
+   billGm:{label:'Bill Checked by GM',role:'USER_GM_PIN'},
+   billMd:{label:'Bill Checked by MD',role:'USER_MD_PIN'}
+ };
+ const PO_FOLLOWUP_STATUS_STYLE={
+   'Generated':{bg:'#e2e8f0',fg:'#334155'},
+   'GM/CEO Approved':{bg:'#dbeafe',fg:'#1d4ed8'},
+   'MD Approved':{bg:'#7c3aed',fg:'#ffffff'},
+   'Vendor Verified':{bg:'#cffafe',fg:'#0e7490'},
+   'Partially Received':{bg:'#fef9c3',fg:'#854d0e'},
+   'Received':{bg:'#22c55e',fg:'#ffffff'},
+   'Closed (Short)':{bg:'#0f766e',fg:'#ffffff'},
+   'Rejected':{bg:'#ef4444',fg:'#ffffff'},
+   'Cancelled':{bg:'#fecaca',fg:'#991b1b'}
+ };
+ // 'Received' reads as FULLY RECEIVED on this sheet, the way the store
+ // writes it by hand — the status itself is left untouched in the DB.
+ const PO_FOLLOWUP_STATUS_TEXT={'Received':'FULLY RECEIVED'};
+
+ /* pdf_documents is the shared index every panel reads its PDF links
+    from. Chunked because a long-running store can easily have more
+    document numbers than PostgREST will accept in one .in() list. */
+ async function poFollowupPdfMap_(nos){
+   const map={},list=[...new Set((nos||[]).filter(Boolean).map(String))];
+   for(let i=0;i<list.length;i+=200){
+     try{
+       const q=await SB.from('pdf_documents').select('document_no,variant,public_url').in('document_no',list.slice(i,i+200));
+       if(q.error)throw q.error;
+       (q.data||[]).forEach(p=>{
+         if(!p.public_url)return;
+         const m=map[p.document_no]=map[p.document_no]||{};
+         m[p.variant||'SINGLE']=p.public_url;
+       });
+     }catch(e){console.warn('[SARV] Follow-up PDF lookup skipped:',e.message||e);}
+   }
+   return map;
+ }
+ function poFollowupPdfUrl_(map,no,prefer){
+   const m=map[String(no||'')];if(!m)return '';
+   for(const v of (prefer||[]))if(m[v])return m[v];
+   const k=Object.keys(m);return k.length?m[k[0]]:'';
+ }
+ // Comma-joined columns (po_number, linked_req_nos, req_no) all split the
+ // same way, so one helper keeps the three readings consistent.
+ function poFollowupSplit_(v){return String(v||'').split(',').map(s=>s.trim()).filter(Boolean)}
+
+ /* A PO counts as MD-approved either because MD actually signed it or
+    because it has since moved PAST that stage — a received PO cannot
+    have skipped the approval, and reading only the signature would show
+    an old PO as un-approved forever. */
+ function poFollowupMdApproved_(po){
+   if(!po)return false;
+   const md=po.approvals&&po.approvals.md;
+   if(md&&(md.signedBy||md.dataUrl||md.signedAt))return true;
+   return ['MD Approved','Vendor Verified','Partially Received','Received','Closed (Short)'].includes(po.status||'');
+ }
+ // Same test the Build-PO table uses: quotes may sit on the PR or, since
+ // the Purchaser can quote per item on mobile, on the items.
+ function poFollowupVendorInfoFilled_(req){
+   const snap=(req&&req.pdf_snapshot)||{};
+   return (snap.vendors||[]).some(v=>v&&String(v.name||'').trim())
+     ||(snap.items||[]).some(it=>Array.isArray(it&&it.vendors)&&it.vendors.some(v=>v&&String(v.name||'').trim()));
+ }
+ function poFollowupFlagState_(req,key){
+   const f=(req&&req.approvals&&req.approvals.followup)||{};
+   const v=f[key];
+   return (v&&(v.at||v.by))?v:null;
+ }
+
+ async function refreshPoFollowupReport(){
+   if(!SB_READY)return;
+   const tb=byId('p_poReportBody');if(!tb)return;
+   tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   /* Every one of these goes through fetchAllRows. A plain select is capped
+      at 1000 rows by PostgREST, and on a follow-up sheet a truncated page
+      does not just hide a line — it makes a PR that HAS a PO read as "PO
+      not generated", which is exactly the mistake this report exists to
+      catch. Each table degrades on its own: a lookup that fails leaves its
+      own columns blank rather than taking the whole sheet down. */
+   const skip=(what)=>e=>{console.warn('[SARV] Follow-up '+what+' skipped:',e.message||e);return[]};
+   const [reqsRaw,pos,plRows,inwRows]=await Promise.all([
+     fetchAllRows('purchase_requirements','*','id').catch(e=>{dbError(e);return null}),
+     fetchAllRows('purchase_orders','*','id').catch(skip('PO headers')),
+     fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no','id').catch(skip('PO lines')),
+     fetchAllRows('inward_entries','*','id').catch(skip('inward'))
+   ]);
+   if(!reqsRaw)return;   // the PR list is the sheet itself — without it there is nothing to show
+   // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a
+   // plain text sort would put /600 before /99).
+   const reqs=reqsRaw.slice().sort((a,b)=>String(b.req_no||'').localeCompare(String(a.req_no||''),undefined,{numeric:true,sensitivity:'base'}));
+   const poById={},poByNo={};
+   pos.forEach(po=>{poById[po.id]=po;if(po.po_no)poByNo[po.po_no]=po});
+   /* PR -> POs. The line table is authoritative (that is where a PO
+      records which PR each item came from); linked_req_nos on the header
+      is the fallback for a PO saved before those lines existed. */
+   const posByReq={};
+   const addPoToReq=(reqNo,po)=>{
+     if(!reqNo||!po)return;
+     const list=posByReq[reqNo]=posByReq[reqNo]||[];
+     if(!list.some(x=>x.id===po.id))list.push(po);
+   };
+   plRows.forEach(l=>addPoToReq(String(l.req_no||'').trim(),poById[l.purchase_order_id]));
+   pos.forEach(po=>poFollowupSplit_(po.linked_req_nos).forEach(r=>addPoToReq(r,po)));
+
+   /* PR -> Inwards. Two routes in, because material can arrive against a
+      PO or straight against the PR (inward_entries.req_no, for stores
+      that run without a PO on small items). */
+   const inwByReq={};
+   const addInwToReq=(reqNo,inw)=>{
+     if(!reqNo||!inw)return;
+     const list=inwByReq[reqNo]=inwByReq[reqNo]||[];
+     if(!list.some(x=>x.id===inw.id))list.push(inw);
+   };
+   // Which PRs each PO covers, resolved once — the inward loop below would
+   // otherwise re-scan every PO line for every receipt.
+   const reqNosByPoId={};
+   plRows.forEach(l=>{
+     const r=String(l.req_no||'').trim();if(!r||!l.purchase_order_id)return;
+     const s=reqNosByPoId[l.purchase_order_id]=reqNosByPoId[l.purchase_order_id]||new Set();
+     s.add(r);
+   });
+   inwRows.forEach(inw=>{
+     if(isStoreRecordCancelled_(inw.notes))return;   // a cancelled receipt is not a receipt
+     poFollowupSplit_(inw.req_no).forEach(r=>addInwToReq(r,inw));
+     poFollowupSplit_(inw.po_number).forEach(poNo=>{
+       const po=poByNo[poNo];if(!po)return;
+       poFollowupSplit_(po.linked_req_nos).forEach(r=>addInwToReq(r,inw));
+       // A PO whose header never carried linked_req_nos is still reachable
+       // through its own lines.
+       (reqNosByPoId[po.id]||new Set()).forEach(r=>addInwToReq(r,inw));
+     });
+   });
+
+   const pdfMap=await poFollowupPdfMap_([
+     ...reqs.map(r=>r.req_no),
+     ...pos.map(p=>p.po_no),
+     ...inwRows.map(i=>i.document_no)
+   ]);
+
+   sarvPoFollowupRows=reqs.map(req=>{
+     const rPos=(posByReq[req.req_no]||[]).slice()
+       .sort((a,b)=>String(a.po_no||'').localeCompare(String(b.po_no||''),undefined,{numeric:true}));
+     const rInw=(inwByReq[req.req_no]||[]).slice()
+       .sort((a,b)=>String(a.document_no||'').localeCompare(String(b.document_no||''),undefined,{numeric:true}));
+     /* Cancelled / Rejected POs stay listed — the number was used, and the
+        sheet has to show WHY nothing arrived against it — but they are not
+        what decides whether a live PO exists for this PR. */
+     const livePos=rPos.filter(p=>!['Cancelled','Rejected'].includes(p.status||''));
+     const decidePos=livePos.length?livePos:rPos;
+     return {
+       req,
+       pos:rPos,
+       inwards:rInw,
+       vendorInfo:poFollowupVendorInfoFilled_(req),
+       poGenerated:livePos.length>0,
+       mdApproved:decidePos.length>0&&decidePos.every(poFollowupMdApproved_),
+       poSent:decidePos.length>0&&decidePos.every(isPoPartySent),
+       statuses:[...new Set(decidePos.map(p=>p.status||'Generated'))],
+       prPdf:poFollowupPdfUrl_(pdfMap,req.req_no,['REQUIREMENT','SINGLE','TWO_PAGE'])||req.pdf_url||req.pdf_url_single||'',
+       poPdfs:rPos.map(p=>({no:p.po_no||'',url:p.pdf_url||poFollowupPdfUrl_(pdfMap,p.po_no,['PO','SINGLE'])})),
+       inwPdfs:rInw.map(i=>({no:i.document_no||'',url:poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||''}))
+     };
+   });
+   fillPoFollowupRequesterFilter();
+   renderPoFollowupReport();
+ }
+
+ // Rebuilt from the loaded rows rather than hard-coded, so a new
+ // purchaser shows up in the dropdown the first time they raise a PR.
+ function fillPoFollowupRequesterFilter(){
+   const sel=byId('p_poRepRequester');if(!sel)return;
+   const keep=sel.value;
+   const names=[...new Set(sarvPoFollowupRows.map(r=>String(r.req.requested_by||'').trim()).filter(Boolean))]
+     .sort((a,b)=>a.localeCompare(b));
+   sel.innerHTML='<option value="">All</option>'+names.map(n=>'<option>'+pEsc(n)+'</option>').join('');
+   if(names.includes(keep))sel.value=keep;
+ }
+
+ const fuTick_=ok=>ok?'<span class="fu-tick">&#10004;</span>':'<span class="fu-dash">&ndash;</span>';
+ /* A number with no indexed PDF is still PRINTED — it just isn't a link.
+    A dead link would read as "broken"; plain text reads as "PDF nahi
+    bani", which is the truth. */
+ function fuDocCell_(entries){
+   const list=(entries||[]).filter(e=>e&&String(e.no||'').trim());
+   if(!list.length)return '<span class="fu-nodoc">&ndash;</span>';
+   return list.map(e=>e.url
+     ? '<a class="fu-doc" href="'+pEsc(e.url)+'" target="_blank" rel="noopener" title="'+pEsc(e.no)+' ki PDF kholein">'+pEsc(e.no)+'</a>'
+     : '<span class="fu-doc" style="color:#64748b;" title="Is document ki PDF abhi generate / index nahi hui">'+pEsc(e.no)+'</span>'
+   ).join(',<br>');
+ }
+ function fuStatusCell_(statuses){
+   if(!statuses||!statuses.length)return '<span class="fu-nodoc">&ndash;</span>';
+   return statuses.map(s=>{
+     const st=PO_FOLLOWUP_STATUS_STYLE[s]||{bg:'#e2e8f0',fg:'#334155'};
+     return '<span class="fu-status" style="background:'+st.bg+';color:'+st.fg+';">'+pEsc(PO_FOLLOWUP_STATUS_TEXT[s]||s)+'</span>';
+   }).join(' ');
+ }
+ function fuCheckCell_(row,key){
+   const meta=PO_FOLLOWUP_FLAGS[key],st=poFollowupFlagState_(row.req,key),on=!!st;
+   const needs=meta.role?(SARV_ROLE_LABEL[meta.role]||meta.role)+' ka PIN':'aapke apne role ka PIN';
+   const title=on
+     ? meta.label+' ✔ '+(st.by||'—')+(st.at?' • '+pStamp(st.at):'')+' (hatane ke liye phir se '+needs+' lagega)'
+     : meta.label+' tick karne ke liye '+needs+' chahiye';
+   return '<label class="fu-check'+(on?' done':'')+'" title="'+pEsc(title)+'">'
+     +'<input type="checkbox" class="sarv-fu-check" data-req="'+pEsc(row.req.req_no||'')+'" data-key="'+key+'"'+(on?' checked':'')+'>'
+     +'<span>'+(on?'Done':'Check')+'</span></label>';
+ }
+ // What the "Only Incomplete Follow-Up" filter means: anything still
+ // owed on this PR, whether that is a PO nobody raised or a bill nobody
+ // checked.
+ function poFollowupIncomplete_(r){
+   if(!r.poGenerated)return true;
+   if(!r.mdApproved||!r.poSent)return true;
+   if(!r.statuses.every(s=>['Received','Closed (Short)'].includes(s)))return true;
+   return Object.keys(PO_FOLLOWUP_FLAGS).some(k=>!poFollowupFlagState_(r.req,k));
+ }
+ function poFollowupVisibleRows(){
+   const term=(byId('p_poRepSearch')?.value||'').trim().toLowerCase();
+   const status=byId('p_poRepStatus')?.value||'';
+   const requester=byId('p_poRepRequester')?.value||'';
+   const pendingOnly=byId('p_poRepPending')?.value==='1';
+   return sarvPoFollowupRows.filter(r=>{
+     if(requester&&String(r.req.requested_by||'').trim()!==requester)return false;
+     if(status==='__NOPO__'){if(r.poGenerated)return false}
+     else if(status&&!r.statuses.includes(status))return false;
+     if(pendingOnly&&!poFollowupIncomplete_(r))return false;
+     if(!term)return true;
+     return [r.req.req_no,r.req.requested_by,r.req.department,
+       r.pos.map(p=>(p.po_no||'')+' '+(p.vendor_name||'')).join(' '),
+       r.inwards.map(i=>i.document_no).join(' '),r.statuses.join(' ')]
+       .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
+   });
+ }
+ function renderPoFollowupReport(){
+   const tb=byId('p_poReportBody');if(!tb)return;
+   const rows=poFollowupVisibleRows();
+   tb.innerHTML=rows.length?rows.map(r=>
+     '<tr>'
+     +'<td style="background:#fdf2e9;font-weight:700;">'+fuDocCell_([{no:r.req.req_no||'—',url:r.prPdf}])+'</td>'
+     +'<td style="background:#fdf2e9;font-weight:700;color:#7c2d12;">'+pEsc(r.req.requested_by||'—')+'</td>'
+     +'<td class="fu-center">'+fuTick_(r.vendorInfo)+'</td>'
+     +'<td class="fu-center">'+fuTick_(r.poGenerated)+'</td>'
+     +'<td style="background:#fdf0e6;">'+fuDocCell_(r.poPdfs)+'</td>'
+     +'<td class="fu-center">'+fuTick_(r.mdApproved)+'</td>'
+     +'<td class="fu-center">'+fuTick_(r.poSent)+'</td>'
+     +'<td>'+fuStatusCell_(r.statuses)+'</td>'
+     +'<td style="background:#fdeaf0;">'+fuDocCell_(r.inwPdfs)+'</td>'
+     +'<td class="fu-center">'+fuCheckCell_(r,'informRequester')+'</td>'
+     +'<td class="fu-center">'+fuCheckCell_(r,'billGm')+'</td>'
+     +'<td class="fu-center">'+fuCheckCell_(r,'billMd')+'</td>'
+     +'</tr>').join('')
+     : '<tr><td colspan="12" style="text-align:center;color:#94a3b8;padding:18px;">'
+       +(sarvPoFollowupRows.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
+   const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
+   set('p_poRepCount',rows.length===sarvPoFollowupRows.length?rows.length:rows.length+' / '+sarvPoFollowupRows.length);
+   set('p_poRepNoPo',rows.filter(r=>!r.poGenerated).length);
+   set('p_poRepDone',rows.filter(r=>r.statuses.length&&r.statuses.every(s=>['Received','Closed (Short)'].includes(s))).length);
+   set('p_poRepInformed',rows.filter(r=>poFollowupFlagState_(r.req,'informRequester')).length);
+ }
+
+ /* The one thing on this sheet that WRITES. Gated on a server-verified
+    Role PIN, not on who is logged in: a sign-off has to be the named
+    role's own act, and a browser claiming to be the GM cannot authorise
+    anything. Un-ticking is gated the same way — withdrawing a sign-off
+    is as much a decision as making one. */
+ async function togglePoFollowupFlag(reqNo,key,wantOn,checkbox){
+   const meta=PO_FOLLOWUP_FLAGS[key];
+   const revert=()=>{if(checkbox)checkbox.checked=!wantOn};
+   if(!meta)return revert();
+   if(!SB_READY){showToast('Supabase URL/key configure karein','warn');return revert()}
+   const row=sarvPoFollowupRows.find(r=>String(r.req.req_no||'')===String(reqNo));
+   if(!row){showToast('Yeh PR list me nahi mila — Reload karein','warn');return revert()}
+   const role=meta.role||sarvCurrentRole;
+   if(!role){showToast('Pehle login karein','warn');return revert()}
+   const roleLabel=SARV_ROLE_LABEL[role]||role;
+   try{
+     const ex=await SB.rpc('role_pin_exists',{p_role:role});
+     if(ex.error)throw ex.error;
+     if(!ex.data){showToast('⚠️ '+roleLabel+' ka PIN set nahi hai — Settings > Change Passwords me set karein','warn');return revert()}
+   }catch(e){
+     // A check that cannot run must never be read as a pass.
+     showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return revert();
+   }
+   const entered=await askSecret({
+     title:meta.label+(wantOn?' — Confirm':' — Undo'),
+     subtitle:(wantOn?'Tick karne':'Tick hatane')+' ke liye '+roleLabel+' ka PIN daalein',
+     recordInfo:'PR: '+(row.req.req_no||'—')+'  •  Requested by: '+(row.req.requested_by||'—'),
+     label:roleLabel+' PIN',
+     confirmText:wantOn?'&#9989; Confirm':'&#8630; Undo'
+   });
+   if(entered==null)return revert();                 // cancelled
+   if(!String(entered).trim()){showToast('PIN khali nahi ho sakta','warn');return revert()}
+   try{
+     const v=await SB.rpc('verify_role_pin',{p_role:role,p_pin:String(entered).trim()});
+     if(v.error)throw v.error;
+     if(!v.data){showToast('❌ Galat '+roleLabel+' PIN','error');return revert()}
+   }catch(e){showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return revert()}
+   try{
+     /* Re-read approvals immediately before merging. Two people working
+        the same sheet from two machines would otherwise overwrite each
+        other's sign-offs, because this column also carries the Store /
+        GM / MD signatures and a stale copy would put those back too. */
+     const cur=await SB.from('purchase_requirements').select('approvals').eq('id',row.req.id).single();
+     if(cur.error)throw cur.error;
+     const approvals={...((cur.data&&cur.data.approvals)||{})};
+     const followup={...(approvals.followup||{})};
+     if(wantOn)followup[key]={by:roleLabel,role,at:new Date().toISOString()};
+     else delete followup[key];
+     approvals.followup=followup;
+     const u=await SB.from('purchase_requirements').update({approvals}).eq('id',row.req.id);
+     if(u.error)throw u.error;
+     row.req.approvals=approvals;                    // keep the loaded row level with the DB
+     showToast((wantOn?'✅ ':'↩️ ')+meta.label+' — '+(row.req.req_no||'')+(wantOn?' tick ho gaya':' tick hata diya'));
+   }catch(e){
+     dbError(e);return revert();
+   }
+   renderPoFollowupReport();
+ }
+
+ function exportPoFollowupCsv(){
+   const rows=poFollowupVisibleRows();
+   if(!rows.length)return showToast('Export karne ke liye koi row nahi hai','warn');
+   const head=['PR No.','PR Requested By','Vendor Info.','PO Generate','PO No.','MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
+   const yn=v=>v?'Yes':'No';
+   const flag=(r,k)=>{const s=poFollowupFlagState_(r.req,k);return s?('Yes — '+(s.by||'')+(s.at?' '+pStamp(s.at):'')):'No'};
+   const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+   const body=rows.map(r=>[
+     r.req.req_no||'',r.req.requested_by||'',yn(r.vendorInfo),yn(r.poGenerated),
+     r.pos.map(p=>p.po_no).filter(Boolean).join(' | '),yn(r.mdApproved),yn(r.poSent),
+     r.statuses.join(' | '),r.inwards.map(i=>i.document_no).filter(Boolean).join(' | '),
+     flag(r,'informRequester'),flag(r,'billGm'),flag(r,'billMd')
+   ].map(esc).join(','));
+   const csv=head.map(esc).join(',')+'\n'+body.join('\n');
+   // BOM so Excel opens the Hindi text and the PR numbers correctly.
+   const a=document.createElement('a');
+   a.href='data:text/csv;charset=utf-8,%EF%BB%BF'+encodeURIComponent(csv);
+   a.download='PR_PO_FollowUp_'+today()+'.csv';a.click();
+   showToast('CSV download ho gayi ('+rows.length+' rows)');
+ }
+
+ /* One switch for the PO tab's three sub-panels, so adding this third one
+    cannot leave another panel visible underneath it. */
+ function showPoSubPanel(which){
+   const panels={pending:'p_poPendingPanel',list:'p_poListPanel',report:'p_poReportPanel'};
+   const buttons={pending:'p_poSubPendingBtn',list:'p_poSubListBtn',report:'p_poSubReportBtn'};
+   Object.keys(panels).forEach(k=>{
+     const p=byId(panels[k]);if(p)p.style.display=(k===which)?'block':'none';
+     const b=byId(buttons[k]);
+     if(b){b.classList.toggle('btn-primary',k===which);b.classList.toggle('btn-neutral',k!==which)}
+   });
+ }
  async function shortClosePurchaseOrder(poNo){
    if(!isAdmin())return showToast('⛔ Sirf Admin login short-close kar sakta hai','warn');
    if(!confirm('PO "'+poNo+'" ko short quantity par close karein?\n\nBaaki pending qty ab receive nahi ki ja sakegi.'))return;
@@ -14736,8 +15754,32 @@ window.addEventListener('DOMContentLoaded',()=>{
      .forEach(id=>onFilter(id,renderPendingRequirementsTable));
    ['p_poListSearch','p_poListStatus']
      .forEach(id=>onFilter(id,renderGeneratedPoTable));
-   on('p_poSubPendingBtn',()=>{if(byId('p_poPendingPanel'))byId('p_poPendingPanel').style.display='block';if(byId('p_poListPanel'))byId('p_poListPanel').style.display='none';refreshPendingRequirements().catch(dbError)});
-   on('p_poSubListBtn',()=>{if(byId('p_poPendingPanel'))byId('p_poPendingPanel').style.display='none';if(byId('p_poListPanel'))byId('p_poListPanel').style.display='block';refreshGeneratedPoList().catch(dbError)});
+   on('p_poSubPendingBtn',()=>{showPoSubPanel('pending');refreshPendingRequirements().catch(dbError)});
+   on('p_poSubListBtn',()=>{showPoSubPanel('list');refreshGeneratedPoList().catch(dbError)});
+   on('p_poSubReportBtn',()=>{showPoSubPanel('report');refreshPoFollowupReport().catch(dbError)});
+
+   // ── PR → PO → Inward follow-up report ───────────────────────
+   on('p_poRepRefreshBtn',()=>refreshPoFollowupReport().catch(dbError));
+   on('p_poRepCsvBtn',exportPoFollowupCsv);
+   // Same rule as the other two sub-panels: the filters work the loaded
+   // rows, Reload is what goes back to the database.
+   ['p_poRepSearch','p_poRepStatus','p_poRepRequester','p_poRepPending']
+     .forEach(id=>onFilter(id,renderPoFollowupReport));
+   const repBody=byId('p_poReportBody');
+   if(repBody&&!repBody.dataset.fuBound){
+     /* Delegated, because the whole tbody is replaced on every render and a
+        listener bound to a checkbox would not survive that. The box is put
+        back to where it was until the PIN clears — togglePoFollowupFlag
+        reverts it on every failure path, so a cancelled prompt can never
+        leave a tick on screen that was never saved. */
+     repBody.addEventListener('change',e=>{
+       const ck=e.target.closest('.sarv-fu-check');if(!ck)return;
+       togglePoFollowupFlag(ck.dataset.req,ck.dataset.key,ck.checked,ck).catch(err=>{
+         ck.checked=!ck.checked;dbError(err);
+       });
+     });
+     repBody.dataset.fuBound='1';
+   }
    on('p_poAddPrItemsBtn',async()=>{
      const panel=byId('p_poAddItemsPickerPanel');if(!panel)return;
      if(panel.style.display!=='none'){panel.style.display='none';return;}
