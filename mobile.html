@@ -1462,6 +1462,68 @@
         return doc.output('blob');
     }
 
+    /* The DESCRIPTION cell of a PO line: Item Name, Description, Size, Material.
+       Identical to STORE.html's poItemDescParts_ — a PO raised from the phone
+       and the same PO reprinted from the desktop have to read the same, so the
+       two copies are kept word for word.
+
+       Four facts, each on its own line rather than run together, because a
+       vendor reads this column to pick the right part off a shelf — "1/2 INCH"
+       and "SS 304" are what separate the thing being ordered from three others
+       with the same name, and buried mid-sentence they get skimmed past.
+
+       Blank ones are DROPPED, not printed as "Size: -": a dash reads as a value
+       somebody checked, where the truth is that nobody recorded one. A
+       description that only repeats the name is dropped too. */
+    function poItemDescParts_(it){
+        const out=[];
+        const name=String((it&&(it.itemName||it.name))||'').trim();
+        const desc=String((it&&(it.itemDesc||it.description))||'').trim();
+        const size=String((it&&(it.itemSize||it.item_size))||'').trim();
+        const mat =String((it&&(it.materialType||it.material_type))||'').trim();
+        if(name)out.push(name);
+        if(desc&&desc.toUpperCase()!==name.toUpperCase())out.push(desc);
+        const sm=[];
+        if(size)sm.push('Size: '+size);
+        if(mat)sm.push('Material: '+mat);
+        if(sm.length)out.push(sm.join('   |   '));
+        return out.length?out:['-'];
+    }
+    // autoTable honours \n, so the parts stack inside the one cell.
+    function poItemDescText_(it){return poItemDescParts_(it).join('\n')}
+
+    /* Fills in Size / Material on PO lines that do not carry them.
+
+       A PO raised before purchase_order_lines got these columns has nothing
+       stored, and every approval in this app REGENERATES its PDF — so without
+       this, approving an older PO would reprint it with a bare item name while
+       a new PO for the same part prints the full description. The Item Master
+       is asked instead, which is where both values live anyway.
+
+       Mutates the rows in place; the three approval paths all call it right
+       after fetching their lines. Best-effort throughout: a lookup that fails
+       leaves the lines exactly as they were, and the PDF prints what it has
+       rather than not printing at all. */
+    async function enrichPoLineAttrs_(lines){
+        const need = (lines||[]).filter(l => l && l.item_id
+            && !String(l.item_size||'').trim() && !String(l.material_type||'').trim());
+        if(!need.length) return;
+        const ids = [...new Set(need.map(l => l.item_id))];
+        try{
+            // `*`, not a column list — see the GST lookup above for why naming
+            // a column a database may not have is the riskier spelling.
+            const q = await SB.from('items').select('*').in('id', ids);
+            if(q.error) throw q.error;
+            const by = {};
+            (q.data||[]).forEach(it => { by[it.id] = it; });
+            need.forEach(l => {
+                const it = by[l.item_id]; if(!it) return;
+                if(!String(l.item_size||'').trim())     l.item_size     = it.item_size || '';
+                if(!String(l.material_type||'').trim()) l.material_type = it.material_type || '';
+            });
+        }catch(e){ console.warn('[MOBILE] PO line Size/Material lookup skipped:', e.message||e); }
+    }
+
     async function buildPoNativePdfBlob(d, images=[]){
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
         const {jsPDF}=window.jspdf;
@@ -1478,7 +1540,7 @@
             const gw=(it.grossWeight!=null&&it.grossWeight!=='')?pNum(it.grossWeight):null;
             const basis=it.billBasis||'QTY';
             const total=pNum(it.total)||Math.round(netUp*(basis==='WEIGHT'?pNum(gw):qty)*100)/100;
-            return{sr:i+1,desc:(it.itemName||'')+(it.itemDesc?' - '+it.itemDesc:''),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
+            return{sr:i+1,desc:poItemDescText_(it),make:it.make||'',qty,uom:it.uom||'',up,disc,netUp,total,gw,basis,gstPct:pNum(it.taxPct)};
         });
         const totalGW=items.reduce((s,r)=>s+(r.gw!=null?r.gw:0),0);
         const totalQty=items.reduce((s,r)=>s+r.qty,0);
@@ -4912,12 +4974,22 @@
             orderedByName[k] = (orderedByName[k]||0) + pNum(l.ordered_qty);
         });
 
-        // Item Master GST. A database without items.gst_pct just falls back to the default.
-        const gstById = {};
+        /* Item Master GST, plus Size and Material for the PO's Description
+           column. One lookup for all three — they come off the same row.
+
+           Asked for with `*` rather than a column list on purpose: naming
+           item_size / material_type on a database that predates them makes
+           PostgREST reject the WHOLE query, which would take gst_pct down with
+           it and silently put every line back on the default rate. With `*`
+           the columns are simply absent and read as blank. */
+        const gstById = {}, attrById = {};
         const itemIds = [...new Set(lines.map(l => l.item_id).filter(Boolean))];
         if(itemIds.length){
-            const iq = await SB.from('items').select('id,gst_pct').in('id', itemIds);
-            if(!iq.error) (iq.data||[]).forEach(it => { gstById[it.id] = it.gst_pct; });
+            const iq = await SB.from('items').select('*').in('id', itemIds);
+            if(!iq.error) (iq.data||[]).forEach(it => {
+                gstById[it.id] = it.gst_pct;
+                attrById[it.id] = {size: it.item_size || '', material: it.material_type || ''};
+            });
         }
         const gstOf = line => {
             if(line.tax_pct != null && line.tax_pct !== '') return pNum(line.tax_pct);
@@ -4967,6 +5039,11 @@
             groups.get(key).items.push({
                 reqNo: req.req_no, itemId: line.item_id || null,
                 itemName: name, itemDesc: it.desc || '', make: it.make || '',
+                // Size / Material describe the PART, so they come from the Item
+                // Master, not from the PR snapshot — the snapshot predates both
+                // fields and would print them blank on every PO.
+                itemSize: (attrById[line.item_id] || {}).size || '',
+                materialType: (attrById[line.item_id] || {}).material || '',
                 qty: available, uom: it.uom || '',
                 unitPrice: rate, discountPercent: disc, netUnitPrice: net,
                 billBasis: basis,
@@ -5017,7 +5094,7 @@
             // rebuilt from the DB, STORE.html's PO editor and its Inward receipt
             // — takes this column as the word on how the line is billed. Saving
             // QTY on a WEIGHT-priced line makes line_total unexplainable.
-            const poLines = d.items.map((x,i) => ({purchase_order_id:row.id, line_no:i+1, req_no:x.reqNo, item_id:x.itemId, item_name:x.itemName||'Item', item_description:x.itemDesc||null, make:x.make||null, department:req.department||null, ordered_qty:pNum(x.qty), received_qty:0, uom:x.uom||null, unit_price:pNum(x.unitPrice), discount_pct:pNum(x.discountPercent), tax_pct:pNum(x.taxPct), line_total:pNum(x.total), gross_weight:x.grossWeight||null, bill_basis:x.billBasis||'QTY'}));
+            const poLines = d.items.map((x,i) => ({purchase_order_id:row.id, line_no:i+1, req_no:x.reqNo, item_id:x.itemId, item_name:x.itemName||'Item', item_description:x.itemDesc||null, make:x.make||null, department:req.department||null, ordered_qty:pNum(x.qty), received_qty:0, uom:x.uom||null, unit_price:pNum(x.unitPrice), discount_pct:pNum(x.discountPercent), tax_pct:pNum(x.taxPct), line_total:pNum(x.total), gross_weight:x.grossWeight||null, bill_basis:x.billBasis||'QTY', item_size:x.itemSize||null, material_type:x.materialType||null}));
             const li = await sbSaveDroppingMissingColumns_(poLines, rows => SB.from('purchase_order_lines').insert(rows), ['purchase_order_id','item_name','ordered_qty']);
             if(li.error){
                 // A PO header with no lines would reach MD empty — take it back out.
@@ -5041,6 +5118,7 @@
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
         const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
         const d = {
             poNo: po.po_no, poDate: po.po_date, deliveryDate: effDeliveryDate,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
@@ -5051,6 +5129,7 @@
             gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
+                itemSize: l.item_size || '', materialType: l.material_type || '',
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
                 netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
                 billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
@@ -5162,6 +5241,7 @@
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
         const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
         const d = {
             poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
@@ -5172,6 +5252,7 @@
             gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
+                itemSize: l.item_size || '', materialType: l.material_type || '',
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
                 netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
                 billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
@@ -5327,6 +5408,7 @@
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
         const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
         const d = {
             poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
@@ -5337,6 +5419,7 @@
             gstAmount: po.gst_amount, subtotal: po.subtotal,
             items: lines.map(l=>({
                 reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
+                itemSize: l.item_size || '', materialType: l.material_type || '',
                 qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
                 netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
                 billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
