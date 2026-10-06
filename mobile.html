@@ -8,6 +8,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <!-- Stamps the GM / MD signature onto the Store Inward / Outward PDF STORE.html already uploaded. -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 
     <style>
         :root {
@@ -558,6 +560,16 @@
             font-size: 0.9rem;
         }
 
+        /* PIN-only signing: the pad is moved off-screen rather than display:none,
+           so the canvas keeps a real size and the saved sign can still be drawn
+           into it and read back for the PDF. */
+        .sig-offscreen {
+            position: absolute !important;
+            left: -10000px !important;
+            top: 0;
+            width: 320px;
+        }
+
         .signature-pad-container {
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -937,16 +949,25 @@
                 <textarea id="remarksInput" rows="2" placeholder="Enter remarks (optional)..."></textarea>
             </div>
 
-            <div class="form-group">
+            <!-- Shown instead of the pad once this user's sign is saved — see applySignPadMode(). -->
+            <div id="pinOnlyNote" style="display:none; margin-bottom:12px; padding:10px 12px; border:1px solid #c4b5fd; background:#f5f3ff; border-radius:8px; font-size:0.8rem; color:#5b21b6; font-weight:700;">
+                🔑 Aapka sign saved hai — <b>Approve &amp; Sign</b> dabayein aur apna PIN daalein. Saved sign apne-aap PDF par lag jayega.
+            </div>
+            <div class="form-group" id="sigPadGroup">
                 <label>
                     <span>Signature Pad</span>
-                    <button class="clear-btn" onclick="clearSignature()">Clear</button>
+                    <span style="display:flex; gap:6px; align-items:center;">
+                        <!-- Draw once (STORE.html → Admin Panel → Users & Roles), then
+                             just the PIN here puts that saved signature on the pad. -->
+                        <button type="button" class="clear-btn" id="pinSignBtn" style="background:#ede9fe; color:#5b21b6; border-color:#a78bfa;">&#128273; PIN se Sign</button>
+                        <button class="clear-btn" onclick="clearSignature()">Clear</button>
+                    </span>
                 </label>
                 <div class="signature-pad-container">
                     <canvas id="sigPad"></canvas>
                 </div>
                 <!-- Approve stays disabled until the pad carries ink — syncApproveBtn(). -->
-                <div id="sigRequiredHint" style="margin-top:6px; font-size:12px; color:#dc3545; font-weight:600;">✍️ Approve karne ke liye yahan sign karna zaroori hai.</div>
+                <div id="sigRequiredHint" style="margin-top:6px; font-size:12px; color:#5b21b6; font-weight:600;">🔑 Approve &amp; Sign dabayein — apna PIN daalte hi saved sign yahan apne-aap lag jayega. (Sign saved na ho to yahan sign karein.)</div>
             </div>
 
             <div style="display:flex; gap:8px;">
@@ -993,7 +1014,7 @@
                 </div>
                 <button class="btn" id="storeCheckBtn" style="background:#16a34a;">&#10004; Check Done</button>
             </div>
-            <!-- ── Inward Approval decision (Purchaser) ──────────────────
+            <!-- ── Inward Approval decision (MD) ──────────────────
                  Shown only for an inward_approvals request opened from the
                  PO Receipts ▸ Inward Approval sub-tab. Unlike the GM / MD
                  check above, this one BLOCKS something: STORE.html will not
@@ -1042,6 +1063,35 @@
             <div style="display:flex; gap:8px;">
                 <button class="btn" id="poSendPinBtn" style="flex:1; width:auto; background:#25d366;">&#10004; Verify &amp; Send</button>
                 <button class="btn" id="poSendPinCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Sign with PIN ────────────────────────────────────────────────
+         Opens over the approval modal. The signature the user drew once in
+         STORE.html (Admin Panel → Users & Roles) comes back from
+         get_user_signature() only for the right PIN, and is drawn on the pad. -->
+    <div class="modal-overlay" id="pinSignModal" style="z-index:1100;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span id="pinSignTitle">&#128273; PIN se Sign</span>
+                <button class="close-btn" onclick="closePinSign()">×</button>
+            </div>
+            <div id="pinSignNote" style="font-size:0.76rem; color:#6b7280; margin-bottom:10px;">
+                Draw karne ki jagah apna PIN daalein &mdash; aapka saved signature pad par lag jayega.
+            </div>
+            <div class="form-group">
+                <label>User</label>
+                <select id="pinSignUser" class="form-select"></select>
+            </div>
+            <div class="form-group">
+                <label>PIN <span style="color:#dc3545;">*</span></label>
+                <input type="password" id="pinSignPin" class="form-select" placeholder="Enter PIN" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="err-banner" id="pinSignError"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="pinSignOkBtn" style="flex:1; width:auto; background:#16a34a;">&#9997;&#65039; Sign</button>
+                <button class="btn" style="flex:1; width:auto; background:#6c757d;" onclick="closePinSign()">&#10006; Cancel</button>
             </div>
         </div>
     </div>
@@ -1935,7 +1985,7 @@
     const INWAPP_VIEW = 'inwapproval';
     const VIEWS_FOR_TAB = {
         /* PO Receipts carries a fourth section that is NOT a receipt state:
-           Inward Approval, where the Purchaser clears a store receipt that
+           Inward Approval (MD login only), where the MD clears a store receipt that
            went past its PO (excess qty, a changed rate, an item the PO never
            ordered). It sits in this tab because it is the same question the
            other three answer — what is arriving against my orders — and it is
@@ -1945,7 +1995,11 @@
         STORE: [{v:'pending', l:'Pending'}, {v:'done', l:'Complete'}],
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
-    function viewsForTab(tab){ return VIEWS_FOR_TAB[tab] || VIEWS_FOR_TAB._; }
+    // Inward Approval is the MD's alone — no other login is even shown the sub-tab.
+    function viewsForTab(tab){
+        const v = VIEWS_FOR_TAB[tab] || VIEWS_FOR_TAB._;
+        return (tab === 'RECV' && myRoleKey() !== 'md') ? v.filter(x => x.v !== INWAPP_VIEW) : v;
+    }
     /* Store Check's sub-tabs, one per document type. 'All' leads because the
        three types are three different books kept by the same store and a
        checker's first question is usually "what is waiting", not "what inward
@@ -1961,7 +2015,54 @@
        Sender keep every tab they already had, read-only where it isn't theirs.
        GM is a new login with exactly one job, so it gets exactly one tab. */
     const ALL_TABS = ['VI','POGEN','MD','SENT','STORE','RECV'];
+    /* Admin Panel → Feature Access (STORE.html → Master Data → Settings). The
+       six mobile rows of that matrix are these six tabs. A role / tab the Admin
+       has not saved yet keeps the built-in list below (baseTabsForRole). */
+    const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS'};
+    let rolePerms = null;           // app_settings.role_permissions, or null
+    function myPermRole(){
+        if(myPurchaserName) return 'PURCHASER';
+        return {gm:'USER_GM_PIN', gmCeo:'USER_GM_PIN', md:'USER_MD_PIN', poSender:'PO_SENDER_PIN', vendor:'VENDOR_VERIFY_PIN'}[myStage] || null;
+    }
     function visibleTabsForRole(){
+        const base = baseTabsForRole();
+        const role = myPermRole();
+        if(!myStage || !rolePerms || !role || isFieldBoy()) return base;
+        const tabs = ALL_TABS.filter(t => {
+            const v = ((rolePerms[TAB_PERM_KEY[t]] || {})[role]);
+            return typeof v === 'boolean' ? v : base.includes(t);
+        });
+        // Every tab switched off would leave an empty screen — keep the built-in set then.
+        return tabs.length ? tabs : base;
+    }
+    async function loadRolePerms(){
+        try{
+            const q = await SB.from('app_settings').select('value').eq('key','role_permissions').maybeSingle();
+            if(q.error) throw q.error;
+            rolePerms = (q.data && q.data.value) || null;
+        }catch(e){ rolePerms = null; console.warn('[MOBILE] role_permissions not loaded:', e.message||e); }
+        if(!myStage) return;
+        applyRoleTabScope();
+        const show = visibleTabsForRole();
+        if(!show.includes(currentStageTab)) switchStageTab(show[0]);
+    }
+    /* Purchaser names for the login, from STORE.html → Admin Panel → Users &
+       Roles (role Purchaser). The fixed list in the markup stays if that table
+       is not there yet. */
+    async function loadLoginPurchasers(){
+        try{
+            const q = await SB.from('app_users').select('user_name').eq('role','PURCHASER').eq('is_active', true).order('user_name');
+            if(q.error) throw q.error;
+            const names = (q.data || []).map(r => r.user_name).filter(Boolean);
+            if(!names.length) return;
+            const sel = document.getElementById('loginPurchaser');
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">-- Select Purchaser --</option>'
+                + names.map(n => '<option value="'+escText(n)+'">'+escText(n)+'</option>').join('');
+            if(names.includes(keep)) sel.value = keep;
+        }catch(e){ console.warn('[MOBILE] Purchaser list load failed:', e.message||e); }
+    }
+    function baseTabsForRole(){
         if(!myStage) return ['VI','POGEN','MD','SENT'];
         if(isFieldBoy()) return ['VI'];
         switch(myRoleKey()){
@@ -2044,7 +2145,8 @@
         document.getElementById('loginVendorGroup').style.display = isVendor ? 'block' : 'none';
         document.getElementById('loginPurchaserGroup').style.display = isPurchaser ? 'block' : 'none';
         if(isVendor) loadLoginVendorOptions();
-        // Purchaser names are a fixed list in the markup — nothing to fetch.
+        // The markup's fixed names show at once; Admin-added purchasers replace them.
+        if(isPurchaser) loadLoginPurchasers();
     });
     async function attemptLogin(){
         const role = document.getElementById('loginRole').value;
@@ -2098,6 +2200,7 @@
             document.getElementById('loginScreen').style.display = 'none';
             document.getElementById('loginPin').value = '';
             try{localStorage.setItem(MOBILE_LOGIN_STORAGE_KEY, JSON.stringify({stage:myStage, vendorName:myVendorName, purchaserName:myPurchaserName}));}catch(e){}
+            loadRolePerms();                // pick up any access change made since the page opened
             renderList().then(liveStart);   // list is on screen — now keep it current by itself
         }catch(e){
             if(/does not exist|relation/i.test(e.message||'')) err.textContent = '⚠️ role_pins / suppliers table missing — migration run karein';
@@ -2490,6 +2593,8 @@
             renderList().then(liveStart);   // restored session: go live straight away
         }catch(e){}
     })();
+    // Role-wise tab access set by the Admin in STORE.html — applied as soon as it arrives.
+    loadRolePerms();
 
     // Filter as you type — paintList() works off the cache, so no extra queries.
     document.getElementById('searchInput')?.addEventListener('input', e => {
@@ -3629,9 +3734,16 @@
         if(!confirm('"'+docNo+'" ke saare items check kar liye?\n\n'
             + (stage === 'gm' ? 'GM check lagne ke baad ye entry MD ke paas jayegi.'
                               : 'MD check lagne ke baad ye entry Complete ho jayegi.'))) return;
+        /* The checker's own PIN, every time — no PIN, no check. If they have a
+           saved signature (STORE.html → Admin Panel → Users & Roles) it comes
+           back with the PIN and is stamped on the entry's PDF over "GM Sign" /
+           "MD Sign"; without one the check is saved unsigned. */
+        const sig = await pickSignature(stage === 'gm' ? 'USER_GM_PIN' : 'USER_MD_PIN');
+        if(!sig) return;   // PIN popup cancelled — nothing is saved
         const btn = document.getElementById('storeCheckBtn');
         btn.disabled = true;
         setBusy(true, 'Check save kar rahe hain...');
+        let pdfNote = '';
         try{
             const table = storeIsInward(e) ? 'inward_entries' : 'outward_entries';
             // Re-read, so the other role's check (added since this load) survives.
@@ -3647,9 +3759,16 @@
                later report that wants to order checks by time has something to
                read. Rows checked before this field existed simply lack it. */
             const now = new Date();
+            const signed = !!sig.dataUrl;
+            let signUrl = '';
+            if(signed){
+                try{ signUrl = await uploadSignatureImage(docNo, stage, sig.dataUrl); }
+                catch(err){ console.warn('[MOBILE] signature image upload failed:', err.message||err); }
+            }
             const checks = {...current, [stage]: {
-                by: STAGE_LABEL[myStage] || stage.toUpperCase(),
-                at: pStamp(now), atIso: now.toISOString(), remarks
+                by: sig.name || STAGE_LABEL[myStage] || stage.toUpperCase(),
+                at: pStamp(now), atIso: now.toISOString(), remarks,
+                ...(signUrl ? {signUrl} : {})
             }};
             const upd = await SB.from(table).update({store_checks: checks}).eq('id', e.id);
             if(upd.error){
@@ -3658,12 +3777,19 @@
                 throw upd.error;
             }
             e.store_checks = checks;   // keep the loaded row level with the database
+            // The check is saved; putting the sign on the PDF is best-effort on top.
+            if(signed){
+                setBusy(true, 'PDF par sign laga rahe hain...');
+                try{ pdfNote = await stampStorePdfSign(e, table, stage, sig.dataUrl, checks[stage], checks._pdf); }
+                catch(err){ pdfNote = '⚠️ PDF par sign nahi lag paya: ' + (err.message || err); }
+            }
             dashDirty = false;         // reloaded right below
             closeStoreModal();
             await renderList();
             alert('✔ ' + docNo + ' check ho gaya.\n\n'
                 + (stage === 'gm' ? 'Ab ye entry MD ke paas check ke liye jayegi.'
-                                  : 'Ye entry Complete section me chali gayi.'));
+                                  : 'Ye entry Complete section me chali gayi.')
+                + (pdfNote ? '\n\n' + pdfNote : ''));
         }catch(err){
             alert('Error: ' + (err.message || err));
         }finally{
@@ -3672,6 +3798,75 @@
             if(b) b.disabled = false;
         }
     }
+    /* ── GM / MD signature on the Store PDF ──────────────────────────
+       STORE.html records, for every Inward / Outward PDF it uploads, where the
+       Store In-Charge / GM / MD cells sit (store_checks._pdf = {SINGLE, TWO_PAGE}
+       → {pw, ph, slots:[{p, st, x, y, w}]}, mm from the top-left). Here the
+       signature is drawn into the cells for this stage on BOTH files and the
+       files are re-uploaded under the same paths. Geometry must match
+       STORE.html's sarvDrawSigNative_ (SIG_SLOT_LAYOUT). */
+    async function uploadSignatureImage(docNo, stage, dataUrl){
+        const path = 'signatures/' + pdfSafeName_(docNo) + '/' + stage + '.png';
+        const blob = await (await fetch(dataUrl)).blob();
+        const up = await SB.storage.from(SARV_PDF_BUCKET).upload(path, blob, {upsert:true, contentType:'image/png', cacheControl:'3600'});
+        if(up.error) throw up.error;
+        const pub = SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(path);
+        return (pub?.data?.publicUrl || '') + '?v=' + Date.now();
+    }
+    async function stampStorePdfSign(e, table, stage, dataUrl, check, layouts){
+        if(!window.PDFLib) throw new Error('pdf-lib load nahi hua (internet check karein)');
+        if(!layouts || !Object.keys(layouts).length)
+            return 'ℹ️ Ye PDF purani hai (sign ki jagah save nahi thi) — STORE.html me entry dobara save hone par sign PDF me aa jayega.';
+        const docNo = storeDocNo(e);
+        const q = await SB.from('pdf_documents').select('variant,file_path,public_url')
+            .eq('document_no', docNo).in('variant', ['SINGLE','TWO_PAGE']);
+        if(q.error) throw q.error;
+        const {PDFDocument, StandardFonts, rgb} = window.PDFLib;
+        const MM = 72 / 25.4;
+        let done = 0;
+        for(const row of (q.data || [])){
+            const lay = layouts[row.variant];
+            const slots = ((lay && lay.slots) || []).filter(s => s.st === stage);
+            if(!slots.length || !row.file_path) continue;
+            const src = SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(row.file_path)?.data?.publicUrl || String(row.public_url||'').split('?')[0];
+            const res = await fetch(src + '?v=' + Date.now(), {cache:'no-store'});
+            if(!res.ok) throw new Error(row.variant + ' PDF download nahi hui (' + res.status + ')');
+            const pdf = await PDFDocument.load(await res.arrayBuffer());
+            const png = await pdf.embedPng(dataUrl);
+            const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+            const reg = await pdf.embedFont(StandardFonts.Helvetica);
+            const ink = rgb(30/255, 58/255, 138/255);
+            const pages = pdf.getPages();
+            slots.forEach(s => {
+                const page = pages[s.p - 1]; if(!page) return;
+                const H = page.getHeight();
+                // White-out the cell area first, so a re-check never prints over an older sign.
+                page.drawRectangle({x: s.x*MM, y: H - (s.y - 0.3)*MM, width: s.w*MM, height: 14*MM, color: rgb(1,1,1)});
+                const boxH = 8, top = s.y - 13.5;
+                const k = Math.min(s.w / png.width, boxH / png.height), iw = png.width * k, ih = png.height * k;
+                page.drawImage(png, {x: (s.x + (s.w - iw)/2) * MM, y: H - (top + (boxH - ih)/2 + ih) * MM, width: iw*MM, height: ih*MM});
+                const line = (txt, font, yMm) => {
+                    if(!txt) return;
+                    let t = String(txt), size = 5;
+                    while(font.widthOfTextAtSize(t, size) > s.w*MM && size > 3) size -= 0.25;
+                    page.drawText(t, {x: (s.x + s.w/2)*MM - font.widthOfTextAtSize(t, size)/2, y: H - yMm*MM, size, font, color: ink});
+                };
+                line(String(check.by||'').toUpperCase(), bold, s.y - 3.4);
+                line(check.at, reg, s.y - 1);
+            });
+            const out = await pdf.save();
+            const blob = new Blob([out], {type:'application/pdf'});
+            const up = await SB.storage.from(SARV_PDF_BUCKET).upload(row.file_path, blob, {upsert:true, contentType:'application/pdf', cacheControl:'3600'});
+            if(up.error) throw up.error;
+            const url = (SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(row.file_path)?.data?.publicUrl || '') + '?v=' + Date.now();
+            await SB.from('pdf_documents').update({public_url: url}).eq('document_no', docNo).eq('variant', row.variant);
+            const col = row.variant === 'SINGLE' ? 'pdf_url_single' : 'pdf_url_two_page';
+            try{ await SB.from(table).update({[col]: url}).eq('id', e.id); }catch(_){}
+            done++;
+        }
+        return done ? ('✍️ ' + (stage === 'gm' ? 'GM' : 'MD') + ' sign PDF par lag gaya.') : 'ℹ️ Is entry ki PDF nahi mili — sign sirf record me save hua.';
+    }
+
     /* ── Add Supplier, from the Vendor Rate & Info grid ───────────────
        The vendor pickers only offer Supplier Master, which is the right rule —
        a PO is raised on a master record, not on a typed-in name. The cost was
@@ -3747,7 +3942,7 @@
        it is booked against — more quantity than the PO still has pending, a
        rate above the one agreed, or an item the PO never ordered. Each of
        those becomes a row in `inward_approvals`, and this is where the
-       Purchaser clears it. Nothing is received until they do: the store's
+       MD clears it. Nothing is received until they do: the store's
        Submit button stays shut.
 
        It lives in the PO Receipts tab because it answers the same question
@@ -3760,19 +3955,11 @@
     const INWAPP_TABLE = 'inward_approvals';
     let inwAppTableMissing = false;   // asked once, then left alone
     function inwAppPending(r){ return String((r && r.status) || 'Pending') === 'Pending'; }
-    /* Whose request is it? STORE.html stamps purchaser_names off the PRs
-       behind the receipt. A request it could not attribute to anyone (no PR,
-       or the lookup failed) is shown to EVERY Purchaser rather than to none —
-       an approval nobody can see is a receipt nobody can book. MD sees all. */
-    function inwAppVisibleToMe(r){
-        if(myRoleKey() === 'md') return true;
-        const names = String((r && r.purchaser_names) || '').split(',').map(s => s.trim()).filter(Boolean);
-        if(!names.length) return true;
-        return names.some(n => n.toUpperCase() === String(myPurchaserName||'').trim().toUpperCase());
-    }
-    // Only the Purchaser decides these. MD reads them, same as the rest of
-    // this tab.
-    function inwAppCanAct(r){ return myRoleKey() === 'purchaser' && inwAppPending(r); }
+    /* Only the MD sees these and only the MD decides them — every request from
+       the store, whoever's PO / PR it is against. purchaser_names is still
+       stamped by STORE.html and shown on the card for reference. */
+    function inwAppVisibleToMe(r){ return myRoleKey() === 'md'; }
+    function inwAppCanAct(r){ return myRoleKey() === 'md' && inwAppPending(r); }
     function inwAppReasons(r){
         const v = r && r.reasons;
         if(Array.isArray(v)) return v.map(String);
@@ -3790,8 +3977,8 @@
     }
     function inwAppItems(r){ const p = inwAppPayload(r); return Array.isArray(p.items) ? p.items : []; }
     async function loadInwardApprovals_(){
-        // Purchaser acts, MD watches; nobody else pays for the query.
-        if(!['purchaser','md'].includes(myRoleKey()) || inwAppTableMissing) return [];
+        // MD only — nobody else is shown these, so nobody else pays for the query.
+        if(myRoleKey() !== 'md' || inwAppTableMissing) return [];
         try{
             const q = await SB.from(INWAPP_TABLE).select('*').order('id', {ascending:false}).limit(200);
             if(q.error) throw q.error;
@@ -3845,7 +4032,7 @@
             html += inwAppCanAct(r)
                 ? `<div class="card-action act">✍️ Tap karein — Approve ya Reject</div>`
                 : (pend
-                    ? `<div class="card-action wait">⏳ Purchaser ke faisle ka intezaar${r.purchaser_names ? ' — ' + escText(r.purchaser_names) : ''}</div>`
+                    ? `<div class="card-action wait">⏳ MD ke faisle ka intezaar</div>`
                     : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approve ho chuka — Store save kar sakta hai' : '✖ Reject — Store ko values theek karni hongi'}</div>`);
             card.innerHTML = html;
             listDiv.appendChild(card);
@@ -3912,7 +4099,7 @@
         if(inwAppCanAct(r)) note.style.display = 'none';
         else{
             note.innerHTML = inwAppPending(r)
-                ? '👁 <b>View only</b> — faisla Purchaser' + (r.purchaser_names ? ' (' + escText(r.purchaser_names) + ')' : '') + ' ka hai'
+                ? '👁 <b>View only</b> — faisla sirf MD karte hain'
                 : (r.status === 'Approved'
                     ? '✔ <b>Approved</b> — Store ab yahi entry Submit karke save kar sakta hai'
                     : '✖ <b>Rejected</b> — Store ko values theek karke dobara bhejni hongi');
@@ -3946,7 +4133,7 @@
                overwrite the first. */
             const upd = await SB.from(INWAPP_TABLE).update({
                 status: decision,
-                decided_by: myPurchaserName || (STAGE_LABEL[myStage] || 'Purchaser'),
+                decided_by: STAGE_LABEL[myStage] || 'MD',
                 decided_at: new Date().toISOString(),
                 remarks: remarks || null
             }).eq('id', r.id).eq('status', 'Pending').select('id');
@@ -5257,6 +5444,9 @@
 
         document.getElementById('remarksInput').value = '';
         clearSignature();
+        // Saved sign → no pad, just the PIN on Approve. Asked fresh each time, so a
+        // sign the Admin saved a minute ago already counts.
+        if(showApproval){ await refreshMySignSaved(); applySignPadMode(); }
         document.getElementById('approvalModal').style.display = 'flex';
         if(showApproval) resizeCanvas();
         // resizeCanvas() rebuilt the bitmap — restate "unsigned" against the new one.
@@ -5934,13 +6124,8 @@
 
     async function approveEntry() {
         if(!currentEntry || !myStage || modalViewOnly || modalTab === 'VI') return;
-        // Purchaser / MD must actually draw on the pad. A tap, or a pad that was
-        // cleared again, leaves no ink — that cannot approve anything.
-        if(!hasDrawn || !sigHasInk()) {
-            alert('Signature Pad par apna sign banayein — sign ke bina approval nahi ho sakta.');
-            syncApproveBtn();
-            return;
-        }
+        // The signature is taken LAST (PIN + saved sign, below), after every check
+        // that could still send the user back to fix something.
         // Approval (and the PO built from it) uses the SAVED vendor figures, so
         // edits sitting unsaved in a reopened grid would silently not count.
         if(currentModule === 'PR' && viDirty && (currentEntry.pdf_snapshot||{}).vendorInfoReopened){
@@ -6004,8 +6189,28 @@
             if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
             poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(), freight, other, chargesGst};
         }
+        /* PIN-based signing. The approver types their own PIN every time; their
+           saved signature (STORE.html → Admin Panel → Users & Roles) comes back
+           with it and is put on the pad, which is what goes into the PR / PO
+           PDF. Only someone with no saved sign still has to draw on the pad. */
+        const pinSig = await pickSignature(myPermRole(), {
+            name: myPurchaserName || '',
+            purpose: currentModule === 'PR' ? 'PR Approve' : 'PO Approve'
+        });
+        if(!pinSig) return;   // PIN popup cancelled — nothing is approved
+        if(pinSig.dataUrl){
+            try{ await drawSavedSignature(pinSig.dataUrl); }
+            catch(e){ alert('Saved sign load nahi hua — pad par sign karke dobara Approve dabayein.'); return; }
+        }else if(mySignSaved || !hasDrawn || !sigHasInk()){
+            // The user picked has no saved sign — bring the pad back for them.
+            if(mySignSaved){ mySignSaved = false; applySignPadMode(); resizeCanvas(); clearSignature(); }
+            alert('Aapka signature saved nahi hai — Signature Pad par sign karke dobara Approve dabayein.\n\n(Admin se STORE.html › Settings › Admin Panel › Users & Roles me sign banwa lein, phir sirf PIN se approve hoga.)');
+            syncApproveBtn();
+            return;
+        }
         const remarks = document.getElementById('remarksInput').value;
         const sig = { name: canvas.toDataURL('image/png'), time: pStamp(), remarks };
+        if(pinSig.name) sig.signerName = pinSig.name;   // who typed the PIN, for the record
         // When a Purchaser signs the GM/CEO stage, the record says so. The
         // approval still reads as gmCeo — that is what releases the PR for PO
         // generation — but it must never look like the GM/CEO signed it.
@@ -6145,8 +6350,10 @@
         const btn = document.getElementById('approveBtn');
         if(!btn) return;
         const signed = hasDrawn && sigHasInk();
-        btn.disabled = !signed;
-        btn.title = signed ? '' : 'Pehle Signature Pad par sign karein';
+        // Never locked on the pad any more: Approve asks for the PIN and lays the
+        // saved sign itself. The hint below just says so.
+        btn.disabled = false;
+        btn.title = signed ? '' : 'Approve dabane par PIN maanga jayega — saved sign apne-aap lagega';
         const hint = document.getElementById('sigRequiredHint');
         if(hint) hint.style.display = signed ? 'none' : 'block';
     }
@@ -6160,6 +6367,183 @@
     canvas.addEventListener('touchend', stopDrawing, { passive: false });
 
     window.addEventListener('resize', resizeCanvas);
+
+    // ── Sign with PIN ────────────────────────────────────────────
+    /* Only this login's own users are offered: a Purchaser gets exactly their
+       own name, MD / GM / PO Sender the users of that role. The image comes back
+       from the server only for the right PIN. */
+    /* Two uses of the same popup: the approval pad (openPinSign draws on it) and
+       Store Check (pickSignature hands the signature back instead). */
+    let pinSignResolve = null;
+    let pinSignCtx = null;      // {role, users} while Store Check is waiting on the popup
+    /* Store Check: the checker types their OWN PIN every single time — the
+       login PIN is never reused for it. Offered: every active user of this role
+       (Admin Panel → Users & Roles). Only when that role has no named users yet
+       does the role's shared PIN stand in. Resolves {dataUrl|null, name}, or
+       null when the popup is cancelled. */
+    /* Does THIS login have a saved sign? Purchaser: their own name. MD / GM / PO
+       Sender: any active user of the role (whoever approves picks their name in
+       the PIN popup; one without a sign gets the pad back there). */
+    let mySignSaved = false;
+    async function refreshMySignSaved(){
+        mySignSaved = false;
+        const role = myPermRole();
+        if(!role) return;
+        try{
+            const q = await SB.from('app_users').select('user_name')
+                .eq('is_active', true).eq('has_signature', true).eq('role', role);
+            if(q.error) throw q.error;
+            const list = q.data || [];
+            mySignSaved = myPurchaserName
+                ? list.some(u => String(u.user_name).toUpperCase() === String(myPurchaserName).toUpperCase())
+                : list.length > 0;
+        }catch(e){ console.warn('[MOBILE] saved-sign check skipped:', e.message||e); }
+    }
+    function applySignPadMode(){
+        document.getElementById('sigPadGroup')?.classList.toggle('sig-offscreen', mySignSaved);
+        const n = document.getElementById('pinOnlyNote');
+        if(n) n.style.display = mySignSaved ? 'block' : 'none';
+    }
+    /* opts.name    — only this user (a Purchaser approves as themself)
+       opts.purpose — what the PIN is for, shown in the title / note / button */
+    function pickSignature(role, opts = {}){
+        return new Promise(async resolve => {
+            let list = [];
+            try{
+                const q = await SB.from('app_users').select('id,user_name,has_signature')
+                    .eq('is_active', true).eq('role', role).order('user_name');
+                if(q.error) throw q.error;
+                list = q.data || [];
+                if(opts.name) list = list.filter(u => String(u.user_name).toUpperCase() === String(opts.name).toUpperCase());
+            }catch(e){ console.warn('[MOBILE] users unavailable — role PIN only:', e.message||e); }
+            pinSignResolve = resolve;
+            // A Purchaser's own PIN lives under PURCHASER::<name>.
+            const roleKey = (role === 'PURCHASER' && opts.name) ? ('PURCHASER::' + opts.name) : role;
+            pinSignCtx = {role: roleKey, users: list};
+            const roleName = opts.name || (role === 'USER_GM_PIN' ? 'GM' : role === 'USER_MD_PIN' ? 'MD' : role);
+            const purpose = opts.purpose || 'Check Done';
+            const sel = document.getElementById('pinSignUser');
+            sel.innerHTML = list.length
+                ? list.map(u => '<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature ? '' : ' (sign saved nahi)')+'</option>').join('')
+                : '<option value="role:">'+escText(roleName)+' (Role PIN)</option>';
+            sel.disabled = sel.options.length === 1;
+            document.getElementById('pinSignTitle').textContent = '🔒 ' + roleName + ' PIN — ' + purpose;
+            document.getElementById('pinSignNote').textContent = purpose + ' ke liye har baar apna PIN daalein. Saved sign hoga to wo apne-aap PDF par lag jayega.';
+            document.getElementById('pinSignOkBtn').innerHTML = '&#10004; Verify &amp; ' + escText(purpose);
+            document.getElementById('pinSignPin').value = '';
+            document.getElementById('pinSignError').style.display = 'none';
+            document.getElementById('pinSignModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('pinSignPin').focus(), 50);
+        });
+    }
+    // The approval-pad wording, put back whenever the popup is opened for that.
+    function resetPinSignText(){
+        document.getElementById('pinSignTitle').textContent = '🔑 PIN se Sign';
+        document.getElementById('pinSignNote').textContent = 'Draw karne ki jagah apna PIN daalein — aapka saved signature pad par lag jayega.';
+        document.getElementById('pinSignOkBtn').innerHTML = '&#9997;&#65039; Sign';
+    }
+    async function openPinSign(){
+        const role = myPermRole();
+        let list = [];
+        try{
+            const q = await SB.from('app_users').select('id,user_name,role')
+                .eq('is_active', true).eq('has_signature', true).order('user_name');
+            if(q.error) throw q.error;
+            list = (q.data || []).filter(u => myPurchaserName
+                ? (u.role === 'PURCHASER' && String(u.user_name).toUpperCase() === String(myPurchaserName).toUpperCase())
+                : u.role === role);
+        }catch(e){
+            alert('Saved signatures load nahi hue — STORE.html ka ADMIN_PANEL_MIGRATION.sql run hua hai?');
+            return;
+        }
+        if(!list.length){
+            alert('Aapka signature saved nahi hai — Admin se STORE.html › Master Data › Settings › Admin Panel › Users & Roles me ek baar sign banwayein. Tab tak pad par sign karein.');
+            return;
+        }
+        resetPinSignText();
+        const sel = document.getElementById('pinSignUser');
+        sel.innerHTML = list.map(u => '<option value="'+escText(u.id)+'">'+escText(u.user_name)+'</option>').join('');
+        sel.disabled = list.length === 1;
+        document.getElementById('pinSignPin').value = '';
+        document.getElementById('pinSignError').style.display = 'none';
+        document.getElementById('pinSignModal').style.display = 'flex';
+        setTimeout(() => document.getElementById('pinSignPin').focus(), 50);
+    }
+    function closePinSign(){
+        document.getElementById('pinSignModal').style.display = 'none';
+        document.getElementById('pinSignPin').value = '';
+        pinSignCtx = null;
+        // Closed without signing (× / Cancel) — a waiting Store Check is called off.
+        if(pinSignResolve){ const r = pinSignResolve; pinSignResolve = null; r(null); }
+    }
+    // Fitted and centred on the pad, then counted as a signature like a drawn one.
+    function drawSavedSignature(dataUrl){
+        return new Promise((res, rej) => {
+            const img = new Image();
+            img.onload = () => {
+                const w = canvas.offsetWidth, h = canvas.offsetHeight;   // ctx is already scaled to CSS px
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const s = Math.min(w / img.width, h / img.height);
+                const dw = img.width * s, dh = img.height * s;
+                ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+                hasDrawn = true; inkLen = SIG_MIN_STROKE_PX;
+                syncApproveBtn();
+                res();
+            };
+            img.onerror = () => rej(new Error('Signature load nahi hua'));
+            img.src = dataUrl;
+        });
+    }
+    async function confirmPinSign(){
+        const id = document.getElementById('pinSignUser').value;
+        const pin = document.getElementById('pinSignPin').value;
+        const err = document.getElementById('pinSignError');
+        const show = m => { err.textContent = m; err.style.display = 'block'; };
+        err.style.display = 'none';
+        if(!id) return show('User select karein');
+        if(!pin) return show('PIN daalein');
+        const btn = document.getElementById('pinSignOkBtn');
+        btn.disabled = true;
+        try{
+            // ── Store Check: PIN is compulsory; the sign comes along if one is saved ──
+            if(pinSignResolve && pinSignCtx){
+                const ctxNow = pinSignCtx;
+                let result = null;
+                if(id === 'role:'){
+                    const v = await SB.rpc('verify_role_pin', { p_role: ctxNow.role, p_pin: pin });
+                    if(v.error) throw v.error;
+                    if(!v.data) return show('Galat PIN');
+                    result = {dataUrl: null, name: ''};
+                }else{
+                    const u = ctxNow.users.find(x => x.id === id) || {};
+                    if(u.has_signature){
+                        const r = await SB.rpc('get_user_signature', { p_user_id: id, p_pin: pin });
+                        if(r.error) throw r.error;
+                        if(!r.data) return show('Galat PIN');
+                        result = {dataUrl: r.data, name: u.user_name || ''};
+                    }else{
+                        const v = await SB.rpc('verify_app_user_pin', { p_user_id: id, p_pin: pin });
+                        if(v.error) throw v.error;
+                        if(!v.data) return show('Galat PIN');
+                        result = {dataUrl: null, name: u.user_name || ''};
+                    }
+                }
+                const res = pinSignResolve; pinSignResolve = null;
+                closePinSign();
+                res(result);
+                return;
+            }
+            const r = await SB.rpc('get_user_signature', { p_user_id: id, p_pin: pin });
+            if(r.error) throw r.error;
+            if(!r.data) return show('Galat PIN');
+            await drawSavedSignature(r.data);
+            closePinSign();
+        }catch(e){ show(e.message || String(e)); }
+        finally{ btn.disabled = false; }
+    }
+    document.getElementById('pinSignBtn')?.addEventListener('click', e => { e.preventDefault(); openPinSign(); });
+    document.getElementById('pinSignOkBtn')?.addEventListener('click', confirmPinSign);
+    document.getElementById('pinSignPin')?.addEventListener('keydown', e => { if(e.key === 'Enter') confirmPinSign(); });
 </script>
 </body>
 </html>
