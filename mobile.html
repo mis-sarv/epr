@@ -1659,7 +1659,7 @@
             doc.link(pageW-M-logoW,y,logoW,logoH,{url:SARV_WEBSITE_URL});
         }catch(e){console.warn('[MOBILE] PO logo skipped:',e.message||e);}
         doc.setFontSize(9);doc.setFont(undefined,'bold');
-        doc.text('GST IN: '+(SARV_COMPANY.gstin||''),M,y+4);
+        doc.text('GSTIN: '+(SARV_COMPANY.gstin||''),M,y+4);
         doc.setFontSize(12);
         doc.text('PURCHASE ORDER',pageW/2,y+4.5,{align:'center'});
         y+=10;
