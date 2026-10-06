@@ -1824,6 +1824,8 @@ body {
         #fullPurchasePanel .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
         #fullPurchasePanel .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
         #fullPurchasePanel .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+        #fullPurchasePanel .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 12px; }
+        @media (max-width: 600px) { #fullPurchasePanel .grid-2 { grid-template-columns: 1fr; } }
 
         @media (max-width: 900px) {
             #fullPurchasePanel .grid-4,
@@ -2422,6 +2424,18 @@ body {
         #fullPurchasePanel .po-followup-table .fu-lockicon { opacity: .75; }
         #fullPurchasePanel .po-followup-table .fu-unlock { opacity: .85; }
         #fullPurchasePanel .po-followup-table tbody tr:hover { background: #f8fafc; }
+        /* Per-column filter row, under the header. Same PR-at-a-time rule as the
+           filter bar above — see poFollowupColFilterMatch_. */
+        #fullPurchasePanel .po-followup-table tr.fu-filter-row th {
+            background: #f8fafc; padding: 3px 4px; border-top: 1px solid #cbd5e1;
+        }
+        #fullPurchasePanel .po-followup-table .fu-colf {
+            width: 100%; min-width: 60px; box-sizing: border-box; height: 24px;
+            font-size: 10px; font-weight: 600; padding: 2px 4px; font-family: inherit;
+            border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; color: #0f172a;
+        }
+        #fullPurchasePanel .po-followup-table .fu-colf.active { border-color: #2563eb; background: #eff6ff; }
+        #fullPurchasePanel .po-followup-table tbody tr.fu-hit > td:not([rowspan]) { background: #fefce8; }
         #fullPurchasePanel .req-row:hover { background: #ecfeff; }
         #fullPurchasePanel .req-row.selected { background: #e0f2fe; }
 
@@ -2614,7 +2628,18 @@ body {
         <option value="USER_GT_PIN">Gate Man</option>
         <option value="ADMIN_PIN">Admin</option>
         <option value="VENDOR_VERIFY_PIN">Vendor Verified</option>
+        <option value="PURCHASER">Purchaser</option>
+        <option value="PO_SENDER_PIN">PO Sender</option>
+        <option value="VIEW_PIN">View Only</option>
+        <option value="EDIT_PASSWORD">Edit User</option>
       </select>
+    </div>
+    <!-- Named users of the chosen role (Admin Panel → Users & Roles). Optional
+         for every role except Purchaser: leave it on "Role PIN" and the role's
+         own PIN works exactly as before. -->
+    <div class="form-group" id="sarvLoginUserGroup" style="display:none;">
+      <label>User</label>
+      <select id="sarvLoginUser" style="font-weight:600;"></select>
     </div>
     <div class="form-group" style="margin-bottom:6px;">
       <label>PIN</label>
@@ -2692,6 +2717,67 @@ body {
   #sarvNatureGate .opts button small{display:block;margin-top:4px;font-size:10.5px;font-weight:600;color:#64748b;}
   #sarvNatureGate .ft{padding:14px 20px 18px;display:flex;justify-content:flex-end;}
   #sarvNatureGate .ft .cancel{padding:9px 18px;border-radius:9px;border:0;background:#e2e8f0;color:#334155;font-size:13px;font-weight:800;cursor:pointer;}
+
+  /* ── Admin Panel (Master Data → Settings) ───────────────────────────── */
+  #sarvAdminPanel{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;}
+  #sarvAdminPanel .ap-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
+  #sarvAdminPanel .ap-title{font-size:14px;font-weight:800;color:#0f172a;}
+  #sarvAdminPanel .ap-sub{font-size:11px;color:#64748b;margin-top:2px;}
+  #sarvAdminPanel .ap-tabs{display:flex;gap:4px;flex-wrap:wrap;}
+  #sarvAdminPanel .ap-tab{border:1px solid #cbd5e1;background:#f8fafc;color:#475569;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;}
+  #sarvAdminPanel .ap-tab.active{background:#0f172a;border-color:#0f172a;color:#fff;}
+  #sarvAdminPanel .ap-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;}
+  #sarvAdminPanel .ap-hint{font-size:11px;color:#64748b;font-weight:600;}
+  #sarvAdminPanel .ap-note{font-size:11px;color:#475569;margin-top:8px;line-height:1.6;}
+  #sarvAdminPanel .ap-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:6px;padding:8px 10px;font-size:11px;font-weight:600;margin-bottom:10px;}
+  #sarvAdminPanel .ap-table{width:100%;border-collapse:collapse;font-size:11px;}
+  #sarvAdminPanel .ap-table th{background:#0f172a;color:#fff;padding:6px;text-align:left;position:sticky;top:0;z-index:1;}
+  #sarvAdminPanel .ap-table td{padding:5px 6px;border-bottom:1px solid #f1f5f9;}
+  #sarvAdminPanel .ap-empty{text-align:center;color:#94a3b8;padding:18px !important;}
+  #sarvAdminPanel .ap-pill{display:inline-block;border-radius:99px;padding:2px 8px;font-size:10px;font-weight:700;}
+  #sarvAdminPanel .ap-ibtn{border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;font-family:inherit;}
+  /* The matrix — laid out like the reference sheet: features down the left on
+     blue, roles across the top on green, one tick box per cell. */
+  #sarvAdminPanel .ap-matrix-wrap{max-height:520px;overflow:auto;}
+  #sarvAdminPanel .ap-matrix{border-collapse:collapse;font-size:11px;min-width:100%;}
+  #sarvAdminPanel .ap-matrix th,#sarvAdminPanel .ap-matrix td{border:1px solid #94a3b8;padding:0;}
+  #sarvAdminPanel .ap-matrix thead th{background:#e2efda;color:#0f172a;font-weight:800;padding:6px 8px;white-space:nowrap;position:sticky;top:0;z-index:2;cursor:pointer;text-transform:uppercase;font-size:10.5px;}
+  #sarvAdminPanel .ap-matrix thead th:first-child{left:0;z-index:3;cursor:default;}
+  #sarvAdminPanel .ap-matrix tbody th{background:#dbe5f1;text-align:left;font-weight:800;padding:5px 8px;white-space:nowrap;position:sticky;left:0;z-index:1;cursor:pointer;color:#0f172a;}
+  #sarvAdminPanel .ap-matrix tbody th small{display:block;font-weight:600;color:#64748b;font-size:9.5px;text-transform:none;}
+  #sarvAdminPanel .ap-matrix tr.ap-group td{background:#0f172a;color:#fff;font-weight:800;font-size:10.5px;padding:4px 8px;letter-spacing:.3px;}
+  #sarvAdminPanel .ap-matrix td.ap-cell{text-align:center;min-width:74px;}
+  #sarvAdminPanel .ap-matrix td.ap-cell label{display:flex;align-items:center;justify-content:center;height:28px;cursor:pointer;}
+  #sarvAdminPanel .ap-matrix td.ap-cell.yes{background:#f0fdf4;}
+  #sarvAdminPanel .ap-matrix td.ap-cell.locked label{cursor:not-allowed;opacity:.6;}
+  #sarvAdminPanel .ap-matrix input[type=checkbox]{width:16px;height:16px;accent-color:#16a34a;cursor:inherit;}
+  #sarvAdminPanel .ap-matrix tr.ap-dirty th{color:#b45309;}
+
+  /* User add / edit popup and the "sign with PIN" popup. Fixed overlays of
+     their own, so they look the same whichever panel opened them. */
+  .sarv-ov{position:fixed;inset:0;z-index:40010;background:rgba(15,23,42,.62);display:flex;align-items:center;justify-content:center;padding:16px;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;}
+  .sarv-ov .card{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.35);}
+  .sarv-ov .hd{background:linear-gradient(135deg,#0f172a,#1e3a8a);color:#fff;padding:14px 18px;font-size:15px;font-weight:800;}
+  .sarv-ov .bd{padding:14px 18px;}
+  .sarv-ov .ft{padding:0 18px 16px;display:flex;justify-content:flex-end;gap:8px;}
+  .sarv-ov .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .sarv-ov .fg{margin-bottom:10px;}
+  .sarv-ov .fg label{display:block;font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;}
+  .sarv-ov .fg input,.sarv-ov .fg select{width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:13px;color:#0f172a;background:#fff;font-family:inherit;}
+  .sarv-ov .fg input:focus,.sarv-ov .fg select:focus{outline:none;border-color:#0284c7;}
+  .sarv-ov .req{color:#dc2626;}
+  .sarv-ov .err{display:none;background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:6px;padding:7px 10px;font-size:11.5px;font-weight:700;margin-bottom:10px;}
+  .sarv-ov .pad{border:2px dashed #047857;border-radius:8px;background:#fff;}
+  .sarv-ov .pad canvas{display:block;width:100%;height:150px;cursor:crosshair;touch-action:none;}
+  .sarv-ov .padbar{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;flex-wrap:wrap;}
+  .sarv-ov button.b{border:0;border-radius:8px;padding:9px 16px;font-size:12.5px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .sarv-ov button.b.ok{background:#16a34a;color:#fff;}
+  .sarv-ov button.b.no{background:#e2e8f0;color:#334155;}
+  .sarv-ov button.b.sm{padding:4px 10px;font-size:11px;}
+  .sarv-ov .sigprev{max-height:60px;max-width:100%;border:1px solid #e2e8f0;border-radius:6px;background:#fff;}
+  @media (max-width:600px){.sarv-ov .g2{grid-template-columns:1fr;}}
+  .sarv-pinsign-btn{background:#ede9fe;border:1px solid #a78bfa;color:#5b21b6;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;}
+  .sarv-pinsign-btn:hover{background:#ddd6fe;}
 </style>
 <div id="sarvHomeDashboard">
   <div class="sarv-home-hero" style="position:relative;">
@@ -3951,6 +4037,74 @@ body {
                         </div>
                     </div>
 
+                    <!-- ═══ ADMIN PANEL (Admin login only) ═══
+                         Users per role (own PIN + saved signature), the role-wise
+                         Feature Access matrix and the role-wise Tab Visibility
+                         matrix. Everything here is saved on the server behind the
+                         Admin PIN — see ADMIN_PANEL_MIGRATION.sql. -->
+                    <div id="sarvAdminPanel" style="display:none; margin-top:16px;">
+                        <div class="ap-head">
+                            <div>
+                                <div class="ap-title">&#128737;&#65039; Admin Panel</div>
+                                <div class="ap-sub">Users, role-wise access aur tab visibility &mdash; har badlav Admin PIN se save hota hai.</div>
+                            </div>
+                            <div class="ap-tabs">
+                                <button type="button" class="ap-tab active" data-ap="users">&#128101; Users &amp; Roles</button>
+                                <button type="button" class="ap-tab" data-ap="perms">&#128273; Feature Access</button>
+                                <button type="button" class="ap-tab" data-ap="tabs">&#128450;&#65039; Tab Visibility</button>
+                            </div>
+                        </div>
+                        <div id="ap_migrationNote" class="ap-warn" style="display:none;"></div>
+
+                        <!-- Users & Roles -->
+                        <div class="ap-pane" data-ap-pane="users">
+                            <div class="ap-bar">
+                                <button type="button" class="btn btn-primary" id="ap_addUserBtn">&#10133; Add User</button>
+                                <button type="button" class="btn btn-primary" id="ap_addPurchaserBtn" style="background:linear-gradient(135deg,#b45309,#d97706);">&#10133; Add New Purchaser</button>
+                                <select class="form-control" id="ap_userRoleFilter" style="width:180px;height:32px;font-size:11px;"><option value="">All Roles</option></select>
+                                <input type="text" class="form-control" id="ap_userSearch" placeholder="&#128269; Search user..." style="flex:1;min-width:140px;height:32px;font-size:11px;">
+                                <button type="button" class="btn btn-neutral" id="ap_reloadUsersBtn" style="height:32px;font-size:11px;">&#128260; Refresh</button>
+                            </div>
+                            <div class="table-container" style="max-height:380px;">
+                                <table class="ap-table">
+                                    <thead><tr>
+                                        <th>#</th><th>User Name</th><th>Role</th><th>Emp Code</th><th>Contact</th>
+                                        <th style="text-align:center;">Signature</th><th style="text-align:center;">Status</th>
+                                        <th style="text-align:center;">&#9999;&#65039;</th><th style="text-align:center;">&#128465;</th>
+                                    </tr></thead>
+                                    <tbody id="ap_usersBody"><tr><td colspan="9" class="ap-empty">Loading…</td></tr></tbody>
+                                </table>
+                            </div>
+                            <div class="ap-note">
+                                &#9432; Har user ka apna PIN hota hai. User banate / update karte waqt wo <b>Signature Pad</b> par ek baar sign kar de &mdash;
+                                uske baad har jagah sign ki jagah <b>&#128273; PIN se Sign</b> dabakar sirf PIN daalna hai.
+                                Purchaser ka PIN wahi hai jisse wo mobile app me login karta hai.
+                            </div>
+                        </div>
+
+                        <!-- Feature Access -->
+                        <div class="ap-pane" data-ap-pane="perms" style="display:none;">
+                            <div class="ap-bar">
+                                <span class="ap-hint">&#10004; = YES &nbsp; khali = NO &nbsp;&middot;&nbsp; Header par click = poora column, feature par click = poori row</span>
+                                <span style="flex:1;"></span>
+                                <button type="button" class="btn btn-neutral" id="ap_permResetBtn" style="height:32px;font-size:11px;">&#8634; Default</button>
+                                <button type="button" class="btn btn-success" id="ap_permSaveBtn" style="height:32px;font-size:11px;">&#128190; Save Access</button>
+                            </div>
+                            <div class="table-container ap-matrix-wrap"><table class="ap-matrix" id="ap_permMatrix"></table></div>
+                        </div>
+
+                        <!-- Tab Visibility -->
+                        <div class="ap-pane" data-ap-pane="tabs" style="display:none;">
+                            <div class="ap-bar">
+                                <span class="ap-hint">&#10004; = tab dikhega &nbsp; khali = us role se chhupa rahega (Home page + sub tabs)</span>
+                                <span style="flex:1;"></span>
+                                <button type="button" class="btn btn-neutral" id="ap_tabResetBtn" style="height:32px;font-size:11px;">&#8634; Default</button>
+                                <button type="button" class="btn btn-success" id="ap_tabSaveBtn" style="height:32px;font-size:11px;">&#128190; Save Visibility</button>
+                            </div>
+                            <div class="table-container ap-matrix-wrap"><table class="ap-matrix" id="ap_tabMatrix"></table></div>
+                        </div>
+                    </div>
+
                 </div>
 
             </div>
@@ -4503,6 +4657,9 @@ body {
 
                 <div class="section-header-row">
                     <h3 class="section-title">Requested By</h3>
+                    <!-- Adds to the EMPLOYEE MASTER (same table as Master Data → Employee
+                         Master) and then fills this form with the new code. -->
+                    <button type="button" class="btn btn-primary" id="p_reqAddEmpBtn" title="Employee Master me naya employee jodein — save hote hi yahan auto-fill ho jayega" style="background:linear-gradient(135deg,#6d28d9,#7c3aed);">&#10133; Add New Employee</button>
                 </div>
 
                 <div class="grid-4">
@@ -4854,6 +5011,7 @@ body {
                                     <th style="background:#d9ead3; text-align:center;">PO Generate</th>
                                     <th style="background:#fbd5c0;" title="Hover karke dekhein is PO par is PR ke kaunse item hain">PO No.</th>
                                     <th style="background:#fbd5c0;">Vendor</th>
+                                    <th style="background:#fbd5c0;" title="PO banate waqt purchaser ne jo Delivery Date daali thi">Delivery Date of PO</th>
                                     <th style="background:#d9ead3; text-align:center;">MD Approved</th>
                                     <th style="background:#d9ead3; text-align:center;" title="mobile app me PO Sender ke WhatsApp par bhejte hi apne aap ✔ ho jata hai">PO Sent to Vendor</th>
                                     <th style="background:#e2efda;">PO Status</th>
@@ -4861,6 +5019,24 @@ body {
                                     <th style="background:#dbe5f1; text-align:center;">Inform to Requester</th>
                                     <th style="background:#dbe5f1; text-align:center;" title="mobile app ke Store Check tab me GM ke check karte hi apne aap ✔ ho jata hai">Bill Checked by GM</th>
                                     <th style="background:#dbe5f1; text-align:center;" title="GM ke check ke baad MD ke Store Check karte hi apne aap ✔ ho jata hai">Bill Checked by MD</th>
+                                </tr>
+                                <!-- Column filters. Text boxes match "contains"; the ✔ / – boxes
+                                     match the tick in that column. -->
+                                <tr class="fu-filter-row">
+                                    <th><input type="text" class="fu-colf" data-col="pr" placeholder="Filter…"></th>
+                                    <th><input type="text" class="fu-colf" data-col="requester" placeholder="Filter…"></th>
+                                    <th><select class="fu-colf" data-col="vendorInfo"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
+                                    <th><select class="fu-colf" data-col="poGenerated"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
+                                    <th><input type="text" class="fu-colf" data-col="po" placeholder="Filter…"></th>
+                                    <th><input type="text" class="fu-colf" data-col="vendor" placeholder="Filter…"></th>
+                                    <th><input type="text" class="fu-colf" data-col="delivery" placeholder="dd-mm-yyyy" title="Poori ya aadhi date — jaise 15-10-2026, 10-2026 ya 2026"></th>
+                                    <th><select class="fu-colf" data-col="mdApproved"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
+                                    <th><select class="fu-colf" data-col="poSent"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
+                                    <th><input type="text" class="fu-colf" data-col="status" placeholder="Filter…"></th>
+                                    <th><input type="text" class="fu-colf" data-col="inward" placeholder="Filter…"></th>
+                                    <th><select class="fu-colf" data-col="informed"><option value="">All</option><option value="1">&#10004; Done</option><option value="0">&#9744; Pending</option></select></th>
+                                    <th><select class="fu-colf" data-col="gm"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
+                                    <th><select class="fu-colf" data-col="md"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
                                 </tr>
                             </thead>
                             <tbody id="p_poReportBody"></tbody>
@@ -5306,6 +5482,46 @@ body {
             <div class="modal-actions" style="margin-top: 14px;">
                 <button class="btn btn-neutral" id="p_rcvCancelBtn">Cancel</button>
                 <button class="btn btn-success" id="p_rcvConfirmBtn">📥 Save Receipt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ ADD NEW EMPLOYEE MODAL (PR form → Requested By) ============ -->
+    <div class="modal-overlay" id="p_addEmpModal">
+        <div class="modal-box" style="max-width: 560px;">
+            <h3 class="modal-title">&#10133; Add New Employee</h3>
+            <p class="modal-sub">Employee Master me save hoga, aur save hote hi is PR ke Requested By me auto-fill ho jayega.</p>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Employee Code <span class="req">*</span></label>
+                    <input type="text" class="form-control" id="p_aeEmpCode" placeholder="e.g. EMP-007" autocomplete="off" style="text-transform:uppercase;">
+                </div>
+                <div class="form-group">
+                    <label>Person Name <span class="req">*</span></label>
+                    <input type="text" class="form-control" id="p_aePersonName" placeholder="Full Name" autocomplete="off" style="text-transform:uppercase;">
+                </div>
+                <div class="form-group">
+                    <label>Designation</label>
+                    <input type="text" class="form-control" id="p_aeDesignation" placeholder="e.g. Supervisor">
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <select class="form-control" id="p_aeDepartment">
+                        <option value="">-- Select --</option>
+                        <option>Weaving</option><option>Dyeing</option><option>Finishing</option>
+                        <option>Raising</option><option>Cutting / Stitching</option><option>Packing</option>
+                        <option>Quality Control</option><option>Maintenance</option><option>Store</option>
+                        <option>Dispatch</option><option>Admin / HR</option><option>Accounts</option><option>Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Contact No.</label>
+                    <input type="tel" class="form-control" id="p_aeContactNo" placeholder="10-digit mobile" maxlength="15">
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top: 14px;">
+                <button class="btn btn-neutral" id="p_aeCancelBtn">Cancel</button>
+                <button class="btn btn-success" id="p_aeSaveBtn">&#128190; Save Employee</button>
             </div>
         </div>
     </div>
@@ -6777,7 +6993,13 @@ async function loadPoIntoInward(poNo){
     tr.dataset.poOrderedWeight=pNum(line.gross_weight);
     tr.dataset.poReceivedWeight=pNum(poRecWt[line.id]);
     tr.dataset.poNo=poById[line.purchase_order_id]?.po_no||'';
-    tr.dataset.poUnitPrice=line.unit_price||0;
+    /* The PO's agreed price is its NET rate — unit price AFTER the line's own
+       discount. That is what the receipt's rate (also net: List Price − Disc%)
+       is matched against, for the Inward Approval check, the row strip and the
+       printed "PO Actual Rate". Comparing against the gross unit price flagged
+       every discounted PO line as a rate change. */
+    const poDisc=pNum(line.discount_pct);
+    tr.dataset.poUnitPrice=pNum(line.unit_price)-pNum(line.unit_price)*poDisc/100;
     const it=itemOf(line);
     if(!it.id)unresolved.push(line.item_name||'(no name)');
     // Pin the row to the Item Master row this line resolved to, so the receipt
@@ -6788,7 +7010,7 @@ async function loadPoIntoInward(poNo){
     // still gets pinned once the name resolves it.
     if(it.id||line.item_id)tr.dataset.itemId=it.id||line.item_id;
     const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};
-    set('.item-name',line.item_name||it.name||'');set('.item-desc',it.description||'');set('.item-make',it.make||line.make||'');set('.item-cat',it.category||'');set('.qty-field',pending);set('.item-uom',line.uom||it.uom||'');set('.list-price-field',line.unit_price||0);set('.rate-field',line.unit_price||0);set('.item-gst-field',line.tax_pct||0);
+    set('.item-name',line.item_name||it.name||'');set('.item-desc',it.description||'');set('.item-make',it.make||line.make||'');set('.item-cat',it.category||'');set('.qty-field',pending);set('.item-uom',line.uom||it.uom||'');set('.list-price-field',line.unit_price||0);set('.discount-field',poDisc||0);set('.rate-field',pNum(tr.dataset.poUnitPrice));set('.item-gst-field',line.tax_pct||0);
     // Weight is prefilled from the PO line's Gross Wt (kg) so a WEIGHT-billed
     // receipt totals correctly out of the box; it stays editable because the
     // actually-received weight can differ from what was ordered.
@@ -7457,10 +7679,16 @@ function askSecret({title,subtitle,recordInfo,label,confirmText}={}){
     if(okBtn)okBtn.innerHTML=confirmText||'&#128275; Verify &amp; Edit';
     if(err){err.style.display='none';err.textContent='';}
     input.value='';
+    // Asked for from inside other popups too (Admin Panel → Add User sits at
+    // z-index 40010), so it is raised above everything while it is open —
+    // otherwise it opened BEHIND the popup that asked for it.
+    const prevZ=modal.style.zIndex;
+    modal.style.zIndex='40100';
     modal.style.display='flex';
     setTimeout(()=>input.focus(),50);
     const cleanup=()=>{
       modal.style.display='none';
+      modal.style.zIndex=prevZ;
       okBtn&&okBtn.removeEventListener('click',onOk);
       cancelBtn&&cancelBtn.removeEventListener('click',onCancel);
       input.removeEventListener('keydown',onKey);
@@ -7512,16 +7740,16 @@ async function verifyEditPassword(reason){
   }
   return true;
 }
-/* ══ INWARD APPROVAL (Purchaser) ══════════════════════════════════════
+/* ══ INWARD APPROVAL (MD) ══════════════════════════════════════
    Three things on a PO receipt cost money that nobody agreed to:
      • EXCESS QTY  — more than the PO / PR still has pending
      • RATE        — a price above what the PO settled on
      • EXTRA ITEM  — something the PO never ordered, typed in with + Add Row
    inwardDocOverrides() names them (it always has); what changed is who says
    yes. It used to be whoever knew the Edit Password, at this desk, with no
-   record left behind. Now it is the PURCHASER — the person who negotiated the
-   order — from mobile.html's PO Receipts ▸ Inward Approval sub-tab. Until they
-   approve, Submit Inward does not save.
+   record left behind. Now it is the MD — only the MD — from mobile.html's PO
+   Receipts ▸ Inward Approval sub-tab (the sub-tab is shown to the MD login
+   alone). Until the MD approves, Submit Inward does not save.
 
    The request lives in its own table, `inward_approvals`, keyed by a SIGNATURE
    of the exact submission it was asked for (header + every row's name / qty /
@@ -7639,21 +7867,21 @@ async function ensureInwardApproval_(rows,overrides){
   }
   const status=String((existing&&existing.status)||'');
   if(status==='Approved'){
-    showToast('✅ Purchaser ne ye entry approve kar di hai ('+escText(existing.decided_by||'Purchaser')+') — save ho rahi hai');
+    showToast('✅ MD ne ye entry approve kar di hai ('+escText(existing.decided_by||'MD')+') — save ho rahi hai');
     return true;
   }
   if(status==='Pending'){
-    showToast('⏳ Ye entry Purchaser ke paas approval ke liye bheji ja chuki hai ('+escText(existing.request_no||'')+').<br>'
+    showToast('⏳ Ye entry MD ke paas approval ke liye bheji ja chuki hai ('+escText(existing.request_no||'')+').<br>'
       +'Jab tak mobile app ke <b>PO Receipts ▸ Inward Approval</b> me approve nahi hoti, Submit Inward nahi hoga.','warn');
     return false;
   }
   const wasRejected=status==='Rejected';
   const ask=wasRejected
-    ?('❌ Purchaser ne ye entry REJECT kar di thi'
+    ?('❌ MD ne ye entry REJECT kar di thi'
       +(existing.remarks?('\n\nWajah: '+existing.remarks):'')
       +'\n\nValues theek karke dobara approval ke liye bhejein?')
     :('Is entry me PO / PR se alag values hain:\n\n• '+overrides.join('\n• ')
-      +'\n\nPurchaser ki approval ke bina ye save nahi hogi.\nAbhi approval ke liye bhej dein?');
+      +'\n\nMD ki approval ke bina ye save nahi hogi.\nAbhi approval ke liye bhej dein?');
   if(!confirm(ask))return false;
   const purchasers=await inwardApprovalPurchasers_(poNos,prNos);
   const requestNo='IA-'+Date.now().toString(36).toUpperCase()+'-'+Math.floor(Math.random()*900+100);
@@ -7682,8 +7910,7 @@ async function ensureInwardApproval_(rows,overrides){
     return false;
   }
   showToast('📨 Approval request bhej di gayi ('+escText(payload.request_no)+')'
-    +(purchasers.length?(' — '+escText(purchasers.join(', '))):'')
-    +'.<br>Purchaser ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad yahi entry dobara Submit karein.','warn');
+    +'.<br>MD ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad yahi entry dobara Submit karein.','warn');
   return false;
 }
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
@@ -7724,8 +7951,10 @@ function inwardDocOverrides(rows){
       out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
         +', pending sirf '+pending+'  (excess '+p.excess+')');
     }
+    // Both sides NET of discount: the row's List Price − Disc% against the PO
+    // line's unit price − its Disc% (poUnitPrice, see loadPoIntoInward).
     if(r.poLineId&&r.poUnitPrice!=null&&r.poUnitPrice!==''&&Math.abs(pNum(r.rate)-pNum(r.poUnitPrice))>0.001)
-      out.push(r.name+': rate '+pNum(r.rate)+' ≠ PO rate '+pNum(r.poUnitPrice));
+      out.push(r.name+': rate (after disc) '+nNum_(r.rate)+' ≠ PO rate (after disc) '+nNum_(r.poUnitPrice));
     /* An ITEM THAT IS NOT ON THE PO. Rows loaded from the PO carry its line's
        id; a row typed in with + Add Row carries nothing. Receiving something
        the PO never ordered is a bigger decision than receiving too much of
@@ -8263,9 +8492,10 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
   if(id==='employeeMasterSub')loadEmployeeMaster().catch(()=>{});
   if(id==='machineMasterSub') loadMachineMaster().catch(()=>{});
   if(id==='settingsSub'){
-    const admin=isAdmin();
-    if(byId('pwdChangeCard'))byId('pwdChangeCard').style.display=admin?'':'none';
-    if(byId('pwdChangeLockedNotice'))byId('pwdChangeLockedNotice').style.display=admin?'none':'block';
+    const canPwd=sarvCan('CHANGE_PASSWORDS');
+    if(byId('pwdChangeCard'))byId('pwdChangeCard').style.display=canPwd?'':'none';
+    if(byId('pwdChangeLockedNotice'))byId('pwdChangeLockedNotice').style.display=canPwd?'none':'block';
+    sarvRenderAdminPanel();
   }
 };window.revokeEditSession=()=>{};window.acClearAll=()=>{};window.togglePwdVis=(id)=>{const e=byId(id);if(e)e.type=e.type==='password'?'text':'password'};window.startupVerify=()=>{};window.clearCanvas=()=>{};window.openEditFlow=()=>{};window.removePhotoAt=()=>{};
 
@@ -8314,7 +8544,7 @@ window.submitPasswordChange=async function(){
   const err=byId('pwdChangeError'),ok=byId('pwdChangeSuccess');
   const show=(el,msg)=>{if(!el)return;el.textContent=msg;el.style.display='block';};
   if(err)err.style.display='none';if(ok)ok.style.display='none';
-  if(!isAdmin())return show(err,'⛔ Sirf Admin login Change Passwords access kar sakta hai');
+  if(!sarvCan('CHANGE_PASSWORDS'))return show(err,'⛔ Aapke role ko Change Passwords ka access nahi hai');
   if(!role)return show(err,'Pehle konsa password change karna hai select karo');
   if(!SB_READY)return show(err,'Supabase URL/key configure karein');
   const newPin=byId('pwdNew')?.value||'',confirmPin=byId('pwdConfirm')?.value||'';
@@ -8359,36 +8589,86 @@ window.submitPasswordChange=async function(){
    once logged in; sarvCurrentRole is checked only where a specific
    permission is needed (e.g. isAdmin() for cancelling a PO).
 ================================================================ */
-const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)'};
+const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User'};
 const SARV_LOGIN_STORAGE_KEY='sarv_active_role';
+const SARV_LOGIN_USER_KEY='sarv_active_user';
+const SARV_LOGIN_SIG_KEY='sarv_active_user_sig';
 let sarvCurrentRole=null;
+// The named user behind this login ({id,name}), or null for a plain role-PIN login.
+let sarvCurrentUser=null;
 function isAdmin(){return sarvCurrentRole==='ADMIN_PIN';}
+function sarvLoginLabel_(){
+  return (SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—')+(sarvCurrentUser&&sarvCurrentUser.name?' — '+sarvCurrentUser.name:'');
+}
+/* Fills the User dropdown under Role from app_users. Purchaser always needs a
+   name (each one has their own PIN); for the other roles a user is optional —
+   "Role PIN" logs in with the role's shared PIN exactly as before. */
+async function sarvFillLoginUsers_(){
+  const role=byId('sarvLoginRole')?.value||'';
+  const grp=byId('sarvLoginUserGroup'),sel=byId('sarvLoginUser');
+  if(!grp||!sel)return;
+  if(!role){grp.style.display='none';sel.innerHTML='';return;}
+  await sarvLoadAppUsers_();
+  const users=sarvAppUsers.filter(u=>u.is_active&&u.role===role);
+  let opts='';
+  if(role==='PURCHASER'){
+    opts='<option value="">-- Select Purchaser --</option>';
+    opts+=users.length
+      ? users.map(u=>'<option value="id:'+escText(u.id)+'">'+escText(u.user_name)+'</option>').join('')
+      // app_users not there yet (migration not run) — the old fixed names still work.
+      : sarvPurchaserNames_().map(n=>'<option value="pname:'+escText(n)+'">'+escText(n)+'</option>').join('');
+  }else{
+    if(!users.length){grp.style.display='none';sel.innerHTML='';return;}
+    opts='<option value="">Role PIN (shared)</option>'+users.map(u=>'<option value="id:'+escText(u.id)+'">'+escText(u.user_name)+'</option>').join('');
+  }
+  sel.innerHTML=opts;grp.style.display='';
+}
 async function sarvAttemptLogin(){
   const role=byId('sarvLoginRole')?.value||'';
   const pin=byId('sarvLoginPin')?.value||'';
+  const userVal=byId('sarvLoginUserGroup')?.style.display!=='none'?(byId('sarvLoginUser')?.value||''):'';
   const err=byId('sarvLoginError');
   if(err)err.style.display='none';
   const show=msg=>{if(err){err.textContent=msg;err.style.display='block';}};
   if(!role)return show('Role select karo');
+  if(role==='PURCHASER'&&!userVal)return show('Purchaser Name select karo');
   if(!pin)return show('PIN enter karo');
   if(!SB_READY)return show('Supabase URL/key configure karein');
   try{
     // The PIN is checked on the server — the stored hash is never sent here.
-    const ex=await SB.rpc('role_pin_exists',{p_role:role});
-    if(ex.error)throw ex.error;
-    if(!ex.data)return show('Is role ke liye PIN set nahi hai — Settings > Change Passwords me set karo');
-    const v=await SB.rpc('verify_role_pin',{p_role:role,p_pin:pin});
-    if(v.error)throw v.error;
-    if(!v.data)return show('Galat PIN');
-    sarvCurrentRole=role;
-    try{localStorage.setItem(SARV_LOGIN_STORAGE_KEY,role);}catch(e){}
-    const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+(SARV_ROLE_LABEL[role]||role);
+    let user=null;
+    if(userVal.startsWith('id:')){
+      const id=userVal.slice(3);
+      const v=await SB.rpc('verify_app_user_pin',{p_user_id:id,p_pin:pin});
+      if(v.error)throw v.error;
+      if(!v.data)return show('Galat PIN');
+      const u=sarvAppUsers.find(x=>x.id===id);
+      user={id,name:u?u.user_name:''};
+    }else{
+      const key=userVal.startsWith('pname:')?('PURCHASER::'+userVal.slice(6)):role;
+      const ex=await SB.rpc('role_pin_exists',{p_role:key});
+      if(ex.error)throw ex.error;
+      if(!ex.data)return show('Is role / user ke liye PIN set nahi hai — Admin se Settings me set karwayein');
+      const v=await SB.rpc('verify_role_pin',{p_role:key,p_pin:pin});
+      if(v.error)throw v.error;
+      if(!v.data)return show('Galat PIN');
+      if(userVal.startsWith('pname:'))user={id:null,name:userVal.slice(6)};
+    }
+    sarvCurrentRole=role;sarvCurrentUser=user;sarvPadForceDraw=false;
+    try{
+      localStorage.setItem(SARV_LOGIN_STORAGE_KEY,role);
+      if(user)localStorage.setItem(SARV_LOGIN_USER_KEY,JSON.stringify(user));else localStorage.removeItem(SARV_LOGIN_USER_KEY);
+      localStorage.removeItem(SARV_LOGIN_SIG_KEY);   // no signature is kept between submits any more
+    }catch(e){}
+    const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+sarvLoginLabel_();
     const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
     if(byId('sarvLoginPin'))byId('sarvLoginPin').value='';
     if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
+    sarvApplyAccess();
     sarvGoHome();
   }catch(e){
-    if(/does not exist|relation/i.test(e.message||''))show('⚠️ role_pins table missing — APPROVAL_CHAIN_MIGRATION.sql run karein');
+    if(/verify_app_user_pin/i.test(e.message||''))show('⚠️ ADMIN_PANEL_MIGRATION.sql abhi run nahi hua — user login ke liye pehle wo chalayein');
+    else if(/does not exist|relation/i.test(e.message||''))show('⚠️ role_pins table missing — APPROVAL_CHAIN_MIGRATION.sql run karein');
     else show(e.message||String(e));
   }
 }
@@ -8398,20 +8678,27 @@ async function sarvAttemptLogin(){
    drop the session and send the user back to the PIN screen with no warning. */
 function sarvLogout(){
   if(!confirm('Do you want Log out ?\n\nDobara kaam karne ke liye PIN phir se daalna padega.'))return;
-  sarvCurrentRole=null;
-  try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);}catch(e){}
+  sarvCurrentRole=null;sarvCurrentUser=null;
+  try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
 }
 function sarvUnlockNav(){
-  document.querySelectorAll('#storeInterface .nav-tabs .nav-link[data-target]').forEach(el=>el.style.display='');
-  document.querySelectorAll('#fullPurchasePanel .nav-tabs .nav-link[data-tab]').forEach(el=>el.style.display='');
+  // Only the sections this role may see (Admin Panel → Tab Visibility).
+  document.querySelectorAll('#storeInterface .nav-tabs .nav-link[data-target]').forEach(el=>{
+    el.style.display=sarvNavTargetVisible_(el.dataset.target)?'':'none';
+  });
+  document.querySelectorAll('#fullPurchasePanel .nav-tabs .nav-link[data-tab]').forEach(el=>{
+    const k={entry:'HOME_PR',po:'HOME_PO'}[el.dataset.tab];
+    el.style.display=(!k||sarvTabVisible(k))?'':'none';
+  });
 }
 function sarvLockNavToSection(){
   document.querySelectorAll('#storeInterface .nav-tabs .nav-link[data-target]').forEach(el=>el.style.display='none');
 }
 function sarvGoHome(){
   const dash=byId('sarvHomeDashboard');if(dash)dash.style.display='block';
-  const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent='👤 '+(SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—');
+  const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent='👤 '+sarvLoginLabel_();
+  sarvApplyHomeTiles_();
   // The Nature picked on the way in belongs to that visit only — coming back
   // Home means picking again (or not going through the chooser at all).
   releaseHomeNatureLocks();
@@ -8449,6 +8736,8 @@ function sarvNavigateFromHome(target){
   // now, after the Entry Type change handler has rebuilt the form's dropdowns.
   applyHomeNatureLocks();
   sarvLockNavToSection();
+  // A sub-tab hidden for this role must not be the one the section opens on.
+  sarvEnsureVisibleSubTabs_();
 }
 /* ── Home page help, in Hindi ────────────────────────────────────────
    Hover a home button → a card says what that screen is for. Click it →
@@ -8725,6 +9014,7 @@ function releaseHomeNatureLocks(){
 }
 document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
+  byId('sarvLoginRole')?.addEventListener('change',()=>sarvFillLoginUsers_().catch(()=>{}));
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
   const home=byId('sarvHomeDashboard');
   home?.addEventListener('click',e=>{
@@ -8750,12 +9040,661 @@ document.addEventListener('DOMContentLoaded',()=>{
     const savedRole=localStorage.getItem(SARV_LOGIN_STORAGE_KEY);
     if(savedRole&&SARV_ROLE_LABEL[savedRole]){
       sarvCurrentRole=savedRole;
-      const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+SARV_ROLE_LABEL[savedRole];
+      try{sarvCurrentUser=JSON.parse(localStorage.getItem(SARV_LOGIN_USER_KEY)||'null');}catch(e){sarvCurrentUser=null;}
+      try{localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
+      const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+sarvLoginLabel_();
+      sarvApplyAccess();
       const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
       if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
       sarvGoHome();
     }
   }catch(e){}
+});
+
+/* ================================================================
+   ADMIN PANEL — Users & Roles, role-wise Feature Access, Tab Visibility
+   ----------------------------------------------------------------
+   Both matrices live in app_settings (keys role_permissions /
+   tab_visibility) as {KEY:{ROLE:true|false}}. Anything not saved yet
+   falls back to the defaults below, which are what the app did before
+   this panel existed — so running the migration changes nothing until
+   an Admin saves. Writes go through admin_save_setting() /
+   admin_save_user() and are authorised by the Admin PIN on the server
+   (ADMIN_PANEL_MIGRATION.sql). mobile.html reads the same
+   role_permissions row for its six tabs.
+================================================================ */
+// The columns of the reference sheet, in its order.
+const SARV_PERM_ROLES=[
+  {code:'USER_IC_PIN',label:'Store Incharge'},{code:'USER_GM_PIN',label:'GM'},{code:'USER_MD_PIN',label:'MD'},
+  {code:'PURCHASER',label:'Purchaser'},{code:'USER_AC_PIN',label:'Accountant'},{code:'USER_GT_PIN',label:'Gate Man'},
+  {code:'ADMIN_PIN',label:'Admin'},{code:'VENDOR_VERIFY_PIN',label:'Vendor'},{code:'PO_SENDER_PIN',label:'PO Sender'},
+  {code:'VIEW_PIN',label:'View'},{code:'EDIT_PASSWORD',label:'Edit'}
+];
+/* def: 'ALL' every role · 'W' every role except View · [codes] only those.
+   lock: roles that are always YES (so an Admin cannot lock themself out). */
+const SARV_FEATURES=[
+  {group:'🗂️ Master Data'},
+  {key:'ADD_ITEM',label:'ADD NEW ITEM',hint:'Item Master + forms ka ➕ New Item',def:'W'},
+  {key:'DOWNLOAD_CSV',label:'DOWNLOAD CSV',hint:'Master Data lists + Reports ka Download CSV',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN']},
+  {key:'ADD_SUPPLIER',label:'ADD SUPPLIER',hint:'Supplier Master me naya supplier',def:'W'},
+  {key:'ADD_EMPLOYEE',label:'ADD EMPLOYEE',hint:'Employee Master + PR form ka ➕ Add New Employee',def:'W'},
+  {key:'ADD_MACHINE',label:'ADD MACHINE',hint:'Machine List me nayi machine',def:'W'},
+  {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Settings › Change Passwords (Admin PIN phir bhi lagta hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {group:'📄 Records & Reports'},
+  {key:'EXPORT_CSV',label:'EXPORT CSV',hint:'PR / Follow-Up / Item Ledger / PO Details ka Export',def:'ALL'},
+  {key:'PDF_VIEW',label:'PDF VIEW',hint:'Reports, PO list, Follow-Up ke PDF links',def:'ALL'},
+  {key:'EDIT',label:'EDIT',hint:'Master Data edit ✏️ + saved record edit',def:['ADMIN_PIN','EDIT_PASSWORD']},
+  {key:'DELETE',label:'DELETE',hint:'Master Data delete + record cancel ❌',def:['ADMIN_PIN']},
+  {group:'🛒 Purchase (Desktop)'},
+  {key:'PR_PDF',label:'PR PDF',hint:'PR ki PDF kholna',def:'ALL'},
+  {key:'VENDOR_INFO_DESK',label:'Vendor Info.',hint:'💰 Vendor Rate & Info popup me badlav',def:['ADMIN_PIN']},
+  {key:'EDIT_PR',label:'EDIT PR',hint:'Pending / Rejected / Hold PR edit (Admin: har status)',def:'W'},
+  {key:'PO_CANCEL',label:'PO CANCEL',hint:'Approved PO cancel',def:['ADMIN_PIN']},
+  {key:'PO_CLOSE',label:'PO CLOSE',hint:'PO short-close',def:['ADMIN_PIN']},
+  {key:'PO_RECEIVED_VIEW',label:'PO RECEIVED/CLOSE VIEW',hint:'Generated POs me Received / Closed dikhana',def:['ADMIN_PIN']},
+  {group:'🏬 Store'},
+  {key:'SUBMIT_INWARD',label:'SUBMIT INWARD',hint:'Inward + Inward (NB) submit',def:'W'},
+  {key:'SUBMIT_OUTWARD',label:'SUBMIT OUTWARD',hint:'Outward submit',def:'W'},
+  {key:'SUBMIT_ISSUE',label:'SUBMIT ISSUE',hint:'Issue submit',def:'W'},
+  {key:'ITEM_LEDGER',label:'ITEM GENERATE LEDGER',hint:'Item Tracker › Generate Ledger',def:'ALL'},
+  {group:'📱 Approval App (mobile.html tabs)'},
+  {key:'VENDOR_INFO_MOBILE',label:'Vendor Info.',hint:'Mobile › Vendor Info tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
+  {key:'PO_GENERATE',label:'PO GENERATE',hint:'Mobile › PO Generate tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
+  {key:'MD_APPROVAL',label:'MD APPROVAL',hint:'Mobile › MD Approval tab',def:['USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
+  {key:'PO_SENT',label:'PO SENT TO VENDOR',hint:'Mobile › PO Sent tab',def:['USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
+  {key:'STORE_CHECK',label:'STORE CHECK',hint:'Mobile › Store Check tab',def:['USER_GM_PIN','USER_MD_PIN','ADMIN_PIN']},
+  {key:'PO_RECEIPTS',label:'PO RECEIPTS',hint:'Mobile › PO Receipts tab',def:['PURCHASER','USER_MD_PIN','ADMIN_PIN']},
+];
+const SARV_TABS=[
+  {group:'🏠 Home Page'},
+  {key:'HOME_PR',label:'Purchase Requirement',def:'ALL'},
+  {key:'HOME_PO',label:'PO Generation',def:'ALL'},
+  {key:'HOME_IN',label:'Material Inward',def:'ALL'},
+  {key:'HOME_IN_NB',label:'Inward (NB)',def:'ALL'},
+  {key:'HOME_OUT',label:'Material Outward',def:'ALL'},
+  {key:'HOME_ISSUE',label:'Issue',def:'ALL'},
+  {key:'HOME_REPORTS',label:'Print History / Reports',def:'ALL'},
+  {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
+  {key:'HOME_MASTER',label:'Master Data',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
+  {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
+  {group:'🛒 PO Generation › Sub Tabs'},
+  {key:'PO_SUB_PENDING',label:'Pending Items (Build PO)',def:'ALL'},
+  {key:'PO_SUB_LIST',label:'Generated POs',def:'ALL'},
+  {key:'PO_SUB_REPORT',label:'Follow-Up Report',def:'ALL'},
+  {group:'🗂️ Master Data › Sub Tabs'},
+  {key:'MD_ITEM',label:'Item Master',def:'ALL'},
+  {key:'MD_SUPPLIER',label:'Supplier Master',def:'ALL'},
+  {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
+  {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
+  {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
+];
+const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',settingsSub:'MD_SETTINGS'};
+const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
+const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
+  itemTrackerPanel:['HOME_TRACKER'],fullPurchasePanel:['HOME_PR','HOME_PO'],masterDataPanel:['HOME_MASTER'],repairTrackerPanel:['HOME_REPAIR']};
+const SARV_PURCHASER_FALLBACK=['KHUSHBOO','SATINDER JI','ANKUR JI','PARKASH JI','DEEPAK VERMA','PRIYA VERMA','FIELD BOY'];
+
+let sarvSettings={role_permissions:null,tab_visibility:null};
+let sarvSettingsMissing=false;
+let sarvAppUsers=[],sarvAppUsersLoaded=false,sarvAppUsersMissing=false;
+
+function sarvDefOf_(d,role){
+  if(d.def==='ALL')return true;
+  if(d.def==='W')return role!=='VIEW_PIN';
+  return Array.isArray(d.def)&&d.def.includes(role);
+}
+function sarvMatrixVal_(matrix,defs,key,role){
+  const d=defs.find(f=>f.key===key);if(!d)return true;
+  if(d.lock&&d.lock.includes(role))return true;
+  const m=matrix&&matrix[key];
+  if(m&&typeof m[role]==='boolean')return m[role];
+  return sarvDefOf_(d,role);
+}
+function sarvCanRole(role,key){return sarvMatrixVal_(sarvSettings.role_permissions,SARV_FEATURES,key,role);}
+function sarvCan(key){return !!sarvCurrentRole&&sarvCanRole(sarvCurrentRole,key);}
+function sarvTabVisible(key){
+  if(!sarvCurrentRole)return true;
+  return sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,sarvCurrentRole);
+}
+function sarvNavTargetVisible_(target){
+  const ks=SARV_NAV_TARGET_KEYS[target];
+  return !ks||ks.some(sarvTabVisible);
+}
+function sarvFeatureLabel_(key){const d=SARV_FEATURES.find(f=>f.key===key);return d?d.label:key;}
+function sarvDeny(key){
+  showToast('⛔ "'+sarvFeatureLabel_(key)+'" — '+(SARV_ROLE_LABEL[sarvCurrentRole]||'is role')+' ko access nahi hai. Admin se Settings › Admin Panel me access lein.','warn');
+}
+function sarvGuard(key){if(sarvCan(key))return true;sarvDeny(key);return false;}
+
+/* Buttons that are simply hidden when the role lacks the feature, and every
+   control that is refused on click. The click check runs in the capture phase,
+   so it fires before the button's own handler and covers rows that are
+   rendered later as well. */
+const SARV_FEATURE_HIDE={
+  ADD_ITEM:['[onclick^="openNewItemMasterModal"]'],
+  DOWNLOAD_CSV:['[onclick^="exportTableCSV"]','#excelDownloadBtn'],
+  ADD_EMPLOYEE:['#p_reqAddEmpBtn','[onclick^="addMasterEmployee"]'],
+  ADD_MACHINE:['[onclick^="addMasterMachine"]'],
+  EXPORT_CSV:['#itLeCsvBtn','#p_exportCsvBtn','#p_poRepCsvBtn','#pod_csv'],
+  PDF_VIEW:['#itLePdfBtn'],
+};
+const SARV_CLICK_GUARDS=[
+  ['#submitBtn','SUBMIT_INWARD'],
+  ['#outSubmitBtn',()=>(byId('outEntryTypeSelect')?.value==='ISSUE'?'SUBMIT_ISSUE':'SUBMIT_OUTWARD')],
+  ['#itLeRunBtn','ITEM_LEDGER'],
+  ['#itLeCsvBtn,#p_exportCsvBtn,#p_poRepCsvBtn,#pod_csv','EXPORT_CSV'],
+  ['a[data-doc="PR"]','PR_PDF'],
+  ['#itLePdfBtn,#searchResultsBody a[href],#p_poListBody a[href],a.fu-doc[href]','PDF_VIEW'],
+  ['[onclick^="exportTableCSV"],#excelDownloadBtn','DOWNLOAD_CSV'],
+  ['[onclick^="openNewItemMasterModal"]','ADD_ITEM'],
+  ['#p_reqAddEmpBtn,[onclick^="addMasterEmployee"]','ADD_EMPLOYEE'],
+  ['[onclick^="addMasterMachine"]','ADD_MACHINE'],
+  ['.sarv-po-cancel','PO_CANCEL'],
+  ['.sarv-po-shortclose','PO_CLOSE'],
+];
+document.addEventListener('click',e=>{
+  if(!sarvCurrentRole||!e.target||!e.target.closest)return;
+  for(const [sel,k] of SARV_CLICK_GUARDS){
+    const el=e.target.closest(sel);if(!el)continue;
+    const key=typeof k==='function'?k(el):k;
+    if(key&&!sarvCan(key)){e.preventDefault();e.stopImmediatePropagation();sarvDeny(key);}
+    return;
+  }
+},true);
+function sarvApplyPermCss_(){
+  let st=byId('sarvPermStyle');
+  if(!st){st=document.createElement('style');st.id='sarvPermStyle';document.head.appendChild(st);}
+  const hide=[];
+  if(sarvCurrentRole)Object.keys(SARV_FEATURE_HIDE).forEach(k=>{if(!sarvCan(k))hide.push(...SARV_FEATURE_HIDE[k]);});
+  st.textContent=hide.length?hide.join(',')+'{display:none !important;}':'';
+}
+function sarvApplyHomeTiles_(){
+  document.querySelectorAll('#sarvHomeDashboard .sarv-home-row[data-go]').forEach(b=>{
+    b.style.display=sarvTabVisible('HOME_'+b.dataset.go)?'':'none';
+  });
+}
+function sarvApplySubTabs_(){
+  document.querySelectorAll('#masterDataPanel .master-sub-tab[data-subtab]').forEach(b=>{
+    const k=SARV_MASTER_SUB_KEY[b.dataset.subtab];
+    b.style.display=(!k||sarvTabVisible(k))?'':'none';
+  });
+  Object.keys(SARV_PO_SUB_KEY).forEach(id=>{
+    const b=byId(id);if(b)b.style.display=sarvTabVisible(SARV_PO_SUB_KEY[id])?'':'none';
+  });
+  const ap=byId('sarvAdminPanel');if(ap)ap.style.display=isAdmin()?'':'none';
+}
+// The section just opened must not sit on a sub-tab this role cannot see.
+function sarvEnsureVisibleSubTabs_(){
+  sarvApplySubTabs_();
+  const mp=byId('masterDataPanel');
+  if(mp&&mp.style.display!=='none'){
+    const cur=[...mp.querySelectorAll('[id$="Sub"]')].find(x=>x.style.display!=='none');
+    const curBtn=cur&&mp.querySelector('.master-sub-tab[data-subtab="'+cur.id+'"]');
+    if(!curBtn||curBtn.style.display==='none'){
+      const first=[...mp.querySelectorAll('.master-sub-tab[data-subtab]')].find(b=>b.style.display!=='none');
+      if(first)switchMasterSubTab(first.dataset.subtab);
+    }
+  }
+  const panels={p_poSubPendingBtn:'p_poPendingPanel',p_poSubListBtn:'p_poListPanel',p_poSubReportBtn:'p_poReportPanel'};
+  const shown=Object.keys(panels).find(b=>byId(panels[b])&&byId(panels[b]).style.display!=='none');
+  if(shown&&byId(shown)&&byId(shown).style.display==='none'){
+    const first=Object.keys(panels).find(b=>byId(b)&&byId(b).style.display!=='none');
+    if(first)byId(first).click();
+    else Object.values(panels).forEach(p=>{if(byId(p))byId(p).style.display='none';});
+  }
+}
+function sarvApplyAccess(){
+  sarvApplyPadPinMode_();
+  sarvApplyPermCss_();
+  sarvApplyHomeTiles_();
+  sarvApplySubTabs_();
+  if(byId('sarvHomeDashboard')?.style.display==='none')sarvEnsureVisibleSubTabs_();
+}
+
+/* ── Loading ────────────────────────────────────────────────────── */
+async function sarvLoadSettings_(){
+  if(!SB_READY)return;
+  try{
+    const q=await SB.from('app_settings').select('key,value').in('key',['role_permissions','tab_visibility']);
+    if(q.error)throw q.error;
+    sarvSettings={role_permissions:null,tab_visibility:null};
+    (q.data||[]).forEach(r=>{sarvSettings[r.key]=r.value||null;});
+    sarvSettingsMissing=false;
+  }catch(e){
+    sarvSettingsMissing=true;
+    console.warn('[SARV] app_settings not loaded (ADMIN_PANEL_MIGRATION.sql run hua?):',e.message||e);
+  }
+  sarvApplyAccess();
+}
+async function sarvLoadAppUsers_(force){
+  if(sarvAppUsersLoaded&&!force)return sarvAppUsers;
+  if(!SB_READY)return sarvAppUsers;
+  try{
+    // signature is deliberately not selectable — only get_user_signature() returns it.
+    const q=await SB.from('app_users').select('id,user_name,role,emp_code,contact_no,has_signature,is_active,created_at,updated_at').order('user_name');
+    if(q.error)throw q.error;
+    sarvAppUsers=q.data||[];sarvAppUsersMissing=false;
+  }catch(e){
+    sarvAppUsers=[];sarvAppUsersMissing=true;
+    console.warn('[SARV] app_users not loaded (ADMIN_PANEL_MIGRATION.sql run hua?):',e.message||e);
+  }
+  sarvAppUsersLoaded=true;
+  sarvRefreshPurchaserLists_();
+  sarvApplyPadPinMode_();
+  return sarvAppUsers;
+}
+// Purchasers come from Users & Roles; the old fixed names only until the migration has run.
+function sarvPurchaserNames_(){
+  const p=sarvAppUsers.filter(u=>u.role==='PURCHASER'&&u.is_active).map(u=>u.user_name);
+  return p.length?p:SARV_PURCHASER_FALLBACK.slice();
+}
+function sarvRefreshPurchaserLists_(){
+  const names=sarvPurchaserNames_();
+  const sel=byId('p_reqGeneratedBy');
+  if(sel){
+    const keep=sel.value;
+    const list=keep&&!names.includes(keep)?names.concat([keep]):names;
+    sel.innerHTML='<option value="">-- Select Purchaser --</option>'+list.map(n=>'<option value="'+escText(n)+'">'+escText(n)+'</option>').join('');
+    sel.value=keep;
+  }
+  const og=document.querySelector('#pwdChangeTarget optgroup');
+  if(og)og.innerHTML=names.map(n=>'<option value="PURCHASER::'+escText(n)+'">Purchaser &mdash; '+escText(n)+'</option>').join('');
+}
+
+/* ── Admin Panel UI ─────────────────────────────────────────────── */
+let sarvApPane='users';
+let sarvApDraft={perms:null,tabs:null};
+function sarvFullMatrix_(matrix,defs){
+  const out={};
+  defs.forEach(d=>{if(!d.key)return;out[d.key]={};SARV_PERM_ROLES.forEach(r=>{out[d.key][r.code]=sarvMatrixVal_(matrix,defs,d.key,r.code);});});
+  return out;
+}
+function sarvRenderAdminPanel(){
+  sarvApplySubTabs_();
+  if(!isAdmin())return;
+  const note=byId('ap_migrationNote');
+  Promise.all([sarvLoadSettings_(),sarvLoadAppUsers_(true)]).then(()=>{
+    if(note){
+      const miss=sarvSettingsMissing||sarvAppUsersMissing;
+      note.style.display=miss?'block':'none';
+      note.innerHTML=miss?'&#9888;&#65039; Supabase me <code>ADMIN_PANEL_MIGRATION.sql</code> abhi run nahi hua hai &mdash; tab tak defaults chal rahe hain aur Save nahi hoga.':'';
+    }
+    if(!sarvApDraft.perms)sarvApDraft.perms=sarvFullMatrix_(sarvSettings.role_permissions,SARV_FEATURES);
+    if(!sarvApDraft.tabs)sarvApDraft.tabs=sarvFullMatrix_(sarvSettings.tab_visibility,SARV_TABS);
+    sarvRenderUsers_();
+    sarvRenderMatrix_('ap_permMatrix',SARV_FEATURES,'perms');
+    sarvRenderMatrix_('ap_tabMatrix',SARV_TABS,'tabs');
+  });
+}
+function sarvShowApPane_(p){
+  sarvApPane=p;
+  document.querySelectorAll('#sarvAdminPanel .ap-tab').forEach(b=>b.classList.toggle('active',b.dataset.ap===p));
+  document.querySelectorAll('#sarvAdminPanel .ap-pane').forEach(x=>x.style.display=x.dataset.apPane===p?'':'none');
+}
+function sarvRoleLabelOf_(code){const r=SARV_PERM_ROLES.find(x=>x.code===code);return r?r.label:(SARV_ROLE_LABEL[code]||code);}
+function sarvRenderUsers_(){
+  const tb=byId('ap_usersBody');if(!tb)return;
+  const rf=byId('ap_userRoleFilter');
+  if(rf&&rf.options.length<=1)rf.innerHTML='<option value="">All Roles</option>'+SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'">'+escText(r.label)+'</option>').join('');
+  if(sarvAppUsersMissing){tb.innerHTML='<tr><td colspan="9" class="ap-empty">app_users table nahi mili — ADMIN_PANEL_MIGRATION.sql run karein.</td></tr>';return;}
+  const role=rf?.value||'',q=(byId('ap_userSearch')?.value||'').trim().toLowerCase();
+  const order=SARV_PERM_ROLES.map(r=>r.code);
+  const rows=sarvAppUsers.filter(u=>(!role||u.role===role)&&(!q||[u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role)].join(' ').toLowerCase().includes(q)))
+    .sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role)||String(a.user_name).localeCompare(String(b.user_name)));
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="ap-empty">Koi user nahi — ➕ Add User se banayein.</td></tr>';return;}
+  tb.innerHTML=rows.map((u,i)=>'<tr>'
+    +'<td style="color:#94a3b8;">'+(i+1)+'</td>'
+    +'<td style="font-weight:800;">'+escText(u.user_name)+'</td>'
+    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;">'+escText(sarvRoleLabelOf_(u.role))+'</span></td>'
+    +'<td>'+escText(u.emp_code||'—')+'</td>'
+    +'<td>'+escText(u.contact_no||'—')+'</td>'
+    +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved — PIN se sign kar sakte hain">&#9997;&#65039; &#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="Signature abhi nahi bana">&mdash;</span>')+'</td>'
+    +'<td style="text-align:center;"><span class="ap-pill" style="background:'+(u.is_active?'#dcfce7':'#fee2e2')+';color:'+(u.is_active?'#166534':'#dc2626')+';">'+(u.is_active?'Active':'Inactive')+'</span></td>'
+    +'<td style="text-align:center;"><button type="button" class="ap-ibtn" data-ap-edit="'+escText(u.id)+'" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;">&#9999;&#65039;</button></td>'
+    +'<td style="text-align:center;"><button type="button" class="ap-ibtn" data-ap-del="'+escText(u.id)+'" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;">&#10005;</button></td>'
+    +'</tr>').join('');
+}
+function sarvRenderMatrix_(tableId,defs,which){
+  const t=byId(tableId);if(!t)return;
+  const m=sarvApDraft[which]||{};
+  const saved=which==='perms'?sarvFullMatrix_(sarvSettings.role_permissions,SARV_FEATURES):sarvFullMatrix_(sarvSettings.tab_visibility,SARV_TABS);
+  let h='<thead><tr><th>'+(which==='perms'?'FEATURES':'TABS / SUB TABS')+'</th>'
+    +SARV_PERM_ROLES.map(r=>'<th data-ap-col="'+r.code+'" title="Click — poora column YES / NO">'+escText(r.label)+'</th>').join('')+'</tr></thead><tbody>';
+  defs.forEach(d=>{
+    if(d.group){h+='<tr class="ap-group"><td colspan="'+(SARV_PERM_ROLES.length+1)+'">'+escText(d.group)+'</td></tr>';return;}
+    const dirty=SARV_PERM_ROLES.some(r=>!!(m[d.key]||{})[r.code]!==!!(saved[d.key]||{})[r.code]);
+    h+='<tr data-ap-key="'+d.key+'"'+(dirty?' class="ap-dirty"':'')+'><th data-ap-row="'+d.key+'" title="Click — poori row YES / NO">'+escText(d.label)+(d.hint?'<small>'+escText(d.hint)+'</small>':'')+'</th>';
+    SARV_PERM_ROLES.forEach(r=>{
+      const locked=!!(d.lock&&d.lock.includes(r.code));
+      const on=locked||!!(m[d.key]||{})[r.code];
+      h+='<td class="ap-cell'+(on?' yes':'')+(locked?' locked':'')+'"><label title="'+escText(r.label+' — '+d.label)+(locked?' (hamesha YES)':'')+'">'
+        +'<input type="checkbox" data-ap-k="'+d.key+'" data-ap-r="'+r.code+'"'+(on?' checked':'')+(locked?' disabled':'')+'></label></td>';
+    });
+    h+='</tr>';
+  });
+  t.innerHTML=h+'</tbody>';
+  t.dataset.which=which;
+}
+function sarvMatrixClick_(e){
+  const t=e.currentTarget,which=t.dataset.which,defs=which==='perms'?SARV_FEATURES:SARV_TABS,m=sarvApDraft[which];
+  if(!m)return;
+  const lockedFor=(k,r)=>{const d=defs.find(x=>x.key===k);return !!(d&&d.lock&&d.lock.includes(r));};
+  const cb=e.target.closest('input[data-ap-k]');
+  if(cb){m[cb.dataset.apK][cb.dataset.apR]=cb.checked;sarvRenderMatrix_(t.id,defs,which);return;}
+  const col=e.target.closest('th[data-ap-col]');
+  if(col){
+    const r=col.dataset.apCol,keys=defs.filter(d=>d.key&&!lockedFor(d.key,r)).map(d=>d.key);
+    const allOn=keys.every(k=>m[k][r]);keys.forEach(k=>m[k][r]=!allOn);
+    sarvRenderMatrix_(t.id,defs,which);return;
+  }
+  const row=e.target.closest('th[data-ap-row]');
+  if(row){
+    const k=row.dataset.apRow,roles=SARV_PERM_ROLES.map(r=>r.code).filter(r=>!lockedFor(k,r));
+    const allOn=roles.every(r=>m[k][r]);roles.forEach(r=>m[k][r]=!allOn);
+    sarvRenderMatrix_(t.id,defs,which);
+  }
+}
+async function sarvSaveMatrix_(which){
+  if(!isAdmin())return showToast('⛔ Sirf Admin login','warn');
+  const key=which==='perms'?'role_permissions':'tab_visibility';
+  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:(which==='perms'?'Feature Access':'Tab Visibility')+' save karne ke liye',
+    recordInfo:'Sabhi roles par turant lagu hoga (mobile app me bhi)',label:'Admin PIN',confirmText:'&#128190; Save'});
+  if(adminPin==null)return;
+  if(!adminPin.trim())return showToast('Admin PIN khali nahi ho sakta','warn');
+  try{
+    const r=await SB.rpc('admin_save_setting',{p_key:key,p_value:sarvApDraft[which],p_admin_pin:adminPin.trim()});
+    if(r.error)throw r.error;
+    if(!r.data)return showToast('❌ Admin PIN galat hai — save nahi hua','error');
+    sarvSettings[key]=JSON.parse(JSON.stringify(sarvApDraft[which]));
+    sarvApplyAccess();
+    sarvRenderMatrix_(which==='perms'?'ap_permMatrix':'ap_tabMatrix',which==='perms'?SARV_FEATURES:SARV_TABS,which);
+    showToast('✅ '+(which==='perms'?'Feature Access':'Tab Visibility')+' save ho gaya');
+  }catch(e){
+    if(/admin_save_setting|does not exist/i.test(e.message||''))showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');
+    else dbError(e);
+  }
+}
+
+/* ── Signature pad (shared by the user popup) ───────────────────── */
+function sarvMakeSigPad_(canvas){
+  const ctx=canvas.getContext('2d');
+  ctx.strokeStyle='#0f172a';ctx.lineWidth=2.4;ctx.lineCap='round';ctx.lineJoin='round';
+  let down=false,ink=0,lx=0,ly=0;
+  const pos=e=>{const r=canvas.getBoundingClientRect(),s=e.touches?e.touches[0]:e;return{x:(s.clientX-r.left)*canvas.width/r.width,y:(s.clientY-r.top)*canvas.height/r.height};};
+  const start=e=>{e.preventDefault();down=true;const p=pos(e);lx=p.x;ly=p.y;ctx.beginPath();ctx.moveTo(p.x,p.y);};
+  const move=e=>{e.preventDefault();if(!down)return;const p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();ink+=Math.hypot(p.x-lx,p.y-ly);lx=p.x;ly=p.y;};
+  const stop=()=>{down=false;};
+  canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);
+  canvas.addEventListener('mouseup',stop);canvas.addEventListener('mouseleave',stop);
+  canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});
+  canvas.addEventListener('touchend',stop);
+  return{
+    clear(){ctx.clearRect(0,0,canvas.width,canvas.height);ink=0;},
+    hasInk(){return ink>=30;},
+    dataUrl(){return canvas.toDataURL('image/png');}
+  };
+}
+// Draws a saved signature into any pad, scaled to fit and centred.
+function sarvDrawSigInto_(canvas,dataUrl){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const cx=canvas.getContext('2d');
+      cx.clearRect(0,0,canvas.width,canvas.height);
+      const s=Math.min(canvas.width/img.width,canvas.height/img.height);
+      const w=img.width*s,h=img.height*s;
+      cx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
+      res();
+    };
+    img.onerror=()=>rej(new Error('Signature image load nahi hui'));
+    img.src=dataUrl;
+  });
+}
+
+/* ── User add / edit popup ──────────────────────────────────────── */
+function sarvOpenUserModal(id,presetRole){
+  if(!isAdmin())return showToast('⛔ Sirf Admin login users bana sakta hai','warn');
+  if(sarvAppUsersMissing)return showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');
+  const u=id?sarvAppUsers.find(x=>x.id===id):null;
+  const role=u?u.role:(presetRole||'');
+  const ov=document.createElement('div');
+  ov.className='sarv-ov';ov.id='sarvUserModal';
+  ov.innerHTML='<div class="card"><div class="hd">'+(u?'&#9999;&#65039; Update User — '+escText(u.user_name):(presetRole==='PURCHASER'?'&#10133; Add New Purchaser':'&#10133; Add User'))+'</div><div class="bd">'
+    +'<div class="err" data-f="err"></div>'
+    +'<div class="g2">'
+    +'<div class="fg"><label>Role <span class="req">*</span></label><select data-f="role"><option value="">-- Select Role --</option>'
+      +SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'"'+(r.code===role?' selected':'')+'>'+escText(r.label)+'</option>').join('')+'</select></div>'
+    +'<div class="fg"><label>User Name <span class="req">*</span></label><input data-f="name" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.user_name:'')+'" placeholder="Full name"></div>'
+    +'<div class="fg"><label>Employee Code</label><input data-f="emp" list="dl-emp-codes" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.emp_code||'':'')+'" placeholder="optional — auto-fill"></div>'
+    +'<div class="fg"><label>Contact No.</label><input data-f="contact" type="tel" maxlength="15" value="'+escText(u?u.contact_no||'':'')+'" placeholder="optional"></div>'
+    +'<div class="fg"><label>'+(u?'New PIN <small style="text-transform:none;font-weight:600;">(khali = purana PIN)</small>':'PIN <span class="req">*</span>')+'</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>'
+    +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="dobara"></div>'
+    +'</div>'
+    +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (login + PIN se sign kar sakta hai)</span></div>'
+    +'<div class="fg"><label>&#9997;&#65039; Digital Signature '+(u&&u.has_signature?'<span style="color:#15803d;text-transform:none;">— saved &#10004; (naya banayein to replace hoga)</span>':'<span style="color:#b45309;text-transform:none;">— user yahan ek baar sign kare</span>')+'</label>'
+    +'<div class="pad"><canvas width="900" height="220"></canvas><div class="padbar"><span>Mouse / touch / stylus se sign karein</span>'
+    +'<span style="display:flex;gap:8px;align-items:center;">'
+    +(u&&u.has_signature?'<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;font-size:11px;color:#b91c1c;font-weight:700;"><input data-f="sigdel" type="checkbox" style="width:14px;height:14px;"> Saved sign hatayein</label>':'')
+    +'<button type="button" class="b no sm" data-f="sigclr">&#10006; Clear</button></span></div></div></div>'
+    +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">&#128190; Save User</button></div></div>';
+  document.body.appendChild(ov);
+  const f=k=>ov.querySelector('[data-f="'+k+'"]');
+  const pad=sarvMakeSigPad_(ov.querySelector('canvas'));
+  const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
+  // Esc inside the Admin PIN prompt belongs to that prompt, not to this form.
+  const onKey=e=>{if(e.key==='Escape'&&byId('pwdGateModal')?.style.display!=='flex'){e.preventDefault();close();}};
+  document.addEventListener('keydown',onKey,true);
+  const err=msg=>{const el=f('err');el.textContent=msg;el.style.display=msg?'block':'none';if(msg)ov.querySelector('.card').scrollTop=0;};
+  f('sigclr').addEventListener('click',()=>pad.clear());
+  f('cancel').addEventListener('click',close);
+  // Employee Code fills the name / contact from Employee Master.
+  f('emp').addEventListener('input',()=>{
+    const e=lookupEmployee(f('emp').value);if(!e)return;
+    if(!f('name').value.trim())f('name').value=e.person_name||'';
+    if(!f('contact').value.trim())f('contact').value=e.contact_no||'';
+  });
+  f('save').addEventListener('click',async()=>{
+    err('');
+    const roleV=f('role').value,name=f('name').value.trim().toUpperCase(),pin=f('pin').value,pin2=f('pin2').value;
+    if(!roleV)return err('Role select karein');
+    if(!name)return err('User Name zaroori hai');
+    const dup=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name&&x.id!==(u&&u.id));
+    if(dup)return err('Is role me "'+name+'" pehle se hai');
+    if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN zaroori hai');
+    if(pin&&pin.length<4)return err('PIN kam se kam 4 digit ka ho');
+    if(pin!==pin2)return err('PIN aur Confirm PIN match nahi kar rahe');
+    let sig=null;
+    if(pad.hasInk())sig=pad.dataUrl();
+    else if(f('sigdel')&&f('sigdel').checked)sig='';
+    const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:(u?'User update':'Naya user')+' save karne ke liye',
+      recordInfo:sarvRoleLabelOf_(roleV)+' — '+name,label:'Admin PIN',confirmText:'&#128190; Save User'});
+    if(adminPin==null)return;
+    if(!adminPin.trim())return err('Admin PIN khali nahi ho sakta');
+    const btn=f('save');btn.disabled=true;btn.textContent='⏳ Saving...';
+    try{
+      const r=await SB.rpc('admin_save_user',{p_id:u?u.id:null,p_user_name:name,p_role:roleV,
+        p_emp_code:f('emp').value.trim().toUpperCase()||null,p_contact_no:f('contact').value.trim()||null,
+        p_is_active:f('active').checked,p_new_pin:pin||null,p_signature:sig,p_admin_pin:adminPin.trim()});
+      if(r.error)throw r.error;
+      await sarvLoadAppUsers_(true);
+      sarvRenderUsers_();
+      close();
+      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''));
+    }catch(e){
+      const m=String(e.message||e);
+      const map={ADMIN_PIN_INVALID:'❌ Admin PIN galat hai',PIN_REQUIRED:'Is user ka PIN abhi set nahi hai — PIN daalein',PIN_TOO_SHORT:'PIN kam se kam 4 digit ka ho',
+        USER_EXISTS:'Is role me ye naam pehle se hai',ROLE_INVALID:'Role galat hai',NAME_ROLE_REQUIRED:'Role aur naam zaroori hain',USER_NOT_FOUND:'User nahi mila — Refresh karein'};
+      const k=Object.keys(map).find(x=>m.includes(x));
+      err(k?map[k]:(/admin_save_user|does not exist/i.test(m)?'⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein':m));
+    }finally{btn.disabled=false;btn.innerHTML='&#128190; Save User';}
+  });
+  setTimeout(()=>(role?f('name'):f('role')).focus(),30);
+}
+async function sarvDeleteUser_(id){
+  const u=sarvAppUsers.find(x=>x.id===id);if(!u)return;
+  if(!confirm('"'+u.user_name+'" ('+sarvRoleLabelOf_(u.role)+') ko delete karein?\n\nUska PIN aur saved signature bhi hat jayega.'+(u.role==='PURCHASER'?'\nPurchaser mobile app me login nahi kar payega.':'')+'\n\n(Sirf rokna ho to Edit karke "Active" hata dein.)'))return;
+  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:'User delete karne ke liye',recordInfo:u.user_name,label:'Admin PIN',confirmText:'&#128465; Delete'});
+  if(adminPin==null)return;
+  try{
+    const r=await SB.rpc('admin_delete_user',{p_id:id,p_admin_pin:adminPin.trim()});
+    if(r.error)throw r.error;
+    if(!r.data)return showToast('❌ Admin PIN galat hai — delete nahi hua','error');
+    await sarvLoadAppUsers_(true);sarvRenderUsers_();
+    showToast('🗑️ '+u.user_name+' delete ho gaya');
+  }catch(e){dbError(e);}
+}
+
+/* ── Sign with PIN ──────────────────────────────────────────────────
+   The signature a user drew once (Users & Roles) is put on a pad by typing
+   their PIN — get_user_signature() returns it only for the right PIN.
+   Resolves {dataUrl,name} or null when cancelled. */
+async function sarvPinSign(opts={}){
+  await sarvLoadAppUsers_();
+  if(sarvAppUsersMissing){if(!opts.quiet)showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');return null;}
+  let users=sarvAppUsers.filter(u=>u.is_active&&u.has_signature);
+  if(opts.roles&&opts.roles.length){const f=users.filter(u=>opts.roles.includes(u.role));if(f.length||opts.strictRoles)users=f;}
+  if(!users.length){if(!opts.quiet)showToast('Kisi user ka signature saved nahi hai — Admin Panel › Users & Roles me sign banwayein','warn');return null;}
+  const pre=(sarvCurrentUser&&users.find(u=>u.id===sarvCurrentUser.id))?sarvCurrentUser.id:(users.length===1?users[0].id:'');
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.className='sarv-ov';
+    ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">&#128273; PIN se Sign — '+escText(opts.title||'Digital Signature')+'</div><div class="bd">'
+      +'<div class="err" data-f="err"></div>'
+      +'<div class="fg"><label>User</label><select data-f="user"><option value="">-- Select --</option>'
+      +users.map(u=>'<option value="'+escText(u.id)+'"'+(u.id===pre?' selected':'')+'>'+escText(u.user_name)+' ('+escText(sarvRoleLabelOf_(u.role))+')</option>').join('')+'</select></div>'
+      +'<div class="fg"><label>Apna PIN</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
+      +'<div style="font-size:11px;color:#64748b;">'+escText(opts.note||'Sahi PIN par aapka saved signature pad par lag jayega.')+'</div>'
+      +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">&#9997;&#65039; Sign</button></div></div>';
+    document.body.appendChild(ov);
+    const f=k=>ov.querySelector('[data-f="'+k+'"]');
+    const done=v=>{document.removeEventListener('keydown',onKey,true);ov.remove();resolve(v);};
+    const submit=async()=>{
+      const id=f('user').value,pin=f('pin').value,er=f('err');
+      er.style.display='none';
+      if(!id){er.textContent='User select karein';er.style.display='block';return;}
+      if(!pin){er.textContent='PIN daalein';er.style.display='block';return;}
+      f('ok').disabled=true;
+      try{
+        const r=await SB.rpc('get_user_signature',{p_user_id:id,p_pin:pin});
+        if(r.error)throw r.error;
+        if(!r.data){er.textContent='❌ Galat PIN';er.style.display='block';f('pin').select();return;}
+        done({dataUrl:r.data,name:(users.find(u=>u.id===id)||{}).user_name||''});
+      }catch(e){er.textContent=e.message||String(e);er.style.display='block';}
+      finally{if(f('ok'))f('ok').disabled=false;}
+    };
+    const onKey=e=>{if(e.key==='Escape'){e.preventDefault();done(null);}else if(e.key==='Enter'){e.preventDefault();submit();}};
+    document.addEventListener('keydown',onKey,true);
+    f('cancel').addEventListener('click',()=>done(null));
+    f('ok').addEventListener('click',submit);
+    setTimeout(()=>(pre?f('pin'):f('user')).focus(),30);
+  });
+}
+/* A "🔑 PIN se Sign" button beside the Clear button of each signature pad. */
+function sarvAttachPinSign_(clearBtnId,canvasId,timeFieldId,title,roles,canUse){
+  const clr=byId(clearBtnId);if(!clr||clr.dataset.pinSign)return;
+  clr.dataset.pinSign='1';
+  const b=document.createElement('button');
+  b.type='button';b.className='sarv-pinsign-btn';b.innerHTML='&#128273; PIN se Sign';
+  b.title='Draw karne ki jagah apna PIN daalein — saved signature lag jayega';
+  b.style.marginRight='6px';
+  clr.parentNode.insertBefore(b,clr);
+  b.addEventListener('click',async()=>{
+    const c=byId(canvasId);if(!c)return;
+    if(canUse&&!canUse(c))return;
+    const r=await sarvPinSign({title,roles});if(!r)return;
+    try{
+      await sarvDrawSigInto_(c,r.dataUrl);
+      const tf=byId(timeFieldId);if(tf)tf.textContent=pStamp()+' — '+r.name;
+      showToast('✍️ '+r.name+' ka signature lag gaya');
+    }catch(e){showToast(e.message||String(e),'error');}
+  });
+}
+
+/* ── PIN-only pads ───────────────────────────────────────────────────
+   Once the logged-in user's sign is saved, the Store In-Charge draw pads
+   (Build PO, Vendor Rate & Info) are not shown at all: the confirm button asks
+   their PIN and lays the saved sign onto the (hidden) canvas, then carries on
+   exactly as if it had been drawn. A user with no saved sign — or whose PIN
+   brings none back — gets the pad as before. */
+const SARV_PIN_PADS=[
+  {canvas:'p_poStoreSignCanvas',time:'p_poStoreSignTimeField',confirm:'p_poBuildConfirmBtn',title:'Generate PO'},
+  {canvas:'p_viSignCanvas',time:'p_viSignTimeField',confirm:'p_viSaveBtn',title:'Save Vendor Info',can:()=>sarvCan('VENDOR_INFO_DESK')}
+];
+let sarvPadForceDraw=false;   // set when a PIN brought back no sign — show the pad again
+function sarvPadPinMode_(){
+  const id=sarvCurrentUser&&sarvCurrentUser.id;
+  return !sarvPadForceDraw&&!!(id&&sarvAppUsers.some(u=>u.id===id&&u.is_active&&u.has_signature));
+}
+function sarvApplyPadPinMode_(){
+  const on=sarvPadPinMode_();
+  SARV_PIN_PADS.forEach(p=>{
+    const c=byId(p.canvas);if(!c||!c.parentElement)return;
+    const pad=c.parentElement;
+    pad.style.display=on?'none':'';
+    let note=byId(p.canvas+'_pinNote');
+    if(!note){
+      note=document.createElement('div');
+      note.id=p.canvas+'_pinNote';
+      note.style.cssText='padding:10px 12px;border:1px solid #c4b5fd;background:#f5f3ff;border-radius:6px;font-size:12px;font-weight:700;color:#5b21b6;';
+      note.innerHTML='&#128273; Aapka sign saved hai &mdash; <b>'+escText(p.title)+'</b> dabate hi apna PIN daalein, sign apne-aap lag jayega.';
+      pad.parentNode.insertBefore(note,pad.nextSibling);
+    }
+    note.style.display=on?'':'none';
+  });
+}
+function sarvBindPinPads_(){
+  SARV_PIN_PADS.forEach(p=>{
+    // Document capture: runs before the button's own handler in every browser;
+    // that handler only sees the click again (pinPass) once the saved sign is
+    // on the canvas.
+    document.addEventListener('click',async e=>{
+      const b=e.target&&e.target.closest&&e.target.closest('#'+p.confirm);
+      if(!b||b.disabled)return;
+      if(b.dataset.pinPass==='1'){delete b.dataset.pinPass;return;}
+      if(!sarvPadPinMode_()||(p.can&&!p.can()))return;
+      e.preventDefault();e.stopImmediatePropagation();
+      const r=await sarvSubmitPinGate_(p.title);
+      if(!r)return;
+      const c=byId(p.canvas);
+      if(!r.dataUrl||!c){
+        sarvPadForceDraw=true;sarvApplyPadPinMode_();
+        return showToast('Is user ka saved sign nahi mila — pad par sign karke dobara dabayein','warn');
+      }
+      try{await sarvDrawSigInto_(c,r.dataUrl);}
+      catch(err){sarvPadForceDraw=true;sarvApplyPadPinMode_();return showToast('Saved sign load nahi hua — pad par sign karein','warn');}
+      const tf=byId(p.time);if(tf)tf.textContent=pStamp()+' — '+r.name;
+      b.dataset.pinPass='1';
+      b.click();
+    },true);
+  });
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  sarvBindPinPads_();
+  // Admin Panel controls
+  document.querySelectorAll('#sarvAdminPanel .ap-tab').forEach(b=>b.addEventListener('click',()=>sarvShowApPane_(b.dataset.ap)));
+  byId('ap_addUserBtn')?.addEventListener('click',()=>sarvOpenUserModal(null));
+  byId('ap_addPurchaserBtn')?.addEventListener('click',()=>sarvOpenUserModal(null,'PURCHASER'));
+  byId('ap_reloadUsersBtn')?.addEventListener('click',()=>sarvLoadAppUsers_(true).then(sarvRenderUsers_));
+  byId('ap_userRoleFilter')?.addEventListener('change',sarvRenderUsers_);
+  byId('ap_userSearch')?.addEventListener('input',sarvRenderUsers_);
+  byId('ap_usersBody')?.addEventListener('click',e=>{
+    const ed=e.target.closest('[data-ap-edit]');if(ed)return sarvOpenUserModal(ed.dataset.apEdit);
+    const dl=e.target.closest('[data-ap-del]');if(dl)sarvDeleteUser_(dl.dataset.apDel);
+  });
+  ['ap_permMatrix','ap_tabMatrix'].forEach(id=>byId(id)?.addEventListener('click',sarvMatrixClick_));
+  byId('ap_permSaveBtn')?.addEventListener('click',()=>sarvSaveMatrix_('perms'));
+  byId('ap_tabSaveBtn')?.addEventListener('click',()=>sarvSaveMatrix_('tabs'));
+  byId('ap_permResetBtn')?.addEventListener('click',()=>{sarvApDraft.perms=sarvFullMatrix_(null,SARV_FEATURES);sarvRenderMatrix_('ap_permMatrix',SARV_FEATURES,'perms');showToast('Default lag gaye — Save dabane par lagu honge');});
+  byId('ap_tabResetBtn')?.addEventListener('click',()=>{sarvApDraft.tabs=sarvFullMatrix_(null,SARV_TABS);sarvRenderMatrix_('ap_tabMatrix',SARV_TABS,'tabs');showToast('Default lag gaye — Save dabane par lagu honge');});
+  // PIN-sign on the two Store Incharge pads
+  sarvAttachPinSign_('p_poStoreSignClearBtn','p_poStoreSignCanvas','p_poStoreSignTimeField','Store Incharge (PO)',['USER_IC_PIN','ADMIN_PIN']);
+  sarvAttachPinSign_('p_viSignClearBtn','p_viSignCanvas','p_viSignTimeField','Store Incharge (Vendor Info)',['USER_IC_PIN','ADMIN_PIN'],
+    c=>{if(c.style.pointerEvents==='none'){sarvDeny('VENDOR_INFO_DESK');return false;}return true;});
+  sarvApplyAccess();
+  sarvLoadSettings_();
+  sarvLoadAppUsers_();
 });
 
 /* ================================================================
@@ -9809,7 +10748,7 @@ window.renderItemMasterTable=function(){
         <td style="padding:5px 6px;text-align:center;background:#fef2f2;font-weight:700;color:#dc2626;">${outQty}</td>
         <td style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'#eff6ff'};font-weight:800;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${bal} is below the minimum stock qty of ${msv}"`:''}>${bal}${below?' &#9888;':''}</td>
         <td style="padding:5px 6px;text-align:center;">
-          ${isAdmin()?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} — item details badlein">&#9999;&#65039;</button><button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
+          ${(sarvCan('EDIT')||sarvCan('DELETE'))?`${sarvCan('EDIT')?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} — item details badlein">&#9999;&#65039;</button>`:''}${sarvCan('DELETE')?`<button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
   }).join('');
@@ -9997,7 +10936,7 @@ window.loadItemMaster=async function(){
        already-ordered quantity look available again. */
 let sarvEditingItemId=null;
 window.editMasterItem=function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Item Master edit kar sakta hai','warn');
+  if(!sarvCan('EDIT'))return sarvDeny('EDIT');
   const row=sarvItemMasterRows.find(x=>x.it.id===id);
   const it=row&&row.it;
   if(!it)return showToast('Item data nahi mila — list refresh karein','warn');
@@ -10079,7 +11018,8 @@ window.addMasterItem=async function(){
   if(!name){showToast('❌ Item Name required!','error');byId('mi_itemName')?.focus();return;}
   if(!SB_READY){showToast('Supabase configure karein','warn');return;}
   const editingId=sarvEditingItemId;
-  if(editingId&&!isAdmin())return showToast('⛔ Sirf Admin login Item Master edit kar sakta hai','warn');
+  if(editingId&&!sarvCan('EDIT'))return sarvDeny('EDIT');
+  if(!editingId&&!sarvGuard('ADD_ITEM'))return;
   const before=editingId?sarvItemMasterRows.find(x=>x.it.id===editingId):null;
   const oldName=before?.it?.name||'';
   const code=before?.it?.item_code||'';
@@ -10182,7 +11122,7 @@ window.addMasterItem=async function(){
 };
 
 window.deleteMasterItem=async function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Master Data delete kar sakta hai','warn');
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!confirm('Ye item delete karein?\n\n⚠️ Agar kisi Inward/Outward entry se linked hai toh error aayega.'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('items').delete().eq('id',id);
@@ -10251,14 +11191,14 @@ window.renderSupplierMasterTable=function(){
       <td style="padding:5px 6px;">${escText(s.state||'—')}</td>
       <td style="padding:5px 6px;">${escText(s.city||'—')}</td>
       <td style="padding:5px 6px;text-align:center;">${isAdmin()?`<button onclick="setSupplierPin('${s.id}','${escText(s.supplier_name).replace(/'/g,"\\'")}')" style="background:${s.has_pin?'#eff6ff':'#fef9c3'};border:1px solid ${s.has_pin?'#93c5fd':'#fde68a'};color:${s.has_pin?'#1d4ed8':'#92400e'};border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="${s.has_pin?'Change vendor login PIN':'Set vendor login PIN'}">${s.has_pin?'🔑 Change':'🔑 Set'}</button>`:(s.has_pin?'<span style="color:#16a34a;" title="PIN set">✓ Set</span>':'<span style="color:#cbd5e1;">—</span>')}</td>
-      <td style="padding:5px 6px;text-align:center;">${isAdmin()?`<button onclick="editMasterSupplier('${s.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Edit supplier details">&#9999;&#65039;</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
-      <td style="padding:5px 6px;text-align:center;">${isAdmin()?`<button onclick="deleteMasterSupplier('${s.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
+      <td style="padding:5px 6px;text-align:center;">${sarvCan('EDIT')?`<button onclick="editMasterSupplier('${s.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Edit supplier details">&#9999;&#65039;</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
+      <td style="padding:5px 6px;text-align:center;">${sarvCan('DELETE')?`<button onclick="deleteMasterSupplier('${s.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
     </tr>`).join('');
 };
 
 let sarvEditingSupplierId=null;
 window.editMasterSupplier=function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Supplier Master edit kar sakta hai','warn');
+  if(!sarvCan('EDIT'))return sarvDeny('EDIT');
   const s=sarvSupplierCatalog.find(x=>x.id===id);
   if(!s)return showToast('Supplier data nahi mila — list refresh karein','warn');
   sarvEditingSupplierId=id;
@@ -10285,7 +11225,8 @@ window.addMasterSupplier=async function(){
   if(!name){showToast('❌ Supplier Name required!','error');byId('ms_supplierName')?.focus();return;}
   if(!SB_READY){showToast('Supabase configure karein','warn');return;}
   const editingId=sarvEditingSupplierId;
-  if(editingId&&!isAdmin())return showToast('⛔ Sirf Admin login Supplier Master edit kar sakta hai','warn');
+  if(editingId&&!sarvCan('EDIT'))return sarvDeny('EDIT');
+  if(!editingId&&!sarvGuard('ADD_SUPPLIER'))return;
   try{
     const pin=(byId('ms_vendorPin')?.value||'').trim();
     const payload={
@@ -10362,7 +11303,7 @@ async function applySupplierPin_(supplierId,pin,name){
 }
 
 window.deleteMasterSupplier=async function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Master Data delete kar sakta hai','warn');
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!confirm('Ye supplier delete karein?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('suppliers').delete().eq('id',id);
@@ -10420,7 +11361,7 @@ window.renderEmployeeMasterTable=function(){
         <span style="background:${e.is_active?'#dcfce7':'#fee2e2'};color:${e.is_active?'#166534':'#dc2626'};border-radius:99px;padding:2px 8px;font-size:10px;font-weight:700;">${e.is_active?'Active':'Inactive'}</span>
       </td>
       <td style="padding:5px 6px;text-align:center;">
-        ${isAdmin()?`<button onclick="deleteEmployee('${e.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
+        ${sarvCan('DELETE')?`<button onclick="deleteEmployee('${e.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
       </td>
     </tr>`).join('');
 };
@@ -10454,8 +11395,61 @@ window.addMasterEmployee=async function(){
   finally{if(btn){btn.disabled=false;btn.innerHTML='&#10133; Add Employee';}}
 };
 
+/* PR form → Requested By → "➕ Add New Employee". Same employees table and same
+   rules as addMasterEmployee above; on save the new code is put straight into
+   the PR's Employee Code box so the person does not have to type it again. */
+const PR_ADD_EMP_FIELDS=['p_aeEmpCode','p_aePersonName','p_aeDesignation','p_aeDepartment','p_aeContactNo'];
+function openPrAddEmployeeModal(){
+  PR_ADD_EMP_FIELDS.forEach(id=>{const e=byId(id);if(e)e.value='';});
+  // Whatever was typed in the PR's code box and not found is the likely new code.
+  const typed=(byId('p_reqEmpCode')?.value||'').trim().toUpperCase();
+  if(typed&&!lookupEmployee(typed)&&byId('p_aeEmpCode'))byId('p_aeEmpCode').value=typed;
+  byId('p_addEmpModal')?.classList.add('active');
+  setTimeout(()=>byId(byId('p_aeEmpCode')?.value?'p_aePersonName':'p_aeEmpCode')?.focus(),50);
+}
+function closePrAddEmployeeModal(){byId('p_addEmpModal')?.classList.remove('active');}
+async function savePrAddEmployee(){
+  const code=(byId('p_aeEmpCode')?.value||'').trim().toUpperCase();
+  const name=(byId('p_aePersonName')?.value||'').trim().toUpperCase();
+  if(!code){showToast('❌ Employee Code required!','error');byId('p_aeEmpCode')?.focus();return;}
+  if(!name){showToast('❌ Person Name required!','error');byId('p_aePersonName')?.focus();return;}
+  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  const btn=byId('p_aeSaveBtn');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
+  try{
+    const chk=await SB.from('employees').select('id').eq('emp_code',code).maybeSingle();
+    if(chk.error)throw chk.error;
+    if(chk.data){showToast(`⚠️ Employee Code "${code}" already exists!`,'warn');byId('p_aeEmpCode')?.focus();return;}
+    const{error}=await SB.from('employees').insert({
+      emp_code:    code,
+      person_name: name,
+      designation: (byId('p_aeDesignation')?.value||'').trim()||null,
+      department:  byId('p_aeDepartment')?.value||null,
+      contact_no:  (byId('p_aeContactNo')?.value||'').trim()||null,
+      is_active:   true
+    });
+    if(error)throw error;
+    showToast(`✅ "${name}" (${code}) added to Employee Master!`);
+    await loadEmployeeMaster();   // refreshes the code datalist + sarvEmployeeCatalog
+    closePrAddEmployeeModal();
+    const codeBox=byId('p_reqEmpCode');
+    if(codeBox){codeBox.value=code;codeBox.style.border='';}
+    onEmpCodeInput(code);
+  }catch(e){dbError(e);}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='&#128190; Save Employee';}}
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  byId('p_reqAddEmpBtn')?.addEventListener('click',openPrAddEmployeeModal);
+  byId('p_aeCancelBtn')?.addEventListener('click',closePrAddEmployeeModal);
+  byId('p_aeSaveBtn')?.addEventListener('click',()=>savePrAddEmployee());
+  byId('p_addEmpModal')?.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();savePrAddEmployee();}
+    else if(e.key==='Escape')closePrAddEmployeeModal();
+  });
+});
+
 window.deleteEmployee=async function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Master Data delete kar sakta hai','warn');
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!confirm('Ye employee delete karein?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('employees').delete().eq('id',id);
@@ -10569,7 +11563,7 @@ window.renderMachineMasterTable=function(){
         <span style="background:${m.is_active?'#dcfce7':'#fee2e2'};color:${m.is_active?'#166534':'#dc2626'};border-radius:99px;padding:2px 8px;font-size:10px;font-weight:700;">${m.is_active?'Active':'Inactive'}</span>
       </td>
       <td style="padding:5px 6px;text-align:center;">
-        ${isAdmin()?`<button onclick="deleteMachine('${m.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
+        ${sarvCan('DELETE')?`<button onclick="deleteMachine('${m.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
       </td>
     </tr>`).join('');
 };
@@ -10608,7 +11602,7 @@ window.addMasterMachine=async function(){
 };
 
 window.deleteMachine=async function(id){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Master Data delete kar sakta hai','warn');
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!confirm('Ye machine delete karein?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('machines').delete().eq('id',id);
@@ -11409,7 +12403,7 @@ let sarvLastReportsFiltered=[];
 window.loadReports=async function(){
   const tb=byId('searchResultsBody'),statusEl=byId('searchStatusText');
   if(!tb)return;
-  const csvBtn=byId('excelDownloadBtn');if(csvBtn)csvBtn.style.display=isAdmin()?'':'none';
+  const csvBtn=byId('excelDownloadBtn');if(csvBtn)csvBtn.style.display=sarvCan('DOWNLOAD_CSV')?'':'none';
   if(!SB_READY){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
   tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8;">⏳ Loading entries...</td></tr>';
   if(statusEl)statusEl.textContent='Loading...';
@@ -11473,7 +12467,9 @@ window.loadReports=async function(){
     const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
     // Editing an already-saved record is an Admin-only action — everyone else
     // sees a dash in the Edit column.
-    const canEdit=isAdmin();
+    // Admin Panel → Feature Access: EDIT gives the ✏️, DELETE gives the ❌.
+    const canEditRec=sarvCan('EDIT'),canCancelRec=sarvCan('DELETE');
+    const canEdit=canEditRec||canCancelRec;
     tb.innerHTML=filtered.map(r=>{
       const col=tc[r.type]||'#64748b';
       // A cancelled record stays listed (its number is never reused) but is
@@ -11498,7 +12494,7 @@ window.loadReports=async function(){
           </div>
         </td>
         <td style="padding:5px 6px;text-align:center;">
-          ${(canEdit&&!r.cancelled)?`<div style="display:flex;gap:4px;justify-content:center;"><button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Is Record No. ki poori entry edit mode me kholein" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">&#9999;&#65039;</button><button type="button" data-cancel-kind="${escText(r.kind)}" data-cancel-id="${escText(r.id)}" data-cancel-no="${escText(r.no||'')}" title="Is Record No. ko cancel karein (Admin only)" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;cursor:pointer;">&#10060;</button></div>`:'<span style="color:#cbd5e1;">—</span>'}
+          ${(canEdit&&!r.cancelled)?`<div style="display:flex;gap:4px;justify-content:center;">${canEditRec?`<button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Is Record No. ki poori entry edit mode me kholein" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">&#9999;&#65039;</button>`:''}${canCancelRec?`<button type="button" data-cancel-kind="${escText(r.kind)}" data-cancel-id="${escText(r.id)}" data-cancel-no="${escText(r.no||'')}" title="Is Record No. ko cancel karein" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;cursor:pointer;">&#10060;</button>`:''}</div>`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
     }).join('');
@@ -11532,7 +12528,7 @@ window.loadReports=async function(){
 const SARV_CANCEL_MARK='❌ CANCELLED';
 function isStoreRecordCancelled_(notes){return String(notes||'').startsWith(SARV_CANCEL_MARK);}
 window.cancelStoreRecord=async function(kind,id,no){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login record cancel kar sakta hai','warn');
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!SB_READY)return;
   const isIn=kind==='inward';
   if((isIn&&sarvEditingInwardId===id)||(!isIn&&sarvEditingOutwardId===id))
@@ -11686,7 +12682,7 @@ window.cancelStoreEdit=function(kind){
 };
 
 window.editStoreRecord=async function(kind,id,no){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login saved record edit kar sakta hai','warn');
+  if(!sarvCan('EDIT'))return sarvDeny('EDIT');
   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
   if(!id)return showToast('⚠️ Record ki id nahi mili — Reports refresh karein','warn');
   const busy=sarvEditingInwardNo||sarvEditingOutwardNo;
@@ -12156,7 +13152,7 @@ async function syncPoReceiptsForLines(lineIds){
 // from the database rows (not just what's rendered in the table) — Admin
 // login only.
 window.downloadFilteredExcel=function(){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login Print History / Reports CSV export kar sakta hai','warn');
+  if(!sarvCan('DOWNLOAD_CSV'))return sarvDeny('DOWNLOAD_CSV');
   if(!sarvLastReportsFiltered.length)return showToast('⚠️ Pehle Search / All Records se data laayein','warn');
   const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items'];
   const rows=sarvLastReportsFiltered.map(r=>[r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'']);
@@ -13199,17 +14195,27 @@ window.addEventListener('DOMContentLoaded',()=>{
      doc.setTextColor(0,0,0);
      yy+=3+remLines.length*3.2;
    }
-   // Signature footer — anchored near the bottom of this copy's area
-   const sigY=Math.max(yy+6,y+areaH-14);
+   // Signature footer — anchored near the bottom of this copy's area. 16 mm
+   // above the line is kept clear for a signature + its name / time stamp.
+   const sigY=Math.max(yy+16,y+areaH-14);
    const sigLabels=isOut
      ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']:['Store In-Charge','GM Sign','MD Sign'])
      :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
    const segW=w/sigLabels.length;
-   doc.setFontSize(7); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0); doc.setLineWidth(0.3);
+   const sigs=d.__sigs||{};
    sigLabels.forEach((lbl,i)=>{
      const cx=x+segW*i;
+     doc.setFontSize(7); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0); doc.setLineWidth(0.3);
      doc.line(cx+3,sigY,cx+segW-3,sigY);
      doc.text(lbl.toUpperCase(),cx+segW/2,sigY+3.2,{align:'center'});
+     /* Store In-Charge / GM / MD slots are remembered (page + position) so
+        mobile.html can stamp the GM / MD signature onto this same file when
+        they press Check Done — see sarvStoreSignStage_ / SIG_SLOT_LAYOUT. */
+     const st=sarvStoreSignStage_(lbl);
+     if(!st)return;
+     const slot={p:doc.internal.getCurrentPageInfo().pageNumber,st,x:cx+3,y:sigY,w:segW-6};
+     if(doc.__sigSlots)doc.__sigSlots.push(slot);
+     if(sigs[st])sarvDrawSigNative_(doc,sigs[st],slot);
    });
    doc.setFontSize(6); doc.setFont(undefined,'normal'); doc.setTextColor(220,38,38);
    doc.text('Printed: '+pStamp(),x+3,sigY+6.5);
@@ -13269,6 +14275,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const isTwoPage=variant==='TWO_PAGE';
    const orientation=isTwoPage?'portrait':'landscape';
    const doc=new jsPDF({unit:'mm',format:'a4',orientation});
+   doc.__sigSlots=[];
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
    const copyATitle='ACCOUNT COPY', copyBTitle=isOut?'RECEIVER COPY':'SUPPLIER COPY';
@@ -13290,7 +14297,135 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Photos always follow the document copies, on their own page(s).
    const isOutKind=(kind==='OUTWARD'||kind==='ISSUE');
    drawAttachmentPages_(doc,images,(isOutKind?'Outward No: ':'Inward No: ')+(d.outwardNo||d.inwardNo||d.document_no||'-'));
-   return doc.output('blob');
+   const blob=doc.output('blob');
+   // Where each signature goes in THIS file (mm, top-left origin), for mobile.html's stamping.
+   blob.sigLayout={pw:pageW,ph:pageH,slots:doc.__sigSlots};
+   return blob;
+ }
+ /* ── Signatures on Store PDFs ───────────────────────────────────────
+    Which footer cell belongs to whom, and how a signature is laid into it.
+    mobile.html (stampStorePdfSign) draws GM / MD signatures with the SAME
+    geometry onto the uploaded file, so keep SIG_SLOT_LAYOUT identical there:
+      image box  : slot.y-13.5 … +8 mm, fitted, centred
+      name line  : slot.y-3.4   (5 pt)
+      time line  : slot.y-1.0   (5 pt) */
+ function sarvStoreSignStage_(label){
+   const u=String(label||'').toUpperCase();
+   if(u==='STORE IN-CHARGE')return 'store';
+   if(u==='GM SIGN')return 'gm';
+   if(u==='MD SIGN'||u==='MD 1 SIGN')return 'md';
+   return null;
+ }
+ function sarvDrawSigNative_(doc,s,slot){
+   try{
+     if(s.dataUrl&&s.w&&s.h){
+       const boxH=8,top=slot.y-13.5;
+       const k=Math.min(slot.w/s.w,boxH/s.h),iw=s.w*k,ih=s.h*k;
+       doc.addImage(s.dataUrl,'PNG',slot.x+(slot.w-iw)/2,top+(boxH-ih)/2,iw,ih);
+     }
+     doc.setFontSize(5);doc.setFont(undefined,'bold');doc.setTextColor(30,58,138);
+     if(s.by)doc.text(String(s.by).toUpperCase(),slot.x+slot.w/2,slot.y-3.4,{align:'center',maxWidth:slot.w});
+     doc.setFont(undefined,'normal');
+     if(s.at)doc.text(String(s.at),slot.x+slot.w/2,slot.y-1,{align:'center'});
+     doc.setTextColor(0,0,0);
+   }catch(e){console.warn('[SARV PDF] signature not drawn:',e.message||e);}
+ }
+ function sarvBlobToDataUrl_(blob){
+   return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>rej(r.error);r.readAsDataURL(blob);});
+ }
+ function sarvImgSize_(dataUrl){
+   return new Promise(res=>{const i=new Image();i.onload=()=>res({w:i.naturalWidth,h:i.naturalHeight});i.onerror=()=>res(null);i.src=dataUrl;});
+ }
+ // Signature images live in the PDF bucket (signatures/<doc>/<stage>.png); only the URL is kept on the record.
+ async function sarvUploadSignature_(docNo,stage,dataUrl){
+   const path='signatures/'+pdfSafeName_(docNo)+'/'+stage+'.png';
+   const blob=await (await fetch(dataUrl)).blob();
+   const up=await SB.storage.from(SARV_PDF_BUCKET).upload(path,blob,{upsert:true,contentType:'image/png',cacheControl:'3600'});
+   if(up.error)throw up.error;
+   const pub=SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(path);
+   return (pub?.data?.publicUrl||'')+'?v='+Date.now();
+ }
+ // store_checks {store,gm,md} → images ready for jsPDF, keyed by stage.
+ async function sarvLoadStoreSigs_(checks){
+   const out={};
+   for(const st of ['store','gm','md']){
+     const c=checks&&checks[st];if(!c||typeof c!=='object')continue;
+     let dataUrl=c.__dataUrl||'';
+     if(!dataUrl&&c.signUrl){
+       try{const r=await fetch(c.signUrl,{cache:'no-store'});if(r.ok)dataUrl=await sarvBlobToDataUrl_(await r.blob());}
+       catch(e){console.warn('[SARV PDF] '+st+' signature fetch failed:',e.message||e);}
+     }
+     const size=dataUrl?await sarvImgSize_(dataUrl):null;
+     out[st]={dataUrl:size?dataUrl:'',w:size?size.w:0,h:size?size.h:0,by:c.by||'',at:c.at||''};
+   }
+   return out;
+ }
+ /* ── Submit PIN gate (Inward / Outward / Issue) ─────────────────────
+    Every submit asks the user's OWN PIN, every time — the login PIN is never
+    reused. The PIN also unlocks their saved signature, which is what goes
+    over "Store In-Charge" on the PDF. Offered:
+      • logged in as a named user  → only that user
+      • logged in with a role PIN  → the active users of that role
+      • role has no named users    → the role's own PIN (no image, name/time only)
+    Resolves {dataUrl|null, name} or null when cancelled (= nothing is saved).
+    The result waits in sarvPendingStoreSign for generateStorePdfs. */
+ let sarvPendingStoreSign=null;
+ async function sarvSubmitPinGate_(title){
+   await sarvLoadAppUsers_(true);
+   let users=[];
+   if(sarvCurrentUser&&sarvCurrentUser.id)users=sarvAppUsers.filter(u=>u.id===sarvCurrentUser.id&&u.is_active);
+   else if(!sarvAppUsersMissing)users=sarvAppUsers.filter(u=>u.is_active&&u.role===sarvCurrentRole);
+   const roleKey=(sarvCurrentRole==='PURCHASER'&&sarvCurrentUser&&sarvCurrentUser.name)?('PURCHASER::'+sarvCurrentUser.name):sarvCurrentRole;
+   const roleName=(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—';
+   return new Promise(resolve=>{
+     const ov=document.createElement('div');
+     ov.className='sarv-ov';
+     const opts=users.length
+       ?users.map(u=>'<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature?'':' (sign saved nahi)')+'</option>').join('')
+       :'<option value="role:">'+escText(roleName)+' (Role PIN)</option>';
+     ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">&#128274; PIN Confirm — '+escText(title)+'</div><div class="bd">'
+       +'<div class="err" data-f="err"></div>'
+       +'<div class="fg"><label>User</label><select data-f="user"'+((users.length<=1)?' disabled':'')+'>'+opts+'</select></div>'
+       +'<div class="fg"><label>Apna PIN <span class="req">*</span></label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
+       +'<div style="font-size:11px;color:#64748b;">Submit ke liye har baar apna PIN daalein. Saved sign hoga to PDF me <b>Store In-Charge</b> ke upar time ke saath lagega.</div>'
+       +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">&#10004; Verify &amp; Submit</button></div></div>';
+     document.body.appendChild(ov);
+     const f=k=>ov.querySelector('[data-f="'+k+'"]');
+     const done=v=>{document.removeEventListener('keydown',onKey,true);ov.remove();resolve(v);};
+     const err=m=>{const e=f('err');e.textContent=m;e.style.display=m?'block':'none';};
+     const submit=async()=>{
+       err('');
+       const id=f('user').value,pin=f('pin').value;
+       if(!pin)return err('PIN daalein');
+       if(!SB_READY)return err('Supabase configure karein');
+       f('ok').disabled=true;
+       try{
+         if(id==='role:'){
+           const v=await SB.rpc('verify_role_pin',{p_role:roleKey,p_pin:pin});
+           if(v.error)throw v.error;
+           if(!v.data){err('❌ Galat PIN');f('pin').select();return;}
+           return done({dataUrl:null,name:(sarvCurrentUser&&sarvCurrentUser.name)||''});
+         }
+         const u=users.find(x=>x.id===id)||{};
+         if(u.has_signature){
+           const r=await SB.rpc('get_user_signature',{p_user_id:id,p_pin:pin});
+           if(r.error)throw r.error;
+           if(!r.data){err('❌ Galat PIN');f('pin').select();return;}
+           return done({dataUrl:r.data,name:u.user_name||''});
+         }
+         const v=await SB.rpc('verify_app_user_pin',{p_user_id:id,p_pin:pin});
+         if(v.error)throw v.error;
+         if(!v.data){err('❌ Galat PIN');f('pin').select();return;}
+         done({dataUrl:null,name:u.user_name||''});
+       }catch(e){err(e.message||String(e));}
+       finally{const b=f('ok');if(b)b.disabled=false;}
+     };
+     const onKey=e=>{if(e.key==='Escape'){e.preventDefault();done(null);}else if(e.key==='Enter'){e.preventDefault();submit();}};
+     document.addEventListener('keydown',onKey,true);
+     f('cancel').addEventListener('click',()=>done(null));
+     f('ok').addEventListener('click',submit);
+     setTimeout(()=>f('pin').focus(),30);
+   });
  }
 
  // ─────────────────────────────────────────────────────────────
@@ -14634,6 +15769,36 @@ window.addEventListener('DOMContentLoaded',()=>{
     const photoKey=(kind==='OUTWARD'||kind==='ISSUE')?'outward':'inward';
     const images=window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput);
     const no=d.inwardNo||d.outwardNo, result={};
+    /* ── Signatures ─────────────────────────────────────────────────
+       store_checks carries who signed which cell: store (here, on submit),
+       gm / md (mobile.html Check Done). An edit re-draws whatever is already
+       there, so a regenerated PDF never loses a GM / MD sign; the Store
+       In-Charge sign is taken once, when the entry is first signed — from
+       the PIN confirmed at submit (sarvSubmitPinGate_ → sarvPendingStoreSign). */
+    const me=sarvPendingStoreSign;sarvPendingStoreSign=null;
+    const sigTable=(kind==='OUTWARD'||kind==='ISSUE')?'outward_entries':'inward_entries';
+    let checks={},checksOk=false;
+    if(SB_READY&&recordId){
+      try{
+        const q=await SB.from(sigTable).select('store_checks').eq('id',recordId).maybeSingle();
+        if(q.error)throw q.error;
+        checks=(q.data&&q.data.store_checks&&typeof q.data.store_checks==='object')?{...q.data.store_checks}:{};
+        checksOk=true;
+      }catch(e){console.warn('[SARV PDF] store_checks unavailable — PDF without saved signatures:',e.message||e);}
+    }
+    // A saved sign on the record is kept; otherwise the submitter's (image if they
+    // have one, else just their name and the time).
+    if(checksOk&&me&&!(checks.store&&checks.store.signUrl)&&(me.dataUrl||!checks.store)){
+      const now=new Date();
+      checks.store={by:me.name||SARV_ROLE_LABEL[sarvCurrentRole]||'',at:pStamp(now),atIso:now.toISOString()};
+      if(me.dataUrl){
+        checks.store.__dataUrl=me.dataUrl;
+        try{checks.store.signUrl=await sarvUploadSignature_(no,'store',me.dataUrl);}
+        catch(e){console.warn('[SARV PDF] Store signature upload failed — printed on this PDF only:',e.message||e);}
+      }
+    }
+    d.__sigs=await sarvLoadStoreSigs_(checks);
+    const sigLayouts={};
     // Store submit output follows the approved reference PDFs:
     // one A4 landscape file (Account + Supplier/Receiver side-by-side) AND
     // one A4 portrait 2-page file (one copy per page) — both saved & indexed
@@ -14645,6 +15810,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         // Native jsPDF/autoTable build — real vector text, no DOM/canvas
         // rendering involved, so it can't produce a blank screenshot.
         const blob=await buildStoreNativePdfBlob(kind,d,items,variant,images);
+        if(blob.sigLayout)sigLayouts[variant]=blob.sigLayout;
         result[variant]=await uploadPdfArtifact(blob,kind,no,variant,filename);
         result[variant].html=html;
         await indexPdfArtifact(kind,recordId,no,variant,result[variant]);
@@ -14653,6 +15819,17 @@ window.addEventListener('DOMContentLoaded',()=>{
         showToast('⚠️ '+kind+' '+variant+' PDF could not be built: '+(e.message||e),'warn');
         result[variant]={blob:null,path:'',url:'',name:filename,html};
       }
+    }
+    delete d.__sigs;
+    /* Saved back with the slot positions of the files just uploaded, so the
+       GM / MD Check Done on mobile can stamp their sign onto these exact files. */
+    if(checksOk){
+      if(checks.store)delete checks.store.__dataUrl;
+      checks._pdf=sigLayouts;
+      try{
+        const u=await SB.from(sigTable).update({store_checks:checks}).eq('id',recordId);
+        if(u.error)throw u.error;
+      }catch(e){console.warn('[SARV PDF] store_checks (signatures) not saved:',e.message||e);}
     }
    sarvPdfState.current={kind,data:d,items,images,result}; sarvPdfState.blobs={...sarvPdfState.blobs,[no]:result}; sarvPdfState.urls[no]=result;
    /* The Drive-link bar's two anchors open the stored PDF in a new tab, which
@@ -14850,6 +16027,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rows),rows);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
+   // The submitter's own PIN, every time — it is also what signs the PDF. Cancel = nothing saved.
+   const inwSign=await sarvSubmitPinGate_(editId?('Update '+editNo):('Submit '+(pVal('entryTypeSelect')||'Inward')));
+   if(!inwSign)return;
+   sarvPendingStoreSign=inwSign;
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=editId?'⏳ Updating...':'⏳ Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=editId?('Updating '+editNo+'…'):'Saving Inward entry…';overlay.classList.add('active');}
    try{
@@ -15120,6 +16301,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    const okToSave=await confirmStoreEntryPreview('OUTWARD',collectOutwardData(outEditId?outEditNo:'(Auto on Submit)'),rows);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
+   // The submitter's own PIN, every time — it is also what signs the PDF. Cancel = nothing saved.
+   const outSign=await sarvSubmitPinGate_(outEditId?('Update '+outEditNo):('Submit '+(pVal('outEntryTypeSelect')||'Outward')));
+   if(!outSign)return;
+   sarvPendingStoreSign=outSign;
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=outEditId?'⏳ Updating...':'⏳ Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=outEditId?('Updating '+outEditNo+'…'):'Saving Outward entry…';overlay.classList.add('active');}
    try{
@@ -15691,6 +16876,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     PR. Checked on the button, on the click, and again on save. */
  function canEditPr_(req){
    if(isAdmin())return true;
+   if(!sarvCan('EDIT_PR'))return false;
    const st=String((req&&req.status)||'Pending').trim();
    /* Rejected and Hold are both the Purchaser handing the PR back for a fix, so
       both are open for correction to anyone at this desk — no Admin login
@@ -15747,7 +16933,7 @@ window.addEventListener('DOMContentLoaded',()=>{
          +(needsFix?' title="'+pEsc(statusVal)+' PR — sudhar kar save karein, wapas PENDING ho jayegi" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
          +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
        :'<button type="button" class="btn btn-sm" disabled title="Sirf Pending / Rejected / Hold PR edit ho sakti hai — '+pEsc(statusVal)+' PR sirf Admin login se edit hogi" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Edit PR</button>';
-     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
+     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
    });
    if(!shown){
      const total=sarvPendingRequirements.length;
@@ -16044,7 +17230,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Only an Admin may change Vendor Info from STORE.html — everyone else sees
    // exactly what the Purchaser filled, read-only. Disabling each select also
    // locks its search box (makeSearchableSelect mirrors `disabled`).
-   const viCanEdit=isAdmin();
+   const viCanEdit=sarvCan('VENDOR_INFO_DESK');
    byId('p_viItemsBody')?.querySelectorAll('input,select').forEach(el=>{el.disabled=!viCanEdit;});
    const viSaveBtn=byId('p_viSaveBtn');if(viSaveBtn)viSaveBtn.style.display=viCanEdit?'':'none';
    const viSignCanvas=byId('p_viSignCanvas');if(viSignCanvas)viSignCanvas.style.pointerEvents=viCanEdit?'':'none';
@@ -16053,7 +17239,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    byId('p_vendorInfoModal')?.classList.add('active');
  }
  async function saveVendorInfo(){
-   if(!isAdmin())return showToast('⛔ Vendor Info sirf Admin login se update ho sakti hai','warn');
+   if(!sarvCan('VENDOR_INFO_DESK'))return sarvDeny('VENDOR_INFO_DESK');
    const state=sarvVendorInfoState;if(!state)return showToast('Pehle Vendor Info kholo','warn');
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
    if(!byId('p_viItemsBody'))return;
@@ -16392,7 +17578,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Completed POs (fully received / short-closed) drop off the list; only an
    // Admin can bring them back into view with the Show Received toggle.
    const doneStatuses=['Received','Closed (Short)'];
-   const showDone=isAdmin()&&sarvShowReceivedPos;
+   const showDone=sarvCan('PO_RECEIVED_VIEW')&&sarvShowReceivedPos;
    const openPos=sarvGeneratedPos.filter(po=>showDone||!doneStatuses.includes(po.status||''));
    const doneCount=sarvGeneratedPos.length-openPos.length;
    // Search box + Status dropdown above the table.
@@ -16414,10 +17600,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      const editable=statusVal==='Generated';
      // Short-close is Admin-only and only meaningful while a PO is still
      // open with less received than ordered.
-     const shortCloseable=isAdmin()&&!['Received','Closed (Short)','Cancelled','Rejected','Generated'].includes(statusVal);
+     const shortCloseable=sarvCan('PO_CLOSE')&&!['Received','Closed (Short)','Cancelled','Rejected','Generated'].includes(statusVal);
      const actionCell=(editable
        ?'<button type="button" class="sarv-po-edit btn btn-neutral btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">&#9999;&#65039; Edit</button>'
-       :(isAdmin()
+       :(sarvCan('PO_CANCEL')
          ?'<button type="button" class="sarv-po-cancel btn btn-danger btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">&#10060; Cancel</button>'
          :'<button type="button" class="btn btn-sm" disabled title="GM/CEO approval ke baad sirf Admin login cancel kar sakta hai" style="padding:3px 10px;font-size:11px;background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Locked</button>'))
        +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Short quantity par PO band karein" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">&#9989; Close</button>':'');
@@ -16523,7 +17709,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function renderPoListDoneToggle(doneCount){
    const host=byId('p_poListCount')?.closest('.items-total-strip');if(!host)return;
    let btn=byId('p_poShowReceivedBtn');
-   if(!isAdmin()){if(btn)btn.remove();return;}
+   if(!sarvCan('PO_RECEIVED_VIEW')){if(btn)btn.remove();return;}
    if(!btn){
      btn=document.createElement('button');
      btn.type='button';btn.id='p_poShowReceivedBtn';
@@ -16730,7 +17916,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function refreshPoFollowupReport(){
    if(!SB_READY)return;
    const tb=byId('p_poReportBody');if(!tb)return;
-   tb.innerHTML='<tr><td colspan="13" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
    /* Every one of these goes through fetchAllRows. A plain select is capped at
       1000 rows by PostgREST, and on a follow-up sheet a truncated page does not
       just hide a line — it makes a PR that HAS a PO read as "PO not generated",
@@ -16939,7 +18125,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const short=shortDocNo_(full,kind)||full;
    const tip=full+(extraTitle?('\n'+extraTitle):'');
    return url
-     ? '<a class="fu-doc" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nPDF kholne ke liye click karein')+'">'+pEsc(short)+'</a>'
+     ? '<a class="fu-doc" data-doc="'+pEsc(kind||'')+'" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nPDF kholne ke liye click karein')+'">'+pEsc(short)+'</a>'
      : '<span class="fu-doc" style="color:#64748b;" title="'+pEsc(tip+'\n(Is document ki PDF abhi generate / index nahi hui)')+'">'+pEsc(short)+'</span>';
  }
  function fuStatusCell_(statuses){
@@ -17029,12 +18215,59 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* Filtering is per PR, not per row: a PR matches or it does not, and all of
     its rows come with it. Showing one PO of a PR and silently dropping the
     other would be the most misleading thing this sheet could do. */
+ /* Column filters (the row under the header). Text boxes are "contains", the
+    ✔ / – boxes match that column's tick. They are tested per ROW — PO and
+    Inward columns differ row to row — but the result still applies per PR: a
+    PR shows, with all its rows, when at least one of its rows passes every
+    column filter, and those rows are tinted so the hit is easy to spot. */
+ function poFollowupColFilters_(){
+   const f={};
+   document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(el=>{
+     const v=String(el.value||'').trim();
+     el.classList.toggle('active',!!v);
+     if(v)f[el.dataset.col]=el.tagName==='SELECT'?v:v.toLowerCase();
+   });
+   return f;
+ }
+ function poFollowupRowMatch_(r,f){
+   const g=r.group,po=r.po,i=r.inward;
+   const text={
+     pr:()=>[g.req.req_no,shortDocNo_(g.req.req_no,'PR')],
+     requester:()=>[g.req.requested_by],
+     po:()=>po?[po.po_no,shortDocNo_(po.po_no,'PO')]:[],
+     vendor:()=>po?[po.vendor_name]:[],
+     delivery:()=>po&&po.delivery_date?[pDate(po.delivery_date),fmtDate_(po.delivery_date),po.delivery_date]:[],
+     status:()=>po?[po.status||'Generated',PO_FOLLOWUP_STATUS_TEXT[po.status]||'']:[],
+     inward:()=>i?[i.document_no,shortDocNo_(i.document_no,'INWARD')]:[]
+   };
+   // null = the column has nothing on this row (no PO / no inward), which
+   // matches neither Yes nor No.
+   const tick={
+     vendorInfo:()=>g.vendorInfo,
+     poGenerated:()=>g.poGenerated,
+     mdApproved:()=>po?poFollowupMdApproved_(po):null,
+     poSent:()=>po?isPoPartySent(po):null,
+     informed:()=>i?!!poFollowupInformState_(g.req,i.document_no):null,
+     gm:()=>i?!!inwStoreCheck_(i,'gm'):null,
+     md:()=>i?!!inwStoreCheck_(i,'md'):null
+   };
+   return Object.keys(f).every(k=>{
+     if(text[k])return text[k]().map(v=>String(v||'').toLowerCase()).join(' ').includes(f[k]);
+     if(tick[k]){const v=tick[k]();return v!==null&&v===(f[k]==='1');}
+     return true;
+   });
+ }
  function poFollowupVisibleGroups(){
    const term=(byId('p_poRepSearch')?.value||'').trim().toLowerCase();
    const status=byId('p_poRepStatus')?.value||'';
    const requester=byId('p_poRepRequester')?.value||'';
    const pendingOnly=byId('p_poRepPending')?.value==='1';
+   const cf=poFollowupColFilters_();
+   const colHit=new Set();
+   if(Object.keys(cf).length)
+     sarvPoFollowupRows.forEach(r=>{if(poFollowupRowMatch_(r,cf))colHit.add(r.group)});
    return sarvPoFollowupGroups.filter(g=>{
+     if(Object.keys(cf).length&&!colHit.has(g))return false;
      if(requester&&String(g.req.requested_by||'').trim()!==requester)return false;
      if(status==='__NOPO__'){if(g.poGenerated)return false}
      else if(status&&!g.statuses.includes(status))return false;
@@ -17054,6 +18287,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    const visible=new Set(groups.map(g=>g.req.req_no));
    const rows=sarvPoFollowupRows.filter(r=>visible.has(r.req.req_no));
    const prCell='background:#fdf2e9;font-weight:700;';
+   const cf=poFollowupColFilters_();
+   const hasCf=Object.keys(cf).length>0;
    tb.innerHTML=rows.length?rows.map(r=>{
      const g=r.group,b=r.block,po=r.po;
      // A merged cell is written once, by the row it starts on; the rows it
@@ -17065,13 +18300,14 @@ window.addEventListener('DOMContentLoaded',()=>{
      const itemsTip=b?(b.lines.length
        ? 'Is PO par is PR ke '+b.lines.length+' item:\n'+b.lines.map(l=>'• '+(l.item_name||'Item')+' × '+pNum(l.ordered_qty)).join('\n')
        : 'Is PO ki koi line is PR se match nahi hui — purana PO hai, linked_req_nos se joda gaya hai'):'';
-     return '<tr'+(r.groupFirst?' style="border-top:2px solid #cbd5e1;"':'')+'>'
+     return '<tr'+(hasCf&&poFollowupRowMatch_(r,cf)?' class="fu-hit"':'')+(r.groupFirst?' style="border-top:2px solid #cbd5e1;"':'')+'>'
        +pr(fuDocLink_(g.req.req_no,g.prPdf,'PR'),prCell)
        +pr('<span style="color:#7c2d12;">'+pEsc(g.req.requested_by||'—')+'</span>',prCell)
        +pr(fuTick_(g.vendorInfo),'text-align:center;')
        +pr(fuTick_(g.poGenerated),'text-align:center;')
        +poCell(po?fuDocLink_(po.po_no,b.url,'PO',itemsTip):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
        +poCell(po?('<span style="color:#9a3412;font-weight:700;">'+pEsc(po.vendor_name||'—')+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
+       +poCell(po&&po.delivery_date?('<span style="font-weight:700;white-space:nowrap;">'+pEsc(pDate(po.delivery_date))+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;text-align:center;')
        +poCell(po?fuTick_(poFollowupMdApproved_(po)):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
        +poCell(po?fuSentCell_(po):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
        +poCell(po?fuStatusCell_([po.status||'Generated']):'<span class="fu-nodoc">&ndash;</span>','')
@@ -17083,7 +18319,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td class="fu-center">'+fuBillCell_(r.inward,'md')+'</td>'
        +'</tr>';
    }).join('')
-     : '<tr><td colspan="13" style="text-align:center;color:#94a3b8;padding:18px;">'
+     : '<tr><td colspan="14" style="text-align:center;color:#94a3b8;padding:18px;">'
        +(sarvPoFollowupGroups.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // Counted in PRs, not rows — "12 of 40" meaning rows would be unreadable
@@ -17362,7 +18598,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       PR608 cannot be matched back to a year or a series. Both are exported so
       neither reading is lost. */
    const head=['PR No.','PR Short','PR Requested By','Vendor Info.','PO Generate','PO No.','PO Short','Vendor',
-     'MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inward Short',
+     'Delivery Date of PO','MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inward Short',
      'Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
    const yn=v=>v?'Yes':'No';
    const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
@@ -17375,6 +18611,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        g.req.req_no||'',shortDocNo_(g.req.req_no,'PR'),g.req.requested_by||'',
        yn(g.vendorInfo),yn(g.poGenerated),
        po?(po.po_no||''):'',po?shortDocNo_(po.po_no,'PO'):'',po?(po.vendor_name||''):'',
+       po?pDate(po.delivery_date):'',
        po?yn(poFollowupMdApproved_(po)):'',po?(po.party_sent_at?('Yes — '+pStamp(po.party_sent_at)):(isPoPartySent(po)?'Yes (local only)':'No')):'',
        po?(po.status||'Generated'):'',
        i?(i.document_no||''):'',i?shortDocNo_(i.document_no,'INWARD'):'',
@@ -17402,7 +18639,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    });
  }
  async function shortClosePurchaseOrder(poNo){
-   if(!isAdmin())return showToast('⛔ Sirf Admin login short-close kar sakta hai','warn');
+   if(!sarvCan('PO_CLOSE'))return sarvDeny('PO_CLOSE');
    if(!confirm('PO "'+poNo+'" ko short quantity par close karein?\n\nBaaki pending qty ab receive nahi ki ja sakegi.'))return;
    const u=await SB.from('purchase_orders').update({status:'Closed (Short)'}).eq('po_no',poNo);
    if(u.error)return dbError(u.error);
@@ -17411,7 +18648,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    await refreshGeneratedPoList();
  }
  async function cancelPurchaseOrder(poNo){
-   if(!isAdmin())return showToast('⛔ Sirf Admin login PO cancel kar sakta hai','warn');
+   if(!sarvCan('PO_CANCEL'))return sarvDeny('PO_CANCEL');
    if(!confirm('PO "'+poNo+'" ko cancel karein? Yeh wapas nahi hoga.'))return;
    const u=await SB.from('purchase_orders').update({status:'Cancelled'}).eq('po_no',poNo);
    if(u.error)return dbError(u.error);
@@ -17812,6 +19049,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    // rows, Reload is what goes back to the database.
    ['p_poRepSearch','p_poRepStatus','p_poRepRequester','p_poRepPending']
      .forEach(id=>onFilter(id,renderPoFollowupReport));
+   document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(e=>{
+     if(e.dataset.filterBound)return;
+     e.addEventListener('input',renderPoFollowupReport);e.addEventListener('change',renderPoFollowupReport);
+     e.dataset.filterBound='1';
+   });
    bindPoFollowupFlagClicks_();
    on('p_poAddPrItemsBtn',async()=>{
      const panel=byId('p_poAddItemsPickerPanel');if(!panel)return;
