@@ -192,7 +192,14 @@
             background: #fff;
             border-bottom: 1px solid var(--border);
         }
-        .seg { display: inline-flex; background: #eef2f7; border-radius: 8px; padding: 3px; }
+        /* PO Receipts now offers four sections, which is more than a narrow
+           phone fits — the strip scrolls sideways rather than wrapping the
+           buttons into two ragged lines. Same treatment Store Check's type row
+           already gets below. */
+        .sub-bar { overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+        .sub-bar::-webkit-scrollbar { display: none; }
+        .seg { display: inline-flex; flex: 0 0 auto; background: #eef2f7; border-radius: 8px; padding: 3px; }
+        .seg button { white-space: nowrap; }
         .seg button {
             border: none;
             background: transparent;
@@ -828,7 +835,18 @@
                         &#128274; Vendor info save ho chuki hai. Ise ab sirf <b>STORE.html</b> (desktop) ke &#128176; Vendor Rate &amp; Info popup se badla ja sakta hai.
                         Har item ka <b>Selected Vendor</b> abhi bhi grid me badal kar sign kar sakte hain.
                     </div>
-                    <label style="font-size:0.8rem; font-weight:600; margin:10px 0 4px; display:block;">Vendor &amp; Item Rates</label>
+                    <!-- Add Supplier sits ON this grid because this is where the
+                         gap is found: the vendor pickers only offer Supplier
+                         Master, so a shop that was never entered used to mean
+                         abandoning a half-filled quote sheet and going to a
+                         desktop. The new name lands in every picker on the grid
+                         the moment it is saved — see saveNewSupplierMobile. -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin:10px 0 4px;">
+                        <label style="font-size:0.8rem; font-weight:600; margin:0;">Vendor &amp; Item Rates</label>
+                        <button type="button" id="viAddSupplierBtn"
+                                style="border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
+                                title="Naya supplier Supplier Master me add karein — neeche ke sabhi vendor dropdowns me turant aa jayega">&#10133; Add Supplier</button>
+                    </div>
                     <div style="font-size:0.68rem; color:#6b7280; margin-bottom:6px;">
                         Contact no. vendor ke dropdown me hi dikhta hai. Item column aur header freeze hain &mdash; side me scroll karke baaki vendors dekhein.
                     </div>
@@ -975,6 +993,27 @@
                 </div>
                 <button class="btn" id="storeCheckBtn" style="background:#16a34a;">&#10004; Check Done</button>
             </div>
+            <!-- ── Inward Approval decision (Purchaser) ──────────────────
+                 Shown only for an inward_approvals request opened from the
+                 PO Receipts ▸ Inward Approval sub-tab. Unlike the GM / MD
+                 check above, this one BLOCKS something: STORE.html will not
+                 save the receipt until Approve is pressed here, so there are
+                 two buttons and a reason box that Reject insists on. -->
+            <div id="inwAppBox" style="display:none; margin-top:12px;">
+                <div id="inwAppReasons" style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:0.76rem; color:#9a3412;"></div>
+                <div class="form-group">
+                    <label>Remarks <small style="font-weight:500;color:#6b7280;">— Reject par zaroori</small></label>
+                    <textarea id="inwAppRemarks" rows="2" placeholder="Approve ya Reject ki wajah likhein..."></textarea>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn" id="inwAppApproveBtn" style="flex:1; width:auto; background:#16a34a;">&#10004; Approve</button>
+                    <button class="btn" id="inwAppRejectBtn" style="flex:1; width:auto; background:#dc3545;">&#10006; Reject</button>
+                </div>
+                <div style="font-size:0.7rem; color:#6b7280; margin-top:7px;">
+                    <b>Approve</b> — Store wahi entry dobara Submit karke save kar payega.
+                    <b>Reject</b> — Store ko values theek karni padengi, tab tak Inward save nahi hoga.
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1003,6 +1042,62 @@
             <div style="display:flex; gap:8px;">
                 <button class="btn" id="poSendPinBtn" style="flex:1; width:auto; background:#25d366;">&#10004; Verify &amp; Send</button>
                 <button class="btn" id="poSendPinCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Add Supplier (from the Vendor Rate & Info grid) ──────────────
+         Writes the same `suppliers` row STORE.html's Supplier Master form
+         writes, so a vendor added here is the same record on both screens.
+         Its own small modal rather than a row of prompts: a phone number and
+         a GST number typed into prompt() are impossible to correct, and the
+         vendor dropdowns need the phone (it rides in every option label). -->
+    <!-- Opens ON TOP of the approval modal that holds the quote grid, so the
+         z-index is raised rather than left to DOM order. -->
+    <div class="modal-overlay" id="addSupplierModal" style="z-index:1100;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span>&#10133; Add Supplier</span>
+                <button class="close-btn" onclick="closeAddSupplierModal()">×</button>
+            </div>
+            <div style="font-size:0.74rem; color:#6b7280; margin-bottom:10px;">
+                Supplier Master me save hoga aur upar ke sabhi vendor dropdowns me turant dikhne lagega.
+            </div>
+            <div class="form-group">
+                <label>Supplier Name <span style="color:#dc3545;">*</span></label>
+                <input type="text" id="asName" class="form-select" placeholder="M/s ..." autocomplete="off" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>Contact No. <small style="font-weight:500;color:#6b7280;">— dropdown me yahi dikhta hai</small></label>
+                <input type="tel" id="asPhone" class="form-select" placeholder="98xxxxxxxx" inputmode="tel" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Contact Person</label>
+                <input type="text" id="asContact" class="form-select" placeholder="optional" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="asEmail" class="form-select" placeholder="optional" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>GST No.</label>
+                <input type="text" id="asGst" class="form-select" placeholder="optional" autocomplete="off" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>City</label>
+                <input type="text" id="asCity" class="form-select" placeholder="optional" autocomplete="off" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group">
+                <label>State</label>
+                <select id="asState" class="form-select">
+                    <option value="HARYANA (LOCAL)">HARYANA (LOCAL)</option>
+                    <option value="OUT OF STATE">OUT OF STATE</option>
+                </select>
+            </div>
+            <div class="err-banner" id="asError" style="display:none;"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="asSaveBtn" style="flex:1; width:auto; background:#16a34a;">&#128190; Save Supplier</button>
+                <button class="btn" id="asCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
             </div>
         </div>
     </div>
@@ -1834,8 +1929,19 @@
     const ACTOR_LABEL = {purchaser:'Purchaser', md:'MD', poSender:'PO Sender', gm:'GM', gmMd:'GM / MD'};
     /* Which sections the sub-bar offers, per tab. PO Receipts is the only one
        with three: a receipt is not done-or-not, it is nothing / some / all. */
+    /* Declared up here with the tab tables rather than beside the rest of the
+       Inward Approval code: syncStageTabsUi / renderViewSeg read it, and both
+       can run before the script has finished evaluating. */
+    const INWAPP_VIEW = 'inwapproval';
     const VIEWS_FOR_TAB = {
-        RECV:  [{v:'pending', l:'Pending'}, {v:'partial', l:'Partially Received'}, {v:'received', l:'Received'}],
+        /* PO Receipts carries a fourth section that is NOT a receipt state:
+           Inward Approval, where the Purchaser clears a store receipt that
+           went past its PO (excess qty, a changed rate, an item the PO never
+           ordered). It sits in this tab because it is the same question the
+           other three answer — what is arriving against my orders — and it is
+           the only thing on this tab anyone can act on. See INWAPP_VIEW. */
+        RECV:  [{v:'pending', l:'Pending'}, {v:'partial', l:'Partially Received'}, {v:'received', l:'Received'},
+                {v:'inwapproval', l:'Inward Approval'}],
         STORE: [{v:'pending', l:'Pending'}, {v:'done', l:'Complete'}],
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
@@ -1891,7 +1997,9 @@
     let storeTypeFilter = 'ALL';
     // Everything this login may see, loaded once per refresh.
     //   store = inward_entries + outward_entries awaiting / carrying a GM-MD check
-    let dash = {prs:[], pos:[], store:[]};
+    //   inwApprovals = inward_approvals rows awaiting (or carrying) a
+    //   Purchaser's decision on an out-of-PO store receipt
+    let dash = {prs:[], pos:[], store:[], inwApprovals:[]};
     let dashDirty = false;              // something saved in the modal — reload on close
     let modalViewOnly = false, modalTab = null;
     function myRoleKey(){ return myPurchaserName ? 'purchaser' : myStage; }
@@ -2040,9 +2148,16 @@
         const views = viewsForTab(currentStageTab);
         // A tab switch can leave currentView on a section the new tab lacks.
         if(!views.some(v => v.v === currentView)) currentView = views[0].v;
-        seg.innerHTML = views.map(v =>
-            `<button type="button" data-view="${v.v}"${v.v===currentView?' class="active"':''}>${escText(v.l)}</button>`
-        ).join('');
+        /* Inward Approval is the one section with work waiting IN it, so it
+           carries its count on the button — the other three are states and a
+           number on them would just restate the cards below. */
+        const pendingApprovals = (dash.inwApprovals||[]).filter(r => inwAppVisibleToMe(r) && inwAppPending(r)).length;
+        seg.innerHTML = views.map(v => {
+            const n = v.v === INWAPP_VIEW ? pendingApprovals : 0;
+            return `<button type="button" data-view="${v.v}"${v.v===currentView?' class="active"':''}>${escText(v.l)}`
+                 + (v.v === INWAPP_VIEW ? `<span class="seg-n${n ? '' : ' zero'}">${n > 99 ? '99+' : n}</span>` : '')
+                 + `</button>`;
+        }).join('');
         seg.querySelectorAll('button').forEach(b =>
             b.addEventListener('click', () => switchView(b.dataset.view)));
     }
@@ -2087,7 +2202,12 @@
             const t = el.dataset.tab;
             el.classList.toggle('active', t === currentStageTab);
             el.classList.toggle('mine', canActIn(t));
-            const n = myStage ? tabRows(t, 'pending').length : 0;
+            /* PO Receipts' badge counts the approvals waiting on this login as
+               well as the un-received POs: an approval is the only thing on
+               that tab anybody has to DO, so leaving it out of the badge would
+               hide the one item that needs a tap. */
+            let n = myStage ? tabRows(t, 'pending').length : 0;
+            if(myStage && t === 'RECV') n += tabRows('RECV', INWAPP_VIEW).filter(inwAppPending).length;
             const c = document.getElementById('cnt-' + t);
             if(c){ c.textContent = n > 99 ? '99+' : String(n); c.classList.toggle('zero', n === 0); }
         });
@@ -2105,6 +2225,19 @@
                differs — a Purchaser sees the POs raised from their own PRs,
                MD sees every one. STAGE_TABS.RECV.action is phrased for the
                Purchaser ("Aapke PO"), so it is not reused here. */
+            /* The Inward Approval section is the exception inside the
+               exception: it IS a job, and a blocking one — the store cannot
+               save the receipt until it is cleared. So it gets the "your
+               work" note the other three sections deliberately do not. */
+            else if(currentStageTab === 'RECV' && currentView === INWAPP_VIEW){
+                if(myRoleKey() === 'purchaser'){
+                    note.textContent = '✍️ PO se zyada qty / alag rate / extra item — kholkar Approve ya Reject karein';
+                    note.className = 'access-note act';
+                }else{
+                    note.textContent = '👁 View only — faisla Purchaser ka hai';
+                    note.className = 'access-note view';
+                }
+            }
             else if(currentStageTab === 'RECV'){
                 note.textContent = '👁 ' + (myPurchaserName ? 'Aapke PO' : 'Sabhi PO')
                     + ' par kitna maal aaya — Store ki Inward entries se khud update hota hai';
@@ -2193,7 +2326,13 @@
             const t = poLineTally_(p._lines);
             return [p.po_no, poReceiptBucket(p), t.pending, t.received, t.itemsPending].join('~');
         }).join('|');
-        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart + '#' + recvPart;
+        /* A new approval request, or a decision taken on another phone, has to
+           repaint this tab — the sub-tab's count and the card's buttons both
+           hang off the status. */
+        const inwAppPart = (dash.inwApprovals||[]).map(r =>
+            [r.id, r.status, r.used_on, r.decided_at].join('~')).join('|');
+        return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart + '#' + recvPart
+             + '#' + inwAppPart;
     }
     let liveLastSig = '';
     async function liveRefresh_(force){
@@ -2237,6 +2376,9 @@
                 // second a PO approval does.
                 .on('postgres_changes', {event:'*', schema:'public', table:'inward_entries'}, () => liveNudge_())
                 .on('postgres_changes', {event:'*', schema:'public', table:'outward_entries'}, () => liveNudge_())
+                // An out-of-PO receipt waiting on this Purchaser should ring
+                // through while the store is still standing at the desk.
+                .on('postgres_changes', {event:'*', schema:'public', table:'inward_approvals'}, () => liveNudge_())
                 .subscribe();
         }catch(e){
             // Realtime not available — polling alone carries it.
@@ -2307,9 +2449,17 @@
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
     document.getElementById('vendorInfoToggle')?.addEventListener('click', toggleVendorInfo);
     document.getElementById('viSaveBtn')?.addEventListener('click', () => saveVendorInfoMobile());
+    document.getElementById('viAddSupplierBtn')?.addEventListener('click', () => openAddSupplierModal());
+    document.getElementById('asSaveBtn')?.addEventListener('click', () => saveNewSupplierMobile());
+    document.getElementById('asCancelBtn')?.addEventListener('click', () => closeAddSupplierModal());
+    document.getElementById('addSupplierModal')?.addEventListener('click', e => {
+        if(e.target && e.target.id === 'addSupplierModal') closeAddSupplierModal();
+    });
     document.getElementById('viRejectBtn')?.addEventListener('click', () => viRejectPr());
     document.getElementById('viHoldBtn')?.addEventListener('click', () => viToggleHold());
     document.getElementById('storeCheckBtn')?.addEventListener('click', () => storeCheckDone());
+    document.getElementById('inwAppApproveBtn')?.addEventListener('click', () => inwAppDecide('Approved'));
+    document.getElementById('inwAppRejectBtn')?.addEventListener('click', () => inwAppDecide('Rejected'));
     document.getElementById('loginPin').addEventListener('keydown', e=>{ if(e.key==='Enter') attemptLogin(); });
     document.getElementById('poSendPinBtn')?.addEventListener('click', () => confirmPoSendPin());
     document.getElementById('poSendPinCancelBtn')?.addEventListener('click', closePoSendPinGate);
@@ -2527,6 +2677,13 @@
                state, so the view name is matched against it directly. A dead PO
                is never going to be received, so it is left out of all three. */
             case 'RECV': {
+                /* The fourth section is a work queue, not a receipt state:
+                   requests waiting on this Purchaser first, then the ones they
+                   have already decided, so a decision can still be read back. */
+                if(view === INWAPP_VIEW){
+                    const mine = (dash.inwApprovals||[]).filter(inwAppVisibleToMe);
+                    return mine.filter(inwAppPending).concat(mine.filter(r => !inwAppPending(r)));
+                }
                 const want = ['pending','partial','received'].includes(view) ? view : 'pending';
                 return (pos||[]).filter(p => !PO_DEAD(p) && poReceiptBucket(p) === want);
             }
@@ -2592,9 +2749,11 @@
            back to the header totals, i.e. the aggregate reading this was built
            to replace — and the inward documents are what its cards name.
            Nobody else pays for these two queries. */
+        let inwApprovals = [];
         if(['purchaser','md'].includes(myRoleKey()))
-            await Promise.all([attachInwardsToPos_(pos), attachPoLinesToPos_(pos)]);
-        dash = {prs, pos, store};
+            [,, inwApprovals] = await Promise.all([
+                attachInwardsToPos_(pos), attachPoLinesToPos_(pos), loadInwardApprovals_()]);
+        dash = {prs, pos, store, inwApprovals};
     }
     /* Every line of these POs, so PO Receipts can judge an order item by item
        instead of on its two header totals.
@@ -2995,6 +3154,9 @@
             // Store Check / PO Receipts rows — a store entry's own number, type
             // and party, and the inward documents tagged onto a PO.
             item.document_no, item.entry_type, item.party_name, item.invoice_no, item.gate_pass_no,
+            // Inward Approval requests — their own number and the PO / PR the
+            // store booked the receipt against.
+            item.request_no, item.po_numbers, item.req_numbers,
             ...((item._inwards||[]).map(x => x.document_no)),
             ...(item.req_no ? prQuotedVendorNames(item) : [])
         ].some(v => String(v || '').toLowerCase().includes(searchTerm));
@@ -3056,6 +3218,12 @@
                 listDiv.innerHTML = `<p class="empty-msg">${escText(tl)} — is section me koi entry nahi. Doosre sub-tab dekhein.</p>`;
                 return;
             }
+            if(cfg.module === 'RECV' && currentView === INWAPP_VIEW){
+                listDiv.innerHTML = inwAppTableMissing
+                    ? `<p class="empty-msg">⚠️ <b>inward_approvals</b> table abhi bani nahi hai — Supabase me <b>INWARD_APPROVAL_MIGRATION.sql</b> chalayein.</p>`
+                    : `<p class="empty-msg">🎉 Koi Inward approval pending nahi hai.</p>`;
+                return;
+            }
             listDiv.innerHTML = cfg.module === 'RECV'
                 ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
                 : (done
@@ -3073,6 +3241,9 @@
         // The two new tabs carry record shapes the PR/PO card below knows nothing
         // about, so they draw their own cards and return.
         if(cfg.module === 'STORE'){ paintStoreList_(listDiv, rows); return; }
+        // PO Receipts' fourth section holds approval requests, not POs — a
+        // different record shape, so a different card.
+        if(cfg.module === 'RECV' && currentView === INWAPP_VIEW){ paintInwAppList_(listDiv, rows); return; }
         if(cfg.module === 'RECV'){ paintRecvList_(listDiv, rows); return; }
 
         listDiv.innerHTML = '';
@@ -3326,6 +3497,12 @@
         // Each open starts with no documents listed; they are resolved after.
         document.getElementById('storeModalDocs').style.display = 'none';
         document.getElementById('storeModalDocsBody').innerHTML = '';
+        /* Three modes share this shell and each has its own action box, so
+           both are shut here and the opener turns on the one it owns. Without
+           this, the Purchaser's Approve / Reject pair stayed on screen over
+           the next PO they tapped. */
+        document.getElementById('storeCheckBox').style.display = 'none';
+        document.getElementById('inwAppBox').style.display = 'none';
         document.getElementById('storeModal').style.display = 'flex';
     }
     function storeModalDocs_(html){
@@ -3495,6 +3672,302 @@
             if(b) b.disabled = false;
         }
     }
+    /* ── Add Supplier, from the Vendor Rate & Info grid ───────────────
+       The vendor pickers only offer Supplier Master, which is the right rule —
+       a PO is raised on a master record, not on a typed-in name. The cost was
+       that meeting a new shop mid-quote meant abandoning the form and finding
+       a desktop. This writes the same `suppliers` row STORE.html's Supplier
+       Master writes (same columns, same SUP- code shape), then rebuilds every
+       picker on the grid from the refreshed list — selections survive, because
+       they are rebuilt from viRowVendors, not read back off the DOM. */
+    function openAddSupplierModal(prefill){
+        const set = (id,v) => { const e = document.getElementById(id); if(e) e.value = v || ''; };
+        set('asName', prefill); set('asPhone',''); set('asContact','');
+        set('asEmail',''); set('asGst',''); set('asCity','');
+        const st = document.getElementById('asState'); if(st) st.value = 'HARYANA (LOCAL)';
+        const err = document.getElementById('asError'); if(err){ err.style.display = 'none'; err.textContent = ''; }
+        const btn = document.getElementById('asSaveBtn'); if(btn) btn.disabled = false;
+        document.getElementById('addSupplierModal').style.display = 'flex';
+        setTimeout(() => document.getElementById('asName')?.focus(), 60);
+    }
+    function closeAddSupplierModal(){
+        const m = document.getElementById('addSupplierModal');
+        if(m) m.style.display = 'none';
+    }
+    async function saveNewSupplierMobile(){
+        const err = document.getElementById('asError');
+        const say = m => { if(err){ err.textContent = m; err.style.display = 'block'; } };
+        const val = id => String(document.getElementById(id)?.value || '').trim();
+        const name = val('asName').toUpperCase();
+        if(!name){ say('Supplier Name likhna zaroori hai'); document.getElementById('asName')?.focus(); return; }
+        // One name, one master row — the same rule STORE.html's Supplier Master
+        // enforces. Checked against the list this screen already holds.
+        if(viFindSupplier(name)){ say('"' + name + '" pehle se Supplier Master me hai — dropdown me se chunein'); return; }
+        const btn = document.getElementById('asSaveBtn');
+        if(btn) btn.disabled = true;
+        setBusy(true, 'Supplier save kar rahe hain...');
+        try{
+            const payload = {
+                supplier_code: 'SUP-' + (name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,20) || 'VENDOR')
+                             + '-' + String(Date.now()).slice(-4),
+                supplier_name: name,
+                contact_person: val('asContact') || null,
+                phone: val('asPhone') || null,
+                email: val('asEmail') || null,
+                gst_no: val('asGst').toUpperCase() || null,
+                state: val('asState') || 'HARYANA (LOCAL)',
+                city: val('asCity').toUpperCase() || null
+            };
+            const ins = await SB.from('suppliers').insert(payload).select('id,supplier_name,email,phone,city').single();
+            if(ins.error) throw ins.error;
+            /* Straight into the cached list and re-sorted the way loadViSuppliers
+               fetched it, so the new name sits where it will sit on the next
+               load rather than jumping position after a refresh. */
+            viSuppliers.push(ins.data);
+            viSuppliers.sort((a,b) => String(a.supplier_name||'').localeCompare(String(b.supplier_name||'')));
+            closeAddSupplierModal();
+            // Rebuild the pickers from viRowVendors (the state), not the DOM —
+            // every row keeps the vendor it already had.
+            if(document.getElementById('viRateBody')?.children.length){
+                wireViItemVendorPickers();
+                refreshViItemVendorPickers();
+            }
+            viSay('✅ "' + name + '" Supplier Master me add ho gaya — ab har vendor dropdown me hai.');
+        }catch(e){
+            const msg = String(e.message || e);
+            say(/duplicate|unique/i.test(msg)
+                ? 'Ye supplier pehle se master me hai — dropdown refresh karke dekhein'
+                : ('Save nahi hua: ' + msg));
+            if(btn) btn.disabled = false;
+        }finally{ setBusy(false); }
+    }
+
+    /* ══ INWARD APPROVAL (Purchaser) ══════════════════════════════════
+       STORE.html will not save a Material Inward that goes past the document
+       it is booked against — more quantity than the PO still has pending, a
+       rate above the one agreed, or an item the PO never ordered. Each of
+       those becomes a row in `inward_approvals`, and this is where the
+       Purchaser clears it. Nothing is received until they do: the store's
+       Submit button stays shut.
+
+       It lives in the PO Receipts tab because it answers the same question
+       the other three sections do — what is arriving against my orders — and
+       it is the only thing on this tab anybody can act on.
+
+       On a database without the table the section simply stays empty; the
+       store falls back to its Edit Password and says which migration to run.
+       See INWARD_APPROVAL_MIGRATION.sql. */
+    const INWAPP_TABLE = 'inward_approvals';
+    let inwAppTableMissing = false;   // asked once, then left alone
+    function inwAppPending(r){ return String((r && r.status) || 'Pending') === 'Pending'; }
+    /* Whose request is it? STORE.html stamps purchaser_names off the PRs
+       behind the receipt. A request it could not attribute to anyone (no PR,
+       or the lookup failed) is shown to EVERY Purchaser rather than to none —
+       an approval nobody can see is a receipt nobody can book. MD sees all. */
+    function inwAppVisibleToMe(r){
+        if(myRoleKey() === 'md') return true;
+        const names = String((r && r.purchaser_names) || '').split(',').map(s => s.trim()).filter(Boolean);
+        if(!names.length) return true;
+        return names.some(n => n.toUpperCase() === String(myPurchaserName||'').trim().toUpperCase());
+    }
+    // Only the Purchaser decides these. MD reads them, same as the rest of
+    // this tab.
+    function inwAppCanAct(r){ return myRoleKey() === 'purchaser' && inwAppPending(r); }
+    function inwAppReasons(r){
+        const v = r && r.reasons;
+        if(Array.isArray(v)) return v.map(String);
+        if(typeof v === 'string' && v.trim()){
+            try{ const p = JSON.parse(v); if(Array.isArray(p)) return p.map(String); }catch(e){}
+            return [v];
+        }
+        return [];
+    }
+    function inwAppPayload(r){
+        const v = r && r.payload;
+        if(v && typeof v === 'object') return v;
+        if(typeof v === 'string' && v.trim()){ try{ return JSON.parse(v) || {}; }catch(e){} }
+        return {};
+    }
+    function inwAppItems(r){ const p = inwAppPayload(r); return Array.isArray(p.items) ? p.items : []; }
+    async function loadInwardApprovals_(){
+        // Purchaser acts, MD watches; nobody else pays for the query.
+        if(!['purchaser','md'].includes(myRoleKey()) || inwAppTableMissing) return [];
+        try{
+            const q = await SB.from(INWAPP_TABLE).select('*').order('id', {ascending:false}).limit(200);
+            if(q.error) throw q.error;
+            return q.data || [];
+        }catch(e){
+            const msg = String(e.message || e);
+            if(/inward_approvals/i.test(msg) && /does not exist|relation|schema cache|could not find/i.test(msg)){
+                // Said once. The section stays empty rather than erroring on
+                // every refresh, and the store's own fallback still works.
+                inwAppTableMissing = true;
+                console.warn('[MOBILE] inward_approvals table missing — run INWARD_APPROVAL_MIGRATION.sql');
+            }else console.warn('[MOBILE] Inward approvals load skipped:', msg);
+            return [];
+        }
+    }
+    /* ── Inward Approval cards ───────────────────────────────────────── */
+    function paintInwAppList_(listDiv, rows){
+        listDiv.innerHTML = '';
+        rows.forEach(r => {
+            const card = document.createElement('div');
+            const pend = inwAppPending(r);
+            card.className = 'card';
+            card.onclick = () => openInwAppModal(r);
+            const p = inwAppPayload(r);
+            const col = pend ? '#d97706' : (r.status === 'Approved' ? '#16a34a' : '#dc3545');
+            let html = `<div class="card-header"><span>${escText(r.request_no || ('#' + r.id))}</span>`
+                     + `<span style="font-size:0.72rem;font-weight:800;color:${col};">${escText(r.status || 'Pending')}</span></div>`;
+            html += `<div class="card-detail">Supplier: <b>${escText(r.supplier_name || '-')}</b></div>`;
+            if(r.po_numbers)  html += `<div class="card-detail">PO: <b>${escText(r.po_numbers)}</b></div>`;
+            if(r.req_numbers) html += `<div class="card-detail">PR: <b>${escText(r.req_numbers)}</b></div>`;
+            html += `<div class="card-detail">Invoice: <b>${escText(r.invoice_no || '-')}</b>`
+                  + (r.invoice_date ? ' · ' + escText(r.invoice_date) : '') + `</div>`;
+            const items = inwAppItems(r);
+            if(items.length) html += `<div class="card-detail">Items: <b>${items.length}</b></div>`;
+            // The reasons ARE the request — show them on the card so a decision
+            // does not need the modal when it is obvious.
+            const reasons = inwAppReasons(r);
+            if(reasons.length){
+                html += `<div class="card-tags">${reasons.slice(0,3).map(x =>
+                    `<span class="tag po">⚠ ${escText(x)}</span>`).join('')}`
+                     + (reasons.length > 3 ? `<span class="tag po">+${reasons.length - 3} more</span>` : '')
+                     + `</div>`;
+            }
+            if(!pend){
+                html += `<div class="card-detail" style="margin-top:4px;">`
+                      + `${r.status === 'Approved' ? '✔' : '✖'} ${escText(r.decided_by || '-')}`
+                      + (r.decided_at ? ' · ' + escText(pStamp(r.decided_at)) : '')
+                      + (r.remarks ? ' · ' + escText(r.remarks) : '') + `</div>`;
+                if(r.used_on) html += `<div class="card-detail">📥 Inward: <b>${escText(r.used_on)}</b></div>`;
+            }
+            html += inwAppCanAct(r)
+                ? `<div class="card-action act">✍️ Tap karein — Approve ya Reject</div>`
+                : (pend
+                    ? `<div class="card-action wait">⏳ Purchaser ke faisle ka intezaar${r.purchaser_names ? ' — ' + escText(r.purchaser_names) : ''}</div>`
+                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approve ho chuka — Store save kar sakta hai' : '✖ Reject — Store ko values theek karni hongi'}</div>`);
+            card.innerHTML = html;
+            listDiv.appendChild(card);
+        });
+    }
+    /* ── Inward Approval detail ──────────────────────────────────────── */
+    async function openInwAppModal(r){
+        storeEntry = r; storeMode = 'INWAPP';
+        const p = inwAppPayload(r);
+        const meta = [
+            ['Request No', r.request_no || ('#' + r.id)],
+            ['Status', r.status || 'Pending'],
+            ['Entry Type', r.entry_type || p.entryType || 'INWARD'],
+            ['Supplier', r.supplier_name || '-'],
+            ['Invoice', (r.invoice_no || '-') + (r.invoice_date ? ' · ' + r.invoice_date : '')],
+            ['Receiving Date', p.receivingDate || '-'],
+            r.po_numbers  ? ['PO Number', r.po_numbers] : null,
+            r.req_numbers ? ['PR Number', r.req_numbers] : null,
+            ['Raised On', r.created_at ? pStamp(r.created_at) : '-'],
+            p.remarks ? ['Store Remarks', p.remarks] : null,
+            !inwAppPending(r) ? ['Decision', (r.status || '') + ' — ' + (r.decided_by || '-')
+                + (r.decided_at ? ' · ' + pStamp(r.decided_at) : '')] : null,
+            (!inwAppPending(r) && r.remarks) ? ['Decision Remarks', r.remarks] : null,
+            r.used_on ? ['Saved As', r.used_on] : null,
+        ].filter(Boolean);
+        const metaHtml = meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
+        /* Ordered / Already / This Entry / Excess, item by item — the same four
+           figures STORE.html draws under each row, so the Purchaser is looking
+           at exactly what the store was looking at. */
+        const head = ['Sr','Item','Doc','Ordered','Already','Ab aaya','Excess','Rate','PO Rate']
+            .map(h => `<th>${h}</th>`).join('');
+        const items = inwAppItems(r);
+        const body = items.length ? items.map((it,i) => {
+            const over = pNum(it.excess) > 0;
+            const rateOver = it.poRate != null && pNum(it.rate) > pNum(it.poRate) + 0.001;
+            return `<tr>
+                <td>${i+1}</td>
+                <td><b>${escText(it.name || '-')}</b>${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">PO par nahi tha</span>' : ''}</td>
+                <td>${escText(it.docKind ? (it.docKind + ' ' + (it.docNo||'')) : '-')}</td>
+                <td>${escText(nNum_(it.ordered))}</td>
+                <td>${escText(nNum_(it.already))}</td>
+                <td><b>${escText(nNum_(it.qty))}</b> ${escText(it.uom || '')}</td>
+                <td${over ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.excess))}</td>
+                <td${rateOver ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.rate))}</td>
+                <td>${it.poRate == null ? '-' : escText(nNum_(it.poRate))}</td>
+              </tr>`;
+        }).join('') : `<tr><td colspan="9" style="text-align:center;color:#999;">Is request me koi item nahi mila</td></tr>`;
+        storeModalShell_((r.request_no || ('#' + r.id)) + ' — Inward Approval', metaHtml, head, body);
+        // The GM / MD check box belongs to the other mode — keep it shut.
+        document.getElementById('storeCheckBox').style.display = 'none';
+        const box = document.getElementById('inwAppBox');
+        box.style.display = inwAppCanAct(r) ? 'block' : 'none';
+        document.getElementById('inwAppRemarks').value = '';
+        const reasons = inwAppReasons(r);
+        document.getElementById('inwAppReasons').innerHTML =
+            `<div style="font-weight:800;margin-bottom:3px;">⚠ Ye entry PO / PR se aage ja rahi hai:</div>`
+            + (reasons.length
+                ? `<ul style="margin:0;padding-left:16px;">${reasons.map(x => `<li>${escText(x)}</li>`).join('')}</ul>`
+                : '<div>Koi wajah darj nahi hui.</div>');
+        ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
+            const b = document.getElementById(id); if(b) b.disabled = false;
+        });
+        const note = document.getElementById('storeModalNote');
+        if(inwAppCanAct(r)) note.style.display = 'none';
+        else{
+            note.innerHTML = inwAppPending(r)
+                ? '👁 <b>View only</b> — faisla Purchaser' + (r.purchaser_names ? ' (' + escText(r.purchaser_names) + ')' : '') + ' ka hai'
+                : (r.status === 'Approved'
+                    ? '✔ <b>Approved</b> — Store ab yahi entry Submit karke save kar sakta hai'
+                    : '✖ <b>Rejected</b> — Store ko values theek karke dobara bhejni hongi');
+            note.style.display = 'block';
+        }
+        // No documents to list: the receipt does not exist yet — that is what
+        // this request is asking permission to create.
+        storeModalDocs_('');
+    }
+    async function inwAppDecide(decision){
+        const r = storeEntry;
+        if(!r || storeMode !== 'INWAPP' || !inwAppCanAct(r)) return;
+        const remarks = String(document.getElementById('inwAppRemarks').value || '').trim();
+        // A rejection sends somebody back to redo work — it has to say why.
+        if(decision === 'Rejected' && !remarks){
+            alert('Reject karne ki wajah likhna zaroori hai.');
+            document.getElementById('inwAppRemarks').focus();
+            return;
+        }
+        const label = r.request_no || ('#' + r.id);
+        if(!confirm(decision === 'Approved'
+            ? ('"' + label + '" approve karein?\n\nStore wahi Inward entry Submit karke save kar payega.')
+            : ('"' + label + '" reject karein?\n\nStore tab tak ye Inward save nahi kar payega.'))) return;
+        ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
+            const b = document.getElementById(id); if(b) b.disabled = true;
+        });
+        setBusy(true, 'Faisla save kar rahe hain...');
+        try{
+            /* Decided only if it is STILL pending. Two phones can hold the same
+               request open; without this the second decision would silently
+               overwrite the first. */
+            const upd = await SB.from(INWAPP_TABLE).update({
+                status: decision,
+                decided_by: myPurchaserName || (STAGE_LABEL[myStage] || 'Purchaser'),
+                decided_at: new Date().toISOString(),
+                remarks: remarks || null
+            }).eq('id', r.id).eq('status', 'Pending').select('id');
+            if(upd.error) throw upd.error;
+            if(!(upd.data || []).length)
+                throw new Error('Is request par faisla pehle hi ho chuka hai — list refresh karein.');
+            dashDirty = false;
+            closeStoreModal();
+            await renderList();
+            alert((decision === 'Approved' ? '✔ ' : '✖ ') + label + ' — ' + decision + '.\n\n'
+                + (decision === 'Approved'
+                    ? 'Store ko bol dein ki wahi entry dobara Submit kare.'
+                    : 'Store ko values theek karni hongi.'));
+        }catch(err){
+            alert('Error: ' + (err.message || err));
+            ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
+                const b = document.getElementById(id); if(b) b.disabled = false;
+            });
+        }finally{ setBusy(false); }
+    }
+
     /* PO Receipts detail: ordered vs received per line, plus the inward
        documents booked against this PO. Read-only throughout. */
     // Per-line receipt verdict, the same words the card's summary counts.
