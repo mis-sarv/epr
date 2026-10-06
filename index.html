@@ -918,6 +918,105 @@ body {
         #pwdGateModal .btn-primary:hover { background: #0369a1; }
 
         /* ============================================================
+           ADD NEW ITEM POPUP AT BODY LEVEL (#sarvNewItemModal)
+           ------------------------------------------------------------
+           Same story as the PIN modal above, and it bit in the same way.
+           The popup used to be appended to #storeInterface, which is
+           display:none whenever the Purchase panel is open — so pressing
+           "+ Add New Item" on the PERSONNEL ITEM REQUIREMENT FORM opened
+           a dialog nobody could see, and it then turned up inside
+           Material Inward the next time that panel was shown.
+
+           It is built on <body> now, so it is reachable from either
+           panel. .secure-modal-box, .form-control and .btn are scoped to
+           #storeInterface, so this gives that one popup its own copy of
+           exactly what it needs, written as #sarvNewItemModal ... so
+           nothing else on the page is touched.
+        ============================================================ */
+        /* ── Body-level .secure-modal-overlay instances ──────────────
+           The .secure-modal-overlay rule near the top of this sheet is written
+           as "#storeInterface .secure-modal-overlay" (the comment sitting
+           between the two selectors makes it a descendant combinator), so the
+           two overlays that live on <body> inherit none of its positioning.
+           Measured rather than guessed: both came out position:static,
+           background:transparent, with the dialog box landing at top=800px on
+           an 800px viewport — i.e. a plain white slab just below the fold and
+           no dim backdrop at all.
+
+           Restated here for exactly those two ids. `display` is deliberately
+           left out: both are driven by their own inline display none/flex. */
+        #pwdGateModal,
+        #sarvNewItemModal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+            padding: 16px;
+            /* A dialog taller than the screen scrolls instead of having its
+               head cut off, which is what centring alone would do. */
+            overflow-y: auto;
+        }
+
+        #sarvNewItemModal .secure-modal-box {
+            background: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            width: 420px;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+            text-align: center;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: #0f172a;
+            /* The form inside is a two-column grid of labelled fields, not a
+               single centred prompt — left-aligned, or every label floats in
+               the middle of its cell. */
+            text-align: left;
+            max-height: 92vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        #sarvNewItemModal .form-control {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #0f172a;
+            background: #f8fafc;
+            outline: none;
+            height: 34px;
+            font-weight: 500;
+            font-family: inherit;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
+        }
+        #sarvNewItemModal .form-control:focus {
+            border-color: #0284c7;
+            background: #fff;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.02), 0 0 0 3px rgba(2,132,199,0.15);
+        }
+        #sarvNewItemModal .btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-family: inherit;
+        }
+        #sarvNewItemModal .btn-primary { background: #0284c7; color: #fff; }
+        #sarvNewItemModal .btn-primary:hover { background: #0369a1; }
+
+        /* ============================================================
            INFORM TO REQUESTER — CONFIRM DIALOG (#fuConfirmModal)
            Self-contained, like the PIN modal above: it sits outside
            #storeInterface, so it cannot borrow that panel's styles.
@@ -3511,7 +3610,7 @@ body {
                                     <option value="FT">FT</option>
                                 </select>
                             </div>
-                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Make / Brand</label><input type="text" class="form-control" id="mi_make" placeholder="e.g. LOCAL / IMPORTED"></div>
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Make / Brand</label><input type="text" class="form-control" id="mi_make" list="dl-mi-make" placeholder="e.g. LOCAL / IMPORTED" autocomplete="off"></div>
                             <!-- GST lives on the ITEM, not on each entry line: the
                                  rate for a given part never changes from one PO to
                                  the next, so it is set once here and auto-filled
@@ -3543,11 +3642,13 @@ body {
                         </div>
                         </div><!-- /mi_formBody -->
                     </div>
-                    <!-- Suggestions for Item Size / Material Type, rebuilt from what the
-                         Item Master already holds (refreshItemAttributeDatalists_). They
-                         start out empty and fill themselves as items are added, so the
-                         store's own vocabulary is what gets offered back — and nothing
-                         is ever blocked, because these are plain text inputs. -->
+                    <!-- Suggestions for Make / Brand, Item Size and Material Type,
+                         rebuilt from what the Item Master already holds
+                         (refreshItemAttributeDatalists_). They start out empty and fill
+                         themselves as items are added, so the store's own vocabulary is
+                         what gets offered back — and nothing is ever blocked, because
+                         all three are plain text inputs. -->
+                    <datalist id="dl-mi-make"></datalist>
                     <datalist id="dl-mi-itemSize"></datalist>
                     <datalist id="dl-mi-materialType"></datalist>
 
@@ -6749,6 +6850,12 @@ function poStripInputFromRow_(tr){
     prNo:tr.dataset.reqNo||'',
     prRequiredQty:tr.dataset.prRequiredQty, prReceivedQty:tr.dataset.prReceivedQty,
     prRequiredWeight:tr.dataset.prRequiredWeight, prReceivedWeight:tr.dataset.prReceivedWeight,
+    // The Repair-Return side: which outward this item went out on, how much
+    // went out ON THIS LINE, and how much of it has already come back. Set by
+    // loadRepairOutwardIntoInward / loadInwardForEdit.
+    repairOutNo:tr.dataset.repairOutNo||'',
+    repairOutQty:tr.dataset.repairOutQty, repairReceivedQty:tr.dataset.repairReceivedQty,
+    repairOutWeight:tr.dataset.repairOutWeight, repairReceivedWeight:tr.dataset.repairReceivedWeight,
     // The PO's agreed price and the rate being entered — docStripRateNote_
     // compares the two, so the live strip can warn about an over-rate before
     // Submit instead of only the printed copy recording it afterwards.
@@ -6772,9 +6879,9 @@ function renderPoInfoRow(tr,info){
   const pill=(lbl,val,color)=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
     +'<span style="color:#64748b;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+lbl+'</span>'
     +'<b style="color:'+color+';font-size:11px;">'+val+'</b></span>';
-  // PR strips are green so the two kinds of receipt are told apart at a glance
-  // without having to read the number.
-  const accent=p.kind==='PR'?'#15803d':'#1d4ed8';
+  // Blue PO / green PR / amber Return, so the kind of document this row is
+  // measured against reads at a glance without the number being read.
+  const accent=docStripAccent_(p);
   const tag=t=>'<span style="color:'+accent+';font-weight:800;font-size:10px;">'+escText(t)+'</span>';
   const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
     +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
@@ -6986,6 +7093,72 @@ async function repairReceivedByDoc_(inwardIds,inwardEntriesByDoc,docNos){
   }
   return {byDoc,docsByOut};
 }
+/* How much of each ITEM has already come back against each repair outward,
+   keyed OUTWARD_NO|item_id. repairReceivedByDoc_ above answers the same
+   question per DOCUMENT, which is all the dropdown's Balance needs; the item
+   row's sub-row needs it per part, or a three-item gate pass shows the gate
+   pass's total on all three lines.
+
+   Both linkage generations are honoured, exactly as repairReceivedByDoc_ does:
+     • line-level  — inward_lines.repair_outward_no names the outward per line,
+       which is what makes one receipt cover several outwards;
+     • header-level — the original scheme, inward_entries.gate_pass_no for the
+       whole entry.
+   An inward with ANY line-level link is attributed line by line; everything
+   else falls back to its header, so nothing is counted twice and nothing
+   historic is dropped.
+
+   excludeInwardId leaves the entry being edited out, so reopening a saved
+   repair return never counts its own quantities as history — the same rule
+   prReceivedQtys_ follows for a PR receipt. */
+async function repairReceivedByDocItem_(docNos,excludeInwardId){
+  const nos=[...new Set((docNos||[]).map(n=>String(n||'').trim()).filter(Boolean))];
+  const out={};
+  if(!nos.length||!SB_READY)return out;
+  const mine=id=>excludeInwardId&&String(id)===String(excludeInwardId);
+  const add=(outNo,itemId,qty,weight)=>{
+    if(!outNo||!itemId)return;
+    const k=String(outNo).trim().toUpperCase()+'|'+String(itemId);
+    const o=out[k]=out[k]||{qty:0,weight:0};
+    o.qty+=pNum(qty);o.weight+=pNum(weight);
+  };
+  try{
+    // Line-level first — it is the exact answer where the column exists.
+    let lineRows=[];
+    if(await probeRepairLineLink()){
+      const lq=await SB.from('inward_lines')
+        .select('inward_id,item_id,qty,weight,repair_outward_no').in('repair_outward_no',nos);
+      if(lq.error)throw lq.error;
+      lineRows=lq.data||[];
+    }
+    const linked=new Set();
+    lineRows.forEach(l=>{
+      if(mine(l.inward_id))return;
+      linked.add(String(l.inward_id));
+      add(l.repair_outward_no,l.item_id,l.qty,l.weight);
+    });
+    // Header fallback for every repair inward that carries no line-level link.
+    const eq=await SB.from('inward_entries').select('id,gate_pass_no')
+      .eq('nature_of_inward','Repaired').in('gate_pass_no',nos);
+    if(eq.error)throw eq.error;
+    const headerDocById={};
+    (eq.data||[]).forEach(e=>{
+      if(mine(e.id)||linked.has(String(e.id)))return;
+      headerDocById[String(e.id)]=e.gate_pass_no;
+    });
+    const legacyIds=Object.keys(headerDocById);
+    if(legacyIds.length){
+      const ilq=await SB.from('inward_lines').select('inward_id,item_id,qty,weight').in('inward_id',legacyIds);
+      if(ilq.error)throw ilq.error;
+      (ilq.data||[]).forEach(l=>add(headerDocById[String(l.inward_id)],l.item_id,l.qty,l.weight));
+    }
+  }catch(e){
+    // A lookup that cannot run means the strip reports 0 already-received,
+    // which reads as "no history" rather than as a wrong number.
+    console.warn('[SARV] Repair received-per-item lookup skipped:',e.message||e);
+  }
+  return out;
+}
 async function loadRepairOutwardIntoInward(){
   const statusEl=byId('repairAutoFillStatus'),stripEl=byId('repairReceivedInwardStrip'),stripNos=byId('repairReceivedInwardNos');
   const sel=getSelectedRepairOutNos()
@@ -7027,48 +7200,41 @@ async function loadRepairOutwardIntoInward(){
   if(lq.error){showToast('Outward lines load nahi ho paaye: '+lq.error.message,'error');return}
   const outById={};sel.forEach(o=>{outById[o.id]=o});
   const lines=lq.data||[];
+  /* What has already come back, PER ITEM per outward. The outward's own
+     `received` / `balance` are gate-pass totals — right for the picker, wrong
+     on an item row, where they made every line of a three-item gate pass show
+     the same two numbers. The entry being edited is left out, so reopening a
+     saved return does not count its own quantities as history. */
+  const alreadyByItem=await repairReceivedByDocItem_(sel.map(o=>o.document_no),sarvEditingInwardId);
   if(tb)tb.innerHTML='';
   lines.forEach(line=>{
     const o=outById[line.outward_id];if(!o)return;
     addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
     const it=line.items||{};
+    const prior=alreadyByItem[String(o.document_no).trim().toUpperCase()+'|'+String(line.item_id||'')]||{qty:0,weight:0};
+    const outQty=pNum(line.qty), pending=Math.max(0,outQty-pNum(prior.qty));
     // Tagged so the save path can write repair_outward_no per line, and so the
-    // sub-row below knows which outward this item came back against.
+    // sub-row knows what this item is being measured against. These are the
+    // same four names poStripInputFromRow_ reads and returnStripParts_ turns
+    // into Out Qty / Received / Pending / Excess — on screen and on the PDF.
     tr.dataset.repairOutNo=o.document_no;
-    tr.dataset.repairSent=pNum(line.qty);
-    tr.dataset.repairReceived=pNum(o.received);
-    tr.dataset.repairBalance=pNum(o.balance);
+    tr.dataset.repairOutQty=outQty;
+    tr.dataset.repairReceivedQty=pNum(prior.qty);
+    tr.dataset.repairOutWeight=pNum(line.weight);
+    tr.dataset.repairReceivedWeight=pNum(prior.weight);
     const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};
-    set('.item-name',it.name||'');set('.item-desc',it.description||'');set('.item-make',it.make||'');set('.item-cat',it.category||'General');set('.qty-field',Math.min(pNum(line.qty),o.balance));set('.item-uom',line.uom||it.uom||'PCS');
-    appendRepairInfoRow(tr,tb);
+    set('.item-name',it.name||'');set('.item-desc',it.description||'');set('.item-make',it.make||'');set('.item-cat',it.category||'General');set('.item-uom',line.uom||it.uom||'PCS');
+    /* Prefilled with what THIS item still owes, not with the gate pass's
+       balance capped by the line — on a partly-returned gate pass those are
+       different numbers, and the old one could prefill an item that had
+       already come back in full. Editable, as before. */
+    set('.qty-field',pending);
+    // Weight likewise: what went out on this line, less what has come back.
+    if(pNum(line.weight)>0)set('.weight-field',Math.max(0,pNum(line.weight)-pNum(prior.weight)));
+    appendPoInfoRow(tr,tb);
   });
   applyInwardNbGstLock();
   updateStoreTotals();
-}
-
-/* Sub-row under each repair item showing which outward it belongs to and that
-   outward's Sent / Received / Balance - the repair equivalent of the PO strip.
-   Shares the .po-info-row class so every place that iterates item rows already
-   excludes it (updateStoreTotals / rowDataInward / saveStoreInward). */
-function appendRepairInfoRow(tr,tb){
-  if(!tr||!tb)return;
-  const cols=tr.children.length||15;
-  const info=document.createElement('tr');
-  info.className='po-info-row repair-info-row';
-  info.innerHTML='<td colspan="'+cols+'" style="background:#fffbeb;border-top:none;padding:3px 8px 6px 8px;"></td>';
-  tb.appendChild(info);
-  const del=tr.querySelector('.delete-btn');
-  if(del)del.onclick=()=>{info.remove();tr.remove();updateStoreTotals()};
-  const cell=info.querySelector('td');
-  const pill=(lbl,val,color)=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #fde68a;border-radius:5px;padding:2px 7px;">'
-    +'<span style="color:#92400e;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+lbl+'</span>'
-    +'<b style="color:'+color+';font-size:11px;">'+val+'</b></span>';
-  cell.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;">'
-    +'<span style="color:#b45309;font-weight:800;font-size:10px;">&#128295; '+escText(tr.dataset.repairOutNo||'-')+'</span>'
-    +pill('Sent Qty',pNum(tr.dataset.repairSent),'#0f172a')
-    +pill('Received',pNum(tr.dataset.repairReceived),'#0f766e')
-    +pill('Balance',pNum(tr.dataset.repairBalance),pNum(tr.dataset.repairBalance)>0?'#b45309':'#16a34a')
-    +'</div>';
 }
 
 /* ================================================================
@@ -7546,7 +7712,14 @@ function inwardDocOverrides(rows){
   const poBased=inwardPoRefList_(rows).length>0;
   (rows||[]).forEach(r=>{
     const p=docStripParts_(r);
-    if(p&&p.excess>0){
+    /* RETURN strips are deliberately NOT a reason to ask anybody. A repair
+       return is the unit's own material coming back on a gate pass — there is
+       no PO, no agreed price and no Purchaser who negotiated it, so routing an
+       over-receipt to the Purchaser's Inward Approval queue would send it to
+       someone with no basis to judge it. The excess is still shown in red on
+       the row's strip and printed on the PDF; it just does not gate the save,
+       which is exactly how it behaved before the strip existed. */
+    if(p&&p.kind!=='RETURN'&&p.excess>0){
       const pending=Math.max(0,p.ordered-p.already);
       out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
         +', pending sirf '+pending+'  (excess '+p.excess+')');
@@ -9336,10 +9509,15 @@ function openNewItemMasterModal(target){
       +'<button type="button" id="ni_cancel" class="btn" style="background:#e2e8f0;color:#0f172a;">Cancel</button>'
       +'<button type="button" id="ni_save" class="btn btn-primary">&#128190; Save Item</button>'
       +'</div></div>';
-    // Mounted inside #storeInterface rather than on <body>: .secure-modal-box,
-    // .btn and .form-control are all scoped to that panel, so a body-level
-    // popup would come out unstyled.
-    (byId('storeInterface')||document.body).appendChild(ov);
+    /* Mounted on <body>, NOT inside #storeInterface. That panel is set to
+       display:none whenever the Purchase panel is open (see activatePanel), so
+       a popup living inside it was invisible when opened from the PERSONNEL
+       ITEM REQUIREMENT FORM — and then appeared, already open, the next time
+       Material Inward was shown. .secure-modal-box / .btn / .form-control are
+       scoped to that panel, so #sarvNewItemModal carries its own copy of those
+       styles in the stylesheet above. Same fix, and same reason, as
+       #pwdGateModal. */
+    document.body.appendChild(ov);
     byId('ni_cancel').onclick=closeNewItemMasterModal;
     byId('ni_save').onclick=saveNewItemFromModal_;
     ov.addEventListener('click',e=>{if(e.target===ov)closeNewItemMasterModal();});
@@ -9498,6 +9676,10 @@ function refreshItemAttributeDatalists_(items){
       .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}))
       .map(v=>'<option value="'+escText(v)+'">').join('');
   };
+  // Make / Brand gets the same treatment as Item Size and Material Type: the
+  // Item Master form's own box offers back every brand already on file, so the
+  // same make is not re-spelled three ways across the catalogue.
+  fill('dl-mi-make',(items||[]).map(it=>{const v=it&&it.make;return String(v==null?'':v).trim()||null}));
   fill('dl-mi-itemSize',(items||[]).map(itemSize_));
   fill('dl-mi-materialType',(items||[]).map(itemMaterial_));
 }
@@ -9751,7 +9933,10 @@ function refreshItemDatalist(items){
      had to be typed from memory. */
   const makeSet=[...new Set(items.map(x=>x.make).filter(Boolean))]
     .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
-  ['dl-item-make','dl-out-item-make','p_dl-item-makes'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
+  // dl-mi-make is the Item Master form's own box. refreshItemAttributeDatalists_
+  // fills it too, but only when that panel loads — doing it here as well means
+  // the suggestions are already there the first time the panel is opened.
+  ['dl-item-make','dl-out-item-make','p_dl-item-makes','dl-mi-make'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
 }
 
 function refreshSupplierDatalist(suppliers){
@@ -11638,6 +11823,42 @@ async function loadInwardForEdit(id,no){
       prAlready=await prReceivedQtys_(prNos,id);
     }catch(err){console.warn('[SARV] PR line figures for edit skipped:',err.message||err);}
   }
+  /* The outward figures behind a Repair Return, for exactly the reason the PO
+     and PR blocks above exist: without them a reopened return comes back with
+     its outward number and nothing behind it, so returnStripParts_ bails on
+     out<=0 and the regenerated PDF prints no sub-row at all.
+
+     Out Qty / Out Wt come from the outward's own lines, matched by item.
+     repairReceivedByDocItem_ gives what came back BEFORE this entry — it is
+     told to leave this record out, so reopening never counts itself. */
+  const repairNos=[...new Set(lines.map(l=>String(l.repair_outward_no||'').trim())
+    .concat([String(e.gate_pass_no||'').trim()]).filter(Boolean))];
+  const isRepairEntry=String(e.nature_of_inward||'')==='Repaired';
+  const repairOutInfo={};
+  let repairAlready={};
+  if(isRepairEntry&&repairNos.length){
+    try{
+      const oq=await SB.from('outward_entries').select('id,document_no').in('document_no',repairNos);
+      if(oq.error)throw oq.error;
+      const noById={};(oq.data||[]).forEach(o=>{noById[o.id]=o.document_no});
+      const oids=(oq.data||[]).map(o=>o.id);
+      if(oids.length){
+        const olq=await SB.from('outward_lines').select('outward_id,item_id,qty,weight').in('outward_id',oids);
+        if(olq.error)throw olq.error;
+        (olq.data||[]).forEach(l=>{
+          const no=noById[l.outward_id];if(!no||!l.item_id)return;
+          // Keyed by item, like the PR block: a saved inward line records which
+          // item it is, not which outward LINE, so the item is the only handle
+          // back. Two outward lines of the same item add together.
+          const k=String(no).trim().toUpperCase()+'|'+String(l.item_id);
+          const cur=repairOutInfo[k]||{qty:0,weight:0};
+          cur.qty+=pNum(l.qty);cur.weight+=pNum(l.weight);
+          repairOutInfo[k]=cur;
+        });
+      }
+      repairAlready=await repairReceivedByDocItem_(repairNos,id);
+    }catch(err){console.warn('[SARV] Repair outward figures for edit skipped:',err.message||err);}
+  }
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
     addNewRow();
@@ -11665,7 +11886,25 @@ async function loadInwardForEdit(id,no){
     // Falls back to the header's single PO for a line saved before po_line_id
     // was recorded.
     if(!tr.dataset.poNo&&poNos.length===1)tr.dataset.poNo=poNos[0];
-    if(line.repair_outward_no)tr.dataset.repairOutNo=line.repair_outward_no;
+    /* A line saved before inward_lines.repair_outward_no existed carries the
+       link only on the header, where gate_pass_no can name just one outward —
+       so that is the fallback. The number itself is restored either way (the
+       save path rewrites it); the Out Qty / Received figures only follow when
+       the outward line behind them could be resolved, and without them the
+       strip is simply withheld rather than printed as zeroes. */
+    const rOutNo=String(line.repair_outward_no||'').trim()
+      ||(isRepairEntry?String(e.gate_pass_no||'').trim():'');
+    if(rOutNo){
+      tr.dataset.repairOutNo=rOutNo;
+      const rk=rOutNo.toUpperCase()+'|'+String(line.item_id||'');
+      const ro=repairOutInfo[rk], ra=repairAlready[rk]||{qty:0,weight:0};
+      if(ro&&ro.qty>0){
+        tr.dataset.repairOutQty=ro.qty;
+        tr.dataset.repairOutWeight=ro.weight;
+        tr.dataset.repairReceivedQty=pNum(ra.qty);
+        tr.dataset.repairReceivedWeight=pNum(ra.weight);
+      }
+    }
     // Keep the line bound to the exact Item Master row it was saved against.
     // Without this the update re-resolves by name through ensureItem and can
     // rebind the line to a different item that happens to share the name.
@@ -11715,7 +11954,7 @@ async function loadInwardForEdit(id,no){
        restored — so what the regenerated PDF will print can be checked here
        first. Added after the fields are filled, because it reads the qty and
        weight boxes to work out Pending / Excess. */
-    if(tb&&((pi&&pi.ordered>0)||pNum(tr.dataset.prRequiredQty)>0))appendPoInfoRow(tr,tb);
+    if(tb&&((pi&&pi.ordered>0)||pNum(tr.dataset.prRequiredQty)>0||pNum(tr.dataset.repairOutQty)>0))appendPoInfoRow(tr,tb);
   });
   if(!lines.length)addNewRow();
   // Freight and Round off live on the header (freight_exp / round_off). They
@@ -12283,13 +12522,43 @@ window.addEventListener('DOMContentLoaded',()=>{
      pendWt:Math.max(0,reqWt-recWt),
      excWt:Math.max(0,recWt-reqWt)};
  }
- /* What every strip renderer actually consumes — the live row on screen, the
-    HTML print and the native print alike. One shape for both documents, so a
-    PR receipt gets the identical strip a PO receipt gets and the three
-    renderers stay three copies of ONE layout rather than six of two.
+ /* ── The same strip, measured against an OUTWARD ────────────────────
+    Nature of Inward = Return. The material went out for repair on an outward
+    gate pass and is coming back, possibly in instalments and possibly across
+    several outwards in one receipt — so each item deserves the same four
+    figures a PO receipt gets: what went out, what has already come back, what
+    this entry brings, and what is still outstanding or over.
 
-    A row can only be against one of the two: the PR picker is hidden the moment
-    a PO is ticked (syncInwPrField), so PO is simply tried first. */
+    The three numbers come off the row per ITEM, not per outward. The old
+    sub-row read the outward's HEADER totals, so every item of a three-item
+    gate pass showed the same Received and Balance — the figure for the gate
+    pass, not for the part you were holding. repairReceivedByDocItem_ is what
+    makes the per-item reading possible. */
+ function returnStripParts_(it){
+   if(!it||!it.repairOutNo)return null;
+   const out=pNum(it.repairOutQty), already=pNum(it.repairReceivedQty);
+   // Nothing measurable (no outward qty on the line), so the strip is withheld
+   // rather than printed as a row of zeroes — same rule the PO/PR strips use.
+   if(out<=0)return null;
+   const received=already+pNum(it.qty);
+   const outWt=pNum(it.repairOutWeight), alreadyWt=pNum(it.repairReceivedWeight);
+   const recWt=alreadyWt+pNum(it.weight);
+   return {outNo:String(it.repairOutNo),out,already,received,
+     pending:Math.max(0,out-received),
+     excess:Math.max(0,received-out),
+     hasWeight:outWt>0,outWt,alreadyWt,recWt,
+     pendWt:Math.max(0,outWt-recWt),
+     excWt:Math.max(0,recWt-outWt)};
+ }
+ /* What every strip renderer actually consumes — the live row on screen, the
+    HTML print and the native print alike. One shape for all three documents,
+    so a Repair-Return receipt gets the identical strip a PO receipt gets and
+    the three renderers stay three copies of ONE layout rather than nine of
+    three.
+
+    A row can only be against one of the three: the PR picker is hidden the
+    moment a PO is ticked (syncInwPrField), and a Return row is loaded from an
+    outward and carries neither — so they are simply tried in turn. */
  function docStripParts_(it){
    const po=poStripParts_(it);
    if(po)return {kind:'PO',tag:'PO: '+po.poNo,no:po.poNo,ordLabel:'Order Qty',ordWtLabel:'Order Wt',
@@ -12305,8 +12574,24 @@ window.addEventListener('DOMContentLoaded',()=>{
      hasWeight:pr.hasWeight,ordWt:pr.reqWt,alreadyWt:pr.alreadyWt,recWt:pr.recWt,
      pendWt:pr.pendWt,excWt:pr.excWt,
      poRate:null,rate:pNum(it.rate),rateOver:false};
+   /* A Repair Return is measured against the OUTWARD it is coming back on.
+      Like a PR it has no agreed price — the material is the unit's own, going
+      out and coming back — so there is no rate to be "above" either. */
+   const rt=returnStripParts_(it);
+   if(rt)return {kind:'RETURN',tag:'OUTWARD: '+rt.outNo,no:rt.outNo,ordLabel:'Out Qty',ordWtLabel:'Out Wt',
+     ordered:rt.out,already:rt.already,received:rt.received,pending:rt.pending,excess:rt.excess,
+     hasWeight:rt.hasWeight,ordWt:rt.outWt,alreadyWt:rt.alreadyWt,recWt:rt.recWt,
+     pendWt:rt.pendWt,excWt:rt.excWt,
+     poRate:null,rate:pNum(it.rate),rateOver:false};
    return null;
  }
+ /* The accent every renderer paints a strip in, so the kind of document a row
+    is measured against is readable at a glance without reading the number:
+    blue for a PO, green for a PR, amber for a Repair Return. One table, three
+    renderers (the live row, the HTML print, the native print). */
+ const DOC_STRIP_ACCENT={PO:'#1d4ed8',PR:'#15803d',RETURN:'#b45309'};
+ const DOC_STRIP_ACCENT_RGB={PO:[30,64,175],PR:[21,128,61],RETURN:[180,83,9]};
+ function docStripAccent_(p){return DOC_STRIP_ACCENT[p&&p.kind]||DOC_STRIP_ACCENT.PO;}
  /* The third line of the sub-row: what the PO actually agreed to pay.
 
     Printed only when this receipt has gone past the PO in one of the two ways
@@ -12560,7 +12845,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           sirf label aur rang badalta hai — layout ek hi hai. */
        const strip=docStripParts_(it);
        if(strip){
-         const accent=strip.kind==='PR'?'#15803d':'#1d4ed8';
+         const accent=docStripAccent_(strip);
          const rateNote=docStripRateNote_(strip);
          const chip=(lbl,val,color)=>'<span style="margin-right:12px;white-space:nowrap;">'+lbl+': <b style="color:'+color+';">'+val+'</b></span>';
          // Qty on the first line, Weight on a second one under it in the same
@@ -12821,10 +13106,10 @@ window.addEventListener('DOMContentLoaded',()=>{
          styles:{fontSize:6.2,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
            // Over-receipt turns the whole strip red — a single cell cannot
            // colour just its Excess figure the way the HTML copy does. Either
-           // excess counts: qty or weight. Otherwise blue for a PO, green for a
-           // PR, matching the on-screen strip.
+           // excess counts: qty or weight. Otherwise blue for a PO, green for
+           // a PR, amber for a Return, matching the on-screen strip.
            textColor:(bits&&(bits.excess>0||bits.excWt>0))?[220,38,38]
-             :(bits&&bits.kind==='PR')?[21,128,61]:[30,64,175],
+             :(DOC_STRIP_ACCENT_RGB[bits&&bits.kind]||DOC_STRIP_ACCENT_RGB.PO),
            cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
        /* Third line — the PO's agreed rate, in red. A SEPARATE row rather than
           a third \n inside the cell above: autoTable colours a whole cell at
@@ -14429,7 +14714,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight),savedLine:r.dataset.savedLine||''})).filter(x=>x.name&&x.qty>0).map(x=>{
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',repairOutQty:pNum(r.dataset.repairOutQty),repairReceivedQty:pNum(r.dataset.repairReceivedQty),repairOutWeight:pNum(r.dataset.repairOutWeight),repairReceivedWeight:pNum(r.dataset.repairReceivedWeight),itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight),savedLine:r.dataset.savedLine||''})).filter(x=>x.name&&x.qty>0).map(x=>{
     /* The saved record and the PDF must match the entry form's Final Amount to
        the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
        the net rate rounded to 2dp for display, and pRound() clipped each line
