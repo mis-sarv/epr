@@ -1985,6 +1985,46 @@ body {
         }
         #fullPurchasePanel .delete-row-btn:hover { color: #991b1b; }
 
+        /* The PR items grid now carries the same two per-row controls the Store
+           Inward grid has — ＋ inserts a line directly under this one, × removes
+           it — plus the "+ Add New Item" button under the Item Name header that
+           opens the Item Master popup. The Store styles for all three are
+           scoped to #storeInterface, and this panel is a sibling of it, so they
+           are restated here rather than widened: #storeInterface's grid is a
+           different size and loosening those selectors would move it. */
+        #fullPurchasePanel .row-actions {
+            white-space: nowrap;
+            text-align: center;
+        }
+        #fullPurchasePanel .add-row-btn {
+            color: #fff;
+            background: #16a34a;
+            border: none;
+            border-radius: 4px;
+            width: 18px;
+            height: 18px;
+            line-height: 1;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            margin-right: 4px;
+            padding: 0;
+        }
+        #fullPurchasePanel .add-row-btn:hover { background: #15803d; }
+        #fullPurchasePanel .th-new-item-btn {
+            margin-top: 3px;
+            color: #fff;
+            background: #0284c7;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 9px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #fullPurchasePanel .th-new-item-btn:hover { background: #0369a1; }
+
         #fullPurchasePanel .sr-cell {
             text-align: center;
             font-weight: 700;
@@ -4397,7 +4437,11 @@ body {
 
                 <div class="section-header-row">
                     <h3 class="section-title">Items Required</h3>
-                    <button class="btn btn-primary" id="p_addItemBtn">+ Add New Item</button>
+                    <!-- This one adds a ROW to the table below. The blue button
+                         under the Item Name header adds an item to the ITEM
+                         MASTER — same pair, same wording, as the Store Inward
+                         grid. The titles are what tell them apart. -->
+                    <button class="btn btn-primary" id="p_addItemBtn" title="Table me ek aur khali row jodein">+ Add New Item</button>
                 </div>
 
                 <div class="items-total-strip">
@@ -4411,7 +4455,7 @@ body {
                         <thead>
                             <tr>
                                 <th style="width: 4%; text-align: center;">Sr.</th>
-                                <th style="width: 14%;">Item Name <span style="color:#dc2626;">*</span></th>
+                                <th style="width: 14%;">Item Name <span style="color:#dc2626;">*</span><br><button type="button" class="th-new-item-btn" onclick="openNewItemMasterModal('purchase')" title="Naya item Item Master me add karein — list me turant aa jayega">+ Add New Item</button></th>
                                 <th style="width: 18%;">Item Description / Spec</th>
                                 <th style="width: 9%;">MAKE / Brand</th>
                                 <th style="width: 10%;">Category</th>
@@ -4419,8 +4463,8 @@ body {
                                 <th style="width: 7%;">Qty <span style="color:#dc2626;">*</span></th>
                                 <th style="width: 7%;">UOM</th>
                                 <th style="width: 8%;">Gross Wt. (kg)</th>
-                                <th style="width: 12%;">Item Remarks</th>
-                                <th style="width: 4%;"></th>
+                                <th style="width: 10%;">Item Remarks</th>
+                                <th style="width: 6%;"></th>
                             </tr>
                         </thead>
                         <tbody id="p_itemTableBody"></tbody>
@@ -4509,7 +4553,11 @@ body {
                             <div id="p_kpiPr5DaysOld" style="font-size:22px; font-weight:800; color:#dc2626;">0</div>
                         </div>
                     </div>
-                    <div class="filter-bar">
+                    <!-- Six filter controls now that Show has been added, so the
+                         column template is stated rather than left on the panel
+                         default of five — otherwise Reload and Build PO wrap to
+                         a second line on a full-width screen. -->
+                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto auto;">
                         <div class="form-group">
                             <label>Search (Req / Item / Vendor)</label>
                             <input type="text" class="form-control" id="p_poFilterSearch" placeholder="e.g. PR2025... or BEARING">
@@ -4535,6 +4583,18 @@ body {
                         <div class="form-group">
                             <label>Req. No.</label>
                             <input type="text" class="form-control" id="p_poFilterReqNo" placeholder="PR2025...">
+                        </div>
+                        <!-- A PR line whose material has already been received is
+                             Completed and is NOT part of the pending work, so it is
+                             hidden by default. It is still here to be looked up —
+                             switch this to Completed (or All) to see it. -->
+                        <div class="form-group">
+                            <label>Show</label>
+                            <select class="form-control" id="p_poFilterCompleted" title="Completed = jiska maal Inward ho chuka hai — PO banane ke liye kuch bacha nahi">
+                                <option value="PENDING">Pending only</option>
+                                <option value="COMPLETED">Completed only</option>
+                                <option value="ALL">All</option>
+                            </select>
                         </div>
                         <div>
                             <button class="btn btn-primary" id="p_poRefreshBtn" style="height: 34px;">&#128260; Reload</button>
@@ -6581,7 +6641,11 @@ async function loadPoIntoInward(poNo){
   }
   const po=pos[0];
   if(byId('supplierName'))byId('supplierName').value=po.vendor_name||'';
-  if(byId('invoiceDate')&&!byId('invoiceDate').value)byId('invoiceDate').value=po.po_date||today();
+  /* Invoice Date is deliberately NOT pre-filled from the PO. It is the date on
+     the SUPPLIER'S BILL, which has nothing to do with when the order was
+     raised — pre-filling it made the PO date look like a checked answer and it
+     was getting saved unread. The field stays blank and mandatory, so whoever
+     books the receipt reads it off the invoice in front of them. */
   // Against a PO the inward is always a Purchase receipt, and the vendor /
   // item names come from the PO itself — neither may be hand-edited.
   const nat=byId('inwNatureOfInward');
@@ -7282,9 +7346,186 @@ async function verifyEditPassword(reason){
   }
   return true;
 }
+/* ══ INWARD APPROVAL (Purchaser) ══════════════════════════════════════
+   Three things on a PO receipt cost money that nobody agreed to:
+     • EXCESS QTY  — more than the PO / PR still has pending
+     • RATE        — a price above what the PO settled on
+     • EXTRA ITEM  — something the PO never ordered, typed in with + Add Row
+   inwardDocOverrides() names them (it always has); what changed is who says
+   yes. It used to be whoever knew the Edit Password, at this desk, with no
+   record left behind. Now it is the PURCHASER — the person who negotiated the
+   order — from mobile.html's PO Receipts ▸ Inward Approval sub-tab. Until they
+   approve, Submit Inward does not save.
+
+   The request lives in its own table, `inward_approvals`, keyed by a SIGNATURE
+   of the exact submission it was asked for (header + every row's name / qty /
+   weight / rate / PO line). Approve the receipt, then change a quantity, and
+   the signature no longer matches — the approval does not carry over to the
+   edited figures, which is the whole reason it is a signature and not a flag.
+
+   On a database without the table the desk is not locked out: it falls back to
+   the Edit Password exactly as before, and says which migration to run. */
+const INWARD_APPROVAL_TABLE='inward_approvals';
+function inwardApprovalTableMissing_(e){
+  const m=String((e&&e.message)||'');
+  return /inward_approvals/i.test(m)&&/does not exist|relation|schema cache|could not find/i.test(m);
+}
+/* The fingerprint of THIS submission. Everything an approval is given for has
+   to be in here: change any of it and the Purchaser is asked again. Row
+   strings are sorted so re-ordering the rows on screen — which changes nothing
+   about what is being received — does not invalidate an approval. */
+function inwardApprovalSignature_(rows,poNos,prNos){
+  const head=[
+    pVal('entryTypeSelect')||'INWARD',
+    String(pVal('supplierName')||'').trim().toUpperCase(),
+    String(pVal('invoiceNumber')||'').trim().toUpperCase(),
+    String(pVal('invoiceDate')||''),
+    (poNos||[]).join('+').toUpperCase(),
+    (prNos||[]).join('+').toUpperCase()
+  ].join('~');
+  const body=(rows||[]).map(r=>[
+    String(r.name||'').trim().toUpperCase(),
+    pNum(r.qty),pNum(r.weight),pNum(r.rate),
+    String(r.poLineId||''),String(r.prNo||'').toUpperCase()
+  ].join('|')).sort().join(';');
+  return head+'::'+body;
+}
+/* Which Purchaser this request belongs to, so it surfaces on THEIR phone
+   rather than on every Purchaser's. Read off the requirements behind the
+   receipt: the PR's own purchaser_name for a without-PO entry, and for a PO
+   receipt the purchaser_name of the PRs the PO was raised from. Several (or
+   none) is a legitimate answer — mobile.html shows an unattributed request to
+   every Purchaser rather than to nobody. */
+async function inwardApprovalPurchasers_(poNos,prNos){
+  if(!SB_READY)return[];
+  const reqNos=[...prNos];
+  try{
+    if(poNos.length){
+      const pq=await SB.from('purchase_orders').select('po_no,linked_req_nos').in('po_no',poNos);
+      if(!pq.error)(pq.data||[]).forEach(p=>String(p.linked_req_nos||'').split(',')
+        .map(s=>s.trim()).filter(Boolean)
+        .forEach(n=>{if(!reqNos.some(x=>x.toUpperCase()===n.toUpperCase()))reqNos.push(n)}));
+    }
+    if(!reqNos.length)return[];
+    const rq=await SB.from('purchase_requirements').select('req_no,purchaser_name').in('req_no',reqNos);
+    if(rq.error)throw rq.error;
+    return [...new Set((rq.data||[]).map(r=>String(r.purchaser_name||'').trim()).filter(Boolean))];
+  }catch(e){
+    console.warn('[SARV] Inward approval purchaser lookup skipped:',e.message||e);
+    return[];
+  }
+}
+/* What the Purchaser actually reads on their phone. Deliberately a snapshot,
+   not a set of ids: the receipt does not exist yet (that is the point), so
+   there is nothing on the server to join back to. The per-row figures are the
+   same ones docStripParts_ draws on screen and prints on the PDF, so what is
+   approved is literally what was shown. */
+function inwardApprovalPayload_(rows,overrides,poNos,prNos){
+  return {
+    entryType:pVal('entryTypeSelect')||'INWARD',
+    supplier:pVal('supplierName')||'',
+    invoiceNo:pVal('invoiceNumber')||'',
+    invoiceDate:pVal('invoiceDate')||'',
+    receivingDate:pVal('receivingDate')||'',
+    natureOfInward:pVal('inwNatureOfInward')||'',
+    remarks:pVal('inwRemarks')||'',
+    poNos:poNos,prNos:prNos,
+    reasons:overrides,
+    items:(rows||[]).map(r=>{
+      const p=docStripParts_(r)||null;
+      return {
+        name:r.name||'',uom:r.uom||'',
+        qty:pNum(r.qty),weight:pNum(r.weight),rate:pNum(r.rate),
+        amount:pNum(r.total),
+        docKind:p?p.kind:'',docNo:p?String(p.no||''):'',
+        ordered:p?pNum(p.ordered):0,
+        already:p?pNum(p.already):0,
+        pending:p?Math.max(0,pNum(p.ordered)-pNum(p.already)):0,
+        excess:p?pNum(p.excess):0,
+        poRate:(p&&p.poRate!=null)?pNum(p.poRate):null,
+        // An item the PO never ordered — no line to measure it against.
+        extraItem:!!(poNos.length&&!r.poLineId&&!r.savedLine)
+      };
+    })
+  };
+}
+/* The gate itself. Returns true only when this exact submission already
+   carries the Purchaser's approval. */
+async function ensureInwardApproval_(rows,overrides){
+  const poNos=inwardPoRefList_(rows), prNos=inwardPrRefList_(rows);
+  const sig=inwardApprovalSignature_(rows,poNos,prNos);
+  const reasonText='PO / PR se alag values mili:\n• '+overrides.join('\n• ');
+  let existing=null;
+  try{
+    const q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
+      .eq('signature',sig).order('id',{ascending:false}).limit(1);
+    if(q.error)throw q.error;
+    existing=(q.data||[])[0]||null;
+  }catch(e){
+    if(inwardApprovalTableMissing_(e)){
+      // No table, no approval desk — fall back to the Edit Password rather
+      // than making the receipt unsaveable, and say what to run.
+      showToast('⚠️ <b>inward_approvals</b> table nahi hai — <code>INWARD_APPROVAL_MIGRATION.sql</code> chalayein.<br>Tab tak excess / rate / extra item sirf Edit Password se save hoga.','warn');
+      return await verifyEditPassword(reasonText);
+    }
+    showToast('Inward Approval check nahi ho paaya: '+(e.message||e),'error');
+    return false;
+  }
+  const status=String((existing&&existing.status)||'');
+  if(status==='Approved'){
+    showToast('✅ Purchaser ne ye entry approve kar di hai ('+escText(existing.decided_by||'Purchaser')+') — save ho rahi hai');
+    return true;
+  }
+  if(status==='Pending'){
+    showToast('⏳ Ye entry Purchaser ke paas approval ke liye bheji ja chuki hai ('+escText(existing.request_no||'')+').<br>'
+      +'Jab tak mobile app ke <b>PO Receipts ▸ Inward Approval</b> me approve nahi hoti, Submit Inward nahi hoga.','warn');
+    return false;
+  }
+  const wasRejected=status==='Rejected';
+  const ask=wasRejected
+    ?('❌ Purchaser ne ye entry REJECT kar di thi'
+      +(existing.remarks?('\n\nWajah: '+existing.remarks):'')
+      +'\n\nValues theek karke dobara approval ke liye bhejein?')
+    :('Is entry me PO / PR se alag values hain:\n\n• '+overrides.join('\n• ')
+      +'\n\nPurchaser ki approval ke bina ye save nahi hogi.\nAbhi approval ke liye bhej dein?');
+  if(!confirm(ask))return false;
+  const purchasers=await inwardApprovalPurchasers_(poNos,prNos);
+  const requestNo='IA-'+Date.now().toString(36).toUpperCase()+'-'+Math.floor(Math.random()*900+100);
+  const payload={
+    request_no:existing?existing.request_no:requestNo,
+    signature:sig,
+    status:'Pending',
+    entry_type:pVal('entryTypeSelect')||'INWARD',
+    po_numbers:poNos.join(', ')||null,
+    req_numbers:prNos.join(', ')||null,
+    supplier_name:pVal('supplierName')||null,
+    invoice_no:pVal('invoiceNumber')||null,
+    invoice_date:pVal('invoiceDate')||null,
+    purchaser_names:purchasers.join(', ')||null,
+    reasons:overrides,
+    payload:inwardApprovalPayload_(rows,overrides,poNos,prNos),
+    decided_by:null,decided_at:null,remarks:null
+  };
+  try{
+    const w=existing
+      ? await SB.from(INWARD_APPROVAL_TABLE).update(payload).eq('id',existing.id)
+      : await SB.from(INWARD_APPROVAL_TABLE).insert(payload);
+    if(w.error)throw w.error;
+  }catch(e){
+    showToast('Approval request bhej nahi paaye: '+(e.message||e),'error');
+    return false;
+  }
+  showToast('📨 Approval request bhej di gayi ('+escText(payload.request_no)+')'
+    +(purchasers.length?(' — '+escText(purchasers.join(', '))):'')
+    +'.<br>Purchaser ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad yahi entry dobara Submit karein.','warn');
+  return false;
+}
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
 /* Everything this receipt does that goes BEYOND the document it is booked
-   against. Each one needs the Edit Password before it can be saved.
+   against. Each one needs the Purchaser's approval before it can be saved —
+   see ensureInwardApproval_ above, which turns this list into the request
+   they read on their phone. (On a database without inward_approvals it is
+   still the Edit Password, as it was before.)
 
    Two reasons, and both are read through docStripParts_ — the same function
    that draws the Excess figure on the row's sub-row and prints it on the PDF.
@@ -7686,22 +7927,28 @@ function populateNatureOfDispatch(){
   if(!isIssue)applyHomeNatureLocks();
   updateOutwardModeText();
 }
-function addPurchaseMainRow(){
+/* `afterTr`: insert the new row directly BELOW that one instead of at the end
+   of the table — what the row's own + button does, so a part remembered
+   halfway down the list lands where it belongs rather than at the bottom.
+   Same signature and same behaviour as the Store Inward table's addNewRow. */
+function addPurchaseMainRow(afterTr){
  const tb=byId('p_itemTableBody');if(!tb)return;
  const tr=document.createElement('tr');
  tr.innerHTML=`<td class="sr-cell"></td>
    <td><input class="table-input col-name" placeholder="Item Name" list="p_dl-item-names" autocomplete="off"></td>
    <td><input class="table-input col-desc" placeholder="Auto from Master" disabled></td>
-   <td><input class="table-input col-make" placeholder="Make / Brand"></td>
+   <td><input class="table-input col-make" placeholder="Make / Brand" list="p_dl-item-makes" autocomplete="off"></td>
    <td><input class="table-input col-cat" placeholder="Auto from Master" disabled></td>
    <td><input class="table-input col-machine" placeholder="Select machine..." list="dl-inw-machine-name" autocomplete="off" title="Machine Master list se select karein"></td>
    <td><input type="number" class="table-input col-qty" min="0" step="any"></td>
    <td><input class="table-input col-uom" placeholder="Auto from Master" readonly style="background:#f1f5f9;"></td>
    <td><input type="number" class="table-input col-grossweight" min="0" step="any"></td>
    <td><input class="table-input col-rem" placeholder="optional note"></td>
-   <td><button class="delete-row-btn">×</button></td>`;
- tb.appendChild(tr);
+   <td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-row-btn" title="Ye row hatayein">×</button></td>`;
+ const anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
+ if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
  tr.querySelector('.delete-row-btn').onclick=()=>{tr.remove();refreshPurchaseTotals()};
+ tr.querySelector('.add-row-btn').onclick=()=>{const nr=addPurchaseMainRow(tr);nr?.querySelector('.col-name')?.focus();};
  tr.querySelectorAll('input,select').forEach(x=>x.oninput=refreshPurchaseTotals);
  // Auto-fill from Item Master
  const pcName=tr.querySelector('.col-name');
@@ -7716,6 +7963,9 @@ function addPurchaseMainRow(){
  }
  lockMachineField_(tr.querySelector('.col-machine')); // Machine Master list only
  refreshPurchaseTotals();
+ // Returned so the row's own + button can focus the line it just made, and so
+ // the Add New Item popup can drop a fresh name straight into it.
+ return tr;
 }
 function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
 async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:byId('p_requiredByDate').value||null,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
@@ -9029,9 +9279,16 @@ async function saveItemRow_(payload,editingId){
    through saveItemRow_, so the gst_pct retry/fallback applies here too —
    refreshes the shared datalists and drops the new name straight into the
    entry that asked for it. */
+// Which grid asked for the popup, so the saved name lands back in it:
+// 'inward' | 'outward' | 'purchase' (the PR form's Items Required table).
+const SARV_NEW_ITEM_TARGETS={
+  inward:  {body:'itemTableBody',        nameSel:'.item-name',     add:()=>addNewRow(),           totals:()=>updateStoreTotals()},
+  outward: {body:'outwardItemTableBody', nameSel:'.out-item-name', add:()=>addOutwardItemRow(),   totals:()=>updateOutTotals()},
+  purchase:{body:'p_itemTableBody',      nameSel:'.col-name',      add:()=>addPurchaseMainRow(),  totals:()=>refreshPurchaseTotals()}
+};
 let sarvNewItemTarget='inward';
 function openNewItemMasterModal(target){
-  sarvNewItemTarget=(target==='outward')?'outward':'inward';
+  sarvNewItemTarget=SARV_NEW_ITEM_TARGETS[target]?target:'inward';
   let ov=byId('sarvNewItemModal');
   if(!ov){
     const FLD='class="form-control" style="height:30px;font-size:12px;"';
@@ -9046,8 +9303,16 @@ function openNewItemMasterModal(target){
     ov.className='secure-modal-overlay';
     ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:31000;';
     /* Laid out the way the Item Master form reads: identity first (name,
-       description), then classification (category, make), then how it is
-       counted (UOM, MSV), then how it is priced (GST, rate). */
+       description), then classification (category, make, size, material),
+       then how it is counted (UOM, MSV, Standard Order Qty), then how it is
+       priced (GST, rate).
+
+       Item Size / Material Type / Standard Order Qty are here because this
+       popup is the only way a PR or an entry row creates an item, and a part
+       created without them comes out of the Item Master half-filled — then
+       nobody goes back to finish it. Make / Brand, Item Size and Material Type
+       all suggest what the master already holds, so the store's own vocabulary
+       gets reused instead of five spellings of the same brand. */
     ov.innerHTML='<div class="secure-modal-box" style="max-width:520px;width:94vw;">'
       +'<h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">&#10133; Add New Item</h3>'
       +'<p style="margin:0 0 14px;font-size:11px;color:#64748b;">Item Master me save hoga aur Item Name list me turant dikhne lagega.</p>'
@@ -9058,9 +9323,12 @@ function openNewItemMasterModal(target){
               +'<div id="ni_nameHint" style="min-height:13px;margin-top:3px;font-size:10px;font-weight:700;"></div>',2)
         +cell('Item Description',txt('ni_desc','Type karein — saved descriptions suggest honge','list="dl-ni-item-desc" autocomplete="off"')+'<datalist id="dl-ni-item-desc"></datalist>',2)
         +cell('Category',sel('ni_cat'))
-        +cell('Make / Brand',txt('ni_make','optional'))
+        +cell('Make / Brand',txt('ni_make','Type karein — saved makes suggest honge','list="dl-ni-item-make" autocomplete="off"')+'<datalist id="dl-ni-item-make"></datalist>')
+        +cell('Item Size',txt('ni_itemSize','e.g. 1/2 INCH, M8 x 40, 24&quot;','list="dl-ni-itemSize" autocomplete="off"')+'<datalist id="dl-ni-itemSize"></datalist>')
+        +cell('Material Type',txt('ni_materialType','e.g. SS 304, MS, BRASS','list="dl-ni-materialType" autocomplete="off"')+'<datalist id="dl-ni-materialType"></datalist>')
         +cell('UOM',sel('ni_uom'))
         +cell('Minimum Stock Qty (MSV)',num('ni_msv','optional','any'))
+        +cell('Standard Order Qty',num('ni_stdOrderQty','e.g. 10','any'))
         +cell('GST %',sel('ni_gst'))
         +cell('Rate (&#8377;)',num('ni_rate','0','.01'))
       +'</div>'
@@ -9107,7 +9375,24 @@ function openNewItemMasterModal(target){
   mirror('mi_category','ni_cat','<option value="">— Select —</option>');
   mirror('mi_uom','ni_uom','<option>PCS</option>');
   mirror('mi_gst','ni_gst','<option>5</option><option>12</option><option>18</option><option>28</option><option>0</option>');
-  ['ni_name','ni_desc','ni_make','ni_msv'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+  /* Make / Brand, Item Size and Material Type are free text with a suggestion
+     list built from what the master already holds — the same lists the Item
+     Master form offers, so a brand that has been typed once is offered back
+     instead of re-spelled. Built here rather than mirrored off the Item Master
+     datalists, because those are only filled when that panel has been opened. */
+  {
+    const fillDl=(dlId,vals)=>{
+      const dl=byId(dlId);if(!dl)return;
+      dl.innerHTML=[...new Set(vals.filter(v=>String(v||'').trim()))]
+        .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}))
+        .map(v=>'<option value="'+escText(String(v))+'">').join('');
+    };
+    fillDl('dl-ni-item-make',(sarvItemCatalog||[]).map(it=>it.make));
+    fillDl('dl-ni-itemSize',(sarvItemCatalog||[]).map(itemSize_));
+    fillDl('dl-ni-materialType',(sarvItemCatalog||[]).map(itemMaterial_));
+  }
+  ['ni_name','ni_desc','ni_make','ni_msv','ni_itemSize','ni_materialType','ni_stdOrderQty']
+    .forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('ni_rate'))byId('ni_rate').value='0';
   if(byId('ni_cat'))byId('ni_cat').value='';
   if(byId('ni_gst'))byId('ni_gst').value=String(SARV_DEFAULT_GST);
@@ -9148,7 +9433,14 @@ async function saveNewItemFromModal_(){
       sub_category:(byId('ni_msv')?.value||'').trim()||null,
       uom:(byId('ni_uom')?.value||'PCS').trim()||'PCS',
       rate:Number(byId('ni_rate')?.value||0),
-      gst_pct:Number(byId('ni_gst')?.value||SARV_DEFAULT_GST)
+      gst_pct:Number(byId('ni_gst')?.value||SARV_DEFAULT_GST),
+      /* Three columns a database may not have yet — saveItemRow_ drops
+         whichever the server rejects and warnItemColumnsMissing_ names the
+         migration, so the rest of the item still saves. Blank stays null
+         rather than an empty string, the same as the Item Master form. */
+      item_size:(byId('ni_itemSize')?.value||'').trim()||null,
+      material_type:(byId('ni_materialType')?.value||'').trim()||null,
+      std_order_qty:(byId('ni_stdOrderQty')?.value||'').trim()===''?null:Number(byId('ni_stdOrderQty').value)
     };
     const code=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
     const {error,dropped}=await saveItemRow_({item_code:code,...payload},null);
@@ -9169,17 +9461,19 @@ async function saveNewItemFromModal_(){
    asked for it, adding a row when every one is filled, and runs the normal
    autofill so Description / Category / UOM / GST arrive with it. */
 function fillNewItemIntoEntryRow_(name){
-  const isOut=(sarvNewItemTarget==='outward');
-  const tb=byId(isOut?'outwardItemTableBody':'itemTableBody');
-  const sel=isOut?'.out-item-name':'.item-name';
+  const t=SARV_NEW_ITEM_TARGETS[sarvNewItemTarget]||SARV_NEW_ITEM_TARGETS.inward;
+  const tb=byId(t.body);
   if(!tb)return;
-  let box=[...tb.querySelectorAll(sel)].find(el=>!String(el.value||'').trim());
-  if(!box){const tr=isOut?addOutwardItemRow():addNewRow();box=tr&&tr.querySelector(sel);}
+  // The PR grid's rows are plain <tr>; the two store grids interleave
+  // .po-info-row sub-rows, which carry no name box — querySelectorAll on the
+  // name class skips them either way.
+  let box=[...tb.querySelectorAll(t.nameSel)].find(el=>!String(el.value||'').trim());
+  if(!box){const tr=t.add();box=tr&&tr.querySelector(t.nameSel);}
   if(!box)return;
   box.value=name;
-  applyItemAutofill(name,box.closest('tr'),isOut?'outward':'inward',true);
+  applyItemAutofill(name,box.closest('tr'),sarvNewItemTarget,true);
   box.focus();
-  if(isOut)updateOutTotals();else updateStoreTotals();
+  t.totals();
 }
 window.openNewItemMasterModal=openNewItemMasterModal;
 function itemGst_(it){
@@ -9451,8 +9745,13 @@ function refreshItemDatalist(items){
     const dl=byId(dlId);if(!dl)return;
     dl.innerHTML=items.map(it=>`<option value="${escText(itemDropdownValue(it,dupNames))}">${escText(it.category||'')} — ${escText(it.description||'')}</option>`).join('');
   });
-  const makeSet=[...new Set(items.map(x=>x.make).filter(Boolean))];
-  ['dl-item-make','dl-out-item-make'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
+  /* Make / Brand suggestions, everywhere the field appears. p_dl-item-makes
+     is the PR form's list — the datalist has been in the markup all along but
+     nothing ever filled it, so the PR's MAKE column was the one place a brand
+     had to be typed from memory. */
+  const makeSet=[...new Set(items.map(x=>x.make).filter(Boolean))]
+    .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
+  ['dl-item-make','dl-out-item-make','p_dl-item-makes'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
 }
 
 function refreshSupplierDatalist(suppliers){
@@ -14220,7 +14519,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    const selectedPoNos=getSelectedPoNos();
-   /* Three things need the Edit Password before this receipt can be saved:
+   /* Three things need the PURCHASER'S APPROVAL before this receipt can be
+      saved:
         • excess qty — on a PO or on a PR
         • a rate that differs from the PO's agreed price
         • an item the PO never ordered, added with + Add Row
@@ -14231,11 +14531,16 @@ window.addEventListener('DOMContentLoaded',()=>{
       That `if(selectedPoNos.length)` guard used to wrap this, and an Admin edit
       never re-ticks the picker: the check was being skipped on exactly the path
       where a quantity is most likely to be changed. Each row carries its own PO
-      / PR figures, so the rows are the right thing to ask. */
+      / PR figures, so the rows are the right thing to ask.
+
+      ensureInwardApproval_ is the gate: it sends the request to the Purchaser's
+      phone and returns false until they have approved THIS submission. On a
+      database without the inward_approvals table it falls back to the Edit
+      Password, which is what this used to be. */
    {
      const overrides=inwardDocOverrides(rows);
-     if(overrides.length&&!await verifyEditPassword('PO / PR se alag values mili:\n• '+overrides.join('\n• ')))
-       return showToast('⛔ Edit Password ke bina extra item / excess qty / PO se alag rate save nahi hoga','warn');
+     if(overrides.length&&!await ensureInwardApproval_(rows,overrides))
+       return;
    }
    // A taxable INWARD with a 0% line needs authorisation — it usually means a
    // mis-keyed GST rather than a genuinely exempt receipt. INWARD NB is exempt
@@ -14356,6 +14661,18 @@ window.addEventListener('DOMContentLoaded',()=>{
        {docNo:no,party:d.supplier,receiver:'',pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
         text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
      showToast(editId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Inward saved: '+no));
+     /* Stamp the Purchaser's approval with the receipt it ended up on, so the
+        Inward Approval list can say "this became SIHF-II/…/017" rather than
+        leaving an approved request looking like it was never used. The
+        approval is NOT retired here: an Admin edit that re-saves the same
+        figures produces the same signature and must not be locked out of its
+        own record. Best-effort — the receipt is already committed. */
+     try{
+       const sig=inwardApprovalSignature_(rows,inwardPoRefList_(rows),inwardPrRefList_(rows));
+       await SB.from(INWARD_APPROVAL_TABLE)
+         .update({used_on:no,used_at:new Date().toISOString()})
+         .eq('signature',sig).eq('status','Approved');
+     }catch(e){console.warn('[SARV] Inward approval stamp skipped:',e.message||e);}
      // Repair-Return inward — refresh the Repair Items Tracker so the
      // received/balance figures for the matching outward update immediately.
      if(pVal('inwNatureOfInward')==='Repaired')loadRepairTracker().catch(()=>{});
@@ -14921,7 +15238,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      // both silently fell back — every PO line got the default GST instead of
      // the item's own rate.
      fetchAllRows('items','*').then(data=>({data})).catch(error=>({data:[],error})),
-     SB.from('purchase_order_lines').select('req_no,item_id,item_name,ordered_qty,purchase_order_id')
+     // received_qty rides along with ordered_qty: a PR line whose material has
+     // actually come IN is Completed and drops out of this list (see
+     // prFullyReceived_ below), which ordered_qty alone cannot tell us.
+     SB.from('purchase_order_lines').select('req_no,item_id,item_name,ordered_qty,received_qty,purchase_order_id')
    ]);
    if(rq.error||lq.error){console.warn('[SARV] Pending PR list unavailable:',rq.error?.message||lq.error?.message);return}
    // A Rejected or Cancelled PO must release its requirement quantities so a
@@ -14931,9 +15251,22 @@ window.addEventListener('DOMContentLoaded',()=>{
      const sq=await SB.from('purchase_orders').select('id,status');
      if(!sq.error)(sq.data||[]).forEach(p=>{if(['Rejected','Cancelled'].includes(p.status||''))deadPoIds.add(p.id)});
    }catch(e){console.warn('[SARV] PO status lookup skipped:',e.message||e);}
-   const itemMap=new Map((iq.data||[]).map(x=>[x.id,x])),poByKey={};
-   (pq.data||[]).filter(x=>!deadPoIds.has(x.purchase_order_id)).forEach(x=>{const key=String(x.req_no||'')+'|'+String(x.item_name||'').toLowerCase().trim();poByKey[key]=(poByKey[key]||0)+pNum(x.ordered_qty)});
+   const itemMap=new Map((iq.data||[]).map(x=>[x.id,x])),poByKey={},poRecvByKey={};
+   (pq.data||[]).filter(x=>!deadPoIds.has(x.purchase_order_id)).forEach(x=>{const key=String(x.req_no||'')+'|'+String(x.item_name||'').toLowerCase().trim();poByKey[key]=(poByKey[key]||0)+pNum(x.ordered_qty);poRecvByKey[key]=(poRecvByKey[key]||0)+pNum(x.received_qty)});
    const reqNos=[...new Set((rq.data||[]).map(r=>r.req_no).filter(Boolean))];
+   /* What has physically been RECEIVED against each PR line, from the two
+      places a receipt can credit a requirement:
+        • through a PO — purchase_order_lines.received_qty, which STORE.html
+          posts back after every inward (keyed PR no. + item name, the same key
+          the ordered quantity is keyed on);
+        • straight off the PR — a "without PO" receipt booked against the
+          requirement itself, summed by prReceivedQtys_ (keyed PR no. + item id).
+      Once that total covers the requested quantity the line is done: it shows
+      as Completed and leaves the pending list, which is the whole point —
+      a PR whose material is in the store is not something to raise a PO for. */
+   let prDirectRecv={};
+   try{ prDirectRecv=await prReceivedQtys_(reqNos); }
+   catch(e){ console.warn('[SARV] PR received-qty rollup skipped:',e.message||e); }
    const prPdfMap={};
    if(reqNos.length){
      try{
@@ -14956,9 +15289,51 @@ window.addEventListener('DOMContentLoaded',()=>{
      const vendorInfoFilled=(snapshot.vendors||[]).some(v=>v&&String(v.name||'').trim())
        ||(snapshot.items||[]).some(it=>Array.isArray(it&&it.vendors)&&it.vendors.some(v=>v&&String(v.name||'').trim()));
      const reqLines=(lq.data||[]).filter(line=>line.requirement_id===req.id);
+     /* ── Received, pooled per distinct item ──────────────────────────
+        One requirement can carry the SAME item name on two lines — two sizes
+        typed the same way, or a line split across machines — and the receipt
+        totals are keyed by name, not by line. Handing each line the whole
+        total would mark both Completed on half the material, so the total is
+        pooled once per name here and handed out line by line below: each line
+        takes up to what it asked for, and the last line sharing the name takes
+        whatever is left (so an over-receipt still shows as an over-receipt
+        instead of being quietly trimmed).
+
+        The pool is the PO side (keyed PR no. + item name, same as the ordered
+        quantity) plus the without-PO side (keyed PR no. + item id, so it is
+        added once per distinct item even when several lines share a name). */
+     const lineRecvKey=line=>String(req.req_no||'')+'|'
+       +String(line.item_name||line.name||(itemMap.get(line.item_id)||{}).name||'Item').toLowerCase().trim();
+     const poolQty=new Map(),poolLines=new Map(),poolTaken=new Map(),poolSeen=new Map();
+     {
+       const idsPerKey=new Map();
+       reqLines.forEach(line=>{
+         const k=lineRecvKey(line);
+         poolLines.set(k,(poolLines.get(k)||0)+1);
+         if(!poolQty.has(k)){poolQty.set(k,poRecvByKey[k]||0);idsPerKey.set(k,new Set());}
+         const idk=String(req.req_no||'').trim().toUpperCase()+'|'+String(line.item_id||'');
+         const seen=idsPerKey.get(k);
+         if(line.item_id&&!seen.has(idk)){
+           seen.add(idk);
+           poolQty.set(k,poolQty.get(k)+pNum((prDirectRecv[idk]||{}).qty));
+         }
+       });
+     }
      reqLines.forEach((line,index)=>{
        const item=itemMap.get(line.item_id)||{},name=line.item_name||line.name||item.name||'Item';
        const requested=pNum(line.requested_qty),key=String(req.req_no||'')+'|'+String(name||'').toLowerCase().trim(),inPo=poByKey[key]||0,available=Math.max(0,requested-inPo);
+       /* This line's share of the receipt pool built above. Taken in line
+          order: each line draws up to what it asked for, and the last line
+          sharing an item name draws whatever is left over, so an over-receipt
+          is still reported as one. */
+       const poolKey=lineRecvKey(line);
+       const poolLeft=Math.max(0,pNum(poolQty.get(poolKey))-pNum(poolTaken.get(poolKey)));
+       const nthOfKey=(poolSeen.get(poolKey)||0)+1;
+       poolSeen.set(poolKey,nthOfKey);
+       const lastOfKey=nthOfKey>=pNum(poolLines.get(poolKey));
+       const received=lastOfKey?poolLeft:Math.min(poolLeft,requested);
+       poolTaken.set(poolKey,pNum(poolTaken.get(poolKey))+Math.min(poolLeft,requested));
+       const completed=requested>0&&received>=requested;
        // Match this DB line back to its snapshot entry by position — the
        // snapshot is always rebuilt from these same lines in this same
        // order (see saveVendorInfo / approvePR), so index correspondence
@@ -14987,7 +15362,12 @@ window.addEventListener('DOMContentLoaded',()=>{
        const snapGw=(snapItem&&snapItem.grossWeight!=null&&snapItem.grossWeight!=='')?pNum(snapItem.grossWeight):null;
        const grossWeight=lineGw!=null?lineGw:(snapGw!=null?snapGw:0);
        const machine=line.machine||(snapItem&&snapItem.machine)||'';
-       if(available>0&&String(req.status||'')!=='Cancelled')sarvPendingRequirements.push({req,line,item,name,requested,inPo,available,grossWeight,machine,sr:index+1,prPdfUrl:prPdfMap[req.req_no]||'',approvedVendor,approvedRate,approvedDiscount,poEligible,vendorInfoFilled});
+       /* A Completed line is kept in the array rather than dropped, so the
+          Status filter above the table can still show it as Completed — but
+          poPendingMatches() leaves it out of the default (pending) view, so
+          the list itself only ever offers work that is still to be ordered. */
+       if(String(req.status||'')==='Cancelled')return;
+       if(completed||available>0)sarvPendingRequirements.push({req,line,item,name,requested,inPo,available,received,completed,grossWeight,machine,sr:index+1,prPdfUrl:prPdfMap[req.req_no]||'',approvedVendor,approvedRate,approvedDiscount,poEligible,vendorInfoFilled});
      });
    });
    renderPendingRequirementsTable();
@@ -14998,6 +15378,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    const dept=byId('p_poFilterDept')?.value||'';
    const priority=byId('p_poFilterPriority')?.value||'';
    const reqNo=(byId('p_poFilterReqNo')?.value||'').trim().toLowerCase();
+   /* Completed = the requirement's material is already in the store, so there
+      is nothing left to order. Those lines are hidden unless they are asked
+      for by name — "Pending only" is the default and is what the desk works
+      from. */
+   const show=byId('p_poFilterCompleted')?.value||'PENDING';
+   if(show==='PENDING'&&x.completed)return false;
+   if(show==='COMPLETED'&&!x.completed)return false;
    if(dept&&String(x.req.department||'')!==dept)return false;
    if(priority&&String(x.req.priority||'Normal')!==priority)return false;
    if(reqNo&&!String(x.req.req_no||'').toLowerCase().includes(reqNo))return false;
@@ -15029,13 +15416,20 @@ window.addEventListener('DOMContentLoaded',()=>{
  }
  function renderPendingRequirementsTable(){
    const tb=byId('p_poPendingBody');if(!tb)return;tb.innerHTML='';
-   const statusColors={'Pending':'#64748b','Hold':'#d97706','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626'};
+   const statusColors={'Pending':'#64748b','Hold':'#d97706','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626','Completed':'#15803d'};
    let shown=0;
    sarvPendingRequirements.forEach((x,i)=>{
      if(!poPendingMatches(x))return;
      shown++;
-     const statusVal=x.req.status||'Pending',sc=statusColors[statusVal]||'#64748b';
-     const statusBadge='<span style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'+pEsc(statusVal)+'</span>';
+     /* Once the material has been received the LINE is Completed, whatever
+        approval stage its parent PR is sitting at — that is the position this
+        desk needs, so Completed overrides the PR status in this column. The
+        PR's own status is kept on the badge's tooltip. */
+     const statusVal=x.completed?'Completed':(x.req.status||'Pending'),sc=statusColors[statusVal]||'#64748b';
+     const statusTitle=x.completed
+       ?('Maal Inward ho chuka hai — received '+pNum(x.received)+' / required '+pNum(x.requested)+' (PR status: '+(x.req.status||'Pending')+')')
+       :'';
+     const statusBadge='<span title="'+pEsc(statusTitle)+'" style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'+(x.completed?'&#10004; ':'')+pEsc(statusVal)+'</span>';
      const vendorBtnLabel=x.approvedVendor?'&#9989; '+pEsc(x.approvedVendor.name||'Vendor'):'&#128176; Vendor Info';
      /* Three states, so the PO desk can see where each PR stands without
         opening it:
@@ -15051,9 +15445,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      const vendorBtnTitle=x.approvedRate!=null
        ? 'Approved rate: '+nNum_(x.approvedRate)
        : (x.vendorInfoFilled?'Vendor rates bhari hui hain — approved vendor abhi select nahi hua':'Vendor rates abhi bhari nahi gayi');
-     const pickCell=x.poEligible
-       ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'">'
-       :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="PO sirf GM/CEO Approved (ya aage) requirements se hi build ho sakta hai">';
+     // A Completed line has nothing left to buy, so it can never go into a PO —
+     // its tick box is dead even in the Completed / All views.
+     const pickCell=x.completed
+       ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="Is line ka maal Inward ho chuka hai — ab PO nahi banega">'
+       :(x.poEligible
+         ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'">'
+         :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="PO sirf GM/CEO Approved (ya aage) requirements se hi build ho sakta hai">');
      /* Pending, Rejected and Hold are editable by anyone here; once the
         Purchaser has approved it (POs may already be built) it is Admin-only —
         see canEditPr_. A Rejected / Hold PR is called out on the button so it
@@ -15073,16 +15471,23 @@ window.addEventListener('DOMContentLoaded',()=>{
        +(total?'No pending item matches the current filter.':'No pending items.')+'</td>';
      tb.appendChild(tr);
    }
-   // Shows "matching / total" while a filter is narrowing the list.
+   /* "matching / total" while a filter narrows the list. Completed lines are
+      not part of the total: they are carried in the array only so the Show
+      filter can surface them, and counting them here would make the pill
+      disagree with the "Pending Items" it is labelled. */
+   const openTotal=sarvPendingRequirements.filter(x=>!x.completed).length;
    const count=byId('p_poPendingCount');
-   if(count)count.textContent=shown===sarvPendingRequirements.length?shown:shown+' / '+sarvPendingRequirements.length;
+   if(count)count.textContent=shown===openTotal?shown:shown+' / '+openTotal;
    updatePoSelectionCount();
    renderPoKpiCards();
  }
  function renderPoKpiCards(){
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // ---- Top-of-panel PO lifecycle cards (from Generated POs) ----
-   set('p_kpiPoGenPending',sarvPendingRequirements.filter(x=>x.poEligible).length);
+   // Completed lines never count as pending work anywhere on this panel —
+   // their material is already in the store.
+   const openPending=sarvPendingRequirements.filter(x=>!x.completed);
+   set('p_kpiPoGenPending',openPending.filter(x=>x.poEligible).length);
    // No GM/CEO step on POs any more — mobile.html's MD list takes both a
    // purchaser-approved PO ("GM/CEO Approved") and a plain "Generated" one.
    set('p_kpiPoMdPending',sarvGeneratedPos.filter(p=>['Generated','GM/CEO Approved'].includes(p.status||'Generated')).length);
@@ -15102,7 +15507,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 
    // ---- Pending Items (Build PO) sub-panel cards — grouped per distinct PR ----
    const byReq=new Map();
-   sarvPendingRequirements.forEach(x=>{if(!byReq.has(x.req.id))byReq.set(x.req.id,x.req)});
+   openPending.forEach(x=>{if(!byReq.has(x.req.id))byReq.set(x.req.id,x.req)});
    const todayMs=Date.now();
    let vendorInfoPending=0,gmApprovalPending=0,approvedPoPending=0,fiveDaysOld=0;
    byReq.forEach(req=>{
@@ -17107,7 +17512,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    on('p_poListRefreshBtn',()=>refreshGeneratedPoList().catch(dbError));
    // Filter bars. Both filter the already-loaded arrays, so typing never hits
    // the database — Reload is still what refetches.
-   ['p_poFilterSearch','p_poFilterDept','p_poFilterPriority','p_poFilterReqNo']
+   ['p_poFilterSearch','p_poFilterDept','p_poFilterPriority','p_poFilterReqNo','p_poFilterCompleted']
      .forEach(id=>onFilter(id,renderPendingRequirementsTable));
    ['p_poListSearch','p_poListStatus']
      .forEach(id=>onFilter(id,renderGeneratedPoTable));
@@ -17361,7 +17766,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        made.push(await generateOnePo_(g.vendor,g.items,{poNo,carryCharges:i===0,images,purchaserSign},setMsg));
      }
      await loadOpenPoDropdown();
-     // Every PO is downloaded; the preview shows the first, which is the one 
+     // Every PO is downloaded; the preview shows the first, which is the one
      // the vendor fields on screen still describe.
      made.forEach(m=>downloadBlob(m.blob,m.d.poNo+'_'+(m.d.vendorName||'Vendor')+'.pdf'));
      const first=made[0];
