@@ -1996,9 +1996,15 @@
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
     // Inward Approval is the MD's alone — no other login is even shown the sub-tab.
+    /* Sub-tabs (Pending / Done / …) follow STORE.html → Admin Panel → Tab
+       Visibility (keys M_<TAB>_<view>). Inward Approval defaults to the MD alone. */
     function viewsForTab(tab){
         const v = VIEWS_FOR_TAB[tab] || VIEWS_FOR_TAB._;
-        return (tab === 'RECV' && myRoleKey() !== 'md') ? v.filter(x => x.v !== INWAPP_VIEW) : v;
+        const out = v.filter(x => x.v === INWAPP_VIEW
+            ? mTabVisible('M_RECV_' + INWAPP_VIEW, myRoleKey() === 'md')
+            : mTabVisible('M_' + tab + '_' + x.v));
+        // Every section switched off would leave nothing to draw — keep the first ordinary one.
+        return out.length ? out : [v.find(x => x.v !== INWAPP_VIEW) || v[0]];
     }
     /* Store Check's sub-tabs, one per document type. 'All' leads because the
        three types are three different books kept by the same store and a
@@ -2020,31 +2026,52 @@
        has not saved yet keeps the built-in list below (baseTabsForRole). */
     const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS'};
     let rolePerms = null;           // app_settings.role_permissions, or null
+    let tabVis = null;              // app_settings.tab_visibility, or null
     function myPermRole(){
         if(myPurchaserName) return 'PURCHASER';
         return {gm:'USER_GM_PIN', gmCeo:'USER_GM_PIN', md:'USER_MD_PIN', poSender:'PO_SENDER_PIN', vendor:'VENDOR_VERIFY_PIN'}[myStage] || null;
     }
+    // Tab Visibility for this login's role; dflt when the Admin has not saved that cell.
+    function mTabVisible(key, dflt = true){
+        const role = myPermRole();
+        const v = (role && tabVis && tabVis[key]) ? tabVis[key][role] : undefined;
+        return typeof v === 'boolean' ? v : dflt;
+    }
     function visibleTabsForRole(){
         const base = baseTabsForRole();
         const role = myPermRole();
-        if(!myStage || !rolePerms || !role || isFieldBoy()) return base;
-        const tabs = ALL_TABS.filter(t => {
-            const v = ((rolePerms[TAB_PERM_KEY[t]] || {})[role]);
-            return typeof v === 'boolean' ? v : base.includes(t);
-        });
-        // Every tab switched off would leave an empty screen — keep the built-in set then.
-        return tabs.length ? tabs : base;
+        let tabs = base;
+        // Feature Access (the six mobile rows).
+        if(myStage && rolePerms && role && !isFieldBoy()){
+            const t = ALL_TABS.filter(t => {
+                const v = ((rolePerms[TAB_PERM_KEY[t]] || {})[role]);
+                return typeof v === 'boolean' ? v : base.includes(t);
+            });
+            // Every tab switched off would leave an empty screen — keep the built-in set then.
+            if(t.length) tabs = t;
+        }
+        // Tab Visibility (M_<TAB>) on top — a tab must pass both.
+        if(myStage && role){
+            const t = tabs.filter(t => mTabVisible('M_' + t));
+            if(t.length) tabs = t;
+        }
+        return tabs;
     }
     async function loadRolePerms(){
         try{
-            const q = await SB.from('app_settings').select('value').eq('key','role_permissions').maybeSingle();
+            const q = await SB.from('app_settings').select('key,value').in('key', ['role_permissions','tab_visibility']);
             if(q.error) throw q.error;
-            rolePerms = (q.data && q.data.value) || null;
-        }catch(e){ rolePerms = null; console.warn('[MOBILE] role_permissions not loaded:', e.message||e); }
+            rolePerms = null; tabVis = null;
+            (q.data || []).forEach(r => {
+                if(r.key === 'role_permissions') rolePerms = r.value || null;
+                if(r.key === 'tab_visibility') tabVis = r.value || null;
+            });
+        }catch(e){ rolePerms = null; tabVis = null; console.warn('[MOBILE] access settings not loaded:', e.message||e); }
         if(!myStage) return;
         applyRoleTabScope();
         const show = visibleTabsForRole();
         if(!show.includes(currentStageTab)) switchStageTab(show[0]);
+        else paintList();   // a sub-tab may have been switched off
     }
     /* Purchaser names for the login, from STORE.html → Admin Panel → Users &
        Roles (role Purchaser). The fixed list in the markup stays if that table
@@ -2277,7 +2304,9 @@
         // Counted inside the section on screen, not across both, so a chip's
         // number is exactly how many cards tapping it would show.
         const rows = tabRows('STORE', currentView);
-        seg.innerHTML = STORE_TYPE_TABS.map(t => {
+        const types = visibleStoreTypes();
+        storeTypeFilter = currentStoreType();
+        seg.innerHTML = types.map(t => {
             const n = t.v === 'ALL' ? rows.length : rows.filter(e => storeEntryType(e) === t.v).length;
             return `<button type="button" data-type="${escText(t.v)}"${t.v === storeTypeFilter ? ' class="active"' : ''}>`
                  + `${escText(t.l)}<span class="seg-n${n ? '' : ' zero'}">${n > 99 ? '99+' : n}</span></button>`;
@@ -2285,8 +2314,19 @@
         seg.querySelectorAll('button').forEach(b =>
             b.addEventListener('click', () => switchStoreType(b.dataset.type)));
     }
+    // Store Check type chips allowed by Tab Visibility (M_STORE_T_*); all of them if every one is off.
+    const STORE_TYPE_VIS_KEY = {'ALL':'M_STORE_T_ALL', 'INWARD':'M_STORE_T_INWARD', 'INWARD NB':'M_STORE_T_NB', 'OUTWARD':'M_STORE_T_OUTWARD'};
+    function visibleStoreTypes(){
+        const t = STORE_TYPE_TABS.filter(x => mTabVisible(STORE_TYPE_VIS_KEY[x.v]));
+        return t.length ? t : STORE_TYPE_TABS;
+    }
+    // The type filter actually in force: the chosen one if still visible, else the first visible.
+    function currentStoreType(){
+        const t = visibleStoreTypes();
+        return t.some(x => x.v === storeTypeFilter) ? storeTypeFilter : t[0].v;
+    }
     function switchStoreType(v){
-        if(!STORE_TYPE_TABS.some(t => t.v === v) || v === storeTypeFilter) return;
+        if(!visibleStoreTypes().some(t => t.v === v) || v === storeTypeFilter) return;
         storeTypeFilter = v;
         const list = document.getElementById('list');
         if(list) list.scrollTop = 0;   // same as a tab / section switch
@@ -2668,7 +2708,7 @@
         const t = String((e && e.entry_type) || '').trim().toUpperCase();
         return STORE_ENTRY_TYPES.includes(t) ? t : (storeIsInward(e) ? 'INWARD' : 'OUTWARD');
     }
-    function storeTypeMatches(e){ return storeTypeFilter === 'ALL' || storeEntryType(e) === storeTypeFilter; }
+    function storeTypeMatches(e){ const f = currentStoreType(); return f === 'ALL' || storeEntryType(e) === f; }
 
     /* ── When each stage checked it ───────────────────────────────────
        store_checks[stage].at is written by storeCheckDone as a DD/MM/YYYY
@@ -3958,7 +3998,8 @@
     /* Only the MD sees these and only the MD decides them — every request from
        the store, whoever's PO / PR it is against. purchaser_names is still
        stamped by STORE.html and shown on the card for reference. */
-    function inwAppVisibleToMe(r){ return myRoleKey() === 'md'; }
+    // Seen by whoever Tab Visibility gives the Inward Approval sub-tab (default: MD); decided by the MD only.
+    function inwAppVisibleToMe(r){ return mTabVisible('M_RECV_' + INWAPP_VIEW, myRoleKey() === 'md'); }
     function inwAppCanAct(r){ return myRoleKey() === 'md' && inwAppPending(r); }
     function inwAppReasons(r){
         const v = r && r.reasons;
@@ -3977,8 +4018,8 @@
     }
     function inwAppItems(r){ const p = inwAppPayload(r); return Array.isArray(p.items) ? p.items : []; }
     async function loadInwardApprovals_(){
-        // MD only — nobody else is shown these, so nobody else pays for the query.
-        if(myRoleKey() !== 'md' || inwAppTableMissing) return [];
+        // Only a login that is shown the sub-tab pays for the query (default: MD only).
+        if(!mTabVisible('M_RECV_' + INWAPP_VIEW, myRoleKey() === 'md') || inwAppTableMissing) return [];
         try{
             const q = await SB.from(INWAPP_TABLE).select('*').order('id', {ascending:false}).limit(200);
             if(q.error) throw q.error;
