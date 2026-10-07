@@ -2373,7 +2373,7 @@ body {
            is typed in — the only clickable inputs are the three sign-off
            boxes, and those are PIN-gated (see togglePoFollowupFlag).
         ============================================================ */
-        #fullPurchasePanel .po-followup-table { min-width: 1280px; }
+        #fullPurchasePanel .po-followup-table { min-width: 1390px; }
         #fullPurchasePanel .po-followup-table th { white-space: nowrap; border-right: 1px solid #cbd5e1; }
         #fullPurchasePanel .po-followup-table td {
             border-right: 1px solid #e2e8f0;
@@ -2434,7 +2434,15 @@ body {
             font-size: 10px; font-weight: 600; padding: 2px 4px; font-family: inherit;
             border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; color: #0f172a;
         }
-        #fullPurchasePanel .po-followup-table .fu-colf.active { border-color: #2563eb; background: #eff6ff; }
+        #fullPurchasePanel .po-followup-table .fu-colf.active { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
+        #fullPurchasePanel .po-followup-table button.fu-colf {
+            cursor: pointer; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px;
+        }
+        /* Full-screen report: the sub-panel covers the window and scrolls as a page. */
+        #fullPurchasePanel #p_poReportPanel.fu-full {
+            position: fixed; inset: 0; z-index: 9800; background: #fff; padding: 12px 16px; overflow: auto;
+        }
+        #fullPurchasePanel #p_poReportPanel.fu-full .table-container { max-height: calc(100vh - 230px) !important; }
         #fullPurchasePanel .po-followup-table tbody tr.fu-hit > td:not([rowspan]) { background: #fefce8; }
         #fullPurchasePanel .req-row:hover { background: #ecfeff; }
         #fullPurchasePanel .req-row.selected { background: #e0f2fe; }
@@ -2718,6 +2726,22 @@ body {
   #sarvNatureGate .ft{padding:14px 20px 18px;display:flex;justify-content:flex-end;}
   #sarvNatureGate .ft .cancel{padding:9px 18px;border-radius:9px;border:0;background:#e2e8f0;color:#334155;font-size:13px;font-weight:800;cursor:pointer;}
 
+  /* ── Follow-Up Report column filter dropdown (on <body>, above full screen) ── */
+  #fuColDrop{position:fixed;z-index:40005;background:#fff;border:1px solid #94a3b8;border-radius:8px;box-shadow:0 12px 30px rgba(15,23,42,.25);width:260px;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-size:12px;color:#0f172a;}
+  #fuColDrop .fd-hd{padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800;font-size:11px;text-transform:uppercase;color:#334155;}
+  #fuColDrop .fd-search{width:calc(100% - 20px);margin:8px 10px 4px;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;}
+  #fuColDrop .fd-acts{display:flex;justify-content:space-between;padding:2px 10px 6px;}
+  #fuColDrop .fd-acts button{background:none;border:0;color:#1d4ed8;font-weight:700;font-size:11px;cursor:pointer;padding:2px 0;}
+  #fuColDrop .fd-list{max-height:260px;overflow:auto;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9;padding:4px 0;}
+  #fuColDrop label{display:flex;align-items:center;gap:7px;padding:4px 10px;cursor:pointer;}
+  #fuColDrop label:hover{background:#f1f5f9;}
+  #fuColDrop label input{width:14px;height:14px;margin:0;}
+  #fuColDrop label .n{margin-left:auto;color:#94a3b8;font-size:10px;font-weight:700;}
+  #fuColDrop .fd-ft{display:flex;justify-content:flex-end;gap:6px;padding:8px 10px;}
+  #fuColDrop .fd-ft button{border:0;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;}
+  #fuColDrop .fd-ok{background:#0f172a;color:#fff;}
+  #fuColDrop .fd-clr{background:#f1f5f9;color:#334155;}
+
   /* ── Admin Panel (Master Data → Settings) ───────────────────────────── */
   #sarvAdminPanel{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;}
   #sarvAdminPanel .ap-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:10px;}
@@ -2739,6 +2763,28 @@ body {
   /* The matrix — laid out like the reference sheet: features down the left on
      blue, roles across the top on green, one tick box per cell. */
   #sarvAdminPanel .ap-matrix-wrap{max-height:520px;overflow:auto;}
+  /* Item Master's NEW PR column, hidden for roles without New PR Generation (Tab Visibility). */
+  #itemMasterTable.im-hide-newpr .im-newpr-col{display:none;}
+  /* Master Data's panel and card are height:100% / overflow:hidden, which
+     clipped everything in Settings below the fold. Settings scrolls on its own. */
+  #storeInterface #settingsSub{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding-right:4px;}
+  /* User list: its own vertical + horizontal scroll, header pinned. */
+  #sarvAdminPanel .ap-users-wrap{flex:none;max-height:380px;overflow:auto;}
+  #sarvAdminPanel .ap-users-wrap .ap-table{min-width:760px;}
+  #sarvAdminPanel .ap-users-wrap,#sarvAdminPanel .ap-matrix-wrap,#storeInterface #settingsSub,#sarvAdminPanel.ap-full{scrollbar-width:auto;scrollbar-color:#94a3b8 #f1f5f9;}
+  #sarvAdminPanel .ap-users-wrap::-webkit-scrollbar,#sarvAdminPanel .ap-matrix-wrap::-webkit-scrollbar,
+  #storeInterface #settingsSub::-webkit-scrollbar,#sarvAdminPanel.ap-full::-webkit-scrollbar{width:11px;height:11px;}
+  #sarvAdminPanel .ap-users-wrap::-webkit-scrollbar-thumb,#sarvAdminPanel .ap-matrix-wrap::-webkit-scrollbar-thumb,
+  #storeInterface #settingsSub::-webkit-scrollbar-thumb,#sarvAdminPanel.ap-full::-webkit-scrollbar-thumb{background:#94a3b8;border-radius:6px;border:2px solid #f1f5f9;}
+  #sarvAdminPanel .ap-users-wrap::-webkit-scrollbar-track,#sarvAdminPanel .ap-matrix-wrap::-webkit-scrollbar-track,
+  #storeInterface #settingsSub::-webkit-scrollbar-track,#sarvAdminPanel.ap-full::-webkit-scrollbar-track{background:#f1f5f9;}
+  /* Full screen: the Admin Panel covers the window and scrolls as a page;
+     the user list / matrices grow to use the height. */
+  #sarvAdminPanel .ap-fs-btn{border:1px solid #0f172a;background:#fff;color:#0f172a;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;}
+  #sarvAdminPanel .ap-fs-btn:hover{background:#0f172a;color:#fff;}
+  #sarvAdminPanel.ap-full{position:fixed;inset:0;z-index:9800;margin:0 !important;border-radius:0;overflow:auto;padding:16px 20px;box-shadow:none;}
+  #sarvAdminPanel.ap-full .ap-users-wrap{max-height:calc(100vh - 230px);}
+  #sarvAdminPanel.ap-full .ap-matrix-wrap{max-height:calc(100vh - 190px);}
   #sarvAdminPanel .ap-matrix{border-collapse:collapse;font-size:11px;min-width:100%;}
   #sarvAdminPanel .ap-matrix th,#sarvAdminPanel .ap-matrix td{border:1px solid #94a3b8;padding:0;}
   #sarvAdminPanel .ap-matrix thead th{background:#e2efda;color:#0f172a;font-weight:800;padding:6px 8px;white-space:nowrap;position:sticky;top:0;z-index:2;cursor:pointer;text-transform:uppercase;font-size:10.5px;}
@@ -3757,8 +3803,10 @@ body {
                             <option value="ABOVE">&#128994; Above the MSV</option>
                         </select>
                         <span id="itemMasterCount" style="font-size:11px; font-weight:700; color:#64748b;">0 items</span>
+                        <button class="btn" id="imGenPrBtn" onclick="sarvGenerateNewPrFromItems()" style="display:none; background:#7c3aed; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;" title="Tick kiye items ke saath New PR form kholein — qty = Std Order Qty, Purchaser = Category se" disabled>&#128221; Generate New PR (<span id="imPrSelCount">0</span>)</button>
+                        <button class="btn" id="imPrSelClearBtn" onclick="sarvClearItemPrSel()" style="display:none; background:#f1f5f9; color:#475569; font-size:10px; height:28px; padding:0 10px;" title="Saare ticks hatayein">&#10006; Clear Ticks</button>
                         <button class="btn" onclick="loadItemMaster()" style="background:#e0f2fe; color:#0369a1; font-size:10px; height:28px; padding:0 10px;">&#128260; Refresh</button>
-                        <button class="btn" onclick="exportTableCSV('itemMasterBody','SARV_Item_Master_'+today()+'.csv',1)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">&#128190; Download CSV</button>
+                        <button class="btn" onclick="exportTableCSV('itemMasterBody','SARV_Item_Master_'+today()+'.csv',2)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">&#128190; Download CSV</button>
                     </div>
                     <!-- Every column filter currently applied, each removable on its own,
                          plus one Clear All. Without this a filter set three columns ago
@@ -3792,10 +3840,12 @@ body {
                                 <th onclick="sortItemMaster('in')" style="padding:6px; width:5%; background:#0CF2C6; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-in" data-fcol="in" onclick="imOpenFilter(event,'in')" title="Filter">&#9662;</span></th>
                                 <th onclick="sortItemMaster('out')" style="padding:6px; width:5%; background:#FF9105; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-out" data-fcol="out" onclick="imOpenFilter(event,'out')" title="Filter">&#9662;</span></th>
                                 <th onclick="sortItemMaster('bal')" style="padding:6px; width:6%; background:#00C8FF; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-bal" data-fcol="bal" onclick="imOpenFilter(event,'bal')" title="Filter">&#9662;</span></th>
+                                <!-- Admin picks items here; "Generate New PR" opens the PR form filled with them (qty = Std Order Qty). -->
+                                <th class="im-newpr-col" style="padding:6px; width:4%; background:#DCFCE7; color:#0f172a; text-align:center;" title="Admin: items tick karke Generate New PR dabayein — PR qty = STD ORDER QTY, Purchaser = Item Category se">NEW PR<br><input type="checkbox" id="imPrSelAll" title="Dikh rahe saare items select / unselect" style="width:14px;height:14px;cursor:pointer;"></th>
                                 <th style="padding:6px; width:4%;">&#128465;</th>
                             </tr></thead>
                             <tbody id="itemMasterBody">
-                                <tr><td colspan="17" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
+                                <tr><td colspan="18" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4052,6 +4102,7 @@ body {
                                 <button type="button" class="ap-tab active" data-ap="users">&#128101; Users &amp; Roles</button>
                                 <button type="button" class="ap-tab" data-ap="perms">&#128273; Feature Access</button>
                                 <button type="button" class="ap-tab" data-ap="tabs">&#128450;&#65039; Tab Visibility</button>
+                                <button type="button" class="ap-fs-btn" id="ap_fullScreenBtn" title="Admin Panel ko poori screen par kholein (Esc se wapas)">&#9974; Full Screen</button>
                             </div>
                         </div>
                         <div id="ap_migrationNote" class="ap-warn" style="display:none;"></div>
@@ -4065,7 +4116,7 @@ body {
                                 <input type="text" class="form-control" id="ap_userSearch" placeholder="&#128269; Search user..." style="flex:1;min-width:140px;height:32px;font-size:11px;">
                                 <button type="button" class="btn btn-neutral" id="ap_reloadUsersBtn" style="height:32px;font-size:11px;">&#128260; Refresh</button>
                             </div>
-                            <div class="table-container" style="max-height:380px;">
+                            <div class="table-container ap-users-wrap">
                                 <table class="ap-table">
                                     <thead><tr>
                                         <th>#</th><th>User Name</th><th>Role</th><th>Emp Code</th><th>Contact</th>
@@ -4945,7 +4996,7 @@ body {
 
                 <!-- ==== Sub-panel C: PR → PO → Inward Follow-Up Report ==== -->
                 <div id="p_poReportPanel" style="display:none;">
-                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto;">
+                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto auto;">
                         <div class="form-group">
                             <label>Search (PR / PO / Inward / Requester / Vendor)</label>
                             <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR608, PO793, 1913 ya GOURAV" title="Chhota number (PR608) aur poora number (PR/26-27/608) — dono se search chalti hai">
@@ -4977,6 +5028,9 @@ body {
                         <div>
                             <button class="btn btn-neutral" id="p_poRepCsvBtn" style="height: 34px;">&#128190; Export CSV</button>
                         </div>
+                        <div>
+                            <button class="btn btn-neutral" id="p_poRepFsBtn" style="height: 34px;" title="Report ko poori screen par dekhein (Esc se wapas)">&#9974; Full Screen</button>
+                        </div>
                     </div>
 
                     <div class="items-total-strip">
@@ -5007,6 +5061,7 @@ body {
                                 <tr>
                                     <th style="background:#fde9d9;">PR No.</th>
                                     <th style="background:#fde9d9;">PR Requested By</th>
+                                    <th style="background:#fde9d9;" title="PR jis Purchaser ke naam par book hai">Purchaser Name</th>
                                     <th style="background:#d9ead3; text-align:center;">Vendor Info.</th>
                                     <th style="background:#d9ead3; text-align:center;">PO Generate</th>
                                     <th style="background:#fbd5c0;" title="Hover karke dekhein is PO par is PR ke kaunse item hain">PO No.</th>
@@ -5020,23 +5075,24 @@ body {
                                     <th style="background:#dbe5f1; text-align:center;" title="mobile app ke Store Check tab me GM ke check karte hi apne aap ✔ ho jata hai">Bill Checked by GM</th>
                                     <th style="background:#dbe5f1; text-align:center;" title="GM ke check ke baad MD ke Store Check karte hi apne aap ✔ ho jata hai">Bill Checked by MD</th>
                                 </tr>
-                                <!-- Column filters. Text boxes match "contains"; the ✔ / – boxes
-                                     match the tick in that column. -->
+                                <!-- Column filters — each one a dropdown list of the values in that column,
+                                     multi-select (see openFuColFilter_). -->
                                 <tr class="fu-filter-row">
-                                    <th><input type="text" class="fu-colf" data-col="pr" placeholder="Filter…"></th>
-                                    <th><input type="text" class="fu-colf" data-col="requester" placeholder="Filter…"></th>
-                                    <th><select class="fu-colf" data-col="vendorInfo"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
-                                    <th><select class="fu-colf" data-col="poGenerated"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
-                                    <th><input type="text" class="fu-colf" data-col="po" placeholder="Filter…"></th>
-                                    <th><input type="text" class="fu-colf" data-col="vendor" placeholder="Filter…"></th>
-                                    <th><input type="text" class="fu-colf" data-col="delivery" placeholder="dd-mm-yyyy" title="Poori ya aadhi date — jaise 15-10-2026, 10-2026 ya 2026"></th>
-                                    <th><select class="fu-colf" data-col="mdApproved"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&ndash; No</option></select></th>
-                                    <th><select class="fu-colf" data-col="poSent"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
-                                    <th><input type="text" class="fu-colf" data-col="status" placeholder="Filter…"></th>
-                                    <th><input type="text" class="fu-colf" data-col="inward" placeholder="Filter…"></th>
-                                    <th><select class="fu-colf" data-col="informed"><option value="">All</option><option value="1">&#10004; Done</option><option value="0">&#9744; Pending</option></select></th>
-                                    <th><select class="fu-colf" data-col="gm"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
-                                    <th><select class="fu-colf" data-col="md"><option value="">All</option><option value="1">&#10004; Yes</option><option value="0">&#9203; No</option></select></th>
+                                    <th><button type="button" class="fu-colf" data-col="pr" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="requester" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="purchaser" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="vendorInfo" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="poGenerated" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="po" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="vendor" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="delivery" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="mdApproved" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="poSent" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="status" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="inward" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="informed" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="gm" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="md" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                 </tr>
                             </thead>
                             <tbody id="p_poReportBody"></tbody>
@@ -8698,6 +8754,8 @@ function sarvLockNavToSection(){
 function sarvGoHome(){
   const dash=byId('sarvHomeDashboard');if(dash)dash.style.display='block';
   const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent='👤 '+sarvLoginLabel_();
+  sarvApFullScreen_(false);   // a full-screen Admin Panel would sit over the Home page
+  poFollowupFullScreen_(false);   // …and so would a full-screen Follow-Up Report
   sarvApplyHomeTiles_();
   // The Nature picked on the way in belongs to that visit only — coming back
   // Home means picking again (or not going through the chooser at all).
@@ -9026,14 +9084,21 @@ document.addEventListener('DOMContentLoaded',()=>{
     const withNature=SARV_NATURE_GATE[go]?(()=>sarvNatureGate_(go,open)):open;
     // Inward (NB) asks for its confirmation word before that: no point choosing
     // a Nature for a form the passkey may not open.
-    sarvHomeIntro_(go,go==='IN_NB'?()=>sarvNbCodeGate_(withNature):withNature);
+    const proceed=go==='IN_NB'?()=>sarvNbCodeGate_(withNature):withNature;
+    // DISABLED: Hindi guidance popup shown on click before the screen opened.
+    // To bring it back, replace `proceed();` with the line below.
+    // sarvHomeIntro_(go,proceed);
+    proceed();
   });
+  /* DISABLED: Hindi help card shown on hover / focus of each Home button.
+     Uncomment this block to bring it back (SARV_HOME_HELP still holds the text).
   home?.querySelectorAll('.sarv-home-row').forEach(b=>{
     b.addEventListener('mouseenter',()=>sarvHomeTipShow_(b));
     b.addEventListener('mouseleave',sarvHomeTipHide_);
     b.addEventListener('focus',()=>sarvHomeTipShow_(b));
     b.addEventListener('blur',sarvHomeTipHide_);
   });
+  */
   // Restore a previous login so the PIN isn't asked again on every reload —
   // only an explicit Logout (sarvLogout, via the role badge) clears it.
   try{
@@ -9128,6 +9193,35 @@ const SARV_TABS=[
   {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
   {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
   {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'MD_ITEM_NEWPR',label:'Item Master › New PR Generation',hint:'NEW PR column + 📝 Generate New PR button',def:['ADMIN_PIN']},
+  /* mobile.html reads these from the same tab_visibility row. A mobile tab is
+     shown only if its Feature Access row (VENDOR INFO … PO RECEIPTS) is ON too. */
+  {group:'📱 Approval App (mobile) › Tabs — Feature Access ka mobile row bhi ON hona chahiye'},
+  {key:'M_VI',label:'Vendor Info',def:'ALL'},
+  {key:'M_POGEN',label:'PO Generate',def:'ALL'},
+  {key:'M_MD',label:'MD Approval',def:'ALL'},
+  {key:'M_SENT',label:'PO Sent to Vendor',def:'ALL'},
+  {key:'M_STORE',label:'Store Check',def:'ALL'},
+  {key:'M_RECV',label:'PO Receipts',def:'ALL'},
+  {group:'📱 Approval App (mobile) › Sub Tabs'},
+  {key:'M_VI_pending',label:'Vendor Info › Pending',def:'ALL'},
+  {key:'M_VI_done',label:'Vendor Info › Done',def:'ALL'},
+  {key:'M_POGEN_pending',label:'PO Generate › Pending',def:'ALL'},
+  {key:'M_POGEN_done',label:'PO Generate › Done',def:'ALL'},
+  {key:'M_MD_pending',label:'MD Approval › Pending',def:'ALL'},
+  {key:'M_MD_done',label:'MD Approval › Done',def:'ALL'},
+  {key:'M_SENT_pending',label:'PO Sent › Pending',def:'ALL'},
+  {key:'M_SENT_done',label:'PO Sent › Done',def:'ALL'},
+  {key:'M_STORE_pending',label:'Store Check › Pending',def:'ALL'},
+  {key:'M_STORE_done',label:'Store Check › Complete',def:'ALL'},
+  {key:'M_STORE_T_ALL',label:'Store Check › All',def:'ALL'},
+  {key:'M_STORE_T_INWARD',label:'Store Check › Inward',def:'ALL'},
+  {key:'M_STORE_T_NB',label:'Store Check › Inward NB',def:'ALL'},
+  {key:'M_STORE_T_OUTWARD',label:'Store Check › Outward',def:'ALL'},
+  {key:'M_RECV_pending',label:'PO Receipts › Pending',def:'ALL'},
+  {key:'M_RECV_partial',label:'PO Receipts › Partially Received',def:'ALL'},
+  {key:'M_RECV_received',label:'PO Receipts › Received',def:'ALL'},
+  {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Approve / Reject sirf MD kar sakta hai',def:['USER_MD_PIN','ADMIN_PIN']},
 ];
 const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
@@ -9185,7 +9279,7 @@ const SARV_CLICK_GUARDS=[
   ['#itLeRunBtn','ITEM_LEDGER'],
   ['#itLeCsvBtn,#p_exportCsvBtn,#p_poRepCsvBtn,#pod_csv','EXPORT_CSV'],
   ['a[data-doc="PR"]','PR_PDF'],
-  ['#itLePdfBtn,#searchResultsBody a[href],#p_poListBody a[href],a.fu-doc[href]','PDF_VIEW'],
+  ['#itLePdfBtn,#searchResultsBody a[href],#p_poListBody a[href],a.fu-doc[href],#itLeResults a.it-doc','PDF_VIEW'],
   ['[onclick^="exportTableCSV"],#excelDownloadBtn','DOWNLOAD_CSV'],
   ['[onclick^="openNewItemMasterModal"]','ADD_ITEM'],
   ['#p_reqAddEmpBtn,[onclick^="addMasterEmployee"]','ADD_EMPLOYEE'],
@@ -9223,6 +9317,9 @@ function sarvApplySubTabs_(){
     const b=byId(id);if(b)b.style.display=sarvTabVisible(SARV_PO_SUB_KEY[id])?'':'none';
   });
   const ap=byId('sarvAdminPanel');if(ap)ap.style.display=isAdmin()?'':'none';
+  // Item Master › New PR Generation — column + button follow Tab Visibility.
+  byId('itemMasterTable')?.classList.toggle('im-hide-newpr',!sarvTabVisible('MD_ITEM_NEWPR'));
+  if(typeof sarvSyncItemPrSelUi_==='function')sarvSyncItemPrSelUi_();
 }
 // The section just opened must not sit on a sub-tab this role cannot see.
 function sarvEnsureVisibleSubTabs_(){
@@ -9326,6 +9423,14 @@ function sarvRenderAdminPanel(){
     sarvRenderMatrix_('ap_permMatrix',SARV_FEATURES,'perms');
     sarvRenderMatrix_('ap_tabMatrix',SARV_TABS,'tabs');
   });
+}
+// Admin Panel over the whole window (its own page scroll), or back in Settings.
+function sarvApFullScreen_(on){
+  const ap=byId('sarvAdminPanel');if(!ap)return;
+  ap.classList.toggle('ap-full',!!on);
+  const b=byId('ap_fullScreenBtn');
+  if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'&#9974; Full Screen';b.title=on?'Wapas Settings me (Esc)':'Admin Panel ko poori screen par kholein (Esc se wapas)';}
+  if(on)ap.scrollTop=0;
 }
 function sarvShowApPane_(p){
   sarvApPane=p;
@@ -9674,6 +9779,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   sarvBindPinPads_();
   // Admin Panel controls
   document.querySelectorAll('#sarvAdminPanel .ap-tab').forEach(b=>b.addEventListener('click',()=>sarvShowApPane_(b.dataset.ap)));
+  byId('ap_fullScreenBtn')?.addEventListener('click',()=>sarvApFullScreen_(!byId('sarvAdminPanel')?.classList.contains('ap-full')));
+  // Esc leaves full screen — unless a popup on top of it (user form, PIN) owns the key.
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Escape'||!byId('sarvAdminPanel')?.classList.contains('ap-full'))return;
+    if(document.querySelector('.sarv-ov')||byId('pwdGateModal')?.style.display==='flex')return;
+    sarvApFullScreen_(false);
+  });
   byId('ap_addUserBtn')?.addEventListener('click',()=>sarvOpenUserModal(null));
   byId('ap_addPurchaserBtn')?.addEventListener('click',()=>sarvOpenUserModal(null,'PURCHASER'));
   byId('ap_reloadUsersBtn')?.addEventListener('click',()=>sarvLoadAppUsers_(true).then(sarvRenderUsers_));
@@ -10701,7 +10813,7 @@ window.renderItemMasterTable=function(){
   const filterActive=activeCols.length>0||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
   if(!sarvItemMasterRows.length){
-    tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
+    tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
     return;
   }
   if(!rows.length){
@@ -10714,12 +10826,19 @@ window.renderItemMasterTable=function(){
       : msvFilter==='BELOW'?'Koi item MSV se neeche nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
       : msvFilter==='ABOVE'?'Koi item MSV se upar nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
       : 'Is search par koi item nahi mila.';
-    tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
+    tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
       +(activeCols.length?'<br><button type="button" onclick="imClearAllFilters()" style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters</button>':'')
       +'</td></tr>';
     return;
   }
   let totalIn=0,totalOut=0,totalBal=0;
+  /* Display only: a whole number stays as it is (12), a decimal one is
+     rounded to two places (12.345 → 12.35, 0.1+0.2 → 0.30). The MSV check,
+     sorting and filters still work on the exact figures. */
+  const q2=v=>{const n=Number(v);if(v==null||v===''||!isFinite(n))return v;return Number.isInteger(n)?String(n):n.toFixed(2);};
+  // Admin Panel › Tab Visibility › Item Master › New PR Generation (default: Admin only).
+  const prAdmin=sarvTabVisible('MD_ITEM_NEWPR');
+  byId('itemMasterTable')?.classList.toggle('im-hide-newpr',!prAdmin);
   const bodyRows=rows.map((row,i)=>{
     const{it,inQty,outQty,bal}=row;
     totalIn+=inQty;totalOut+=outQty;totalBal+=bal;
@@ -10742,11 +10861,12 @@ window.renderItemMasterTable=function(){
         <td style="padding:5px 6px;text-align:center;background:#f5f3ff;font-weight:700;color:#5b21b6;">${itemGst_(it)}%</td>
         <td style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fffbeb;font-weight:700;color:#92400e;">${msv!=null?msv:'—'}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fdf2f8;font-weight:700;color:#9d174d;">${soq!=null?soq:'—'}</td>
-        <td style="padding:5px 6px;text-align:center;background:#f0fdf4;font-weight:700;color:#166534;">${inQty}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fef2f2;font-weight:700;color:#dc2626;">${outQty}</td>
-        <td style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'#eff6ff'};font-weight:800;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${bal} is below the minimum stock qty of ${msv}"`:''}>${bal}${below?' &#9888;':''}</td>
+        <td style="padding:5px 6px;text-align:center;background:#fffbeb;font-weight:700;color:#92400e;">${msv!=null?q2(msv):'—'}</td>
+        <td style="padding:5px 6px;text-align:center;background:#fdf2f8;font-weight:700;color:#9d174d;">${soq!=null?q2(soq):'—'}</td>
+        <td style="padding:5px 6px;text-align:center;background:#f0fdf4;font-weight:700;color:#166534;">${q2(inQty)}</td>
+        <td style="padding:5px 6px;text-align:center;background:#fef2f2;font-weight:700;color:#dc2626;">${q2(outQty)}</td>
+        <td style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'#eff6ff'};font-weight:800;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${q2(bal)} is below the minimum stock qty of ${q2(msv)}"`:''}>${q2(bal)}${below?' &#9888;':''}</td>
+        <td class="im-newpr-col" style="padding:5px 6px;text-align:center;background:#f0fdf4;"><input type="checkbox" class="im-pr-sel" data-id="${it.id}"${sarvItemPrSel.has(String(it.id))?' checked':''}${prAdmin?'':' disabled'} title="${prAdmin?(soq!=null?'New PR me qty '+soq+' (Std Order Qty)':'Std Order Qty set nahi — PR me qty khud bharni hogi'):'Sirf Admin tick kar sakta hai'}" style="width:14px;height:14px;cursor:${prAdmin?'pointer':'not-allowed'};"></td>
         <td style="padding:5px 6px;text-align:center;">
           ${(sarvCan('EDIT')||sarvCan('DELETE'))?`${sarvCan('EDIT')?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} — item details badlein">&#9999;&#65039;</button>`:''}${sarvCan('DELETE')?`<button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
@@ -10762,13 +10882,127 @@ window.renderItemMasterTable=function(){
       <td colspan="11" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
       <td style="padding:6px;text-align:center;background:#78350f;">—</td>
       <td style="padding:6px;text-align:center;background:#831843;">—</td>
-      <td style="padding:6px;text-align:center;background:#0c4a3e;">${totalIn}</td>
-      <td style="padding:6px;text-align:center;background:#7c2d12;">${totalOut}</td>
-      <td style="padding:6px;text-align:center;background:#1e3a5f;color:${totalBal<0?'#fca5a5':'#fff'};">${totalBal}</td>
+      <td style="padding:6px;text-align:center;background:#0c4a3e;">${q2(totalIn)}</td>
+      <td style="padding:6px;text-align:center;background:#7c2d12;">${q2(totalOut)}</td>
+      <td style="padding:6px;text-align:center;background:#1e3a5f;color:${totalBal<0?'#fca5a5':'#fff'};">${q2(totalBal)}</td>
+      <td class="im-newpr-col" style="padding:6px;text-align:center;background:#14532d;" title="Ticked for New PR">${sarvItemPrSel.size||'—'}</td>
       <td></td>
     </tr>`;
   tb.innerHTML=totalsRow+bodyRows;
+  sarvSyncItemPrSelUi_();
 };
+/* ── Item Master → New PR ────────────────────────────────────────────
+   The Admin ticks items in the NEW PR column (kept across search / filter /
+   re-render) and presses Generate New PR: the PR form opens with one row per
+   item, qty = its STD ORDER QTY, and Purchaser Name picked from the item's
+   Category (category_purchasers) — the same auto-pick a hand-typed row gets.
+   Requested By, Required By and the rest are filled in on the form as usual,
+   and nothing is saved until Submit. */
+const sarvItemPrSel=new Set();
+function sarvSyncItemPrSelUi_(){
+  const admin=sarvTabVisible('MD_ITEM_NEWPR'),n=sarvItemPrSel.size;
+  const btn=byId('imGenPrBtn'),clr=byId('imPrSelClearBtn'),cnt=byId('imPrSelCount');
+  if(btn){btn.style.display=admin?'':'none';btn.disabled=!n;btn.style.opacity=n?'1':'.55';}
+  if(clr)clr.style.display=(admin&&n)?'':'none';
+  if(cnt)cnt.textContent=n;
+  const all=byId('imPrSelAll');
+  if(all){
+    const boxes=[...document.querySelectorAll('#itemMasterBody .im-pr-sel')];
+    all.disabled=!admin;all.style.cursor=admin?'pointer':'not-allowed';
+    all.checked=boxes.length>0&&boxes.every(b=>b.checked);
+    all.indeterminate=!all.checked&&boxes.some(b=>b.checked);
+  }
+}
+window.sarvClearItemPrSel=function(){sarvItemPrSel.clear();renderItemMasterTable();};
+// Defaults for a PR generated from Item Master.
+const SARV_GEN_PR_EMP_CODE='1439';   // Requested By
+const SARV_GEN_PR_DUE_DAYS=7;        // Required By = today + 7 days
+window.sarvGenerateNewPrFromItems=async function(){
+  if(!sarvTabVisible('MD_ITEM_NEWPR'))return showToast('⛔ Aapke role ko Item Master se New PR banane ka access nahi hai','warn');
+  const picked=sarvItemMasterRows.map(r=>r.it).filter(it=>sarvItemPrSel.has(String(it.id)));
+  if(!picked.length)return showToast('Pehle NEW PR column me items tick karein','warn');
+  const noSoq=picked.filter(it=>itemStdOrderQty_(it)==null);
+  // Open New Entry the way the Home page does, on a clean form.
+  sarvNavigateFromHome('PR');
+  clearPrForm();
+  const tb=byId('p_itemTableBody');if(!tb)return;
+  tb.innerHTML='';
+  picked.forEach(it=>{
+    const tr=addPurchaseMainRow();if(!tr)return;
+    const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??'';};
+    // Pinned to this exact Item Master row, so a same-named duplicate can't be bound on save.
+    tr.dataset.itemId=it.id;
+    set('.col-name',it.name||'');set('.col-desc',it.description||'');set('.col-make',it.make||'');
+    set('.col-cat',it.category||'');set('.col-uom',it.uom||'');
+    const soq=itemStdOrderQty_(it);set('.col-qty',soq!=null?soq:'');
+    const nameEl=tr.querySelector('.col-name');
+    if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='Item Master se aaya — badalna ho to row hata kar nayi jodein';}
+    // Purchaser by Category — first row fills it, a disagreeing row warns (applyCategoryPurchaser).
+    applyCategoryPurchaser(it.category);
+  });
+  refreshPurchaseTotals();
+  sarvItemPrSel.clear();
+  // Required By: one week from today (local date, not UTC).
+  {
+    const d=new Date();d.setDate(d.getDate()+SARV_GEN_PR_DUE_DAYS);
+    const z=n=>String(n).padStart(2,'0');
+    const due=d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());
+    const rb=byId('p_requiredByDate');if(rb){rb.value=due;rb.dispatchEvent(new Event('change'));}
+  }
+  // Requested By: the default Employee Code, filled through the same lookup as typing it.
+  {
+    const ec=byId('p_reqEmpCode');
+    if(ec){
+      if(!lookupEmployee(SARV_GEN_PR_EMP_CODE)&&SB_READY){try{await loadEmployeeMaster();}catch(e){}}
+      ec.value=SARV_GEN_PR_EMP_CODE;
+      onEmpCodeInput(SARV_GEN_PR_EMP_CODE);
+      if(!lookupEmployee(SARV_GEN_PR_EMP_CODE))showToast('⚠️ Employee Code '+SARV_GEN_PR_EMP_CODE+' Employee Master me nahi mila — Requested By khud bharein','warn');
+    }
+  }
+  /* Machine: picking it on the FIRST row puts the same machine on every other
+     row. A row whose machine was changed by hand (no longer blank / no longer
+     the first row's previous pick) is left alone. */
+  const genRows=[...tb.querySelectorAll('tr')];
+  const firstMc=genRows[0]&&genRows[0].querySelector('.col-machine');
+  if(firstMc&&genRows.length>1){
+    let prev=firstMc.value||'';
+    const copy=()=>{
+      const v=String(firstMc.value||'').trim();
+      // Only a real Machine Master value is copied — an invalid one is cleared on blur anyway.
+      if(v&&sarvMachineCatalog.length&&!machineValidValues_().some(x=>x.toLowerCase()===v.toLowerCase()))return;
+      genRows.slice(1).forEach(tr=>{
+        const mc=tr.querySelector('.col-machine');if(!mc||!tr.isConnected)return;
+        if(!mc.value||mc.value===prev)mc.value=v;
+      });
+      prev=v;
+    };
+    firstMc.addEventListener('change',copy);
+    firstMc.title='Yahan machine chunte hi neeche ki saari rows me wahi machine lag jayegi';
+  }
+  showToast('📝 New PR form me '+picked.length+' item(s) bhar diye — qty = Std Order Qty, Purchaser = Category se, Requested By = '+SARV_GEN_PR_EMP_CODE+', Required By = 7 din baad. Pehli row me Machine chunein — sab rows me lag jayegi.');
+  if(noSoq.length)showToast('⚠️ In items ka Std Order Qty set nahi tha — qty khud bharein: '+noSoq.map(it=>it.name).slice(0,5).join(', ')+(noSoq.length>5?' …':''),'warn');
+};
+document.addEventListener('DOMContentLoaded',()=>{
+  byId('itemMasterBody')?.addEventListener('change',e=>{
+    const cb=e.target.closest('.im-pr-sel');if(!cb)return;
+    if(!sarvTabVisible('MD_ITEM_NEWPR')){cb.checked=false;return showToast('⛔ Aapke role ko New PR Generation ka access nahi hai','warn');}
+    if(cb.checked)sarvItemPrSel.add(String(cb.dataset.id));else sarvItemPrSel.delete(String(cb.dataset.id));
+    // Subtotal cell + button count, without re-rendering (keeps scroll position).
+    const sub=byId('itemMasterBody').querySelector('tr td[title="Ticked for New PR"]');if(sub)sub.textContent=sarvItemPrSel.size||'—';
+    sarvSyncItemPrSelUi_();
+  });
+  byId('imPrSelAll')?.addEventListener('click',e=>e.stopPropagation());
+  byId('imPrSelAll')?.addEventListener('change',e=>{
+    if(!sarvTabVisible('MD_ITEM_NEWPR')){e.target.checked=false;return;}
+    // Every item the current search / filters are showing.
+    document.querySelectorAll('#itemMasterBody .im-pr-sel').forEach(cb=>{
+      cb.checked=e.target.checked;
+      if(cb.checked)sarvItemPrSel.add(String(cb.dataset.id));else sarvItemPrSel.delete(String(cb.dataset.id));
+    });
+    const sub=byId('itemMasterBody').querySelector('tr td[title="Ticked for New PR"]');if(sub)sub.textContent=sarvItemPrSel.size||'—';
+    sarvSyncItemPrSelUi_();
+  });
+});
 /* Item Master column resize — Code / Item Name / Description. Drag a header's
    right edge; double-click the edge to go back to the default width. Widths
    are remembered per browser. The table is table-layout:fixed, so a width set
@@ -10891,8 +11125,8 @@ function refreshSupplierDatalist(suppliers){
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
   try{
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
@@ -10915,7 +11149,7 @@ window.loadItemMaster=async function(){
     renderItemMasterTable();
     refreshItemDatalist(items);
     refreshItemAttributeDatalists_(items);
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="17" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
 };
 
 /* ── Item Master edit (Admin only) ────────────────────────────────
@@ -11762,7 +11996,34 @@ async function loadItemTracker(){
     setItemLedgerExportsEnabled(false);
     return;
   }
+  await loadItemLedgerPdfLinks_();
   renderItemLedger();
+}
+/* Inward / Outward No. in the ledger opens that record's PDF. Read from the
+   same pdf_documents index Print History / Reports uses — one batched lookup
+   for every number on the ledger. A number with no indexed PDF stays plain text. */
+let sarvItemLedgerPdf={};
+async function loadItemLedgerPdfLinks_(){
+  sarvItemLedgerPdf={};
+  const nos=[...new Set(sarvItemLedger.flatMap(g=>g.rows.map(r=>r.doc)).filter(Boolean))];
+  for(let i=0;i<nos.length;i+=150){
+    try{
+      const q=await SB.from('pdf_documents').select('document_no,variant,public_url').in('document_no',nos.slice(i,i+150));
+      if(q.error)throw q.error;
+      (q.data||[]).forEach(p=>{
+        if(!p.public_url)return;
+        (sarvItemLedgerPdf[p.document_no]=sarvItemLedgerPdf[p.document_no]||{})[p.variant]=p.public_url;
+      });
+    }catch(e){console.warn('[SARV] Item Ledger PDF links skipped:',e.message||e);break;}
+  }
+}
+function itemLedgerDocCell_(doc){
+  if(!doc)return '—';
+  const m=sarvItemLedgerPdf[doc]||{};
+  const one=m.SINGLE||'',two=m.TWO_PAGE||'';
+  if(!one&&!two)return '<span title="Is record ki PDF index me nahi mili">'+escText(doc)+'</span>';
+  return '<a class="it-doc" href="'+escText(one||two)+'" target="_blank" rel="noopener" title="'+escText(doc)+' — PDF kholne ke liye click karein" style="color:#1d4ed8;text-decoration:underline;">'+escText(doc)+'</a>'
+    +(one&&two?' <a class="it-doc" href="'+escText(two)+'" target="_blank" rel="noopener" title="Two-page PDF" style="font-size:9px;font-weight:800;color:#166534;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:0 4px;text-decoration:none;">2-Pg</a>':'');
 }
 
 function setItemLedgerExportsEnabled(on){
@@ -11808,7 +12069,7 @@ function renderItemLedger(){
       const isIn=r.dir==='In',c=isIn?'#166534':'#b91c1c',bg=isIn?'#dcfce7':'#fee2e2';
       return '<tr>'
         +'<td style="'+td+'white-space:nowrap;">'+escText(fmtDate_(r.date))+'</td>'
-        +'<td style="'+td+'color:#1d4ed8;font-weight:700;white-space:nowrap;">'+escText(r.doc||'—')+'</td>'
+        +'<td style="'+td+'color:#1d4ed8;font-weight:700;white-space:nowrap;">'+itemLedgerDocCell_(r.doc)+'</td>'
         +'<td style="'+td+'">'+escText(r.party||'-')+'</td>'
         +'<td style="'+td+'text-align:center;"><span style="background:'+bg+';color:'+c+';border-radius:4px;padding:1px 8px;font-size:10px;font-weight:800;">'+escText(r.dir)+'</span></td>'
         +'<td style="'+td+'text-align:center;color:#64748b;">'+escText(r.uom||'')+'</td>'
@@ -17916,7 +18177,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function refreshPoFollowupReport(){
    if(!SB_READY)return;
    const tb=byId('p_poReportBody');if(!tb)return;
-   tb.innerHTML='<tr><td colspan="14" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
    /* Every one of these goes through fetchAllRows. A plain select is capped at
       1000 rows by PostgREST, and on a follow-up sheet a truncated page does not
       just hide a line — it makes a PR that HAS a PO read as "PO not generated",
@@ -18215,47 +18476,117 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* Filtering is per PR, not per row: a PR matches or it does not, and all of
     its rows come with it. Showing one PO of a PR and silently dropping the
     other would be the most misleading thing this sheet could do. */
- /* Column filters (the row under the header). Text boxes are "contains", the
-    ✔ / – boxes match that column's tick. They are tested per ROW — PO and
-    Inward columns differ row to row — but the result still applies per PR: a
-    PR shows, with all its rows, when at least one of its rows passes every
-    column filter, and those rows are tinted so the hit is easy to spot. */
+ /* Column filters (the row under the header) — Excel-style: each header has a
+    dropdown list of the values actually in that column, any number of which
+    can be ticked. They are tested per ROW — PO and Inward columns differ row
+    to row — but the result still applies per PR: a PR shows, with all its
+    rows, when at least one of its rows passes every column filter, and those
+    rows are tinted so the hit is easy to spot. */
+ const FU_COL_LABEL={pr:'PR No.',requester:'PR Requested By',purchaser:'Purchaser Name',vendorInfo:'Vendor Info.',poGenerated:'PO Generate',po:'PO No.',vendor:'Vendor',
+   delivery:'Delivery Date of PO',mdApproved:'MD Approved',poSent:'PO Sent to Vendor',status:'PO Status',inward:'Inward No.',
+   informed:'Inform to Requester',gm:'Bill Checked by GM',md:'Bill Checked by MD'};
+ const FU_NO_PO='(No PO)',FU_NO_INW='(No Inward)',FU_BLANK='(Blank)';
+ // The Purchaser a PR is booked against; PRs saved before the column existed carry it in their PDF snapshot.
+ function poFollowupPurchaser_(req){
+   return String((req&&req.purchaser_name)||(req&&req.pdf_snapshot&&req.pdf_snapshot.generatedBy)||'').trim();
+ }
+ // col → Set of ticked values. A column with nothing ticked is not filtered.
+ const sarvFuColSel={};
+ // What a row shows in a column, as the filter list offers it.
+ function fuColValue_(col,r){
+   const g=r.group,po=r.po,i=r.inward,yn=b=>b?'✔ Yes':'– No';
+   switch(col){
+     case 'pr':return shortDocNo_(g.req.req_no,'PR')||g.req.req_no||FU_BLANK;
+     case 'requester':return String(g.req.requested_by||'').trim()||FU_BLANK;
+     case 'purchaser':return poFollowupPurchaser_(g.req)||FU_BLANK;
+     case 'vendorInfo':return yn(g.vendorInfo);
+     case 'poGenerated':return yn(g.poGenerated);
+     case 'po':return po?(shortDocNo_(po.po_no,'PO')||po.po_no):FU_NO_PO;
+     case 'vendor':return po?(String(po.vendor_name||'').trim()||FU_BLANK):FU_NO_PO;
+     case 'delivery':return po?(po.delivery_date?pDate(po.delivery_date):FU_BLANK):FU_NO_PO;
+     case 'mdApproved':return po?yn(poFollowupMdApproved_(po)):FU_NO_PO;
+     case 'poSent':return po?yn(isPoPartySent(po)):FU_NO_PO;
+     case 'status':{if(!po)return FU_NO_PO;const s=po.status||'Generated';return PO_FOLLOWUP_STATUS_TEXT[s]||s;}
+     case 'inward':return i?(shortDocNo_(i.document_no,'INWARD')||i.document_no):FU_NO_INW;
+     case 'informed':return i?(poFollowupInformState_(g.req,i.document_no)?'✔ Done':'☐ Pending'):FU_NO_INW;
+     case 'gm':return i?yn(!!inwStoreCheck_(i,'gm')):FU_NO_INW;
+     case 'md':return i?yn(!!inwStoreCheck_(i,'md')):FU_NO_INW;
+   }
+   return '';
+ }
+ // Active filters, and each header button's label kept in step with them.
  function poFollowupColFilters_(){
    const f={};
-   document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(el=>{
-     const v=String(el.value||'').trim();
-     el.classList.toggle('active',!!v);
-     if(v)f[el.dataset.col]=el.tagName==='SELECT'?v:v.toLowerCase();
+   document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(b=>{
+     const col=b.dataset.col,s=sarvFuColSel[col],on=!!(s&&s.size);
+     b.classList.toggle('active',on);
+     b.innerHTML=escText(on?(s.size===1?[...s][0]:s.size+' selected'):'All')+' &#9662;';
+     b.title=on?((FU_COL_LABEL[col]||col)+':\n'+[...s].join('\n')):'Filter — click karke ek ya zyada values chunein';
+     if(on)f[col]=s;
    });
    return f;
  }
  function poFollowupRowMatch_(r,f){
-   const g=r.group,po=r.po,i=r.inward;
-   const text={
-     pr:()=>[g.req.req_no,shortDocNo_(g.req.req_no,'PR')],
-     requester:()=>[g.req.requested_by],
-     po:()=>po?[po.po_no,shortDocNo_(po.po_no,'PO')]:[],
-     vendor:()=>po?[po.vendor_name]:[],
-     delivery:()=>po&&po.delivery_date?[pDate(po.delivery_date),fmtDate_(po.delivery_date),po.delivery_date]:[],
-     status:()=>po?[po.status||'Generated',PO_FOLLOWUP_STATUS_TEXT[po.status]||'']:[],
-     inward:()=>i?[i.document_no,shortDocNo_(i.document_no,'INWARD')]:[]
-   };
-   // null = the column has nothing on this row (no PO / no inward), which
-   // matches neither Yes nor No.
-   const tick={
-     vendorInfo:()=>g.vendorInfo,
-     poGenerated:()=>g.poGenerated,
-     mdApproved:()=>po?poFollowupMdApproved_(po):null,
-     poSent:()=>po?isPoPartySent(po):null,
-     informed:()=>i?!!poFollowupInformState_(g.req,i.document_no):null,
-     gm:()=>i?!!inwStoreCheck_(i,'gm'):null,
-     md:()=>i?!!inwStoreCheck_(i,'md'):null
-   };
-   return Object.keys(f).every(k=>{
-     if(text[k])return text[k]().map(v=>String(v||'').toLowerCase()).join(' ').includes(f[k]);
-     if(tick[k]){const v=tick[k]();return v!==null&&v===(f[k]==='1');}
-     return true;
+   return Object.keys(f).every(k=>f[k].has(fuColValue_(k,r)));
+ }
+ /* The dropdown itself. Values are the distinct ones in the loaded rows,
+    with how many rows carry each; ticking applies at once (no Apply step),
+    and nothing ticked means "All". */
+ function closeFuColFilter_(){const d=byId('fuColDrop');if(d)d.remove();document.removeEventListener('mousedown',fuDropOutside_,true);document.removeEventListener('keydown',fuDropKey_,true);}
+ function fuDropOutside_(e){const d=byId('fuColDrop');if(d&&!d.contains(e.target)&&!e.target.closest('.fu-colf'))closeFuColFilter_();}
+ function fuDropKey_(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeFuColFilter_();}}
+ function openFuColFilter_(btn){
+   const col=btn.dataset.col;
+   if(byId('fuColDrop')&&byId('fuColDrop').dataset.col===col)return closeFuColFilter_();
+   closeFuColFilter_();
+   const counts=new Map();
+   sarvPoFollowupRows.forEach(r=>{const v=fuColValue_(col,r);counts.set(v,(counts.get(v)||0)+1);});
+   const vals=[...counts.keys()].sort((a,b)=>{
+     const bl=x=>x.startsWith('(')?1:0;   // (No PO) / (Blank) at the end
+     return bl(a)-bl(b)||String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'});
    });
+   const sel=sarvFuColSel[col]||(sarvFuColSel[col]=new Set());
+   const d=document.createElement('div');
+   d.id='fuColDrop';d.dataset.col=col;
+   d.innerHTML='<div class="fd-hd">'+escText(FU_COL_LABEL[col]||col)+'</div>'
+     +'<input class="fd-search" type="text" placeholder="&#128269; Search...">'
+     +'<div class="fd-acts"><button type="button" data-a="all">&#10004; Select All (dikh rahe)</button><button type="button" data-a="none">&#10006; Clear</button></div>'
+     +'<div class="fd-list">'+(vals.length?vals.map(v=>'<label data-v="'+escText(v)+'"><input type="checkbox"'+(sel.has(v)?' checked':'')+'><span>'+escText(v)+'</span><span class="n">'+counts.get(v)+'</span></label>').join(''):'<div style="padding:8px 10px;color:#94a3b8;">Pehle report load karein</div>')+'</div>'
+     +'<div class="fd-ft"><button type="button" class="fd-clr" data-a="reset">Show All</button><button type="button" class="fd-ok" data-a="close">OK</button></div>';
+   document.body.appendChild(d);
+   const r=btn.getBoundingClientRect();
+   d.style.left=Math.max(8,Math.min(r.left,innerWidth-d.offsetWidth-8))+'px';
+   const below=r.bottom+4;
+   d.style.top=(below+d.offsetHeight>innerHeight-8?Math.max(8,r.top-d.offsetHeight-4):below)+'px';
+   const apply=()=>{if(!sel.size)delete sarvFuColSel[col];else sarvFuColSel[col]=sel;renderPoFollowupReport();};
+   d.querySelector('.fd-list').addEventListener('change',e=>{
+     const lb=e.target.closest('label');if(!lb)return;
+     const v=lb.dataset.v;if(e.target.checked)sel.add(v);else sel.delete(v);
+     apply();
+   });
+   const search=d.querySelector('.fd-search');
+   search.addEventListener('input',()=>{
+     const q=search.value.trim().toLowerCase();
+     d.querySelectorAll('.fd-list label').forEach(lb=>{lb.style.display=!q||lb.dataset.v.toLowerCase().includes(q)?'':'none';});
+   });
+   d.addEventListener('click',e=>{
+     const a=e.target.closest('button[data-a]');if(!a)return;
+     const act=a.dataset.a;
+     if(act==='all'){d.querySelectorAll('.fd-list label').forEach(lb=>{if(lb.style.display==='none')return;lb.querySelector('input').checked=true;sel.add(lb.dataset.v);});apply();}
+     else if(act==='none'||act==='reset'){sel.clear();d.querySelectorAll('.fd-list input').forEach(x=>x.checked=false);apply();if(act==='reset')closeFuColFilter_();}
+     else if(act==='close')closeFuColFilter_();
+   });
+   document.addEventListener('mousedown',fuDropOutside_,true);
+   document.addEventListener('keydown',fuDropKey_,true);
+   search.focus();
+ }
+ // Report over the whole window (its own page scroll), or back in the tab.
+ function poFollowupFullScreen_(on){
+   const p=byId('p_poReportPanel');if(!p)return;
+   p.classList.toggle('fu-full',!!on);
+   const b=byId('p_poRepFsBtn');
+   if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'&#9974; Full Screen';b.title=on?'Wapas (Esc)':'Report ko poori screen par dekhein (Esc se wapas)';}
+   closeFuColFilter_();
  }
  function poFollowupVisibleGroups(){
    const term=(byId('p_poRepSearch')?.value||'').trim().toLowerCase();
@@ -18277,7 +18608,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const nos=[g.req.req_no,shortDocNo_(g.req.req_no,'PR')]
        .concat(g.poBlocks.map(b=>b.po.po_no)).concat(g.poBlocks.map(b=>shortDocNo_(b.po.po_no,'PO')))
        .concat(g.allInwards.map(i=>i.document_no)).concat(g.allInwards.map(i=>shortDocNo_(i.document_no,'INWARD')));
-     return nos.concat([g.req.requested_by,g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
+     return nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
  }
@@ -18303,6 +18634,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      return '<tr'+(hasCf&&poFollowupRowMatch_(r,cf)?' class="fu-hit"':'')+(r.groupFirst?' style="border-top:2px solid #cbd5e1;"':'')+'>'
        +pr(fuDocLink_(g.req.req_no,g.prPdf,'PR'),prCell)
        +pr('<span style="color:#7c2d12;">'+pEsc(g.req.requested_by||'—')+'</span>',prCell)
+       +pr('<span style="color:#5b21b6;">'+pEsc(poFollowupPurchaser_(g.req)||'—')+'</span>',prCell)
        +pr(fuTick_(g.vendorInfo),'text-align:center;')
        +pr(fuTick_(g.poGenerated),'text-align:center;')
        +poCell(po?fuDocLink_(po.po_no,b.url,'PO',itemsTip):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
@@ -18319,7 +18651,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td class="fu-center">'+fuBillCell_(r.inward,'md')+'</td>'
        +'</tr>';
    }).join('')
-     : '<tr><td colspan="14" style="text-align:center;color:#94a3b8;padding:18px;">'
+     : '<tr><td colspan="15" style="text-align:center;color:#94a3b8;padding:18px;">'
        +(sarvPoFollowupGroups.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // Counted in PRs, not rows — "12 of 40" meaning rows would be unreadable
@@ -18597,7 +18929,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       record that gets filed, mailed and matched against other systems, and
       PR608 cannot be matched back to a year or a series. Both are exported so
       neither reading is lost. */
-   const head=['PR No.','PR Short','PR Requested By','Vendor Info.','PO Generate','PO No.','PO Short','Vendor',
+   const head=['PR No.','PR Short','PR Requested By','Purchaser Name','Vendor Info.','PO Generate','PO No.','PO Short','Vendor',
      'Delivery Date of PO','MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inward Short',
      'Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
    const yn=v=>v?'Yes':'No';
@@ -18608,7 +18940,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Per receipt — a row with no inward has nothing to have been informed of.
      const f=i?poFollowupInformState_(g.req,i.document_no):null;
      return [
-       g.req.req_no||'',shortDocNo_(g.req.req_no,'PR'),g.req.requested_by||'',
+       g.req.req_no||'',shortDocNo_(g.req.req_no,'PR'),g.req.requested_by||'',poFollowupPurchaser_(g.req),
        yn(g.vendorInfo),yn(g.poGenerated),
        po?(po.po_no||''):'',po?shortDocNo_(po.po_no,'PO'):'',po?(po.vendor_name||''):'',
        po?pDate(po.delivery_date):'',
@@ -19049,10 +19381,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    // rows, Reload is what goes back to the database.
    ['p_poRepSearch','p_poRepStatus','p_poRepRequester','p_poRepPending']
      .forEach(id=>onFilter(id,renderPoFollowupReport));
+   // Header filter buttons → multi-select dropdown (openFuColFilter_).
    document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(e=>{
      if(e.dataset.filterBound)return;
-     e.addEventListener('input',renderPoFollowupReport);e.addEventListener('change',renderPoFollowupReport);
+     e.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();openFuColFilter_(e);});
      e.dataset.filterBound='1';
+   });
+   on('p_poRepFsBtn',()=>poFollowupFullScreen_(!byId('p_poReportPanel')?.classList.contains('fu-full')));
+   document.addEventListener('keydown',e=>{
+     if(e.key!=='Escape'||!byId('p_poReportPanel')?.classList.contains('fu-full'))return;
+     if(byId('fuColDrop')||document.querySelector('.sarv-ov')||byId('pwdGateModal')?.style.display==='flex')return;
+     poFollowupFullScreen_(false);
    });
    bindPoFollowupFlagClicks_();
    on('p_poAddPrItemsBtn',async()=>{
