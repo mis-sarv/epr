@@ -420,14 +420,15 @@
            As in STORE.html this needs border-collapse:separate (Chrome and
            Safari drop collapsed borders on sticky cells), and the left
            offset below must match the <col> width exactly — hence a fixed
-           951px table: 951 = 118 (item) + 104 (selected) + 3x(126+68+49).
+           1219px table: 1219 = 118 (item) + 62 (qty) + 70 (wt)
+           + 104 (selected) + 78 (bill on) + 58 (gst%) + 3x(126+68+49).
            ============================================================ */
         .vi-grid-wrap { max-height: 46vh; overflow: auto; }
         .item-table.vi-grid {
             border-collapse: separate;
             border-spacing: 0;
             table-layout: fixed;
-            width: 951px;
+            width: 1219px;
         }
         .item-table.vi-grid th,
         .item-table.vi-grid td {
@@ -528,6 +529,124 @@
             background: #fff;
         }
         .item-table.vi-grid .vi-disc-head { background: #e0e7ff; color: #3730a3; }
+
+        /* ── PO terms that are decided WITH the quotes ──────────────
+           Bill On and GST% used to be asked for again in the PO Generate
+           tab, which split one decision across two screens: the rate and
+           the tax it carries were typed days apart, by which time the
+           quote sheet was closed. They are part of the quote now, so they
+           sit in this grid and PO Generate only shows them back, locked.
+           Blue, so they read as PO data rather than as requirement (green)
+           or quote (indigo) figures. */
+        .item-table.vi-grid .vi-poh { background: #dbeafe; color: #1e40af; }
+        .item-table.vi-grid .vi-poc { background: #f5f9ff; }
+        .item-table.vi-grid .vi-basis,
+        .item-table.vi-grid .vi-gst {
+            width: 100%;
+            font-size: 0.7rem;
+            padding: 4px 2px;
+            border: 1px solid #93c5fd;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #fff;
+        }
+        .item-table.vi-grid .vi-gst { text-align: right; }
+        /* GST% has NO default — an unfilled box has to look unfilled, or a
+           blank would be signed off as "0% tax" without anyone noticing. */
+        .item-table.vi-grid .vi-gst.is-blank {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        /* ── PO Charges / Delivery block under the grid ────────────── */
+        .vi-po-block {
+            margin-top: 12px;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            background: #f8fbff;
+            padding: 10px 12px;
+        }
+        .vi-po-block > .vi-po-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #1e40af;
+            margin-bottom: 2px;
+        }
+        .vi-po-block label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #334155;
+            display: block;
+            margin: 8px 0 3px;
+        }
+        .vi-po-block input,
+        .vi-po-block textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            font-size: 0.85rem;
+            border: 1px solid #93c5fd;
+            border-radius: 6px;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        /* ── PO totals card ────────────────────────────────────────────
+           The same six figures the PO itself carries, in the same order,
+           so what is signed here is recognisable on the printed PO. */
+        .po-sum-card {
+            margin-bottom: 12px;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            background: #f6fffa;
+            overflow: hidden;
+        }
+        .po-sum-card .po-sum-head {
+            padding: 8px 12px;
+            background: #dcfce7;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #166534;
+        }
+        .po-sum-card .po-sum-rows { padding: 6px 12px 10px; }
+        .po-sum-card .po-sum-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 0.82rem;
+            padding: 4px 0;
+            border-bottom: 1px dashed #d1fae5;
+        }
+        .po-sum-card .po-sum-row > span:first-child { color: #475569; font-weight: 600; }
+        .po-sum-card .po-sum-row > span:last-child { font-weight: 800; color: #0f172a; white-space: nowrap; }
+        .po-sum-card .po-sum-row.is-sub { background: #f0fdf4; margin: 2px -12px; padding: 5px 12px; border-bottom: none; }
+        .po-sum-card .po-sum-row.is-total {
+            border-bottom: none;
+            border-top: 2px solid #16a34a;
+            margin-top: 4px;
+            padding-top: 7px;
+            font-size: 0.95rem;
+        }
+        .po-sum-card .po-sum-row.is-total > span { color: #166534; font-weight: 900; }
+        .po-sum-card .po-sum-note {
+            padding: 0 12px 10px;
+            font-size: 0.68rem;
+            color: #6b7280;
+            line-height: 1.35;
+        }
+        /* Locked PO terms shown back in PO Generate. */
+        .po-locked-card {
+            margin-bottom: 12px;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            background: #fffdf5;
+            padding: 9px 12px;
+        }
+        .po-locked-card .po-locked-head { font-size: 0.8rem; font-weight: 800; color: #92400e; margin-bottom: 5px; }
+        .po-locked-card .po-locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; }
+        .po-locked-card .po-locked-cell { font-size: 0.76rem; color: #334155; }
+        .po-locked-card .po-locked-cell b { display: block; font-size: 0.66rem; color: #92400e; font-weight: 800; }
+        .po-locked-card .po-locked-wide { grid-column: 1 / -1; }
 
         .form-select {
             width: 100%;
@@ -839,12 +958,12 @@
                 </div>
                 <div id="vendorInfoBody" style="display:none; padding:10px 12px; background:#fff;">
                     <div style="font-size:0.72rem; color:#6b7280; margin-bottom:8px;">
-                        Vendor chunein aur har item ka rate / discount bharein, phir Save Vendor Info dabayein.
+                        Vendor chunein, har item ka rate / discount, Bill On aur GST% bharein, neeche PO Details bharein, phir Save dabayein.
                         Har item ka Approved Vendor grid ke Selected Vendor column me chunein, phir sign karein.
                     </div>
                     <!-- Shown once quotes are saved: this form is one-shot from a phone. -->
                     <div id="viLockedNote" style="display:none; background:#fff7e6; border:1px solid #fcd34d; border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:0.72rem; color:#92400e; font-weight:600;">
-                        &#128274; Vendor info save ho chuki hai. Ise ab sirf <b>STORE.html</b> (desktop) ke &#128176; Vendor Rate &amp; Info popup se badla ja sakta hai.
+                        &#128274; Vendor info aur PO details save ho chuki hain. Inhe ab sirf <b>STORE.html</b> (desktop) ke &#128176; Vendor Rate &amp; Info popup se badla ja sakta hai.
                         Har item ka <b>Selected Vendor</b> abhi bhi grid me badal kar sign kar sakte hain.
                     </div>
                     <!-- Add Supplier sits ON this grid because this is where the
@@ -877,9 +996,67 @@
                             <tbody id="viRateBody"></tbody>
                         </table>
                     </div>
+                    <!-- PO terms that belong WITH the quotes ─────────────
+                         Delivery Date, the PO charges and the PO's own notes
+                         used to be asked for in the PO Generate tab, i.e.
+                         after this sheet was closed. They are part of what is
+                         negotiated with the vendor, so they are filled here,
+                         in the same pass as the rates, and PO Generate shows
+                         them back locked. -->
+                    <div class="vi-po-block" id="viPoTermsBlock">
+                        <div class="vi-po-title">&#129534; PO Details (ab yahin bharein)</div>
+                        <div style="font-size:0.68rem;color:#6b7280;">
+                            Ye seedha PO par chhapega. Save ke baad <b>PO Generate</b> tab me ye sab <b>locked</b> dikhega — wahan sirf sign karna hoga.
+                        </div>
+
+                        <label>Delivery Date <span style="color:#dc3545;">*</span></label>
+                        <input type="date" id="viDeliveryDate">
+
+                        <label style="margin-bottom:1px;">PO Charges (&#8377;) <small style="font-weight:500;color:#6b7280;">— na ho to khali chhod dein</small></label>
+                        <div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:6px;">
+                            <div>
+                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Freight</div>
+                                <input type="number" id="viFreight" min="0" step="0.01" placeholder="0" inputmode="decimal">
+                            </div>
+                            <div>
+                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Loading / Other Exp.</div>
+                                <input type="number" id="viOtherExp" min="0" step="0.01" placeholder="0" inputmode="decimal">
+                            </div>
+                            <div>
+                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">GST %</div>
+                                <input type="number" id="viChargesGst" min="0" max="100" step="0.01" inputmode="decimal" title="Freight + Loading / Other Exp. par GST %">
+                            </div>
+                        </div>
+                        <div style="font-size:0.66rem;color:#6b7280;margin-top:3px;">
+                            In charges par GST alag lagta hai. Items alag-alag vendors ke hon to charges sirf <b>pehle PO</b> par lagenge.
+                        </div>
+
+                        <label>PO Remarks / Notes</label>
+                        <textarea id="viPoNotes" rows="2" placeholder="PO par chhapne wale notes (optional)..."></textarea>
+                    </div>
+
                     <div class="err-banner" id="viError" style="display:none;"></div>
-                    <button class="btn" id="viSaveBtn" style="margin-top:10px;">&#128190; Save Vendor Info</button>
+                    <button class="btn" id="viSaveBtn" style="margin-top:10px;">&#128190; Save Vendor Info &amp; PO Details</button>
                 </div>
+            </div>
+
+            <!-- ── PO totals ────────────────────────────────────────────
+                 The six figures the PO carries, computed from exactly what
+                 autoGeneratePosFromPr will write: per-line net rate x billed
+                 units, each line's own GST, charges at their own GST. Live
+                 under the grid while quoting, read-only in PO Generate. -->
+            <div class="po-sum-card" id="poSummaryCard" style="display:none;">
+                <div class="po-sum-head">&#128181; PO Calculation</div>
+                <div class="po-sum-rows" id="poSummaryRows"></div>
+                <div class="po-sum-note" id="poSummaryNote"></div>
+            </div>
+
+            <!-- Saved PO terms, shown back in the PO Generate tab. Locked by
+                 design: they were agreed with the vendor at quoting time, and
+                 the editable copies live in the Vendor Rate & Info panel. -->
+            <div class="po-locked-card" id="poLockedCard" style="display:none;">
+                <div class="po-locked-head">&#128274; PO Details (Vendor Info me save kiye gaye &mdash; locked)</div>
+                <div class="po-locked-grid" id="poLockedGrid"></div>
             </div>
 
             <!-- The Purchaser's other two calls on a PR, sitting right under the
@@ -920,9 +1097,13 @@
                 </div>
             </div>
 
-            <!-- PO charges, entered by the Purchaser while generating the PO.
-                 Same fields as STORE.html's Build PO: Freight, Loading / Other
-                 Exp. and the GST % those charges carry. -->
+            <!-- PO charges — the LEGACY copy. These are filled on the Vendor
+                 Rate & Info sheet now (#viFreight / #viOtherExp /
+                 #viChargesGst), so this group only appears for a PR that
+                 reached PO Generate before that sheet existed and therefore has
+                 no saved poPlan to show. Kept, rather than deleted, because
+                 such a PR would otherwise have no way to carry charges at all.
+                 Same fields as STORE.html's Build PO. -->
             <div class="form-group" id="poChargesGroup" style="display:none;">
                 <label>PO Charges (&#8377;) <small style="font-weight:500;color:#6b7280;">— optional</small></label>
                 <div style="display:grid; grid-template-columns:1fr 1fr 74px; gap:6px;">
@@ -944,9 +1125,16 @@
                 </div>
             </div>
 
+            <!-- The APPROVAL's remarks, which ride on the signature. Not the
+                 same thing as PO Remarks / Notes (filled on the quote sheet and
+                 printed on the PO) — relabelled in openModal where both are on
+                 screen, so the two are never mistaken for each other. -->
             <div class="form-group">
-                <label>Remarks / Notes</label>
+                <label id="remarksLabel">Remarks / Notes</label>
                 <textarea id="remarksInput" rows="2" placeholder="Enter remarks (optional)..."></textarea>
+                <div id="remarksHint" style="display:none; font-size:0.7rem; color:#6b7280; margin-top:4px;">
+                    Ye aapke sign ke saath record hota hai. PO par chhapne wale notes <b>Vendor Info</b> ke &#129534; PO Details me hain.
+                </div>
             </div>
 
             <!-- Shown instead of the pad once this user's sign is saved — see applySignPadMode(). -->
@@ -1324,38 +1512,160 @@
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(text)));
         return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
     }
+    /* ══ PDF ↔ DATABASE LINK: NOTHING IS ALLOWED TO GO MISSING ══════
+       A regenerated PDF has to land in three places — Storage, the
+       pdf_documents index, and the parent row's pdf_url — and this app
+       regenerates on a phone, on whatever signal the user happens to have.
+       Every step was best-effort with a console.warn, so a PR could be
+       approved, its PDF rebuilt and uploaded, and the link never written: the
+       record then pointed at the PREVIOUS PDF (or at nothing) with no sign
+       anything had gone wrong. Each step retries now, is read back to confirm
+       it landed, and anything still unwritten is parked in a durable queue
+       that is flushed on the next app load and after every later approval.
+       Same mechanism and the same storage key as STORE.html, so where the two
+       are served from one origin either app finishes the other's unfinished
+       links; served separately, each still finishes its own. */
+    const PDF_LINK_QUEUE_KEY='sarvPdfLinkQueue';
+    const pdfRetryDelay_=ms=>new Promise(r=>setTimeout(r,ms));
+    async function pdfWithRetry_(label,run){
+        for(let attempt=1;attempt<=2;attempt++){
+            try{
+                const r=await run();
+                if(r&&r.error)throw r.error;
+                return {ok:true,result:r};
+            }catch(e){
+                if(attempt===2){console.warn('[MOBILE PDF] '+label+' failed after 2 tries:',e.message||e);return {ok:false,error:e};}
+                await pdfRetryDelay_(600);
+            }
+        }
+    }
+    function pdfLinkQueue_(){
+        try{const raw=localStorage.getItem(PDF_LINK_QUEUE_KEY);return raw?JSON.parse(raw):[]}catch(e){return []}
+    }
+    function pdfLinkQueueWrite_(list){
+        try{localStorage.setItem(PDF_LINK_QUEUE_KEY,JSON.stringify(list.slice(-200)))}catch(e){}
+    }
+    // One entry per (document_no, variant) — a retry replaces the earlier
+    // attempt rather than queueing a second copy of the same job.
+    function pdfLinkQueueAdd_(job){
+        if(!job||!job.recordNo)return;
+        const key=j=>String(j.recordNo)+'|'+String(j.variant||'');
+        const list=pdfLinkQueue_().filter(j=>key(j)!==key(job));
+        list.push({...job,queuedAt:new Date().toISOString()});
+        pdfLinkQueueWrite_(list);
+    }
+    function pdfParentTable_(kind){
+        return kind==='INWARD'?'inward_entries':kind==='OUTWARD'?'outward_entries'
+            :kind==='REQUIREMENT'?'purchase_requirements':kind==='PO'?'purchase_orders':null;
+    }
+    function pdfParentPatch_(variant,url){
+        return variant==='SINGLE'?{pdf_url_single:url}:variant==='TWO_PAGE'?{pdf_url_two_page:url}:{pdf_url:url};
+    }
+    // Rebuilt from the storage path rather than remembered, so a job queued
+    // without a URL can still be completed later.
+    function pdfPublicUrlFor_(path){
+        try{
+            const pub=SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(path);
+            const raw=pub?.data?.publicUrl||'';
+            return raw?raw+'?v='+Date.now():'';
+        }catch(e){return ''}
+    }
+    /* Writes the index row and the parent link, confirming both by reading
+       back, and returns whatever is still missing so the caller queues exactly
+       that. pdf_documents is keyed on (document_no, variant), so however many
+       times a record is re-approved and its PDF rebuilt, the index holds one
+       row per document — never a second one. */
+    async function pdfWriteLinks_(kind,recordId,recordNo,variant,path,url){
+        const missing=[];
+        const row={document_type:kind,document_id:recordId||null,document_no:recordNo,variant,
+            file_path:path,public_url:url||null,schema_version:SARV_PDF_SCHEMA_VERSION};
+        const idx=await pdfWithRetry_('pdf_documents upsert '+recordNo+'/'+variant,
+            ()=>SB.from('pdf_documents').upsert(row,{onConflict:'document_no,variant'}));
+        let indexed=idx.ok;
+        if(indexed){
+            // An upsert that reports no error but stores nothing (RLS quietly
+            // dropping the row) would otherwise pass as a success.
+            const chk=await pdfWithRetry_('pdf_documents verify '+recordNo+'/'+variant,
+                ()=>SB.from('pdf_documents').select('id').eq('document_no',recordNo).eq('variant',variant).limit(1));
+            indexed=!!(chk.ok&&(chk.result?.data||[]).length);
+        }
+        if(!indexed)missing.push('index');
+
+        const table=pdfParentTable_(kind);
+        if(table&&recordId){
+            if(!url){
+                // The file is in storage but its URL never resolved — worth
+                // retrying, not the silent skip that used to leave pdf_url null.
+                missing.push('parent');
+            }else{
+                const col=Object.keys(pdfParentPatch_(variant,url))[0];
+                const upd=await pdfWithRetry_(table+'.'+col+' '+recordNo,
+                    ()=>SB.from(table).update(pdfParentPatch_(variant,url)).eq('id',recordId));
+                let linked=upd.ok;
+                if(linked){
+                    const chk=await pdfWithRetry_(table+'.'+col+' verify '+recordNo,
+                        ()=>SB.from(table).select(col).eq('id',recordId).maybeSingle());
+                    // A database without that column errors here, and that is
+                    // genuinely nothing to queue — treated as linked.
+                    if(chk.ok)linked=!!(chk.result?.data&&chk.result.data[col]);
+                }
+                if(!linked&&upd.ok)missing.push('parent');
+            }
+        }
+        return missing;
+    }
+    // Never throws: a flush that cannot run must not take an approval down.
+    async function flushPdfLinkQueue_(opts={}){
+        const list=pdfLinkQueue_();
+        if(!list.length)return 0;
+        const keep=[];let fixed=0;
+        for(const job of list){
+            try{
+                let url=job.url||'';
+                if(!url&&job.path)url=pdfPublicUrlFor_(job.path);
+                const missing=await pdfWriteLinks_(job.kind,job.recordId,job.recordNo,job.variant,job.path,url);
+                if(missing.length)keep.push({...job,url,lastTry:new Date().toISOString(),tries:(job.tries||0)+1});
+                else fixed++;
+            }catch(e){
+                console.warn('[MOBILE PDF] link queue retry failed for '+job.recordNo+':',e.message||e);
+                keep.push({...job,lastTry:new Date().toISOString(),tries:(job.tries||0)+1});
+            }
+        }
+        pdfLinkQueueWrite_(keep);
+        if(fixed&&!opts.quiet)console.log('[MOBILE PDF] '+fixed+' pending PDF link(s) written');
+        return fixed;
+    }
+
     async function uploadPdfArtifact(blob,kind,recordNo,variant,filenameOverride=''){
         const safe=pdfSafeName_(recordNo||kind), name=filenameOverride||safe+'_'+variant+'.pdf', path=`${kind.toLowerCase()}/${safe}/${name}`;
-        try{
-            const up=await SB.storage.from(SARV_PDF_BUCKET).upload(path,blob,{upsert:true,contentType:'application/pdf',cacheControl:'3600'});
-            if(up.error)throw up.error;
-            const pub=SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(path);
-            // Same storage path every regeneration (upsert overwrite) means
-            // the same public URL — with cacheControl:3600 the browser/CDN
-            // keeps serving the OLD bytes for up to an hour after a new PDF
-            // is uploaded. Cache-bust with a version query param so every
-            // regeneration is always fetched fresh.
-            const rawUrl=pub?.data?.publicUrl||'';
-            return {blob,path,url:rawUrl?rawUrl+'?v='+Date.now():'',name};
-        }catch(e){
-            console.warn('[MOBILE PDF] Storage upload skipped:',e.message||e);
-            return {blob,path,url:'',name};
-        }
+        /* upsert:true on a path built only from the record number and variant is
+           what keeps this idempotent: re-approving the same document OVERWRITES
+           its file rather than adding a second copy, so Storage can never hold
+           two PDFs for one document number. The retry is for the flaky-signal
+           case this app actually runs in. */
+        const up=await pdfWithRetry_('storage upload '+path,
+            ()=>SB.storage.from(SARV_PDF_BUCKET).upload(path,blob,{upsert:true,contentType:'application/pdf',cacheControl:'3600'}));
+        if(!up.ok)return {blob,path,url:'',name};
+        // Same storage path every regeneration (upsert overwrite) means the same
+        // public URL — with cacheControl:3600 the browser/CDN keeps serving the
+        // OLD bytes for up to an hour. Cache-bust so a regeneration is fresh.
+        return {blob,path,url:pdfPublicUrlFor_(path),name};
     }
     async function indexPdfArtifact(kind,recordId,recordNo,variant,artifact){
         if(!artifact)return;
-        const row={document_type:kind,document_id:recordId||null,document_no:recordNo,variant,file_path:artifact.path,public_url:artifact.url||null,schema_version:SARV_PDF_SCHEMA_VERSION};
+        let missing=[];
         try{
-            const idx=await SB.from('pdf_documents').upsert(row,{onConflict:'document_no,variant'});
-            if(idx.error)throw idx.error;
-        }catch(e){console.warn('[MOBILE PDF] pdf_documents index unavailable:',e.message||e);}
-        const table=kind==='REQUIREMENT'?'purchase_requirements':kind==='PO'?'purchase_orders':null;
-        if(table&&recordId&&artifact.url){
-            try{
-                const upd=await SB.from(table).update({pdf_url:artifact.url}).eq('id',recordId);
-                if(upd.error)throw upd.error;
-            }catch(e){console.warn('[MOBILE PDF] parent PDF URL column unavailable (non-fatal):',e.message||e);}
+            missing=await pdfWriteLinks_(kind,recordId,recordNo,variant,artifact.path,artifact.url||'');
+        }catch(e){
+            console.warn('[MOBILE PDF] link write threw:',e.message||e);
+            missing=['index','parent'];
         }
+        if(!missing.length)return;
+        /* Parked, not warned-and-forgotten. The blob is not kept — it would not
+           survive the reload most likely to flush this — but the storage path is
+           enough, because the file is already uploaded. */
+        pdfLinkQueueAdd_({kind,recordId:recordId||null,recordNo,variant,path:artifact.path,url:artifact.url||'',missing});
+        console.warn('[MOBILE PDF] '+recordNo+' '+variant+' link queued for retry:',missing.join('+'));
     }
 
     // ── Native PDF renderers — ported verbatim from STORE.html so a
@@ -2592,6 +2902,11 @@
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
     document.getElementById('vendorInfoToggle')?.addEventListener('click', toggleVendorInfo);
     document.getElementById('viSaveBtn')?.addEventListener('click', () => saveVendorInfoMobile());
+    // The legacy (unplanned PR) charge boxes in PO Generate feed the same
+    // totals card, so it follows them too.
+    ['poFreightInput','poOtherExpInput','poChargesGstInput'].forEach(id=>{
+        document.getElementById(id)?.addEventListener('input', () => renderPoSummary_());
+    });
     document.getElementById('viAddSupplierBtn')?.addEventListener('click', () => openAddSupplierModal());
     document.getElementById('asSaveBtn')?.addEventListener('click', () => saveNewSupplierMobile());
     document.getElementById('asCancelBtn')?.addEventListener('click', () => closeAddSupplierModal());
@@ -4109,6 +4424,27 @@
         const body = items.length ? items.map((it,i) => {
             const over = pNum(it.excess) > 0;
             const rateOver = it.poRate != null && pNum(it.rate) > pNum(it.poRate) + 0.001;
+            /* WEIGHT on a second row under the item, in the same column order.
+               A receipt can sit exactly on the ordered Qty, at exactly the PO's
+               rate, and still be billed for KGS nobody ordered — on a
+               WEIGHT-billed line that IS the overcharge. Without this row the
+               qty figures would all read "0 excess" and the request would look
+               like it had been raised for nothing.
+               Printed only where the document carries an ordered weight
+               (hasWeight); a request raised before weight was checked has no
+               weight figures in its payload and simply shows the qty row, as
+               before. */
+            const wtOver = pNum(it.excessWt) > 0;
+            const wtRow = it.hasWeight ? `<tr style="background:${wtOver ? '#fef2f2' : '#f8fafc'};">
+                <td></td>
+                <td style="font-size:0.68rem;color:#475569;font-weight:700;">Weight (KGS)</td>
+                <td></td>
+                <td>${escText(nNum_(it.orderedWt))}</td>
+                <td>${escText(nNum_(it.alreadyWt))}</td>
+                <td><b>${escText(nNum_(it.weight))}</b> KGS</td>
+                <td${wtOver ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.excessWt))}</td>
+                <td colspan="2"></td>
+              </tr>` : '';
             return `<tr>
                 <td>${i+1}</td>
                 <td><b>${escText(it.name || '-')}</b>${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">PO par nahi tha</span>' : ''}</td>
@@ -4119,7 +4455,7 @@
                 <td${over ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.excess))}</td>
                 <td${rateOver ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.rate))}</td>
                 <td>${it.poRate == null ? '-' : escText(nNum_(it.poRate))}</td>
-              </tr>`;
+              </tr>` + wtRow;
         }).join('') : `<tr><td colspan="9" style="text-align:center;color:#999;">Is request me koi item nahi mila</td></tr>`;
         storeModalShell_((r.request_no || ('#' + r.id)) + ' — Inward Approval', metaHtml, head, body);
         // The GM / MD check box belongs to the other mode — keep it shut.
@@ -4438,8 +4774,12 @@
         // against hard widths, and table-layout:fixed keeps the two agreeing.
         // Qty and Wt (kg) sit right after the frozen Item column. Only .vi-c1 is
         // actually sticky (left:0), so inserting here shifts no sticky offset.
+        // Bill On / GST% follow Selected Vendor: they are the PO's terms for
+        // this line, so they sit after the decision they depend on and before
+        // the quotes they are applied to.
         document.getElementById('viRateCols').innerHTML =
             '<col style="width:118px;"><col style="width:62px;"><col style="width:70px;"><col style="width:104px;">' +
+            '<col style="width:78px;"><col style="width:58px;">' +
             VI_SLOTS.map(()=>'<col style="width:126px;"><col style="width:68px;"><col style="width:49px;">').join('');
 
         // Header row 1 — the V1..V3 group bands. The vendor PICKERS are no
@@ -4449,6 +4789,7 @@
             '<th class="vi-c1 vi-corner">Quotes &rarr;</th>' +
             '<th class="vi-qtyh" colspan="2" style="text-align:center;">Requirement</th>' +
             '<th class="vi-sel">&nbsp;</th>' +
+            '<th class="vi-poh" colspan="2" style="text-align:center;">PO Terms</th>' +
             VI_SLOTS.map((v,i)=>
                 `<th class="vi-band${i%2?' alt':''}" colspan="3">${escText(v)}</th>`
             ).join('');
@@ -4459,6 +4800,8 @@
             '<th class="vi-qtyh" style="text-align:center;" title="Requirement Qty — Purchaser ise theek kar sakta hai. Save karne par PR line par hi update hoti hai">Qty</th>' +
             '<th class="vi-qtyh" style="text-align:center;" title="Gross Weight (kg) — WEIGHT bill basis par PO ka amount isi se banega">Wt kg</th>' +
             '<th class="vi-sel" style="text-align:center;" title="Is item ka PO isi vendor ke against banega. Pehle item par chunne se wahi sabhi items par lag jayega">Selected</th>' +
+            '<th class="vi-poh" style="text-align:center;" title="Amount kis par bane — Qty par ya Gross Weight par. Pehle item par chunne se wahi sabhi items par lag jayega">Bill On</th>' +
+            '<th class="vi-poh" style="text-align:center;" title="Is item ka PO par GST % — koi default nahi, bharna zaroori hai. Pehle item par bharne se wahi sabhi items par lag jayega">GST%<span style="color:#dc3545;">*</span></th>' +
             VI_SLOTS.map((v,i)=>{
                 const alt = i%2 ? ' class="vi-g-alt"' : '';
                 return `<th${alt} style="text-align:center;">Vendor</th><th${alt} style="text-align:center;">Rate</th><th class="vi-disc-head" style="text-align:center;">%</th>`;
@@ -4480,10 +4823,30 @@
             const wt = (line.gross_weight!=null && line.gross_weight!=='')
                 ? pNumM(line.gross_weight)
                 : pNumM((snapItems[i]||{}).grossWeight);
+            /* Bill On comes from the snapshot, then the PR line, then QTY —
+               QTY being how every PO was priced before this existed, so an
+               untouched grid produces the same figures it always did. */
+            const savedBasis = String((snapItems[i]||{}).billBasis || (line.bill_basis||'')).toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY';
+            const firstFilled = (...xs) => {
+                for(const x of xs) if(x != null && String(x).trim() !== '') return String(x);
+                return '';
+            };
+            /* GST% starts BLANK unless it was actually saved on this PR. The PR
+               line's tax_pct is deliberately NOT used as a default: that figure
+               comes from the Item Master and is routinely wrong for a specific
+               purchase, and a pre-filled box is a box nobody re-reads. Blank
+               forces the Purchaser to say what tax this item carries, and save
+               refuses to go through until they have.
+               prItemGst is the one fallback, and only carries a value for a PR
+               that reached PO Generate before this sheet existed — such a PR's
+               grid is locked, so a blank there could never be filled. */
+            const savedGst = firstFilled((snapItems[i]||{}).gstPct, prItemGst[i]);
             return `<tr data-row="${i}"><td class="vi-c1" style="font-size:0.7rem;line-height:1.25;" title="${escText(name)} — ${escText(qtyLine)}"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#222;">${escText(name)}</span><span style="color:#6b7280;">${escText(uom||'-')}</span></td>` +
                 `<td class="vi-qtyc"><input type="number" class="vi-qty" data-row="${i}" min="0" step="any" inputmode="decimal" value="${pNumM(line.requested_qty)}"></td>` +
                 `<td class="vi-qtyc"><input type="number" class="vi-weight" data-row="${i}" min="0" step="any" inputmode="decimal" value="${wt}"></td>` +
                 `<td class="vi-sel"><select class="vi-item-vendor" data-row="${i}"></select></td>` +
+                `<td class="vi-poc"><select class="vi-basis" data-row="${i}"><option value="QTY"${savedBasis!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${savedBasis==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` +
+                `<td class="vi-poc"><input type="number" class="vi-gst${savedGst===''?' is-blank':''}" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal" placeholder="--" value="${escText(savedGst)}"></td>` +
                 VI_SLOTS.map((v,gi)=>{
                     const alt = gi%2 ? ' vi-g-alt' : '';
                     return `<td class="${alt.trim()}"><select class="vi-row-vendor" data-row="${i}" data-slot="${gi}"></select></td>` +
@@ -4494,24 +4857,276 @@
 
         wireViItemVendorPickers();
         refreshViItemVendorPickers();
+        wireViPoTermCascade();
+        // The grid is the source of truth for Bill On / GST% now, so the arrays
+        // the PO maths reads are seeded from it rather than from a separate
+        // pass in the PO Generate tab.
+        syncPoTermsFromGrid_();
+
+        /* Vendor rates are entered once from a phone. After that the figures
+           are what a PO is priced on, so correcting them is a desk job in
+           STORE.html, where the full popup and the audit trail live — unless
+           the Purchaser cancelled their approval, which reopens the grid. The
+           same lock covers the PO Details below, which are now saved with them. */
+        const viLocked = vendors.some(v => v && String(v.name||'').trim()) && !snap.vendorInfoReopened;
+
+        // Delivery Date, charges and the PO's notes, as saved on this PR.
+        const plan = poPlanOf_(snap);
+        const dlv = document.getElementById('viDeliveryDate');
+        dlv.value = plan.deliveryDate || '';
+        // Only clamp the floor where the box can actually be used. On a locked
+        // form a saved date that has since passed would otherwise be flagged
+        // invalid by the browser, with nothing the Purchaser could do here.
+        dlv.min = viLocked ? '' : localIsoDate_();
+        document.getElementById('viFreight').value = plan.freight != null ? String(plan.freight) : '';
+        document.getElementById('viOtherExp').value = plan.otherExp != null ? String(plan.otherExp) : '';
+        document.getElementById('viChargesGst').value = plan.chargesGst != null ? String(plan.chargesGst) : String(SARV_DEFAULT_GST);
+        document.getElementById('viPoNotes').value = plan.notes || '';
 
         // Picking a supplier is all the contact detail this form needs; email
         // and phone are copied from Supplier Master at save time.
         panel.style.display = 'block';
         document.getElementById('viError').style.display = 'none';
-        // Vendor rates are entered once from a phone. After that the figures
-        // are what a PO is priced on, so correcting them is a desk job in
-        // STORE.html, where the full popup and the audit trail live — unless
-        // the Purchaser cancelled their approval, which reopens the grid.
-        setVendorInfoLocked(vendors.some(v => v && String(v.name||'').trim()) && !snap.vendorInfoReopened);
+        setVendorInfoLocked(viLocked);
         viDirty = false;
         document.getElementById('viRateBody').oninput = document.getElementById('viRateBody').onchange = e => {
             viDirty = true;
+            const t = e && e.target;
             // A rate flagged by the "vendor without rate" check clears as soon as it's filled.
-            if(e && e.target && e.target.classList.contains('vi-rate') && pNumM(e.target.value) > 0){
-                e.target.style.borderColor = ''; e.target.style.background = '';
+            if(t && t.classList.contains('vi-rate') && pNumM(t.value) > 0){
+                t.style.borderColor = ''; t.style.background = '';
             }
+            // GST% stops looking "unfilled" the moment a number goes in.
+            if(t && t.classList.contains('vi-gst')){
+                t.classList.toggle('is-blank', String(t.value||'').trim() === '');
+                t.style.borderColor = ''; t.style.background = '';
+            }
+            // Qty / Weight / rates / discounts / Bill On / GST% all move the
+            // PO figures, so the totals card is rebuilt off every keystroke.
+            syncPoTermsFromGrid_();
+            renderPoSummary_();
         };
+        // The charges change the PO total without touching the grid.
+        ['viFreight','viOtherExp','viChargesGst'].forEach(id=>{
+            const el = document.getElementById(id);
+            if(el) el.oninput = () => { viDirty = true; renderPoSummary_(); };
+        });
+        ['viDeliveryDate','viPoNotes'].forEach(id=>{
+            const el = document.getElementById(id);
+            if(el) el.oninput = el.onchange = () => { viDirty = true; };
+        });
+        renderPoSummary_();
+    }
+
+    /* ── PO terms saved with the quotes ───────────────────────────────
+       pdf_snapshot.poPlan — the PO's own header data, decided while quoting
+       rather than asked for again in the PO Generate tab. Lives in the jsonb
+       column that already exists, so no migration, and reads as "nothing
+       saved" on every PR that predates it. Per-item Bill On / GST% ride on
+       pdf_snapshot.items[i] (billBasis / gstPct) beside the rates they apply
+       to, the same way vendors and discounts already do. */
+    function poPlanOf_(snap){
+        const p = (snap && snap.poPlan) || {};
+        return {
+            deliveryDate: p.deliveryDate || '',
+            freight: (p.freight != null && String(p.freight) !== '') ? pNumM(p.freight) : null,
+            otherExp: (p.otherExp != null && String(p.otherExp) !== '') ? pNumM(p.otherExp) : null,
+            chargesGst: (p.chargesGst != null && String(p.chargesGst) !== '') ? pNumM(p.chargesGst) : null,
+            notes: p.notes || '',
+            savedAt: p.savedAt || '', savedBy: p.savedBy || ''
+        };
+    }
+    /* True once a Delivery Date has been saved on the PR — that is the one
+       compulsory field on the sheet, so its presence is what marks the plan as
+       filled. Deliberately NOT weakened by vendorInfoReopened: a reopened PR
+       gets its editable copy back in the Vendor Rate & Info panel (that is what
+       setVendorInfoLocked unfreezes), and PO Generate keeps showing the terms
+       read-only either way. Otherwise a reopened PR would carry two editable
+       copies of the same Delivery Date, on two screens, and whichever one the
+       Purchaser happened to be looking at would win. */
+    function poPlanSaved_(snap){
+        return !!poPlanOf_(snap).deliveryDate;
+    }
+
+    /* Copies the grid's Bill On / GST% into prItemBasis / prItemGst, which are
+       what poRowAmount_, the totals card and autoGeneratePosFromPr all read.
+       One set of arrays for both tabs: PO Generate shows these back locked
+       rather than keeping a second copy that could disagree. */
+    function syncPoTermsFromGrid_(){
+        const rows = [...document.querySelectorAll('#viRateBody tr')];
+        if(!rows.length) return;
+        rows.forEach((tr,i)=>{
+            const b = tr.querySelector('.vi-basis');
+            const g = tr.querySelector('.vi-gst');
+            if(b) prItemBasis[i] = (String(b.value||'').toUpperCase() === 'WEIGHT') ? 'WEIGHT' : 'QTY';
+            if(g) prItemGst[i] = g.value;
+        });
+    }
+
+    /* Row 1 cascades Bill On and GST% to every row, the same rule the vendor
+       pickers already use: one tax rate and one billing basis across a PR is
+       the normal case, and any row can still be set apart afterwards.
+       A cleared GST% is never cascaded — that would blank the whole grid. */
+    function wireViPoTermCascade(){
+        const rows = [...document.querySelectorAll('#viRateBody tr')];
+        rows.forEach((tr,row)=>{
+            const isMaster = row === 0;
+            const basis = tr.querySelector('.vi-basis');
+            const gst = tr.querySelector('.vi-gst');
+            if(basis){
+                if(isMaster) basis.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.15)';
+                basis.onchange = () => {
+                    prItemBasis[row] = (String(basis.value||'').toUpperCase() === 'WEIGHT') ? 'WEIGHT' : 'QTY';
+                    if(isMaster && rows.length > 1){
+                        rows.slice(1).forEach((otr,j)=>{
+                            const o = otr.querySelector('.vi-basis');
+                            if(!o || o.disabled) return;
+                            o.value = basis.value;
+                            prItemBasis[j+1] = prItemBasis[row];
+                        });
+                        viSay(`Bill On = ${basis.value} sabhi ${rows.length} items par lag gaya. Kisi bhi item ka alag rakh sakte hain.`);
+                    }
+                    renderPoSummary_();
+                };
+            }
+            if(gst){
+                if(isMaster) gst.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.15)';
+                gst.onchange = () => {
+                    prItemGst[row] = gst.value;
+                    const v = String(gst.value||'').trim();
+                    if(isMaster && v !== '' && rows.length > 1){
+                        rows.slice(1).forEach((otr,j)=>{
+                            const o = otr.querySelector('.vi-gst');
+                            if(!o || o.disabled) return;
+                            o.value = gst.value;
+                            o.classList.remove('is-blank');
+                            o.style.borderColor = ''; o.style.background = '';
+                            prItemGst[j+1] = gst.value;
+                        });
+                        viSay(`GST ${v}% sabhi ${rows.length} items par lag gaya. Kisi bhi item ka alag rakh sakte hain.`);
+                    }
+                    renderPoSummary_();
+                };
+            }
+        });
+    }
+
+    /* ── PO totals ────────────────────────────────────────────────────
+       Exactly the arithmetic autoGeneratePosFromPr writes onto the PO:
+       subtotal from each line's net rate x billed units, GST per line at that
+       line's own rate, charges taxed at their own rate, grand total on top of
+       the taxable value. Computed here so the Purchaser signs off the same six
+       figures the printed PO will carry — not a separate estimate. */
+    function poChargeFigures_(){
+        // Read whichever copy of the charge boxes is on screen: the Vendor
+        // Info panel while quoting, the (legacy, unplanned) PO Generate boxes
+        // otherwise. The saved plan wins over both once it exists.
+        const plan = poPlanOf_((currentEntry && currentEntry.pdf_snapshot) || {});
+        const val = (a,b) => {
+            const ela = document.getElementById(a), elb = document.getElementById(b);
+            const pick = (ela && ela.offsetParent !== null) ? ela : ((elb && elb.offsetParent !== null) ? elb : ela);
+            const raw = pick ? String(pick.value||'').trim() : '';
+            return raw === '' ? null : pNumM(raw);
+        };
+        let freight = val('viFreight','poFreightInput');
+        let other   = val('viOtherExp','poOtherExpInput');
+        let cgst    = val('viChargesGst','poChargesGstInput');
+        if(freight == null) freight = plan.freight != null ? plan.freight : 0;
+        if(other   == null) other   = plan.otherExp != null ? plan.otherExp : 0;
+        if(cgst    == null) cgst    = plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST;
+        return {freight, other, chargesGst: cgst};
+    }
+    function poCalcTotals_(){
+        const n = (viDisplayItems || []).length;
+        const {freight, other, chargesGst} = poChargeFigures_();
+        let subtotal = 0, itemGst = 0, priced = 0;
+        for(let i = 0; i < n; i++){
+            const amt = poRowAmount_(i);
+            subtotal += amt;
+            const g = prItemGst[i];
+            const gn = (g == null || String(g).trim() === '') ? null : Number(g);
+            if(gn != null && !isNaN(gn)) itemGst += amt * gn / 100;
+            if(amt > 0) priced++;
+        }
+        const chargeGstAmt = (freight + other) * chargesGst / 100;
+        const r2 = x => Math.round(x * 100) / 100;
+        const taxable = subtotal + freight + other;
+        const gst = itemGst + chargeGstAmt;
+        return {
+            subtotal: r2(subtotal), freight: r2(freight), other: r2(other),
+            taxable: r2(taxable), gst: r2(gst), grandTotal: r2(taxable + gst),
+            chargesGst, priced, total: n,
+            // Items split across vendors become separate POs, and the charges
+            // ride on the first one only — so this card is the PR's total, not
+            // any single PO's. Said out loud rather than quietly implied.
+            vendorCount: new Set((viDisplayItems||[]).map((_,i)=>{
+                const idx = itemVendorIndex[i];
+                return (idx != null && idx >= 0) ? vendorNameForRow(i, idx).toUpperCase() : '';
+            }).filter(Boolean)).size,
+            missingGst: (viDisplayItems||[]).filter((_,i)=>{
+                const g = prItemGst[i];
+                return g == null || String(g).trim() === '';
+            }).length
+        };
+    }
+    function renderPoSummary_(){
+        const card = document.getElementById('poSummaryCard');
+        if(!card) return;
+        // Only where a PO is actually being priced: the Purchaser's quote sheet
+        // and the PO Generate step. Nothing to total anywhere else.
+        const on = currentModule === 'PR' && !modalViewOnly && myStage === 'gmCeo'
+            && (modalTab === 'VI' || gstEditMode()) && (viDisplayItems||[]).length > 0;
+        card.style.display = on ? 'block' : 'none';
+        if(!on) return;
+        const t = poCalcTotals_();
+        const row = (label, val, cls) =>
+            `<div class="po-sum-row${cls ? ' ' + cls : ''}"><span>${label}</span><span>${escText(nMoney_(val))}</span></div>`;
+        document.getElementById('poSummaryRows').innerHTML =
+            row('PO Subtotal', t.subtotal) +
+            row('Freight', t.freight) +
+            row('Labour / Other Exp.', t.other) +
+            row('Taxable Value', t.taxable, 'is-sub') +
+            row(`GST <small style="font-weight:600;color:#6b7280;">(item-wise + charges @ ${escText(t.chargesGst)}%)</small>`, t.gst) +
+            row('Grand Total', t.grandTotal, 'is-total');
+        const notes = [];
+        if(t.missingGst) notes.push(`⚠️ ${t.missingGst} item ka GST% khali hai — ye GST me nahi gine gaye. Save se pehle bharna zaroori hai.`);
+        if(t.priced < t.total) notes.push(`ℹ️ ${t.total - t.priced} item par abhi rate / Selected Vendor nahi hai, to unka amount 0 hai.`);
+        if(t.vendorCount > 1) notes.push(`ℹ️ ${t.vendorCount} vendors — itne hi PO banenge. Ye poore PR ka total hai; Freight / Other Exp. sirf pehle PO par lagenge.`);
+        const noteEl = document.getElementById('poSummaryNote');
+        noteEl.innerHTML = notes.join('<br>');
+        noteEl.style.display = notes.length ? 'block' : 'none';
+    }
+
+    /* The saved PO terms, shown back in PO Generate. Read-only on purpose:
+       they were agreed with the vendor at quoting time, and Vendor Rate & Info
+       is the one place they are edited. */
+    function renderPoLockedCard_(entry){
+        const card = document.getElementById('poLockedCard');
+        if(!card) return;
+        const snap = (currentModule === 'PR' && entry && entry.pdf_snapshot) || {};
+        const on = gstEditMode() && poPlanSaved_(snap);
+        card.style.display = on ? 'block' : 'none';
+        if(!on) return;
+        const plan = poPlanOf_(snap);
+        const cell = (lbl, val, wide) =>
+            `<div class="po-locked-cell${wide ? ' po-locked-wide' : ''}"><b>${lbl}</b>${escText(val)}</div>`;
+        document.getElementById('poLockedGrid').innerHTML =
+            cell('Delivery Date', plan.deliveryDate ? pDate_(plan.deliveryDate) : '-') +
+            cell('Charges GST %', (plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST) + '%') +
+            cell('Freight', nMoney_(plan.freight || 0)) +
+            cell('Labour / Other Exp.', nMoney_(plan.otherExp || 0)) +
+            cell('PO Remarks / Notes', plan.notes || '—', true) +
+            cell('Item-wise Bill On / GST%', (viDisplayItems||[]).length
+                ? (viDisplayItems||[]).map((it,i)=>{
+                    const g = prItemGst[i];
+                    return `${it.name}: ${prItemBasis[i] === 'WEIGHT' ? 'WEIGHT' : 'QTY'} @ ${(g==null||String(g).trim()==='')?'-':g}%`;
+                  }).join('  •  ')
+                : '—', true);
+    }
+    // Local date for display, without parsing a YYYY-MM-DD as UTC midnight.
+    function pDate_(iso){
+        const m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? (m[3] + '-' + m[2] + '-' + m[1]) : String(iso||'');
     }
 
     /* A short banner in the form's own message area — a phone has no toast
@@ -4646,7 +5261,10 @@
         // from is the approval decision still being made, and it stays
         // changeable right up to signing; its own gate is the GM/CEO stage
         // check in wireViItemVendorPickers().
-        body.querySelectorAll('select:not(.vi-item-vendor), input').forEach(el=>{
+        // textarea is in the list because the PO's own Remarks / Notes box now
+        // lives on this form, and it freezes with everything else it is printed
+        // alongside.
+        body.querySelectorAll('select:not(.vi-item-vendor), input, textarea').forEach(el=>{
             el.disabled = locked;
             el.style.background = locked ? '#f1f5f9' : '';
             el.style.cursor = locked ? 'not-allowed' : '';
@@ -4977,6 +5595,68 @@
             return;
         }
 
+        /* ── PO terms, per item ───────────────────────────────────────
+           Bill On and GST% are part of the quote now, so they are validated
+           here instead of in the PO Generate tab. GST% has no default on
+           purpose: a blank is not 0% tax, and the PO Generate tab shows these
+           back locked — so an unnoticed blank would be signed off as a
+           tax-free line with nothing on screen to question. */
+        const nameAt = i => viLines[i] ? (viLines[i].item_name || (viLines[i].items && viLines[i].items.name) || ('Item ' + (i+1))) : ('Item ' + (i+1));
+        const basisByRow = rowEls.map(tr => String(tr.querySelector('.vi-basis')?.value||'').toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY');
+        const gstByRow = rowEls.map(tr => String(tr.querySelector('.vi-gst')?.value ?? '').trim());
+        rowEls.forEach(tr => tr.querySelectorAll('.vi-gst').forEach(inp => { inp.style.borderColor = ''; inp.style.background = ''; }));
+        const badGst = [];
+        let firstBadGst = null;
+        rowEls.forEach((tr,i)=>{
+            const raw = gstByRow[i];
+            const n = Number(raw);
+            if(raw !== '' && !isNaN(n) && n >= 0 && n <= 100) return;
+            const inp = tr.querySelector('.vi-gst');
+            if(inp){ inp.style.borderColor = '#dc2626'; inp.style.background = '#fef2f2'; firstBadGst = firstBadGst || inp; }
+            badGst.push(nameAt(i) + (raw === '' ? ' — GST% khali hai' : ' — GST% 0 se 100 ke beech bharein'));
+        });
+        if(badGst.length){
+            show('Har item ka GST% bharna zaroori hai (koi default nahi):\n• ' + badGst.join('\n• '));
+            err.style.whiteSpace = 'pre-line';
+            if(firstBadGst){ firstBadGst.scrollIntoView({block:'nearest', inline:'center'}); firstBadGst.focus(); }
+            return;
+        }
+        // A WEIGHT-billed line prices on Gross Weight, so one with no weight
+        // would go out at zero amount. Caught here, where both boxes are in the
+        // same row — PO Generate can no longer fix it.
+        const noWeight = rowEls.map((_,i)=>i)
+            .filter(i => basisByRow[i] === 'WEIGHT' && !(wtByRow[i] > 0))
+            .map(i => nameAt(i));
+        if(noWeight.length){
+            show('Ye items WEIGHT par bill ho rahe hain lekin Wt kg 0 hai — Wt kg bharein ya Bill On ko QTY karein:\n• ' + noWeight.join('\n• '));
+            err.style.whiteSpace = 'pre-line';
+            return;
+        }
+
+        /* ── PO header: Delivery Date, charges, notes ────────────────── */
+        const poDeliveryDate = String(document.getElementById('viDeliveryDate').value||'').trim();
+        if(!poDeliveryDate){
+            show('Delivery Date bharein — PO isi date ke saath banega.');
+            document.getElementById('viDeliveryDate').focus();
+            return;
+        }
+        if(poDeliveryDate < localIsoDate_()){
+            show('Delivery Date aaj se pehle ki nahi ho sakti.');
+            document.getElementById('viDeliveryDate').focus();
+            return;
+        }
+        const chargeNum = id => { const v = String(document.getElementById(id).value||'').trim(); return v === '' ? 0 : Number(v); };
+        const poFreight = chargeNum('viFreight'), poOtherExp = chargeNum('viOtherExp'), poChargesGst = chargeNum('viChargesGst');
+        if([poFreight, poOtherExp].some(n => isNaN(n) || n < 0)){
+            show('Freight / Loading-Other Exp. 0 ya usse zyada hona chahiye.');
+            return;
+        }
+        if(isNaN(poChargesGst) || poChargesGst < 0 || poChargesGst > 100){
+            show('Charges ka GST% 0 se 100 ke beech bharein.');
+            return;
+        }
+        const poNotes = String(document.getElementById('viPoNotes').value||'').trim();
+
         /* PR-level LEGACY rollup, still written so anything not yet moved to
            the per-item shape keeps working: the distinct set of vendors
            actually approved across the items, padded to four. Readers that
@@ -5027,10 +5707,34 @@
                     const src = (it && Array.isArray(it.vendors) && it.vendors.length) ? it.vendors : (base.vendors||[]);
                     return [0,1,2].map(k => ({...((src||[])[k]||{})}));
                 });
+                // The stored PO terms replace what this phone had typed, for the
+                // same reason the rates do: whoever saved first owns them.
+                (()=>{
+                    const stored = poPlanOf_(base);
+                    const put = (id,v) => { const el = document.getElementById(id); if(el) el.value = (v == null ? '' : String(v)); };
+                    put('viDeliveryDate', stored.deliveryDate);
+                    put('viFreight', stored.freight);
+                    put('viOtherExp', stored.otherExp);
+                    put('viChargesGst', stored.chargesGst != null ? stored.chargesGst : SARV_DEFAULT_GST);
+                    put('viPoNotes', stored.notes);
+                    (base.items||[]).forEach((it,i)=>{
+                        const tr = document.querySelector(`#viRateBody tr[data-row="${i}"]`);
+                        if(!tr) return;
+                        const b = tr.querySelector('.vi-basis'), g = tr.querySelector('.vi-gst');
+                        if(b) b.value = String(it.billBasis||'QTY').toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY';
+                        if(g){
+                            g.value = (it.gstPct != null && String(it.gstPct).trim() !== '') ? String(it.gstPct) : '';
+                            g.classList.toggle('is-blank', g.value === '');
+                            g.style.borderColor = ''; g.style.background = '';
+                        }
+                    });
+                    syncPoTermsFromGrid_();
+                })();
                 refreshViItemVendorPickers();
                 renderItemRows(viDisplayItems, currentItemRates, itemVendorIndex, true, currentItemDiscs);
+                renderPoSummary_();
                 setVendorInfoLocked(true);
-                show('Is PR par vendor info pehle se save hai — ise sirf STORE.html se badla ja sakta hai.');
+                show('Is PR par vendor info + PO details pehle se save hain — inhe sirf STORE.html se badla ja sakta hai.');
                 return;
             }
             /* The corrected Qty / Gross Weight go on the requirement LINE, not
@@ -5046,15 +5750,25 @@
                 const line = viLines[i];
                 if(!line || !line.id) continue;
                 const q = qtyByRow[i], w = wtByRow[i];
-                if(pNumM(line.requested_qty) === q && pNumM(line.gross_weight) === w) continue;
+                /* tax_pct and bill_basis go on the line too, not only into the
+                   snapshot: they are what prLineGstDefaults_ and STORE.html's
+                   Build PO read back, so a snapshot-only write would leave the
+                   desktop offering the old GST on a PR the phone has just
+                   repriced. Dropped automatically on a database that has not
+                   got these columns yet. */
+                const g = Number(gstByRow[i]), b = basisByRow[i];
+                if(pNumM(line.requested_qty) === q && pNumM(line.gross_weight) === w
+                   && pNumM(line.tax_pct) === g && String(line.bill_basis||'QTY').toUpperCase() === b) continue;
                 const lu = await sbSaveDroppingMissingColumns_(
-                    {requested_qty: q, gross_weight: w},
+                    {requested_qty: q, gross_weight: w, tax_pct: g, bill_basis: b},
                     p => SB.from('purchase_requirement_lines').update(p).eq('id', line.id),
                     ['requested_qty']
                 );
                 if(lu.error) throw lu.error;
                 line.requested_qty = q;
                 line.gross_weight = w;
+                line.tax_pct = g;
+                line.bill_basis = b;
             }
             const d = {
                 ...base,
@@ -5079,6 +5793,12 @@
                     grossWeight: line.gross_weight || 0,
                     rates: (ratesByRow[i] && ratesByRow[i].rates) || {},
                     discounts: (ratesByRow[i] && ratesByRow[i].discounts) || {},
+                    /* This item's PO terms, saved beside the rates they apply
+                       to. autoGeneratePosFromPr prices the line on billBasis
+                       and taxes it at gstPct; the PO Generate tab only shows
+                       them back, locked. */
+                    billBasis: basisByRow[i],
+                    gstPct: Number(gstByRow[i]),
                     // THIS item's own four quoting vendors. V1 here and V1 on
                     // the next line are different companies, so the identities
                     // travel with the item, beside the rates they priced.
@@ -5097,6 +5817,19 @@
                     })(),
                 })),
                 vendors,
+                /* The PO's own header data, agreed with the vendor while
+                   quoting. The PO Generate tab reads this back and shows it
+                   locked, so the Purchaser there only signs — Delivery Date,
+                   charges and notes are not asked for a second time. */
+                poPlan: {
+                    deliveryDate: poDeliveryDate,
+                    freight: poFreight,
+                    otherExp: poOtherExp,
+                    chargesGst: poChargesGst,
+                    notes: poNotes,
+                    savedAt: new Date().toISOString(),
+                    savedBy: myPurchaserName || ''
+                },
                 // approvals is the shared column; signatures mirrors it. The
                 // Store In-charge's pad signature rides along untouched.
                 signatures: {...(req.approvals||{}), ...(base.signatures && base.signatures.store ? {store: base.signatures.store} : {})},
@@ -5130,8 +5863,14 @@
             // same pass as the rates; blanking it on save would throw that
             // away. Anything still unassigned is already -1.
             itemVendorIndex = d.items.map((_,i)=> (itemVendorIndex[i] != null) ? pNumM(itemVendorIndex[i]) : -1);
+            // The PO maths reads these arrays, so they move to what was just
+            // saved — otherwise the totals card would keep showing the figures
+            // from before the save until the PR was reopened.
+            prItemBasis = basisByRow.slice();
+            prItemGst = gstByRow.slice();
             refreshViItemVendorPickers();
             renderItemRows(viDisplayItems, currentItemRates, itemVendorIndex, true, currentItemDiscs);
+            renderPoSummary_();
             viDirty = false;
             dashDirty = true; // the PR now belongs in PO Generate — reload the tabs on close
             // One-shot from a phone — freeze it the moment it lands. A
@@ -5144,7 +5883,7 @@
                 await indexPdfArtifact('REQUIREMENT', req.id, req.req_no, 'REQUIREMENT', artifact);
             }catch(e){ console.warn('[MOBILE] PR PDF regen failed (vendor info still saved):', e); }
 
-            show('✅ Vendor info save ho gayi — ab grid me har item ka Selected Vendor chunein, phir sign karein.');
+            show('✅ Vendor info + PO details save ho gayi. Ab ye PR "PO Generate" tab me hai — wahan Delivery Date, charges, Bill On, GST% aur poora calculation locked dikhega; sirf sign karna hai.');
             err.style.background = '#e8f5e9'; err.style.color = '#1b5e20'; err.style.borderColor = '#a5d6a7';
         }catch(e){
             err.style.background = ''; err.style.color = ''; err.style.borderColor = '';
@@ -5177,9 +5916,16 @@
         const tbody = document.getElementById('modal-item-tbody');
         // Typed GST values live in prItemGst, so the many re-renders of this
         // table (vendor picks, saves) never lose them.
+        /* In PO Generate the GST% and Bill On cells are a read-back of what was
+           saved on the quote sheet, not a second place to decide them — one
+           decision, one owner. A PR quoted before those boxes existed has no
+           saved plan, so it keeps the editable cells and can still be approved. */
+        const poTermsLocked = gstEdit && poPlanSaved_((currentEntry && currentEntry.pdf_snapshot) || {});
+        const lockAttr = poTermsLocked ? ' disabled' : '';
+        const lockStyle = poTermsLocked ? 'background:#f1f5f9;color:#334155;cursor:not-allowed;' : '';
         tbody.oninput = e => {
             const inp = e.target.closest && e.target.closest('.po-gst-input');
-            if(inp) prItemGst[+inp.dataset.row] = inp.value;
+            if(inp){ prItemGst[+inp.dataset.row] = inp.value; renderPoSummary_(); }
         };
         // Bill On is a <select>, so it reports on change, not input. Only the
         // amount cells are rewritten — a full re-render would blow away a GST%
@@ -5193,6 +5939,9 @@
             prItemBasis[+sel.dataset.row] = sel.value;
             refreshPoAmountCells_();
         };
+        // The GST% header carries the asterisk only while it is still a decision.
+        const gstHdr = document.getElementById('gst-col-header');
+        if(gstHdr && gstEdit) gstHdr.innerHTML = poTermsLocked ? 'GST% &#128274;' : 'GST%';
         // FIELD BOY only: a tick box per item, ahead of the Sr column.
         const fbOn = fbChecklistMode();
         tbody.innerHTML = items.map((item,i) => {
@@ -5230,20 +5979,27 @@
                 ${rateCell}
                 ${discCell}
                 ${vendorCell}
-                ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal" value="${escText(prItemGst[i] ?? '')}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;"></td>` : ''}
-                ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
+                ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal"${lockAttr} value="${escText(prItemGst[i] ?? '')}" title="${poTermsLocked ? 'Vendor Info me save kiya gaya — locked' : 'Is item ka GST %'}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;${lockStyle}"></td>` : ''}
+                ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}"${lockAttr} title="${poTermsLocked ? 'Vendor Info me save kiya gaya — locked' : 'Amount kis par bane'}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;${lockStyle}"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
                 ${gstEdit ? `<td class="po-amt-cell" data-row="${i}" style="text-align:right;font-weight:800;color:#166534;white-space:nowrap;">${escText(nNum_(poRowAmount_(i)))}</td>` : ''}
             </tr>`;
         }).join('') || `<tr><td colspan="14" style="text-align:center;color:#999;">No items</td></tr>`;
         fbRenderBar(items);
+        // Every re-render of this table follows a change to a figure the PO
+        // totals are built from (vendor pick, a save, GST%), so the card moves
+        // with it rather than being refreshed from each caller.
+        renderPoSummary_();
     }
-    /* GST% per PO line. Pre-filled from the PR line (tax_pct) or the Item
-       Master (gst_pct), editable by the Purchaser in the PO Generate step, and
-       used as each line's GST when the PO is generated. */
+    /* GST% per PO line, as each line's GST when the PO is generated. Decided on
+       the Vendor Rate & Info sheet (pdf_snapshot.items[i].gstPct) in the same
+       pass as the rate it taxes, and shown back locked in PO Generate. No
+       default: see the grid build in renderVendorInfoForm. A PR that reached PO
+       Generate before that sheet existed has no saved value, and falls back to
+       the PR line (tax_pct) / Item Master (gst_pct) defaults there. */
     let prItemGst = [];
     /* Bill Basis per PO line — 'QTY' or 'WEIGHT'. Decides which column the
        line's amount is priced on, exactly as STORE.html's Build PO does it.
-       Set by the Purchaser in the PO Generate step and passed to
+       Saved with the quotes (pdf_snapshot.items[i].billBasis) and passed to
        autoGeneratePosFromPr as opts.basisByRow. */
     let prItemBasis = [];
     function gstEditMode(){
@@ -5274,6 +6030,7 @@
         document.querySelectorAll('#modal-item-tbody .po-amt-cell').forEach(td=>{
             td.textContent = nNum_(poRowAmount_(+td.dataset.row));
         });
+        renderPoSummary_();
     }
     async function prLineGstDefaults_(lines){
         const gstById = {};
@@ -5392,17 +6149,29 @@
             // Vendor Rate & Info is editable at this stage, so a PR with no
             // quotes on it yet can be filled in and moved forward from here —
             // previously the vendor dropdown simply never appeared.
-            await renderVendorInfoForm(entry);
-            showRateColumn = true;
-            // PO Generate: pre-fill each item's editable GST% (viLines is loaded now).
-            prItemGst = gstEditMode() ? await prLineGstDefaults_(viLines) : [];
-            // Bill On defaults to QTY, which is how every PO was priced before
-            // this existed — so an untouched PO Generate produces exactly the
-            // same figures it did before. WEIGHT is opt-in per line.
-            prItemBasis = gstEditMode() ? viLines.map(l => {
+            /* Bill On / GST% are now part of the quote sheet, so these arrays
+               are filled BEFORE the form is drawn (the grid writes into them,
+               via syncPoTermsFromGrid_, and PO Generate shows them back
+               locked). Order matters: renderVendorInfoForm reads the item
+               rows it builds, so the defaults are laid down first and the
+               grid's own values overwrite them.
+               Bill On defaults to QTY, which is how every PO was priced
+               before this existed. GST% is left exactly as saved — including
+               blank, on a PR quoted before it was asked for — except in PO
+               Generate, where such a PR has no saved plan to show and falls
+               back to the old PR-line / Item-Master defaults so it can still
+               be approved. */
+            prItemBasis = viLines.map(l => {
                 const b = String((l && l.bill_basis) || '').toUpperCase();
                 return b === 'WEIGHT' ? 'WEIGHT' : 'QTY';
-            }) : [];
+            });
+            prItemGst = viLines.map((_,i) => {
+                const g = ((snapshot.items||[])[i]||{}).gstPct;
+                return (g != null && String(g).trim() !== '') ? String(g) : '';
+            });
+            if(gstEditMode() && !poPlanSaved_(snapshot)) prItemGst = await prLineGstDefaults_(viLines);
+            await renderVendorInfoForm(entry);
+            showRateColumn = true;
             // In the Vendor Info tab filling the grid IS the task, so it opens expanded.
             if(modalTab === 'VI'){
                 if(viBody) viBody.style.display = 'block';
@@ -5448,15 +6217,29 @@
         const dlvGroup = document.getElementById('deliveryDateGroup');
         const dlvInput = document.getElementById('deliveryDateInput');
         const needsDeliveryDate = poNeedsDeliveryDate(entry) || prApprovalMakesPo();
-        dlvGroup.style.display = needsDeliveryDate ? 'block' : 'none';
-        document.getElementById('deliveryDateHint').style.display = prApprovalMakesPo() ? 'block' : 'none';
-        dlvInput.value = entry.delivery_date || '';
-        dlvInput.min = localIsoDate_();
-        // PO charges — only in the PO Generate step, fresh each time.
-        document.getElementById('poChargesGroup').style.display = gstEditMode() ? 'block' : 'none';
-        document.getElementById('poFreightInput').value = '';
-        document.getElementById('poOtherExpInput').value = '';
-        document.getElementById('poChargesGstInput').value = String(SARV_DEFAULT_GST);
+        /* Delivery Date, the charges and the PO's notes are filled on the
+           Vendor Rate & Info sheet now. Where that is saved, these editable
+           copies are retired for the record: the values still ride in the
+           inputs (approveEntry and the legacy path read them) but the screen
+           shows the locked card instead, so there is exactly one place the
+           Purchaser can have typed them. A PR quoted before this existed has
+           no saved plan, and gets the old editable boxes. */
+        const planned = poPlanSaved_(snapshot);
+        const plan = poPlanOf_(snapshot);
+        dlvGroup.style.display = (needsDeliveryDate && !planned) ? 'block' : 'none';
+        document.getElementById('deliveryDateHint').style.display = (prApprovalMakesPo() && !planned) ? 'block' : 'none';
+        dlvInput.value = plan.deliveryDate || entry.delivery_date || '';
+        // A planned date was already validated when it was saved; re-imposing
+        // today as the floor would invalidate a PR that simply sat a few days.
+        dlvInput.min = planned ? '' : localIsoDate_();
+        // PO charges — from the saved plan where there is one, else fresh.
+        document.getElementById('poChargesGroup').style.display = (gstEditMode() && !planned) ? 'block' : 'none';
+        document.getElementById('poFreightInput').value = planned && plan.freight != null ? String(plan.freight) : '';
+        document.getElementById('poOtherExpInput').value = planned && plan.otherExp != null ? String(plan.otherExp) : '';
+        document.getElementById('poChargesGstInput').value = String(planned && plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST);
+        // The saved terms, read-only, plus the six PO figures they produce.
+        renderPoLockedCard_(entry);
+        renderPoSummary_();
 
         // Sign / approve only where this role acts on this record. The Vendor
         // Info step is quotes only — approving (which makes the PO) is done
@@ -5477,18 +6260,29 @@
             modeNote.innerHTML = '☑ Jo item le aaye hain uske saamne tick karein — har tick turant save hota hai. Is PR ka koi PO nahi banta; saare items tick hote hi PR <b>Done</b> me chali jayegi.';
             modeNote.style.display = 'block';
         } else if(quotesOnly){
-            modeNote.innerHTML = '💰 Vendor, rate aur Selected Vendor bhar kar <b>Save Vendor Info</b> dabayein. Save hote hi ye PR <b>PO Generate</b> tab me chali jayegi — wahan Delivery Date + sign karke PO banega.';
+            modeNote.innerHTML = '💰 Vendor, rate, Selected Vendor ke saath hi <b>Bill On</b>, <b>GST%</b>, <b>Delivery Date</b>, <b>PO Charges</b> aur <b>PO Remarks</b> bhi yahin bharein, phir <b>Save Vendor Info</b> dabayein. Save hote hi ye PR <b>PO Generate</b> tab me chali jayegi — wahan ye sab <b>locked</b> dikhega aur sirf sign karna hoga.';
+            modeNote.style.display = 'block';
+        } else if(gstEditMode() && planned){
+            modeNote.innerHTML = '🔒 Delivery Date, PO Charges, PO Remarks aur har item ka Bill On / GST% <b>Vendor Info</b> me save ho chuke hain — upar <b>PO Calculation</b> aur <b>PO Details</b> card me locked dikh rahe hain. Calculation check karke <b>Approve &amp; Sign</b> dabayein; PO isi par banega.';
             modeNote.style.display = 'block';
         } else {
             modeNote.style.display = 'none';
         }
 
         document.getElementById('remarksInput').value = '';
+        // Two "remarks" are on screen in PO Generate — this one signs, the PO's
+        // own notes print. Named apart so neither is typed into the other.
+        document.getElementById('remarksLabel').textContent = planned ? 'Approval Remarks' : 'Remarks / Notes';
+        document.getElementById('remarksHint').style.display = planned ? 'block' : 'none';
         clearSignature();
         // Saved sign → no pad, just the PIN on Approve. Asked fresh each time, so a
         // sign the Admin saved a minute ago already counts.
         if(showApproval){ await refreshMySignSaved(); applySignPadMode(); }
         document.getElementById('approvalModal').style.display = 'flex';
+        // Restated now the modal is laid out: poChargeFigures_ picks whichever
+        // copy of the charge boxes is actually visible, which it cannot tell
+        // while the whole modal is still display:none.
+        renderPoSummary_();
         if(showApproval) resizeCanvas();
         // resizeCanvas() rebuilt the bitmap — restate "unsigned" against the new one.
         clearSignature();
@@ -5775,7 +6569,10 @@
                 otherExpense: first ? pNum(opts.other) : 0,
                 otherExpenseLabel: first ? 'Labour/Loading/Other Exp.' : '',
                 gstPercent: first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0,
-                importantNotes: '',
+                // The PO's own notes, written on the quote sheet. Unlike the
+                // charges these go on EVERY PO the PR splits into — they are
+                // instructions to the vendor, not a one-off cost.
+                importantNotes: String(opts.notes || ''),
                 items: g.items,
                 // The PR's Store Incharge signature carries over; the Purchaser
                 // signs in the gmCeo slot under their own name.
@@ -5789,7 +6586,7 @@
             d.grandTotal = d.subtotal + d.freight + d.otherExpense + d.gstAmount;
             first = false;
 
-            const payload = {po_no:d.poNo, po_date:d.poDate, vendor_name:d.vendorName||null, vendor_mail:d.vendorMail||null, vendor_address:d.vendorAddress||null, vendor_contact:d.vendorContact||null, delivery_date:d.deliveryDate||null, payment_terms:d.paymentTerms, location_contact:d.locationContact||null, total_items:d.items.length, total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0), subtotal:d.subtotal, gst_percent:d.gstPercent, gst_amount:d.gstAmount, freight:d.freight, other_expense:d.otherExpense, other_expense_label:d.otherExpenseLabel||null, grand_total:d.grandTotal, important_notes:null, status:'GM/CEO Approved', approvals:d.signatures, linked_req_nos:req.req_no};
+            const payload = {po_no:d.poNo, po_date:d.poDate, vendor_name:d.vendorName||null, vendor_mail:d.vendorMail||null, vendor_address:d.vendorAddress||null, vendor_contact:d.vendorContact||null, delivery_date:d.deliveryDate||null, payment_terms:d.paymentTerms, location_contact:d.locationContact||null, total_items:d.items.length, total_qty:d.items.reduce((s,x)=>s+pNum(x.qty),0), subtotal:d.subtotal, gst_percent:d.gstPercent, gst_amount:d.gstAmount, freight:d.freight, other_expense:d.otherExpense, other_expense_label:d.otherExpenseLabel||null, grand_total:d.grandTotal, important_notes:d.importantNotes||null, status:'GM/CEO Approved', approvals:d.signatures, linked_req_nos:req.req_no};
             const ins = await sbSaveDroppingMissingColumns_(payload, p => SB.from('purchase_orders').insert(p).select().single(), ['po_no']);
             if(ins.error) throw ins.error;
             const row = ins.data;
@@ -6191,10 +6988,20 @@
         // on the POs generated from it) and when MD approves a PO that has none.
         let deliveryDate = null;
         const makesPo = prApprovalMakesPo();
+        // The Delivery Date agreed on the quote sheet, where there is one.
+        const poPlan = poPlanOf_((currentModule === 'PR' && currentEntry.pdf_snapshot) || {});
+        const poPlanned = currentModule === 'PR' && poPlanSaved_(currentEntry.pdf_snapshot || {});
         if(makesPo || poNeedsDeliveryDate(currentEntry)){
-            deliveryDate = document.getElementById('deliveryDateInput').value;
+            deliveryDate = (poPlanned && poPlan.deliveryDate) || document.getElementById('deliveryDateInput').value;
             if(!deliveryDate) { alert('Please set the Delivery Date before approving.'); return; }
-            if(makesPo && deliveryDate < localIsoDate_()) { alert('Delivery Date aaj se pehle ki nahi ho sakti.'); return; }
+            // A planned date was checked when it was saved. If the PR then sat
+            // long enough for it to pass, that is worth saying — but it is not
+            // a reason to make the PO unapprovable from here, since the date is
+            // locked and can only be changed in Vendor Rate & Info / STORE.html.
+            if(makesPo && deliveryDate < localIsoDate_()){
+                if(!poPlanned){ alert('Delivery Date aaj se pehle ki nahi ho sakti.'); return; }
+                if(!confirm(`Vendor Info me save ki gayi Delivery Date (${pDate_(deliveryDate)}) nikal chuki hai.\n\nIsi date ke saath PO bana dein?\n\n(Badalna ho to Cancel karke STORE.html se date theek karein.)`)) return;
+            }
         }
         // Every PO line needs a price. An approved vendor that quoted 0 would
         // put a free line on the PO, so it is stopped here where it can be fixed.
@@ -6213,7 +7020,14 @@
                 const n = Number(v);
                 return v == null || String(v).trim() === '' || isNaN(n) || n < 0 || n > 100;
             }).map(it => it.name);
-            if(badGst.length){ alert('GST% 0 se 100 ke beech bharein:\n• ' + badGst.join('\n• ')); return; }
+            if(badGst.length){
+                // With a saved plan these cells are locked here, so point at the
+                // one screen that can still fix them rather than at this one.
+                alert(poPlanned
+                    ? 'In items ka GST% khali / galat hai. Ye Vendor Info me save kiya jata hai — STORE.html ke "💰 Vendor Rate & Info" se theek karein:\n• ' + badGst.join('\n• ')
+                    : 'GST% 0 se 100 ke beech bharein:\n• ' + badGst.join('\n• '));
+                return;
+            }
             // A WEIGHT-billed line prices on Gross Weight, so one with no weight
             // would go out at zero amount. Caught here, where both the weight
             // (Vendor Rate & Info) and the Bill On switch are one tap away.
@@ -6224,11 +7038,17 @@
                 alert('Ye items WEIGHT par bill ho rahe hain lekin Gross Weight 0 hai — "Vendor Rate & Info" me Wt kg bharein, ya Bill On ko QTY karein:\n• ' + noWeight.join('\n• '));
                 return;
             }
+            // Charges come from the saved plan where there is one; a PR quoted
+            // before that sheet existed still has its own boxes in this tab.
             const numOf = id => { const v = String(document.getElementById(id).value||'').trim(); return v === '' ? 0 : Number(v); };
-            const freight = numOf('poFreightInput'), other = numOf('poOtherExpInput'), chargesGst = numOf('poChargesGstInput');
+            const freight = poPlanned ? (poPlan.freight || 0) : numOf('poFreightInput');
+            const other = poPlanned ? (poPlan.otherExp || 0) : numOf('poOtherExpInput');
+            const chargesGst = poPlanned
+                ? (poPlan.chargesGst != null ? poPlan.chargesGst : SARV_DEFAULT_GST)
+                : numOf('poChargesGstInput');
             if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. 0 ya usse zyada hona chahiye.'); return; }
             if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
-            poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(), freight, other, chargesGst};
+            poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(), freight, other, chargesGst, notes: poPlan.notes || ''};
         }
         /* PIN-based signing. The approver types their own PIN every time; their
            saved signature (STORE.html → Admin Panel → Users & Roles) comes back
@@ -6585,6 +7405,16 @@
     document.getElementById('pinSignBtn')?.addEventListener('click', e => { e.preventDefault(); openPinSign(); });
     document.getElementById('pinSignOkBtn')?.addEventListener('click', confirmPinSign);
     document.getElementById('pinSignPin')?.addEventListener('keydown', e => { if(e.key === 'Enter') confirmPinSign(); });
+
+    /* Any PDF whose database link never landed — here or in STORE.html, they
+       share the queue — is finished off on this load, which is the realistic
+       moment a phone's signal is back. Delayed so it does not compete with the
+       app's own first fetches, and quiet: this is housekeeping, not news. */
+    setTimeout(() => {
+        flushPdfLinkQueue_({quiet:true})
+            .then(n => { if(n) console.log('[MOBILE PDF] ' + n + ' pending PDF link(s) written on startup'); })
+            .catch(e => console.warn('[MOBILE PDF] startup link flush skipped:', e.message || e));
+    }, 5000);
 </script>
 </body>
 </html>
