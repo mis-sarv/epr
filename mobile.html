@@ -4861,7 +4861,7 @@
         // The grid is the source of truth for Bill On / GST% now, so the arrays
         // the PO maths reads are seeded from it rather than from a separate
         // pass in the PO Generate tab.
-        syncPoTermsFromGrid_();
+        syncPoMathsFromGrid_();
 
         /* Vendor rates are entered once from a phone. After that the figures
            are what a PO is priced on, so correcting them is a desk job in
@@ -4903,7 +4903,7 @@
             }
             // Qty / Weight / rates / discounts / Bill On / GST% all move the
             // PO figures, so the totals card is rebuilt off every keystroke.
-            syncPoTermsFromGrid_();
+            syncPoMathsFromGrid_();
             renderPoSummary_();
         };
         // The charges change the PO total without touching the grid.
@@ -4952,7 +4952,27 @@
        what poRowAmount_, the totals card and autoGeneratePosFromPr all read.
        One set of arrays for both tabs: PO Generate shows these back locked
        rather than keeping a second copy that could disagree. */
-    function syncPoTermsFromGrid_(){
+    /* ── Grid → the arrays the PO maths reads ─────────────────────────
+       💵 PO Calculation prices off currentItemRates / currentItemDiscs (net
+       rate), viDisplayItems[i].qty / .weight (billed units) and prItemBasis /
+       prItemGst — never off the DOM. Only Bill On and GST% used to be pulled
+       across here; the rates, discounts, Qty and Weight were filled just twice,
+       when the modal opened and again after a save. So while the Purchaser was
+       actually typing, the card was still pricing the PREVIOUS figures — on a
+       fresh PR that meant every line read 0 and the whole card read 0 until
+       "Save Vendor Info & PO Details" had been pressed.
+
+       Everything the amount depends on is pulled across now, read exactly the
+       way saveVendorInfoMobile reads the same boxes (same selectors, same
+       pNumM). So the figure on screen while quoting is the figure the save
+       writes and the one autoGeneratePosFromPr bills — there is no second
+       arithmetic to drift out of step.
+
+       Qty / Weight are mirrored onto viDisplayItems rather than left for the
+       save to apply (it does the same thing at the end of saveVendorInfoMobile)
+       because they ARE the billed units: correcting a Qty on the grid has to
+       move the amount with it, not after it. */
+    function syncPoMathsFromGrid_(){
         const rows = [...document.querySelectorAll('#viRateBody tr')];
         if(!rows.length) return;
         rows.forEach((tr,i)=>{
@@ -4960,6 +4980,25 @@
             const g = tr.querySelector('.vi-gst');
             if(b) prItemBasis[i] = (String(b.value||'').toUpperCase() === 'WEIGHT') ? 'WEIGHT' : 'QTY';
             if(g) prItemGst[i] = g.value;
+            // V1..V3 rate and discount, slot by slot — poRowNetRate_ takes the
+            // Selected Vendor's slot out of these two.
+            const rates = {}, discs = {};
+            VI_SLOTS.forEach(v=>{
+                const r = tr.querySelector(`.vi-rate[data-slot="${v}"]`);
+                const d = tr.querySelector(`.vi-disc[data-slot="${v}"]`);
+                if(r) rates[v] = pNumM(r.value);
+                if(d) discs[v] = pNumM(d.value);
+            });
+            currentItemRates[i] = rates;
+            currentItemDiscs[i] = discs;
+            // The billed units, as corrected on the grid.
+            const q = tr.querySelector('.vi-qty');
+            const w = tr.querySelector('.vi-weight');
+            if(viDisplayItems[i] && (q || w)){
+                viDisplayItems[i] = {...viDisplayItems[i],
+                    qty:    q ? pNumM(q.value) : viDisplayItems[i].qty,
+                    weight: w ? pNumM(w.value) : viDisplayItems[i].weight};
+            }
         });
     }
 
@@ -5728,7 +5767,7 @@
                             g.style.borderColor = ''; g.style.background = '';
                         }
                     });
-                    syncPoTermsFromGrid_();
+                    syncPoMathsFromGrid_();
                 })();
                 refreshViItemVendorPickers();
                 renderItemRows(viDisplayItems, currentItemRates, itemVendorIndex, true, currentItemDiscs);
@@ -6151,7 +6190,7 @@
             // previously the vendor dropdown simply never appeared.
             /* Bill On / GST% are now part of the quote sheet, so these arrays
                are filled BEFORE the form is drawn (the grid writes into them,
-               via syncPoTermsFromGrid_, and PO Generate shows them back
+               via syncPoMathsFromGrid_, and PO Generate shows them back
                locked). Order matters: renderVendorInfoForm reads the item
                rows it builds, so the defaults are laid down first and the
                grid's own values overwrite them.
