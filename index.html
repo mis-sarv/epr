@@ -3307,6 +3307,11 @@ body {
       <span class="sarv-home-text"><b>Repair Tracker</b><small>Track outward repair items</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <button type="button" class="sarv-home-row" data-go="PRODUCTION">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"></path><path d="M4 20V9l5 3V9l5 3V4l6 4v12"></path><line x1="9" y1="20" x2="9" y2="16"></line><line x1="14" y1="20" x2="14" y2="16"></line></svg></span>
+      <span class="sarv-home-text"><b>Production</b><small>Design Master, matchings &amp; catalogue</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <button type="button" class="sarv-home-row" data-go="APPROVAL_APP">
       <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg></span>
       <span class="sarv-home-text"><b>Approval App</b><small>Purchaser → MD → PO Sender (mobile)</small></span>
@@ -3327,6 +3332,7 @@ body {
             <span class="nav-link" data-target="fullPurchasePanel">📋 Purchase Requirement (Full)</span>
             <span class="nav-link" data-target="masterDataPanel">&#128203; Master Data</span>
             <span class="nav-link" data-target="repairTrackerPanel">&#128295; Repair Tracker</span>
+            <span class="nav-link" data-target="productionPanel">&#127981; Production</span>
             <span id="sarvRoleBadge" onclick="sarvLogout()" title="Click to switch user" style="margin-left:14px;padding:5px 12px;border-radius:20px;background:rgba(255,255,255,0.12);color:#e2e8f0;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">-</span>
         </div>
     </header>
@@ -4591,6 +4597,244 @@ body {
 
                 </div>
 
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════
+             PRODUCTION PANEL
+             Home › 🏭 Production. Abhi iske andar ek hi sub-tab hai —
+             🎨 Design Master — jisme design, unke matching shades aur
+             catalogue PDF sab Supabase par chalte hain (table design_master +
+             design_matchings, photos bucket sarv-pdfs ke design-images/
+             folder me). Aage ke Production sub-tabs isi tab bar me judenge.
+        ════════════════════════════════════════════════════════════════════ -->
+        <div id="productionPanel" class="main-panel tab-content" style="display: none;">
+            <div class="card" style="max-width:100%;">
+                <h2 class="panel-title">&#127981; PRODUCTION</h2>
+                <div class="panel-subtitle">Design Master &mdash; design, matching &amp; catalogue (Supabase par live)</div>
+
+                <!-- Production sub-tabs -->
+                <div style="display:flex; gap:4px; margin-bottom:14px; border-bottom:2px solid #e2e8f0; padding-bottom:0;">
+                    <button class="btn prod-sub-tab active" data-prodsub="designMasterProdSub" onclick="switchProductionSubTab('designMasterProdSub')" style="border-radius:6px 6px 0 0; border-bottom:2px solid #0284c7; font-weight:700; padding:6px 16px; font-size:12px; background:#eff6ff; color:#0369a1;">&#127912; Design Master</button>
+                </div>
+
+                <!-- ═══ DESIGN MASTER SUB-TAB ═══ -->
+                <div id="designMasterProdSub" class="dm-root">
+
+                    <div class="dm-nav">
+                        <button type="button" class="dm-tab active" data-dmtab="dmNewEntryPane">&#10133; Create New</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmAddMatchingPane">&#127912; Add Matching</button>
+                        <button type="button" class="dm-tab dm-tab-bulk" data-dmtab="dmBulkUploadPane">&#128194; Bulk Upload</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmLivePane">&#128203; Live (<span id="dmLiveCount">0</span>)</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmDiscardedPane">&#128465;&#65039; Discarded (<span id="dmDiscardCount">0</span>)</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmCataloguePane">&#128214; Catalogue PDF</button>
+                        <span class="dm-nav-right">
+                            <span class="dm-sync" id="dmSyncStatus">&mdash;</span>
+                            <button type="button" class="dm-btn dm-btn-ghost" onclick="dmReload(true)" title="Supabase se dobara load karein">&#128260; Refresh</button>
+                            <button type="button" class="dm-btn dm-btn-ghost" onclick="dmExportBackup()" title="Poora Design Master JSON me download karein">&#11015;&#65039; Backup</button>
+                        </span>
+                    </div>
+
+                    <!-- ───────── Create New ───────── -->
+                    <div class="dm-pane active" id="dmNewEntryPane">
+                      <form id="dmNewDesignForm" autocomplete="off">
+                        <div class="dm-split">
+                          <div class="dm-form-col">
+                            <div class="dm-sec">1. Design Specifications</div>
+                            <div class="dm-grid">
+                              <div class="dm-fg"><label>DESIGN NO *</label><input type="text" id="dmDesignNo" oninput="this.value=this.value.toUpperCase()" required></div>
+                              <div class="dm-fg"><label>DESIGN UNIT *</label><input type="text" id="dmDesignUnit" list="dmUnitList" value="UNIT 1" required></div>
+                              <div class="dm-fg"><label>BED SIZE *</label><input type="text" id="dmBedSize" list="dmBedSizeList" value="DOUBLE BED" required></div>
+                              <div class="dm-fg"><label>BLANKET QUALITY *</label><input type="text" id="dmBlanketQuality" list="dmQualityList" value="MINK" required></div>
+                              <div class="dm-fg"><label>DESIGN TYPE *</label><input type="text" id="dmDesignType" list="dmTypeList" required placeholder="Search Type..."></div>
+                              <div class="dm-fg"><label>MONOPOLY *</label><input type="text" id="dmMonopoly" list="dmMonopolyList" value="NO" required></div>
+                            </div>
+
+                            <div class="dm-sec">2. Color Matching Data</div>
+                            <div class="dm-grid">
+                              <div class="dm-fg"><label>INITIAL MATCHING NAME *</label><input type="text" id="dmInitialMatchingName" list="dmShadeList" required placeholder="Search Shade Name..."></div>
+                              <div class="dm-fg"><label>MATCHING TYPE *</label><input type="text" id="dmInitialMatchingType" list="dmMatchingTypeList" value="MASTER" required></div>
+                            </div>
+
+                            <div class="dm-sec">3. Frame Specifications</div>
+                            <div class="dm-grid">
+                              <div class="dm-fg"><label>FRAME TYPE *</label><input type="text" id="dmFrameType" list="dmFrameTypeList" value="MS ROUND FRAME" required></div>
+                              <div class="dm-fg"><label>LARGE FRAME (117 X 119)</label><input type="number" id="dmLargeFrame" min="0" placeholder="0"></div>
+                              <div class="dm-fg"><label>MEDIUM FRAME (85 X 119)</label><input type="number" id="dmMediumFrame" min="0" placeholder="0"></div>
+                              <div class="dm-fg"><label>SMALL FRAME (60 X 119)</label><input type="number" id="dmSmallFrame" min="0" placeholder="0"></div>
+                              <div class="dm-fg"><label>TOTAL FRAMES</label><input type="text" id="dmTotalFrames" readonly value="0" class="dm-readonly"></div>
+                            </div>
+
+                            <div class="dm-sec">4. Party Data</div>
+                            <div class="dm-grid">
+                              <div class="dm-fg"><label>PARTY NAME *</label><input type="text" id="dmPartyName" list="dmPartyList" required placeholder="Search or Type..."></div>
+                              <div class="dm-fg"><label>BRAND NAME *</label><input type="text" id="dmBrandName" list="dmBrandList" required placeholder="Search or Type..."></div>
+                            </div>
+                          </div>
+
+                          <div class="dm-img-col">
+                            <div class="dm-sec dm-sec-plain">&#128247; Upload &amp; Preview</div>
+                            <label class="dm-btn dm-btn-primary dm-file-btn">
+                              &#10133; Select Photo First
+                              <input type="file" id="dmInitialImage" accept="image/*" hidden>
+                            </label>
+                            <div class="dm-preview" id="dmNewDesignPreview">
+                              <span style="font-size:2rem;">&#128444;&#65039;</span>
+                              <span>[ Passport Size Preview ]</span>
+                              <small>Photo dekh kar left side me details fill karein</small>
+                            </div>
+                            <button type="submit" class="dm-btn dm-btn-success dm-btn-wide">&#128190; Save New Design</button>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- ───────── Add Matching ───────── -->
+                    <div class="dm-pane" id="dmAddMatchingPane">
+                      <form id="dmAddMatchingForm" autocomplete="off">
+                        <div class="dm-split">
+                          <div class="dm-form-col">
+                            <div class="dm-sec">Select Design &amp; Add Matching</div>
+                            <div class="dm-grid">
+                              <div class="dm-fg"><label>SEARCH DESIGN NO *</label><input type="text" id="dmSelectDesign" list="dmLiveDesignList" required placeholder="Type Design No..."></div>
+                              <div class="dm-fg"><label>PARTY &amp; BRAND</label><input type="text" id="dmMatchingPartyBrand" readonly class="dm-readonly"></div>
+                              <div class="dm-fg"><label>NEW MATCHING NAME *</label><input type="text" id="dmNewMatchingName" list="dmShadeList" required placeholder="Search Shade..."></div>
+                              <div class="dm-fg"><label>BLANKET QUALITY *</label><input type="text" id="dmMatchingBlanketQuality" list="dmQualityList" value="MINK" required></div>
+                              <div class="dm-fg"><label>MATCHING TYPE *</label><input type="text" id="dmNewMatchingType" list="dmMatchingTypeList" value="SLAVE" required></div>
+                            </div>
+                            <div class="dm-note" id="dmMatchingExisting"></div>
+                          </div>
+
+                          <div class="dm-img-col">
+                            <div class="dm-sec dm-sec-plain">&#128247; Upload &amp; Preview</div>
+                            <label class="dm-btn dm-btn-primary dm-file-btn">
+                              &#10133; Select Photo First
+                              <input type="file" id="dmNewMatchingImage" accept="image/*" hidden>
+                            </label>
+                            <div class="dm-preview" id="dmMatchingPreview">
+                              <span style="font-size:2rem;">&#128444;&#65039;</span>
+                              <span>[ Passport Size Preview ]</span>
+                            </div>
+                            <button type="submit" class="dm-btn dm-btn-success dm-btn-wide">&#10133; Add Matching</button>
+                          </div>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- ───────── Bulk Upload ───────── -->
+                    <div class="dm-pane" id="dmBulkUploadPane">
+                      <div class="dm-sec">Bulk Upload Old Data (Multiple Photos)</div>
+                      <p class="dm-hint">Ek sath apni sabhi purani photos select karein. Photo ka naam apne aap &lsquo;Design No&rsquo; me aa jaayega. Save karne par har photo bucket me <code>design-images/&lt;DESIGN NO&gt;/</code> par chali jaayegi.</p>
+                      <div class="dm-dropzone">
+                        <label>
+                          &#128248; Click Here to Select Multiple Photos
+                          <input type="file" id="dmBulkImageInput" multiple accept="image/*" hidden>
+                        </label>
+                      </div>
+                      <div class="dm-table-wrap" id="dmBulkTableContainer" style="display:none;">
+                        <table class="dm-table dm-table-bulk">
+                          <thead>
+                            <tr>
+                              <th style="width:70px;">Image</th>
+                              <th style="width:130px;">Design No</th>
+                              <th>Party &amp; Brand</th>
+                              <th>Unit, Size, Type, Monopoly</th>
+                              <th>Quality &amp; Frame</th>
+                              <th>Master Matching</th>
+                              <th style="width:150px;">Frames L(117) M(85) S(60)</th>
+                              <th style="width:100px;">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dmBulkTableBody"></tbody>
+                        </table>
+                        <div class="dm-table-foot">
+                          <button type="button" class="dm-btn dm-btn-success" onclick="dmSaveAllBulk()">&#9989; Save All Designs</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- ───────── Live ───────── -->
+                    <div class="dm-pane" id="dmLivePane">
+                      <div class="dm-toolbar">
+                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="&#128269; Design No / Party / Brand / Type / Shade se khojein...">
+                        <span class="dm-count" id="dmLiveShown"></span>
+                      </div>
+                      <div class="dm-table-wrap">
+                        <table class="dm-table">
+                          <thead>
+                            <tr>
+                              <th>Actions</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
+                              <th>Unit</th><th>Bed Size</th><th>Quality</th><th>Frames &amp; Total</th><th>Matchings</th>
+                              <th>Master Matching</th><th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dmLiveTableBody"></tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ───────── Discarded ───────── -->
+                    <div class="dm-pane" id="dmDiscardedPane">
+                      <div class="dm-table-wrap">
+                        <table class="dm-table">
+                          <thead>
+                            <tr>
+                              <th>Action</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
+                              <th>Unit</th><th>Bed Size</th><th>Discarded On</th><th>Status</th>
+                            </tr>
+                          </thead>
+                          <tbody id="dmDiscardedTableBody"></tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    <!-- ───────── Catalogue PDF ───────── -->
+                    <div class="dm-pane" id="dmCataloguePane">
+                      <div class="dm-sec">Catalogue Multi-Selection Filters</div>
+                      <div class="dm-grid dm-grid-filters">
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>DESIGN UNIT</label><span><a onclick="dmToggleFilter('dmUnitFilter',true)">All</a> | <a onclick="dmToggleFilter('dmUnitFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmUnitFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>BLANKET QUALITY</label><span><a onclick="dmToggleFilter('dmQualityFilter',true)">All</a> | <a onclick="dmToggleFilter('dmQualityFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmQualityFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>PARTY NAME</label><span><a onclick="dmToggleFilter('dmPartyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmPartyFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmPartyFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>BRAND NAME</label><span><a onclick="dmToggleFilter('dmBrandFilter',true)">All</a> | <a onclick="dmToggleFilter('dmBrandFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmBrandFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>DESIGN TYPE</label><span><a onclick="dmToggleFilter('dmTypeFilter',true)">All</a> | <a onclick="dmToggleFilter('dmTypeFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmTypeFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>TOTAL FRAMES</label><span><a onclick="dmToggleFilter('dmFramesFilter',true)">All</a> | <a onclick="dmToggleFilter('dmFramesFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmFramesFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>MONOPOLY</label><span><a onclick="dmToggleFilter('dmMonopolyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmMonopolyFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmMonopolyFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>DESIGN NO (khaali = sab)</label></div>
+                          <input type="text" id="dmCatDesignNos" placeholder="5001, 5002, 5003 ..." oninput="this.value=this.value.toUpperCase()">
+                        </div>
+                      </div>
+                      <div class="dm-btn-row">
+                        <button type="button" class="dm-btn dm-btn-primary" onclick="dmGenerateCataloguePreview()">&#9889; Generate Preview</button>
+                        <button type="button" class="dm-btn dm-btn-success" onclick="dmDownloadCataloguePdf()">&#128229; Download PDF</button>
+                        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOpenCataloguePdf()">&#128438;&#65039; Open PDF in New Tab</button>
+                        <span class="dm-cat-status" id="dmCatStatus"></span>
+                      </div>
+                      <div id="dmCataloguePrintArea"></div>
+                    </div>
+
+                </div><!-- /designMasterProdSub -->
             </div>
         </div>
 
@@ -7393,6 +7637,228 @@ async function prReceivedQtys_(prNos,excludeInwardId){
   }
   return out;
 }
+/* ══ HOW MUCH OF A PR LINE HAS ACTUALLY COME IN ══════════════════════
+   Pooled per item NAME, because one requirement can carry the SAME item name
+   on two lines — two sizes typed the same way, or a line split across machines
+   — and the receipt totals are keyed by name, not by line. Handing each line
+   the whole total would mark both Completed on half the material, so the total
+   is pooled once per name and handed out in line order: each line takes up to
+   what it asked for, and the last line sharing the name takes whatever is left
+   (so an over-receipt still reads as an over-receipt instead of being quietly
+   trimmed).
+
+   The pool is both routes a receipt can credit a requirement:
+     • poRecvByKey  — through a PO (purchase_order_lines.received_qty, keyed
+                      PR no. + item name, the same key the ordered qty uses)
+     • prDirectRecv — straight off the PR, a "without PO" receipt booked
+                      against the requirement itself (prReceivedQtys_, keyed
+                      PR no. + item id, so it is added once per distinct item
+                      even when several lines share a name)
+
+   Lifted out of refreshPendingRequirements so that the ✔ Completed badge on
+   the Pending Items table and the status prApplyCompletion_ writes onto
+   purchase_requirements come from ONE rule — the table and the database can
+   never disagree about whether a requirement is finished. */
+function prLineReceipts_(req,reqLines,itemMap,poRecvByKey,prDirectRecv){
+  const names=itemMap||new Map();
+  const poRecv=poRecvByKey||{};
+  const direct=prDirectRecv||{};
+  const lineRecvKey=line=>String(req.req_no||'')+'|'
+    +String(line.item_name||line.name||(names.get(line.item_id)||{}).name||'Item').toLowerCase().trim();
+  const poolQty=new Map(),poolLines=new Map(),poolTaken=new Map(),poolSeen=new Map();
+  {
+    const idsPerKey=new Map();
+    (reqLines||[]).forEach(line=>{
+      const k=lineRecvKey(line);
+      poolLines.set(k,(poolLines.get(k)||0)+1);
+      if(!poolQty.has(k)){poolQty.set(k,poRecv[k]||0);idsPerKey.set(k,new Set());}
+      const idk=String(req.req_no||'').trim().toUpperCase()+'|'+String(line.item_id||'');
+      const seen=idsPerKey.get(k);
+      if(line.item_id&&!seen.has(idk)){
+        seen.add(idk);
+        poolQty.set(k,poolQty.get(k)+pNum((direct[idk]||{}).qty));
+      }
+    });
+  }
+  return (reqLines||[]).map(line=>{
+    const requested=pNum(line.requested_qty);
+    const poolKey=lineRecvKey(line);
+    const poolLeft=Math.max(0,pNum(poolQty.get(poolKey))-pNum(poolTaken.get(poolKey)));
+    const nthOfKey=(poolSeen.get(poolKey)||0)+1;
+    poolSeen.set(poolKey,nthOfKey);
+    const lastOfKey=nthOfKey>=pNum(poolLines.get(poolKey));
+    const received=lastOfKey?poolLeft:Math.min(poolLeft,requested);
+    poolTaken.set(poolKey,pNum(poolTaken.get(poolKey))+Math.min(poolLeft,requested));
+    return {line:line,requested:requested,received:received,completed:requested>0&&received>=requested};
+  });
+}
+/* A PR is finished only when EVERY line carrying a quantity has fully come in.
+   A requirement with no quantity-bearing line at all is NOT finished: `every`
+   on an empty list is true, and that would quietly complete a blank PR. */
+function prCompletionDone_(recv){
+  const real=(recv||[]).filter(r=>r&&r.requested>0);
+  return real.length>0&&real.every(r=>r.completed);
+}
+/* ══ PR STATUS AFTER A RECEIPT ════════════════════════════════════════
+   purchase_requirements.status used to have no writer at all on the receipt
+   side: the Pending Items table worked "Completed" out on the fly from the
+   quantities (prLineReceipts_ above), but the column itself was only ever set
+   at PR creation, on a PR edit, on Hold, and by the mobile approval stages. So
+   a fully received requirement read "Pending" for ever in the database and in
+   anything built straight off that table — and a FIELD BOY requirement, which
+   never reaches an approval stage at all (mobile.html gives that Purchaser the
+   Vendor Info tab only), had no writer whatsoever beyond Hold.
+
+   Written here instead, from the same verdict the table shows.
+
+   Recomputed, never incremented: the verdict is read back off the lines every
+   time, so an edit that lowers a quantity, or a cancel that removes a receipt,
+   puts the requirement back. "Back" is remembered in
+   pdf_snapshot.completion.prevStatus when Completed is set — the same trick
+   the mobile Hold uses for its own prevStatus — so an MD-approved PR does not
+   come back as Pending.
+
+   Cancelled and Rejected are left alone: those are decisions somebody made,
+   and a stray receipt must not reopen them.
+
+   Best-effort by design. Every caller has already committed its receipt, so a
+   failure here is logged and the next list refresh re-grades the PR anyway. */
+const PR_STATUS_SETTLED=['Cancelled','Rejected'];
+async function prApplyCompletion_(verdicts){
+  if(!SB_READY)return 0;
+  let changed=0;
+  for(const v of (verdicts||[])){
+    const pr=v&&v.req;
+    if(!pr||!pr.id)continue;
+    const cur=String(pr.status||'');
+    if(PR_STATUS_SETTLED.includes(cur))continue;
+    // Already says the right thing — no write, so this costs nothing on the
+    // list refreshes where every PR is already graded correctly.
+    if(!!v.done===(cur==='Completed'))continue;
+    const snap={...(pr.pdf_snapshot||{})};
+    let next;
+    if(v.done){
+      next='Completed';
+      snap.completion={prevStatus:cur||'Pending',at:pStamp(),
+        by:(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||''};
+    }else{
+      const prev=(snap.completion||{}).prevStatus;
+      next=(prev&&prev!=='Completed')?prev:'Pending';
+      snap.completion=null;
+    }
+    // pdf_snapshot.status is kept level with the column, exactly as the Hold
+    // and PR-edit writers do — the printed PR reads its status off the
+    // snapshot, not off the column.
+    snap.status=next;
+    try{
+      const u=await SB.from('purchase_requirements').update({status:next,pdf_snapshot:snap}).eq('id',pr.id);
+      if(u.error)throw u.error;
+      // The loaded row stays level with the database, so a table rendered
+      // right after this shows the new status without a refetch.
+      pr.status=next;pr.pdf_snapshot=snap;
+      changed++;
+      console.log('[SARV] PR '+(pr.req_no||pr.id)+' status → '+next);
+    }catch(e){
+      console.warn('[SARV] PR '+(pr.req_no||pr.id)+' status write failed:',e.message||e);
+    }
+  }
+  return changed;
+}
+/* PO ke through aaya maal, PR no. + item NAME par keyed — bilkul wahi key jo
+   Pending Items list banati hai. Rejected / Cancelled PO ki quantity nahi
+   ginti: us order ka maal aaya hi nahi maana jaata, aur usi PR par naya PO
+   ban sakta hai. */
+async function prPoReceivedByKey_(reqNos){
+  const out={};
+  if(!SB_READY||!reqNos||!reqNos.length)return out;
+  try{
+    const pq=await SB.from('purchase_order_lines')
+      .select('req_no,item_name,received_qty,purchase_order_id').in('req_no',reqNos);
+    if(pq.error)throw pq.error;
+    const dead=new Set();
+    const sq=await SB.from('purchase_orders').select('id,status');
+    if(!sq.error)(sq.data||[]).forEach(p=>{if(['Rejected','Cancelled'].includes(p.status||''))dead.add(p.id)});
+    (pq.data||[]).forEach(x=>{
+      if(dead.has(x.purchase_order_id))return;
+      const k=String(x.req_no||'')+'|'+String(x.item_name||'').toLowerCase().trim();
+      out[k]=(out[k]||0)+pNum(x.received_qty);
+    });
+  }catch(e){console.warn('[SARV] PR status: PO receipts skipped:',e.message||e);}
+  return out;
+}
+// Item names for the pooled key — a PR line may not carry item_name itself.
+async function prItemNameMap_(itemIds){
+  const map=new Map();
+  const ids=[...new Set((itemIds||[]).filter(Boolean))];
+  if(!SB_READY||!ids.length)return map;
+  try{
+    const iq=await SB.from('items').select('id,name').in('id',ids);
+    if(!iq.error)(iq.data||[]).forEach(x=>map.set(x.id,x));
+  }catch(e){console.warn('[SARV] PR status: item names skipped:',e.message||e);}
+  return map;
+}
+/* Which requirements a receipt actually credits: the ones named on the receipt
+   itself (a FIELD BOY "without PO" entry) plus the ones the POs on it were
+   raised from — read off purchase_orders.linked_req_nos and, for POs saved
+   before that column was filled, off each PO line's own req_no. So the PR is
+   re-graded whichever route its material took. */
+async function inwardTouchedReqNos_(poNos,prNos){
+  const out=[];
+  const add=v=>String(v||'').split(',').map(s=>s.trim()).filter(Boolean)
+    .forEach(n=>{if(!out.some(x=>x.toUpperCase()===n.toUpperCase()))out.push(n)});
+  (prNos||[]).forEach(add);
+  const pos=[...new Set((poNos||[]).map(n=>String(n||'').trim()).filter(Boolean))];
+  if(SB_READY&&pos.length){
+    try{
+      const pq=await SB.from('purchase_orders').select('id,po_no,linked_req_nos').in('po_no',pos);
+      if(pq.error)throw pq.error;
+      (pq.data||[]).forEach(p=>add(p.linked_req_nos));
+      const ids=(pq.data||[]).map(p=>p.id).filter(Boolean);
+      if(ids.length){
+        const lq=await SB.from('purchase_order_lines').select('req_no').in('purchase_order_id',ids);
+        if(!lq.error)(lq.data||[]).forEach(l=>add(l.req_no));
+      }
+    }catch(e){console.warn('[SARV] PR nos behind the POs skipped:',e.message||e);}
+  }
+  return out;
+}
+/* Re-grades the named requirements and writes any status that changed. This is
+   the entry point for the receipt side — inward save, inward edit and inward
+   cancel all come through here. */
+async function prSyncStatusForNos_(prNos){
+  if(!SB_READY)return 0;
+  const want=[];
+  (prNos||[]).forEach(n=>{
+    const v=String(n||'').trim();
+    if(v&&!want.some(x=>x.toUpperCase()===v.toUpperCase()))want.push(v);
+  });
+  if(!want.length)return 0;
+  try{
+    const rq=await SB.from('purchase_requirements').select('id,req_no,status,pdf_snapshot').in('req_no',want);
+    if(rq.error)throw rq.error;
+    const prs=(rq.data||[]).filter(p=>!PR_STATUS_SETTLED.includes(String(p.status||'')));
+    if(!prs.length)return 0;
+    // .order('id') matches what refreshPendingRequirements uses — the pooled
+    // hand-out above is line-order dependent, so both must read them the same way.
+    const lq=await SB.from('purchase_requirement_lines').select('*').in('requirement_id',prs.map(p=>p.id)).order('id');
+    if(lq.error)throw lq.error;
+    const lines=lq.data||[];
+    const nos=prs.map(p=>p.req_no);
+    const poRecv=await prPoReceivedByKey_(nos);
+    let direct={};
+    try{direct=await prReceivedQtys_(nos);}
+    catch(e){console.warn('[SARV] PR status: without-PO receipts skipped:',e.message||e);}
+    const itemMap=await prItemNameMap_(lines.map(l=>l.item_id));
+    const verdicts=prs.map(pr=>({
+      req:pr,
+      done:prCompletionDone_(prLineReceipts_(pr,lines.filter(l=>l.requirement_id===pr.id),itemMap,poRecv,direct))
+    }));
+    return await prApplyCompletion_(verdicts);
+  }catch(e){
+    console.warn('[SARV] PR status sync skipped:',e.message||e);
+    return 0;
+  }
+}
 /* Fills the item rows from a PR, the PO loader's counterpart. Three deliberate
    differences:
    • Supplier Name is NOT locked and NOT filled — a counter purchase can be from
@@ -8685,6 +9151,9 @@ function activatePanel(id){
   if(id==='reportsPanel'&&SB_READY) loadReports().catch(()=>{});
   if(id==='itemTrackerPanel'&&SB_READY) initItemTrackerFilters().catch(()=>{});
   if(id==='repairTrackerPanel'&&SB_READY) loadRepairTracker().catch(()=>{});
+  /* Production › Design Master — designs aur unke matchings pehli baar yahan
+     load hote hain (uske baad cache se, Refresh par dobara). */
+  if(id==='productionPanel'&&SB_READY&&typeof dmEnsureLoaded==='function') dmEnsureLoaded().catch(()=>{});
 }
 function bindNavigation(){
   document.querySelectorAll('.nav-link[data-target]').forEach(link=>link.addEventListener('click',()=>activatePanel(link.dataset.target)));
@@ -9371,6 +9840,7 @@ function sarvNavigateFromHome(target){
       break;
     case 'MASTER': activatePanel('masterDataPanel'); break;
     case 'REPAIR': activatePanel('repairTrackerPanel'); break;
+    case 'PRODUCTION': activatePanel('productionPanel'); break;
     case 'REPORTS': activatePanel('reportsPanel'); break;
     case 'TRACKER': activatePanel('itemTrackerPanel'); break;
     case 'APPROVAL_APP': window.open('mobile.html','_blank'); sarvGoHome(); return;
@@ -9442,6 +9912,12 @@ const SARV_HOME_HELP={
     'कितना भेजा, कितना वापस आया और कितना बाकी है — Outward नंबर के साथ देखें।',
     'Pending / Partial / Received स्टेटस से फ़िल्टर करें।',
     'रिपेयर होकर आया माल Material Inward में "Repaired" चुनकर दर्ज करें।']},
+  PRODUCTION:{icon:'🏭',title:'Production — Design Master',points:[
+    'नया डिज़ाइन बनाएं — Design No, Unit, Bed Size, Quality, Type, Monopoly, फ़्रेम गिनती और Party / Brand भरें; फ़ोटो दाईं तरफ़ दिखेगी।',
+    'एक ही डिज़ाइन के कई रंग (Matching / Shade) जोड़ें — एक MASTER रहेगा, बाक़ी SLAVE।',
+    'पुराना डेटा Bulk Upload से — एक साथ कई फ़ोटो चुनें, फ़ोटो का नाम ही Design No बन जाता है।',
+    'सभी फ़ोटो Supabase में रहती हैं और Design No के फ़ोल्डर से कभी भी लोड हो जाती हैं।',
+    'Catalogue PDF टैब से फ़िल्टर लगाकर A4 कैटलॉग की असली PDF डाउनलोड करें।']},
   APPROVAL_APP:{icon:'📱',title:'Approval App (मोबाइल)',points:[
     'मोबाइल Approval ऐप नए टैब में खुलेगा — Purchaser, MD और PO Sender के लिए।',
     'Purchaser: Vendor Info (V1 / V2 / V3 रेट) भरकर PR approve करता है — उसी समय PO बन जाता है।',
@@ -9747,6 +10223,9 @@ const SARV_FEATURES=[
   {key:'SUBMIT_OUTWARD',label:'SUBMIT OUTWARD',hint:'Outward submit',def:'W'},
   {key:'SUBMIT_ISSUE',label:'SUBMIT ISSUE',hint:'Issue submit',def:'W'},
   {key:'ITEM_LEDGER',label:'ITEM GENERATE LEDGER',hint:'Item Tracker › Generate Ledger',def:'ALL'},
+  {group:'🏭 Production › Design Master'},
+  {key:'DESIGN_SAVE',label:'DESIGN SAVE / EDIT',hint:'Naya design, nayi matching, bulk upload, design edit aur photo badalna',def:'W'},
+  {key:'DESIGN_DISCARD',label:'DESIGN DISCARD / RESTORE',hint:'Design discard ya restore karna, matching hatana',def:'W'},
   {group:'📱 Approval App (mobile.html tabs)'},
   {key:'VENDOR_INFO_MOBILE',label:'Vendor Info.',hint:'Mobile › Vendor Info tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'PO_GENERATE',label:'PO GENERATE',hint:'Mobile › PO Generate tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
@@ -9767,7 +10246,10 @@ const SARV_TABS=[
   {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
   {key:'HOME_MASTER',label:'Master Data',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
+  {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
+  {group:'🏭 Production › Sub Tabs'},
+  {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'🛒 PO Generation › Sub Tabs'},
   {key:'PO_SUB_PENDING',label:'Pending Items (Build PO)',def:'ALL'},
   {key:'PO_SUB_LIST',label:'Generated POs',def:'ALL'},
@@ -9810,8 +10292,10 @@ const SARV_TABS=[
 ];
 const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
+const SARV_PROD_SUB_KEY={designMasterProdSub:'PROD_SUB_DESIGN'};
 const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
-  itemTrackerPanel:['HOME_TRACKER'],fullPurchasePanel:['HOME_PR','HOME_PO'],masterDataPanel:['HOME_MASTER'],repairTrackerPanel:['HOME_REPAIR']};
+  itemTrackerPanel:['HOME_TRACKER'],fullPurchasePanel:['HOME_PR','HOME_PO'],masterDataPanel:['HOME_MASTER'],repairTrackerPanel:['HOME_REPAIR'],
+  productionPanel:['HOME_PRODUCTION']};
 const SARV_PURCHASER_FALLBACK=['KHUSHBOO','SATINDER JI','ANKUR JI','PARKASH JI','DEEPAK VERMA','PRIYA VERMA','FIELD BOY'];
 
 let sarvSettings={role_permissions:null,tab_visibility:null};
@@ -9900,6 +10384,10 @@ function sarvApplySubTabs_(){
   });
   Object.keys(SARV_PO_SUB_KEY).forEach(id=>{
     const b=byId(id);if(b)b.style.display=sarvTabVisible(SARV_PO_SUB_KEY[id])?'':'none';
+  });
+  document.querySelectorAll('#productionPanel .prod-sub-tab[data-prodsub]').forEach(b=>{
+    const k=SARV_PROD_SUB_KEY[b.dataset.prodsub];
+    b.style.display=(!k||sarvTabVisible(k))?'':'none';
   });
   const ap=byId('sarvAdminPanel');if(ap)ap.style.display=isAdmin()?'':'none';
   // Item Master › New PR Generation — column + button follow Tab Visibility.
@@ -14584,6 +15072,15 @@ window.cancelStoreRecord=async function(kind,id,no){
   if(isIn){
     try{await syncPoReceiptsForLines(lines.map(l=>l.po_line_id));}
     catch(e){console.warn('[SARV] PO receipt recompute after cancel failed:',e.message||e);}
+    /* A cancelled receipt's lines are gone, so the requirements it credited
+       are short again — one that had been marked Completed goes back to the
+       status it held before (pdf_snapshot.completion.prevStatus). */
+    try{
+      const reqNos=[...new Set(String(h.data.req_no||'').split(',')
+        .concat(lines.map(l=>String(l.req_no||''))).map(s=>s.trim()).filter(Boolean))];
+      await prSyncStatusForNos_(await inwardTouchedReqNos_(
+        String(h.data.po_number||'').split(',').map(s=>s.trim()).filter(Boolean),reqNos));
+    }catch(e){console.warn('[SARV] PR status sync after cancel failed:',e.message||e);}
   }
   showToast('✅ '+escText(no)+' cancel ho gaya — stock update ho gaya');
   await loadReports();
@@ -14619,6 +15116,10 @@ let sarvEditingOutwardId=null, sarvEditingOutwardNo='';
 // PO lines the record pointed at when it was opened — kept so that a line
 // the Admin deletes during the edit still gets its PO receipt recomputed.
 let sarvEditingInwardPoLineIds=[];
+// The same, for the PR side: the requirements the record credited when it was
+// opened, so one taken OFF the receipt during the edit is still re-graded
+// (prSyncStatusForNos_ at the end of the inward save).
+let sarvEditingInwardReqNos=[];
 /* ── Entry Type is one-shot per session ───────────────────────────────
    The Inward and Outward panels each serve two entry types, and mixing them up
    after work has already been saved is how an INWARD lands in the NB series (or
@@ -14677,7 +15178,7 @@ function applyOutwardWording(){
 }
 window.cancelStoreEdit=function(kind){
   if(kind==='outward'){sarvEditingOutwardId=null;sarvEditingOutwardNo='';clearOutwardForm();}
-  else{sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];clearInwardForm();}
+  else{sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];clearInwardForm();}
   showToast('Edit cancel — form ab naye entry ke liye khaali hai');
 };
 
@@ -14710,6 +15211,12 @@ async function loadInwardForEdit(id,no){
   sarvEditingInwardId=e.id;
   sarvEditingInwardNo=e.document_no||no||'';
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
+  // The requirements this record credits as it stands — header req_no plus each
+  // line's own, so a PR removed during the edit is still re-graded on save.
+  sarvEditingInwardReqNos=[...new Set(
+    String(e.req_no||'').split(',')
+      .concat(lines.map(l=>String(l.req_no||'')))
+      .map(s=>s.trim()).filter(Boolean))];
 
   const set=(f,v)=>{const el=byId(f);if(el)el.value=v??''};
   // Entry Type is assigned directly, never through a change event: that
@@ -18495,6 +19002,23 @@ window.addEventListener('DOMContentLoaded',()=>{
      }else if(selectedPoNos.length){
        await updatePoReceipt(selectedPoNos,rows);
      }
+     /* The requirement(s) this receipt credits are re-graded now, so one whose
+        material has all come in stops reading "Pending" in
+        purchase_requirements. Both routes are covered — named straight on the
+        receipt (a FIELD BOY "without PO" entry, for which nothing used to post
+        back at all) and sitting behind the POs on it.
+
+        On an edit the PRs the record pointed at when it was OPENED go in too:
+        drop a PR off a receipt and that requirement has to be re-graded
+        downwards, exactly as sarvEditingInwardPoLineIds does for PO lines.
+
+        Best-effort: the receipt is already committed, so a failure here is
+        logged — and the next Pending Items refresh re-grades the PR anyway. */
+     try{
+       await prSyncStatusForNos_(await inwardTouchedReqNos_(
+         inwardPoRefList_(rows),
+         [...sarvEditingInwardReqNos,...inwardPrRefList_(rows)]));
+     }catch(e){console.warn('[SARV] PR status sync after inward skipped:',e.message||e);}
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput');
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
@@ -18913,7 +19437,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function clearInwardForm(forEdit){
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
-   sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];
+   sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
    refreshStoreEditUi();
    ['invoiceNumber','invoiceDate','partyState','supplierName','inwRemarks',
     'inwMachineName','lotNo','gatePassNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
@@ -19131,6 +19655,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      }catch(e){console.warn('[SARV] PR pdf lookup skipped:',e.message||e);}
    }
    sarvPendingRequirements=[];
+   /* Every PR's finished / not-finished verdict, collected while the table is
+      built and written back below. This is also the backfill: requirements
+      already fully received before purchase_requirements.status had a receipt
+      writer are corrected the first time anyone opens this list — nothing has
+      to be re-saved by hand. */
+   const prVerdicts=[];
    (rq.data||[]).forEach(req=>{
      const snapshot=req.pdf_snapshot||{};
      // PR-level vendor pick. Since mobile.html lets the Purchaser approve a
@@ -19145,51 +19675,19 @@ window.addEventListener('DOMContentLoaded',()=>{
      const vendorInfoFilled=(snapshot.vendors||[]).some(v=>v&&String(v.name||'').trim())
        ||(snapshot.items||[]).some(it=>Array.isArray(it&&it.vendors)&&it.vendors.some(v=>v&&String(v.name||'').trim()));
      const reqLines=(lq.data||[]).filter(line=>line.requirement_id===req.id);
-     /* ── Received, pooled per distinct item ──────────────────────────
-        One requirement can carry the SAME item name on two lines — two sizes
-        typed the same way, or a line split across machines — and the receipt
-        totals are keyed by name, not by line. Handing each line the whole
-        total would mark both Completed on half the material, so the total is
-        pooled once per name here and handed out line by line below: each line
-        takes up to what it asked for, and the last line sharing the name takes
-        whatever is left (so an over-receipt still shows as an over-receipt
-        instead of being quietly trimmed).
-
-        The pool is the PO side (keyed PR no. + item name, same as the ordered
-        quantity) plus the without-PO side (keyed PR no. + item id, so it is
-        added once per distinct item even when several lines share a name). */
-     const lineRecvKey=line=>String(req.req_no||'')+'|'
-       +String(line.item_name||line.name||(itemMap.get(line.item_id)||{}).name||'Item').toLowerCase().trim();
-     const poolQty=new Map(),poolLines=new Map(),poolTaken=new Map(),poolSeen=new Map();
-     {
-       const idsPerKey=new Map();
-       reqLines.forEach(line=>{
-         const k=lineRecvKey(line);
-         poolLines.set(k,(poolLines.get(k)||0)+1);
-         if(!poolQty.has(k)){poolQty.set(k,poRecvByKey[k]||0);idsPerKey.set(k,new Set());}
-         const idk=String(req.req_no||'').trim().toUpperCase()+'|'+String(line.item_id||'');
-         const seen=idsPerKey.get(k);
-         if(line.item_id&&!seen.has(idk)){
-           seen.add(idk);
-           poolQty.set(k,poolQty.get(k)+pNum((prDirectRecv[idk]||{}).qty));
-         }
-       });
-     }
+     /* Received / Completed per line. The pooling rule lives in
+        prLineReceipts_ so that this table's ✔ Completed badge and the status
+        prApplyCompletion_ writes onto purchase_requirements come from the same
+        place — see the comment on that function. */
+     const lineRecv=prLineReceipts_(req,reqLines,itemMap,poRecvByKey,prDirectRecv);
+     prVerdicts.push({req,done:prCompletionDone_(lineRecv)});
      reqLines.forEach((line,index)=>{
        const item=itemMap.get(line.item_id)||{},name=line.item_name||line.name||item.name||'Item';
        const requested=pNum(line.requested_qty),key=String(req.req_no||'')+'|'+String(name||'').toLowerCase().trim(),inPo=poByKey[key]||0,available=Math.max(0,requested-inPo);
-       /* This line's share of the receipt pool built above. Taken in line
-          order: each line draws up to what it asked for, and the last line
-          sharing an item name draws whatever is left over, so an over-receipt
-          is still reported as one. */
-       const poolKey=lineRecvKey(line);
-       const poolLeft=Math.max(0,pNum(poolQty.get(poolKey))-pNum(poolTaken.get(poolKey)));
-       const nthOfKey=(poolSeen.get(poolKey)||0)+1;
-       poolSeen.set(poolKey,nthOfKey);
-       const lastOfKey=nthOfKey>=pNum(poolLines.get(poolKey));
-       const received=lastOfKey?poolLeft:Math.min(poolLeft,requested);
-       poolTaken.set(poolKey,pNum(poolTaken.get(poolKey))+Math.min(poolLeft,requested));
-       const completed=requested>0&&received>=requested;
+       // This line's share of the receipt pool — prLineReceipts_ returns one
+       // entry per line, in this same order.
+       const received=pNum((lineRecv[index]||{}).received);
+       const completed=!!(lineRecv[index]||{}).completed;
        // Match this DB line back to its snapshot entry by position — the
        // snapshot is always rebuilt from these same lines in this same
        // order (see saveVendorInfo / approvePR), so index correspondence
@@ -19227,6 +19725,16 @@ window.addEventListener('DOMContentLoaded',()=>{
      });
    });
    renderPendingRequirementsTable();
+   /* Write the verdicts back, after the table is already on screen — grading a
+      PR must never hold up the list it was computed from. prApplyCompletion_
+      only writes the ones that disagree, so a list where everything is already
+      graded costs no queries at all. The rows it updates are the same objects
+      the table holds, so the re-render picks the new status straight up. */
+   prApplyCompletion_(prVerdicts).then(n=>{
+     if(!n)return;
+     renderPendingRequirementsTable();
+     showToast('🔄 '+n+' PR ka status receiving ke hisaab se update kiya gaya');
+   }).catch(e=>console.warn('[SARV] PR status reconcile skipped:',e.message||e));
  }
  // Does this pending line survive the filter bar above the table?
  function poPendingMatches(x){
@@ -21799,6 +22307,1503 @@ window.addEventListener('DOMContentLoaded',()=>{
   },4000);   // after the page's own first loads, not competing with them
 });
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     PRODUCTION › DESIGN MASTER — styles, edit modal, datalists, logic
+     DESIGN MASTER V18.html ka interface, Store.html ke andar aur localStorage
+     ki jagah Supabase par. Sab kuch `dm` se shuru hota hai (CSS classes, ids,
+     functions) taaki Store ke apne styles aur ids se kabhi na takraye.
+════════════════════════════════════════════════════════════════════════════ -->
+<style>
+  /* Production panel ko apne aap scroll karne do — Store ka .card flex:1 +
+     overflow:hidden Design Master ke lambe form ko kaat deta tha. */
+  #storeInterface #productionPanel { overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; padding-right:4px; }
+  #storeInterface #productionPanel > .card { overflow:visible; flex:0 0 auto; }
+
+  .dm-root { --dm-accent:#2563eb; font-size:13px; color:#1e293b; }
+  .dm-root * { box-sizing:border-box; }
+
+  /* ── internal tab bar ── */
+  .dm-nav { display:flex; gap:7px; flex-wrap:wrap; align-items:center; border-bottom:2px solid #e2e8f0; padding-bottom:10px; margin-bottom:14px; }
+  .dm-tab { padding:7px 14px; border:none; background:#e2e8f0; border-radius:6px; font-weight:700; cursor:pointer; color:#475569; font-size:12px; font-family:inherit; transition:background .15s,color .15s; }
+  .dm-tab:hover { background:#cbd5e1; }
+  .dm-tab.active { background:var(--dm-accent); color:#fff; }
+  .dm-tab-bulk { background:#8b5cf6; color:#fff; }
+  .dm-tab-bulk:hover { background:#7c3aed; }
+  .dm-tab-bulk.active { background:#7c3aed; box-shadow:0 0 0 2px #c4b5fd; }
+  .dm-nav-right { margin-left:auto; display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .dm-sync { font-size:10.5px; font-weight:700; color:#64748b; padding:3px 9px; border-radius:20px; background:#f1f5f9; border:1px solid #e2e8f0; white-space:nowrap; }
+  .dm-sync.ok   { background:#dcfce7; border-color:#86efac; color:#166534; }
+  .dm-sync.busy { background:#fef9c3; border-color:#fde047; color:#854d0e; }
+  .dm-sync.err  { background:#fee2e2; border-color:#fca5a5; color:#991b1b; }
+
+  .dm-pane { display:none; }
+  .dm-pane.active { display:block; }
+
+  /* ── form chrome ── */
+  .dm-sec { font-size:11px; font-weight:800; color:var(--dm-accent); text-transform:uppercase; letter-spacing:.5px; border-bottom:2px solid #e2e8f0; padding-bottom:4px; margin:16px 0 10px; }
+  .dm-sec:first-child { margin-top:0; }
+  .dm-sec-plain { border:none; text-align:center; padding-bottom:0; }
+  .dm-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:12px; }
+  .dm-grid-filters { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+  .dm-fg { display:flex; flex-direction:column; min-width:0; }
+  .dm-fg > label { font-size:10.5px; font-weight:800; margin-bottom:5px; color:#334155; text-transform:uppercase; letter-spacing:.3px; }
+  .dm-root input[type=text], .dm-root input[type=number], .dm-root input[type=search] {
+    padding:7px 9px; border:1px solid #94a3b8; border-radius:6px; font-size:12.5px; outline:none; background:#fff; font-family:inherit; width:100%; }
+  .dm-root input:focus { border-color:var(--dm-accent); box-shadow:0 0 0 2px rgba(37,99,235,.18); }
+  .dm-readonly { background:#f1f5f9 !important; font-weight:800; color:var(--dm-accent); cursor:not-allowed; }
+  .dm-hint { font-size:11.5px; color:#64748b; margin:0 0 14px; line-height:1.5; }
+  .dm-hint code { background:#f1f5f9; padding:1px 5px; border-radius:4px; font-size:11px; }
+  .dm-note { margin-top:12px; font-size:11.5px; color:#475569; line-height:1.9; }
+  .dm-note b { color:#0f172a; }
+
+  /* ── form + photo side-by-side ── */
+  .dm-split { display:flex; gap:22px; align-items:flex-start; }
+  .dm-form-col { flex:1; min-width:0; }
+  .dm-img-col { width:270px; flex:0 0 270px; position:sticky; top:8px; display:flex; flex-direction:column; gap:10px; background:#f8fafc; padding:14px; border-radius:8px; border:1px solid #e2e8f0; }
+  .dm-preview { width:100%; height:300px; border:2px dashed #94a3b8; border-radius:6px; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; overflow:hidden; text-align:center; color:#64748b; font-size:12px; font-weight:700; padding:8px; }
+  .dm-preview small { font-size:10.5px; font-weight:500; color:#94a3b8; line-height:1.4; }
+  .dm-preview img { width:100%; height:100%; object-fit:contain; border-radius:4px; }
+  @media (max-width:820px) { .dm-split { flex-direction:column; } .dm-img-col { width:100%; flex:1 1 auto; position:static; } }
+
+  /* ── buttons ── */
+  .dm-btn { padding:8px 16px; border-radius:6px; font-size:12.5px; font-weight:800; cursor:pointer; border:none; font-family:inherit; transition:filter .15s; }
+  .dm-btn:hover:not(:disabled) { filter:brightness(1.07); }
+  .dm-btn:disabled { opacity:.55; cursor:not-allowed; }
+  .dm-btn-primary { background:var(--dm-accent); color:#fff; }
+  .dm-btn-success { background:#16a34a; color:#fff; }
+  .dm-btn-danger  { background:#dc2626; color:#fff; }
+  .dm-btn-ghost   { background:#e2e8f0; color:#334155; }
+  .dm-btn-xs { padding:4px 9px; font-size:10.5px; border-radius:5px; }
+  .dm-btn-wide { width:100%; padding:11px; font-size:13.5px; }
+  .dm-file-btn { text-align:center; display:block; padding:11px; font-size:13px; }
+  .dm-btn-row { margin-top:16px; display:flex; gap:9px; flex-wrap:wrap; align-items:center; }
+  .dm-cat-status { font-size:11.5px; font-weight:700; color:#475569; }
+
+  /* ── filter boxes ── */
+  .dm-filter-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; gap:6px; }
+  .dm-filter-head label { font-size:10.5px; font-weight:800; color:#334155; text-transform:uppercase; letter-spacing:.3px; }
+  .dm-filter-head a { font-size:10px; color:var(--dm-accent); font-weight:800; cursor:pointer; }
+  .dm-filter-head a:hover { text-decoration:underline; }
+  .dm-filter-box { border:1px solid #cbd5e1; border-radius:6px; padding:8px; background:#fff; max-height:132px; overflow-y:auto; display:flex; flex-direction:column; gap:5px; }
+  .dm-filter-box label { display:flex; align-items:center; gap:7px; font-size:11.5px; cursor:pointer; font-weight:600; }
+  .dm-filter-box input[type=checkbox] { width:14px; height:14px; cursor:pointer; flex:0 0 auto; }
+  .dm-filter-box .dm-empty { font-size:10.5px; color:#94a3b8; }
+
+  /* ── tables ── */
+  .dm-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  .dm-search { max-width:420px; }
+  .dm-count { font-size:11px; font-weight:700; color:#64748b; }
+  .dm-table-wrap { background:#fff; border:1px solid #cbd5e1; border-radius:8px; overflow-x:auto; width:100%; }
+  .dm-table { width:100%; border-collapse:collapse; font-size:11.5px; text-align:left; }
+  .dm-table th { background:#0f172a; color:#fff; padding:8px 10px; white-space:nowrap; font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; }
+  .dm-table td { padding:7px 10px; border-bottom:1px solid #e2e8f0; white-space:nowrap; vertical-align:middle; }
+  .dm-table tbody tr:nth-child(even) { background:#f8fafc; }
+  .dm-table-bulk { min-width:1400px; }
+  .dm-table-foot { display:flex; justify-content:flex-end; padding:12px; background:#f8fafc; border-top:1px solid #cbd5e1; }
+  .dm-thumb { width:42px; height:42px; object-fit:cover; border-radius:4px; border:1px solid #cbd5e1; background:#f1f5f9; cursor:zoom-in; display:block; }
+  .dm-thumb-none { width:42px; height:42px; border-radius:4px; border:1px dashed #cbd5e1; background:#f8fafc; display:flex; align-items:center; justify-content:center; font-size:9px; color:#94a3b8; }
+  .dm-empty-row { text-align:center; padding:22px; color:#64748b; font-weight:600; }
+
+  .dm-badge { display:inline-block; padding:2px 7px; border-radius:4px; font-size:10px; font-weight:800; }
+  .dm-badge-master    { background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; }
+  .dm-badge-slave     { background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; }
+  .dm-badge-live      { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+  .dm-badge-discarded { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+  .dm-badge-type      { background:#f3e8ff; color:#7e22ce; border:1px solid #d8b4fe; }
+  .dm-badge-mono      { background:#fef08a; color:#854d0e; border:1px solid #fde047; }
+  .dm-badge-count     { background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; }
+  .dm-muted { color:#94a3b8; font-weight:700; }
+
+  /* ── bulk upload ── */
+  .dm-dropzone { margin-bottom:16px; padding:16px; border:2px dashed #94a3b8; border-radius:8px; text-align:center; background:#f8fafc; }
+  .dm-dropzone label { font-weight:800; cursor:pointer; display:block; color:var(--dm-accent); font-size:14px; }
+  .dm-bulk-in { padding:5px 7px !important; border:1px solid #94a3b8; border-radius:4px; font-size:11px !important; min-width:128px; }
+  .dm-bulk-sm { width:62px !important; min-width:62px !important; text-align:center; }
+  .dm-bulk-col { display:flex; flex-direction:column; gap:6px; }
+  .dm-bulk-row { display:flex; align-items:center; gap:4px; justify-content:space-between; }
+  .dm-bulk-frames { background:#f8fafc; padding:7px; border-radius:4px; border:1px solid #e2e8f0; }
+  .dm-bulk-total { font-weight:800; color:var(--dm-accent); font-size:11px; text-align:center; margin-top:2px; padding-top:4px; border-top:1px dashed #cbd5e1; }
+
+  /* ── edit modal ── */
+  #dmEditModal { display:none; position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:5200; justify-content:center; align-items:center; padding:16px; }
+  #dmEditModal.open { display:flex; }
+  .dm-modal-box { background:#fff; border-radius:10px; padding:20px; width:100%; max-width:760px; max-height:90vh; overflow-y:auto; box-shadow:0 20px 50px rgba(0,0,0,.3); }
+  .dm-modal-box h3 { margin:0 0 14px; border-bottom:1px solid #cbd5e1; padding-bottom:9px; font-size:15px; color:#0f172a; }
+  .dm-mrow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 4px; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; }
+  .dm-mrow-left { display:flex; align-items:center; gap:9px; min-width:0; }
+  .dm-mrow-left b { font-size:12px; }
+  .dm-mrow-right { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .dm-mrow-right > label { font-size:11px; font-weight:700; display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .dm-repl { font-size:10.5px; font-weight:800; color:#0369a1; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:5px; padding:4px 9px; cursor:pointer; }
+
+  /* ── catalogue preview pages (screen) ── */
+  .dm-cat-page { background:#fff; border:1px solid #cbd5e1; box-shadow:0 4px 12px rgba(0,0,0,.09); width:210mm; max-width:100%; min-height:297mm; margin:16px auto; padding:26px; position:relative; }
+  .dm-cat-head { text-align:center; border-bottom:3px double #0f172a; padding-bottom:10px; margin-bottom:16px; }
+  .dm-cat-head h1 { font-size:21pt; font-weight:900; letter-spacing:1.4px; color:#0f172a; text-transform:uppercase; margin:0; }
+  .dm-cat-head p { font-size:10pt; color:#475569; font-weight:700; margin:3px 0 0; letter-spacing:.5px; }
+  .dm-cat-cover { width:100%; height:350px; object-fit:contain; border-radius:8px; background:#f1f5f9; border:1px solid #cbd5e1; display:block; }
+  .dm-cat-cover-none { width:100%; height:350px; border-radius:8px; background:#f1f5f9; border:1px solid #cbd5e1; display:flex; align-items:center; justify-content:center; color:#64748b; font-weight:700; }
+  .dm-cat-specs { margin-top:20px; border-collapse:collapse; width:100%; font-size:9.5pt; }
+  .dm-cat-specs td, .dm-cat-specs th { border:1px solid #cbd5e1; padding:7px 12px; text-align:left; }
+  .dm-cat-specs th { background:#f8fafc; color:#334155; font-weight:800; width:25%; }
+  .dm-cat-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:12px; }
+  .dm-cat-card { border:1px solid #cbd5e1; border-radius:6px; padding:7px; text-align:center; background:#fff; }
+  .dm-cat-card img { width:100%; height:165px; object-fit:contain; border-radius:4px; background:#f8fafc; display:block; }
+  .dm-cat-card .dm-cat-none { height:165px; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:9pt; border-radius:4px; }
+  .dm-cat-card .t { font-size:9.5pt; font-weight:800; margin-top:5px; color:#1e293b; }
+  .dm-cat-card .s { font-size:8pt; color:#64748b; }
+  .dm-cat-foot { position:absolute; bottom:14px; left:26px; right:26px; display:flex; justify-content:space-between; border-top:1px solid #e2e8f0; padding-top:7px; font-size:8.5pt; color:#64748b; }
+
+  /* ── photo lightbox ── */
+  #dmLightbox { display:none; position:fixed; inset:0; background:rgba(15,23,42,.85); z-index:5400; align-items:center; justify-content:center; padding:24px; cursor:zoom-out; }
+  #dmLightbox.open { display:flex; }
+  #dmLightbox img { max-width:94vw; max-height:88vh; object-fit:contain; border-radius:8px; background:#fff; }
+  #dmLightbox .cap { position:absolute; bottom:18px; left:0; right:0; text-align:center; color:#e2e8f0; font-size:12px; font-weight:700; }
+</style>
+
+<!-- Design edit modal -->
+<div id="dmEditModal">
+  <div class="dm-modal-box dm-root">
+    <h3>&#9999;&#65039; Update Design Details</h3>
+    <form id="dmEditDesignForm" autocomplete="off">
+      <input type="hidden" id="dmEditDesignId">
+      <div class="dm-grid">
+        <div class="dm-fg"><label>DESIGN NO</label><input type="text" id="dmEditDesignNo" oninput="this.value=this.value.toUpperCase()" required></div>
+        <div class="dm-fg"><label>DESIGN UNIT</label><input type="text" id="dmEditDesignUnit" list="dmUnitList" required></div>
+        <div class="dm-fg"><label>BED SIZE</label><input type="text" id="dmEditBedSize" list="dmBedSizeList" required></div>
+        <div class="dm-fg"><label>BLANKET QUALITY</label><input type="text" id="dmEditBlanketQuality" list="dmQualityList" required></div>
+        <div class="dm-fg"><label>DESIGN TYPE</label><input type="text" id="dmEditDesignType" list="dmTypeList" required></div>
+        <div class="dm-fg"><label>MONOPOLY</label><input type="text" id="dmEditMonopoly" list="dmMonopolyList" required></div>
+        <div class="dm-fg"><label>FRAME TYPE</label><input type="text" id="dmEditFrameType" list="dmFrameTypeList" required></div>
+        <div class="dm-fg"><label>FRAMES &mdash; L(117) / M(85) / S(60)</label>
+          <div style="display:flex; gap:5px;">
+            <input type="number" id="dmEditLargeFrame" min="0" placeholder="L">
+            <input type="number" id="dmEditMediumFrame" min="0" placeholder="M">
+            <input type="number" id="dmEditSmallFrame" min="0" placeholder="S">
+          </div>
+        </div>
+        <div class="dm-fg"><label>TOTAL FRAMES</label><input type="text" id="dmEditTotalFrames" readonly value="0" class="dm-readonly"></div>
+        <div class="dm-fg"><label>PARTY NAME</label><input type="text" id="dmEditPartyName" list="dmPartyList" required></div>
+        <div class="dm-fg"><label>BRAND NAME</label><input type="text" id="dmEditBrandName" list="dmBrandList" required></div>
+      </div>
+      <div class="dm-sec">Matchings Management</div>
+      <p class="dm-hint" style="margin-bottom:8px;">Master badalna, photo badalna ya matching hatana turant Supabase me save hota hai &mdash; neeche ka Update sirf design ke fields ke liye hai.</p>
+      <div id="dmEditMatchingsList" style="margin-bottom:14px;"></div>
+      <div class="dm-btn-row" style="justify-content:flex-end;">
+        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmCloseEditModal()">Cancel</button>
+        <button type="submit" class="dm-btn dm-btn-primary">&#128190; Update &amp; Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="dmLightbox" onclick="dmCloseLightbox()"><img id="dmLightboxImg" alt=""><div class="cap" id="dmLightboxCap"></div></div>
+
+<datalist id="dmUnitList"><option value="UNIT 1"></option><option value="UNIT 2"></option></datalist>
+<datalist id="dmBedSizeList"><option value="DOUBLE BED"></option><option value="SINGLE BED"></option></datalist>
+<datalist id="dmQualityList"><option value="MINK"></option><option value="SUPER CLOUDY"></option></datalist>
+<datalist id="dmTypeList"><option value="FLORAL"></option><option value="GEOMETRICAL"></option><option value="ABSTRACT"></option><option value="LEAVES"></option></datalist>
+<datalist id="dmFrameTypeList"><option value="MS ROUND FRAME"></option><option value="MS SQUARE FRAME"></option></datalist>
+<datalist id="dmMonopolyList"><option value="NO"></option><option value="YES"></option></datalist>
+<datalist id="dmMatchingTypeList"><option value="MASTER"></option><option value="SLAVE"></option></datalist>
+<datalist id="dmShadeList"></datalist>
+<datalist id="dmLiveDesignList"></datalist>
+<datalist id="dmPartyList"></datalist>
+<datalist id="dmBrandList"></datalist>
+
+<script>
+/* ============================================================================
+   PRODUCTION › DESIGN MASTER
+   ----------------------------------------------------------------------------
+   V18 ka offline (localStorage) design manager, ab Supabase par:
+
+     design_master      — ek row per DESIGN NO
+     design_matchings   — us design ke shades, har ek ke photo ka path
+     bucket sarv-pdfs   — design-images/<DESIGN NO>/<stamp>-<rand>.jpg
+
+   Photo ka SACH `image_path` hai, `image_url` nahi. Har jagah src banane ke
+   liye dmImgSrc() path se public URL banata hai — isi liye project ka domain
+   badal jaane par bhi purani photos load hoti rehti hain, aur design number
+   se uska poora folder seedha mil jaata hai (aage design-no-wise image
+   updates isi par banenge — dmDesignImages() / dmDesignFolder() dekhein).
+
+   Table banane ke liye: DESIGN_MASTER_MIGRATION.sql (isi folder me) ko
+   Supabase › SQL Editor me ek baar chalayein.
+============================================================================ */
+(function(){
+  'use strict';
+
+  const DM_BUCKET = 'sarv-pdfs';
+  const DM_FOLDER = 'design-images';
+
+  /* V18 ki shade list — matching naam isi se chune jaate hain. */
+  const DM_SHADES = [
+    "5001 - PEACOCK GREEN","5002 - COFFEE","5003 - BURGUNDY","5004 - DARK PISTA",
+    "5005 - MEHENDI","5006 - OLIVE","5007 - BRIGHT CREAM","5008 - SKY GREY",
+    "5009 - DARK MOUSE","5010 - IVORY","5011 - LIGHT PISTA","5012 - BISCUIT",
+    "5013 - SLATE GREY","5014 - LIGHT MOUSE","5015 - LIGHT CAMEL","5016 - DARK CAMEL",
+    "5017 - LIGHT GREY","5018 - ARMY GREEN","5019 - MEDIUM GREY","5020 - PEACOCK BLUE",
+    "5021 - ARMY BLUE","5022 - LIGHT PURPLE","5023 - DUSTY ROSE","5024 - ROSE GOLD",
+    "5025 - DARK PURPLE","5026 - RUST","5027 - DULL MARRON","5028 - GOLD",
+    "5029 - LIGHT BURGUNDY","5030 - BURGUNDY","4001 - ARMY GREEN","4002 - ARMY BLUE",
+    "4003 - WINE","4004/104 - LIGHT BURGUNDY","4005 - LIGHT PINK","4006 - CREAM",
+    "4007 - PEACOCK BLUE","4008/112 - COFFEE - 4008/112","4009 - DARK PURPLE",
+    "4010 - DARK PEACOCK BLUE","4011/118 - BRIGHT PURPLE","4012/109 - GOLD",
+    "4013/103 - MARRON","4014/106 - RUST","4015/102 - RED","4016/124 - NAVY",
+    "4017 - MENENDI","4018 - GREY","4019 - Z BLACK","4020 - LIGHT PURPLE",
+    "4021 - DULL PISTA","4022 - CAMEL","4023 - TURQUISE GREEN","4024 - DARK GREY",
+    "4025 - PURPULISH GREY","4026 - DARK PISTA","4027 - PEACOCK GREEN","4028 - LIGHT PISTA",
+    "4029 - GEENISH GREY","4030 - RANI","4031 - FOREST GREEN","4032 - DARK LEVENDER",
+    "4033 - DARK MOUSE"
+  ];
+
+  /* ── state ──────────────────────────────────────────────────────────── */
+  let dmDesigns = [];           // [{…design_master row, matchings:[row,…]}]
+  let dmLoaded = false;
+  let dmLoadPromise = null;
+  let dmBulkRows = [];          // [{rowId, file, previewUrl}]
+  let dmCatalogue = [];         // pichhli baar generate kiya hua selection
+  const dmImgCache = new Map(); // url → Promise<{dataUrl,w,h,fmt}|null>
+
+  /* ── chhote helpers ─────────────────────────────────────────────────── */
+  const q = id => document.getElementById(id);
+  const esc = v => (typeof escText === 'function') ? escText(v)
+      : String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const up = v => String(v == null ? '' : v).trim().toUpperCase();
+  const num = v => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
+  const toast = (m, t) => (typeof showToast === 'function') ? showToast(m, t || 'success') : console.log('[DM]', m);
+  const totalFrames = d => num(d.large_frame) + num(d.medium_frame) + num(d.small_frame);
+  const masterOf = d => (d.matchings || []).find(m => m.matching_type === 'MASTER') || (d.matchings || [])[0] || null;
+
+  function whoAmI(){
+    try {
+      if (typeof sarvCurrentUser !== 'undefined' && sarvCurrentUser && sarvCurrentUser.name) return sarvCurrentUser.name;
+      if (typeof sarvCurrentRole !== 'undefined' && sarvCurrentRole) {
+        return (typeof SARV_ROLE_LABEL !== 'undefined' && SARV_ROLE_LABEL[sarvCurrentRole]) || sarvCurrentRole;
+      }
+    } catch (e) {}
+    return '';
+  }
+  /* Feature Access matrix (Admin Panel) — login se pehle ya function na hone
+     par rok nahi lagti, baaki jagah wahi niyam jo poori app par hai. */
+  function can(key){
+    try { return (typeof sarvCan !== 'function') || !sarvCurrentRole || sarvCan(key); }
+    catch (e) { return true; }
+  }
+  function guard(key){
+    if (can(key)) return true;
+    if (typeof sarvDeny === 'function') sarvDeny(key);
+    return false;
+  }
+  function setSync(text, kind){
+    const el = q('dmSyncStatus'); if (!el) return;
+    el.textContent = text;
+    el.className = 'dm-sync' + (kind ? ' ' + kind : '');
+  }
+  function sbReady(){
+    if (typeof SB_READY !== 'undefined' && SB_READY && typeof SB !== 'undefined' && SB) return true;
+    setSync('Supabase setup baaki hai', 'err');
+    toast('Supabase connect nahi hai — Design Master save / load nahi hoga.', 'error');
+    return false;
+  }
+
+  /* ── Storage: path hi sach hai ───────────────────────────────────────── */
+  /* DESIGN NO ko folder-safe banata hai. "4004/104" jaisa naam slash ke
+     kaaran nested folder bana deta tha, isi liye har aisa character '-' ho
+     jaata hai — ek design = ek folder. */
+  function pathSafe(v){
+    return up(v).replace(/[^A-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'NA';
+  }
+  function dmPublicUrl(path){
+    if (!path) return '';
+    try { const r = SB.storage.from(DM_BUCKET).getPublicUrl(path); return (r && r.data && r.data.publicUrl) || ''; }
+    catch (e) { return ''; }
+  }
+  /* Kisi bhi matching row ka <img src>. image_path se banta hai; sirf tab
+     image_url par girta hai jab path hi na ho. */
+  function dmImgSrc(m){
+    if (!m) return '';
+    return (m.image_path ? dmPublicUrl(m.image_path) : '') || m.image_url || '';
+  }
+
+  /* Upload se pehle resize: 1500px lambi side, JPEG 85% — screen aur A4 PDF
+     dono ke liye kaafi, aur 6 MB ka phone photo ~250 KB ho jaata hai. */
+  function compressImage(file, maxSide, quality){
+    maxSide = maxSide || 1500; quality = quality || 0.85;
+    return new Promise(resolve => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+          const w = Math.max(1, Math.round(img.naturalWidth * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);   // PNG transparency JPEG me kaali na pade
+          ctx.drawImage(img, 0, 0, w, h);
+          c.toBlob(b => { URL.revokeObjectURL(url); resolve(b || file); }, 'image/jpeg', quality);
+        } catch (e) { URL.revokeObjectURL(url); resolve(file); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
+  async function uploadDesignImage(designNo, file){
+    const blob = await compressImage(file);
+    const path = DM_FOLDER + '/' + pathSafe(designNo) + '/' +
+                 Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
+    const res = await SB.storage.from(DM_BUCKET).upload(path, blob, {
+      upsert: true, contentType: 'image/jpeg', cacheControl: '31536000'
+    });
+    if (res.error) throw res.error;
+    return { path: path, url: dmPublicUrl(path) };
+  }
+
+  /* Purani file hata dena — replace ke baad bucket me kachra na bache. Fail
+     hone par chup rehta hai: row ka naya path pehle hi save ho chuka hai. */
+  async function removeStored(path){
+    if (!path) return;
+    try { await SB.storage.from(DM_BUCKET).remove([path]); }
+    catch (e) { console.warn('[DM] purani image delete nahi hui:', path, e.message || e); }
+  }
+
+  /* ── image → dataURL (jsPDF ke liye): ek baar fetch, phir cache ────── */
+  function imgData(url){
+    if (!url) return Promise.resolve(null);
+    if (dmImgCache.has(url)) return dmImgCache.get(url);
+    const p = (async () => {
+      try {
+        const r = await fetch(url, { cache: 'force-cache' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const blob = await r.blob();
+        const dataUrl = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(fr.result);
+          fr.onerror = () => rej(fr.error);
+          fr.readAsDataURL(blob);
+        });
+        const size = await new Promise(res => {
+          const i = new Image();
+          i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight });
+          i.onerror = () => res(null);
+          i.src = dataUrl;
+        });
+        return {
+          dataUrl: dataUrl,
+          w: size ? size.w : 1,
+          h: size ? size.h : 1,
+          fmt: /^data:image\/png/i.test(dataUrl) ? 'PNG' : 'JPEG'
+        };
+      } catch (e) {
+        console.warn('[DM] image load fail:', url, e.message || e);
+        return null;
+      }
+    })();
+    dmImgCache.set(url, p);
+    return p;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     LOAD
+  ════════════════════════════════════════════════════════════════════ */
+  async function loadDesigns(force){
+    if (!sbReady()) return [];
+    if (dmLoadPromise) return dmLoadPromise;
+    if (dmLoaded && !force) return dmDesigns;
+    setSync('Loading…', 'busy');
+    dmLoadPromise = (async () => {
+      const [masters, matchings] = await Promise.all([
+        fetchAllRows('design_master', '*', 'design_no'),
+        fetchAllRows('design_matchings', '*', 'id')
+      ]);
+      const index = new Map();
+      (masters || []).forEach(d => { d.matchings = []; index.set(d.id, d); });
+      (matchings || []).forEach(m => { const d = index.get(m.design_id); if (d) d.matchings.push(m); });
+      // MASTER sabse pehle, phir sort_order, phir id — catalogue isi kram par chalta hai.
+      index.forEach(d => d.matchings.sort((a, b) =>
+        (a.matching_type === 'MASTER' ? 0 : 1) - (b.matching_type === 'MASTER' ? 0 : 1) ||
+        (num(a.sort_order) - num(b.sort_order)) || (a.id - b.id)));
+      // Nayi entry sabse upar (V18 ki tarah).
+      return (masters || []).slice().sort((a, b) =>
+        String(b.created_at || '').localeCompare(String(a.created_at || '')) || (b.id - a.id));
+    })();
+    try {
+      dmDesigns = await dmLoadPromise;
+      dmLoaded = true;
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      renderAll();
+      if (force) toast('Design Master refresh ho gaya — ' + dmDesigns.length + ' designs.', 'success');
+    } catch (e) {
+      console.error('[DM] load fail:', e);
+      setSync('Load fail', 'err');
+      const missing = /does not exist|schema cache|Could not find the table/i.test(e.message || '');
+      toast(missing
+        ? 'design_master table nahi mila — pehle DESIGN_MASTER_MIGRATION.sql Supabase SQL Editor me chalayein.'
+        : 'Design Master load fail: ' + (e.message || e), 'error');
+    } finally {
+      dmLoadPromise = null;
+    }
+    return dmDesigns;
+  }
+
+  function findByNo(no){
+    const n = up(no);
+    return dmDesigns.find(d => up(d.design_no) === n) || null;
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     RENDER
+  ════════════════════════════════════════════════════════════════════ */
+  function renderAll(){
+    renderDatalists();
+    renderLive();
+    renderDiscarded();
+    renderCatalogueFilters();
+  }
+
+  function fillList(id, values){
+    const el = q(id); if (!el) return;
+    el.innerHTML = values.map(v => '<option value="' + esc(v) + '"></option>').join('');
+  }
+
+  function renderDatalists(){
+    fillList('dmShadeList', DM_SHADES);
+    const live = dmDesigns.filter(d => d.status === 'LIVE');
+    const uniq = key => [...new Set(dmDesigns.map(d => d[key]).filter(Boolean))].sort();
+    fillList('dmPartyList', uniq('party_name'));
+    fillList('dmBrandList', uniq('brand_name'));
+    const ld = q('dmLiveDesignList');
+    if (ld) ld.innerHTML = live.map(d =>
+      '<option value="' + esc(d.design_no) + '">' + esc(d.design_no) + ' — ' +
+      esc(d.party_name || '') + ' (' + esc(d.brand_name || '') + ')</option>').join('');
+    // Jo values pehle se database me hain, wo bhi dropdown me aa jaayein.
+    const merge = (id, base, key) =>
+      fillList(id, [...new Set(base.concat(dmDesigns.map(d => d[key]).filter(Boolean)))]);
+    merge('dmUnitList', ['UNIT 1', 'UNIT 2'], 'design_unit');
+    merge('dmBedSizeList', ['DOUBLE BED', 'SINGLE BED'], 'bed_size');
+    merge('dmQualityList', ['MINK', 'SUPER CLOUDY'], 'blanket_quality');
+    merge('dmTypeList', ['FLORAL', 'GEOMETRICAL', 'ABSTRACT', 'LEAVES'], 'design_type');
+    merge('dmFrameTypeList', ['MS ROUND FRAME', 'MS SQUARE FRAME'], 'frame_type');
+  }
+
+  function thumbHtml(src, alt){
+    if (!src) return '<div class="dm-thumb-none">—</div>';
+    return '<img class="dm-thumb" loading="lazy" src="' + esc(src) + '" alt="' + esc(alt || '') +
+           '" onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">';
+  }
+  const monoCell = v => (v === 'YES')
+    ? '<span class="dm-badge dm-badge-mono">YES</span>'
+    : '<span class="dm-muted">NO</span>';
+
+  function renderLive(){
+    const box = q('dmLiveSearch');
+    const term = up(box ? box.value : '');
+    const all = dmDesigns.filter(d => d.status === 'LIVE');
+    const rows = !term ? all : all.filter(d =>
+      [d.design_no, d.party_name, d.brand_name, d.design_type, d.design_unit, d.blanket_quality]
+        .concat((d.matchings || []).map(m => m.matching_name))
+        .some(v => up(v).indexOf(term) >= 0));
+
+    const lc = q('dmLiveCount');    if (lc) lc.textContent = all.length;
+    const dc = q('dmDiscardCount'); if (dc) dc.textContent = dmDesigns.filter(d => d.status === 'DISCARDED').length;
+    const sh = q('dmLiveShown');    if (sh) sh.textContent = term ? (rows.length + ' / ' + all.length + ' dikh rahe hain') : '';
+
+    const tb = q('dmLiveTableBody'); if (!tb) return;
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="14" class="dm-empty-row">' +
+        (all.length ? 'Is khoj se koi design nahi mila.' : 'Koi Live Design nahi hai — “Create New” se shuru karein.') +
+        '</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(d => {
+      const m = masterOf(d);
+      return '<tr>' +
+        '<td><button type="button" class="dm-btn dm-btn-primary dm-btn-xs" onclick="dmOpenEditModal(' + d.id + ')">✏️ Edit</button> ' +
+            '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Discard" onclick="dmSetStatus(' + d.id + ',\'DISCARDED\')">🗑️</button></td>' +
+        '<td>' + thumbHtml(dmImgSrc(m), d.design_no) + '</td>' +
+        '<td><strong>' + esc(d.design_no) + '</strong></td>' +
+        '<td>' + monoCell(d.monopoly) + '</td>' +
+        '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
+        '<td>' + esc(d.party_name || '') + '</td>' +
+        '<td>' + esc(d.brand_name || '') + '</td>' +
+        '<td>' + esc(d.design_unit || '') + '</td>' +
+        '<td>' + esc(d.bed_size || '') + '</td>' +
+        '<td>' + esc(d.blanket_quality || '') + '</td>' +
+        '<td>' + num(d.large_frame) + ' / ' + num(d.medium_frame) + ' / ' + num(d.small_frame) +
+            ' <strong style="color:#2563eb;">[' + totalFrames(d) + ']</strong></td>' +
+        '<td><span class="dm-badge dm-badge-count">' + (d.matchings || []).length + ' Shades</span></td>' +
+        '<td><span class="dm-badge dm-badge-master">' + esc(m ? m.matching_name : 'N/A') + '</span></td>' +
+        '<td><span class="dm-badge dm-badge-live">LIVE</span></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function renderDiscarded(){
+    const tb = q('dmDiscardedTableBody'); if (!tb) return;
+    const rows = dmDesigns.filter(d => d.status === 'DISCARDED');
+    if (!rows.length) {
+      tb.innerHTML = '<tr><td colspan="11" class="dm-empty-row">Koi discarded design nahi hai.</td></tr>';
+      return;
+    }
+    tb.innerHTML = rows.map(d =>
+      '<tr>' +
+        '<td><button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmSetStatus(' + d.id + ',\'LIVE\')">♻️ Restore</button></td>' +
+        '<td>' + thumbHtml(dmImgSrc(masterOf(d)), d.design_no) + '</td>' +
+        '<td><strong>' + esc(d.design_no) + '</strong></td>' +
+        '<td>' + monoCell(d.monopoly) + '</td>' +
+        '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
+        '<td>' + esc(d.party_name || '') + '</td>' +
+        '<td>' + esc(d.brand_name || '') + '</td>' +
+        '<td>' + esc(d.design_unit || '') + '</td>' +
+        '<td>' + esc(d.bed_size || '') + '</td>' +
+        '<td>' + esc(d.discarded_at ? new Date(d.discarded_at).toLocaleDateString('en-GB') : '—') + '</td>' +
+        '<td><span class="dm-badge dm-badge-discarded">DISCARDED</span></td>' +
+      '</tr>').join('');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     CREATE NEW
+  ════════════════════════════════════════════════════════════════════ */
+  const EMPTY_NEW = '<span style="font-size:2rem;">🖼️</span><span>[ Passport Size Preview ]</span>' +
+                    '<small>Photo dekh kar left side me details fill karein</small>';
+  const EMPTY_MTC = '<span style="font-size:2rem;">🖼️</span><span>[ Passport Size Preview ]</span>';
+
+  function previewInto(boxId, file, emptyHtml){
+    const box = q(boxId); if (!box) return;
+    if (!file) { box.innerHTML = emptyHtml; return; }
+    const url = URL.createObjectURL(file);
+    box.innerHTML = '';
+    const img = document.createElement('img');
+    img.alt = 'Preview';
+    img.onload = () => setTimeout(() => URL.revokeObjectURL(url), 1000);
+    img.src = url;
+    box.appendChild(img);
+  }
+
+  function calcNewTotal(){
+    const t = q('dmTotalFrames'); if (!t) return;
+    t.value = num(q('dmLargeFrame').value) + num(q('dmMediumFrame').value) + num(q('dmSmallFrame').value);
+  }
+  function calcEditTotal(){
+    const t = q('dmEditTotalFrames'); if (!t) return;
+    t.value = num(q('dmEditLargeFrame').value) + num(q('dmEditMediumFrame').value) + num(q('dmEditSmallFrame').value);
+  }
+
+  async function saveNewDesign(ev){
+    ev.preventDefault();
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    const btn = ev.target.querySelector('button[type=submit]');
+    const designNo = up(q('dmDesignNo').value);
+    if (!designNo) { toast('DESIGN NO zaroori hai.', 'error'); return; }
+
+    await loadDesigns();
+    if (findByNo(designNo)) {
+      toast('Design No ' + designNo + ' pehle se hai — “Add Matching” use karein.', 'warn');
+      return;
+    }
+
+    const file = (q('dmInitialImage').files || [])[0] || null;
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+    setSync('Saving…', 'busy');
+    try {
+      const ins = await SB.from('design_master').insert({
+        design_no:       designNo,
+        party_name:      q('dmPartyName').value.trim(),
+        brand_name:      q('dmBrandName').value.trim(),
+        design_unit:     q('dmDesignUnit').value.trim(),
+        bed_size:        q('dmBedSize').value.trim(),
+        design_type:     q('dmDesignType').value.trim() || 'N/A',
+        monopoly:        up(q('dmMonopoly').value) === 'YES' ? 'YES' : 'NO',
+        blanket_quality: q('dmBlanketQuality').value.trim(),
+        frame_type:      q('dmFrameType').value.trim(),
+        large_frame:     num(q('dmLargeFrame').value),
+        medium_frame:    num(q('dmMediumFrame').value),
+        small_frame:     num(q('dmSmallFrame').value),
+        status:          'LIVE',
+        created_by:      whoAmI()
+      }).select().single();
+      if (ins.error) throw ins.error;
+      const design = ins.data;
+
+      /* Photo pehle design banne ke BAAD upload hoti hai — duplicate Design
+         No par insert ruk jaata hai aur bucket me anaath file nahi padti.
+         Upload fail hua to design bach jaata hai, photo Edit se lag jaati hai. */
+      let img = { path: null, url: null };
+      if (file) {
+        try { img = await uploadDesignImage(designNo, file); }
+        catch (e) { toast('Photo upload fail — design save ho gaya, photo Edit se lagayein.', 'warn'); }
+      }
+
+      const mIns = await SB.from('design_matchings').insert({
+        design_id:       design.id,
+        design_no:       designNo,
+        matching_name:   q('dmInitialMatchingName').value.trim(),
+        blanket_quality: q('dmBlanketQuality').value.trim(),
+        matching_type:   up(q('dmInitialMatchingType').value) === 'SLAVE' ? 'SLAVE' : 'MASTER',
+        image_path:      img.path,
+        image_url:       img.url,
+        sort_order:      0,
+        created_by:      whoAmI()
+      }).select().single();
+      if (mIns.error) throw mIns.error;
+
+      design.matchings = [mIns.data];
+      dmDesigns.unshift(design);
+      renderAll();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+
+      q('dmNewDesignForm').reset();
+      q('dmDesignUnit').value = 'UNIT 1';
+      q('dmBedSize').value = 'DOUBLE BED';
+      q('dmBlanketQuality').value = 'MINK';
+      q('dmMonopoly').value = 'NO';
+      q('dmInitialMatchingType').value = 'MASTER';
+      q('dmFrameType').value = 'MS ROUND FRAME';
+      q('dmTotalFrames').value = '0';
+      q('dmNewDesignPreview').innerHTML = EMPTY_NEW;
+      toast('Design ' + designNo + ' save ho gaya.', 'success');
+      showPane('dmLivePane');
+    } catch (e) {
+      console.error('[DM] save fail:', e);
+      setSync('Save fail', 'err');
+      toast(/duplicate key|unique/i.test(e.message || '')
+        ? 'Design No ' + designNo + ' database me pehle se hai.'
+        : 'Save fail: ' + (e.message || e), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '💾 Save New Design'; }
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     ADD MATCHING
+  ════════════════════════════════════════════════════════════════════ */
+  function populateMatchingInfo(){
+    const d = findByNo(q('dmSelectDesign').value);
+    const pb = q('dmMatchingPartyBrand');
+    const live = d && d.status === 'LIVE';
+    if (pb) pb.value = live ? ((d.party_name || '') + ' | ' + (d.brand_name || '') + ' (' + (d.bed_size || '') + ')') : '';
+    const info = q('dmMatchingExisting'); if (!info) return;
+    if (!live) { info.innerHTML = ''; return; }
+    if (d.blanket_quality) q('dmMatchingBlanketQuality').value = d.blanket_quality;
+    info.innerHTML = '<b>' + esc(d.design_no) + '</b> me abhi ' + (d.matchings || []).length + ' matching hain: ' +
+      (d.matchings || []).map(m => '<span class="dm-badge ' +
+        (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' +
+        esc(m.matching_name) + '</span>').join(' ');
+  }
+
+  async function addMatching(ev){
+    ev.preventDefault();
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    await loadDesigns();
+    const d = findByNo(q('dmSelectDesign').value);
+    if (!d || d.status !== 'LIVE') { toast('Sahi LIVE Design No chunein.', 'error'); return; }
+
+    const name = q('dmNewMatchingName').value.trim();
+    if (!name) { toast('Matching name zaroori hai.', 'error'); return; }
+    if ((d.matchings || []).some(m => up(m.matching_name) === up(name))) {
+      toast('“' + name + '” is design me pehle se hai.', 'warn');
+      return;
+    }
+
+    const wantMaster = up(q('dmNewMatchingType').value) === 'MASTER';
+    const file = (q('dmNewMatchingImage').files || [])[0] || null;
+    const btn = ev.target.querySelector('button[type=submit]');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Adding…'; }
+    setSync('Saving…', 'busy');
+    try {
+      let img = { path: null, url: null };
+      if (file) {
+        try { img = await uploadDesignImage(d.design_no, file); }
+        catch (e) { toast('Photo upload fail — matching bina photo add ho rahi hai.', 'warn'); }
+      }
+      /* MASTER ek hi ho sakta hai (partial unique index) — isi liye pehle
+         baakiyon ko SLAVE karna padta hai, tabhi naya MASTER ban sakta hai. */
+      if (wantMaster) {
+        const dem = await SB.from('design_matchings').update({ matching_type: 'SLAVE' })
+          .eq('design_id', d.id).eq('matching_type', 'MASTER');
+        if (dem.error) throw dem.error;
+        (d.matchings || []).forEach(m => { m.matching_type = 'SLAVE'; });
+      }
+      const ins = await SB.from('design_matchings').insert({
+        design_id:       d.id,
+        design_no:       d.design_no,
+        matching_name:   name,
+        blanket_quality: q('dmMatchingBlanketQuality').value.trim(),
+        matching_type:   wantMaster ? 'MASTER' : 'SLAVE',
+        image_path:      img.path,
+        image_url:       img.url,
+        sort_order:      (d.matchings || []).length,
+        created_by:      whoAmI()
+      }).select().single();
+      if (ins.error) throw ins.error;
+
+      d.matchings = (d.matchings || []).concat([ins.data]);
+      renderAll();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      q('dmAddMatchingForm').reset();
+      q('dmNewMatchingType').value = 'SLAVE';
+      q('dmMatchingBlanketQuality').value = 'MINK';
+      q('dmMatchingPreview').innerHTML = EMPTY_MTC;
+      q('dmMatchingExisting').innerHTML = '';
+      toast('Matching “' + name + '” add ho gayi.', 'success');
+    } catch (e) {
+      console.error('[DM] matching fail:', e);
+      setSync('Save fail', 'err');
+      toast('Matching add fail: ' + (e.message || e), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = '➕ Add Matching'; }
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     BULK UPLOAD (purana data — ek saath kai photos)
+  ════════════════════════════════════════════════════════════════════ */
+  function bulkAddFiles(ev){
+    const files = Array.from(ev.target.files || []);
+    ev.target.value = '';
+    if (!files.length) return;
+    q('dmBulkTableContainer').style.display = 'block';
+    const tb = q('dmBulkTableBody');
+    files.forEach((file, i) => {
+      const rowId = 'dmBulk_' + Date.now() + '_' + i;
+      const previewUrl = URL.createObjectURL(file);
+      dmBulkRows.push({ rowId: rowId, file: file, previewUrl: previewUrl });
+      // File ka naam hi Design No ban jaata hai — extension hata kar, upper-case.
+      const guess = file.name.replace(/\.[^/.]+$/, '').toUpperCase();
+      const tr = document.createElement('tr');
+      tr.id = rowId;
+      tr.innerHTML =
+        '<td><img src="' + previewUrl + '" class="dm-thumb" style="width:58px;height:58px;" alt=""></td>' +
+        '<td><input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;"></td>' +
+        '<td><div class="dm-bulk-col">' +
+          '<input type="text" class="dm-bulk-in b-party" list="dmPartyList" placeholder="Party">' +
+          '<input type="text" class="dm-bulk-in b-brand" list="dmBrandList" placeholder="Brand"></div></td>' +
+        '<td><div class="dm-bulk-col">' +
+          '<input type="text" class="dm-bulk-in b-unit" list="dmUnitList" value="UNIT 1" placeholder="Unit">' +
+          '<input type="text" class="dm-bulk-in b-bed" list="dmBedSizeList" value="DOUBLE BED" placeholder="Bed Size">' +
+          '<input type="text" class="dm-bulk-in b-type" list="dmTypeList" placeholder="Design Type">' +
+          '<input type="text" class="dm-bulk-in b-mono" list="dmMonopolyList" value="NO" placeholder="Monopoly"></div></td>' +
+        '<td><div class="dm-bulk-col">' +
+          '<input type="text" class="dm-bulk-in b-quality" list="dmQualityList" value="MINK" placeholder="Quality">' +
+          '<input type="text" class="dm-bulk-in b-frame" list="dmFrameTypeList" value="MS ROUND FRAME" placeholder="Frame Type"></div></td>' +
+        '<td><input type="text" class="dm-bulk-in b-matching" list="dmShadeList" placeholder="Search Shade…"></td>' +
+        '<td><div class="dm-bulk-col dm-bulk-frames">' +
+          '<div class="dm-bulk-row"><span style="width:14px;font-weight:800;" title="117 X 119">L:</span><input type="number" class="dm-bulk-in dm-bulk-sm b-large" value="0" min="0"></div>' +
+          '<div class="dm-bulk-row"><span style="width:14px;font-weight:800;" title="85 X 119">M:</span><input type="number" class="dm-bulk-in dm-bulk-sm b-medium" value="0" min="0"></div>' +
+          '<div class="dm-bulk-row"><span style="width:14px;font-weight:800;" title="60 X 119">S:</span><input type="number" class="dm-bulk-in dm-bulk-sm b-small" value="0" min="0"></div>' +
+          '<div class="dm-bulk-total">Total: <span class="b-total">0</span></div></div></td>' +
+        '<td style="text-align:center;"><span class="b-state" style="font-size:10.5px;font-weight:800;color:#64748b;"></span><br>' +
+          '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" onclick="dmRemoveBulkRow(\'' + rowId + '\')">❌ Remove</button></td>';
+      tb.appendChild(tr);
+      tr.addEventListener('input', e => {
+        if (!e.target.matches('.b-large,.b-medium,.b-small')) return;
+        tr.querySelector('.b-total').textContent =
+          num(tr.querySelector('.b-large').value) + num(tr.querySelector('.b-medium').value) + num(tr.querySelector('.b-small').value);
+      });
+    });
+  }
+
+  function removeBulkRow(rowId){
+    const tr = q(rowId); if (tr) tr.remove();
+    const hit = dmBulkRows.find(r => r.rowId === rowId);
+    if (hit) URL.revokeObjectURL(hit.previewUrl);
+    dmBulkRows = dmBulkRows.filter(r => r.rowId !== rowId);
+    if (!dmBulkRows.length) q('dmBulkTableContainer').style.display = 'none';
+  }
+
+  async function saveAllBulk(){
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    const trs = Array.from(document.querySelectorAll('#dmBulkTableBody tr'));
+    if (!trs.length) { toast('Koi row nahi hai.', 'warn'); return; }
+    await loadDesigns();
+
+    /* Pehle poori list jaanch lo — aadha save hona sabse buri soorat hai. */
+    const seen = new Set();
+    for (const tr of trs) {
+      const g = sel => { const el = tr.querySelector(sel); return el ? el.value.trim() : ''; };
+      const no = up(g('.b-design'));
+      if (!no || !g('.b-party') || !g('.b-brand') || !g('.b-matching')) {
+        tr.scrollIntoView({ block: 'center' });
+        toast('Row “' + (no || '—') + '”: Design No, Party, Brand aur Matching — ye chaar zaroori hain.', 'error');
+        return;
+      }
+      if (seen.has(no)) {
+        tr.scrollIntoView({ block: 'center' });
+        toast('Design No ' + no + ' is list me do baar hai.', 'error');
+        return;
+      }
+      seen.add(no);
+    }
+
+    const btn = document.querySelector('#dmBulkTableContainer .dm-table-foot .dm-btn');
+    if (btn) btn.disabled = true;
+    let done = 0, skipped = 0, failed = 0;
+    for (let i = 0; i < trs.length; i++) {
+      const tr = trs[i];
+      const state = tr.querySelector('.b-state');
+      const g = sel => { const el = tr.querySelector(sel); return el ? el.value.trim() : ''; };
+      const no = up(g('.b-design'));
+      if (btn) btn.textContent = '⏳ ' + (i + 1) + ' / ' + trs.length + '…';
+      setSync('Saving ' + (i + 1) + '/' + trs.length + '…', 'busy');
+      if (findByNo(no)) {
+        skipped++;
+        if (state) { state.textContent = '⚠ pehle se hai'; state.style.color = '#b45309'; }
+        continue;
+      }
+      try {
+        const ins = await SB.from('design_master').insert({
+          design_no: no,
+          party_name: g('.b-party'), brand_name: g('.b-brand'),
+          design_unit: g('.b-unit'), bed_size: g('.b-bed'),
+          design_type: g('.b-type') || 'N/A',
+          monopoly: up(g('.b-mono')) === 'YES' ? 'YES' : 'NO',
+          blanket_quality: g('.b-quality'), frame_type: g('.b-frame'),
+          large_frame: num(g('.b-large')), medium_frame: num(g('.b-medium')), small_frame: num(g('.b-small')),
+          status: 'LIVE', created_by: whoAmI()
+        }).select().single();
+        if (ins.error) throw ins.error;
+
+        let img = { path: null, url: null };
+        const hit = dmBulkRows.find(r => r.rowId === tr.id);
+        if (hit && hit.file) {
+          try { img = await uploadDesignImage(no, hit.file); }
+          catch (e) { console.warn('[DM] bulk photo fail', no, e.message || e); }
+        }
+        const mIns = await SB.from('design_matchings').insert({
+          design_id: ins.data.id, design_no: no,
+          matching_name: g('.b-matching'), blanket_quality: g('.b-quality'),
+          matching_type: 'MASTER', image_path: img.path, image_url: img.url,
+          sort_order: 0, created_by: whoAmI()
+        }).select().single();
+        if (mIns.error) throw mIns.error;
+
+        ins.data.matchings = [mIns.data];
+        dmDesigns.unshift(ins.data);
+        done++;
+        if (state) { state.textContent = img.path ? '✓ saved' : '✓ saved (no photo)'; state.style.color = '#166534'; }
+      } catch (e) {
+        failed++;
+        console.error('[DM] bulk row fail', no, e);
+        if (state) { state.textContent = '✗ fail'; state.style.color = '#991b1b'; state.title = e.message || String(e); }
+      }
+    }
+    if (btn) { btn.disabled = false; btn.innerHTML = '✅ Save All Designs'; }
+    renderAll();
+    setSync('✓ ' + dmDesigns.length + ' designs', failed ? 'err' : 'ok');
+
+    /* Jo row sach me save ho gayi, sirf wahi hat jaati hai — skip / fail wali
+       screen par rehti hai taaki galti theek karke dobara save ho sake. */
+    Array.from(document.querySelectorAll('#dmBulkTableBody tr')).forEach(tr => {
+      const st = tr.querySelector('.b-state');
+      if (st && st.textContent.indexOf('✓') === 0) removeBulkRow(tr.id);
+    });
+
+    let msg = 'Bulk upload: ' + done + ' save';
+    if (skipped) msg += ', ' + skipped + ' skip (pehle se maujood)';
+    if (failed) msg += ', ' + failed + ' fail';
+    toast(msg + '.', failed ? 'warn' : 'success');
+    if (done && !failed && !skipped) showPane('dmLivePane');
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     STATUS / EDIT
+  ════════════════════════════════════════════════════════════════════ */
+  async function setStatus(id, status){
+    if (!sbReady() || !guard('DESIGN_DISCARD')) return;
+    const d = dmDesigns.find(x => x.id === id); if (!d) return;
+    if (!confirm('Design ' + d.design_no + ' ko ' + (status === 'LIVE' ? 'RESTORE' : 'DISCARD') + ' karna hai?')) return;
+    setSync('Saving…', 'busy');
+    try {
+      const patch = { status: status, discarded_at: status === 'DISCARDED' ? new Date().toISOString() : null };
+      const r = await SB.from('design_master').update(patch).eq('id', id);
+      if (r.error) throw r.error;
+      Object.assign(d, patch);
+      renderAll();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Design ' + d.design_no + ' ' + status + ' ho gaya.', 'success');
+    } catch (e) {
+      setSync('Save fail', 'err');
+      toast('Status change fail: ' + (e.message || e), 'error');
+    }
+  }
+
+  function openEditModal(id){
+    if (!guard('DESIGN_SAVE')) return;
+    const d = dmDesigns.find(x => x.id === id); if (!d) return;
+    q('dmEditDesignId').value       = d.id;
+    q('dmEditDesignNo').value       = d.design_no || '';
+    q('dmEditDesignUnit').value     = d.design_unit || '';
+    q('dmEditBedSize').value        = d.bed_size || '';
+    q('dmEditBlanketQuality').value = d.blanket_quality || '';
+    q('dmEditDesignType').value     = d.design_type || 'N/A';
+    q('dmEditMonopoly').value       = d.monopoly || 'NO';
+    q('dmEditFrameType').value      = d.frame_type || '';
+    q('dmEditLargeFrame').value     = num(d.large_frame);
+    q('dmEditMediumFrame').value    = num(d.medium_frame);
+    q('dmEditSmallFrame').value     = num(d.small_frame);
+    q('dmEditPartyName').value      = d.party_name || '';
+    q('dmEditBrandName').value      = d.brand_name || '';
+    calcEditTotal();
+    renderEditMatchings(d);
+    q('dmEditModal').classList.add('open');
+  }
+  function closeEditModal(){ q('dmEditModal').classList.remove('open'); }
+
+  function renderEditMatchings(d){
+    const box = q('dmEditMatchingsList'); if (!box) return;
+    if (!(d.matchings || []).length) {
+      box.innerHTML = '<p class="dm-hint">Koi matching nahi — “Add Matching” tab se jodein.</p>';
+      return;
+    }
+    box.innerHTML = d.matchings.map(m => {
+      const src = dmImgSrc(m);
+      return '<div class="dm-mrow">' +
+        '<div class="dm-mrow-left">' + thumbHtml(src, m.matching_name) +
+          '<div><b>' + esc(m.matching_name) + '</b>' +
+          '<div style="font-size:10.5px;color:#64748b;">' + esc(m.blanket_quality || d.blanket_quality || '') + '</div></div>' +
+        '</div>' +
+        '<div class="dm-mrow-right">' +
+          '<label><input type="radio" name="dmMasterPick" value="' + m.id + '"' +
+            (m.matching_type === 'MASTER' ? ' checked' : '') +
+            ' onchange="dmMakeMaster(' + d.id + ',' + m.id + ')"> Master</label>' +
+          '<span class="dm-badge ' + (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' + m.matching_type + '</span>' +
+          '<label class="dm-repl">' + (src ? '🔁 Replace Photo' : '📷 Add Photo') +
+            '<input type="file" accept="image/*" hidden onchange="dmReplacePhoto(' + d.id + ',' + m.id + ',this)"></label>' +
+          '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Matching hatayein" onclick="dmDeleteMatching(' + d.id + ',' + m.id + ')">❌</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  async function makeMaster(designId, matchingId){
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    const d = dmDesigns.find(x => x.id === designId); if (!d) return;
+    setSync('Saving…', 'busy');
+    try {
+      const dem = await SB.from('design_matchings').update({ matching_type: 'SLAVE' })
+        .eq('design_id', designId).eq('matching_type', 'MASTER');
+      if (dem.error) throw dem.error;
+      const pro = await SB.from('design_matchings').update({ matching_type: 'MASTER' }).eq('id', matchingId);
+      if (pro.error) throw pro.error;
+      d.matchings.forEach(m => { m.matching_type = (m.id === matchingId) ? 'MASTER' : 'SLAVE'; });
+      renderEditMatchings(d); renderLive(); renderDiscarded();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Master matching badal gayi.', 'success');
+    } catch (e) {
+      setSync('Save fail', 'err');
+      toast('Master change fail: ' + (e.message || e), 'error');
+      renderEditMatchings(d);
+    }
+  }
+
+  async function replacePhoto(designId, matchingId, input){
+    const file = (input.files || [])[0];
+    input.value = '';
+    if (!file || !sbReady() || !guard('DESIGN_SAVE')) return;
+    const d = dmDesigns.find(x => x.id === designId); if (!d) return;
+    const m = d.matchings.find(x => x.id === matchingId); if (!m) return;
+    setSync('Uploading…', 'busy');
+    try {
+      const old = m.image_path;
+      const img = await uploadDesignImage(d.design_no, file);
+      const r = await SB.from('design_matchings')
+        .update({ image_path: img.path, image_url: img.url }).eq('id', matchingId);
+      if (r.error) throw r.error;
+      m.image_path = img.path; m.image_url = img.url;
+      dmImgCache.delete(dmPublicUrl(old));
+      await removeStored(old);
+      renderEditMatchings(d); renderLive(); renderDiscarded();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Photo update ho gaya.', 'success');
+    } catch (e) {
+      setSync('Upload fail', 'err');
+      toast('Photo update fail: ' + (e.message || e), 'error');
+    }
+  }
+
+  async function deleteMatching(designId, matchingId){
+    if (!sbReady() || !guard('DESIGN_DISCARD')) return;
+    const d = dmDesigns.find(x => x.id === designId); if (!d) return;
+    const m = d.matchings.find(x => x.id === matchingId); if (!m) return;
+    if (d.matchings.length === 1) { toast('Aakhiri matching nahi hat sakti — design discard karein.', 'warn'); return; }
+    if (!confirm('Matching “' + m.matching_name + '” hata dein? Uski photo bhi delete hogi.')) return;
+    setSync('Saving…', 'busy');
+    try {
+      const r = await SB.from('design_matchings').delete().eq('id', matchingId);
+      if (r.error) throw r.error;
+      await removeStored(m.image_path);
+      d.matchings = d.matchings.filter(x => x.id !== matchingId);
+      // Master hata diya to pehli bachi hui matching naya master ban jaati hai.
+      if (m.matching_type === 'MASTER' && d.matchings.length) {
+        const nm = d.matchings[0];
+        const pro = await SB.from('design_matchings').update({ matching_type: 'MASTER' }).eq('id', nm.id);
+        if (!pro.error) nm.matching_type = 'MASTER';
+      }
+      renderEditMatchings(d); renderLive(); renderDiscarded();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Matching hat gayi.', 'success');
+    } catch (e) {
+      setSync('Save fail', 'err');
+      toast('Matching delete fail: ' + (e.message || e), 'error');
+    }
+  }
+
+  async function updateDesign(ev){
+    ev.preventDefault();
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    const id = parseInt(q('dmEditDesignId').value, 10);
+    const d = dmDesigns.find(x => x.id === id); if (!d) return;
+    const newNo = up(q('dmEditDesignNo').value);
+    if (!newNo) { toast('DESIGN NO khaali nahi ho sakta.', 'error'); return; }
+    if (dmDesigns.some(x => x.id !== id && up(x.design_no) === newNo)) {
+      toast('Design No ' + newNo + ' kisi aur design ka hai.', 'error');
+      return;
+    }
+    const patch = {
+      design_no:       newNo,
+      design_unit:     q('dmEditDesignUnit').value.trim(),
+      bed_size:        q('dmEditBedSize').value.trim(),
+      blanket_quality: q('dmEditBlanketQuality').value.trim(),
+      design_type:     q('dmEditDesignType').value.trim() || 'N/A',
+      monopoly:        up(q('dmEditMonopoly').value) === 'YES' ? 'YES' : 'NO',
+      frame_type:      q('dmEditFrameType').value.trim(),
+      large_frame:     num(q('dmEditLargeFrame').value),
+      medium_frame:    num(q('dmEditMediumFrame').value),
+      small_frame:     num(q('dmEditSmallFrame').value),
+      party_name:      q('dmEditPartyName').value.trim(),
+      brand_name:      q('dmEditBrandName').value.trim()
+    };
+    setSync('Saving…', 'busy');
+    try {
+      const r = await SB.from('design_master').update(patch).eq('id', id);
+      if (r.error) throw r.error;
+      /* Design No badla to matchings ka design_no bhi saath chalna chahiye —
+         catalogue aur image folder dono isi naam se chalte hain. Purani
+         photos apne purane folder me padi rehti hain; unka path row me hai,
+         to wo load hoti rehti hain. Nayi photo naye folder me jaayegi. */
+      if (up(d.design_no) !== newNo) {
+        const rm = await SB.from('design_matchings').update({ design_no: newNo }).eq('design_id', id);
+        if (!rm.error) d.matchings.forEach(m => { m.design_no = newNo; });
+      }
+      Object.assign(d, patch);
+      renderAll();
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      closeEditModal();
+      toast('Design ' + newNo + ' update ho gaya.', 'success');
+    } catch (e) {
+      setSync('Save fail', 'err');
+      toast('Update fail: ' + (e.message || e), 'error');
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     CATALOGUE — filters, on-screen preview, asli PDF
+  ════════════════════════════════════════════════════════════════════ */
+  /* Filter box dobara banta hai to jo tick pehle se lage the wo bache rahen;
+     nayi value hamesha ticked aati hai (default "sab chuna hua"). */
+  function fillFilterBox(boxId, name, values){
+    const box = q(boxId); if (!box) return;
+    const prev = new Map(Array.from(box.querySelectorAll('input')).map(i => [i.value, i.checked]));
+    box.innerHTML = values.length
+      ? values.map(v => '<label><input type="checkbox" name="' + name + '" value="' + esc(v) + '"' +
+          (prev.has(v) ? (prev.get(v) ? ' checked' : '') : ' checked') + '> ' + esc(v) + '</label>').join('')
+      : '<span class="dm-empty">No data</span>';
+  }
+
+  function renderCatalogueFilters(){
+    const live = dmDesigns.filter(d => d.status === 'LIVE');
+    const uniq = key => [...new Set(live.map(d => d[key]).filter(Boolean))].sort();
+    fillFilterBox('dmUnitFilterBox', 'dmUnitFilter', uniq('design_unit'));
+    fillFilterBox('dmQualityFilterBox', 'dmQualityFilter', uniq('blanket_quality'));
+    fillFilterBox('dmPartyFilterBox', 'dmPartyFilter', uniq('party_name'));
+    fillFilterBox('dmBrandFilterBox', 'dmBrandFilter', uniq('brand_name'));
+    fillFilterBox('dmTypeFilterBox', 'dmTypeFilter', uniq('design_type'));
+    fillFilterBox('dmMonopolyFilterBox', 'dmMonopolyFilter', [...new Set(live.map(d => d.monopoly || 'NO'))].sort());
+    fillFilterBox('dmFramesFilterBox', 'dmFramesFilter',
+      [...new Set(live.map(d => String(totalFrames(d))))].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)));
+  }
+
+  function toggleFilter(name, checkAll){
+    document.querySelectorAll('input[name="' + name + '"]').forEach(cb => { cb.checked = checkAll; });
+  }
+  function pickedFilter(name){
+    return Array.from(document.querySelectorAll('input[name="' + name + '"]:checked')).map(cb => cb.value);
+  }
+
+  /* Khaali filter = us column par koi rok nahi (V18 jaisa hi niyam). */
+  function selectedDesigns(){
+    const u  = pickedFilter('dmUnitFilter'),     ql = pickedFilter('dmQualityFilter'),
+          p  = pickedFilter('dmPartyFilter'),    b  = pickedFilter('dmBrandFilter'),
+          t  = pickedFilter('dmTypeFilter'),     f  = pickedFilter('dmFramesFilter'),
+          mo = pickedFilter('dmMonopolyFilter');
+    const nosBox = q('dmCatDesignNos');
+    const nos = String(nosBox ? nosBox.value : '').split(/[,\s]+/).map(up).filter(Boolean);
+    return dmDesigns.filter(d =>
+      d.status === 'LIVE' &&
+      (!nos.length || nos.indexOf(up(d.design_no)) >= 0) &&
+      (!u.length  || u.indexOf(d.design_unit) >= 0) &&
+      (!ql.length || ql.indexOf(d.blanket_quality) >= 0) &&
+      (!p.length  || p.indexOf(d.party_name) >= 0) &&
+      (!b.length  || b.indexOf(d.brand_name) >= 0) &&
+      (!t.length  || t.indexOf(d.design_type) >= 0) &&
+      (!f.length  || f.indexOf(String(totalFrames(d))) >= 0) &&
+      (!mo.length || mo.indexOf(d.monopoly || 'NO') >= 0));
+  }
+
+  function catStatus(msg){ const el = q('dmCatStatus'); if (el) el.textContent = msg || ''; }
+
+  function generatePreview(){
+    const area = q('dmCataloguePrintArea'); if (!area) return [];
+    dmCatalogue = selectedDesigns();
+    if (!dmCatalogue.length) {
+      area.innerHTML = '<div class="dm-cat-page" style="min-height:auto;padding:36px;text-align:center;">' +
+                       '<h3>Is filter se koi design nahi mila.</h3></div>';
+      catStatus('');
+      return [];
+    }
+    area.innerHTML = dmCatalogue.map(d => {
+      const m = masterOf(d), src = dmImgSrc(m);
+      const slaves = (d.matchings || []).filter(x => !m || x.id !== m.id);
+      let html =
+        '<div class="dm-cat-page">' +
+          '<div class="dm-cat-head"><h1>Sarv India Home Furnishing</h1><p>PREMIUM COLLECTION</p></div>' +
+          (src ? '<img class="dm-cat-cover" loading="lazy" src="' + esc(src) + '" alt="">'
+               : '<div class="dm-cat-cover-none">[ NO IMAGE ]</div>') +
+          '<h2 style="text-align:center;margin:12px 0 0;font-size:15pt;">' +
+            esc(m ? m.matching_name : '—') + ' (MASTER)</h2>' +
+          '<table class="dm-cat-specs">' +
+            '<tr><th>DESIGN NO</th><td><strong>' + esc(d.design_no) + '</strong></td>' +
+                '<th>MONOPOLY</th><td><strong style="color:' + (d.monopoly === 'YES' ? '#dc2626' : 'inherit') + ';">' +
+                esc(d.monopoly || 'NO') + '</strong></td></tr>' +
+            '<tr><th>PARTY / BRAND</th><td><strong>' + esc(d.party_name || '') + '</strong> (' + esc(d.brand_name || '') + ')</td>' +
+                '<th>DESIGN TYPE</th><td><strong style="color:#2563eb;">' + esc(d.design_type || 'N/A') + '</strong></td></tr>' +
+            '<tr><th>UNIT / BED</th><td>' + esc(d.design_unit || '') + ' (' + esc(d.bed_size || '') + ')</td>' +
+                '<th>QUALITY</th><td>' + esc((m && m.blanket_quality) || d.blanket_quality || '') + '</td></tr>' +
+            '<tr><th>FRAMES (L/M/S)</th><td>L: ' + num(d.large_frame) + ' | M: ' + num(d.medium_frame) +
+                ' | S: ' + num(d.small_frame) + '</td>' +
+                '<th>TOTAL FRAMES</th><td><strong style="font-size:12pt;">' + totalFrames(d) + '</strong></td></tr>' +
+            '<tr><th>TOTAL MATCHINGS</th><td colspan="3">' + (d.matchings || []).length + ' shades</td></tr>' +
+          '</table>' +
+          '<div class="dm-cat-foot"><span>Design #' + esc(d.design_no) + '</span><span>Cover Page</span></div>' +
+        '</div>';
+      for (let pg = 0; pg < Math.ceil(slaves.length / 8); pg++) {
+        const cards = slaves.slice(pg * 8, pg * 8 + 8).map(sm => {
+          const s = dmImgSrc(sm);
+          return '<div class="dm-cat-card">' +
+            (s ? '<img loading="lazy" src="' + esc(s) + '" alt="">' : '<div class="dm-cat-none">[No Image]</div>') +
+            '<div class="t">' + esc(sm.matching_name) + '</div>' +
+            '<div class="s">Quality: ' + esc(sm.blanket_quality || d.blanket_quality || '') + '</div></div>';
+        }).join('');
+        html += '<div class="dm-cat-page"><div class="dm-cat-head"><h1>Sarv India</h1><p>DESIGN: ' +
+                esc(d.design_no) + ' | MATCHINGS</p></div>' +
+                '<div class="dm-cat-grid">' + cards + '</div>' +
+                '<div class="dm-cat-foot"><span>Design #' + esc(d.design_no) + '</span><span>Page ' + (pg + 2) + '</span></div></div>';
+      }
+      return html;
+    }).join('');
+    const pages = dmCatalogue.reduce((n, d) => {
+      const m = masterOf(d);
+      return n + 1 + Math.ceil((d.matchings || []).filter(x => !m || x.id !== m.id).length / 8);
+    }, 0);
+    catStatus(dmCatalogue.length + ' designs · ~' + pages + ' pages');
+    return dmCatalogue;
+  }
+
+  /* ── jsPDF se asli PDF file (A4 portrait) ───────────────────────────── */
+  const A4 = { w: 210, h: 297, mx: 12, top: 12, bot: 14 };
+
+  function pdfHeader(doc, title, sub){
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.setTextColor(15, 23, 42);
+    doc.text(title, A4.w / 2, A4.top + 7, { align: 'center' });
+    doc.setFontSize(8.5); doc.setTextColor(71, 85, 105);
+    doc.text(sub, A4.w / 2, A4.top + 13, { align: 'center' });
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.6); doc.line(A4.mx, A4.top + 16.5, A4.w - A4.mx, A4.top + 16.5);
+    doc.setLineWidth(0.2); doc.line(A4.mx, A4.top + 17.7, A4.w - A4.mx, A4.top + 17.7);
+    doc.setTextColor(0, 0, 0);
+  }
+  function pdfFooter(doc, left, right){
+    const y = A4.h - A4.bot + 4;
+    doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.2);
+    doc.line(A4.mx, y - 4, A4.w - A4.mx, y - 4);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
+    doc.text(String(left), A4.mx, y);
+    doc.text(String(right), A4.w - A4.mx, y, { align: 'right' });
+    doc.setTextColor(0, 0, 0);
+  }
+  /* Image ko box ke andar uske asli anupaat me, beech me rakhta hai. */
+  function pdfImage(doc, img, x, y, w, h){
+    doc.setDrawColor(203, 213, 225); doc.setFillColor(248, 250, 252);
+    doc.rect(x, y, w, h, 'FD');
+    if (!img) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(148, 163, 184);
+      doc.text('[ NO IMAGE ]', x + w / 2, y + h / 2, { align: 'center', baseline: 'middle' });
+      doc.setTextColor(0, 0, 0);
+      return;
+    }
+    const s = Math.min(w / img.w, h / img.h);
+    const iw = img.w * s, ih = img.h * s;
+    try { doc.addImage(img.dataUrl, img.fmt, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
+    catch (e) { console.warn('[DM] addImage fail:', e.message || e); }
+  }
+
+  async function buildCataloguePdf(){
+    if (typeof jspdfNativeReady_ === 'function' ? !jspdfNativeReady_() : !(window.jspdf && window.jspdf.jsPDF)) {
+      toast('jsPDF load nahi hua — page reload karein.', 'error');
+      return null;
+    }
+    /* PDF hamesha ABHI ke filters par banti hai — preview dobara render karke
+       list uthai jaati hai, taaki screen par jo dikh raha hai wahi PDF me jaaye
+       (filter badal kar seedha Download dabane par purana selection na nikle). */
+    const list = generatePreview();
+    if (!list.length) { toast('Is filter se koi design nahi mila.', 'warn'); return null; }
+
+    /* Saari photos pehle utaar lo (cache ke saath) — PDF banne ke beech me
+       network ka intezaar nahi, aur ek hi photo do jagah ho to ek baar hi
+       download hoti hai. */
+    const urls = [];
+    list.forEach(d => (d.matchings || []).forEach(m => { const s = dmImgSrc(m); if (s && urls.indexOf(s) < 0) urls.push(s); }));
+    const loaded = new Map();
+    for (let i = 0; i < urls.length; i++) {
+      catStatus('Photos load ho rahi hain (' + (i + 1) + '/' + urls.length + ')…');
+      loaded.set(urls[i], await imgData(urls[i]));
+    }
+    catStatus('PDF ban rahi hai…');
+
+    const jsPDF = window.jspdf.jsPDF;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const stamp = new Date().toLocaleString('en-GB');
+    let first = true;
+
+    list.forEach(d => {
+      const m = masterOf(d);
+      const slaves = (d.matchings || []).filter(x => !m || x.id !== m.id);
+
+      // ── cover page ──
+      if (!first) doc.addPage();
+      first = false;
+      pdfHeader(doc, 'SARV INDIA HOME FURNISHING', 'PREMIUM COLLECTION');
+      pdfImage(doc, m ? loaded.get(dmImgSrc(m)) : null, A4.mx, A4.top + 22, A4.w - 2 * A4.mx, 108);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+      doc.text(((m && m.matching_name) || '—') + '   (MASTER)', A4.w / 2, A4.top + 139, { align: 'center' });
+
+      doc.autoTable({
+        startY: A4.top + 146,
+        margin: { left: A4.mx, right: A4.mx },
+        theme: 'grid',
+        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.4, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59] },
+        columnStyles: {
+          0: { cellWidth: 42, fillColor: [248, 250, 252], fontStyle: 'bold', textColor: [51, 65, 85] },
+          1: { cellWidth: 51 },
+          2: { cellWidth: 42, fillColor: [248, 250, 252], fontStyle: 'bold', textColor: [51, 65, 85] },
+          3: { cellWidth: 51 }
+        },
+        body: [
+          ['DESIGN NO', String(d.design_no || ''), 'MONOPOLY', String(d.monopoly || 'NO')],
+          ['PARTY / BRAND', (d.party_name || '') + ' (' + (d.brand_name || '') + ')', 'DESIGN TYPE', String(d.design_type || 'N/A')],
+          ['UNIT / BED', (d.design_unit || '') + ' (' + (d.bed_size || '') + ')', 'QUALITY', String((m && m.blanket_quality) || d.blanket_quality || '')],
+          ['FRAME TYPE', String(d.frame_type || ''), 'TOTAL FRAMES', String(totalFrames(d))],
+          ['FRAMES L / M / S', num(d.large_frame) + ' / ' + num(d.medium_frame) + ' / ' + num(d.small_frame),
+           'TOTAL MATCHINGS', String((d.matchings || []).length)]
+        ]
+      });
+      pdfFooter(doc, 'Design #' + (d.design_no || ''), 'Cover Page  ·  ' + stamp);
+
+      // ── matching pages: 2 × 4 grid ──
+      const perPage = 8, cols = 2, rows = 4, gap = 5, gridTop = A4.top + 22;
+      const cardW = (A4.w - 2 * A4.mx - gap) / cols;
+      const cardH = (A4.h - A4.bot - gridTop - gap * (rows - 1)) / rows;
+      for (let pg = 0; pg < Math.ceil(slaves.length / perPage); pg++) {
+        doc.addPage();
+        pdfHeader(doc, 'SARV INDIA', 'DESIGN: ' + (d.design_no || '') + '   |   MATCHINGS');
+        slaves.slice(pg * perPage, pg * perPage + perPage).forEach((sm, i) => {
+          const x = A4.mx + (i % cols) * (cardW + gap);
+          const y = gridTop + Math.floor(i / cols) * (cardH + gap);
+          doc.setDrawColor(203, 213, 225); doc.setFillColor(255, 255, 255);
+          doc.roundedRect(x, y, cardW, cardH, 1.6, 1.6, 'FD');
+          pdfImage(doc, loaded.get(dmImgSrc(sm)), x + 2.5, y + 2.5, cardW - 5, cardH - 16);
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(8.6); doc.setTextColor(30, 41, 59);
+          doc.text(String(sm.matching_name || ''), x + cardW / 2, y + cardH - 9.5, { align: 'center', maxWidth: cardW - 5 });
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(7.2); doc.setTextColor(100, 116, 139);
+          doc.text('Quality: ' + String(sm.blanket_quality || d.blanket_quality || ''),
+                   x + cardW / 2, y + cardH - 4.5, { align: 'center', maxWidth: cardW - 5 });
+          doc.setTextColor(0, 0, 0);
+        });
+        pdfFooter(doc, 'Design #' + (d.design_no || ''), 'Matchings Page ' + (pg + 1) + '  ·  ' + stamp);
+      }
+    });
+
+    catStatus(list.length + ' designs · ' + doc.getNumberOfPages() + ' pages');
+    return doc;
+  }
+
+  function pdfFileName(){
+    const base = (dmCatalogue.length === 1) ? ('Design_' + pathSafe(dmCatalogue[0].design_no)) : 'Sarv_Catalogue';
+    return base + '_' + new Date().toISOString().slice(0, 10) + '.pdf';
+  }
+  async function downloadPdf(){
+    const doc = await buildCataloguePdf(); if (!doc) return;
+    doc.save(pdfFileName());
+    toast('Catalogue PDF download ho gayi.', 'success');
+  }
+  async function openPdf(){
+    const doc = await buildCataloguePdf(); if (!doc) return;
+    const win = window.open(doc.output('bloburl'), '_blank');
+    if (!win) toast('Popup block ho gaya — “Download PDF” use karein.', 'warn');
+  }
+
+  /* ── JSON backup (V18 ka ⬇️ Download Backup) ───────────────────────── */
+  function exportBackup(){
+    if (!dmDesigns.length) { toast('Backup ke liye data nahi hai.', 'warn'); return; }
+    const payload = {
+      exported_at: new Date().toISOString(),
+      exported_by: whoAmI(),
+      count: dmDesigns.length,
+      bucket: DM_BUCKET,
+      image_folder: DM_FOLDER,
+      designs: dmDesigns.map(d => Object.assign({}, d, {
+        matchings: (d.matchings || []).map(m => Object.assign({}, m, { image_url: dmImgSrc(m) }))
+      }))
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Sarv_Design_Master_' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Backup download ho gaya.', 'success');
+  }
+
+  /* ── lightbox / image fallback ──────────────────────────────────────── */
+  function showLightbox(src, cap){
+    if (!src) return;
+    q('dmLightboxImg').src = src;
+    q('dmLightboxCap').textContent = cap || '';
+    q('dmLightbox').classList.add('open');
+  }
+  function closeLightbox(){
+    q('dmLightbox').classList.remove('open');
+    q('dmLightboxImg').removeAttribute('src');
+  }
+  /* Photo load na ho (net gaya, file hat gayi) to table ka layout na tute. */
+  function imgFail(el){
+    const box = document.createElement('div');
+    box.className = 'dm-thumb-none';
+    box.textContent = '!';
+    box.title = 'Photo load nahi hui';
+    el.replaceWith(box);
+  }
+
+  /* ── andar ke tabs ──────────────────────────────────────────────────── */
+  function showPane(paneId){
+    const root = q('designMasterProdSub'); if (!root) return;
+    root.querySelectorAll('.dm-pane').forEach(p => p.classList.toggle('active', p.id === paneId));
+    root.querySelectorAll('.dm-tab').forEach(b => b.classList.toggle('active', b.dataset.dmtab === paneId));
+    if (paneId === 'dmCataloguePane') renderCatalogueFilters();
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     WIRING
+  ════════════════════════════════════════════════════════════════════ */
+  document.addEventListener('DOMContentLoaded', () => {
+    const root = q('designMasterProdSub');
+    if (!root) return;
+
+    root.querySelectorAll('.dm-tab').forEach(b =>
+      b.addEventListener('click', () => showPane(b.dataset.dmtab)));
+
+    q('dmNewDesignForm').addEventListener('submit', saveNewDesign);
+    q('dmAddMatchingForm').addEventListener('submit', addMatching);
+    q('dmEditDesignForm').addEventListener('submit', updateDesign);
+
+    ['dmLargeFrame', 'dmMediumFrame', 'dmSmallFrame'].forEach(id => q(id).addEventListener('input', calcNewTotal));
+    ['dmEditLargeFrame', 'dmEditMediumFrame', 'dmEditSmallFrame'].forEach(id => q(id).addEventListener('input', calcEditTotal));
+
+    q('dmInitialImage').addEventListener('change', e =>
+      previewInto('dmNewDesignPreview', (e.target.files || [])[0], EMPTY_NEW));
+    q('dmNewMatchingImage').addEventListener('change', e =>
+      previewInto('dmMatchingPreview', (e.target.files || [])[0], EMPTY_MTC));
+
+    q('dmSelectDesign').addEventListener('input', e => {
+      e.target.value = e.target.value.toUpperCase();
+      populateMatchingInfo();
+    });
+
+    q('dmBulkImageInput').addEventListener('change', bulkAddFiles);
+
+    let searchTimer = null;
+    q('dmLiveSearch').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderLive, 140);
+    });
+
+    q('dmEditModal').addEventListener('click', e => { if (e.target.id === 'dmEditModal') closeEditModal(); });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      if (q('dmLightbox').classList.contains('open')) closeLightbox();
+      else if (q('dmEditModal').classList.contains('open')) closeEditModal();
+    });
+
+    renderDatalists();
+    const ready = (typeof SB_READY !== 'undefined' && SB_READY);
+    setSync(ready ? 'Ready — Production kholte hi load hoga' : 'Supabase setup baaki hai', ready ? '' : 'err');
+  });
+
+  /* ── Production panel / sub-tab, bahar se bulane ke liye ──────────── */
+  window.switchProductionSubTab = function(id){
+    const panel = q('productionPanel'); if (!panel) return;
+    panel.querySelectorAll('[id$="ProdSub"]').forEach(x => { x.style.display = 'none'; });
+    const el = q(id); if (el) el.style.display = 'block';
+    panel.querySelectorAll('.prod-sub-tab').forEach(btn => {
+      const on = btn.dataset.prodsub === id;
+      btn.style.fontWeight   = on ? '700' : '600';
+      btn.style.background   = on ? '#eff6ff' : '#f8fafc';
+      btn.style.color        = on ? '#0369a1' : '#64748b';
+      btn.style.borderBottom = on ? '2px solid #0284c7' : 'none';
+    });
+    if (id === 'designMasterProdSub') loadDesigns();
+  };
+  // activatePanel('productionPanel') data yahan se mangwata hai.
+  window.dmEnsureLoaded = () => loadDesigns();
+
+  /* HTML ke inline onclick / onchange ke liye zaroori handles. */
+  window.dmReload                   = force => loadDesigns(force !== false);
+  window.dmExportBackup             = exportBackup;
+  window.dmSetStatus                = setStatus;
+  window.dmOpenEditModal            = openEditModal;
+  window.dmCloseEditModal           = closeEditModal;
+  window.dmMakeMaster               = makeMaster;
+  window.dmReplacePhoto             = replacePhoto;
+  window.dmDeleteMatching           = deleteMatching;
+  window.dmRemoveBulkRow            = removeBulkRow;
+  window.dmSaveAllBulk              = saveAllBulk;
+  window.dmToggleFilter             = toggleFilter;
+  window.dmGenerateCataloguePreview = generatePreview;
+  window.dmDownloadCataloguePdf     = downloadPdf;
+  window.dmOpenCataloguePdf         = openPdf;
+  window.dmShowLightbox             = showLightbox;
+  window.dmCloseLightbox            = closeLightbox;
+  window.dmImgFail                  = imgFail;
+
+  /* Aage design-no-wise image updates ke liye do seedhe raste: ek design
+     number do, uske saare photos (path + URL) mil jaate hain; ya us design
+     ka bucket folder mil jaata hai. */
+  window.dmDesignImages = async function(designNo){
+    await loadDesigns();
+    const d = findByNo(designNo);
+    if (!d) return [];
+    return (d.matchings || []).map(m => ({
+      matching_id: m.id, matching_name: m.matching_name, type: m.matching_type,
+      path: m.image_path, url: dmImgSrc(m)
+    }));
+  };
+  window.dmDesignFolder = designNo => DM_FOLDER + '/' + pathSafe(designNo) + '/';
+})();
+</script>
+
 <script>
 /* Keyboard-friendly navigation for the two tab bars. */
 document.addEventListener('DOMContentLoaded', () => {
