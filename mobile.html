@@ -240,37 +240,15 @@
                          negotiated with the vendor, so they are filled here,
                          in the same pass as the rates, and PO Generate shows
                          them back locked. -->
-                    <div class="vi-po-block" id="viPoTermsBlock">
-                        <div class="vi-po-title">&#129534; PO Details (ab yahin bharein)</div>
-                        <div style="font-size:0.68rem;color:#6b7280;">
-                            Ye seedha PO par chhapega. Save ke baad <b>PO Generate</b> tab me ye sab <b>locked</b> dikhega — wahan sirf sign karna hoga.
-                        </div>
-
-                        <label>Delivery Date <span style="color:#dc3545;">*</span></label>
-                        <input type="date" id="viDeliveryDate">
-
-                        <label style="margin-bottom:1px;">PO Charges (&#8377;) <small style="font-weight:500;color:#6b7280;">— na ho to khali chhod dein</small></label>
-                        <div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:6px;">
-                            <div>
-                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Freight</div>
-                                <input type="number" id="viFreight" min="0" step="0.01" placeholder="0" inputmode="decimal">
-                            </div>
-                            <div>
-                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Loading / Other Exp.</div>
-                                <input type="number" id="viOtherExp" min="0" step="0.01" placeholder="0" inputmode="decimal">
-                            </div>
-                            <div>
-                                <div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">GST %</div>
-                                <input type="number" id="viChargesGst" min="0" max="100" step="0.01" inputmode="decimal" title="Freight + Loading / Other Exp. par GST %">
-                            </div>
-                        </div>
-                        <div style="font-size:0.66rem;color:#6b7280;margin-top:3px;">
-                            In charges par GST alag lagta hai. Items alag-alag vendors ke hon to charges sirf <b>pehle PO</b> par lagenge.
-                        </div>
-
-                        <label>PO Remarks / Notes</label>
-                        <textarea id="viPoNotes" rows="2" placeholder="PO par chhapne wale notes (optional)..."></textarea>
-                    </div>
+                    <!-- PO Details — ek block PER SELECTED VENDOR ───────
+                         Ek PR jitne alag vendors par bantta hai, utne hi PO
+                         bante hain (autoGeneratePosFromPr vendor-wise group
+                         karta hai). Isi liye Delivery Date, charges aur notes
+                         bhi per PO hain, PR-level nahi — aur har block ke theek
+                         neeche usi vendor ka apna PO Calculation hota hai.
+                         Ye blocks renderViPoBlocks() banata hai, Selected
+                         Vendor column badalne par dobara. -->
+                    <div id="viPoBlocks"></div>
 
                     <div class="err-banner" id="viError" style="display:none;"></div>
                     <button class="btn" id="viSaveBtn" style="margin-top:10px;">&#128190; Save Vendor Info &amp; PO Details</button>
@@ -282,11 +260,11 @@
                  autoGeneratePosFromPr will write: per-line net rate x billed
                  units, each line's own GST, charges at their own GST. Live
                  under the grid while quoting, read-only in PO Generate. -->
-            <div class="po-sum-card" id="poSummaryCard" style="display:none;">
-                <div class="po-sum-head">&#128181; PO Calculation</div>
-                <div class="po-sum-rows" id="poSummaryRows"></div>
-                <div class="po-sum-note" id="poSummaryNote"></div>
-            </div>
+            <!-- PO Generate tab ka read-only calculation — ek card per vendor,
+                 wahi cards jo quote sheet par dikhte hain. Quote sheet apne
+                 cards #viPoBlocks ke andar, apne-apne PO Details block ke
+                 neeche rakhti hai. -->
+            <div id="poSummaryWrap"></div>
 
             <!-- Saved PO terms, shown back in the PO Generate tab. Locked by
                  design: they were agreed with the vendor at quoting time, and
@@ -335,8 +313,8 @@
             </div>
 
             <!-- PO charges — the LEGACY copy. These are filled on the Vendor
-                 Rate & Info sheet now (#viFreight / #viOtherExp /
-                 #viChargesGst), so this group only appears for a PR that
+                 Rate & Info sheet now, per vendor (#viPoBlocks), so this group
+                 only appears for a PR that
                  reached PO Generate before that sheet existed and therefore has
                  no saved poPlan to show. Kept, rather than deleted, because
                  such a PR would otherwise have no way to carry charges at all.

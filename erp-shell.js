@@ -302,7 +302,12 @@
     document.body.appendChild(shell);
 
     byId_('erpBurger').addEventListener('click', () => shell.classList.toggle('side-hidden'));
-    byId_('erpScrim').addEventListener('click', () => shell.classList.add('side-hidden'));
+    // Scrim: drawer mode me use band karta hai (aap jis screen par the, wahin
+    // reh jaate hain); poore shell me wo sirf sidebar sameta deta hai.
+    byId_('erpScrim').addEventListener('click', () => {
+      if (shell.classList.contains('drawer')) closeDrawer();
+      else shell.classList.add('side-hidden');
+    });
     byId_('erpSearch').addEventListener('input', renderNav);
     byId_('erpUser').addEventListener('click', () => {
       if (typeof sarvLogout === 'function') sarvLogout();
@@ -312,7 +317,59 @@
     byId_('erpBtnBell').addEventListener('click', () => { select('DASH'); });
     // Phones start with the menu closed so the dashboard is what you land on.
     if (window.innerWidth <= 860) shell.classList.add('side-hidden');
+
+    /* ── Edge launcher ────────────────────────────────────────────────
+       Koi bhi screen khuli ho, baayein kinare par ye handle rehta hai. Isse
+       pehle doosri screen par jaane ke liye "🏠 Home" dabana padta tha, phir
+       wahan se nayi screen chunni padti thi — ab ek click me sidebar aa jaata
+       hai aur seedha kahin bhi jaa sakte hain. */
+    const l = document.createElement('button');
+    l.id = 'erpLauncher';
+    l.type = 'button';
+    l.title = 'ERP menu — yahan se seedha koi bhi screen kholein';
+    l.setAttribute('aria-label', 'ERP menu kholein');
+    l.innerHTML = '<span class="erp-l-ico">☰</span><span class="erp-l-txt">MENU</span>';
+    l.addEventListener('click', openDrawer);
+    document.body.appendChild(l);
+
+    // Escape: drawer band, aur aap usi screen par rehte hain.
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      const s = byId_('erpShell');
+      if (s && s.classList.contains('drawer')) { e.preventDefault(); closeDrawer(); }
+    });
     return shell;
+  }
+
+  function setLauncher(on) {
+    const b = byId_('erpLauncher');
+    if (b) b.classList.toggle('on', !!on);
+  }
+  /* Sidebar ko chalu screen ke upar le aata hai. Screen chhuti nahi — peeche
+     waisi hi khuli rehti hai, aur scrim / Escape / wahi screen dobara chunne
+     par aap wahin wapas aa jaate hain. */
+  function openDrawer() {
+    const s = byId_('erpShell'); if (!s) return;
+    document.body.classList.add('erp-shell-open');
+    s.classList.add('open', 'drawer');
+    s.classList.remove('side-hidden');       // drawer ka matlab hi khula sidebar
+    setLauncher(false);
+    syncUser();
+    renderNav();
+  }
+  function closeDrawer() {
+    const s = byId_('erpShell'); if (!s) return;
+    s.classList.remove('open', 'drawer');
+    document.body.classList.remove('erp-shell-open');
+    setLauncher(true);                       // screen wapas saamne, handle wapas
+  }
+  /* Drawer se Dashboard ya koi Coming Soon leaf chuna gaya — unke liye main
+     column chahiye, jo drawer mode me chhupa hota hai. To drawer poore shell
+     me khul jaata hai. */
+  function exitDrawer() {
+    const s = byId_('erpShell'); if (!s) return;
+    s.classList.remove('drawer');
+    setLauncher(false);
   }
 
   /* ══ SIDEBAR ═════════════════════════════════════════════════════════ */
@@ -385,6 +442,10 @@
     // to that screen's own button. Nothing is reimplemented here.
     if (leaf && leafLive(leaf)) { open(leaf.go, leaf.sub); return; }
 
+    /* Yahan se aage Dashboard ya Coming Soon banta hai, aur dono ko main
+       column chahiye — jo drawer mode me chhupa hota hai. To drawer ho to
+       poore shell me khul jaata hai. */
+    exitDrawer();
     current = modKey; currentLeaf = leaf ? leaf.label : null;
     if (!mod.dashboard) openMenu = modKey;
     renderNav();
@@ -429,6 +490,7 @@
      ERP_DASH off for a role, so fall back to that role's first visible module
      rather than rendering a page they were not given. */
   function landing() {
+    exitDrawer();     // landing ka content main column me jaata hai
     const vis = visibleModules();
     if (!vis.length) {
       current = null; currentLeaf = null; openMenu = null;
@@ -450,6 +512,8 @@
     const s = byId_('erpShell'); if (!s) return;
     document.body.classList.add('erp-shell-open');
     s.classList.add('open');
+    s.classList.remove('drawer');   // poora shell — drawer mode se bahar
+    setLauncher(false);             // shell khud saamne hai, handle ki zaroorat nahi
     syncUser();
     const mod = MODULES.find(m => m.key === current);
     // First open, or the module we were on is no longer allowed.
@@ -457,10 +521,15 @@
     renderNav();
     if (mod.dashboard) renderDashboard();
   }
+  /* Shell neeche ja raha hai kyonki ek screen khul rahi hai — to kinare ka
+     handle aa jaata hai. Ye hi wo ek jagah hai jahan se launcher chalu hota
+     hai, aur yahi 16 live screens ka ek hi raasta hai (sarvNavigateFromHome /
+     activatePanel wrappers), to kisi screen par handle chhoot nahi sakta. */
   function hide() {
     const s = byId_('erpShell'); if (!s) return;
-    s.classList.remove('open');
+    s.classList.remove('open', 'drawer');
     document.body.classList.remove('erp-shell-open');
+    setLauncher(true);
   }
 
   function syncUser() {

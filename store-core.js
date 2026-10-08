@@ -6466,15 +6466,48 @@ let consPdfIndex={};        // document_no -> {SINGLE:url, TWO_PAGE:url}
 let consEntryCache=null;    // {at, inward:[], outward:[]} — headers, re-used by the dependent pickers
 
 function consVal(id){return (byId(id)?.value||'').trim()}
+/* Ek multi-pick filter ki chuni hui values.
+   Entry Type, Nature aur Lot ab checkbox groups hain (Ctrl+click wala
+   <select multiple> phone aur chhoti screen par practically bina-batai
+   feature tha — log ek hi value chun paate the). Ye function dono shakal
+   padhta hai, isi liye niche ke saare call sites (filter build, scope
+   signature, chips, CSV, print) jaise the waise hi chal rahe hain. */
 function consMulti(id){
-  const sel=byId(id);
-  if(!sel)return [];
-  return [...sel.selectedOptions].map(o=>o.value).filter(Boolean);
+  const host=byId(id);
+  if(!host)return [];
+  if(host.tagName==='SELECT')return [...host.selectedOptions].map(o=>o.value).filter(Boolean);
+  return [...host.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value).filter(Boolean);
 }
+/* Ek checkbox group ki values set karna — Reset aur "All / Clear" isse
+   chalte hain. `values` null do to sab tick. */
+function consSetMulti_(id,values){
+  const host=byId(id);if(!host)return;
+  const want=values==null?null:new Set(values);
+  host.querySelectorAll('input[type=checkbox]').forEach(c=>{
+    c.checked=want?want.has(c.value):true;
+  });
+}
+/* Report ki qty.
+   nNum_ hamesha do decimal likhta hai (wo paison ke liye bana hai), to 50
+   bhi "50.00" dikhta tha aur poori grid decimal se bhari lagti thi. Yahan
+   decimal SIRF tab dikhta hai jab figure me sach me decimal ho, aur tab do
+   jagah tak — screen, subtotal, CSV aur PDF, sab isi se. */
+const consQty_=v=>{
+  const n=pNum(v);
+  /* Poora number plain (50), decimal wala POORE do jagah tak (50.5 → 50.50) —
+     taaki ek column ke figures ek seedh me padhe jaayein. 1e-7 ka guard float
+     drift ke liye hai: 50.0000000001 ko 50 hi maana jaata hai, warna wo
+     bewajah "50.00" ban jaata. */
+  const dec=Math.abs(n%1)>1e-7?2:0;
+  return n.toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec});
+};
 /* Entry types the report is running on. Nothing ticked is read as "all of
    them" rather than "none" — an empty grid would just look broken. */
 function consSelectedTypes(){
-  const picked=consMulti('consEntryType');
+  // BALANCE koi entry type nahi — wo sirf ek column on/off karta hai
+  // (consBalanceOn_), isliye yahan se nikal diya jaata hai. Warna filter
+  // "BALANCE" naam ka entry type dhoondhta aur report khaali aati.
+  const picked=consMulti('consEntryType').filter(v=>v!=='BALANCE');
   return picked.length?picked:Object.keys(CONS_TYPES);
 }
 function consSelectedTables(){
@@ -6576,12 +6609,13 @@ function consFilterEntries_(cache,opts={}){
    so a lot that belongs only to an OUTWARD disappears the moment OUTWARD is
    unticked. Both keep the user's current pick where it is still valid. */
 function consRefreshNature_(){
-  const sel=byId('consNature');if(!sel)return;
+  const host=byId('consNature');if(!host)return;
   const keep=new Set(consMulti('consNature'));
   const names=[...new Set(consSelectedTypes().flatMap(t=>(CONS_TYPES[t]||{}).natures||[]))];
-  sel.innerHTML=names.map(n=>'<option value="'+escText(n)+'"'+(keep.has(n)?' selected':'')+'>'
-    +escText(CONS_NATURE_LABEL[n]||n)+'</option>').join('');
-  sel.size=Math.min(5,Math.max(3,names.length));
+  host.innerHTML=names.length
+    ? names.map(n=>'<label><input type="checkbox" value="'+escText(n)+'"'+(keep.has(n)?' checked':'')+'> '
+        +escText(CONS_NATURE_LABEL[n]||n)+'</label>').join('')
+    : '<span class="cons-chk-empty">Chune hue Entry Type par koi nature nahi</span>';
 }
 /* Rebuilds one dependent <select> from a list of values, keeping the current
    pick where it survives. A pick that no longer exists falls back to "All"
@@ -6599,14 +6633,48 @@ function consFillPicker_(id,values,allLabel,emptyTitle,countNoun){
    picks that the other filters have made impossible simply drop out, which is
    the multi equivalent of falling back to "All". */
 function consFillMultiPicker_(id,values,emptyTitle,countNoun){
-  const sel=byId(id);if(!sel)return;
+  const host=byId(id);if(!host)return;
   const keep=new Set(consMulti(id));
-  sel.innerHTML=values.map(v=>'<option value="'+escText(v)+'"'+(keep.has(v)?' selected':'')+'>'
-    +escText(v)+'</option>').join('');
-  sel.size=Math.min(6,Math.max(3,values.length));
-  sel.title=values.length
-    ? (values.length+' '+countNoun+' — Ctrl / Cmd se ek se zyada chunein. Kuch na chunein to saare.')
-    : emptyTitle;
+  host.innerHTML=values.length
+    ? values.map(v=>'<label><input type="checkbox" value="'+escText(v)+'"'+(keep.has(v)?' checked':'')+'> '
+        +escText(v)+'</label>').join('')
+    : '<span class="cons-chk-empty">'+escText(emptyTitle)+'</span>';
+  host.title=values.length?(values.length+' '+countNoun+' — kuch na chunein to saare'):emptyTitle;
+  consSyncLotBtn_();
+}
+/* Lot button ka label — band dropdown ko khud batana padta hai ki andar kya
+   chuna hua hai, warna ek narrowed report bilkul ek khaali report jaisi
+   dikhti hai. */
+function consSyncLotBtn_(){
+  const btn=byId('consLotBtn'),txt=byId('consLotBtnText');
+  if(!btn||!txt)return;
+  const picked=consMulti('consLot');
+  const total=(byId('consLot')?.querySelectorAll('input[type=checkbox]')||[]).length;
+  txt.textContent=!picked.length?'All Lots'
+    :(picked.length===1?picked[0]:picked.length+' of '+total+' lots');
+  btn.classList.toggle('is-set',picked.length>0);
+  btn.title=picked.length?('Chune hue lots: '+picked.join(', ')):'Koi lot nahi chuna — saare lots';
+}
+/* All / Clear ke baad: Lot ka label theek karo, aur Entry Type / Nature / Lot
+   me se kuch badla ho to neeche ki dependent lists dobara banwao — wahi kaam
+   jo un pickers ka apna change event karta hai. */
+function consAfterMulti_(id){
+  if(id==='consLot')consSyncLotBtn_();
+  if(id==='consEntryType')consRefreshNature_();
+  consRefreshDependent_().catch(()=>{});
+}
+function consToggleLotPanel_(open){
+  const p=byId('consLotPanel');if(!p)return;
+  const want=open===undefined?!p.classList.contains('open'):!!open;
+  p.classList.toggle('open',want);
+  if(want){const s=byId('consLotSearch');if(s){s.value='';consFilterLotList_();s.focus();}}
+}
+// Panel ke andar ka search — lambi lot list me ek lot dhoondhne ke liye.
+function consFilterLotList_(){
+  const q=(byId('consLotSearch')?.value||'').trim().toUpperCase();
+  byId('consLot')?.querySelectorAll('label').forEach(l=>{
+    l.classList.toggle('is-hid',!!q&&l.textContent.trim().toUpperCase().indexOf(q)<0);
+  });
 }
 async function consRefreshLots_(){
   if(!byId('consLot'))return;
@@ -6917,16 +6985,28 @@ function consSetExportsEnabled(on){
    where a part's specification belongs. TOTAL QTY is deliberately the last
    frozen column: it is the one figure that has to stay readable while the
    dates scroll past it. */
-const CONS_FIXED_COLS=[
-  {key:'party',label:'PARTY / SUPPLIER', w:168, cls:'cons-party', filter:'text'},
-  {key:'name', label:'ITEM NAME',        w:196, cls:'cons-name',  filter:'text'},
-  {key:'desc', label:'DESCRIPTION',      w:156, cls:'',           filter:'text'},
-  {key:'cat',  label:'CATEGORY',         w:146, cls:'',           filter:'text'},
-  {key:'uom',  label:'UOM',              w:58,  cls:'',           filter:'text'},
-  {key:'total',label:'TOTAL QTY',        w:92,  cls:'cons-total', filter:'num'},
+/* Frozen (left-hand) columns. `balance` tabhi aata hai jab Entry Type ke
+   checkboxes me BALANCE ticked ho — isi liye yahan poori list hai aur
+   consFixedCols_() us waqt ki active list deta hai. */
+const CONS_ALL_FIXED_COLS=[
+  {key:'party',  label:'PARTY / SUPPLIER', w:168, cls:'cons-party', filter:'text'},
+  {key:'name',   label:'ITEM NAME',        w:196, cls:'cons-name',  filter:'text'},
+  {key:'desc',   label:'DESCRIPTION',      w:156, cls:'',           filter:'text'},
+  {key:'cat',    label:'CATEGORY',         w:146, cls:'',           filter:'text'},
+  {key:'uom',    label:'UOM',              w:58,  cls:'',           filter:'text'},
+  {key:'total',  label:'TOTAL QTY',        w:92,  cls:'cons-total', filter:'num'},
+  {key:'balance',label:'BALANCE',          w:92,  cls:'cons-total', filter:'num', optional:'BALANCE'},
 ];
-const CONS_FIXED_W=CONS_FIXED_COLS.reduce((s,c)=>s+c.w,0);
-function consFixedLeft_(i){return CONS_FIXED_COLS.slice(0,i).reduce((s,c)=>s+c.w,0)}
+/* BALANCE ticked hai ya nahi. Ye Entry Type ke checkbox group me 5va box hai,
+   par ye koi entry type NAHI hai — ye sirf ek column on/off karta hai, isliye
+   consSelectedTypes() ise jaan-boojh kar nikal deta hai (warna wo "BALANCE"
+   naam ka entry type dhoondhne lagta aur report khaali aati). */
+function consBalanceOn_(){return consMulti('consEntryType').indexOf('BALANCE')>=0}
+function consFixedCols_(){
+  return CONS_ALL_FIXED_COLS.filter(c=>!c.optional||(c.optional==='BALANCE'&&consBalanceOn_()));
+}
+function consFixedW_(){return consFixedCols_().reduce((s,c)=>s+c.w,0)}
+function consFixedLeft_(i){return consFixedCols_().slice(0,i).reduce((s,c)=>s+c.w,0)}
 /* The raw value a column holds, used for display, for filtering and for the
    CSV alike — one definition, so a column can never be filtered on something
    different from what it shows. */
@@ -6937,12 +7017,16 @@ function consRowValue_(r,key){
     case 'desc': return r.it.description||'';
     case 'cat':  return r.it.category||'';
     case 'uom':  return r.uom||'';
-    case 'total':return nNum_(r.total);
+    // BALANCE = total IN − total OUT. r.total isi tarah banta hai (IN jodta
+    // hai, OUT ghatata hai — dekhein consAddLine_), to dono column ek hi
+    // figure dikhate hain; BALANCE wo figure apne naam se dikhane ke liye hai.
+    case 'total':
+    case 'balance':return consQty_(r.total);
     default:     return '';
   }
 }
 // Sort/compare value — the numeric column filters on the number, not its text.
-function consRowRaw_(r,key){return key==='total'?pNum(r.total):consRowValue_(r,key)}
+function consRowRaw_(r,key){return (key==='total'||key==='balance')?pNum(r.total):consRowValue_(r,key)}
 function renderConsumptionReport(){
   const host=byId('consBody');if(!host||!consReport)return;
   // Applying or clearing a column filter re-renders, and the popover that
@@ -6961,9 +7045,9 @@ function renderConsumptionReport(){
     consRenderChips_();
     return;
   }
-  const totalW=CONS_FIXED_W+cols.length*46;
-  const headFixed=CONS_FIXED_COLS.map((c,i)=>
-    '<th class="cons-frz'+(i===CONS_FIXED_COLS.length-1?' cons-last':'')
+  const totalW=consFixedW_()+cols.length*46;
+  const headFixed=consFixedCols_().map((c,i)=>
+    '<th class="cons-frz'+(i===consFixedCols_().length-1?' cons-last':'')
     +(consColFilterOn_(c.key)?' is-filtered':'')+'"'
     +' style="left:'+consFixedLeft_(i)+'px;width:'+c.w+'px;min-width:'+c.w+'px;"'
     +' title="'+escText(c.label+(consColFilterOn_(c.key)?' — filter lagaa hai':''))+'">'
@@ -6979,8 +7063,8 @@ function renderConsumptionReport(){
      consRenderSubtotals_() from the VISIBLE rows, so it moves with the column
      filters and the row search instead of being a frozen snapshot of the
      unfiltered report. */
-  const subFixed=CONS_FIXED_COLS.map((c,i)=>
-    '<th class="cons-frz'+(i===CONS_FIXED_COLS.length-1?' cons-last cons-sub-total':'')
+  const subFixed=consFixedCols_().map((c,i)=>
+    '<th class="cons-frz'+(i===consFixedCols_().length-1?' cons-last cons-sub-total':'')
     +(i===0?' cons-sub-lbl':'')+'" data-sub="'+escText(c.key)+'"'
     +' style="left:'+consFixedLeft_(i)+'px;width:'+c.w+'px;min-width:'+c.w+'px;"></th>').join('');
   const subDates=cols.map(c=>
@@ -6988,13 +7072,13 @@ function renderConsumptionReport(){
 
   const body=rows.map((r,ri)=>{
     const cls=r.moved?'':'is-idle';
-    const fixed=CONS_FIXED_COLS.map((c,i)=>{
+    const fixed=consFixedCols_().map((c,i)=>{
       const v=consRowValue_(r,c.key);
       // Lot is a filter, not a column, so the lots this row's movements
       // actually came under ride in the Party cell's tooltip — the one place
       // they can be seen without spending frozen width on them.
       const tip=(c.key==='party'&&r.lotText)?(v+'\nLot: '+r.lotText):v;
-      return '<td class="cons-frz '+c.cls+(i===CONS_FIXED_COLS.length-1?' cons-last':'')+'"'
+      return '<td class="cons-frz '+c.cls+(i===consFixedCols_().length-1?' cons-last':'')+'"'
         +' style="left:'+consFixedLeft_(i)+'px;width:'+c.w+'px;min-width:'+c.w+'px;"'
         +' title="'+escText(tip)+'">'+escText(v)+'</td>';
     }).join('');
@@ -7007,11 +7091,11 @@ function renderConsumptionReport(){
          never be read as "nothing happened". */
       const dir=cell.inQty&&cell.outQty?'mix':(cell.inQty?'in':'out');
       const shown=dir==='in'?cell.inQty:dir==='out'?cell.outQty:(cell.inQty-cell.outQty);
-      const tip=cell.docs.map(d=>(d.dir==='IN'?'▲ ':'▼ ')+d.doc+'  '+nNum_(d.qty)).join('\n')
+      const tip=cell.docs.map(d=>(d.dir==='IN'?'▲ ':'▼ ')+d.doc+'  '+consQty_(d.qty)).join('\n')
         +'\n\nClick: in-out PDF kholein';
       return '<td class="cons-cell">'
         +'<span class="cons-hit dir-'+dir+'" data-r="'+ri+'" data-c="'+escText(c.key)+'" title="'+escText(tip)+'">'
-        +escText(nNum_(shown))+'</span></td>';
+        +escText(consQty_(shown))+'</span></td>';
     }).join('');
     return '<tr data-row="'+ri+'" class="'+cls+'">'+fixed+cells+'</tr>';
   }).join('');
@@ -7070,7 +7154,7 @@ function consOpenCellDocs_(span){
       const url=consPdfUrl_(d.doc);
       const left='<span class="d">'+(d.dir==='IN'?'▲':'▼')+' '+escText(d.doc)+'</span>'
         +'<span style="color:#64748b;font-size:10px;">'+escText(d.type)+(d.nature?(' · '+escText(CONS_NATURE_LABEL[d.nature]||d.nature)):'')+'</span>'
-        +'<span class="q" style="color:'+(d.dir==='IN'?'#166534':'#b91c1c')+';">'+escText(nNum_(d.qty))+'</span>';
+        +'<span class="q" style="color:'+(d.dir==='IN'?'#166534':'#b91c1c')+';">'+escText(consQty_(d.qty))+'</span>';
       return url
         ? '<a class="cons-pop-row" href="'+escText(url)+'" target="_blank" rel="noopener" title="PDF kholein">'+left+'</a>'
         : '<div class="cons-pop-row no-pdf" title="Is record ki PDF index me nahi mili">'+left+'</div>';
@@ -7111,9 +7195,9 @@ function consApplyRowSearch_(){
   const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
   set('consRowCount',narrowed?(shown+' / '+consReport.rows.length):String(consReport.rows.length));
   set('consDocCount',narrowed?docs.size:consReport.totals.docs);
-  set('consTotalIn',nNum_(narrowed?tIn:consReport.totals.in));
-  set('consTotalOut',nNum_(narrowed?tOut:consReport.totals.out));
-  set('consNet',nNum_(narrowed?(tIn-tOut):(consReport.totals.in-consReport.totals.out)));
+  set('consTotalIn',consQty_(narrowed?tIn:consReport.totals.in));
+  set('consTotalOut',consQty_(narrowed?tOut:consReport.totals.out));
+  set('consNet',consQty_(narrowed?(tIn-tOut):(consReport.totals.in-consReport.totals.out)));
   consRenderSubtotals_();
   consRenderChips_();
 }
@@ -7141,7 +7225,7 @@ function consRenderSubtotals_(){
   const headRow=table.tHead.rows[1];
   headRow.querySelectorAll('[data-sub]').forEach(th=>{
     const key=th.dataset.sub;
-    if(key==='total'){th.textContent=nNum_(grand);return;}
+    if(key==='total'||key==='balance'){th.textContent=consQty_(grand);return;}
     // Only the first and last fixed cells carry text: the middle ones are
     // there to hold the frozen offsets, and filling them would just repeat
     // the same word across the row.
@@ -7153,10 +7237,10 @@ function consRenderSubtotals_(){
     const v=perCol[th.dataset.subd]||{in:0,out:0};
     const n=v.in-v.out;
     const zero=!v.in&&!v.out;
-    th.textContent=zero?'-':nNum_(n);
+    th.textContent=zero?'-':consQty_(n);
     th.classList.toggle('zero',zero);
     th.style.color=zero?'':(v.in&&v.out?'#fde047':(v.in?'#86efac':'#fca5a5'));
-    th.title=zero?'':('In '+nNum_(v.in)+'  ·  Out '+nNum_(v.out)+'  ·  Net '+nNum_(n));
+    th.title=zero?'':('In '+consQty_(v.in)+'  ·  Out '+consQty_(v.out)+'  ·  Net '+consQty_(n));
   });
 }
 
@@ -7177,9 +7261,9 @@ function consColFilterOn_(col){
   if(f.vals)return f.vals.size>0;
   return f.min!=null||f.max!=null;
 }
-function consAnyColFilter_(){return CONS_FIXED_COLS.some(c=>consColFilterOn_(c.key))}
+function consAnyColFilter_(){return consFixedCols_().some(c=>consColFilterOn_(c.key))}
 function consRowPassesColFilters_(r,skipCol){
-  return CONS_FIXED_COLS.every(c=>{
+  return consFixedCols_().every(c=>{
     if(c.key===skipCol||!consColFilterOn_(c.key))return true;
     const f=consColFilters[c.key];
     if(f.vals)return f.vals.has(String(consRowValue_(r,c.key)));
@@ -7201,7 +7285,7 @@ function consColValues_(col){
 }
 function consRenderChips_(){
   const bar=byId('consChips');if(!bar)return;
-  const on=CONS_FIXED_COLS.filter(c=>consColFilterOn_(c.key));
+  const on=consFixedCols_().filter(c=>consColFilterOn_(c.key));
   if(!on.length){bar.style.display='none';bar.innerHTML='';return;}
   bar.style.display='flex';
   bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#92400e;">&#128269; COLUMN FILTERS:</span>'
@@ -7225,7 +7309,7 @@ function consOpenColFilter_(btn){
   consClosePop_();
   if(!consReport)return;
   const col=btn.dataset.fcol;
-  const cfg=CONS_FIXED_COLS.find(c=>c.key===col);
+  const cfg=consFixedCols_().find(c=>c.key===col);
   if(!cfg)return;
   const pop=document.createElement('div');
   pop.className='cons-pop';pop.id='consPopover';pop.dataset.fcol=col;
@@ -7330,12 +7414,12 @@ function exportConsumptionCsv(){
   // LOT NO(s) is not a grid column any more (Party took its place), but it is
   // still the thing a consumption sheet gets reconciled against — so the
   // export carries it where there is no width to pay for.
-  out.push([...CONS_FIXED_COLS.map(c=>c.label),'LOT NO(s)',...cols.map(c=>c.label)].map(esc).join(','));
+  out.push([...consFixedCols_().map(c=>c.label),'LOT NO(s)',...cols.map(c=>c.label)].map(esc).join(','));
   // What is exported is what is on screen: a CSV that quietly ignored the
   // column filters would disagree with the report it was taken from.
   const visible=consVisibleRows_();
   visible.forEach(r=>{
-    const fixed=CONS_FIXED_COLS.map(c=>consRowValue_(r,c.key));
+    const fixed=consFixedCols_().map(c=>consRowValue_(r,c.key));
     const cells=cols.map(c=>{
       const cell=r.cells[c.key];
       if(!cell||(!cell.inQty&&!cell.outQty))return '';
@@ -7388,17 +7472,17 @@ function printConsumptionReport(){
   const dw=cols.length<=14?34:cols.length<=26?26:cols.length<=40?20:16;
   const esc=escText;
   const head='<tr>'
-    +CONS_FIXED_COLS.map(c=>'<th class="fx">'+esc(c.label)+'</th>').join('')
+    +consFixedCols_().map(c=>'<th class="fx">'+esc(c.label)+'</th>').join('')
     +cols.map(c=>'<th class="dh">'+esc(c.label)+'</th>').join('')+'</tr>';
   const body=rows.map(r=>'<tr'+(r.moved?'':' class="idle"')+'>'
-    +CONS_FIXED_COLS.map(c=>'<td class="fx'+(c.key==='total'?' tot':'')
+    +consFixedCols_().map(c=>'<td class="fx'+((c.key==='total'||c.key==='balance')?' tot':'')
       +(c.key==='name'?' nm':'')+'">'+esc(consRowValue_(r,c.key))+'</td>').join('')
     +cols.map(c=>{
       const cell=r.cells[c.key];
       if(!cell||(!cell.inQty&&!cell.outQty))return '<td class="d">-</td>';
       const dir=cell.inQty&&cell.outQty?'mix':(cell.inQty?'in':'out');
       const shown=dir==='in'?cell.inQty:dir==='out'?cell.outQty:(cell.inQty-cell.outQty);
-      return '<td class="d '+dir+'">'+esc(nNum_(shown))+'</td>';
+      return '<td class="d '+dir+'">'+esc(consQty_(shown))+'</td>';
     }).join('')+'</tr>').join('');
   /* The same subtotal row the screen pins under its headers, printed inside
      <thead> so it REPEATS on every page — on a four-page report the totals are
@@ -7413,12 +7497,12 @@ function printConsumptionReport(){
     });
   });
   const subRow='<tr class="sub">'
-    +CONS_FIXED_COLS.map((c,i)=>'<th class="fx'+(c.key==='total'?' tot':'')+'">'
-      +(i===0?esc('Subtotal · '+rows.length+' row'+(rows.length===1?'':'s')):(c.key==='total'?esc(nNum_(subGrand)):''))
+    +consFixedCols_().map((c,i)=>'<th class="fx'+((c.key==='total'||c.key==='balance')?' tot':'')+'">'
+      +(i===0?esc('Subtotal · '+rows.length+' row'+(rows.length===1?'':'s')):((c.key==='total'||c.key==='balance')?esc(consQty_(subGrand)):''))
       +'</th>').join('')
     +cols.map(c=>{
       const v=subPer[c.key];
-      return '<th class="d">'+((!v.in&&!v.out)?'-':esc(nNum_(v.in-v.out)))+'</th>';
+      return '<th class="d">'+((!v.in&&!v.out)?'-':esc(consQty_(v.in-v.out)))+'</th>';
     }).join('')+'</tr>';
   const unit=(typeof SARV_COMPANY!=='undefined'&&SARV_COMPANY&&SARV_COMPANY.unit)?SARV_COMPANY.unit:'SARV INDIA HOME FURNISHING';
   const html='<!doctype html><html><head><meta charset="utf-8">'
@@ -7428,17 +7512,32 @@ function printConsumptionReport(){
     +'body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#0f172a}'
     +'h1{font-size:13px;margin:0 0 2px}'
     +'.meta{font-size:8.5px;color:#475569;margin-bottom:6px;line-height:1.45}'
-    +'table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:'+fs+'px}'
+    /* ── AUTOFIT ─────────────────────────────────────────────────────
+       table-layout:auto, taaki browser har column ko uske content ke hisaab
+       se naape. Pehle `fixed` tha with per-column hard widths + nowrap +
+       ellipsis: lamba item naam beech se kat jaata tha aur "YARN 2/32 CO…"
+       chhap kar jaata, jo ek stock report me padhne layak hi nahi.
+
+       Text columns ab wrap karti hain (word-break ke saath, taaki ek lamba
+       code bhi column tod kar bahar na nikle) aur row ki height us wrap ke
+       hisaab se khud badh jaati hai. Number columns nowrap rehti hain —
+       ek figure do lines me tootna nahi chahiye. */
+    +'table{border-collapse:collapse;width:100%;table-layout:auto;font-size:'+fs+'px}'
     // Repeat the header on every printed page — the one thing the on-screen
     // grid's sticky header cannot do on paper.
     +'thead{display:table-header-group}tr{page-break-inside:avoid}'
-    +'th,td{border:.5px solid #94a3b8;padding:1.5px 3px;overflow:hidden;'
-      +'text-overflow:ellipsis;white-space:nowrap}'
+    +'th,td{border:.5px solid #94a3b8;padding:1.5px 3px;'
+      +'white-space:normal;overflow-wrap:break-word;word-break:break-word;vertical-align:top}'
     +'th{background:#d9e84a;color:#1a2e05;font-size:'+(fs-.5)+'px;text-align:left}'
-    +'th.dh{text-align:center;width:'+dw+'px;'
-      // Vertical dates on paper too, so a day column stays as narrow as a number.
-      +'writing-mode:vertical-rl;transform:rotate(180deg);height:62px;padding:3px 1px}'
-    +'td.d{text-align:center;width:'+dw+'px;color:#64748b}'
+    /* Date headers: rotated text, par height FIX nahi. Pehle height:62px tha,
+       to chhota label (month) bhi 62px ki patti leta aur lamba label kat
+       jaata. Height chhodne par rotated box apne text ke hisaab se khud
+       naapta hai — yani sabse lambe label ke mutabik, jo asli autofit hai.
+       min-height sirf itni ki chhota label bhi dabba jaisa lage. */
+    +'th.dh{text-align:center;min-width:'+dw+'px;'
+      +'writing-mode:vertical-rl;transform:rotate(180deg);'
+      +'min-height:44px;padding:3px 1px;white-space:nowrap}'
+    +'td.d{text-align:center;min-width:'+dw+'px;color:#64748b;white-space:nowrap}'
     +'td.d.in{color:#166534;font-weight:bold;background:#f0fdf4}'
     +'td.d.out{color:#b91c1c;font-weight:bold;background:#fef2f2}'
     +'td.d.mix{color:#854d0e;font-weight:bold;background:#fefce8}'
@@ -7450,12 +7549,16 @@ function printConsumptionReport(){
     +'tr.sub th.d{text-align:center}'
     +'tr.sub th.tot{background:#047857}'
     +'tr.sub th:first-child{text-align:left;text-transform:uppercase;letter-spacing:.2px}'
-    +CONS_FIXED_COLS.map((c,i)=>'th.fx:nth-child('+(i+1)+'),td.fx:nth-child('+(i+1)+'){width:'
-      +Math.round(c.w*0.78)+'px}').join('')
+    /* Per-column hints, HARD width nahi. `width` dene se table-layout:auto ka
+       naapna bekaar ho jaata hai; min/max dene se column apne content ke
+       hisaab se saans leti hai par ek lamba description poori table ko
+       nigal bhi nahi sakti. */
+    +consFixedCols_().map((c,i)=>'th.fx:nth-child('+(i+1)+'),td.fx:nth-child('+(i+1)+'){min-width:'
+      +Math.round(c.w*0.42)+'px;max-width:'+Math.round(c.w*0.95)+'px}').join('')
     +'</style></head><body>'
     +'<h1>'+esc(unit)+' &mdash; ITEM CONSUMPTION REPORT</h1>'
     +'<div class="meta">'+esc(consFilterText_())
-    +(consAnyColFilter_()?('<br>Column filters: '+esc(CONS_FIXED_COLS.filter(c=>consColFilterOn_(c.key)).map(c=>c.label).join(', '))):'')
+    +(consAnyColFilter_()?('<br>Column filters: '+esc(consFixedCols_().filter(c=>consColFilterOn_(c.key)).map(c=>c.label).join(', '))):'')
     +'<br>Rows: '+rows.length+' &nbsp;|&nbsp; Date columns: '+cols.length
     +' &nbsp;|&nbsp; Printed: '+esc(pStamp())+'</div>'
     +'<table><thead>'+head+subRow+'</thead><tbody>'+body+'</tbody></table>'
@@ -7524,20 +7627,19 @@ function consPrintFallbackTab_(html){
 
 /* ── Open / close / wiring ────────────────────────────────────────── */
 function consResetFilters_(){
-  const sel=byId('consEntryType');
-  if(sel)[...sel.options].forEach(o=>{o.selected=true});
+  // Chaar entry types ticked, BALANCE nahi — wo ek extra column hai, default
+  // nahi (saari reports ko ek dohraya hua column dene ka matlab nahi).
+  consSetMulti_('consEntryType',['INWARD','INWARD NB','OUTWARD','ISSUE']);
   // A fortnight is what the reference sheet shows and what fits on a screen
   // without scrolling sideways — a sensible place to start, not a limit.
   const to=consIsoDate_(new Date()), from=consAddDays_(to,-13);
   const put=(id,v)=>{const e=byId(id);if(e)e.value=v};
   put('consFrom',from);put('consTo',to);
   put('consParty','');put('consItem','');put('consCategory','');
-  const lotSel=byId('consLot');
-  if(lotSel)[...lotSel.options].forEach(o=>{o.selected=false});
+  consSetMulti_('consLot',[]);consSyncLotBtn_();consToggleLotPanel_(false);
   put('consPeriod','DAY');put('consMeasure','QTY');put('consShowIdle','0');put('consSearch','');
   consRefreshNature_();
-  const nat=byId('consNature');
-  if(nat)[...nat.options].forEach(o=>{o.selected=false});
+  consSetMulti_('consNature',[]);
   // Header filters are part of "the filters", so Reset clears them too —
   // otherwise a reset report could still come back mysteriously narrowed.
   consColFilters={};
@@ -9067,6 +9169,44 @@ window.addEventListener('DOMContentLoaded',()=>{
       e.dataset.consBound='1';
     }
   });
+  /* Checkbox groups ki "All / Clear" links, aur Lot ka dropdown.
+     Ek hi delegated handler poore filter bar par — Nature aur Lot ki lists
+     har Entry Type change par dobara banti hain, to per-checkbox listeners
+     har baar phir lagane padte. */
+  {
+    const bar=document.querySelector('#consOverlay .cons-filters');
+    if(bar&&!bar.dataset.consChkBound){
+      bar.addEventListener('click',ev=>{
+        const t=ev.target;
+        if(!t||!t.dataset)return;
+        if(t.dataset.all){ev.preventDefault();consSetMulti_(t.dataset.all,null);consAfterMulti_(t.dataset.all);return;}
+        if(t.dataset.none){ev.preventDefault();consSetMulti_(t.dataset.none,[]);consAfterMulti_(t.dataset.none);return;}
+        if(t.closest&&t.closest('#consLotBtn')){ev.preventDefault();consToggleLotPanel_();return;}
+      });
+      // Lot ke apne checkboxes: button ka label turant sach bole.
+      bar.addEventListener('change',ev=>{
+        if(ev.target&&ev.target.closest&&ev.target.closest('#consLot'))consSyncLotBtn_();
+      });
+      bar.dataset.consChkBound='1';
+    }
+    const ls=byId('consLotSearch');
+    if(ls&&!ls.dataset.consBound){
+      ls.addEventListener('input',()=>consFilterLotList_());
+      // Panel ke andar Enter report chala de, search box band na kare.
+      ls.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();runConsumptionReport().catch(dbError)}});
+      ls.dataset.consBound='1';
+    }
+    // Bahar click karne par Lot panel band — warna wo baaki filters ke upar khula rehta.
+    if(!document.body.dataset.consDdBound){
+      document.addEventListener('click',ev=>{
+        const p=byId('consLotPanel');
+        if(!p||!p.classList.contains('open'))return;
+        if(ev.target.closest&&(ev.target.closest('#consLotPanel')||ev.target.closest('#consLotBtn')))return;
+        consToggleLotPanel_(false);
+      },true);
+      document.body.dataset.consDdBound='1';
+    }
+  }
   // Enter anywhere in the filter bar generates.
   ['consFrom','consTo'].forEach(id=>{
     const e=byId(id);

@@ -271,6 +271,56 @@
 }
 #erpShell .erp-soon .back:hover { background: #1e40af; }
 
+/* ══ DRAWER MODE ══════════════════════════════════════════════════════
+   Ek hi sidebar, do tarah se dikhta hai:
+
+     #erpShell.open            poora shell — sidebar + dashboard / Coming Soon
+     #erpShell.open.drawer     sirf sidebar, chalu screen ke UPAR overlay
+
+   Drawer mode isi liye hai ki koi bhi screen khuli ho, aap seedha doosri
+   screen par ja sakein — pehle Home jaane ki zaroorat nahi. Sidebar ka DOM
+   wahi ek hai aur renderNav bhi wahi, to do navigation alag nahi pad sakti. */
+#erpShell.drawer { background: transparent; }
+#erpShell.drawer .erp-main { display: none; }
+#erpShell.drawer .erp-scrim { display: block; }
+#erpShell.drawer .erp-side {
+  position: relative; z-index: 3;
+  box-shadow: 4px 0 20px rgba(15,23,42,.30);
+}
+/* Drawer khulne ka matlab hi sidebar dikhana hai — side-hidden yahan laagu
+   nahi hota, warna phone par drawer khaali khulta. */
+#erpShell.drawer.side-hidden .erp-side { margin-left: 0; }
+
+/* ══ EDGE LAUNCHER ════════════════════════════════════════════════════
+   Jab koi screen khuli ho (yaani shell neeche ho), tab baayein kinare par ye
+   handle dikhta hai. Click karne par sidebar drawer ki tarah upar aa jaata
+   hai. z-index 880 — panels ke upar, par app ke modals (3400+), login gate
+   (99999) aur toasts ke neeche, to ek khula modal ise theek se dhak deta hai. */
+#erpLauncher {
+  display: none;
+  position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+  z-index: 880;
+  flex-direction: column; align-items: center; gap: 7px;
+  background: #1d4ed8; color: #fff; border: none;
+  border-radius: 0 10px 10px 0;
+  padding: 14px 7px 14px 5px; cursor: pointer;
+  box-shadow: 2px 2px 14px rgba(15,23,42,.32);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  transition: background .15s, padding-left .15s;
+}
+#erpLauncher.on { display: flex; }
+#erpLauncher:hover { background: #1e40af; padding-left: 10px; }
+#erpLauncher .erp-l-ico { font-size: 15px; line-height: 1; }
+#erpLauncher .erp-l-txt {
+  font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
+  writing-mode: vertical-rl; text-orientation: mixed;
+}
+@media (max-width: 860px) {
+  #erpLauncher { padding: 11px 6px 11px 4px; }
+  #erpLauncher .erp-l-txt { display: none; }
+}
+@media print { #erpLauncher { display: none !important; } }
+
 /* ── phone ────────────────────────────────────────────────────────── */
 #erpShell .erp-scrim {
   display: none; position: absolute; inset: 0;

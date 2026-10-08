@@ -3484,10 +3484,17 @@
             const wt = (line.gross_weight!=null && line.gross_weight!=='')
                 ? pNumM(line.gross_weight)
                 : pNumM((snapItems[i]||{}).grossWeight);
-            /* Bill On comes from the snapshot, then the PR line, then QTY —
-               QTY being how every PO was priced before this existed, so an
-               untouched grid produces the same figures it always did. */
-            const savedBasis = String((snapItems[i]||{}).billBasis || (line.bill_basis||'')).toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY';
+            /* Bill On ab KHAALI load hota hai — koi default nahi. Pehle QTY
+               apne aap chuna hua aata tha, aur ek pehle se bhara box wahi box
+               hai jise koi dobara nahi padhta: WEIGHT par bikne wala maal
+               chupchaap QTY par bill ho jaata tha. Khaali hone se Purchaser ko
+               batana padta hai ki ye line kis cheez par bill hogi, aur save
+               tab tak nahi hota jab tak har row par ye chuna na jaye — bilkul
+               wahi niyam jo GST% par pehle se hai.
+               Sirf wo value chuni hui aati hai jo is PR par SACH ME save ho
+               chuki hai; kuch aur (ya khaali) = khaali. */
+            const rawBasis = String((snapItems[i]||{}).billBasis || line.bill_basis || '').toUpperCase();
+            const savedBasis = (rawBasis === 'WEIGHT' || rawBasis === 'QTY') ? rawBasis : '';
             const firstFilled = (...xs) => {
                 for(const x of xs) if(x != null && String(x).trim() !== '') return String(x);
                 return '';
@@ -3506,7 +3513,7 @@
                 `<td class="vi-qtyc"><input type="number" class="vi-qty" data-row="${i}" min="0" step="any" inputmode="decimal" value="${pNumM(line.requested_qty)}"></td>` +
                 `<td class="vi-qtyc"><input type="number" class="vi-weight" data-row="${i}" min="0" step="any" inputmode="decimal" value="${wt}"></td>` +
                 `<td class="vi-sel"><select class="vi-item-vendor" data-row="${i}"></select></td>` +
-                `<td class="vi-poc"><select class="vi-basis" data-row="${i}"><option value="QTY"${savedBasis!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${savedBasis==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` +
+                `<td class="vi-poc"><select class="vi-basis${savedBasis===''?' is-blank':''}" data-row="${i}"><option value=""${savedBasis===''?' selected':''}>--</option><option value="QTY"${savedBasis==='QTY'?' selected':''}>QTY</option><option value="WEIGHT"${savedBasis==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` +
                 `<td class="vi-poc"><input type="number" class="vi-gst${savedGst===''?' is-blank':''}" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal" placeholder="--" value="${escText(savedGst)}"></td>` +
                 VI_SLOTS.map((v,gi)=>{
                     const alt = gi%2 ? ' vi-g-alt' : '';
@@ -3531,18 +3538,25 @@
            same lock covers the PO Details below, which are now saved with them. */
         const viLocked = vendors.some(v => v && String(v.name||'').trim()) && !snap.vendorInfoReopened;
 
-        // Delivery Date, charges and the PO's notes, as saved on this PR.
-        const plan = poPlanOf_(snap);
-        const dlv = document.getElementById('viDeliveryDate');
-        dlv.value = plan.deliveryDate || '';
-        // Only clamp the floor where the box can actually be used. On a locked
-        // form a saved date that has since passed would otherwise be flagged
-        // invalid by the browser, with nothing the Purchaser could do here.
-        dlv.min = viLocked ? '' : localIsoDate_();
-        document.getElementById('viFreight').value = plan.freight != null ? String(plan.freight) : '';
-        document.getElementById('viOtherExp').value = plan.otherExp != null ? String(plan.otherExp) : '';
-        document.getElementById('viChargesGst').value = plan.chargesGst != null ? String(plan.chargesGst) : String(SARV_DEFAULT_GST);
-        document.getElementById('viPoNotes').value = plan.notes || '';
+        /* Per-vendor PO Details, jaisa is PR par save hai. viPlan DOM se nahi,
+           snapshot se bharta hai; blocks uske baad renderViPoBlocks banata
+           hai. Purane PR par byVendor nahi hota — tab har vendor ko wahi flat
+           plan mil jaata hai (poPlanFor_ ka fallback), to kuch khaali nahi
+           dikhta. Blocks ka locked flag container par rakha hai, kyonki blocks
+           baad me (vendor badalne par) dobara bante hain. */
+        viPlan = {};
+        const blocksWrap = document.getElementById('viPoBlocks');
+        if(blocksWrap) blocksWrap.dataset.locked = viLocked ? '1' : '0';
+        viVendorGroups().forEach(g => {
+            const p = poPlanFor_(snap, g.key);
+            viPlan[g.key] = {
+                deliveryDate: p.deliveryDate || '',
+                freight: p.freight != null ? String(p.freight) : '',
+                otherExp: p.otherExp != null ? String(p.otherExp) : '',
+                chargesGst: String(p.chargesGst != null ? p.chargesGst : SARV_DEFAULT_GST),
+                notes: p.notes || '',
+            };
+        });
 
         // Picking a supplier is all the contact detail this form needs; email
         // and phone are copied from Supplier Master at save time.
@@ -3567,15 +3581,11 @@
             syncPoMathsFromGrid_();
             renderPoSummary_();
         };
-        // The charges change the PO total without touching the grid.
-        ['viFreight','viOtherExp','viChargesGst'].forEach(id=>{
-            const el = document.getElementById(id);
-            if(el) el.oninput = () => { viDirty = true; renderPoSummary_(); };
-        });
-        ['viDeliveryDate','viPoNotes'].forEach(id=>{
-            const el = document.getElementById(id);
-            if(el) el.oninput = el.onchange = () => { viDirty = true; };
-        });
+        /* PO Details ke boxes ka apna handler nahi — wo blocks ke andar hain
+           aur blocks dobara bante rehte hain, isliye renderViPoBlocks ek
+           delegated handler lagata hai jo viPlan update karke sirf us vendor
+           ka card refresh karta hai. */
+        renderViPoBlocks();
         renderPoSummary_();
     }
 
@@ -3596,6 +3606,82 @@
             notes: p.notes || '',
             savedAt: p.savedAt || '', savedBy: p.savedBy || ''
         };
+    }
+    /* ── Per-vendor plan ─────────────────────────────────────────────
+       Ek PR jitne alag vendors par bantta hai, utne hi PO bante hain. To
+       Delivery Date, Freight / Other Exp., charges ka GST aur PO notes bhi
+       per PO hote hain — pdf_snapshot.poPlan.byVendor[<VENDOR UPPER>] me.
+
+       PURANE PR ke liye byVendor nahi hota; tab flat poPlan hi lautata hai, to
+       wo PR jaisa pehle padha jaata tha waisa hi padha jaata rehta hai.
+       Us soorat me charges ka "sirf pehle PO par" wala purana niyam bhi bana
+       rehta hai (dekhein autoGeneratePosFromPr) — warna ek in-flight PR ke
+       dono PO par poora freight chadh jaata, yaani do baar. */
+    function poPlanByVendor_(snap){
+        const bv = (snap && snap.poPlan && snap.poPlan.byVendor) || null;
+        return (bv && typeof bv === 'object') ? bv : null;
+    }
+    function poPlanFor_(snap, vendorKey){
+        const bv = poPlanByVendor_(snap);
+        const k = String(vendorKey||'').trim().toUpperCase();
+        const p = (bv && k && bv[k]) ? bv[k] : null;
+        if(!p) return poPlanOf_(snap);          // purana flat plan
+        return {
+            deliveryDate: p.deliveryDate || '',
+            freight: (p.freight != null && String(p.freight) !== '') ? pNumM(p.freight) : null,
+            otherExp: (p.otherExp != null && String(p.otherExp) !== '') ? pNumM(p.otherExp) : null,
+            chargesGst: (p.chargesGst != null && String(p.chargesGst) !== '') ? pNumM(p.chargesGst) : null,
+            notes: p.notes || '',
+            savedAt: p.savedAt || '', savedBy: p.savedBy || ''
+        };
+    }
+
+    /* Jo vendors is waqt Selected Vendor column me chune hue hain — PR par
+       items ke kram me, har vendor ek baar, saath me uski row numbers. Yahi
+       grouping autoGeneratePosFromPr bhi karta hai (vendor ke naam par, upper
+       case), to screen par jitne blocks dikhte hain utne hi PO bante hain. */
+    /* Grid me ABHI chuna hua vendor naam.
+
+       vendorNameForRow() yahan kaam NAHI karta: wo snapVendorsForRow() se
+       chalta hai, jo SAVE ho chuke pdf_snapshot.items[i].vendors padhta hai.
+       Ek nayi quote sheet par wo khaali hota hai — Purchaser ne V1 me vendor
+       chuna, Selected me V1 chuna, par naam phir bhi '' aata tha, to
+       viVendorGroups() khaali list deti thi aur ek bhi PO Details box nahi
+       banta tha.
+
+       Live sach viRowVendors hai — grid ke apne pickers wahin likhte hain
+       (viRowVendors[row][slot]) aur refreshViItemVendorPickers bhi wahin se
+       options banata hai. Snapshot sirf us PR ka fallback hai jo pehle se
+       save ho chuka hai aur dusre phone par khola gaya hai. */
+    function viLiveVendorName(i, slot){
+        if(slot == null || slot < 0) return '';
+        const live = String((((viRowVendors[i] || [])[slot]) || {}).name || '').trim();
+        return live || vendorNameForRow(i, slot);
+    }
+    function viVendorGroups(){
+        const out = new Map();
+        (viDisplayItems || []).forEach((_, i) => {
+            const idx = itemVendorIndex[i];
+            if(idx == null || idx < 0) return;
+            const name = viLiveVendorName(i, idx);
+            if(!name) return;
+            const key = name.toUpperCase();
+            if(!out.has(key)) out.set(key, {key, name, rows: []});
+            out.get(key).rows.push(i);
+        });
+        return [...out.values()];
+    }
+
+    /* Quote sheet par jo type kiya ja raha hai, uska sach. Blocks dobara
+       render hote hain (Selected Vendor badalne par), isliye values DOM me
+       nahi, yahan rehti hain — warna vendor badalte hi bhari hui Delivery
+       Date gayab ho jaati. */
+    let viPlan = {};            // VENDOR UPPER -> {deliveryDate, freight, otherExp, chargesGst, notes}
+    const VI_PLAN_FIELDS = ['deliveryDate', 'freight', 'otherExp', 'chargesGst', 'notes'];
+    function viPlanOf(key){
+        const k = String(key||'').toUpperCase();
+        if(!viPlan[k]) viPlan[k] = {deliveryDate:'', freight:'', otherExp:'', chargesGst:String(SARV_DEFAULT_GST), notes:''};
+        return viPlan[k];
     }
     /* True once a Delivery Date has been saved on the PR — that is the one
        compulsory field on the sheet, so its presence is what marks the plan as
@@ -3639,7 +3725,8 @@
         rows.forEach((tr,i)=>{
             const b = tr.querySelector('.vi-basis');
             const g = tr.querySelector('.vi-gst');
-            if(b) prItemBasis[i] = (String(b.value||'').toUpperCase() === 'WEIGHT') ? 'WEIGHT' : 'QTY';
+            // Khaali ko QTY maan lena wahi chori hai jise hataya gaya hai — '' hi rehta hai.
+            if(b){ const v = String(b.value||'').toUpperCase(); prItemBasis[i] = (v === 'WEIGHT' || v === 'QTY') ? v : ''; }
             if(g) prItemGst[i] = g.value;
             // V1..V3 rate and discount, slot by slot — poRowNetRate_ takes the
             // Selected Vendor's slot out of these two.
@@ -3676,12 +3763,20 @@
             if(basis){
                 if(isMaster) basis.style.boxShadow = '0 0 0 2px rgba(37,99,235,0.15)';
                 basis.onchange = () => {
-                    prItemBasis[row] = (String(basis.value||'').toUpperCase() === 'WEIGHT') ? 'WEIGHT' : 'QTY';
-                    if(isMaster && rows.length > 1){
+                    const v = String(basis.value||'').toUpperCase();
+                    prItemBasis[row] = (v === 'WEIGHT' || v === 'QTY') ? v : '';
+                    basis.classList.toggle('is-blank', prItemBasis[row] === '');
+                    basis.style.borderColor = ''; basis.style.background = '';
+                    /* Khaali cascade nahi hota — wahi niyam jo GST% par hai.
+                       Pehli row ko "--" par wapas karna poore grid ko khaali
+                       kar dena hota, jo kisi ne maanga nahi. */
+                    if(isMaster && rows.length > 1 && prItemBasis[row] !== ''){
                         rows.slice(1).forEach((otr,j)=>{
                             const o = otr.querySelector('.vi-basis');
                             if(!o || o.disabled) return;
                             o.value = basis.value;
+                            o.classList.remove('is-blank');
+                            o.style.borderColor = ''; o.style.background = '';
                             prItemBasis[j+1] = prItemBasis[row];
                         });
                         viSay(`Bill On = ${basis.value} sabhi ${rows.length} items par lag gaya. Kisi bhi item ka alag rakh sakte hain.`);
@@ -3717,37 +3812,68 @@
        line's own rate, charges taxed at their own rate, grand total on top of
        the taxable value. Computed here so the Purchaser signs off the same six
        figures the printed PO will carry — not a separate estimate. */
-    function poChargeFigures_(){
-        // Read whichever copy of the charge boxes is on screen: the Vendor
-        // Info panel while quoting, the (legacy, unplanned) PO Generate boxes
-        // otherwise. The saved plan wins over both once it exists.
-        const plan = poPlanOf_((currentEntry && currentEntry.pdf_snapshot) || {});
-        const val = (a,b) => {
-            const ela = document.getElementById(a), elb = document.getElementById(b);
-            const pick = (ela && ela.offsetParent !== null) ? ela : ((elb && elb.offsetParent !== null) ? elb : ela);
-            const raw = pick ? String(pick.value||'').trim() : '';
+    /* Ek vendor ke PO ke charges. Teen jagah se aa sakte hain, isi tarteeb me:
+         1. quote sheet par jo abhi type ho raha hai (viPlan) — jab wo block
+            screen par hai
+         2. is PR par SAVE hua per-vendor plan
+         3. purana flat plan, ya jis PR ka koi plan hi nahi uske liye PO
+            Generate tab ke legacy charge boxes
+       vendorKey na do to poore PR ka jod (purana vyavhaar) — legacy POGEN
+       raasta isi par chalta hai. */
+    function poChargeFiguresFor_(vendorKey){
+        const k = String(vendorKey||'').trim().toUpperCase();
+        const live = k ? viPlan[k] : null;
+        const panelOpen = (() => {
+            const b = document.getElementById('vendorInfoBody');
+            return !!b && b.offsetParent !== null;
+        })();
+        if(live && panelOpen){
+            const num = v => (String(v||'').trim() === '' ? null : pNumM(v));
+            const f = num(live.freight), o = num(live.otherExp), c = num(live.chargesGst);
+            return {
+                freight: f == null ? 0 : f,
+                other:   o == null ? 0 : o,
+                chargesGst: c == null ? SARV_DEFAULT_GST : c,
+            };
+        }
+        const snap = (currentEntry && currentEntry.pdf_snapshot) || {};
+        const plan = k ? poPlanFor_(snap, k) : poPlanOf_(snap);
+        // Legacy: jis PR ka plan hi nahi, uske liye PO Generate ke apne boxes.
+        const box = id => {
+            const el = document.getElementById(id);
+            if(!el || el.offsetParent === null) return null;
+            const raw = String(el.value||'').trim();
             return raw === '' ? null : pNumM(raw);
         };
-        let freight = val('viFreight','poFreightInput');
-        let other   = val('viOtherExp','poOtherExpInput');
-        let cgst    = val('viChargesGst','poChargesGstInput');
-        if(freight == null) freight = plan.freight != null ? plan.freight : 0;
-        if(other   == null) other   = plan.otherExp != null ? plan.otherExp : 0;
-        if(cgst    == null) cgst    = plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST;
-        return {freight, other, chargesGst: cgst};
+        let freight = plan.freight, other = plan.otherExp, cgst = plan.chargesGst;
+        if(freight == null) freight = box('poFreightInput');
+        if(other   == null) other   = box('poOtherExpInput');
+        if(cgst    == null) cgst    = box('poChargesGstInput');
+        return {
+            freight: freight == null ? 0 : freight,
+            other:   other == null ? 0 : other,
+            chargesGst: cgst == null ? SARV_DEFAULT_GST : cgst,
+        };
     }
-    function poCalcTotals_(){
-        const n = (viDisplayItems || []).length;
-        const {freight, other, chargesGst} = poChargeFigures_();
-        let subtotal = 0, itemGst = 0, priced = 0;
-        for(let i = 0; i < n; i++){
+    /* EK PO ka hisaab. `rows` us vendor ki item row numbers; na do to poore PR
+       ki saari rows (legacy POGEN raasta). Arithmetic bilkul wahi jo
+       autoGeneratePosFromPr PO par likhta hai, to Purchaser jo chhah figures
+       sign karta hai wahi chhapte hain. */
+    function poCalcTotals_(rows, vendorKey){
+        const idx = (rows && rows.length) ? rows.slice()
+            : (viDisplayItems || []).map((_, i) => i);
+        const {freight, other, chargesGst} = poChargeFiguresFor_(vendorKey);
+        let subtotal = 0, itemGst = 0, priced = 0, missingGst = 0, missingBasis = 0;
+        idx.forEach(i => {
             const amt = poRowAmount_(i);
             subtotal += amt;
             const g = prItemGst[i];
             const gn = (g == null || String(g).trim() === '') ? null : Number(g);
-            if(gn != null && !isNaN(gn)) itemGst += amt * gn / 100;
+            if(gn != null && !isNaN(gn)) itemGst += amt * gn / 100; else missingGst++;
             if(amt > 0) priced++;
-        }
+            const b = prItemBasis[i];
+            if(b !== 'QTY' && b !== 'WEIGHT') missingBasis++;
+        });
         const chargeGstAmt = (freight + other) * chargesGst / 100;
         const r2 = x => Math.round(x * 100) / 100;
         const taxable = subtotal + freight + other;
@@ -3755,46 +3881,150 @@
         return {
             subtotal: r2(subtotal), freight: r2(freight), other: r2(other),
             taxable: r2(taxable), gst: r2(gst), grandTotal: r2(taxable + gst),
-            chargesGst, priced, total: n,
-            // Items split across vendors become separate POs, and the charges
-            // ride on the first one only — so this card is the PR's total, not
-            // any single PO's. Said out loud rather than quietly implied.
-            vendorCount: new Set((viDisplayItems||[]).map((_,i)=>{
-                const idx = itemVendorIndex[i];
-                return (idx != null && idx >= 0) ? vendorNameForRow(i, idx).toUpperCase() : '';
-            }).filter(Boolean)).size,
-            missingGst: (viDisplayItems||[]).filter((_,i)=>{
-                const g = prItemGst[i];
-                return g == null || String(g).trim() === '';
-            }).length
+            chargesGst, priced, total: idx.length,
+            vendorCount: viVendorGroups().length,
+            // Khaali GST% / Bill On wali rows: card ko batana padta hai ki
+            // total adhoora kyun hai (Bill On bina amount 0 hai — poRowUnits_).
+            missingGst, missingBasis,
         };
     }
-    function renderPoSummary_(){
-        const card = document.getElementById('poSummaryCard');
-        if(!card) return;
-        // Only where a PO is actually being priced: the Purchaser's quote sheet
-        // and the PO Generate step. Nothing to total anywhere else.
-        const on = currentModule === 'PR' && !modalViewOnly && myStage === 'gmCeo'
-            && (modalTab === 'VI' || gstEditMode()) && (viDisplayItems||[]).length > 0;
-        card.style.display = on ? 'block' : 'none';
-        if(!on) return;
-        const t = poCalcTotals_();
+    /* Ek PO Calculation card ka HTML. Quote sheet ise apne PO Details block ke
+       neeche rakhti hai, PO Generate tab #poSummaryWrap me — dono ek hi
+       function se, to do jagah do hisaab nahi ban sakte. */
+    function poCardHtml_(g){
+        const t = poCalcTotals_(g && g.rows, g && g.key);
         const row = (label, val, cls) =>
             `<div class="po-sum-row${cls ? ' ' + cls : ''}"><span>${label}</span><span>${escText(nMoney_(val))}</span></div>`;
-        document.getElementById('poSummaryRows').innerHTML =
-            row('PO Subtotal', t.subtotal) +
-            row('Freight', t.freight) +
-            row('Labour / Other Exp.', t.other) +
-            row('Taxable Value', t.taxable, 'is-sub') +
-            row(`GST <small style="font-weight:600;color:#6b7280;">(item-wise + charges @ ${escText(t.chargesGst)}%)</small>`, t.gst) +
-            row('Grand Total', t.grandTotal, 'is-total');
         const notes = [];
-        if(t.missingGst) notes.push(`⚠️ ${t.missingGst} item ka GST% khali hai — ye GST me nahi gine gaye. Save se pehle bharna zaroori hai.`);
-        if(t.priced < t.total) notes.push(`ℹ️ ${t.total - t.priced} item par abhi rate / Selected Vendor nahi hai, to unka amount 0 hai.`);
-        if(t.vendorCount > 1) notes.push(`ℹ️ ${t.vendorCount} vendors — itne hi PO banenge. Ye poore PR ka total hai; Freight / Other Exp. sirf pehle PO par lagenge.`);
-        const noteEl = document.getElementById('poSummaryNote');
-        noteEl.innerHTML = notes.join('<br>');
-        noteEl.style.display = notes.length ? 'block' : 'none';
+        if(t.missingBasis) notes.push(`⚠️ ${t.missingBasis} item ka Bill On chuna nahi gaya — unka amount abhi 0 hai. Save se pehle QTY ya WEIGHT chunna zaroori hai.`);
+        if(t.missingGst)   notes.push(`⚠️ ${t.missingGst} item ka GST% khali hai — ye GST me nahi gine gaye. Save se pehle bharna zaroori hai.`);
+        if(t.priced < t.total) notes.push(`ℹ️ ${t.total - t.priced} item par abhi rate nahi hai, to unka amount 0 hai.`);
+        return '<div class="po-sum-card" style="display:block;">'
+            + '<div class="po-sum-head">💵 PO Calculation'
+            + (g ? ` <small style="font-weight:600;opacity:.85;">— ${escText(g.name)}</small>` : '')
+            + (g ? ` <small style="font-weight:600;opacity:.75;">(${g.rows.length} item${g.rows.length > 1 ? 's' : ''})</small>` : '')
+            + '</div>'
+            + '<div class="po-sum-rows">'
+            + row('PO Subtotal', t.subtotal)
+            + row('Freight', t.freight)
+            + row('Labour / Other Exp.', t.other)
+            + row('Taxable Value', t.taxable, 'is-sub')
+            + row(`GST <small style="font-weight:600;color:#6b7280;">(item-wise + charges @ ${escText(t.chargesGst)}%)</small>`, t.gst)
+            + row('Grand Total', t.grandTotal, 'is-total')
+            + '</div>'
+            + `<div class="po-sum-note" style="display:${notes.length ? 'block' : 'none'};">${notes.join('<br>')}</div>`
+            + '</div>';
+    }
+
+    /* Ek PO Details block + uske neeche usi vendor ka card. Inputs par koi id
+       nahi — data-vk (vendor) aur data-f (field) hai, kyonki ye blocks
+       Selected Vendor badalne par dobara bante hain aur fixed ids tab tak
+       takra jaate. Values viPlan me rehti hain, DOM me nahi, to re-render par
+       bhara hua kuch khota nahi. */
+    function viPoBlockHtml_(g, locked){
+        const p = viPlanOf(g.key);
+        const dis = locked ? ' disabled' : '';
+        const a = f => `data-vk="${escText(g.key)}" data-f="${f}"`;
+        const min = locked ? '' : ` min="${localIsoDate_()}"`;
+        return '<div class="vi-po-block" data-vk="' + escText(g.key) + '">'
+            + `<div class="vi-po-title">🧾 PO Details ( ${escText(g.name)} )</div>`
+            + '<div style="font-size:0.68rem;color:#6b7280;">'
+            + `Is vendor ke <b>${g.rows.length} item</b> ka alag PO banega. Ye seedha usi PO par chhapega — `
+            + 'save ke baad <b>PO Generate</b> tab me <b>locked</b> dikhega.'
+            + '</div>'
+            + '<label>Delivery Date <span style="color:#dc3545;">*</span></label>'
+            + `<input type="date" ${a('deliveryDate')}${min}${dis} value="${escText(p.deliveryDate||'')}">`
+            + '<label style="margin-bottom:1px;">PO Charges (₹) <small style="font-weight:500;color:#6b7280;">— na ho to khali chhod dein</small></label>'
+            + '<div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:6px;">'
+            +   '<div><div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Freight</div>'
+            +   `<input type="number" ${a('freight')} min="0" step="0.01" placeholder="0" inputmode="decimal"${dis} value="${escText(p.freight||'')}"></div>`
+            +   '<div><div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Loading / Other Exp.</div>'
+            +   `<input type="number" ${a('otherExp')} min="0" step="0.01" placeholder="0" inputmode="decimal"${dis} value="${escText(p.otherExp||'')}"></div>`
+            +   '<div><div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">GST %</div>'
+            +   `<input type="number" ${a('chargesGst')} min="0" max="100" step="0.01" inputmode="decimal" title="Freight + Loading / Other Exp. par GST %"${dis} value="${escText(p.chargesGst == null ? '' : p.chargesGst)}"></div>`
+            + '</div>'
+            + '<div style="font-size:0.66rem;color:#6b7280;margin-top:3px;">In charges par GST alag lagta hai, aur ye <b>isi vendor ke PO</b> par lagenge.</div>'
+            + '<label>PO Remarks / Notes</label>'
+            + `<textarea ${a('notes')} rows="2" placeholder="Is PO par chhapne wale notes (optional)..."${dis}>${escText(p.notes||'')}</textarea>`
+            + '</div>'
+            // Card apne container me, taaki use akele refresh kiya ja sake —
+            // poora block dobara likhna us input ka focus kha jaata jisme
+            // abhi type ho raha hai.
+            + `<div data-card="${escText(g.key)}">${poCardHtml_(g)}</div>`;
+    }
+    // Sirf cards dobara likhta hai; inputs aur unka focus jaise hain waise.
+    function refreshPoCards(){
+        const by = {};
+        viVendorGroups().forEach(g => { by[g.key] = g; });
+        document.querySelectorAll('#viPoBlocks [data-card], #poSummaryWrap [data-card]').forEach(box => {
+            const g = by[box.dataset.card];
+            if(g) box.innerHTML = poCardHtml_(g);
+        });
+    }
+    // Screen par jo vendors rendered hain, wahi set hai jo chuna hua hai?
+    function viBlocksInSync(){
+        const want = viVendorGroups().map(g => g.key).join('|');
+        const got = [...document.querySelectorAll('#viPoBlocks .vi-po-block[data-vk]')]
+            .map(b => b.dataset.vk).join('|');
+        return want === got;
+    }
+
+    /* Quote sheet ke blocks. Jitne alag vendors chune hue hain, utne blocks —
+       koi vendor chuna hi nahi to ek line jo wahi batati hai. */
+    function renderViPoBlocks(){
+        const wrap = document.getElementById('viPoBlocks');
+        if(!wrap) return;
+        const groups = viVendorGroups();
+        const locked = (() => {
+            const b = document.getElementById('viPoBlocks');
+            return !!(b && b.dataset.locked === '1');
+        })();
+        if(!groups.length){
+            wrap.innerHTML = '<div class="vi-po-block"><div class="vi-po-title">🧾 PO Details</div>'
+                + '<div style="font-size:0.72rem;color:#6b7280;">Grid ke <b>Selected</b> column me kisi item ka vendor chunein — '
+                + 'phir yahan us vendor ka PO Details box aur uska PO Calculation aa jayega. '
+                + 'Jitne alag vendors chunenge, utne hi box aur utne hi PO banenge.</div></div>';
+            return;
+        }
+        wrap.innerHTML = groups.map(g => viPoBlockHtml_(g, locked)).join('');
+        // Ek hi delegated handler — blocks dobara bante hain, to per-input
+        // listeners har render par phir lagane padte.
+        wrap.oninput = wrap.onchange = e => {
+            const el = e.target;
+            if(!el || !el.dataset || !el.dataset.f) return;
+            const p = viPlanOf(el.dataset.vk);
+            if(VI_PLAN_FIELDS.indexOf(el.dataset.f) < 0) return;
+            p[el.dataset.f] = el.value;
+            viDirty = true;
+            el.style.borderColor = ''; el.style.background = '';
+            refreshPoCards();          // sirf cards — type karte waqt focus na jaye
+        };
+    }
+
+    /* PO Generate tab ka read-only calculation — wahi cards, #poSummaryWrap
+       me. Quote sheet ke cards renderViPoBlocks apne blocks ke andar banata
+       hai, isliye yahan sirf POGEN ka raasta hai. */
+    function renderPoSummary_(){
+        const wrap = document.getElementById('poSummaryWrap');
+        const onPr = currentModule === 'PR' && !modalViewOnly && myStage === 'gmCeo'
+            && (viDisplayItems||[]).length > 0;
+        if(wrap){
+            const showHere = onPr && gstEditMode();
+            if(!showHere) wrap.innerHTML = '';
+            else {
+                const groups = viVendorGroups();
+                wrap.innerHTML = groups.length
+                    ? groups.map(g => poCardHtml_(g)).join('')
+                    : poCardHtml_(null);
+            }
+        }
+        /* Quote sheet. Blocks poore tabhi dobara bante hain jab chune hue
+           vendors ka set hi badal gaya ho — warna sirf cards, kyonki poora
+           rebuild us box ka focus kha jaata jisme abhi type ho raha hai. */
+        if(onPr && modalTab === 'VI'){
+            if(viBlocksInSync()) refreshPoCards();
+            else renderViPoBlocks();
+        }
     }
 
     /* The saved PO terms, shown back in PO Generate. Read-only on purpose:
@@ -3807,19 +4037,29 @@
         const on = gstEditMode() && poPlanSaved_(snap);
         card.style.display = on ? 'block' : 'none';
         if(!on) return;
-        const plan = poPlanOf_(snap);
         const cell = (lbl, val, wide) =>
             `<div class="po-locked-cell${wide ? ' po-locked-wide' : ''}"><b>${lbl}</b>${escText(val)}</div>`;
+        /* Ek set per vendor — jitne PO banenge, utne hi set. Purane PR par
+           byVendor nahi hota, to poPlanFor_ har vendor ko flat plan de deta
+           hai aur read-back pehle jaisa hi dikhta hai. */
+        const groups = viVendorGroups();
+        const planOne = (g) => {
+            const plan = g ? poPlanFor_(snap, g.key) : poPlanOf_(snap);
+            return (g && groups.length > 1
+                    ? `<div class="po-locked-cell po-locked-wide" style="background:#eff6ff;"><b>🧾 PO — ${escText(g.name)}</b>${g.rows.length} item${g.rows.length>1?'s':''}</div>`
+                    : '')
+                + cell('Delivery Date', plan.deliveryDate ? pDate_(plan.deliveryDate) : '-')
+                + cell('Charges GST %', (plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST) + '%')
+                + cell('Freight', nMoney_(plan.freight || 0))
+                + cell('Labour / Other Exp.', nMoney_(plan.otherExp || 0))
+                + cell('PO Remarks / Notes', plan.notes || '—', true);
+        };
         document.getElementById('poLockedGrid').innerHTML =
-            cell('Delivery Date', plan.deliveryDate ? pDate_(plan.deliveryDate) : '-') +
-            cell('Charges GST %', (plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST) + '%') +
-            cell('Freight', nMoney_(plan.freight || 0)) +
-            cell('Labour / Other Exp.', nMoney_(plan.otherExp || 0)) +
-            cell('PO Remarks / Notes', plan.notes || '—', true) +
+            (groups.length ? groups.map(planOne).join('') : planOne(null)) +
             cell('Item-wise Bill On / GST%', (viDisplayItems||[]).length
                 ? (viDisplayItems||[]).map((it,i)=>{
-                    const g = prItemGst[i];
-                    return `${it.name}: ${prItemBasis[i] === 'WEIGHT' ? 'WEIGHT' : 'QTY'} @ ${(g==null||String(g).trim()==='')?'-':g}%`;
+                    const g = prItemGst[i], b = prItemBasis[i];
+                    return `${it.name}: ${(b === 'WEIGHT' || b === 'QTY') ? b : '-'} @ ${(g==null||String(g).trim()==='')?'-':g}%`;
                   }).join('  •  ')
                 : '—', true);
     }
@@ -4302,7 +4542,29 @@
            back locked — so an unnoticed blank would be signed off as a
            tax-free line with nothing on screen to question. */
         const nameAt = i => viLines[i] ? (viLines[i].item_name || (viLines[i].items && viLines[i].items.name) || ('Item ' + (i+1))) : ('Item ' + (i+1));
-        const basisByRow = rowEls.map(tr => String(tr.querySelector('.vi-basis')?.value||'').toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY');
+        const basisByRow = rowEls.map(tr => {
+            const v = String(tr.querySelector('.vi-basis')?.value||'').toUpperCase();
+            return (v === 'WEIGHT' || v === 'QTY') ? v : '';
+        });
+        /* Bill On bhi GST% ki tarah compulsory hai. Khaali ko QTY maan lena
+           hi wo galti thi jo hataai gayi: line WEIGHT par bikti aur PO QTY par
+           ban jaata, aur PO Generate tab use LOCKED dikhata — to ye kabhi
+           pakda hi nahi jaata. */
+        rowEls.forEach(tr => tr.querySelectorAll('.vi-basis').forEach(sel => { sel.style.borderColor = ''; sel.style.background = ''; }));
+        const badBasis = [];
+        let firstBadBasis = null;
+        rowEls.forEach((tr,i)=>{
+            if(basisByRow[i]) return;
+            const sel = tr.querySelector('.vi-basis');
+            if(sel){ sel.style.borderColor = '#dc2626'; sel.style.background = '#fef2f2'; firstBadBasis = firstBadBasis || sel; }
+            badBasis.push(nameAt(i) + ' — Bill On chuna nahi gaya');
+        });
+        if(badBasis.length){
+            show('Har item ka Bill On (QTY ya WEIGHT) chunna zaroori hai:\n• ' + badBasis.join('\n• '));
+            err.style.whiteSpace = 'pre-line';
+            if(firstBadBasis){ firstBadBasis.scrollIntoView({block:'nearest', inline:'center'}); firstBadBasis.focus(); }
+            return;
+        }
         const gstByRow = rowEls.map(tr => String(tr.querySelector('.vi-gst')?.value ?? '').trim());
         rowEls.forEach(tr => tr.querySelectorAll('.vi-gst').forEach(inp => { inp.style.borderColor = ''; inp.style.background = ''; }));
         const badGst = [];
@@ -4333,29 +4595,46 @@
             return;
         }
 
-        /* ── PO header: Delivery Date, charges, notes ────────────────── */
-        const poDeliveryDate = String(document.getElementById('viDeliveryDate').value||'').trim();
-        if(!poDeliveryDate){
-            show('Delivery Date bharein — PO isi date ke saath banega.');
-            document.getElementById('viDeliveryDate').focus();
+        /* ── PO header, PER VENDOR ───────────────────────────────────────
+           Har chune hue vendor ka apna PO banta hai, to Delivery Date, charges
+           aur notes bhi uske apne. Har block alag jaancha jaata hai aur pehli
+           galti wala box screen par le aaya jaata hai — ek hi "kuch galat hai"
+           se Purchaser ko teen blocks me dhoondhna na pade. */
+        const vGroups = viVendorGroups();
+        if(!vGroups.length){
+            show('Grid ke Selected column me kisi item ka vendor chunein — PO Details usi vendor ka bharna hai.');
             return;
         }
-        if(poDeliveryDate < localIsoDate_()){
-            show('Delivery Date aaj se pehle ki nahi ho sakti.');
-            document.getElementById('viDeliveryDate').focus();
-            return;
+        const focusField = (vk, f) => {
+            const el = document.querySelector(`#viPoBlocks [data-vk="${vk}"][data-f="${f}"]`);
+            if(el){ el.style.borderColor = '#dc2626'; el.style.background = '#fef2f2';
+                el.scrollIntoView({block:'center'}); el.focus(); }
+        };
+        const planOut = {};
+        for(const g of vGroups){
+            const p = viPlanOf(g.key);
+            const at = ' — ' + g.name;
+            const dd = String(p.deliveryDate||'').trim();
+            if(!dd){ show('Delivery Date bharein' + at + ' — is vendor ka PO isi date ke saath banega.'); focusField(g.key,'deliveryDate'); return; }
+            if(dd < localIsoDate_()){ show('Delivery Date aaj se pehle ki nahi ho sakti' + at + '.'); focusField(g.key,'deliveryDate'); return; }
+            const num = v => { const s = String(v||'').trim(); return s === '' ? 0 : Number(s); };
+            const fr = num(p.freight), ot = num(p.otherExp), cg = num(p.chargesGst === '' ? SARV_DEFAULT_GST : p.chargesGst);
+            if(isNaN(fr) || fr < 0){ show('Freight 0 ya usse zyada hona chahiye' + at + '.'); focusField(g.key,'freight'); return; }
+            if(isNaN(ot) || ot < 0){ show('Loading / Other Exp. 0 ya usse zyada hona chahiye' + at + '.'); focusField(g.key,'otherExp'); return; }
+            if(isNaN(cg) || cg < 0 || cg > 100){ show('Charges ka GST% 0 se 100 ke beech bharein' + at + '.'); focusField(g.key,'chargesGst'); return; }
+            planOut[g.key] = {
+                vendorName: g.name, deliveryDate: dd,
+                freight: fr, otherExp: ot, chargesGst: cg,
+                notes: String(p.notes||'').trim(),
+            };
         }
-        const chargeNum = id => { const v = String(document.getElementById(id).value||'').trim(); return v === '' ? 0 : Number(v); };
-        const poFreight = chargeNum('viFreight'), poOtherExp = chargeNum('viOtherExp'), poChargesGst = chargeNum('viChargesGst');
-        if([poFreight, poOtherExp].some(n => isNaN(n) || n < 0)){
-            show('Freight / Loading-Other Exp. 0 ya usse zyada hona chahiye.');
-            return;
-        }
-        if(isNaN(poChargesGst) || poChargesGst < 0 || poChargesGst > 100){
-            show('Charges ka GST% 0 se 100 ke beech bharein.');
-            return;
-        }
-        const poNotes = String(document.getElementById('viPoNotes').value||'').trim();
+        /* Flat fields bhi likhe jaate hain — pehle vendor ke. poPlanSaved_ aur
+           koi bhi purana reader inhi par chalta hai, aur ek PR par ek hi
+           vendor ki aam soorat me ye bilkul wahi hai jo pehle likha jaata tha. */
+        const firstPlan = planOut[vGroups[0].key];
+        const poDeliveryDate = firstPlan.deliveryDate;
+        const poFreight = firstPlan.freight, poOtherExp = firstPlan.otherExp, poChargesGst = firstPlan.chargesGst;
+        const poNotes = firstPlan.notes;
 
         /* PR-level LEGACY rollup, still written so anything not yet moved to
            the per-item shape keeps working: the distinct set of vendors
@@ -4410,18 +4689,31 @@
                 // The stored PO terms replace what this phone had typed, for the
                 // same reason the rates do: whoever saved first owns them.
                 (()=>{
-                    const stored = poPlanOf_(base);
-                    const put = (id,v) => { const el = document.getElementById(id); if(el) el.value = (v == null ? '' : String(v)); };
-                    put('viDeliveryDate', stored.deliveryDate);
-                    put('viFreight', stored.freight);
-                    put('viOtherExp', stored.otherExp);
-                    put('viChargesGst', stored.chargesGst != null ? stored.chargesGst : SARV_DEFAULT_GST);
-                    put('viPoNotes', stored.notes);
+                    // Stored per-vendor plan; purane PR par flat plan hi
+                    // milta hai (poPlanFor_ ka fallback).
+                    viPlan = {};
+                    viVendorGroups().forEach(g => {
+                        const p = poPlanFor_(base, g.key);
+                        viPlan[g.key] = {
+                            deliveryDate: p.deliveryDate || '',
+                            freight: p.freight != null ? String(p.freight) : '',
+                            otherExp: p.otherExp != null ? String(p.otherExp) : '',
+                            chargesGst: String(p.chargesGst != null ? p.chargesGst : SARV_DEFAULT_GST),
+                            notes: p.notes || '',
+                        };
+                    });
                     (base.items||[]).forEach((it,i)=>{
                         const tr = document.querySelector(`#viRateBody tr[data-row="${i}"]`);
                         if(!tr) return;
                         const b = tr.querySelector('.vi-basis'), g = tr.querySelector('.vi-gst');
-                        if(b) b.value = String(it.billBasis||'QTY').toUpperCase() === 'WEIGHT' ? 'WEIGHT' : 'QTY';
+                        if(b){
+                            // Jo save hua wahi — khaali ko QTY bana dena wahi
+                            // chupchaap default hai jise hataya gaya hai.
+                            const rb = String(it.billBasis||'').toUpperCase();
+                            b.value = (rb === 'WEIGHT' || rb === 'QTY') ? rb : '';
+                            b.classList.toggle('is-blank', b.value === '');
+                            b.style.borderColor = ''; b.style.background = '';
+                        }
                         if(g){
                             g.value = (it.gstPct != null && String(it.gstPct).trim() !== '') ? String(it.gstPct) : '';
                             g.classList.toggle('is-blank', g.value === '');
@@ -4432,6 +4724,8 @@
                 })();
                 refreshViItemVendorPickers();
                 renderItemRows(viDisplayItems, currentItemRates, itemVendorIndex, true, currentItemDiscs);
+                { const w = document.getElementById('viPoBlocks'); if(w) w.dataset.locked = '1'; }
+                renderViPoBlocks();
                 renderPoSummary_();
                 setVendorInfoLocked(true);
                 show('Is PR par vendor info + PO details pehle se save hain — inhe sirf STORE.html se badla ja sakta hai.');
@@ -4522,6 +4816,11 @@
                    locked, so the Purchaser there only signs — Delivery Date,
                    charges and notes are not asked for a second time. */
                 poPlan: {
+                    /* byVendor = sach: ek entry per PO. Neeche ke flat fields
+                       pehle vendor ke hain aur sirf backward compatibility ke
+                       liye likhe jaate hain (poPlanSaved_ aur koi purana
+                       reader inhi par chalta hai). */
+                    byVendor: planOut,
                     deliveryDate: poDeliveryDate,
                     freight: poFreight,
                     otherExp: poOtherExp,
@@ -4720,7 +5019,14 @@
     }
     function poRowUnits_(i){
         const it = viDisplayItems[i] || {};
-        return (prItemBasis[i] === 'WEIGHT') ? pNum(it.weight) : pNum(it.qty);
+        const basis = prItemBasis[i];
+        if(basis === 'WEIGHT') return pNum(it.weight);
+        if(basis === 'QTY')    return pNum(it.qty);
+        /* Bill On abhi chuna nahi gaya — to kis cheez par bill karna hai, pata
+           nahi. Chupchaap Qty par maan lene se card ek aisa amount dikha deta
+           jo kisi ne tay nahi kiya; 0 saaf kehta hai ki abhi faisla baaki hai,
+           aur card ka note batata hai kitni rows par. */
+        return 0;
     }
     function poRowAmount_(i){
         return Math.round(poRowNetRate_(i) * poRowUnits_(i) * 100) / 100;
@@ -4979,7 +5285,7 @@
         // sign the Admin saved a minute ago already counts.
         if(showApproval){ await refreshMySignSaved(); applySignPadMode(); }
         document.getElementById('approvalModal').style.display = 'flex';
-        // Restated now the modal is laid out: poChargeFigures_ picks whichever
+        // Restated now the modal is laid out: poChargeFiguresFor_ picks whichever
         // copy of the charge boxes is actually visible, which it cannot tell
         // while the whole modal is still display:none.
         renderPoSummary_();
@@ -5258,21 +5564,26 @@
         let first = true;
         for(const g of groups.values()){
             const poNo = await nextPoNo_();
+            /* Is vendor ka apna PO plan, agar quote sheet ne per-vendor likha
+               hai. NAHI likha (purana PR, flat poPlan) to bilkul purana
+               vyavhaar: charges sirf PEHLE PO par. Ye fallback zaroori hai —
+               flat plan ko har vendor par laga dene se do PO par poora freight
+               do baar chadh jaata. */
+            const vp = opts.planByVendor ? (opts.planByVendor[g.vendor.name.toUpperCase()] || null) : null;
             const d = {
-                poNo, poDate: localIsoDate_(), deliveryDate,
+                poNo, poDate: localIsoDate_(),
+                // Delivery Date bhi per PO — har vendor apni date deta hai.
+                deliveryDate: (vp && vp.deliveryDate) || deliveryDate,
                 vendorName: g.vendor.name, vendorMail: g.vendor.email, vendorContact: g.vendor.contact, vendorAddress: g.vendor.address,
                 paymentTerms: SARV_PO_PAYMENT_TERMS, locationContact: SARV_PO_LOCATION_CONTACT,
-                // Freight / Loading-Other are a charge on ONE order: when the
-                // PR splits into several vendor POs they ride on the first PO
-                // only — same rule as STORE.html's Build PO.
-                freight: first ? pNum(opts.freight) : 0,
-                otherExpense: first ? pNum(opts.other) : 0,
-                otherExpenseLabel: first ? 'Labour/Loading/Other Exp.' : '',
-                gstPercent: first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0,
-                // The PO's own notes, written on the quote sheet. Unlike the
-                // charges these go on EVERY PO the PR splits into — they are
-                // instructions to the vendor, not a one-off cost.
-                importantNotes: String(opts.notes || ''),
+                freight: vp ? pNum(vp.freight) : (first ? pNum(opts.freight) : 0),
+                otherExpense: vp ? pNum(vp.otherExp) : (first ? pNum(opts.other) : 0),
+                otherExpenseLabel: (vp ? pNum(vp.freight) + pNum(vp.otherExp) > 0 : first) ? 'Labour/Loading/Other Exp.' : '',
+                gstPercent: vp
+                    ? (vp.chargesGst != null && String(vp.chargesGst).trim() !== '' ? pNum(vp.chargesGst) : SARV_DEFAULT_GST)
+                    : (first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0),
+                // Notes bhi per PO ab — wo is vendor ko di gayi hidayat hai.
+                importantNotes: String((vp && vp.notes) || opts.notes || ''),
                 items: g.items,
                 // The PR's Store Incharge signature carries over; the Purchaser
                 // signs in the gmCeo slot under their own name.
@@ -5748,7 +6059,24 @@
                 : numOf('poChargesGstInput');
             if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. 0 ya usse zyada hona chahiye.'); return; }
             if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
-            poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(), freight, other, chargesGst, notes: poPlan.notes || ''};
+            /* Per-vendor plan jahan hai, wahan har PO apne charges aur apni
+               Delivery Date leta hai — autoGeneratePosFromPr isi
+               planByVendor ko padhta hai. Jo PR purane flat plan par hai
+               uske liye ye null rehta hai aur wahan purana niyam chalta hai
+               (charges sirf pehle PO par). freight / other / chargesGst
+               legacy ke liye hi bheje jaate hain. */
+            const planByVendor = poPlanByVendor_((currentModule === 'PR' && currentEntry.pdf_snapshot) || {});
+            if(planByVendor){
+                const miss = viVendorGroups()
+                    .filter(g => !planByVendor[g.key] || !planByVendor[g.key].deliveryDate)
+                    .map(g => g.name);
+                if(miss.length){
+                    alert('In vendors ka PO Details save nahi hua — "💰 Vendor Rate & Info" me unka Delivery Date bharkar Save karein:\n• ' + miss.join('\n• '));
+                    return;
+                }
+            }
+            poOpts = {gstByRow: prItemGst.slice(), basisByRow: prItemBasis.slice(),
+                freight, other, chargesGst, notes: poPlan.notes || '', planByVendor};
         }
         /* PIN-based signing. The approver types their own PIN every time; their
            saved signature (STORE.html → Admin Panel → Users & Roles) comes back

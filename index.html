@@ -1850,26 +1850,44 @@
 
         <div class="cons-filters">
             <div>
-                <label title="Ek se zyada chun sakte hain — Ctrl / Cmd ya drag se">Entry Type (multi)</label>
-                <select id="consEntryType" multiple size="4" title="Ctrl / Cmd dabakar ek se zyada chunein. Khali chhodein to saare types.">
-                    <option value="INWARD" selected>INWARD</option>
-                    <option value="INWARD NB" selected>INWARD NB</option>
-                    <option value="OUTWARD" selected>OUTWARD</option>
-                    <option value="ISSUE" selected>ISSUE</option>
-                </select>
+                <!-- Checkboxes, not a <select multiple>: Ctrl+click wala
+                     multi-select phone aur chhoti screen par practically
+                     bina-batai feature tha, log ek hi value chun paate the.
+                     BALANCE 5va box hai par koi entry type NAHI — wo sirf
+                     BALANCE column on/off karta hai (consBalanceOn_). -->
+                <label>Entry Type <a class="cons-chk-all" data-all="consEntryType">All</a> <a class="cons-chk-none" data-none="consEntryType">Clear</a></label>
+                <div id="consEntryType" class="cons-chk" title="Jo ticked hain, unhi ki entries se report banti hai. Kuch na ticked = saare types.">
+                    <label><input type="checkbox" value="INWARD" checked> INWARD</label>
+                    <label><input type="checkbox" value="INWARD NB" checked> INWARD NB</label>
+                    <label><input type="checkbox" value="OUTWARD" checked> OUTWARD</label>
+                    <label><input type="checkbox" value="ISSUE" checked> ISSUE</label>
+                    <label class="cons-chk-calc" title="Ek alag BALANCE column jodta hai — Balance = total IN − total OUT"><input type="checkbox" value="BALANCE"> BALANCE</label>
+                </div>
             </div>
             <div>
                 <!-- Both lists below are rebuilt from whatever Entry Types are
                      ticked — see consRefreshDependent_(). -->
-                <label>Nature (type-wise)</label>
-                <select id="consNature" multiple size="4" title="Entry Type ke hisaab se options badalte hain. Khali = saari natures."></select>
+                <label>Nature (type-wise) <a class="cons-chk-all" data-all="consNature">All</a> <a class="cons-chk-none" data-none="consNature">Clear</a></label>
+                <div id="consNature" class="cons-chk" title="Entry Type ke hisaab se options badalte hain. Kuch na ticked = saari natures."></div>
             </div>
             <div>
-                <!-- Multi, like Entry Type: a consumption question is usually
-                     "these three lots", not one — and picking them one at a
-                     time meant three reports to add up by hand. -->
-                <label title="Ek se zyada chun sakte hain — Ctrl / Cmd ya drag se">Lot No. (multi)</label>
-                <select id="consLot" multiple size="4" title="Ctrl / Cmd dabakar ek se zyada lot chunein. Kuch na chunein to saare lots."></select>
+                <!-- A closed dropdown with a checkbox list inside, the same
+                     shape as the Inward form's PO / PR pickers: a lot list can
+                     run to dozens of entries and an always-open box would push
+                     every other filter off the screen. -->
+                <label>Lot No. (multi)</label>
+                <div class="cons-dd">
+                    <button type="button" class="cons-dd-btn" id="consLotBtn" title="Lot chunein — ek se zyada chun sakte hain. Kuch na chunein to saare lots.">
+                        <span id="consLotBtnText">All Lots</span><span class="cons-dd-car">&#9662;</span>
+                    </button>
+                    <div class="cons-dd-panel" id="consLotPanel">
+                        <div class="cons-dd-acts">
+                            <a data-all="consLot">All</a><a data-none="consLot">Clear</a>
+                            <input type="search" id="consLotSearch" placeholder="Lot search...">
+                        </div>
+                        <div id="consLot" class="cons-dd-list"></div>
+                    </div>
+                </div>
             </div>
             <div>
                 <!-- Dependent, like Lot: only parties that actually appear in

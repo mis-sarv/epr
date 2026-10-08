@@ -527,11 +527,72 @@ body {
             font-family: inherit;
             color: #0f172a;
         }
-        /* The multi-selects stay a real listbox: a phone-style picker would
-           hide which of four entry types are active, and that is the one
-           filter the Nature and Lot lists depend on. */
-        .cons-filters select[multiple] { height: 62px; padding: 3px; font-weight: 700; }
-        .cons-filters select[multiple] option { padding: 2px 5px; }
+        /* ── Checkbox filter groups (Entry Type, Nature) ──────────────
+           Pehle ye <select multiple> the. Unme Ctrl+click se hi ek se zyada
+           chuna ja sakta tha — phone aur chhoti screen par wo practically
+           bina-batai feature hai, aur log ek hi value chun paate the. Ab
+           saare options saamne, har ek apna checkbox. */
+        .cons-filters label a {
+            font-size: 8.5px; font-weight: 800; color: #0369a1;
+            cursor: pointer; margin-left: 5px; text-transform: none; letter-spacing: 0;
+        }
+        .cons-filters label a:hover { text-decoration: underline; }
+        .cons-chk {
+            border: 1px solid #cbd5e1; border-radius: 6px; background: #fff;
+            padding: 4px 6px; max-height: 76px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .cons-chk label {
+            display: flex; align-items: center; gap: 6px;
+            margin: 0; font-size: 10.5px; font-weight: 700; color: #0f172a;
+            text-transform: none; letter-spacing: 0; cursor: pointer; white-space: nowrap;
+        }
+        .cons-chk input[type=checkbox] { width: 13px; height: 13px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+        /* BALANCE ek entry type nahi — ye ek column on/off karta hai, isliye
+           dikhne me bhi alag rakha hai, warna wo paanchva type lagta. */
+        .cons-chk label.cons-chk-calc {
+            margin-top: 3px; padding-top: 4px; border-top: 1px dashed #cbd5e1; color: #6d28d9;
+        }
+        .cons-chk .cons-chk-empty { font-size: 10px; color: #94a3b8; font-weight: 600; padding: 2px; }
+
+        /* ── Lot: closed dropdown with a checkbox list inside ─────────
+           Lot list dozens tak ja sakti hai; always-open box baaki saare
+           filters screen se neeche dhakel deta. Shakal wahi jo Inward form ke
+           PO / PR pickers ki hai. */
+        .cons-dd { position: relative; }
+        .cons-dd-btn {
+            width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px;
+            padding: 6px 7px; font-size: 11.5px; font-weight: 700; font-family: inherit;
+            border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #0f172a;
+            cursor: pointer; text-align: left;
+        }
+        .cons-dd-btn:hover { border-color: #0284c7; }
+        .cons-dd-btn.is-set { border-color: #0284c7; background: #f0f9ff; color: #0369a1; }
+        .cons-dd-btn > span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cons-dd-car { font-size: 9px; opacity: .7; flex: 0 0 auto; }
+        .cons-dd-panel {
+            display: none; position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 3px);
+            background: #fff; border: 1px solid #cbd5e1; border-radius: 7px;
+            box-shadow: 0 10px 26px rgba(15,23,42,.18); min-width: 190px;
+        }
+        .cons-dd-panel.open { display: block; }
+        .cons-dd-acts {
+            display: flex; align-items: center; gap: 7px;
+            padding: 6px 7px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;
+            border-radius: 7px 7px 0 0;
+        }
+        .cons-dd-acts a { font-size: 9px; font-weight: 800; color: #0369a1; cursor: pointer; }
+        .cons-dd-acts a:hover { text-decoration: underline; }
+        .cons-dd-acts input { flex: 1; padding: 3px 6px !important; font-size: 10.5px !important; }
+        .cons-dd-list { max-height: 200px; overflow-y: auto; padding: 4px 7px 6px; display: flex; flex-direction: column; gap: 2px; }
+        .cons-dd-list label {
+            display: flex; align-items: center; gap: 6px; margin: 0;
+            font-size: 10.5px; font-weight: 700; color: #0f172a;
+            text-transform: none; letter-spacing: 0; cursor: pointer; white-space: nowrap;
+        }
+        .cons-dd-list label.is-hid { display: none; }
+        .cons-dd-list input[type=checkbox] { width: 13px; height: 13px; margin: 0; flex: 0 0 auto; cursor: pointer; }
+        .cons-dd-list .cons-chk-empty { font-size: 10px; color: #94a3b8; font-weight: 600; padding: 2px; }
         .cons-actions { display: flex; gap: 7px; align-items: flex-end; }
         .cons-actions .btn { flex: 1; height: 31px; font-size: 11px; white-space: nowrap; padding: 0 10px; }
         .cons-strip {

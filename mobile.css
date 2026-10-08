@@ -546,9 +546,12 @@
             background: #fff;
         }
         .item-table.vi-grid .vi-gst { text-align: right; }
-        /* GST% has NO default — an unfilled box has to look unfilled, or a
-           blank would be signed off as "0% tax" without anyone noticing. */
-        .item-table.vi-grid .vi-gst.is-blank {
+        /* GST% aur Bill On, dono ka koi default NAHI hai — jo bhara nahi hai
+           wo bhara hua na lage, warna khaali GST "0% tax" ban kar sign ho
+           jaata aur khaali Bill On chupchaap QTY par bill ho jaata. Dono save
+           par compulsory hain, aur ye amber unfilled ka nishaan hai. */
+        .item-table.vi-grid .vi-gst.is-blank,
+        .item-table.vi-grid .vi-basis.is-blank {
             border-color: #f59e0b;
             background: #fffbeb;
         }
