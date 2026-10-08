@@ -1,0 +1,772 @@
+/* mobile.css — extracted from mobile.html.
+   The 1 inline <style> blocks, concatenated in document order
+   (they were at mobile.html lines 14).
+   ORDER IS LOAD-BEARING: later blocks deliberately override earlier ones
+   (e.g. #storeInterface .main-panel gap, #productionPanel > .card overflow).
+   For CSS only the order of the sheets relative to EACH OTHER decides the
+   cascade, not where they sat relative to the markup — so one linked file in
+   this order behaves exactly as the five inline blocks did. Do not reorder. */
+
+        :root {
+            --primary: #007bff;
+            --secondary: #6c757d;
+            --success: #28a745;
+            --bg: #f4f6f9;
+            --card-bg: #fff;
+            --border: #dee2e6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #333;
+            display: flex;
+            justify-content: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 480px;
+            height: 100vh;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+
+        #roleBadge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: rgba(255,255,255,0.18);
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        #searchToggle {
+            font-size: 1rem;
+            line-height: 1;
+            background: rgba(255,255,255,0.18);
+            padding: 5px 9px;
+            border-radius: 20px;
+            cursor: pointer;
+            user-select: none;
+        }
+        #searchToggle.active { background: #fff; }
+
+        /* Hidden until the header icon is tapped, so the list keeps full height. */
+        #searchBar {
+            display: none;
+            background: #fff;
+            padding: 9px 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        #searchBar.open { display: block; }
+        #searchInput {
+            flex: 1;
+            min-width: 0;
+            padding: 8px 10px;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+        }
+        #searchInput:focus { border-color: var(--primary); }
+        #searchClear {
+            font-size: 0.8rem;
+            color: var(--secondary);
+            cursor: pointer;
+            padding: 6px 8px;
+            user-select: none;
+        }
+        .search-chip {
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            background: #f8f9fa;
+            color: var(--secondary);
+            cursor: pointer;
+            user-select: none;
+        }
+        .search-chip.active {
+            background: #dcfce7;
+            border-color: #16a34a;
+            color: #166534;
+        }
+        #searchCount { font-size: 0.7rem; color: var(--secondary); font-weight: 600; }
+
+        /* A PR whose Vendor Info (rates/vendors) has been filled in. */
+        .card.vendor-filled {
+            background: #f0fdf4;
+            border-color: #86efac;
+            border-left: 4px solid #16a34a;
+        }
+        .vendor-filled-tag {
+            display: inline-block;
+            margin-top: 6px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: #166534;
+            background: #dcfce7;
+            border: 1px solid #86efac;
+            border-radius: 4px;
+            padding: 2px 8px;
+        }
+
+        /* ── Stage tabs: Vendor Info · PO Generate · MD Approval · PO Sent ── */
+        .stage-tabs {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+            background: #fff;
+            padding: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .stage-tab {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            padding: 7px 2px 6px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #f8f9fa;
+            color: #475569;
+            cursor: pointer;
+            user-select: none;
+            text-align: center;
+            transition: background .15s, border-color .15s;
+        }
+        .stage-tab .st-ico { font-size: 1.05rem; line-height: 1.2; }
+        .stage-tab .st-lbl { font-size: 0.64rem; font-weight: 700; line-height: 1.15; }
+        .stage-tab .st-count {
+            position: absolute;
+            top: -6px; right: -4px;
+            min-width: 20px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            background: #94a3b8;
+            color: #fff;
+            font-size: 0.66rem;
+            font-weight: 800;
+            line-height: 1.5;
+            box-shadow: 0 0 0 2px #fff;
+        }
+        .stage-tab .st-count.zero { background: #cbd5e1; }
+        /* The tab where the logged-in role does the work. */
+        .stage-tab.mine { border-color: #93c5fd; background: #eff6ff; }
+        .stage-tab.mine .st-count:not(.zero) { background: #dc2626; }
+        .stage-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .stage-tab.active .st-lbl { color: #fff; }
+
+        .sub-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 7px 10px;
+            background: #fff;
+            border-bottom: 1px solid var(--border);
+        }
+        /* PO Receipts now offers four sections, which is more than a narrow
+           phone fits — the strip scrolls sideways rather than wrapping the
+           buttons into two ragged lines. Same treatment Store Check's type row
+           already gets below. */
+        .sub-bar { overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+        .sub-bar::-webkit-scrollbar { display: none; }
+        .seg { display: inline-flex; flex: 0 0 auto; background: #eef2f7; border-radius: 8px; padding: 3px; }
+        .seg button { white-space: nowrap; }
+        .seg button {
+            border: none;
+            background: transparent;
+            padding: 5px 14px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #64748b;
+            cursor: pointer;
+        }
+        .seg button.active { background: #fff; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+        /* Store Check's type row. Four chips with counts can outrun a narrow
+           phone, so the row scrolls sideways instead of wrapping into two
+           ragged lines — and the seg must not shrink to make that fit. */
+        .store-type-bar { justify-content: flex-start; overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none; }
+        .store-type-bar::-webkit-scrollbar { display: none; }
+        .store-type-bar .seg { flex: 0 0 auto; }
+        .store-type-bar .seg button { padding: 5px 11px; white-space: nowrap; }
+        .seg-n {
+            display: inline-block;
+            min-width: 16px;
+            margin-left: 5px;
+            padding: 0 4px;
+            border-radius: 9px;
+            background: #dbe3ec;
+            color: #475569;
+            font-size: 0.66rem;
+            font-weight: 800;
+            text-align: center;
+        }
+        .seg button.active .seg-n { background: var(--primary); color: #fff; }
+        .seg-n.zero { background: transparent; color: #b6c0cc; }
+        .access-note {
+            font-size: 0.68rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 20px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-width: 0;
+        }
+        .access-note.act { background: #dcfce7; color: #166534; }
+        .access-note.view { background: #f1f5f9; color: #64748b; }
+
+        .card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+        .tag {
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid transparent;
+        }
+        .tag.po { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
+        .tag.sent { background: #dcfce7; color: #166534; border-color: #86efac; }
+        .card-action {
+            margin-top: 8px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            padding: 5px 8px;
+            border-radius: 6px;
+        }
+        .card-action.act { background: #fff7ed; color: #c2410c; border: 1px dashed #fdba74; }
+        .card-action.wait { background: #f8fafc; color: #64748b; border: 1px dashed #cbd5e1; }
+        .card-action.done { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+        .mode-note {
+            background: #f8fafc;
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            padding: 9px 12px;
+            margin-bottom: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        .list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+            cursor: pointer;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            font-weight: bold;
+            color: var(--primary);
+            font-size: 0.95rem;
+        }
+
+        .card-detail {
+            font-size: 0.85rem;
+            color: #555;
+            margin-bottom: 4px;
+        }
+
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: flex-end;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: white;
+            width: 100%;
+            max-height: 92vh;
+            overflow-y: auto;
+            border-radius: 16px 16px 0 0;
+            padding: 18px;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .modal-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.4rem;
+            color: #888;
+            cursor: pointer;
+        }
+
+        .req-meta-info {
+            background: #eef5ff;
+            border-left: 4px solid var(--primary);
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            margin-bottom: 12px;
+            border-radius: 4px;
+            color: #333;
+        }
+
+        .pdf-link {
+            display: inline-block;
+            margin-top: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            margin-bottom: 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        .item-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            text-align: left;
+        }
+
+        .item-table th {
+            background-color: #f1f3f5;
+            color: #333;
+            padding: 8px 6px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .item-table td {
+            padding: 8px 6px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: middle;
+            color: #444;
+        }
+
+        /* ============================================================
+           VENDOR RATE & INFO — one merged grid (#viRateTable.vi-grid)
+           ------------------------------------------------------------
+           Matches STORE.html's #p_viGrid. The vendor pickers are the
+           table's first header row, sitting directly above the Rate / %
+           pair each one prices, so on a phone you are never scrolling
+           between a rate and the row that says whose rate it is.
+
+           V1-V4 are PER ITEM, not per PR: item 1 can be quoted by four
+           companies and item 2 by four different ones, so each row carries
+           its own four {Vendor, Rate, %} triples and "Selected Vendor"
+           picks which of THAT ROW's four the item is bought from.
+
+           Only the Item column and BOTH header rows are frozen. Selected
+           Vendor scrolls with the quote groups rather than being pinned.
+           As in STORE.html this needs border-collapse:separate (Chrome and
+           Safari drop collapsed borders on sticky cells), and the left
+           offset below must match the <col> width exactly — hence a fixed
+           1219px table: 1219 = 118 (item) + 62 (qty) + 70 (wt)
+           + 104 (selected) + 78 (bill on) + 58 (gst%) + 3x(126+68+49).
+           ============================================================ */
+        .vi-grid-wrap { max-height: 46vh; overflow: auto; }
+        .item-table.vi-grid {
+            border-collapse: separate;
+            border-spacing: 0;
+            table-layout: fixed;
+            width: 1219px;
+        }
+        .item-table.vi-grid th,
+        .item-table.vi-grid td {
+            background: #fff;
+            border-bottom: 1px solid #e9ecef;
+            border-right: 1px solid #f1f3f5;
+            padding: 5px 6px;
+        }
+        .item-table.vi-grid thead th { position: sticky; z-index: 3; background: #f1f3f5; }
+        /* Row 1 (the V1..V3 group bands) is pinned to a fixed height so
+           row 2's offset is exact. */
+        .item-table.vi-grid thead tr:first-child th { top: 0; height: 24px; padding: 2px 4px; }
+        .item-table.vi-grid thead tr:nth-child(2) th { top: 24px; }
+        /* Alternating tint so a row's four vendor groups stay separable
+           once the table is scrolled sideways. */
+        .item-table.vi-grid .vi-band { text-align: center; background: #e0e7ff; color: #3730a3; font-size: 0.68rem; font-weight: 700; }
+        .item-table.vi-grid .vi-band.alt { background: #ede9fe; color: #5b21b6; }
+        .item-table.vi-grid td.vi-g-alt,
+        .item-table.vi-grid th.vi-g-alt { background: #faf9ff; }
+        .ss-input { box-sizing: border-box; cursor: text; }
+        .ss-list { position: fixed; z-index: 2147483000; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 240px; overflow-y: auto; font-size: 0.8rem; }
+        .ss-list .ss-opt { padding: 8px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #0f172a; }
+        .ss-list .ss-opt.hl { background: #e0f2fe; color: #0369a1; font-weight: 700; }
+        .ss-list .ss-empty { padding: 8px 10px; color: #94a3b8; }
+        .item-table.vi-grid .vi-row-vendor,
+        .item-table.vi-grid .ss-input {
+            width: 100%;
+            font-size: 0.66rem;
+            padding: 4px 2px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #fff;
+        }
+        .item-table.vi-grid .vi-c1 {
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            box-shadow: 2px 0 4px -2px rgba(15,23,42,0.18);
+        }
+        .item-table.vi-grid thead .vi-c1 { z-index: 6; }
+        /* Selected Vendor scrolls with the quote groups — deliberately NOT
+           sticky. Tinted so it still reads as the decision column. */
+        .item-table.vi-grid .vi-sel { background: #fffbeb; }
+        /* Qty / Gross Weight — the requirement figures the Purchaser may
+           correct while quoting. Green so they read as editable requirement
+           data, distinct from the vendors' quoted numbers alongside. */
+        .item-table.vi-grid .vi-qtyh { background: #d1fae5; color: #065f46; }
+        .item-table.vi-grid .vi-qtyc { background: #f0fdf9; }
+        .item-table.vi-grid .vi-qty,
+        .item-table.vi-grid .vi-weight {
+            width: 100%;
+            font-size: 0.72rem;
+            padding: 4px;
+            border: 1px solid #6ee7b7;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #fff;
+            text-align: right;
+        }
+        .item-table.vi-grid .vi-corner {
+            text-align: right;
+            color: #6b7280;
+            font-size: 0.7rem;
+            box-shadow: 2px 0 4px -2px rgba(15,23,42,0.18);
+        }
+        /* Per-item vendor picker: V1-V4 chosen individually for each item. */
+        .item-table.vi-grid .vi-item-vendor {
+            width: 100%;
+            font-size: 0.68rem;
+            padding: 4px 2px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #fff;
+        }
+        .item-table.vi-grid .vi-item-vendor.is-set {
+            background: #ecfdf5;
+            border-color: #6ee7b7;
+            font-weight: 700;
+            color: #047857;
+        }
+        /* Row 1 fills every other row, so it reads as the master, not as
+           just another item's choice. */
+        .item-table.vi-grid .vi-item-vendor.is-master {
+            border-color: #6d28d9;
+            box-shadow: 0 0 0 2px rgba(109,40,217,0.12);
+        }
+        .item-table.vi-grid tbody tr:first-child .vi-c1 { box-shadow: inset 3px 0 0 #6d28d9; }
+        .item-table.vi-grid .vi-vendor-head { background: #eef2ff; }
+        /* The picker fills its own header cell; .form-select's 10px padding
+           is far too tall to sit in a 42px header row. */
+        .item-table.vi-grid .vi-vendor-head select {
+            width: 100%;
+            font-size: 0.72rem;
+            padding: 5px 4px;
+            margin: 0;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: #fff;
+        }
+        .item-table.vi-grid .vi-disc-head { background: #e0e7ff; color: #3730a3; }
+
+        /* ── PO terms that are decided WITH the quotes ──────────────
+           Bill On and GST% used to be asked for again in the PO Generate
+           tab, which split one decision across two screens: the rate and
+           the tax it carries were typed days apart, by which time the
+           quote sheet was closed. They are part of the quote now, so they
+           sit in this grid and PO Generate only shows them back, locked.
+           Blue, so they read as PO data rather than as requirement (green)
+           or quote (indigo) figures. */
+        .item-table.vi-grid .vi-poh { background: #dbeafe; color: #1e40af; }
+        .item-table.vi-grid .vi-poc { background: #f5f9ff; }
+        .item-table.vi-grid .vi-basis,
+        .item-table.vi-grid .vi-gst {
+            width: 100%;
+            font-size: 0.7rem;
+            padding: 4px 2px;
+            border: 1px solid #93c5fd;
+            border-radius: 4px;
+            font-weight: 700;
+            background: #fff;
+        }
+        .item-table.vi-grid .vi-gst { text-align: right; }
+        /* GST% has NO default — an unfilled box has to look unfilled, or a
+           blank would be signed off as "0% tax" without anyone noticing. */
+        .item-table.vi-grid .vi-gst.is-blank {
+            border-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        /* ── PO Charges / Delivery block under the grid ────────────── */
+        .vi-po-block {
+            margin-top: 12px;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            background: #f8fbff;
+            padding: 10px 12px;
+        }
+        .vi-po-block > .vi-po-title {
+            font-size: 0.8rem;
+            font-weight: 800;
+            color: #1e40af;
+            margin-bottom: 2px;
+        }
+        .vi-po-block label {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #334155;
+            display: block;
+            margin: 8px 0 3px;
+        }
+        .vi-po-block input,
+        .vi-po-block textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px;
+            font-size: 0.85rem;
+            border: 1px solid #93c5fd;
+            border-radius: 6px;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        /* ── PO totals card ────────────────────────────────────────────
+           The same six figures the PO itself carries, in the same order,
+           so what is signed here is recognisable on the printed PO. */
+        .po-sum-card {
+            margin-bottom: 12px;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            background: #f6fffa;
+            overflow: hidden;
+        }
+        .po-sum-card .po-sum-head {
+            padding: 8px 12px;
+            background: #dcfce7;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #166534;
+        }
+        .po-sum-card .po-sum-rows { padding: 6px 12px 10px; }
+        .po-sum-card .po-sum-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 0.82rem;
+            padding: 4px 0;
+            border-bottom: 1px dashed #d1fae5;
+        }
+        .po-sum-card .po-sum-row > span:first-child { color: #475569; font-weight: 600; }
+        .po-sum-card .po-sum-row > span:last-child { font-weight: 800; color: #0f172a; white-space: nowrap; }
+        .po-sum-card .po-sum-row.is-sub { background: #f0fdf4; margin: 2px -12px; padding: 5px 12px; border-bottom: none; }
+        .po-sum-card .po-sum-row.is-total {
+            border-bottom: none;
+            border-top: 2px solid #16a34a;
+            margin-top: 4px;
+            padding-top: 7px;
+            font-size: 0.95rem;
+        }
+        .po-sum-card .po-sum-row.is-total > span { color: #166534; font-weight: 900; }
+        .po-sum-card .po-sum-note {
+            padding: 0 12px 10px;
+            font-size: 0.68rem;
+            color: #6b7280;
+            line-height: 1.35;
+        }
+        /* Locked PO terms shown back in PO Generate. */
+        .po-locked-card {
+            margin-bottom: 12px;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            background: #fffdf5;
+            padding: 9px 12px;
+        }
+        .po-locked-card .po-locked-head { font-size: 0.8rem; font-weight: 800; color: #92400e; margin-bottom: 5px; }
+        .po-locked-card .po-locked-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; }
+        .po-locked-card .po-locked-cell { font-size: 0.76rem; color: #334155; }
+        .po-locked-card .po-locked-cell b { display: block; font-size: 0.66rem; color: #92400e; font-weight: 800; }
+        .po-locked-card .po-locked-wide { grid-column: 1 / -1; }
+
+        .form-select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            background-color: #fff;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-group label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: #333;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        /* PIN-only signing: the pad is moved off-screen rather than display:none,
+           so the canvas keeps a real size and the saved sign can still be drawn
+           into it and read back for the PDF. */
+        .sig-offscreen {
+            position: absolute !important;
+            left: -10000px !important;
+            top: 0;
+            width: 320px;
+        }
+
+        .signature-pad-container {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #fafafa;
+            overflow: hidden;
+        }
+
+        canvas {
+            width: 100%;
+            height: 130px;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        .clear-btn {
+            background: none;
+            border: none;
+            color: #dc3545;
+            font-size: 0.8rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--success);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .status-tag {
+            background: #e8f5e9;
+            color: var(--success);
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 6px;
+        }
+
+        .stage-tag {
+            background: #eef2ff;
+            color: #3730a3;
+            padding: 3px 6px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 6px;
+        }
+
+        .err-banner {
+            display: none;
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 8px 10px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+
+        .empty-msg { text-align:center; color:#999; margin-top:20px; font-size: 0.85rem; }
+
+        #loginScreen { z-index: 3000; }
+        #loginScreen .modal-content { border-radius: 16px; }
+
+        #busyOverlay {
+            position: absolute; inset: 0; background: rgba(255,255,255,0.75);
+            display: none; align-items: center; justify-content: center;
+            flex-direction: column; gap: 10px; z-index: 2500; font-weight: 700; color: #333; font-size: 0.9rem;
+        }
+        /* No up/down spinner buttons on ANY numeric input, app-wide. */
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+    
