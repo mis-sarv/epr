@@ -147,6 +147,16 @@
 
             <div class="req-meta-info" id="modal-meta-info"></div>
 
+            <!-- ── MD Rejection Remark ──────────────────────────────────
+                 Why a PO raised off this PR came back. High up, directly under
+                 the header, because it is the reason this record is open at all
+                 — reading it is what has to happen before anything else on the
+                 screen makes sense. On a PR it lists every rejected PO raised
+                 from it (a split PR can have more than one, each sent back for
+                 its own reason); on a PO it is that PO's own rejection.
+                 Filled by renderMdRejectionNote(); hidden on everything else. -->
+            <div id="mdRejectNote" class="md-reject-note" style="display:none;"></div>
+
             <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; display: block;">Item Details</label>
             <!-- FIELD BOY only: how many items on this PR are ticked off, and
                  that every tick is already saved (there is no Save button). -->

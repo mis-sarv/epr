@@ -3034,6 +3034,12 @@ function sarvNavigateFromHome(target){
     case 'REPORTS': activatePanel('reportsPanel'); break;
     case 'TRACKER': activatePanel('itemTrackerPanel'); break;
     case 'APPROVAL_APP': window.open('mobile.html','_blank'); sarvGoHome(); return;
+    /* Both companion apps open in their own tab and leave the ERP on Home —
+       they are separate screens with their own login, not an ERP panel.
+       Flat sibling of mobile.html: one repo, one directory, every link
+       relative, so it serves unchanged from user.github.io/repo/ or a
+       custom domain root. */
+    case 'COMPLAINT_APP': window.open('complaint.html','_blank'); sarvGoHome(); return;
   }
   // Whatever the chooser answered on the way in is applied — and locked — only
   // now, after the Entry Type change handler has rebuilt the form's dropdowns.
@@ -3113,6 +3119,12 @@ const SARV_HOME_HELP={
     'Purchaser: Vendor Info (V1 / V2 / V3 रेट) भरकर PR approve करता है — उसी समय PO बन जाता है।',
     'MD: PO approve या reject करता है।',
     'PO Sender: MD-approved PO WhatsApp से वेंडर को भेजता है।']},
+  COMPLAINT_APP:{icon:'⚠️',title:'Complaint App (मशीन शिकायत)',points:[
+    'मशीन खराबी की शिकायत दर्ज करें — मशीन, समस्या, फ़ोटो और शिकायत का प्रकार (Mechanical / Electrical / Housekeeping / Other)।',
+    'शिकायत का रास्ता: User शिकायत डालता है → Maintenance उसे Host को सौंपता है → Host पूरा करके sign करता है → शिकायत डालने वाला confirm करके बंद करता है।',
+    'Task टैब: Admin काम सौंपता है, करने वाला पहले date confirm करता है, पूरा करते समय फ़ोटो/PDF proof लगाना ज़रूरी है।',
+    'Notice Board: सूचना, फ़ोटो या PDF सबको या चुने हुए लोगों को भेजें।',
+    'इसका login अलग है (नाम + password), ERP के PIN से नहीं चलता — password है मोबाइल@DDMMYYYY।']},
 };
 const SARV_HOME_SKIP_KEY='sarv_home_intro_skip';
 function sarvHomeSkipped_(){try{return JSON.parse(localStorage.getItem(SARV_HOME_SKIP_KEY)||'{}')||{};}catch(e){return {};}}
@@ -3469,6 +3481,7 @@ const SARV_TABS=[
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
+  {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
   {group:'🏭 Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'🛒 PO Generation › Sub Tabs'},
@@ -3496,6 +3509,10 @@ const SARV_TABS=[
   {key:'M_VI_done',label:'Vendor Info › Done',def:'ALL'},
   {key:'M_POGEN_pending',label:'PO Generate › Pending',def:'ALL'},
   {key:'M_POGEN_done',label:'PO Generate › Done',def:'ALL'},
+  /* Jo PO MD ne reject kiya, uski PR yahan aati hai — Purchaser remark padhkar
+     approval cancel karte hain aur sudhar kar dobara sign karte hain. Sab roles
+     ko default ON: Purchaser ko kaam karna hai, baaki ko read-only dikhta hai. */
+  {key:'M_POGEN_rejectedpo',label:'PO Generate › Rejected PO',hint:'MD ne jo PO reject kiye — unki PR, MD ke remark ke saath',def:'ALL'},
   {key:'M_MD_pending',label:'MD Approval › Pending',def:'ALL'},
   {key:'M_MD_done',label:'MD Approval › Done',def:'ALL'},
   {key:'M_SENT_pending',label:'PO Sent › Pending',def:'ALL'},

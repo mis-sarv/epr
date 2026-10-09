@@ -174,6 +174,24 @@
             box-shadow: 0 0 0 2px #fff;
         }
         .stage-tab .st-count.zero { background: #cbd5e1; }
+        /* Unread MD rejection waiting in PO Generate ▸ Rejected PO. Red and
+           pulsing, and it outranks .zero / .mine below because what it reports
+           is not a queue length but an unread message. */
+        .stage-tab .st-count.alert,
+        .stage-tab.mine .st-count.alert,
+        .stage-tab .st-count.alert.zero {
+            background: #dc2626;
+            animation: stCountPulse 1.4s ease-in-out infinite;
+        }
+        @keyframes stCountPulse {
+            0%, 100% { box-shadow: 0 0 0 2px #fff; }
+            50%      { box-shadow: 0 0 0 2px #fff, 0 0 0 5px rgba(220,38,38,0.35); }
+        }
+        /* Honours "reduce motion" — the red badge still says everything the
+           pulse does, just without the movement. */
+        @media (prefers-reduced-motion: reduce) {
+            .stage-tab .st-count.alert { animation: none; }
+        }
         /* The tab where the logged-in role does the work. */
         .stage-tab.mine { border-color: #93c5fd; background: #eff6ff; }
         .stage-tab.mine .st-count:not(.zero) { background: #dc2626; }
@@ -229,6 +247,10 @@
         }
         .seg button.active .seg-n { background: var(--primary); color: #fff; }
         .seg-n.zero { background: transparent; color: #b6c0cc; }
+        /* Something in this section has not been looked at yet — the sub-tab's
+           half of the Rejected PO notice (the stage tab carries the count). */
+        .seg-n.alert { background: #dc2626; color: #fff; }
+        .seg button.active .seg-n.alert { background: #dc2626; color: #fff; }
         .access-note {
             font-size: 0.68rem;
             font-weight: 700;
@@ -252,6 +274,36 @@
         }
         .tag.po { background: #ede9fe; color: #5b21b6; border-color: #ddd6fe; }
         .tag.sent { background: #dcfce7; color: #166534; border-color: #86efac; }
+        /* A PO the MD sent back — see PO Generate ▸ Rejected PO. */
+        .tag.rejected { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+
+        /* ── A PR whose PO came back ──────────────────────────────────
+           Red down the left edge, the same device .card.vendor-filled uses in
+           green, so the two states read at a glance in a mixed list and never
+           both at once (paintList picks one skin). */
+        .card.po-rejected {
+            background: #fff5f5;
+            border-color: #fca5a5;
+            border-left: 4px solid #dc2626;
+        }
+        /* The MD's remark, printed on the card. One block per rejected PO,
+           because a PR split across vendors can have more than one come back. */
+        .rej-note {
+            margin-top: 8px;
+            padding: 7px 9px;
+            border: 1px solid #fca5a5;
+            border-radius: 6px;
+            background: #fff;
+        }
+        .rej-note-head { font-size: 0.72rem; font-weight: 800; color: #b91c1c; }
+        .rej-note-body {
+            margin-top: 3px;
+            font-size: 0.74rem;
+            font-weight: 600;
+            color: #7f1d1d;
+            /* A typed remark can be one long unbroken string. */
+            overflow-wrap: anywhere;
+        }
         .card-action {
             margin-top: 8px;
             font-size: 0.74rem;
@@ -262,6 +314,47 @@
         .card-action.act { background: #fff7ed; color: #c2410c; border: 1px dashed #fdba74; }
         .card-action.wait { background: #f8fafc; color: #64748b; border: 1px dashed #cbd5e1; }
         .card-action.done { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+        /* ── MD Rejection Remark, in the open record ──────────────────
+           Solid red rather than .mode-note's dashed grey: this is not a note
+           about the screen, it is the decision that sent the work back, and it
+           has to survive being scrolled past. */
+        .md-reject-note {
+            background: #fff1f2;
+            border: 1px solid #fca5a5;
+            border-left: 4px solid #dc2626;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+        }
+        .md-reject-head {
+            font-size: 0.86rem;
+            font-weight: 800;
+            color: #b91c1c;
+            margin-bottom: 6px;
+        }
+        .md-reject-row { padding-top: 6px; }
+        /* Divider only BETWEEN rows, so a single rejection has no stray line. */
+        .md-reject-row + .md-reject-row {
+            margin-top: 6px;
+            border-top: 1px dashed #fca5a5;
+        }
+        .md-reject-po { font-size: 0.76rem; font-weight: 800; color: #991b1b; }
+        .md-reject-remark {
+            margin-top: 3px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: #7f1d1d;
+            overflow-wrap: anywhere;
+        }
+        .md-reject-foot {
+            margin-top: 8px;
+            padding-top: 7px;
+            border-top: 1px solid #fecdd3;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #9f1239;
+        }
 
         .mode-note {
             background: #f8fafc;

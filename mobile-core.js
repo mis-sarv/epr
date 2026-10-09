@@ -954,6 +954,16 @@
        Inward Approval code: syncStageTabsUi / renderViewSeg read it, and both
        can run before the script has finished evaluating. */
     const INWAPP_VIEW = 'inwapproval';
+    /* PO Generate's third section: PRs whose PO the MD sent back. An MD
+       rejection of a PO is terminal (see prevStageOf — on a PO the MD is the
+       first and only approver, so there is no earlier stage to return it to),
+       which means nothing is left to re-sign on the PO itself: the work goes
+       back to the PR it was raised from. That is why this section lists PRs,
+       not POs — and why it lives in PO Generate, the tab where that PR's
+       approval was given and can be taken back.
+       Declared here beside INWAPP_VIEW for the same reason: renderViewSeg and
+       tabRows both read it before the script has finished evaluating. */
+    const REJPO_VIEW = 'rejectedpo';
     const VIEWS_FOR_TAB = {
         /* PO Receipts carries a fourth section that is NOT a receipt state:
            Inward Approval (MD login only), where the MD clears a store receipt that
@@ -964,6 +974,10 @@
         RECV:  [{v:'pending', l:'Pending'}, {v:'partial', l:'Partially Received'}, {v:'received', l:'Received'},
                 {v:'inwapproval', l:'Inward Approval'}],
         STORE: [{v:'pending', l:'Pending'}, {v:'done', l:'Complete'}],
+        /* Rejected PO comes after Done because that is the order the work runs
+           in: the PR is signed (Done), its PO goes to MD, and only then can it
+           come back. See REJPO_VIEW. */
+        POGEN: [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}, {v:REJPO_VIEW, l:'Rejected PO'}],
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
     // Inward Approval is the MD's alone — no other login is even shown the sub-tab.
@@ -1253,10 +1267,19 @@
            carries its count on the button — the other three are states and a
            number on them would just restate the cards below. */
         const pendingApprovals = (dash.inwApprovals||[]).filter(r => inwAppVisibleToMe(r) && inwAppPending(r)).length;
+        /* Rejected PO carries a count for the same reason: something is sitting
+           in there waiting to be answered. Its number is how many cards tapping
+           it shows — the "how many are NEW" reading belongs on the stage tab's
+           badge (syncStageTabsUi), which is what notifies. The chip turns red
+           while any of them are still unread, so the two agree on screen. */
+        const rejPoRows = currentStageTab === 'POGEN' ? tabRows('POGEN', REJPO_VIEW).length : 0;
+        const rejPoNew = currentStageTab === 'POGEN' ? newRejectedPoCount() : 0;
         seg.innerHTML = views.map(v => {
-            const n = v.v === INWAPP_VIEW ? pendingApprovals : 0;
+            const counted = v.v === INWAPP_VIEW || v.v === REJPO_VIEW;
+            const n = v.v === INWAPP_VIEW ? pendingApprovals : (v.v === REJPO_VIEW ? rejPoRows : 0);
+            const cls = !n ? ' zero' : (v.v === REJPO_VIEW && rejPoNew ? ' alert' : '');
             return `<button type="button" data-view="${v.v}"${v.v===currentView?' class="active"':''}>${escText(v.l)}`
-                 + (v.v === INWAPP_VIEW ? `<span class="seg-n${n ? '' : ' zero'}">${n > 99 ? '99+' : n}</span>` : '')
+                 + (counted ? `<span class="seg-n${cls}">${n > 99 ? '99+' : n}</span>` : '')
                  + `</button>`;
         }).join('');
         seg.querySelectorAll('button').forEach(b =>
@@ -1322,8 +1345,25 @@
                hide the one item that needs a tap. */
             let n = myStage ? tabRows(t, 'pending').length : 0;
             if(myStage && t === 'RECV') n += tabRows('RECV', INWAPP_VIEW).filter(inwAppPending).length;
+            /* This is how the Purchaser is TOLD a PO of theirs came back: the
+               rejection happens on the MD's phone, so without it on this badge
+               nothing on their screen would change and the PR would sit in the
+               Rejected PO section unseen. Only the unread ones count — see
+               newRejectedPoCount — so the badge clears once they have looked,
+               instead of becoming a number that is always there. */
+            const newRej = (myStage && t === 'POGEN') ? newRejectedPoCount() : 0;
+            n += newRej;
             const c = document.getElementById('cnt-' + t);
-            if(c){ c.textContent = n > 99 ? '99+' : String(n); c.classList.toggle('zero', n === 0); }
+            if(c){
+                c.textContent = n > 99 ? '99+' : String(n);
+                c.classList.toggle('zero', n === 0);
+                /* A number alone on a tab the Purchaser is not looking at is not
+                   much of a notice, and this one is time-sensitive — the vendor
+                   is waiting on a PO that no longer exists. So the badge pulses
+                   while any rejection is unread, and stops the moment the
+                   Rejected PO section is opened (paintList marks them read). */
+                c.classList.toggle('alert', newRej > 0);
+            }
         });
         renderViewSeg();
         renderStoreTypeSeg();   // after renderViewSeg: it may have corrected currentView
@@ -1356,6 +1396,19 @@
                 note.textContent = '👁 ' + (myPurchaserName ? 'Aapke PO' : 'Sabhi PO')
                     + ' par kitna maal aaya — Store ki Inward entries se khud update hota hai';
                 note.className = 'access-note view';
+            }
+            /* The Rejected PO section's instruction is not PO Generate's
+               ("Delivery Date + sign") — the PR here is already signed. What
+               has to happen is the opposite: take the approval back, fix what
+               the MD objected to, and sign again. */
+            else if(currentStageTab === 'POGEN' && currentView === REJPO_VIEW){
+                if(canActIn('POGEN')){
+                    note.textContent = '✖ MD ne PO lauta diya — remark padhein, approval cancel karke sudhar kar dobara sign karein';
+                    note.className = 'access-note act';
+                }else{
+                    note.textContent = '👁 View only — MD ke lautaye PO; sudhar Purchaser karenge';
+                    note.className = 'access-note view';
+                }
             }
             else if(canActIn(currentStageTab)){ note.textContent = '✍️ ' + cfg.action; note.className = 'access-note act'; }
             else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
@@ -1421,6 +1474,11 @@
     function liveSignature_(){
         const part = (rows, noCol) => (rows||[]).map(r =>
             [r[noCol], r.status, r.pdf_url, (r._poNos||[]).join('+'), r.party_sent_at,
+             /* An MD rejection happens on another phone and moves this PR into
+                PO Generate ▸ Rejected PO. The rejection moment is in the key, not
+                just the PO number, so a PO rejected a second time repaints (and
+                re-notifies) rather than looking unchanged. */
+             (r._poRejected||[]).map(rejPoKey_).join('+'),
              r.updated_at, r.delivery_date,
              // PO Receipts moves a card between its three sections on these two.
              r.received_qty, r.total_qty, (r._inwards||[]).length].join('~')
@@ -1822,7 +1880,29 @@
             // only screen with the control to release it.
                           return pending ? prs.filter(r => PR_HELD(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
                                          : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r));
-            case 'POGEN': return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
+            case 'POGEN':
+                /* Rejected PO is its own question, not a stage of the other
+                   two: the PR has been signed (so it is out of Pending) and a
+                   PO was raised off it (so Done is where it otherwise sits),
+                   but the MD sent that PO back and the Purchaser has to act
+                   again. Checked before `pending`, which only knows
+                   done-or-not.
+                   It lists the UNANSWERED ones, which is why the gmCeo
+                   signature is part of the test and not just the rejected PO:
+                   that signature is what produced the PO the MD returned, so
+                   while it still stands nothing about the PR can change. The
+                   Purchaser cancelling it — the step this section exists to
+                   prompt — drops the PR straight back into Pending for rework,
+                   still carrying its 🚫 tag and the MD's remark. Without that
+                   test `_poRejected` never empties (a Rejected PO row stays
+                   Rejected for ever) and the PR would sit here permanently,
+                   long after it had been dealt with.
+                   A Cancelled PR is left out — nobody is going to rework it. */
+                if(view === REJPO_VIEW)
+                    return prs.filter(r => prHasRejectedPo(r)
+                        && (r.approvals||{}).gmCeo
+                        && (r.status||'') !== 'Cancelled');
+                          return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
                                          : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
             // No GM/CEO step on POs: a purchaser-approved PO arrives as "GM/CEO
             // Approved", one that never carried a Purchaser signature stays
@@ -2181,7 +2261,13 @@
         // _poLive: the same live POs with id + status, so a cancel can tell
         // a PO MD hasn't touched yet (which the cancel takes back with it)
         // from one already further down the chain (which locks the PR).
-        rows.forEach(r => { r._poNos = []; r._poLive = []; });
+        /* _poRejected: the POs raised from this PR that the MD sent BACK —
+           deliberately a separate list from _poLive rather than a status flag on
+           it, because everything that reads _poLive (the PO tag on a card,
+           prLockedByPo, cancelPRApproval) is asking "what is still in flight
+           off this PR", and a rejected PO is not. It is what PO Generate ▸
+           Rejected PO lists the PR by, and what carries the MD's remark. */
+        rows.forEach(r => { r._poNos = []; r._poLive = []; r._poRejected = []; });
         try{
             const reqNos = [...new Set(rows.map(r => r.req_no).filter(Boolean))];
             if(!reqNos.length) return;
@@ -2189,15 +2275,23 @@
             if(lq.error || !(lq.data||[]).length) return;
             const poIds = [...new Set(lq.data.map(l => l.purchase_order_id).filter(Boolean))];
             if(!poIds.length) return;
-            const pq = await SB.from('purchase_orders').select('id,po_no,status').in('id', poIds);
+            // approvals comes along for the rejection note rejectPO writes into
+            // it, and pdf_url so the rejected PO can still be opened and read.
+            const pq = await SB.from('purchase_orders').select('id,po_no,status,approvals,pdf_url,vendor_name,grand_total').in('id', poIds);
             if(pq.error) return;
-            const livePo = {};
-            (pq.data||[]).forEach(p => { if(!DEAD_PO_STATUSES.includes(p.status||'')) livePo[p.id] = p; });
-            const byReq = {};
+            const livePo = {}, rejPo = {};
+            (pq.data||[]).forEach(p => {
+                if(!DEAD_PO_STATUSES.includes(p.status||'')) livePo[p.id] = p;
+                // Only Rejected, not Cancelled: a cancel is this side's own
+                // doing (cancelPRApproval), not a decision sent back to answer.
+                else if((p.status||'') === 'Rejected') rejPo[p.id] = p;
+            });
+            const byReq = {}, rejByReq = {};
             lq.data.forEach(l => {
                 const po = livePo[l.purchase_order_id];
-                if(!po) return;
-                (byReq[l.req_no] = byReq[l.req_no] || new Map()).set(po.id, po);
+                if(po) (byReq[l.req_no] = byReq[l.req_no] || new Map()).set(po.id, po);
+                const rej = rejPo[l.purchase_order_id];
+                if(rej) (rejByReq[l.req_no] = rejByReq[l.req_no] || new Map()).set(rej.id, rej);
             });
             rows.forEach(r => {
                 let pos = [...(byReq[r.req_no] || new Map()).values()];
@@ -2206,8 +2300,83 @@
                 if(myStage === 'poSender') pos = pos.filter(PO_MD_APPROVED);
                 r._poLive = pos;
                 r._poNos = pos.map(p => p.po_no);
+                /* A PO Sender's work starts at MD approval, so a PO the MD
+                   rejected never existed as far as they are concerned — the
+                   same reason loadDashboard drops un-approved POs for them. */
+                r._poRejected = myStage === 'poSender' ? []
+                    : [...(rejByReq[r.req_no] || new Map()).values()].sort(
+                        (a,b) => String(poRejectionAt_(b)).localeCompare(String(poRejectionAt_(a))));
             });
         }catch(e){ console.warn('[MOBILE] PR→PO lookup skipped:', e.message||e); }
+    }
+
+    /* ── MD-rejected POs, and the remark that came back with them ─────
+       The MD's reject on a PO is the end of that PO (prevStageOf returns null
+       for md on a PO), so the only way forward is through the PR it was raised
+       from: the Purchaser takes their approval back, fixes whatever the remark
+       objects to, and signs again — which raises a fresh PO. These helpers are
+       what the Rejected PO section, its badge and the modal's notice all read. */
+    function poRejectionInfo(po){
+        const r = ((po && po.approvals) || {}).rejection;
+        return (r && typeof r === 'object') ? r : null;
+    }
+    // Sortable rejection moment; '' on a PO rejected before this was recorded.
+    function poRejectionAt_(po){
+        const r = poRejectionInfo(po) || {};
+        return r.atIso || r.at || '';
+    }
+    function poRejectionRemark(po){
+        return String((poRejectionInfo(po) || {}).remarks || '').trim();
+    }
+    function prRejectedPos(r){ return (r && r._poRejected) || []; }
+    function prHasRejectedPo(r){ return prRejectedPos(r).length > 0; }
+    /* One line naming who sent it back and when — the card's headline. The
+       remark itself is printed under it, and in full in the modal. */
+    function poRejectionWho_(po){
+        const r = poRejectionInfo(po);
+        if(!r) return 'MD';
+        return String(r.by || r.role || 'MD').trim() || 'MD';
+    }
+
+    /* ── "A PO of yours came back" ────────────────────────────────────
+       The badge has to mean NEW, not "there exist rejected POs" — a count that
+       never clears is read once and then ignored, which is the opposite of a
+       notification. So each rejection is remembered by PO number AND the moment
+       it was rejected: the same PO rejected a second time is a new notice
+       again. Opening the Rejected PO section is what marks them read
+       (see paintList), per device, which is all localStorage can honestly
+       promise — it is a read-receipt, not a record. */
+    const REJPO_SEEN_KEY = 'sarv_mobile_rejpo_seen';
+    function rejPoKey_(po){ return String((po && po.po_no) || '') + '|' + poRejectionAt_(po); }
+    function rejPoSeen_(){
+        try{ const raw = localStorage.getItem(REJPO_SEEN_KEY); return new Set(raw ? JSON.parse(raw) : []); }
+        catch(e){ return new Set(); }
+    }
+    /* The rejections the Rejected PO section would actually put on screen —
+       taken from tabRows rather than scanned off every PR, so the badge can
+       never point at an empty section (a PR already reworked drops out of both
+       at the same moment). */
+    function allRejectedPos_(){
+        const out = [];
+        tabRows('POGEN', REJPO_VIEW).forEach(r => prRejectedPos(r).forEach(p => out.push(p)));
+        return out;
+    }
+    // The ones not yet looked at — what the PO Generate badge counts.
+    function newRejectedPoCount(){
+        const seen = rejPoSeen_();
+        return allRejectedPos_().filter(p => !seen.has(rejPoKey_(p))).length;
+    }
+    function markRejectedPosSeen(){
+        const all = allRejectedPos_();
+        if(!all.length) return false;
+        const seen = rejPoSeen_();
+        let added = false;
+        all.forEach(p => { const k = rejPoKey_(p); if(!seen.has(k)){ seen.add(k); added = true; } });
+        if(!added) return false;
+        // Capped so a long-lived phone can't grow this without bound; the oldest
+        // keys falling off only means an ancient rejection could notify once more.
+        try{ localStorage.setItem(REJPO_SEEN_KEY, JSON.stringify([...seen].slice(-400))); }catch(e){}
+        return true;
     }
 
     async function fetchItems(record){
@@ -2279,6 +2448,11 @@
             // store booked the receipt against.
             item.request_no, item.po_numbers, item.req_numbers,
             ...((item._inwards||[]).map(x => x.document_no)),
+            // Rejected PO: searchable by the returned PO's number and by what
+            // the MD wrote on it, so "rate" or "gst" finds every PR sent back
+            // for that reason.
+            ...prRejectedPos(item).map(p => p.po_no),
+            ...prRejectedPos(item).map(poRejectionRemark),
             ...(item.req_no ? prQuotedVendorNames(item) : [])
         ].some(v => String(v || '').toLowerCase().includes(searchTerm));
     }
@@ -2313,6 +2487,12 @@
     function paintList() {
         const listDiv = document.getElementById('list');
         if(!listDiv) return;
+        /* Having the Rejected PO section on screen IS the Purchaser reading the
+           notice, so the badge is cleared here — BEFORE the tabs are drawn, or
+           it would keep claiming "new" over a list already in front of them.
+           markRejectedPosSeen only writes when something was actually unread,
+           so this cannot loop with the repaint. */
+        if(myStage && currentStageTab === 'POGEN' && currentView === REJPO_VIEW) markRejectedPosSeen();
         syncStageTabsUi();
         if(!myStage) return;
         // Whatever caused this paint, the screen now matches `dash` — so the
@@ -2345,6 +2525,12 @@
                     : `<p class="empty-msg">🎉 Koi Inward approval pending nahi hai.</p>`;
                 return;
             }
+            /* Empty here is good news, and it is not the same good news as
+               "no work pending" — nothing has been sent back. */
+            if(tab === 'POGEN' && currentView === REJPO_VIEW){
+                listDiv.innerHTML = `<p class="empty-msg">🎉 MD ne koi PO reject nahi kiya — is section me kuch nahi.</p>`;
+                return;
+            }
             listDiv.innerHTML = cfg.module === 'RECV'
                 ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
                 : (done
@@ -2367,16 +2553,22 @@
         if(cfg.module === 'RECV' && currentView === INWAPP_VIEW){ paintInwAppList_(listDiv, rows); return; }
         if(cfg.module === 'RECV'){ paintRecvList_(listDiv, rows); return; }
 
+        // PO Generate ▸ Rejected PO. The cards are PRs, like the tab's other two
+        // sections, but nothing on them is signed from here — the Purchaser
+        // reads the MD's remark and takes their approval back.
+        const rejView = tab === 'POGEN' && currentView === REJPO_VIEW;
         listDiv.innerHTML = '';
         rows.forEach(item => {
             const card = document.createElement('div');
             const isPr = cfg.module === 'PR';
             const vendorNames = isPr ? prQuotedVendorNames(item) : [];
-            card.className = 'card' + (vendorNames.length ? ' vendor-filled' : '');
+            // The green "vendor info filled" skin would read as all-is-well on a
+            // PR whose PO just came back, so the rejection skin wins.
+            card.className = 'card' + (rejView ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''));
             // Acting is only for the tab's own role, on a pending record; any
             // other tap opens the record read-only. The PO Sender's action is
             // the WhatsApp button itself, so their card opens read-only too.
-            const actHere = canAct && !done && tab !== 'SENT';
+            const actHere = canAct && !done && !rejView && tab !== 'SENT';
             card.onclick = () => openModal(item, {viewOnly: !actHere, tab});
 
             let html = `<div class="card-header"><span>${escText(isPr ? item.req_no : item.po_no)}</span>`;
@@ -2394,6 +2586,11 @@
 
             const tags = [];
             if(vendorNames.length) tags.push(`<span class="vendor-filled-tag" style="margin-top:0;">✅ Vendors: ${escText(vendorNames.join(', '))}</span>`);
+            // Which PO came back. Named on every tab, not just the Rejected PO
+            // section: a PR sitting in Done with a rejected PO behind it would
+            // otherwise look like a finished job.
+            if(isPr && prHasRejectedPo(item))
+                tags.push(`<span class="tag rejected">🚫 Rejected PO: ${escText(prRejectedPos(item).map(p => p.po_no).join(', '))}</span>`);
             if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">🧾 ${escText(item._poNos.join(', '))}</span>`);
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
             // How far down the checklist this PR is, without opening it.
@@ -2403,17 +2600,51 @@
             }
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
             if(item.pdf_url) html += `<a class="pdf-link" href="${escText(item.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 View PDF</a>`;
+            /* The MD's own words, on the card — not behind a tap. This is the
+               whole point of the section: the remark says what to change, and a
+               Purchaser should not have to open each PR to find out which of
+               them is about a rate and which about a vendor. Each rejected PO
+               gets its own line, because two POs off one split PR can come back
+               for two different reasons. The rejected PO's own PDF is linked
+               beside it — the PR's PDF above is a different document. */
+            if(rejView) html += prRejectedPos(item).map(p => {
+                const rem = poRejectionRemark(p);
+                const info = poRejectionInfo(p) || {};
+                return `<div class="rej-note">`
+                     + `<div class="rej-note-head">✖ ${escText(p.po_no || 'PO')} — ${escText(poRejectionWho_(p))} ne reject kiya`
+                     + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
+                     + `<div class="rej-note-body"><b>MD Rejection Remark:</b> `
+                     + (rem ? escText(rem) : `<i>koi remark nahi likha gaya</i>`) + `</div>`
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 Rejected PO PDF</a>` : '')
+                     + `</div>`;
+            }).join('');
 
             // What happens next, in one line.
-            if(done){
+            if(rejView){
+                html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
+                      + escText(canAct
+                          ? '↩ Approval cancel karke PR sudhaarein, phir dobara sign karein — naya PO ban jayega'
+                          : 'Purchaser isme sudhar karke dobara sign karenge')
+                      + `</div>`;
+            } else if(done){
                 const doneText = {
                     VI:    isFieldBoy() ? ('✔ Saare items receive ho gaye (' + prFieldProgress(item).total + ')')
                                         : '✔ Vendor info bhari ja chuki hai',
-                    POGEN: '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ' — PO ban gaya' : ''),
+                    /* A PR whose only PO the MD returned is still "approved", and
+                       saying just that here would read as a finished job — the
+                       Done list is where a Purchaser confirms nothing is left to
+                       do. So the rejection is named instead, pointing at the
+                       section that carries the remark and the way to fix it. */
+                    POGEN: (prHasRejectedPo(item) && !(item._poNos||[]).length)
+                        ? '✖ MD ne PO reject kar diya — "Rejected PO" sub-tab me dekhein'
+                        : '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ' — PO ban gaya' : ''),
                     MD:    '✔ MD approved',
                     SENT:  '✔ Vendor ko bheja ja chuka hai',
                 }[tab];
-                html += `<div class="card-action done">${escText(doneText)}</div>`;
+                // Green says "settled". A rejection is not, so that line gets
+                // the plain treatment instead.
+                const doneCls = (tab === 'POGEN' && prHasRejectedPo(item) && !(item._poNos||[]).length) ? 'wait' : 'done';
+                html += `<div class="card-action ${doneCls}">${escText(doneText)}</div>`;
             } else if(isPr && PR_HELD(item)){
                 // A held PR is in the list only so the hold can be taken off —
                 // saying "fill the rates" here would point at the wrong thing.
@@ -2439,14 +2670,20 @@
                 waBtn.onclick = (e) => { e.stopPropagation(); openPoSendPinGate(item); };
                 card.appendChild(waBtn);
             }
-            // Cancel My Approval lives in the Done view of the tab where that
-            // approval was given — PO Generate (Purchaser) and MD Approval (MD).
-            const cancelTab = done && canAct && (tab === 'POGEN' || tab === 'MD');
+            /* Cancel My Approval lives in the Done view of the tab where that
+               approval was given — PO Generate (Purchaser) and MD Approval (MD)
+               — and in Rejected PO, which is the one place it is not a change of
+               mind but the required next step: the PR cannot be re-quoted or
+               re-signed while the old approval still stands. A rejected PO is in
+               DEAD_PO_STATUSES, so it is not in _poLive and prLockedByPo does
+               not block this; a SECOND PO off the same split PR that MD has
+               already approved still does, correctly. */
+            const cancelTab = canAct && (tab === 'MD' ? done : (tab === 'POGEN' && (done || rejView)));
             if(cancelTab && canCancelApproval(item)){
                 const cancelBtn = document.createElement('button');
                 cancelBtn.className = 'clear-btn';
                 cancelBtn.style.cssText = 'margin-top:8px;display:block;width:100%;text-align:center;padding:8px;border:1px solid #dc3545;border-radius:6px;background:#fff5f5;font-weight:700;';
-                cancelBtn.textContent = '↩ Cancel My Approval';
+                cancelBtn.textContent = rejView ? '↩ Cancel My Approval & Sudhaar Karein' : '↩ Cancel My Approval';
                 cancelBtn.onclick = (e) => { e.stopPropagation(); cancelMyApproval(item); };
                 card.appendChild(cancelBtn);
             } else if(cancelTab && (item.approvals||{})[myStage] && prLockedByPo(item)){
@@ -4329,6 +4566,48 @@
         return snap.fieldChecklist;
     }
 
+    /* ── MD Rejection Remark, in the open record ──────────────────────
+       What the MD wrote when they sent a PO back. Shown on EVERY tab, not only
+       in PO Generate ▸ Rejected PO: the same PR is also opened from Vendor Info
+       and from Done, and a rejection the reader cannot see from where they
+       happen to be standing is a rejection that gets worked around instead of
+       answered.
+         PR — every rejected PO raised from it, each with its own remark. A PR
+              split across vendors produces one PO per vendor, and the MD can
+              send one back over a rate while the other is fine.
+         PO — its own rejection, for the MD re-reading what they returned and
+              for anyone opening the PO from the MD tab's Done list. */
+    function renderMdRejectionNote(entry){
+        const box = document.getElementById('mdRejectNote');
+        if(!box) return;
+        const rejected = !entry ? []
+            : (currentModule === 'PR' ? prRejectedPos(entry)
+               : (poRejectionInfo(entry) ? [entry] : []));
+        if(!rejected.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+        const one = rejected.length === 1;
+        box.innerHTML = `<div class="md-reject-head">✖ ${escText(one ? 'PO Rejected by MD' : rejected.length + ' PO Rejected by MD')}</div>`
+            + rejected.map(p => {
+                const info = poRejectionInfo(p) || {};
+                const rem = poRejectionRemark(p);
+                return `<div class="md-reject-row">`
+                     + `<div class="md-reject-po">${escText(p.po_no || 'PO')}`
+                     + ` — ${escText(poRejectionWho_(p))}`
+                     + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
+                     + `<div class="md-reject-remark"><b>MD Rejection Remark:</b> `
+                     // A rejection recorded before rejectPO started keeping the
+                     // reason says so, rather than showing an empty quote.
+                     + (rem ? escText(rem) : `<i>koi remark record nahi hua</i>`) + `</div>`
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener">📄 Rejected PO PDF</a>` : '')
+                     + `</div>`;
+            }).join('')
+            // The way out, only for the person who can take it — an MD reading
+            // their own rejection back does not cancel anybody's approval.
+            + (currentModule === 'PR' && canActIn('POGEN')
+                ? `<div class="md-reject-foot">Sudhaar ka raasta: <b>PO Generate ▸ Rejected PO</b> me <b>Cancel My Approval</b> dabayein, PR / rates theek karein, phir dobara sign karein — naya PO ban jayega.</div>`
+                : '');
+        box.style.display = 'block';
+    }
+
     function toggleVendorInfo(){
         const body = document.getElementById('vendorInfoBody');
         const chev = document.getElementById('vendorInfoChevron');
@@ -5093,6 +5372,9 @@
             }
         }
         document.getElementById('modal-meta-info').innerHTML = metaHtml;
+        // Why a PO off this record came back, if one did — read before anything
+        // else on the screen, so it sits directly under the header.
+        renderMdRejectionNote(entry);
 
         const rateHeader = document.getElementById('rate-col-header');
         const discHeader = document.getElementById('disc-col-header');
@@ -5625,6 +5907,10 @@
 
     async function approvePO(po, stage, sig, deliveryDate){
         const newApprovals = {...(po.approvals||{}), [stage]: sig};
+        // An earlier rejection note (approvals.rejection, written by rejectPO)
+        // is spent the moment this PO is signed — leaving it would keep the PO's
+        // source PR sitting in PO Generate ▸ Rejected PO for ever.
+        delete newApprovals.rejection;
         const newStatus = STAGE_RESULT_STATUS[stage];
         const effDeliveryDate = deliveryDate || po.delivery_date;
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
@@ -5750,6 +6036,25 @@
         } else {
             newStatus = 'Rejected';
         }
+        /* WHY the PO came back, kept on the record itself.
+           `approvals` is the only jsonb column a purchase_order has (there is
+           no pdf_snapshot on this table), so the note goes in there under a
+           key that is not a stage — `rejection`. Nothing iterates this column:
+           every reader, on both apps and in both PDF renderers, looks up the
+           stage keys it wants by name (approvals.gmCeo / .md / .store), so an
+           extra key is inert for them.
+           Without this the reason the MD typed was shown once in a confirm
+           box and then lost — the status said "Rejected" and nothing said why,
+           which is exactly what the Purchaser needs in order to fix it. */
+        newApprovals.rejection = {
+            stage,
+            by: myPurchaserName || STAGE_LABEL[stage] || stage,
+            role: STAGE_LABEL[stage] || stage,
+            at: pStamp(),
+            atIso: new Date().toISOString(),
+            remarks: remarks || '',
+            poNo: po.po_no || '',
+        };
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
         const lines = lq.data || [];
@@ -6146,9 +6451,16 @@
         if(!remarks) { alert('Please enter a remark explaining the rejection.'); return; }
         const prevStage = prevStageOf(myStage);
         const docNo = currentModule === 'PR' ? currentEntry.req_no : currentEntry.po_no;
+        /* On a PO there is no earlier approver to send it back to, so the reject
+           ends that PO — but it is NOT the end of the work, and the MD should be
+           told what their reject actually does: the PR it was raised from
+           surfaces in the Purchaser's PO Generate ▸ Rejected PO with this
+           remark on it, and they re-quote and re-sign from there. */
         const backMsg = prevStage
             ? `It will go back to ${STAGE_LABEL[prevStage]}'s pending list for review.`
-            : `This is the first approval stage, so it will be marked Rejected.`;
+            : (currentModule === 'PO'
+                ? `Ye PO Rejected ho jayega. Iski PR Purchaser ke "PO Generate ▸ Rejected PO" me aapke remark ke saath dikhegi — wo sudhar karke dobara sign karenge aur naya PO banega.`
+                : `This is the first approval stage, so it will be marked Rejected.`);
         if(!confirm(`Reject ${docNo}?\n\n${backMsg}`)) return;
         document.getElementById('rejectBtn').disabled = true;
         setBusy(true, 'Rejecting...');

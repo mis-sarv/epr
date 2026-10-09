@@ -111,6 +111,11 @@
       { label: 'Project Reports' }, { label: 'PM Configs' } ] },
 
     { key: 'SUPPORT', icon: '🎧', label: 'Support', children: [
+      /* Listed first because it is the only built screen in this module —
+         everything below it is still a placeholder, and leafLive() greys
+         those out. Opens complaint.html in its own tab, the same way
+         Purchase › Approval App opens mobile.html. */
+      { label: 'Complaint App', go: 'COMPLAINT_APP' },
       { label: 'Support Dashboard' }, { label: 'Helpdesk Ticket' },
       { label: 'Support Contract / Warranty' }, { label: 'Job Card Time Sheet' },
       { label: 'Timesheets' }, { label: 'RMA (Returns)' },
@@ -523,7 +528,7 @@
   }
   /* Shell neeche ja raha hai kyonki ek screen khul rahi hai — to kinare ka
      handle aa jaata hai. Ye hi wo ek jagah hai jahan se launcher chalu hota
-     hai, aur yahi 16 live screens ka ek hi raasta hai (sarvNavigateFromHome /
+     hai, aur yahi 17 live screens ka ek hi raasta hai (sarvNavigateFromHome /
      activatePanel wrappers), to kisi screen par handle chhoot nahi sakta. */
   function hide() {
     const s = byId_('erpShell'); if (!s) return;

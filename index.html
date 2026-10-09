@@ -113,6 +113,17 @@
       <span class="sarv-home-text"><b>Approval App</b><small>Purchaser → MD → PO Sender (mobile)</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Complaint App — the machine-breakdown / task / notice-board app that
+         used to be its own Supabase project. It opens in a new tab exactly
+         the way Approval App above does (see sarvNavigateFromHome), and is
+         shown or hidden by the same Tab Visibility key pattern
+         (HOME_COMPLAINT_APP). It keeps its own login because it
+         authenticates through Supabase Auth, not the ERP's PINs. -->
+    <button type="button" class="sarv-home-row" data-go="COMPLAINT_APP">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></span>
+      <span class="sarv-home-text"><b>Complaint App</b><small>Machine complaints, tasks &amp; notice board</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
   </div>
 </div>
 
