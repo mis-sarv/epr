@@ -3031,6 +3031,14 @@ function sarvNavigateFromHome(target){
     case 'MASTER': activatePanel('masterDataPanel'); break;
     case 'REPAIR': activatePanel('repairTrackerPanel'); break;
     case 'PRODUCTION': activatePanel('productionPanel'); break;
+    case 'LOT_CARD': {
+      activatePanel('lotCardPanel');
+      // Load the page only the first time it is opened — it brings its own
+      // Tailwind / Supabase, no reason to pay for that on every ERP load.
+      const fr=byId('lotCardFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'lot-card-manager.html');
+      break;
+    }
     case 'REPORTS': activatePanel('reportsPanel'); break;
     case 'TRACKER': activatePanel('itemTrackerPanel'); break;
     case 'APPROVAL_APP': window.open('mobile.html','_blank'); sarvGoHome(); return;
@@ -3126,6 +3134,12 @@ const SARV_HOME_HELP={
     'Task टैब: Admin काम सौंपता है, करने वाला पहले date confirm करता है, पूरा करते समय फ़ोटो/PDF proof लगाना ज़रूरी है।',
     'Notice Board: सूचना, फ़ोटो या PDF सबको या चुने हुए लोगों को भेजें।',
     'इसका login अलग है (नाम + password), ERP के PIN से नहीं चलता — password है मोबाइल@DDMMYYYY।']},
+  LOT_CARD:{icon:'🧵',title:'Lot Card Manager (Manufacturing)',points:[
+    'नया production lot बनाएं — Lot No, Brand, Fabric, Bed Size और Ply चुनें।',
+    'हर matching में rolls डालते ही pieces अपने-आप बनते हैं (Double: 1 ply 54 / 2 ply 27, Single: 1 ply 84 / 2 ply 42 pcs per roll)।',
+    'Master packing (Bora / Box / Bale…) + slave packing (PVC Bag / Gift Box…) जोड़ें; कई master हों तो pieces बाँटें।',
+    'Sattan रंग-वार वज़न और 15 kg के bundle (.9 पर अगला bundle) अपने-आप निकलते हैं।',
+    'Save करते ही Production Card प्रिंट के लिए तैयार; CSV export / import भी है।']},
   ORDER_FORM:{icon:'🧾',title:'Order Form (Sales)',points:[
     'Buyer का order भरें — Item Code चुनते ही specs, price और trims की cost अपने-आप भर जाएगी।',
     'Packing Type, trims (Buyer / SIHF / FOC), discount और GST से पूरा bill अपने-आप बनता है।',
@@ -3487,6 +3501,7 @@ const SARV_TABS=[
   {key:'HOME_MASTER',label:'Master Data',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
+  {key:'HOME_LOT_CARD',label:'Lot Card Manager',hint:'Manufacturing › blanket lot cards, sattan & master packing',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — apna alag login (sales_users)',def:'ALL'},

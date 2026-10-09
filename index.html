@@ -128,6 +128,13 @@
          Google Sheet / Apps Script order form). Opens in a new tab like the
          Complaint App above, keeps its own login (sales_users), and is shown or
          hidden by HOME_ORDER_FORM. -->
+    <!-- Manufacturing › Lot Card Manager — opens #lotCardPanel; shown or hidden
+         by HOME_LOT_CARD like every other screen. -->
+    <button type="button" class="sarv-home-row" data-go="LOT_CARD">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="m2 17 10 5 10-5"></path><path d="m2 12 10 5 10-5"></path></svg></span>
+      <span class="sarv-home-text"><b>Lot Card Manager</b><small>Blanket lots, sattan &amp; master packing</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <button type="button" class="sarv-home-row" data-go="ORDER_FORM">
       <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg></span>
       <span class="sarv-home-text"><b>Order Form</b><small>Sales orders &amp; Proforma Invoice PDF</small></span>
@@ -1652,6 +1659,16 @@
 
                 </div><!-- /designMasterProdSub -->
             </div>
+        </div>
+
+        <!-- Manufacturing › Lot Card Manager — blanket production lot cards
+             (lot-card-manager.html, Supabase mfg_* tables). Hosted in an iframe
+             because it is built on Tailwind, which would reset this page's own
+             styles if loaded here. The src is set the first time the panel
+             opens (store-core.js sarvNavigateFromHome 'LOT_CARD'). -->
+        <div id="lotCardPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="lotCardFrame" title="Lot Card Manager" data-src="lot-card-manager.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f1f5f9; display:block;"></iframe>
         </div>
 
         <div class="sidebar" id="sidebarPanel">

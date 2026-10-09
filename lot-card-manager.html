@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sarv India — Lot Card Manager</title>
+<!--
+  Manufacturing › Lot Card Manager — opened inside the ERP (index.html →
+  erp-shell.js MANUF › "Lot Card Manager" → store-core.js
+  sarvNavigateFromHome('LOT_CARD') → #lotCardPanel iframe).
+
+  Port of sarv-india-blanket-lot-manager (React + Tailwind, AI Studio). Same
+  interface and the same calculations (LotForm.tsx / PrintLotCard.tsx /
+  LotList.tsx / storage.ts); what changed is storage:
+    localStorage lots              → Supabase mfg_lot_cards + mfg_lot_matchings + mfg_lot_trims
+    localStorage master packings   → mfg_master_packings  (Master Library)
+    localStorage slave packings    → mfg_slave_packings   (Slave Library)
+    Google Sheets sync (Google login) → CSV downloads of the same sheets
+                                        (Lot Card, Master Register, Sattan Register)
+                                        + CSV / JSON import
+  Tables: LOT_CARD_MIGRATION.sql. Kept as its own page (Tailwind would reset
+  the ERP's styles if loaded into index.html).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/lucide@0.546.0/dist/umd/lucide.min.js"></script>
+<style>
+  [data-lucide]{display:inline-block;width:1em;height:1em}
+  .lcm-toast-in{animation:lcmUp .2s ease}
+  @keyframes lcmUp{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+  @media print {
+    @page { size: A4 portrait; margin: 10mm; }
+    body { background-color:#ffffff !important; color:#000000 !important; padding:0 !important; margin:0 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .no-print { display:none !important; }
+    .print-sheet { border:2px solid #000000 !important; box-shadow:none !important; margin:0 !important; padding:20px !important; width:100% !important; background:#ffffff !important; }
+    main { padding:0 !important; max-width:none !important; }
+  }
+</style>
+</head>
+<body class="bg-slate-100">
+
+<div id="app" class="min-h-screen bg-slate-100 flex flex-col font-sans text-slate-900">
+  <header id="navbar" class="no-print bg-slate-900 text-white sticky top-0 z-40 shadow-lg border-b border-slate-800"></header>
+  <main id="main" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="bg-white p-12 rounded-xl text-center shadow-xs border border-slate-200 text-slate-500 font-medium">Loading lot records…</div>
+  </main>
+</div>
+<div id="toast"></div>
+<div id="modal"></div>
+<input type="file" id="jsonRestoreInput" accept=".json" class="hidden" onchange="onRestoreFile(this)">
+<input type="file" id="importFileInput" accept=".csv,.json" class="hidden" onchange="onImportFile(this)">
+
+<script>
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  SUPABASE — same project & anon key as the ERP                          ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const SB = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:false } }) : null;
+const SETUP_HINT = 'Database setup pending — LOT_CARD_MIGRATION.sql run karein';
+
+// ═══════════════════════ CONSTANTS (utils/storage.ts) ═══════════════════════
+const DEFAULT_MASTER_PACKINGS = [
+  { id:'bora', name:'BORA', defaultPcs:10, description:'Standard Woven Sacks / Bora for domestic dispatch', isDefault:true },
+  { id:'box', name:'BOX', defaultPcs:10, description:'Corrugated Master Box / Carton', isDefault:true },
+  { id:'bale', name:'BALE', defaultPcs:25, description:'Compressed Bale for bulk transport', isDefault:true },
+  { id:'carton', name:'CARTON', defaultPcs:12, description:'Rigid Master Carton', isDefault:false },
+  { id:'jumbo_bora', name:'JUMBO BORA', defaultPcs:20, description:'Extra Large Heavy Bora', isDefault:false },
+  { id:'roll_pack', name:'ROLL PACK', defaultPcs:8, description:'Rolled Master Packaging', isDefault:false },
+];
+const DEFAULT_SLAVE_PACKING_OPTIONS = [
+  { id:'pvc_bag', name:'PVC BAG', description:'Clear PVC bag with zipper / flap', isDefault:true },
+  { id:'gift_box', name:'GIFT BOX', description:'Color printed presentation gift box', isDefault:true },
+  { id:'loose', name:'LOOSE', description:'Packed loose without individual inner bag', isDefault:true },
+  { id:'looser', name:'LOOSER', description:'Loose packaging', isDefault:false },
+  { id:'zipper_bag', name:'ZIPPER BAG', description:'Zippered bag with border trim', isDefault:false },
+  { id:'non_woven', name:'NON-WOVEN BAG', description:'Breathable fabric bag with handles', isDefault:false },
+  { id:'handle_pouch', name:'HANDLE POUCH', description:'Poly carry pouch with handle', isDefault:false },
+  { id:'vacuum_pack', name:'VACUUM PACK', description:'Compressed vacuum bag', isDefault:false },
+];
+const DEFAULT_BRANDS = ['SARV INDIA','HOME PRIDE','GOLD CLOUDY','ROYAL TOUCH','COMFORT ZONE'];
+const DEFAULT_SATTAN_COLORS = ['RED','MAROON','NAVY BLUE','ROYAL BLUE','GOLD','SILVER','COFFEE','BLACK','CREAM','PINK','RUST','BOTTLE GREEN','GREY'];
+const DEFAULT_TRIM_NAMES = ['Small Label','Main Label','Washing Label','Dori','Piping','Barcode Tag','Corner Label','Brand Ribbon'];
+const BUNDLE_KG = 15;   // standard sattan bundle
+
+// Sattan width + kg per blanket by fabric — exactly the figures the Fabric Type
+// dropdown states. Unknown / imported fabrics fall back to 5" / 0.24 kg, which
+// is what the original code did for every non-MINK fabric.
+const FABRIC_SPECS = {
+  MINK:        { size:'4 INCH', kg:0.12 },
+  SUPERSOFT:   { size:'5 INCH', kg:0.24 },
+  SUPERCLOUDY: { size:'5 INCH', kg:0.24 },
+  FLANNEL:     { size:'4 INCH', kg:0.15 },
+};
+function fabricSpec(f){ return FABRIC_SPECS[String(f||'').trim().toUpperCase()] || { size:'5 INCH', kg:0.24 }; }
+
+function getColorHex(color){
+  const c=(color||'').trim().toUpperCase();
+  return ({'RED':'#ef4444','MAROON':'#800000','NAVY BLUE':'#000080','ROYAL BLUE':'#4169e1','BLUE':'#2563eb','GOLD':'#eab308','SILVER':'#94a3b8','COFFEE':'#78350f','BLACK':'#0f172a','CREAM':'#fef08a','PINK':'#f43f5e','RUST':'#c2410c','BOTTLE GREEN':'#14532d','GREY':'#64748b'})[c]||'#64748b';
+}
+
+/* Factory Sattan Bundle Rounding:
+   4.3 → 4, 4.8 → 4 (any decimal < 0.9 stays at the lower integer),
+   4.9 → 5 (decimal ≥ 0.9 rounds up) — "0.9 wali decimal ke baad 9 wali value ko poora kar de" */
+function getRoundedBundles(bundles){
+  if(bundles<=0) return 0;
+  const integerPart=Math.floor(bundles);
+  const decimalPart=Number((bundles-integerPart).toFixed(4));   // avoids 4.9-4 = 0.8999…
+  if(decimalPart>=0.899) return integerPart+1;
+  return integerPart;
+}
+
+// Pieces per printing roll — DOUBLE: 1 ply 54 / else 27 · SINGLE: 1 ply 84 / else 42
+function getPcsPerRoll(size, ply){
+  if(size==='DOUBLE') return ply==='1'?54:27;
+  return ply==='1'?84:42;
+}
+
+// ═══════════════════════ HELPERS ═══════════════════════════════════════════
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const num=v=>parseFloat(String(v))||0;
+const ic=(name,cls)=>`<i data-lucide="${name}" class="${cls||'w-4 h-4'}"></i>`;
+const $=id=>document.getElementById(id);
+function refreshIcons(){ try{ if(window.lucide) lucide.createIcons(); }catch(e){} }
+const todayISO=()=>{ const d=new Date(Date.now()+330*60000); return d.toISOString().split('T')[0]; };   // IST date
+function isSetupError(e){ return /mfg_|does not exist|relation|Could not find the function|schema cache/i.test((e&&e.message)||String(e||'')); }
+function errMsg(e){ return isSetupError(e)?SETUP_HINT:((e&&e.message)||String(e)); }
+
+// Who is using it — the ERP login (index.html stores it in localStorage).
+const ERP_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User'};
+function erpRole(){ try{ return localStorage.getItem('sarv_active_role')||''; }catch(e){ return ''; } }
+function erpUserLabel(){
+  try{ if(window.parent!==window && typeof window.parent.sarvLoginLabel_==='function') return window.parent.sarvLoginLabel_(); }catch(e){}
+  const r=erpRole(); if(!r) return '';
+  let u=null; try{ u=JSON.parse(localStorage.getItem('sarv_active_user')||'null'); }catch(e){}
+  return (ERP_ROLE_LABEL[r]||r)+(u&&u.name?' — '+u.name:'');
+}
+
+// ═══════════════════════ STATE ═════════════════════════════════════════════
+const S={
+  lots:[], masterPackings:DEFAULT_MASTER_PACKINGS.slice(), slavePackings:DEFAULT_SLAVE_PACKING_OPTIONS.slice(),
+  tab:'new', editingLot:null, editingIsDuplicate:false, activePrintLot:null,
+  list:{search:'',brand:'ALL',fabric:'ALL'},
+  ready:false, saving:false,
+};
+let F=null;   // LotForm state
+
+// ═══════════════════════ TOAST ═════════════════════════════════════════════
+let toastT;
+function showToast(text,type){
+  type=type||'success';
+  $('toast').innerHTML=`<div class="no-print lcm-toast-in fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900 text-white rounded-xl shadow-2xl border border-slate-700">
+    ${type==='success'?ic('circle-check-big','w-5 h-5 text-emerald-400'):ic('circle-alert','w-5 h-5 text-blue-400')}
+    <span class="text-xs sm:text-sm font-semibold">${esc(text)}</span></div>`;
+  refreshIcons();
+  clearTimeout(toastT); toastT=setTimeout(()=>{ $('toast').innerHTML=''; },3500);
+}
+
+// ═══════════════════════ SUPABASE DATA LAYER ═══════════════════════════════
+async function fetchAll(table, cols, orderCol, asc){
+  const out=[]; const PAGE=1000;
+  for(let from=0;;from+=PAGE){
+    let q=SB.from(table).select(cols).range(from,from+PAGE-1);
+    if(orderCol) q=q.order(orderCol,{ascending:!!asc});
+    const {data,error}=await q; if(error) throw error;
+    out.push(...(data||[])); if(!data||data.length<PAGE) break;
+  }
+  return out;
+}
+
+function fmtWt(v){ return (Number(v)||0).toFixed(2); }
+
+// DB row (+children) → LotData shape the UI works with (types.ts)
+function rowToLot(r){
+  const tiers=Array.isArray(r.packing_tiers)?r.packing_tiers:[];
+  const matchings=(r.mfg_lot_matchings||[]).slice().sort((a,b)=>a.line_no-b.line_no)
+    .map(m=>({ rolls:m.rolls==null?'':m.rolls, pcs:m.pcs==null?'':m.pcs, color:m.color||'RED', allocations:m.allocations||{} }));
+  const trims=(r.mfg_lot_trims||[]).slice().sort((a,b)=>a.line_no-b.line_no).map(t=>({ name:t.name, qty:t.qty==null?'':t.qty }));
+  return {
+    id:r.id, lotNo:r.lot_no, brandName:r.brand_name, fabricType:r.fabric_type, bedSize:r.bed_size, blanketPly:String(r.blanket_ply||'1'),
+    packingMode:r.packing_mode||'single', masterPack1:r.master_pack1||'BORA', stdPacking:r.std_packing==null?10:Number(r.std_packing),
+    slavePack:r.slave_pack||'PVC BAG', packingTiers:tiers,
+    splitConfigs:tiers.map(t=>({ id:t.id, name:t.masterPack, stdPacking:t.stdSlavePcs, slavePack:t.slavePack })),
+    totalPcs:Number(r.total_pcs)||0, sattanSize:r.sattan_size||'', totalSattanWeight:fmtWt(r.total_sattan_weight),
+    sattanBundleWeight:Number(r.sattan_bundle_weight)||BUNDLE_KG,
+    colorSattanBreakdown:Array.isArray(r.color_sattan_breakdown)?r.color_sattan_breakdown:[],
+    matchings, trims, createdAt:r.lot_date||'', notes:r.notes||undefined,
+    createdBy:r.created_by||'', updatedBy:r.updated_by||'', updatedAt:r.updated_at,
+  };
+}
+
+// LotData → mfg_save_lot arguments
+function lotToRpc(lot){
+  const nOrNull=v=>(v===''||v==null||isNaN(Number(v)))?null:Number(v);
+  const tiers=normalizeTiers(lot);
+  const totalSattanWeight=num(lot.totalSattanWeight);
+  const bundleWt=Number(lot.sattanBundleWeight)||BUNDLE_KG;
+  return {
+    p_lot:{
+      lot_no:String(lot.lotNo||'').trim(), brand_name:lot.brandName||'SARV INDIA', fabric_type:lot.fabricType||'MINK',
+      bed_size:lot.bedSize||'DOUBLE', blanket_ply:String(lot.blanketPly||'1'), packing_mode:tiers.length>1?'split':'single',
+      master_pack1:tiers[0]?tiers[0].masterPack:(lot.masterPack1||'BORA'),
+      std_packing:tiers[0]?Number(tiers[0].stdSlavePcs)||10:(Number(lot.stdPacking)||10),
+      slave_pack:tiers[0]?tiers[0].slavePack:(lot.slavePack||'PVC BAG'),
+      packing_tiers:tiers, total_pcs:num(lot.totalPcs), sattan_size:lot.sattanSize||fabricSpec(lot.fabricType).size,
+      per_pc_sattan_kg:lot.perPcSattanKg!=null?lot.perPcSattanKg:fabricSpec(lot.fabricType).kg,
+      total_sattan_weight:totalSattanWeight, sattan_bundle_weight:bundleWt,
+      exact_bundles:Number((totalSattanWeight/bundleWt).toFixed(4)), total_bundles:getRoundedBundles(totalSattanWeight/bundleWt),
+      color_sattan_breakdown:Array.isArray(lot.colorSattanBreakdown)&&lot.colorSattanBreakdown.length?lot.colorSattanBreakdown:computeColorBreakdown(lot),
+      notes:lot.notes||null, lot_date:/^\d{4}-\d{2}-\d{2}/.test(lot.createdAt||'')?String(lot.createdAt).slice(0,10):todayISO(),
+      updated_by:erpUserLabel()||null
+    },
+    p_matchings:(lot.matchings||[]).map((m,i)=>({ line_no:i+1, rolls:nOrNull(m.rolls), color:m.color||'RED', pcs:nOrNull(m.pcs), allocations:m.allocations||{} })),
+    p_trims:(lot.trims||[]).map((t,i)=>({ line_no:i+1, name:String(t.name||'').trim(), qty:nOrNull(t.qty) })),
+  };
+}
+
+// PrintLotCard / Sheets fallback: tiers from packingTiers → splitConfigs → single masterPack1
+function normalizeTiers(lot){
+  if(lot.packingTiers&&lot.packingTiers.length) return lot.packingTiers;
+  if(lot.splitConfigs&&lot.splitConfigs.length) return lot.splitConfigs.map(sc=>({ id:sc.id, masterPack:sc.name, stdSlavePcs:sc.stdPacking, slavePack:sc.slavePack||lot.slavePack||'PVC BAG' }));
+  return [{ id:'tier_1', masterPack:lot.masterPack1||'BORA', stdSlavePcs:Number(lot.stdPacking)||10, slavePack:lot.slavePack||'PVC BAG' }];
+}
+
+// Colour-wise sattan (used when a lot has no stored breakdown, e.g. imported)
+function computeColorBreakdown(lot){
+  const spec=fabricSpec(lot.fabricType);
+  const colorMap={};
+  (lot.matchings||[]).forEach(m=>{ const c=(m.color||'RED').trim().toUpperCase(); const pcs=num(m.pcs); if(pcs>0) colorMap[c]=(colorMap[c]||0)+pcs; });
+  return Object.entries(colorMap).map(([color,pcs])=>{
+    const weight=pcs*spec.kg, bundlesExact=weight/BUNDLE_KG;
+    return { color, size:lot.sattanSize||spec.size, pcs, weightKg:Number(weight.toFixed(2)), bundles:getRoundedBundles(bundlesExact),
+      exactBundles:Number(bundlesExact.toFixed(2)), fullBundles:Math.floor(bundlesExact), leftoverKg:Number((weight%BUNDLE_KG).toFixed(2)) };
+  });
+}
+
+async function loadLots(){
+  const rows=await fetchAll('mfg_lot_cards','*, mfg_lot_matchings(*), mfg_lot_trims(*)','created_at',false);
+  S.lots=rows.map(rowToLot);
+}
+async function loadLibraries(){
+  const [mp,sp]=await Promise.all([fetchAll('mfg_master_packings','*','sort_order',true), fetchAll('mfg_slave_packings','*','sort_order',true)]);
+  if(mp.length) S.masterPackings=mp.map(r=>({ id:r.id, name:r.name, defaultPcs:Number(r.default_pcs)||10, description:r.description||undefined, isDefault:!!r.is_default }));
+  if(sp.length) S.slavePackings=sp.map(r=>({ id:r.id, name:r.name, description:r.description||undefined, isDefault:!!r.is_default }));
+}
+
+async function saveLotRpc(p_id, lot, overwrite){
+  const a=lotToRpc(lot);
+  const {data,error}=await SB.rpc('mfg_save_lot',{ p_id:p_id||null, p_lot:a.p_lot, p_matchings:a.p_matchings, p_trims:a.p_trims, p_overwrite:!!overwrite });
+  if(error) throw error;
+  return data||{success:false,error:'No response'};
+}
+
+// Library modal saves the whole list → mirror it in the table (upsert + delete removed)
+async function syncLibrary(table, list, toRow){
+  const rows=list.map((p,i)=>Object.assign(toRow(p),{ sort_order:i+1 }));
+  const {data:existing,error:e1}=await SB.from(table).select('id'); if(e1) throw e1;
+  const keep=new Set(rows.map(r=>r.id));
+  const gone=(existing||[]).map(r=>r.id).filter(id=>!keep.has(id));
+  if(gone.length){ const {error}=await SB.from(table).delete().in('id',gone); if(error) throw error; }
+  if(rows.length){ const {error}=await SB.from(table).upsert(rows,{onConflict:'id'}); if(error) throw error; }
+}
+
+// ═══════════════════════ APP HANDLERS (App.tsx) ════════════════════════════
+async function handleSaveLot(lotData){
+  if(S.saving) return;
+  S.saving=true; setSaveBusy(true);
+  try{
+    const isEdit=!!S.editingLot && !S.editingIsDuplicate;
+    let res=await saveLotRpc(isEdit?S.editingLot.id:null, lotData, false);
+    let msg;
+    if(!res.success && res.code==='EXISTS'){
+      if(!window.confirm(`Lot #${lotData.lotNo} already exists! Overwrite it?`)) return;
+      res=await saveLotRpc(null, lotData, true);
+      msg=`Lot #${lotData.lotNo} updated!`;
+    }
+    if(!res.success){ F.formError=res.error||'Save failed'; renderFormError(); return; }
+    if(!msg) msg=isEdit?`Lot #${lotData.lotNo} details updated successfully!`:`New Lot #${lotData.lotNo} created successfully!`;
+    await loadLots();
+    showToast(msg);
+    S.editingLot=null; S.editingIsDuplicate=false;
+    S.activePrintLot=S.lots.find(l=>l.id===res.id)||null;
+    setTab('print');
+  }catch(e){
+    F.formError='❌ '+errMsg(e); renderFormError();
+  }finally{
+    S.saving=false; setSaveBusy(false);
+  }
+}
+
+function handleSelectEdit(lot){ S.editingLot=lot; S.editingIsDuplicate=false; setTab('new',true); }
+function handleSelectPrint(lot){ S.activePrintLot=lot; setTab('print'); }
+
+async function handleDeleteLot(lot){
+  if(!window.confirm(`Are you sure you want to delete Lot #${lot.lotNo}?`)) return;
+  try{
+    const {error}=await SB.from('mfg_lot_cards').delete().eq('id',lot.id);
+    if(error) throw error;
+    S.lots=S.lots.filter(l=>l.id!==lot.id);
+    if(S.activePrintLot&&S.activePrintLot.id===lot.id) S.activePrintLot=null;
+    showToast(`Lot #${lot.lotNo||''} deleted`,'info');
+    renderNavbar(); renderMain();
+  }catch(e){ showToast('❌ '+errMsg(e),'info'); }
+}
+
+function handleDuplicateLot(lot){
+  const nextLotNo=/^\d+$/.test(lot.lotNo)?String(parseInt(lot.lotNo,10)+1):`${lot.lotNo}-COPY`;
+  const duplicated=JSON.parse(JSON.stringify(lot));
+  duplicated.id=null; duplicated.lotNo=nextLotNo; duplicated.createdAt=todayISO(); duplicated._from=lot.lotNo;
+  S.editingLot=duplicated; S.editingIsDuplicate=true;   // saved as a NEW lot
+  setTab('new',true);
+  showToast(`Duplicated Lot #${lot.lotNo} as #${nextLotNo}. Review and save!`);
+}
+
+// ═══════════════════════ NAVIGATION ════════════════════════════════════════
+function setTab(tab, keepEditing){
+  if(tab==='new' && !keepEditing){ S.editingLot=null; S.editingIsDuplicate=false; }
+  if(tab==='new') F=null;   // the form remounts fresh every time, like <LotForm key=…>
+  if(tab!=='new') closeModal();
+  S.tab=tab;
+  renderNavbar(); renderMain();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function renderMain(){
+  if(!S.ready) return;
+  if(S.tab==='new') renderForm();
+  else if(S.tab==='list') renderList();
+  else renderPrint();
+  refreshIcons();
+}
+
+// ═══════════════════════ NAVBAR (Navbar.tsx) ═══════════════════════════════
+function renderNavbar(){
+  const t=S.tab, n=S.lots.length;
+  const tabCls=(on,col)=>`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${on?`bg-${col}-600 text-white shadow-md`:'text-slate-300 hover:text-white hover:bg-slate-800'}`;
+  $('navbar').innerHTML=`
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-wrap items-center justify-between gap-2 min-h-18 py-2">
+      <div class="flex items-center gap-3 cursor-pointer" onclick="setTab('list')">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md font-black text-xl tracking-tighter">SI</div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-black text-base sm:text-lg tracking-wider text-white">SARV INDIA</span>
+            <span class="text-[10px] uppercase font-bold tracking-widest bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">Lot Manager</span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-medium tracking-wide hidden sm:block">Blanket Manufacturing &amp; Master Packing System</p>
+        </div>
+      </div>
+      <nav class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <button onclick="setTab('new')" class="${tabCls(t==='new','blue')}">${ic('circle-plus')}<span>New Lot Entry</span></button>
+        <button onclick="setTab('list')" class="${tabCls(t==='list','emerald')}">${ic('list')}<span>Lot Records</span>${n>0?`<span class="ml-1 bg-white/20 text-white text-[11px] px-1.5 rounded-full font-mono">${n}</span>`:''}</button>
+        <button onclick="openMasterModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-amber-300 bg-amber-950/40 hover:bg-amber-900/50 border border-amber-500/40 transition-all cursor-pointer shadow-xs" title="Add or manage master packing types">
+          ${ic('package','w-4 h-4 text-amber-400')}<span class="hidden md:inline">Master</span><span class="text-[10px] bg-amber-400 text-slate-950 px-1.5 rounded font-extrabold uppercase">+ Add</span></button>
+        <button onclick="openSlaveModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/40 transition-all cursor-pointer shadow-xs" title="Add or manage slave / inner packing types (PVC Bag, Gift Box, Looser etc.)">
+          ${ic('layers','w-4 h-4 text-emerald-400')}<span class="hidden md:inline">Slave</span><span class="text-[10px] bg-emerald-400 text-slate-950 px-1.5 rounded font-extrabold uppercase">+ Add</span></button>
+        <button onclick="openDataModal()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold text-emerald-100 bg-emerald-700/80 hover:bg-emerald-600 border border-emerald-400/50 transition-all cursor-pointer shadow-sm" title="Lot Card / Master Register / Sattan Register — CSV export & import">
+          ${ic('file-spreadsheet','w-4 h-4 text-emerald-300')}<span>Export / Import</span></button>
+        <div class="hidden lg:flex items-center gap-1 pl-2 border-l border-slate-800">
+          <button onclick="handleExportData()" title="Backup Lot Records to JSON" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer">${ic('download')}</button>
+          <button onclick="$('jsonRestoreInput').click()" title="Restore from JSON backup" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer">${ic('upload')}</button>
+        </div>
+      </nav>
+    </div>
+  </div>`;
+  refreshIcons();
+}
+
+// ═══════════════════════ LOT FORM (LotForm.tsx) ════════════════════════════
+function initForm(initialData){
+  const mp=S.masterPackings, sp=S.slavePackings;
+  let packingTiers;
+  if(initialData&&initialData.packingTiers&&initialData.packingTiers.length){
+    packingTiers=initialData.packingTiers.map(t=>Object.assign({},t));
+  } else if(initialData&&initialData.splitConfigs&&initialData.splitConfigs.length){
+    packingTiers=initialData.splitConfigs.map((sc,idx)=>({ id:sc.id||'tier_'+idx, masterPack:sc.name, stdSlavePcs:sc.stdPacking||10, slavePack:sc.slavePack||initialData.slavePack||'PVC BAG' }));
+  } else {
+    packingTiers=[{ id:'tier_1',
+      masterPack:(initialData&&initialData.masterPack1)||(mp[0]?mp[0].name:'BORA'),
+      stdSlavePcs:(initialData&&initialData.stdPacking)?Number(initialData.stdPacking):(mp[0]?mp[0].defaultPcs:10),
+      slavePack:(initialData&&initialData.slavePack)||(sp[0]?sp[0].name:'PVC BAG') }];
+  }
+  const now=Date.now();
+  const matchings=(initialData&&initialData.matchings&&initialData.matchings.length)
+    ? initialData.matchings.map((m,idx)=>({ id:'m_'+idx+'_'+now, rolls:m.rolls, color:m.color||'RED', pcs:m.pcs, allocations:Object.assign({},m.allocations||{}) }))
+    : [{ id:'m_init', rolls:'', color:'RED', pcs:'', allocations:{} }];
+  const trims=(initialData&&initialData.trims&&initialData.trims.length)
+    ? initialData.trims.map((t,idx)=>({ id:'t_'+idx+'_'+now, name:t.name, qty:t.qty, manual:true }))
+    : [{ id:'t_1', name:'Small Label', qty:'', manual:false },{ id:'t_2', name:'Main Label', qty:'', manual:false },{ id:'t_3', name:'Washing Label', qty:'', manual:false },{ id:'t_4', name:'Dori', qty:'', manual:false }];
+  F={
+    initialData:initialData||null,
+    lotNo:(initialData&&initialData.lotNo)||'',
+    brandName:(initialData&&initialData.brandName)||'SARV INDIA', customBrand:'', showCustomBrand:false,
+    fabricType:(initialData&&initialData.fabricType)||'MINK', bedSize:(initialData&&initialData.bedSize)||'DOUBLE', blanketPly:(initialData&&initialData.blanketPly)||'1',
+    notes:(initialData&&initialData.notes)||'', formError:null,
+    packingTiers, quick:{tierId:null,type:null,input:'',pcs:'10'}, matchings, trims, lastTotal:null,
+  };
+  syncTrims();
+}
+
+// Derived values — exactly the "Calculations" block of LotForm.tsx
+function calc(){
+  const totalPcs=F.matchings.reduce((s,r)=>s+(num(r.pcs)),0);
+  const spec=fabricSpec(F.fabricType);
+  const sattanSize=spec.size, perPcWeight=spec.kg;
+  const totalSattanWeight=(totalPcs*perPcWeight).toFixed(2);
+  const exactTotalBundles=totalPcs>0?parseFloat(totalSattanWeight)/BUNDLE_KG:0;
+  const roundedTotalBundles=getRoundedBundles(exactTotalBundles);
+  const totalBundles=exactTotalBundles.toFixed(2);
+  const colorMap={};
+  F.matchings.forEach(m=>{ const c=(m.color||'RED').trim().toUpperCase(); const pcs=num(m.pcs); if(pcs>0) colorMap[c]=(colorMap[c]||0)+pcs; });
+  const colorBreakdown=Object.entries(colorMap).map(([color,pcs])=>{
+    const weight=pcs*perPcWeight, bundlesExact=weight/BUNDLE_KG;
+    return { color, size:sattanSize, pcs, weightKg:Number(weight.toFixed(2)), bundles:getRoundedBundles(bundlesExact),
+      exactBundles:Number(bundlesExact.toFixed(2)), fullBundles:Math.floor(bundlesExact), leftoverKg:Number((weight%BUNDLE_KG).toFixed(2)) };
+  });
+  return { totalPcs, sattanSize, perPcWeight, totalSattanWeight, exactTotalBundles, roundedTotalBundles, totalBundles, colorBreakdown };
+}
+
+// Equal split across tiers: floor(pcs/n) each, remainder to the last tier
+function evenAlloc(pcs, tiers){
+  const out={}; if(!tiers.length) return out;
+  const portion=Math.floor(pcs/tiers.length);
+  tiers.forEach((t,i)=>{ out[t.id]=(i===tiers.length-1)?pcs-portion*(tiers.length-1):portion; });
+  return out;
+}
+
+// Trims qty follows total pieces unless the user typed one (useEffect on totalPcs)
+function syncTrims(){
+  const total=calc().totalPcs;
+  if(F.lastTotal===total) return;
+  F.lastTotal=total;
+  F.trims.forEach((t,i)=>{
+    if(!t.manual){ t.qty=total>0?total:''; const el=$('t-qty-'+i); if(el) el.value=t.qty; }
+    const el=$('t-qty-'+i); if(el) el.placeholder=String(total||'0');
+  });
+  const s=$('lf-trims-total'); if(s) s.textContent=total||0;
+}
+
+const LF={
+  lotNo(v){ F.lotNo=v; },
+  brand(v){ F.brandName=v; },
+  customBrand(v){ F.customBrand=v; },
+  toggleCustomBrand(){ F.showCustomBrand=!F.showCustomBrand; renderBrandCell(); },
+  fabric(v){ F.fabricType=v; afterValues(); },
+  bedSize(v){ F.bedSize=v; handleSpecsChange(); },
+  ply(v){ F.blanketPly=v; handleSpecsChange(); },
+  notes(v){ F.notes=v; },
+
+  // Matching rows
+  rolls(i,val){
+    const m=F.matchings[i]; m.rolls=val;
+    const rollsNum=parseFloat(val)||0;
+    const newPcs=rollsNum>0?Math.round(rollsNum*getPcsPerRoll(F.bedSize,F.blanketPly)):'';
+    m.pcs=newPcs;
+    if(F.packingTiers.length>1 && typeof newPcs==='number' && newPcs>0) m.allocations=evenAlloc(newPcs,F.packingTiers);
+    const p=$('m-pcs-'+i); if(p) p.value=m.pcs;
+    renderMatchingDerived(i); afterValues();
+  },
+  pcs(i,val){
+    const m=F.matchings[i]; m.pcs=val;
+    const pcsNum=parseFloat(val)||0;
+    if(F.packingTiers.length>1 && pcsNum>0) m.allocations=evenAlloc(pcsNum,F.packingTiers);
+    renderMatchingDerived(i); afterValues();
+  },
+  color(i,c){ F.matchings[i].color=c; afterValues(); },
+  alloc(i,tierId,val){
+    const m=F.matchings[i]; m.allocations=Object.assign({},m.allocations||{}); m.allocations[tierId]=val;
+    const tier=F.packingTiers.find(t=>t.id===tierId);
+    const a=num(val), units=a>0?Math.ceil(a/tier.stdSlavePcs):0;
+    const u=$(`a-units-${i}-${tierId}`); if(u) u.textContent=`${units} ${tier.masterPack}`;
+    renderMatchingBadge(i); renderDerived();
+  },
+  splitEvenly(i){
+    const m=F.matchings[i]; const rowPcs=num(m.pcs);
+    if(rowPcs<=0||!F.packingTiers.length) return;
+    m.allocations=evenAlloc(rowPcs,F.packingTiers);
+    renderMatchingDerived(i); renderDerived();
+  },
+  splitAllEvenly(){
+    F.matchings.forEach(m=>{ const rowPcs=num(m.pcs); if(rowPcs>0&&F.packingTiers.length) m.allocations=evenAlloc(rowPcs,F.packingTiers); });
+    renderMatchings(); renderDerived();
+  },
+  addMatching(){
+    F.matchings.push({ id:'m_'+Date.now(), rolls:'', color:DEFAULT_SATTAN_COLORS[F.matchings.length%DEFAULT_SATTAN_COLORS.length]||'RED', pcs:'', allocations:{} });
+    renderMatchings(); afterValues();
+  },
+  removeMatching(i){
+    if(F.matchings.length===1) F.matchings=[{ id:'m_'+Date.now(), rolls:'', color:'RED', pcs:'', allocations:{} }];
+    else F.matchings.splice(i,1);
+    renderMatchings(); afterValues();
+  },
+
+  // Packing tiers
+  addTier(){
+    const tiers=F.packingTiers, mp=S.masterPackings, sp=S.slavePackings;
+    const nextIdx=tiers.length+1;
+    const availableMaster=mp.find(p=>!tiers.some(t=>t.masterPack.toUpperCase()===p.name.toUpperCase()))||mp[nextIdx%mp.length]||mp[0];
+    const availableSlave=sp.find(p=>!tiers.some(t=>t.slavePack.toUpperCase()===p.name.toUpperCase()))||sp[nextIdx%sp.length]||sp[0];
+    tiers.push({ id:'tier_'+Date.now(), masterPack:availableMaster?availableMaster.name:'BOX', stdSlavePcs:availableMaster?availableMaster.defaultPcs:10, slavePack:availableSlave?availableSlave.name:'GIFT BOX' });
+    F.matchings.forEach(m=>{ const rowPcs=num(m.pcs); if(rowPcs>0) m.allocations=evenAlloc(rowPcs,tiers); });   // auto distribute evenly
+    afterTiers();
+  },
+  removeTier(id){
+    if(F.packingTiers.length<=1){ F.formError='At least one Master Packing tier is required.'; renderFormError(); return; }
+    F.formError=null; renderFormError();
+    F.packingTiers=F.packingTiers.filter(t=>t.id!==id);
+    F.matchings.forEach(m=>{ const rowPcs=num(m.pcs); if(rowPcs>0) m.allocations=evenAlloc(rowPcs,F.packingTiers); });
+    afterTiers();
+  },
+  tierMaster(id,name,noRender){
+    const found=S.masterPackings.find(p=>p.name.toUpperCase()===name.toUpperCase());
+    F.packingTiers=F.packingTiers.map(t=>t.id===id?Object.assign({},t,{ masterPack:name, stdSlavePcs:found?found.defaultPcs:t.stdSlavePcs }):t);
+    if(!noRender) afterTiers();
+  },
+  tierStd(id,v,noRender){
+    const pcs=parseInt(v,10)||1;
+    F.packingTiers=F.packingTiers.map(t=>t.id===id?Object.assign({},t,{ stdSlavePcs:pcs }):t);
+    if(noRender) return;
+    const t=F.packingTiers.find(x=>x.id===id); const s=$('tier-sum-'+id); if(s) s.innerHTML=tierSummary(t);
+    renderMatchings(); renderDerived();
+  },
+  tierStdBlur(id,el){ const t=F.packingTiers.find(x=>x.id===id); if(t) el.value=t.stdSlavePcs; },
+  tierSlave(id,name){ F.packingTiers=F.packingTiers.map(t=>t.id===id?Object.assign({},t,{ slavePack:name }):t); afterTiers(); },
+  openQuick(id,type){ F.quick={ tierId:id, type, input:'', pcs:F.quick.pcs||'10' }; renderTiers(); const el=$('quick-input'); if(el) el.focus(); },
+  closeQuick(){ F.quick.tierId=null; renderTiers(); },
+  quickInput(v){ F.quick.input=v; },
+  quickPcs(v){ F.quick.pcs=v; },
+  execQuick(id){
+    const trimmed=F.quick.input.trim().toUpperCase();
+    if(!trimmed) return;
+    if(F.quick.type==='master'){ const pcs=parseInt(F.quick.pcs,10)||10; LF.tierMaster(id,trimmed,true); LF.tierStd(id,pcs,true); }
+    else if(F.quick.type==='slave'){ F.packingTiers=F.packingTiers.map(t=>t.id===id?Object.assign({},t,{ slavePack:trimmed }):t); }
+    F.quick={ tierId:null, type:null, input:'', pcs:F.quick.pcs };
+    afterTiers();
+  },
+
+  // Trims
+  addTrim(name){ const total=calc().totalPcs; F.trims.push({ id:'t_'+Date.now(), name:name||'Piping', qty:total||'', manual:false }); renderTrims(); },
+  removeTrim(i){ F.trims.splice(i,1); renderTrims(); },
+  trimName(i,v){ F.trims[i].name=v; },
+  trimQty(i,v){ F.trims[i].qty=v; F.trims[i].manual=true; },
+};
+
+function handleSpecsChange(){
+  const rate=getPcsPerRoll(F.bedSize,F.blanketPly);
+  F.matchings=F.matchings.map(m=>{
+    const rollsNum=num(m.rolls);
+    if(rollsNum>0){
+      const newPcs=Math.round(rollsNum*rate);
+      return Object.assign({},m,{ pcs:newPcs, allocations:F.packingTiers.length>1?evenAlloc(newPcs,F.packingTiers):m.allocations });
+    }
+    return m;
+  });
+  renderFormula(); renderMatchings(); afterValues();
+}
+function afterTiers(){ renderTiers(); renderMatchHead(); renderMatchings(); renderDerived(); }
+function afterValues(){ renderMatchHead(); renderDerived(); syncTrims(); }
+
+function setSaveBusy(on){
+  document.querySelectorAll('.lf-save').forEach(b=>{ b.disabled=on; b.style.opacity=on?'.6':''; b.style.cursor=on?'wait':''; });
+}
+
+function handleSubmit(e){
+  if(e) e.preventDefault();
+  if(!F.lotNo.trim()){ F.formError='Please enter a Lot Number (e.g. 501)'; renderFormError(); return; }
+  F.formError=null; renderFormError();
+  const c=calc();
+  const finalBrand=F.showCustomBrand&&F.customBrand.trim()?F.customBrand.trim():F.brandName;
+  const tiers=F.packingTiers, isMultiTier=tiers.length>1;
+  const init=F.initialData;
+  const lotPayload={
+    id:(init&&!S.editingIsDuplicate)?init.id:null,
+    lotNo:F.lotNo.trim(), brandName:finalBrand, fabricType:F.fabricType, bedSize:F.bedSize, blanketPly:F.blanketPly,
+    packingMode:isMultiTier?'split':'single',
+    masterPack1:(tiers[0]&&tiers[0].masterPack)||'BORA', stdPacking:(tiers[0]&&tiers[0].stdSlavePcs)||10, slavePack:(tiers[0]&&tiers[0].slavePack)||'PVC BAG',
+    packingTiers:tiers,
+    splitConfigs:tiers.map(t=>({ id:t.id, name:t.masterPack, stdPacking:t.stdSlavePcs, slavePack:t.slavePack })),
+    totalPcs:c.totalPcs, sattanSize:c.sattanSize, perPcSattanKg:c.perPcWeight, totalSattanWeight:c.totalSattanWeight,
+    colorSattanBreakdown:c.colorBreakdown,
+    matchings:F.matchings.map(m=>{
+      let alloc=m.allocations||{};
+      if(!isMultiTier&&tiers[0]) alloc={ [tiers[0].id]:m.pcs };   // single tier → tier 1 gets all pcs
+      return { rolls:m.rolls, pcs:m.pcs, color:m.color, allocations:alloc };
+    }),
+    trims:F.trims.map(t=>({ name:t.name, qty:t.qty })),
+    createdAt:(init&&init.createdAt)||todayISO(),
+    notes:F.notes.trim()||undefined,
+  };
+  handleSaveLot(lotPayload);
+}
+
+function tierSummary(t){ return `(Master: <b>${esc(t.masterPack)}</b> | Std Pcs: <b>${esc(t.stdSlavePcs)}</b> | Slave: <b>${esc(t.slavePack)}</b>)`; }
+
+function renderForm(){
+  if(!F) initForm(S.editingLot);
+  const init=F.initialData, isUpdate=!!init && !S.editingIsDuplicate;
+  const saveLabel=isUpdate?'Update Lot Data':'Save Complete Lot';
+  const kicker=isUpdate?'Update Existing Lot':(S.editingIsDuplicate?`Duplicate of Lot #${esc(S.editingLot._from||'')} — saves as a new lot`:'New Blanket Manufacturing Order');
+  $('main').innerHTML=`
+  <form onsubmit="handleSubmit(event)" class="space-y-6">
+    <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-slate-700 flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <span class="text-blue-400 text-xs font-bold uppercase tracking-wider">${kicker}</span>
+        <h2 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">${ic('layers','w-6 h-6 text-blue-400')} ${isUpdate?`Lot #${esc(init.lotNo)}`:'Create New Production Lot'}</h2>
+        <p class="text-xs text-slate-300 mt-0.5">Blanket specs, rolls yield, sattan matching, master &amp; slave packaging setup</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="cancelForm()" class="px-4 py-2 text-sm text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer">Cancel</button>
+        <button type="submit" class="lf-save inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer text-sm">${ic('save')} ${saveLabel}</button>
+      </div>
+    </div>
+
+    <div id="lf-error"></div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200">
+      <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span> General Lot &amp; Specification Parameters</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Lot Number *</label>
+          <input type="text" value="${esc(F.lotNo)}" oninput="LF.lotNo(this.value)" placeholder="e.g. 501, 1024" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-bold text-slate-900 text-base">
+        </div>
+        <div id="lf-brand"></div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Fabric Type</label>
+          <select onchange="LF.fabric(this.value)" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900">
+            ${fabricOptions(F.fabricType)}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Bed Size</label>
+          <select onchange="LF.bedSize(this.value)" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900">
+            <option value="DOUBLE" ${F.bedSize==='DOUBLE'?'selected':''}>DOUBLE BED</option>
+            <option value="SINGLE" ${F.bedSize==='SINGLE'?'selected':''}>SINGLE BED</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase">Blanket Ply</label>
+          <select onchange="LF.ply(this.value)" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900">
+            <option value="1" ${F.blanketPly==='1'?'selected':''}>SINGLE PLY (1 Ply)</option>
+            <option value="2" ${F.blanketPly==='2'?'selected':''}>DOUBLE PLY (2 Ply)</option>
+            <option value="3" ${F.blanketPly==='3'?'selected':''}>THREE PLY (3 Ply)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-6 pt-5 border-t border-slate-200">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Packaging Structure (पैकिंग सेटअप)</span>
+            <h4 class="text-base font-bold text-slate-900 flex items-center gap-2">${ic('boxes','w-5 h-5 text-blue-600')} Master &amp; Slave Packing Configuration</h4>
+            <p class="text-xs text-slate-500 mt-0.5">प्रत्येक मास्टर पैकिंग (बोरा/बॉक्स/बेल) के साथ उसके मानक पीस और स्लेव इनर पैकिंग (PVC Bag/Gift Box/Looser) जोड़ें।</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="LF.addTier()" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-sm">${ic('plus')} Add Master Packing Type</button>
+            <button type="button" onclick="openMasterModal()" class="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-2 rounded-xl transition-colors cursor-pointer border border-slate-200" title="Manage Master Packing Types">Master Library</button>
+            <button type="button" onclick="openSlaveModal()" class="text-xs font-semibold text-emerald-800 hover:text-emerald-950 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-2 rounded-xl transition-colors cursor-pointer border border-emerald-200" title="Manage Slave / Inner Packing Types">Slave Library</button>
+          </div>
+        </div>
+        <div id="lf-tiers" class="space-y-4"></div>
+      </div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">${ic('sparkles','w-5 h-5 text-blue-600')} 1. Printing &amp; Sattan Matching</h3>
+          <p class="text-xs text-slate-500" id="lf-formula"></p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2" id="lf-match-head"></div>
+      </div>
+      <div id="lf-matchings" class="space-y-4"></div>
+      <div id="lf-metrics"></div>
+      <div id="lf-colortable"></div>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl shadow-xs border border-slate-200">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-900 uppercase tracking-wide flex items-center gap-2">${ic('tag','w-5 h-5 text-blue-600')} 2. Trims Data (Labels, Tags, Dori &amp; Piping)</h3>
+          <p class="text-xs text-slate-500">Required quantities default to total blanket pieces (<span id="lf-trims-total">0</span>) and can be customized.</p>
+        </div>
+        <button type="button" onclick="LF.addTrim()" class="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer">${ic('plus')} Add More Trim Item</button>
+      </div>
+      <div id="lf-trims" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      <datalist id="trimSuggestionsList">${DEFAULT_TRIM_NAMES.map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist>
+    </div>
+
+    <div class="bg-amber-50/70 p-6 rounded-2xl border-2 border-amber-300 shadow-xs">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h3 class="text-base font-bold text-amber-950 uppercase tracking-wide flex items-center gap-2">${ic('boxes','w-5 h-5 text-amber-700')} 3. Packing Material Requirement Estimate &amp; Checklist</h3>
+        <span class="text-xs bg-amber-200 text-amber-900 font-bold px-2.5 py-0.5 rounded-full" id="lf-tier-count"></span>
+      </div>
+      <div id="lf-estimate"></div>
+      <div class="mt-4">
+        <label class="block text-xs font-bold text-amber-900 mb-1">Manufacturing Remarks &amp; Dispatch Instructions (Optional)</label>
+        <input type="text" value="${esc(F.notes)}" oninput="LF.notes(this.value)" placeholder="e.g. Master 1 packed in Bora with PVC Bag, Master 2 in Box with Gift Box..." class="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-xs text-slate-800">
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-200">
+      <div class="text-xs text-slate-500">Verify matching pieces and master/slave packing allocation before saving.</div>
+      <div class="flex items-center gap-3">
+        <button type="button" onclick="cancelForm()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-sm transition-colors cursor-pointer">Cancel</button>
+        <button type="submit" class="lf-save inline-flex items-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base rounded-xl shadow-lg transition-transform active:scale-95 cursor-pointer">${ic('circle-check','w-5 h-5')} ${saveLabel.toUpperCase()}</button>
+      </div>
+    </div>
+  </form>`;
+  renderFormError(); renderBrandCell(); renderFormula(); renderTiers(); renderMatchHead(); renderMatchings(); renderDerived(); renderTrims();
+  F.lastTotal=null; syncTrims();
+}
+
+function cancelForm(){ S.editingLot=null; S.editingIsDuplicate=false; F=null; setTab('list'); }
+
+function fabricOptions(sel){
+  const opts=[['MINK','MINK (0.120 kg/pc - 4" Sattan)'],['SUPERSOFT','SUPERSOFT (0.240 kg/pc - 5" Sattan)'],['SUPERCLOUDY','SUPERCLOUDY (0.240 kg/pc - 5" Sattan)'],['FLANNEL','FLANNEL (0.150 kg/pc - 4" Sattan)']];
+  if(sel && !opts.some(o=>o[0]===sel)) opts.push([sel,sel]);
+  return opts.map(o=>`<option value="${esc(o[0])}" ${o[0]===sel?'selected':''}>${esc(o[1])}</option>`).join('');
+}
+
+function renderFormError(){
+  const el=$('lf-error'); if(!el) return;
+  el.innerHTML=F.formError?`<div class="p-4 bg-red-50 border border-red-200 text-red-800 text-xs font-bold rounded-xl flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2">${ic('triangle-alert','w-4 h-4 text-red-600 shrink-0')}<span>${esc(F.formError)}</span></div>
+    <button type="button" onclick="F.formError=null;renderFormError()" class="text-red-500 hover:text-red-700 cursor-pointer font-bold px-1">✕</button></div>`:'';
+  if(F.formError) el.scrollIntoView({behavior:'smooth',block:'center'});
+  refreshIcons();
+}
+
+function renderBrandCell(){
+  const el=$('lf-brand'); if(!el) return;
+  const brands=DEFAULT_BRANDS.slice(); if(F.brandName&&!brands.includes(F.brandName)) brands.push(F.brandName);
+  el.innerHTML=`<div class="flex justify-between items-center mb-1.5">
+      <label class="block text-xs font-bold text-slate-700 uppercase">Brand Name</label>
+      <button type="button" onclick="LF.toggleCustomBrand()" class="text-[11px] text-blue-600 hover:underline cursor-pointer">${F.showCustomBrand?'Select Standard':'+ Custom Brand'}</button>
+    </div>
+    ${F.showCustomBrand
+      ?`<input type="text" value="${esc(F.customBrand)}" oninput="LF.customBrand(this.value)" placeholder="Enter Brand Name" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900">`
+      :`<select onchange="LF.brand(this.value)" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 font-semibold text-slate-900">${brands.map(b=>`<option value="${esc(b)}" ${b===F.brandName?'selected':''}>${esc(b)}</option>`).join('')}</select>`}`;
+}
+
+function renderFormula(){
+  const el=$('lf-formula'); if(!el) return;
+  el.innerHTML=`Formula: ${esc(F.bedSize)} Bed (${esc(F.blanketPly)} Ply) = <span class="font-bold text-slate-800">${getPcsPerRoll(F.bedSize,F.blanketPly)} Pieces per roll</span>`;
+}
+
+function renderTiers(){
+  const el=$('lf-tiers'); if(!el) return;
+  const tiers=F.packingTiers;
+  el.innerHTML=tiers.map((tier,tIdx)=>{
+    const n=tIdx+1, quickOpen=F.quick.tierId===tier.id;
+    const masters=S.masterPackings.slice(); if(!masters.some(p=>p.name===tier.masterPack)) masters.push({id:'_cur_'+tier.id,name:tier.masterPack});
+    const slaves=S.slavePackings.slice(); if(!slaves.some(p=>p.name===tier.slavePack)) slaves.push({id:'_cur_'+tier.id,name:tier.slavePack});
+    return `<div class="bg-slate-50/90 rounded-2xl border-2 border-blue-200/80 p-4 shadow-2xs relative hover:border-blue-300 transition-all">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-black text-xs uppercase tracking-wider text-blue-950 bg-blue-100 border border-blue-300 px-3 py-1 rounded-lg">Master Packing ${n}</span>
+          <span class="text-xs text-slate-500 font-medium" id="tier-sum-${tier.id}">${tierSummary(tier)}</span>
+        </div>
+        ${tiers.length>1?`<button type="button" onclick="LF.removeTier('${tier.id}')" class="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 transition-colors inline-flex items-center gap-1 cursor-pointer" title="Remove this master packing tier">${ic('trash-2','w-3.5 h-3.5')} Remove Master ${n}</button>`:''}
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+        <div class="sm:col-span-4">
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-xs font-bold text-slate-700 uppercase">1. Master Packing ${n} Type *</label>
+            <button type="button" onclick="LF.openQuick('${tier.id}','master')" class="text-[11px] font-semibold text-blue-600 hover:underline cursor-pointer">+ Add Master</button>
+          </div>
+          <select onchange="LF.tierMaster('${tier.id}',this.value)" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold text-slate-900 uppercase text-sm">
+            ${masters.map(p=>`<option value="${esc(p.name)}" ${p.name===tier.masterPack?'selected':''}>${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="sm:col-span-3">
+          <label class="block text-xs font-bold text-slate-700 mb-1 uppercase">2. Standard Slave Pcs *</label>
+          <div class="relative">
+            <input type="number" min="1" value="${esc(tier.stdSlavePcs)}" oninput="LF.tierStd('${tier.id}',this.value)" onblur="LF.tierStdBlur('${tier.id}',this)" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 font-bold font-mono text-slate-900 text-sm">
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400 pointer-events-none">Pcs/Unit</span>
+          </div>
+        </div>
+        <div class="sm:col-span-5">
+          <div class="flex justify-between items-center mb-1">
+            <label class="block text-xs font-bold text-emerald-900 uppercase">3. Slave Packing for Master ${n} *</label>
+            <button type="button" onclick="LF.openQuick('${tier.id}','slave')" class="text-[11px] font-semibold text-emerald-700 hover:underline cursor-pointer">+ Add Slave</button>
+          </div>
+          <select onchange="LF.tierSlave('${tier.id}',this.value)" class="w-full px-3 py-2 bg-white border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-950 uppercase text-sm">
+            ${slaves.map(p=>`<option value="${esc(p.name)}" ${p.name===tier.slavePack?'selected':''}>${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${quickOpen?`<div class="mt-3 p-3 bg-white border border-blue-300 rounded-xl shadow-xs">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-bold text-slate-800">${F.quick.type==='master'?`Quick Add New Master Packing for Tier ${n}:`:`Quick Add New Slave / Inner Packing for Tier ${n}:`}</span>
+          <button type="button" onclick="LF.closeQuick()" class="text-slate-400 hover:text-slate-700 text-xs cursor-pointer">✕ Close</button>
+        </div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <input type="text" id="quick-input" value="${esc(F.quick.input)}" oninput="LF.quickInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();LF.execQuick('${tier.id}')}" placeholder="${F.quick.type==='master'?'e.g. JUMBO BORA, CARTON':'e.g. LOOSER, VACUUM PACK'}" class="flex-1 min-w-[200px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg font-bold uppercase">
+          ${F.quick.type==='master'?`<div class="flex items-center gap-1"><span class="text-xs text-slate-500">Std Pcs:</span><input type="number" value="${esc(F.quick.pcs)}" oninput="LF.quickPcs(this.value)" class="w-16 px-2 py-1.5 text-xs border border-slate-300 rounded-lg font-bold font-mono"></div>`:''}
+          <button type="button" onclick="LF.execQuick('${tier.id}')" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg cursor-pointer transition-colors">Save &amp; Apply</button>
+        </div>
+      </div>`:''}
+    </div>`;
+  }).join('');
+  refreshIcons();
+}
+
+function renderMatchHead(){
+  const el=$('lf-match-head'); if(!el) return;
+  el.innerHTML=`${F.packingTiers.length>1&&F.matchings.length>0?`<button type="button" onclick="LF.splitAllEvenly()" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold rounded-xl text-xs transition-colors cursor-pointer border border-amber-300" title="Split all matchings equally across configured master packings">${ic('equal','w-3.5 h-3.5 text-amber-700')} Split All Evenly (सबको 50/50 बाँटें)</button>`:''}
+    <button type="button" onclick="LF.addMatching()" class="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-xl text-xs transition-colors cursor-pointer border border-blue-200">${ic('plus')} Add New Matching</button>`;
+  refreshIcons();
+}
+
+function renderMatchings(){
+  const el=$('lf-matchings'); if(!el) return;
+  el.innerHTML=F.matchings.map((row,idx)=>`<div class="p-4 bg-slate-50/80 rounded-xl border-l-4 border-l-blue-600 border border-slate-200 relative hover:shadow-xs transition-all space-y-3">
+      <div class="flex justify-between items-center">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-black text-xs uppercase tracking-wider text-slate-800 bg-white px-2.5 py-1 rounded border border-slate-200 shadow-2xs">Matching #${idx+1}</span>
+          <span id="m-badge-${idx}"></span>
+        </div>
+        <button type="button" onclick="LF.removeMatching(${idx})" class="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded border border-red-200 transition-colors inline-flex items-center gap-1 cursor-pointer" title="Remove this matching">${ic('trash-2','w-3.5 h-3.5')} Delete</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Printing Roll(s)</label>
+          <input type="number" step="any" min="0" value="${esc(row.rolls)}" oninput="LF.rolls(${idx},this.value)" placeholder="No. of Rolls" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Sattan Color</label>
+          <select onchange="LF.color(${idx},this.value)" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-bold text-slate-900 uppercase">
+            ${colorOptions(row.color)}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Total Matching Blanket Pieces</label>
+          <input type="number" min="0" id="m-pcs-${idx}" value="${esc(row.pcs)}" oninput="LF.pcs(${idx},this.value)" placeholder="e.g. 1000 Pieces" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-black text-slate-900 font-mono text-base">
+        </div>
+      </div>
+      <div id="m-alloc-${idx}"></div>
+    </div>`).join('');
+  F.matchings.forEach((_,i)=>renderMatchingDerived(i));
+  refreshIcons();
+}
+
+function colorOptions(sel){
+  const list=DEFAULT_SATTAN_COLORS.slice(); if(sel&&!list.includes(sel)) list.push(sel);
+  return list.map(c=>`<option value="${esc(c)}" ${c===sel?'selected':''}>${esc(c)}</option>`).join('');
+}
+
+function renderMatchingDerived(i){ renderMatchingBadge(i); renderAllocBlock(i); }
+
+function renderMatchingBadge(i){
+  const el=$('m-badge-'+i); if(!el) return;
+  const row=F.matchings[i], tiers=F.packingTiers;
+  const rowPcsNum=num(row.pcs);
+  if(!(tiers.length>1&&rowPcsNum>0)){ el.innerHTML=''; return; }
+  const allocatedSum=tiers.reduce((s,t)=>s+num(row.allocations&&row.allocations[t.id]),0);
+  const remaining=rowPcsNum-allocatedSum, balanced=rowPcsNum>0&&remaining===0;
+  el.innerHTML=`<span class="text-[11px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${balanced?'bg-emerald-100 text-emerald-800 border border-emerald-300':'bg-amber-100 text-amber-900 border border-amber-300'}">
+    ${balanced?`${ic('check','w-3 h-3 text-emerald-600')} All ${rowPcsNum} Pcs Packed`:`${ic('triangle-alert','w-3 h-3 text-amber-600')} ${remaining>0?`${remaining} Pcs Remaining`:`${Math.abs(remaining)} Pcs Over-allocated`}`}</span>`;
+  refreshIcons();
+}
+
+function renderAllocBlock(i){
+  const el=$('m-alloc-'+i); if(!el) return;
+  const row=F.matchings[i], tiers=F.packingTiers;
+  if(tiers.length<=1){ el.innerHTML=''; return; }
+  const rowPcsNum=num(row.pcs);
+  el.innerHTML=`<div class="mt-2 pt-3 bg-white p-3 rounded-lg border border-amber-200 shadow-2xs">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+      <span class="text-xs font-extrabold text-amber-950 uppercase flex items-center gap-1.5">${ic('boxes','w-3.5 h-3.5 text-amber-600')} Pack Matching #${i+1} into Multiple Master Packings:</span>
+      <button type="button" onclick="LF.splitEvenly(${i})" class="text-[11px] font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 inline-flex items-center gap-1 cursor-pointer">${ic('equal','w-3 h-3')} Auto Split 50/50 (${Math.floor(rowPcsNum/2)} pcs each)</button>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      ${tiers.map((tier,tIdx)=>{
+        const a=num(row.allocations&&row.allocations[tier.id]);
+        const units=a>0?Math.ceil(a/tier.stdSlavePcs):0;
+        const v=row.allocations&&row.allocations[tier.id]!=null?row.allocations[tier.id]:'';
+        return `<div class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1.5">
+          <div class="flex justify-between items-center text-xs">
+            <span class="font-extrabold text-slate-900 uppercase">Master ${tIdx+1}: ${esc(tier.masterPack)}</span>
+            <span id="a-units-${i}-${tier.id}" class="text-[11px] font-mono font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">${units} ${esc(tier.masterPack)}</span>
+          </div>
+          <div class="text-[10px] text-emerald-800 font-medium">Slave: ${esc(tier.slavePack)} (${esc(tier.stdSlavePcs)} pcs/unit)</div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-slate-500 whitespace-nowrap">Pcs:</span>
+            <input type="number" min="0" value="${esc(v)}" oninput="LF.alloc(${i},'${tier.id}',this.value)" placeholder="0" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded font-bold font-mono text-slate-900 focus:ring-1 focus:ring-amber-500">
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  refreshIcons();
+}
+
+// Metric bar + colour table + packing estimate
+function renderDerived(){
+  const c=calc(), tiers=F.packingTiers;
+  const m=$('lf-metrics');
+  if(m) m.innerHTML=`<div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-900 text-white p-4 rounded-xl shadow-inner">
+      <div class="text-center sm:border-r border-slate-700 py-1">
+        <span class="text-xs text-slate-400 font-medium uppercase tracking-wider block">Total Production Pieces</span>
+        <span class="text-3xl font-black text-emerald-400 font-mono">${c.totalPcs}</span>
+        <span class="text-xs text-slate-400 block mt-0.5">Pieces</span>
+      </div>
+      <div class="text-center sm:border-r border-slate-700 py-1">
+        <span class="text-xs text-slate-400 font-medium uppercase tracking-wider block">Sattan Size Specification</span>
+        <span class="text-2xl font-black text-blue-400 font-mono">${esc(c.sattanSize)}</span>
+        <span class="text-xs text-slate-400 block mt-0.5">Based on ${esc(F.fabricType)} Fabric</span>
+      </div>
+      <div class="text-center py-1">
+        <span class="text-xs text-slate-400 font-medium uppercase tracking-wider block">Total Sattan Weight</span>
+        <span class="text-3xl font-black text-amber-400 font-mono">${c.totalSattanWeight}</span>
+        <span class="text-xs text-slate-300 block mt-0.5">KG (<b class="text-amber-400">${c.roundedTotalBundles} Bundles</b> | Exact: ${c.totalBundles})</span>
+      </div>
+    </div>`;
+  const ct=$('lf-colortable');
+  if(ct) ct.innerHTML=`<div class="mt-4 bg-white rounded-xl border border-slate-300 overflow-hidden shadow-xs">
+      <div class="bg-slate-800 text-white px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">${ic('sparkles','w-4 h-4 text-amber-400')}<span class="font-extrabold text-xs uppercase tracking-wider">Sattan Calculation by Color (रंग अनुसार साटन बंडल व वजन हिसाब)</span></div>
+        <span class="text-[11px] text-slate-300 font-medium bg-slate-700/60 px-2 py-0.5 rounded border border-slate-600">Rule: <b>4.3 या 4.8 ➔ 4 Bundles | 4.9+ ➔ 5 Bundles</b> (.9 पर अगला बंडल)</span>
+      </div>
+      ${c.colorBreakdown.length===0?`<div class="p-4 text-center text-xs text-slate-400">Enter printing rolls or pieces in the matching rows above to view color-wise Sattan bundles.</div>`:`
+      <div class="overflow-x-auto"><table class="w-full text-center border-collapse text-xs">
+        <thead><tr class="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold">
+          <th class="py-2.5 px-3 text-left">Sattan Color</th><th class="py-2.5 px-3">Width Size</th><th class="py-2.5 px-3">Matching Blankets</th><th class="py-2.5 px-3 text-right">Required Sattan Weight</th><th class="py-2.5 px-3 text-right">Store Bundles (15 KG)</th>
+        </tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          ${c.colorBreakdown.map(r=>`<tr class="hover:bg-slate-50 transition-colors">
+            <td class="py-2.5 px-3 text-left font-bold text-slate-900"><div class="flex items-center gap-2"><span class="w-3.5 h-3.5 rounded-full border border-slate-300 shadow-2xs inline-block" style="background-color:${getColorHex(r.color)}"></span><span class="uppercase">${esc(r.color)}</span></div></td>
+            <td class="py-2.5 px-3 font-semibold text-slate-700"><span class="bg-slate-100 border border-slate-300 px-2 py-0.5 rounded text-[11px]">${esc(r.size)}</span></td>
+            <td class="py-2.5 px-3 font-mono font-bold text-slate-900">${r.pcs} Pcs</td>
+            <td class="py-2.5 px-3 text-right font-mono font-black text-amber-700 text-sm">${r.weightKg.toFixed(2)} KG</td>
+            <td class="py-2.5 px-3 text-right font-mono"><span class="bg-amber-100 text-amber-950 border border-amber-300 px-2.5 py-1 rounded font-black text-xs inline-block shadow-2xs">${r.bundles} ${r.bundles===1?'Bundle':'Bundles'}</span><span class="text-[10px] text-slate-500 block mt-0.5 font-sans font-medium">(Exact: ${r.exactBundles} Bundles)</span></td>
+          </tr>`).join('')}
+          <tr class="bg-slate-100 font-black border-t-2 border-slate-400 text-slate-950">
+            <td colspan="2" class="py-2.5 px-3 text-left uppercase">Total Sattan Requisition:</td>
+            <td class="py-2.5 px-3 font-mono">${c.totalPcs} PCS</td>
+            <td class="py-2.5 px-3 text-right font-mono text-sm text-amber-900">${c.totalSattanWeight} KG</td>
+            <td class="py-2.5 px-3 text-right font-mono text-sm text-amber-950"><span class="font-black text-base">${c.roundedTotalBundles} Bundles</span><span class="text-[10px] text-slate-500 block font-normal">(Exact: ${c.totalBundles})</span></td>
+          </tr>
+        </tbody></table></div>`}
+    </div>`;
+  const tc=$('lf-tier-count'); if(tc) tc.textContent=tiers.length>1?`${tiers.length} Master Packings Configured`:'Single Master Packing';
+  const es=$('lf-estimate');
+  if(es){
+    const tierPcsOf=t=>tiers.length===1?c.totalPcs:F.matchings.reduce((s,m)=>s+num(m.allocations&&m.allocations[t.id]),0);
+    es.innerHTML=`<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      ${tiers.map((tier,tIdx)=>{
+        const tierPcs=tierPcsOf(tier);
+        const masterUnits=tierPcs>0?Math.ceil(tierPcs/tier.stdSlavePcs):0;
+        const fullUnits=tierPcs>0?Math.floor(tierPcs/tier.stdSlavePcs):0;
+        const leftover=tierPcs>0?tierPcs%tier.stdSlavePcs:0;
+        return `<div class="bg-white p-4 rounded-xl border-2 border-amber-300 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div class="flex justify-between items-start">
+              <div><span class="text-[11px] font-black uppercase text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Master Packing ${tIdx+1}</span><h4 class="text-xl font-black text-slate-900 uppercase mt-1">${esc(tier.masterPack)}</h4></div>
+              <span class="px-2.5 py-1 bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300">${esc(tier.stdSlavePcs)} Pcs / Unit</span>
+            </div>
+            <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-baseline justify-between">
+              <span class="text-xs font-bold text-slate-600">Total ${esc(tier.masterPack)} Units:</span>
+              <span class="text-2xl font-black text-blue-700 font-mono">${masterUnits} <span class="text-xs font-bold text-slate-700">${esc(tier.masterPack)}</span></span>
+            </div>
+            <div class="mt-2 pt-2 border-t border-dashed border-slate-200 flex items-baseline justify-between">
+              <div><span class="text-xs font-bold text-emerald-900 block">Paired Slave (${esc(tier.slavePack)}):</span><span class="text-[10px] text-slate-400">1 Pc per ${esc(tier.slavePack)}</span></div>
+              <span class="text-lg font-black text-emerald-700 font-mono">${tierPcs} <span class="text-xs font-semibold text-slate-600">Bags</span></span>
+            </div>
+          </div>
+          <div class="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-600">Breakdown: <b>${fullUnits}</b> full ${esc(tier.masterPack)} (of ${esc(tier.stdSlavePcs)} pcs)${leftover>0?` + 1 pack of ${leftover} pcs`:''}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${tiers.length>1?`<div class="mt-4 bg-white rounded-xl border border-slate-300 overflow-x-auto text-xs">
+      <div class="bg-slate-100 px-3 py-2 font-bold text-slate-800 border-b border-slate-300 uppercase tracking-wide">Detailed Packing Dispatch Matrix (मैचिंग अनुसार मास्टर व स्लेव पैकिंग हिसाब)</div>
+      <table class="w-full text-center border-collapse">
+        <thead><tr class="bg-slate-50 border-b border-slate-200 font-bold text-slate-700">
+          <th class="py-2 px-3 text-left">Matching</th><th class="py-2 px-3">Total Pcs</th>
+          ${tiers.map((t,ti)=>`<th class="py-2 px-3 bg-amber-50/50 uppercase">Master ${ti+1}: ${esc(t.masterPack)} (${esc(t.stdSlavePcs)} pcs)<span class="block text-[10px] text-emerald-800 font-normal">Inner: ${esc(t.slavePack)}</span></th>`).join('')}
+        </tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          ${F.matchings.map((m,mi)=>`<tr class="hover:bg-slate-50">
+            <td class="py-2 px-3 text-left font-bold text-slate-900">Matching #${mi+1} (${esc(m.color)})</td>
+            <td class="py-2 px-3 font-mono font-bold text-slate-900">${esc(m.pcs||0)} Pcs</td>
+            ${tiers.map(t=>{ const pcs=num(m.allocations&&m.allocations[t.id]); const units=pcs>0?Math.ceil(pcs/t.stdSlavePcs):0;
+              return `<td class="py-2 px-3 font-mono"><span class="font-bold text-slate-900">${pcs} Pcs</span><span class="text-[11px] text-blue-700 font-semibold ml-1">(${units} ${esc(t.masterPack)})</span></td>`; }).join('')}
+          </tr>`).join('')}
+          <tr class="bg-slate-100 font-black border-t-2 border-slate-300 text-slate-950">
+            <td class="py-2.5 px-3 text-left uppercase">Total Units:</td>
+            <td class="py-2.5 px-3 font-mono text-sm">${c.totalPcs} PCS</td>
+            ${tiers.map(t=>{ const tot=F.matchings.reduce((s,m)=>s+num(m.allocations&&m.allocations[t.id]),0); const u=tot>0?Math.ceil(tot/t.stdSlavePcs):0;
+              return `<td class="py-2.5 px-3 font-mono text-sm bg-amber-100/60"><span class="text-slate-900">${tot} Pcs</span> = <span class="text-blue-800 font-black">${u} ${esc(t.masterPack)}</span><div class="text-[10px] text-emerald-800 font-normal">(${tot} ${esc(t.slavePack)})</div></td>`; }).join('')}
+          </tr>
+        </tbody>
+      </table>
+    </div>`:''}`;
+  }
+  refreshIcons();
+}
+
+function renderTrims(){
+  const el=$('lf-trims'); if(!el) return;
+  const total=calc().totalPcs;
+  el.innerHTML=F.trims.map((t,i)=>`<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl relative hover:bg-white transition-colors">
+      <div class="flex justify-between items-center mb-1.5">
+        <span class="text-[11px] font-bold text-slate-500 uppercase">Trim #${i+1}</span>
+        <button type="button" onclick="LF.removeTrim(${i})" class="text-slate-400 hover:text-red-600 p-0.5 cursor-pointer" title="Remove trim">${ic('trash-2','w-3.5 h-3.5')}</button>
+      </div>
+      <div class="space-y-2">
+        <input type="text" list="trimSuggestionsList" value="${esc(t.name)}" oninput="LF.trimName(${i},this.value)" placeholder="Item Name (e.g. Main Label)" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-semibold text-slate-800">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500 whitespace-nowrap">Qty:</span>
+          <input type="number" min="0" id="t-qty-${i}" value="${esc(t.qty)}" oninput="LF.trimQty(${i},this.value)" placeholder="${total||'0'}" class="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-300 rounded-lg font-bold font-mono text-slate-900">
+        </div>
+      </div>
+    </div>`).join('');
+  const s=$('lf-trims-total'); if(s) s.textContent=total||0;
+  refreshIcons();
+}
+
+// ═══════════════════════ LOT LIST (LotList.tsx) ════════════════════════════
+function renderList(){
+  const lots=S.lots;
+  const totalProductionPcs=lots.reduce((s,l)=>s+num(l.totalPcs),0);
+  const totalSattanKg=lots.reduce((s,l)=>s+num(l.totalSattanWeight),0);
+  const uniqueBrands=[...new Set(lots.map(l=>l.brandName))].filter(Boolean);
+  const uniqueFabrics=[...new Set(lots.map(l=>l.fabricType))].filter(Boolean);
+  const L=S.list;
+  $('main').innerHTML=`<div class="space-y-6">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs"><span class="text-xs font-bold text-slate-500 uppercase">Total Lots Recorded</span><div class="text-2xl font-black text-slate-900 mt-1">${lots.length}</div><span class="text-[11px] text-slate-400">In system storage</span></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs"><span class="text-xs font-bold text-slate-500 uppercase">Total Blanket Units</span><div class="text-2xl font-black text-blue-600 mt-1">${totalProductionPcs.toLocaleString()}</div><span class="text-[11px] text-slate-400">Pieces produced</span></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs"><span class="text-xs font-bold text-slate-500 uppercase">Total Sattan Usage</span><div class="text-2xl font-black text-amber-600 mt-1">${totalSattanKg.toFixed(1)} <span class="text-xs font-bold text-slate-500">KG</span></div><span class="text-[11px] text-slate-400">~${getRoundedBundles(totalSattanKg/BUNDLE_KG)} Bundles (Exact: ${(totalSattanKg/BUNDLE_KG).toFixed(1)})</span></div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between gap-1.5">
+        <span class="text-xs font-bold text-slate-500 uppercase">Quick Actions</span>
+        <div class="flex flex-col gap-1.5 mt-0.5">
+          <button onclick="setTab('new')" class="w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer">+ Create New Lot</button>
+          <button onclick="openDataModal()" class="w-full py-1.5 px-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-2xs">${ic('file-spreadsheet','w-3.5 h-3.5 text-emerald-200')}<span>Export / Import</span></button>
+        </div>
+      </div>
+    </div>
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+      <div class="flex-1 min-w-[240px] relative">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">${ic('search','w-4 h-4')}</span>
+        <input type="text" value="${esc(L.search)}" oninput="S.list.search=this.value;renderListTable()" placeholder="Search by Lot #, Brand, Fabric, Master Packing..." class="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-slate-400">${ic('funnel','w-4 h-4')}</span>
+        <select onchange="S.list.brand=this.value;renderListTable()" class="px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-semibold text-slate-700">
+          <option value="ALL">All Brands</option>${uniqueBrands.map(b=>`<option value="${esc(b)}" ${b===L.brand?'selected':''}>${esc(b)}</option>`).join('')}
+        </select>
+        <select onchange="S.list.fabric=this.value;renderListTable()" class="px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg font-semibold text-slate-700">
+          <option value="ALL">All Fabrics</option>${uniqueFabrics.map(f=>`<option value="${esc(f)}" ${f===L.fabric?'selected':''}>${esc(f)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden" id="ll-table"></div>
+  </div>`;
+  renderListTable();
+}
+
+function renderListTable(){
+  const el=$('ll-table'); if(!el) return;
+  const lots=S.lots, L=S.list, q=L.search.toLowerCase();
+  const filtered=lots.filter(lot=>{
+    const matchesSearch=String(lot.lotNo).toLowerCase().includes(q)||String(lot.brandName).toLowerCase().includes(q)||String(lot.fabricType).toLowerCase().includes(q)||String(lot.masterPack1).toLowerCase().includes(q);
+    return matchesSearch&&(L.brand==='ALL'||lot.brandName===L.brand)&&(L.fabric==='ALL'||lot.fabricType===L.fabric);
+  });
+  if(!filtered.length){
+    el.innerHTML=`<div class="py-16 text-center text-slate-500">
+      <div class="text-slate-300 flex justify-center mb-3">${ic('package','w-12 h-12')}</div>
+      <h4 class="text-base font-bold text-slate-700">No Lot Cards Found</h4>
+      <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">${lots.length===0?'Get started by creating your first production lot card for blanket manufacturing.':'No lot matched your search or filter criteria.'}</p>
+      ${lots.length===0?`<button onclick="setTab('new')" class="mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">+ Create Lot Now</button>`:''}
+    </div>`;
+    refreshIcons(); return;
+  }
+  el.innerHTML=`<div class="overflow-x-auto"><table class="w-full text-left border-collapse text-sm">
+    <thead><tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider">
+      <th class="py-3 px-4">Lot No</th><th class="py-3 px-4">Brand</th><th class="py-3 px-4">Fabric &amp; Size</th><th class="py-3 px-4">Total Pcs</th><th class="py-3 px-4">Master Packing</th><th class="py-3 px-4">Sattan</th><th class="py-3 px-4 text-right">Actions</th>
+    </tr></thead>
+    <tbody class="divide-y divide-slate-100">
+      ${filtered.map(lot=>{
+        const idx=S.lots.indexOf(lot);
+        const totalPcs=num(lot.totalPcs), std=num(lot.stdPacking)||10, masterCount=Math.ceil(totalPcs/std);
+        const split=lot.packingMode==='split'&&lot.splitConfigs&&lot.splitConfigs.length>0;
+        return `<tr class="hover:bg-slate-50/80 transition-colors group cursor-pointer" onclick="handleSelectPrint(S.lots[${idx}])">
+          <td class="py-3.5 px-4 font-mono font-bold text-slate-900"><span class="inline-block bg-slate-100 group-hover:bg-blue-100 group-hover:text-blue-900 px-2 py-0.5 rounded border border-slate-200">#${esc(lot.lotNo)}</span></td>
+          <td class="py-3.5 px-4 font-semibold text-slate-800">${esc(lot.brandName)}</td>
+          <td class="py-3.5 px-4 text-xs"><div class="font-semibold text-slate-800">${esc(lot.fabricType)}</div><div class="text-slate-500">${esc(lot.bedSize)} (${esc(lot.blanketPly)} Ply)</div></td>
+          <td class="py-3.5 px-4 font-mono font-bold text-slate-900"><span class="text-base text-emerald-700">${esc(lot.totalPcs)}</span> Pcs</td>
+          <td class="py-3.5 px-4 text-xs">${split?`<div>
+              <div class="flex items-center gap-1.5 mb-1"><span class="text-[10px] font-extrabold uppercase bg-amber-100 text-amber-900 border border-amber-300 px-1.5 rounded">Dual Pack</span></div>
+              <div class="font-bold text-slate-900 space-y-0.5">${lot.splitConfigs.map(cfg=>{ const tot=lot.matchings.reduce((s,m)=>s+num(m.allocations&&m.allocations[cfg.id]),0); const u=tot>0?Math.ceil(tot/cfg.stdPacking):0;
+                return `<div class="text-slate-800"><span class="font-mono font-extrabold text-blue-800">${u}</span> ${esc(cfg.name)} <span class="text-slate-400 font-normal">(${tot} pcs)</span></div>`; }).join('')}</div>
+            </div>`:`<div class="font-bold text-slate-900 flex items-center gap-1.5 uppercase">${ic('package','w-3.5 h-3.5 text-blue-600')}<span>${esc(lot.masterPack1)}</span><span class="text-slate-400 font-normal">(${esc(lot.stdPacking)} pcs)</span></div><div class="text-slate-500 font-medium">${masterCount} ${esc(lot.masterPack1)} units</div>`}</td>
+          <td class="py-3.5 px-4 text-xs font-mono"><div class="font-bold text-slate-800">${esc(lot.totalSattanWeight)} KG</div><div class="text-slate-500">${esc(lot.sattanSize)}</div></td>
+          <td class="py-3.5 px-4 text-right" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-end gap-1.5">
+              <button type="button" onclick="openDataModal(S.lots[${idx}])" class="p-1.5 text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer" title="Export this Lot Card (CSV)">${ic('file-spreadsheet','w-4 h-4 text-emerald-600')}</button>
+              <button type="button" onclick="handleSelectPrint(S.lots[${idx}])" class="p-1.5 text-amber-700 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer" title="Print Lot Card">${ic('printer')}</button>
+              <button type="button" onclick="handleSelectEdit(S.lots[${idx}])" class="p-1.5 text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer" title="Edit Lot">${ic('pen')}</button>
+              <button type="button" onclick="handleDuplicateLot(S.lots[${idx}])" class="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer" title="Duplicate Lot">${ic('copy')}</button>
+              <button type="button" onclick="handleDeleteLot(S.lots[${idx}])" class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Delete Lot">${ic('trash-2')}</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>`;
+  refreshIcons();
+}
+
+// ═══════════════════════ PRINT CARD (PrintLotCard.tsx) ═════════════════════
+function renderPrint(){
+  const lot=S.activePrintLot;
+  if(!lot){
+    $('main').innerHTML=`<div class="bg-white p-12 rounded-xl text-center shadow-xs border border-slate-200">
+      <p class="text-slate-500 font-medium">No lot selected to print. Select a lot from the list or create one.</p>
+      <button onclick="setTab('list')" class="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg cursor-pointer">View Lot Records</button></div>`;
+    return;
+  }
+  const totalPcs=num(lot.totalPcs), sattanWeight=num(lot.totalSattanWeight);
+  const exactBundles=sattanWeight/BUNDLE_KG, roundedTotalBundles=getRoundedBundles(exactBundles), bundles=exactBundles.toFixed(2);
+  const tiers=normalizeTiers(lot), isMultiTier=tiers.length>1;
+  const colorBreakdown=(lot.colorSattanBreakdown&&lot.colorSattanBreakdown.length)?lot.colorSattanBreakdown:computeColorBreakdown(lot);
+  const td='border border-slate-800';
+  $('main').innerHTML=`<div class="max-w-4xl mx-auto space-y-6">
+    <div class="no-print flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-xs border border-slate-200">
+      <div class="flex items-center gap-2">
+        <button onclick="setTab('list')" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer">${ic('arrow-left')} Back to List</button>
+        <button onclick="handleSelectEdit(S.activePrintLot)" class="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors cursor-pointer">${ic('square-pen')} Edit This Lot</button>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <button onclick="openDataModal(S.activePrintLot)" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-2xs" title="Export this Lot Card (CSV)">${ic('file-spreadsheet','w-4 h-4 text-emerald-600')}<span>Export Lot Card (CSV)</span></button>
+        <button onclick="window.print()" class="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-sm transition-transform active:scale-95 cursor-pointer text-xs sm:text-sm">${ic('printer')} Print Production Card</button>
+      </div>
+    </div>
+
+    <div class="print-sheet bg-white p-8 sm:p-10 border-2 border-slate-900 shadow-lg rounded-none text-slate-900 font-sans">
+      <div class="border-b-2 border-slate-900 pb-4 text-center">
+        <div class="flex justify-between items-start gap-3">
+          <div class="text-left text-xs font-mono">
+            <span class="font-bold">FACTORY PRODUCTION SHEET</span>
+            <div>REF: SI-LOT-${esc(lot.lotNo)}</div>
+            <div>DATE: ${esc(lot.createdAt||new Date().toLocaleDateString('en-IN'))}</div>
+          </div>
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-black tracking-wider uppercase text-slate-900">SARV INDIA HOME FURNISHING</h1>
+            <p class="text-xs font-semibold tracking-widest text-slate-600 uppercase mt-0.5">Blanket Manufacturing &amp; Master Packing Production Card</p>
+          </div>
+          <div class="text-right"><div class="inline-block border border-black px-3 py-1 font-mono font-bold text-sm bg-slate-50">LOT #${esc(lot.lotNo)}</div></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 border-b border-slate-400 text-xs sm:text-sm">
+        <div class="border-r border-slate-300 pr-2"><span class="text-slate-500 block text-[11px] font-bold uppercase">Lot Number</span><span class="font-mono font-extrabold text-base text-slate-950">#${esc(lot.lotNo)}</span></div>
+        <div class="border-r border-slate-300 pr-2"><span class="text-slate-500 block text-[11px] font-bold uppercase">Brand</span><span class="font-extrabold text-slate-900">${esc(lot.brandName)}</span></div>
+        <div class="border-r border-slate-300 pr-2"><span class="text-slate-500 block text-[11px] font-bold uppercase">Fabric Quality</span><span class="font-extrabold text-slate-900">${esc(lot.fabricType)}</span></div>
+        <div><span class="text-slate-500 block text-[11px] font-bold uppercase">Size &amp; Ply</span><span class="font-extrabold text-slate-900">${esc(lot.bedSize)} (${esc(lot.blanketPly)} PLY)</span></div>
+      </div>
+
+      <div class="mt-5">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+          <h3 class="font-bold text-sm tracking-wide uppercase text-slate-900 flex flex-wrap items-center gap-1.5"><span>1. PRINTING &amp; SATTAN MATCHING SCHEDULE</span><span class="text-xs font-normal text-slate-600 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded">Sattan Size: <b>${esc(lot.sattanSize||'4 INCH')}</b></span></h3>
+          <span class="text-xs font-medium text-slate-600">Target Quantity: <b>${esc(lot.totalPcs)} Pieces</b></span>
+        </div>
+        <table class="w-full border-collapse border border-slate-800 text-xs sm:text-sm text-center">
+          <thead><tr class="bg-slate-100 font-bold border-b border-slate-800">
+            <th class="${td} py-1.5 px-2 w-16">Matching</th><th class="${td} py-1.5 px-3">Printing Rolls</th><th class="${td} py-1.5 px-3">Sattan Color</th><th class="${td} py-1.5 px-3 text-right">Calculated Output</th>
+          </tr></thead>
+          <tbody>
+            ${lot.matchings&&lot.matchings.length?lot.matchings.map((m,i)=>`<tr class="border-b border-slate-400">
+              <td class="${td} py-1.5 px-2 font-mono font-bold bg-slate-50">M${i+1}</td>
+              <td class="${td} py-1.5 px-3 font-semibold">${esc(m.rolls)} Rolls</td>
+              <td class="${td} py-1.5 px-3 font-bold uppercase">${esc(m.color)}</td>
+              <td class="${td} py-1.5 px-3 text-right font-mono font-bold">${esc(m.pcs)} Pcs</td>
+            </tr>`).join(''):`<tr><td colspan="4" class="py-2 text-slate-400 text-center">No matching rows</td></tr>`}
+            <tr class="bg-slate-100 font-black border-t-2 border-slate-900">
+              <td colspan="3" class="${td} py-2 px-3 text-right uppercase">Total Blanket Production Quantity:</td>
+              <td class="${td} py-2 px-3 text-right font-mono text-base">${esc(lot.totalPcs)} PCS</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="mt-3">
+          <div class="flex flex-wrap justify-between items-center gap-2 text-[11px] font-bold text-slate-800 uppercase mb-1">
+            <span>Sattan Material Store Issuance by Color (रंग अनुसार साटन जारी करने का हिसाब):</span>
+            <span class="font-mono text-[10px]">Spec: 15 KG / Bundle (Rule: .9 पर अगला बंडल)</span>
+          </div>
+          <table class="w-full border-collapse border border-slate-800 text-xs text-center bg-white">
+            <thead><tr class="bg-slate-100 font-bold border-b border-slate-800">
+              <th class="${td} py-1 px-2 text-left">Sattan Color</th><th class="${td} py-1 px-2">Width</th><th class="${td} py-1 px-2">Total Blankets</th><th class="${td} py-1 px-2 text-right">Required Weight</th><th class="${td} py-1 px-2 text-right bg-amber-50">Store Bundles to Issue</th><th class="${td} py-1 px-2 w-28">Store Received</th>
+            </tr></thead>
+            <tbody>
+              ${colorBreakdown.map(r=>`<tr class="border-b border-slate-300">
+                <td class="${td} py-1.5 px-2 text-left font-bold uppercase">${esc(r.color)}</td>
+                <td class="${td} py-1.5 px-2 font-mono font-semibold">${esc(r.size)}</td>
+                <td class="${td} py-1.5 px-2 font-mono font-semibold">${esc(r.pcs)} Pcs</td>
+                <td class="${td} py-1.5 px-2 text-right font-mono font-bold">${Number(r.weightKg).toFixed(2)} KG</td>
+                <td class="${td} py-1.5 px-2 text-right font-mono font-black bg-amber-50">${r.bundles} ${r.bundles===1?'Bundle':'Bundles'}<span class="text-[10px] text-slate-600 block font-normal">(Exact: ${esc(r.exactBundles||r.bundles)})</span></td>
+                <td class="${td} py-1.5 px-2 text-center text-slate-400 font-mono text-[11px]">[ &nbsp; ] Issued</td>
+              </tr>`).join('')}
+              <tr class="bg-slate-100 font-black border-t-2 border-slate-900">
+                <td colspan="2" class="${td} py-1.5 px-2 text-left uppercase">Total Sattan Requisition:</td>
+                <td class="${td} py-1.5 px-2 font-mono">${esc(lot.totalPcs)} PCS</td>
+                <td class="${td} py-1.5 px-2 text-right font-mono text-sm">${esc(lot.totalSattanWeight)} KG</td>
+                <td class="${td} py-1.5 px-2 text-right font-mono text-sm bg-amber-100"><b>${roundedTotalBundles} Bundles</b><span class="text-[10px] text-slate-600 block font-normal">(Exact: ${bundles})</span></td>
+                <td class="${td} py-1.5 px-2 text-slate-500 font-mono text-[10px]">Store Incharge</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <h3 class="font-bold text-sm tracking-wide uppercase text-slate-900 mb-2">2. TRIMS, LABELS &amp; ACCESSORIES REQUIRED</h3>
+        <div class="border border-slate-800">
+          <div class="grid grid-cols-2 sm:grid-cols-3 divide-x divide-y divide-slate-300 text-xs">
+            ${lot.trims&&lot.trims.length?lot.trims.map(t=>`<div class="p-2 flex justify-between items-center bg-white"><span class="font-medium text-slate-800">${esc(t.name)}</span><span class="font-mono font-bold text-slate-950 bg-slate-100 px-2 py-0.5 border border-slate-300">${esc(t.qty)}</span></div>`).join(''):`<div class="p-2 text-slate-400">None specified</div>`}
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-5 border-2 border-slate-900 p-4 bg-amber-50/40">
+        <div class="flex flex-wrap justify-between items-center gap-2 border-b border-slate-400 pb-2 mb-3">
+          <h3 class="font-black text-sm tracking-wide uppercase text-slate-950">3. PACKAGING SPECIFICATIONS &amp; CHECKLIST</h3>
+          <span class="text-xs bg-amber-200/80 border border-amber-400 text-amber-950 px-2 py-0.5 font-bold uppercase">${isMultiTier?`${tiers.length} Master Packing Tiers`:'Single Master Packing'}</span>
+        </div>
+        ${!isMultiTier?`<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs sm:text-sm">
+          <div class="bg-white border border-slate-800 p-3">
+            <div class="text-[11px] font-bold text-slate-500 uppercase">Master Packing Type</div>
+            <div class="text-lg font-black text-slate-900 uppercase flex items-center justify-between"><span>${esc(tiers[0].masterPack)}</span><span class="text-sm font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 border border-blue-200">${esc(tiers[0].stdSlavePcs)} Pcs / Unit</span></div>
+            <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-center"><span class="font-semibold text-slate-700">Total Master Units Needed:</span><span class="font-mono font-black text-base text-slate-950">${Math.ceil(totalPcs/tiers[0].stdSlavePcs)} ${esc(tiers[0].masterPack)}</span></div>
+            <div class="text-[11px] text-slate-600 mt-1">Breakdown: ${Math.floor(totalPcs/tiers[0].stdSlavePcs)} full packs of ${esc(tiers[0].stdSlavePcs)} pcs${totalPcs%tiers[0].stdSlavePcs>0?` + 1 partial pack of ${totalPcs%tiers[0].stdSlavePcs} pcs`:''}</div>
+          </div>
+          <div class="bg-white border border-slate-800 p-3">
+            <div class="text-[11px] font-bold text-slate-500 uppercase">Slave / Inner Packing</div>
+            <div class="text-lg font-black text-slate-900 uppercase">${esc(tiers[0].slavePack)}</div>
+            <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-center"><span class="font-semibold text-slate-700">Total Slave Bags/Boxes:</span><span class="font-mono font-black text-base text-slate-950">${totalPcs} Units</span></div>
+            <div class="text-[11px] text-slate-600 mt-1">Each blanket packed in 1 ${esc(tiers[0].slavePack)} before packing into master ${esc(tiers[0].masterPack)}.</div>
+          </div>
+        </div>`:`<div class="space-y-3">
+          <table class="w-full border-collapse border border-slate-800 text-xs text-center bg-white">
+            <thead><tr class="bg-slate-100 font-bold border-b border-slate-800">
+              <th class="${td} py-1.5 px-2 text-left">Matching</th><th class="${td} py-1.5 px-2">Total Pcs</th>
+              ${tiers.map((t,ti)=>`<th class="${td} py-1.5 px-2 uppercase bg-amber-50">Master ${ti+1}: ${esc(t.masterPack)} (${esc(t.stdSlavePcs)} pcs)<span class="block text-[10px] text-emerald-800 font-normal">Inner: ${esc(t.slavePack)}</span></th>`).join('')}
+            </tr></thead>
+            <tbody>
+              ${lot.matchings.map((m,i)=>`<tr class="border-b border-slate-300">
+                <td class="${td} py-1.5 px-2 text-left font-bold">M${i+1} (${esc(m.color)})</td>
+                <td class="${td} py-1.5 px-2 font-mono font-bold">${esc(m.pcs)} Pcs</td>
+                ${tiers.map(t=>{ const pcs=num(m.allocations&&m.allocations[t.id]); const u=pcs>0?Math.ceil(pcs/t.stdSlavePcs):0; return `<td class="${td} py-1.5 px-2 font-mono"><b>${pcs} Pcs</b> <span class="text-slate-600">(${u} ${esc(t.masterPack)})</span></td>`; }).join('')}
+              </tr>`).join('')}
+              <tr class="bg-slate-100 font-black border-t-2 border-slate-900">
+                <td class="${td} py-2 px-2 text-left uppercase">GRAND PACKING TOTAL:</td>
+                <td class="${td} py-2 px-2 font-mono">${esc(lot.totalPcs)} PCS</td>
+                ${tiers.map(t=>{ const tot=lot.matchings.reduce((s,m)=>s+num(m.allocations&&m.allocations[t.id]),0); const u=tot>0?Math.ceil(tot/t.stdSlavePcs):0;
+                  return `<td class="${td} py-2 px-2 font-mono text-sm bg-amber-100"><b>${tot} Pcs</b> = <span class="font-black text-base">${u} ${esc(t.masterPack)}</span><div class="text-[10px] text-emerald-900 font-normal">(${tot} ${esc(t.slavePack)})</div></td>`; }).join('')}
+              </tr>
+            </tbody>
+          </table>
+          <div class="bg-white border border-slate-800 p-3 text-xs">
+            <span class="font-bold block uppercase mb-1.5 text-slate-800">Dispatcher &amp; Packaging Supervisor Checklist:</span>
+            <ul class="list-disc pl-5 space-y-1.5 font-medium">
+              ${tiers.map((t,ti)=>{ const tot=lot.matchings.reduce((s,m)=>s+num(m.allocations&&m.allocations[t.id]),0); const u=tot>0?Math.ceil(tot/t.stdSlavePcs):0;
+                return `<li>Master ${ti+1} (<b>${esc(t.masterPack)}</b>): <span class="font-mono font-bold text-sm text-blue-900">${u} Units</span> (${tot} Blankets @ ${esc(t.stdSlavePcs)} pcs per ${esc(t.masterPack)}) ➔ Paired Inner Slave Packing Required: <span class="font-mono font-bold text-emerald-900">${tot} ${esc(t.slavePack)}</span></li>`; }).join('')}
+            </ul>
+          </div>
+        </div>`}
+        ${lot.notes?`<div class="mt-3 text-xs bg-white border border-slate-300 p-2"><span class="font-bold text-slate-800">Special Instructions / Remarks: </span><span class="text-slate-700">${esc(lot.notes)}</span></div>`:''}
+      </div>
+
+      <div class="mt-8 pt-4 border-t-2 border-slate-900 text-xs">
+        <div class="grid grid-cols-4 gap-4 text-center">
+          ${['Cutting Master','Sattan Master','Production Incharge','Packing Supervisor'].map(s=>`<div><div class="h-10 border-b border-dashed border-slate-400 mb-1"></div><span class="font-bold text-slate-800 uppercase text-[11px]">${s}</span></div>`).join('')}
+        </div>
+        <div class="mt-4 flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-200">
+          <span>SARV INDIA HOME FURNISHING - QUALITY ASSURANCE &amp; LOT DISPATCH SYSTEM</span>
+          <span>CARD VERIFIED &amp; AUTHORIZED</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════ PACKING LIBRARY MODALS ════════════════════════════
+const MM={ editingId:null, error:'' };   // master modal state
+const SM={ editingId:null, error:'' };   // slave modal state
+let modalKind=null;
+function closeModal(){ modalKind=null; $('modal').innerHTML=''; }
+function modalShell(icon,iconBg,title,sub,body){
+  return `<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onclick="if(event.target===this)closeModal()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3"><div class="p-2 ${iconBg} rounded-lg text-white">${ic(icon,'w-5 h-5')}</div><div><h3 class="font-bold text-lg tracking-wide">${title}</h3><p class="text-xs text-slate-300">${sub}</p></div></div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">${ic('x','w-5 h-5')}</button>
+      </div>
+      <div class="p-6 overflow-y-auto space-y-6">${body}</div>
+      <div class="bg-slate-50 px-6 py-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
+        <span>Changes are saved to the ERP database (Supabase).</span>
+        <button type="button" onclick="closeModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium transition-colors cursor-pointer">Done / Close</button>
+      </div>
+    </div></div>`;
+}
+
+function openMasterModal(){ modalKind='master'; MM.editingId=null; MM.error=''; renderMasterModal(); }
+function renderMasterModal(){
+  if(modalKind!=='master') return;
+  const list=S.masterPackings;
+  const body=`<form onsubmit="masterAdd(event)" class="bg-blue-50/70 border border-blue-200 rounded-xl p-4 transition-all shadow-xs">
+      <h4 class="text-sm font-semibold text-blue-950 flex items-center gap-2 mb-3">${ic('plus','w-4 h-4 text-blue-600')} Add New Master Packing Type (नया मास्टर पैकिंग जोड़ें)</h4>
+      ${MM.error?`<div class="mb-3 text-xs bg-red-100 text-red-700 p-2.5 rounded-md border border-red-200">${esc(MM.error)}</div>`:''}
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+        <div class="sm:col-span-5"><label class="block text-xs font-medium text-slate-700 mb-1">Packing Name * <span class="text-slate-400 font-normal">(e.g. CARTON, JUMBO BALE)</span></label><input type="text" id="mm-new-name" placeholder="e.g. CARTON / JUMBO BORA" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 uppercase font-medium"></div>
+        <div class="sm:col-span-3"><label class="block text-xs font-medium text-slate-700 mb-1">Std Pcs/Pack *</label><input type="number" min="1" id="mm-new-pcs" value="10" placeholder="10" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-medium"></div>
+        <div class="sm:col-span-4"><button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2 px-4 rounded-lg shadow-sm transition-colors cursor-pointer">${ic('plus')} Save &amp; Add</button></div>
+        <div class="sm:col-span-12"><label class="block text-xs font-medium text-slate-600 mb-1">Packaging Notes (Optional)</label><input type="text" id="mm-new-desc" placeholder="e.g. Used for premium export orders / with plastic strapping" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500"></div>
+      </div>
+    </form>
+    <div>
+      <div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-slate-800">Available Master Packings (${list.length})</h4><span class="text-xs text-slate-500 flex items-center gap-1">${ic('info','w-3.5 h-3.5 text-slate-400')} Click to auto-fill into current lot</span></div>
+      <div class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+        ${list.map(p=>MM.editingId===p.id?`<div class="p-3.5 bg-amber-50/50 space-y-2">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div class="sm:col-span-5"><input type="text" id="mm-edit-name" value="${esc(p.name)}" class="w-full px-2.5 py-1.5 text-sm bg-white border border-amber-300 rounded font-bold uppercase"></div>
+              <div class="sm:col-span-3"><input type="number" id="mm-edit-pcs" value="${esc(p.defaultPcs)}" class="w-full px-2.5 py-1.5 text-sm bg-white border border-amber-300 rounded font-semibold" placeholder="Pcs"></div>
+              <div class="sm:col-span-4 flex items-center gap-2">
+                <button type="button" onclick="masterSaveEdit('${esc(p.id)}')" class="flex-1 inline-flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-2 rounded cursor-pointer">${ic('check','w-3.5 h-3.5')} Save</button>
+                <button type="button" onclick="MM.editingId=null;renderMasterModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs py-1.5 px-2.5 rounded cursor-pointer">Cancel</button>
+              </div>
+            </div>
+            <input type="text" id="mm-edit-desc" value="${esc(p.description||'')}" placeholder="Description / material notes" class="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded">
+          </div>`:`<div class="p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs group-hover:bg-blue-100 group-hover:text-blue-700 transition-colors">${ic('package')}</div>
+              <div>
+                <div class="flex flex-wrap items-center gap-2"><span class="font-bold text-slate-900 text-sm">${esc(p.name)}</span><span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs font-medium">${esc(p.defaultPcs)} Pcs / Unit</span>${p.isDefault?`<span class="text-[10px] text-slate-400 bg-slate-50 border border-slate-200 px-1.5 rounded">System Default</span>`:''}</div>
+                ${p.description?`<p class="text-xs text-slate-500 mt-0.5">${esc(p.description)}</p>`:''}
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="showToast('Master packing &quot;${esc(p.name)}&quot; selected!');closeModal()" class="text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md transition-colors cursor-pointer">Use in Form</button>
+              <button type="button" onclick="MM.editingId='${esc(p.id)}';renderMasterModal()" title="Edit master packing" class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors cursor-pointer">${ic('pen')}</button>
+              <button type="button" onclick="masterDelete('${esc(p.id)}')" title="Delete option" class="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer">${ic('trash-2')}</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  $('modal').innerHTML=modalShell('package','bg-blue-600','Master Packing Options Manager','मास्टर पैकिंग प्रकार जोड़ें या प्रबंधित करें (Bora, Box, Bale, Carton etc.)',body);
+  refreshIcons();
+}
+async function saveMasterPackings(updated, okMsg){
+  try{
+    await syncLibrary('mfg_master_packings', updated, p=>({ id:p.id, name:p.name, default_pcs:p.defaultPcs, description:p.description||null, is_default:!!p.isDefault }));
+    S.masterPackings=updated;
+    showToast(okMsg||'Master packing options updated!');
+    if(S.tab==='new'&&F) renderTiers();
+  }catch(e){ MM.error='❌ '+errMsg(e); }
+  renderMasterModal();
+}
+function masterAdd(e){
+  e.preventDefault();
+  const trimmed=$('mm-new-name').value.trim().toUpperCase();
+  if(!trimmed){ MM.error='Packing name is required'; renderMasterModal(); return; }
+  if(S.masterPackings.some(p=>p.name.toUpperCase()===trimmed)){ MM.error=`"${trimmed}" already exists in Master Packing options`; renderMasterModal(); return; }
+  const pcs=parseInt($('mm-new-pcs').value,10);
+  if(isNaN(pcs)||pcs<=0){ MM.error='Standard Pieces per pack must be a positive number'; renderMasterModal(); return; }
+  MM.error='';
+  const opt={ id:'custom_'+Date.now(), name:trimmed, defaultPcs:pcs, description:$('mm-new-desc').value.trim()||undefined, isDefault:false };
+  saveMasterPackings([...S.masterPackings,opt], `Master packing "${trimmed}" selected!`);
+}
+function masterSaveEdit(id){
+  const trimmed=$('mm-edit-name').value.trim().toUpperCase(); if(!trimmed) return;
+  const pcs=parseInt($('mm-edit-pcs').value,10)||10;
+  const desc=$('mm-edit-desc').value.trim()||undefined;
+  MM.editingId=null;
+  saveMasterPackings(S.masterPackings.map(p=>p.id===id?Object.assign({},p,{ name:trimmed, defaultPcs:pcs, description:desc }):p));
+}
+function masterDelete(id){
+  const p=S.masterPackings.find(x=>x.id===id); if(!p) return;
+  if(S.masterPackings.length<=1){ MM.error='You must have at least one Master Packing option.'; renderMasterModal(); return; }
+  if(!window.confirm(`Are you sure you want to remove "${p.name}" from master packing options?`)) return;
+  saveMasterPackings(S.masterPackings.filter(x=>x.id!==id));
+}
+
+function openSlaveModal(){ modalKind='slave'; SM.editingId=null; SM.error=''; renderSlaveModal(); }
+function renderSlaveModal(){
+  if(modalKind!=='slave') return;
+  const list=S.slavePackings;
+  const body=`<form onsubmit="slaveAdd(event)" class="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 transition-all shadow-xs">
+      <h4 class="text-sm font-semibold text-emerald-950 flex items-center gap-2 mb-3">${ic('plus','w-4 h-4 text-emerald-600')} Add New Slave / Inner Packing (नया इनर पैकिंग प्रकार जोड़ें)</h4>
+      ${SM.error?`<div class="mb-3 text-xs bg-red-100 text-red-700 p-2.5 rounded-md border border-red-200">${esc(SM.error)}</div>`:''}
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+        <div class="sm:col-span-8"><label class="block text-xs font-medium text-slate-700 mb-1">Slave Packing Name * <span class="text-slate-400 font-normal">(e.g. LOOSER, VACUUM PACK)</span></label><input type="text" id="sm-new-name" placeholder="e.g. LOOSER / ZIPPER BAG / VACUUM PACK" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 uppercase font-medium"></div>
+        <div class="sm:col-span-4"><button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium py-2 px-4 rounded-lg shadow-sm transition-colors cursor-pointer">${ic('plus')} Save &amp; Add</button></div>
+        <div class="sm:col-span-12"><label class="block text-xs font-medium text-slate-600 mb-1">Description / Specification (Optional)</label><input type="text" id="sm-new-desc" placeholder="e.g. Blanket folded loose or premium zipper pouch" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500"></div>
+      </div>
+    </form>
+    <div>
+      <div class="flex items-center justify-between mb-3"><h4 class="text-sm font-semibold text-slate-800">Available Slave Packings (${list.length})</h4><span class="text-xs text-slate-500 flex items-center gap-1">${ic('info','w-3.5 h-3.5 text-slate-400')} Click to select into current lot</span></div>
+      <div class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+        ${list.map(p=>SM.editingId===p.id?`<div class="p-3.5 bg-amber-50/50 space-y-2">
+            <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              <div class="sm:col-span-8"><input type="text" id="sm-edit-name" value="${esc(p.name)}" class="w-full px-2.5 py-1.5 text-sm bg-white border border-amber-300 rounded font-bold uppercase"></div>
+              <div class="sm:col-span-4 flex items-center gap-2">
+                <button type="button" onclick="slaveSaveEdit('${esc(p.id)}')" class="flex-1 inline-flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-1.5 px-2 rounded cursor-pointer">${ic('check','w-3.5 h-3.5')} Save</button>
+                <button type="button" onclick="SM.editingId=null;renderSlaveModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs py-1.5 px-2.5 rounded cursor-pointer">Cancel</button>
+              </div>
+            </div>
+            <input type="text" id="sm-edit-desc" value="${esc(p.description||'')}" placeholder="Description" class="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded">
+          </div>`:`<div class="p-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-xs group-hover:bg-emerald-100 transition-colors">${ic('layers')}</div>
+              <div>
+                <div class="flex flex-wrap items-center gap-2"><span class="font-bold text-slate-900 text-sm">${esc(p.name)}</span>${p.isDefault?`<span class="text-[10px] text-slate-400 bg-slate-50 border border-slate-200 px-1.5 rounded">System Default</span>`:''}</div>
+                ${p.description?`<p class="text-xs text-slate-500 mt-0.5">${esc(p.description)}</p>`:''}
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="showToast('Slave packing &quot;${esc(p.name)}&quot; selected!');closeModal()" class="text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-md transition-colors cursor-pointer">Use in Form</button>
+              <button type="button" onclick="SM.editingId='${esc(p.id)}';renderSlaveModal()" title="Edit slave packing" class="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors cursor-pointer">${ic('pen')}</button>
+              <button type="button" onclick="slaveDelete('${esc(p.id)}')" title="Delete option" class="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer">${ic('trash-2')}</button>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  $('modal').innerHTML=modalShell('layers','bg-emerald-600','Slave / Inner Packing Manager','स्लेव इनर पैकिंग प्रकार जोड़ें या प्रबंधित करें (PVC Bag, Gift Box, Loose, Looser etc.)',body);
+  refreshIcons();
+}
+async function saveSlavePackings(updated, okMsg){
+  try{
+    await syncLibrary('mfg_slave_packings', updated, p=>({ id:p.id, name:p.name, description:p.description||null, is_default:!!p.isDefault }));
+    S.slavePackings=updated;
+    showToast(okMsg||'Slave / Inner packing options updated!');
+    if(S.tab==='new'&&F) renderTiers();
+  }catch(e){ SM.error='❌ '+errMsg(e); }
+  renderSlaveModal();
+}
+function slaveAdd(e){
+  e.preventDefault();
+  const trimmed=$('sm-new-name').value.trim().toUpperCase();
+  if(!trimmed){ SM.error='Slave packing name is required'; renderSlaveModal(); return; }
+  if(S.slavePackings.some(p=>p.name.toUpperCase()===trimmed)){ SM.error=`"${trimmed}" already exists in Slave / Inner Packing options`; renderSlaveModal(); return; }
+  SM.error='';
+  const opt={ id:'slave_'+Date.now(), name:trimmed, description:$('sm-new-desc').value.trim()||undefined, isDefault:false };
+  saveSlavePackings([...S.slavePackings,opt], `Slave packing "${trimmed}" selected!`);
+}
+function slaveSaveEdit(id){
+  const trimmed=$('sm-edit-name').value.trim().toUpperCase(); if(!trimmed) return;
+  const desc=$('sm-edit-desc').value.trim()||undefined;
+  SM.editingId=null;
+  saveSlavePackings(S.slavePackings.map(p=>p.id===id?Object.assign({},p,{ name:trimmed, description:desc }):p));
+}
+function slaveDelete(id){
+  const p=S.slavePackings.find(x=>x.id===id); if(!p) return;
+  if(S.slavePackings.length<=1){ SM.error='You must have at least one Slave Packing option.'; renderSlaveModal(); return; }
+  if(!window.confirm(`Are you sure you want to remove "${p.name}" from slave packing options?`)) return;
+  saveSlavePackings(S.slavePackings.filter(x=>x.id!==id));
+}
+
+// ═══════════════════════ EXPORT / IMPORT (replaces Google Sheets sync) ═════
+// Same sheets the Google Sheets integration created — Production Lot Card,
+// Sattan Color Register, Master Production Register, Sattan Summary Register —
+// as CSV files that open straight in Excel / Google Sheets. Import reads a
+// Master Register CSV (same header detection as importLotsFromSpreadsheet) or
+// a JSON backup.
+const DM={ sub:'lot', lotNo:'', preview:[], previewMsg:'', busy:'' };
+function openDataModal(lot){
+  modalKind='data';
+  DM.sub='lot'; DM.preview=[]; DM.previewMsg=''; DM.busy='';
+  DM.lotNo=(lot&&lot.lotNo)||(S.activePrintLot&&S.activePrintLot.lotNo)||(S.lots[0]&&S.lots[0].lotNo)||'';
+  renderDataModal();
+}
+function renderDataModal(){
+  if(modalKind!=='data') return;
+  const tabBtn=(k,label)=>`<button onclick="DM.sub='${k}';renderDataModal()" class="px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x ${DM.sub===k?'bg-white text-emerald-800 border-slate-200':'bg-slate-100 text-slate-500 border-transparent hover:text-slate-800'}">${label}</button>`;
+  const lot=S.lots.find(l=>l.lotNo===DM.lotNo);
+  let body='';
+  if(DM.sub==='lot'){
+    body=`<label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Select Production Lot to Export</label>
+      <select onchange="DM.lotNo=this.value;renderDataModal()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-slate-900 text-sm">
+        ${S.lots.length?S.lots.map(l=>`<option value="${esc(l.lotNo)}" ${l.lotNo===DM.lotNo?'selected':''}>Lot #${esc(l.lotNo)} — ${esc(l.brandName)} (${esc(l.fabricType)}, ${esc(l.totalPcs)} pcs)</option>`).join(''):'<option>No lots yet</option>'}
+      </select>
+      ${lot?`<div class="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+        <h4 class="text-base font-black text-slate-900">Lot #${esc(lot.lotNo)} — ${esc(lot.brandName||'SARV INDIA')}</h4>
+        <div class="text-slate-600">${esc(lot.fabricType)} · ${esc(lot.bedSize)} (${esc(lot.blanketPly)} Ply) · ${esc(lot.totalPcs)} pcs · Sattan ${esc(lot.totalSattanWeight)} kg (${esc(lot.sattanSize)})</div>
+        <div class="text-slate-500">Contains: Basic Lot Information, Master &amp; Slave Packing Structure, Sattan by Color (0.9 rule), Matching Allocations, Trims Checklist + Sattan Color Register.</div>
+      </div>
+      <button onclick="exportLotCardCsv()" class="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer">${ic('download')} Download Lot Card (CSV)</button>`:''}`;
+  } else if(DM.sub==='master'){
+    body=`<h4 class="text-base font-black text-slate-900">Master Blanket Production Register</h4>
+      <p class="text-xs text-slate-500 mt-1 mb-4">All ${S.lots.length} lots — one row per lot (packing tiers, sattan, colours, trims), plus the all-lots Sattan Summary Register.</p>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="exportMasterRegisterCsv()" ${S.lots.length?'':'disabled'} class="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50">${ic('download')} Master Production Register (CSV)</button>
+        <button onclick="exportSattanRegisterCsv()" ${S.lots.length?'':'disabled'} class="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50">${ic('download')} Sattan Summary Register (CSV)</button>
+        <button onclick="exportLotsCsv()" ${S.lots.length?'':'disabled'} class="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-800 text-white font-bold text-sm rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50">${ic('download')} Lot List (CSV)</button>
+      </div>`;
+  } else {
+    body=`<label class="block text-xs font-bold uppercase tracking-wider text-slate-700">Import Lots from a file</label>
+      <p class="text-xs text-slate-500 mt-1">Master Production Register <b>.csv</b> (e.g. your old Google Sheet → File › Download › CSV) or a <b>.json</b> backup from this app.</p>
+      <button onclick="$('importFileInput').click()" ${DM.busy?'disabled':''} class="mt-3 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50">${ic('upload','w-3.5 h-3.5')} Choose CSV / JSON file…</button>
+      ${DM.busy?`<div class="mt-3 text-xs font-bold text-blue-700">${esc(DM.busy)}</div>`:''}
+      ${DM.preview.length?`<div class="mt-4">
+        <div class="text-xs font-semibold text-emerald-800 mb-2">${esc(DM.previewMsg)}</div>
+        <h5 class="text-xs font-black uppercase tracking-wider text-slate-700">Lots Identified (${DM.preview.length})</h5>
+        <div class="mt-2 max-h-56 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
+          ${DM.preview.map(l=>`<div class="px-3 py-2 flex justify-between"><span class="font-bold">#${esc(l.lotNo)} — ${esc(l.brandName)}</span><span class="text-slate-500">${esc(l.fabricType)} · ${esc(l.totalPcs)} pcs</span></div>`).join('')}
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button onclick="applyImport('merge')" ${DM.busy?'disabled':''} class="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-50">Merge (add new, update same Lot No)</button>
+          <button onclick="applyImport('replace')" ${DM.busy?'disabled':''} class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-50">Replace All Lots</button>
+        </div>
+      </div>`:''}`;
+  }
+  $('modal').innerHTML=`<div class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70" onclick="if(event.target===this)closeModal()">
+    <div class="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]">
+      <div class="px-5 py-4 bg-gradient-to-r from-emerald-800 via-emerald-700 to-teal-800 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center shadow-inner">${ic('file-spreadsheet','w-6 h-6 text-emerald-200')}</div>
+          <div><h3 class="text-lg font-black tracking-wide">Export / Import</h3><p class="text-xs text-emerald-100 font-medium">Sarv India Blanket Production Lots &amp; Sattan Color Breakdown — CSV opens in Excel / Google Sheets</p></div>
+        </div>
+        <button onclick="closeModal()" class="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer">${ic('x','w-5 h-5')}</button>
+      </div>
+      <div class="flex gap-1 px-5 pt-3 bg-slate-100 border-b border-slate-200">${tabBtn('lot','Single Lot Card')}${tabBtn('master','Master Register')}${tabBtn('import','Import')}</div>
+      <div class="p-5 overflow-y-auto">${body}</div>
+      <div class="bg-slate-50 px-5 py-3 border-t border-slate-200 flex justify-end"><button onclick="closeModal()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl cursor-pointer transition-colors">Close</button></div>
+    </div></div>`;
+  refreshIcons();
+}
+
+function csvCell(v){ const s=String(v==null?'':v); return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }
+function downloadCsv(filename, rows){
+  const csv='﻿'+rows.map(r=>(r||[]).map(csvCell).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'})); a.download=filename;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
+}
+// getOrCalculateColorSattan() of googleSheetsService.ts
+function sheetColorSattan(lot){
+  if(lot.colorSattanBreakdown&&lot.colorSattanBreakdown.length) return lot.colorSattanBreakdown;
+  const totalPcs=Number(lot.totalPcs)||0, totalWt=Number(lot.totalSattanWeight)||0, bw=Number(lot.sattanBundleWeight)||BUNDLE_KG;
+  const map=new Map();
+  (lot.matchings||[]).forEach(m=>{ const c=(m.color||'STANDARD').trim().toUpperCase(); map.set(c,(map.get(c)||0)+(Number(m.pcs)||0)); });
+  const out=[];
+  map.forEach((pcs,color)=>{ const w=Number((totalWt*(totalPcs>0?pcs/totalPcs:0)).toFixed(2)); const ex=bw>0?w/bw:0;
+    out.push({ color, size:lot.sattanSize||'5 INCH', pcs, weightKg:w, exactBundles:Number(ex.toFixed(2)), bundles:getRoundedBundles(ex), fullBundles:Math.floor(w/bw), leftoverKg:Number((w%bw).toFixed(2)) }); });
+  return out;
+}
+const dateTag=()=>todayISO();
+function exportLotCardCsv(){
+  const lot=S.lots.find(l=>l.lotNo===DM.lotNo); if(!lot){ showToast('Please select a valid lot to export.','info'); return; }
+  const lotNo=lot.lotNo||'N/A', brand=(lot.brandName||'SARV INDIA').trim();
+  const sattanRows=sheetColorSattan(lot), tiers=normalizeTiers(lot);
+  const rows=[
+    ['SARV INDIA HOME FURNISHING - PRODUCTION LOT CARD'],
+    ['Generated via Blanket Production Management System','','','','Date:',lot.createdAt||todayISO()],
+    [],
+    ['BASIC LOT INFORMATION'],
+    ['Lot Number',`#${lotNo}`,'Fabric Type',lot.fabricType||'MINK','Blanket Ply',`${lot.blanketPly||'1'} Ply`],
+    ['Brand Name',brand,'Bed Size',lot.bedSize||'DOUBLE','Total Pieces',Number(lot.totalPcs)||0],
+    ['Sattan Border Size',lot.sattanSize||'5 INCH','Total Sattan Weight',`${lot.totalSattanWeight||0} Kg`,'Notes',lot.notes||'-'],
+    [],
+    ['MASTER PACKING & SLAVE (INNER) PACKING STRUCTURE'],
+    ['Packing Tier','Master Packing Type','Standard Slave Pcs (per Master)','Slave / Inner Packing Type','Total Slave Units Needed'],
+  ];
+  tiers.forEach((t,i)=>{
+    const tierPcs=(lot.matchings||[]).reduce((a,m)=>a+(Number(m.allocations&&m.allocations[t.id])||0),0);
+    const tot=tierPcs>0?tierPcs:Number(lot.totalPcs)||0, std=Number(t.stdSlavePcs)||1;
+    rows.push([`Master ${i+1}`,t.masterPack||'BORA',std,t.slavePack||'PVC BAG',`${Math.ceil(tot/(std>0?std:1))} ${t.masterPack} (${tot} pcs)`]);
+  });
+  rows.push([],['SATTAN CALCULATION (BY COLOR & BUNDLE ROUNDING RULE)'],
+    ['Rule: Decimal < 0.9 stays lower integer (e.g. 4.3 -> 4, 4.8 -> 4), Decimal >= 0.9 rounds up (e.g. 4.9 -> 5)'],
+    ['Color','Width','Pcs','Total Weight (Kg)','Exact Bundles','Rounded Bundles (0.9 Rule)','Full 15kg Bundles','Leftover / Loose (Kg)']);
+  let sp=0,sw=0,sb=0;
+  sattanRows.forEach(r=>{ sp+=r.pcs; sw+=r.weightKg; sb+=r.bundles; rows.push([r.color,r.size,r.pcs,r.weightKg,r.exactBundles!=null?r.exactBundles:Number((r.weightKg/15).toFixed(2)),r.bundles,r.fullBundles,r.leftoverKg]); });
+  const totRow=label=>[label,lot.sattanSize||'5 INCH',sp,Number(sw.toFixed(2)),Number((sw/15).toFixed(2)),sb,Math.floor(sw/15),Number((sw%15).toFixed(2))];
+  rows.push(totRow('TOTAL SATTAN'));
+  rows.push([],['MATCHING ALLOCATIONS (FABRIC ROLLS & COLOR WISE DISPATCH)'],['Rolls','Color','Total Pcs',...tiers.map((t,i)=>`Master ${i+1} (${t.masterPack} - ${t.slavePack})`)]);
+  (lot.matchings||[]).forEach(m=>rows.push([m.rolls,m.color,Number(m.pcs)||0,...tiers.map(t=>Number(m.allocations&&m.allocations[t.id])||0)]));
+  rows.push([],['TRIMS & ACCESSORIES CHECKLIST'],['Trim / Item Name','Quantity Required','Status']);
+  (lot.trims||[]).forEach(t=>rows.push([t.name,t.qty,'Pending Factory Check']));
+  // Sheet 2 — Sattan Color Register
+  rows.push([],[],['SARV INDIA - SATTAN DISPATCH & COLOR REQUIREMENT SHEET'],['Lot Number:',`#${lotNo}`,'Brand:',brand,'Total Blanket Pcs:',Number(lot.totalPcs)||0],[],
+    ['Sattan Color','Width','Blanket Pcs','Weight (Kg)','Exact Decimal Bundles','Factory Rounded Bundles (>=0.9 Up)','Full 15kg Bundles','Remaining Loose (Kg)']);
+  sattanRows.forEach(r=>rows.push([r.color,r.size,r.pcs,r.weightKg,r.exactBundles!=null?r.exactBundles:Number((r.weightKg/15).toFixed(2)),r.bundles,r.fullBundles,r.leftoverKg]));
+  rows.push(totRow('TOTAL'));
+  downloadCsv(`Lot_${String(lotNo).replace(/[^\w-]+/g,'_')}_${brand.replace(/[^\w-]+/g,'_')}_Lot_Card.csv`, rows);
+  showToast(`Lot Card CSV downloaded for Lot #${lotNo}!`);
+}
+function exportMasterRegisterCsv(){
+  const rows=[['SARV INDIA HOME FURNISHING - MASTER PRODUCTION REGISTER'],[`Total Registered Lots: ${S.lots.length}`,'',`Last Synced: ${new Date().toLocaleString()}`],[],
+    ['Lot No','Date Created','Brand Name','Fabric Type','Bed Size','Ply','Total Pcs','Master Pack 1','Std Pcs 1','Slave Pack 1','Master Pack 2','Std Pcs 2','Slave Pack 2','Sattan Width','Sattan Weight (Kg)','Sattan Bundles (Rounded)','Colors Breakdown','Trims Checklist','Notes']];
+  S.lots.forEach(lot=>{
+    const tiers=lot.packingTiers||[];
+    const t1=tiers[0]||{ masterPack:lot.masterPack1||'BORA', stdSlavePcs:lot.stdPacking||10, slavePack:lot.slavePack||'PVC BAG' };
+    const t2=tiers[1]||{ masterPack:'', stdSlavePcs:'', slavePack:'' };
+    const bundles=sheetColorSattan(lot).reduce((a,s)=>a+s.bundles,0);
+    rows.push([`#${lot.lotNo}`,lot.createdAt||'',lot.brandName||'SARV INDIA',lot.fabricType||'MINK',lot.bedSize||'DOUBLE',`${lot.blanketPly||'1'} Ply`,Number(lot.totalPcs)||0,
+      t1.masterPack,t1.stdSlavePcs,t1.slavePack,t2.masterPack||'-',t2.stdSlavePcs||'-',t2.slavePack||'-',lot.sattanSize||'5 INCH',Number(lot.totalSattanWeight)||0,bundles,
+      (lot.matchings||[]).map(m=>`${m.color}: ${m.pcs} pcs (${m.rolls} rolls)`).join(' | '),(lot.trims||[]).map(t=>`${t.name}: ${t.qty}`).join(' | '),lot.notes||'']);
+  });
+  downloadCsv(`Sarv_India_Master_Production_Register_${dateTag()}.csv`, rows);
+  showToast('Master Production Register CSV downloaded!');
+}
+function exportSattanRegisterCsv(){
+  const rows=[['SARV INDIA - ALL LOTS SATTAN REQUIREMENT REGISTER'],[`Last Synced: ${new Date().toLocaleString()}`],[],
+    ['Lot No','Brand','Color','Sattan Width','Pcs','Weight (Kg)','Exact Bundles','Rounded Bundles (0.9 Rule)','Full 15kg Bundles','Leftover Kg']];
+  S.lots.forEach(lot=>sheetColorSattan(lot).forEach(s=>rows.push([`#${lot.lotNo}`,lot.brandName||'SARV INDIA',s.color,s.size,s.pcs,s.weightKg,s.exactBundles!=null?s.exactBundles:Number((s.weightKg/15).toFixed(2)),s.bundles,s.fullBundles,s.leftoverKg])));
+  downloadCsv(`Sarv_India_Sattan_Summary_Register_${dateTag()}.csv`, rows);
+  showToast('Sattan Summary Register CSV downloaded!');
+}
+// exportLotsCSV() of the standalone HTML
+function exportLotsCsv(){
+  if(!S.lots.length){ showToast('No lots to export','info'); return; }
+  const rows=[['Lot No','Brand','Fabric','Bed Size','Ply','Total Pcs','Sattan Size','Sattan Weight (kg)','Total Bundles','Packing Tiers','Date','Notes']];
+  S.lots.forEach(l=>rows.push([l.lotNo,l.brandName,l.fabricType,l.bedSize,`${l.blanketPly} Ply`,l.totalPcs,l.sattanSize||'',l.totalSattanWeight,getRoundedBundles((num(l.totalSattanWeight))/15),
+    (l.packingTiers||[]).map(t=>`${t.masterPack} (${t.stdSlavePcs} pcs - ${t.slavePack})`).join(' | '),l.createdAt||'',l.notes||'']));
+  downloadCsv(`sarv_india_master_register_${dateTag()}.csv`, rows);
+  showToast('Master Register CSV exported!');
+}
+
+// CSV parser (quoted fields, BOM)
+function parseCsv(text){
+  text=String(text).replace(/^﻿/,'');
+  const rows=[]; let row=[], cell='', q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){ cell+='"'; i++; } else q=false; } else cell+=ch; }
+    else if(ch==='"') q=true;
+    else if(ch===','){ row.push(cell); cell=''; }
+    else if(ch==='\n'||ch==='\r'){ if(ch==='\r'&&text[i+1]==='\n') i++; row.push(cell); rows.push(row); row=[]; cell=''; }
+    else cell+=ch;
+  }
+  if(cell!==''||row.length){ row.push(cell); rows.push(row); }
+  return rows;
+}
+// importLotsFromSpreadsheet() — header detection on a Master Register sheet
+function lotsFromRegisterRows(rows){
+  let headerIndex=-1;
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const s=rows[i].map(c=>String(c).toLowerCase()).join(' ');
+    if(s.includes('lot')&&(s.includes('brand')||s.includes('fabric')||s.includes('number'))){ headerIndex=i; break; }
+  }
+  const out=[];
+  if(headerIndex<0||headerIndex>=rows.length-1) return out;
+  const h=rows[headerIndex].map(x=>String(x||'').trim().toLowerCase());
+  const col=f=>h.findIndex(f);
+  const lotCol=col(x=>x.includes('lot')), brandCol=col(x=>x.includes('brand')), fabricCol=col(x=>x.includes('fabric')), sizeCol=col(x=>x.includes('size')&&!x.includes('sattan')), plyCol=col(x=>x.includes('ply'));
+  const pcsCol=col(x=>x.includes('total pcs')||x==='pcs'||x.includes('pieces'));
+  const m1Col=col(x=>x.includes('master pack 1')||x==='master 1'||x.includes('master')), std1Col=col(x=>x.includes('std pcs 1')||x.includes('std packing')), s1Col=col(x=>x.includes('slave pack 1')||x==='slave 1'||x.includes('slave'));
+  const m2Col=col(x=>x.includes('master pack 2')||x==='master 2'), std2Col=col(x=>x.includes('std pcs 2')), s2Col=col(x=>x.includes('slave pack 2')||x==='slave 2');
+  const sattanSizeCol=col(x=>x.includes('sattan width')||x.includes('sattan size')), sattanWtCol=col(x=>x.includes('sattan weight')||x.includes('sattan wt')), notesCol=col(x=>x.includes('note')), dateCol=col(x=>x.includes('date'));
+  for(let r=headerIndex+1;r<rows.length;r++){
+    const row=rows[r]; if(!row||!row.length) continue;
+    const rawLotNo=lotCol>=0?String(row[lotCol]||'').replace(/^#/,'').trim():''; if(!rawLotNo) continue;
+    const m1=m1Col>=0&&row[m1Col]?String(row[m1Col]).trim():'BORA', std1=std1Col>=0&&row[std1Col]?Number(row[std1Col])||10:10, s1=s1Col>=0&&row[s1Col]?String(row[s1Col]).trim():'PVC BAG';
+    const tiers=[{ id:'sp_1', masterPack:m1, stdSlavePcs:std1, slavePack:s1 }];
+    if(m2Col>=0&&row[m2Col]&&String(row[m2Col]).trim()!=='-'&&String(row[m2Col]).trim()!=='')
+      tiers.push({ id:'sp_2', masterPack:String(row[m2Col]).trim(), stdSlavePcs:std2Col>=0?Number(row[std2Col])||10:10, slavePack:s2Col>=0&&row[s2Col]?String(row[s2Col]).trim():'GIFT BOX' });
+    const totalPcs=pcsCol>=0?Number(row[pcsCol])||0:0;
+    const d=dateCol>=0?String(row[dateCol]||'').trim():'';
+    out.push({ id:null, lotNo:rawLotNo, brandName:brandCol>=0&&row[brandCol]?String(row[brandCol]).trim():'SARV INDIA',
+      fabricType:fabricCol>=0&&row[fabricCol]?String(row[fabricCol]).trim():'MINK', bedSize:sizeCol>=0&&row[sizeCol]?String(row[sizeCol]).trim():'DOUBLE',
+      blanketPly:plyCol>=0&&row[plyCol]?String(row[plyCol]).replace(/[^0-9]/g,'').trim()||'1':'1', totalPcs,
+      masterPack1:m1, stdPacking:std1, slavePack:s1, packingMode:tiers.length>1?'split':'single', packingTiers:tiers,
+      sattanSize:sattanSizeCol>=0&&row[sattanSizeCol]?String(row[sattanSizeCol]).trim():'5 INCH',
+      totalSattanWeight:sattanWtCol>=0&&row[sattanWtCol]?String(row[sattanWtCol]).replace(/[^0-9.]/g,''):'0',
+      matchings:[{ rolls:1, pcs:totalPcs, color:'STANDARD', allocations:{ sp_1:totalPcs } }],
+      trims:[{ name:'Small Label', qty:totalPcs },{ name:'Main Label', qty:totalPcs },{ name:'Washing Label', qty:totalPcs },{ name:'Dori', qty:totalPcs }],
+      createdAt:/^\d{4}-\d{2}-\d{2}$/.test(d)?d:todayISO(), notes:notesCol>=0&&row[notesCol]?String(row[notesCol]):'Imported from Google Sheets' });
+  }
+  return out;
+}
+let pendingImportLibs=null;
+function onImportFile(input){
+  const file=input.files&&input.files[0]; input.value=''; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const text=String(e.target.result||'');
+      pendingImportLibs=null;
+      let lots=[], msg='';
+      if(/\.json$/i.test(file.name)||/^\s*[\[{]/.test(text)){
+        const parsed=JSON.parse(text);
+        if(Array.isArray(parsed)) lots=parsed;
+        else if(parsed&&Array.isArray(parsed.lots)){ lots=parsed.lots; pendingImportLibs={ masterPackings:parsed.masterPackings, slavePackings:parsed.slavePackings }; }
+        else throw new Error('Invalid backup file format');
+        msg=`Read ${lots.length} lot(s) from backup "${file.name}".`;
+      } else {
+        lots=lotsFromRegisterRows(parseCsv(text));
+        if(!lots.length) throw new Error('Could not identify recognizable lot records in this file.');
+        msg=`Successfully read ${lots.length} lot(s) from "${file.name}".`;
+      }
+      DM.preview=lots.filter(l=>l&&l.lotNo); DM.previewMsg=msg; DM.sub='import';
+      if(modalKind!=='data'){ modalKind='data'; }
+      renderDataModal();
+    }catch(err){ showToast('Failed to parse file: '+(err.message||err),'info'); }
+  };
+  reader.readAsText(file);
+}
+// JSON restore from the navbar → same preview / merge / replace flow
+function onRestoreFile(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  openDataModal(); DM.sub='import'; renderDataModal();
+  onImportFile(input);
+}
+async function applyImport(mode){
+  const lots=DM.preview; if(!lots.length) return;
+  if(mode==='replace' && !window.confirm(`This will replace all your current ${S.lots.length} lots with ${lots.length} imported lot(s). This action cannot be undone. Continue?`)) return;
+  try{
+    if(pendingImportLibs){
+      if(Array.isArray(pendingImportLibs.masterPackings)&&pendingImportLibs.masterPackings.length){
+        await syncLibrary('mfg_master_packings', pendingImportLibs.masterPackings, p=>({ id:String(p.id), name:String(p.name).toUpperCase(), default_pcs:Number(p.defaultPcs)||10, description:p.description||null, is_default:!!p.isDefault }));
+      }
+      if(Array.isArray(pendingImportLibs.slavePackings)&&pendingImportLibs.slavePackings.length){
+        const sp=pendingImportLibs.slavePackings.map((s,i)=>typeof s==='string'?{ id:'sp_opt_'+i, name:s.toUpperCase(), isDefault:true }:s);
+        await syncLibrary('mfg_slave_packings', sp, p=>({ id:String(p.id), name:String(p.name).toUpperCase(), description:p.description||null, is_default:!!p.isDefault }));
+      }
+    }
+    if(mode==='replace'){
+      const keep=new Set(lots.map(l=>String(l.lotNo).trim().toLowerCase()));
+      const del=S.lots.filter(l=>!keep.has(String(l.lotNo).trim().toLowerCase())).map(l=>l.id);
+      for(let i=0;i<del.length;i+=100){ const {error}=await SB.from('mfg_lot_cards').delete().in('id',del.slice(i,i+100)); if(error) throw error; }
+    }
+    let done=0, failed=[];
+    for(const l of lots){
+      DM.busy=`Saving ${done+1} / ${lots.length}…`; renderDataModal();
+      try{
+        const r=await saveLotRpc(null, Object.assign({},l,{ colorSattanBreakdown:(l.colorSattanBreakdown&&l.colorSattanBreakdown.length)?l.colorSattanBreakdown:[] }), true);
+        if(!r.success) failed.push(l.lotNo+': '+r.error); else done++;
+      }catch(e){ failed.push(l.lotNo+': '+errMsg(e)); }
+    }
+    DM.busy=''; DM.preview=[]; DM.previewMsg='';
+    await Promise.all([loadLots(), loadLibraries()]);
+    closeModal(); renderNavbar(); setTab('list');
+    showToast(failed.length?`Imported ${done} lot(s), ${failed.length} failed`:(mode==='replace'?`Replaced lots with ${done} imported lots!`:`Added ${done} lots!`), failed.length?'info':'success');
+    if(failed.length) console.warn('Import failures:',failed);
+  }catch(e){ DM.busy=''; renderDataModal(); showToast('❌ '+errMsg(e),'info'); }
+}
+
+// JSON backup (handleExportData)
+function handleExportData(){
+  const bundle={ lots:S.lots, masterPackings:S.masterPackings, slavePackings:S.slavePackings, version:'sarvIndia_v3', exportedAt:new Date().toISOString() };
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'}));
+  a.download=`sarv_india_lots_backup_${todayISO()}.json`; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
+  showToast('Lot records and packing configurations exported!');
+}
+
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&modalKind) closeModal(); });
+
+// ═══════════════════════ BOOT ══════════════════════════════════════════════
+(async function boot(){
+  renderNavbar();
+  // Opened directly (not inside the ERP) without an ERP login → send to the ERP.
+  if(window.self===window.top && !erpRole()){
+    $('main').innerHTML=`<div class="bg-white p-12 rounded-xl text-center shadow-xs border border-slate-200 max-w-lg mx-auto">
+      <div class="text-amber-500 flex justify-center mb-3">${ic('lock','w-10 h-10')}</div>
+      <h3 class="text-lg font-black text-slate-900">ERP login required</h3>
+      <p class="text-sm text-slate-500 mt-1">Lot Card Manager ERP ke andar se kholein: <b>Manufacturing › Lot Card Manager</b>.</p>
+      <a href="index.html" class="inline-block mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm">Open ERP</a></div>`;
+    refreshIcons(); return;
+  }
+  if(!SB){ $('main').innerHTML=`<div class="bg-white p-12 rounded-xl text-center border border-red-200 text-red-700 font-bold">Supabase library not loaded — check internet and reload.</div>`; return; }
+  try{
+    await Promise.all([loadLots(), loadLibraries()]);
+  }catch(e){
+    $('main').innerHTML=`<div class="bg-white p-10 rounded-xl text-center border border-amber-300 max-w-xl mx-auto">
+      <div class="text-amber-500 flex justify-center mb-3">${ic('triangle-alert','w-10 h-10')}</div>
+      <h3 class="text-lg font-black text-slate-900">${isSetupError(e)?'Database setup pending':'Could not load lot records'}</h3>
+      <p class="text-sm text-slate-600 mt-1">${isSetupError(e)?'Supabase SQL Editor me <b>LOT_CARD_MIGRATION.sql</b> ek baar run karein, phir page reload karein.':esc(errMsg(e))}</p>
+      <button onclick="location.reload()" class="mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm cursor-pointer">Reload</button></div>`;
+    refreshIcons(); return;
+  }
+  S.ready=true;
+  S.tab='new';   // the original app opens on New Lot Entry
+  renderNavbar(); renderMain();
+})();
+</script>
+</body>
+</html>
