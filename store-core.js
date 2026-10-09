@@ -3040,6 +3040,7 @@ function sarvNavigateFromHome(target){
        relative, so it serves unchanged from user.github.io/repo/ or a
        custom domain root. */
     case 'COMPLAINT_APP': window.open('complaint.html','_blank'); sarvGoHome(); return;
+    case 'ORDER_FORM': window.open('order-form.html','_blank'); sarvGoHome(); return;
   }
   // Whatever the chooser answered on the way in is applied — and locked — only
   // now, after the Entry Type change handler has rebuilt the form's dropdowns.
@@ -3125,6 +3126,12 @@ const SARV_HOME_HELP={
     'Task टैब: Admin काम सौंपता है, करने वाला पहले date confirm करता है, पूरा करते समय फ़ोटो/PDF proof लगाना ज़रूरी है।',
     'Notice Board: सूचना, फ़ोटो या PDF सबको या चुने हुए लोगों को भेजें।',
     'इसका login अलग है (नाम + password), ERP के PIN से नहीं चलता — password है मोबाइल@DDMMYYYY।']},
+  ORDER_FORM:{icon:'🧾',title:'Order Form (Sales)',points:[
+    'Buyer का order भरें — Item Code चुनते ही specs, price और trims की cost अपने-आप भर जाएगी।',
+    'Packing Type, trims (Buyer / SIHF / FOC), discount और GST से पूरा bill अपने-आप बनता है।',
+    'Submit करने पर order Supabase में save होता है और Proforma Invoice की PDF बनती है।',
+    'Orders बटन से पुराने order देखें, Edit करें, Status बदलें और WhatsApp / Email करें।',
+    'इसका login अलग है (username + password, sales_users table), ERP के PIN से नहीं चलता।']},
 };
 const SARV_HOME_SKIP_KEY='sarv_home_intro_skip';
 function sarvHomeSkipped_(){try{return JSON.parse(localStorage.getItem(SARV_HOME_SKIP_KEY)||'{}')||{};}catch(e){return {};}}
@@ -3482,6 +3489,7 @@ const SARV_TABS=[
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
+  {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — apna alag login (sales_users)',def:'ALL'},
   {group:'🏭 Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'🛒 PO Generation › Sub Tabs'},
