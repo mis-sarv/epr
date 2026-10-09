@@ -135,6 +135,12 @@
       <span class="sarv-home-text"><b>Lot Card Manager</b><small>Blanket lots, sattan &amp; master packing</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Manufacturing › Trims Manager — opens #trimsPanel (HOME_TRIMS). -->
+    <button type="button" class="sarv-home-row" data-go="TRIMS">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></span>
+      <span class="sarv-home-text"><b>Trims Manager</b><small>Trims &amp; packing per Order / Lot, PO &amp; store live</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <button type="button" class="sarv-home-row" data-go="ORDER_FORM">
       <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg></span>
       <span class="sarv-home-text"><b>Order Form</b><small>Sales orders &amp; Proforma Invoice PDF</small></span>
@@ -1669,6 +1675,15 @@
         <div id="lotCardPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="lotCardFrame" title="Lot Card Manager" data-src="lot-card-manager.html"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f1f5f9; display:block;"></iframe>
+        </div>
+
+        <!-- Manufacturing › Trims Manager — trims & packing material per Sales
+             Order + Lot Cards, with PO / Inward / Issue data from the store
+             (trims-manager.html, Supabase mfg_trims_* tables). Same iframe
+             pattern as the Lot Card Manager; src set on first open. -->
+        <div id="trimsPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="trimsFrame" title="Trims Manager" data-src="trims-manager.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f0f2f5; display:block;"></iframe>
         </div>
 
         <div class="sidebar" id="sidebarPanel">

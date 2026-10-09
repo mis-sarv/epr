@@ -3039,6 +3039,12 @@ function sarvNavigateFromHome(target){
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'lot-card-manager.html');
       break;
     }
+    case 'TRIMS': {
+      activatePanel('trimsPanel');
+      const fr=byId('trimsFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'trims-manager.html');
+      break;
+    }
     case 'REPORTS': activatePanel('reportsPanel'); break;
     case 'TRACKER': activatePanel('itemTrackerPanel'); break;
     case 'APPROVAL_APP': window.open('mobile.html','_blank'); sarvGoHome(); return;
@@ -3140,6 +3146,12 @@ const SARV_HOME_HELP={
     'Master packing (Bora / Box / Bale…) + slave packing (PVC Bag / Gift Box…) जोड़ें; कई master हों तो pieces बाँटें।',
     'Sattan रंग-वार वज़न और 15 kg के bundle (.9 पर अगला bundle) अपने-आप निकलते हैं।',
     'Save करते ही Production Card प्रिंट के लिए तैयार; CSV export / import भी है।']},
+  TRIMS:{icon:'🏷️',title:'Trims Manager (Manufacturing)',points:[
+    'Sales Order chunein — us order ki trims sheet khulegi (pehle save ki hui ho to wahi).',
+    'Order Qty order ke products se aur Lot Req Qty jode gaye Lot Card se apne-aap bharti hai।',
+    'Store Standard Name sirf Item Master se; PO chunte hi Target Date = PO delivery date।',
+    'Qty Received (PO ke inward) aur Lot Issue (Store Issue) Store se live aate hain।',
+    'Save करने पर sheet Order No. और Lot No. se linked save hoti hai।']},
   ORDER_FORM:{icon:'🧾',title:'Order Form (Sales)',points:[
     'Buyer का order भरें — Item Code चुनते ही specs, price और trims की cost अपने-आप भर जाएगी।',
     'Packing Type, trims (Buyer / SIHF / FOC), discount और GST से पूरा bill अपने-आप बनता है।',
@@ -3502,6 +3514,7 @@ const SARV_TABS=[
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
   {key:'HOME_LOT_CARD',label:'Lot Card Manager',hint:'Manufacturing › blanket lot cards, sattan & master packing',def:'ALL'},
+  {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — apna alag login (sales_users)',def:'ALL'},

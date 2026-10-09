@@ -86,6 +86,7 @@
       { label: 'Shopfloor Dashboard' },
       { label: 'Design Master', go: 'PRODUCTION' },
       { label: 'Lot Card Manager', go: 'LOT_CARD' },
+      { label: 'Trims Manager', go: 'TRIMS' },
       { label: 'Manufacturing Order' }, { label: 'Work Order' },
       { label: 'MO Kanban' }, { label: 'WO Kanban' },
       { label: 'My Jobcards' }, { label: 'Multi Workorder Punching' },
