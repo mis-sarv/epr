@@ -260,27 +260,57 @@
     el.innerHTML = values.map(v => '<option value="' + esc(v) + '"></option>').join('');
   }
 
+  /* ── Fixed list kahan se aati hai ────────────────────────────────────
+     Pehle ye lists yahin hardcoded thi. Ab inka ghar Master Data ›
+     🔽 Dropdown Master hai (table sales_dropdowns), jahan se Admin inhe
+     frontend se add / edit / remove karta hai. store-core.js ka
+     sarvDropdownList() wahi list deta hai; us key ki ek bhi row na ho to
+     neeche ka fallback chalta hai — isi liye migration se pehle, ya Supabase
+     band hone par, Design Master bilkul jaisa tha waisa hi chalta hai. */
+  const DM_DD_KEY = {
+    unit:'erp_designUnit', bed:'erp_designBedSize', quality:'erp_designQuality',
+    type:'erp_designType', frame:'erp_designFrameType', mono:'erp_designMonopoly',
+    supplier:'erp_designSupplier', shade:'erp_designShade'
+  };
+  const DM_DD_FALLBACK = {
+    unit:['UNIT 1', 'UNIT 2'], bed:['DOUBLE BED', 'SINGLE BED'],
+    quality:['MINK', 'SUPER CLOUDY'], type:['FLORAL', 'GEOMETRICAL', 'ABSTRACT', 'LEAVES'],
+    frame:['MS ROUND FRAME', 'MS SQUARE FRAME'], mono:['NO', 'YES'],
+    supplier:[], shade:DM_SHADES
+  };
+  function dmFixed(kind){
+    const key = DM_DD_KEY[kind];
+    if (key) {
+      try {
+        const l = (typeof sarvDropdownList === 'function') ? sarvDropdownList(key) : null;
+        if (l && l.length) return l.slice();
+      } catch (e) {}
+    }
+    return (DM_DD_FALLBACK[kind] || []).slice();
+  }
+
   /* ── Ek column ka dropdown kya offer karega ──────────────────────────
-     Business ke fixed defaults + jo bhi value database me pehle se maujood
+     Dropdown Master ki fixed list + jo bhi value database me pehle se maujood
      hai. Ek hi function, taaki native <datalist> aur Bulk grid ka picker
      kabhi alag-alag list na dikhayein. dmDesigns se banta hai, jo DB ka
      in-memory mirror hai — to abhi save hui value turant agli row ke dropdown
      me aa jaati hai. */
   function dmValues(kind){
     const uniq = key => [...new Set(dmDesigns.map(d => d[key]).filter(Boolean))].sort();
-    const merge = (base, key) =>
-      [...new Set(base.concat(dmDesigns.map(d => d[key]).filter(Boolean)))];
+    const merge = (col) =>
+      [...new Set(dmFixed(kind).concat(dmDesigns.map(d => d[col]).filter(Boolean)))];
     switch (kind) {
       case 'party':   return uniq('party_name');
       case 'brand':   return uniq('brand_name');
-      case 'unit':    return merge(['UNIT 1', 'UNIT 2'], 'design_unit');
-      case 'bed':     return merge(['DOUBLE BED', 'SINGLE BED'], 'bed_size');
-      case 'quality': return merge(['MINK', 'SUPER CLOUDY'], 'blanket_quality');
-      case 'type':    return merge(['FLORAL', 'GEOMETRICAL', 'ABSTRACT', 'LEAVES'], 'design_type');
-      case 'frame':   return merge(['MS ROUND FRAME', 'MS SQUARE FRAME'], 'frame_type');
-      case 'mono':    return ['NO', 'YES'];
-      // V18 ki shade list + jo shade naam already kisi design par chadhe hain.
-      case 'shade':   return [...new Set(DM_SHADES.concat(
+      case 'supplier':return merge('supplier_name');
+      case 'unit':    return merge('design_unit');
+      case 'bed':     return merge('bed_size');
+      case 'quality': return merge('blanket_quality');
+      case 'type':    return merge('design_type');
+      case 'frame':   return merge('frame_type');
+      case 'mono':    return dmFixed('mono');
+      // Shade list + jo shade naam already kisi design par chadhe hain.
+      case 'shade':   return [...new Set(dmFixed('shade').concat(
         dmDesigns.reduce((a, d) => a.concat((d.matchings || []).map(m => m.matching_name)), [])
           .filter(Boolean)))];
       default:        return [];
@@ -292,11 +322,13 @@
     fillList('dmShadeList', dmValues('shade'));
     fillList('dmPartyList', dmValues('party'));
     fillList('dmBrandList', dmValues('brand'));
+    fillList('dmSupplierList', dmValues('supplier'));
     fillList('dmUnitList', dmValues('unit'));
     fillList('dmBedSizeList', dmValues('bed'));
     fillList('dmQualityList', dmValues('quality'));
     fillList('dmTypeList', dmValues('type'));
     fillList('dmFrameTypeList', dmValues('frame'));
+    fillList('dmMonopolyList', dmValues('mono'));
     const ld = q('dmLiveDesignList');
     if (ld) ld.innerHTML = live.map(d =>
       '<option value="' + esc(d.design_no) + '">' + esc(d.design_no) + ' — ' +
@@ -422,7 +454,8 @@
   }
   // Which bulk column reads which list.
   const DM_BULK_PICKERS = [
-    ['b-party', 'party'], ['b-brand', 'brand'], ['b-unit', 'unit'], ['b-bed', 'bed'],
+    ['b-party', 'party'], ['b-brand', 'brand'], ['b-supplier', 'supplier'],
+    ['b-unit', 'unit'], ['b-bed', 'bed'],
     ['b-type', 'type'], ['b-mono', 'mono'], ['b-quality', 'quality'],
     ['b-frame', 'frame'], ['b-matching', 'shade'],
   ];
@@ -436,23 +469,126 @@
     ? '<span class="dm-badge dm-badge-mono">YES</span>'
     : '<span class="dm-muted">NO</span>';
 
+  /* ══ LIVE TAB — HAR COLUMN PAR FILTER ════════════════════════════════
+     Header ke neeche ek filter row baithti hai: jis column par kuch likha
+     hai, us column ko wahi chhanta hai (substring, case ignore), aur saare
+     column AND se jurte hain. Har box ke saath us column ke suggestions bhi
+     aate hain jo BAAKI filters lagne ke BAAD bachte hain — isi liye jo value
+     ab kisi row me nahi hai, wo suggestion me bhi nahi dikhti.
+
+     Filter row sirf EK BAAR banti hai (dmBuildLiveFilterRow). Uske baad
+     renderLive sirf tbody aur suggestion lists badalta hai, inputs ko nahi —
+     warna har keystroke par focus aur caret ud jaata. */
+  const DM_LIVE_COLS = [
+    { id:'no',     ph:'Design No', get:d => d.design_no },
+    { id:'mono',   ph:'YES / NO',  get:d => d.monopoly || 'NO' },
+    { id:'type',   ph:'Type',      get:d => d.design_type || '' },
+    { id:'party',  ph:'Party',     get:d => d.party_name || '' },
+    { id:'brand',  ph:'Brand',     get:d => d.brand_name || '' },
+    { id:'supp',   ph:'Supplier',  get:d => d.supplier_name || '' },
+    { id:'unit',   ph:'Unit',      get:d => d.design_unit || '' },
+    { id:'bed',    ph:'Bed Size',  get:d => d.bed_size || '' },
+    { id:'qual',   ph:'Quality',   get:d => d.blanket_quality || '' },
+    { id:'frames', ph:'Total',     get:d => String(totalFrames(d)) },
+    { id:'mcount', ph:'Shades',    get:d => String((d.matchings || []).length) },
+    { id:'master', ph:'Matching',  get:d => { const m = masterOf(d); return m ? m.matching_name : ''; } },
+  ];
+  const dmLiveFilters = {};              // {colId: typed text}
+
+  // Global search box — wahi purana vyavhaar, filters se alag.
+  function dmLiveSearchPass(d, term){
+    if (!term) return true;
+    return [d.design_no, d.party_name, d.brand_name, d.supplier_name,
+            d.design_type, d.design_unit, d.blanket_quality]
+      .concat((d.matchings || []).map(m => m.matching_name))
+      .some(v => up(v).indexOf(term) >= 0);
+  }
+  /* Ek design saare column filters se guzarta hai ya nahi. `skip` wala column
+     chhod diya jaata hai — usi se us column ke apne suggestions bante hain. */
+  function dmLiveColsPass(d, skip){
+    return DM_LIVE_COLS.every(c => {
+      if (c.id === skip) return true;
+      const t = up(dmLiveFilters[c.id] || '');
+      return !t || up(c.get(d)).indexOf(t) >= 0;
+    });
+  }
+
+  function dmBuildLiveFilterRow(){
+    const tr = q('dmLiveFilterRow');
+    if (!tr || tr.dataset.built) return;
+    tr.dataset.built = '1';
+    // Actions aur Photo par filter ka matlab nahi; Status Live tab me hamesha LIVE.
+    tr.innerHTML = '<th></th><th></th>' +
+      DM_LIVE_COLS.map(c =>
+        '<th><input type="text" class="dm-fin" data-dmcol="' + c.id + '" list="dmLF_' + c.id + '" ' +
+        'placeholder="' + esc(c.ph) + '" autocomplete="off">' +
+        '<datalist id="dmLF_' + c.id + '"></datalist></th>').join('') +
+      '<th></th>';
+    let t = null;
+    tr.addEventListener('input', e => {
+      const inp = e.target.closest('.dm-fin'); if (!inp) return;
+      dmLiveFilters[inp.dataset.dmcol] = inp.value;
+      clearTimeout(t);
+      t = setTimeout(renderLive, 120);
+    });
+    // Escape = us ek column ka filter hatao.
+    tr.addEventListener('keydown', e => {
+      const inp = e.target.closest('.dm-fin');
+      if (!inp || e.key !== 'Escape') return;
+      inp.value = ''; dmLiveFilters[inp.dataset.dmcol] = ''; renderLive();
+    });
+  }
+
+  /* Har column ke suggestions: us column ki wo values jo BAAKI sab filters
+     lagne ke baad bachti hain. Isi liye ek column chhanne par doosre columns
+     ke bemaani options apne aap gayab ho jaate hain. */
+  function dmLiveRefreshSuggestions(all, term){
+    DM_LIVE_COLS.forEach(c => {
+      const dl = q('dmLF_' + c.id); if (!dl) return;
+      const vals = [...new Set(all
+        .filter(d => dmLiveSearchPass(d, term) && dmLiveColsPass(d, c.id))
+        .map(d => String(c.get(d) || '').trim())
+        .filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric:true, sensitivity:'base' }));
+      const html = vals.map(v => '<option value="' + esc(v) + '"></option>').join('');
+      /* Badla na ho to chhedte nahi: khula hua suggestion panel innerHTML
+         badalne par band / jhilmila jaata hai. Jis box me type ho raha hai
+         uski list to badalti hi nahi (uska apna filter chhoda gaya hai), par
+         ye pehra baaki har soorat ke liye bhi hai. */
+      if (dl.innerHTML !== html) dl.innerHTML = html;
+    });
+  }
+
+  function dmClearLiveFilters(){
+    Object.keys(dmLiveFilters).forEach(k => { dmLiveFilters[k] = ''; });
+    document.querySelectorAll('#dmLiveFilterRow .dm-fin').forEach(i => { i.value = ''; });
+    const s = q('dmLiveSearch'); if (s) s.value = '';
+    renderLive();
+  }
+
   function renderLive(){
+    dmBuildLiveFilterRow();
     const box = q('dmLiveSearch');
     const term = up(box ? box.value : '');
     const all = dmDesigns.filter(d => d.status === 'LIVE');
-    const rows = !term ? all : all.filter(d =>
-      [d.design_no, d.party_name, d.brand_name, d.design_type, d.design_unit, d.blanket_quality]
-        .concat((d.matchings || []).map(m => m.matching_name))
-        .some(v => up(v).indexOf(term) >= 0));
+    const rows = all.filter(d => dmLiveSearchPass(d, term) && dmLiveColsPass(d, null));
+    const activeCols = DM_LIVE_COLS.filter(c => String(dmLiveFilters[c.id] || '').trim()).length;
 
     const lc = q('dmLiveCount');    if (lc) lc.textContent = all.length;
     const dc = q('dmDiscardCount'); if (dc) dc.textContent = dmDesigns.filter(d => d.status === 'DISCARDED').length;
-    const sh = q('dmLiveShown');    if (sh) sh.textContent = term ? (rows.length + ' / ' + all.length + ' dikh rahe hain') : '';
+    const sh = q('dmLiveShown');
+    if (sh) sh.textContent = (term || activeCols)
+      ? (rows.length + ' / ' + all.length + ' dikh rahe hain' + (activeCols ? ' · ' + activeCols + ' column filter' : ''))
+      : '';
+    const cb = q('dmLiveClearBtn');
+    if (cb) cb.style.display = (term || activeCols) ? '' : 'none';
+
+    dmLiveRefreshSuggestions(all, term);
 
     const tb = q('dmLiveTableBody'); if (!tb) return;
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="14" class="dm-empty-row">' +
-        (all.length ? 'Is khoj se koi design nahi mila.' : 'Koi Live Design nahi hai — “Create New” se shuru karein.') +
+      tb.innerHTML = '<tr><td colspan="15" class="dm-empty-row">' +
+        (all.length ? 'Is khoj / filter se koi design nahi mila.' : 'Koi Live Design nahi hai — “Create New” se shuru karein.') +
         '</td></tr>';
       return;
     }
@@ -467,6 +603,7 @@
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
         '<td>' + esc(d.brand_name || '') + '</td>' +
+        '<td>' + (d.supplier_name ? esc(d.supplier_name) : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + esc(d.design_unit || '') + '</td>' +
         '<td>' + esc(d.bed_size || '') + '</td>' +
         '<td>' + esc(d.blanket_quality || '') + '</td>' +
@@ -483,7 +620,7 @@
     const tb = q('dmDiscardedTableBody'); if (!tb) return;
     const rows = dmDesigns.filter(d => d.status === 'DISCARDED');
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="11" class="dm-empty-row">Koi discarded design nahi hai.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="12" class="dm-empty-row">Koi discarded design nahi hai.</td></tr>';
       return;
     }
     tb.innerHTML = rows.map(d =>
@@ -495,6 +632,7 @@
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
         '<td>' + esc(d.brand_name || '') + '</td>' +
+        '<td>' + (d.supplier_name ? esc(d.supplier_name) : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + esc(d.design_unit || '') + '</td>' +
         '<td>' + esc(d.bed_size || '') + '</td>' +
         '<td>' + esc(d.discarded_at ? new Date(d.discarded_at).toLocaleDateString('en-GB') : '—') + '</td>' +
@@ -556,6 +694,7 @@
         design_type:     q('dmDesignType').value.trim() || 'N/A',
         monopoly:        up(q('dmMonopoly').value) === 'YES' ? 'YES' : 'NO',
         blanket_quality: q('dmBlanketQuality').value.trim(),
+        supplier_name:   q('dmSupplierName').value.trim() || null,
         frame_type:      q('dmFrameType').value.trim(),
         large_frame:     num(q('dmLargeFrame').value),
         medium_frame:    num(q('dmMediumFrame').value),
@@ -718,7 +857,8 @@
         '<td><input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;"></td>' +
         '<td><div class="dm-bulk-col">' +
           '<input type="text" class="dm-bulk-in b-party" list="dmPartyList" placeholder="Party">' +
-          '<input type="text" class="dm-bulk-in b-brand" list="dmBrandList" placeholder="Brand"></div></td>' +
+          '<input type="text" class="dm-bulk-in b-brand" list="dmBrandList" placeholder="Brand">' +
+          '<input type="text" class="dm-bulk-in b-supplier" list="dmSupplierList" placeholder="Supplier (optional)"></div></td>' +
         '<td><div class="dm-bulk-col">' +
           '<input type="text" class="dm-bulk-in b-unit" list="dmUnitList" value="UNIT 1" placeholder="Unit">' +
           '<input type="text" class="dm-bulk-in b-bed" list="dmBedSizeList" value="DOUBLE BED" placeholder="Bed Size">' +
@@ -800,6 +940,7 @@
       const ins = await SB.from('design_master').insert({
         design_no: no,
         party_name: g('.b-party'), brand_name: g('.b-brand'),
+        supplier_name: g('.b-supplier') || null,
         design_unit: g('.b-unit'), bed_size: g('.b-bed'),
         design_type: g('.b-type') || 'N/A',
         monopoly: up(g('.b-mono')) === 'YES' ? 'YES' : 'NO',
@@ -951,6 +1092,7 @@
     q('dmEditSmallFrame').value     = num(d.small_frame);
     q('dmEditPartyName').value      = d.party_name || '';
     q('dmEditBrandName').value      = d.brand_name || '';
+    q('dmEditSupplierName').value   = d.supplier_name || '';
     calcEditTotal();
     renderEditMatchings(d);
     q('dmEditModal').classList.add('open');
@@ -1079,7 +1221,8 @@
       medium_frame:    num(q('dmEditMediumFrame').value),
       small_frame:     num(q('dmEditSmallFrame').value),
       party_name:      q('dmEditPartyName').value.trim(),
-      brand_name:      q('dmEditBrandName').value.trim()
+      brand_name:      q('dmEditBrandName').value.trim(),
+      supplier_name:   q('dmEditSupplierName').value.trim() || null
     };
     setSync('Saving…', 'busy');
     try {
@@ -1107,55 +1250,124 @@
   /* ════════════════════════════════════════════════════════════════════
      CATALOGUE — filters, on-screen preview, asli PDF
   ════════════════════════════════════════════════════════════════════ */
-  /* Filter box dobara banta hai to jo tick pehle se lage the wo bache rahen;
-     nayi value hamesha ticked aati hai (default "sab chuna hua"). */
-  function fillFilterBox(boxId, name, values){
-    const box = q(boxId); if (!box) return;
-    const prev = new Map(Array.from(box.querySelectorAll('input')).map(i => [i.value, i.checked]));
-    box.innerHTML = values.length
-      ? values.map(v => '<label><input type="checkbox" name="' + name + '" value="' + esc(v) + '"' +
-          (prev.has(v) ? (prev.get(v) ? ' checked' : '') : ' checked') + '> ' + esc(v) + '</label>').join('')
-      : '<span class="dm-empty">No data</span>';
+  /* ══ DEPENDENT (CASCADING) FILTERS ═══════════════════════════════════
+     Saare filter ek doosre par tike hain. Ek value un-tick karte hi baaki
+     columns me se wo options apne aap gayab ho jaate hain jo bache hue
+     designs me kahin nahi rahe — screen par hamesha sirf wahi choices
+     dikhte hain jo sach me kuch na kuch dete hain.
+
+     Do cheezein alag rakhi gayi hain, aur isi se ye bina kisi loop ke ek hi
+     pass me settle ho jaata hai:
+
+       * TICK ka record  — dmCatState me, har value ke liye, hamesha.
+         Cross-filter se chhupi hui value ka tick bhi yahin bacha rehta hai,
+         isi liye doosra filter dheela karte hi wo apni purani haalat me
+         wapas aati hai.
+       * KYA DIKHE       — har render par naye sire se nikalta hai: us column
+         ki wo values jo BAAKI sab filters (+ Design No box) lagne ke baad
+         bachi hain.
+
+     Rok sirf tick se lagti hai, dikhne se nahi — to "A chhanne se B chhota
+     hua, isliye A aur chhota ho gaya" wala chakkar banta hi nahi.
+
+     Purana niyam waisa hi hai: ek bhi tick na bache to us column par koi rok
+     nahi. Khaali value (jaise jis design ka supplier nahi likha) ab apna
+     alag option banti hai, taaki wo design chup-chaap chhant na jaaye. */
+  const DM_CAT_BLANK = '— blank —';
+  const DM_CAT_FILTERS = [
+    { name:'dmUnitFilter',     box:'dmUnitFilterBox',     count:'dmUnitFilterCount',     get:d => d.design_unit },
+    { name:'dmQualityFilter',  box:'dmQualityFilterBox',  count:'dmQualityFilterCount',  get:d => d.blanket_quality },
+    { name:'dmPartyFilter',    box:'dmPartyFilterBox',    count:'dmPartyFilterCount',    get:d => d.party_name },
+    { name:'dmBrandFilter',    box:'dmBrandFilterBox',    count:'dmBrandFilterCount',    get:d => d.brand_name },
+    { name:'dmSupplierFilter', box:'dmSupplierFilterBox', count:'dmSupplierFilterCount', get:d => d.supplier_name },
+    { name:'dmTypeFilter',     box:'dmTypeFilterBox',     count:'dmTypeFilterCount',     get:d => d.design_type },
+    { name:'dmFramesFilter',   box:'dmFramesFilterBox',   count:'dmFramesFilterCount',   get:d => String(totalFrames(d)) },
+    { name:'dmMonopolyFilter', box:'dmMonopolyFilterBox', count:'dmMonopolyFilterCount', get:d => d.monopoly || 'NO' },
+  ];
+  const dmCatState = {};   // {filterName: {value: false}} — sirf un-tick yaad rehta hai
+
+  const dmCatVal = (f, d) => String(f.get(d) == null ? '' : f.get(d)).trim() || DM_CAT_BLANK;
+  // Nayi / pehli baar dikhi value hamesha ticked (default "sab chuna hua").
+  const dmCatChecked = (name, v) => !(dmCatState[name] && dmCatState[name][v] === false);
+  const dmCatSort = (a, b) => String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
+
+  function dmCatNos(){
+    const b = q('dmCatDesignNos');
+    return String(b ? b.value : '').split(/[,\s]+/).map(up).filter(Boolean);
+  }
+  /* Ek render ka poora hisaab: live designs, har filter ka domain aur uske
+     ticked values. Ek baar bana kar har design par dobara-dobara use hota
+     hai, warna har design par har filter ka domain phir se banta. */
+  function dmCatCtx(){
+    const live = dmDesigns.filter(d => d.status === 'LIVE');
+    const picked = {};
+    DM_CAT_FILTERS.forEach(f => {
+      const dom = [...new Set(live.map(d => dmCatVal(f, d)))].sort(dmCatSort);
+      const on = dom.filter(v => dmCatChecked(f.name, v));
+      picked[f.name] = { dom: dom, set: new Set(on), all: on.length === 0 };
+    });
+    return { live: live, picked: picked, nos: dmCatNos() };
+  }
+  // `skipName` wala column chhod kar baaki sab lagte hain — usi se us column
+  // ke apne options nikalte hain.
+  function dmCatPass(ctx, d, skipName){
+    if (ctx.nos.length && ctx.nos.indexOf(up(d.design_no)) < 0) return false;
+    return DM_CAT_FILTERS.every(f => {
+      if (f.name === skipName) return true;
+      const p = ctx.picked[f.name];
+      return p.all || p.set.has(dmCatVal(f, d));
+    });
   }
 
   function renderCatalogueFilters(){
-    const live = dmDesigns.filter(d => d.status === 'LIVE');
-    const uniq = key => [...new Set(live.map(d => d[key]).filter(Boolean))].sort();
-    fillFilterBox('dmUnitFilterBox', 'dmUnitFilter', uniq('design_unit'));
-    fillFilterBox('dmQualityFilterBox', 'dmQualityFilter', uniq('blanket_quality'));
-    fillFilterBox('dmPartyFilterBox', 'dmPartyFilter', uniq('party_name'));
-    fillFilterBox('dmBrandFilterBox', 'dmBrandFilter', uniq('brand_name'));
-    fillFilterBox('dmTypeFilterBox', 'dmTypeFilter', uniq('design_type'));
-    fillFilterBox('dmMonopolyFilterBox', 'dmMonopolyFilter', [...new Set(live.map(d => d.monopoly || 'NO'))].sort());
-    fillFilterBox('dmFramesFilterBox', 'dmFramesFilter',
-      [...new Set(live.map(d => String(totalFrames(d))))].sort((a, b) => parseInt(a, 10) - parseInt(b, 10)));
+    const ctx = dmCatCtx();
+    DM_CAT_FILTERS.forEach(f => {
+      const avail = [...new Set(ctx.live.filter(d => dmCatPass(ctx, d, f.name)).map(d => dmCatVal(f, d)))].sort(dmCatSort);
+      const box = q(f.box);
+      if (box) box.innerHTML = avail.length
+        ? avail.map(v => '<label><input type="checkbox" name="' + f.name + '" value="' + esc(v) + '"' +
+            (dmCatChecked(f.name, v) ? ' checked' : '') + '> ' + esc(v) + '</label>').join('')
+        : '<span class="dm-empty">Baaki filters ke baad yahan kuch nahi bacha</span>';
+      const c = q(f.count);
+      if (c) {
+        const on = avail.filter(v => dmCatChecked(f.name, v)).length;
+        c.textContent = avail.length ? (on + '/' + avail.length) : '0';
+        c.className = 'dm-fcount' + (avail.length && on < avail.length ? ' on' : '');
+      }
+    });
+    const mc = q('dmCatMatchCount');
+    if (mc) {
+      const n = ctx.live.filter(d => dmCatPass(ctx, d, null)).length;
+      mc.textContent = n + ' / ' + ctx.live.length + ' designs is filter me aate hain';
+    }
   }
 
+  function dmCatFilterChanged(cb){
+    const st = dmCatState[cb.name] || (dmCatState[cb.name] = {});
+    if (cb.checked) delete st[cb.value]; else st[cb.value] = false;
+    renderCatalogueFilters();
+  }
+  /* "All" us column ka poora record saaf kar deta hai — jo options
+     cross-filter se abhi chhupe hain wo bhi dobara tick ho jaate hain, warna
+     "All" dabane ke baad bhi ek chhupa hua un-tick chup-chaap rok lagata. */
   function toggleFilter(name, checkAll){
-    document.querySelectorAll('input[name="' + name + '"]').forEach(cb => { cb.checked = checkAll; });
+    const f = DM_CAT_FILTERS.find(x => x.name === name); if (!f) return;
+    const st = dmCatState[name] = {};
+    if (!checkAll) {
+      dmDesigns.filter(d => d.status === 'LIVE')
+        .forEach(d => { st[dmCatVal(f, d)] = false; });
+    }
+    renderCatalogueFilters();
   }
-  function pickedFilter(name){
-    return Array.from(document.querySelectorAll('input[name="' + name + '"]:checked')).map(cb => cb.value);
+  function resetCatalogueFilters(){
+    Object.keys(dmCatState).forEach(k => { delete dmCatState[k]; });
+    const nos = q('dmCatDesignNos'); if (nos) nos.value = '';
+    renderCatalogueFilters();
   }
 
-  /* Khaali filter = us column par koi rok nahi (V18 jaisa hi niyam). */
   function selectedDesigns(){
-    const u  = pickedFilter('dmUnitFilter'),     ql = pickedFilter('dmQualityFilter'),
-          p  = pickedFilter('dmPartyFilter'),    b  = pickedFilter('dmBrandFilter'),
-          t  = pickedFilter('dmTypeFilter'),     f  = pickedFilter('dmFramesFilter'),
-          mo = pickedFilter('dmMonopolyFilter');
-    const nosBox = q('dmCatDesignNos');
-    const nos = String(nosBox ? nosBox.value : '').split(/[,\s]+/).map(up).filter(Boolean);
-    return dmDesigns.filter(d =>
-      d.status === 'LIVE' &&
-      (!nos.length || nos.indexOf(up(d.design_no)) >= 0) &&
-      (!u.length  || u.indexOf(d.design_unit) >= 0) &&
-      (!ql.length || ql.indexOf(d.blanket_quality) >= 0) &&
-      (!p.length  || p.indexOf(d.party_name) >= 0) &&
-      (!b.length  || b.indexOf(d.brand_name) >= 0) &&
-      (!t.length  || t.indexOf(d.design_type) >= 0) &&
-      (!f.length  || f.indexOf(String(totalFrames(d))) >= 0) &&
-      (!mo.length || mo.indexOf(d.monopoly || 'NO') >= 0));
+    const ctx = dmCatCtx();
+    return ctx.live.filter(d => dmCatPass(ctx, d, null));
   }
 
   function catStatus(msg){ const el = q('dmCatStatus'); if (el) el.textContent = msg || ''; }
@@ -1190,7 +1402,8 @@
             '<tr><th>FRAMES (L/M/S)</th><td>L: ' + num(d.large_frame) + ' | M: ' + num(d.medium_frame) +
                 ' | S: ' + num(d.small_frame) + '</td>' +
                 '<th>TOTAL FRAMES</th><td><strong style="font-size:12pt;">' + totalFrames(d) + '</strong></td></tr>' +
-            '<tr><th>TOTAL MATCHINGS</th><td colspan="3">' + (d.matchings || []).length + ' shades</td></tr>' +
+            '<tr><th>SUPPLIER</th><td>' + esc(d.supplier_name || '—') + '</td>' +
+                '<th>TOTAL MATCHINGS</th><td>' + (d.matchings || []).length + ' shades</td></tr>' +
           '</table>' +
           '<div class="dm-cat-foot"><span>Design #' + esc(d.design_no) + '</span><span>Cover Page</span></div>' +
         '</div>';
@@ -1312,7 +1525,10 @@
           ['UNIT / BED', (d.design_unit || '') + ' (' + (d.bed_size || '') + ')', 'QUALITY', String((m && m.blanket_quality) || d.blanket_quality || '')],
           ['FRAME TYPE', String(d.frame_type || ''), 'TOTAL FRAMES', String(totalFrames(d))],
           ['FRAMES L / M / S', num(d.large_frame) + ' / ' + num(d.medium_frame) + ' / ' + num(d.small_frame),
-           'TOTAL MATCHINGS', String((d.matchings || []).length)]
+           'TOTAL MATCHINGS', String((d.matchings || []).length)],
+          // '-' aur '·' jaise sade characters hi: jsPDF ke standard helvetica
+          // ka WinAnsi set iske aage ka kuch bharosa laayak nahi dikhata.
+          ['SUPPLIER', String(d.supplier_name || '-'), '', '']
         ]
       });
       pdfFooter(doc, 'Design #' + (d.design_no || ''), 'Cover Page  ·  ' + stamp);
@@ -1444,6 +1660,21 @@
       clearTimeout(searchTimer);
       searchTimer = setTimeout(renderLive, 140);
     });
+    dmBuildLiveFilterRow();
+
+    /* Catalogue ke dependent filters: ek bhi tick badla to saare boxes dobara
+       bante hain, isi liye bemaani options turant gayab ho jaate hain.
+       Checkbox rows render hoti rehti hain, isi liye listener grid par hai. */
+    const catGrid = q('dmCatFilterGrid');
+    if (catGrid) catGrid.addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox]');
+      if (cb && cb.name) dmCatFilterChanged(cb);
+    });
+    let catTimer = null;
+    q('dmCatDesignNos').addEventListener('input', () => {
+      clearTimeout(catTimer);
+      catTimer = setTimeout(renderCatalogueFilters, 180);
+    });
 
     q('dmEditModal').addEventListener('click', e => { if (e.target.id === 'dmEditModal') closeEditModal(); });
     document.addEventListener('keydown', e => {
@@ -1474,6 +1705,22 @@
   // activatePanel('productionPanel') data yahan se mangwata hai.
   window.dmEnsureLoaded = () => loadDesigns();
 
+  /* ── Dropdown Master ke saath do taraf ka rishta ──────────────────────
+     Master Data › 🔽 Dropdown Master (store-core.js) is screen ki fixed
+     lists ka ghar hai. Save karte hi wo yahan dmRefreshDropdowns() bulata
+     hai, taaki nayi value turant har picker aur <datalist> me dikhe —
+     reload nahi karna padta.
+
+     Aur shade list ka default yahin rehta hai (DM_SHADES, V18 ki 65 shades):
+     store-core use `erp_designShade` ke default ke roop me padhta hai, isi
+     liye wahi 65 naam do jagah likhne ki zaroorat nahi. */
+  window.dmShadeDefaults   = DM_SHADES.slice();
+  window.dmRefreshDropdowns = function(){
+    renderDatalists();
+    // Catalogue ke filter boxes bhi inhi values par khade hote hain.
+    if (q('dmCataloguePane') && q('dmCataloguePane').classList.contains('active')) renderCatalogueFilters();
+  };
+
   /* HTML ke inline onclick / onchange ke liye zaroori handles. */
   window.dmReload                   = force => loadDesigns(force !== false);
   window.dmExportBackup             = exportBackup;
@@ -1487,6 +1734,8 @@
   window.dmSaveBulkRow              = saveOneBulkRow;
   window.dmSaveAllBulk              = saveAllBulk;
   window.dmToggleFilter             = toggleFilter;
+  window.dmResetCatalogueFilters    = resetCatalogueFilters;
+  window.dmClearLiveFilters         = dmClearLiveFilters;
   window.dmGenerateCataloguePreview = generatePreview;
   window.dmDownloadCataloguePdf     = downloadPdf;
   window.dmOpenCataloguePdf         = openPdf;

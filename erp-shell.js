@@ -143,19 +143,23 @@
       { label: 'Transport' }, { label: 'HR Policies' },
       { label: 'HR Reports' }, { label: 'HR Config' } ] },
 
-    /* Master Data ke chaar sub-tab ab chaar alag leaves hain — pehle ek hi
-       leaf tha jo panel ko uske default (Item Master) par kholta tha, aur
-       baaki teen tak pahunchne ke liye andar ka tab bar dhoondhna padta tha.
+    /* Master Data ke sub-tab alag-alag leaves hain — pehle ek hi leaf tha jo
+       panel ko uske default (Item Master) par kholta tha, aur baaki tak
+       pahunchne ke liye andar ka tab bar dhoondhna padta tha.
        Settings jaan-boojh kar yahan NAHI hai: wo sirf Administration ›
-       Admin Panel se khulta hai (neeche dekhein). */
+       Admin Panel se khulta hai (neeche dekhein). Dropdown Master yahan hai
+       kyunki wo master DATA hai, admin panel nahi — uska MD_DROPDOWN row
+       default se sirf Admin ko dikhta hai, isi liye baaki roles ke sidebar me
+       ye leaf aata hi nahi. */
     { key: 'MASTERS', icon: '🗂️', label: 'Masters', children: [
       { label: 'Item Master',     go: 'MASTER', sub: 'itemMasterSub',     tab: 'MD_ITEM' },
       { label: 'Supplier Master', go: 'MASTER', sub: 'supplierMasterSub', tab: 'MD_SUPPLIER' },
       { label: 'Employee Master', go: 'MASTER', sub: 'employeeMasterSub', tab: 'MD_EMPLOYEE' },
       { label: 'Machine List',    go: 'MASTER', sub: 'machineMasterSub',  tab: 'MD_MACHINE' },
+      { label: 'Dropdown Master', go: 'MASTER', sub: 'dropdownMasterSub', tab: 'MD_DROPDOWN' },
       { label: 'Geography' }, { label: 'Finance Masters' },
       { label: 'General Masters' }, { label: 'HR Masters' },
-      { label: 'UOM & Categories' }, { label: 'Warehouse / Location' } ] },
+      { label: 'Warehouse / Location' } ] },
 
     { key: 'PRODUCTS', icon: '📦', label: 'Products', children: [
       { label: 'Product / Item Master' }, { label: 'Categories' },

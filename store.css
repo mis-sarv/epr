@@ -3722,6 +3722,32 @@ body { min-width: 0; }
   .dm-filter-box input[type=checkbox] { width:14px; height:14px; cursor:pointer; flex:0 0 auto; }
   .dm-filter-box .dm-empty { font-size:10.5px; color:#94a3b8; }
 
+
+  /* ── Live tab: per-column filter row ─────────────────────────────────
+     Header ke theek neeche ki doosri row — thoda halka background, taaki
+     column naam aur uska filter box alag-alag dikhein. */
+  .dm-table thead .dm-frow th {
+    background:#1e293b; padding:5px 6px; text-transform:none; letter-spacing:0;
+  }
+  .dm-root .dm-fin {
+    width:100%; min-width:84px; padding:3px 6px !important; font-size:10.5px !important;
+    border:1px solid #475569; border-radius:4px; background:#fff; color:#0f172a;
+    font-family:inherit; font-weight:600;
+  }
+  .dm-root .dm-fin::placeholder { color:#94a3b8; font-weight:500; }
+  .dm-root .dm-fin:focus { border-color:#60a5fa; box-shadow:0 0 0 2px rgba(96,165,250,.35); }
+
+  /* ── Catalogue: dependent filters ka counter aur footer ── */
+  .dm-fcount {
+    font-size:9.5px; font-weight:800; color:#64748b; background:#f1f5f9;
+    border:1px solid #e2e8f0; border-radius:20px; padding:0 6px; margin-left:3px;
+  }
+  .dm-fcount.on { background:#dbeafe; border-color:#93c5fd; color:#1d4ed8; }
+  .dm-filter-foot {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    margin-top:12px; padding-top:10px; border-top:1px dashed #cbd5e1;
+  }
+  .dm-filter-live { flex:1; min-width:0; font-size:11.5px; font-weight:700; color:#334155; }
   /* ── tables ── */
   .dm-toolbar { display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
   .dm-search { max-width:420px; }
@@ -3798,3 +3824,106 @@ body { min-width: 0; }
   #dmLightbox.open { display:flex; }
   #dmLightbox img { max-width:94vw; max-height:88vh; object-fit:contain; border-radius:8px; background:#fff; }
   #dmLightbox .cap { position:absolute; bottom:18px; left:0; right:0; text-align:center; color:#e2e8f0; font-size:12px; font-weight:700; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MASTER DATA › 🔽 DROPDOWN MASTER
+   ---------------------------------------------------------------------------
+   Do column: left me app ke saare fixed dropdowns ki nav, right me chune
+   hue dropdown ki values ka table. Markup store-core.js banata hai
+   (sarvDdNavHtml_ / sarvDdMainHtml_), isi liye saare class naam `dd-` se
+   shuru hote hain aur kisi aur screen se nahi takrate.
+   ═══════════════════════════════════════════════════════════════════════ */
+#dropdownMasterSub .dd-bar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+#dropdownMasterSub .dd-bar .form-control { flex:1; height:30px; font-size:11px; }
+
+#dropdownMasterSub .dd-wrap { display:flex; gap:12px; align-items:flex-start; }
+#dropdownMasterSub .dd-side {
+  width:268px; flex:0 0 268px; max-height:560px; overflow-y:auto;
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:6px;
+}
+#dropdownMasterSub .dd-main {
+  flex:1; min-width:0; background:#fff; border:1px solid #e2e8f0;
+  border-radius:8px; padding:12px;
+}
+@media (max-width:900px){
+  #dropdownMasterSub .dd-wrap { flex-direction:column; }
+  #dropdownMasterSub .dd-side { width:100%; flex:1 1 auto; max-height:240px; }
+}
+
+/* ── left nav ── */
+#dropdownMasterSub .dd-nav-group {
+  font-size:9.5px; font-weight:800; color:#64748b; text-transform:uppercase;
+  letter-spacing:.4px; padding:9px 7px 4px;
+}
+#dropdownMasterSub .dd-nav-item {
+  display:flex; align-items:center; gap:7px; width:100%; text-align:left;
+  background:#fff; border:1px solid #e2e8f0; border-radius:6px;
+  padding:6px 8px; margin-bottom:4px; cursor:pointer;
+  font-family:inherit; font-size:11.5px; font-weight:600; color:#334155;
+}
+#dropdownMasterSub .dd-nav-item:hover { background:#eff6ff; border-color:#bae6fd; }
+#dropdownMasterSub .dd-nav-item.active {
+  background:#0369a1; border-color:#0369a1; color:#fff; font-weight:800;
+}
+#dropdownMasterSub .dd-nav-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#dropdownMasterSub .dd-nav-n {
+  flex:0 0 auto; min-width:26px; text-align:center; border-radius:20px;
+  background:#f1f5f9; border:1px solid #e2e8f0; color:#64748b;
+  font-size:9.5px; font-weight:800; padding:1px 6px;
+}
+#dropdownMasterSub .dd-nav-n.saved { background:#dcfce7; border-color:#86efac; color:#166534; }
+#dropdownMasterSub .dd-nav-n small { font-size:8px; opacity:.75; }
+#dropdownMasterSub .dd-nav-item.active .dd-nav-n { background:rgba(255,255,255,.22); border-color:rgba(255,255,255,.4); color:#fff; }
+#dropdownMasterSub .dd-nav-empty { font-size:11px; color:#94a3b8; padding:14px 8px; text-align:center; }
+
+/* ── right head ── */
+#dropdownMasterSub .dd-head { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; }
+#dropdownMasterSub .dd-head > div:first-child { flex:1; min-width:0; }
+#dropdownMasterSub .dd-head-title { font-size:14px; font-weight:800; color:#0f172a; }
+#dropdownMasterSub .dd-head-key { font-size:10px; color:#94a3b8; margin-top:2px; }
+#dropdownMasterSub .dd-head-key code,
+#dropdownMasterSub .dd-where code { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:10px; color:#0369a1; }
+#dropdownMasterSub .dd-tag {
+  display:inline-block; font-size:9.5px; font-weight:800; padding:2px 8px;
+  border-radius:20px; white-space:nowrap;
+}
+#dropdownMasterSub .dd-tag-db    { background:#dcfce7; border:1px solid #86efac; color:#166534; }
+#dropdownMasterSub .dd-tag-def   { background:#f1f5f9; border:1px solid #e2e8f0; color:#64748b; }
+#dropdownMasterSub .dd-tag-sales { background:#fef9c3; border:1px solid #fde047; color:#854d0e; }
+#dropdownMasterSub .dd-hint  { font-size:11px; color:#475569; margin-top:8px; line-height:1.5; }
+#dropdownMasterSub .dd-where { font-size:10px; color:#94a3b8; margin-top:4px; }
+#dropdownMasterSub .dd-warn {
+  margin-top:9px; background:#fffbeb; border:1px solid #fde68a; border-radius:6px;
+  padding:8px 10px; font-size:10.5px; color:#92400e; line-height:1.55;
+}
+#dropdownMasterSub .dd-blank { font-size:12px; color:#94a3b8; padding:28px; text-align:center; }
+
+/* ── add row ── */
+#dropdownMasterSub .dd-add { display:flex; gap:7px; align-items:center; margin-top:11px; flex-wrap:wrap; }
+#dropdownMasterSub .dd-add .form-control { flex:1; min-width:180px; height:30px; font-size:11.5px; }
+#dropdownMasterSub .dd-add .btn { height:30px; font-size:11px; padding:0 12px; white-space:nowrap; }
+#dropdownMasterSub .dd-add .dd-seed { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+
+/* ── values table ── */
+#dropdownMasterSub .dd-table-wrap { max-height:420px; overflow-y:auto; margin-top:10px; }
+#dropdownMasterSub .dd-table { width:100%; border-collapse:collapse; font-size:11.5px; }
+#dropdownMasterSub .dd-table th {
+  background:#0f172a; color:#fff; padding:6px 8px; text-align:left;
+  font-size:9.5px; text-transform:uppercase; letter-spacing:.3px;
+  position:sticky; top:0; z-index:1;
+}
+#dropdownMasterSub .dd-table td { padding:4px 8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+#dropdownMasterSub .dd-table tbody tr:nth-child(even) { background:#f8fafc; }
+#dropdownMasterSub .dd-table .dd-dim { color:#94a3b8; font-size:10.5px; }
+#dropdownMasterSub .dd-row-def td { opacity:.72; }
+#dropdownMasterSub .dd-act { text-align:center; white-space:nowrap; }
+#dropdownMasterSub .dd-edit-in { height:26px; font-size:11.5px; font-weight:700; }
+#dropdownMasterSub .dd-mini {
+  background:#f1f5f9; border:1px solid #e2e8f0; color:#475569; border-radius:4px;
+  padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit;
+}
+#dropdownMasterSub .dd-mini:hover:not(:disabled) { background:#e2e8f0; }
+#dropdownMasterSub .dd-mini:disabled { opacity:.35; cursor:not-allowed; }
+#dropdownMasterSub .dd-mini-ed  { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
+#dropdownMasterSub .dd-mini-del { background:#fef2f2; border-color:#fca5a5; color:#dc2626; }
+#dropdownMasterSub .dd-mini-ok  { background:#dcfce7; border-color:#86efac; color:#166534; }

@@ -2602,7 +2602,12 @@ function populateNatureOfDispatch(){
   const sel=byId('outNatureOfDispatch');if(!sel)return;
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
   const cur=sel.value;
-  const opts=isIssue?[ISSUE_FIXED_NATURE]:['Non-Returnable','Repair','Transfer','Sample'];
+  /* OUTWARD ki nature list Master Data › Dropdown Master se aati hai
+     (key erp_natureOfDispatch) — table me kuch na ho to wahi purana default.
+     ISSUE ki nature fixed hai, isi liye wo is list se bahar hai. */
+  let opts=['Non-Returnable','Repair','Transfer','Sample'];
+  if(isIssue)opts=[ISSUE_FIXED_NATURE];
+  else{try{const l=sarvDropdownList('erp_natureOfDispatch');if(l&&l.length)opts=l;}catch(e){}}
   /* OUTWARD opens with nothing selected. The first option used to be picked by
      default, so "Non-Returnable" went out on every entry nobody touched this
      dropdown on — a Repair dispatch then never reached the Repair Tracker.
@@ -2791,6 +2796,7 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
   if(id==='employeeMasterSub')loadEmployeeMaster().catch(()=>{});
   if(id==='machineMasterSub') loadMachineMaster().catch(()=>{});
+  if(id==='dropdownMasterSub')loadDropdownMaster().catch(()=>{});
   if(id==='settingsSub'){
     const canPwd=sarvCan('CHANGE_PASSWORDS');
     if(byId('pwdChangeCard'))byId('pwdChangeCard').style.display=canPwd?'':'none';
@@ -3265,9 +3271,15 @@ const SARV_NATURE_GATE={
   IN_NB: {kind:'inward', icon:'📦', title:'Inward (NB) — Non-Billable', q:'Nature of Inward?'},
   OUT:   {kind:'outward',icon:'📤', title:'Material Outward', q:'Nature of Dispatch?'},
 };
-/* value = exactly what the form's own dropdown stores (so "Return" is saved as
-   Repaired, the value inwNatureOfInward has always used). */
-const SARV_NATURE_OPTS={
+/* v = exactly what the form's own dropdown stores (so "Return" is saved as
+   Repaired, the value inwNatureOfInward has always used); l = screen label.
+   Home page ka Nature chooser. Values ka ghar Master Data › 🔽 Dropdown Master
+   hai (keys erp_natureOfInward / erp_natureOfDispatch) — wahi list jo Inward /
+   Outward form ke select me jaati hai, isi liye dono kabhi alag nahi hote.
+   Yahan sirf un values ka SHRINGAAR rehta hai: screen-label, rang aur ek line
+   ka matlab. Admin koi nayi value jode to wo bhi chooser me aa jaati hai,
+   neutral rang ke saath. */
+const SARV_NATURE_META={
   inward:[
     {v:'Purchase', l:'Purchase', c:'#0369a1', note:'Supplier se khareeda hua maal'},
     {v:'Repaired', l:'Return',   c:'#b45309', note:'Repair hokar wapas aaya maal'},
@@ -3280,8 +3292,19 @@ const SARV_NATURE_OPTS={
     {v:'Sample',         l:'Sample',         c:'#0369a1', note:'Sample dispatch'},
   ],
 };
+const SARV_NATURE_DD_KEY={inward:'erp_natureOfInward',outward:'erp_natureOfDispatch'};
+function sarvNatureOpts_(kind){
+  const meta=SARV_NATURE_META[kind]||[];
+  let vals=null;
+  try{
+    const l=sarvDropdownList(SARV_NATURE_DD_KEY[kind]);
+    if(l&&l.length)vals=l;
+  }catch(e){}
+  if(!vals)return meta;
+  return vals.map(v=>meta.find(m=>m.v===v)||{v:v,l:v,c:'#475569',note:''});
+}
 function sarvNatureLabel_(kind,value){
-  const o=(SARV_NATURE_OPTS[kind]||[]).find(x=>x.v===value);
+  const o=sarvNatureOpts_(kind).find(x=>x.v===value);
   return o?o.l:(value||'');
 }
 /* Asks, then calls go(). Cancel / Escape / a backdrop click answer nothing and
@@ -3289,7 +3312,7 @@ function sarvNatureLabel_(kind,value){
 function sarvNatureGate_(key,go){
   const cfg=SARV_NATURE_GATE[key];
   if(!cfg)return go();
-  const opts=SARV_NATURE_OPTS[cfg.kind]||[];
+  const opts=sarvNatureOpts_(cfg.kind);
   const ov=document.createElement('div');
   ov.id='sarvNatureGate';
   ov.innerHTML='<div class="card"><div class="hd"><span>'+cfg.icon+'</span><span>'+escText(cfg.title)+'</span></div>'
@@ -3441,6 +3464,10 @@ const SARV_FEATURES=[
   {key:'ADD_EMPLOYEE',label:'ADD EMPLOYEE',hint:'Employee Master + PR form ka ➕ Add New Employee',def:'W'},
   {key:'ADD_MACHINE',label:'ADD MACHINE',hint:'Machine List me nayi machine',def:'W'},
   {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Settings › Change Passwords (Admin PIN phir bhi lagta hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Dropdown Master screen sabko read-only khulti hai; add / edit / remove ke
+     liye ye feature AUR Admin login — dono chahiye (sarvDdGuard_). Isi liye
+     ise kisi aur role ko de dene se bhi wo badlaav nahi kar paayega. */
+  {key:'DROPDOWN_MANAGE',label:'DROPDOWN MASTER EDIT',hint:'Dropdown Master me value add / edit / remove (Admin login bhi zaroori)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'📄 Records & Reports'},
   {key:'EXPORT_CSV',label:'EXPORT CSV',hint:'PR / Follow-Up / Item Ledger / PO Details ka Export',def:'ALL'},
   {key:'PDF_VIEW',label:'PDF VIEW',hint:'Reports, PO list, Follow-Up ke PDF links',def:'ALL'},
@@ -3529,6 +3556,7 @@ const SARV_TABS=[
   {key:'MD_SUPPLIER',label:'Supplier Master',def:'ALL'},
   {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
   {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
+  {key:'MD_DROPDOWN',label:'Dropdown Master',hint:'App ke saare fixed dropdowns ki values (sales_dropdowns)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
   {key:'MD_ITEM_NEWPR',label:'Item Master › New PR Generation',hint:'NEW PR column + 📝 Generate New PR button',def:['ADMIN_PIN']},
   /* mobile.html reads these from the same tab_visibility row. A mobile tab is
@@ -3564,7 +3592,7 @@ const SARV_TABS=[
   {key:'M_RECV_received',label:'PO Receipts › Received',def:'ALL'},
   {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Approve / Reject sirf MD kar sakta hai',def:['USER_MD_PIN','ADMIN_PIN']},
 ];
-const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',settingsSub:'MD_SETTINGS'};
+const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
 const SARV_PROD_SUB_KEY={designMasterProdSub:'PROD_SUB_DESIGN'};
 const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
@@ -4154,6 +4182,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   sarvApplyAccess();
   sarvLoadSettings_();
   sarvLoadAppUsers_();
+  /* Fixed dropdowns ki values poore app ke forms par lagti hain (Inward ka
+     Party State, PR ka Department, Item Master ki Category/UOM/GST …), isi
+     liye ye Master Data kholne ka intezaar nahi kar sakti — startup par hi
+     load hoti hain. Table na mile to code ke default chalte rehte hain. */
+  sarvLoadDropdowns_();
 });
 
 /* ================================================================
@@ -6215,6 +6248,444 @@ window.syncPriorityButtons=function(){
 window.setRequirementPriority=function(v){
   const h=byId('p_priority');if(h)h.value=v;
   syncPriorityButtons();
+};
+
+
+/* ================================================================
+   MASTER DATA — Dropdown Master  (table: sales_dropdowns)
+   ----------------------------------------------------------------
+   App ke saare FIXED dropdowns ki values ek hi jagah se aati hain:
+   Supabase table `sales_dropdowns` (key, value). Wahi table Sales ›
+   Order Form (order-form.html) bhi padhti hai, isi liye use COMMON
+   maan kar ERP ke apne keys `erp_` se shuru hote hain — Order Form ke
+   purane generic keys (category, size, design, moq …) jaise the waise
+   hi rehte hain aur dono ek doosre ko kabhi overwrite nahi karte.
+
+   Do saaf niyam, isi liye migration chalane se app ka behaviour
+   bilkul nahi badalta:
+
+     * Us key ki ek bhi row table me hai  -> list WAHI hai (code ka
+       default poora ignore ho jaata hai).
+     * Us key ki ek bhi row nahi          -> code ka default chalta hai.
+
+   Add / Edit / Remove sirf is screen se hota hai (koi SQL nahi) aur
+   sirf Admin ko milta hai — DROPDOWN_MANAGE feature se.
+
+   Table banane / RLS ke liye: DROPDOWN_MASTER_MIGRATION.sql.
+================================================================ */
+const SARV_DD_TABLE='sales_dropdowns';
+
+/* Har fixed dropdown ki ek entry. `def` = aaj ka hardcoded default (wahi jo
+   migration se pehle screen par tha). `selects` wo <select> jinhe ye list
+   dobara bharti hai, `datalists` wo <datalist>. `labels` sirf dikhane ke liye
+   hai — jahan option ka VALUE aur TEXT alag hain (database me value jaati hai,
+   label screen par dikhta hai), wahan purana jodd tootne se bach jaata hai.
+   `dm` wali keys Design Master ke apne pickers ko feed karti hain
+   (store-design-master.js > dmValues), isi liye unka koi DOM target nahi. */
+const SARV_DROPDOWNS=[
+  {group:'📦 Item Master'},
+  {key:'erp_itemCategory',label:'Item Category',
+   hint:'Item Master › Category aur ➕ New Item popup (dono ek hi list padhte hain)',
+   where:'#mi_category → #ni_cat',
+   selects:[{id:'mi_category',placeholder:'-- Select Category --'}],
+   def:['BLANKET','BOILER CHEMICAL','BOILER FUEL','CARPET','CONSUMABLE','ELECTRICAL','ELECTRICAL ITEM',
+        'ETP CHEMICAL','EXPENSE','EXPOSING ITEM','FABRIC','FIRE FIGHTING MATERIAL','FOLDER MACHIINE PART',
+        'FUEL','INSERTER','MECHANICAL','MECHANICAL CONSUMABLE','MECHANICAL ITEM','NA','OIL',
+        'OVERLOCK MACHINE PART','PACKAGING','PACKING MATERIAL','PAINTING MATERIAL','PIPELINE MATERIAL',
+        'PRINTING CHEMICAL','PRINTING COLOR','PRINTING DESIGN','RASCHEL CONSUMABLE','RASCHEL PART',
+        'RO CHEMICAL','SAMPLE','SANITORY ITEM','STATIONARY','STITCHING  PART','STITCHING YARN',
+        'STRUCTURE ITEM','TAG','TOOLS','TRIMS','WASHING CHEMICAL','WASTE FABRIC','WEAVING YARN','YARN','OTHER']},
+  {key:'erp_itemUom',label:'UOM (Unit of Measure)',
+   hint:'Item Master › UOM, ➕ New Item popup aur PR ki item rows',
+   where:'#mi_uom → #ni_uom',
+   selects:[{id:'mi_uom',pick:'PCS'}],
+   def:['PCS','BOX','KGS','ROLL','LTR','SQFT','SET','KG','FEET','PKT','HOUR','ROUND','MTR','BANDAL','BORA','FT']},
+  {key:'erp_itemGst',label:'GST %',
+   hint:'Item par GST rate — Inward rows aur PO lines isi se auto-fill hoti hain',
+   where:'#mi_gst → #ni_gst',
+   selects:[{id:'mi_gst',pick:'18'}],
+   def:['18','0','5','12','28']},
+
+  {group:'🏭 Supplier / Party'},
+  {key:'erp_partyState',label:'Party / Supplier State',
+   hint:'Inward ka Party State aur Supplier Master ka State — GST local/outside isi se tay hota hai',
+   where:'#partyState · #ms_state',
+   selects:[{id:'partyState'},{id:'ms_state'}],
+   def:['HARYANA (LOCAL)','OUT OF STATE']},
+
+  {group:'🏬 Store — Inward / Outward'},
+  {key:'erp_natureOfInward',label:'Nature of Inward',
+   hint:'Inward form ka "Nature of Inward"',
+   where:'#inwNatureOfInward',
+   selects:[{id:'inwNatureOfInward'}],
+   /* "Repaired" ka screen-label "Return" hai — value database me jaati hai,
+      label sirf dikhta hai. Isi liye dono alag rakhe gaye hain. */
+   labels:{'Repaired':'Return'},
+   def:['Purchase','Repaired','Transfer']},
+  {key:'erp_natureOfDispatch',label:'Nature of Dispatch (Outward)',
+   hint:'Outward ka "Nature of Dispatch". Dhyan: "Repair" hata dene par dispatch Repair Tracker me nahi jaayega. ISSUE ki apni locked nature isse nahi badalti.',
+   where:'#outNatureOfDispatch (OUTWARD)',
+   def:['Non-Returnable','Repair','Transfer','Sample']},
+
+  {group:'👤 Employee / Purchase Requirement'},
+  {key:'erp_department',label:'Department',
+   hint:'Employee Master, New PR ka Department aur Add Employee popup — teeno ek hi list',
+   where:'#me_department · #p_reqDepartment · #p_aeDepartment',
+   selects:[{id:'me_department',placeholder:'-- Select --'},
+            {id:'p_reqDepartment',placeholder:'-- Select --'},
+            {id:'p_aeDepartment',placeholder:'-- Select --'}],
+   def:['Weaving','Dyeing','Finishing','Raising','Cutting / Stitching','Packing','Quality Control',
+        'Maintenance','Store','Dispatch','Admin / HR','Accounts','Other']},
+
+  {group:'🏭 Production › Design Master'},
+  {key:'erp_designUnit',label:'Design Unit',hint:'Design Master ke Unit pickers',dm:'unit',
+   def:['UNIT 1','UNIT 2']},
+  {key:'erp_designBedSize',label:'Bed Size',hint:'Design Master ke Bed Size pickers',dm:'bed',
+   def:['DOUBLE BED','SINGLE BED']},
+  {key:'erp_designQuality',label:'Blanket Quality',hint:'Design Master + Add Matching ki Quality',dm:'quality',
+   def:['MINK','SUPER CLOUDY']},
+  {key:'erp_designType',label:'Design Type',hint:'Design Master ka Design Type',dm:'type',
+   def:['FLORAL','GEOMETRICAL','ABSTRACT','LEAVES']},
+  {key:'erp_designFrameType',label:'Frame Type',hint:'Design Master ka Frame Type',dm:'frame',
+   def:['MS ROUND FRAME','MS SQUARE FRAME']},
+  {key:'erp_designMonopoly',label:'Monopoly',hint:'Design Master ka Monopoly (YES / NO)',dm:'mono',
+   def:['NO','YES']},
+  {key:'erp_designSupplier',label:'Supplier Name (Design)',
+   hint:'Design Master ka SUPPLIER NAME — Create New, Bulk Upload, Live filter aur Catalogue filter',dm:'supplier',def:[]},
+  {key:'erp_designShade',label:'Shade / Matching Name',
+   hint:'Design Master ki shade list (V18 ki 65 shades). Table khaali chhodne par code ki poori list chalti hai.',
+   dm:'shade',defFn:()=>(window.dmShadeDefaults||[]).slice()},
+
+  {group:'🛒 Sales › Order Form (order-form.html)'},
+  {key:'dbsb',label:'DB / SB',hint:'Order Form › product ka DB/SB',def:['DB','DP','SB','SS','SC'],sales:1},
+  {key:'fabricCode',label:'Fabric Code',hint:'Order Form › Fabric',def:['2900','3100','3500','4000'],sales:1},
+  {key:'category',label:'Category',hint:'Order Form › product Category',sales:1,
+   def:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY']},
+  {key:'size',label:'Size',hint:'Order Form › product Size',sales:1,
+   def:['210×230 CM','150×200 CM','200×220 CM','220×240 CM','60×90 CM (Baby)']},
+  {key:'sattan',label:'Sattan',hint:'Order Form › Sattan',sales:1,
+   def:['5" PREMIUM','4" STANDARD','3" BASIC']},
+  {key:'moq',label:'MOQ',hint:'Order Form › MOQ',sales:1,
+   def:['500 PCS/Colour','1000 PCS/Colour','2000 PCS/Colour']},
+  {key:'deliveryTerms',label:'Delivery Terms',hint:'Order Form › Delivery Terms',sales:1,
+   def:['1st Week of July 2026','2nd Week of July 2026','August 2026','September 2026']},
+  {key:'paymentTerms',label:'Payment Terms',hint:'Order Form › Payment Terms',sales:1,
+   def:['30% Advance | Balance Before Dispatch','50% Advance | Balance Before Dispatch','100% Advance','Credit (Pre-approved)']},
+  {key:'design',label:'Design Note',hint:'Order Form › Design line',sales:1,
+   def:['5 New Designs Single Matching Each Design','3 New Designs','Custom Design']},
+];
+
+let sarvDdRows=[];            // [{id,key,value}] — table ke apne kram me
+let sarvDdLoaded=false;
+let sarvDdPick=null;          // screen par khula hua key
+let sarvDdEditId=null;        // jis row ka edit dabaya gaya
+
+const sarvDdDef=key=>SARV_DROPDOWNS.find(d=>d.key===key)||null;
+function sarvDdDefaults(key){
+  const d=sarvDdDef(key);if(!d)return [];
+  if(d.defFn){try{return d.defFn()||[];}catch(e){return [];}}
+  return (d.def||[]).slice();
+}
+/* Us key ki saved rows — table ka kram, kyunki Order Form bhi `order('id')`
+   se padhti hai aur dono jagah option ek hi tarteeb me dikhne chahiye. */
+const sarvDdRowsOf=key=>sarvDdRows.filter(r=>r.key===key);
+
+/* Poore app ke liye EK hi raasta: "is dropdown me kya-kya hai?".
+   Saved rows hain to wahi, warna code ka default. */
+function sarvDropdownList(key){
+  const rows=sarvDdRowsOf(key);
+  return rows.length?rows.map(r=>r.value):sarvDdDefaults(key);
+}
+window.sarvDropdownList=sarvDropdownList;
+
+/* ── saved values ko asli dropdowns par chadhana ──────────────────── */
+function sarvDdApplyOne_(def){
+  if(!def||def.group)return;
+  const vals=sarvDropdownList(def.key);
+  const label=v=>(def.labels&&def.labels[v])||v;
+  (def.selects||[]).forEach(t=>{
+    const sel=byId(t.id);if(!sel)return;
+    const cur=sel.value;
+    sel.innerHTML=(t.placeholder?'<option value="">'+escText(t.placeholder)+'</option>':'')
+      +vals.map(v=>'<option value="'+escText(v)+'">'+escText(label(v))+'</option>').join('');
+    /* Jo pehle chuna hua tha wahi chuna rehna chahiye. Wo value list se hat
+       gayi ho to definition ka pick, warna placeholder (aur placeholder na ho
+       to pehla option — browser khud wahi karta hai). */
+    if(cur&&vals.indexOf(cur)>=0)sel.value=cur;
+    else if(t.pick&&vals.indexOf(t.pick)>=0)sel.value=t.pick;
+    else if(t.placeholder)sel.value='';
+  });
+  (def.datalists||[]).forEach(id=>{
+    const dl=byId(id);if(!dl)return;
+    dl.innerHTML=vals.map(v=>'<option value="'+escText(v)+'"></option>').join('');
+  });
+}
+function sarvDdApplyAll_(){
+  SARV_DROPDOWNS.forEach(d=>{if(!d.group)sarvDdApplyOne_(d);});
+  // Outward ki nature JS se banti hai (ISSUE par locked rehti hai) — usse
+  // dobara bulwana padta hai, warna naya option add karne par nahi dikhega.
+  if(typeof populateNatureOfDispatch==='function'){try{populateNatureOfDispatch();}catch(e){}}
+  // Design Master ke pickers / datalists apni list yahin se banate hain.
+  if(typeof dmRefreshDropdowns==='function'){try{dmRefreshDropdowns();}catch(e){}}
+}
+window.sarvDropdownsApply=sarvDdApplyAll_;
+
+/* ── load ─────────────────────────────────────────────────────────── */
+async function sarvLoadDropdowns_(force){
+  if(!SB_READY)return sarvDdRows;
+  if(sarvDdLoaded&&!force)return sarvDdRows;
+  try{
+    sarvDdRows=await fetchAllRows(SARV_DD_TABLE,'id,key,value','id');
+    sarvDdLoaded=true;
+  }catch(e){
+    sarvDdRows=[];sarvDdLoaded=false;
+    console.warn('[SARV] '+SARV_DD_TABLE+' load fail — code ke default chalenge:',e.message||e);
+  }
+  sarvDdApplyAll_();
+  return sarvDdRows;
+}
+window.sarvReloadDropdowns=async function(){
+  await sarvLoadDropdowns_(true);
+  if(byId('dropdownMasterSub')&&byId('dropdownMasterSub').style.display!=='none')sarvDdRender_();
+  showToast('🔽 Dropdown list refresh ho gayi');
+};
+
+/* ── writes (sirf Admin) ──────────────────────────────────────────── */
+function sarvDdGuard_(){
+  if(!isAdmin()){showToast('⛔ Dropdown Master me badlaav sirf Admin login se hota hai','warn');return false;}
+  if(!sarvCan('DROPDOWN_MANAGE')){sarvDeny('DROPDOWN_MANAGE');return false;}
+  if(!SB_READY){showToast('Supabase configure karein','warn');return false;}
+  return true;
+}
+function sarvDdTableMissing_(e){
+  const m=String((e&&(e.message||e))||'');
+  if(/does not exist|schema cache|Could not find the table/i.test(m)||(e&&e.code==='42P01')){
+    showToast('❌ '+SARV_DD_TABLE+' table nahi mila — pehle DROPDOWN_MASTER_MIGRATION.sql chalayein','error');
+    return true;
+  }
+  if(/duplicate key|unique/i.test(m)){showToast('⚠️ Ye value is dropdown me pehle se hai','warn');return true;}
+  return false;
+}
+
+/* Pehli baar seed: code ke default rows table me daal deta hai, taaki Admin
+   unhe wahin se edit / remove kar sake. Jo values pehle se hain wo chhut
+   jaati hain, isi liye dobara dabane se duplicate nahi bante. */
+window.sarvDdSeedDefaults=async function(key){
+  if(!sarvDdGuard_())return;
+  const have=new Set(sarvDdRowsOf(key).map(r=>r.value.trim().toUpperCase()));
+  const add=sarvDdDefaults(key).filter(v=>String(v).trim()&&!have.has(String(v).trim().toUpperCase()));
+  if(!add.length)return showToast('Sab default values pehle se list me hain');
+  try{
+    const {error}=await SB.from(SARV_DD_TABLE).insert(add.map(v=>({key:key,value:String(v)})));
+    if(error)throw error;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    showToast('✅ '+add.length+' default values add ho gayi');
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+
+window.sarvDdAddValue=async function(key){
+  if(!sarvDdGuard_())return;
+  const inp=byId('dd_newValue');
+  const val=((inp&&inp.value)||'').trim();
+  if(!val){showToast('❌ Value khaali nahi ho sakti','error');if(inp)inp.focus();return;}
+  if(sarvDdRowsOf(key).some(r=>r.value.trim().toUpperCase()===val.toUpperCase()))
+    return showToast('⚠️ "'+val+'" is dropdown me pehle se hai','warn');
+  try{
+    /* Pehli value add karte waqt baaki defaults bhi saath aane chahiye, warna
+       ek value daalne se list ek-value ki ho jaati (niyam: rows hain to code ka
+       default poora ignore). Isi liye pehle defaults seed hote hain. */
+    const seed=sarvDdRowsOf(key).length?[]
+      :sarvDdDefaults(key).filter(v=>String(v).trim()&&String(v).trim().toUpperCase()!==val.toUpperCase());
+    const rows=seed.map(v=>({key:key,value:String(v)})).concat([{key:key,value:val}]);
+    const {error}=await SB.from(SARV_DD_TABLE).insert(rows);
+    if(error)throw error;
+    if(inp)inp.value='';
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    const nx=byId('dd_newValue');if(nx)nx.focus();
+    showToast('✅ "'+val+'" add ho gaya');
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+
+window.sarvDdStartEdit=function(id){
+  if(!sarvDdGuard_())return;
+  sarvDdEditId=id;sarvDdRender_();
+  const e=byId('dd_editBox');if(e){e.focus();e.select();}
+};
+window.sarvDdCancelEdit=function(){sarvDdEditId=null;sarvDdRender_();};
+
+window.sarvDdSaveEdit=async function(id){
+  if(!sarvDdGuard_())return;
+  const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
+  const box=byId('dd_editBox');
+  const val=((box&&box.value)||'').trim();
+  if(!val){showToast('❌ Value khaali nahi ho sakti','error');return;}
+  if(val===row.value){sarvDdEditId=null;sarvDdRender_();return;}
+  if(sarvDdRowsOf(row.key).some(r=>r.id!==id&&r.value.trim().toUpperCase()===val.toUpperCase()))
+    return showToast('⚠️ "'+val+'" is dropdown me pehle se hai','warn');
+  try{
+    const {error}=await SB.from(SARV_DD_TABLE).update({value:val}).eq('id',id);
+    if(error)throw error;
+    sarvDdEditId=null;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    showToast('✅ Value update ho gayi — "'+row.value+'" se "'+val+'"');
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+
+window.sarvDdDeleteValue=async function(id){
+  if(!sarvDdGuard_())return;
+  const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
+  /* Purane records me ye value likhi ho sakti hai — wahan se nahi hatti, bas
+     aage ke forms me offer nahi hogi. Confirm me yahi saaf kaha gaya hai. */
+  if(!confirm('"'+row.value+'" ko is dropdown se hata dein?\n\nPurane saved records me ye value jaisi hai waisi rahegi — aage ke forms me option nahi dikhega.'))return;
+  try{
+    const {error}=await SB.from(SARV_DD_TABLE).delete().eq('id',id);
+    if(error)throw error;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    showToast('🗑️ "'+row.value+'" hat gaya');
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+
+/* Kram badalna: do rows ki `value` aapas me badal di jaati hain. id wahi
+   rehti hai, isi liye Order Form ka `order('id')` bhi naya kram waise hi
+   dekhta hai aur koi extra column (sort_order) nahi chahiye. */
+window.sarvDdMoveValue=async function(id,dir){
+  if(!sarvDdGuard_())return;
+  const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
+  const list=sarvDdRowsOf(row.key);
+  const i=list.findIndex(r=>r.id===id),j=i+(dir<0?-1:1);
+  if(i<0||j<0||j>=list.length)return;
+  const other=list[j];
+  try{
+    /* Unique index (key, value) ke kaaran seedha swap nahi ho sakta — beech me
+       ek aisi value rakhni padti hai jo kisi aur row ki na ho. */
+    const tmp='__dd_swap_'+Date.now()+'__';
+    let r=await SB.from(SARV_DD_TABLE).update({value:tmp}).eq('id',row.id);
+    if(r.error)throw r.error;
+    r=await SB.from(SARV_DD_TABLE).update({value:row.value}).eq('id',other.id);
+    if(r.error)throw r.error;
+    r=await SB.from(SARV_DD_TABLE).update({value:other.value}).eq('id',row.id);
+    if(r.error)throw r.error;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+  }catch(e){
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    if(!sarvDdTableMissing_(e))dbError(e);
+  }
+};
+
+/* ── UI ───────────────────────────────────────────────────────────── */
+window.sarvDdSelect=function(key){sarvDdPick=key;sarvDdEditId=null;sarvDdRender_();};
+
+function sarvDdNavHtml_(){
+  const box=byId('dd_search');
+  const q=((box&&box.value)||'').toLowerCase().trim();
+  let html='',pending=[],group=null;
+  const flush=()=>{
+    if(pending.length)html+='<div class="dd-nav-group">'+escText(group||'—')+'</div>'+pending.join('');
+    pending=[];group=null;
+  };
+  SARV_DROPDOWNS.forEach(d=>{
+    if(d.group){flush();group=d.group;return;}
+    if(q&&(d.label+' '+d.key+' '+(d.hint||'')).toLowerCase().indexOf(q)<0)return;
+    const n=sarvDdRowsOf(d.key).length,saved=n>0;
+    pending.push('<button type="button" class="dd-nav-item'+(sarvDdPick===d.key?' active':'')+'" onclick="sarvDdSelect(\''+d.key+'\')">'
+      +'<span class="dd-nav-label">'+escText(d.label)+'</span>'
+      +'<span class="dd-nav-n'+(saved?' saved':'')+'" title="'+(saved?n+' values table me hain':'Code ka default — abhi table me kuch nahi')+'">'
+      +(saved?n:sarvDdDefaults(d.key).length+'<small>d</small>')+'</span></button>');
+  });
+  flush();
+  return html||'<div class="dd-nav-empty">Is khoj se koi dropdown nahi mila.</div>';
+}
+
+function sarvDdMainHtml_(){
+  const d=sarvDdDef(sarvDdPick);
+  if(!d)return '<div class="dd-blank">Left se koi dropdown chunein.</div>';
+  const rows=sarvDdRowsOf(d.key),defs=sarvDdDefaults(d.key),live=sarvDropdownList(d.key);
+  const admin=isAdmin()&&sarvCan('DROPDOWN_MANAGE');
+  const srcTag=rows.length
+    ? '<span class="dd-tag dd-tag-db">🗄️ Table se — '+rows.length+' values</span>'
+    : '<span class="dd-tag dd-tag-def">📄 Code ka default — '+defs.length+' values (table me kuch nahi)</span>';
+
+  let h='<div class="dd-head">'
+    +'<div><div class="dd-head-title">'+escText(d.label)+'</div>'
+    +'<div class="dd-head-key">key: <code>'+escText(d.key)+'</code>'
+    +(d.sales?' <span class="dd-tag dd-tag-sales">Sales Order Form bhi yahi padhti hai</span>':'')+'</div></div>'
+    +srcTag+'</div>';
+  if(d.hint)h+='<div class="dd-hint">'+escText(d.hint)+'</div>';
+  if(d.where)h+='<div class="dd-where">Kahan lagti hai: <code>'+escText(d.where)+'</code></div>';
+
+  if(admin){
+    h+='<div class="dd-add">'
+      +'<input type="text" id="dd_newValue" class="form-control" placeholder="Nayi value… (Enter dabayein)" autocomplete="off" '
+      +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();sarvDdAddValue(\''+d.key+'\');}">'
+      +'<button class="btn btn-primary" onclick="sarvDdAddValue(\''+d.key+'\')">➕ Add Value</button>';
+    if(defs.length)h+='<button class="btn dd-seed" onclick="sarvDdSeedDefaults(\''+d.key+'\')" '
+      +'title="Code ke default values table me daal dein, taaki unhe bhi yahin se edit / remove kar sakein">📄 Seed Defaults</button>';
+    h+='</div>';
+    if(!rows.length&&defs.length)
+      h+='<div class="dd-warn">Abhi ye list <b>code ke default</b> se chal rahi hai. Pehli value add karte hi baaki defaults bhi apne aap table me aa jaayenge — list kabhi ek value ki nahi reh jaayegi.</div>';
+  }else{
+    h+='<div class="dd-warn">🔒 Values add / edit / remove sirf <b>Admin</b> login se hota hai. Neeche ki list read-only hai.</div>';
+  }
+
+  h+='<div class="table-container dd-table-wrap">'
+    +'<table class="dd-table"><thead><tr>'
+    +'<th style="width:46px;">#</th><th>Value</th><th style="width:160px;">Screen par</th>'
+    +'<th style="width:82px;">Kram</th><th style="width:46px;">✏️</th><th style="width:46px;">🗑️</th>'
+    +'</tr></thead><tbody>';
+
+  if(!rows.length){
+    h+=live.length
+      ? live.map((v,i)=>'<tr class="dd-row-def"><td class="dd-dim">'+(i+1)+'</td><td><b>'+escText(v)+'</b></td>'
+          +'<td class="dd-dim">'+escText((d.labels&&d.labels[v])||v)+'</td>'
+          +'<td colspan="3" class="dd-dim">default</td></tr>').join('')
+      : '<tr><td colspan="6" class="dd-dim" style="text-align:center;padding:18px;">Is dropdown ki koi value nahi hai — upar se add karein.</td></tr>';
+  }else{
+    rows.forEach((r,i)=>{
+      const editing=sarvDdEditId===r.id;
+      h+='<tr>'
+        +'<td class="dd-dim">'+(i+1)+'</td>'
+        +'<td>'+(editing
+            ?'<input type="text" id="dd_editBox" class="form-control dd-edit-in" value="'+escText(r.value)+'" '
+              +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();sarvDdSaveEdit('+r.id+');}else if(event.key===\'Escape\'){sarvDdCancelEdit();}">'
+            :'<b>'+escText(r.value)+'</b>')+'</td>'
+        +'<td class="dd-dim">'+escText((d.labels&&d.labels[r.value])||r.value)+'</td>';
+      if(editing){
+        h+='<td colspan="3" class="dd-act">'
+          +'<button class="dd-mini dd-mini-ok" onclick="sarvDdSaveEdit('+r.id+')">💾 Save</button>'
+          +'<button class="dd-mini" onclick="sarvDdCancelEdit()">✕</button></td>';
+      }else if(admin){
+        h+='<td class="dd-act">'
+          +'<button class="dd-mini" title="Upar" onclick="sarvDdMoveValue('+r.id+',-1)"'+(i===0?' disabled':'')+'>▲</button>'
+          +'<button class="dd-mini" title="Neeche" onclick="sarvDdMoveValue('+r.id+',1)"'+(i===rows.length-1?' disabled':'')+'>▼</button></td>'
+          +'<td class="dd-act"><button class="dd-mini dd-mini-ed" title="Edit" onclick="sarvDdStartEdit('+r.id+')">✏️</button></td>'
+          +'<td class="dd-act"><button class="dd-mini dd-mini-del" title="Remove" onclick="sarvDdDeleteValue('+r.id+')">✕</button></td>';
+      }else{
+        h+='<td colspan="3" class="dd-dim">—</td>';
+      }
+      h+='</tr>';
+    });
+  }
+  h+='</tbody></table></div>';
+  return h;
+}
+
+function sarvDdRender_(){
+  if(!byId('dropdownMasterSub'))return;
+  // Screen sabko khulti hai (read-only), par badlaav sirf Admin ka.
+  const locked=byId('dd_lockedNotice');if(locked)locked.style.display=isAdmin()?'none':'block';
+  if(!sarvDdPick){
+    const first=SARV_DROPDOWNS.find(d=>!d.group);
+    sarvDdPick=first?first.key:null;
+  }
+  const nav=byId('dd_navList');if(nav)nav.innerHTML=sarvDdNavHtml_();
+  const main=byId('dd_main');if(main)main.innerHTML=sarvDdMainHtml_();
+  const miss=byId('dd_missingNote');if(miss)miss.style.display=(SB_READY&&!sarvDdLoaded)?'block':'none';
+}
+window.sarvDdRenderNav=function(){const n=byId('dd_navList');if(n)n.innerHTML=sarvDdNavHtml_();};
+
+window.loadDropdownMaster=async function(){
+  await sarvLoadDropdowns_(!sarvDdLoaded);
+  sarvDdRender_();
 };
 
 /* ================================================================

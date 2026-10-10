@@ -910,6 +910,7 @@
                     <button class="btn master-sub-tab" data-subtab="supplierMasterSub" onclick="switchMasterSubTab('supplierMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127981; Supplier Master</button>
                     <button class="btn master-sub-tab" data-subtab="employeeMasterSub" onclick="switchMasterSubTab('employeeMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128100; Employee Master</button>
                     <button class="btn master-sub-tab" data-subtab="machineMasterSub" onclick="switchMasterSubTab('machineMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#9881; Machine List</button>
+                    <button class="btn master-sub-tab" data-subtab="dropdownMasterSub" onclick="switchMasterSubTab('dropdownMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128317; Dropdown Master</button>
                     <button class="btn master-sub-tab" data-subtab="settingsSub" onclick="switchMasterSubTab('settingsSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#9881;&#65039; Settings</button>
                 </div>
 
@@ -1280,6 +1281,30 @@
                 </div>
 
                 <!-- ═══ SETTINGS SUB-TAB ═══ -->
+                <!-- ═══ DROPDOWN MASTER SUB-TAB ═══
+                     App ke saare FIXED dropdowns ki values ek hi table se
+                     aati hain — sales_dropdowns (key, value), wahi table jo
+                     Sales › Order Form bhi padhti hai. Screen sabko read-only
+                     khulti hai; add / edit / remove sirf Admin ko milta hai.
+                     Poora logic store-core.js › "Dropdown Master" me hai; ye
+                     sirf do khaali dabbe hain jinhe wo bharta hai. -->
+                <div id="dropdownMasterSub" style="display:none;">
+                    <div id="dd_lockedNotice" style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#b91c1c; font-size:11px; font-weight:700;">
+                        &#128274; Values add / edit / remove sirf <b>Admin</b> login se hota hai &mdash; neeche sab kuch read-only hai.
+                    </div>
+                    <div id="dd_missingNote" style="display:none; background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#92400e; font-size:11px; font-weight:700;">
+                        &#9888;&#65039; <code>sales_dropdowns</code> table se data nahi aaya &mdash; abhi har dropdown code ke default par chal raha hai. Supabase &rsaquo; SQL Editor me <code>DROPDOWN_MASTER_MIGRATION.sql</code> ek baar chalayein.
+                    </div>
+                    <div class="dd-bar">
+                        <input type="text" class="form-control" id="dd_search" placeholder="&#128269; Dropdown khojein..." oninput="sarvDdRenderNav()" autocomplete="off">
+                        <button class="btn" onclick="sarvReloadDropdowns()" style="background:#e0f2fe; color:#075985; font-size:10px; height:28px; padding:0 10px;">&#128260; Refresh</button>
+                    </div>
+                    <div id="dd_wrap" class="dd-wrap">
+                        <div class="dd-side" id="dd_navList"></div>
+                        <div class="dd-main" id="dd_main"></div>
+                    </div>
+                </div>
+
                 <div id="settingsSub" style="display:none;">
 
                     <!-- Autocomplete Data -->
@@ -1498,6 +1523,10 @@
                             <div class="dm-grid">
                               <div class="dm-fg"><label>PARTY NAME *</label><input type="text" id="dmPartyName" list="dmPartyList" required placeholder="Search or Type..."></div>
                               <div class="dm-fg"><label>BRAND NAME *</label><input type="text" id="dmBrandName" list="dmBrandList" required placeholder="Search or Type..."></div>
+                              <!-- Supplier optional hai: purane designs ka supplier pata na ho to
+                                   entry rukni nahi chahiye. List Master Data › Dropdown Master
+                                   (erp_designSupplier) + jo supplier pehle se kisi design par hai. -->
+                              <div class="dm-fg"><label>SUPPLIER NAME</label><input type="text" id="dmSupplierName" list="dmSupplierList" placeholder="Search or Type..."></div>
                             </div>
                           </div>
 
@@ -1566,7 +1595,7 @@
                             <tr>
                               <th style="width:70px;">Image</th>
                               <th style="width:130px;">Design No</th>
-                              <th>Party &amp; Brand</th>
+                              <th>Party, Brand &amp; Supplier</th>
                               <th>Unit, Size, Type, Monopoly</th>
                               <th>Quality &amp; Frame</th>
                               <th>Master Matching</th>
@@ -1585,7 +1614,8 @@
                     <!-- ───────── Live ───────── -->
                     <div class="dm-pane" id="dmLivePane">
                       <div class="dm-toolbar">
-                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="&#128269; Design No / Party / Brand / Type / Shade se khojein...">
+                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="&#128269; Design No / Party / Brand / Supplier / Type / Shade se khojein...">
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" id="dmLiveClearBtn" style="display:none;" onclick="dmClearLiveFilters()" title="Search aur saare column filter khaali kar dein">&#10006; Clear Filters</button>
                         <span class="dm-count" id="dmLiveShown"></span>
                       </div>
                       <div class="dm-table-wrap">
@@ -1593,9 +1623,14 @@
                           <thead>
                             <tr>
                               <th>Actions</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
-                              <th>Unit</th><th>Bed Size</th><th>Quality</th><th>Frames &amp; Total</th><th>Matchings</th>
+                              <th>Supplier</th><th>Unit</th><th>Bed Size</th><th>Quality</th><th>Frames &amp; Total</th><th>Matchings</th>
                               <th>Master Matching</th><th>Status</th>
                             </tr>
+                            <!-- Per-column filter row. Cells store-design-master.js ek baar
+                                 banata hai (dmBuildLiveFilterRow) aur phir chhedta nahi, isi
+                                 liye type karte waqt focus kabhi nahi tootta — sirf tbody aur
+                                 har column ke suggestions dobara bante hain. -->
+                            <tr class="dm-frow" id="dmLiveFilterRow"></tr>
                           </thead>
                           <tbody id="dmLiveTableBody"></tbody>
                         </table>
@@ -1609,7 +1644,7 @@
                           <thead>
                             <tr>
                               <th>Action</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
-                              <th>Unit</th><th>Bed Size</th><th>Discarded On</th><th>Status</th>
+                              <th>Supplier</th><th>Unit</th><th>Bed Size</th><th>Discarded On</th><th>Status</th>
                             </tr>
                           </thead>
                           <tbody id="dmDiscardedTableBody"></tbody>
@@ -1620,39 +1655,58 @@
                     <!-- ───────── Catalogue PDF ───────── -->
                     <div class="dm-pane" id="dmCataloguePane">
                       <div class="dm-sec">Catalogue Multi-Selection Filters</div>
-                      <div class="dm-grid dm-grid-filters">
+                      <p class="dm-hint" style="margin-bottom:10px;">
+                        Saare filter <b>ek doosre se jude</b> hain &mdash; ek tick hatate hi baaki columns me se wo options
+                        apne aap gayab ho jaate hain jo bache hue designs me kahin nahi hain. Wapas tick karte hi wo lautt
+                        aate hain. Kisi column ke <b>saare</b> tick hata dene ka matlab hai &ldquo;us column par koi rok nahi&rdquo;.
+                      </p>
+                      <!-- Saare filter ek doosre par DEPENDENT hain: ek value un-tick
+                           karte hi baaki columns me se wo options apne aap gayab ho
+                           jaate hain jo bache hue designs me kahin nahi hain. Tick ka
+                           record store-design-master.js (dmCatState) me rehta hai, isi
+                           liye gayab hua option wapas aane par apni purani haalat me
+                           aata hai. Checkbox markup wahin se banta hai. -->
+                      <div class="dm-grid dm-grid-filters" id="dmCatFilterGrid">
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>DESIGN UNIT</label><span><a onclick="dmToggleFilter('dmUnitFilter',true)">All</a> | <a onclick="dmToggleFilter('dmUnitFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>DESIGN UNIT <span class="dm-fcount" id="dmUnitFilterCount"></span></label><span><a onclick="dmToggleFilter('dmUnitFilter',true)">All</a> | <a onclick="dmToggleFilter('dmUnitFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmUnitFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>BLANKET QUALITY</label><span><a onclick="dmToggleFilter('dmQualityFilter',true)">All</a> | <a onclick="dmToggleFilter('dmQualityFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>BLANKET QUALITY <span class="dm-fcount" id="dmQualityFilterCount"></span></label><span><a onclick="dmToggleFilter('dmQualityFilter',true)">All</a> | <a onclick="dmToggleFilter('dmQualityFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmQualityFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>PARTY NAME</label><span><a onclick="dmToggleFilter('dmPartyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmPartyFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>PARTY NAME <span class="dm-fcount" id="dmPartyFilterCount"></span></label><span><a onclick="dmToggleFilter('dmPartyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmPartyFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmPartyFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>BRAND NAME</label><span><a onclick="dmToggleFilter('dmBrandFilter',true)">All</a> | <a onclick="dmToggleFilter('dmBrandFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>BRAND NAME <span class="dm-fcount" id="dmBrandFilterCount"></span></label><span><a onclick="dmToggleFilter('dmBrandFilter',true)">All</a> | <a onclick="dmToggleFilter('dmBrandFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmBrandFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>DESIGN TYPE</label><span><a onclick="dmToggleFilter('dmTypeFilter',true)">All</a> | <a onclick="dmToggleFilter('dmTypeFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>SUPPLIER NAME <span class="dm-fcount" id="dmSupplierFilterCount"></span></label><span><a onclick="dmToggleFilter('dmSupplierFilter',true)">All</a> | <a onclick="dmToggleFilter('dmSupplierFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmSupplierFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>DESIGN TYPE <span class="dm-fcount" id="dmTypeFilterCount"></span></label><span><a onclick="dmToggleFilter('dmTypeFilter',true)">All</a> | <a onclick="dmToggleFilter('dmTypeFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmTypeFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>TOTAL FRAMES</label><span><a onclick="dmToggleFilter('dmFramesFilter',true)">All</a> | <a onclick="dmToggleFilter('dmFramesFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>TOTAL FRAMES <span class="dm-fcount" id="dmFramesFilterCount"></span></label><span><a onclick="dmToggleFilter('dmFramesFilter',true)">All</a> | <a onclick="dmToggleFilter('dmFramesFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmFramesFilterBox"></div>
                         </div>
                         <div class="dm-fg">
-                          <div class="dm-filter-head"><label>MONOPOLY</label><span><a onclick="dmToggleFilter('dmMonopolyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmMonopolyFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-head"><label>MONOPOLY <span class="dm-fcount" id="dmMonopolyFilterCount"></span></label><span><a onclick="dmToggleFilter('dmMonopolyFilter',true)">All</a> | <a onclick="dmToggleFilter('dmMonopolyFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmMonopolyFilterBox"></div>
                         </div>
                         <div class="dm-fg">
                           <div class="dm-filter-head"><label>DESIGN NO (khaali = sab)</label></div>
                           <input type="text" id="dmCatDesignNos" placeholder="5001, 5002, 5003 ..." oninput="this.value=this.value.toUpperCase()">
                         </div>
+                      </div>
+                      <div class="dm-filter-foot">
+                        <span class="dm-filter-live" id="dmCatMatchCount"></span>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmResetCatalogueFilters()" title="Saare filter dobara poore tick kar dein">&#8635; Reset All Filters</button>
                       </div>
                       <div class="dm-btn-row">
                         <button type="button" class="dm-btn dm-btn-primary" onclick="dmGenerateCataloguePreview()">&#9889; Generate Preview</button>
@@ -3327,6 +3381,7 @@
         <div class="dm-fg"><label>TOTAL FRAMES</label><input type="text" id="dmEditTotalFrames" readonly value="0" class="dm-readonly"></div>
         <div class="dm-fg"><label>PARTY NAME</label><input type="text" id="dmEditPartyName" list="dmPartyList" required></div>
         <div class="dm-fg"><label>BRAND NAME</label><input type="text" id="dmEditBrandName" list="dmBrandList" required></div>
+        <div class="dm-fg"><label>SUPPLIER NAME</label><input type="text" id="dmEditSupplierName" list="dmSupplierList"></div>
       </div>
       <div class="dm-sec">Matchings Management</div>
       <p class="dm-hint" style="margin-bottom:8px;">Master badalna, photo badalna ya matching hatana turant Supabase me save hota hai &mdash; neeche ka Update sirf design ke fields ke liye hai.</p>
@@ -3352,6 +3407,7 @@
 <datalist id="dmLiveDesignList"></datalist>
 <datalist id="dmPartyList"></datalist>
 <datalist id="dmBrandList"></datalist>
+<datalist id="dmSupplierList"></datalist>
 
 <script src="store-design-master.js"></script>
 
