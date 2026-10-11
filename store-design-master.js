@@ -376,7 +376,12 @@
        upar. Values dono jagah wahi hain (dmValues), to kuch khota nahi. */
     inp.removeAttribute('list');
     const list = dmPickList_();
-    let open = false, hl = 0, shown = [];
+    /* `typed` = khulne ke baad user ne kuch likha ya nahi. Box me pehle se
+       value ho ("UNIT 1", "MINK") to bhi khulte waqt POORI list dikhti hai —
+       warna Dropdown Master me add ki gayi nayi value kabhi nazar hi nahi
+       aati (native datalist yahi galti karta tha). Likhna shuru karte hi
+       list us text se chhanti hai. */
+    let open = false, hl = 0, shown = [], typed = false;
 
     const place = () => {
       const r = inp.getBoundingClientRect();
@@ -388,10 +393,16 @@
         ? Math.max(4, r.top - 2 - Math.min(list.scrollHeight, 240)) + 'px'
         : (r.bottom + 2) + 'px';
     };
-    const render = () => {
-      const term = String(inp.value || '').trim().toLowerCase();
+    const render = (snap) => {
+      const term = typed ? String(inp.value || '').trim().toLowerCase() : '';
       const all = dmValues(kind);
       shown = term ? all.filter(v => String(v).toLowerCase().indexOf(term) >= 0) : all;
+      // Khulte waqt jo value box me hai wahi highlight ho.
+      if (snap) {
+        const cur = String(inp.value || '').trim().toUpperCase();
+        const at = cur ? shown.findIndex(v => String(v).toUpperCase() === cur) : -1;
+        if (at >= 0) hl = at;
+      }
       hl = Math.min(hl, Math.max(0, shown.length - 1));
       list.innerHTML = shown.length
         ? shown.map((v, i) => '<div class="ss-opt' + (i === hl ? ' hl' : '') +
@@ -427,9 +438,9 @@
         const d = e.target.closest('.ss-opt');
         if (d) pick(shown[+d.dataset.i]);
       };
-      hl = 0;
+      hl = 0; typed = false;
       list.hidden = false;
-      render();
+      render(true);
       document.addEventListener('pointerdown', outside, true);
       addEventListener('scroll', place, true);
       addEventListener('resize', place);
@@ -437,7 +448,7 @@
 
     inp.addEventListener('focus', openList);
     inp.addEventListener('click', openList);
-    inp.addEventListener('input', () => { if (!open) openList(); hl = 0; render(); });
+    inp.addEventListener('input', () => { if (!open) openList(); typed = true; hl = 0; render(); });
     inp.addEventListener('keydown', e => {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
@@ -459,6 +470,18 @@
     ['b-type', 'type'], ['b-mono', 'mono'], ['b-quality', 'quality'],
     ['b-frame', 'frame'], ['b-matching', 'shade'],
   ];
+  /* Create New, Add Matching aur Edit popup ke boxes — inme bhi wahi asli
+     dropdown, taaki Dropdown Master me add hui value yahan list me dikhe. */
+  const DM_FORM_PICKERS = [
+    ['dmDesignUnit', 'unit'], ['dmBedSize', 'bed'], ['dmBlanketQuality', 'quality'],
+    ['dmDesignType', 'type'], ['dmMonopoly', 'mono'], ['dmFrameType', 'frame'],
+    ['dmPartyName', 'party'], ['dmBrandName', 'brand'], ['dmSupplierName', 'supplier'],
+    ['dmInitialMatchingName', 'shade'],
+    ['dmNewMatchingName', 'shade'], ['dmMatchingBlanketQuality', 'quality'],
+    ['dmEditDesignUnit', 'unit'], ['dmEditBedSize', 'bed'], ['dmEditBlanketQuality', 'quality'],
+    ['dmEditDesignType', 'type'], ['dmEditMonopoly', 'mono'], ['dmEditFrameType', 'frame'],
+    ['dmEditPartyName', 'party'], ['dmEditBrandName', 'brand'], ['dmEditSupplierName', 'supplier'],
+  ];
 
   function thumbHtml(src, alt){
     if (!src) return '<div class="dm-thumb-none">—</div>';
@@ -469,31 +492,52 @@
     ? '<span class="dm-badge dm-badge-mono">YES</span>'
     : '<span class="dm-muted">NO</span>';
 
-  /* ══ LIVE TAB — HAR COLUMN PAR FILTER ════════════════════════════════
-     Header ke neeche ek filter row baithti hai: jis column par kuch likha
-     hai, us column ko wahi chhanta hai (substring, case ignore), aur saare
-     column AND se jurte hain. Har box ke saath us column ke suggestions bhi
-     aate hain jo BAAKI filters lagne ke BAAD bachte hain — isi liye jo value
-     ab kisi row me nahi hai, wo suggestion me bhi nahi dikhti.
+  /* ══ LIVE TAB — HAR COLUMN PAR MULTI-SELECT FILTER ═══════════════════
+     Bilkul Item Master jaisa: har column header par ▾ button, click par ek
+     panel khulta hai — us column ki values checkbox ke saath (har value ka
+     count), upar search, Select All / Clear, aur Apply / Remove Filter /
+     Cancel. Ek column me jitni values tick hain unme se KOI bhi ho to row
+     dikhti hai (OR); alag-alag columns AND se jurte hain.
 
-     Filter row sirf EK BAAR banti hai (dmBuildLiveFilterRow). Uske baad
-     renderLive sirf tbody aur suggestion lists badalta hai, inputs ko nahi —
-     warna har keystroke par focus aur caret ud jaata. */
+     Filter DEPENDENT hain: kisi column ka panel sirf wahi values dikhata hai
+     jo BAAKI saare filters (aur upar ka search) lagne ke baad bachi hain.
+     Jo value tick hai par ab kisi bachi row me nahi, wo grey ho kar list me
+     rehti hai — warna use kabhi un-tick hi nahi kiya ja sakta.
+
+     Panel draft par kaam karta hai; Apply dabane tak table nahi badalta, isi
+     liye Cancel sach me cancel hai. Laage hue filter toolbar ke neeche chip
+     ban kar dikhte hain, har chip ka apna ✖ aur ek "Clear All". */
   const DM_LIVE_COLS = [
-    { id:'no',     ph:'Design No', get:d => d.design_no },
-    { id:'mono',   ph:'YES / NO',  get:d => d.monopoly || 'NO' },
-    { id:'type',   ph:'Type',      get:d => d.design_type || '' },
-    { id:'party',  ph:'Party',     get:d => d.party_name || '' },
-    { id:'brand',  ph:'Brand',     get:d => d.brand_name || '' },
-    { id:'supp',   ph:'Supplier',  get:d => d.supplier_name || '' },
-    { id:'unit',   ph:'Unit',      get:d => d.design_unit || '' },
-    { id:'bed',    ph:'Bed Size',  get:d => d.bed_size || '' },
-    { id:'qual',   ph:'Quality',   get:d => d.blanket_quality || '' },
-    { id:'frames', ph:'Total',     get:d => String(totalFrames(d)) },
-    { id:'mcount', ph:'Shades',    get:d => String((d.matchings || []).length) },
-    { id:'master', ph:'Matching',  get:d => { const m = masterOf(d); return m ? m.matching_name : ''; } },
+    { id:'no',     ph:'Design No',       get:d => d.design_no },
+    { id:'mono',   ph:'Monopoly',        get:d => d.monopoly || 'NO' },
+    { id:'type',   ph:'Type',            get:d => d.design_type || '' },
+    { id:'party',  ph:'Party',           get:d => d.party_name || '' },
+    { id:'brand',  ph:'Brand',           get:d => d.brand_name || '' },
+    { id:'supp',   ph:'Supplier',        get:d => d.supplier_name || '' },
+    { id:'unit',   ph:'Unit',            get:d => d.design_unit || '' },
+    { id:'bed',    ph:'Bed Size',        get:d => d.bed_size || '' },
+    { id:'qual',   ph:'Quality',         get:d => d.blanket_quality || '' },
+    { id:'frames', ph:'Total Frames',    get:d => String(totalFrames(d)) },
+    { id:'mcount', ph:'Shades',          get:d => String((d.matchings || []).length) },
+    { id:'master', ph:'Master Matching', get:d => { const m = masterOf(d); return m ? m.matching_name : ''; } },
   ];
-  const dmLiveFilters = {};              // {colId: typed text}
+  const DM_LF_BLANK = '(Blank)';
+  /* Laage hue filter: {colId: Set<value>}. Column ka key hi na ho = us par
+     koi rok nahi. Khaali Set = kuch bhi tick nahi = koi row nahi (Item Master
+     ka hi niyam). */
+  let dmLiveFilters = {};
+  let dmLfCol = null, dmLfDraft = null;  // khula panel aur uska kaccha state
+
+  const dmLfColDef = id => DM_LIVE_COLS.find(c => c.id === id) || null;
+  // Ek hi function se value banti hai — option list, row test aur chip teeno
+  // isi ko padhte hain, isi liye "" aur "(Blank)" par kabhi ikhtilaaf nahi.
+  const dmLfKey = (c, d) => String(c.get(d) == null ? '' : c.get(d)).trim() || DM_LF_BLANK;
+  const dmLfSort = (a, b) => {
+    if (a === DM_LF_BLANK) return 1;
+    if (b === DM_LF_BLANK) return -1;
+    return String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
+  };
+  const dmLiveTerm = () => { const b = q('dmLiveSearch'); return up(b ? b.value : ''); };
 
   // Global search box — wahi purana vyavhaar, filters se alag.
   function dmLiveSearchPass(d, term){
@@ -504,75 +548,214 @@
       .some(v => up(v).indexOf(term) >= 0);
   }
   /* Ek design saare column filters se guzarta hai ya nahi. `skip` wala column
-     chhod diya jaata hai — usi se us column ke apne suggestions bante hain. */
+     chhod diya jaata hai — usi se us column ke apne options bante hain. */
   function dmLiveColsPass(d, skip){
     return DM_LIVE_COLS.every(c => {
       if (c.id === skip) return true;
-      const t = up(dmLiveFilters[c.id] || '');
-      return !t || up(c.get(d)).indexOf(t) >= 0;
+      const f = dmLiveFilters[c.id];
+      return !f || f.has(dmLfKey(c, d));
     });
   }
-
-  function dmBuildLiveFilterRow(){
-    const tr = q('dmLiveFilterRow');
-    if (!tr || tr.dataset.built) return;
-    tr.dataset.built = '1';
-    // Actions aur Photo par filter ka matlab nahi; Status Live tab me hamesha LIVE.
-    tr.innerHTML = '<th></th><th></th>' +
-      DM_LIVE_COLS.map(c =>
-        '<th><input type="text" class="dm-fin" data-dmcol="' + c.id + '" list="dmLF_' + c.id + '" ' +
-        'placeholder="' + esc(c.ph) + '" autocomplete="off">' +
-        '<datalist id="dmLF_' + c.id + '"></datalist></th>').join('') +
-      '<th></th>';
-    let t = null;
-    tr.addEventListener('input', e => {
-      const inp = e.target.closest('.dm-fin'); if (!inp) return;
-      dmLiveFilters[inp.dataset.dmcol] = inp.value;
-      clearTimeout(t);
-      t = setTimeout(renderLive, 120);
+  /* Ek column ki value list: BAAKI filters + search ke baad jo bachta hai,
+     har value ka count saath. */
+  function dmLfOptions(colId){
+    const c = dmLfColDef(colId); if (!c) return [];
+    const term = dmLiveTerm(), counts = new Map();
+    dmDesigns.forEach(d => {
+      if (d.status !== 'LIVE' || !dmLiveSearchPass(d, term) || !dmLiveColsPass(d, colId)) return;
+      const k = dmLfKey(c, d);
+      counts.set(k, (counts.get(k) || 0) + 1);
     });
-    // Escape = us ek column ka filter hatao.
-    tr.addEventListener('keydown', e => {
-      const inp = e.target.closest('.dm-fin');
-      if (!inp || e.key !== 'Escape') return;
-      inp.value = ''; dmLiveFilters[inp.dataset.dmcol] = ''; renderLive();
-    });
+    return [...counts.entries()].map(([value, count]) => ({ value, count }))
+      .sort((a, b) => dmLfSort(a.value, b.value));
   }
 
-  /* Har column ke suggestions: us column ki wo values jo BAAKI sab filters
-     lagne ke baad bachti hain. Isi liye ek column chhanne par doosre columns
-     ke bemaani options apne aap gayab ho jaate hain. */
-  function dmLiveRefreshSuggestions(all, term){
+  function dmLfPanelEl(){
+    let p = q('dmLfPanel');
+    if (p) return p;
+    p = document.createElement('div');
+    p.id = 'dmLfPanel';
+    // <body> par, <th> me nahi — table apne scroll-dabbe me hai jo panel kaat deta.
+    document.body.appendChild(p);
+    p.addEventListener('click', e => e.stopPropagation());
+    return p;
+  }
+  function dmLfPlace(anchor){
+    const p = q('dmLfPanel'); if (!p) return;
+    const r = anchor ? anchor.getBoundingClientRect() : { left:120, top:100, bottom:120 };
+    const w = p.offsetWidth || 268, h = p.offsetHeight || 320;
+    const left = Math.min(Math.max(8, r.left - 10), Math.max(8, innerWidth - w - 8));
+    let top = r.bottom + 4;
+    if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 4);
+    p.style.left = left + 'px'; p.style.top = top + 'px';
+    p.style.visibility = 'visible';
+  }
+
+  function dmLiveOpenFilter(ev, colId){
+    // Warna click document tak pahunch kar panel ko turant band kar deta.
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    const c = dmLfColDef(colId); if (!c) return;
+    if (dmLfCol === colId) { dmLfClose(); return; }   // wahi button dobara = band
+    dmLfCol = colId;
+    const cur = dmLiveFilters[colId];
+    dmLfDraft = {
+      values: cur ? new Set(cur) : null,   // null = sab tick
+      search: '',
+      options: dmLfOptions(colId),
+      anchor: (ev && ev.currentTarget) || q('dmLF-' + colId)
+    };
+    dmLfRender();
+  }
+
+  function dmLfRender(){
+    const colId = dmLfCol; if (!colId) return;
+    const c = dmLfColDef(colId), p = dmLfPanelEl();
+    const opts = dmLfDraft.options || [];
+    const present = new Set(opts.map(o => o.value));
+    const extra = dmLfDraft.values
+      ? [...dmLfDraft.values].filter(v => !present.has(v)).sort(dmLfSort).map(v => ({ value:v, count:0, gone:true }))
+      : [];
+    const all = opts.concat(extra);
+    const term = (dmLfDraft.search || '').toLowerCase();
+    const shown = term ? all.filter(o => o.value.toLowerCase().indexOf(term) >= 0) : all;
+    const ticked = v => dmLfDraft.values ? dmLfDraft.values.has(v) : true;
+    const LIMIT = 400;
+    const clipped = shown.length > LIMIT ? shown.slice(0, LIMIT) : shown;
+    const rowsHtml = clipped.length
+      ? clipped.map(o =>
+          '<label class="imf-opt' + (o.gone ? ' gone' : '') + '">' +
+          '<input type="checkbox" data-v="' + esc(o.value) + '"' + (ticked(o.value) ? ' checked' : '') + '>' +
+          '<span class="t" title="' + esc(o.value) + '">' + esc(o.value) + '</span>' +
+          '<span class="n">' + (o.gone ? '0' : o.count) + '</span></label>').join('')
+      : '<div style="color:#94a3b8;padding:6px 2px;">' +
+          (term ? 'Is search par koi value nahi mili.' : 'Baaki filters ke baad is column me koi value nahi bachi.') + '</div>';
+    const clipNote = shown.length > LIMIT
+      ? '<div style="color:#b45309;font-size:10px;padding:4px 2px 0;">Pehli ' + LIMIT + ' values dikh rahi hain (' +
+        shown.length + ' me se) — upar search karke chhota karein.</div>'
+      : '';
+    p.innerHTML =
+      '<div class="imf-head">' + esc(c.ph) +
+        '<div class="imf-sub">' + opts.length + ' value(s) &middot; baaki filters ke hisaab se</div></div>' +
+      '<div class="imf-body">' +
+        '<input type="text" id="dmLfSearch" placeholder="&#128269; Values me search..." value="' + esc(dmLfDraft.search || '') + '">' +
+        '<div style="display:flex;justify-content:space-between;margin-top:6px;">' +
+          '<button type="button" class="imf-mini" id="dmLfAll">&#9745; Select All</button>' +
+          '<button type="button" class="imf-mini" id="dmLfNone" style="color:#b91c1c;">&#9744; Clear</button></div>' +
+        '<div class="imf-list" id="dmLfList">' + rowsHtml + '</div>' + clipNote +
+      '</div>' +
+      '<div class="imf-foot">' +
+        '<button type="button" class="imf-btn imf-apply" id="dmLfApply">&#10004; Apply</button>' +
+        '<button type="button" class="imf-btn imf-remove" id="dmLfRemove">&#10006; Remove Filter</button>' +
+        '<button type="button" class="imf-btn imf-cancel" id="dmLfCancel">Cancel</button>' +
+      '</div>';
+    p.style.visibility = 'hidden';
+    p.style.display = 'block';
+
+    // Tick sirf draft badalta hai. Pehli tick par null ("sab") ko asli Set
+    // banaya jaata hai, warna pehla un-tick baaki sab bhi mita deta.
+    q('dmLfList').addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
+      if (!dmLfDraft.values) dmLfDraft.values = new Set(all.map(o => o.value));
+      if (cb.checked) dmLfDraft.values.add(cb.dataset.v); else dmLfDraft.values.delete(cb.dataset.v);
+    });
+    const s = q('dmLfSearch');
+    s.addEventListener('input', () => {
+      dmLfDraft.search = s.value;
+      const at = s.selectionStart;
+      dmLfRender();
+      const s2 = q('dmLfSearch'); if (s2) { s2.focus(); try { s2.setSelectionRange(at, at); } catch (e) {} }
+    });
+    // Select All / Clear SIRF dikh rahi values par — search se chhota karke
+    // kuch hi values chunna isi se mumkin hai (Excel jaisa).
+    q('dmLfAll').addEventListener('click', () => {
+      if (!dmLfDraft.values) dmLfDraft.values = new Set(all.map(o => o.value));
+      clipped.forEach(o => dmLfDraft.values.add(o.value));
+      if (!term && dmLfDraft.values.size >= all.length) dmLfDraft.values = null;
+      dmLfRender();
+    });
+    q('dmLfNone').addEventListener('click', () => {
+      if (!dmLfDraft.values) dmLfDraft.values = new Set(all.map(o => o.value));
+      clipped.forEach(o => dmLfDraft.values.delete(o.value));
+      dmLfRender();
+    });
+    q('dmLfApply').addEventListener('click', dmLfApply);
+    q('dmLfRemove').addEventListener('click', () => dmLiveRemoveFilter(colId));
+    q('dmLfCancel').addEventListener('click', dmLfClose);
+    dmLfPlace(dmLfDraft.anchor);
+  }
+
+  function dmLfApply(){
+    const colId = dmLfCol; if (!colId) return;
+    let values = dmLfDraft ? dmLfDraft.values : null;
+    // Sab tick = koi filter nahi; aisa hi store hota hai taaki badge jhooth na bole.
+    if (values) {
+      const opts = (dmLfDraft.options || []).map(o => o.value);
+      if (opts.length && values.size === opts.length && opts.every(v => values.has(v))) values = null;
+    }
+    if (values == null) { dmLiveRemoveFilter(colId); return; }
+    if (!values.size && typeof showToast === 'function')
+      showToast('⚠️ Is column me koi value tick nahi hai — aise filter karne par list khali rahegi', 'warn');
+    dmLiveFilters[colId] = new Set(values);
+    dmLfClose();
+    renderLive();
+  }
+  function dmLiveRemoveFilter(colId){
+    delete dmLiveFilters[colId];
+    if (dmLfCol === colId) dmLfClose();
+    renderLive();
+  }
+  function dmLfClose(){
+    const p = q('dmLfPanel'); if (p) p.style.display = 'none';
+    dmLfCol = null; dmLfDraft = null;
+  }
+  // Bahar click, Escape, resize ya table ka scroll — sab panel band karte hain
+  // (panel ki apni list ka scroll chhod kar).
+  document.addEventListener('click', () => { if (dmLfCol) dmLfClose(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && dmLfCol) dmLfClose(); });
+  addEventListener('resize', () => { if (dmLfCol) dmLfClose(); });
+  document.addEventListener('scroll', e => {
+    if (!dmLfCol) return;
+    const p = q('dmLfPanel'), t = e.target;
+    if (p && t && t.nodeType === 1 && p.contains(t)) return;
+    dmLfClose();
+  }, true);
+
+  function dmLfSummary(colId){
+    const v = [...(dmLiveFilters[colId] || [])];
+    return v.length === 0 ? 'none' : v.length <= 2 ? v.join(', ') : (v.length + ' selected');
+  }
+  // Header badge + chip bar har render par dobara — jo laga hai wahi dikhe.
+  function dmLfIndicators(){
     DM_LIVE_COLS.forEach(c => {
-      const dl = q('dmLF_' + c.id); if (!dl) return;
-      const vals = [...new Set(all
-        .filter(d => dmLiveSearchPass(d, term) && dmLiveColsPass(d, c.id))
-        .map(d => String(c.get(d) || '').trim())
-        .filter(Boolean))]
-        .sort((a, b) => a.localeCompare(b, undefined, { numeric:true, sensitivity:'base' }));
-      const html = vals.map(v => '<option value="' + esc(v) + '"></option>').join('');
-      /* Badla na ho to chhedte nahi: khula hua suggestion panel innerHTML
-         badalne par band / jhilmila jaata hai. Jis box me type ho raha hai
-         uski list to badalti hi nahi (uska apna filter chhoda gaya hai), par
-         ye pehra baaki har soorat ke liye bhi hai. */
-      if (dl.innerHTML !== html) dl.innerHTML = html;
+      const b = q('dmLF-' + c.id); if (!b) return;
+      const on = !!dmLiveFilters[c.id];
+      b.classList.toggle('on', on);
+      b.innerHTML = on ? '&#9776;' : '&#9662;';
+      b.title = on ? (c.ph + ' filter: ' + dmLfSummary(c.id) + ' — click karke badlein ya hatayein') : ('Filter ' + c.ph);
     });
+    const bar = q('dmLfChips'); if (!bar) return;
+    const cols = DM_LIVE_COLS.filter(c => dmLiveFilters[c.id]);
+    if (!cols.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    bar.style.display = 'flex';
+    bar.innerHTML = '<span style="font-size:10px;font-weight:800;color:#475569;">&#128269; FILTERS:</span>' +
+      cols.map(c => '<span class="imf-chip">' + esc(c.ph) + ': ' + esc(dmLfSummary(c.id)) +
+        '<button type="button" onclick="dmLiveRemoveFilter(\'' + c.id + '\')" title="Is column ka filter hatayein">&#10006;</button></span>').join('') +
+      '<button type="button" onclick="dmClearLiveFilters()" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;' +
+      'border-radius:12px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters (' + cols.length + ')</button>';
   }
 
   function dmClearLiveFilters(){
-    Object.keys(dmLiveFilters).forEach(k => { dmLiveFilters[k] = ''; });
-    document.querySelectorAll('#dmLiveFilterRow .dm-fin').forEach(i => { i.value = ''; });
+    dmLiveFilters = {};
+    dmLfClose();
     const s = q('dmLiveSearch'); if (s) s.value = '';
     renderLive();
   }
 
   function renderLive(){
-    dmBuildLiveFilterRow();
-    const box = q('dmLiveSearch');
-    const term = up(box ? box.value : '');
+    const term = dmLiveTerm();
     const all = dmDesigns.filter(d => d.status === 'LIVE');
     const rows = all.filter(d => dmLiveSearchPass(d, term) && dmLiveColsPass(d, null));
-    const activeCols = DM_LIVE_COLS.filter(c => String(dmLiveFilters[c.id] || '').trim()).length;
+    const activeCols = DM_LIVE_COLS.filter(c => dmLiveFilters[c.id]).length;
 
     const lc = q('dmLiveCount');    if (lc) lc.textContent = all.length;
     const dc = q('dmDiscardCount'); if (dc) dc.textContent = dmDesigns.filter(d => d.status === 'DISCARDED').length;
@@ -583,7 +766,7 @@
     const cb = q('dmLiveClearBtn');
     if (cb) cb.style.display = (term || activeCols) ? '' : 'none';
 
-    dmLiveRefreshSuggestions(all, term);
+    dmLfIndicators();
 
     const tb = q('dmLiveTableBody'); if (!tb) return;
     if (!rows.length) {
@@ -1304,7 +1487,11 @@
     DM_CAT_FILTERS.forEach(f => {
       const dom = [...new Set(live.map(d => dmCatVal(f, d)))].sort(dmCatSort);
       const on = dom.filter(v => dmCatChecked(f.name, v));
-      picked[f.name] = { dom: dom, set: new Set(on), all: on.length === 0 };
+      /* Kisi column me ek bhi tick nahi = us column se koi design nahi guzarta.
+         (Pehle "koi tick nahi" ko "sab chalega" maana jaata tha — Clear dabane
+         ke baad bhi baaki filters bhare rehte the.) Ab Clear karte hi baaki
+         saare filters khaali ho jaate hain; wapas tick karte hi lautt aate hain. */
+      picked[f.name] = { dom: dom, set: new Set(on) };
     });
     return { live: live, picked: picked, nos: dmCatNos() };
   }
@@ -1314,8 +1501,7 @@
     if (ctx.nos.length && ctx.nos.indexOf(up(d.design_no)) < 0) return false;
     return DM_CAT_FILTERS.every(f => {
       if (f.name === skipName) return true;
-      const p = ctx.picked[f.name];
-      return p.all || p.set.has(dmCatVal(f, d));
+      return ctx.picked[f.name].set.has(dmCatVal(f, d));
     });
   }
 
@@ -1654,13 +1840,13 @@
     });
 
     q('dmBulkImageInput').addEventListener('change', bulkAddFiles);
+    DM_FORM_PICKERS.forEach(p => attachPicker(q(p[0]), p[1]));
 
     let searchTimer = null;
     q('dmLiveSearch').addEventListener('input', () => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(renderLive, 140);
     });
-    dmBuildLiveFilterRow();
 
     /* Catalogue ke dependent filters: ek bhi tick badla to saare boxes dobara
        bante hain, isi liye bemaani options turant gayab ho jaate hain.
@@ -1736,6 +1922,8 @@
   window.dmToggleFilter             = toggleFilter;
   window.dmResetCatalogueFilters    = resetCatalogueFilters;
   window.dmClearLiveFilters         = dmClearLiveFilters;
+  window.dmLiveOpenFilter           = dmLiveOpenFilter;
+  window.dmLiveRemoveFilter         = dmLiveRemoveFilter;
   window.dmGenerateCataloguePreview = generatePreview;
   window.dmDownloadCataloguePdf     = downloadPdf;
   window.dmOpenCataloguePdf         = openPdf;

@@ -3022,72 +3022,72 @@ body {
    a sticky <thead>, so a panel living inside the <th> would be
    clipped by the first and dragged around by the second.
 ============================================================ */
-#itemMasterTable .im-fbtn {
+#itemMasterTable .im-fbtn, #dmLiveTable .im-fbtn {
     display: inline-block; margin-left: 4px; padding: 0 3px;
     border-radius: 3px; cursor: pointer; font-size: 9px; line-height: 1.6;
     color: inherit; opacity: .55; vertical-align: middle;
 }
-#itemMasterTable .im-fbtn:hover { opacity: 1; background: rgba(148,163,184,.35); }
+#itemMasterTable .im-fbtn:hover, #dmLiveTable .im-fbtn:hover { opacity: 1; background: rgba(148,163,184,.35); }
 /* An applied filter has to be obvious from the header alone — otherwise the
    only sign that rows are being hidden is a row count nobody is watching. */
-#itemMasterTable .im-fbtn.on {
+#itemMasterTable .im-fbtn.on, #dmLiveTable .im-fbtn.on {
     opacity: 1; background: #16a34a; color: #fff; font-weight: 800;
     box-shadow: 0 0 0 1.5px #bbf7d0;
 }
-#imFilterPanel {
+:is(#imFilterPanel,#dmLfPanel) {
     position: fixed; z-index: 2147483100; display: none;
     background: #fff; border: 1px solid #94a3b8; border-radius: 8px;
     box-shadow: 0 12px 32px rgba(15,23,42,.28);
     width: 268px; font-size: 11px; color: #0f172a;
 }
-#imFilterPanel .imf-head {
+:is(#imFilterPanel,#dmLfPanel) .imf-head {
     padding: 7px 10px; border-bottom: 1px solid #e2e8f0; background: #f1f5f9;
     border-radius: 8px 8px 0 0; font-weight: 800; font-size: 11px; color: #0f172a;
 }
-#imFilterPanel .imf-sub { font-weight: 600; color: #64748b; font-size: 10px; margin-top: 2px; }
-#imFilterPanel .imf-body { padding: 8px 10px; }
-#imFilterPanel input[type=text], #imFilterPanel input[type=number] {
+:is(#imFilterPanel,#dmLfPanel) .imf-sub { font-weight: 600; color: #64748b; font-size: 10px; margin-top: 2px; }
+:is(#imFilterPanel,#dmLfPanel) .imf-body { padding: 8px 10px; }
+:is(#imFilterPanel,#dmLfPanel) input[type=text], :is(#imFilterPanel,#dmLfPanel) input[type=number] {
     width: 100%; box-sizing: border-box; height: 26px; padding: 0 7px;
     border: 1px solid #cbd5e1; border-radius: 5px; font-size: 11px; background: #fff; color: #0f172a;
 }
-#imFilterPanel .imf-range { display: flex; gap: 6px; margin-bottom: 7px; }
-#imFilterPanel .imf-list {
+:is(#imFilterPanel,#dmLfPanel) .imf-range { display: flex; gap: 6px; margin-bottom: 7px; }
+:is(#imFilterPanel,#dmLfPanel) .imf-list {
     max-height: 210px; overflow-y: auto; margin-top: 6px;
     border: 1px solid #e2e8f0; border-radius: 5px; padding: 4px 6px; background: #fff;
 }
-#imFilterPanel .imf-opt { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
-#imFilterPanel .imf-opt:hover { background: #f1f5f9; }
-#imFilterPanel .imf-opt span.t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#imFilterPanel .imf-opt span.n { color: #94a3b8; font-size: 10px; }
+:is(#imFilterPanel,#dmLfPanel) .imf-opt { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+:is(#imFilterPanel,#dmLfPanel) .imf-opt:hover { background: #f1f5f9; }
+:is(#imFilterPanel,#dmLfPanel) .imf-opt span.t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(#imFilterPanel,#dmLfPanel) .imf-opt span.n { color: #94a3b8; font-size: 10px; }
 /* A value that is only still listed because it is ticked — the other columns'
    filters have taken every row that carried it. Shown rather than dropped, or
    it could never be unticked. */
-#imFilterPanel .imf-opt.gone span.t { color: #94a3b8; font-style: italic; }
-#imFilterPanel .imf-foot {
+:is(#imFilterPanel,#dmLfPanel) .imf-opt.gone span.t { color: #94a3b8; font-style: italic; }
+:is(#imFilterPanel,#dmLfPanel) .imf-foot {
     display: flex; gap: 6px; padding: 8px 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;
     border-radius: 0 0 8px 8px;
 }
-#imFilterPanel .imf-btn {
+:is(#imFilterPanel,#dmLfPanel) .imf-btn {
     flex: 1; height: 26px; border-radius: 5px; border: 1px solid transparent;
     font-size: 11px; font-weight: 700; cursor: pointer;
 }
-#imFilterPanel .imf-apply  { background: #16a34a; color: #fff; }
-#imFilterPanel .imf-remove { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
-#imFilterPanel .imf-cancel { background: #e2e8f0; color: #475569; flex: 0 0 62px; }
-#imFilterPanel .imf-mini {
+:is(#imFilterPanel,#dmLfPanel) .imf-apply  { background: #16a34a; color: #fff; }
+:is(#imFilterPanel,#dmLfPanel) .imf-remove { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+:is(#imFilterPanel,#dmLfPanel) .imf-cancel { background: #e2e8f0; color: #475569; flex: 0 0 62px; }
+:is(#imFilterPanel,#dmLfPanel) .imf-mini {
     background: none; border: none; color: #0369a1; font-size: 10px;
     font-weight: 700; cursor: pointer; padding: 0;
 }
-#imFilterChips .imf-chip {
+:is(#imFilterChips,#dmLfChips) .imf-chip {
     display: inline-flex; align-items: center; gap: 5px;
     background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46;
     border-radius: 12px; padding: 2px 4px 2px 9px; font-size: 10px; font-weight: 700;
 }
-#imFilterChips .imf-chip button {
+:is(#imFilterChips,#dmLfChips) .imf-chip button {
     background: none; border: none; color: #047857; cursor: pointer;
     font-size: 11px; line-height: 1; padding: 1px 4px; border-radius: 8px;
 }
-#imFilterChips .imf-chip button:hover { background: #a7f3d0; }
+:is(#imFilterChips,#dmLfChips) .imf-chip button:hover { background: #a7f3d0; }
 /* Searchable select (makeSearchableSelect) */
 .ss-input { box-sizing: border-box; cursor: text; }
 .ss-list { position: fixed; z-index: 2147483000; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 240px; overflow-y: auto; font-size: 12px; }

@@ -3045,6 +3045,12 @@ function sarvNavigateFromHome(target){
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'lot-card-manager.html');
       break;
     }
+    case 'PRINTING_LOT': {
+      activatePanel('printingLotPanel');
+      const fr=byId('printingLotFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'printing-lot.html');
+      break;
+    }
     case 'TRIMS': {
       activatePanel('trimsPanel');
       const fr=byId('trimsFrame');
@@ -3152,6 +3158,12 @@ const SARV_HOME_HELP={
     'Master packing (Bora / Box / Bale…) + slave packing (PVC Bag / Gift Box…) जोड़ें; कई master हों तो pieces बाँटें।',
     'Sattan रंग-वार वज़न और 15 kg के bundle (.9 पर अगला bundle) अपने-आप निकलते हैं।',
     'Save करते ही Production Card प्रिंट के लिए तैयार; CSV export / import भी है।']},
+  PRINTING_LOT:{icon:'🖨️',title:'Printing Lot Card (Manufacturing)',points:[
+    'A4 Production Lot Card banayein — Lot No, Party, Brand, Fabric, Satin, Labels, Qty, Packing।',
+    'Design photo Upload / Paste (Ctrl+V) / Design Master se — har photo is lot ke folder me alag file बनकर save होती है (12 तक)।',
+    'Har design par Blanket Color, Sattan Code, Target / Complete Qty; Worker Instructions card par छपते हैं।',
+    'Save करते ही database में; PDF party-wise folder में save होकर ERP ke PDF index में आती है।',
+    'Production tab: har department (Raschel, Stenter, Printing, Washing, Packing…) apna section bharta hai — Department Login (naam + PIN) se, कौन/कब का पूरा itihaas।']},
   TRIMS:{icon:'🏷️',title:'Trims Manager (Manufacturing)',points:[
     'Sales Order chunein — us order ki trims sheet khulegi (pehle save ki hui ho to wahi).',
     'Order Qty order ke products se aur Lot Req Qty jode gaye Lot Card se apne-aap bharti hai।',
@@ -3488,6 +3500,13 @@ const SARV_FEATURES=[
   {group:'🏭 Production › Design Master'},
   {key:'DESIGN_SAVE',label:'DESIGN SAVE / EDIT',hint:'Naya design, nayi matching, bulk upload, design edit aur photo badalna',def:'W'},
   {key:'DESIGN_DISCARD',label:'DESIGN DISCARD / RESTORE',hint:'Design discard ya restore karna, matching hatana',def:'W'},
+  /* printing-lot.html (iframe) yahi rows padhta hai — ERP ke andar parent ka
+     sarvCan(), bahar khula ho to app_settings.role_permissions + yahi defaults. */
+  {group:'🖨️ Manufacturing › Printing Lot Card'},
+  {key:'PRL_EDIT',label:'PRINTING LOT CREATE / EDIT',hint:'Lot card banana / badalna, photos, Save, Copy, Status',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'PRL_DELETE',label:'PRINTING LOT DELETE',hint:'Lot card poora delete (photos + PDF + production data)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'PRL_PROD_ALL',label:'PRODUCTION — SAB SECTIONS',hint:'Production tab ke saare department sections bharna (baaki log Department Login se sirf apna)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'PRL_MASTER',label:'PRINTING LOT MASTERS',hint:'Blanket colors, satin codes, department operators',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'📱 Approval App (mobile.html tabs)'},
   {key:'VENDOR_INFO_MOBILE',label:'Vendor Info.',hint:'Mobile › Vendor Info tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'PO_GENERATE',label:'PO GENERATE',hint:'Mobile › PO Generate tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
@@ -3541,6 +3560,7 @@ const SARV_TABS=[
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
   {key:'HOME_LOT_CARD',label:'Lot Card Manager',hint:'Manufacturing › blanket lot cards, sattan & master packing',def:'ALL'},
+  {key:'HOME_PRINTING_LOT',label:'Printing Lot Card',hint:'Manufacturing › A4 production lot card + department-wise production tracking',def:'ALL'},
   {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
@@ -6329,16 +6349,17 @@ const SARV_DROPDOWNS=[
 
   {group:'👤 Employee / Purchase Requirement'},
   {key:'erp_department',label:'Department',
-   hint:'Employee Master, New PR ka Department aur Add Employee popup — teeno ek hi list',
-   where:'#me_department · #p_reqDepartment · #p_aeDepartment',
+   hint:'Employee Master, New PR ka Department, Add Employee popup aur PO list ka Department filter — sab ek hi list',
+   where:'#me_department · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept',
    selects:[{id:'me_department',placeholder:'-- Select --'},
             {id:'p_reqDepartment',placeholder:'-- Select --'},
-            {id:'p_aeDepartment',placeholder:'-- Select --'}],
+            {id:'p_aeDepartment',placeholder:'-- Select --'},
+            {id:'p_poFilterDept',placeholder:'All'}],
    def:['Weaving','Dyeing','Finishing','Raising','Cutting / Stitching','Packing','Quality Control',
         'Maintenance','Store','Dispatch','Admin / HR','Accounts','Other']},
 
   {group:'🏭 Production › Design Master'},
-  {key:'erp_designUnit',label:'Design Unit',hint:'Design Master ke Unit pickers',dm:'unit',
+  {key:'erp_designUnit',label:'Design Unit',hint:'Design Master ke Unit pickers + Printing Lot Card ka Unit',dm:'unit',
    def:['UNIT 1','UNIT 2']},
   {key:'erp_designBedSize',label:'Bed Size',hint:'Design Master ke Bed Size pickers',dm:'bed',
    def:['DOUBLE BED','SINGLE BED']},
@@ -6355,6 +6376,15 @@ const SARV_DROPDOWNS=[
   {key:'erp_designShade',label:'Shade / Matching Name',
    hint:'Design Master ki shade list (V18 ki 65 shades). Table khaali chhodne par code ki poori list chalti hai.',
    dm:'shade',defFn:()=>(window.dmShadeDefaults||[]).slice()},
+
+  /* printing-lot.html ye keys seedha sales_dropdowns se padhta hai (wahi niyam:
+     rows hain to wahi, warna ye default). Unit ke liye erp_designUnit hi. */
+  {group:'🖨️ Manufacturing › Printing Lot Card'},
+  {key:'erp_prlFabricCategory',label:'Fabric Category',hint:'Printing Lot Card › Fabric Category',def:['MINK','SUPER CLOUDY','SHERPA','FLANNEL']},
+  {key:'erp_prlBedSize',label:'Bed Size (Lot Card)',hint:'Printing Lot Card › Bed Size',def:['Double Bed','Single Bed','King Size','Queen Size']},
+  {key:'erp_prlBlanketPly',label:'Blanket Ply',hint:'Printing Lot Card › Blanket Ply',def:['Single Ply','Double Ply','Three Ply']},
+  {key:'erp_prlSatinQuality',label:'Satin Quality',hint:'Printing Lot Card › Satin Quality. Har quality ke codes: Printing Lot › Masters › Satin Codes',def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM']},
+  {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
 
   {group:'🛒 Sales › Order Form (order-form.html)'},
   {key:'dbsb',label:'DB / SB',hint:'Order Form › product ka DB/SB',def:['DB','DP','SB','SS','SC'],sales:1},
@@ -6425,6 +6455,8 @@ function sarvDdApplyAll_(){
   // Outward ki nature JS se banti hai (ISSUE par locked rehti hai) — usse
   // dobara bulwana padta hai, warna naya option add karne par nahi dikhega.
   if(typeof populateNatureOfDispatch==='function'){try{populateNatureOfDispatch();}catch(e){}}
+  // Consumption report ka Nature filter bhi inhi do lists se banta hai.
+  if(typeof consRefreshNature_==='function'){try{consRefreshNature_();}catch(e){}}
   // Design Master ke pickers / datalists apni list yahin se banate hain.
   if(typeof dmRefreshDropdowns==='function'){try{dmRefreshDropdowns();}catch(e){}}
 }
@@ -7132,10 +7164,21 @@ function consFilterEntries_(cache,opts={}){
    in play), and Lot numbers come from the entries those types actually have —
    so a lot that belongs only to an OUTWARD disappears the moment OUTWARD is
    unticked. Both keep the user's current pick where it is still valid. */
+/* Inward / Outward ki nature list Dropdown Master se aati hai (wahi jo form
+   offer karta hai), taaki wahan add ki gayi nayi nature yahan filter me bhi
+   dikhe. ISSUE ki apni locked nature hai, wo CONS_TYPES se hi aati hai. */
+const CONS_NATURE_DD_KEY={'INWARD':'erp_natureOfInward','INWARD NB':'erp_natureOfInward','OUTWARD':'erp_natureOfDispatch'};
+function consTypeNatures_(t){
+  const k=CONS_NATURE_DD_KEY[t];
+  if(k&&typeof sarvDropdownList==='function'){
+    try{const l=sarvDropdownList(k);if(l&&l.length)return l;}catch(e){}
+  }
+  return (CONS_TYPES[t]||{}).natures||[];
+}
 function consRefreshNature_(){
   const host=byId('consNature');if(!host)return;
   const keep=new Set(consMulti('consNature'));
-  const names=[...new Set(consSelectedTypes().flatMap(t=>(CONS_TYPES[t]||{}).natures||[]))];
+  const names=[...new Set(consSelectedTypes().flatMap(consTypeNatures_))];
   host.innerHTML=names.length
     ? names.map(n=>'<label><input type="checkbox" value="'+escText(n)+'"'+(keep.has(n)?' checked':'')+'> '
         +escText(CONS_NATURE_LABEL[n]||n)+'</label>').join('')

@@ -135,6 +135,12 @@
       <span class="sarv-home-text"><b>Lot Card Manager</b><small>Blanket lots, sattan &amp; master packing</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Manufacturing › Printing Lot Card — opens #printingLotPanel (HOME_PRINTING_LOT). -->
+    <button type="button" class="sarv-home-row" data-go="PRINTING_LOT">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg></span>
+      <span class="sarv-home-text"><b>Printing Lot Card</b><small>Production lot card, design photos &amp; department tracking</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <!-- Manufacturing › Trims Manager — opens #trimsPanel (HOME_TRIMS). -->
     <button type="button" class="sarv-home-row" data-go="TRIMS">
       <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg></span>
@@ -1618,19 +1624,30 @@
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" id="dmLiveClearBtn" style="display:none;" onclick="dmClearLiveFilters()" title="Search aur saare column filter khaali kar dein">&#10006; Clear Filters</button>
                         <span class="dm-count" id="dmLiveShown"></span>
                       </div>
+                      <!-- Laage hue column filter, har ek ka apna ✖ aur ek Clear All —
+                           Item Master ke #imFilterChips jaisa (dmLfIndicators banata hai). -->
+                      <div id="dmLfChips" style="display:none; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
                       <div class="dm-table-wrap">
-                        <table class="dm-table">
+                        <table class="dm-table" id="dmLiveTable">
                           <thead>
+                            <!-- Har column ka ▾ = Item Master jaisa multi-select filter panel
+                                 (store-design-master.js › dmLiveOpenFilter). -->
                             <tr>
-                              <th>Actions</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
-                              <th>Supplier</th><th>Unit</th><th>Bed Size</th><th>Quality</th><th>Frames &amp; Total</th><th>Matchings</th>
-                              <th>Master Matching</th><th>Status</th>
+                              <th>Actions</th><th>Photo</th>
+                              <th>Design No<span class="im-fbtn" id="dmLF-no" onclick="dmLiveOpenFilter(event,'no')" title="Filter">&#9662;</span></th>
+                              <th>Monopoly<span class="im-fbtn" id="dmLF-mono" onclick="dmLiveOpenFilter(event,'mono')" title="Filter">&#9662;</span></th>
+                              <th>Type<span class="im-fbtn" id="dmLF-type" onclick="dmLiveOpenFilter(event,'type')" title="Filter">&#9662;</span></th>
+                              <th>Party<span class="im-fbtn" id="dmLF-party" onclick="dmLiveOpenFilter(event,'party')" title="Filter">&#9662;</span></th>
+                              <th>Brand<span class="im-fbtn" id="dmLF-brand" onclick="dmLiveOpenFilter(event,'brand')" title="Filter">&#9662;</span></th>
+                              <th>Supplier<span class="im-fbtn" id="dmLF-supp" onclick="dmLiveOpenFilter(event,'supp')" title="Filter">&#9662;</span></th>
+                              <th>Unit<span class="im-fbtn" id="dmLF-unit" onclick="dmLiveOpenFilter(event,'unit')" title="Filter">&#9662;</span></th>
+                              <th>Bed Size<span class="im-fbtn" id="dmLF-bed" onclick="dmLiveOpenFilter(event,'bed')" title="Filter">&#9662;</span></th>
+                              <th>Quality<span class="im-fbtn" id="dmLF-qual" onclick="dmLiveOpenFilter(event,'qual')" title="Filter">&#9662;</span></th>
+                              <th>Frames &amp; Total<span class="im-fbtn" id="dmLF-frames" onclick="dmLiveOpenFilter(event,'frames')" title="Filter">&#9662;</span></th>
+                              <th>Matchings<span class="im-fbtn" id="dmLF-mcount" onclick="dmLiveOpenFilter(event,'mcount')" title="Filter">&#9662;</span></th>
+                              <th>Master Matching<span class="im-fbtn" id="dmLF-master" onclick="dmLiveOpenFilter(event,'master')" title="Filter">&#9662;</span></th>
+                              <th>Status</th>
                             </tr>
-                            <!-- Per-column filter row. Cells store-design-master.js ek baar
-                                 banata hai (dmBuildLiveFilterRow) aur phir chhedta nahi, isi
-                                 liye type karte waqt focus kabhi nahi tootta — sirf tbody aur
-                                 har column ke suggestions dobara bante hain. -->
-                            <tr class="dm-frow" id="dmLiveFilterRow"></tr>
                           </thead>
                           <tbody id="dmLiveTableBody"></tbody>
                         </table>
@@ -1658,7 +1675,8 @@
                       <p class="dm-hint" style="margin-bottom:10px;">
                         Saare filter <b>ek doosre se jude</b> hain &mdash; ek tick hatate hi baaki columns me se wo options
                         apne aap gayab ho jaate hain jo bache hue designs me kahin nahi hain. Wapas tick karte hi wo lautt
-                        aate hain. Kisi column ke <b>saare</b> tick hata dene ka matlab hai &ldquo;us column par koi rok nahi&rdquo;.
+                        aate hain. Kisi column me <b>Clear</b> dabane (saare tick hata dene) par us column se koi design nahi
+                        bachta &mdash; isi liye baaki saare filters me bhi koi checkbox nahi dikhega. Wapas tick karte hi sab lautt aata hai.
                       </p>
                       <!-- Saare filter ek doosre par DEPENDENT hain: ek value un-tick
                            karte hi baaki columns me se wo options apne aap gayab ho
@@ -1729,6 +1747,15 @@
         <div id="lotCardPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="lotCardFrame" title="Lot Card Manager" data-src="lot-card-manager.html"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f1f5f9; display:block;"></iframe>
+        </div>
+
+        <!-- Manufacturing › Printing Lot Card — A4 production lot card + design
+             photos + department-wise production tracking (printing-lot.html,
+             Supabase prl_* tables, bucket printing-lot). Same iframe pattern as
+             the Lot Card Manager; src set on first open. -->
+        <div id="printingLotPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="printingLotFrame" title="Printing Lot Card" data-src="printing-lot.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f3f4f6; display:block;"></iframe>
         </div>
 
         <!-- Manufacturing › Trims Manager — trims & packing material per Sales

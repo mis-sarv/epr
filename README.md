@@ -21,6 +21,8 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `DESIGN_MASTER_MIGRATION.sql` | Design Master ke do table + storage policies. Supabase › SQL Editor me **ek baar** chalayein. |
 | `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS. Master Data › 🔽 Dropdown Master ke liye. **Ek baar** chalayein. |
 | `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column. Design Master ke Supplier Name field ke liye. **Ek baar** chalayein. |
+| `printing-lot.html` | Manufacturing › 🖨️ Printing Lot Card (purani "Design Print Manager Pro" + code.gs). `#printingLotPanel` iframe me khulta hai; shop floor par seedha `printing-lot.html#production` bhi. |
+| `PRINTING_LOT_MIGRATION.sql` | Printing Lot ke `prl_*` tables, RPCs, views, bucket `printing-lot` + seed (sections, colors, satin codes). **Ek baar** chalayein (APPROVAL_CHAIN_MIGRATION ke baad). |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
 | `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
 
@@ -101,6 +103,34 @@ database me value hi jaati hai.
 Design Master ke pickers isi se feed hote hain (`store-design-master.js` ka
 `dmFixed()` / `DM_DD_KEY`), aur Home page ka Nature chooser bhi
 (`sarvNatureOpts_`) — to list ek hi jagah badalti hai.
+
+## 🖨️ Printing Lot Card (Manufacturing)
+
+Purani Google-Sheet wali app ki jagah. Setup: `PRINTING_LOT_MIGRATION.sql` ek
+baar chalayein — bas.
+
+| Purana (Sheet / Drive / IndexedDB) | Ab |
+|---|---|
+| Production Log sheet | `prl_lots` (+ view `v_prl_production_log`, wahi columns) |
+| designs[] me base64 photo | `prl_lot_designs.image_path` → bucket `printing-lot/images/<lot id>/…` (har photo alag file) |
+| Production Tracking sheet | `prl_production_entries` (ek row per lot + section, `data` jsonb) + `prl_production_log` (har save ka itihaas) + view `v_prl_production_tracking` |
+| User Master (plain password) | ERP login + Feature Access `PRL_*`; department masters ke liye `prl_operators` (naam + PIN hash) |
+| Drive `ROOT/PARTY/LOT_PARTY.pdf` | `printing-lot/pdfs/PARTY/LOT_PARTY.pdf` + `pdf_documents` (variant `PRINTING_LOT`) |
+| DRAFT-LOT sheet | Saved lot par 5 sec baad auto-save + browser me local backup |
+
+- **Kaun kya kar sakta hai:** Admin Panel › Feature Access › 🖨️ Printing Lot
+  Card (`PRL_EDIT`, `PRL_DELETE`, `PRL_PROD_ALL`, `PRL_MASTER`). Default:
+  Admin + MD edit; baaki view-only.
+- **Department masters** (Raschel, Stenter, Printing…): Printing Lot › Masters ›
+  Department Operators me Admin banata hai (Admin PIN se). Wo Production tab
+  me *Department Login* karke sirf apne sections bharte hain.
+- **Lists:** Unit / Category / Bed Size / Ply / Satin Quality / Stenter Times →
+  Dropdown Master (`erp_designUnit`, `erp_prl*`). Blanket colors aur satin
+  codes → Printing Lot › Masters. Production ke fields → table `prl_sections`
+  (`fields` jsonb) — naya field wahan jodein, code nahi badalna.
+- Ek save me poora card (`prl_save_lot` RPC, ek transaction). Do log ek saath
+  badlein to doosre ko `VERSION_CONFLICT` milta hai — kisi ka kaam chupchaap
+  nahi mitta.
 
 ## Sidebar me kaunsa module kisko dikhe
 

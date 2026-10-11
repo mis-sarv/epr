@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#111827">
+<title>Sarv India — Printing Lot Card</title>
+<!--
+  Manufacturing › 🖨️ Printing Lot Card — ERP ke andar khulta hai (index.html →
+  erp-shell.js MANUF › "Printing Lot Card" → store-core.js
+  sarvNavigateFromHome('PRINTING_LOT') → #printingLotPanel iframe). Shop floor
+  par seedha bhi khul sakta hai: printing-lot.html#production (Department
+  Login se apna section bharne ke liye).
+
+  Port of "Design Print Manager Pro" (PRINTING LOT/Printinglot.html + code.gs).
+  Wahi A4 PRODUCTION LOT CARD, wahi fields, wahi production sections — storage
+  badla hai:
+    IndexedDB saved orders + Google Sheet "Production Log"  → prl_lots
+    base64 images JSON ke andar                             → prl_lot_designs + bucket printing-lot/images/<lot id>/
+    notes                                                   → prl_lot_notes
+    "Production Tracking" sheet (SECTION__FIELD columns)    → prl_production_entries (+ prl_production_log itihaas)
+    User Master sheet (plain password)                      → ERP login + prl_operators (PIN hash, server check)
+    Drive ROOT/PARTY/LOT_PARTY.pdf                          → bucket printing-lot/pdfs/PARTY/LOT_PARTY.pdf + pdf_documents
+  Tables: PRINTING_LOT_MIGRATION.sql. Apna page hai (iframe) kyunki Tailwind
+  ERP ke apne styles reset kar deta.
+-->
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  body { font-family:'Inter',sans-serif; background:#f3f4f6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+
+  /* ── A4 lot card (purani app ka hi naap) ── */
+  .a4-sheet {
+    width:297mm; min-height:210mm; background:#fff; margin:0 auto;
+    padding:8mm 12mm 5mm 12mm; box-sizing:border-box;
+    display:flex; flex-direction:column; justify-content:space-between;
+    box-shadow:0 10px 25px -5px rgba(0,0,0,.1),0 8px 10px -6px rgba(0,0,0,.1);
+  }
+  .a4-sheet.static-sheet { box-shadow:none; margin:0; }
+  .designs-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; width:100%; }
+  .design-img-container {
+    width:100%; height:45mm; display:flex; align-items:center; justify-content:center; overflow:hidden;
+    border-bottom:1px solid #e5e7eb; margin:0 auto 1px auto; padding-bottom:1px; background:#fafafa; position:relative;
+  }
+  .design-img-container img { max-width:100%; max-height:100%; object-fit:contain; }
+  .image-overlay { position:absolute; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; gap:10px; opacity:0; transition:opacity .2s; }
+  .design-img-container:hover .image-overlay { opacity:1; }
+  .img-busy { position:absolute; inset:0; background:rgba(255,255,255,.75); display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#1d4ed8; }
+  .img-fail { position:absolute; inset:0; background:rgba(254,226,226,.9); display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:8px; font-weight:800; color:#b91c1c; gap:3px; }
+  [contenteditable="true"]:focus { outline:2px solid #60a5fa; background:#fff; border-radius:2px; color:#000; }
+  .sortable-ghost { opacity:.4; background:#eff6ff; }
+  .qty-input::-webkit-outer-spin-button, .qty-input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  .qty-input { -moz-appearance:textfield; }
+  .custom-scrollbar::-webkit-scrollbar { width:6px; height:6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background:#f1f1f1; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background:#c1c1c1; border-radius:4px; }
+  .fld { width:100%; border:1px solid #d1d5db; border-radius:4px; padding:3px 8px; font-size:12px; font-weight:500; background:#fff; }
+  .fld:focus { outline:none; border-color:#3b82f6; }
+  .fld:disabled { background:#f3f4f6; color:#6b7280; }
+  .lbl { display:block; font-size:10px; font-weight:700; color:#374151; margin-bottom:2px; text-transform:uppercase; letter-spacing:.05em; }
+  .tab-btn.active { background:#2563eb; color:#fff; border-color:#3b82f6; }
+  .reg-table th { position:sticky; top:0; background:#0f172a; color:#fff; font-size:10px; text-transform:uppercase; letter-spacing:.04em; padding:7px 8px; text-align:left; white-space:nowrap; z-index:1; }
+  .reg-table td { padding:6px 8px; border-bottom:1px solid #eef2f7; font-size:12px; vertical-align:middle; }
+  .reg-table tbody tr:hover { background:#f8fafc; }
+  .chip { display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:10px; font-weight:800; }
+
+  /* Off-screen copy jisse PDF aur Print bante hain — screen par nahi dikhti,
+     par DOM me rehti hai taaki Tailwind uski classes pehle se bana chuka ho
+     aur images load ho chuki hon. */
+  #print-root { position:absolute; left:-99999px; top:0; width:297mm; background:#fff; }
+
+  @media print {
+    @page { size:A4 landscape; margin:0; }
+    html, body { height:auto !important; overflow:visible !important; background:#fff !important; margin:0; padding:0; }
+    body > *:not(#print-root) { display:none !important; }
+    #print-root { position:static !important; left:0 !important; }
+    * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  }
+</style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+<!-- ═══════════════════════ HEADER ═══════════════════════ -->
+<header class="bg-gray-900 text-white px-4 py-2 flex flex-wrap gap-2 justify-between items-center shadow-md z-10 flex-shrink-0">
+  <div class="flex items-center gap-3">
+    <div class="bg-blue-600 p-2 rounded-lg"><i class="ph ph-printer-fill text-xl"></i></div>
+    <div>
+      <h1 class="text-sm font-bold tracking-wide">Printing Lot Card <span class="text-[10px] bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded ml-1 border border-blue-400/30">ERP</span></h1>
+      <p class="text-[10px] text-gray-400">Sarv India Home Furnishing · Production Lot Card &amp; Tracking</p>
+    </div>
+    <nav class="flex gap-1 ml-2">
+      <button class="tab-btn border border-gray-700 text-gray-300 hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1" data-view="card"><i class="ph ph-cards"></i> Lot Card</button>
+      <button class="tab-btn border border-gray-700 text-gray-300 hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1" data-view="register"><i class="ph ph-list-magnifying-glass"></i> Register</button>
+      <button class="tab-btn border border-gray-700 text-gray-300 hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1" data-view="production"><i class="ph ph-factory"></i> Production</button>
+      <button class="tab-btn border border-gray-700 text-gray-300 hover:bg-gray-800 px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1" data-view="masters" id="tab-masters"><i class="ph ph-gear-six"></i> Masters</button>
+    </nav>
+  </div>
+  <div class="flex items-center gap-2 flex-wrap">
+    <div class="hidden md:flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-md border border-gray-700">
+      <i class="ph ph-user-circle text-gray-400 text-base"></i>
+      <span id="who" class="text-[11px] font-bold text-blue-300 tracking-wide uppercase">—</span>
+    </div>
+    <div id="card-actions" class="flex items-center gap-2">
+      <div class="relative">
+        <i class="ph ph-magnifying-glass absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+        <input id="quick-open" class="bg-gray-800 border border-gray-700 rounded-md pl-6 pr-2 py-1.5 text-xs w-32 uppercase text-white placeholder-gray-500 focus:outline-none focus:border-blue-500" placeholder="Open LOT…" title="LOT NO likh kar Enter">
+      </div>
+      <div id="save-state" class="flex flex-col items-center justify-center px-1 min-w-[56px]" title="Save status">
+        <i id="save-icon" class="ph ph-cloud text-gray-400 text-lg"></i>
+        <span id="save-text" class="text-[8px] text-gray-400 font-bold tracking-wide">—</span>
+      </div>
+      <button id="btn-new" class="edit-only bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1"><i class="ph ph-file-plus"></i><span class="hidden sm:inline">New</span></button>
+      <button id="btn-save" class="edit-only bg-teal-600 hover:bg-teal-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 border border-teal-500" title="Save (Ctrl+S)"><i class="ph ph-floppy-disk"></i><span class="hidden sm:inline">Save</span></button>
+      <button id="btn-print" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1"><i class="ph ph-printer"></i><span class="hidden sm:inline">Print</span></button>
+      <button id="btn-pdf" class="bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1"><i class="ph ph-file-pdf"></i><span class="hidden sm:inline">PDF</span></button>
+    </div>
+  </div>
+</header>
+<div id="banner" class="flex-shrink-0"></div>
+
+<main class="flex-1 overflow-hidden relative">
+
+  <!-- ═══════════════════════ VIEW: LOT CARD ═══════════════════════ -->
+  <section id="view-card" class="view h-full flex flex-col md:flex-row overflow-hidden">
+    <div id="sidebar" class="w-full md:w-1/3 lg:w-1/4 bg-white border-r border-gray-200 p-3 overflow-y-auto custom-scrollbar flex flex-col gap-3">
+
+      <div id="ro-note" class="hidden bg-amber-50 border border-amber-300 rounded-xl p-3 text-center">
+        <i class="ph ph-lock-key text-amber-600 text-2xl block mb-1"></i>
+        <p class="text-[11px] font-bold text-amber-800">VIEW-ONLY</p>
+        <p class="text-[10px] text-amber-700 mt-0.5">Lot card banana / badalna ERP ki Feature Access <b>PRINTING LOT CREATE / EDIT</b> se milta hai. <b>Production</b> tab me apna department data bhar sakte hain.</p>
+      </div>
+
+      <div class="bg-blue-50/70 border border-blue-100 p-3 rounded-xl">
+        <h2 class="font-bold text-gray-800 mb-2.5 border-b border-blue-200 pb-1.5 flex items-center justify-between text-xs">
+          <span class="flex items-center gap-1.5"><i class="ph ph-list-dashes text-blue-600 text-sm"></i> Order Parameters</span>
+          <span id="lot-badge" class="text-[10px] font-bold"></span>
+        </h2>
+        <div class="space-y-2">
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Unit</label><select id="in-unit" class="fld uppercase"></select></div>
+            <div><label class="lbl">Order No.</label><input id="in-order_no" class="fld uppercase" placeholder="ORD-001"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Lot No. *</label><input id="in-lot_no" class="fld uppercase border-l-4 border-l-red-500" placeholder="LOT-42"></div>
+            <div><label class="lbl">Date</label><input type="date" id="in-lot_date" class="fld"></div>
+          </div>
+          <div id="lot-dup-warn" class="hidden text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1"></div>
+          <button type="button" id="btn-from-lotcard" class="edit-only w-full text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded py-1 hover:bg-indigo-100 flex items-center justify-center gap-1" title="Lot Card Manager me isi LOT NO ka card ho to brand / bed size / ply / qty wahan se bharein"><i class="ph ph-link"></i> Lot Card Manager se bharein</button>
+          <div><label class="lbl">Brand Name</label><input id="in-brand_name" list="prl-brand-list" class="fld uppercase" placeholder="e.g. ROYAL VELVET" autocomplete="off"></div>
+          <div><label class="lbl">Party Name *</label><input id="in-party_name" list="prl-party-list" class="fld uppercase" placeholder="Enter or select client" autocomplete="off"></div>
+          <div><label class="lbl">Fabric Name</label><input id="in-fabric_name" class="fld" placeholder="Pure Mink Microfiber"></div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Fabric Category</label><select id="in-fabric_category" class="fld"></select></div>
+            <div><label class="lbl">Bed Size</label><select id="in-bed_size" class="fld"></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Blanket Ply</label><select id="in-blanket_ply" class="fld"></select></div>
+            <div><label class="lbl">Actual Weight</label><input id="in-actual_weight" class="fld uppercase" placeholder="1.8"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Stenter</label><select id="in-stenter" class="fld"></select></div>
+            <div id="stenter-times-box" class="hidden"><label class="lbl">Stenter Times</label><select id="in-stenter_times" class="fld"></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Total Colors</label><input type="number" id="in-total_colors" class="fld" placeholder="4" min="0" step="1"></div>
+            <div><label class="lbl">Total Designs</label><input type="number" id="in-total_designs" class="fld" placeholder="auto" min="0" step="1" title="Khaali chhodne par card par designs ki ginti apne aap"></div>
+          </div>
+          <div><label class="lbl">Finished L x W</label><input id="in-finished_size" class="fld uppercase" placeholder="220 X 240"></div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Satin Quality</label><select id="in-satin_quality" class="fld"></select></div>
+            <div><label class="lbl">Emboss</label><select id="in-emboss" class="fld"></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Corner Label</label><select id="in-corner_label" class="fld"></select></div>
+            <div><label class="lbl">Small Label</label><select id="in-small_label" class="fld"></select></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Quantity</label><input id="in-quantity" class="fld uppercase" placeholder="0"></div>
+            <div><label class="lbl">Packing</label><input id="in-packing" class="fld uppercase" placeholder="0"></div>
+          </div>
+          <label class="flex items-start gap-2 text-[10px] font-semibold text-gray-700 bg-white border border-gray-200 rounded p-1.5 cursor-pointer">
+            <input type="checkbox" id="in-fill_prod" class="mt-0.5">
+            <span>Packing / Contractor detail aur Start–End date <b>Production data se</b> card par bharein (khaali chhodne par haath se likhne ke liye blank)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="bg-amber-50/70 border border-amber-200 p-2.5 rounded-xl">
+        <h2 class="font-bold text-red-600 mb-1.5 border-b border-amber-200 pb-1 flex items-center gap-1.5 text-xs"><i class="ph ph-note-pencil text-sm"></i> Worker Instructions</h2>
+        <div class="flex flex-col gap-1.5 mb-2 edit-only-block">
+          <input id="note-name" class="fld uppercase" placeholder="Process / Station Name">
+          <textarea id="note-text" rows="2" class="fld resize-none" placeholder="Enter instruction note..."></textarea>
+          <div class="flex items-center justify-between px-1">
+            <label class="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Font Color:</label>
+            <input type="color" id="note-color" value="#dc2626" class="w-6 h-6 p-0 border border-gray-300 rounded cursor-pointer">
+          </div>
+          <button type="button" id="btn-add-note" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-1 rounded text-xs flex items-center justify-center gap-1"><i class="ph ph-plus-circle text-xs"></i> Add Instruction Note</button>
+        </div>
+        <div id="notes-list" class="space-y-1 max-h-[140px] overflow-y-auto custom-scrollbar pr-1"></div>
+      </div>
+
+      <div class="bg-gray-50 border border-gray-200 p-2.5 rounded-xl">
+        <h2 class="font-bold text-gray-800 mb-1 border-b border-gray-200 pb-1 flex items-center gap-1.5 text-xs"><i class="ph ph-image text-gray-600 text-sm"></i> Design Images Manager</h2>
+        <p class="text-[10px] text-gray-500 mb-2 leading-relaxed">Upload, Paste (Ctrl+V) ya Design Master se — ek card par 12 tak. Har photo alag file ban kar is lot ke folder me save hoti hai. Hover karke replace / delete.</p>
+        <div class="flex gap-2 edit-only-block">
+          <button type="button" id="btn-upload" class="flex-1 border-2 border-dashed border-blue-400 bg-blue-50/50 text-blue-600 hover:bg-blue-100 font-semibold py-2 rounded-xl flex flex-col items-center gap-0.5"><i class="ph ph-upload-simple text-base"></i><span class="text-[10px]">Upload</span></button>
+          <button type="button" id="btn-paste" class="flex-1 border-2 border-dashed border-purple-400 bg-purple-50/50 text-purple-600 hover:bg-purple-100 font-semibold py-2 rounded-xl flex flex-col items-center gap-0.5"><i class="ph ph-clipboard text-base"></i><span class="text-[10px]">Paste</span></button>
+          <button type="button" id="btn-dm" class="flex-1 border-2 border-dashed border-emerald-400 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-100 font-semibold py-2 rounded-xl flex flex-col items-center gap-0.5"><i class="ph ph-swatches text-base"></i><span class="text-[10px]">Design Master</span></button>
+        </div>
+        <div class="mt-1.5 flex justify-between items-center">
+          <button type="button" id="btn-clear-images" class="edit-only text-red-500 hover:text-red-700 font-semibold px-1 py-0.5 hidden text-[11px] flex items-center gap-1"><i class="ph ph-trash"></i> Clear All</button>
+          <span id="upload-count" class="font-bold text-gray-500 ml-auto bg-gray-200/70 px-1.5 py-0.5 rounded text-[10px]">0 / 12</span>
+        </div>
+      </div>
+
+      <div id="meta-box" class="text-[10px] text-gray-500 px-1 pb-2 leading-relaxed"></div>
+    </div>
+
+    <div class="w-full md:w-2/3 lg:w-3/4 bg-gray-200 overflow-auto p-4 md:p-8 custom-scrollbar">
+      <div id="sheet-host"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ VIEW: REGISTER ═══════════════════════ -->
+  <section id="view-register" class="view hidden h-full flex flex-col overflow-hidden p-3 md:p-4 gap-3">
+    <div class="bg-white border border-gray-200 rounded-xl p-3 flex flex-wrap gap-2 items-end shadow-sm">
+      <div class="flex-1 min-w-[200px]"><label class="lbl">Search</label><input id="rg-q" class="fld" placeholder="Lot / Order / Party / Brand…"></div>
+      <div><label class="lbl">Status</label><select id="rg-status" class="fld"><option value="">All</option><option>ACTIVE</option><option>DRAFT</option><option>COMPLETED</option><option>CANCELLED</option></select></div>
+      <div><label class="lbl">Unit</label><select id="rg-unit" class="fld"><option value="">All</option></select></div>
+      <div><label class="lbl">From</label><input type="date" id="rg-from" class="fld"></div>
+      <div><label class="lbl">To</label><input type="date" id="rg-to" class="fld"></div>
+      <button id="rg-refresh" class="bg-sky-100 text-sky-800 border border-sky-200 px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1"><i class="ph ph-arrows-clockwise"></i> Refresh</button>
+      <button id="rg-csv-log" class="bg-emerald-600 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1" title="Purani 'Production Log' sheet ke columns me"><i class="ph ph-download-simple"></i> Production Log CSV</button>
+      <button id="rg-csv-track" class="bg-amber-600 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center gap-1" title="Purani 'Production Tracking' sheet ke SECTION__FIELD columns me"><i class="ph ph-download-simple"></i> Production Tracking CSV</button>
+      <span id="rg-count" class="text-xs font-bold text-gray-500 ml-auto"></span>
+    </div>
+    <div class="flex-1 overflow-auto bg-white border border-gray-200 rounded-xl shadow-sm custom-scrollbar">
+      <table class="reg-table w-full border-collapse">
+        <thead><tr>
+          <th>Lot No</th><th>Date</th><th>Party</th><th>Brand</th><th>Unit</th><th>Category</th><th>Qty</th>
+          <th>Designs</th><th>Production</th><th>Status</th><th>PDF</th><th>Updated</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="rg-body"><tr><td colspan="13" class="text-center text-gray-400 py-10">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ VIEW: PRODUCTION ═══════════════════════ -->
+  <section id="view-production" class="view hidden h-full flex flex-col md:flex-row overflow-hidden">
+    <aside class="md:w-[270px] max-h-56 md:max-h-none flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+      <div class="p-2 border-b border-gray-200 bg-gray-50">
+        <div class="relative">
+          <i class="ph ph-magnifying-glass absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400"></i>
+          <input id="pt-search" class="fld pl-8 uppercase font-bold" placeholder="Search LOT / Party…">
+        </div>
+        <div class="flex items-center justify-between mt-1.5 text-[10px] font-bold text-gray-500">
+          <span>LOTS</span><span id="pt-count" class="bg-gray-200 px-2 rounded-full">0</span>
+        </div>
+      </div>
+      <div id="pt-list" class="flex-1 overflow-y-auto custom-scrollbar"></div>
+    </aside>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div id="pt-bar" class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-wrap"></div>
+      <div id="pt-info" class="px-4 pt-3"></div>
+      <div id="pt-sections" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        <div class="text-center py-16 text-gray-400"><i class="ph ph-cursor-click text-5xl mb-3 block opacity-50"></i><p class="font-bold">Left list se LOT chunein</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════ VIEW: MASTERS ═══════════════════════ -->
+  <section id="view-masters" class="view hidden h-full overflow-auto p-3 md:p-4 custom-scrollbar">
+    <div class="max-w-6xl mx-auto">
+      <div class="flex gap-1 mb-3 flex-wrap">
+        <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="colors">🎨 Blanket Colors</button>
+        <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="satin">🎗️ Satin Codes</button>
+        <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="operators">🔑 Department Operators</button>
+        <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="sections">🏭 Production Sections</button>
+      </div>
+      <div id="ms-body" class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm"></div>
+    </div>
+  </section>
+</main>
+
+<div id="print-root" aria-hidden="true"></div>
+<div id="toast-container" class="fixed top-16 right-5 z-[120] flex flex-col gap-2 pointer-events-none"></div>
+<div id="modal-root"></div>
+<datalist id="prl-color-list"></datalist>
+<datalist id="prl-party-list"></datalist>
+<datalist id="prl-brand-list"></datalist>
+<input type="file" id="file-multi" multiple accept="image/*" class="hidden">
+<input type="file" id="file-single" accept="image/*" class="hidden">
+
+<script>
+'use strict';
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  SUPABASE — same project & anon key as the ERP (lot-card-manager.html)   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const SB = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:false } }) : null;
+const SETUP_HINT = 'Database setup pending — Supabase SQL Editor me PRINTING_LOT_MIGRATION.sql ek baar run karein';
+const BUCKET = 'printing-lot';           // apna bucket — Design Master se independent
+const DM_BUCKET = 'sarv-pdfs';           // Design Master ki photos (sirf padhne ke liye)
+const MAX_DESIGNS = 12;                  // A4 par 6 × 2
+const PDF_VARIANT = 'PRINTING_LOT';      // pdf_documents (document_no + variant) unique
+
+// ═══════════════════════ CODE DEFAULTS (DB khaali / migration se pehle) ═════
+// Dropdown lists — Master Data › 🔽 Dropdown Master (sales_dropdowns) me inhi
+// keys ki rows ho to wahi chalti hain, warna ye.
+const DD = {
+  unit:            { key:'erp_designUnit',        def:['UNIT 1','UNIT 2'] },
+  fabric_category: { key:'erp_prlFabricCategory', def:['MINK','SUPER CLOUDY','SHERPA','FLANNEL'] },
+  bed_size:        { key:'erp_prlBedSize',        def:['Double Bed','Single Bed','King Size','Queen Size'] },
+  blanket_ply:     { key:'erp_prlBlanketPly',     def:['Single Ply','Double Ply','Three Ply'] },
+  satin_quality:   { key:'erp_prlSatinQuality',   def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM'] },
+  stenter_times:   { key:'erp_prlStenterTimes',   def:['SINGLE TIME','TWO TIME'] },
+  stenter:         { fixed:['NO','YES'], noBlank:true },
+  emboss:          { fixed:['YES','NO'] },
+  corner_label:    { fixed:['YES','NO'] },
+  small_label:     { fixed:['YES','NO'] },
+};
+const DEFAULT_COLORS = [["BRIGHT WINE","#880e4f"],["ENGLISH WINE","#4a154b"],["LIGHT PURPLE","#c084fc"],["BRIGHT PURPLE","#9333ea"],["ENGLISH PURPLE","#6b21a8"],["COFFEE BROWN","#4a2c20"],["COFFEE BLACK","#211510"],["RUST","#c2410c"],["COPPER","#b45309"],["GOLD","#d97706"],["CREAM","#fef08a"],["NAVY BLUE DULL","#1e293b"],["NAVY BLUE BRIGHT","#1d4ed8"],["PEACOCK BLUE","#0284c7"],["SKY BLUE","#38bdf8"],["BLACKISH BLUE","#0f172a"],["MAROON BRIGHT","#991b1b"],["MAROON DULL","#7f1d1d"],["RED BRIGHT","#dc2626"],["RED DULL","#b91c1c"],["BURGUNDY","#800020"],["LIGHT PINK","#f472b6"],["PEACOCK GREEN","#0d9488"],["TURQUOISE GREEN","#14b8a6"],["DARK PISTA GREEN","#15803d"],["LIGHT PISTA GREEN","#86efac"],["VELVET GREEN","#064e3b"],["FOREST GREEN","#14532d"],["DULL PISTA GREEN","#8fbc8f"],["FAUJI GREEN","#3f6212"],["ARMY GREEN","#4d7c0f"],["Z BLACK","#000000"],["DARK GREY","#334155"],["STEEL GREY","#64748b"],["PURPLISH GREY","#5b546a"],["GREENISH GREY","#52635a"],["SLATE GREY","#475569"],["SKY GREY","#94a3b8"],["LIGHT MOUSE","#a1a1aa"],["DARK MOUSE","#52525b"],["LIGHT CAMEL","#d2b48c"],["DARK CAMEL","#966f33"],["MEHENDI DARK","#365314"],["MEHENDI BROWN","#78350f"],["MEHENDI GREEN","#4d7c0f"],["OLIVE GREEN","#65a30d"],["ROSE GOLD","#b76e79"],["BISCUIT","#e5d3b3"],["LIGHT BROWN","#a16207"],["DARK BROWN","#451a03"],["RANI","#e11d48"],["GAAJRI","#f43f5e"],["ORANGE","#ea580c"]];
+const DEFAULT_SATIN = {
+  "4 INCH NORMAL": {"4001":"ARMY GREY","4002":"ARMY BLUE","4003":"WINE","4004/104":"LIGHT BURGUNDY","4005":"LIGHT PINK","4006":"CREAM","4007":"PEACOCK BLUE","4008/112":"COFFEE","4009":"DARK PURPLE","4010":"PEACOCK BLUE","4011/118":"BRIGHT PURPLE","4012/109":"GOLD","4013/103":"MARRON","4014/106":"RUST","4015/102":"RED","4016/127":"NAVY","4017":"MENENDI","4018":"GREY","4019":"Z BLACK","4020":"LIGHT PURPLE","4021":"DULL PISTA","4022":"CAMEL","4023":"TURQUISE GREEN","4024":"DARK GREY","4025":"PURPULISH GREY","4026":"DARK PISTA","4027":"PEACOCK GREEN","4028":"LIGHT PISTA","4029":"GEENISH GREY","4030":"RANI","4031":"FOREST GREEN","4032":"LEVENDER"},
+  "5 INCH PREMIUM": {"5001":"PEACOCK GREEN","5002":"COFFEE","5003":"BURGUNDY","5004":"DARK PISTA","5005":"MEHENDI","5006":"OLIVE","5007":"BRIGHT CREAM","5008":"SKY GREY","5009":"DARK MOUSE","5010":"IVORY","5011":"LIGHT PISTA","5012":"BISCUIT","5013":"SLATE GREY","5014":"LIGHT MOUSE","5015":"LIGHT CAMEL","5016":"DARK CAMEL","5017":"LIGHT GREY","5018":"ARMY GREEN","5019":"MEDIUM GREY","5020":"PEACOCK BLUE","5021":"ARMY BLUE","5022":"LIGHT PURPLE","5023":"DUSTY ROSE","5024":"ROSE GOLD","5025":"DARK PURPLE","5026":"RUST","5027":"DULL MARRON","5028":"GOLD","5029":"LIGHT BURGUNDY"}
+};
+const YN = ['YES','NO'];
+const sDate=(id,label)=>({id,label,type:'date'}), sNum=(id,label,step)=>({id,label,type:'number',step}), sTxt=(id,label)=>({id,label,type:'text'}), sSel=(id,label,options)=>({id,label,type:'select',options});
+const STENTER_F=k=>[sSel(k,k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),YN),sDate('lot_start_date','Lot Start Date'),sNum('top_blower_speed','Top Blower Speed'),sNum('bottom_blower_speed','Bottom Blower Speed'),sNum('stenter_speed','Stenter Speed'),sNum('stenter_temp','Stenter Temp'),sNum('actual_roll_completed','Actual Roll Completed'),sDate('lot_end_date','Lot End Date')];
+const POLISH_F=()=>[sDate('lot_start_date','Lot Start Date'),sSel('polish_before_brushing','Polish Before Brushing',YN),sNum('brushing_speed','Brushing Speed'),sSel('high_speed','High Speed',YN),sNum('polish_speed','Polish Speed'),sNum('actual_roll_completed','Actual Roll Completed'),sDate('lot_end_date','Lot End Date')];
+const DEFAULT_SECTIONS = [
+  {section_key:'raschel',title:'RASCHEL MASTER',icon:'ph-yarn',color:'emerald',fields:[sDate('lot_start_date','Lot Start Date'),sTxt('pyle_height','Pyle Height'),sNum('per_piece_wt','Per Piece Wt','0.01'),sNum('roll_weight','Roll Weight','0.01'),sNum('target_roll','Target Roll'),sNum('actual_completed_roll','Actual Completed Roll'),sDate('lot_end_date','Lot End Date')]},
+  {section_key:'stenter_heat',title:'STENTER MASTER (Heat Set)',icon:'ph-thermometer-hot',color:'orange',fields:STENTER_F('stenter_for_heat_set')},
+  {section_key:'grey_polish',title:'GREY POLISH MASTER',icon:'ph-paint-brush-broad',color:'slate',fields:POLISH_F()},
+  {section_key:'printing',title:'PRINTING MASTER',icon:'ph-paint-roller',color:'violet',fields:[sDate('lot_start_date','Lot Start Date'),sSel('chemical','Chemical Type',['GUM/THICKNER']),sSel('type','Type',['SYNTHETIC','HYBRID']),sTxt('printing_repeat','Printing Repeat'),sNum('total_mtr','Total MTR','0.01'),sNum('actual_roll_completed','Actual Roll Completed'),sDate('lot_end_date','Lot End Date')]},
+  {section_key:'washing',title:'WASHING MASTER',icon:'ph-drop',color:'cyan',fields:[sDate('lot_start_date','Lot Start Date'),sTxt('azer_time','Azer Time'),sTxt('silicon_make','Silicon Make'),sNum('quantity_in_1_roll','Quantity In 1 Roll'),sNum('bouncing_in_one_roll','Bouncing In One Roll'),sNum('actual_roll_completed','Actual Roll Completed'),sDate('lot_end_date','Lot End Date')]},
+  {section_key:'stenter_dryer',title:'STENTER MASTER 2 (Dryer)',icon:'ph-fan',color:'red',fields:STENTER_F('stenter_for_dryer')},
+  {section_key:'finishing',title:'FINISHING MASTER',icon:'ph-scissors',color:'pink',fields:POLISH_F()},
+  {section_key:'stenter_sizing',title:'STENTER MASTER 2 (Sizing)',icon:'ph-ruler',color:'teal',fields:STENTER_F('stenter_for_sizing')},
+  {section_key:'emboss',title:'EMBOSS MASTER',icon:'ph-stamp',color:'indigo',fields:[sDate('lot_start_date','Lot Start Date'),sNum('actual_pcs_completed','Actual PCS Completed'),sTxt('remarks','Remarks'),sDate('lot_end_date','Lot End Date')]},
+  {section_key:'packing',title:'PACKING MASTER',icon:'ph-package',color:'amber',fields:[sDate('lot_start_date','Lot Start Date'),sNum('first','1ST'),sNum('raschel_2nd','Raschel 2ND'),sNum('printing_2nd','Printing 2ND'),sNum('finishing_2nd','Finishing 2ND'),sNum('border_cut','Border Cut'),sNum('mending_hole','Mending / Hole'),sNum('rate','Rate','0.01'),sNum('total_pcs','Total PCS'),sNum('second_ka_amount_deduct','Second Ka Amount Deduct','0.01'),sNum('final_amount','Final Amount','0.01'),sDate('lot_end_date','Lot End Date')]},
+  {section_key:'packing_quality',title:'PACKING QUALITY MASTER',icon:'ph-seal-check',color:'lime',fields:[sNum('cutting_table_avg_wt','Cutting Table Average Wt','0.01'),sTxt('cutting_table_final_size','Cutting Table Final Size'),sNum('ten_bora_average','10 Bora Average','0.01'),sNum('total_2nd_bore','Total 2ND Bore'),sNum('total_1st_bore','Total 1ST Bore')]},
+];
+// Purani app ke department roles → unke sections (Operator banate waqt preset).
+const DEPARTMENTS = {
+  'RASCHEL MASTER':['raschel'], 'STENTER MASTER':['stenter_heat','stenter_dryer','stenter_sizing'],
+  'GREY-FINISH MASTER':['grey_polish','finishing'], 'PRINTING MASTER':['printing'], 'WASHING MASTER':['washing'],
+  'FINISHING MASTER':['finishing'], 'EMBOSS MASTER':['emboss'], 'PACKING MASTER':['packing'], 'QUALITY MASTER':['packing_quality']
+};
+const PT_COLORS = {
+  emerald:{bg:'bg-emerald-50',border:'border-emerald-200',header:'bg-emerald-600'}, orange:{bg:'bg-orange-50',border:'border-orange-200',header:'bg-orange-600'},
+  slate:{bg:'bg-slate-50',border:'border-slate-200',header:'bg-slate-600'}, violet:{bg:'bg-violet-50',border:'border-violet-200',header:'bg-violet-600'},
+  cyan:{bg:'bg-cyan-50',border:'border-cyan-200',header:'bg-cyan-600'}, red:{bg:'bg-red-50',border:'border-red-200',header:'bg-red-600'},
+  pink:{bg:'bg-pink-50',border:'border-pink-200',header:'bg-pink-600'}, teal:{bg:'bg-teal-50',border:'border-teal-200',header:'bg-teal-600'},
+  amber:{bg:'bg-amber-50',border:'border-amber-200',header:'bg-amber-600'}, lime:{bg:'bg-lime-50',border:'border-lime-200',header:'bg-lime-600'},
+  indigo:{bg:'bg-indigo-50',border:'border-indigo-200',header:'bg-indigo-600'},
+};
+// ERP Feature Access (store-core.js SARV_FEATURES) ki wahi rows — yahan sirf
+// tab kaam aati hain jab page ERP ke bahar khula ho.
+const PRL_FEATURES = {
+  PRL_EDIT:     { def:['ADMIN_PIN','USER_MD_PIN'], lock:['ADMIN_PIN'] },
+  PRL_DELETE:   { def:['ADMIN_PIN'],               lock:['ADMIN_PIN'] },
+  PRL_PROD_ALL: { def:['ADMIN_PIN','USER_MD_PIN'], lock:['ADMIN_PIN'] },
+  PRL_MASTER:   { def:['ADMIN_PIN'],               lock:['ADMIN_PIN'] },
+};
+
+// ═══════════════════════ HELPERS ═══════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const up = v => String(v==null?'':v).trim().toUpperCase();
+const num = v => { const n = parseFloat(String(v==null?'':v).replace(/,/g,'')); return Number.isFinite(n) ? n : null; };
+const uuid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); });
+// IST ki aaj ki tareekh — toISOString UTC deta tha, subah 5:30 se pehle kal ki date aati thi.
+const todayISO = () => new Date(Date.now() + 330*60000).toISOString().slice(0,10);
+const fmtDate = iso => { if(!iso) return ''; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso); };
+const fmtDT = ts => { if(!ts) return ''; const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); };
+const safeSeg = v => up(v).replace(/[^A-Z0-9._-]+/g,'-').replace(/^-+|-+$/g,'') || 'NA';
+const pubUrl = (p, bucket) => { if(!p || !SB) return ''; try { return SB.storage.from(bucket||BUCKET).getPublicUrl(p).data.publicUrl || ''; } catch(e){ return ''; } };
+function isSetupError(e){ return /prl_|does not exist|relation|Could not find the (function|table)|schema cache|bucket not found/i.test((e&&e.message)||String(e||'')); }
+function errMsg(e){ return isSetupError(e) ? SETUP_HINT : ((e&&e.message)||String(e)); }
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+async function fetchAll(build){
+  const out = []; const PAGE = 1000;
+  for(let from = 0;; from += PAGE){
+    const { data, error } = await build().range(from, from + PAGE - 1);
+    if(error) throw error;
+    out.push(...(data||[]));
+    if(!data || data.length < PAGE) break;
+  }
+  return out;
+}
+
+function showToast(message, type){
+  type = type || 'success';
+  const box = $('toast-container'); if(!box) return;
+  const t = document.createElement('div');
+  const cls = type==='error' ? 'bg-red-50 border-red-500 text-red-800' : type==='success' ? 'bg-green-50 border-green-500 text-green-800' : 'bg-blue-50 border-blue-500 text-blue-800';
+  const icon = type==='error' ? 'ph-warning-circle text-red-500' : type==='success' ? 'ph-check-circle text-green-500' : 'ph-info text-blue-500';
+  t.className = `pointer-events-auto flex items-center gap-3 p-3 border-l-4 rounded-lg shadow-xl text-sm font-medium max-w-sm transition-all duration-300 translate-x-full opacity-0 ${cls}`;
+  t.innerHTML = `<i class="ph ${icon} text-lg"></i><span class="flex-grow">${esc(message)}</span><button type="button" class="ml-2 text-gray-400 hover:text-gray-600"><i class="ph ph-x"></i></button>`;
+  t.querySelector('button').onclick = () => t.remove();
+  box.appendChild(t);
+  requestAnimationFrame(() => t.classList.remove('translate-x-full','opacity-0'));
+  setTimeout(() => { t.classList.add('translate-x-full','opacity-0'); setTimeout(() => t.remove(), 300); }, type==='error' ? 5500 : 3200);
+}
+
+// ── Modals (stack ho sakte hain: Operator popup → Admin PIN) ──────────────
+function openModal(inner, opts){
+  opts = opts || {};
+  const ov = document.createElement('div');
+  ov.className = 'fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-3';
+  ov.innerHTML = `<div class="bg-white rounded-xl shadow-2xl w-full ${opts.w||'max-w-lg'} max-h-[92vh] flex flex-col overflow-hidden">${inner}</div>`;
+  ov.addEventListener('mousedown', e => { if(e.target === ov && !opts.sticky){ ov.remove(); opts.onClose && opts.onClose(); } });
+  $('modal-root').appendChild(ov);
+  return ov;
+}
+function modalHead(title, icon){
+  return `<div class="flex justify-between items-center px-5 py-3 border-b bg-gray-50"><h3 class="font-bold text-gray-900 flex items-center gap-2 text-sm"><i class="ph ${icon||'ph-info'} text-indigo-600 text-lg"></i>${title}</h3><button type="button" data-close class="text-gray-400 hover:text-gray-600"><i class="ph ph-x text-xl"></i></button></div>`;
+}
+function wireClose(ov, cb){ ov.querySelectorAll('[data-close]').forEach(b => b.onclick = () => { ov.remove(); cb && cb(); }); }
+function confirmBox(message, okText, danger){
+  return new Promise(res => {
+    const ov = openModal(`<div class="p-6"><div class="flex items-center gap-4 mb-4"><div class="${danger===false?'bg-blue-100 text-blue-600':'bg-red-100 text-red-600'} p-3 rounded-full"><i class="ph ph-warning-circle text-2xl"></i></div>
+      <div><h3 class="text-base font-bold text-gray-900">Confirm</h3><p class="text-sm text-gray-600 mt-1 whitespace-pre-line">${esc(message)}</p></div></div>
+      <div class="flex justify-end gap-3 mt-6"><button type="button" data-no class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm">Cancel</button>
+      <button type="button" data-yes class="px-4 py-2 ${danger===false?'bg-blue-600 hover:bg-blue-700':'bg-red-600 hover:bg-red-700'} text-white font-semibold rounded-lg text-sm">${esc(okText||'Yes, Proceed')}</button></div></div>`, { w:'max-w-md', onClose:() => res(false) });
+    ov.querySelector('[data-no]').onclick = () => { ov.remove(); res(false); };
+    ov.querySelector('[data-yes]').onclick = () => { ov.remove(); res(true); };
+  });
+}
+function askSecret(title, sub){
+  return new Promise(res => {
+    const ov = openModal(`${modalHead(esc(title),'ph-lock-key')}<div class="p-5 space-y-3"><p class="text-xs text-gray-600">${esc(sub||'')}</p>
+      <input type="password" data-pin class="fld text-base py-2" placeholder="PIN" autocomplete="off">
+      <div class="flex justify-end gap-2"><button type="button" data-close class="px-4 py-2 bg-gray-100 rounded-lg text-sm font-semibold">Cancel</button>
+      <button type="button" data-ok class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Confirm</button></div></div>`, { w:'max-w-sm', onClose:() => res(null) });
+    wireClose(ov, () => res(null));
+    const inp = ov.querySelector('[data-pin]'); setTimeout(() => inp.focus(), 30);
+    const ok = () => { const v = inp.value; ov.remove(); res(v); };
+    ov.querySelector('[data-ok]').onclick = ok;
+    inp.onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); ok(); } };
+  });
+}
+function banner(html, kind){
+  const el = $('banner'); if(!el) return;
+  if(!html){ el.innerHTML = ''; return; }
+  const cls = kind==='err' ? 'bg-red-50 border-red-300 text-red-800' : kind==='warn' ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-blue-50 border-blue-300 text-blue-900';
+  el.innerHTML = `<div class="${cls} border-b px-4 py-2 text-xs font-bold flex items-center gap-2">${html}</div>`;
+}
+
+// ═══════════════════════ ACCESS ════════════════════════════════════════════
+// Kaun hai: ERP ka login (index.html localStorage me rakhta hai). Kya kar sakta
+// hai: ERP ki Feature Access matrix (app_settings.role_permissions) — ERP ke
+// andar khula ho to seedha parent ka sarvCan(), warna wahi matrix yahan padhi.
+const ERP_ROLE_LABEL = {USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User'};
+let PERMS = null;
+function erpRole(){ try { return localStorage.getItem('sarv_active_role') || ''; } catch(e){ return ''; } }
+function erpUserLabel(){
+  try { if(window.parent !== window && typeof window.parent.sarvLoginLabel_ === 'function'){ const l = window.parent.sarvLoginLabel_(); if(l && l !== '—') return l; } } catch(e){}
+  const r = erpRole(); if(!r) return '';
+  let u = null; try { u = JSON.parse(localStorage.getItem('sarv_active_user') || 'null'); } catch(e){}
+  return (ERP_ROLE_LABEL[r] || r) + (u && u.name ? ' — ' + u.name : '');
+}
+function can(key){
+  try { if(window.parent !== window && typeof window.parent.sarvCan === 'function') return !!window.parent.sarvCan(key); } catch(e){}
+  const role = erpRole(); if(!role) return false;
+  const d = PRL_FEATURES[key]; if(!d) return false;
+  if(d.lock.includes(role)) return true;
+  const m = PERMS && PERMS[key];
+  if(m && typeof m[role] === 'boolean') return m[role];
+  return d.def.includes(role);
+}
+async function loadPerms(){
+  try { const r = await SB.from('app_settings').select('key,value').eq('key','role_permissions').maybeSingle(); if(!r.error && r.data) PERMS = r.data.value || null; } catch(e){}
+}
+// Department operator (shop floor) — sirf is tab / browser session ke liye.
+const OP_KEY = 'prl_operator';
+function opSession(){
+  try {
+    const o = JSON.parse(sessionStorage.getItem(OP_KEY) || 'null');
+    if(o && Date.now() - (o.at||0) < 12*3600*1000) return o;
+  } catch(e){}
+  return null;
+}
+const canEdit = () => can('PRL_EDIT');
+function whoLabel(){ const op = opSession(); return erpUserLabel() || (op ? op.op_name + (op.department ? ' (' + op.department + ')' : '') : '') || 'UNKNOWN'; }
+function renderWho(){
+  const op = opSession();
+  const parts = [];
+  const e = erpUserLabel(); if(e) parts.push(e);
+  if(op) parts.push('🔑 ' + op.op_name);
+  $('who').textContent = parts.join(' · ') || 'ERP login nahi';
+}
+
+// ═══════════════════════ MASTERS (lists) ═══════════════════════════════════
+const M = { dd:{}, colors:[], satin:{}, sections:DEFAULT_SECTIONS.slice(), parties:[], brands:[], setupMissing:false };
+function ddList(field){
+  const d = DD[field]; if(!d) return [];
+  if(d.fixed) return d.fixed.slice();
+  return (M.dd[d.key] && M.dd[d.key].length) ? M.dd[d.key].slice() : d.def.slice();
+}
+async function loadMasters(){
+  // Dropdown Master
+  try {
+    const keys = Object.values(DD).filter(d => d.key).map(d => d.key);
+    const rows = await fetchAll(() => SB.from('sales_dropdowns').select('id,key,value').in('key', keys).order('id'));
+    M.dd = {}; rows.forEach(r => { (M.dd[r.key] = M.dd[r.key] || []).push(r.value); });
+  } catch(e){ console.warn('[PRL] sales_dropdowns:', e.message||e); }
+  // Colors / satin / sections — table na ho to code ke default
+  try {
+    const rows = await fetchAll(() => SB.from('prl_colors').select('*').order('sort_order').order('id'));
+    M.colors = rows.length ? rows : DEFAULT_COLORS.map((c,i) => ({ id:null, color_name:c[0], hex:c[1], sort_order:i+1, is_active:true }));
+  } catch(e){ M.setupMissing = M.setupMissing || isSetupError(e); M.colors = DEFAULT_COLORS.map((c,i) => ({ id:null, color_name:c[0], hex:c[1], sort_order:i+1, is_active:true })); }
+  try {
+    const rows = await fetchAll(() => SB.from('prl_satin_codes').select('*').order('satin_quality').order('sort_order').order('id'));
+    if(rows.length){ M.satinRows = rows; M.satin = {}; rows.filter(r => r.is_active).forEach(r => { (M.satin[up(r.satin_quality)] = M.satin[up(r.satin_quality)] || []).push({ code:r.code, color:r.color_name }); }); }
+    else throw new Error('empty');
+  } catch(e){
+    if(e.message !== 'empty') M.setupMissing = M.setupMissing || isSetupError(e);
+    M.satinRows = M.satinRows || [];
+    M.satin = {}; Object.keys(DEFAULT_SATIN).forEach(q => { M.satin[q] = Object.entries(DEFAULT_SATIN[q]).map(([code,color]) => ({ code, color })); });
+  }
+  try {
+    const rows = await fetchAll(() => SB.from('prl_sections').select('*').order('sort_order'));
+    if(rows.length) M.sections = rows.filter(r => r.is_active).map(r => ({ section_key:r.section_key, title:r.title, icon:r.icon||'ph-factory', color:r.color||'slate', fields:Array.isArray(r.fields)?r.fields:[] }));
+  } catch(e){ M.setupMissing = M.setupMissing || isSetupError(e); }
+  $('prl-color-list').innerHTML = M.colors.filter(c => c.is_active).map(c => `<option value="${esc(c.color_name)}">`).join('');
+}
+async function loadSuggestions(){
+  const parties = new Set(), brands = new Set();
+  try { (await fetchAll(() => SB.from('prl_lots').select('party_name,brand_name'))).forEach(r => { if(r.party_name) parties.add(up(r.party_name)); if(r.brand_name) brands.add(up(r.brand_name)); }); } catch(e){}
+  try { (await fetchAll(() => SB.from('design_master').select('party_name,brand_name'))).forEach(r => { if(r.party_name) parties.add(up(r.party_name)); if(r.brand_name) brands.add(up(r.brand_name)); }); } catch(e){}
+  M.parties = [...parties].sort(); M.brands = [...brands].sort();
+  $('prl-party-list').innerHTML = M.parties.map(p => `<option value="${esc(p)}">`).join('');
+  $('prl-brand-list').innerHTML = M.brands.map(p => `<option value="${esc(p)}">`).join('');
+}
+const colorHexOf = name => { const c = M.colors.find(x => up(x.color_name) === up(name)); return c ? c.hex : null; };
+const satinOpts = q => M.satin[up(q)] || [];
+
+// ═══════════════════════ LOT CARD STATE ════════════════════════════════════
+const F_KEYS = ['unit','order_no','lot_no','lot_date','brand_name','party_name','fabric_name','fabric_category','bed_size','blanket_ply','actual_weight','stenter','stenter_times','total_colors','total_designs','finished_size','satin_quality','emboss','corner_label','small_label','quantity','packing'];
+const UPPER_KEYS = new Set(['order_no','lot_no','brand_name','party_name','actual_weight','finished_size','quantity','packing']);
+// Number likhne par unit apne aap (purani app ka autoFormatUnit). Ab sirf
+// khaali number par lagta hai — "1200 PCS" jaisa text "1200 PCS BORA" nahi banta.
+const AUTO_UNIT = { actual_weight:'KG', finished_size:'CM', quantity:'BORA', packing:'BORA' };
+
+function blankLot(){
+  const f = {}; F_KEYS.forEach(k => f[k] = '');
+  f.lot_date = todayISO(); f.stenter = 'NO';
+  return { id:uuid(), version:null, status:'ACTIVE', f, lot_card_ref:'', extra:{}, designs:[], notes:[],
+           pdf_path:'', pdf_url:'', pdf_generated_at:null, updated_at:null, updated_by:'', created_by:'', created_at:null, removed:[], prod:{} };
+}
+let L = blankLot();
+let dirty = false, changeSeq = 0, saving = false, conflict = false;
+const DRAFT_KEY = 'prl_draft_v1', LAST_KEY = 'prl_last_lot';
+
+function newDesign(extra){
+  return Object.assign({ id:uuid(), title_label:'COLOR ' + (L.designs.length + 1), color_name:'', color_hex:'#cbd5e1',
+    target_qty:'', complete_qty:'', satin_code:'', satin_color:'', image_path:'', image_w:null, image_h:null,
+    source:'UPLOAD', source_ref:'', _local:'', _blob:null, _uploading:false, _failed:false, _oldPath:'' }, extra || {});
+}
+const designSrc = d => d._local || pubUrl(d.image_path);
+
+function markDirty(){
+  dirty = true; changeSeq++;
+  setSaveState('dirty');
+  saveLocalDraft();
+  scheduleAutosave();
+  schedulePrintRoot();
+}
+function saveLocalDraft(){
+  try {
+    const snap = Object.assign({}, L, { designs:L.designs.map(d => Object.assign({}, d, { _local:'', _blob:null })), savedLocalAt:Date.now(), dirty });
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(snap));
+  } catch(e){}
+}
+function clearLocalDraft(){ try { localStorage.removeItem(DRAFT_KEY); } catch(e){} }
+
+function setSaveState(s, extra){
+  const ic = $('save-icon'), tx = $('save-text'); if(!ic) return;
+  const map = {
+    dirty:  ['ph ph-pencil-simple text-amber-400 text-lg','Unsaved','text-amber-400'],
+    saving: ['ph ph-spinner animate-spin text-blue-400 text-lg','Saving…','text-blue-400'],
+    saved:  ['ph ph-cloud-check text-green-400 text-lg', extra || 'Saved','text-green-400'],
+    error:  ['ph ph-warning-circle text-red-500 text-lg','Failed','text-red-500'],
+    new:    ['ph ph-file text-gray-400 text-lg','New','text-gray-400'],
+    ro:     ['ph ph-lock text-gray-400 text-lg','View','text-gray-400'],
+  }[s] || ['ph ph-cloud text-gray-400 text-lg','—','text-gray-400'];
+  ic.className = map[0]; tx.textContent = map[1]; tx.className = 'text-[8px] font-bold tracking-wide ' + map[2];
+}
+
+// ═══════════════════════ SIDEBAR FORM ══════════════════════════════════════
+function fillSelect(el, list, val, noBlank){
+  const v = val || '';
+  const opts = list.slice();
+  if(v && !opts.includes(v)) opts.push(v);          // purana / bahar se aaya value kho na jaaye
+  el.innerHTML = (noBlank ? '' : '<option value="">Select...</option>') + opts.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  el.value = v;
+}
+function renderForm(){
+  F_KEYS.forEach(k => {
+    const el = $('in-' + k); if(!el) return;
+    if(el.tagName === 'SELECT') fillSelect(el, ddList(k), L.f[k], DD[k] && DD[k].noBlank);
+    else el.value = L.f[k] == null ? '' : L.f[k];
+  });
+  $('in-total_designs').placeholder = 'auto (' + L.designs.length + ')';
+  $('stenter-times-box').classList.toggle('hidden', L.f.stenter !== 'YES');
+  $('in-fill_prod').checked = !!(L.extra && L.extra.fill_prod);
+  applyRO();
+  renderNotesList();
+  renderMeta();
+  checkDuplicateLot();
+}
+function renderMeta(){
+  const st = { ACTIVE:'bg-green-100 text-green-700', DRAFT:'bg-gray-200 text-gray-700', COMPLETED:'bg-blue-100 text-blue-700', CANCELLED:'bg-red-100 text-red-700' }[L.status] || 'bg-gray-100';
+  $('lot-badge').innerHTML = L.version ? `<span class="chip ${st}">${esc(L.status)}</span>` : '<span class="chip bg-amber-100 text-amber-700">NEW</span>';
+  const m = [];
+  if(L.version){
+    if(L.created_by) m.push('Banaya: <b>' + esc(L.created_by) + '</b> ' + esc(fmtDT(L.created_at)));
+    if(L.updated_at) m.push('Last save: <b>' + esc(L.updated_by||'') + '</b> ' + esc(fmtDT(L.updated_at)) + ' · v' + L.version);
+    if(L.pdf_url) m.push(`PDF: <a class="text-blue-600 underline font-bold" href="${esc(L.pdf_url)}" target="_blank" rel="noopener">kholein</a> (${esc(fmtDT(L.pdf_generated_at))})`);
+    if(L.lot_card_ref) m.push('🔗 Lot Card Manager se juda');
+  } else m.push('Naya card — pehli baar <b>Save</b> karte hi database me jayega. Tab tak browser me backup rehta hai.');
+  $('meta-box').innerHTML = m.join('<br>');
+}
+function applyRO(){
+  const ro = !canEdit();
+  $('ro-note').classList.toggle('hidden', !ro);
+  document.querySelectorAll('#sidebar input, #sidebar select, #sidebar textarea').forEach(el => { el.disabled = ro; });
+  document.querySelectorAll('.edit-only').forEach(el => { el.style.display = ro ? 'none' : ''; });
+  document.querySelectorAll('.edit-only-block').forEach(el => { el.style.display = ro ? 'none' : ''; });
+  if(ro) setSaveState('ro');
+}
+function onFieldInput(k, el, final){
+  let v = el.value;
+  if(UPPER_KEYS.has(k) && el.tagName === 'INPUT'){
+    const pos = el.selectionStart; const u = v.toUpperCase();
+    if(u !== v){ el.value = u; try { el.setSelectionRange(pos, pos); } catch(e){} }
+    v = u;
+  }
+  if(final && AUTO_UNIT[k] && /^\d+(\.\d+)?$/.test(v.trim())){ v = v.trim() + ' ' + AUTO_UNIT[k]; el.value = v; }
+  if((k === 'total_colors' || k === 'total_designs') && v !== '') v = String(Math.max(0, parseInt(v, 10) || 0));
+  if(L.f[k] === v) return;
+  L.f[k] = v;
+  if(k === 'stenter'){
+    $('stenter-times-box').classList.toggle('hidden', v !== 'YES');
+    if(v !== 'YES'){ L.f.stenter_times = ''; $('in-stenter_times').value = ''; }
+  }
+  if(k === 'satin_quality'){
+    // Nayi quality me jo code nahi hai wo hat jata hai (purani app chup-chaap
+    // har re-render par saare satin chunav mita deti thi).
+    const codes = satinOpts(v).map(o => o.code);
+    L.designs.forEach(d => { if(d.satin_code && !codes.includes(d.satin_code)){ d.satin_code = ''; d.satin_color = ''; } });
+    renderSheet();
+  } else updateDisplays();
+  if(k === 'lot_no') checkDuplicateLot();
+  markDirty();
+}
+
+// LOT NO dobara na bane — type karte hi bata do, aur kholne ka button do.
+const checkDuplicateLot = debounce(async () => {
+  const box = $('lot-dup-warn'); const no = up(L.f.lot_no);
+  if(!no || !SB){ box.classList.add('hidden'); return; }
+  try {
+    const { data } = await SB.from('prl_lots').select('id,lot_no,party_name').ilike('lot_no', no.replace(/[%_\\]/g, '\\$&')).limit(2);
+    const other = (data||[]).find(r => r.id !== L.id && up(r.lot_no) === no);
+    if(other){
+      box.innerHTML = `⚠️ ${esc(other.lot_no)} pehle se hai (${esc(other.party_name||'-')}). <button type="button" class="underline text-blue-700" data-open="${esc(other.id)}">Wahi kholein</button>`;
+      box.classList.remove('hidden');
+      box.querySelector('[data-open]').onclick = () => openLot(other.id);
+    } else box.classList.add('hidden');
+  } catch(e){ box.classList.add('hidden'); }
+}, 400);
+
+// ── Worker notes ──────────────────────────────────────────────────────────
+function renderNotesList(){
+  const ro = !canEdit();
+  $('notes-list').innerHTML = L.notes.map((n, i) => `
+    <div class="bg-white border border-amber-200 rounded p-1.5 flex justify-between items-start group">
+      <div class="flex flex-col flex-1 min-w-0 pr-1">
+        <span class="text-[9px] font-bold text-gray-700 uppercase leading-none truncate">${esc(n.process_name)}</span>
+        <span class="text-[10px] leading-tight break-words" style="color:${esc(n.font_color)}">${esc(n.note_text)}</span>
+      </div>
+      ${ro ? '' : `<div class="flex flex-col opacity-0 group-hover:opacity-100 transition">
+        <button type="button" data-note-up="${i}" class="text-gray-400 hover:text-blue-600 px-0.5" ${i===0?'disabled':''}><i class="ph ph-caret-up text-xs"></i></button>
+        <button type="button" data-note-del="${i}" class="text-gray-400 hover:text-red-500 px-0.5"><i class="ph ph-trash text-xs"></i></button></div>`}
+    </div>`).join('') || '<div class="text-[10px] text-gray-400 text-center py-1">Koi instruction nahi</div>';
+}
+function addNote(){
+  const n = $('note-name').value.trim(), t = $('note-text').value.trim();
+  if(!n || !t) return showToast('Process name aur instruction dono bharein', 'error');
+  L.notes.push({ id:uuid(), process_name:n.toUpperCase(), note_text:t, font_color:$('note-color').value || '#dc2626' });
+  $('note-name').value = ''; $('note-text').value = '';
+  renderNotesList(); renderSheet(); markDirty();
+}
+
+// ═══════════════════════ A4 SHEET (edit + static) ══════════════════════════
+function dispVal(k){
+  const f = L.f;
+  if(k === 'lot_date') return fmtDate(f.lot_date) || '-';
+  if(k === 'stenter') return (f.stenter === 'YES' && f.stenter_times) ? 'YES - ' + f.stenter_times : (f.stenter || 'NO');
+  if(k === 'total_designs') return f.total_designs !== '' && f.total_designs != null ? String(f.total_designs) : String(L.designs.length);
+  return (f[k] == null || f[k] === '') ? '-' : String(f[k]);
+}
+const SPEC_ROWS = [
+  ['unit','Unit','font-bold text-[9.5px] uppercase text-gray-900','w-1/3'],
+  ['order_no','Order No.','font-bold text-[9px] uppercase text-red-600'],
+  ['lot_no','Lot No.','font-bold text-[9px] uppercase text-red-600'],
+  ['lot_date','Date','font-semibold text-[9px] text-gray-900'],
+  ['brand_name','Brand','font-semibold text-[9px] uppercase text-gray-900 truncate','w-1/3'],
+  ['party_name','Party Name','font-bold text-[9px] uppercase text-blue-900'],
+  ['fabric_name','Fabric','font-semibold text-[9px] text-gray-900 truncate'],
+  ['fabric_category','Category','font-semibold text-[9px] text-gray-900'],
+  ['bed_size','Bed Size','font-semibold text-[9px] text-gray-900'],
+  ['blanket_ply','Blanket Ply','font-semibold text-[9px] text-gray-900'],
+  ['actual_weight','Act. Weight','font-semibold text-[9px] text-gray-900'],
+  ['stenter','Stenter','font-semibold text-[9px] text-gray-900'],
+  ['total_designs','Total Designs','font-bold text-[9px] text-red-600'],
+  ['total_colors','Total Colors','font-semibold text-[9px] text-gray-900'],
+  ['finished_size','Final Size L x W','font-semibold text-[9px] text-gray-900 truncate uppercase'],
+  ['@satin'],
+  ['satin_quality','Satin','font-semibold text-[8.5px] text-gray-900'],
+  ['emboss','Emboss','font-bold text-[9px] text-gray-900'],
+  ['corner_label','Corner Label','font-semibold text-[9px] text-gray-900'],
+  ['small_label','Small Label','font-semibold text-[9px] text-gray-900'],
+  ['quantity','Quantity','font-bold text-[9px] text-indigo-700'],
+  ['packing','Packing','font-bold text-[9px] text-green-700'],
+];
+function satinListHTML(){
+  const rows = L.designs.filter(d => d.satin_code);
+  if(!rows.length) return '';
+  return `<div class="flex flex-col gap-[1px] w-full border-b border-dashed border-gray-300 pb-0.5">
+    <span class="text-[7.5px] text-gray-500 font-bold uppercase w-full">Satin Selection:</span>
+    <div class="flex flex-col gap-[1px]">${rows.map(d => `<div class="flex justify-between items-center text-[8px] px-0.5">
+      <span class="font-bold text-gray-700">${esc(d.title_label)}</span><span class="font-semibold text-gray-600">${esc(d.satin_code)} — ${esc(d.satin_color)}</span></div>`).join('')}</div></div>`;
+}
+function specHTML(){
+  return SPEC_ROWS.map((r, i) => {
+    if(r[0] === '@satin') return `<div data-satin-list>${satinListHTML()}</div>`;
+    const last = i === SPEC_ROWS.length - 1;
+    const red = r[0] === 'stenter' && L.f.stenter === 'YES' && L.f.stenter_times ? ' !text-red-600 !font-bold' : '';
+    return `<div class="flex justify-between items-end ${last ? '' : 'border-b border-dashed border-gray-300'} pb-0.5">
+      <span class="text-[7.5px] text-gray-500 font-bold uppercase ${r[3] ? 'w-1/3' : 'w-1/2'}">${r[1]}</span>
+      <span data-disp="${r[0]}" class="${r[2]}${red} text-right ${r[3] ? 'w-2/3' : 'w-1/2'}">${esc(dispVal(r[0]))}</span></div>`;
+  }).join('');
+}
+// Production data se card ke neeche ki tables (option).
+function prodFill(){
+  if(!(L.extra && L.extra.fill_prod)) return null;
+  const p = L.prod || {}; const pk = p.packing || {};
+  const n = v => (v === '' || v == null) ? '' : String(v);
+  const sum = (...ks) => { const vals = ks.map(k => num(pk[k])).filter(v => v != null); return vals.length ? String(vals.reduce((a,b) => a+b, 0)) : ''; };
+  const starts = [], ends = [];
+  Object.values(p).forEach(d => { if(d && d.lot_start_date) starts.push(d.lot_start_date); if(d && d.lot_end_date) ends.push(d.lot_end_date); });
+  const fin = num(pk.final_amount), ded = num(pk.second_ka_amount_deduct);
+  return {
+    pack:[n(pk.first), sum('raschel_2nd','printing_2nd','finishing_2nd'), n(pk.total_pcs), n(pk.border_cut), '', '', n(pk.raschel_2nd), n(pk.printing_2nd), n(pk.finishing_2nd)],
+    wage:['', n(pk.rate), (fin != null && ded != null) ? String(fin + ded) : '', n(pk.second_ka_amount_deduct), n(pk.final_amount)],
+    start: starts.length ? fmtDate(starts.sort()[0]) : '', end: ends.length ? fmtDate(ends.sort().slice(-1)[0]) : ''
+  };
+}
+function designCardHTML(d, idx, mode){
+  const edit = mode === 'edit' && canEdit();
+  const src = designSrc(d);
+  let img;
+  if(src){
+    img = `<div class="design-img-container"><img crossorigin="anonymous" src="${esc(src)}" alt="Design ${idx+1}">
+      ${edit ? `<div class="image-overlay"><button type="button" data-act="replace" class="bg-blue-600/90 text-white p-1.5 rounded-full hover:bg-blue-600" title="Replace"><i class="ph ph-arrows-clockwise text-sm"></i></button>
+        <button type="button" data-act="delete" class="bg-red-600/90 text-white p-1.5 rounded-full hover:bg-red-600" title="Delete"><i class="ph ph-trash text-sm"></i></button></div>` : ''}
+      ${mode === 'edit' && d._uploading ? '<div class="img-busy"><i class="ph ph-spinner animate-spin mr-1"></i>UPLOADING</div>' : ''}
+      ${mode === 'edit' && d._failed ? '<div class="img-fail"><span>UPLOAD FAIL</span><button type="button" data-act="retry" class="bg-red-600 text-white px-2 py-0.5 rounded">Retry</button></div>' : ''}</div>`;
+  } else {
+    img = mode === 'edit'
+      ? `<div class="design-img-container bg-gray-100 flex-col opacity-60 border-b border-gray-300 border-dashed">
+          <i class="ph ph-image text-gray-400 text-xl mb-1"></i><span class="text-[8px] text-gray-500 uppercase font-bold tracking-widest">BLANK</span>
+          ${edit ? '<div class="image-overlay"><button type="button" data-act="replace" class="bg-blue-600/90 text-white p-1.5 rounded-full" title="Photo lagayein"><i class="ph ph-upload-simple text-sm"></i></button><button type="button" data-act="delete" class="bg-red-600/90 text-white p-1.5 rounded-full" title="Delete"><i class="ph ph-trash text-sm"></i></button></div>' : ''}</div>`
+      : `<div class="design-img-container"></div>`;
+  }
+  const opts = satinOpts(L.f.satin_quality);
+  const satinRow = (mode === 'edit' && opts.length) ? `
+    <div class="flex flex-col bg-gray-50">
+      <div class="flex text-[5.5px] font-black uppercase text-gray-500 bg-gray-200 border-t border-gray-400 tracking-wider">
+        <span class="w-[45%] border-r border-gray-300 pl-0.5">Sattan Code</span><span class="w-[55%] text-center">Sattan Color</span></div>
+      <div class="flex items-stretch h-[14px] border-t border-gray-300">
+        <select data-act="satin" ${edit ? '' : 'disabled'} class="w-[45%] text-[7.5px] font-bold text-gray-800 bg-transparent outline-none border-r border-gray-300 px-0.5">
+          <option value="">Select...</option>${opts.map(o => `<option value="${esc(o.code)}" ${o.code === d.satin_code ? 'selected' : ''}>${esc(o.code)}</option>`).join('')}</select>
+        <span class="w-[55%] text-[7px] font-bold text-gray-600 text-center flex items-center justify-center">${esc(d.satin_color || '-')}</span>
+      </div></div>` : '';
+  const colorName = d.color_name || '';
+  const colorRow = mode === 'edit' ? `
+      <div class="text-[5.5px] font-black uppercase text-center bg-gray-200 text-gray-500 border-b border-gray-300 tracking-wider">Blanket Main Color</div>
+      <div class="flex items-stretch h-[14px]">
+        <input type="color" data-act="hex" value="${esc(d.color_hex || '#cbd5e1')}" ${edit ? '' : 'disabled'} class="w-[18px] h-full p-0 border-r border-gray-300 cursor-pointer shrink-0" title="Color">
+        <div class="flex-1 relative flex items-center bg-white">
+          <input type="text" data-act="cname" list="prl-color-list" value="${esc(colorName)}" ${edit ? '' : 'disabled'} placeholder="SELECT COLOR"
+            class="w-full text-center text-[8.5px] font-black uppercase text-gray-900 bg-transparent outline-none focus:bg-blue-50 px-1 absolute inset-0">
+        </div></div>`
+    : `<div class="flex items-stretch h-[14px]">
+        <div class="w-[16px] h-full shrink-0 border-r border-gray-800" style="background-color:${esc(d.color_hex || '#cbd5e1')}"></div>
+        <div class="flex-1 flex items-center justify-center text-[8.5px] font-black uppercase text-gray-900 px-1 truncate">${esc(colorName || '-')}</div></div>`;
+  const qtyCell = (lab, key) => `<div class="flex items-center w-1/2 ${key === 'target_qty' ? 'border-r border-gray-300' : ''}">
+      <span class="text-[5.5px] font-black uppercase text-gray-500 pl-1 shrink-0 tracking-tight">${lab}</span>
+      ${mode === 'edit'
+        ? `<input type="number" data-act="${key}" value="${esc(d[key] == null ? '' : d[key])}" ${edit ? '' : 'disabled'} class="qty-input flex-1 text-center text-[8.5px] font-black text-red-600 bg-transparent outline-none focus:bg-red-50 px-0.5 w-full" placeholder="0" min="0">`
+        : `<span class="flex-1 text-center text-[8.5px] font-black text-red-600">${esc(d[key] == null || d[key] === '' ? '' : d[key])}</span>`}</div>`;
+  return `<div class="design-card flex flex-col border border-gray-400 bg-white relative break-inside-avoid" data-id="${esc(d.id)}">
+    <div class="bg-gray-800 text-white text-center font-black text-[9px] py-[1.5px] uppercase flex justify-between px-1.5 ${edit ? 'cursor-grab drag-handle' : ''}">
+      <span ${edit ? 'contenteditable="true" data-act="title"' : ''} class="outline-none min-w-[30px] whitespace-nowrap text-left flex-1 px-0.5">${esc(d.title_label)}</span>
+      ${edit ? '<span class="text-[8px] opacity-70 pointer-events-none"><i class="ph ph-dots-six-vertical"></i></span>' : ''}
+    </div>
+    ${img}${satinRow}
+    <div class="flex flex-col border-t border-gray-400 bg-white">${colorRow}</div>
+    <div class="flex items-stretch border-t border-gray-400 bg-white h-[14px]">${qtyCell('TGT','target_qty')}${qtyCell('COMP','complete_qty')}</div>
+  </div>`;
+}
+function sheetHTML(mode){
+  const pf = prodFill();
+  const designs = L.designs.length
+    ? L.designs.map((d, i) => designCardHTML(d, i, mode)).join('')
+    : (mode === 'edit' ? `<div class="col-span-6 flex flex-col items-center justify-center py-8 text-gray-400 m-1 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50/50">
+        <i class="ph ph-images text-3xl mb-2 opacity-60"></i><span class="text-[11px] font-bold uppercase tracking-widest opacity-60">NO DESIGNS ADDED</span>
+        <span class="text-[10px] mt-1 opacity-50">Upload / Paste (Ctrl+V) / Design Master</span></div>` : '');
+  const notes = L.notes.length ? `
+    <div class="w-full mb-1 border-2 border-gray-800 flex flex-col flex-shrink-0 bg-white">
+      <div class="bg-yellow-400 text-center font-black text-[8.5px] uppercase border-b-2 border-gray-800 py-0.5 tracking-widest text-black">⚠ Special Worker Instructions</div>
+      <div class="p-1"><ol class="flex flex-col gap-0.5 text-[8.5px] list-decimal pl-6 pr-2">${L.notes.map(n =>
+        `<li class="font-bold pl-1 border-b border-dashed border-gray-300 pb-0.5 last:border-0" style="color:${esc(n.font_color)}"><span class="text-black underline uppercase mr-1">${esc(n.process_name)}:</span> ${esc(n.note_text)}</li>`).join('')}</ol></div></div>` : '';
+  const packHead = ['1ST','2ND','TOTAL PCS','BORDER CUT','OVER WEIGHT','UNDER WEIGHT','RACHEL 2ND','PRINTING 2ND','FINISH 2ND'];
+  const cell = (v, last) => `<td class="${last ? '' : 'border-r border-gray-400'} text-[9px] font-bold">${esc(v || '')}</td>`;
+  const packRow1 = packHead.map((_, i) => cell(pf ? pf.pack[i] : '', i === packHead.length - 1)).join('');
+  const packRow2 = packHead.map((_, i) => cell('', i === packHead.length - 1)).join('');
+  const wage = pf ? pf.wage : ['','','','',''];
+  return `<div class="a4-sheet ${mode === 'static' ? 'static-sheet' : ''} relative bg-white">
+    <div class="border-b-[2px] border-gray-900 pb-0.5 mb-1 w-full text-center flex-shrink-0">
+      <h1 class="text-base font-black text-gray-900 tracking-widest uppercase leading-none">Sarv India Home Furnishing</h1>
+      <h2 class="text-[9px] font-bold text-gray-600 tracking-wider uppercase mt-0.5">PRODUCTION LOT CARD</h2>
+    </div>
+    <div class="flex flex-row flex-grow overflow-hidden gap-2.5 mb-1">
+      <div class="designs-grid flex-grow border-r-2 border-gray-300 pr-2.5 items-start content-start">${designs}</div>
+      <div class="w-[52mm] flex flex-col gap-[1px] flex-shrink-0 pb-0.5 text-[9px]">${specHTML()}</div>
+    </div>
+    ${notes}
+    <div class="w-full mb-1 border-2 border-gray-800 flex flex-col flex-shrink-0 bg-white">
+      <div class="bg-gray-200 text-center font-bold text-[8.5px] uppercase border-b-2 border-gray-800 py-0.5 tracking-widest text-gray-900">Packing Detail</div>
+      <table class="w-full text-center border-collapse"><thead><tr class="text-[8px] font-extrabold text-gray-800 bg-gray-50 border-b-2 border-gray-800 uppercase">
+        ${packHead.map((h, i) => `<th class="${i < packHead.length - 1 ? 'border-r-2 border-gray-800' : ''} py-0.5 w-[11%]">${h}</th>`).join('')}</tr></thead>
+        <tbody><tr class="h-[15px] border-b border-gray-400">${packRow1}</tr><tr class="h-[15px]">${packRow2}</tr></tbody></table>
+    </div>
+    <div class="w-full mb-1 border-2 border-gray-800 flex flex-col flex-shrink-0 bg-white">
+      <div class="bg-gray-200 text-center font-bold text-[8.5px] uppercase border-b-2 border-gray-800 py-0.5 tracking-widest text-gray-900">Contractor Wage &amp; Settlement Detail</div>
+      <table class="w-full text-center border-collapse"><thead><tr class="text-[8px] font-extrabold text-gray-800 bg-gray-50 border-b-2 border-gray-800 uppercase">
+        <th class="border-r-2 border-gray-800 py-0.5 w-[26%]">Contractor Name</th><th class="border-r-2 border-gray-800 py-0.5 w-[16%]">Rate (₹)</th>
+        <th class="border-r-2 border-gray-800 py-0.5 w-[19%]">Gross Amount</th><th class="border-r-2 border-gray-800 py-0.5 w-[19%]">2nd Amt. Deduct</th><th class="py-0.5 w-[20%]">Final Amount</th></tr></thead>
+        <tbody><tr class="h-[16px]">${wage.map((v, i) => cell(v, i === 4)).join('')}</tr></tbody></table>
+    </div>
+    <div class="flex justify-between items-end px-2 text-[9px] font-bold text-gray-800 flex-shrink-0 pb-0.5">
+      <div class="flex flex-col gap-0.5">
+        <div class="flex items-center gap-2"><span>Start Date =</span> <span class="border-b border-dashed border-gray-500 w-28 inline-block min-h-[11px]">${esc(pf ? pf.start : '')}</span></div>
+        <div class="flex items-center gap-2"><span>End Date &nbsp;&nbsp;=</span> <span class="border-b border-dashed border-gray-500 w-28 inline-block min-h-[11px]">${esc(pf ? pf.end : '')}</span></div>
+      </div>
+      <div class="text-center flex flex-col items-center"><div class="border-b border-gray-800 w-28 mb-0.5 h-2.5"></div><span class="tracking-wider text-[8.5px]">AUTHORISED SIGN.</span></div>
+    </div>
+  </div>`;
+}
+let sortable = null;
+function renderSheet(){
+  const host = $('sheet-host'); if(!host) return;
+  host.innerHTML = sheetHTML('edit');
+  if(sortable){ try { sortable.destroy(); } catch(e){} sortable = null; }
+  const grid = host.querySelector('.designs-grid');
+  if(grid && canEdit() && window.Sortable && L.designs.length > 1){
+    sortable = new Sortable(grid, { animation:150, handle:'.drag-handle', ghostClass:'sortable-ghost', filter:'[contenteditable]', preventOnFilter:false,
+      onEnd: () => {
+        const order = [...grid.querySelectorAll('.design-card')].map(c => c.dataset.id);
+        L.designs.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+        renderSheet(); markDirty();
+      } });
+  }
+  $('upload-count').textContent = L.designs.length + ' / ' + MAX_DESIGNS;
+  $('btn-clear-images').classList.toggle('hidden', !L.designs.length || !canEdit());
+  $('in-total_designs').placeholder = 'auto (' + L.designs.length + ')';
+  schedulePrintRoot();
+}
+function updateDisplays(){
+  document.querySelectorAll('#sheet-host [data-disp]').forEach(el => {
+    const k = el.dataset.disp; el.textContent = dispVal(k);
+    if(k === 'stenter') el.classList.toggle('!text-red-600', L.f.stenter === 'YES' && !!L.f.stenter_times);
+  });
+  const sl = document.querySelector('#sheet-host [data-satin-list]'); if(sl) sl.innerHTML = satinListHTML();
+  schedulePrintRoot();
+}
+const schedulePrintRoot = debounce(() => { $('print-root').innerHTML = sheetHTML('static'); }, 200);
+function renderPrintRootNow(){ $('print-root').innerHTML = sheetHTML('static'); }
+
+// Design card ke andar ke badlaav — ek hi listener (event delegation).
+function designOf(el){ const c = el.closest('.design-card'); return c ? L.designs.find(d => d.id === c.dataset.id) : null; }
+function wireSheet(){
+  const host = $('sheet-host');
+  host.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if(!b || !canEdit()) return;
+    const d = designOf(b); if(!d) return;
+    const act = b.dataset.act;
+    if(act === 'replace'){ replaceTarget = d.id; $('file-single').click(); }
+    else if(act === 'delete') deleteDesign(d);
+    else if(act === 'retry') uploadDesign(d).then(() => renderSheet());
+  });
+  host.addEventListener('change', e => {
+    const el = e.target; const act = el.dataset && el.dataset.act; if(!act) return;
+    const d = designOf(el); if(!d) return;
+    if(act === 'hex'){ d.color_hex = el.value; markDirty(); }
+    else if(act === 'cname'){
+      d.color_name = up(el.value); el.value = d.color_name;
+      const hex = colorHexOf(d.color_name);
+      if(hex){ d.color_hex = hex; const ci = el.closest('.design-card').querySelector('[data-act="hex"]'); if(ci) ci.value = hex; }
+      markDirty();
+    }
+    else if(act === 'target_qty' || act === 'complete_qty'){ d[act] = el.value.trim(); markDirty(); }
+    else if(act === 'satin'){
+      const o = satinOpts(L.f.satin_quality).find(x => x.code === el.value);
+      d.satin_code = o ? o.code : ''; d.satin_color = o ? o.color : '';
+      const sp = el.nextElementSibling; if(sp) sp.textContent = d.satin_color || '-';
+      updateDisplays(); markDirty();
+    }
+  });
+  host.addEventListener('focusout', e => {
+    const el = e.target; if(!el.dataset || el.dataset.act !== 'title') return;
+    const d = designOf(el); if(!d) return;
+    const t = el.innerText.trim() || ('COLOR ' + (L.designs.indexOf(d) + 1));
+    if(t !== d.title_label){ d.title_label = t; markDirty(); updateDisplays(); }
+    el.innerText = d.title_label;
+  });
+  host.addEventListener('keydown', e => {
+    if(e.target.dataset && e.target.dataset.act === 'title' && e.key === 'Enter'){ e.preventDefault(); e.target.blur(); }
+  });
+}
+
+// ═══════════════════════ IMAGES (har photo alag file) ══════════════════════
+let replaceTarget = null;
+function compressImage(file, maxSide, quality){
+  maxSide = maxSide || 1400; quality = quality || 0.88;
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+        c.toBlob(b => { URL.revokeObjectURL(url); const blob = b || file; resolve({ blob, w, h, local:URL.createObjectURL(blob) }); }, 'image/jpeg', quality);
+      } catch(e){ URL.revokeObjectURL(url); resolve(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+async function uploadDesign(d){
+  if(!d._blob) return true;
+  d._uploading = true; d._failed = false;
+  const path = `images/${L.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+  try {
+    const { error } = await SB.storage.from(BUCKET).upload(path, d._blob, { contentType:'image/jpeg', upsert:false, cacheControl:'31536000' });
+    if(error) throw error;
+    if(d._oldPath) L.removed.push(d._oldPath);    // replace — purani file save ke baad hategi
+    d._oldPath = ''; d.image_path = path; d._blob = null; d._uploading = false;
+    markDirty();
+    return true;
+  } catch(e){
+    d._uploading = false; d._failed = true;
+    showToast('Photo upload nahi hui: ' + errMsg(e), 'error');
+    return false;
+  }
+}
+async function addImages(files, source, refs){
+  if(!canEdit()) return;
+  files = files.filter(f => f && /^image\//.test(f.type || 'image/'));
+  if(!files.length) return;
+  const room = MAX_DESIGNS - L.designs.length;
+  if(room <= 0) return showToast(`Ek card par ${MAX_DESIGNS} designs tak — pehle koi hatayein`, 'error');
+  if(files.length > room) showToast(`Sirf ${room} aur jagah hai — baaki chhod di gayi`, 'info');
+  const added = [];
+  for(let i = 0; i < Math.min(files.length, room); i++){
+    const c = await compressImage(files[i]); if(!c) continue;
+    const d = newDesign(Object.assign({ _local:c.local, _blob:c.blob, image_w:c.w, image_h:c.h, source:source || 'UPLOAD' }, refs && refs[i] || {}));
+    L.designs.push(d); added.push(d);
+  }
+  renderSheet(); markDirty();
+  await Promise.all(added.map(uploadDesign));
+  renderSheet();
+  const ok = added.filter(d => d.image_path).length;
+  if(ok) showToast(`${ok} design photo save ho gayi`, 'success');
+}
+async function replaceImage(file){
+  const d = L.designs.find(x => x.id === replaceTarget); replaceTarget = null;
+  if(!d || !file) return;
+  const c = await compressImage(file); if(!c) return showToast('Ye photo padhi nahi ja saki', 'error');
+  d._oldPath = d.image_path; d._local = c.local; d._blob = c.blob; d.image_w = c.w; d.image_h = c.h; d.source = 'UPLOAD'; d.source_ref = '';
+  renderSheet();
+  await uploadDesign(d); renderSheet();
+}
+async function deleteDesign(d){
+  if(!(await confirmBox(`"${d.title_label}" design hata dein?`, 'Delete'))) return;
+  if(d.image_path) L.removed.push(d.image_path);
+  L.designs = L.designs.filter(x => x !== d);
+  renderSheet(); markDirty();
+}
+async function clearAllImages(){
+  if(!(await confirmBox('Saare design hata dein?', 'Clear All'))) return;
+  L.designs.forEach(d => { if(d.image_path) L.removed.push(d.image_path); });
+  L.designs = []; renderSheet(); markDirty();
+}
+async function pasteFromClipboard(){
+  try {
+    if(!navigator.clipboard || !navigator.clipboard.read) throw new Error('no api');
+    const items = await navigator.clipboard.read(); const files = [];
+    for(const it of items){ for(const t of it.types.filter(t => t.startsWith('image/'))){ const b = await it.getType(t); files.push(new File([b], 'paste.' + t.split('/')[1], { type:t })); } }
+    if(!files.length) return showToast('Clipboard me koi image nahi mili', 'info');
+    addImages(files, 'PASTE');
+  } catch(e){ showToast('Page par kahin click karke Ctrl+V dabayein', 'info'); }
+}
+
+// ── Design Master se photo (copy ho kar is lot ki apni file banti hai) ──
+let DM_CACHE = null;
+async function openDesignMasterPicker(){
+  if(!canEdit()) return;
+  const ov = openModal(`${modalHead('Design Master se photo','ph-swatches')}
+    <div class="p-4 border-b"><input data-q class="fld py-2 uppercase font-bold" placeholder="Design No / Party / Shade…"></div>
+    <div data-grid class="flex-1 overflow-y-auto p-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 custom-scrollbar"><div class="col-span-6 text-center text-gray-400 py-8">Loading…</div></div>
+    <div class="px-4 py-3 border-t flex items-center justify-between bg-gray-50"><span data-n class="text-xs font-bold text-gray-600">0 chuni</span>
+      <div class="flex gap-2"><button type="button" data-close class="px-4 py-2 bg-gray-100 rounded-lg text-sm font-semibold">Cancel</button>
+      <button type="button" data-add class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">Add to Card</button></div></div>`, { w:'max-w-5xl' });
+  wireClose(ov);
+  const picked = new Map();
+  try {
+    if(!DM_CACHE){
+      const [masters, matchings] = await Promise.all([
+        fetchAll(() => SB.from('design_master').select('id,design_no,party_name,brand_name,status').order('design_no')),
+        fetchAll(() => SB.from('design_matchings').select('id,design_id,matching_name,matching_type,image_path,image_url').order('id'))
+      ]);
+      const byId = new Map(masters.map(m => [m.id, m]));
+      DM_CACHE = matchings.map(m => { const d = byId.get(m.design_id); return d && d.status !== 'DISCARDED' ? { key:String(m.id), design_no:d.design_no, party:d.party_name||'', shade:m.matching_name||'', type:m.matching_type||'', src:(m.image_path ? pubUrl(m.image_path, DM_BUCKET) : '') || m.image_url || '' } : null; })
+        .filter(x => x && x.src);
+    }
+  } catch(e){ ov.querySelector('[data-grid]').innerHTML = `<div class="col-span-6 text-center text-red-600 py-8">Design Master load nahi hua: ${esc(e.message||e)}</div>`; return; }
+  const render = () => {
+    const q = up(ov.querySelector('[data-q]').value);
+    const list = DM_CACHE.filter(x => !q || up(x.design_no + ' ' + x.party + ' ' + x.shade).includes(q)).slice(0, 240);
+    ov.querySelector('[data-grid]').innerHTML = list.map(x => `<button type="button" data-k="${esc(x.key)}" class="border-2 ${picked.has(x.key) ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-gray-200'} rounded-lg overflow-hidden bg-white text-left hover:border-emerald-400">
+      <div class="h-24 bg-gray-50 flex items-center justify-center"><img src="${esc(x.src)}" loading="lazy" class="max-h-full max-w-full object-contain"></div>
+      <div class="px-1.5 py-1"><div class="text-[10px] font-black truncate">${esc(x.design_no)}</div><div class="text-[9px] text-gray-500 truncate">${esc(x.shade)}</div></div></button>`).join('')
+      || '<div class="col-span-6 text-center text-gray-400 py-8">Kuch nahi mila</div>';
+    ov.querySelector('[data-n]').textContent = picked.size + ' chuni (jagah: ' + (MAX_DESIGNS - L.designs.length) + ')';
+  };
+  ov.querySelector('[data-q]').oninput = debounce(render, 150);
+  ov.querySelector('[data-grid]').onclick = e => {
+    const b = e.target.closest('[data-k]'); if(!b) return;
+    const x = DM_CACHE.find(y => y.key === b.dataset.k);
+    if(picked.has(x.key)) picked.delete(x.key); else picked.set(x.key, x);
+    render();
+  };
+  ov.querySelector('[data-add]').onclick = async () => {
+    if(!picked.size) return;
+    const btn = ov.querySelector('[data-add]'); btn.disabled = true; btn.textContent = 'Copying…';
+    const files = [], refs = [];
+    for(const x of picked.values()){
+      try { const r = await fetch(x.src); if(!r.ok) throw new Error('HTTP ' + r.status); const b = await r.blob();
+        files.push(new File([b], 'dm.jpg', { type:b.type || 'image/jpeg' }));
+        refs.push({ title_label:x.design_no, source_ref:x.design_no + ' / ' + x.shade, source:'DESIGN_MASTER' });
+      } catch(e){ showToast(x.design_no + ': photo nahi aayi', 'error'); }
+    }
+    ov.remove();
+    await addImages(files, 'DESIGN_MASTER', refs);
+  };
+  render();
+  ov.querySelector('[data-q]').focus();
+}
+
+// ═══════════════════════ SAVE / LOAD ═══════════════════════════════════════
+function lotPayload(){
+  return Object.assign({}, L.f, { id:L.id, status:L.status, lot_card_ref:L.lot_card_ref || '', extra:L.extra || {} });
+}
+async function saveLot(opts){
+  opts = opts || {};
+  if(!SB) return;
+  if(!canEdit()){ if(!opts.silent) showToast('Lot card save karne ki permission nahi hai', 'error'); return false; }
+  if(conflict){ if(!opts.silent) showToast('Ye lot kisi aur ne badla hai — pehle Reload karein', 'error'); return false; }
+  if(!up(L.f.lot_no)){ if(!opts.silent){ showToast('Save ke liye Lot No zaroori hai', 'error'); $('in-lot_no').focus(); } return false; }
+  if(saving){ pendingSave = true; return false; }
+  saving = true; setSaveState('saving');
+  const seq = changeSeq;
+  try {
+    // Jo photo abhi upload nahi hui, pehle wo.
+    const pend = L.designs.filter(d => d._blob && !d._uploading);
+    if(pend.length) await Promise.all(pend.map(uploadDesign));
+    if(L.designs.some(d => d._uploading || d._blob)){
+      if(!opts.silent) showToast('Kuch photo upload nahi hui — Retry karke phir Save karein', 'error');
+      setSaveState('error'); return false;
+    }
+    const designs = L.designs.map((d, i) => ({ id:d.id, sort_order:i, title_label:d.title_label, color_name:d.color_name, color_hex:d.color_hex,
+      target_qty:d.target_qty, complete_qty:d.complete_qty, satin_code:d.satin_code, satin_color:d.satin_color,
+      image_path:d.image_path, image_w:d.image_w, image_h:d.image_h, source:d.source, source_ref:d.source_ref }));
+    const notes = L.notes.map((n, i) => ({ id:n.id, sort_order:i, process_name:n.process_name, note_text:n.note_text, font_color:n.font_color }));
+    const { data, error } = await SB.rpc('prl_save_lot', { p_lot:lotPayload(), p_designs:designs, p_notes:notes, p_expected_version:L.version, p_user:whoLabel() });
+    if(error) throw error;
+    const isNew = !L.version;
+    L.version = data.version; L.updated_at = data.updated_at; L.updated_by = whoLabel(); L.f.lot_no = data.lot_no;
+    if(isNew){ L.created_by = whoLabel(); L.created_at = data.updated_at; }
+    try { localStorage.setItem(LAST_KEY, L.id); } catch(e){}
+    // Hatayi / badli gayi photos ab bucket se bhi.
+    if(L.removed.length){
+      const rm = L.removed.splice(0);
+      SB.storage.from(BUCKET).remove(rm).catch(() => {});
+    }
+    if(changeSeq === seq){ dirty = false; clearLocalDraft(); setSaveState('saved', new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })); }
+    else { saveLocalDraft(); setSaveState('dirty'); }
+    renderMeta();
+    if(!opts.silent) showToast(`Lot ${L.f.lot_no} save ho gaya`, 'success');
+    if(isNew) loadSuggestions();
+    return true;
+  } catch(e){
+    const m = String(e.message || e);
+    setSaveState('error');
+    if(/LOT_EXISTS/.test(m)) showToast(`LOT ${up(L.f.lot_no)} pehle se hai — Register se wahi kholein ya naya number dein`, 'error');
+    else if(/VERSION_CONFLICT/.test(m)){
+      conflict = true;
+      banner(`⚠️ Ye lot kisi aur ne aapke kholne ke baad save kiya hai. Aapke badlaav browser me surakshit hain. <button type="button" id="btn-reload-lot" class="underline ml-2">Unka version kholein</button>`, 'err');
+      const b = $('btn-reload-lot'); if(b) b.onclick = () => { conflict = false; banner(''); dirty = false; openLot(L.id); };
+    }
+    else if(/LOT_NO_REQUIRED/.test(m)) showToast('Lot No zaroori hai', 'error');
+    else if(!opts.silent || isSetupError(e)) showToast('Save fail: ' + errMsg(e), 'error');
+    return false;
+  } finally {
+    saving = false;
+    if(pendingSave){ pendingSave = false; if(dirty) scheduleAutosave(); }
+  }
+}
+let pendingSave = false;
+// Pehle se save hua lot badalte hi kuch der baad apne aap save (purani app ka 2-min auto-sync).
+const scheduleAutosave = debounce(() => { if(dirty && L.version && canEdit() && !conflict) saveLot({ silent:true }); }, 5000);
+
+async function confirmDiscard(){
+  if(!dirty || !canEdit()) return true;
+  return confirmBox('Is card ke kuch badlaav save nahi hue hain.\nUnhe chhod kar aage badhein?', 'Haan, chhodo');
+}
+function rowToState(r, designs, notes){
+  const s = blankLot();
+  s.id = r.id; s.version = r.version; s.status = r.status || 'ACTIVE';
+  F_KEYS.forEach(k => { s.f[k] = r[k] == null ? '' : String(r[k]); });
+  s.f.lot_date = r.lot_date || '';
+  s.lot_card_ref = r.lot_card_ref || ''; s.extra = r.extra || {};
+  s.pdf_path = r.pdf_path || ''; s.pdf_url = r.pdf_url || ''; s.pdf_generated_at = r.pdf_generated_at;
+  s.updated_at = r.updated_at; s.updated_by = r.updated_by || ''; s.created_by = r.created_by || ''; s.created_at = r.created_at;
+  s.designs = (designs || []).sort((a, b) => a.sort_order - b.sort_order).map(d => newDesign({
+    id:d.id, title_label:d.title_label || '', color_name:d.color_name || '', color_hex:d.color_hex || '#cbd5e1',
+    target_qty:d.target_qty == null ? '' : String(d.target_qty), complete_qty:d.complete_qty == null ? '' : String(d.complete_qty),
+    satin_code:d.satin_code || '', satin_color:d.satin_color || '', image_path:d.image_path || '', image_w:d.image_w, image_h:d.image_h,
+    source:d.source || 'UPLOAD', source_ref:d.source_ref || '' }));
+  s.notes = (notes || []).sort((a, b) => a.sort_order - b.sort_order).map(n => ({ id:n.id, process_name:n.process_name, note_text:n.note_text, font_color:n.font_color || '#dc2626' }));
+  return s;
+}
+async function fetchLotFull(id){
+  const [h, d, n, p] = await Promise.all([
+    SB.from('prl_lots').select('*').eq('id', id).maybeSingle(),
+    SB.from('prl_lot_designs').select('*').eq('lot_id', id),
+    SB.from('prl_lot_notes').select('*').eq('lot_id', id),
+    SB.from('prl_production_entries').select('section_key,data,saved_by,updated_at').eq('lot_id', id)
+  ]);
+  if(h.error) throw h.error; if(!h.data) throw new Error('Lot nahi mila');
+  if(d.error) throw d.error; if(n.error) throw n.error;
+  const s = rowToState(h.data, d.data, n.data);
+  (p.data || []).forEach(e => { s.prod[e.section_key] = e.data || {}; });
+  return s;
+}
+async function openLot(id, opts){
+  opts = opts || {};
+  if(!opts.force && !(await confirmDiscard())) return;
+  try {
+    const s = await fetchLotFull(id);
+    L = s; dirty = false; conflict = false; changeSeq++; banner(modeBanner());
+    clearLocalDraft();
+    try { localStorage.setItem(LAST_KEY, L.id); } catch(e){}
+    renderForm(); renderSheet(); setSaveState(canEdit() ? 'saved' : 'ro', 'Opened');
+    showView('card');
+  } catch(e){
+    // Apne aap khulne wala "pichhla lot" ab nahi hai (delete) — chup-chaap bhool jao.
+    if(opts.force && /nahi mila/.test(String(e.message))){ try { localStorage.removeItem(LAST_KEY); } catch(x){} return; }
+    showToast('Lot nahi khula: ' + errMsg(e), 'error');
+  }
+}
+async function openLotByNo(no){
+  no = up(no); if(!no) return;
+  try {
+    const { data, error } = await SB.from('prl_lots').select('id,lot_no').ilike('lot_no', no.replace(/[%_\\]/g, '\\$&')).limit(5);
+    if(error) throw error;
+    const hit = (data || []).find(r => up(r.lot_no) === no);
+    if(hit) openLot(hit.id); else showToast(`LOT ${no} nahi mila`, 'error');
+  } catch(e){ showToast(errMsg(e), 'error'); }
+}
+async function newLot(){
+  if(!(await confirmDiscard())) return;
+  L = blankLot(); dirty = false; conflict = false; banner(modeBanner()); clearLocalDraft();
+  try { localStorage.removeItem(LAST_KEY); } catch(e){}
+  renderForm(); renderSheet(); setSaveState(canEdit() ? 'new' : 'ro');
+  showView('card'); setTimeout(() => $('in-lot_no').focus(), 50);
+}
+// Copy: naya id, naya LOT NO, aur photos ki apni nayi copy (do lots ek file share nahi karte).
+async function duplicateLot(id){
+  if(!canEdit()) return;
+  if(!(await confirmDiscard())) return;
+  try {
+    const s = await fetchLotFull(id);
+    const n = blankLot();
+    n.f = Object.assign({}, s.f, { lot_no:'', lot_date:todayISO() });
+    n.extra = Object.assign({}, s.extra);
+    n.notes = s.notes.map(x => Object.assign({}, x, { id:uuid() }));
+    L = n; dirty = true; conflict = false; banner(modeBanner());
+    for(const d of s.designs){
+      const nd = newDesign(Object.assign({}, d, { id:uuid(), image_path:'', complete_qty:'', _local:'', _blob:null }));
+      if(d.image_path){
+        const to = `images/${n.id}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+        const { error } = await SB.storage.from(BUCKET).copy(d.image_path, to);
+        if(!error) nd.image_path = to; else nd._failed = false;
+      }
+      n.designs.push(nd);
+    }
+    renderForm(); renderSheet(); markDirty(); showView('card');
+    showToast('Copy ban gayi — naya LOT NO daal kar Save karein', 'info');
+    setTimeout(() => $('in-lot_no').focus(), 50);
+  } catch(e){ showToast('Copy nahi bani: ' + errMsg(e), 'error'); }
+}
+
+// Lot Card Manager (mfg_lot_cards) se header bharna.
+async function fillFromLotCard(){
+  const no = up(L.f.lot_no);
+  if(!no) return showToast('Pehle Lot No daalein', 'error');
+  try {
+    const { data, error } = await SB.from('mfg_lot_cards').select('*').ilike('lot_no', no.replace(/[%_\\]/g, '\\$&')).limit(3);
+    if(error) throw error;
+    const r = (data || []).find(x => up(x.lot_no) === no);
+    if(!r) return showToast(`Lot Card Manager me ${no} nahi mila`, 'info');
+    const fab = { MINK:'MINK', SUPERCLOUDY:'SUPER CLOUDY', SUPERSOFT:'SUPER SOFT', FLANNEL:'FLANNEL' }[up(r.fabric_type).replace(/\s+/g, '')] || up(r.fabric_type);
+    const bed = { DOUBLE:'Double Bed', SINGLE:'Single Bed' }[up(r.bed_size)] || r.bed_size || '';
+    const ply = { '1':'Single Ply', '2':'Double Ply', '3':'Three Ply' }[String(r.blanket_ply || '')] || '';
+    const map = { brand_name:up(r.brand_name), fabric_category:fab, bed_size:bed, blanket_ply:ply, quantity:r.total_pcs ? r.total_pcs + ' PCS' : '' };
+    const filled = [];
+    Object.entries(map).forEach(([k, v]) => { if(v && !L.f[k]){ L.f[k] = v; filled.push(k); } });
+    L.lot_card_ref = String(r.id);
+    renderForm(); updateDisplays(); markDirty();
+    showToast(filled.length ? `Lot Card se ${filled.length} field bhare (jo khaali the)` : 'Lot Card juda — saare field pehle se bhare the', 'success');
+  } catch(e){
+    showToast(/mfg_lot_cards|does not exist|schema cache/i.test(e.message || '') ? 'Lot Card Manager ka table nahi mila' : errMsg(e), 'error');
+  }
+}
+
+// ═══════════════════════ PRINT / PDF ═══════════════════════════════════════
+async function waitImages(root){
+  const imgs = [...root.querySelectorAll('img')];
+  await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 8000); })));
+}
+async function printCard(){
+  renderPrintRootNow();
+  await new Promise(r => setTimeout(r, 120));   // Tailwind ko nayi classes banane ka waqt
+  await waitImages($('print-root'));
+  window.print();
+}
+function pdfFileName(){
+  const lot = L.f.lot_no, brand = L.f.brand_name, party = L.f.party_name;
+  let s = lot && brand ? `${lot}_${brand}` : lot ? `LOT_${lot}` : `ORDER_${party}`;
+  return s.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase() + '.pdf';
+}
+async function buildPdfBlob(){
+  renderPrintRootNow();
+  await new Promise(r => setTimeout(r, 150));
+  await waitImages($('print-root'));
+  const el = $('print-root').firstElementChild;
+  const opt = { margin:0, filename:pdfFileName(), image:{ type:'jpeg', quality:0.96 },
+    html2canvas:{ scale:2.5, useCORS:true, logging:false, backgroundColor:'#ffffff', scrollX:0, scrollY:0 },
+    jsPDF:{ unit:'mm', format:'a4', orientation:'landscape' }, pagebreak:{ mode:['avoid-all'] } };
+  return await html2pdf().set(opt).from(el).outputPdf('blob');
+}
+// code.gs ka savePdfToDrive: ROOT / PARTY / LOT_PARTY.pdf, purani file overwrite.
+async function makePdf(){
+  if(!up(L.f.party_name)){ showToast('PDF se pehle Party Name bharein', 'error'); $('in-party_name').focus(); return; }
+  if(canEdit() && (dirty || !L.version)){
+    if(!(await saveLot())) return;
+  }
+  const btn = $('btn-pdf'); const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i><span class="hidden sm:inline">PDF…</span>';
+  try {
+    const blob = await buildPdfBlob();
+    // Local download — wahi naam jo purani app deti thi.
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = pdfFileName();
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    if(L.version){
+      const party = safeSeg(L.f.party_name), lot = safeSeg(L.f.lot_no);
+      const path = `pdfs/${party}/${lot}_${party}.pdf`;
+      const upr = await SB.storage.from(BUCKET).upload(path, blob, { contentType:'application/pdf', upsert:true, cacheControl:'60' });
+      if(upr.error) throw upr.error;
+      const url = pubUrl(path) + '?v=' + Date.now();
+      if(L.pdf_path && L.pdf_path !== path) SB.storage.from(BUCKET).remove([L.pdf_path]).catch(() => {});   // party badli to purana folder saaf
+      const now = new Date().toISOString();
+      const r = await SB.from('prl_lots').update({ pdf_path:path, pdf_url:url, pdf_generated_at:now }).eq('id', L.id);
+      if(r.error) throw r.error;
+      L.pdf_path = path; L.pdf_url = url; L.pdf_generated_at = now;
+      // ERP ka shared PDF index (Print History / Reports yahi padhte hain).
+      try { await SB.from('pdf_documents').upsert({ document_type:'PRINTING_LOT', document_no:up(L.f.lot_no), variant:PDF_VARIANT, file_path:path, public_url:url, schema_version:'prl-v1' }, { onConflict:'document_no,variant' }); }
+      catch(e){ console.warn('[PRL] pdf_documents skip:', e.message || e); }
+      renderMeta();
+      showToast(`PDF bani aur ${up(L.f.party_name)} folder me save ho gayi`, 'success');
+    } else showToast('PDF download ho gayi (lot save nahi hai, isliye ERP me upload nahi hui)', 'info');
+  } catch(e){ showToast('PDF: ' + errMsg(e), 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
+
+// ═══════════════════════ REGISTER ══════════════════════════════════════════
+let RG = { lots:[], prog:{}, designs:{} };
+async function loadRegister(){
+  $('rg-body').innerHTML = '<tr><td colspan="13" class="text-center text-gray-400 py-10">Loading…</td></tr>';
+  try {
+    const [lots, ent, des] = await Promise.all([
+      fetchAll(() => SB.from('prl_lots').select('id,lot_no,order_no,lot_date,party_name,brand_name,unit,fabric_category,quantity,status,pdf_url,updated_at,updated_by,total_designs').order('lot_date', { ascending:false }).order('updated_at', { ascending:false })),
+      fetchAll(() => SB.from('prl_production_entries').select('lot_id,section_key')),
+      fetchAll(() => SB.from('prl_lot_designs').select('lot_id'))
+    ]);
+    RG.lots = lots; RG.prog = {}; RG.designs = {};
+    ent.forEach(e => { (RG.prog[e.lot_id] = RG.prog[e.lot_id] || new Set()).add(e.section_key); });
+    des.forEach(d => { RG.designs[d.lot_id] = (RG.designs[d.lot_id] || 0) + 1; });
+    const units = [...new Set(lots.map(l => l.unit).filter(Boolean))].sort();
+    const us = $('rg-unit'); const cur = us.value;
+    us.innerHTML = '<option value="">All</option>' + units.map(u => `<option>${esc(u)}</option>`).join(''); us.value = cur;
+    renderRegister();
+  } catch(e){
+    $('rg-body').innerHTML = `<tr><td colspan="13" class="text-center text-red-600 py-10 font-bold">${esc(errMsg(e))}</td></tr>`;
+  }
+}
+function rgFiltered(){
+  const q = up($('rg-q').value), st = $('rg-status').value, un = $('rg-unit').value, fr = $('rg-from').value, to = $('rg-to').value;
+  return RG.lots.filter(l => (!q || up([l.lot_no, l.order_no, l.party_name, l.brand_name].join(' ')).includes(q))
+    && (!st || l.status === st) && (!un || l.unit === un) && (!fr || (l.lot_date || '') >= fr) && (!to || (l.lot_date || '') <= to));
+}
+function renderRegister(){
+  const rows = rgFiltered(), total = M.sections.length, ed = canEdit(), del = can('PRL_DELETE');
+  $('rg-count').textContent = rows.length + ' / ' + RG.lots.length + ' lots';
+  const stc = { ACTIVE:'bg-green-100 text-green-700', DRAFT:'bg-gray-200 text-gray-700', COMPLETED:'bg-blue-100 text-blue-700', CANCELLED:'bg-red-100 text-red-700' };
+  $('rg-body').innerHTML = rows.map(l => {
+    const done = RG.prog[l.id] ? RG.prog[l.id].size : 0;
+    const pct = total ? Math.round(done * 100 / total) : 0;
+    return `<tr data-id="${esc(l.id)}">
+      <td class="font-black text-gray-900 whitespace-nowrap">${esc(l.lot_no)}${l.order_no ? `<div class="text-[10px] text-gray-500 font-semibold">${esc(l.order_no)}</div>` : ''}</td>
+      <td class="whitespace-nowrap">${esc(fmtDate(l.lot_date))}</td>
+      <td class="font-semibold">${esc(l.party_name || '')}</td><td>${esc(l.brand_name || '')}</td><td>${esc(l.unit || '')}</td>
+      <td>${esc(l.fabric_category || '')}</td><td>${esc(l.quantity || '')}</td><td class="text-center">${RG.designs[l.id] || 0}</td>
+      <td><div class="flex items-center gap-1.5"><div class="w-16 h-1.5 bg-gray-200 rounded"><div class="h-1.5 rounded ${pct >= 100 ? 'bg-green-500' : 'bg-amber-500'}" style="width:${pct}%"></div></div><span class="text-[10px] font-bold text-gray-600">${done}/${total}</span></div></td>
+      <td><span class="chip ${stc[l.status] || ''}">${esc(l.status)}</span></td>
+      <td>${l.pdf_url ? `<a href="${esc(l.pdf_url)}" target="_blank" rel="noopener" class="text-red-600 font-bold text-xs"><i class="ph ph-file-pdf"></i> PDF</a>` : '<span class="text-gray-300">—</span>'}</td>
+      <td class="text-[10px] text-gray-500 whitespace-nowrap">${esc(fmtDT(l.updated_at))}<div>${esc(l.updated_by || '')}</div></td>
+      <td class="whitespace-nowrap">
+        <button data-rg="open" class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-[11px] font-bold">Open</button>
+        <button data-rg="prod" class="bg-amber-100 text-amber-800 px-2 py-1 rounded text-[11px] font-bold">Production</button>
+        ${ed ? `<button data-rg="dup" class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-[11px] font-bold" title="Copy bana kar naya lot">Copy</button>
+        <select data-rg="status" class="border rounded text-[11px] px-1 py-0.5"><option value="">Status…</option>${['ACTIVE','COMPLETED','CANCELLED'].filter(s => s !== l.status).map(s => `<option>${s}</option>`).join('')}</select>` : ''}
+        ${del ? `<button data-rg="del" class="text-red-600 px-1.5 py-1 rounded text-[13px]" title="Delete"><i class="ph ph-trash"></i></button>` : ''}
+      </td></tr>`;
+  }).join('') || '<tr><td colspan="13" class="text-center text-gray-400 py-10">Koi lot nahi mila</td></tr>';
+}
+async function setLotStatus(id, status){
+  const l = RG.lots.find(x => x.id === id);
+  if(!(await confirmBox(`LOT ${l ? l.lot_no : ''} ko ${status} karein?`, 'Haan', false))) return renderRegister();
+  const { error } = await SB.from('prl_lots').update({ status, updated_by:whoLabel() }).eq('id', id);
+  if(error) return showToast(errMsg(error), 'error');
+  if(L.id === id){ L.status = status; renderMeta(); }
+  showToast('Status: ' + status, 'success'); loadRegister();
+}
+async function deleteLot(id){
+  const l = RG.lots.find(x => x.id === id); if(!l) return;
+  if(!(await confirmBox(`LOT ${l.lot_no} poora delete karein?\nCard, photos, PDF aur production data — sab hat jayega. Ye wapas nahi aata.`, 'Delete'))) return;
+  try {
+    const files = [];
+    const list = await SB.storage.from(BUCKET).list(`images/${id}`, { limit:1000 });
+    (list.data || []).forEach(f => files.push(`images/${id}/${f.name}`));
+    const { data: row } = await SB.from('prl_lots').select('pdf_path').eq('id', id).maybeSingle();
+    if(row && row.pdf_path) files.push(row.pdf_path);
+    const { error } = await SB.from('prl_lots').delete().eq('id', id);
+    if(error) throw error;
+    if(files.length) SB.storage.from(BUCKET).remove(files).catch(() => {});
+    SB.from('pdf_documents').delete().eq('document_no', up(l.lot_no)).eq('variant', PDF_VARIANT).then(() => {}, () => {});
+    if(L.id === id){ L = blankLot(); dirty = false; renderForm(); renderSheet(); }
+    showToast(`LOT ${l.lot_no} delete ho gaya`, 'success'); loadRegister();
+  } catch(e){ showToast('Delete fail: ' + errMsg(e), 'error'); }
+}
+function csvDownload(name, rows){
+  const csv = rows.map(r => r.map(v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv' })); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+async function csvProductionLog(){
+  try {
+    const rows = await fetchAll(() => SB.from('v_prl_production_log').select('*').order('Date', { ascending:false }));
+    const cols = ['Timestamp','Lot No','Order No','Date','Party Name','Brand','Unit','Fabric','Category','Bed Size','Blanket Ply','Weight','Stenter','Stenter Times','Total Colors','Total Designs','Finished Size','Satin','Emboss','Corner Label','Small Label','Quantity','Packing','PDF Link','Status'];
+    csvDownload(`Printing_Production_Log_${todayISO()}.csv`, [cols].concat(rows.map(r => cols.map(c => c === 'Timestamp' ? fmtDT(r[c]) : c === 'Date' ? fmtDate(r[c]) : r[c]))));
+  } catch(e){ showToast(errMsg(e), 'error'); }
+}
+async function csvProductionTracking(){
+  try {
+    const rows = await fetchAll(() => SB.from('v_prl_production_tracking').select('*').order('lot_no'));
+    const cols = []; M.sections.forEach(s => s.fields.forEach(f => cols.push(s.section_key + '__' + f.id)));
+    rows.forEach(r => Object.keys(r.data || {}).forEach(k => { if(!cols.includes(k)) cols.push(k); }));
+    csvDownload(`Printing_Production_Tracking_${todayISO()}.csv`, [['LOT_NO','LAST_UPDATED'].concat(cols)].concat(rows.map(r => [r.lot_no, fmtDT(r.last_updated)].concat(cols.map(c => (r.data || {})[c] || '')))));
+  } catch(e){ showToast(errMsg(e), 'error'); }
+}
+
+// ═══════════════════════ PRODUCTION TRACKING ═══════════════════════════════
+const PT = { lots:[], prog:{}, lotId:null, lot:null, entries:{}, dirty:{}, showAll:false, channel:null, loaded:false };
+function ptCanEdit(key){ if(can('PRL_PROD_ALL')) return true; const op = opSession(); return !!(op && (op.sections || []).includes(key)); }
+function ptVisibleSections(){
+  const op = opSession();
+  if(can('PRL_PROD_ALL') || PT.showAll || !op) return M.sections;
+  return M.sections.filter(s => (op.sections || []).includes(s.section_key));
+}
+async function ptLoadLots(){
+  try {
+    const [lots, ent] = await Promise.all([
+      fetchAll(() => SB.from('prl_lots').select('id,lot_no,party_name,brand_name,lot_date,status').neq('status', 'CANCELLED').order('lot_date', { ascending:false }).order('updated_at', { ascending:false })),
+      fetchAll(() => SB.from('prl_production_entries').select('lot_id,section_key'))
+    ]);
+    PT.lots = lots; PT.prog = {};
+    ent.forEach(e => { (PT.prog[e.lot_id] = PT.prog[e.lot_id] || new Set()).add(e.section_key); });
+    PT.loaded = true;
+    ptRenderList();
+  } catch(e){ $('pt-list').innerHTML = `<div class="p-4 text-xs text-red-600 font-bold">${esc(errMsg(e))}</div>`; }
+}
+function ptRenderList(){
+  const q = up($('pt-search').value);
+  const rows = PT.lots.filter(l => !q || up(l.lot_no + ' ' + (l.party_name || '') + ' ' + (l.brand_name || '')).includes(q));
+  $('pt-count').textContent = rows.length;
+  const mine = ptVisibleSections().map(s => s.section_key);
+  $('pt-list').innerHTML = rows.map(l => {
+    const done = PT.prog[l.id] ? [...PT.prog[l.id]].filter(k => mine.includes(k)).length : 0;
+    return `<div data-lot="${esc(l.id)}" class="px-3 py-2.5 border-b border-gray-100 cursor-pointer hover:bg-amber-50 ${l.id === PT.lotId ? 'bg-amber-100 border-l-4 border-l-amber-500' : ''}">
+      <div class="flex items-center justify-between"><span class="font-bold text-xs text-gray-900 tracking-wide">${esc(l.lot_no)}</span>
+        <span class="text-[9px] ${done >= mine.length && mine.length ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'} px-1.5 py-0.5 rounded font-bold">${done}/${mine.length}</span></div>
+      <div class="text-[10px] text-gray-500 mt-0.5 truncate">${esc(l.party_name || '-')} · ${esc(fmtDate(l.lot_date))}</div></div>`;
+  }).join('') || '<div class="text-center py-10 text-gray-400 text-xs">Koi lot nahi</div>';
+}
+function ptRenderBar(){
+  const op = opSession(), all = can('PRL_PROD_ALL');
+  let h = '';
+  if(all) h += `<span class="chip bg-green-100 text-green-800"><i class="ph ph-shield-check"></i> Sab sections (${esc(erpUserLabel())})</span>`;
+  else if(op) h += `<span class="chip bg-amber-100 text-amber-800"><i class="ph ph-key"></i> ${esc(op.op_name)}${op.department ? ' · ' + esc(op.department) : ''}</span>
+      <label class="text-[11px] font-semibold text-gray-600 flex items-center gap-1 ml-1"><input type="checkbox" id="pt-showall" ${PT.showAll ? 'checked' : ''}> Baaki sections bhi dekhein (read-only)</label>
+      <button id="pt-logout" class="ml-auto text-[11px] font-bold text-red-600 border border-red-200 bg-red-50 rounded px-2 py-1"><i class="ph ph-sign-out"></i> Department Logout</button>`;
+  else h += `<span class="text-[11px] font-semibold text-gray-600"><i class="ph ph-eye"></i> View-only — apna section bharne ke liye</span>
+      <button id="pt-login" class="text-[11px] font-bold text-white bg-amber-600 rounded px-3 py-1.5"><i class="ph ph-key"></i> Department Login</button>`;
+  $('pt-bar').innerHTML = h;
+  const sa = $('pt-showall'); if(sa) sa.onchange = () => { PT.showAll = sa.checked; ptRenderList(); ptRenderSections(); };
+  const lo = $('pt-logout'); if(lo) lo.onclick = () => { sessionStorage.removeItem(OP_KEY); PT.showAll = false; renderWho(); ptRenderBar(); ptRenderList(); ptRenderSections(); };
+  const li = $('pt-login'); if(li) li.onclick = operatorLogin;
+}
+async function ptSelect(id){
+  if(Object.values(PT.dirty).some(Boolean) && !(await confirmBox('Kuch section ke badlaav save nahi hue. Chhod dein?', 'Haan'))) return;
+  PT.lotId = id; PT.dirty = {}; PT.entries = {};
+  PT.lot = PT.lots.find(l => l.id === id) || null;
+  ptRenderList();
+  $('pt-sections').innerHTML = '<div class="text-center py-10 text-gray-400">Loading…</div>';
+  try {
+    const { data, error } = await SB.from('prl_production_entries').select('section_key,data,saved_by,saved_role,updated_at').eq('lot_id', id);
+    if(error) throw error;
+    (data || []).forEach(e => { PT.entries[e.section_key] = e; });
+    if(!PT.lot){ const r = await SB.from('prl_lots').select('id,lot_no,party_name,brand_name,lot_date,status').eq('id', id).maybeSingle(); PT.lot = r.data; }
+    ptRenderInfo(); ptRenderSections();
+    try { location.hash = 'production'; } catch(e){}
+  } catch(e){ $('pt-sections').innerHTML = `<div class="text-center py-10 text-red-600 font-bold">${esc(errMsg(e))}</div>`; }
+}
+function ptRenderInfo(){
+  const l = PT.lot; if(!l){ $('pt-info').innerHTML = ''; return; }
+  $('pt-info').innerHTML = `<div class="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-2.5 flex-wrap">
+    <i class="ph ph-check-circle text-green-600 text-xl"></i>
+    <span class="font-black text-green-900 text-sm">${esc(l.lot_no)}</span>
+    <span class="text-green-700 text-xs">Party: <b>${esc(l.party_name || '-')}</b></span>
+    <span class="text-green-700 text-xs">Brand: <b>${esc(l.brand_name || '-')}</b></span>
+    <span class="text-green-700 text-xs">Date: <b>${esc(fmtDate(l.lot_date))}</b></span>
+    <button id="pt-open-card" class="ml-auto bg-white border border-green-300 text-green-800 text-[11px] font-bold rounded px-2 py-1"><i class="ph ph-cards"></i> Lot Card dekhein</button></div>`;
+  $('pt-open-card').onclick = () => openLot(l.id);
+}
+function ptFieldHTML(sk, f, val, ro){
+  const id = `pt-${sk}-${f.id}`;
+  const cls = 'w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold uppercase bg-white outline-none focus:ring-2 focus:ring-amber-300 disabled:bg-gray-100 disabled:text-gray-600';
+  let inp;
+  if(f.type === 'select'){
+    const opts = (f.options || []).slice(); if(val && !opts.includes(val)) opts.push(val);
+    inp = `<select id="${id}" data-sec="${sk}" class="${cls}" ${ro ? 'disabled' : ''}><option value="">Select...</option>${opts.map(o => `<option value="${esc(o)}" ${o === val ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+  } else {
+    inp = `<input type="${f.type === 'number' || f.type === 'date' ? f.type : 'text'}" id="${id}" data-sec="${sk}" value="${esc(val)}" ${f.step ? `step="${esc(f.step)}"` : ''} class="${cls}" placeholder="${esc(f.label)}" ${ro ? 'disabled' : ''}>`;
+  }
+  return `<div><label class="block text-[10px] font-bold text-gray-600 mb-1 uppercase tracking-wider">${esc(f.label)}</label>${inp}</div>`;
+}
+function ptRenderSections(){
+  ptRenderBar();
+  if(!PT.lotId){ return; }
+  const secs = ptVisibleSections();
+  if(!secs.length){ $('pt-sections').innerHTML = '<div class="text-center py-12 text-gray-400"><i class="ph ph-lock text-4xl mb-3 block"></i><p class="font-bold">Aapke liye koi section nahi</p><p class="text-sm mt-1">Admin se Masters › Department Operators me sections dilwayein.</p></div>'; return; }
+  $('pt-sections').innerHTML = secs.map(s => {
+    const c = PT_COLORS[s.color] || PT_COLORS.slate;
+    const e = PT.entries[s.section_key]; const data = (e && e.data) || {};
+    const ro = !ptCanEdit(s.section_key);
+    return `<div class="rounded-xl border ${c.border} overflow-hidden shadow-sm" data-section="${esc(s.section_key)}">
+      <div class="${c.header} text-white px-4 py-2.5 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2"><i class="ph ${esc(s.icon)} text-lg"></i><span class="font-bold text-sm tracking-wide">${esc(s.title)}</span>
+          ${ro ? '<span class="chip bg-white/20 text-white"><i class="ph ph-lock"></i> view</span>' : ''}</div>
+        <div class="flex items-center gap-2 text-[10px] font-medium opacity-95">
+          <span data-status>${e ? '✓ ' + esc(e.saved_by || '') + ' · ' + esc(fmtDT(e.updated_at)) : 'Abhi khaali'}</span>
+          <button type="button" data-hist class="bg-white/20 hover:bg-white/30 rounded px-2 py-0.5" title="Itihaas"><i class="ph ph-clock-counter-clockwise"></i></button>
+        </div></div>
+      <div class="${c.bg} p-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">${s.fields.map(f => ptFieldHTML(s.section_key, f, data[f.id] == null ? '' : String(data[f.id]), ro)).join('')}</div>
+        ${ro ? '' : `<div class="flex justify-end mt-4 pt-3 border-t ${c.border}"><button type="button" data-save class="${c.header} hover:opacity-90 text-white px-5 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-sm"><i class="ph ph-floppy-disk"></i> SAVE ${esc(s.title)}</button></div>`}
+      </div></div>`;
+  }).join('');
+}
+async function ptSaveSection(sk){
+  if(!ptCanEdit(sk)) return showToast('Is section ki permission nahi', 'error');
+  const s = M.sections.find(x => x.section_key === sk); if(!s) return;
+  const box = document.querySelector(`#pt-sections [data-section="${sk}"]`);
+  const btn = box.querySelector('[data-save]'); const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner animate-spin"></i> Saving…';
+  const data = {};
+  s.fields.forEach(f => { const el = $(`pt-${sk}-${f.id}`); let v = el ? el.value.trim() : ''; if(f.type === 'text' || f.type === 'select') v = v.toUpperCase(); data[f.id] = v; });
+  const op = opSession();
+  try {
+    const { data: r, error } = await SB.rpc('prl_save_section', { p_lot_id:PT.lotId, p_section_key:sk, p_data:data, p_saved_by:whoLabel(), p_saved_role:can('PRL_PROD_ALL') ? erpRole() : (op ? 'OPERATOR:' + (op.department || '') : erpRole()) });
+    if(error) throw error;
+    PT.entries[sk] = { section_key:sk, data, saved_by:r.saved_by, updated_at:r.updated_at };
+    PT.dirty[sk] = false;
+    (PT.prog[PT.lotId] = PT.prog[PT.lotId] || new Set()).add(sk);
+    if(L.id === PT.lotId){ L.prod[sk] = data; schedulePrintRoot(); if(L.extra && L.extra.fill_prod) renderSheet(); }
+    box.querySelector('[data-status]').textContent = '✓ ' + (r.saved_by || '') + ' · ' + fmtDT(r.updated_at);
+    ptRenderList();
+    showToast(`${s.title} — ${PT.lot ? PT.lot.lot_no : ''} save ho gaya`, 'success');
+  } catch(e){ showToast('Save fail: ' + errMsg(e), 'error'); }
+  finally { btn.disabled = false; btn.innerHTML = old; }
+}
+async function ptHistory(sk){
+  const s = M.sections.find(x => x.section_key === sk);
+  const ov = openModal(`${modalHead('Itihaas — ' + esc(s ? s.title : sk) + ' · ' + esc(PT.lot ? PT.lot.lot_no : ''), 'ph-clock-counter-clockwise')}<div data-b class="p-4 overflow-y-auto custom-scrollbar text-xs">Loading…</div>`, { w:'max-w-3xl' });
+  wireClose(ov);
+  try {
+    const { data, error } = await SB.from('prl_production_log').select('data,saved_by,saved_at').eq('lot_id', PT.lotId).eq('section_key', sk).order('saved_at', { ascending:false }).limit(50);
+    if(error) throw error;
+    const lab = id => { const f = s && s.fields.find(x => x.id === id); return f ? f.label : id; };
+    ov.querySelector('[data-b]').innerHTML = (data || []).map((r, i) => {
+      const prev = (data[i + 1] || {}).data || {};
+      const ch = Object.keys(r.data || {}).filter(k => String(r.data[k] || '') !== String(prev[k] || ''));
+      return `<div class="border border-gray-200 rounded-lg p-2.5 mb-2"><div class="flex justify-between font-bold text-gray-800"><span>${esc(r.saved_by || '-')}</span><span class="text-gray-500">${esc(fmtDT(r.saved_at))}</span></div>
+        <div class="mt-1 flex flex-wrap gap-1">${(ch.length ? ch : Object.keys(r.data || {})).map(k => `<span class="chip bg-gray-100 text-gray-700">${esc(lab(k))}: <b>${esc(r.data[k] || '—')}</b>${prev[k] && ch.includes(k) ? ` <s class="text-gray-400 font-normal">${esc(prev[k])}</s>` : ''}</span>`).join('')}</div></div>`;
+    }).join('') || '<div class="text-gray-400 text-center py-6">Abhi koi save nahi</div>';
+  } catch(e){ ov.querySelector('[data-b]').innerHTML = `<div class="text-red-600 font-bold">${esc(errMsg(e))}</div>`; }
+}
+async function operatorLogin(){
+  let ops = [];
+  try { const r = await SB.from('prl_operators').select('id,op_name,department,is_active').eq('is_active', true).order('op_name'); if(r.error) throw r.error; ops = r.data || []; }
+  catch(e){ return showToast(errMsg(e), 'error'); }
+  if(!ops.length) return showToast('Abhi koi Department Operator nahi bana — Admin Masters tab me banayein', 'info');
+  const ov = openModal(`${modalHead('Department Login','ph-key')}<div class="p-5 space-y-3">
+    <div><label class="lbl">Operator</label><select data-op class="fld py-2 font-bold"><option value="">-- Choose --</option>${ops.map(o => `<option value="${esc(o.op_name)}">${esc(o.op_name)}${o.department ? ' — ' + esc(o.department) : ''}</option>`).join('')}</select></div>
+    <div><label class="lbl">PIN</label><input type="password" data-pin class="fld py-2" autocomplete="off"></div>
+    <div data-err class="hidden bg-red-50 text-red-600 text-xs text-center font-bold p-2 rounded border border-red-200"></div>
+    <button type="button" data-go class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-lg">LOGIN</button></div>`, { w:'max-w-sm' });
+  wireClose(ov);
+  const go = async () => {
+    const name = ov.querySelector('[data-op]').value, pin = ov.querySelector('[data-pin]').value;
+    const err = ov.querySelector('[data-err]'); err.classList.add('hidden');
+    if(!name || !pin){ err.textContent = 'Operator aur PIN dono chahiye'; err.classList.remove('hidden'); return; }
+    try {
+      const { data, error } = await SB.rpc('prl_operator_login', { p_name:name, p_pin:pin });
+      if(error) throw error;
+      if(!data){ err.textContent = 'Galat PIN (ya operator band hai)'; err.classList.remove('hidden'); return; }
+      sessionStorage.setItem(OP_KEY, JSON.stringify(Object.assign({}, data, { at:Date.now() })));
+      ov.remove(); renderWho(); ptRenderBar(); ptRenderList(); ptRenderSections();
+      showToast('Welcome, ' + data.op_name, 'success');
+    } catch(e){ err.textContent = errMsg(e); err.classList.remove('hidden'); }
+  };
+  ov.querySelector('[data-go]').onclick = go;
+  ov.querySelector('[data-pin]').onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); go(); } };
+}
+// Doosra master usi lot ka section save kare to turant dikhe.
+function ptRealtime(){
+  if(PT.channel || !SB.channel) return;
+  try {
+    PT.channel = SB.channel('prl-prod').on('postgres_changes', { event:'*', schema:'public', table:'prl_production_entries' }, p => {
+      const r = p.new || {}; if(!r.lot_id) return;
+      (PT.prog[r.lot_id] = PT.prog[r.lot_id] || new Set()).add(r.section_key);
+      if(r.lot_id === PT.lotId){
+        const mine = PT.entries[r.section_key];
+        if(mine && mine.updated_at === r.updated_at) return;
+        PT.entries[r.section_key] = r;
+        if(PT.dirty[r.section_key]) showToast(`${r.saved_by || 'Kisi'} ne ${r.section_key} abhi save kiya — Reload se dekhein`, 'info');
+        else ptRenderSections();
+      }
+      ptRenderList();
+    }).subscribe();
+  } catch(e){}
+}
+
+// ═══════════════════════ MASTERS UI ════════════════════════════════════════
+let msTab = 'colors';
+function renderMasters(){
+  document.querySelectorAll('.ms-tab').forEach(b => { const on = b.dataset.ms === msTab; b.className = 'ms-tab px-3 py-1.5 rounded-md text-xs font-bold border ' + (on ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300'); });
+  const body = $('ms-body');
+  if(!can('PRL_MASTER') && msTab !== 'sections'){ body.innerHTML = '<div class="text-center text-gray-500 py-10"><i class="ph ph-lock text-3xl block mb-2"></i>Masters badalne ki permission sirf Admin (Feature Access › PRINTING LOT MASTERS) ko hai.</div>'; return; }
+  if(msTab === 'colors') msColors(body);
+  else if(msTab === 'satin') msSatin(body);
+  else if(msTab === 'operators') msOperators(body);
+  else msSections(body);
+}
+function msColors(body){
+  const rows = M.colors;
+  body.innerHTML = `<div class="flex items-center justify-between mb-3"><div><h3 class="font-black text-sm">Blanket Main Colors</h3><p class="text-[11px] text-gray-500">Design card ke color naam ki list. Naam chunte hi uska rang (hex) apne aap lag jata hai.</p></div>
+    <button data-add class="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold"><i class="ph ph-plus"></i> Add Color</button></div>
+    ${rows.some(r => r.id == null) ? '<div class="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">Ye code ke default hain — prl_colors table khaali / nahi mila. Migration chalayein.</div>' : ''}
+    <div class="overflow-auto max-h-[65vh] custom-scrollbar"><table class="reg-table w-full"><thead><tr><th>#</th><th>Color</th><th>Name</th><th>Hex</th><th>Active</th><th></th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr data-i="${i}"><td class="text-gray-400">${i + 1}</td><td><div class="w-6 h-6 rounded border" style="background:${esc(r.hex)}"></div></td>
+      <td><input data-f="color_name" class="fld uppercase font-bold" value="${esc(r.color_name)}"></td>
+      <td><input type="color" data-f="hex" value="${esc(r.hex)}" class="w-10 h-7 p-0 border rounded"></td>
+      <td><input type="checkbox" data-f="is_active" ${r.is_active ? 'checked' : ''}></td>
+      <td class="whitespace-nowrap"><button data-save class="bg-teal-600 text-white px-2 py-1 rounded text-[11px] font-bold">Save</button> <button data-del class="text-red-600 px-1"><i class="ph ph-trash"></i></button></td></tr>`).join('')}
+    </tbody></table></div>`;
+  body.querySelector('[data-add]').onclick = () => { M.colors.unshift({ id:null, color_name:'', hex:'#cbd5e1', sort_order:0, is_active:true, _new:true }); msColors(body); };
+  body.querySelectorAll('tr[data-i]').forEach(tr => {
+    const r = M.colors[+tr.dataset.i];
+    tr.querySelector('[data-save]').onclick = async () => {
+      const v = { color_name:up(tr.querySelector('[data-f="color_name"]').value), hex:tr.querySelector('[data-f="hex"]').value, is_active:tr.querySelector('[data-f="is_active"]').checked };
+      if(!v.color_name) return showToast('Naam khaali nahi', 'error');
+      const q = r.id ? SB.from('prl_colors').update(v).eq('id', r.id).select().single() : SB.from('prl_colors').insert(Object.assign(v, { sort_order:M.colors.length + 1 })).select().single();
+      const { data, error } = await q;
+      if(error) return showToast(/duplicate|unique/i.test(error.message) ? 'Ye color pehle se hai' : errMsg(error), 'error');
+      Object.assign(r, data, { _new:false }); await loadMasters(); msColors(body); showToast('Color save', 'success');
+    };
+    tr.querySelector('[data-del]').onclick = async () => {
+      if(r.id && !(await confirmBox(`"${r.color_name}" hata dein? Purane cards par naam waisa hi rahega.`, 'Delete'))) return;
+      if(r.id){ const { error } = await SB.from('prl_colors').delete().eq('id', r.id); if(error) return showToast(errMsg(error), 'error'); }
+      await loadMasters(); msColors(body);
+    };
+  });
+}
+let msSatinQ = '';
+function msSatin(body){
+  const qualities = [...new Set(ddList('satin_quality').concat((M.satinRows || []).map(r => r.satin_quality)))];
+  if(!msSatinQ) msSatinQ = qualities[0] || '';
+  const rows = (M.satinRows || []).filter(r => up(r.satin_quality) === up(msSatinQ));
+  body.innerHTML = `<div class="flex items-end justify-between mb-3 gap-2 flex-wrap"><div><h3 class="font-black text-sm">Satin (Sattan) Codes</h3><p class="text-[11px] text-gray-500">Satin Quality ke hisaab se har design par code chunte hain — rang apne aap aata hai. Qualities ki list Dropdown Master (erp_prlSatinQuality) se.</p></div>
+    <div class="flex gap-2 items-end"><div><label class="lbl">Quality</label><select data-q class="fld">${qualities.map(q => `<option ${q === msSatinQ ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select></div>
+    <input data-code class="fld w-28 uppercase" placeholder="Code"><input data-color class="fld w-40 uppercase" placeholder="Color"><button data-add class="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold whitespace-nowrap"><i class="ph ph-plus"></i> Add</button></div></div>
+    ${!(M.satinRows || []).length ? '<div class="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">prl_satin_codes table khaali / nahi mila — abhi code ke default chal rahe hain. Migration chalayein.</div>' : ''}
+    <div class="overflow-auto max-h-[60vh] custom-scrollbar"><table class="reg-table w-full"><thead><tr><th>Code</th><th>Color</th><th>Active</th><th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr data-id="${r.id}"><td><input data-f="code" class="fld uppercase font-bold" value="${esc(r.code)}"></td><td><input data-f="color_name" class="fld uppercase" value="${esc(r.color_name)}"></td>
+      <td><input type="checkbox" data-f="is_active" ${r.is_active ? 'checked' : ''}></td>
+      <td class="whitespace-nowrap"><button data-save class="bg-teal-600 text-white px-2 py-1 rounded text-[11px] font-bold">Save</button> <button data-del class="text-red-600 px-1"><i class="ph ph-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="4" class="text-center text-gray-400 py-6">Is quality ke codes nahi</td></tr>'}
+    </tbody></table></div>`;
+  body.querySelector('[data-q]').onchange = e => { msSatinQ = e.target.value; msSatin(body); };
+  body.querySelector('[data-add]').onclick = async () => {
+    const code = up(body.querySelector('[data-code]').value), color = up(body.querySelector('[data-color]').value);
+    if(!code || !color || !msSatinQ) return showToast('Quality, code aur color bharein', 'error');
+    const { error } = await SB.from('prl_satin_codes').insert({ satin_quality:msSatinQ, code, color_name:color, sort_order:rows.length + 1 });
+    if(error) return showToast(/duplicate|unique/i.test(error.message) ? 'Ye code pehle se hai' : errMsg(error), 'error');
+    await loadMasters(); msSatin(body); renderSheet(); showToast('Code add', 'success');
+  };
+  body.querySelectorAll('tr[data-id]').forEach(tr => {
+    const id = +tr.dataset.id;
+    tr.querySelector('[data-save]').onclick = async () => {
+      const v = { code:up(tr.querySelector('[data-f="code"]').value), color_name:up(tr.querySelector('[data-f="color_name"]').value), is_active:tr.querySelector('[data-f="is_active"]').checked };
+      const { error } = await SB.from('prl_satin_codes').update(v).eq('id', id);
+      if(error) return showToast(errMsg(error), 'error');
+      await loadMasters(); msSatin(body); renderSheet(); showToast('Save', 'success');
+    };
+    tr.querySelector('[data-del]').onclick = async () => {
+      if(!(await confirmBox('Ye code hata dein? Purane cards par jaisa hai waisa rahega.', 'Delete'))) return;
+      const { error } = await SB.from('prl_satin_codes').delete().eq('id', id);
+      if(error) return showToast(errMsg(error), 'error');
+      await loadMasters(); msSatin(body); renderSheet();
+    };
+  });
+}
+async function msOperators(body){
+  body.innerHTML = '<div class="text-gray-400 py-6 text-center">Loading…</div>';
+  let ops = [];
+  try { const r = await SB.from('prl_operators').select('id,op_name,department,sections,is_active,updated_at').order('op_name'); if(r.error) throw r.error; ops = r.data || []; }
+  catch(e){ body.innerHTML = `<div class="text-red-600 font-bold py-6 text-center">${esc(errMsg(e))}</div>`; return; }
+  const secTitle = k => (M.sections.find(s => s.section_key === k) || { title:k }).title;
+  body.innerHTML = `<div class="flex items-center justify-between mb-3"><div><h3 class="font-black text-sm">Department Operators (shop floor)</h3>
+    <p class="text-[11px] text-gray-500">Purani app ke RASCHEL / STENTER / PRINTING … MASTER logins. Inka ERP login nahi hota — Production tab me <b>Department Login</b> (naam + PIN) se sirf apne sections bharte hain. PIN ka sirf hash save hota hai; add / edit par Admin PIN lagta hai.</p></div>
+    <button data-add class="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold whitespace-nowrap"><i class="ph ph-user-plus"></i> Add Operator</button></div>
+    <table class="reg-table w-full"><thead><tr><th>Name</th><th>Department</th><th>Sections</th><th>Active</th><th></th></tr></thead><tbody>
+    ${ops.map((o, i) => `<tr><td class="font-bold">${esc(o.op_name)}</td><td>${esc(o.department || '')}</td><td>${(o.sections || []).map(k => `<span class="chip bg-amber-100 text-amber-800 mr-1">${esc(secTitle(k))}</span>`).join('')}</td>
+      <td>${o.is_active ? '<span class="chip bg-green-100 text-green-700">YES</span>' : '<span class="chip bg-gray-200 text-gray-600">NO</span>'}</td>
+      <td class="whitespace-nowrap"><button data-edit="${i}" class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-[11px] font-bold">Edit</button> <button data-del="${i}" class="text-red-600 px-1"><i class="ph ph-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="5" class="text-center text-gray-400 py-6">Abhi koi operator nahi</td></tr>'}
+    </tbody></table>`;
+  body.querySelector('[data-add]').onclick = () => operatorEditor(null, () => msOperators(body));
+  body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => operatorEditor(ops[+b.dataset.edit], () => msOperators(body)));
+  body.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const o = ops[+b.dataset.del];
+    if(!(await confirmBox(`Operator ${o.op_name} hata dein?`, 'Delete'))) return;
+    const pin = await askSecret('Admin PIN', 'Operator hatane ke liye'); if(!pin) return;
+    const { error } = await SB.rpc('prl_admin_delete_operator', { p_admin_pin:pin, p_id:o.id });
+    if(error) return showToast(/ADMIN_PIN_INVALID/.test(error.message) ? 'Admin PIN galat' : errMsg(error), 'error');
+    showToast('Operator hata diya', 'success'); msOperators(body);
+  });
+}
+function operatorEditor(o, done){
+  const secs = M.sections;
+  const ov = openModal(`${modalHead(o ? 'Operator Edit — ' + esc(o.op_name) : 'Naya Operator', 'ph-user-gear')}<div class="p-5 space-y-3 overflow-y-auto custom-scrollbar">
+    <div class="grid grid-cols-2 gap-3"><div><label class="lbl">Name *</label><input data-n class="fld uppercase font-bold" value="${esc(o ? o.op_name : '')}"></div>
+    <div><label class="lbl">Department</label><select data-d class="fld"><option value="">--</option>${Object.keys(DEPARTMENTS).map(d => `<option ${o && o.department === d ? 'selected' : ''}>${d}</option>`).join('')}</select></div></div>
+    <div><label class="lbl">Sections jo ye bhar sakta hai</label><div class="grid grid-cols-2 gap-1 border rounded p-2">${secs.map(s => `<label class="text-xs flex items-center gap-1.5"><input type="checkbox" data-s value="${esc(s.section_key)}" ${o && (o.sections || []).includes(s.section_key) ? 'checked' : ''}> ${esc(s.title)}</label>`).join('')}</div></div>
+    <div class="grid grid-cols-2 gap-3"><div><label class="lbl">${o ? 'Naya PIN (khaali = wahi)' : 'PIN *'}</label><input type="password" data-p class="fld" autocomplete="new-password"></div>
+    <div><label class="lbl">Confirm PIN</label><input type="password" data-p2 class="fld" autocomplete="new-password"></div></div>
+    <label class="text-xs font-bold flex items-center gap-2"><input type="checkbox" data-a ${!o || o.is_active ? 'checked' : ''}> Active</label>
+    <div data-err class="hidden bg-red-50 text-red-600 text-xs font-bold p-2 rounded border border-red-200"></div>
+    <div class="flex justify-end gap-2"><button type="button" data-close class="px-4 py-2 bg-gray-100 rounded-lg text-sm font-semibold">Cancel</button><button type="button" data-ok class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold">Save</button></div></div>`, { w:'max-w-lg' });
+  wireClose(ov);
+  ov.querySelector('[data-d]').onchange = e => {
+    const pre = DEPARTMENTS[e.target.value]; if(!pre) return;
+    ov.querySelectorAll('[data-s]').forEach(c => { c.checked = pre.includes(c.value); });
+  };
+  ov.querySelector('[data-ok]').onclick = async () => {
+    const err = ov.querySelector('[data-err]'); const show = m => { err.textContent = m; err.classList.remove('hidden'); };
+    const name = up(ov.querySelector('[data-n]').value), pin = ov.querySelector('[data-p]').value, pin2 = ov.querySelector('[data-p2]').value;
+    if(!name) return show('Name zaroori');
+    if(!o && !pin) return show('PIN zaroori');
+    if(pin && pin.length < 4) return show('PIN kam se kam 4 ka');
+    if(pin !== pin2) return show('PIN aur Confirm match nahi');
+    const sections = [...ov.querySelectorAll('[data-s]:checked')].map(c => c.value);
+    const admin = await askSecret('Admin PIN', 'Operator save karne ke liye'); if(!admin) return;
+    const { error } = await SB.rpc('prl_admin_save_operator', { p_admin_pin:admin, p_id:o ? o.id : null, p_name:name, p_department:ov.querySelector('[data-d]').value,
+      p_sections:sections, p_is_active:ov.querySelector('[data-a]').checked, p_new_pin:pin || null });
+    if(error){
+      const m = error.message || '';
+      const map = { ADMIN_PIN_INVALID:'Admin PIN galat hai', OPERATOR_EXISTS:'Ye naam pehle se hai', PIN_REQUIRED:'PIN zaroori', PIN_TOO_SHORT:'PIN kam se kam 4 ka', NAME_REQUIRED:'Name zaroori' };
+      const k = Object.keys(map).find(x => m.includes(x));
+      return show(k ? map[k] : (/verify_role_pin/.test(m) ? 'ERP ka verify_role_pin nahi mila — APPROVAL_CHAIN_MIGRATION.sql pehle chalayein' : errMsg(error)));
+    }
+    ov.remove(); showToast('Operator save ho gaya', 'success'); done && done();
+  };
+}
+function msSections(body){
+  body.innerHTML = `<h3 class="font-black text-sm mb-1">Production Sections</h3>
+    <p class="text-[11px] text-gray-500 mb-3">Form inhi se banta hai (table <code>prl_sections</code>, column <code>fields</code>). Naya field / section jodna ho to wahan jodein — purana data jsonb me surakshit rehta hai, kuch migrate nahi karna padta.</p>
+    <div class="grid md:grid-cols-2 gap-3">${M.sections.map(s => { const c = PT_COLORS[s.color] || PT_COLORS.slate; return `<div class="border ${c.border} rounded-lg overflow-hidden"><div class="${c.header} text-white px-3 py-1.5 text-xs font-bold"><i class="ph ${esc(s.icon)}"></i> ${esc(s.title)} <span class="opacity-70">(${esc(s.section_key)})</span></div>
+      <div class="p-2 flex flex-wrap gap-1">${s.fields.map(f => `<span class="chip bg-gray-100 text-gray-700">${esc(f.label)} <i class="text-gray-400 font-normal">${esc(f.type)}</i></span>`).join('')}</div></div>`; }).join('')}</div>`;
+}
+
+// ═══════════════════════ VIEWS / ROUTING ═══════════════════════════════════
+let view = 'card';
+function showView(v){
+  view = v;
+  document.querySelectorAll('.view').forEach(s => s.classList.toggle('hidden', s.id !== 'view-' + v));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  $('card-actions').style.display = v === 'card' ? '' : 'none';
+  try { history.replaceState(null, '', '#' + v); } catch(e){}
+  if(v === 'register') loadRegister();
+  if(v === 'production'){ ptRenderBar(); if(!PT.loaded) ptLoadLots(); else ptRenderList(); ptRealtime(); }
+  if(v === 'masters') renderMasters();
+}
+function modeBanner(){
+  if(M.setupMissing) return `❌ ${esc(SETUP_HINT)}`;
+  return '';
+}
+
+// ═══════════════════════ INIT ══════════════════════════════════════════════
+function wire(){
+  document.querySelectorAll('.tab-btn').forEach(b => b.onclick = () => showView(b.dataset.view));
+  F_KEYS.forEach(k => {
+    const el = $('in-' + k); if(!el) return;
+    el.addEventListener('input', () => onFieldInput(k, el, false));
+    el.addEventListener('change', () => onFieldInput(k, el, true));
+  });
+  $('in-fill_prod').onchange = e => { L.extra = Object.assign({}, L.extra, { fill_prod:e.target.checked }); renderSheet(); markDirty(); };
+  $('btn-add-note').onclick = addNote;
+  $('notes-list').onclick = e => {
+    const del = e.target.closest('[data-note-del]'), upb = e.target.closest('[data-note-up]');
+    if(del){ L.notes.splice(+del.dataset.noteDel, 1); }
+    else if(upb){ const i = +upb.dataset.noteUp; if(i > 0){ const t = L.notes[i - 1]; L.notes[i - 1] = L.notes[i]; L.notes[i] = t; } }
+    else return;
+    renderNotesList(); renderSheet(); markDirty();
+  };
+  $('btn-upload').onclick = () => $('file-multi').click();
+  $('btn-paste').onclick = pasteFromClipboard;
+  $('btn-dm').onclick = openDesignMasterPicker;
+  $('btn-clear-images').onclick = clearAllImages;
+  $('btn-from-lotcard').onclick = fillFromLotCard;
+  $('file-multi').onchange = e => { const f = [...e.target.files]; e.target.value = ''; addImages(f, 'UPLOAD'); };
+  $('file-single').onchange = e => { const f = e.target.files[0]; e.target.value = ''; replaceImage(f); };
+  $('btn-new').onclick = newLot;
+  $('btn-save').onclick = () => saveLot();
+  $('btn-print').onclick = printCard;
+  $('btn-pdf').onclick = makePdf;
+  $('quick-open').onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); openLotByNo(e.target.value); e.target.value = ''; } };
+  document.addEventListener('paste', e => {
+    if(view !== 'card' || !canEdit() || $('modal-root').children.length) return;
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    const files = [...items].filter(i => i.type.indexOf('image') === 0).map(i => i.getAsFile()).filter(Boolean);
+    if(files.length){ e.preventDefault(); addImages(files, 'PASTE'); }
+  });
+  document.addEventListener('keydown', e => {
+    if((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')){ e.preventDefault(); if(view === 'card' && canEdit()) saveLot(); }
+  });
+  window.addEventListener('beforeunload', e => { if(dirty && canEdit()){ saveLocalDraft(); e.preventDefault(); e.returnValue = ''; } });
+  wireSheet();
+  // Register
+  ['rg-q','rg-status','rg-unit','rg-from','rg-to'].forEach(id => $(id).addEventListener('input', debounce(renderRegister, 120)));
+  $('rg-refresh').onclick = loadRegister;
+  $('rg-csv-log').onclick = csvProductionLog;
+  $('rg-csv-track').onclick = csvProductionTracking;
+  $('rg-body').addEventListener('click', e => {
+    const b = e.target.closest('[data-rg]'); if(!b || b.tagName === 'SELECT') return;
+    const id = b.closest('tr').dataset.id;
+    if(b.dataset.rg === 'open') openLot(id);
+    else if(b.dataset.rg === 'prod'){ showView('production'); ptSelect(id); }
+    else if(b.dataset.rg === 'dup') duplicateLot(id);
+    else if(b.dataset.rg === 'del') deleteLot(id);
+  });
+  $('rg-body').addEventListener('change', e => {
+    const s = e.target.closest('[data-rg="status"]'); if(!s || !s.value) return;
+    setLotStatus(s.closest('tr').dataset.id, s.value);
+  });
+  // Production
+  $('pt-search').addEventListener('input', debounce(ptRenderList, 120));
+  $('pt-search').addEventListener('keydown', e => {
+    if(e.key !== 'Enter') return;
+    const q = up(e.target.value); const hit = PT.lots.find(l => up(l.lot_no) === q) || PT.lots.find(l => up(l.lot_no + ' ' + (l.party_name || '')).includes(q));
+    if(hit) ptSelect(hit.id); else showToast('LOT nahi mila', 'error');
+  });
+  $('pt-list').onclick = e => { const r = e.target.closest('[data-lot]'); if(r) ptSelect(r.dataset.lot); };
+  $('pt-sections').addEventListener('click', e => {
+    const sec = e.target.closest('[data-section]'); if(!sec) return;
+    if(e.target.closest('[data-save]')) ptSaveSection(sec.dataset.section);
+    else if(e.target.closest('[data-hist]')) ptHistory(sec.dataset.section);
+  });
+  $('pt-sections').addEventListener('input', e => { const s = e.target.dataset && e.target.dataset.sec; if(s) PT.dirty[s] = true; });
+  // Masters
+  document.querySelectorAll('.ms-tab').forEach(b => b.onclick = () => { msTab = b.dataset.ms; renderMasters(); });
+}
+
+async function init(){
+  wire();
+  renderWho();
+  if(!SB){ banner('❌ Supabase library load nahi hui — internet check karein', 'err'); return; }
+  renderForm(); renderSheet(); setSaveState(canEdit() ? 'new' : 'ro');
+  await Promise.all([loadPerms(), loadMasters()]);
+  banner(modeBanner(), 'err');
+  renderWho(); renderForm(); renderSheet(); applyRO();
+  $('tab-masters').style.display = (can('PRL_MASTER') || can('PRL_EDIT')) ? '' : 'none';
+  loadSuggestions();
+
+  const hash = (location.hash || '').replace('#', '');
+  // Browser band hone se pehle ka bina-save kaam — wapas laane ka mauka.
+  let draft = null; try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch(e){}
+  let last = null; try { last = localStorage.getItem(LAST_KEY); } catch(e){}
+  if(draft && draft.dirty && canEdit() && (draft.f && (draft.f.lot_no || (draft.designs || []).length))){
+    const ok = await confirmBox(`Pichhli baar ka bina-save card mila${draft.f.lot_no ? ' (LOT ' + draft.f.lot_no + ')' : ''}, ${new Date(draft.savedLocalAt).toLocaleString('en-IN')}.\nUse wapas kholein?`, 'Haan, kholo', false);
+    if(ok){
+      L = Object.assign(blankLot(), draft, { removed:draft.removed || [], prod:draft.prod || {} });
+      L.designs = (draft.designs || []).map(d => newDesign(Object.assign({}, d, { _local:'', _blob:null, _uploading:false })));
+      dirty = true; renderForm(); renderSheet(); setSaveState('dirty');
+    } else clearLocalDraft();
+  } else if(last && hash !== 'production'){
+    try { await openLot(last, { force:true }); } catch(e){}
+  }
+  showView(['card','register','production','masters'].includes(hash) ? hash : 'card');
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
