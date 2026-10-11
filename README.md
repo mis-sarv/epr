@@ -21,6 +21,7 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `DESIGN_MASTER_MIGRATION.sql` | Design Master ke do table + storage policies. Supabase › SQL Editor me **ek baar** chalayein. |
 | `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS. Master Data › 🔽 Dropdown Master ke liye. **Ek baar** chalayein. |
 | `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column. Design Master ke Supplier Name field ke liye. **Ek baar** chalayein. |
+| `ORDER_FORM_USERS_MIGRATION.sql` | Order Form ke users ERP ki `app_users` me (ek hi user table): `app_users.sales_role`, `sales_users` mirror + trigger, ERP login se Order Form session (`sales_erp_login`). **Ek baar** chalayein. |
 | `printing-lot.html` | Manufacturing › 🖨️ Printing Lot Card (purani "Design Print Manager Pro" + code.gs). `#printingLotPanel` iframe me khulta hai; shop floor par seedha `printing-lot.html#production` bhi. |
 | `PRINTING_LOT_MIGRATION.sql` | Printing Lot ke `prl_*` tables, RPCs, views, bucket `printing-lot` + seed (sections, colors, satin codes). **Ek baar** chalayein (APPROVAL_CHAIN_MIGRATION ke baad). |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
@@ -103,6 +104,52 @@ database me value hi jaati hai.
 Design Master ke pickers isi se feed hote hain (`store-design-master.js` ka
 `dmFixed()` / `DM_DD_KEY`), aur Home page ka Nature chooser bhi
 (`sarvNatureOpts_`) — to list ek hi jagah badalti hai.
+
+## 🧾 Sales › Order Form — ERP ke andar, ERP ka login
+
+`order-form.html` ab naye tab me nahi, ERP ke `#orderFormPanel` iframe me
+khulta hai (Lot Card Manager jaisa). User sirf ek jagah banta hai:
+
+| Kya | Kahan |
+|---|---|
+| User, PIN, signature | Admin Panel › Users & Roles (`app_users`) |
+| Order Form me kya kar sakta hai | Usi popup ka **Order Form Role** (`app_users.sales_role`): Admin / Manager / Executive / Data Entry / Viewer. Khaali = access nahi |
+| Shared role-PIN login (bina naam) | `sales_erp_role_map`: ADMIN → admin, MD → admin, GM → manager |
+
+- ERP login karte hi Order Form ka session ban jaata hai — andar dobara login nahi.
+- `order-form.html` alag se kholein (phone) to ERP wala **naam + PIN**; shared
+  PIN wale naam ki jagah `ADMIN` / `MD` / `GM`.
+- `sales_users` ab sirf mirror hai (trigger bharta hai) — use seedha edit na
+  karein. Purane Order Form users migration me `app_users` me jud jaate hain
+  (naya user "View Only" ERP role ke saath); jab tak Admin unka PIN set na kare,
+  purana password chalta hai.
+- Order Form signature: ERP me user ka sign ho to wahi Order Form PDF par.
+
+## 📦 Sales › Packing & Dispatch (packing.html)
+
+Purani Packing App (`PACKING/PACKING.html`, Supabase project
+`hghomygvryyihezvmrjj`) ki ERP copy. Interface, offline queue, PDF (Original +
+Full Copy) — sab hu-ba-hu; farak sirf itna ki data ERP project ke **`packing`
+schema** me hai (wahi table / RPC naam). Purani app aur purana project **bilkul
+nahi badle** — backup ki tarah chalte rehte hain.
+
+Setup (ERP project › SQL Editor, `PACKING/` folder se, isi kram me):
+
+| Step | File | Kya |
+|---|---|---|
+| 1 | `PACKING_1_SCHEMA_CLONE.sql` | Purane project se poora schema (tables, keys, indexes, views, RPCs, triggers, RLS, grants) `packing` me clone. Upar connection string daalein. |
+| — | Dashboard | ERP project › Settings › API › **Exposed schemas** me `packing` jodein. |
+| 2 | `PACKING_2_DATA_TRANSFER.sql` | Saara data + login users + sequences copy. Dobara chalana safe (upsert) — cut-over ke din aakhri baar. |
+| 3 | `PACKING_3_ERP_ENHANCEMENTS.sql` | Audit trail, ERP PDF index, business views. |
+
+- Login: wahi username / password jo purani app me (auth users copy hote hain).
+- Purani PDFs ke link purane project ke bucket par hain aur wahin se khulte hain;
+  nayi PDFs ERP ke `packing-slips` bucket me.
+- Cut-over: dono apps ek saath chalengi to Slip / Order number takrayenge —
+  aakhri copy ke baad sab ERP wali app par.
+- Views (`packing.v_dispatch_daily`, `v_party_dispatch_monthly`,
+  `v_quality_dispatch_monthly`, `v_order_pending_aging`, `v_slip_pipeline`,
+  `v_weight_variance`, `v_vehicle_utilisation`) dashboard / reports ke liye.
 
 ## 🖨️ Printing Lot Card (Manufacturing)
 

@@ -2960,6 +2960,9 @@ async function sarvAttemptLogin(){
       if(!v.data)return show('Galat PIN');
       if(userVal.startsWith('pname:'))user={id:null,name:userVal.slice(6)};
     }
+    // Order Form ka session bhi isi PIN se (ek hi login). Rukta nahi — fail ho to
+    // Order Form apni login screen dikhata hai aur wajah bhi.
+    sarvSalesSso_(userVal.startsWith('pname:')?('PURCHASER::'+userVal.slice(6)):role,user&&user.id?user.id:null,pin);
     sarvCurrentRole=role;sarvCurrentUser=user;sarvPadForceDraw=false;
     try{
       localStorage.setItem(SARV_LOGIN_STORAGE_KEY,role);
@@ -2982,8 +2985,48 @@ async function sarvAttemptLogin(){
    Logout button and the role badge in the header — land on this one function.
    The badge in particular sits next to the nav links, so a mis-click used to
    drop the session and send the user back to the PIN screen with no warning. */
+/* ── Order Form: ERP login hi uska login ──────────────────────────────
+   app_users ek hi user table hai (ORDER_FORM_USERS_MIGRATION.sql). ERP login
+   ke waqt PIN haath me hota hai, wahi server par dobara check karke Order Form
+   ka session token banta hai aur usi localStorage key me rakha jaata hai jo
+   order-form.html padhta hai — isi liye iframe bina login screen ke khulta hai. */
+const SARV_SALES_TOKEN_KEY='sihf_sb_token', SARV_SALES_MSG_KEY='sihf_erp_sso_msg';
+async function sarvSalesSso_(roleKey,userId,pin){
+  if(!SB_READY)return;
+  const old=(()=>{try{return localStorage.getItem(SARV_SALES_TOKEN_KEY);}catch(e){return null;}})();
+  try{
+    localStorage.removeItem(SARV_SALES_TOKEN_KEY);
+    const r=await SB.rpc('sales_erp_login',{p_role:roleKey,p_user_id:userId!=null?String(userId):null,p_pin:pin});
+    if(r.error)throw r.error;
+    if(r.data&&r.data.success){
+      localStorage.setItem(SARV_SALES_TOKEN_KEY,r.data.token);
+      localStorage.removeItem(SARV_SALES_MSG_KEY);
+    }else{
+      localStorage.setItem(SARV_SALES_MSG_KEY,(r.data&&r.data.error)||'Order Form ka access nahi hai');
+    }
+    // Pichhle user ka session server par bhi band.
+    if(old&&old!==(r.data&&r.data.token))SB.rpc('sales_logout',{p_token:old}).then(()=>{},()=>{});
+  }catch(e){
+    console.warn('[SARV] Order Form SSO skipped (ORDER_FORM_USERS_MIGRATION.sql run hua?):',e.message||e);
+    try{localStorage.setItem(SARV_SALES_MSG_KEY,'ERP se Order Form login nahi hua — yahan ERP naam + PIN daalein');}catch(x){}
+  }
+  sarvResetOrderFormFrame_();
+}
+// Naya user aaya / gaya — khula hua Order Form purane user ka na rahe.
+function sarvResetOrderFormFrame_(){
+  const fr=byId('orderFormFrame');if(!fr||!fr.getAttribute('src'))return;
+  const panel=byId('orderFormPanel');
+  if(panel&&panel.style.display!=='none'){try{fr.contentWindow.location.reload();}catch(e){fr.setAttribute('src',fr.getAttribute('src'));}}
+  else fr.removeAttribute('src');
+}
 function sarvLogout(){
   if(!confirm('Do you want Log out ?\n\nDobara kaam karne ke liye PIN phir se daalna padega.'))return;
+  try{
+    const tok=localStorage.getItem(SARV_SALES_TOKEN_KEY);
+    if(tok&&SB_READY)SB.rpc('sales_logout',{p_token:tok}).then(()=>{},()=>{});
+    localStorage.removeItem(SARV_SALES_TOKEN_KEY);localStorage.removeItem(SARV_SALES_MSG_KEY);
+  }catch(e){}
+  sarvResetOrderFormFrame_();
   sarvCurrentRole=null;sarvCurrentUser=null;
   try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
@@ -3045,6 +3088,12 @@ function sarvNavigateFromHome(target){
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'lot-card-manager.html');
       break;
     }
+    case 'PACKING': {
+      activatePanel('packingPanel');
+      const fr=byId('packingFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'packing.html');
+      break;
+    }
     case 'PRINTING_LOT': {
       activatePanel('printingLotPanel');
       const fr=byId('printingLotFrame');
@@ -3066,7 +3115,15 @@ function sarvNavigateFromHome(target){
        relative, so it serves unchanged from user.github.io/repo/ or a
        custom domain root. */
     case 'COMPLAINT_APP': window.open('complaint.html','_blank'); sarvGoHome(); return;
-    case 'ORDER_FORM': window.open('order-form.html','_blank'); sarvGoHome(); return;
+    /* Order Form ab ERP ke andar (Design Master / Lot Card jaisa) — iframe.
+       Login ERP wala hi: sarvAttemptLogin ne Order Form ka session pehle hi
+       bana diya hota hai (sarvSalesSso_), isi liye wahan dobara login nahi. */
+    case 'ORDER_FORM': {
+      activatePanel('orderFormPanel');
+      const fr=byId('orderFormFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'order-form.html');
+      break;
+    }
   }
   // Whatever the chooser answered on the way in is applied — and locked — only
   // now, after the Entry Type change handler has rebuilt the form's dropdowns.
@@ -3170,12 +3227,18 @@ const SARV_HOME_HELP={
     'Store Standard Name sirf Item Master se; PO chunte hi Target Date = PO delivery date।',
     'Qty Received (PO ke inward) aur Lot Issue (Store Issue) Store se live aate hain।',
     'Save करने पर sheet Order No. और Lot No. se linked save hoti hai।']},
+  PACKING:{icon:'📦',title:'Packing & Dispatch (Sales)',points:[
+    'Packing Slip बनाएं — Party, Order ID, Quality, हर पैक का Pcs / Weight; Billed / Unbilled अलग नंबर।',
+    'Save करते ही Original + Full Copy PDF बनती है — WhatsApp पर भेज सकते हैं, ERP के PDF index में भी।',
+    'Orders, Vehicle (Tempo) list, Drafts और Quick Pack assign — पहले जैसा ही।',
+    'Verification: Pre-Invoice → Invoice / Chalan / Kanta Weight → Receiving।',
+    'Login वही username / password जो पुरानी Packing App में था।']},
   ORDER_FORM:{icon:'🧾',title:'Order Form (Sales)',points:[
     'Buyer का order भरें — Item Code चुनते ही specs, price और trims की cost अपने-आप भर जाएगी।',
     'Packing Type, trims (Buyer / SIHF / FOC), discount और GST से पूरा bill अपने-आप बनता है।',
     'Submit करने पर order Supabase में save होता है और Proforma Invoice की PDF बनती है।',
     'Orders बटन से पुराने order देखें, Edit करें, Status बदलें और WhatsApp / Email करें।',
-    'इसका login अलग है (username + password, sales_users table), ERP के PIN से नहीं चलता।']},
+    'Login ERP वाला ही — अलग password नहीं। किसे क्या access है: Admin Panel › Users & Roles › "Order Form Role"।']},
 };
 const SARV_HOME_SKIP_KEY='sarv_home_intro_skip';
 function sarvHomeSkipped_(){try{return JSON.parse(localStorage.getItem(SARV_HOME_SKIP_KEY)||'{}')||{};}catch(e){return {};}}
@@ -3564,7 +3627,8 @@ const SARV_TABS=[
   {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
-  {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — apna alag login (sales_users)',def:'ALL'},
+  {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html — apna login)',def:'ALL'},
+  {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — ERP ke andar khulta hai; andar kya kar sakta hai wo Users & Roles ka "Order Form Role" batata hai',def:'ALL'},
   {group:'🏭 Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'🛒 PO Generation › Sub Tabs'},
@@ -3623,6 +3687,16 @@ const SARV_PURCHASER_FALLBACK=['KHUSHBOO','SATINDER JI','ANKUR JI','PARKASH JI',
 let sarvSettings={role_permissions:null,tab_visibility:null};
 let sarvSettingsMissing=false;
 let sarvAppUsers=[],sarvAppUsersLoaded=false,sarvAppUsersMissing=false;
+// Sales › Order Form ke role — app_users.sales_role (ek hi user table).
+let sarvSalesRoleReady=false;
+const SARV_SALES_ROLES=[
+  {v:'admin',l:'Admin',hint:'Create, Edit, Status, Emboss catalog'},
+  {v:'manager',l:'Manager',hint:'Create, Edit, Status'},
+  {v:'executive',l:'Executive',hint:'Create, Edit'},
+  {v:'data_entry',l:'Data Entry',hint:'Sirf naya order'},
+  {v:'viewer',l:'Viewer',hint:'Sirf dekhna'}
+];
+const sarvSalesRoleLabel_=v=>{const r=SARV_SALES_ROLES.find(x=>x.v===v);return r?r.l:'';};
 
 function sarvDefOf_(d,role){
   if(d.def==='ALL')return true;
@@ -3764,7 +3838,12 @@ async function sarvLoadAppUsers_(force){
   if(!SB_READY)return sarvAppUsers;
   try{
     // signature is deliberately not selectable — only get_user_signature() returns it.
-    const q=await SB.from('app_users').select('id,user_name,role,emp_code,contact_no,has_signature,is_active,created_at,updated_at').order('user_name');
+    // sales_role (Order Form Role) ORDER_FORM_USERS_MIGRATION.sql se aata hai; wo
+    // na chala ho to bina us column ke dobara — users ki list kabhi khaali na ho.
+    const cols='id,user_name,role,emp_code,contact_no,has_signature,is_active,created_at,updated_at';
+    let q=await SB.from('app_users').select(cols+',sales_role').order('user_name');
+    sarvSalesRoleReady=!q.error;
+    if(q.error)q=await SB.from('app_users').select(cols).order('user_name');
     if(q.error)throw q.error;
     sarvAppUsers=q.data||[];sarvAppUsersMissing=false;
   }catch(e){
@@ -3846,7 +3925,8 @@ function sarvRenderUsers_(){
   tb.innerHTML=rows.map((u,i)=>'<tr>'
     +'<td style="color:#94a3b8;">'+(i+1)+'</td>'
     +'<td style="font-weight:800;">'+escText(u.user_name)+'</td>'
-    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;">'+escText(sarvRoleLabelOf_(u.role))+'</span></td>'
+    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;">'+escText(sarvRoleLabelOf_(u.role))+'</span>'
+      +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">&#129534; '+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')+'</td>'
     +'<td>'+escText(u.emp_code||'—')+'</td>'
     +'<td>'+escText(u.contact_no||'—')+'</td>'
     +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved — PIN se sign kar sakte hain">&#9997;&#65039; &#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="Signature abhi nahi bana">&mdash;</span>')+'</td>'
@@ -3968,6 +4048,9 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg"><label>User Name <span class="req">*</span></label><input data-f="name" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.user_name:'')+'" placeholder="Full name"></div>'
     +'<div class="fg"><label>Employee Code</label><input data-f="emp" list="dl-emp-codes" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.emp_code||'':'')+'" placeholder="optional — auto-fill"></div>'
     +'<div class="fg"><label>Contact No.</label><input data-f="contact" type="tel" maxlength="15" value="'+escText(u?u.contact_no||'':'')+'" placeholder="optional"></div>'
+    +'<div class="fg" style="grid-column:1 / -1;"><label>&#129534; Order Form Role <small style="text-transform:none;font-weight:600;">(Sales › Order Form — isi naam + PIN se)</small></label>'
+      +'<select data-f="srole"'+(sarvSalesRoleReady?'':' disabled title="ORDER_FORM_USERS_MIGRATION.sql pehle run karein"')+'><option value="">— Order Form access nahi —</option>'
+      +SARV_SALES_ROLES.map(r=>'<option value="'+r.v+'"'+(u&&u.sales_role===r.v?' selected':'')+'>'+escText(r.l+' — '+r.hint)+'</option>').join('')+'</select></div>'
     +'<div class="fg"><label>'+(u?'New PIN <small style="text-transform:none;font-weight:600;">(khali = purana PIN)</small>':'PIN <span class="req">*</span>')+'</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>'
     +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="dobara"></div>'
     +'</div>'
@@ -4017,10 +4100,22 @@ function sarvOpenUserModal(id,presetRole){
         p_emp_code:f('emp').value.trim().toUpperCase()||null,p_contact_no:f('contact').value.trim()||null,
         p_is_active:f('active').checked,p_new_pin:pin||null,p_signature:sig,p_admin_pin:adminPin.trim()});
       if(r.error)throw r.error;
+      // Order Form Role — alag RPC (admin_save_user ko chhede bina), wahi Admin PIN.
+      const sroleV=f('srole')?f('srole').value:'';
+      let sroleNote='';
+      if(sarvSalesRoleReady&&sroleV!==((u&&u.sales_role)||'')){
+        await sarvLoadAppUsers_(true);
+        const saved=u?sarvAppUsers.find(x=>x.id===u.id):sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
+        if(saved){
+          const s=await SB.rpc('admin_set_sales_role',{p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_sales_role:sroleV||null});
+          if(s.error)sroleNote=' — ⚠️ Order Form Role save nahi hua: '+(s.error.message||s.error);
+          else sroleNote=sroleV?' · Order Form: '+sarvSalesRoleLabel_(sroleV):' · Order Form access hataya';
+        }
+      }
       await sarvLoadAppUsers_(true);
       sarvRenderUsers_();
       close();
-      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''));
+      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+sroleNote+(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''),sroleNote.includes('⚠️')?'warn':undefined);
     }catch(e){
       const m=String(e.message||e);
       const map={ADMIN_PIN_INVALID:'❌ Admin PIN galat hai',PIN_REQUIRED:'Is user ka PIN abhi set nahi hai — PIN daalein',PIN_TOO_SHORT:'PIN kam se kam 4 digit ka ho',

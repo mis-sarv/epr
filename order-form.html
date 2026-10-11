@@ -5,8 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SARV INDIA — Order Form</title>
 <!--
-  Sales › Order Form — opened from the ERP sidebar (index.html → erp-shell.js
-  SALES › "Order Form" → store-core.js sarvNavigateFromHome('ORDER_FORM')).
+  Sales › Order Form — opened INSIDE the ERP (index.html → erp-shell.js
+  SALES › "Order Form" → store-core.js sarvNavigateFromHome('ORDER_FORM') →
+  #orderFormPanel iframe). Can still be opened on its own (phone).
+
+  LOGIN = ERP LOGIN. app_users is the one user table (ORDER_FORM_USERS_MIGRATION.sql):
+  each ERP user has an "Order Form Role" (app_users.sales_role); sales_users is
+  now a trigger-maintained mirror so every sales_* RPC below works unchanged.
+  ERP login creates this page's session token (store-core.js sarvSalesSso_ →
+  sales_erp_login) in the same localStorage key this page reads, so inside the
+  ERP there is no second login. Opened standalone: ERP name + PIN (sales_login).
 
   Same interface and logic as orderForm/OrderForm.html. What changed is only
   the backend: the Google Sheet + Apps Script (orderForm/code.gs) is replaced by
@@ -18,13 +26,13 @@
     Sheet "Dropdown Master"  → sales_dropdowns
     Sheet "Standard Items"   → sales_standard_items
     Sheet "Emboss Designs"   → sales_emboss_designs
-    Sheet "Users"            → sales_users (bcrypt password, per-user signature)
+    Sheet "Users"            → app_users (ERP) — sales_users is its mirror
     Drive "Product Photos"   → Storage bucket sales-orders / photos/
     Drive order PDFs         → Storage bucket sales-orders / pdfs/
   The PDF is built from buildOrderHtml() — a line-for-line port of code.gs —
   and rendered with html2pdf (the same library the ERP uses for its PDFs).
-  Like the Complaint App, this screen keeps its own login (Users sheet roles:
-  admin / manager / executive / data_entry / viewer), not the ERP's PINs.
+  Order Form roles (admin / manager / executive / data_entry / viewer) are set
+  per ERP user in Admin Panel › Users & Roles.
 -->
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -328,11 +336,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 <div id="loginScreen" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1A3C5E 0%,#2A5A8E 100%);display:flex;align-items:center;justify-content:center">
   <div style="background:#fff;border-radius:16px;padding:36px 32px 28px;width:340px;max-width:calc(100vw - 32px);box-shadow:0 8px 32px rgba(0,0,0,.25);text-align:center">
     <div style="font-size:22px;font-weight:800;color:#1A3C5E;margin-bottom:4px">SARV INDIA</div>
-    <div style="font-size:12px;color:#777;margin-bottom:22px">Order Management System</div>
-    <input type="text" id="loginUser" placeholder="Username" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:10px;box-sizing:border-box" autofocus>
-    <input type="password" id="loginPass" placeholder="Password" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:14px;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
+    <div style="font-size:12px;color:#777;margin-bottom:14px">Order Management System</div>
+    <!-- ERP ke andar khula ho to ERP login hi kaafi hai; ye box tabhi dikhta hai
+         jab wo session na ban paya ho — wajah yahan likhi aati hai. -->
+    <div id="ssoNote" style="display:none;background:#FFF7E6;border:1px solid #F5C26B;color:#8A5200;font-size:11.5px;font-weight:600;border-radius:8px;padding:8px 10px;margin-bottom:12px;text-align:left;line-height:1.45"></div>
+    <input type="text" id="loginUser" placeholder="ERP User Name (ya ADMIN / MD / GM)" autocomplete="username" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:10px;box-sizing:border-box;text-transform:uppercase" autofocus>
+    <input type="password" id="loginPass" placeholder="ERP PIN" autocomplete="current-password" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:14px;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()" id="loginBtn" style="width:100%;padding:11px;background:#1A3C5E;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px">Login</button>
     <div id="loginError" style="color:#C62828;font-size:12px;font-weight:600;margin-top:10px;min-height:18px"></div>
+    <div style="font-size:10.5px;color:#8892A6;margin-top:6px;line-height:1.4">Wahi naam + PIN jo ERP me. Access Admin deta hai: ERP › Admin Panel › Users &amp; Roles › <b>Order Form Role</b>.</div>
   </div>
 </div>
 
@@ -634,7 +646,7 @@ async function doLogin(){
   const pass=document.getElementById('loginPass').value;
   const errEl=document.getElementById('loginError');
   const btn=document.getElementById('loginBtn');
-  if(!user||!pass){ errEl.textContent='Please enter both username and password'; return; }
+  if(!user||!pass){ errEl.textContent='Naam aur PIN dono daalein'; return; }
   if(!SB_READY){ errEl.textContent='Supabase library not loaded — check internet'; return; }
   btn.disabled=true; btn.textContent='Logging in...'; errEl.textContent='';
   try{
@@ -660,8 +672,17 @@ async function doLogin(){
 
 // Page refreshed / reopened — reuse the saved server session instead of asking
 // again (sales_whoami also slides the session 30 days forward).
+// ERP ke andar (iframe) login screen tabhi aati hai jab ERP login ke saath
+// Order Form ka session nahi bana — wajah (store-core.js sarvSalesSso_ likhta hai) yahan.
+function showSsoNote(){
+  const el=document.getElementById('ssoNote'); if(!el) return;
+  let msg=''; try{ msg=localStorage.getItem('sihf_erp_sso_msg')||''; }catch(e){}
+  if(!msg && window.parent!==window) msg='ERP login ke saath Order Form ka session nahi mila — yahan apna ERP naam + PIN daalein (ya ERP se Logout karke dobara Login karein).';
+  el.textContent=msg; el.style.display=msg?'block':'none';
+}
 async function restoreSession(){
   const tok=tokenGet();
+  showSsoNote();
   if(!tok||!SB_READY) return;
   const errEl=document.getElementById('loginError');
   const btn=document.getElementById('loginBtn');
@@ -703,7 +724,7 @@ function sessionExpired(){
 // STATUS   = change order status (Sent to Party, Confirmed, Hold, etc.)
 // VIEW     = open Order History, view PDFs
 // DELETE   = (reserved for future — no UI for this yet)
-// USERS    = manage the sales_users table in Supabase (admin only, no UI)
+// USERS    = ERP › Admin Panel › Users & Roles › "Order Form Role" (app_users.sales_role)
 // The same matrix is enforced on the server (public.sales_can_).
 
 const ROLE_PERMISSIONS = {
@@ -786,6 +807,7 @@ function logout(silent){
   document.getElementById('loginUser').value='';
   document.getElementById('loginPass').value='';
   document.getElementById('loginError').textContent='';
+  showSsoNote();
 }
 // Default dropdown data (used if the database is not reachable)
 let DROPS = {

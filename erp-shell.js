@@ -49,9 +49,10 @@
 
     { key: 'SALES', icon: '🛍️', label: 'Sales', children: [
       /* Listed first because it is the only built screen in this module.
-         Opens order-form.html in its own tab, the same way Support ›
-         Complaint App opens complaint.html. */
+         Opens order-form.html inside the ERP (#orderFormPanel iframe), the
+         same way Manufacturing › Lot Card Manager does, with the ERP login. */
       { label: 'Order Form', go: 'ORDER_FORM' },
+      { label: 'Packing & Dispatch', go: 'PACKING' },
       { label: 'Sales Dashboard' }, { label: 'RFQ' }, { label: 'Quotation' },
       { label: 'Quick SO' }, { label: 'Sale Order' }, { label: 'Sample / Trial SO' },
       { label: 'Sale JWO (Job Work Out)' }, { label: 'Production Request' },
