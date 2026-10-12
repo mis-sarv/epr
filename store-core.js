@@ -2675,7 +2675,7 @@ function addPurchaseMainRow(afterTr){
  return tr;
 }
 function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
-async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:byId('p_requiredByDate').value||null,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
+async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');/* Same rule as saveRequirementWithPdf_: required_by is never written as NULL. */const requiredBy=(byId('p_requiredByDate')?.value||'').trim();if(!requiredBy)return showToast('⚠️ Required By Date chunna zaroori hai','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:requiredBy,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
 async function saveStoreInward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.item-name')?.value,desc:r.querySelector('.item-desc')?.value,make:r.querySelector('.item-make')?.value,cat:r.querySelector('.item-cat')?.value,uom:r.querySelector('.item-uom')?.value,qty:+r.querySelector('.qty-field')?.value||0,weight:+r.querySelector('.weight-field')?.value||0,rate:+r.querySelector('.rate-field')?.value||0,tax:+r.querySelector('.item-gst-field')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one inward item required','warn');const no=await nextNo('INWARD');const h=await SB.from('inward_entries').insert({document_no:no,entry_type:byId('entryTypeSelect')?.value||'INWARD',receiving_date:byId('receivingDate')?.value||today(),invoice_no:byId('invoiceNumber')?.value||null,invoice_date:byId('invoiceDate')?.value||null,party_state:byId('partyState')?.value||null,notes:byId('inwRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.qty*r.rate})}const ins=await SB.from('inward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Inward saved: '+no)}
 async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
 function bindOriginalControls(){
@@ -5409,9 +5409,9 @@ function sarvSyncItemPrSelUi_(){
   }
 }
 window.sarvClearItemPrSel=function(){sarvItemPrSel.clear();renderItemMasterTable();};
-// Defaults for a PR generated from Item Master.
+// Defaults for a PR generated from Item Master. Required By is deliberately
+// NOT one of them — see sarvGenerateNewPrFromItems.
 const SARV_GEN_PR_EMP_CODE='1439';   // Requested By
-const SARV_GEN_PR_DUE_DAYS=7;        // Required By = today + 7 days
 window.sarvGenerateNewPrFromItems=async function(){
   if(!sarvTabVisible('MD_ITEM_NEWPR'))return showToast('⛔ Aapke role ko Item Master se New PR banane ka access nahi hai','warn');
   const picked=sarvItemMasterRows.map(r=>r.it).filter(it=>sarvItemPrSel.has(String(it.id)));
@@ -5437,12 +5437,14 @@ window.sarvGenerateNewPrFromItems=async function(){
   });
   refreshPurchaseTotals();
   sarvItemPrSel.clear();
-  // Required By: one week from today (local date, not UTC).
+  /* Required By is left BLANK here too, exactly as on a hand-started form.
+     It used to arrive pre-filled with today + 7 days, which is the one field
+     on this form nobody else can answer — the date the material is actually
+     needed by. A guessed default was going to the Purchaser unread, so the
+     requester now has to type it; saveRequirementWithPdf_ refuses a blank. */
   {
-    const d=new Date();d.setDate(d.getDate()+SARV_GEN_PR_DUE_DAYS);
-    const z=n=>String(n).padStart(2,'0');
-    const due=d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());
-    const rb=byId('p_requiredByDate');if(rb){rb.value=due;rb.dispatchEvent(new Event('change'));}
+    const rb=byId('p_requiredByDate');
+    if(rb){rb.value='';rb.min=today();rb.dispatchEvent(new Event('change'));}
   }
   // Requested By: the default Employee Code, filled through the same lookup as typing it.
   {
@@ -6348,22 +6350,35 @@ window.filterMasterTable=function(searchId,bodyId){
   });
 };
 
-/* ── PR Priority button group (backs the hidden #p_priority input) ── */
+/* ── PR Priority button group (backs the hidden #p_priority input) ──
+   A blank #p_priority means "not answered yet" and leaves all three chips
+   unlit — there is no default Priority, so an unanswered field has to LOOK
+   unanswered. saveRequirementWithPdf_ refuses to submit one. */
 window.syncPriorityButtons=function(){
-  const cur=byId('p_priority')?.value||'Normal';
+  const cur=byId('p_priority')?.value||'';
   document.querySelectorAll('#p_priorityBtnGroup .p_priority-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.priority===cur);
+    b.classList.toggle('active',!!cur&&b.dataset.priority===cur);
   });
+  // A chosen Priority also clears the "you skipped this" outline.
+  if(cur)byId('p_priorityBtnGroup')?.classList.remove('prio-missing');
   // Priority pill in the totals strip — only worth showing when the request is
   // above Normal, which is what its `display:none` default was waiting for.
   const pill=byId('p_urgentPill'),badge=byId('p_priorityBadge');
-  if(badge)badge.textContent=cur;
+  if(badge)badge.textContent=cur||'--';
   if(pill)pill.style.display=(cur&&cur!=='Normal')?'':'none';
 };
 window.setRequirementPriority=function(v){
   const h=byId('p_priority');if(h)h.value=v;
   syncPriorityButtons();
 };
+/* The Priority group's own version of highlightRequiredField() — the field it
+   stands for is a hidden input, so the outline and the scroll have to land on
+   the buttons. Cleared by the next pick (syncPriorityButtons). */
+function highlightPriorityGroup_(){
+  const g=byId('p_priorityBtnGroup');if(!g)return;
+  g.classList.add('prio-missing');
+  g.scrollIntoView({behavior:'smooth',block:'center'});
+}
 
 
 /* ================================================================
@@ -13424,6 +13439,21 @@ window.addEventListener('DOMContentLoaded',()=>{
  }
  async function saveRequirementWithPdf_(){
    if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   /* Required By Date and Priority are checked FIRST, before the item rows:
+      neither has a default any more (see clearPrForm / syncPriorityButtons),
+      so a form that was filled without looking at them has to be sent back
+      rather than saved with somebody else's guess. The hidden #p_priority
+      cannot be outlined or scrolled to, so its button group carries both. */
+   if(!pVal('p_requiredByDate').trim()){
+     highlightRequiredField('p_requiredByDate');
+     byId('p_requiredByDate')?.scrollIntoView({behavior:'smooth',block:'center'});
+     byId('p_requiredByDate')?.focus();
+     return showToast('⚠️ Required By Date chunna zaroori hai — highlighted field bharein','warn');
+   }
+   if(!pVal('p_priority').trim()){
+     highlightPriorityGroup_();
+     return showToast('⚠️ Priority chunna zaroori hai — Normal / Urgent / Critical me se ek','warn');
+   }
    const rows=pRows('#p_itemTableBody tr').map(r=>({name:r.querySelector('.col-name')?.value||'',description:r.querySelector('.col-desc')?.value||'',make:r.querySelector('.col-make')?.value||'',category:r.querySelector('.col-cat')?.value||'',machine:r.querySelector('.col-machine')?.value||'',qty:pNum(r.querySelector('.col-qty')?.value),uom:r.querySelector('.col-uom')?.value||'',grossWeight:pNum(r.querySelector('.col-grossweight')?.value),specification:r.querySelector('.col-rem')?.value||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0);
    if(!rows.length)return showToast('At least one item required','warn');
    const missingMachineRows=pRows('#p_itemTableBody tr').filter(r=>{
@@ -13453,7 +13483,16 @@ window.addEventListener('DOMContentLoaded',()=>{
      // employee who raised the requirement (anyone), while Purchaser Name is
      // the buyer the PR is booked against. The mobile Purchaser login filters
      // on this column, so it has to be stored, not just put in the PDF.
-     const payload={request_date:pVal('p_reqDate')||today(),required_by:pVal('p_requiredByDate')||null,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority')||'Normal',notes:pVal('p_overallRemarks')||null};
+     /* required_by is read into its own const and asserted, NOT written as
+        `pVal(...)||null`. It is the one date on a PR that nothing downstream
+        can reconstruct — the Purchaser's queue, the Follow-Up Report and the
+        PR PDF all read it — so a blank must stop the save loudly here rather
+        than land in the database as NULL. The field is already validated at
+        the top of this function; this is the guard that makes it impossible
+        for any future path to bypass that check. */
+     const requiredBy=pVal('p_requiredByDate').trim();
+     if(!requiredBy)throw new Error('Required By Date khali hai — PR save nahi ho sakti. Form me date chunein.');
+     const payload={request_date:pVal('p_reqDate')||today(),required_by:requiredBy,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority'),notes:pVal('p_overallRemarks')||null};
      let h,no,reopenedFrom='';
      if(sarvEditingRequirementId){
        // Re-checked against the stored status: the PR may have been approved
@@ -13651,7 +13690,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    renderReqEmpDetails();
    // Request Date is locked to today — reset it rather than blanking it out.
    if(byId('p_reqDate'))byId('p_reqDate').value=today();
-   if(byId('p_priority'))byId('p_priority').value='Normal';
+   /* Required By Date opens BLANK, and the picker greys out anything before
+      today: this is a date somebody has to decide, and a pre-filled one was
+      going in unread. Same reasoning as the Priority chips below. */
+   if(byId('p_requiredByDate'))byId('p_requiredByDate').min=today();
+   if(byId('p_priority'))byId('p_priority').value='';
+   byId('p_priorityBtnGroup')?.classList.remove('prio-missing');
    syncPriorityButtons();
    if(byId('p_reqNoField'))byId('p_reqNoField').value='';
    const tb=byId('p_itemTableBody');if(tb){tb.innerHTML='';addPurchaseMainRow();}
@@ -14401,7 +14445,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    document.querySelectorAll('#fullPurchasePanel .tab-content').forEach(e=>{e.style.display='none';e.classList.remove('active')});
    const entry=byId('p_tab-entry');if(entry){entry.style.display='block';entry.classList.add('active')}
    const set=(id,v)=>{if(byId(id))byId(id).value=v??''};
-   sarvEditingRequirementId=req.id;set('p_reqDate',req.request_date);set('p_requiredByDate',req.required_by);set('p_priority',req.priority||'Normal');syncPriorityButtons();set('p_reqPersonName',req.requested_by);set('p_reqEmpCode',req.employee_code);set('p_reqDepartment',req.department);set('p_overallRemarks',req.notes);set('p_reqNoField',req.req_no);
+   sarvEditingRequirementId=req.id;set('p_reqDate',req.request_date);set('p_requiredByDate',req.required_by);
+   /* An already-saved PR may have been needed by a date that has since passed.
+      The picker's floor is today for a NEW form, so it is lowered to whatever
+      this PR already carries — otherwise reopening an old PR would show its own
+      Required By Date as out of range. */
+   if(byId('p_requiredByDate'))byId('p_requiredByDate').min=(req.required_by&&String(req.required_by)<today())?String(req.required_by):today();
+   /* Priority is left BLANK for a PR that never had one, so it has to be
+      answered on this save instead of being quietly re-saved as Normal. */
+   set('p_priority',req.priority||'');syncPriorityButtons();set('p_reqPersonName',req.requested_by);set('p_reqEmpCode',req.employee_code);set('p_reqDepartment',req.department);set('p_overallRemarks',req.notes);set('p_reqNoField',req.req_no);
    // Purchaser Name falls back to the PDF snapshot for PRs saved before the
    // purchaser_name column existed; without it an edit would blank the field.
    set('p_reqGeneratedBy',req.purchaser_name||(req.pdf_snapshot&&req.pdf_snapshot.generatedBy)||'');
@@ -14618,7 +14670,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    renderPoListDoneToggle(doneCount);
    tb.innerHTML='';visiblePos.forEach(po=>{
      const statusVal=po.status||'Generated',sc=statusColors[statusVal]||'#64748b';
-     const statusBadge='<span style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'+pEsc(statusVal)+'</span>';
+     /* A short-closed PO carries the remark that justified writing off the
+        balance — put on the badge itself so the reason is one hover away, and
+        spelled out in full when the row is expanded. */
+     const scRec=poShortCloseRecord_(po);
+     const scTip=scRec?('Short-close remarks: '+(scRec.remarks||'—')
+       +(scRec.by?('\nBy: '+scRec.by):'')+(scRec.at?('\nOn: '+pStamp(scRec.at)):'')):'';
+     const statusBadge='<span'+(scTip?' title="'+pEsc(scTip)+'"':'')
+       +' style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'
+       +pEsc(statusVal)+(scRec?' &#128221;':'')+'</span>';
      // Editable only until GM/CEO signs off — once approved, the
      // vendor/rate/items are locked; from there only an Admin login can
      // cancel the PO.
@@ -14631,7 +14691,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        :(sarvCan('PO_CANCEL')
          ?'<button type="button" class="sarv-po-cancel btn btn-danger btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">&#10060; Cancel</button>'
          :'<button type="button" class="btn btn-sm" disabled title="GM/CEO approval ke baad sirf Admin login cancel kar sakta hai" style="padding:3px 10px;font-size:11px;background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Locked</button>'))
-       +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Short quantity par PO band karein" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">&#9989; Close</button>':'');
+       +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Short quantity par PO band karein — Remarks popup khulega (remarks likhna zaroori hai)" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">&#9989; Close</button>':'');
      const lm=poLineMap[po.id]||{lines:[]};
      /* Received reads "got / ordered", so the number behind the status badge is
         visible without expanding the PO. Ordered is summed off the lines when
@@ -14682,8 +14742,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    EXCESS: {bg:'#fee2e2',fg:'#b91c1c',txt:'&#9650; Excess'},
    '—':    {bg:'transparent',fg:'#94a3b8',txt:'&mdash;'}
  };
+ /* The short-close remark, printed above the item breakdown of a PO that was
+    closed short — the pending column reads "still owed", and this is the line
+    that says that balance was written off on purpose and by whom. */
+ function poShortCloseNoteHtml_(po){
+   const r=poShortCloseRecord_(po);if(!r)return '';
+   const meta=[r.by?('By '+r.by):'',r.at?pStamp(r.at):''].filter(Boolean).join(' · ');
+   return '<div style="margin-bottom:8px;padding:8px 10px;border:1px solid #99f6e4;border-left:4px solid #0f766e;border-radius:6px;background:#f0fdfa;">'
+     +'<div style="font-size:10.5px;font-weight:800;color:#0f766e;">&#128221; SHORT-CLOSE REMARKS</div>'
+     +'<div style="font-size:11.5px;font-weight:700;color:#134e4a;margin-top:2px;overflow-wrap:anywhere;">'+pEsc(r.remarks||'—')+'</div>'
+     +(meta?'<div style="font-size:10px;color:#0f766e;margin-top:3px;font-weight:600;">'+pEsc(meta)+'</div>':'')
+     +'</div>';
+ }
  function buildPoItemsDetailHtml(lines,po){
-   if(!lines||!lines.length)return '<div style="color:#94a3b8;font-size:11px;">Is PO ke items nahi mile.</div>';
+   const scNote=poShortCloseNoteHtml_(po);
+   if(!lines||!lines.length)return scNote+'<div style="color:#94a3b8;font-size:11px;">Is PO ke items nahi mile.</div>';
    const th='padding:4px 6px;background:#e2e8f0;font-size:10px;font-weight:800;text-align:left;';
    const td='padding:4px 6px;font-size:11px;border-bottom:1px solid #e2e8f0;';
    const tf='padding:5px 6px;font-size:11px;font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;';
@@ -14716,7 +14789,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const note=tot.balance>0
      ? (lines.filter(l=>poLineReceipt_(l).balance>0).length+' item par '+nNum_(tot.balance)+' qty baaki hai')
      : 'Saare items poore receive ho gaye';
-   return '<table style="width:100%;border-collapse:collapse;">'
+   return scNote+'<table style="width:100%;border-collapse:collapse;">'
      +'<thead><tr><th style="'+th+'width:4%;text-align:center;">Sr</th><th style="'+th+'width:15%;">Item Name</th><th style="'+th+'width:13%;">Description</th><th style="'+th+'width:7%;">Make</th><th style="'+th+'width:9%;text-align:center;">Ordered</th><th style="'+th+'width:8%;text-align:center;">Received</th><th style="'+th+'width:8%;text-align:center;">Pending</th><th style="'+th+'width:9%;text-align:center;">Receipt</th><th style="'+th+'width:5%;text-align:center;">Basis</th><th style="'+th+'width:7%;text-align:right;">Rate</th><th style="'+th+'width:4%;text-align:center;">Disc%</th><th style="'+th+'width:4%;text-align:center;">GST%</th><th style="'+th+'width:7%;text-align:right;">Amount</th></tr></thead>'
      +'<tbody>'+rows+'</tbody>'
      +'<tfoot><tr>'
@@ -15734,15 +15807,94 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(b){b.classList.toggle('btn-primary',k===which);b.classList.toggle('btn-neutral',k!==which)}
    });
  }
- async function shortClosePurchaseOrder(poNo){
-   if(!sarvCan('PO_CLOSE'))return sarvDeny('PO_CLOSE');
-   if(!confirm('PO "'+poNo+'" ko short quantity par close karein?\n\nBaaki pending qty ab receive nahi ki ja sakegi.'))return;
-   const u=await SB.from('purchase_orders').update({status:'Closed (Short)'}).eq('po_no',poNo);
-   if(u.error)return dbError(u.error);
-   showToast('✅ PO '+poNo+' short-close kar diya gaya');
-   await loadOpenPoDropdown();
-   await refreshGeneratedPoList();
+ /* ── PO short-close ──────────────────────────────────────────────
+    Short-closing writes OFF the quantity that never arrived, so the only
+    record of why that was allowed is the remark typed here. That is why this
+    is a popup and not a confirm(): the remark is compulsory, and it is stored
+    on the PO so the Generated POs list can show it back next to the
+    "Closed (Short)" badge.
+
+    It is written BOTH to close_remarks / closed_by / closed_at and into the
+    `approvals` jsonb (approvals.shortClose). approvals is a column every
+    database already has — the three named columns are dropped by
+    sbSaveDroppingMissingColumns_ on a database that predates them, and
+    without the jsonb copy the remark would be silently lost there. */
+ let sarvPoShortCloseNo='';
+ function poShortCloseRecord_(po){
+   const a=(po&&po.approvals)||{};
+   const sc=a.shortClose||a.shortclose||null;
+   const remarks=String((po&&po.close_remarks)||(sc&&sc.remarks)||'').trim();
+   if(!remarks&&!sc)return null;
+   return {remarks,by:String((po&&po.closed_by)||(sc&&sc.by)||'').trim(),
+           at:(po&&po.closed_at)||(sc&&sc.at)||''};
  }
+ function openPoShortCloseModal(poNo){
+   if(!sarvCan('PO_CLOSE'))return sarvDeny('PO_CLOSE');
+   const po=(sarvGeneratedPos||[]).find(p=>String(p.po_no)===String(poNo));
+   sarvPoShortCloseNo=poNo||'';
+   const lbl=byId('p_poCloseNoLabel');if(lbl)lbl.textContent=poNo||'';
+   const sum=byId('p_poCloseSummary');
+   if(sum){
+     if(po){
+       const lm=(sarvPoLineMap||{})[po.id]||{lines:[]};
+       const ord=lm.lines.length?lm.lines.reduce((s,l)=>s+pNum(l.ordered_qty),0):pNum(po.total_qty);
+       const got=pNum(po.received_qty);
+       const row=(l,v)=>'<div class="row"><span class="lbl">'+l+'</span><span class="val">'+v+'</span></div>';
+       sum.innerHTML=row('Vendor',pEsc(po.vendor_name||'—'))
+         +row('Linked PR',pEsc(po.linked_req_nos||'—'))
+         +row('Ordered Qty',nNum_(ord))
+         +row('Received Qty',nNum_(got))
+         +row('Short (written off)',nNum_(Math.max(0,ord-got)));
+     }else sum.innerHTML='';
+   }
+   const r=byId('p_poCloseRemarks');if(r)r.value='';
+   const by=byId('p_poCloseBy');
+   if(by)by.value=(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||'';
+   byId('p_poCloseModal')?.classList.add('active');
+   setTimeout(()=>byId('p_poCloseRemarks')?.focus(),80);
+ }
+ function closePoShortCloseModal(){
+   byId('p_poCloseModal')?.classList.remove('active');
+   sarvPoShortCloseNo='';
+ }
+ async function confirmPoShortClose(){
+   if(!sarvCan('PO_CLOSE'))return sarvDeny('PO_CLOSE');
+   const poNo=sarvPoShortCloseNo;
+   if(!poNo)return closePoShortCloseModal();
+   const remarks=String(byId('p_poCloseRemarks')?.value||'').trim();
+   if(!remarks){
+     showToast('⚠️ Close Remarks likhna zaroori hai','warn');
+     byId('p_poCloseRemarks')?.focus();
+     return;
+   }
+   const by=String(byId('p_poCloseBy')?.value||'').trim();
+   const btn=byId('p_poCloseConfirmBtn');
+   if(btn){if(btn.disabled)return;btn.disabled=true;btn.innerHTML='⏳ Saving...';}
+   try{
+     // Read the live approvals so this never overwrites a signature the
+     // approval chain (mobile.html) recorded while the list sat open here.
+     const cur=await SB.from('purchase_orders').select('id,approvals').eq('po_no',poNo).maybeSingle();
+     if(cur.error)throw cur.error;
+     const at=new Date().toISOString();
+     const approvals={...((cur.data&&cur.data.approvals)||{}),shortClose:{remarks,by,at}};
+     const payload={status:'Closed (Short)',approvals,close_remarks:remarks,
+                    closed_by:by||null,closed_at:at,updated_at:at};
+     const u=await sbSaveDroppingMissingColumns_(payload,
+       p=>SB.from('purchase_orders').update(p).eq('po_no',poNo),['status','approvals']);
+     if(u.error)throw u.error;
+     closePoShortCloseModal();
+     showToast('✅ PO '+poNo+' short-close kar diya gaya — remarks save ho gaye');
+     await loadOpenPoDropdown();
+     await refreshGeneratedPoList();
+   }catch(e){
+     dbError(e);
+   }finally{
+     if(btn){btn.disabled=false;btn.innerHTML='✅ Close PO &amp; Save Remarks';}
+   }
+ }
+ // Kept as the one entry point the PO list calls, so the permission check and
+ // the popup can never get out of step.
+ function shortClosePurchaseOrder(poNo){openPoShortCloseModal(poNo);}
  async function cancelPurchaseOrder(poNo){
    if(!sarvCan('PO_CANCEL'))return sarvDeny('PO_CANCEL');
    if(!confirm('PO "'+poNo+'" ko cancel karein? Yeh wapas nahi hoga.'))return;
@@ -16116,6 +16268,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(poVendorField&&!poVendorField.dataset.autofillBound){poVendorField.addEventListener('change',applyPoVendorAutofill);poVendorField.dataset.autofillBound='1'}
 
    // ── PR New Entry tab ───────────────────────────────────────
+   /* Required By Date opens BLANK — emptied here as well as given its floor,
+      because a browser restores the value last typed into a date box when the
+      page is reloaded, and that was bringing the previous requirement's date
+      back onto what is supposed to be a fresh form. Nothing can be mid-edit at
+      DOMContentLoaded, so blanking here is always safe; clearPrForm() and
+      populateRequirementEditor() own it from then on.
+      `min` only greys out past dates in the picker — it never fills the box. */
+   {
+     const rb=byId('p_requiredByDate');
+     if(rb){rb.value='';rb.min=today();}
+   }
    on('p_clearBtn',()=>{clearPrForm();showToast('Form cleared');});
    on('p_exportCsvBtn',()=>{
      const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>{const v=s=>r.querySelector(s)?.value||'';return[v('.col-name'),v('.col-desc'),v('.col-make'),v('.col-cat'),v('.col-qty'),v('.col-uom')].join(',');});
@@ -16136,6 +16299,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      .forEach(id=>onFilter(id,renderGeneratedPoTable));
    on('p_poSubPendingBtn',()=>{showPoSubPanel('pending');refreshPendingRequirements().catch(dbError)});
    on('p_poSubListBtn',()=>{showPoSubPanel('list');refreshGeneratedPoList().catch(dbError)});
+   // ── Short-Close popup (Generated POs → ✅ Close) ──────────────
+   on('p_poCloseCancelBtn',closePoShortCloseModal);
+   on('p_poCloseConfirmBtn',()=>confirmPoShortClose());
    on('p_poSubReportBtn',()=>{showPoSubPanel('report');refreshPoFollowupReport().catch(dbError)});
 
    // ── PR → PO → Inward follow-up report ───────────────────────
@@ -16204,7 +16370,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      poListBody.addEventListener('click',e=>{
        const editBtn=e.target.closest('.sarv-po-edit');if(editBtn){editPurchaseOrder(editBtn.dataset.po).catch(dbError);return;}
        const cancelBtn=e.target.closest('.sarv-po-cancel');if(cancelBtn){cancelPurchaseOrder(cancelBtn.dataset.po).catch(dbError);return;}
-       const closeBtn=e.target.closest('.sarv-po-shortclose');if(closeBtn){shortClosePurchaseOrder(closeBtn.dataset.po).catch(dbError);return;}
+       // Opens the Short-Close popup (remarks are compulsory) — not a direct save.
+       const closeBtn=e.target.closest('.sarv-po-shortclose');if(closeBtn){openPoShortCloseModal(closeBtn.dataset.po);return;}
        const waBtn=e.target.closest('.sarv-po-wa');if(waBtn){sendPoWhatsapp(waBtn.dataset.po).catch(dbError);return;}
        if(e.target.closest('a'))return; // let PDF links through
        // Clicking anywhere else on a PO row expands its Sr-wise item list.
@@ -16422,6 +16589,16 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
  }
 window.addEventListener('DOMContentLoaded',bindSarvPdfControls);
+/* Firefox and Safari restore a form's typed values AFTER DOMContentLoaded, and
+   again whenever the page comes back out of the bfcache — which would undo the
+   blank bindSarvPdfControls sets. The two PR fields that must never arrive
+   pre-answered are re-blanked here. Never over a PR that is open for edit:
+   populateRequirementEditor put those values there on purpose. */
+window.addEventListener('pageshow',()=>{
+  if(sarvEditingRequirementId)return;
+  const rb=byId('p_requiredByDate');if(rb&&rb.value)rb.value='';
+  const pr=byId('p_priority');if(pr&&pr.value){pr.value='';syncPriorityButtons();}
+});
 /* Any PDF whose database link never landed gets picked up here, on the next
    load of this page — which is the realistic moment the network is back after
    whatever dropped it. Reported if some are still outstanding, so a missing

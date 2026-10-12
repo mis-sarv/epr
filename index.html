@@ -2449,18 +2449,28 @@
                         <label>Requirement No. (Auto)</label>
                         <input type="text" class="form-control" id="p_reqNoField" placeholder="Auto" disabled style="font-weight:700; background-color:#f1f5f9; color:#0284c7;">
                     </div>
+                    <!-- Opens EMPTY on a new PR, never on today. autocomplete="off" is
+                         load-bearing: without it the browser restores the last
+                         date typed into this box on a reload, so a fresh form
+                         came up carrying the previous requirement's date. -->
                     <div class="form-group">
                         <label>Required By Date <span class="req">*</span></label>
-                        <input type="date" class="form-control" id="p_requiredByDate">
+                        <input type="date" class="form-control" id="p_requiredByDate" value="" autocomplete="off">
+                        <div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;">Khud chunna zaroori hai &mdash; koi default date nahi bharti.</div>
                     </div>
+                    <!-- Priority opens with NO chip selected. It used to default
+                         to Normal, which meant an Urgent requirement went in as
+                         Normal whenever nobody looked at this field — the default
+                         was doing the answering. Submit now refuses a blank one. -->
                     <div class="form-group">
                         <label>Priority <span class="req">*</span></label>
-                        <input type="hidden" id="p_priority" value="Normal">
+                        <input type="hidden" id="p_priority" value="">
                         <div id="p_priorityBtnGroup" style="display:flex; gap:6px;">
                             <button type="button" class="p_priority-btn" data-priority="Normal">&#128994; Normal</button>
                             <button type="button" class="p_priority-btn" data-priority="Urgent">&#128993; Urgent</button>
                             <button type="button" class="p_priority-btn" data-priority="Critical">&#128308; Critical</button>
                         </div>
+                        <div style="font-size:10.5px;color:#64748b;font-weight:600;margin-top:3px;">Teeno me se ek chunna zaroori hai &mdash; koi default nahi hai.</div>
                     </div>
                 </div>
 
@@ -3312,6 +3322,33 @@
             <div class="modal-actions" style="margin-top: 14px;">
                 <button class="btn btn-neutral" id="p_rcvCancelBtn">Cancel</button>
                 <button class="btn btn-success" id="p_rcvConfirmBtn">📥 Save Receipt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ PO SHORT-CLOSE MODAL (Generated POs → ✅ Close) ============
+         Short-closing a PO writes off whatever quantity never arrived, so WHY
+         it was written off is the only record of that decision. A bare
+         confirm() could not carry it, hence this popup: the remark is
+         compulsory and is stored on the PO itself (close_remarks + the
+         approvals.shortClose block, so it survives a database without the
+         column) and shown back under the PO in the Generated POs list. -->
+    <div class="modal-overlay" id="p_poCloseModal">
+        <div class="modal-box" style="max-width: 560px;">
+            <h3 class="modal-title">&#9989; Short-Close PO <span id="p_poCloseNoLabel" style="color:#0f766e;"></span></h3>
+            <p class="modal-sub">Baaki pending qty ab receive nahi ki ja sakegi &mdash; wajah likhna zaroori hai.</p>
+            <div class="modal-summary" id="p_poCloseSummary" style="margin-bottom:10px;"></div>
+            <div class="form-group">
+                <label>Close Remarks <span class="req">*</span></label>
+                <textarea class="form-control" id="p_poCloseRemarks" rows="3" placeholder="e.g. Vendor ne baaki qty supply nahi ki — balance cancel kar diya"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Closed By</label>
+                <input type="text" class="form-control" id="p_poCloseBy" placeholder="Your name" autocomplete="off">
+            </div>
+            <div class="modal-actions" style="margin-top: 12px;">
+                <button class="btn btn-neutral" id="p_poCloseCancelBtn">Cancel</button>
+                <button class="btn btn-success" id="p_poCloseConfirmBtn" style="background:#0f766e;">&#9989; Close PO &amp; Save Remarks</button>
             </div>
         </div>
     </div>

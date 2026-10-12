@@ -866,3 +866,135 @@
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     
+
+        /* ════════════════════════════════════════════════════════════
+           NEW PERSONNEL ITEM REQUIREMENT FORM  (#prFormModal)
+           ------------------------------------------------------------
+           The desktop form is two 4-column grids over an 11-column item
+           table. At 480px that is unreadable, so here the header is one
+           column (only genuinely paired fields share a row) and each item
+           is a CARD with its fields stacked and labelled — a phone scrolls
+           down happily and sideways not at all.
+           ════════════════════════════════════════════════════════════ */
+        /* The + beside the title. Sized like #searchToggle so the bar keeps
+           one visual rhythm, but filled rather than tinted: this one makes
+           something new. */
+        #newPrBtn {
+            font-size: 0.95rem;
+            line-height: 1;
+            background: #fff;
+            color: var(--primary);
+            padding: 4px 8px;
+            border-radius: 20px;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 800;
+            flex: none;
+        }
+        #newPrBtn:active { background: #e7f1ff; }
+
+        .pr-sec-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #3730a3;
+            background: #eef2ff;
+            border-left: 4px solid var(--primary);
+            border-radius: 4px;
+            padding: 6px 10px;
+            margin: 2px 0 12px;
+        }
+        .pr-totals { font-size: 0.72rem; font-weight: 700; color: #1e40af; white-space: nowrap; }
+        .pr-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+        .pr-hint { font-size: 0.68rem; color: #6b7280; margin-top: 4px; font-weight: 600; }
+
+        /* Priority — three equal chips, NONE preselected. .active is set only
+           by a tap, so an unanswered Priority is visibly unanswered. */
+        .pr-prio-group { display: flex; gap: 6px; }
+        .pr-prio-btn {
+            flex: 1;
+            min-width: 0;
+            padding: 9px 4px;
+            font-size: 0.74rem;
+            font-weight: 800;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            background: #fff;
+            color: #475569;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .pr-prio-btn.active { background: #1e40af; border-color: #1e40af; color: #fff; }
+
+        /* Something compulsory is still blank — cleared on the next edit. */
+        .pr-missing { border: 2px solid #dc2626 !important; background: #fef2f2 !important; }
+        .pr-prio-group.pr-missing { border-radius: 8px; padding: 4px; }
+
+        .pr-emp-box {
+            margin-top: 6px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #f8fafc;
+            font-size: 0.74rem;
+            font-weight: 600;
+            color: #334155;
+            min-height: 34px;
+        }
+        .pr-emp-box.is-set { background: #f0fdf4; border-color: #86efac; color: #166534; }
+        .pr-emp-box.is-bad { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; }
+
+        .pr-item-card {
+            border: 1px solid var(--border);
+            border-left: 4px solid #0284c7;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: #fbfdff;
+        }
+        .pr-item-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .pr-item-sr { font-size: 0.76rem; font-weight: 800; color: #0369a1; }
+        .pr-item-del {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            font-size: 0.72rem;
+            font-weight: 800;
+            border-radius: 6px;
+            padding: 4px 9px;
+            cursor: pointer;
+        }
+        /* Compact copies of .form-group / .form-select: a card holds up to
+           eight fields, and the full-size pair would make every item a
+           screen and a half tall. */
+        .pr-f { margin-bottom: 8px; }
+        .pr-f:last-child { margin-bottom: 0; }
+        .pr-f > label {
+            display: block;
+            font-size: 0.68rem;
+            font-weight: 800;
+            color: #475569;
+            margin-bottom: 3px;
+        }
+        .pr-in {
+            width: 100%;
+            padding: 8px 9px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.86rem;
+            background: #fff;
+            color: #333;
+        }
+        .pr-in[readonly] { background: #f1f5f9; color: #64748b; }
+        .pr-f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }

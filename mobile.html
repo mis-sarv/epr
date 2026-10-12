@@ -64,7 +64,15 @@
     <div id="busyOverlay"><div>⏳</div><div id="busyText">Working...</div></div>
 
     <header>
-        <span>Approval Dashboard</span>
+        <!-- The + sits right next to the title because raising a requirement is
+             the one thing on this screen that STARTS work rather than clearing
+             it; everything else in the bar (search, role) acts on the list
+             below. Hidden until somebody is logged in — see syncNewPrBtn(). -->
+        <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span>Approval Dashboard</span>
+            <span id="newPrBtn" onclick="openMobilePrForm()" style="display:none;"
+                  title="Naya PERSONNEL ITEM REQUIREMENT FORM bharein">&#10133;</span>
+        </span>
         <span style="display:flex;align-items:center;gap:8px;">
             <span id="searchToggle" onclick="toggleSearchBar()" title="Search">&#128269;</span>
             <span id="roleBadge" onclick="logoutRole()">-</span>
@@ -562,6 +570,111 @@
                 <button class="btn" id="asSaveBtn" style="flex:1; width:auto; background:#16a34a;">&#128190; Save Supplier</button>
                 <button class="btn" id="asCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ══ NEW PERSONNEL ITEM REQUIREMENT FORM ═════════════════════════
+         The same PR that STORE.html's "PERSONNEL ITEM REQUIREMENT FORM"
+         raises, laid out for a phone: the desktop's 11-column item table
+         cannot be read at 480px, so each item is its own CARD with its
+         fields stacked, and the request header is a single column instead
+         of two 4-up grids. It writes the same rows (purchase_requirements +
+         purchase_requirement_lines + the pdf_snapshot the Vendor Rate &
+         Info sheet reads), so a PR raised here is indistinguishable from
+         one raised on a desktop.
+
+         Required By Date and Priority both start EMPTY — a date that was
+         pre-filled with "a week from now" and a Priority pre-set to Normal
+         were being submitted unread. Neither can be left blank. -->
+    <div class="modal-overlay" id="prFormModal" style="z-index:1200;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span>&#128221; Personnel Item Requirement</span>
+                <button class="close-btn" onclick="closeMobilePrForm()">×</button>
+            </div>
+
+            <div class="pr-sec-head">Request Details</div>
+            <div class="pr-grid2">
+                <div class="form-group">
+                    <label>Date</label>
+                    <input type="date" id="prmDate" class="form-select" readonly style="background:#f1f5f9;">
+                </div>
+                <div class="form-group">
+                    <label>Requirement No.</label>
+                    <input type="text" id="prmReqNo" class="form-select" placeholder="Auto" readonly style="background:#f1f5f9;font-weight:700;color:#0284c7;">
+                </div>
+            </div>
+            <!-- Opens EMPTY, never on today. autocomplete="off" stops the browser
+                 restoring the date typed into the last requirement. -->
+            <div class="form-group">
+                <label>Required By Date <span style="color:#dc3545;">*</span></label>
+                <input type="date" id="prmRequiredBy" class="form-select" value="" autocomplete="off">
+                <div class="pr-hint">Khud chunna zaroori hai &mdash; koi default date nahi bharti.</div>
+            </div>
+            <div class="form-group">
+                <label>Priority <span style="color:#dc3545;">*</span></label>
+                <input type="hidden" id="prmPriority" value="">
+                <div class="pr-prio-group" id="prmPriorityGroup">
+                    <button type="button" class="pr-prio-btn" data-priority="Normal">&#128994; Normal</button>
+                    <button type="button" class="pr-prio-btn" data-priority="Urgent">&#128993; Urgent</button>
+                    <button type="button" class="pr-prio-btn" data-priority="Critical">&#128308; Critical</button>
+                </div>
+                <div class="pr-hint">Teeno me se ek chunna zaroori hai — koi default nahi hai.</div>
+            </div>
+            <!-- A Purchaser logged in here cannot change this: the PR is booked
+                 against whoever is signed in, and the mobile Purchaser lists
+                 filter on this column, so letting one Purchaser book a PR onto
+                 another's name would move work off their own queue. Locked by
+                 prmLockPurchaser_(); only the roles with no Purchaser name of
+                 their own (GM / MD / PO Sender) get to pick. -->
+            <div class="form-group">
+                <label>Purchaser Name <span style="color:#dc3545;">*</span></label>
+                <select id="prmPurchaser" class="form-select">
+                    <option value="">-- Select Purchaser --</option>
+                    <option value="KHUSHBOO">KHUSHBOO</option>
+                    <option value="SATINDER JI">SATINDER JI</option>
+                    <option value="ANKUR JI">ANKUR JI</option>
+                    <option value="PARKASH JI">PARKASH JI</option>
+                    <option value="DEEPAK VERMA">DEEPAK VERMA</option>
+                    <option value="PRIYA VERMA">PRIYA VERMA</option>
+                    <option value="FIELD BOY">FIELD BOY</option>
+                </select>
+                <div class="pr-hint" id="prmPurchaserHint">Pehle item ki Category ke hisaab se apne aap bhar jata hai &mdash; badal sakte hain.</div>
+            </div>
+
+            <div class="pr-sec-head">Requested By</div>
+            <div class="form-group">
+                <label>Employee Code <span style="color:#dc3545;">*</span></label>
+                <input type="text" id="prmEmpCode" class="form-select" placeholder="e.g. EMP-007"
+                       list="prm-dl-emp-codes" autocomplete="off" style="text-transform:uppercase;">
+                <datalist id="prm-dl-emp-codes"></datalist>
+                <div id="prmEmpDetails" class="pr-emp-box">Employee Code daalein — Name / Designation / Department / Contact yahan aa jayenge</div>
+            </div>
+
+            <div class="pr-sec-head">
+                <span>Items Required</span>
+                <span class="pr-totals">
+                    <span id="prmTotItems">0</span> item &middot; Qty <span id="prmTotQty">0</span>
+                </span>
+            </div>
+            <div id="prmItemList"></div>
+            <button type="button" class="btn" id="prmAddItemBtn" style="background:#0284c7;margin-bottom:14px;">&#10133; Add Item</button>
+
+            <div class="form-group">
+                <label>Overall Remarks <small style="font-weight:500;color:#6b7280;">— optional</small></label>
+                <textarea id="prmRemarks" rows="2" placeholder="Is requirement ke baare me koi note..."></textarea>
+            </div>
+
+            <div class="err-banner" id="prmError"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="prmSubmitBtn" style="flex:1; width:auto;">&#9989; Submit Requirement</button>
+                <button class="btn" id="prmCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
+            </div>
+
+            <!-- Shared pickers for every item card (rebuilt on open from the masters). -->
+            <datalist id="prm-dl-item-names"></datalist>
+            <datalist id="prm-dl-item-makes"></datalist>
+            <datalist id="prm-dl-machines"></datalist>
         </div>
     </div>
 </div>

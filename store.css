@@ -2983,6 +2983,11 @@ body {
         }
         #fullPurchasePanel .p_priority-btn:hover { border-color: #94a3b8; }
         #fullPurchasePanel .p_priority-btn.active { border-color: #0284c7; background: #e0f2fe; color: #0369a1; box-shadow: 0 0 0 2px rgba(2,132,199,0.15); }
+        /* Submit was pressed with no chip chosen. On the GROUP, not a field:
+           #p_priority is a hidden input, so there is nothing of it to outline. */
+        #fullPurchasePanel #p_priorityBtnGroup.prio-missing {
+            border: 2px solid #dc2626; border-radius: 8px; padding: 3px; background: #fef2f2;
+        }
         /* No up/down spinner buttons on ANY numeric input, app-wide. */
         input[type=number]::-webkit-outer-spin-button,
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

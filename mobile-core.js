@@ -1227,6 +1227,7 @@
        is FIELD BOY, for whom the three PO tabs are hidden outright. */
     function applyPurchaserScope(){
         applyRoleTabScope();
+        syncNewPrBtn();   // the header ➕ follows the login, here and on logout
         currentStageTab = myStage ? defaultTabForRole() : 'VI';
         if(!visibleTabsForRole().includes(currentStageTab)) currentStageTab = visibleTabsForRole()[0] || 'VI';
         currentView = 'pending';
@@ -6755,3 +6756,582 @@
             .then(n => { if(n) console.log('[MOBILE PDF] ' + n + ' pending PDF link(s) written on startup'); })
             .catch(e => console.warn('[MOBILE PDF] startup link flush skipped:', e.message || e));
     }, 5000);
+
+    /* ══════════════════════════════════════════════════════════════════
+       NEW PERSONNEL ITEM REQUIREMENT FORM   (the ➕ beside the title)
+       ------------------------------------------------------------------
+       Raising a PR used to need a desktop. This writes exactly what
+       STORE.html's "PERSONNEL ITEM REQUIREMENT FORM" writes — the
+       purchase_requirements row, its purchase_requirement_lines, the
+       pdf_snapshot the Vendor Rate & Info sheet later reads back, and the
+       PR PDF built by the same buildRequirementNativePdfBlob() this file
+       already uses to reprint a PR after an approval — so a PR raised on a
+       phone is the same record as one raised on a desktop.
+
+       The LAYOUT is what differs: the desktop form is two 4-column grids
+       over an eleven-column item table, which cannot be read at 480px.
+       Here the header is a single column (only genuinely paired fields
+       share a row) and every item is its own card with stacked, labelled
+       fields — so the form scrolls down and never sideways.
+
+       Two behaviours also differ, deliberately:
+         • Required By Date opens BLANK. The desktop's "+7 days" default was
+           being submitted unread.
+         • Priority opens with NO chip selected, instead of Normal.
+       Neither can be left unanswered — submit refuses both.
+     ══════════════════════════════════════════════════════════════════ */
+    // Same prefix rule as STORE.html's SARV_DOC_NO_CFG.REQ — PR/<FY>/NNN,
+    // the financial year starting in April.
+    function prmPrPrefix_(){
+        const d = new Date(), y = d.getFullYear();
+        const s = d.getMonth() >= 3 ? y : y - 1;
+        return 'PR/' + String(s).slice(-2) + '-' + String(s + 1).slice(-2) + '/';
+    }
+    let prmItemMaster = [], prmMachineList = [], prmEmployeeList = [], prmCatPurchaser = {};
+    let prmMastersLoaded = false, prmRowSeq = 0, prmPurchaserAuto = false, prmBusy = false;
+
+    /* The ➕ is only meaningful to somebody who is logged in — before that the
+       login sheet covers the screen anyway, and after a logout it must not
+       stay behind offering a form that cannot be saved. Called from
+       applyPurchaserScope(), which runs on login, session restore and logout. */
+    function syncNewPrBtn(){
+        const b = document.getElementById('newPrBtn');
+        if(b) b.style.display = myStage ? '' : 'none';
+    }
+
+    function prmMachineCombo_(m){
+        const n = String((m && m.machine_name) || '').trim();
+        const no = String((m && m.machine_no) || '').trim();
+        return no ? (n + ' | ' + no) : n;
+    }
+    function prmSay(msg, kind){
+        const e = document.getElementById('prmError');
+        if(!e) return;
+        if(!msg){ e.style.display = 'none'; e.textContent = ''; return; }
+        const ok = kind === 'ok';
+        e.textContent = msg;
+        e.style.background  = ok ? '#f0fdf4' : '#fef2f2';
+        e.style.borderColor = ok ? '#86efac' : '#fca5a5';
+        e.style.color       = ok ? '#166534' : '#dc2626';
+        e.style.display = 'block';
+        try{ e.scrollIntoView({block:'nearest', behavior:'smooth'}); }catch(err){}
+    }
+
+    function openMobilePrForm(){
+        if(!myStage) return;                 // not logged in — nothing to book it against
+        prmResetForm();
+        document.getElementById('prFormModal').style.display = 'flex';
+        // Masters and the next PR number both arrive after the form is already
+        // on screen, so a slow connection shows an empty form rather than a
+        // frozen tap. Submit re-checks the masters before it validates.
+        prmLoadMasters().catch(e => console.warn('[MOBILE PR] master load failed:', e.message || e));
+        prmFillNextReqNo().catch(e => console.warn('[MOBILE PR] PR no. lookup failed:', e.message || e));
+    }
+    function closeMobilePrForm(){
+        const m = document.getElementById('prFormModal');
+        if(m) m.style.display = 'none';
+    }
+    function prmResetForm(){
+        const set = (id, v) => { const e = document.getElementById(id); if(e) e.value = (v == null ? '' : v); };
+        set('prmDate', localIsoDate_());
+        set('prmReqNo', '');
+        set('prmRequiredBy', '');   // blank on purpose — see the block comment
+        set('prmPriority', '');     // blank on purpose
+        set('prmPurchaser', '');
+        set('prmEmpCode', '');
+        set('prmRemarks', '');
+        // Nothing can be needed before today.
+        const rb = document.getElementById('prmRequiredBy');
+        if(rb){ rb.min = localIsoDate_(); rb.classList.remove('pr-missing'); }
+        ['prmPurchaser', 'prmEmpCode'].forEach(id => document.getElementById(id)?.classList.remove('pr-missing'));
+        document.getElementById('prmPriorityGroup')?.classList.remove('pr-missing');
+        prmSyncPriorityButtons();
+        prmRenderEmpDetails();
+        prmPurchaserAuto = false;
+        const list = document.getElementById('prmItemList');
+        if(list) list.innerHTML = '';
+        prmRowSeq = 0;
+        prmAddItemRow();
+        prmSay('');
+        const btn = document.getElementById('prmSubmitBtn');
+        if(btn){ btn.disabled = false; btn.innerHTML = '&#9989; Submit Requirement'; }
+        prmLockPurchaser_();
+    }
+    /* Purchaser Name is the logged-in Purchaser's own name, and they cannot
+       change it.
+
+       It is not a convenience default: purchaser_name is the column every
+       mobile Purchaser list filters on, so a Purchaser who picked somebody
+       else's name would be pushing their own requirement onto another
+       person's queue and off their own — a mistake nobody would notice until
+       the material never arrived. The field is therefore disabled for them,
+       and prmApplyCategoryPurchaser() already refuses to touch it.
+
+       The roles that have no Purchaser name of their own (GM, MD, PO Sender)
+       still choose, and still get the category auto-fill. */
+    function prmLockPurchaser_(){
+        const sel = document.getElementById('prmPurchaser');
+        if(!sel) return;
+        const hint = document.getElementById('prmPurchaserHint');
+        if(!myPurchaserName){
+            sel.disabled = false;
+            sel.style.background = '';
+            sel.style.color = '';
+            sel.removeAttribute('title');
+            if(hint) hint.textContent = 'Pehle item ki Category ke hisaab se apne aap bhar jata hai — badal sakte hain.';
+            return;
+        }
+        /* The login list and this one carry the same seven names, so this only
+           ever fires if the two drift apart — better a correct locked value
+           than a silently blank field. */
+        if(![...sel.options].some(o => o.value === myPurchaserName)){
+            const opt = document.createElement('option');
+            opt.value = myPurchaserName;
+            opt.textContent = myPurchaserName;
+            sel.appendChild(opt);
+        }
+        sel.value = myPurchaserName;
+        sel.disabled = true;      // read back with .value, so the save still sees it
+        sel.style.background = '#f1f5f9';
+        sel.style.color = '#475569';
+        sel.title = 'Aapke login ka Purchaser name — badla nahi ja sakta';
+        sel.classList.remove('pr-missing');
+        if(hint) hint.textContent = '🔒 Aapke login ka Purchaser — ye PR aapke hi naam par book hogi, badli nahi ja sakti.';
+    }
+
+    /* Item Master, Machine Master, Employee Master and the category →
+       purchaser map, fetched once per page load. Each failure is survivable:
+       the form then has nothing to offer in that picker, and submit says so
+       rather than saving a half-resolved row. */
+    async function prmLoadMasters(force){
+        if(prmMastersLoaded && !force) return;
+        const [iq, mq, eq, cq] = await Promise.all([
+            SB.from('items').select('id,name,description,make,category,uom').order('name'),
+            SB.from('machines').select('machine_name,machine_no,is_active').order('machine_name'),
+            SB.from('employees').select('emp_code,person_name,designation,department,contact_no').order('emp_code'),
+            SB.from('category_purchasers').select('category,purchaser_name')
+        ]);
+        if(!iq.error) prmItemMaster = iq.data || [];
+        else console.warn('[MOBILE PR] Item Master load failed:', iq.error.message);
+        if(!mq.error) prmMachineList = (mq.data || []).filter(m => m && m.is_active !== false && String(m.machine_name || '').trim());
+        else console.warn('[MOBILE PR] Machine Master load failed:', mq.error.message);
+        if(!eq.error) prmEmployeeList = eq.data || [];
+        else console.warn('[MOBILE PR] Employee Master load failed:', eq.error.message);
+        if(!cq.error){
+            const map = {};
+            (cq.data || []).forEach(r => {
+                const c = String(r.category || '').trim().toUpperCase();
+                const p = String(r.purchaser_name || '').trim();
+                if(c && p) map[c] = p;        // a blank purchaser_name = not mapped yet
+            });
+            prmCatPurchaser = map;
+        }
+        prmMastersLoaded = true;
+        prmFillDatalists();
+        prmRenderEmpDetails();               // a code typed while the list loaded
+    }
+    function prmFillDatalists(){
+        const put = (id, vals) => {
+            const dl = document.getElementById(id);
+            if(!dl) return;
+            dl.innerHTML = [...new Set(vals.map(v => String(v == null ? '' : v).trim()).filter(Boolean))]
+                .map(v => '<option value="' + pEsc(v) + '"></option>').join('');
+        };
+        put('prm-dl-item-names', prmItemMaster.map(i => i.name));
+        put('prm-dl-item-makes', prmItemMaster.map(i => i.make));
+        put('prm-dl-machines',   prmMachineList.map(prmMachineCombo_));
+        put('prm-dl-emp-codes',  prmEmployeeList.map(e => e.emp_code));
+    }
+
+    async function prmNextReqNo(){
+        const prefix = prmPrPrefix_();
+        const q = await SB.from('purchase_requirements').select('req_no').ilike('req_no', prefix + '%').limit(5000);
+        if(q.error) throw q.error;
+        let max = 0;
+        (q.data || []).forEach(r => {
+            const v = String(r.req_no || '');
+            if(!v.startsWith(prefix)) return;
+            const m = v.slice(prefix.length).match(/^(\d+)/);
+            if(m) max = Math.max(max, parseInt(m[1], 10));
+        });
+        return prefix + String(max + 1).padStart(3, '0');
+    }
+    /* Shown while the form is filled in, but NOT what gets saved: the number is
+       taken again at save time, so two phones filling a form at the same moment
+       cannot both claim it. */
+    async function prmFillNextReqNo(){
+        const el = document.getElementById('prmReqNo');
+        if(el) el.value = '...';
+        try{
+            const no = await prmNextReqNo();
+            if(el) el.value = no;
+            return no;
+        }catch(e){
+            if(el) el.value = '';
+            throw e;
+        }
+    }
+
+    // ── Priority: three chips, none preselected ──────────────────
+    function prmSyncPriorityButtons(){
+        const cur = String(document.getElementById('prmPriority')?.value || '');
+        document.querySelectorAll('#prmPriorityGroup .pr-prio-btn')
+            .forEach(b => b.classList.toggle('active', !!cur && b.dataset.priority === cur));
+    }
+
+    // ── Requested By ─────────────────────────────────────────────
+    function prmFindEmployee(code){
+        const c = String(code || '').trim().toUpperCase();
+        if(!c) return null;
+        return prmEmployeeList.find(e => String(e.emp_code || '').trim().toUpperCase() === c) || null;
+    }
+    function prmRenderEmpDetails(){
+        const box = document.getElementById('prmEmpDetails');
+        if(!box) return;
+        box.classList.remove('is-set', 'is-bad');
+        const code = String(document.getElementById('prmEmpCode')?.value || '').trim();
+        if(!code){
+            box.textContent = 'Employee Code daalein — Name / Designation / Department / Contact yahan aa jayenge';
+            return;
+        }
+        if(!prmMastersLoaded){ box.textContent = 'Employee Master load ho raha hai...'; return; }
+        const e = prmFindEmployee(code);
+        if(!e){
+            box.classList.add('is-bad');
+            box.textContent = '"' + code.toUpperCase() + '" Employee Master me nahi mila';
+            return;
+        }
+        box.classList.add('is-set');
+        box.textContent = [e.person_name, e.designation, e.department, e.contact_no].filter(Boolean).join('  ·  ');
+    }
+
+    // ── Items ────────────────────────────────────────────────────
+    function prmFindItem(name){
+        const n = String(name || '').trim().toLowerCase();
+        if(!n) return null;
+        return prmItemMaster.find(i => String(i.name || '').trim().toLowerCase() === n) || null;
+    }
+    function prmAddItemRow(){
+        const list = document.getElementById('prmItemList');
+        if(!list) return null;
+        prmRowSeq++;
+        const card = document.createElement('div');
+        card.className = 'pr-item-card';
+        card.innerHTML =
+            '<div class="pr-item-head">'
+              + '<span class="pr-item-sr">Item <span class="prm-sr">1</span></span>'
+              + '<button type="button" class="pr-item-del" title="Ye item hatayein">&#10006; Remove</button>'
+            + '</div>'
+            + '<div class="pr-f"><label>Item Name <span style="color:#dc3545;">*</span></label>'
+              + '<input class="pr-in prm-name" list="prm-dl-item-names" autocomplete="off" placeholder="Item Master me se chunein"></div>'
+            + '<div class="pr-f"><label>Item Description / Spec</label>'
+              + '<input class="pr-in prm-desc" readonly placeholder="Item Master se auto"></div>'
+            + '<div class="pr-f2">'
+              + '<div class="pr-f"><label>Category</label><input class="pr-in prm-cat" readonly placeholder="auto"></div>'
+              + '<div class="pr-f"><label>MAKE / Brand</label><input class="pr-in prm-make" list="prm-dl-item-makes" autocomplete="off" placeholder="optional"></div>'
+            + '</div>'
+            + '<div class="pr-f"><label>Machine Name &amp; No. <span style="color:#dc3545;">*</span></label>'
+              + '<input class="pr-in prm-machine" list="prm-dl-machines" autocomplete="off" placeholder="Machine Master me se chunein"></div>'
+            + '<div class="pr-f2">'
+              + '<div class="pr-f"><label>Qty <span style="color:#dc3545;">*</span></label>'
+                + '<input type="number" class="pr-in prm-qty" min="0" step="any" inputmode="decimal" placeholder="0"></div>'
+              + '<div class="pr-f"><label>UOM</label><input class="pr-in prm-uom" readonly placeholder="auto"></div>'
+            + '</div>'
+            + '<div class="pr-f2">'
+              + '<div class="pr-f"><label>Gross Wt. (kg)</label>'
+                + '<input type="number" class="pr-in prm-wt" min="0" step="any" inputmode="decimal" placeholder="optional"></div>'
+              + '<div class="pr-f"><label>Item Remarks</label><input class="pr-in prm-rem" placeholder="optional"></div>'
+            + '</div>';
+        list.appendChild(card);
+
+        /* Remove on the LAST remaining card empties it instead of leaving the
+           form with no item at all — the same thing STORE.html's grid achieves
+           by always keeping one row. */
+        card.querySelector('.pr-item-del').addEventListener('click', () => {
+            if(document.querySelectorAll('#prmItemList .pr-item-card').length <= 1) prmClearItemCard(card);
+            else card.remove();
+            prmRenumberItems();
+        });
+        const nameEl = card.querySelector('.prm-name');
+        // 'input' fills the read-only boxes as soon as the typed text matches a
+        // master item; 'change' is the committed pick, and the only place a
+        // name that matches nothing is called out.
+        nameEl.addEventListener('input',  () => { if(prmFindItem(nameEl.value)) prmApplyItemAutofill(card, false); });
+        nameEl.addEventListener('change', () => prmApplyItemAutofill(card, true));
+        card.querySelectorAll('input').forEach(el => {
+            el.addEventListener('input', () => { el.classList.remove('pr-missing'); prmRenumberItems(); });
+        });
+        prmRenumberItems();
+        return card;
+    }
+    function prmClearItemCard(card){
+        card.querySelectorAll('input').forEach(el => { el.value = ''; el.classList.remove('pr-missing'); });
+        delete card.dataset.itemId;
+    }
+    function prmApplyItemAutofill(card, committed){
+        const nameEl = card.querySelector('.prm-name');
+        const it = prmFindItem(nameEl.value);
+        if(!it){
+            if(committed && String(nameEl.value || '').trim() && prmMastersLoaded){
+                nameEl.classList.add('pr-missing');
+                prmSay('"' + String(nameEl.value).trim() + '" Item Master me nahi hai — list me se item chunein. '
+                     + 'Naya item desktop app ke Item Master se add hota hai.');
+            }
+            return;
+        }
+        nameEl.value = it.name;              // the master's own spelling wins
+        nameEl.classList.remove('pr-missing');
+        card.dataset.itemId = it.id || '';
+        const set = (sel, v) => { const e = card.querySelector(sel); if(e) e.value = (v == null ? '' : v); };
+        set('.prm-desc', it.description || '');
+        set('.prm-cat',  it.category || '');
+        set('.prm-uom',  it.uom || '');
+        const mk = card.querySelector('.prm-make');
+        if(mk && !String(mk.value || '').trim()) mk.value = it.make || '';
+        prmApplyCategoryPurchaser(it.category);
+        prmSay('');
+    }
+    /* Purchaser by Category — the same category_purchasers map STORE.html's
+       applyCategoryPurchaser() reads. It only ever fills a box nobody has
+       touched: a hand-picked name, and a logged-in Purchaser's own name, stay. */
+    function prmApplyCategoryPurchaser(category){
+        const sel = document.getElementById('prmPurchaser');
+        if(!sel || myPurchaserName) return;
+        const cat = String(category || '').trim().toUpperCase();
+        if(!cat) return;
+        if(sel.value && !prmPurchaserAuto) return;
+        const want = prmCatPurchaser[cat];
+        if(!want) return;
+        const norm = s => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        const opt = [...sel.options].find(o => o.value && norm(o.value) === norm(want));
+        if(!opt) return;
+        sel.value = opt.value;
+        prmPurchaserAuto = true;
+        sel.classList.remove('pr-missing');
+    }
+    function prmRenumberItems(){
+        const cards = [...document.querySelectorAll('#prmItemList .pr-item-card')];
+        let qty = 0, filled = 0;
+        cards.forEach((c, i) => {
+            const sr = c.querySelector('.prm-sr');
+            if(sr) sr.textContent = String(i + 1);
+            const q = pNum(c.querySelector('.prm-qty')?.value);
+            if(String(c.querySelector('.prm-name')?.value || '').trim() && q > 0){ filled++; qty += q; }
+        });
+        const ti = document.getElementById('prmTotItems'); if(ti) ti.textContent = String(filled);
+        const tq = document.getElementById('prmTotQty');   if(tq) tq.textContent = String(Math.round(qty * 100) / 100);
+    }
+
+    // ── Submit ───────────────────────────────────────────────────
+    async function submitMobilePr(){
+        if(prmBusy) return;
+        prmSay('');
+        const val = id => String(document.getElementById(id)?.value || '').trim();
+        const stop = (id, msg) => {
+            const e = document.getElementById(id);
+            if(e){
+                e.classList.add('pr-missing');
+                try{ e.scrollIntoView({block:'center', behavior:'smooth'}); e.focus(); }catch(err){}
+            }
+            prmSay(msg);
+        };
+        // A phone that opened the form before the masters landed must not be
+        // able to submit against an empty Item Master.
+        try{ await prmLoadMasters(); }catch(e){}
+
+        const requiredBy = val('prmRequiredBy');
+        if(!requiredBy) return stop('prmRequiredBy', '⚠️ Required By Date chunna zaroori hai');
+        const priority = val('prmPriority');
+        if(!priority){
+            const g = document.getElementById('prmPriorityGroup');
+            if(g){ g.classList.add('pr-missing'); try{ g.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){} }
+            return prmSay('⚠️ Priority chunna zaroori hai — Normal / Urgent / Critical me se ek');
+        }
+        /* For a logged-in Purchaser the name comes from the SESSION, not the
+           box — the box is disabled for them, and reading the session instead
+           means re-enabling it in devtools still cannot book this PR onto
+           somebody else's queue. Everyone else picks. */
+        const purchaser = myPurchaserName || val('prmPurchaser');
+        if(!purchaser) return stop('prmPurchaser', '⚠️ Purchaser Name chunna zaroori hai');
+        const empCode = val('prmEmpCode').toUpperCase();
+        if(!empCode) return stop('prmEmpCode', '⚠️ Employee Code daalna zaroori hai');
+        const emp = prmFindEmployee(empCode);
+        if(!emp) return stop('prmEmpCode', '⚠️ "' + empCode + '" Employee Master me nahi mila — sahi code daalein');
+
+        /* One pass over the item cards. An untouched card is skipped (the form
+           always carries one spare); a card somebody started is held to the
+           same three compulsory fields the desktop grid holds it to — a master
+           Item Name, Qty > 0, and a Machine from Machine Master. */
+        const cards = [...document.querySelectorAll('#prmItemList .pr-item-card')];
+        const rows = [];
+        for(let i = 0; i < cards.length; i++){
+            const c = cards[i];
+            const g = sel => String(c.querySelector(sel)?.value || '').trim();
+            const name = g('.prm-name'), qty = pNum(c.querySelector('.prm-qty')?.value);
+            const machine = g('.prm-machine');
+            if(!name && !(qty > 0) && !machine && !g('.prm-wt') && !g('.prm-rem')) continue;
+            const bad = (sel, msg) => {
+                const e = c.querySelector(sel);
+                if(e){
+                    e.classList.add('pr-missing');
+                    try{ e.scrollIntoView({block:'center', behavior:'smooth'}); e.focus(); }catch(err){}
+                }
+                prmSay('⚠️ Item ' + (i + 1) + ': ' + msg);
+            };
+            const it = prmFindItem(name);
+            if(!it){ bad('.prm-name', 'Item Master me se Item Name chunein'); return; }
+            if(!(qty > 0)){ bad('.prm-qty', 'Qty 0 se zyada honi chahiye'); return; }
+            if(!machine){ bad('.prm-machine', 'Machine Name & No. bharna zaroori hai'); return; }
+            const mOk = !prmMachineList.length || prmMachineList.some(m =>
+                prmMachineCombo_(m).toLowerCase() === machine.toLowerCase()
+                || String(m.machine_name || '').trim().toLowerCase() === machine.toLowerCase());
+            if(!mOk){ bad('.prm-machine', 'Machine Master list me se chunein'); return; }
+            rows.push({
+                itemId: it.id || '',
+                name: it.name,
+                description: g('.prm-desc') || it.description || '',
+                make: g('.prm-make') || it.make || '',
+                category: g('.prm-cat') || it.category || '',
+                machine: machine,
+                qty: qty,
+                uom: g('.prm-uom') || it.uom || 'PCS',
+                grossWeight: pNum(c.querySelector('.prm-wt')?.value),
+                specification: g('.prm-rem')
+            });
+        }
+        if(!rows.length) return prmSay('⚠️ Kam se kam ek item (Item Name + Qty) bharna zaroori hai');
+
+        prmBusy = true;
+        const btn = document.getElementById('prmSubmitBtn');
+        if(btn){ btn.disabled = true; btn.innerHTML = '&#8987; Saving...'; }
+        setBusy(true, 'Requirement save kar rahe hain...');
+        try{
+            // Taken now, not when the form opened — two phones filling a PR at
+            // the same time must not both claim the same number.
+            const reqNo = await prmNextReqNo();
+            const payload = {
+                req_no: reqNo,
+                request_date: val('prmDate') || localIsoDate_(),
+                required_by: requiredBy,
+                // requested_by is the employee who asked; purchaser_name is the
+                // buyer the PR is booked against (the Purchaser mobile login
+                // filters on that column) — two different people, two columns.
+                requested_by: emp.person_name || purchaser,
+                purchaser_name: purchaser,
+                employee_code: empCode,
+                department: emp.department || null,
+                purpose: 'Purchase requirement',
+                priority: priority,
+                notes: val('prmRemarks') || null,
+                status: 'Pending'
+            };
+            /* required_by is in the never-drop list on purpose. The retry helper
+               exists to survive a database that predates a column, but this
+               one is not optional: the Purchaser's queue, the Follow-Up Report
+               and the PR PDF all read it, and nothing downstream can work it
+               out again. Better a loud failure than a PR saved without it. */
+            const h = await sbSaveDroppingMissingColumns_(payload,
+                p => SB.from('purchase_requirements').insert(p).select().single(),
+                ['req_no', 'requested_by', 'required_by']);
+            if(h.error) throw h.error;
+            const req = h.data;
+
+            const lines = rows.map(r => ({
+                requirement_id: req.id,
+                item_id: r.itemId || null,
+                item_name: r.name,
+                specification: r.specification || r.description || null,
+                requested_qty: r.qty,
+                uom: r.uom,
+                // Both live on the LINE as well as in the snapshot — the
+                // Build-PO panel reads Gross Wt straight off these rows.
+                gross_weight: r.grossWeight || null,
+                machine: r.machine || null
+            }));
+            const ins = await sbSaveDroppingMissingColumns_(lines,
+                rs => SB.from('purchase_requirement_lines').insert(rs),
+                ['requirement_id', 'requested_qty']);
+            if(ins.error) throw ins.error;
+
+            /* The same snapshot STORE.html's collectRequirementData() produces.
+               It is not a nice-to-have: Designation / Contact / Purchaser and
+               the per-item Make / Category / Machine are not columns on these
+               tables, and the Vendor Rate & Info sheet reads them from here. */
+            const snap = {
+                reqNo: reqNo,
+                ts: new Date().toISOString(),
+                date: payload.request_date,
+                requiredByDate: requiredBy,
+                priority: priority,
+                generatedBy: purchaser,
+                personName: emp.person_name || '',
+                empCode: empCode,
+                designation: emp.designation || '',
+                department: emp.department || '',
+                contact: emp.contact_no || '',
+                overallRemarks: payload.notes || '',
+                status: 'Pending',
+                items: rows.map(r => ({
+                    name: r.name, desc: r.description, make: r.make, category: r.category,
+                    machine: r.machine, qty: r.qty, uom: r.uom,
+                    grossWeight: r.grossWeight, remarks: r.specification
+                }))
+            };
+            const su = await SB.from('purchase_requirements').update({pdf_snapshot: snap}).eq('id', req.id);
+            if(su.error) console.warn('[MOBILE PR] pdf_snapshot save skipped:', su.error.message);
+
+            // The PR PDF. A failure here cannot undo a saved PR, so it only
+            // warns — the document can be regenerated from the snapshot later.
+            setBusy(true, 'PR PDF ban rahi hai...');
+            try{
+                const blob = await buildRequirementNativePdfBlob(snap);
+                const artifact = await uploadPdfArtifact(blob, 'REQUIREMENT', reqNo, 'REQUIREMENT');
+                await indexPdfArtifact('REQUIREMENT', req.id, reqNo, 'REQUIREMENT', artifact);
+            }catch(e){ console.warn('[MOBILE PR] PDF skipped (PR already saved):', e.message || e); }
+
+            closeMobilePrForm();
+            alert('✅ Requirement save ho gayi: ' + reqNo
+                + '\n\nPurchaser: ' + purchaser + '\nItems: ' + rows.length);
+            renderList().catch(() => {});
+        }catch(e){
+            const msg = String((e && e.message) || e);
+            prmSay(/duplicate|unique/i.test(msg)
+                ? 'Ye PR number ab kisi aur ne le liya — dobara Submit dabayein'
+                : ('Save nahi hua: ' + msg));
+        }finally{
+            prmBusy = false;
+            setBusy(false);
+            if(btn){ btn.disabled = false; btn.innerHTML = '&#9989; Submit Requirement'; }
+        }
+    }
+
+    // ── Wiring ───────────────────────────────────────────────────
+    document.getElementById('prmPriorityGroup')?.addEventListener('click', e => {
+        const b = e.target.closest('.pr-prio-btn');
+        if(!b) return;
+        const h = document.getElementById('prmPriority');
+        if(h) h.value = b.dataset.priority || '';
+        document.getElementById('prmPriorityGroup')?.classList.remove('pr-missing');
+        prmSyncPriorityButtons();
+    });
+    document.getElementById('prmAddItemBtn')?.addEventListener('click', () => {
+        const c = prmAddItemRow();
+        if(c){
+            try{ c.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){}
+            c.querySelector('.prm-name')?.focus();
+        }
+    });
+    document.getElementById('prmSubmitBtn')?.addEventListener('click', () => submitMobilePr());
+    document.getElementById('prmCancelBtn')?.addEventListener('click', () => closeMobilePrForm());
+    document.getElementById('prmEmpCode')?.addEventListener('input', e => {
+        e.target.classList.remove('pr-missing');
+        prmRenderEmpDetails();
+    });
+    document.getElementById('prmRequiredBy')?.addEventListener('change', e => e.target.classList.remove('pr-missing'));
+    document.getElementById('prmPurchaser')?.addEventListener('change', e => {
+        e.target.classList.remove('pr-missing');
+        prmPurchaserAuto = false;      // a hand-picked name is never auto-replaced
+    });
+    // No backdrop-tap close here, unlike the smaller sheets on this screen: a
+    // stray tap must not throw away a half-filled requirement.
+    syncNewPrBtn();
