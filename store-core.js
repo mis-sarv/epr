@@ -2910,12 +2910,53 @@ const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER
 const SARV_LOGIN_STORAGE_KEY='sarv_active_role';
 const SARV_LOGIN_USER_KEY='sarv_active_user';
 const SARV_LOGIN_SIG_KEY='sarv_active_user_sig';
+/* ── Ek user, kai role ────────────────────────────────────────────────
+   Do alag cheezein, jaan-boojh kar alag:
+
+     sarvCurrentRole  — PRIMARY role. Sirf EK. "Kisne kiya" wala kaam isi
+                        se hota hai: PR / PO par sign, audit stamp, PDF
+                        par naam, role badge. Isi wajah se app ka ek bhi
+                        purana `sarvCurrentRole` padhne wala hissa nahi
+                        tootta — uske liye duniya waisi hi hai.
+
+     sarvCurrentRoles — SAARE role. Sirf ACCESS ka faisla isse hota hai,
+                        aur wo JOD (union) par hai: kisi ek feature par
+                        ek bhi role YES kahe to mil jaata hai.
+
+   Matlab: Rajesh "Store Incharge + Accountant" ho to use dono ka kaam
+   milta hai, par sign hamesha uske primary role se jaata hai — "kis role
+   se sign hua" ka jawab kabhi dhundhla nahi hota. */
 let sarvCurrentRole=null;
-// The named user behind this login ({id,name}), or null for a plain role-PIN login.
+let sarvCurrentRoles=[];
+/* Login ke peeche ka user — {id,name,roles,primary_role,app_access,...}.
+   Role-PIN (shared) login par naam nahi hota, tab ye null rehta hai aur
+   access sirf us ek role ka. */
 let sarvCurrentUser=null;
-function isAdmin(){return sarvCurrentRole==='ADMIN_PIN';}
+/* Saare apps ka saajha session token (app_sessions). Complaint App aur
+   Packing isi se apni pehchaan lete hain — unki apni login screen tab
+   dikhti hai jab ye token na ho ya na chale. */
+const SARV_SSO_TOKEN_KEY='sarv_sso_token';
+const SARV_LOGIN_ROLES_KEY='sarv_active_roles';
+
+// Access ke liye role ki list — purane single-role login par bhi chalti hai.
+function sarvRoles_(){
+  if(sarvCurrentRoles&&sarvCurrentRoles.length)return sarvCurrentRoles;
+  return sarvCurrentRole?[sarvCurrentRole]:[];
+}
+function isAdmin(){return sarvRoles_().indexOf('ADMIN_PIN')>=0;}
 function sarvLoginLabel_(){
-  return (SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—')+(sarvCurrentUser&&sarvCurrentUser.name?' — '+sarvCurrentUser.name:'');
+  const rs=sarvRoles_();
+  // Ek se zyada role ho to badge me "Primary +2" — poori list title me.
+  const roleTxt=!rs.length?(sarvCurrentRole||'—')
+    :(SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||rs[0])+(rs.length>1?' +'+(rs.length-1):'');
+  return roleTxt+(sarvCurrentUser&&sarvCurrentUser.name?' — '+sarvCurrentUser.name:'');
+}
+// Role badge ka hover — saare role poore naam ke saath.
+function sarvRolesTitle_(){
+  const rs=sarvRoles_();
+  if(rs.length<2)return '';
+  return 'Roles: '+rs.map(r=>(SARV_ROLE_LABEL[r]||r)+(r===sarvCurrentRole?' (primary)':'')).join(', ')
+    +'\nAccess in sabka jod hai; sign primary role se jaata hai.';
 }
 /* Fills the User dropdown under Role from app_users. Purchaser always needs a
    name (each one has their own PIN); for the other roles a user is optional —
@@ -2926,7 +2967,11 @@ async function sarvFillLoginUsers_(){
   if(!grp||!sel)return;
   if(!role){grp.style.display='none';sel.innerHTML='';return;}
   await sarvLoadAppUsers_();
-  const users=sarvAppUsers.filter(u=>u.is_active&&u.role===role);
+  /* roles[] par match — jiska ye SECONDARY role hai wo bhi is list me
+     aata hai. Pehle sirf primary `role` dekha jaata tha, to multi-role
+     user apne doosre role ke neeche milta hi nahi tha. */
+  const users=sarvAppUsers.filter(u=>u.is_active
+    &&((u.roles&&u.roles.length)?u.roles.indexOf(role)>=0:u.role===role));
   let opts='';
   if(role==='PURCHASER'){
     opts='<option value="">-- Select Purchaser --</option>';
@@ -2940,17 +2985,85 @@ async function sarvFillLoginUsers_(){
   }
   sel.innerHTML=opts;grp.style.display='';
 }
+/* ── Login mode: naam se (aam) ya Role PIN se (purana) ────────────────
+   Purana raaste ko hataya nahi gaya — jiska naam Admin Panel › Users me
+   nahi hai, ya jahan ye migration abhi chali hi nahi, wahan wahi chalta
+   hai. Isi liye ye badlaav kisi ko bahar nahi karta. */
+let sarvLoginByRole=false;
+window.sarvToggleLoginMode=function(){
+  sarvLoginByRole=!sarvLoginByRole;
+  const ng=byId('sarvLoginNameGroup'),rg=byId('sarvLoginRoleGroup'),ug=byId('sarvLoginUserGroup'),
+        b=byId('sarvLoginModeBtn'),e=byId('sarvLoginError');
+  if(ng)ng.style.display=sarvLoginByRole?'none':'';
+  if(rg)rg.style.display=sarvLoginByRole?'':'none';
+  if(ug&&sarvLoginByRole===false)ug.style.display='none';
+  if(b)b.textContent=sarvLoginByRole?'← Naam se login karein':'Role PIN se login karein';
+  if(e)e.style.display='none';
+  const f=byId(sarvLoginByRole?'sarvLoginRole':'sarvLoginNameBox');
+  if(f)setTimeout(()=>{try{f.focus();}catch(x){}},20);
+};
+
+/* Naam ka datalist — saare active users. Ek hi naam do role me ho to
+   bhi ek hi entry (user row ek hi hai, role kai ho sakte hain). */
+async function sarvFillLoginNames_(){
+  const dl=byId('sarvLoginNameList');if(!dl)return;
+  await sarvLoadAppUsers_();
+  const us=sarvAppUsers.filter(u=>u.is_active);
+  dl.innerHTML=us.map(u=>'<option value="'+escText(u.user_name)+'"></option>').join('');
+  /* Ek bhi naam nahi (migration nahi chali / koi user nahi bana) to naam
+     se login ka koi matlab nahi — seedha purane raaste par bhej dete
+     hain, warna banda khaali box ke saamne atak jaata hai. */
+  if(!us.length&&!sarvLoginByRole){
+    sarvToggleLoginMode();
+    const h=byId('sarvLoginNameHint');
+    if(h)h.textContent='';
+    const e=byId('sarvLoginError');
+    if(e){e.textContent='Abhi koi user nahi bana — Role PIN se login karein (Admin Panel › Users me naam jodein).';e.style.display='block';}
+  }
+}
+/* Naam type karte waqt uske role dikha dete hain — banda login se pehle
+   hi jaan le ki use kya access milega. */
+window.sarvLoginNameHint_=function(){
+  const h=byId('sarvLoginNameHint');if(!h)return;
+  const v=String(byId('sarvLoginNameBox')?.value||'').trim().toUpperCase();
+  if(!v){h.textContent='';h.style.color='';return;}
+  const u=sarvAppUsers.find(x=>x.is_active&&String(x.user_name).toUpperCase()===v);
+  if(!u){h.textContent='Ye naam list me nahi hai — type karke list se chunein';h.style.color='#b45309';return;}
+  const rs=(u.roles&&u.roles.length?u.roles:[u.role]).filter(Boolean);
+  h.innerHTML='\u{1F464} '+rs.map(r=>escText(SARV_ROLE_LABEL[r]||r)).join(' + ')
+    +(rs.length>1?' <i>(sab ka access milega)</i>':'');
+  h.style.color='#0369a1';
+};
+
 async function sarvAttemptLogin(){
-  const role=byId('sarvLoginRole')?.value||'';
-  const pin=byId('sarvLoginPin')?.value||'';
-  const userVal=byId('sarvLoginUserGroup')?.style.display!=='none'?(byId('sarvLoginUser')?.value||''):'';
   const err=byId('sarvLoginError');
   if(err)err.style.display='none';
   const show=msg=>{if(err){err.textContent=msg;err.style.display='block';}};
+  const pin=byId('sarvLoginPin')?.value||'';
+  if(!SB_READY)return show('Supabase URL/key configure karein');
+
+  /* ── Naam se login: ek user, uske saare role ─────────────────────── */
+  if(!sarvLoginByRole){
+    const nm=String(byId('sarvLoginNameBox')?.value||'').trim().toUpperCase();
+    if(!nm)return show('Apna naam chunein');
+    const u=sarvAppUsers.find(x=>x.is_active&&String(x.user_name).toUpperCase()===nm);
+    if(!u)return show('"'+nm+'" naam ka koi active user nahi mila — list se chunein, ya Role PIN se login karein');
+    if(!pin)return show('PIN enter karo');
+    return sarvLoginAsUser_(u,pin,show);
+  }
+
+  /* ── Purana raasta: Role (+ optional user) + PIN ─────────────────── */
+  const role=byId('sarvLoginRole')?.value||'';
+  const userVal=byId('sarvLoginUserGroup')?.style.display!=='none'?(byId('sarvLoginUser')?.value||''):'';
   if(!role)return show('Role select karo');
   if(role==='PURCHASER'&&!userVal)return show('Purchaser Name select karo');
   if(!pin)return show('PIN enter karo');
-  if(!SB_READY)return show('Supabase URL/key configure karein');
+  // Naam chuna hua ho to wahi multi-role raasta — role dropdown sirf
+  // list chhoti karne ke liye tha.
+  if(userVal.startsWith('id:')){
+    const u=sarvAppUsers.find(x=>String(x.id)===userVal.slice(3));
+    if(u)return sarvLoginAsUser_(u,pin,show);
+  }
   try{
     // The PIN is checked on the server — the stored hash is never sent here.
     let user=null;
@@ -2974,24 +3087,187 @@ async function sarvAttemptLogin(){
     // Order Form ka session bhi isi PIN se (ek hi login). Rukta nahi — fail ho to
     // Order Form apni login screen dikhata hai aur wajah bhi.
     sarvSalesSso_(userVal.startsWith('pname:')?('PURCHASER::'+userVal.slice(6)):role,user&&user.id?user.id:null,pin);
-    sarvCurrentRole=role;sarvCurrentUser=user;sarvPadForceDraw=false;
-    try{
-      localStorage.setItem(SARV_LOGIN_STORAGE_KEY,role);
-      if(user)localStorage.setItem(SARV_LOGIN_USER_KEY,JSON.stringify(user));else localStorage.removeItem(SARV_LOGIN_USER_KEY);
-      localStorage.removeItem(SARV_LOGIN_SIG_KEY);   // no signature is kept between submits any more
-    }catch(e){}
-    const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+sarvLoginLabel_();
-    const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
-    if(byId('sarvLoginPin'))byId('sarvLoginPin').value='';
-    if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
-    sarvApplyAccess();
-    sarvGoHome();
+    /* Role PIN wala raasta: access sirf usi EK role ka. Yahan user row
+       nahi hoti (shared PIN hai), isi liye na multi-role milta hai na
+       per-user override — aur yahi iska matlab bhi hai. */
+    sarvCurrentRole=role;sarvCurrentRoles=[role];sarvCurrentUser=user;
+    sarvFinishLogin_();
   }catch(e){
     if(/verify_app_user_pin/i.test(e.message||''))show('⚠️ ADMIN_PANEL_MIGRATION.sql abhi run nahi hua — user login ke liye pehle wo chalayein');
     else if(/does not exist|relation/i.test(e.message||''))show('⚠️ role_pins table missing — APPROVAL_CHAIN_MIGRATION.sql run karein');
     else show(e.message||String(e));
   }
 }
+/* ── Naam se login — ek user, uske saare role ─────────────────────────
+   Do kaam hote hain, isi kram me:
+
+     1. erp_app_login() — PIN server par check hota hai aur EK session
+        token banta hai jo SAARE apps ke liye hai (app_sessions). Us row
+        par `allowed_apps` bhi likh dete hain: yani "is user ko kaun-kaun
+        se app khul sakte hain", jo faisla yahan JS me hota hai (role-wise
+        Tab Visibility + per-user override). Complaint App aur Packing
+        wahi list padhte hain — isi liye unhe permission ka poora matrix
+        samajhne ki zaroorat nahi padti.
+
+     2. Agar wo RPC na ho (migration nahi chali) to CHUPCHAAP purane
+        raaste par — verify_app_user_pin() se PIN check karke single-role
+        login, bilkul pehle jaisa. Isi wajah se ye badlaav kisi ko bahar
+        nahi karta; bas external apps ka SSO us soorat me nahi milega.  */
+async function sarvLoginAsUser_(u,pin,show){
+  const roles=(u.roles&&u.roles.length?u.roles:[u.role]).filter(Boolean);
+  try{
+    /* allowed_apps pehle nikaalna padta hai, par uske liye is user ka
+       access chahiye — aur access abhi lagu nahi hua. Isi liye thodi der
+       ke liye role/user set karke list banate hain, aur PIN galat nikla
+       to turant wapas khaali kar dete hain (neeche catch / !ok me). */
+    const prevRole=sarvCurrentRole,prevRoles=sarvCurrentRoles,prevUser=sarvCurrentUser;
+    sarvCurrentRole=u.role||roles[0];
+    sarvCurrentRoles=roles;
+    sarvCurrentUser={id:u.id,name:u.user_name,roles:roles,primary_role:u.role,app_access:u.app_access||{}};
+    const apps=sarvAllowedApps_();
+    const restore=()=>{sarvCurrentRole=prevRole;sarvCurrentRoles=prevRoles;sarvCurrentUser=prevUser;};
+
+    let r=null;
+    try{
+      r=await SB.rpc('erp_app_login',{p_user_id:String(u.id),p_pin:pin,p_allowed_apps:apps});
+      if(r.error)throw r.error;
+    }catch(e){
+      // RPC hi nahi hai -> purana raasta, SSO ke bina.
+      if(/erp_app_login|does not exist|schema cache/i.test(e.message||'')){
+        restore();
+        return sarvLoginLegacyUser_(u,pin,roles,show);
+      }
+      restore();throw e;
+    }
+    const d=r.data||{};
+    if(!d.success){
+      restore();
+      const m={USER_NOT_FOUND:'User nahi mila — Refresh karein',USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
+        PIN_INVALID:'Galat PIN',PIN_CHECK_UNAVAILABLE:'⚠️ ADMIN_PANEL_MIGRATION.sql abhi run nahi hua'};
+      return show(m[d.error]||('Login nahi hua: '+(d.error||'unknown')));
+    }
+    // Server se aayi pehchaan hi sach hai — wahi lagate hain.
+    const su=d.user||{};
+    sarvCurrentRole=su.primary_role||u.role||roles[0];
+    sarvCurrentRoles=(Array.isArray(su.roles)&&su.roles.length?su.roles:roles).filter(Boolean);
+    sarvCurrentUser={id:su.id||u.id,name:su.name||u.user_name,roles:sarvCurrentRoles,
+      primary_role:sarvCurrentRole,app_access:su.app_access||{},
+      emp_code:su.emp_code||null,contact_no:su.contact_no||null,
+      cmp_profile_id:su.cmp_profile_id||null,pk_profile_id:su.pk_profile_id||null,
+      allowed_apps:Array.isArray(su.allowed_apps)?su.allowed_apps:apps};
+    try{localStorage.setItem(SARV_SSO_TOKEN_KEY,d.token);}catch(e){}
+    // Order Form ka apna token (sales_erp_login) — wo pehle se chalta tha.
+    sarvSalesSso_(sarvCurrentRole,u.id,pin);
+    sarvFinishLogin_();
+  }catch(e){
+    if(/does not exist|relation/i.test(e.message||''))show('⚠️ UNIFIED_USERS_MIGRATION.sql abhi run nahi hua');
+    else show(e.message||String(e));
+  }
+}
+/* Purana single-user login — tab chalta hai jab naya session RPC na ho.
+   Multi-role phir bhi milta hai (roles[] app_users se aata hai), bas
+   external apps ka SSO nahi. */
+async function sarvLoginLegacyUser_(u,pin,roles,show){
+  const v=await SB.rpc('verify_app_user_pin',{p_user_id:String(u.id),p_pin:pin});
+  if(v.error)throw v.error;
+  if(!v.data)return show('Galat PIN');
+  sarvCurrentRole=u.role||roles[0];
+  sarvCurrentRoles=roles;
+  sarvCurrentUser={id:u.id,name:u.user_name,roles:roles,primary_role:u.role,app_access:u.app_access||{}};
+  sarvSalesSso_(sarvCurrentRole,u.id,pin);
+  sarvFinishLogin_();
+}
+
+/* Jo har login ke aakhir me ek jaisa hota hai — ek hi jagah, taaki naam
+   wala, role wala aur legacy raasta teeno me farq na reh jaaye. */
+function sarvFinishLogin_(){
+  sarvPadForceDraw=false;
+  try{
+    localStorage.setItem(SARV_LOGIN_STORAGE_KEY,sarvCurrentRole||'');
+    localStorage.setItem(SARV_LOGIN_ROLES_KEY,JSON.stringify(sarvRoles_()));
+    if(sarvCurrentUser)localStorage.setItem(SARV_LOGIN_USER_KEY,JSON.stringify(sarvCurrentUser));
+    else localStorage.removeItem(SARV_LOGIN_USER_KEY);
+    localStorage.removeItem(SARV_LOGIN_SIG_KEY);
+  }catch(e){}
+  const badge=byId('sarvRoleBadge');
+  if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
+  const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
+  if(byId('sarvLoginPin'))byId('sarvLoginPin').value='';
+  if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
+  sarvApplyAccess();
+  sarvGoHome();
+}
+
+/* "Is user ko kaun-kaun se app khul sakte hain" — Home page ke button hi
+   apps hain, to unhi ki keys (HOME_*) ka hisaab lagta hai. Yahi list
+   session par likhi jaati hai aur Complaint / Packing isi ko padhte
+   hain. Ek hi jagah se tay hota hai, isi liye "Home par button dikha par
+   app khula hi nahi" jaisa farq ban hi nahi sakta. */
+const SARV_APP_KEYS=['HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
+  'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
+  'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM'];
+function sarvAllowedApps_(){
+  return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
+}
+
+/* Reload par session se taaza pehchaan. Teen haal:
+     * session theek  -> roles / app_access server wale lagte hain
+     * session khatam -> seedha logout screen (Admin ne band kar diya ho
+                         sakta hai, ya 30 din ho gaye)
+     * RPC / net fail -> kuch nahi badalta, purana session chalta rehta
+                         (offline me app khulni chahiye)
+   Server par allowed_apps bhi dobara likh dete hain, taaki Admin ke
+   abhi kiye badlaav external apps me bhi turant lag jaayein. */
+async function sarvRefreshSsoSession_(){
+  if(!SB_READY)return;
+  let tok=null;
+  try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY);}catch(e){}
+  if(!tok)return;
+  let r;
+  try{r=await SB.rpc('erp_app_session',{p_token:tok});}
+  catch(e){return;}                              // net / RPC nahi — chhodo
+  if(r.error)return;
+  const d=r.data||{};
+  if(!d.success){
+    // Session ab nahi chalta — session khatam hone ka matlab logout hi hai.
+    try{localStorage.removeItem(SARV_SSO_TOKEN_KEY);}catch(e){}
+    if(d.error==='USER_INACTIVE'||d.error==='SESSION_REVOKED'||d.error==='SESSION_EXPIRED'){
+      sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
+      try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
+          localStorage.removeItem(SARV_LOGIN_USER_KEY);}catch(e){}
+      const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
+      sarvFillLoginNames_().catch(()=>{});
+      showToast(d.error==='USER_INACTIVE'
+        ?'🔒 Aapka account Admin ne band kar diya — dobara login nahi hoga'
+        :'🔒 Session khatam ho gaya — dobara login karein','warn');
+    }
+    return;
+  }
+  const su=d.user||{};
+  const roles=(Array.isArray(su.roles)&&su.roles.length?su.roles:sarvRoles_()).filter(Boolean);
+  sarvCurrentRole=su.primary_role||sarvCurrentRole;
+  sarvCurrentRoles=roles;
+  sarvCurrentUser=Object.assign({},sarvCurrentUser||{},{
+    id:su.id,name:su.name,roles:roles,primary_role:sarvCurrentRole,
+    app_access:su.app_access||{},emp_code:su.emp_code||null,contact_no:su.contact_no||null,
+    cmp_profile_id:su.cmp_profile_id||null,pk_profile_id:su.pk_profile_id||null});
+  try{
+    localStorage.setItem(SARV_LOGIN_STORAGE_KEY,sarvCurrentRole||'');
+    localStorage.setItem(SARV_LOGIN_ROLES_KEY,JSON.stringify(roles));
+    localStorage.setItem(SARV_LOGIN_USER_KEY,JSON.stringify(sarvCurrentUser));
+  }catch(e){}
+  const badge=byId('sarvRoleBadge');
+  if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
+  sarvApplyAccess();
+  /* Jo abhi hisaab lagaya, wahi session par likh dein — external apps
+     ko naya access bina dobara login kiye mil jaata hai. */
+  const apps=sarvAllowedApps_();
+  const was=(su.allowed_apps||[]).join('|');
+  if(apps.join('|')!==was){
+    SB.rpc('erp_app_touch_apps',{p_token:tok,p_allowed_apps:apps}).then(()=>{},()=>{});
+  }
+}
+
 /* Asked here rather than on each caller, because both ways out — the Home page's
    Logout button and the role badge in the header — land on this one function.
    The badge in particular sits next to the nav links, so a mis-click used to
@@ -3030,17 +3306,39 @@ function sarvResetOrderFormFrame_(){
   if(panel&&panel.style.display!=='none'){try{fr.contentWindow.location.reload();}catch(e){fr.setAttribute('src',fr.getAttribute('src'));}}
   else fr.removeAttribute('src');
 }
+/* Baaki apps ke iframe bhi naye user par taaza — warna logout ke baad
+   khula hua Packing purane user ka hi dikhta rehta. Complaint App apne
+   tab me khulta hai, use yahan se band nahi kiya ja sakta; uska session
+   server par revoke ho jaata hai (erp_app_logout), aur wo tab agli
+   call par apni login screen par chala jaata hai. */
+function sarvResetAppFrames_(){
+  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame'].forEach(id=>{
+    const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
+    const vis=fr.closest('.main-panel,.tab-content');
+    if(vis&&vis.style.display!=='none'){
+      try{fr.contentWindow.location.reload();}catch(e){fr.setAttribute('src',fr.getAttribute('src'));}
+    }else fr.removeAttribute('src');
+  });
+}
 function sarvLogout(){
   if(!confirm('Do you want Log out ?\n\nDobara kaam karne ke liye PIN phir se daalna padega.'))return;
   try{
     const tok=localStorage.getItem(SARV_SALES_TOKEN_KEY);
     if(tok&&SB_READY)SB.rpc('sales_logout',{p_token:tok}).then(()=>{},()=>{});
     localStorage.removeItem(SARV_SALES_TOKEN_KEY);localStorage.removeItem(SARV_SALES_MSG_KEY);
+    /* Saare apps ka saajha session bhi server par band — warna Complaint
+       App / Packing ka khula hua tab logout ke baad bhi chalta rehta. */
+    const sso=localStorage.getItem(SARV_SSO_TOKEN_KEY);
+    if(sso&&SB_READY)SB.rpc('erp_app_logout',{p_token:sso}).then(()=>{},()=>{});
+    localStorage.removeItem(SARV_SSO_TOKEN_KEY);
   }catch(e){}
   sarvResetOrderFormFrame_();
-  sarvCurrentRole=null;sarvCurrentUser=null;
-  try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
+  sarvResetAppFrames_();
+  sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
+  try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
+      localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
+  sarvFillLoginNames_().catch(()=>{});
 }
 function sarvUnlockNav(){
   // Only the sections this role may see (Admin Panel → Tab Visibility).
@@ -3479,6 +3777,23 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
   byId('sarvLoginRole')?.addEventListener('change',()=>sarvFillLoginUsers_().catch(()=>{}));
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
+  /* Naam se login: datalist bharna, naam par uske role dikhana, aur
+     Enter se seedha login (naam bharne ke baad PIN par Enter aam aadat
+     hai, par kuch log naam par hi Enter maarte hain). */
+  const nb=byId('sarvLoginNameBox');
+  if(nb){
+    nb.addEventListener('input',()=>sarvLoginNameHint_());
+    nb.addEventListener('change',()=>sarvLoginNameHint_());
+    nb.addEventListener('keydown',e=>{
+      if(e.key!=='Enter')return;
+      const p=byId('sarvLoginPin');
+      if(p&&!p.value){p.focus();return;}     // naam ho gaya, ab PIN
+      sarvAttemptLogin();
+    });
+  }
+  // Login screen khuli hui ho to naam ki list turant bhar dein.
+  if(byId('sarvLoginGate')&&byId('sarvLoginGate').style.display!=='none')
+    sarvFillLoginNames_().catch(()=>{});
   const home=byId('sarvHomeDashboard');
   home?.addEventListener('click',e=>{
     const b=e.target.closest('.sarv-home-row');if(!b)return;
@@ -3511,9 +3826,24 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(savedRole&&SARV_ROLE_LABEL[savedRole]){
       sarvCurrentRole=savedRole;
       try{sarvCurrentUser=JSON.parse(localStorage.getItem(SARV_LOGIN_USER_KEY)||'null');}catch(e){sarvCurrentUser=null;}
+      /* Roles alag key me rakhe hain. Purana session (is badlaav se
+         pehle ka) sirf role rakhta tha — wahan roles user row se, warna
+         wahi ek role. Isi liye reload par kisi ka access nahi badalta. */
+      try{
+        const rr=JSON.parse(localStorage.getItem(SARV_LOGIN_ROLES_KEY)||'null');
+        sarvCurrentRoles=Array.isArray(rr)&&rr.length?rr.filter(Boolean)
+          :((sarvCurrentUser&&Array.isArray(sarvCurrentUser.roles)&&sarvCurrentUser.roles.length)
+              ?sarvCurrentUser.roles.filter(Boolean):[savedRole]);
+      }catch(e){sarvCurrentRoles=[savedRole];}
       try{localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
-      const badge=byId('sarvRoleBadge');if(badge)badge.textContent='👤 '+sarvLoginLabel_();
+      const badge=byId('sarvRoleBadge');
+      if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
       sarvApplyAccess();
+      /* Server par user ka role / app access badla ho sakta hai jabki
+         browser purana yaad rakhe baitha hai. Session se taaza haal
+         maang lete hain — chupchaap, aur fail ho to purana hi chalta
+         rehta hai (offline me bhi app khulni chahiye). */
+      sarvRefreshSsoSession_().catch(()=>{});
       const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
       if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
       sarvGoHome();
@@ -3764,6 +4094,13 @@ let sarvSettingsMissing=false;
 let sarvAppUsers=[],sarvAppUsersLoaded=false,sarvAppUsersMissing=false;
 // Sales › Order Form ke role — app_users.sales_role (ek hi user table).
 let sarvSalesRoleReady=false;
+/* UNIFIED_USERS_MIGRATION.sql chali hai ya nahi — yani roles[] /
+   app_access / session wale column maujood hain. false ho to Admin Panel
+   multi-role aur Apps ka hissa chhupa deta hai (adhoora UI dikhane se
+   behtar hai saaf kehna ki migration chalani hai). */
+let sarvUnifiedReady=false;
+let sarvUnifiedErr='';   // uski asli wajah, Admin Panel ke note me dikhane ke liye
+let sarvUsersDenied=false; // true = GRANT ki kami (column ki nahi)
 const SARV_SALES_ROLES=[
   {v:'admin',l:'Admin',hint:'Create, Edit, Status, Emboss catalog'},
   {v:'manager',l:'Manager',hint:'Create, Edit, Status'},
@@ -3786,10 +4123,36 @@ function sarvMatrixVal_(matrix,defs,key,role){
   return sarvDefOf_(d,role);
 }
 function sarvCanRole(role,key){return sarvMatrixVal_(sarvSettings.role_permissions,SARV_FEATURES,key,role);}
-function sarvCan(key){return !!sarvCurrentRole&&sarvCanRole(sarvCurrentRole,key);}
+/* Access = saare roles ka JOD. Ek bhi role YES kahe to mil jaata hai. */
+function sarvCan(key){
+  const rs=sarvRoles_();
+  return rs.length>0&&rs.some(r=>sarvCanRole(r,key));
+}
+/* Tab / app ka dikhna teen tah me tay hota hai, isi kram me:
+
+     1. Us USER ka apna override (Admin Panel › Users › Apps)
+          true  = zaroor dikhao, role kuch bhi kahe
+          false = zaroor chhupao, role kuch bhi kahe
+     2. role-wise Tab Visibility matrix (saare roles ka jod)
+     3. code ka default (SARV_TABS ka `def`)
+
+   Pehli tah hi wo cheez hai jo Admin ko "is ek user se ye button hata
+   do" ki taaqat deti hai bina uske poore role ko chhede — warna ek
+   banda chhupane ke liye naya role banana padta tha. */
 function sarvTabVisible(key){
-  if(!sarvCurrentRole)return true;
-  return sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,sarvCurrentRole);
+  const rs=sarvRoles_();
+  if(!rs.length)return true;
+  const ov=sarvUserAccessOverride_(key);
+  if(typeof ov==='boolean')return ov;
+  return rs.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,r));
+}
+/* Is user ka apna faisla is key par — true / false, ya undefined ("auto",
+   yani role se jo mile wahi). */
+function sarvUserAccessOverride_(key){
+  const a=sarvCurrentUser&&sarvCurrentUser.app_access;
+  if(!a||typeof a!=='object')return undefined;
+  const v=a[key];
+  return typeof v==='boolean'?v:undefined;
 }
 function sarvNavTargetVisible_(target){
   const ks=SARV_NAV_TARGET_KEYS[target];
@@ -3797,7 +4160,9 @@ function sarvNavTargetVisible_(target){
 }
 function sarvFeatureLabel_(key){const d=SARV_FEATURES.find(f=>f.key===key);return d?d.label:key;}
 function sarvDeny(key){
-  showToast('⛔ "'+sarvFeatureLabel_(key)+'" — '+(SARV_ROLE_LABEL[sarvCurrentRole]||'is role')+' ko access nahi hai. Admin se Settings › Admin Panel me access lein.','warn');
+  // Kai role ho to saare gino — warna user sochta hai "mera to doosra role hai na".
+  const rn=sarvRoles_().map(r=>SARV_ROLE_LABEL[r]||r).join(' + ');
+  showToast('⛔ "'+sarvFeatureLabel_(key)+'" — '+(rn||'is role')+' ko access nahi hai. Admin se Settings › Admin Panel me access lein.','warn');
 }
 function sarvGuard(key){if(sarvCan(key))return true;sarvDeny(key);return false;}
 
@@ -3828,7 +4193,7 @@ const SARV_CLICK_GUARDS=[
   ['.sarv-po-shortclose','PO_CLOSE'],
 ];
 document.addEventListener('click',e=>{
-  if(!sarvCurrentRole||!e.target||!e.target.closest)return;
+  if(!sarvRoles_().length||!e.target||!e.target.closest)return;
   for(const [sel,k] of SARV_CLICK_GUARDS){
     const el=e.target.closest(sel);if(!el)continue;
     const key=typeof k==='function'?k(el):k;
@@ -3840,7 +4205,7 @@ function sarvApplyPermCss_(){
   let st=byId('sarvPermStyle');
   if(!st){st=document.createElement('style');st.id='sarvPermStyle';document.head.appendChild(st);}
   const hide=[];
-  if(sarvCurrentRole)Object.keys(SARV_FEATURE_HIDE).forEach(k=>{if(!sarvCan(k))hide.push(...SARV_FEATURE_HIDE[k]);});
+  if(sarvRoles_().length)Object.keys(SARV_FEATURE_HIDE).forEach(k=>{if(!sarvCan(k))hide.push(...SARV_FEATURE_HIDE[k]);});
   st.textContent=hide.length?hide.join(',')+'{display:none !important;}':'';
 }
 function sarvApplyHomeTiles_(){
@@ -3930,8 +4295,32 @@ async function sarvLoadAppUsers_(force){
     // sales_role (Order Form Role) ORDER_FORM_USERS_MIGRATION.sql se aata hai; wo
     // na chala ho to bina us column ke dobara — users ki list kabhi khaali na ho.
     const cols='id,user_name,role,emp_code,contact_no,has_signature,is_active,created_at,updated_at';
-    let q=await SB.from('app_users').select(cols+',sales_role').order('user_name');
+    /* Teen tah ka fallback, sabse naye se sabse purane tak — jis setup me
+       jo migration chali ho, users ki list wahan bhi khaali na ho:
+         1. + roles / app_access / links  (UNIFIED_USERS_MIGRATION.sql)
+         2. + sales_role                  (ORDER_FORM_USERS_MIGRATION.sql)
+         3. sirf base columns             (ADMIN_PANEL_MIGRATION.sql) */
+    const uniCols=',roles,app_access,cmp_profile_id,pk_profile_id';
+    let q=await SB.from('app_users').select(cols+',sales_role'+uniCols).order('user_name');
+    sarvUnifiedReady=!q.error;
+    /* Asli wajah bachakar rakhte hain. "Extra Roles kyun nahi dikh rahe"
+       ka jawab dhoondhne me sabse zyada waqt isi me jaata tha — ab
+       Admin Panel ka note yahi message dikha deta hai. */
+    sarvUnifiedErr=q.error?(q.error.message||String(q.error)):'';
+    /* "permission denied" aur "column nahi mila" DO ALAG baatein hain —
+       pehle dono par ek hi message aata tha aur wo galat migration ko
+       blame karta tha. Grant wali galti Supabase me aam hai: RLS policy
+       bana dete hain par table-level GRANT bhool jaate hain, aur RLS
+       grant ke bina kaam hi nahi karti. */
+    sarvUsersDenied=!!q.error&&/permission denied/i.test(sarvUnifiedErr);
+    if(q.error)console.warn('[SARV] app_users read fail ('
+      +(sarvUsersDenied?'GRANT missing — UNIFIED_USERS_MIGRATION.sql ka section 1b chalayein'
+                       :'column missing — UNIFIED_USERS_MIGRATION.sql run hua?')+'):',sarvUnifiedErr);
     sarvSalesRoleReady=!q.error;
+    if(q.error){
+      q=await SB.from('app_users').select(cols+',sales_role').order('user_name');
+      sarvSalesRoleReady=!q.error;
+    }
     if(q.error)q=await SB.from('app_users').select(cols).order('user_name');
     if(q.error)throw q.error;
     sarvAppUsers=q.data||[];sarvAppUsersMissing=false;
@@ -3976,9 +4365,30 @@ function sarvRenderAdminPanel(){
   const note=byId('ap_migrationNote');
   Promise.all([sarvLoadSettings_(),sarvLoadAppUsers_(true)]).then(()=>{
     if(note){
-      const miss=sarvSettingsMissing||sarvAppUsersMissing;
-      note.style.display=miss?'block':'none';
-      note.innerHTML=miss?'&#9888;&#65039; Supabase me <code>ADMIN_PANEL_MIGRATION.sql</code> abhi run nahi hua hai &mdash; tab tak defaults chal rahe hain aur Save nahi hoga.':'';
+      /* Kaun si migration baaki hai — ek-ek karke naam ke saath. Pehle
+         sirf ADMIN_PANEL ka zikr tha, isi liye UNIFIED na chali ho to
+         "Extra Roles / Apps" chup-chaap gayab rehte the aur Admin ko
+         lagta tha ki feature hi nahi hai. Ab wajah saamne likhi hai. */
+      const miss=[];
+      /* GRANT ki kami sabse pehle — ye "table hi nahi hai" jaisi dikhti
+         hai par bilkul alag cheez hai, aur iska ilaaj bhi alag hai. */
+      if(sarvUsersDenied)
+        miss.push('<b>app_users par <code>anon</code> ko SELECT ka GRANT nahi hai</b> &mdash; isi liye users ki list khaali hai. '
+          +'Supabase ne kaha: <code>permission denied for table app_users</code>.<br>'
+          +'Ilaaj: <code>UNIFIED_USERS_MIGRATION.sql</code> ka <b>section 1b</b> chalayein (wo sirf GRANT deta hai, '
+          +'aur <code>signature</code> / <code>pin_hash</code> jaan-boojh kar chhod deta hai).');
+      else if(sarvSettingsMissing||sarvAppUsersMissing)
+        miss.push('<code>ADMIN_PANEL_MIGRATION.sql</code> &mdash; tab tak defaults chal rahe hain aur Save nahi hoga');
+      else if(!sarvUnifiedReady)
+        miss.push('<code>UNIFIED_USERS_MIGRATION.sql</code> &mdash; iske bina <b>Extra Roles</b> (ek user, kai role) aur <b>&#128241; Apps</b> '
+          +'(per-user app access) ka hissa user form me nahi dikhta, aur Complaint App / Packing apna alag password maangte rehte hain');
+      note.style.display=miss.length?'block':'none';
+      note.innerHTML=miss.length
+        ?'&#9888;&#65039; Supabase &rsaquo; SQL Editor me ye abhi run nahi hua: '+miss.join('<br>')
+          +'<br><small>Chala chuke hain par phir bhi ye dikh raha hai? Supabase &rsaquo; SQL Editor me <code>notify pgrst, \'reload schema\';</code> '
+          +'chalayein (API ka column cache purana reh jaata hai), phir ye page reload karein.'
+          +(sarvUnifiedErr?'<br>Supabase ne kaha: <code>'+escText(sarvUnifiedErr)+'</code>':'')+'</small>'
+        :'';
     }
     if(!sarvApDraft.perms)sarvApDraft.perms=sarvFullMatrix_(sarvSettings.role_permissions,SARV_FEATURES);
     if(!sarvApDraft.tabs)sarvApDraft.tabs=sarvFullMatrix_(sarvSettings.tab_visibility,SARV_TABS);
@@ -4014,8 +4424,24 @@ function sarvRenderUsers_(){
   tb.innerHTML=rows.map((u,i)=>'<tr>'
     +'<td style="color:#94a3b8;">'+(i+1)+'</td>'
     +'<td style="font-weight:800;">'+escText(u.user_name)+'</td>'
-    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;">'+escText(sarvRoleLabelOf_(u.role))+'</span>'
-      +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">&#129534; '+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')+'</td>'
+    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;" title="Primary role — sign / audit isi se">'+escText(sarvRoleLabelOf_(u.role))+'</span>'
+      /* Extra roles ki ginti — poori list hover me. Saare pills likhne
+         par row chaudhi ho jaati thi aur naam hi khisak jaata tha. */
+      +(((u.roles&&u.roles.length)||0)>1
+        ?' <span class="ap-pill" style="background:#ede9fe;color:#5b21b6;" title="'
+          +escText(u.roles.map(r=>sarvRoleLabelOf_(r)+(r===u.role?' (primary)':'')).join(', ')
+            +' — access in sabka jod hai')+'">+'+(u.roles.length-1)+' role</span>':'')
+      /* Per-user app override — Admin ko turant pata chale ki is banda
+         par kuch haath se set hai, warna "iska button kyun nahi dikh
+         raha" dhoondhne me waqt jaata hai. */
+      +(u.app_access&&Object.keys(u.app_access).length
+        ?' <span class="ap-pill" style="background:#fff7ed;color:#9a3412;" title="'
+          +escText(Object.keys(u.app_access).map(k=>(SARV_APP_LABEL[k]||k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
+          +'">&#128241; '+Object.keys(u.app_access).length+'</span>':'')
+      +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">&#129534; '+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')
+      +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Complaint App ke purane account se juda">&#128279;C</span>':'')
+      +(u.pk_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Packing ke purane account se juda">&#128279;P</span>':'')
+      +'</td>'
     +'<td>'+escText(u.emp_code||'—')+'</td>'
     +'<td>'+escText(u.contact_no||'—')+'</td>'
     +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved — PIN se sign kar sakte hain">&#9997;&#65039; &#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="Signature abhi nahi bana">&mdash;</span>')+'</td>'
@@ -4122,6 +4548,87 @@ function sarvDrawSigInto_(canvas,dataUrl){
 }
 
 /* ── User add / edit popup ──────────────────────────────────────── */
+/* ── User form: EXTRA ROLES ───────────────────────────────────────────
+   Primary role upar apne dropdown me hai; yahan uske alawa jo role bhi
+   dene hain. Access in SABKA jod hota hai. Primary ka checkbox dikhta
+   hai par disabled + ticked — taaki saaf rahe ki wo bhi ginta hai, aur
+   use yahan se hatana mumkin na ho (wo upar dropdown se badalta hai). */
+function sarvUserRolesHtml_(u,role){
+  const have=(u&&u.roles&&u.roles.length)?u.roles:(u?[u.role]:[]);
+  return '<div class="fg" style="grid-column:1 / -1;">'
+    +'<label>&#128100; Extra Roles <small style="text-transform:none;font-weight:600;">'
+    +'(primary ke alawa — access in sabka JOD hoga)</small></label>'
+    +'<div data-f="roleswrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:4px 10px;'
+    +'border:1px solid #cbd5e1;border-radius:7px;padding:8px 10px;background:#f8fafc;">'
+    +SARV_PERM_ROLES.map(r=>{
+        const isPrim=r.code===role;
+        const on=isPrim||have.indexOf(r.code)>=0;
+        return '<label style="display:flex;align-items:center;gap:6px;margin:0;text-transform:none;font-size:11px;'
+          +'font-weight:'+(on?'800':'600')+';color:'+(isPrim?'#0369a1':'#334155')+';cursor:'+(isPrim?'default':'pointer')+';">'
+          +'<input type="checkbox" data-role="'+r.code+'"'+(on?' checked':'')+(isPrim?' disabled':'')
+          +' style="width:14px;height:14px;">'+escText(r.label)
+          +(isPrim?' <small style="color:#0369a1;font-weight:700;">(primary)</small>':'')+'</label>';
+      }).join('')
+    +'</div></div>';
+}
+
+/* ── User form: APPS (tri-state) ──────────────────────────────────────
+   Teen haal har app par:
+     auto  — role-wise Tab Visibility jo kahe wahi (default)
+     ON    — zaroor dikhao, role kuch bhi kahe
+     OFF   — zaroor chhupao, role kuch bhi kahe
+   "auto" ko jaan-boojh kar default rakha gaya: tabhi role-wise matrix ka
+   matlab bachta hai, aur Admin ko sirf us ek banda par haath lagana
+   padta hai jiska case alag hai. Neeche "role se abhi kya milega" bhi
+   likha rehta hai, taaki auto chunne par andaza na lagana pade. */
+const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOME_IN:'Material Inward',
+  HOME_IN_NB:'Inward (NB)',HOME_OUT:'Material Outward',HOME_ISSUE:'Issue',HOME_REPORTS:'Print History / Reports',
+  HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
+  HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
+  HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
+  HOME_ORDER_FORM:'Order Form (Sales)'};
+// Jo apps apni alag file me khulte hain — unka SSO isi access par chalta hai.
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1};
+
+function sarvUserAppsHtml_(u){
+  const acc=(u&&u.app_access&&typeof u.app_access==='object')?u.app_access:{};
+  const roles=(u&&u.roles&&u.roles.length)?u.roles:(u&&u.role?[u.role]:[]);
+  const roleSays=k=>roles.length
+    ? roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r))
+    : null;
+  return '<div class="fg" style="grid-column:1 / -1;">'
+    +'<label>&#128241; Apps <small style="text-transform:none;font-weight:600;">'
+    +'(Home page ke button. <b>auto</b> = role se jo mile; ON / OFF sirf is user par lagta hai)</small></label>'
+    +'<div data-f="appswrap" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 0;background:#f8fafc;'
+    +'max-height:230px;overflow:auto;">'
+    +SARV_APP_KEYS.map(k=>{
+        const v=typeof acc[k]==='boolean'?(acc[k]?'1':'0'):'';
+        const rs=roleSays(k);
+        const hint=rs===null?'':(rs?'role se: dikhega':'role se: nahi dikhega');
+        return '<div style="display:flex;align-items:center;gap:8px;padding:3px 10px;">'
+          +'<span style="flex:1 1 auto;font-size:11px;font-weight:700;color:#334155;">'
+            +escText(SARV_APP_LABEL[k]||k)
+            +(SARV_APP_EXTERNAL[k]?' <small style="color:#7c3aed;font-weight:700;">alag app</small>':'')
+            +(hint?' <small style="color:#94a3b8;font-weight:600;text-transform:none;">— '+hint+'</small>':'')
+          +'</span>'
+          +'<select data-app="'+k+'" style="flex:0 0 auto;width:78px;height:24px;font-size:10.5px;padding:0 4px;'
+            +'border:1px solid #cbd5e1;border-radius:5px;font-family:inherit;'
+            +'background:'+(v===''?'#fff':(v==='1'?'#dcfce7':'#fee2e2'))+';">'
+          +'<option value=""'+(v===''?' selected':'')+'>auto</option>'
+          +'<option value="1"'+(v==='1'?' selected':'')+'>ON</option>'
+          +'<option value="0"'+(v==='0'?' selected':'')+'>OFF</option>'
+          +'</select></div>';
+      }).join('')
+    +'</div>'
+    +'<div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;">'
+    +'<button type="button" class="b no sm" data-f="appsauto">Sab auto</button>'
+    +'<button type="button" class="b no sm" data-f="appson">Sab ON</button>'
+    +'<button type="button" class="b no sm" data-f="appsoff">Sab OFF</button>'
+    +'<span style="flex:1 1 auto;"></span>'
+    +(u?'<button type="button" class="b no sm" data-f="applink" title="Complaint App / Packing ke purane account se naam ke hisaab se jodd lagayein">&#128279; Link external accounts</button>':'')
+    +'</div></div>';
+}
+
 function sarvOpenUserModal(id,presetRole){
   if(!isAdmin())return showToast('⛔ Sirf Admin login users bana sakta hai','warn');
   if(sarvAppUsersMissing)return showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');
@@ -4132,7 +4639,9 @@ function sarvOpenUserModal(id,presetRole){
   ov.innerHTML='<div class="card"><div class="hd">'+(u?'&#9999;&#65039; Update User — '+escText(u.user_name):(presetRole==='PURCHASER'?'&#10133; Add New Purchaser':'&#10133; Add User'))+'</div><div class="bd">'
     +'<div class="err" data-f="err"></div>'
     +'<div class="g2">'
-    +'<div class="fg"><label>Role <span class="req">*</span></label><select data-f="role"><option value="">-- Select Role --</option>'
+    +'<div class="fg"><label>'+(sarvUnifiedReady?'Primary Role':'Role')+' <span class="req">*</span>'
+      +(sarvUnifiedReady?' <small style="text-transform:none;font-weight:600;">(sign / audit isi se jaata hai)</small>':'')
+      +'</label><select data-f="role"><option value="">-- Select Role --</option>'
       +SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'"'+(r.code===role?' selected':'')+'>'+escText(r.label)+'</option>').join('')+'</select></div>'
     +'<div class="fg"><label>User Name <span class="req">*</span></label><input data-f="name" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.user_name:'')+'" placeholder="Full name"></div>'
     +'<div class="fg"><label>Employee Code</label><input data-f="emp" list="dl-emp-codes" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.emp_code||'':'')+'" placeholder="optional — auto-fill"></div>'
@@ -4144,6 +4653,23 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="dobara"></div>'
     +'</div>'
     +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (login + PIN se sign kar sakta hai)</span></div>'
+    /* ── Extra roles + Apps ─────────────────────────────────────────
+       Column maujood ho to poora UI; na ho to CHUP-CHAAP CHHUPANA NAHI
+       — wahi galti pehle ki thi, aur Admin ko lagta tha ki feature hi
+       nahi hai. Ab usi jagah saaf likha jaata hai ki kya chalana hai. */
+    +(sarvUnifiedReady
+      ? sarvUserRolesHtml_(u,role)+sarvUserAppsHtml_(u)
+      : '<div class="fg" style="grid-column:1 / -1;">'
+        +'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">'
+        +'<div style="font-size:11.5px;font-weight:800;color:#92400e;margin-bottom:4px;">'
+        +'&#128100; Extra Roles aur &#128241; Apps abhi band hain</div>'
+        +'<div style="font-size:11px;color:#92400e;line-height:1.65;">'
+        +'Ek user ko <b>kai role</b> dena, aur per-user <b>app access</b> (Home ke button ON/OFF) '
+        +'&mdash; dono ke liye Supabase &rsaquo; SQL Editor me <code>UNIFIED_USERS_MIGRATION.sql</code> '
+        +'ek baar chalani hai. Uske baad ye dabba yahin khul jaayega.'
+        +'<br><br>Chala chuke hain? To <code>notify pgrst, \'reload schema\';</code> chalayein '
+        +'(Supabase ke API ka column cache purana reh jaata hai) aur page reload karein.'
+        +'</div></div></div>')
     +'<div class="fg"><label>&#9997;&#65039; Digital Signature '+(u&&u.has_signature?'<span style="color:#15803d;text-transform:none;">— saved &#10004; (naya banayein to replace hoga)</span>':'<span style="color:#b45309;text-transform:none;">— user yahan ek baar sign kare</span>')+'</label>'
     +'<div class="pad"><canvas width="900" height="220"></canvas><div class="padbar"><span>Mouse / touch / stylus se sign karein</span>'
     +'<span style="display:flex;gap:8px;align-items:center;">'
@@ -4160,6 +4686,38 @@ function sarvOpenUserModal(id,presetRole){
   const err=msg=>{const el=f('err');el.textContent=msg;el.style.display=msg?'block':'none';if(msg)ov.querySelector('.card').scrollTop=0;};
   f('sigclr').addEventListener('click',()=>pad.clear());
   f('cancel').addEventListener('click',close);
+  /* Apps ke dropdown: rang se turant dikhe ki kya chuna hai, aur teen
+     shortcut button (sab auto / ON / OFF) — 18 apps ek-ek karke set
+     karna hi wo kaam hai jo koi nahi karta. */
+  const appSel=()=>[...ov.querySelectorAll('select[data-app]')];
+  const paintApp=s=>{s.style.background=s.value===''?'#fff':(s.value==='1'?'#dcfce7':'#fee2e2');};
+  appSel().forEach(s=>s.addEventListener('change',()=>paintApp(s)));
+  const setAllApps=v=>appSel().forEach(s=>{s.value=v;paintApp(s);});
+  f('appsauto')?.addEventListener('click',()=>setAllApps(''));
+  f('appson') ?.addEventListener('click',()=>setAllApps('1'));
+  f('appsoff')?.addEventListener('click',()=>setAllApps('0'));
+  /* Primary role badla — uska checkbox hi primary ban jaata hai, isi
+     liye roles ka dabba dobara banana padta hai (warna purana primary
+     disabled-ticked hi atka rehta). */
+  f('role')?.addEventListener('change',()=>{
+    const w=f('roleswrap');if(!w)return;
+    const now=f('role').value;
+    [...w.querySelectorAll('input[data-role]')].forEach(cb=>{
+      const isPrim=cb.dataset.role===now;
+      cb.disabled=isPrim;
+      if(isPrim)cb.checked=true;
+      const lab=cb.closest('label');
+      if(lab){
+        lab.style.color=isPrim?'#0369a1':'#334155';
+        lab.style.cursor=isPrim?'default':'pointer';
+        const tag=lab.querySelector('small');
+        if(isPrim&&!tag)lab.insertAdjacentHTML('beforeend',' <small style="color:#0369a1;font-weight:700;">(primary)</small>');
+        if(!isPrim&&tag)tag.remove();
+      }
+    });
+  });
+  // Complaint / Packing ke purane account se naam ke hisaab se jodd.
+  f('applink')?.addEventListener('click',()=>sarvAutolinkProfiles_());
   // Employee Code fills the name / contact from Employee Master.
   f('emp').addEventListener('input',()=>{
     const e=lookupEmployee(f('emp').value);if(!e)return;
@@ -4201,10 +4759,59 @@ function sarvOpenUserModal(id,presetRole){
           else sroleNote=sroleV?' · Order Form: '+sarvSalesRoleLabel_(sroleV):' · Order Form access hataya';
         }
       }
+      /* ── Extra roles + Apps — alag RPC, wahi Admin PIN ─────────────
+         admin_save_user() ko jaan-boojh kar nahi chheda (wo
+         ADMIN_PANEL_MIGRATION.sql ka hai), isi liye ye do baat uske
+         baad apne RPC se jaati hain — wahi tareeka jo Order Form Role
+         ka pehle se hai. Inme se kuch fail ho to user to save ho hi
+         chuka hota hai, isi liye wajah toast me saaf likhi jaati hai. */
+      let uniNote='';
+      if(sarvUnifiedReady){
+        await sarvLoadAppUsers_(true);
+        const saved=u?sarvAppUsers.find(x=>x.id===u.id)
+                     :sarvAppUsers.find(x=>String(x.user_name).toUpperCase()===name
+                        &&((x.roles&&x.roles.length)?x.roles.indexOf(roleV)>=0:x.role===roleV));
+        if(saved){
+          const rw=f('roleswrap');
+          if(rw){
+            const picked=[...rw.querySelectorAll('input[data-role]')]
+              .filter(cb=>cb.checked||cb.disabled).map(cb=>cb.dataset.role);
+            // Primary hamesha list me — server bhi yahi maangta hai.
+            const roles=[roleV].concat(picked.filter(r=>r!==roleV));
+            const rr=await SB.rpc('admin_set_user_roles',
+              {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_roles:roles,p_primary_role:roleV});
+            if(rr.error||!(rr.data&&rr.data.success))
+              uniNote+=' — ⚠️ Roles save nahi hue: '+((rr.error&&rr.error.message)||(rr.data&&rr.data.error)||'unknown');
+            else if(roles.length>1)uniNote+=' · '+roles.length+' roles';
+          }
+          const aw=f('appswrap');
+          if(aw){
+            const acc={};
+            [...aw.querySelectorAll('select[data-app]')].forEach(s=>{
+              if(s.value==='1')acc[s.dataset.app]=true;
+              else if(s.value==='0')acc[s.dataset.app]=false;
+              // 'auto' ko bheja hi nahi jaata — key na hona hi "auto" hai
+            });
+            const ar=await SB.rpc('admin_set_user_app_access',
+              {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_app_access:acc});
+            if(ar.error||!(ar.data&&ar.data.success))
+              uniNote+=' — ⚠️ Apps access save nahi hua: '+((ar.error&&ar.error.message)||(ar.data&&ar.data.error)||'unknown');
+            else{
+              const n=Object.keys(acc).length;
+              if(n)uniNote+=' · '+n+' app override';
+            }
+          }
+        }
+      }
       await sarvLoadAppUsers_(true);
       sarvRenderUsers_();
+      // Khud ka access badla ho to turant lagu — warna Admin ko apna
+      // hi naya access dikhne ke liye reload karna padta.
+      if(sarvCurrentUser&&u&&String(sarvCurrentUser.id)===String(u.id))sarvRefreshSsoSession_().catch(()=>{});
       close();
-      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+sroleNote+(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''),sroleNote.includes('⚠️')?'warn':undefined);
+      const warn=(sroleNote+uniNote).includes('⚠️');
+      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+sroleNote+uniNote
+        +(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''),warn?'warn':undefined);
     }catch(e){
       const m=String(e.message||e);
       const map={ADMIN_PIN_INVALID:'❌ Admin PIN galat hai',PIN_REQUIRED:'Is user ka PIN abhi set nahi hai — PIN daalein',PIN_TOO_SHORT:'PIN kam se kam 4 digit ka ho',
@@ -4214,6 +4821,33 @@ function sarvOpenUserModal(id,presetRole){
     }finally{btn.disabled=false;btn.innerHTML='&#128190; Save User';}
   });
   setTimeout(()=>(role?f('name'):f('role')).focus(),30);
+}
+/* Complaint App / Packing ke purane account se naam ke hisaab se jodd.
+   Faida: us bande ka purana kaam (assign ki gayi tasks, uska signature,
+   banaye hue slip) naye single login ke saath juda rehta hai. Jo naam
+   do baar ho use chhod diya jaata hai (galat jodd se bina jodd behtar
+   hai) — unhe Admin haath se jod sakta hai. */
+async function sarvAutolinkProfiles_(){
+  if(!isAdmin())return showToast('⛔ Sirf Admin','warn');
+  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',
+    subtitle:'Complaint App / Packing ke purane account se jodd lagane ke liye',
+    recordInfo:'Naam se match — jo naam do baar ho wo chhoot jaayega',
+    label:'Admin PIN',confirmText:'&#128279; Link'});
+  if(adminPin==null)return;
+  if(!adminPin.trim())return showToast('Admin PIN khali nahi ho sakta','warn');
+  try{
+    const r=await SB.rpc('admin_autolink_user_profiles',{p_admin_pin:adminPin.trim()});
+    if(r.error)throw r.error;
+    const d=r.data||{};
+    if(!d.success)return showToast(d.error==='ADMIN_PIN_INVALID'?'❌ Admin PIN galat hai':('❌ '+(d.error||'fail')),'error');
+    await sarvLoadAppUsers_(true);sarvRenderUsers_();
+    showToast('🔗 Jodd lag gayi — Complaint: '+(d.complaint_linked||0)+', Packing: '+(d.packing_linked||0)
+      +((d.complaint_linked||d.packing_linked)?'':' (koi naya match nahi mila)'));
+  }catch(e){
+    if(/admin_autolink_user_profiles|does not exist/i.test(e.message||''))
+      showToast('⚠️ UNIFIED_USERS_MIGRATION.sql pehle run karein','warn');
+    else dbError(e);
+  }
 }
 async function sarvDeleteUser_(id){
   const u=sarvAppUsers.find(x=>x.id===id);if(!u)return;

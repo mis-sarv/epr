@@ -65,6 +65,122 @@
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const ADMIN_FN_URL  = SUPABASE_URL + "/functions/v1/admin-users";
+
+/* ══ ERP ka single login — gate ════════════════════════════════════════
+   ERP (index.html) me login karte waqt ek session token banta hai jo
+   SAARE apps ke liye hai (app_sessions / UNIFIED_USERS_MIGRATION.sql).
+   Saare apps ek hi origin par hain, isi liye localStorage saajha hai.
+
+   Ye gate do kaam karta hai:
+
+     1. ROK — Admin ne Users › Apps me is user se "Complaint App" OFF
+        kar diya ho, to app khulti hi nahi: poori screen par saaf wajah
+        aa jaati hai aur maujooda auth session bhi sign out ho jaata
+        hai. Yahi "admin kabhi bhi kisi user se app ka button chhupa
+        sakta hai" ka doosra sira hai — button chhupane se wo URL seedha
+        kholkar andar nahi aa sakta.
+
+     2. PEHCHAAN — access ho to ERP se aaya naam niche login par pehle
+        se bhar jaata hai (banner ke saath), taaki banda dobara apna
+        naam na type kare.
+
+   Jaan-boojh kar NARAM: token na ho, RPC na ho (migration na chali ho),
+   ya net kharab ho — teeno soorat me ye chup-chaap hat jaata hai aur
+   app ka apna purana login waisa hi chalta hai. Isi liye ye badlaav
+   kisi ko bahar nahi karta.
+
+   DHYAN (poora SSO abhi baaki hai): is app ka DATA Supabase Auth ke
+   session par chalta hai (cmp_profiles aur cmp_* tables auth.uid() se
+   bandhi hain). Isi liye access hone par bhi app apna password maangti
+   hai. Password hatane ke liye un tables ki RLS ko anon-model par laana
+   padega — wo alag, soch-samajh kar chalane wala kaam hai; dekhein
+   README › "Single login — aakhri qadam". */
+const SARV_SSO_KEY = "sarv_sso_token";
+const SARV_APP_KEY = "HOME_COMPLAINT_APP";
+/* undefined = gate ka jawab abhi nahi aaya · null = ERP se nahi aaye ya
+   session nahi chala · object = ERP se aaye hue user. App isi teen-haal
+   ke farq se tay karti hai ki login screen dikhani hai ya intezaar. */
+window.__SARV_SSO = undefined;
+
+async function sarvSsoCheck(){
+  let tok = null;
+  try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
+  if (!tok) return null;                       // ERP se nahi aaya
+  try {
+    const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/erp_app_session", {
+      method: "POST",
+      headers: { "Content-Type":"application/json", "apikey": SUPABASE_ANON,
+                 "Authorization": "Bearer " + SUPABASE_ANON },
+      body: JSON.stringify({ p_token: tok, p_app: SARV_APP_KEY })
+    });
+    if (!r.ok) return null;                    // RPC nahi hai — purana raasta
+    const d = await r.json();
+    if (d && d.success) return d.user || null;
+    if (d && d.error === "NO_APP_ACCESS")
+      return { __blocked: true, name: (d.user && d.user.name) || "" };
+    return null;                               // session khatam — apna login
+  } catch(e) { return null; }
+}
+
+function sarvSsoBlock(name){
+  // React neeche mount hota rahe — ye overlay usse upar rehta hai.
+  try { if (typeof sb !== "undefined") sb.auth.signOut(); } catch(e) {}
+  const d = document.createElement("div");
+  d.id = "sarvSsoBlock";
+  d.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;"
+    + "display:flex;align-items:center;justify-content:center;padding:24px;"
+    + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;text-align:center;";
+  d.innerHTML = '<div style="max-width:420px;">'
+    + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">&#128274;</div>'
+    + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Complaint App ka access nahi hai</h2>'
+    + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
+    + (name ? '<b>' + String(name).replace(/[<>&]/g,"") + '</b>, aapke' : 'Aapke')
+    + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Complaint App" <b>ON</b> karna hoga.</p>'
+    + '<button onclick="location.href=\'index.html\'" style="background:#0ea5e9;border:none;color:#fff;'
+    + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
+    + '&larr; ERP par wapas</button></div>';
+  (document.body || document.documentElement).appendChild(d);
+}
+
+/* Logout — dono tarah ke login ko sambhalta hai.
+   Purana (Supabase Auth) : signOut se session khatam, app apne aap login
+                            screen par chala jaata hai.
+   Naya (ERP single login) : yahan koi auth session hi nahi hota, isi liye
+                            signOut se kuch nahi hota — ERP ka session
+                            server par band karke ERP par wapas bhej dete
+                            hain. Wahi sahi bhi hai: ek login tha, to
+                            logout bhi ek hi jagah se hona chahiye. */
+async function sarvLogoutAll(){
+  let tok = null;
+  try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
+  try { if (typeof sb !== "undefined") await sb.auth.signOut(); } catch(e) {}
+  if (tok){
+    try {
+      await fetch(SUPABASE_URL + "/rest/v1/rpc/erp_app_logout", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "apikey": SUPABASE_ANON,
+                   "Authorization": "Bearer " + SUPABASE_ANON },
+        body: JSON.stringify({ p_token: tok })
+      });
+    } catch(e) {}
+    try { localStorage.removeItem(SARV_SSO_KEY); } catch(e) {}
+    location.href = "index.html";
+    return;
+  }
+  location.reload();
+}
+window.sarvLogoutAll = sarvLogoutAll;
+
+// Gate turant chalu — app ke mount hone ka intezaar nahi.
+sarvSsoCheck().then(u => {
+  if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
+  /* `undefined` se `null`-ya-user par — app isi farq se jaanti hai ki
+     gate ka jawab aa gaya. Event HAMESHA bhejte hain, jawab khaali ho
+     to bhi: warna jo log ERP se nahi aaye unki app 2.5 second ke
+     timeout tak khaali boot screen par ruki rehti thi. */
+  window.__SARV_SSO = u || null;
+  try { window.dispatchEvent(new CustomEvent("sarv-sso-ready", { detail: u || null })); } catch(e) {}
+});
 const PUSH_FN_URL   = SUPABASE_URL + "/functions/v1/send-push";
 const EMAIL_DOMAIN  = "@sarvindia.com";
 const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8dAHhsx6xyxX1BeHgHJmM63rmPn_mFA";
@@ -985,11 +1101,22 @@ function LoginScreen({toast}){
   const [mode, setMode] = useState("login"); // "login" | "signup"
 
   // ---- Login state ----
-  const [name, setName] = useState("");
+  /* ERP se aaya naam pehle se bhar dete hain (SSO gate — file ke shuru
+     me). Access ki jaanch wahi gate kar chuka hai; yahan sirf naam aata
+     hai, taaki banda dobara type na kare. Password abhi bhi is app ka
+     apna hai — wajah SARV_SSO_KEY ke paas likhi hai. */
+  const sso = (typeof window !== "undefined" && window.__SARV_SSO) || null;
+  const [name, setName] = useState(sso && sso.name ? sso.name : "");
   const [pwd, setPwd] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // Gate ka jawab login screen ke baad aaya ho to naam tab bhar dein.
+  useEffect(()=>{
+    const h = e => { if (e.detail && e.detail.name) setName(n => n || e.detail.name); };
+    window.addEventListener("sarv-sso-ready", h);
+    return ()=> window.removeEventListener("sarv-sso-ready", h);
+  },[]);
 
   // ---- Signup state ----
   const [sf, setSf] = useState({
@@ -3798,7 +3925,14 @@ function App(){
     sb.auth.getSession().then(({data}) => setSession(data.session ?? null));
     const { data:{ subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       setSession(s ?? null);
-      if (!s){
+      /* ERP ke single login par koi Supabase Auth session hota hi NAHI,
+         aur ye listener boot par ek baar `null` ke saath chalta hai —
+         bina is guard ke wo teardown ERP se set kiya hua profile turant
+         mita deta tha aur app login screen par gir jaati thi. SSO wale
+         ka logout sarvLogoutAll() se hota hai (jo ERP par bhej deta
+         hai), isi liye yahan uska teardown chahiye hi nahi. */
+      const ssoActive = !!(window.__SARV_SSO && window.__SARV_SSO.cmp_profile_id);
+      if (!s && !ssoActive){
         // Tear down EVERY view holding data. An open complaint modal that
         // survives sign-out would show the previous user's complaint to
         // whoever signs in next on the same shared factory phone.
@@ -3811,9 +3945,49 @@ function App(){
     return ()=> subscription.unsubscribe();
   },[]);
 
+  /* ── ERP ka single login ──────────────────────────────────────────
+     ERP se aaya SSO identity (file ke shuru wala gate). Jis user ka
+     Complaint account Admin Panel se JUDA hua hai (app_users.
+     cmp_profile_id), uska profile seedha usi id se load hota hai —
+     Supabase Auth ka session banane ki zaroorat hi nahi padti, yani
+     is app ka apna password dobara nahi poochha jaata.
+
+     JUDA na ho to SSO chhod deta hai aur app ka purana login aata hai.
+     Isi liye rollout dheere-dheere ho sakta hai: Admin jis-jis ko link
+     karta jaayega, unka password hatta jaayega. Kaun juda hai wo Admin
+     Panel › Users ke 🔗C pill se dikhta hai.
+
+     Role bhi usi cmp_profiles row se aata hai (Admin / Host / User /
+     Maintenance / Production Manager) — yani is app ka apna role setup
+     waisa hi rehta hai, ERP sirf "kaun hai" batata hai. */
+  const [ssoWait, setSsoWait] = useState(true);
+  useEffect(()=>{
+    let alive = true;
+    const apply = u => {
+      if (!alive) return;
+      if (!u || !u.cmp_profile_id){ setSsoWait(false); return; }
+      sb.from("cmp_profiles").select("*").eq("id", u.cmp_profile_id).maybeSingle()
+        .then(({data,error}) => {
+          if (!alive) return;
+          setSsoWait(false);
+          if (error || !data) return;                 // apna login dikh jaayega
+          if (!data.is_active){ setProfileErr("Aapka account band hai. Admin se sampark karein."); return; }
+          setProfile(data); setProfileErr("");
+        });
+    };
+    // Gate pehle hi jawab de chuka ho sakta hai, warna uske event par.
+    if (window.__SARV_SSO !== undefined){ apply(window.__SARV_SSO); return ()=>{ alive = false; }; }
+    const h = e => apply(e.detail);
+    window.addEventListener("sarv-sso-ready", h);
+    /* Net hi na chale to gate ka jawab kabhi na aaye — tab bhi app atki
+       nahi rehni chahiye, login screen aa jaaye. */
+    const t = setTimeout(()=>{ if (alive) setSsoWait(false); }, 4000);
+    return ()=>{ alive = false; clearTimeout(t); window.removeEventListener("sarv-sso-ready", h); };
+  },[]);
+
   // ---- profile ----
   useEffect(()=>{
-    if (!session){ setProfile(null); return; }
+    if (!session){ return; }   // SSO wala profile upar set ho chuka ho sakta hai
     let alive = true;
     sb.from("cmp_profiles").select("*").eq("id", session.user.id).maybeSingle()
       .then(({data,error}) => {
@@ -3976,14 +4150,20 @@ function App(){
 
   // ---- render ----
   if (session === undefined) return null;      // boot overlay is still showing
-  if (!session) return <><LoginScreen toast={toast} /><Toasts items={toasts} dismiss={dismiss} /></>;
+  /* Login screen tab, jab NA Supabase Auth ka session ho aur NA ERP ke
+     single login se profile mila ho. `ssoWait` ke bina ERP se aane par
+     login screen ek pal ko jhalak jaati thi aur phir gayab ho jaati. */
+  if (!session && !profile){
+    if (ssoWait) return null;                  // boot overlay hi dikhta rahe
+    return <><LoginScreen toast={toast} /><Toasts items={toasts} dismiss={dismiss} /></>;
+  }
 
   if (profileErr) return (
     <div className="min-h-screen grid place-items-center p-6 text-center">
       <div>
         <Ico d={I.alert} className="w-10 h-10 mx-auto text-rose-600 mb-3" />
         <p className="font-semibold">{profileErr}</p>
-        <Btn variant="outline" className="mt-4" onClick={()=>sb.auth.signOut()}>Logout</Btn>
+        <Btn variant="outline" className="mt-4" onClick={sarvLogoutAll}>Logout</Btn>
       </div>
     </div>
   );
@@ -4036,7 +4216,7 @@ function App(){
             <p className="text-[10.5px] sm:text-[11.5px] text-slate-500 truncate">{profile.name} · {profile.role}</p>
           </button>
           <BellButton toast={toast} />
-          <Btn variant="ghost" size="sm" icon={I.logout} onClick={()=>sb.auth.signOut()} aria-label="Logout" className="shrink-0" />
+          <Btn variant="ghost" size="sm" icon={I.logout} onClick={sarvLogoutAll} aria-label="Logout" className="shrink-0" />
         </div>
       </header>
 

@@ -26,6 +26,7 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `PRINTING_LOT_MIGRATION.sql` | Printing Lot ke `prl_*` tables, RPCs, views, bucket `printing-lot` + seed (sections, colors, satin codes). **Ek baar** chalayein (APPROVAL_CHAIN_MIGRATION ke baad). |
 | `FABRIC_BRAND_MASTER_MIGRATION.sql` | `fabric_master` + `brand_master` + `buyer_master` + `agency_master` + `master_revisions` (REV archive), unique index, triggers, RLS aur do rollup view. Master Data › 🧵 Fabric Master / 🏷️ Brand Master / 🏢 Buyer Master (+ Agency table) ke liye. **Ek baar** chalayein, phir Fabric & Brand screen par 🌱 **Seed Excel Data**. Dobara chalana bhi surakshit hai. Neeche dekhein. |
 | `fabric & brand master/SARV INDIA LOT SOFTWARE DATA.xlsx` | Dono master ka source — `FABRIC MASTER` (31 row × 42 column) aur `BRAND MASTER` (65 row × 23 column) sheets. Seed button ki rows isi se nikali hui hain. |
+| `UNIFIED_USERS_MIGRATION.sql` | Ek user / kai role (`app_users.roles[]`), per-user app access (`app_users.app_access`), aur saare apps ka ek session (`app_sessions` + `erp_app_login` / `erp_app_session` / `erp_app_logout`). **ADMIN_PANEL_MIGRATION.sql ke baad** ek baar chalayein. Dobara chalana surakshit. Neeche dekhein. |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
 | `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
 
@@ -394,6 +395,106 @@ baar chalayein — bas.
 - Ek save me poora card (`prl_save_lot` RPC, ek transaction). Do log ek saath
   badlein to doosre ko `VERSION_CONFLICT` milta hai — kisi ka kaam chupchaap
   nahi mitta.
+
+## 👤 Ek user, kai role, ek login
+
+Setup: `UNIFIED_USERS_MIGRATION.sql` (ADMIN_PANEL_MIGRATION ke baad).
+
+### Multi-role — access ka JOD, sign primary se
+
+`app_users` par ab do cheezein hain, aur ye farq poore design ki jaan hai:
+
+| | Kitne | Kis kaam ka |
+|---|---|---|
+| `role` (purana column) | **ek** | **PRIMARY role.** "Kisne kiya" — PR/PO par sign, audit stamp, PDF par naam, role badge. |
+| `roles text[]` (naya) | **kai** | **Sirf ACCESS.** Union: kisi feature par ek bhi role YES kahe to mil jaata hai. |
+
+Rajesh "Store Incharge + Accountant" ho to use dono ka kaam milta hai, par
+sign hamesha uske primary role se jaata hai — "kis role se sign hua" ka
+jawab kabhi dhundhla nahi hota. Aur kyunki purana `role` column waisa hi
+hai, app ka ek bhi purana `sarvCurrentRole` padhne wala hissa nahi tootta.
+
+Code me: `sarvCurrentRole` = primary, `sarvCurrentRoles` = sab,
+`sarvRoles_()` = access ke liye list. `sarvCan()` aur `sarvTabVisible()`
+isi par union lagate hain; `isAdmin()` bhi (ADMIN_PIN kisi bhi role me ho).
+
+### Login ab naam se
+
+Login screen par pehle Role chunna padta tha. Ab **naam** — uske saare
+role apne aap lag jaate hain, aur naam type karte waqt niche uske role
+dikh bhi jaate hain. Purana **"Role PIN se login"** link neeche maujood
+hai: jinka naam Admin Panel › Users me nahi hai, aur jahan ye migration
+abhi chali hi nahi, wahan wahi chalta hai (us soorat me access sirf usi
+ek role ka). Isi liye ye badlaav **kisi ko bahar nahi karta**.
+
+### Per-user app access — tri-state
+
+Admin Panel › Users › **📱 Apps** me har app par teen haal:
+
+| | Matlab |
+|---|---|
+| **auto** (default) | role-wise Tab Visibility jo kahe wahi |
+| **ON** | zaroor dikhao, role kuch bhi kahe |
+| **OFF** | zaroor chhupao, role kuch bhi kahe |
+
+Kram: `user override → role-wise matrix → code ka default`. "auto" default
+isi liye rakha ki role-wise matrix ka matlab bacha rahe — Admin ko sirf us
+ek bande par haath lagana padta hai jiska case alag hai (pehle ek banda
+chhupane ke liye naya role banana padta tha). Keys wahi hain jo Tab
+Visibility me hain (`HOME_*`), to koi nayi vocabulary nahi.
+
+Users table me `+N role` aur `📱 N` pills se turant dikh jaata hai ki kis
+user par kya haath se set hai — warna "iska button kyun nahi dikh raha"
+dhoondhne me waqt jaata hai.
+
+### Ek login, saare apps
+
+ERP login par `erp_app_login()` ek **session token** banata hai
+(`app_sessions`), jo localStorage me jaata hai — saare apps ek hi origin
+par hain, to wo use padh lete hain. Us session row par `allowed_apps` bhi
+likha jaata hai: "is user ko kaun-kaun se app khul sakte hain", jo faisla
+ERP ki JS karti hai (role matrix + per-user override). Isi liye external
+apps ko permission ka poora matrix samajhne ki zaroorat nahi.
+
+| App | Aaj kya hota hai |
+|---|---|
+| ERP | PIN login (naam se) |
+| Order Form | **poora SSO** — pehle se (sales_erp_login), bina login khulta hai |
+| Complaint App | **gate laga** — access na ho to khulti hi nahi; access ho to naam pehle se bhara |
+| Packing & Dispatch | **gate laga** — wahi |
+
+Logout par token server par revoke hota hai, aur reload par
+`sarvRefreshSsoSession_()` session se taaza roles / app_access le aata hai
+— Admin ne beech me access badla ho ya user band kar diya ho to wo turant
+lagta hai. Net / RPC fail ho to kuch nahi badalta (offline me app khulni
+chahiye).
+
+### Single login — aakhri qadam (ye abhi BAAKI hai)
+
+Complaint App aur Packing ka **gate** lag gaya hai, par wo dono abhi bhi
+**apna password** maangte hain. Wajah saaf hai: unka DATA Supabase Auth ke
+session par chalta hai — `cmp_profiles` / `profiles` aur unki tables
+`auth.uid()` se bandhi hain. Password hatane ke liye un tables ki RLS ko
+usi **anon + session-token** model par laana padega jo ERP, Order Form aur
+`fabric_master` / `buyer_master` pehle se chalate hain.
+
+Wo migration jaan-boojh kar **nahi** likhi gayi: yahan se aapki live RLS
+policies padhi nahi ja sakti thin, aur andaze se likhi gayi policy do
+chalti hui apps ka login tod sakti thi. Karne ke do kadam:
+
+1. Supabase › SQL Editor me dekhein ki `cmp_*` / `packing.*` tables par
+   aaj kaun si policies hain (`select * from pg_policies where tablename
+   like 'cmp_%';`). Wo output saamne ho to ye migration likhna seedha hai.
+2. ERP Users ko external accounts se jodd lagayein — Admin Panel › Users ›
+   **🔗 Link external accounts** (naam se match; jo naam do baar ho wo
+   chhoot jaata hai, unhe haath se jodein). Isse us bande ka purana kaam
+   (assign ki gayi tasks, uska signature, banaye hue slip) naye single
+   login ke saath juda rehta hai.
+
+Dhyan: Complaint App ka apna `admin-users` Edge Function admin ke
+**access_token** par chalta hai, isi liye ERP Admin Panel usse seedha
+user bana nahi sakta — naya Complaint user abhi bhi us app ki signup /
+admin screen se banta hai.
 
 ## Sidebar me kaunsa module kisko dikhe
 

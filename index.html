@@ -5,11 +5,33 @@
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
       <span style="font-size:26px;">🔐</span>
       <div>
-        <h3 style="margin:0;color:#0f172a;font-size:15px;">SARV INDIA Store Login</h3>
-        <p style="margin:0;font-size:11px;color:#64748b;">Role select karo aur PIN enter karo</p>
+        <h3 style="margin:0;color:#0f172a;font-size:15px;">SARV INDIA Login</h3>
+        <p style="margin:0;font-size:11px;color:#64748b;">Apna naam chunein aur PIN daalein</p>
       </div>
     </div>
-    <div class="form-group">
+
+    <!-- ═══ NAAM SE LOGIN (aam raasta) ═══════════════════════════════
+         Ek user ke kai role ho sakte hain, isi liye login par role
+         chunna hata diya gaya — naam hi kaafi hai, aur access uske
+         SAARE roles ka jod hota hai. Sign phir bhi uske primary role se
+         jaata hai.
+
+         Yahi ek login saare apps ka hai: ERP, Order Form, Complaint App
+         aur Packing. Login par ek session token banta hai jise wo apps
+         padh lete hain.
+
+         Neeche "Role PIN se login" purana raasta hai — un logon ke liye
+         jinka naam abhi Admin Panel › Users me nahi hai, aur us waqt ke
+         liye jab app_users / session wali migration abhi chali hi na ho.
+         Isi liye koi kabhi bahar nahi hota. -->
+    <div class="form-group" id="sarvLoginNameGroup">
+      <label>Naam</label>
+      <input type="text" id="sarvLoginNameBox" list="sarvLoginNameList" placeholder="&#128269; Apna naam type karein..." autocomplete="off" style="font-weight:600;">
+      <datalist id="sarvLoginNameList"></datalist>
+      <div id="sarvLoginNameHint" style="font-size:10px;color:#64748b;margin-top:3px;min-height:13px;"></div>
+    </div>
+
+    <div class="form-group" id="sarvLoginRoleGroup" style="display:none;">
       <label>Role</label>
       <select id="sarvLoginRole" style="font-weight:600;">
         <option value="">-- Select Role --</option>
@@ -39,6 +61,13 @@
     </div>
     <div id="sarvLoginError" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:7px 12px;font-size:11px;font-weight:600;color:#dc2626;margin-bottom:10px;"></div>
     <button id="sarvLoginBtn">Login</button>
+    <!-- Purane raaste par jaane / wapas aane ka switch -->
+    <div style="text-align:center;margin-top:10px;">
+      <button type="button" id="sarvLoginModeBtn" onclick="sarvToggleLoginMode()"
+              style="background:none;border:none;color:#0369a1;font-size:10.5px;font-weight:700;cursor:pointer;text-decoration:underline;font-family:inherit;padding:2px 6px;">
+        Role PIN se login karein
+      </button>
+    </div>
   </div>
 </div>
 

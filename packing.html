@@ -987,6 +987,95 @@ var supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { storageKey: 'sihf-packing-auth', persistSession: true, autoRefreshToken: true }
 });
 
+/* ERP ki tables `public` schema me hain, par is client ka default schema
+   `packing` hai. Isi liye ERP ki koi bhi table padhne ke liye hamesha
+   sarvPublic() se jaayein — seedha supabaseClient.from('buyer_master')
+   likhne par wo packing.buyer_master dhoondhta hai aur chup-chaap kuch
+   nahi milta. */
+function sarvPublic() { return supabaseClient.schema('public'); }
+
+/* ══ ERP ka single login — gate ════════════════════════════════════════
+   ERP (index.html) me login karte waqt ek session token banta hai jo
+   SAARE apps ke liye hai (app_sessions / UNIFIED_USERS_MIGRATION.sql).
+   Saare apps ek hi origin par hain, isi liye localStorage saajha hai.
+
+   Do kaam:
+     1. ROK — Admin ne Users › Apps me is user se "Packing & Dispatch"
+        OFF kar diya ho to app khulti hi nahi, aur maujooda auth session
+        bhi sign out ho jaata hai. Yani Home ka button chhupane ke baad
+        URL seedha kholkar bhi andar nahi aaya ja sakta.
+     2. PEHCHAAN — access ho to ERP se aaya naam login par pehle se.
+
+   Jaan-boojh kar NARAM: token na ho, RPC na ho (migration na chali ho),
+   ya net kharab ho — teeno soorat me gate hat jaata hai aur app ka apna
+   purana login waisa hi chalta hai.
+
+   DHYAN (poora SSO abhi baaki hai): is app ka data Supabase Auth ke
+   session par chalta hai (profiles + packing.* tables), isi liye access
+   hone par bhi app apna password maangti hai. Dekhein README › "Single
+   login — aakhri qadam". */
+var SARV_SSO_KEY = 'sarv_sso_token';
+var SARV_APP_KEY = 'HOME_PACKING';
+window.__SARV_SSO = null;
+
+async function sarvSsoCheck() {
+    var tok = null;
+    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
+    if (!tok) return null;
+    try {
+        var r = await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
+                       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+            body: JSON.stringify({ p_token: tok, p_app: SARV_APP_KEY })
+        });
+        if (!r.ok) return null;
+        var d = await r.json();
+        if (d && d.success) return d.user || null;
+        if (d && d.error === 'NO_APP_ACCESS')
+            return { __blocked: true, name: (d.user && d.user.name) || '' };
+        return null;
+    } catch (e) { return null; }
+}
+
+function sarvSsoBlock(name) {
+    try { supabaseClient.auth.signOut(); } catch (e) {}
+    var safe = String(name || '').replace(/[<>&]/g, '');
+    var d = document.createElement('div');
+    d.id = 'sarvSsoBlock';
+    d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;'
+        + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
+        + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
+    d.innerHTML = '<div style="max-width:420px;">'
+        + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">&#128274;</div>'
+        + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Packing &amp; Dispatch ka access nahi hai</h2>'
+        + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
+        + (safe ? '<b>' + safe + '</b>, aapke' : 'Aapke')
+        + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Packing &amp; Dispatch" <b>ON</b> karna hoga.</p>'
+        + '<button onclick="location.href=\'index.html\'" style="background:#0ea5e9;border:none;color:#fff;'
+        + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
+        + '&larr; ERP par wapas</button></div>';
+    (document.body || document.documentElement).appendChild(d);
+}
+
+sarvSsoCheck().then(function (u) {
+    if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
+    window.__SARV_SSO = u || null;
+    if (!u) return;
+    /* Juda hua account ho to seedha andar; warna naam bhar dete hain
+       taaki banda dobara type na kare. Dono kaam DOM ready ke baad —
+       enterApp() screens ko chhoota hai. */
+    var go = function () {
+        sarvTrySsoLogin().then(function (ok) {
+            if (ok) return;
+            var el = document.getElementById('login-username');
+            if (el && !el.value && u.name) el.value = u.name;
+        });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
+    else go();
+});
+
 // ERP setup check — agar `packing` schema API par exposed nahi hai to saaf batao,
 // warna har screen par anjaan sa error aata.
 (function checkErpSetup() {
@@ -1971,12 +2060,19 @@ async function dispatchGet(params) {
                    poora haath se type karna padta tha — ek hi party do-do
                    spelling me ghus jaati thi.
 
+                   DHYAN: `supabaseClient` ka default schema `packing` hai
+                   (upar createClient dekhein), par buyer_master ERP ki table
+                   hai — `public` me. Isi liye yahan .schema('public') lagana
+                   ZAROORI hai; iske bina query packing.buyer_master dhoondhti
+                   hai, kuch nahi milta, aur ye line chup-chaap bekaar ho
+                   jaati hai.
+
                    `error` jaan-boojh kar nahi padha ja raha: jis setup me
                    ye table nahi hai (migration nahi chali), wahan `data`
                    null aata hai aur ye line chup-chaap skip ho jaati hai —
                    Party Name field bilkul pehle jaisa kaam karta rehta hai.
                    Ye list me JODTA hai, kisi ko hataata nahi. */
-                var bmQ = supabaseClient.from('buyer_master').select('party_name')
+                var bmQ = sarvPublic().from('buyer_master').select('party_name')
                     .eq('is_active', true).limit(qLimit);
                 if (params.q) bmQ = bmQ.ilike('party_name', '%'+params.q+'%');
                 var { data: bmData } = await bmQ;
@@ -2478,11 +2574,67 @@ async function handleLogin() {
     }
 }
 
+/* ── ERP ke single login se seedha andar ──────────────────────────────
+   Jis user ka Packing account Admin Panel se JUDA hua hai (app_users.
+   pk_profile_id), uska `profiles` row seedha usi id se padh kar session
+   bana dete hain — yani is app ka apna password dobara nahi poochha
+   jaata.
+
+   Role bhi usi profiles row se aata hai (ADMIN / MD / DATA_ENTRY ...),
+   isi liye is app ka apna role setup waisa hi rehta hai; ERP sirf "kaun
+   hai" batata hai.
+
+   JUDA na ho to ye chup-chaap chhod deta hai aur purana login aata hai.
+   Isi wajah se rollout dheere-dheere ho sakta hai — Admin jis-jis ko
+   link karta jaayega, unka password hatta jaayega. Kaun juda hai wo
+   Admin Panel › Users ke 🔗P pill se dikhta hai.
+
+   session.token par 'erp-sso' likha jaata hai: purane raaste me wahan
+   Supabase auth ka access_token hota tha, par use sirf gasPost('logout')
+   bhejta hai — asli rok RLS par hai, token par nahi. */
+async function sarvTrySsoLogin() {
+    var u = window.__SARV_SSO;
+    if (!u || !u.pk_profile_id) return false;
+    try {
+        var r = await supabaseClient.from('profiles').select('*').eq('id', u.pk_profile_id).maybeSingle();
+        var p = r && r.data;
+        if (!p) return false;
+        if (p.active === false) {
+            var eb = document.getElementById('loginError');
+            if (eb) { eb.textContent = 'Aapka Packing account inactive hai — Admin se kehein.'; eb.style.display = 'block'; }
+            return false;
+        }
+        session = { token: 'erp-sso', role: p.role, fullName: p.full_name || u.name,
+                    username: p.username || u.name, signature: p.signature ? 'saved' : '' };
+        saveSessionToStorage(session);
+        enterApp();
+        return true;
+    } catch (e) { return false; }
+}
+
 async function handleLogout() {
+    var tok = null;
+    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
     if (session) {
         try {
             await gasPost({ action: 'logout', token: session.token });
         } catch (e) { /* ignore — clearing local session regardless */ }
+    }
+    /* ERP ke single login se aaye the to logout bhi wahin ka — ERP ka
+       session server par band karke ERP par wapas. Ek login tha, to
+       logout bhi ek hi jagah se hona chahiye. */
+    if (tok) {
+        try {
+            await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
+                           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+                body: JSON.stringify({ p_token: tok })
+            });
+        } catch (e) {}
+        try { localStorage.removeItem(SARV_SSO_KEY); localStorage.removeItem(PK_SESSION_KEY); } catch (e) {}
+        location.href = 'index.html';
+        return;
     }
     clearSession(false);
 }
@@ -3140,6 +3292,18 @@ document.addEventListener('DOMContentLoaded', function () {
         urlEl.style.color  = isPlaceholder ? '#f87171' : '#6ee7b7';
     }
     var restored = loadSessionFromStorage();
+    /* ERP ke single login se aayi session ko Supabase Auth se validate
+       NAHI karna — uska koi auth session hota hi nahi, to neeche ka check
+       use hamesha phenk deta aur reload par login screen aa jaati.
+
+       Iski jagah ERP ka gate hi faisla karta hai: wo har load par
+       erp_app_session() se dobara poochhta hai aur phir sarvTrySsoLogin()
+       se andar le jaata hai. Yahi sahi bhi hai — Admin ne beech me access
+       hata diya ho ya user band kar diya ho to reload par turant lagta
+       hai, kyunki sach hamesha server se aata hai, localStorage se nahi. */
+    if (restored && restored.token === 'erp-sso') {
+        restored = null;
+    }
     if (restored && restored.token) {
         // 🔍 Validate against Supabase — don't trust localStorage blindly.
         // A stale/old token (e.g. left over from testing) must NOT skip login.
