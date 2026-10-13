@@ -1148,16 +1148,108 @@ function catalogPreviewUrl(url){
   return url;
 }
 
+/* ERP ke master (Master Data › 🏢 Buyer Master — usi screen par Agency ki
+   table bhi) yahan se padhe jaate hain. Party aur agency ka asli ghar wahi
+   hai; pehle dono ke naam sirf PURANE orders se nikaalte the, isi liye nayi
+   party / agency pehli baar poori haath se type karni padti thi — aur ek hi
+   party do-do spelling me ghus jaati thi.
+
+   Har master apne try/catch me hai — error nigal kar khaali list deta hai.
+   Yahi iska poora matlab hai: jis setup me ye migration nahi chali wahan
+   table nahi milega, aur agar ye reject hota to neeche ka Promise.all
+   poora gir jaata — dropdowns, standard items, next order no, sab
+   "Database connection failed" me chale jaate. Alag-alag catch isi liye
+   hai ki ek table na mile to doosra phir bhi aa jaaye. */
+async function fetchMasterSafe(table, cols, orderCol){
+  try{
+    return await fetchAllRows(table, cols, orderCol);
+  }catch(e){
+    console.warn('ℹ️ '+table+' skip (ERP ka FABRIC_BRAND_MASTER_MIGRATION.sql chala nahi hai?):',e.message||e);
+    return [];
+  }
+}
+const fetchBuyerMaster =()=>fetchMasterSafe('buyer_master',
+  'party_name,owner_name,contact_no,address,gstin,party_staff_name,party_staff_contact_no,is_active','party_name');
+const fetchAgencyMaster=()=>fetchMasterSafe('agency_master',
+  'agency_name,contact_person,mobile_no,is_active','agency_name');
+const fetchBrandMaster =()=>fetchMasterSafe('brand_master','*','item_code');
+
+/* ══ Brand Master  ->  Order Form ka item ══════════════════════════════
+   `sales_standard_items` aur `brand_master` ek hi cheez ki do copy thin:
+   ek hi item code ke against fabric, category, weight, size, dbsb, ply,
+   sattan, moq, emboss — dono jagah. Ab Brand Master hi ek ghar hai (ERP ›
+   Master Data › 🏷️ Brand Master), aur rate / packing ke nau column bhi
+   wahin aa gaye hain.
+
+   Par dono ki BHASHA alag hai, isi liye tarjuma yahan — ek hi jagah:
+
+     brand_master                    Order Form
+     ─────────────────────────────   ──────────────────
+     bed_size   DOUBLE BED           dbsb    DB
+     blanket_ply SINGLE PLY          ply     SP      <- ye <select> hai,
+     sattan '5 INCH SATTAN'          sattan  5" PREMIUM   galat value
+       + sattan_type 'PREMIUM'                            chipakti nahi
+     size   '205*230 CM'             size    205×230 CM
+
+   `ply` aur `emboss` Order Form me <select> hain — unme value list se
+   HU-BA-HU milni chahiye, warna chup-chaap set hi nahi hoti. Baaki saare
+   combo (free text) hain, to unme koi bhi value chali jaati hai. Isi
+   wajah se in do ka map pakka hona zaroori hai. */
+const BM_DBSB={'DOUBLE BED':'DB','SINGLE BED':'SB','CARPET SIZE':'CARPET'};
+const BM_PLY ={'SINGLE PLY':'SP','DOUBLE PLY':'DP','THREE PLY':'3 PLY','NA':'NA'};
+const BM_EMBOSS={'YES':'YES','NO':'NO','NA':'NA'};
+
+// 2.2000000000000002 -> "2.2"; khaali -> ""
+const bmNum=v=>(v===null||v===undefined||v===''||isNaN(Number(v)))?'':String(Math.round(Number(v)*1000)/1000);
+
+/* '5 INCH SATTAN' + 'PREMIUM' -> '5" PREMIUM' (wahi shakal jo Order Form
+   ki Sattan list me hai). Size me number na mile to jo likha hai wahi. */
+function bmSattan(size,type){
+  const s=String(size||'').trim();
+  if(!s) return '';
+  if(/^na$/i.test(s)) return 'NA';
+  const inch=(s.match(/(\d+)/)||[])[1];
+  const t=String(type||'').trim();
+  return (inch?inch+'"':s)+(t?' '+t:'');
+}
+
+function bmToItem(r){
+  const n=v=>Number(v)||0;
+  return {
+    fabric:   bmNum(r.fabric_name),
+    category: String(r.category||''),
+    weight:   n(r.blanket_weight),
+    size:     String(r.size||'').replace(/\s*\*\s*/g,'×'),
+    dbsb:     BM_DBSB[String(r.bed_size||'').trim().toUpperCase()]||String(r.bed_size||''),
+    ply:      BM_PLY[String(r.blanket_ply||'').trim().toUpperCase()]||'',
+    sattan:   bmSattan(r.sattan,r.sattan_type),
+    moq:      bmNum(r.moq),
+    emboss:   BM_EMBOSS[String(r.emboss||'').trim().toUpperCase()]||'',
+    price:      n(r.price_per_kg),
+    packPcs:    n(r.packing_pcs),
+    labelPrice: n(r.label_price),
+    tagPrice:   n(r.tag_price),
+    bagPrice:   n(r.bag_price),
+    borePrice:  n(r.bore_price),
+    innerPrice: n(r.inner_box_price),
+    outerPrice: n(r.outer_box_price),
+    balePrice:  n(r.bale_price)
+  };
+}
+
 // doGet() default branch: dropdowns + standard items + buyer/agency details +
-// emboss catalog + next order no — all in parallel.
+// emboss catalog + next order no + Buyer Master — all in parallel.
 async function fetchDrops(){
   try{
-    const [ddRows, siRows, ordRows, embRes, nxRes]=await Promise.all([
+    const [ddRows, siRows, ordRows, embRes, nxRes, bmRows, amRows, brRows]=await Promise.all([
       fetchAllRows('sales_dropdowns','key,value','id'),
       fetchAllRows('sales_standard_items','*','created_at'),
       fetchAllRows('sales_orders','buyer_name,contact_person,mobile,address,gstin,transport_name,agency_name,agency_contact,agency_mobile,saved_at','saved_at'),
       SB.from('sales_emboss_designs').select('id,design_name,image_url,image_path').eq('active',true).order('id'),
-      SB.rpc('sales_next_order_no')
+      SB.rpc('sales_next_order_no'),
+      fetchBuyerMaster(),
+      fetchAgencyMaster(),
+      fetchBrandMaster()
     ]);
     if(embRes.error) throw embRes.error;
     if(nxRes.error) throw nxRes.error;
@@ -1193,7 +1285,36 @@ async function fetchDrops(){
         balePrice:  Number(r.bale_price)||0
       };
     });
-    STANDARD_ITEMS=items; DROPS.itemCode=Object.keys(STANDARD_ITEMS);
+
+    /* ── Brand Master upar chadhta hai (ab wahi asli ghar hai) ────────
+       Dono tables ek ki ja rahi hain. `sales_standard_items` neeche
+       base rehti hai aur Brand Master uske UPAR apni value rakhta hai —
+       replace nahi, FIELD-BY-FIELD overlay, aur sirf wahan jahan Brand
+       Master me kuch BHARA hai.
+
+       Field-by-field isi liye, poori row se nahi: migration ke beech ki
+       haalat me ek item Brand Master me ho sakta hai (Excel seed se)
+       par uske RATE khaali — poori row chadha dete to us item ka purana
+       price gayab ho jaata aur order galat rate par ban jaata. Ye tareeka
+       us khatre ko hi khatam kar deta hai.
+
+       0 ko "khaali" maana gaya hai, kyunki Order Form khud bhi 0 rate /
+       0 packPcs ko skip karti hai (onItemCodeSelect ka `if(item[...])`).
+
+       Jo brand Inactive hai wo item code list me nahi aata. */
+    (brRows||[]).forEach(r=>{
+      if(r.is_active===false) return;
+      const code=String(r.item_code||'').trim(); if(!code) return;
+      const bm=bmToItem(r), cur=items[code]||{};
+      Object.keys(bm).forEach(k=>{ if(bm[k]!=='' && bm[k]!==0 && bm[k]!=null) cur[k]=bm[k]; });
+      // Order Form ke purane default — tab lagte hain jab dono jagah khaali
+      if(!cur.dbsb)   cur.dbsb='DB';
+      if(!cur.ply)    cur.ply='SP';
+      if(!cur.emboss) cur.emboss='NO';
+      items[code]=cur;
+    });
+
+    STANDARD_ITEMS=items; DROPS.itemCode=Object.keys(STANDARD_ITEMS).sort();
 
     // readBuyerDetails() / readAgencyDetails() — later orders overwrite earlier → latest per buyer
     const bd={}, ad={};
@@ -1204,6 +1325,34 @@ async function fetchDrops(){
       if(agency) ad[agency]={contact:String(r.agency_contact||''),mobile:String(r.agency_mobile||'')};
     });
     BUYER_DETAILS=bd; AGENCY_DETAILS=ad;
+
+    /* Buyer / Agency Master ko MILAATE hain, replace nahi karte. Jis party
+       ka koi purana order hai uski details wahi se rehti hain (upar `bd` /
+       `ad` me) — wo pichhli baar ka ASLI billing contact, address, GST aur
+       transport hai. Master ka kaam hai un parties ko list me laana jinka
+       abhi tak koi order nahi bana, aur unke liye details bhar dena:
+           OWNER NAME → Contact Person      CONTACT NO → Mobile
+           ADDRESS    → Address             GSTIN      → GSTIN
+       Jo row Inactive hai wo kisi bhi dropdown me nahi aati. */
+    (bmRows||[]).forEach(r=>{
+      if(r.is_active===false) return;
+      const p=String(r.party_name||'').trim();
+      if(!p || BUYER_DETAILS[p]) return;
+      BUYER_DETAILS[p]={
+        contactPerson: String(r.owner_name||r.party_staff_name||''),
+        mobile:        String(r.contact_no||r.party_staff_contact_no||''),
+        address:       String(r.address||''),
+        gst:           String(r.gstin||''),
+        transportName:''   // transport order ke hisaab se badalta hai, master me nahi
+      };
+    });
+    (amRows||[]).forEach(r=>{
+      if(r.is_active===false) return;
+      const a=String(r.agency_name||'').trim();
+      if(!a || AGENCY_DETAILS[a]) return;
+      AGENCY_DETAILS[a]={contact:String(r.contact_person||''),mobile:String(r.mobile_no||'')};
+    });
+
     Object.keys(BUYER_DETAILS).forEach(b=>{ if(!DROPS.buyerName) DROPS.buyerName=[]; if(!DROPS.buyerName.includes(b)) DROPS.buyerName.push(b); });
     Object.keys(AGENCY_DETAILS).forEach(a=>{ if(!DROPS.agencyName) DROPS.agencyName=[]; if(!DROPS.agencyName.includes(a)) DROPS.agencyName.push(a); });
     localStorage.setItem(LS_DROPS,JSON.stringify(DROPS));

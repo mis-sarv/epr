@@ -3932,3 +3932,215 @@ body { min-width: 0; }
 #dropdownMasterSub .dd-mini-ed  { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
 #dropdownMasterSub .dd-mini-del { background:#fef2f2; border-color:#fca5a5; color:#dc2626; }
 #dropdownMasterSub .dd-mini-ok  { background:#dcfce7; border-color:#86efac; color:#166534; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FABRIC MASTER & BRAND MASTER  (Master Data ke do naye sub-tabs)
+   ---------------------------------------------------------------------
+   Dono screens EK hi layout chalati hain, isi liye saara CSS ".fbm-"
+   prefix par hai aur #fabricMasterSub / #brandMasterSub dono par lagta
+   hai. Khaas baat do hain:
+
+     * Table 40+ column ka hai, isi liye wrapper horizontally scroll
+       karta hai aur pehle do column (row no. + naam) sticky-left rehte
+       hain — warna scroll karte hi pata nahi chalta kaunsi row hai.
+     * Column GROUPS chips se on/off hote hain (.fbm-cg). Group off hone
+       par uske th/td ko .fbm-off class milti hai — koi DOM rebuild nahi,
+       sirf display:none. Isi wajah se 42 column ka table bhi laptop par
+       padha-likha rehta hai.
+   ═══════════════════════════════════════════════════════════════════ */
+#fabricMasterSub, #brandMasterSub { font-size:11px; }
+
+/* ── toolbar ─────────────────────────────────────────────────────── */
+.fbm-bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+.fbm-bar .form-control { height:30px; font-size:11px; }
+.fbm-search { flex:1 1 220px; min-width:180px; }
+.fbm-sel { flex:0 0 auto; width:auto; min-width:118px; height:30px; font-size:11px; padding:0 8px; }
+.fbm-btn {
+  border:1px solid #cbd5e1; background:#f8fafc; color:#334155; border-radius:6px;
+  padding:0 11px; height:28px; font-size:10.5px; font-weight:700; cursor:pointer;
+  font-family:inherit; white-space:nowrap; display:inline-flex; align-items:center; gap:4px;
+}
+.fbm-btn:hover:not(:disabled) { background:#eef2f7; }
+.fbm-btn:disabled { opacity:.4; cursor:not-allowed; }
+.fbm-btn-new  { background:linear-gradient(135deg,#0369a1,#075985); border-color:#075985; color:#fff; }
+.fbm-btn-new:hover:not(:disabled)  { filter:brightness(1.08); }
+.fbm-btn-csv  { background:#16a34a; border-color:#15803d; color:#fff; }
+.fbm-btn-csv:hover:not(:disabled)  { filter:brightness(1.08); }
+.fbm-btn-seed { background:#fef3c7; border-color:#fcd34d; color:#92400e; }
+.fbm-btn-imp  { background:#ede9fe; border-color:#c4b5fd; color:#5b21b6; }
+
+/* count / link-health pills */
+.fbm-pill {
+  display:inline-flex; align-items:center; gap:4px; border-radius:99px;
+  padding:3px 9px; font-size:10px; font-weight:800; white-space:nowrap;
+}
+.fbm-pill-n  { background:#e2e8f0; color:#334155; }
+.fbm-pill-ok { background:#dcfce7; color:#166534; }
+.fbm-pill-wr { background:#fef3c7; color:#92400e; cursor:pointer; }
+.fbm-pill-er { background:#fee2e2; color:#b91c1c; cursor:pointer; }
+.fbm-pill-wr:hover, .fbm-pill-er:hover { filter:brightness(.96); }
+
+/* ── column-group chips ──────────────────────────────────────────── */
+.fbm-cgbar {
+  display:flex; gap:5px; align-items:center; flex-wrap:wrap;
+  background:#f8fafc; border:1px solid #e2e8f0; border-radius:7px;
+  padding:6px 8px; margin-bottom:8px;
+}
+.fbm-cgbar > b { font-size:9.5px; color:#64748b; text-transform:uppercase; letter-spacing:.3px; }
+.fbm-cg {
+  border:1px solid #cbd5e1; background:#fff; color:#64748b; border-radius:99px;
+  padding:2px 10px; font-size:10px; font-weight:700; cursor:pointer; font-family:inherit;
+}
+.fbm-cg.on { background:#0f172a; border-color:#0f172a; color:#fff; }
+.fbm-cg.locked { opacity:.45; cursor:not-allowed; }
+
+/* ── table ───────────────────────────────────────────────────────── */
+.fbm-wrap {
+  overflow:auto; max-height:min(58vh, 560px); border:1px solid #cbd5e1; border-radius:8px;
+  scrollbar-width:auto; scrollbar-color:#94a3b8 #f1f5f9;
+}
+.fbm-wrap::-webkit-scrollbar { width:12px; height:12px; }
+.fbm-wrap::-webkit-scrollbar-thumb { background:#94a3b8; border-radius:7px; }
+.fbm-wrap::-webkit-scrollbar-track { background:#f1f5f9; }
+.fbm-table { border-collapse:separate; border-spacing:0; font-size:10.5px; width:max-content; min-width:100%; }
+.fbm-table th, .fbm-table td { border-right:1px solid #e2e8f0; border-bottom:1px solid #f1f5f9; padding:4px 7px; white-space:nowrap; }
+.fbm-table thead th {
+  background:#0f172a; color:#fff; font-weight:800; font-size:9.5px; text-transform:uppercase;
+  position:sticky; top:0; z-index:3; border-bottom:1px solid #334155; text-align:left;
+}
+/* group band above the header row — bas yaad dilata hai konsa column kis
+   group ka hai, isi liye click karne par wahi group band ho jaata hai. */
+.fbm-table thead tr.fbm-gband th {
+  top:0; z-index:4; font-size:9px; letter-spacing:.4px; text-align:center;
+  background:#1e293b; cursor:pointer;
+}
+.fbm-table thead tr.fbm-hrow th { top:21px; }
+/* sticky left — # aur pehla naam column */
+.fbm-table th.fbm-stick1, .fbm-table td.fbm-stick1 { position:sticky; left:0;  z-index:2; }
+.fbm-table th.fbm-stick2, .fbm-table td.fbm-stick2 { position:sticky; left:38px; z-index:2; box-shadow:2px 0 0 #cbd5e1; }
+.fbm-table thead th.fbm-stick1, .fbm-table thead th.fbm-stick2 { z-index:5; background:#0f172a; }
+.fbm-table tbody td.fbm-stick1 { background:#f8fafc; color:#94a3b8; text-align:center; width:38px; }
+.fbm-table tbody td.fbm-stick2 { background:#fff; font-weight:800; color:#0f172a; }
+.fbm-table tbody tr:nth-child(even) td.fbm-stick2 { background:#f8fafc; }
+.fbm-table tbody tr:hover td { background:#eff6ff !important; }
+.fbm-table tbody tr.fbm-inactive td { opacity:.52; font-style:italic; }
+.fbm-table td.fbm-na { color:#cbd5e1; }
+.fbm-table td.fbm-act { text-align:center; }
+/* Field def ka `ctr:1` — header aur uske saare cells centre. */
+.fbm-table th.fbm-ctr, .fbm-table td.fbm-ctr { text-align:center; }
+.fbm-off { display:none !important; }
+.fbm-empty { text-align:center; padding:26px 14px; color:#94a3b8; font-size:11px; }
+
+/* row ke chhote buttons */
+.fbm-ib {
+  border:1px solid #cbd5e1; background:#f8fafc; border-radius:4px; padding:1px 6px;
+  font-size:10px; cursor:pointer; font-family:inherit; line-height:1.5;
+}
+.fbm-ib:hover { filter:brightness(.96); }
+.fbm-ib-ed  { background:#eff6ff; border-color:#93c5fd; color:#1d4ed8; }
+.fbm-ib-rv  { background:#fff7ed; border-color:#fdba74; color:#9a3412; }
+.fbm-ib-hs  { background:#f5f3ff; border-color:#c4b5fd; color:#5b21b6; }
+.fbm-ib-del { background:#fef2f2; border-color:#fca5a5; color:#dc2626; }
+.fbm-ib-off { opacity:.3; cursor:not-allowed; }
+
+/* rev badge + status */
+.fbm-rev {
+  background:#1e293b; color:#fff; border-radius:4px; padding:1px 6px;
+  font-size:9.5px; font-weight:800; letter-spacing:.3px;
+}
+.fbm-st { border-radius:99px; padding:1px 8px; font-size:9.5px; font-weight:800; }
+.fbm-st-a { background:#dcfce7; color:#166534; }
+.fbm-st-i { background:#fee2e2; color:#b91c1c; }
+
+/* linked-brand / linked-fabric chips */
+.fbm-link {
+  display:inline-block; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8;
+  border-radius:4px; padding:1px 6px; font-size:9.5px; font-weight:800;
+  cursor:pointer; margin:0 2px 2px 0; font-family:inherit;
+}
+.fbm-link:hover { background:#dbeafe; }
+.fbm-link-bad { background:#fef2f2; border-color:#fca5a5; color:#b91c1c; }
+.fbm-link-bad:hover { background:#fee2e2; }
+
+/* ── form modal ──────────────────────────────────────────────────── */
+.fbm-ov {
+  display:none; position:fixed; inset:0; background:rgba(15,23,42,.62);
+  z-index:9600; align-items:flex-start; justify-content:center; padding:18px 14px; overflow:auto;
+}
+.fbm-ov.open { display:flex; }
+.fbm-box {
+  background:#fff; border-radius:12px; width:100%; max-width:1180px;
+  box-shadow:0 22px 60px rgba(0,0,0,.34); display:flex; flex-direction:column;
+  max-height:calc(100vh - 36px);
+}
+.fbm-box-sm { max-width:760px; }
+.fbm-head {
+  display:flex; align-items:center; gap:10px; padding:12px 16px;
+  border-bottom:1px solid #e2e8f0; border-radius:12px 12px 0 0; background:#f8fafc;
+}
+.fbm-head h3 { margin:0; font-size:14px; font-weight:800; color:#0f172a; }
+.fbm-head-sub { font-size:10.5px; color:#64748b; margin-top:2px; }
+.fbm-x {
+  margin-left:auto; border:1px solid #cbd5e1; background:#fff; color:#64748b;
+  border-radius:6px; width:28px; height:28px; font-size:14px; cursor:pointer; font-family:inherit;
+}
+.fbm-x:hover { background:#fef2f2; border-color:#fca5a5; color:#dc2626; }
+.fbm-body { padding:14px 16px; overflow:auto; flex:1 1 auto; }
+.fbm-foot {
+  display:flex; gap:8px; align-items:center; padding:11px 16px;
+  border-top:1px solid #e2e8f0; background:#f8fafc; border-radius:0 0 12px 12px; flex-wrap:wrap;
+}
+.fbm-foot-note { font-size:10px; color:#64748b; flex:1 1 180px; }
+
+/* form me field groups — ek group = ek fieldset */
+.fbm-fs { border:1px solid #e2e8f0; border-radius:8px; padding:9px 11px 11px; margin-bottom:11px; }
+.fbm-fs > legend { font-size:9.5px; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:.4px; padding:0 5px; }
+.fbm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:8px; }
+.fbm-f { display:flex; flex-direction:column; gap:2px; }
+.fbm-f > label { font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase; }
+.fbm-f > label .fbm-req { color:#dc2626; }
+.fbm-f input, .fbm-f select, .fbm-f textarea {
+  height:28px; font-size:11px; padding:0 7px; border:1px solid #cbd5e1; border-radius:5px;
+  font-family:inherit; color:#0f172a; background:#fff; width:100%; box-sizing:border-box;
+}
+.fbm-f textarea { height:auto; min-height:52px; padding:5px 7px; resize:vertical; }
+.fbm-f input:focus, .fbm-f select:focus, .fbm-f textarea:focus { outline:none; border-color:#0284c7; box-shadow:0 0 0 2px #e0f2fe; }
+.fbm-f input:read-only { background:#f1f5f9; color:#64748b; }
+.fbm-f.bad input, .fbm-f.bad select { border-color:#f87171; background:#fef2f2; }
+.fbm-f small { font-size:9px; color:#94a3b8; }
+.fbm-note {
+  background:#eff6ff; border:1px solid #bfdbfe; border-radius:7px; padding:8px 10px;
+  font-size:10.5px; color:#1e40af; margin-bottom:11px;
+}
+.fbm-note-w { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.fbm-note-r { background:#fef2f2; border-color:#fca5a5; color:#b91c1c; }
+
+/* ── revision history ────────────────────────────────────────────── */
+.fbm-rv-row {
+  display:flex; gap:10px; align-items:flex-start; border:1px solid #e2e8f0;
+  border-radius:7px; padding:8px 10px; margin-bottom:7px; background:#fff;
+}
+.fbm-rv-row.cur { border-color:#86efac; background:#f0fdf4; }
+.fbm-rv-n {
+  flex:0 0 52px; text-align:center; background:#1e293b; color:#fff; border-radius:5px;
+  padding:4px 0; font-size:10px; font-weight:800;
+}
+.fbm-rv-row.cur .fbm-rv-n { background:#15803d; }
+.fbm-rv-mid { flex:1 1 auto; min-width:0; }
+.fbm-rv-act { font-size:10.5px; font-weight:800; color:#0f172a; }
+.fbm-rv-meta { font-size:9.5px; color:#64748b; margin-top:1px; }
+.fbm-rv-why { font-size:10px; color:#92400e; background:#fffbeb; border-radius:4px; padding:2px 6px; margin-top:4px; display:inline-block; }
+.fbm-rv-diff { font-size:10px; color:#475569; margin-top:4px; line-height:1.7; }
+.fbm-rv-diff code { background:#f1f5f9; border-radius:3px; padding:0 4px; font-size:9.5px; }
+.fbm-rv-diff .o { color:#b91c1c; text-decoration:line-through; }
+.fbm-rv-diff .n { color:#166534; font-weight:700; }
+.fbm-rv-side { flex:0 0 auto; display:flex; flex-direction:column; gap:4px; }
+
+/* ── phone / tablet ──────────────────────────────────────────────── */
+@media (max-width:820px) {
+  .fbm-wrap { max-height:none; }
+  .fbm-table th.fbm-stick2, .fbm-table td.fbm-stick2 { position:static; box-shadow:none; }
+  .fbm-grid { grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); }
+  .fbm-search { flex:1 1 100%; }
+  .fbm-box { max-height:calc(100vh - 20px); }
+}

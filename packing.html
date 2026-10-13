@@ -1957,12 +1957,30 @@ async function dispatchGet(params) {
             var uniq = {};
 
             if (params.field === 'partyNames') {
-                // Only parties that currently have a PENDING or IN PROGRESS order
+                // Parties that currently have a PENDING or IN PROGRESS order
                 var { data: ordData } = await supabaseClient.from('orders').select('party_name')
                     .in('status', ['PENDING', 'IN PROGRESS'])
                     .ilike('party_name', '%'+(params.q||'')+'%')
                     .limit(qLimit);
                 (ordData||[]).forEach(function(r){ if(r.party_name) uniq[r.party_name] = 1; });
+
+                /* ...PLUS ERP › Master Data › 🏢 Buyer Master (buyer_master).
+                   Pehle sirf upar wali list thi, to jis party ka koi pending
+                   order nahi tha (nayi party, ya jiske saare order poore ho
+                   gaye) uska naam yahan kabhi suggest hi nahi hota tha aur
+                   poora haath se type karna padta tha — ek hi party do-do
+                   spelling me ghus jaati thi.
+
+                   `error` jaan-boojh kar nahi padha ja raha: jis setup me
+                   ye table nahi hai (migration nahi chali), wahan `data`
+                   null aata hai aur ye line chup-chaap skip ho jaati hai —
+                   Party Name field bilkul pehle jaisa kaam karta rehta hai.
+                   Ye list me JODTA hai, kisi ko hataata nahi. */
+                var bmQ = supabaseClient.from('buyer_master').select('party_name')
+                    .eq('is_active', true).limit(qLimit);
+                if (params.q) bmQ = bmQ.ilike('party_name', '%'+params.q+'%');
+                var { data: bmData } = await bmQ;
+                (bmData||[]).forEach(function(r){ if(r.party_name) uniq[r.party_name] = 1; });
             } else {
                 // Supervisors come from profiles table, rest from packing_slips
                 var table = params.field === 'supervisors' ? 'profiles' : 'packing_slips';

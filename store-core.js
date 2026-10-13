@@ -2796,6 +2796,17 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
   if(id==='employeeMasterSub')loadEmployeeMaster().catch(()=>{});
   if(id==='machineMasterSub') loadMachineMaster().catch(()=>{});
+  /* Fabric aur Brand — dono ek doosre ka data padhte hain (link chips,
+     fabric dropdown, "unlinked" count), isi liye jo khule wo doosre ko
+     bhi chupchaap load karwa leta hai (sarvFbmLoad ke andar). */
+  if(id==='fabricMasterSub') sarvFbmLoad('FABRIC').catch(()=>{});
+  if(id==='brandMasterSub')  sarvFbmLoad('BRAND').catch(()=>{});
+  /* Buyer Master ki screen par DO table hain — party aur agency. Dono
+     alag master hain (alag table, alag access), isi liye dono load. */
+  if(id==='buyerMasterSub'){
+    sarvFbmLoad('BUYER').catch(()=>{});
+    sarvFbmLoad('AGENCY').catch(()=>{});
+  }
   if(id==='dropdownMasterSub')loadDropdownMaster().catch(()=>{});
   if(id==='settingsSub'){
     const canPwd=sarvCan('CHANGE_PASSWORDS');
@@ -3543,6 +3554,50 @@ const SARV_FEATURES=[
      liye ye feature AUR Admin login — dono chahiye (sarvDdGuard_). Isi liye
      ise kisi aur role ko de dene se bhi wo badlaav nahi kar paayega. */
   {key:'DROPDOWN_MANAGE',label:'DROPDOWN MASTER EDIT',hint:'Dropdown Master me value add / edit / remove (Admin login bhi zaroori)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+
+  /* ── Fabric & Brand Master ───────────────────────────────────────
+     Har master par CHAAR alag haq, kyunki ye ek jaise nahi hain:
+
+       NEW    — nayi row banana (REV 1 par)
+       EDIT   — galti sudharna, REV wahi rehta hai
+       REVISE — soch-samajh kar naya version, REV +1, kaaran ke saath
+       DELETE — hamesha ke liye hatana (sabse khatarnak, isi liye alag)
+
+     Yahi wajah hai ki EDIT aur REVISE ek row me nahi hain: production
+     ko "kis REV par bana tha" ka jawab chahiye hota hai, to REV badalne
+     ka haq alag se dena/rokna padta hai. Neeche ke paanch rows DONO
+     master par lagte hain (aur aage jo master banenge un par bhi). */
+  {group:'🧵 Fabric & Brand Master'},
+  {key:'FABRIC_NEW',label:'FABRIC — NEW',hint:'Fabric Master me nayi fabric row (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'FABRIC_EDIT',label:'FABRIC — EDIT',hint:'Fabric row sudharna — REV number wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
+  {key:'FABRIC_REVISE',label:'FABRIC — REVISE (REV +1)',hint:'Naya version banana — REV 1 → 2 → 3 ..., kaaran likhna zaroori',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'FABRIC_DELETE',label:'FABRIC — DELETE',hint:'Fabric row hamesha ke liye hatana (jiske brands hain wo phir bhi nahi hatega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'BRAND_NEW',label:'BRAND — NEW',hint:'Brand Master me naya ITEM CODE (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BRAND_EDIT',label:'BRAND — EDIT',hint:'Brand row sudharna — REV number wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
+  {key:'BRAND_REVISE',label:'BRAND — REVISE (REV +1)',hint:'Naya version banana — REV 1 → 2 → 3 ..., kaaran likhna zaroori',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BRAND_DELETE',label:'BRAND — DELETE',hint:'Brand row hamesha ke liye hatana',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Buyer Master ka naam Order Form aur Packing ke dropdown me jaata hai,
+     isi liye NEW thoda khula rakha gaya hai (Store Incharge / Accountant
+     bhi nayi party jod sakte hain — warna slip banate waqt kaam rukta
+     hai). DELETE phir bhi sirf Admin: party ka naam purane order aur
+     packing slip me likha hota hai. */
+  {key:'BUYER_NEW',label:'BUYER — NEW',hint:'Buyer Master me nayi party (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_IC_PIN','USER_AC_PIN']},
+  {key:'BUYER_EDIT',label:'BUYER — EDIT',hint:'Party ka naam / owner / contact sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
+  {key:'BUYER_REVISE',label:'BUYER — REVISE (REV +1)',hint:'Naya version — jaise party ka owner ya number badla, purana record rakhte hue',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BUYER_DELETE',label:'BUYER — DELETE',hint:'Party hamesha ke liye hatana (purane order / slip me naam phir bhi likha rahega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Agency Master Buyer Master ki hi screen par doosri table hai, par
+     access iska apna hai — agency ka contact badalna aur party ka data
+     badalna do alag kaam hain. */
+  {key:'AGENCY_NEW',label:'AGENCY — NEW',hint:'Buyer Master screen ki Agency table me nayi agency (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'AGENCY_EDIT',label:'AGENCY — EDIT',hint:'Agency ka naam / contact person / mobile sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
+  {key:'AGENCY_REVISE',label:'AGENCY — REVISE (REV +1)',hint:'Naya version — jaise agency ka contact person badla, purana record rakhte hue',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'AGENCY_DELETE',label:'AGENCY — DELETE',hint:'Agency hamesha ke liye hatana (purane order me naam phir bhi likha rahega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_REV_HISTORY',label:'MASTER — REVISION HISTORY',hint:'🕘 REV 1 se aaj tak kaun, kab, kya badla — sirf dekhna',def:'ALL'},
+  {key:'MASTER_REV_RESTORE',label:'MASTER — REVISION RESTORE',hint:'Kisi purani REV ki values wapas lagana (wo khud nayi REV banti hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_ACTIVATE',label:'MASTER — ACTIVE / INACTIVE',hint:'Row ko naye forms se hatana (links zinda rehte hain) — Delete se behtar raasta',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'MASTER_IMPORT',label:'MASTER — CSV IMPORT / SEED',hint:'Excel/CSV se bulk import aur 🌱 Seed Excel Data (NEW / EDIT ka haq bhi chahiye)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_EXPORT',label:'MASTER — CSV EXPORT',hint:'Fabric / Brand Master ka 💾 Export CSV',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN']},
+
   {group:'📄 Records & Reports'},
   {key:'EXPORT_CSV',label:'EXPORT CSV',hint:'PR / Follow-Up / Item Ledger / PO Details ka Export',def:'ALL'},
   {key:'PDF_VIEW',label:'PDF VIEW',hint:'Reports, PO list, Follow-Up ke PDF links',def:'ALL'},
@@ -3640,6 +3695,26 @@ const SARV_TABS=[
   {key:'MD_SUPPLIER',label:'Supplier Master',def:'ALL'},
   {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
   {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
+  {key:'MD_FABRIC',label:'Fabric Master',hint:'Excel ki FABRIC MASTER sheet — fabric name + unit, roll weight, yarn planning, bora',def:'ALL'},
+  {key:'MD_BRAND',label:'Brand Master',hint:'Excel ki BRAND MASTER sheet — item code, size, ply, sattan, packing, trims',def:'ALL'},
+  {key:'MD_BUYER',label:'Buyer Master',hint:'Party (buyer) list — Order Form aur Packing ke Party Name dropdown isi se bharte hain',def:'ALL'},
+  /* Agency ki apni sub-tab nahi — ye Buyer Master ki screen par DOOSRI
+     table hai, isi liye row poora dabba on/off karti hai. */
+  {key:'MD_AGENCY',label:'Buyer Master › Agency table',hint:'Usi screen par neeche ki Agency table (Order Form ka Agency Name / Contact / Mobile)',def:'ALL'},
+  {key:'MD_BUYER_BILLING',label:'Buyer Master › Address + GSTIN columns',hint:'Billing group — Order Form ke Address aur GSTIN. Off karne par form me bhi ye do field nahi dikhte.',def:'ALL'},
+  /* Ye teen poori screen nahi, sirf COLUMN GROUPS chhupate hain — form me
+     bhi wahi group gayab ho jaata hai, isi liye jis role ko yarn ka hisaab
+     ya packing ki trims nahi dekhni, uske liye screen band karne ki zaroorat
+     nahi padti. Off hone par us group ke field save par chhede bhi nahi
+     jaate (purani value waisi hi rehti hai). */
+  {key:'MD_FABRIC_YARN',label:'Fabric Master › Yarn Planning columns',hint:'PYLE, PC PO / MICRO denier-filament-ends, yarn per roll aur as-per-order — planning ka data',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
+  {key:'MD_BRAND_PACKING',label:'Brand Master › Packing / Trims columns',hint:'Master & slave packing, labels, tags, dori, insert card, barcode sticker',def:'ALL'},
+  /* Rate columns = paisa. Default sirf unhi ko jo Order Form me rate
+     bharte hain. Off hone par form me bhi ye nau field nahi dikhte, aur
+     save par chhede bhi nahi jaate — yani ye role rate ko galti se mita
+     bhi nahi sakta. */
+  {key:'MD_BRAND_RATES',label:'Brand Master › Rate / Packing-pcs columns',hint:'Price per kg, packing pcs aur label/tag/bag/bore/inner/outer/bale ke trim rate (sales_standard_items se aaye)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'MD_REV_COLUMN',label:'Fabric / Brand Master › REV + Status columns',hint:'REV badge aur Active/Inactive column. Off karne par 🕘 History column bhi chhup jaata hai.',def:'ALL'},
   {key:'MD_DROPDOWN',label:'Dropdown Master',hint:'App ke saare fixed dropdowns ki values (sales_dropdowns)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
   {key:'MD_ITEM_NEWPR',label:'Item Master › New PR Generation',hint:'NEW PR column + 📝 Generate New PR button',def:['ADMIN_PIN']},
@@ -3676,7 +3751,7 @@ const SARV_TABS=[
   {key:'M_RECV_received',label:'PO Receipts › Received',def:'ALL'},
   {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Approve / Reject sirf MD kar sakta hai',def:['USER_MD_PIN','ADMIN_PIN']},
 ];
-const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
+const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
 const SARV_PROD_SUB_KEY={designMasterProdSub:'PROD_SUB_DESIGN'};
 const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
@@ -3786,6 +3861,20 @@ function sarvApplySubTabs_(){
     b.style.display=(!k||sarvTabVisible(k))?'':'none';
   });
   const ap=byId('sarvAdminPanel');if(ap)ap.style.display=isAdmin()?'':'none';
+  /* Fabric / Brand Master ka poora table — columns, chips aur row ke
+     buttons — Feature Access aur Tab Visibility se banta hai. Admin ne
+     abhi matrix save kiya ho to khuli screen turant naye hisaab se dikhni
+     chahiye, warna purane buttons dikhte rehte hain aur sirf click par
+     "access nahi" milta. Sirf JO KHULI HAI usi ko dobara banate hain. */
+  if(typeof sarvFbmRender==='function'){
+    [['fabricMasterSub','FABRIC'],['brandMasterSub','BRAND'],
+     ['buyerMasterSub','BUYER'],['buyerMasterSub','AGENCY']].forEach(([sub,code])=>{
+      const el=byId(sub);
+      if(el&&el.style.display!=='none'&&sarvFbmState[code].loaded){
+        try{sarvFbmRender(code);}catch(e){}
+      }
+    });
+  }
   // Item Master › New PR Generation — column + button follow Tab Visibility.
   byId('itemMasterTable')?.classList.toggle('im-hide-newpr',!sarvTabVisible('MD_ITEM_NEWPR'));
   if(typeof sarvSyncItemPrSelUi_==='function')sarvSyncItemPrSelUi_();
@@ -6489,6 +6578,59 @@ const SARV_DROPDOWNS=[
 
   /* printing-lot.html ye keys seedha sales_dropdowns se padhta hai (wahi niyam:
      rows hain to wahi, warna ye default). Unit ke liye erp_designUnit hi. */
+  /* ── Fabric & Brand Master ───────────────────────────────────────
+     Ye saare `def` seedha Excel sheet ki DATA VALIDATION lists se liye
+     gaye hain (wahi options jo sheet ke dropdown me the). Matlab: list
+     badalni ho to SQL nahi, is screen se badlegi — aur dono master ke
+     form turant nayi list padhne lagenge. DOM target jaan-boojh kar
+     nahi hai: Fabric / Brand ke form JS se bante hain aur har baar
+     sarvDropdownList() se taaza list lete hain. */
+  {group:'🧵 Fabric & Brand Master'},
+  {key:'erp_fabricUnit',label:'Fabric Unit',
+   hint:'Fabric Master › UNIT. Ek hi fabric name dono unit me ho sakta hai — 1.8 UNIT 1 aur 1.8 UNIT 2 alag rows hain.',
+   where:'Fabric Master form + filter',
+   def:['UNIT 1','UNIT 2']},
+  {key:'erp_fabricQuality',label:'Fabric Quality',
+   hint:'Fabric Master › FABRIC QUALITY (Excel ki validation list)',
+   where:'Fabric Master form + filter',
+   def:['MINK','MINK PLUS','SUPERSOFT','SUPER CLOUDY','DIGITAL-350GSM','DIGITAL-450GSM']},
+  {key:'erp_brandCategory',label:'Brand Category',
+   hint:'Brand Master › CATEGORY. Dhyan: Fabric Quality me "SUPERSOFT" hai par Brand sheet me "SUPER SOFT" — dono list alag isi liye rakhi hain.',
+   where:'Brand Master form + filter',
+   def:['MINK','MINK PLUS','SUPER CLOUDY','SUPER SOFT']},
+  {key:'erp_brandSize',label:'Blanket Size (Brand)',
+   hint:'Brand Master › SIZE',
+   where:'Brand Master form',
+   def:['150*200 CM','150*205 CM','150*210 CM','150*220 CM','160*220 CM','200*225 CM','205*230 CM','210*230 CM','220*240 CM','225 CMx45 MTR']},
+  {key:'erp_brandBedSize',label:'Bed Size (Brand)',
+   hint:'Brand Master › BED SIZE',
+   where:'Brand Master form + filter',
+   def:['CARPET SIZE','DOUBLE BED','SINGLE BED']},
+  {key:'erp_brandPly',label:'Blanket Ply (Brand)',
+   hint:'Brand Master › BLANKET PLY',
+   where:'Brand Master form + filter',
+   def:['SINGLE PLY','DOUBLE PLY','THREE PLY']},
+  {key:'erp_brandSattan',label:'Sattan Size (Brand)',
+   hint:'Brand Master › SATTAN SIZE — kitne inch ka. "NA" khud ek valid option hai (jahan sattan lagta hi nahi). Grade ki apni alag list hai: Sattan Type.',
+   where:'Brand Master form + filter',
+   def:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA']},
+  {key:'erp_brandSattanType',label:'Sattan Type (Brand)',
+   hint:'Brand Master › SATTAN TYPE — sattan ka grade. Size se alag rakha gaya hai, isi liye "saare PREMIUM brands" filter se mil jaate hain.',
+   where:'Brand Master form + filter',
+   def:['STANDARD','PREMIUM']},
+  {key:'erp_brandMasterPackType',label:'Master Packing Type',
+   hint:'Brand Master › MASTER PACKING TYPE',
+   where:'Brand Master form',
+   def:['BALE','BORA','OUTER BOX','ROLL','NA']},
+  {key:'erp_brandSlavePackType',label:'Slave Packing Type',
+   hint:'Brand Master › SLAVE PACKING TYPE',
+   where:'Brand Master form',
+   def:['BAG','INNER BOX','LOOSE PCS','NA']},
+  {key:'erp_fbmYesNo',label:'YES / NO (Master fields)',
+   hint:'Emboss, packing required aur saari labels / tags / dori / insert card / barcode sticker — sab yahi list padhte hain',
+   where:'Brand Master form ke YES/NO fields',
+   def:['NO','YES','NA']},
+
   {group:'🖨️ Manufacturing › Printing Lot Card'},
   {key:'erp_prlFabricCategory',label:'Fabric Category',hint:'Printing Lot Card › Fabric Category',def:['MINK','SUPER CLOUDY','SHERPA','FLANNEL']},
   {key:'erp_prlBedSize',label:'Bed Size (Lot Card)',hint:'Printing Lot Card › Bed Size',def:['Double Bed','Single Bed','King Size','Queen Size']},
@@ -16613,4 +16755,1739 @@ window.addEventListener('DOMContentLoaded',()=>{
       })
       .catch(e=>console.warn('[SARV PDF] startup link flush skipped:',e.message||e));
   },4000);   // after the page's own first loads, not competing with them
+});
+
+/* ================================================================
+   FABRIC & BRAND MASTER   (tables: fabric_master, brand_master,
+                            master_revisions)
+   ----------------------------------------------------------------
+   "SARV INDIA LOT SOFTWARE DATA.xlsx" ki do sheets — FABRIC MASTER
+   (31 rows x 42 column) aur BRAND MASTER (65 rows x 23 column) — ka
+   ERP version. Dono screens EK hi engine chalati hain; farq sirf
+   SARV_FBM ke do config object ka hai.
+
+   EK ARRAY, PAANCH KAAM
+   ---------------------
+   Har master ka `fields` array (SARV_FAB_FIELDS / SARV_BR_FIELDS)
+   akela hi chalata hai:
+       1. table ka head + rows        4. CSV export ke headers
+       2. New / Edit / Revise ka form 5. revision diff ("kya badla")
+       3. CSV import ka header match
+   Isi liye naya column jodna = us array me EK line jodna. HTML me
+   kuch nahi badalna padta.
+
+   REVISION CONTROL  (yahi "Revise 1, 2, 3 ..." hai)
+   -------------------------------------------------
+   Har row par `rev_no` hai, Rev 1 se shuru. Do alag kaam, jaan-boojh
+   kar alag rakhe gaye:
+
+     * EDIT   — galti sudharna. rev_no WAHI rehta hai.
+     * REVISE — soch-samajh kar naya version. rev_no +1 hota hai aur
+                KAARAN likhna zaroori hai.
+
+   Dono soorat me badlav se PEHLE ka poora snapshot
+   `master_revisions` me chala jaata hai, us rev_no ke saath jo wo tab
+   tha. Faida: purana lot card / PR jis rev par bana tha, wo rev aaj
+   bhi padhi ja sakti hai — aur 🕘 History se kisi bhi purani rev par
+   wapas (restore) bhi ja sakte hain (wo khud ek nayi rev banti hai,
+   kuch mitta nahi).
+
+   `master_revisions` na mile to screen chalti rehti hai, bas archive
+   skip ho jaata hai (console warning) — master ka apna write kabhi
+   isliye fail nahi hota.
+
+   LINK  (dono master aapas me jude hain)
+   --------------------------------------
+   Brand ka FABRIC NAME Fabric Master ki row ko point karta hai:
+     * Brand form ka Fabric dropdown LIVE fabric_master se bharta hai.
+     * Fabric row par uske brands ki chips — click karne par Brand
+       Master us fabric par filter hokar khulta hai.
+     * Jis brand ka fabric master me nahi hai (Excel me aise 2 hain —
+       2.25 aur 3.3) uski chip LAAL dikhti hai aur toolbar me "⚠️ N
+       unlinked" pill aata hai. Data pehle se galat tha; ab dikhta hai.
+     * Fabric DELETE roka jaata hai jab tak uske brands hain —
+       Inactive karna hamesha mil jaata hai (links tootte nahi).
+
+   ACCESS  (Admin Panel › Feature Access / Tab Visibility)
+   -------------------------------------------------------
+   NEW / EDIT / DELETE / REVISE — chaar alag feature rows per master,
+   plus MASTER_REV_HISTORY, MASTER_REV_RESTORE, MASTER_ACTIVATE,
+   MASTER_IMPORT, MASTER_EXPORT jo dono par lagte hain. Tab Visibility
+   me MD_FABRIC / MD_BRAND poori screen chhupate hain, aur
+   MD_FABRIC_YARN / MD_BRAND_PACKING / MD_REV_COLUMN sirf unn column
+   groups ko — yani yarn aur packing ka data role-wise chhupaya ja
+   sakta hai bina screen band karne ke.
+
+   Table banane / RLS ke liye: FABRIC_BRAND_MASTER_MIGRATION.sql.
+================================================================ */
+
+/* Field ke `t` (type):
+     num   — number box
+     text  — text box
+     dd    — <select>, options sarvDropdownList(f.dd) se (Dropdown Master)
+     fab   — <select>, options LIVE fabric_master se (brand ka link)
+     tags  — comma se alag kai value, database me text[]
+   `g`  = column group (SARV_FBM[...].groups me defined)
+   `l`  = label — yahi table ka header AUR CSV ka header hai, isi liye
+          Excel ke header se hu-ba-hu match rakha gaya hai.
+   `alias` = CSV import me isi header ko bhi maan lo (Excel ke purane /
+          typo wale header, taaki sheet seedha paste ho jaaye). */
+const SARV_FAB_FIELDS=[
+  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'num',req:1,step:'0.001',hint:'Fabric ka weight code — 1.5, 2.2, 4.8 ... (UNIT ke saath milkar unique)'},
+  {k:'unit',l:'UNIT',g:'ident',t:'dd',dd:'erp_fabricUnit',req:1,hint:'Ek hi fabric name dono unit me ho sakta hai — 1.8 UNIT 1 aur 1.8 UNIT 2 alag rows hain'},
+  {k:'fabric_quality',l:'FABRIC QUALITY',g:'ident',t:'dd',dd:'erp_fabricQuality',req:1},
+  {k:'raschel_gauge',l:'RASCHEL GUAGE',g:'ident',t:'num',hint:'16 ya 18'},
+
+  {k:'raschel_roll_weight',l:'RASCHEL ROLL WEIGHT',g:'roll',t:'num'},
+  {k:'slitting_roll_weight',l:'SLITTING ROLL WEIGHT',g:'roll',t:'num'},
+  {k:'printing_roll',l:'PRINTING ROLL',g:'roll',t:'num'},
+
+  {k:'sb_sp_weight',l:'SB-SP-WEIGHT',g:'wt',t:'num',hint:'Single Bed · Single Ply'},
+  {k:'sb_dp_weight',l:'SB-DP-WEIGHT',g:'wt',t:'num',hint:'Single Bed · Double Ply'},
+  {k:'db_sp_weight',l:'DB-SP-WEIGHT',g:'wt',t:'num',hint:'Double Bed · Single Ply'},
+  {k:'db_dp_weight',l:'DB-DP-WEIGHT',g:'wt',t:'num',hint:'Double Bed · Double Ply'},
+
+  {k:'sb_sp_repeat',l:'SB-SP-REPEAT',g:'rep',t:'num'},
+  {k:'sb_dp_repeat',l:'SB-DP-REPEAT',g:'rep',t:'num'},
+  {k:'db_sp_repeat',l:'DB-SP-REPEAT',g:'rep',t:'num'},
+  {k:'db_dp_repeat',l:'DB-DP-REPEAT',g:'rep',t:'num'},
+
+  {k:'sb_sp_pcs_printed',l:'SB-SP-PCS-PRINTED',g:'prn',t:'num'},
+  {k:'sb_dp_pcs_printed',l:'SB-DP-PCS-PRINTED',g:'prn',t:'num'},
+  {k:'db_sp_pcs_printed',l:'DB-SP-PRINTED',g:'prn',t:'num',alias:['DB-SP-PCS-PRINTED']},
+  {k:'db_dp_pcs_printed',l:'DB-DP-PRINTED',g:'prn',t:'num',alias:['DB-DP-PCS-PRINTED']},
+
+  {k:'pyle',l:'PYLE',g:'yarn',t:'num'},
+  {k:'pcpo_denier',l:'PC PO DENER',g:'yarn',t:'num',alias:['PC PO DENIER']},
+  {k:'pcpo_filament',l:'PC PO FILAMENT',g:'yarn',t:'num'},
+  {k:'pcpo_ends',l:'PC PO ENDS',g:'yarn',t:'num'},
+  {k:'micro_denier',l:'MICRO DENIER',g:'yarn',t:'num'},
+  {k:'micro_filament',l:'MICRO FILAMENT',g:'yarn',t:'num'},
+  {k:'micro_ends',l:'MICRO ENDS',g:'yarn',t:'num'},
+  {k:'pcpo_yarn_per_roll',l:'PC PO YARN REQUIRED PER ROLL',g:'yarn',t:'num'},
+  {k:'micro_yarn_per_roll',l:'MICRO YARN REQUIRED PER ROLL',g:'yarn',t:'num'},
+  {k:'pcpo_yarn_order',l:'PC PO YARN REQUIRED AS PER ORDER',g:'yarn',t:'num'},
+  {k:'micro_yarn_order',l:'MICRO YARN REQUIRED AS PER ORDER',g:'yarn',t:'num'},
+  {k:'total_yarn_order',l:'TOTAL YARN TO BE ORDER',g:'yarn',t:'num'},
+
+  {k:'req_cutting_table_weight',l:'REQ. CUTTING TABLE WEIGHT',g:'pack',t:'num'},
+  {k:'avg_sattan_weight',l:'AVG SATTAN WEIGHT',g:'pack',t:'num'},
+  {k:'req_final_pcs_weight',l:'REQ. FINAL PCS WEIGHT',g:'pack',t:'num'},
+  {k:'standard_bora_packing',l:'STANDARD BORA PACKING',g:'pack',t:'num'},
+  {k:'bora_avg_weight',l:'1 BORA AVG WEIGHT',g:'pack',t:'num'},
+  {k:'req_with_bora_weight',l:'REQ. WITH BORA WEIGHT',g:'pack',t:'num',alias:['REQ, WITH BORA WEIGHT']},
+
+  /* Excel me BRAND 1 ... BRAND 5 paanch alag column the. Yahan ek
+     text[] hai — paanch ki hadd khatam, aur "is fabric ke brands"
+     poochhna ek hi jagah se ho jaata hai. CSV me wapas comma se alag
+     hokar jaata hai, to sheet round-trip ho jaati hai. */
+  {k:'brands',l:'BRANDS',g:'link',t:'tags',hint:'Comma se alag karein — BRAND 1..5 columns yahi hain. Khaali chhod dein to Brand Master ka link khud se nikal aata hai.'},
+  {k:'notes',l:'NOTES',g:'link',t:'text'},
+];
+
+const SARV_BR_FIELDS=[
+  {k:'item_code',l:'ITEM CODE',g:'ident',t:'text',req:1,uc:1,hint:'Brand / SKU ka naam — unique'},
+  /* ctr:1 — table me ye column centre align hota hai (header bhi). Yahan
+     isi liye ki iski value ek chhota number-chip hai, aur baayein chipke
+     rehne se padosi column se chipka hua lagta tha. */
+  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'fab',req:1,ctr:1,hint:'Fabric Master ki row — list wahin se aati hai'},
+  {k:'category',l:'CATEGORY',g:'ident',t:'dd',dd:'erp_brandCategory',req:1},
+  {k:'blanket_weight',l:'BLANKET WEIGHT',g:'ident',t:'num',step:'0.001'},
+
+  {k:'size',l:'SIZE',g:'spec',t:'dd',dd:'erp_brandSize'},
+  {k:'bed_size',l:'BED SIZE',g:'spec',t:'dd',dd:'erp_brandBedSize'},
+  {k:'blanket_ply',l:'BLANKET PLY',g:'spec',t:'dd',dd:'erp_brandPly'},
+  /* Sattan ke do alag sawaal hain, isi liye do column:
+       SATTAN SIZE — kitne inch ka (4 / 5 / 6 INCH SATTAN)
+       SATTAN TYPE — kis grade ka (STANDARD / PREMIUM)
+     Pehle ye ek hi column tha jisme "5 INCH SATTAN-NORMAL" jaisi mili-juli
+     value likhi jaati thi — size aur grade ek saath. Ab alag hain, to
+     "saare PREMIUM brands" jaisa sawaal filter se poochha ja sakta hai.
+     Purane CSV / Excel ka header "SATTAN" tha, isi liye alias me pada hai. */
+  {k:'sattan',l:'SATTAN SIZE',g:'spec',t:'dd',dd:'erp_brandSattan',alias:['SATTAN'],
+   hint:'Kitne inch ka sattan — 4 / 5 / 6 INCH. Grade alag column me (SATTAN TYPE).'},
+  {k:'sattan_type',l:'SATTAN TYPE',g:'spec',t:'dd',dd:'erp_brandSattanType',
+   hint:'Sattan ka grade — STANDARD ya PREMIUM'},
+  {k:'moq',l:'MOQ',g:'spec',t:'num',hint:'Minimum order qty (pcs)'},
+  {k:'emboss',l:'Emboss',g:'spec',t:'dd',dd:'erp_fbmYesNo'},
+
+  /* ── Order Form ke rate / packing ────────────────────────────────
+     Ye nau column `sales_standard_items` table se aaye hain. Pehle wo
+     table Order Form ki apni "standard items" list thi — item code ke
+     against fabric, category, weight, size, dbsb, ply, sattan, moq,
+     emboss AUR ye rates. Pehle ke nau column Brand Master me pehle se
+     the, isi liye DO jagah ek hi item code maintain hota tha aur dono
+     me alag-alag data chala jaata tha.
+
+     Ab Brand Master hi ek ghar hai: Order Form item code chunne par
+     seedha yahan se padhta hai. Dono vocabulary alag hain (yahan
+     "DOUBLE BED / SINGLE PLY / 4 INCH SATTAN", wahan "DB / SP / 4″"),
+     isi liye tarjuma order-form.html ke `bmToItem()` me ek hi jagah
+     hota hai.
+
+     0 ka matlab "set nahi hai" — Order Form khud bhi 0 ko skip karta
+     hai (khaali cost box chhod deta hai), isi liye yahan bhi khaali
+     chhod dein to wahi hota hai. */
+  {k:'price_per_kg',l:'PRICE PER KG',g:'rate',t:'num',step:'0.01',
+   hint:'Order Form ki product row ka Price (₹/kg)'},
+  {k:'packing_pcs',l:'PACKING PCS',g:'rate',t:'num',
+   hint:'Ek pack me kitne pcs — Order Form ka Packing (pcs/pack)'},
+  {k:'label_price',l:'LABEL PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Label'},
+  {k:'tag_price',l:'TAG PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Tag'},
+  {k:'bag_price',l:'BAG PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Bag'},
+  {k:'bore_price',l:'BORE PRICE',g:'rate',t:'num',step:'0.01',
+   hint:'Trim cost per pc — Bora. Pack Type "Bale" ho to Order Form BALE PRICE uthata hai.'},
+  {k:'inner_box_price',l:'INNER BOX PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Inner box'},
+  {k:'outer_box_price',l:'OUTER BOX PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Outer box'},
+  {k:'bale_price',l:'BALE PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Bale'},
+
+  /* ── Packing 1 / Packing 2 ───────────────────────────────────────
+     Ek hi brand do tarah se pack ho sakta hai (jaise MONARCH — bag
+     packing aur gift box packing), isi liye packing ka poora set DO baar
+     hai. Packing 1 = asli / default tareeka (Excel ke wahi chaar column,
+     wahi headers — purani sheet seedha import hoti rehti hai).
+     Packing 2 = doosra tareeka, khaali chhoda ja sakta hai.
+
+     Table me Packing 2 ke chips DEFAULT OFF hain (`off:1` group par),
+     kyunki zyadatar brands par ye khaali rehta hai — par form me hamesha
+     dikhta hai, aur chip dabaakar table me bhi aa jaata hai. */
+  {k:'master_pack_req',l:'MASTER PACKING REQUIRED',g:'pack1',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'master_pack_type',l:'MASTER PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandMasterPackType'},
+  {k:'slave_pack_req',l:'SLAVE PACKING REQUIRED',g:'pack1',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'slave_pack_type',l:'SLAVE PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandSlavePackType'},
+
+  /* Alias ki zaroorat nahi: CSV ka header match "normalised" hota hai
+     (space / bracket / dash / case sab ignore), isi liye "MASTER PACKING
+     TYPE 2", "MASTER PACKING TYPE (2)" aur "MASTER PACKING TYPE-2" teeno
+     apne aap ek hi column par aa jaate hain. */
+  {k:'master_pack_req_2',l:'MASTER PACKING REQUIRED 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'master_pack_type_2',l:'MASTER PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandMasterPackType'},
+  {k:'slave_pack_req_2',l:'SLAVE PACKING REQUIRED 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'slave_pack_type_2',l:'SLAVE PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandSlavePackType'},
+
+  {k:'micro_label',l:'MICRO LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'small_label',l:'SMALL LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'big_label',l:'BIG LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'tag_1',l:'TAG 1',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'tag_2',l:'TAG 2',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  /* Excel me do column ka naam ek hi "TAG 2" tha — teesra TAG 3 hai.
+     CSV import purane header ko bhi pehchaanta hai (alias). */
+  {k:'tag_3',l:'TAG 3',g:'trims',t:'dd',dd:'erp_fbmYesNo',alias:['TAG 2_2','TAG 2 (2)']},
+  {k:'dori',l:'DORI',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'insert_card',l:'INSERT CARD',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'barcode_sticker',l:'BARCODE STICKER',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
+  {k:'notes',l:'NOTES',g:'spec',t:'text'},
+];
+
+/* Buyer Master — party (buyer) ka ek hi sach, poore app ke liye.
+   Iska PARTY NAME do jagah dropdown bharta hai:
+     * Sales › Order Form  — "Buyer / Company Name" ka combo, aur party
+       chunne par OWNER NAME → Contact Person, CONTACT NO → Mobile khud
+       bhar jaate hain (sirf un parties ke liye jinka koi purana order
+       nahi — jahan order history hai wahan wahi jeette hai, kyunki wo
+       pichhli baar ka asli billing contact hai).
+     * Packing & Dispatch — naye slip ka "Party Name". Pehle wahan sirf
+       wo parties aati thin jinka koi PENDING order tha, isi liye nayi
+       party type karni padti thi; ab master ki saari parties milti hain.
+
+   Dono jagah ye ADD hota hai, replace nahi — purana behaviour waisa hi
+   rehta hai, aur `buyer_master` table na ho to dono screen chup-chaap
+   pehle jaisi chalti hain (koi error nahi). */
+const SARV_BUYER_FIELDS=[
+  {k:'party_name',l:'PARTY NAME',g:'ident',t:'text',req:1,uc:1,
+   hint:'Party / company ka naam — unique. Yahi Order Form aur Packing ke dropdown me jaata hai.'},
+  {k:'owner_name',l:'OWNER NAME',g:'ident',t:'text',
+   hint:'Malik ka naam — Order Form me "Contact Person" bharta hai'},
+  {k:'contact_no',l:'CONTACT NO',g:'ident',t:'tel',
+   hint:'Owner ka number — Order Form me "Mobile No." bharta hai'},
+
+  /* Billing — seedha Order Form ke "Buyer Details" box me jaata hai.
+     Pehle ye do cheezein sirf PURANE order se aati thin, isi liye nayi
+     party ka pehla order banate waqt address aur GSTIN haath se type
+     karne padte the (aur GSTIN me ek digit galat ho jaati thi). */
+  {k:'address',l:'ADDRESS',g:'bill',t:'area',ph:'Poora billing address...',
+   hint:'Order Form me "Address" bharta hai (PDF ke bill-to par yahi jaata hai)'},
+  {k:'gstin',l:'GSTIN',g:'bill',t:'text',uc:1,ph:'15-digit GSTIN',
+   hint:'Order Form me "GSTIN" bharta hai — wahan se state aur CGST/SGST vs IGST khud pakda jaata hai'},
+
+  {k:'party_staff_name',l:'PARTY STAFF NAME',g:'staff',t:'text',
+   hint:'Roz kaam karne wala banda (purchase / dispatch dekhne wala)'},
+  {k:'party_staff_contact_no',l:'PARTY STAFF CONTACT NO.',g:'staff',t:'tel',
+   alias:['PARTY STAFF CONTACT NO','PARTY STAFF CONTACT']},
+
+  {k:'notes',l:'NOTES',g:'misc',t:'text'},
+];
+
+/* Agency Master — Buyer Master ki SCREEN par doosri table (apna sub-tab
+   nahi). Jaan-boojh kar alag table hai, buyer me column nahi:
+   ek agency ke neeche kai parties hoti hain, aur ek hi agency ka contact
+   badalne par har party ki row chhedni padti — galti ki jad. Order Form
+   me bhi ye do alag box hain ("Agency" aur "Buyer Details").
+
+   Iska AGENCY NAME Order Form ke "Agency Name" combo me jaata hai, aur
+   agency chunne par Contact Person / Mobile khud bhar jaate hain. */
+const SARV_AGENCY_FIELDS=[
+  {k:'agency_name',l:'AGENCY NAME',g:'ident',t:'text',req:1,uc:1,
+   hint:'Agency ka naam — unique. Yahi Order Form ke Agency Name combo me jaata hai.'},
+  {k:'contact_person',l:'AGENCY CONTACT PERSON',g:'ident',t:'text',
+   alias:['CONTACT PERSON','AGENCY CONTACT'],
+   hint:'Order Form me "Agency Contact Person" bharta hai'},
+  {k:'mobile_no',l:'AGENCY MOBILE NO.',g:'ident',t:'tel',
+   alias:['AGENCY MOBILE NO','MOBILE NO.','MOBILE NO','AGENCY MOBILE'],
+   hint:'Order Form me "Agency Mobile No." bharta hai'},
+  {k:'notes',l:'NOTES',g:'misc',t:'text'},
+];
+
+/* Seed — Excel sheet ki asli rows, wahi kram. Array-of-array jaan-boojh
+   kar: 96 rows x 38/23 column object banane se file teen guna ho jaati.
+   `null` = sheet me khaali ya "NA" tha (matlab: is fabric par lagu nahi). */
+const SARV_FAB_SEED_COLS=['fabric_name','unit','fabric_quality','raschel_gauge','raschel_roll_weight','slitting_roll_weight',
+  'sb_sp_weight','sb_dp_weight','db_sp_weight','db_dp_weight','sb_sp_repeat','sb_dp_repeat','db_sp_repeat','db_dp_repeat',
+  'sb_sp_pcs_printed','sb_dp_pcs_printed','db_sp_pcs_printed','db_dp_pcs_printed','pyle',
+  'pcpo_denier','pcpo_filament','pcpo_ends','micro_denier','micro_filament','micro_ends',
+  'pcpo_yarn_per_roll','micro_yarn_per_roll','printing_roll','pcpo_yarn_order','micro_yarn_order','total_yarn_order',
+  'req_cutting_table_weight','avg_sattan_weight','req_final_pcs_weight','standard_bora_packing','bora_avg_weight','req_with_bora_weight','brands'];
+const SARV_FAB_SEED=[
+  [1.5,'UNIT 2','SUPER CLOUDY',18,150,75,null,2,null,3,null,68,null,102,84,42,54,27,17,75,36,330,200,144,165,30,120,10,300,1200,1500,null,null,null,null,null,null,[]],
+  [1.7,'UNIT 1','MINK',16,182,91,null,null,1.7,3.4,null,null,100,102,84,42,54,27,17,100,36,309,450,192,154,36.4,145.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [1.8,'UNIT 1','MINK',16,192,96,null,null,1.8,3.6,null,null,100,102,84,42,54,27,17,100,36,309,450,192,154,38.4,153.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [1.8,'UNIT 2','MINK',16,190,95,null,null,1.8,3.6,null,null,100,102,84,42,54,27,17,100,36,312,450,192,155,38,152,null,0,0,0,null,null,null,null,null,null,[]],
+  [1.9,'UNIT 1','MINK',16,202,101,1.3,2.6,null,null,67,68,null,null,84,42,54,27,17,100,36,309,450,192,154,40.4,161.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [1.95,'UNIT 2','DIGITAL-350GSM',18,208,104,null,null,1.95,null,null,null,null,null,84,42,54,27,15,75,36,333,200,144,333,41.6,166.4,null,0,0,0,null,null,null,null,null,null,[]],
+  [2,'UNIT 1','MINK',16,212,106,null,null,null,4,null,null,null,102,84,42,54,27,18,100,36,309,450,192,154,42.4,169.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [2,'UNIT 2','MINK',16,210,105,null,null,null,4,null,null,null,102,84,42,54,27,17,100,36,312,450,192,155,42,168,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.15,'UNIT 1','MINK PLUS',18,236,118,1.6,null,null,null,67,null,null,null,84,42,54,27,18.5,100,36,343,450,192,171,47.2,188.8,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.2,'UNIT 1','MINK',18,252,126,1.6,3.2,null,null,67,68,null,null,84,42,54,27,19,100,36,343,450,192,171,50.4,201.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.2,'UNIT 2','MINK',18,250,125,1.6,3.2,null,null,67,68,null,null,84,42,54,27,18,100,36,345,450,192,172,50,200,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.3,'UNIT 1','MINK',18,256,128,null,null,2.5,null,null,null,100,null,84,42,54,27,19,100,36,342,450,192,171,51.2,204.8,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.3,'UNIT 2','MINK',18,258,129,null,null,2.5,null,null,null,100,null,84,42,54,27,18,100,36,345,450,192,172,51.6,206.4,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.4,'UNIT 2','MINK',16,254,127,null,null,null,5,null,null,null,102,84,42,54,27,18,100,36,345,450,192,172,50.8,203.2,null,0,0,0,null,null,null,null,null,null,['FANTASY']],
+  [2.4,'UNIT 1','MINK',16,254,127,null,null,null,5,null,null,null,102,84,42,54,27,18,100,36,345,450,192,172,50.8,203.2,null,0,0,0,null,null,null,null,null,null,['FANTASY']],
+  [2.5,'UNIT 2','SUPER CLOUDY',18,250,125,null,2.5,null,null,null,68,null,null,84,42,54,27,17,75,36,333,200,144,333,50,200,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.7,'UNIT 2','DIGITAL-450GSM',18,270,135,null,null,2.7,null,null,null,100,null,84,42,54,27,17,75,36,333,200,144,333,54,216,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.8,'UNIT 1','MINK',18,320,160,2,null,3.2,6,67,null,100,102,84,42,54,27,22,100,36,342,450,192,171,64,256,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.9,'UNIT 1','SUPERSOFT',18,320,160,null,null,3.2,null,null,null,100,null,84,42,54,27,17,100,36,342,300,144,342,64,256,null,0,0,0,null,null,null,null,null,null,[]],
+  [2.9,'UNIT 2','SUPERSOFT',18,320,160,null,null,3.2,null,null,null,100,null,84,42,54,27,18,75,36,333,200,144,333,64,256,null,0,0,0,null,null,null,null,null,null,[]],
+  [3.8,'UNIT 2','MINK',16,412,206,null,null,4,8,null,null,100,102,84,42,54,27,22,100,36,312,300,144,310,82.4,329.6,null,0,0,0,null,null,null,null,null,null,[]],
+  [3.8,'UNIT 1','MINK',18,416,208,null,null,4,8,null,null,100,102,84,42,54,27,22,100,36,330,300,144,330,83.2,332.8,null,0,0,0,null,null,null,null,null,null,[]],
+  [3.9,'UNIT 1','MINK',18,404,202,2.5,null,null,null,67,null,null,null,84,42,54,27,22,100,36,330,300,144,330,80.8,323.2,null,0,0,0,null,null,null,null,null,null,[]],
+  [3.9,'UNIT 2','MINK',16,406,203,2.5,null,null,null,67,null,null,null,84,42,54,27,22,100,36,312,300,144,310,81.2,324.8,null,0,0,0,null,null,null,null,null,null,[]],
+  [4,'UNIT 2','SUPER CLOUDY',18,210,105,null,null,null,4,null,null,null,102,84,42,54,27,22,75,36,330,300,144,165,42,168,100,4200,16800,21000,null,null,null,null,null,null,[]],
+  [4.8,'UNIT 1','MINK',18,252,126,null,null,null,4.8,null,null,null,102,84,42,54,27,22,100,36,342,450,192,171,50.4,201.6,null,0,0,0,null,null,null,null,null,null,['KRETA']],
+  [4.8,'UNIT 2','MINK',18,252,126,null,null,null,4.8,null,null,null,102,84,42,54,27,22,100,36,342,450,192,171,50.4,201.6,null,0,0,0,null,null,null,null,null,null,['KRETA']],
+  [4.7,'UNIT 2','MINK',16,248,124,null,null,null,5,null,null,null,102,84,42,54,27,18,100,36,312,450,192,155,49.6,198.4,null,0,0,0,null,null,null,null,null,null,['AMPLE-LACOSTA']],
+  [4.7,'UNIT 1','MINK',16,248,124,null,null,null,5,null,null,null,102,84,42,54,27,18,100,36,312,450,192,155,49.6,198.4,null,0,0,0,null,null,null,null,null,null,['JANASHEEN']],
+  [5,'UNIT 2','SUPER CLOUDY',18,264,132,null,3.3,null,5,null,68,null,102,84,42,54,27,24,75,36,330,300,144,165,52.8,211.2,null,0,0,0,null,null,null,null,null,null,[]],
+  [6,'UNIT 2','SUPER CLOUDY',18,300,150,null,null,null,6,null,null,null,102,84,42,54,27,26,75,36,330,300,144,165,60,240,null,0,0,0,null,null,null,null,null,null,[]]
+];
+
+const SARV_BR_SEED_COLS=['item_code','fabric_name','category','blanket_weight','size','bed_size','blanket_ply','sattan','moq',
+  'emboss','master_pack_req','master_pack_type','slave_pack_req','slave_pack_type',
+  'micro_label','small_label','big_label','tag_1','tag_2','tag_3','dori','insert_card','barcode_sticker'];
+const SARV_BR_SEED=[
+  ['GREY/WHITE FABRIC',2.7,'SUPER CLOUDY',2.9,'225 CMx45 MTR','CARPET SIZE','SINGLE PLY','NA',null,'YES','YES','ROLL','NO','NA','NO','NO','NO','NO','NO','NO','NO','NO','NO'],
+  ['RACE DB SP',1.7,'MINK',2,'200*225 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,'NO',null,'OUTER BOX',null,'INNER BOX',null,null,null,null,null,null,null,null,null],
+  ['AMPLE LACOSTA DB DP',4.7,'MINK',4.7,'205*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,'BALE',null,'LOOSE PCS',null,null,null,null,null,null,null,null,null],
+  ['ALAXIA DESIRE DB DP',4.8,'MINK',4.8,'205*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU BLUELILLY DB',2.25,'MINK',2.4,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU BLUEBERRY DB',2.3,'MINK',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['AMPLE SYMPHONY DB SP',2.3,'MINK',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['ALAXIA WORTH DB SP',2.3,'MINK',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['PEARL DB DP',1.7,'MINK',3.6,'205*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['OZONE DB SP',2.3,'MINK',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MATRIX PLAIN DB SP',2.3,'MINK',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['LEEDS DB DP',1.9,'MINK',4,'210*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['FANTASY DB DP',2.4,'MINK',5,'210*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RED APPLE DB DP',2.8,'MINK',6,'210*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['PHANTOM DB DP',3.8,'MINK',8,'210*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['ARROW DB SP',2.8,'MINK',3,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['PARI DB SP',3.3,'MINK',3.5,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SENTOSA DB SP',3.8,'MINK',4,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SPECTRA S/B',2.2,'MINK PLUS',1.6,'150*205 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SERENITY DB DP',1.5,'MINK PLUS',4,'205*230 CM','DOUBLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SERENITY',1.5,'MINK PLUS',4,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['WELSPUN DB',1.5,'MINK PLUS',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SPECTRA DB',2.3,'MINK PLUS',2.5,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['FLORIDA TONE & TOUCH',2.3,'MINK PLUS',2.6,'205*230 CM','DOUBLE BED','SINGLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RANGANA DB',2.8,'MINK PLUS',3,'205*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SPLENDE DB SP',2.8,'MINK PLUS',3,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SLEEPZEE DB SP',2.8,'MINK PLUS',3,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RAYMOND 2.0 KG DB SP WITH STENTER',1.8,'MINK PLUS',2,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RAYMOND 2.5 KG DB SP',2.3,'MINK PLUS',2.5,'210*230 CM','DOUBLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['DREAM WEAVERZ KOREAN MINK',2.2,'MINK PLUS',2.7,'210*230 CM','DOUBLE BED','SINGLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['INAYAT',2.9,'SUPER CLOUDY',3.2,'210*230 CM','DOUBLE BED','SINGLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU VENICE',5,'SUPER CLOUDY',5.2,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU VENICE SB DP',2.5,'SUPER CLOUDY',3.4,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['FLORIDA ORCHID',1.5,'SUPER CLOUDY',3.5,'210*230 CM','DOUBLE BED','THREE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['DIVINE DB DP',4,'SUPER CLOUDY',4.2,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['HARMONY DB DP',4,'SUPER CLOUDY',4.2,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['EVEREST DB DP',5,'SUPER CLOUDY',5.2,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU DENVER',1.5,'SUPER CLOUDY',3,'210*230 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MONARCH DB',1.5,'SUPER CLOUDY',3.2,'220*240 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['COTTAGE GARDEN BAG PACKING',1.5,'SUPER CLOUDY',3.7,'220*240 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['COTTAGE GARDEN GIFT BOX PACKING',1.5,'SUPER CLOUDY',3.7,'220*240 CM','DOUBLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['COTTAGE GARDEN',1.5,'SUPER CLOUDY',3.7,'220*240 CM','DOUBLE BED','THREE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['LOTUS DB SS SP',2.9,'SUPER SOFT',3,'210*230 CM','DOUBLE BED','SINGLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['AMPLE FEATHER SB DP',2.3,'MINK',3.3,'150*205 CM','SINGLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU BLUELILLY SB',2.2,'MINK',1.6,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['AMPLE FEATHER SB SP',2.3,'MINK',1.7,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RACE SB SP',1.8,'MINK',1.3,'150*200 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RACE SB DP',1.8,'MINK',2.6,'150*205 CM','SINGLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['OZONE SB DP',2.2,'MINK',3.2,'150*205 CM','SINGLE BED','DOUBLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['OZONE SB SP',2.2,'MINK',1.6,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MATRIX PLAIN SB SP',2.2,'MINK',1.6,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['ARROW SB SP',2.8,'MINK',2,'150*210 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['SENTOSA SB SP',3.8,'MINK',2.5,'150*210 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['ALAXIA CHOCOLATE SB',3.8,'MINK',2.5,'150*210 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RUBRU BLUEBERRY SB',2.2,'MINK',1.6,'205*230 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['WELLSPUN',2.15,'MINK PLUS',1.5,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['WELSPUN SB',2.15,'MINK PLUS',1.5,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RAYMOND 1500',2.15,'MINK PLUS',1.5,'150*205 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RAYMOND',2.15,'MINK PLUS',1.5,'150*220 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['RAYMOND SB',2.15,'MINK PLUS',1.5,'150*200 CM','SINGLE BED','SINGLE PLY','4 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['EVEREST SB DP',5,'SUPER CLOUDY',3.4,'150*205 CM','SINGLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MONARCH SB',1.5,'SUPER CLOUDY',2.2,'160*220 CM','SINGLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MONARCH BAG PACKING',1.5,'SUPER CLOUDY',2.2,'160*220 CM','SINGLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['MONARCH GIFT BOX PACKING',1.5,'SUPER CLOUDY',2.2,'160*220 CM','SINGLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+  ['YOUTHIFY BAG PACKING',1.5,'SUPER CLOUDY',2.2,'160*220 CM','SINGLE BED','DOUBLE PLY','5 INCH SATTAN',null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]
+];
+
+/* Do master, ek engine. */
+const SARV_FBM={
+  FABRIC:{
+    code:'FABRIC', table:'fabric_master', label:'Fabric Master', icon:'\u{1F9F5}',
+    fields:SARV_FAB_FIELDS, tabKey:'MD_FABRIC',
+    feat:{nw:'FABRIC_NEW',ed:'FABRIC_EDIT',dl:'FABRIC_DELETE',rv:'FABRIC_REVISE'},
+    /* FABRIC NAME akela unique nahi hai — 1.8 UNIT 1 aur 1.8 UNIT 2 do
+       alag fabric hain. Isi liye natural key dono column ka JODA hai. */
+    keyCols:['fabric_name','unit'],
+    order:'fabric_name',
+    groups:[
+      {g:'ident',l:'\u{1F9FE} Identity',lock:1},
+      {g:'roll', l:'\u{1F9F6} Roll Weight'},
+      {g:'wt',   l:'⚖️ Pcs Weight (SB/DB × SP/DP)'},
+      {g:'rep',  l:'\u{1F501} Repeat'},
+      {g:'prn',  l:'\u{1F5A8}️ Pcs Printed'},
+      {g:'yarn', l:'\u{1F9F5} Yarn Planning', tab:'MD_FABRIC_YARN'},
+      {g:'pack', l:'\u{1F4E6} Cutting / Sattan / Bora'},
+      {g:'link', l:'\u{1F517} Brands & Notes'},
+      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+    ],
+    seedCols:SARV_FAB_SEED_COLS, seedRows:SARV_FAB_SEED,
+    ids:{search:'fbm_fabSearch',head:'fbm_fabHead',body:'fbm_fabBody',cg:'fbm_fabCg',pills:'fbm_fabPills',note:'fbm_fabNote',
+         tbl:'fbm_fabTable',newBtn:'fbm_fabNewBtn',seedBtn:'fbm_fabSeedBtn',csvBtn:'fbm_fabCsvBtn',impBtn:'fbm_fabImpBtn'},
+    filters:[{id:'fbm_fabUnit',k:'unit'},{id:'fbm_fabQuality',k:'fabric_quality'}],
+    statusId:'fbm_fabStatus',
+    pair:'BRAND',                 // ek doosre ke link chips / unlinked count
+    nameOf:r=>sarvFbmNumTxt_(r.fabric_name)+' · '+(r.unit||'-'),
+    sub:'fabricMasterSub'
+  },
+  BRAND:{
+    code:'BRAND', table:'brand_master', label:'Brand Master', icon:'\u{1F3F7}️',
+    fields:SARV_BR_FIELDS, tabKey:'MD_BRAND',
+    feat:{nw:'BRAND_NEW',ed:'BRAND_EDIT',dl:'BRAND_DELETE',rv:'BRAND_REVISE'},
+    keyCols:['item_code'],
+    order:'item_code',
+    groups:[
+      {g:'ident',l:'\u{1F9FE} Identity',lock:1},
+      {g:'spec', l:'\u{1F4D0} Specification'},
+      /* Rate wala group paisa hai — isi liye apni Tab Visibility row, aur
+         table me chip default OFF (zyadatar waqt log spec dekhne aate
+         hain, rate nahi). Form me hamesha dikhta hai. */
+      {g:'rate', l:'\u{1F4B0} Order Form Rates & Packing', tab:'MD_BRAND_RATES', off:1},
+      {g:'pack1',l:'\u{1F4E6} Packing 1', tab:'MD_BRAND_PACKING'},
+      /* off:1 — table me chip default OFF. Form me ye group hamesha
+         dikhta hai; `off` sirf column chips ka shuruaati haal hai. */
+      {g:'pack2',l:'\u{1F4E6} Packing 2', tab:'MD_BRAND_PACKING', off:1},
+      {g:'trims',l:'\u{1F3F7}️ Labels / Tags / Trims', tab:'MD_BRAND_PACKING'},
+      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+    ],
+    seedCols:SARV_BR_SEED_COLS, seedRows:SARV_BR_SEED,
+    ids:{search:'fbm_brSearch',head:'fbm_brHead',body:'fbm_brBody',cg:'fbm_brCg',pills:'fbm_brPills',note:'fbm_brNote',
+         tbl:'fbm_brTable',newBtn:'fbm_brNewBtn',seedBtn:'fbm_brSeedBtn',csvBtn:'fbm_brCsvBtn',impBtn:'fbm_brImpBtn'},
+    filters:[{id:'fbm_brFabric',k:'fabric_name'},{id:'fbm_brCategory',k:'category'},
+             {id:'fbm_brBed',k:'bed_size'},{id:'fbm_brPly',k:'blanket_ply'},
+             {id:'fbm_brSattanSize',k:'sattan'},{id:'fbm_brSattanType',k:'sattan_type'}],
+    statusId:'fbm_brStatus',
+    pair:'FABRIC',
+    nameOf:r=>String(r.item_code||'-'),
+    sub:'brandMasterSub'
+  },
+  BUYER:{
+    code:'BUYER', table:'buyer_master', label:'Buyer Master', icon:'\u{1F3E2}',
+    fields:SARV_BUYER_FIELDS, tabKey:'MD_BUYER',
+    feat:{nw:'BUYER_NEW',ed:'BUYER_EDIT',dl:'BUYER_DELETE',rv:'BUYER_REVISE'},
+    keyCols:['party_name'],
+    order:'party_name',
+    groups:[
+      {g:'ident',l:'\u{1F3E2} Party',lock:1},
+      {g:'bill', l:'\u{1F9FE} Billing (Order Form)', tab:'MD_BUYER_BILLING'},
+      {g:'staff',l:'\u{1F464} Party Staff'},
+      {g:'misc', l:'\u{1F4DD} Notes'},
+      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+    ],
+    /* Fabric / Brand ki tarah koi categorical filter nahi — paanch hi
+       column hain aur unme se koi "list" wala nahi. Khaali array chalta
+       hai: search aur Active/Inactive dono phir bhi kaam karte hain. */
+    filters:[],
+    statusId:'fbm_byStatus',
+    seedCols:[], seedRows:[],   // Excel me buyer ki sheet nahi thi
+    ids:{search:'fbm_bySearch',head:'fbm_byHead',body:'fbm_byBody',cg:'fbm_byCg',pills:'fbm_byPills',note:'fbm_byNote',
+         tbl:'fbm_byTable',newBtn:'fbm_byNewBtn',seedBtn:'fbm_bySeedBtn',csvBtn:'fbm_byCsvBtn',impBtn:'fbm_byImpBtn'},
+    nameOf:r=>String(r.party_name||'-'),
+    sub:'buyerMasterSub'
+  },
+  AGENCY:{
+    code:'AGENCY', table:'agency_master', label:'Agency Master', icon:'\u{1F91D}',
+    fields:SARV_AGENCY_FIELDS, tabKey:'MD_AGENCY',
+    feat:{nw:'AGENCY_NEW',ed:'AGENCY_EDIT',dl:'AGENCY_DELETE',rv:'AGENCY_REVISE'},
+    keyCols:['agency_name'],
+    order:'agency_name',
+    groups:[
+      {g:'ident',l:'\u{1F91D} Agency',lock:1},
+      {g:'misc', l:'\u{1F4DD} Notes'},
+      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+    ],
+    filters:[],
+    statusId:'fbm_agStatus',
+    seedCols:[], seedRows:[],
+    /* Apna sub-tab NAHI — ye table Buyer Master ki screen par neeche
+       baithti hai. `blockId` us dabbe ka id hai: MD_AGENCY off hone par
+       poora dabba gayab ho jaata hai (column group nahi, poora block). */
+    blockId:'fbm_agBlock',
+    ids:{search:'fbm_agSearch',head:'fbm_agHead',body:'fbm_agBody',cg:'fbm_agCg',pills:'fbm_agPills',note:'fbm_agNote',
+         tbl:'fbm_agTable',newBtn:'fbm_agNewBtn',seedBtn:'fbm_agSeedBtn',csvBtn:'fbm_agCsvBtn',impBtn:'fbm_agImpBtn'},
+    nameOf:r=>String(r.agency_name||'-'),
+    sub:'buyerMasterSub'
+  }
+};
+const SARV_FBM_REV_TABLE='master_revisions';
+
+/* loaded rows + screen state, per master */
+const sarvFbmState={
+  FABRIC:{rows:[],loaded:false,missing:false,cg:null},
+  BRAND:{rows:[],loaded:false,missing:false,cg:null},
+  BUYER:{rows:[],loaded:false,missing:false,cg:null},
+  AGENCY:{rows:[],loaded:false,missing:false,cg:null}
+};
+/* Buyer Master ka "bina contact" pill — chalu hai ya nahi. Select nahi
+   banaya kyunki ye filter kabhi-kabhi (data saaf karte waqt) lagta hai;
+   pill hi toggle hai, dobara dabaane par poori list wapas. */
+let sarvFbmByNoContact=false;
+let sarvFbmForm=null;      // {code, mode:'NEW'|'EDIT'|'REVISE', id, draft}
+let sarvFbmHist=null;      // {code, id}
+let sarvFbmImpCode=null;   // kis master ka import chal raha hai
+
+/* ── chhote helpers ──────────────────────────────────────────────── */
+const sarvFbmCfg_=code=>SARV_FBM[code]||null;
+const sarvFbmSt_=code=>sarvFbmState[code];
+function sarvFbmActor_(){
+  return (sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—';
+}
+/* 2.2000000000000002 ko "2.2" dikhane ke liye — Excel se aaye float ka
+   poonchh kaatna. Khaali / null hamesha '' deta hai. */
+function sarvFbmNumTxt_(v){
+  if(v===null||v===undefined||v==='')return '';
+  const n=Number(v);
+  if(!Number.isFinite(n))return String(v);
+  return String(Math.round(n*1000)/1000);
+}
+/* Fabric name ko hamesha 3 decimal par round karke compare karte hain,
+   warna 2.2 (form se) aur 2.2000000000000002 (Excel se) do alag fabric
+   lagte hain aur link toot jaata hai. */
+const sarvFbmNumKey_=v=>(v===null||v===undefined||v==='')?'':String(Math.round(Number(v)*1000)/1000);
+function sarvFbmFieldsOf_(code){return sarvFbmCfg_(code).fields;}
+const sarvFbmField_=(code,k)=>sarvFbmFieldsOf_(code).find(f=>f.k===k)||null;
+
+/* Field ki value screen par kaise dikhe */
+function sarvFbmFmt_(f,v){
+  if(f.t==='tags')return (Array.isArray(v)?v:[]).join(', ');
+  if(v===null||v===undefined||v==='')return '';
+  if(f.t==='num'||f.t==='fab')return sarvFbmNumTxt_(v);
+  return String(v);
+}
+/* Form / CSV ki value ko database ki shakal me */
+function sarvFbmParse_(f,raw){
+  let v=raw===null||raw===undefined?'':String(raw).trim();
+  if(f.t==='tags'){
+    return v.split(/[,;]/).map(x=>x.trim().toUpperCase()).filter(Boolean);
+  }
+  /* "NA" sheet me "is fabric par lagu nahi" ka matlab rakhta tha. Numeric
+     column par wo null banta hai; text / dropdown par NA khud ek valid
+     option hai (SATTAN = NA), isi liye wahan waisa hi rehta hai. */
+  if(f.t==='num'||f.t==='fab'){
+    if(v===''||/^na$/i.test(v))return null;
+    const n=Number(v.replace(/,/g,''));
+    return Number.isFinite(n)?Math.round(n*1000)/1000:null;
+  }
+  if(v==='')return null;
+  if(f.uc)v=v.toUpperCase();
+  return v;
+}
+/* Jo groups is role ko dikhte hain (Tab Visibility) */
+function sarvFbmGroups_(code){
+  return sarvFbmCfg_(code).groups.filter(g=>!g.tab||sarvTabVisible(g.tab));
+}
+const sarvFbmGroupOk_=(code,g)=>sarvFbmGroups_(code).some(x=>x.g===g);
+
+/* Column-group on/off — browser me yaad rehta hai, per master. */
+function sarvFbmCgKey_(code){return 'sarv_fbm_cols_'+code;}
+function sarvFbmCg_(code){
+  const st=sarvFbmSt_(code);
+  if(!st.cg){
+    let saved=null;
+    try{saved=JSON.parse(localStorage.getItem(sarvFbmCgKey_(code))||'null');}catch(e){saved=null;}
+    st.cg={};
+    sarvFbmCfg_(code).groups.forEach(g=>{
+      /* Default: sab ON, taaki pehli baar poori sheet dikhe (wahi jo Excel
+         me thi). Sirf `off:1` wale group band khulte hain — wo khaali
+         rehne wale columns hain (jaise Packing 2), aur table pehli nazar
+         me chaudha na lage. Ek baar chip dabaane ke baad browser ki yaad
+         hi chalti hai, ye default phir kabhi nahi lagta. */
+      st.cg[g.g]=(saved&&typeof saved[g.g]==='boolean')?saved[g.g]:!g.off;
+    });
+  }
+  return st.cg;
+}
+window.sarvFbmToggleCg=function(code,g){
+  const cfg=sarvFbmCfg_(code),def=cfg.groups.find(x=>x.g===g);
+  if(!def||def.lock)return;                   // Identity hamesha dikhta hai
+  const cg=sarvFbmCg_(code);
+  cg[g]=!cg[g];
+  try{localStorage.setItem(sarvFbmCgKey_(code),JSON.stringify(cg));}catch(e){}
+  sarvFbmApplyCg_(code);
+};
+/* Sirf class lagti / hatti hai — table dobara nahi banta. */
+function sarvFbmApplyCg_(code){
+  const cfg=sarvFbmCfg_(code),cg=sarvFbmCg_(code),tbl=byId(cfg.ids.tbl);
+  if(!tbl)return;
+  cfg.groups.forEach(g=>{
+    const on=sarvFbmGroupOk_(code,g.g)&&cg[g.g]!==false;
+    tbl.querySelectorAll('[data-cg="'+g.g+'"]').forEach(el=>el.classList.toggle('fbm-off',!on));
+  });
+  const bar=byId(cfg.ids.cg);
+  if(bar)bar.querySelectorAll('.fbm-cg[data-cg]').forEach(b=>{
+    const g=b.dataset.cg,def=cfg.groups.find(x=>x.g===g);
+    b.classList.toggle('on',cg[g]!==false);
+    b.classList.toggle('locked',!!(def&&def.lock));
+  });
+}
+function sarvFbmRenderCg_(code){
+  const cfg=sarvFbmCfg_(code),bar=byId(cfg.ids.cg);
+  if(!bar)return;
+  const gs=sarvFbmGroups_(code);
+  bar.innerHTML='<b>Columns</b>'+gs.map(g=>
+    '<button type="button" class="fbm-cg" data-cg="'+g.g+'" '
+    +'onclick="sarvFbmToggleCg(\''+code+'\',\''+g.g+'\')" '
+    +'title="'+escText(g.l+(g.lock?' — hamesha dikhta hai':' — column group on / off'))+'">'
+    +escText(g.l)+'</button>').join('')
+    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',true)" title="Saare columns dikhayein">Show all</button>'
+    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',false)" title="Sirf Identity chhodkar sab chhupa dein">Minimal</button>';
+  sarvFbmApplyCg_(code);
+}
+window.sarvFbmAllCg=function(code,on){
+  const cg=sarvFbmCg_(code);
+  sarvFbmCfg_(code).groups.forEach(g=>{cg[g.g]=g.lock?true:!!on;});
+  try{localStorage.setItem(sarvFbmCgKey_(code),JSON.stringify(cg));}catch(e){}
+  sarvFbmApplyCg_(code);
+};
+
+/* ── link: fabric <-> brand ──────────────────────────────────────── */
+/* "Is fabric ke brands" — Brand Master ki asli rows se (ye sach hai),
+   plus fabric row ke apne BRANDS column se (Excel ka purana data). Dono
+   milakar, duplicate hataakar. */
+function sarvFbmBrandsOfFabric_(fabRow){
+  const key=sarvFbmNumKey_(fabRow.fabric_name);
+  const live=sarvFbmSt_('BRAND').rows
+    .filter(b=>b.is_active!==false&&sarvFbmNumKey_(b.fabric_name)===key)
+    .map(b=>String(b.item_code||'').trim()).filter(Boolean);
+  const own=(Array.isArray(fabRow.brands)?fabRow.brands:[]).map(x=>String(x||'').trim()).filter(Boolean);
+  const seen=new Set(),out=[];
+  live.concat(own).forEach(n=>{const u=n.toUpperCase();if(!seen.has(u)){seen.add(u);out.push(n);}});
+  return out;
+}
+const sarvFbmFabricRow_=name=>{
+  const key=sarvFbmNumKey_(name);
+  return sarvFbmSt_('FABRIC').rows.find(f=>sarvFbmNumKey_(f.fabric_name)===key)||null;
+};
+/* Jin brands ka fabric Fabric Master me nahi hai — Excel me aise do the
+   (2.25 "RUBRU BLUELILLY DB" aur 3.3 "PARI DB SP"). Pill inhe ginta hai. */
+function sarvFbmUnlinkedBrands_(){
+  const fab=sarvFbmSt_('FABRIC');
+  if(!fab.loaded||!fab.rows.length)return [];
+  const have=new Set(fab.rows.map(f=>sarvFbmNumKey_(f.fabric_name)));
+  return sarvFbmSt_('BRAND').rows.filter(b=>{
+    const k=sarvFbmNumKey_(b.fabric_name);
+    return k===''||!have.has(k);
+  });
+}
+/* Fabric row ki brand chip dabai -> Brand Master us fabric par khulta hai */
+window.sarvFbmGotoBrands=async function(fabName){
+  switchMasterSubTab('brandMasterSub');
+  await sarvFbmLoad('BRAND');
+  const sel=byId('fbm_brFabric'),srch=byId('fbm_brSearch'),st=byId('fbm_brStatus');
+  if(srch)srch.value='';
+  if(st)st.value='';                                     // active + inactive — kuch chhupe na
+  const want=sarvFbmNumKey_(fabName);
+  if(sel){
+    const opt=[...sel.options].find(o=>sarvFbmNumKey_(o.value)===want);
+    sel.value=opt?opt.value:'';
+    if(!opt&&srch)srch.value=sarvFbmNumTxt_(fabName);     // fabric list me nahi — search se dikha do
+  }
+  sarvFbmRender('BRAND');
+};
+/* Brand row ka fabric chip dabaya -> Fabric Master us fabric par */
+window.sarvFbmGotoFabric=async function(fabName){
+  switchMasterSubTab('fabricMasterSub');
+  await sarvFbmLoad('FABRIC');
+  const srch=byId('fbm_fabSearch'),st=byId('fbm_fabStatus'),u=byId('fbm_fabUnit'),q=byId('fbm_fabQuality');
+  if(srch)srch.value=sarvFbmNumTxt_(fabName);
+  if(st)st.value='';
+  if(u)u.value='';
+  if(q)q.value='';
+  sarvFbmRender('FABRIC');
+};
+/* Buyer Master ka "N bina contact" pill — toggle. Dobara dabane par
+   poori list wapas aa jaati hai. */
+window.sarvFbmShowNoContact=function(){
+  sarvFbmByNoContact=!sarvFbmByNoContact;
+  if(sarvFbmByNoContact){
+    const st=byId('fbm_byStatus');if(st)st.value='';     // inactive bhi dikhe
+    const s=byId('fbm_bySearch');if(s)s.value='';
+  }
+  sarvFbmRender('BUYER');
+  showToast(sarvFbmByNoContact
+    ?'\u{1F4DE} Sirf wo parties jinka koi contact number nahi — pill dobara dabaayein to poori list'
+    :'Poori Buyer Master list wapas');
+};
+
+/* "N unlinked" pill — Brand Master me sirf wahi rows chhod deta hai */
+window.sarvFbmShowUnlinked=function(){
+  switchMasterSubTab('brandMasterSub');
+  const st=byId('fbm_brStatus'),sel=byId('fbm_brFabric'),srch=byId('fbm_brSearch');
+  if(st)st.value='';
+  if(sel)sel.value='__UNLINKED__';
+  if(srch)srch.value='';
+  sarvFbmRender('BRAND');
+  showToast('⚠️ Sirf wo brands dikh rahe hain jinka FABRIC NAME Fabric Master me nahi hai','warn');
+};
+
+/* ── load ────────────────────────────────────────────────────────── */
+function sarvFbmMissing_(e){
+  const m=String((e&&(e.message||e))||'');
+  return /does not exist|schema cache|Could not find the table/i.test(m)||(e&&e.code==='42P01');
+}
+/* Brand Master ko Fabric Master ki rows CHAHIYE (dropdown, link chips,
+   unlinked count) aur ulta bhi — isi liye jo screen khule, dono load
+   hote hain. Doosra load chup-chaap hota hai: fail ho to screen chalti
+   rehti hai, bas link chips nahi dikhte. */
+window.sarvFbmLoad=async function(code,force){
+  const cfg=sarvFbmCfg_(code),st=sarvFbmSt_(code);
+  if(!cfg)return;
+  if(st.loaded&&!force){sarvFbmRender(code);return;}
+  const body=byId(cfg.ids.body);
+  if(!SB_READY){
+    st.missing=false;
+    if(body)body.innerHTML='<tr><td class="fbm-empty" style="color:#f59e0b;">⚠️ Supabase configured nahi hai</td></tr>';
+    return;
+  }
+  if(body&&!st.loaded)body.innerHTML='<tr><td class="fbm-empty">⏳ Loading '+escText(cfg.label)+'...</td></tr>';
+  try{
+    st.rows=await fetchAllRows(cfg.table,'*',cfg.order);
+    st.loaded=true;st.missing=false;
+  }catch(e){
+    st.rows=[];st.loaded=false;
+    st.missing=sarvFbmMissing_(e);
+    if(!st.missing)dbError(e);
+  }
+  /* Saathi master — sirf Fabric aur Brand ka joda hai (ek doosre ke link
+     chips, fabric dropdown aur "unlinked" count ke liye). Buyer Master
+     akela khada hai, uska `pair` nahi hai — isi liye use kholne par koi
+     doosri table bekaar me nahi padhi jaati. */
+  const other=sarvFbmCfg_(code).pair;
+  const ost=other?sarvFbmSt_(other):null;
+  if(ost&&!ost.loaded&&!ost.missing){
+    try{
+      ost.rows=await fetchAllRows(SARV_FBM[other].table,'*',SARV_FBM[other].order);
+      ost.loaded=true;
+    }catch(e){ost.missing=sarvFbmMissing_(e);}
+  }
+  sarvFbmSyncFilters_(code);
+  sarvFbmRender(code);
+  if(ost&&ost.loaded)sarvFbmRenderPills_(other);
+};
+
+/* Filter dropdowns table ke apne data se bharte hain — jo value sach me
+   rows me hai, sirf wahi offer hoti hai. */
+function sarvFbmSyncFilters_(code){
+  const cfg=sarvFbmCfg_(code),rows=sarvFbmSt_(code).rows;
+  cfg.filters.forEach(ft=>{
+    const sel=byId(ft.id);if(!sel)return;
+    const f=sarvFbmField_(code,ft.k);
+    const vals=[...new Set(rows.map(r=>sarvFbmFmt_(f,r[ft.k])).filter(v=>v!==''))]
+      .sort((a,b)=>(f.t==='num'||f.t==='fab')?Number(a)-Number(b):String(a).localeCompare(String(b)));
+    const keep=sel.value,first=sel.options[0]?sel.options[0].outerHTML:'<option value="">All</option>';
+    sel.innerHTML=first
+      +(ft.k==='fabric_name'?'<option value="__UNLINKED__">⚠️ Unlinked only</option>':'')
+      +vals.map(v=>'<option value="'+escText(v)+'">'+escText(v)+'</option>').join('');
+    if([...sel.options].some(o=>o.value===keep))sel.value=keep;
+  });
+}
+
+/* ── filter + sort ───────────────────────────────────────────────── */
+function sarvFbmVisibleRows_(code){
+  const cfg=sarvFbmCfg_(code);
+  const all=sarvFbmSt_(code).rows;
+  const q=(byId(cfg.ids.search)?.value||'').toLowerCase().trim();
+  const stv=byId(cfg.statusId)?.value;
+  const unlinked=code==='BRAND'&&byId('fbm_brFabric')?.value==='__UNLINKED__'
+    ?new Set(sarvFbmUnlinkedBrands_().map(b=>b.id)):null;
+  return all.filter(r=>{
+    if(stv==='A'&&r.is_active===false)return false;
+    if(stv==='I'&&r.is_active!==false)return false;
+    if(unlinked&&!unlinked.has(r.id))return false;
+    if(code==='BUYER'&&sarvFbmByNoContact
+      &&(String(r.contact_no||'').trim()||String(r.party_staff_contact_no||'').trim()))return false;
+    for(const ft of cfg.filters){
+      const want=byId(ft.id)?.value||'';
+      if(!want||want==='__UNLINKED__')continue;
+      if(sarvFbmFmt_(sarvFbmField_(code,ft.k),r[ft.k])!==want)return false;
+    }
+    if(!q)return true;
+    // search poore row par — chhupe column par bhi, warna "FANTASY" dhundhne
+    // par brands column off hone se row mil hi nahi paati.
+    const hay=cfg.fields.map(f=>sarvFbmFmt_(f,r[f.k])).join(' ')
+      +' '+(code==='FABRIC'?sarvFbmBrandsOfFabric_(r).join(' '):'');
+    return hay.toLowerCase().includes(q);
+  }).sort((a,b)=>{
+    const ok=cfg.order,f=sarvFbmField_(code,ok);
+    if(f&&f.t==='num')return (Number(a[ok])||0)-(Number(b[ok])||0)||String(a.unit||'').localeCompare(String(b.unit||''));
+    return String(a[ok]||'').localeCompare(String(b[ok]||''));
+  });
+}
+
+/* ── render ──────────────────────────────────────────────────────── */
+window.sarvFbmRender=function(code){
+  const cfg=sarvFbmCfg_(code),st=sarvFbmSt_(code);
+  if(!cfg)return;
+  /* `blockId` wale master (Agency) ki apni sub-tab nahi hai — wo doosre
+     master ki screen par ek dabba hai. Tab Visibility off ho to poora
+     dabba chhupana padta hai, kyunki sirf columns chhupane se khaali
+     toolbar aur table ka dhancha phir bhi dikhta rehta. */
+  if(cfg.blockId){
+    const blk=byId(cfg.blockId);
+    const on=!cfg.tabKey||sarvTabVisible(cfg.tabKey);
+    if(blk)blk.style.display=on?'':'none';
+    if(!on)return;
+  }
+  sarvFbmRenderNote_(code);
+  sarvFbmRenderBtns_(code);
+  sarvFbmRenderCg_(code);
+  sarvFbmRenderHead_(code);
+  /* Head abhi naya bana hai, to off groups ki class dobara lagani padti
+     hai — warna neeche ke early-return waale haal (table missing / loading
+     / khaali) me header poora khula dikhta hai jabki chips "off" kehti
+     hain. Body ke cells ke liye yahi call aakhir me phir chalta hai. */
+  sarvFbmApplyCg_(code);
+  sarvFbmRenderPills_(code);
+
+  const body=byId(cfg.ids.body);if(!body)return;
+  const cols=sarvFbmColCount_(code);
+  if(st.missing){
+    body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'" style="color:#b45309;">'
+      +'⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili — Supabase › SQL Editor me '
+      +'<code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> ek baar chalayein.</td></tr>';
+    return;
+  }
+  if(!st.loaded){body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">⏳ Loading...</td></tr>';return;}
+  const rows=sarvFbmVisibleRows_(code);
+  if(!st.rows.length){
+    body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">'
+      +escText(cfg.label)+' abhi khaali hai — \u{1F331} <b>Seed Excel Data</b> dabaakar sheet ki rows daal dein, '
+      +'ya ➕ New se ek-ek jodein.</td></tr>';
+    return;
+  }
+  if(!rows.length){
+    body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">Is filter / search par koi row nahi mili.</td></tr>';
+    return;
+  }
+  body.innerHTML=rows.map((r,i)=>sarvFbmRowHtml_(code,r,i+1)).join('');
+  sarvFbmApplyCg_(code);
+};
+
+function sarvFbmColCount_(code){
+  // # + naam + baaki fields + rev block (3) — colspan ke liye kaafi
+  return sarvFbmCfg_(code).fields.length+6;
+}
+
+/* head = group band (ek row) + header row. Pehla field sticky-left
+   rehta hai, isi liye wo group band me bhi akela baith jaata hai. */
+function sarvFbmRenderHead_(code){
+  const cfg=sarvFbmCfg_(code),head=byId(cfg.ids.head);
+  if(!head)return;
+  const fields=cfg.fields,first=fields[0];
+  const gs=cfg.groups;
+  let band='<tr class="fbm-gband"><th class="fbm-stick1"></th>'
+    +'<th class="fbm-stick2" data-cg="ident"></th>';
+  let hrow='<tr class="fbm-hrow"><th class="fbm-stick1">#</th>'
+    +'<th class="fbm-stick2" data-cg="ident" title="'+escText(first.hint||'')+'">'+escText(first.l)+'</th>';
+  gs.forEach(g=>{
+    if(g.g==='rev'){
+      if(!sarvFbmGroupOk_(code,'rev'))return;
+      band+='<th data-cg="rev" colspan="2" onclick="sarvFbmToggleCg(\''+code+'\',\'rev\')">'+escText(g.l)+'</th>';
+      hrow+='<th data-cg="rev">REV</th><th data-cg="rev">STATUS</th>';
+      return;
+    }
+    if(!sarvFbmGroupOk_(code,g.g))return;
+    const fs=fields.filter(f=>f.g===g.g&&f!==first);
+    if(!fs.length)return;
+    band+='<th data-cg="'+g.g+'" colspan="'+fs.length+'" onclick="sarvFbmToggleCg(\''+code+'\',\''+g.g+'\')" '
+      +'title="'+escText(g.l+(g.lock?'':' — click karke ye group chhupa dein'))+'">'+escText(g.l)+'</th>';
+    hrow+=fs.map(f=>'<th data-cg="'+g.g+'"'+(f.ctr?' class="fbm-ctr"':'')
+      +' title="'+escText((f.hint||f.l))+'">'+escText(f.l)+'</th>').join('');
+  });
+  band+='<th rowspan="2" style="text-align:center;">ACTIONS</th></tr>';
+  hrow+='</tr>';
+  head.innerHTML=band+hrow;
+}
+
+function sarvFbmRowHtml_(code,r,n){
+  const cfg=sarvFbmCfg_(code),fields=cfg.fields,first=fields[0];
+  const inactive=r.is_active===false;
+  let h='<tr'+(inactive?' class="fbm-inactive"':'')+'>'
+    +'<td class="fbm-stick1">'+n+'</td>'
+    +'<td class="fbm-stick2">'+escText(sarvFbmFmt_(first,r[first.k])||'—')+'</td>';
+  sarvFbmCfg_(code).groups.forEach(g=>{
+    if(g.g==='rev'){
+      if(!sarvFbmGroupOk_(code,'rev'))return;
+      h+='<td data-cg="rev" class="fbm-act"><span class="fbm-rev">REV '+(r.rev_no||1)+'</span></td>'
+        +'<td data-cg="rev" class="fbm-act"><span class="fbm-st '+(inactive?'fbm-st-i':'fbm-st-a')+'">'
+        +(inactive?'Inactive':'Active')+'</span></td>';
+      return;
+    }
+    if(!sarvFbmGroupOk_(code,g.g))return;
+    fields.filter(f=>f.g===g.g&&f!==first).forEach(f=>{
+      h+=sarvFbmCellHtml_(code,r,f,g.g);
+    });
+  });
+  h+='<td class="fbm-act">'+sarvFbmActionsHtml_(code,r)+'</td></tr>';
+  return h;
+}
+
+/* Ek cell. Do column khaas hain:
+     fabric_name (BRAND)  -> Fabric Master ka clickable chip; na mila to laal
+     brands      (FABRIC) -> Brand Master ke clickable chips */
+function sarvFbmCellHtml_(code,r,f,g){
+  // Field ka `ctr` flag — header aur cell dono ko ek hi jagah se centre
+  // karta hai, isi liye naya column centre karne ke liye array me bas
+  // `ctr:1` likhna padta hai.
+  const ctr=f.ctr?' fbm-ctr':'';
+  if(code==='BRAND'&&f.k==='fabric_name'){
+    const txt=sarvFbmNumTxt_(r.fabric_name);
+    if(!txt)return '<td data-cg="'+g+'" class="fbm-na'+ctr+'">—</td>';
+    const ok=!!sarvFbmFabricRow_(r.fabric_name);
+    return '<td data-cg="'+g+'"'+(ctr?' class="'+ctr.trim()+'"':'')+'><button type="button" class="fbm-link'+(ok?'':' fbm-link-bad')+'" '
+      +'onclick="sarvFbmGotoFabric(\''+escText(txt)+'\')" '
+      +'title="'+(ok?'Fabric Master me kholein':'⚠️ Ye fabric Fabric Master me nahi hai — pehle wahan banayein')+'">'
+      +escText(txt)+(ok?'':' ⚠️')+'</button></td>';
+  }
+  if(code==='FABRIC'&&f.k==='brands'){
+    const bs=sarvFbmBrandsOfFabric_(r);
+    if(!bs.length)return '<td data-cg="'+g+'" class="fbm-na">—</td>';
+    const show=bs.slice(0,3),rest=bs.length-show.length;
+    return '<td data-cg="'+g+'">'
+      +show.map(b=>'<button type="button" class="fbm-link" onclick="sarvFbmGotoBrands(\''+escText(sarvFbmNumTxt_(r.fabric_name))+'\')" '
+        +'title="Brand Master me is fabric ke saare brands">'+escText(b)+'</button>').join('')
+      +(rest>0?'<button type="button" class="fbm-link" onclick="sarvFbmGotoBrands(\''+escText(sarvFbmNumTxt_(r.fabric_name))+'\')" '
+        +'title="'+escText(bs.join(', '))+'">+'+rest+' more</button>':'')
+      +'</td>';
+  }
+  const v=sarvFbmFmt_(f,r[f.k]);
+  const cls=((v===''?'fbm-na':'')+ctr).trim();
+  // Lambi text (address, notes) table me kaati jaati hai — poori baat
+  // hover ke title me rehti hai, aur form me to poori hi dikhti hai.
+  const clip=(f.t==='text'||f.t==='area')&&v.length>24;
+  return '<td data-cg="'+g+'"'+(cls?' class="'+cls+'"':'')+' '
+    +(clip?'title="'+escText(v)+'"':'')+'>'
+    +escText(v===''?'—':(clip?v.slice(0,24)+'…':v))+'</td>';
+}
+
+/* Row ke chaar kaam. Jo feature nahi hai wo button DIKHTA hai par dabta
+   nahi (greyed + reason) — chhupa dene se log samajh nahi paate ki
+   option hai hi, aur Admin se maangna hi nahi aata. */
+function sarvFbmActionsHtml_(code,r){
+  const cfg=sarvFbmCfg_(code),id=escText(r.id);
+  const b=(can,cls,icon,title,fn,denyKey)=>can
+    ?'<button type="button" class="fbm-ib '+cls+'" onclick="'+fn+'" title="'+escText(title)+'">'+icon+'</button>'
+    :'<button type="button" class="fbm-ib '+cls+' fbm-ib-off" onclick="sarvDeny(\''+denyKey+'\')" title="'+escText(title+' — is role ko access nahi')+'">'+icon+'</button>';
+  const inactive=r.is_active===false;
+  return b(sarvCan(cfg.feat.ed),'fbm-ib-ed','✏️','Edit — galti sudharein (REV wahi rehta hai)',
+            'sarvFbmEdit(\''+code+'\',\''+id+'\')',cfg.feat.ed)
+    +' '+b(sarvCan(cfg.feat.rv),'fbm-ib-rv','\u{1F501}','Revise — naya version (REV '+((r.rev_no||1)+1)+'), kaaran likhna zaroori',
+            'sarvFbmRevise(\''+code+'\',\''+id+'\')',cfg.feat.rv)
+    +' '+b(sarvCan('MASTER_REV_HISTORY'),'fbm-ib-hs','\u{1F552}','Revision history — REV 1 se aaj tak',
+            'sarvFbmOpenHistory(\''+code+'\',\''+id+'\')','MASTER_REV_HISTORY')
+    +' '+b(sarvCan('MASTER_ACTIVATE'),'fbm-ib',inactive?'✅':'\u{1F6AB}',
+            inactive?'Wapas Active karein':'Inactive karein — naye forms me nahi aayega, purane records jude rehte hain',
+            'sarvFbmToggleActive(\''+code+'\',\''+id+'\')','MASTER_ACTIVATE')
+    +' '+b(sarvCan(cfg.feat.dl),'fbm-ib-del','✕','Delete — hamesha ke liye hata dein',
+            'sarvFbmDelete(\''+code+'\',\''+id+'\')',cfg.feat.dl);
+}
+
+/* Toolbar ke pills — kitni rows, aur link ki sehat */
+function sarvFbmRenderPills_(code){
+  const cfg=sarvFbmCfg_(code),box=byId(cfg.ids.pills);
+  if(!box)return;
+  const st=sarvFbmSt_(code);
+  if(!st.loaded){box.innerHTML='';return;}
+  const shown=sarvFbmVisibleRows_(code).length,total=st.rows.length;
+  const off=st.rows.filter(r=>r.is_active===false).length;
+  let h='<span class="fbm-pill fbm-pill-n" title="Filter ke baad dikh rahi rows / kul rows">'
+    +shown+(shown!==total?' / '+total:'')+' rows</span>';
+  if(off)h+='<span class="fbm-pill fbm-pill-n" title="Inactive rows — naye forms me nahi aati">\u{1F6AB} '+off+' inactive</span>';
+  if(code==='BRAND'){
+    const bad=sarvFbmUnlinkedBrands_().length;
+    h+=bad
+      ?'<span class="fbm-pill fbm-pill-er" onclick="sarvFbmShowUnlinked()" title="Inka FABRIC NAME Fabric Master me nahi hai — click karke dekhein">⚠️ '+bad+' unlinked</span>'
+      :(sarvFbmSt_('FABRIC').loaded&&sarvFbmSt_('FABRIC').rows.length
+        ?'<span class="fbm-pill fbm-pill-ok" title="Har brand ka fabric Fabric Master me maujood hai">✅ all linked</span>':'');
+  }else if(code==='FABRIC'){
+    const nob=st.rows.filter(r=>r.is_active!==false&&!sarvFbmBrandsOfFabric_(r).length).length;
+    if(nob)h+='<span class="fbm-pill fbm-pill-wr" title="In fabrics par abhi koi brand nahi bana — Brand Master khaali ho to ye normal hai">\u{1F517} '+nob+' bina brand</span>';
+  }else if(code==='BUYER'){
+    /* Contact number ke bina party ka master adhoora hai — Order Form /
+       Packing me uska mobile khud nahi bharega. Isi liye ginti saamne. */
+    const noc=st.rows.filter(r=>r.is_active!==false
+      &&!String(r.contact_no||'').trim()&&!String(r.party_staff_contact_no||'').trim()).length;
+    if(noc)h+='<span class="fbm-pill fbm-pill-wr" onclick="sarvFbmShowNoContact()" '
+      +'title="In parties ka koi bhi contact number nahi — click karke dekhein">\u{1F4DE} '+noc+' bina contact</span>';
+  }
+  box.innerHTML=h;
+}
+
+/* Screen ke top ka note — table missing, ya login hi nahi. */
+function sarvFbmRenderNote_(code){
+  const cfg=sarvFbmCfg_(code),el=byId(cfg.ids.note);
+  if(!el)return;
+  if(sarvFbmSt_(code).missing){
+    el.innerHTML='<div class="fbm-note fbm-note-w">⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili. '
+      +'Supabase › SQL Editor me <code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> ek baar chalayein — '
+      +'uske baad \u{1F331} <b>Seed Excel Data</b> se sheet ki rows aa jaayengi.</div>';
+    return;
+  }
+  const cfgRev=sarvFbmGroupOk_(code,'rev');
+  el.innerHTML='<div class="fbm-note">'+cfg.icon+' <b>'+escText(cfg.label)+'</b> — '
+    +(code==='FABRIC'
+      ?'ek row = ek fabric (<b>FABRIC NAME + UNIT</b>). 42 column hain, isi liye upar ke <b>Columns</b> chips se group on / off karein.'
+     :code==='BUYER'
+      ?'ek row = ek <b>PARTY</b>. Yahi list <b>Sales › Order Form</b> ke "Buyer / Company Name" aur <b>Packing &amp; Dispatch</b> ke "Party Name" me dropdown banti hai — '
+        +'aur Order Form me party chunne par <b>OWNER NAME</b> &rarr; Contact Person, <b>CONTACT NO</b> &rarr; Mobile, '
+        +'<b>ADDRESS</b> &rarr; Address aur <b>GSTIN</b> &rarr; GSTIN khud bhar jaate hain.'
+     :code==='AGENCY'
+      ?'ek row = ek <b>AGENCY</b>. Buyer se alag table isi liye ki ek agency ke neeche kai parties hoti hain. '
+        +'Order Form me agency chunne par <b>CONTACT PERSON</b> aur <b>MOBILE NO.</b> khud bhar jaate hain.'
+      :'ek row = ek <b>ITEM CODE</b>. Iska <b>FABRIC NAME</b> Fabric Master ki row se judta hai — chip dabaakar wahan ja sakte hain.')
+    +(cfgRev?' ✏️ <b>Edit</b> = galti sudharna (REV wahi), \u{1F501} <b>Revise</b> = naya version (REV +1, kaaran ke saath), \u{1F552} se poora itihaas.':'')
+    +'</div>';
+}
+
+/* Jo button feature ke bina kaam nahi karega, use disable kar dete hain
+   (click guard phir bhi lagta hai — dono taraf se bandh). */
+function sarvFbmRenderBtns_(code){
+  const cfg=sarvFbmCfg_(code),q=(id,can,why)=>{
+    const b=byId(id);if(!b)return;
+    b.disabled=!can;
+    if(!can)b.title=why;
+  };
+  q(cfg.ids.newBtn,sarvCan(cfg.feat.nw),'Is role ko "'+sarvFeatureLabel_(cfg.feat.nw)+'" access nahi hai');
+  q(cfg.ids.seedBtn,sarvCan(cfg.feat.nw)&&sarvCan('MASTER_IMPORT'),'Seed ke liye NEW + IMPORT dono access chahiye');
+  q(cfg.ids.impBtn,sarvCan('MASTER_IMPORT'),'Is role ko "'+sarvFeatureLabel_('MASTER_IMPORT')+'" access nahi hai');
+  q(cfg.ids.csvBtn,sarvCan('MASTER_EXPORT'),'Is role ko "'+sarvFeatureLabel_('MASTER_EXPORT')+'" access nahi hai');
+}
+
+/* ── guards ──────────────────────────────────────────────────────── */
+function sarvFbmGuard_(feat){
+  if(!SB_READY){showToast('Supabase configure karein','warn');return false;}
+  if(!sarvCan(feat)){sarvDeny(feat);return false;}
+  return true;
+}
+const sarvFbmRow_=(code,id)=>sarvFbmSt_(code).rows.find(r=>String(r.id)===String(id))||null;
+
+/* ── form (New / Edit / Revise) ──────────────────────────────────── */
+window.sarvFbmNew=function(code){
+  const cfg=sarvFbmCfg_(code);
+  if(!sarvFbmGuard_(cfg.feat.nw))return;
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  sarvFbmOpenForm_(code,'NEW',null);
+};
+window.sarvFbmEdit=function(code,id){
+  const cfg=sarvFbmCfg_(code);
+  if(!sarvFbmGuard_(cfg.feat.ed))return;
+  if(!sarvFbmRow_(code,id))return showToast('Row nahi mili — Refresh karein','warn');
+  sarvFbmOpenForm_(code,'EDIT',id);
+};
+window.sarvFbmRevise=function(code,id){
+  const cfg=sarvFbmCfg_(code);
+  if(!sarvFbmGuard_(cfg.feat.rv))return;
+  if(!sarvFbmRow_(code,id))return showToast('Row nahi mili — Refresh karein','warn');
+  sarvFbmOpenForm_(code,'REVISE',id);
+};
+
+function sarvFbmOpenForm_(code,mode,id){
+  const cfg=sarvFbmCfg_(code),row=id?sarvFbmRow_(code,id):null;
+  const draft={};
+  cfg.fields.forEach(f=>{draft[f.k]=row?row[f.k]:(f.t==='tags'?[]:null);});
+  sarvFbmForm={code:code,mode:mode,id:id,draft:draft,base:row?JSON.parse(JSON.stringify(row)):null};
+
+  const curRev=row?(row.rev_no||1):0;
+  const titles={NEW:'➕ New '+cfg.label.replace(' Master',''),EDIT:'✏️ Edit',REVISE:'\u{1F501} Revise'};
+  byId('fbm_formTitle').innerHTML=cfg.icon+' '+titles[mode]+(row?' — '+escText(cfg.nameOf(row)):'');
+  byId('fbm_formSub').innerHTML=
+    mode==='NEW' ?'Nayi row <b>REV 1</b> par banegi.'
+   :mode==='EDIT'?'Galti sudhaarna — REV <b>'+curRev+'</b> wahi rahega, par purana snapshot history me chala jaayega.'
+   :'Naya version — REV <b>'+curRev+'</b> → <b>'+(curRev+1)+'</b>. Purani REV history me surakshit rehti hai.';
+  byId('fbm_formSaveBtn').innerHTML=mode==='REVISE'?'\u{1F501} Save as REV '+(curRev+1):'\u{1F4BE} Save';
+  byId('fbm_formNote').innerHTML=mode==='REVISE'
+    ?'Kaaran (Reason) bharna zaroori hai — wahi history me dikhega.'
+    :'<b>'+escText(cfg.keyCols.map(k=>sarvFbmField_(code,k).l).join(' + '))+'</b> duplicate nahi ho sakta.';
+
+  byId('fbm_formBodyWrap').innerHTML=sarvFbmFormHtml_(code,mode,row);
+  byId('fbm_formOv').classList.add('open');
+  // pehla field par focus — form khulte hi type shuru ho jaaye
+  const first=byId('fbm_in_'+cfg.fields[0].k);
+  if(first&&mode==='NEW')setTimeout(()=>{try{first.focus();}catch(e){}},40);
+  sarvFbmFormHints_();
+}
+
+function sarvFbmFormHtml_(code,mode,row){
+  const cfg=sarvFbmCfg_(code);
+  let h='';
+  if(mode==='REVISE'){
+    h+='<fieldset class="fbm-fs"><legend>\u{1F501} Revision</legend><div class="fbm-grid">'
+      +'<div class="fbm-f" style="grid-column:1/-1;"><label>Kaaran / Reason <span class="fbm-req">★</span></label>'
+      +'<input type="text" id="fbm_in__reason" maxlength="240" placeholder="e.g. Raschel roll weight 252 se 256 — party approval ke baad" autocomplete="off">'
+      +'<small>Yahi line history me REV '+((row.rev_no||1)+1)+' ke saath dikhegi.</small></div>'
+      +'</div></fieldset>';
+  }
+  cfg.groups.forEach(g=>{
+    if(g.g==='rev')return;
+    if(!sarvFbmGroupOk_(code,g.g))return;    // group chhupa hai to form me bhi nahi
+    const fs=cfg.fields.filter(f=>f.g===g.g);
+    if(!fs.length)return;
+    h+='<fieldset class="fbm-fs"><legend>'+escText(g.l)+'</legend><div class="fbm-grid">'
+      +fs.map(f=>sarvFbmFieldHtml_(code,f,row)).join('')+'</div></fieldset>';
+  });
+  return h;
+}
+
+function sarvFbmFieldHtml_(code,f,row){
+  const v=row?row[f.k]:null;
+  const id='fbm_in_'+f.k;
+  const lab='<label for="'+id+'">'+escText(f.l)+(f.req?' <span class="fbm-req">★</span>':'')+'</label>';
+  const hint=f.hint?'<small id="'+id+'_h">'+escText(f.hint)+'</small>':'<small id="'+id+'_h"></small>';
+  let ctl;
+  if(f.t==='dd'||f.t==='fab'){
+    const opts=f.t==='fab'?sarvFbmFabricOptions_():sarvDropdownList(f.dd);
+    const cur=f.t==='fab'?sarvFbmNumTxt_(v):(v===null||v===undefined?'':String(v));
+    const has=opts.some(o=>String(o)===cur);
+    ctl='<select id="'+id+'"'+(f.t==='fab'?' onchange="sarvFbmFormHints_()"':'')+'>'
+      +'<option value="">—</option>'
+      /* Jo value row me pehle se hai par list me nahi (purana data ya
+         dropdown se hata di gayi) — use khona nahi chahiye, isi liye
+         usi ka ek option bana dete hain, nishaan ke saath. */
+      +(cur&&!has?'<option value="'+escText(cur)+'" selected>'+escText(cur)+' ⚠️ (list me nahi)</option>':'')
+      +opts.map(o=>'<option value="'+escText(o)+'"'+(String(o)===cur?' selected':'')+'>'+escText(o)+'</option>').join('')
+      +'</select>';
+  }else if(f.t==='num'){
+    ctl='<input type="number" id="'+id+'" step="'+(f.step||'any')+'" value="'+escText(sarvFbmNumTxt_(v))+'" '
+      +'placeholder="—"'+(f.k==='fabric_name'?' onchange="sarvFbmFormHints_()"':'')+' autocomplete="off">';
+  }else if(f.t==='tags'){
+    ctl='<input type="text" id="'+id+'" value="'+escText(sarvFbmFmt_(f,v))+'" placeholder="BRAND 1, BRAND 2, ..." autocomplete="off">';
+  }else if(f.t==='area'){
+    // Address jaisi lambi cheez — ek line ke box me likhi nahi jaati.
+    ctl='<textarea id="'+id+'" rows="3" placeholder="'+escText(f.ph||'—')+'" '
+      +(f.uc?'style="text-transform:uppercase;"':'')+'>'
+      +escText(v===null||v===undefined?'':String(v))+'</textarea>';
+  }else{
+    /* t:'tel' — database me text hi hai (number nahi), kyunki "+91",
+       leading zero aur "98xxx / 99xxx" jaise do number ek saath sab
+       bachne chahiye. type="tel" sirf phone ka keypad khol deta hai. */
+    ctl='<input type="'+(f.t==='tel'?'tel':'text')+'" id="'+id+'" value="'+escText(v===null||v===undefined?'':String(v))+'" '
+      +'placeholder="'+escText(f.ph||(f.t==='tel'?'e.g. 98XXXXXXXX':'—'))+'"'
+      +(f.uc?' style="text-transform:uppercase;"':'')+' autocomplete="off">';
+  }
+  const wide=(f.t==='tags'||f.t==='area'||f.k==='notes')?' style="grid-column:1/-1;"':'';
+  return '<div class="fbm-f" id="'+id+'_w"'+wide+'>'+lab+ctl+hint+'</div>';
+}
+
+/* Brand form ka Fabric dropdown — LIVE fabric_master se. Inactive fabric
+   offer nahi hote, par jo row me pehle se hai wo upar (sarvFbmFieldHtml_)
+   bach jaata hai. */
+function sarvFbmFabricOptions_(){
+  const rows=sarvFbmSt_('FABRIC').rows.filter(r=>r.is_active!==false);
+  const vals=[...new Set(rows.map(r=>sarvFbmNumTxt_(r.fabric_name)).filter(Boolean))];
+  return vals.sort((a,b)=>Number(a)-Number(b));
+}
+
+/* Brand form me fabric chunne par: uski quality / weights hint me dikhti
+   hain aur khaali BLANKET WEIGHT khud bhar jaata hai (bharey hue ko kabhi
+   nahi chhedta). Fabric Master me 42 column pade hain — unhe dobara haath
+   se likhwana hi galti ki jad hai. */
+window.sarvFbmFormHints_=function(){
+  if(!sarvFbmForm)return;
+  const code=sarvFbmForm.code;
+  if(code==='BRAND'){
+    const sel=byId('fbm_in_fabric_name');if(!sel)return;
+    const h=byId('fbm_in_fabric_name_h'),f=sel.value?sarvFbmFabricRow_(sel.value):null;
+    if(h){
+      h.innerHTML=!sel.value?'Fabric Master ki row — list wahin se aati hai'
+        :f?('\u{1F9F5} '+escText([f.fabric_quality,f.unit,f.raschel_gauge?('GUAGE '+f.raschel_gauge):''].filter(Boolean).join(' · '))
+            +' · SB-SP '+(sarvFbmNumTxt_(f.sb_sp_weight)||'—')+' / SB-DP '+(sarvFbmNumTxt_(f.sb_dp_weight)||'—')
+            +' / DB-SP '+(sarvFbmNumTxt_(f.db_sp_weight)||'—')+' / DB-DP '+(sarvFbmNumTxt_(f.db_dp_weight)||'—'))
+        :'⚠️ Ye fabric Fabric Master me nahi hai — save ho jaayega par link toota rahega';
+      h.style.color=!f&&sel.value?'#b91c1c':'';
+    }
+    const cat=byId('fbm_in_category');
+    if(f&&cat&&!cat.value){
+      const want=[...cat.options].find(o=>String(o.value).toUpperCase()===String(f.fabric_quality||'').toUpperCase());
+      if(want)cat.value=want.value;           // MINK / SUPER CLOUDY dono sheets me same hai
+    }
+    const bw=byId('fbm_in_blanket_weight');
+    if(f&&bw&&!String(bw.value||'').trim()){
+      const bed=String(byId('fbm_in_bed_size')?.value||'').toUpperCase();
+      const ply=String(byId('fbm_in_blanket_ply')?.value||'').toUpperCase();
+      const sb=bed.includes('SINGLE'),dp=ply.includes('DOUBLE');
+      const pick=sb?(dp?f.sb_dp_weight:f.sb_sp_weight):(dp?f.db_dp_weight:f.db_sp_weight);
+      const t=sarvFbmNumTxt_(pick);
+      if(t){
+        bw.value=t;
+        const bh=byId('fbm_in_blanket_weight_h');
+        if(bh)bh.innerHTML='✨ Fabric Master se bhara gaya ('+(sb?'SB':'DB')+'-'+(dp?'DP':'SP')+') — badal sakte hain';
+      }
+    }
+  }
+  if(code==='FABRIC'){
+    const inp=byId('fbm_in_fabric_name'),h=byId('fbm_in_unit_h');
+    if(inp&&h){
+      const dup=sarvFbmSt_('FABRIC').rows.filter(r=>sarvFbmNumKey_(r.fabric_name)===sarvFbmNumKey_(inp.value)
+        &&String(r.id)!==String(sarvFbmForm.id||''));
+      h.innerHTML=dup.length
+        ?'ℹ️ Ye fabric name pehle se hai: '+escText(dup.map(d=>d.unit||'-').join(', '))+' — doosra UNIT chunein'
+        :'Ek hi fabric name dono unit me ho sakta hai';
+    }
+  }
+};
+
+window.sarvFbmCloseForm=function(){
+  byId('fbm_formOv')?.classList.remove('open');
+  sarvFbmForm=null;
+};
+
+/* ── save ────────────────────────────────────────────────────────── */
+window.sarvFbmSaveForm=async function(){
+  if(!sarvFbmForm)return;
+  const {code,mode,id}=sarvFbmForm;
+  const cfg=sarvFbmCfg_(code);
+  const feat=mode==='NEW'?cfg.feat.nw:(mode==='REVISE'?cfg.feat.rv:cfg.feat.ed);
+  if(!sarvFbmGuard_(feat))return;
+
+  // form -> values
+  const vals={};
+  cfg.fields.forEach(f=>{
+    const el=byId('fbm_in_'+f.k);
+    if(!el){                 // group chhupa tha — purani value chhedni nahi
+      if(mode!=='NEW')vals[f.k]=sarvFbmForm.base?sarvFbmForm.base[f.k]:null;
+      return;
+    }
+    vals[f.k]=sarvFbmParse_(f,el.value);
+  });
+
+  // validation
+  const bad=[];
+  cfg.fields.forEach(f=>{
+    const w=byId('fbm_in_'+f.k+'_w');
+    if(w)w.classList.remove('bad');
+    if(!f.req)return;
+    const v=vals[f.k];
+    const empty=v===null||v===undefined||v===''||(Array.isArray(v)&&!v.length);
+    if(empty){bad.push(f.l);if(w)w.classList.add('bad');}
+  });
+  if(bad.length)return showToast('❌ Ye field zaroori hain: '+bad.join(', '),'error');
+  if(code==='FABRIC'&&!(Number(vals.fabric_name)>0))
+    return showToast('❌ FABRIC NAME 0 se bada number hona chahiye','error');
+
+  let reason=null;
+  if(mode==='REVISE'){
+    reason=String(byId('fbm_in__reason')?.value||'').trim();
+    if(!reason){
+      byId('fbm_in__reason')?.focus();
+      return showToast('❌ Revise ke liye kaaran likhna zaroori hai','error');
+    }
+  }
+
+  // duplicate natural key
+  const keyOf=r=>cfg.keyCols.map(k=>{
+    const f=sarvFbmField_(code,k);
+    return f.t==='num'?sarvFbmNumKey_(r[k]):String(r[k]||'').trim().toUpperCase();
+  }).join('│');
+  const mine=keyOf(vals);
+  const clash=sarvFbmSt_(code).rows.find(r=>String(r.id)!==String(id||'')&&keyOf(r)===mine);
+  if(clash)return showToast('⚠️ "'+cfg.nameOf(clash)+'" pehle se '+cfg.label+' me hai','warn');
+
+  const btn=byId('fbm_formSaveBtn'),old=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.innerHTML='⏳ Saving...';}
+  try{
+    if(mode==='NEW'){
+      const ins=Object.assign({},vals,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()});
+      const {data,error}=await SB.from(cfg.table).insert(ins).select().maybeSingle();
+      if(error)throw error;
+      if(data)await sarvFbmArchive_(cfg,data,'CREATE',null,null);
+      showToast('✅ '+cfg.label+' me "'+cfg.nameOf(data||vals)+'" add ho gaya (REV 1)');
+    }else{
+      const base=sarvFbmForm.base||sarvFbmRow_(code,id);
+      if(!base)throw new Error('Row nahi mili');
+      const changed=sarvFbmDiff_(code,base,vals);
+      if(!changed.length&&mode==='EDIT'){
+        sarvFbmCloseForm();
+        return showToast('Kuch badla nahi — kuch save bhi nahi hua');
+      }
+      /* Pehle ARCHIVE, phir UPDATE. Ulta karne par, archive fail hone par,
+         purani value kahin bachti hi nahi. */
+      await sarvFbmArchive_(cfg,base,mode,reason,changed);
+      const upd=Object.assign({},vals,{updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
+      if(mode==='REVISE'){upd.rev_no=(base.rev_no||1)+1;upd.rev_reason=reason;}
+      const {error}=await SB.from(cfg.table).update(upd).eq('id',id);
+      if(error)throw error;
+      showToast(mode==='REVISE'
+        ?'\u{1F501} "'+cfg.nameOf(base)+'" ab REV '+upd.rev_no+' par hai ('+changed.length+' field badle)'
+        :'✅ "'+cfg.nameOf(base)+'" update ho gaya ('+changed.length+' field badle, REV '+(base.rev_no||1)+' wahi)');
+    }
+    sarvFbmCloseForm();
+    await sarvFbmLoad(code,true);
+  }catch(e){
+    if(/duplicate key|unique/i.test(e.message||''))showToast('⚠️ Ye row pehle se '+cfg.label+' me hai','warn');
+    else if(sarvFbmMissing_(e))showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+    else dbError(e);
+  }finally{if(btn){btn.disabled=false;btn.innerHTML=old;}}
+};
+
+/* "Kya badla" — history me aur toast me, dono me yahi list jaati hai. */
+function sarvFbmDiff_(code,oldRow,newVals){
+  const out=[];
+  sarvFbmFieldsOf_(code).forEach(f=>{
+    if(!(f.k in newVals))return;
+    const a=sarvFbmFmt_(f,oldRow[f.k]),b=sarvFbmFmt_(f,newVals[f.k]);
+    if(a!==b)out.push({k:f.k,l:f.l,o:a,n:b});
+  });
+  return out;
+}
+
+/* Revision archive. Jaan-boojh kar NON-FATAL: master_revisions na ho
+   (migration adhoori) to master ka apna write rukna nahi chahiye. */
+async function sarvFbmArchive_(cfg,row,action,reason,changed){
+  if(!SB_READY||!row)return;
+  try{
+    const {error}=await SB.from(SARV_FBM_REV_TABLE).insert({
+      master_type:cfg.code, record_id:row.id, rev_no:row.rev_no||1,
+      ref_name:cfg.nameOf(row), action:action, reason:reason||null,
+      changed_fields:changed&&changed.length?changed:null,
+      snapshot:row, created_by:sarvFbmActor_()
+    });
+    if(error)throw error;
+  }catch(e){
+    console.warn('[SARV FBM] revision archive skip ('+SARV_FBM_REV_TABLE+'):',e.message||e);
+  }
+}
+
+/* ── Active / Inactive ───────────────────────────────────────────── */
+/* Delete ki jagah yahi default raasta hai: row kahin se gayab nahi hoti,
+   bas aage ke forms / dropdowns me offer nahi hoti, aur purane PR / lot
+   card ka link zinda rehta hai. */
+window.sarvFbmToggleActive=async function(code,id){
+  if(!sarvFbmGuard_('MASTER_ACTIVATE'))return;
+  const cfg=sarvFbmCfg_(code),row=sarvFbmRow_(code,id);
+  if(!row)return;
+  const on=row.is_active===false;      // on = ab active karna hai
+  if(!on&&code==='FABRIC'){
+    const bs=sarvFbmBrandsOfFabric_(row);
+    if(bs.length&&!confirm('"'+cfg.nameOf(row)+'" par '+bs.length+' brand jude hain:\n\n'
+      +bs.slice(0,12).join(', ')+(bs.length>12?' ...':'')
+      +'\n\nInactive karne par ye brands jude REHENGE, par naye form me ye fabric nahi aayega.\n\nAage badhein?'))return;
+  }
+  try{
+    const {error}=await SB.from(cfg.table).update({is_active:on,updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()}).eq('id',id);
+    if(error)throw error;
+    await sarvFbmArchive_(cfg,row,on?'RESTORE':'DEACTIVATE',null,[{k:'is_active',l:'STATUS',o:on?'Inactive':'Active',n:on?'Active':'Inactive'}]);
+    showToast(on?'✅ "'+cfg.nameOf(row)+'" wapas Active':'\u{1F6AB} "'+cfg.nameOf(row)+'" Inactive kar diya');
+    await sarvFbmLoad(code,true);
+  }catch(e){dbError(e);}
+};
+
+/* ── Delete ──────────────────────────────────────────────────────── */
+window.sarvFbmDelete=async function(code,id){
+  const cfg=sarvFbmCfg_(code);
+  if(!sarvFbmGuard_(cfg.feat.dl))return;
+  const row=sarvFbmRow_(code,id);
+  if(!row)return;
+  /* Jis fabric par brands hain use delete karne se Brand Master ki rows
+     anaath ho jaati — isi liye roka jaata hai. Inactive hamesha milta hai. */
+  if(code==='FABRIC'){
+    const bs=sarvFbmSt_('BRAND').rows.filter(b=>sarvFbmNumKey_(b.fabric_name)===sarvFbmNumKey_(row.fabric_name));
+    if(bs.length){
+      return showToast('⛔ "'+cfg.nameOf(row)+'" delete nahi ho sakta — Brand Master me iske '+bs.length
+        +' brand hain ('+bs.slice(0,4).map(b=>b.item_code).join(', ')+(bs.length>4?' ...':'')
+        +'). Pehle wo brands badlein, ya is fabric ko \u{1F6AB} Inactive kar dein.','warn');
+    }
+  }
+  if(!confirm('"'+cfg.nameOf(row)+'" ko '+cfg.label+' se HAMESHA ke liye hata dein?\n\n'
+    +'Revision history (REV 1 … '+(row.rev_no||1)+') archive me reh jaayegi, par row screen se chali jaayegi.\n\n'
+    +'Agar sirf "aage use na ho" chahiye to Delete ki jagah \u{1F6AB} Inactive behtar hai.'))return;
+  try{
+    await sarvFbmArchive_(cfg,row,'DELETE',null,null);
+    const {error}=await SB.from(cfg.table).delete().eq('id',id);
+    if(error)throw error;
+    showToast('\u{1F5D1}️ "'+cfg.nameOf(row)+'" delete ho gaya');
+    await sarvFbmLoad(code,true);
+  }catch(e){dbError(e);}
+};
+
+/* ── Revision history ────────────────────────────────────────────── */
+window.sarvFbmOpenHistory=async function(code,id){
+  if(!sarvCan('MASTER_REV_HISTORY'))return sarvDeny('MASTER_REV_HISTORY');
+  const cfg=sarvFbmCfg_(code),row=sarvFbmRow_(code,id);
+  if(!row)return;
+  sarvFbmHist={code:code,id:id};
+  byId('fbm_histTitle').innerHTML='\u{1F552} Revision History — '+escText(cfg.nameOf(row));
+  byId('fbm_histSub').innerHTML=cfg.icon+' '+escText(cfg.label)+' · abhi <b>REV '+(row.rev_no||1)+'</b> chal rahi hai';
+  byId('fbm_histBody').innerHTML='<div class="fbm-empty">⏳ History load ho rahi hai...</div>';
+  byId('fbm_histOv').classList.add('open');
+  let revs=[];
+  try{
+    const {data,error}=await SB.from(SARV_FBM_REV_TABLE).select('*')
+      .eq('master_type',code).eq('record_id',id).order('created_at',{ascending:false});
+    if(error)throw error;
+    revs=data||[];
+  }catch(e){
+    byId('fbm_histBody').innerHTML='<div class="fbm-note fbm-note-w">⚠️ <b>'+escText(SARV_FBM_REV_TABLE)
+      +'</b> table nahi mili — <code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> chalane ke baad se har badlav yahan dikhne lagega.</div>';
+    return;
+  }
+  byId('fbm_histBody').innerHTML=sarvFbmHistHtml_(code,row,revs);
+};
+window.sarvFbmCloseHistory=function(){
+  byId('fbm_histOv')?.classList.remove('open');
+  sarvFbmHist=null;
+};
+
+const SARV_FBM_ACT={CREATE:{i:'➕',l:'Banaya gaya'},EDIT:{i:'✏️',l:'Edit (galti sudhaari)'},
+  REVISE:{i:'\u{1F501}',l:'Revise (naya version)'},RESTORE:{i:'↩️',l:'Purani REV wapas lagayi'},
+  DEACTIVATE:{i:'\u{1F6AB}',l:'Inactive kiya'},DELETE:{i:'\u{1F5D1}️',l:'Delete kiya'},
+  IMPORT:{i:'\u{1F4E5}',l:'CSV import se badla'},SEED:{i:'\u{1F331}',l:'Excel seed se aaya'}};
+
+function sarvFbmHistHtml_(code,row,revs){
+  const cfg=sarvFbmCfg_(code),canR=sarvCan('MASTER_REV_RESTORE');
+  let h='<div class="fbm-rv-row cur">'
+    +'<div class="fbm-rv-n">REV '+(row.rev_no||1)+'</div>'
+    +'<div class="fbm-rv-mid"><div class="fbm-rv-act">✅ Aaj chal rahi version</div>'
+    +'<div class="fbm-rv-meta">'+escText(row.updated_by||row.created_by||'—')
+    +(row.updated_at?' · '+escText(String(row.updated_at).slice(0,16).replace('T',' ')):'')+'</div>'
+    +(row.rev_reason?'<div class="fbm-rv-why">\u{1F4AC} '+escText(row.rev_reason)+'</div>':'')
+    +'</div></div>';
+  if(!revs.length){
+    return h+'<div class="fbm-note">ℹ️ Is row par abhi koi purani version nahi hai — jab pehli baar '
+      +'✏️ Edit ya \u{1F501} Revise hoga, usse pehle ka poora snapshot yahin aa jaayega.</div>';
+  }
+  h+=revs.map(rv=>{
+    const a=SARV_FBM_ACT[rv.action]||{i:'•',l:rv.action||'—'};
+    const ch=Array.isArray(rv.changed_fields)?rv.changed_fields:[];
+    return '<div class="fbm-rv-row">'
+      +'<div class="fbm-rv-n">REV '+(rv.rev_no||1)+'</div>'
+      +'<div class="fbm-rv-mid">'
+        +'<div class="fbm-rv-act">'+a.i+' '+escText(a.l)+'</div>'
+        +'<div class="fbm-rv-meta">'+escText(rv.created_by||'—')
+        +(rv.created_at?' · '+escText(String(rv.created_at).slice(0,16).replace('T',' ')):'')+'</div>'
+        +(rv.reason?'<div class="fbm-rv-why">\u{1F4AC} '+escText(rv.reason)+'</div>':'')
+        +(ch.length?'<div class="fbm-rv-diff">'+ch.slice(0,8).map(c=>
+            '<code>'+escText(c.l)+'</code> <span class="o">'+escText(c.o||'—')+'</span> → <span class="n">'+escText(c.n||'—')+'</span>'
+          ).join('<br>')+(ch.length>8?'<br><i>+'+(ch.length-8)+' aur field</i>':'')+'</div>':'')
+      +'</div>'
+      +'<div class="fbm-rv-side">'
+        +(canR
+          ?'<button type="button" class="fbm-ib fbm-ib-rv" onclick="sarvFbmRestoreRev(\''+escText(rv.id)+'\')" '
+            +'title="Is version ki values wapas laga dein — wo khud ek nayi REV banegi, kuch mitta nahi">↩️ Restore</button>'
+          :'<button type="button" class="fbm-ib fbm-ib-off" onclick="sarvDeny(\'MASTER_REV_RESTORE\')" title="Is role ko restore ka access nahi">↩️ Restore</button>')
+      +'</div></div>';
+  }).join('');
+  return h;
+}
+
+/* Restore bhi ek nayi REV banata hai — purani rev mitti nahi, isi liye
+   "restore karke wapas pehle jaisa" bhi ho sakta hai. */
+window.sarvFbmRestoreRev=async function(revId){
+  if(!sarvFbmHist)return;
+  if(!sarvFbmGuard_('MASTER_REV_RESTORE'))return;
+  const {code,id}=sarvFbmHist,cfg=sarvFbmCfg_(code);
+  const cur=sarvFbmRow_(code,id);
+  if(!cur)return;
+  try{
+    const {data,error}=await SB.from(SARV_FBM_REV_TABLE).select('*').eq('id',revId).maybeSingle();
+    if(error)throw error;
+    const snap=data&&data.snapshot;
+    if(!snap)return showToast('Is revision ka snapshot nahi mila','warn');
+    const vals={};
+    cfg.fields.forEach(f=>{vals[f.k]=(f.k in snap)?snap[f.k]:null;});
+    const changed=sarvFbmDiff_(code,cur,vals);
+    if(!changed.length)return showToast('Ye version aaj ki version jaisi hi hai — kuch badla nahi');
+    if(!confirm('REV '+(data.rev_no||1)+' ki values wapas lagayein?\n\n'+changed.length
+      +' field badlenge, aur row REV '+((cur.rev_no||1)+1)+' par chali jaayegi.\n\n'
+      +changed.slice(0,8).map(c=>'• '+c.l+': '+(c.o||'—')+' → '+(c.n||'—')).join('\n')
+      +(changed.length>8?'\n• ... +'+(changed.length-8)+' aur':'')))return;
+    await sarvFbmArchive_(cfg,cur,'REVISE','REV '+(data.rev_no||1)+' se restore',changed);
+    const upd=Object.assign({},vals,{rev_no:(cur.rev_no||1)+1,rev_reason:'REV '+(data.rev_no||1)+' se restore',
+      updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
+    const u=await SB.from(cfg.table).update(upd).eq('id',id);
+    if(u.error)throw u.error;
+    showToast('↩️ REV '+(data.rev_no||1)+' wapas lag gayi — ab REV '+upd.rev_no);
+    sarvFbmCloseHistory();
+    await sarvFbmLoad(code,true);
+  }catch(e){dbError(e);}
+};
+
+/* ── CSV export ──────────────────────────────────────────────────── */
+/* Headers field ke `l` se bante hain — yani Excel ke wahi headers. Isi
+   liye ye file Excel me kholkar, badalkar, Import CSV se wapas aa sakti
+   hai. Chhupe column bhi jaate hain (export poora hota hai), par rows
+   wahi jo screen par filter ke baad dikh rahi hain. */
+window.sarvFbmExport=function(code){
+  if(!sarvCan('MASTER_EXPORT'))return sarvDeny('MASTER_EXPORT');
+  const cfg=sarvFbmCfg_(code),rows=sarvFbmVisibleRows_(code);
+  if(!rows.length)return showToast('Export ke liye koi row nahi','warn');
+  const q=v=>{
+    const s=v===null||v===undefined?'':String(v);
+    return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+  };
+  const cols=cfg.fields.concat([{k:'__rev',l:'REV NO'},{k:'__st',l:'STATUS'},{k:'__by',l:'UPDATED BY'}]);
+  const head=cols.map(f=>q(f.l)).join(',');
+  const body=rows.map(r=>cols.map(f=>{
+    if(f.k==='__rev')return q(r.rev_no||1);
+    if(f.k==='__st') return q(r.is_active===false?'INACTIVE':'ACTIVE');
+    if(f.k==='__by') return q(r.updated_by||r.created_by||'');
+    return q(sarvFbmFmt_(f,r[f.k]));
+  }).join(',')).join('\r\n');
+  /* BOM — iske bina Excel UTF-8 nahi maanta aur "₹", "°" jaise akshar
+     tut jaate hain. */
+  const blob=new Blob(['﻿'+head+'\r\n'+body],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='SARV_'+(code==='FABRIC'?'Fabric_Master':'Brand_Master')+'_'+today()+'.csv';
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},400);
+  showToast('\u{1F4BE} '+rows.length+' rows export ho gayi');
+};
+
+/* ── CSV import ──────────────────────────────────────────────────── */
+window.sarvFbmImportPick=function(code){
+  if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  sarvFbmImpCode=code;
+  const inp=byId('fbm_impFile');
+  if(inp){inp.value='';inp.click();}
+};
+/* Chhota par poora CSV parser — quoted field, andar ke comma, "" se
+   escape kiya quote aur CRLF, chaaron sambhalta hai. */
+function sarvFbmCsvParse_(text){
+  const rows=[];let row=[],cell='',q=false;
+  text=String(text).replace(/^﻿/,'');
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else q=false; }
+      else cell+=c;
+      continue;
+    }
+    if(c==='"'){q=true;continue;}
+    if(c===','){row.push(cell);cell='';continue;}
+    if(c==='\r'){continue;}
+    if(c==='\n'){row.push(cell);cell='';rows.push(row);row=[];continue;}
+    cell+=c;
+  }
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(c=>String(c).trim()!==''));
+}
+const sarvFbmHnorm_=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9]+/g,'');
+
+window.sarvFbmImportFile=async function(inp){
+  const code=sarvFbmImpCode,file=inp&&inp.files&&inp.files[0];
+  sarvFbmImpCode=null;
+  if(!code||!file)return;
+  if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
+  const cfg=sarvFbmCfg_(code);
+  let rows;
+  try{rows=sarvFbmCsvParse_(await file.text());}
+  catch(e){return showToast('❌ CSV padhi nahi ja saki: '+(e.message||e),'error');}
+  if(rows.length<2)return showToast('❌ CSV me header ke baad koi row nahi','error');
+
+  /* Header -> field. `l` ya kisi bhi `alias` se match hota hai, aur
+     match "normalised" hota hai (space / dot / comma / case ignore) —
+     isi liye "REQ, WITH BORA WEIGHT" aur "REQ. WITH BORA WEIGHT" dono
+     chal jaate hain. */
+  const map={};
+  const want={};
+  cfg.fields.forEach(f=>{
+    want[sarvFbmHnorm_(f.l)]=f;
+    (f.alias||[]).forEach(a=>{want[sarvFbmHnorm_(a)]=f;});
+  });
+  /* Excel ki BRAND MASTER sheet me "TAG 2" do baar aata hai — doosre ko
+     TAG 3 maan lete hain, warna dono ek hi field par gir jaate. */
+  const seen={};
+  rows[0].forEach((h,i)=>{
+    const n=sarvFbmHnorm_(h);if(!n)return;
+    let f=want[n];
+    if(f&&seen[f.k]){
+      if(f.k==='tag_2'&&want['TAG3'])f=want['TAG3'];
+      else return;                       // wahi header dobara — pehla hi maanenge
+    }
+    if(f){map[i]=f;seen[f.k]=1;}
+  });
+  const got=Object.values(map).map(f=>f.k);
+  const missReq=cfg.fields.filter(f=>f.req&&got.indexOf(f.k)<0);
+  if(missReq.length)
+    return showToast('❌ CSV me ye column chahiye: '+missReq.map(f=>f.l).join(', ')
+      +' — pehle \u{1F4BE} Export CSV karein aur usi file ko bharein','error');
+  const unknown=rows[0].filter((h,i)=>String(h).trim()&&!map[i]&&!/^(REV NO|STATUS|UPDATED BY)$/i.test(String(h).trim()));
+
+  // rows -> values
+  const keyOf=v=>cfg.keyCols.map(k=>{
+    const f=sarvFbmField_(code,k);
+    return f.t==='num'?sarvFbmNumKey_(v[k]):String(v[k]||'').trim().toUpperCase();
+  }).join('│');
+  const existing={};
+  sarvFbmSt_(code).rows.forEach(r=>{existing[keyOf(r)]=r;});
+  const ins=[],upd=[],skip=[];
+  for(let i=1;i<rows.length;i++){
+    const raw=rows[i],vals={};
+    Object.keys(map).forEach(ci=>{const f=map[ci];vals[f.k]=sarvFbmParse_(f,raw[ci]);});
+    const miss=cfg.fields.filter(f=>f.req&&(vals[f.k]===null||vals[f.k]===''||vals[f.k]===undefined));
+    if(miss.length){skip.push('Row '+(i+1)+': '+miss.map(f=>f.l).join(', ')+' khaali');continue;}
+    const k=keyOf(vals);
+    if(existing[k]){
+      const base=existing[k],ch=sarvFbmDiff_(code,base,vals);
+      if(ch.length)upd.push({row:base,vals:vals,changed:ch});
+    }else{
+      if(ins.some(x=>keyOf(x.vals)===k)){skip.push('Row '+(i+1)+': CSV ke andar hi duplicate');continue;}
+      ins.push({vals:vals});
+    }
+  }
+  if(ins.length&&!sarvCan(cfg.feat.nw))
+    return showToast('⛔ CSV me '+ins.length+' NAYI rows hain par is role ko "'+sarvFeatureLabel_(cfg.feat.nw)+'" access nahi','warn');
+  if(upd.length&&!sarvCan(cfg.feat.ed))
+    return showToast('⛔ CSV '+upd.length+' purani rows badalti hai par is role ko "'+sarvFeatureLabel_(cfg.feat.ed)+'" access nahi','warn');
+  if(!ins.length&&!upd.length)
+    return showToast('ℹ️ CSV me kuch naya nahi mila'+(skip.length?' ('+skip.length+' row chhodi gayi)':''));
+
+  if(!confirm(cfg.label+' — CSV import\n\n'
+    +'➕ Nayi rows        : '+ins.length+'\n'
+    +'✏️ Update hone wali : '+upd.length+'\n'
+    +(skip.length?'⚠️ Chhodi gayi      : '+skip.length+'\n':'')
+    +(unknown.length?'ℹ️ Na-pehchaane column (ignore honge): '+unknown.slice(0,5).join(', ')+(unknown.length>5?' ...':'')+'\n':'')
+    +'\nUpdate hone wali har row ka purana snapshot history me chala jaayega '
+    +'(REV number nahi badlega — import EDIT ginta hai).\n\nAage badhein?'))return;
+
+  let okI=0,okU=0;
+  try{
+    if(ins.length){
+      const payload=ins.map(x=>Object.assign({},x.vals,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()}));
+      const {data,error}=await SB.from(cfg.table).insert(payload).select();
+      if(error)throw error;
+      okI=(data||payload).length;
+      for(const r of (data||[]))await sarvFbmArchive_(cfg,r,'IMPORT',null,null);
+    }
+    for(const u of upd){
+      await sarvFbmArchive_(cfg,u.row,'IMPORT',null,u.changed);
+      const {error}=await SB.from(cfg.table)
+        .update(Object.assign({},u.vals,{updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()}))
+        .eq('id',u.row.id);
+      if(error)throw error;
+      okU++;
+    }
+    showToast('\u{1F4E5} Import ho gaya — '+okI+' nayi, '+okU+' update'
+      +(skip.length?', '+skip.length+' chhodi':''));
+    if(skip.length)console.warn('[SARV FBM] import me chhodi gayi rows:\n'+skip.join('\n'));
+    await sarvFbmLoad(code,true);
+  }catch(e){
+    showToast('❌ Import adhoora ruk gaya ('+okI+' nayi, '+okU+' update ho chuki thi)','error');
+    dbError(e);
+    await sarvFbmLoad(code,true);
+  }
+};
+
+/* ── Seed (Excel sheet ki asli rows) ─────────────────────────────── */
+/* Dropdown Master ke sarvDdSeedDefaults jaisa hi niyam: jo pehle se hai
+   wo CHHOOT jaata hai, isi liye dobara dabane se duplicate nahi bante
+   aur haath se kiye badlav mitte nahi. */
+window.sarvFbmSeed=async function(code){
+  const cfg=sarvFbmCfg_(code);
+  if(!sarvFbmGuard_(cfg.feat.nw))return;
+  if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  await sarvFbmLoad(code,true);
+
+  const keyOf=v=>cfg.keyCols.map(k=>{
+    const f=sarvFbmField_(code,k);
+    return f.t==='num'?sarvFbmNumKey_(v[k]):String(v[k]||'').trim().toUpperCase();
+  }).join('│');
+  const have=new Set(sarvFbmSt_(code).rows.map(keyOf));
+  const add=[];
+  cfg.seedRows.forEach(arr=>{
+    const v={};
+    cfg.seedCols.forEach((k,i)=>{v[k]=arr[i]===undefined?null:arr[i];});
+    if(!have.has(keyOf(v)))add.push(v);
+  });
+  if(!add.length)return showToast('✅ Excel sheet ki saari rows pehle se '+cfg.label+' me hain');
+  if(!confirm(cfg.label+' — Seed Excel Data\n\n'
+    +'Sheet me '+cfg.seedRows.length+' rows hain, inme se '+add.length+' abhi missing hain.\n\n'
+    +'Jo pehle se hai use chheda NAHI jaayega.\n\n'+add.length+' rows add karein?'))return;
+  try{
+    const payload=add.map(v=>Object.assign({},v,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()}));
+    const {data,error}=await SB.from(cfg.table).insert(payload).select();
+    if(error)throw error;
+    for(const r of (data||[]))await sarvFbmArchive_(cfg,r,'SEED',null,null);
+    showToast('\u{1F331} '+add.length+' rows '+cfg.label+' me add ho gayi');
+    await sarvFbmLoad(code,true);
+    // Fabric seed ke baad Brand ka link / unlinked count bhi naya ho jaata hai
+    if(code==='FABRIC'&&sarvFbmSt_('BRAND').loaded)sarvFbmRenderPills_('BRAND');
+  }catch(e){
+    if(sarvFbmMissing_(e))showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+    else dbError(e);
+  }
+};
+
+/* ── wiring ──────────────────────────────────────────────────────── */
+/* HTML ke onclick se bulaya jaata hai (jahan feature nahi hai wahan greyed
+   button) — isi liye sarvDeny ko window par laana zaroori hai. */
+window.sarvDeny=sarvDeny;
+
+/* Esc se dialog band — form pehle, uske baad history.
+   CAPTURE phase me, stopImmediatePropagation ke saath: Admin Panel ka apna
+   Esc handler (full-screen se bahar) bhi document par hai, aur mera dialog
+   khula ho to Esc sirf dialog band kare — peeche ka panel na hile. */
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  const f=byId('fbm_formOv'),h=byId('fbm_histOv');
+  if(f&&f.classList.contains('open')){sarvFbmCloseForm();e.stopImmediatePropagation();e.preventDefault();return;}
+  if(h&&h.classList.contains('open')){sarvFbmCloseHistory();e.stopImmediatePropagation();e.preventDefault();}
+},true);
+/* Backdrop par click — box ke bahar dabane par band. */
+['fbm_formOv','fbm_histOv'].forEach(id=>{
+  document.addEventListener('click',e=>{
+    const ov=byId(id);
+    if(!ov||!ov.classList.contains('open'))return;
+    if(e.target===ov){ if(id==='fbm_formOv')sarvFbmCloseForm(); else sarvFbmCloseHistory(); }
+  });
+});
+/* Form me Ctrl+Enter = Save (42 field ke baad mouse dhoondhna na pade). */
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&byId('fbm_formOv')?.classList.contains('open')){
+    e.preventDefault();sarvFbmSaveForm();
+  }
 });

@@ -924,6 +924,9 @@
                     <button class="btn master-sub-tab" data-subtab="supplierMasterSub" onclick="switchMasterSubTab('supplierMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127981; Supplier Master</button>
                     <button class="btn master-sub-tab" data-subtab="employeeMasterSub" onclick="switchMasterSubTab('employeeMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128100; Employee Master</button>
                     <button class="btn master-sub-tab" data-subtab="machineMasterSub" onclick="switchMasterSubTab('machineMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#9881; Machine List</button>
+                    <button class="btn master-sub-tab" data-subtab="fabricMasterSub" onclick="switchMasterSubTab('fabricMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#129525; Fabric Master</button>
+                    <button class="btn master-sub-tab" data-subtab="brandMasterSub" onclick="switchMasterSubTab('brandMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127991;&#65039; Brand Master</button>
+                    <button class="btn master-sub-tab" data-subtab="buyerMasterSub" onclick="switchMasterSubTab('buyerMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127970; Buyer Master</button>
                     <button class="btn master-sub-tab" data-subtab="dropdownMasterSub" onclick="switchMasterSubTab('dropdownMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128317; Dropdown Master</button>
                     <button class="btn master-sub-tab" data-subtab="settingsSub" onclick="switchMasterSubTab('settingsSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#9881;&#65039; Settings</button>
                 </div>
@@ -1291,6 +1294,161 @@
                                 <tr><td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">Loading machines...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- ═══ FABRIC MASTER SUB-TAB ═══
+                     "SARV INDIA LOT SOFTWARE DATA.xlsx" ki FABRIC MASTER sheet
+                     ka ERP version. Ek row = ek fabric (FABRIC NAME + UNIT),
+                     42 column — isi liye table horizontally scroll karta hai
+                     aur column GROUPS chips se on/off hote hain.
+
+                     Table ka head, column chips aur rows — teeno JS banata hai
+                     (store-core.js › "FABRIC & BRAND MASTER"). Ek hi jagah
+                     SARV_FAB_FIELDS array hai jo table, form, CSV import,
+                     CSV export aur revision diff — paanchon ko chalata hai, to
+                     naya column jodna = us array me ek line jodna. -->
+                <div id="fabricMasterSub" style="display:none;">
+                    <div id="fbm_fabNote"></div>
+                    <div class="fbm-bar">
+                        <input type="text" class="form-control fbm-search" id="fbm_fabSearch" placeholder="&#128269; Fabric name, quality, unit ya brand khojein..." oninput="sarvFbmRender('FABRIC')" autocomplete="off">
+                        <select class="form-control fbm-sel" id="fbm_fabUnit"    onchange="sarvFbmRender('FABRIC')" title="Unit"><option value="">All Units</option></select>
+                        <select class="form-control fbm-sel" id="fbm_fabQuality" onchange="sarvFbmRender('FABRIC')" title="Fabric Quality"><option value="">All Qualities</option></select>
+                        <select class="form-control fbm-sel" id="fbm_fabStatus"  onchange="sarvFbmRender('FABRIC')" title="Active / Inactive">
+                            <option value="A">Active only</option>
+                            <option value="">Active + Inactive</option>
+                            <option value="I">Inactive only</option>
+                        </select>
+                        <span id="fbm_fabPills" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"></span>
+                        <span style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button class="fbm-btn fbm-btn-new"  id="fbm_fabNewBtn"  onclick="sarvFbmNew('FABRIC')">&#10133; New Fabric</button>
+                            <button class="fbm-btn fbm-btn-imp"  id="fbm_fabImpBtn"  onclick="sarvFbmImportPick('FABRIC')" title="Excel se Save-As CSV karke yahan upload karein &mdash; headers wahi rehne dein jo Export CSV deta hai">&#128229; Import CSV</button>
+                            <button class="fbm-btn fbm-btn-csv"  id="fbm_fabCsvBtn"  onclick="sarvFbmExport('FABRIC')">&#128190; Export CSV</button>
+                            <button class="fbm-btn fbm-btn-seed" id="fbm_fabSeedBtn" onclick="sarvFbmSeed('FABRIC')" title="Excel sheet ki 31 fabric rows daal deta hai. Jo fabric pehle se hai wo chhoot jaati hai &mdash; dobara dabane se duplicate nahi bante.">&#127793; Seed Excel Data</button>
+                            <button class="fbm-btn" onclick="sarvFbmLoad('FABRIC',true)">&#128260; Refresh</button>
+                        </span>
+                    </div>
+                    <div class="fbm-cgbar" id="fbm_fabCg"></div>
+                    <div class="fbm-wrap">
+                        <table class="fbm-table" id="fbm_fabTable">
+                            <thead id="fbm_fabHead"></thead>
+                            <tbody id="fbm_fabBody"><tr><td class="fbm-empty">&#9203; Loading fabric master...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ═══ BRAND MASTER SUB-TAB ═══
+                     Wahi Excel ki BRAND MASTER sheet. Ek row = ek ITEM CODE
+                     (brand / SKU) aur uska FABRIC NAME Fabric Master ki row se
+                     JUDTA hai — dropdown wahin se bharta hai, aur jis brand ka
+                     fabric master me nahi mila use toolbar me laal pill aur row
+                     me laal chip se turant pakda jaata hai. -->
+                <div id="brandMasterSub" style="display:none;">
+                    <div id="fbm_brNote"></div>
+                    <div class="fbm-bar">
+                        <input type="text" class="form-control fbm-search" id="fbm_brSearch" placeholder="&#128269; Item code, fabric, category, size khojein..." oninput="sarvFbmRender('BRAND')" autocomplete="off">
+                        <select class="form-control fbm-sel" id="fbm_brFabric"   onchange="sarvFbmRender('BRAND')" title="Fabric Name"><option value="">All Fabrics</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brCategory" onchange="sarvFbmRender('BRAND')" title="Category"><option value="">All Categories</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brBed"      onchange="sarvFbmRender('BRAND')" title="Bed Size"><option value="">All Bed Sizes</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brPly"      onchange="sarvFbmRender('BRAND')" title="Blanket Ply"><option value="">All Ply</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brSattanSize" onchange="sarvFbmRender('BRAND')" title="Sattan Size &mdash; kitne inch ka"><option value="">All Sattan Size</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brSattanType" onchange="sarvFbmRender('BRAND')" title="Sattan Type &mdash; STANDARD / PREMIUM"><option value="">All Sattan Type</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brStatus"   onchange="sarvFbmRender('BRAND')" title="Active / Inactive">
+                            <option value="A">Active only</option>
+                            <option value="">Active + Inactive</option>
+                            <option value="I">Inactive only</option>
+                        </select>
+                        <span id="fbm_brPills" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"></span>
+                        <span style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button class="fbm-btn fbm-btn-new"  id="fbm_brNewBtn"  onclick="sarvFbmNew('BRAND')">&#10133; New Brand</button>
+                            <button class="fbm-btn fbm-btn-imp"  id="fbm_brImpBtn"  onclick="sarvFbmImportPick('BRAND')" title="Excel se Save-As CSV karke yahan upload karein &mdash; headers wahi rehne dein jo Export CSV deta hai">&#128229; Import CSV</button>
+                            <button class="fbm-btn fbm-btn-csv"  id="fbm_brCsvBtn"  onclick="sarvFbmExport('BRAND')">&#128190; Export CSV</button>
+                            <button class="fbm-btn fbm-btn-seed" id="fbm_brSeedBtn" onclick="sarvFbmSeed('BRAND')" title="Excel sheet ki 65 brand rows daal deta hai. Jo item code pehle se hai wo chhoot jaata hai.">&#127793; Seed Excel Data</button>
+                            <button class="fbm-btn" onclick="sarvFbmLoad('BRAND',true)">&#128260; Refresh</button>
+                        </span>
+                    </div>
+                    <div class="fbm-cgbar" id="fbm_brCg"></div>
+                    <div class="fbm-wrap">
+                        <table class="fbm-table" id="fbm_brTable">
+                            <thead id="fbm_brHead"></thead>
+                            <tbody id="fbm_brBody"><tr><td class="fbm-empty">&#9203; Loading brand master...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ═══ BUYER MASTER SUB-TAB ═══
+                     Party (buyer) ka ek hi sach. Iska PARTY NAME do jagah
+                     dropdown bharta hai — Sales › Order Form ka "Buyer /
+                     Company Name" combo aur Packing & Dispatch ke naye slip
+                     ka "Party Name". Dono jagah ADD hota hai (replace nahi),
+                     aur `buyer_master` table na ho to dono screen pehle
+                     jaisi chalti hain.
+
+                     Seed button jaan-boojh kar nahi hai — Excel me buyer ki
+                     sheet nahi thi. List bananay ke do raaste: ➕ New, ya
+                     📥 Import CSV (headers Export CSV se le lein). -->
+                <div id="buyerMasterSub" style="display:none;">
+                    <div id="fbm_byNote"></div>
+                    <div class="fbm-bar">
+                        <input type="text" class="form-control fbm-search" id="fbm_bySearch" placeholder="&#128269; Party, owner, staff ya contact no. khojein..." oninput="sarvFbmRender('BUYER')" autocomplete="off">
+                        <select class="form-control fbm-sel" id="fbm_byStatus" onchange="sarvFbmRender('BUYER')" title="Active / Inactive">
+                            <option value="A">Active only</option>
+                            <option value="">Active + Inactive</option>
+                            <option value="I">Inactive only</option>
+                        </select>
+                        <span id="fbm_byPills" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"></span>
+                        <span style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button class="fbm-btn fbm-btn-new" id="fbm_byNewBtn" onclick="sarvFbmNew('BUYER')">&#10133; New Party</button>
+                            <button class="fbm-btn fbm-btn-imp" id="fbm_byImpBtn" onclick="sarvFbmImportPick('BUYER')" title="Party list Excel me ho to Save-As CSV karke yahan upload karein &mdash; headers wahi rehne dein jo Export CSV deta hai">&#128229; Import CSV</button>
+                            <button class="fbm-btn fbm-btn-csv" id="fbm_byCsvBtn" onclick="sarvFbmExport('BUYER')">&#128190; Export CSV</button>
+                            <button class="fbm-btn" onclick="sarvFbmLoad('BUYER',true)">&#128260; Refresh</button>
+                        </span>
+                    </div>
+                    <div class="fbm-cgbar" id="fbm_byCg"></div>
+                    <div class="fbm-wrap">
+                        <table class="fbm-table" id="fbm_byTable">
+                            <thead id="fbm_byHead"></thead>
+                            <tbody id="fbm_byBody"><tr><td class="fbm-empty">&#9203; Loading buyer master...</td></tr></tbody>
+                        </table>
+                    </div>
+
+                    <!-- ═══ AGENCY TABLE (usi screen par doosri table) ═══
+                         Apna sub-tab NAHI — Agency Master ki poori table
+                         yahin neeche baithti hai, kyunki agency aur party
+                         saath-saath maintain hoti hain (Order Form me bhi
+                         ye do box ek doosre ke neeche hain).
+
+                         Buyer me column banane ki jagah ALAG table isi liye:
+                         ek agency ke neeche kai parties hoti hain, to agency
+                         ka contact badalne par har party ki row chhedni
+                         padti — galti ki jad.
+
+                         Poora dabba Admin Panel › Tab Visibility › MD_AGENCY
+                         se on/off hota hai (sarvFbmRender ka `blockId`). -->
+                    <div id="fbm_agBlock" style="margin-top:22px; border-top:2px dashed #cbd5e1; padding-top:16px;">
+                        <div id="fbm_agNote"></div>
+                        <div class="fbm-bar">
+                            <input type="text" class="form-control fbm-search" id="fbm_agSearch" placeholder="&#128269; Agency, contact person ya mobile khojein..." oninput="sarvFbmRender('AGENCY')" autocomplete="off">
+                            <select class="form-control fbm-sel" id="fbm_agStatus" onchange="sarvFbmRender('AGENCY')" title="Active / Inactive">
+                                <option value="A">Active only</option>
+                                <option value="">Active + Inactive</option>
+                                <option value="I">Inactive only</option>
+                            </select>
+                            <span id="fbm_agPills" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"></span>
+                            <span style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                                <button class="fbm-btn fbm-btn-new" id="fbm_agNewBtn" onclick="sarvFbmNew('AGENCY')">&#10133; New Agency</button>
+                                <button class="fbm-btn fbm-btn-imp" id="fbm_agImpBtn" onclick="sarvFbmImportPick('AGENCY')" title="Agency list Excel me ho to Save-As CSV karke yahan upload karein">&#128229; Import CSV</button>
+                                <button class="fbm-btn fbm-btn-csv" id="fbm_agCsvBtn" onclick="sarvFbmExport('AGENCY')">&#128190; Export CSV</button>
+                                <button class="fbm-btn" onclick="sarvFbmLoad('AGENCY',true)">&#128260; Refresh</button>
+                            </span>
+                        </div>
+                        <div class="fbm-cgbar" id="fbm_agCg"></div>
+                        <div class="fbm-wrap">
+                            <table class="fbm-table" id="fbm_agTable">
+                                <thead id="fbm_agHead"></thead>
+                                <tbody id="fbm_agBody"><tr><td class="fbm-empty">&#9203; Loading agency master...</td></tr></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
 
@@ -3499,6 +3657,49 @@
 <datalist id="dmPartyList"></datalist>
 <datalist id="dmBrandList"></datalist>
 <datalist id="dmSupplierList"></datalist>
+
+<!-- ═══ FABRIC / BRAND MASTER — form + revision history ═══════════════
+     Body level par hain (masterDataPanel ke andar nahi) kyunki panel khud
+     scroll karta hai aur andar rakhne par ye dialog uske saath scroll ho
+     jaate. Dono khaali shell hain — poora andar ka hissa
+     store-core.js › sarvFbmOpenForm_ / sarvFbmOpenHistory_ banata hai. -->
+<div class="fbm-ov" id="fbm_formOv">
+  <div class="fbm-box">
+    <div class="fbm-head">
+      <div>
+        <h3 id="fbm_formTitle">Master</h3>
+        <div class="fbm-head-sub" id="fbm_formSub"></div>
+      </div>
+      <button type="button" class="fbm-x" onclick="sarvFbmCloseForm()" title="Band karein (Esc)">&#10005;</button>
+    </div>
+    <div class="fbm-body" id="fbm_formBodyWrap"></div>
+    <div class="fbm-foot">
+      <span class="fbm-foot-note" id="fbm_formNote"></span>
+      <button type="button" class="fbm-btn" onclick="sarvFbmCloseForm()">Cancel</button>
+      <button type="button" class="fbm-btn fbm-btn-new" id="fbm_formSaveBtn" onclick="sarvFbmSaveForm()">&#128190; Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="fbm-ov" id="fbm_histOv">
+  <div class="fbm-box fbm-box-sm">
+    <div class="fbm-head">
+      <div>
+        <h3 id="fbm_histTitle">&#128336; Revision History</h3>
+        <div class="fbm-head-sub" id="fbm_histSub"></div>
+      </div>
+      <button type="button" class="fbm-x" onclick="sarvFbmCloseHistory()" title="Band karein (Esc)">&#10005;</button>
+    </div>
+    <div class="fbm-body" id="fbm_histBody"></div>
+    <div class="fbm-foot">
+      <span class="fbm-foot-note">Rev 1 se aaj tak &mdash; har badlav ka poora snapshot rakha jaata hai, isi liye purana lot card apni hi rev padh sakta hai.</span>
+      <button type="button" class="fbm-btn" onclick="sarvFbmCloseHistory()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import CSV ka file picker — screen par kabhi dikhta nahi. -->
+<input type="file" id="fbm_impFile" accept=".csv,text/csv" style="display:none;" onchange="sarvFbmImportFile(this)">
 
 <script src="store-design-master.js"></script>
 
