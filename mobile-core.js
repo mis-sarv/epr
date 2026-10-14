@@ -1160,6 +1160,168 @@
         // The markup's fixed names show at once; Admin-added purchasers replace them.
         if(isPurchaser) loadLoginPurchasers();
     });
+    /* ── Naam se login — ek user, ek PIN, saare apps ──────────────────
+       Yahi wahi raasta hai jo launcher.html aur ERP use karte hain:
+       erp_app_login() PIN server par check karta hai aur EK session
+       token banata hai jo saare apps ke liye hai. Isi liye yahan login
+       karne par ERP / Complaint / Packing bhi bina dobara PIN khulte
+       hain — token localStorage me jaata hai aur sab ek hi origin par
+       hain.
+
+       Stage ka faisla ERP ke role se hota hai (mobStagesForUser_), isi
+       liye "Approving As" chunna nahi padta. */
+    let mobUsers = [], mobTabVis = null;
+
+    /* "Is user ko kaun-kaun se app mil sakte hain" — wahi teen-tah wala
+       hisaab jo store-core.js ka sarvTabVisible() aur launcher.html
+       karte hain, usi kram me:
+
+           user ka app_access override → role-wise tab_visibility → default
+
+       Yahan ye zaroori kyun hai: login ke waqt yahi list session par
+       likhi jaati hai (allowed_apps), aur Complaint / Packing usi list
+       ko padhte hain. Pehle yahan se sirf "ye app" likha jaata tha, to
+       is phone se login karne ke baad Complaint kholne par wo "access
+       nahi hai" keh deta — jabki access tha.
+
+       Saare app keys ka default "dikhao" hai (SARV_TABS me def:'ALL'),
+       isi liye jo key kahin set na ho wo list me aa jaati hai — yani ye
+       hisaab kisi ka access kam nahi karta. */
+    const MOB_ALL_APP_KEYS = ['HOME_ERP_APP','HOME_APPROVAL_APP','HOME_COMPLAINT_APP',
+        'HOME_PACKING','HOME_ORDER_FORM','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB',
+        'HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_MASTER','HOME_REPAIR',
+        'HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS'];
+
+    function mobAllowedApps_(roles, appAccess){
+        return MOB_ALL_APP_KEYS.filter(k => {
+            const ov = appAccess && typeof appAccess === 'object' ? appAccess[k] : undefined;
+            if(typeof ov === 'boolean') return ov;              // 1. per-user
+            const row = mobTabVis && mobTabVis[k];
+            if(row && roles.length){                            // 2. role-wise (JOD)
+                let saw = false;
+                for(const r of roles){
+                    if(typeof row[r] === 'boolean'){ saw = true; if(row[r]) return true; }
+                }
+                if(saw) return false;
+            }
+            return true;                                        // 3. default
+        });
+    }
+
+    async function mobLoadNames_(){
+        try{
+            const [q, s] = await Promise.all([
+                SB.from('app_users')
+                  .select('id,user_name,role,roles,app_access,is_active')
+                  .order('user_name'),
+                SB.from('app_settings').select('key,value').eq('key','tab_visibility')
+            ]);
+            if(q.error) throw q.error;
+            mobTabVis = (!s.error && s.data && s.data[0] && s.data[0].value) || null;
+            mobUsers = (q.data || []).filter(x => x.is_active !== false);
+            const dl = document.getElementById('loginNamesDl');
+            if(!dl) return;
+            dl.innerHTML = '';
+            mobUsers.forEach(u => {
+                const o = document.createElement('option');
+                o.value = u.user_name;
+                dl.appendChild(o);
+            });
+        }catch(e){
+            /* Chup-chaap — naam ki list na mile to "purana tareeka" waisa
+               hi chalta hai. Console me wajah rehti hai. */
+            console.warn('[MOBILE] app_users list load fail:', e.message || e);
+        }
+    }
+
+    const mobFindUser_ = nm => {
+        const n = String(nm || '').trim().toUpperCase();
+        return mobUsers.find(x => String(x.user_name).toUpperCase() === n) || null;
+    };
+
+    /* Naam bharte hi "purana tareeka" chhup jaata hai — do raaste ek
+       saath dikhte rehne se "kaun sa bharna hai" ka confusion hota tha. */
+    document.getElementById('loginName')?.addEventListener('input', function(){
+        const u = mobFindUser_(this.value);
+        const wrap = document.getElementById('loginRoleWrap');
+        const note = document.getElementById('loginNameRoles');
+        const typed = !!String(this.value || '').trim();
+        if(wrap) wrap.style.display = typed ? 'none' : '';
+        if(!note) return;
+        if(!u){ note.textContent = typed ? '' : ''; return; }
+        const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+        const st = mobStagesForUser_(roles, u.user_name);
+        note.textContent = st.length
+            ? ('✓ ' + st.map(s => s.label).join(' · '))
+            : '⚠️ Is user ka koi approval role nahi hai';
+    });
+
+    async function mobLoginByName_(nm, pin, err){
+        const show = m => { err.textContent = m; err.style.display = 'block'; };
+        const u = mobFindUser_(nm);
+        if(!u) return show('"' + nm + '" naam ka koi active user nahi mila — list se chunein, ya neeche purane tareeke se login karein');
+        const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+        const stages = mobStagesForUser_(roles, u.user_name);
+        if(!stages.length) return show('Is user ke paas koi approval role nahi hai — Admin se kehein');
+        try{
+            /* Poori list — sirf "ye app" likhna kaafi nahi hota: yahi list
+               Complaint / Packing padhte hain, aur adhoori list unhe
+               "access nahi hai" kehne par majboor kar deti. */
+            const apps = mobAllowedApps_(roles, u.app_access);
+            /* Admin ne is bande se ye app band kiya hai to login hi nahi.
+               Yahan chup-chaap jodna galat hota — wahi rok jo gate par
+               hai, wahi yahan bhi. */
+            if(apps.indexOf(MOB_APP_KEY) < 0)
+                return show('Aapke login par ye Approval App band hai — Admin se kehein (Users › 📱 Apps)');
+            const r = await SB.rpc('erp_app_login', {
+                p_user_id: String(u.id), p_pin: pin, p_allowed_apps: apps
+            });
+            if(r.error) throw r.error;
+            const d = r.data || {};
+            if(!d.success){
+                const m = { USER_NOT_FOUND:'User nahi mila — page refresh karein',
+                            USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
+                            PIN_INVALID:'Galat PIN',
+                            PIN_CHECK_UNAVAILABLE:'⚠️ Server par PIN check nahi ho saka' };
+                return show(m[d.error] || ('Login nahi hua: ' + (d.error || 'unknown')));
+            }
+            const su = d.user || {};
+            try{
+                localStorage.setItem(SARV_SSO_KEY, d.token);
+                /* Ye teen keys ERP boot par padhta hai — inke bina ERP par
+                   jaakar dobara PIN daalna padta. */
+                localStorage.setItem('sarv_active_role',  su.primary_role || roles[0] || '');
+                localStorage.setItem('sarv_active_roles', JSON.stringify(
+                    (Array.isArray(su.roles) && su.roles.length ? su.roles : roles).filter(Boolean)));
+                localStorage.setItem('sarv_active_user',  JSON.stringify({
+                    id: su.id, name: su.name, roles: su.roles || roles,
+                    primary_role: su.primary_role, app_access: su.app_access || {},
+                    cmp_profile_id: su.cmp_profile_id || null,
+                    pk_profile_id: su.pk_profile_id || null
+                }));
+            }catch(e){}
+            const st2 = mobStagesForUser_(
+                (Array.isArray(su.roles) && su.roles.length ? su.roles : roles).filter(Boolean),
+                su.name || u.user_name);
+            const use = st2.length ? st2 : stages;
+            if(use.length === 1) enterMobile_(use[0].stage, use[0].purchaserName, null);
+            else mobShowStagePicker_(use, su.name || u.user_name);
+        }catch(e){
+            /* Faisla CODE se, aur asli message hamesha saath. Pehle message
+               par regex chalta tha, jisme kisi bhi aur wajah se aaya error
+               bhi "migration nahi chali" gin liya jaata tha — aur screen par
+               wo baat likhi jaati thi jo sach nahi hoti. */
+            const msg = (e && e.message) || String(e || 'unknown error');
+            const code = (e && e.code) || '';
+            if(code === 'PGRST202' || code === '42883')
+                show('⚠️ erp_app_login() server par nahi mila — UNIFIED_USERS_MIGRATION.sql chalayein, ya SQL Editor me: notify pgrst, \'reload schema\';  [' + code + ']');
+            else if(code === '42501')
+                show('⚠️ Permission nahi hai (anon). ' + msg + ' [42501]');
+            else
+                show(msg + (code ? ' [' + code + ']' : ''));
+        }
+    }
+
     async function attemptLogin(){
         const role = document.getElementById('loginRole').value;
         const vendorName = document.getElementById('loginVendor').value;
@@ -1167,6 +1329,12 @@
         const pin = document.getElementById('loginPin').value;
         const err = document.getElementById('loginError');
         err.style.display = 'none';
+        // Naam bhara hai to wahi raasta — role dropdown dekha hi nahi jaata.
+        const nameTyped = String(document.getElementById('loginName')?.value || '').trim();
+        if(nameTyped){
+            if(!pin){ err.textContent = 'PIN enter karo'; err.style.display='block'; return; }
+            return mobLoginByName_(nameTyped, pin, err);
+        }
         if(!role){ err.textContent = 'Role select karo'; err.style.display='block'; return; }
         if(role==='vendor' && !vendorName){ err.textContent = 'Vendor Name select karo'; err.style.display='block'; return; }
         if(role==='purchaser' && !purchaserName){ err.textContent = 'Purchaser Name select karo'; err.style.display='block'; return; }
@@ -1603,7 +1771,7 @@
         liveRefresh_(true);
     });
 
-    function logoutRole(){
+    async function logoutRole(){
         if(!confirm('Do you want to log out?')) return;
         liveStop();
         closePoSendPinGate();   // otherwise it would sit on top of the login screen
@@ -1612,6 +1780,29 @@
         myPurchaserName = null;
         applyPurchaserScope();
         try{localStorage.removeItem(MOBILE_LOGIN_STORAGE_KEY);}catch(e){}
+
+        /* Single login se aaye the to logout bhi usi ka — warna ERP /
+           Complaint / Packing khule hi rehte aur "logout kiya tha" wala
+           bharosa jhootha nikalta. Ek login tha, to logout bhi ek. */
+        let tok = null;
+        try{ tok = localStorage.getItem(SARV_SSO_KEY); }catch(e){}
+        if(tok){
+            try{ await SB.rpc('erp_app_logout', { p_token: tok }); }catch(e){}
+            try{
+                ['sarv_sso_token','sarv_active_role','sarv_active_roles','sarv_active_user',
+                 'sarv_active_user_sig','sihf_sb_token','sihf_erp_sso_msg']
+                    .forEach(k => localStorage.removeItem(k));
+            }catch(e){}
+            location.href = 'launcher.html';
+            return;
+        }
+
+        const nameBox = document.getElementById('loginName');
+        if(nameBox) nameBox.value = '';
+        const nameNote = document.getElementById('loginNameRoles');
+        if(nameNote) nameNote.textContent = '';
+        const roleWrap = document.getElementById('loginRoleWrap');
+        if(roleWrap) roleWrap.style.display = '';
         document.getElementById('loginRole').value = '';
         document.getElementById('loginVendorGroup').style.display = 'none';
         document.getElementById('loginPurchaserGroup').style.display = 'none';
@@ -1642,9 +1833,149 @@
     document.getElementById('poSendPinBtn')?.addEventListener('click', () => confirmPoSendPin());
     document.getElementById('poSendPinCancelBtn')?.addEventListener('click', closePoSendPinGate);
     document.getElementById('poSendPin')?.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmPoSendPin(); });
+    /* ══ ERP ka single login ══════════════════════════════════════════
+       ERP / launcher.html me login karte hi ek session token ban jaata
+       hai jo SAARE apps ke liye hai (app_sessions). Saare apps ek hi
+       origin par hain, isi liye localStorage saajha hai aur ye app usi
+       token se apni pehchaan le leti hai — yahan dobara PIN nahi.
+
+       Is app ki pehchaan "stage" hai (gm / md / poSender / purchaser),
+       aur ERP ki pehchaan "role". Neeche wahi jodd hai — STAGE_ROLE_PIN
+       ka ulta. Jiske paas ek hi stage banta hai wo seedha andar; do ya
+       zyada bante hon (jaise Admin) to sirf chunna padta hai, PIN nahi.
+
+       Naram raasta: token na ho, RPC na ho, ya net kharab ho — teeno
+       soorat me ye chup-chaap hat jaata hai aur app ka purana login
+       waisa hi chalta hai. */
+    const SARV_SSO_KEY = 'sarv_sso_token';
+    const MOB_APP_KEY  = 'HOME_APPROVAL_APP';
+
+    /* ERP role → is app ka stage. Ek user ke kai role ho sakte hain, isi
+       liye list lautati hai. PURCHASER ka stage gmCeo hai par NAAM ke
+       saath — wahi naam uski list ko uske apne PR tak seemit rakhta hai
+       (applyPurchaserScope). */
+    function mobStagesForUser_(roles, userName){
+        const out = [], seen = {};
+        const add = (stage, pname, label) => {
+            const k = stage + '|' + (pname || '');
+            if (seen[k]) return;
+            seen[k] = 1;
+            out.push({ stage: stage, purchaserName: pname || null, label: label });
+        };
+        (roles || []).forEach(r => {
+            if (r === 'PURCHASER')              add('gmCeo',   userName, 'Purchaser — ' + userName);
+            else if (r === 'USER_GM_PIN')       add('gm',      null,     'GM');
+            else if (r === 'USER_MD_PIN')       add('md',      null,     'MD');
+            else if (r === 'PO_SENDER_PIN')     add('poSender',null,     'PO Sender');
+            /* Admin / Edit User ka koi apna approval stage nahi hota, par
+               unhe dekhna sab kuch hota hai — GM ki tarah andar aate hain. */
+            else if (r === 'ADMIN_PIN' || r === 'EDIT_PASSWORD') add('gm', null, 'GM (Admin)');
+        });
+        return out;
+    }
+
+    /* Login / restore / SSO — teeno ka aakhri qadam ek hi jagah, taaki
+       badge, login screen aur live list teeno me farq na reh jaaye. */
+    function enterMobile_(stage, purchaserName, vendorName){
+        myStage = stage;
+        myVendorName = vendorName || null;
+        myPurchaserName = purchaserName || null;
+        applyPurchaserScope();
+        document.getElementById('roleBadge').textContent =
+            (myPurchaserName ? 'Purchaser — ' + myPurchaserName
+                             : STAGE_LABEL[myStage] + (myVendorName ? ' — ' + myVendorName : '')) + ' ⏻';
+        document.getElementById('loginScreen').style.display = 'none';
+        const pinBox = document.getElementById('loginPin');
+        if (pinBox) pinBox.value = '';
+        try{
+            localStorage.setItem(MOBILE_LOGIN_STORAGE_KEY,
+                JSON.stringify({ stage: myStage, vendorName: myVendorName, purchaserName: myPurchaserName }));
+        }catch(e){}
+        loadRolePerms();
+        renderList().then(liveStart);
+    }
+
+    // Access na ho to app khulti hi nahi — button chhupane ka doosra sira.
+    function mobSsoBlock_(name){
+        const d = document.createElement('div');
+        d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;'
+            + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
+            + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
+        d.innerHTML = '<div style="max-width:420px;">'
+            + '<div style="font-size:46px;margin-bottom:14px;">&#128274;</div>'
+            + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Approval App ka access nahi hai</h2>'
+            + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
+            + (name ? '<b>' + String(name).replace(/[<>&]/g, '') + '</b>, aapke' : 'Aapke')
+            + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Admin Panel &rsaquo; Users &rsaquo; Apps</i>.</p>'
+            + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
+            + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
+            + '&larr; Apps par wapas</button></div>';
+        (document.body || document.documentElement).appendChild(d);
+    }
+
+    /* true = ye function sab sambhaal chuka (andar le gaya ya rok diya),
+       false = ERP se nahi aaye — purana raasta chalne do. */
+    async function mobileSsoBoot_(){
+        let tok = null;
+        try{ tok = localStorage.getItem(SARV_SSO_KEY); }catch(e){}
+        if(!tok) return false;
+        let d;
+        try{
+            const r = await SB.rpc('erp_app_session', { p_token: tok, p_app: MOB_APP_KEY });
+            if(r.error) return false;
+            d = r.data || {};
+        }catch(e){ return false; }
+
+        if(!d.success){
+            if(d.error === 'NO_APP_ACCESS'){ mobSsoBlock_(d.user && d.user.name); return true; }
+            // Session khatam / band — saaf karke apna login dikhao.
+            try{ localStorage.removeItem(SARV_SSO_KEY); }catch(e){}
+            return false;
+        }
+
+        const su = d.user || {};
+        const roles = (Array.isArray(su.roles) && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
+        const stages = mobStagesForUser_(roles, su.name || '');
+        if(!stages.length){
+            /* ERP me hain, is app ka access bhi hai, par koi approval stage
+               nahi banta (jaise sirf Store In-Charge). Saaf kehna behtar hai
+               — warna khaali list dikhti aur wajah kahin likhi nahi hoti. */
+            mobSsoBlock_(su.name);
+            return true;
+        }
+        if(stages.length === 1){
+            enterMobile_(stages[0].stage, stages[0].purchaserName, null);
+            return true;
+        }
+        mobShowStagePicker_(stages, su.name);
+        return true;
+    }
+
+    /* Ek se zyada stage — sirf chunna, PIN nahi (wo ERP par ho chuka). */
+    function mobShowStagePicker_(stages, name){
+        const scr = document.getElementById('loginScreen');
+        const box = scr && scr.querySelector('.modal-content');
+        if(!box){ enterMobile_(stages[0].stage, stages[0].purchaserName, null); return; }
+        box.innerHTML = '<div class="modal-title"><span>&#128075; ' +
+            String(name || '').replace(/[<>&]/g, '') + '</span></div>'
+            + '<div style="font-size:0.78rem;color:#6b7280;margin-bottom:12px;">'
+            + 'ERP ka login ho chuka hai &mdash; sirf chunein ki kis roop me kaam karna hai.</div>'
+            + '<div id="mobStagePick"></div>';
+        const holder = document.getElementById('mobStagePick');
+        stages.forEach(s => {
+            const b = document.createElement('button');
+            b.className = 'btn';
+            b.style.cssText = 'margin-bottom:8px;';
+            b.textContent = s.label;
+            b.addEventListener('click', () => enterMobile_(s.stage, s.purchaserName, null));
+            holder.appendChild(b);
+        });
+        scr.style.display = 'flex';
+    }
+
     // Restore a previous login so the PIN isn't asked again on every reload —
     // only an explicit Logout (logoutRole, via the role badge) clears it.
-    (function restoreMobileLogin(){
+    function restoreMobileLogin(){
         try{
             const raw = localStorage.getItem(MOBILE_LOGIN_STORAGE_KEY);
             if(!raw) return;
@@ -1666,8 +1997,25 @@
                 (myPurchaserName ? 'Purchaser — '+myPurchaserName : STAGE_LABEL[myStage] + (myVendorName?' — '+myVendorName:'')) + ' ⏻';
             document.getElementById('loginScreen').style.display = 'none';
             renderList().then(liveStart);   // restored session: go live straight away
+            return true;
         }catch(e){}
-    })();
+        return false;
+    }
+
+    /* Boot ka kram — ERP ka single login SABSE PEHLE.
+       Wajah: is phone par pichhli baar kisi aur roop me login hua ho
+       sakta hai (ya kisi aur bande ka), aur ERP ka taaza session hi
+       sach hai. Pehle purana restore kar dete to banda apne hi naye
+       login ke bawajood purani pehchaan me baitha rehta. */
+    mobileSsoBoot_()
+      .then(handled => { if(!handled) restoreMobileLogin(); })
+      .catch(()     => { restoreMobileLogin(); });
+
+    /* Naam ki list hamesha bhar dete hain, chaahe abhi login screen dikh
+       rahi ho ya nahi — Logout kabhi bhi ho sakta hai aur us waqt list
+       ka intezaar karwana theek nahi lagta. Ek chhoti query hai. */
+    mobLoadNames_();
+
     // Role-wise tab access set by the Admin in STORE.html — applied as soon as it arrives.
     loadRolePerms();
 

@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Sarv India — Apps</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   SARV INDIA — LAUNCHER (look)
+   ────────────────────────────────────────────────────────────────────
+   Dark-first, kyunki ye page din bhar me kai baar khulta hai aur
+   factory floor ke phone par bhi padhna aasaan rehna chahiye. Light
+   mode bhi hai (prefers-color-scheme), isi liye har rang token hai.
+
+   Teen baatein jaan-boojh kar:
+     * Har app ka apna ACCENT rang — banda rang se pehchan leta hai,
+       padhne se pehle. Icon tile, hover glow aur left border teeno
+       wahi rang lete hain.
+     * Animation sirf pehli baar, aur `prefers-reduced-motion` par
+       poori band — har reload par uchhalti screen professional nahi
+       lagti.
+     * Touch target 44px se kam nahi, focus ring saaf — ye phone par
+       aur keyboard se chalne wali screen hai.
+   ════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#0b1220;
+  --bg2:#0e1729;
+  --surface:rgba(255,255,255,.045);
+  --surface-2:rgba(255,255,255,.07);
+  --hairline:rgba(255,255,255,.10);
+  --hairline-s:rgba(255,255,255,.18);
+  --txt:#eef2f8;
+  --txt-2:#9fb0c7;
+  --txt-3:#6b7f99;
+  --accent:#38bdf8;
+  --accent-2:#2563eb;
+  --ok:#34d399;
+  --err-bg:rgba(239,68,68,.10);
+  --err-br:rgba(239,68,68,.32);
+  --err-tx:#fca5a5;
+  --shadow:0 18px 50px -12px rgba(0,0,0,.65);
+  --radius:16px;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef2f7;
+    --bg2:#e4eaf3;
+    --surface:rgba(255,255,255,.80);
+    --surface-2:#ffffff;
+    --hairline:rgba(15,23,42,.10);
+    --hairline-s:rgba(15,23,42,.20);
+    --txt:#0f172a;
+    --txt-2:#475569;
+    --txt-3:#64748b;
+    --err-bg:rgba(220,38,38,.07);
+    --err-br:rgba(220,38,38,.28);
+    --err-tx:#b91c1c;
+    --shadow:0 18px 44px -16px rgba(15,23,42,.28);
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--txt);
+  min-height:100vh;
+  min-height:100dvh;
+  font-family:'Segoe UI',system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding:clamp(18px,5vw,44px) 16px calc(40px + env(safe-area-inset-bottom));
+  position:relative; overflow-x:hidden;
+}
+/* Aurora — do dheeme bahte gradient. Position fixed, isi liye scroll par
+   hilte nahi aur list lambi ho to bhi background shaant rehta hai. */
+body::before, body::after{
+  content:''; position:fixed; z-index:-1; border-radius:50%;
+  filter:blur(90px); opacity:.55; pointer-events:none;
+}
+body::before{
+  width:60vmax; height:60vmax; top:-22vmax; left:-14vmax;
+  background:radial-gradient(circle at 30% 30%, #1d4ed8, transparent 62%);
+  animation:drift1 26s ease-in-out infinite alternate;
+}
+body::after{
+  width:52vmax; height:52vmax; bottom:-20vmax; right:-16vmax;
+  background:radial-gradient(circle at 60% 60%, #0e7490, transparent 62%);
+  animation:drift2 32s ease-in-out infinite alternate;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]) body::before,
+  :root:not([data-theme="dark"]) body::after{ opacity:.28; }
+}
+@keyframes drift1{ to{ transform:translate3d(8vmax,6vmax,0) scale(1.12); } }
+@keyframes drift2{ to{ transform:translate3d(-7vmax,-5vmax,0) scale(1.08); } }
+
+.wrap{width:100%; max-width:540px; position:relative;}
+
+/* ── Brand ─────────────────────────────────────────────────────────── */
+.brand{text-align:center; margin:4px 0 26px;}
+.logo{
+  width:66px; height:66px; margin:0 auto 14px;
+  border-radius:20px;
+  background:linear-gradient(145deg,#38bdf8,#2563eb 55%,#4f46e5);
+  display:flex; align-items:center; justify-content:center;
+  font-size:31px; line-height:1;
+  box-shadow:0 10px 30px -8px rgba(37,99,235,.75), inset 0 1px 0 rgba(255,255,255,.35);
+}
+.brand h1{
+  margin:0; font-size:clamp(19px,5.2vw,23px); font-weight:800;
+  letter-spacing:.14em; text-transform:uppercase;
+}
+.brand p{margin:7px 0 0; font-size:12.5px; color:var(--txt-2); letter-spacing:.02em;}
+
+/* ── Card ──────────────────────────────────────────────────────────── */
+.card{
+  background:var(--surface);
+  backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid var(--hairline);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:clamp(18px,4.5vw,26px);
+}
+.card h2{
+  margin:0 0 4px; font-size:16.5px; font-weight:750; letter-spacing:.01em;
+}
+.card .sub{margin:0 0 20px; font-size:12.5px; color:var(--txt-2);}
+
+label{
+  display:block; font-size:11.5px; font-weight:700; color:var(--txt-2);
+  margin:0 0 7px; letter-spacing:.06em; text-transform:uppercase;
+}
+.fg{margin-bottom:16px;}
+.ctrl{position:relative; display:flex; align-items:center;}
+.ctrl .ico{
+  position:absolute; left:14px; font-size:15px; opacity:.6;
+  pointer-events:none; line-height:1;
+}
+input{
+  width:100%; min-height:48px;
+  background:rgba(0,0,0,.22);
+  border:1px solid var(--hairline);
+  color:var(--txt); border-radius:11px;
+  padding:12px 14px 12px 41px;
+  font-size:15.5px; font-family:inherit; outline:none;
+  transition:border-color .16s, box-shadow .16s, background .16s;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]) input{ background:rgba(255,255,255,.9); }
+}
+input::placeholder{color:var(--txt-3);}
+input:focus{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3.5px rgba(56,189,248,.20);
+}
+.peek{
+  position:absolute; right:7px; min-height:36px; min-width:38px;
+  background:none; border:none; color:var(--txt-2); cursor:pointer;
+  font-size:15px; border-radius:8px; line-height:1;
+}
+.peek:hover{color:var(--txt); background:var(--surface-2);}
+.roles{
+  font-size:11.5px; color:var(--ok); margin-top:8px;
+  min-height:15px; font-weight:650; letter-spacing:.01em;
+}
+button.go{
+  width:100%; min-height:50px; border:none; border-radius:11px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  color:#fff; font-size:15.5px; font-weight:750; letter-spacing:.02em;
+  font-family:inherit; cursor:pointer; margin-top:4px;
+  box-shadow:0 10px 26px -10px rgba(37,99,235,.9);
+  transition:transform .12s, box-shadow .16s, filter .16s;
+}
+button.go:hover{filter:brightness(1.07); box-shadow:0 14px 30px -10px rgba(37,99,235,1);}
+button.go:active{transform:translateY(1px);}
+button.go:disabled{opacity:.62; cursor:default; filter:none; transform:none;}
+.err{
+  display:none; background:var(--err-bg); border:1px solid var(--err-br);
+  color:var(--err-tx); border-radius:11px; padding:11px 13px;
+  font-size:12.5px; margin-bottom:16px; line-height:1.55;
+}
+.hint{font-size:11.5px; color:var(--txt-3); margin-top:14px; line-height:1.6;}
+
+/* ── Who (logged in) ───────────────────────────────────────────────── */
+.who{
+  display:flex; align-items:center; gap:13px;
+  background:var(--surface);
+  backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid var(--hairline); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:14px 16px; margin-bottom:18px;
+}
+.who .av{
+  width:44px; height:44px; border-radius:14px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:800; font-size:17px; color:#fff;
+  background:linear-gradient(145deg,#38bdf8,#2563eb);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3);
+}
+.who .meta{min-width:0; flex:1;}
+.who .hi{font-size:11px; color:var(--txt-3); letter-spacing:.05em; text-transform:uppercase; font-weight:700;}
+.who .nm{
+  font-size:15.5px; font-weight:750; line-height:1.3; margin-top:2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.who .rl{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;}
+.pill{
+  font-size:10.5px; font-weight:700; letter-spacing:.03em;
+  background:var(--surface-2); border:1px solid var(--hairline);
+  color:var(--txt-2); border-radius:999px; padding:3px 9px;
+}
+.who .out{
+  flex:0 0 auto; min-height:40px;
+  background:transparent; border:1px solid var(--hairline-s);
+  color:var(--txt-2); border-radius:10px; padding:9px 13px;
+  font-size:12px; font-weight:700; cursor:pointer; font-family:inherit;
+  white-space:nowrap; transition:border-color .16s, color .16s, background .16s;
+}
+.who .out:hover{color:#fca5a5; border-color:var(--err-br); background:var(--err-bg);}
+
+/* ── App grid ──────────────────────────────────────────────────────── */
+.sec-h{
+  font-size:11px; font-weight:750; color:var(--txt-3);
+  letter-spacing:.11em; text-transform:uppercase; margin:0 0 11px 3px;
+}
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+@media (max-width:440px){ .grid{grid-template-columns:1fr;} }
+a.app{
+  --a:var(--accent);
+  position:relative; display:flex; align-items:center; gap:13px;
+  text-decoration:none; color:var(--txt);
+  background:var(--surface);
+  backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+  border:1px solid var(--hairline); border-radius:14px;
+  padding:15px 15px; overflow:hidden;
+  box-shadow:var(--shadow);
+  transition:transform .14s, border-color .16s, box-shadow .16s;
+}
+/* Baayin kinare ki patli lakeer — app ka rang, bina poore card ko rangne. */
+a.app::before{
+  content:''; position:absolute; inset:0 auto 0 0; width:3px;
+  background:var(--a); opacity:.85;
+}
+/* color-mix() purane browser me nahi hai, isi liye pehle saada fallback
+   likha hai aur uske baad color-mix wali line — jo browser samajhta hai
+   wahi aakhir me lagti hai, baaki use chhod dete hain. */
+a.app:hover{
+  transform:translateY(-3px);
+  border-color:var(--a);
+  box-shadow:0 20px 44px -14px rgba(0,0,0,.7);
+}
+@supports (border-color: color-mix(in srgb, red 50%, transparent)){
+  a.app:hover{
+    border-color:color-mix(in srgb, var(--a) 55%, transparent);
+    box-shadow:0 20px 44px -14px rgba(0,0,0,.7), 0 0 0 1px color-mix(in srgb, var(--a) 30%, transparent);
+  }
+}
+a.app:active{transform:translateY(-1px);}
+a.app:focus-visible{outline:2.5px solid var(--a); outline-offset:3px;}
+a.app .tile{
+  width:42px; height:42px; border-radius:12px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center; font-size:21px;
+  /* Fallback pehle — neeche @supports wala block isse badal deta hai. */
+  background:rgba(255,255,255,.07);
+  border:1px solid var(--hairline);
+}
+@supports (background: color-mix(in srgb, red 50%, transparent)){
+  a.app .tile{
+    background:color-mix(in srgb, var(--a) 16%, transparent);
+    border-color:color-mix(in srgb, var(--a) 28%, transparent);
+  }
+}
+a.app .body{min-width:0; flex:1;}
+a.app .t{font-size:14px; font-weight:750; line-height:1.25; letter-spacing:.01em;}
+a.app .s{font-size:11px; color:var(--txt-2); margin-top:3px; line-height:1.35;}
+a.app .go{font-size:15px; color:var(--txt-3); flex:0 0 auto; transition:transform .16s, color .16s;}
+a.app:hover .go{color:var(--a); transform:translateX(3px);}
+
+.none{
+  background:var(--surface); border:1px solid var(--hairline);
+  border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:26px 20px; text-align:center; font-size:13px;
+  color:var(--txt-2); line-height:1.7;
+}
+.foot{
+  text-align:center; font-size:11px; color:var(--txt-3);
+  margin-top:24px; line-height:1.75;
+}
+.spin{text-align:center; padding:56px 0; color:var(--txt-2); font-size:13px;}
+.spin .dot{
+  display:inline-block; width:9px; height:9px; border-radius:50%;
+  background:var(--accent); margin:0 3px; animation:bounce 1.25s infinite;
+}
+.spin .dot:nth-child(2){animation-delay:.16s;}
+.spin .dot:nth-child(3){animation-delay:.32s;}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-7px);opacity:1}}
+
+/* Pehli baar andar aane wali halki si harkat. */
+.rise{animation:rise .42s cubic-bezier(.22,1,.36,1) both;}
+@keyframes rise{from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:none;}}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important; transition:none !important;}
+  a.app:hover{transform:none;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand rise">
+    <div class="logo">🏭</div>
+    <h1>Sarv India</h1>
+    <p>Ek login — aapke saare apps</p>
+  </div>
+
+  <div id="boot" class="spin">
+    <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+    <div style="margin-top:14px;">Dekh rahe hain…</div>
+  </div>
+
+  <!-- ── Login ──────────────────────────────────────────────────────── -->
+  <div class="card rise" id="loginCard" style="display:none;">
+    <h2>Login</h2>
+    <p class="sub">Apna naam chunein aur PIN daalein.</p>
+    <div class="err" id="err"></div>
+    <div class="fg">
+      <label for="nameBox">Apna Naam</label>
+      <div class="ctrl">
+        <span class="ico">👤</span>
+        <input id="nameBox" list="namesDl" autocomplete="off" placeholder="Naam type karein / chunein">
+      </div>
+      <datalist id="namesDl"></datalist>
+      <div class="roles" id="rolesNote"></div>
+    </div>
+    <div class="fg">
+      <label for="pinBox">PIN</label>
+      <div class="ctrl">
+        <span class="ico">🔑</span>
+        <input id="pinBox" type="password" inputmode="numeric" autocomplete="off" placeholder="Apna PIN">
+        <button type="button" class="peek" id="peekBtn" aria-label="PIN dikhayein">👁</button>
+      </div>
+    </div>
+    <button class="go" id="goBtn">Login</button>
+    <div class="hint">
+      PIN Admin deta hai (Admin Panel › Users &amp; Roles).
+      Naam list me na ho to Admin se apna user banwayein.
+    </div>
+  </div>
+
+  <!-- ── Logged in ──────────────────────────────────────────────────── -->
+  <div id="homeWrap" style="display:none;">
+    <div class="who rise">
+      <div class="av" id="avatar">?</div>
+      <div class="meta">
+        <div class="hi" id="whoHi">Welcome</div>
+        <div class="nm" id="whoName">—</div>
+        <div class="rl" id="whoRole"></div>
+      </div>
+      <button class="out" id="outBtn">Logout</button>
+    </div>
+    <div class="sec-h" id="appsHead" style="display:none;">Aapke Apps</div>
+    <div class="grid" id="appGrid"></div>
+    <div class="none" id="noApps" style="display:none;">
+      🔒 Aapke login par abhi koi app chalu nahi hai.<br>
+      Admin se kehein — <i>Admin Panel › Users › 📱 Apps</i>.
+    </div>
+    <div class="foot">
+      Jis app par click karenge wo seedha khulega — dobara login nahi.<br>
+      Logout sirf yahan se — ek hi baar, saare apps ka.
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   SARV INDIA — LAUNCHER
+   ────────────────────────────────────────────────────────────────────
+   Login ke baad ka PEHLA page. Do hi kaam karta hai:
+
+     1. Naam + PIN se login — `erp_app_login()` ek session token banata
+        hai jo SAARE apps ke liye hai (app_sessions). Saare apps ek hi
+        origin par hain, isi liye localStorage saajha hai aur baaki apps
+        usi token se apni pehchaan le lete hain. Yahin wo localStorage
+        keys bhi likhi jaati hain jo index.html boot par padhta hai
+        (`sarv_active_role` / `_roles` / `_user`) — isi liye ERP par
+        jaate hi wo bina PIN khul jaata hai.
+
+     2. Sirf WAHI app buttons dikhana jinka access hai. Faisla theek
+        wahi teen-tah wala hai jo store-core.js ka sarvTabVisible()
+        karta hai, usi kram me:
+
+           user ka app_access override → role-wise tab_visibility → default
+
+        Isi liye Admin Panel me kiya gaya badlaav yahan bina kisi alag
+        setting ke lag jaata hai.
+
+   Ye page apne aap me koi rok NAHI hai — asli rok har app ke apne gate
+   par hai (wo session se dobara poochhte hain). Yahan button chhupane ka
+   matlab sirf itna hai ki galti se khulne wali cheez saamne na rahe.
+   ════════════════════════════════════════════════════════════════════ */
+
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+
+const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});
+
+/* Wahi keys jo store-core.js padhta / likhta hai — naam badla to ERP
+   launcher ke login ko pehchanna band kar dega. */
+const K_SSO    = 'sarv_sso_token';
+const K_ROLE   = 'sarv_active_role';
+const K_ROLES  = 'sarv_active_roles';
+const K_USER   = 'sarv_active_user';
+const K_SALES  = 'sihf_sb_token';      // Order Form ka apna token
+const K_SALES_MSG = 'sihf_erp_sso_msg';
+
+/* Launcher par dikhne wale apps. `key` wahi hai jo Admin Panel › Tab
+   Visibility aur per-user Apps me hai, isi liye koi nayi vocabulary
+   nahi — aur naya app jodna ek line ka kaam hai. `accent` sirf dikhne
+   ke liye hai: banda rang se app pehchan le, padhne se pehle. */
+const APPS = [
+  { key:'HOME_ERP_APP',       href:'index.html',      ico:'🏢', accent:'#38bdf8',
+    title:'ERP',        sub:'Store, Purchase, Production, Masters' },
+  { key:'HOME_APPROVAL_APP',  href:'mobile.html',     ico:'✍️', accent:'#a78bfa',
+    title:'Approvals',  sub:'PR / PO approve, Store check' },
+  { key:'HOME_COMPLAINT_APP', href:'complaint.html',  ico:'🛠️', accent:'#fb923c',
+    title:'Complaint',  sub:'Machine complaints, Tasks, Notice' },
+  { key:'HOME_PACKING',       href:'packing.html',    ico:'📦', accent:'#34d399',
+    title:'Packing',    sub:'Packing slips & dispatch' },
+  { key:'HOME_ORDER_FORM',    href:'order-form.html', ico:'🧾', accent:'#f472b6',
+    title:'Order Form', sub:'Sales order + Proforma Invoice' }
+];
+
+const ROLE_LABEL = {
+  USER_IC_PIN:'Store In-Charge', USER_GM_PIN:'GM / CEO', USER_MD_PIN:'MD',
+  USER_AC_PIN:'Accountant', USER_GT_PIN:'Gate Man', ADMIN_PIN:'Admin',
+  VENDOR_VERIFY_PIN:'Vendor Verified', PO_SENDER_PIN:'PO Sender (Mobile)',
+  PURCHASER:'Purchaser', VIEW_PIN:'View Only', EDIT_PASSWORD:'Edit User',
+  CMP_USER:'Complaint App User', PK_USER:'Packing User'
+};
+const roleLabel = r => ROLE_LABEL[r] || r || '—';
+
+const $ = id => document.getElementById(id);
+let USERS = [], TABVIS = null;
+
+function showErr(m){ const e=$('err'); e.innerHTML=m; e.style.display='block'; }
+function hideErr(){ $('err').style.display='none'; }
+const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+/* ── Error ko sach-sach dikhana ───────────────────────────────────────
+   Pehle yahan message par regex chalta tha ("does not exist" mila to
+   maan lo migration nahi chali"). Wo galat tha: kisi bhi aur wajah se
+   aaya error bhi usi me gin jaata tha, aur phir screen par wo baat
+   likhi jaati thi jo sach nahi thi — jaise "SQL file chalayein" jabki
+   wo chal chuki hoti.
+
+   Ab faisla CODE se hota hai (PostgREST / Postgres ka apna code), aur
+   asli message HAMESHA saath dikhta hai. Wajah pata na ho to jhooth
+   bolne se behtar hai asli baat dikha dena. */
+function explainErr(e, fnName){
+  const msg  = (e && (e.message || e.msg)) || String(e || 'unknown error');
+  const code = (e && e.code) || '';
+  const tail = '<br><small style="opacity:.85;">' + esc(msg)
+             + (code ? ' <b>[' + esc(code) + ']</b>' : '') + '</small>';
+
+  // PGRST202 = PostgREST ko is naam/arguments ka function mila hi nahi.
+  // 42883   = Postgres me aisa function nahi hai.
+  if (code === 'PGRST202' || code === '42883')
+    return '⚠️ <b>' + esc(fnName) + '()</b> server par nahi mila.<br>'
+         + 'Ya to <b>UNIFIED_USERS_MIGRATION.sql</b> chali nahi, ya Supabase ka schema cache purana hai — '
+         + 'SQL Editor me <code>notify pgrst, \'reload schema\';</code> chalakar dobara koshish karein.' + tail;
+  if (code === '42501')
+    return '⚠️ Permission nahi hai (anon is function/table ko nahi chala sakta).' + tail;
+  if (code === 'PGRST301' || code === '401')
+    return '⚠️ Supabase key reject ho gayi — anon key check karein.' + tail;
+  if (/failed to fetch|networkerror|load failed/i.test(msg))
+    return '⚠️ Server tak pahunch nahi hui — internet / firewall check karein.' + tail;
+  return '⚠️ Login nahi hua.' + tail;
+}
+
+/* ── Access ka faisla — store-core.js ke sarvTabVisible() jaisa ────────
+   Launcher par saare app keys ka default `true` hai (SARV_TABS me in
+   sab par def:'ALL' hai). Isi liye yahan sirf do tah chahiye: user ka
+   apna override, phir role-wise matrix. Jo key kahin set na ho wo
+   dikhti hai — yani ye page kisi ka maujooda access kam nahi karta. */
+function appAllowed(key, roles, appAccess){
+  const ov = appAccess && typeof appAccess === 'object' ? appAccess[key] : undefined;
+  if (typeof ov === 'boolean') return ov;                 // 1. per-user
+  const row = TABVIS && TABVIS[key];
+  if (row && roles.length){                               // 2. role-wise (JOD)
+    let saw = false;
+    for (const r of roles){
+      if (typeof row[r] === 'boolean'){ saw = true; if (row[r]) return true; }
+    }
+    if (saw) return false;
+  }
+  return true;                                            // 3. default
+}
+
+function allowedAppKeys(roles, appAccess){
+  return APPS.map(a => a.key).filter(k => appAllowed(k, roles, appAccess));
+}
+
+/* ── Masters ──────────────────────────────────────────────────────── */
+async function loadMasters(){
+  const [u, s] = await Promise.all([
+    SB.from('app_users')
+      .select('id,user_name,role,roles,app_access,is_active,sales_role')
+      .order('user_name'),
+    SB.from('app_settings').select('key,value').eq('key','tab_visibility')
+  ]);
+  if (u.error) throw u.error;
+  USERS = (u.data || []).filter(x => x.is_active !== false);
+  TABVIS = (!s.error && s.data && s.data[0] && s.data[0].value) || null;
+
+  const dl = $('namesDl');
+  dl.innerHTML = '';
+  USERS.forEach(x => {
+    const o = document.createElement('option');
+    o.value = x.user_name;
+    const rs = (x.roles && x.roles.length ? x.roles : [x.role]).filter(Boolean);
+    o.label = rs.map(roleLabel).join(' + ');
+    dl.appendChild(o);
+  });
+}
+
+const findUser = nm => {
+  const n = String(nm||'').trim().toUpperCase();
+  return USERS.find(x => String(x.user_name).toUpperCase() === n) || null;
+};
+
+/* Naam type karte hi uske role dikha dete hain — "mera naam sahi hai
+   ya nahi" ka jawab PIN daalne se pehle mil jaata hai. */
+$('nameBox').addEventListener('input', function(){
+  const u = findUser(this.value);
+  const rs = u ? (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean) : [];
+  $('rolesNote').textContent = u ? ('✓ ' + rs.map(roleLabel).join(' + ')) : '';
+});
+
+/* PIN dikhane/chhupane ka toggle — factory phone par chhote keypad se
+   galat PIN type ho jaana aam hai, aur "Galat PIN" se behtar hai banda
+   khud dekh le. */
+$('peekBtn').addEventListener('click', () => {
+  const b = $('pinBox');
+  const show = b.type === 'password';
+  b.type = show ? 'text' : 'password';
+  $('peekBtn').textContent = show ? '🙈' : '👁';
+  $('peekBtn').setAttribute('aria-label', show ? 'PIN chhupayein' : 'PIN dikhayein');
+  b.focus();
+});
+
+/* ── Login ────────────────────────────────────────────────────────── */
+async function doLogin(){
+  hideErr();
+  const nm  = $('nameBox').value.trim();
+  const pin = $('pinBox').value;
+  if (!nm)  return showErr('Apna naam chunein');
+  const u = findUser(nm);
+  if (!u)   return showErr('"' + esc(nm) + '" naam ka koi active user nahi mila — list se chunein.');
+  if (!pin) return showErr('PIN daalein');
+
+  const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+  const apps  = allowedAppKeys(roles, u.app_access);
+
+  const btn = $('goBtn');
+  btn.disabled = true; btn.textContent = '⏳ Check kar rahe hain…';
+  try{
+    /* allowed_apps session par likh diya jaata hai — baaki apps usi list
+       ko padhte hain, unhe permission ka poora matrix samajhna nahi
+       padta. Ye wahi raasta hai jo ERP ka login use karta hai. */
+    const r = await SB.rpc('erp_app_login', {
+      p_user_id: String(u.id), p_pin: pin, p_allowed_apps: apps
+    });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success){
+      const m = {
+        USER_NOT_FOUND:'User nahi mila — page refresh karein',
+        USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
+        PIN_INVALID:'Galat PIN',
+        PIN_CHECK_UNAVAILABLE:'⚠️ Server par PIN check nahi ho saka — Admin se kehein'
+      };
+      return showErr(m[d.error] || ('Login nahi hua: ' + esc(d.error || 'unknown')));
+    }
+    await finishLogin(d, pin);
+  }catch(e){
+    /* Poora error object console me bhi — screen par chhoti si lakeer
+       aati hai, par wajah dhoondhne ke liye code / details / hint teeno
+       chahiye hote hain. */
+    console.error('[LAUNCHER] login fail:', e);
+    showErr(explainErr(e, 'erp_app_login'));
+  }finally{
+    btn.disabled = false; btn.textContent = 'Login';
+  }
+}
+
+async function finishLogin(d, pin){
+  const su = d.user || {};
+  const roles = (Array.isArray(su.roles) && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
+  const user = {
+    id: su.id, name: su.name, roles: roles, primary_role: su.primary_role,
+    app_access: su.app_access || {}, emp_code: su.emp_code || null,
+    contact_no: su.contact_no || null,
+    cmp_profile_id: su.cmp_profile_id || null,
+    pk_profile_id: su.pk_profile_id || null,
+    allowed_apps: Array.isArray(su.allowed_apps) ? su.allowed_apps : []
+  };
+  try{
+    localStorage.setItem(K_SSO, d.token);
+    /* Ye teen keys index.html boot par padhta hai — inke bina ERP
+       apni PIN screen dikha dega, jabki login ho chuka hai. */
+    localStorage.setItem(K_ROLE,  su.primary_role || roles[0] || '');
+    localStorage.setItem(K_ROLES, JSON.stringify(roles));
+    localStorage.setItem(K_USER,  JSON.stringify(user));
+  }catch(e){}
+
+  /* Order Form ka apna session — uska token alag key me jaata hai.
+     Rukte nahi: fail ho to Order Form apni login screen dikha dega aur
+     wajah bhi, baaki apps par koi asar nahi. */
+  if (user.allowed_apps.indexOf('HOME_ORDER_FORM') >= 0) await salesSso(su.primary_role, su.id, pin);
+  /* Access hi nahi hai to pichhle user ke nishan mitane padte hain —
+     warna uska purana token / wajah is user par lag jaati. */
+  else try{ localStorage.removeItem(K_SALES); localStorage.removeItem(K_SALES_MSG); }catch(e){}
+
+  $('pinBox').value = '';
+  renderHome(user);
+}
+
+async function salesSso(roleKey, userId, pin){
+  try{
+    const r = await SB.rpc('sales_erp_login', {
+      p_role: roleKey, p_user_id: userId != null ? String(userId) : null, p_pin: pin
+    });
+    if (!r.error && r.data && r.data.success){
+      localStorage.setItem(K_SALES, r.data.token);
+      localStorage.removeItem(K_SALES_MSG);
+    }else{
+      localStorage.removeItem(K_SALES);
+      localStorage.setItem(K_SALES_MSG,
+        (r.data && r.data.error) || 'Order Form ka access nahi hai');
+    }
+  }catch(e){
+    try{ localStorage.setItem(K_SALES_MSG, 'Order Form login nahi hua — wahan apna naam + PIN daalein'); }catch(x){}
+  }
+}
+
+/* ── Home ─────────────────────────────────────────────────────────── */
+const greet = () => {
+  const h = new Date().getHours();
+  if (h < 5)  return 'Shubh Ratri';
+  if (h < 12) return 'Shubh Prabhat';
+  if (h < 17) return 'Namaste';
+  return 'Shubh Sandhya';
+};
+
+function renderHome(user){
+  $('boot').style.display = 'none';
+  $('loginCard').style.display = 'none';
+  $('homeWrap').style.display = 'block';
+
+  const roles = (user.roles && user.roles.length ? user.roles : [user.primary_role]).filter(Boolean);
+  $('whoHi').textContent   = greet();
+  $('whoName').textContent = user.name || '—';
+  $('avatar').textContent  = (user.name || '?').trim().charAt(0).toUpperCase();
+
+  const rl = $('whoRole');
+  rl.innerHTML = '';
+  roles.forEach(r => {
+    const s = document.createElement('span');
+    s.className = 'pill';
+    s.textContent = roleLabel(r);
+    rl.appendChild(s);
+  });
+
+  /* Session par likhi hui list hi sach hai — wahi baaki apps bhi padhte
+     hain. Us list ke bina (purana session) hisaab dobara laga lete hain. */
+  let keys = (user.allowed_apps && user.allowed_apps.length)
+    ? user.allowed_apps
+    : allowedAppKeys(roles, user.app_access);
+
+  /* Order Form ka access ERP role se nahi, `app_users.sales_role` (+ shared
+     role map) se tay hota hai — wo hisaab server par hai, yahan nahi. Isi
+     liye andaza nahi lagate: login ke waqt sales_erp_login ne jo kaha wahi
+     maante hain. Token mila = access hai; wajah mili = nahi hai, to button
+     hata dete hain (warna click karke Order Form ki apni login screen par
+     pahunchna padta, jo "ek login" ke vaade ke khilaaf lagta). */
+  try{
+    if (!localStorage.getItem(K_SALES) && localStorage.getItem(K_SALES_MSG))
+      keys = keys.filter(k => k !== 'HOME_ORDER_FORM');
+  }catch(e){}
+
+  const grid = $('appGrid');
+  grid.innerHTML = '';
+  let n = 0;
+  APPS.forEach(a => {
+    if (keys.indexOf(a.key) < 0) return;
+    const el = document.createElement('a');
+    el.className = 'app rise';
+    el.href = a.href;
+    el.style.setProperty('--a', a.accent);
+    el.style.animationDelay = (0.05 + n * 0.055) + 's';
+    el.innerHTML =
+        '<span class="tile">' + a.ico + '</span>'
+      + '<span class="body"><span class="t">' + esc(a.title) + '</span>'
+      + '<span class="s">' + esc(a.sub) + '</span></span>'
+      + '<span class="go">→</span>';
+    grid.appendChild(el);
+    n++;
+  });
+  $('appsHead').style.display = n ? 'block' : 'none';
+  $('noApps').style.display   = n ? 'none' : 'block';
+}
+
+function showLogin(){
+  $('boot').style.display = 'none';
+  $('homeWrap').style.display = 'none';
+  $('loginCard').style.display = 'block';
+  $('nameBox').focus();
+}
+
+/* ── Logout — ek jagah se, saare apps ka ─────────────────────────── */
+async function doLogout(){
+  if (!confirm('Logout karein?\n\nSaare apps se nikal jayenge — dobara PIN daalna padega.')) return;
+  let tok = null, sal = null;
+  try{ tok = localStorage.getItem(K_SSO); sal = localStorage.getItem(K_SALES); }catch(e){}
+  try{ if (tok) await SB.rpc('erp_app_logout', { p_token: tok }); }catch(e){}
+  try{ if (sal) await SB.rpc('sales_logout',   { p_token: sal }); }catch(e){}
+  try{
+    [K_SSO,K_ROLE,K_ROLES,K_USER,K_SALES,K_SALES_MSG,'sarv_active_user_sig']
+      .forEach(k => localStorage.removeItem(k));
+  }catch(e){}
+  location.reload();
+}
+
+/* ── Boot ─────────────────────────────────────────────────────────── */
+(async function boot(){
+  $('goBtn').addEventListener('click', doLogin);
+  $('outBtn').addEventListener('click', doLogout);
+  $('pinBox').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('nameBox').addEventListener('keydown', e => { if (e.key === 'Enter') $('pinBox').focus(); });
+
+  let tok = null;
+  try{ tok = localStorage.getItem(K_SSO); }catch(e){}
+
+  /* Pehle se login hai? To seedha buttons — PIN dobara nahi.
+     Session se taaza roles / access aate hain, isi liye Admin ka
+     beech me kiya badlaav turant lagta hai. */
+  if (tok){
+    try{
+      const r = await SB.rpc('erp_app_session', { p_token: tok });
+      const d = (!r.error && r.data) || {};
+      if (d.success){
+        const su = d.user || {};
+        renderHome({
+          id: su.id, name: su.name, primary_role: su.primary_role,
+          roles: su.roles || [], app_access: su.app_access || {},
+          allowed_apps: su.allowed_apps || [],
+          cmp_profile_id: su.cmp_profile_id || null,
+          pk_profile_id: su.pk_profile_id || null
+        });
+        /* Dropdown chup-chaap peeche bhar jaata hai, taaki Logout ke
+           baad login screen turant kaam kare. */
+        loadMasters().catch(()=>{});
+        return;
+      }
+      // Session khatam / band — saaf karke login dikhao.
+      [K_SSO,K_ROLE,K_ROLES,K_USER,K_SALES].forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
+    }catch(e){ /* net kharab — neeche login screen */ }
+  }
+
+  try{
+    await loadMasters();
+    showLogin();
+  }catch(e){
+    showLogin();
+    showErr(e && e.code === '42501'
+      ? ('⚠️ Users ki list padhne ki permission nahi hai — Admin se <b>SINGLE_LOGIN_MIGRATION.sql</b> ka section 6 chalwayein.'
+         + '<br><small style="opacity:.85;">' + esc(e.message || '') + ' <b>[42501]</b></small>')
+      : explainErr(e, 'app_users'));
+  }
+})();
+</script>
+</body>
+</html>

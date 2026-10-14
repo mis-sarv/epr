@@ -19,16 +19,39 @@
     <div class="modal-overlay" id="loginScreen" style="display:flex; align-items:center;">
         <div class="modal-content">
             <div class="modal-title"><span>🔐 Approver Login</span></div>
+
+            <!-- ── Naam se login (ek naam + ek PIN, saare apps) ──────────
+                 Yahi asli raasta hai: ERP, Complaint, Packing aur ye app
+                 sab EK hi `app_users` row se chalte hain. Naam chunte hi
+                 uske role dikh jaate hain, aur login hone par baaki apps
+                 bhi bina dobara PIN khul jaate hain (ek hi session banta
+                 hai). Neeche "Approving As" wala purana raasta chhoda
+                 gaya hai — jinka naam Admin Panel me nahi hai, unka kaam
+                 isi se chalta rehta hai. -->
             <div class="form-group">
-                <label>Approving As</label>
-                <select id="loginRole" class="form-select">
-                    <option value="">-- Select Role --</option>
-                    <option value="gm">GM</option>
-                    <option value="md">MD</option>
-                    <option value="purchaser">Purchaser</option>
-                    <option value="poSender">PO Sender</option>
-                </select>
+                <label>Apna Naam <small style="font-weight:500;color:#6b7280;">— ek PIN, saare apps</small></label>
+                <input type="text" id="loginName" class="form-select" list="loginNamesDl"
+                       autocomplete="off" placeholder="Naam type karein / chunein">
+                <datalist id="loginNamesDl"></datalist>
+                <div id="loginNameRoles" style="font-size:0.7rem;font-weight:700;color:#166534;margin-top:4px;min-height:14px;"></div>
             </div>
+
+            <div id="loginRoleWrap">
+                <div style="display:flex;align-items:center;gap:8px;margin:12px 0 10px;">
+                    <span style="flex:1;height:1px;background:#e5e7eb;"></span>
+                    <span style="font-size:0.68rem;color:#9ca3af;font-weight:700;">ya purana tareeka</span>
+                    <span style="flex:1;height:1px;background:#e5e7eb;"></span>
+                </div>
+                <div class="form-group">
+                    <label>Approving As</label>
+                    <select id="loginRole" class="form-select">
+                        <option value="">-- Select Role --</option>
+                        <option value="gm">GM</option>
+                        <option value="md">MD</option>
+                        <option value="purchaser">Purchaser</option>
+                        <option value="poSender">PO Sender</option>
+                    </select>
+                </div>
             <div class="form-group" id="loginVendorGroup" style="display:none;">
                 <label>Vendor Name</label>
                 <select id="loginVendor" class="form-select">
@@ -52,6 +75,7 @@
                     <option value="FIELD BOY">FIELD BOY</option>
                 </select>
             </div>
+            </div><!-- /loginRoleWrap -->
             <div class="form-group">
                 <label>PIN</label>
                 <input type="password" id="loginPin" class="form-select" placeholder="Enter PIN" inputmode="numeric" autocomplete="off">
@@ -680,5 +704,7 @@
 </div>
 
 <script src="mobile-core.js"></script>
+<!-- "← Apps" wapas jaane wala floating button. Ye file khud tay karti hai ki button dikhana hai ya nahi (iframe me nahi, aur single-login session na ho to nahi) — dekhein app-back.js. -->
+<script src="app-back.js"></script>
 </body>
 </html>

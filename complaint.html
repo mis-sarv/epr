@@ -136,9 +136,9 @@ function sarvSsoBlock(name){
     + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
     + (name ? '<b>' + String(name).replace(/[<>&]/g,"") + '</b>, aapke' : 'Aapke')
     + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Complaint App" <b>ON</b> karna hoga.</p>'
-    + '<button onclick="location.href=\'index.html\'" style="background:#0ea5e9;border:none;color:#fff;'
+    + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
     + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-    + '&larr; ERP par wapas</button></div>';
+    + '&larr; Apps par wapas</button></div>';
   (document.body || document.documentElement).appendChild(d);
 }
 
@@ -164,23 +164,107 @@ async function sarvLogoutAll(){
       });
     } catch(e) {}
     try { localStorage.removeItem(SARV_SSO_KEY); } catch(e) {}
-    location.href = "index.html";
+    location.href = "launcher.html";
     return;
   }
   location.reload();
 }
 window.sarvLogoutAll = sarvLogoutAll;
 
+/* ══ ERP ke login se ASLI auth session ════════════════════════════════
+   Yahi wo aakhri qadam hai jiski wajah se ye app pehle apna password
+   maangti thi.
+
+   Padhne ka kaam SSO se pehle bhi chal jaata tha (profile seedha
+   cmp_profile_id se load hota hai, neeche dekhein). Par LIKHNA nahi:
+   `cmp_tasks` / `cmp_notice_board` ke trigger `auth.uid()` maangte hain
+   aur bina session wo khaali hota hai —
+
+       "Sirf Admin task assign kar sakta hai."
+       "You must be signed in to post on the notice board."
+
+   Do raaste the: un saari policies/triggers ko anon-model par laana, ya
+   ERP ke session se us bande ka asli auth session bana dena. Doosra
+   chuna gaya, kyunki usme ek bhi policy chhedni nahi padti — `auth.uid()`
+   sach me set hota hai, isi liye har purana trigger, RLS aur `created_by`
+   bilkul waisa hi kaam karta hai jaisa aaj karta hai.
+
+   Kaam `erp-sso` Edge Function karta hai: wo ERP token check karta hai
+   aur ek one-time magic-link token lautata hai, jise yahan session me
+   badal lete hain. service_role key server par rehti hai, is page me
+   kabhi nahi aati — aur password kahin store nahi hota.
+
+   Naram raasta: function na ho (deploy na hua ho), net kharab ho, ya us
+   user ka Complaint account juda na ho — teeno soorat me ye chup-chaap
+   hat jaata hai aur app ka purana login waisa hi chalta hai. */
+const SARV_SSO_FN_URL = SUPABASE_URL + "/functions/v1/erp-sso";
+
+/* `sb` is file me neeche `const` se banta hai, yani is line par wo abhi
+   TDZ me hai. Phir bhi yahan use karna surakshit hai, aur jaan-boojh kar
+   koi "sb maujood hai?" wala check nahi rakha: ye function SIRF gate ke
+   network jawab ke BAAD chalta hai, aur tab tak ye poora script sync
+   chal kar khatam ho chuka hota hai. (Check rakhna ulta khatarnak tha —
+   TDZ me `typeof sb` bhi ReferenceError phenkta hai, "undefined" nahi
+   deta, to wo guard kaam karne ki jagah khud hi gir jaata.) */
+async function sarvSsoSignIn(tok, u){
+  if (!tok || !u || !u.cmp_profile_id) return false;
+  try {
+    // Pehle se sahi bande ka session hai to dobara kuch nahi karna.
+    const { data: { session: cur } } = await sb.auth.getSession();
+    if (cur && cur.user && cur.user.id === u.cmp_profile_id) return true;
+    // Kisi DOOSRE user ka session khula hai (shared factory phone) —
+    // use pehle band karna zaroori hai, warna naya session banta hi nahi.
+    if (cur) { try { await sb.auth.signOut(); } catch(e) {} }
+
+    const r = await fetch(SARV_SSO_FN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON,
+                 "Authorization": "Bearer " + SUPABASE_ANON },
+      body: JSON.stringify({ token: tok, app: SARV_APP_KEY })
+    });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || !d.success) {
+      console.warn("[SARV] Complaint SSO sign-in skipped:",
+                   (d && (d.message || d.error)) || ("HTTP " + r.status));
+      return false;
+    }
+    /* Dono type try karte hain. generateLink('magiclink') ka hash
+       supabase-js ke version ke hisaab se kabhi 'magiclink' maangta hai
+       aur kabhi 'email' — aur galat type par token KHARCH nahi hota, isi
+       liye doosri koshish poori tarah valid rehti hai. Ek hi type par
+       bharosa karne se upgrade ke baad login chup-chaap tootta. */
+    let v = await sb.auth.verifyOtp({ token_hash: d.token_hash, type: "magiclink" });
+    if (v.error) v = await sb.auth.verifyOtp({ token_hash: d.token_hash, type: "email" });
+    if (v.error) { console.warn("[SARV] verifyOtp fail:", v.error.message); return false; }
+    return true;
+  } catch(e) {
+    console.warn("[SARV] Complaint SSO sign-in error:", e.message || e);
+    return false;
+  }
+}
+
 // Gate turant chalu — app ke mount hone ka intezaar nahi.
-sarvSsoCheck().then(u => {
+(async function sarvSsoBoot(){
+  const u = await sarvSsoCheck();
   if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
+
+  /* Session pehle, event baad me. Ulta kar dein to React pehle "login ho
+     gaya" maan kar data maangne lagti hai, aur un pehli queries par
+     auth.uid() khaali hota hai — yani wahi purani "signed in nahi hain"
+     wali galti, bas der se. */
+  if (u) {
+    let tok = null;
+    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
+    await sarvSsoSignIn(tok, u);
+  }
+
   /* `undefined` se `null`-ya-user par — app isi farq se jaanti hai ki
      gate ka jawab aa gaya. Event HAMESHA bhejte hain, jawab khaali ho
      to bhi: warna jo log ERP se nahi aaye unki app 2.5 second ke
      timeout tak khaali boot screen par ruki rehti thi. */
   window.__SARV_SSO = u || null;
   try { window.dispatchEvent(new CustomEvent("sarv-sso-ready", { detail: u || null })); } catch(e) {}
-});
+})();
 const PUSH_FN_URL   = SUPABASE_URL + "/functions/v1/send-push";
 const EMAIL_DOMAIN  = "@sarvindia.com";
 const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8dAHhsx6xyxX1BeHgHJmM63rmPn_mFA";
@@ -4331,5 +4415,7 @@ const boot = document.getElementById("boot");
 if (boot) boot.remove();
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
+<!-- "← Apps" wapas jaane wala floating button. Ye file khud tay karti hai ki button dikhana hai ya nahi (ERP ke iframe me nahi, aur single-login session na ho to nahi) — dekhein app-back.js. -->
+<script src="app-back.js"></script>
 </body>
 </html>

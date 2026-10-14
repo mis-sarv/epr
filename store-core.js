@@ -2906,7 +2906,13 @@ window.submitPasswordChange=async function(){
    once logged in; sarvCurrentRole is checked only where a specific
    permission is needed (e.g. isAdmin() for cancelling a PO).
 ================================================================ */
-const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User'};
+/* CMP_USER / PK_USER — Complaint App aur Packing ke wo users jo
+   SINGLE_LOGIN_MIGRATION.sql se `app_users` me aaye. Unka ERP me koi kaam
+   nahi hai (unka role unke apne app me cmp_profiles.role / packing
+   profiles.role se aata hai, waisa hi); ye role sirf itna kehta hai ki
+   "ye banda ERP ka user hai, par uska app alag hai". Yahan naam hona
+   zaroori hai — boot par login isi map se pehchana jaata hai. */
+const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User',CMP_USER:'Complaint App User',PK_USER:'Packing User'};
 const SARV_LOGIN_STORAGE_KEY='sarv_active_role';
 const SARV_LOGIN_USER_KEY='sarv_active_user';
 const SARV_LOGIN_SIG_KEY='sarv_active_user_sig';
@@ -3203,7 +3209,7 @@ function sarvFinishLogin_(){
    session par likhi jaati hai aur Complaint / Packing isi ko padhte
    hain. Ek hi jagah se tay hota hai, isi liye "Home par button dikha par
    app khula hi nahi" jaisa farq ban hi nahi sakta. */
-const SARV_APP_KEYS=['HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
+const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM'];
 function sarvAllowedApps_(){
@@ -3337,8 +3343,12 @@ function sarvLogout(){
   sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
   try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
       localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
+  /* Gate pehle dikha dete hain, phir launcher par bhejte hain: navigation
+     me ek-do pal lagta hai aur us beech screen par purana data khula nahi
+     rehna chahiye. launcher.html isi folder me hai (ye app poora folder
+     saath rakhti hai), isi liye ye link kabhi tootta nahi. */
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
-  sarvFillLoginNames_().catch(()=>{});
+  location.href='launcher.html';
 }
 function sarvUnlockNav(){
   // Only the sections this role may see (Admin Panel → Tab Visibility).
@@ -3868,7 +3878,11 @@ const SARV_PERM_ROLES=[
   {code:'USER_IC_PIN',label:'Store Incharge'},{code:'USER_GM_PIN',label:'GM'},{code:'USER_MD_PIN',label:'MD'},
   {code:'PURCHASER',label:'Purchaser'},{code:'USER_AC_PIN',label:'Accountant'},{code:'USER_GT_PIN',label:'Gate Man'},
   {code:'ADMIN_PIN',label:'Admin'},{code:'VENDOR_VERIFY_PIN',label:'Vendor'},{code:'PO_SENDER_PIN',label:'PO Sender'},
-  {code:'VIEW_PIN',label:'View'},{code:'EDIT_PASSWORD',label:'Edit'}
+  {code:'VIEW_PIN',label:'View'},{code:'EDIT_PASSWORD',label:'Edit'},
+  /* Dono ka default har ERP screen par OFF hai — SINGLE_LOGIN_MIGRATION.sql
+     tab_visibility me likh deti hai. Matrix me rakhe isi liye hain ki
+     Admin kisi ek ko chahe to kuch de bhi sake. */
+  {code:'CMP_USER',label:'Complaint'},{code:'PK_USER',label:'Packing'}
 ];
 /* def: 'ALL' every role · 'W' every role except View · [codes] only those.
    lock: roles that are always YES (so an Admin cannot lock themself out). */
@@ -3996,6 +4010,12 @@ const SARV_TABS=[
   {key:'ERP_ACT',label:'All Activities',def:'ALL'},
   {key:'ERP_ADMIN',label:'Administration',hint:'Admin Panel / Users & Roles — default sirf Admin',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'🏠 Home Page'},
+  /* launcher.html ka "ERP" button. Ye poore desktop ERP ka darwaza hai,
+     isi liye apni ek key — warna shop-floor ke us bande ko bhi ERP ka
+     button dikhta jiska kaam sirf Complaint App me hai (launcher par
+     har app key ka default "dikhao" hai). Iske OFF hone se ERP ke andar
+     ki screens par koi asar nahi padta; wo neeche ki rows se chalti hain. */
+  {key:'HOME_ERP_APP',label:'ERP (poora desktop app)',hint:'launcher.html par ERP ka button — OFF karne par us user ke liye ERP khulta hi nahi',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_PR',label:'Purchase Requirement',def:'ALL'},
   {key:'HOME_PO',label:'PO Generation',def:'ALL'},
   {key:'HOME_IN',label:'Material Inward',def:'ALL'},

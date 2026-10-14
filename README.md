@@ -27,6 +27,11 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `FABRIC_BRAND_MASTER_MIGRATION.sql` | `fabric_master` + `brand_master` + `buyer_master` + `agency_master` + `master_revisions` (REV archive), unique index, triggers, RLS aur do rollup view. Master Data › 🧵 Fabric Master / 🏷️ Brand Master / 🏢 Buyer Master (+ Agency table) ke liye. **Ek baar** chalayein, phir Fabric & Brand screen par 🌱 **Seed Excel Data**. Dobara chalana bhi surakshit hai. Neeche dekhein. |
 | `fabric & brand master/SARV INDIA LOT SOFTWARE DATA.xlsx` | Dono master ka source — `FABRIC MASTER` (31 row × 42 column) aur `BRAND MASTER` (65 row × 23 column) sheets. Seed button ki rows isi se nikali hui hain. |
 | `UNIFIED_USERS_MIGRATION.sql` | Ek user / kai role (`app_users.roles[]`), per-user app access (`app_users.app_access`), aur saare apps ka ek session (`app_sessions` + `erp_app_login` / `erp_app_session` / `erp_app_logout`). **ADMIN_PANEL_MIGRATION.sql ke baad** ek baar chalayein. Dobara chalana surakshit. Neeche dekhein. |
+| `launcher.html` | **Login ke baad ka pehla page.** Naam + PIN, aur phir sirf wahi app buttons jinka access hai (ERP / Approvals / Complaint / Packing / Order Form). Ek hi session banata hai jo saare apps chalate hain. Neeche dekhein. |
+| `app-back.js` | Har app me ek hi `<script src>` line — neeche daayein kone me floating **← Apps** button. Khud tay karta hai ki dikhna hai ya nahi: ERP ke iframe ke andar nahi, aur single-login session na ho to nahi (tab banda launcher se aaya hi nahi). z-index 900, isi liye modal iske oopar aate hain. |
+| `SINGLE_LOGIN_MIGRATION.sql` | Complaint (`cmp_profiles`) aur Packing (`packing.profiles`) ke users ERP ki `app_users` me merge, har naye user ka PIN (+ verify), naye role `CMP_USER` / `PK_USER`, aur `erp_sso_profile()`. Upar `v_admin_pin` bharna hai. **UNIFIED_USERS_MIGRATION.sql ke baad** ek baar. Dobara chalana surakshit. Neeche dekhein. |
+| `FIX_PGCRYPTO_SEARCHPATH.sql` | Ek purani kami ka ilaaj: `erp_app_login()` ka `search_path = public` tha, par `gen_random_bytes()` (pgcrypto) `extensions` schema me rehta hai — isi liye **sahi PIN** par login `function gen_random_bytes(integer) does not exist [42883]` se girta tha. Sirf search_path theek karti hai, function ka body nahi chhedti. Dobara chalana surakshit. |
+| `supabase/functions/erp-sso/index.ts` | Edge Function — ERP ke session token se Complaint / Packing ka **asli** Supabase Auth session banata hai (bina password, bina unki RLS chhede). `supabase functions deploy erp-sso`. |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
 | `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
 
@@ -458,10 +463,12 @@ apps ko permission ka poora matrix samajhne ki zaroorat nahi.
 
 | App | Aaj kya hota hai |
 |---|---|
-| ERP | PIN login (naam se) |
+| **launcher.html** | **Sabka pehla page** — naam + PIN, phir sirf apne app ke buttons |
+| ERP | PIN login (naam se), ya launcher se bina dobara PIN |
 | Order Form | **poora SSO** — pehle se (sales_erp_login), bina login khulta hai |
-| Complaint App | **gate laga** — access na ho to khulti hi nahi; access ho to naam pehle se bhara |
-| Packing & Dispatch | **gate laga** — wahi |
+| Approval App (mobile) | **poora SSO** — role ERP se, PIN nahi; apna naam + PIN bhi chalta hai |
+| Complaint App | **poora SSO** — `erp-sso` Edge Function asli auth session banata hai |
+| Packing & Dispatch | **poora SSO** — wahi |
 
 Logout par token server par revoke hota hai, aur reload par
 `sarvRefreshSsoSession_()` session se taaza roles / app_access le aata hai
@@ -469,32 +476,93 @@ Logout par token server par revoke hota hai, aur reload par
 lagta hai. Net / RPC fail ho to kuch nahi badalta (offline me app khulni
 chahiye).
 
-### Single login — aakhri qadam (ye abhi BAAKI hai)
+### Single login — poora ho gaya
 
-Complaint App aur Packing ka **gate** lag gaya hai, par wo dono abhi bhi
-**apna password** maangte hain. Wajah saaf hai: unka DATA Supabase Auth ke
-session par chalta hai — `cmp_profiles` / `profiles` aur unki tables
-`auth.uid()` se bandhi hain. Password hatane ke liye un tables ki RLS ko
-usi **anon + session-token** model par laana padega jo ERP, Order Form aur
-`fabric_master` / `buyer_master` pehle se chalate hain.
+Setup, isi kram me:
 
-Wo migration jaan-boojh kar **nahi** likhi gayi: yahan se aapki live RLS
-policies padhi nahi ja sakti thin, aur andaze se likhi gayi policy do
-chalti hui apps ka login tod sakti thi. Karne ke do kadam:
+| Step | Kya |
+|---|---|
+| 1 | `SINGLE_LOGIN_MIGRATION.sql` — upar `v_admin_pin` me apna Admin PIN daalein, phir Supabase › SQL Editor me chalayein. **Ek baar** (dobara chalana surakshit). Iska section 0b pgcrypto ka `search_path` bhi theek kar deta hai; alag se karna ho to `FIX_PGCRYPTO_SEARCHPATH.sql`. |
+| 2 | Aakhir me jo table dikhti hai (`sarv_user_merge_report`) usme har naye user ka **naam + PIN** hai. Wo list nikaal lein / baant dein, phir usi file ke section 9 ka `drop table` chala dein (usme plain PIN hain). |
+| 3 | `supabase/functions/erp-sso/` deploy karein — `supabase functions deploy erp-sso`, ya Dashboard › Edge Functions › naam `erp-sso` › file paste. |
 
-1. Supabase › SQL Editor me dekhein ki `cmp_*` / `packing.*` tables par
-   aaj kaun si policies hain (`select * from pg_policies where tablename
-   like 'cmp_%';`). Wo output saamne ho to ye migration likhna seedha hai.
-2. ERP Users ko external accounts se jodd lagayein — Admin Panel › Users ›
-   **🔗 Link external accounts** (naam se match; jo naam do baar ho wo
-   chhoot jaata hai, unhe haath se jodein). Isse us bande ka purana kaam
-   (assign ki gayi tasks, uska signature, banaye hue slip) naye single
-   login ke saath juda rehta hai.
+### Aana-jaana — launcher aur "← Apps"
+
+`launcher.html` hi sabka **pehla page** hai: naam + PIN, aur phir sirf wahi
+app buttons jinka access hai. Har app ka apna rang hai (ERP neela, Approvals
+baingani, Complaint narangi, Packing hara, Order Form gulaabi) — banda rang se
+pehchan leta hai, padhne se pehle. Dark aur light dono mode chalte hain
+(system setting se), aur `prefers-reduced-motion` par animation poori band.
+
+Wapas aane ke liye har app me neeche daayein kone me floating **← Apps**
+button hai — ek hi file se (`app-back.js`), isi liye paanch apps me paanch
+tarah ke back button nahi bante. Wo khud tay karta hai ki dikhna chahiye ya
+nahi:
+
+| Soorat | Button |
+|---|---|
+| App ERP ke **iframe** me khuli hai (Packing, Order Form, Lot Card, Trims) | **nahi** — wahan "wapas" ka matlab poora ERP iframe me khol dena hota |
+| Single-login session **nahi** hai | **nahi** — banda launcher se aaya hi nahi, use ek aur login screen dikhana galat hai |
+| Khud `launcher.html` par | **nahi** — wapas kahan jaana hai |
+| Baaki sab | **haan** |
+
+Back button se **logout nahi hota** — session waisa hi rehta hai, isi liye
+launcher par pahunchte hi doosra app bina PIN khulta hai. Logout ab bhi ek hi
+jagah se hai (launcher ka Logout, ya app ka apna logout jo wahin bhej deta
+hai).
+
+**Ek user table.** `cmp_profiles` (Complaint, 57 user) aur `packing.profiles`
+(Packing, 6 user) ke log ab ERP ki usi `app_users` table me hain. Purane rows
+**mitte nahi** — `app_users.cmp_profile_id` / `pk_profile_id` se jude rehte
+hain, isi liye us bande ka purana kaam (assign ki gayi tasks, uska signature,
+banaye hue slip) poora bacha rehta hai. Un apps ka apna role bhi wahin se
+aata hai (`cmp_profiles.role` / `packing.profiles.role`) — ERP sirf "kaun
+hai" batata hai, "kya kar sakta hai" us app ka apna setup hi tay karta hai.
+
+**Ek PIN.** Naye users ka ERP PIN migration banati hai (Complaint walon ka
+unke mobile ke aakhri 4 digit). PIN kahan/kaise store hota hai, migration ye
+jaanti nahi — wo aapke maujooda `admin_save_user()` se set hota hai aur phir
+`verify_app_user_pin()` se **check** bhi hota hai, isi liye "PIN set hua par
+chalta nahi" chup-chaap nahi ho sakta (report me ⚠️ likha aata hai).
+
+**Password kaise hata.** Complaint App ka data Supabase Auth par chalta hai —
+`cmp_tasks` / `cmp_notice_board` ke trigger `auth.uid()` maangte hain ("Sirf
+Admin task assign kar sakta hai."). Do raaste the: un policies/triggers ko
+anon-model par laana, ya ERP ke session se us bande ka **asli** auth session
+bana dena. Doosra chuna gaya — usme **ek bhi policy chhedni nahi padti**,
+`auth.uid()` sach me set hota hai, isi liye har purana trigger, RLS aur
+`created_by` bilkul waisa hi kaam karta hai. Wo kaam `erp-sso` Edge Function
+karta hai: ERP token check karke ek one-time magic-link token deta hai, aur
+app `verifyOtp()` se apna session bana leta hai. `service_role` key sirf
+function me rehti hai, kisi page me nahi — aur koi password kahin store nahi
+hota.
+
+Isi badlaav se Packing ki do purani kharabi bhi theek ho gayi: SSO login par
+`auth.getUser()` khaali hota tha, isi liye **signature save** par TypeError
+aata tha aur PDF par sign lagta hi nahi tha.
+
+**Naye role.** `CMP_USER` / `PK_USER` — un logon ke liye jinka kaam sirf apne
+app me hai. Unse ERP ke saare buttons **do tah** se band hain: per-user
+`app_access`, aur role-wise Tab Visibility (migration dono likhti hai). Ek
+nayi key bhi hai — `HOME_ERP_APP`, yani launcher par "ERP" ka button.
+
+**Jiska us app me account hi nahi hai**, uske login par us app ka button ab
+**chhup** jaata hai (pehle button dikhta tha aur dabane par us app ki apni
+login screen aa jaati thi). Migration ye report me `APP_HIDDEN` likh deti
+hai. Admin us bande ka account bana kar jodd lagaye, phir Users › 📱 Apps me
+wapas auto / ON kar de.
+
+**Jo haath se karna padega:** jin naamon par shak tha (ek hi naam ke do ERP
+user, ya `SATINDER_GHALYAN` vs `SATINDER JI` jaise) unhe migration **jodti
+nahi** — galat bande se jodna uska purana kaam doosre ke naam kar deta.
+Report me wo `NEEDS_MANUAL_LINK` me aate hain; unhe Admin Panel › Users ›
+**🔗 Link external accounts** se jodein.
 
 Dhyan: Complaint App ka apna `admin-users` Edge Function admin ke
 **access_token** par chalta hai, isi liye ERP Admin Panel usse seedha
 user bana nahi sakta — naya Complaint user abhi bhi us app ki signup /
-admin screen se banta hai.
+admin screen se banta hai (uske baad migration dobara chalakar ya haath
+se jodd lagayein).
 
 ## Sidebar me kaunsa module kisko dikhe
 

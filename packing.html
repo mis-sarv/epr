@@ -1052,16 +1052,76 @@ function sarvSsoBlock(name) {
         + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
         + (safe ? '<b>' + safe + '</b>, aapke' : 'Aapke')
         + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Packing &amp; Dispatch" <b>ON</b> karna hoga.</p>'
-        + '<button onclick="location.href=\'index.html\'" style="background:#0ea5e9;border:none;color:#fff;'
+        + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
         + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-        + '&larr; ERP par wapas</button></div>';
+        + '&larr; Apps par wapas</button></div>';
     (document.body || document.documentElement).appendChild(d);
 }
 
-sarvSsoCheck().then(function (u) {
+/* ══ ERP ke login se ASLI auth session ════════════════════════════════
+   Is app ka data anon key se bhi padha-likha ja sakta hai, isi liye SSO
+   login (sarvTrySsoLogin, neeche) bina Supabase Auth ke bhi chal jaata
+   tha. Par aadha: jo cheezein `auth.getUser()` par tiki hain wo SSO me
+   toot jaati thin —
+
+     * saveSignature  → `.data.user.id` par TypeError (user null tha)
+     * getMySignatureImage / getCurrentUsername / getCurrentFullName /
+       getCurrentRole → khaali, yani PDF par sign hi nahi lagta
+
+   Un sab ko alag-alag patch karne se behtar hai asli session bana dena:
+   `erp-sso` Edge Function ERP token check karke ek one-time magic-link
+   token deta hai, aur usse poora auth session ban jaata hai — bina
+   password. Phir ye saari purani lines bina chhede theek kaam karti
+   hain.
+
+   Function deploy na ho / net kharab ho to sirf itna hota hai ki
+   `sarvTrySsoLogin()` purane tareeke se andar le jaata hai (wahi aadha
+   haal) — koi bahar nahi hota. */
+async function sarvSsoSignIn(tok, u) {
+    if (!tok || !u || !u.pk_profile_id) return false;
+    try {
+        var cur = (await supabaseClient.auth.getSession()).data.session;
+        if (cur && cur.user && cur.user.id === u.pk_profile_id) return true;
+        // Shared dispatch desk — pichhle bande ka session pehle band.
+        if (cur) { try { await supabaseClient.auth.signOut(); } catch (e) {} }
+
+        var r = await fetch(SUPABASE_URL + '/functions/v1/erp-sso', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
+                       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+            body: JSON.stringify({ token: tok, app: SARV_APP_KEY })
+        });
+        var d = await r.json().catch(function () { return null; });
+        if (!r.ok || !d || !d.success) {
+            console.warn('[SARV] Packing SSO sign-in skipped:',
+                         (d && (d.message || d.error)) || ('HTTP ' + r.status));
+            return false;
+        }
+        /* Dono type try karte hain — galat type par token kharch nahi
+           hota, isi liye doosri koshish valid rehti hai. (supabase-js ke
+           version ke hisaab se magiclink ka hash 'magiclink' ya 'email'
+           maangta hai.) */
+        var v = await supabaseClient.auth.verifyOtp({ token_hash: d.token_hash, type: 'magiclink' });
+        if (v.error) v = await supabaseClient.auth.verifyOtp({ token_hash: d.token_hash, type: 'email' });
+        if (v.error) { console.warn('[SARV] verifyOtp fail:', v.error.message); return false; }
+        return true;
+    } catch (e) {
+        console.warn('[SARV] Packing SSO sign-in error:', e.message || e);
+        return false;
+    }
+}
+
+sarvSsoCheck().then(async function (u) {
     if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
     window.__SARV_SSO = u || null;
     if (!u) return;
+
+    /* Session pehle, app baad me — enterApp() ke baad screens turant data
+       maangti hain, aur un pehli queries par auth session hona chahiye. */
+    var tok = null;
+    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
+    await sarvSsoSignIn(tok, u);
+
     /* Juda hua account ho to seedha andar; warna naam bhar dete hain
        taaki banda dobara type na kare. Dono kaam DOM ready ke baad —
        enterApp() screens ko chhoota hai. */
@@ -2633,7 +2693,7 @@ async function handleLogout() {
             });
         } catch (e) {}
         try { localStorage.removeItem(SARV_SSO_KEY); localStorage.removeItem(PK_SESSION_KEY); } catch (e) {}
-        location.href = 'index.html';
+        location.href = 'launcher.html';
         return;
     }
     clearSession(false);
@@ -9062,5 +9122,7 @@ function updateOrdGrandTotal() {
 }
 
 </script>
+<!-- "← Apps" wapas jaane wala floating button. Ye file khud tay karti hai ki button dikhana hai ya nahi (ERP ke iframe me nahi, aur single-login session na ho to nahi) — dekhein app-back.js. -->
+<script src="app-back.js"></script>
 </body>
 </html>
