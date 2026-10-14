@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SARV INDIA — Order Form</title>
+<!-- Login screen ki jhalak rokta hai — sabse pehle chalna chahiye. -->
+<script src="sso-preboot.js"></script>
 <!--
   Sales › Order Form — opened INSIDE the ERP (index.html → erp-shell.js
   SALES › "Order Form" → store-core.js sarvNavigateFromHome('ORDER_FORM') →
@@ -683,7 +685,11 @@ function showSsoNote(){
 async function restoreSession(){
   const tok=tokenGet();
   showSsoNote();
-  if(!tok||!SB_READY) return;
+  /* Login screen ki jhalak rokne wali splash — faisla ho jaane par hi
+     hatani hai, warna ERP se yahan aate waqt login window ek pal ko
+     dikh jaati thi. Dekhein sso-preboot.js. */
+  const prebootDone=()=>{ if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); };
+  if(!tok||!SB_READY){ prebootDone(); return; }
   const errEl=document.getElementById('loginError');
   const btn=document.getElementById('loginBtn');
   errEl.style.color='#1A3C5E'; errEl.textContent='⏳ Restoring your session...'; btn.disabled=true;
@@ -699,6 +705,7 @@ async function restoreSession(){
     console.warn('Session restore failed:',e.message||e);
   }finally{
     errEl.style.color=''; if(errEl.textContent.indexOf('Restoring')>=0) errEl.textContent=''; btn.disabled=false;
+    prebootDone();
   }
 }
 

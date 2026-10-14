@@ -26,7 +26,6 @@
    ════════════════════════════════════════════════════════════════════ */
 :root{
   --bg:#0b1220;
-  --bg2:#0e1729;
   --surface:rgba(255,255,255,.045);
   --surface-2:rgba(255,255,255,.07);
   --hairline:rgba(255,255,255,.10);
@@ -37,6 +36,8 @@
   --accent:#38bdf8;
   --accent-2:#2563eb;
   --ok:#34d399;
+  --ok-bg:rgba(52,211,153,.10);
+  --ok-br:rgba(52,211,153,.32);
   --err-bg:rgba(239,68,68,.10);
   --err-br:rgba(239,68,68,.32);
   --err-tx:#fca5a5;
@@ -46,7 +47,6 @@
 @media (prefers-color-scheme: light){
   :root:not([data-theme="dark"]){
     --bg:#eef2f7;
-    --bg2:#e4eaf3;
     --surface:rgba(255,255,255,.80);
     --surface-2:#ffffff;
     --hairline:rgba(15,23,42,.10);
@@ -54,6 +54,8 @@
     --txt:#0f172a;
     --txt-2:#475569;
     --txt-3:#64748b;
+    --ok-bg:rgba(5,150,105,.08);
+    --ok-br:rgba(5,150,105,.28);
     --err-bg:rgba(220,38,38,.07);
     --err-br:rgba(220,38,38,.28);
     --err-tx:#b91c1c;
@@ -124,16 +126,17 @@ body::after{
   box-shadow:var(--shadow);
   padding:clamp(18px,4.5vw,26px);
 }
-.card h2{
-  margin:0 0 4px; font-size:16.5px; font-weight:750; letter-spacing:.01em;
-}
-.card .sub{margin:0 0 20px; font-size:12.5px; color:var(--txt-2);}
+.card h2{margin:0 0 4px; font-size:16.5px; font-weight:750; letter-spacing:.01em;}
+.card .sub{margin:0 0 20px; font-size:12.5px; color:var(--txt-2); line-height:1.55;}
 
 label{
   display:block; font-size:11.5px; font-weight:700; color:var(--txt-2);
   margin:0 0 7px; letter-spacing:.06em; text-transform:uppercase;
 }
+label .req{color:#f87171;}
 .fg{margin-bottom:16px;}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+@media (max-width:430px){ .row2{grid-template-columns:1fr;} }
 .ctrl{position:relative; display:flex; align-items:center;}
 .ctrl .ico{
   position:absolute; left:14px; font-size:15px; opacity:.6;
@@ -148,6 +151,7 @@ input{
   font-size:15.5px; font-family:inherit; outline:none;
   transition:border-color .16s, box-shadow .16s, background .16s;
 }
+input.plain{padding-left:14px;}
 @media (prefers-color-scheme: light){
   :root:not([data-theme="dark"]) input{ background:rgba(255,255,255,.9); }
 }
@@ -156,6 +160,15 @@ input:focus{
   border-color:var(--accent);
   box-shadow:0 0 0 3.5px rgba(56,189,248,.20);
 }
+/* `employees` se aaye hue field — dikhte hain par badle nahi ja sakte. */
+input[readonly]{
+  background:rgba(255,255,255,.04); color:var(--txt-2);
+  border-style:dashed; cursor:default;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]) input[readonly]{ background:rgba(15,23,42,.04); }
+}
+input[readonly]:focus{border-color:var(--hairline); box-shadow:none;}
 .peek{
   position:absolute; right:7px; min-height:36px; min-width:38px;
   background:none; border:none; color:var(--txt-2); cursor:pointer;
@@ -165,6 +178,24 @@ input:focus{
 .roles{
   font-size:11.5px; color:var(--ok); margin-top:8px;
   min-height:15px; font-weight:650; letter-spacing:.01em;
+}
+/* Ek emp_code par do account (ek hi insaan ke do role) — tab ye chunne
+   wale buttons aate hain. Do se zyada kabhi hote nahi, isi liye saada
+   row hi kaafi hai. */
+.picks{display:flex; flex-wrap:wrap; gap:8px;}
+.picks button{
+  flex:1 1 auto; min-width:140px; min-height:46px;
+  background:transparent; border:1px solid var(--hairline-s);
+  color:var(--txt-2); border-radius:10px; padding:9px 12px;
+  font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit;
+  text-align:left; line-height:1.3;
+  transition:border-color .16s, color .16s, background .16s;
+}
+.picks button small{display:block; font-weight:600; font-size:10.5px; opacity:.75; margin-top:2px;}
+.picks button:hover{color:var(--txt); border-color:var(--accent);}
+.picks button.on{
+  color:var(--txt); border-color:var(--accent);
+  background:rgba(56,189,248,.12); box-shadow:0 0 0 3px rgba(56,189,248,.14);
 }
 button.go{
   width:100%; min-height:50px; border:none; border-radius:11px;
@@ -182,7 +213,69 @@ button.go:disabled{opacity:.62; cursor:default; filter:none; transform:none;}
   color:var(--err-tx); border-radius:11px; padding:11px 13px;
   font-size:12.5px; margin-bottom:16px; line-height:1.55;
 }
+.okbox{
+  display:none; background:var(--ok-bg); border:1px solid var(--ok-br);
+  color:var(--ok); border-radius:11px; padding:11px 13px;
+  font-size:12.5px; margin-bottom:16px; line-height:1.55; font-weight:650;
+}
 .hint{font-size:11.5px; color:var(--txt-3); margin-top:14px; line-height:1.6;}
+
+/* ── Card ke neeche ke do raaste (Signup / Forgot) ──────────────────── */
+.alt{
+  display:flex; gap:10px; margin-top:18px; padding-top:16px;
+  border-top:1px solid var(--hairline);
+}
+.alt button{
+  flex:1; min-height:44px; background:transparent;
+  border:1px solid var(--hairline-s); color:var(--txt-2);
+  border-radius:10px; padding:10px 12px; font-size:12.5px;
+  font-weight:700; cursor:pointer; font-family:inherit;
+  transition:border-color .16s, color .16s, background .16s;
+}
+.alt button:hover{color:var(--txt); border-color:var(--accent); background:var(--surface-2);}
+.back{
+  background:none; border:none; color:var(--txt-2); cursor:pointer;
+  font:700 12.5px/1 inherit; padding:6px 2px; margin-bottom:12px;
+  font-family:inherit;
+}
+.back:hover{color:var(--accent);}
+
+/* ── Signature pad ─────────────────────────────────────────────────── */
+.pad{
+  border:1px solid var(--hairline); border-radius:11px; overflow:hidden;
+  background:#fff;
+}
+.pad canvas{display:block; width:100%; height:150px; touch-action:none; cursor:crosshair;}
+.padbar{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:8px 10px; background:var(--surface-2); border-top:1px solid var(--hairline);
+  font-size:11px; color:var(--txt-3);
+}
+.padbar button{
+  background:transparent; border:1px solid var(--hairline-s); color:var(--txt-2);
+  border-radius:8px; padding:7px 11px; font-size:11.5px; font-weight:700;
+  cursor:pointer; font-family:inherit; min-height:34px;
+}
+.padbar button:hover{color:var(--txt); border-color:var(--accent);}
+
+/* ── Photo picker ──────────────────────────────────────────────────── */
+.photo{display:flex; align-items:center; gap:14px;}
+.photo .prev{
+  width:74px; height:74px; border-radius:18px; flex:0 0 auto;
+  background:var(--surface-2); border:1px solid var(--hairline);
+  display:flex; align-items:center; justify-content:center;
+  font-size:27px; color:var(--txt-3); overflow:hidden;
+}
+.photo .prev img{width:100%; height:100%; object-fit:cover; display:block;}
+.photo .pick{flex:1; min-width:0;}
+.photo .pick button{
+  width:100%; min-height:42px; background:transparent;
+  border:1px solid var(--hairline-s); color:var(--txt-2);
+  border-radius:10px; padding:10px; font-size:12.5px; font-weight:700;
+  cursor:pointer; font-family:inherit;
+}
+.photo .pick button:hover{color:var(--txt); border-color:var(--accent);}
+.photo .pick .note{font-size:10.5px; color:var(--txt-3); margin-top:6px; line-height:1.5;}
 
 /* ── Who (logged in) ───────────────────────────────────────────────── */
 .who{
@@ -194,12 +287,13 @@ button.go:disabled{opacity:.62; cursor:default; filter:none; transform:none;}
   box-shadow:var(--shadow); padding:14px 16px; margin-bottom:18px;
 }
 .who .av{
-  width:44px; height:44px; border-radius:14px; flex:0 0 auto;
+  width:46px; height:46px; border-radius:15px; flex:0 0 auto;
   display:flex; align-items:center; justify-content:center;
-  font-weight:800; font-size:17px; color:#fff;
+  font-weight:800; font-size:17px; color:#fff; overflow:hidden;
   background:linear-gradient(145deg,#38bdf8,#2563eb);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.3);
 }
+.who .av img{width:100%; height:100%; object-fit:cover; display:block;}
 .who .meta{min-width:0; flex:1;}
 .who .hi{font-size:11px; color:var(--txt-3); letter-spacing:.05em; text-transform:uppercase; font-weight:700;}
 .who .nm{
@@ -326,16 +420,22 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
   <!-- ── Login ──────────────────────────────────────────────────────── -->
   <div class="card rise" id="loginCard" style="display:none;">
     <h2>Login</h2>
-    <p class="sub">Apna naam chunein aur PIN daalein.</p>
+    <p class="sub">Apna <b>Employee Code</b> aur PIN daalein.</p>
     <div class="err" id="err"></div>
     <div class="fg">
-      <label for="nameBox">Apna Naam</label>
+      <label for="nameBox">Employee Code</label>
       <div class="ctrl">
-        <span class="ico">👤</span>
-        <input id="nameBox" list="namesDl" autocomplete="off" placeholder="Naam type karein / chunein">
+        <span class="ico">🆔</span>
+        <input id="nameBox" list="namesDl" autocomplete="off" placeholder="Jaise 1386">
       </div>
       <datalist id="namesDl"></datalist>
       <div class="roles" id="rolesNote"></div>
+    </div>
+    <!-- Ek emp_code par do account hon to hi dikhta hai — dekhein
+         loadMasters / syncPicks. -->
+    <div class="fg" id="pickWrap" style="display:none;">
+      <label>Aapka kaun sa account?</label>
+      <div class="picks" id="pickList"></div>
     </div>
     <div class="fg">
       <label for="pinBox">PIN</label>
@@ -346,9 +446,170 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
       </div>
     </div>
     <button class="go" id="goBtn">Login</button>
+    <div class="alt">
+      <button type="button" id="toSignup">🆕 Naya Account</button>
+      <button type="button" id="toForgot">🔓 PIN bhool gaye?</button>
+    </div>
     <div class="hint">
-      PIN Admin deta hai (Admin Panel › Users &amp; Roles).
-      Naam list me na ho to Admin se apna user banwayein.
+      Employee Code hi aapka username hai. Code na chale to Admin se
+      kehein — ya niche <b>Naya Account</b> se khud banayein.
+    </div>
+  </div>
+
+  <!-- ── Signup ─────────────────────────────────────────────────────── -->
+  <div class="card rise" id="signupCard" style="display:none;">
+    <button type="button" class="back" id="suBack">← Login par wapas</button>
+    <h2>Naya Account</h2>
+    <p class="sub">
+      Employee Code daalein — aapka naam, designation aur department
+      apne aap aa jayenge. Sirf contact no. badal sakte hain.
+      <b>Saare field zaroori hain.</b>
+    </p>
+    <div class="err" id="suErr"></div>
+    <div class="okbox" id="suOk"></div>
+
+    <div class="fg">
+      <label for="suCode">Employee Code <span class="req">*</span></label>
+      <div class="ctrl">
+        <span class="ico">🆔</span>
+        <input id="suCode" list="empDl" autocomplete="off" placeholder="Jaise 1386">
+      </div>
+      <datalist id="empDl"></datalist>
+      <div class="roles" id="suLookup"></div>
+    </div>
+
+    <div class="fg">
+      <label for="suName">Naam <small style="text-transform:none;font-weight:600;">— badla nahi ja sakta</small></label>
+      <input id="suName" class="plain" readonly placeholder="Employee Code daalein">
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label for="suDesig">Designation</label>
+        <input id="suDesig" class="plain" readonly placeholder="—">
+      </div>
+      <div class="fg">
+        <label for="suDept">Department</label>
+        <input id="suDept" class="plain" readonly placeholder="—">
+      </div>
+    </div>
+    <div class="row2">
+      <div class="fg">
+        <label for="suContact">Contact No. <span class="req">*</span></label>
+        <div class="ctrl">
+          <span class="ico">📞</span>
+          <input id="suContact" type="tel" inputmode="numeric" autocomplete="off" placeholder="10 digit">
+        </div>
+      </div>
+      <div class="fg">
+        <label for="suDob">Date of Birth <span class="req">*</span></label>
+        <input id="suDob" class="plain" type="date" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="fg">
+        <label for="suPin">Naya PIN <span class="req">*</span></label>
+        <div class="ctrl">
+          <span class="ico">🔑</span>
+          <input id="suPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4–8 digit">
+        </div>
+      </div>
+      <div class="fg">
+        <label for="suPin2">PIN dobara <span class="req">*</span></label>
+        <div class="ctrl">
+          <span class="ico">🔁</span>
+          <input id="suPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Wahi PIN">
+        </div>
+      </div>
+    </div>
+
+    <div class="fg">
+      <label>Profile Photo <span class="req">*</span></label>
+      <div class="photo">
+        <div class="prev" id="suPhotoPrev">👤</div>
+        <div class="pick">
+          <button type="button" id="suPhotoBtn">📷 Photo chunein</button>
+          <div class="note">Launcher par aapke profile icon me yahi dikhegi. 256×256 me simat kar jati hai.</div>
+          <input id="suPhotoFile" type="file" accept="image/*" style="display:none;">
+        </div>
+      </div>
+    </div>
+
+    <div class="fg">
+      <label>✍️ Digital Signature <span class="req">*</span></label>
+      <div class="pad">
+        <canvas id="suSig" width="900" height="300"></canvas>
+        <div class="padbar">
+          <span>Mouse / ungli / stylus se sign karein</span>
+          <button type="button" id="suSigClr">✖ Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="go" id="suGo">✅ Account banayein</button>
+    <div class="hint">
+      Shuru me aapko sirf <b>Complaint App</b> ka access milta hai.
+      Baaki apps ka access Admin deta hai.
+    </div>
+  </div>
+
+  <!-- ── Forgot PIN ─────────────────────────────────────────────────── -->
+  <div class="card rise" id="forgotCard" style="display:none;">
+    <button type="button" class="back" id="fpBack">← Login par wapas</button>
+    <h2>PIN Reset</h2>
+    <p class="sub" id="fpSub">
+      Apni teen details daalein — jo database me saved hain unse match
+      hone par aap naya PIN set kar sakte hain.
+    </p>
+    <div class="err" id="fpErr"></div>
+    <div class="okbox" id="fpOk"></div>
+
+    <div id="fpStep1">
+      <div class="fg">
+        <label for="fpCode">Employee Code <span class="req">*</span></label>
+        <div class="ctrl">
+          <span class="ico">🆔</span>
+          <input id="fpCode" autocomplete="off" placeholder="Jaise 1386">
+        </div>
+      </div>
+      <div class="row2">
+        <div class="fg">
+          <label for="fpDob">Date of Birth <span class="req">*</span></label>
+          <input id="fpDob" class="plain" type="date" autocomplete="off">
+        </div>
+        <div class="fg">
+          <label for="fpContact">Contact No. <span class="req">*</span></label>
+          <div class="ctrl">
+            <span class="ico">📞</span>
+            <input id="fpContact" type="tel" inputmode="numeric" autocomplete="off" placeholder="10 digit">
+          </div>
+        </div>
+      </div>
+      <button class="go" id="fpVerify">🔎 Verify karein</button>
+    </div>
+
+    <div id="fpStep2" style="display:none;">
+      <div class="row2">
+        <div class="fg">
+          <label for="fpPin">Naya PIN <span class="req">*</span></label>
+          <div class="ctrl">
+            <span class="ico">🔑</span>
+            <input id="fpPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4–8 digit">
+          </div>
+        </div>
+        <div class="fg">
+          <label for="fpPin2">PIN dobara <span class="req">*</span></label>
+          <div class="ctrl">
+            <span class="ico">🔁</span>
+            <input id="fpPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Wahi PIN">
+          </div>
+        </div>
+      </div>
+      <button class="go" id="fpSave">💾 Naya PIN save karein</button>
+      <div class="hint">
+        PIN badalne par aapke saare khule session band ho jayenge —
+        har app me naya PIN se login karna hoga.
+      </div>
     </div>
   </div>
 
@@ -381,24 +642,27 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
 /* ════════════════════════════════════════════════════════════════════
    SARV INDIA — LAUNCHER
    ────────────────────────────────────────────────────────────────────
-   Login ke baad ka PEHLA page. Do hi kaam karta hai:
+   Login ke baad ka PEHLA page. Teen kaam karta hai:
 
-     1. Naam + PIN se login — `erp_app_login()` ek session token banata
-        hai jo SAARE apps ke liye hai (app_sessions). Saare apps ek hi
-        origin par hain, isi liye localStorage saajha hai aur baaki apps
-        usi token se apni pehchaan le lete hain. Yahin wo localStorage
-        keys bhi likhi jaati hain jo index.html boot par padhta hai
-        (`sarv_active_role` / `_roles` / `_user`) — isi liye ERP par
-        jaate hi wo bina PIN khul jaata hai.
+     1. emp_code + PIN se login — `erp_app_login()` ek session token
+        banata hai jo SAARE apps ke liye hai (app_sessions). Saare apps
+        ek hi origin par hain, isi liye localStorage saajha hai aur
+        baaki apps usi token se apni pehchaan le lete hain. Yahin wo
+        localStorage keys bhi likhi jaati hain jo index.html boot par
+        padhta hai (`sarv_active_role` / `_roles` / `_user`) — isi liye
+        ERP par jaate hi wo bina PIN khul jaata hai.
 
-     2. Sirf WAHI app buttons dikhana jinka access hai. Faisla theek
+     2. SIGNUP aur FORGOT PIN — dono ka poora faisla SERVER par hota
+        hai (`erp_signup` / `erp_forgot_pin_request` + `erp_reset_pin`).
+        Yahan se jo role bheja jaaye wo padha hi nahi jaata: naya user
+        hamesha `CMP_USER` banta hai. Isi liye is page se koi apne aap
+        ko Admin nahi bana sakta.
+
+     3. Sirf WAHI app buttons dikhana jinka access hai. Faisla theek
         wahi teen-tah wala hai jo store-core.js ka sarvTabVisible()
         karta hai, usi kram me:
 
            user ka app_access override → role-wise tab_visibility → default
-
-        Isi liye Admin Panel me kiya gaya badlaav yahan bina kisi alag
-        setting ke lag jaata hai.
 
    Ye page apne aap me koi rok NAHI hai — asli rok har app ke apne gate
    par hai (wo session se dobara poochhte hain). Yahan button chhupane ka
@@ -450,9 +714,11 @@ const roleLabel = r => ROLE_LABEL[r] || r || '—';
 const $ = id => document.getElementById(id);
 let USERS = [], TABVIS = null;
 
+const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 function showErr(m){ const e=$('err'); e.innerHTML=m; e.style.display='block'; }
 function hideErr(){ $('err').style.display='none'; }
-const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+// Chhote helper — teen card ek jaise error / ok dabbe use karte hain.
+const setBox = (id, html) => { const e=$(id); e.innerHTML=html||''; e.style.display=html?'block':'none'; };
 
 /* ── Error ko sach-sach dikhana ───────────────────────────────────────
    Pehle yahan message par regex chalta tha ("does not exist" mila to
@@ -474,7 +740,7 @@ function explainErr(e, fnName){
   // 42883   = Postgres me aisa function nahi hai.
   if (code === 'PGRST202' || code === '42883')
     return '⚠️ <b>' + esc(fnName) + '()</b> server par nahi mila.<br>'
-         + 'Ya to <b>UNIFIED_USERS_MIGRATION.sql</b> chali nahi, ya Supabase ka schema cache purana hai — '
+         + 'Migration chali nahi, ya Supabase ka schema cache purana hai — '
          + 'SQL Editor me <code>notify pgrst, \'reload schema\';</code> chalakar dobara koshish karein.' + tail;
   if (code === '42501')
     return '⚠️ Permission nahi hai (anon is function/table ko nahi chala sakta).' + tail;
@@ -482,8 +748,37 @@ function explainErr(e, fnName){
     return '⚠️ Supabase key reject ho gayi — anon key check karein.' + tail;
   if (/failed to fetch|networkerror|load failed/i.test(msg))
     return '⚠️ Server tak pahunch nahi hui — internet / firewall check karein.' + tail;
-  return '⚠️ Login nahi hua.' + tail;
+  return '⚠️ Kaam nahi hua.' + tail;
 }
+
+/* Server se aaye error code ka seedha matlab — ek hi jagah, taaki Signup
+   aur Forgot dono wahi bhasha bolein. */
+const SRV_MSG = {
+  EMP_CODE_REQUIRED:'Employee Code daalein',
+  CONTACT_REQUIRED:'Contact no. daalein',
+  DOB_REQUIRED:'Date of Birth chunein',
+  DOB_INVALID:'Date of Birth sahi nahi lagti — dobara dekhein',
+  PIN_INVALID_FORMAT:'PIN sirf 4 se 8 digit ka number ho',
+  SIGNATURE_REQUIRED:'Signature banayein',
+  PHOTO_REQUIRED:'Profile photo chunein',
+  PHOTO_TOO_BIG:'Photo bahut badi hai — doosri chunein',
+  SIGNATURE_TOO_BIG:'Signature bahut bada hai — Clear karke dobara banayein',
+  EMP_NOT_FOUND:'Ye Employee Code company record me nahi mila — Admin se check karwayein',
+  EMP_INACTIVE:'Ye Employee Code inactive hai — Admin se kehein',
+  ALREADY_REGISTERED:'Is Employee Code ka account pehle se bana hua hai — Login karein, ya PIN bhool gaye to "PIN Reset" use karein',
+  EMP_NAME_MISSING:'Company record me is code par naam nahi hai — Admin se kehein',
+  PIN_RECIPE_MISSING:'⚠️ Server par PIN setup adhoora hai — Admin se USER_SELF_SERVICE_MIGRATION.sql chalwayein',
+  PIN_VERIFY_FAILED:'⚠️ PIN save hua par chala nahi — Admin se kehein',
+  ALL_FIELDS_REQUIRED:'Teeno field bharein',
+  TOO_MANY_ATTEMPTS:'Bahut baar galat koshish ho gayi — ek ghante baad try karein, ya Admin se PIN reset karwayein',
+  NO_MATCH:'Ye teen details database se match nahi hui. Dhyan dein: DOB aur Contact no. wahi hon jo account banate waqt diye the.',
+  MULTIPLE_ACCOUNTS:'Is Employee Code par ek se zyada account hain aur dono ki details ek jaisi hain — yahan se kaun sa chunna hai ye tay nahi ho sakta. Admin se PIN reset karwayein (Admin Panel › Users).',
+  USER_INACTIVE:'Aapka account band hai — Admin se kehein',
+  BAD_TOKEN:'Reset link sahi nahi — dobara Verify karein',
+  TOKEN_USED:'Ye reset pehle use ho chuka — dobara Verify karein',
+  TOKEN_EXPIRED:'10 minute ho gaye — dobara Verify karein'
+};
+const srvMsg = c => SRV_MSG[c] || ('Nahi hua: ' + esc(c || 'unknown'));
 
 /* ── Access ka faisla — store-core.js ke sarvTabVisible() jaisa ────────
    Launcher par saare app keys ka default `true` hai (SARV_TABS me in
@@ -512,7 +807,7 @@ function allowedAppKeys(roles, appAccess){
 async function loadMasters(){
   const [u, s] = await Promise.all([
     SB.from('app_users')
-      .select('id,user_name,role,roles,app_access,is_active,sales_role')
+      .select('id,user_name,emp_code,role,roles,app_access,is_active,sales_role')
       .order('user_name'),
     SB.from('app_settings').select('key,value').eq('key','tab_visibility')
   ]);
@@ -520,50 +815,119 @@ async function loadMasters(){
   USERS = (u.data || []).filter(x => x.is_active !== false);
   TABVIS = (!s.error && s.data && s.data[0] && s.data[0].value) || null;
 
+  /* Dropdown me emp_code hi value hai (login username wahi hai), aur
+     label me naam — taaki banda apna code dhoondh sake. Jiska code
+     khaali hai uska naam value banta hai, warna wo login hi na kar
+     paaye (backfill me naam match na hua ho to aisa hota hai). */
   const dl = $('namesDl');
   dl.innerHTML = '';
+  /* Ek hi code do account par ho sakta hai — dropdown me wo ek hi baar
+     aana chahiye (chunav baad me login card par hota hai). Isi liye
+     value par dedupe, aur label me dono naam jod dete hain. */
+  const seen = new Map();
   USERS.forEach(x => {
+    const code = String(x.emp_code || '').trim();
+    const val  = code || x.user_name;
+    if (!val) return;
+    const label = code ? x.user_name : (x.user_name + ' (code nahi — naam se login)');
+    if (seen.has(val)) seen.set(val, seen.get(val) + ' / ' + x.user_name);
+    else seen.set(val, label);
+  });
+  seen.forEach((label, val) => {
     const o = document.createElement('option');
-    o.value = x.user_name;
-    const rs = (x.roles && x.roles.length ? x.roles : [x.role]).filter(Boolean);
-    o.label = rs.map(roleLabel).join(' + ');
+    o.value = val; o.label = label;
     dl.appendChild(o);
   });
 }
 
-const findUser = nm => {
+/* Login box me emp_code bhi chalta hai aur naam bhi. Naam jaan-boojh kar
+   chhoda hai: backfill me jin logon ka naam `employees` se match nahi
+   hua unka emp_code khaali hai, aur sirf code maanne se wo log bahar ho
+   jaate.
+
+   Ek emp_code par DO account ho sakte hain (ek hi insaan ke do role —
+   jaise "ANKUR JI / Purchaser" aur "ANKUR / GM"). Isi liye ye LIST
+   lautata hai, ek user nahi. */
+const findUsers = nm => {
   const n = String(nm||'').trim().toUpperCase();
-  return USERS.find(x => String(x.user_name).toUpperCase() === n) || null;
+  if (!n) return [];
+  const byCode = USERS.filter(x => String(x.emp_code||'').trim().toUpperCase() === n);
+  if (byCode.length) return byCode;
+  return USERS.filter(x => String(x.user_name||'').trim().toUpperCase() === n);
 };
 
-/* Naam type karte hi uske role dikha dete hain — "mera naam sahi hai
-   ya nahi" ka jawab PIN daalne se pehle mil jaata hai. */
+/* Jab do account hon to banda chunta hai; ek ho to kuch poochhna hi
+   nahi. `pickedId` tabhi set hota hai jab sach me chunav hua ho. */
+let pickedId = null;
+
+function syncPicks(list){
+  const wrap = $('pickWrap'), box = $('pickList');
+  if (list.length < 2){
+    wrap.style.display = 'none'; box.innerHTML = ''; pickedId = null;
+    return;
+  }
+  wrap.style.display = 'block';
+  box.innerHTML = '';
+  // Pichhla chunav is naam me na ho to saaf kar dein.
+  if (!list.some(u => String(u.id) === pickedId)) pickedId = null;
+  list.forEach(u => {
+    const rs = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = (String(u.id) === pickedId) ? 'on' : '';
+    b.innerHTML = esc(u.user_name) + '<small>' + esc(rs.map(roleLabel).join(' + ')) + '</small>';
+    b.addEventListener('click', () => {
+      pickedId = String(u.id);
+      Array.from(box.children).forEach(c => c.className = '');
+      b.className = 'on';
+      $('pinBox').focus();
+    });
+    box.appendChild(b);
+  });
+}
+
+/* Code / naam type karte hi uska naam aur role dikha dete hain — "main
+   sahi account par hoon" ka jawab PIN daalne se pehle mil jaata hai. */
 $('nameBox').addEventListener('input', function(){
-  const u = findUser(this.value);
-  const rs = u ? (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean) : [];
-  $('rolesNote').textContent = u ? ('✓ ' + rs.map(roleLabel).join(' + ')) : '';
+  const list = findUsers(this.value);
+  syncPicks(list);
+  if (!list.length){ $('rolesNote').textContent = ''; return; }
+  if (list.length > 1){
+    $('rolesNote').textContent = '⚠️ Is code par ' + list.length + ' account hain — niche apna chunein';
+    return;
+  }
+  const u = list[0];
+  const rs = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
+  $('rolesNote').textContent = '✓ ' + u.user_name + ' — ' + rs.map(roleLabel).join(' + ');
 });
 
 /* PIN dikhane/chhupane ka toggle — factory phone par chhote keypad se
    galat PIN type ho jaana aam hai, aur "Galat PIN" se behtar hai banda
    khud dekh le. */
-$('peekBtn').addEventListener('click', () => {
-  const b = $('pinBox');
-  const show = b.type === 'password';
-  b.type = show ? 'text' : 'password';
-  $('peekBtn').textContent = show ? '🙈' : '👁';
-  $('peekBtn').setAttribute('aria-label', show ? 'PIN chhupayein' : 'PIN dikhayein');
-  b.focus();
-});
+function wirePeek(btnId, inputId){
+  $(btnId).addEventListener('click', () => {
+    const b = $(inputId);
+    const show = b.type === 'password';
+    b.type = show ? 'text' : 'password';
+    $(btnId).textContent = show ? '🙈' : '👁';
+    $(btnId).setAttribute('aria-label', show ? 'PIN chhupayein' : 'PIN dikhayein');
+    b.focus();
+  });
+}
 
 /* ── Login ────────────────────────────────────────────────────────── */
 async function doLogin(){
   hideErr();
   const nm  = $('nameBox').value.trim();
   const pin = $('pinBox').value;
-  if (!nm)  return showErr('Apna naam chunein');
-  const u = findUser(nm);
-  if (!u)   return showErr('"' + esc(nm) + '" naam ka koi active user nahi mila — list se chunein.');
+  if (!nm)  return showErr('Apna Employee Code daalein');
+  const list = findUsers(nm);
+  if (!list.length)
+    return showErr('"' + esc(nm) + '" ka koi active account nahi mila. Naya hai? niche <b>Naya Account</b> dabayein.');
+  // Do account hon to chunav zaroori — andaza lagakar galat account par
+  // login karwana sabse bura nateeja hai.
+  const u = (list.length === 1) ? list[0] : list.find(x => String(x.id) === pickedId);
+  if (!u){ syncPicks(list); return showErr('Is code par ' + list.length + ' account hain — upar apna account chunein'); }
   if (!pin) return showErr('PIN daalein');
 
   const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
@@ -583,8 +947,8 @@ async function doLogin(){
     if (!d.success){
       const m = {
         USER_NOT_FOUND:'User nahi mila — page refresh karein',
-        USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
-        PIN_INVALID:'Galat PIN',
+        USER_INACTIVE:'Ye account band hai — Admin se kehein',
+        PIN_INVALID:'Galat PIN — bhool gaye to "PIN bhool gaye?" dabayein',
         PIN_CHECK_UNAVAILABLE:'⚠️ Server par PIN check nahi ho saka — Admin se kehein'
       };
       return showErr(m[d.error] || ('Login nahi hua: ' + esc(d.error || 'unknown')));
@@ -651,6 +1015,265 @@ async function salesSso(roleKey, userId, pin){
   }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   SIGNATURE PAD — Signup ke liye
+   ──────────────────────────────────────────────────────────────────── */
+function makeSigPad(canvas){
+  const ctx = canvas.getContext('2d');
+  // Pad gora rehta hai aur ink kaali — PDF par bhi wahi dikhti hai.
+  ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3.2;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  let down = false, ink = 0, lx = 0, ly = 0;
+  const pos = e => {
+    const r = canvas.getBoundingClientRect();
+    const s = e.touches ? e.touches[0] : e;
+    return { x:(s.clientX-r.left)*canvas.width/r.width, y:(s.clientY-r.top)*canvas.height/r.height };
+  };
+  const start = e => { e.preventDefault(); down = true; const p = pos(e); lx=p.x; ly=p.y; ctx.beginPath(); ctx.moveTo(p.x,p.y); };
+  const move  = e => { if(!down) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x,p.y); ctx.stroke(); ink += Math.hypot(p.x-lx,p.y-ly); lx=p.x; ly=p.y; };
+  const stop  = () => { down = false; };
+  canvas.addEventListener('mousedown',start); canvas.addEventListener('mousemove',move);
+  canvas.addEventListener('mouseup',stop);    canvas.addEventListener('mouseleave',stop);
+  canvas.addEventListener('touchstart',start,{passive:false});
+  canvas.addEventListener('touchmove',move,{passive:false});
+  canvas.addEventListener('touchend',stop);
+  return {
+    clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); ink = 0; },
+    // 30px se kam lakeer "galti se chhua" hai, sign nahi.
+    hasInk(){ return ink >= 30; },
+    dataUrl(){
+      /* PNG transparent hota hai; PDF / screen par kahin kaali background
+         par lage to sign gayab lagta. Isi liye safed background pehle
+         bhar kar bhejte hain. */
+      const o = document.createElement('canvas');
+      o.width = canvas.width; o.height = canvas.height;
+      const c = o.getContext('2d');
+      c.fillStyle = '#fff'; c.fillRect(0,0,o.width,o.height);
+      c.drawImage(canvas,0,0);
+      return o.toDataURL('image/jpeg', 0.85);
+    }
+  };
+}
+
+/* Photo ko 256×256 JPEG me simet dete hain — DB me data-URL jaata hai,
+   isi liye size maayne rakhta hai (4 MB ki selfie seedha nahi bhej
+   sakte). Centre se crop, taaki chehra beech me rahe. */
+function shrinkPhoto(file){
+  return new Promise((res, rej) => {
+    if (!file) return rej(new Error('Koi file nahi chuni'));
+    if (!/^image\//.test(file.type)) return rej(new Error('Sirf image file chunein'));
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error('File padhi nahi ja saki'));
+    fr.onload = () => {
+      const img = new Image();
+      img.onerror = () => rej(new Error('Ye image kholi nahi ja saki'));
+      img.onload = () => {
+        const S = 256;
+        const c = document.createElement('canvas');
+        c.width = S; c.height = S;
+        const cx = c.getContext('2d');
+        const side = Math.min(img.width, img.height);
+        cx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, S, S);
+        res(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   VIEW SWITCHING — login / signup / forgot
+   ──────────────────────────────────────────────────────────────────── */
+/* Chaaron screen ek hi jagah se switch hoti hain — isi liye "do card ek
+   saath khule reh gaye" jaisa haal ban hi nahi sakta. */
+function showView(which){
+  ['loginCard','signupCard','forgotCard','homeWrap'].forEach(id => {
+    $(id).style.display = (id === which) ? 'block' : 'none';
+  });
+  $('boot').style.display = 'none';
+}
+function showLogin(){ showView('loginCard'); $('nameBox').focus(); }
+
+/* ════════════════════════════════════════════════════════════════════
+   SIGNUP
+   ──────────────────────────────────────────────────────────────────── */
+let suPad = null, suPhoto = null, suEmp = null;
+
+/* Employee Code se naam / designation / department — wahi `employees`
+   table jo PR form bhi padhta hai. Yahan se aaye teen field read-only
+   hain: company record hi sach hai, aur use launcher se badalne dena
+   galat hota. Contact no. badla ja sakta hai (wo purana ho sakta hai). */
+async function suLookup(){
+  const code = $('suCode').value.trim();
+  const note = $('suLookup');
+  suEmp = null;
+  $('suName').value = ''; $('suDesig').value = ''; $('suDept').value = '';
+  if (!code){ note.textContent = ''; return; }
+
+  // Pehle se account bana ho to turant bata dein — form bharwane se pehle.
+  const already = USERS.find(x => String(x.emp_code||'').trim().toUpperCase() === code.toUpperCase());
+  if (already){
+    note.style.color = 'var(--err-tx)';
+    note.textContent = '⚠️ Is code ka account pehle se hai (' + already.user_name + ') — Login karein';
+    return;
+  }
+
+  note.style.color = 'var(--txt-3)';
+  note.textContent = '⏳ Dekh rahe hain…';
+  try{
+    const q = await SB.from('employees')
+      .select('emp_code,person_name,designation,department,contact_no,is_active')
+      .ilike('emp_code', code).limit(1);
+    if (q.error) throw q.error;
+    const e = (q.data || [])[0];
+    if (!e){
+      note.style.color = 'var(--err-tx)';
+      note.textContent = '✖ Ye Employee Code company record me nahi mila';
+      return;
+    }
+    if (e.is_active === false){
+      note.style.color = 'var(--err-tx)';
+      note.textContent = '✖ Ye Employee Code inactive hai — Admin se kehein';
+      return;
+    }
+    suEmp = e;
+    $('suName').value  = e.person_name || '';
+    $('suDesig').value = e.designation || '';
+    $('suDept').value  = e.department  || '';
+    // Contact pehle se bhara nahi ho to company record se bhar dete hain.
+    if (!$('suContact').value.trim()) $('suContact').value = e.contact_no || '';
+    note.style.color = 'var(--ok)';
+    note.textContent = '✓ ' + (e.person_name || '') + (e.department ? ' · ' + e.department : '');
+  }catch(err){
+    note.style.color = 'var(--err-tx)';
+    note.textContent = 'Lookup fail: ' + (err.message || err);
+  }
+}
+
+async function doSignup(){
+  setBox('suErr',''); setBox('suOk','');
+  const code    = $('suCode').value.trim();
+  const contact = $('suContact').value.trim();
+  const dob     = $('suDob').value;
+  const pin     = $('suPin').value;
+  const pin2    = $('suPin2').value;
+
+  // Sab kuch zaroori — ek-ek karke saaf batate hain, sab ek saath nahi.
+  if (!code)                    return setBox('suErr','Employee Code daalein');
+  if (!suEmp)                   return setBox('suErr','Employee Code verify nahi hua — code dobara check karein');
+  if (!contact)                 return setBox('suErr','Contact no. daalein');
+  if (contact.replace(/\D/g,'').length < 10)
+                                return setBox('suErr','Contact no. poora daalein (kam se kam 10 digit)');
+  if (!dob)                     return setBox('suErr','Date of Birth chunein');
+  if (!/^[0-9]{4,8}$/.test(pin))return setBox('suErr','PIN 4 se 8 digit ka number ho');
+  if (pin !== pin2)             return setBox('suErr','Dono PIN ek jaise nahi hain');
+  if (!suPhoto)                 return setBox('suErr','Profile photo chunein');
+  if (!suPad || !suPad.hasInk())return setBox('suErr','✍️ Signature banayein — pad par sign karein');
+
+  const btn = $('suGo');
+  btn.disabled = true; btn.textContent = '⏳ Account bana rahe hain…';
+  try{
+    /* Role yahan se NAHI bhejte — server khud `CMP_USER` lagata hai.
+       Isi liye is request ko badal kar koi apne aap ko Admin nahi bana
+       sakta. */
+    const r = await SB.rpc('erp_signup', {
+      p_emp_code: code,
+      p_contact_no: contact,
+      p_dob: dob,
+      p_pin: pin,
+      p_signature: suPad.dataUrl(),
+      p_photo: suPhoto
+    });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success) return setBox('suErr', srvMsg(d.error));
+
+    setBox('suOk','✅ Account ban gaya — <b>' + esc(d.name || '') + '</b><br>'
+      + 'Ab apne Employee Code <b>' + esc(d.emp_code || code) + '</b> aur isi PIN se login karein.');
+    // Login screen ke liye naam/code taiyar kar dete hain.
+    await loadMasters().catch(()=>{});
+    setTimeout(() => {
+      showLogin();
+      $('nameBox').value = d.emp_code || code;
+      $('nameBox').dispatchEvent(new Event('input'));
+      $('pinBox').focus();
+    }, 2200);
+  }catch(e){
+    console.error('[LAUNCHER] signup fail:', e);
+    setBox('suErr', explainErr(e, 'erp_signup'));
+  }finally{
+    btn.disabled = false; btn.textContent = '✅ Account banayein';
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   FORGOT PIN
+   ──────────────────────────────────────────────────────────────────── */
+let fpToken = null;
+
+async function doForgotVerify(){
+  setBox('fpErr',''); setBox('fpOk','');
+  const code    = $('fpCode').value.trim();
+  const dob     = $('fpDob').value;
+  const contact = $('fpContact').value.trim();
+  if (!code || !dob || !contact) return setBox('fpErr','Teeno field bharein');
+
+  const btn = $('fpVerify');
+  btn.disabled = true; btn.textContent = '⏳ Verify kar rahe hain…';
+  try{
+    const r = await SB.rpc('erp_forgot_pin_request', {
+      p_emp_code: code, p_dob: dob, p_contact_no: contact
+    });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success) return setBox('fpErr', srvMsg(d.error));
+
+    fpToken = d.token;
+    setBox('fpOk','✓ Pehchaan ho gayi — <b>' + esc(d.name || '') + '</b>. Ab naya PIN set karein.');
+    $('fpStep1').style.display = 'none';
+    $('fpStep2').style.display = 'block';
+    $('fpSub').textContent = 'Naya PIN chunein — 4 se 8 digit ka number.';
+    $('fpPin').focus();
+  }catch(e){
+    console.error('[LAUNCHER] forgot verify fail:', e);
+    setBox('fpErr', explainErr(e, 'erp_forgot_pin_request'));
+  }finally{
+    btn.disabled = false; btn.textContent = '🔎 Verify karein';
+  }
+}
+
+async function doForgotSave(){
+  setBox('fpErr','');
+  const pin = $('fpPin').value, pin2 = $('fpPin2').value;
+  if (!/^[0-9]{4,8}$/.test(pin)) return setBox('fpErr','PIN 4 se 8 digit ka number ho');
+  if (pin !== pin2)              return setBox('fpErr','Dono PIN ek jaise nahi hain');
+  if (!fpToken)                  return setBox('fpErr','Pehle Verify karein');
+
+  const btn = $('fpSave');
+  btn.disabled = true; btn.textContent = '⏳ Save kar rahe hain…';
+  try{
+    const r = await SB.rpc('erp_reset_pin', { p_token: fpToken, p_new_pin: pin });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success) return setBox('fpErr', srvMsg(d.error));
+
+    fpToken = null;
+    setBox('fpOk','✅ Naya PIN save ho gaya — ab isi PIN se login karein.');
+    setTimeout(() => {
+      showLogin();
+      $('nameBox').value = $('fpCode').value.trim();
+      $('nameBox').dispatchEvent(new Event('input'));
+      $('pinBox').focus();
+    }, 1800);
+  }catch(e){
+    console.error('[LAUNCHER] reset pin fail:', e);
+    setBox('fpErr', explainErr(e, 'erp_reset_pin'));
+  }finally{
+    btn.disabled = false; btn.textContent = '💾 Naya PIN save karein';
+  }
+}
+
 /* ── Home ─────────────────────────────────────────────────────────── */
 const greet = () => {
   const h = new Date().getHours();
@@ -660,15 +1283,30 @@ const greet = () => {
   return 'Shubh Sandhya';
 };
 
+/* Profile photo alag se maangte hain: wo data-URL hai aur user list me
+   70 photos kheenchna bekaar bhaari pad jaata. Sirf is ek user ki. */
+async function loadMyPhoto(id){
+  if (!id) return;
+  try{
+    const q = await SB.from('app_users').select('photo').eq('id', id).limit(1);
+    const p = !q.error && q.data && q.data[0] && q.data[0].photo;
+    if (!p) return;
+    const av = $('avatar');
+    av.innerHTML = '';
+    const im = document.createElement('img');
+    im.alt = ''; im.src = p;
+    av.appendChild(im);
+  }catch(e){ /* photo na mile to pehla akshar hi theek hai */ }
+}
+
 function renderHome(user){
-  $('boot').style.display = 'none';
-  $('loginCard').style.display = 'none';
-  $('homeWrap').style.display = 'block';
+  showView('homeWrap');
 
   const roles = (user.roles && user.roles.length ? user.roles : [user.primary_role]).filter(Boolean);
   $('whoHi').textContent   = greet();
   $('whoName').textContent = user.name || '—';
   $('avatar').textContent  = (user.name || '?').trim().charAt(0).toUpperCase();
+  loadMyPhoto(user.id);
 
   const rl = $('whoRole');
   rl.innerHTML = '';
@@ -718,13 +1356,6 @@ function renderHome(user){
   $('noApps').style.display   = n ? 'none' : 'block';
 }
 
-function showLogin(){
-  $('boot').style.display = 'none';
-  $('homeWrap').style.display = 'none';
-  $('loginCard').style.display = 'block';
-  $('nameBox').focus();
-}
-
 /* ── Logout — ek jagah se, saare apps ka ─────────────────────────── */
 async function doLogout(){
   if (!confirm('Logout karein?\n\nSaare apps se nikal jayenge — dobara PIN daalna padega.')) return;
@@ -745,6 +1376,52 @@ async function doLogout(){
   $('outBtn').addEventListener('click', doLogout);
   $('pinBox').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   $('nameBox').addEventListener('keydown', e => { if (e.key === 'Enter') $('pinBox').focus(); });
+  wirePeek('peekBtn','pinBox');
+
+  // ── Signup / Forgot ke raaste ──────────────────────────────────────
+  $('toSignup').addEventListener('click', () => {
+    showView('signupCard');
+    if (!suPad) suPad = makeSigPad($('suSig'));
+    // Employee Code ka dropdown — pehli baar hi bharte hain (257 rows).
+    fillEmpDatalist();
+    $('suCode').focus();
+  });
+  $('toForgot').addEventListener('click', () => {
+    showView('forgotCard');
+    setBox('fpErr',''); setBox('fpOk','');
+    fpToken = null;
+    $('fpStep1').style.display = 'block';
+    $('fpStep2').style.display = 'none';
+    $('fpSub').textContent = 'Apni teen details daalein — jo database me saved hain unse match hone par aap naya PIN set kar sakte hain.';
+    $('fpCode').focus();
+  });
+  $('suBack').addEventListener('click', showLogin);
+  $('fpBack').addEventListener('click', showLogin);
+
+  $('suCode').addEventListener('change', suLookup);
+  $('suCode').addEventListener('blur', suLookup);
+  $('suSigClr').addEventListener('click', () => suPad && suPad.clear());
+  $('suPhotoBtn').addEventListener('click', () => $('suPhotoFile').click());
+  $('suPhotoFile').addEventListener('change', async function(){
+    const f = this.files && this.files[0];
+    if (!f) return;
+    try{
+      suPhoto = await shrinkPhoto(f);
+      const pv = $('suPhotoPrev');
+      pv.innerHTML = '';
+      const im = document.createElement('img');
+      im.alt = ''; im.src = suPhoto;
+      pv.appendChild(im);
+      setBox('suErr','');
+    }catch(e){
+      suPhoto = null;
+      setBox('suErr', 'Photo nahi li ja saki: ' + (e.message || e));
+    }
+  });
+  $('suGo').addEventListener('click', doSignup);
+  $('fpVerify').addEventListener('click', doForgotVerify);
+  $('fpSave').addEventListener('click', doForgotSave);
+  $('fpPin2').addEventListener('keydown', e => { if (e.key === 'Enter') doForgotSave(); });
 
   let tok = null;
   try{ tok = localStorage.getItem(K_SSO); }catch(e){}
@@ -786,6 +1463,33 @@ async function doLogout(){
       : explainErr(e, 'app_users'));
   }
 })();
+
+/* Employee Code ka dropdown — 257 rows, isi liye sirf tab bharte hain
+   jab Signup khula ho, aur ek hi baar. */
+let empFilled = false;
+async function fillEmpDatalist(){
+  if (empFilled) return;
+  empFilled = true;
+  try{
+    const q = await SB.from('employees')
+      .select('emp_code,person_name').order('emp_code').limit(2000);
+    if (q.error) throw q.error;
+    const dl = $('empDl');
+    dl.innerHTML = '';
+    (q.data || []).forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.emp_code || '';
+      o.label = e.person_name || '';
+      dl.appendChild(o);
+    });
+  }catch(e){
+    empFilled = false;   // agli baar dobara koshish
+    console.warn('[LAUNCHER] employees list load fail:', e.message || e);
+  }
+}
 </script>
+<!-- Login screen ki jhalak rokne wali splash isi page par nahi chalti
+     (sso-preboot.js launcher ko chhodta hai) — yahan login screen dikhna
+     hi chahiye. -->
 </body>
 </html>

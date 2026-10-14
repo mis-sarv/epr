@@ -3859,6 +3859,11 @@ document.addEventListener('DOMContentLoaded',()=>{
       sarvGoHome();
     }
   }catch(e){}
+  /* Login screen ki jhalak rokne wali splash hata dein — faisla ho chuka
+     hai (ya restore ho gaya, ya gate dikhana hai). Ye localStorage se
+     hota hai, isi liye yahan tak koi network call nahi hui aur splash
+     bas ek-do frame rehti hai. Dekhein sso-preboot.js. */
+  if(window.sarvSsoPrebootDone)window.sarvSsoPrebootDone();
 });
 
 /* ================================================================
@@ -4694,6 +4699,13 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="pad"><canvas width="900" height="220"></canvas><div class="padbar"><span>Mouse / touch / stylus se sign karein</span>'
     +'<span style="display:flex;gap:8px;align-items:center;">'
     +(u&&u.has_signature?'<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;font-size:11px;color:#b91c1c;font-weight:700;"><input data-f="sigdel" type="checkbox" style="width:14px;height:14px;"> Saved sign hatayein</label>':'')
+    /* "Use pre saved Sign" — sirf us user par jiska sign pehle se hai.
+       Zaroorat ye thi: Admin extra role dene ke liye ye window kholta hai,
+       aur pad khaali dikhta hai — to lagta hai sign gum ho gaya. Ye button
+       usi ka saved sign pad par laakar dikha deta hai (Admin PIN se, kyunki
+       get_user_signature() user ka APNA PIN maangta hai aur wo Admin ke
+       paas nahi hota — isi liye admin_get_user_signature() alag hai). */
+    +(u&&u.has_signature?'<button type="button" class="b no sm" data-f="sigpre" title="Is user ka pehle se saved signature pad par laayein">&#9997;&#65039; Use pre saved Sign</button>':'')
     +'<button type="button" class="b no sm" data-f="sigclr">&#10006; Clear</button></span></div></div></div>'
     +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">&#128190; Save User</button></div></div>';
   document.body.appendChild(ov);
@@ -4704,7 +4716,33 @@ function sarvOpenUserModal(id,presetRole){
   const onKey=e=>{if(e.key==='Escape'&&byId('pwdGateModal')?.style.display!=='flex'){e.preventDefault();close();}};
   document.addEventListener('keydown',onKey,true);
   const err=msg=>{const el=f('err');el.textContent=msg;el.style.display=msg?'block':'none';if(msg)ov.querySelector('.card').scrollTop=0;};
-  f('sigclr').addEventListener('click',()=>pad.clear());
+  /* "Use pre saved Sign" se aaya hua signature. Pad ka apna `ink` counter
+     isse nahi badalta (wo sirf haath se khinchi lakeer ginta hai), isi
+     liye use alag yaad rakhna padta hai — warna Save par wo chhoot jaata. */
+  let preSig=null;
+  f('sigclr').addEventListener('click',()=>{pad.clear();preSig=null;});
+  f('sigpre')?.addEventListener('click',async()=>{
+    if(!u||!u.id)return;
+    const adminPin=await askSecret({title:'Admin PIN Confirm Karein',
+      subtitle:'Saved signature pad par laane ke liye',
+      recordInfo:u.user_name||'',label:'Admin PIN',confirmText:'&#9997;&#65039; Sign laayein'});
+    if(adminPin==null)return;
+    if(!adminPin.trim())return err('Admin PIN khali nahi ho sakta');
+    try{
+      const r=await SB.rpc('admin_get_user_signature',{p_admin_pin:adminPin.trim(),p_user_id:String(u.id)});
+      if(r.error)throw r.error;
+      if(!r.data)return err('Is user ka saved signature nahi mila');
+      await sarvDrawSigInto_(ov.querySelector('canvas'),r.data);
+      preSig=r.data;
+      err('');
+      showToast('✍️ Saved sign pad par lag gaya — Save karne par wahi rahega','ok');
+    }catch(e){
+      const m=e.message||String(e);
+      err(/ADMIN_PIN_INVALID/i.test(m)?'❌ Galat Admin PIN'
+         :(/admin_get_user_signature|does not exist|schema cache/i.test(m)
+            ?'⚠️ admin_get_user_signature() nahi mila — USER_SELF_SERVICE_MIGRATION.sql chalayein':m));
+    }
+  });
   f('cancel').addEventListener('click',close);
   /* Apps ke dropdown: rang se turant dikhe ki kya chuna hai, aur teen
      shortcut button (sab auto / ON / OFF) — 18 apps ek-ek karke set
@@ -4754,8 +4792,12 @@ function sarvOpenUserModal(id,presetRole){
     if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN zaroori hai');
     if(pin&&pin.length<4)return err('PIN kam se kam 4 digit ka ho');
     if(pin!==pin2)return err('PIN aur Confirm PIN match nahi kar rahe');
+    /* Kram maayne rakhta hai: haath se khincha hua sign sabse oopar, uske
+       baad "Use pre saved Sign" wala, phir "hatayein". `null` ka matlab
+       hai "signature ko chhedo hi nahi". */
     let sig=null;
     if(pad.hasInk())sig=pad.dataUrl();
+    else if(preSig)sig=preSig;
     else if(f('sigdel')&&f('sigdel').checked)sig='';
     const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:(u?'User update':'Naya user')+' save karne ke liye',
       recordInfo:sarvRoleLabelOf_(roleV)+' — '+name,label:'Admin PIN',confirmText:'&#128190; Save User'});

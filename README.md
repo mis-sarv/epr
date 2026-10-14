@@ -29,8 +29,11 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `UNIFIED_USERS_MIGRATION.sql` | Ek user / kai role (`app_users.roles[]`), per-user app access (`app_users.app_access`), aur saare apps ka ek session (`app_sessions` + `erp_app_login` / `erp_app_session` / `erp_app_logout`). **ADMIN_PANEL_MIGRATION.sql ke baad** ek baar chalayein. Dobara chalana surakshit. Neeche dekhein. |
 | `launcher.html` | **Login ke baad ka pehla page.** Naam + PIN, aur phir sirf wahi app buttons jinka access hai (ERP / Approvals / Complaint / Packing / Order Form). Ek hi session banata hai jo saare apps chalate hain. Neeche dekhein. |
 | `app-back.js` | Har app me ek hi `<script src>` line — neeche daayein kone me floating **← Apps** button. Khud tay karta hai ki dikhna hai ya nahi: ERP ke iframe ke andar nahi, aur single-login session na ho to nahi (tab banda launcher se aaya hi nahi). z-index 900, isi liye modal iske oopar aate hain. |
+| `sso-preboot.js` | Har app ke `<head>` me sabse pehle. App switch karte waqt login window ki **jhalak** rokta hai: token localStorage me ho (synchronous) to login overlay paint hi nahi hota aur ek spinner splash lag jaati hai; app taiyar hone par khud `sarvSsoPrebootDone()` bulati hai. Token na ho to ye file kuch nahi karti. 9 sec ka backstop — koi spinner par atkta nahi. |
 | `SINGLE_LOGIN_MIGRATION.sql` | Complaint (`cmp_profiles`) aur Packing (`packing.profiles`) ke users ERP ki `app_users` me merge, har naye user ka PIN (+ verify), naye role `CMP_USER` / `PK_USER`, aur `erp_sso_profile()`. Upar `v_admin_pin` bharna hai. **UNIFIED_USERS_MIGRATION.sql ke baad** ek baar. Dobara chalana surakshit. Neeche dekhein. |
 | `FIX_PGCRYPTO_SEARCHPATH.sql` | Ek purani kami ka ilaaj: `erp_app_login()` ka `search_path = public` tha, par `gen_random_bytes()` (pgcrypto) `extensions` schema me rehta hai — isi liye **sahi PIN** par login `function gen_random_bytes(integer) does not exist [42883]` se girta tha. Sirf search_path theek karti hai, function ka body nahi chhedti. Dobara chalana surakshit. |
+| `USER_SELF_SERVICE_MIGRATION.sql` | **Signup · Forgot PIN · emp_code login.** `app_users` par `dob` / `photo` / `designation` / `department`, emp_code backfill (`employees` se naam-match), aur RPCs `erp_signup` / `erp_forgot_pin_request` / `erp_reset_pin` / `admin_get_user_signature`. PIN kahan likha jaata hai ye GUESS nahi karti — probe user se pata karti hai. Upar `v_admin_pin` bharna hai. **SINGLE_LOGIN ke baad** ek baar. Neeche dekhein. |
+| `CONSOLIDATE_USER_TABLES.sql` | ⚠️ `cmp_profiles` / `packing.profiles` / `sales_users` hata kar `app_users` ko ek hi user store banati hai — par unhi naamon ki **VIEW** chhod jaati hai (app_users se), isi liye dono apps ke trigger / RLS / code bina badle chalte rehte hain. **Pehli baar chalane par sirf plan chhapti hai (dry run)**; `v_do_it := true` karne par kaam karti hai. Archive khud banati hai. |
 | `supabase/functions/erp-sso/index.ts` | Edge Function — ERP ke session token se Complaint / Packing ka **asli** Supabase Auth session banata hai (bina password, bina unki RLS chhede). `supabase functions deploy erp-sso`. |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
 | `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
@@ -510,6 +513,111 @@ Back button se **logout nahi hota** — session waisa hi rehta hai, isi liye
 launcher par pahunchte hi doosra app bina PIN khulta hai. Logout ab bhi ek hi
 jagah se hai (launcher ka Logout, ya app ka apna logout jo wahin bhej deta
 hai).
+
+
+### Signup · Forgot PIN · emp_code se login
+
+Setup: `USER_SELF_SERVICE_MIGRATION.sql` (upar `v_admin_pin` bharein,
+`SINGLE_LOGIN_MIGRATION.sql` ke baad).
+
+**Login username = Employee Code.** Purane users par `emp_code` khaali tha;
+migration use `employees.person_name` se naam-match karke bharti hai — par
+**sirf jab wo naam employees me ek hi baar ho**, kyunki galat code daal dena
+ek bande ko doosre ke account par bitha deta. Jinka nahi mila wo report me
+aate hain aur filhaal **apne naam se bhi** login kar sakte hain, isi liye koi
+bahar nahi hota. Admin unka emp_code bhar de, bas.
+
+
+**Ek emp_code par do account — ye galti nahi hai.** Aapke data me do aise
+jode hain, aur dono ek hi insaan ke do account hain (alag role ke liye,
+same contact no.):
+
+| emp_code | Accounts |
+|---|---|
+| `1001` | SATINDER JI (Purchaser) + SATINDER GHALYAN (Admin) |
+| `1532` | ANKUR JI (Purchaser) + ANKUR (GM) |
+
+Inhe merge karna ya kisi ek ka emp_code khaali karna **galat hota**: wo
+"… JI" naam `purchase_requirements.purchaser_name` par likhe hue hain (23 aur
+5 PR par) aur mobile app usi naam se us Purchaser ki list chhanta hai. Isi
+liye `emp_code` par **unique index jaan-boojh kar nahi** lagaya — ambiguity
+login par sambhali jaati hai: launcher "Aapka kaun sa account?" poochh leta
+hai aur banda chun leta hai. Naya duplicate ban bhi nahi sakta, kyunki
+`erp_signup()` us code par pehle se account hone par mana kar deta hai.
+
+Forgot PIN aise case me emp_code + DOB + contact **teeno** par match karta
+hai; phir bhi do account bache to wo `MULTIPLE_ACCOUNTS` kehkar ruk jaata hai
+— andaza lagakar galat bande ka PIN badal dena sabse bura nateeja hota.
+
+**Signup** (`🆕 Naya Account`) — banda apna Employee Code daalta hai, uska
+naam / designation / department `employees` se apne aap bhar jaate hain aur
+**read-only** rehte hain (company record hi sach hai). Badal sakta hai sirf
+contact no. Uske baad DOB, PIN, ✍️ signature (draw pad) aur 📷 profile photo
+— **saare field zaroori hain**. Photo client par 256×256 JPEG me simat kar
+data-URL ban jaati hai, bilkul jaise signature pehle se hai (alag storage
+bucket aur uski policies ki zaroorat nahi padti).
+
+Role **server par** `CMP_USER` set hota hai — client jo bheje wo padha hi
+nahi jaata, isi liye is page se koi apne aap ko Admin nahi bana sakta. Naye
+user ko sirf Complaint App ka access milta hai; baaki Admin deta hai.
+
+**Forgot PIN** (`🔓 PIN bhool gaye?`) — Emp Code + DOB + Contact No. teeno
+server par match hon to 10 minute ka reset token milta hai, phir banda apna
+naya PIN set kar leta hai. Naya PIN lagte hi uske saare khule session band ho
+jaate hain.
+
+> **Suraksha ki saaf baat:** in teen factor me `emp_code` aur `contact_no`
+> dono `app_users` me anon ko padhne milte hain (Admin Panel ki list unhi par
+> chalti hai), isi liye asli raaz sirf **DOB** hai. Migration DOB ko
+> jaan-boojh kar anon ke liye **band** kar deti hai (grant ki deny-list me,
+> signature / PIN ki tarah) aur 5 galat koshish / ghanta / emp_code ki hadd
+> lagati hai. Phir bhi ye bank-grade nahi hai — zyada sakhti chahiye to OTP
+> (SMS) ya "Admin approve kare tab reset" jodna behtar rahega.
+
+**PIN kahan likha jaata hai — ye file guess nahi karti.** PIN
+`role_pins(role, pin_hash)` me hai, par uska key-format aur hashing is
+project me kahin likha nahi (`ADMIN_PANEL_MIGRATION.sql` ki file hi maujood
+nahi hai). Isi liye migration ek **probe user** banati hai, dekhti hai ki
+aapka maujooda `admin_save_user()` kaun sa key aur kaun sa hash likhta hai,
+aur wahi tareeka `app_settings.pin_write_recipe` me likh deti hai. Signup /
+Reset usi recipe se PIN likhte hain aur likhne ke baad
+`verify_app_user_pin()` se **check** bhi karte hain — PIN verify na ho to
+account hi nahi banta (adhoora account chhodne se behtar).
+
+**Admin Panel › Users › Update User** me signature pad ke neeche ab
+**✍️ Use pre saved Sign** button hai. Zaroorat ye thi: Admin extra role dene
+ke liye window kholta hai aur pad khaali dikhta hai — lagta hai sign gum ho
+gaya. Ye button Admin PIN se us user ka saved sign pad par le aata hai
+(`admin_get_user_signature()`; `get_user_signature()` user ka **apna** PIN
+maangta hai, jo Admin ke paas nahi hota — isi liye alag RPC).
+
+### Login window ki jhalak — kyun aati thi, ab kyun nahi
+
+Har app ka login overlay markup me **shuru se** dikhta tha, aur JS use tab
+chhupata tha jab server se session confirm ho jaata (`erp_app_session` /
+`sales_whoami`). Wo ek network call hai — yani launcher se app par jaate waqt
+login window ek-do second ke liye **jhalak** jaati thi, jabki banda pehle se
+logged-in hai.
+
+`sso-preboot.js` isi liye hai. Wo har app ke `<head>` me **sabse pehle**, bina
+`defer`, chalti hai aur faisla **localStorage se** leti hai — jo synchronous
+hai, network ke intezaar ke bina:
+
+| Token hai? | Kya hota hai |
+|---|---|
+| **haan** | `<html>` par class lagti hai aur usi waqt CSS inject hoti hai jo `#loginScreen` / `#loginOverlay` / `#sarvLoginGate` ko chhupa deti hai — overlay **ek frame ke liye bhi paint nahi hota**. Saath me ek spinner splash, taaki beech me adhoora app (khaali list, bina mount hui React screen) na dikhe. |
+| **nahi** | Ye file **kuch nahi karti**. Jo banda launcher se nahi aaya, uska apna login screen bilkul pehle jaisa turant dikhta hai. |
+
+Splash tab hatti hai jab app khud `sarvSsoPrebootDone()` bulati hai — yani jab
+wo kuch dikhane layak ho jaati hai (ya asli screen, ya apna login). Har app me
+wo call **har raaste par** lagi hai (success, fail, aur `finally`), aur upar se
+9 second ka backstop bhi hai: kisi wajah se call na ho (net gir gaya, RPC atak
+gaya) to splash khud hat jaati hai aur login screen aa jaata hai. **Koi
+spinner par atka nahi rehta** — "kuch nahi ho raha" se behtar hai login maang
+lena.
+
+Splash ka rang launcher jaisa gehra hai, isi liye launcher se app me jaana ek
+hi screen ka hissa lagta hai, do alag page ki tarah nahi.
 
 **Ek user table.** `cmp_profiles` (Complaint, 57 user) aur `packing.profiles`
 (Packing, 6 user) ke log ab ERP ki usi `app_users` table me hain. Purane rows

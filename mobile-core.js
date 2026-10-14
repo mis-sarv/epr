@@ -2007,9 +2007,15 @@
        sakta hai (ya kisi aur bande ka), aur ERP ka taaza session hi
        sach hai. Pehle purana restore kar dete to banda apne hi naye
        login ke bawajood purani pehchaan me baitha rehta. */
+    /* Jo bhi raasta nikle, aakhir me splash hatani hai — tabhi to pata
+       chalta hai ki andar aa gaye ya login maangna hai. `finally` isi
+       liye: fail hone par bhi banda spinner par atka na rahe.
+       (Splash sso-preboot.js lagata hai — login screen ki jhalak rokne
+       ke liye. Wo file na ho to ye line chup-chaap kuch nahi karti.) */
     mobileSsoBoot_()
       .then(handled => { if(!handled) restoreMobileLogin(); })
-      .catch(()     => { restoreMobileLogin(); });
+      .catch(()     => { restoreMobileLogin(); })
+      .finally(()   => { if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); });
 
     /* Naam ki list hamesha bhar dete hain, chaahe abhi login screen dikh
        rahi ho ya nahi — Logout kabhi bhi ho sakta hai aur us waqt list

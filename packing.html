@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Login screen ki jhalak rokta hai: token localStorage me ho to overlay
+         paint hi nahi hota. Sabse pehle chalna chahiye. -->
+    <script src="sso-preboot.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1111,10 +1114,17 @@ async function sarvSsoSignIn(tok, u) {
     }
 }
 
+/* Login screen ki jhalak rokne wali splash — HAR raaste par hatani hai,
+   warna fail hone par banda spinner par atak jaata. Dekhein
+   sso-preboot.js. */
+function sarvPrebootDone_() {
+    if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+}
+
 sarvSsoCheck().then(async function (u) {
-    if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
+    if (u && u.__blocked) { sarvSsoBlock(u.name); sarvPrebootDone_(); return; }
     window.__SARV_SSO = u || null;
-    if (!u) return;
+    if (!u) { sarvPrebootDone_(); return; }
 
     /* Session pehle, app baad me — enterApp() ke baad screens turant data
        maangti hain, aur un pehli queries par auth session hona chahiye. */
@@ -1127,14 +1137,16 @@ sarvSsoCheck().then(async function (u) {
        enterApp() screens ko chhoota hai. */
     var go = function () {
         sarvTrySsoLogin().then(function (ok) {
-            if (ok) return;
-            var el = document.getElementById('login-username');
-            if (el && !el.value && u.name) el.value = u.name;
-        });
+            if (!ok) {
+                var el = document.getElementById('login-username');
+                if (el && !el.value && u.name) el.value = u.name;
+            }
+            sarvPrebootDone_();
+        }, sarvPrebootDone_);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
     else go();
-});
+}, sarvPrebootDone_);
 
 // ERP setup check — agar `packing` schema API par exposed nahi hai to saaf batao,
 // warna har screen par anjaan sa error aata.

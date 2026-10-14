@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>Sarv India — Complaint System</title>
+<!-- Login screen ki jhalak rokta hai — sabse pehle chalna chahiye. -->
+<script src="sso-preboot.js"></script>
 
 <!-- Tailwind CSS (play CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -4047,13 +4049,21 @@ function App(){
   const [ssoWait, setSsoWait] = useState(true);
   useEffect(()=>{
     let alive = true;
+    /* `ssoWait` false hona hi wo pal hai jab app kuch dikhane layak ho
+       jaati hai — ya asli screen, ya apna login. Isi pal splash bhi
+       hatani hai (sso-preboot.js), isi liye dono ek hi jagah se hote
+       hain; warna ek hat jaati aur doosri reh jaati. */
+    const ssoReady = () => {
+      setSsoWait(false);
+      if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+    };
     const apply = u => {
       if (!alive) return;
-      if (!u || !u.cmp_profile_id){ setSsoWait(false); return; }
+      if (!u || !u.cmp_profile_id){ ssoReady(); return; }
       sb.from("cmp_profiles").select("*").eq("id", u.cmp_profile_id).maybeSingle()
         .then(({data,error}) => {
           if (!alive) return;
-          setSsoWait(false);
+          ssoReady();
           if (error || !data) return;                 // apna login dikh jaayega
           if (!data.is_active){ setProfileErr("Aapka account band hai. Admin se sampark karein."); return; }
           setProfile(data); setProfileErr("");
@@ -4065,7 +4075,7 @@ function App(){
     window.addEventListener("sarv-sso-ready", h);
     /* Net hi na chale to gate ka jawab kabhi na aaye — tab bhi app atki
        nahi rehni chahiye, login screen aa jaaye. */
-    const t = setTimeout(()=>{ if (alive) setSsoWait(false); }, 4000);
+    const t = setTimeout(()=>{ if (alive) ssoReady(); }, 4000);
     return ()=>{ alive = false; clearTimeout(t); window.removeEventListener("sarv-sso-ready", h); };
   },[]);
 
