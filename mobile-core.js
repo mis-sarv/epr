@@ -1313,7 +1313,17 @@
                wo baat likhi jaati thi jo sach nahi hoti. */
             const msg = (e && e.message) || String(e || 'unknown error');
             const code = (e && e.code) || '';
-            if(code === 'PGRST202' || code === '42883')
+            /* 42883 do wajah se aata hai: (a) erp_app_login hi nahi hai,
+               ya (b) uske ANDAR pgcrypto ka function resolve nahi hua
+               (gen_random_bytes — `extensions` schema function ke
+               search_path me chhoot gaya). Dono ko "migration chalayein"
+               kehna galat tha; farq message me likha hota hai. */
+            const pgc = /\b(gen_random_bytes|gen_salt|crypt|digest|hmac)\s*\(/i.exec(msg);
+            if(code === '42883' && pgc)
+                show('⚠️ PIN sahi hai, par session token nahi ban saka: ' + pgc[1] + '() nahi mila. '
+                   + 'Ye pgcrypto ka function hai (extensions schema), aur erp_app_login ke search_path me wo chhoot gaya hai. '
+                   + 'Admin se sql/FIX_PGCRYPTO_SEARCHPATH.sql chalwayein.  [42883]');
+            else if(code === 'PGRST202' || code === '42883')
                 show('⚠️ erp_app_login() server par nahi mila — UNIFIED_USERS_MIGRATION.sql chalayein, ya SQL Editor me: notify pgrst, \'reload schema\';  [' + code + ']');
             else if(code === '42501')
                 show('⚠️ Permission nahi hai (anon). ' + msg + ' [42501]');
@@ -1793,22 +1803,17 @@
                  'sarv_active_user_sig','sihf_sb_token','sihf_erp_sso_msg']
                     .forEach(k => localStorage.removeItem(k));
             }catch(e){}
-            location.href = 'launcher.html';
+            location.replace('launcher.html?bye=1');
             return;
         }
 
-        const nameBox = document.getElementById('loginName');
-        if(nameBox) nameBox.value = '';
-        const nameNote = document.getElementById('loginNameRoles');
-        if(nameNote) nameNote.textContent = '';
-        const roleWrap = document.getElementById('loginRoleWrap');
-        if(roleWrap) roleWrap.style.display = '';
-        document.getElementById('loginRole').value = '';
-        document.getElementById('loginVendorGroup').style.display = 'none';
-        document.getElementById('loginPurchaserGroup').style.display = 'none';
-        document.getElementById('loginVendor').innerHTML = '<option value="">-- Select Vendor --</option>';
-        document.getElementById('loginPurchaser').value = ''; // keep the fixed list, just clear the pick
-        document.getElementById('loginScreen').style.display = 'flex';
+        /* Token hi nahi tha. Pehle yahan is app ki apni login screen
+           dobara khul jaati thi — wo poora hissa hat gaya hai, kyunki
+           logout ka matlab har soorat me ek hi hona chahiye: wahi ek
+           darwaza. (Aur ye haalat ab banti bhi nahi — page khulne se
+           pehle `SARV_GATE.requireSession()` launcher par bhej deta
+           hai.) */
+        location.replace('launcher.html?bye=1');
     }
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
     document.getElementById('vendorInfoToggle')?.addEventListener('click', toggleVendorInfo);

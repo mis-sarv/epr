@@ -6,6 +6,7 @@
 <title>SARV INDIA — Order Form</title>
 <!-- Login screen ki jhalak rokta hai — sabse pehle chalna chahiye. -->
 <script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
 <!--
   Sales › Order Form — opened INSIDE the ERP (index.html → erp-shell.js
   SALES › "Order Form" → store-core.js sarvNavigateFromHome('ORDER_FORM') →
@@ -16,7 +17,7 @@
   now a trigger-maintained mirror so every sales_* RPC below works unchanged.
   ERP login creates this page's session token (store-core.js sarvSalesSso_ →
   sales_erp_login) in the same localStorage key this page reads, so inside the
-  ERP there is no second login. Opened standalone: ERP name + PIN (sales_login).
+  ERP there is no second login. Login is ALWAYS launcher.html — this page has no login of its own.
 
   Same interface and logic as orderForm/OrderForm.html. What changed is only
   the backend: the Google Sheet + Apps Script (orderForm/code.gs) is replaced by
@@ -334,22 +335,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
-<div id="loginScreen" style="position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#1A3C5E 0%,#2A5A8E 100%);display:flex;align-items:center;justify-content:center">
-  <div style="background:#fff;border-radius:16px;padding:36px 32px 28px;width:340px;max-width:calc(100vw - 32px);box-shadow:0 8px 32px rgba(0,0,0,.25);text-align:center">
-    <div style="font-size:22px;font-weight:800;color:#1A3C5E;margin-bottom:4px">SARV INDIA</div>
-    <div style="font-size:12px;color:#777;margin-bottom:14px">Order Management System</div>
-    <!-- ERP ke andar khula ho to ERP login hi kaafi hai; ye box tabhi dikhta hai
-         jab wo session na ban paya ho — wajah yahan likhi aati hai. -->
-    <div id="ssoNote" style="display:none;background:#FFF7E6;border:1px solid #F5C26B;color:#8A5200;font-size:11.5px;font-weight:600;border-radius:8px;padding:8px 10px;margin-bottom:12px;text-align:left;line-height:1.45"></div>
-    <input type="text" id="loginUser" placeholder="ERP User Name (ya ADMIN / MD / GM)" autocomplete="username" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:10px;box-sizing:border-box;text-transform:uppercase" autofocus>
-    <input type="password" id="loginPass" placeholder="ERP PIN" autocomplete="current-password" style="width:100%;padding:10px 12px;border:1.5px solid #D0DAE8;border-radius:8px;font-size:14px;margin-bottom:14px;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
-    <button onclick="doLogin()" id="loginBtn" style="width:100%;padding:11px;background:#1A3C5E;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;letter-spacing:.3px">Login</button>
-    <div id="loginError" style="color:#C62828;font-size:12px;font-weight:600;margin-top:10px;min-height:18px"></div>
-    <div style="font-size:10.5px;color:#8892A6;margin-top:6px;line-height:1.4">Wahi naam + PIN jo ERP me. Access Admin deta hai: ERP › Admin Panel › Users &amp; Roles › <b>Order Form Role</b>.</div>
-  </div>
-</div>
-
+<!-- Login screen yahan se HATA di gayi hai. Login ab sirf launcher.html
+     par hota hai (ek hi darwaza — dekhein sso-gate.js). Is page ka apna
+     naam + PIN wala login (`sales_login`) poora hat gaya hai; session
+     launcher banata hai (`sales_erp_login`) aur yahan sirf padha jaata
+     hai. -->
 <!-- ✍️ FIRST-LOGIN SIGNATURE MODAL -->
 <div id="sigOnboardModal" style="position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;padding:16px">
   <div style="background:#fff;border-radius:18px;padding:28px 24px 22px;width:100%;max-width:600px;box-shadow:0 12px 40px rgba(0,0,0,.3);text-align:center">
@@ -616,7 +606,12 @@ const SB_READY = !!(window.supabase && window.supabase.createClient);
 const SB = SB_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:false, autoRefreshToken:false } }) : null;
 const FILES_BUCKET = 'sales-orders';          // photos/ , emboss-catalog/ , pdfs/
 const GST_FN       = 'sales-gst-lookup';      // Edge Function (supabase/functions/sales-gst-lookup)
-const SETUP_HINT   = 'Database setup pending — ORDER_FORM_MIGRATION.sql run karein';
+/* Pehle yahan likha tha "ORDER_FORM_MIGRATION.sql run karein". Wo naam
+   hata diya gaya hai: us naam ki file is project me KAHIN NAHI hai, isi
+   liye message ek band gali thi — banda jo karne ko kaha gaya wahi nahi
+   kar sakta tha. Ab wo file batate hain jo sach me maujood hai aur jo
+   batati hai ki asal me kya missing hai. */
+const SETUP_HINT   = 'Database ka Order Form wala hissa adhoora lagta hai. SQL Editor me sql/CHECK_ORDER_FORM_SETUP.sql chalayein — wo naam se batati hai ki kaun sa RPC / table nahi hai.';
 
 // ═══════════════════════════════ STATE ═══════════════════════════════════
 let loggedInUser=null;   // {username, role, token}
@@ -639,80 +634,102 @@ function tokenClear(){ try{ localStorage.removeItem(LS_TOKEN); sessionStorage.re
 let prodCount=0, lastPdfUrl='', lastDriveUrl='', lastPdfBlob=null, lastPdfFileName='', lastPayload=null, lastNow=null, suppressCombo=false;
 let BUYER_DETAILS={}, AGENCY_DETAILS={};
 
-function isSetupError(err){ return /sales_|does not exist|relation|function .* not find|Could not find the function|schema cache/i.test((err&&err.message)||String(err||'')); }
+/* Pehle is regex me `sales_` bhi tha — yani kisi BHI sales_* RPC ka koi
+   BHI error (permission, galat argument, net, kuch bhi) "setup pending"
+   bana kar dikhta tha. Wahi wajah thi ki screen par wo baat likhi aati
+   thi jo sach nahi hoti.
+
+   Ab sirf wahi haalat gini jaati hai jiska matlab sach me "cheez server
+   par nahi hai" hota hai: PostgREST ka PGRST202 / 42883 / 42P01, ya
+   schema cache. Baaki har error apna asli message dikhata hai. */
+function isSetupError(err){
+  const m = (err && (err.message || err.msg)) || String(err || '');
+  const c = (err && err.code) || '';
+  if (c === 'PGRST202' || c === '42883' || c === '42P01') return true;
+  return /Could not find the (function|table)|schema cache|does not exist/i.test(m);
+}
 function errMsg(err){ return isSetupError(err) ? SETUP_HINT : ((err&&err.message)||String(err)); }
 
-// ═══════════════════════════ LOGIN ═════════════════════════════════════
-async function doLogin(){
-  const user=document.getElementById('loginUser').value.trim();
-  const pass=document.getElementById('loginPass').value;
-  const errEl=document.getElementById('loginError');
-  const btn=document.getElementById('loginBtn');
-  if(!user||!pass){ errEl.textContent='Naam aur PIN dono daalein'; return; }
-  if(!SB_READY){ errEl.textContent='Supabase library not loaded — check internet'; return; }
-  btn.disabled=true; btn.textContent='Logging in...'; errEl.textContent='';
-  try{
-    const {data,error}=await SB.rpc('sales_login',{p_username:user,p_password:pass});
-    if(error) throw error;
-    if(data && data.success){
-      loggedInUser={username:data.username,role:data.role,token:data.token};
-      tokenSet(data.token);
-      document.getElementById('loginScreen').style.display='none';
-      applyRoleRestrictions();
-      toast('✅ Welcome, '+data.username+' ('+data.role+')');
-      // After login: fetch saved signature; show onboard pad if not yet saved
-      fetchAndCheckUserSig(data.username);
-    } else {
-      errEl.textContent=(data&&data.error)||'Login failed';
-    }
-  }catch(err){
-    errEl.textContent=isSetupError(err)?SETUP_HINT:('Network error: '+err.message);
-  }finally{
-    btn.disabled=false; btn.textContent='Login';
-  }
-}
+// ═══════════════════════ EK HI DARWAZA — launcher.html ═════════════════
+/* Is page ka apna login (`sales_login` — ERP naam + PIN) poora hat gaya
+   hai, aur uske saath `doLogin()`, login screen aur `showSsoNote()` bhi.
 
-// Page refreshed / reopened — reuse the saved server session instead of asking
-// again (sales_whoami also slides the session 30 days forward).
-// ERP ke andar (iframe) login screen tabhi aati hai jab ERP login ke saath
-// Order Form ka session nahi bana — wajah (store-core.js sarvSalesSso_ likhta hai) yahan.
-function showSsoNote(){
-  const el=document.getElementById('ssoNote'); if(!el) return;
-  let msg=''; try{ msg=localStorage.getItem('sihf_erp_sso_msg')||''; }catch(e){}
-  if(!msg && window.parent!==window) msg='ERP login ke saath Order Form ka session nahi mila — yahan apna ERP naam + PIN daalein (ya ERP se Logout karke dobara Login karein).';
-  el.textContent=msg; el.style.display=msg?'block':'none';
-}
-async function restoreSession(){
-  const tok=tokenGet();
-  showSsoNote();
-  /* Login screen ki jhalak rokne wali splash — faisla ho jaane par hi
-     hatani hai, warna ERP se yahan aate waqt login window ek pal ko
-     dikh jaati thi. Dekhein sso-preboot.js. */
-  const prebootDone=()=>{ if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); };
-  if(!tok||!SB_READY){ prebootDone(); return; }
-  const errEl=document.getElementById('loginError');
-  const btn=document.getElementById('loginBtn');
-  errEl.style.color='#1A3C5E'; errEl.textContent='⏳ Restoring your session...'; btn.disabled=true;
+   Ab kram ye hai:
+     1. `launcher.html` par login → wahan `sales_erp_login()` is page ka
+        session bana kar usi localStorage key me rakh deta hai;
+     2. yahan gate sirf ERP ka session aur is app ka access jaanchta hai
+        (`sso-gate.js`);
+     3. phir wahi saved session `sales_whoami()` se khola jaata hai.
+
+   `needAuth` yahan nahi chahiye: ye page Supabase Auth par nahi chalta
+   (uski rok `sales_*` RPC aur token par hai), isi liye auth session
+   banane ki zaroorat hi nahi — Complaint / Packing se yahi farq hai.
+
+   Session na mile to login form NAHI dikhate. Us form ka koi raasta hi
+   nahi bacha, aur dikhane par banda wahi purana PIN daalta rehta jo ab
+   kaam nahi karta. Iski jagah gate ki wahi screen — saaf wajah aur
+   "Apps par wapas". */
+async function sarvBootOrderForm(){
+  const u = await SARV_GATE.boot({
+    url: SUPABASE_URL, key: SUPABASE_ANON,
+    app: 'HOME_ORDER_FORM', label: 'Order Form'
+  });
+
+  const tok = tokenGet();
+  if (!tok || !SB_READY){
+    return SARV_GATE.halt('Order Form ka session nahi bana',
+      'Aapka ERP login to theek hai, par is page ka session nahi bana. Aksar iska matlab hai ki Order Form ka access login ke BAAD diya gaya — Apps page par ek baar logout karke dobara login karein. Phir bhi na bane to Admin se kehein: <i>Admin Panel › Users &rsaquo; Order Form Role</i>.',
+      tok ? 'SB_NOT_READY' : 'NO_SALES_TOKEN');
+  }
+
+  /* Saare `sales_*` RPC ka `p_token` **uuid** hai (text nahi). Isi liye
+     localStorage me pada koi purana / adhoora token Postgres par
+     `invalid input syntax for type uuid` [22P02] banata hai — aur wo
+     error "server toota hua hai" jaisa dikhta hai, jabki asli baat sirf
+     itni hai ki token kaam ka nahi raha.
+     Isi liye bhejne se PEHLE shakal dekh lete hain, aur kharaab token
+     ko hata bhi dete hain — warna har refresh par wahi error. */
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tok)){
+    tokenClear();
+    return SARV_GATE.halt('Order Form ka session purana hai',
+      'Is browser me Order Form ka jo session pada tha wo ab kaam ka nahi hai (shakal hi badal chuki hai). Maine use hata diya — Apps page par ek baar logout karke dobara login karein, naya ban jaayega.',
+      'TOKEN_NOT_UUID');
+  }
+
   try{
     const {data,error}=await SB.rpc('sales_whoami',{p_token:tok});
-    if(error) throw error;   // network / server hiccup — keep the token, just ask to log in this time
-    if(!data||!data.success){ tokenClear(); return; }   // server says the session is gone
+    if(error) throw error;
+    if(!data||!data.success){
+      tokenClear();
+      return SARV_GATE.halt('Order Form ka session khatam ho gaya',
+        'Apps page par dobara login karein — wahan se naya session ban jaayega.',
+        (data&&data.error)||'WHOAMI_FAILED');
+    }
     loggedInUser={username:data.username,role:data.role,token:tok};
-    document.getElementById('loginScreen').style.display='none';
     applyRoleRestrictions();
+    /* Ab page dikhne layak hai — splash yahan hatti hai (gate me nahi),
+       warna beech me ek pal ko khaali form jhalakta. */
+    if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
     fetchAndCheckUserSig(data.username, true);
   }catch(e){
-    console.warn('Session restore failed:',e.message||e);
-  }finally{
-    errEl.style.color=''; if(errEl.textContent.indexOf('Restoring')>=0) errEl.textContent=''; btn.disabled=false;
-    prebootDone();
+    /* Asli error HAMESHA screen par (wajah wali lakeer me) — wahi ek
+       cheez hai jisse aage pata chalta hai. Upar sirf ye likhte hain ki
+       kiska kaam hai. */
+    const code = (e && e.code) ? ' [' + e.code + ']' : '';
+    return SARV_GATE.halt('Order Form khul nahi saka',
+      isSetupError(e)
+        ? SETUP_HINT
+        : 'Server ne <code>sales_whoami</code> par error diya. Neeche likhi wajah Admin ko dikhayein.',
+      ((e && e.message) || String(e || '')) + code);
   }
 }
 
-// Server said the session is gone (expired / user disabled) — back to the login screen.
+/* Session server par khatam (expire / user band) — ab login screen nahi,
+   seedha launcher. Wahi ek jagah hai jahan naya session banta hai. */
 function sessionExpired(){
-  toast('⚠️ Session expired — please login again');
-  logout(true);
+  toast('⚠️ Session khatam — dobara login karein');
+  tokenClear();
+  location.replace('launcher.html?why=SESSION_EXPIRED');
 }
 
 // ══════════════════════════════ ROLE-BASED ACCESS ══════════════════════════
@@ -801,20 +818,19 @@ function confirmLogout(){
   logout();
 }
 
-function logout(silent){
+/* Ek hi logout — gate ke paas. Pehle yahan sirf is page ka token saaf
+   hota tha aur apni login screen khul jaati thi; ab ERP ka session bhi
+   server par band hota hai aur banda launcher par pahunchta hai. Ek
+   login tha, to logout bhi ek hi jagah se. */
+async function logout(){
   const tok=loggedInUser&&loggedInUser.token;
-  if(tok && SB_READY && !silent) SB.rpc('sales_logout',{p_token:tok}).then(()=>{},()=>{});
-  tokenClear();
+  if(tok && SB_READY) { try{ await SB.rpc('sales_logout',{p_token:tok}); }catch(e){} }
   loggedInUser=null;
-  _userSigData = '';
+  _userSigData='';
   closeProfileMenu();
   const profileWrap=document.getElementById('profileWrap');
   if(profileWrap) profileWrap.style.display='none';
-  document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('loginUser').value='';
-  document.getElementById('loginPass').value='';
-  document.getElementById('loginError').textContent='';
-  showSsoNote();
+  await SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON });
 }
 // Default dropdown data (used if the database is not reachable)
 let DROPS = {
@@ -867,7 +883,7 @@ window.onload=function(){
   if(SB_READY) fetchDrops();
   else { toast('⚠️ Supabase library not loaded — check internet'); document.getElementById('orderNo').value='OFFLINE'; }
 
-  restoreSession();
+  sarvBootOrderForm();
 };
 
 // Ctrl+P prints the exact PDF layout (buildOrderHtml), not the screen.
@@ -1167,11 +1183,19 @@ function catalogPreviewUrl(url){
    poora gir jaata — dropdowns, standard items, next order no, sab
    "Database connection failed" me chale jaate. Alag-alag catch isi liye
    hai ki ek table na mile to doosra phir bhi aa jaaye. */
+/* Jo table boot par skip ho gayi — toast me NAAM se batane ke liye.
+   Pehle skip chup-chaap hota tha (sirf console me), aur agar koi table
+   is safety ke BAHAR thi to uska error poore boot ko le dooba kar
+   "Database setup pending" bana deta tha — yani screen par wo baat likhi
+   jaati thi jo sach nahi hoti, aur ye bhi na pata chalta ki kaun si
+   table nahi mili. */
+const SARV_SKIPPED_TABLES = [];
 async function fetchMasterSafe(table, cols, orderCol){
   try{
     return await fetchAllRows(table, cols, orderCol);
   }catch(e){
-    console.warn('ℹ️ '+table+' skip (ERP ka FABRIC_BRAND_MASTER_MIGRATION.sql chala nahi hai?):',e.message||e);
+    SARV_SKIPPED_TABLES.push(table);
+    console.warn('ℹ️ '+table+' skip:',e.message||e);
     return [];
   }
 }
@@ -1249,8 +1273,17 @@ function bmToItem(r){
 async function fetchDrops(){
   try{
     const [ddRows, siRows, ordRows, embRes, nxRes, bmRows, amRows, brRows]=await Promise.all([
-      fetchAllRows('sales_dropdowns','key,value','id'),
-      fetchAllRows('sales_standard_items','*','created_at'),
+      /* Ye do jaan-boojh kar `fetchMasterSafe` me hain, `fetchAllRows`
+         me nahi — pehle inka error poore boot ko le dooba deta tha:
+           · `sales_dropdowns` na ho to `DROPS` ki apni default list
+             pehle se maujood hai, kaam chalta rehta hai;
+           · `sales_standard_items` ab purani cheez hai — uska ghar
+             `brand_master` ban chuka hai (upar "Brand Master -> Order
+             Form" wala note), isi liye wo table hata di gayi ho to ye
+             bilkul normal hai.
+         Dono me se ek bhi na mile to app khulni chahiye, rukni nahi. */
+      fetchMasterSafe('sales_dropdowns','key,value','id'),
+      fetchMasterSafe('sales_standard_items','*','created_at'),
       fetchAllRows('sales_orders','buyer_name,contact_person,mobile,address,gstin,transport_name,agency_name,agency_contact,agency_mobile,saved_at','saved_at'),
       SB.from('sales_emboss_designs').select('id,design_name,image_url,image_path').eq('active',true).order('id'),
       SB.rpc('sales_next_order_no'),
@@ -1381,9 +1414,20 @@ async function fetchDrops(){
       syncMeta();
     }
     console.log('✅ Supabase connected — drops, items, buyer & agency details loaded');
+    /* Kuch optional table na mili ho to NAAM se batate hain, ek hi
+       toast me. "Setup pending" jaisa dhundhla message nahi — kyunki
+       aksar ye bilkul normal hota hai (jaise sales_standard_items, jiska
+       kaam ab brand_master karta hai). */
+    if(SARV_SKIPPED_TABLES.length){
+      console.warn('ℹ️ skip hui tables:',SARV_SKIPPED_TABLES.join(', '));
+      toast('ℹ️ Ye table nahi mili (iske bina bhi kaam chalta hai): '+SARV_SKIPPED_TABLES.join(', '));
+    }
   } catch(e){
     console.warn('⚠️ Database connection failed:',e.message);
-    toast('⚠️ '+(isSetupError(e)?SETUP_HINT:('Database connection failed: '+e.message)));
+    /* Yahan ab sirf wo cheezein aati hain jinke bina Order Form sach me
+       nahi chal sakti: sales_orders · sales_emboss_designs ·
+       sales_next_order_no(). Isi liye yahan "setup" kehna theek hai. */
+    toast('⚠️ '+(isSetupError(e)?SETUP_HINT:('Database connection failed: '+(e.message||e))));
     const on=document.getElementById('orderNo');
     if(on && on.value==='Loading...') on.value='OFFLINE';
   }

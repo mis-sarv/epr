@@ -736,6 +736,25 @@ function explainErr(e, fnName){
   const tail = '<br><small style="opacity:.85;">' + esc(msg)
              + (code ? ' <b>[' + esc(code) + ']</b>' : '') + '</small>';
 
+  /* 42883 do bilkul alag wajah se aata hai, aur dono ko ek hi message
+     dena jhooth tha ("migration chali nahi" — jabki function maujood
+     hai):
+       (a) jis function ko hum bula rahe hain wahi nahi hai, ya
+       (b) us function ke ANDAR kisi doosre function ka naam resolve
+           nahi hua. Supabase me ye lagbhag hamesha pgcrypto hota hai
+           (gen_random_bytes / crypt / gen_salt / digest / hmac): wo
+           `extensions` schema me rehta hai, aur bulaye ja rahe function
+           ke `search_path` me wo schema chhoot gaya hai.
+     Farq message me likha hota hai, isi liye wahin se pehchante hain. */
+  const pgc = /\b(gen_random_bytes|gen_salt|crypt|digest|hmac)\s*\(/i.exec(msg);
+  if (code === '42883' && pgc)
+    return '⚠️ Login ka aakhri qadam atka — PIN sahi hai, par session token nahi ban saka.<br>'
+         + 'Server par <b>' + esc(pgc[1]) + '()</b> nahi mila: ye pgcrypto ka function hai aur '
+         + 'Supabase me <code>extensions</code> schema me rehta hai, par <b>' + esc(fnName)
+         + '()</b> ke <code>search_path</code> me wo schema chhoot gaya hai.<br>'
+         + 'Ilaaj: SQL Editor me <code>sql/FIX_PGCRYPTO_SEARCHPATH.sql</code> chalayein '
+         + '(kuch bharna nahi hai — wo khud dhoondh kar theek kar deti hai).' + tail;
+
   // PGRST202 = PostgREST ko is naam/arguments ka function mila hi nahi.
   // 42883   = Postgres me aisa function nahi hai.
   if (code === 'PGRST202' || code === '42883')
@@ -1093,7 +1112,15 @@ function showView(which){
   });
   $('boot').style.display = 'none';
 }
-function showLogin(){ showView('loginCard'); $('nameBox').focus(); }
+/* App se wapas aane ki baat (logout / session khatam) yahan rakhi jaati
+   hai aur login screen par hi dikhti hai — showView se pehle likhne par
+   wo hi usko chhupa deta. Ek baar dikhakar saaf ho jaati hai. */
+let gateNote = '';
+function showLogin(){
+  showView('loginCard');
+  if (gateNote){ showErr(gateNote); gateNote = ''; }
+  $('nameBox').focus();
+}
 
 /* ════════════════════════════════════════════════════════════════════
    SIGNUP
@@ -1422,6 +1449,30 @@ async function doLogout(){
   $('fpVerify').addEventListener('click', doForgotVerify);
   $('fpSave').addEventListener('click', doForgotSave);
   $('fpPin2').addEventListener('keydown', e => { if (e.key === 'Enter') doForgotSave(); });
+
+  /* ── App se wapas aaye hain? ───────────────────────────────────────
+     Ab kisi bhi app ka apna login window nahi hai (dekhein sso-gate.js):
+     session khatam ho ya logout ho, app seedha yahan bhej deti hai. Us
+     safar ki wajah URL me aati hai, aur yahan likh dete hain — warna
+     banda bina kuch bataye login screen par aa khada hota aur samajhta
+     ki app kharab hai.
+     URL turant saaf bhi kar dete hain, taaki refresh par purani baat
+     dobara na dikhe. */
+  const qs = new URLSearchParams(location.search);
+  const bye = qs.get('bye'), gateWhy = qs.get('why');
+  if (bye || gateWhy){
+    try{ history.replaceState(null, '', location.pathname); }catch(e){}
+    const GATE_WHY = {
+      NO_TOKEN:        'Us app me seedha jaane ka raasta nahi hai — login yahin se hota hai.',
+      NO_SESSION:      'Session server par nahi mila — dobara login karein.',
+      SESSION_REVOKED: 'Session band ho gaya tha. Ek waqt par ek hi login chalta hai, isi liye kahin aur login karne se pichhla band ho jaata hai.',
+      SESSION_EXPIRED: 'Session purana ho gaya tha — dobara login karein.',
+      USER_INACTIVE:   'Aapka account Admin ne band kar diya hai — unse kehein.'
+    };
+    gateNote = bye
+      ? '✅ Logout ho gaya. Dobara kaam karne ke liye niche login karein.'
+      : 'ℹ️ ' + (GATE_WHY[gateWhy] || 'Dobara login karein.');
+  }
 
   let tok = null;
   try{ tok = localStorage.getItem(K_SSO); }catch(e){}

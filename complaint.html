@@ -7,6 +7,7 @@
 <title>Sarv India — Complaint System</title>
 <!-- Login screen ki jhalak rokta hai — sabse pehle chalna chahiye. -->
 <script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
 
 <!-- Tailwind CSS (play CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -68,205 +69,40 @@ const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const ADMIN_FN_URL  = SUPABASE_URL + "/functions/v1/admin-users";
 
-/* ══ ERP ka single login — gate ════════════════════════════════════════
-   ERP (index.html) me login karte waqt ek session token banta hai jo
-   SAARE apps ke liye hai (app_sessions / UNIFIED_USERS_MIGRATION.sql).
-   Saare apps ek hi origin par hain, isi liye localStorage saajha hai.
+/* ══ EK HI DARWAZA — launcher.html ════════════════════════════════════
+   Is app ka apna login aur signup (Supabase Auth ka email+password,
+   `LoginScreen`) poora hat gaya hai. Login sirf `launcher.html` par hota
+   hai; yahan sirf itna poochha jaata hai — "ERP ka session hai? is app
+   ka access hai? is app ka account hai?" — aur teeno ka jawab
+   `sso-gate.js` deta hai.
 
-   Ye gate do kaam karta hai:
+   Pehle ye gate jaan-boojh kar NARAM tha: kuch bhi atke to app apna
+   purana login dikha deti thi. Us narmi ki keemat yahi thi ki do login
+   aur do user list zinda rehti thin, aur banda kabhi na samajh paata ki
+   usse kaun sa password poochha ja raha hai. Ab gate SAKHT hai.
 
-     1. ROK — Admin ne Users › Apps me is user se "Complaint App" OFF
-        kar diya ho, to app khulti hi nahi: poori screen par saaf wajah
-        aa jaati hai aur maujooda auth session bhi sign out ho jaata
-        hai. Yahi "admin kabhi bhi kisi user se app ka button chhupa
-        sakta hai" ka doosra sira hai — button chhupane se wo URL seedha
-        kholkar andar nahi aa sakta.
-
-     2. PEHCHAAN — access ho to ERP se aaya naam niche login par pehle
-        se bhar jaata hai (banner ke saath), taaki banda dobara apna
-        naam na type kare.
-
-   Jaan-boojh kar NARAM: token na ho, RPC na ho (migration na chali ho),
-   ya net kharab ho — teeno soorat me ye chup-chaap hat jaata hai aur
-   app ka apna purana login waisa hi chalta hai. Isi liye ye badlaav
-   kisi ko bahar nahi karta.
-
-   DHYAN (poora SSO abhi baaki hai): is app ka DATA Supabase Auth ke
-   session par chalta hai (cmp_profiles aur cmp_* tables auth.uid() se
-   bandhi hain). Isi liye access hone par bhi app apna password maangti
-   hai. Password hatane ke liye un tables ki RLS ko anon-model par laana
-   padega — wo alag, soch-samajh kar chalane wala kaam hai; dekhein
-   README › "Single login — aakhri qadam". */
+   Ek baat jaan-boojh kar waisi hi rakhi hai: is app ka DATA Supabase
+   Auth par chalta hai (`cmp_*` tables ki RLS aur trigger `auth.uid()`
+   maangte hain). Un policies ko chhedna nahi padta — gate `erp-sso` se
+   asli auth session bana deta hai, bina password. Isi liye is app ka
+   permission model bilkul waisa hi hai jaisa pehle tha. */
 const SARV_SSO_KEY = "sarv_sso_token";
 const SARV_APP_KEY = "HOME_COMPLAINT_APP";
-/* undefined = gate ka jawab abhi nahi aaya · null = ERP se nahi aaye ya
-   session nahi chala · object = ERP se aaye hue user. App isi teen-haal
-   ke farq se tay karti hai ki login screen dikhani hai ya intezaar. */
+/* undefined = gate ka jawab abhi nahi aaya · object = andar aaya hua
+   user. `null` ab nahi hota: gate andar jaane layak na ho to app ko
+   chalne hi nahi deta. */
 window.__SARV_SSO = undefined;
 
-async function sarvSsoCheck(){
-  let tok = null;
-  try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
-  if (!tok) return null;                       // ERP se nahi aaya
-  try {
-    const r = await fetch(SUPABASE_URL + "/rest/v1/rpc/erp_app_session", {
-      method: "POST",
-      headers: { "Content-Type":"application/json", "apikey": SUPABASE_ANON,
-                 "Authorization": "Bearer " + SUPABASE_ANON },
-      body: JSON.stringify({ p_token: tok, p_app: SARV_APP_KEY })
-    });
-    if (!r.ok) return null;                    // RPC nahi hai — purana raasta
-    const d = await r.json();
-    if (d && d.success) return d.user || null;
-    if (d && d.error === "NO_APP_ACCESS")
-      return { __blocked: true, name: (d.user && d.user.name) || "" };
-    return null;                               // session khatam — apna login
-  } catch(e) { return null; }
-}
-
-function sarvSsoBlock(name){
-  // React neeche mount hota rahe — ye overlay usse upar rehta hai.
-  try { if (typeof sb !== "undefined") sb.auth.signOut(); } catch(e) {}
-  const d = document.createElement("div");
-  d.id = "sarvSsoBlock";
-  d.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;"
-    + "display:flex;align-items:center;justify-content:center;padding:24px;"
-    + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;text-align:center;";
-  d.innerHTML = '<div style="max-width:420px;">'
-    + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">&#128274;</div>'
-    + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Complaint App ka access nahi hai</h2>'
-    + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
-    + (name ? '<b>' + String(name).replace(/[<>&]/g,"") + '</b>, aapke' : 'Aapke')
-    + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Complaint App" <b>ON</b> karna hoga.</p>'
-    + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
-    + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-    + '&larr; Apps par wapas</button></div>';
-  (document.body || document.documentElement).appendChild(d);
-}
-
-/* Logout — dono tarah ke login ko sambhalta hai.
-   Purana (Supabase Auth) : signOut se session khatam, app apne aap login
-                            screen par chala jaata hai.
-   Naya (ERP single login) : yahan koi auth session hi nahi hota, isi liye
-                            signOut se kuch nahi hota — ERP ka session
-                            server par band karke ERP par wapas bhej dete
-                            hain. Wahi sahi bhi hai: ek login tha, to
-                            logout bhi ek hi jagah se hona chahiye. */
+/* Ek hi logout — gate ke paas: ERP ka session server par band, auth
+   session band, local nishaan saaf, aur launcher par wapas. Ek login
+   tha, to logout bhi ek hi jagah se. */
 async function sarvLogoutAll(){
-  let tok = null;
-  try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
-  try { if (typeof sb !== "undefined") await sb.auth.signOut(); } catch(e) {}
-  if (tok){
-    try {
-      await fetch(SUPABASE_URL + "/rest/v1/rpc/erp_app_logout", {
-        method: "POST",
-        headers: { "Content-Type":"application/json", "apikey": SUPABASE_ANON,
-                   "Authorization": "Bearer " + SUPABASE_ANON },
-        body: JSON.stringify({ p_token: tok })
-      });
-    } catch(e) {}
-    try { localStorage.removeItem(SARV_SSO_KEY); } catch(e) {}
-    location.href = "launcher.html";
-    return;
-  }
-  location.reload();
-}
-window.sarvLogoutAll = sarvLogoutAll;
-
-/* ══ ERP ke login se ASLI auth session ════════════════════════════════
-   Yahi wo aakhri qadam hai jiski wajah se ye app pehle apna password
-   maangti thi.
-
-   Padhne ka kaam SSO se pehle bhi chal jaata tha (profile seedha
-   cmp_profile_id se load hota hai, neeche dekhein). Par LIKHNA nahi:
-   `cmp_tasks` / `cmp_notice_board` ke trigger `auth.uid()` maangte hain
-   aur bina session wo khaali hota hai —
-
-       "Sirf Admin task assign kar sakta hai."
-       "You must be signed in to post on the notice board."
-
-   Do raaste the: un saari policies/triggers ko anon-model par laana, ya
-   ERP ke session se us bande ka asli auth session bana dena. Doosra
-   chuna gaya, kyunki usme ek bhi policy chhedni nahi padti — `auth.uid()`
-   sach me set hota hai, isi liye har purana trigger, RLS aur `created_by`
-   bilkul waisa hi kaam karta hai jaisa aaj karta hai.
-
-   Kaam `erp-sso` Edge Function karta hai: wo ERP token check karta hai
-   aur ek one-time magic-link token lautata hai, jise yahan session me
-   badal lete hain. service_role key server par rehti hai, is page me
-   kabhi nahi aati — aur password kahin store nahi hota.
-
-   Naram raasta: function na ho (deploy na hua ho), net kharab ho, ya us
-   user ka Complaint account juda na ho — teeno soorat me ye chup-chaap
-   hat jaata hai aur app ka purana login waisa hi chalta hai. */
-const SARV_SSO_FN_URL = SUPABASE_URL + "/functions/v1/erp-sso";
-
-/* `sb` is file me neeche `const` se banta hai, yani is line par wo abhi
-   TDZ me hai. Phir bhi yahan use karna surakshit hai, aur jaan-boojh kar
-   koi "sb maujood hai?" wala check nahi rakha: ye function SIRF gate ke
-   network jawab ke BAAD chalta hai, aur tab tak ye poora script sync
-   chal kar khatam ho chuka hota hai. (Check rakhna ulta khatarnak tha —
-   TDZ me `typeof sb` bhi ReferenceError phenkta hai, "undefined" nahi
-   deta, to wo guard kaam karne ki jagah khud hi gir jaata.) */
-async function sarvSsoSignIn(tok, u){
-  if (!tok || !u || !u.cmp_profile_id) return false;
-  try {
-    // Pehle se sahi bande ka session hai to dobara kuch nahi karna.
-    const { data: { session: cur } } = await sb.auth.getSession();
-    if (cur && cur.user && cur.user.id === u.cmp_profile_id) return true;
-    // Kisi DOOSRE user ka session khula hai (shared factory phone) —
-    // use pehle band karna zaroori hai, warna naya session banta hi nahi.
-    if (cur) { try { await sb.auth.signOut(); } catch(e) {} }
-
-    const r = await fetch(SARV_SSO_FN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON,
-                 "Authorization": "Bearer " + SUPABASE_ANON },
-      body: JSON.stringify({ token: tok, app: SARV_APP_KEY })
-    });
-    const d = await r.json().catch(() => null);
-    if (!r.ok || !d || !d.success) {
-      console.warn("[SARV] Complaint SSO sign-in skipped:",
-                   (d && (d.message || d.error)) || ("HTTP " + r.status));
-      return false;
-    }
-    /* Dono type try karte hain. generateLink('magiclink') ka hash
-       supabase-js ke version ke hisaab se kabhi 'magiclink' maangta hai
-       aur kabhi 'email' — aur galat type par token KHARCH nahi hota, isi
-       liye doosri koshish poori tarah valid rehti hai. Ek hi type par
-       bharosa karne se upgrade ke baad login chup-chaap tootta. */
-    let v = await sb.auth.verifyOtp({ token_hash: d.token_hash, type: "magiclink" });
-    if (v.error) v = await sb.auth.verifyOtp({ token_hash: d.token_hash, type: "email" });
-    if (v.error) { console.warn("[SARV] verifyOtp fail:", v.error.message); return false; }
-    return true;
-  } catch(e) {
-    console.warn("[SARV] Complaint SSO sign-in error:", e.message || e);
-    return false;
-  }
+  await SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON,
+                           client: (typeof sb !== "undefined" ? sb : null) });
 }
 
-// Gate turant chalu — app ke mount hone ka intezaar nahi.
-(async function sarvSsoBoot(){
-  const u = await sarvSsoCheck();
-  if (u && u.__blocked) { sarvSsoBlock(u.name); return; }
-
-  /* Session pehle, event baad me. Ulta kar dein to React pehle "login ho
-     gaya" maan kar data maangne lagti hai, aur un pehli queries par
-     auth.uid() khaali hota hai — yani wahi purani "signed in nahi hain"
-     wali galti, bas der se. */
-  if (u) {
-    let tok = null;
-    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch(e) {}
-    await sarvSsoSignIn(tok, u);
-  }
-
-  /* `undefined` se `null`-ya-user par — app isi farq se jaanti hai ki
-     gate ka jawab aa gaya. Event HAMESHA bhejte hain, jawab khaali ho
-     to bhi: warna jo log ERP se nahi aaye unki app 2.5 second ke
-     timeout tak khaali boot screen par ruki rehti thi. */
-  window.__SARV_SSO = u || null;
-  try { window.dispatchEvent(new CustomEvent("sarv-sso-ready", { detail: u || null })); } catch(e) {}
-})();
+/* Gate ka asli boot `sb` banne ke BAAD hai (neeche) — usse auth session
+   banane ke liye client chahiye, aur `sb` abhi TDZ me hai. */
 const PUSH_FN_URL   = SUPABASE_URL + "/functions/v1/send-push";
 const EMAIL_DOMAIN  = "@sarvindia.com";
 const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8dAHhsx6xyxX1BeHgHJmM63rmPn_mFA";
@@ -280,6 +116,25 @@ const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8
 // the two run side by side with independent sessions.
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: "sarv-store-cmp-auth" }
+});
+
+/* ── Gate chalu — app ke mount hone se pehle ──────────────────────────
+   Kram jaan-boojh kar yahi hai: pehle asli auth session, phir React.
+   Ulta kar dein to React "login ho gaya" maan kar data maangne lagti hai
+   aur un pehli queries par `auth.uid()` khaali hota hai — yani wahi
+   purani "signed in nahi hain" wali galti, bas der se.
+
+   `boot()` sirf andar jaane layak hone par resolve hota hai; baaki har
+   soorat me wo khud launcher par bhej deta hai ya wajah wali screen
+   dikha deta hai, aur ye event kabhi nahi chalta. Isi liye React ko
+   "login nahi hua" wala koi raasta rakhne ki zaroorat hi nahi rahi. */
+SARV_GATE.boot({
+  url: SUPABASE_URL, key: SUPABASE_ANON, client: sb,
+  app: SARV_APP_KEY, label: "Complaint App",
+  needAuth: true, accountKey: "cmp_profile_id"
+}).then(u => {
+  window.__SARV_SSO = u;
+  try { window.dispatchEvent(new CustomEvent("sarv-sso-ready", { detail: u })); } catch(e) {}
 });
 
 const { useState, useEffect, useRef, useCallback, useMemo } = React;
@@ -1181,266 +1036,20 @@ function Lightbox({src, onClose}){
 }
 
 // ============================================================
-// 8. LOGIN
+// 8. LOGIN — yahan se hat gaya
 // ============================================================
-function LoginScreen({toast}){
-  const [mode, setMode] = useState("login"); // "login" | "signup"
+/* `LoginScreen` (email + password login, aur naya account banane wala
+   signup) poora hata diya gaya hai, aur uske saath `sb.auth.signInWith
+   Password()` / `sb.auth.signUp()` wale dono raaste bhi.
 
-  // ---- Login state ----
-  /* ERP se aaya naam pehle se bhar dete hain (SSO gate — file ke shuru
-     me). Access ki jaanch wahi gate kar chuka hai; yahan sirf naam aata
-     hai, taaki banda dobara type na kare. Password abhi bhi is app ka
-     apna hai — wajah SARV_SSO_KEY ke paas likhi hai. */
-  const sso = (typeof window !== "undefined" && window.__SARV_SSO) || null;
-  const [name, setName] = useState(sso && sso.name ? sso.name : "");
-  const [pwd, setPwd] = useState("");
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  // Gate ka jawab login screen ke baad aaya ho to naam tab bhar dein.
-  useEffect(()=>{
-    const h = e => { if (e.detail && e.detail.name) setName(n => n || e.detail.name); };
-    window.addEventListener("sarv-sso-ready", h);
-    return ()=> window.removeEventListener("sarv-sso-ready", h);
-  },[]);
+   Wajah: login ab sirf `launcher.html` par hota hai. Us ek darwaze ke
+   peeche pehchaan `app_users` se aati hai, aur yahan ka auth session
+   `erp-sso` khud bana deta hai (dekhein file ke shuru me gate). Do
+   login rakhne ka matlab tha do user list, do password, aur ek hi bande
+   ke do naam — wahi ulajhan hatane ke liye ye sab gaya.
 
-  // ---- Signup state ----
-  const [sf, setSf] = useState({
-    name:"", mobile:"", department:DEPARTMENTS[0], department_other:"",
-    designation:"", dob:""
-  });
-  const [sErrs, setSErrs] = useState({});
-  const [sBusy, setSBusy] = useState(false);
-  const [sErr, setSErr] = useState("");
-  const [signupDone, setSignupDone] = useState(false);
-  const sSet = (k,v) => setSf(prev=>({...prev,[k]:v}));
-
-  const sPreviewPwd = useMemo(()=> makePassword(digits(sf.mobile), sf.dob), [sf.mobile, sf.dob]);
-
-  // ---- Login handler ----
-  const submitLogin = async (e) => {
-    e.preventDefault();
-    setErr("");
-    if (!name.trim()) return setErr("Apna naam likhein.");
-    if (!pwd) return setErr("Password likhein.");
-    setBusy(true);
-    const { error } = await sb.auth.signInWithPassword({ email: makeEmail(name), password: pwd });
-    setBusy(false);
-    if (error) setErr(friendlyError(error));
-  };
-
-  // ---- Signup handler ----
-  const submitSignup = async (e) => {
-    e.preventDefault();
-    const errs = {};
-    if (sf.name.trim().length < 2) errs.name = "Poora naam likhein (kam se kam 2 akshar).";
-    if (!/^\d{10}$/.test(digits(sf.mobile))) errs.mobile = "Exactly 10 digit ka mobile number.";
-    if (sf.department === "Other" && !sf.department_other.trim()) errs.department_other = "Naya department ka naam likhein.";
-    if (!sf.designation.trim()) errs.designation = "Designation likhein.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(sf.dob)) errs.dob = "Janm tithi chunein.";
-    setSErrs(errs);
-    if (Object.keys(errs).length) return;
-
-    const finalDept = sf.department === "Other" ? sf.department_other.trim() : sf.department;
-    const mob = digits(sf.mobile);
-    const password = makePassword(mob, sf.dob);
-    const email = makeEmail(sf.name);
-
-    setSBusy(true); setSErr("");
-
-    // Pre-flight check — catches duplicate mobile/name BEFORE calling
-    // signUp(), so we never hit the opaque "Database error creating new
-    // user" GoTrue shows when its trigger blocks a duplicate.
-    const { data: avail, error: availErr } = await sb.rpc("cmp_check_signup_available", {
-      p_mobile: mob, p_name: sf.name.trim(),
-    });
-    if (!availErr && avail) {
-      if (avail.mobile_taken) {
-        setSBusy(false);
-        setSErr(`Yeh mobile number pehle se "${avail.mobile_owner}" ke naam par registered hai. Doosra number use karein ya login karein.`);
-        return;
-      }
-      if (avail.name_taken) {
-        setSBusy(false);
-        setSErr("Yeh naam pehle se registered hai. Apna poora naam likhein (middle name bhi) ya login karein.");
-        return;
-      }
-    }
-
-    const { data, error } = await sb.auth.signUp({
-      email, password,
-      options: { data: {
-        self_signup: "true",
-        name: sf.name.trim(),
-        mobile: mob,
-        department: finalDept,
-        designation: sf.designation.trim(),
-        dob: sf.dob
-      }}
-    });
-    setSBusy(false);
-
-    if (error) {
-      const msg = (error.message || "").toLowerCase();
-      if (msg.includes("mobile_taken") || msg.includes("mobile")) {
-        setSErr("Yeh mobile number pehle se registered hai. Doosra number use karein ya login karein.");
-      } else if (msg.includes("name_taken") || msg.includes("username") || msg.includes("already registered")) {
-        setSErr("Yeh naam pehle se registered hai. Apna poora naam likhein (middle name bhi) ya login karein.");
-      } else {
-        setSErr(friendlyError(error));
-      }
-      return;
-    }
-
-    // If no session (email confirmation required) — show success message
-    if (!data.session) {
-      setSignupDone(true);
-      return;
-    }
-    // Session exists → onAuthStateChange handles auto-login
-    toast("Account ban gaya! Welcome!");
-  };
-
-  // ---- Signup success (no auto-session) ----
-  if (signupDone) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-5">
-        <div className="w-full max-w-sm text-center">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-600 grid place-items-center mx-auto mb-4">
-            <Ico d={I.check} className="w-7 h-7" />
-          </div>
-          <h2 className="font-bold text-lg mb-2">Account ban gaya!</h2>
-          <p className="text-sm text-slate-600 mb-1">Aap ab login kar sakte hain.</p>
-          <p className="text-[13px] text-slate-500 mb-5">
-            Password: <span className="font-mono text-teal-700 font-semibold">{sPreviewPwd}</span>
-          </p>
-          <Btn variant="primary" onClick={()=>{setMode("login"); setSignupDone(false); setName(sf.name); setPwd(sPreviewPwd);}}>
-            Login karein
-          </Btn>
-        </div>
-      </div>
-    );
-  }
-
-  // ---- Tab toggle ----
-  const tabCls = (active) =>
-    "flex-1 py-2 text-[13px] font-semibold rounded-lg transition-colors " +
-    (active ? "bg-teal-500 text-white shadow-sm" : "text-slate-500 hover:text-slate-700");
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-5">
-      <div className="w-full max-w-sm">
-        <div className="flex items-center gap-3 mb-7">
-          <div className="w-11 h-11 rounded-xl bg-teal-500 text-slate-950 grid place-items-center font-extrabold">MC</div>
-          <div>
-            <h1 className="font-bold text-lg leading-tight">Machine Complaint</h1>
-            <p className="text-xs text-slate-500">Sarv India &mdash; मशीन शिकायत रजिस्टर</p>
-          </div>
-        </div>
-
-        {/* Tab switcher */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-5">
-          <button type="button" className={tabCls(mode==="login")} onClick={()=>{setMode("login"); setSErr("");}}>
-            Login
-          </button>
-          <button type="button" className={tabCls(mode==="signup")} onClick={()=>{setMode("signup"); setErr("");}}>
-            Sign Up &middot; नया खाता
-          </button>
-        </div>
-
-        {/* ---- LOGIN FORM ---- */}
-        {mode === "login" && (
-          <form onSubmit={submitLogin} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <Field label="Your name" hindi="अपना नाम" required>
-              <input className={inputCls(false)} value={name} autoComplete="username"
-                     onChange={e=>setName(e.target.value)} placeholder="e.g. Ramesh Kumar" />
-            </Field>
-            <Field label="Password" hindi="पासवर्ड" required
-                   hint="Mobile number @ date of birth — jaise 9896011223@14051990">
-              <div className="relative">
-                <input className={inputCls(false)+" pr-11"} value={pwd} type={show?"text":"password"}
-                       autoComplete="current-password"
-                       onChange={e=>setPwd(e.target.value)} placeholder="9896011223@14051990" />
-                <button type="button" onClick={()=>setShow(s=>!s)} aria-label="Show password"
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-500 hover:text-slate-700">
-                  <Ico d={I.eye} className="w-4 h-4" />
-                </button>
-              </div>
-            </Field>
-            {err ? (
-              <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 text-rose-700 px-3 py-2.5 text-[13px] mb-3">
-                <Ico d={I.alert} className="w-4 h-4 mt-0.5 shrink-0" /><span>{err}</span>
-              </div>
-            ) : null}
-            <Btn variant="primary" size="lg" className="w-full" disabled={busy} type="submit">
-              {busy ? <Spinner /> : null}{busy ? "Checking…" : "Login"}
-            </Btn>
-          </form>
-        )}
-
-        {/* ---- SIGNUP FORM ---- */}
-        {mode === "signup" && (
-          <form onSubmit={submitSignup} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-            <Field label="Full name" hindi="पूरा नाम" required error={sErrs.name}>
-              <input className={inputCls(sErrs.name)} value={sf.name}
-                     onChange={e=>sSet("name",e.target.value)} placeholder="Ramesh Kumar" />
-            </Field>
-            <Field label="Mobile number" hindi="मोबाइल नंबर" required error={sErrs.mobile}
-                   hint="Ek mobile number sirf ek baar signup ho sakta hai.">
-              <input className={inputCls(sErrs.mobile)} value={sf.mobile} inputMode="numeric" maxLength={14}
-                     onChange={e=>sSet("mobile",e.target.value)} placeholder="9896011223" />
-            </Field>
-            <Field label="Department" hindi="विभाग" required>
-              <select className={inputCls(false)} value={sf.department} onChange={e=>sSet("department",e.target.value)}>
-                {DEPARTMENTS.map(d=><option key={d} value={d}>{d}</option>)}
-              </select>
-            </Field>
-            {sf.department === "Other" && (
-              <Field label="New department name" hindi="नया विभाग" required error={sErrs.department_other}>
-                <input className={inputCls(sErrs.department_other)} value={sf.department_other}
-                       onChange={e=>sSet("department_other",e.target.value)} placeholder="e.g. QUALITY CHECK" />
-              </Field>
-            )}
-            <Field label="Designation" hindi="पद" required error={sErrs.designation}>
-              <input className={inputCls(sErrs.designation)} value={sf.designation}
-                     onChange={e=>sSet("designation",e.target.value)} placeholder="Machine Operator" />
-            </Field>
-            <Field label="Date of birth" hindi="जन्म तिथि" required error={sErrs.dob}>
-              <input type="date" className={inputCls(sErrs.dob)} value={sf.dob} max={todayStr()}
-                     onChange={e=>sSet("dob",e.target.value)} />
-            </Field>
-
-            {/* Password preview */}
-            {sPreviewPwd ? (
-              <div className="rounded-lg bg-teal-500/5 border border-teal-500/20 px-3 py-2.5 mb-3.5">
-                <p className="text-[11px] text-slate-500 mb-1">Aapka password hoga:</p>
-                <p className="font-mono text-[14px] text-teal-700 font-semibold tracking-wide">{sPreviewPwd}</p>
-                <p className="text-[10.5px] text-slate-400 mt-1">Rule: mobile@DDMMYYYY (janm tithi)</p>
-              </div>
-            ) : null}
-
-            {sErr ? (
-              <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 text-rose-700 px-3 py-2.5 text-[13px] mb-3">
-                <Ico d={I.alert} className="w-4 h-4 mt-0.5 shrink-0" /><span>{sErr}</span>
-              </div>
-            ) : null}
-            <Btn variant="primary" size="lg" className="w-full" disabled={sBusy} type="submit">
-              {sBusy ? <Spinner /> : null}{sBusy ? "Creating…" : "Sign Up · खाता बनायें"}
-            </Btn>
-          </form>
-        )}
-
-        <p className="text-[11px] text-slate-400 mt-4 text-center leading-relaxed">
-          {mode === "login"
-            ? <>Password bhool gaye? Apne admin se poochein.<br/>Rule: 10-digit mobile, phir <span className="text-slate-500">@</span>, phir DDMMYYYY janm tithi.</>
-            : <>Pehle se account hai? <button type="button" className="text-teal-600 font-semibold hover:underline" onClick={()=>setMode("login")}>Login karein</button></>
-          }
-        </p>
-      </div>
-    </div>
-  );
-}
-
+   Naya banda jodna bhi ab ek hi jagah hai: launcher ka Signup, aur
+   Admin Panel › Users › Apps me "Complaint App" ON. */
 // ============================================================
 // 9. NEW COMPLAINT
 //    Name and Department are NOT asked — the database stamps them from the
@@ -4049,10 +3658,11 @@ function App(){
   const [ssoWait, setSsoWait] = useState(true);
   useEffect(()=>{
     let alive = true;
-    /* `ssoWait` false hona hi wo pal hai jab app kuch dikhane layak ho
-       jaati hai — ya asli screen, ya apna login. Isi pal splash bhi
-       hatani hai (sso-preboot.js), isi liye dono ek hi jagah se hote
-       hain; warna ek hat jaati aur doosri reh jaati. */
+    /* `ssoWait` false hona hi wo pal hai jab app dikhane layak ho jaati
+       hai. Isi pal splash bhi hatani hai (sso-preboot.js), isi liye dono
+       ek hi jagah se hote hain; warna ek hat jaati aur doosri reh jaati.
+       (Pehle yahan "ya apna login" bhi likha tha — wo raasta ab nahi
+       hai, login sirf launcher par hota hai.) */
     const ssoReady = () => {
       setSsoWait(false);
       if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
@@ -4064,7 +3674,16 @@ function App(){
         .then(({data,error}) => {
           if (!alive) return;
           ssoReady();
-          if (error || !data) return;                 // apna login dikh jaayega
+          /* Profile na mile to ye "login dikhao" wali haalat nahi hai —
+             gate ne session bana diya hai, matlab row maujood hai par
+             dikh nahi rahi (RLS). Wo Admin ka kaam hai, isi liye wahi
+             likhkar rukte hain; khaali screen chhodna sabse bura hota. */
+          if (error || !data){
+            SARV_GATE.halt("Aapki profile padhi nahi ja saki",
+              "Auth session ban gaya, par <code>cmp_profiles</code> ki aapki row dikh nahi rahi — ye RLS policy ka maamla hai. Admin ko ye screen dikhayein.",
+              (error && (error.message || error.code)) || ("id " + u.cmp_profile_id));
+            return;
+          }
           if (!data.is_active){ setProfileErr("Aapka account band hai. Admin se sampark karein."); return; }
           setProfile(data); setProfileErr("");
         });
@@ -4073,10 +3692,14 @@ function App(){
     if (window.__SARV_SSO !== undefined){ apply(window.__SARV_SSO); return ()=>{ alive = false; }; }
     const h = e => apply(e.detail);
     window.addEventListener("sarv-sso-ready", h);
-    /* Net hi na chale to gate ka jawab kabhi na aaye — tab bhi app atki
-       nahi rehni chahiye, login screen aa jaaye. */
-    const t = setTimeout(()=>{ if (alive) ssoReady(); }, 4000);
-    return ()=>{ alive = false; clearTimeout(t); window.removeEventListener("sarv-sso-ready", h); };
+    /* Pehle yahan 4 second ka timeout tha, taaki gate ka jawab na aane
+       par app atki na rahe aur login screen aa jaaye. Wo timeout ab
+       HATA diya gaya hai: login screen to rahi hi nahi, aur gate har
+       soorat me kuch karta hai — kaamyaab hone par ye event, warna khud
+       wajah wali screen ya launcher (dono splash bhi hata dete hain).
+       Timeout rakhne ka ek hi nateeja bachta tha: dheemi net par splash
+       hat jaati aur banda khaali screen dekhta. */
+    return ()=>{ alive = false; window.removeEventListener("sarv-sso-ready", h); };
   },[]);
 
   // ---- profile ----
@@ -4244,13 +3867,13 @@ function App(){
 
   // ---- render ----
   if (session === undefined) return null;      // boot overlay is still showing
-  /* Login screen tab, jab NA Supabase Auth ka session ho aur NA ERP ke
-     single login se profile mila ho. `ssoWait` ke bina ERP se aane par
-     login screen ek pal ko jhalak jaati thi aur phir gayab ho jaati. */
-  if (!session && !profile){
-    if (ssoWait) return null;                  // boot overlay hi dikhta rahe
-    return <><LoginScreen toast={toast} /><Toasts items={toasts} dismiss={dismiss} /></>;
-  }
+  /* Pehle yahan login screen aati thi. Ab nahi: gate (file ke shuru me)
+     app ko chalne hi nahi deta jab tak session na ho — na ho to wo khud
+     launcher par bhej deta hai ya wajah wali screen dikha deta hai. Isi
+     liye is haalat ka matlab sirf "abhi intezaar hai" hai, aur boot
+     overlay hi dikhta rehna chahiye. Login form yahan dikhana sirf
+     dhoka hota: us form ka koi raasta hi nahi bacha. */
+  if (!session && !profile) return null;
 
   if (profileErr) return (
     <div className="min-h-screen grid place-items-center p-6 text-center">

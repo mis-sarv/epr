@@ -8,6 +8,12 @@
     <!-- Login screen ki jhalak rokta hai: token localStorage me ho to overlay paint hi nahi hota. Sabse pehle chalna chahiye. -->
     <script src="sso-preboot.js"></script>
 
+    <!-- Login window ab sirf launcher.html par. Token na ho to ye page
+         khulne se pehle hi wahan bhej deta hai — mobile ka apna
+         role/PIN gate kisi ko dikhta nahi. Dekhein sso-gate.js. -->
+    <script src="sso-gate.js"></script>
+    <script>if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js load nahi hua — wo file apps ke saath hi rakhni hai.");</script>
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>

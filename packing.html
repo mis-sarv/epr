@@ -6,6 +6,7 @@
     <!-- Login screen ki jhalak rokta hai: token localStorage me ho to overlay
          paint hi nahi hota. Sabse pehle chalna chahiye. -->
     <script src="sso-preboot.js"></script>
+    <script src="sso-gate.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -405,33 +406,12 @@
     </style>
 </head>
 <body>
-
-<!-- Login Screen -->
-<div class="login-overlay" id="loginOverlay">
-    <div class="login-box">
-        <h1>SARV INDIA HOME FURNISHING</h1>
-        <h2>PACKING SLIP — LOGIN</h2>
-        <div class="login-error" id="loginError"></div>
-        <form onsubmit="return false;">
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="login-username" placeholder="Enter Username" autocomplete="username"
-                    autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:none;">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="login-password" placeholder="Enter Password" autocomplete="current-password"
-                    autocapitalize="off" autocorrect="off" spellcheck="false"
-                    style="text-transform:none;"
-                    onkeydown="if(event.key==='Enter'){event.preventDefault();handleLogin();}">
-            </div>
-            <button type="button" class="login-btn" id="loginBtn" onclick="handleLogin()">🔐 Login</button>
-        </form>
-        <div style="margin-top:14px;font-size:10px;color:#94a3b8;text-align:center;line-height:1.6;">
-            v9.1 &nbsp;|&nbsp; <span id="login-url-check"></span>
-        </div>
-    </div>
-</div>
+<!-- Login screen yahan se HATA di gayi hai.
+     Login ab sirf launcher.html par hota hai (ek hi darwaza — dekhein
+     sso-gate.js). Session na ho, access na ho, ya is app ka account na
+     ho — teeno soorat me gate khud wajah wali screen dikhata hai ya
+     launcher par bhej deta hai. Is app ka apna username/password aur
+     uska `packing.profiles` wala login poora hat gaya hai. -->
 
 <!-- Logged-in User Bar -->
 <div class="user-bar" id="userBar">
@@ -996,157 +976,42 @@ var supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
    likhne par wo packing.buyer_master dhoondhta hai aur chup-chaap kuch
    nahi milta. */
 function sarvPublic() { return supabaseClient.schema('public'); }
+/* ══ EK HI DARWAZA — launcher.html ════════════════════════════════════
+   Is app ka apna login (username + password, `packing.profiles` par)
+   poora hat gaya hai. Login sirf `launcher.html` par hota hai; yahan sirf
+   itna poochha jaata hai — "ERP ka session hai? is app ka access hai? is
+   app ka account hai?" — aur teeno ka jawab `sso-gate.js` deta hai.
 
-/* ══ ERP ka single login — gate ════════════════════════════════════════
-   ERP (index.html) me login karte waqt ek session token banta hai jo
-   SAARE apps ke liye hai (app_sessions / UNIFIED_USERS_MIGRATION.sql).
-   Saare apps ek hi origin par hain, isi liye localStorage saajha hai.
+   Pehle ye gate jaan-boojh kar NARAM tha: kuch bhi atke to app apna
+   purana login dikha deti thi. Us narmi ki keemat yahi thi ki do login,
+   do user list aur do "kaun hai" ke jawab zinda rehte the — aur banda
+   kabhi na samajh paata ki usse kaun sa password poochha ja raha hai.
+   Ab gate SAKHT hai: andar jaane layak na ho to app khulti hi nahi, aur
+   wajah screen par likhi jaati hai (ya seedha launcher par bhej diya
+   jaata hai).
 
-   Do kaam:
-     1. ROK — Admin ne Users › Apps me is user se "Packing & Dispatch"
-        OFF kar diya ho to app khulti hi nahi, aur maujooda auth session
-        bhi sign out ho jaata hai. Yani Home ka button chhupane ke baad
-        URL seedha kholkar bhi andar nahi aaya ja sakta.
-     2. PEHCHAAN — access ho to ERP se aaya naam login par pehle se.
-
-   Jaan-boojh kar NARAM: token na ho, RPC na ho (migration na chali ho),
-   ya net kharab ho — teeno soorat me gate hat jaata hai aur app ka apna
-   purana login waisa hi chalta hai.
-
-   DHYAN (poora SSO abhi baaki hai): is app ka data Supabase Auth ke
-   session par chalta hai (profiles + packing.* tables), isi liye access
-   hone par bhi app apna password maangti hai. Dekhein README › "Single
-   login — aakhri qadam". */
+   `needAuth: true` — is app ka data Supabase Auth par chalta hai
+   (packing.* ki RLS aur trigger `auth.uid()` maangte hain), isi liye gate
+   `erp-sso` se asli auth session bana kar deta hai. Bina password.
+   `accountKey` — us auth account ka hona bhi zaroori hai; na ho to gate
+   NO_APP_ACCOUNT likh deta hai (Admin ka kaam). */
 var SARV_SSO_KEY = 'sarv_sso_token';
 var SARV_APP_KEY = 'HOME_PACKING';
 window.__SARV_SSO = null;
 
-async function sarvSsoCheck() {
-    var tok = null;
-    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
-    if (!tok) return null;
-    try {
-        var r = await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
-                       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-            body: JSON.stringify({ p_token: tok, p_app: SARV_APP_KEY })
-        });
-        if (!r.ok) return null;
-        var d = await r.json();
-        if (d && d.success) return d.user || null;
-        if (d && d.error === 'NO_APP_ACCESS')
-            return { __blocked: true, name: (d.user && d.user.name) || '' };
-        return null;
-    } catch (e) { return null; }
-}
-
-function sarvSsoBlock(name) {
-    try { supabaseClient.auth.signOut(); } catch (e) {}
-    var safe = String(name || '').replace(/[<>&]/g, '');
-    var d = document.createElement('div');
-    d.id = 'sarvSsoBlock';
-    d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;'
-        + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
-        + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
-    d.innerHTML = '<div style="max-width:420px;">'
-        + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">&#128274;</div>'
-        + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Packing &amp; Dispatch ka access nahi hai</h2>'
-        + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
-        + (safe ? '<b>' + safe + '</b>, aapke' : 'Aapke')
-        + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Master Data &rsaquo; Settings &rsaquo; Admin Panel &rsaquo; Users &rsaquo; Apps</i> me<br>"Packing &amp; Dispatch" <b>ON</b> karna hoga.</p>'
-        + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
-        + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-        + '&larr; Apps par wapas</button></div>';
-    (document.body || document.documentElement).appendChild(d);
-}
-
-/* ══ ERP ke login se ASLI auth session ════════════════════════════════
-   Is app ka data anon key se bhi padha-likha ja sakta hai, isi liye SSO
-   login (sarvTrySsoLogin, neeche) bina Supabase Auth ke bhi chal jaata
-   tha. Par aadha: jo cheezein `auth.getUser()` par tiki hain wo SSO me
-   toot jaati thin —
-
-     * saveSignature  → `.data.user.id` par TypeError (user null tha)
-     * getMySignatureImage / getCurrentUsername / getCurrentFullName /
-       getCurrentRole → khaali, yani PDF par sign hi nahi lagta
-
-   Un sab ko alag-alag patch karne se behtar hai asli session bana dena:
-   `erp-sso` Edge Function ERP token check karke ek one-time magic-link
-   token deta hai, aur usse poora auth session ban jaata hai — bina
-   password. Phir ye saari purani lines bina chhede theek kaam karti
-   hain.
-
-   Function deploy na ho / net kharab ho to sirf itna hota hai ki
-   `sarvTrySsoLogin()` purane tareeke se andar le jaata hai (wahi aadha
-   haal) — koi bahar nahi hota. */
-async function sarvSsoSignIn(tok, u) {
-    if (!tok || !u || !u.pk_profile_id) return false;
-    try {
-        var cur = (await supabaseClient.auth.getSession()).data.session;
-        if (cur && cur.user && cur.user.id === u.pk_profile_id) return true;
-        // Shared dispatch desk — pichhle bande ka session pehle band.
-        if (cur) { try { await supabaseClient.auth.signOut(); } catch (e) {} }
-
-        var r = await fetch(SUPABASE_URL + '/functions/v1/erp-sso', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
-                       'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-            body: JSON.stringify({ token: tok, app: SARV_APP_KEY })
-        });
-        var d = await r.json().catch(function () { return null; });
-        if (!r.ok || !d || !d.success) {
-            console.warn('[SARV] Packing SSO sign-in skipped:',
-                         (d && (d.message || d.error)) || ('HTTP ' + r.status));
-            return false;
-        }
-        /* Dono type try karte hain — galat type par token kharch nahi
-           hota, isi liye doosri koshish valid rehti hai. (supabase-js ke
-           version ke hisaab se magiclink ka hash 'magiclink' ya 'email'
-           maangta hai.) */
-        var v = await supabaseClient.auth.verifyOtp({ token_hash: d.token_hash, type: 'magiclink' });
-        if (v.error) v = await supabaseClient.auth.verifyOtp({ token_hash: d.token_hash, type: 'email' });
-        if (v.error) { console.warn('[SARV] verifyOtp fail:', v.error.message); return false; }
-        return true;
-    } catch (e) {
-        console.warn('[SARV] Packing SSO sign-in error:', e.message || e);
-        return false;
-    }
-}
-
-/* Login screen ki jhalak rokne wali splash — HAR raaste par hatani hai,
-   warna fail hone par banda spinner par atak jaata. Dekhein
-   sso-preboot.js. */
-function sarvPrebootDone_() {
-    if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
-}
-
-sarvSsoCheck().then(async function (u) {
-    if (u && u.__blocked) { sarvSsoBlock(u.name); sarvPrebootDone_(); return; }
-    window.__SARV_SSO = u || null;
-    if (!u) { sarvPrebootDone_(); return; }
-
-    /* Session pehle, app baad me — enterApp() ke baad screens turant data
-       maangti hain, aur un pehli queries par auth session hona chahiye. */
-    var tok = null;
-    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
-    await sarvSsoSignIn(tok, u);
-
-    /* Juda hua account ho to seedha andar; warna naam bhar dete hain
-       taaki banda dobara type na kare. Dono kaam DOM ready ke baad —
-       enterApp() screens ko chhoota hai. */
-    var go = function () {
-        sarvTrySsoLogin().then(function (ok) {
-            if (!ok) {
-                var el = document.getElementById('login-username');
-                if (el && !el.value && u.name) el.value = u.name;
-            }
-            sarvPrebootDone_();
-        }, sarvPrebootDone_);
-    };
+SARV_GATE.boot({
+    url: SUPABASE_URL, key: SUPABASE_ANON_KEY, client: supabaseClient,
+    app: SARV_APP_KEY, label: 'Packing & Dispatch',
+    needAuth: true, accountKey: 'pk_profile_id'
+}).then(function (u) {
+    window.__SARV_SSO = u;
+    /* Session pehle, app baad me — gate ke andar auth session ban chuka
+       hai, isi liye enterApp() ke baad screens jo pehli queries maangti
+       hain wo seedha chal jaati hain. */
+    var go = function () { sarvEnterFromGate_(); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go);
     else go();
-}, sarvPrebootDone_);
+});
 
 // ERP setup check — agar `packing` schema API par exposed nahi hai to saaf batao,
 // warna har screen par anjaan sa error aata.
@@ -1520,18 +1385,19 @@ function saveSessionToStorage(s) {
     localStorage.setItem(PK_SESSION_KEY, JSON.stringify(s));
 }
 
+/* Session khatam. Pehle yahan app ka apna login overlay khul jaata tha;
+   ab wo overlay hi nahi hai, aur hona bhi nahi chahiye — login ek hi
+   jagah hota hai. Isi liye seedha launcher par bhej dete hain, wahi
+   wajah bhi dikhata hai. */
 function clearSession(showError) {
     session = null;
-    localStorage.removeItem(PK_SESSION_KEY);
+    try { localStorage.removeItem(PK_SESSION_KEY); } catch (e) {}
     hideAllPanels();
-    document.getElementById('userBar').style.display = 'none';
-    document.getElementById('loginOverlay').style.display = 'flex';
+    var ub = document.getElementById('userBar');
+    if (ub) ub.style.display = 'none';
     if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
     stopAutoSaveDraft();
-    if (showError) {
-        document.getElementById('loginError').textContent = 'Session expired. Please login again.';
-        document.getElementById('loginError').style.display = 'block';
-    }
+    location.replace('launcher.html?why=' + (showError ? 'SESSION_EXPIRED' : 'NO_SESSION'));
 }
 
 // ══════════════════════════════════════════
@@ -2609,108 +2475,60 @@ async function uploadPdfToStorage(blob, path) {
     return urlData.publicUrl;
 }
 
-async function handleLogin() {
-    var username = document.getElementById('login-username').value.trim();
-    var password = document.getElementById('login-password').value;
-    var errBox   = document.getElementById('loginError');
-    errBox.style.display = 'none';
+/* `handleLogin()` yahan se hat gaya hai — is app ka apna username +
+   password wala login (`gasPost({action:'login'})`) ab maujood nahi.
+   Pehchaan launcher ke session se aati hai, aur wahi ek jagah hai jahan
+   PIN maanga jaata hai. Neeche `sarvEnterFromGate_()` wahi kaam karta
+   hai jo pehle login ke BAAD hota tha. */
+/* ── Gate ke baad: pehchaan aur andar ────────────────────────────────
+   Gate pehle hi tay kar chuka hai ki banda andar aa sakta hai (ERP ka
+   session, is app ka access, aur asli auth session — teeno). Yahan sirf
+   us bande ki apni profile row padhi jaati hai, kyunki is app ka ROLE
+   (ADMIN / MD / DATA_ENTRY …) aur signature wahin se aate hain. ERP sirf
+   "kaun hai" batata hai; "wo yahan kya kar sakta hai" is app ka apna
+   setup hai, aur wo waisa hi rehta hai.
 
-    if (!username || !password) {
-        errBox.textContent = 'Username aur Password dono zaroori hain.';
-        errBox.style.display = 'block';
-        return;
-    }
+   `session.token` par 'erp-sso' likha rehta hai. Purane raaste me wahan
+   auth ka access_token hota tha, par asli rok hamesha RLS par thi, token
+   par nahi — isi liye isse koi farq nahi padta.
 
-    var btn = document.getElementById('loginBtn');
-    btn.disabled = true;
-    btn.textContent = 'Logging in...';
-
+   Profile row na mile to ye haalat ab "login dikhao" nahi hai: gate ne
+   session bana diya hai, matlab row maujood hai par dikh nahi rahi (RLS)
+   — wo Admin ka kaam hai, isi liye wahi likhkar rukte hain. */
+async function sarvEnterFromGate_() {
+    var u = window.__SARV_SSO || {};
     try {
-        var result = await gasPost({ action: 'login', username: username, password: password });
-
-        if (result.success) {
-            session = { token: result.token, role: result.role, fullName: result.fullName, username: result.username, signature: result.signature ? 'saved' : '' };
-            saveSessionToStorage(session);
-            document.getElementById('login-password').value = '';
-            enterApp();
-        } else {
-            errBox.textContent = result.error || 'Login failed.';
-            errBox.style.display = 'block';
+        var r = await supabaseClient.from('profiles').select('*')
+                      .eq('id', u.pk_profile_id || u.id).maybeSingle();
+        var p = (r && r.data) || null;
+        if (!p) {
+            return sarvGateStop_('Packing profile padhi nahi ja saki',
+                'Auth session ban gaya, par <code>packing.profiles</code> ki aapki row dikh nahi rahi — ye RLS policy ka maamla hai. Admin ko ye screen dikhayein.',
+                (r && r.error && (r.error.message || r.error.code)) || ('id ' + (u.pk_profile_id || u.id)));
         }
-    } catch (err) {
-        errBox.textContent = 'Error: ' + err.message;
-        errBox.style.display = 'block';
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '🔐 Login';
-    }
-}
-
-/* ── ERP ke single login se seedha andar ──────────────────────────────
-   Jis user ka Packing account Admin Panel se JUDA hua hai (app_users.
-   pk_profile_id), uska `profiles` row seedha usi id se padh kar session
-   bana dete hain — yani is app ka apna password dobara nahi poochha
-   jaata.
-
-   Role bhi usi profiles row se aata hai (ADMIN / MD / DATA_ENTRY ...),
-   isi liye is app ka apna role setup waisa hi rehta hai; ERP sirf "kaun
-   hai" batata hai.
-
-   JUDA na ho to ye chup-chaap chhod deta hai aur purana login aata hai.
-   Isi wajah se rollout dheere-dheere ho sakta hai — Admin jis-jis ko
-   link karta jaayega, unka password hatta jaayega. Kaun juda hai wo
-   Admin Panel › Users ke 🔗P pill se dikhta hai.
-
-   session.token par 'erp-sso' likha jaata hai: purane raaste me wahan
-   Supabase auth ka access_token hota tha, par use sirf gasPost('logout')
-   bhejta hai — asli rok RLS par hai, token par nahi. */
-async function sarvTrySsoLogin() {
-    var u = window.__SARV_SSO;
-    if (!u || !u.pk_profile_id) return false;
-    try {
-        var r = await supabaseClient.from('profiles').select('*').eq('id', u.pk_profile_id).maybeSingle();
-        var p = r && r.data;
-        if (!p) return false;
         if (p.active === false) {
-            var eb = document.getElementById('loginError');
-            if (eb) { eb.textContent = 'Aapka Packing account inactive hai — Admin se kehein.'; eb.style.display = 'block'; }
-            return false;
+            return sarvGateStop_('Aapka Packing account band hai',
+                'Admin se kehein — <i>Users › Apps</i> me "Packing &amp; Dispatch" dobara ON karna hoga.', 'INACTIVE');
         }
         session = { token: 'erp-sso', role: p.role, fullName: p.full_name || u.name,
                     username: p.username || u.name, signature: p.signature ? 'saved' : '' };
         saveSessionToStorage(session);
         enterApp();
-        return true;
-    } catch (e) { return false; }
+    } catch (e) {
+        sarvGateStop_('Packing profile padhi nahi ja saki',
+            'Server tak pahunch nahi hui ya permission nahi mili. Admin ko ye screen dikhayein.',
+            (e && e.message) || '');
+    }
 }
 
+/* Wahi screen jo gate dikhata hai — ek hi jagah likhi hai (sso-gate.js). */
+function sarvGateStop_(title, body, detail) { SARV_GATE.halt(title, body, detail); }
+
+/* Ek hi logout — gate ke paas. ERP ka session server par band, auth
+   session band, local nishaan saaf, aur launcher par wapas. */
 async function handleLogout() {
-    var tok = null;
-    try { tok = localStorage.getItem(SARV_SSO_KEY); } catch (e) {}
-    if (session) {
-        try {
-            await gasPost({ action: 'logout', token: session.token });
-        } catch (e) { /* ignore — clearing local session regardless */ }
-    }
-    /* ERP ke single login se aaye the to logout bhi wahin ka — ERP ka
-       session server par band karke ERP par wapas. Ek login tha, to
-       logout bhi ek hi jagah se hona chahiye. */
-    if (tok) {
-        try {
-            await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_logout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY,
-                           'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
-                body: JSON.stringify({ p_token: tok })
-            });
-        } catch (e) {}
-        try { localStorage.removeItem(SARV_SSO_KEY); localStorage.removeItem(PK_SESSION_KEY); } catch (e) {}
-        location.href = 'launcher.html';
-        return;
-    }
-    clearSession(false);
+    await SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON_KEY, client: supabaseClient });
 }
-
 // ══════════════════════════════════════════
 // ✍️ SIGNATURE PAD — Draw, Save, Auto-Pick
 // ══════════════════════════════════════════
@@ -2839,9 +2657,11 @@ async function sigSave() {
 
 // Signature preview removed — pad only shows when no signature saved in sheet
 
-// Called after a successful login (fresh or restored from storage)
+// Gate ke baad — yahi se app dikhni shuru hoti hai.
 function enterApp() {
-    document.getElementById('loginOverlay').style.display = 'none';
+    /* App ab dikhne layak hai — splash yahan hatti hai, gate me nahi.
+       Isi liye beech me khaali page nahi jhalakta. */
+    if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
     document.getElementById('userBar').style.display = 'flex';
     document.getElementById('userBarName').textContent = session.fullName;
     var roleLabels = { 'ADMIN': '(Admin)', 'MD': '(MD)', 'PACKING_INCHARGE': '(Packing Incharge)', 'DATA_ENTRY': '(Data Entry)' };
@@ -3356,45 +3176,14 @@ document.addEventListener('DOMContentLoaded', function () {
     openIDB().catch(function(e) { console.warn('IndexedDB init failed:', e); });
     initNetworkStatus();
 
-    // Quick URL sanity-check
-    var urlEl = document.getElementById('login-url-check');
-    if (urlEl) {
-        var isPlaceholder = SUPABASE_URL.includes('YOUR-PROJECT') || SUPABASE_ANON_KEY.includes('YOUR-ANON');
-        urlEl.textContent = isPlaceholder ? '⚠️ Supabase URL/Key not set!' : '🔗 Supabase: OK';
-        urlEl.style.color  = isPlaceholder ? '#f87171' : '#6ee7b7';
-    }
-    var restored = loadSessionFromStorage();
-    /* ERP ke single login se aayi session ko Supabase Auth se validate
-       NAHI karna — uska koi auth session hota hi nahi, to neeche ka check
-       use hamesha phenk deta aur reload par login screen aa jaati.
-
-       Iski jagah ERP ka gate hi faisla karta hai: wo har load par
-       erp_app_session() se dobara poochhta hai aur phir sarvTrySsoLogin()
-       se andar le jaata hai. Yahi sahi bhi hai — Admin ne beech me access
-       hata diya ho ya user band kar diya ho to reload par turant lagta
-       hai, kyunki sach hamesha server se aata hai, localStorage se nahi. */
-    if (restored && restored.token === 'erp-sso') {
-        restored = null;
-    }
-    if (restored && restored.token) {
-        // 🔍 Validate against Supabase — don't trust localStorage blindly.
-        // A stale/old token (e.g. left over from testing) must NOT skip login.
-        supabaseClient.auth.getSession().then(function(result) {
-            var liveSession = result.data && result.data.session;
-            if (liveSession && liveSession.access_token) {
-                session = restored;
-                session.token = liveSession.access_token; // always use the fresh token
-                enterApp();
-            } else {
-                // No valid Supabase session — force login screen
-                clearSession(false);
-            }
-        }).catch(function() {
-            clearSession(false);
-        });
-    }
-    // If not restored, the login overlay (shown by default in HTML) stays up
-    // until handleLogin() succeeds.
+    /* localStorage se session "restore" karna poora hat gaya hai.
+       Pehle yahan purani session padhi jaati thi aur uske bharose app
+       khol di jaati thi — jo do wajah se galat tha:
+         1. wo gate ko bypass karne ka raasta tha (Admin ne access hata
+            diya ho ya user band kar diya ho, to bhi app khul jaati);
+         2. sach localStorage me nahi, server par hota hai.
+       Ab har load par gate hi faisla karta hai (`SARV_GATE.boot` —
+       oopar), aur wahi `sarvEnterFromGate_()` se andar le jaata hai. */
 });
 
 // ══════════════════════════════════════════════════════

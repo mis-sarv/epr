@@ -3241,11 +3241,15 @@ async function sarvRefreshSsoSession_(){
       sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
       try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
           localStorage.removeItem(SARV_LOGIN_USER_KEY);}catch(e){}
+      /* Pehle yahan ERP apna PIN gate khol deta tha. Ab nahi: login
+         sirf launcher.html par hota hai, isi liye wahan bhej dete hain
+         aur wajah URL me saath jaati hai (launcher use likh deta hai).
+         Gate ko ek pal ke liye dikhate hain — sirf parde ki tarah, taaki
+         navigation ke beech purana data khula na rahe. */
       const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
-      sarvFillLoginNames_().catch(()=>{});
-      showToast(d.error==='USER_INACTIVE'
-        ?'🔒 Aapka account Admin ne band kar diya — dobara login nahi hoga'
-        :'🔒 Session khatam ho gaya — dobara login karein','warn');
+      location.replace('launcher.html?why='
+        +(d.error==='USER_INACTIVE'?'USER_INACTIVE':d.error));
+      return;
     }
     return;
   }
@@ -4615,6 +4619,107 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
 // Jo apps apni alag file me khulte hain — unka SSO isi access par chalta hai.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1};
 
+/* ── Jin apps ko apna ACCOUNT bhi chahiye ────────────────────────────
+   Complaint aur Packing ka data Supabase Auth par chalta hai (unki RLS
+   aur trigger `auth.uid()` maangte hain). Isi liye in dono me DIRECT
+   login (bina us app ka apna password) tabhi hota hai jab us bande ka
+   us app ka account bhi ho:
+     Complaint → app_users.cmp_username bhara hua + auth.users me row
+     Packing   → packing.profiles me row (usi id se) + auth.users me row
+   Order Form isme nahi hai — uska SSO sirf access par chalta hai, usko
+   auth session nahi chahiye.
+
+   YE WAHI KAMI THI: upar ka switch ON karne par sirf `app_access` ka
+   jsonb likha jaata tha (`admin_set_user_app_access`), aur ye account
+   banta hi nahi tha. Admin ko lagta tha kaam ho gaya, par user ke
+   saamne phir bhi "NO_APP_ACCOUNT" aata tha. Account banane wala RPC
+   (`admin_grant_app_access`) aur Edge Function ka provision raasta
+   pehle se maujood the — unhe koi bulata hi nahi tha. */
+const SARV_APP_NEEDS_ACCOUNT={HOME_COMPLAINT_APP:1,HOME_PACKING:1};
+
+/* ON/OFF ko us app ke account tak le jaata hai.
+   Jawab: { id, note } — `id` jaan-boojh kar lautate hain, kyunki naya
+   auth account banne par app_users.id usi naye auth id par le aayi
+   jaati hai (erp_relink_user_id). Aage ka koi bhi kaam purani id par
+   karne se "USER_NOT_FOUND" milta. */
+async function sarvSyncExternalAppAccount_(adminPin,userId,appKey,on){
+  const label=SARV_APP_LABEL[appKey]||appKey;
+  const r=await SB.rpc('admin_grant_app_access',
+    {p_admin_pin:adminPin,p_user_id:userId,p_app_key:appKey,p_on:on});
+  if(r.error){
+    const m=String(r.error.message||r.error);
+    return {id:userId,note:' — ⚠️ '+label+' ka account nahi bana: '
+      +(/does not exist|schema cache|PGRST202/i.test(m)
+          ? 'MERGE_PROFILE_IDS_INTO_APP_USER_ID.sql chalayein'
+          : m)};
+  }
+  const d=r.data||{};
+  if(d.success)return {id:userId,note:''};
+  if(d.error!=='AUTH_USER_MISSING')
+    return {id:userId,note:' — ⚠️ '+label+': '+(d.error||'unknown')};
+
+  /* ── "AUTH_USER_MISSING" ka matlab "account nahi hai" nahi hai ──────
+     Iska matlab sirf itna hai ki IS id par account nahi hai. Aksar
+     account maujood HOTA hai, bas doosri id par — aur tab naya banane ki
+     koshish "A user with this email address has already been registered"
+     par girti thi. Isi liye pehle wahi dhoondhte hain aur usi se id jod
+     dete hain; ye poora SQL se hota hai, Edge Function ki zaroorat nahi.
+     (`erp_link_existing_auth_account` — sql/FIX_APP_ACCOUNT_PROVISION.sql) */
+  const lk=await SB.rpc('erp_link_existing_auth_account',
+    {p_admin_pin:adminPin,p_user_id:userId,p_email:null});
+  if(!lk.error&&lk.data&&lk.data.success){
+    const newId=String(lk.data.user_id||userId);
+    // Id jud gayi — ab wahi grant dobara, nayi id par.
+    const r2=await SB.rpc('admin_grant_app_access',
+      {p_admin_pin:adminPin,p_user_id:newId,p_app_key:appKey,p_on:on});
+    if(!r2.error&&r2.data&&r2.data.success)
+      return {id:newId,note:' · '+label+' ka account jud gaya'
+        +(lk.data.changed?' (purana auth account '+(lk.data.email||'')+')':'')};
+    return {id:newId,note:' — ⚠️ '+label+': id jud gayi par access nahi laga: '
+      +((r2.error&&r2.error.message)||(r2.data&&r2.data.error)||'unknown')};
+  }
+  if(lk.data&&lk.data.error==='AUTH_ACCOUNT_TAKEN')
+    return {id:userId,note:' — ⚠️ '+label+': '+(lk.data.hint||'auth account kisi doosre ERP user se juda hai')};
+  const lkErr=(lk.data&&lk.data.error)||(lk.error&&lk.error.message)||'';
+  /* RPC hi nahi hai to aage badhna bekaar hai: naya auth account banane
+     wala raasta bhi isi par tika hai. Saaf keh dete hain. */
+  if(/does not exist|schema cache|PGRST202/i.test(lkErr))
+    return {id:userId,note:' — ⚠️ '+label+': pehle SQL Editor me sql/FIX_APP_ACCOUNT_PROVISION.sql chalayein'};
+  if(lkErr&&!/NO_AUTH_ACCOUNT_FOUND/.test(lkErr))
+    return {id:userId,note:' — ⚠️ '+label+': '+lkErr};
+
+  /* Sach me auth account hai hi nahi. Wo sirf service_role bana sakta
+     hai, aur wo key browser me kabhi nahi aati — isi liye ye kaam Edge
+     Function karta hai: account banata hai (usi id se), aur phir yahi
+     RPC khud bulakar access de deta hai. */
+  let fr=null,fd=null;
+  try{
+    fr=await fetch(SUPABASE_URL+'/functions/v1/erp-sso',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SUPABASE_ANON_KEY,
+               'Authorization':'Bearer '+SUPABASE_ANON_KEY},
+      body:JSON.stringify({action:'provision',admin_pin:adminPin,user_id:userId,app:appKey})});
+    fd=await fr.json().catch(()=>null);
+  }catch(e){
+    return {id:userId,note:' — ⚠️ '+label+': Edge Function tak pahunch nahi hui ('+(e.message||e)+')'};
+  }
+  if(!fr.ok||!fd||!fd.success){
+    const why=(fd&&(fd.message||fd.detail||fd.error))||('HTTP '+fr.status);
+    /* Ye do message purane (deploy na hue) erp-sso se aate hain, aur
+       dono par asli kaam deploy karna hai. Hint client se jodte hain,
+       kyunki wahan ka jawab hi purana hai — usse hint nahi aayega. */
+    let fix='';
+    if(/database error creating new user/i.test(why))
+      fix=' → erp-sso ka naya version deploy karein (purana version auth.users ke trigger se takra raha hai): '
+        +'supabase functions deploy erp-sso';
+    else if(/already been registered/i.test(why))
+      fix=' → account maujood hai, bas doosri id par. SQL Editor me sql/FIX_APP_ACCOUNT_PROVISION.sql chalayein, phir dobara Save karein.';
+    return {id:userId,note:' — ⚠️ '+label+' ka account nahi bana: '
+      +(fr.status===404?'erp-sso Edge Function deploy nahi hai (supabase functions deploy erp-sso)':why)+fix};
+  }
+  return {id:fd.user_id||userId,note:' · '+label+' ka account ban gaya'};
+}
+
 function sarvUserAppsHtml_(u){
   const acc=(u&&u.app_access&&typeof u.app_access==='object')?u.app_access:{};
   const roles=(u&&u.roles&&u.roles.length)?u.roles:(u&&u.role?[u.role]:[]);
@@ -4634,6 +4739,12 @@ function sarvUserAppsHtml_(u){
           +'<span style="flex:1 1 auto;font-size:11px;font-weight:700;color:#334155;">'
             +escText(SARV_APP_LABEL[k]||k)
             +(SARV_APP_EXTERNAL[k]?' <small style="color:#7c3aed;font-weight:700;">alag app</small>':'')
+            /* In dono par ON ka matlab sirf button dikhana nahi hai — us
+               app ka account bhi ban jaata hai (aur OFF par deactivate).
+               Admin ko ye pehle se pata hona chahiye, warna "sirf switch
+               hai" samajh kar wo 'auto' chhod deta hai aur user ka direct
+               login kabhi nahi banta. */
+            +(SARV_APP_NEEDS_ACCOUNT[k]?' <small style="color:#047857;font-weight:700;text-transform:none;">ON = account bhi banega</small>':'')
             +(hint?' <small style="color:#94a3b8;font-weight:600;text-transform:none;">— '+hint+'</small>':'')
           +'</span>'
           +'<select data-app="'+k+'" style="flex:0 0 auto;width:78px;height:24px;font-size:10.5px;padding:0 4px;'
@@ -4861,6 +4972,25 @@ function sarvOpenUserModal(id,presetRole){
             else{
               const n=Object.keys(acc).length;
               if(n)uniNote+=' · '+n+' app override';
+
+              /* Complaint / Packing par switch sirf jsonb likhne se kaam
+                 nahi chalta — un apps ka apna account bhi chahiye, warna
+                 user ke saamne "NO_APP_ACCOUNT" aata hai. Wahi yahan
+                 banta (ya band hota) hai.
+
+                 Sirf saaf ON/OFF par — 'auto' par haath nahi lagate, kyunki
+                 'auto' ka matlab "role-wise matrix jo kahe" hai, aur uske
+                 liye har bande ka auth account banana galat hoga.
+
+                 Kram se (Promise.all se nahi): naya auth account banne par
+                 user ki id badal jaati hai, aur agli call usi nayi id par
+                 honi chahiye. */
+              let curId=String(saved.id);
+              for(const k of Object.keys(SARV_APP_NEEDS_ACCOUNT)){
+                if(typeof acc[k]!=='boolean')continue;
+                const res=await sarvSyncExternalAppAccount_(adminPin.trim(),curId,k,acc[k]);
+                curId=res.id; uniNote+=res.note;
+              }
             }
           }
         }

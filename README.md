@@ -31,7 +31,15 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `app-back.js` | Har app me ek hi `<script src>` line — neeche daayein kone me floating **← Apps** button. Khud tay karta hai ki dikhna hai ya nahi: ERP ke iframe ke andar nahi, aur single-login session na ho to nahi (tab banda launcher se aaya hi nahi). z-index 900, isi liye modal iske oopar aate hain. |
 | `sso-preboot.js` | Har app ke `<head>` me sabse pehle. App switch karte waqt login window ki **jhalak** rokta hai: token localStorage me ho (synchronous) to login overlay paint hi nahi hota aur ek spinner splash lag jaati hai; app taiyar hone par khud `sarvSsoPrebootDone()` bulati hai. Token na ho to ye file kuch nahi karti. 9 sec ka backstop — koi spinner par atkta nahi. |
 | `SINGLE_LOGIN_MIGRATION.sql` | Complaint (`cmp_profiles`) aur Packing (`packing.profiles`) ke users ERP ki `app_users` me merge, har naye user ka PIN (+ verify), naye role `CMP_USER` / `PK_USER`, aur `erp_sso_profile()`. Upar `v_admin_pin` bharna hai. **UNIFIED_USERS_MIGRATION.sql ke baad** ek baar. Dobara chalana surakshit. Neeche dekhein. |
-| `FIX_PGCRYPTO_SEARCHPATH.sql` | Ek purani kami ka ilaaj: `erp_app_login()` ka `search_path = public` tha, par `gen_random_bytes()` (pgcrypto) `extensions` schema me rehta hai — isi liye **sahi PIN** par login `function gen_random_bytes(integer) does not exist [42883]` se girta tha. Sirf search_path theek karti hai, function ka body nahi chhedti. Dobara chalana surakshit. |
+| `FIX_PGCRYPTO_SEARCHPATH.sql` | **Login par `function gen_random_bytes(integer) does not exist [42883]`** aaye to ye chalayein. Wajah: `gen_random_bytes()` pgcrypto ka hai aur Supabase me `extensions` schema me rehta hai, par `erp_app_login()` ke `search_path` me wo schema chhoot gaya hai (purani SQL file se bana function database me waisa hi pada rehta hai — file update hone se DB nahi badalta). **Sahi PIN** par hi dikhta hai, galat PIN par nahi. Sirf search_path theek karti hai (`alter function`), body nahi chhedti. Aakhir me ek `sarv_pgcrypto_report` table deti hai — usme **"5. ASLI JAANCH"** lakeer wahi `gen_random_bytes(32)` sach me chalakar dikhati hai. Dobara chalana surakshit. |
+| `sso-gate.js` | **Saare apps ka EK hi darwaza.** Har app ke `<head>` me `sso-preboot.js` ke baad. Ek jagah par: ERP ka session jaanchna, app ka access jaanchna, us app ka account jaanchna, `erp-sso` se asli auth session banana, aur fail hone par wajah wali screen dikhana (ya launcher par bhej dena). `SARV_GATE.boot()` sirf andar jaane layak hone par resolve hota hai; `logout()` har app me ek jaisa hai; `requireSession()` ERP / mobile ke liye sirf "token na ho to launcher" wali sync rok hai. **Kisi app me koi login form nahi bachta.** |
+| `ONE_USER_TABLE.sql` | **Sirf `public.app_users` bachti hai** — `packing.profiles` aur `sales_users` bhi VIEW ban jaate hain (naam, column aur matlab wahi, isi liye dono apps ka code / trigger / RLS bina badle chalte hain). `cmp_profiles` pehle se VIEW hai. **Do qadam:** pehla sirf report deta hai (column, RLS, FK, trigger, aur har wo function jo in tables ko padhta ya likhta hai); `v_do_it := true` karne par asli kaam, archive ke saath. Nayi views par `security_invoker = true` — warna view owner ke haq se chalti aur `app_users` ki RLS beech me aati hi nahi. Purani `CONSOLIDATE_USER_TABLES.sql` ki jagah (wo ab chalti nahi). |
+| `MERGE_DUPLICATE_USERS.sql` | **Ek hi bande ki do `app_users` rows** (jaise "PARKASH" aur "PARKASH JI", dono emp_code 1460) — ek me milati hai, doosri hatati hai. Auth account ki id ek hi row par ho sakti hai, isi liye duplicate rehte hue Complaint / Packing ka access diya hi nahi ja sakta (`AUTH_ACCOUNT_TAKEN`). `erp_merge_duplicate_user()` roles / app access / Order Form role KEEP row par le aata hai, PIN · sessions · resets · Order Form mirror aur **har** `app_users(id)` wale FK ki rows bhi (list `pg_constraint` se nikalti hai), phir duplicate row delete. Ek transaction — kuch atka to poora palat jaata hai. Pehle chalane par sirf report deti hai; merge aap section 3 se chalate hain. ⚠️ Palta nahi ja sakta. |
+| `CHECK_ORDER_FORM_SESSION.sql` | `CHECK_ORDER_FORM_SETUP` "sab maujood hai" kahe par **phir bhi Order Form na khule** to ye. Kuch badalti nahi. Teen cheezein dekhti hai: (1) `anon` ko har `sales_*` RPC par EXECUTE hai ya nahi — na ho to *"permission denied for function sales_whoami"*, jo purane app me "setup pending" bana kar dikhta tha; (2) `sales_sessions` me session ban rahe hain ya nahi (khaali = launcher ka `sales_erp_login()` token hi nahi bana raha); (3) `sales_users` mirror bhara hai ya nahi. Aakhir me ek commented `grant execute` block — sirf tab chalayein jab section A me rok dikhe. |
+| `CHECK_ORDER_FORM_SETUP.sql` | **order-form.html par "Database setup pending"** aaye to ye. Kuch badalti nahi. Order Form ko jo 11 RPC aur 3 table chahiye (`sales_whoami`, `sales_save_order`, `sales_orders` …) un sab ko naam **aur argument** se jaanchti hai — PostgREST naam+argument se function dhoondhta hai, isi liye sahi naam par galat argument bhi "function not found" deta hai. Aakhir me faisla: sab maujood hai / module hi nahi hai / itni cheezein missing hain. **Dhyan:** `ORDER_FORM_MIGRATION.sql` is project tree me kahin nahi hai — isi liye app ka purana message ek band gali tha. |
+| `FIX_PROFILE_ID_COLUMNS.sql` | **`CHECK_PACKING_SSO` me `erp_app_session() = PURANA`** aaye to ye. Haalat ye hai ki `MERGE_PROFILE_IDS...` poori chali nahi, isi liye `app_users.pk_profile_id` / `cmp_profile_id` columns zinda par **khaali** hain — aur teen RPC (`erp_app_session`, `erp_app_login`, `erp_sso_profile`) usi khaali column ko padhte hain, `packing.profiles` ko nahi. Nateeja: tables me sab theek, par app har user par `NO_APP_ACCOUNT`. Ye file column backfill karti hai aur `admin_grant_app_access()` me do line jodti hai taaki aage ke users par bhi bhare. Kisi RPC ka body nahi badalta, id nahi badalti, FK nahi chhedta. MERGE baad me chalani ho to ye uske raaste me nahi aati. |
+| `FIX_APP_ACCOUNT_PROVISION.sql` | **Admin Panel me Save karte waqt "⚠️ Complaint App / Packing ka account nahi bana"** aaye to ye chalayein. Do RPC banati hai: `erp_auth_id_by_email()` (sirf server) aur `erp_link_existing_auth_account()` — jo us bande ka **maujooda** auth account (jo doosri id par pada hai) dhoondh kar `app_users.id` usi par le aata hai, naya banaye bina. Aakhir me report: kis user ka auth account usi id par hai, kis ka doosri id par, aur kis ka hai hi nahi. Kuch maujooda function/table badalti nahi. |
+| `CHECK_PACKING_SSO.sql` | **"packing.html me direct login nahi ho raha"** — kiska aur kyun. Kuch badalti nahi, sirf dekhti hai. Launcher par Packing ka button lagbhag sabko dikhta hai (access ka default `true` hai), par **direct** login ke liye us bande ka Packing ka account bhi chahiye: `auth.users` + `packing.profiles` me usi id se row. Dono Admin Panel › Users › Apps me "Packing & Dispatch" ON karne par khud banti hain. Ye file har user ka verdict deti hai (`DIRECT LOGIN OK` / `AUTH ACCOUNT NAHI` / `PACKING ACCOUNT NAHI` / `PROFILE INACTIVE`) aur saath me setup ke checks. |
 | `USER_SELF_SERVICE_MIGRATION.sql` | **Signup · Forgot PIN · emp_code login.** `app_users` par `dob` / `photo` / `designation` / `department`, emp_code backfill (`employees` se naam-match), aur RPCs `erp_signup` / `erp_forgot_pin_request` / `erp_reset_pin` / `admin_get_user_signature`. PIN kahan likha jaata hai ye GUESS nahi karti — probe user se pata karti hai. Upar `v_admin_pin` bharna hai. **SINGLE_LOGIN ke baad** ek baar. Neeche dekhein. |
 | `CONSOLIDATE_USER_TABLES.sql` | ⚠️ `cmp_profiles` / `packing.profiles` / `sales_users` hata kar `app_users` ko ek hi user store banati hai — par unhi naamon ki **VIEW** chhod jaati hai (app_users se), isi liye dono apps ke trigger / RLS / code bina badle chalte rehte hain. **Pehli baar chalane par sirf plan chhapti hai (dry run)**; `v_do_it := true` karne par kaam karti hai. Archive khud banati hai. |
 | `supabase/functions/erp-sso/index.ts` | Edge Function — ERP ke session token se Complaint / Packing ka **asli** Supabase Auth session banata hai (bina password, bina unki RLS chhede). `supabase functions deploy erp-sso`. |
@@ -464,14 +472,41 @@ likha jaata hai: "is user ko kaun-kaun se app khul sakte hain", jo faisla
 ERP ki JS karti hai (role matrix + per-user override). Isi liye external
 apps ko permission ka poora matrix samajhne ki zaroorat nahi.
 
-| App | Aaj kya hota hai |
-|---|---|
-| **launcher.html** | **Sabka pehla page** — naam + PIN, phir sirf apne app ke buttons |
-| ERP | PIN login (naam se), ya launcher se bina dobara PIN |
-| Order Form | **poora SSO** — pehle se (sales_erp_login), bina login khulta hai |
-| Approval App (mobile) | **poora SSO** — role ERP se, PIN nahi; apna naam + PIN bhi chalta hai |
-| Complaint App | **poora SSO** — `erp-sso` Edge Function asli auth session banata hai |
-| Packing & Dispatch | **poora SSO** — wahi |
+| App | Apna login window | Pehchaan kahan se |
+|---|---|---|
+| **launcher.html** | **haan — sirf yahan** | naam + PIN → `erp_app_login()` |
+| ERP (index.html) | nahi | launcher ka session (token na ho to seedha launcher) |
+| Approval App (mobile) | nahi | wahi |
+| Order Form | nahi | launcher ka session + `sales_erp_login` ka token |
+| Complaint App | nahi | launcher ka session + `erp-sso` ka auth session |
+| Packing & Dispatch | nahi | wahi |
+
+**Ek darwaza — ab sach me ek.** Pehle har app ka apna login tha: Packing ka
+username + password (`packing.profiles`), Complaint ka Supabase Auth login +
+signup (`cmp_profiles`), Order Form ka naam + PIN (`sales_login`). Teen login,
+teen user list, teen jagah "kaun hai" ka jawab — aur wahi saari ulajhan isi
+se banti thi (ERP me access ON par bhi app ka account na hona, app ka password
+kisi ko yaad na hona, ek hi aadmi do list me do naam se baithna).
+
+Ab wo teeno login **hata diye gaye hain**, aur unke saath
+`sb.auth.signInWithPassword()` / `signUp()` / `sales_login` wale raaste bhi.
+Sab kuch `sso-gate.js` se hota hai, aur wo koi login form nahi dikhata — jo
+screen dikhti hai wo sirf **wajah** batati hai aur "← Apps par wapas" deti
+hai, kyunki wahan se andar jaane ka koi doosra raasta hi nahi hai.
+
+Logout bhi har app me ek hi hai: ERP ka session server par revoke, auth
+session band, app ke local nishaan saaf, aur `launcher.html?bye=1` — jahan
+"Logout ho gaya" likha aa jaata hai. Session beech me khatam ho jaaye to wahi
+raasta, `?why=SESSION_REVOKED` jaisi wajah ke saath.
+
+> ⚠️ **Ek shart jo pehle narmi se chhup jaati thi.** Complaint aur Packing ka
+> data Supabase Auth par chalta hai, aur wo auth session sirf `erp-sso` banata
+> hai. Pehle wo fail hone par app apna password maang leti thi; **ab koi
+> fallback nahi hai** — us user ke liye app khulegi hi nahi (wajah screen par
+> likhi aayegi). Isi liye ye badlaav live karne se pehle do cheezein pakki
+> honi chahiye: `erp-sso` ka naya version **deploy** ho, aur Complaint /
+> Packing wale har user ka account bana ho (`sql/CHECK_PACKING_SSO.sql` ki
+> report me sab `DIRECT LOGIN OK`).
 
 Logout par token server par revoke hota hai, aur reload par
 `sarvRefreshSsoSession_()` session se taaza roles / app_access le aata hai
@@ -488,6 +523,91 @@ Setup, isi kram me:
 | 1 | `SINGLE_LOGIN_MIGRATION.sql` — upar `v_admin_pin` me apna Admin PIN daalein, phir Supabase › SQL Editor me chalayein. **Ek baar** (dobara chalana surakshit). Iska section 0b pgcrypto ka `search_path` bhi theek kar deta hai; alag se karna ho to `FIX_PGCRYPTO_SEARCHPATH.sql`. |
 | 2 | Aakhir me jo table dikhti hai (`sarv_user_merge_report`) usme har naye user ka **naam + PIN** hai. Wo list nikaal lein / baant dein, phir usi file ke section 9 ka `drop table` chala dein (usme plain PIN hain). |
 | 3 | `supabase/functions/erp-sso/` deploy karein — `supabase functions deploy erp-sso`, ya Dashboard › Edge Functions › naam `erp-sso` › file paste. |
+
+### Packing / Complaint ka direct login — ek shart
+
+Launcher par **Packing ka button lagbhag sabko dikhta hai**: access ka
+default `true` hai (`launcher.html › appAllowed` — per-user ya role-wise rok
+na ho to app khuli maani jaati hai). Par *direct* login (bina us app ka apna
+password) ke liye access kaafi nahi — us bande ka **us app ka account** bhi
+hona chahiye:
+
+| App | Kya hona chahiye |
+|---|---|
+| Packing | `auth.users` me row (usi id se) **+** `packing.profiles` me row, `active = true` |
+| Complaint | `auth.users` me row (usi id se) **+** `app_users.cmp_username` bhara hua |
+
+Dono cheezein **Admin Panel › Users › Apps** me us app ka switch **ON** karne
+par khud banti hain — `admin_grant_app_access()` us app ki row banata hai, aur
+auth account `erp-sso` Edge Function (`action: "provision"`). Switch ka
+tri-state yahan maayne rakhta hai: **`auto` se account nahi banta**, kyunki
+`auto` ka matlab "role-wise matrix jo kahe" hai. Jiska switch `auto` /  OFF
+hai, uske liye `erp_app_session()` ka `pk_profile_id` / `cmp_profile_id`
+**null** aata hai — app andar le jaane ki jagah apna purana
+username/password maang leti hai.
+
+> **Ye pehle tootta tha.** Admin Panel ka Apps switch sirf `app_access` ka
+> jsonb likhta tha (`admin_set_user_app_access`) — `admin_grant_app_access()`
+> aur Edge Function ka provision raasta maujood the, par **unhe koi bulata hi
+> nahi tha**. Isi liye Admin switch ON karta tha, toast "save ho gaya" kehta
+> tha, aur user ke saamne phir bhi `NO_APP_ACCOUNT` aata tha. Ab wo switch
+> dono kaam karta hai, aur Apps list me un dono apps par "ON = account bhi
+> banega" likha rehta hai.
+
+#### Auth account — teen haalat
+
+`admin_grant_app_access()` `AUTH_USER_MISSING` kehta hai, jiska matlab sirf
+itna hai ki **is id par** auth account nahi hai. Aage teen raaste hain:
+
+| Haalat | Kya hota hai | Deploy chahiye? |
+|---|---|---|
+| Account usi id par hai | kuch nahi — seedha grant | nahi |
+| Account hai, par **doosri id** par | `erp_link_existing_auth_account()` use dhoondh kar `app_users.id` usi par le aata hai (`erp_relink_user_id` — PIN key, sessions, resets, Order Form mirror sab ek saath), phir grant | nahi, sirf `FIX_APP_ACCOUNT_PROVISION.sql` |
+| Account hai hi nahi | `erp-sso` ka `provision` naya banata hai (`service_role` sirf wahan hota hai) | **haan** |
+
+Doosri haalat sabse aam hai, aur pehle wahi tooti thi: provision seedha naya
+account banane jaata tha aur GoTrue *"A user with this email address has
+already been registered"* de deta tha.
+
+Ek chauthi haalat bhi hai, aur wo **access ka masla hi nahi** hai: `app_users`
+me us bande ki **do rows** hon (jaise "PARKASH" aur "PARKASH JI", dono
+emp_code 1460), aur auth account doosri row par baitha ho. Ek id do rows par
+nahi ho sakti, isi liye `erp_link_existing_auth_account()` saaf mana karta hai
+(`AUTH_ACCOUNT_TAKEN`) — chup-chaap jod dena do logon ki pehchaan mila dene
+jaisa hota. Ilaaj `sql/MERGE_DUPLICATE_USERS.sql` hai: duplicate row ko KEEP
+row me milao, phir access do.
+
+Teesri haalat bhi tooti thi — *"Database error creating new user"*. Wajah:
+Edge Function `user_metadata.name` bhejta tha, aur us par `auth.users` ka
+trigger `cmp_handle_new_auth_user()` chal padta hai (wo sirf `name` hone par
+chalta hai) aur `app_users` me us bande ki **doosri** row banane ki koshish
+karta hai — naye auth id par, naam se bana `cmp_username` aur wahi
+`contact_no` le kar. Dono par unique index hai
+(`app_users_cmp_username_key` / `app_users_cmp_mobile_key`), to takraav pakka,
+aur trigger ka exception GoTrue ke andar dab kar wahi generic message ban
+jaata hai. Aur insert chal bhi jaata to agla qadam girta:
+`erp_relink_user_id()` `NEW_ID_TAKEN` kehta hai jab nayi id par row maujood
+ho — aur row wahi trigger abhi banakar aaya hota. Yani ye raasta kisi bhi
+**maujooda** ERP user par chal hi nahi sakta tha.
+
+Ab Edge Function `name` bhejta hi nahi (trigger beech me aata hi nahi; naam
+app_users me pehle se hai aur `cmp_username` `admin_grant_app_access()` khud
+bharta hai) aur naye account ka `id` khud deta hai — isi liye relink ki
+zaroorat hi nahi padti. Puraane GoTrue par `id` ignore ho jaaye to fallback
+relink hai, aur wo ab surakshit hai.
+
+Pehle ye haalat **chup-chaap** hoti thi (wajah sirf browser console me).
+Ab `packing.html` login box par ek naranji note likh deta hai — wajah ka
+code (`NO_APP_ACCOUNT`, `NO_AUTH_USER`, `PROFILE_READ`, `PROFILE_HIDDEN`,
+`FN_MISSING`, `SESSION_REVOKED` …) aur uska ilaaj, dono. Poori list server
+se dekhni ho to `sql/CHECK_PACKING_SSO.sql` chalayein: wo har user ka verdict
+deti hai.
+
+> Dhyan: ek waqt par **ek hi** live session chalta hai (`erp_app_login()`
+> purane token revoke kar deta hai). Isi liye desktop par login karne ke baad
+> phone wala session `SESSION_REVOKED` deta hai — ab wo note me saaf likha
+> aata hai. Dono saath chahiye to `SINGLE_LOGIN_MIGRATION.sql` ke section 6b
+> wala block (5 live session) chala dein.
 
 ### Aana-jaana — launcher aur "← Apps"
 
