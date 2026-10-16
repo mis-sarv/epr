@@ -2367,11 +2367,25 @@
                     return pending ? prs.filter(r => !PR_DEAD(r) && !prFieldAllDone(r))
                                    : prs.filter(r => !PR_DEAD(r) && prFieldAllDone(r));
                 }
-            // A held PR is listed here whatever its vendor-info state, so it can
-            // never end up parked in a tab that doesn't show it — this is the
-            // only screen with the control to release it.
-                          return pending ? prs.filter(r => PR_HELD(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
-                                         : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r));
+            /* Teen tarah ki PR yahan PENDING hain:
+                 • jinki vendor info bhari hi nahi — asli kaam
+                 • jo HOLD par hain — held PR har vendor-info haalat me yahan
+                   dikhti hai, taaki wo kisi aise tab me park na ho jaye jo use
+                   dikhata hi nahi; Hold hatane ka control sirf isi screen par
+                   hai
+                 • jinka PO MD ne LAUTA diya — prRejectedPoOpen
+                   Pehle aisi PR sirf PO Generate ▸ Rejected PO me milti thi.
+                   Par wahan sirf approval cancel hoti hai; jo cheez MD ne
+                   objection ki (rate, vendor, GST) wo Vendor Rate & Info sheet
+                   me sudharti hai — yani Vendor Info tab me. Aur Purchaser ka
+                   din isi tab ke Pending par shuru hota hai, to lauta hua kaam
+                   wahin dikhna chahiye, warna PR doosre tab me chup-chaap
+                   baithi rehti hai. Card par uska 🚫 Rejected PO number aur
+                   MD ka remark dono chhapte hain — dekhein paintList.
+               Done se ye jaan-boojh kar HATAYI gayi hai: ek hi PR Pending aur
+               Done dono me dikhna "kaam baaki hai" ko hi bemaani kar deta. */
+                          return pending ? prs.filter(r => PR_HELD(r) || prRejectedPoOpen(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
+                                         : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r) && !prRejectedPoOpen(r));
             case 'POGEN':
                 /* Rejected PO is its own question, not a stage of the other
                    two: the PR has been signed (so it is out of Pending) and a
@@ -2389,11 +2403,12 @@
                    test `_poRejected` never empties (a Rejected PO row stays
                    Rejected for ever) and the PR would sit here permanently,
                    long after it had been dealt with.
-                   A Cancelled PR is left out — nobody is going to rework it. */
-                if(view === REJPO_VIEW)
-                    return prs.filter(r => prHasRejectedPo(r)
-                        && (r.approvals||{}).gmCeo
-                        && (r.status||'') !== 'Cancelled');
+                   A Cancelled PR is left out — nobody is going to rework it.
+                   Wahi teen shartein ab prRejectedPoOpen() me ek jagah hain,
+                   kyunki Vendor Info ▸ Pending bhi inhi par chalti hai — do
+                   copy hoti to ek din dono alag padhti aur PR ek list me
+                   dikhta, doosri me gayab. */
+                if(view === REJPO_VIEW) return prs.filter(prRejectedPoOpen);
                           return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
                                          : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
             // No GM/CEO step on POs: a purchaser-approved PO arrives as "GM/CEO
@@ -2855,6 +2870,29 @@
     }
     function prRejectedPos(r){ return (r && r._poRejected) || []; }
     function prHasRejectedPo(r){ return prRejectedPos(r).length > 0; }
+    /* ── "Is PR par MD ka lautaya PO abhi bhi khula hai" ──────────────
+       EK hi jagah ye sawaal tay hota hai, aur DO list ise padhti hain:
+         • Vendor Info ▸ Pending   — yahan kaam dobara shuru hota hai
+         • PO Generate ▸ Rejected PO — yahan approval cancel hoti hai
+       Ek hi predicate isliye ki dono kabhi alag na padein: agar ek list
+       PR ko "khula" maane aur doosri "nipta hua", to wahi PR ek jagah
+       dikhta aur doosri jagah gayab rehta — aur kaam beech me latak jaata.
+
+       `gmCeo` signature ka test sirf rejected PO dekhne se zyada zaroori
+       hai: wahi signature wo PO banwata hai jo MD ne lautaya, to jab tak
+       wo khadi hai PR par kuch badla nahi ja sakta. Purchaser use cancel
+       karte hain — yahi wo kadam hai jiske liye ye dono list hain — aur
+       tab PR seedha rework me chala jaata hai (apne 🚫 tag aur MD ke
+       remark ke saath). Ye test na hota to `_poRejected` kabhi khaali
+       hota hi nahi (Rejected PO hamesha Rejected rehta hai) aur PR dono
+       list me hamesha ke liye baitha rehta, nipat jaane ke baad bhi.
+
+       Cancelled PR baahar hai — uspar koi dobara kaam nahi karega. */
+    function prRejectedPoOpen(r){
+        return prHasRejectedPo(r)
+            && !!(r.approvals||{}).gmCeo
+            && (r.status||'') !== 'Cancelled';
+    }
     /* One line naming who sent it back and when — the card's headline. The
        remark itself is printed under it, and in full in the modal. */
     function poRejectionWho_(po){
@@ -3104,9 +3142,16 @@
             const card = document.createElement('div');
             const isPr = cfg.module === 'PR';
             const vendorNames = isPr ? prQuotedVendorNames(item) : [];
+            /* Is card par MD ka lautaya PO dikhana hai ya nahi.
+               Rejected PO section me hamesha; aur baaki har list me us PR par
+               jiska rejection abhi khula hai — sabse zyada Vendor Info ▸
+               Pending par, jahan us PR ka kaam dobara shuru hota hai. Pehle ye
+               sirf `rejView` tha, to Pending me aayi lauti hui PR ek aam PR
+               jaisi dikhti thi. */
+            const showRej = isPr && (rejView || prRejectedPoOpen(item));
             // The green "vendor info filled" skin would read as all-is-well on a
             // PR whose PO just came back, so the rejection skin wins.
-            card.className = 'card' + (rejView ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''));
+            card.className = 'card' + (showRej ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''));
             // Acting is only for the tab's own role, on a pending record; any
             // other tap opens the record read-only. The PO Sender's action is
             // the WhatsApp button itself, so their card opens read-only too.
@@ -3149,7 +3194,7 @@
                gets its own line, because two POs off one split PR can come back
                for two different reasons. The rejected PO's own PDF is linked
                beside it — the PR's PDF above is a different document. */
-            if(rejView) html += prRejectedPos(item).map(p => {
+            if(showRej) html += prRejectedPos(item).map(p => {
                 const rem = poRejectionRemark(p);
                 const info = poRejectionInfo(p) || {};
                 return `<div class="rej-note">`
@@ -3188,10 +3233,26 @@
                 const doneCls = (tab === 'POGEN' && prHasRejectedPo(item) && !(item._poNos||[]).length) ? 'wait' : 'done';
                 html += `<div class="card-action ${doneCls}">${escText(doneText)}</div>`;
             } else if(isPr && PR_HELD(item)){
-                // A held PR is in the list only so the hold can be taken off —
-                // saying "fill the rates" here would point at the wrong thing.
+                /* Hold ka hint REJECTION se pehle aata hai, aur jaan-boojh
+                   kar: Hold ek hard rok hai — jab tak wo lagi hai is PR par
+                   koi PO ban hi nahi sakta, to pehla kadam Hold hataana hai,
+                   sudhaar uske baad. Rejection chhupti nahi — 🚫 tag aur MD ka
+                   remark dono isi card par upar chhapte hain. */
                 const hi = prHoldInfo(item);
                 html += `<div class="card-action wait">⏸ Hold par — kholkar Hold hatayein${hi && hi.remarks ? ' · ' + escText(hi.remarks) : ''}</div>`;
+            } else if(showRej){
+                /* Lauti hui PR, Pending list me. Yahan "Vendor & rates
+                   bharein" likhna galat hota — wo pehle se bhari hain; jo
+                   karna hai wo MD ki baat par SUDHAAR hai. Aur sudhaar do
+                   kadam ka hai, isi liye dono likhe gaye hain: rate / vendor
+                   yahin badalte hain, par naya PO banane ke liye PO Generate
+                   me jaakar purani approval cancel karni padti hai (jab tak
+                   wo khadi hai, PR par kuch pakka nahi hota). */
+                html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
+                      + escText(canAct
+                          ? '✖ MD ne PO lautaya — remark padhein, yahan vendor / rate sudhaarein, phir "PO Generate ▸ Rejected PO" me approval cancel karke dobara sign karein'
+                          : 'Purchaser isme sudhar karke dobara sign karenge')
+                      + `</div>`;
             } else if(isPr && isFieldBoy() && canAct){
                 const p = prFieldProgress(item);
                 html += `<div class="card-action act">☑ ${escText('Tap karein — items tick karein' + (p.total ? ' (' + p.done + '/' + p.total + ')' : ''))}</div>`;
