@@ -18063,6 +18063,33 @@ const SARV_BR_FIELDS=[
   {k:'slave_pack_req_2',l:'SLAVE PACKING REQUIRED 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo'},
   {k:'slave_pack_type_2',l:'SLAVE PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandSlavePackType'},
 
+  /* ── Order Form ke Bags & Trims wale 6 purane row + FOAM ─────────
+     Ye saat column `BRAND_TRIMS_MIGRATION.sql` se aate hain.
+
+     Pehle ye chhe cheezein Brand Master me sirf RATE ke roop me thin
+     (label_price, bore_price ...) — "ye material is brand par lagta hai
+     ya nahi" ka jawab kahin likha hi nahi tha, aur Order Form sabhi
+     chhe rows har brand par dikhata tha, chahe lagti ho ya na. Ab
+     Bags & Trims ki poori list yahi se tay hoti hai: jo YES hai wahi
+     row banti hai.
+
+     Dhyan: `tag` aur `tag_1` DO alag column hain (dono YES hon to dono
+     rows banengi) — Order Form ka purana "Tag" row aur Excel ka
+     "TAG 1" ek hi cheez hain ya nahi, ye brand-dar-brand badalta hai,
+     isi liye jodd nahi kiya gaya. Jo na chahiye use NO rakhein.
+     `foam` ka koi rate column nahi hai — uski cost order me bharti hai. */
+  {k:'label',l:'LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo',
+   hint:'Order Form › Bags & Trims ka Label row. Rate alag column me: LABEL PRICE.'},
+  {k:'tag',l:'TAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',
+   hint:'Order Form › Bags & Trims ka Tag row. TAG 1 / 2 / 3 isse alag column hain.'},
+  {k:'bag',l:'BAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: BAG PRICE'},
+  {k:'bore',l:'BORE',g:'trims',t:'dd',dd:'erp_fbmYesNo',
+   hint:'Rate: BORE PRICE (Pack Type Bale ho to Order Form BALE PRICE uthata hai)'},
+  {k:'inner_box',l:'INNER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: INNER BOX PRICE'},
+  {k:'outer_box',l:'OUTER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: OUTER BOX PRICE'},
+  {k:'foam',l:'FOAM',g:'trims',t:'dd',dd:'erp_fbmYesNo',
+   hint:'Iska koi rate column nahi — cost Order Form me order-dar-order bharti hai'},
+
   {k:'micro_label',l:'MICRO LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'small_label',l:'SMALL LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'big_label',l:'BIG LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},

@@ -36,6 +36,7 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `ONE_USER_TABLE.sql` | **Sirf `public.app_users` bachti hai** — `packing.profiles` aur `sales_users` bhi VIEW ban jaate hain (naam, column aur matlab wahi, isi liye dono apps ka code / trigger / RLS bina badle chalte hain). `cmp_profiles` pehle se VIEW hai. **Do qadam:** pehla sirf report deta hai (column, RLS, FK, trigger, aur har wo function jo in tables ko padhta ya likhta hai); `v_do_it := true` karne par asli kaam, archive ke saath. Nayi views par `security_invoker = true` — warna view owner ke haq se chalti aur `app_users` ki RLS beech me aati hi nahi. Purani `CONSOLIDATE_USER_TABLES.sql` ki jagah (wo ab chalti nahi). |
 | `MERGE_DUPLICATE_USERS.sql` | **Ek hi bande ki do `app_users` rows** (jaise "PARKASH" aur "PARKASH JI", dono emp_code 1460) — ek me milati hai, doosri hatati hai. Auth account ki id ek hi row par ho sakti hai, isi liye duplicate rehte hue Complaint / Packing ka access diya hi nahi ja sakta (`AUTH_ACCOUNT_TAKEN`). `erp_merge_duplicate_user()` roles / app access / Order Form role KEEP row par le aata hai, PIN · sessions · resets · Order Form mirror aur **har** `app_users(id)` wale FK ki rows bhi (list `pg_constraint` se nikalti hai), phir duplicate row delete. Ek transaction — kuch atka to poora palat jaata hai. Pehle chalane par sirf report deti hai; merge aap section 3 se chalate hain. ⚠️ Palta nahi ja sakta. |
 | `CHECK_ORDER_FORM_SESSION.sql` | `CHECK_ORDER_FORM_SETUP` "sab maujood hai" kahe par **phir bhi Order Form na khule** to ye. Kuch badalti nahi. Teen cheezein dekhti hai: (1) `anon` ko har `sales_*` RPC par EXECUTE hai ya nahi — na ho to *"permission denied for function sales_whoami"*, jo purane app me "setup pending" bana kar dikhta tha; (2) `sales_sessions` me session ban rahe hain ya nahi (khaali = launcher ka `sales_erp_login()` token hi nahi bana raha); (3) `sales_users` mirror bhara hai ya nahi. Aakhir me ek commented `grant execute` block — sirf tab chalayein jab section A me rok dikhe. |
+| `BRAND_TRIMS_MIGRATION.sql` | **Brand Master me 7 naye MATERIAL (YES/NO) column** — `label`, `tag`, `bag`, `bore`, `inner_box`, `outer_box`, `foam`. Order Form ke **Bags & Trims** ka material list inhi se banta hai. **Ek baar** chalayein (dobara chalana surakshit — `add column if not exists`). **Jab tak ye nahi chalti, Bags & Trims me sirf "Bora Packing Charge" row dikhegi** (khaali column = NO), aur table khud wajah likh deti hai. Neeche dekhein. |
 | `CHECK_ORDER_FORM_SETUP.sql` | **order-form.html par "Database setup pending"** aaye to ye. Kuch badalti nahi. Order Form ko jo 11 RPC aur 3 table chahiye (`sales_whoami`, `sales_save_order`, `sales_orders` …) un sab ko naam **aur argument** se jaanchti hai — PostgREST naam+argument se function dhoondhta hai, isi liye sahi naam par galat argument bhi "function not found" deta hai. Aakhir me faisla: sab maujood hai / module hi nahi hai / itni cheezein missing hain. **Dhyan:** `ORDER_FORM_MIGRATION.sql` is project tree me kahin nahi hai — isi liye app ka purana message ek band gali tha. |
 | `FIX_PROFILE_ID_COLUMNS.sql` | **`CHECK_PACKING_SSO` me `erp_app_session() = PURANA`** aaye to ye. Haalat ye hai ki `MERGE_PROFILE_IDS...` poori chali nahi, isi liye `app_users.pk_profile_id` / `cmp_profile_id` columns zinda par **khaali** hain — aur teen RPC (`erp_app_session`, `erp_app_login`, `erp_sso_profile`) usi khaali column ko padhte hain, `packing.profiles` ko nahi. Nateeja: tables me sab theek, par app har user par `NO_APP_ACCOUNT`. Ye file column backfill karti hai aur `admin_grant_app_access()` me do line jodti hai taaki aage ke users par bhi bhare. Kisi RPC ka body nahi badalta, id nahi badalti, FK nahi chhedta. MERGE baad me chalani ho to ye uske raaste me nahi aati. |
 | `FIX_APP_ACCOUNT_PROVISION.sql` | **Admin Panel me Save karte waqt "⚠️ Complaint App / Packing ka account nahi bana"** aaye to ye chalayein. Do RPC banati hai: `erp_auth_id_by_email()` (sirf server) aur `erp_link_existing_auth_account()` — jo us bande ka **maujooda** auth account (jo doosri id par pada hai) dhoondh kar `app_users.id` usi par le aata hai, naya banaye bina. Aakhir me report: kis user ka auth account usi id par hai, kis ka doosri id par, aur kis ka hai hi nahi. Kuch maujooda function/table badalti nahi. |
@@ -506,6 +507,35 @@ Kaise chalta hai — Store Inward jaisa hi:
   hi na mila ho), aur yahi wo aakhri jagah hai jiske aage galat value
   **database** me chali jaati — jahan se use nikalna sabse mushkil hai.
 
+**Locked specs input box me nahi, ek PATTI me dikhti hain.** Jo value badli hi
+nahi ja sakti uske liye poora input box rakhna sirf jagah khaata tha — nau box
+lagbhag teen qatar le lete the, aur har box sirf ek aisi value dikhata tha jise
+chhua bhi nahi ja sakta. Ab wahi nau value `.spec-view` ki chipon wali patti me
+hai (ek-do qatar), aur Specifications ka poora hissa aadhe se kam jagah leta hai:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ FABRIC 2.2   CATEGORY MINK   WEIGHT 2.20 KG   SIZE 205×230 CM  │
+│ DB/SB DB   PLY SP   SATTAN PREMIUM · 5 INCH SATTAN   MOQ 1000  │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Asli `<input>` **gayab nahi hue** — unka `.fg` chhup jaata hai
+(`ofApplySpecLock_`), input DOM me rehta hai. `getProd`, `collectPayload`,
+`learnMasters`, dono PDF renderer aur `applyProductToCard` sab unhi ko
+padhte-likhte hain, isi liye is badlaav se **data ka raasta bilkul nahi
+badla** — aur patti unhi inputs se padhti hai, to alag se kuch sync karne ki
+zaroorat nahi padti (ek sach, do jagah nahi).
+
+Jo field **lock nahi** hai wo patti me nahi, apne asli input ke roop me dikhta
+hai — GREY/WHITE FABRIC ka **GSM** (haath se bharta hai), **Emboss**, aur wo
+soorat jab Brand Master load hi na hua ho (tab patti khaali rehti hai aur
+`.spec-view:empty` use chhupa deta hai, saare purane box wapas dikhte hain).
+Sattan ke do field **ek chip** me jude hain — dono ka matlab saath me hi banta
+hai. Khaali spec dhundhle **"—"** ke saath dikhti hai, chhupti nahi: patti ka
+har baar ek jaisa dikhna padhne me aasan hai, aur khaali spec apne aap me khabar
+hai (Brand Master me wo bhari hi nahi gayi).
+
 Teen cheezein jaan-boojh kar **BAAHAR** rakhi gayi hain:
 
 - **Pricing & Delivery** (price, discount, GST, qty, packs) — ye har order ka
@@ -544,13 +574,131 @@ Char cheezein jo chup-chaap tod sakti thin, aur unka ilaaj:
    wahi galat address PDF ke bill-to par chhap jaata. Ab khaali value ka matlab
    "khaali karo" hai.
 
-### ➕ Add New Brand Item — Brand Master ke saare 38 column
+### 💰 Pricing & Delivery — 4 column × 2 qatar, aur No. of Bora ab AUTO
+
+```
+Packing Type   Quantity (Pcs)       Price (Rs/KG)   Discount %
+No. of Bora    Packing (pcs/pack)   Weight          GST %
+```
+
+Kram **jodiyon me** padha jaata hai, qatar me nahi: Quantity (Pcs) ke theek
+neeche Packing (pcs/pack) hai, aur un dono se **No. of Bora** banta hai — jo
+input hain wo ek saath, aur jo nikalta hai wo unke pehle column me.
+
+**Hisaab ULAT gaya hai:**
+
+| | Pehle | Ab |
+|---|---|---|
+| Input | No. of Bora + pcs/pack | **Quantity (Pcs)** + pcs/pack |
+| Nikalta hai | Quantity = packs × pcs/pack | **No. of Bora = Quantity ÷ pcs/pack** |
+
+Pehle Quantity (Pcs) — jo order ka asli aankda hai aur jispar buyer se baat
+hoti hai — **khud type hi nahi ki ja sakti thi**; use paane ke liye ulta hisaab
+lagana padta tha. No. of Bora ab readonly + grey hai (wahi roop jo Weight par
+hai).
+
+Teen baatein jaan lein:
+
+- **CEIL, exact bhaag nahi.** Bora ek poori cheez hai: 1000 pcs, 48 per bora =
+  20.83 — par 20 bora me 960 pcs hi jaate hain, baaki 40 ke liye **21vaan** bora
+  lagta hai. Isi liye upar wala poora number liya jaata hai, aur field ke neeche
+  ki lakeer asli bhaag bhi dikha deti hai (`1000 ÷ 48 = 20.83 → 21 (aakhri
+  adhoora)`), amber me, taaki pata rahe ki aakhri bora poora nahi bharta.
+- **Weight ab `Qty × per-pc weight` hai**, `packs × pcs/pack × wt` nahi. Pehle
+  wala chalta tha kyunki tab qty KHUD `packs × pcs/pack` hoti thi (dono
+  barabar). Ab packs upar-ka-poora number hai, to `packs × pcs/pack` qty se
+  **zyada** ho sakta hai — 1000 pcs par 21 × 48 = 1008 — aur wahi 8 pcs ka
+  extra weight bill me chala jaata. Label bhi badal kar **(Qty×Wt)** kar diya
+  gaya hai.
+- **pcs/pack 0 ho to No. of Bora CHHUA hi nahi jaata.** 0 se bhaag dena
+  `Infinity` deta, aur purana order kholne par uski saved packs value bhi mit
+  jaati. Isi wajah se `applyProductToCard` me `calcPackQty` **nahi** chalaya
+  jaata — saved `packs` jaisa hai waisa rehta hai (purane order me qty = packs ×
+  pcs/pack thi, to ulta hisaab wahi number deta, par wo `calcTotalWeight` bhi
+  chala deta aur haath se adjust kiya hua `totalWeight` mit jaata). Sirf dekhne
+  ke liye khola gaya order badalna nahi chahiye.
+
+### 🎒 Bags & Trims — material list Brand Master se
+
+> **Setup:** pehle `BRAND_TRIMS_MIGRATION.sql` chalayein, phir har brand par
+> material YES/NO bharein. Warna table me sirf Bora Packing Charge row rahegi.
+
+Pehle ye table har brand par ek jaisa tha: chhe fixed row (Label / Tag / Bag /
+Bore / Inner Box / Outer Box) **hamesha**, aur baaki material "Add Row" se
+haath se. Natija — jis brand par Bora nahi lagta uspar bhi Bore ka row baitha
+rehta, aur jis par Dori lagti thi wo yaad rakhne par depend karti.
+
+Ab list **Brand Master** tay karti hai: jis material par us **Item Code** ke
+saamne **YES** likha hai, usi ka row banta hai. Manual **Add Row hata diya
+gaya** — do raaste rakhne ka matlab hota ki master kabhi poora sach na bane.
+
+**16 material** ho sakte hain (`OF_MATERIALS`):
+
+| | Material | brand_master column |
+|---|---|---|
+| **fixed** (6) | Label · Tag · Bag · Bore · Inner Box · Outer Box | `label` · `tag` · `bag` · `bore` · `inner_box` · `outer_box` **← naye** |
+| **extra** (10) | Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker | pehle se maujood 9 |
+| | Foam | `foam` **← naya** |
+
+**🟡 "Bora Packing Charge" row HAMESHA dikhti hai** — wo material nahi, packing
+ki mazdoori hai, aur har order par lagti hai.
+
+Do tarah ke row ka farq **DB tak jaata hai**:
+
+- **fixed:true** — in chhe ke apne column `sales_trims_log` me hain
+  (`label_pcs`, `bore_rs`, `inner_box_disc` …) aur PDF ke packing table ka
+  **12-column do-tier header** inhi par bana hai. Row **chhup** sakti hai, par
+  uski jagah DB me rehti hai (0 ke saath) — warna wo table aur wo header dono
+  todne padte.
+- **fixed:false** — baaki material. `full_order` JSON ke `extraTrims` me jaate
+  hain aur PDF ki apni **ADDITIONAL PACKING MATERIALS** table me chhapte hain.
+
+Paisa kahan judta hai, wo **nahi badla**: extras ka cost fixed trims ke saath
+hi `trimsCostPerPc` / `trimsCostTotal` me judta hai (`getProd` +
+`trimsCostTotalFor`), to order ka total, GST, bill summary aur dono PDF is
+badlaav se achhoote hain. Sirf ye badla ki **rows kaun tay karta hai**.
+
+Chaar baatein jo chup-chaap galat ja sakti thin:
+
+1. **Chhupti row ZERO bhi hoti hai.** Sirf `display:none` karna sabse mehnga
+   bug banata: Bore par SIHF + 500 pcs bhara ho, phir aisa Item Code chuna
+   jaye jispar Bore NO hai — row gayab, par `getProd` use DOM se padhta rehta
+   aur us **chhupi row ka paisa order ke total me jud kar PDF tak** chala
+   jaata. Isi liye chhupate waqt `supp='na'` karke `onSupp()` chalaya jaata
+   hai, jo teeno input zero aur disable kar deta hai.
+2. **Pack Type badalne par bhi list dobara jaanchi jaati hai.**
+   `onPackTypeChange` saare fixed trims ko `'na'` karke Label ko (aur Bora par
+   Bore ko) `'foc'` kar deta hai — **chhupi rows par bhi**. Us `foc` ka paisa 0
+   hota hai, par wo PDF ke packing table me us material ke saamne "FOC" chhaap
+   deta, jo us brand par lagta hi nahi. Ab render dobara chalta hai aur chhupi
+   rows wapas `'na'` par aa jaati hain. Jo pehle se bhara hai wo **preset
+   bankar wapas aata hai**, to Pack Type badalne se typed pcs / cost udti nahi.
+   (Item Code badalne par jaan-boojh kar aisa **nahi** hota — wahan brand hi
+   doosra hai, to pichhle brand ki cost carry karna galat hota.)
+3. **Purana order kholne par saved row dikhti hai, aaj ki list chahe kuch
+   kahe.** Brand ki list baad me badal sakti hai (kisi ne Bore ko NO kar
+   diya); tab purana order kholne par wo row chhup jaati **aur** zero ho
+   jaati — yani sirf dekhne ke liye khola gaya order dobara save karte hi apna
+   Bore ka paisa kho deta. `applyProductToCard` `keepFixed` + `extraPresets`
+   bhejta hai, to **jo bhara tha wo dikhta hai** — wo material bhi jo aaj ki
+   list me hi nahi hai (purane order me haath se joda gaya tha).
+4. **Khaali table toota hua lagta hai.** Ek bhi material row na bache to table
+   khud wajah likhti hai — teen me se ek: Item Code chuna nahi, is brand par
+   sab NO hai, ya `BRAND_TRIMS_MIGRATION.sql` abhi chali nahi (ye teesri baat
+   amber me likhi aati hai).
+
+**`tag` aur `tag_1` DO alag column hain** — dono YES hon to dono rows banengi.
+Order Form ka purana "Tag" row aur Excel ka "TAG 1" ek hi cheez hain ya nahi,
+ye brand-dar-brand badalta hai, isi liye jodd nahi kiya gaya. Jo na chahiye
+use **NO** rakhein.
+
+### ➕ Add New Brand Item — Brand Master ke saare 45 column
 
 Item Code sirf list me se chunna hai, to naya brand banane ka raasta isi form
 me hona zaroori tha — warna ek naye SKU ka order lene ke liye ERP kholna padta
 aur Order Form beech me chhodna padta.
 
-Button Item Code ke sirhane hai. Popup me **saare 38 column**, wahi kram aur
+Button Item Code ke sirhane hai. Popup me **saare 45 column**, wahi kram aur
 wahi grouping jo ERP › Master Data › 🏷️ Brand Master ke form me hai:
 
 | Group | Column |
@@ -560,12 +708,12 @@ wahi grouping jo ERP › Master Data › 🏷️ Brand Master ke form me hai:
 | 💰 Rates | Price/KG · Packing Pcs · Label · Tag · Bag · Bore · Inner Box · Outer Box · Bale |
 | 📦 Packing 1 | Master Req / Type · Slave Req / Type |
 | 📦 Packing 2 | wahi chaar, `_2` (khaali chhoda ja sakta hai) |
-| 🏷️ Trims | Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker |
+| 🏷️ Materials / Trims | Label · Tag · Bag · Bore · Inner Box · Outer Box · Foam · Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker — **inhi ke YES par Bags & Trims ki rows banti hain** |
 
 - Zaroori sirf **teen**: Item Code, Fabric Name, Category — bilkul jaisa ERP me
   `req:1` hai.
 - Form **JS se banta hai** (`BR_FORM_FIELDS` → `brBuildForm_()`), markup me
-  nahi: 38 field ka hand-written HTML ek jagah column jodne par doosri jagah
+  nahi: 45 field ka hand-written HTML ek jagah column jodne par doosri jagah
   bhoolne ki poori guarantee hai. **Wo table ERP ke `SARV_BR_FIELDS` ki copy
   hai — ek jagah column jude to yahan bhi jodna hai.**
 - Dropdown values **ERP ke `erp_*` keys** se aati hain (`erp_brandCategory`,

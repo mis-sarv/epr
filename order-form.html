@@ -67,6 +67,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .card{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:16px;margin-bottom:12px;box-shadow:0 2px 10px rgba(26,60,94,.05)}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+/* Pricing & Delivery — theek 4 column, 2 qatar. Aath field hain, aur unka
+   kram jodiyon me padha jaata hai (Quantity ke theek neeche Packing pcs/pack,
+   jisse No. of Bora banta hai), isi liye 3-column grid galat jagah tod deta
+   tha. 900px se neeche 2 column, phone par 1. */
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width:900px){.g4{grid-template-columns:1fr 1fr}}
+/* No. of Bora ke neeche ki chhoti lakeer — batati hai ki value kahan se aayi,
+   aur poora-poora na bante waqt asli bhaag bhi dikhati hai. */
+.pk-hint{font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;min-height:12px}
+.pk-hint.warn{color:#B45309;font-weight:700}
 
 /* ═══════════════════════ INPUTS ═══════════════════════ */
 .fg{margin-bottom:11px}
@@ -260,6 +270,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 /* ★ = "sirf saved list me se". Wahi nishaan jo Store Inward ke Item Name par
    hai, usi rang me, taaki dono screen par ek hi matlab padha jaye. */
 .mstar{color:#C0392B;font-weight:800}
+/* ── Locked Specifications ki patti ───────────────────────────────────────
+   Nau input box ki jagah ek chipon wali qatar. flex-wrap isliye (grid nahi):
+   values ki lambai bahut alag hai — "DB" do akshar, size "205×230 CM" —
+   aur fixed column unme se aadhe ko khaali chhod dete. wrap har chip ko
+   utni hi jagah deta hai jitni use chahiye, to patti ek-do qatar me sikud
+   jaati hai. */
+.spec-view{
+  display:flex;flex-wrap:wrap;gap:4px 6px;
+  background:var(--input);border:1px solid var(--border);border-radius:8px;
+  padding:7px 9px;margin-bottom:10px
+}
+.spec-view:empty{display:none}
+.spec-view .sv{
+  display:flex;align-items:baseline;gap:4px;
+  background:#fff;border:1px solid var(--border);border-radius:6px;padding:3px 8px
+}
+.spec-view .sv-l{font-size:8.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+.spec-view .sv-v{font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap}
+.spec-view .sv.empty .sv-v{color:#B6BECD;font-weight:600}
+/* Item Code chuna hi nahi — patti ke andar ek line, chip nahi. */
+.spec-view .sv-note{font-size:10.5px;color:var(--muted);line-height:1.5}
+@media (max-width:420px){
+  .spec-view .sv-v{font-size:11.5px}
+  .spec-view{gap:3px 4px;padding:6px 7px}
+}
 .lock-note{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.45}
 /* Naya Brand Item form — 40+ column hain, isi liye chaudi modal + group
    headings, bilkul ERP ke Brand Master form jaisa kram. */
@@ -364,7 +399,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 
 /* ═══════════════════════ RESPONSIVE ════════════════════ */
 @media(max-width:600px){
-  .g2,.g3{grid-template-columns:1fr;gap:10px}
+  .g2,.g3,.g4{grid-template-columns:1fr;gap:10px}
   .sig-row{grid-template-columns:1fr}
   .pst{grid-template-columns:1fr 1fr}
   .bnav{padding:10px 12px}
@@ -707,7 +742,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 </div>
 
 <!-- ══ ADD NEW BRAND ITEM (brand_master) ══════════════════════════════
-     Form JS se banta hai (brBuildForm_), markup me nahi — 38 field ka
+     Form JS se banta hai (brBuildForm_), markup me nahi — 45 field ka
      hand-written HTML ek jagah column jodne par doosri jagah bhoolne ki
      poori guarantee hai. Field table BR_FORM_FIELDS me hai, usi kram aur
      grouping me jo ERP ke Brand Master form me hai. -->
@@ -1056,7 +1091,7 @@ let DROPS = {
   design:        ["5 New Designs Single Matching Each Design","3 New Designs","Custom Design"],
 };
 
-const TRIMS=[{k:'label',n:'Label'},{k:'tag',n:'Tag'},{k:'bag',n:'Bag'},{k:'bore',n:'Bore'},{k:'inner',n:'Inner Box'},{k:'outer',n:'Outer Box'}];
+// TRIMS neeche OF_MATERIALS se banta hai (ek hi source) — dekhein OF_FIXED.
 const SUPP=[{v:'na',l:'NA'},{v:'buyer',l:'Buyer Supplied'},{v:'seller',l:'SIHF Supplied'},{v:'foc',l:'SIHF (FOC)'}];
 
 /* ══ SATTAN — Type aur Size, do alag dropdown ═══════════════════════════
@@ -1081,20 +1116,78 @@ const SUPP=[{v:'na',l:'NA'},{v:'buyer',l:'Buyer Supplied'},{v:'seller',l:'SIHF S
 const SATTAN_TYPES=['STANDARD','PREMIUM','NA'];
 const SATTAN_SIZES=['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'];
 
-/* ══ BAGS & TRIMS — "Add Row" wale extra materials ══════════════════════
-   Upar ke chhe trim (Label / Tag / Bag / Bore / Inner / Outer) FIXED hain:
-   unke apne column hain `sales_trims_log` me, aur PDF ka packing table unhi
-   par bana hai. Par asli packing me in chhe ke alawa bhi cheezein lagti
-   hain, aur wo order-dar-order badalti hain — isi liye ye list "Add Row"
-   se chalti hai, fixed column se nahi.
+/* ══ BAGS & TRIMS — material list Brand Master se ═══════════════════════
+   Pehle ye table har brand par ek jaisa tha: chhe fixed row (Label / Tag /
+   Bag / Bore / Inner Box / Outer Box) hamesha, aur baaki material "Add Row"
+   se haath se. Natija — jis brand par Bora nahi lagta uspar bhi Bore ka row
+   baitha rehta, aur jis par Dori lagti thi wo yaad rakhne par depend karti.
 
-   Ye rows `full_order` JSON me `extraTrims` ke andar jaati hain (wahi jagah
-   jahan se Edit button order wapas kholta hai), isliye inke liye bhi koi
-   SQL chalane ki zaroorat nahi. Inka paisa fixed trims ke saath hi
-   trimsCostPerPc / trimsCostTotal me jud jaata hai — dekhein getProd aur
-   trimsCostTotalFor — to order ka total, GST, bill summary aur PDF sab
-   apne aap sahi rehte hain. */
-const EXTRA_MATERIALS=['MICRO LABEL','SMALL LABEL','BIG LABEL','TAG 2','TAG 3','DORI','INSERT CARD','BARCODE STICKER','FOAM'];
+   Ab list BRAND MASTER tay karti hai: jis material par us ITEM CODE ke saamne
+   YES likha hai, usi ka row banta hai. Isi liye manual "Add Row" hata diya
+   gaya — do raaste rakhne ka matlab hota ki master kabhi poora sach na bane.
+
+   DO tarah ke row hain, aur ye farq DB tak jaata hai:
+
+     fixed:true  — in chhe ke apne column hain `sales_trims_log` me
+                   (label_pcs, bore_rs, inner_box_disc ...) aur PDF ke packing
+                   table ka 12-column do-tier header inhi par bana hai. Row
+                   chhup sakti hai, par uski jagah DB me rehti hai (0 ke
+                   saath) — warna wo table aur wo header dono todne padte.
+     fixed:false — baaki material. Ye `full_order` JSON ke `extraTrims` me
+                   jaate hain aur PDF ki apni "ADDITIONAL PACKING MATERIALS"
+                   table me chhapte hain.
+
+   `bm` = brand_master ka column. Saat column (label, tag, bag, bore,
+   inner_box, outer_box, foam) `BRAND_TRIMS_MIGRATION.sql` se aate hain; baaki
+   nau pehle se the. Column na mile ya khaali ho to row NAHI dikhti (khaali =
+   NO) — isi liye wo SQL chalana zaroori hai, warna sirf Bora Packing Charge
+   row bachti hai (table khud ye note dikhati hai).
+
+   `price` = brand_master ka rate column, jahan hai. FOAM aur Excel wale nau
+   material ka koi rate column nahi — unki cost order me bharti hai. */
+const OF_MATERIALS=[
+  {k:'label', n:'Label',           bm:'label',     fixed:true,  price:'labelPrice'},
+  {k:'tag',   n:'Tag',             bm:'tag',       fixed:true,  price:'tagPrice'},
+  {k:'bag',   n:'Bag',             bm:'bag',       fixed:true,  price:'bagPrice'},
+  {k:'bore',  n:'Bore',            bm:'bore',      fixed:true,  price:'borePrice'},
+  {k:'inner', n:'Inner Box',       bm:'inner_box', fixed:true,  price:'innerPrice'},
+  {k:'outer', n:'Outer Box',       bm:'outer_box', fixed:true,  price:'outerPrice'},
+  {n:'MICRO LABEL',     bm:'micro_label',     fixed:false},
+  {n:'SMALL LABEL',     bm:'small_label',     fixed:false},
+  {n:'BIG LABEL',       bm:'big_label',       fixed:false},
+  {n:'TAG 1',           bm:'tag_1',           fixed:false},
+  {n:'TAG 2',           bm:'tag_2',           fixed:false},
+  {n:'TAG 3',           bm:'tag_3',           fixed:false},
+  {n:'DORI',            bm:'dori',            fixed:false},
+  {n:'INSERT CARD',     bm:'insert_card',     fixed:false},
+  {n:'BARCODE STICKER', bm:'barcode_sticker', fixed:false},
+  {n:'FOAM',            bm:'foam',            fixed:false},
+];
+const OF_FIXED=OF_MATERIALS.filter(m=>m.fixed);
+const OF_EXTRA=OF_MATERIALS.filter(m=>!m.fixed);
+/* TRIMS wahi chhe fixed rows hain, wahi kram — par ab OF_MATERIALS se BANTA
+   hai, alag se likha nahi jaata. Pehle ye apni list thi; do list rakhne ka
+   matlab hota ki ek din unme farq aa jaye aur ek row table me dikhe par DB
+   me na jaye (ya ulta). getProd, applyProductToCard aur dono PDF renderer
+   isi `TRIMS` ko padhte hain, bilkul pehle ki tarah. */
+const TRIMS=OF_FIXED.map(m=>({k:m.k,n:m.n}));
+/* Brand Master ne is material par YES kaha hai?
+   KHAALI / column maujood hi nahi = NO. Ye jaan-boojh kar tay kiya gaya:
+   "pata nahi" ko YES maan lete to migration chalne se pehle list aaj jaisi
+   hi dikhti aur kisi ko pata na chalta ki filter laga hi nahi. Ab farq saaf
+   dikhta hai — aur table us soorat me khud wajah likh deti hai. */
+function ofMatYes_(item,m){
+  if(!item||!m||!m.bm) return false;
+  const v=item.materials?item.materials[m.bm]:undefined;
+  return String(v==null?'':v).trim().toUpperCase()==='YES';
+}
+/* `extraTrims` rows ab Brand Master se banti hain, par save hone ki jagah
+   wahi hai: `full_order` JSON ka `extraTrims`, aur unka paisa fixed trims ke
+   SAATH trimsCostPerPc / trimsCostTotal me judta hai (dekhein getProd aur
+   trimsCostTotalFor). Isi liye order ka total, GST, bill summary aur dono PDF
+   is badlaav se achhoote hain — sirf ye badla hai ki rows kaun tay karta hai.
+   Purana `EXTRA_MATERIALS` (manual Add Row ka dropdown) hata diya gaya — ab
+   list OF_EXTRA hai aur use koi dropdown nahi padhta. */
 
 /* ══ MASTER-ONLY FIELDS (★) ═════════════════════════════════════════════
    Buyer / Company Name aur Item Code ab SIRF saved list me se chunne hain,
@@ -1212,6 +1305,72 @@ function ofApplySpecLock_(id){
   const isGrey=(code==='GREY/WHITE FABRIC');
   ofLockField_(document.getElementById('p'+id+'-weight'),ready&&!isGrey,
     'Blanket Weight Brand Master se locked hai');
+  /* Jo field LOCK ho gaya uska poora input box CHHUP jaata hai — uski value
+     upar ki patti me chali jaati hai (ofRenderSpecView_). Input DOM me rehta
+     hai, sirf dikhta nahi: har reader-writer (getProd, collectPayload,
+     learnMasters, PDF, applyProductToCard) usi ko padhta-likhta hai.
+     Chhupaya .fg jaata hai, input nahi — warna label aur combo-arrow apni
+     khaali jagah ghere rehte. */
+  ofSpecBoxes_(id).forEach(([el,locked])=>{
+    const box=el&&el.closest?el.closest('.fg'):null;
+    if(box) box.style.display=locked?'none':'';
+  });
+  ofRenderSpecView_(id);
+}
+// Spec field aur uska lock-haal, ek jagah — lock lagane wala aur patti banane
+// wala dono isi se chalte hain, to dono ka faisla kabhi alag nahi padta.
+function ofSpecBoxes_(id){
+  const ready=Object.keys(STANDARD_ITEMS).length>0;
+  const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim().toUpperCase();
+  const isGrey=(code==='GREY/WHITE FABRIC');
+  const out=OF_SPEC_LOCK.map(k=>[document.getElementById('p'+id+'-'+k),ready]);
+  out.push([document.getElementById('p'+id+'-weight'),ready&&!isGrey]);
+  return out;
+}
+
+/* ── Locked specs ki compact patti ───────────────────────────────────────
+   Values WAHI hidden inputs se padhi jaati hain jo chhup gaye — ek hi sach,
+   do jagah nahi. Isi liye jo kuch bhi un inputs me likhta hai (Item Code
+   auto-fill, purana order Edit par kholna, Add New Brand Item ke baad ka
+   auto-select) wo patti me apne aap dikh jaata hai; kisi ko alag se yahan
+   likhna nahi padta.
+
+   Sattan ke do field EK chip me jude hain ("PREMIUM · 5 INCH SATTAN") —
+   dono ka matlab saath me hi bana hai, aur do chip do baar "SATTAN" likhwate.
+   Khaali value dikhti hai, chhupti nahi (dhundhle "—" ke saath): patti ka
+   har baar ek jaisa dikhna padhne me aasan hai, aur khaali spec apne aap me
+   khabar hai — Brand Master me wo bhari hi nahi gayi. */
+function ofRenderSpecView_(id){
+  const host=document.getElementById('p'+id+'-spec-view');
+  if(!host) return;
+  // Jo box dikh raha hai (lock nahi hai) wo patti me dobara nahi aata —
+  // uski value wahin type ho rahi hai.
+  const hidden={};
+  ofSpecBoxes_(id).forEach(([el,locked])=>{ if(el) hidden[el.id.replace('p'+id+'-','')]=locked; });
+  const v=k=>String(document.getElementById('p'+id+'-'+k)?.value||'').trim();
+  /* Kuch bhi locked nahi (Brand Master load hi nahi hua) — to patti khaali,
+     aur `.spec-view:empty` use poori tarah chhupa deta hai. Us soorat me
+     saare asli input dikh rahe hain, jo khud hi apni baat keh dete hain;
+     unke upar ek aur copy rakhna sirf shor hota. */
+  if(!Object.keys(hidden).some(k=>hidden[k])){ host.innerHTML=''; return; }
+  const code=v('itemCode');
+  if(!code){
+    host.innerHTML='<span class="sv-note">Item Code chunein — uski specifications yahan dikhengi.</span>';
+    return;
+  }
+  const chip=(l,val)=>'<span class="sv'+(val?'':' empty')+'"><span class="sv-l">'+esc(l)
+    +'</span><span class="sv-v">'+esc(val||'—')+'</span></span>';
+  const out=[];
+  if(hidden.fabric)   out.push(chip('Fabric',v('fabric')));
+  if(hidden.category) out.push(chip('Category',v('category')));
+  if(hidden.weight)   out.push(chip('Weight',v('weight')?(v('weight')+' KG'):''));
+  if(hidden.size)     out.push(chip('Size',v('size')));
+  if(hidden.dbsb)     out.push(chip('DB/SB',v('dbsb')));
+  if(hidden.ply)      out.push(chip('Ply',v('ply')));
+  if(hidden.sattanType||hidden.sattanSize)
+    out.push(chip('Sattan',[v('sattanType'),v('sattanSize')].filter(Boolean).join(' · ')));
+  if(hidden.moq)      out.push(chip('MOQ',v('moq')));
+  host.innerHTML=out.join('');
 }
 // Saare khule product cards par lock dobara lagana. fetchDrops ke baad
 // zaroori hai: pehla card masters aane se PEHLE ban chuka hota hai.
@@ -1725,7 +1884,22 @@ function bmToItem(r){
     borePrice:  n(r.bore_price),
     innerPrice: n(r.inner_box_price),
     outerPrice: n(r.outer_box_price),
-    balePrice:  n(r.bale_price)
+    balePrice:  n(r.bale_price),
+    /* ── Bags & Trims ki material list ──────────────────────────────
+       Har material ka YES/NO jaisa hai waisa, ek `materials` object me.
+       Order Form ka Bags & Trims table isi se banta hai: jo YES hai usi
+       ka row banta hai (dekhein OF_MATERIALS / ofMatYes_).
+
+       Alag object me rakha gaya hai, seedhe item par phaila kar nahi:
+       `label`, `tag`, `bag` jaise naam Order Form ke apne field naamon
+       ke bahut kareeb hain, aur ek din koi `item.label` likh kar rate
+       ki jagah YES/NO padh leta. `item.materials.label` ka matlab ek
+       hi hai aur wo saaf hai.
+
+       Jo column database me abhi nahi hai (BRAND_TRIMS_MIGRATION.sql
+       chalne se pehle ke saat) wo yahan undefined aata hai — ofMatYes_
+       use NO padhta hai. */
+    materials: OF_MATERIALS.reduce((o,m)=>{ o[m.bm]=r[m.bm]; return o; },{})
   };
 }
 
@@ -2246,7 +2420,7 @@ async function saveNewBuyer(){
    banane ka raasta isi form me hona zaroori hai — warna ek naye SKU ka order
    lene ke liye ERP kholna padta aur Order Form beech me chhod dena padta.
 
-   SAARE 38 column, wahi kram aur wahi grouping jo ERP › Master Data ›
+   SAARE 45 column, wahi kram aur wahi grouping jo ERP › Master Data ›
    🏷️ Brand Master ke form me hai (store-core.js ka SARV_BR_FIELDS). Neeche
    ki table usi ki copy hai — ek jagah column juda to yahan bhi jodna hai,
    warna naya brand yahan se adhoora banega.
@@ -2291,7 +2465,20 @@ const BR_FORM_FIELDS=[
   {k:'slave_pack_req_2',   l:'Slave Packing Required 2', t:'dd', dd:BR_YN},
   {k:'slave_pack_type_2',  l:'Slave Packing Type 2',  t:'dd', dd:'erp_brandSlavePackType'},
 
-  {g:'🏷️ Labels / Tags / Trims', k:'micro_label', l:'Micro Label', t:'dd', dd:BR_YN},
+  /* Material list — Order Form ke Bags & Trims ki rows yahi se banti hain
+     (jo YES ho wahi row). Pehle saat (Label … Foam) BRAND_TRIMS_MIGRATION.sql
+     se aate hain; wo SQL na chali ho to `nmInsert_` un columns ko chhod kar
+     dobara insert karta hai, to naya brand phir bhi save hota hai — bas uski
+     material list khaali rehti hai. */
+  {g:'🏷️ Materials / Labels / Tags / Trims <span style="font-weight:600;text-transform:none;color:#6B7897">— YES wale hi Order Form ke Bags &amp; Trims me row bante hain</span>',
+     k:'label', l:'Label', t:'dd', dd:BR_YN},
+  {k:'tag',       l:'Tag',        t:'dd', dd:BR_YN, hint:'Tag 1 / 2 / 3 isse alag hain'},
+  {k:'bag',       l:'Bag',        t:'dd', dd:BR_YN},
+  {k:'bore',      l:'Bore',       t:'dd', dd:BR_YN},
+  {k:'inner_box', l:'Inner Box',  t:'dd', dd:BR_YN},
+  {k:'outer_box', l:'Outer Box',  t:'dd', dd:BR_YN},
+  {k:'foam',      l:'Foam',       t:'dd', dd:BR_YN, hint:'Iska koi rate column nahi'},
+  {k:'micro_label', l:'Micro Label', t:'dd', dd:BR_YN},
   {k:'small_label',     l:'Small Label',     t:'dd', dd:BR_YN},
   {k:'big_label',       l:'Big Label',       t:'dd', dd:BR_YN},
   {k:'tag_1',           l:'Tag 1',           t:'dd', dd:BR_YN},
@@ -2589,6 +2776,12 @@ function onItemCodeSelect(id, code){
   suppressCombo=false;
   // Trigger Pack Type change to auto-set suppliers (this enables cost inputs for SIHF-supplied trims)
   onPackTypeChange(id);
+  /* Bags & Trims ki list is brand ke hisaab se dobara banti hai.
+     onPackTypeChange ke BAAD, kyunki wo saare fixed trims ko 'na' karke
+     Label aur Bore ko 'foc' kar deta hai — us faisle ke upar Brand Master ka
+     faisla chadhna chahiye, na ki ulta. Aur cost auto-fill se PEHLE, taaki
+     wo sirf un rows par chale jo is brand par asli me hain. */
+  ofRenderMaterials_(id);
   // Auto-fill Packing (pcs/pack) from Standard Items — AFTER onPackTypeChange so it doesn't get blanked
   const ppEl=document.getElementById('p'+id+'-packPcs');
   if(ppEl && item.packPcs){ ppEl.value=item.packPcs; calcPackQty(id); }
@@ -2692,6 +2885,21 @@ function addProduct(){
            khuli rehti hai — rate, discount, qty aur GST har order ke apne
            sauda hain, brand ki pehchaan nahi. -->
       <div class="shd">Specifications <span style="font-size:9.5px;font-weight:600;color:var(--muted);text-transform:none">🔒 Brand Master se locked</span></div>
+      <!-- Locked specs ek PATTI me, input box me nahi.
+           Jo value badli hi nahi ja sakti uske liye poora input box rakhna
+           sirf jagah khaata hai — nau box lagbhag teen qatar le lete the, aur
+           har box sirf ek aisi value dikhata tha jise chhua bhi nahi ja
+           sakta. Ab wahi nau value ek chipon wali patti me hai (do-teen
+           qatar ki jagah ek-do me).
+           Asli <input> gayab nahi hue — wo bas chhup gaye hain (unka .fg
+           ofApplySpecLock_ chhupata hai). getProd, collectPayload,
+           learnMasters, dono PDF renderer aur applyProductToCard sab unhi ko
+           padhte-likhte hain, isi liye is badlaav se data ka raasta bilkul
+           nahi badla.
+           Jo field LOCK nahi hai wo patti me nahi, apne asli input ke roop me
+           dikhta hai — jaise GREY/WHITE FABRIC ka GSM (haath se bharta hai),
+           ya wo soorat jab Brand Master load hi na hua ho. -->
+      <div class="spec-view" id="p${id}-spec-view"></div>
       <div class="g3">
         <div class="fg"><label>Fabric Name / Code</label>
           <div class="combo-wrap">
@@ -2747,7 +2955,11 @@ function addProduct(){
             <div class="combo-list" id="p${id}-moq-list"></div>
           </div>
         </div>
-        <div class="fg"><label>Emboss</label>
+        <!-- Emboss patti me nahi, apne asli box me — ye LOCKED nahi hai.
+             Brand Master se value aati hai par badli ja sakti hai: ek hi
+             brand ka ek order emboss ke saath aur doosra bina ja sakta hai,
+             aur yahi select 🎨 Emboss Design Photos section kholta hai. -->
+        <div class="fg"><label>Emboss <span style="font-size:9px;font-weight:600;color:var(--muted);text-transform:none">— badal sakte hain</span></label>
           <select id="p${id}-emboss" onchange="onEmbossChange(${id})"><option value="NO">NO</option><option value="YES">YES</option><option value="NA">NA</option><option value="Decision Pending">Decision Pending</option></select></div>
       </div>
       <div id="p${id}-emboss-photo-section" style="display:none;margin-top:10px;padding:10px 12px;background:#FFFBEA;border:1px solid #FCD34D;border-radius:8px">
@@ -2765,8 +2977,20 @@ function addProduct(){
           <div class="combo-list" id="p${id}-design-list"></div>
         </div>
       </div>
+      <!-- Pricing & Delivery — 4 column x 2 qatar.
+           Kram jodiyon me padha jaata hai, qatar me nahi: Quantity (Pcs) ke
+           THEEK NEECHE Packing (pcs/pack) hai, aur un dono se No. of Bora
+           banta hai — jo input hain wo ek saath, aur jo nikalta hai wo unke
+           pehle column me.
+
+             Packing Type   Quantity (Pcs)       Price (Rs/KG)   Discount %
+             No. of Bora    Packing (pcs/pack)   Weight          GST %
+
+           No. of Bora ab AUTO hai = Quantity (Pcs) / Packing (pcs/pack).
+           Pehle ulta tha (qty = packs x pcs/pack), yani qty khud bhari nahi
+           jaati thi. Dekhein calcPackQty. -->
       <div class="shd">Pricing &amp; Delivery</div>
-      <div class="g3">
+      <div class="g4">
         <div class="fg"><label>Packing Type</label>
           <select id="p${id}-packType" onchange="onPackTypeChange(${id})">
             <option value="Bora">Bora</option>
@@ -2776,13 +3000,17 @@ function addProduct(){
             <option value="Loose">Loose</option>
           </select>
         </div>
-        <div class="fg"><label id="p${id}-packs-lbl">No. of Bora</label><input type="number" id="p${id}-packs" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
-        <div class="fg"><label>Packing (pcs/pack)</label><input type="number" id="p${id}-packPcs" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
-        <div class="fg"><label>Quantity (Pcs)</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcAll()"></div>
+        <div class="fg"><label>Quantity (Pcs)</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
         <div class="fg"><label>Price (₹ / KG)</label><input type="number" id="p${id}-price" placeholder="e.g. 215" step="0.5" oninput="calcAll()"></div>
         <div class="fg"><label>Discount % on Price</label><input type="number" id="p${id}-discount" placeholder="0" min="0" max="100" step="0.1" value="0" oninput="calcAll()"></div>
+
+        <div class="fg"><label id="p${id}-packs-lbl">No. of Bora</label>
+          <input type="number" id="p${id}-packs" placeholder="auto" min="0" readonly>
+          <div class="pk-hint" id="p${id}-packs-hint">Qty ÷ pcs/pack</div>
+        </div>
+        <div class="fg"><label>Packing (pcs/pack)</label><input type="number" id="p${id}-packPcs" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
+        <div class="fg"><label>Weight <small style="font-weight:400;text-transform:none;color:var(--muted)">(Qty×Wt)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8"></div>
         <div class="fg"><label>GST %</label><input type="number" id="p${id}-gst" placeholder="e.g. 5" step="0.5" min="0" value="5" oninput="calcAll()"></div>
-        <div class="fg"><label>Weight <small style="font-weight:400;text-transform:none;color:var(--muted)">(Packs×Pcs×Wt)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8"></div>
       </div>
       <div class="fg" style="margin-top:10px"><label>Remarks <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(shown as "Other Comment" on this product's photo page in the PDF)</span></label><input type="text" id="p${id}-remarks" placeholder="Any special instructions for this product..." oninput="calcAll()"></div>
       <div class="shd">Product Photo &amp; Comments</div>
@@ -2799,12 +3027,46 @@ function addProduct(){
           <input type="text" id="p${id}-designCost" placeholder="e.g. ₹2/pc extra for custom jacquard design..." oninput="calcAll()">
         </div>
       </div>
-      <div class="shd">Bags &amp; Trims</div>
+      <!-- Bags & Trims — material list BRAND MASTER se.
+           Jis material par us Item Code ke saamne YES likha hai usi ka row
+           dikhta hai (OF_MATERIALS / ofRenderMaterials_). Chhe fixed row
+           markup me hi rehti hain par chhup jaati hain — unke apne column
+           sales_trims_log me hain aur PDF ka packing header unhi par bana
+           hai, to unhe DOM se hatana dono ko todna hota. Baaki material
+           xt-body me apne aap bante hain.
+           "Bora Packing Charge" row HAMESHA dikhti hai — wo material nahi,
+           packing ki mazdoori hai, aur har order par lagti hai.
+           DHYAN: ye comment ek JS template literal ke ANDAR hai — isme
+           backtick likhna poori string tod deta hai. -->
+      <div class="shd">Bags &amp; Trims <span style="font-size:9.5px;font-weight:600;color:var(--muted);text-transform:none">🔒 Material list Brand Master se</span></div>
       <table class="tt">
         <thead><tr><th>Material</th><th>Supplied By</th><th>No. of Pcs</th><th style="text-align:right">Cost/Pc (₹)</th><th style="text-align:right">Discount%</th></tr></thead>
+        <!-- Packing Charge SABSE PEHLI ROW, apne tbody me — isi liye wo
+             material list ke beech kahin kho nahi sakti.
+             Apna tbody isliye ki ye row hamesha dikhti hai aur hamesha PEHLE:
+             neeche ki material rows Brand Master ke hisaab se chhupti-dikhti
+             rehti hain (ofRenderMaterials_), aur jab saari chhup jaati hain to
+             pehle ye row list ke beech / neeche jaa kar akeli lagti thi.
+             Label packing type ke saath badalta hai — "Bora Packing Charge",
+             "Roll Packing Charge", "Bale Packing Charge" (onPackTypeChange /
+             applyProductToCard). Markup me Bora likha hai kyunki naya card
+             usi par khulta hai. -->
+        <tbody>
+          <tr id="p${id}-packCharge-row" style="background:#FFFBEA">
+            <td style="font-weight:600;font-size:13px;color:#92400E" id="p${id}-packCharge-label">Bora Packing Charge</td>
+            <td style="color:#92400E;font-size:11px;text-align:center;font-weight:600">SIHF</td>
+            <td>
+              <input type="number" class="trim-pi" id="p${id}-packCharge-pcs" placeholder="0" min="0" value="0" oninput="calcAll()" style="background:#FFFBEA;border-color:#FCD34D;width:70px">
+            </td>
+            <td style="text-align:right">
+              <input type="number" class="trim-pi" id="p${id}-packCharge" placeholder="0" step="0.5" min="0" value="0" oninput="calcAll()" style="background:#FFFBEA;border-color:#FCD34D">
+            </td>
+            <td style="background:#FFFBEA"></td>
+          </tr>
+        </tbody>
         <tbody>
           ${TRIMS.map(t=>`
-          <tr>
+          <tr id="p${id}-${t.k}-row" style="display:none">
             <td style="font-weight:600;font-size:13px" id="p${id}-${t.k}-lbl">${t.n}</td>
             <td><select class="trim-sel" id="p${id}-${t.k}-supp" onchange="onSupp(${id},'${t.k}')">
               ${SUPP.map(o=>`<option value="${o.v}">${o.l}</option>`).join('')}
@@ -2819,31 +3081,22 @@ function addProduct(){
               <input type="number" class="trim-pi" id="p${id}-${t.k}-disc" placeholder="0" step="0.1" min="0" max="100" value="0" disabled oninput="calcAll()" style="width:64px">
             </td>
           </tr>`).join('')}
-          <tr id="p${id}-packCharge-row" style="background:#FFFBEA">
-            <td style="font-weight:600;font-size:13px;color:#92400E" id="p${id}-packCharge-label">Bora Packing Charge</td>
-            <td style="color:#92400E;font-size:11px;text-align:center;font-weight:600">SIHF</td>
-            <td>
-              <input type="number" class="trim-pi" id="p${id}-packCharge-pcs" placeholder="0" min="0" value="0" oninput="calcAll()" style="background:#FFFBEA;border-color:#FCD34D;width:70px">
-            </td>
-            <td style="text-align:right">
-              <input type="number" class="trim-pi" id="p${id}-packCharge" placeholder="0" step="0.5" min="0" value="0" oninput="calcAll()" style="background:#FFFBEA;border-color:#FCD34D">
-            </td>
-            <td style="background:#FFFBEA"></td>
-          </tr>
         </tbody>
-        <!-- Extra materials, "Add Row" se. Apna tbody rakha gaya hai (HTML me
-             ek table ke kai tbody valid hain) taaki in rows ko jodna / hatana
-             upar ke fixed chhe trim aur Packing Charge row ko chhue hi na —
-             wo rows id se dhoondhi jaati hain aur unka layout tay hai. -->
+        <!-- Baaki material (Micro/Small/Big Label, Tag 1-3, Dori, Insert Card,
+             Barcode Sticker, Foam) — ofRenderMaterials_ inhe Brand Master ke
+             YES par banata hai. Apna tbody rakha gaya hai (HTML me ek table ke
+             kai tbody valid hain) taaki inhe dobara banane se upar ke fixed
+             chhe trim aur Packing Charge row chhue hi na jaayein. -->
         <tbody id="p${id}-xt-body"></tbody>
-        <tfoot>
+        <!-- Jab ek bhi material row na dikhe. Khaali table "toota hua" lagta
+             hai, isi liye wajah saaf likhi jaati hai — aur wajah teen me se
+             ek hoti hai: Item Code chuna nahi, brand par sab NO hai, ya
+             BRAND_TRIMS_MIGRATION.sql abhi chali nahi. Text
+             ofRenderMaterials_ bharta hai. -->
+        <tfoot id="p${id}-mat-note-wrap">
           <tr>
-            <td colspan="5" style="padding:7px 6px;background:#F8FAFC;border-top:1px dashed #CBD5E1">
-              <button type="button" onclick="addExtraTrim(${id})"
-                style="background:#1A3C5E;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
-                ➕ Add Row</button>
-              <span style="font-size:10.5px;color:var(--muted);margin-left:9px">Micro / Small / Big Label, Tag 2, Tag 3, Dori, Insert Card, Barcode Sticker, Foam — jo bhi is order me lage</span>
-            </td>
+            <td colspan="5" id="p${id}-mat-note"
+                style="padding:9px 8px;background:#F8FAFC;border-top:1px dashed #CBD5E1;font-size:10.5px;color:var(--muted);line-height:1.5"></td>
           </tr>
         </tfoot>
       </table>
@@ -2864,6 +3117,10 @@ function addProduct(){
   ofApplySpecLock_(id);
   ofLockToList_(document.getElementById('p'+id+'-itemCode'),
     ()=>Object.keys(STANDARD_ITEMS), 'Brand Item', ()=>ofClearSpecs_(id));
+  // Naya card: Item Code chuna nahi hai, to koi material row nahi — table
+  // apna note dikhati hai. Bora Packing Charge row phir bhi dikhti hai.
+  ofRenderMaterials_(id);
+  ofPacksAuto_(id);
   calcAll();
 }
 
@@ -3143,7 +3400,13 @@ function setSattan(id,type,size,joint){
    Ek row jodta hai. Row ka index xtSeq se aata hai, kabhi dobara use nahi
    hota — row hatane par agar index recycle hota to nayi row ke input ids
    purani row se takra jaate aur do rows ek doosre ki value padhne lagtin. */
-function addExtraTrim(id,preset){
+/* Ek non-fixed material ki row. Pehle ye "Add Row" se banti thi aur Material
+   ek dropdown hota tha; ab row BRAND MASTER ke kehne par banti hai, isi liye
+   material ka naam PAKKA hai — ek readonly text cell, aur uske saath ek hidden
+   input jisme wahi naam jaata hai (readExtraTrims usi ko padhta hai, bilkul
+   pehle ki tarah). Remove button bhi hat gaya: row ko hataane ka matlab hota
+   Brand Master ko jhuthlaana, aur agli baar wo dobara aa jaati. */
+function ofAddMaterialRow_(id,mat,preset){
   const body=document.getElementById('p'+id+'-xt-body');
   if(!body) return;
   xtSeq[id]=(xtSeq[id]||0)+1;
@@ -3158,33 +3421,96 @@ function addExtraTrim(id,preset){
   const iStyle=on?'background:#EFF6FF;border-color:#93C5FD;':'';
   body.insertAdjacentHTML('beforeend',`
   <tr id="${pre}-row">
-    <td>
-      <select class="trim-sel" id="${pre}-mat" onchange="calcAll()" style="font-weight:600">
-        ${optsHtml_(EXTRA_MATERIALS,String(p.mat||''))}
-      </select>
+    <td style="font-weight:600;font-size:13px">${esc(mat)}
+      <input type="hidden" id="${pre}-mat" value="${esc(mat)}">
     </td>
     <td><select class="trim-sel" id="${pre}-supp" onchange="onExtraSupp(${id},${n})">
       ${SUPP.map(o=>`<option value="${o.v}"${o.v===supp?' selected':''}>${o.l}</option>`).join('')}
     </select></td>
     <td><input type="number" class="trim-pi" id="${pre}-pcs" placeholder="0" min="0" value="${Number(p.pcs)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:70px;${iStyle}"></td>
     <td style="text-align:right"><input type="number" class="trim-pi" id="${pre}-cost" placeholder="0" step="0.5" min="0" value="${Number(p.cost)||0}" ${on?'':'disabled'} oninput="calcAll()" style="${iStyle}"></td>
-    <td style="text-align:right;white-space:nowrap">
-      <input type="number" class="trim-pi" id="${pre}-disc" placeholder="0" step="0.1" min="0" max="100" value="${Number(p.disc)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:64px;${iStyle}">
-      <button type="button" onclick="removeExtraTrim(${id},${n})" title="Ye row hatayein"
-        style="margin-left:5px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;vertical-align:middle">🗑</button>
-    </td>
+    <td style="text-align:right"><input type="number" class="trim-pi" id="${pre}-disc" placeholder="0" step="0.1" min="0" max="100" value="${Number(p.disc)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:64px;${iStyle}"></td>
   </tr>`);
-  // Preset ke bina (user ne button dabaya) hi recalc chahiye; restore ke waqt
-  // applyProductToCard apne aakhir me ek hi baar calcAll() karta hai.
-  if(!preset) calcAll();
 }
-function removeExtraTrim(id,n){
-  const row=document.getElementById(`p${id}-xt${n}-row`);
-  if(row) row.remove();
-  const list=extraTrimRows[id]||[];
-  const at=list.indexOf(n);
-  if(at>=0) list.splice(at,1);
-  calcAll();
+
+/* ══ BAGS & TRIMS ki poori list, Brand Master ke hisaab se ═══════════════
+   Ek hi jagah jo tay karti hai ki kaunsi row dikhegi. Teen kaam karti hai:
+     1. chhe fixed rows ko dikhati / chhupati hai
+     2. baaki material ki rows dobara banati hai
+     3. ek bhi row na bache to wajah likh deti hai
+
+   CHHUPTE WAQT ROW ZERO BHI HOTI HAI. Sirf display:none karna sabse mehnga
+   bug banata: Bore par SIHF + 500 pcs bhara ho, phir aisa Item Code chuna
+   jaye jispar Bore NO hai — row gayab, par getProd use DOM se padhta rehta
+   aur us chhupi row ka paisa order ke total me jud kar PDF tak chala jaata.
+   Isi liye supp='na' karke onSupp() chalaya jaata hai, jo teeno input zero
+   aur disable kar deta.
+
+   `keepFixed` / `extraPresets` sirf purana order kholne ke liye hain: saved
+   order me jo bhara hai wo DIKHNA chahiye, chahe aaj Brand Master us material
+   par NO kehta ho. Us order par wo material laga tha — use chhupa kar
+   chup-chaap zero kar dena save kiya hua record badal dena hota. */
+function ofRenderMaterials_(id,opts){
+  const o=opts||{};
+  const keep=o.keepFixed||new Set();
+  const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim();
+  const item=STANDARD_ITEMS[code]||null;
+  let shown=0;
+
+  // 1. Fixed chhe
+  OF_FIXED.forEach(m=>{
+    const row=document.getElementById('p'+id+'-'+m.k+'-row');
+    if(!row) return;
+    const on=keep.has(m.k)||ofMatYes_(item,m);
+    row.style.display=on?'':'none';
+    if(on){ shown++; return; }
+    const sel=document.getElementById('p'+id+'-'+m.k+'-supp');
+    if(sel && sel.value!=='na'){ sel.value='na'; onSupp(id,m.k); }
+  });
+
+  // 2. Baaki material — poori tarah dobara. Purani rows ke ids wapas use
+  //    nahi hote (xtSeq badhta hi rehta hai), warna nayi row purani ke
+  //    input se takra jaati.
+  const body=document.getElementById('p'+id+'-xt-body');
+  if(body) body.innerHTML='';
+  extraTrimRows[id]=[];
+  const presets={};
+  (Array.isArray(o.extraPresets)?o.extraPresets:[]).forEach(r=>{
+    const k=String((r&&r.mat)||'').trim().toUpperCase();
+    if(k) presets[k]=r;
+  });
+  OF_EXTRA.forEach(m=>{
+    const saved=presets[m.n.toUpperCase()];
+    if(!ofMatYes_(item,m) && !saved) return;
+    ofAddMaterialRow_(id,m.n,saved||null);
+    shown++;
+  });
+  /* Saved order me koi aisa material ho jo aaj ki list me hi nahi hai
+     (purane order me "Add Row" se haath se daala gaya tha) — wo bhi dikhta
+     hai. Record wahi rehna chahiye jo save hua tha. */
+  Object.keys(presets).forEach(k=>{
+    if(OF_EXTRA.some(m=>m.n.toUpperCase()===k)) return;
+    ofAddMaterialRow_(id,presets[k].mat,presets[k]);
+    shown++;
+  });
+
+  // 3. Ek bhi material row nahi — wajah likhein. Teen me se ek hoti hai.
+  const wrap=document.getElementById('p'+id+'-mat-note-wrap');
+  const note=document.getElementById('p'+id+'-mat-note');
+  if(wrap&&note){
+    if(shown){ wrap.style.display='none'; note.innerHTML=''; }
+    else{
+      wrap.style.display='';
+      note.innerHTML = !code
+        ? 'Material list Item Code chunne par aayegi — wahi material dikhte hain jo <b>Brand Master</b> me us brand par <b>YES</b> hain.'
+        : (!item
+            ? 'Is Item Code ka Brand Master me koi record nahi mila, isi liye material list khaali hai.'
+            : '<b>'+esc(code)+'</b> par Brand Master me koi material <b>YES</b> nahi hai — isi liye sirf Bora Packing Charge row hai.'
+              +'<br>Material jodne ke liye ERP › Master Data › 🏷️ Brand Master me us brand ke <b>Labels / Tags / Trims</b> field YES karein.'
+              +'<br><span style="color:#B45309">Agar wahan ye field dikhte hi nahi, to <b>BRAND_TRIMS_MIGRATION.sql</b> abhi chali nahi hai.</span>');
+    }
+  }
+  return shown;
 }
 // Fixed trims ka onSupp() yahan reuse nahi hota: wo Standard Items se cost
 // auto-bharta hai (autoFillTrimCost) aur pcs ko qty/packs se set karta hai —
@@ -3236,16 +3562,67 @@ function autoFillTrimCost(id,key){
   }
 }
 
+/* No. of Bora ka "ye khud bharta hai" wala roop — grey background, wahi jo
+   Weight par hai, aur readonly.
+
+   Apna function isliye ki onPackTypeChange ka Roll-se-wapas wala hissa
+   packs / packPcs / qty teeno ke inline style aur placeholder reset kar deta
+   hai (`el.style.background=''`), to markup me ek baar likha hua grey dobara
+   nahi bachta. Roll me ye field "NA" dikhata hai, isi liye us soorat me chhua
+   nahi jaata. */
+function ofPacksAuto_(id){
+  const el=document.getElementById('p'+id+'-packs');
+  if(!el) return;
+  const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
+  if(pt==='Roll') return;            // Roll ka apna "NA" treatment chalta rahe
+  el.readOnly=true;
+  el.placeholder='auto';
+  el.style.background='#EEF2F7';
+  el.style.borderColor='#D0DAE8';
+  el.title='Quantity (Pcs) ÷ Packing (pcs/pack) — khud bharta hai';
+}
+
+/* No. of Bora ab Quantity se NIKALTA hai, use banata nahi.
+   Pehle ulta tha: packs aur pcs/pack bhare jaate the aur qty = packs x
+   pcs/pack. Natija — Quantity (Pcs), jo order ka asli aankda hai aur jispar
+   buyer se baat hoti hai, khud type hi nahi ki ja sakti thi; use paane ke
+   liye ulta hisaab lagana padta tha.
+   Ab: No. of Bora = ceil(Quantity / pcs per pack).
+
+   CEIL, exact bhaag nahi: bora ek poori cheez hai. 1000 pcs, 48 per bora =
+   20.83 — par 20 bora me 960 pcs hi jaate hain, baaki 40 ke liye 21vaan bora
+   lagta hai. Isi liye upar wala poora number liya jaata hai, aur neeche ki
+   lakeer asli bhaag bhi dikha deti hai (20.83) taaki pata rahe ki aakhri bora
+   adhoora hai.
+
+   pcs/pack 0 ho (ya khaali) to packs ko CHHUA hi nahi jaata — 0 se bhaag
+   dena Infinity deta, aur purana order kholne par uski saved packs value
+   bhi mit jaati. */
 function calcPackQty(id){
   // Roll fields show "NA" — skip auto-calc (getProd hardcodes 1 for Roll)
   const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
   if(pt==='Roll'){calcAll();return;}
-  const packs=parseFloat(document.getElementById('p'+id+'-packs')?.value)||0;
+  const qtyIn=parseFloat(document.getElementById('p'+id+'-qty')?.value)||0;
   const pcsPerPack=parseFloat(document.getElementById('p'+id+'-packPcs')?.value)||0;
-  const qtyEl=document.getElementById('p'+id+'-qty');
-  if(qtyEl) qtyEl.value=packs*pcsPerPack;
+  const packsEl=document.getElementById('p'+id+'-packs');
+  const hint=document.getElementById('p'+id+'-packs-hint');
+  if(packsEl && pcsPerPack>0){
+    const exact=qtyIn/pcsPerPack;
+    packsEl.value=Math.ceil(exact);
+    if(hint){
+      const inexact=qtyIn>0 && Math.abs(exact-Math.round(exact))>1e-9;
+      hint.className='pk-hint'+(inexact?' warn':'');
+      hint.textContent=inexact
+        ? (qtyIn+' ÷ '+pcsPerPack+' = '+exact.toFixed(2)+' → '+Math.ceil(exact)+' (aakhri adhoora)')
+        : 'Qty ÷ pcs/pack';
+    }
+  }else if(hint){
+    hint.className='pk-hint';
+    hint.textContent=pcsPerPack>0?'Qty ÷ pcs/pack':'pcs/pack bharein';
+  }
+  const packs=parseFloat(packsEl?.value)||0;
   // Auto-update trim pcs: bore/outer = packs, label/tag/bag/inner = qty
-  const qty=packs*pcsPerPack;
+  const qty=qtyIn;
   ['bore','outer'].forEach(k=>{
     const supp=document.getElementById('p'+id+'-'+k+'-supp')?.value;
     if(supp==='seller'){
@@ -3270,12 +3647,17 @@ function calcTotalWeight(id){
   // Roll → user enters weight manually, don't auto-calc
   const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
   if(pt==='Roll') return;
-  const packs=parseFloat(document.getElementById('p'+id+'-packs')?.value)||0;
-  const pcsPerPack=parseFloat(document.getElementById('p'+id+'-packPcs')?.value)||0;
+  /* Qty x per-pc weight — packs x pcs/pack NAHI.
+     Pehle ye packs x pcsPerPack x wt tha, jo chalta tha kyunki tab qty KHUD
+     packs x pcsPerPack hoti thi (dono barabar). Ab No. of Bora upar-ka-poora
+     number hai (ceil), to packs x pcsPerPack qty se ZYADA ho sakta hai — 1000
+     pcs par 21 x 48 = 1008 — aur wahi 8 pcs ka extra weight bill me chala
+     jaata. Weight utne hi pieces ka hona chahiye jitne bik rahe hain. */
+  const qty=parseFloat(document.getElementById('p'+id+'-qty')?.value)||0;
   // GSM mode: label = "GSM" → use 1 for calculation
   const isGSM=(document.getElementById('p'+id+'-weight-lbl')?.textContent||'')==='GSM';
   const wt=isGSM?1:(parseFloat(document.getElementById('p'+id+'-weight')?.value)||0);
-  const val=packs*pcsPerPack*wt;
+  const val=qty*wt;
   twEl.value=val?parseFloat(val.toFixed(2)):'';
 }
 
@@ -3355,6 +3737,23 @@ function onPackTypeChange(id){
       pcCostEl.value=(pt==='Bale' && item.balePrice)?item.balePrice:0;
     }
   }
+  /* Pack Type badalte waqt bhi material list dobara jaanchi jaati hai.
+     Zaroori hai: upar ki branch saare fixed trims ko 'na' karke Label ko
+     (aur Bora par Bore ko) 'foc' kar deti hai — CHHUPI rows par bhi. Us
+     'foc' ka paisa to 0 hota hai, par wo PDF ke packing table me us material
+     ke saamne "FOC" chhaap deta, jo is brand par lagta hi nahi. Dobara
+     render karne par chhupi rows wapas 'na' par aa jaati hain.
+
+     Jo pehle se bhara hua hai wo preset bankar wapas aata hai, isi liye
+     Pack Type badalne se kisi material me type ki hui pcs / cost udti
+     nahi. (Item Code badalne par jaan-boojh kar aisa nahi hota — wahan
+     brand hi doosra hai, to pichhle brand ki cost carry karna galat hota.) */
+  ofRenderMaterials_(id,{extraPresets:readExtraTrims(id)});
+  /* No. of Bora ka grey / readonly roop dobara — upar ka Roll-se-wapas wala
+     hissa teeno field ke inline style saaf kar deta hai. Iske BAAD
+     calcPackQty, taaki label bhi naye Pack Type ke hisaab se bhar jaye. */
+  ofPacksAuto_(id);
+  calcPackQty(id);
   calcTotalWeight(id);
   calcAll();
 }
@@ -4554,6 +4953,13 @@ function applyProductToCard(id, x){
     setVal('packPcs', x.packPcs);
     setVal('qty', x.qty);
   }
+  /* Saved `packs` JAISA HAI waisa rakha jaata hai — yahan calcPackQty NAHI
+     chalaya jaata. Purane order me qty = packs x pcs/pack thi, to ulta hisaab
+     wahi number deta; par wo calcTotalWeight ko bhi chala deta aur saved
+     totalWeight (jo kisi ne haath se adjust kiya ho sakta hai) mit jaata.
+     Sirf dekhne ke liye khola gaya order badalna nahi chahiye.
+     ofPacksAuto_ bas grey / readonly roop wapas lagata hai. */
+  ofPacksAuto_(id);
   setVal('totalWeight', x.totalWeight);
 
   // Trims — restore exact saved supplier/pcs/cost/discount, bypassing onSupp()'s auto-fill logic
@@ -4571,19 +4977,28 @@ function applyProductToCard(id, x){
     if(discEl){ discEl.value=td.disc||0; discEl.disabled=!enabled; discEl.style.background=enabled?'#EFF6FF':''; discEl.style.borderColor=enabled?'#93C5FD':''; }
   });
 
-  /* Extra materials ("Add Row" wali rows) — saved jaisi hi wapas. Row pehle
-     saaf ki jaati hai kyunki applyProductToCard ek dobara-bhari ja rahi card
-     par bhi chal sakta hai; warna purani rows ke saath nayi bhi jud jaatin.
-     Har row preset ke saath banti hai, to uska supplier / pcs / cost /
-     discount aur enable-disable haalat sab waise hi lagti hai jaise save
-     hote waqt thi — onExtraSupp() ka auto-reset beech me nahi aata. */
-  const xtBody=document.getElementById('p'+id+'-xt-body');
-  if(xtBody) xtBody.innerHTML='';
-  extraTrimRows[id]=[];
-  (Array.isArray(x.extraTrims)?x.extraTrims:[]).forEach(r=>{
-    if(!r || !String(r.mat||'').trim()) return;
-    addExtraTrim(id, {mat:r.mat, supp:r.supp||'na', pcs:r.pcs, cost:r.cost, disc:r.disc});
+  /* Material list dobara banti hai — par SAVED ORDER ki shart par, Brand
+     Master ki aaj wali shart par nahi.
+
+     `keepFixed` me wo fixed trims hain jinpar is order me kuch bhara tha.
+     Zaroori hai: brand ki list baad me badal sakti hai (kisi ne Bore ko NO
+     kar diya), aur tab purana order kholne par wo row chhup jaati AUR
+     ofRenderMaterials_ use zero kar deta — yani sirf dekhne ke liye khola
+     gaya order dobara save karte hi apna Bore ka paisa kho deta. Jo bhara
+     tha wo dikhta hai.
+
+     `extraPresets` isi tarah baaki material ki saved rows wapas laata hai,
+     chahe wo aaj YES hon ya na — aur wo material bhi jo aaj ki list me hi
+     nahi hai (purane order me haath se joda gaya tha). */
+  const keepFixed=new Set();
+  TRIMS.forEach(t=>{
+    const td=trims[t.k];
+    if(!td) return;
+    const used=(String(td.supp||'na')!=='na')
+      || (Number(td.pcs)||0)>0 || (Number(td.cost)||0)>0 || (Number(td.disc)||0)>0;
+    if(used) keepFixed.add(t.k);
   });
+  ofRenderMaterials_(id,{keepFixed, extraPresets:x.extraTrims});
 
   // Packing Charge row
   setVal('packCharge-pcs', x.packChargePcs);
