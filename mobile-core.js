@@ -938,7 +938,8 @@
          MD    MD Approval   PO waiting for MD          → MD approves / rejects
          SENT  PO Sent       MD-approved PO, not sent   → PO Sender sends on WhatsApp
          STORE Store Check   Inward / NB / Outward entry → GM checks, then MD
-         RECV  PO Receipts   Purchaser's own POs         → what has arrived (read-only) */
+         RECV  PO Receipts   Purchaser's own POs         → what has arrived (read-only)
+         FOLLOWUP PO Follow-up  Sent PO, material short  → PO Sender chases the vendor */
     const STAGE_TABS = {
         VI:    {module:'PR',    actor:'purchaser', title:'Vendor Info',       action:'Vendor & rates bharein'},
         POGEN: {module:'PR',    actor:'purchaser', title:'PO Generate',       action:'Delivery Date + sign → PO banega'},
@@ -946,6 +947,12 @@
         SENT:  {module:'PO',    actor:'poSender',  title:'PO Sent to Vendor', action:'WhatsApp se vendor ko bhejein'},
         STORE: {module:'STORE', actor:'gmMd',      title:'Store Check',       action:'Entry kholkar items check karein, phir Check Done'},
         RECV:  {module:'RECV',  actor:'purchaser', title:'PO Receipts',       action:'Aapke PO par kitna maal aaya — khud update hota hai'},
+        /* The step that has no record of its own anywhere else: the PO is with
+           the vendor, the delivery date has come and the material has not. The
+           PO Sender rings the vendor and writes down the new date they promised
+           plus what they said. It is the SENDER's tab, not the Purchaser's,
+           because sending the PO is what made them the vendor's contact. */
+        FOLLOWUP: {module:'FOLLOWUP', actor:'poSender', title:'PO Follow-up',  action:'Vendor se revised delivery date poochein aur remark likhein'},
     };
     const ACTOR_LABEL = {purchaser:'Purchaser', md:'MD', poSender:'PO Sender', gm:'GM', gmMd:'GM / MD'};
     /* Which sections the sub-bar offers, per tab. PO Receipts is the only one
@@ -978,6 +985,12 @@
            in: the PR is signed (Done), its PO goes to MD, and only then can it
            come back. See REJPO_VIEW. */
         POGEN: [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}, {v:REJPO_VIEW, l:'Rejected PO'}],
+        /* Not pending-vs-done in the usual sense — a follow-up is never
+           "finished" while the material is outstanding. The split is "needs a
+           call today" against "already chased, date still ahead", so the two
+           sections are named for that rather than for a stage. See
+           poFollowupNeedsCall_. */
+        FOLLOWUP: [{v:'pending', l:'Follow-up Due'}, {v:'done', l:'Date Awaited'}],
         _:     [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}],
     };
     // Inward Approval is the MD's alone — no other login is even shown the sub-tab.
@@ -1005,11 +1018,11 @@
     /* Which tabs each role gets. Only the two new tabs are scoped — MD and PO
        Sender keep every tab they already had, read-only where it isn't theirs.
        GM is a new login with exactly one job, so it gets exactly one tab. */
-    const ALL_TABS = ['VI','POGEN','MD','SENT','STORE','RECV'];
+    const ALL_TABS = ['VI','POGEN','MD','SENT','STORE','RECV','FOLLOWUP'];
     /* Admin Panel → Feature Access (STORE.html → Master Data → Settings). The
-       six mobile rows of that matrix are these six tabs. A role / tab the Admin
-       has not saved yet keeps the built-in list below (baseTabsForRole). */
-    const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS'};
+       seven mobile rows of that matrix are these seven tabs. A role / tab the
+       Admin has not saved yet keeps the built-in list below (baseTabsForRole). */
+    const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS', FOLLOWUP:'PO_FOLLOWUP'};
     let rolePerms = null;           // app_settings.role_permissions, or null
     let tabVis = null;              // app_settings.tab_visibility, or null
     function myPermRole(){
@@ -1084,7 +1097,13 @@
             // purchaser's. Read-only there, same as the Purchaser: nothing is
             // approved or signed in that tab by anyone.
             case 'md':        return ['VI','POGEN','MD','SENT','STORE','RECV'];
-            default:          return ['VI','POGEN','MD','SENT'];   // poSender — unchanged
+            /* poSender. PO Follow-up is theirs alone by default: they are the
+               one who put the PO in the vendor's hands, so they are the one the
+               vendor answers to. Any other role can be given the tab from
+               Admin Panel → Tab Visibility / Feature Access (PO_FOLLOWUP), and
+               gets it read-only unless they are the PO Sender — canActIn()
+               decides that from STAGE_TABS.FOLLOWUP.actor, not from this list. */
+            default:          return ['VI','POGEN','MD','SENT','FOLLOWUP'];
         }
     }
     /* ── FIELD BOY ────────────────────────────────────────────────────
@@ -1589,6 +1608,20 @@
                     note.className = 'access-note view';
                 }
             }
+            /* PO Follow-up's two sections are not a stage pair, so the tab's
+               one `action` line would be wrong on half of it: Date Awaited is
+               nothing anyone has to do today. Each section says its own thing. */
+            else if(currentStageTab === 'FOLLOWUP'){
+                if(canActIn('FOLLOWUP')){
+                    note.textContent = currentView === 'done'
+                        ? '🕘 Vendor ki di hui date ka intezaar — chahein to naya follow-up jodein'
+                        : '📞 Vendor se revised delivery date poochein aur remark likhein';
+                    note.className = 'access-note ' + (currentView === 'done' ? 'view' : 'act');
+                }else{
+                    note.textContent = '👁 View only — follow-up ' + ACTOR_LABEL[cfg.actor] + ' karta hai';
+                    note.className = 'access-note view';
+                }
+            }
             else if(canActIn(currentStageTab)){ note.textContent = '✍️ ' + cfg.action; note.className = 'access-note act'; }
             else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
         }
@@ -1643,6 +1676,7 @@
         if(shown('approvalModal')) return false;   // mid-signature / unsaved edits
         if(shown('storeModal')) return false;      // mid-check / reading the items
         if(shown('poSendPinModal')) return false;  // PIN typed in — don't swap the PO under it
+        if(shown('poFollowupModal')) return false; // half-typed follow-up remark
         if(shown('busyOverlay')) return false;     // a save or PDF build in flight
         return true;
     }
@@ -1675,7 +1709,12 @@
            until the next full reload. */
         const recvPart = (dash.pos||[]).map(p => {
             const t = poLineTally_(p._lines);
-            return [p.po_no, poReceiptBucket(p), t.pending, t.received, t.itemsPending].join('~');
+            /* The follow-up count and the latest promised date are in here too:
+               a follow-up logged on another phone moves the card between
+               Follow-up Due and Date Awaited, and nothing else in this
+               fingerprint would change when it does. */
+            return [p.po_no, poReceiptBucket(p), t.pending, t.received, t.itemsPending,
+                    poFollowupsOf_(p).length, poFollowupRevised_(p)].join('~');
         }).join('|');
         /* A new approval request, or a decision taken on another phone, has to
            repaint this tab — the sub-tab's count and the card's buttons both
@@ -1838,6 +1877,13 @@
     document.getElementById('poSendPinBtn')?.addEventListener('click', () => confirmPoSendPin());
     document.getElementById('poSendPinCancelBtn')?.addEventListener('click', closePoSendPinGate);
     document.getElementById('poSendPin')?.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmPoSendPin(); });
+    document.getElementById('pfuSaveBtn')?.addEventListener('click', () => savePoFollowup());
+    // Typing clears the last error, so a stale "Remarks likhein" does not sit
+    // under a box that now has text in it.
+    document.getElementById('pfuRemarks')?.addEventListener('input', () => pfuSay_(''));
+    document.getElementById('pfuRevisedDate')?.addEventListener('change', () => pfuSay_(''));
+    /* No backdrop-tap close, same as the New PR sheet: a stray tap must not
+       throw away a typed follow-up remark. The × is the way out. */
     /* ══ ERP ka single login ══════════════════════════════════════════
        ERP / launcher.html me login karte hi ek session token ban jaata
        hai jo SAARE apps ke liye hai (app_sessions). Saare apps ek hi
@@ -2203,6 +2249,92 @@
         if(got > 0) return 'partial';
         return 'pending';
     }
+
+    /* ══ PO FOLLOW-UP ════════════════════════════════════════════════
+       The chase log for a PO that is already with the vendor and whose
+       material has not fully arrived. Each entry is one call: the revised
+       delivery date the vendor promised, and what they actually said.
+
+       STORED IN `approvals`, under a `followups` ARRAY.
+       purchase_orders has exactly one jsonb column — there is no
+       pdf_snapshot on that table — and rejectPO already parks a non-stage
+       key (`rejection`) in it for the same reason. Nothing iterates this
+       column: every reader on both apps and in both PDF renderers looks up
+       the stage keys it wants BY NAME (approvals.gmCeo / .md / .store), so
+       an extra key is inert for all of them. That is what makes this
+       feature need no SQL migration at all.
+
+       APPEND-ONLY. An entry is never edited or deleted, because a promise
+       that was made and then missed is precisely what this record exists to
+       show — rewriting it would destroy the only evidence of the slip.
+
+       It deliberately does NOT touch purchase_orders.delivery_date. The PO
+       the vendor holds still says what it said, its PDF is not regenerated,
+       and STORE.html's Follow-Up Report keeps showing the original date in
+       "Delivery Date of PO" with the revisions in their own column beside
+       it. One column is what was agreed; the other is what happened. */
+    function poFollowupsOf_(po){
+        const list = ((po && po.approvals) || {}).followups;
+        return Array.isArray(list) ? list.filter(f => f && typeof f === 'object') : [];
+    }
+    // Newest last, the order they were appended in — so the LAST one is the
+    // vendor's current promise.
+    function poFollowupLatest_(po){
+        const l = poFollowupsOf_(po);
+        return l.length ? l[l.length - 1] : null;
+    }
+    // The date the vendor last promised, 'yyyy-mm-dd', or '' if never asked.
+    function poFollowupRevised_(po){
+        const f = poFollowupLatest_(po);
+        return f ? String(f.revisedDate || '').trim() : '';
+    }
+    // Today as 'yyyy-mm-dd' in LOCAL time. new Date().toISOString() is UTC and
+    // would roll the day over at 5:30am IST, marking a promise late a day early.
+    function poFuToday_(){
+        const d = new Date(), z = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+    }
+    /* Whole days between two 'yyyy-mm-dd' dates, b − a. Parsed as local noon so
+       a DST shift or a timezone offset can never move the result by a day. */
+    function poFuDayDiff_(a, b){
+        const p = s => { const m = String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+                         return m ? new Date(+m[1], +m[2]-1, +m[3], 12) : null; };
+        const x = p(a), y = p(b);
+        if(!x || !y) return null;
+        return Math.round((y - x) / 86400000);
+    }
+    /* Days the promised date is overdue by (positive), or how many are left
+       (negative). null when no date has been promised. */
+    function poFollowupOverdueDays_(po){
+        const rev = poFollowupRevised_(po);
+        if(!rev) return null;
+        return poFuDayDiff_(rev, poFuToday_());
+    }
+    /* Which POs this tab is about, exactly as agreed:
+         • already SENT to the vendor — there is no point asking a vendor to
+           revise a delivery date for a PO they have never been given
+         • status MD Approved / Vendor Verified (a legacy status that only ever
+           followed MD approval) / Partially Received
+         • not fully received, and not dead
+       The receipt test is poReceiptBucket, which judges item by item wherever
+       the lines are loaded — so a PO whose header totals say "Received" while
+       one line is still short stays on this list, which is the whole point. */
+    const PO_FOLLOWUP_STATUSES = ['MD Approved', 'Vendor Verified', 'Partially Received'];
+    function poFollowupEligible_(p){
+        if(!p || PO_DEAD(p)) return false;
+        if(!isPoSentMobile(p)) return false;
+        if(!PO_FOLLOWUP_STATUSES.includes(String(p.status || ''))) return false;
+        return poReceiptBucket(p) !== 'received';
+    }
+    /* Needs a call today. Either nobody has ever asked, or the date the vendor
+       last promised has itself gone past with the material still short. A
+       promise still in the future is not work — it is a date to wait for, which
+       is what the other section is called. */
+    function poFollowupNeedsCall_(p){
+        const d = poFollowupOverdueDays_(p);
+        return d === null || d > 0;
+    }
+
     function tabRows(tab, view){
         const {prs, pos, store} = dash;
         const pending = view !== 'done';
@@ -2273,6 +2405,25 @@
             // POs are just as ready to send as "MD Approved" ones.
             case 'SENT':  return pending ? pos.filter(p => ['MD Approved','Vendor Verified'].includes(p.status||'') && !isPoSentMobile(p))
                                          : pos.filter(p => isPoSentMobile(p) && !PO_DEAD(p));
+            /* Both sections are the SAME set of POs — the ones with the vendor
+               and still short — split by whether a call is owed. Sorted so the
+               most overdue promise is at the top of Follow-up Due and the
+               nearest promised date at the top of Date Awaited: on both lists
+               the first card is the one to deal with first. */
+            case 'FOLLOWUP': {
+                const live = (pos||[]).filter(poFollowupEligible_);
+                if(pending)
+                    return live.filter(poFollowupNeedsCall_).sort((a,b) => {
+                        // Never-asked POs first, then the latest promised date
+                        // ascending — i.e. most overdue before least.
+                        const x = poFollowupRevised_(a), y = poFollowupRevised_(b);
+                        if(!x !== !y) return x ? 1 : -1;
+                        return x && y ? String(x).localeCompare(String(y))
+                                      : String(a.delivery_date||'').localeCompare(String(b.delivery_date||''));
+                    });
+                return live.filter(p => !poFollowupNeedsCall_(p))
+                    .sort((a,b) => String(poFollowupRevised_(a)).localeCompare(String(poFollowupRevised_(b))));
+            }
         }
         return [];
     }
@@ -2310,10 +2461,24 @@
            back to the header totals, i.e. the aggregate reading this was built
            to replace — and the inward documents are what its cards name.
            Nobody else pays for these two queries. */
+        /* The PO Sender pays for the lines and the inwards too, because PO
+           Follow-up is judged on them: poFollowupEligible_ asks whether every
+           ORDERED item has arrived (poReceiptBucket), and the card says how
+           much is still outstanding — that is the figure the vendor is rung
+           about. Keyed on the role rather than on the tab being visible,
+           because loadRolePerms() runs alongside this and the permissions may
+           not have landed yet on the first load.
+           Inward Approval stays Purchaser / MD only — a PO Sender has no
+           decision to take there, so they are not charged for that query. */
+        const needPoDetail = ['purchaser','md','poSender'].includes(myRoleKey());
+        const needInwApp   = ['purchaser','md'].includes(myRoleKey());
         let inwApprovals = [];
-        if(['purchaser','md'].includes(myRoleKey()))
-            [,, inwApprovals] = await Promise.all([
-                attachInwardsToPos_(pos), attachPoLinesToPos_(pos), loadInwardApprovals_()]);
+        if(needPoDetail){
+            const jobs = [attachInwardsToPos_(pos), attachPoLinesToPos_(pos)];
+            if(needInwApp) jobs.push(loadInwardApprovals_());
+            const out = await Promise.all(jobs);
+            if(needInwApp) inwApprovals = out[2] || [];
+        }
         dash = {prs, pos, store, inwApprovals};
     }
     /* Every line of these POs, so PO Receipts can judge an order item by item
@@ -2813,6 +2978,11 @@
             // for that reason.
             ...prRejectedPos(item).map(p => p.po_no),
             ...prRejectedPos(item).map(poRejectionRemark),
+            // PO Follow-up: searchable by what the vendor said and by the date
+            // they promised, so "transport" or a date finds every PO held up
+            // for that reason.
+            ...poFollowupsOf_(item).map(f => f.remarks),
+            ...poFollowupsOf_(item).map(f => f.revisedDate),
             ...(item.req_no ? prQuotedVendorNames(item) : [])
         ].some(v => String(v || '').toLowerCase().includes(searchTerm));
     }
@@ -2891,6 +3061,15 @@
                 listDiv.innerHTML = `<p class="empty-msg">🎉 MD ne koi PO reject nahi kiya — is section me kuch nahi.</p>`;
                 return;
             }
+            /* Empty here needs saying properly, because a PO can be missing
+               from this tab for four quite different reasons and "kuch pending
+               nahi" would hide three of them. */
+            if(cfg.module === 'FOLLOWUP'){
+                listDiv.innerHTML = done
+                    ? `<p class="empty-msg">Kisi PO par aage ki revised date pending nahi hai — jo follow-up baaki hain wo <b>Follow-up Due</b> me dekhein.</p>`
+                    : `<p class="empty-msg">🎉 Koi follow-up baaki nahi.<br><span style="font-size:0.78rem;">Is tab me sirf wo PO aate hain jo <b>vendor ko bhej diye gaye</b> hain, jinka status <b>MD Approved</b> / <b>Partially Received</b> hai, aur jinka maal poora nahi aaya.</span></p>`;
+                return;
+            }
             listDiv.innerHTML = cfg.module === 'RECV'
                 ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
                 : (done
@@ -2912,6 +3091,9 @@
         // different record shape, so a different card.
         if(cfg.module === 'RECV' && currentView === INWAPP_VIEW){ paintInwAppList_(listDiv, rows); return; }
         if(cfg.module === 'RECV'){ paintRecvList_(listDiv, rows); return; }
+        // PO Follow-up: a PO card whose point is the chase history, not the
+        // order — its own card, and its own modal.
+        if(cfg.module === 'FOLLOWUP'){ paintFollowupList_(listDiv, rows); return; }
 
         // PO Generate ▸ Rejected PO. The cards are PRs, like the tab's other two
         // sections, but nothing on them is signed from here — the Purchaser
@@ -3195,6 +3377,419 @@
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
+    }
+
+    /* ══ PO FOLLOW-UP LIST ═══════════════════════════════════════════
+       One card per PO still outstanding with the vendor. What a PO Sender
+       needs BEFORE dialling is on the card, not behind a tap: how late the
+       last promise is, how much is still owed, and the last thing the vendor
+       actually said. The tap is for adding the next entry and reading the
+       rest of the history. */
+    function paintFollowupList_(listDiv, rows){
+        const canAct = canActIn('FOLLOWUP');
+        listDiv.innerHTML = '';
+        rows.forEach(p => {
+            const card = document.createElement('div');
+            const fus = poFollowupsOf_(p);
+            const last = poFollowupLatest_(p);
+            const od = poFollowupOverdueDays_(p);         // >0 late, <=0 to come, null never asked
+            const late = od !== null && od > 0;
+            // Amber only for a promise that has actually slipped. A PO nobody
+            // has rung about yet is untouched, not late — see .pfu-fresh.
+            card.className = 'card ' + (late ? 'pfu-overdue' : 'pfu-fresh');
+            card.onclick = () => openPoFollowupModal(p);
+
+            // Outstanding qty off the LINES where they loaded, same rule as PO
+            // Receipts (poLineTally_) — the header pair can net an over-receipt
+            // on one item against an item that never came.
+            const lines = p._lines || null;
+            const t = (lines && lines.length) ? poLineTally_(lines) : null;
+            const left = t ? t.pending : Math.max(0, pNum(p.total_qty) - pNum(p.received_qty));
+
+            let html = `<div class="card-header"><span>${escText(p.po_no||'-')}</span><span>${escText(nMoney_(p.grand_total))}</span></div>`;
+            html += `<div class="card-detail">Vendor: <b>${escText(p.vendor_name||'-')}</b>${p.vendor_contact ? ' · ' + escText(p.vendor_contact) : ''}</div>`;
+            if(p.linked_req_nos) html += `<div class="card-detail">PR: <b>${escText(p.linked_req_nos)}</b></div>`;
+            // The PO's OWN delivery date is always shown, and always as the
+            // original: it is what the vendor agreed to and it never changes.
+            html += `<div class="card-detail">PO Delivery Date: <b>${escText(p.delivery_date ? fmtDate_(p.delivery_date) : '-')}</b></div>`;
+            if(last){
+                html += `<div class="card-detail">Revised Date: <b>${escText(fmtDate_(last.revisedDate))}</b> · `
+                     + (late ? `<span class="pfu-od">${od} din late</span>`
+                             : `<span class="pfu-ok">${od === 0 ? 'aaj' : (-od) + ' din baaki'}</span>`)
+                     + `</div>`;
+            }
+            html += `<div class="card-detail">Pending Qty: <b>${escText(nNum_(left))}</b>`
+                 + (t ? ` · <b>${t.itemsPending}</b> item baaki` : '')
+                 + `</div>`;
+            html += `<div class="card-detail">Status: ${statusBadge(p.status)}</div>`;
+
+            const tags = [];
+            if(p.party_sent_at) tags.push(`<span class="tag sent">✔ Sent — ${escText(pStamp(p.party_sent_at))}</span>`);
+            else tags.push(`<span class="tag sent">✔ Sent</span>`);
+            tags.push(fus.length
+                ? `<span class="tag ${late ? 'fu-od' : 'fu'}">📞 ${fus.length} follow-up</span>`
+                : `<span class="tag po">📞 Koi follow-up nahi</span>`);
+            html += `<div class="card-tags">${tags.join('')}</div>`;
+
+            /* The last thing the vendor said, printed on the card. Same reason
+               the MD's rejection remark is printed on a Rejected PO card: a
+               Sender working down a list of twenty should not have to open each
+               one to find out which call is about transport and which about a
+               part that is not made yet. */
+            if(last) html += `<div class="pfu-row${late ? ' od' : ''}" style="margin-top:8px;">`
+                 + `<div class="pfu-row-head"><span>Pichla follow-up — ${escText(fmtDate_(last.revisedDate))} ki date mili</span>`
+                 + `<span class="pfu-row-who">${escText(last.by||'-')}${last.at ? ' · ' + escText(last.at) : ''}</span></div>`
+                 + `<div class="pfu-row-rem">${last.remarks ? escText(last.remarks) : '<i>koi remark nahi</i>'}</div>`
+                 + `</div>`;
+
+            // The order itself, so the Sender can read what was promised before
+            // ringing about it.
+            html += pdfLinkRow_([{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}], 'PO PDF abhi nahi bana');
+
+            const actionText = canAct
+                ? (fus.length === 0
+                    ? '📞 Vendor se delivery date poochein — kholkar revised date + remark likhein'
+                    : (late ? '📞 Di gayi date nikal gayi — dobara follow-up karein'
+                            : '🕘 Vendor ki di hui date ka intezaar — chahein to naya follow-up jodein'))
+                : (fus.length ? '👁 Follow-up history padhne ke liye kholein' : '👁 Abhi koi follow-up record nahi');
+            html += `<div class="card-action ${canAct ? (late || !fus.length ? 'act' : 'wait') : 'wait'}">${escText(actionText)}</div>`;
+            card.innerHTML = html;
+            listDiv.appendChild(card);
+        });
+    }
+
+    /* ══ PO FOLLOW-UP MODAL ══════════════════════════════════════════
+       Reads the history and appends to it. Append-only: there is no edit and
+       no delete, because a date that was promised and missed is the record
+       this tab exists to keep.
+
+       The write is a read-modify-write of one jsonb column, which is a race
+       if two phones chase the same PO at once. So the row is re-read
+       immediately before the update and the new entry appended to THAT array,
+       not to the copy this screen has been holding — see savePoFollowup. */
+    let pfuPo_ = null;
+    function closePoFollowupModal(){
+        document.getElementById('poFollowupModal').style.display = 'none';
+        pfuPo_ = null;
+        if(dashDirty){ dashDirty = false; renderList(); return; }
+        if(livePending){ livePending = false; liveRefresh_(); }
+    }
+    function pfuSay_(msg){
+        const err = document.getElementById('pfuError');
+        if(!err) return;
+        err.textContent = msg || '';
+        err.style.display = msg ? 'block' : 'none';
+    }
+    /* Newest FIRST here, the reverse of how they are stored. The stored array
+       is append-ordered so "the last element is the current promise" is true
+       without sorting; on screen the most recent call belongs at the top,
+       because that is the one being read before dialling. */
+    function pfuHistoryHtml_(po){
+        const fus = poFollowupsOf_(po);
+        if(!fus.length)
+            return `<div class="pfu-empty">Is PO par abhi koi follow-up record nahi hai.</div>`;
+        const today = poFuToday_();
+        return fus.slice().reverse().map((f, i) => {
+            const diff = poFuDayDiff_(f.revisedDate, today);
+            // Only the CURRENT promise can be "late" — an older entry's date
+            // passing is just what happened next, and flagging all of them
+            // amber would make a well-chased PO look like a disaster.
+            const late = i === 0 && diff !== null && diff > 0;
+            const when = diff === null ? ''
+                : (i === 0
+                    ? (diff > 0 ? `<span class="pfu-od">${diff} din late</span>`
+                                : `<span class="pfu-ok">${diff === 0 ? 'aaj' : (-diff) + ' din baaki'}</span>`)
+                    : '');
+            return `<div class="pfu-row${i === 0 ? ' latest' : ''}${late ? ' od' : ''}">`
+                 + `<div class="pfu-row-head">`
+                 + `<span>#${fus.length - i} · Revised: ${escText(fmtDate_(f.revisedDate))} ${when}</span>`
+                 + `<span class="pfu-row-who">${escText(f.by||'-')}${f.role ? ' (' + escText(f.role) + ')' : ''}${f.at ? ' · ' + escText(f.at) : ''}</span>`
+                 + `</div>`
+                 + `<div class="pfu-row-rem">${f.remarks ? escText(f.remarks) : '<i>koi remark nahi likha gaya</i>'}</div>`
+                 + (f.prevDate ? `<div class="pfu-row-who" style="margin-top:3px;">Is se pehle ki date: ${escText(fmtDate_(f.prevDate))}</div>` : '')
+                 + `</div>`;
+        }).join('');
+    }
+    /* ── Item Details for the open PO ─────────────────────────────────
+       The same per-item reading PO Receipts prints (openRecvModal): Ordered,
+       Received, Pending and a state chip per line, then the totals row and
+       the verdict those lines produce. Shared helpers on purpose
+       (poLineTally_ / recvLineState_ / RECV_LINE_STATE) — two tabs showing
+       the same figures by two different calculations is how they end up
+       disagreeing.
+
+       One column differs. PO Receipts' last column is "Receipt", a tally of
+       what came in; here it is PENDING-first ordering of the same facts plus
+       the item's own short qty, because this table is read to decide what to
+       say on a call, not to audit a receipt.
+
+       `lines` is null when the lookup was never done or failed — said out
+       loud rather than drawn as an empty table, which would read as "nothing
+       was ordered". */
+    const PFU_ITEM_COLS = ['Sr','Item Name','Ordered','Received','Pending','UOM','Status'];
+    function pfuItemHeadHtml_(){
+        return PFU_ITEM_COLS.map(h => `<th>${h}</th>`).join('');
+    }
+    function pfuItemRowsHtml_(po, lines){
+        const span = PFU_ITEM_COLS.length;
+        if(lines === null)
+            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">PO lines load nahi ho paayin — PO ki PDF se items dekhein</td></tr>`;
+        if(!lines.length)
+            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+        const t = poLineTally_(lines);
+        /* SHORT ITEMS FIRST. The list is read top-down while talking to the
+           vendor, so the items being chased have to be at the top — on a
+           twenty-line PO the two that are short would otherwise be buried
+           among eighteen that are settled. Within each group the PO's own
+           line order is kept, so a line can still be found by its number. */
+        const ordered = lines.map((l, i) => ({l, i})).sort((a, b) => {
+            const short = x => { const o = pNum(x.l.ordered_qty), r = pNum(x.l.received_qty);
+                                 return (o > 0 && r < o) ? 0 : 1; };
+            return short(a) - short(b) || a.i - b.i;
+        });
+        const bucket = poReceiptBucket(po);
+        return ordered.map(({l, i}) => {
+            const o = pNum(l.ordered_qty), r = pNum(l.received_qty);
+            // What this line still OWES. An over-receipt reads as 0 pending
+            // with an Excess chip, never as a negative that could offset
+            // another line that never arrived.
+            const left = Math.max(0, o - r);
+            const st = RECV_LINE_STATE[recvLineState_(l)] || RECV_LINE_STATE.NONE;
+            // The short lines are tinted, so "what am I chasing" is visible
+            // without reading a single number.
+            return `<tr${left > 0 ? ' style="background:#fffbeb;"' : ''}>
+                <td>${i + 1}</td>
+                <td><b>${escText(l.item_name||'')}</b></td>
+                <td><b>${escText(nNum_(o))}</b></td>
+                <td><b style="color:${st.fg};">${escText(nNum_(r))}</b></td>
+                <td><b style="color:${left > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(left))}</b></td>
+                <td>${escText(l.uom||'-')}</td>
+                <td><span style="background:${st.bg};color:${st.fg};border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:800;white-space:nowrap;">${st.txt}</span></td>
+            </tr>`;
+        }).join('')
+        + `<tr style="background:#f1f5f9;font-weight:800;">
+            <td colspan="2">TOTAL — ${t.itemsTotal} item(s)</td>
+            <td>${escText(nNum_(t.ordered))}</td>
+            <td style="color:#16a34a;">${escText(nNum_(t.received))}</td>
+            <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(t.pending))}</td>
+            <td></td>
+            <td style="color:${bucket === 'received' ? '#16a34a' : (bucket === 'partial' ? '#d97706' : '#64748b')};">
+                ${escText(bucket === 'received' ? 'Received' : (bucket === 'partial' ? 'Partial' : 'Pending'))}</td>
+           </tr>`
+        // What to actually ask for, spelled out — the line a Sender can read
+        // off the screen onto the call.
+        + `<tr><td colspan="${span}" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
+            + escText(t.itemsPending
+                ? '📞 Vendor se in ' + t.itemsPending + ' item ki baat karein — kul ' + nNum_(t.pending) + ' qty baaki hai'
+                    + (t.itemsNone ? ' (' + t.itemsNone + ' item par abhi kuch bhi nahi aaya)' : '') + '.'
+                : 'Saare items poore aa gaye hain — is PO par follow-up ki zaroorat nahi.')
+            + (t.excess > 0 ? escText('  ▲ Excess: ' + nNum_(t.excess) + ' (kisi aur item ki kami poori nahi karta).') : '')
+          + `</td></tr>`;
+    }
+    /* Fills the table, fetching the lines only if the list-wide lookup
+       (attachPoLinesToPos_) never ran or failed. Guarded on pfuPo_ because the
+       modal may have been closed — or another PO opened — while the query was
+       in flight; writing then would put one PO's items under another's header. */
+    async function pfuFillItems_(po){
+        const head = document.getElementById('pfuItemHead');
+        const body = document.getElementById('pfuItemBody');
+        const cnt  = document.getElementById('pfuItemCount');
+        if(!head || !body) return;
+        head.innerHTML = pfuItemHeadHtml_();
+        const setCount = lines => { if(cnt) cnt.textContent = (lines && lines.length) ? '(' + lines.length + ')' : ''; };
+        if(po._lines){
+            body.innerHTML = pfuItemRowsHtml_(po, po._lines);
+            setCount(po._lines);
+            return;
+        }
+        body.innerHTML = `<tr><td colspan="${PFU_ITEM_COLS.length}" style="text-align:center;color:#999;">Loading items...</td></tr>`;
+        let lines = null;
+        try{
+            const q = await SB.from('purchase_order_lines')
+                .select('id,purchase_order_id,line_no,item_name,uom,ordered_qty,received_qty')
+                .eq('purchase_order_id', po.id).order('line_no');
+            if(q.error) throw q.error;
+            lines = q.data || [];
+            po._lines = lines;   // the card's figures catch up on the next paint
+        }catch(e){ console.warn('[MOBILE] Follow-up PO lines load failed:', e.message||e); }
+        if(pfuPo_ !== po) return;
+        body.innerHTML = pfuItemRowsHtml_(po, lines);
+        setCount(lines);
+        // The pending strip above was drawn off the header totals while the
+        // lines were missing; now that they are in, it is redrawn from them.
+        if(lines && lines.length) pfuFillPending_(po);
+    }
+    /* The outstanding-qty strip. Its own function because it is drawn twice on
+       a PO whose lines arrive late — once from the header totals, then again
+       from the lines, which are what the sections are actually decided by. */
+    function pfuFillPending_(po){
+        const pend = document.getElementById('pfuPending');
+        if(!pend) return;
+        const lines = po._lines || null;
+        const t = (lines && lines.length) ? poLineTally_(lines) : null;
+        const left = t ? t.pending : Math.max(0, pNum(po.total_qty) - pNum(po.received_qty));
+        pend.style.display = 'block';
+        pend.innerHTML = `⏳ Pending: <b>${escText(nNum_(left))}</b> qty`
+            + (t ? ` · <b>${t.itemsPending}</b> / ${t.itemsTotal} item baaki`
+                 + (t.itemsNone ? ` (${t.itemsNone} par kuch nahi aaya)` : '')
+               : ` (PO ke header totals se — lines load nahi hui)`);
+    }
+    function openPoFollowupModal(po){
+        pfuPo_ = po;
+        const canAct = canActIn('FOLLOWUP');
+        const fus = poFollowupsOf_(po);
+        document.getElementById('pfuTitle').textContent = '📞 Follow-up — ' + (po.po_no || 'PO');
+
+        /* Ordered / Received totals on the header, the same pair PO Receipts
+           puts there (openRecvModal) — off the LINES where they are loaded,
+           header figures only as the fallback. The per-item breakdown is the
+           Item Details table below. */
+        const lines = po._lines || null;
+        const t = (lines && lines.length) ? poLineTally_(lines) : null;
+        const meta = [
+            ['PO No.', po.po_no || '-'],
+            ['Vendor', po.vendor_name || '-'],
+            ['Vendor Contact', po.vendor_contact || '-'],
+            ['PR No.', po.linked_req_nos || '-'],
+            ['PO Date', po.po_date || '-'],
+            // Named "original" on screen so nobody reads it as the live date
+            // once revisions exist below it.
+            ['Delivery Date (original)', po.delivery_date ? fmtDate_(po.delivery_date) : '-'],
+            ['Vendor ko bheja', po.party_sent_at ? pStamp(po.party_sent_at) : '✔ (date record me nahi)'],
+            ['Ordered / Received', nNum_(t ? t.ordered : pNum(po.total_qty))
+                + ' / ' + nNum_(t ? t.received : pNum(po.received_qty))],
+            t ? ['Items Complete', t.itemsFull + ' of ' + t.itemsTotal
+                    + (t.itemsPending ? '  ·  ' + t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty pending' : '')] : null,
+            t && t.excess > 0 ? ['Excess Received', nNum_(t.excess)] : null,
+            ['Status', po.status || '-'],
+            // Which receipts have already landed against this PO — so a Sender
+            // does not chase a quantity that arrived yesterday.
+            ['Inward Entries', (po._inwards||[]).length
+                ? (po._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
+                : 'abhi koi inward nahi'],
+        ].filter(Boolean);
+        document.getElementById('pfuMeta').innerHTML =
+            meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
+
+        pfuFillPending_(po);
+        // Fire-and-forget: it fetches only when the list-wide line lookup never
+        // ran, and it checks pfuPo_ before writing into the table.
+        pfuFillItems_(po).catch(e => console.warn('[MOBILE] Follow-up items skipped:', e.message||e));
+
+        document.getElementById('pfuCount').textContent = fus.length ? '(' + fus.length + ')' : '';
+        document.getElementById('pfuHistory').innerHTML = pfuHistoryHtml_(po);
+
+        /* Read-only logins get no form at all rather than a disabled one: a
+           greyed box still invites a tap and then explains it was pointless. */
+        const addBox = document.getElementById('pfuAddBox');
+        const note = document.getElementById('pfuModeNote');
+        addBox.style.display = canAct ? 'block' : 'none';
+        note.style.display = canAct ? 'none' : 'block';
+        if(!canAct) note.textContent = '👁 View only — follow-up ' + ACTOR_LABEL[STAGE_TABS.FOLLOWUP.actor] + ' record karta hai';
+
+        if(canAct){
+            const dateEl = document.getElementById('pfuRevisedDate');
+            dateEl.value = '';
+            /* Opens EMPTY and cannot be back-dated before the last promise: a
+               "revised" date earlier than the one already on record is not a
+               revision, it is a typo, and it would silently un-flag an overdue
+               PO. Today is the floor for the first entry. */
+            const last = poFollowupLatest_(po);
+            const floor = (last && last.revisedDate) || poFuToday_();
+            dateEl.min = floor;
+            document.getElementById('pfuDateHint').innerHTML = last
+                ? 'Pichli di hui date <b>' + escText(fmtDate_(last.revisedDate)) + '</b> thi — nayi date us se aage ki honi chahiye. PO ki original Delivery Date badalti nahi.'
+                : 'Vendor ne jo nayi date di wahi daalein. PO ki original Delivery Date badalti nahi &mdash; wo record me waisi hi rehti hai.';
+            document.getElementById('pfuRemarks').value = '';
+            const btn = document.getElementById('pfuSaveBtn');
+            btn.disabled = false;
+            btn.innerHTML = '&#128190; Save Follow-up';
+        }
+        pfuSay_('');
+        document.getElementById('poFollowupModal').style.display = 'flex';
+    }
+    async function savePoFollowup(){
+        const po = pfuPo_;
+        if(!po) return closePoFollowupModal();
+        if(!canActIn('FOLLOWUP')){ pfuSay_('Is tab me follow-up record karne ka haq nahi hai'); return; }
+        const dateEl = document.getElementById('pfuRevisedDate');
+        const remEl  = document.getElementById('pfuRemarks');
+        const revised = String(dateEl.value || '').trim();
+        const remarks = String(remEl.value || '').trim();
+        pfuSay_('');
+        // Both compulsory. A follow-up with no date records nothing the report
+        // can show; one with no remark records a date nobody can account for.
+        if(!revised){ pfuSay_('Revised Delivery Date chunein'); dateEl.focus(); return; }
+        if(!remarks){ pfuSay_('Remarks likhein — vendor ne kya kaha'); remEl.focus(); return; }
+        const last = poFollowupLatest_(po);
+        const floor = (last && last.revisedDate) || poFuToday_();
+        if(revised < floor){
+            pfuSay_(last
+                ? 'Nayi date pichli di hui date (' + fmtDate_(last.revisedDate) + ') se aage ki honi chahiye'
+                : 'Revised date aaj se pehle ki nahi ho sakti');
+            dateEl.focus(); return;
+        }
+        const btn = document.getElementById('pfuSaveBtn');
+        btn.disabled = true; btn.textContent = '⏳ Saving...';
+        setBusy(true, 'Follow-up save ho raha hai...');
+        try{
+            /* Re-read the row first. This is a read-modify-write of one jsonb
+               column: writing the array this screen has been holding would
+               silently drop any entry another phone appended while the modal
+               sat open. The fresh array is what the new entry goes onto. */
+            const q = await SB.from('purchase_orders').select('approvals').eq('id', po.id).single();
+            if(q.error) throw q.error;
+            const approvals = {...((q.data && q.data.approvals) || {})};
+            const fresh = Array.isArray(approvals.followups)
+                ? approvals.followups.filter(f => f && typeof f === 'object') : [];
+            const prev = fresh.length ? fresh[fresh.length - 1] : null;
+            /* The date floor is re-checked against what came BACK, not against
+               the copy validated above: if another phone logged a later promise
+               while this modal sat open, the entry being saved is now behind it
+               and would read as a date going backwards. Caught here rather than
+               with a second round trip, since the fresh array is already in
+               hand. */
+            if(prev && prev.revisedDate && revised < String(prev.revisedDate)){
+                setBusy(false);
+                pfuSay_('Is beech kisi ne ' + fmtDate_(prev.revisedDate)
+                    + ' ki date daal di hai — modal band karke dobara kholein aur us se aage ki date daalein');
+                btn.disabled = false;
+                btn.innerHTML = '&#128190; Save Follow-up';
+                return;
+            }
+            approvals.followups = fresh.concat([{
+                seq: fresh.length + 1,
+                revisedDate: revised,
+                // What this revision moved FROM — the previous promise, or the
+                // PO's own delivery date on the first follow-up. It is what
+                // makes a slip readable without re-deriving it from the chain.
+                prevDate: (prev && prev.revisedDate) || po.delivery_date || '',
+                remarks,
+                by: myPurchaserName || STAGE_LABEL[myStage] || myStage || '',
+                role: STAGE_LABEL[myStage] || myStage || '',
+                at: pStamp(),
+                atIso: new Date().toISOString(),
+                poNo: po.po_no || '',
+            }]);
+            /* ONLY `approvals` is written. delivery_date is deliberately left
+               alone and the PO PDF is deliberately not regenerated: the
+               document the vendor holds is what it is, and the follow-up is
+               the record of what happened after it was sent. */
+            const u = await SB.from('purchase_orders').update({approvals}).eq('id', po.id);
+            if(u.error) throw u.error;
+            // The in-memory copy is brought level so the list and the modal
+            // behind it are correct before any reload lands.
+            po.approvals = approvals;
+            dashDirty = true;
+            setBusy(false);
+            closePoFollowupModal();
+        }catch(e){
+            setBusy(false);
+            console.error('[MOBILE] Follow-up save failed:', e);
+            pfuSay_(e.message || String(e));
+            btn.disabled = false;
+            btn.innerHTML = '&#128190; Save Follow-up';
+        }
     }
 
     /* ══ STORE CHECK / PO RECEIPTS MODAL ═════════════════════════════

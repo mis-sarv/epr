@@ -158,6 +158,14 @@
         <div class="stage-tab" data-tab="RECV" onclick="switchStageTab('RECV')">
             <span class="st-ico">&#128229;</span><span class="st-lbl">PO Receipts</span><span class="st-count" id="cnt-RECV">0</span>
         </div>
+        <!-- PO Sender: the POs already WITH the vendor whose material has not
+             fully arrived. Each follow-up call is recorded as the revised date
+             the vendor promised plus what they said — see FOLLOWUP in
+             STAGE_TABS. The whole history surfaces in STORE.html's Follow-Up
+             Report, in the column right after PO Sent to Vendor. -->
+        <div class="stage-tab" data-tab="FOLLOWUP" onclick="switchStageTab('FOLLOWUP')">
+            <span class="st-ico">&#128222;</span><span class="st-lbl">PO Follow-up</span><span class="st-count" id="cnt-FOLLOWUP">0</span>
+        </div>
     </nav>
     <div class="sub-bar">
         <!-- Buttons are rebuilt per tab — PO Receipts has three sections, the
@@ -489,6 +497,83 @@
                     <b>Reject</b> — Store ko values theek karni padengi, tab tak Inward save nahi hoga.
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ── PO Follow-up ─────────────────────────────────────────────────
+         One PO, its whole chase history, and the box that adds the next
+         entry. Its own modal rather than a branch of the approval one: a
+         follow-up has no signature, no approval chain and no item grid — it
+         is an append-only log of what the vendor promised and when.
+
+         The history is ABOVE the input on purpose. The first thing a PO
+         Sender needs before ringing a vendor is what that vendor said last
+         time; a form that opens empty invites the same question to be asked
+         twice. Nothing here is editable once saved — a promise that was made
+         and missed is exactly what this record exists to show, so entries
+         are never rewritten, only added to.
+
+         Revised Date does NOT touch purchase_orders.delivery_date: the PO
+         the vendor holds still says what it said, and the follow-up is the
+         story of what happened after. See savePoFollowup. -->
+    <div class="modal-overlay" id="poFollowupModal">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span id="pfuTitle">&#128222; PO Follow-up</span>
+                <button class="close-btn" onclick="closePoFollowupModal()">×</button>
+            </div>
+
+            <div class="req-meta-info" id="pfuMeta"></div>
+
+            <!-- Where the order actually stands — the figure the vendor gets
+                 asked about. Filled from the PO's own lines where they loaded. -->
+            <div id="pfuPending" class="pfu-pending" style="display:none;"></div>
+
+            <!-- ── Item Details, PO-wise ────────────────────────────
+                 The same per-item Ordered / Received / Pending table PO
+                 Receipts shows (openRecvModal), because it answers the
+                 question this whole tab is built around: not "is something
+                 outstanding" but WHICH items are, and how much of each. That
+                 is what gets said on the call — "aapke PO ke 3 item me se
+                 2 baaki hain, 40 kg" is a conversation; "maal pending hai"
+                 is not.
+
+                 ABOVE the history and the input deliberately: you read the
+                 shortfall, then the last thing the vendor said about it, then
+                 you write down what they say now. -->
+            <label style="font-size:0.85rem; font-weight:600; margin:10px 0 6px; display:block;">
+                &#128230; Item Details <span id="pfuItemCount" style="font-weight:800;color:#0284c7;"></span>
+            </label>
+            <div class="table-container">
+                <table class="item-table">
+                    <thead><tr id="pfuItemHead"></tr></thead>
+                    <tbody id="pfuItemBody"></tbody>
+                </table>
+            </div>
+
+            <label style="font-size:0.85rem; font-weight:600; margin:14px 0 6px; display:block;">
+                &#128340; Follow-up History <span id="pfuCount" style="font-weight:800;color:#0284c7;"></span>
+            </label>
+            <div id="pfuHistory"></div>
+
+            <!-- Add box. Hidden outright for a read-only login — see
+                 openPoFollowupModal; a disabled form would only invite a tap. -->
+            <div id="pfuAddBox">
+                <div class="pfu-add-head">&#10133; Naya Follow-up</div>
+                <div class="form-group">
+                    <label>Revised Delivery Date <span style="color:#dc3545;">*</span></label>
+                    <input type="date" id="pfuRevisedDate" class="form-select" autocomplete="off">
+                    <div class="pfu-hint" id="pfuDateHint">Vendor ne jo nayi date di wahi daalein. PO ki original Delivery Date badalti nahi &mdash; wo record me waisi hi rehti hai.</div>
+                </div>
+                <div class="form-group">
+                    <label>Remarks <span style="color:#dc3545;">*</span></label>
+                    <textarea id="pfuRemarks" rows="3" placeholder="Vendor ne kya kaha — kaaran, kiska naam, kitna maal taiyar hai..."></textarea>
+                    <div class="pfu-hint">Save hone ke baad entry badli nahi ja sakti &mdash; nayi entry jodni padegi.</div>
+                </div>
+                <div class="err-banner" id="pfuError"></div>
+                <button class="btn" id="pfuSaveBtn" style="background:#0284c7;">&#128190; Save Follow-up</button>
+            </div>
+            <div class="mode-note" id="pfuModeNote" style="display:none;"></div>
         </div>
     </div>
 

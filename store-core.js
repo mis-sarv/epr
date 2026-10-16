@@ -3985,6 +3985,12 @@ const SARV_FEATURES=[
   {key:'PO_SENT',label:'PO SENT TO VENDOR',hint:'Mobile › PO Sent tab',def:['USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'STORE_CHECK',label:'STORE CHECK',hint:'Mobile › Store Check tab',def:['USER_GM_PIN','USER_MD_PIN','ADMIN_PIN']},
   {key:'PO_RECEIPTS',label:'PO RECEIPTS',hint:'Mobile › PO Receipts tab',def:['PURCHASER','USER_MD_PIN','ADMIN_PIN']},
+  /* PO Follow-up default sirf PO Sender ko: PO vendor ke haath me usne diya
+     hai, to vendor usi ko jawab deta hai. Kisi aur role ko dena ho to is row
+     ka tick laga dein — par follow-up LIKHNE ka haq phir bhi PO Sender ka hai
+     (mobile ka canActIn / STAGE_TABS.FOLLOWUP.actor), baaki ko history
+     read-only dikhti hai. */
+  {key:'PO_FOLLOWUP',label:'PO FOLLOW-UP',hint:'Mobile › PO Follow-up tab — bheje hue PO par vendor se revised delivery date + remark',def:['PO_SENDER_PIN','ADMIN_PIN']},
 ];
 const SARV_TABS=[
   /* ── ERP shell ka sidebar ────────────────────────────────────────────
@@ -4086,6 +4092,11 @@ const SARV_TABS=[
   {key:'M_SENT',label:'PO Sent to Vendor',def:'ALL'},
   {key:'M_STORE',label:'Store Check',def:'ALL'},
   {key:'M_RECV',label:'PO Receipts',def:'ALL'},
+  /* Yahan 'ALL' hai par tab phir bhi default sirf PO Sender ko dikhta hai —
+     mobile ka tab DONO jagah se pass hona chahiye, aur Feature Access ki
+     PO_FOLLOWUP row default me sirf PO Sender + Admin ko hai. Isi tarah
+     M_SENT bhi 'ALL' hai. */
+  {key:'M_FOLLOWUP',label:'PO Follow-up',hint:'Bheje hue PO par vendor se revised delivery date + remarks',def:'ALL'},
   {group:'📱 Approval App (mobile) › Sub Tabs'},
   {key:'M_VI_pending',label:'Vendor Info › Pending',def:'ALL'},
   {key:'M_VI_done',label:'Vendor Info › Done',def:'ALL'},
@@ -4109,6 +4120,11 @@ const SARV_TABS=[
   {key:'M_RECV_partial',label:'PO Receipts › Partially Received',def:'ALL'},
   {key:'M_RECV_received',label:'PO Receipts › Received',def:'ALL'},
   {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Approve / Reject sirf MD kar sakta hai',def:['USER_MD_PIN','ADMIN_PIN']},
+  /* Follow-up ke do section stage ki jodi nahi hain — dono me WAHI PO hain
+     (vendor ko bheje hue, maal poora nahi aaya), bas baant ye hai ki aaj call
+     karni hai ya nahi. Isi liye naam "Due" aur "Awaited" hain. */
+  {key:'M_FOLLOWUP_pending',label:'PO Follow-up › Follow-up Due',hint:'Jin PO par ek bhi follow-up nahi hua, ya di hui revised date nikal gayi',def:'ALL'},
+  {key:'M_FOLLOWUP_done',label:'PO Follow-up › Date Awaited',hint:'Follow-up ho chuka hai aur vendor ki di hui date abhi aage ki hai',def:'ALL'},
 ];
 const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
@@ -15982,7 +15998,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function refreshPoFollowupReport(){
    if(!SB_READY)return;
    const tb=byId('p_poReportBody');if(!tb)return;
-   tb.innerHTML='<tr><td colspan="15" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   tb.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
    /* Every one of these goes through fetchAllRows. A plain select is capped at
       1000 rows by PostgREST, and on a follow-up sheet a truncated page does not
       just hide a line — it makes a PR that HAS a PO read as "PO not generated",
@@ -16194,6 +16210,90 @@ window.addEventListener('DOMContentLoaded',()=>{
      ? '<a class="fu-doc" data-doc="'+pEsc(kind||'')+'" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nPDF kholne ke liye click karein')+'">'+pEsc(short)+'</a>'
      : '<span class="fu-doc" style="color:#64748b;" title="'+pEsc(tip+'\n(Is document ki PDF abhi generate / index nahi hui)')+'">'+pEsc(short)+'</span>';
  }
+ /* ── PO FOLLOW-UP, read off the PO ────────────────────────────────
+    mobile.html's PO Follow-up tab records every chase of a vendor in
+    purchase_orders.approvals.followups — an append-only array of
+    {seq, revisedDate, prevDate, remarks, by, role, at, atIso}.
+
+    `approvals` is the only jsonb column a purchase_order has (there is no
+    pdf_snapshot on that table), and an extra non-stage key in it is inert for
+    every other reader: both apps and both PDF renderers look up the stage keys
+    they want BY NAME (approvals.gmCeo / .md / .store / .rejection). That is
+    what lets this whole column exist with no SQL migration.
+
+    READ-ONLY here, like the two bill-check columns: a follow-up is recorded by
+    whoever actually rang the vendor, on the phone, and a second place to type
+    it would be a second truth.
+
+    It does NOT replace "Delivery Date of PO". That column stays what the
+    vendor was sent; this one is what happened afterwards. */
+ function poFuList_(po){
+   const l=((po&&po.approvals)||{}).followups;
+   return Array.isArray(l)?l.filter(f=>f&&typeof f==='object'):[];
+ }
+ function poFuLatest_(po){const l=poFuList_(po);return l.length?l[l.length-1]:null}
+ function poFuRevised_(po){const f=poFuLatest_(po);return f?String(f.revisedDate||'').trim():''}
+ // Local date, not toISOString() — that is UTC and would call a promise late a
+ // day early for anyone east of Greenwich.
+ function poFuToday_(){
+   const d=new Date(),z=n=>String(n).padStart(2,'0');
+   return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());
+ }
+ // Whole days b − a between two 'yyyy-mm-dd' strings, parsed at local noon so
+ // no DST shift or offset can move the answer by a day.
+ function poFuDayDiff_(a,b){
+   const p=s=>{const m=String(s||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?new Date(+m[1],+m[2]-1,+m[3],12):null};
+   const x=p(a),y=p(b);
+   return (x&&y)?Math.round((y-x)/86400000):null;
+ }
+ // Days the latest promise is overdue by (>0), or left (<=0). null = never asked.
+ function poFuOverdue_(po){
+   const r=poFuRevised_(po);
+   return r?poFuDayDiff_(r,poFuToday_()):null;
+ }
+ /* Whether a PO is one this tab is even about — the same rule mobile.html's
+    PO Follow-up tab lists on (poFollowupEligible_ there): sent to the vendor,
+    MD Approved / Vendor Verified / Partially Received, and not fully in.
+    Used only to word the EMPTY cell, so a PO with no follow-ups reads as
+    "none needed yet" rather than as a job nobody did. */
+ const FU_PO_FOLLOWUP_STATUSES=['MD Approved','Vendor Verified','Partially Received'];
+ function poFuChaseable_(po){
+   if(!po||['Rejected','Cancelled'].includes(po.status||''))return false;
+   if(!isPoPartySent(po))return false;
+   return FU_PO_FOLLOWUP_STATUSES.includes(String(po.status||''));
+ }
+ /* The report cell. Latest promised date, how late it is, the start of the
+    remark, and a link to the whole history.
+
+    The LATEST only on the sheet: a PO chased six times would otherwise push
+    every other column off the screen, and the figure anybody reads across a
+    row is "what date are we on now". The rest is one click away. */
+ function fuRevisedCell_(po){
+   if(!po)return '<span class="fu-nodoc">&ndash;</span>';
+   const list=poFuList_(po);
+   if(!list.length){
+     // Said differently depending on whether a follow-up is even due, because
+     // a dash on a PO that was never sent means something else entirely.
+     return poFuChaseable_(po)
+       ? '<span class="fu-wait" title="'+pEsc('Is PO par abhi koi follow-up record nahi hua.\nmobile app ke PO Follow-up tab me PO Sender revised date daalega to yahan apne aap aa jayegi.')+'">&#9203; koi follow-up nahi</span>'
+       : '<span class="fu-nodoc" title="'+pEsc('Follow-up sirf un PO par hota hai jo vendor ko bhej diye gaye hon aur jinka maal poora na aaya ho (MD Approved / Partially Received).')+'">&ndash;</span>';
+   }
+   const last=list[list.length-1];
+   const diff=poFuOverdue_(po);
+   const late=diff!==null&&diff>0;
+   const when=diff===null?''
+     :(late?' <span class="fuh-late">('+diff+'d late)</span>'
+           :' <span class="fuh-ok">('+(diff===0?'aaj':(-diff)+'d baaki')+')</span>');
+   const tip='Revised: '+pDate(last.revisedDate)
+     +(last.prevDate?('\nIs se pehle: '+pDate(last.prevDate)):'')
+     +'\n'+(last.by||'—')+(last.at?(' · '+last.at):'')
+     +'\n\n'+(last.remarks||'(koi remark nahi)')
+     +'\n\nPoori history ke liye History par click karein ('+list.length+' entry)';
+   return '<span class="fu-rev'+(late?' od':'')+'" title="'+pEsc(tip)+'">'+pEsc(pDate(last.revisedDate))+'</span>'+when
+     +'<span class="fu-revn" title="'+pEsc(last.remarks||'')+'">'+pEsc(last.remarks||'—')+'</span>'
+     +'<button type="button" class="fu-hist" data-po="'+pEsc(po.po_no||'')+'"'
+     +' title="Is PO ki saari follow-up entries dekhein">&#128340; History ('+list.length+')</button>';
+ }
  function fuStatusCell_(statuses){
    if(!statuses||!statuses.length)return '<span class="fu-nodoc">&ndash;</span>';
    return statuses.map(s=>{
@@ -16288,9 +16388,12 @@ window.addEventListener('DOMContentLoaded',()=>{
     rows, when at least one of its rows passes every column filter, and those
     rows are tinted so the hit is easy to spot. */
  const FU_COL_LABEL={pr:'PR No.',requester:'PR Requested By',purchaser:'Purchaser Name',vendorInfo:'Vendor Info.',poGenerated:'PO Generate',po:'PO No.',vendor:'Vendor',
-   delivery:'Delivery Date of PO',mdApproved:'MD Approved',poSent:'PO Sent to Vendor',status:'PO Status',inward:'Inward No.',
+   delivery:'Delivery Date of PO',mdApproved:'MD Approved',poSent:'PO Sent to Vendor',revised:'Delivery Revise & Remarks',status:'PO Status',inward:'Inward No.',
    informed:'Inform to Requester',gm:'Bill Checked by GM',md:'Bill Checked by MD'};
  const FU_NO_PO='(No PO)',FU_NO_INW='(No Inward)',FU_BLANK='(Blank)';
+ // A PO nobody has chased yet. Bracketed like the others so it sorts to the
+ // end of the filter list rather than among the dates.
+ const FU_NO_FU='(No Follow-up)';
  // The Purchaser a PR is booked against; PRs saved before the column existed carry it in their PDF snapshot.
  function poFollowupPurchaser_(req){
    return String((req&&req.purchaser_name)||(req&&req.pdf_snapshot&&req.pdf_snapshot.generatedBy)||'').trim();
@@ -16311,6 +16414,16 @@ window.addEventListener('DOMContentLoaded',()=>{
      case 'delivery':return po?(po.delivery_date?pDate(po.delivery_date):FU_BLANK):FU_NO_PO;
      case 'mdApproved':return po?yn(poFollowupMdApproved_(po)):FU_NO_PO;
      case 'poSent':return po?yn(isPoPartySent(po)):FU_NO_PO;
+     /* The LATEST promised date, so this column filters the way "Delivery Date
+        of PO" does — pick a date, get the POs standing on it. Overdue is not a
+        value here: it changes by itself as days pass, and a filter that quietly
+        re-means itself overnight is worse than no filter. The cell colours it
+        instead, and "Only Incomplete Follow-Up" above still catches them. */
+     case 'revised':{
+       if(!po)return FU_NO_PO;
+       const rev=poFuRevised_(po);
+       return rev?pDate(rev):FU_NO_FU;
+     }
      case 'status':{if(!po)return FU_NO_PO;const s=po.status||'Generated';return PO_FOLLOWUP_STATUS_TEXT[s]||s;}
      case 'inward':return i?(shortDocNo_(i.document_no,'INWARD')||i.document_no):FU_NO_INW;
      case 'informed':return i?(poFollowupInformState_(g.req,i.document_no)?'✔ Done':'☐ Pending'):FU_NO_INW;
@@ -16413,7 +16526,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      const nos=[g.req.req_no,shortDocNo_(g.req.req_no,'PR')]
        .concat(g.poBlocks.map(b=>b.po.po_no)).concat(g.poBlocks.map(b=>shortDocNo_(b.po.po_no,'PO')))
        .concat(g.allInwards.map(i=>i.document_no)).concat(g.allInwards.map(i=>shortDocNo_(i.document_no,'INWARD')));
+     /* Follow-up remarks are searchable too, so "transport" or "yarn" finds
+        every PO held up for that reason — which is the question this column
+        gets asked most. */
+     const fuText=g.poBlocks.reduce((a,b)=>a.concat(poFuList_(b.po).map(f=>(f.remarks||'')+' '+(f.revisedDate||''))),[]);
      return nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
+       .concat(fuText)
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
  }
@@ -16447,6 +16565,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        +poCell(po&&po.delivery_date?('<span style="font-weight:700;white-space:nowrap;">'+pEsc(pDate(po.delivery_date))+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;text-align:center;')
        +poCell(po?fuTick_(poFollowupMdApproved_(po)):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
        +poCell(po?fuSentCell_(po):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
+       // Per PO, merged down its receipts like the rest of the PO block: the
+       // follow-up is a conversation about the ORDER, not about one receipt.
+       +poCell(po?fuRevisedCell_(po):'<span class="fu-nodoc">&ndash;</span>','background:#fffdf5;')
        +poCell(po?fuStatusCell_([po.status||'Generated']):'<span class="fu-nodoc">&ndash;</span>','')
        +'<td style="background:#fdeaf0;">'+(r.inward?fuDocLink_(r.inward.document_no,g.inwUrlOf(r.inward),'INWARD'):'<span class="fu-nodoc">&ndash;</span>')+'</td>'
        // Per receipt, not merged down the PR — it sits across from the Inward
@@ -16456,7 +16577,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td class="fu-center">'+fuBillCell_(r.inward,'md')+'</td>'
        +'</tr>';
    }).join('')
-     : '<tr><td colspan="15" style="text-align:center;color:#94a3b8;padding:18px;">'
+     : '<tr><td colspan="16" style="text-align:center;color:#94a3b8;padding:18px;">'
        +(sarvPoFollowupGroups.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // Counted in PRs, not rows — "12 of 40" meaning rows would be unreadable
@@ -16489,6 +16610,102 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(isPoPartySent(po))
      return '<span class="fu-tick" style="color:#b45309;" title="Is browser me sent mark hai, lekin database me party_sent_at column nahi hai — mobile se bheja gaya PO yahan nahi dikhega. PO_FOLLOWUP note dekhein.">&#10004;?</span>';
    return '<span class="fu-wait" title="mobile.html ke PO Sender ke WhatsApp par bhejte hi yahan apne aap ✔ aa jayega">&#9203;</span>';
+ }
+
+ /* ── PO Follow-up history dialog ──────────────────────────────────
+    Read-only. Every call made to the vendor about one PO: the date they
+    promised, what they said, who recorded it and when, plus what each
+    revision moved the date FROM — which is what makes a slip readable
+    without re-deriving it from the chain.
+
+    Newest FIRST on screen, the reverse of the stored order. The array is
+    append-ordered so "last element is the current promise" needs no sorting;
+    reading, though, starts from the last thing the vendor said.
+
+    Nothing here writes. Follow-ups are recorded on the phone by whoever
+    actually rang the vendor (mobile.html ▸ PO Follow-up), and a second place
+    to type them would be a second truth — the same rule the two bill-check
+    columns on this sheet follow. */
+ function closePoFollowupHistory_(){
+   const m=byId('fuHistModal');
+   if(!m)return;
+   m.classList.remove('open');
+   m.style.display='none';
+   document.removeEventListener('keydown',fuHistKey_,true);
+ }
+ function fuHistKey_(e){if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closePoFollowupHistory_();}}
+ function openPoFollowupHistory_(poNo){
+   const no=String(poNo||'').trim();
+   if(!no)return;
+   // Found through the loaded groups rather than re-queried: this sheet
+   // already holds every PO it is showing, and a round trip would make a
+   // read-only popup slower than the data behind it.
+   let po=null;
+   sarvPoFollowupGroups.some(g=>g.poBlocks.some(b=>{
+     if(String((b.po||{}).po_no||'')===no){po=b.po;return true}
+     return false;
+   }));
+   if(!po)return showToast('Yeh PO list me nahi mila — Reload karein','warn');
+   const list=poFuList_(po);
+   const m=byId('fuHistModal');
+   if(!m){
+     // No dialog in the DOM — say the record exists rather than doing nothing
+     // silently, which looks identical to a broken button.
+     showToast(list.length?(no+' par '+list.length+' follow-up hain — dialog load nahi hua'):'Is PO par koi follow-up nahi','warn');
+     return;
+   }
+   const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v==null?'':v};
+   set('fuHistTitle','PO Follow-up History');
+   set('fuHistSubtitle',(shortDocNo_(no,'PO')||no)+'  ·  '+(po.vendor_name||'Vendor')
+     +'  ·  '+list.length+' entry');
+   const meta=[
+     ['PO No.',no],
+     ['Vendor',po.vendor_name||'—'],
+     ['PR No.',po.linked_req_nos||'—'],
+     // Labelled "original" so it is never read as the live date with the
+     // revisions listed under it.
+     ['Delivery Date (original)',po.delivery_date?pDate(po.delivery_date):'—'],
+     ['Vendor ko bheja',po.party_sent_at?pStamp(po.party_sent_at):(isPoPartySent(po)?'✔ (date record me nahi)':'⏳ nahi bheja')],
+     ['PO Status',po.status||'—'],
+   ];
+   const mt=byId('fuHistMeta');
+   if(mt)mt.innerHTML=meta.map(r=>'<tr><td class="k">'+pEsc(r[0])+'</td><td class="v">'+pEsc(r[1])+'</td></tr>').join('');
+   const box=byId('fuHistList');
+   if(box){
+     if(!list.length){
+       box.innerHTML='<div class="fuh-empty">Is PO par abhi koi follow-up record nahi hua.<br>'
+         +'mobile app ke <b>PO Follow-up</b> tab me PO Sender revised date aur remark daalega to wo yahan aa jayega.</div>';
+     }else{
+       const today=poFuToday_();
+       box.innerHTML=list.slice().reverse().map((f,idx)=>{
+         const diff=poFuDayDiff_(f.revisedDate,today);
+         // Only the CURRENT promise can be late. An older entry's date passing
+         // is just what happened next, and flagging every one of them amber
+         // would make a well-chased PO look like a disaster.
+         const late=idx===0&&diff!==null&&diff>0;
+         const when=(idx===0&&diff!==null)
+           ?(diff>0?' <span class="fuh-late">('+diff+' din late)</span>'
+                   :' <span class="fuh-ok">('+(diff===0?'aaj':(-diff)+' din baaki')+')</span>')
+           :'';
+         return '<div class="fuh-row'+(idx===0?' latest':'')+(late?' od':'')+'">'
+           +'<div class="fuh-head">'
+           +'<span>#'+(list.length-idx)+' &nbsp;Revised: '+pEsc(pDate(f.revisedDate))+when+'</span>'
+           +'<span class="fuh-who">'+pEsc(f.by||'—')+(f.role?(' ('+pEsc(f.role)+')'):'')+(f.at?(' · '+pEsc(f.at)):'')+'</span>'
+           +'</div>'
+           +'<div class="fuh-rem">'+(f.remarks?pEsc(f.remarks):'<i>koi remark nahi likha gaya</i>')+'</div>'
+           +(f.prevDate?('<div class="fuh-prev">Is se pehle ki date: '+pEsc(pDate(f.prevDate))+'</div>'):'')
+           +'</div>';
+       }).join('');
+     }
+   }
+   /* Shown by CLASS, and the inline display cleared first — the element
+      carries an inline `display:none` from its markup, and an inline style
+      cannot be beaten by a stylesheet rule, so #fuHistModal.open's
+      `display:grid` (and with it the centring) would never take effect. Same
+      trick as fuAskConfirm_ below. */
+   m.style.display='';
+   m.classList.add('open');
+   document.addEventListener('keydown',fuHistKey_,true);
  }
 
  /* The Inform-to-Requester confirm popup.
@@ -16568,6 +16785,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    const body=byId('p_poReportBody');
    if(!body||body.dataset.fuBound)return;
    body.addEventListener('click',e=>{
+     /* The History link rides on this same delegated listener rather than
+        getting one of its own, for the same reason the Done buttons do: the
+        tbody survives every render and the controls inside it do not. It is
+        read-only, so it is handled before the PIN-gated Done button and
+        returns — there is nothing to disable and nothing to write. */
+     const hist=e.target.closest('.fu-hist');
+     if(hist){
+       e.preventDefault();
+       openPoFollowupHistory_(hist.dataset.po);
+       return;
+     }
      const btn=e.target.closest('.fu-flag');
      if(!btn||btn.disabled)return;
      e.preventDefault();
@@ -16734,22 +16962,42 @@ window.addEventListener('DOMContentLoaded',()=>{
       record that gets filed, mailed and matched against other systems, and
       PR608 cannot be matched back to a year or a series. Both are exported so
       neither reading is lost. */
+   /* Four follow-up columns, not one. The sheet shows the latest promise
+      because a row has to stay readable; a CSV is where the whole chase gets
+      filed, so the count, the latest date, that date's remark and then every
+      entry in one cell all go out. "Revised Date (latest)" is what a pivot
+      table groups on; "Follow-up History" is what somebody reads. */
    const head=['PR No.','PR Short','PR Requested By','Purchaser Name','Vendor Info.','PO Generate','PO No.','PO Short','Vendor',
-     'Delivery Date of PO','MD Approved','PO Sent to Vendor','PO Status','Inward No.','Inward Short',
+     'Delivery Date of PO','MD Approved','PO Sent to Vendor',
+     'Follow-ups','Revised Date (latest)','Latest Follow-up Remarks','Follow-up History',
+     'PO Status','Inward No.','Inward Short',
      'Inform to Requester','Bill Checked by GM','Bill Checked by MD'];
    const yn=v=>v?'Yes':'No';
    const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
    const bill=(i,s)=>{if(!i)return '';const c=inwStoreCheck_(i,s);return c?('Yes — '+(inwStoreCheckText_(i,s)||'checked')):'No'};
+   /* Every chase of this PO in one cell, newest LAST so it reads as the story
+      it is. Newlines inside a quoted CSV field are legal and Excel shows them
+      as separate lines in the cell. */
+   const fuHist=po=>poFuList_(po).map((f,n)=>
+     '#'+(n+1)+' '+pDate(f.revisedDate)
+     +(f.prevDate?(' (pehle '+pDate(f.prevDate)+')'):'')
+     +' — '+(f.remarks||'(koi remark nahi)')
+     +' [ '+(f.by||'—')+(f.at?(' · '+f.at):'')+' ]').join('\n');
    const body=rows.map(r=>{
      const g=r.group,po=r.po,i=r.inward;
      // Per receipt — a row with no inward has nothing to have been informed of.
      const f=i?poFollowupInformState_(g.req,i.document_no):null;
+     const fuLast=po?poFuLatest_(po):null;
      return [
        g.req.req_no||'',shortDocNo_(g.req.req_no,'PR'),g.req.requested_by||'',poFollowupPurchaser_(g.req),
        yn(g.vendorInfo),yn(g.poGenerated),
        po?(po.po_no||''):'',po?shortDocNo_(po.po_no,'PO'):'',po?(po.vendor_name||''):'',
        po?pDate(po.delivery_date):'',
        po?yn(poFollowupMdApproved_(po)):'',po?(po.party_sent_at?('Yes — '+pStamp(po.party_sent_at)):(isPoPartySent(po)?'Yes (local only)':'No')):'',
+       po?String(poFuList_(po).length):'',
+       fuLast?pDate(fuLast.revisedDate):'',
+       fuLast?(fuLast.remarks||''):'',
+       po?fuHist(po):'',
        po?(po.status||'Generated'):'',
        i?(i.document_no||''):'',i?shortDocNo_(i.document_no,'INWARD'):'',
        f?('Yes — '+(f.by||'')+(f.at?' '+pStamp(f.at):'')):'No',
@@ -17288,10 +17536,22 @@ window.addEventListener('DOMContentLoaded',()=>{
    on('p_poRepFsBtn',()=>poFollowupFullScreen_(!byId('p_poReportPanel')?.classList.contains('fu-full')));
    document.addEventListener('keydown',e=>{
      if(e.key!=='Escape'||!byId('p_poReportPanel')?.classList.contains('fu-full'))return;
-     if(byId('fuColDrop')||document.querySelector('.sarv-ov')||byId('pwdGateModal')?.style.display==='flex')return;
+     // The history dialog opens OVER a full-screen report, so Esc has to close
+     // that first rather than yanking the sheet out from under it.
+     if(byId('fuColDrop')||document.querySelector('.sarv-ov')||byId('pwdGateModal')?.style.display==='flex'
+        ||byId('fuHistModal')?.classList.contains('open'))return;
      poFollowupFullScreen_(false);
    });
    bindPoFollowupFlagClicks_();
+   // PO Follow-up history — read-only, so a backdrop tap closing it can throw
+   // nothing away (unlike the confirm dialog, which holds a typed PIN).
+   on('fuHistCloseBtn',closePoFollowupHistory_);
+   (()=>{
+     const m=byId('fuHistModal');
+     if(!m||m.dataset.fuHistBound)return;
+     m.addEventListener('mousedown',e=>{if(e.target&&e.target.id==='fuHistModal')closePoFollowupHistory_();});
+     m.dataset.fuHistBound='1';
+   })();
    on('p_poAddPrItemsBtn',async()=>{
      const panel=byId('p_poAddItemsPickerPanel');if(!panel)return;
      if(panel.style.display!=='none'){panel.style.display='none';return;}

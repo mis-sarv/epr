@@ -2558,6 +2558,34 @@
      mistake a bare "enter your PIN" prompt invites.
      Body level, same as #pwdGateModal and for the same reason: #storeInterface
      is display:none while the Purchase panel is open. ════════════════════ -->
+<!-- ── PO Follow-up history (read-only) ─────────────────────────────────
+     Every call made to the vendor about one PO: the date they promised, what
+     they said, and who recorded it. Opened from the Follow-Up Report's
+     "Delivery Revise & Remarks" cell.
+
+     READ-ONLY, deliberately. Follow-ups are recorded on the phone by the
+     person who actually rang the vendor (mobile.html ▸ PO Follow-up), and a
+     second place to type them would be a second truth — the same reason the
+     two bill-check columns on this sheet are read-only. -->
+<div class="secure-modal-overlay" id="fuHistModal" style="display:none; z-index:3400;">
+    <div class="fu-dlg">
+        <div class="fu-dlg-head">
+            <div class="fu-dlg-icon">&#128222;</div>
+            <div>
+                <h3 id="fuHistTitle">PO Follow-up History</h3>
+                <p id="fuHistSubtitle">PO &mdash;</p>
+            </div>
+        </div>
+        <div class="fu-dlg-body">
+            <table class="fu-dlg-rows" id="fuHistMeta"></table>
+            <div id="fuHistList"></div>
+        </div>
+        <div class="fu-dlg-foot">
+            <button type="button" class="fu-dlg-btn ok" id="fuHistCloseBtn">&#10006; Close</button>
+        </div>
+    </div>
+</div>
+
 <div class="secure-modal-overlay" id="fuConfirmModal" style="display:none; z-index:3400;">
     <div class="fu-dlg">
         <div class="fu-dlg-head">
@@ -3019,7 +3047,11 @@
                         &#9745; Sirf <b>Inform to Requester</b> haath se tick hota hai &mdash; apne role ka PIN lagta hai, aur
                         tick hote hi wo <b>&#128274; lock</b> ho jaata hai; hatane ke liye <b>Admin login + Admin PIN</b> chahiye.
                         <b>MD Approved</b>, <b>PO Sent to Vendor</b> aur <b>Bill Checked by GM / MD</b> mobile app ke
-                        PO Sender aur Store Check se apne aap update hote hain.
+                        PO Sender aur Store Check se apne aap update hote hain.<br>
+                        &#128222; <b>Delivery Revise &amp; Remarks</b> &mdash; mobile app ke <b>PO Follow-up</b> tab me PO Sender vendor se
+                        jo nayi delivery date leta hai wahi yahan dikhti hai (latest sabse upar). Cell me
+                        <b>&#128340; History</b> par click karke saari follow-up entries &mdash; date, remark, kisne kab ki &mdash; dekhein.
+                        PO ki asli <b>Delivery Date of PO</b> isse badalti nahi &mdash; wo wahi rehti hai jo vendor ko bheji gayi thi.
                     </div>
                     <!-- Link audit. Silent when every PO reaches its PR through its own
                          lines, which is the only way the two can be trusted to match.
@@ -3040,6 +3072,11 @@
                                     <th style="background:#fbd5c0;" title="PO banate waqt purchaser ne jo Delivery Date daali thi">Delivery Date of PO</th>
                                     <th style="background:#d9ead3; text-align:center;">MD Approved</th>
                                     <th style="background:#d9ead3; text-align:center;" title="mobile app me PO Sender ke WhatsApp par bhejte hi apne aap ✔ ho jata hai">PO Sent to Vendor</th>
+                                    <!-- The chase log. Latest promised date on the face of it, the
+                                         whole history one click away — see fuRevisedCell_ /
+                                         openPoFollowupHistory_. Written only from mobile.html's
+                                         PO Follow-up tab; nothing is typed here. -->
+                                    <th style="background:#fff2cc;" title="mobile app ke PO Follow-up tab me PO Sender ne vendor se jo revised delivery date li, uski latest value — poori history dekhne ke liye cell me 🕘 link par click karein">Delivery Revise &amp; Remarks</th>
                                     <th style="background:#e2efda;">PO Status</th>
                                     <th style="background:#f9cedc;">Inward No.</th>
                                     <th style="background:#dbe5f1; text-align:center;">Inform to Requester</th>
@@ -3059,6 +3096,7 @@
                                     <th><button type="button" class="fu-colf" data-col="delivery" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                     <th><button type="button" class="fu-colf" data-col="mdApproved" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                     <th><button type="button" class="fu-colf" data-col="poSent" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
+                                    <th><button type="button" class="fu-colf" data-col="revised" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                     <th><button type="button" class="fu-colf" data-col="status" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                     <th><button type="button" class="fu-colf" data-col="inward" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>
                                     <th><button type="button" class="fu-colf" data-col="informed" title="Filter — click karke ek ya zyada values chunein">All &#9662;</button></th>

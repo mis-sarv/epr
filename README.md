@@ -94,6 +94,132 @@ Jin columns ka matlab galat samajha ja sakta hai (`pr_gmceo_as`,
 `po_md_approved`, `trk_pr_received_value` …) unka `comment on column`
 database ke andar hi likha hai.
 
+## 📞 PO Follow-up — vendor se revised delivery date
+
+PO vendor ko chala gaya, delivery date aa gayi, maal nahi aaya. Ab tak iska
+koi record kahin nahi tha — phone par baat hoti thi aur baat wahin reh jaati
+thi. Ab wo baat likhi jaati hai.
+
+**Likhna kahan:** `mobile.html` › **📞 PO Follow-up** tab (PO Sender ka).
+**Padhna kahan:** `index.html` › PO Generation › **📋 Follow-Up Report** ka
+naya column **Delivery Revise & Remarks**, theek `PO Sent to Vendor` ke baad.
+
+### Kaunse PO is tab me aate hain
+
+Teeno shart saath me:
+
+1. **Vendor ko bhej diya gaya** ho (`purchase_orders.party_sent_at`, ya
+   browser-local fallback — wahi `isPoSentMobile`). Jo PO vendor ke paas
+   pahuncha hi nahi, us par vendor se date poochne ka matlab nahi.
+2. Status **MD Approved** / **Vendor Verified** (legacy, MD ke baad hi aata
+   tha) / **Partially Received**.
+3. Maal **poora nahi aaya** — ye `poReceiptBucket` se tay hota hai, jo lines
+   load hone par **item-wise** dekhta hai. Isi liye wo PO bhi list me rehta
+   hai jiske header totals "Received" keh rahe hon par ek line short ho.
+
+Do section hain, aur ye stage ki jodi **nahi** hai — dono me wahi PO hain:
+
+| Section | Matlab |
+|---|---|
+| **Follow-up Due** | ek bhi follow-up nahi hua, **ya** di hui revised date nikal gayi |
+| **Date Awaited** | follow-up ho chuka aur vendor ki di hui date abhi aage ki hai |
+
+Tab ka badge **Follow-up Due** ka count hai. Sabse oopar wo PO jiski date
+sabse zyada nikal gayi hai.
+
+### Modal me 📦 Item Details — PO wise
+
+PO kholne par wahi **per-item** table dikhti hai jo PO Receipts me hai
+(`openRecvModal`) — `Sr · Item Name · Ordered · Received · Pending · UOM ·
+Status` — neeche TOTAL row aur wahi verdict jo PO ko uske section me rakhta
+hai. Helpers dono tab me **ek hi** hain (`poLineTally_` / `recvLineState_` /
+`RECV_LINE_STATE`); do tab ek hi figure do tarike se nikalein to wahi se
+dono me farq aana shuru hota hai.
+
+Do baatein PO Receipts se alag hain, jaan-boojh kar:
+
+- **Jo item short hain wo sabse oopar** aate hain (uske andar PO ki apni line
+  order barkarar). Baat karte waqt list oopar se niche padhi jaati hai — 20
+  line ke PO me jo 2 baaki hain, wo 18 poore hue items ke beech dabi nahi
+  rehni chahiye. Short lines halki amber tint me hain.
+- Table ke neeche ek line saaf likhti hai **kya maangna hai** — "Vendor se in
+  3 item ki baat karein — kul 40 qty baaki hai (1 item par abhi kuch bhi nahi
+  aaya)". Yahi wo vaakya hai jo Sender screen se padhkar phone par bol deta
+  hai.
+
+Header par bhi `Ordered / Received`, `Items Complete`, `Excess Received` aur
+`Inward Entries` aa gaye — taaki jo qty kal aa chuki hai wo dobara na maangi
+jaye.
+
+Lines list ke saath hi load ho jaati hain (`attachPoLinesToPos_`, PO Sender
+bhi ab usme shaamil hai), to modal aam taur par bina extra query khulta hai;
+sirf wo lookup fail / skip hua ho to modal apne aap ek baar fetch karta hai.
+`_lines` ka convention wahi hai: `null` = load nahi hui (table kehti hai
+"load nahi ho paayin"), `[]` = load hui aur khali hai ("is PO me koi line
+nahi") — dono ko ek jaisa dikhana sabse galat hota, kyunki `[]` ka matlab
+"kuch order hi nahi hua" padh liya jaata.
+
+### Data kahan baithta hai — koi migration nahi
+
+`purchase_orders.approvals` ke andar, `followups` **array** me:
+
+```json
+{ "seq": 2, "revisedDate": "2026-11-05", "prevDate": "2026-10-20",
+  "remarks": "yarn nahi aaya, 5 din me dispatch", "by": "PO Sender",
+  "role": "PO Sender", "at": "16/10/2026 15:40",
+  "atIso": "2026-10-16T10:10:00.000Z", "poNo": "PO/U-2/793" }
+```
+
+`approvals` hi **ek matra** jsonb column hai jo `purchase_orders` par hai (us
+table par `pdf_snapshot` nahi hota), aur `rejectPO` pehle se isi me ek
+non-stage key (`rejection`) rakhta hai. Is column ko koi **iterate nahi**
+karta — dono app aur dono PDF renderer apni stage key **naam se** padhte hain
+(`approvals.gmCeo` / `.md` / `.store` / `.rejection`), isliye ek extra key un
+sabke liye inert hai. **Isi liye is feature ke liye koi `.sql` chalane ki
+zaroorat nahi.**
+
+### Do niyam jo jaan lein
+
+- **Append-only.** Entry na edit hoti hai na delete. Jo date vendor ne di aur
+  nikal gayi — wahi to is record ka asli kaam hai; use mitana matlab saboot
+  mitana. Nayi baat = nayi entry.
+- **PO ki asli `delivery_date` nahi badalti**, aur PO ki PDF dobara nahi
+  banti. Vendor ke haath me jo document hai wo wahi rehta hai. Report me
+  `Delivery Date of PO` = jo tay hua tha, naya column = uske baad kya hua.
+  Nayi date pichli di hui date se **peeche** nahi daali ja sakti (pehli entry
+  par aaj se peeche nahi) — wo revision nahi, typo hoti hai.
+
+Save karte waqt row **dobara padhi** jaati hai aur nayi entry usi taaza array
+par judti hai — do phone ek hi PO chase kar rahe hon to ek doosre ki entry
+mitti nahi (read-modify-write ka race).
+
+### Report me
+
+Cell par latest date, kitne din late / baaki, remark ki shuruat, aur
+**🕘 History (n)** link — click par us PO ki saari entries (date, remark,
+kisne kab ki, pichli date kya thi). Report me kuch **type nahi hota**: jisne
+vendor se baat ki wahi phone par likhta hai, warna sach do jagah ho jaata hai
+— wahi niyam jo `Bill Checked by GM / MD` columns par hai.
+
+Column filter latest date par chalta hai, search remark ke andar bhi dhoondhti
+hai (`transport` likhne par wo saare PO mil jaate hain), aur CSV me char
+column jaate hain: `Follow-ups`, `Revised Date (latest)`,
+`Latest Follow-up Remarks`, aur poori `Follow-up History` ek cell me.
+
+### Access
+
+| Jagah | Key | Default |
+|---|---|---|
+| Admin Panel › **Feature Access** | `PO_FOLLOWUP` | sirf **PO Sender** + Admin |
+| Admin Panel › **Tab Visibility** | `M_FOLLOWUP` | `ALL` |
+| | `M_FOLLOWUP_pending` / `M_FOLLOWUP_done` | `ALL` |
+
+Tab dono jagah se pass hona chahiye, isi liye default me wo sirf PO Sender ko
+dikhta hai (wahi tareeka `M_SENT` ka hai). Kisi aur role ko dena ho to
+Feature Access ki `PO_FOLLOWUP` row par tick lagayein — par **likhne** ka haq
+phir bhi PO Sender ka rehta hai (`STAGE_TABS.FOLLOWUP.actor`), baaki ko
+history read-only dikhti hai.
+
 ## Fixed dropdowns ki values kahan se aati hain
 
 **Master Data › 🔽 Dropdown Master.** App ke saare fixed dropdowns ki values ek

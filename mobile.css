@@ -998,3 +998,99 @@
         }
         .pr-in[readonly] { background: #f1f5f9; color: #64748b; }
         .pr-f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+
+        /* ════════════════════════════════════════════════════════════
+           PO FOLLOW-UP  (#poFollowupModal + its cards)
+           ------------------------------------------------------------
+           The chase log: a PO already with the vendor whose material has
+           not fully arrived, and what the vendor said each time they were
+           asked. Blue throughout rather than the green/red of the approval
+           screens — a follow-up is neither an approval nor a rejection, it
+           is a record of a conversation, and it must not read as either.
+
+           The one state that IS coloured is an overdue promise (.pfu-od /
+           .card.pfu-overdue): a revised date that has itself gone past is
+           the single thing on this tab that needs doing today.
+        ════════════════════════════════════════════════════════════ */
+        /* A PO whose latest promised date has passed. Amber down the left
+           edge, the same device .card.vendor-filled and .card.po-rejected
+           use — paintFollowupList_ picks one skin, never two. */
+        .card.pfu-overdue {
+            background: #fffbeb;
+            border-color: #fcd34d;
+            border-left: 4px solid #d97706;
+        }
+        /* Never followed up at all. Deliberately NOT amber: nothing has been
+           promised yet, so nothing is late — it is simply untouched. */
+        .card.pfu-fresh { border-left: 4px solid #0284c7; }
+        .tag.fu { background: #e0f2fe; color: #075985; border-color: #7dd3fc; }
+        .tag.fu-od { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+
+        /* How much of the order is still outstanding — the figure the vendor
+           gets asked about, at the top of the modal. */
+        .pfu-pending {
+            margin: 8px 0 4px;
+            padding: 8px 10px;
+            border: 1px solid #bae6fd;
+            background: #f0f9ff;
+            border-radius: 8px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: #075985;
+        }
+        /* One past call. Newest FIRST in the list (see pfuHistoryHtml_) —
+           the last thing the vendor said is what matters before dialling. */
+        .pfu-row {
+            border: 1px solid #e2e8f0;
+            border-left: 3px solid #0284c7;
+            border-radius: 6px;
+            background: #fff;
+            padding: 8px 10px;
+            margin-bottom: 7px;
+        }
+        /* The most recent entry, which is the one being acted on. */
+        .pfu-row.latest { border-color: #7dd3fc; background: #f0f9ff; }
+        /* Its promised date has passed and the material still is not in. */
+        .pfu-row.od { border-left-color: #d97706; border-color: #fcd34d; background: #fffbeb; }
+        .pfu-row-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: #075985;
+        }
+        .pfu-row.od .pfu-row-head { color: #92400e; }
+        .pfu-row-who { font-size: 0.68rem; font-weight: 700; color: #64748b; }
+        .pfu-row-rem {
+            margin-top: 4px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #334155;
+            /* A typed remark can be one long unbroken string. */
+            overflow-wrap: anywhere;
+        }
+        /* "X din late" / "X din baaki" against the promised date. */
+        .pfu-od { color: #b45309; font-weight: 800; }
+        .pfu-ok { color: #15803d; font-weight: 800; }
+        .pfu-empty {
+            padding: 10px;
+            border: 1px dashed #cbd5e1;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 4px;
+        }
+        .pfu-add-head {
+            margin: 14px 0 8px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 0.82rem;
+            font-weight: 800;
+            color: #0369a1;
+        }
+        .pfu-hint { font-size: 0.68rem; color: #6b7280; margin-top: 4px; font-weight: 600; }

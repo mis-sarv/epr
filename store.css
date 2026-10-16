@@ -2864,7 +2864,10 @@ body {
            is typed in — the only clickable inputs are the three sign-off
            boxes, and those are PIN-gated (see togglePoFollowupFlag).
         ============================================================ */
-        #fullPurchasePanel .po-followup-table { min-width: 1390px; }
+        /* Grew with the Delivery Revise & Remarks column — that cell carries a
+           date, a lateness marker, the start of the remark and a History link,
+           so squeezing it into the old width shrank every column beside it. */
+        #fullPurchasePanel .po-followup-table { min-width: 1590px; }
         #fullPurchasePanel .po-followup-table th { white-space: nowrap; border-right: 1px solid #cbd5e1; }
         #fullPurchasePanel .po-followup-table td {
             border-right: 1px solid #e2e8f0;
@@ -4144,3 +4147,116 @@ body { min-width: 0; }
   .fbm-search { flex:1 1 100%; }
   .fbm-box { max-height:calc(100vh - 20px); }
 }
+
+/* ============================================================
+   PO FOLLOW-UP HISTORY DIALOG  (#fuHistModal)
+   ------------------------------------------------------------
+   Opened from the Follow-Up Report's "Delivery Revise & Remarks"
+   cell. Self-contained for the same reason #fuConfirmModal is:
+   it sits outside #storeInterface, so it can borrow none of that
+   panel's styles, and every rule in this sheet that styles the
+   .fu-dlg shell is written as "#fuConfirmModal .fu-dlg…" — a
+   descendant selector that does not reach this id.
+
+   READ-ONLY. There is no PIN field and no OK: follow-ups are
+   recorded on the phone by whoever rang the vendor, and a second
+   place to type them would be a second truth.
+============================================================ */
+#fuHistModal {
+    position: fixed; inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(15, 23, 42, 0.75);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    overflow-y: auto; padding: 20px 16px; box-sizing: border-box;
+}
+#fuHistModal.open { display: grid; }
+/* Wider than the confirm dialog: this one holds a list of remarks, not
+   two fields, and 430px turns every sentence into five lines. */
+#fuHistModal .fu-dlg {
+    background: #fff; border-radius: 12px; width: 560px; max-width: 94vw;
+    box-shadow: 0 24px 48px -12px rgba(15,23,42,.45); overflow: hidden;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #0f172a;
+    margin: auto;
+}
+#fuHistModal .fu-dlg-head {
+    display: flex; gap: 12px; align-items: center;
+    padding: 14px 18px; background: #f0f9ff; border-bottom: 1px solid #bae6fd;
+}
+#fuHistModal .fu-dlg-icon { font-size: 26px; line-height: 1; }
+#fuHistModal .fu-dlg-head h3 { margin: 0; font-size: 15px; font-weight: 800; }
+#fuHistModal .fu-dlg-head p { margin: 2px 0 0; font-size: 11px; color: #64748b; font-weight: 600; }
+/* A long chase list scrolls inside the card rather than growing the page. */
+#fuHistModal .fu-dlg-body { padding: 16px 18px; max-height: 68vh; overflow-y: auto; }
+#fuHistModal .fu-dlg-rows { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+#fuHistModal .fu-dlg-rows td {
+    padding: 4px 0; font-size: 12px; vertical-align: top; border-bottom: 1px solid #f1f5f9;
+}
+#fuHistModal .fu-dlg-rows td.k {
+    color: #64748b; font-weight: 700; width: 150px; white-space: nowrap; padding-right: 10px;
+}
+#fuHistModal .fu-dlg-rows td.v { font-weight: 700; word-break: break-word; }
+#fuHistModal .fu-dlg-foot {
+    display: flex; gap: 10px; padding: 12px 18px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+}
+#fuHistModal .fu-dlg-btn {
+    flex: 1; border: 0; border-radius: 8px; padding: 10px 14px;
+    font-size: 13px; font-weight: 800; cursor: pointer; font-family: inherit;
+}
+#fuHistModal .fu-dlg-btn.ok { background: #475569; color: #fff; }
+#fuHistModal .fu-dlg-btn.ok:hover { background: #334155; }
+
+/* ── One recorded call ──────────────────────────────────────────────
+   Newest FIRST, which is the reverse of how they are stored (the stored
+   array is append-ordered so "last element = current promise" needs no
+   sort). Only the current promise can be marked late: an older entry's
+   date passing is simply what happened next, and flagging all of them
+   amber would make a well-chased PO look like a disaster. */
+#fuHistModal .fuh-row {
+    border: 1px solid #e2e8f0; border-left: 3px solid #0284c7; border-radius: 7px;
+    background: #fff; padding: 9px 11px; margin-bottom: 8px;
+}
+#fuHistModal .fuh-row.latest { border-color: #7dd3fc; background: #f0f9ff; }
+#fuHistModal .fuh-row.od { border-left-color: #d97706; border-color: #fcd34d; background: #fffbeb; }
+#fuHistModal .fuh-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 10px; flex-wrap: wrap; font-size: 12px; font-weight: 800; color: #075985;
+}
+#fuHistModal .fuh-row.od .fuh-head { color: #92400e; }
+#fuHistModal .fuh-who { font-size: 10px; font-weight: 700; color: #64748b; white-space: nowrap; }
+#fuHistModal .fuh-rem {
+    margin-top: 5px; font-size: 12px; font-weight: 600; color: #334155;
+    /* A typed remark can be one long unbroken string. */
+    overflow-wrap: anywhere; white-space: pre-wrap;
+}
+#fuHistModal .fuh-prev { margin-top: 4px; font-size: 10px; font-weight: 700; color: #94a3b8; }
+#fuHistModal .fuh-late { color: #b45309; font-weight: 800; }
+#fuHistModal .fuh-ok { color: #15803d; font-weight: 800; }
+#fuHistModal .fuh-empty {
+    padding: 14px; border: 1px dashed #cbd5e1; border-radius: 7px; text-align: center;
+    font-size: 12px; font-weight: 600; color: #94a3b8;
+}
+
+/* ── The report cell itself ─────────────────────────────────────────
+   Latest promised date on the face of it, the whole history behind a
+   link. Scoped to the table so it cannot leak into the dialog above. */
+#fullPurchasePanel .po-followup-table .fu-rev {
+    font-weight: 800; white-space: nowrap; color: #0369a1;
+}
+#fullPurchasePanel .po-followup-table .fu-rev.od { color: #b45309; }
+#fullPurchasePanel .po-followup-table .fu-revn {
+    display: block; font-size: 10px; font-weight: 700; color: #64748b;
+    max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#fullPurchasePanel .po-followup-table .fu-hist {
+    display: inline-block; margin-top: 2px; background: none; border: 0; padding: 0;
+    font-family: inherit; font-size: 10px; font-weight: 800; color: #1d4ed8;
+    cursor: pointer; text-decoration: none;
+}
+#fullPurchasePanel .po-followup-table .fu-hist:hover { text-decoration: underline; }
+/* The lateness marker appears in BOTH places — on the report cell and in the
+   dialog — so it is styled for both. Same class name on purpose: "3d late"
+   must not mean one thing on the sheet and another in the popup. */
+#fullPurchasePanel .po-followup-table .fuh-late { color: #b45309; font-weight: 800; }
+#fullPurchasePanel .po-followup-table .fuh-ok { color: #15803d; font-weight: 800; }
