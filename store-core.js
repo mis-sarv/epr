@@ -7487,7 +7487,19 @@ const SARV_DROPDOWNS=[
    def:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY']},
   {key:'size',label:'Size',hint:'Order Form › product Size',sales:1,
    def:['210×230 CM','150×200 CM','200×220 CM','220×240 CM','60×90 CM (Baby)']},
-  {key:'sattan',label:'Sattan',hint:'Order Form › Sattan',sales:1,
+  /* Order Form me Sattan ab DO dropdown hai — Type aur Size — jo Brand Master
+     ke `sattan_type` / `sattan` column se auto-select hote hain. Isi liye in
+     dono ki values Brand Master ki hi list (erp_brandSattanType /
+     erp_brandSattan) jaisi rakhein, warna Item Code chunne par value match
+     nahi karegi.
+     Purani `sattan` row NAHI hataai gayi: us waqt ke orders me joint value
+     ('5" PREMIUM') likhi hai, aur Order Form aaj bhi wahi joint value
+     sales_product_details ke `sattan` column me likhti hai. */
+  {key:'sattanType',label:'Sattan Type (Order Form)',hint:'Order Form › Sattan Type — Brand Master ke SATTAN TYPE se auto-select hota hai',sales:1,
+   def:['STANDARD','PREMIUM','NA']},
+  {key:'sattanSize',label:'Sattan Size (Order Form)',hint:'Order Form › Sattan Size — Brand Master ke SATTAN SIZE se auto-select hota hai',sales:1,
+   def:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA']},
+  {key:'sattan',label:'Sattan (purana joint field)',hint:'Purane orders ki joint value jaise 5" PREMIUM. Naya form Type + Size use karta hai; ye row record ke liye hai.',sales:1,
    def:['5" PREMIUM','4" STANDARD','3" BASIC']},
   {key:'moq',label:'MOQ',hint:'Order Form › MOQ',sales:1,
    def:['500 PCS/Colour','1000 PCS/Colour','2000 PCS/Colour']},

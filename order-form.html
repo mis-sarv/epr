@@ -221,6 +221,66 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 /* ═══════════════════════ MODAL ══════════════════════════ */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;display:none;align-items:center;justify-content:center;padding:16px}
 .modal-bg.open{display:flex}
+/* Label + button ek hi lakeer par. Button label ke BAAHAR rakha gaya hai
+   (label ke andar interactive element invalid hai), isi liye ye wrapper —
+   aur label ka neeche ka margin isme chala jaata hai, warna button label se
+   5px neeche baith jaata. */
+.fg-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.fg-hd label{margin-bottom:0}
+/* "➕ Add New Buyer / Agency" — field ke sirhane baithta hai, field ke neeche
+   nahi: wo jagah form ki lambai nahi badhati, aur button usi field ke saath
+   padha jaata hai jiska wo master hai. text-transform:none kyunki .fg label
+   uppercase hai aur button par wo cheekhta hai. */
+.btn-addmaster{
+  background:var(--lblue);color:var(--blue);border:1px solid #BBD5EC;
+  padding:3px 9px;border-radius:6px;font-size:10.5px;font-weight:700;
+  font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap;
+  text-transform:none;letter-spacing:0;line-height:1.5
+}
+.btn-addmaster:hover{background:#C2DCF2;border-color:var(--blue)}
+.btn-addmaster:disabled{opacity:.45;cursor:not-allowed}
+/* Naya Buyer / Agency form — lamba hai (buyer me aath column), isi liye
+   .modal se zyada chaudai aur apna scroll. */
+.modal.wide{max-width:620px;max-height:90vh;overflow-y:auto;text-align:left}
+.modal.wide h3{text-align:left;margin-bottom:3px}
+.modal.wide>p{text-align:left;margin-bottom:16px}
+.nm-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 13px}
+.nm-grid .full{grid-column:1/-1}
+@media (max-width:560px){.nm-grid{grid-template-columns:1fr}}
+.nm-f label{display:block;font-size:10.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+.nm-f input,.nm-f textarea{
+  width:100%;box-sizing:border-box;background:var(--input);border:1.5px solid var(--border);
+  border-radius:8px;padding:9px 11px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--navy)
+}
+.nm-f textarea{min-height:60px;resize:vertical}
+.nm-f input:focus,.nm-f textarea:focus{outline:none;border-color:var(--blue);background:#fff}
+.nm-f .req{color:#C0392B}
+.nm-f .hint{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4}
+.nm-err{display:none;background:#FDEDEC;border:1px solid #F5B7B1;color:#A93226;border-radius:8px;padding:9px 11px;font-size:12px;font-weight:600;margin:13px 0 0}
+/* ★ = "sirf saved list me se". Wahi nishaan jo Store Inward ke Item Name par
+   hai, usi rang me, taaki dono screen par ek hi matlab padha jaye. */
+.mstar{color:#C0392B;font-weight:800}
+.lock-note{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.45}
+/* Naya Brand Item form — 40+ column hain, isi liye chaudi modal + group
+   headings, bilkul ERP ke Brand Master form jaisa kram. */
+.modal.xwide{max-width:860px;max-height:92vh;overflow-y:auto;text-align:left}
+.modal.xwide h3{text-align:left;margin-bottom:3px}
+.modal.xwide>p{text-align:left;margin-bottom:14px}
+.nb-sec{font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;
+  margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
+.nb-sec:first-of-type{margin-top:4px}
+.nb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px 12px}
+.nb-grid .w2{grid-column:span 2}
+.nb-grid .full{grid-column:1/-1}
+@media (max-width:820px){.nb-grid{grid-template-columns:repeat(2,1fr)}.nb-grid .w2{grid-column:span 2}}
+@media (max-width:520px){.nb-grid{grid-template-columns:1fr}.nb-grid .w2{grid-column:span 1}}
+.nb-f label{display:block;font-size:9.5px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.3px;margin-bottom:3px}
+.nb-f input,.nb-f select{
+  width:100%;box-sizing:border-box;background:var(--input);border:1.5px solid var(--border);
+  border-radius:7px;padding:7px 9px;font-size:12.5px;font-family:'DM Sans',sans-serif;color:var(--navy);height:34px
+}
+.nb-f input:focus,.nb-f select:focus{outline:none;border-color:var(--blue);background:#fff}
+.nb-f .hint{font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .modal{background:#fff;border-radius:16px;padding:26px 24px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:slideUp .25s ease}
 @keyframes slideUp{from{transform:translateY(24px);opacity:0}to{transform:translateY(0);opacity:1}}
 .modal-icon{width:56px;height:56px;border-radius:50%;background:var(--lgreen);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:26px}
@@ -425,7 +485,15 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
     </div>
     <div id="agencyWrap" style="display:none">
       <div class="g3">
-        <div class="fg"><label>Agency Name</label>
+        <div class="fg">
+          <!-- Button label ke BAAHAR hai, uske andar nahi: label tag ke andar
+               koi interactive element rakhna invalid HTML hai, aur kuch browser
+               us click ko label ke field par bhi bhej dete hain. -->
+          <div class="fg-hd">
+            <label>Agency Name</label>
+            <button type="button" class="btn-addmaster" onclick="openNewAgency()"
+              title="Nayi agency Agency Master me save karein — turant is dropdown me aa jayegi">➕ Add New Agency</button>
+          </div>
           <div class="combo-wrap">
             <input type="text" id="agencyName" placeholder="Enter or select agency" autocomplete="off"
               oninput="filterCombo('agencyName');syncMeta()" onfocus="openCombo('agencyName')" onblur="delayClose('agencyName')">
@@ -438,18 +506,29 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
       </div>
     </div>
     <div class="g2">
-      <div class="fg"><label>Buyer / Company Name</label>
+      <div class="fg">
+        <div class="fg-hd">
+          <label>Buyer / Company Name <span class="mstar">★</span></label>
+          <button type="button" class="btn-addmaster" onclick="openNewBuyer()"
+            title="Nayi party Buyer Master me save karein — turant is dropdown me aa jayegi aur neeche ke field bhi bhar denge">➕ Add New Buyer</button>
+        </div>
         <div class="combo-wrap">
-          <input type="text" id="buyerName" placeholder="Enter or select buyer" autocomplete="off"
+          <input type="text" id="buyerName" placeholder="Select from saved buyers..." autocomplete="off"
             oninput="filterCombo('buyerName');syncMeta()" onfocus="openCombo('buyerName')" onblur="delayClose('buyerName')">
           <svg class="combo-arrow" width="11" height="7" viewBox="0 0 11 7" fill="none"><path d="M1 1l4.5 4.5L10 1" stroke="#6B7897" stroke-width="1.5" stroke-linecap="round"/></svg>
           <div class="combo-list" id="buyerName-list"></div>
         </div>
+        <div class="lock-note">★ Sirf saved list me se — neeche ke Mobile / Contact Person / Address / GSTIN isi se bharte hain aur <b>locked</b> hain. Nayi party? <b>➕ Add New Buyer</b> dabayein.</div>
       </div>
-      <div class="fg"><label>Mobile No.</label><input type="tel" id="buyerMobile" placeholder="+91 XXXXXXXXXX" oninput="syncMeta()"></div>
-      <div class="fg"><label>Contact Person Name</label><input type="text" id="contactPerson" placeholder="Contact Person Name" oninput="syncMeta()"></div>
-      <div class="fg"><label>Address</label><textarea id="buyerAddress" placeholder="Complete billing address..." oninput="syncMeta()"></textarea></div>
-      <div class="fg"><label>GSTIN</label><input type="text" id="buyerGST" placeholder="15-digit GSTIN" oninput="syncMeta();onGSTInput(this.value);autoDetectState()"></div>
+      <!-- Ye chaar field Buyer Master se bharte hain, isi liye readonly —
+           wahi niyam jo Store Inward ki item row par hai (UOM / Description /
+           Category master se locked). Badalna ho to party ki row ERP › Master
+           Data › 🏢 Buyer Master me badlein, warna ek hi party ke do order do
+           alag address par ban jaate hain. -->
+      <div class="fg"><label>Mobile No.</label><input type="tel" id="buyerMobile" placeholder="Buyer Master se" oninput="syncMeta()"></div>
+      <div class="fg"><label>Contact Person Name</label><input type="text" id="contactPerson" placeholder="Buyer Master se" oninput="syncMeta()"></div>
+      <div class="fg"><label>Address</label><textarea id="buyerAddress" placeholder="Buyer Master se" oninput="syncMeta()"></textarea></div>
+      <div class="fg"><label>GSTIN</label><input type="text" id="buyerGST" placeholder="Buyer Master se" oninput="syncMeta();onGSTInput(this.value);autoDetectState()"></div>
       <div class="fg" style="display:flex;align-items:center;gap:8px;margin-top:2px">
         <input type="checkbox" id="outOfHaryana" onchange="syncMeta()" style="width:16px;height:16px;accent-color:#1A3C5E;cursor:pointer">
         <label for="outOfHaryana" style="margin:0;cursor:pointer;font-size:12px;font-weight:600;color:#1A3C5E;text-transform:none;letter-spacing:0">Out of Haryana <span style="font-weight:400;color:#888">(IGST instead of CGST+SGST on PDF)</span></label>
@@ -567,6 +646,120 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 </div>
 
+<!-- ══ ADD NEW BUYER (buyer_master) ═════════════════════════════════════
+     Buyer Master ke SAARE column, wahi kram jo ERP › Master Data › 🏢 Buyer
+     Master ke form me hai, taaki dono jagah ek hi cheez ek hi tarah bhari
+     jaye. Sirf PARTY NAME zaroori hai — baaki sab khaali chhoda ja sakta
+     hai, par Address aur GSTIN bharne ka faida saaf hai: wahi do field
+     agli baar is party ka order banate waqt apne aap bhar jaate hain
+     (dekhein fetchDrops ka buyer-master merge).
+     Ye wahi row likhta hai jo ERP ka form likhta hai, isi liye nayi party
+     dono jagah turant dikhti hai — koi alag "order form ki list" nahi hai. -->
+<div class="modal-bg" id="newBuyerModal">
+  <div class="modal wide">
+    <h3>🏢 Add New Buyer</h3>
+    <p>Buyer Master me nayi party. Save hote hi ye upar ke <b>Buyer / Company Name</b> dropdown me aa jayegi aur chun bhi li jayegi.</p>
+    <div class="nm-grid">
+      <div class="nm-f full">
+        <label>Party / Company Name <span class="req">*</span></label>
+        <input type="text" id="nbParty" placeholder="M/s ..." autocomplete="off" style="text-transform:uppercase">
+        <div class="hint">Yahi naam Order Form aur Packing ke dropdown me jaata hai — unique hona chahiye.</div>
+      </div>
+      <div class="nm-f">
+        <label>Owner Name</label>
+        <input type="text" id="nbOwner" placeholder="Malik ka naam" autocomplete="off">
+        <div class="hint">Order Form ka <b>Contact Person</b> isi se bharta hai.</div>
+      </div>
+      <div class="nm-f">
+        <label>Contact No.</label>
+        <input type="tel" id="nbContact" placeholder="+91 XXXXXXXXXX" autocomplete="off">
+        <div class="hint">Order Form ka <b>Mobile No.</b> isi se bharta hai.</div>
+      </div>
+      <div class="nm-f full">
+        <label>Address</label>
+        <textarea id="nbAddress" placeholder="Poora billing address..."></textarea>
+        <div class="hint">PDF ke bill-to par yahi chhapta hai.</div>
+      </div>
+      <div class="nm-f">
+        <label>GSTIN</label>
+        <input type="text" id="nbGstin" placeholder="15-digit GSTIN" autocomplete="off" style="text-transform:uppercase">
+        <div class="hint">Isse state aur CGST+SGST vs IGST khud pakda jaata hai.</div>
+      </div>
+      <div class="nm-f">
+        <label>Party Staff Name</label>
+        <input type="text" id="nbStaff" placeholder="Roz kaam dekhne wala banda" autocomplete="off">
+      </div>
+      <div class="nm-f">
+        <label>Party Staff Contact No.</label>
+        <input type="tel" id="nbStaffContact" placeholder="+91 XXXXXXXXXX" autocomplete="off">
+      </div>
+      <div class="nm-f full">
+        <label>Notes</label>
+        <input type="text" id="nbNotes" placeholder="Koi note (optional)" autocomplete="off">
+      </div>
+    </div>
+    <div class="nm-err" id="nbError"></div>
+    <div class="modal-btns" style="margin-top:17px">
+      <button class="btn-open-pdf green" id="nbSaveBtn" onclick="saveNewBuyer()">💾 Save Buyer</button>
+      <button class="btn-close-modal" onclick="closeNewBuyer()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ADD NEW BRAND ITEM (brand_master) ══════════════════════════════
+     Form JS se banta hai (brBuildForm_), markup me nahi — 38 field ka
+     hand-written HTML ek jagah column jodne par doosri jagah bhoolne ki
+     poori guarantee hai. Field table BR_FORM_FIELDS me hai, usi kram aur
+     grouping me jo ERP ke Brand Master form me hai. -->
+<div class="modal-bg" id="newBrandModal">
+  <div class="modal xwide">
+    <h3>🏷️ Add New Brand Item</h3>
+    <p>Brand Master me naya brand / SKU — <b>saare column</b>, wahi jo ERP › Master Data › 🏷️ Brand Master me hain.
+       Save hote hi ye Item Code list me aa jayega aur isi product card me chun bhi liya jayega.</p>
+    <div id="nbrForm"></div>
+    <div class="nm-err" id="nbrError"></div>
+    <div class="modal-btns" style="margin-top:18px">
+      <button class="btn-open-pdf green" id="nbrSaveBtn" onclick="saveNewBrand()">💾 Save Brand Item</button>
+      <button class="btn-close-modal" onclick="closeNewBrand()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ADD NEW AGENCY (agency_master) ══════════════════════════════════
+     Agency buyer ka column NAHI hai, apni table hai — ek agency ke neeche kai
+     parties hoti hain, aur agency ka contact badalne par har party ki row
+     chhedni padti. Isi liye yahan bhi do alag form hain. -->
+<div class="modal-bg" id="newAgencyModal">
+  <div class="modal wide" style="max-width:520px">
+    <h3>🤝 Add New Agency</h3>
+    <p>Agency Master me nayi agency. Save hote hi <b>Agency Name</b> dropdown me aa jayegi aur Contact Person / Mobile bhi bhar denge.</p>
+    <div class="nm-grid">
+      <div class="nm-f full">
+        <label>Agency Name <span class="req">*</span></label>
+        <input type="text" id="naName" placeholder="Agency ka naam" autocomplete="off" style="text-transform:uppercase">
+        <div class="hint">Unique hona chahiye — yahi Agency Name combo me jaata hai.</div>
+      </div>
+      <div class="nm-f">
+        <label>Agency Contact Person</label>
+        <input type="text" id="naContact" placeholder="Contact person" autocomplete="off">
+      </div>
+      <div class="nm-f">
+        <label>Agency Mobile No.</label>
+        <input type="tel" id="naMobile" placeholder="+91 XXXXXXXXXX" autocomplete="off">
+      </div>
+      <div class="nm-f full">
+        <label>Notes</label>
+        <input type="text" id="naNotes" placeholder="Koi note (optional)" autocomplete="off">
+      </div>
+    </div>
+    <div class="nm-err" id="naError"></div>
+    <div class="modal-btns" style="margin-top:17px">
+      <button class="btn-open-pdf green" id="naSaveBtn" onclick="saveNewAgency()">💾 Save Agency</button>
+      <button class="btn-close-modal" onclick="closeNewAgency()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- SUCCESS MODAL -->
 <div class="modal-bg" id="successModal">
   <div class="modal">
@@ -633,6 +826,14 @@ function tokenSet(t){ try{ localStorage.setItem(LS_TOKEN,t); }catch(e){} }
 function tokenClear(){ try{ localStorage.removeItem(LS_TOKEN); sessionStorage.removeItem(LS_TOKEN); }catch(e){} }
 let prodCount=0, lastPdfUrl='', lastDriveUrl='', lastPdfBlob=null, lastPdfFileName='', lastPayload=null, lastNow=null, suppressCombo=false;
 let BUYER_DETAILS={}, AGENCY_DETAILS={};
+/* Buyer / Agency Master ki ASLI rows, jaisi table se aayi hain.
+   BUYER_DETAILS / AGENCY_DETAILS se alag kyunki wo do cheezein MILAKAR banti
+   hain — purane orders + master — aur "+ Add New Buyer" ka duplicate check
+   sirf MASTER par hona chahiye: jis party ka order pehle se hai par master me
+   row nahi, usko master me daalna bilkul sahi kaam hai, usi se uska address /
+   GSTIN ek jagah aata hai. BUYER_DETAILS par check karte to wahi party
+   "pehle se hai" keh kar roki jaati. */
+let BUYER_MASTER_ROWS=[], AGENCY_MASTER_ROWS=[], BRAND_MASTER_ROWS=[];
 
 /* Pehle is regex me `sales_` bhi tha — yani kisi BHI sales_* RPC ka koi
    BHI error (permission, galat argument, net, kuch bhi) "setup pending"
@@ -841,7 +1042,14 @@ let DROPS = {
   fabricCode:    ["2900","3100","3500","4000"],
   category:      ["SEMI CLOUDY","SUPER SOFT","MINK","DOUBLE LAYER","SHERPA","POLAR FLEECE","CLOUDY"],
   size:          ["210×230 CM","150×200 CM","200×220 CM","220×240 CM","60×90 CM (Baby)"],
+  /* Sattan ab DO field hai — Type aur Size. `sattan` key sirf PURANE orders ke
+     liye bachi hai (us waqt ek hi combo tha, aur uski value '5" PREMIUM' jaisi
+     thi); naye do dropdown neeche wali list padhte hain, jinki values
+     HU-BA-HU Brand Master jaisi hain — warna Item Code se auto-select chup-chaap
+     fail ho jaata (dekhein SATTAN_TYPES / SATTAN_SIZES). */
   sattan:        ['5" PREMIUM','4" STANDARD','3" BASIC'],
+  sattanType:    ["STANDARD","PREMIUM","NA"],
+  sattanSize:    ["4 INCH SATTAN","5 INCH SATTAN","6 INCH SATTAN","NA"],
   moq:           ["500 PCS/Colour","1000 PCS/Colour","2000 PCS/Colour"],
   deliveryTerms: ["1st Week of July 2026","2nd Week of July 2026","August 2026","September 2026"],
   paymentTerms:  ["30% Advance | Balance Before Dispatch","50% Advance | Balance Before Dispatch","100% Advance","Credit (Pre-approved)"],
@@ -850,6 +1058,241 @@ let DROPS = {
 
 const TRIMS=[{k:'label',n:'Label'},{k:'tag',n:'Tag'},{k:'bag',n:'Bag'},{k:'bore',n:'Bore'},{k:'inner',n:'Inner Box'},{k:'outer',n:'Outer Box'}];
 const SUPP=[{v:'na',l:'NA'},{v:'buyer',l:'Buyer Supplied'},{v:'seller',l:'SIHF Supplied'},{v:'foc',l:'SIHF (FOC)'}];
+
+/* ══ SATTAN — Type aur Size, do alag dropdown ═══════════════════════════
+   Pehle ek hi combo tha jisme '5" PREMIUM' jaisi joint value likhi jaati
+   thi. Brand Master me ye shuru se DO column hain — `sattan` (SIZE: kitne
+   inch ka) aur `sattan_type` (GRADE) — to Item Code select karne par ek
+   joint string banakar daalna hi padta tha, aur usi wajah se wo value
+   kabhi Brand Master se wapas match nahi hoti thi.
+
+   Ab form me bhi do field hain, aur unki values Brand Master ki HI
+   vocabulary me hain — isi liye auto-select bharosemand hai. `<select>`
+   hain (combo nahi), aur project ka apna niyam yahi kehta hai: select me
+   value list se hu-ba-hu milni chahiye warna chup-chaap set hi nahi hoti.
+   Us khatre ko ensureOpt_() khatam karta hai — Brand Master se aayi koi
+   anjaan value list me khud jud jaati hai, chupti nahi.
+
+   Peeche ki taraf: `sattan` naam ka ek HIDDEN input bana rehta hai jisme
+   dono ka jodd (`5" PREMIUM`) likha jaata hai. Isi wajah se getProd,
+   learnMasters, sales_product_details ka `sattan` column aur dono PDF
+   renderer bilkul waise hi chalte rehte hain jaise pehle — koi migration
+   nahi, aur purane order bhi waise hi khulte hain. */
+const SATTAN_TYPES=['STANDARD','PREMIUM','NA'];
+const SATTAN_SIZES=['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'];
+
+/* ══ BAGS & TRIMS — "Add Row" wale extra materials ══════════════════════
+   Upar ke chhe trim (Label / Tag / Bag / Bore / Inner / Outer) FIXED hain:
+   unke apne column hain `sales_trims_log` me, aur PDF ka packing table unhi
+   par bana hai. Par asli packing me in chhe ke alawa bhi cheezein lagti
+   hain, aur wo order-dar-order badalti hain — isi liye ye list "Add Row"
+   se chalti hai, fixed column se nahi.
+
+   Ye rows `full_order` JSON me `extraTrims` ke andar jaati hain (wahi jagah
+   jahan se Edit button order wapas kholta hai), isliye inke liye bhi koi
+   SQL chalane ki zaroorat nahi. Inka paisa fixed trims ke saath hi
+   trimsCostPerPc / trimsCostTotal me jud jaata hai — dekhein getProd aur
+   trimsCostTotalFor — to order ka total, GST, bill summary aur PDF sab
+   apne aap sahi rehte hain. */
+const EXTRA_MATERIALS=['MICRO LABEL','SMALL LABEL','BIG LABEL','TAG 2','TAG 3','DORI','INSERT CARD','BARCODE STICKER','FOAM'];
+
+/* ══ MASTER-ONLY FIELDS (★) ═════════════════════════════════════════════
+   Buyer / Company Name aur Item Code ab SIRF saved list me se chunne hain,
+   aur unse jo values apne aap bharti hain wo LOCKED hain.
+
+   Ye bilkul wahi tareeka hai jo Store Inward ke "Item Name ★" par chalta hai
+   (store-core.js → lockToMasterList + addNewRow ka row template):
+     • naam wala field blur par jaanchta hai — list me na mile to khud khaali
+       ho jaata hai aur toast batata hai ki pehle master me add karein;
+     • uske bharose wale field readonly/disabled rehte hain, grey background
+       aur "locked hai" wale title ke saath.
+
+   Kyun: pehle nayi party ya naya item seedha type kar diya jaata tha. Order
+   ban jaata, par master me kuch nahi jaata — aur agli baar wahi party "M/S
+   ABC", "M/s Abc." aur "ABC" ban kar teen baar list me baithti thi, teen
+   alag address ke saath. Jo cheez master me nahi hai uske liye ab
+   "➕ Add New ..." button hai — wo pehle master me row banata hai, phir use
+   chunta hai. Ek hi raasta, ek hi sach. */
+function ofLockField_(el,on,why){
+  if(!el) return;
+  const sel=el.tagName==='SELECT';
+  // <select> par readOnly ka koi asar nahi hota — use disabled karna padta
+  // hai. getProd / collectPayload .value se padhte hain, aur disabled field
+  // ki .value poori tarah readable rehti hai, isi liye save par koi farq
+  // nahi padta (form submit hota hi nahi — sab JS se jaata hai).
+  if(sel) el.disabled=!!on; else el.readOnly=!!on;
+  el.style.background = on?'#F1F5F9':'';
+  el.style.cursor     = on?'not-allowed':'';
+  el.style.color      = on?'#475569':'';
+  if(on) el.title=why||'Master se locked hai';
+  else el.removeAttribute('title');
+}
+/* Store Inward ke lockToMasterList ka hu-ba-hu jodd: blur par value list me
+   na mile to field khaali, toast, aur jo field us par depend karte hain wo
+   bhi saaf. Ek hi baar bindta hai (dataset.mlock). */
+function ofLockToList_(el,getValues,label,onCleared){
+  if(!el||el.dataset.mlock) return;
+  el.dataset.mlock='1';
+  el.addEventListener('blur',function(){
+    // Combo list ke option par click karne se pehle blur chalta hai, isi liye
+    // thoda rukte hain — warna sahi value chunne par bhi field khaali ho
+    // jaati (selectCombo onmousedown par chalta hai, blur ke baad .value set
+    // karta hai). delayClose bhi isi wajah se 200ms rukta hai.
+    const self=this;
+    setTimeout(()=>{
+      if(self.readOnly||self.disabled) return;
+      const val=String(self.value||'').trim();
+      if(!val) return;
+      const list=getValues();
+      /* KHAALI LIST = "master load nahi hua", "ye value galat hai" nahi.
+         Net kharab ho, Supabase na chale, ya fetchDrops fail ho jaye — teeno
+         soorat me STANDARD_ITEMS / BUYER_DETAILS khaali rehte hain. Us waqt
+         lock lagaane ka matlab hota ki poora order form hi band ho jaye, kuch
+         type karte hi field saaf ho jaye aur user ko wajah bhi na pata chale.
+         Isi liye jaanch sirf tab chalti hai jab list me kuch HO. */
+      if(!list.length) return;
+      const ok=list.some(v=>String(v||'').trim().toLowerCase()===val.toLowerCase());
+      if(ok) return;
+      self.value='';
+      self.dispatchEvent(new Event('input'));
+      if(typeof onCleared==='function') onCleared();
+      toast('❌ "'+val+'" saved list me nahi hai — pehle "➕ Add New '+label+'" se add karein');
+    },220);
+  });
+}
+
+/* ERP ke Dropdown Master wale erp_* keys. Ye usi `sales_dropdowns` table me
+   hain jisme Order Form ke apne dropdown hain, aur fetchDrops table ki SAARI
+   keys DROPS me daal deta hai — to wahan se seedha mil jaate hain. Neeche ki
+   list sirf FALLBACK hai (wo rows na hon to), aur jaan-boojh kar store-core.js
+   ke `def` arrays ki hu-ba-hu copy hai; dono me farq aane par Brand Master me
+   bhari value Order Form me match nahi karegi. */
+const BR_DD_FALLBACK={
+  erp_brandCategory:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY'],
+  erp_brandSize:['205*230 CM','152*203 CM','228*254 CM','100*150 CM'],
+  erp_brandBedSize:['CARPET SIZE','DOUBLE BED','SINGLE BED'],
+  erp_brandPly:['SINGLE PLY','DOUBLE PLY','THREE PLY'],
+  erp_brandSattan:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'],
+  erp_brandSattanType:['STANDARD','PREMIUM'],
+  erp_brandMasterPackType:['BALE','BORA','OUTER BOX','ROLL','NA'],
+  erp_brandSlavePackType:['BAG','INNER BOX','LOOSE PCS','NA'],
+  erp_fbmYesNo:['NO','YES','NA'],
+};
+const brDd_=key=>{
+  const live=DROPS[key];
+  return (Array.isArray(live)&&live.length)?live:(BR_DD_FALLBACK[key]||[]);
+};
+
+/* ── Product ki Specifications, Brand Master se locked ────────────────────
+   Jo field Item Code se bharte hain wahi locked hote hain. Pricing & Delivery
+   (price, discount, GST, qty, packs) jaan-boojh kar BAAHAR hai — wo har order
+   ka apna sauda hai, brand ki pehchaan nahi, aur use lock karne ka matlab
+   hota ki rate badalne ke liye Brand Master kholna pade.
+
+   DO apwaad, dono wajah ke saath:
+     • Final Weight — GREY/WHITE FABRIC par ye "GSM" ban jaata hai aur haath
+       se bharna padta hai (dekhein onItemCodeSelect), to us ek soorat me khula
+       rehta hai.
+     • Emboss — ye order ka faisla hai, brand ki pehchaan nahi: ek hi brand ka
+       ek order emboss ke saath aur doosra bina ja sakta hai. Lock karte to
+       🎨 Emboss Design Photos section kabhi haath se khulta hi nahi (aur wahi
+       cheez abhi theek ki gayi thi). */
+const OF_SPEC_LOCK=['fabric','category','size','dbsb','ply','sattanType','sattanSize','moq'];
+function ofApplySpecLock_(id){
+  /* Brand Master load hi nahi hua (net / Supabase / fetchDrops fail) to lock
+     NAHI lagta. Warna haalat ye banti: Item Code chuna nahi ja sakta kyunki
+     list khaali hai, aur specs bhari nahi ja sakti kyunki wo locked hain —
+     yani poora Order Form thap. Us soorat me form purane tareeke se chalta
+     rehta hai, aur masters aane par fetchDrops dobara lock laga deta hai. */
+  const ready=Object.keys(STANDARD_ITEMS).length>0;
+  const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim().toUpperCase();
+  const why='Brand Master se locked — badalne ke liye ERP › Master Data › 🏷️ Brand Master, ya naya brand "➕ Add New Brand Item" se banayein';
+  OF_SPEC_LOCK.forEach(k=>ofLockField_(document.getElementById('p'+id+'-'+k),ready,why));
+  // GSM wali soorat me weight khula, warna locked.
+  const isGrey=(code==='GREY/WHITE FABRIC');
+  ofLockField_(document.getElementById('p'+id+'-weight'),ready&&!isGrey,
+    'Blanket Weight Brand Master se locked hai');
+}
+// Saare khule product cards par lock dobara lagana. fetchDrops ke baad
+// zaroori hai: pehla card masters aane se PEHLE ban chuka hota hai.
+function ofRelockAll_(){
+  document.querySelectorAll('.product-card').forEach(c=>{
+    ofApplySpecLock_(c.id.replace('prod-',''));
+  });
+  ofApplyBuyerLock_();
+}
+// Item Code khaali / galat hone par specs bhi saaf — warna pichhle brand ki
+// value locked field me baithi reh jaati aur usi par order ban jaata.
+function ofClearSpecs_(id){
+  suppressCombo=true;
+  ['fabric','category','size','dbsb','moq','weight'].forEach(k=>{
+    const e=document.getElementById('p'+id+'-'+k); if(e) e.value='';
+  });
+  ['ply','sattanType','sattanSize'].forEach(k=>{
+    const e=document.getElementById('p'+id+'-'+k); if(e) e.value='';
+  });
+  const h=document.getElementById('p'+id+'-sattan'); if(h) h.value='';
+  suppressCombo=false;
+  ofApplySpecLock_(id);
+  calcAll();
+}
+
+/* ── Buyer Details, Buyer Master se locked ────────────────────────────────
+   Chaar field party ke saath aate hain, isi liye readonly. Transport Name
+   KHULA hai — wo order-dar-order badalta hai aur master me rehta bhi nahi
+   (fetchDrops ka buyer merge usme jaan-boojh kar '' bharta hai). */
+const OF_BUYER_LOCK=['buyerMobile','contactPerson','buyerAddress','buyerGST'];
+function ofApplyBuyerLock_(){
+  const why='Buyer Master se locked — badalne ke liye ERP › Master Data › 🏢 Buyer Master, ya nayi party "➕ Add New Buyer" se banayein';
+  OF_BUYER_LOCK.forEach(id=>ofLockField_(document.getElementById(id),true,why));
+}
+function ofClearBuyerDetails_(){
+  OF_BUYER_LOCK.forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+  syncMeta();
+}
+/* Kis product par kaun-kaun si extra row khuli hai: {prodId: [rowIdx,...]}.
+   DOM se dhoondhne ki jagah apni list, kyunki row remove hone par index
+   dobara use nahi hone chahiye (warna purani row ke input ids naye row se
+   takra jaate hain). xtSeq har product ka apna badhta hua counter hai. */
+const extraTrimRows={};
+const xtSeq={};
+
+// Jo value list me na ho use option bana kar jod deta hai, phir set karta hai.
+// Brand Master me koi nayi value aa jaye to wo chupti nahi — dikhti hai.
+function ensureOpt_(sel,val){
+  if(!sel) return;
+  const v=String(val==null?'':val).trim();
+  if(!v){ sel.value=''; return; }
+  const has=[...sel.options].some(o=>o.value===v);
+  if(!has) sel.add(new Option(v,v));
+  sel.value=v;
+}
+const optsHtml_=(list,cur)=>['<option value=""></option>']
+  .concat(list.map(v=>`<option value="${esc(v)}"${v===cur?' selected':''}>${esc(v)}</option>`)).join('');
+
+/* '5 INCH SATTAN' + 'PREMIUM' -> '5" PREMIUM'. Wahi shakal jo purane single
+   combo me likhi jaati thi, taaki `sattan` column aur PDF na badlein. */
+function sattanJoin_(type,size){
+  const s=String(size||'').trim(), t=String(type||'').trim();
+  if(!s && !t) return '';
+  if(/^na$/i.test(s) && !t) return 'NA';
+  const inch=(s.match(/(\d+)/)||[])[1];
+  const sz=inch?(inch+'"'):s;
+  return [sz,t].filter(Boolean).join(' ').trim();
+}
+/* Ulta kaam: purane order ka '5" PREMIUM' -> {size:'5 INCH SATTAN', type:'PREMIUM'}.
+   Purane order kholne par dono dropdown bhar jaate hain — warna wo khaali
+   dikhte aur save karte waqt sattan udd jaata. Number mile to size, bacha
+   hua text type (list me ho ya na ho — ensureOpt_ use jod deta hai). */
+function sattanSplit_(joint){
+  const s=String(joint||'').trim();
+  if(!s) return {type:'',size:''};
+  if(/^na$/i.test(s)) return {type:'',size:'NA'};
+  const m=s.match(/(\d+)/);
+  const size=m?(m[1]+' INCH SATTAN'):'';
+  const type=s.replace(/^\s*\d+\s*(?:"|''|inch|inches)?\s*(?:sattan)?\s*/i,'').trim();
+  return {type, size:size||''};
+}
 const fmt=n=>'₹'+Number(n.toFixed(2)).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmtN=n=>Number(n.toFixed(2)).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 
@@ -872,6 +1315,16 @@ window.onload=function(){
   bindCombo('delivTerms','deliveryTerms');
   bindCombo('buyerName','buyerName');
   bindCombo('agencyName','agencyName');
+
+  /* Buyer / Company Name par wahi "★ sirf list me se" niyam jo Store Inward
+     ke Item Name par hai, aur uske chaar bharose wale field locked.
+     addProduct() se PEHLE, taaki pehla card bhi locked specs ke saath khule.
+     Agency jaan-boojh kar khuli hai: agency sirf ek naam + do contact hai,
+     uspar koi billing ya tax value nahi tangi — aur "Through Agency" wale
+     order me nayi agency aksar usi waqt saamne aati hai. */
+  ofLockToList_(document.getElementById('buyerName'),
+    ()=>Object.keys(BUYER_DETAILS), 'Buyer', ofClearBuyerDetails_);
+  ofApplyBuyerLock_();
 
   addProduct();
   syncMeta();
@@ -1253,6 +1706,14 @@ function bmToItem(r){
     size:     String(r.size||'').replace(/\s*\*\s*/g,'×'),
     dbsb:     BM_DBSB[String(r.bed_size||'').trim().toUpperCase()]||String(r.bed_size||''),
     ply:      BM_PLY[String(r.blanket_ply||'').trim().toUpperCase()]||'',
+    /* Sattan ke do column JAISE HAIN waise aage bheje jaate hain — Order Form
+       ke do dropdown inhi values par bane hain, isi liye yahan koi tarjuma
+       nahi hota aur auto-select hu-ba-hu match karta hai.
+       `sattan` (joint) phir bhi banta hai: wahi hidden field me jaata hai
+       aur `sales_product_details` ka `sattan` column + dono PDF usi ko
+       padhte hain. */
+    sattanType: String(r.sattan_type||'').trim(),
+    sattanSize: String(r.sattan||'').trim(),
     sattan:   bmSattan(r.sattan,r.sattan_type),
     moq:      bmNum(r.moq),
     emboss:   BM_EMBOSS[String(r.emboss||'').trim().toUpperCase()]||'',
@@ -1311,7 +1772,13 @@ async function fetchDrops(){
         size:     String(r.size||''),
         dbsb:     String(r.dbsb||'DB'),
         ply:      String(r.ply||'SP'),
+        /* `sales_standard_items` me sattan ka ek hi (joint) column hai — ye
+           table Brand Master se purani hai. Usi joint value ko todkar Type /
+           Size nikal liye jaate hain, warna is table se bhara item dono naye
+           dropdown khaali chhod deta. */
         sattan:   String(r.sattan||''),
+        sattanType: sattanSplit_(r.sattan).type,
+        sattanSize: sattanSplit_(r.sattan).size,
         moq:      String(r.moq||''),
         emboss:   String(r.emboss||'NO'),
         price:    Number(r.price_per_kg)||0,
@@ -1374,6 +1841,12 @@ async function fetchDrops(){
            OWNER NAME → Contact Person      CONTACT NO → Mobile
            ADDRESS    → Address             GSTIN      → GSTIN
        Jo row Inactive hai wo kisi bhi dropdown me nahi aati. */
+    // Master ki rows alag se bhi rakhi jaati hain — "+ Add New Buyer / Agency"
+    // ka duplicate check inhi par chalta hai. Dekhein BUYER_MASTER_ROWS.
+    BUYER_MASTER_ROWS=(bmRows||[]).slice();
+    AGENCY_MASTER_ROWS=(amRows||[]).slice();
+    // "➕ Add New Brand Item" ka duplicate check inhi par chalta hai.
+    BRAND_MASTER_ROWS=(brRows||[]).slice();
     (bmRows||[]).forEach(r=>{
       if(r.is_active===false) return;
       const p=String(r.party_name||'').trim();
@@ -1397,6 +1870,10 @@ async function fetchDrops(){
     Object.keys(AGENCY_DETAILS).forEach(a=>{ if(!DROPS.agencyName) DROPS.agencyName=[]; if(!DROPS.agencyName.includes(a)) DROPS.agencyName.push(a); });
     localStorage.setItem(LS_DROPS,JSON.stringify(DROPS));
     refreshAllCombos();
+    /* Ab masters aa gaye hain — pehla product card inse PEHLE ban chuka tha,
+       aur ofApplySpecLock_ us waqt jaan-boojh kar lock nahi lagata (khaali
+       list ka matlab "load nahi hua" hai). To yahan dobara lagta hai. */
+    ofRelockAll_();
 
     // readEmbossDesigns()
     EMBOSS_DESIGNS=(embRes.data||[]).filter(r=>r.design_name&&r.image_url).map(r=>({
@@ -1441,15 +1918,25 @@ function bindCombo(fieldId, dropKey){
   renderComboList(fieldId, '');
 }
 
+/* Locked field par dropdown khulta hi nahi.
+   Ye sirf saja-sajawat nahi — ek asli raasta band karta hai: readonly input
+   bhi focus le sakta hai, aur dropdown khul jaane par selectCombo() seedha
+   `inp.value=val` likh deta hai, readOnly ki parwah kiye bina. Yani lock ke
+   baad bhi Fabric / Category / Size list se badla ja sakta tha. Jaanch yahan
+   ek hi jagah hai, isi liye har locked combo par apne aap lagti hai. */
+const comboLocked_=fieldId=>{
+  const e=document.getElementById(fieldId);
+  return !!e&&(e.readOnly||e.disabled);
+};
 function openCombo(fieldId){
-  if(suppressCombo) return;
+  if(suppressCombo||comboLocked_(fieldId)) return;
   const inp=document.getElementById(fieldId);
   filterCombo(fieldId,inp?inp.value:'');
   document.getElementById(fieldId+'-list').classList.add('open');
 }
 
 function filterCombo(fieldId, overrideVal){
-  if(suppressCombo) return;
+  if(suppressCombo||comboLocked_(fieldId)) return;
   const inp=document.getElementById(fieldId);
   const val=(overrideVal!==undefined?overrideVal:(inp?inp.value:'')).toLowerCase().trim();
   renderComboList(fieldId,val);
@@ -1483,14 +1970,26 @@ function selectCombo(fieldId, val){
   if(fieldId==='buyerName'){
     const bd=BUYER_DETAILS[val];
     if(bd){
-      const setF=(id,v)=>{const e=document.getElementById(id);if(e&&v){e.value=v;e.dispatchEvent(new Event('input'));}};
+      /* HAMESHA set, khaali ho to bhi. Pehle `if(e&&v)` tha — yani jis party
+         ka address khaali hai, uspar PICHHLI party ka address box me baitha
+         reh jaata tha. Field ab locked hai, to us galat address ko haath se
+         hatana bhi mumkin nahi hota aur wahi PDF ke bill-to par chhap jaata.
+         Isi liye khaali value ka matlab "khaali karo" hai. */
+      const setF=(id,v)=>{const e=document.getElementById(id);if(e){e.value=v||'';e.dispatchEvent(new Event('input'));}};
       setF('contactPerson',bd.contactPerson);
       setF('buyerMobile',bd.mobile);
       setF('buyerAddress',bd.address);
       setF('buyerGST',bd.gst);
       setF('transportName',bd.transportName);
+      // GSTIN se Out-of-Haryana khud lagta hai — pehle ye sirf haath se GSTIN
+      // type karne par chalta tha, aur ab wo field locked hai.
+      autoDetectState();
       syncMeta();
       toast('✓ Buyer details loaded');
+    }else{
+      // List me naam hai par details nahi — kuch bacha hua dikhane se behtar
+      // khaali dikhana hai.
+      ofClearBuyerDetails_();
     }
   }
   // Auto-fill agency details on agency selection
@@ -1579,6 +2078,465 @@ async function fetchGSTOnline(gstin){
   }
 }
 
+/* ══ ADD NEW BUYER / AGENCY ═════════════════════════════════════════════
+   Pehle nayi party ka naam seedha combo me type kar diya jaata tha. Wo chalta
+   tha — order ban jaata — par us party ka ADDRESS aur GSTIN kahin master me
+   nahi jaate the, to agle order par wo dono dobara haath se type hote (aur
+   GSTIN me ek digit idhar-udhar ho jaati). Ab yahan se wahi row banti hai jo
+   ERP › Master Data › 🏢 Buyer Master banata hai.
+
+   WAHI TABLE, WAHI SHAPE: `buyer_master` / `agency_master` me seedha insert,
+   `is_active:true, rev_no:1, created_by, updated_by` ke saath — bilkul jaisa
+   store-core.js ka sarvFbmSaveForm() karta hai. Us screen par bhi yahi anon
+   key chalti hai, isi liye RLS yahan bhi wahi raasta deta hai; alag RPC banane
+   ki zaroorat nahi padi (aur banayi bhi nahi ja sakti thi — Order Form ki
+   migration SQL is project tree me nahi hai).
+
+   `master_revisions` ka archive BEST-EFFORT hai, bilkul jaise ERP me hai: wo
+   table na ho ya block ho to warning console me jaati hai aur party phir bhi
+   save hoti hai. Ek history row na banne se party ka save rok dena ulta nuksan
+   hai. */
+function nmErr_(id,msg){
+  const el=document.getElementById(id);
+  if(!el) return;
+  el.textContent=msg||'';
+  el.style.display=msg?'block':'none';
+}
+function nmBusy_(btnId,on,label){
+  const b=document.getElementById(btnId);
+  if(!b) return;
+  b.disabled=!!on;
+  b.textContent=on?'⏳ Saving...':label;
+}
+const nmVal_=id=>String(document.getElementById(id)?.value||'').trim();
+// Khaali string ki jagah null — master me "bhara nahi gaya" aur "khaali likha
+// gaya" ek hi cheez hai, aur null hi us column ka asli default hai.
+const nmNull_=v=>{const s=String(v||'').trim();return s?s:null};
+
+/* created_by / updated_by me kiska naam jaye. ERP me ye sarvFbmActor_() se
+   aata hai (logged-in user ka naam); Order Form me wahi cheez loggedInUser
+   hai, to usi ka username — audit trail dono jagah ek jaisa padha jaata hai. */
+function nmActor_(){
+  return (loggedInUser&&loggedInUser.username)||'Order Form';
+}
+/* Insert, aur agar koi column is database me na ho to usi insert ko sirf
+   asli field values ke saath dobara. `rev_no` / `created_by` / `updated_by`
+   nayi columns hain — purane database par unka zikr "column does not exist"
+   deta hai, aur us wajah se nayi party save na hona bemaani hoga. Wahi
+   defensive tareeka jo store-core.js ke sbSaveDroppingMissingColumns_ me hai
+   (wo helper yahan available nahi hai, isi liye chhota version). */
+async function nmInsert_(table,vals){
+  const full=Object.assign({},vals,{is_active:true,rev_no:1,created_by:nmActor_(),updated_by:nmActor_()});
+  let r=await SB.from(table).insert(full).select().maybeSingle();
+  if(r.error && /column|does not exist|schema cache/i.test(r.error.message||'')){
+    console.warn('[ORDER FORM] '+table+': extra columns skipped —',r.error.message);
+    r=await SB.from(table).insert(Object.assign({},vals,{is_active:true})).select().maybeSingle();
+  }
+  if(r.error) throw r.error;
+  return r.data||full;
+}
+async function nmArchive_(code,row){
+  if(!row) return;
+  try{
+    const name=code==='BUYER'?row.party_name:row.agency_name;
+    const {error}=await SB.from('master_revisions').insert({
+      master_type:code, record_id:row.id, rev_no:row.rev_no||1,
+      ref_name:String(name||'-'), action:'CREATE', reason:null,
+      changed_fields:null, snapshot:row, created_by:nmActor_()
+    });
+    if(error) throw error;
+  }catch(e){ console.warn('[ORDER FORM] revision archive skip (master_revisions):',e.message||e); }
+}
+// Naam pehle se master me hai? Case / extra space ignore karke — "m/s abc" aur
+// "M/S ABC " ek hi party hain, aur do rows ban jaane par dropdown me ek hi
+// naam do baar dikhta hai.
+const nmKey_=v=>String(v||'').trim().replace(/\s+/g,' ').toUpperCase();
+
+function openNewBuyer(){
+  if(!canDo('create')) return toast('⚠️ Aapke role me nayi party add karne ka haq nahi hai');
+  ['nbParty','nbOwner','nbContact','nbAddress','nbGstin','nbStaff','nbStaffContact','nbNotes']
+    .forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+  // Combo me jo naam pehle se type ho chuka hai wahi aage bhar diya jaata hai —
+  // "add new" aksar tab dabaya jaata hai jab naam type karke list me mila na ho.
+  const typed=nmVal_('buyerName');
+  if(typed) document.getElementById('nbParty').value=typed;
+  nmErr_('nbError','');
+  nmBusy_('nbSaveBtn',false,'💾 Save Buyer');
+  document.getElementById('newBuyerModal').classList.add('open');
+  setTimeout(()=>document.getElementById('nbParty')?.focus(),60);
+}
+function closeNewBuyer(){ document.getElementById('newBuyerModal').classList.remove('open'); }
+
+async function saveNewBuyer(){
+  if(!canDo('create')) return;
+  const party=nmVal_('nbParty').toUpperCase();
+  nmErr_('nbError','');
+  if(!party){ nmErr_('nbError','Party / Company Name likhna zaroori hai'); document.getElementById('nbParty').focus(); return; }
+  const clash=BUYER_MASTER_ROWS.find(r=>nmKey_(r.party_name)===nmKey_(party));
+  if(clash){
+    nmErr_('nbError','"'+String(clash.party_name||party)+'" pehle se Buyer Master me hai'
+      +(clash.is_active===false?' (Inactive — ERP › Buyer Master se wapas Active karein)':'')
+      +'. Use upar ke dropdown se chun lein.');
+    return;
+  }
+  const gstin=nmVal_('nbGstin').toUpperCase();
+  // 15 ka niyam yahan ROKTA nahi, sirf batata hai: GSTIN bina / provisional
+  // party bhi asli hoti hai, aur master me row na banne se kaam rukta hai.
+  if(gstin && gstin.length!==15) toast('⚠️ GSTIN 15 character ka hota hai — jaanch lein');
+  nmBusy_('nbSaveBtn',true,'💾 Save Buyer');
+  try{
+    const vals={
+      party_name:party,
+      owner_name:nmNull_(nmVal_('nbOwner')),
+      contact_no:nmNull_(nmVal_('nbContact')),
+      address:nmNull_(nmVal_('nbAddress')),
+      gstin:nmNull_(gstin),
+      party_staff_name:nmNull_(nmVal_('nbStaff')),
+      party_staff_contact_no:nmNull_(nmVal_('nbStaffContact')),
+      notes:nmNull_(nmVal_('nbNotes')),
+    };
+    const row=await nmInsert_('buyer_master',vals);
+    await nmArchive_('BUYER',row);
+    BUYER_MASTER_ROWS.push(row);
+
+    /* Screen ki apni copy turant level par — dobara fetchDrops chalane ki
+       zaroorat nahi, aur chalaane se user ka adha bhara form bhi chhid
+       jaata. Wahi mapping jo fetchDrops ka buyer-master merge karta hai. */
+    BUYER_DETAILS[party]={
+      contactPerson: String(vals.owner_name||vals.party_staff_name||''),
+      mobile:        String(vals.contact_no||vals.party_staff_contact_no||''),
+      address:       String(vals.address||''),
+      gst:           String(vals.gstin||''),
+      transportName: ''
+    };
+    if(!DROPS.buyerName) DROPS.buyerName=[];
+    if(!DROPS.buyerName.includes(party)) DROPS.buyerName.push(party);
+    try{ localStorage.setItem(LS_DROPS,JSON.stringify(DROPS)); }catch(e){}
+    refreshAllCombos();
+
+    /* Nayi party form me chun bhi di jaati hai, aur uske saath Buyer Details
+       ke baaki field bhi bhar diye jaate hain — wahi kaam jo combo se party
+       chunne par hota hai (dekhein filterCombo ka buyerName branch). Isi liye
+       "add new" ke baad dobara dropdown kholna nahi padta. */
+    suppressCombo=true;
+    const setF=(id,v)=>{const e=document.getElementById(id);if(e){e.value=v||'';e.dispatchEvent(new Event('input'));}};
+    setF('buyerName',party);
+    setF('contactPerson',BUYER_DETAILS[party].contactPerson);
+    setF('buyerMobile',BUYER_DETAILS[party].mobile);
+    setF('buyerAddress',BUYER_DETAILS[party].address);
+    setF('buyerGST',BUYER_DETAILS[party].gst);
+    suppressCombo=false;
+    // GSTIN se Out-of-Haryana checkbox khud lagta hai — wahi function jo
+    // haath se GSTIN type karne par chalta hai.
+    if(BUYER_DETAILS[party].gst) autoDetectState();
+    syncMeta();
+    closeNewBuyer();
+    toast('✅ "'+party+'" Buyer Master me add ho gayi');
+  }catch(e){
+    console.error('[ORDER FORM] Buyer save failed:',e);
+    nmErr_('nbError',(e.message||String(e))
+      +(/permission|row-level|policy/i.test(e.message||'')
+        ? ' — Buyer Master me likhne ki permission nahi hai. ERP › Master Data › 🏢 Buyer Master se add karein.' : ''));
+    nmBusy_('nbSaveBtn',false,'💾 Save Buyer');
+  }
+}
+
+/* ══ ADD NEW BRAND ITEM (brand_master) ══════════════════════════════════
+   Item Code ab sirf Brand Master ki list me se chunna hai, to naya brand
+   banane ka raasta isi form me hona zaroori hai — warna ek naye SKU ka order
+   lene ke liye ERP kholna padta aur Order Form beech me chhod dena padta.
+
+   SAARE 38 column, wahi kram aur wahi grouping jo ERP › Master Data ›
+   🏷️ Brand Master ke form me hai (store-core.js ka SARV_BR_FIELDS). Neeche
+   ki table usi ki copy hai — ek jagah column juda to yahan bhi jodna hai,
+   warna naya brand yahan se adhoora banega.
+
+   Zaroori sirf teen: ITEM CODE, FABRIC NAME, CATEGORY — bilkul jaisa ERP me
+   `req:1` hai. Rate / packing / trims khaali chhode ja sakte hain; 0 ka
+   matlab "set nahi hai" aur Order Form khud bhi 0 ko skip karta hai. */
+const BR_YN='erp_fbmYesNo';
+const BR_FORM_FIELDS=[
+  {g:'🏷️ Identity', k:'item_code',       l:'Item Code',        t:'text', req:1, uc:1, w:2, ph:'Brand / SKU ka naam — unique'},
+  {k:'fabric_name',  l:'Fabric Name',     t:'fab',  req:1, hint:'Fabric Master ki row'},
+  {k:'category',     l:'Category',        t:'dd', dd:'erp_brandCategory', req:1},
+  {k:'blanket_weight', l:'Blanket Weight', t:'num', step:'0.001'},
+
+  {g:'📐 Specifications', k:'size', l:'Size',    t:'dd', dd:'erp_brandSize'},
+  {k:'bed_size',     l:'Bed Size',        t:'dd', dd:'erp_brandBedSize'},
+  {k:'blanket_ply',  l:'Blanket Ply',     t:'dd', dd:'erp_brandPly'},
+  {k:'sattan',       l:'Sattan Size',     t:'dd', dd:'erp_brandSattan'},
+  {k:'sattan_type',  l:'Sattan Type',     t:'dd', dd:'erp_brandSattanType'},
+  {k:'moq',          l:'MOQ',             t:'num', hint:'Minimum order qty (pcs)'},
+  {k:'emboss',       l:'Emboss',          t:'dd', dd:BR_YN},
+  {k:'notes',        l:'Notes',           t:'text', w:2},
+
+  {g:'💰 Rates (Order Form me aate hain)', k:'price_per_kg', l:'Price / KG', t:'num', step:'0.01'},
+  {k:'packing_pcs',    l:'Packing Pcs',    t:'num', hint:'Order Form ka Packing (pcs/pack)'},
+  {k:'label_price',    l:'Label Price',    t:'num', step:'0.01'},
+  {k:'tag_price',      l:'Tag Price',      t:'num', step:'0.01'},
+  {k:'bag_price',      l:'Bag Price',      t:'num', step:'0.01'},
+  {k:'bore_price',     l:'Bore Price',     t:'num', step:'0.01'},
+  {k:'inner_box_price',l:'Inner Box Price',t:'num', step:'0.01'},
+  {k:'outer_box_price',l:'Outer Box Price',t:'num', step:'0.01'},
+  {k:'bale_price',     l:'Bale Price',     t:'num', step:'0.01'},
+
+  {g:'📦 Packing 1', k:'master_pack_req',  l:'Master Packing Required', t:'dd', dd:BR_YN},
+  {k:'master_pack_type', l:'Master Packing Type', t:'dd', dd:'erp_brandMasterPackType'},
+  {k:'slave_pack_req',   l:'Slave Packing Required', t:'dd', dd:BR_YN},
+  {k:'slave_pack_type',  l:'Slave Packing Type',  t:'dd', dd:'erp_brandSlavePackType'},
+
+  {g:'📦 Packing 2 <span style="font-weight:600;text-transform:none;color:#6B7897">— doosra tareeka, khaali chhoda ja sakta hai</span>',
+     k:'master_pack_req_2',  l:'Master Packing Required 2', t:'dd', dd:BR_YN},
+  {k:'master_pack_type_2', l:'Master Packing Type 2', t:'dd', dd:'erp_brandMasterPackType'},
+  {k:'slave_pack_req_2',   l:'Slave Packing Required 2', t:'dd', dd:BR_YN},
+  {k:'slave_pack_type_2',  l:'Slave Packing Type 2',  t:'dd', dd:'erp_brandSlavePackType'},
+
+  {g:'🏷️ Labels / Tags / Trims', k:'micro_label', l:'Micro Label', t:'dd', dd:BR_YN},
+  {k:'small_label',     l:'Small Label',     t:'dd', dd:BR_YN},
+  {k:'big_label',       l:'Big Label',       t:'dd', dd:BR_YN},
+  {k:'tag_1',           l:'Tag 1',           t:'dd', dd:BR_YN},
+  {k:'tag_2',           l:'Tag 2',           t:'dd', dd:BR_YN},
+  {k:'tag_3',           l:'Tag 3',           t:'dd', dd:BR_YN},
+  {k:'dori',            l:'Dori',            t:'dd', dd:BR_YN},
+  {k:'insert_card',     l:'Insert Card',     t:'dd', dd:BR_YN},
+  {k:'barcode_sticker', l:'Barcode Sticker', t:'dd', dd:BR_YN},
+];
+const brFieldId_=k=>'nbr_'+k;
+// Fabric Master ki list — modal pehli baar khulne par ek baar aati hai.
+// Na mile to Order Form ka apna Fabric Code combo fallback hai.
+let BR_FABRIC_LIST=null;
+async function brFabricList_(){
+  if(BR_FABRIC_LIST) return BR_FABRIC_LIST;
+  let names=[];
+  try{
+    const rows=await fetchMasterSafe('fabric_master','fabric_name,is_active','fabric_name');
+    names=(rows||[]).filter(r=>r.is_active!==false)
+      .map(r=>String(r.fabric_name==null?'':r.fabric_name).trim()).filter(Boolean);
+  }catch(e){ console.warn('[ORDER FORM] fabric_master list skipped:',e.message||e); }
+  if(!names.length) names=(DROPS.fabricCode||[]).slice();
+  BR_FABRIC_LIST=[...new Set(names)]
+    .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
+  return BR_FABRIC_LIST;
+}
+function brBuildForm_(){
+  const host=document.getElementById('nbrForm');
+  if(!host) return;
+  let html='', open=false;
+  BR_FORM_FIELDS.forEach(f=>{
+    if(f.g){
+      if(open) html+='</div>';
+      html+='<div class="nb-sec">'+f.g+'</div><div class="nb-grid">';
+      open=true;
+    }
+    const id=brFieldId_(f.k);
+    const req=f.req?' <span class="mstar">★</span>':'';
+    let inner;
+    if(f.t==='dd'){
+      inner='<select id="'+id+'">'+optsHtml_(brDd_(f.dd),'')+'</select>';
+    }else if(f.t==='fab'){
+      // Suggestion list, hard lock nahi: fabric_master na mile ya koi nayi
+      // fabric pehle Fabric Master me jude hi na — dono soorat me naya brand
+      // banana ruk jaata, jo is button ke hone ka matlab khatam kar deta.
+      inner='<input type="text" id="'+id+'" list="dl-'+id+'" autocomplete="off" placeholder="e.g. 2.2">'
+           +'<datalist id="dl-'+id+'"></datalist>';
+    }else if(f.t==='num'){
+      inner='<input type="number" id="'+id+'" min="0" step="'+(f.step||'any')+'" placeholder="'+esc(f.ph||'0')+'">';
+    }else{
+      inner='<input type="text" id="'+id+'" autocomplete="off" placeholder="'+esc(f.ph||'')+'"'
+           +(f.uc?' style="text-transform:uppercase"':'')+'>';
+    }
+    html+='<div class="nb-f'+(f.w===2?' w2':'')+'">'
+       +'<label>'+f.l+req+'</label>'+inner
+       +(f.hint?'<div class="hint">'+f.hint+'</div>':'')
+       +'</div>';
+  });
+  if(open) html+='</div>';
+  host.innerHTML=html;
+}
+
+// Kis product card se button dabaya gaya — save ke baad usi me naya code
+// chunna hai. openNewBrand se PEHLE declare, taaki padhne me kram saaf rahe.
+let brTargetProd_=null;
+async function openNewBrand(prodId){
+  if(!canDo('create')) return toast('⚠️ Aapke role me naya brand add karne ka haq nahi hai');
+  // Kis product card me chuna jayega — save ke baad wahi card bharna hai.
+  brTargetProd_=prodId;
+  brBuildForm_();
+  // Combo me jo code type ho chuka hai wahi aage — "add new" aksar tab dabaya
+  // jaata hai jab code type karke list me mila na ho.
+  const typed=String(document.getElementById('p'+prodId+'-itemCode')?.value||'').trim();
+  const codeEl=document.getElementById(brFieldId_('item_code'));
+  if(codeEl&&typed) codeEl.value=typed.toUpperCase();
+  nmErr_('nbrError','');
+  nmBusy_('nbrSaveBtn',false,'💾 Save Brand Item');
+  document.getElementById('newBrandModal').classList.add('open');
+  setTimeout(()=>codeEl?.focus(),60);
+  // Fabric list baad me bhari jaati hai — uske aane tak form khul chuka hota
+  // hai, aur ye field zaroori-par-free-text hai, to intezaar karne ki wajah
+  // nahi banti.
+  try{
+    const list=await brFabricList_();
+    const dl=document.getElementById('dl-'+brFieldId_('fabric_name'));
+    if(dl) dl.innerHTML=list.map(v=>'<option value="'+esc(v)+'">').join('');
+  }catch(e){}
+}
+function closeNewBrand(){ document.getElementById('newBrandModal').classList.remove('open'); }
+
+async function saveNewBrand(){
+  if(!canDo('create')) return;
+  const get=k=>String(document.getElementById(brFieldId_(k))?.value||'').trim();
+  const code=get('item_code').toUpperCase();
+  nmErr_('nbrError','');
+  // Teen zaroori field — wahi jo ERP me req:1 hain.
+  const missing=[];
+  if(!code) missing.push('Item Code');
+  if(!get('fabric_name')) missing.push('Fabric Name');
+  if(!get('category')) missing.push('Category');
+  if(missing.length){
+    nmErr_('nbrError','Ye field zaroori hain: '+missing.join(', '));
+    document.getElementById(brFieldId_(missing[0]==='Item Code'?'item_code':missing[0]==='Fabric Name'?'fabric_name':'category'))?.focus();
+    return;
+  }
+  const clash=BRAND_MASTER_ROWS.find(r=>nmKey_(r.item_code)===nmKey_(code));
+  if(clash){
+    nmErr_('nbrError','"'+String(clash.item_code||code)+'" pehle se Brand Master me hai'
+      +(clash.is_active===false?' (Inactive — ERP › Brand Master se wapas Active karein)':'')
+      +'. Use upar ke Item Code dropdown se chun lein.');
+    return;
+  }
+  nmBusy_('nbrSaveBtn',true,'💾 Save Brand Item');
+  try{
+    const vals={};
+    BR_FORM_FIELDS.forEach(f=>{
+      const raw=get(f.k);
+      if(f.t==='num'){
+        // Khaali number ko 0 nahi, null — 0 ka matlab yahan "set nahi hai"
+        // hota hai aur Order Form use skip karta hai, par null hi us column
+        // ka asli default hai aur ERP ka form bhi wahi likhta hai.
+        vals[f.k]= raw===''?null:(Number(raw)||0);
+      }else{
+        vals[f.k]= nmNull_(f.uc?raw.toUpperCase():raw);
+      }
+    });
+    vals.item_code=code;
+    const row=await nmInsert_('brand_master',vals);
+    await nmArchive_('BRAND',row);
+    BRAND_MASTER_ROWS.push(row);
+
+    /* Screen ki apni copy turant level par — bmToItem() se, wahi tarjuma jo
+       fetchDrops karta hai (DOUBLE BED → DB, SINGLE PLY → SP waghairah).
+       Dobara fetchDrops chalane se user ka adha bhara order chhid jaata. */
+    STANDARD_ITEMS[code]=Object.assign(bmToItem(row),{
+      dbsb: bmToItem(row).dbsb||'DB',
+      ply:  bmToItem(row).ply||'SP',
+      emboss: bmToItem(row).emboss||'NO'
+    });
+    if(!DROPS.itemCode) DROPS.itemCode=[];
+    if(!DROPS.itemCode.includes(code)) DROPS.itemCode.push(code);
+    DROPS.itemCode.sort();
+    try{ localStorage.setItem(LS_DROPS,JSON.stringify(DROPS)); }catch(e){}
+    refreshAllCombos();
+
+    // Jis card se button dabaya gaya tha, usme naya code chun bhi diya jaata
+    // hai — onItemCodeSelect() saari specs bhar kar lock bhi laga deta hai.
+    const pid=brTargetProd_;
+    if(pid!=null && document.getElementById('p'+pid+'-itemCode')){
+      suppressCombo=true;
+      const el=document.getElementById('p'+pid+'-itemCode');
+      el.value=code; el.dispatchEvent(new Event('input'));
+      suppressCombo=false;
+      onItemCodeSelect(pid, code);
+    }
+    closeNewBrand();
+    toast('✅ "'+code+'" Brand Master me add ho gaya');
+  }catch(e){
+    console.error('[ORDER FORM] Brand save failed:',e);
+    nmErr_('nbrError',(e.message||String(e))
+      +(/permission|row-level|policy/i.test(e.message||'')
+        ? ' — Brand Master me likhne ki permission nahi hai. ERP › Master Data › 🏷️ Brand Master se add karein.' : ''));
+    nmBusy_('nbrSaveBtn',false,'💾 Save Brand Item');
+  }
+}
+
+function openNewAgency(){
+  if(!canDo('create')) return toast('⚠️ Aapke role me nayi agency add karne ka haq nahi hai');
+  ['naName','naContact','naMobile','naNotes'].forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
+  const typed=nmVal_('agencyName');
+  if(typed) document.getElementById('naName').value=typed;
+  nmErr_('naError','');
+  nmBusy_('naSaveBtn',false,'💾 Save Agency');
+  document.getElementById('newAgencyModal').classList.add('open');
+  setTimeout(()=>document.getElementById('naName')?.focus(),60);
+}
+function closeNewAgency(){ document.getElementById('newAgencyModal').classList.remove('open'); }
+
+/* Enter se save — par SIRF single-line input par. Address ek textarea hai,
+   wahan Enter ka matlab nayi line hai, aur use save me badalna poora address
+   likhne se pehle form band kar deta.
+
+   Backdrop par click ya Esc se band karna jaan-boojh kar NAHI diya: in formon
+   me aath field tak bhari hoti hain, aur ek galat click se wo sab chala jaana
+   sabse bura nateeja hai. Band karne ka ek hi saaf raasta hai — Cancel. Yahi
+   niyam mobile app ki New PR sheet par bhi hai. */
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Enter') return;
+  const box=e.target&&e.target.closest&&e.target.closest('#newBuyerModal,#newAgencyModal,#newBrandModal');
+  if(!box) return;
+  if(e.target.tagName==='TEXTAREA') return;
+  e.preventDefault();
+  if(box.id==='newBuyerModal') saveNewBuyer();
+  else if(box.id==='newBrandModal') saveNewBrand();
+  else saveNewAgency();
+});
+
+async function saveNewAgency(){
+  if(!canDo('create')) return;
+  const name=nmVal_('naName').toUpperCase();
+  nmErr_('naError','');
+  if(!name){ nmErr_('naError','Agency Name likhna zaroori hai'); document.getElementById('naName').focus(); return; }
+  const clash=AGENCY_MASTER_ROWS.find(r=>nmKey_(r.agency_name)===nmKey_(name));
+  if(clash){
+    nmErr_('naError','"'+String(clash.agency_name||name)+'" pehle se Agency Master me hai'
+      +(clash.is_active===false?' (Inactive — ERP › Buyer Master screen se wapas Active karein)':'')
+      +'. Use upar ke dropdown se chun lein.');
+    return;
+  }
+  nmBusy_('naSaveBtn',true,'💾 Save Agency');
+  try{
+    const vals={
+      agency_name:name,
+      contact_person:nmNull_(nmVal_('naContact')),
+      mobile_no:nmNull_(nmVal_('naMobile')),
+      notes:nmNull_(nmVal_('naNotes')),
+    };
+    const row=await nmInsert_('agency_master',vals);
+    await nmArchive_('AGENCY',row);
+    AGENCY_MASTER_ROWS.push(row);
+
+    AGENCY_DETAILS[name]={contact:String(vals.contact_person||''),mobile:String(vals.mobile_no||'')};
+    if(!DROPS.agencyName) DROPS.agencyName=[];
+    if(!DROPS.agencyName.includes(name)) DROPS.agencyName.push(name);
+    try{ localStorage.setItem(LS_DROPS,JSON.stringify(DROPS)); }catch(e){}
+    refreshAllCombos();
+
+    suppressCombo=true;
+    const setF=(id,v)=>{const e=document.getElementById(id);if(e){e.value=v||'';e.dispatchEvent(new Event('input'));}};
+    setF('agencyName',name);
+    setF('agencyContact',AGENCY_DETAILS[name].contact);
+    setF('agencyMobile',AGENCY_DETAILS[name].mobile);
+    suppressCombo=false;
+    syncMeta();
+    closeNewAgency();
+    toast('✅ "'+name+'" Agency Master me add ho gayi');
+  }catch(e){
+    console.error('[ORDER FORM] Agency save failed:',e);
+    nmErr_('naError',(e.message||String(e))
+      +(/permission|row-level|policy/i.test(e.message||'')
+        ? ' — Agency Master me likhne ki permission nahi hai. ERP › Master Data › 🏢 Buyer Master screen se add karein.' : ''));
+    nmBusy_('naSaveBtn',false,'💾 Save Agency');
+  }
+}
+
 function onItemCodeSelect(id, code){
   const item=STANDARD_ITEMS[code]; if(!item) return;
   suppressCombo=true;
@@ -1590,9 +2548,31 @@ function onItemCodeSelect(id, code){
   setV('p'+id+'-size',    item.size);
   setV('p'+id+'-dbsb',    item.dbsb);
   setS('p'+id+'-ply',     item.ply);
-  setV('p'+id+'-sattan',  item.sattan);
+  /* Sattan Type + Size dono Brand Master se seedha. setSattan() apne aap
+     hidden `sattan` bhi likh deta hai, aur Brand Master me koi nayi value
+     (jaise '7 INCH SATTAN') aa gayi ho to use dropdown me jod deta hai —
+     warna wo chup-chaap set hi na hoti. */
+  setSattan(id, item.sattanType, item.sattanSize, item.sattan);
   setV('p'+id+'-moq',     item.moq);
   setS('p'+id+'-emboss',  item.emboss);
+  /* Emboss = YES par 🎨 Emboss Design Photos section khulna chahiye — aur wo
+     onEmbossChange() hi kholta hai.
+
+     setS() sirf `.value` likhta hai, aur JS se value badalne par browser
+     `change` event NAHI bhejta — wo event sirf tab banta hai jab aadmi khud
+     dropdown se chunta hai. Isi liye haath se YES karne par section aa jaata
+     tha par Item Code se auto-fill hone par nahi: markup ka
+     onchange="onEmbossChange(id)" us raaste par chalta hi nahi tha.
+
+     Isi liye yahan seedha bulaya jaata hai. applyProductToCard() (purana
+     order Edit par kholna) pehle se yahi karta hai — wahan setSel() ke baad
+     onEmbossChange(id) likha hua hai; sirf ye raasta chhoot gaya tha.
+
+     NOTE: setS() ko khud `change` bhejna sikhana theek nahi — usi se
+     packType bhi set hota hai, aur tab onPackTypeChange() beech me chal kar
+     saare trims 'na' kar deta (wo jaan-boojh kar neeche, suppressCombo
+     hatne ke BAAD, ek hi baar bulaya jaata hai). */
+  onEmbossChange(id);
   const pEl=document.getElementById('p'+id+'-price'); if(pEl) pEl.value=item.price;
   // GREY/WHITE FABRIC → Design "NA", Pack Type "Roll", PLY "NA", label "GSM", input "GSM"
   const wLbl=document.getElementById('p'+id+'-weight-lbl');
@@ -1622,6 +2602,11 @@ function onItemCodeSelect(id, code){
       if(costEl && !costEl.disabled) costEl.value=item[priceKey];
     }
   });
+  /* Lock dobara lagta hai, auto-fill ke BAAD — isi kram se kaam hota hai:
+     setV()/setS() readonly field me bhi value likh dete hain, aur GREY/WHITE
+     FABRIC wali branch upar weight ko khol/band karti hai. Pehle lock lagate
+     to us branch ka faisla ulat jaata. */
+  ofApplySpecLock_(id);
   calcAll();
   toast('✓ Item '+code+' loaded');
 }
@@ -1633,10 +2618,25 @@ function refreshAllCombos(){
   // also refresh product combos
   document.querySelectorAll('.product-card').forEach(c=>{
     const id=c.id.replace('prod-','');
-    ['itemCode','fabric','category','size','dbsb','sattan','moq','design'].forEach(k=>{
+    // 'sattan' is deliberately NOT here any more — it is a hidden input fed by
+    // the Sattan Type / Sattan Size <select>s, not a combo with a dropdown list.
+    ['itemCode','fabric','category','size','dbsb','moq','design'].forEach(k=>{
       const cid='p'+id+'-'+k;
       if(comboState[cid]) renderComboList(cid,'');
     });
+    /* Sattan ke do <select> bhi dobara bante hain. Ye combo nahi hain, to
+       renderComboList inhe chhoota hai — aur card khulne ke baad hi
+       `sales_dropdowns` load ho sakti hai (ya user ne nayi value save ki ho).
+       Chuni hui value pehle rakh li jaati hai aur baad me wapas lagti hai,
+       warna list dobara banane par wo udd jaati. */
+    [['sattanType',DROPS.sattanType||SATTAN_TYPES],['sattanSize',DROPS.sattanSize||SATTAN_SIZES]]
+      .forEach(([k,list])=>{
+        const sel=document.getElementById('p'+id+'-'+k);
+        if(!sel) return;
+        const keep=sel.value;
+        sel.innerHTML=optsHtml_(list,'');
+        ensureOpt_(sel,keep);
+      });
   });
 }
 
@@ -1646,7 +2646,8 @@ function bindProductCombos(id){
   bindCombo('p'+id+'-category','category');
   bindCombo('p'+id+'-size','size');
   bindCombo('p'+id+'-dbsb','dbsb');
-  bindCombo('p'+id+'-sattan','sattan');
+  // Sattan ka combo hata diya gaya — ab Type / Size do <select> hain aur
+  // 'p<id>-sattan' ek hidden field hai (koi -list div nahi hai uske saath).
   bindCombo('p'+id+'-moq','moq');
   bindCombo('p'+id+'-design','design');
 }
@@ -1655,6 +2656,12 @@ function bindProductCombos(id){
 function addProduct(){
   prodCount++;
   const id=prodCount;
+  /* Ek naye card par koi extra trim row nahi hoti. Yahan saaf karna zaroori
+     hai, na ki sirf removeProd me: applyOrderToForm pehle prodsContainer
+     khaali karke prodCount ko 0 kar deta hai, to ids (1, 2, 3…) dobara use
+     hote hain — aur pichhle order ki list bachi reh jaati to naya Product #1
+     un ghost rows ko padhne lagta jinka DOM me koi wajood nahi. */
+  extraTrimRows[id]=[]; xtSeq[id]=0;
   const html=`
   <div class="pc product-card" id="prod-${id}">
     <div class="pc-hdr">
@@ -1667,15 +2674,24 @@ function addProduct(){
     <div class="pc-body">
       <div class="shd" style="color:var(--amber)">Item Code — Auto Fill</div>
       <div class="fg">
-        <label>Item Code <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(select to auto-fill all specs &amp; price)</span></label>
+        <div class="fg-hd">
+          <label>Item Code <span class="mstar">★</span></label>
+          <button type="button" class="btn-addmaster" onclick="openNewBrand(${id})"
+            title="Naya brand / SKU Brand Master me save karein — turant is list me aa jayega aur yahin chun bhi liya jayega">➕ Add New Brand Item</button>
+        </div>
         <div class="combo-wrap">
-          <input type="text" id="p${id}-itemCode" placeholder="Search or select item code..." autocomplete="off"
+          <input type="text" id="p${id}-itemCode" placeholder="Select from Brand Master..." autocomplete="off"
             oninput="filterCombo('p${id}-itemCode')" onfocus="openCombo('p${id}-itemCode')" onblur="delayClose('p${id}-itemCode')">
           <svg class="combo-arrow" width="11" height="7" viewBox="0 0 11 7" fill="none"><path d="M1 1l4.5 4.5L10 1" stroke="#6B7897" stroke-width="1.5" stroke-linecap="round"/></svg>
           <div class="combo-list" id="p${id}-itemCode-list"></div>
         </div>
+        <div class="lock-note">★ Sirf Brand Master ki list me se — neeche ki <b>Specifications</b> isi se bharti hain aur <b>locked</b> hain. Naya brand? <b>➕ Add New Brand Item</b> dabayein.</div>
       </div>
-      <div class="shd">Specifications</div>
+      <!-- Specifications: saari value Brand Master se aati hain aur locked
+           rehti hain (ofApplySpecLock_). Pricing & Delivery jaan-boojh kar
+           khuli rehti hai — rate, discount, qty aur GST har order ke apne
+           sauda hain, brand ki pehchaan nahi. -->
+      <div class="shd">Specifications <span style="font-size:9.5px;font-weight:600;color:var(--muted);text-transform:none">🔒 Brand Master se locked</span></div>
       <div class="g3">
         <div class="fg"><label>Fabric Name / Code</label>
           <div class="combo-wrap">
@@ -1713,14 +2729,16 @@ function addProduct(){
         </div>
         <div class="fg"><label>Ply</label>
           <select id="p${id}-ply"><option value="SP">SP (Single)</option><option value="DP">DP (Double)</option><option value="3 PLY">3 PLY (Triple)</option><option value="NA">NA</option></select></div>
-        <div class="fg"><label>Sattan</label>
-          <div class="combo-wrap">
-            <input type="text" id="p${id}-sattan" placeholder='e.g. 5" PREMIUM' autocomplete="off"
-              oninput="filterCombo('p${id}-sattan')" onfocus="openCombo('p${id}-sattan')" onblur="delayClose('p${id}-sattan')">
-            <svg class="combo-arrow" width="11" height="7" viewBox="0 0 11 7" fill="none"><path d="M1 1l4.5 4.5L10 1" stroke="#6B7897" stroke-width="1.5" stroke-linecap="round"/></svg>
-            <div class="combo-list" id="p${id}-sattan-list"></div>
-          </div>
-        </div>
+        <!-- Sattan ab do dropdown: Type (grade) aur Size (inch) — wahi do column
+             jo Brand Master me hain, isi liye Item Code select karte hi dono
+             apne aap chun jaate hain. Dono ka jodd neeche hidden input
+             #p${id}-sattan me jaata hai, jise purana saara code (getProd,
+             PDF, learnMasters) bina badlav padhta rehta hai. -->
+        <div class="fg"><label>Sattan Type</label>
+          <select id="p${id}-sattanType" onchange="onSattanChange(${id})">${optsHtml_(DROPS.sattanType||SATTAN_TYPES,'')}</select></div>
+        <div class="fg"><label>Sattan Size</label>
+          <select id="p${id}-sattanSize" onchange="onSattanChange(${id})">${optsHtml_(DROPS.sattanSize||SATTAN_SIZES,'')}</select></div>
+        <input type="hidden" id="p${id}-sattan" value="">
         <div class="fg"><label>MOQ</label>
           <div class="combo-wrap">
             <input type="text" id="p${id}-moq" placeholder="e.g. 1000 PCS/Colour" autocomplete="off"
@@ -1813,6 +2831,21 @@ function addProduct(){
             <td style="background:#FFFBEA"></td>
           </tr>
         </tbody>
+        <!-- Extra materials, "Add Row" se. Apna tbody rakha gaya hai (HTML me
+             ek table ke kai tbody valid hain) taaki in rows ko jodna / hatana
+             upar ke fixed chhe trim aur Packing Charge row ko chhue hi na —
+             wo rows id se dhoondhi jaati hain aur unka layout tay hai. -->
+        <tbody id="p${id}-xt-body"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="5" style="padding:7px 6px;background:#F8FAFC;border-top:1px dashed #CBD5E1">
+              <button type="button" onclick="addExtraTrim(${id})"
+                style="background:#1A3C5E;color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:5px">
+                ➕ Add Row</button>
+              <span style="font-size:10.5px;color:var(--muted);margin-left:9px">Micro / Small / Big Label, Tag 2, Tag 3, Dori, Insert Card, Barcode Sticker, Foam — jo bhi is order me lage</span>
+            </td>
+          </tr>
+        </tfoot>
       </table>
       <div class="pst">
         <div class="pst-item"><div class="pst-lbl">Price/KG</div><div class="pst-val" id="p${id}-ppkg">₹0.00</div></div>
@@ -1823,6 +2856,14 @@ function addProduct(){
   </div>`;
   document.getElementById('prodsContainer').insertAdjacentHTML('beforeend',html);
   bindProductCombos(id);
+  /* Naya card specs LOCKED aur khaali ke saath khulta hai — Item Code chunne
+     se pehle unme kuch bhara ja hi nahi sakta. Yahi baat ka matlab hai ki
+     specs ka ek hi source hai: Brand Master.
+     Item Code khud Store Inward ke "Item Name ★" jaisa hai — list me na mile
+     to blur par khud khaali, aur uske saath specs bhi saaf. */
+  ofApplySpecLock_(id);
+  ofLockToList_(document.getElementById('p'+id+'-itemCode'),
+    ()=>Object.keys(STANDARD_ITEMS), 'Brand Item', ()=>ofClearSpecs_(id));
   calcAll();
 }
 
@@ -1833,6 +2874,8 @@ function removeProd(id){
   delete existingProductPhotos[id];
   delete embossPhotos[id];
   delete existingEmbossPhotos[id];
+  delete extraTrimRows[id];
+  delete xtSeq[id];
 }
 
 // ═══════════════════════ PRODUCT PHOTO UPLOAD (multi-photo, 2 INDEPENDENT galleries) ═══
@@ -2068,6 +3111,119 @@ function onSupp(id,key){
   }
   calcAll();
 }
+/* ══ SATTAN — do dropdown ko ek value me jodna ═════════════════════════
+   Hidden #p<id>-sattan hi wo field hai jise baaki poora app padhta hai, to
+   dono dropdown badalne par wahi dobara likha jaata hai. `input` event bhi
+   bheja jaata hai kyunki sattan ab bhi `sales_dropdowns` me seekha jaata
+   hai (learnMasters) aur combo list usi event par refresh hoti hai. */
+function onSattanChange(id){
+  const t=document.getElementById('p'+id+'-sattanType')?.value||'';
+  const s=document.getElementById('p'+id+'-sattanSize')?.value||'';
+  const h=document.getElementById('p'+id+'-sattan');
+  if(h){ h.value=sattanJoin_(t,s); h.dispatchEvent(new Event('input')); }
+  calcAll();
+}
+/* Dono dropdown set karta hai. Agar type/size na aaye (purana order ya
+   purani sales_standard_items row, jisme sirf joint `sattan` tha) to joint
+   string ko todkar bhar deta hai — isi liye purane order kholne par bhi
+   dono field bhare milte hain. */
+function setSattan(id,type,size,joint){
+  let t=String(type||'').trim(), s=String(size||'').trim();
+  if(!t && !s){ const sp=sattanSplit_(joint); t=sp.type; s=sp.size; }
+  ensureOpt_(document.getElementById('p'+id+'-sattanType'),t);
+  ensureOpt_(document.getElementById('p'+id+'-sattanSize'),s);
+  const h=document.getElementById('p'+id+'-sattan');
+  // Jodd se banti value; par agar dono dropdown khaali hain aur purana joint
+  // kuch kehta hai, to wahi rakha jaata hai — kuch kho kar khaali karne se
+  // behtar hai jo likha tha wo bacha rehna.
+  if(h) h.value=sattanJoin_(t,s)||String(joint||'');
+}
+
+/* ══ BAGS & TRIMS — extra material rows ════════════════════════════════
+   Ek row jodta hai. Row ka index xtSeq se aata hai, kabhi dobara use nahi
+   hota — row hatane par agar index recycle hota to nayi row ke input ids
+   purani row se takra jaate aur do rows ek doosre ki value padhne lagtin. */
+function addExtraTrim(id,preset){
+  const body=document.getElementById('p'+id+'-xt-body');
+  if(!body) return;
+  xtSeq[id]=(xtSeq[id]||0)+1;
+  const n=xtSeq[id];
+  (extraTrimRows[id]=extraTrimRows[id]||[]).push(n);
+  const p=preset||{};
+  const pre=`p${id}-xt${n}`;
+  const supp=String(p.supp||'na');
+  // SIHF Supplied par hi paisa bharta hai — wahi niyam jo fixed trims par hai
+  // (dekhein onSupp): baaki haalat me teeno input band aur 0.
+  const on=(supp==='seller');
+  const iStyle=on?'background:#EFF6FF;border-color:#93C5FD;':'';
+  body.insertAdjacentHTML('beforeend',`
+  <tr id="${pre}-row">
+    <td>
+      <select class="trim-sel" id="${pre}-mat" onchange="calcAll()" style="font-weight:600">
+        ${optsHtml_(EXTRA_MATERIALS,String(p.mat||''))}
+      </select>
+    </td>
+    <td><select class="trim-sel" id="${pre}-supp" onchange="onExtraSupp(${id},${n})">
+      ${SUPP.map(o=>`<option value="${o.v}"${o.v===supp?' selected':''}>${o.l}</option>`).join('')}
+    </select></td>
+    <td><input type="number" class="trim-pi" id="${pre}-pcs" placeholder="0" min="0" value="${Number(p.pcs)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:70px;${iStyle}"></td>
+    <td style="text-align:right"><input type="number" class="trim-pi" id="${pre}-cost" placeholder="0" step="0.5" min="0" value="${Number(p.cost)||0}" ${on?'':'disabled'} oninput="calcAll()" style="${iStyle}"></td>
+    <td style="text-align:right;white-space:nowrap">
+      <input type="number" class="trim-pi" id="${pre}-disc" placeholder="0" step="0.1" min="0" max="100" value="${Number(p.disc)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:64px;${iStyle}">
+      <button type="button" onclick="removeExtraTrim(${id},${n})" title="Ye row hatayein"
+        style="margin-left:5px;background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5;border-radius:5px;padding:3px 7px;font-size:11px;font-weight:700;cursor:pointer;vertical-align:middle">🗑</button>
+    </td>
+  </tr>`);
+  // Preset ke bina (user ne button dabaya) hi recalc chahiye; restore ke waqt
+  // applyProductToCard apne aakhir me ek hi baar calcAll() karta hai.
+  if(!preset) calcAll();
+}
+function removeExtraTrim(id,n){
+  const row=document.getElementById(`p${id}-xt${n}-row`);
+  if(row) row.remove();
+  const list=extraTrimRows[id]||[];
+  const at=list.indexOf(n);
+  if(at>=0) list.splice(at,1);
+  calcAll();
+}
+// Fixed trims ka onSupp() yahan reuse nahi hota: wo Standard Items se cost
+// auto-bharta hai (autoFillTrimCost) aur pcs ko qty/packs se set karta hai —
+// extra materials ka Brand Master me koi rate column hi nahi hai, aur unki
+// pcs har material par alag hoti hai, to wo auto-fill yahan galat hota.
+function onExtraSupp(id,n){
+  const pre='p'+id+'-xt'+n;
+  const sel=document.getElementById(pre+'-supp');
+  const on=(sel&&sel.value==='seller');
+  ['pcs','cost','disc'].forEach(f=>{
+    const el=document.getElementById(pre+'-'+f);
+    if(!el) return;
+    el.disabled=!on;
+    if(!on) el.value=0;
+    el.style.background=on?'#EFF6FF':'';
+    el.style.borderColor=on?'#93C5FD':'';
+  });
+  calcAll();
+}
+// Ek product ki saari extra rows, screen se padhi hui. getProd aur
+// collectPayload dono yahi se chalte hain, to on-screen total aur save hone
+// wali value kabhi alag nahi ho sakti.
+function readExtraTrims(id){
+  const g=(s)=>document.getElementById(s)?.value||'';
+  const n=(s)=>parseFloat(document.getElementById(s)?.value)||0;
+  return (extraTrimRows[id]||[]).map(ix=>{
+    const pre='p'+id+'-xt'+ix;
+    const supp=g(pre+'-supp')||'na';
+    const seller=(supp==='seller');
+    const cost=seller?n(pre+'-cost'):0;
+    const disc=seller?n(pre+'-disc'):0;
+    const pcs =seller?n(pre+'-pcs'):0;
+    return {mat:g(pre+'-mat'), supp, cost, disc, pcs, effectiveCost:cost*(1-disc/100)};
+  // Jis row me material chuna hi nahi gaya wo adhoori hai — na save hoti hai
+  // na PDF me jaati hai. Paisa phir bhi nahi ginta kyunki cost tabhi aata
+  // hai jab supplier SIHF ho, aur material bina row kholna bemaani hai.
+  }).filter(r=>String(r.mat||'').trim());
+}
+
 function autoFillTrimCost(id,key){
   const itemCode=document.getElementById('p'+id+'-itemCode')?.value;
   const item=STANDARD_ITEMS[itemCode]; if(!item) return;
@@ -2231,6 +3387,15 @@ function getProd(id){
     trimsCostPerPc+=effectiveCostPerPc; trimsCostTotal+=trimPcs*effectiveCostPerPc;
     trimStatus[t.k]=supp; trimData[t.k]={supp,cost:costPerPc,disc:trimDisc,effectiveCost:effectiveCostPerPc,pcs:trimPcs};
   });
+  /* "Add Row" wale extra materials — fixed chhe trims ke SAATH hi gine jaate
+     hain, alag se nahi. Isi ek jagah jud jaane se product ka exGST, GST,
+     Final Price/Pc, bill summary aur dono PDF sab apne aap sahi ho jaate
+     hain; har jagah alag se jodna padta to ek jagah chhoot jaana tay tha. */
+  const extraTrims=readExtraTrims(id);
+  extraTrims.forEach(x=>{
+    trimsCostPerPc+=x.effectiveCost;
+    trimsCostTotal+=x.pcs*x.effectiveCost;
+  });
   const packChargePcs=n('p'+id+'-packCharge-pcs');
   const packChargeCostPc=n('p'+id+'-packCharge');
   const packCharge=packChargePcs*packChargeCostPc;
@@ -2243,9 +3408,13 @@ function getProd(id){
   return {
     id, qty, packs, packPcs, price, discount, effectivePricePerKg, pricePerPc, weight, calcWeight, isGSM, totalWeight, gstPct, packType, packCharge, packChargePcs, packChargeCostPc,
     trimsCostPerPc, trimsCostTotal, fabricCost, exGST, gstAmt, amount, finalPricePerQty,
-    trimStatus, trimData,
+    trimStatus, trimData, extraTrims,
     itemCode:g('p'+id+'-itemCode'), fabric:g('p'+id+'-fabric'), category:g('p'+id+'-category'), size:g('p'+id+'-size'),
-    dbsb:g('p'+id+'-dbsb'), ply:g('p'+id+'-ply'), sattan:g('p'+id+'-sattan'),
+    dbsb:g('p'+id+'-dbsb'), ply:g('p'+id+'-ply'),
+    /* `sattan` wahi joint value hai jo hidden input me hai — purana saara
+       code isi ko padhta hai. Dono dropdown apni alag field me bhi jaate
+       hain, taaki order wapas kholne par unhe todkar nikalna na pade. */
+    sattan:g('p'+id+'-sattan'), sattanType:g('p'+id+'-sattanType'), sattanSize:g('p'+id+'-sattanSize'),
     moq:g('p'+id+'-moq'), emboss:g('p'+id+'-emboss'), design:g('p'+id+'-design'),
     remarks:g('p'+id+'-remarks'), designCostComment:g('p'+id+'-designCost'), labelTagComment:g('p'+id+'-labelTagComment'),
     newPhotos:productPhotos[id]||[], existingPhotos:(existingProductPhotos[id]||[]).slice(), existingPhotoFileIds:(existingProductPhotos[id]||[]).map(ep=>ep.fileId),
@@ -2337,10 +3506,10 @@ function collectPayload(){
     totalExGST+=p.exGST; totalGst+=p.gstAmt;
     prods.push({
       itemCode:p.itemCode,fabric:p.fabric,category:p.category,weight:p.weight,totalWeight:p.totalWeight,size:p.size,
-      dbsb:p.dbsb,ply:p.ply,sattan:p.sattan,moq:p.moq,emboss:p.emboss,
+      dbsb:p.dbsb,ply:p.ply,sattan:p.sattan,sattanType:p.sattanType,sattanSize:p.sattanSize,moq:p.moq,emboss:p.emboss,
       design:p.design,packs:p.packs,packPcs:p.packPcs,qty:p.qty,price:p.price,discount:p.discount,effectivePricePerKg:p.effectivePricePerKg,pricePerPc:p.pricePerPc,
       gstPct:p.gstPct,packType:p.packType,packCharge:p.packCharge,packChargePcs:p.packChargePcs,packChargeCostPc:p.packChargeCostPc,
-      trims:p.trimData,trimsCostPerPc:p.trimsCostPerPc.toFixed(2),trimsCostTotal:p.trimsCostTotal.toFixed(2),
+      trims:p.trimData,extraTrims:p.extraTrims||[],trimsCostPerPc:p.trimsCostPerPc.toFixed(2),trimsCostTotal:p.trimsCostTotal.toFixed(2),
       remarks:p.remarks||'', designCostComment:p.designCostComment||'', labelTagComment:p.labelTagComment||'',
       newPhotos:p.newPhotos||[], existingPhotos:p.existingPhotos||[], existingPhotoFileIds:p.existingPhotoFileIds||[],
       newEmbossPhotos:p.newEmbossPhotos||[], existingEmbossPhotos:p.existingEmbossPhotos||[], existingEmbossPhotoFileIds:p.existingEmbossPhotoFileIds||[],
@@ -2500,6 +3669,9 @@ function stripHeavyFieldsForStorage(p){
 }
 
 // trimsCostTotalFor() — the ONE correct way to compute it (per-trim pcs × eff cost)
+// Fixed chhe trims + "Add Row" wale extra materials, dono. Ye function save ke
+// waqt aur PDF banate waqt dono jagah chalta hai, to extras ko yahin jod dene se
+// wo dono jagah apne aap sahi ho jaate hain.
 function trimsCostTotalFor(x){
   const t=x.trims||{};
   let total=0;
@@ -2512,7 +3684,26 @@ function trimsCostTotalFor(x){
       total+=pcs*eff;
     }
   });
+  total+=extraTrimsTotalFor(x);
   return total;
+}
+/* Sirf extra materials ka total. Alag function kyunki PDF ko ye akela figure
+   bhi chahiye (apni "ADDITIONAL PACKING MATERIALS" table ke TOTAL me), aur
+   `sales_trims_log` ki row ka `total_trims_rs` isi ko fixed trims ke saath
+   jodta hai.
+
+   DHYAN: in rows ke liye `sales_save_order` ko koi NAYA key nahi bheji jaati.
+   Us RPC ki SQL is project tree me nahi hai, to ye pakka nahi kiya ja sakta
+   ki wo anjaan key ko chup-chaap chhod degi ya error dega — aur ek galat
+   guess poora save tod deta. Isi liye paisa to maujooda column
+   (`total_trims_rs`) me jaata hai, par poori detail `full_order` JSON me
+   rehti hai, jahan se Edit button order wapas kholta hai. */
+function extraTrimsTotalFor(x){
+  return (Array.isArray(x&&x.extraTrims)?x.extraTrims:[]).reduce((s,r)=>{
+    if(!r || r.supp!=='seller') return s;
+    const eff=(Number(r.cost)||0)*(1-(Number(r.disc)||0)/100);
+    return s+(Number(r.pcs)||0)*eff;
+  },0);
 }
 
 const r2=v=>Number((Number(v)||0).toFixed(2));
@@ -2570,7 +3761,15 @@ function buildSheetRows(p){
     const trimPcs=k=>isSeller(k)?(Number(t[k].pcs)||0):0;
     const c={}, n={};
     ['label','tag','bag','bore','inner','outer'].forEach(k=>{ c[k]=trimEffCost(k); n[k]=trimPcs(k); });
-    const total=Object.keys(c).reduce((s,k)=>s+n[k]*c[k],0);
+    /* total me extra materials BHI jude hain. `sales_trims_log` ke column
+       fixed chhe trims ke hain, to har extra material ko apna column nahi
+       mil sakta — par uska paisa total me na hota to logged total us order
+       ke asli total se kam reh jaata, aur yahi farq baad me milaan karte
+       waqt sabse mushkil se pakda jaata hai.
+       Poori detail (kaunsa material, kitne pcs, kya rate) `full_order` JSON
+       me `extraTrims` ke andar jaati hai — wahi jagah jahan se Edit button
+       order wapas kholta hai — isi liye koi naya column / migration nahi. */
+    const total=Object.keys(c).reduce((s,k)=>s+n[k]*c[k],0)+extraTrimsTotalFor(x);
     return {
       prod_no:i+1, fabric:x.fabric||'', packing_type:x.packType||'',
       label:lbl(t.label?t.label.supp:'na'), tag:lbl(t.tag?t.tag.supp:'na'), bag:lbl(t.bag?t.bag.supp:'na'),
@@ -2595,7 +3794,11 @@ async function learnMasters(payload){
   add('deliveryTerms',payload.deliveryTerms); add('paymentTerms',payload.paymentTerms);
   payload.products.forEach(p=>{
     add('fabricCode',p.fabric); add('category',p.category); add('size',p.size); add('dbsb',p.dbsb);
-    add('sattan',p.sattan); add('moq',p.moq); add('design',p.design);
+    // Teeno: `sattan` joint (purane orders / sales_standard_items ke liye) aur
+    // dono naye dropdown ki apni keys, taaki `sales_dropdowns` me wo values
+    // bani rehein aur ERP › Dropdown Master me dikhein.
+    add('sattan',p.sattan); add('sattanType',p.sattanType); add('sattanSize',p.sattanSize);
+    add('moq',p.moq); add('design',p.design);
   });
   const known={}; Object.keys(STANDARD_ITEMS).forEach(c=>known[c.toUpperCase()]=true);
   const items=[], seen={};
@@ -2633,9 +3836,34 @@ async function handleSubmit(){
   if(!canDo('create')){ toast('⚠️ Your role ('+(loggedInUser?loggedInUser.role:'—')+') does not have Submit permission'); return; }
   if(!SB_READY){ toast('⚠️ Supabase not connected — check internet'); return; }
   const payload=collectPayload();
-  if(!payload.buyerName.trim()){ toast('⚠️ Enter Buyer / Company Name'); document.getElementById('buyerName').focus(); return; }
+  if(!payload.buyerName.trim()){ toast('⚠️ Select Buyer / Company Name'); document.getElementById('buyerName').focus(); return; }
+  /* ★ wale do field ki AAKHIRI jaanch, save se theek pehle.
+     Blur wali jaanch (ofLockToList_) galti pakadne ke liye hai, par wo har
+     soorat me chalti nahi — browser ka autofill, back button se bhari hui
+     value, ya aisa submit jisme field ko focus hi na mila ho. Aur yahi wo
+     jagah hai jiske aage galat value DATABASE me chali jaati, jahan se use
+     nikalna sabse mushkil hai. Isi liye dobara, yahan. */
+  // Wahi "khaali list = master load nahi hua" chhoot jo ofLockToList_ me hai —
+  // warna masters na aane par order save hi nahi ho paata.
+  if(Object.keys(BUYER_DETAILS).length && !BUYER_DETAILS[payload.buyerName.trim()]){
+    toast('⚠️ "'+payload.buyerName.trim()+'" saved buyers me nahi hai — list me se chunein ya "➕ Add New Buyer" se add karein');
+    document.getElementById('buyerName').focus(); return;
+  }
   if(payload.saleChannel==='Through Agency' && !payload.agencyName.trim()){ toast('⚠️ Enter Agency Name'); document.getElementById('agencyName').focus(); return; }
   if(!payload.products.length){ toast('⚠️ Add at least one product'); return; }
+  if(Object.keys(STANDARD_ITEMS).length){
+    const cards=[...document.querySelectorAll('.product-card')];
+    for(let i=0;i<payload.products.length;i++){
+      const code=String(payload.products[i].itemCode||'').trim();
+      if(code && STANDARD_ITEMS[code]) continue;
+      const pid=cards[i]?cards[i].id.replace('prod-',''):null;
+      toast(code
+        ? '⚠️ Product #'+(i+1)+': "'+code+'" Brand Master me nahi hai — list me se chunein ya "➕ Add New Brand Item" se add karein'
+        : '⚠️ Product #'+(i+1)+': Item Code chunna zaroori hai (Brand Master ki list me se)');
+      if(pid) document.getElementById('p'+pid+'-itemCode')?.focus();
+      return;
+    }
+  }
   if(!payload.orderNo||payload.orderNo==='Loading...'||payload.orderNo==='OFFLINE'){ toast('⚠️ Order No not loaded — check connection & reload'); return; }
 
   // Update local DROPS with any new values entered
@@ -2809,7 +4037,13 @@ function updateLocalDrops(payload){
     add('category',   p.category);
     add('size',       p.size);
     add('dbsb',       p.dbsb);
+    // `sattan` (joint) purane orders ke saath consistency ke liye; asli do
+    // dropdown apni keys se chalte hain, to wo bhi seekhe jaate hain — warna
+    // Brand Master se aayi koi nayi value sirf usi card par dikhti aur agle
+    // naye product me list me nahi milti.
     add('sattan',     p.sattan);
+    add('sattanType', p.sattanType);
+    add('sattanSize', p.sattanSize);
     add('moq',        p.moq);
     add('design',     p.design);
   });
@@ -3260,7 +4494,11 @@ function applyProductToCard(id, x){
   setVal('size', x.size);
   setVal('dbsb', x.dbsb);
   setSel('ply', x.ply);
-  setVal('sattan', x.sattan);
+  /* Naye order me sattanType / sattanSize alag se save hote hain; PURANE
+     order me sirf joint `sattan` tha, to setSattan() use todkar dono
+     dropdown bhar deta hai. Isi liye koi purana order kholne par Sattan
+     khaali nahi milta — aur dobara save karne par wo udta bhi nahi. */
+  setSattan(id, x.sattanType, x.sattanSize, x.sattan);
   setVal('moq', x.moq);
   setSel('emboss', x.emboss);
   onEmbossChange(id);
@@ -3333,9 +4571,52 @@ function applyProductToCard(id, x){
     if(discEl){ discEl.value=td.disc||0; discEl.disabled=!enabled; discEl.style.background=enabled?'#EFF6FF':''; discEl.style.borderColor=enabled?'#93C5FD':''; }
   });
 
+  /* Extra materials ("Add Row" wali rows) — saved jaisi hi wapas. Row pehle
+     saaf ki jaati hai kyunki applyProductToCard ek dobara-bhari ja rahi card
+     par bhi chal sakta hai; warna purani rows ke saath nayi bhi jud jaatin.
+     Har row preset ke saath banti hai, to uska supplier / pcs / cost /
+     discount aur enable-disable haalat sab waise hi lagti hai jaise save
+     hote waqt thi — onExtraSupp() ka auto-reset beech me nahi aata. */
+  const xtBody=document.getElementById('p'+id+'-xt-body');
+  if(xtBody) xtBody.innerHTML='';
+  extraTrimRows[id]=[];
+  (Array.isArray(x.extraTrims)?x.extraTrims:[]).forEach(r=>{
+    if(!r || !String(r.mat||'').trim()) return;
+    addExtraTrim(id, {mat:r.mat, supp:r.supp||'na', pcs:r.pcs, cost:r.cost, disc:r.disc});
+  });
+
   // Packing Charge row
   setVal('packCharge-pcs', x.packChargePcs);
   setVal('packCharge', x.packChargeCostPc);
+
+  /* ── Purane order ka item code jo ab Brand Master me nahi hai ──────────
+     Brand delete ho gaya ho, ya Inactive kar diya gaya ho — tab wo code
+     STANDARD_ITEMS me nahi milta. Aise order ko Edit par kholne par, agar
+     user us Item Code field ko chhoo kar nikal jaye, to blur wali jaanch use
+     "list me nahi hai" samajh kar KHAALI kar deti aur saari specs uda deti —
+     ek purana order sirf dekhne ke liye kholne par bigad jaata.
+
+     Isi liye saved order ki apni values se ek entry bana di jaati hai. Ye
+     jhooth nahi hai: isi code par, inhi specs ke saath wo order bana tha.
+     DROPS.itemCode me ye NAHI jata, to naye order ke dropdown me ye mara
+     hua code offer bhi nahi hota. */
+  const savedCode=String(x.itemCode||'').trim();
+  if(savedCode && !STANDARD_ITEMS[savedCode]){
+    STANDARD_ITEMS[savedCode]={
+      fabric:x.fabric||'', category:x.category||'', weight:Number(x.weight)||0,
+      size:x.size||'', dbsb:x.dbsb||'DB', ply:x.ply||'SP',
+      sattan:x.sattan||'', sattanType:x.sattanType||'', sattanSize:x.sattanSize||'',
+      moq:x.moq||'', emboss:x.emboss||'NO',
+      price:Number(x.price)||0, packPcs:Number(x.packPcs)||0
+    };
+  }
+
+  /* Purana order Edit par khulne ke baad bhi specs locked rehti hain — wo
+     saved values hain, aur unhe yahan badalna wahi gadbad hai jisse bachne
+     ke liye lock lagaya gaya. Sabse aakhir me, taaki upar ke saare setVal
+     pehle ho jayein (readonly field me JS value likh sakta hai, par kram
+     saaf rakhna behtar hai). */
+  ofApplySpecLock_(id);
 }
 
 function filterOrderHistory(){
@@ -3624,6 +4905,67 @@ function buildOrderHtml(p) {
     return '<td style="padding:4pt 3pt;border:0.5pt solid #ccc;text-align:' + align + ';' + (extra || "") + '">' + txt + '</td>';
   }
 
+  /* ── ADDITIONAL PACKING MATERIALS ─────────────────────────────────────────
+     "Add Row" wale extra materials ki apni table, PACKING table ke theek
+     neeche. Usi grouped table me nahi ghusaye gaye kyunki wo chhe fixed
+     trims ke do-tier header par bana hai (BUYER ke 6 + SELLER ke 6 column) —
+     usme ek badalta hua material-list daalne ka matlab hota har order par
+     header ka dhancha badalna.
+
+     Table POORI tarah chhup jaati hai jab kisi bhi product par ek bhi extra
+     row na ho — khaali heading PDF me shor hai, khabar nahi. Paisa yahan
+     DOBARA nahi jodna padta: trimsCostTotalFor() me ye pehle se shaamil hai,
+     to upar wala Trims Cost column aur Grand Total already sahi hain. Ye
+     table sirf tod-phod (breakdown) dikhati hai. */
+  var extraRowsHtml = "";
+  var extraGrand = 0;
+  p.products.forEach(function(x, i) {
+    var list = (Array.isArray(x.extraTrims) ? x.extraTrims : [])
+      .filter(function(r) { return r && String(r.mat || "").trim(); });
+    if (!list.length) return;
+    list.forEach(function(r, j) {
+      var supp = String(r.supp || "na");
+      var isSeller = supp === "seller";
+      var cost = isSeller ? n(r.cost) : 0;
+      var dsc  = isSeller ? n(r.disc) : 0;
+      var eff  = cost * (1 - dsc / 100);
+      var pcs  = isSeller ? n(r.pcs) : 0;
+      var amt  = pcs * eff;
+      extraGrand += amt;
+      var suppTxt = { na: "&mdash;", buyer: "Buyer", seller: "SIHF", foc: "FOC" }[supp] || "&mdash;";
+      var zeb = ((i + j) % 2 === 1) ? "background:#F8FAFC;" : "";
+      extraRowsHtml +=
+        '<tr style="' + zeb + '">' +
+          // Product ka number sirf us material ki PEHLI row par — ek product ke
+          // paanch material paanch baar "3" chhapna list ko padhna mushkil karta.
+          td(j === 0 ? String(i + 1) : "", "center", "font-weight:700;") +
+          td(j === 0 ? esc(x.itemCode || x.fabric || "-") : "", "center", "color:#1A3C5E;") +
+          td(esc(r.mat || "-"), "left", "font-weight:700;") +
+          td(suppTxt, "center", isSeller ? "color:#1B6B3A;font-weight:700;" : "color:#999;") +
+          td(pcs ? intIN(pcs) : "&mdash;", "center", "") +
+          td(cost ? ("Rs" + inr(cost)) : "&mdash;", "center", "") +
+          td(dsc > 0 ? (dsc + "%") : "&mdash;", "center", dsc > 0 ? "color:#D4870A;font-weight:700;" : "color:#999;") +
+          td(amt ? ("Rs" + inr(amt)) : "&mdash;", "center", "font-weight:700;color:#D4870A;") +
+        '</tr>';
+    });
+  });
+  var extraTableHtml = extraRowsHtml
+    ? ('<div style="font-size:8pt;font-weight:700;color:#1A3C5E;text-transform:uppercase;letter-spacing:.5px;margin:4pt 0 2pt;padding-bottom:2pt;border-bottom:1pt solid #1A3C5E">ADDITIONAL PACKING MATERIALS</div>' +
+       '<table style="width:100%;font-size:7pt">' +
+         '<thead><tr style="background:#1A3C5E;color:#fff">' +
+           thInline("SR", "4%") + thInline("Item Code", "12%") + thInline("Material", "22%") +
+           thInline("Supplied By", "12%") + thInline("No. of Pcs", "12%") +
+           thInline("Cost/Pc", "12%") + thInline("Disc%", "8%") + thInline("Amount", "18%") +
+         '</tr></thead>' +
+         '<tbody>' + extraRowsHtml + '</tbody>' +
+         '<tfoot><tr style="background:#1A3C5E;color:#fff">' +
+           '<td colspan="7" style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:right;font-weight:700;font-size:8.5pt">TOTAL</td>' +
+           '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(extraGrand) + '</td>' +
+         '</tr></tfoot>' +
+       '</table>' +
+       '<div style="font-size:6pt;color:#666;margin:1pt 0 3pt">Ye amount upar PACKING MATERIALS table ke &quot;Trims Cost&quot; me pehle se shaamil hai &mdash; alag se nahi joda jaata.</div>')
+    : "";
+
   // ── Full document ────────────────────────────────────────────────────────────
   return '' +
 '<!DOCTYPE html>' +
@@ -3756,6 +5098,10 @@ function buildOrderHtml(p) {
       '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(totalPackChargeGrand) + '</td>' +
     '</tr></tfoot>' +
   '</table>' +
+
+  // "Add Row" wale extra materials ka breakdown — koi extra row na ho to
+  // poori table (heading ke saath) gayab rehti hai. Dekhein extraTableHtml.
+  extraTableHtml +
 
   // Total Taxable & GST Breakup & Net Amount & Amount in Words
   (function() {

@@ -484,6 +484,246 @@ khulta hai (Lot Card Manager jaisa). User sirf ek jagah banta hai:
   purana password chalta hai.
 - Order Form signature: ERP me user ka sign ho to wahi Order Form PDF par.
 
+### ★ Buyer aur Item Code — sirf saved list me se, auto-fill LOCKED
+
+Order Form me do field par ab wahi niyam hai jo **Store Inward ke "Item Name ★"**
+par hai (`store-core.js` → `lockToMasterList` + `addNewRow` ka row template):
+
+| Field | List kahan se | Uske saath locked |
+|---|---|---|
+| **Buyer / Company Name ★** | saved buyers (`buyer_master` + purane orders) | Mobile No. · Contact Person · Address · GSTIN |
+| **Item Code ★** (per product) | `brand_master` | poora **Specifications** block: Fabric, Category, Weight, Size, DB/SB, Ply, Sattan Type, Sattan Size, MOQ |
+
+Kaise chalta hai — Store Inward jaisa hi:
+
+- Naam wala field **blur** par jaanchta hai. List me na mile to khud khaali ho
+  jaata hai, toast wajah batata hai, aur uske bharose wali saari value bhi saaf
+  ho jaati hai (adhoori value locked field me baithi rehna sabse khatarnak hai).
+- Locked field **readonly** (ya `<select>` ho to `disabled`) hote hain, grey
+  background aur "Master se locked hai" wale title ke saath.
+- **Submit se pehle dobara jaanch** hoti hai. Blur wali jaanch har soorat me
+  nahi chalti (browser autofill, back button se bhari value, ya field ko focus
+  hi na mila ho), aur yahi wo aakhri jagah hai jiske aage galat value
+  **database** me chali jaati — jahan se use nikalna sabse mushkil hai.
+
+Teen cheezein jaan-boojh kar **BAAHAR** rakhi gayi hain:
+
+- **Pricing & Delivery** (price, discount, GST, qty, packs) — ye har order ka
+  apna sauda hai, brand ki pehchaan nahi. Lock karne ka matlab hota ki rate
+  badalne ke liye Brand Master kholna pade.
+- **Emboss** — ye order ka faisla hai: ek hi brand ka ek order emboss ke saath
+  aur doosra bina ja sakta hai. Lock karte to 🎨 Emboss Design Photos section
+  haath se kabhi khulta hi nahi.
+- **Transport Name** aur **Agency** — transport order-dar-order badalta hai
+  (master me rehta bhi nahi), aur agency sirf ek naam + do contact hai jispar
+  koi billing ya tax value nahi tangi.
+
+Char cheezein jo chup-chaap tod sakti thin, aur unka ilaaj:
+
+1. **Locked combo list se badla ja sakta tha.** `readonly` input bhi focus leta
+   hai, aur dropdown khulne par `selectCombo()` seedha `inp.value=val` likh deta
+   hai — `readOnly` ki parwah kiye bina. Ab `openCombo` / `filterCombo` locked
+   field par khulte hi nahi (`comboLocked_`), to ye raasta ek hi jagah band hai.
+2. **Khaali master = form thap.** Net kharab / Supabase band / `fetchDrops`
+   fail — teeno me `STANDARD_ITEMS` khaali rehta hai. Us waqt lock lagta to
+   Item Code chuna na ja sakta (list khaali) **aur** specs bhari na ja sakti
+   (locked). Isi liye **khaali list ka matlab "load nahi hua" hai, "value galat
+   hai" nahi** — jaanch aur lock dono tab hi lagte hain jab list me kuch HO,
+   aur masters aate hi `ofRelockAll_()` lock laga deta hai.
+3. **Purana order kholne par uska item code mar chuka ho.** Brand delete ya
+   Inactive ho gaya to code `STANDARD_ITEMS` me nahi milta, aur us field ko
+   chhoo kar nikalne par blur wali jaanch use khaali kar deti — sirf dekhne ke
+   liye khola gaya purana order bigad jaata. Ab `applyProductToCard` saved
+   order ki apni values se us code ki entry bana deta hai (jhooth nahi — isi
+   code par, inhi specs ke saath wo order bana tha). `DROPS.itemCode` me ye
+   NAHI jaata, to naye order me mara hua code offer bhi nahi hota.
+4. **Party badalne par purana address locked reh jaata.** `selectCombo` ka
+   `setF` pehle `if(e&&v)` tha — khaali value set hi nahi karta tha. Yani jis
+   party ka address khaali hai, uspar **pichhli party ka** address box me baitha
+   rehta, aur ab field locked hone se use hataana bhi mumkin nahi hota —
+   wahi galat address PDF ke bill-to par chhap jaata. Ab khaali value ka matlab
+   "khaali karo" hai.
+
+### ➕ Add New Brand Item — Brand Master ke saare 38 column
+
+Item Code sirf list me se chunna hai, to naya brand banane ka raasta isi form
+me hona zaroori tha — warna ek naye SKU ka order lene ke liye ERP kholna padta
+aur Order Form beech me chhodna padta.
+
+Button Item Code ke sirhane hai. Popup me **saare 38 column**, wahi kram aur
+wahi grouping jo ERP › Master Data › 🏷️ Brand Master ke form me hai:
+
+| Group | Column |
+|---|---|
+| 🏷️ Identity | Item Code **★** · Fabric Name **★** · Category **★** · Blanket Weight |
+| 📐 Specifications | Size · Bed Size · Blanket Ply · Sattan Size · Sattan Type · MOQ · Emboss · Notes |
+| 💰 Rates | Price/KG · Packing Pcs · Label · Tag · Bag · Bore · Inner Box · Outer Box · Bale |
+| 📦 Packing 1 | Master Req / Type · Slave Req / Type |
+| 📦 Packing 2 | wahi chaar, `_2` (khaali chhoda ja sakta hai) |
+| 🏷️ Trims | Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker |
+
+- Zaroori sirf **teen**: Item Code, Fabric Name, Category — bilkul jaisa ERP me
+  `req:1` hai.
+- Form **JS se banta hai** (`BR_FORM_FIELDS` → `brBuildForm_()`), markup me
+  nahi: 38 field ka hand-written HTML ek jagah column jodne par doosri jagah
+  bhoolne ki poori guarantee hai. **Wo table ERP ke `SARV_BR_FIELDS` ki copy
+  hai — ek jagah column jude to yahan bhi jodna hai.**
+- Dropdown values **ERP ke `erp_*` keys** se aati hain (`erp_brandCategory`,
+  `erp_brandSattan`, `erp_fbmYesNo` …). Wo usi `sales_dropdowns` table me hain
+  jisme Order Form ke apne dropdown hain, aur `fetchDrops` table ki saari keys
+  `DROPS` me daal deta hai — to seedha mil jaate hain. `BR_DD_FALLBACK` sirf
+  fallback hai aur jaan-boojh kar store-core ke `def` arrays ki hu-ba-hu copy
+  hai; dono me farq aane par Brand Master me bhari value Order Form me match
+  nahi karegi.
+- **Fabric Name** suggestion-list hai (hard lock nahi) — `fabric_master` se
+  bhari jaati hai, par us table ke na milne par naya brand banana ruk jaata,
+  jo is button ke hone ka matlab khatam kar deta.
+- Save hote hi brand **Item Code list me aa jaata hai aur usi product card me
+  chun bhi liya jaata hai** — `onItemCodeSelect()` saari specs bhar kar lock
+  bhi laga deta hai. `bmToItem()` se wahi tarjuma hota hai jo `fetchDrops`
+  karta hai (DOUBLE BED → DB, SINGLE PLY → SP waghairah).
+- Khaali number **0 nahi, `null`** jaata hai — 0 ka matlab yahan "set nahi hai"
+  hai aur Order Form use skip karta hai, par `null` hi us column ka asli
+  default hai (ERP ka form bhi wahi likhta hai).
+- Baaki sab wahi jo Buyer / Agency par hai (neeche dekhein): seedha
+  `brand_master` insert, best-effort `master_revisions` archive, duplicate
+  check master par, Viewer ko band, **koi migration nahi**.
+
+### ➕ Add New Buyer / ➕ Add New Agency — entry form se hi
+
+Buyer Details section me do button hain, apne-apne field ke sirhane:
+**Buyer / Company Name** par `➕ Add New Buyer`, **Agency Name** par
+`➕ Add New Agency`. Dono popup me us master ke **saare column** hote hain,
+wahi kram jo ERP › Master Data › 🏢 Buyer Master ke form me hai:
+
+| Add New Buyer (`buyer_master`) | Add New Agency (`agency_master`) |
+|---|---|
+| **Party / Company Name** * | **Agency Name** * |
+| Owner Name → Order Form ka *Contact Person* | Agency Contact Person |
+| Contact No. → Order Form ka *Mobile No.* | Agency Mobile No. |
+| Address → PDF ke bill-to par | Notes |
+| GSTIN → state + CGST/SGST vs IGST | |
+| Party Staff Name | |
+| Party Staff Contact No. | |
+| Notes | |
+
+Sirf naam (`*`) zaroori hai. Pehle nayi party ka naam seedha combo me type kar
+diya jaata tha — order ban jaata, par us party ka **address aur GSTIN kahin
+master me nahi jaate**, to agle order par wo dono dobara haath se type hote
+(aur GSTIN me ek digit idhar-udhar ho jaati). Ab yahan se wahi row banti hai
+jo ERP ka form banata hai.
+
+Kaam karne ka tareeka:
+
+- **Wahi table, wahi shape.** `buyer_master` / `agency_master` me seedha
+  insert, `is_active:true, rev_no:1, created_by, updated_by` ke saath —
+  bilkul jaisa `store-core.js` ka `sarvFbmSaveForm()` karta hai. Us screen par
+  bhi **yahi anon key** chalti hai, isi liye RLS yahan bhi wahi raasta deta
+  hai aur alag RPC banane ki zaroorat nahi padi (banayi bhi nahi ja sakti
+  thi — Order Form ki migration SQL is tree me nahi hai). **Koi migration
+  nahi.**
+- **Combo me jo naam type ho chuka hai wahi popup me aage bhar jaata hai** —
+  "add new" aksar tab dabaya jaata hai jab naam type karke list me mila na ho.
+- Save hote hi party **dropdown me aa jaati hai aur chun bhi li jaati hai**,
+  aur uske saath Contact Person / Mobile / Address / GSTIN bhi bhar jaate hain
+  (GSTIN se *Out of Haryana* checkbox bhi khud lagta hai). Poora `fetchDrops`
+  dobara nahi chalaya jaata — wo user ka adha bhara form chhed deta.
+- **Duplicate check sirf MASTER par** (`BUYER_MASTER_ROWS` /
+  `AGENCY_MASTER_ROWS`), `BUYER_DETAILS` par nahi. Wo doosri cheez purane
+  orders + master **milakar** banti hai; us par check karte to jis party ka
+  order pehle se hai par master me row nahi, wo "pehle se hai" keh kar rok di
+  jaati — jabki usi ko master me daalna sabse zaroori kaam hai. Check
+  case aur extra space ignore karta hai, aur Inactive row mile to wo bhi
+  batata hai (use ERP se wapas Active karna hota hai).
+- `master_revisions` ka archive **best-effort** hai, bilkul jaise ERP me hai:
+  wo table na ho to warning console me jaati hai aur party phir bhi save hoti
+  hai. Ek history row na banne se party ka save rok dena ulta nuksan hai.
+- **Viewer** role ko dono button disabled milte hain (`applyRoleRestrictions`
+  `.wrap` ke saare button band kar deta hai), aur `openNewBuyer` /
+  `saveNewBuyer` dono me `canDo('create')` ki apni jaanch bhi hai.
+- Popup **backdrop click ya Esc se band nahi hota** — buyer form me aath field
+  tak bhari hoti hain, aur ek galat click se wo sab chala jaana sabse bura
+  nateeja hai. Band karne ka ek hi raasta: **Cancel**. Enter se save hota hai,
+  par sirf single-line field par (Address textarea me Enter ka matlab nayi
+  line hai). Wahi niyam mobile app ki New PR sheet par bhi hai.
+
+Agar RLS ne kabhi write roka, to popup me seedha wahi likha aata hai
+("…permission nahi hai — ERP › Master Data › 🏢 Buyer Master se add karein"),
+chup-chaap fail nahi hota.
+
+### Sattan — Type aur Size, do alag dropdown
+
+Item Specifications me Sattan ab **ek** combo nahi, **do** dropdown hai:
+
+| Order Form | Brand Master column | Values |
+|---|---|---|
+| **Sattan Type** | `sattan_type` | STANDARD · PREMIUM · NA |
+| **Sattan Size** | `sattan` | 4 / 5 / 6 INCH SATTAN · NA |
+
+Pehle ek hi field me `5" PREMIUM` jaisi **joint** value likhi jaati thi, jabki
+Brand Master me ye shuru se do column hain — isi liye Item Code chunne par
+banayi hui joint string kabhi wapas match nahi hoti thi. Ab dono dropdown ki
+values **Brand Master ki hi vocabulary** me hain, to **Item Code select karte
+hi dono apne aap chun jaate hain**.
+
+Do baatein jaan lein:
+
+- **`sattan` naam ka ek hidden field** ab bhi form me hai, jisme dono ka jodd
+  (`5" PREMIUM`) likha rehta hai. `getProd`, `learnMasters`,
+  `sales_product_details` ka `sattan` column aur **dono PDF renderer** usi ko
+  padhte hain — isi liye **koi migration nahi** chali aur PDF ka "Sattan"
+  column bilkul pehle jaisa chhapta hai.
+- **Purane order** me sirf joint value thi. `setSattan()` use todkar dono
+  dropdown bhar deta hai (`sattanSplit_`), to Edit par Sattan khaali nahi
+  milta aur dobara save karne par udta bhi nahi.
+
+Brand Master me koi nayi value aa jaye (jaise `7 INCH SATTAN`) to
+`ensureOpt_()` use dropdown me khud jod deta hai — `<select>` me value list se
+hu-ba-hu milni chahiye, warna wo **chup-chaap** set hi nahi hoti, aur yahi is
+app ki purani chot thi. Dono ki apni rows **ERP › Dropdown Master** me hain
+(`sattanType` / `sattanSize`); purani `sattan` row record ke liye chhodi gayi hai.
+
+### Bags & Trims — "➕ Add Row" wale extra materials
+
+Upar ke **chhe trim** (Label / Tag / Bag / Bore / Inner / Outer) fixed hain —
+unke apne column `sales_trims_log` me hain aur PDF ka packing table unke
+do-tier header par bana hai. Par asli packing me in chhe ke alawa bhi cheezein
+lagti hain, aur wo order-dar-order badalti hain. Isi liye wo list ab **Add Row**
+se chalti hai:
+
+**Material** dropdown — MICRO LABEL · SMALL LABEL · BIG LABEL · TAG 2 · TAG 3 ·
+DORI · INSERT CARD · BARCODE STICKER · FOAM — aur uske against wahi chaar input
+jo baaki trims par hain: **Supplied By · No. of Pcs · Cost/Pc (₹) · Discount%**.
+Niyam bhi wahi: paisa tabhi bharta hai jab Supplied By = **SIHF Supplied**,
+warna teeno input band aur 0.
+
+Paisa kahan judta hai — **ek hi jagah**: `getProd` me extras `trimsCostPerPc` /
+`trimsCostTotal` me fixed trims ke SAATH jud jaate hain, aur
+`trimsCostTotalFor()` (jo save aur PDF dono chalate hain) me bhi. Isi se
+product ka exGST, GST, Final Price/Pc, bill summary, PDF ka Trims Cost column
+aur Grand Total **sab apne aap** sahi ho jaate hain — har jagah alag se jodna
+padta to ek jagah chhoot jaana tay tha.
+
+Save kahan hota hai:
+
+| Kya | Kahan | Migration? |
+|---|---|---|
+| Poori detail (material, supplier, pcs, cost, disc) | `sales_orders.full_order` → `products[].extraTrims` | **nahi** |
+| Paisa | `sales_trims_log.total_trims_rs` (fixed trims ke saath joda hua) | **nahi** |
+
+`sales_save_order` RPC ki SQL is project tree me **nahi** hai, to ye pakka
+nahi kiya ja sakta ki wo koi anjaan key chup-chaap chhod degi ya error degi —
+aur ek galat guess poora save tod deta. Isi liye us RPC ko **koi nayi key nahi**
+bheji jaati: paisa maujooda column me jaata hai, aur detail `full_order` me,
+jahan se Edit button order wapas kholta hai (`applyProductToCard` rows ko
+waise hi dobara bana deta hai — supplier, pcs, cost, discount aur
+enable/disable haalat sab saved jaisi).
+
+PDF me inki **apni table** hai — packing table ke theek neeche,
+**ADDITIONAL PACKING MATERIALS**. Usi grouped table me nahi ghusaya gaya kyunki
+wo chhe fixed trims ke do-tier header par bana hai. Jis order me ek bhi extra
+row na ho, wahan ye table (heading ke saath) **poori chhup** jaati hai.
+
 ## 📦 Sales › Packing & Dispatch (packing.html)
 
 Purani Packing App (`PACKING/PACKING.html`, Supabase project
