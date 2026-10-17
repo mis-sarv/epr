@@ -311,6 +311,19 @@
                 </div>
                 <div id="inwardPoDetails" style="display:none;margin:-2px 0 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:7px;padding:7px 10px;color:#1e3a8a;font-size:11px;font-weight:600;"></div>
 
+                <!-- MD-APPROVED DRAFT strip. Two states, one box (see
+                     inwDraftRenderStrip_ in store-core.js):
+                       • green  — there are MD-approved drafts waiting to be
+                                  loaded from the PO Number list;
+                       • yellow — one is loaded RIGHT NOW, and every figure the
+                                  MD approved (Qty / Weight / Rate, the items,
+                                  the PO / PR link, Supplier, Invoice, Entry
+                                  Type) is locked until it is submitted or the
+                                  draft is taken off the form.
+                     Filled and shown entirely from script; empty and hidden
+                     when there is nothing approved and waiting. -->
+                <div id="inwDraftLockStrip" style="display:none;margin:-2px 0 12px;background:#fefce8;border:1.5px solid #facc15;border-radius:7px;padding:7px 10px;color:#713f12;font-size:11px;font-weight:600;"></div>
+
                 <div class="grid-4" style="margin-bottom:10px;">
                     <div class="form-group" id="gatePassFieldGroup" style="display:none;">
                         <label>Gate Pass Against <span id="gatePassMandatoryBadge" style="display:none;color:#dc2626;font-weight:700;font-size:10px;">★ MANDATORY</span></label>
@@ -981,8 +994,21 @@
                         </div>
                         <div id="mi_formBody" style="display:none; padding:0 12px 12px;">
                         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
-                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Item Name *</label><input type="text" class="form-control" id="mi_itemName" placeholder="e.g. MINK YARN"></div>
-                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Description</label><input type="text" class="form-control" id="mi_itemDesc" placeholder="e.g. 100GM CONE"></div>
+                            <!-- Item Name and Description both offer back what the
+                                 Item Master already holds (dl-mi-itemName /
+                                 dl-mi-itemDesc, filled by
+                                 refreshItemAttributeDatalists_), the same way Make,
+                                 Size and Material Type do — so the store's own
+                                 wording is reused instead of the same part being
+                                 re-spelled three ways. Plain names only here, never
+                                 the "NAME [CODE]" form the entry forms use: whatever
+                                 sits in this box is what gets SAVED as the name.
+                                 The hint under it says, as you type, whether that
+                                 name is already taken — see miSyncItemNameHint_. -->
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Item Name *</label><input type="text" class="form-control" id="mi_itemName" list="dl-mi-itemName" placeholder="e.g. MINK YARN" autocomplete="off">
+                                <div id="mi_itemNameHint" style="display:none; margin-top:3px; font-size:9px; font-weight:700; color:#b45309; line-height:1.35;"></div>
+                            </div>
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;">Description</label><input type="text" class="form-control" id="mi_itemDesc" list="dl-mi-itemDesc" placeholder="e.g. 100GM CONE" autocomplete="off"></div>
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Category</label>
                                 <select class="form-control" id="mi_category" style="height:28px;font-size:11px;">
                                     <option value="">-- Select Category --</option>
@@ -1098,6 +1124,12 @@
                     <datalist id="dl-mi-make"></datalist>
                     <datalist id="dl-mi-itemSize"></datalist>
                     <datalist id="dl-mi-materialType"></datalist>
+                    <!-- Item Name / Description, from the master itself. The name
+                         options carry "Category — Description" as their label, which
+                         the browser shows beside the value, so two near-identical
+                         names can be told apart without leaving the box. -->
+                    <datalist id="dl-mi-itemName"></datalist>
+                    <datalist id="dl-mi-itemDesc"></datalist>
 
                     <!-- Item List -->
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
@@ -1121,7 +1153,14 @@
                         <button class="btn" id="imGenPrBtn" onclick="sarvGenerateNewPrFromItems()" style="display:none; background:#7c3aed; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;" title="Tick kiye items ke saath New PR form kholein — qty = Std Order Qty, Purchaser = Category se" disabled>&#128221; Generate New PR (<span id="imPrSelCount">0</span>)</button>
                         <button class="btn" id="imPrSelClearBtn" onclick="sarvClearItemPrSel()" style="display:none; background:#f1f5f9; color:#475569; font-size:10px; height:28px; padding:0 10px;" title="Saare ticks hatayein">&#10006; Clear Ticks</button>
                         <button class="btn" onclick="loadItemMaster()" style="background:#e0f2fe; color:#0369a1; font-size:10px; height:28px; padding:0 10px;">&#128260; Refresh</button>
-                        <button class="btn" onclick="exportTableCSV('itemMasterBody','SARV_Item_Master_'+today()+'.csv',2)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">&#128190; Download CSV</button>
+                        <!-- Both download WHAT IS ON SCREEN: the search box, the
+                             Stock dropdown and every column filter already
+                             applied, in the current sort order, with only the
+                             data columns (no #, no NEW PR tick, no 🗑) and
+                             figures as plain numbers a spreadsheet can total.
+                             See downloadItemMasterCsv / downloadItemMasterPdf. -->
+                        <button class="btn" onclick="downloadItemMasterCsv()" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;" title="Columns chunne ka popup khulega, phir filtered list CSV me download hogi — jo rows screen par hain wahi">&#128190; Download CSV</button>
+                        <button class="btn" onclick="downloadItemMasterPdf()" style="background:#dc2626; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;" title="Columns chunne ka popup khulega, phir filtered list ka print-ready PDF banega — MSV se neeche wale item laal me">&#128196; Download PDF</button>
                     </div>
                     <!-- Every column filter currently applied, each removable on its own,
                          plus one Clear All. Without this a filter set three columns ago
@@ -1140,21 +1179,21 @@
                         <table id="itemMasterTable" style="width:100%; border-collapse:collapse; font-size:11px; table-layout:fixed;">
                             <thead><tr style="background:#0f172a; color:#fff; position:sticky; top:0;">
                                 <th style="padding:6px; width:4%;">#</th>
-                                <th class="im-resizable" data-col="code" onclick="sortItemMaster('code')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-code" data-fcol="code" onclick="imOpenFilter(event,'code')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
-                                <th class="im-resizable" data-col="name" onclick="sortItemMaster('name')" style="padding:6px; width:11%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-name" data-fcol="name" onclick="imOpenFilter(event,'name')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
-                                <th class="im-resizable" data-col="desc" style="padding:6px; width:10%; user-select:none;" title="Right edge drag karke width badlein (double-click = reset)">Description<span class="im-fbtn" id="imF-desc" data-fcol="desc" onclick="imOpenFilter(event,'desc')" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
-                                <th onclick="sortItemMaster('cat')" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Category<span id="imSort-cat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-cat" data-fcol="cat" onclick="imOpenFilter(event,'cat')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('size')" style="padding:6px; width:6%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Item Size — e.g. 1/2 INCH, M8 x 40. Click: A&rarr;Z / Z&rarr;A sort">Size<span id="imSort-size" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-size" data-fcol="size" onclick="imOpenFilter(event,'size')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('mat')" style="padding:6px; width:7%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Material Type — e.g. SS 304, MS, BRASS. Click: A&rarr;Z / Z&rarr;A sort">Material<span id="imSort-mat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-mat" data-fcol="mat" onclick="imOpenFilter(event,'mat')" title="Filter">&#9662;</span></th>
-                                <th style="padding:6px; width:6%;">Rate<span class="im-fbtn" id="imF-rate" data-fcol="rate" onclick="imOpenFilter(event,'rate')" title="Filter">&#9662;</span></th>
-                                <th style="padding:6px; width:4%; background:#ede9fe; color:#0f172a;" title="GST % for this item — auto-fills Inward rows and PO lines">GST %<span class="im-fbtn" id="imF-gst" data-fcol="gst" onclick="imOpenFilter(event,'gst')" title="Filter">&#9662;</span></th>
-                                <th style="padding:6px; width:4%;">UOM<span class="im-fbtn" id="imF-uom" data-fcol="uom" onclick="imOpenFilter(event,'uom')" title="Filter">&#9662;</span></th>
-                                <th style="padding:6px; width:6%;">Make<span class="im-fbtn" id="imF-make" data-fcol="make" onclick="imOpenFilter(event,'make')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('msv')" style="padding:6px; width:6%; background:#FDE68A; color:#0f172a; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click: chhote&rarr;bade / bade&rarr;chhote sort">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-msv" data-fcol="msv" onclick="imOpenFilter(event,'msv')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('soq')" style="padding:6px; width:6%; background:#FBCFE8; color:#0f172a; cursor:pointer; user-select:none;" title="Standard Order Qty — is item ko normally kitni qty me mangwaya jaata hai. Click: chhote&rarr;bade / bade&rarr;chhote sort">STD ORDER QTY<span id="imSort-soq" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-soq" data-fcol="soq" onclick="imOpenFilter(event,'soq')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('in')" style="padding:6px; width:5%; background:#0CF2C6; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-in" data-fcol="in" onclick="imOpenFilter(event,'in')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('out')" style="padding:6px; width:5%; background:#FF9105; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-out" data-fcol="out" onclick="imOpenFilter(event,'out')" title="Filter">&#9662;</span></th>
-                                <th onclick="sortItemMaster('bal')" style="padding:6px; width:6%; background:#00C8FF; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-bal" data-fcol="bal" onclick="imOpenFilter(event,'bal')" title="Filter">&#9662;</span></th>
+                                <th class="im-resizable" data-col="code" data-sort="code" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Code<span id="imSort-code" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-code" data-fcol="code" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="name" data-sort="name" style="padding:6px; width:11%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort · Right edge drag karke width badlein (double-click = reset)">Item Name<span id="imSort-name" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-name" data-fcol="name" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th class="im-resizable" data-col="desc" style="padding:6px; width:10%; user-select:none;" title="Right edge drag karke width badlein (double-click = reset)">Description<span class="im-fbtn" id="imF-desc" data-fcol="desc" title="Filter">&#9662;</span><span class="im-col-resizer"></span></th>
+                                <th data-sort="cat" style="padding:6px; width:7%; cursor:pointer; user-select:none;" title="Click: A&rarr;Z / Z&rarr;A sort">Category<span id="imSort-cat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-cat" data-fcol="cat" title="Filter">&#9662;</span></th>
+                                <th data-sort="size" style="padding:6px; width:6%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Item Size — e.g. 1/2 INCH, M8 x 40. Click: A&rarr;Z / Z&rarr;A sort">Size<span id="imSort-size" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-size" data-fcol="size" title="Filter">&#9662;</span></th>
+                                <th data-sort="mat" style="padding:6px; width:7%; background:#CFFAFE; color:#0f172a; cursor:pointer; user-select:none;" title="Material Type — e.g. SS 304, MS, BRASS. Click: A&rarr;Z / Z&rarr;A sort">Material<span id="imSort-mat" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-mat" data-fcol="mat" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:6%;">Rate<span class="im-fbtn" id="imF-rate" data-fcol="rate" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:4%; background:#ede9fe; color:#0f172a;" title="GST % for this item — auto-fills Inward rows and PO lines">GST %<span class="im-fbtn" id="imF-gst" data-fcol="gst" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:4%;">UOM<span class="im-fbtn" id="imF-uom" data-fcol="uom" title="Filter">&#9662;</span></th>
+                                <th style="padding:6px; width:6%;">Make<span class="im-fbtn" id="imF-make" data-fcol="make" title="Filter">&#9662;</span></th>
+                                <th data-sort="msv" style="padding:6px; width:6%; background:#FDE68A; color:#0f172a; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click: chhote&rarr;bade / bade&rarr;chhote sort">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-msv" data-fcol="msv" title="Filter">&#9662;</span></th>
+                                <th data-sort="soq" style="padding:6px; width:6%; background:#FBCFE8; color:#0f172a; cursor:pointer; user-select:none;" title="Standard Order Qty — is item ko normally kitni qty me mangwaya jaata hai. Click: chhote&rarr;bade / bade&rarr;chhote sort">STD ORDER QTY<span id="imSort-soq" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-soq" data-fcol="soq" title="Filter">&#9662;</span></th>
+                                <th data-sort="in" style="padding:6px; width:5%; background:#0CF2C6; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-in" data-fcol="in" title="Filter">&#9662;</span></th>
+                                <th data-sort="out" style="padding:6px; width:5%; background:#FF9105; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-out" data-fcol="out" title="Filter">&#9662;</span></th>
+                                <th data-sort="bal" style="padding:6px; width:6%; background:#00C8FF; color:#0f172a; cursor:pointer; user-select:none;" title="Click: chhote&rarr;bade / bade&rarr;chhote sort">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-bal" data-fcol="bal" title="Filter">&#9662;</span></th>
                                 <!-- Admin picks items here; "Generate New PR" opens the PR form filled with them (qty = Std Order Qty). -->
                                 <th class="im-newpr-col" style="padding:6px; width:4%; background:#DCFCE7; color:#0f172a; text-align:center;" title="Admin: items tick karke Generate New PR dabayein — PR qty = STD ORDER QTY, Purchaser = Item Category se">NEW PR<br><input type="checkbox" id="imPrSelAll" title="Dikh rahe saare items select / unselect" style="width:14px;height:14px;cursor:pointer;"></th>
                                 <th style="padding:6px; width:4%;">&#128465;</th>

@@ -552,21 +552,46 @@ function renderPoNumberPanel(){
   const panel=byId('poNumberPanel');if(!panel)return;
   const opts=poOptionsForSupplier();
   const sup=(byId('supplierName')?.value||'').trim();
+  /* MD-approved DRAFTS come first, above the open POs. An approved excess /
+     rate / extra-item request is a finished entry waiting to be booked — a
+     click loads it back exactly as the MD approved it — so it belongs at the
+     top of the very picker somebody opens to start an Inward, not on a screen
+     of its own. Empty string when there is nothing approved and waiting, so
+     the panel then looks exactly as it did before. See inwDraftListHtml_. */
+  const draftHtml=inwDraftListHtml_();
+  // POs that already have a draft waiting, so the PO's own row says so.
+  const draftPos=inwDraftPoNoSet_();
   if(!opts.length){
-    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
+    panel.innerHTML=draftHtml+'<div style="padding:10px;color:#94a3b8;font-size:11px;">'
       +(sup?'"'+escText(sup)+'" ke liye koi open PO nahi mila.':'Koi open PO nahi hai.')
       +'</div>';
   }else{
-    panel.innerHTML=opts.map(po=>{
+    panel.innerHTML=draftHtml+opts.map(po=>{
       const checked=sarvSelectedPoNos.includes(po.po_no)?' checked':'';
+      const hasDraft=draftPos.has(String(po.po_no||'').trim().toUpperCase());
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
         +'<input type="checkbox" class="sarv-po-opt" value="'+escText(po.po_no)+'"'+checked+'>'
-        +'<span>'+escText(po.po_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(po.vendor_name||'Vendor')+' — '+escText(po.status||'Generated')+'</span></span>'
-        +'</label>';
+        +'<span>'+escText(po.po_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(po.vendor_name||'Vendor')+' — '+escText(po.status||'Generated')+'</span>'
+        /* Said on the PO's own row as well: whoever ticks this PO to type a
+           fresh receipt needs to know an approved one is already waiting for
+           it, or the same material gets entered twice. */
+        +(hasDraft?' <span title="Is PO par MD-approved draft save hai — upar se load karein" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:0 5px;font-size:9px;font-weight:800;">✅ APPROVED DRAFT</span>':'')
+        +'</span></label>';
     }).join('');
   }
+  inwDraftBindPanel_(panel);
   panel.querySelectorAll('.sarv-po-opt').forEach(cb=>{
     cb.addEventListener('change',()=>{
+      /* A loaded MD-approved draft owns the PO link — re-ticking would rebuild
+         the rows from the PO's pending quantities and throw away the approved
+         figures. The button is disabled while a draft is on the form, so this
+         is only reachable with the panel already open; the tick is put back
+         rather than silently ignored. */
+      if(sarvInwDraftActive){
+        cb.checked=sarvSelectedPoNos.includes(cb.value);
+        togglePoNumberPanel(false);
+        return showToast('🔒 '+INW_DRAFT_PICKER_TITLE,'warn');
+      }
       sarvSelectedPoNos=[...panel.querySelectorAll('.sarv-po-opt:checked')].map(x=>x.value);
       updatePoNumberBtnText();
       loadPoIntoInward().catch(dbError);
@@ -742,6 +767,12 @@ function renderPrNumberPanel(){
   }
   panel.querySelectorAll('.sarv-pr-opt').forEach(cb=>{
     cb.addEventListener('change',()=>{
+      // Same rule as the PO picker: a loaded MD-approved draft owns its PR link.
+      if(sarvInwDraftActive){
+        cb.checked=sarvSelectedPrNos.includes(cb.value);
+        togglePrNumberPanel(false);
+        return showToast('🔒 '+INW_DRAFT_PICKER_TITLE,'warn');
+      }
       sarvSelectedPrNos=[...panel.querySelectorAll('.sarv-pr-opt:checked')].map(x=>x.value);
       // highlightRequiredField() paints the button red and clears itself on an
       // input/change event the button never fires — so a tick clears it here.
@@ -1167,9 +1198,19 @@ async function loadOpenPoDropdown(){
   const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
   if(q.error){console.warn('[SARV] PO dropdown unavailable:',q.error.message);return}
   sarvPoCatalog=(q.data||[]).filter(x=>['MD Approved','Partially Received','Vendor Verified'].includes(String(x.status||'')));
-  // Drop any previously-ticked PO that is no longer open.
-  sarvSelectedPoNos=sarvSelectedPoNos.filter(no=>sarvPoCatalog.some(p=>p.po_no===no));
+  /* Drop any previously-ticked PO that is no longer open — EXCEPT while an
+     MD-approved draft is loaded. A draft can be submitted long after its PO
+     has been graded Received by another receipt, and the approved entry still
+     belongs to that PO; pruning it here would quietly unlink the receipt from
+     the order the MD approved it against. */
+  if(!sarvInwDraftActive)
+    sarvSelectedPoNos=sarvSelectedPoNos.filter(no=>sarvPoCatalog.some(p=>p.po_no===no));
+  /* The MD-approved drafts are refreshed with the PO list, because this is
+     what every path that changes either of them already calls — after a save,
+     after a receipt is posted back, on the Purchase panel's own refresh. */
+  await loadInwardApprovedDrafts_();
   renderPoNumberPanel();
+  inwDraftRenderStrip_();
 }
 /* Returns fn(poLine) -> the Item Master row behind that line, or {}.
    Resolved by item_id first (as a string, so a uuid and a numeric id both look
@@ -1376,7 +1417,8 @@ function renderPoInfoRow(tr,info){
      native PDF ko feed karta hai. Yahan sirf pill ki shakl di jaati hai, to
      screen par jo rang dikhta hai bilkul wahi chhapta bhi hai. */
   const pill=s=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
-    +'<span style="color:'+STRIP_COLOR.muted+';font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+escText(s.lbl)+'</span>'
+    // Caption apni value ke rang me — wahi stripLblColor_ jo dono prints use karte hain.
+    +'<span style="color:'+stripLblColor_(s)+';font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+escText(s.lbl)+'</span>'
     +'<b style="color:'+s.c+';font-size:11px;'+(s.bg?('background:'+s.bg+';padding:0 4px;border-radius:3px;'):'')+'">'+escText(s.t)+'</b></span>';
   // Blue PO / green PR / amber Return, so the kind of document this row is
   // measured against reads at a glance without the number being read.
@@ -2025,6 +2067,11 @@ async function verifyEditPassword(reason){
    the signature no longer matches — the approval does not carry over to the
    edited figures, which is the whole reason it is a signature and not a flag.
 
+   Once approved, the request becomes a DRAFT on the Inward form: it is listed
+   in the PO Number picker, loads back with the approved figures locked, and is
+   submitted whenever the paperwork is ready — see MD-APPROVED INWARD DRAFTS
+   below. Nobody re-types an approved entry.
+
    On a database without the table the desk is not locked out: it falls back to
    the Edit Password exactly as before, and says which migration to run. */
 const INWARD_APPROVAL_TABLE='inward_approvals';
@@ -2090,6 +2137,9 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
     invoiceDate:pVal('invoiceDate')||'',
     receivingDate:pVal('receivingDate')||'',
     natureOfInward:pVal('inwNatureOfInward')||'',
+    // Party State decides CGST/SGST vs IGST, so it belongs in the snapshot the
+    // MD is shown the amount of — and in what gets rebuilt from it later.
+    partyState:pVal('partyState')||'',
     remarks:pVal('inwRemarks')||'',
     poNos:poNos,prNos:prNos,
     reasons:overrides,
@@ -2099,6 +2149,26 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
         name:r.name||'',uom:r.uom||'',
         qty:pNum(r.qty),weight:pNum(r.weight),rate:pNum(r.rate),
         amount:pNum(r.total),
+        /* ── What the store needs to REBUILD this row later ──────────
+           An approval is not only a verdict any more: once the MD says yes the
+           request is kept as a DRAFT in the Inward form's PO Number list, and
+           the receipt is booked from it whenever the paperwork is ready (see
+           MD-APPROVED INWARD DRAFTS below). Rebuilding a row means reproducing
+           it to the letter — the signature is taken off name / qty / weight /
+           rate / PO line / PR — so the handles that identify it are recorded
+           here alongside the figures, plus the three that decide the amount
+           (Disc%, GST%, Bill Basis).
+
+           Additive on purpose: a request raised before these existed simply has
+           none, and inwDraftAddRow_ falls back to a name match on the PO line
+           and the Item Master's own GST. */
+        itemId:String(r.itemId||''),
+        poLineId:String(r.poLineId||''),
+        poNo:String(r.poNo||''),
+        prNo:String(r.prNo||''),
+        listPrice:pNum(r.listPrice),discountPct:pNum(r.discountPct),
+        gst:pNum(r.tax),billBasis:r.billBasis||'QTY',
+        wunit:r.wunit||'KGS',make:r.make||'',
         docKind:p?p.kind:'',docNo:p?String(p.no||''):'',
         ordered:p?pNum(p.ordered):0,
         already:p?pNum(p.already):0,
@@ -2127,6 +2197,17 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
 async function ensureInwardApproval_(rows,overrides){
   const poNos=inwardPoRefList_(rows), prNos=inwardPrRefList_(rows);
   const sig=inwardApprovalSignature_(rows,poNos,prNos);
+  /* A loaded MD-approved draft whose figures no longer reproduce the signature
+     the MD approved. Everything the approval covers is locked on the form, so
+     this is the belt on the braces — but it is worth saying out loud rather
+     than falling through to the code below, which would raise a SECOND request
+     to the MD for an entry they have already signed off, and leave the first
+     approval sitting unused. */
+  if(sarvInwDraftActive&&sarvInwDraftActive.signature&&sig!==sarvInwDraftActive.signature){
+    showToast('⛔ Is form ki values <b>'+escText(sarvInwDraftActive.requestNo)+'</b> ki approved values se '
+      +'mel nahi khaa rahi — draft hatakar dobara load karein, phir Submit karein.','error');
+    return false;
+  }
   const reasonText='PO / PR se alag values mili:\n• '+overrides.join('\n• ');
   let existing=null;
   try{
@@ -2151,7 +2232,8 @@ async function ensureInwardApproval_(rows,overrides){
   }
   if(status==='Pending'){
     showToast('⏳ Ye entry MD ke paas approval ke liye bheji ja chuki hai ('+escText(existing.request_no||'')+').<br>'
-      +'Jab tak mobile app ke <b>PO Receipts ▸ Inward Approval</b> me approve nahi hoti, Submit Inward nahi hoga.','warn');
+      +'Jab tak mobile app ke <b>PO Receipts ▸ Inward Approval</b> me approve nahi hoti, Submit Inward nahi hoga. '
+      +'Approve hone par ye khud hi <b>PO Number list</b> me draft ban kar aa jayegi — dobara type karne ki zaroorat nahi.','warn');
     return false;
   }
   const wasRejected=status==='Rejected';
@@ -2189,7 +2271,8 @@ async function ensureInwardApproval_(rows,overrides){
     return false;
   }
   showToast('📨 Approval request bhej di gayi ('+escText(payload.request_no)+')'
-    +'.<br>MD ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad yahi entry dobara Submit karein.','warn');
+    +'.<br>MD ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad ye entry '
+    +'<b>PO Number list</b> me "MD APPROVED — DRAFT SAVED" ke neeche aa jayegi — wahan se load karke jab chahein Submit karein.','warn');
   return false;
 }
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
@@ -2265,6 +2348,573 @@ function inwardDocOverrides(rows){
       out.push(r.name+': PO par ye item hai hi nahi — extra item add kiya gaya hai (qty '+pNum(r.qty)+')');
   });
   return out;
+}
+/* ══ MD-APPROVED INWARD DRAFTS ═════════════════════════════════════
+   What happens AFTER the MD says yes.
+
+   Until now an approval was only a verdict: the store had to type the whole
+   receipt a second time, exactly as before, for the signature to match — and
+   if the bill went into a drawer for three days, it was typed again from
+   scratch three days later, where any slip meant a fresh request to the MD.
+
+   So an approved request is now a DRAFT. It sits in the Inward form's own PO
+   Number list under "MD APPROVED — DRAFT SAVED", and one click rebuilds the
+   entry the MD approved: the same header, the same items, the same Qty /
+   Weight / Rate, down to the PO line each row posts back against. The store
+   submits it whenever the paperwork is ready — an hour later or a week later.
+
+   And it is LOCKED. Every figure the approval covers — Qty, Weight, Rate,
+   Disc%, GST%, Bill Basis, the items themselves, Supplier, Invoice No / Date,
+   Entry Type and the PO / PR link — goes read-only the moment a draft is
+   loaded. Only Remarks and Photos stay open. That is not decoration: the
+   approval is keyed by a SIGNATURE of those exact values
+   (inwardApprovalSignature_), so changing one would quietly turn an approved
+   receipt back into an unapproved one. Locking them means what the MD agreed
+   to is what gets saved, however much later that happens.
+
+   The draft leaves the list the moment the receipt is booked: saveInwardWithPdf_
+   stamps `used_on` on the approval, and `used_on` is exactly what this list
+   filters out. Nothing is ever consumed twice.
+
+   On a database without the inward_approvals table the whole section simply
+   does not appear, like the rest of the approval desk. */
+let sarvInwApprovedDrafts=[];      // approved, not-yet-booked approvals
+let sarvInwDraftActive=null;       // the one loaded on the form right now
+let sarvInwDraftListFailed=false;  // table missing / unreadable — asked once
+const INW_DRAFT_LOCK_TITLE='MD ne ye value approve ki hai — draft hataye bina badli nahi ja sakti';
+const INW_DRAFT_PICKER_TITLE='MD-approved draft load hai — PO / PR aur items badle nahi ja sakte. Pehle draft hatayein.';
+const INW_DRAFT_TYPE_MSG='MD-approved draft load hai — Entry Type wahi rahega jis par approval mili thi';
+
+/* reasons / payload come back as jsonb on a proper database and as TEXT on an
+   older one, so both shapes are read — the same two readers mobile.html uses
+   on its side of the same table. */
+function inwDraftPayload_(d){
+  const v=d&&d.payload;
+  if(v&&typeof v==='object')return v;
+  if(typeof v==='string'&&v.trim()){try{return JSON.parse(v)||{}}catch(e){}}
+  return {};
+}
+function inwDraftReasons_(d){
+  const v=d&&d.reasons;
+  if(Array.isArray(v))return v.map(String);
+  if(typeof v==='string'&&v.trim()){
+    try{const p=JSON.parse(v);if(Array.isArray(p))return p.map(String)}catch(e){}
+    return [v];
+  }
+  return [];
+}
+function inwDraftItems_(d){const p=inwDraftPayload_(d);return Array.isArray(p.items)?p.items:[]}
+/* The documents behind a draft. The payload's own arrays come first because
+   they are what the signature was built from; the header columns are the
+   fallback for a row whose payload predates them. */
+function inwDraftPoNos_(d){
+  const p=inwDraftPayload_(d);
+  if(Array.isArray(p.poNos)&&p.poNos.length)return p.poNos.map(String);
+  return String((d&&d.po_numbers)||'').split(',').map(s=>s.trim()).filter(Boolean);
+}
+function inwDraftPrNos_(d){
+  const p=inwDraftPayload_(d);
+  if(Array.isArray(p.prNos)&&p.prNos.length)return p.prNos.map(String);
+  return String((d&&d.req_numbers)||'').split(',').map(s=>s.trim()).filter(Boolean);
+}
+function inwDraftRef_(d){
+  const po=inwDraftPoNos_(d),pr=inwDraftPrNos_(d);
+  if(po.length)return 'PO '+po.join(', ');
+  if(pr.length)return 'PR '+pr.join(', ');
+  return 'Without PO';
+}
+// What the MD actually cleared, in two figures — the headline on the card.
+function inwDraftExcess_(d){
+  const items=inwDraftItems_(d);
+  return {qty:items.reduce((s,x)=>s+pNum(x.excess),0),
+          wt:items.reduce((s,x)=>s+pNum(x.excessWt),0),
+          items:items.length};
+}
+/* The list itself: approved, and not yet booked onto a receipt. `used_on` is
+   the only thing that retires a draft, so a database that predates that column
+   is filtered in memory instead of having its query refused outright. */
+async function loadInwardApprovedDrafts_(){
+  if(!SB_READY||sarvInwDraftListFailed){sarvInwApprovedDrafts=[];return sarvInwApprovedDrafts}
+  try{
+    let q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
+      .eq('status','Approved').is('used_on',null).order('id',{ascending:false}).limit(200);
+    if(q.error&&/used_on/i.test(q.error.message||''))
+      q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
+        .eq('status','Approved').order('id',{ascending:false}).limit(200);
+    if(q.error)throw q.error;
+    sarvInwApprovedDrafts=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length);
+  }catch(e){
+    // No table, no approval desk — and no drafts section either. Said in the
+    // console only: the Submit path already names the migration to run, and
+    // repeating it on every PO refresh would be noise.
+    if(inwardApprovalTableMissing_(e))sarvInwDraftListFailed=true;
+    else console.warn('[SARV] Approved inward drafts load skipped:',e.message||e);
+    sarvInwApprovedDrafts=[];
+  }
+  return sarvInwApprovedDrafts;
+}
+/* Which drafts belong on this form right now. Narrowed by Supplier Name for
+   the same reason the PO list is: one receipt records one supplier's material,
+   so a draft for somebody else is not a candidate. A blank supplier applies no
+   filter, so everything approved is reachable. */
+function inwDraftsForSupplier_(){
+  const sup=String(byId('supplierName')?.value||'').trim().toUpperCase();
+  if(!sup)return sarvInwApprovedDrafts;
+  return sarvInwApprovedDrafts.filter(d=>String(d.supplier_name||'').trim().toUpperCase()===sup);
+}
+// PO numbers that have an approved draft waiting, so a PO's own row in the
+// picker can say so without the drafts section being read.
+function inwDraftPoNoSet_(){
+  const set=new Set();
+  sarvInwApprovedDrafts.forEach(d=>inwDraftPoNos_(d)
+    .forEach(n=>set.add(String(n).trim().toUpperCase())));
+  return set;
+}
+/* The drafts block at the top of the PO Number panel. Returns '' when there is
+   nothing approved and waiting, so the panel looks exactly as it did before. */
+function inwDraftListHtml_(){
+  if(sarvInwDraftListFailed)return '';
+  const all=sarvInwApprovedDrafts;
+  if(!all.length)return '';
+  const mine=inwDraftsForSupplier_();
+  const hidden=all.length-mine.length;
+  const head='<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;'
+    +'background:#f0fdf4;border:1px solid #86efac;border-radius:5px;">'
+    +'<span style="font-size:10px;font-weight:800;color:#15803d;letter-spacing:.3px;">✅ MD APPROVED — DRAFT SAVED</span>'
+    +'<span style="background:#15803d;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;font-weight:800;">'+all.length+'</span>'
+    +'<button type="button" class="inw-draft-refresh" title="Approval list dobara padhein" '
+    +'style="margin-left:auto;background:#fff;border:1px solid #86efac;color:#15803d;border-radius:4px;'
+    +'padding:1px 6px;font-size:9px;font-weight:800;cursor:pointer;">🔄 Refresh</button></div>';
+  const body=mine.length?mine.map(d=>{
+    const active=sarvInwDraftActive&&String(sarvInwDraftActive.id)===String(d.id);
+    const ex=inwDraftExcess_(d);
+    const pills=[];
+    if(ex.qty>0)pills.push(['Excess Qty',nWt_(ex.qty)]);
+    if(ex.wt>0)pills.push(['Excess Wt',nWt_(ex.wt)+' KGS']);
+    const reasons=inwDraftReasons_(d);
+    return '<div style="border:1px solid '+(active?'#15803d':'#bbf7d0')+';background:'+(active?'#dcfce7':'#fff')
+      +';border-radius:6px;padding:6px 7px;margin-bottom:5px;">'
+      +'<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#14532d;">'
+      +'<span>'+escText(d.request_no||('#'+d.id))+'</span>'
+      +'<span style="color:#15803d;font-weight:700;font-size:10px;">'+escText(inwDraftRef_(d))+'</span>'
+      +(active?'<span style="margin-left:auto;background:#15803d;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;font-weight:800;">FORM ME LOADED</span>':'')
+      +'</div>'
+      +'<div style="font-size:10px;color:#475569;font-weight:600;margin-top:2px;">'
+      +escText(d.supplier_name||'-')
+      +' · Invoice '+escText(d.invoice_no||'-')+(d.invoice_date?(' ('+escText(d.invoice_date)+')'):'')
+      +' · '+ex.items+' item</div>'
+      +(pills.length?('<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">'
+        +pills.map(x=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:800;">'
+          +escText(x[0])+' '+escText(x[1])+'</span>').join('')+'</div>'):'')
+      +(reasons.length?('<div style="font-size:9px;color:#7c2d12;margin-top:3px;font-weight:600;">⚠ '
+        +escText(reasons[0])+(reasons.length>1?(' +'+(reasons.length-1)+' aur'):'')+'</div>'):'')
+      +'<div style="font-size:9px;color:#15803d;margin-top:3px;font-weight:700;">✔ '
+      +escText(d.decided_by||'MD')+(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</div>'
+      +'<div style="margin-top:5px;">'
+      +(active
+        ?'<button type="button" class="inw-draft-cancel" style="background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">✖ Draft hatayein</button>'
+        :'<button type="button" class="inw-draft-load" data-draft="'+escText(String(d.id))+'" style="background:#15803d;border:none;color:#fff;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">📥 Form me load karein</button>')
+      +'</div></div>';
+  }).join(''):'<div style="padding:6px;font-size:10px;color:#64748b;font-weight:600;">'
+      +'Is supplier ke liye koi approved draft nahi — Supplier Name khali karke poori list dekhein.</div>';
+  const note=hidden>0?('<div style="padding:0 6px 5px;font-size:9px;color:#94a3b8;font-weight:600;">'
+    +hidden+' approved draft doosre supplier ke hain — Supplier Name khali karein to dikhenge.</div>'):'';
+  const sep='<div style="border-top:1px dashed #cbd5e1;margin:5px 0 4px;padding-top:4px;font-size:9px;'
+    +'font-weight:800;color:#94a3b8;letter-spacing:.3px;">OPEN PO — NAYI ENTRY</div>';
+  return head+body+note+sep;
+}
+// The drafts block's own buttons. Called from renderPoNumberPanel, which
+// rebuilds the panel's HTML every time, so the handlers are re-bound with it.
+function inwDraftBindPanel_(panel){
+  if(!panel)return;
+  panel.querySelector('.inw-draft-refresh')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    loadInwardApprovedDrafts_().then(()=>{
+      renderPoNumberPanel();
+      showToast('🔄 '+sarvInwApprovedDrafts.length+' MD-approved draft list me hain');
+    }).catch(dbError);
+  });
+  panel.querySelectorAll('.inw-draft-load').forEach(b=>b.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    togglePoNumberPanel(false);
+    inwDraftLoad_(b.dataset.draft).catch(dbError);
+  }));
+  panel.querySelectorAll('.inw-draft-cancel').forEach(b=>b.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();
+    togglePoNumberPanel(false);
+    inwDraftCancel_();
+  }));
+}
+/* Everything the draft's rows need from the database, fetched once rather than
+   per row: the PO lines behind it (so each row posts back against the right one
+   and its strip reads Order / Received / Pending / Excess), the Item Master row
+   behind each line, the weight already booked in, and the same three for the PR
+   side of a without-PO draft.
+
+   Deliberately NOT read off sarvPoCatalog: that holds only OPEN POs, and a
+   draft can be submitted long after its PO has been graded Received by another
+   receipt. The PO is looked up by number, whatever state it is now in. */
+async function inwDraftRowContext_(poNos,prNos){
+  const ctx={poLineById:{},poLinesByName:{},poNoById:{},recWt:{},itemOf:()=>({}),
+             prByKey:{},prAlready:{},prOne:prNos.length===1?prNos[0]:''};
+  try{
+    if(poNos.length){
+      const pq=await SB.from('purchase_orders').select('id,po_no').in('po_no',poNos);
+      if(pq.error)throw pq.error;
+      const pos=pq.data||[];
+      pos.forEach(p=>{ctx.poNoById[String(p.id)]=p.po_no||''});
+      if(pos.length){
+        const lq=await SB.from('purchase_order_lines').select('*')
+          .in('purchase_order_id',pos.map(x=>x.id)).order('line_no');
+        if(lq.error)throw lq.error;
+        const lines=lq.data||[];
+        lines.forEach(l=>{
+          ctx.poLineById[String(l.id)]=l;
+          const k=String(l.item_name||'').trim().toUpperCase();
+          (ctx.poLinesByName[k]=ctx.poLinesByName[k]||[]).push(l);
+        });
+        ctx.itemOf=await poLineItemResolver_(lines);
+        ctx.recWt=await poReceivedWeights_(lines.map(l=>l.id));
+      }
+    }
+  }catch(e){
+    // Without these the rows still carry the approved figures — only the
+    // Order / Pending strip is withheld, which reads as "no document behind
+    // this row" rather than as a wrong number.
+    console.warn('[SARV] Draft PO figures skipped:',e.message||e);
+  }
+  try{
+    if(prNos.length){
+      const pq=await SB.from('purchase_requirements').select('id,req_no').in('req_no',prNos);
+      if(pq.error)throw pq.error;
+      const noById={};(pq.data||[]).forEach(p=>{noById[String(p.id)]=p.req_no||''});
+      const ids=Object.keys(noById);
+      if(ids.length){
+        const lq=await SB.from('purchase_requirement_lines')
+          .select('requirement_id,item_id,item_name,requested_qty,gross_weight').in('requirement_id',ids);
+        if(lq.error)throw lq.error;
+        (lq.data||[]).forEach(l=>{
+          const idKey=String(l.item_id||'');
+          const nameKey='N:'+String(l.item_name||'').trim().toUpperCase();
+          const cur=(idKey&&ctx.prByKey[idKey])||ctx.prByKey[nameKey]
+            ||{prNo:noById[String(l.requirement_id)]||'',required:0,reqWt:0,itemId:idKey};
+          cur.required+=pNum(l.requested_qty);cur.reqWt+=pNum(l.gross_weight);
+          if(!cur.itemId&&idKey)cur.itemId=idKey;
+          if(idKey)ctx.prByKey[idKey]=cur;
+          ctx.prByKey[nameKey]=cur;
+        });
+      }
+      ctx.prAlready=await prReceivedQtys_(prNos,null);
+    }
+  }catch(e){console.warn('[SARV] Draft PR figures skipped:',e.message||e);}
+  return ctx;
+}
+/* One row of the draft, rebuilt. Every value inwardApprovalSignature_ is taken
+   off has to come back EXACTLY as it went in — name, qty, weight, the computed
+   rate, the PO line id and the PR number — or the receipt would no longer match
+   its own approval. Everything else (Description, Category, the strip's Order /
+   Received figures) is read fresh, because those are the Master's and the PO's
+   word, not a copy frozen at approval time. */
+function inwDraftAddRow_(it,ctx,poNos,prNos){
+  const tb=byId('itemTableBody');if(!tb)return null;
+  addNewRow();
+  const tr=tb.lastElementChild;if(!tr)return null;
+  const nameKey=String(it.name||'').trim().toUpperCase();
+  /* The PO line this row posts back against. The approval's own po_line_id is
+     the exact answer; a request raised before that was stored has none, so the
+     line is matched by item name among the draft's POs — each line taken only
+     once, so two rows of the same item cannot both claim the first line. */
+  let line=null;
+  if(it.poLineId&&ctx.poLineById[String(it.poLineId)])line=ctx.poLineById[String(it.poLineId)];
+  else if(poNos.length)line=(ctx.poLinesByName[nameKey]||[]).find(l=>!l.__inwDraftTaken)||null;
+  if(line)line.__inwDraftTaken=true;
+  const master=(line?ctx.itemOf(line):null)||lookupItem(it.name)||{};
+  if(line){
+    tr.dataset.poLineId=line.id;
+    tr.dataset.poOrderedQty=pNum(line.ordered_qty);
+    tr.dataset.poReceivedQty=pNum(line.received_qty);
+    tr.dataset.poOrderedWeight=pNum(line.gross_weight);
+    tr.dataset.poReceivedWeight=pNum(ctx.recWt[line.id]);
+    tr.dataset.poNo=ctx.poNoById[String(line.purchase_order_id)]||String(it.poNo||'');
+    const disc=pNum(line.discount_pct);
+    tr.dataset.poUnitPrice=pNum(line.unit_price)-pNum(line.unit_price)*disc/100;
+  }else if(it.poNo){
+    /* An EXTRA item — the PO never ordered it, which is one of the three things
+       the MD signed off. It keeps whatever PO number the row carried when the
+       request was raised (usually none) and nothing else: there is no PO line
+       to measure it against, which is the point. */
+    tr.dataset.poNo=String(it.poNo);
+  }
+  // The PR side of a without-PO draft, on exactly the same footing.
+  const keyId=String(it.itemId||master.id||'');
+  const prInfo=(!line&&prNos.length)
+    ?((keyId&&ctx.prByKey[keyId])||ctx.prByKey['N:'+nameKey]||null):null;
+  if(prInfo&&prInfo.required>0){
+    const prNo=String(it.prNo||prInfo.prNo||ctx.prOne||'');
+    if(prNo){
+      tr.dataset.reqNo=prNo;
+      tr.dataset.prRequiredQty=prInfo.required;
+      tr.dataset.prRequiredWeight=prInfo.reqWt;
+      const a=ctx.prAlready[prNo.toUpperCase()+'|'+(keyId||prInfo.itemId||'')]||{qty:0,weight:0};
+      tr.dataset.prReceivedQty=pNum(a.qty);
+      tr.dataset.prReceivedWeight=pNum(a.weight);
+    }
+  }else if(!line&&it.prNo){
+    // The link is part of the signature, so it is restored even when the
+    // requirement's own figures could not be read back.
+    tr.dataset.reqNo=String(it.prNo);
+  }
+  // Keep the row bound to the exact Item Master row the approval was given for,
+  // so the save posts to that item rather than re-resolving it by name.
+  const itemId=String(it.itemId||'')||String(master.id||'')||String((line&&line.item_id)||'');
+  if(itemId)tr.dataset.itemId=itemId;
+  const set=(s,v)=>{const el=tr.querySelector(s);if(el)el.value=v??''};
+  set('.item-name',it.name||'');
+  set('.item-desc',master.description||'');
+  set('.item-make',it.make||master.make||(line&&line.make)||'');
+  set('.item-cat',master.category||'');
+  set('.qty-field',pNum(it.qty));
+  set('.item-uom',it.uom||master.uom||(line&&line.uom)||'');
+  set('.weight-field',pNum(it.weight));
+  if(it.wunit)set('.item-wunit',it.wunit);
+  set('.bill-basis-field',it.billBasis||(line&&line.bill_basis)||'QTY');
+  /* Rate goes back in through List Price / Disc%, because the entry form has no
+     rate box of its own — .rate-field is computed from those two. The
+     approval's own pair is used when it reproduces the approved rate to the
+     last digit; otherwise the rate goes in as a straight list price at 0%
+     discount, which always does. The signature is taken off the COMPUTED rate,
+     so this has to be exact rather than close. */
+  let lp=pNum(it.listPrice),disc=pNum(it.discountPct);
+  const want=pNum(it.rate);
+  if(!(lp>0)||pNum(lp-lp*disc/100)!==want){lp=want;disc=0;}
+  set('.list-price-field',lp);
+  set('.discount-field',disc);
+  set('.rate-field',pNum(lp-lp*disc/100));
+  const gst=(it.gst!=null&&it.gst!=='')?pNum(it.gst)
+    :(line?pNum(line.tax_pct):itemGst_(master));
+  set('.item-gst-field',gst);
+  // The status strip, once the figures behind it are in — same rule the PO and
+  // the edit loaders use: only where there is something measurable to report.
+  if(pNum(tr.dataset.poOrderedQty)>0||pNum(tr.dataset.prRequiredQty)>0)appendPoInfoRow(tr,tb);
+  return tr;
+}
+/* Load an approved draft onto the Inward form. */
+async function inwDraftLoad_(id){
+  if(!SB_READY)return showToast('Supabase configure karein','warn');
+  let d=sarvInwApprovedDrafts.find(x=>String(x.id)===String(id));
+  if(!d)return showToast('Ye approved draft list me nahi mila — 🔄 Refresh dabayein','warn');
+  /* Re-read it before anything is loaded. "Any time later" can be days later:
+     in the meantime the same draft may have been booked at another desk, or the
+     MD may have changed their mind. */
+  try{
+    const q=await SB.from(INWARD_APPROVAL_TABLE).select('*').eq('id',d.id).maybeSingle();
+    if(q.error)throw q.error;
+    if(!q.data){
+      await loadInwardApprovedDrafts_();renderPoNumberPanel();
+      return showToast('❌ Ye approval ab database me nahi hai','error');
+    }
+    d=q.data;
+    if(String(d.status||'')!=='Approved'){
+      await loadInwardApprovedDrafts_();renderPoNumberPanel();
+      return showToast('⚠️ Is request ka status ab <b>'+escText(d.status||'-')+'</b> hai — draft load nahi hoga','warn');
+    }
+    if(d.used_on){
+      await loadInwardApprovedDrafts_();renderPoNumberPanel();
+      return showToast('ℹ️ Ye draft pehle hi <b>'+escText(d.used_on)+'</b> par book ho chuka hai','warn');
+    }
+  }catch(e){
+    // A re-read that cannot run must not shut the desk: the list row is used
+    // instead, and the used_on stamp on save is still what retires a draft.
+    console.warn('[SARV] Draft re-read skipped:',e.message||e);
+  }
+  const p=inwDraftPayload_(d), items=inwDraftItems_(d);
+  if(!items.length)return showToast('Is approval me koi item nahi hai — draft load nahi ho sakta','error');
+  if(sarvEditingInwardId&&!confirm('Abhi '+(sarvEditingInwardNo||'ek record')
+    +' edit mode me khula hai.\n\nUse chhodkar MD-approved draft load karein?'))return;
+  activatePanel('inwardPanel');
+  // The draft carries its OWN Nature of Inward — a Nature pinned by the Home
+  // chooser must not overwrite what the MD approved.
+  releaseHomeNatureLocks();
+  window.sarvInwardDrafts?.stash();   // keep whatever was being typed
+  clearInwardForm(true);              // also releases any draft already loaded
+  // ── Header, exactly as the request was raised ──────────────────
+  const et=byId('entryTypeSelect');
+  if(et){
+    et.value=p.entryType||d.entry_type||'INWARD';
+    const pan=byId('inwardPanel');
+    if(pan){pan.classList.remove('theme-nb','theme-issue');
+            if(et.value==='INWARD NB')pan.classList.add('theme-nb');}
+  }
+  const set=(f,v)=>{const el=byId(f);if(el)el.value=v??''};
+  set('supplierName',p.supplier||d.supplier_name||'');
+  set('invoiceNumber',p.invoiceNo||d.invoice_no||'');
+  set('invoiceDate',p.invoiceDate||d.invoice_date||'');
+  // The date the material actually came in, not the date it is being booked.
+  if(p.receivingDate)set('receivingDate',p.receivingDate);
+  if(p.partyState)set('partyState',p.partyState);
+  set('inwRemarks',p.remarks||'');
+  const nat=byId('inwNatureOfInward');
+  if(nat){nat.value=p.natureOfInward||'Purchase';nat.dispatchEvent(new Event('change'));}
+  // ── The PO / PR link ───────────────────────────────────────────
+  const poNos=inwDraftPoNos_(d), prNos=inwDraftPrNos_(d);
+  if(poNos.length){
+    // Assigned, not ticked: a PO whose status has moved on is no longer in
+    // sarvPoCatalog, so there is no checkbox to tick — but the receipt still
+    // belongs to it, and inwardPoRefList_ reads this array.
+    sarvSelectedPoNos=[...new Set(poNos)];
+    renderPoNumberPanel();
+  }else{
+    sarvSelectedPoNos=[];
+    setSelectedPrNos(prNos);
+  }
+  updatePoNumberBtnText();
+  // ── The items ──────────────────────────────────────────────────
+  const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
+  const ctx=await inwDraftRowContext_(poNos,prNos);
+  items.forEach(it=>inwDraftAddRow_(it,ctx,poNos,prNos));
+  if(!items.length)addNewRow();
+  applyInwardNbGstLock();
+  setInwardPoLock(poNos.length>0);
+  updateStoreTotals();
+  // ── Locked, and announced ──────────────────────────────────────
+  sarvInwDraftActive={id:d.id,requestNo:d.request_no||('#'+d.id),signature:d.signature||'',row:d};
+  inwDraftApplyLock_();
+  renderPoNumberPanel();
+  /* Two checks the user is better off reading now than at Submit.
+
+     1. Does the rebuilt form still produce the signature the MD approved? It
+        should — that is what every line above is for — but an approval raised
+        before po_line_id was stored is matched back by item name, and a PO line
+        renamed since then can land a row on a different line. Saying so here
+        means nobody discovers it after the PIN screen.
+     2. Has the position moved? The approval covers Qty / Weight / Rate, none of
+        which change — but another receipt booked in the meantime changes how
+        much had ALREADY come in, and therefore how big the excess now looks.
+        The approval still stands; the figure on the strip is simply not the one
+        the MD was looking at, and that is worth a word. */
+  const live=rowDataInward();
+  const sig=inwardApprovalSignature_(live,inwardPoRefList_(live),inwardPrRefList_(live));
+  if(d.signature&&sig!==d.signature)
+    showToast('⚠️ <b>'+escText(sarvInwDraftActive.requestNo)+'</b> load ho gaya, par is form ki values '
+      +'MD ki approved values se bilkul mel nahi khaa rahi — Submit par dobara approval maangi jayegi.<br>'
+      +'PO ya Item Master me badlav hua ho to MD se dobara approve karwayein.','warn');
+  const drift=[];
+  items.forEach((it,i)=>{
+    const r=live[i];if(!r)return;
+    const sp=docStripParts_(r);if(!sp)return;
+    if(Math.abs(pNum(sp.already)-pNum(it.already))>0.001)drift.push(it.name||'-');
+  });
+  if(drift.length)
+    showToast('ℹ️ Approval ke baad in item par aur maal aa chuka hai — strip par Already / Excess badla hua '
+      +'dikhega: '+escText([...new Set(drift)].slice(0,3).join(', '))+(drift.length>3?' …':'')
+      +'<br>MD ki approval usi Qty / Weight / Rate par hai, wo chalti rahegi.','warn');
+  showToast('✅ MD-approved draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> form me aa gaya — '
+    +'Qty / Weight / Rate locked hain. Remarks aur Photos jodkar jab chahein Submit karein.');
+  byId('inwDraftLockStrip')?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+/* Puts the form back to a blank entry and leaves the draft untouched in the
+   approval list, so it can be loaded again whenever. */
+function inwDraftCancel_(){
+  const no=sarvInwDraftActive?sarvInwDraftActive.requestNo:'';
+  if(!no)return;
+  if(!confirm('Draft '+no+' form se hata dein?\n\nApproval list me waise hi padi rahegi — jab chahein dobara load kar lein.'))return;
+  clearInwardForm();          // nulls the draft state and lifts the lock
+  renderPoNumberPanel();
+  showToast('Draft '+escText(no)+' form se hata diya — approval list me abhi bhi maujood hai');
+}
+/* THE LOCK. Everything inwardApprovalSignature_ is computed from — and
+   everything else that decides the amount the MD saw — goes read-only while a
+   draft is loaded. Remarks and Photos stay open: neither is part of what was
+   approved, and both are what the store still has to add.
+
+   Applied as a colour too (#fef9c3, the yellow the Excess figures are
+   highlighted in) so a locked form is recognisable at a glance rather than only
+   when a box refuses to take a keystroke. */
+function inwDraftApplyLock_(){
+  const on=!!sarvInwDraftActive;
+  const ro=el=>{if(!el)return;el.readOnly=on;el.style.background=on?'#fef9c3':'';
+                el.style.cursor=on?'not-allowed':'';el.title=on?INW_DRAFT_LOCK_TITLE:''};
+  const dis=el=>{if(!el)return;el.disabled=on;el.style.background=on?'#fef9c3':'';
+                 el.style.cursor=on?'not-allowed':'';el.title=on?INW_DRAFT_LOCK_TITLE:''};
+  ['supplierName','invoiceNumber','invoiceDate'].forEach(id=>ro(byId(id)));
+  dis(byId('inwNatureOfInward'));
+  ['poNumberBtn','prNumberBtn','addNewItemBtn'].forEach(id=>{
+    const b=byId(id);if(!b)return;
+    b.disabled=on;
+    b.style.background=on?'#f1f5f9':'';
+    b.style.cursor=on?'not-allowed':'pointer';
+    b.title=on?INW_DRAFT_PICKER_TITLE:'';
+  });
+  document.querySelectorAll('#itemTableBody .item-name,#itemTableBody .item-make,'
+    +'#itemTableBody .qty-field,#itemTableBody .weight-field,'
+    +'#itemTableBody .list-price-field,#itemTableBody .discount-field').forEach(ro);
+  document.querySelectorAll('#itemTableBody .item-wunit,#itemTableBody .bill-basis-field,'
+    +'#itemTableBody .item-gst-field').forEach(dis);
+  document.querySelectorAll('#itemTableBody .add-row-btn,#itemTableBody .delete-btn')
+    .forEach(b=>{b.style.display=on?'none':''});
+  if(!on){
+    /* Three other locks own some of these boxes — the PO lock (Supplier, Item
+       Name), INWARD NB (GST%) and a Nature pinned from Home. Lifting the draft
+       lock has to hand them back rather than blanket-unlock, so each one is
+       re-asserted here. */
+    setInwardPoLock(getSelectedPoNos().length>0);
+    applyInwardNbGstLock();
+    applyHomeNatureLocks();
+  }
+  // Entry Type has a single owner (refreshStoreEditUi) — it reads the draft
+  // state itself, along with the Submit button's label.
+  refreshStoreEditUi();
+  inwDraftRenderStrip_();
+}
+/* The banner above Item Configurations. Two jobs, because they are the same
+   question asked at two moments: which approved draft is on the form now, and —
+   when none is — that there are some waiting to be loaded. */
+function inwDraftRenderStrip_(){
+  const box=byId('inwDraftLockStrip');if(!box)return;
+  const d=sarvInwDraftActive&&sarvInwDraftActive.row;
+  if(!d){
+    const n=sarvInwDraftListFailed?0:inwDraftsForSupplier_().length;
+    if(!n){box.style.display='none';box.innerHTML='';return}
+    box.style.background='#f0fdf4';box.style.borderColor='#86efac';box.style.color='#14532d';
+    box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+      +'<span style="font-weight:800;">✅ '+n+' MD-approved draft taiyar '+(n===1?'hai':'hain')+'</span>'
+      +'<span style="font-weight:600;">— PO Number list kholkar <b>📥 Form me load karein</b> dabayein; '
+      +'poori entry waise hi bhar jayegi jaise MD ne approve ki thi.</span>'
+      +'<button type="button" id="inwDraftOpenPickerBtn" style="margin-left:auto;background:#15803d;border:none;'
+      +'color:#fff;border-radius:5px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">📥 Draft list</button>'
+      +'</div>';
+    box.style.display='block';
+    byId('inwDraftOpenPickerBtn')?.addEventListener('click',e=>{
+      e.preventDefault();e.stopPropagation();
+      togglePoNumberPanel(true);
+      byId('poNumberBtn')?.scrollIntoView({behavior:'smooth',block:'center'});
+    });
+    return;
+  }
+  const ex=inwDraftExcess_(d), reasons=inwDraftReasons_(d);
+  box.style.background='#fefce8';box.style.borderColor='#facc15';box.style.color='#713f12';
+  const pill=(l,v)=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 6px;'
+    +'font-size:10px;font-weight:800;">'+escText(l)+' '+escText(v)+'</span>';
+  box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+    +'<span style="font-weight:800;color:#15803d;">🔒 MD APPROVED DRAFT</span>'
+    +'<span style="font-weight:800;">'+escText(sarvInwDraftActive.requestNo)+'</span>'
+    +'<span style="font-weight:700;">'+escText(inwDraftRef_(d))+'</span>'
+    +'<span style="font-weight:600;">✔ '+escText(d.decided_by||'MD')
+      +(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</span>'
+    +(ex.qty>0?pill('Excess Qty',nWt_(ex.qty)):'')
+    +(ex.wt>0?pill('Excess Wt',nWt_(ex.wt)+' KGS'):'')
+    +'<button type="button" id="inwDraftCancelBtn" style="margin-left:auto;background:#fee2e2;'
+    +'border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 10px;font-size:10px;'
+    +'font-weight:800;cursor:pointer;">✖ Draft hatayein</button></div>'
+    +'<div style="margin-top:4px;font-weight:600;">Qty / Weight / Rate, items aur PO / PR link '
+    +'<b>locked</b> hain — MD ne inhi figures par approval di hai. Remarks aur Photos jodkar jab '
+    +'chahein Submit karein; tab tak ye draft approval list me padi rahegi.</div>'
+    +(reasons.length?('<ul style="margin:4px 0 0;padding-left:18px;font-weight:600;">'
+      +reasons.map(x=>'<li>'+escText(x)+'</li>').join('')+'</ul>'):'');
+  box.style.display='block';
+  byId('inwDraftCancelBtn')?.addEventListener('click',e=>{
+    e.preventDefault();e.stopPropagation();inwDraftCancel_();
+  });
 }
 /* itemId: the exact Item Master row the user picked, captured on the entry row
    by applyItemAutofill. It has to be honoured here, because several rows may
@@ -2725,11 +3375,18 @@ function bindOriginalControls(){
   const supEl=byId('supplierName');
   if(supEl&&!supEl.dataset.poFilterBound){
     const refilter=()=>{
+      // A loaded MD-approved draft fills Supplier Name itself and locks it, so
+      // nothing here applies — and dropping its POs would unlink the receipt
+      // from the order the MD approved it against.
+      if(sarvInwDraftActive)return;
       // Drop any ticked PO that the new supplier no longer covers.
       const allowed=poOptionsForSupplier().map(p=>p.po_no);
       const kept=sarvSelectedPoNos.filter(no=>allowed.includes(no));
       if(kept.length!==sarvSelectedPoNos.length){setSelectedPoNos(kept);loadPoIntoInward().catch(dbError);}
       else renderPoNumberPanel();
+      // The approved-draft list is narrowed by supplier too, so the strip that
+      // announces it follows what is typed here.
+      inwDraftRenderStrip_();
     };
     supEl.addEventListener('input',refilter);
     supEl.addEventListener('change',refilter);
@@ -5407,6 +6064,12 @@ async function fetchAllRows(table,selectCols,orderCol,filterFn){
 // search box and Category filter both run instantly over the complete
 // dataset instead of re-querying Supabase on every keystroke/click.
 let sarvItemMasterRows=[];      // [{it, inQty, outQty, bal, catKey}]
+/* The subset of the above that is ON SCREEN right now — after the search box,
+   the Stock dropdown and every column filter, in the order the column sort put
+   it in. Written by renderItemMasterTable and read by the Download CSV / PDF
+   buttons, so an export is always of the list being looked at and never of a
+   separately re-derived one. */
+let sarvItemMasterShown=[];
 // Last-loaded master rows, kept so each panel's search box can re-render from
 // memory instead of refetching on every keystroke — same pattern as
 // sarvItemMasterRows / renderItemMasterTable above.
@@ -5446,6 +6109,21 @@ function initAddItemForm_(){
   let open=false;
   try{open=localStorage.getItem(IM_ADD_FORM_KEY)==='1';}catch(e){}
   setAddItemForm(open);
+  /* Live "name already taken" check on Item Name. Bound once — this runs on
+     every panel open and after every save (cancelItemEdit calls it), so a
+     fresh listener each time would stack up. */
+  const nameBox=byId('mi_itemName');
+  if(nameBox&&!nameBox.dataset.miDupBound){
+    ['input','change'].forEach(ev=>nameBox.addEventListener(ev,miSyncItemNameHint_));
+    nameBox.dataset.miDupBound='1';
+  }
+  // Also clears the hint on the way through, which is what a cleared form needs.
+  miSyncItemNameHint_();
+  /* The header's sort / filter wiring, re-asserted every time this panel is
+     shown. Idempotent, and belt-and-braces: if store-core.js happened to
+     evaluate before the Item Master markup was parsed, the DOMContentLoaded
+     binding would have found no <thead> — this is the path that catches it. */
+  initItemMasterHeader_();
 }
 /* Gives the item list every pixel left below it, measured rather than guessed.
    A fixed calc(100vh - 320px) could not know how tall the toolbar had wrapped
@@ -5623,10 +6301,16 @@ window.imOpenFilter=function(ev,col){
        own list anyway. On a master with thousands of items, recomputing it per
        keystroke was the one thing in here that would have felt slow. */
     options:imOptionsFor_(col),
-    // The header button this panel hangs off. Kept so every re-render (search,
-    // Select All, Clear) can re-anchor itself — the panel changes height as the
-    // list narrows, and one that never re-positioned would grow off-screen.
-    anchor:(ev&&ev.currentTarget)||byId('imF-'+col)
+    /* The header button this panel hangs off. Kept so every re-render (search,
+       Select All, Clear) can re-anchor itself — the panel changes height as the
+       list narrows, and one that never re-positioned would grow off-screen.
+
+       The column's OWN funnel is looked up by id, in preference to anything on
+       the event. The click now arrives from one delegated listener on the
+       <thead> (imHeaderClick_), so ev.currentTarget is that whole header row —
+       anchoring to it would park every column's panel at the left edge of the
+       table instead of under the ▾ that was pressed. */
+    anchor:byId('imF-'+col)||(ev&&(ev.target&&ev.target.closest&&ev.target.closest('.im-fbtn')))||(ev&&ev.currentTarget)
   };
   imRenderFilterPanel_();
 };
@@ -5670,6 +6354,17 @@ function imRenderFilterPanel_(){
   const all=opts.concat(extra);
   const term=(sarvImDraft.search||'').toLowerCase();
   const shown=term?all.filter(o=>o.value.toLowerCase().includes(term)):all;
+  /* What Apply measures itself against, stashed on the draft because
+     imApplyFilter runs long after this function has returned and none of these
+     closures are left:
+       allValues   — every value the panel is offering, stranded ones included;
+       shownValues — just the ones the panel's own search has left visible.
+     `options` (set when the panel opened) is NOT the same list: a stranded
+     value can be in `all` and not in `options`, and comparing the user's ticks
+     against the shorter list is what made "everything ticked" read as a real
+     filter instead of as no filter. */
+  sarvImDraft.allValues=all.map(o=>o.value);
+  sarvImDraft.shownValues=shown.map(o=>o.value);
   // values===null is "no restriction", which reads as everything ticked.
   const ticked=v=>sarvImDraft.values?sarvImDraft.values.has(v):true;
   const LIMIT=400;
@@ -5754,38 +6449,83 @@ function imRenderFilterPanel_(){
   imPositionFilterPanel_(sarvImDraft.anchor);
 }
 window.imApplyFilter=function(){
-  const col=sarvImPanelCol;if(!col)return;
+  const col=sarvImPanelCol;
+  // Said out loud rather than returning quietly: a dead Apply button used to
+  // be indistinguishable from one that applied a filter matching everything.
+  if(!col){showToast('⚠️ Filter panel band ho chuka tha — column ke ▾ par dobara click karke filter lagayein','warn');return;}
   const d=sarvImDraft||{};
+  const label=SARV_IM_FILTER_COLS[col].label;
   let {min,max}=d;
   if(min!=null&&isNaN(min))min=null;
   if(max!=null&&isNaN(max))max=null;
   // A reversed range is a slip, not a request for an empty table.
   if(min!=null&&max!=null&&min>max){const t=min;min=max;max=t;}
-  /* Everything ticked is the same as no filter, so it is stored as none. That
-     is what keeps the header badge and the chip bar honest — a green funnel
-     that hides nothing is worse than no badge at all. */
   let values=d.values;
-  if(values){
-    const opts=(d.options||[]).map(o=>o.value);
-    if(opts.length&&values.size===opts.length&&opts.every(v=>values.has(v)))values=null;
+  /* NOTHING was ticked or unticked, but the panel's search box has a term in
+     it. That box only narrows the option LIST — it is not itself a filter — so
+     this case used to fall straight through to "no restriction" and Apply
+     REMOVED the filter, putting the whole master back on screen. Which is
+     precisely what it looked like: type YARN, press Apply, get every row.
+     Read as what it plainly means instead — keep the values the search has
+     left showing. */
+  if(!values&&String(d.search||'').trim()&&(d.shownValues||[]).length)
+    values=new Set(d.shownValues);
+  /* The ticks are now read back OFF THE DOM, not only tracked through change
+     events as they were before. The draft stays the source of truth for values
+     that are not on screen (a long list renders the first 400, and the panel's
+     search narrows that further), but whatever IS rendered is read directly —
+     so a tick can no longer be lost because a change event did not land where
+     this code expected it to, which would leave `values` null and Apply
+     silently meaning "show everything". */
+  const boxes=[...document.querySelectorAll('#imFilterPanel .imf-opt input[type=checkbox]')];
+  if(boxes.length){
+    if(!values)values=new Set(d.allValues||boxes.map(b=>b.dataset.v));
+    boxes.forEach(b=>{if(b.checked)values.add(b.dataset.v);else values.delete(b.dataset.v);});
   }
-  if(values==null&&min==null&&max==null){imRemoveFilter(col);return;}
+  /* Everything ticked is the same as no filter, so it is stored as none — that
+     is what keeps the header badge and the chip bar honest, because a green
+     funnel that hides nothing is worse than no badge at all. Measured against
+     allValues (what the panel offered, stranded values included), not against
+     the shorter `options` list it used to use. */
+  if(values){
+    const all=d.allValues||(d.options||[]).map(o=>o.value);
+    if(all.length&&values.size>=all.length&&all.every(v=>values.has(v)))values=null;
+  }
+  if(values==null&&min==null&&max==null){
+    imRemoveFilter(col,true);
+    showToast('ℹ️ <b>'+escText(label)+'</b> par koi filter nahi laga — saari values tick thi, to poori list dikh rahi hai.<br>'
+      +'<span style="font-size:10px;">Sirf kuch values chahiye to panel me <b>☐ Clear</b> dabakar wahi values tick karein, phir Apply.</span>','warn');
+    return;
+  }
   if(values&&values.size===0){
-    showToast('⚠️ Is column me koi value tick nahi hai — aise filter karne par list khali rahegi','warn');
+    showToast('⚠️ <b>'+escText(label)+'</b> me koi value tick nahi hai — is filter par list khali rahegi','warn');
   }
   sarvImFilters[col]={values:values?new Set(values):null,min,max};
   imCloseFilterPanel();
   renderItemMasterTable();
+  /* Always says what landed. If this toast does not appear, Apply never ran —
+     which is a different fault from a filter that ran and matched everything,
+     and the two were impossible to tell apart before. */
+  showToast('🔍 <b>'+escText(label)+'</b> filter: '+escText(imFilterSummary_(col))
+    +' — <b>'+(sarvItemMasterShown||[]).length+'</b> of '+(sarvItemMasterRows||[]).length+' item dikh rahe hain');
 };
-window.imRemoveFilter=function(col){
+/* quiet=true when imApplyFilter is the caller — it says its own piece, and two
+   toasts for one button press read as something having gone wrong. */
+window.imRemoveFilter=function(col,quiet){
+  const had=imHasFilter_(col);
   delete sarvImFilters[col];
   if(sarvImPanelCol===col)imCloseFilterPanel();
   renderItemMasterTable();
+  if(!quiet&&had)showToast('✖ <b>'+escText(SARV_IM_FILTER_COLS[col].label)+'</b> ka filter hata diya — '
+    +'<b>'+(sarvItemMasterShown||[]).length+'</b> item dikh rahe hain');
 };
 window.imClearAllFilters=function(){
+  const n=imActiveCols_().length;
   sarvImFilters={};
   imCloseFilterPanel();
   renderItemMasterTable();
+  if(n)showToast('✖ Saare column filters hata diye ('+n+') — '
+    +'<b>'+(sarvItemMasterShown||[]).length+'</b> item dikh rahe hain');
 };
 function imCloseFilterPanel(){
   const p=byId('imFilterPanel');if(p)p.style.display='none';
@@ -5799,15 +6539,31 @@ document.addEventListener('click',e=>{
   imCloseFilterPanel();
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sarvImPanelCol)imCloseFilterPanel()});
-window.addEventListener('resize',()=>{if(sarvImPanelCol)imCloseFilterPanel()});
-/* Capture phase, because a scroll inside the table container does not bubble.
-   The panel's OWN value list is excluded — it scrolls, and closing the panel
-   the moment someone scrolls its list would make a long list unusable. */
+/* A scroll or a resize used to CLOSE the panel. It now FOLLOWS its header
+   instead, and only gives up once that header has actually scrolled out of
+   sight. Closing was the wrong answer to the right problem: the panel is
+   position:fixed, so it does have to be re-placed when the page moves under
+   it — but any scroll anywhere fired this, including the one a tap on a
+   sticky header can cause, so the panel could vanish in the same gesture
+   that opened it, which is indistinguishable from "the filter does nothing".
+
+   Capture phase, because a scroll inside the table's own overflow container
+   does not bubble. The panel's own value list is excluded: it scrolls, and a
+   long list would be unusable if scrolling it moved the panel. */
+function imFollowAnchor_(){
+  if(!sarvImPanelCol)return;
+  const anchor=(sarvImDraft&&sarvImDraft.anchor)||byId('imF-'+sarvImPanelCol);
+  const r=anchor&&anchor.getBoundingClientRect();
+  // Scrolled out of view (or gone) — now there is nothing to hang off.
+  if(!r||r.bottom<0||r.top>window.innerHeight||r.width===0){imCloseFilterPanel();return;}
+  imPositionFilterPanel_(anchor);
+}
+window.addEventListener('resize',imFollowAnchor_);
 document.addEventListener('scroll',e=>{
   if(!sarvImPanelCol)return;
   const p=byId('imFilterPanel'),t=e.target;
   if(p&&t&&t.nodeType===1&&p.contains(t))return;
-  imCloseFilterPanel();
+  imFollowAnchor_();
 },true);
 
 /* What each applied filter looks like in a chip and in the header's tooltip. */
@@ -6159,6 +6915,74 @@ function refreshItemAttributeDatalists_(items){
   fill('dl-mi-make',(items||[]).map(it=>{const v=it&&it.make;return String(v==null?'':v).trim()||null}));
   fill('dl-mi-itemSize',(items||[]).map(itemSize_));
   fill('dl-mi-materialType',(items||[]).map(itemMaterial_));
+  /* Description, on the same footing: "100GM CONE" is written once and then
+     offered back to every item that shares it, instead of being retyped as
+     "100 GM CONE" and "100gm cone" on the next two. */
+  fill('dl-mi-itemDesc',(items||[]).map(it=>{const v=it&&it.description;return String(v==null?'':v).trim()||null}));
+  /* ITEM NAME. Two things make it its own loop rather than another fill():
+       • PLAIN names only — never the "NAME [ITEM_CODE]" form the Inward /
+         Outward / PR boxes use for duplicated names. Those boxes RESOLVE what
+         is picked back to an item; this one SAVES it as the name, so a tagged
+         value would land a bracketed code in the master.
+       • Each option carries "Category — Description" as its label, which the
+         browser prints beside the value. Names here run long and alike
+         ("BEARING 6204", "BEARING 6204 ZZ"), and that one line is what tells
+         them apart without leaving the box.
+     Deduped case-insensitively: two rows already sharing a name — which the
+     master allows historically — must not offer the same text twice. */
+  {
+    const dl=byId('dl-mi-itemName');
+    if(dl){
+      const seen=new Set(),opts=[];
+      (items||[]).forEach(it=>{
+        const n=String((it&&it.name)||'').trim();
+        if(!n)return;
+        const k=n.toUpperCase();
+        if(seen.has(k))return;
+        seen.add(k);
+        opts.push({n,hint:[it.category,it.description]
+          .map(x=>String(x==null?'':x).trim()).filter(Boolean).join(' — ')});
+      });
+      opts.sort((a,b)=>a.n.localeCompare(b.n,undefined,{numeric:true,sensitivity:'base'}));
+      dl.innerHTML=opts.map(o=>'<option value="'+escText(o.n)+'">'+escText(o.hint)+'</option>').join('');
+    }
+  }
+}
+/* ── "Ye naam pehle se master me hai" ───────────────────────────────
+   The Item Name box now offers every name already on file, so the one thing
+   it can be used to do by accident is pick a name that exists — which
+   addMasterItem refuses, and rightly: the entry forms match typed names back
+   to the master and the list pools balances by name, so two rows sharing one
+   would merge two different items' stock.
+
+   Said HERE, as the name is typed, that dead end becomes the useful half of
+   the dropdown: it answers "is this part already in the master?" before the
+   rest of the form is filled in, and offers that row for editing instead.
+
+   Nothing is auto-filled on a pick. Category, UOM, Rate and the rest may
+   already have been typed, and a dropdown that quietly overwrote them would
+   be worse than no dropdown. */
+function miSyncItemNameHint_(){
+  const box=byId('mi_itemNameHint');if(!box)return;
+  const typed=String(byId('mi_itemName')?.value||'').trim().toUpperCase();
+  // The Item Master panel's own list where it is loaded, the shared catalogue
+  // otherwise — this form can be opened before loadItemMaster has answered.
+  const pool=(sarvItemMasterRows||[]).length?sarvItemMasterRows.map(r=>r.it):(sarvItemCatalog||[]);
+  // An item being EDITED is not a clash with itself.
+  const hit=typed?pool.find(it=>it&&String(it.name||'').trim().toUpperCase()===typed
+    &&String(it.id)!==String(sarvEditingItemId)):null;
+  if(!hit){box.style.display='none';box.innerHTML='';return;}
+  const canEdit=sarvCan('EDIT');
+  box.innerHTML='&#9888;&#65039; <b>'+escText(hit.name)+'</b> pehle se master me hai'
+    +(hit.item_code?(' <span style="color:#92400e;">('+escText(hit.item_code)+')</span>'):'')
+    +' — isi naam se naya item save nahi hoga.'
+    +(canEdit?' <a href="#" id="mi_itemNameEditLink" style="color:#b45309;font-weight:800;">&#9999;&#65039; Usi item ko edit karein</a>':'');
+  box.style.display='block';
+  /* Bound, not an inline onclick: an id goes into that attribute, and a uuid
+     through escText would come back with its quotes escaped into the JS. */
+  if(canEdit)byId('mi_itemNameEditLink')?.addEventListener('click',e=>{
+    e.preventDefault();editMasterItem(hit.id);
+  });
 }
 function itemSize_(it){const v=it&&it.item_size;return String(v==null?'':v).trim()||null}
 function itemMaterial_(it){const v=it&&it.material_type;return String(v==null?'':v).trim()||null}
@@ -6230,6 +7054,13 @@ window.renderItemMasterTable=function(){
       return (sorter.text?String(x).localeCompare(String(y),undefined,{numeric:true,sensitivity:'base'}):(x-y))*dir;
     });
   }
+  /* Exactly the rows on screen, in the order they are on screen — kept here so
+     Download CSV / PDF export WHAT IS BEING LOOKED AT rather than re-deriving
+     it. Re-deriving would mean a second copy of the filter chain and the sort,
+     and the day the two read differently the export would quietly be of some
+     other list. Set before the two early returns below, so an emptied filter
+     leaves it empty rather than stale. */
+  sarvItemMasterShown=rows;
   updateItemMasterSortIndicators_();
   imRenderFilterIndicators_();
   // The chip bar appears and disappears with the filters, which moves the top
@@ -6317,6 +7148,389 @@ window.renderItemMasterTable=function(){
   tb.innerHTML=totalsRow+bodyRows;
   sarvSyncItemPrSelUi_();
 };
+/* ══ ITEM MASTER → CSV / PDF ════════════════════════════════════════
+   What the two buttons above the list download.
+
+   Both export the FILTERED list — whatever the search box, the Stock dropdown
+   and the column filters have left on screen, in the order the column sort put
+   it in. sarvItemMasterShown is that exact set, stashed by
+   renderItemMasterTable, so neither file can be of a different list from the
+   one being looked at.
+
+   Why this replaced exportTableCSV() on this table: that helper scrapes the
+   rendered DOM, which on this table meant
+     • headers carrying the sort arrow and the filter caret — "Code⇕▾";
+     • a "#" serial column, the NEW PR tick column and the 🗑 column, none of
+       which are data;
+     • Rate as "₹1,234.00", GST as "18%", Balance as "12 ⚠" — text, so a
+       spreadsheet can neither sum nor sort any of it.
+   The columns below are the ones the Item Master actually holds, each read
+   through the SAME helper the table reads (itemMsv_ / itemStdOrderQty_ /
+   itemSize_ / itemMaterial_ / itemGst_), so a figure on paper is the figure on
+   screen. The ⚠ flag becomes a column of its own — Stock Status — because a
+   warning sign glued onto a number is unusable in a filter, and BELOW MSV in
+   its own column is exactly what somebody sorting a purchase list wants.
+
+   cellWidth is in mm and the sixteen add up to 281 — the usable width of an
+   A4 landscape page at an 8mm margin. Change one and another has to give. */
+const IM_EXPORT_COLS=[
+  {k:'code', h:'Item Code',           w:20, get:r=>r.it.item_code||''},
+  {k:'name', h:'Item Name',           w:34, get:r=>r.it.name||''},
+  {k:'desc', h:'Description',         w:32, get:r=>r.it.description||''},
+  {k:'cat',  h:'Category',            w:20, get:r=>r.it.category||''},
+  {k:'size', h:'Size',                w:15, tint:[236,254,255], get:r=>itemSize_(r.it)||''},
+  {k:'mat',  h:'Material',            w:17, tint:[236,254,255], get:r=>itemMaterial_(r.it)||''},
+  {k:'rate', h:'Rate',                w:14, num:true, money:true, get:r=>Number(r.it.rate||0)},
+  {k:'gst',  h:'GST %',               w:10, num:true, tint:[245,243,255], get:r=>itemGst_(r.it)},
+  {k:'uom',  h:'UOM',                 w:11, get:r=>r.it.uom||'PCS'},
+  {k:'make', h:'Make',                w:17, get:r=>r.it.make||''},
+  {k:'msv',  h:'Min Stock Qty (MSV)', w:16, num:true, tint:[255,251,235], get:r=>itemMsv_(r.it)},
+  {k:'soq',  h:'Std Order Qty',       w:15, num:true, tint:[253,242,248], get:r=>itemStdOrderQty_(r.it)},
+  {k:'in',   h:'IN Qty',              w:14, num:true, total:true, tint:[240,253,244], get:r=>r.inQty},
+  {k:'out',  h:'OUT Qty',             w:14, num:true, total:true, tint:[254,242,242], get:r=>r.outQty},
+  {k:'bal',  h:'Balance Qty',         w:15, num:true, total:true, tint:[239,246,255], lowFlag:true, get:r=>r.bal},
+  // Blank where the item has no MSV: it cannot be judged against one, which is
+  // the same reason such items fall out of both Stock filter views.
+  {k:'stk',  h:'Stock Status',        w:17, center:true, lowFlag:true,
+             get:r=>itemMsv_(r.it)==null?'':(isBelowMsv_(r)?'BELOW MSV':'OK')}
+];
+/* Which of those sixteen go into the file — chosen in the popup both download
+   buttons now open, and remembered per browser so the same report does not
+   have to be re-ticked every day. `k` is what is stored, never the index: a
+   column inserted into the list above must not silently shift somebody's
+   saved choice onto its neighbour.
+   Unknown keys (a saved choice from a build that had a column this one does
+   not) are dropped on read, and an empty / unreadable selection falls back to
+   all sixteen — the behaviour before the popup existed. */
+const IM_EXPORT_SEL_KEY='sarv_im_export_cols';
+function imExportSelKeys_(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(IM_EXPORT_SEL_KEY)||'null');}catch(e){}
+  const all=IM_EXPORT_COLS.map(c=>c.k);
+  if(!Array.isArray(saved))return all;
+  const keep=saved.filter(k=>all.includes(k));
+  return keep.length?keep:all;
+}
+function imExportSaveSelKeys_(keys){
+  try{localStorage.setItem(IM_EXPORT_SEL_KEY,JSON.stringify(keys));}catch(e){}
+}
+// Always in the order of IM_EXPORT_COLS, never the order they were ticked in:
+// a report whose columns move around between downloads cannot be compared with
+// last week's copy of itself.
+function imExportSelCols_(){
+  const keys=new Set(imExportSelKeys_());
+  return IM_EXPORT_COLS.filter(c=>keys.has(c.k));
+}
+/* One line saying what the file is OF. Printed on the PDF and written as the
+   CSV's first line, because a filtered export that does not say what it was
+   filtered by gets mailed on and read as the whole Item Master. */
+function imFilterText_(){
+  const bits=[];
+  const q=String(byId('itemMasterSearch')?.value||'').trim();
+  if(q)bits.push('Search: "'+q+'"');
+  const msv=byId('itemMasterMsvFilter')?.value||'ALL';
+  if(msv==='BELOW')bits.push('Stock: Below the MSV');
+  else if(msv==='ABOVE')bits.push('Stock: Above the MSV');
+  // The same labels and the same summaries the filter chips show on screen.
+  imActiveCols_().forEach(c=>bits.push(SARV_IM_FILTER_COLS[c].label+': '+imFilterSummary_(c)));
+  const srt=SARV_ITEM_SORTERS[sarvItemMasterSort&&sarvItemMasterSort.key];
+  const sortTxt=srt?('Sorted by '+(SARV_IM_FILTER_COLS[sarvItemMasterSort.key]||{label:sarvItemMasterSort.key}).label
+    +' ('+(sarvItemMasterSort.dir<0?'descending':'ascending')+')'):'';
+  if(!bits.length)return 'Filter: none — poora Item Master'+(sortTxt?('   ·   '+sortTxt):'');
+  return bits.join('   ·   ')+(sortTxt?('   ·   '+sortTxt):'');
+}
+/* The rows to export, or null after saying why there are none. Deliberately
+   refuses rather than writing a header-only file: a 1-line CSV looks like the
+   data is gone, and the reason is always a filter that is still on screen. */
+function imExportRows_(what){
+  const rows=(sarvItemMasterShown||[]).filter(Boolean);
+  if(!rows.length){
+    showToast('⚠️ '+what+' ke liye koi item nahi — list khali hai, pehle search / filter check karein'
+      +(imActiveCols_().length?' (ya <b>Clear All Filters</b> dabayein)':''),'warn');
+    return null;
+  }
+  return rows;
+}
+// Figures as NUMBERS in the CSV — no ₹, no %, no ⚠ — so Excel can sum, sort
+// and pivot them. A blank stays blank: 0 and "not set" are different answers
+// (an item with no MSV has not been given one; an MSV of 0 has).
+function imCsvCell_(col,row){
+  const v=col.get(row);
+  if(!col.num)return v==null?'':String(v);
+  if(v==null||v==='')return '';
+  const n=Number(v);
+  if(!isFinite(n))return '';
+  return col.money?Number(n.toFixed(2)):Number(n.toFixed(3));
+}
+function imRunExportCsv_(cols){
+  cols=(cols&&cols.length)?cols:imExportSelCols_();
+  const rows=imExportRows_('CSV');if(!rows)return;
+  const head=cols.map(c=>c.h);
+  const data=rows.map(r=>cols.map(c=>imCsvCell_(c,r)));
+  /* The three columns that are a stock position get a TOTAL row, and only
+     those three. Rate, GST, MSV and Std Order Qty are per-item settings —
+     adding them down the list produces a number that means nothing, which is
+     also why the on-screen SUBTOTAL row leaves them as "—". Last row, not
+     first, so the sheet can be sorted or filtered without a total landing in
+     the middle of the data. */
+  const sum=c=>rows.reduce((s,r)=>s+pNum(c.get(r)),0);
+  /* The label goes in the first column that is NOT being totalled — otherwise
+     a selection that leads with IN Qty would have its own total overwritten by
+     the word "TOTAL". With nothing but figures selected there is nowhere to put
+     it, and the row is figures alone. */
+  const labelAt=cols.findIndex(c=>!c.total);
+  const totals=cols.map((c,i)=>i===labelAt?('TOTAL — '+rows.length+' item(s)')
+    :(c.total?Number(sum(c).toFixed(3)):''));
+  /* Header on ROW 1, nothing above it. A title / "filtered by" banner was
+     tried here and taken out: it pushes the header to row 2, and every
+     spreadsheet import, pivot table and VLOOKUP on the other side reads row 1
+     as the header. What the file was filtered by is said in the toast instead,
+     and printed in full on the PDF, which is a report rather than a dataset. */
+  downloadCSV('SARV_Item_Master_'+today()+'.csv',[head,...data,totals]);
+  showToast('📥 CSV downloaded — '+rows.length+' item'+(rows.length===1?'':'s')
+    +' of '+(sarvItemMasterRows||[]).length+' · '+cols.length+' column'+(cols.length===1?'':'s')
+    +'<br><span style="font-size:10px;">'+escText(imFilterText_())+'</span>');
+}
+async function imRunExportPdf_(cols){
+  cols=(cols&&cols.length)?cols:imExportSelCols_();
+  const rows=imExportRows_('PDF');if(!rows)return;
+  if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua — page refresh karein','error');
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+  const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
+  const M=8,W=pageW-M*2;
+  let y=M;
+  try{
+    const logoW=24,logoH=logoW*161/320;
+    doc.addImage(SARV_LOGO_DATA_URL,'PNG',pageW-M-logoW,y,logoW,logoH);
+  }catch(e){}
+  doc.setFont(undefined,'bold');doc.setFontSize(13);doc.setTextColor(10,58,94);
+  doc.text(SARV_COMPANY.fullName,M,y+5);
+  doc.setFontSize(9.5);doc.setTextColor(0,0,0);
+  doc.text(SARV_COMPANY.unit+' — ITEM MASTER',M,y+10.5);
+  doc.setFont(undefined,'normal');doc.setFontSize(7);doc.setTextColor(71,85,105);
+  doc.text(doc.splitTextToSize(imFilterText_(),W-30),M,y+15);
+  doc.text('Printed On: '+pStamp()+'   ·   '+rows.length+' item(s) of '+(sarvItemMasterRows||[]).length,M,y+19.5);
+  doc.setTextColor(0,0,0);
+  y+=23;
+  // Printed the way the screen prints them: a whole number plain, a decimal to
+  // two places. Same rule as renderItemMasterTable's q2.
+  const q2=v=>{if(v==null||v==='')return '';const n=Number(v);if(!isFinite(n))return '';
+    return Number.isInteger(n)?String(n):n.toFixed(2);};
+  const cell=(c,r)=>{
+    const v=c.get(r);
+    if(!c.num)return v==null?'':String(v);
+    return c.money?((v===0||v)?nNum_(v):''):q2(v);
+  };
+  const body=rows.map(r=>cols.map(c=>cell(c,r)));
+  const sum=c=>rows.reduce((s,r)=>s+pNum(c.get(r)),0);
+  /* Footer totals for the stock columns only — the same ones the on-screen
+     SUBTOTAL row adds up, for the same reason. colSpan swallows the columns
+     before the first of them so the label sits against the figures; with none
+     of them selected there is nothing to total and the footer is dropped
+     rather than printed as an empty band. */
+  const firstTotal=cols.findIndex(c=>c.total);
+  let foot=[];
+  if(firstTotal>0){
+    // The usual shape: descriptive columns lead, so one merged cell carries
+    // the label right up against the figures.
+    foot=[[{content:'TOTAL — '+rows.length+' item(s)',colSpan:firstTotal,
+            styles:{halign:'right',fontStyle:'bold'}}]
+      .concat(cols.slice(firstTotal).map(c=>c.total?q2(sum(c)):''))];
+  }else if(firstTotal===0){
+    // A selection that LEADS with a stock figure — there is no column in front
+    // of it to merge the label into, so the footer is the figures alone.
+    foot=[cols.map(c=>c.total?q2(sum(c)):'')];
+  }
+  /* Widths are declared for the full sixteen columns and add up to the page.
+     A SUBSET would leave the table short of the right margin — or, if more
+     were ever added, run off it — so they are scaled to whatever was picked.
+     tableWidth:W keeps autoTable honest about the total either way. */
+  const wSum=cols.reduce((s,c)=>s+c.w,0)||1;
+  const colStyles={};
+  cols.forEach((c,i)=>{
+    colStyles[i]={cellWidth:c.w*W/wSum};
+    if(c.num)colStyles[i].halign='right';
+    if(c.center)colStyles[i].halign='center';
+    if(i===0)colStyles[i].fontStyle='bold';
+  });
+  doc.autoTable({
+    head:[cols.map(c=>c.h)],body,foot,startY:y,
+    margin:{left:M,right:M,top:M},tableWidth:W,
+    styles:{fontSize:6,cellPadding:1.1,overflow:'linebreak',textColor:[0,0,0],
+            lineColor:[203,213,225],lineWidth:0.15,valign:'middle'},
+    headStyles:{fillColor:[15,23,42],textColor:[255,255,255],fontStyle:'bold',
+                halign:'center',fontSize:5.6,lineWidth:0.15},
+    footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',
+                halign:'right',lineWidth:0.15},
+    columnStyles:colStyles,
+    theme:'grid',
+    /* The print keeps the screen's own column tints, so the paper and the
+       browser are the same document. And a row BELOW its MSV is the one thing
+       this list exists to catch, so its Balance and Stock Status cells go red
+       and bold here exactly as they do on screen.
+       Both are read off the COLUMN OBJECT (c.tint / c.lowFlag), never off the
+       column index: the user picks which columns to print, so index 14 is no
+       longer necessarily Balance Qty. */
+    didParseCell:h=>{
+      if(h.section!=='body')return;
+      const c=cols[h.column.index];if(!c)return;
+      if(c.tint)h.cell.styles.fillColor=c.tint;
+      const r=rows[h.row.index];if(!r)return;
+      const below=itemMsv_(r.it)!=null&&isBelowMsv_(r);
+      if(below&&c.lowFlag){
+        h.cell.styles.fillColor=[254,226,226];
+        h.cell.styles.textColor=[185,28,28];
+        h.cell.styles.fontStyle='bold';
+      }else if(c.k==='bal'&&pNum(r.bal)<0){
+        h.cell.styles.textColor=[220,38,38];h.cell.styles.fontStyle='bold';
+      }
+    }
+  });
+  const pages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);doc.setFontSize(6.5);doc.setTextColor(100,116,139);
+    doc.text(SARV_COMPANY.juris,M,pageH-5);
+    doc.text('Page '+i+' of '+pages,pageW-M,pageH-5,{align:'right'});
+  }
+  const name='SARV_Item_Master_'+today()+'.pdf';
+  const blob=doc.output('blob');
+  downloadBlob(blob,name);
+  // Same preview the other reports open with, so the file can be checked (and
+  // shared) without hunting through the Downloads folder.
+  showSarvPdfPreview(blob,name,'');
+  showToast('📄 Item Master PDF ready — '+rows.length+' item'+(rows.length===1?'':'s')
+    +' · '+cols.length+' column'+(cols.length===1?'':'s'));
+}
+/* ══ EXPORT COLUMN PICKER ═══════════════════════════════════════════
+   Both download buttons open this first. The list already filters down to a
+   handful of items; what nobody could do until now was cut it down to the
+   handful of COLUMNS a given report is about — a purchase list wants Code,
+   Name, MSV, Balance and nothing else, and a sixteen-column sheet has to be
+   edited by hand every time to become one.
+
+   The rows are never in question here: the export is always of the FILTERED
+   list, exactly as on screen, which is why the header of this popup states
+   how many rows and under which filters rather than offering a choice about
+   it. Only the columns are chosen, and the choice is remembered per browser
+   (IM_EXPORT_SEL_KEY) so a daily report is ticked once, not daily.
+
+   Built on demand and reused, like the PO Details overlay — markup that only
+   exists once somebody asks for it cannot be left half-wired in the page. */
+function imCloseExportPick(){const ov=byId('imExportPickOverlay');if(ov)ov.style.display='none';}
+window.imCloseExportPick=imCloseExportPick;
+function imOpenExportPick_(kind){
+  // Nothing to export: say so here rather than after the columns are chosen.
+  if(!imExportRows_(kind))return;
+  let ov=byId('imExportPickOverlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='imExportPickOverlay';
+    ov.className='secure-modal-overlay';
+    ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:29500;padding:14px;';
+    ov.innerHTML='<div style="background:#fff;width:min(560px,96vw);max-height:92vh;border-radius:12px;'
+      +'box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;">'
+        +'<strong id="imxTitle" style="font-size:13px;">&#128202; Columns chunein</strong>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imxClose" style="border:1px solid #64748b;background:transparent;color:#fff;'
+        +'border-radius:6px;padding:4px 9px;font-size:15px;cursor:pointer;">&#10005;</button></div>'
+      +'<div id="imxScope" style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;'
+        +'font-size:11px;color:#334155;font-weight:600;"></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px;">'
+        +'<span style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">'
+        +'Jo tick honge wahi CSV / PDF me aayenge</span>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imxAll" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;'
+        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">&#9745; Select All</button>'
+        +'<button type="button" id="imxNone" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'
+        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">&#9744; Clear</button></div>'
+      +'<div id="imxList" style="flex:1;overflow-y:auto;padding:4px 14px 10px;display:grid;'
+        +'grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 14px;"></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;'
+        +'border-top:1px solid #e2e8f0;">'
+        +'<span id="imxCount" style="font-size:11px;font-weight:800;color:#0369a1;"></span>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imxGo" style="background:#16a34a;color:#fff;border:0;border-radius:6px;'
+        +'padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">&#128190; Download</button>'
+        +'<button type="button" id="imxCancel" style="background:#e2e8f0;color:#475569;border:0;border-radius:6px;'
+        +'padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Cancel</button></div>'
+      +'</div>';
+    /* Inside #storeInterface, NOT on <body> — the same place the PO Details
+       overlay puts itself, and for the same reason. store.css writes that rule
+       as "#storeInterface .secure-modal-overlay" (a comment between the two
+       selectors makes it a descendant combinator), so an overlay parked on
+       <body> inherits none of its positioning: it comes out position:static
+       with no backdrop, i.e. a white slab below the fold. See the
+       #pwdGateModal / #sarvNewItemModal note in store.css. */
+    (byId('storeInterface')||document.body).appendChild(ov);
+    byId('imxClose').addEventListener('click',imCloseExportPick);
+    byId('imxCancel').addEventListener('click',imCloseExportPick);
+    // Backdrop click closes; a click inside the card must not.
+    ov.addEventListener('click',e=>{if(e.target===ov)imCloseExportPick();});
+    // Escape too, like every other popup on this screen. Bound to the document
+    // once, with the open check inside, so it costs nothing while shut.
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&byId('imExportPickOverlay')?.style.display==='flex')imCloseExportPick();
+    });
+    byId('imxAll').addEventListener('click',()=>imxSetAll_(true));
+    byId('imxNone').addEventListener('click',()=>imxSetAll_(false));
+    byId('imxList').addEventListener('change',imxSyncCount_);
+  }
+  // Which button opened it — the one thing that changes between the two.
+  ov.dataset.kind=kind;
+  const isPdf=kind==='PDF';
+  byId('imxTitle').innerHTML=(isPdf?'&#128196;':'&#128190;')+' '+escText(kind)+' — columns chunein';
+  byId('imxGo').innerHTML=(isPdf?'&#128196; Download PDF':'&#128190; Download CSV');
+  byId('imxGo').style.background=isPdf?'#dc2626':'#16a34a';
+  const rows=(sarvItemMasterShown||[]).length;
+  byId('imxScope').innerHTML='&#128203; <b>'+rows+'</b> item'+(rows===1?'':'s')
+    +' export honge (list par jo filter laga hai wahi) — <span style="color:#64748b;">'
+    +escText(imFilterText_())+'</span>';
+  const sel=new Set(imExportSelKeys_());
+  byId('imxList').innerHTML=IM_EXPORT_COLS.map(c=>
+     '<label style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11.5px;'
+    +'font-weight:600;color:#0f172a;cursor:pointer;">'
+    +'<input type="checkbox" class="imx-col" value="'+escText(c.k)+'"'+(sel.has(c.k)?' checked':'')
+    +' style="width:14px;height:14px;cursor:pointer;">'
+    +'<span>'+escText(c.h)+'</span></label>').join('');
+  imxSyncCount_();
+  const go=byId('imxGo');
+  // Replaced, not added to: this handler closes over `kind`, and a second
+  // opening would otherwise leave the first one still bound and fire both.
+  go.onclick=()=>{
+    const keys=[...document.querySelectorAll('#imxList .imx-col:checked')].map(x=>x.value);
+    if(!keys.length)return showToast('⚠️ Kam se kam ek column tick karein','warn');
+    imExportSaveSelKeys_(keys);
+    const picked=imExportSelCols_();
+    imCloseExportPick();
+    if(kind==='PDF')imRunExportPdf_(picked).catch(dbError);
+    else imRunExportCsv_(picked);
+  };
+  ov.style.display='flex';
+}
+function imxSetAll_(on){
+  document.querySelectorAll('#imxList .imx-col').forEach(cb=>{cb.checked=on;});
+  imxSyncCount_();
+}
+function imxSyncCount_(){
+  const el=byId('imxCount');if(!el)return;
+  const n=document.querySelectorAll('#imxList .imx-col:checked').length;
+  el.textContent=n+' of '+IM_EXPORT_COLS.length+' columns selected';
+  el.style.color=n?'#0369a1':'#b91c1c';
+  const go=byId('imxGo');if(go){go.disabled=!n;go.style.opacity=n?'1':'.5';go.style.cursor=n?'pointer':'not-allowed';}
+}
+/* What the two toolbar buttons call: pick the columns, then export.
+
+   The workers above are named imRunExportCsv_ / imRunExportPdf_ and NOT
+   downloadItemMasterCsv / …Pdf, which is what they were called first. In a
+   classic script a top-level `function downloadItemMasterCsv(){}` and
+   `window.downloadItemMasterCsv` are the SAME binding, so these two lines
+   replaced the workers outright: the picker's Download button called the bare
+   name, got the picker-opener back, and re-opened the popup it had just
+   closed — "the button does nothing". Separate names, no shadowing. */
+window.downloadItemMasterCsv=()=>imOpenExportPick_('CSV');
+window.downloadItemMasterPdf=()=>imOpenExportPick_('PDF');
 /* ── Item Master → New PR ────────────────────────────────────────────
    The Admin ticks items in the NEW PR column (kept across search / filter /
    re-render) and presses Generate New PR: the PR form opens with one row per
@@ -6444,32 +7658,48 @@ document.addEventListener('DOMContentLoaded',()=>{
   function init(){
     const table=byId('itemMasterTable');
     if(!table)return;
-    let justResized=false;
-    // Capture phase runs before the <th>'s own onclick, so the sort is skipped.
-    table.addEventListener('click',e=>{if(justResized){e.stopPropagation();e.preventDefault();}},true);
     table.querySelectorAll('th.im-resizable').forEach(th=>{
       const col=th.dataset.col, grip=th.querySelector('.im-col-resizer');
       const defaultW=th.style.width;
       if(saved[col])th.style.width=saved[col]+'px';
-      if(!grip)return;
+      if(!grip||grip.dataset.imGripBound)return;
+      grip.dataset.imGripBound='1';
       grip.addEventListener('pointerdown',e=>{
         e.preventDefault(); e.stopPropagation();
-        justResized=true;
         const startX=e.clientX, startW=th.getBoundingClientRect().width;
+        let moved=false;
         grip.classList.add('active');
-        grip.setPointerCapture(e.pointerId);
-        const move=ev=>{th.style.width=Math.max(MIN,Math.round(startW+ev.clientX-startX))+'px';};
-        const up=()=>{
-          grip.classList.remove('active');
-          grip.removeEventListener('pointermove',move);
-          grip.removeEventListener('pointerup',up);
-          grip.removeEventListener('pointercancel',up);
-          saved[col]=parseInt(th.style.width,10); save();
-          setTimeout(()=>{justResized=false;},0);
+        /* Listeners on WINDOW, not on the grip, and attached BEFORE
+           setPointerCapture — which can throw (InvalidPointerId) and used to
+           leave the drag with no way to end: `justResized` stayed true and the
+           capture-phase swallower that read it then ate EVERY click in the
+           table — sort, the filter funnels, Edit, Delete, the New PR ticks —
+           until the page was reloaded. That swallower is gone too; the only
+           thing that now consults this drag is the header click handler
+           (imHeaderClick_), so even a stuck drag cannot reach the rows. */
+        const move=ev=>{
+          if(Math.abs(ev.clientX-startX)>2)moved=true;
+          th.style.width=Math.max(MIN,Math.round(startW+ev.clientX-startX))+'px';
         };
-        grip.addEventListener('pointermove',move);
-        grip.addEventListener('pointerup',up);
-        grip.addEventListener('pointercancel',up);
+        const up=()=>{
+          window.removeEventListener('pointermove',move);
+          window.removeEventListener('pointerup',up);
+          window.removeEventListener('pointercancel',up);
+          window.removeEventListener('blur',up);
+          grip.classList.remove('active');
+          if(moved){saved[col]=parseInt(th.style.width,10);save();}
+          /* Only a real DRAG suppresses the header click that follows it. A
+             plain click on the grip moves nothing, so it must not cost the
+             user a sort or a filter — which it did before. */
+          sarvImHdrSuppress=moved;
+          setTimeout(()=>{sarvImHdrSuppress=false;},0);
+          try{grip.releasePointerCapture(e.pointerId);}catch(err){}
+        };
+        window.addEventListener('pointermove',move);
+        window.addEventListener('pointerup',up);
+        window.addEventListener('pointercancel',up);
+        window.addEventListener('blur',up);     // alt-tab mid-drag
+        try{grip.setPointerCapture(e.pointerId);}catch(err){}
       });
       grip.addEventListener('dblclick',e=>{
         e.stopPropagation();
@@ -6477,8 +7707,65 @@ document.addEventListener('DOMContentLoaded',()=>{
       });
     });
   }
+  // Exposed so the header wiring can re-run it when the panel is shown — the
+  // resizer and the click delegation are two halves of the same header.
+  window.initItemMasterColResize_=init;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
+/* ══ ITEM MASTER HEADER — SORT + FILTER WIRING ══════════════════════
+   ONE delegated click listener on the <thead>, instead of an onclick= on
+   every <th> and another on every ▾ button.
+
+   Why it was rewired. The old arrangement needed three things to line up on
+   every header cell: the <th>'s own onclick for the sort, the funnel's own
+   onclick for the filter, and an ev.stopPropagation() inside imOpenFilter to
+   stop the funnel's click ALSO re-sorting the column underneath the panel it
+   had just opened. On top of that sat a capture-phase click swallower on the
+   whole <table>, which the column resizer switched on and — if its pointerup
+   was ever missed — never switched off again, leaving every click in the
+   table dead. Any one of those three going wrong looked identical from the
+   outside: "filter does nothing".
+
+   Now the header carries DATA, not behaviour — data-fcol="cat" on the funnel,
+   data-sort="cat" on the cell — and this one handler reads it. There is no
+   ordering to get right, nothing to stopPropagation past, and a header cell
+   added later works with no JavaScript change at all.
+
+   Bound idempotently (dataset.imHdrBound) from DOMContentLoaded AND from
+   every path that shows the panel, so it is wired whether this script ran
+   before or after the markup was parsed. */
+let sarvImHdrSuppress=false;      // a column drag just happened — not a click
+function imHeaderClick_(e){
+  // A finished resize drag is not a header click. Scoped to the header alone,
+  // so even if this ever latched it could not touch the rows.
+  if(sarvImHdrSuppress){e.preventDefault();return;}
+  if(e.target.closest('.im-col-resizer'))return;       // the grip, mid-drag
+  const fb=e.target.closest('.im-fbtn');
+  if(fb){
+    /* The funnel. preventDefault + stopPropagation here are what keep the
+       document-level "click outside closes the panel" listener from closing
+       the panel in the same gesture that opened it. */
+    e.preventDefault();e.stopPropagation();
+    imOpenFilter(e,fb.dataset.fcol);
+    return;
+  }
+  // Anything else in a sortable cell sorts it.
+  const th=e.target.closest('th[data-sort]');
+  if(th&&th.dataset.sort)sortItemMaster(th.dataset.sort);
+}
+function initItemMasterHeader_(){
+  const head=document.querySelector('#itemMasterTable thead');
+  if(!head)return;
+  if(!head.dataset.imHdrBound){
+    head.addEventListener('click',imHeaderClick_);
+    head.dataset.imHdrBound='1';
+  }
+  // The width grips live in the same header and are bound the same way (the
+  // guard inside makes a second call free).
+  if(typeof window.initItemMasterColResize_==='function')window.initItemMasterColResize_();
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initItemMasterHeader_);
+else initItemMasterHeader_();
 /* Several Item Master rows are allowed to carry the SAME name (same part,
    different spec / make / description). A native <datalist> reports which
    option the user picked ONLY through that option's value, so same-named
@@ -6534,10 +7821,14 @@ function refreshItemDatalist(items){
      had to be typed from memory. */
   const makeSet=[...new Set(items.map(x=>x.make).filter(Boolean))]
     .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
-  // dl-mi-make is the Item Master form's own box. refreshItemAttributeDatalists_
-  // fills it too, but only when that panel loads — doing it here as well means
-  // the suggestions are already there the first time the panel is opened.
-  ['dl-item-make','dl-out-item-make','p_dl-item-makes','dl-mi-make'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
+  ['dl-item-make','dl-out-item-make','p_dl-item-makes'].forEach(dlId=>{const dl=byId(dlId);if(!dl)return;dl.innerHTML=makeSet.map(m=>`<option value="${escText(m)}">`).join('');});
+  /* The Item Master form's OWN five boxes (dl-mi-*: Item Name, Description,
+     Make, Size, Material Type). That panel fills them itself when it loads,
+     but this runs on every item-catalogue refresh — so the suggestions are
+     already there the first time the Add New Item form is opened, which is
+     what the single dl-mi-make line used to do here on its own. One call, so
+     the two paths cannot fill the lists differently. */
+  refreshItemAttributeDatalists_(items);
 }
 
 function refreshSupplierDatalist(suppliers){
@@ -6631,6 +7922,10 @@ window.editMasterItem=function(id){
   // so the user's normal preference survives the edit (cancelItemEdit puts it
   // back).
   setAddItemForm(true,false);
+  /* The name box now carries a "already in master" hint, and the item just
+     loaded obviously matches itself — re-run it so that reads correctly for
+     THIS item (sarvEditingItemId is set above, which is what excludes it). */
+  miSyncItemNameHint_();
   byId('mi_itemName')?.scrollIntoView({behavior:'smooth',block:'center'});
   showToast('✏️ '+(it.item_code||it.name)+' edit ke liye khula — badlaav karke Update Item dabayein');
 };
@@ -10135,10 +11430,17 @@ function lockEntryTypeForEdit_(sel,locked,why){
 }
 function refreshStoreEditUi(){
   const inOn=!!sarvEditingInwardId, outOn=!!sarvEditingOutwardId;
+  // A loaded MD-approved draft is the third thing that owns the Inward panel's
+  // Entry Type and its Submit label, alongside an edit in progress and a type
+  // pinned by an earlier submit. All three land on the same two elements, so
+  // they are resolved here rather than overwriting each other.
+  const draftOn=!!sarvInwDraftActive;
   const ib=byId('inwEditBanner');     if(ib)ib.style.display=inOn?'flex':'none';
   const ibn=byId('inwEditBannerNo');  if(ibn)ibn.textContent=sarvEditingInwardNo||'';
-  const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('💾 Update '+(sarvEditingInwardNo||'Inward')):'Submit Inward';
-  lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn||sarvInwardTypePinned,inOn?'':SARV_TYPE_PINNED_MSG);
+  const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('💾 Update '+(sarvEditingInwardNo||'Inward'))
+                                        :(draftOn?('✅ Submit MD-Approved '+(sarvInwDraftActive.requestNo||'Draft')):'Submit Inward');
+  lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn||sarvInwardTypePinned||draftOn,
+    inOn?'':(draftOn?INW_DRAFT_TYPE_MSG:SARV_TYPE_PINNED_MSG));
   const ob=byId('outEditBanner');     if(ob)ob.style.display=outOn?'flex':'none';
   const obn=byId('outEditBannerNo');  if(obn)obn.textContent=sarvEditingOutwardNo||'';
   // Submit label carries the entry-type wording too, so an ISSUE reads
@@ -11232,6 +12534,17 @@ window.addEventListener('DOMContentLoaded',()=>{
  const stripPendColor_=n=>pNum(n)>0?STRIP_COLOR.pendLeft:STRIP_COLOR.pendDone;
  const stripExcColor_ =n=>pNum(n)>0?STRIP_COLOR.excess:STRIP_COLOR.dim;
  const stripExcBg_    =n=>pNum(n)>0?STRIP_COLOR.excessBg:null;
+ /* ── Caption ka rang ────────────────────────────────────────────────
+    Pehle har caption HAMESHA grey (STRIP_COLOR.muted) chhapta tha, chahe uski
+    value laal ho, hari ho ya jamuni — to "Pending Qty" grey me aur uske saath
+    ka 50 hare me aata tha, aur aankh ko wo ek figure ki do alag cheezein
+    lagti thi. Rang ka poora matlab hi value par simat jaata tha.
+
+    Ab caption apni hi value ka rang leta hai: "Pending Qty: 50" poora hara,
+    "Excess Qty: 12" poora jamuni, "Order Qty: 500" poora kaala. Ek hi niyam,
+    ek hi jagah — teeno renderer (live row, HTML print, native PDF) yahin se
+    padhte hain, to teen copies kabhi alag rang nahi dikha saktin. */
+ const stripLblColor_=s=>(s&&s.c)||STRIP_COLOR.muted;
 
  /* The strip as coloured segments — one list per printed line (Qty, then
     Weight when the PO line carries one). Every segment is
@@ -11308,7 +12621,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      const cy=cell.y+2.9+li*STRIP_LH;
      for(const s of segs){
        if(s.lbl){
-         doc.setFont(undefined,'normal');doc.setTextColor(...hexRgb_(STRIP_COLOR.muted));
+         // Caption apni value ke rang me — dekhein stripLblColor_.
+         doc.setFont(undefined,'normal');doc.setTextColor(...hexRgb_(stripLblColor_(s)));
          const lt=s.lbl+': ',lw=doc.getTextWidth(lt);
          if(cx+lw>right)break;
          doc.text(lt,cx,cy);cx+=lw;
@@ -11563,7 +12877,7 @@ window.addEventListener('DOMContentLoaded',()=>{
             Received / Excess kram me — dono ek hi chaar headings ki do
             parallel rows ki tarah padhti hain. Rang docStripLines_ tay karta
             hai, yahan sirf draw hota hai. */
-         const seg=s=>(s.lbl?('<span style="color:'+STRIP_COLOR.muted+';">'+pEsc(s.lbl)+': </span>'):'')
+         const seg=s=>(s.lbl?('<span style="color:'+stripLblColor_(s)+';">'+pEsc(s.lbl)+': </span>'):'')
            +'<b style="color:'+s.c+';'+(s.bg?('background:'+s.bg+';padding:0 3px;border-radius:2px;'):'')+'">'
            +pEsc(s.t)+'</b>';
          const line=(segs,mt)=>'<div'+(mt?' style="margin-top:1px;"':'')+'>'
@@ -11828,8 +13142,13 @@ window.addEventListener('DOMContentLoaded',()=>{
             rakha hai, isliye ye strip ki apni aakhri line jaisi padhti hai,
             alag row jaisi nahi. */
          const rateNote=docStripRateNote_(bits);
+         /* Beech me (halign:'center'), left par nahi. Ye line ek vaakya hai —
+            PO ka rate, bill ka rate, aur dono ka antar — na ki upar wali do
+            lines jaisi column-wise figures ki qataar. Left par wo unke neeche
+            ek adhoori chauthi qataar jaisi padhti thi; poori width ke beech me
+            wo saaf taur par us item ka rate-statement lagti hai. */
          if(rateNote)body.push([{content:rateNote,colSpan:7,
-           styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'left',fillColor:[248,250,252],
+           styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'center',fillColor:[248,250,252],
              textColor:hexRgb_(docStripRateAlert_(bits)?STRIP_COLOR.alert:STRIP_COLOR.info),
              cellPadding:{top:0,bottom:0.8,left:1.6,right:1.6}}}]);
        }
@@ -14181,6 +15500,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        await SB.from(INWARD_APPROVAL_TABLE)
          .update({used_on:no,used_at:new Date().toISOString()})
          .eq('signature',sig).eq('status','Approved');
+       /* The stamp is also what retires the DRAFT: the Inward form's approved-
+          draft list filters on used_on, so re-reading it here drops the entry
+          that has just been booked out of the picker. Without this the same
+          approved entry would still be offered for loading and could be saved
+          a second time under a second Record No. */
+       loadInwardApprovedDrafts_().then(()=>{renderPoNumberPanel();inwDraftRenderStrip_();})
+         .catch(e=>console.warn('[SARV] Draft list refresh skipped:',e.message||e));
      }catch(e){console.warn('[SARV] Inward approval stamp skipped:',e.message||e);}
      // Repair-Return inward — refresh the Repair Items Tracker so the
      // received/balance figures for the matching outward update immediately.
@@ -14604,6 +15930,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
+   /* …and it is no longer holding anybody's MD-approved draft, so the lock on
+      Qty / Weight / Rate comes off here — the one place every route out of an
+      entry goes through (saved, cancelled, cleared, or another record opened
+      for edit). Done FIRST, before the fields are blanked: unlocking hands the
+      boxes back to the PO / INWARD NB / Nature locks, and the rest of this
+      function re-applies those for the blank form that is left behind. The
+      approval itself is untouched and stays in the list. */
+   sarvInwDraftActive=null;
+   inwDraftApplyLock_();
    refreshStoreEditUi();
    ['invoiceNumber','invoiceDate','partyState','supplierName','inwRemarks',
     'inwMachineName','lotNo','gatePassNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
@@ -14642,6 +15977,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Record No. comes from the series the (possibly pinned) Entry Type belongs
    // to — an INWARD NB form must not be handed an INWARD number.
    if(SB_READY){nextNo((byId('entryTypeSelect')?.value||'')==='INWARD NB'?'NB':'INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
+   /* Re-drawn once more at the very end: Supplier Name has been blanked by
+      now, and the approved-draft strip counts what is waiting FOR THAT
+      supplier — so the count it showed while the form was still filled in is
+      no longer the right one. */
+   inwDraftRenderStrip_();
  }
  function clearOutwardForm(forEdit){
    sarvEditingOutwardId=null;sarvEditingOutwardNo='';

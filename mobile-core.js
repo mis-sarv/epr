@@ -2373,7 +2373,13 @@
                    dikhti hai, taaki wo kisi aise tab me park na ho jaye jo use
                    dikhata hi nahi; Hold hatane ka control sirf isi screen par
                    hai
-                 • jinka PO MD ne LAUTA diya — prRejectedPoOpen
+                 • jinka PO MD ne LAUTA diya, aur jinpar wo lautaya hua kaam
+                   ABHI BAAKI hai — prRejectedPoOpen. "Baaki hai" ka matlab
+                   do cheezein: Cancel My Approval ka raasta khula ho, aur
+                   dobara PO bana na ho. Rework poora ho jaane par (cancel →
+                   sudhaar → dobara sign → naya PO) PR yahan se hat kar Done
+                   me chali jaati hai; pehle wo hamesha ke liye isi Pending me
+                   padi rehti thi.
                    Pehle aisi PR sirf PO Generate ▸ Rejected PO me milti thi.
                    Par wahan sirf approval cancel hoti hai; jo cheez MD ne
                    objection ki (rate, vendor, GST) wo Vendor Rate & Info sheet
@@ -2817,7 +2823,18 @@
             if(!poIds.length) return;
             // approvals comes along for the rejection note rejectPO writes into
             // it, and pdf_url so the rejected PO can still be opened and read.
-            const pq = await SB.from('purchase_orders').select('id,po_no,status,approvals,pdf_url,vendor_name,grand_total').in('id', poIds);
+            /* po_date and created_at come along for ONE question:
+               prRejectedPoAnswered_ — was a fresh PO raised off this PR AFTER
+               the MD sent one back? created_at answers it to the second;
+               po_date is the fallback where the database has no such column,
+               which is why the read is tried twice rather than once. A select
+               naming a column that does not exist is refused WHOLE, so without
+               the retry a database without created_at would lose every PR's PO
+               tag, not just this one figure. */
+            const PO_COLS = 'id,po_no,status,approvals,pdf_url,vendor_name,grand_total,po_date';
+            let pq = await SB.from('purchase_orders').select(PO_COLS + ',created_at').in('id', poIds);
+            if(pq.error && /created_at/i.test(pq.error.message||''))
+                pq = await SB.from('purchase_orders').select(PO_COLS).in('id', poIds);
             if(pq.error) return;
             const livePo = {}, rejPo = {};
             (pq.data||[]).forEach(p => {
@@ -2870,6 +2887,91 @@
     }
     function prRejectedPos(r){ return (r && r._poRejected) || []; }
     function prHasRejectedPo(r){ return prRejectedPos(r).length > 0; }
+    /* ── "Kya ye rejection ab nipat chuki hai?" ──────────────────────
+       Ek MD-rejected PO ka jawaab EK hi cheez hai: usi PR par DOBARA PO ban
+       jaana. Jab tak wo nahi bana, kaam baaki hai; ban gaya, to Purchaser ne
+       jo karna tha kar diya — aur PR ko uski kaam wali list me baithaye rakhna
+       sirf shor hai.
+
+       Pehle ye sawaal pucha hi nahi jaata tha, aur wahi dikkat thi:
+       `_poRejected` kabhi khaali nahi hota (ek Rejected PO hamesha Rejected
+       rehta hai), to Purchaser jab approval cancel karke, rate/vendor sudhar
+       kar dobara sign karte the — jisse turant naya PO ban jaata tha — PR
+       phir bhi Vendor Info ▸ Pending me waise hi padi rehti thi, HAMESHA ke
+       liye. Nayi PO bani hui, maal aana shuru, aur list keh rahi hai "ispar
+       kaam karo".
+
+       Isliye: kya koi ZINDA PO is PR par rejection ke BAAD bana hai?
+         • created_at — database me ho to seconds tak sahi jawaab;
+         • warna PO ka apna gmCeo sign ka stamp — mobile se rework karne par
+           naya sign naye waqt ka hota hai, to yahi batata hai ki PO naya hai;
+         • warna po_date (aadhi raat maan kar) — STORE.html se bana PO
+           Purchaser ka PURANA sign carry karta hai, to uske liye tareekh hi
+           sahara hai.
+       Teeno padhe na jaa sakein to jawaab "nahi" hai — PR dikhti rahegi.
+       Chhupana sirf tab, jab pakka pata ho; shak me kaam kabhi chhupta nahi.
+
+       Ek PR do vendors par bantti hai to ek saath do PO bante hain (dono ka
+       gmCeo stamp aur date wahi). MD un me se ek lauta de, to doosra ZINDA PO
+       rejection se PEHLE ka nikalta hai — "naya" nahi — aur PR theek se
+       dikhti rehti hai. Yahi wajah hai ki sirf "koi zinda PO hai kya" nahi
+       pucha ja raha. */
+    function stampMs_(v){
+        const s = String(v || '').trim();
+        if(!s) return 0;
+        // pStamp(): DD/MM/YYYY HH:MM:SS — Date.parse() isko bharose se nahi
+        // padh sakta (kahin DD/MM, kahin MM/DD), isliye khud tod kar banate hain.
+        let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if(m) return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0), +(m[6]||0)).getTime() || 0;
+        // YYYY-MM-DD (po_date) — LOCAL aadhi raat. Date.parse ise UTC maanta
+        // hai, jo India me 5:30 am ban jaata hai: usi din hui rejection ke
+        // saath tulna tab galat taraf jhukti.
+        m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if(m) return new Date(+m[1], +m[2]-1, +m[3]).getTime() || 0;
+        const t = Date.parse(s);            // ISO (created_at / atIso)
+        return Number.isNaN(t) ? 0 : t;
+    }
+    // Jab ye PO banaya gaya — uparwale teen sources me se jo mil jaye.
+    function poRaisedAtMs_(po){
+        const g = ((po && po.approvals) || {}).gmCeo || {};
+        return stampMs_(po && po.created_at) || stampMs_(g.time) || stampMs_(po && po.po_date);
+    }
+    // Is PR par aayi sabse NAYI rejection ka waqt.
+    function prLastRejectionMs_(r){
+        return prRejectedPos(r).reduce((mx, p) => Math.max(mx, stampMs_(poRejectionAt_(p))), 0);
+    }
+    function prRejectedPoAnswered_(r){
+        const rejAt = prLastRejectionMs_(r);
+        if(!rejAt) return false;            // waqt hi nahi pata — chhupayenge nahi
+        return ((r && r._poLive) || []).some(p => poRaisedAtMs_(p) > rejAt);
+    }
+    /* ── "Is PR par Cancel My Approval ho sakti hai?" ────────────────
+       Rejected PO list ka maqsad EK hi hai: wo PR dikhana jispar Purchaser
+       ABHI <b>Cancel My Approval</b> dabakar, rates/vendor sudhaar kar, dobara
+       sign karke NAYA PO bana sakta hai. Jispar ye raasta band hai, uska card
+       us list me sirf ek band darwaza hai.
+
+       Yahi teen shartein canCancelApproval() bhi lagata hai (myStage='gmCeo'
+       wale Purchaser ke liye) — par wo `currentModule` / `myStage` jaise
+       screen-ke-waqt ke globals padhta hai, aur ye predicate badge ke count
+       se bhi pucha jaata hai (allRejectedPos_ kisi bhi tab par chal sakta
+       hai). Isliye yahan wahi sawaal bina un globals ke pucha gaya hai:
+       warna list me PR dikhti aur badge kuch aur ginta.
+
+       prPoLocked_ ek hi jagah likha hai aur prLockedByPo bhi ab wahi padhta
+       hai — do copy hoti to ek din dono alag padhti. Rejected PO
+       DEAD_PO_STATUSES me hai, yani _poLive me hi nahi, to wo khud kabhi lock
+       nahi karta; ek hi PR ke doosre vendor ka PO jo MD approve kar chuke hain
+       — wo karta hai, aur theek karta hai. */
+    function prPoLocked_(r){
+        return ((r && r._poLive) || []).some(p => !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
+    }
+    function prReworkPossible_(r){
+        const a = (r && r.approvals) || {};
+        return !!a.gmCeo            // Purchaser ki approval khadi hai — cancel karne layak
+            && !a.md && !a.vendor   // aage kisi stage ne sign nahi kiya
+            && !prPoLocked_(r);     // koi live PO MD se aage nahi badh gaya
+    }
     /* ── "Is PR par MD ka lautaya PO abhi bhi khula hai" ──────────────
        EK hi jagah ye sawaal tay hota hai, aur DO list ise padhti hain:
          • Vendor Info ▸ Pending   — yahan kaam dobara shuru hota hai
@@ -2887,11 +2989,38 @@
        hota hi nahi (Rejected PO hamesha Rejected rehta hai) aur PR dono
        list me hamesha ke liye baitha rehta, nipat jaane ke baad bhi.
 
-       Cancelled PR baahar hai — uspar koi dobara kaam nahi karega. */
+       Cancelled PR baahar hai — uspar koi dobara kaam nahi karega.
+
+       DO shartein isme ab aur hain, aur dono ek hi baat kehti hain: ye list
+       sirf wo PR dikhaye jispar Purchaser ABHI Cancel My Approval → sudhaar →
+       dobara sign karke NAYA PO bana sakta hai.
+
+         • prReworkPossible_ — wo raasta khula hai ya nahi. (Pehle yahan sirf
+           `approvals.gmCeo` dekha jaata tha, jo canCancelApproval ki teen
+           shartein me se ek hi hai: ek split PR ka doosra PO MD approve kar
+           chuke hon, to approval cancel hoti hi nahi — aur PR Rejected PO me
+           ek band darwaze wale 🔒 card ki tarah padi rehti thi.)
+         • !prRejectedPoAnswered_ — naya PO BAN CHUKA hai, yani rejection ka
+           jawaab de diya gaya. Iske bina Purchaser ka rework poora hone ke
+           baad bhi PR Vendor Info ▸ Pending aur Rejected PO dono me HAMESHA
+           ke liye padi rehti thi (cancel → sudhaar → dobara sign → naya PO
+           ban gaya, par PR wahin).
+
+       Dono shartein YAHIN — ek hi jagah — hain, isliye Vendor Info ▸ Pending
+       aur PO Generate ▸ Rejected PO ek saath saaf hote hain; ye wahi predicate
+       hai jise badge ka count bhi padhta hai, to teeno kabhi alag nahi padte.
+
+       Jo PR in shartein par hat jaati hai wo KAHIN nahi khoti: Vendor Info ▸
+       Done aur PO Generate ▸ Done me apne 🚫 Rejected PO tag ke saath dikhti
+       hai (ye tag prHasRejectedPo padhta hai, ye predicate nahi), MD ka remark
+       modal me poora khulta hai (renderMdRejectionNote → prRejectedPos), aur
+       lock wali PR par wahi 🔒 Cancel My Approval button Done me milta hai jo
+       wajah bhi batata hai. Sirf KAAM ki list saaf hoti hai. */
     function prRejectedPoOpen(r){
         return prHasRejectedPo(r)
-            && !!(r.approvals||{}).gmCeo
-            && (r.status||'') !== 'Cancelled';
+            && (r.status||'') !== 'Cancelled'
+            && prReworkPossible_(r)
+            && !prRejectedPoAnswered_(r);
     }
     /* One line naming who sent it back and when — the card's headline. The
        remark itself is printed under it, and in full in the modal. */
@@ -4303,7 +4432,7 @@
                 ? `<div class="card-action act">✍️ Tap karein — Approve ya Reject</div>`
                 : (pend
                     ? `<div class="card-action wait">⏳ MD ke faisle ka intezaar</div>`
-                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approve ho chuka — Store save kar sakta hai' : '✖ Reject — Store ko values theek karni hongi'}</div>`);
+                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approve ho chuka — Store ke Inward form me draft save hai' : '✖ Reject — Store ko values theek karni hongi'}</div>`);
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
@@ -4392,7 +4521,14 @@
             note.innerHTML = inwAppPending(r)
                 ? '👁 <b>View only</b> — faisla sirf MD karte hain'
                 : (r.status === 'Approved'
-                    ? '✔ <b>Approved</b> — Store ab yahi entry Submit karke save kar sakta hai'
+                    /* Approving does not just unlock the Submit button any
+                       more: STORE.html keeps the approved request as a DRAFT in
+                       the Inward form's PO Number list, with these exact Qty /
+                       Weight / Rate locked, and books it whenever the
+                       paperwork is ready. Said here because "go and type it
+                       again" was the old instruction and is no longer true. */
+                    ? '✔ <b>Approved</b> — Store ke Inward form ki PO Number list me ye draft save hai; '
+                      + 'inhi Qty / Weight / Rate par wo jab chahe Submit kar sakta hai'
                     : '✖ <b>Rejected</b> — Store ko values theek karke dobara bhejni hongi');
             note.style.display = 'block';
         }
@@ -4412,7 +4548,8 @@
         }
         const label = r.request_no || ('#' + r.id);
         if(!confirm(decision === 'Approved'
-            ? ('"' + label + '" approve karein?\n\nStore wahi Inward entry Submit karke save kar payega.')
+            ? ('"' + label + '" approve karein?\n\nYe entry Store ke Inward form me DRAFT ban kar save ho jayegi — '
+               + 'inhi Qty / Weight / Rate par, locked. Store jab chahe ise Submit kar sakta hai.')
             : ('"' + label + '" reject karein?\n\nStore tab tak ye Inward save nahi kar payega.'))) return;
         ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
             const b = document.getElementById(id); if(b) b.disabled = true;
@@ -4436,7 +4573,7 @@
             await renderList();
             alert((decision === 'Approved' ? '✔ ' : '✖ ') + label + ' — ' + decision + '.\n\n'
                 + (decision === 'Approved'
-                    ? 'Store ko bol dein ki wahi entry dobara Submit kare.'
+                    ? 'Store ke Inward form me ye draft save ho gaya hai — wo jab chahe Submit kar lega.'
                     : 'Store ko values theek karni hongi.'));
         }catch(err){
             alert('Error: ' + (err.message || err));
@@ -5618,10 +5755,41 @@
             }).join('')
             // The way out, only for the person who can take it — an MD reading
             // their own rejection back does not cancel anybody's approval.
-            + (currentModule === 'PR' && canActIn('POGEN')
-                ? `<div class="md-reject-foot">Sudhaar ka raasta: <b>PO Generate ▸ Rejected PO</b> me <b>Cancel My Approval</b> dabayein, PR / rates theek karein, phir dobara sign karein — naya PO ban jayega.</div>`
-                : '');
+            + (currentModule === 'PR' && canActIn('POGEN') ? prRejectionFootHtml_(entry) : '');
         box.style.display = 'block';
+    }
+    /* What to DO about a rejection, for the Purchaser who can do it. Three
+       different answers, because there are three different situations — and
+       the old single line ("Cancel My Approval dabayein…") was wrong in two of
+       them: it kept pointing at a Rejected PO card that, by design, is no
+       longer in that list, and at a Cancel button that was either unnecessary
+       or dead. Same three states Rejected PO itself is built on, read in the
+       same order. */
+    function prRejectionFootHtml_(r){
+        const foot = s => `<div class="md-reject-foot">${s}</div>`;
+        const nos = ((r && r._poNos) || []).join(', ');
+        if(prRejectedPoAnswered_(r)){
+            // Jawaab de diya gaya — naya PO ban chuka hai.
+            const rejAt = prLastRejectionMs_(r);
+            const fresh = ((r && r._poLive) || []).filter(p => poRaisedAtMs_(p) > rejAt).map(p => p.po_no);
+            return foot(`✅ Is PR par rejection ke BAAD naya PO ban chuka hai`
+                + (fresh.length ? ` — <b>${escText(fresh.join(', '))}</b>` : '')
+                + `. Ye rejection nipat gayi, isliye PR ab <b>Vendor Info ▸ Pending</b> aur `
+                + `<b>Rejected PO</b> me nahi dikhti — ye remark sirf record ke liye hai.`);
+        }
+        if(prPoLocked_(r)){
+            // Raasta band: approval cancel ho hi nahi sakti.
+            return foot(`🔒 PO <b>${escText(nos || '-')}</b> MD approve kar chuke hain, is liye is PR par `
+                + `<b>Cancel My Approval</b> ab nahi ho sakti — aur isi wajah se ye PR `
+                + `<b>Rejected PO</b> list me nahi hai. Jo items is rejected PO me the unka naya PO `
+                + `<b>STORE.html</b> ke PO desk se banega (unki qty wahan dobara pending dikhti hai).`);
+        }
+        if(!((r && r.approvals) || {}).gmCeo)
+            // Approval pehle se cancel ho chuki hai — ab sirf sudhaar aur sign.
+            return foot(`↩ Aapki approval cancel ho chuki hai. Ab <b>Vendor Info</b> me rates / vendor `
+                + `theek karein aur <b>PO Generate</b> me dobara sign karein — naya PO ban jayega.`);
+        return foot(`Sudhaar ka raasta: <b>PO Generate ▸ Rejected PO</b> me <b>Cancel My Approval</b> `
+            + `dabayein, PR / rates theek karein, phir dobara sign karein — naya PO ban jayega.`);
     }
 
     function toggleVendorInfo(){
@@ -7133,8 +7301,14 @@
     // doesn't lock the PR: cancelling the approval cancels that PO too. Once
     // MD has approved it, or it has moved on, the PR stays locked.
     const PRE_MD_PO_STATUSES = ['Generated', 'GM/CEO Approved'];
+    /* The lock test itself lives in prPoLocked_, up with the rejected-PO
+       helpers, because the Rejected PO list is decided by the same question
+       and a second copy of it here would one day read differently from that
+       one — the list would offer a PR whose Cancel button is dead, or hide one
+       whose button works. This wrapper only adds the module guard its own
+       callers need (a PO has no PR to be locked by). */
     function prLockedByPo(item){
-        return currentModule === 'PR' && (item._poLive||[]).some(p => !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
+        return currentModule === 'PR' && prPoLocked_(item);
     }
 
     function canCancelApproval(item){
