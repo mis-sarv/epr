@@ -55,6 +55,13 @@
   let dmBulkRows = [];          // [{rowId, file, previewUrl}]
   let dmCatalogue = [];         // pichhli baar generate kiya hua selection
   const dmImgCache = new Map(); // url → Promise<{dataUrl,w,h,fmt}|null>
+  /* design_master.design_sku_no column hai ya nahi — DESIGN_SKU_MIGRATION.sql
+     chali hai ya nahi. null = abhi pata nahi. Migration se pehle bhi screen
+     waisi hi chalti hai: SKU ke boxes dikhte hain par us ek column ko insert /
+     update se chhod diya jaata hai, warna poora save hi fail ho jaata (ek
+     anjaan column par Postgres poori row thukra deta hai). Load par pehli
+     baar pata chalta hai — dmDesigns ki pehli row me key hai ya nahi. */
+  let dmHasSku = null;
 
   /* ── chhote helpers ─────────────────────────────────────────────────── */
   const q = id => document.getElementById(id);
@@ -224,7 +231,13 @@
     try {
       dmDesigns = await dmLoadPromise;
       dmLoaded = true;
+      /* `select *` lauta ta hai jo columns table me SACH ME hain — to pehli row
+         me key ka hona hi iska jawab hai. Ek bhi design na ho to null rehta
+         hai aur pehle save par hi pata chalta hai (skuPatch dono soorat
+         sambhal leta hai). */
+      if (dmDesigns.length) dmHasSku = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'design_sku_no');
       setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      dmSkuNotice();
       renderAll();
       if (force) toast('Design Master refresh ho gaya — ' + dmDesigns.length + ' designs.', 'success');
     } catch (e) {
@@ -243,6 +256,59 @@
   function findByNo(no){
     const n = up(no);
     return dmDesigns.find(d => up(d.design_no) === n) || null;
+  }
+  /* ── DESIGN SKU NO ───────────────────────────────────────────────────
+     Design No design ki pehchaan hai; SKU No use bechne / stock karne ki. Do
+     alag cheezein, isi liye do alag column.
+
+     skuPatch() ek hi jagah tay karta hai ki ye column insert / update me
+     jaayega ya nahi — migration se pehle wo key chhod di jaati hai, warna
+     Postgres poori row thukra deta aur design hi save na hota. Teeno save
+     raste (Create New, Bulk row, Edit) isi se guzarte hain, to teeno ek hi
+     tarah behave karte hain. */
+  function skuPatch(v){
+    if (dmHasSku === false) return {};
+    return { design_sku_no: up(v) || null };
+  }
+  // Migration na chali ho to ye ek baar saaf-saaf keh diya jaata hai — warna
+  // bhara hua SKU box chup-chaap save hone se reh jaata.
+  let dmSkuWarned = false;
+  function dmSkuNotice(){
+    if (dmHasSku !== false || dmSkuWarned) return;
+    dmSkuWarned = true;
+    toast('Design SKU No save nahi hoga — pehle DESIGN_SKU_MIGRATION.sql Supabase SQL Editor me chalayein.', 'warn');
+  }
+  /* Yahi SKU kisi DOOSRE design par pehle se hai? Rok nahi, sirf sawaal:
+     ek typo pakad me aata hai, par jaan-boojh kar ek SKU do design par rakhna
+     bhi mumkin rehta hai (database par UNIQUE nahi lagaya gaya — wajah
+     DESIGN_SKU_MIGRATION.sql me likhi hai). `exceptId` khud us design ko chhod
+     deta hai jiska Edit chal raha hai. */
+  function skuClash(v, exceptId){
+    const s = up(v); if (!s) return null;
+    return dmDesigns.find(d => d.id !== exceptId && up(d.design_sku_no) === s) || null;
+  }
+  function skuOkToSave(v, exceptId){
+    const hit = skuClash(v, exceptId);
+    if (!hit) return true;
+    return confirm('SKU No ' + up(v) + ' pehle se design ' + hit.design_no + ' par hai.\n\n'
+      + 'Phir bhi save karna hai?');
+  }
+  /* Har design_master write isi se guzarta hai (Create New, Bulk row, Edit).
+     Wajah: ek anjaan column par Postgres POORI row thukra deta hai, aur ek
+     khaali database par load ke waqt dekhne ko koi row hi nahi thi, to
+     dmHasSku null reh jaata hai. Us soorat me pehla save khud pata kar leta
+     hai — column error aaya to design_sku_no hata kar dobara bheja jaata hai
+     (payload me se bhi hata diya jaata hai, taaki caller ka local mirror wo
+     value na rakhe jo database me gayi hi nahi) aur aage ke saare save usi
+     faisle par chalte hain. */
+  async function dmWriteDesign(run, payload){
+    let r = await run(payload);
+    if (r.error && /design_sku_no/i.test(r.error.message || '') && ('design_sku_no' in payload)) {
+      dmHasSku = false; dmSkuWarned = false; dmSkuNotice();
+      delete payload.design_sku_no;
+      r = await run(payload);
+    }
+    return r;
   }
 
   /* ════════════════════════════════════════════════════════════════════
@@ -302,6 +368,9 @@
     switch (kind) {
       case 'party':   return uniq('party_name');
       case 'brand':   return uniq('brand_name');
+      // SKU ki koi fixed list nahi hoti — jo database me hain wahi suggest hote
+      // hain, taaki ek hi SKU do tarah se na likha jaaye.
+      case 'sku':     return uniq('design_sku_no');
       case 'supplier':return merge('supplier_name');
       case 'unit':    return merge('design_unit');
       case 'bed':     return merge('bed_size');
@@ -320,6 +389,7 @@
   function renderDatalists(){
     const live = dmDesigns.filter(d => d.status === 'LIVE');
     fillList('dmShadeList', dmValues('shade'));
+    fillList('dmSkuList', dmValues('sku'));
     fillList('dmPartyList', dmValues('party'));
     fillList('dmBrandList', dmValues('brand'));
     fillList('dmSupplierList', dmValues('supplier'));
@@ -465,6 +535,7 @@
   }
   // Which bulk column reads which list.
   const DM_BULK_PICKERS = [
+    ['b-sku', 'sku'],
     ['b-party', 'party'], ['b-brand', 'brand'], ['b-supplier', 'supplier'],
     ['b-unit', 'unit'], ['b-bed', 'bed'],
     ['b-type', 'type'], ['b-mono', 'mono'], ['b-quality', 'quality'],
@@ -473,6 +544,10 @@
   /* Create New, Add Matching aur Edit popup ke boxes — inme bhi wahi asli
      dropdown, taaki Dropdown Master me add hui value yahan list me dikhe. */
   const DM_FORM_PICKERS = [
+    // SKU ki koi fixed list nahi — picker sirf wahi SKU dikhata hai jo database
+    // me pehle se hain, taaki ek hi SKU do tarah se na likha jaaye. Naya SKU
+    // bilkul type kiya ja sakta hai (<input> hi rehta hai).
+    ['dmDesignSkuNo', 'sku'], ['dmEditDesignSkuNo', 'sku'],
     ['dmDesignUnit', 'unit'], ['dmBedSize', 'bed'], ['dmBlanketQuality', 'quality'],
     ['dmDesignType', 'type'], ['dmMonopoly', 'mono'], ['dmFrameType', 'frame'],
     ['dmPartyName', 'party'], ['dmBrandName', 'brand'], ['dmSupplierName', 'supplier'],
@@ -509,6 +584,7 @@
      ban kar dikhte hain, har chip ka apna ✖ aur ek "Clear All". */
   const DM_LIVE_COLS = [
     { id:'no',     ph:'Design No',       get:d => d.design_no },
+    { id:'sku',    ph:'Design SKU No',   get:d => d.design_sku_no || '' },
     { id:'mono',   ph:'Monopoly',        get:d => d.monopoly || 'NO' },
     { id:'type',   ph:'Type',            get:d => d.design_type || '' },
     { id:'party',  ph:'Party',           get:d => d.party_name || '' },
@@ -542,8 +618,8 @@
   // Global search box — wahi purana vyavhaar, filters se alag.
   function dmLiveSearchPass(d, term){
     if (!term) return true;
-    return [d.design_no, d.party_name, d.brand_name, d.supplier_name,
-            d.design_type, d.design_unit, d.blanket_quality]
+    return [d.design_no, d.design_sku_no, d.party_name, d.brand_name, d.supplier_name,
+            d.design_type, d.design_unit, d.bed_size, d.blanket_quality]
       .concat((d.matchings || []).map(m => m.matching_name))
       .some(v => up(v).indexOf(term) >= 0);
   }
@@ -770,7 +846,7 @@
 
     const tb = q('dmLiveTableBody'); if (!tb) return;
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="15" class="dm-empty-row">' +
+      tb.innerHTML = '<tr><td colspan="16" class="dm-empty-row">' +
         (all.length ? 'Is khoj / filter se koi design nahi mila.' : 'Koi Live Design nahi hai — “Create New” se shuru karein.') +
         '</td></tr>';
       return;
@@ -782,6 +858,8 @@
             '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Discard" onclick="dmSetStatus(' + d.id + ',\'DISCARDED\')">🗑️</button></td>' +
         '<td>' + thumbHtml(dmImgSrc(m), d.design_no) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
+        '<td>' + (d.design_sku_no ? '<strong style="color:#7c3aed;">' + esc(d.design_sku_no) + '</strong>'
+                                  : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + monoCell(d.monopoly) + '</td>' +
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
@@ -803,7 +881,7 @@
     const tb = q('dmDiscardedTableBody'); if (!tb) return;
     const rows = dmDesigns.filter(d => d.status === 'DISCARDED');
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="12" class="dm-empty-row">Koi discarded design nahi hai.</td></tr>';
+      tb.innerHTML = '<tr><td colspan="13" class="dm-empty-row">Koi discarded design nahi hai.</td></tr>';
       return;
     }
     tb.innerHTML = rows.map(d =>
@@ -811,6 +889,7 @@
         '<td><button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmSetStatus(' + d.id + ',\'LIVE\')">♻️ Restore</button></td>' +
         '<td>' + thumbHtml(dmImgSrc(masterOf(d)), d.design_no) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
+        '<td>' + (d.design_sku_no ? esc(d.design_sku_no) : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + monoCell(d.monopoly) + '</td>' +
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
@@ -857,18 +936,30 @@
     const btn = ev.target.querySelector('button[type=submit]');
     const designNo = up(q('dmDesignNo').value);
     if (!designNo) { toast('DESIGN NO zaroori hai.', 'error'); return; }
+    /* SKU No Create New par ZAROORI hai. Box par `required` bhi laga hai, par
+       wo sirf browser ka form check hai — asli rok yahan, taaki kisi aur raste
+       se bhi khaali SKU andar na jaaye. */
+    const skuNo = up(q('dmDesignSkuNo').value);
+    if (!skuNo) {
+      q('dmDesignSkuNo').focus();
+      toast('DESIGN SKU NO zaroori hai.', 'error');
+      return;
+    }
 
     await loadDesigns();
     if (findByNo(designNo)) {
       toast('Design No ' + designNo + ' pehle se hai — “Add Matching” use karein.', 'warn');
       return;
     }
+    // Wahi SKU doosre design par? Rok nahi — sirf ek sawaal (skuOkToSave).
+    if (!skuOkToSave(skuNo, null)) { q('dmDesignSkuNo').focus(); return; }
+    dmSkuNotice();
 
     const file = (q('dmInitialImage').files || [])[0] || null;
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
     setSync('Saving…', 'busy');
     try {
-      const ins = await SB.from('design_master').insert({
+      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(skuNo), {
         design_no:       designNo,
         party_name:      q('dmPartyName').value.trim(),
         brand_name:      q('dmBrandName').value.trim(),
@@ -884,7 +975,7 @@
         small_frame:     num(q('dmSmallFrame').value),
         status:          'LIVE',
         created_by:      whoAmI()
-      }).select().single();
+      }));
       if (ins.error) throw ins.error;
       const design = ins.data;
 
@@ -1037,7 +1128,14 @@
       tr.id = rowId;
       tr.innerHTML =
         '<td><img src="' + previewUrl + '" class="dm-thumb" style="width:58px;height:58px;" alt=""></td>' +
-        '<td><input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;"></td>' +
+        /* Design No aur uske neeche SKU No, ek hi column me — dono ek hi
+           design ki do pehchaan hain, aur saath rakhne se bharte waqt aankh
+           ek jagah rehti hai. SKU yahan OPTIONAL hai: bulk se purani sheet
+           chadhti hai jiske saare SKU pata nahi hote, aur unhe rok dena poora
+           data hi atka deta — jo chhoot jaaye wo baad me Edit se lag jaata hai. */
+        '<td><div class="dm-bulk-col">' +
+          '<input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;">' +
+          '<input type="text" class="dm-bulk-in b-sku" list="dmSkuList" oninput="this.value=this.value.toUpperCase()" placeholder="SKU No (optional)" style="font-weight:700;color:#7c3aed;"></div></td>' +
         '<td><div class="dm-bulk-col">' +
           '<input type="text" class="dm-bulk-in b-party" list="dmPartyList" placeholder="Party">' +
           '<input type="text" class="dm-bulk-in b-brand" list="dmBrandList" placeholder="Brand">' +
@@ -1101,6 +1199,18 @@
     return Array.from(document.querySelectorAll('#dmBulkTableBody tr'))
       .some(o => o !== tr && up((o.querySelector('.b-design') || {}).value) === no);
   }
+  /* Is row ka SKU kahin aur bhi hai? Rok nahi, sirf chetawani — do sheet me ek
+     hi SKU jaan-boojh kar bhi ho sakta hai. Laut ta hai: wo jagah jahan mila
+     ("design 5002" ya "isi sheet ki doosri row"), warna ''. */
+  function bulkSkuClash(tr){
+    const s = up((tr.querySelector('.b-sku') || {}).value);
+    if (!s) return '';
+    const onScreen = Array.from(document.querySelectorAll('#dmBulkTableBody tr'))
+      .some(o => o !== tr && up((o.querySelector('.b-sku') || {}).value) === s);
+    if (onScreen) return 'isi sheet ki doosri row';
+    const hit = skuClash(s, null);
+    return hit ? ('design ' + hit.design_no) : '';
+  }
   function bulkMark(tr, txt, color, title){
     const s = tr.querySelector('.b-state');
     if (!s) return;
@@ -1120,7 +1230,7 @@
     const no = up(g('.b-design'));
     if (findByNo(no)) { bulkMark(tr, '⚠ pehle se hai', '#b45309'); return 'skipped'; }
     try {
-      const ins = await SB.from('design_master').insert({
+      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(g('.b-sku')), {
         design_no: no,
         party_name: g('.b-party'), brand_name: g('.b-brand'),
         supplier_name: g('.b-supplier') || null,
@@ -1130,7 +1240,7 @@
         blanket_quality: g('.b-quality'), frame_type: g('.b-frame'),
         large_frame: num(g('.b-large')), medium_frame: num(g('.b-medium')), small_frame: num(g('.b-small')),
         status: 'LIVE', created_by: whoAmI()
-      }).select().single();
+      }));
       if (ins.error) throw ins.error;
 
       let img = { path: null, url: null };
@@ -1171,6 +1281,13 @@
       toast('Ye Design No niche / upar kisi aur row me bhi hai — pehle wo theek karein.', 'error');
       return;
     }
+    // SKU kahin aur bhi hai? Rok nahi — ek sawaal, jaise Create New par.
+    const clash = bulkSkuClash(tr);
+    if (clash) {
+      tr.scrollIntoView({ block: 'center' });
+      if (!confirm('SKU No ' + up((tr.querySelector('.b-sku') || {}).value) + ' pehle se ' + clash + ' par hai.\n\nPhir bhi save karna hai?')) return;
+    }
+    dmSkuNotice();
     const btn = tr.querySelector('.b-save');
     if (btn) { btn.disabled = true; btn.textContent = '⏳ …'; }
     setSync('Saving…', 'busy');
@@ -1209,6 +1326,19 @@
       }
       seen.add(no);
     }
+    /* SKU ki jaanch Design No se ALAG hai aur sirf poochti hai: ek hi SKU do
+       jagah ho sakta hai. Poori list ke clash ek baar me ginke ek hi sawaal
+       pucha jaata hai — 40 photos ki sheet par 40 confirm box nikalna kisi ke
+       kaam ka nahi. */
+    const clashes = [];
+    for (const tr of trs) {
+      const where = bulkSkuClash(tr);
+      if (where) clashes.push(up((tr.querySelector('.b-sku') || {}).value) + ' → ' + where);
+    }
+    if (clashes.length && !confirm(clashes.length + ' SKU No pehle se kahin hain:\n\n'
+        + clashes.slice(0, 10).join('\n') + (clashes.length > 10 ? '\n…' : '')
+        + '\n\nPhir bhi sab save karna hai?')) return;
+    dmSkuNotice();
 
     const btn = document.querySelector('#dmBulkTableContainer .dm-table-foot .dm-btn');
     if (btn) btn.disabled = true;
@@ -1264,6 +1394,7 @@
     const d = dmDesigns.find(x => x.id === id); if (!d) return;
     q('dmEditDesignId').value       = d.id;
     q('dmEditDesignNo').value       = d.design_no || '';
+    q('dmEditDesignSkuNo').value    = d.design_sku_no || '';
     q('dmEditDesignUnit').value     = d.design_unit || '';
     q('dmEditBedSize').value        = d.bed_size || '';
     q('dmEditBlanketQuality').value = d.blanket_quality || '';
@@ -1392,7 +1523,13 @@
       toast('Design No ' + newNo + ' kisi aur design ka hai.', 'error');
       return;
     }
-    const patch = {
+    /* SKU Edit par optional hai (purane design ka SKU pata na ho to record
+       kholna hi band ho jaata), par bhara hua SKU doosre design par ho to
+       poocha jaata hai — wahi niyam jo Create New par hai. */
+    const newSku = up(q('dmEditDesignSkuNo').value);
+    if (!skuOkToSave(newSku, id)) { q('dmEditDesignSkuNo').focus(); return; }
+    dmSkuNotice();
+    const patch = Object.assign(skuPatch(newSku), {
       design_no:       newNo,
       design_unit:     q('dmEditDesignUnit').value.trim(),
       bed_size:        q('dmEditBedSize').value.trim(),
@@ -1406,10 +1543,10 @@
       party_name:      q('dmEditPartyName').value.trim(),
       brand_name:      q('dmEditBrandName').value.trim(),
       supplier_name:   q('dmEditSupplierName').value.trim() || null
-    };
+    });
     setSync('Saving…', 'busy');
     try {
-      const r = await SB.from('design_master').update(patch).eq('id', id);
+      const r = await dmWriteDesign(p => SB.from('design_master').update(p).eq('id', id), patch);
       if (r.error) throw r.error;
       /* Design No badla to matchings ka design_no bhi saath chalna chahiye —
          catalogue aur image folder dono isi naam se chalte hain. Purani
@@ -1459,6 +1596,7 @@
   const DM_CAT_BLANK = '— blank —';
   const DM_CAT_FILTERS = [
     { name:'dmUnitFilter',     box:'dmUnitFilterBox',     count:'dmUnitFilterCount',     get:d => d.design_unit },
+    { name:'dmBedFilter',      box:'dmBedFilterBox',      count:'dmBedFilterCount',      get:d => d.bed_size },
     { name:'dmQualityFilter',  box:'dmQualityFilterBox',  count:'dmQualityFilterCount',  get:d => d.blanket_quality },
     { name:'dmPartyFilter',    box:'dmPartyFilterBox',    count:'dmPartyFilterCount',    get:d => d.party_name },
     { name:'dmBrandFilter',    box:'dmBrandFilterBox',    count:'dmBrandFilterCount',    get:d => d.brand_name },
@@ -1466,6 +1604,10 @@
     { name:'dmTypeFilter',     box:'dmTypeFilterBox',     count:'dmTypeFilterCount',     get:d => d.design_type },
     { name:'dmFramesFilter',   box:'dmFramesFilterBox',   count:'dmFramesFilterCount',   get:d => String(totalFrames(d)) },
     { name:'dmMonopolyFilter', box:'dmMonopolyFilterBox', count:'dmMonopolyFilterCount', get:d => d.monopoly || 'NO' },
+    /* SKU ka apna multi-select, Design No ke text box ke saath. Dono alag
+       cheezein hain — Design No box me naam type hote hain, SKU yahan list se
+       tick hote hain, aur dono AND se lagte hain. */
+    { name:'dmSkuFilter',      box:'dmSkuFilterBox',      count:'dmSkuFilterCount',      get:d => d.design_sku_no },
   ];
   const dmCatState = {};   // {filterName: {value: false}} — sirf un-tick yaad rehta hai
 
@@ -1526,6 +1668,37 @@
       const n = ctx.live.filter(d => dmCatPass(ctx, d, null)).length;
       mc.textContent = n + ' / ' + ctx.live.length + ' designs is filter me aate hain';
     }
+    /* Neeche ki preview filters ke saath hi badal jaati hai — koi button dabane
+       ki zaroorat nahi. Ye ek hi call har raste ko dhak leti hai (checkbox,
+       All / Clear, Reset All, Design No box, tab khulna, Dropdown Master ka
+       refresh), kyunki un sab ka ant isi function par hota hai. */
+    dmCatSchedulePreview();
+  }
+
+  /* ══ AUTO-PREVIEW ════════════════════════════════════════════════════
+     Filter chunte hi preview bane — par har tick par poora catalogue dobara
+     banana sasta nahi hai: ek design ki ek cover page + har 8 shades ki ek
+     page, saath me unki photos. Isi liye do cheezein:
+
+       • DEBOUNCE — tez-tez tick karne par beech ke render chhod diye jaate
+         hain, sirf aakhri chalta hai.
+       • AUTO ki HADD — auto-preview sirf pehle DM_CAT_AUTO_MAX designs
+         dikhati hai aur neeche likh deti hai ki kitne bache. "⚡ Generate Full
+         Preview" us hadd ke bina chalti hai. PDF par is hadd ka koi asar
+         NAHI hai — buildCataloguePdf poori list par chalti hai (generatePreview
+         hadd ke saath bhi dmCatalogue me poora selection rakhti hai). */
+  const DM_CAT_AUTO_MAX = 40;
+  let dmCatPreviewTimer = null;
+  function dmCatSchedulePreview(){
+    const pane = q('dmCataloguePane');
+    // Tab khuli hi nahi to kuch banane ka matlab nahi — Live tab par kaam
+    // karte waqt har save par poora catalogue render karna bekaar kharch hai.
+    if (!pane || !pane.classList.contains('active')) return;
+    clearTimeout(dmCatPreviewTimer);
+    dmCatPreviewTimer = setTimeout(() => {
+      try { generatePreview({ max: DM_CAT_AUTO_MAX }); }
+      catch (e) { console.warn('[DM] auto preview skipped:', e.message || e); }
+    }, 220);
   }
 
   function dmCatFilterChanged(cb){
@@ -1558,7 +1731,10 @@
 
   function catStatus(msg){ const el = q('dmCatStatus'); if (el) el.textContent = msg || ''; }
 
-  function generatePreview(){
+  /* opts.max = screen par kitne designs render karne hain (auto-preview ki
+     hadd). dmCatalogue me hamesha POORA selection jaata hai aur poora hi
+     return hota hai, isi liye PDF is hadd se bilkul achhoot rehti hai. */
+  function generatePreview(opts){
     const area = q('dmCataloguePrintArea'); if (!area) return [];
     dmCatalogue = selectedDesigns();
     if (!dmCatalogue.length) {
@@ -1567,7 +1743,15 @@
       catStatus('');
       return [];
     }
-    area.innerHTML = dmCatalogue.map(d => {
+    const max = (opts && opts.max) || 0;
+    const shown = (max && dmCatalogue.length > max) ? dmCatalogue.slice(0, max) : dmCatalogue;
+    const hidden = dmCatalogue.length - shown.length;
+    area.innerHTML = (hidden
+      ? '<div class="dm-cat-more">Neeche pehle <b>' + shown.length + '</b> design dikh rahe hain. '
+        + 'Is filter me <b>' + dmCatalogue.length + '</b> hain — baaki <b>' + hidden + '</b> dekhne ke liye '
+        + '<b>⚡ Generate Full Preview</b> dabayein. <br>'
+        + '<b>PDF par is hadd ka koi asar nahi</b> — Download / Open poore ' + dmCatalogue.length + ' designs ki banti hai.</div>'
+      : '') + shown.map(d => {
       const m = masterOf(d), src = dmImgSrc(m);
       const slaves = (d.matchings || []).filter(x => !m || x.id !== m.id);
       let html =
@@ -1579,8 +1763,10 @@
             esc(m ? m.matching_name : '—') + ' (MASTER)</h2>' +
           '<table class="dm-cat-specs">' +
             '<tr><th>DESIGN NO</th><td><strong>' + esc(d.design_no) + '</strong></td>' +
-                '<th>MONOPOLY</th><td><strong style="color:' + (d.monopoly === 'YES' ? '#dc2626' : 'inherit') + ';">' +
-                esc(d.monopoly || 'NO') + '</strong></td></tr>' +
+                '<th>SKU NO</th><td><strong>' + esc(d.design_sku_no || '—') + '</strong></td></tr>' +
+            '<tr><th>MONOPOLY</th><td><strong style="color:' + (d.monopoly === 'YES' ? '#dc2626' : 'inherit') + ';">' +
+                esc(d.monopoly || 'NO') + '</strong></td>' +
+                '<th>FRAME TYPE</th><td>' + esc(d.frame_type || '—') + '</td></tr>' +
             '<tr><th>PARTY / BRAND</th><td><strong>' + esc(d.party_name || '') + '</strong> (' + esc(d.brand_name || '') + ')</td>' +
                 '<th>DESIGN TYPE</th><td><strong style="color:#2563eb;">' + esc(d.design_type || 'N/A') + '</strong></td></tr>' +
             '<tr><th>UNIT / BED</th><td>' + esc(d.design_unit || '') + ' (' + esc(d.bed_size || '') + ')</td>' +
@@ -1608,11 +1794,14 @@
       }
       return html;
     }).join('');
+    // Page count POORE selection ka — wahi PDF me jaayega, screen par dikh
+    // rahe designs ka nahi.
     const pages = dmCatalogue.reduce((n, d) => {
       const m = masterOf(d);
       return n + 1 + Math.ceil((d.matchings || []).filter(x => !m || x.id !== m.id).length / 8);
     }, 0);
-    catStatus(dmCatalogue.length + ' designs · ~' + pages + ' pages');
+    catStatus(dmCatalogue.length + ' designs · ~' + pages + ' pages'
+      + (hidden ? ' · preview me ' + shown.length : ''));
     return dmCatalogue;
   }
 
@@ -1706,9 +1895,12 @@
           3: { cellWidth: 51 }
         },
         body: [
-          ['DESIGN NO', String(d.design_no || ''), 'MONOPOLY', String(d.monopoly || 'NO')],
-          ['PARTY / BRAND', (d.party_name || '') + ' (' + (d.brand_name || '') + ')', 'DESIGN TYPE', String(d.design_type || 'N/A')],
-          ['UNIT / BED', (d.design_unit || '') + ' (' + (d.bed_size || '') + ')', 'QUALITY', String((m && m.blanket_quality) || d.blanket_quality || '')],
+          ['DESIGN NO', String(d.design_no || ''), 'SKU NO', String(d.design_sku_no || '-')],
+          ['MONOPOLY', String(d.monopoly || 'NO'), 'DESIGN TYPE', String(d.design_type || 'N/A')],
+          ['PARTY / BRAND', (d.party_name || '') + ' (' + (d.brand_name || '') + ')', 'BED SIZE', String(d.bed_size || '-')],
+          // Bed Size apni row le chuki hai (upar), isi liye yahan sirf Unit —
+          // ek hi cheez do jagah chhapne ka koi faida nahi.
+          ['DESIGN UNIT', String(d.design_unit || '-'), 'QUALITY', String((m && m.blanket_quality) || d.blanket_quality || '')],
           ['FRAME TYPE', String(d.frame_type || ''), 'TOTAL FRAMES', String(totalFrames(d))],
           ['FRAMES L / M / S', num(d.large_frame) + ' / ' + num(d.medium_frame) + ' / ' + num(d.small_frame),
            'TOTAL MATCHINGS', String((d.matchings || []).length)],

@@ -514,12 +514,31 @@
                     </div>
                 </div>
 
+                <!-- LOT No. is ISSUE-only.
+                     Two ways in, and they end in the same box so every existing
+                     read/write path (save, edit, PDF) keeps working unchanged:
+                       • "📋 Saved Lot" — the lots that have a saved Trims sheet
+                         (Manufacturing › Trims Manager). Picking one fills the
+                         item rows with that lot's required trims list, with a
+                         per-item sub-row the same way a PO fills an Inward —
+                         see loadTrimsLotIntoOutward in store-core.js;
+                       • typing a lot / batch number straight in, for anything
+                         that has no Trims sheet. -->
                 <div class="grid-4" style="margin-bottom:10px;">
                     <div class="form-group" id="outLotNoFieldGroup" style="display:none;">
-                        <label>LOT No.</label>
-                        <input type="text" class="form-control" id="outLotNo" placeholder="Lot / Batch No." list="dl-lotNo" autocomplete="off">
+                        <label>LOT No. <small style="color:#94a3b8;font-weight:500;">(saved lot chunein — item list auto bharegi)</small></label>
+                        <div id="outLotWidget" style="position:relative;display:flex;gap:6px;align-items:stretch;">
+                            <input type="text" class="form-control" id="outLotNo" placeholder="Lot / Batch No." list="dl-lotNo" autocomplete="off" style="flex:1;min-width:0;">
+                            <button type="button" class="form-control" id="outLotBtn" title="Trims Manager me saved Lot No. ki list"
+                                    style="flex:0 0 auto;width:auto;padding:0 10px;cursor:pointer;white-space:nowrap;font-weight:700;">&#128203; Saved Lot</button>
+                            <div id="outLotPanel" style="display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;min-width:320px;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);max-height:260px;overflow-y:auto;padding:6px;"></div>
+                        </div>
                     </div>
                 </div>
+                <!-- Which Trims sheet the loaded lot came from — order, party,
+                     brand, designs and how many items were pulled in. Same place
+                     and same job as #inwardPoDetails on the Inward panel. -->
+                <div id="outLotDetails" style="display:none;margin:-2px 0 12px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:7px;padding:7px 10px;color:#4c1d95;font-size:11px;font-weight:600;"></div>
 
                 <div class="section-header-row">
                     <h3 class="section-title">Item Configurations</h3>
@@ -1737,6 +1756,10 @@
                             <div class="dm-sec">1. Design Specifications</div>
                             <div class="dm-grid">
                               <div class="dm-fg"><label>DESIGN NO *</label><input type="text" id="dmDesignNo" oninput="this.value=this.value.toUpperCase()" required></div>
+                              <!-- Design SKU No — Design No se alag cheez: Design No design ki
+                                   pehchaan hai, SKU No use bechne / stock karne ki. Create New par
+                                   zaroori; duplicate SKU par app poochti hai (DESIGN_SKU_MIGRATION.sql). -->
+                              <div class="dm-fg"><label>DESIGN SKU NO *</label><input type="text" id="dmDesignSkuNo" list="dmSkuList" oninput="this.value=this.value.toUpperCase()" required placeholder="SKU No..."></div>
                               <div class="dm-fg"><label>DESIGN UNIT *</label><input type="text" id="dmDesignUnit" list="dmUnitList" value="UNIT 1" required></div>
                               <div class="dm-fg"><label>BED SIZE *</label><input type="text" id="dmBedSize" list="dmBedSizeList" value="DOUBLE BED" required></div>
                               <div class="dm-fg"><label>BLANKET QUALITY *</label><input type="text" id="dmBlanketQuality" list="dmQualityList" value="MINK" required></div>
@@ -1822,7 +1845,8 @@
                     <!-- ───────── Bulk Upload ───────── -->
                     <div class="dm-pane" id="dmBulkUploadPane">
                       <div class="dm-sec">Bulk Upload Old Data (Multiple Photos)</div>
-                      <p class="dm-hint">Ek sath apni sabhi purani photos select karein. Photo ka naam apne aap &lsquo;Design No&rsquo; me aa jaayega. Save karne par har photo bucket me <code>design-images/&lt;DESIGN NO&gt;/</code> par chali jaayegi.</p>
+                      <p class="dm-hint">Ek sath apni sabhi purani photos select karein. Photo ka naam apne aap &lsquo;Design No&rsquo; me aa jaayega. Save karne par har photo bucket me <code>design-images/&lt;DESIGN NO&gt;/</code> par chali jaayegi.
+                      <br><b>SKU No</b> yahan optional hai &mdash; purane data ke saare SKU pata nahi hote; jo chhoot jaaye wo baad me Live tab se &#9999;&#65039; Edit karke lag jaata hai.</p>
                       <div class="dm-dropzone">
                         <label>
                           &#128248; Click Here to Select Multiple Photos
@@ -1834,7 +1858,7 @@
                           <thead>
                             <tr>
                               <th style="width:70px;">Image</th>
-                              <th style="width:130px;">Design No</th>
+                              <th style="width:150px;">Design No<br><small style="font-weight:500;color:#64748b;">+ SKU No (optional)</small></th>
                               <th>Party, Brand &amp; Supplier</th>
                               <th>Unit, Size, Type, Monopoly</th>
                               <th>Quality &amp; Frame</th>
@@ -1854,7 +1878,7 @@
                     <!-- ───────── Live ───────── -->
                     <div class="dm-pane" id="dmLivePane">
                       <div class="dm-toolbar">
-                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="&#128269; Design No / Party / Brand / Supplier / Type / Shade se khojein...">
+                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="&#128269; Design No / SKU No / Party / Brand / Supplier / Type / Bed Size / Shade se khojein...">
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" id="dmLiveClearBtn" style="display:none;" onclick="dmClearLiveFilters()" title="Search aur saare column filter khaali kar dein">&#10006; Clear Filters</button>
                         <span class="dm-count" id="dmLiveShown"></span>
                       </div>
@@ -1869,6 +1893,7 @@
                             <tr>
                               <th>Actions</th><th>Photo</th>
                               <th>Design No<span class="im-fbtn" id="dmLF-no" onclick="dmLiveOpenFilter(event,'no')" title="Filter">&#9662;</span></th>
+                              <th>Design SKU No<span class="im-fbtn" id="dmLF-sku" onclick="dmLiveOpenFilter(event,'sku')" title="Filter">&#9662;</span></th>
                               <th>Monopoly<span class="im-fbtn" id="dmLF-mono" onclick="dmLiveOpenFilter(event,'mono')" title="Filter">&#9662;</span></th>
                               <th>Type<span class="im-fbtn" id="dmLF-type" onclick="dmLiveOpenFilter(event,'type')" title="Filter">&#9662;</span></th>
                               <th>Party<span class="im-fbtn" id="dmLF-party" onclick="dmLiveOpenFilter(event,'party')" title="Filter">&#9662;</span></th>
@@ -1894,7 +1919,7 @@
                         <table class="dm-table">
                           <thead>
                             <tr>
-                              <th>Action</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
+                              <th>Action</th><th>Photo</th><th>Design No</th><th>Design SKU No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
                               <th>Supplier</th><th>Unit</th><th>Bed Size</th><th>Discarded On</th><th>Status</th>
                             </tr>
                           </thead>
@@ -1911,6 +1936,7 @@
                         apne aap gayab ho jaate hain jo bache hue designs me kahin nahi hain. Wapas tick karte hi wo lautt
                         aate hain. Kisi column me <b>Clear</b> dabane (saare tick hata dene) par us column se koi design nahi
                         bachta &mdash; isi liye baaki saare filters me bhi koi checkbox nahi dikhega. Wapas tick karte hi sab lautt aata hai.
+                        <br><b>Neeche ki preview apne aap badalti rehti hai</b> &mdash; filter chunte hi, bina kisi button ke.
                       </p>
                       <!-- Saare filter ek doosre par DEPENDENT hain: ek value un-tick
                            karte hi baaki columns me se wo options apne aap gayab ho
@@ -1922,6 +1948,10 @@
                         <div class="dm-fg">
                           <div class="dm-filter-head"><label>DESIGN UNIT <span class="dm-fcount" id="dmUnitFilterCount"></span></label><span><a onclick="dmToggleFilter('dmUnitFilter',true)">All</a> | <a onclick="dmToggleFilter('dmUnitFilter',false)">Clear</a></span></div>
                           <div class="dm-filter-box" id="dmUnitFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
+                          <div class="dm-filter-head"><label>BED SIZE <span class="dm-fcount" id="dmBedFilterCount"></span></label><span><a onclick="dmToggleFilter('dmBedFilter',true)">All</a> | <a onclick="dmToggleFilter('dmBedFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmBedFilterBox"></div>
                         </div>
                         <div class="dm-fg">
                           <div class="dm-filter-head"><label>BLANKET QUALITY <span class="dm-fcount" id="dmQualityFilterCount"></span></label><span><a onclick="dmToggleFilter('dmQualityFilter',true)">All</a> | <a onclick="dmToggleFilter('dmQualityFilter',false)">Clear</a></span></div>
@@ -1952,6 +1982,10 @@
                           <div class="dm-filter-box" id="dmMonopolyFilterBox"></div>
                         </div>
                         <div class="dm-fg">
+                          <div class="dm-filter-head"><label>DESIGN SKU NO <span class="dm-fcount" id="dmSkuFilterCount"></span></label><span><a onclick="dmToggleFilter('dmSkuFilter',true)">All</a> | <a onclick="dmToggleFilter('dmSkuFilter',false)">Clear</a></span></div>
+                          <div class="dm-filter-box" id="dmSkuFilterBox"></div>
+                        </div>
+                        <div class="dm-fg">
                           <div class="dm-filter-head"><label>DESIGN NO (khaali = sab)</label></div>
                           <input type="text" id="dmCatDesignNos" placeholder="5001, 5002, 5003 ..." oninput="this.value=this.value.toUpperCase()">
                         </div>
@@ -1960,8 +1994,12 @@
                         <span class="dm-filter-live" id="dmCatMatchCount"></span>
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmResetCatalogueFilters()" title="Saare filter dobara poore tick kar dein">&#8635; Reset All Filters</button>
                       </div>
+                      <!-- Preview neeche apne aap banti rehti hai — filter tick / un-tick
+                           karte hi (dmCatSchedulePreview). Bahut bada selection hone par
+                           auto-preview sirf pehle kuch designs dikhati hai aur ye button
+                           poora khol deta hai; PDF par is hadd ka koi asar nahi. -->
                       <div class="dm-btn-row">
-                        <button type="button" class="dm-btn dm-btn-primary" onclick="dmGenerateCataloguePreview()">&#9889; Generate Preview</button>
+                        <button type="button" class="dm-btn dm-btn-primary" onclick="dmGenerateCataloguePreview()" title="Poora selection neeche khol dein (auto-preview ki hadd hata kar)">&#9889; Generate Full Preview</button>
                         <button type="button" class="dm-btn dm-btn-success" onclick="dmDownloadCataloguePdf()">&#128229; Download PDF</button>
                         <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOpenCataloguePdf()">&#128438;&#65039; Open PDF in New Tab</button>
                         <span class="dm-cat-status" id="dmCatStatus"></span>
@@ -3720,6 +3758,10 @@
       <input type="hidden" id="dmEditDesignId">
       <div class="dm-grid">
         <div class="dm-fg"><label>DESIGN NO</label><input type="text" id="dmEditDesignNo" oninput="this.value=this.value.toUpperCase()" required></div>
+        <!-- Edit par SKU optional hai: purane designs (aur Bulk Upload se chadhi
+             purani sheet) ke SKU pata nahi hote, aur unhe kholne par hi rok
+             lagana poora record edit karne se rok deta. -->
+        <div class="dm-fg"><label>DESIGN SKU NO</label><input type="text" id="dmEditDesignSkuNo" list="dmSkuList" oninput="this.value=this.value.toUpperCase()"></div>
         <div class="dm-fg"><label>DESIGN UNIT</label><input type="text" id="dmEditDesignUnit" list="dmUnitList" required></div>
         <div class="dm-fg"><label>BED SIZE</label><input type="text" id="dmEditBedSize" list="dmBedSizeList" required></div>
         <div class="dm-fg"><label>BLANKET QUALITY</label><input type="text" id="dmEditBlanketQuality" list="dmQualityList" required></div>
@@ -3763,6 +3805,9 @@
 <datalist id="dmPartyList"></datalist>
 <datalist id="dmBrandList"></datalist>
 <datalist id="dmSupplierList"></datalist>
+<!-- SKU koi fixed list nahi hai — jo SKU database me pehle se hain wahi suggest
+     hote hain, taaki ek hi SKU do tarah se na likha jaaye. -->
+<datalist id="dmSkuList"></datalist>
 
 <!-- ═══ FABRIC / BRAND MASTER — form + revision history ═══════════════
      Body level par hain (masterDataPanel ke andar nahi) kyunki panel khud

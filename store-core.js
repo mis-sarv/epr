@@ -1481,6 +1481,358 @@ function setInwardPoLock(locked){
   // Home chooser outranks that, so it is re-asserted here.
   if(!locked)applyHomeNatureLocks();
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   STORE ISSUE AGAINST A SAVED LOT  (Entry Type = ISSUE, LOT No.)
+   ══════════════════════════════════════════════════════════════════════════
+   Manufacturing › Trims Manager saves, per Sales Order, which trims and packing
+   material each LOT needs — item by item, against the Item Master, with a Lot
+   Req Qty on every line (mfg_trims_sheets / _sheet_lots / _lines).
+
+   Picking one of those lots here fills Item Configurations with exactly that
+   list and puts a sub-row under each item saying what the lot requires, what has
+   already gone out to it, what this entry issues and what is still pending —
+   the same shape, built by the same docStripParts_, that a PO gives an Inward
+   receipt. The Issue PDF prints the identical sub-row, so the slip in hand says
+   what the screen said.
+
+   It is the OUTWARD half of the Trims Manager's "Lot N Issue" / "Pending Issue"
+   columns: both read the same two tables, so neither can drift from the other.
+
+   Deliberately NOT changed: Machine Name / No. stays compulsory on every ISSUE
+   row, lot-filled ones included — the lot says what material went out, the
+   machine says where it went, and the ISSUE rule wants both.
+   ────────────────────────────────────────────────────────────────────────── */
+let sarvTrimsLotCatalog=[];        // [{lotNo, norm, sheet…, lines:[…]}]
+let sarvTrimsLotByNorm={};
+let sarvActiveTrimsLot=null;       // the lot whose list is on the form right now
+let sarvOutLotLineSupported=null;  // outward_lines.lot_no present? (null = unprobed)
+
+// "LOT NO 1001", "#1001", "lot-1001", " 1001 " → "1001".  Same rule the Trims
+// Manager uses, so a lot typed either side matches the other.
+const trimsNormLot_=s=>String(s||'').toUpperCase().replace(/LOT|NO\.?|#|:|-|\s/g,'').replace(/^0+(?=\d)/,'');
+
+/* Is the per-line lot column there?  With it, ONE issue entry can later cover
+   several lots and both this strip and the Trims Manager stay exact; without it
+   the header's single lot_no is the answer, exactly as before. Probed once. */
+async function probeOutLotLine_(){
+  if(sarvOutLotLineSupported!==null)return sarvOutLotLineSupported;
+  try{
+    const {error}=await SB.from('outward_lines').select('lot_no').limit(1);
+    sarvOutLotLineSupported=!error;
+    if(error)console.warn('[SARV] outward_lines.lot_no missing — issue lot recorded on the header only:',error.message);
+  }catch(e){ sarvOutLotLineSupported=false; }
+  return sarvOutLotLineSupported;
+}
+
+/* Every lot that has a saved Trims sheet, newest sheet first. Two select shapes,
+   widest first: a database still on TRIMS_MANAGER_MIGRATION.sql (no V2 columns)
+   simply loses Party / Brand / Designs from the picker label — the lots and
+   their item lists still load. */
+const TRIMS_SHEET_SELECTS=[
+  'id,order_no,buyer_name,status,updated_at,order_manual,party_name,brand_name,designs,mfg_trims_sheet_lots(position,lot_no),mfg_trims_lines(line_no,item_desc,category,store_item_id,store_item_name,lot_req_qty,basis,supplier)',
+  'id,order_no,buyer_name,status,updated_at,mfg_trims_sheet_lots(position,lot_no),mfg_trims_lines(line_no,item_desc,category,store_item_id,store_item_name,lot_req_qty,basis,supplier)',
+];
+async function loadTrimsLotCatalog(){
+  if(!SB_READY)return;
+  let rows=null,last=null;
+  for(const sel of TRIMS_SHEET_SELECTS){
+    const q=await SB.from('mfg_trims_sheets').select(sel).order('updated_at',{ascending:false});
+    if(!q.error){rows=q.data||[];break;}
+    last=q.error;
+  }
+  if(!rows){
+    // No Trims sheets table yet (the migration has not been run): the picker
+    // says so when it is opened; typing a lot by hand keeps working.
+    console.warn('[SARV] Trims sheets unavailable — Saved Lot picker empty:',(last&&last.message)||last);
+    sarvTrimsLotCatalog=[];sarvTrimsLotByNorm={};
+    return;
+  }
+  const out=[];
+  rows.forEach(s=>{
+    /* Only lines that name an Item Master item AND ask for something are
+       offered. A line with no Store Standard Name cannot be issued (the store
+       has nothing to book it against) and one asking for 0 has nothing to
+       issue — putting either on the form would make a row somebody has to
+       delete before they can submit. */
+    const lines=(s.mfg_trims_lines||[])
+      .filter(l=>l.store_item_id&&pNum(l.lot_req_qty)>0)
+      .sort((a,b)=>pNum(a.line_no)-pNum(b.line_no))
+      .map(l=>({itemId:String(l.store_item_id),itemName:l.store_item_name||l.item_desc||'',
+                desc:l.item_desc||'',category:l.category||'',required:pNum(l.lot_req_qty),
+                basis:l.basis||'',supplier:l.supplier||''}));
+    const designs=Array.isArray(s.designs)?s.designs.filter(Boolean).map(String):[];
+    (s.mfg_trims_sheet_lots||[]).forEach(L=>{
+      const raw=String(L.lot_no||'').trim();if(!raw)return;
+      out.push({lotNo:raw,norm:trimsNormLot_(raw),sheetId:s.id,orderNo:s.order_no||'',
+                party:s.party_name||s.buyer_name||'',brand:s.brand_name||'',designs,
+                manual:!!s.order_manual,status:s.status||'',updatedAt:s.updated_at||'',lines});
+    });
+  });
+  sarvTrimsLotCatalog=out;
+  sarvTrimsLotByNorm={};
+  // First wins — the list is already newest-sheet-first, so a lot that somehow
+  // appears on two sheets reads from the one most recently worked on.
+  out.forEach(l=>{ if(!sarvTrimsLotByNorm[l.norm])sarvTrimsLotByNorm[l.norm]=l; });
+  refreshLotNoDatalist_();
+}
+// The LOT No. box's own datalist, on both panels (#dl-lotNo is shared). It was
+// markup-only until now, so Lot No had no list at all.
+function refreshLotNoDatalist_(){
+  const dl=byId('dl-lotNo');if(!dl)return;
+  dl.innerHTML=sarvTrimsLotCatalog.map(l=>
+    '<option value="'+escText(l.lotNo)+'" label="'+escText(l.orderNo+(l.brand?' · '+l.brand:'')+' · '+l.lines.length+' items')+'"></option>').join('');
+}
+function lookupTrimsLot_(no){ return sarvTrimsLotByNorm[trimsNormLot_(no)]||null; }
+
+/* ── Already issued to this lot, per item ───────────────────────────
+   Two reads, and they cannot double-count:
+     (A) issue entries whose HEADER lot matches, counting only lines that carry
+         no lot of their own;
+     (B) issue LINES whose own lot matches.
+   Each line is therefore counted by exactly one of the two, whichever holds its
+   effective lot. excludeId leaves the entry being edited out, so re-saving a
+   correction does not count it against itself. */
+async function issuedForLot_(lotNo, excludeId){
+  const out={};
+  const bump=(itemId,qty,weight,no,date)=>{
+    if(!itemId)return;
+    const x=(out[String(itemId)]=out[String(itemId)]||{qty:0,weight:0,docs:[]});
+    x.qty+=pNum(qty);x.weight+=pNum(weight);x.docs.push({no:no||'Issue',date:date||'',qty:pNum(qty)});
+  };
+  const perLine=await probeOutLotLine_();
+  const want=trimsNormLot_(lotNo);
+  if(!want)return out;
+  /* Matched on the NORMALISED lot number, not on the text as stored.
+     "LOT 1001", "#1001", "lot-1001" and "1001" are one lot, and entries typed
+     before the Saved Lot picker existed carry whichever spelling somebody
+     used. The Trims Manager's "Lot N Issue" column matches the same way, so a
+     figure that shows there shows here too — matching on the raw text would
+     have made the two disagree on exactly the old entries that matter.
+     The filter is therefore client-side, and fetchAllRows pages, so a store
+     with more than 1000 issues is not silently cut off at the first page. */
+  const rows=await fetchAllRows('outward_entries',
+    'id,document_no,outward_date,lot_no,outward_lines(item_id,qty,weight'+(perLine?',lot_no':'')+')',
+    null, q=>q.eq('entry_type','ISSUE').not('lot_no','is',null));
+  rows.forEach(e=>{
+    if(excludeId&&String(e.id)===String(excludeId))return;
+    const headMatch=trimsNormLot_(e.lot_no)===want;
+    (e.outward_lines||[]).forEach(l=>{
+      // The line's own lot wins; the header is what a line without one means.
+      const lineLot=perLine?String(l.lot_no||'').trim():'';
+      if(lineLot?(trimsNormLot_(lineLot)===want):headMatch)
+        bump(l.item_id,l.qty,l.weight,e.document_no,e.outward_date);
+    });
+  });
+  /* One more pass for the case the loop above cannot reach: a line tagged with
+     THIS lot sitting on an entry whose HEADER names a different one — only
+     possible once an issue covers several lots, which is what the per-line
+     column is for. Skipped entirely without that column, and lines whose own
+     entry already matched are skipped so nothing is counted twice. */
+  if(perLine){
+    const qb=await SB.from('outward_lines')
+      .select('item_id,qty,weight,lot_no,outward_id,outward_entries!inner(id,document_no,outward_date,entry_type,lot_no)')
+      .not('lot_no','is',null).eq('outward_entries.entry_type','ISSUE');
+    if(qb.error)console.warn('[SARV] per-line issue lot lookup skipped:',qb.error.message);
+    else (qb.data||[]).forEach(l=>{
+      const e=l.outward_entries||{};
+      if(excludeId&&String(e.id)===String(excludeId))return;
+      if(trimsNormLot_(l.lot_no)!==want)return;
+      if(trimsNormLot_(e.lot_no)===want)return;   // counted above
+      bump(l.item_id,l.qty,l.weight,e.document_no,e.outward_date);
+    });
+  }
+  return out;
+}
+
+// ── Saved Lot picker (single pick — one Issue entry carries one lot) ──────
+function updateOutLotBtnText(){
+  const b=byId('outLotBtn');if(!b)return;
+  b.textContent=sarvActiveTrimsLot?('📋 LOT '+sarvActiveTrimsLot.lotNo):'📋 Saved Lot';
+  b.style.background=sarvActiveTrimsLot?'#ede9fe':'';
+  b.style.color=sarvActiveTrimsLot?'#4c1d95':'';
+}
+function renderOutLotPanel(){
+  const panel=byId('outLotPanel');if(!panel)return;
+  const opts=sarvTrimsLotCatalog;
+  if(!opts.length){
+    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">Koi saved Trims Lot nahi mila.<br>'
+      +'Manufacturing › <b>Trims Manager</b> me Order + Lot ki sheet save karein, phir yahan list me aa jayegi.</div>';
+    return;
+  }
+  const cur=sarvActiveTrimsLot?sarvActiveTrimsLot.norm:trimsNormLot_(pVal('outLotNo'));
+  panel.innerHTML=opts.map(l=>
+    '<label style="display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
+    +'<input type="radio" name="sarvOutLotOpt" class="sarv-outlot-opt" value="'+escText(l.lotNo)+'"'+(l.norm===cur?' checked':'')+' style="margin-top:2px;">'
+    +'<span>LOT <b>'+escText(l.lotNo)+'</b> <span style="color:#64748b;font-weight:500;">— '+escText(l.lines.length)+' item</span>'
+    +'<br><span style="color:#64748b;font-weight:500;">Order '+escText(l.orderNo||'-')
+    +(l.party?' · '+escText(l.party):'')+(l.brand?' · '+escText(l.brand):'')
+    +(l.designs.length?' · Design '+escText(l.designs.join(', ')):'')
+    +(l.manual?' · ✎ manual':'')+(l.status?' · '+escText(l.status):'')+'</span></span></label>').join('');
+  panel.querySelectorAll('.sarv-outlot-opt').forEach(cb=>{
+    cb.addEventListener('change',()=>{
+      const el=byId('outLotNo');if(el)el.value=cb.value;
+      toggleOutLotPanel(false);
+      loadTrimsLotIntoOutward(cb.value).catch(dbError);
+    });
+  });
+}
+function toggleOutLotPanel(show){
+  const panel=byId('outLotPanel');if(!panel)return;
+  const open=(show==null)?panel.style.display==='none':show;
+  if(open)renderOutLotPanel();
+  panel.style.display=open?'block':'none';
+}
+
+/* What the purple strip under the LOT No. box says — which sheet this lot came
+   from, so whoever is issuing can see they are on the right order. */
+function renderOutLotDetails_(lot,count){
+  const box=byId('outLotDetails');if(!box)return;
+  if(!lot){box.style.display='none';box.innerHTML='';return;}
+  box.innerHTML='LOT <b>'+escText(lot.lotNo)+'</b> · Order <b>'+escText(lot.orderNo||'-')+'</b>'
+    +' · '+(lot.manual?'Party':'Buyer')+': <b>'+escText(lot.party||'-')+'</b>'
+    +(lot.brand?' · Brand: <b>'+escText(lot.brand)+'</b>':'')
+    +(lot.designs.length?' · Design: <b>'+escText(lot.designs.join(', '))+'</b>':'')
+    +' · <b>'+pNum(count)+'</b> required item'+(pNum(count)===1?'':'s')+' Trims sheet se bhare gaye'
+    +' — <span style="font-weight:700;">har row par Machine Name &amp; No. bharna zaroori hai</span>.';
+  box.style.display='block';
+}
+
+/* Fills Item Configurations from the lot's saved requirement list.
+   Qty starts at what is still PENDING for that item (required − already
+   issued), because that is what this entry is for; it stays editable, since a
+   part-issue is normal. */
+async function loadTrimsLotIntoOutward(rawLot,opts){
+  const o=opts||{};
+  const lot=lookupTrimsLot_(rawLot);
+  const tb=byId('outwardItemTableBody');
+  if(!lot){
+    // A lot typed by hand that no Trims sheet knows: the rows are left exactly
+    // as they are (it may be a batch number for something with no sheet at all)
+    // and only the lot link is dropped.
+    if(sarvActiveTrimsLot){
+      sarvActiveTrimsLot=null;
+      clearOutLotRowLinks_();
+    }
+    renderOutLotDetails_(null,0);updateOutLotBtnText();
+    return false;
+  }
+  if(!lot.lines.length){
+    showToast('⚠️ LOT '+lot.lotNo+' ki Trims sheet me koi aisa item nahi hai jiska Store Standard Name aur Lot Req Qty dono bhare hon — Trims Manager me poora karein','warn');
+    renderOutLotDetails_(lot,0);updateOutLotBtnText();
+    return false;
+  }
+  // Anything already typed would be thrown away, so it is asked for first.
+  const filled=outwardItemRows_().filter(tr=>(tr.querySelector('.out-item-name')?.value||'').trim()||pNum(tr.querySelector('.out-qty')?.value));
+  if(filled.length&&!o.force&&!confirm('LOT '+lot.lotNo+' ki required item list bharni hai?\n\nAbhi form par bhari '+filled.length+' row hat jayengi.'))
+    return false;
+
+  let issued={};
+  try{ issued=await issuedForLot_(lot.lotNo,sarvEditingOutwardId); }
+  catch(e){
+    // The requirement list is still worth loading without it — the strip then
+    // counts "already issued" as 0 and says so rather than being hidden.
+    console.warn('[SARV] issued-so-far lookup failed:',e.message||e);
+    showToast('⚠️ Is lot ka pehle issue hua maal nahi pata chala — sub-row me "Already" 0 dikhega: '+(e.message||e),'warn');
+  }
+  const resolve=await poLineItemResolver_(lot.lines.map(l=>({item_id:l.itemId,item_name:l.itemName})));
+  if(tb)tb.innerHTML='';
+  const unresolved=[];
+  lot.lines.forEach(l=>{
+    addOutwardItemRow();
+    const tr=tb&&tb.lastElementChild;if(!tr)return;
+    const was=issued[l.itemId]||{qty:0,weight:0,docs:[]};
+    const it=resolve({item_id:l.itemId,item_name:l.itemName})||{};
+    if(!it.id)unresolved.push(l.itemName||l.desc||'(no name)');
+    // Pin the row to the Item Master row the sheet named, so the issue posts
+    // against that item instead of being re-resolved by name at save time.
+    tr.dataset.itemId=it.id||l.itemId;
+    tr.dataset.issueLotNo=lot.lotNo;
+    tr.dataset.issueReqQty=l.required;
+    tr.dataset.issueIssuedQty=was.qty;
+    tr.dataset.issueIssuedWeight=was.weight;
+    tr.dataset.trimsSheetOrder=lot.orderNo||'';
+    const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v==null?'':v;};
+    set('.out-item-name',it.name||l.itemName||'');
+    set('.out-item-desc',it.description||'');
+    set('.out-item-make',it.make||'');
+    set('.out-item-cat',it.category||l.category||'');
+    set('.out-qty',Math.max(0,l.required-was.qty));
+    set('.out-qty-uom',it.uom||'');
+    appendOutLotInfoRow(tr,tb);
+  });
+  if(!outwardItemRows_().length)addOutwardItemRow();
+  sarvActiveTrimsLot=lot;
+  const el=byId('outLotNo');if(el)el.value=lot.lotNo;
+  updateOutTotals();
+  renderOutLotDetails_(lot,lot.lines.length);
+  updateOutLotBtnText();
+  if(unresolved.length){
+    const names=[...new Set(unresolved)];
+    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+  }
+  showToast('📋 LOT '+lot.lotNo+' ki '+lot.lines.length+' required item bhar gayi — Qty me <b>pending</b> qty aayi hai. Har row par Machine Name &amp; No. chunein.');
+  return true;
+}
+// Takes the lot link off every row (and its sub-row) without touching what was typed.
+function clearOutLotRowLinks_(){
+  const tb=byId('outwardItemTableBody');if(!tb)return;
+  [...tb.querySelectorAll('tr.po-info-row')].forEach(x=>x.remove());
+  outwardItemRows_().forEach(tr=>{
+    ['issueLotNo','issueReqQty','issueIssuedQty','issueIssuedWeight','trimsSheetOrder'].forEach(k=>delete tr.dataset[k]);
+  });
+}
+// Item rows only — the lot sub-rows live in the same tbody and must never be
+// read, counted or numbered as items.
+function outwardItemRows_(){ return [...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')]; }
+
+/* The sub-row itself. Same class (.po-info-row), same builder
+   (docStripParts_ / docStripLines_) and the same per-figure colours the Inward
+   panel uses, so there is one layout for both panels rather than two. */
+function outLotStripInputFromRow_(tr){
+  return {
+    issueLotNo:tr.dataset.issueLotNo||'',
+    issueReqQty:tr.dataset.issueReqQty,
+    issueIssuedQty:tr.dataset.issueIssuedQty,
+    issueIssuedWeight:tr.dataset.issueIssuedWeight,
+    qty:pNum(tr.querySelector('.out-qty')?.value),
+    weight:pNum(tr.querySelector('.out-weight')?.value)
+  };
+}
+function appendOutLotInfoRow(tr,tb){
+  if(!tr||!tb)return;
+  const cols=tr.children.length||12;
+  const info=document.createElement('tr');
+  info.className='po-info-row';
+  info.innerHTML='<td colspan="'+cols+'" style="background:#faf5ff;border-top:none;padding:3px 8px 6px 8px;"></td>';
+  // Inserted directly under its own row, not appended, so a row added in the
+  // middle of the list keeps its strip beside it.
+  tr.insertAdjacentElement('afterend',info);
+  const del=tr.querySelector('.delete-btn');
+  if(del)del.onclick=()=>{info.remove();tr.remove();updateOutTotals()};
+  renderOutLotInfoRow(tr,info);
+}
+function renderOutLotInfoRow(tr,info){
+  const cell=info.querySelector('td');if(!cell)return;
+  const p=docStripParts_(outLotStripInputFromRow_(tr));
+  if(!p){cell.innerHTML='';info.style.display='none';return;}
+  info.style.display='';
+  const pill=s=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e9d5ff;border-radius:5px;padding:2px 7px;">'
+    +'<span style="color:'+stripLblColor_(s)+';font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+escText(s.lbl)+'</span>'
+    +'<b style="color:'+s.c+';font-size:11px;'+(s.bg?('background:'+s.bg+';padding:0 4px;border-radius:3px;'):'')+'">'+escText(s.t)+'</b></span>';
+  const tag=s=>'<span style="color:'+s.c+';font-weight:800;font-size:10px;">'+escText(s.t)+'</span>';
+  const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
+    +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
+  cell.innerHTML=docStripLines_(p).map((segs,i)=>
+    line(i>0,segs.map(s=>s.lbl?pill(s):tag(s)).join(''))).join('');
+}
+// Re-renders the live figures (Issued / Pending / Excess) as qty is typed.
+function refreshOutLotInfoRows(){
+  document.querySelectorAll('#outwardItemTableBody tr.po-info-row').forEach(info=>{
+    const tr=info.previousElementSibling;
+    if(tr&&!tr.classList.contains('po-info-row'))renderOutLotInfoRow(tr,info);
+  });
+}
+
 let sarvRepairOutwardCatalog=[];
 /* ── Repair Outward picker ────────────────────────────────────────
    A checkbox dropdown (same shape as the PO Number picker) so one repair
@@ -3188,7 +3540,12 @@ function updateStoreTotals(){
   // every item-row keystroke, so the strips stay in step for free.
   refreshPoInfoRows();
 }
-function updateOutTotals(){const rows=[...document.querySelectorAll('#outwardItemTableBody tr')];let q=0,w=0;rows.forEach((r,i)=>{q+=+r.querySelector('.out-qty')?.value||0;w+=+r.querySelector('.out-weight')?.value||0;r.querySelector('.out-sr-no').textContent=i+1});if(byId('outTotalCount'))byId('outTotalCount').textContent=rows.length;if(byId('outTotalQty'))byId('outTotalQty').textContent=q;if(byId('outTotalWeight'))byId('outTotalWeight').textContent=w.toFixed(2);
+function updateOutTotals(){const rows=[...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')];let q=0,w=0;rows.forEach((r,i)=>{q+=+r.querySelector('.out-qty')?.value||0;w+=+r.querySelector('.out-weight')?.value||0;r.querySelector('.out-sr-no').textContent=i+1});if(byId('outTotalCount'))byId('outTotalCount').textContent=rows.length;if(byId('outTotalQty'))byId('outTotalQty').textContent=q;if(byId('outTotalWeight'))byId('outTotalWeight').textContent=w.toFixed(2);
+  /* Lot sub-rows follow the Qty / Weight being typed, so Pending and Excess
+     move as the row is filled in. This runs on every item-row keystroke (every
+     input is wired to updateOutTotals), the same way refreshPoInfoRows rides
+     on updateStoreTotals on the Inward panel. */
+  if(typeof refreshOutLotInfoRows==='function')refreshOutLotInfoRows();
  // Any edit to the item rows invalidates the last stock-shortfall warning.
  showOutStockWarning(null);}
 // Wording for the Outward Mode stat box at the top of the Outward panel.
@@ -3327,7 +3684,7 @@ function addPurchaseMainRow(afterTr){
 function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
 async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');/* Same rule as saveRequirementWithPdf_: required_by is never written as NULL. */const requiredBy=(byId('p_requiredByDate')?.value||'').trim();if(!requiredBy)return showToast('⚠️ Required By Date chunna zaroori hai','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:requiredBy,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
 async function saveStoreInward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.item-name')?.value,desc:r.querySelector('.item-desc')?.value,make:r.querySelector('.item-make')?.value,cat:r.querySelector('.item-cat')?.value,uom:r.querySelector('.item-uom')?.value,qty:+r.querySelector('.qty-field')?.value||0,weight:+r.querySelector('.weight-field')?.value||0,rate:+r.querySelector('.rate-field')?.value||0,tax:+r.querySelector('.item-gst-field')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one inward item required','warn');const no=await nextNo('INWARD');const h=await SB.from('inward_entries').insert({document_no:no,entry_type:byId('entryTypeSelect')?.value||'INWARD',receiving_date:byId('receivingDate')?.value||today(),invoice_no:byId('invoiceNumber')?.value||null,invoice_date:byId('invoiceDate')?.value||null,party_state:byId('partyState')?.value||null,notes:byId('inwRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.qty*r.rate})}const ins=await SB.from('inward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Inward saved: '+no)}
-async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
+async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
 function bindOriginalControls(){
   const add=(id,fn)=>{const e=byId(id);if(e)e.addEventListener('click',fn)};
   // A row added from the button is scrolled into view with its Item Name
@@ -3370,6 +3727,42 @@ function bindOriginalControls(){
     byId('poNumberPanel')?.addEventListener('click',e=>e.stopPropagation());
     document.addEventListener('click',()=>togglePoNumberPanel(false));
     poBtn.dataset.poBound='1';
+  }
+  /* ── ISSUE › Saved Lot picker ───────────────────────────────
+     Same shape as the PO picker above: a button that opens a list, clicks
+     outside close it. Single pick, because an ISSUE header carries one Lot No.
+     The catalog is fetched the first time the picker is opened rather than at
+     boot — the Store panel is used all day for Inwards that never need it. */
+  const lotBtn=byId('outLotBtn');
+  if(lotBtn&&!lotBtn.dataset.lotBound){
+    lotBtn.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const opening=(byId('outLotPanel')?.style.display||'none')==='none';
+      if(opening&&!sarvTrimsLotCatalog.length){
+        lotBtn.disabled=true;
+        try{ await loadTrimsLotCatalog(); }catch(err){ dbError(err); }
+        finally{ lotBtn.disabled=false; }
+      }
+      toggleOutLotPanel();
+    });
+    byId('outLotPanel')?.addEventListener('click',e=>e.stopPropagation());
+    document.addEventListener('click',()=>toggleOutLotPanel(false));
+    lotBtn.dataset.lotBound='1';
+  }
+  /* A Lot No TYPED into the box (or picked off the datalist) behaves exactly
+     like one chosen from the picker — if a Trims sheet knows it, the item list
+     is offered; if not, the box is just a batch number as it always was.
+     On `change` only, so the list is not rebuilt on every keystroke. */
+  const lotEl=byId('outLotNo');
+  if(lotEl&&!lotEl.dataset.lotBound){
+    lotEl.addEventListener('change',async function(){
+      const v=this.value.trim();
+      if(!sarvTrimsLotCatalog.length){ try{ await loadTrimsLotCatalog(); }catch(e){} }
+      // Same lot already loaded: nothing to re-ask, nothing to rebuild.
+      if(sarvActiveTrimsLot&&trimsNormLot_(v)===sarvActiveTrimsLot.norm)return;
+      loadTrimsLotIntoOutward(v).catch(dbError);
+    });
+    lotEl.dataset.lotBound='1';
   }
   // Supplier Name drives which POs are on offer, so re-filter as it is typed.
   const supEl=byId('supplierName');
@@ -11859,7 +12252,43 @@ async function loadOutwardForEdit(id,no){
   if(!lines.length)addOutwardItemRow();
   updateOutTotals();
   refreshStoreEditUi();
+  /* An ISSUE booked against a saved Lot gets its requirement sub-rows back, so
+     an Admin correcting the qty can still see what the lot needs and what has
+     already gone out to it. "Already issued" deliberately EXCLUDES this record
+     (issuedForLot_ takes sarvEditingOutwardId), so the entry is not counted
+     against itself and the strip reads the same before and after the update.
+     Awaited in the background: the rows are already usable, and a slow lookup
+     must not hold up the edit. */
+  if((e.entry_type||'')==='ISSUE'&&String(e.lot_no||'').trim())
+    restoreOutLotStrips_(e.lot_no).catch(err=>console.warn('[SARV] lot strip restore skipped:',err.message||err));
   showToast('✏️ '+(sarvEditingOutwardNo||'Record')+' edit mode me khul gaya — badlaav karke Update dabayein');
+}
+/* Re-links the rows now on the form to a saved lot's requirement list, matched
+   on the Item Master id each row is pinned to. Rows the sheet says nothing
+   about simply get no sub-row — the same rule every other strip follows. */
+async function restoreOutLotStrips_(lotNo){
+  if(!sarvTrimsLotCatalog.length)await loadTrimsLotCatalog();
+  const lot=lookupTrimsLot_(lotNo);
+  if(!lot)return;
+  const issued=await issuedForLot_(lot.lotNo,sarvEditingOutwardId);
+  const reqByItem={};lot.lines.forEach(l=>{reqByItem[l.itemId]=l.required;});
+  const tb=byId('outwardItemTableBody');if(!tb)return;
+  outwardItemRows_().forEach(tr=>{
+    const id=String(tr.dataset.itemId||'');
+    if(!id||reqByItem[id]==null)return;
+    const was=issued[id]||{qty:0,weight:0};
+    tr.dataset.issueLotNo=lot.lotNo;
+    tr.dataset.issueReqQty=reqByItem[id];
+    tr.dataset.issueIssuedQty=was.qty;
+    tr.dataset.issueIssuedWeight=was.weight;
+    tr.dataset.trimsSheetOrder=lot.orderNo||'';
+    if(!(tr.nextElementSibling&&tr.nextElementSibling.classList.contains('po-info-row')))
+      appendOutLotInfoRow(tr,tb);
+  });
+  sarvActiveTrimsLot=lot;
+  renderOutLotDetails_(lot,lot.lines.length);
+  updateOutLotBtnText();
+  refreshOutLotInfoRows();
 }
 
 /* The PO number an edited Inward should keep. Loading a record for edit fills
@@ -11986,7 +12415,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   lockToMasterList(byId('outReceiverEmpCode'),()=>sarvEmployeeCatalog.map(e=>e.emp_code));
   lockMachineField_(byId('inwMachineName'));   // Machine Master list only
   // Outward / Issue rows created before this point get their machine pair wired too.
-  document.querySelectorAll('#outwardItemTableBody tr').forEach(tr=>attachMachinePair_(tr,'.out-machine-name','.out-machine-no'));
+  document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)').forEach(tr=>attachMachinePair_(tr,'.out-machine-name','.out-machine-no'));
   document.querySelectorAll('#p_itemTableBody tr').forEach(tr=>lockMachineField_(tr.querySelector('.col-machine')));
   // Invoice Date and Target Return Date must start blank/un-selected so the
   // mandatory-field check below actually forces the user to pick one.
@@ -12029,6 +12458,18 @@ window.addEventListener('DOMContentLoaded',()=>{
   const syncIssueOnlyFields=(selectId,groupIds)=>{
     const sel=byId(selectId);const show=!!sel&&sel.value==='ISSUE';
     groupIds.forEach(id=>{const g=byId(id);if(g)g.style.display=show?'':'none';});
+    /* Leaving ISSUE takes the Lot link with it: a plain OUTWARD has no lot
+       requirement to be measured against, so the sub-rows and the purple
+       details strip would be claiming something the entry no longer says.
+       Only on the Outward panel — the Inward Entry Type has no ISSUE option. */
+    if(selectId==='outEntryTypeSelect'&&!show&&typeof clearOutLotRowLinks_==='function'){
+      sarvActiveTrimsLot=null;
+      clearOutLotRowLinks_();
+      renderOutLotDetails_(null,0);
+      updateOutLotBtnText();
+      toggleOutLotPanel(false);
+      updateOutTotals();
+    }
   };
   // ── Entry Type drafts: INWARD / INWARD NB and OUTWARD / ISSUE each keep
   //    their own form, like separate tabs (see makeEntryDrafts_) ──────────
@@ -12057,7 +12498,18 @@ window.addEventListener('DOMContentLoaded',()=>{
     selectId:'outEntryTypeSelect',rootIds:['outwardPanel'],tbodyId:'outwardItemTableBody',photoKey:'outward',
     skipIds:['outEntryTypeSelect','outRegEntryNo','outSerialField'],
     newRow:addOutwardItemRow,
-    extraRestore:()=>{showOutStockWarning(null);updateOutTotals();applyIssueFixedFields();}
+    /* The Lot link is form state that lives outside the fields: the rows and
+       their sub-rows are moved with the tbody, but which lot they belong to is
+       held in sarvActiveTrimsLot. Parked and restored here, so switching
+       OUTWARD ⇄ ISSUE and coming back finds the Issue exactly as it was left —
+       details strip, button label and all. */
+    extraSave:()=>({lot:sarvActiveTrimsLot}),
+    extraRestore:x=>{
+      sarvActiveTrimsLot=(x&&x.lot)||null;
+      renderOutLotDetails_(sarvActiveTrimsLot,sarvActiveTrimsLot?sarvActiveTrimsLot.lines.length:0);
+      updateOutLotBtnText();
+      showOutStockWarning(null);updateOutTotals();applyIssueFixedFields();
+    }
   });
   // ── Entry Type → Serial No + Theme (Inward) ──────────────
   const etSel=byId('entryTypeSelect');
@@ -12085,9 +12537,20 @@ window.addEventListener('DOMContentLoaded',()=>{
     syncIssueOnlyFields('outEntryTypeSelect',['outLotNoFieldGroup']);
     applyOutwardWording();
     if(SB_READY)refreshSerialNo('OUTWARD').catch(()=>{});
+    /* Switching TO an Issue is the moment the Lot No box appears, so its own
+       datalist is filled now rather than on the first click into it — a box
+       that offers nothing reads as a box with nothing to offer. */
+    if(SB_READY&&type==='ISSUE'&&!sarvTrimsLotCatalog.length)
+      loadTrimsLotCatalog().catch(e=>console.warn('[SARV] Trims lot catalog load skipped:',e.message||e));
   });}
   syncIssueOnlyFields('outEntryTypeSelect',['outLotNoFieldGroup']);
   applyOutwardWording();   // first paint, before anything is changed
+  /* The panel can open already on ISSUE — the Entry Type survives a save
+     (sarvOutwardTypePinned) and the Home chooser can land straight on it — and
+     then the change handler above never fires, so the Lot list is filled here
+     for that case too. */
+  if(SB_READY&&(byId('outEntryTypeSelect')?.value||'')==='ISSUE')
+    loadTrimsLotCatalog().catch(e=>console.warn('[SARV] Trims lot catalog load skipped:',e.message||e));
   // ── PR Priority buttons (single-select, backs hidden #p_priority) ──
   byId('p_priorityBtnGroup')?.addEventListener('click',e=>{
     const b=e.target.closest('.p_priority-btn');
@@ -12465,15 +12928,52 @@ window.addEventListener('DOMContentLoaded',()=>{
      pendWt:Math.max(0,outWt-recWt),
      excWt:Math.max(0,recWt-outWt)};
  }
+ /* ── The same strip, measured against a LOT's trims requirement ─────
+    Entry Type = ISSUE, booked against a Lot No that has a saved Trims sheet
+    (Manufacturing › Trims Manager). The sheet says how much of each trim that
+    lot needs; the store issues it, possibly in instalments. So each item row
+    deserves the same four figures a PO receipt gets: what the lot requires,
+    what has already gone out to it, what this entry issues, and what is still
+    owed or over.
+
+    Deliberately the OUTWARD side of the same relationship the Trims Manager
+    shows as "Lot N Issue" / "Pending Issue" — one number, read from the same
+    two tables, so the issue slip in hand and that sheet cannot disagree.
+
+    Its keys are named issueLot* rather than lot*, so an Inward row (whose
+    HEADER carries a lot_no of its own) can never be mistaken for one of these. */
+ function lotStripParts_(it){
+   if(!it||!it.issueLotNo)return null;
+   const required=pNum(it.issueReqQty), already=pNum(it.issueIssuedQty);
+   // Nothing measurable to report (the sheet asks for nothing on this item), so
+   // the strip is withheld rather than printed as a row of zeroes — same rule
+   // the PO / PR / Return strips use.
+   if(required<=0)return null;
+   const received=already+pNum(it.qty);
+   const reqWt=pNum(it.issueReqWeight), alreadyWt=pNum(it.issueIssuedWeight);
+   const recWt=alreadyWt+pNum(it.weight);
+   return {lotNo:String(it.issueLotNo),required,already,received,
+     pending:Math.max(0,required-received),
+     excess:Math.max(0,received-required),
+     hasWeight:reqWt>0,reqWt,alreadyWt,recWt,
+     pendWt:Math.max(0,reqWt-recWt),
+     excWt:Math.max(0,recWt-reqWt)};
+ }
  /* What every strip renderer actually consumes — the live row on screen, the
-    HTML print and the native print alike. One shape for all three documents,
+    HTML print and the native print alike. One shape for all four documents,
     so a Repair-Return receipt gets the identical strip a PO receipt gets and
-    the three renderers stay three copies of ONE layout rather than nine of
+    the three renderers stay three copies of ONE layout rather than twelve of
     three.
 
-    A row can only be against one of the three: the PR picker is hidden the
-    moment a PO is ticked (syncInwPrField), and a Return row is loaded from an
-    outward and carries neither — so they are simply tried in turn. */
+    A row can only be against one of the four: the PR picker is hidden the
+    moment a PO is ticked (syncInwPrField), a Return row is loaded from an
+    outward and carries neither, and a LOT row only ever exists on the Outward
+    panel — so they are simply tried in turn.
+
+    recLabel / pendLabel / excLabel let a kind rename the three live figures
+    without each renderer knowing about it: an ISSUE against a lot "issues",
+    it does not "receive". Left out, they read Received / Pending / Excess
+    exactly as before. */
  function docStripParts_(it){
    const po=poStripParts_(it);
    if(po)return {kind:'PO',tag:'PO: '+po.poNo,no:po.poNo,ordLabel:'Order Qty',ordWtLabel:'Order Wt',
@@ -12498,6 +12998,17 @@ window.addEventListener('DOMContentLoaded',()=>{
      hasWeight:rt.hasWeight,ordWt:rt.outWt,alreadyWt:rt.alreadyWt,recWt:rt.recWt,
      pendWt:rt.pendWt,excWt:rt.excWt,
      poRate:null,rate:pNum(it.rate),rateOver:false};
+   /* An ISSUE against a Lot. Nothing is bought here — the lot's own trims are
+      going out of the store — so there is no rate to be "above" either, and
+      the three live figures are renamed to say "issued". */
+   const lt=lotStripParts_(it);
+   if(lt)return {kind:'LOT',tag:'LOT: '+lt.lotNo,no:lt.lotNo,ordLabel:'Required Qty',ordWtLabel:'Required Wt',
+     recLabel:'Issued Qty',pendLabel:'Pending Issue',excLabel:'Excess Issue',
+     recWtLabel:'Issued Wt',pendWtLabel:'Pending Wt',excWtLabel:'Excess Wt',
+     ordered:lt.required,already:lt.already,received:lt.received,pending:lt.pending,excess:lt.excess,
+     hasWeight:lt.hasWeight,ordWt:lt.reqWt,alreadyWt:lt.alreadyWt,recWt:lt.recWt,
+     pendWt:lt.pendWt,excWt:lt.excWt,
+     poRate:null,rate:pNum(it.rate),rateOver:false};
    return null;
  }
  /* The accent every renderer paints a strip in, so the kind of document a row
@@ -12508,7 +13019,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     ke liye wahi teen rang dobara, RGB me) — wo hata diya: hexRgb_ ab kisi bhi
     hex ko RGB me badal deta hai, to ek rang do jagah likha hone ki zaroorat
     nahi, aur dono ke alag ho jaane ka raasta bhi band. */
- const DOC_STRIP_ACCENT={PO:'#1d4ed8',PR:'#15803d',RETURN:'#b45309'};
+ const DOC_STRIP_ACCENT={PO:'#1d4ed8',PR:'#15803d',RETURN:'#b45309',LOT:'#7c3aed'};
  function docStripAccent_(p){return DOC_STRIP_ACCENT[p&&p.kind]||DOC_STRIP_ACCENT.PO;}
 
  /* ── Sub-row ke rang, ek hi jagah ───────────────────────────────────
@@ -12560,16 +13071,16 @@ window.addEventListener('DOMContentLoaded',()=>{
    const lines=[[
      {t:p.tag,c:accent,bold:true},
      {lbl:p.ordLabel,  t:String(p.ordered),  c:STRIP_COLOR.plain},
-     {lbl:'Pending Qty',  t:String(p.pending),  c:stripPendColor_(p.pending)},
-     {lbl:'Received Qty', t:String(p.received), c:STRIP_COLOR.received},
-     {lbl:'Excess Qty',   t:String(p.excess),   c:stripExcColor_(p.excess), bg:stripExcBg_(p.excess)},
+     {lbl:p.pendLabel||'Pending Qty',  t:String(p.pending),  c:stripPendColor_(p.pending)},
+     {lbl:p.recLabel ||'Received Qty', t:String(p.received), c:STRIP_COLOR.received},
+     {lbl:p.excLabel ||'Excess Qty',   t:String(p.excess),   c:stripExcColor_(p.excess), bg:stripExcBg_(p.excess)},
    ]];
    if(p.hasWeight)lines.push([
      {t:'Weight (KGS)',c:accent,bold:true},
      {lbl:p.ordWtLabel,t:nWt_(p.ordWt), c:STRIP_COLOR.plain},
-     {lbl:'Pending Wt', t:nWt_(p.pendWt), c:stripPendColor_(p.pendWt)},
-     {lbl:'Received Wt',t:nWt_(p.recWt),  c:STRIP_COLOR.received},
-     {lbl:'Excess Wt',  t:nWt_(p.excWt),  c:stripExcColor_(p.excWt), bg:stripExcBg_(p.excWt)},
+     {lbl:p.pendWtLabel||'Pending Wt', t:nWt_(p.pendWt), c:stripPendColor_(p.pendWt)},
+     {lbl:p.recWtLabel ||'Received Wt',t:nWt_(p.recWt),  c:STRIP_COLOR.received},
+     {lbl:p.excWtLabel ||'Excess Wt',  t:nWt_(p.excWt),  c:stripExcColor_(p.excWt), bg:stripExcBg_(p.excWt)},
    ]);
    return lines;
  }
@@ -12945,6 +13456,18 @@ window.addEventListener('DOMContentLoaded',()=>{
  // ─────────────────────────────────────────────────────────────
  // STORE OUTWARD PDF — exact port of buildOutwardOneCopyHtml_
  // ─────────────────────────────────────────────────────────────
+ /* The Trims sheet behind an ISSUE that was loaded from a saved lot — label /
+    value pairs, so the HTML print and the native PDF print the same block from
+    the same place. Empty for every other outward, which prints nothing extra. */
+ function trimsLotRows_(d){
+   const t=d&&d.trimsLot;
+   if(!t||!t.lotNo)return [];
+   const out=[['Trims Order No:',t.orderNo||'-']];
+   if(t.party)out.push([(t.manual?'Party Name:':'Buyer:'),t.party]);
+   if(t.brand)out.push(['Brand Name:',t.brand]);
+   if(t.designs&&t.designs.length)out.push(['Design'+(t.designs.length>1?'s':'')+':',t.designs.join(', ')]);
+   return out;
+ }
  function buildOutwardOneCopy_(title, d, items){
    const isReceiver=(title==='RECEIVER COPY');
    let itemRows='';
@@ -12958,6 +13481,22 @@ window.addEventListener('DOMContentLoaded',()=>{
        outTotQty    += pNum(it.qty);
        outTotWeight += pNum(it.weight);
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small></td><td>'+pEsc(it.make||'-')+'<br><small style="color:#555">'+pEsc(it.cat||it.category||'')+'</small></td><td>'+pEsc(it.machineName||it.machine||'-')+'<br><small style="color:#555">'+pEsc(it.machineNo||'')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||it.qtyUom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td></tr>';
+       /* LOT ke against: item ke theek neeche wahi strip jo Issue form dikhata
+          hai — Required / Pending / Issued / Excess. Bilkul usi tarah jaise PO
+          ke against Inward PDF me PO ki sub-row chhapti hai; docStripParts_
+          dono ko ek hi shakl deta hai, isliye layout ek hi hai. */
+       const strip=docStripParts_(it);
+       if(strip){
+         const seg=s=>(s.lbl?('<span style="color:'+stripLblColor_(s)+';">'+pEsc(s.lbl)+': </span>'):'')
+           +'<b style="color:'+s.c+';'+(s.bg?('background:'+s.bg+';padding:0 3px;border-radius:2px;'):'')+'">'
+           +pEsc(s.t)+'</b>';
+         const line=(segs,mt)=>'<div'+(mt?' style="margin-top:1px;"':'')+'>'
+           +segs.map(s=>'<span style="margin-right:12px;white-space:nowrap;">'+seg(s)+'</span>').join('')
+           +'</div>';
+         itemRows+='<tr style="background:#faf5ff;"><td colspan="5" style="padding:2px 6px;font-size:8px;color:#334155;">'
+           +docStripLines_(strip).map((segs,i)=>line(segs,i>0)).join('')
+           +'</td></tr>';
+       }
      });
      itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td></td><td></td><td style="text-align:center;font-weight:800;">'+(outTotQty%1===0?outTotQty:outTotQty.toFixed(2))+' '+qUom+'</td><td style="text-align:center;font-weight:800;">'+(outTotWeight%1===0?outTotWeight:outTotWeight.toFixed(2))+' '+wUom+'</td></tr>';
    }
@@ -12974,7 +13513,11 @@ window.addEventListener('DOMContentLoaded',()=>{
        '<tr><td class="lbl">Date:</td><td>'+fmtDate_(d.date||d.outwardDate)+'</td></tr>'+
        '<tr><td class="lbl">Nature of Dispatch:</td><td>'+pEsc(d.natureOfDispatch||'-')+'</td></tr>'+
        (d.gatePass||d.gate_pass_no?'<tr><td class="lbl">Gate Pass:</td><td>'+pEsc(d.gatePass||d.gate_pass_no)+'</td></tr>':'')+
-       (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
+       (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td><strong>'+pEsc(d.lotNo)+'</strong></td></tr>':'')+
+       /* Which Trims sheet this lot's requirement came from. Printed only when
+          the entry was actually loaded from one, because then the slip has to
+          say which order's material has left the store. */
+       trimsLotRows_(d).map(p=>'<tr><td class="lbl">'+pEsc(p[0])+'</td><td>'+pEsc(p[1])+'</td></tr>').join('')+
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Party Name:</td><td><strong>'+pEsc(d.partyName||d.party_name||'-')+'</strong></td></tr>'+
         '<tr><td class="lbl">Location:</td><td>'+pEsc(d.location||'-')+'</td></tr>'+
@@ -13088,6 +13631,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      leftPairs.push(['Nature of Dispatch:',d.natureOfDispatch||'-']);
      if(d.gatePass)leftPairs.push(['Gate Pass:',d.gatePass]);
      if(d.lotNo)leftPairs.push(['Lot No.:',d.lotNo]);
+     // Same block the HTML copy prints, from the same function.
+     trimsLotRows_(d).forEach(p=>leftPairs.push(p));
      rightPairs.push(['Party Name:',d.partyName||'-']);
      rightPairs.push(['Location:',d.location||'-']);
      // Dropped rather than printed empty — an ISSUE has no Target Return Date.
@@ -13114,7 +13659,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Items table
    let head,body,foot;
    /* body row index → us strip ki coloured lines. didDrawCell isi se padhta
-      hai (Outward par khaali rehta hai — wahan koi strip nahi hoti). */
+      hai. Inward par PO / PR / Return ki strip, Outward par LOT ki — dono
+      yahin jama hoti hain, isliye hook ek hi hai. */
    const stripRows={};
    if(!isOut){
      head=[['Material Configuration / Specs','Qty','Weight','List Price','Disc%','Rate','Total']];
@@ -13157,13 +13703,28 @@ window.addEventListener('DOMContentLoaded',()=>{
      foot=[['TOTAL — '+items.length+' item(s)',String(totQty),nWt_(totWt),'','','',nNumX_(totAmt)]];
    } else {
      head=[['Item Name / Description','Make / Category','Machine','Qty','Weight']];
-     body=items.map(it=>[
-       (it.itemName||'-')+(it.itemDesc?'\n'+it.itemDesc:''),
-       (it.make||'-')+(it.category?'\n'+it.category:''),
-       (it.machineName||'-')+(it.machineNo?' / '+it.machineNo:''),
-       pNum(it.qty)+' '+(it.qtyUom||''),
-       nWt_(it.weight)+' '+(it.wUnit||'KGS')
-     ]);
+     body=[];
+     items.forEach(it=>{
+       body.push([
+         (it.itemName||'-')+(it.itemDesc?'\n'+it.itemDesc:''),
+         (it.make||'-')+(it.category?'\n'+it.category:''),
+         (it.machineName||'-')+(it.machineNo?' / '+it.machineNo:''),
+         pNum(it.qty)+' '+(it.qtyUom||''),
+         nWt_(it.weight)+' '+(it.wUnit||'KGS')
+       ]);
+       /* LOT ke against: item ke theek neeche uski strip, poori width me —
+          bilkul usi tarah jaise Inward par PO ki strip chhapti hai. Cell khaali
+          jaata hai aur drawStripCell_ ise didDrawCell me likhta hai, tabhi
+          Pending / Excess ko apna-apna rang mil sakta hai. */
+       const bits=docStripParts_(it);
+       if(bits){
+         const lines=docStripLines_(bits);
+         stripRows[body.length]=lines;
+         body.push([{content:'',colSpan:5,
+           styles:{fillColor:[250,245,255],minCellHeight:1.6+lines.length*STRIP_LH,
+             cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
+       }
+     });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0);
      foot=[['TOTAL — '+items.length+' item(s)','','',String(totQty),nWt_(totWt)]];
    }
@@ -15067,7 +15628,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      freightExp:pNum(pVal('freightExp')),roundOff:pNum(pVal('roundOffInput')),
      netWeight,grossWeight,freightRate,freightAmt,costOnYarn};
  }
- function collectOutwardData(no){return {outwardNo:no,entryType:pVal('outEntryTypeSelect'),date:pVal('outDate'),natureOfDispatch:pVal('outNatureOfDispatch'),partyName:pVal('outPartyName'),location:pVal('outLocation'),targetReturnDate:pVal('outTargetReturnDate'),transport:pVal('outTransport'),gatePass:pVal('outGatePassNo'),lotNo:pVal('outLotNo'),receiverName:pVal('outReceiverName'),designation:pVal('outDesignation'),department:pVal('outDepartment'),remarks:pVal('outRemarks')}}
+ function collectOutwardData(no){return {outwardNo:no,entryType:pVal('outEntryTypeSelect'),date:pVal('outDate'),natureOfDispatch:pVal('outNatureOfDispatch'),partyName:pVal('outPartyName'),location:pVal('outLocation'),targetReturnDate:pVal('outTargetReturnDate'),transport:pVal('outTransport'),gatePass:pVal('outGatePassNo'),lotNo:pVal('outLotNo'),receiverName:pVal('outReceiverName'),designation:pVal('outDesignation'),department:pVal('outDepartment'),remarks:pVal('outRemarks'),
+   /* The saved Trims sheet this ISSUE was loaded from, if any — Order No,
+      Party, Brand and the designs. Null for every other outward, and then the
+      PDFs print nothing extra. */
+   trimsLot:sarvActiveTrimsLot?{lotNo:sarvActiveTrimsLot.lotNo,orderNo:sarvActiveTrimsLot.orderNo,
+     party:sarvActiveTrimsLot.party,brand:sarvActiveTrimsLot.brand,
+     designs:(sarvActiveTrimsLot.designs||[]).slice(),manual:!!sarvActiveTrimsLot.manual}:null}}
  function collectRequirementData(no,rows){return {reqNo:no,ts:new Date(),date:pVal('p_reqDate'),requiredByDate:pVal('p_requiredByDate'),priority:pVal('p_priority'),generatedBy:pVal('p_reqGeneratedBy'),personName:pVal('p_reqPersonName'),empCode:pVal('p_reqEmpCode'),designation:pVal('p_reqDesignation'),department:pVal('p_reqDepartment'),contact:pVal('p_reqContact'),overallRemarks:pVal('p_overallRemarks'),items:rows.map(x=>({name:x.name,desc:x.description,make:x.make,category:x.category,machine:x.machine,qty:x.qty,uom:x.uom,grossWeight:x.grossWeight,remarks:x.specification}))}}
  async function generateRequirementPdf(d,recordId){
    const html=buildRequirementPdfHtml(d);
@@ -15096,7 +15663,16 @@ window.addEventListener('DOMContentLoaded',()=>{
     const rate=x.listPrice-x.listPrice*x.discountPct/100;
     return {...x,rate,total:rate*(x.billBasis==='WEIGHT'?x.weight:x.qty)};
   })}
- function rowDataOutward(){return pRows('#outwardItemTableBody tr').map(r=>({itemName:r.querySelector('.out-item-name')?.value||'',itemDesc:r.querySelector('.out-item-desc')?.value||'',make:r.querySelector('.out-item-make')?.value||'',category:r.querySelector('.out-item-cat')?.value||'',machineName:r.querySelector('.out-machine-name')?.value||'',machineNo:r.querySelector('.out-machine-no')?.value||'',qty:pNum(r.querySelector('.out-qty')?.value),qtyUom:r.querySelector('.out-qty-uom')?.value||'',weight:pNum(r.querySelector('.out-weight')?.value),wUnit:r.querySelector('.out-wunit')?.value||'',itemId:r.dataset.itemId||''})).filter(x=>x.itemName&&x.qty>0)}
+ function rowDataOutward(){return pRows('#outwardItemTableBody tr:not(.po-info-row)').map(r=>({itemName:r.querySelector('.out-item-name')?.value||'',itemDesc:r.querySelector('.out-item-desc')?.value||'',make:r.querySelector('.out-item-make')?.value||'',category:r.querySelector('.out-item-cat')?.value||'',machineName:r.querySelector('.out-machine-name')?.value||'',machineNo:r.querySelector('.out-machine-no')?.value||'',qty:pNum(r.querySelector('.out-qty')?.value),qtyUom:r.querySelector('.out-qty-uom')?.value||'',weight:pNum(r.querySelector('.out-weight')?.value),wUnit:r.querySelector('.out-wunit')?.value||'',itemId:r.dataset.itemId||'',
+   /* The LOT side of the same row — which lot's requirement this item is being
+      issued against, how much that lot needs and how much has already gone out
+      to it. docStripParts_ turns these three into the sub-row the screen shows
+      and both PDF renderers print; a row with no lot link simply has none. */
+   issueLotNo:r.dataset.issueLotNo||'',
+   issueReqQty:r.dataset.issueReqQty,
+   issueIssuedQty:r.dataset.issueIssuedQty,
+   issueIssuedWeight:r.dataset.issueIssuedWeight,
+   trimsSheetOrder:r.dataset.trimsSheetOrder||''})).filter(x=>x.itemName&&x.qty>0)}
  function highlightRequiredField(id){
    const e=byId(id);if(!e)return;
    e.style.border='2px solid #dc2626';e.style.background='#fef2f2';
@@ -15628,7 +16204,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // unknown ones are outlined red and nothing is saved until they're picked.
    if(pVal('outEntryTypeSelect')==='ISSUE'){
      const bad=[];
-     pRows('#outwardItemTableBody tr').forEach(tr=>{
+     pRows('#outwardItemTableBody tr:not(.po-info-row)').forEach(tr=>{
        const nm=(tr.querySelector('.out-item-name')?.value||'').trim(),qty=pNum(tr.querySelector('.out-qty')?.value);
        if(!nm||!(qty>0))return;
        const mn=tr.querySelector('.out-machine-name'),mo=tr.querySelector('.out-machine-no');
@@ -15731,7 +16307,20 @@ window.addEventListener('DOMContentLoaded',()=>{
      // on this PDF but won't come back when the entry is reopened for edit.
      // Said plainly rather than left to be discovered on the next edit.
      if(outShapeUsed>0)showToast('⚠️ Is database me Receiver Designation / Department save nahi hote — edit me dobara Emp Code daalna padega (receiver_designation, receiver_department, receiver_emp_code columns add karein)','warn');
-     const ls=[];for(const r of rows){const it=await ensureItem(r.itemName,r.itemDesc,r.make,r.category,r.qtyUom,r.itemId);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.qtyUom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;
+     /* lot_no on the LINE, not only on the header.
+        Today an ISSUE carries one lot, so the line's value is the same as the
+        header's and nothing reads differently. What it buys is the next step:
+        once one issue entry can cover several lots, each line already says
+        which lot it belongs to, and both the Lot sub-row here and the Trims
+        Manager's "Lot N Issue" column read the line first and the header only
+        as a fallback — so neither has to change.
+        Dropped on a database without the column (see the retry below), where
+        the header's lot_no carries the link exactly as before:
+          alter table outward_lines add column lot_no text;              */
+     let ls=[];for(const r of rows){const it=await ensureItem(r.itemName,r.itemDesc,r.make,r.category,r.qtyUom,r.itemId);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.qtyUom||it.uom,weight:r.weight,lot_no:r.issueLotNo||pVal('outLotNo')||null})}
+     let ins=await SB.from('outward_lines').insert(ls);
+     if(ins.error&&/\blot_no\b|column/i.test(ins.error.message||'')){ls=ls.map(({lot_no,...x})=>x);ins=await SB.from('outward_lines').insert(ls)}
+     if(ins.error)throw ins.error;
      if(msgEl)msgEl.textContent='Generating PDF…';
      const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput');
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
@@ -15987,7 +16576,14 @@ window.addEventListener('DOMContentLoaded',()=>{
    sarvEditingOutwardId=null;sarvEditingOutwardNo='';
    refreshStoreEditUi();
    ['outPartyName','outLocation','outReceiverName','outTargetReturnDate','outGatePassNo',
-    'outTransport','outRemarks','outReceiverEmpCode','outDesignation','outDepartment'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+    'outTransport','outRemarks','outReceiverEmpCode','outDesignation','outDepartment','outLotNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+   /* The Lot link belongs to the entry that was just saved, not to the next
+      one. Done before the item rows are rebuilt below, so the sub-rows go with
+      the rows they belonged to. */
+   sarvActiveTrimsLot=null;
+   renderOutLotDetails_(null,0);
+   updateOutLotBtnText();
+   toggleOutLotPanel(false);
    // A required-field highlight repaints the box white/red; the read-only
    // receiver fields have to get their locked grey look back with the clear.
    OUT_RECEIVER_FIELDS.forEach(id=>setOutReceiverField(id,''));

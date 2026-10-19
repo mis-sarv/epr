@@ -3810,6 +3810,13 @@ body { min-width: 0; }
   .dm-repl { font-size:10.5px; font-weight:800; color:#0369a1; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:5px; padding:4px 9px; cursor:pointer; }
 
   /* ── catalogue preview pages (screen) ── */
+  /* Auto-preview ki hadd ka notice — filter badalte hi preview apne aap banti
+     hai, par bahut bade selection par screen par sirf pehle kuch designs
+     render hote hain. PDF poori banti hai; ye line wahi farq batati hai
+     (store-design-master.js › generatePreview / DM_CAT_AUTO_MAX). */
+  .dm-cat-more { width:210mm; max-width:100%; margin:12px auto 0; padding:9px 13px; border-radius:7px;
+                 background:#fffbeb; border:1.5px solid #fcd34d; color:#92400e;
+                 font-size:11.5px; font-weight:600; line-height:1.6; }
   .dm-cat-page { background:#fff; border:1px solid #cbd5e1; box-shadow:0 4px 12px rgba(0,0,0,.09); width:210mm; max-width:100%; min-height:297mm; margin:16px auto; padding:26px; position:relative; }
   .dm-cat-head { text-align:center; border-bottom:3px double #0f172a; padding-bottom:10px; margin-bottom:16px; }
   .dm-cat-head h1 { font-size:21pt; font-weight:900; letter-spacing:1.4px; color:#0f172a; text-transform:uppercase; margin:0; }

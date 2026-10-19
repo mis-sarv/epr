@@ -21,6 +21,7 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `DESIGN_MASTER_MIGRATION.sql` | Design Master ke do table + storage policies. Supabase › SQL Editor me **ek baar** chalayein. |
 | `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS. Master Data › 🔽 Dropdown Master ke liye. **Ek baar** chalayein. |
 | `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column. Design Master ke Supplier Name field ke liye. **Ek baar** chalayein. |
+| `DESIGN_SKU_MIGRATION.sql` | **`design_master.design_sku_no` column** — Design No ke saath uska SKU No. Create New me Design No ke theek baad (**zaroori**), Live tab me apna column + ▾ filter, Bulk Upload grid me Design No ke neeche (optional), aur Catalogue PDF ke filters + PDF ki spec table me. **Ek baar** chalayein (dobara chalana surakshit). Column nullable hai aur uspar UNIQUE nahi — app khud duplicate SKU par poochti hai; hamesha-unique chahiye to file me commented unique index hai. Migration se pehle bhi screen chalti hai, bas SKU save nahi hota aur app ek baar ye keh deti hai. Neeche dekhein. |
 | `ORDER_FORM_USERS_MIGRATION.sql` | Order Form ke users ERP ki `app_users` me (ek hi user table): `app_users.sales_role`, `sales_users` mirror + trigger, ERP login se Order Form session (`sales_erp_login`). **Ek baar** chalayein. |
 | `printing-lot.html` | Manufacturing › 🖨️ Printing Lot Card (purani "Design Print Manager Pro" + code.gs). `#printingLotPanel` iframe me khulta hai; shop floor par seedha `printing-lot.html#production` bhi. |
 | `PRINTING_LOT_MIGRATION.sql` | Printing Lot ke `prl_*` tables, RPCs, views, bucket `printing-lot` + seed (sections, colors, satin codes). **Ek baar** chalayein (APPROVAL_CHAIN_MIGRATION ke baad). |
@@ -45,6 +46,7 @@ bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
 | `CONSOLIDATE_USER_TABLES.sql` | ⚠️ `cmp_profiles` / `packing.profiles` / `sales_users` hata kar `app_users` ko ek hi user store banati hai — par unhi naamon ki **VIEW** chhod jaati hai (app_users se), isi liye dono apps ke trigger / RLS / code bina badle chalte rehte hain. **Pehli baar chalane par sirf plan chhapti hai (dry run)**; `v_do_it := true` karne par kaam karti hai. Archive khud banati hai. |
 | `supabase/functions/erp-sso/index.ts` | Edge Function — ERP ke session token se Complaint / Packing ka **asli** Supabase Auth session banata hai (bina password, bina unki RLS chhede). `supabase functions deploy erp-sso`. |
 | `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
+| `TRIMS_MANAGER_V2_MIGRATION.sql` | **Trims Manager: Manual Order + PR No.** Teen cheezein: (1) `mfg_trims_sheets` par `order_manual` · `party_name` · `brand_name` · `designs` — Order No haath se likhne par Party / Brand / Design list sheet khud rakhti hai; (2) `mfg_trims_lines` par `pr_no` · `po_manual` · `target_date_manual` — user **PR** chunta hai, PO us PR ke against bante hi `purchase_order_lines.req_no` se khud mil jaata hai; (3) `outward_lines.lot_no` — aage ek ISSUE me kai lot ke liye. Saath me `mfg_save_trims_sheet()` RPC dobara banti hai (purani drop hoti hai). **`TRIMS_MANAGER_MIGRATION.sql` ke baad** ek baar; dobara chalana surakshit. Jab tak na chale, Trims Manager screen par sab chalta hai par PR No / Party / Brand / Design **save nahi hote** — sheet khud laal banner me ye likh deti hai. Neeche dekhein. |
 | `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
 
 ## Script load order — na badlein
@@ -898,6 +900,52 @@ Setup (ERP project › SQL Editor, `PACKING/` folder se, isi kram me):
   `v_quality_dispatch_monthly`, `v_order_pending_aging`, `v_slip_pipeline`,
   `v_weight_variance`, `v_vehicle_utilisation`) dashboard / reports ke liye.
 
+## 🎨 Production › Design Master — Design SKU No aur Catalogue
+
+Setup: `DESIGN_MASTER_MIGRATION.sql`, `DESIGN_SUPPLIER_MIGRATION.sql`, phir
+**`DESIGN_SKU_MIGRATION.sql`**.
+
+### Design SKU No — Design No se alag cheez
+
+**Design No** design ki pehchaan hai; **SKU No** use bechne / stock karne ki.
+Isi liye do alag column (`design_master.design_no`, `design_master.design_sku_no`),
+aur SKU No har jagah Design No ke theek baad baithta hai:
+
+| Kahan | Kaisa |
+|---|---|
+| **Create New** › 1. Design Specifications | Design No ke baad, **bharna zaroori** |
+| **Live** tab | Design No ke baad apna column, apna ▾ multi-select filter, aur upar wale search me bhi aata hai |
+| **Bulk Upload** grid | Design No ke neeche apna box — **optional**, kyunki purane data ke saare SKU pata nahi hote; jo chhoot jaaye wo Live › ✏️ Edit se lag jaata hai |
+| **Catalogue PDF** filters | apna multi-select (Design No ka text box alag hai; dono AND se lagte hain) |
+| **Catalogue PDF** | cover page ki spec table me `DESIGN NO` ke saath `SKU NO` |
+| ✏️ **Edit** popup | optional — purane design ka SKU na pata ho to record kholna band nahi hona chahiye |
+
+**Duplicate SKU par rok nahi, sawaal hai:** "SKU No X pehle se design Y par hai —
+phir bhi save karna hai?" Typo pakda jaata hai, par jaan-boojh kar ek SKU do
+design par rakhna bhi mumkin rehta hai. Database par `UNIQUE` isi liye nahi
+lagaya; hamesha-unique chahiye to `DESIGN_SKU_MIGRATION.sql` me commented unique
+index hai (pehle duplicate hata lein — file me query likhi hai).
+
+Migration se **pehle** bhi screen poori chalti hai: SKU ke boxes dikhte hain, bas
+us ek column ko save se chhod diya jaata hai (`skuPatch`) aur app ek baar saaf
+keh deti hai ki `DESIGN_SKU_MIGRATION.sql` chalani hai. Khaali database par pehla
+save khud pata kar leta hai (`dmWriteDesign` ek baar bina SKU dobara bhejta hai),
+isi liye kabhi "column does not exist" wala poora save fail nahi hota.
+
+### Catalogue PDF — Bed Size / SKU filters, aur preview apne aap
+
+- Filters me **BED SIZE** aur **DESIGN SKU NO** bhi aa gaye. Baaki filters ki
+  tarah ye bhi **dependent** hain — ek tick hatate hi doosre columns me se
+  bemaani options gayab ho jaate hain.
+- **Neeche ki preview filter chunte hi apne aap ban jaati hai** — "Generate
+  Preview" dabane ki zaroorat nahi (`renderCatalogueFilters` → `dmCatSchedulePreview`,
+  220 ms ka debounce, aur sirf jab Catalogue tab khuli ho).
+- Bahut bade selection par auto-preview sirf pehle **40** designs render karti
+  hai (`DM_CAT_AUTO_MAX`) aur amber line me likh deti hai kitne bache — warna
+  ek tick par sau-sau page ka DOM banta aur tick karna hi atak jaata.
+  **⚡ Generate Full Preview** us hadd ke bina chalta hai, aur **PDF par is hadd
+  ka koi asar nahi** — Download / Open hamesha poore selection ki banti hai.
+
 ## 🖨️ Printing Lot Card (Manufacturing)
 
 Purani Google-Sheet wali app ki jagah. Setup: `PRINTING_LOT_MIGRATION.sql` ek
@@ -925,6 +973,76 @@ baar chalayein — bas.
 - Ek save me poora card (`prl_save_lot` RPC, ek transaction). Do log ek saath
   badlein to doosre ko `VERSION_CONFLICT` milta hai — kisi ka kaam chupchaap
   nahi mitta.
+
+## 🧵 Trims & Packing Material Manager (Manufacturing)
+
+`trims-manager.html` — ERP › Manufacturing › Trims Manager. Ek Sales Order ke
+kaun-kaun se trims / packing material chahiye, kis lot ke liye kitne, PR kis par
+bani, PO kab aaya, maal kitna aaya aur kitna lot ko issue hua — sab ek sheet par.
+
+Setup: `TRIMS_MANAGER_MIGRATION.sql`, phir **`TRIMS_MANAGER_V2_MIGRATION.sql`**.
+
+### ORDER NO · LOT NO — list se, ya haath se
+
+| | Kahan se |
+|---|---|
+| **ORDER NO** dropdown | saved Sales Orders (`sales_orders`) — Order Qty, Buyer, Order Date sab wahan se |
+| **ORDER NO** ✎ Manual | khud likha hua. Order Form me iska koi record nahi, isliye sheet khud poochti hai |
+| **LOT NO** list se | saved Lot Cards (`mfg_lot_cards`) — Lot Req Qty lot card se bharti hai |
+| **LOT NO** haath se | jo Lot Card me nahi hai. Confirm maangti hai; Lot Req Qty manual |
+
+**Manual Order ya manual Lot = MANUAL sheet**, aur phir amber bar aati hai:
+**Party Name · Brand Name · Design 1 · Design 2 · ➕ ADD More Designs**
+(Design 3, 4, 5 … ki koi hadd nahi). Teeno **zaroori** hain — inke bina Save nahi
+hota, kyunki poore ERP me inka doosra koi ghar nahi, aur PDF / CSV / Saved Sheets
+register teeno chhapte hain. Saved Sales Order par ye bar dikhti hi nahi.
+
+### PR NO. → PO NO. — user PR chunta hai, PO khud aata hai
+
+Pehle PO No. haath se chunna padta tha, matlab PO banne ka intezaar karke sheet
+dobara kholna. Ab:
+
+1. **PR NO.** column me dropdown — `purchase_requirements` ki list. Jis item ki
+   PR hai wo upar apne heading me (`✓ Is item ki PR`), baaki neeche.
+2. Purchase us PR ke against PO banata hai → **PO NO.** column me wo PO apne aap
+   aa jaata hai (hari cell, neeche vendor ka naam). Jod `purchase_order_lines.req_no`
+   hai — sheet me kuch dobara likhna nahi padta.
+3. **Target Date** us PO ki `delivery_date` se khud bhar jaati hai (ek PR par kai
+   PO ho to **sabse pehli** date — wahi chalani hai).
+4. **Qty Received** us PO ke against uss item ka inward. PO ke bina seedha PR par
+   book hui receipt (FIELD BOY wali "without PO") bhi isme gini jaati hai, aur do
+   baar nahi — dono ka hisaab alag rakha jaata hai.
+
+PO abhi na bana ho to cell amber me **⏳ PO pending** kehti hai (summary me bhi
+"PR → PO Pending" ginti). **✎** se PO haath se pin kar sakte hain (purane order
+ke liye jinki line par `req_no` nahi hai), **↺** se phir auto par.
+
+### Lot Issue · Pending Issue
+
+- **Lot N Issue** — Store ki ISSUE entry se uss lot ke against uss item ki qty,
+  aur **neeche har issue ki date**. Hover par issue document no + har issue ki qty.
+- **Pending Issue = Qty Received − Total Lot Issue** — jo maal store me aa gaya
+  par abhi lot ko nahi diya. Neeche chhoti line Lot Req se kami/zyada batati hai
+  (`Req short 120` / `Req pura` / `OVER issued`), taaki wo item bhi dikh jaaye jo
+  kam hai **kyunki aaya hi nahi**.
+
+### Store Issue — saved Lot se poori item list
+
+`index.html` › Outward Desk › Entry Type **ISSUE** › **LOT No.**:
+**📋 Saved Lot** button me wahi lot aate hain jinki Trims sheet saved hai. Ek
+click par:
+
+- us lot ki poori **required item list** rows me bhar jaati hai (Item Master se
+  Description / Category / UOM), Qty me **pending** qty;
+- har item ke neeche **sub-row** — `LOT: 1001 · Required Qty · Pending Issue ·
+  Issued Qty · Excess Issue` — bilkul usi tarah jaise PO ke against Inward me PO
+  ki sub-row aati hai (dono ek hi `docStripParts_` se bani hain);
+- **Issue PDF** me wahi sub-row chhapti hai, aur header me Trims Order No ·
+  Party · Brand · Design.
+
+Lot box me koi aur batch no. likhein to kuch nahi badalta — jaisa pehle tha.
+⚠️ **Machine Name & No. ISSUE par har row par zaroori rehta hai**, lot se bhari
+rows par bhi: lot batata hai *kaun sa maal* nikla, machine batati hai *kahan gaya*.
 
 ## 👤 Ek user, kai role, ek login
 
