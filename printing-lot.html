@@ -627,7 +627,11 @@ function renderMeta(){
     if(L.updated_at) m.push('Last save: <b>' + esc(L.updated_by||'') + '</b> ' + esc(fmtDT(L.updated_at)) + ' · v' + L.version);
     if(L.pdf_url) m.push(`PDF: <a class="text-blue-600 underline font-bold" href="${esc(L.pdf_url)}" target="_blank" rel="noopener">kholein</a> (${esc(fmtDT(L.pdf_generated_at))})`);
     if(L.lot_card_ref) m.push('🔗 Lot Card Manager se juda');
-  } else m.push('Naya card — pehli baar <b>Save</b> karte hi database me jayega. Tab tak browser me backup rehta hai.');
+    if(L.extra && L.extra.src_order_no) m.push('🧾 Order se bana: <b>' + esc(L.extra.src_order_no) + '</b> · Product #' + esc(L.extra.src_order_line || '-'));
+  } else {
+    if(L.extra && L.extra.src_order_no) m.push('🧾 Order <b>' + esc(L.extra.src_order_no) + '</b> · Product #' + esc(L.extra.src_order_line || '-') + ' se bhara — check karke <b>Save</b> karein.');
+    m.push('Naya card — pehli baar <b>Save</b> karte hi database me jayega. Tab tak browser me backup rehta hai.');
+  }
   $('meta-box').innerHTML = m.join('<br>');
 }
 function applyRO(){
@@ -1756,6 +1760,162 @@ function msSections(body){
       <div class="p-2 flex flex-wrap gap-1">${s.fields.map(f => `<span class="chip bg-gray-100 text-gray-700">${esc(f.label)} <i class="text-gray-400 font-normal">${esc(f.type)}</i></span>`).join('')}</div></div>`; }).join('')}</div>`;
 }
 
+// ═══════════════════════ ORDER FORM → LOT CARD (hand-off) ══════════════════
+/* Order Form › Confirmed Orders › "🧾 Generate Lot Card" / "📍 Track LOT".
+   Order Form localStorage me ek hand-off rakhta hai (key neeche) aur ERP ka
+   Printing Lot panel kholta hai. Ye page use do jagah padhta hai: boot par
+   (init), aur pehle se khula ho to Order Form seedha window.prlHandoff()
+   bulata hai. Padhte hi key hat jaati hai — ek hand-off ek hi baar chalta hai.
+     NEW_LOT_FROM_ORDER → naya card, order ke product se bhara + uski photos
+                          (sab pehle se chuni) · extra.src_order_* me jodd
+     TRACK_LOT          → Production tab me wahi lot
+   Shape order-form.html ke ofGenerateLot() me hai (v:1). */
+const HANDOFF_KEY = 'sarv_prl_handoff';
+let initDone = false, handoffBusy = false;
+function takeHandoff(){
+  let h = null;
+  try { h = JSON.parse(localStorage.getItem(HANDOFF_KEY) || 'null'); localStorage.removeItem(HANDOFF_KEY); } catch(e){}
+  if(!h || !h.kind || Date.now() - (h.at || 0) > 15 * 60000) return null;   // 15 min se purana = bhool jao
+  return h;
+}
+window.prlHandoff = async function(){
+  if(!initDone || handoffBusy) return false;    // boot abhi chal raha hai — init khud padhega
+  const h = takeHandoff(); if(!h) return false;
+  handoffBusy = true;
+  try { await prlRunHandoff_(h); } finally { handoffBusy = false; }
+  return true;
+};
+
+// List me hu-ba-hu (case / space / chinh chhod kar) mile to list wali shakal, warna jaisa aaya.
+function pickOpt(list, v){
+  const u = up(v).replace(/\s+/g, ' '); if(!u) return '';
+  const nz = s => up(s).replace(/[^A-Z0-9]/g, '');
+  return list.find(o => nz(o) === nz(u)) || u;
+}
+// Order ka Sattan (Size "5 INCH SATTAN" + Type "PREMIUM") → Satin Quality ("5 INCH PREMIUM")
+function satinFromOrder(size, type){
+  const s = up(size), t = up(type);
+  if(!s || s === 'NA') return '';
+  const inch = (s.match(/(\d+)/) || [])[1];
+  if(!inch) return pickOpt(ddList('satin_quality'), s);
+  const words = t === 'STANDARD' ? ['NORMAL','STANDARD'] : (t && t !== 'NA' ? [t] : []);
+  const cands = ddList('satin_quality').filter(o => new RegExp('^' + inch + '\\s*INCH').test(up(o)));
+  return cands.find(o => words.some(w => up(o).includes(w))) || (cands.length === 1 ? cands[0] : '')
+    || (inch + ' INCH' + (words[0] ? ' ' + words[0] : ''));
+}
+// Sabse bada sirf-number LOT NO + 1 (sirf sujhaav — user badal sakta hai; duplicate check wahi purana)
+async function suggestLotNo(){
+  try {
+    const rows = await fetchAll(() => SB.from('prl_lots').select('lot_no'));
+    let max = 0; rows.forEach(r => { const v = up(r.lot_no); if(/^\d+$/.test(v)) max = Math.max(max, parseInt(v, 10)); });
+    return max ? String(max + 1) : '';
+  } catch(e){ return ''; }
+}
+function lotFromOrder(h){
+  const o = h.order || {}, p = h.product || {};
+  const n = blankLot(), f = n.f;
+  const numv = v => { const x = num(v); return x && x > 0 ? x : null; };
+  f.order_no = up(o.orderNo);
+  f.party_name = up(o.buyerName);
+  f.brand_name = up(p.itemCode);
+  f.fabric_name = String(p.fabric || '').trim();
+  f.fabric_category = pickOpt(ddList('fabric_category'), p.category);
+  f.bed_size = pickOpt(ddList('bed_size'), { DB:'Double Bed', SB:'Single Bed' }[up(p.dbsb)] || p.dbsb);
+  f.blanket_ply = pickOpt(ddList('blanket_ply'), { SP:'Single Ply', DP:'Double Ply', '3 PLY':'Three Ply', NA:'' }[up(p.ply)] ?? p.ply);
+  if(numv(p.weight)) f.actual_weight = numv(p.weight) + ' KG';
+  f.finished_size = up(p.size).replace(/\s*[×X*]\s*/g, ' X ');
+  f.satin_quality = satinFromOrder(p.sattanSize, p.sattanType);
+  f.emboss = ['YES','NO'].includes(up(p.emboss)) ? up(p.emboss) : '';
+  if(numv(p.qty)) f.quantity = numv(p.qty) + ' PCS';
+  if(numv(p.packs)) f.packing = numv(p.packs) + ' ' + (up(p.packType) || 'BORA');
+  n.extra = { src_order_no:up(o.orderNo), src_order_line:Number(o.line) || 1, src_order_lines:Number(o.totalLines) || 1,
+              src_order_type:o.orderType || '', src_item_code:up(p.itemCode), src_linked_at:new Date().toISOString() };
+  const note = (name, text) => { text = String(text || '').trim(); if(text) n.notes.push({ id:uuid(), process_name:name, note_text:text, font_color:'#dc2626' }); };
+  note('DESIGN', p.design);
+  note('ORDER REMARKS', p.remarks);
+  note('LABEL / TAG', p.labelTagComment);
+  return n;
+}
+// Order ki photos ka chunav — SAB pehle se chuni; jo nahi chahiye uspar click.
+function pickOrderImages(h){
+  return new Promise(res => {
+    const o = h.order || {};
+    const imgs = (h.images || []).slice(0, 40);
+    const room = () => MAX_DESIGNS - L.designs.length;
+    const picked = new Set(imgs.map((x, i) => i).slice(0, room()));
+    const ov = openModal(`${modalHead('Order ki photos → Lot Card', 'ph-images')}
+      <div class="px-4 pt-3 text-[11px] text-gray-600">Order <b>${esc(o.orderNo)}</b> · Product #${esc(o.line)} ki photos <b>pehle se chuni</b> hain. Jo card par nahi chahiye uspar click karke hatayein.</div>
+      <div data-grid class="flex-1 overflow-y-auto p-4 grid grid-cols-3 sm:grid-cols-4 gap-2 custom-scrollbar"></div>
+      <div class="px-4 py-3 border-t flex items-center justify-between bg-gray-50"><span data-n class="text-xs font-bold text-gray-600"></span>
+        <div class="flex gap-2"><button type="button" data-close class="px-4 py-2 bg-gray-100 rounded-lg text-sm font-semibold">Skip</button>
+        <button type="button" data-add class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold">Add to Card</button></div></div>`, { w:'max-w-3xl', sticky:true });
+    wireClose(ov, () => res(false));
+    const render = () => {
+      ov.querySelector('[data-grid]').innerHTML = imgs.map((x, i) => `<button type="button" data-i="${i}" class="relative border-2 ${picked.has(i) ? 'border-emerald-500 ring-2 ring-emerald-200' : 'border-gray-200 opacity-50'} rounded-lg overflow-hidden bg-white">
+        <div class="h-28 bg-gray-50 flex items-center justify-center"><img src="${esc(x.url)}" loading="lazy" class="max-h-full max-w-full object-contain"></div>
+        <span class="absolute top-1 left-1 chip ${x.tag === 'EMBOSS' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}">${x.tag === 'EMBOSS' ? 'EMBOSS' : 'PRODUCT'}</span>
+        ${picked.has(i) ? '<i class="ph ph-check-circle-fill absolute top-1 right-1 text-emerald-600 text-xl bg-white rounded-full"></i>' : ''}</button>`).join('');
+      ov.querySelector('[data-n]').textContent = picked.size + ' chuni · card par jagah: ' + room();
+      ov.querySelector('[data-add]').disabled = !picked.size;
+    };
+    ov.querySelector('[data-grid]').onclick = e => {
+      const b = e.target.closest('[data-i]'); if(!b) return;
+      const i = +b.dataset.i;
+      if(picked.has(i)) picked.delete(i);
+      else if(picked.size >= room()) return showToast(`Ek card par ${MAX_DESIGNS} designs tak`, 'info');
+      else picked.add(i);
+      render();
+    };
+    ov.querySelector('[data-add]').onclick = async () => {
+      const btn = ov.querySelector('[data-add]'); btn.disabled = true; btn.textContent = 'Copying…';
+      const files = [], refs = [];
+      for(const i of [...picked].sort((a, b) => a - b)){
+        const x = imgs[i];
+        try { const r = await fetch(x.url); if(!r.ok) throw new Error('HTTP ' + r.status); const b = await r.blob();
+          files.push(new File([b], 'order.jpg', { type:b.type || 'image/jpeg' }));
+          // Photo is lot ki apni copy banti hai (bucket printing-lot) — order ki file kabhi nahi chhedi jaati
+          refs.push(Object.assign({ source:'UPLOAD', source_ref:`ORDER ${o.orderNo} #${o.line} ${x.tag}` }, x.tag === 'EMBOSS' ? { title_label:'EMBOSS' } : {}));
+        } catch(e){ showToast('Ek photo nahi aayi: ' + (e.message || e), 'error'); }
+      }
+      ov.remove();
+      if(files.length) await addImages(files, 'UPLOAD', refs);
+      res(true);
+    };
+    render();
+  });
+}
+async function prlRunHandoff_(h){
+  if(h.kind === 'TRACK_LOT' && h.lotId){
+    showView('production'); await ptSelect(h.lotId); return;
+  }
+  if(h.kind !== 'NEW_LOT_FROM_ORDER' || !h.order) return;
+  const o = h.order;
+  // Isi order + product ka lot pehle se? To naya nahi — wahi kholne ka mauka.
+  try {
+    const { data } = await SB.from('prl_lots').select('id,lot_no,extra').eq('order_no', up(o.orderNo));
+    const hit = (data || []).find(r => Number(r.extra && r.extra.src_order_line) === Number(o.line));
+    if(hit){
+      if(await confirmBox(`Order ${o.orderNo} ke product #${o.line} ka LOT ${hit.lot_no} pehle se bana hai.\nWahi kholein?`, 'Haan, kholo', false)) await openLot(hit.id, { force:true });
+      return;
+    }
+  } catch(e){}
+  if(!canEdit()){
+    showView('register'); $('rg-q').value = up(o.orderNo); renderRegister();
+    return showToast('Lot card banane ki permission nahi hai (Feature Access › PRINTING LOT EDIT)', 'error');
+  }
+  if(!(await confirmDiscard())) return;
+  const n = lotFromOrder(h);
+  n.f.lot_no = await suggestLotNo();
+  L = n; dirty = false; conflict = false; banner(modeBanner());
+  clearLocalDraft();
+  try { localStorage.removeItem(LAST_KEY); } catch(e){}
+  renderForm(); renderSheet(); markDirty(); showView('card');
+  banner(`🧾 Order <b class="mx-1">${esc(o.orderNo)}</b> · Product #${esc(o.line)}/${esc(o.totalLines || 1)} se bhara. LOT NO ${n.f.lot_no ? '<b class="mx-1">' + esc(n.f.lot_no) + '</b> sujhaya gaya hai (badal sakte hain)' : 'bharein'} · Unit chunein · check karke <b class="ml-1">Save</b>.`, 'info');
+  if((h.images || []).length) await pickOrderImages(h);
+  showToast('Order se card bhar gaya — check karke Save karein', 'success');
+  setTimeout(() => $(L.f.unit ? 'in-lot_no' : 'in-unit').focus(), 80);
+}
+
 // ═══════════════════════ VIEWS / ROUTING ═══════════════════════════════════
 let view = 'card';
 function showView(v){
@@ -1862,6 +2022,19 @@ async function init(){
   const hash = (location.hash || '').replace('#', '');
   // Browser band hone se pehle ka bina-save kaam — wapas laane ka mauka.
   let draft = null; try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch(e){}
+
+  // Order Form se aaya (Generate / Track Lot Card) — wahi sabse pehle.
+  const ho = takeHandoff();
+  if(ho){
+    const hasDraft = draft && draft.dirty && canEdit() && draft.f && (draft.f.lot_no || (draft.designs || []).length);
+    if(ho.kind !== 'NEW_LOT_FROM_ORDER' || !hasDraft
+       || await confirmBox(`Pichhli baar ka ek bina-save card${draft.f.lot_no ? ' (LOT ' + draft.f.lot_no + ')' : ''} pada hai.\nUse chhod kar Order ${ho.order && ho.order.orderNo || ''} se naya card banayein?`, 'Haan, naya banao')){
+      showView('card');
+      initDone = true;
+      await prlRunHandoff_(ho);
+      return;
+    }
+  }
   let last = null; try { last = localStorage.getItem(LAST_KEY); } catch(e){}
   if(draft && draft.dirty && canEdit() && (draft.f && (draft.f.lot_no || (draft.designs || []).length))){
     const ok = await confirmBox(`Pichhli baar ka bina-save card mila${draft.f.lot_no ? ' (LOT ' + draft.f.lot_no + ')' : ''}, ${new Date(draft.savedLocalAt).toLocaleString('en-IN')}.\nUse wapas kholein?`, 'Haan, kholo', false);
@@ -1874,6 +2047,7 @@ async function init(){
     try { await openLot(last, { force:true }); } catch(e){}
   }
   showView(['card','register','production','masters'].includes(hash) ? hash : 'card');
+  initDone = true;
 }
 document.addEventListener('DOMContentLoaded', init);
 </script>

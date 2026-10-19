@@ -393,6 +393,72 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .btn-history{background:var(--navy);color:#fff;border:none;padding:14px 16px;font-size:13px;font-weight:600;font-family:'DM Sans',sans-serif;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
 .btn-history:hover{background:#2A5A8E}
 
+/* ═══════════════════════ HOME — MTO / MTS + order buckets ══════════
+   Page khulte hi ye screen form ke UPAR aati hai. Pehle order type
+   (Make to Order / Make to Stock — dono ki apni number series), phir us
+   type ke chhe raaste: New Order + paanch status buckets. */
+.ofh{position:fixed;inset:0;z-index:240;background:linear-gradient(160deg,#0F2740 0%,#1A3C5E 55%,#24507A 100%);overflow-y:auto;display:flex;flex-direction:column}
+.ofh-top{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 20px;max-width:980px;width:100%;margin:0 auto;color:#fff}
+.ofh-top h1{font-size:16px;font-weight:700;line-height:1.2}
+.ofh-top span{display:block;font-size:11px;color:#9EC8E8;margin-top:2px}
+.ofh-user{font-size:11px;color:#9EC8E8;font-weight:600;text-align:right}
+.ofh-body{flex:1;width:100%;max-width:980px;margin:0 auto;padding:10px 16px 40px}
+.ofh-title{color:#fff;font-size:20px;font-weight:700;margin:18px 4px 4px}
+.ofh-sub{color:#9EC8E8;font-size:12.5px;margin:0 4px 18px}
+.ofh-types{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.ofh-type{position:relative;text-align:left;border:none;border-radius:18px;padding:22px 20px 18px;cursor:pointer;color:#fff;font-family:'DM Sans',sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:transform .15s,box-shadow .15s;overflow:hidden}
+.ofh-type:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(0,0,0,.32)}
+.ofh-type.mto{background:linear-gradient(135deg,#D4870A,#B4560A)}
+.ofh-type.mts{background:linear-gradient(135deg,#1B8A5A,#11603E)}
+.ofh-type .ic{font-size:34px;line-height:1;display:block;margin-bottom:10px}
+.ofh-type b{display:block;font-size:20px;font-weight:700}
+.ofh-type small{display:block;font-size:12px;opacity:.88;margin-top:3px}
+.ofh-type code{display:inline-block;margin-top:12px;background:rgba(0,0,0,.22);border-radius:7px;padding:4px 9px;font-family:'DM Mono',monospace;font-size:11.5px}
+.ofh-type .cnt{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;font-size:10.5px;font-weight:700}
+.ofh-type .cnt i{font-style:normal;background:rgba(255,255,255,.18);border-radius:99px;padding:2px 8px}
+.ofh-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 6px}
+.ofh-back{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif}
+.ofh-back:hover{background:rgba(255,255,255,.2)}
+.ofh-mode{font-size:12px;font-weight:700;padding:5px 12px;border-radius:99px;color:#fff}
+.ofh-mode.mto{background:#D4870A}.ofh-mode.mts{background:#1B8A5A}
+.ofh-next{margin-left:auto;color:#9EC8E8;font-size:11.5px}
+.ofh-next b{color:#fff;font-family:'DM Mono',monospace}
+.ofh-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:10px}
+.ofh-tile{background:#fff;border:none;border-radius:16px;padding:18px 16px 14px;text-align:left;cursor:pointer;font-family:'DM Sans',sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.18);transition:transform .15s;display:flex;flex-direction:column;gap:4px;border-top:5px solid var(--c,#1A3C5E);min-height:128px}
+.ofh-tile:hover{transform:translateY(-2px)}
+.ofh-tile .ic{font-size:24px}
+.ofh-tile b{font-size:15px;color:var(--navy);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.ofh-tile small{font-size:11.5px;color:var(--muted)}
+.ofh-tile .n{margin-top:auto;font-size:24px;font-weight:700;color:var(--c,#1A3C5E);font-family:'DM Mono',monospace}
+.ofh-tile .n em{font-style:normal;font-size:10.5px;color:var(--muted);font-family:'DM Sans',sans-serif;font-weight:600;margin-left:4px}
+.ofh-tile.new{background:linear-gradient(135deg,#2E6DA4,#1A3C5E);color:#fff}
+.ofh-tile.new b,.ofh-tile.new small,.ofh-tile.new .n{color:#fff}
+.ofh-tile:disabled{opacity:.5;cursor:not-allowed;transform:none}
+@media(max-width:700px){.ofh-types{grid-template-columns:1fr}.ofh-grid{grid-template-columns:1fr 1fr}.ofh-next{margin-left:0;width:100%}}
+.hdr-tag.mto{background:rgba(212,135,10,.25);border-color:rgba(212,135,10,.7);color:#FFD580}
+.hdr-tag.mts{background:rgba(27,138,90,.3);border-color:rgba(46,190,120,.7);color:#A7F3D0}
+.btn-home{background:#fff;border:1.5px solid var(--border);color:var(--navy);padding:14px 14px;font-size:13px;font-weight:700;font-family:'DM Sans',sans-serif;border-radius:10px;cursor:pointer;white-space:nowrap}
+.btn-home:hover{background:var(--lblue)}
+
+/* Order list ke andar type tag + Lot Card box */
+.oh-type-tag{font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;letter-spacing:.3px;color:#fff}
+.oh-type-tag.mto{background:#D4870A}.oh-type-tag.mts{background:#1B8A5A}.oh-type-tag.old{background:#94A3B8}
+.oh-lot{grid-column:1/-1;margin-top:8px;border:1.5px solid #C7D7EA;border-radius:10px;background:#F6FAFF;padding:8px 10px;font-size:11.5px}
+.oh-lot-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.oh-lot-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 0;border-top:1px dashed #D6E2F0}
+.oh-lot-row:first-of-type{border-top:none}
+.oh-lot-prod{font-weight:600;color:var(--text);min-width:0}
+.oh-lot-prod small{display:block;color:var(--muted);font-weight:500;font-size:10.5px}
+.oh-lot-btns{display:flex;gap:6px;flex-wrap:wrap}
+.oh-lot-btn{display:inline-flex;align-items:center;gap:5px;border:none;border-radius:7px;padding:6px 11px;font-size:11px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;white-space:nowrap}
+.oh-lot-btn.gen{background:#7C3AED;color:#fff}
+.oh-lot-btn.gen:hover{background:#6D28D9}
+.oh-lot-btn.track{background:#0F766E;color:#fff}
+.oh-lot-btn.track:hover{background:#115E59}
+.oh-lot-btn small{font-weight:600;opacity:.85;font-size:9.5px}
+.oh-lot-btn:disabled{opacity:.55;cursor:wait}
+.oh-lot-muted{color:var(--muted);font-size:10.5px;font-style:italic}
+
 /* ═══════════════════════ TOAST ═══════════════════════ */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:#1A1A2E;color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s;z-index:300}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -463,11 +529,50 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
      Ctrl+P prints the same layout as the saved PDF. -->
 <div id="printDoc"></div>
 
+<!-- ═══════════════════ HOME — Make to Order / Make to Stock ═══════════════
+     Page khulte hi. Step 1: order type (apni number series). Step 2: us type
+     ke New Order + 5 status buckets. Logic: neeche "HOME — MTO / MTS". -->
+<div id="ofHome" class="ofh">
+  <div class="ofh-top">
+    <div><h1>SARV INDIA HOME FURNISHING</h1><span>Sales › Order Form</span></div>
+    <div class="ofh-user" id="ofhUser"></div>
+  </div>
+  <div class="ofh-body">
+    <div id="ofhStep1">
+      <div class="ofh-title">Order type chunein</div>
+      <div class="ofh-sub">Dono ki apni alag Order No. series hai — har financial year 0001 se shuru.</div>
+      <div class="ofh-types">
+        <button type="button" class="ofh-type mto" onclick="ofPickMode('MTO')">
+          <span class="ic">🧾</span><b>Make to Order</b>
+          <small>Party ke order / quotation par production</small>
+          <code id="ofhPatMTO">MTO-SIHF/2026-27/0001</code>
+          <div class="cnt" id="ofhCntMTO"></div>
+        </button>
+        <button type="button" class="ofh-type mts" onclick="ofPickMode('MTS')">
+          <span class="ic">🏬</span><b>Make to Stock</b>
+          <small>Godown stock ke liye production</small>
+          <code id="ofhPatMTS">MTS-SIHF/2026-27/0001</code>
+          <div class="cnt" id="ofhCntMTS"></div>
+        </button>
+      </div>
+    </div>
+    <div id="ofhStep2" style="display:none">
+      <div class="ofh-bar">
+        <button type="button" class="ofh-back" onclick="ofBackToTypes()">← Type badlein</button>
+        <span class="ofh-mode" id="ofhMode">—</span>
+        <button type="button" class="ofh-back" onclick="ofRefreshHome()" title="Counts dobara laayein">↻ Refresh</button>
+        <span class="ofh-next">Agla Order No: <b id="ofhNextNo">…</b></span>
+      </div>
+      <div class="ofh-grid" id="ofhGrid"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════════════ SCREEN UI ════════════════════════════════ -->
 <div class="hdr">
   <div class="hdr-inner">
     <div><h1>SARV INDIA HOME FURNISHING</h1><span>Sanoli Road, 11K.M Stone, Near Kurar,Jalalpur-1,Panipat-132103(Haryana) | sarvindia.com</span></div>
-    <div class="hdr-tag">ORDER FORM</div>
+    <div class="hdr-tag" id="hdrTag">ORDER FORM</div>
   </div>
   <div class="meta-bar">
     <span>Order: <b id="dON">—</b></span>
@@ -643,6 +748,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
       <button type="button" role="menuitem" class="pf-logout" onclick="closeProfileMenu();confirmLogout()">🚪 Logout</button>
     </div>
   </div>
+  <button class="btn-home" onclick="ofShowHome()" title="Home — MTO / MTS aur order lists">🏠</button>
   <button class="btn-reset" onclick="resetForm()">↺</button>
   <button class="btn-history" onclick="openOrderHistory()">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2H2zM2 7h12v2H2zM2 11h8v2H2z" fill="white"/></svg>
@@ -659,7 +765,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   <div class="oh-drawer">
     <div class="oh-hdr">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 4h14v2H3zM3 9h14v2H3zM3 14h10v2H3z" fill="white"/></svg>
-      <h3>Order History</h3>
+      <h3 id="ohTitle">Order History</h3>
       <button class="oh-close" onclick="closeOrderHistory()">&times;</button>
     </div>
     <div class="oh-search">
@@ -943,6 +1049,7 @@ async function sarvBootOrderForm(){
     }
     loggedInUser={username:data.username,role:data.role,token:tok};
     applyRoleRestrictions();
+    ofRenderHome();   // naam + role, aur New Order sirf "create" wale role ko
     /* Ab page dikhne layak hai — splash yahan hatti hai (gate me nahi),
        warna beech me ek pal ko khaali form jhalakta. */
     if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
@@ -1490,6 +1597,9 @@ window.onload=function(){
 
   // Onboard signature pad init (modal canvas — drawn once on first login)
   initOnboardSigPad();
+
+  // 🏠 Home (MTO / MTS) — page isi se khulta hai; Order No type chunne par banta hai
+  ofBackToTypes();
 
   // fetch order no + dropdowns from Supabase
   if(SB_READY) fetchDrops();
@@ -2057,13 +2167,11 @@ async function fetchDrops(){
     }));
     document.querySelectorAll('[id$="-emboss-catalog"]').forEach(el=>{ delete el.dataset.built; if(el.style.display==='block'){ const id=el.id.replace(/^p/,'').replace(/-emboss-catalog$/,''); el.innerHTML=renderEmbossCatalogPicker(id); el.dataset.built='1'; } });
 
-    // Next order no — never overwrite the number of an order being edited
-    const editing=document.getElementById('editBanner').style.display==='flex';
-    if(nxRes.data && !editing){
-      document.getElementById('orderNo').value=nxRes.data;
-      document.getElementById('dON').textContent=nxRes.data;
-      syncMeta();
-    }
+    /* Next order no — ab MTO / MTS ki apni series (ofAssignOrderNo, neeche
+       "HOME — MTO / MTS"). `sales_next_order_no()` ka purana SIHF/… number
+       ab form me nahi jaata; RPC sirf upar "database chal raha hai" ki
+       jaanch ke liye bulaya jaata hai. Edit ho raha order chhua nahi jaata. */
+    ofAssignOrderNo();
     console.log('✅ Supabase connected — drops, items, buyer & agency details loaded');
     /* Kuch optional table na mili ho to NAAM se batate hain, ek hi
        toast me. "Setup pending" jaisa dhundhla message nahi — kyunki
@@ -3916,6 +4024,8 @@ function collectPayload(){
   });
   return {
     orderNo:       document.getElementById('orderNo').value,
+    // MTO / MTS — Order No ke prefix se (purana bina-prefix number = MTO)
+    orderType:     ofTypeOf(document.getElementById('orderNo').value),
     orderDate:     document.getElementById('orderDate').value,
     saleChannel:   document.getElementById('saleChannel').value,
     agencyName:    document.getElementById('agencyName').value||'',
@@ -4264,6 +4374,7 @@ async function handleSubmit(){
     }
   }
   if(!payload.orderNo||payload.orderNo==='Loading...'||payload.orderNo==='OFFLINE'){ toast('⚠️ Order No not loaded — check connection & reload'); return; }
+  if(!payload.isEdit && !/^MT[OS]-SIHF\//.test(payload.orderNo)){ toast('⚠️ Pehle 🏠 Home se Make to Order / Make to Stock chunein'); ofShowHome(); return; }
 
   // Update local DROPS with any new values entered
   updateLocalDrops(payload);
@@ -4285,12 +4396,14 @@ async function handleSubmit(){
     let rows=buildSheetRows(payload);
     let {data,error}=await SB.rpc('sales_save_order',{p_token:loggedInUser.token,p_order:rows.order,p_products:rows.products,p_trims:rows.trims,p_is_edit:payload.isEdit});
     if(error) throw error;
-    if(data && !data.success && data.code==='DUPLICATE' && !payload.isEdit && data.nextOrderNo){
-      // Someone else saved this Order No a moment ago — take the next free one.
-      toast('ℹ️ '+payload.orderNo+' was just used — saving as '+data.nextOrderNo);
-      payload.orderNo=data.nextOrderNo;
-      document.getElementById('orderNo').value=data.nextOrderNo;
-      document.getElementById('dON').textContent=data.nextOrderNo;
+    if(data && !data.success && data.code==='DUPLICATE' && !payload.isEdit){
+      // Someone else saved this Order No a moment ago — take the next free one
+      // of the SAME series (server ka `nextOrderNo` purani SIHF/… series ka hai).
+      const nextNo=await ofNextOrderNo(payload.orderType||OF_MODE||'MTO');
+      toast('ℹ️ '+payload.orderNo+' was just used — saving as '+nextNo);
+      payload.orderNo=nextNo;
+      document.getElementById('orderNo').value=nextNo;
+      document.getElementById('dON').textContent=nextNo;
       rows=buildSheetRows(payload);
       ({data,error}=await SB.rpc('sales_save_order',{p_token:loggedInUser.token,p_order:rows.order,p_products:rows.products,p_trims:rows.trims,p_is_edit:false}));
       if(error) throw error;
@@ -4496,17 +4609,23 @@ function fmtStamp(d){ const o=istParts(d); return o.year+o.month+o.day+'_'+o.hou
 // ══════════════════════ ORDER HISTORY PANEL ══════════════════════════════
 let ohCache=null;
 
-function openOrderHistory(){
+/* keepView = Home ke kisi bucket se khula (OH_VIEW pehle se set hai).
+   Bottom bar ka "Orders" = abhi wale type ke SAARE orders. */
+function openOrderHistory(keepView){
+  if(keepView!==true) OH_VIEW={mode:OF_MODE||'MTO',bucket:''};
   const panel=document.getElementById('ohPanel');
   panel.classList.add('open');
   document.getElementById('ohSearch').value='';
-  const sf=document.getElementById('ohStatusFilter'); if(sf) sf.value='';
+  const sf=document.getElementById('ohStatusFilter'); if(sf){ sf.value=''; sf.style.display=OH_VIEW.bucket?'none':''; }
+  const b=OF_BUCKETS.find(x=>x.key===OH_VIEW.bucket);
+  document.getElementById('ohTitle').textContent=OF_MODE_LABEL[OH_VIEW.mode]+' · '+(b?b.label:'All Orders');
   if(!ohCache) fetchOrderList();
   else renderOrderList(ohCache);
 }
 
 function closeOrderHistory(){
   document.getElementById('ohPanel').classList.remove('open');
+  if(ofHomeOpen()) ofRenderHome();   // status badla ho to Home ke counts bhi
 }
 
 // readOrderList() — newest first
@@ -4516,6 +4635,16 @@ async function fetchOrderList(){
   document.getElementById('ohCount').textContent='—';
   if(!SB_READY){ body.innerHTML='<div class="oh-loading">⚠️ Supabase not connected</div>'; return; }
   try{
+    await ofLoadOrders();
+    renderOrderList(ohCache);
+  }catch(err){
+    body.innerHTML='<div class="oh-loading">❌ '+esc(isSetupError(err)?SETUP_HINT:('Network error: '+err.message))+'</div>';
+  }
+}
+
+// Sirf data — Order History drawer aur Home ke counts dono isi ko padhte hain.
+async function ofLoadOrders(){
+  {
     const rows=await fetchAllRows('sales_orders','id,saved_at,order_no,order_date,sale_channel,agency_name,agency_contact,agency_mobile,buyer_name,contact_person,mobile,address,gstin,total_products,total_qty,grand_total,pdf_url,status','saved_at',false);
     ohCache=rows.map(r=>({
       rowNum:        r.id,   // precise row id — used to update Status
@@ -4537,9 +4666,7 @@ async function fetchOrderList(){
       pdfLink:       /^https?:/.test(r.pdf_url||'')?r.pdf_url:'',
       status:        String(r.status||'')
     }));
-    renderOrderList(ohCache);
-  }catch(err){
-    body.innerHTML='<div class="oh-loading">❌ '+esc(isSetupError(err)?SETUP_HINT:('Network error: '+err.message))+'</div>';
+    return ohCache;
   }
 }
 
@@ -4695,6 +4822,10 @@ async function updateOrderStatus(selectEl, rowNum, orderNo){
         if(entry) entry.status=newStatus;
       }
       toast('✅ Status updated to "'+newStatus+'" for '+orderNo);
+      /* Status badla to order apne naye bucket me chala jaata hai (aur
+         Confirmed par uska 🏭 Lot Cards box aata hai) — list dobara, par
+         search / filter wahi ke wahi. */
+      if(ohCache){ renderOrderList(ohCache); filterOrderHistory(); }
     } else {
       selectEl.style.background=prevBg; selectEl.style.color=prevFg;
       toast('❌ '+((data&&data.error)||'Could not update status — refresh Order History and try again'));
@@ -4710,6 +4841,8 @@ async function updateOrderStatus(selectEl, rowNum, orderNo){
 function renderOrderList(orders){
   const body=document.getElementById('ohBody');
   const countEl=document.getElementById('ohCount');
+  // Sirf chune hue type (MTO / MTS) + bucket ke orders
+  orders=(orders||[]).filter(o=>ofTypeOf(o.orderNo)===OH_VIEW.mode && (!OH_VIEW.bucket || ofBucketOf(o.status)===OH_VIEW.bucket));
   if(!orders.length){
     body.innerHTML='<div class="oh-loading">No orders found</div>';
     countEl.textContent='0 orders';
@@ -4760,6 +4893,7 @@ function renderOrderList(orders){
     return `<div class="oh-card" data-search="${esc((oNo+' '+buyer+' '+dt+' '+channel+' '+status+' '+(o.agencyName||'')+' '+(o.gstin||'')).toLowerCase())}" data-status="${statusSlug}">
       <div class="oh-card-top">
         <div class="oh-orderNo">${esc(oNo)}</div>
+        ${ofTypeTag(oNo)}
         ${statusSelectHtml}
       </div>
       <div class="oh-buyer">${esc(buyer)}${o.contact?' <small style="color:var(--muted);font-weight:400">('+esc(o.contact)+')</small>':''}</div>
@@ -4779,9 +4913,11 @@ function renderOrderList(orders){
       <div class="oh-actions-row">
         ${waBuyerBtn}${waAgencyBtn}${mailBuyerBtn}${mailAgencyBtn}${getTotalSent(oNo)}
       </div>
+      ${OF_LOT_STATUSES.includes(status)?`<div class="oh-lot" data-order="${esc(oNo)}" data-status="${esc(status)}"><div class="oh-lot-hd">🏭 Lot Cards <span class="oh-lot-muted">loading…</span></div></div>`:''}
       ${savedAt?'<div class="oh-saved-at">Saved: '+esc(savedAt)+'</div>':''}
     </div>`;
   }).join('');
+  ofFillLotBoxes();
 }
 
 // ══════════════════════ EDIT ORDER (pre-fill form) ═══════════════════════
@@ -4797,6 +4933,8 @@ async function editOrder(orderNo){
     if(error) throw error;
     if(!data || !data.full_order){ toast('❌ Order not found or has no saved data.'); return; }
     applyOrderToForm(data.full_order);
+    // Order ka type hi ab form ka type — agla naya order isi series me
+    ofSetMode(ofTypeOf(orderNo)); ofHideHome();
     toast('✅ Order '+orderNo+' loaded — make changes & Submit to save');
     window.scrollTo({top:0,behavior:'smooth'});
   }catch(err){
@@ -5033,6 +5171,294 @@ function applyProductToCard(id, x){
      saaf rakhna behtar hai). */
   ofApplySpecLock_(id);
 }
+
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  🏠 HOME — MTO / MTS, order buckets, Lot Card hand-off                   ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+/* ── Do order type, do number series ──────────────────────────────────────
+     MTO-SIHF/2026-27/0001   Make to Order  (party ka order / quotation)
+     MTS-SIHF/2026-27/0001   Make to Stock  (godown stock)
+   Type ka koi alag column NAHI hai — Order No ka prefix hi type hai. Isi liye
+   koi migration nahi lagi, aur Packing / Trims / Printing Lot jo bhi Order No
+   padhte hain unhe type apne aap mil jaata hai. `full_order.orderType` me bhi
+   likha jaata hai (sirf jaankari ke liye). Purane bina-prefix number
+   (SIHF/2026-27/001) MTO maane jaate hain, "OLD NO" tag ke saath.
+
+   Number client par banta hai — ERP ke store-core.js `nextNo()` wala hi
+   tareeka: is prefix ke saare number padho, sabse bada +1. Financial year
+   (Apr–Mar, IST) prefix me hai, isi liye 1 April ko series khud 0001 se.
+   Do log ek saath save karein to server DUPLICATE deta hai aur handleSubmit
+   isi series ka agla number le leta hai — koi number do baar nahi banta.
+   Naya type jodna ho (jaise "Job Work") → bas OF_MODES / OF_MODE_LABEL me. */
+const OF_MODES=['MTO','MTS'];
+const OF_MODE_LABEL={MTO:'Make to Order',MTS:'Make to Stock'};
+let OF_MODE='';   // '' = abhi type chuna hi nahi (Home par)
+
+/* Buckets — Home ke paanch list button. Har status theek EK bucket me.
+   Jo status kisi list me nahi (purana / anjaan) wo Existing Quotation me,
+   taaki koi order kabhi gayab na ho. */
+const OF_BUCKETS=[
+  {key:'quotation', label:'Existing Quotation', sub:'Saved drafts · Sent to Party', ic:'📝', c:'#2E6DA4', statuses:['Saved','Sent to Party','']},
+  {key:'confirmed', label:'Confirmed Orders',   sub:'Lot Card yahin se banta hai',   ic:'✅', c:'#00796B', statuses:['Confirmed']},
+  {key:'hold',      label:'Hold Orders',        sub:'Ruke hue orders',               ic:'⏸️', c:'#E65100', statuses:['Hold']},
+  {key:'cancel',    label:'Cancel Orders',      sub:'Cancel hue orders',             ic:'✖️', c:'#C62828', statuses:['Cancel']},
+  {key:'closed',    label:'Close Orders',       sub:'Poore / band orders',           ic:'📦', c:'#555',    statuses:['Closed']},
+];
+// In status wale orders par 🏭 Lot Cards box (Generate sirf Confirmed par)
+const OF_LOT_STATUSES=['Confirmed','Hold','Closed'];
+let OH_VIEW={mode:'MTO',bucket:''};
+
+function ofTypeOf(no){ const m=String(no||'').trim().toUpperCase().match(/^(MT[OS])-/); return m?m[1]:'MTO'; }
+function ofIsLegacyNo(no){ return !/^MT[OS]-/i.test(String(no||'').trim()); }
+function ofBucketOf(status){
+  const s=String(status||'').trim();
+  const b=OF_BUCKETS.find(x=>x.key!=='quotation' && x.statuses.includes(s));
+  return b?b.key:'quotation';
+}
+function ofTypeTag(no){
+  if(ofIsLegacyNo(no)) return '<span class="oh-type-tag old" title="Purani series — MTO maana gaya">OLD NO</span>';
+  const t=ofTypeOf(no); return '<span class="oh-type-tag '+t.toLowerCase()+'">'+t+'</span>';
+}
+// India FY (Apr–Mar) IST ke hisaab se: "2026-27"
+function ofFY(){
+  const o=istParts(new Date()); const y=Number(o.year), m=Number(o.month);
+  const s=m>=4?y:y-1; return s+'-'+String(s+1).slice(-2);
+}
+function ofPrefix(mode){ return mode+'-SIHF/'+ofFY()+'/'; }
+async function ofNextOrderNo(mode){
+  const prefix=ofPrefix(mode);
+  const {data,error}=await SB.from('sales_orders').select('order_no').ilike('order_no',prefix.replace(/[%_\\]/g,'\\$&')+'%').limit(10000);
+  if(error) throw error;
+  let max=0;
+  (data||[]).forEach(r=>{
+    const v=String(r.order_no||'').trim().toUpperCase(); if(!v.startsWith(prefix)) return;
+    const m=v.slice(prefix.length).match(/^(\d+)/); if(m) max=Math.max(max,parseInt(m[1],10));
+  });
+  return prefix+String(max+1).padStart(4,'0');
+}
+const ofIsEditing=()=>document.getElementById('editBanner').style.display==='flex';
+let _ofNoSeq=0;
+async function ofAssignOrderNo(){
+  if(ofIsEditing()) return;            // edit ho rahe order ka number kabhi nahi badalta
+  const on=document.getElementById('orderNo'), d=document.getElementById('dON');
+  if(!OF_MODE){ on.value='Loading...'; d.textContent='—'; return; }
+  if(!SB_READY){ on.value='OFFLINE'; return; }
+  const seq=++_ofNoSeq, mode=OF_MODE;
+  on.value='Loading...'; d.textContent='...';
+  try{
+    const no=await ofNextOrderNo(mode);
+    if(seq!==_ofNoSeq || ofIsEditing() || mode!==OF_MODE) return;   // beech me type / edit badla
+    on.value=no; d.textContent=no; syncMeta();
+    const nx=document.getElementById('ofhNextNo'); if(nx) nx.textContent=no;
+  }catch(e){
+    if(seq!==_ofNoSeq) return;
+    on.value='OFFLINE';
+    toast('⚠️ Order No nahi bana: '+(isSetupError(e)?SETUP_HINT:(e.message||e)));
+  }
+}
+function ofSetMode(mode){
+  OF_MODE=OF_MODES.includes(mode)?mode:'MTO';
+  const t=document.getElementById('hdrTag');
+  if(t){ t.textContent=OF_MODE_LABEL[OF_MODE].toUpperCase(); t.className='hdr-tag '+OF_MODE.toLowerCase(); }
+}
+
+// ── Home screen ─────────────────────────────────────────────────────────
+const ofHomeOpen=()=>document.getElementById('ofHome').style.display!=='none';
+function ofShowHome(){
+  closeOrderHistory();
+  document.getElementById('ofHome').style.display='flex';
+  if(OF_MODE) ofPickMode(OF_MODE); else ofBackToTypes();
+}
+function ofHideHome(){ document.getElementById('ofHome').style.display='none'; }
+function ofBackToTypes(){
+  document.getElementById('ofhStep1').style.display='';
+  document.getElementById('ofhStep2').style.display='none';
+  OF_MODES.forEach(m=>{ const el=document.getElementById('ofhPat'+m); if(el) el.textContent=ofPrefix(m)+'0001'; });
+  ofRefreshHome();
+}
+function ofPickMode(mode){
+  // Type badla aur form par bina-save naya order hai → wahi form, bas naya number
+  if(mode!==OF_MODE){ ofSetMode(mode); if(!ofIsEditing()) ofAssignOrderNo(); }
+  document.getElementById('ofhStep1').style.display='none';
+  document.getElementById('ofhStep2').style.display='';
+  const b=document.getElementById('ofhMode'); b.textContent=OF_MODE_LABEL[OF_MODE]; b.className='ofh-mode '+OF_MODE.toLowerCase();
+  const nx=document.getElementById('ofhNextNo'), on=document.getElementById('orderNo').value;
+  nx.textContent=(!ofIsEditing() && on.startsWith(ofPrefix(OF_MODE)))?on:'…';
+  if(nx.textContent==='…') ofNextOrderNo(OF_MODE).then(n=>{ nx.textContent=n; }).catch(()=>{ nx.textContent='—'; });
+  ofRenderHome();
+  ofRefreshHome();
+}
+let _ofHomeBusy=false;
+async function ofRefreshHome(){
+  if(!SB_READY || _ofHomeBusy) return;
+  _ofHomeBusy=true;
+  try{ await ofLoadOrders(); }catch(e){ console.warn('[ORDER FORM] home counts:',e.message||e); }
+  finally{ _ofHomeBusy=false; }
+  ofRenderHome();
+}
+function ofCounts(mode){
+  const c={all:0}; OF_BUCKETS.forEach(b=>c[b.key]=0);
+  (ohCache||[]).forEach(o=>{ if(ofTypeOf(o.orderNo)!==mode) return; c.all++; c[ofBucketOf(o.status)]++; });
+  return c;
+}
+function ofRenderHome(){
+  const u=document.getElementById('ofhUser');
+  if(u) u.textContent=loggedInUser?('👤 '+loggedInUser.username+' ('+loggedInUser.role+')'):'';
+  const loaded=!!ohCache;
+  OF_MODES.forEach(m=>{
+    const el=document.getElementById('ofhCnt'+m); if(!el) return;
+    const c=ofCounts(m);
+    el.innerHTML=loaded?('<i>'+c.all+' orders</i><i>'+c.quotation+' quotation</i><i>'+c.confirmed+' confirmed</i>'):'';
+  });
+  const grid=document.getElementById('ofhGrid'); if(!grid || !OF_MODE) return;
+  const c=ofCounts(OF_MODE), n=k=>loaded?c[k]:'…';
+  grid.innerHTML=
+    `<button type="button" class="ofh-tile new" onclick="ofStartNew()" ${canDo('create')?'':'disabled title="Aapke role ko naya order banane ka access nahi"'}>
+       <span class="ic">➕</span><b>New Order</b><small>Khaali naya form — ${esc(OF_MODE_LABEL[OF_MODE])}</small>
+       <span class="n" style="font-size:13px">${esc(ofPrefix(OF_MODE))}…</span></button>`+
+    OF_BUCKETS.map(b=>`<button type="button" class="ofh-tile" style="--c:${b.c}" onclick="ofOpenBucket('${b.key}')">
+       <span class="ic">${b.ic}</span><b>${esc(b.label)}</b><small>${esc(b.sub)}</small>
+       <span class="n">${n(b.key)}<em>orders</em></span></button>`).join('');
+}
+function ofStartNew(){
+  if(!canDo('create')){ toast('⚠️ Your role ('+(loggedInUser?loggedInUser.role:'—')+') does not have Submit permission'); return; }
+  const editing=ofIsEditing();
+  const hasWork=[...document.querySelectorAll('.product-card')].some(c=>getProd(c.id.replace('prod-','')).itemCode) || document.getElementById('buyerName').value.trim();
+  if((editing || hasWork) && !confirm((editing?'Edit ho raha order':'Form me bhara hua data')+' hata kar naya khaali '+OF_MODE_LABEL[OF_MODE]+' shuru karein?')) return;
+  document.getElementById('editBanner').style.display='none';
+  resetFormSilent();
+  ofAssignOrderNo();
+  ofHideHome();
+  window.scrollTo({top:0});
+}
+function ofOpenBucket(key){
+  OH_VIEW={mode:OF_MODE||'MTO',bucket:key};
+  openOrderHistory(true);
+}
+
+// ── 🏭 Lot Cards (Confirmed orders) ─────────────────────────────────────
+/* Har PRODUCT ka apna lot (ek lot card par ek hi brand / fabric / size aata
+   hai). Jodd: prl_lots.order_no = Order No, aur prl_lots.extra.src_order_line
+   = product ka kram (1, 2 …). Haath se bane purane lot jinke extra me line
+   nahi, wo "Other lots" me dikhte hain — single-product order me product #1
+   ke saamne. Printing Lot table me koi naya column nahi laga. */
+const OF_PRL_HANDOFF='sarv_prl_handoff';   // printing-lot.html bhi yahi key padhta hai
+const OF_FULL={};                           // orderNo → full_order (Generate ke liye)
+let _ofLotSeq=0;
+async function ofFillLotBoxes(){
+  const boxes=[...document.querySelectorAll('#ohBody .oh-lot[data-order]')];
+  if(!boxes.length || !SB_READY) return;
+  const seq=++_ofLotSeq;
+  const nos=[...new Set(boxes.map(b=>b.dataset.order))];
+  try{
+    const [ordRes,lotRes,secRes]=await Promise.all([
+      SB.from('sales_orders').select('order_no,full_order').in('order_no',nos),
+      SB.from('prl_lots').select('id,lot_no,order_no,status,extra').in('order_no',nos),
+      SB.from('prl_sections').select('section_key',{count:'exact',head:true}).eq('is_active',true)
+    ]);
+    if(ordRes.error) throw ordRes.error;
+    (ordRes.data||[]).forEach(r=>{ if(r.full_order) OF_FULL[r.order_no]=r.full_order; });
+    const lotErr=lotRes.error?(isSetupError(lotRes.error)?'Printing Lot ka table nahi mila':lotRes.error.message):'';
+    const lots=lotRes.error?[]:(lotRes.data||[]);
+    const total=(!secRes.error && secRes.count)||11;
+    const prog={};
+    if(lots.length){
+      const e=await SB.from('prl_production_entries').select('lot_id,section_key').in('lot_id',lots.map(l=>l.id));
+      (e.data||[]).forEach(x=>{ (prog[x.lot_id]=prog[x.lot_id]||new Set()).add(x.section_key); });
+    }
+    if(seq!==_ofLotSeq) return;   // beech me list dobara ban gayi
+    boxes.forEach(box=>{
+      const no=box.dataset.order;
+      ofRenderLotBox(box,no,box.dataset.status,(OF_FULL[no]&&OF_FULL[no].products)||[],lots.filter(l=>l.order_no===no),prog,total,lotErr);
+    });
+  }catch(e){
+    if(seq!==_ofLotSeq) return;
+    boxes.forEach(b=>{ b.innerHTML='<div class="oh-lot-hd">🏭 Lot Cards <span class="oh-lot-muted">❌ '+esc(e.message||e)+'</span></div>'; });
+  }
+}
+function ofRenderLotBox(box,orderNo,status,products,lots,prog,total,lotErr){
+  const canGen=status==='Confirmed';
+  const jsNo=esc(orderNo).replace(/'/g,"\\'");
+  const byLine={}; let other=[];
+  lots.forEach(l=>{ const ln=Number(l.extra&&l.extra.src_order_line)||0; if(ln) (byLine[ln]=byLine[ln]||[]).push(l); else other.push(l); });
+  if(products.length===1 && other.length){ byLine[1]=(byLine[1]||[]).concat(other); other=[]; }
+  const trackBtn=l=>{
+    const done=prog[l.id]?prog[l.id].size:0;
+    return `<button type="button" class="oh-lot-btn track" onclick="ofTrackLot('${esc(l.id)}')" title="Printing Lot › Production me is lot ki progress">📍 Track LOT ${esc(l.lot_no)} <small>${esc(l.status||'')} · ${done}/${total}</small></button>`;
+  };
+  const made=products.filter((p,i)=>(byLine[i+1]||[]).length).length;
+  let h=`<div class="oh-lot-hd">🏭 Lot Cards <span>${products.length?made+' / '+products.length+' bane':''}</span></div>`;
+  if(lotErr) h+=`<div class="oh-lot-muted">⚠️ ${esc(lotErr)}</div>`;
+  if(!products.length) h+='<div class="oh-lot-muted">Is order ka product data nahi mila (purana order?) — Edit karke dobara Submit karein.</div>';
+  products.forEach((p,i)=>{
+    const ln=i+1, ls=byLine[ln]||[];
+    const photos=(p.photoUrls||[]).length+(p.embossPhotoUrls||[]).length;
+    const qty=Number(p.qty)||0;
+    h+=`<div class="oh-lot-row">
+      <div class="oh-lot-prod">#${ln} ${esc(p.itemCode||p.fabric||'Product')}
+        <small>${esc([p.category,p.size,qty?qty.toLocaleString('en-IN')+' pcs':''].filter(Boolean).join(' · '))}${photos?' · 📷 '+photos:''}</small></div>
+      <div class="oh-lot-btns">${ls.map(trackBtn).join('')}${
+        ls.length?'':(canGen
+          ?`<button type="button" class="oh-lot-btn gen" onclick="ofGenerateLot('${jsNo}',${ln},this)">🧾 Generate Lot Card</button>`
+          :'<span class="oh-lot-muted">Lot card nahi bana — order Confirmed hone par</span>')}</div>
+    </div>`;
+  });
+  if(other.length) h+=`<div class="oh-lot-row"><div class="oh-lot-prod">Other linked lots<small>Printing Lot me haath se is Order No par bane</small></div><div class="oh-lot-btns">${other.map(trackBtn).join('')}</div></div>`;
+  box.innerHTML=h;
+}
+async function ofGenerateLot(orderNo,line,btn){
+  try{
+    if(btn){ btn.disabled=true; btn.textContent='⏳ Opening…'; }
+    let fo=OF_FULL[orderNo];
+    if(!fo){
+      const {data,error}=await SB.from('sales_orders').select('full_order').eq('order_no',orderNo).maybeSingle();
+      if(error) throw error; fo=data&&data.full_order; if(fo) OF_FULL[orderNo]=fo;
+    }
+    const p=fo&&(fo.products||[])[line-1];
+    if(!p){ toast('❌ Order '+orderNo+' ka product #'+line+' nahi mila'); return; }
+    const images=[
+      ...(p.photoUrls||[]).map(url=>({url,tag:'PRODUCT'})),
+      ...(p.embossPhotoUrls||[]).map(url=>({url,tag:'EMBOSS'}))
+    ].filter(x=>/^https?:/i.test(String(x.url||'')));
+    /* Hand-off ka ek hi shape (v:1). printing-lot.html ka prlRunHandoff_ isi
+       ko padhta hai — naya field jodna ho to dono taraf, version badha kar. */
+    ofHandoff({
+      v:1, kind:'NEW_LOT_FROM_ORDER', at:Date.now(),
+      order:{orderNo:fo.orderNo||orderNo, orderType:ofTypeOf(orderNo), orderDate:fo.orderDate||'', buyerName:fo.buyerName||'',
+             deliveryTerms:fo.deliveryTerms||'', line, totalLines:(fo.products||[]).length},
+      product:{itemCode:p.itemCode||'', fabric:p.fabric||'', category:p.category||'', weight:p.weight||'', size:p.size||'',
+               dbsb:p.dbsb||'', ply:p.ply||'', sattan:p.sattan||'', sattanType:p.sattanType||'', sattanSize:p.sattanSize||'',
+               emboss:p.emboss||'', moq:p.moq||'', design:p.design||'', qty:p.qty||'', packs:p.packs||'', packPcs:p.packPcs||'',
+               packType:p.packType||'', remarks:p.remarks||'', labelTagComment:p.labelTagComment||''},
+      images
+    });
+  }catch(e){ toast('❌ '+(e.message||e)); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='🧾 Generate Lot Card'; } }
+}
+function ofTrackLot(lotId){ ofHandoff({v:1, kind:'TRACK_LOT', at:Date.now(), lotId}); }
+/* ERP ke andar: Printing Lot ka apna panel (iframe) khulta hai — pehli baar
+   khule to wo page boot par hand-off padhta hai, pehle se khula ho to
+   seedha uska prlHandoff(). ERP ke bahar (phone / alag tab): naya tab. */
+function ofHandoff(h){
+  try{ localStorage.setItem(OF_PRL_HANDOFF,JSON.stringify(h)); }
+  catch(e){ toast('❌ Browser storage band hai — Printing Lot tak data nahi ja sakta'); return; }
+  try{
+    const P=window.parent;
+    if(P && P!==window && typeof P.sarvNavigateFromHome==='function'){
+      P.sarvNavigateFromHome('PRINTING_LOT');
+      const fr=P.document.getElementById('printingLotFrame');
+      const w=fr&&fr.contentWindow;
+      if(w && typeof w.prlHandoff==='function') w.prlHandoff();
+      return;
+    }
+  }catch(e){ console.warn('[ORDER FORM] ERP navigation:',e.message||e); }
+  const win=window.open('printing-lot.html#card','_blank');
+  if(!win) location.href='printing-lot.html#card';
+}
+/* Printing Lot me lot save karke wapas aaye (ERP panel / doosra tab) → is
+   page par focus lautte hi khuli list ke Lot boxes dobara: "Generate" ki
+   jagah "Track LOT …" aur taaza progress. */
+window.addEventListener('focus',()=>{ if(document.getElementById('ohPanel').classList.contains('open')) ofFillLotBoxes(); });
 
 function filterOrderHistory(){
   const q=document.getElementById('ohSearch').value.trim().toLowerCase();

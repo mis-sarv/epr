@@ -974,6 +974,38 @@ baar chalayein — bas.
   badlein to doosre ko `VERSION_CONFLICT` milta hai — kisi ka kaam chupchaap
   nahi mitta.
 
+### 🏠 Order Form Home — MTO / MTS → Lot Card
+
+`order-form.html` ab seedha form nahi, **Home** se khulta hai:
+
+1. **Make to Order** / **Make to Stock** — dono ki apni series:
+   `MTO-SIHF/2026-27/0001`, `MTS-SIHF/2026-27/0001` (FY Apr–Mar IST; 1 April
+   ko khud 0001). Type ka koi column nahi — **Order No ka prefix hi type hai**
+   (`ofTypeOf`). Number client par banta hai (`ofNextOrderNo`, ERP ke
+   `nextNo()` jaisa); DUPLICATE par isi series ka agla. Purane bina-prefix
+   number (`SIHF/2026-27/001`) MTO me, "OLD NO" tag ke saath.
+   `sales_next_order_no()` ab sirf connection check hai. **Koi migration nahi.**
+2. Har type me: **New Order** · **Existing Quotation** (Saved + Sent to
+   Party + anjaan status) · **Confirmed** · **Hold** · **Cancel** · **Close**
+   (`OF_BUCKETS`). Bottom bar me 🏠 se wapas Home.
+3. Confirmed / Hold / Closed order ke card par **🏭 Lot Cards** box — har
+   PRODUCT ka apna lot. **🧾 Generate Lot Card** (sirf Confirmed) Printing Lot
+   kholta hai: header order se bhara (party, brand = item code, fabric,
+   category, bed size, ply, weight, size, satin quality, emboss, qty, packing),
+   design / remarks / label-tag worker notes me, LOT NO = sabse bada numeric +1
+   (sujhaav), aur order ki saari photos **pehle se chuni** (picker me hata
+   sakte hain; photo lot ke apne bucket me copy hoti hai). Lot ban chuka ho to
+   **📍 Track LOT …** (status · sections done) → Production tab.
+4. Jodd: `prl_lots.order_no` + `prl_lots.extra.src_order_line` (aur
+   `src_order_no / src_order_type / src_item_code`). Hand-off localStorage key
+   `sarv_prl_handoff` (v:1, 15 min) — shape `ofGenerateLot()` me, padhne wala
+   `prlRunHandoff_()`. ERP ke andar `sarvNavigateFromHome('PRINTING_LOT')`,
+   bahar naya tab.
+
+⚠️ Server ka niyam pehle jaisa: Confirmed order **Edit + Submit** karne par
+status wapas **Saved** ho jaata hai (`sales_save_order`) — order Existing
+Quotation me chala jaata hai; bane hue lot juḍe rehte hain.
+
 ## 🧵 Trims & Packing Material Manager (Manufacturing)
 
 `trims-manager.html` — ERP › Manufacturing › Trims Manager. Ek Sales Order ke
