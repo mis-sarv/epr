@@ -237,6 +237,49 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
    5px neeche baith jaata. */
 .fg-hd{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
 .fg-hd label{margin-bottom:0}
+.fg-hd-btns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+/* 📖 Brand Master viewer (ERP ke bahar / access na ho to) */
+.bmv-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.bmv-tools input{flex:1;min-width:180px;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:'DM Sans',sans-serif;background:var(--input);outline:none}
+.bmv-tools input:focus{border-color:var(--blue)}
+.bmv-count{font-size:11px;color:var(--muted);font-weight:700}
+.bmv-wrap{max-height:58vh;overflow:auto;border:1px solid var(--border);border-radius:10px}
+.bmv-t{width:100%;border-collapse:collapse;font-size:11.5px}
+.bmv-t th{position:sticky;top:0;background:var(--navy);color:#fff;font-size:10px;text-transform:uppercase;letter-spacing:.4px;padding:7px 8px;text-align:left;white-space:nowrap}
+.bmv-t td{padding:6px 8px;border-bottom:1px solid #EEF1F6;white-space:nowrap}
+.bmv-t tr:hover td{background:#F0F7FF}
+.bmv-t tr.off td{color:#aaa}
+.bmv-use{background:var(--green);color:#fff;border:none;border-radius:6px;padding:4px 9px;font-size:10.5px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
+/* Item-wise actions */
+.bmv-acts{display:flex;gap:3px;align-items:center}
+.bmv-ib{border:1px solid var(--border);background:#fff;border-radius:6px;min-width:26px;height:24px;padding:0 5px;font-size:12px;cursor:pointer;line-height:1}
+.bmv-ib:hover{background:var(--lblue);border-color:var(--blue)}
+.bmv-ib.del:hover{background:#FFEBEE;border-color:#C62828}
+.bmv-ib.off{opacity:.35;cursor:not-allowed;filter:grayscale(1)}
+.bmv-ib.off:hover{background:#fff;border-color:var(--border)}
+.bmv-t th.act,.bmv-t td.act{position:sticky;left:0;z-index:1}
+.bmv-t td.act{background:#fff}
+.bmv-t th.act{z-index:2}
+.bmv-rev{font-size:9px;font-weight:700;background:#E3F2FD;color:#1565C0;border-radius:99px;padding:1px 6px;margin-left:4px}
+/* Edit / Revise / History viewer ke UPAR khulte hain */
+#newBrandModal{z-index:210}
+#bmInfoModal{z-index:220}
+.bmi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 12px;font-size:12px}
+@media(max-width:620px){.bmi-grid{grid-template-columns:1fr 1fr}}
+.bmi-grid div{border-bottom:1px dashed #E5EAF1;padding:4px 0}
+.bmi-grid b{display:block;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.bmi-sec{grid-column:1/-1;font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;margin-top:10px;border-bottom:none!important}
+.bmh-row{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid #EEF1F6;font-size:12px;align-items:flex-start}
+.bmh-row.cur{background:#F0FBF4;border-radius:8px;padding:9px}
+.bmh-n{font-family:'DM Mono',monospace;font-weight:700;color:var(--navy);min-width:52px}
+.bmh-mid{flex:1;min-width:0}
+.bmh-meta{font-size:10.5px;color:var(--muted)}
+.bmh-why{font-size:11px;color:#92400E;margin-top:2px}
+.bmh-diff{font-size:10.5px;margin-top:4px;line-height:1.6}
+.bmh-diff code{background:#EEF2F7;border-radius:4px;padding:0 4px}
+.bmh-diff .o{color:#C62828;text-decoration:line-through}.bmh-diff .n{color:#1B6B3A;font-weight:700}
+.prod-flash{animation:prodFlash 1.6s ease}
+@keyframes prodFlash{0%,60%{box-shadow:0 0 0 4px rgba(46,109,164,.45)}100%{box-shadow:none}}
 /* "➕ Add New Buyer / Agency" — field ke sirhane baithta hai, field ke neeche
    nahi: wo jagah form ki lambai nahi badhati, aur button usi field ke saath
    padha jaata hai jiska wo master hai. text-transform:none kyunki .fg label
@@ -854,14 +897,55 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
      grouping me jo ERP ke Brand Master form me hai. -->
 <div class="modal-bg" id="newBrandModal">
   <div class="modal xwide">
-    <h3>🏷️ Add New Brand Item</h3>
-    <p>Brand Master me naya brand / SKU — <b>saare column</b>, wahi jo ERP › Master Data › 🏷️ Brand Master me hain.
+    <h3 id="nbrTitle">🏷️ Add New Brand Item</h3>
+    <p id="nbrDesc">Brand Master me naya brand / SKU — <b>saare column</b>, wahi jo ERP › Master Data › 🏷️ Brand Master me hain.
        Save hote hi ye Item Code list me aa jayega aur isi product card me chun bhi liya jayega.</p>
     <div id="nbrForm"></div>
+    <!-- Sirf 🔁 Revise me: kaaran zaroori (ERP jaisa) -->
+    <div id="nbrReasonWrap" class="nb-f" style="display:none;margin-top:12px">
+      <label>Revise ka kaaran <span class="mstar">★</span></label>
+      <input type="text" id="nbrReason" placeholder="Kya aur kyun badla — jaise 'naya rate list Nov 2026'" autocomplete="off">
+    </div>
     <div class="nm-err" id="nbrError"></div>
     <div class="modal-btns" style="margin-top:18px">
       <button class="btn-open-pdf green" id="nbrSaveBtn" onclick="saveNewBrand()">💾 Save Brand Item</button>
       <button class="btn-close-modal" onclick="closeNewBrand()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 📖 BRAND MASTER (Order Form ke andar) ═════════════════════════════
+     Har item ki row par saare kaam — Use · View · Edit · Revise · Copy ·
+     History (Restore) · Active/Inactive · Delete. Wahi table (brand_master),
+     wahi niyam aur wahi archive (master_revisions) jo ERP › Master Data ›
+     🏷️ Brand Master ka hai. Logic: "📖 Brand Master" section, neeche. -->
+<div class="modal-bg" id="brandViewModal">
+  <div class="modal xwide" style="max-width:1180px">
+    <h3>📖 Brand Master</h3>
+    <p id="bmvSub">Har item ke saamne <b>Actions</b>. <b>✅ Use</b> dabane par wo Item Code isi product me chun liya jaata hai.</p>
+    <div class="bmv-tools">
+      <input type="text" id="bmvSearch" placeholder="Item Code / Fabric / Category / Size…" oninput="bmvRender()" autocomplete="off">
+      <label class="bmv-count"><input type="checkbox" id="bmvInactive" onchange="bmvRender()"> Inactive bhi</label>
+      <span class="bmv-count" id="bmvCount"></span>
+      <button type="button" class="btn-addmaster" onclick="bmvNew()">➕ New</button>
+      <button type="button" class="btn-addmaster" onclick="bmvReload()" title="Database se taaza list">↻ Refresh</button>
+      <button type="button" class="btn-addmaster" id="bmvErpBtn" style="display:none" onclick="bmvOpenErp()" title="ERP ka poora Brand Master (filters, CSV, columns) — wapas aane ka button wahan milega">↗ ERP Brand Master</button>
+    </div>
+    <div class="bmv-wrap"><table class="bmv-t"><thead><tr id="bmvHead"></tr></thead><tbody id="bmvBody"></tbody></table></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-close-modal" onclick="closeBrandView()">← Wapas Order Form par</button>
+    </div>
+  </div>
+</div>
+
+<!-- 👁 View / 🕒 History — dono isi ek modal me -->
+<div class="modal-bg" id="bmInfoModal">
+  <div class="modal xwide" style="max-width:760px">
+    <h3 id="bmInfoTitle">—</h3>
+    <p id="bmInfoSub"></p>
+    <div id="bmInfoBody" style="max-height:62vh;overflow:auto"></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-close-modal" onclick="document.getElementById('bmInfoModal').classList.remove('open')">Close</button>
     </div>
   </div>
 </div>
@@ -2538,7 +2622,8 @@ async function saveNewBuyer(){
    matlab "set nahi hai" aur Order Form khud bhi 0 ko skip karta hai. */
 const BR_YN='erp_fbmYesNo';
 const BR_FORM_FIELDS=[
-  {g:'🏷️ Identity', k:'item_code',       l:'Item Code',        t:'text', req:1, uc:1, w:2, ph:'Brand / SKU ka naam — unique'},
+  {g:'🏷️ Identity', k:'item_code',       l:'Item Code',        t:'text', req:1, uc:1, w:2, dl:1, ph:'Brand / SKU ka naam — unique',
+     hint:'List = Packing Slip ki Quality (item_list). Naya naam likha to wo item_list me bhi ban jaata hai — Std Pcs = neeche ka Packing Pcs.'},
   {k:'fabric_name',  l:'Fabric Name',     t:'fab',  req:1, hint:'Fabric Master ki row'},
   {k:'category',     l:'Category',        t:'dd', dd:'erp_brandCategory', req:1},
   {k:'blanket_weight', l:'Blanket Weight', t:'num', step:'0.001'},
@@ -2638,7 +2723,9 @@ function brBuildForm_(){
       inner='<input type="number" id="'+id+'" min="0" step="'+(f.step||'any')+'" placeholder="'+esc(f.ph||'0')+'">';
     }else{
       inner='<input type="text" id="'+id+'" autocomplete="off" placeholder="'+esc(f.ph||'')+'"'
-           +(f.uc?' style="text-transform:uppercase"':'')+'>';
+           +(f.dl?' list="dl-'+id+'"':'')
+           +(f.uc?' style="text-transform:uppercase"':'')+'>'
+           +(f.dl?'<datalist id="dl-'+id+'"></datalist>':'');
     }
     html+='<div class="nb-f'+(f.w===2?' w2':'')+'">'
        +'<label>'+f.l+req+'</label>'+inner
@@ -2652,18 +2739,49 @@ function brBuildForm_(){
 // Kis product card se button dabaya gaya — save ke baad usi me naya code
 // chunna hai. openNewBrand se PEHLE declare, taaki padhne me kram saaf rahe.
 let brTargetProd_=null;
-async function openNewBrand(prodId){
-  if(!canDo('create')) return toast('⚠️ Aapke role me naya brand add karne ka haq nahi hai');
+/* Ek hi form, chaar kaam (📖 Brand Master ke Actions isi ko kholte hain):
+     NEW    ➕ naya item                         (Order Form role: create)
+     COPY   📋 kisi item ki saari values, naya Item Code (create)
+     EDIT   ✏️ galti sudharna — REV wahi        (Feature Access: BRAND_EDIT)
+     REVISE 🔁 naya version — REV +1, kaaran   (Feature Access: BRAND_REVISE)
+   EDIT / REVISE saveNewBrand() se brSaveExisting_() par jaate hain. */
+let BR_MODE={mode:'NEW',base:null};
+const BR_MODE_UI={
+  NEW:   {t:'🏷️ Add New Brand Item', btn:'💾 Save Brand Item'},
+  COPY:  {t:'📋 Copy as New Brand Item', btn:'💾 Save Copy'},
+  EDIT:  {t:'✏️ Edit Brand Item', btn:'💾 Save Changes'},
+  REVISE:{t:'🔁 Revise Brand Item', btn:'🔁 Save New Revision'}
+};
+async function openNewBrand(prodId,mode,row){
+  mode=BR_MODE_UI[mode]?mode:'NEW';
+  const feat={EDIT:'BRAND_EDIT',REVISE:'BRAND_REVISE'}[mode];
+  if(feat){ if(!bmCan_(feat)) return bmDeny_(feat); }
+  else if(!canDo('create')) return toast('⚠️ Aapke role me naya brand add karne ka haq nahi hai');
+  BR_MODE={mode,base:feat?row:null};
   // Kis product card me chuna jayega — save ke baad wahi card bharna hai.
+  // (Brand Master list se aaye NEW / COPY me nahi — wahan product ka chuna hua code nahi chhedna.)
   brTargetProd_=prodId;
   brBuildForm_();
-  // Combo me jo code type ho chuka hai wahi aage — "add new" aksar tab dabaya
-  // jaata hai jab code type karke list me mila na ho.
-  const typed=String(document.getElementById('p'+prodId+'-itemCode')?.value||'').trim();
   const codeEl=document.getElementById(brFieldId_('item_code'));
-  if(codeEl&&typed) codeEl.value=typed.toUpperCase();
+  if(row){
+    brFillForm_(row,mode==='COPY');
+  }else{
+    // Combo me jo code type ho chuka hai wahi aage — "add new" aksar tab dabaya
+    // jaata hai jab code type karke list me mila na ho.
+    const typed=String(document.getElementById('p'+prodId+'-itemCode')?.value||'').trim();
+    if(codeEl&&typed) codeEl.value=typed.toUpperCase();
+  }
+  const ui=BR_MODE_UI[mode];
+  document.getElementById('nbrTitle').textContent=ui.t+(feat&&row?' — '+String(row.item_code||'')+' (REV '+(row.rev_no||1)+')':'');
+  document.getElementById('nbrDesc').innerHTML=
+      mode==='EDIT'  ?'Galti sudharein — <b>REV '+(row.rev_no||1)+' wahi rehta hai</b>. Save se pehle ki poori row Revision History me jaati hai.'
+    : mode==='REVISE'?'Naya version — save par <b>REV '+(row.rev_no||1)+' → '+((row.rev_no||1)+1)+'</b>. Kaaran likhna zaroori hai; purani version History me rehti hai (Restore ho sakti hai).'
+    : mode==='COPY'  ?'"<b>'+esc(row.item_code||'')+'</b>" ki saari values bhar di gayi hain — sirf <b>naya Item Code</b> dein aur jo alag ho wo badlein.'
+    : 'Brand Master me naya brand / SKU — <b>saare column</b>, wahi jo ERP › Master Data › 🏷️ Brand Master me hain. Save hote hi ye Item Code list me aa jayega'+(prodId!=null?' aur isi product card me chun bhi liya jayega.':'.');
+  document.getElementById('nbrReasonWrap').style.display=mode==='REVISE'?'':'none';
+  document.getElementById('nbrReason').value='';
   nmErr_('nbrError','');
-  nmBusy_('nbrSaveBtn',false,'💾 Save Brand Item');
+  nmBusy_('nbrSaveBtn',false,ui.btn);
   document.getElementById('newBrandModal').classList.add('open');
   setTimeout(()=>codeEl?.focus(),60);
   // Fabric list baad me bhari jaati hai — uske aane tak form khul chuka hota
@@ -2674,10 +2792,178 @@ async function openNewBrand(prodId){
     const dl=document.getElementById('dl-'+brFieldId_('fabric_name'));
     if(dl) dl.innerHTML=list.map(v=>'<option value="'+esc(v)+'">').join('');
   }catch(e){}
+  // Item Code ki suggestion list — Packing Slip ki Quality (packing.item_list)
+  try{
+    const items=await pkItemList_(true);
+    const dl=document.getElementById('dl-'+brFieldId_('item_code'));
+    if(dl) dl.innerHTML=items.map(r=>'<option value="'+esc(r.quality)+'">'+(r.std_pcs?esc(r.std_pcs+' pcs'):'')+'</option>').join('');
+    /* List ki koi purani quality chuni aur Packing Pcs khaali hai → uska
+       std_pcs bhar do (packing slip me wahi standard chalta hai). Bhara hua
+       Packing Pcs kabhi nahi badalta. */
+    if(codeEl && !codeEl.dataset.pkWired){
+      codeEl.dataset.pkWired='1';
+      codeEl.addEventListener('change',()=>{
+        const hit=(PK_ITEMS||[]).find(r=>nmKey_(r.quality)===nmKey_(codeEl.value));
+        const pp=document.getElementById(brFieldId_('packing_pcs'));
+        if(hit && pp && !pp.value && Number(hit.std_pcs)>0) pp.value=hit.std_pcs;
+      });
+    }
+  }catch(e){ console.warn('[ORDER FORM] packing item_list skipped:',e.message||e); }
+}
+
+/* ══ Packing Slip ki Quality list (packing.item_list) ═══════════════════
+   Packing & Dispatch (packing.html) ki "Quality" dropdown isi table se
+   banti hai: quality (UNIQUE, UPPERCASE) + std_pcs (ek bora / pack me kitne
+   pcs, NOT NULL, default 10). Ye table `packing` schema me hai, isi liye
+   SB.schema('packing'). Add New Brand Item ka Item Code yahi list sujhata
+   hai, aur naya naam save hone par wahan bhi row bana deta hai — taaki naya
+   brand packing slip me alag se jodna na pade. */
+let PK_ITEMS=null;
+async function pkItemList_(force){
+  if(PK_ITEMS && !force) return PK_ITEMS;
+  const {data,error}=await SB.schema('packing').from('item_list').select('quality,std_pcs').order('quality');
+  if(error) throw error;
+  PK_ITEMS=(data||[]).filter(r=>String(r.quality||'').trim());
+  return PK_ITEMS;
+}
+/* Naya Item Code → item_list. Sirf INSERT (upsert nahi): jo quality pehle
+   se hai uska std_pcs packing wale ne set kiya hai, use yahan se kabhi nahi
+   chhedte. Returns 'added' | 'exists' | 'skipped' ; error throw karta hai. */
+async function pkAddQuality_(code,packingPcs){
+  const q=String(code||'').trim().toUpperCase(); if(!q) return 'skipped';
+  try{ await pkItemList_(true); }catch(e){}
+  if((PK_ITEMS||[]).some(r=>nmKey_(r.quality)===nmKey_(q))) return 'exists';
+  const row={quality:q};
+  const pcs=Math.round(Number(packingPcs)||0);
+  if(pcs>0) row.std_pcs=pcs;          // khaali = table ka default (10)
+  const {error}=await SB.schema('packing').from('item_list').insert(row);
+  if(error){
+    if(error.code==='23505') return 'exists';   // beech me kisi ne bana diya
+    throw error;
+  }
+  if(PK_ITEMS) PK_ITEMS.push({quality:q,std_pcs:pcs>0?pcs:10});
+  return 'added';
 }
 function closeNewBrand(){ document.getElementById('newBrandModal').classList.remove('open'); }
 
+/* ══ 📖 Brand Master — dekhna, aur wapas wahin ═══════════════════════════
+   ERP ke andar (iframe): ERP ka ASLI Brand Master khulta hai (Master Data ›
+   🏷️ Brand Master) — wahi screen, wahi edit / filter / REV. Order Form ka
+   iframe reload nahi hota (src pehle se laga hai), isi liye bhara hua order
+   jaisa tha waisa rehta hai. ERP ke neeche-baayein ek "← Order Form par
+   wapas" button lagta hai: dabate hi Order Form, usi product card par scroll,
+   aur Brand Master ki nayi / badli rows Item Code list me (fetchDrops).
+   ERP ke bahar, ya user ko ERP ka Brand Master tab nahi milta: yahin ek
+   read-only viewer (brandViewModal) — "Use" se code isi product me. */
+const BMV_BACK_ID='ofBackFromBrandMaster';
+function openBrandMaster(prodId){
+  let P=null;
+  try{ if(window.parent!==window && typeof window.parent.sarvNavigateFromHome==='function'
+          && typeof window.parent.switchMasterSubTab==='function') P=window.parent; }catch(e){ P=null; }
+  let allowed=!!P;
+  try{ if(P && typeof P.sarvTabVisible==='function') allowed=P.sarvTabVisible('MD_BRAND')!==false; }catch(e){}
+  if(!allowed) return openBrandView(prodId);
+  try{
+    P.sarvNavigateFromHome('MASTER');
+    P.switchMasterSubTab('brandMasterSub');
+    ofPlaceBackButton_(P,prodId);
+  }catch(e){
+    console.warn('[ORDER FORM] ERP Brand Master nahi khula:',e.message||e);
+    openBrandView(prodId);
+  }
+}
+// ERP (parent) me floating "wapas" button. Uska click Order Form ke panel par
+// laut kar is page ka ofBackFromBrandMaster() bulata hai.
+function ofPlaceBackButton_(P,prodId){
+  const doc=P.document;
+  doc.getElementById(BMV_BACK_ID)?.remove();
+  const cards=[...document.querySelectorAll('.product-card')];
+  const n=cards.findIndex(c=>c.id==='prod-'+prodId)+1;
+  const no=document.getElementById('orderNo')?.value||'';
+  const b=doc.createElement('button');
+  b.id=BMV_BACK_ID; b.type='button';
+  b.innerHTML='← Order Form par wapas <span style="font-weight:600;opacity:.85;font-size:11px">'
+    +(n?'· Product #'+n:'')+(no&&!/Loading|OFFLINE/.test(no)?' · '+esc(no):'')+'</span>';
+  b.title='Jahan chhoda tha wahi — Order Form, usi product par';
+  b.style.cssText='position:fixed;left:18px;bottom:18px;z-index:2147483000;background:#1A3C5E;color:#fff;border:2px solid #fff;'
+    +'border-radius:999px;padding:12px 20px;font:700 13px "DM Sans",Arial,sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35)';
+  b.onclick=()=>{
+    b.remove();
+    try{ P.sarvNavigateFromHome('ORDER_FORM'); }catch(e){}
+    try{
+      const w=P.document.getElementById('orderFormFrame')?.contentWindow;
+      if(w && typeof w.ofBackFromBrandMaster==='function') w.ofBackFromBrandMaster(prodId);
+    }catch(e){}
+  };
+  doc.body.appendChild(b);
+}
+// Sidebar se khud Order Form par aa gaye → ERP me pada "wapas" button bekaar, hata do
+window.addEventListener('focus',()=>{ try{ if(window.parent!==window) window.parent.document.getElementById(BMV_BACK_ID)?.remove(); }catch(e){} });
+window.ofBackFromBrandMaster=function(prodId){
+  if(SB_READY) fetchDrops();     // Brand Master me jo joda / badla wo Item Code list me
+  ofFocusProduct_(prodId);
+};
+function ofFocusProduct_(prodId){
+  const card=document.getElementById('prod-'+prodId);
+  if(!card) return;
+  setTimeout(()=>{
+    card.scrollIntoView({behavior:'smooth',block:'start'});
+    card.classList.remove('prod-flash'); void card.offsetWidth; card.classList.add('prod-flash');
+    document.getElementById('p'+prodId+'-itemCode')?.focus({preventScroll:true});
+  },120);
+}
+
+// ── Read-only viewer (ERP ke bahar) ──
+let bmvTargetProd_=null;
+const BMV_COLS=[['item_code','Item Code'],['fabric_name','Fabric'],['category','Category'],['blanket_weight','Weight'],
+  ['size','Size'],['bed_size','Bed Size'],['blanket_ply','Ply'],['sattan','Sattan'],['sattan_type','Sattan Type'],
+  ['moq','MOQ'],['emboss','Emboss'],['price_per_kg','Price/KG'],['packing_pcs','Packing Pcs']];
+async function openBrandView(prodId){
+  bmvTargetProd_=prodId;
+  document.getElementById('bmvSearch').value='';
+  document.getElementById('bmvHead').innerHTML=(canDo('create')?'<th></th>':'')+BMV_COLS.map(c=>'<th>'+c[1]+'</th>').join('');
+  document.getElementById('brandViewModal').classList.add('open');
+  if(!BRAND_MASTER_ROWS.length && SB_READY){
+    document.getElementById('bmvBody').innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#888">Loading…</td></tr>';
+    try{ BRAND_MASTER_ROWS=(await fetchBrandMaster())||[]; }catch(e){}
+  }
+  bmvRender();
+  setTimeout(()=>document.getElementById('bmvSearch').focus(),60);
+}
+function closeBrandView(){
+  document.getElementById('brandViewModal').classList.remove('open');
+  if(bmvTargetProd_!=null) ofFocusProduct_(bmvTargetProd_);
+}
+function bmvRender(){
+  const q=document.getElementById('bmvSearch').value.trim().toUpperCase();
+  const showOff=document.getElementById('bmvInactive').checked;
+  const all=(BRAND_MASTER_ROWS||[]).slice().sort((a,b)=>String(a.item_code||'').localeCompare(String(b.item_code||''),undefined,{numeric:true}));
+  const rows=all.filter(r=>(showOff||r.is_active!==false)
+    && (!q || BMV_COLS.some(c=>String(r[c[0]]==null?'':r[c[0]]).toUpperCase().includes(q))));
+  const use=canDo('create');
+  document.getElementById('bmvCount').textContent=rows.length+' / '+all.length+' items';
+  document.getElementById('bmvBody').innerHTML=rows.slice(0,500).map(r=>{
+    const code=String(r.item_code||'');
+    return '<tr class="'+(r.is_active===false?'off':'')+'">'
+      +(use?'<td>'+(r.is_active===false?'':'<button type="button" class="bmv-use" data-code="'+esc(code)+'">Use</button>')+'</td>':'')
+      +BMV_COLS.map(c=>'<td>'+esc(r[c[0]]==null?'':r[c[0]])+'</td>').join('')+'</tr>';
+  }).join('')||'<tr><td colspan="14" style="text-align:center;padding:20px;color:#888">Kuch nahi mila</td></tr>';
+}
+// "Use" → wahi raasta jo Add New Brand ke baad chalta hai: code daalo, onItemCodeSelect specs bhar ke lock kare
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('#bmvBody .bmv-use'); if(!b) return;
+  const code=b.dataset.code, pid=bmvTargetProd_;
+  const el=document.getElementById('p'+pid+'-itemCode');
+  if(!el) return toast('⚠️ Product card nahi mila');
+  if(!STANDARD_ITEMS[code]){ toast('⚠️ "'+code+'" abhi Item Code list me nahi hai — page refresh karein'); return; }
+  suppressCombo=true; el.value=code; el.dispatchEvent(new Event('input')); suppressCombo=false;
+  onItemCodeSelect(pid,code);
+  closeBrandView();
+  toast('✅ "'+code+'" chun liya gaya');
+});
+
 async function saveNewBrand(){
+  if(BR_MODE.mode==='EDIT'||BR_MODE.mode==='REVISE') return brSaveExisting_();
   if(!canDo('create')) return;
   const get=k=>String(document.getElementById(brFieldId_(k))?.value||'').trim();
   const code=get('item_code').toUpperCase();
@@ -2743,7 +3029,17 @@ async function saveNewBrand(){
       onItemCodeSelect(pid, code);
     }
     closeNewBrand();
-    toast('✅ "'+code+'" Brand Master me add ho gaya');
+    /* Packing Slip ki Quality list me bhi — brand save ho chuka hai, to iska
+       fail hona brand ko nahi rokta; sirf batata hai. */
+    let pkMsg='';
+    try{
+      const r=await pkAddQuality_(code,vals.packing_pcs);
+      if(r==='added') pkMsg=' + Packing item_list me bhi (Std Pcs '+(Math.round(Number(vals.packing_pcs)||0)||'10 — default')+')';
+    }catch(e){
+      console.warn('[ORDER FORM] packing item_list insert failed:',e);
+      pkMsg=' — ⚠️ par Packing item_list me nahi juda: '+(e.message||e);
+    }
+    toast('✅ "'+code+'" Brand Master me add ho gaya'+pkMsg);
   }catch(e){
     console.error('[ORDER FORM] Brand save failed:',e);
     nmErr_('nbrError',(e.message||String(e))
@@ -2977,8 +3273,12 @@ function addProduct(){
       <div class="fg">
         <div class="fg-hd">
           <label>Item Code <span class="mstar">★</span></label>
+          <span class="fg-hd-btns">
+          <button type="button" class="btn-addmaster" onclick="openBrandMaster(${id})"
+            title="Brand Master dekhein — ERP me poora master khulta hai, aur ek click se wapas isi product par">📖 Brand Master</button>
           <button type="button" class="btn-addmaster" onclick="openNewBrand(${id})"
             title="Naya brand / SKU Brand Master me save karein — turant is list me aa jayega aur yahin chun bhi liya jayega">➕ Add New Brand Item</button>
+          </span>
         </div>
         <div class="combo-wrap">
           <input type="text" id="p${id}-itemCode" placeholder="Select from Brand Master..." autocomplete="off"
