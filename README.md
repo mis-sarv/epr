@@ -997,13 +997,51 @@ Setup: `TRIMS_MANAGER_MIGRATION.sql`, phir **`TRIMS_MANAGER_V2_MIGRATION.sql`**.
 hota, kyunki poore ERP me inka doosra koi ghar nahi, aur PDF / CSV / Saved Sheets
 register teeno chhapte hain. Saved Sales Order par ye bar dikhti hi nahi.
 
+### NEW PR — sheet se hi PR ban jaati hai
+
+**Lot Req Qty** ke theek baad ek **NEW PR** tick column (Item Master ke NEW PR
+column jaisa), aur upar toolbar me **📝 Generate New PR (n)**. Tick karke dabane
+par ERP ka **Purchase › New Entry** form khul jaata hai, usi me wo saare item
+bhar jaate hain:
+
+| | |
+|---|---|
+| PR qty | **Final PO Qty** = Lot Req × (1 + Wastage%) — kharidna yahi hai, Lot Req nahi |
+| Item ka Description / Make / Category / UOM | **Item Master se**, trims sheet se nahi (jo master kehta hai wahi PR par chhape) |
+| PR line ka remark | `Trims: Order <no> · Lot <no> · <item> · Wastage x%` — Purchaser ko bina Trims Manager kholne pata ho ye kis order ka hai |
+| Purchaser Name | item ki Category se (`category_purchasers`), jaise haath se bhari row par |
+| Required By · Machine | **khaali** — ye do user hi bharta hai, phir Submit |
+
+Tick **tabhi** hota hai jab row par **Store Standard Name** (Item Master item)
+ho aur **Final PO Qty > 0** — PR us `item_id` par bandhti hai, aur inke bina
+bandhne ko kuch nahi hota. Checkbox ka tooltip wajah likh deta hai. Supplier
+**BUYER / FOC** wali row tick ho sakti hai, par bhejne se pehle poocha jaata hai
+(wo maal hum kharidte nahi).
+
+**PR Submit hote hi uska number WAPAS sheet ke PR NO. column me aa jaata hai** —
+unhi rows par jinse wo bani thi — aur wahi link PO No / Target Date / Qty
+Received chalu kar deta hai. Sheet apne aap save nahi hoti: amber banner
+"PR xyz … abhi save nahi hui" Save dabane tak baitha rehta hai.
+
+Code kahan hai: PR ka form ERP ke page par hai aur Trims Manager uske iframe
+me, isi liye trims sheet sirf poochti aur bhejti hai —
+`store-core.js › sarvGenerateNewPrFromTrims` form bharta hai,
+`sarvTrimsPrNotify_` save hone par wapas khabar deta hai, aur trims sheet ka
+`window.trimsPrSaved` PR No rows par lagata hai. Item Master se bani PR aur
+isse bani PR ek hi do helpers se guzarti hain (`sarvPrFillRequester_`,
+`sarvPrWireMachineCopy_`), to dono bilkul ek jaisi bharti hain.
+**Access:** `HOME_PR` — jo PR ka form khol sakta hai, wahi yahan se PR bana
+sakta hai (Item Master wala Admin-only `MD_ITEM_NEWPR` jaan-boojh kar nahi,
+kyonki trims sheet bharne wala merchandiser hi PR raise karta hai).
+
 ### PR NO. → PO NO. — user PR chunta hai, PO khud aata hai
 
 Pehle PO No. haath se chunna padta tha, matlab PO banne ka intezaar karke sheet
 dobara kholna. Ab:
 
 1. **PR NO.** column me dropdown — `purchase_requirements` ki list. Jis item ki
-   PR hai wo upar apne heading me (`✓ Is item ki PR`), baaki neeche.
+   PR hai wo upar apne heading me (`✓ Is item ki PR`), baaki neeche. (Ya upar
+   wale **NEW PR** se wo apne aap lag jaata hai.)
 2. Purchase us PR ke against PO banata hai → **PO NO.** column me wo PO apne aap
    aa jaata hai (hari cell, neeche vendor ka naam). Jod `purchase_order_lines.req_no`
    hai — sheet me kuch dobara likhna nahi padta.

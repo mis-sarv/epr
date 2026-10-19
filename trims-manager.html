@@ -19,7 +19,14 @@
     LOT NO(s)       → saved Lot Cards (mfg_lot_cards) or typed by hand; Lot Req Qty
                       per row from the lot
     Store Std Name  → Item Master (items) — only values from the list
+    NEW PR (tick)   → Lot Req Qty ke theek baad. Rows tick karke "📝 Generate New
+                      PR" dabane par ERP ka Purchase › New Entry form un items se
+                      bhar jaata hai (PR qty = FINAL PO QTY). Form parent window
+                      me hai, isi liye asli kaam store-core.js ›
+                      sarvGenerateNewPrFromTrims karta hai; PR submit hote hi uska
+                      number wapas inhi rows par aa jaata hai (window.trimsPrSaved).
     PR No           → purchase_requirements (+ lines) — THIS is what the user picks
+                      (ya upar wale NEW PR se apne aap lag jaata hai)
     PO No           → found automatically: the purchase_order_lines raised against
                       that PR for that item. ✎ pins a PO by hand, ↺ returns to auto.
     Target Date     → delivery_date of the PO(s) the PR produced (earliest)
@@ -96,10 +103,11 @@
   .banner.err { background:#fdecea; border:1px solid #f5b7b1; color:#922b21; }
 
   .table-container { background: white; border-radius: 6px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); overflow: auto; max-height: calc(100vh - 290px); min-height: 260px; }
-  /* One column wider than before (PR NO.), and the Lot Issue cells now stack
-     issuing dates under the qty — so the grid needs more room before it starts
-     squeezing. The container scrolls horizontally, as it already did. */
-  table { width: 100%; border-collapse: collapse; min-width: 1840px; text-align: center; }
+  /* Two columns wider than before (PR NO. and the NEW PR tick), and the Lot
+     Issue cells now stack issuing dates under the qty — so the grid needs more
+     room before it starts squeezing. The container scrolls horizontally, as it
+     already did. */
+  table { width: 100%; border-collapse: collapse; min-width: 1900px; text-align: center; }
   th { background: #34495e; color: white; font-size: 11px; padding: 8px 4px; position: sticky; top: 0; z-index: 2; border: 1px solid #4a627a; }
   th.lot-th { background:#5b3f8c; }
   th small { display:block; font-weight:400; color:#cfd8dc; font-size:9.5px; }
@@ -123,6 +131,18 @@
   td.po-auto { background:#eafaf1; font-weight:700; color:#145a32; font-size:11.5px; }
   td.po-auto small { display:block; font-weight:500; color:#7f8c8d; font-size:9.5px; }
   td.po-wait { background:#fff8e1; color:#8a5300; font-weight:700; font-size:11px; }
+
+  /* NEW PR column — Lot Req Qty ke theek baad. Item Master ke NEW PR column
+     jaisa hi: tick karke ek hi PR me kai item bhej dein. */
+  th.pr-th { background:#5e35b1; }
+  th.pr-th input { width:14px; height:14px; cursor:pointer; margin-top:2px; }
+  td.pr-td { background:#f3e8ff; }
+  td.pr-td input { width:15px; height:15px; cursor:pointer; }
+  td.pr-td input:disabled { cursor:not-allowed; opacity:.45; }
+  td.pr-td.has-pr { background:#e8f4fd; }
+  td.pr-td small { display:block; font-size:8.5px; font-weight:700; color:#1f5d8c; line-height:1.2; margin-top:1px; }
+  .btn-pr { background:#7c3aed; color:#fff; }
+  .btn-pr:hover { background:#6d28d9; }
   .ico { position:absolute; top:1px; right:1px; background:transparent; color:#7f8c8d; padding:0 3px; font-size:11px; line-height:14px; border-radius:3px; }
   .ico:hover { background:#dfe6e9; color:#2c3e50; }
   .store-wrap input.bad { border-color:#e74c3c; background:#fdecea; }
@@ -189,6 +209,13 @@
       <span id="saveStatus" class="badge-saved">✔ Saved!</span>
       <span id="dirtyDot" class="dirty-dot">● Unsaved changes</span>
       <button class="btn-add" onclick="addNewItem()" id="btnAdd">➕ Add Item</button>
+      <!-- NEW PR column me rows tick karke yahan se ek hi PR ban jaati hai.
+           PR ka form ERP ke Purchase panel me hai (ye page uske iframe me
+           chalta hai), isi liye asli kaam parent window karta hai —
+           store-core.js › sarvGenerateNewPrFromTrims. -->
+      <button class="btn-pr" onclick="generatePrFromSheet()" id="btnGenPr" disabled
+              title="Lot Req Qty ke baad NEW PR column me items tick karein — PR qty = Final PO Qty (Lot Req + Wastage)">📝 Generate New PR (<span id="prSelCount">0</span>)</button>
+      <button class="btn-ghost" onclick="clearPrSel()" id="btnPrClear" style="display:none" title="Saare tick hatayein">✖ Clear Ticks</button>
       <button class="btn-save" onclick="saveData()" id="btnSave">💾 Save</button>
       <button class="btn-sync" onclick="syncQty(true)" id="btnSync" title="Order / Lot se auto Qty dobara bharein (manual ✎ values nahi badlenge)">↻ Sync Qty</button>
       <button class="btn-dark" onclick="refreshStoreData()" title="PO / Inward / Issue ka latest data">⟳ Store Data</button>
@@ -266,6 +293,7 @@
     <span class="l-man">Manual ✎ (aapne badla — ↺ se auto par wapas)</span>
     <span class="l-calc">Calculated</span>
     <span style="padding-left:0">Final PO Qty = Lot Req × (1 + Wastage%) · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (chhoti line = Lot Req se kami)</span>
+    <span style="padding-left:0"><b>NEW PR</b> column me tick → <b>📝 Generate New PR</b> → ERP ka Purchase form khulta hai (PR qty = Final PO Qty). Submit hote hi PR No is sheet ke PR NO. column me apne aap lag jaata hai — phir 💾 Save.</span>
   </div>
 
   <div id="itemPop"></div>
@@ -363,10 +391,23 @@ const S = {
 // Current sheet.  party / brand / designs are only used (and only required) on a
 // MANUAL sheet — a saved Sales Order carries all three in the Order Form.
 const D = { orderNo:'', order:null, agg:null, sheetId:null, lots:[], status:'Open', notes:'', rows:[], dirty:false, meta:null, staleCount:0,
-            manual:false, party:'', brand:'', designs:['',''] };
+            manual:false, party:'', brand:'', designs:['',''],
+            /* Abhi-abhi is sheet se bani PR ka number — {no, count, replaced}.
+               Banner me baitha rehta hai jab tak Save na ho, kyonki PR submit
+               karte waqt user Purchase panel par hota hai aur ye page hidden
+               iframe me: us waqt ka toast kisi ne dekha hi nahi hota. */
+            prLinked:null };
 
+/* Har row ki apni pehchaan, sirf is browser session ke liye (database me nahi
+   jaati — sheetPayload gine-chune fields hi likhta hai).
+   Zaroorat: "Generate New PR" rows ko parent window ke PR form me bhejta hai,
+   aur PR save hone par PR No wapas INHI rows par lagta hai. Beech me user row
+   jod / hata sakta hai, isi liye row ka index (line_no) pehchaan ke kaam ka
+   nahi — uid hai. */
+let rowSeq = 0;
 function blankRow(p){
-  return Object.assign({ desc:'', cat:'TRIMS', storeId:null, storeName:'', basis:'PCS', oQty:'', oQtyManual:false,
+  return Object.assign({ uid:'r'+(++rowSeq), prSel:false,
+    desc:'', cat:'TRIMS', storeId:null, storeName:'', basis:'PCS', oQty:'', oQtyManual:false,
     sup:'SELLER', supManual:false, lotQty:'', lotManual:false, waste:0, prNo:'', poNo:'', poManual:false,
     tDate:'', tDateManual:false, rec:'', recManual:false,
     issues:{}, issueManual:false, disp:'AUTO', hisaab:'' }, p||{});
@@ -806,7 +847,7 @@ async function onOrderChange(v){
 }
 async function openOrder(orderNo, opts){
   D.orderNo=orderNo; D.order=null; D.agg=null; D.sheetId=null; D.lots=[]; D.status='Open'; D.notes=''; D.meta=null; D.rows=[];
-  D.party=''; D.brand=''; D.designs=['',''];
+  D.party=''; D.brand=''; D.designs=['','']; D.prLinked=null;
   // Manual = the Order No is not one of the saved Sales Orders. Asked for
   // explicitly by "✎ Manual", and inferred for anything the list does not hold,
   // so a sheet whose order was later deleted still collects its own details.
@@ -905,6 +946,9 @@ function renderAll(){
   const ro=READ_ONLY();
   ['btnAdd','btnSave','btnSync','btnReset','btnLot','btnManualOrder'].forEach(id=>{ const b=$(id); if(b) b.disabled=ro; });
   $('lotInput').disabled=ro; $('orderManual').disabled=ro;
+  // btnGenPr jaan-boojh kar is list me nahi — uska disabled ginti se chalta
+  // hai (0 tick = disabled), aur View Only par prEligible khud 0 kar deta
+  // hai. Ginti renderRows() ke andar set hoti hai.
 }
 function renderChips(){
   $('lotChips').innerHTML=D.lots.map((l,i)=>{
@@ -938,6 +982,13 @@ function renderBanners(){
     : '⚠️ Ye Order sales_orders me nahi mila — Order Qty manual bharein.')+'</div>');
   const gaps=manualGaps();
   if(gaps.length) b.push('<div class="banner warn">✎ Manual sheet ke liye ye bharna zaroori hai: <b>'+esc(gaps.join(', '))+'</b> — bina inke Save nahi hoga.</div>');
+  /* Abhi-abhi is sheet se PR bani hai aur uska number rows par lag gaya hai,
+     par sheet save nahi hui. PR submit karte waqt user Purchase panel par tha
+     aur ye page hidden iframe me, to wahan ka toast kisi ne dekha nahi — ye
+     banner isi liye Save hone tak baitha rehta hai. */
+  if(D.prLinked) b.push('<div class="banner warn"><span>📝 <b>PR '+esc(D.prLinked.no)+'</b> is sheet ki <b>'+D.prLinked.count+'</b> row par lag gayi hai'
+    +(D.prLinked.replaced?(' ('+D.prLinked.replaced+' row par purana PR badla)'):'')
+    +' — abhi <b>save nahi hui</b>.</span><button class="btn-save" onclick="saveData()" style="padding:4px 12px">💾 Save ab</button></div>');
   // The V2 columns, said once and plainly: everything on screen works without
   // them, saving those values does not.
   if(S.v2.sheet===false||S.v2.line===false){
@@ -959,6 +1010,7 @@ function renderHead(){
     <th style="width:80px;">Order Qty<small>${D.agg?'from Order':''}</small></th>
     <th style="width:90px;">Supplier</th>
     <th style="width:85px;">Lot Req Qty<small>${D.lots.length?'from Lot':''}</small></th>
+    <th class="pr-th" style="width:56px;" title="Items tick karke 📝 Generate New PR dabayein — PR qty = Final PO Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Jo rows PR ke liye ho sakti hain, sab tick / untick"></th>
     <th style="width:75px;">Wastage %</th>
     <th style="width:85px;">Final PO Qty</th>
     <th style="width:170px;">PR NO.<small>select karein</small></th>
@@ -986,6 +1038,73 @@ function poOptions(r){
   const missing=r.poNo&&!S.poByNo[r.poNo]?`<option value="${esc(r.poNo)}" selected>${esc(r.poNo)} (not found)</option>`:'';
   return `<option value="">-- PO --</option>${missing}${has.length?`<optgroup label="✓ Is item ke PO">${has.join('')}</optgroup>`:''}<optgroup label="${r.storeId?'Other POs':'All POs'}">${other.join('')}</optgroup>`;
 }
+/* ══ NEW PR SE SHEET SE HI ════════════════════════════════════════════════
+   Item Master ke NEW PR column jaisa: Lot Req Qty ke theek baad ek tick
+   column, upar toolbar me "📝 Generate New PR (n)". Tick karke dabane par ERP
+   ka Purchase › New Entry form khul jaata hai, usi me ye saare item bhar jaate
+   hain — PR qty = FINAL PO QTY (Lot Req × (1 + Wastage%)), kyunki kharidna
+   wahi hai, Lot Req nahi.
+
+   PR ka form ISI page par nahi hai — ye page ERP ke iframe me chalta hai aur
+   form parent window me — isi liye asli kaam parent karta hai
+   (store-core.js › sarvGenerateNewPrFromTrims). PR banane ka code do jagah
+   nahi likha jaata, aur Item Master se bani PR aur isse bani PR bilkul ek
+   jaisi hoti hain.
+
+   PR save hote hi uska number WAPAS inhi rows ke PR NO. column me aa jaata
+   hai (window.trimsPrSaved, neeche) — wahi link jisse PO No, Target Date aur
+   Qty Received apne aap chalne lagte hain. */
+
+/* Ek row PR ke liye ho sakti hai ya nahi — aur na ho to kyun. Ek hi jagah,
+   taaki checkbox ka disabled hona, uska tooltip, "select all" aur generate
+   waqt ki ginti chaaron ek hi niyam padhein. */
+function prEligible(r){
+  if(READ_ONLY()) return { ok:false, why:'View Only login — PR nahi ban sakti' };
+  // Item Master ka item hi PR line ban sakta hai: PR us item_id par bandhti
+  // hai, aur Store Standard Name ke bina bandhne ko kuch nahi hota.
+  if(!r.storeId) return { ok:false, why:'Pehle Store Standard Name (Item Master) chunein' };
+  if(rowCalc(r).poQty<=0) return { ok:false, why:'Final PO Qty 0 hai — Lot Req Qty bharein' };
+  return { ok:true, why:'' };
+}
+const prSelRows = () => D.rows.filter(r=>r.prSel && prEligible(r).ok);
+function prCellHtml(r, idx, c){
+  const e=prEligible(r);
+  const has=!!String(r.prNo||'').trim();
+  const tip=e.ok
+    ? ('Tick karein → PR qty '+fmtN(c.poQty)+' (Final PO Qty)'+(has?'\n⚠️ Is row par PR '+r.prNo+' pehle se hai — nayi PR use badal degi':''))
+    : e.why;
+  return `<td class="pr-td ${has?'has-pr':''}" title="${esc(tip)}">`
+    +`<input type="checkbox" ${r.prSel&&e.ok?'checked':''} ${e.ok?'':'disabled'} onchange="prToggle(${idx},this.checked)">`
+    +`${has?`<small title="${esc('PR '+r.prNo+' pehle se')}">PR ✓</small>`:''}</td>`;
+}
+function prToggle(i, on){
+  const r=D.rows[i]; if(!r) return;
+  if(on && !prEligible(r).ok){ toast('⚠️ '+prEligible(r).why); renderRows(); return; }
+  r.prSel=!!on;
+  syncPrSelUi();
+}
+function prSelectAll(on){
+  D.rows.forEach(r=>{ r.prSel = on && prEligible(r).ok; });
+  renderRows();
+}
+function clearPrSel(){ D.rows.forEach(r=>{ r.prSel=false; }); renderRows(); }
+/* Button ki ginti aur "select all" ki haalat — poora table dobara render
+   kiye bina, taaki tick karte waqt scroll apni jagah rahe. */
+function syncPrSelUi(){
+  const n=prSelRows().length;
+  const btn=$('btnGenPr'), cnt=$('prSelCount'), clr=$('btnPrClear');
+  if(cnt) cnt.textContent=n;
+  if(btn){ btn.disabled=!n; btn.style.opacity=n?'1':'.55'; }
+  if(clr) clr.style.display=n?'':'none';
+  const all=$('prSelAll');
+  if(all){
+    const able=D.rows.filter(r=>prEligible(r).ok);
+    all.disabled=!able.length;
+    all.checked=able.length>0 && able.every(r=>r.prSel);
+    all.indeterminate=!all.checked && able.some(r=>r.prSel);
+  }
+}
+
 /* PR No options. Requirements that actually asked for THIS row's item come
    first, under their own heading — those are the ones a trims row is normally
    raised against — with every other open PR below them, so a PR raised under a
@@ -1079,6 +1198,7 @@ function renderRows(){
       <td><input type="number" class="${r.oQtyManual?'man':(oqAuto?'auto':'')}" value="${esc(r.oQty)}" oninput="setManual(${idx},'oQty','oQtyManual',this.value,this)" ${ro}>${r.oQtyManual&&oqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'oQtyManual')" title="Order se auto">↺</button>`:''}</td>
       <td><select class="${r.supManual?'man':(autoSupplier(r)?'auto':'')}" onchange="setManual(${idx},'sup','supManual',this.value,this)" ${ro}>${SUPPLIERS.map(s=>`<option ${s===r.sup?'selected':''}>${s}</option>`).join('')}</select></td>
       <td><input type="number" class="${r.lotManual?'man':(lqAuto?'auto':'')}" value="${esc(r.lotQty)}" oninput="setManual(${idx},'lotQty','lotManual',this.value,this)" ${ro}>${r.lotManual&&lqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'lotManual')" title="Lot se auto">↺</button>`:''}</td>
+      ${prCellHtml(r,idx,c)}
       <td><select onchange="setF(${idx},'waste',this.value)" ${ro}>${WASTE_OPTS.concat(WASTE_OPTS.includes(num(r.waste))?[]:[num(r.waste)]).map(w=>`<option value="${w}" ${num(r.waste)===w?'selected':''}>${w}%</option>`).join('')}</select></td>
       <td class="calc poQty">${c.poQty}</td>
       <td><select class="${r.prNo?'auto':''}" onchange="setPr(${idx},this.value)" ${ro}>${prOptions(r)}</select></td>
@@ -1093,6 +1213,9 @@ function renderRows(){
       <td class="noprint">${ro?'':`<button class="row-del" onclick="removeRow(${idx})" title="Remove row">✕</button>`}</td>
     </tr>`;
   }).join('');
+  // Rows abhi-abhi bani hain, to button ki ginti aur "select all" unke saath
+  // hi theek ho jaate hain.
+  syncPrSelUi();
 }
 // Recalculate the computed cells of one row without re-rendering inputs (keeps focus)
 function refreshCalc(idx){
@@ -1103,6 +1226,15 @@ function refreshCalc(idx){
   const p=tr.querySelector('.pend');
   p.innerHTML=(D.lots.length?fmtN(c.pendIssue):'—')+pendSub(c,D.lots.length);
   p.className='calc pend '+pendCls(c); p.title=pendTip(c);
+  /* NEW PR ka checkbox Final PO Qty par tika hai (0 ho to tick nahi ho sakta),
+     aur Final PO Qty Lot Req Qty / Wastage se badalti hai — isi liye wo bhi
+     yahin refresh hota hai. Bina iske, 0 wali row me Lot Req Qty bharne ke
+     baad bhi checkbox agle poore render tak disabled pada rehta. */
+  const td=tr.querySelector('.pr-td');
+  if(td){
+    td.outerHTML=prCellHtml(D.rows[idx],idx,c);
+    syncPrSelUi();
+  }
 }
 
 // ═══════════════════════ ROW EDITS ═════════════════════════════════════════
@@ -1163,6 +1295,124 @@ function addNewItem(){
   const w=$('tableWrap'); w.scrollTop=w.scrollHeight;
   const inp=document.querySelector(`#tableBody tr[data-i="${D.rows.length-1}"] td:nth-child(2) input`); if(inp) inp.focus();
 }
+
+/* ══ GENERATE NEW PR ══════════════════════════════════════════════════════
+   Ticked rows parent window ke PR form me bhej di jaati hain. Yahan sirf teen
+   kaam hote hain: poochna, payload banana, aur bhejna.
+
+   BUYER / FOC rows tick ho sakti hain par bhejne se pehle poocha jaata hai —
+   wo maal buyer deta hai (ya FOC aata hai), uski PR hum nahi banate. Ban
+   sakti hai, par anjaane me nahi. */
+async function generatePrFromSheet(){
+  if(READ_ONLY()) return;
+  const rows=prSelRows();
+  if(!rows.length){ toast('⚠️ Pehle NEW PR column me items tick karein'); return; }
+
+  // Ye page ERP ke andar hi PR bana sakta hai — form wahan hai.
+  const P=(()=>{ try{ return (window.parent!==window) ? window.parent : null; }catch(e){ return null; } })();
+  if(!P || typeof P.sarvGenerateNewPrFromTrims!=='function'){
+    toast('⚠️ PR form ERP ke andar hai — Trims Manager ko ERP se kholein: Manufacturing › Trims Manager',6000);
+    return;
+  }
+
+  const buyerRows=rows.filter(r=>/BUYER|FOC/i.test(r.sup||''));
+  if(buyerRows.length && !confirm(
+      'In '+buyerRows.length+' item ka Supplier BUYER / FOC hai — ye maal hum nahi kharidte:\n\n'
+      +buyerRows.map(r=>'• '+(r.desc||r.storeName)+'  ('+r.sup+')').join('\n')
+      +'\n\nPhir bhi PR me bhejna hai?')) return;
+
+  const already=rows.filter(r=>String(r.prNo||'').trim());
+  if(already.length && !confirm(
+      'In '+already.length+' row par PR pehle se lagi hai — nayi PR us link ko BADAL degi:\n\n'
+      +already.map(r=>'• '+(r.desc||r.storeName)+'  → '+r.prNo).join('\n')
+      +'\n\nAage badhein?')) return;
+
+  const lots=D.lots.join(', ');
+  const req={
+    source:'TRIMS',
+    orderNo:D.orderNo,
+    lots:D.lots.slice(),
+    party:D.order?(D.order.buyer_name||''):(D.party||''),
+    items:rows.map(r=>{
+      const c=rowCalc(r);
+      return {
+        uid:r.uid,
+        itemId:r.storeId,
+        name:r.storeName||r.desc||'',
+        // Final PO Qty — Lot Req × (1 + Wastage%). Kharidna yahi hai.
+        qty:c.poQty,
+        lotReqQty:num(r.lotQty),
+        wastagePct:num(r.waste),
+        // PR ki line par trims ka context, taaki Purchaser ko pata ho ye kis
+        // order / lot ke liye hai bina Trims Manager kholne ke.
+        remark:['Trims: Order '+(D.orderNo||'—'), lots?'Lot '+lots:'', r.desc||'', num(r.waste)?('Wastage '+num(r.waste)+'%'):'']
+          .filter(Boolean).join(' · ')
+      };
+    })
+  };
+  try{
+    const res=await P.sarvGenerateNewPrFromTrims(req);
+    if(!res || !res.ok){ toast('❌ '+((res&&res.error)||'PR form nahi khul paaya'),5000); return; }
+    // Tick ab apna kaam kar chuke — rows ki pehchaan (uid) parent ke paas hai.
+    D.rows.forEach(r=>{ r.prSel=false; });
+    renderRows();
+    toast('📝 '+res.filled+' item ERP ke Purchase › New Entry form me bhar diye — Required By aur Machine bharkar Submit karein. PR No apne aap is sheet me aa jayega.',8000);
+  }catch(e){
+    toast('❌ PR form: '+((e&&e.message)||e),5000);
+  }
+}
+
+/* ══ PR SAVE HONE PAR WAPAS ═══════════════════════════════════════════════
+   Parent window PR save hote hi ye bulata hai (store-core.js ›
+   sarvTrimsPrNotify_). Jin rows se PR bani thi, unhi ke PR NO. column me wo
+   number lag jaata hai — wahi link jisse PO No, Target Date aur Qty Received
+   apne aap chalne lagte hain.
+
+   PR submit karte waqt user Purchase panel par hota hai aur ye page us waqt
+   HIDDEN iframe me — isi liye yahan ka toast koi dekhta hi nahi. Do cheezein
+   isi wajah se:
+     • lautaya gaya {ok, msg} parent dikhata hai (uska toast dikhai deta hai);
+     • aur sheet me ek banner baith jaata hai (D.prLinked) jo Save hone tak
+       rehta hai — user jab is tab par wapas aaye, use dikhe ki Save baaki hai.
+   Sheet apne aap SAVE nahi hoti: PR No sheet ka data hai aur Save dabana user
+   ka faisla hai. */
+window.trimsPrSaved = async function(reqNo, uids, orderNo){
+  const no=String(reqNo||'').trim();
+  if(!no || !Array.isArray(uids) || !uids.length)
+    return { ok:false, msg:'' };
+  // Beech me user doosra order khol chuka ho to us sheet par PR thopna galat
+  // hoga — row uid bhi nahi milenge, par wajah saaf likhi jaati hai.
+  if(orderNo && D.orderNo && orderNo!==D.orderNo){
+    const m='PR '+no+' ban gayi, par Trims Manager me ab Order '+D.orderNo+' khula hai — Order '+orderNo+' kholkar PR NO. column me select karein';
+    toast('ℹ️ '+m,8000);
+    return { ok:false, msg:m };
+  }
+  const set=new Set(uids);
+  const hit=D.rows.filter(r=>set.has(r.uid));
+  if(!hit.length){
+    const m='PR '+no+' ban gayi, par jin rows se bani thi wo ab sheet me nahi hain — PR NO. column se khud select karein';
+    toast('ℹ️ '+m,7000);
+    return { ok:false, msg:m };
+  }
+  const replaced=hit.filter(r=>String(r.prNo||'').trim() && r.prNo!==no).length;
+  hit.forEach(r=>{
+    r.prNo=no;
+    // Naya PR aaya to PO ka auto lookup phir chalu — pehle ka pinned PO
+    // (poManual) is link ko dabaye rakhta.
+    r.poManual=false; r.poNo='';
+    r.prSel=false;
+  });
+  // Nayi PR dropdown me bhi chahiye, warna cell "not found" dikhata.
+  try{ await loadPrs(); }catch(e){}
+  D.prLinked={ no:no, count:hit.length, replaced:replaced };
+  setDirty(true);
+  renderAll();
+  const m='PR '+no+' Trims sheet ki '+hit.length+' row par lag gayi'
+    +(replaced?(' ('+replaced+' row par purana PR badla)'):'')
+    +' — Trims Manager me 💾 Save dabayein, tabhi sheet me pakki hogi.';
+  toast('✅ '+m,9000);
+  return { ok:true, count:hit.length, msg:m };
+};
 
 // ═══════════════════════ STORE STANDARD NAME (Item Master only) ════════════
 let pop={ idx:null, list:[], act:0, input:null };
@@ -1270,6 +1520,8 @@ async function saveData(){
     if(error) throw error;
     if(!data||!data.success){ toast('❌ '+((data&&data.error)||'Save failed'),5000); return; }
     D.sheetId=data.id; D.meta={ by:erpUserLabel(), at:new Date().toISOString() };
+    // PR ka link ab database me hai — banner ka kaam khatam.
+    D.prLinked=null;
     await loadLinks();
     setDirty(false); renderAll();
     const st=$('saveStatus'); st.style.display='inline'; setTimeout(()=>st.style.display='none',2500);

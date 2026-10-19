@@ -7975,48 +7975,161 @@ window.sarvGenerateNewPrFromItems=async function(){
   });
   refreshPurchaseTotals();
   sarvItemPrSel.clear();
-  /* Required By is left BLANK here too, exactly as on a hand-started form.
-     It used to arrive pre-filled with today + 7 days, which is the one field
-     on this form nobody else can answer — the date the material is actually
-     needed by. A guessed default was going to the Purchaser unread, so the
-     requester now has to type it; saveRequirementWithPdf_ refuses a blank. */
-  {
-    const rb=byId('p_requiredByDate');
-    if(rb){rb.value='';rb.min=today();rb.dispatchEvent(new Event('change'));}
-  }
-  // Requested By: the default Employee Code, filled through the same lookup as typing it.
-  {
-    const ec=byId('p_reqEmpCode');
-    if(ec){
-      if(!lookupEmployee(SARV_GEN_PR_EMP_CODE)&&SB_READY){try{await loadEmployeeMaster();}catch(e){}}
-      ec.value=SARV_GEN_PR_EMP_CODE;
-      onEmpCodeInput(SARV_GEN_PR_EMP_CODE);
-      if(!lookupEmployee(SARV_GEN_PR_EMP_CODE))showToast('⚠️ Employee Code '+SARV_GEN_PR_EMP_CODE+' Employee Master me nahi mila — Requested By khud bharein','warn');
-    }
-  }
-  /* Machine: picking it on the FIRST row puts the same machine on every other
-     row. A row whose machine was changed by hand (no longer blank / no longer
-     the first row's previous pick) is left alone. */
-  const genRows=[...tb.querySelectorAll('tr')];
-  const firstMc=genRows[0]&&genRows[0].querySelector('.col-machine');
-  if(firstMc&&genRows.length>1){
-    let prev=firstMc.value||'';
-    const copy=()=>{
-      const v=String(firstMc.value||'').trim();
-      // Only a real Machine Master value is copied — an invalid one is cleared on blur anyway.
-      if(v&&sarvMachineCatalog.length&&!machineValidValues_().some(x=>x.toLowerCase()===v.toLowerCase()))return;
-      genRows.slice(1).forEach(tr=>{
-        const mc=tr.querySelector('.col-machine');if(!mc||!tr.isConnected)return;
-        if(!mc.value||mc.value===prev)mc.value=v;
-      });
-      prev=v;
-    };
-    firstMc.addEventListener('change',copy);
-    firstMc.title='Yahan machine chunte hi neeche ki saari rows me wahi machine lag jayegi';
-  }
-  showToast('📝 New PR form me '+picked.length+' item(s) bhar diye — qty = Std Order Qty, Purchaser = Category se, Requested By = '+SARV_GEN_PR_EMP_CODE+', Required By = 7 din baad. Pehli row me Machine chunein — sab rows me lag jayegi.');
+  await sarvPrFillRequester_();
+  sarvPrWireMachineCopy_();
+  showToast('📝 New PR form me '+picked.length+' item(s) bhar diye — qty = Std Order Qty, Purchaser = Category se, Requested By = '+SARV_GEN_PR_EMP_CODE+'. Required By khud bharein; pehli row me Machine chunein — sab rows me lag jayegi.');
   if(noSoq.length)showToast('⚠️ In items ka Std Order Qty set nahi tha — qty khud bharein: '+noSoq.map(it=>it.name).slice(0,5).join(', ')+(noSoq.length>5?' …':''),'warn');
 };
+/* ── Ek generated PR form ke do common hisse ─────────────────────────
+   Item Master se bani PR aur Trims Manager se bani PR — dono inhi do
+   functions se guzarti hain, isi liye dono bilkul ek jaisi bharti hain. */
+async function sarvPrFillRequester_(){
+  /* Required By is left BLANK on a generated form too, exactly as on a
+     hand-started one. It used to arrive pre-filled with today + 7 days, which
+     is the one field on this form nobody else can answer — the date the
+     material is actually needed by. A guessed default was going to the
+     Purchaser unread, so the requester has to type it;
+     saveRequirementWithPdf_ refuses a blank. */
+  const rb=byId('p_requiredByDate');
+  if(rb){rb.value='';rb.min=today();rb.dispatchEvent(new Event('change'));}
+  // Requested By: the default Employee Code, filled through the same lookup as typing it.
+  const ec=byId('p_reqEmpCode');
+  if(ec){
+    if(!lookupEmployee(SARV_GEN_PR_EMP_CODE)&&SB_READY){try{await loadEmployeeMaster();}catch(e){}}
+    ec.value=SARV_GEN_PR_EMP_CODE;
+    onEmpCodeInput(SARV_GEN_PR_EMP_CODE);
+    if(!lookupEmployee(SARV_GEN_PR_EMP_CODE))showToast('⚠️ Employee Code '+SARV_GEN_PR_EMP_CODE+' Employee Master me nahi mila — Requested By khud bharein','warn');
+  }
+}
+/* Machine: picking it on the FIRST row puts the same machine on every other
+   row. A row whose machine was changed by hand (no longer blank / no longer
+   the first row's previous pick) is left alone. */
+function sarvPrWireMachineCopy_(){
+  const tb=byId('p_itemTableBody');if(!tb)return;
+  const genRows=[...tb.querySelectorAll('tr')];
+  const firstMc=genRows[0]&&genRows[0].querySelector('.col-machine');
+  if(!firstMc||genRows.length<2)return;
+  let prev=firstMc.value||'';
+  const copy=()=>{
+    const v=String(firstMc.value||'').trim();
+    // Only a real Machine Master value is copied — an invalid one is cleared on blur anyway.
+    if(v&&sarvMachineCatalog.length&&!machineValidValues_().some(x=>x.toLowerCase()===v.toLowerCase()))return;
+    genRows.slice(1).forEach(tr=>{
+      const mc=tr.querySelector('.col-machine');if(!mc||!tr.isConnected)return;
+      if(!mc.value||mc.value===prev)mc.value=v;
+    });
+    prev=v;
+  };
+  firstMc.addEventListener('change',copy);
+  firstMc.title='Yahan machine chunte hi neeche ki saari rows me wahi machine lag jayegi';
+}
+
+/* ══ TRIMS SHEET → NEW PR ════════════════════════════════════════════
+   Manufacturing › Trims Manager (iframe) me Lot Req Qty ke baad NEW PR column
+   hai; wahan items tick karke "📝 Generate New PR" dabane par wo page YAHI
+   function bulata hai. Wajah: PR ka form is page par hai, trims sheet iframe
+   me — to PR banane ka code do jagah nahi likha jaata, aur Item Master se
+   bani PR aur trims se bani PR bilkul ek jaisi hoti hain
+   (sarvPrFillRequester_ / sarvPrWireMachineCopy_ dono ke liye wahi).
+
+   Qty trims sheet se aati hai (FINAL PO QTY = Lot Req × (1 + Wastage%)) —
+   Item Master wali Std Order Qty yahan ka jawab nahi hai: kitna chahiye ye lot
+   batata hai, item master nahi.
+
+   Access: HOME_PR. Jaan-boojh kar Item Master wala MD_ITEM_NEWPR nahi — wo
+   Admin-only hai, aur trims sheet bharne wala merchandiser hi PR raise karta
+   hai. Niyam seedha hai: jo PR ka form khol sakta hai, wahi yahan se PR bana
+   sakta hai. */
+let sarvTrimsPrPending=null;   // {uids:[], orderNo, at} — PR save hone par wapas bhejne ke liye
+window.sarvGenerateNewPrFromTrims=async function(req){
+  try{
+    if(!sarvTabVisible('HOME_PR')){
+      showToast('⛔ Aapke role ko Purchase Requirement banane ka access nahi hai','warn');
+      return { ok:false, error:'Aapke role ko PR banane ka access nahi hai' };
+    }
+    const items=(req&&Array.isArray(req.items))?req.items.filter(x=>x&&x.itemId&&pNum(x.qty)>0):[];
+    if(!items.length) return { ok:false, error:'Koi item nahi aaya (itemId ya qty khaali)' };
+
+    // Item Master se poora item — Description / Make / Category / UOM wahan se
+    // aate hain, trims sheet se nahi, taaki PR par wahi likha ho jo master
+    // kehta hai. Wahi resolver jo PO lines ke liye chalta hai.
+    const resolve=await poLineItemResolver_(items.map(x=>({ item_id:x.itemId, item_name:x.name })));
+
+    sarvNavigateFromHome('PR');
+    clearPrForm();                 // ye sarvTrimsPrPending bhi saaf karta hai — isi liye pending NEECHE set hota hai
+    const tb=byId('p_itemTableBody');
+    if(!tb) return { ok:false, error:'PR form nahi mila' };
+    tb.innerHTML='';
+    const unresolved=[], used=[];
+    items.forEach(x=>{
+      const it=resolve({ item_id:x.itemId, item_name:x.name })||{};
+      const tr=addPurchaseMainRow();if(!tr)return;
+      const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??'';};
+      // Pinned to this exact Item Master row, so a same-named duplicate can't be bound on save.
+      tr.dataset.itemId=it.id||x.itemId;
+      if(!it.id)unresolved.push(x.name||'(no name)');
+      set('.col-name',it.name||x.name||'');
+      set('.col-desc',it.description||'');
+      set('.col-make',it.make||'');
+      set('.col-cat',it.category||'');
+      set('.col-uom',it.uom||'');
+      set('.col-qty',pNum(x.qty));
+      set('.col-rem',x.remark||'');
+      const nameEl=tr.querySelector('.col-name');
+      if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='Trims sheet se aaya — badalna ho to row hata kar nayi jodein';}
+      // Purchaser by Category — first row fills it, a disagreeing row warns.
+      applyCategoryPurchaser(it.category);
+      used.push(x.uid);
+    });
+    refreshPurchaseTotals();
+    await sarvPrFillRequester_();
+    sarvPrWireMachineCopy_();
+
+    /* Ab yaad rakha jaata hai ki ye PR kin trims rows se bani thi. Submit hote
+       hi PR No wapas unhi rows par chala jaata hai — sarvTrimsPrNotify_. */
+    sarvTrimsPrPending={ uids:used, orderNo:(req&&req.orderNo)||'', at:Date.now() };
+
+    const lots=(req&&Array.isArray(req.lots))?req.lots.join(', '):'';
+    showToast('📝 Trims sheet se '+used.length+' item New PR form me bhar diye'
+      +(req&&req.orderNo?' — Order '+escText(req.orderNo):'')+(lots?' · Lot '+escText(lots):'')
+      +'. Qty = Final PO Qty (Lot Req + Wastage). <b>Required By</b> aur pehli row me <b>Machine</b> bharkar Submit karein — PR No apne aap Trims sheet me lag jayega.');
+    if(unresolved.length)showToast('⚠️ '+unresolved.length+' item Item Master me nahi mile — Description / Category khaali hain: '+unresolved.slice(0,3).map(escText).join(', ')+(unresolved.length>3?' …':''),'warn');
+    return { ok:true, filled:used.length };
+  }catch(e){
+    console.error('[SARV] Trims → PR failed:',e);
+    return { ok:false, error:(e&&e.message)||String(e) };
+  }
+};
+// Trims Manager ka iframe — ERP me ek hi hai.
+function sarvTrimsFrameWin_(){
+  try{ return byId('trimsFrame')?.contentWindow||null; }catch(e){ return null; }
+}
+/* PR save hote hi uska number un trims rows par bhej diya jaata hai jinse wo
+   bani thi. Ek baar ka kaam — pending yahin khatam ho jaata hai, taaki agli
+   (bina trims wali) PR galti se usi sheet par na lage.
+
+   Trims page band / badla hua ho to kuch nahi tootta: wahan ka trimsPrSaved
+   khud bata deta hai, aur yahan ka fallback toast user ko keh deta hai ki PR
+   NO. column me khud select kar lein. */
+function sarvTrimsPrNotify_(reqNo){
+  const p=sarvTrimsPrPending;
+  if(!p||!reqNo)return;
+  sarvTrimsPrPending=null;
+  const w=sarvTrimsFrameWin_();
+  try{
+    if(w&&typeof w.trimsPrSaved==='function'){
+      /* Natija YAHAN dikhaya jaata hai, iframe me nahi: PR submit karte waqt
+         user is panel par hai aur trims page chhupa hua hota hai, to wahan ka
+         toast kisi ko dikhta hi nahi. Trims sheet apni taraf banner bhi
+         chhod deti hai, Save hone tak. */
+      Promise.resolve(w.trimsPrSaved(reqNo,p.uids,p.orderNo))
+        .then(res=>{ if(res&&res.msg)showToast((res.ok?'✅ ':'ℹ️ ')+res.msg, res.ok?'success':'warn'); })
+        .catch(e=>console.warn('[SARV] trims PR write-back failed:',e&&e.message||e));
+      return;
+    }
+  }catch(e){ console.warn('[SARV] trims PR write-back skipped:',e.message||e); }
+  showToast('ℹ️ PR '+escText(reqNo)+' ban gayi. Trims Manager khula nahi tha, isi liye uske PR NO. column me khud select karein (Manufacturing › Trims Manager → ⟳ Store Data).','warn');
+}
 document.addEventListener('DOMContentLoaded',()=>{
   byId('itemMasterBody')?.addEventListener('change',e=>{
     const cb=e.target.closest('.im-pr-sel');if(!cb)return;
@@ -16405,6 +16518,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(!requiredBy)throw new Error('Required By Date khali hai — PR save nahi ho sakti. Form me date chunein.');
      const payload={request_date:pVal('p_reqDate')||today(),required_by:requiredBy,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority'),notes:pVal('p_overallRemarks')||null};
      let h,no,reopenedFrom='';
+     /* Padha jaata hai AB, kyonki sarvEditingRequirementId PDF banne ke baad
+        null kar diya jaata hai — niche "edit tha ya naya?" poochne ke liye wo
+        flag tab tak bach nahi paata. */
+     const wasEdit=!!sarvEditingRequirementId;
      if(sarvEditingRequirementId){
        // Re-checked against the stored status: the PR may have been approved
        // (on mobile) while it sat open here. Non-Admin may only save a Pending,
@@ -16452,6 +16569,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      const d=collectRequirementData(no,rows),pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
      showToast(reopenedFrom?('✅ '+no+' update ho gayi — '+reopenedFrom+' se wapas PENDING me bhej di gayi'):('✅ Requirement saved: '+no));
+     /* Ye PR Trims Manager se generate hui thi? To uska number wapas unhi
+        trims rows ke PR NO. column me chala jaata hai — wahi link jisse us
+        sheet par PO No, Target Date aur Qty Received apne aap chalne lagte
+        hain. Edit par nahi: PR No pehle se wahan lag chuka hota hai.
+        clearPrForm() se PEHLE, kyunki wo pending ko saaf kar deta hai. */
+     if(!wasEdit)sarvTrimsPrNotify_(no);
      await refreshPendingRequirements();
      // ── Clear form after save ──────────────────────────────────
      clearPrForm();
@@ -16614,6 +16737,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(SB_READY){nextNo((byId('outEntryTypeSelect')?.value||'')==='ISSUE'?'ISSUE':'OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e&&!sarvEditingOutwardId)e.value=no;}).catch(()=>{});refreshSerialNo('OUTWARD').catch(()=>{});}
  }
  function clearPrForm(){
+   /* Trims sheet se aaya link is form ke saath jeeta-marta hai: form khaali
+      hone ka matlab hai ki wo request ab is form par nahi hai. Bina iske, ek
+      chhodi hui trims PR ka link agli (bilkul alag) PR par chipak jaata aur
+      uska number galat rows par ja kar baith jaata.
+      sarvGenerateNewPrFromTrims is liye pending ISKE BAAD set karta hai. */
+   sarvTrimsPrPending=null;
    ['p_requiredByDate','p_reqPersonName','p_reqEmpCode','p_reqDesignation','p_reqDepartment','p_reqContact','p_reqGeneratedBy','p_overallRemarks'].forEach(id=>{const e=byId(id);if(e)e.value='';});
    // Purchaser Name is blank again, so the next item's category is free to
    // fill it — without this reset a fresh PR would still count as "already
