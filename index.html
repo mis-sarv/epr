@@ -974,7 +974,7 @@
                 <div class="panel-subtitle">Add Items &amp; Suppliers — auto-populate dropdowns in Inward/Outward forms</div>
 
                 <!-- Sub-tabs -->
-                <div style="display:flex; gap:4px; margin-bottom:14px; border-bottom:2px solid #e2e8f0; padding-bottom:0;">
+                <div id="mdTabStrip" style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:4px; margin-bottom:14px; border-bottom:2px solid #e2e8f0; padding-bottom:0;">
                     <button class="btn master-sub-tab active" data-subtab="itemMasterSub" onclick="switchMasterSubTab('itemMasterSub')" style="border-radius:6px 6px 0 0; border-bottom:2px solid #0284c7; font-weight:700; padding:6px 16px; font-size:12px; background:#eff6ff; color:#0369a1;">Item Master</button>
                     <button class="btn master-sub-tab" data-subtab="supplierMasterSub" onclick="switchMasterSubTab('supplierMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Supplier Master</button>
                     <button class="btn master-sub-tab" data-subtab="employeeMasterSub" onclick="switchMasterSubTab('employeeMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Employee Master</button>
@@ -985,6 +985,11 @@
                     <button class="btn master-sub-tab" data-subtab="trimRateMasterSub" onclick="switchMasterSubTab('trimRateMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Trims &amp; Packing Rate</button>
                     <button class="btn master-sub-tab" data-subtab="dropdownMasterSub" onclick="switchMasterSubTab('dropdownMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Dropdown Master</button>
                     <button class="btn master-sub-tab" data-subtab="settingsSub" onclick="switchMasterSubTab('settingsSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Settings</button>
+                    <!-- View controls for every tab (store-core.js › mdToggleView). -->
+                    <span class="md-viewbtns">
+                        <button type="button" class="md-vbtn" id="mdHideTopBtn" onclick="mdToggleView('hide')" title="Hide the title and the Add / notice boxes above the table (the search bar stays)">Hide top</button>
+                        <button type="button" class="md-vbtn" id="mdFullBtn" onclick="mdToggleView('fs')" title="Show Master Data on the whole screen (Esc to exit)">Full screen</button>
+                    </span>
                 </div>
 
                 <!-- ═══ ITEM MASTER SUB-TAB ═══ -->
@@ -995,7 +1000,7 @@
                          even started. Collapsed by default; the choice is remembered per
                          browser, and loading an item for editing opens it again on its
                          own (see editMasterItem). -->
-                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; margin-bottom:12px;">
+                    <div data-md-top style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; margin-bottom:12px;">
                         <!-- Header doubles as the toggle AND as the edit indicator: while
                              an item is loaded for editing it names the Item Code being
                              changed, so a collapsed form can never hide the fact that an
@@ -1231,7 +1236,7 @@
                 <!-- ═══ SUPPLIER MASTER SUB-TAB ═══ -->
                 <div id="supplierMasterSub" style="display:none;">
                     <!-- Add Supplier Form -->
-                    <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:12px; margin-bottom:12px;">
+                    <div data-md-top style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:12px; margin-bottom:12px;">
                         <div style="font-size:11px; font-weight:700; color:#166534; text-transform:uppercase; margin-bottom:8px;">Add New Supplier</div>
                         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px;">
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Supplier Name *</label><input type="text" class="form-control" id="ms_supplierName" placeholder="e.g. ABC YARNS PVT LTD"></div>
@@ -1285,7 +1290,7 @@
                 <!-- ═══ EMPLOYEE MASTER SUB-TAB ═══ -->
                 <div id="employeeMasterSub" style="display:none;">
                     <!-- Add Employee Form -->
-                    <div style="background:#fdf4ff; border:1px solid #d8b4fe; border-radius:8px; padding:12px; margin-bottom:12px;">
+                    <div data-md-top style="background:#fdf4ff; border:1px solid #d8b4fe; border-radius:8px; padding:12px; margin-bottom:12px;">
                         <div style="font-size:11px; font-weight:700; color:#6d28d9; text-transform:uppercase; margin-bottom:8px;">Add New Employee</div>
                         <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px;">
                             <div class="form-group" style="margin:0;">
@@ -1349,7 +1354,7 @@
                 <!-- ═══ MACHINE MASTER SUB-TAB ═══ -->
                 <div id="machineMasterSub" style="display:none;">
                     <!-- Add Machine Form -->
-                    <div style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:12px; margin-bottom:12px;">
+                    <div data-md-top style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:12px; margin-bottom:12px;">
                         <div style="font-size:11px; font-weight:700; color:#9a3412; text-transform:uppercase; margin-bottom:8px;">Add New Machine</div>
                         <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:8px;">
                             <div class="form-group" style="margin:0;">
@@ -1389,8 +1394,8 @@
                 </div>
 
                 <!-- ═══ FABRIC MASTER SUB-TAB ═══
-                     "SARV INDIA LOT SOFTWARE DATA.xlsx" ki FABRIC MASTER sheet
-                     ka ERP version. Ek row = ek fabric (FABRIC NAME + UNIT),
+                     The ERP version of the FABRIC MASTER sheet in "SARV INDIA LOT SOFTWARE DATA.xlsx".
+                     One row = one fabric (FABRIC NAME + UNIT),
                      42 columns, so the table scrolls horizontally
                      and column GROUPS are switched on/off with chips.
 
@@ -1400,7 +1405,7 @@
                      CSV export and revision diff, so adding a column means
                      adding one line to that array. -->
                 <div id="fabricMasterSub" style="display:none;">
-                    <div id="fbm_fabNote"></div>
+                    <div id="fbm_fabNote" data-md-top></div>
                     <div class="fbm-bar">
                         <input type="text" class="form-control fbm-search" id="fbm_fabSearch" placeholder="Search fabric name, quality, unit or brand..." oninput="sarvFbmRender('FABRIC')" autocomplete="off">
                         <select class="form-control fbm-sel" id="fbm_fabUnit"    onchange="sarvFbmRender('FABRIC')" title="Unit"><option value="">All Units</option></select>
@@ -1435,15 +1440,15 @@
                      brand whose fabric is missing from the master is flagged right
                      away with a red pill in the toolbar and a red chip on the row. -->
                 <div id="brandMasterSub" style="display:none;">
-                    <div id="fbm_brNote"></div>
+                    <div id="fbm_brNote" data-md-top></div>
                     <div class="fbm-bar">
-                        <input type="text" class="form-control fbm-search" id="fbm_brSearch" placeholder="Item code, fabric, category, size khojein..." oninput="sarvFbmRender('BRAND')" autocomplete="off">
+                        <input type="text" class="form-control fbm-search" id="fbm_brSearch" placeholder="Search item code, fabric, category, size..." oninput="sarvFbmRender('BRAND')" autocomplete="off">
                         <select class="form-control fbm-sel" id="fbm_brFabric"   onchange="sarvFbmRender('BRAND')" title="Fabric Name"><option value="">All Fabrics</option></select>
                         <select class="form-control fbm-sel" id="fbm_brCategory" onchange="sarvFbmRender('BRAND')" title="Category"><option value="">All Categories</option></select>
                         <select class="form-control fbm-sel" id="fbm_brBed"      onchange="sarvFbmRender('BRAND')" title="Bed Size"><option value="">All Bed Sizes</option></select>
                         <select class="form-control fbm-sel" id="fbm_brPly"      onchange="sarvFbmRender('BRAND')" title="Blanket Ply"><option value="">All Ply</option></select>
-                        <select class="form-control fbm-sel" id="fbm_brSattanSize" onchange="sarvFbmRender('BRAND')" title="Sattan Size &mdash; kitne inch ka"><option value="">All Sattan Size</option></select>
-                        <select class="form-control fbm-sel" id="fbm_brSattanType" onchange="sarvFbmRender('BRAND')" title="Sattan Type &mdash; STANDARD / PREMIUM"><option value="">All Sattan Type</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brSattanSize" onchange="sarvFbmRender('BRAND')" title="Sattan Size: how many inches"><option value="">All Sattan Size</option></select>
+                        <select class="form-control fbm-sel" id="fbm_brSattanType" onchange="sarvFbmRender('BRAND')" title="Sattan Type: STANDARD / PREMIUM"><option value="">All Sattan Type</option></select>
                         <select class="form-control fbm-sel" id="fbm_brStatus"   onchange="sarvFbmRender('BRAND')" title="Active / Inactive">
                             <option value="A">Active only</option>
                             <option value="">Active + Inactive</option>
@@ -1477,9 +1482,9 @@
 
                      There is deliberately no Seed button: the Excel file had no
                      buyer sheet. Two ways to build the list: New, or
-                     Import CSV (headers Export CSV se le lein). -->
+                     Import CSV (use the headers from Export CSV). -->
                 <div id="buyerMasterSub" style="display:none;">
-                    <div id="fbm_byNote"></div>
+                    <div id="fbm_byNote" data-md-top></div>
                     <div class="fbm-bar">
                         <input type="text" class="form-control fbm-search" id="fbm_bySearch" placeholder="Search party, owner, staff or contact no..." oninput="sarvFbmRender('BUYER')" autocomplete="off">
                         <select class="form-control fbm-sel" id="fbm_byStatus" onchange="sarvFbmRender('BUYER')" title="Active / Inactive">
@@ -1503,7 +1508,7 @@
                         </table>
                     </div>
 
-                    <!-- ═══ AGENCY TABLE (usi screen par doosri table) ═══
+                    <!-- ═══ AGENCY TABLE (a second table on the same screen) ═══
                          NOT a sub-tab of its own: the full Agency Master table
                          sits right below, because agencies and parties are
                          maintained together (in the Order Form too, these two
@@ -1517,7 +1522,7 @@
                          The whole box is switched by Admin Panel › Tab Visibility › MD_AGENCY
                          switched on/off (the `blockId` in sarvFbmRender). -->
                     <div id="fbm_agBlock" style="margin-top:22px; border-top:2px dashed #cbd5e1; padding-top:16px;">
-                        <div id="fbm_agNote"></div>
+                        <div id="fbm_agNote" data-md-top></div>
                         <div class="fbm-bar">
                             <input type="text" class="form-control fbm-search" id="fbm_agSearch" placeholder="Search agency, contact person or mobile..." oninput="sarvFbmRender('AGENCY')" autocomplete="off">
                             <select class="form-control fbm-sel" id="fbm_agStatus" onchange="sarvFbmRender('AGENCY')" title="Active / Inactive">
@@ -1552,9 +1557,9 @@
                      Rates used to be set separately on every brand in the Brand Master; now
                      they live in one place. Table: TRIMS_RATE_MASTER_MIGRATION.sql. -->
                 <div id="trimRateMasterSub" style="display:none;">
-                    <div id="fbm_trNote"></div>
+                    <div id="fbm_trNote" data-md-top></div>
                     <div class="fbm-bar">
-                        <input type="text" class="form-control fbm-search" id="fbm_trSearch" placeholder="Material, category khojein..." oninput="sarvFbmRender('TRIMRATE')" autocomplete="off">
+                        <input type="text" class="form-control fbm-search" id="fbm_trSearch" placeholder="Search material, category..." oninput="sarvFbmRender('TRIMRATE')" autocomplete="off">
                         <select class="form-control fbm-sel" id="fbm_trCategory" onchange="sarvFbmRender('TRIMRATE')" title="Category"><option value="">All Categories</option></select>
                         <select class="form-control fbm-sel" id="fbm_trStatus" onchange="sarvFbmRender('TRIMRATE')" title="Active / Inactive">
                             <option value="A">Active only</option>
@@ -1588,14 +1593,14 @@
                      All the logic is in store-core.js › "Dropdown Master"; these
                      are just two empty containers that it fills. -->
                 <div id="dropdownMasterSub" style="display:none;">
-                    <div id="dd_lockedNotice" style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#b91c1c; font-size:11px; font-weight:700;">
+                    <div id="dd_lockedNotice" data-md-top style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#b91c1c; font-size:11px; font-weight:700;">
                         Only an <b>Admin</b> login can add, edit or remove values. Everything below is read-only.
                     </div>
-                    <div id="dd_missingNote" style="display:none; background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#92400e; font-size:11px; font-weight:700;">
+                    <div id="dd_missingNote" data-md-top style="display:none; background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px; margin-bottom:10px; color:#92400e; font-size:11px; font-weight:700;">
                         No data came back from the <code>sales_dropdowns</code> table, so every dropdown is using its built-in default. Run <code>DROPDOWN_MASTER_MIGRATION.sql</code> once in Supabase &rsaquo; SQL Editor.
                     </div>
                     <div class="dd-bar">
-                        <input type="text" class="form-control" id="dd_search" placeholder="Dropdown khojein..." oninput="sarvDdRenderNav()" autocomplete="off">
+                        <input type="text" class="form-control" id="dd_search" placeholder="Search dropdowns..." oninput="sarvDdRenderNav()" autocomplete="off">
                         <button class="btn" onclick="sarvReloadDropdowns()" style="background:#e0f2fe; color:#075985; font-size:10px; height:28px; padding:0 10px;">Refresh</button>
                     </div>
                     <div id="dd_wrap" class="dd-wrap">
@@ -1606,79 +1611,10 @@
 
                 <div id="settingsSub" style="display:none;">
 
-                    <!-- Autocomplete Data -->
-                    <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:10px; padding:16px; margin-bottom:16px;">
-                        <div style="font-size:13px; font-weight:800; color:#166534; margin-bottom:4px;">Autocomplete Data</div>
-                        <div style="font-size:11px; color:#15803d; margin-bottom:14px;">Clear the suggestions that pop up in form fields.</div>
-                        <button onclick="acClearAll()" style="background:#fff; border:1.5px solid #86efac; color:#166534; border-radius:6px; padding:6px 14px; font-size:11px; font-weight:600; cursor:pointer;">Clear All Suggestions</button>
-                    </div>
-
-                    <!-- Password Change (Admin only) -->
-                    <div id="pwdChangeLockedNotice" style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:10px; padding:16px; color:#dc2626; font-size:12px; font-weight:700;">
-                        Only an Admin login can access Change Passwords.
-                    </div>
-                    <div id="pwdChangeCard" style="background:#faf5ff; border:1px solid #c4b5fd; border-radius:10px; padding:16px;">
-                        <div style="font-size:13px; font-weight:800; color:#6d28d9; margin-bottom:4px;">Change Passwords</div>
-                        <div style="font-size:11px; color:#7c3aed; margin-bottom:14px;">The Admin can reset any role's password <b>without the current password</b>. Set a new password and give it to that user. It is stored securely on the server (SHA-256 hash).</div>
-
-                        <!-- Select which password to change -->
-                        <div class="form-group" style="margin-bottom:10px;">
-                            <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Which password to change?</label>
-                            <select class="form-control" id="pwdChangeTarget" style="font-weight:600; color:#0f172a;" onchange="onPwdTargetChange()">
-                                <option value="">-- Select --</option>
-                                <option value="USER_IC_PIN">Store In-Charge PIN</option>
-                                <option value="USER_GM_PIN">GM PIN</option>
-                                <option value="USER_MD_PIN">MD PIN</option>
-                                <option value="USER_AC_PIN">Accountant PIN</option>
-                                <option value="USER_GT_PIN">Gate Man PIN</option>
-                                <option value="ADMIN_PIN">Admin PIN (Cancel PO access)</option>
-                                <option value="VENDOR_VERIFY_PIN">Vendor Verified PIN (Mobile Approvals)</option>
-                                <option value="PO_SENDER_PIN">PO Sender PIN (Mobile — WhatsApp Send)</option>
-                                <option value="VIEW_PIN">View / Preview PIN</option>
-                                <option value="EDIT_PASSWORD">Edit Password (Record Edit)</option>
-                                <!-- One PIN per purchaser, keyed PURCHASER::<name>. These names must
-                                     match the "Purchaser Name" dropdown on the New PR form exactly —
-                                     that is what a PR is booked against and what the mobile
-                                     Purchaser login filters on. -->
-                                <optgroup label="Purchaser PINs (Mobile Login)">
-                                    <option value="PURCHASER::KHUSHBOO">Purchaser &mdash; KHUSHBOO</option>
-                                    <option value="PURCHASER::SATINDER JI">Purchaser &mdash; SATINDER JI</option>
-                                    <option value="PURCHASER::ANKUR JI">Purchaser &mdash; ANKUR JI</option>
-                                    <option value="PURCHASER::PARKASH JI">Purchaser &mdash; PARKASH JI</option>
-                                    <option value="PURCHASER::DEEPAK VERMA">Purchaser &mdash; DEEPAK VERMA</option>
-                                    <option value="PURCHASER::PRIYA VERMA">Purchaser &mdash; PRIYA VERMA</option>
-                                    <option value="PURCHASER::FIELD BOY">Purchaser &mdash; FIELD BOY</option>
-                                </optgroup>
-                            </select>
-                        </div>
-
-                        <div id="pwdChangeForm" style="display:none;">
-                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
-                                <div class="form-group" style="margin:0;">
-                                    <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Current Password *</label>
-                                    <div style="position:relative;">
-                                        <input type="password" class="form-control" id="pwdOld" placeholder="Current password..." autocomplete="off" style="padding-right:36px;">
-                                        <button onclick="togglePwdVis('pwdOld','eyeOld')" id="eyeOld" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#64748b;font-size:11px;font-weight:700;">Show</button>
-                                    </div>
-                                </div>
-                                <div class="form-group" style="margin:0;">
-                                    <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">New Password *</label>
-                                    <div style="position:relative;">
-                                        <input type="password" class="form-control" id="pwdNew" placeholder="New password..." autocomplete="off" style="padding-right:36px;">
-                                        <button onclick="togglePwdVis('pwdNew','eyeNew')" id="eyeNew" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;color:#64748b;font-size:11px;font-weight:700;">Show</button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-group" style="margin-bottom:10px;">
-                                <label style="font-size:10px; font-weight:700; color:#64748b; text-transform:uppercase;">Confirm New Password *</label>
-                                <input type="password" class="form-control" id="pwdConfirm" placeholder="Repeat new password..." autocomplete="off">
-                            </div>
-                            <div id="pwdChangeError"  style="display:none; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; padding:7px 12px; font-size:11px; font-weight:600; color:#dc2626; margin-bottom:10px;"></div>
-                            <div id="pwdChangeSuccess" style="display:none; background:#f0fdf4; border:1px solid #86efac; border-radius:6px; padding:7px 12px; font-size:11px; font-weight:600; color:#166534; margin-bottom:10px;"></div>
-                            <button onclick="submitPasswordChange()" id="pwdChangeBtn" class="btn btn-primary" style="width:100%; height:36px; font-size:12px; font-weight:700; background:linear-gradient(135deg,#6d28d9,#7c3aed);">Change Password</button>
-                        </div>
-                    </div>
-
+                    <!-- Autocomplete Data and Change Passwords were removed from this tab on request.
+                         The code behind Change Passwords (onPwdTargetChange / submitPasswordChange in
+                         store-core.js) is kept, so the card can be restored from
+                         _backup_before_english/index.html if role PINs need a screen again. -->
                     <!-- ═══ ADMIN PANEL (Admin login only) ═══
                          Users per role (own PIN + saved signature), the role-wise
                          Feature Access matrix and the role-wise Tab Visibility

@@ -4325,3 +4325,23 @@ body { min-width: 0; }
 #fullPurchasePanel .po-kpi-note { font-size: 10.5px; color: #64748b; margin-top: 1px; font-weight: 500; }
 #fullPurchasePanel .po-kpi-spark { position: absolute; left: 0; right: 0; bottom: 3px; height: 32px; color: var(--kc, #64748b); opacity: .45; pointer-events: none; }
 #fullPurchasePanel .po-kpi-spark svg { display: block; width: 100%; height: 100%; }
+
+/* ── Master Data: Full screen / Hide top (store-core.js › mdToggleView) ── */
+#masterDataPanel .md-viewbtns { margin-left: auto; display: flex; gap: 6px; padding-bottom: 5px; }
+#masterDataPanel .md-vbtn {
+  border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px;
+  padding: 4px 11px; font-size: 11px; font-weight: 600; cursor: pointer; white-space: nowrap; line-height: 1.4;
+}
+#masterDataPanel .md-vbtn:hover { background: #f1f5f9; }
+#masterDataPanel .md-vbtn.on { background: #0f172a; border-color: #0f172a; color: #fff; }
+#masterDataPanel.md-hidetop > .card > .panel-title,
+#masterDataPanel.md-hidetop > .card > .panel-subtitle,
+#masterDataPanel.md-hidetop [data-md-top] { display: none !important; }
+/* Full screen: the panel lifts out of the page and covers the window, above
+   the app header (z 960) but below the app's modals and toasts. */
+#masterDataPanel.md-fs {
+  position: fixed !important; inset: 0; z-index: 960; margin: 0 !important;
+  height: auto !important; max-height: none !important; overflow: auto !important;
+  background: #f1f5f9; padding: 8px !important;
+}
+#masterDataPanel.md-fs > .card { margin: 0 !important; min-height: 100%; max-width: none !important; }

@@ -1388,8 +1388,8 @@
                 exists = !!e1.data;
                 if(!exists){
                     err.textContent = role==='purchaser'
-                        ? ('No PIN is set for "'+purchaserName+'". Set it under Settings > Change Passwords in the desktop app.')
-                        : 'No PIN is set for this role. Set it first under Settings > Change Passwords in the desktop app.';
+                        ? ('No PIN is set for "'+purchaserName+'". Ask the Admin to set it.')
+                        : 'No PIN is set for this role. Ask the Admin to set it first.';
                     err.style.display='block'; return;
                 }
                 const v = await SB.rpc('verify_role_pin', { p_role: roleKey, p_pin: pin });
@@ -2767,7 +2767,7 @@
             const e1 = await SB.rpc('role_pin_exists', { p_role: roleKey });
             if(e1.error) throw e1.error;
             if(!e1.data){
-                poSendPinSay_('No PIN is set for the PO Sender. Set it under Settings > Change Passwords in the desktop app.');
+                poSendPinSay_('No PIN is set for the PO Sender. Ask the Admin to set it.');
                 poSendPinBusy_(false); return;
             }
             const v = await SB.rpc('verify_role_pin', { p_role: roleKey, p_pin: pin });

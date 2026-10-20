@@ -2383,7 +2383,7 @@ async function verifyEditPassword(reason){
     return false;
   }
   if(!exists){
-    showToast('The Edit Password is not set. Set it under Admin Settings > Change Passwords.','warn');
+    showToast('The Edit Password is not set. Ask the Admin to set it.','warn');
     return false;
   }
   const entered=await askSecret({
@@ -3843,6 +3843,7 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
      the list's height are pure layout, and a panel that is only usable once
      Supabase answers would otherwise open as a letterbox. */
   if(id==='itemMasterSub'){initAddItemForm_();fitItemListHeight_();}
+  setTimeout(mdFitTables_,0);       // Full screen / Hide top: stretch this tab's table
   if(!SB_READY)return;
   if(id==='itemMasterSub')    loadItemMaster().catch(()=>{});
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
@@ -4953,7 +4954,7 @@ const SARV_FEATURES=[
   {key:'ADD_SUPPLIER',label:'ADD SUPPLIER',hint:'A new supplier in the Supplier Master',def:'W'},
   {key:'ADD_EMPLOYEE',label:'ADD EMPLOYEE',hint:'Employee Master + PR form ka Add New Employee',def:'W'},
   {key:'ADD_MACHINE',label:'ADD MACHINE',hint:'A new machine in the Machine List',def:'W'},
-  {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Settings › Change Passwords (the Admin PIN is still required)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Role PIN reset (its screen under Settings has been removed; the Admin PIN is still required)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   /* The Dropdown Master screen opens read-only for everyone; adding / editing /
      removing needs this feature AND an Admin login (sarvDdGuard_). So even
      granting it to another role won't let that role make changes. */
@@ -6536,6 +6537,61 @@ function fitItemListHeight_(){
   box.style.maxHeight=h+'px';
 }
 window.addEventListener('resize',fitItemListHeight_);
+
+/* ══ MASTER DATA: FULL SCREEN / HIDE TOP ════════════════════════════════
+   Two switches at the end of the Master Data tab strip, the same for every tab:
+     • Full screen — the panel covers the whole window (above the app header);
+       Esc or the button again brings it back. Not remembered: a reload opens
+       the normal view.
+     • Hide top    — hides the panel title and every block marked data-md-top
+       in index.html (the Add New … forms and the notice boxes). The search /
+       filter bar right above each table stays, so search keeps working.
+       Remembered per browser.
+   In either mode every table's scroll box is stretched to the bottom of the
+   window (mdFitTables_), so the extra room goes to rows. */
+const MD_HIDE_KEY='sarv_md_hidetop';
+let sarvMdFull=false;
+function mdHideTop_(){try{return localStorage.getItem(MD_HIDE_KEY)==='1'}catch(e){return false}}
+function mdApplyView_(){
+  const p=byId('masterDataPanel');if(!p)return;
+  const hide=mdHideTop_();
+  p.classList.toggle('md-fs',sarvMdFull);
+  p.classList.toggle('md-hidetop',hide);
+  const hb=byId('mdHideTopBtn'),fb=byId('mdFullBtn');
+  if(hb){hb.textContent=hide?'Show top':'Hide top';hb.classList.toggle('on',hide);hb.setAttribute('aria-pressed',hide?'true':'false');}
+  if(fb){fb.textContent=sarvMdFull?'Exit full screen':'Full screen';fb.classList.toggle('on',sarvMdFull);fb.setAttribute('aria-pressed',sarvMdFull?'true':'false');}
+  setTimeout(mdFitTables_,0);
+}
+window.mdToggleView=function(which){
+  if(which==='fs')sarvMdFull=!sarvMdFull;
+  else{try{localStorage.setItem(MD_HIDE_KEY,mdHideTop_()?'0':'1')}catch(e){}}
+  mdApplyView_();
+};
+// Each table's scroll box: to the bottom of the window while a mode is on,
+// back to its own height (the inline / stylesheet one) when both are off.
+function mdFitTables_(){
+  const p=byId('masterDataPanel');if(!p||p.style.display==='none')return;
+  fitItemListHeight_();              // Item Master always fits the window already
+  const on=p.classList.contains('md-fs')||p.classList.contains('md-hidetop');
+  p.querySelectorAll('.table-container,.fbm-wrap,.dd-side').forEach(box=>{
+    if(box.id==='itemMasterBox')return;
+    if(box.dataset.mdMax==null)box.dataset.mdMax=box.style.maxHeight||'';
+    if(!on||!box.offsetParent){box.style.maxHeight=box.dataset.mdMax;return;}
+    const top=box.getBoundingClientRect().top;
+    box.style.maxHeight=Math.max(240,Math.round(window.innerHeight-top-18))+'px';
+  });
+}
+window.addEventListener('resize',mdFitTables_);
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||!sarvMdFull)return;
+  const p=byId('masterDataPanel');if(!p||p.style.display==='none')return;
+  // Esc first closes whatever popup is open on top (filter panel, modal …).
+  const popup=[...document.querySelectorAll('.secure-modal-overlay,.modal.active,#imFilterPanel,#sarvDmyCal')]
+    .some(x=>getComputedStyle(x).display!=='none'&&x.getBoundingClientRect().width>0);
+  if(popup)return;
+  sarvMdFull=false;mdApplyView_();
+});
+document.addEventListener('DOMContentLoaded',mdApplyView_);
 
 /* ================================================================
    ITEM MASTER — PER-COLUMN FILTERS (Excel-style, and DEPENDENT)
@@ -19646,7 +19702,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const ex=await SB.rpc('role_pin_exists',{p_role:role});
      if(ex.error)throw ex.error;
      if(!ex.data){
-       showToast('No PIN is set for '+roleLabel+'. Set it under Master Data > Settings > Change Passwords; until then this cannot be ticked.','warn');
+       showToast('No PIN is set for '+roleLabel+'. Ask the Admin to set it; until then this cannot be ticked.','warn');
        return unbusy();
      }
    }catch(e){
