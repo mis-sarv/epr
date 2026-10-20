@@ -2504,7 +2504,7 @@ async function nmInsert_(table,vals){
 async function nmArchive_(code,row){
   if(!row) return;
   try{
-    const name=code==='BUYER'?row.party_name:row.agency_name;
+    const name=code==='BUYER'?row.party_name:code==='BRAND'?row.item_code:row.agency_name;
     const {error}=await SB.from('master_revisions').insert({
       master_type:code, record_id:row.id, rev_no:row.rev_no||1,
       ref_name:String(name||'-'), action:'CREATE', reason:null,
@@ -2846,31 +2846,280 @@ async function pkAddQuality_(code,packingPcs){
 }
 function closeNewBrand(){ document.getElementById('newBrandModal').classList.remove('open'); }
 
-/* ══ 📖 Brand Master — dekhna, aur wapas wahin ═══════════════════════════
-   ERP ke andar (iframe): ERP ka ASLI Brand Master khulta hai (Master Data ›
-   🏷️ Brand Master) — wahi screen, wahi edit / filter / REV. Order Form ka
-   iframe reload nahi hota (src pehle se laga hai), isi liye bhara hua order
-   jaisa tha waisa rehta hai. ERP ke neeche-baayein ek "← Order Form par
-   wapas" button lagta hai: dabate hi Order Form, usi product card par scroll,
-   aur Brand Master ki nayi / badli rows Item Code list me (fetchDrops).
-   ERP ke bahar, ya user ko ERP ka Brand Master tab nahi milta: yahin ek
-   read-only viewer (brandViewModal) — "Use" se code isi product me. */
+/* ══ 📖 Brand Master — Order Form ke andar, har item par saare kaam ══════
+   Product card ka "📖 Brand Master" yahi list kholta hai (brandViewModal).
+   Har row par: ✅ Use · 👁️ View · ✏️ Edit · 🔁 Revise · 📋 Copy · 🕒 History
+   (↩️ Restore) · 🚫/♻️ Inactive/Active · ✕ Delete — wahi table, wahi
+   archive (master_revisions) aur wahi permissions jo ERP › Master Data ›
+   🏷️ Brand Master ke hain (bmCan_). Jo kaam role ko nahi milta uska button
+   DIKHTA hai par greyed — dabane par wajah (ERP jaisa niyam).
+
+   "↗ ERP Brand Master" (sirf ERP ke andar): poora ERP screen — filters,
+   CSV, column chips. Order Form ka iframe reload nahi hota, isi liye bhara
+   order surakshit; ERP me neeche-baayein "← Order Form par wapas" button
+   usi product par lauta deta hai. */
 const BMV_BACK_ID='ofBackFromBrandMaster';
-function openBrandMaster(prodId){
-  let P=null;
-  try{ if(window.parent!==window && typeof window.parent.sarvNavigateFromHome==='function'
-          && typeof window.parent.switchMasterSubTab==='function') P=window.parent; }catch(e){ P=null; }
-  let allowed=!!P;
-  try{ if(P && typeof P.sarvTabVisible==='function') allowed=P.sarvTabVisible('MD_BRAND')!==false; }catch(e){}
-  if(!allowed) return openBrandView(prodId);
+function openBrandMaster(prodId){ openBrandView(prodId); }
+function bmErpNav_(){
+  try{ const P=window.parent;
+    if(P!==window && typeof P.sarvNavigateFromHome==='function' && typeof P.switchMasterSubTab==='function'){
+      if(typeof P.sarvTabVisible==='function' && P.sarvTabVisible('MD_BRAND')===false) return null;
+      return P;
+    }
+  }catch(e){}
+  return null;
+}
+function bmvOpenErp(){
+  const P=bmErpNav_(); if(!P) return toast('⚠️ ERP ka Brand Master yahan se nahi khul sakta');
+  const pid=bmvTargetProd_;
+  document.getElementById('brandViewModal').classList.remove('open');
   try{
     P.sarvNavigateFromHome('MASTER');
     P.switchMasterSubTab('brandMasterSub');
-    ofPlaceBackButton_(P,prodId);
+    ofPlaceBackButton_(P,pid);
   }catch(e){
     console.warn('[ORDER FORM] ERP Brand Master nahi khula:',e.message||e);
-    openBrandView(prodId);
+    openBrandView(pid);
   }
+}
+
+/* ── Permissions ──
+   ERP ke andar: ERP ki Feature Access (parent.sarvCan) — Admin Panel me jo
+   set hai wahi, ek hi jagah. ERP ke bahar (phone): Order Form Role se. */
+const BM_ROLE_FALLBACK={
+  BRAND_EDIT:['admin','manager'], BRAND_REVISE:['admin','manager'], MASTER_ACTIVATE:['admin','manager'],
+  BRAND_DELETE:['admin'], MASTER_REV_RESTORE:['admin'],
+  MASTER_REV_HISTORY:['admin','manager','executive','data_entry','viewer']
+};
+function bmErp_(){ try{ const P=window.parent; if(P!==window && typeof P.sarvCan==='function') return P; }catch(e){} return null; }
+function bmCan_(feat){
+  const P=bmErp_();
+  if(P){ try{ return !!P.sarvCan(feat); }catch(e){} }
+  return (BM_ROLE_FALLBACK[feat]||[]).includes(loggedInUser&&loggedInUser.role);
+}
+function bmDeny_(feat){
+  let lbl=feat; const P=bmErp_();
+  try{ if(P && typeof P.sarvFeatureLabel_==='function') lbl=P.sarvFeatureLabel_(feat)||feat; }catch(e){}
+  toast('⛔ Aapke role ko "'+lbl+'" ka access nahi — Admin: Admin Panel › Feature Access');
+}
+
+/* ── Form bharna / padhna / farq ── */
+function brFillForm_(row,isCopy){
+  BR_FORM_FIELDS.forEach(f=>{
+    const el=document.getElementById(brFieldId_(f.k)); if(!el) return;
+    let v=row[f.k]; if(v==null) v='';
+    if(f.k==='item_code' && isCopy) v='';
+    if(f.t==='num' && v!=='') v=bmNum(v);
+    if(el.tagName==='SELECT') ensureOpt_(el,v); else el.value=v;
+  });
+}
+function brReadForm_(){
+  const get=k=>String(document.getElementById(brFieldId_(k))?.value||'').trim();
+  const vals={};
+  BR_FORM_FIELDS.forEach(f=>{
+    const raw=get(f.k);
+    vals[f.k]=f.t==='num'?(raw===''?null:(Number(raw)||0)):nmNull_(f.uc?raw.toUpperCase():raw);
+  });
+  return vals;
+}
+const bmFmt_=(f,v)=>(v===null||v===undefined||v==='')?'':(f.t==='num'?bmNum(v):String(v).trim());
+function bmDiff_(oldRow,vals){
+  const out=[];
+  BR_FORM_FIELDS.forEach(f=>{
+    if(!(f.k in vals)) return;
+    const a=bmFmt_(f,oldRow[f.k]), b=bmFmt_(f,vals[f.k]);
+    if(a!==b) out.push({k:f.k,l:f.l.toUpperCase(),o:a,n:b});
+  });
+  return out;
+}
+/* master_revisions — ERP ke sarvFbmArchive_ jaisa, NON-FATAL. Pehle archive,
+   phir badlaav — taaki archive na bane to bhi purani value kahin to rahe. */
+async function bmArchive_(row,action,reason,changed){
+  if(!row) return;
+  try{
+    const {error}=await SB.from('master_revisions').insert({
+      master_type:'BRAND', record_id:row.id, rev_no:row.rev_no||1,
+      ref_name:String(row.item_code||'-'), action, reason:reason||null,
+      changed_fields:changed&&changed.length?changed:null, snapshot:row, created_by:nmActor_()
+    });
+    if(error) throw error;
+  }catch(e){ console.warn('[ORDER FORM] revision archive skip (master_revisions):',e.message||e); }
+}
+const bmRow_=id=>(BRAND_MASTER_ROWS||[]).find(r=>String(r.id)===String(id))||null;
+function bmPutRow_(row){
+  if(!row) return;
+  const i=BRAND_MASTER_ROWS.findIndex(r=>String(r.id)===String(row.id));
+  if(i>=0) BRAND_MASTER_ROWS[i]=row; else BRAND_MASTER_ROWS.push(row);
+}
+/* Kuch bhi badla → list turant, phir fetchDrops se Item Code list / specs
+   lock bhi taaza (us beech list dobara ban jaati hai). */
+function bmvAfterChange_(){
+  const open=()=>document.getElementById('brandViewModal').classList.contains('open');
+  if(open()) bmvRender();
+  if(SB_READY) Promise.resolve(fetchDrops()).then(()=>{ if(open()) bmvRender(); });
+}
+
+// ✏️ Edit / 🔁 Revise ka save
+async function brSaveExisting_(){
+  const {mode,base}=BR_MODE;
+  const feat=mode==='REVISE'?'BRAND_REVISE':'BRAND_EDIT';
+  if(!bmCan_(feat)) return bmDeny_(feat);
+  if(!base) return nmErr_('nbrError','Row nahi mili — list Refresh karein');
+  nmErr_('nbrError','');
+  const vals=brReadForm_();
+  const missing=[];
+  if(!vals.item_code) missing.push('Item Code');
+  if(!vals.fabric_name) missing.push('Fabric Name');
+  if(!vals.category) missing.push('Category');
+  if(missing.length) return nmErr_('nbrError','Ye field zaroori hain: '+missing.join(', '));
+  const clash=BRAND_MASTER_ROWS.find(r=>String(r.id)!==String(base.id) && nmKey_(r.item_code)===nmKey_(vals.item_code));
+  if(clash) return nmErr_('nbrError','"'+clash.item_code+'" pehle se Brand Master me hai — doosra Item Code dein.');
+  let reason=null;
+  if(mode==='REVISE'){
+    reason=String(document.getElementById('nbrReason').value||'').trim();
+    if(!reason){ document.getElementById('nbrReason').focus(); return nmErr_('nbrError','Revise ke liye kaaran likhna zaroori hai'); }
+  }
+  const changed=bmDiff_(base,vals);
+  if(!changed.length && mode==='EDIT'){ closeNewBrand(); return toast('Kuch badla nahi — kuch save bhi nahi hua'); }
+  const label=BR_MODE_UI[mode].btn;
+  nmBusy_('nbrSaveBtn',true,label);
+  try{
+    await bmArchive_(base,mode,reason,changed);
+    const upd=Object.assign({},vals,{updated_by:nmActor_(),updated_at:new Date().toISOString()});
+    if(mode==='REVISE'){ upd.rev_no=(base.rev_no||1)+1; upd.rev_reason=reason; }
+    const {data,error}=await SB.from('brand_master').update(upd).eq('id',base.id).select().maybeSingle();
+    if(error) throw error;
+    if(!data) throw new Error('Row update nahi hui — shayad kisi ne delete kar di, ya likhne ki permission nahi. List Refresh karein.');
+    bmPutRow_(data);
+    closeNewBrand();
+    toast(mode==='REVISE'
+      ?'🔁 "'+data.item_code+'" ab REV '+upd.rev_no+' par ('+changed.length+' field badle)'
+      :'✅ "'+data.item_code+'" update ho gaya ('+changed.length+' field, REV '+(base.rev_no||1)+' wahi)');
+    bmvAfterChange_();
+  }catch(e){
+    console.error('[ORDER FORM] Brand update failed:',e);
+    nmErr_('nbrError',(/duplicate key|unique/i.test(e.message||'')?'Ye Item Code pehle se hai — ':'')+(e.message||String(e)));
+    nmBusy_('nbrSaveBtn',false,label);
+  }
+}
+
+// 🚫 / ♻️ Active ↔ Inactive
+async function bmToggleActive_(id){
+  if(!bmCan_('MASTER_ACTIVATE')) return bmDeny_('MASTER_ACTIVATE');
+  const row=bmRow_(id); if(!row) return;
+  const on=row.is_active===false;
+  if(!confirm(on?'"'+row.item_code+'" ko wapas Active karein?'
+    :'"'+row.item_code+'" ko Inactive karein?\n\nNaye orders ki Item Code list me nahi aayega — purane orders / lot cards jude rehte hain.')) return;
+  try{
+    const {data,error}=await SB.from('brand_master').update({is_active:on,updated_by:nmActor_(),updated_at:new Date().toISOString()}).eq('id',id).select().maybeSingle();
+    if(error) throw error;
+    if(!data) throw new Error('Row update nahi hui — permission / Refresh');
+    await bmArchive_(row,on?'RESTORE':'DEACTIVATE',null,[{k:'is_active',l:'STATUS',o:on?'Inactive':'Active',n:on?'Active':'Inactive'}]);
+    bmPutRow_(data);
+    toast(on?'♻️ "'+row.item_code+'" wapas Active':'🚫 "'+row.item_code+'" Inactive kar diya');
+    bmvAfterChange_();
+  }catch(e){ toast('❌ '+(e.message||e)); }
+}
+
+// ✕ Delete — hamesha ke liye (history archive me rehti hai)
+async function bmDelete_(id){
+  if(!bmCan_('BRAND_DELETE')) return bmDeny_('BRAND_DELETE');
+  const row=bmRow_(id); if(!row) return;
+  const inForm=[...document.querySelectorAll('.product-card')].some(c=>nmKey_(document.getElementById('p'+c.id.replace('prod-','')+'-itemCode')?.value)===nmKey_(row.item_code));
+  if(!confirm('"'+row.item_code+'" ko Brand Master se HAMESHA ke liye hata dein?\n\n'
+    +(inForm?'⚠️ Ye Item Code abhi isi order form me chuna hua hai.\n\n':'')
+    +'Revision history (REV 1 … '+(row.rev_no||1)+') archive me reh jaayegi.\nSirf "aage use na ho" chahiye to Delete ki jagah 🚫 Inactive behtar hai.')) return;
+  try{
+    await bmArchive_(row,'DELETE',null,null);
+    const {data,error}=await SB.from('brand_master').delete().eq('id',id).select('id');
+    if(error) throw error;
+    if(!data || !data.length) throw new Error('Delete nahi hua — permission nahi, ya row pehle hi hat chuki hai');
+    BRAND_MASTER_ROWS=BRAND_MASTER_ROWS.filter(r=>String(r.id)!==String(id));
+    toast('🗑️ "'+row.item_code+'" delete ho gaya');
+    bmvAfterChange_();
+  }catch(e){ toast('❌ '+(e.message||e)); }
+}
+
+// 👁️ View — saare column, form ke groups me
+function bmView_(id){
+  const row=bmRow_(id); if(!row) return;
+  document.getElementById('bmInfoTitle').textContent='👁️ '+(row.item_code||'—');
+  document.getElementById('bmInfoSub').innerHTML='REV <b>'+(row.rev_no||1)+'</b> · '+(row.is_active===false?'🚫 Inactive':'✅ Active')
+    +(row.updated_by||row.created_by?' · last: <b>'+esc(row.updated_by||row.created_by)+'</b>':'')
+    +(row.updated_at?' '+esc(fmtIST(row.updated_at)):'')
+    +(row.rev_reason?'<br>💬 '+esc(row.rev_reason):'');
+  let h='<div class="bmi-grid">';
+  BR_FORM_FIELDS.forEach(f=>{
+    if(f.g) h+='<div class="bmi-sec">'+f.g+'</div>';
+    const v=bmFmt_(f,row[f.k]);
+    h+='<div><b>'+esc(f.l)+'</b>'+(v?esc(v):'<span style="color:#bbb">—</span>')+'</div>';
+  });
+  document.getElementById('bmInfoBody').innerHTML=h+'</div>';
+  document.getElementById('bmInfoModal').classList.add('open');
+}
+
+// 🕒 History (+ ↩️ Restore)
+const BM_ACT={CREATE:'➕ Banaya gaya',EDIT:'✏️ Edit (galti sudhaari)',REVISE:'🔁 Revise (naya version)',RESTORE:'♻️ Wapas Active',
+  DEACTIVATE:'🚫 Inactive kiya',DELETE:'🗑️ Delete kiya',IMPORT:'📥 CSV import se badla',SEED:'🌱 Excel seed se aaya'};
+let bmHistId_=null;
+async function bmHistory_(id){
+  if(!bmCan_('MASTER_REV_HISTORY')) return bmDeny_('MASTER_REV_HISTORY');
+  const row=bmRow_(id); if(!row) return;
+  bmHistId_=id;
+  document.getElementById('bmInfoTitle').textContent='🕒 Revision History — '+(row.item_code||'');
+  document.getElementById('bmInfoSub').innerHTML='Abhi <b>REV '+(row.rev_no||1)+'</b> chal rahi hai.';
+  const body=document.getElementById('bmInfoBody');
+  body.innerHTML='<div class="oh-loading">⏳ History load ho rahi hai…</div>';
+  document.getElementById('bmInfoModal').classList.add('open');
+  let revs=[];
+  try{
+    const {data,error}=await SB.from('master_revisions').select('*').eq('master_type','BRAND').eq('record_id',id).order('created_at',{ascending:false});
+    if(error) throw error; revs=data||[];
+  }catch(e){ body.innerHTML='<div class="oh-loading">⚠️ master_revisions nahi padhi gayi: '+esc(e.message||e)+'</div>'; return; }
+  const canR=bmCan_('MASTER_REV_RESTORE');
+  let h='<div class="bmh-row cur"><div class="bmh-n">REV '+(row.rev_no||1)+'</div><div class="bmh-mid"><b>✅ Aaj chal rahi version</b>'
+    +'<div class="bmh-meta">'+esc(row.updated_by||row.created_by||'—')+(row.updated_at?' · '+esc(fmtIST(row.updated_at)):'')+'</div>'
+    +(row.rev_reason?'<div class="bmh-why">💬 '+esc(row.rev_reason)+'</div>':'')+'</div></div>';
+  h+=revs.map(rv=>{
+    const ch=Array.isArray(rv.changed_fields)?rv.changed_fields:[];
+    return '<div class="bmh-row"><div class="bmh-n">REV '+(rv.rev_no||1)+'</div><div class="bmh-mid">'
+      +'<b>'+esc(BM_ACT[rv.action]||rv.action||'—')+'</b>'
+      +'<div class="bmh-meta">'+esc(rv.created_by||'—')+(rv.created_at?' · '+esc(fmtIST(rv.created_at)):'')+'</div>'
+      +(rv.reason?'<div class="bmh-why">💬 '+esc(rv.reason)+'</div>':'')
+      +(ch.length?'<div class="bmh-diff">'+ch.slice(0,10).map(c=>'<code>'+esc(c.l)+'</code> <span class="o">'+esc(c.o||'—')+'</span> → <span class="n">'+esc(c.n||'—')+'</span>').join('<br>')
+        +(ch.length>10?'<br><i>+'+(ch.length-10)+' aur field</i>':'')+'</div>':'')
+      +'</div>'
+      +(rv.snapshot?'<div><button type="button" class="bmv-ib'+(canR?'':' off')+'" onclick="bmRestore_(\''+esc(rv.id)+'\')" title="'+(canR?'Is version ki values wapas lagayein — khud ek nayi REV banegi, kuch mitta nahi':'Is role ko restore ka access nahi')+'">↩️ Restore</button></div>':'')
+      +'</div>';
+  }).join('');
+  if(!revs.length) h+='<div class="oh-loading" style="padding:20px">ℹ️ Abhi koi purani version nahi — pehle ✏️ Edit / 🔁 Revise par snapshot yahin aayega.</div>';
+  body.innerHTML=h;
+}
+async function bmRestore_(revId){
+  if(!bmCan_('MASTER_REV_RESTORE')) return bmDeny_('MASTER_REV_RESTORE');
+  const cur=bmRow_(bmHistId_); if(!cur) return;
+  try{
+    const {data,error}=await SB.from('master_revisions').select('*').eq('id',revId).maybeSingle();
+    if(error) throw error;
+    const snap=data&&data.snapshot; if(!snap) return toast('Is revision ka snapshot nahi mila');
+    const vals={}; BR_FORM_FIELDS.forEach(f=>{ vals[f.k]=(f.k in snap)?snap[f.k]:null; });
+    const changed=bmDiff_(cur,vals);
+    if(!changed.length) return toast('Ye version aaj ki version jaisi hi hai — kuch badla nahi');
+    if(!confirm('REV '+(data.rev_no||1)+' ki values wapas lagayein?\n\n'+changed.length+' field badlenge, row REV '+((cur.rev_no||1)+1)+' par jaayegi.\n\n'
+      +changed.slice(0,8).map(c=>'• '+c.l+': '+(c.o||'—')+' → '+(c.n||'—')).join('\n')+(changed.length>8?'\n• … +'+(changed.length-8)+' aur':''))) return;
+    if(BRAND_MASTER_ROWS.some(r=>String(r.id)!==String(cur.id) && nmKey_(r.item_code)===nmKey_(vals.item_code)))
+      return toast('⚠️ Us version ka Item Code "'+vals.item_code+'" ab kisi aur row par hai — restore nahi ho sakta');
+    const why='REV '+(data.rev_no||1)+' se restore';
+    await bmArchive_(cur,'REVISE',why,changed);
+    const upd=Object.assign({},vals,{rev_no:(cur.rev_no||1)+1,rev_reason:why,updated_by:nmActor_(),updated_at:new Date().toISOString()});
+    const u=await SB.from('brand_master').update(upd).eq('id',cur.id).select().maybeSingle();
+    if(u.error) throw u.error;
+    if(!u.data) throw new Error('Restore nahi hua — permission / Refresh');
+    bmPutRow_(u.data);
+    document.getElementById('bmInfoModal').classList.remove('open');
+    toast('↩️ '+why+' — ab REV '+upd.rev_no);
+    bmvAfterChange_();
+  }catch(e){ toast('❌ '+(e.message||e)); }
 }
 // ERP (parent) me floating "wapas" button. Uska click Order Form ke panel par
 // laut kar is page ka ofBackFromBrandMaster() bulata hai.
@@ -2913,7 +3162,7 @@ function ofFocusProduct_(prodId){
   },120);
 }
 
-// ── Read-only viewer (ERP ke bahar) ──
+// ── List (har row par Actions) ──
 let bmvTargetProd_=null;
 const BMV_COLS=[['item_code','Item Code'],['fabric_name','Fabric'],['category','Category'],['blanket_weight','Weight'],
   ['size','Size'],['bed_size','Bed Size'],['blanket_ply','Ply'],['sattan','Sattan'],['sattan_type','Sattan Type'],
@@ -2921,15 +3170,21 @@ const BMV_COLS=[['item_code','Item Code'],['fabric_name','Fabric'],['category','
 async function openBrandView(prodId){
   bmvTargetProd_=prodId;
   document.getElementById('bmvSearch').value='';
-  document.getElementById('bmvHead').innerHTML=(canDo('create')?'<th></th>':'')+BMV_COLS.map(c=>'<th>'+c[1]+'</th>').join('');
+  document.getElementById('bmvHead').innerHTML='<th class="act">Actions</th>'+BMV_COLS.map(c=>'<th>'+c[1]+'</th>').join('')+'<th>REV</th>';
+  document.getElementById('bmvErpBtn').style.display=bmErpNav_()?'':'none';
   document.getElementById('brandViewModal').classList.add('open');
-  if(!BRAND_MASTER_ROWS.length && SB_READY){
-    document.getElementById('bmvBody').innerHTML='<tr><td colspan="14" style="text-align:center;padding:20px;color:#888">Loading…</td></tr>';
-    try{ BRAND_MASTER_ROWS=(await fetchBrandMaster())||[]; }catch(e){}
-  }
-  bmvRender();
+  if(!BRAND_MASTER_ROWS.length && SB_READY) await bmvReload();
+  else bmvRender();
   setTimeout(()=>document.getElementById('bmvSearch').focus(),60);
 }
+// Database se taaza (doosre ne ERP me kuch badla ho to)
+async function bmvReload(){
+  document.getElementById('bmvBody').innerHTML='<tr><td colspan="16" style="text-align:center;padding:20px;color:#888">Loading…</td></tr>';
+  try{ BRAND_MASTER_ROWS=(await fetchBrandMaster())||[]; }catch(e){ toast('❌ Brand Master nahi aaya: '+(e.message||e)); }
+  bmvRender();
+}
+// ➕ list se naya — kisi product me apne aap nahi chuna jaata
+function bmvNew(){ openNewBrand(null,'NEW',null); }
 function closeBrandView(){
   document.getElementById('brandViewModal').classList.remove('open');
   if(bmvTargetProd_!=null) ofFocusProduct_(bmvTargetProd_);
@@ -2940,26 +3195,57 @@ function bmvRender(){
   const all=(BRAND_MASTER_ROWS||[]).slice().sort((a,b)=>String(a.item_code||'').localeCompare(String(b.item_code||''),undefined,{numeric:true}));
   const rows=all.filter(r=>(showOff||r.is_active!==false)
     && (!q || BMV_COLS.some(c=>String(r[c[0]]==null?'':r[c[0]]).toUpperCase().includes(q))));
-  const use=canDo('create');
-  document.getElementById('bmvCount').textContent=rows.length+' / '+all.length+' items';
+  document.getElementById('bmvCount').textContent=rows.length+' / '+all.length+' items'+(rows.length>500?' (pehle 500 — search se chhota karein)':'');
+  // Permission ek baar per render (har row par parent.sarvCan nahi)
+  const can={use:canDo('create')&&bmvTargetProd_!=null, copy:canDo('create'), ed:bmCan_('BRAND_EDIT'), rv:bmCan_('BRAND_REVISE'),
+             hs:bmCan_('MASTER_REV_HISTORY'), ac:bmCan_('MASTER_ACTIVATE'), dl:bmCan_('BRAND_DELETE')};
+  const ib=(ok,act,icon,title,feat,id,cls)=>'<button type="button" class="bmv-ib'+(cls?' '+cls:'')+(ok?'':' off')+'" data-act="'+act+'" data-id="'+esc(id)+'"'
+    +(ok?'':' data-deny="'+feat+'"')+' title="'+esc(title+(ok?'':' — is role ko access nahi'))+'">'+icon+'</button>';
   document.getElementById('bmvBody').innerHTML=rows.slice(0,500).map(r=>{
-    const code=String(r.item_code||'');
-    return '<tr class="'+(r.is_active===false?'off':'')+'">'
-      +(use?'<td>'+(r.is_active===false?'':'<button type="button" class="bmv-use" data-code="'+esc(code)+'">Use</button>')+'</td>':'')
-      +BMV_COLS.map(c=>'<td>'+esc(r[c[0]]==null?'':r[c[0]])+'</td>').join('')+'</tr>';
-  }).join('')||'<tr><td colspan="14" style="text-align:center;padding:20px;color:#888">Kuch nahi mila</td></tr>';
+    const off=r.is_active===false, id=r.id;
+    const acts='<div class="bmv-acts">'
+      +(off?'':ib(can.use,'use','✅','Use — is product me ye Item Code chunein','create',id))
+      +ib(true,'view','👁️','View — saare column','',id)
+      +ib(can.ed,'edit','✏️','Edit — galti sudharein (REV wahi rehta hai)','BRAND_EDIT',id)
+      +ib(can.rv,'revise','🔁','Revise — naya version (REV '+((r.rev_no||1)+1)+'), kaaran zaroori','BRAND_REVISE',id)
+      +ib(can.copy,'copy','📋','Copy — isi ki values se naya Item Code','create',id)
+      +ib(can.hs,'hist','🕒','Revision history — REV 1 se aaj tak (Restore ke saath)','MASTER_REV_HISTORY',id)
+      +ib(can.ac,'toggle',off?'♻️':'🚫',off?'Wapas Active karein':'Inactive karein — naye orders me nahi aayega','MASTER_ACTIVATE',id)
+      +ib(can.dl,'del','✕','Delete — hamesha ke liye','BRAND_DELETE',id,'del')
+      +'</div>';
+    return '<tr class="'+(off?'off':'')+'"><td class="act">'+acts+'</td>'
+      +BMV_COLS.map(c=>'<td>'+esc(r[c[0]]==null?'':(c[0]==='blanket_weight'?bmNum(r[c[0]]):r[c[0]]))+'</td>').join('')
+      +'<td><span class="bmv-rev">REV '+(r.rev_no||1)+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="16" style="text-align:center;padding:20px;color:#888">Kuch nahi mila</td></tr>';
 }
-// "Use" → wahi raasta jo Add New Brand ke baad chalta hai: code daalo, onItemCodeSelect specs bhar ke lock kare
+// Actions — ek hi delegated handler
 document.addEventListener('click',e=>{
-  const b=e.target.closest&&e.target.closest('#bmvBody .bmv-use'); if(!b) return;
-  const code=b.dataset.code, pid=bmvTargetProd_;
-  const el=document.getElementById('p'+pid+'-itemCode');
-  if(!el) return toast('⚠️ Product card nahi mila');
-  if(!STANDARD_ITEMS[code]){ toast('⚠️ "'+code+'" abhi Item Code list me nahi hai — page refresh karein'); return; }
-  suppressCombo=true; el.value=code; el.dispatchEvent(new Event('input')); suppressCombo=false;
-  onItemCodeSelect(pid,code);
-  closeBrandView();
-  toast('✅ "'+code+'" chun liya gaya');
+  const b=e.target.closest&&e.target.closest('#bmvBody [data-act]'); if(!b) return;
+  if(b.dataset.deny!==undefined){
+    return b.dataset.deny==='create'?toast('⚠️ Aapke Order Form role me ye kaam nahi hai'):bmDeny_(b.dataset.deny);
+  }
+  const id=b.dataset.id, row=bmRow_(id);
+  if(!row) return toast('Row nahi mili — ↻ Refresh karein');
+  switch(b.dataset.act){
+    case 'use': {
+      // Wahi raasta jo Add New Brand ke baad chalta hai: code daalo, onItemCodeSelect specs bhar ke lock kare
+      const code=String(row.item_code||''), pid=bmvTargetProd_;
+      const el=document.getElementById('p'+pid+'-itemCode');
+      if(!el) return toast('⚠️ Product card nahi mila');
+      if(!STANDARD_ITEMS[code]) return toast('⚠️ "'+code+'" abhi Item Code list me nahi hai — ↻ Refresh karein');
+      suppressCombo=true; el.value=code; el.dispatchEvent(new Event('input')); suppressCombo=false;
+      onItemCodeSelect(pid,code);
+      closeBrandView();
+      return toast('✅ "'+code+'" chun liya gaya');
+    }
+    case 'view':   return bmView_(id);
+    case 'edit':   return openNewBrand(null,'EDIT',row);
+    case 'revise': return openNewBrand(null,'REVISE',row);
+    case 'copy':   return openNewBrand(null,'COPY',row);
+    case 'hist':   return bmHistory_(id);
+    case 'toggle': return bmToggleActive_(id);
+    case 'del':    return bmDelete_(id);
+  }
 });
 
 async function saveNewBrand(){
@@ -3040,6 +3326,7 @@ async function saveNewBrand(){
       pkMsg=' — ⚠️ par Packing item_list me nahi juda: '+(e.message||e);
     }
     toast('✅ "'+code+'" Brand Master me add ho gaya'+pkMsg);
+    if(document.getElementById('brandViewModal').classList.contains('open')) bmvRender();
   }catch(e){
     console.error('[ORDER FORM] Brand save failed:',e);
     nmErr_('nbrError',(e.message||String(e))
