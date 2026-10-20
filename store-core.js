@@ -3857,6 +3857,7 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
     sarvFbmLoad('BUYER').catch(()=>{});
     sarvFbmLoad('AGENCY').catch(()=>{});
   }
+  if(id==='trimRateMasterSub') sarvFbmLoad('TRIMRATE').catch(()=>{});
   if(id==='dropdownMasterSub')loadDropdownMaster().catch(()=>{});
   if(id==='settingsSub'){
     const canPwd=sarvCan('CHANGE_PASSWORDS');
@@ -4995,6 +4996,12 @@ const SARV_FEATURES=[
   {key:'AGENCY_EDIT',label:'AGENCY — EDIT',hint:'Agency ka naam / contact person / mobile sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
   {key:'AGENCY_REVISE',label:'AGENCY — REVISE (REV +1)',hint:'Naya version — jaise agency ka contact person badla, purana record rakhte hue',def:['ADMIN_PIN','USER_MD_PIN']},
   {key:'AGENCY_DELETE',label:'AGENCY — DELETE',hint:'Agency hamesha ke liye hatana (purane order me naam phir bhi likha rahega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Trims & Packing Rate = paisa. Default MD / GM / Accountant — Order
+     Form ka har naya order isi rate par banta hai. */
+  {key:'TRIMRATE_NEW',label:'TRIMS RATE — NEW',hint:'Trims & Packing Rate master me naya material (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_EDIT',label:'TRIMS RATE — EDIT',hint:'Material ka rate / discount / category sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_REVISE',label:'TRIMS RATE — REVISE (REV +1)',hint:'Naya rate lagana — purana rate History me rehta hai, kaaran zaroori',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_DELETE',label:'TRIMS RATE — DELETE',hint:'Material hamesha ke liye hatana (Inactive behtar hai — purane orders par asar nahi)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MASTER_REV_HISTORY',label:'MASTER — REVISION HISTORY',hint:'🕘 REV 1 se aaj tak kaun, kab, kya badla — sirf dekhna',def:'ALL'},
   {key:'MASTER_REV_RESTORE',label:'MASTER — REVISION RESTORE',hint:'Kisi purani REV ki values wapas lagana (wo khud nayi REV banti hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MASTER_ACTIVATE',label:'MASTER — ACTIVE / INACTIVE',hint:'Row ko naye forms se hatana (links zinda rehte hain) — Delete se behtar raasta',def:['ADMIN_PIN','USER_MD_PIN']},
@@ -5113,6 +5120,7 @@ const SARV_TABS=[
   {key:'MD_FABRIC',label:'Fabric Master',hint:'Excel ki FABRIC MASTER sheet — fabric name + unit, roll weight, yarn planning, bora',def:'ALL'},
   {key:'MD_BRAND',label:'Brand Master',hint:'Excel ki BRAND MASTER sheet — item code, size, ply, sattan, packing, trims',def:'ALL'},
   {key:'MD_BUYER',label:'Buyer Master',hint:'Party (buyer) list — Order Form aur Packing ke Party Name dropdown isi se bharte hain',def:'ALL'},
+  {key:'MD_TRIM_RATE',label:'Trims & Packing Rate Master',hint:'Material-wise aaj ka Rate + Discount% — Order Form ke Bags & Trims ka Cost/Pc isi se auto bharta hai',def:'ALL'},
   /* Agency ki apni sub-tab nahi — ye Buyer Master ki screen par DOOSRI
      table hai, isi liye row poora dabba on/off karti hai. */
   {key:'MD_AGENCY',label:'Buyer Master › Agency table',hint:'Usi screen par neeche ki Agency table (Order Form ka Agency Name / Contact / Mobile)',def:'ALL'},
@@ -5124,11 +5132,6 @@ const SARV_TABS=[
      jaate (purani value waisi hi rehti hai). */
   {key:'MD_FABRIC_YARN',label:'Fabric Master › Yarn Planning columns',hint:'PYLE, PC PO / MICRO denier-filament-ends, yarn per roll aur as-per-order — planning ka data',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   {key:'MD_BRAND_PACKING',label:'Brand Master › Packing / Trims columns',hint:'Master & slave packing, labels, tags, dori, insert card, barcode sticker',def:'ALL'},
-  /* Rate columns = paisa. Default sirf unhi ko jo Order Form me rate
-     bharte hain. Off hone par form me bhi ye nau field nahi dikhte, aur
-     save par chhede bhi nahi jaate — yani ye role rate ko galti se mita
-     bhi nahi sakta. */
-  {key:'MD_BRAND_RATES',label:'Brand Master › Rate / Packing-pcs columns',hint:'Price per kg, packing pcs aur label/tag/bag/bore/inner/outer/bale ke trim rate (sales_standard_items se aaye)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
   {key:'MD_REV_COLUMN',label:'Fabric / Brand Master › REV + Status columns',hint:'REV badge aur Active/Inactive column. Off karne par 🕘 History column bhi chhup jaata hai.',def:'ALL'},
   {key:'MD_DROPDOWN',label:'Dropdown Master',hint:'App ke saare fixed dropdowns ki values (sales_dropdowns)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
@@ -5176,7 +5179,7 @@ const SARV_TABS=[
   {key:'M_FOLLOWUP_pending',label:'PO Follow-up › Follow-up Due',hint:'Jin PO par ek bhi follow-up nahi hua, ya di hui revised date nikal gayi',def:'ALL'},
   {key:'M_FOLLOWUP_done',label:'PO Follow-up › Date Awaited',hint:'Follow-up ho chuka hai aur vendor ki di hui date abhi aage ki hai',def:'ALL'},
 ];
-const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
+const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',trimRateMasterSub:'MD_TRIM_RATE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
 const SARV_PROD_SUB_KEY={designMasterProdSub:'PROD_SUB_DESIGN'};
 const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
@@ -5328,7 +5331,7 @@ function sarvApplySubTabs_(){
      "access nahi" milta. Sirf JO KHULI HAI usi ko dobara banate hain. */
   if(typeof sarvFbmRender==='function'){
     [['fabricMasterSub','FABRIC'],['brandMasterSub','BRAND'],
-     ['buyerMasterSub','BUYER'],['buyerMasterSub','AGENCY']].forEach(([sub,code])=>{
+     ['buyerMasterSub','BUYER'],['buyerMasterSub','AGENCY'],['trimRateMasterSub','TRIMRATE']].forEach(([sub,code])=>{
       const el=byId(sub);
       if(el&&el.style.display!=='none'&&sarvFbmState[code].loaded){
         try{sarvFbmRender(code);}catch(e){}
@@ -9266,9 +9269,13 @@ const SARV_DROPDOWNS=[
    where:'Brand Master form',
    def:['BALE','BORA','OUTER BOX','ROLL','NA']},
   {key:'erp_brandSlavePackType',label:'Slave Packing Type',
-   hint:'Brand Master › SLAVE PACKING TYPE',
+   hint:'Brand Master › SLAVE PACKING TYPE — Order Form ka Slave Packing Type (locked) yahi banta hai. BORA / BALE / BOX par Bags & Trims me usi naam ka material row aata hai.',
    where:'Brand Master form',
-   def:['BAG','INNER BOX','LOOSE PCS','NA']},
+   def:['BORA','BALE','BOX','BAG','INNER BOX','LOOSE PCS','NA']},
+  {key:'erp_trimRateCategory',label:'Trims Rate Category',
+   hint:'Trims & Packing Rate master › CATEGORY',
+   where:'Trims & Packing Rate form + filter',
+   def:['TRIMS','PACKING MATERIAL']},
   {key:'erp_fbmYesNo',label:'YES / NO (Master fields)',
    hint:'Emboss, packing required aur saari labels / tags / dori / insert card / barcode sticker — sab yahi list padhte hain',
    where:'Brand Master form ke YES/NO fields',
@@ -20074,36 +20081,6 @@ const SARV_BR_FIELDS=[
   {k:'moq',l:'MOQ',g:'spec',t:'num',hint:'Minimum order qty (pcs)'},
   {k:'emboss',l:'Emboss',g:'spec',t:'dd',dd:'erp_fbmYesNo'},
 
-  /* ── Order Form ke rate / packing ────────────────────────────────
-     Ye nau column `sales_standard_items` table se aaye hain. Pehle wo
-     table Order Form ki apni "standard items" list thi — item code ke
-     against fabric, category, weight, size, dbsb, ply, sattan, moq,
-     emboss AUR ye rates. Pehle ke nau column Brand Master me pehle se
-     the, isi liye DO jagah ek hi item code maintain hota tha aur dono
-     me alag-alag data chala jaata tha.
-
-     Ab Brand Master hi ek ghar hai: Order Form item code chunne par
-     seedha yahan se padhta hai. Dono vocabulary alag hain (yahan
-     "DOUBLE BED / SINGLE PLY / 4 INCH SATTAN", wahan "DB / SP / 4″"),
-     isi liye tarjuma order-form.html ke `bmToItem()` me ek hi jagah
-     hota hai.
-
-     0 ka matlab "set nahi hai" — Order Form khud bhi 0 ko skip karta
-     hai (khaali cost box chhod deta hai), isi liye yahan bhi khaali
-     chhod dein to wahi hota hai. */
-  {k:'price_per_kg',l:'PRICE PER KG',g:'rate',t:'num',step:'0.01',
-   hint:'Order Form ki product row ka Price (₹/kg)'},
-  {k:'packing_pcs',l:'PACKING PCS',g:'rate',t:'num',
-   hint:'Ek pack me kitne pcs — Order Form ka Packing (pcs/pack)'},
-  {k:'label_price',l:'LABEL PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Label'},
-  {k:'tag_price',l:'TAG PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Tag'},
-  {k:'bag_price',l:'BAG PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Bag'},
-  {k:'bore_price',l:'BORE PRICE',g:'rate',t:'num',step:'0.01',
-   hint:'Trim cost per pc — Bora. Pack Type "Bale" ho to Order Form BALE PRICE uthata hai.'},
-  {k:'inner_box_price',l:'INNER BOX PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Inner box'},
-  {k:'outer_box_price',l:'OUTER BOX PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Outer box'},
-  {k:'bale_price',l:'BALE PRICE',g:'rate',t:'num',step:'0.01',hint:'Trim cost per pc — Bale'},
-
   /* ── Packing 1 / Packing 2 ───────────────────────────────────────
      Ek hi brand do tarah se pack ho sakta hai (jaise MONARCH — bag
      packing aur gift box packing), isi liye packing ka poora set DO baar
@@ -20114,19 +20091,43 @@ const SARV_BR_FIELDS=[
      Table me Packing 2 ke chips DEFAULT OFF hain (`off:1` group par),
      kyunki zyadatar brands par ye khaali rehta hai — par form me hamesha
      dikhta hai, aur chip dabaakar table me bhi aa jaata hai. */
-  {k:'master_pack_req',l:'MASTER PACKING REQUIRED',g:'pack1',t:'dd',dd:'erp_fbmYesNo'},
-  {k:'master_pack_type',l:'MASTER PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandMasterPackType'},
-  {k:'slave_pack_req',l:'SLAVE PACKING REQUIRED',g:'pack1',t:'dd',dd:'erp_fbmYesNo'},
+  /* PACKING PCS dono packing me apna — ek hi brand Bora me 20 aur Gift
+     Box me 1 pc ja sakta hai. Order Form ka Packing (pcs/pack) Pack Type
+     dekh kar inme se ek uthata hai: Pack Type agar MASTER PACKING TYPE 2
+     se milta hai (aur Packing 1 se nahi) to PACKING PCS 2, warna PACKING
+     PCS. Column `packing_pcs` wahi purana hai — data waisa hi rehta hai.
+
+     Pehle yahan ek "Order Form Rates" group tha (price per kg + saat trim
+     rate, har brand par alag). Wo hata diya gaya: trim ka rate MATERIAL ka
+     hota hai, brand ka nahi — ab wo 💰 Trims & Packing Rate master me hai
+     (SARV_TRIMRATE_FIELDS), aur price/kg order par hi tay hota hai. */
+  /* Label = Order Form ka "Slave Packing Standard Qty". Purana CSV header
+     "PACKING PCS" alias me hai, taaki purani sheet import hoti rahe.
+     Kram (dono packing me): SLAVE PACKING TYPE → SLAVE PACKING STANDARD
+     QUANTITY → MASTER PACKING TYPE. "MASTER / SLAVE PACKING REQUIRED"
+     YES/NO column hata diye gaye (BRAND_PACKING_CLEANUP_MIGRATION.sql) —
+     Type bhara hai to packing lagti hai, khaali / NA hai to nahi. */
   {k:'slave_pack_type',l:'SLAVE PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandSlavePackType'},
+  {k:'packing_pcs',l:'SLAVE PACKING STANDARD QUANTITY',g:'pack1',t:'num',alias:['PACKING PCS'],
+   hint:'Packing 1 — ek slave pack me kitne pcs (Order Form ka Slave Packing Standard Qty)'},
+  {k:'master_pack_type',l:'MASTER PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandMasterPackType'},
+  /* showIf — form me sirf MASTER PACKING TYPE = OUTER BOX par dikhta hai,
+     aur tab ZAROORI hai (sarvFbmShowIf_). Chhupa ho to save par null.
+     YES = Order Form ke Bags & Trims me "OUTER BOX BORA" row (jab order par
+     ye packing lage). Pehle ye Materials group me tha. */
+  {k:'outer_box_bora',l:'OUTER BOX BORA',g:'pack1',t:'dd',dd:'erp_fbmYesNo',showIf:{k:'master_pack_type',v:'OUTER BOX'},
+   hint:'YES = Order Form › Bags & Trims me "OUTER BOX BORA" row. Rate: 💰 Trims & Packing Rate › OUTER BOX BORA.'},
 
   /* Alias ki zaroorat nahi: CSV ka header match "normalised" hota hai
      (space / bracket / dash / case sab ignore), isi liye "MASTER PACKING
      TYPE 2", "MASTER PACKING TYPE (2)" aur "MASTER PACKING TYPE-2" teeno
      apne aap ek hi column par aa jaate hain. */
-  {k:'master_pack_req_2',l:'MASTER PACKING REQUIRED 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo'},
-  {k:'master_pack_type_2',l:'MASTER PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandMasterPackType'},
-  {k:'slave_pack_req_2',l:'SLAVE PACKING REQUIRED 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo'},
   {k:'slave_pack_type_2',l:'SLAVE PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandSlavePackType'},
+  {k:'packing_pcs_2',l:'SLAVE PACKING STANDARD QUANTITY 2',g:'pack2',t:'num',alias:['PACKING PCS 2'],
+   hint:'Packing 2 — ek slave pack me kitne pcs. Order ka Slave Packing Type MASTER PACKING TYPE 2 ho to Order Form yahi uthata hai.'},
+  {k:'master_pack_type_2',l:'MASTER PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandMasterPackType'},
+  {k:'outer_box_bora_2',l:'OUTER BOX BORA 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo',showIf:{k:'master_pack_type_2',v:'OUTER BOX'},
+   hint:'YES = jab order par Packing 2 lage, Bags & Trims me "OUTER BOX BORA" row.'},
 
   /* ── Order Form ke Bags & Trims wale 6 purane row + FOAM ─────────
      Ye saat column `BRAND_TRIMS_MIGRATION.sql` se aate hain.
@@ -20143,17 +20144,15 @@ const SARV_BR_FIELDS=[
      "TAG 1" ek hi cheez hain ya nahi, ye brand-dar-brand badalta hai,
      isi liye jodd nahi kiya gaya. Jo na chahiye use NO rakhein.
      `foam` ka koi rate column nahi hai — uski cost order me bharti hai. */
-  {k:'label',l:'LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo',
-   hint:'Order Form › Bags & Trims ka Label row. Rate alag column me: LABEL PRICE.'},
+  /* LABEL, BORE aur OUTER BOX column hata diye gaye (backup ke saath —
+     BRAND_PACKING_CLEANUP / BRAND_OUTER_BOX_MIGRATION.sql). OUTER BOX BORA
+     ab Packing 1 / 2 me hai (Master Packing Type = OUTER BOX par). */
   {k:'tag',l:'TAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',
    hint:'Order Form › Bags & Trims ka Tag row. TAG 1 / 2 / 3 isse alag column hain.'},
-  {k:'bag',l:'BAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: BAG PRICE'},
-  {k:'bore',l:'BORE',g:'trims',t:'dd',dd:'erp_fbmYesNo',
-   hint:'Rate: BORE PRICE (Pack Type Bale ho to Order Form BALE PRICE uthata hai)'},
-  {k:'inner_box',l:'INNER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: INNER BOX PRICE'},
-  {k:'outer_box',l:'OUTER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: OUTER BOX PRICE'},
+  {k:'bag',l:'BAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: 💰 Trims & Packing Rate › BAG'},
+  {k:'inner_box',l:'INNER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: 💰 Trims & Packing Rate › INNER BOX'},
   {k:'foam',l:'FOAM',g:'trims',t:'dd',dd:'erp_fbmYesNo',
-   hint:'Iska koi rate column nahi — cost Order Form me order-dar-order bharti hai'},
+   hint:'Rate: 💰 Trims & Packing Rate › FOAM'},
 
   {k:'micro_label',l:'MICRO LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'small_label',l:'SMALL LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
@@ -20226,6 +20225,39 @@ const SARV_AGENCY_FIELDS=[
    alias:['AGENCY MOBILE NO','MOBILE NO.','MOBILE NO','AGENCY MOBILE'],
    hint:'Order Form me "Agency Mobile No." bharta hai'},
   {k:'notes',l:'NOTES',g:'misc',t:'text'},
+];
+
+/* Trims & Packing Material Rate — ek row = ek MATERIAL, uska AAJ ka rate.
+   Order Form ke Bags & Trims me "SIHF Supplied" chunte hi us material ka
+   Cost/Pc aur Disc % yahin se bharta hai (order-form.html › TRIM_RATES /
+   ofTrimRate_). Match MATERIAL ke naam se hota hai (case / space ignore),
+   isi liye yahan naya material jodne par (LABEL, TAG, BALE ...) Order Form
+   bina code badle uska rate uthane lagta hai.
+
+   Rate badalna = ✏️ Edit (galti) ya 🔁 Revise (naya rate, REV +1) — purana
+   rate 🕘 History me rehta hai. Purane order apni saved value par khulte
+   hain, unhe ye table chhooti nahi. Inactive material ka rate nahi bharta. */
+const SARV_TRIMRATE_FIELDS=[
+  {k:'material',l:'MATERIALS',g:'ident',t:'text',req:1,uc:1,alias:['MATERIAL','MATERIAL NAME'],
+   hint:'Order Form ki row isi naam se milti hai — BAG, BORA, DORI, TAG 1 ...'},
+  {k:'category',l:'CATEGORY',g:'ident',t:'dd',dd:'erp_trimRateCategory',req:1,
+   hint:'Trims ya Packing Material'},
+  {k:'rate',l:'RATE',g:'rate',t:'num',step:'0.01',alias:['RATE (RS)','RATE RS','COST'],
+   hint:'₹ per pc — Order Form ka Cost/Pc. Khaali = set nahi (Order Form khaali chhodta hai).'},
+  {k:'discount_pct',l:'DISCOUNT%',g:'rate',t:'num',step:'0.01',alias:['DISCOUNT %','DISCOUNT','DISC %','DISC'],
+   hint:'0 – 100. Order Form ka Disc %.'},
+  {k:'notes',l:'NOTES',g:'misc',t:'text'},
+];
+/* Seed — wahi 15 material jo TRIMS_RATE_MASTER_MIGRATION.sql bhi daalti
+   hai. Rate khaali: asli rate screen se bharein. */
+const SARV_TRIMRATE_SEED_COLS=['material','category','discount_pct'];
+const SARV_TRIMRATE_SEED=[
+  ['MICRO LABEL','TRIMS',0],['SMALL LABEL','TRIMS',0],['BIG LABEL','TRIMS',0],
+  ['TAG 1','TRIMS',0],['TAG 2','TRIMS',0],['TAG 3','TRIMS',0],
+  ['DORI','TRIMS',0],['INSERT CARD','TRIMS',0],['BARCODE STICKER','TRIMS',0],
+  ['FOAM','PACKING MATERIAL',0],['SATTAN','TRIMS',0],['BAG','PACKING MATERIAL',0],
+  ['INNER BOX','PACKING MATERIAL',0],['OUTER BOX','PACKING MATERIAL',0],['BORA','PACKING MATERIAL',0],
+  ['OUTER BOX BORA','PACKING MATERIAL',0]
 ];
 
 /* Seed — Excel sheet ki asli rows, wahi kram. Array-of-array jaan-boojh
@@ -20381,10 +20413,6 @@ const SARV_FBM={
     groups:[
       {g:'ident',l:'\u{1F9FE} Identity',lock:1},
       {g:'spec', l:'\u{1F4D0} Specification'},
-      /* Rate wala group paisa hai — isi liye apni Tab Visibility row, aur
-         table me chip default OFF (zyadatar waqt log spec dekhne aate
-         hain, rate nahi). Form me hamesha dikhta hai. */
-      {g:'rate', l:'\u{1F4B0} Order Form Rates & Packing', tab:'MD_BRAND_RATES', off:1},
       {g:'pack1',l:'\u{1F4E6} Packing 1', tab:'MD_BRAND_PACKING'},
       /* off:1 — table me chip default OFF. Form me ye group hamesha
          dikhta hai; `off` sirf column chips ka shuruaati haal hai. */
@@ -20449,6 +20477,29 @@ const SARV_FBM={
          tbl:'fbm_agTable',newBtn:'fbm_agNewBtn',seedBtn:'fbm_agSeedBtn',csvBtn:'fbm_agCsvBtn',impBtn:'fbm_agImpBtn'},
     nameOf:r=>String(r.agency_name||'-'),
     sub:'buyerMasterSub'
+  },
+  TRIMRATE:{
+    code:'TRIMRATE', table:'trims_rate_master', label:'Trims & Packing Rate Master', icon:'\u{1F4B0}',
+    fields:SARV_TRIMRATE_FIELDS, tabKey:'MD_TRIM_RATE',
+    feat:{nw:'TRIMRATE_NEW',ed:'TRIMRATE_EDIT',dl:'TRIMRATE_DELETE',rv:'TRIMRATE_REVISE'},
+    keyCols:['material'],
+    order:'material',
+    /* Apni migration — table nahi mili / save fail par yahi file batayi
+       jaati hai (baaki masters ki FABRIC_BRAND_MASTER_MIGRATION.sql). */
+    sql:'TRIMS_RATE_MASTER_MIGRATION.sql',
+    groups:[
+      {g:'ident',l:'\u{1F9FE} Material',lock:1},
+      {g:'rate', l:'\u{1F4B0} Rate & Discount'},
+      {g:'misc', l:'\u{1F4DD} Notes'},
+      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+    ],
+    filters:[{id:'fbm_trCategory',k:'category'}],
+    statusId:'fbm_trStatus',
+    seedCols:SARV_TRIMRATE_SEED_COLS, seedRows:SARV_TRIMRATE_SEED,
+    ids:{search:'fbm_trSearch',head:'fbm_trHead',body:'fbm_trBody',cg:'fbm_trCg',pills:'fbm_trPills',note:'fbm_trNote',
+         tbl:'fbm_trTable',newBtn:'fbm_trNewBtn',seedBtn:'fbm_trSeedBtn',csvBtn:'fbm_trCsvBtn',impBtn:'fbm_trImpBtn'},
+    nameOf:r=>String(r.material||'-'),
+    sub:'trimRateMasterSub'
   }
 };
 const SARV_FBM_REV_TABLE='master_revisions';
@@ -20458,7 +20509,8 @@ const sarvFbmState={
   FABRIC:{rows:[],loaded:false,missing:false,cg:null},
   BRAND:{rows:[],loaded:false,missing:false,cg:null},
   BUYER:{rows:[],loaded:false,missing:false,cg:null},
-  AGENCY:{rows:[],loaded:false,missing:false,cg:null}
+  AGENCY:{rows:[],loaded:false,missing:false,cg:null},
+  TRIMRATE:{rows:[],loaded:false,missing:false,cg:null}
 };
 /* Buyer Master ka "bina contact" pill — chalu hai ya nahi. Select nahi
    banaya kyunki ye filter kabhi-kabhi (data saaf karte waqt) lagta hai;
@@ -20471,6 +20523,8 @@ let sarvFbmImpCode=null;   // kis master ka import chal raha hai
 /* ── chhote helpers ──────────────────────────────────────────────── */
 const sarvFbmCfg_=code=>SARV_FBM[code]||null;
 const sarvFbmSt_=code=>sarvFbmState[code];
+// Kis master ki table kaunsi SQL banati hai — "table nahi mili" wale message ke liye.
+const sarvFbmSql_=code=>(sarvFbmCfg_(code)&&sarvFbmCfg_(code).sql)||'FABRIC_BRAND_MASTER_MIGRATION.sql';
 function sarvFbmActor_(){
   return (sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—';
 }
@@ -20786,7 +20840,7 @@ window.sarvFbmRender=function(code){
   if(st.missing){
     body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'" style="color:#b45309;">'
       +'⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili — Supabase › SQL Editor me '
-      +'<code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> ek baar chalayein.</td></tr>';
+      +'<code>'+escText(sarvFbmSql_(code))+'</code> ek baar chalayein.</td></tr>';
     return;
   }
   if(!st.loaded){body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">⏳ Loading...</td></tr>';return;}
@@ -20951,6 +21005,13 @@ function sarvFbmRenderPills_(code){
       &&!String(r.contact_no||'').trim()&&!String(r.party_staff_contact_no||'').trim()).length;
     if(noc)h+='<span class="fbm-pill fbm-pill-wr" onclick="sarvFbmShowNoContact()" '
       +'title="In parties ka koi bhi contact number nahi — click karke dekhein">\u{1F4DE} '+noc+' bina contact</span>';
+  }else if(code==='TRIMRATE'){
+    /* Jis material ka rate khaali hai, Order Form uska Cost/Pc khaali
+       chhodta hai — ginti saamne, taaki rate bharna yaad rahe. */
+    const nor=st.rows.filter(r=>r.is_active!==false&&!(Number(r.rate)>0)).length;
+    h+=nor
+      ?'<span class="fbm-pill fbm-pill-wr" title="In material ka RATE abhi khaali hai — Order Form inka Cost/Pc khud nahi bharega">\u{1F4B0} '+nor+' rate pending</span>'
+      :(st.rows.length?'<span class="fbm-pill fbm-pill-ok" title="Har active material ka rate bhara hai">✅ all rates set</span>':'');
   }
   box.innerHTML=h;
 }
@@ -20961,8 +21022,8 @@ function sarvFbmRenderNote_(code){
   if(!el)return;
   if(sarvFbmSt_(code).missing){
     el.innerHTML='<div class="fbm-note fbm-note-w">⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili. '
-      +'Supabase › SQL Editor me <code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> ek baar chalayein — '
-      +'uske baad \u{1F331} <b>Seed Excel Data</b> se sheet ki rows aa jaayengi.</div>';
+      +'Supabase › SQL Editor me <code>'+escText(sarvFbmSql_(code))+'</code> ek baar chalayein — '
+      +'uske baad \u{1F331} <b>Seed</b> button se shuruaati rows aa jaayengi.</div>';
     return;
   }
   const cfgRev=sarvFbmGroupOk_(code,'rev');
@@ -20976,6 +21037,10 @@ function sarvFbmRenderNote_(code){
      :code==='AGENCY'
       ?'ek row = ek <b>AGENCY</b>. Buyer se alag table isi liye ki ek agency ke neeche kai parties hoti hain. '
         +'Order Form me agency chunne par <b>CONTACT PERSON</b> aur <b>MOBILE NO.</b> khud bhar jaate hain.'
+     :code==='TRIMRATE'
+      ?'ek row = ek <b>MATERIAL</b> ka aaj ka rate. <b>Sales › Order Form</b> ke Bags &amp; Trims me <b>SIHF Supplied</b> chunte hi '
+        +'<b>RATE</b> &rarr; Cost/Pc aur <b>DISCOUNT%</b> &rarr; Disc % khud bhar jaate hain (material ke naam se match). '
+        +'Naya material (jaise LABEL, TAG, BALE) yahan jodte hi Order Form use bhi uthane lagta hai. Purane order apne saved rate par hi khulte hain.'
       :'ek row = ek <b>ITEM CODE</b>. Iska <b>FABRIC NAME</b> Fabric Master ki row se judta hai — chip dabaakar wahan ja sakte hain.')
     +(cfgRev?' ✏️ <b>Edit</b> = galti sudharna (REV wahi), \u{1F501} <b>Revise</b> = naya version (REV +1, kaaran ke saath), \u{1F552} se poora itihaas.':'')
     +'</div>';
@@ -21007,7 +21072,7 @@ const sarvFbmRow_=(code,id)=>sarvFbmSt_(code).rows.find(r=>String(r.id)===String
 window.sarvFbmNew=function(code){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.nw))return;
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
   sarvFbmOpenForm_(code,'NEW',null);
 };
 window.sarvFbmEdit=function(code,id){
@@ -21047,7 +21112,25 @@ function sarvFbmOpenForm_(code,mode,id){
   const first=byId('fbm_in_'+cfg.fields[0].k);
   if(first&&mode==='NEW')setTimeout(()=>{try{first.focus();}catch(e){}},40);
   sarvFbmFormHints_();
+  sarvFbmShowIf_();
 }
+
+/* ── showIf: field sirf tab jab doosre dropdown me khaas value ho ─────
+   (jaise OUTER BOX BORA sirf MASTER PACKING TYPE = OUTER BOX par). Dikhe
+   to zaroori; chhupa ho to save par null. Field par `showIf:{k,v}`. */
+function sarvFbmShowIfOn_(f){
+  if(!f.showIf)return true;
+  const dep=byId('fbm_in_'+f.showIf.k);
+  if(!dep)return false;
+  return String(dep.value||'').trim().toUpperCase()===String(f.showIf.v).toUpperCase();
+}
+window.sarvFbmShowIf_=function(){
+  if(!sarvFbmForm)return;
+  sarvFbmCfg_(sarvFbmForm.code).fields.filter(f=>f.showIf).forEach(f=>{
+    const w=byId('fbm_in_'+f.k+'_w');
+    if(w)w.style.display=sarvFbmShowIfOn_(f)?'':'none';
+  });
+};
 
 function sarvFbmFormHtml_(code,mode,row){
   const cfg=sarvFbmCfg_(code);
@@ -21073,14 +21156,14 @@ function sarvFbmFormHtml_(code,mode,row){
 function sarvFbmFieldHtml_(code,f,row){
   const v=row?row[f.k]:null;
   const id='fbm_in_'+f.k;
-  const lab='<label for="'+id+'">'+escText(f.l)+(f.req?' <span class="fbm-req">★</span>':'')+'</label>';
+  const lab='<label for="'+id+'">'+escText(f.l)+((f.req||f.showIf)?' <span class="fbm-req">★</span>':'')+'</label>';
   const hint=f.hint?'<small id="'+id+'_h">'+escText(f.hint)+'</small>':'<small id="'+id+'_h"></small>';
   let ctl;
   if(f.t==='dd'||f.t==='fab'){
     const opts=f.t==='fab'?sarvFbmFabricOptions_():sarvDropdownList(f.dd);
     const cur=f.t==='fab'?sarvFbmNumTxt_(v):(v===null||v===undefined?'':String(v));
     const has=opts.some(o=>String(o)===cur);
-    ctl='<select id="'+id+'"'+(f.t==='fab'?' onchange="sarvFbmFormHints_()"':'')+'>'
+    ctl='<select id="'+id+'"'+(f.t==='fab'?' onchange="sarvFbmFormHints_()"':' onchange="sarvFbmShowIf_()"')+'>'
       +'<option value="">—</option>'
       /* Jo value row me pehle se hai par list me nahi (purana data ya
          dropdown se hata di gayi) — use khona nahi chahiye, isi liye
@@ -21189,15 +21272,16 @@ window.sarvFbmSaveForm=async function(){
       if(mode!=='NEW')vals[f.k]=sarvFbmForm.base?sarvFbmForm.base[f.k]:null;
       return;
     }
-    vals[f.k]=sarvFbmParse_(f,el.value);
+    // showIf field chhupa hai = lagu nahi = null (purana YES na bacha rahe)
+    vals[f.k]=sarvFbmShowIfOn_(f)?sarvFbmParse_(f,el.value):null;
   });
 
-  // validation
+  // validation — req:1, aur dikh rahe showIf field
   const bad=[];
   cfg.fields.forEach(f=>{
     const w=byId('fbm_in_'+f.k+'_w');
     if(w)w.classList.remove('bad');
-    if(!f.req)return;
+    if(!f.req&&!(f.showIf&&sarvFbmShowIfOn_(f)))return;
     const v=vals[f.k];
     const empty=v===null||v===undefined||v===''||(Array.isArray(v)&&!v.length);
     if(empty){bad.push(f.l);if(w)w.classList.add('bad');}
@@ -21205,6 +21289,14 @@ window.sarvFbmSaveForm=async function(){
   if(bad.length)return showToast('❌ Ye field zaroori hain: '+bad.join(', '),'error');
   if(code==='FABRIC'&&!(Number(vals.fabric_name)>0))
     return showToast('❌ FABRIC NAME 0 se bada number hona chahiye','error');
+  if(code==='TRIMRATE'){
+    // Khaali discount = 0 (Order Form bhi yahi maanta hai); rate khaali chal sakta hai.
+    if(vals.discount_pct===null||vals.discount_pct===undefined)vals.discount_pct=0;
+    if(vals.rate!==null&&vals.rate!==undefined&&Number(vals.rate)<0)
+      return showToast('❌ RATE minus me nahi ho sakta','error');
+    if(Number(vals.discount_pct)<0||Number(vals.discount_pct)>100)
+      return showToast('❌ DISCOUNT% 0 se 100 ke beech hona chahiye','error');
+  }
 
   let reason=null;
   if(mode==='REVISE'){
@@ -21229,7 +21321,7 @@ window.sarvFbmSaveForm=async function(){
   try{
     if(mode==='NEW'){
       const ins=Object.assign({},vals,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()});
-      const {data,error}=await SB.from(cfg.table).insert(ins).select().maybeSingle();
+      const {data,error}=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).insert(b).select().maybeSingle(),ins);
       if(error)throw error;
       if(data)await sarvFbmArchive_(cfg,data,'CREATE',null,null);
       showToast('✅ '+cfg.label+' me "'+cfg.nameOf(data||vals)+'" add ho gaya (REV 1)');
@@ -21246,7 +21338,7 @@ window.sarvFbmSaveForm=async function(){
       await sarvFbmArchive_(cfg,base,mode,reason,changed);
       const upd=Object.assign({},vals,{updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
       if(mode==='REVISE'){upd.rev_no=(base.rev_no||1)+1;upd.rev_reason=reason;}
-      const {error}=await SB.from(cfg.table).update(upd).eq('id',id);
+      const {error}=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).update(b).eq('id',id),upd);
       if(error)throw error;
       showToast(mode==='REVISE'
         ?'\u{1F501} "'+cfg.nameOf(base)+'" ab REV '+upd.rev_no+' par hai ('+changed.length+' field badle)'
@@ -21256,10 +21348,28 @@ window.sarvFbmSaveForm=async function(){
     await sarvFbmLoad(code,true);
   }catch(e){
     if(/duplicate key|unique/i.test(e.message||''))showToast('⚠️ Ye row pehle se '+cfg.label+' me hai','warn');
-    else if(sarvFbmMissing_(e))showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+    else if(sarvFbmMissing_(e))showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
     else dbError(e);
   }finally{if(btn){btn.disabled=false;btn.innerHTML=old;}}
 };
+
+/* Master row likhna — database me jo column ABHI nahi (migration nahi chali,
+   jaise "Could not find the 'outer_box_bora_2' column") use chhod kar baaki
+   save. Natural key (keyCols) kabhi nahi chhoda jaata. Chhoota column aur
+   chalani wali SQL toast me. sbSaveDroppingMissingColumns_ ka hi upyog. */
+const SARV_FBM_COL_SQL={outer_box_bora:'BRAND_OUTER_BOX_MIGRATION.sql',outer_box_bora_2:'BRAND_OUTER_BOX_MIGRATION.sql',
+  packing_pcs_2:'TRIMS_RATE_MASTER_MIGRATION.sql'};
+async function sarvFbmWrite_(cfg,attempt,payload){
+  let last=payload;
+  const res=await sbSaveDroppingMissingColumns_(payload,b=>{last=b;return attempt(b);},cfg.keyCols||[]);
+  const dropped=Object.keys(payload).filter(k=>!(k in last));
+  if(dropped.length&&!res.error){
+    const sqls=[...new Set(dropped.map(c=>SARV_FBM_COL_SQL[c]||sarvFbmSql_(cfg.code)))];
+    setTimeout(()=>showToast('⚠️ Save ho gaya, par ye field database me abhi nahi hain: '+dropped.join(', ')
+      +' — Supabase me '+sqls.join(' + ')+' chalayein','warn'),900);
+  }
+  return res;
+}
 
 /* "Kya badla" — history me aur toast me, dono me yahi list jaati hai. */
 function sarvFbmDiff_(code,oldRow,newVals){
@@ -21435,7 +21545,7 @@ window.sarvFbmRestoreRev=async function(revId){
     await sarvFbmArchive_(cfg,cur,'REVISE','REV '+(data.rev_no||1)+' se restore',changed);
     const upd=Object.assign({},vals,{rev_no:(cur.rev_no||1)+1,rev_reason:'REV '+(data.rev_no||1)+' se restore',
       updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
-    const u=await SB.from(cfg.table).update(upd).eq('id',id);
+    const u=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).update(b).eq('id',id),upd);
     if(u.error)throw u.error;
     showToast('↩️ REV '+(data.rev_no||1)+' wapas lag gayi — ab REV '+upd.rev_no);
     sarvFbmCloseHistory();
@@ -21469,7 +21579,7 @@ window.sarvFbmExport=function(code){
   const blob=new Blob(['﻿'+head+'\r\n'+body],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='SARV_'+(code==='FABRIC'?'Fabric_Master':'Brand_Master')+'_'+today()+'.csv';
+  a.download='SARV_'+({FABRIC:'Fabric_Master',BUYER:'Buyer_Master',AGENCY:'Agency_Master',TRIMRATE:'Trims_Packing_Rate_Master'}[code]||'Brand_Master')+'_'+today()+'.csv';
   document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},400);
   showToast('\u{1F4BE} '+rows.length+' rows export ho gayi');
@@ -21478,7 +21588,7 @@ window.sarvFbmExport=function(code){
 /* ── CSV import ──────────────────────────────────────────────────── */
 window.sarvFbmImportPick=function(code){
   if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
   sarvFbmImpCode=code;
   const inp=byId('fbm_impFile');
   if(inp){inp.value='';inp.click();}
@@ -21619,7 +21729,7 @@ window.sarvFbmSeed=async function(code){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.nw))return;
   if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
   await sarvFbmLoad(code,true);
 
   const keyOf=v=>cfg.keyCols.map(k=>{
@@ -21630,7 +21740,10 @@ window.sarvFbmSeed=async function(code){
   const add=[];
   cfg.seedRows.forEach(arr=>{
     const v={};
-    cfg.seedCols.forEach((k,i)=>{v[k]=arr[i]===undefined?null:arr[i];});
+    /* Sirf wahi column jo aaj bhi form me hain — Excel seed me kuch aise
+       column bache hain jo table se hata diye gaye (MASTER / SLAVE PACKING
+       REQUIRED); unhe bhejna poora insert fail kar deta. */
+    cfg.seedCols.forEach((k,i)=>{if(sarvFbmField_(code,k))v[k]=arr[i]===undefined?null:arr[i];});
     if(!have.has(keyOf(v)))add.push(v);
   });
   if(!add.length)return showToast('✅ Excel sheet ki saari rows pehle se '+cfg.label+' me hain');
@@ -21647,7 +21760,7 @@ window.sarvFbmSeed=async function(code){
     // Fabric seed ke baad Brand ka link / unlinked count bhi naya ho jaata hai
     if(code==='FABRIC'&&sarvFbmSt_('BRAND').loaded)sarvFbmRenderPills_('BRAND');
   }catch(e){
-    if(sarvFbmMissing_(e))showToast('❌ Pehle FABRIC_BRAND_MASTER_MIGRATION.sql chalayein','error');
+    if(sarvFbmMissing_(e))showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
     else dbError(e);
   }
 };

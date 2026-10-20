@@ -988,6 +988,7 @@
                     <button class="btn master-sub-tab" data-subtab="fabricMasterSub" onclick="switchMasterSubTab('fabricMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#129525; Fabric Master</button>
                     <button class="btn master-sub-tab" data-subtab="brandMasterSub" onclick="switchMasterSubTab('brandMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127991;&#65039; Brand Master</button>
                     <button class="btn master-sub-tab" data-subtab="buyerMasterSub" onclick="switchMasterSubTab('buyerMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#127970; Buyer Master</button>
+                    <button class="btn master-sub-tab" data-subtab="trimRateMasterSub" onclick="switchMasterSubTab('trimRateMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128176; Trims &amp; Packing Rate</button>
                     <button class="btn master-sub-tab" data-subtab="dropdownMasterSub" onclick="switchMasterSubTab('dropdownMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#128317; Dropdown Master</button>
                     <button class="btn master-sub-tab" data-subtab="settingsSub" onclick="switchMasterSubTab('settingsSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">&#9881;&#65039; Settings</button>
                 </div>
@@ -1536,6 +1537,42 @@
                                 <tbody id="fbm_agBody"><tr><td class="fbm-empty">&#9203; Loading agency master...</td></tr></tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ═══ TRIMS & PACKING MATERIAL RATE SUB-TAB ═══
+                     Ek row = ek MATERIAL (BAG, BORA, DORI ...) ka AAJ ka
+                     Rate + Discount%. Order Form ke Bags & Trims me "SIHF
+                     Supplied" chunte hi Cost/Pc aur Disc % yahin se bharte
+                     hain — material ke naam se match, isi liye naya material
+                     yahan jodte hi Order Form use bhi uthane lagta hai.
+                     Rate pehle Brand Master me har brand par alag tha; ab
+                     ek hi jagah. Table: TRIMS_RATE_MASTER_MIGRATION.sql. -->
+                <div id="trimRateMasterSub" style="display:none;">
+                    <div id="fbm_trNote"></div>
+                    <div class="fbm-bar">
+                        <input type="text" class="form-control fbm-search" id="fbm_trSearch" placeholder="&#128269; Material, category khojein..." oninput="sarvFbmRender('TRIMRATE')" autocomplete="off">
+                        <select class="form-control fbm-sel" id="fbm_trCategory" onchange="sarvFbmRender('TRIMRATE')" title="Category"><option value="">All Categories</option></select>
+                        <select class="form-control fbm-sel" id="fbm_trStatus" onchange="sarvFbmRender('TRIMRATE')" title="Active / Inactive">
+                            <option value="A">Active only</option>
+                            <option value="">Active + Inactive</option>
+                            <option value="I">Inactive only</option>
+                        </select>
+                        <span id="fbm_trPills" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;"></span>
+                        <span style="margin-left:auto; display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <button class="fbm-btn fbm-btn-new"  id="fbm_trNewBtn"  onclick="sarvFbmNew('TRIMRATE')">&#10133; New Material</button>
+                            <button class="fbm-btn fbm-btn-imp"  id="fbm_trImpBtn"  onclick="sarvFbmImportPick('TRIMRATE')" title="Rate list Excel me ho to Save-As CSV karke yahan upload karein &mdash; headers: MATERIALS, CATEGORY, RATE, DISCOUNT%">&#128229; Import CSV</button>
+                            <button class="fbm-btn fbm-btn-csv"  id="fbm_trCsvBtn"  onclick="sarvFbmExport('TRIMRATE')">&#128190; Export CSV</button>
+                            <button class="fbm-btn fbm-btn-seed" id="fbm_trSeedBtn" onclick="sarvFbmSeed('TRIMRATE')" title="15 material (Micro Label ... Bora) daal deta hai, rate khaali. Jo material pehle se hai wo chhoot jaata hai.">&#127793; Seed Materials</button>
+                            <button class="fbm-btn" onclick="sarvFbmLoad('TRIMRATE',true)">&#128260; Refresh</button>
+                        </span>
+                    </div>
+                    <div class="fbm-cgbar" id="fbm_trCg"></div>
+                    <div class="fbm-wrap">
+                        <table class="fbm-table" id="fbm_trTable">
+                            <thead id="fbm_trHead"></thead>
+                            <tbody id="fbm_trBody"><tr><td class="fbm-empty">&#9203; Loading trims &amp; packing rates...</td></tr></tbody>
+                        </table>
                     </div>
                 </div>
 

@@ -161,6 +161,7 @@
       { label: 'Fabric Master',   go: 'MASTER', sub: 'fabricMasterSub',   tab: 'MD_FABRIC' },
       { label: 'Brand Master',    go: 'MASTER', sub: 'brandMasterSub',    tab: 'MD_BRAND' },
       { label: 'Buyer Master',    go: 'MASTER', sub: 'buyerMasterSub',    tab: 'MD_BUYER' },
+      { label: 'Trims & Packing Rate', go: 'MASTER', sub: 'trimRateMasterSub', tab: 'MD_TRIM_RATE' },
       { label: 'Dropdown Master', go: 'MASTER', sub: 'dropdownMasterSub', tab: 'MD_DROPDOWN' },
       { label: 'Geography' }, { label: 'Finance Masters' },
       { label: 'General Masters' }, { label: 'HR Masters' },

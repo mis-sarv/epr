@@ -77,6 +77,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
    aur poora-poora na bante waqt asli bhaag bhi dikhati hai. */
 .pk-hint{font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35;min-height:12px}
 .pk-hint.warn{color:#B45309;font-weight:700}
+/* Label ke saath chhota unit / packing type — "(Bora)", "(KG)" */
+.pk-unit{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);font-size:10px}
 
 /* ═══════════════════════ INPUTS ═══════════════════════ */
 .fg{margin-bottom:11px}
@@ -143,11 +145,18 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .trim-pi[disabled]{opacity:.4}
 
 /* ═══════════════════════ PRODUCT SUBTOTAL ══════════════ */
-.pst{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;background:#F0F7FF;border:1px solid #C8DDED;border-radius:9px;padding:12px 14px;margin-top:14px}
+.pst{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;background:#F0F7FF;border:1px solid #C8DDED;border-radius:9px;padding:12px 14px;margin-top:14px}
 .pst-item{text-align:center}
 .pst-lbl{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:3px}
 .pst-val{font-size:15px;font-weight:700;color:var(--navy);font-family:'DM Mono',monospace}
 .pst-val.big{font-size:18px;color:var(--green)}
+/* Bags & Trims ke neeche ka jodd — .pst jaisa, par amber (trims table ka
+   Packing Charge row isi rang ka hai), taaki "kharcha" aur "bechne ka
+   daam" (.pst) do alag dabbe dikhein. */
+.trim-sum{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;background:#FFFBEA;border:1px solid #FCD34D;border-radius:9px;padding:10px 14px;margin-top:10px}
+.trim-sum-item{text-align:center}
+.trim-sum-val{font-size:14px;font-weight:700;color:#92400E;font-family:'DM Mono',monospace}
+.trim-sum-val.big{font-size:16px}
 
 /* ═══════════════════════ ADD PRODUCT ════════════════════ */
 .btn-add{width:100%;padding:14px;background:transparent;border:2px dashed #93c5fd;border-radius:11px;color:var(--blue);font-size:13.5px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:18px;transition:background .15s}
@@ -344,6 +353,31 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .modal.xwide{max-width:860px;max-height:92vh;overflow-y:auto;text-align:left}
 .modal.xwide h3{text-align:left;margin-bottom:3px}
 .modal.xwide>p{text-align:left;margin-bottom:14px}
+/* 🎨 Design Master photo picker */
+.dpk-sel{padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12.5px;font-family:'DM Sans',sans-serif;background:var(--input);color:var(--navy)}
+.dpk-filters{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.dpk-filters label{display:block;font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
+.dpk-filters select{width:100%}
+.dpk-filters select.on{border-color:#7C3AED;background:#F5F3FF}
+@media (max-width:820px){.dpk-filters{grid-template-columns:1fr 1fr}}
+.dpk-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.dpk-bar .bmv-count{margin-right:auto}
+.dpk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;max-height:52vh;overflow-y:auto;padding:2px}
+.dpk-tile{position:relative;border:2px solid var(--border);border-radius:9px;overflow:hidden;cursor:pointer;background:#fff;transition:border-color .12s}
+.dpk-tile:hover{border-color:#A78BFA}
+.dpk-tile.sel{border-color:#7C3AED;box-shadow:0 0 0 2px #DDD6FE}
+.dpk-tile.done{opacity:.55;cursor:not-allowed}
+.dpk-tile img{width:100%;height:112px;object-fit:cover;display:block;background:#F3F4F6}
+.dpk-tile .dpk-chk{position:absolute;top:6px;left:6px;width:20px;height:20px;border-radius:5px;background:#fff;border:1.5px solid #A78BFA;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700}
+.dpk-tile.sel .dpk-chk{background:#7C3AED;border-color:#7C3AED}
+.dpk-tile .dpk-tag{position:absolute;top:6px;right:6px;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:10px;background:#7C3AED;color:#fff}
+.dpk-tile .dpk-tag.slave{background:#64748B}
+.dpk-tile .dpk-tag.done{background:#16A34A}
+.dpk-meta{padding:6px 8px;font-size:10.5px;line-height:1.35;color:var(--text)}
+.dpk-meta b{color:var(--navy);font-size:11.5px}
+.dpk-meta .m{color:#7C3AED;font-weight:600}
+.dpk-meta .s{color:var(--muted)}
+.dpk-empty{grid-column:1/-1;text-align:center;padding:30px 10px;color:var(--muted);font-size:12.5px}
 .nb-sec{font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;
   margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border)}
 .nb-sec:first-of-type{margin-top:4px}
@@ -510,7 +544,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 @media(max-width:600px){
   .g2,.g3,.g4{grid-template-columns:1fr;gap:10px}
   .sig-row{grid-template-columns:1fr}
-  .pst{grid-template-columns:1fr 1fr}
+  .pst,.trim-sum{grid-template-columns:1fr 1fr}
   .bnav{padding:10px 12px}
   .pf-btn .pf-name,.pf-btn .pf-chev{display:none}
   .pf-btn{padding:4px}
@@ -534,6 +568,103 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   body>*{display:none!important}
   body>#printDoc{display:block!important}
   .sihf-pdf *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ═══════════════════════ THEME — section-wise rang ════════════════════
+   Sirf dikhawat ki parat, sabse AAKHIR me taaki upar ke rules ko override
+   kare. Har section ka apna accent: --ac (gaadha) aur --acl (halka tint).
+   Order form ka koi id / JS isse nahi chhoota — sirf classes:
+     page sections : .sl.sec-*  +  .card.sec-*
+     product card  : <section class="psec ps-*"> (addProduct template)
+   Naya section rangna = ek .sec-x / .ps-x rule (--ac, --acl, --ic icon).
+   PDF (#printDoc / buildOrderHtml) par iska koi asar nahi. */
+.sec-order{--ac:#4F46E5;--acl:#EEF2FF;--ic:'🧾'}
+.sec-buyer{--ac:#0D9488;--acl:#ECFDF8;--ic:'🏢'}
+.sec-prod {--ac:#1A3C5E;--acl:#E8F0F8;--ic:'📦'}
+.sec-sum  {--ac:#EA580C;--acl:#FFF4EC;--ic:'🧵'}
+.sec-bill {--ac:#B45309;--acl:#FFF7E6;--ic:'💰'}
+.sec-terms{--ac:#475569;--acl:#F1F5F9;--ic:'📜'}
+.ps-item  {--ac:#D97706;--acl:#FFFBEB;--ic:'🏷️'}
+.ps-spec  {--ac:#2563EB;--acl:#EFF6FF;--ic:'📐'}
+.ps-pack  {--ac:#0891B2;--acl:#ECFEFF;--ic:'🚚'}
+.ps-photo {--ac:#7C3AED;--acl:#F5F3FF;--ic:'📸'}
+.ps-trim  {--ac:#EA580C;--acl:#FFF7ED;--ic:'🧵'}
+.ps-price {--ac:#16A34A;--acl:#F0FDF4;--ic:'💹'}
+
+body{background:
+  radial-gradient(1200px 500px at 10% -10%,#DCE8F5 0%,transparent 60%),
+  radial-gradient(900px 400px at 110% 10%,#EDE9FE 0%,transparent 55%),
+  #F2F5F9;background-attachment:fixed}
+.hdr{background:linear-gradient(120deg,#0F2942 0%,#1A3C5E 45%,#2E6DA4 100%)}
+
+/* Section label — rangeen pill + icon, aage ki lakeer usi rang me */
+.sl[class*="sec-"]{color:var(--ac);font-size:11.5px;letter-spacing:1px;margin:24px 0 9px}
+.sl[class*="sec-"]::before{content:var(--ic);display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:8px;background:var(--acl);border:1px solid color-mix(in srgb,var(--ac) 25%,transparent);
+  font-size:13px;letter-spacing:0;box-shadow:0 2px 6px color-mix(in srgb,var(--ac) 18%,transparent)}
+.sl[class*="sec-"]::after{height:2px;background:linear-gradient(90deg,color-mix(in srgb,var(--ac) 45%,transparent),transparent)}
+
+/* Page cards — upar rangeen patti, halka tint */
+.card[class*="sec-"]{border:1px solid color-mix(in srgb,var(--ac) 18%,#E0E6ED);border-top:4px solid var(--ac);
+  background:linear-gradient(180deg,var(--acl) 0,#fff 120px);
+  box-shadow:0 6px 22px -8px color-mix(in srgb,var(--ac) 30%,transparent),0 1px 3px rgba(15,23,42,.05);border-radius:14px}
+.card[class*="sec-"] .fg label{color:color-mix(in srgb,var(--ac) 70%,#1A3C5E)}
+.card[class*="sec-"] .fg input:focus,.card[class*="sec-"] .fg select:focus,.card[class*="sec-"] .fg textarea:focus,
+.psec .fg input:focus,.psec .fg select:focus,.psec .fg textarea:focus{
+  border-color:var(--ac);box-shadow:0 0 0 3px color-mix(in srgb,var(--ac) 16%,transparent)}
+
+/* Product card */
+.pc{border:1px solid #D5E0EC;border-radius:16px;box-shadow:0 10px 30px -12px rgba(26,60,94,.35),0 1px 3px rgba(15,23,42,.06);margin-bottom:18px}
+.pc-hdr{background:linear-gradient(120deg,#0F2942 0%,#1A3C5E 50%,#2E6DA4 100%);padding:13px 16px;position:relative}
+.pc-hdr::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;
+  background:linear-gradient(90deg,#D97706,#2563EB,#0891B2,#7C3AED,#EA580C,#16A34A)}
+.pc-no{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);padding:1px 9px;border-radius:999px;font-family:'DM Mono',monospace;font-size:12.5px}
+.btn-del:hover{background:rgba(220,38,38,.85);border-color:transparent}
+.pc-body{padding:14px;background:#FAFCFE}
+
+/* Product ke sub-sections — har ek apna rangeen panel */
+.psec{position:relative;background:linear-gradient(180deg,var(--acl) 0,#fff 90px);
+  border:1px solid color-mix(in srgb,var(--ac) 20%,#E5EAF0);border-left:4px solid var(--ac);
+  border-radius:12px;padding:12px 14px 14px;margin-bottom:12px;
+  box-shadow:0 3px 12px -6px color-mix(in srgb,var(--ac) 35%,transparent)}
+.psec:last-child{margin-bottom:0}
+.psec .shd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 11px;padding:0 0 8px;
+  color:var(--ac);font-size:11px;letter-spacing:.9px;border-bottom:1.5px solid color-mix(in srgb,var(--ac) 22%,transparent)}
+.psec .shd::before{content:var(--ic);display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
+  border-radius:7px;background:#fff;border:1px solid color-mix(in srgb,var(--ac) 30%,transparent);font-size:12px;letter-spacing:0;
+  box-shadow:0 2px 5px color-mix(in srgb,var(--ac) 20%,transparent)}
+.psec .fg label{color:color-mix(in srgb,var(--ac) 65%,#1A3C5E)}
+.psec .fg input:not(:read-only),.psec .fg select,.psec .fg textarea{background:#fff}
+
+/* Bags & Trims table */
+.ps-trim .tt{background:#fff;border:1px solid #FED7AA;border-radius:10px;overflow:hidden;border-collapse:separate;border-spacing:0}
+.ps-trim .tt th{background:#FFEDD5;color:#9A3412;border-bottom:2px solid #FDBA74}
+.ps-trim .tt tbody tr:hover td{background:#FFFBF5}
+
+/* Pricing ka jodd — gaadha hara "result" dabba */
+.ps-price .pst{background:linear-gradient(135deg,#ECFDF5,#F0F9FF);border:1px solid #A7F3D0;box-shadow:inset 0 1px 0 #fff}
+.ps-price .pst-val{color:#065F46}
+.ps-price .pst-val.big{color:#15803D}
+.trim-sum{background:linear-gradient(135deg,#FFF7ED,#FFFBEA)}
+
+/* Add product */
+.btn-add{background:linear-gradient(180deg,#fff,#F5F9FF);border-color:#93C5FD;box-shadow:0 4px 14px -8px rgba(46,109,164,.5)}
+.btn-add:hover{background:#EAF3FF;border-style:solid}
+
+/* Packing Materials Summary */
+.sum-title{background:linear-gradient(120deg,#C2410C,#EA580C);border-radius:12px 12px 0 0;letter-spacing:.4px}
+.sum-wrap{border-radius:0 0 12px 12px;box-shadow:0 6px 20px -10px rgba(234,88,12,.45);margin-bottom:16px}
+.sum-wrap .sum-tbl{margin-bottom:0;border-color:#FED7AA}
+.sum-tbl th{background:#FFEDD5;color:#9A3412;border-bottom-color:#FDBA74}
+
+/* Final Bill */
+.bill{background:linear-gradient(135deg,#0F2942 0%,#1A3C5E 55%,#24578A 100%);border:1px solid rgba(255,213,128,.25);
+  box-shadow:0 14px 34px -12px rgba(15,41,66,.6)}
+.bill-tot{border-top-color:rgba(255,213,128,.45)}
+
+@media (max-width:600px){
+  .psec{padding:10px 10px 12px;border-radius:10px}
+  .pc-body{padding:10px}
 }
 </style>
 </head>
@@ -633,8 +764,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 
   <!-- ORDER INFO -->
-  <div class="sl">Order Information</div>
-  <div class="card">
+  <div class="sl sec-order">Order Information</div>
+  <div class="card sec-order">
     <div class="g2">
       <div class="fg"><label>Order Date</label><input type="text" id="orderDate" placeholder="DD-MM-YYYY" readonly></div>
       <div class="fg"><label>Order No.</label><input type="text" id="orderNo" readonly></div>
@@ -658,8 +789,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 
   <!-- BUYER -->
-  <div class="sl">Buyer Details</div>
-  <div class="card">
+  <div class="sl sec-buyer">Buyer Details</div>
+  <div class="card sec-buyer">
     <div class="fg"><label>Sale Channel</label>
       <select id="saleChannel" onchange="onSaleChannelChange();syncMeta()">
         <option value="Direct Sale">Direct Sale</option>
@@ -721,7 +852,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 
   <!-- PRODUCTS -->
-  <div class="sl">Product Line Items</div>
+  <div class="sl sec-prod">Product Line Items</div>
   <div id="prodsContainer"></div>
   <button class="btn-add" onclick="addProduct()">
     <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="6.5" stroke="currentColor" stroke-width="1.5"/><path d="M7.5 4.5v6M4.5 7.5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -729,9 +860,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </button>
 
   <!-- BAGS SUMMARY -->
-  <div class="sl">Packing Materials Summary</div>
+  <div class="sl sec-sum">Packing Materials Summary</div>
   <div class="sum-title">Bags &amp; Trims — Supplied By</div>
-  <div style="overflow-x:auto">
+  <div class="sum-wrap" style="overflow-x:auto">
     <table class="sum-tbl">
       <thead><tr><th>Product</th><th>Label</th><th>Tag</th><th>Bag</th><th>Bore/Bale</th><th>Inner Box</th><th>Outer Box</th><th>Trims/Pc</th></tr></thead>
       <tbody id="bagsTbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;font-size:12px">Add a product to see summary</td></tr></tbody>
@@ -739,6 +870,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 
   <!-- BILL -->
+  <div class="sl sec-bill">Final Bill</div>
   <div class="bill">
     <div class="bill-ttl">Final Bill Summary</div>
     <div class="bill-row"><span class="bill-rl">Total Value (Excl. GST)</span><span class="bill-rv" id="bExGST">₹0.00</span></div>
@@ -752,8 +884,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
   </div>
 
   <!-- TERMS + BANK -->
-  <div class="sl">Terms &amp; Bank Details</div>
-  <div class="card">
+  <div class="sl sec-terms">Terms &amp; Bank Details</div>
+  <div class="card sec-terms">
     <div class="bank-box">
       <h4>Bank Details — SARV INDIA HOME FURNISHING</h4>
       <p><b>A/C No:</b> 50200053404079 &nbsp;|&nbsp; <b>IFSC:</b> HDFC0000171</p>
@@ -934,6 +1066,39 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
     <div class="bmv-wrap"><table class="bmv-t"><thead><tr id="bmvHead"></tr></thead><tbody id="bmvBody"></tbody></table></div>
     <div class="modal-btns" style="margin-top:14px">
       <button class="btn-close-modal" onclick="closeBrandView()">← Wapas Order Form par</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🎨 Design Master se Product Photos — Production › Design Master
+     (design_master + design_matchings, bucket sarv-pdfs) ki LIVE designs.
+     Filters ek doosre par depend karte hain (har dropdown wahi values
+     dikhata hai jo baaki filters ke baad bachi hain). Logic: "DESIGN MASTER
+     PHOTO PICKER" section (dpk*). -->
+<div class="modal-bg" id="dpkModal">
+  <div class="modal xwide" style="max-width:1180px">
+    <h3>🎨 Attach Photos from Design Master</h3>
+    <p id="dpkSub">Photos par click karke chunein (kai ek saath), phir <b>Attach Selected</b>.</p>
+    <div class="bmv-tools">
+      <input type="text" id="dpkSearch" placeholder="🔍 Design No / SKU / Party / Brand / Supplier / Type / Quality…" oninput="dpkRender()" autocomplete="off">
+      <input type="text" id="dpkMasterSearch" placeholder="🎯 Master Matching khojein (e.g. 5002 / COFFEE)" oninput="dpkRender()" autocomplete="off" style="max-width:280px">
+      <select id="dpkMode" class="dpk-sel" onchange="dpkRender()" title="Har design ki sirf MASTER photo, ya saari matchings">
+        <option value="MASTER">Master photo only</option>
+        <option value="ALL">All matchings</option>
+      </select>
+      <button type="button" class="btn-addmaster" onclick="dpkReload()" title="Database se taaza list">↻ Refresh</button>
+    </div>
+    <div class="dpk-filters" id="dpkFilters"></div>
+    <div class="dpk-bar">
+      <span class="bmv-count" id="dpkCount"></span>
+      <button type="button" class="btn-addmaster" onclick="dpkSelectVisible(true)">☑ Select all visible</button>
+      <button type="button" class="btn-addmaster" onclick="dpkSelectVisible(false)">☐ Clear selection</button>
+      <button type="button" class="btn-addmaster" onclick="dpkClearFilters()">✖ Clear filters</button>
+    </div>
+    <div class="dpk-grid" id="dpkGrid"></div>
+    <div class="modal-btns" style="margin-top:14px;flex-direction:row;gap:9px">
+      <button class="btn-close-modal" style="flex:1" onclick="dpkClose()">← Wapas</button>
+      <button class="btn-open-pdf" style="flex:2" id="dpkAttachBtn" onclick="dpkAttach()">📎 Attach Selected</button>
     </div>
   </div>
 </div>
@@ -1334,15 +1499,43 @@ const SATTAN_SIZES=['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'];
    NO) — isi liye wo SQL chalana zaroori hai, warna sirf Bora Packing Charge
    row bachti hai (table khud ye note dikhati hai).
 
-   `price` = brand_master ka rate column, jahan hai. FOAM aur Excel wale nau
-   material ka koi rate column nahi — unki cost order me bharti hai. */
+   `rate` = 💰 Trims & Packing Rate master (`trims_rate_master`) ka MATERIAL
+   naam jisse is row ka Cost/Pc + Disc % aata hai (dekhein ofTrimRate_).
+   Extra material ka `rate` nahi likha — unka apna naam (`n`) hi wahan ka
+   MATERIAL hai. Bore ka naam Pack Type se badalta hai (Bale → BALE), isi
+   liye wo ofTrimRateName_ me tay hota hai.
+
+   `yes` (optional) — jis material ka Brand Master me YES/NO column nahi,
+   uska "lagta hai ya nahi" kisi aur column se: SATTAN tab lagta hai jab
+   brand ka SATTAN SIZE bhara ho aur NA na ho.
+
+   LABEL: Brand Master ka `label` column hata diya gaya (uski jagah OUTER BOX
+   BORA aaya). Fixed "Label" row PHIR BHI rehti hai — uske apne column
+   sales_trims_log me hain aur PDF ka packing header usi par bana hai — par
+   `bm` khaali hai, to naye order me wo kabhi nahi dikhti. Purane order jisme
+   Label bhara tha wo keepFixed se waise hi khulte hain. */
 const OF_MATERIALS=[
-  {k:'label', n:'Label',           bm:'label',     fixed:true,  price:'labelPrice'},
-  {k:'tag',   n:'Tag',             bm:'tag',       fixed:true,  price:'tagPrice'},
-  {k:'bag',   n:'Bag',             bm:'bag',       fixed:true,  price:'bagPrice'},
-  {k:'bore',  n:'Bore',            bm:'bore',      fixed:true,  price:'borePrice'},
-  {k:'inner', n:'Inner Box',       bm:'inner_box', fixed:true,  price:'innerPrice'},
-  {k:'outer', n:'Outer Box',       bm:'outer_box', fixed:true,  price:'outerPrice'},
+  {k:'label', n:'Label',           bm:'',          fixed:true,  rate:'LABEL'},
+  {k:'tag',   n:'Tag',             bm:'tag',       fixed:true,  rate:'TAG'},
+  {k:'bag',   n:'Bag',             bm:'bag',       fixed:true,  rate:'BAG'},
+  // Bore / Outer Box ke Brand Master column bhi hata diye gaye (Label jaisa) —
+  // fixed row purane orders ke liye rehti hai, naye me nahi dikhti.
+  {k:'bore',  n:'Bore',            bm:'',          fixed:true,  rate:'BORA'},
+  {k:'inner', n:'Inner Box',       bm:'inner_box', fixed:true,  rate:'INNER BOX'},
+  {k:'outer', n:'Outer Box',       bm:'',          fixed:true,  rate:'OUTER BOX'},
+  /* OUTER BOX BORA ab Materials me nahi, PACKING ka hissa hai: Brand Master
+     ke Packing 1 / 2 me Master Packing Type = OUTER BOX ho tabhi uska YES/NO
+     (outer_box_bora / outer_box_bora_2) bharta hai. Row tab banti hai jab
+     order par jo packing lag rahi hai (ofActivePack_) uska Master Type OUTER
+     BOX ho aur Outer Box Bora = YES. Slave Packing Type badalne par
+     ofRenderMaterials_ dobara chalta hai, to row khud aati-jaati hai. */
+  {n:'OUTER BOX BORA',  bm:'outer_box_bora',  fixed:false,
+     yesItem:(item,id)=>{
+       const p=ofActivePack_(item,id);
+       const t=p===2?item.packType2:item.packType1;
+       const v=p===2?item.outerBoxBora2:item.outerBoxBora1;
+       return ofRateKey_(t)==='OUTER BOX' && ofRateKey_(v)==='YES';
+     }},
   {n:'MICRO LABEL',     bm:'micro_label',     fixed:false},
   {n:'SMALL LABEL',     bm:'small_label',     fixed:false},
   {n:'BIG LABEL',       bm:'big_label',       fixed:false},
@@ -1353,6 +1546,8 @@ const OF_MATERIALS=[
   {n:'INSERT CARD',     bm:'insert_card',     fixed:false},
   {n:'BARCODE STICKER', bm:'barcode_sticker', fixed:false},
   {n:'FOAM',            bm:'foam',            fixed:false},
+  {n:'SATTAN',          bm:'sattan',          fixed:false,
+     yes:v=>{ const s=String(v==null?'':v).trim(); return !!s && !/^na$/i.test(s); }},
 ];
 const OF_FIXED=OF_MATERIALS.filter(m=>m.fixed);
 const OF_EXTRA=OF_MATERIALS.filter(m=>!m.fixed);
@@ -1367,10 +1562,154 @@ const TRIMS=OF_FIXED.map(m=>({k:m.k,n:m.n}));
    "pata nahi" ko YES maan lete to migration chalne se pehle list aaj jaisi
    hi dikhti aur kisi ko pata na chalta ki filter laga hi nahi. Ab farq saaf
    dikhta hai — aur table us soorat me khud wajah likh deti hai. */
-function ofMatYes_(item,m){
+function ofMatYes_(item,m,id){
   if(!item||!m||!m.bm) return false;
+  // Jo material packing par depend karta hai (OUTER BOX BORA) — item + card ki chuni packing
+  if(typeof m.yesItem==='function') return !!m.yesItem(item,id);
   const v=item.materials?item.materials[m.bm]:undefined;
+  if(typeof m.yes==='function') return m.yes(v);
   return String(v==null?'':v).trim().toUpperCase()==='YES';
+}
+
+/* ══ TRIMS & PACKING RATE — 💰 Rate Master se Cost/Pc + Disc % ═══════════
+   Pehle har trim ka rate Brand Master me brand-dar-brand likha tha
+   (label_price, bag_price ...). Ab rate MATERIAL ka hai, ek hi jagah:
+   ERP › Master Data › 💰 Trims & Packing Rate (`trims_rate_master`).
+
+   Kab bharta hai: jab kisi row ka Supplied By "SIHF Supplied" ho (tabhi
+   Cost/Pc khulta hai) — onSupp / onExtraSupp / Item Code / Pack Type
+   badalne par. Saved order kholne par NAHI (applyProductToCard apni saved
+   value seedha likhta hai) — purana order apne rate par hi rehta hai.
+
+   Match naam se, case / extra space ignore. Rate khaali / 0 ya material
+   Inactive ho to row KHAALI chhodi jaati hai (0 likh kar galat rate ka
+   bhram nahi banaya jaata), user haath se bhar sakta hai.
+
+   TRIM_RATES ki copy fetchDrops bharta hai, aur window par wapas aane par
+   (ERP me rate badal kar lautna) ofRefreshTrimRates_ taaza karta hai. */
+let TRIM_RATES={};
+const ofRateKey_=v=>String(v==null?'':v).trim().replace(/\s+/g,' ').toUpperCase();
+// Purane naam / spelling jo rate master me doosre naam se hain.
+const OF_RATE_ALIAS={'BORE':'BORA','INNER':'INNER BOX','OUTER':'OUTER BOX','BARCODE':'BARCODE STICKER'};
+function ofSetTrimRates_(rows){
+  const map={};
+  (rows||[]).forEach(r=>{
+    if(r.is_active===false) return;
+    const k=ofRateKey_(r.material); if(!k) return;
+    map[k]={rate:Number(r.rate)||0, disc:Number(r.discount_pct)||0, category:String(r.category||'')};
+  });
+  TRIM_RATES=map;
+}
+function ofTrimRate_(name){
+  const k=ofRateKey_(name);
+  return TRIM_RATES[k]||TRIM_RATES[OF_RATE_ALIAS[k]]||null;
+}
+// Fixed trim ka rate-master naam. Bore ka Pack Type ke saath badalta hai.
+function ofTrimRateName_(id,key){
+  if(key==='bore'){
+    const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
+    return pt==='Bale'?'BALE':'BORA';
+  }
+  const m=OF_FIXED.find(x=>x.k===key);
+  return m?(m.rate||m.n):'';
+}
+/* Ek row (input id prefix `pre`) me rate likhna — sirf jab Cost/Pc khula
+   ho (SIHF Supplied). Returns true agar kuch bhara. */
+function ofFillRate_(pre,name){
+  const r=ofTrimRate_(name);
+  if(!r || !(r.rate>0)) return false;
+  const costEl=document.getElementById(pre+'-cost');
+  if(!costEl || costEl.disabled) return false;
+  costEl.value=r.rate;
+  const discEl=document.getElementById(pre+'-disc');
+  if(discEl && !discEl.disabled) discEl.value=r.disc||0;
+  return true;
+}
+// Product card ki saari khuli rows — fixed chhe + Brand Master wale extra.
+function ofApplyTrimRates_(id){
+  OF_FIXED.forEach(m=>ofFillRate_('p'+id+'-'+m.k,ofTrimRateName_(id,m.k)));
+  (extraTrimRows[id]||[]).forEach(n=>{
+    const pre='p'+id+'-xt'+n;
+    ofFillRate_(pre,document.getElementById(pre+'-mat')?.value||'');
+  });
+}
+let ofTrimRatesAt_=0;
+async function ofRefreshTrimRates_(){
+  if(!SB_READY || Date.now()-ofTrimRatesAt_<30000) return;
+  if(SARV_SKIPPED_TABLES.includes('trims_rate_master')) return;   // table hi nahi — baar-baar mat poochho
+  ofTrimRatesAt_=Date.now();
+  try{ ofSetTrimRates_(await fetchTrimRates()); }catch(e){}
+}
+
+/* ══ PACKING PCS — Packing 1 ya Packing 2 ════════════════════════════════
+   Brand Master me dono packing ka apna PACKING PCS hai. Order ka Pack Type
+   agar brand ke MASTER PACKING TYPE 2 se milta hai (aur Packing 1 se nahi)
+   to Packing 2 ka pcs, warna Packing 1 ka. Order Form ka "Box" Brand Master
+   ka "OUTER BOX" hai. */
+/* Is order par brand ki kaunsi packing lag rahi hai — 1 ya 2. Product card
+   ka "Packing" dropdown (p<id>-packNo) tay karta hai; wo sirf tab dikhta hai
+   jab brand me Packing 2 bhara ho, warna hamesha 1. Slave Packing Type,
+   Standard Qty aur OUTER BOX BORA row — teeno isi ek faisle se chalte hain. */
+function ofActivePack_(item,id){
+  const n=Number(document.getElementById('p'+id+'-packNo')?.value)||1;
+  return (n===2 && item && ofHasPack2_(item)) ? 2 : 1;
+}
+const ofHasPack2_=item=>!!(item && (item.slaveType2 || item.packPcs2 || item.packType2));
+function ofPackPcsFor_(item,id){
+  if(!item) return 0;
+  return (ofActivePack_(item,id)===2 ? item.packPcs2 : item.packPcs)||0;
+}
+/* Brand Master ka SLAVE PACKING TYPE → Order Form ke Slave Packing Type ki
+   value (Bora / Bale / Box / Roll / Loose — inhi par Roll ka NA, Bale ka
+   packing charge waghaira chalta hai). Anjaan value (jaise BAG) Title Case
+   me jaati hai aur ensureOpt_ use dropdown me jod deta hai. */
+// INNER BOX / BAG jaise type "Box" nahi bante — wo apne naam se jaate hain
+// (Inner Box, Bag), taaki BOX ka trims row galti se na aaye.
+const OF_SLAVE_TO_PT={'BORA':'Bora','BORE':'Bora','BALE':'Bale','BOX':'Box',
+  'ROLL':'Roll','LOOSE':'Loose','LOOSE PCS':'Loose'};
+function ofSlaveToPt_(v){
+  const k=ofRateKey_(v);
+  if(!k || k==='NA') return '';
+  return OF_SLAVE_TO_PT[k] || k.charAt(0)+k.slice(1).toLowerCase();
+}
+/* Slave Packing Type jinka Bags & Trims me apna material row banta hai
+   (rate 💰 Rate Master ke isi naam se). Naya type jodna = yahan ek naam. */
+const OF_SLAVE_TRIM={Bora:'BORA',Bale:'BALE',Box:'BOX'};
+const ofSlaveTrimName_=pt=>OF_SLAVE_TRIM[pt]||'';
+const ofIsSlaveTrim_=mat=>Object.values(OF_SLAVE_TRIM).includes(ofRateKey_(mat));
+
+/* "Packing" dropdown — brand me Packing 2 ho tabhi. `keep` = purane order
+   ki saved packing (applyProductToCard). */
+function ofSetupPackNo_(id,item,keep){
+  const wrap=document.getElementById('p'+id+'-packNo-wrap');
+  const sel=document.getElementById('p'+id+'-packNo');
+  if(!sel) return;
+  const two=ofHasPack2_(item);
+  const lbl=(n)=>{
+    const t=n===2?item.slaveType2:item.slaveType1, q=n===2?item.packPcs2:item.packPcs;
+    return 'Packing '+n+(t?' — '+t:'')+(q?' × '+q+' pcs':'');
+  };
+  sel.innerHTML=item?('<option value="1">'+esc(lbl(1))+'</option>'+(two?'<option value="2">'+esc(lbl(2))+'</option>':'')):'<option value="1">Packing 1</option>';
+  sel.value=(two && String(keep)==='2')?'2':'1';
+  if(wrap) wrap.style.display=two?'':'none';
+}
+/* Brand ki chuni packing ka Slave Type + Std Qty card me likhna. Type
+   khaali ho to jo pehle tha wahi rehta hai. onPackTypeChange khud nahi
+   chalata — bulane wala chalata hai (kram uska apna hai). */
+function ofApplyPackingSpec_(id,item){
+  if(!item) return;
+  const p=ofActivePack_(item,id);
+  const pt=ofSlaveToPt_(p===2?item.slaveType2:item.slaveType1);
+  const sel=document.getElementById('p'+id+'-packType');
+  if(sel && pt) ensureOpt_(sel,pt);
+}
+function onPackNoChange(id){
+  const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim();
+  const item=STANDARD_ITEMS[code]; if(!item) return;
+  ofApplyPackingSpec_(id,item);
+  onPackTypeChange(id);           // trims / packing charge / std qty naye packing se
+  ofApplySpecLock_(id);
+  calcAll();
 }
 /* `extraTrims` rows ab Brand Master se banti hain, par save hone ki jagah
    wahi hai: `full_order` JSON ka `extraTrims`, aur unka paisa fixed trims ke
@@ -1459,7 +1798,7 @@ const BR_DD_FALLBACK={
   erp_brandSattan:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'],
   erp_brandSattanType:['STANDARD','PREMIUM'],
   erp_brandMasterPackType:['BALE','BORA','OUTER BOX','ROLL','NA'],
-  erp_brandSlavePackType:['BAG','INNER BOX','LOOSE PCS','NA'],
+  erp_brandSlavePackType:['BORA','BALE','BOX','BAG','INNER BOX','LOOSE PCS','NA'],
   erp_fbmYesNo:['NO','YES','NA'],
 };
 const brDd_=key=>{
@@ -1496,6 +1835,10 @@ function ofApplySpecLock_(id){
   const isGrey=(code==='GREY/WHITE FABRIC');
   ofLockField_(document.getElementById('p'+id+'-weight'),ready&&!isGrey,
     'Blanket Weight Brand Master se locked hai');
+  // Slave Packing Type + Standard Qty — Brand Master ki chuni Packing se (ofPackLocked_)
+  const pk=ofPackLocked_(id);
+  ofLockField_(document.getElementById('p'+id+'-packType'),pk,'Slave Packing Type Brand Master (Packing 1 / 2) se locked hai');
+  ofLockField_(document.getElementById('p'+id+'-packPcs'),pk,'Slave Packing Standard Qty Brand Master (Packing 1 / 2) se locked hai');
   /* Jo field LOCK ho gaya uska poora input box CHHUP jaata hai — uski value
      upar ki patti me chali jaati hai (ofRenderSpecView_). Input DOM me rehta
      hai, sirf dikhta nahi: har reader-writer (getProd, collectPayload,
@@ -1516,7 +1859,22 @@ function ofSpecBoxes_(id){
   const isGrey=(code==='GREY/WHITE FABRIC');
   const out=OF_SPEC_LOCK.map(k=>[document.getElementById('p'+id+'-'+k),ready]);
   out.push([document.getElementById('p'+id+'-weight'),ready&&!isGrey]);
+  // Slave Packing Type + Std Qty ka box HAMESHA chhupa — sirf patti me info
+  out.push([document.getElementById('p'+id+'-packType'),true]);
+  out.push([document.getElementById('p'+id+'-packPcs'),true]);
   return out;
+}
+/* Slave Packing Type + Std Qty tabhi locked jab Brand Master unhe deta ho —
+   chuni Packing (1 / 2) me Slave Packing Type bhara ho (ya GREY/WHITE
+   FABRIC = Roll). Brand me khaali ho to dono box khule: haath se bharein. */
+function ofPackLocked_(id){
+  if(!Object.keys(STANDARD_ITEMS).length) return false;
+  const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim();
+  const item=STANDARD_ITEMS[code];
+  if(!item) return false;
+  if(code.toUpperCase()==='GREY/WHITE FABRIC') return true;
+  const p=ofActivePack_(item,id);
+  return !!ofSlaveToPt_(p===2?item.slaveType2:item.slaveType1);
 }
 
 /* ── Locked specs ki compact patti ───────────────────────────────────────
@@ -1561,6 +1919,18 @@ function ofRenderSpecView_(id){
   if(hidden.sattanType||hidden.sattanSize)
     out.push(chip('Sattan',[v('sattanType'),v('sattanSize')].filter(Boolean).join(' · ')));
   if(hidden.moq)      out.push(chip('MOQ',v('moq')));
+  /* Slave Packing — sirf info. Brand Master me Slave Packing Type bhara na
+     ho to "—" (khaali chip), default "Bora" nahi dikhaya jaata — warna lagta
+     ki brand me Bora likha hai. */
+  if(hidden.packType){
+    const q=v('packPcs');
+    // Brand Master ka item jisme Slave Type khaali hai → "—". Purana saved
+    // order (jiska item Brand Master me nahi) apna saved type dikhata hai.
+    const it=STANDARD_ITEMS[code];
+    const brandBlank=!!it && ('slaveType1' in it) && !ofPackLocked_(id);
+    const t=brandBlank?'':v('packType').toUpperCase();
+    out.push(chip('Slave Packing',[t,(q&&q!=='NA')?q+' pcs / pack':''].filter(Boolean).join(' · ')));
+  }
   host.innerHTML=out.join('');
 }
 // Saare khule product cards par lock dobara lagana. fetchDrops ke baad
@@ -1582,6 +1952,8 @@ function ofClearSpecs_(id){
     const e=document.getElementById('p'+id+'-'+k); if(e) e.value='';
   });
   const h=document.getElementById('p'+id+'-sattan'); if(h) h.value='';
+  // Packing 1 / 2 dropdown bhi wapas (pichhle brand ki packing na bache)
+  ofSetupPackNo_(id,null,1);
   suppressCombo=false;
   ofApplySpecLock_(id);
   calcAll();
@@ -2010,6 +2382,9 @@ const fetchBuyerMaster =()=>fetchMasterSafe('buyer_master',
 const fetchAgencyMaster=()=>fetchMasterSafe('agency_master',
   'agency_name,contact_person,mobile_no,is_active','agency_name');
 const fetchBrandMaster =()=>fetchMasterSafe('brand_master','*','item_code');
+// 💰 Trims & Packing Rate — table na ho (TRIMS_RATE_MASTER_MIGRATION.sql abhi
+// nahi chali) to khaali list; Order Form chalta rehta hai, bas rate auto nahi bharte.
+const fetchTrimRates   =()=>fetchMasterSafe('trims_rate_master','material,category,rate,discount_pct,is_active','material');
 
 /* ══ Brand Master  ->  Order Form ka item ══════════════════════════════
    `sales_standard_items` aur `brand_master` ek hi cheez ki do copy thin:
@@ -2070,15 +2445,19 @@ function bmToItem(r){
     sattan:   bmSattan(r.sattan,r.sattan_type),
     moq:      bmNum(r.moq),
     emboss:   BM_EMBOSS[String(r.emboss||'').trim().toUpperCase()]||'',
-    price:      n(r.price_per_kg),
+    /* Packing 1 / Packing 2 ka apna pcs + type — Pack Type ke hisaab se
+       ofPackPcsFor_ inme se ek chunta hai. Rate (price/kg, trim rates) ab
+       Brand Master me nahi hain: trims 💰 Rate Master se (ofTrimRate_). */
     packPcs:    n(r.packing_pcs),
-    labelPrice: n(r.label_price),
-    tagPrice:   n(r.tag_price),
-    bagPrice:   n(r.bag_price),
-    borePrice:  n(r.bore_price),
-    innerPrice: n(r.inner_box_price),
-    outerPrice: n(r.outer_box_price),
-    balePrice:  n(r.bale_price),
+    packPcs2:   n(r.packing_pcs_2),
+    packType1:  String(r.master_pack_type||'').trim(),
+    packType2:  String(r.master_pack_type_2||'').trim(),
+    // Slave Packing Type — Order Form ke Slave Packing Type (locked) me jaata hai
+    slaveType1: String(r.slave_pack_type||'').trim(),
+    slaveType2: String(r.slave_pack_type_2||'').trim(),
+    // Master Packing Type = OUTER BOX par hi bharte hain (Packing 1 / 2)
+    outerBoxBora1: String(r.outer_box_bora||'').trim(),
+    outerBoxBora2: String(r.outer_box_bora_2||'').trim(),
     /* ── Bags & Trims ki material list ──────────────────────────────
        Har material ka YES/NO jaisa hai waisa, ek `materials` object me.
        Order Form ka Bags & Trims table isi se banta hai: jo YES hai usi
@@ -2093,7 +2472,7 @@ function bmToItem(r){
        Jo column database me abhi nahi hai (BRAND_TRIMS_MIGRATION.sql
        chalne se pehle ke saat) wo yahan undefined aata hai — ofMatYes_
        use NO padhta hai. */
-    materials: OF_MATERIALS.reduce((o,m)=>{ o[m.bm]=r[m.bm]; return o; },{})
+    materials: OF_MATERIALS.reduce((o,m)=>{ if(m.bm) o[m.bm]=r[m.bm]; return o; },{})
   };
 }
 
@@ -2101,7 +2480,7 @@ function bmToItem(r){
 // emboss catalog + next order no + Buyer Master — all in parallel.
 async function fetchDrops(){
   try{
-    const [ddRows, siRows, ordRows, embRes, nxRes, bmRows, amRows, brRows]=await Promise.all([
+    const [ddRows, siRows, ordRows, embRes, nxRes, bmRows, amRows, brRows, trRows]=await Promise.all([
       /* Ye do jaan-boojh kar `fetchMasterSafe` me hain, `fetchAllRows`
          me nahi — pehle inka error poore boot ko le dooba deta tha:
            · `sales_dropdowns` na ho to `DROPS` ki apni default list
@@ -2118,8 +2497,10 @@ async function fetchDrops(){
       SB.rpc('sales_next_order_no'),
       fetchBuyerMaster(),
       fetchAgencyMaster(),
-      fetchBrandMaster()
+      fetchBrandMaster(),
+      fetchTrimRates()
     ]);
+    ofSetTrimRates_(trRows); ofTrimRatesAt_=Date.now();
     if(embRes.error) throw embRes.error;
     if(nxRes.error) throw nxRes.error;
 
@@ -2150,14 +2531,9 @@ async function fetchDrops(){
         moq:      String(r.moq||''),
         emboss:   String(r.emboss||'NO'),
         price:    Number(r.price_per_kg)||0,
-        packPcs:  Number(r.packing_pcs)||0,
-        labelPrice: Number(r.label_price)||0,
-        tagPrice:   Number(r.tag_price)||0,
-        bagPrice:   Number(r.bag_price)||0,
-        borePrice:  Number(r.bore_price)||0,
-        innerPrice: Number(r.inner_box_price)||0,
-        outerPrice: Number(r.outer_box_price)||0,
-        balePrice:  Number(r.bale_price)||0
+        packPcs:  Number(r.packing_pcs)||0
+        // Is purani table ke trim rate (label_price ...) ab nahi padhe jaate —
+        // trim rate 💰 Trims & Packing Rate master se aata hai (ofTrimRate_).
       };
     });
 
@@ -2493,13 +2869,40 @@ function nmActor_(){
    (wo helper yahan available nahi hai, isi liye chhota version). */
 async function nmInsert_(table,vals){
   const full=Object.assign({},vals,{is_active:true,rev_no:1,created_by:nmActor_(),updated_by:nmActor_()});
-  let r=await SB.from(table).insert(full).select().maybeSingle();
-  if(r.error && /column|does not exist|schema cache/i.test(r.error.message||'')){
-    console.warn('[ORDER FORM] '+table+': extra columns skipped —',r.error.message);
-    r=await SB.from(table).insert(Object.assign({},vals,{is_active:true})).select().maybeSingle();
-  }
+  const r=await nmWriteDropMissing_(body=>SB.from(table).insert(body).select().maybeSingle(),full,table);
   if(r.error) throw r.error;
   return r.data||full;
+}
+/* Database me jo column ABHI nahi hai (migration nahi chali — jaise
+   "Could not find the 'outer_box_bora_2' column of 'brand_master' in the
+   schema cache") — sirf WAHI column hata kar dobara bhejta hai, baaki sab
+   save hota hai. Pehle poori row ruk jaati thi (Edit hi nahi hota tha).
+   Kaunsa column chhuta aur kaunsi SQL chalani hai, toast batata hai.
+   store-core.js ke sbSaveDroppingMissingColumns_ jaisa hi niyam. */
+const NM_MIGRATION_OF={outer_box_bora:'BRAND_OUTER_BOX_MIGRATION.sql',outer_box_bora_2:'BRAND_OUTER_BOX_MIGRATION.sql',
+  packing_pcs_2:'TRIMS_RATE_MASTER_MIGRATION.sql'};
+function nmMissingCol_(err){
+  const m=String(err&&err.message||'');
+  const hit=m.match(/Could not find the '([^']+)' column/i)||m.match(/column "([^"]+)" of relation/i)
+    ||m.match(/column (?:[A-Za-z0-9_]+\.)?([A-Za-z0-9_]+) does not exist/i);
+  return hit?hit[1]:'';
+}
+async function nmWriteDropMissing_(attempt,payload,table){
+  let body=Object.assign({},payload), res=await attempt(body);
+  const dropped=[];
+  for(let i=0;i<15 && res.error;i++){
+    const col=nmMissingCol_(res.error);
+    if(!col || !(col in body)) break;
+    delete body[col]; dropped.push(col);
+    res=await attempt(body);
+  }
+  if(dropped.length && !res.error){
+    const sqls=[...new Set(dropped.map(c=>NM_MIGRATION_OF[c]).filter(Boolean))];
+    console.warn('[ORDER FORM] '+(table||'')+' saved WITHOUT column(s):',dropped.join(', '));
+    setTimeout(()=>toast('⚠️ Save ho gaya, par ye field database me abhi nahi hain: '+dropped.join(', ')
+      +(sqls.length?' — Supabase me '+sqls.join(' + ')+' chalayein':'')),900);
+  }
+  return res;
 }
 async function nmArchive_(code,row){
   if(!row) return;
@@ -2612,14 +3015,18 @@ async function saveNewBuyer(){
    banane ka raasta isi form me hona zaroori hai — warna ek naye SKU ka order
    lene ke liye ERP kholna padta aur Order Form beech me chhod dena padta.
 
-   SAARE 45 column, wahi kram aur wahi grouping jo ERP › Master Data ›
+   SAARE column, wahi kram aur wahi grouping jo ERP › Master Data ›
    🏷️ Brand Master ke form me hai (store-core.js ka SARV_BR_FIELDS). Neeche
    ki table usi ki copy hai — ek jagah column juda to yahan bhi jodna hai,
    warna naya brand yahan se adhoora banega.
 
    Zaroori sirf teen: ITEM CODE, FABRIC NAME, CATEGORY — bilkul jaisa ERP me
-   `req:1` hai. Rate / packing / trims khaali chhode ja sakte hain; 0 ka
-   matlab "set nahi hai" aur Order Form khud bhi 0 ko skip karta hai. */
+   `req:1` hai. Packing / trims khaali chhode ja sakte hain; 0 ka matlab
+   "set nahi hai" aur Order Form khud bhi 0 ko skip karta hai.
+
+   RATE yahan nahi hain (pehle "💰 Rates" group tha): trim / packing
+   material ka rate ab ERP › 💰 Trims & Packing Rate master me material-wise
+   hai (ofTrimRate_). Packing Pcs dono Packing group me apna-apna hai. */
 const BR_YN='erp_fbmYesNo';
 const BR_FORM_FIELDS=[
   {g:'🏷️ Identity', k:'item_code',       l:'Item Code',        t:'text', req:1, uc:1, w:2, dl:1, ph:'Brand / SKU ka naam — unique',
@@ -2637,26 +3044,25 @@ const BR_FORM_FIELDS=[
   {k:'emboss',       l:'Emboss',          t:'dd', dd:BR_YN},
   {k:'notes',        l:'Notes',           t:'text', w:2},
 
-  {g:'💰 Rates (Order Form me aate hain)', k:'price_per_kg', l:'Price / KG', t:'num', step:'0.01'},
-  {k:'packing_pcs',    l:'Packing Pcs',    t:'num', hint:'Order Form ka Packing (pcs/pack)'},
-  {k:'label_price',    l:'Label Price',    t:'num', step:'0.01'},
-  {k:'tag_price',      l:'Tag Price',      t:'num', step:'0.01'},
-  {k:'bag_price',      l:'Bag Price',      t:'num', step:'0.01'},
-  {k:'bore_price',     l:'Bore Price',     t:'num', step:'0.01'},
-  {k:'inner_box_price',l:'Inner Box Price',t:'num', step:'0.01'},
-  {k:'outer_box_price',l:'Outer Box Price',t:'num', step:'0.01'},
-  {k:'bale_price',     l:'Bale Price',     t:'num', step:'0.01'},
-
-  {g:'📦 Packing 1', k:'master_pack_req',  l:'Master Packing Required', t:'dd', dd:BR_YN},
+  /* Packing 1 / 2 — bharne ke kram me: Slave Packing Type → ek slave pack
+     me kitne pcs → kis Master Packing me jaate hain. "Master / Slave Packing
+     Required" (YES/NO) hata diye gaye — Type bhara hai to packing lagti hai,
+     khaali / NA hai to nahi; alag YES/NO sirf do jagah ek hi baat thi. */
+  {g:'📦 Packing 1', k:'slave_pack_type',  l:'Slave Packing Type',  t:'dd', dd:'erp_brandSlavePackType'},
+  {k:'packing_pcs', l:'Slave Packing Standard Quantity', t:'num', hint:'Ek slave pack me kitne pcs — Order Form ka "Slave Packing Standard Qty" (Packing 1)'},
   {k:'master_pack_type', l:'Master Packing Type', t:'dd', dd:'erp_brandMasterPackType'},
-  {k:'slave_pack_req',   l:'Slave Packing Required', t:'dd', dd:BR_YN},
-  {k:'slave_pack_type',  l:'Slave Packing Type',  t:'dd', dd:'erp_brandSlavePackType'},
+  /* showIf: sirf tab dikhta (aur ZAROORI) hai jab Master Packing Type =
+     OUTER BOX. Chhupa ho to save par khaali (null) jaata hai — taaki type
+     badalne par purana YES Order Form me galat row na banaye. brShowIf_. */
+  {k:'outer_box_bora', l:'Outer Box Bora', t:'dd', dd:BR_YN, showIf:{k:'master_pack_type',v:'OUTER BOX'},
+     hint:'YES = Order Form ke Bags & Trims me "OUTER BOX BORA" row aayegi'},
 
   {g:'📦 Packing 2 <span style="font-weight:600;text-transform:none;color:#6B7897">— doosra tareeka, khaali chhoda ja sakta hai</span>',
-     k:'master_pack_req_2',  l:'Master Packing Required 2', t:'dd', dd:BR_YN},
+     k:'slave_pack_type_2',  l:'Slave Packing Type 2',  t:'dd', dd:'erp_brandSlavePackType'},
+  {k:'packing_pcs_2', l:'Slave Packing Standard Quantity 2', t:'num', hint:'Order ka Slave Packing Type = Master Packing Type 2 ho to Order Form me yahi Std Qty aati hai'},
   {k:'master_pack_type_2', l:'Master Packing Type 2', t:'dd', dd:'erp_brandMasterPackType'},
-  {k:'slave_pack_req_2',   l:'Slave Packing Required 2', t:'dd', dd:BR_YN},
-  {k:'slave_pack_type_2',  l:'Slave Packing Type 2',  t:'dd', dd:'erp_brandSlavePackType'},
+  {k:'outer_box_bora_2', l:'Outer Box Bora 2', t:'dd', dd:BR_YN, showIf:{k:'master_pack_type_2',v:'OUTER BOX'},
+     hint:'YES = jab order par Packing 2 lage, Bags & Trims me "OUTER BOX BORA" row'},
 
   /* Material list — Order Form ke Bags & Trims ki rows yahi se banti hain
      (jo YES ho wahi row). Pehle saat (Label … Foam) BRAND_TRIMS_MIGRATION.sql
@@ -2664,12 +3070,9 @@ const BR_FORM_FIELDS=[
      dobara insert karta hai, to naya brand phir bhi save hota hai — bas uski
      material list khaali rehti hai. */
   {g:'🏷️ Materials / Labels / Tags / Trims <span style="font-weight:600;text-transform:none;color:#6B7897">— YES wale hi Order Form ke Bags &amp; Trims me row bante hain</span>',
-     k:'label', l:'Label', t:'dd', dd:BR_YN},
-  {k:'tag',       l:'Tag',        t:'dd', dd:BR_YN, hint:'Tag 1 / 2 / 3 isse alag hain'},
+     k:'tag',       l:'Tag',        t:'dd', dd:BR_YN, hint:'Tag 1 / 2 / 3 isse alag hain'},
   {k:'bag',       l:'Bag',        t:'dd', dd:BR_YN},
-  {k:'bore',      l:'Bore',       t:'dd', dd:BR_YN},
   {k:'inner_box', l:'Inner Box',  t:'dd', dd:BR_YN},
-  {k:'outer_box', l:'Outer Box',  t:'dd', dd:BR_YN},
   {k:'foam',      l:'Foam',       t:'dd', dd:BR_YN, hint:'Iska koi rate column nahi'},
   {k:'micro_label', l:'Micro Label', t:'dd', dd:BR_YN},
   {k:'small_label',     l:'Small Label',     t:'dd', dd:BR_YN},
@@ -2727,13 +3130,40 @@ function brBuildForm_(){
            +(f.uc?' style="text-transform:uppercase"':'')+'>'
            +(f.dl?'<datalist id="dl-'+id+'"></datalist>':'');
     }
-    html+='<div class="nb-f'+(f.w===2?' w2':'')+'">'
-       +'<label>'+f.l+req+'</label>'+inner
+    // showIf field dikhe to zaroori hai — isi liye star bhi
+    const star=req||(f.showIf?' <span class="mstar">★</span>':'');
+    html+='<div class="nb-f'+(f.w===2?' w2':'')+'" id="w_'+id+'">'
+       +'<label>'+f.l+star+'</label>'+inner
        +(f.hint?'<div class="hint">'+f.hint+'</div>':'')
        +'</div>';
   });
   if(open) html+='</div>';
   host.innerHTML=html;
+  // showIf ke dependency dropdown badlein to field dikhe / chhupe
+  BR_FORM_FIELDS.filter(f=>f.showIf).forEach(f=>{
+    document.getElementById(brFieldId_(f.showIf.k))?.addEventListener('change',brShowIf_);
+  });
+  brShowIf_();
+}
+/* ── showIf: ek field sirf tab jab doosre dropdown me khaas value ho ──
+   (jaise Outer Box Bora sirf Master Packing Type = OUTER BOX par). Chhupa
+   field save par null jaata hai; dikhta field khaali ho to save rukta hai.
+   Naya conditional field = BR_FORM_FIELDS me `showIf:{k,v}`. */
+function brShowIfOn_(f){
+  if(!f.showIf) return true;
+  const v=String(document.getElementById(brFieldId_(f.showIf.k))?.value||'').trim().toUpperCase();
+  return v===String(f.showIf.v).toUpperCase();
+}
+function brShowIf_(){
+  BR_FORM_FIELDS.filter(f=>f.showIf).forEach(f=>{
+    const w=document.getElementById('w_'+brFieldId_(f.k));
+    if(w) w.style.display=brShowIfOn_(f)?'':'none';
+  });
+}
+// Dikh rahe showIf field jo khaali hain — save se pehle
+function brShowIfMissing_(){
+  return BR_FORM_FIELDS.filter(f=>f.showIf && brShowIfOn_(f)
+    && !String(document.getElementById(brFieldId_(f.k))?.value||'').trim()).map(f=>f.l);
 }
 
 // Kis product card se button dabaya gaya — save ke baad usi me naya code
@@ -2912,12 +3342,13 @@ function brFillForm_(row,isCopy){
     if(f.t==='num' && v!=='') v=bmNum(v);
     if(el.tagName==='SELECT') ensureOpt_(el,v); else el.value=v;
   });
+  brShowIf_();
 }
 function brReadForm_(){
   const get=k=>String(document.getElementById(brFieldId_(k))?.value||'').trim();
   const vals={};
   BR_FORM_FIELDS.forEach(f=>{
-    const raw=get(f.k);
+    const raw=brShowIfOn_(f)?get(f.k):'';   // chhupa showIf field = null
     vals[f.k]=f.t==='num'?(raw===''?null:(Number(raw)||0)):nmNull_(f.uc?raw.toUpperCase():raw);
   });
   return vals;
@@ -2971,6 +3402,7 @@ async function brSaveExisting_(){
   if(!vals.item_code) missing.push('Item Code');
   if(!vals.fabric_name) missing.push('Fabric Name');
   if(!vals.category) missing.push('Category');
+  missing.push(...brShowIfMissing_());
   if(missing.length) return nmErr_('nbrError','Ye field zaroori hain: '+missing.join(', '));
   const clash=BRAND_MASTER_ROWS.find(r=>String(r.id)!==String(base.id) && nmKey_(r.item_code)===nmKey_(vals.item_code));
   if(clash) return nmErr_('nbrError','"'+clash.item_code+'" pehle se Brand Master me hai — doosra Item Code dein.');
@@ -2987,7 +3419,7 @@ async function brSaveExisting_(){
     await bmArchive_(base,mode,reason,changed);
     const upd=Object.assign({},vals,{updated_by:nmActor_(),updated_at:new Date().toISOString()});
     if(mode==='REVISE'){ upd.rev_no=(base.rev_no||1)+1; upd.rev_reason=reason; }
-    const {data,error}=await SB.from('brand_master').update(upd).eq('id',base.id).select().maybeSingle();
+    const {data,error}=await nmWriteDropMissing_(body=>SB.from('brand_master').update(body).eq('id',base.id).select().maybeSingle(),upd,'brand_master');
     if(error) throw error;
     if(!data) throw new Error('Row update nahi hui — shayad kisi ne delete kar di, ya likhne ki permission nahi. List Refresh karein.');
     bmPutRow_(data);
@@ -3112,7 +3544,7 @@ async function bmRestore_(revId){
     const why='REV '+(data.rev_no||1)+' se restore';
     await bmArchive_(cur,'REVISE',why,changed);
     const upd=Object.assign({},vals,{rev_no:(cur.rev_no||1)+1,rev_reason:why,updated_by:nmActor_(),updated_at:new Date().toISOString()});
-    const u=await SB.from('brand_master').update(upd).eq('id',cur.id).select().maybeSingle();
+    const u=await nmWriteDropMissing_(body=>SB.from('brand_master').update(body).eq('id',cur.id).select().maybeSingle(),upd,'brand_master');
     if(u.error) throw u.error;
     if(!u.data) throw new Error('Restore nahi hua — permission / Refresh');
     bmPutRow_(u.data);
@@ -3148,6 +3580,9 @@ function ofPlaceBackButton_(P,prodId){
 }
 // Sidebar se khud Order Form par aa gaye → ERP me pada "wapas" button bekaar, hata do
 window.addEventListener('focus',()=>{ try{ if(window.parent!==window) window.parent.document.getElementById(BMV_BACK_ID)?.remove(); }catch(e){} });
+// ERP me 💰 Trims & Packing Rate badal kar lautne par naye rate turant (30s me ek baar).
+window.addEventListener('focus',()=>{ ofRefreshTrimRates_(); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) ofRefreshTrimRates_(); });
 window.ofBackFromBrandMaster=function(prodId){
   if(SB_READY) fetchDrops();     // Brand Master me jo joda / badla wo Item Code list me
   ofFocusProduct_(prodId);
@@ -3166,7 +3601,7 @@ function ofFocusProduct_(prodId){
 let bmvTargetProd_=null;
 const BMV_COLS=[['item_code','Item Code'],['fabric_name','Fabric'],['category','Category'],['blanket_weight','Weight'],
   ['size','Size'],['bed_size','Bed Size'],['blanket_ply','Ply'],['sattan','Sattan'],['sattan_type','Sattan Type'],
-  ['moq','MOQ'],['emboss','Emboss'],['price_per_kg','Price/KG'],['packing_pcs','Packing Pcs']];
+  ['moq','MOQ'],['emboss','Emboss'],['packing_pcs','Slave Pkg Std Qty'],['packing_pcs_2','Slave Pkg Std Qty 2']];
 async function openBrandView(prodId){
   bmvTargetProd_=prodId;
   document.getElementById('bmvSearch').value='';
@@ -3259,9 +3694,11 @@ async function saveNewBrand(){
   if(!code) missing.push('Item Code');
   if(!get('fabric_name')) missing.push('Fabric Name');
   if(!get('category')) missing.push('Category');
-  if(missing.length){
-    nmErr_('nbrError','Ye field zaroori hain: '+missing.join(', '));
-    document.getElementById(brFieldId_(missing[0]==='Item Code'?'item_code':missing[0]==='Fabric Name'?'fabric_name':'category'))?.focus();
+  const condMissing=brShowIfMissing_();   // jaise Outer Box Bora (Master Type = OUTER BOX)
+  if(missing.length||condMissing.length){
+    nmErr_('nbrError','Ye field zaroori hain: '+missing.concat(condMissing).join(', '));
+    if(missing.length) document.getElementById(brFieldId_(missing[0]==='Item Code'?'item_code':missing[0]==='Fabric Name'?'fabric_name':'category'))?.focus();
+    else{ const f=BR_FORM_FIELDS.find(x=>x.l===condMissing[0]); if(f) document.getElementById(brFieldId_(f.k))?.focus(); }
     return;
   }
   const clash=BRAND_MASTER_ROWS.find(r=>nmKey_(r.item_code)===nmKey_(code));
@@ -3275,7 +3712,7 @@ async function saveNewBrand(){
   try{
     const vals={};
     BR_FORM_FIELDS.forEach(f=>{
-      const raw=get(f.k);
+      const raw=brShowIfOn_(f)?get(f.k):'';   // chhupa showIf field = null
       if(f.t==='num'){
         // Khaali number ko 0 nahi, null — 0 ka matlab yahan "set nahi hai"
         // hota hai aur Order Form use skip karta hai, par null hi us column
@@ -3451,7 +3888,10 @@ function onItemCodeSelect(id, code){
      saare trims 'na' kar deta (wo jaan-boojh kar neeche, suppressCombo
      hatne ke BAAD, ek hi baar bulaya jaata hai). */
   onEmbossChange(id);
-  const pEl=document.getElementById('p'+id+'-price'); if(pEl) pEl.value=item.price;
+  /* Price/KG ab Brand Master me nahi hai — sirf purani sales_standard_items
+     row se aata hai. Na ho to jo type kiya hai wahi rehta hai (pehle 0 se
+     mit jaata tha). */
+  const pEl=document.getElementById('p'+id+'-price'); if(pEl && item.price) pEl.value=item.price;
   // GREY/WHITE FABRIC → Design "NA", Pack Type "Roll", PLY "NA", label "GSM", input "GSM"
   const wLbl=document.getElementById('p'+id+'-weight-lbl');
   if(code==='GREY/WHITE FABRIC'){
@@ -3464,6 +3904,12 @@ function onItemCodeSelect(id, code){
     if(wLbl) wLbl.textContent='Final Weight (KG)';
     if(wEl){wEl.type='number';wEl.disabled=false;wEl.style.background='';wEl.style.color='';wEl.style.fontStyle='';wEl.style.textAlign='';}
   }
+  /* Packing 1 / 2 ka dropdown (sirf jab brand me Packing 2 ho), phir us
+     packing ka Slave Packing Type card me — onPackTypeChange se PEHLE, taaki
+     wahi type trims / packing charge / std qty tay kare. GREY/WHITE FABRIC
+     Roll hi rehta hai. */
+  ofSetupPackNo_(id,item,1);
+  if(code!=='GREY/WHITE FABRIC') ofApplyPackingSpec_(id,item);
   suppressCombo=false;
   // Trigger Pack Type change to auto-set suppliers (this enables cost inputs for SIHF-supplied trims)
   onPackTypeChange(id);
@@ -3473,19 +3919,13 @@ function onItemCodeSelect(id, code){
      faisla chadhna chahiye, na ki ulta. Aur cost auto-fill se PEHLE, taaki
      wo sirf un rows par chale jo is brand par asli me hain. */
   ofRenderMaterials_(id);
-  // Auto-fill Packing (pcs/pack) from Standard Items — AFTER onPackTypeChange so it doesn't get blanked
+  // Auto-fill Slave Packing Standard Qty — chuni Packing (1 / 2) se.
+  // AFTER onPackTypeChange so it doesn't get blanked.
   const ppEl=document.getElementById('p'+id+'-packPcs');
-  if(ppEl && item.packPcs){ ppEl.value=item.packPcs; calcPackQty(id); }
-  // Auto-fill trim Cost/Pc from Standard Items (after suppliers are set so cost inputs are enabled)
-  const curPt=document.getElementById('p'+id+'-packType')?.value||'Bora';
-  const trimPriceMap={label:'labelPrice',tag:'tagPrice',bag:'bagPrice',bore:(curPt==='Bale'?'balePrice':'borePrice'),inner:'innerPrice',outer:'outerPrice'};
-  Object.keys(trimPriceMap).forEach(k=>{
-    const priceKey=trimPriceMap[k];
-    if(item[priceKey]){
-      const costEl=document.getElementById('p'+id+'-'+k+'-cost');
-      if(costEl && !costEl.disabled) costEl.value=item[priceKey];
-    }
-  });
+  const ppv=ofPackPcsFor_(item,id);
+  if(ppEl && ppv){ ppEl.value=ppv; calcPackQty(id); }
+  // Trim Cost/Pc + Disc % — 💰 Rate Master se (after suppliers are set so cost inputs are enabled)
+  ofApplyTrimRates_(id);
   /* Lock dobara lagta hai, auto-fill ke BAAD — isi kram se kaam hota hai:
      setV()/setS() readonly field me bhi value likh dete hain, aur GREY/WHITE
      FABRIC wali branch upar weight ko khol/band karti hai. Pehle lock lagate
@@ -3551,12 +3991,16 @@ function addProduct(){
     <div class="pc-hdr">
       <div class="pc-title">
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="11" rx="2" stroke="white" stroke-width="1.4"/><path d="M5 3V2.5A1.5 1.5 0 0 1 6.5 1h3A1.5 1.5 0 0 1 11 2.5V3M5.5 7.5h5M5.5 10h3" stroke="white" stroke-width="1.4" stroke-linecap="round"/></svg>
-        Product #${id}
+        Product <span class="pc-no">#${id}</span>
       </div>
       <button class="btn-del" onclick="removeProd(${id})">🗑 Remove</button>
     </div>
     <div class="pc-body">
-      <div class="shd" style="color:var(--amber)">Item Code — Auto Fill</div>
+      <!-- Har sub-section apne <section class="psec ps-*"> me — rang aur
+           icon CSS ke THEME block se aate hain (--ac / --acl). Naya section
+           = naya psec + ek ps-* rule. Andar ke ids / markup wahi hain. -->
+      <section class="psec ps-item">
+      <div class="shd">Item Code — Auto Fill</div>
       <div class="fg">
         <div class="fg-hd">
           <label>Item Code <span class="mstar">★</span></label>
@@ -3575,6 +4019,8 @@ function addProduct(){
         </div>
         <div class="lock-note">★ Sirf Brand Master ki list me se — neeche ki <b>Specifications</b> isi se bharti hain aur <b>locked</b> hain. Naya brand? <b>➕ Add New Brand Item</b> dabayein.</div>
       </div>
+      </section>
+      <section class="psec ps-spec">
       <!-- Specifications: saari value Brand Master se aati hain aur locked
            rehti hain (ofApplySpecLock_). Pricing & Delivery jaan-boojh kar
            khuli rehti hai — rate, discount, qty aur GST har order ke apne
@@ -3656,6 +4102,27 @@ function addProduct(){
              aur yahi select 🎨 Emboss Design Photos section kholta hai. -->
         <div class="fg"><label>Emboss <span style="font-size:9px;font-weight:600;color:var(--muted);text-transform:none">— badal sakte hain</span></label>
           <select id="p${id}-emboss" onchange="onEmbossChange(${id})"><option value="NO">NO</option><option value="YES">YES</option><option value="NA">NA</option><option value="Decision Pending">Decision Pending</option></select></div>
+        <!-- Slave Packing Type + Standard Qty — INPUT BOX KABHI NAHI DIKHTE.
+             Value Brand Master ke Packing 1 / 2 se aati hai aur sirf upar ki
+             Specifications patti me "Slave Packing" chip ban kar dikhti hai
+             (Item Code chunne par). Box DOM me chhupe rehte hain kyunki calc,
+             save, Edit aur PDF unhi ids (p<id>-packType / -packPcs) ko padhte
+             hain — ofSpecBoxes_ inhe hamesha "hidden" maanta hai. -->
+        <div class="fg" style="display:none"><label>Slave Packing Type</label>
+          <select id="p${id}-packType" onchange="onPackTypeChange(${id})">
+            <option value="Bora">Bora</option>
+            <option value="Bale">Bale</option>
+            <option value="Box">Box</option>
+            <option value="Roll">Roll</option>
+            <option value="Loose">Loose</option>
+          </select>
+        </div>
+        <div class="fg" style="display:none"><label>Slave Packing Standard Qty</label><input type="number" id="p${id}-packPcs" placeholder="pcs per pack" min="0" oninput="calcPackQty(${id})"></div>
+        <!-- Brand ke DO packing hon (Packing 2 bhara ho) tabhi dikhta hai —
+             order kaunsi packing par jaayega. Locked nahi: order ka faisla
+             hai. ofSetupPackNo_ / onPackNoChange. -->
+        <div class="fg" id="p${id}-packNo-wrap" style="display:none"><label>Packing <span style="font-size:9px;font-weight:600;color:var(--muted);text-transform:none">— Brand Master ka Packing 1 / 2</span></label>
+          <select id="p${id}-packNo" onchange="onPackNoChange(${id})"><option value="1">Packing 1</option></select></div>
       </div>
       <div id="p${id}-emboss-photo-section" style="display:none;margin-top:10px;padding:10px 12px;background:#FFFBEA;border:1px solid #FCD34D;border-radius:8px">
         <label style="display:block;font-size:11.5px;font-weight:600;color:#92400E;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px">🎨 Emboss Design Photos <span style="font-size:10px;font-weight:400;text-transform:none">(upload the emboss design reference — added to this product's Product Photos on the PDF)</span></label>
@@ -3672,46 +4139,51 @@ function addProduct(){
           <div class="combo-list" id="p${id}-design-list"></div>
         </div>
       </div>
-      <!-- Pricing & Delivery — 4 column x 2 qatar.
-           Kram jodiyon me padha jaata hai, qatar me nahi: Quantity (Pcs) ke
-           THEEK NEECHE Packing (pcs/pack) hai, aur un dono se No. of Bora
-           banta hai — jo input hain wo ek saath, aur jo nikalta hai wo unke
-           pehle column me.
+      </section>
+      <section class="psec ps-pack">
+      <!-- Order Quantity & Packing Material Calculation — 3 column:
 
-             Packing Type   Quantity (Pcs)       Price (Rs/KG)   Discount %
-             No. of Bora    Packing (pcs/pack)   Weight          GST %
+             Order Quantity Pcs | Quantity of Master Packing | Lumsum Weight of Total PCS
+
+           Slave Packing Type + Standard Qty yahan NAHI — wo Specifications me
+           Brand Master se locked hain (ek hi sach). Ids:
+             Order Quantity Pcs          = p<id>-qty
+             Quantity of Master Packing  = p<id>-packs     (label: ofPacksLabel_)
+             Lumsum Weight of Total PCS  = p<id>-totalWeight
+
+           Price (Rs/KG), Discount % aur GST % yahan NAHI — wo Bags & Trims ke
+           NEECHE "Pricing" box me hain, taaki rate tay karte waqt trims ka
+           kharcha (Trims Cost / Pc) saamne ho. Field ids wahi hain
+           (p<id>-price / -discount / -gst), isi liye getProd, save, edit
+           aur PDF par koi asar nahi — sirf jagah badli hai.
 
            No. of Bora ab AUTO hai = Quantity (Pcs) / Packing (pcs/pack).
            Pehle ulta tha (qty = packs x pcs/pack), yani qty khud bhari nahi
            jaati thi. Dekhein calcPackQty. -->
-      <div class="shd">Pricing &amp; Delivery</div>
-      <div class="g4">
-        <div class="fg"><label>Packing Type</label>
-          <select id="p${id}-packType" onchange="onPackTypeChange(${id})">
-            <option value="Bora">Bora</option>
-            <option value="Bale">Bale</option>
-            <option value="Box">Box</option>
-            <option value="Roll">Roll</option>
-            <option value="Loose">Loose</option>
-          </select>
-        </div>
-        <div class="fg"><label>Quantity (Pcs)</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
-        <div class="fg"><label>Price (₹ / KG)</label><input type="number" id="p${id}-price" placeholder="e.g. 215" step="0.5" oninput="calcAll()"></div>
-        <div class="fg"><label>Discount % on Price</label><input type="number" id="p${id}-discount" placeholder="0" min="0" max="100" step="0.1" value="0" oninput="calcAll()"></div>
+      <div class="shd">Order Quantity &amp; Packing Material Calculation</div>
+      <div class="g3">
+        <div class="fg"><label>Order Quantity Pcs</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
 
-        <div class="fg"><label id="p${id}-packs-lbl">No. of Bora</label>
+        <div class="fg"><label id="p${id}-packs-lbl">Quantity of Master Packing <small class="pk-unit">(Bora)</small></label>
           <input type="number" id="p${id}-packs" placeholder="auto" min="0" readonly>
-          <div class="pk-hint" id="p${id}-packs-hint">Qty ÷ pcs/pack</div>
+          <div class="pk-hint" id="p${id}-packs-hint">Order Qty ÷ Std Qty</div>
         </div>
-        <div class="fg"><label>Packing (pcs/pack)</label><input type="number" id="p${id}-packPcs" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
-        <div class="fg"><label>Weight <small style="font-weight:400;text-transform:none;color:var(--muted)">(Qty×Wt)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8"></div>
-        <div class="fg"><label>GST %</label><input type="number" id="p${id}-gst" placeholder="e.g. 5" step="0.5" min="0" value="5" oninput="calcAll()"></div>
+        <div class="fg"><label>Lumsum Weight of Total PCS <small class="pk-unit">(KG)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8">
+          <div class="pk-hint">Order Qty × Final Weight</div>
+        </div>
       </div>
       <div class="fg" style="margin-top:10px"><label>Remarks <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(shown as "Other Comment" on this product's photo page in the PDF)</span></label><input type="text" id="p${id}-remarks" placeholder="Any special instructions for this product..." oninput="calcAll()"></div>
+      </section>
+      <section class="psec ps-photo">
       <div class="shd">Product Photo &amp; Comments</div>
       <div class="fg">
         <label>Product Photos <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(optional — up to 30; shown 10 per page (5×2 grid) — extra photos add more pages for this product)</span></label>
-        <input type="file" accept="image/*" multiple id="p${id}-photo-input" onchange="handlePhotoUpload(${id},this,'product')" style="padding:7px;font-size:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input type="file" accept="image/*" multiple id="p${id}-photo-input" onchange="handlePhotoUpload(${id},this,'product')" style="padding:7px;font-size:12px;flex:1;min-width:200px">
+          <!-- Design Master (Production › Design Master) ki saved photos —
+               upload ki zaroorat nahi, wahi photo link ho jaati hai. dpkOpen. -->
+          <button type="button" class="btn-addmaster" onclick="dpkOpen(${id})" title="Production › Design Master me saved designs ki photos chun kar lagayein">🎨 Attach from Design Master</button>
+        </div>
         <div id="p${id}-photo-gallery" class="photo-gallery"></div>
       </div>
       <div class="g2" style="margin-top:11px">
@@ -3722,6 +4194,8 @@ function addProduct(){
           <input type="text" id="p${id}-designCost" placeholder="e.g. ₹2/pc extra for custom jacquard design..." oninput="calcAll()">
         </div>
       </div>
+      </section>
+      <section class="psec ps-trim">
       <!-- Bags & Trims — material list BRAND MASTER se.
            Jis material par us Item Code ke saamne YES likha hai usi ka row
            dikhta hai (OF_MATERIALS / ofRenderMaterials_). Chhe fixed row
@@ -3767,7 +4241,7 @@ function addProduct(){
               ${SUPP.map(o=>`<option value="${o.v}">${o.l}</option>`).join('')}
             </select></td>
             <td>
-              <input type="number" class="trim-pi" id="p${id}-${t.k}-pcs" placeholder="0" min="0" value="0" disabled oninput="calcAll()" style="width:70px">
+              <input type="number" class="trim-pi" id="p${id}-${t.k}-pcs" placeholder="0" min="0" value="0" disabled oninput="ofPcsTyped_(this)" style="width:70px">
             </td>
             <td style="text-align:right">
               <input type="number" class="trim-pi" id="p${id}-${t.k}-cost" placeholder="0" step="0.5" min="0" value="0" disabled oninput="calcAll()">
@@ -3795,11 +4269,40 @@ function addProduct(){
           </tr>
         </tfoot>
       </table>
+      <!-- Bags & Trims ka jodd — table ke theek neeche, taaki Pricing bharte
+           waqt trims ka kharcha saamne ho. calcAll() bharta hai (getProd ke
+           trimsCostTotal + packCharge se — wahi aankde jo exGST me judte hain,
+           isi liye ye kabhi bill se alag nahi ho sakta).
+           Per Pc = (Trims + Packing Charge) ÷ Quantity (Pcs): ek Bora 20 pcs
+           me bant'ta hai, to uska paisa bhi 20 me bant'na chahiye. -->
+      <div class="trim-sum" id="p${id}-trimSum">
+        <div class="trim-sum-item"><div class="pst-lbl">Bags &amp; Trims Amt</div><div class="trim-sum-val" id="p${id}-trimAmt">₹0.00</div></div>
+        <div class="trim-sum-item"><div class="pst-lbl">Packing Charge</div><div class="trim-sum-val" id="p${id}-packAmt">₹0.00</div></div>
+        <div class="trim-sum-item"><div class="pst-lbl">Total Cost Amt / Pc</div><div class="trim-sum-val big" id="p${id}-trimPc">₹0.00</div></div>
+        <!-- Per Kg = (Trims + Packing Charge) ÷ Weight (Qty×Wt) — Price (₹/KG)
+             ke saath seedha milaya ja sake, isi liye kg me bhi. -->
+        <div class="trim-sum-item"><div class="pst-lbl">Total Cost Amt / Kg</div><div class="trim-sum-val big" id="p${id}-trimKg">₹0.00</div></div>
+      </div>
+      </section>
+      <section class="psec ps-price">
+      <!-- Pricing — pehle "Pricing & Delivery" me tha, ab trims ke baad.
+           Ids wahi (p<id>-price / -discount / -gst). -->
+      <div class="shd">Pricing</div>
+      <div class="g3">
+        <div class="fg"><label>Price (₹ / KG)</label><input type="number" id="p${id}-price" placeholder="e.g. 215" step="0.5" oninput="calcAll()"></div>
+        <div class="fg"><label>Discount % on Price</label><input type="number" id="p${id}-discount" placeholder="0" min="0" max="100" step="0.1" value="0" oninput="calcAll()"></div>
+        <div class="fg"><label>GST %</label><input type="number" id="p${id}-gst" placeholder="e.g. 5" step="0.5" min="0" value="5" oninput="calcAll()"></div>
+      </div>
       <div class="pst">
         <div class="pst-item"><div class="pst-lbl">Price/KG</div><div class="pst-val" id="p${id}-ppkg">₹0.00</div></div>
         <div class="pst-item"><div class="pst-lbl">Final Price/Pc</div><div class="pst-val" id="p${id}-ppc">₹0.00</div></div>
+        <!-- Final Price / Kg = Amount ex-GST ÷ Weight — fabric (discount ke
+             baad) + trims + packing charge, sab per kg. Final Price/Pc ka
+             kg wala roop. -->
+        <div class="pst-item"><div class="pst-lbl">Final Price/Kg</div><div class="pst-val" id="p${id}-pkg">₹0.00</div></div>
         <div class="pst-item"><div class="pst-lbl">Amount (Incl. GST)</div><div class="pst-val big" id="p${id}-ptot">₹0.00</div></div>
       </div>
+      </section>
     </div>
   </div>`;
   document.getElementById('prodsContainer').insertAdjacentHTML('beforeend',html);
@@ -3937,7 +4440,7 @@ function renderPhotoGallery(id, section){
       <img src="${esc(p.url)}" onerror="this.closest('.photo-tile').style.background='#F3F4F6'">
       <a class="pt-view-link" href="${esc(p.url)}" target="_blank" rel="noopener" title="View full photo"></a>
       <button type="button" class="pt-remove" onclick="event.stopPropagation();removePhotoAt(${id},'${section}','existing',${i})" title="Remove">✕</button>
-      <div class="pt-existing-badge">SAVED</div>
+      <div class="pt-existing-badge"${p.label?' style="background:rgba(124,58,237,.9)"':''}>${esc(p.label||'SAVED')}</div>
     </div>`;
   });
   news.forEach((dataUrl,i)=>{
@@ -3953,6 +4456,205 @@ function onEmbossChange(id){
   const sel=document.getElementById('p'+id+'-emboss');
   const sec=document.getElementById('p'+id+'-emboss-photo-section');
   if(sec) sec.style.display=(sel && sel.value==='YES')?'block':'none';
+}
+
+// ═══════════════════ DESIGN MASTER PHOTO PICKER ════════════════════════════
+// Production › Design Master ki saved photos ko Product Photos me lagana —
+// dobara upload nahi, wahi file link hoti hai (bucket sarv-pdfs, path
+// design_matchings.image_path). Sirf LIVE designs (DISCARDED nahi).
+//
+// Chuni hui photo existingProductPhotos[id] me {fileId:url, url, label}
+// jaati hai — bilkul "SAVED" photo ki tarah. Isi liye save, edit par wapas
+// khulna aur PDF (url se base64) bina kisi naye code ke chalte hain.
+// `label` (D <design no>) sirf screen ka badge hai; save nahi hota.
+//
+// Filters DEPENDENT hain: har dropdown sirf wahi values (count ke saath)
+// dikhata hai jo BAAKI filters + dono search ke baad bachi hain — wahi niyam
+// jo ERP ke Design Master Live tab ka hai. Naya filter jodna = DPK_COLS me
+// ek line.
+const DPK_BUCKET='sarv-pdfs';
+const DPK_COLS=[
+  {id:'no',    l:'Design No',     get:d=>d.design_no},
+  {id:'sku',   l:'Design SKU No', get:d=>d.design_sku_no},
+  {id:'type',  l:'Type',          get:d=>d.design_type},
+  {id:'party', l:'Party',         get:d=>d.party_name},
+  {id:'brand', l:'Brand',         get:d=>d.brand_name},
+  {id:'supp',  l:'Supplier',      get:d=>d.supplier_name},
+  {id:'bed',   l:'Bed Size',      get:d=>d.bed_size},
+  {id:'qual',  l:'Quality',       get:d=>d.blanket_quality},
+];
+const DPK_MAX_TILES=300;   // ek baar me itne tiles — zyada ho to filter lagane ko kehte hain
+let DPK_DESIGNS=null;      // [{...design_master, matchings:[...]}] — pehli baar khulne par
+let dpkProd_=null;         // kis product card ke liye khula hai
+const dpkSel_=new Map();   // key -> tile (chuni hui photos)
+let dpkTiles_=[];          // abhi dikh rahe tiles
+
+const dpkUp_=v=>String(v==null?'':v).trim().toUpperCase();
+const dpkVal_=(c,d)=>String(c.get(d)==null?'':c.get(d)).trim();
+function dpkUrl_(m){
+  if(!m) return '';
+  if(m.image_path){
+    try{ const r=SB.storage.from(DPK_BUCKET).getPublicUrl(m.image_path); if(r&&r.data&&r.data.publicUrl) return r.data.publicUrl; }catch(e){}
+  }
+  return m.image_url||'';
+}
+const dpkMasterOf_=d=>(d.matchings||[]).find(m=>m.matching_type==='MASTER')||(d.matchings||[])[0]||null;
+
+async function dpkLoad_(force){
+  if(DPK_DESIGNS && !force) return DPK_DESIGNS;
+  const [masters,matchings]=await Promise.all([
+    fetchAllRows('design_master','*','design_no'),
+    fetchAllRows('design_matchings','*','id')
+  ]);
+  const idx=new Map();
+  (masters||[]).forEach(d=>{ if(d.status && d.status!=='LIVE') return; d.matchings=[]; idx.set(d.id,d); });
+  (matchings||[]).forEach(m=>{ const d=idx.get(m.design_id); if(d) d.matchings.push(m); });
+  // MASTER pehle, phir sort_order — Design Master jaisa hi kram
+  idx.forEach(d=>d.matchings.sort((a,b)=>
+    (a.matching_type==='MASTER'?0:1)-(b.matching_type==='MASTER'?0:1)
+    ||((Number(a.sort_order)||0)-(Number(b.sort_order)||0))||(a.id-b.id)));
+  DPK_DESIGNS=[...idx.values()].sort((a,b)=>String(a.design_no||'').localeCompare(String(b.design_no||''),undefined,{numeric:true,sensitivity:'base'}));
+  return DPK_DESIGNS;
+}
+
+async function dpkOpen(id){
+  if(!SB_READY) return toast('⚠️ Supabase connected nahi hai');
+  dpkProd_=id; dpkSel_.clear();
+  document.getElementById('dpkModal').classList.add('open');
+  const grid=document.getElementById('dpkGrid');
+  if(!DPK_DESIGNS){
+    grid.innerHTML='<div class="dpk-empty">⏳ Design Master load ho raha hai…</div>';
+    try{ await dpkLoad_(); }
+    catch(e){
+      console.warn('[ORDER FORM] design master load failed:',e);
+      grid.innerHTML='<div class="dpk-empty">⚠️ Design Master load nahi hua: '+esc(e.message||e)
+        +(/does not exist|schema cache|Could not find/i.test(e.message||'')?'<br>DESIGN_MASTER_MIGRATION.sql abhi chali nahi hai.':'')+'</div>';
+      return;
+    }
+  }
+  dpkRender();
+  setTimeout(()=>document.getElementById('dpkSearch')?.focus(),60);
+}
+function dpkClose(){ document.getElementById('dpkModal').classList.remove('open'); dpkSel_.clear(); }
+async function dpkReload(){
+  const grid=document.getElementById('dpkGrid');
+  grid.innerHTML='<div class="dpk-empty">⏳ Refresh…</div>';
+  try{ await dpkLoad_(true); toast('↻ '+DPK_DESIGNS.length+' designs'); }
+  catch(e){ toast('❌ '+(e.message||e)); }
+  dpkRender();
+}
+
+// Filter dropdown ki chuni value (khaali = koi rok nahi)
+const dpkF_=cid=>String(document.getElementById('dpk-f-'+cid)?.value||'');
+// Design dono search + saare filters (`skip` ko chhod kar) se guzarta hai?
+function dpkPass_(d,skip){
+  const term=dpkUp_(document.getElementById('dpkSearch')?.value);
+  if(term){
+    const hay=DPK_COLS.map(c=>dpkVal_(c,d)).concat((d.matchings||[]).map(m=>m.matching_name));
+    if(!hay.some(v=>dpkUp_(v).includes(term))) return false;
+  }
+  const mt=dpkUp_(document.getElementById('dpkMasterSearch')?.value);
+  if(mt && !dpkUp_(dpkMasterOf_(d)?.matching_name).includes(mt)) return false;
+  return DPK_COLS.every(c=>{
+    if(c.id===skip) return true;
+    const f=dpkF_(c.id);
+    return !f || dpkVal_(c,d)===f;
+  });
+}
+function dpkRenderFilters_(){
+  const host=document.getElementById('dpkFilters');
+  host.innerHTML=DPK_COLS.map(c=>{
+    const cur=dpkF_(c.id);
+    const counts=new Map();
+    DPK_DESIGNS.forEach(d=>{
+      if(!dpkPass_(d,c.id)) return;
+      const v=dpkVal_(c,d); if(!v) return;
+      counts.set(v,(counts.get(v)||0)+1);
+    });
+    if(cur && !counts.has(cur)) counts.set(cur,0);   // chuni value list se gaayab na ho
+    const opts=[...counts.keys()].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
+    return '<div><label>'+esc(c.l)+'</label><select id="dpk-f-'+c.id+'" class="dpk-sel'+(cur?' on':'')+'" onchange="dpkRender()">'
+      +'<option value="">All ('+opts.length+')</option>'
+      +opts.map(v=>'<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(v)+' ('+counts.get(v)+')</option>').join('')
+      +'</select></div>';
+  }).join('');
+}
+function dpkRender(){
+  if(!DPK_DESIGNS) return;
+  // Filters pehle bante hain (unki purani value padh kar), phir grid
+  dpkRenderFilters_();
+  const mode=document.getElementById('dpkMode')?.value||'MASTER';
+  const done=new Set((existingProductPhotos[dpkProd_]||[]).map(p=>p.url));
+  const designs=DPK_DESIGNS.filter(d=>dpkPass_(d,null));
+  const tiles=[];
+  designs.forEach(d=>{
+    const list=mode==='ALL'?(d.matchings||[]):[dpkMasterOf_(d)].filter(Boolean);
+    list.forEach(m=>{
+      const url=dpkUrl_(m); if(!url) return;
+      tiles.push({key:'m'+m.id, url, d, m});
+    });
+  });
+  dpkTiles_=tiles.slice(0,DPK_MAX_TILES);
+  const grid=document.getElementById('dpkGrid');
+  grid.innerHTML=dpkTiles_.length ? dpkTiles_.map((t,i)=>{
+    const isDone=done.has(t.url), isSel=dpkSel_.has(t.key);
+    const sub=[t.d.party_name,t.d.brand_name].filter(Boolean).join(' · ');
+    return '<div class="dpk-tile'+(isSel?' sel':'')+(isDone?' done':'')+'" onclick="dpkToggle('+i+')" title="'
+        +esc([t.d.design_no,t.d.design_sku_no,t.m.matching_name,t.d.design_type,t.d.bed_size,t.d.blanket_quality,t.d.supplier_name].filter(Boolean).join(' · '))+'">'
+      +'<img loading="lazy" src="'+esc(t.url)+'" onerror="this.style.visibility=\'hidden\'">'
+      +'<div class="dpk-chk">'+(isSel?'✓':'')+'</div>'
+      +'<div class="dpk-tag'+(isDone?' done':(t.m.matching_type==='MASTER'?'':' slave'))+'">'+(isDone?'✓ ATTACHED':esc(t.m.matching_type||''))+'</div>'
+      +'<div class="dpk-meta"><b>'+esc(t.d.design_no||'—')+'</b>'+(t.d.design_sku_no?' <span class="s">· '+esc(t.d.design_sku_no)+'</span>':'')
+        +'<br><span class="m">'+esc(t.m.matching_name||'')+'</span>'
+        +(sub?'<br><span class="s">'+esc(sub)+'</span>':'')+'</div>'
+      +'</div>';
+  }).join('') : '<div class="dpk-empty">Koi design nahi mila — filter / search badlein.</div>';
+  const more=tiles.length>DPK_MAX_TILES?' · pehli '+DPK_MAX_TILES+' dikh rahi hain, filter lagayein':'';
+  document.getElementById('dpkCount').innerHTML=designs.length+' designs · '+tiles.length+' photos'+more
+    +' · <b style="color:#7C3AED">'+dpkSel_.size+' selected</b>';
+  const btn=document.getElementById('dpkAttachBtn');
+  if(btn){ btn.disabled=!dpkSel_.size; btn.textContent='📎 Attach Selected'+(dpkSel_.size?' ('+dpkSel_.size+')':''); }
+}
+function dpkToggle(i){
+  const t=dpkTiles_[i]; if(!t) return;
+  if((existingProductPhotos[dpkProd_]||[]).some(p=>p.url===t.url)) return toast('ℹ️ Ye photo pehle se is product me hai');
+  if(dpkSel_.has(t.key)) dpkSel_.delete(t.key); else dpkSel_.set(t.key,t);
+  dpkRender();
+}
+function dpkSelectVisible(on){
+  if(!on){ dpkSel_.clear(); return dpkRender(); }
+  const done=new Set((existingProductPhotos[dpkProd_]||[]).map(p=>p.url));
+  const room=MAX_PHOTOS_PER_PRODUCT-photoCount(dpkProd_,'product')-dpkSel_.size;
+  let n=0, left=0;
+  dpkTiles_.forEach(t=>{
+    if(done.has(t.url) || dpkSel_.has(t.key)) return;
+    if(n<room){ dpkSel_.set(t.key,t); n++; } else left++;
+  });
+  if(left) toast('⚠️ Sirf '+n+' aur chuni ja saki — max '+MAX_PHOTOS_PER_PRODUCT+' photos per product');
+  dpkRender();
+}
+function dpkClearFilters(){
+  DPK_COLS.forEach(c=>{ const s=document.getElementById('dpk-f-'+c.id); if(s) s.value=''; });
+  document.getElementById('dpkSearch').value='';
+  document.getElementById('dpkMasterSearch').value='';
+  dpkRender();
+}
+function dpkAttach(){
+  const id=dpkProd_;
+  if(id==null || !dpkSel_.size) return toast('⚠️ Pehle photo chunein');
+  if(!existingProductPhotos[id]) existingProductPhotos[id]=[];
+  const have=new Set(existingProductPhotos[id].map(p=>p.url));
+  let added=0, skipped=0;
+  dpkSel_.forEach(t=>{
+    if(have.has(t.url) || photoCount(id,'product')>=MAX_PHOTOS_PER_PRODUCT){ skipped++; return; }
+    existingProductPhotos[id].push({fileId:t.url, url:t.url, label:'D '+String(t.d.design_no||'')});
+    have.add(t.url); added++;
+  });
+  dpkClose();
+  renderPhotoGallery(id,'product'); calcAll();
+  toast(added
+    ?'🎨 '+added+' design photo(s) attached — '+photoCount(id,'product')+'/'+MAX_PHOTOS_PER_PRODUCT+(skipped?' ('+skipped+' skipped: duplicate / limit)':'')
+    :'⚠️ Kuch attach nahi hua — duplicate ya photo limit ('+MAX_PHOTOS_PER_PRODUCT+') poori');
 }
 
 // ═══════════════════ EMBOSS DESIGNS CATALOG PICKER ═════════════════════════
@@ -4045,22 +4747,69 @@ async function addEmbossDesignToCatalog(id){
   }
 }
 
+/* ══ BAGS & TRIMS — No. of Pcs / Cost / Discount ka niyam ═══════════════
+   Supplied By   No. of Pcs                       Cost/Pc + Discount%
+   ───────────   ──────────────────────────────   ───────────────────
+   NA            band, 0                           band, 0
+   Buyer / FOC   KHULA, auto-filled                band, 0
+   SIHF          KHULA, auto-filled                KHULA (Rate Master se)
+
+   Auto value: har material = Order Quantity Pcs; sirf packing ke material
+   (BORA / BALE / BOX / OUTER BOX BORA, aur purane fixed Bore / Outer Box)
+   = Quantity of Master Packing. User pcs badal sakta hai (party ki zaroorat)
+   — badalte hi wo row "manual" ho jaati hai (data-manual) aur qty / packs
+   badalne par bhi uska number nahi chhedta. Supplied By dobara chunne par
+   auto value wapas aati hai.
+   Paisa sirf SIHF par judta hai (cost 0 hai baaki par), isi liye Buyer / FOC
+   ke pcs se total nahi badalta — wo sirf jaankari hai. */
+const OF_PACKCOUNT_MATS=['BORA','BALE','BOX','OUTER BOX BORA'];
+const OF_PACKCOUNT_FIXED=['bore','outer'];
+function ofPcsAutoVal_(id,fixedKey,mat){
+  const usePacks=fixedKey?OF_PACKCOUNT_FIXED.includes(fixedKey):OF_PACKCOUNT_MATS.includes(ofRateKey_(mat));
+  return parseFloat(document.getElementById('p'+id+'-'+(usePacks?'packs':'qty'))?.value)||0;
+}
+const OF_ON_STYLE=['#EFF6FF','#93C5FD'];
+function ofSetInput_(el,on,keepVal){
+  if(!el) return;
+  el.disabled=!on;
+  if(!on && !keepVal) el.value=0;
+  el.style.background=on?OF_ON_STYLE[0]:'';
+  el.style.borderColor=on?OF_ON_STYLE[1]:'';
+}
+/* Ek row ki pcs: supp NA → band; warna khuli + auto (agar `reset` ho ya
+   user ne haath se na badla ho). */
+function ofApplyPcs_(pcsEl,supp,autoVal,reset){
+  if(!pcsEl) return;
+  const active=supp && supp!=='na';
+  if(!active){ ofSetInput_(pcsEl,false); delete pcsEl.dataset.manual; return; }
+  ofSetInput_(pcsEl,true,true);
+  if(reset) delete pcsEl.dataset.manual;
+  if(!pcsEl.dataset.manual) pcsEl.value=autoVal;
+}
+// Pcs haath se badli — ab ye row auto se nahi badlegi
+function ofPcsTyped_(el){ if(el) el.dataset.manual='1'; calcAll(); }
+// Saari khuli rows ki auto pcs taaza (qty / packs badalne par)
+function ofRefreshTrimPcs_(id){
+  TRIMS.forEach(t=>{
+    const supp=document.getElementById('p'+id+'-'+t.k+'-supp')?.value||'na';
+    ofApplyPcs_(document.getElementById('p'+id+'-'+t.k+'-pcs'),supp,ofPcsAutoVal_(id,t.k),false);
+  });
+  (extraTrimRows[id]||[]).forEach(n=>{
+    const pre='p'+id+'-xt'+n;
+    const supp=document.getElementById(pre+'-supp')?.value||'na';
+    ofApplyPcs_(document.getElementById(pre+'-pcs'),supp,ofPcsAutoVal_(id,null,document.getElementById(pre+'-mat')?.value),false);
+  });
+}
+
 function onSupp(id,key){
   const sel=document.getElementById('p'+id+'-'+key+'-supp');
-  const inp=document.getElementById('p'+id+'-'+key+'-cost');
-  const pcsInp=document.getElementById('p'+id+'-'+key+'-pcs');
-  const discInp=document.getElementById('p'+id+'-'+key+'-disc');
-  if(sel.value==='seller'){
-    inp.disabled=false;inp.style.background='#EFF6FF';inp.style.borderColor='#93C5FD';
-    if(pcsInp){pcsInp.disabled=false;pcsInp.style.background='#EFF6FF';pcsInp.style.borderColor='#93C5FD';const autoVal=(key==='outer'||key==='bore')?(parseFloat(document.getElementById('p'+id+'-packs')?.value)||0):(parseFloat(document.getElementById('p'+id+'-qty')?.value)||0);pcsInp.value=autoVal;}
-    if(discInp){discInp.disabled=false;discInp.style.background='#EFF6FF';discInp.style.borderColor='#93C5FD';}
-    // Auto-fill cost from Standard Items when Supplied By changes to SIHF
-    autoFillTrimCost(id,key);
-  } else {
-    inp.disabled=true;inp.value=0;inp.style.background='';inp.style.borderColor='';
-    if(pcsInp){pcsInp.disabled=true;pcsInp.value=0;pcsInp.style.background='';pcsInp.style.borderColor='';}
-    if(discInp){discInp.disabled=true;discInp.value=0;discInp.style.background='';discInp.style.borderColor='';}
-  }
+  const supp=sel?sel.value:'na';
+  const seller=(supp==='seller');
+  ofSetInput_(document.getElementById('p'+id+'-'+key+'-cost'),seller);
+  ofSetInput_(document.getElementById('p'+id+'-'+key+'-disc'),seller);
+  ofApplyPcs_(document.getElementById('p'+id+'-'+key+'-pcs'),supp,ofPcsAutoVal_(id,key),true);
+  // SIHF Supplied → Cost/Pc + Disc % 💰 Rate Master se
+  if(seller) autoFillTrimCost(id,key);
   calcAll();
 }
 /* ══ SATTAN — do dropdown ko ek value me jodna ═════════════════════════
@@ -4110,10 +4859,12 @@ function ofAddMaterialRow_(id,mat,preset){
   const p=preset||{};
   const pre=`p${id}-xt${n}`;
   const supp=String(p.supp||'na');
-  // SIHF Supplied par hi paisa bharta hai — wahi niyam jo fixed trims par hai
-  // (dekhein onSupp): baaki haalat me teeno input band aur 0.
+  // Wahi niyam jo fixed trims par hai (dekhein onSupp): pcs NA ke alawa
+  // khuli, Cost / Disc sirf SIHF par.
   const on=(supp==='seller');
+  const pcsOn=(supp!=='na');
   const iStyle=on?'background:#EFF6FF;border-color:#93C5FD;':'';
+  const pStyle=pcsOn?'background:#EFF6FF;border-color:#93C5FD;':'';
   body.insertAdjacentHTML('beforeend',`
   <tr id="${pre}-row">
     <td style="font-weight:600;font-size:13px">${esc(mat)}
@@ -4122,7 +4873,7 @@ function ofAddMaterialRow_(id,mat,preset){
     <td><select class="trim-sel" id="${pre}-supp" onchange="onExtraSupp(${id},${n})">
       ${SUPP.map(o=>`<option value="${o.v}"${o.v===supp?' selected':''}>${o.l}</option>`).join('')}
     </select></td>
-    <td><input type="number" class="trim-pi" id="${pre}-pcs" placeholder="0" min="0" value="${Number(p.pcs)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:70px;${iStyle}"></td>
+    <td><input type="number" class="trim-pi" id="${pre}-pcs" placeholder="0" min="0" value="${Number(p.pcs)||0}" ${pcsOn?'':'disabled'}${p.manual?' data-manual="1"':''} oninput="ofPcsTyped_(this)" style="width:70px;${pStyle}"></td>
     <td style="text-align:right"><input type="number" class="trim-pi" id="${pre}-cost" placeholder="0" step="0.5" min="0" value="${Number(p.cost)||0}" ${on?'':'disabled'} oninput="calcAll()" style="${iStyle}"></td>
     <td style="text-align:right"><input type="number" class="trim-pi" id="${pre}-disc" placeholder="0" step="0.1" min="0" max="100" value="${Number(p.disc)||0}" ${on?'':'disabled'} oninput="calcAll()" style="width:64px;${iStyle}"></td>
   </tr>`);
@@ -4150,13 +4901,14 @@ function ofRenderMaterials_(id,opts){
   const keep=o.keepFixed||new Set();
   const code=String(document.getElementById('p'+id+'-itemCode')?.value||'').trim();
   const item=STANDARD_ITEMS[code]||null;
+  const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
   let shown=0;
 
   // 1. Fixed chhe
   OF_FIXED.forEach(m=>{
     const row=document.getElementById('p'+id+'-'+m.k+'-row');
     if(!row) return;
-    const on=keep.has(m.k)||ofMatYes_(item,m);
+    const on=keep.has(m.k)||ofMatYes_(item,m,id);
     row.style.display=on?'':'none';
     if(on){ shown++; return; }
     const sel=document.getElementById('p'+id+'-'+m.k+'-supp');
@@ -4174,17 +4926,33 @@ function ofRenderMaterials_(id,opts){
     const k=String((r&&r.mat)||'').trim().toUpperCase();
     if(k) presets[k]=r;
   });
+  const added=new Set();
+  /* Slave Packing Type (Bora / Bale / Box) khud ek packing material hai —
+     uski row sabse pehle, usi naam se (BORA / BALE / BOX), rate 💰 Rate
+     Master se. Slave Type badalte hi (Packing 1 ↔ 2) row bhi badalti hai.
+     Purane order me saved row preset se wapas aati hai. */
+  const slaveMat=ofSlaveTrimName_(pt);
+  // Purana order jisme yahi cheez purane fixed Bore / Outer Box row me bhari
+  // thi — wahi dikhti hai, nayi khaali row saath me nahi (do baar na ho).
+  const oldFixed=(slaveMat==='BOX')?keep.has('outer'):keep.has('bore');
+  if(code && slaveMat && (presets[slaveMat] || !oldFixed)){
+    ofAddMaterialRow_(id,slaveMat,presets[slaveMat]||null);
+    added.add(slaveMat); shown++;
+  }
   OF_EXTRA.forEach(m=>{
-    const saved=presets[m.n.toUpperCase()];
-    if(!ofMatYes_(item,m) && !saved) return;
+    const k=m.n.toUpperCase();
+    if(added.has(k)) return;
+    const saved=presets[k];
+    if(!ofMatYes_(item,m,id) && !saved) return;
     ofAddMaterialRow_(id,m.n,saved||null);
-    shown++;
+    added.add(k); shown++;
   });
   /* Saved order me koi aisa material ho jo aaj ki list me hi nahi hai
-     (purane order me "Add Row" se haath se daala gaya tha) — wo bhi dikhta
-     hai. Record wahi rehna chahiye jo save hua tha. */
+     (purane order me "Add Row" se haath se daala gaya tha, ya pichhli Slave
+     Packing ka row) — wo bhi dikhta hai. Record wahi rehna chahiye jo save
+     hua tha. */
   Object.keys(presets).forEach(k=>{
-    if(OF_EXTRA.some(m=>m.n.toUpperCase()===k)) return;
+    if(added.has(k) || OF_EXTRA.some(m=>m.n.toUpperCase()===k)) return;
     ofAddMaterialRow_(id,presets[k].mat,presets[k]);
     shown++;
   });
@@ -4207,22 +4975,22 @@ function ofRenderMaterials_(id,opts){
   }
   return shown;
 }
-// Fixed trims ka onSupp() yahan reuse nahi hota: wo Standard Items se cost
-// auto-bharta hai (autoFillTrimCost) aur pcs ko qty/packs se set karta hai —
-// extra materials ka Brand Master me koi rate column hi nahi hai, aur unki
-// pcs har material par alag hoti hai, to wo auto-fill yahan galat hota.
+// Fixed trims ka onSupp() yahan reuse nahi hota: wo pcs ko qty/packs se set
+// karta hai — extra materials ki pcs har material par alag hoti hai, to wo
+// auto-fill yahan galat hota. Cost/Pc + Disc % dono me 💰 Rate Master se
+// hi aate hain (ofFillRate_).
 function onExtraSupp(id,n){
   const pre='p'+id+'-xt'+n;
   const sel=document.getElementById(pre+'-supp');
-  const on=(sel&&sel.value==='seller');
-  ['pcs','cost','disc'].forEach(f=>{
-    const el=document.getElementById(pre+'-'+f);
-    if(!el) return;
-    el.disabled=!on;
-    if(!on) el.value=0;
-    el.style.background=on?'#EFF6FF':'';
-    el.style.borderColor=on?'#93C5FD':'';
-  });
+  const supp=sel?sel.value:'na';
+  const on=(supp==='seller');
+  const mat=document.getElementById(pre+'-mat')?.value||'';
+  ofSetInput_(document.getElementById(pre+'-cost'),on);
+  ofSetInput_(document.getElementById(pre+'-disc'),on);
+  // Pcs: NA ke alawa khuli + auto (Order Qty, ya BORA/BALE/BOX/OUTER BOX BORA par Master Packing qty)
+  ofApplyPcs_(document.getElementById(pre+'-pcs'),supp,ofPcsAutoVal_(id,null,mat),true);
+  // SIHF Supplied → Cost/Pc + Disc % 💰 Rate Master se (material ke naam par)
+  if(on) ofFillRate_(pre,mat);
   calcAll();
 }
 // Ek product ki saari extra rows, screen se padhi hui. getProd aur
@@ -4237,24 +5005,20 @@ function readExtraTrims(id){
     const seller=(supp==='seller');
     const cost=seller?n(pre+'-cost'):0;
     const disc=seller?n(pre+'-disc'):0;
-    const pcs =seller?n(pre+'-pcs'):0;
-    return {mat:g(pre+'-mat'), supp, cost, disc, pcs, effectiveCost:cost*(1-disc/100)};
+    const pcs =(supp!=='na')?n(pre+'-pcs'):0;      // Buyer / FOC par bhi (jaankari) — paisa cost se hi
+    const manual=!!document.getElementById(pre+'-pcs')?.dataset.manual;
+    const row={mat:g(pre+'-mat'), supp, cost, disc, pcs, effectiveCost:cost*(1-disc/100)};
+    if(manual) row.manual=true;    // Pack Type badalne par row dobara bane to haath ki pcs bachi rahe
+    return row;
   // Jis row me material chuna hi nahi gaya wo adhoori hai — na save hoti hai
   // na PDF me jaati hai. Paisa phir bhi nahi ginta kyunki cost tabhi aata
   // hai jab supplier SIHF ho, aur material bina row kholna bemaani hai.
   }).filter(r=>String(r.mat||'').trim());
 }
 
+// Fixed trim ka Cost/Pc + Disc % — 💰 Rate Master se (brand par depend nahi).
 function autoFillTrimCost(id,key){
-  const itemCode=document.getElementById('p'+id+'-itemCode')?.value;
-  const item=STANDARD_ITEMS[itemCode]; if(!item) return;
-  const pt=document.getElementById('p'+id+'-packType')?.value||'Bora';
-  const trimPriceMap={label:'labelPrice',tag:'tagPrice',bag:'bagPrice',bore:(pt==='Bale'?'balePrice':'borePrice'),inner:'innerPrice',outer:'outerPrice'};
-  const priceKey=trimPriceMap[key];
-  if(priceKey && item[priceKey]){
-    const costEl=document.getElementById('p'+id+'-'+key+'-cost');
-    if(costEl && !costEl.disabled) costEl.value=item[priceKey];
-  }
+  ofFillRate_('p'+id+'-'+key,ofTrimRateName_(id,key));
 }
 
 /* No. of Bora ka "ye khud bharta hai" wala roop — grey background, wahi jo
@@ -4274,7 +5038,14 @@ function ofPacksAuto_(id){
   el.placeholder='auto';
   el.style.background='#EEF2F7';
   el.style.borderColor='#D0DAE8';
-  el.title='Quantity (Pcs) ÷ Packing (pcs/pack) — khud bharta hai';
+  el.title='Order Quantity Pcs ÷ Slave Packing Standard Qty — khud bharta hai';
+}
+/* "Quantity of Master Packing" label — Slave Packing Type saath me (Bora /
+   Bale / Box ...), taaki pata rahe kis cheez ki ginti hai. Ek hi jagah se,
+   onPackTypeChange aur applyProductToCard dono yahi bulate hain. */
+function ofPacksLabel_(id,pt){
+  const el=document.getElementById('p'+id+'-packs-lbl');
+  if(el) el.innerHTML='Quantity of Master Packing <small class="pk-unit">('+esc(pt||'Bora')+')</small>';
 }
 
 /* No. of Bora ab Quantity se NIKALTA hai, use banata nahi.
@@ -4309,29 +5080,16 @@ function calcPackQty(id){
       hint.className='pk-hint'+(inexact?' warn':'');
       hint.textContent=inexact
         ? (qtyIn+' ÷ '+pcsPerPack+' = '+exact.toFixed(2)+' → '+Math.ceil(exact)+' (aakhri adhoora)')
-        : 'Qty ÷ pcs/pack';
+        : 'Order Qty ÷ Std Qty';
     }
   }else if(hint){
     hint.className='pk-hint';
-    hint.textContent=pcsPerPack>0?'Qty ÷ pcs/pack':'pcs/pack bharein';
+    hint.textContent=pcsPerPack>0?'Order Qty ÷ Std Qty':'Brand Master me Slave Packing Standard Quantity bharein';
   }
-  const packs=parseFloat(packsEl?.value)||0;
-  // Auto-update trim pcs: bore/outer = packs, label/tag/bag/inner = qty
-  const qty=qtyIn;
-  ['bore','outer'].forEach(k=>{
-    const supp=document.getElementById('p'+id+'-'+k+'-supp')?.value;
-    if(supp==='seller'){
-      const pcsEl=document.getElementById('p'+id+'-'+k+'-pcs');
-      if(pcsEl && !pcsEl.disabled) pcsEl.value=packs;
-    }
-  });
-  ['label','tag','bag','inner'].forEach(k=>{
-    const supp=document.getElementById('p'+id+'-'+k+'-supp')?.value;
-    if(supp==='seller'){
-      const pcsEl=document.getElementById('p'+id+'-'+k+'-pcs');
-      if(pcsEl && !pcsEl.disabled) pcsEl.value=qty;
-    }
-  });
+  // Bags & Trims ki No. of Pcs — qty / packs badle to har khuli (NA nahi)
+  // row ki auto value naye number par; jo row user ne haath se badli thi
+  // (data-manual) wo nahi chhedi jaati. Niyam: dekhein onSupp ke upar.
+  ofRefreshTrimPcs_(id);
   calcTotalWeight(id);
   calcAll();
 }
@@ -4403,9 +5161,8 @@ function onPackTypeChange(id){
       if(boreSel){boreSel.value='foc';onSupp(id,'bore');}
     }
   }
-  // Update "No. of {PackType}" label
-  const packsLbl=document.getElementById('p'+id+'-packs-lbl');
-  if(packsLbl) packsLbl.textContent='No. of '+pt;
+  // "Quantity of Master Packing (Bora/Bale/…)" label
+  ofPacksLabel_(id,pt);
   // Update packing charge label
   const lbl=document.getElementById('p'+id+'-packCharge-label');
   if(lbl) lbl.textContent=pt+' Packing Charge';
@@ -4414,22 +5171,17 @@ function onPackTypeChange(id){
   const itemCode=document.getElementById('p'+id+'-itemCode')?.value;
   const item=STANDARD_ITEMS[itemCode];
   if(item){
-    // 1) Packing (pcs/pack)
+    // 1) Slave Packing Standard Qty — chuni Packing (1 / 2) se
     const ppEl=document.getElementById('p'+id+'-packPcs');
-    if(ppEl && !ppEl.disabled && item.packPcs){ ppEl.value=item.packPcs; calcPackQty(id); }
-    // 2) Trim Cost/Pc & No. of Pcs (after suppliers are set so cost inputs are enabled)
-    const trimPriceMap={label:'labelPrice',tag:'tagPrice',bag:'bagPrice',bore:(pt==='Bale'?'balePrice':'borePrice'),inner:'innerPrice',outer:'outerPrice'};
-    Object.keys(trimPriceMap).forEach(k=>{
-      const priceKey=trimPriceMap[k];
-      if(item[priceKey]){
-        const costEl=document.getElementById('p'+id+'-'+k+'-cost');
-        if(costEl && !costEl.disabled) costEl.value=item[priceKey];
-      }
-    });
-    // 3) Packing Charge Cost/Pc — Bale: auto-fill from balePrice; others: reset to 0
+    const ppv=ofPackPcsFor_(item,id);
+    if(ppEl && !ppEl.disabled && ppv){ ppEl.value=ppv; calcPackQty(id); }
+    // 2) Trim Cost/Pc + Disc % — 💰 Rate Master (after suppliers are set so cost inputs are enabled)
+    ofApplyTrimRates_(id);
+    // 3) Packing Charge Cost/Pc — Bale: Rate Master ka BALE rate; others: reset to 0
     const pcCostEl=document.getElementById('p'+id+'-packCharge');
     if(pcCostEl){
-      pcCostEl.value=(pt==='Bale' && item.balePrice)?item.balePrice:0;
+      const bale=pt==='Bale'?ofTrimRate_('BALE'):null;
+      pcCostEl.value=(bale && bale.rate>0)?bale.rate:0;
     }
   }
   /* Pack Type badalte waqt bhi material list dobara jaanchi jaati hai.
@@ -4443,7 +5195,10 @@ function onPackTypeChange(id){
      Pack Type badalne se kisi material me type ki hui pcs / cost udti
      nahi. (Item Code badalne par jaan-boojh kar aisa nahi hota — wahan
      brand hi doosra hai, to pichhle brand ki cost carry karna galat hota.) */
-  ofRenderMaterials_(id,{extraPresets:readExtraTrims(id)});
+  /* Purani Slave Packing ki row (jaise BORA, ab BALE chuna) preset me nahi
+     jaati — warna wo "saved material" ban kar naye type ke saath dono dikhti. */
+  const curSlave=ofSlaveTrimName_(pt);
+  ofRenderMaterials_(id,{extraPresets:readExtraTrims(id).filter(r=>!ofIsSlaveTrim_(r.mat)||ofRateKey_(r.mat)===curSlave)});
   /* No. of Bora ka grey / readonly roop dobara — upar ka Roll-se-wapas wala
      hissa teeno field ke inline style saaf kar deta hai. Iske BAAD
      calcPackQty, taaki label bhi naye Pack Type ke hisaab se bhar jaye. */
@@ -4477,7 +5232,8 @@ function getProd(id){
     const costPerPc=supp==='seller'?(n('p'+id+'-'+t.k+'-cost')):0;
     const trimDisc=supp==='seller'?(n('p'+id+'-'+t.k+'-disc')):0;
     const effectiveCostPerPc=costPerPc*(1-trimDisc/100);
-    const trimPcs=supp==='seller'?(n('p'+id+'-'+t.k+'-pcs')):0;
+    // Pcs NA ke alawa sab par (Buyer / FOC = jaankari); paisa cost se, jo sirf SIHF par hai
+    const trimPcs=supp!=='na'?(n('p'+id+'-'+t.k+'-pcs')):0;
     trimsCostPerPc+=effectiveCostPerPc; trimsCostTotal+=trimPcs*effectiveCostPerPc;
     trimStatus[t.k]=supp; trimData[t.k]={supp,cost:costPerPc,disc:trimDisc,effectiveCost:effectiveCostPerPc,pcs:trimPcs};
   });
@@ -4501,6 +5257,7 @@ function getProd(id){
   const finalPricePerQty=qty?(exGST/qty):0;
   return {
     id, qty, packs, packPcs, price, discount, effectivePricePerKg, pricePerPc, weight, calcWeight, isGSM, totalWeight, gstPct, packType, packCharge, packChargePcs, packChargeCostPc,
+    packNo:Number(document.getElementById('p'+id+'-packNo')?.value)||1,   // Brand Master ki Packing 1 / 2
     trimsCostPerPc, trimsCostTotal, fabricCost, exGST, gstAmt, amount, finalPricePerQty,
     trimStatus, trimData, extraTrims,
     itemCode:g('p'+id+'-itemCode'), fabric:g('p'+id+'-fabric'), category:g('p'+id+'-category'), size:g('p'+id+'-size'),
@@ -4526,6 +5283,14 @@ function calcAll(){
     set('p'+id+'-ppkg', fmt(p.effectivePricePerKg)+'/KG'+(p.discount>0?' (-'+p.discount+'%)':''));
     set('p'+id+'-ppc',fmt(p.finalPricePerQty));
     set('p'+id+'-ptot',fmt(p.amount));
+    // Bags & Trims ka jodd (table ke neeche) — wahi aankde jo exGST me judte hain
+    set('p'+id+'-trimAmt',fmt(p.trimsCostTotal));
+    set('p'+id+'-packAmt',fmt(p.packCharge));
+    set('p'+id+'-trimPc',fmt(p.qty?(p.trimsCostTotal+p.packCharge)/p.qty:0));
+    // Per Kg — Weight (Qty×Wt) se; weight 0 ho to 0 (bhaag nahi)
+    const wt=p.totalWeight||0;
+    set('p'+id+'-trimKg',fmt(wt?(p.trimsCostTotal+p.packCharge)/wt:0));
+    set('p'+id+'-pkg',fmt(wt?p.exGST/wt:0));
     pwRows+=`<div class="bill-row"><span class="bill-rl">${esc(p.fabric||'Prod #'+id)} (${p.qty} pcs × ${fmt(p.finalPricePerQty)}/pcs)</span><span class="bill-rv">${fmt(p.amount)}</span></div>`;
   });
   const grand=grandEx+grandGst;
@@ -4602,7 +5367,7 @@ function collectPayload(){
       itemCode:p.itemCode,fabric:p.fabric,category:p.category,weight:p.weight,totalWeight:p.totalWeight,size:p.size,
       dbsb:p.dbsb,ply:p.ply,sattan:p.sattan,sattanType:p.sattanType,sattanSize:p.sattanSize,moq:p.moq,emboss:p.emboss,
       design:p.design,packs:p.packs,packPcs:p.packPcs,qty:p.qty,price:p.price,discount:p.discount,effectivePricePerKg:p.effectivePricePerKg,pricePerPc:p.pricePerPc,
-      gstPct:p.gstPct,packType:p.packType,packCharge:p.packCharge,packChargePcs:p.packChargePcs,packChargeCostPc:p.packChargeCostPc,
+      gstPct:p.gstPct,packType:p.packType,packNo:p.packNo,packCharge:p.packCharge,packChargePcs:p.packChargePcs,packChargeCostPc:p.packChargeCostPc,
       trims:p.trimData,extraTrims:p.extraTrims||[],trimsCostPerPc:p.trimsCostPerPc.toFixed(2),trimsCostTotal:p.trimsCostTotal.toFixed(2),
       remarks:p.remarks||'', designCostComment:p.designCostComment||'', labelTagComment:p.labelTagComment||'',
       newPhotos:p.newPhotos||[], existingPhotos:p.existingPhotos||[], existingPhotoFileIds:p.existingPhotoFileIds||[],
@@ -5662,8 +6427,11 @@ function applyProductToCard(id, x){
   // to auto/default values and would overwrite the saved trim data below).
   const pt=x.packType||'Bora';
   const ptEl=document.getElementById('p'+id+'-packType');
-  if(ptEl) ptEl.value=pt;
-  const packsLbl=document.getElementById('p'+id+'-packs-lbl'); if(packsLbl) packsLbl.textContent='No. of '+pt;
+  if(ptEl) ensureOpt_(ptEl,pt);       // Brand Master se aaya anjaan type (jaise Bag) bhi bache
+  ofPacksLabel_(id,pt);
+  // Saved Packing 1 / 2 (purane order me nahi tha → 1). Slave Type / Std Qty
+  // saved value hi rehti hai — yahan sirf dropdown wapas.
+  ofSetupPackNo_(id,STANDARD_ITEMS[String(x.itemCode||'').trim()]||null,x.packNo||1);
   const pcLbl=document.getElementById('p'+id+'-packCharge-label'); if(pcLbl) pcLbl.textContent=pt+' Packing Charge';
 
   if(pt==='Roll'){
@@ -5697,7 +6465,8 @@ function applyProductToCard(id, x){
     const discEl=document.getElementById('p'+id+'-'+t.k+'-disc');
     if(suppEl) suppEl.value=td.supp||'na';
     const enabled=(td.supp==='seller');
-    if(pcsEl){ pcsEl.value=td.pcs||0; pcsEl.disabled=!enabled; pcsEl.style.background=enabled?'#EFF6FF':''; pcsEl.style.borderColor=enabled?'#93C5FD':''; }
+    const pcsOn=!!td.supp && td.supp!=='na';    // pcs NA ke alawa khuli (onSupp jaisa)
+    if(pcsEl){ pcsEl.value=td.pcs||0; pcsEl.disabled=!pcsOn; pcsEl.style.background=pcsOn?'#EFF6FF':''; pcsEl.style.borderColor=pcsOn?'#93C5FD':''; }
     if(costEl){ costEl.value=td.cost||0; costEl.disabled=!enabled; costEl.style.background=enabled?'#EFF6FF':''; costEl.style.borderColor=enabled?'#93C5FD':''; }
     if(discEl){ discEl.value=td.disc||0; discEl.disabled=!enabled; discEl.style.background=enabled?'#EFF6FF':''; discEl.style.borderColor=enabled?'#93C5FD':''; }
   });
@@ -6357,7 +7126,7 @@ function buildOrderHtml(p) {
       var cost = isSeller ? n(r.cost) : 0;
       var dsc  = isSeller ? n(r.disc) : 0;
       var eff  = cost * (1 - dsc / 100);
-      var pcs  = isSeller ? n(r.pcs) : 0;
+      var pcs  = supp !== "na" ? n(r.pcs) : 0;   // Buyer / FOC ki pcs bhi dikhe; amt phir bhi sirf SIHF (eff 0 baaki par)
       var amt  = pcs * eff;
       extraGrand += amt;
       var suppTxt = { na: "&mdash;", buyer: "Buyer", seller: "SIHF", foc: "FOC" }[supp] || "&mdash;";
