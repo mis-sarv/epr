@@ -2,6 +2,7 @@
 <html lang="hi">
 <head>
 <meta charset="UTF-8">
+<script src="date-dmy.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TRIMS & PACKING MATERIAL MANAGER</title>
 <!--
@@ -19,14 +20,14 @@
     LOT NO(s)       → saved Lot Cards (mfg_lot_cards) or typed by hand; Lot Req Qty
                       per row from the lot
     Store Std Name  → Item Master (items) — only values from the list
-    NEW PR (tick)   → Lot Req Qty ke theek baad. Rows tick karke "📝 Generate New
-                      PR" dabane par ERP ka Purchase › New Entry form un items se
-                      bhar jaata hai (PR qty = FINAL PO QTY). Form parent window
-                      me hai, isi liye asli kaam store-core.js ›
-                      sarvGenerateNewPrFromTrims karta hai; PR submit hote hi uska
-                      number wapas inhi rows par aa jaata hai (window.trimsPrSaved).
+    NEW PR (tick)   → right after Lot Req Qty. Ticking rows and pressing "Generate
+                      New PR" fills the ERP's Purchase › New Entry form with those
+                      items (PR qty = FINAL PO QTY). The form lives in the parent
+                      window, so the real work is done by store-core.js ›
+                      sarvGenerateNewPrFromTrims; once the PR is submitted its
+                      number comes back to these same rows (window.trimsPrSaved).
     PR No           → purchase_requirements (+ lines) — THIS is what the user picks
-                      (ya upar wale NEW PR se apne aap lag jaata hai)
+                      (or it is set automatically by NEW PR above)
     PO No           → found automatically: the purchase_order_lines raised against
                       that PR for that item. ✎ pins a PO by hand, ↺ returns to auto.
     Target Date     → delivery_date of the PO(s) the PR produced (earliest)
@@ -132,8 +133,8 @@
   td.po-auto small { display:block; font-weight:500; color:#7f8c8d; font-size:9.5px; }
   td.po-wait { background:#fff8e1; color:#8a5300; font-weight:700; font-size:11px; }
 
-  /* NEW PR column — Lot Req Qty ke theek baad. Item Master ke NEW PR column
-     jaisa hi: tick karke ek hi PR me kai item bhej dein. */
+  /* NEW PR column, right after Lot Req Qty. Works like the Item Master's NEW PR
+     column: tick several items and send them in a single PR. */
   th.pr-th { background:#5e35b1; }
   th.pr-th input { width:14px; height:14px; cursor:pointer; margin-top:2px; }
   td.pr-td { background:#f3e8ff; }
@@ -208,22 +209,22 @@
     <div class="controls">
       <span id="saveStatus" class="badge-saved">✔ Saved!</span>
       <span id="dirtyDot" class="dirty-dot">● Unsaved changes</span>
-      <button class="btn-add" onclick="addNewItem()" id="btnAdd">➕ Add Item</button>
-      <!-- NEW PR column me rows tick karke yahan se ek hi PR ban jaati hai.
-           PR ka form ERP ke Purchase panel me hai (ye page uske iframe me
-           chalta hai), isi liye asli kaam parent window karta hai —
+      <button class="btn-add" onclick="addNewItem()" id="btnAdd">Add Item</button>
+      <!-- Ticking rows in the NEW PR column creates a single PR from here.
+           The PR form is in the ERP's Purchase panel (this page runs inside
+           its iframe), so the real work happens in the parent window:
            store-core.js › sarvGenerateNewPrFromTrims. -->
       <button class="btn-pr" onclick="generatePrFromSheet()" id="btnGenPr" disabled
-              title="Lot Req Qty ke baad NEW PR column me items tick karein — PR qty = Final PO Qty (Lot Req + Wastage)">📝 Generate New PR (<span id="prSelCount">0</span>)</button>
-      <button class="btn-ghost" onclick="clearPrSel()" id="btnPrClear" style="display:none" title="Saare tick hatayein">✖ Clear Ticks</button>
-      <button class="btn-save" onclick="saveData()" id="btnSave">💾 Save</button>
-      <button class="btn-sync" onclick="syncQty(true)" id="btnSync" title="Order / Lot se auto Qty dobara bharein (manual ✎ values nahi badlenge)">↻ Sync Qty</button>
+              title="Tick items in the NEW PR column (after Lot Req Qty). PR qty = Final PO Qty (Lot Req + Wastage)">Generate New PR (<span id="prSelCount">0</span>)</button>
+      <button class="btn-ghost" onclick="clearPrSel()" id="btnPrClear" style="display:none" title="Remove all ticks">✖ Clear Ticks</button>
+      <button class="btn-save" onclick="saveData()" id="btnSave">Save</button>
+      <button class="btn-sync" onclick="syncQty(true)" id="btnSync" title="Refill the automatic quantities from the order / lot (manual ✎ values are kept)">↻ Sync Qty</button>
       <button class="btn-dark" onclick="refreshStoreData()" title="PO / Inward / Issue ka latest data">⟳ Store Data</button>
-      <button class="btn-export" onclick="exportToCSV()">📥 Download Excel (CSV)</button>
-      <button class="btn-pdf" onclick="makePdf()" id="btnPdf" title="A4 landscape PDF banayein aur ERP me save karein">📄 PDF</button>
-      <button class="btn-ghost" onclick="printSheet()">🖨 Print</button>
-      <button class="btn-ghost" onclick="openRegister()">📋 Saved Sheets</button>
-      <button class="btn-clear" onclick="resetData()" id="btnReset">🔄 Reset</button>
+      <button class="btn-export" onclick="exportToCSV()">Download Excel (CSV)</button>
+      <button class="btn-pdf" onclick="makePdf()" id="btnPdf" title="Create an A4 landscape PDF and save it in the ERP">PDF</button>
+      <button class="btn-ghost" onclick="printSheet()">Print</button>
+      <button class="btn-ghost" onclick="openRegister()">Saved Sheets</button>
+      <button class="btn-clear" onclick="resetData()" id="btnReset">Reset</button>
     </div>
   </div>
 
@@ -237,10 +238,10 @@
     <div>
       <label>ORDER NO:</label>
       <select id="orderSel" onchange="onOrderChange(this.value)"><option value="">Loading orders…</option></select>
-      <input type="text" id="orderManual" style="display:none" placeholder="Order No. type karein…" autocomplete="off"
+      <input type="text" id="orderManual" style="display:none" placeholder="Type the Order No.…" autocomplete="off"
              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="setManualOrder(this.value)">
       <button class="btn-ghost" id="btnManualOrder" style="padding:5px 10px" onclick="toggleManualOrder()"
-              title="Order No. haath se likhein (Order Form me saved nahi hai)">✎ Manual</button>
+              title="Type the Order No. by hand (not saved in the Order Form)">✎ Manual</button>
     </div>
     <div>
       <label>LOT NO:</label>
@@ -258,7 +259,7 @@
        the Saved Sheets register all print them. Design 1 and Design 2 are always
        on offer; "+ ADD More Designs" adds Design 3, 4, 5 … -->
   <div class="order-bar manual-bar" id="manualBar" style="display:none">
-    <div class="mb-title">✎ MANUAL ORDER — ye details Order Form me nahi hain, yahan bharein</div>
+    <div class="mb-title">✎ MANUAL ORDER: these details are not in the Order Form, so fill them in here</div>
     <div>
       <label>PARTY NAME:<span style="color:#c0392b">*</span></label>
       <input type="text" id="mParty" list="partyList" placeholder="Party / Buyer" autocomplete="off"
@@ -290,10 +291,10 @@
   </div>
   <div class="legend">
     <span class="l-auto">Auto (Order / Lot / Store / PO se)</span>
-    <span class="l-man">Manual ✎ (aapne badla — ↺ se auto par wapas)</span>
+    <span class="l-man">Manual ✎ (changed by you; ↺ returns it to auto)</span>
     <span class="l-calc">Calculated</span>
-    <span style="padding-left:0">Final PO Qty = Lot Req × (1 + Wastage%) · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (chhoti line = Lot Req se kami)</span>
-    <span style="padding-left:0"><b>NEW PR</b> column me tick → <b>📝 Generate New PR</b> → ERP ka Purchase form khulta hai (PR qty = Final PO Qty). Submit hote hi PR No is sheet ke PR NO. column me apne aap lag jaata hai — phir 💾 Save.</span>
+    <span style="padding-left:0">Final PO Qty = Lot Req × (1 + Wastage%) · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (short line = below Lot Req)</span>
+    <span style="padding-left:0">Tick in the <b>NEW PR</b> column → <b>Generate New PR</b> → the ERP's Purchase form opens (PR qty = Final PO Qty). Once submitted, the PR No appears in this sheet's PR NO. column automatically. Then press Save.</span>
   </div>
 
   <div id="itemPop"></div>
@@ -306,7 +307,7 @@
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const SB = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:false } }) : null;
-const SETUP_HINT = 'Database setup pending — TRIMS_MANAGER_MIGRATION.sql run karein';
+const SETUP_HINT = 'Database setup pending. Please run TRIMS_MANAGER_MIGRATION.sql.';
 
 // ═══════════════════════ DEFAULT ROWS (same as the offline sheet) ═══════════
 const defaultItems = [
@@ -392,18 +393,18 @@ const S = {
 // MANUAL sheet — a saved Sales Order carries all three in the Order Form.
 const D = { orderNo:'', order:null, agg:null, sheetId:null, lots:[], status:'Open', notes:'', rows:[], dirty:false, meta:null, staleCount:0,
             manual:false, party:'', brand:'', designs:['',''],
-            /* Abhi-abhi is sheet se bani PR ka number — {no, count, replaced}.
-               Banner me baitha rehta hai jab tak Save na ho, kyonki PR submit
-               karte waqt user Purchase panel par hota hai aur ye page hidden
-               iframe me: us waqt ka toast kisi ne dekha hi nahi hota. */
+            /* Number of the PR just created from this sheet: {no, count, replaced}.
+               It stays in the banner until Save, because when the PR is
+               submitted the user is on the Purchase panel and this page is in
+               a hidden iframe, so nobody would have seen a toast. */
             prLinked:null };
 
-/* Har row ki apni pehchaan, sirf is browser session ke liye (database me nahi
-   jaati — sheetPayload gine-chune fields hi likhta hai).
-   Zaroorat: "Generate New PR" rows ko parent window ke PR form me bhejta hai,
-   aur PR save hone par PR No wapas INHI rows par lagta hai. Beech me user row
-   jod / hata sakta hai, isi liye row ka index (line_no) pehchaan ke kaam ka
-   nahi — uid hai. */
+/* Each row's own identity, for this browser session only (not stored in the
+   database; sheetPayload writes a fixed set of fields).
+   Needed because "Generate New PR" sends rows to the PR form in the parent
+   window, and when the PR is saved its PR No must land on THOSE same rows.
+   The user can add or remove rows in between, so the row index (line_no)
+   can't serve as the identity; the uid does. */
 let rowSeq = 0;
 function blankRow(p){
   return Object.assign({ uid:'r'+(++rowSeq), prSel:false,
@@ -727,7 +728,7 @@ function staleCount(){
 }
 function syncQty(user){
   D.rows.forEach(applyAuto);
-  if(user){ setDirty(true); toast('↻ Order / Lot se Qty sync ho gayi (manual values same rahi)'); }
+  if(user){ setDirty(true); toast('↻ Quantities synced from the order / lot (manual values unchanged)'); }
   renderAll();
 }
 
@@ -739,7 +740,7 @@ function renderOrderSelect(){
   // — otherwise it fell back to "-- Select Sales Order --" and read as if the
   // ✎ click had not registered.
   const manualPending=D.manual&&!D.orderNo;
-  sel.innerHTML=`<option value="">-- Select Sales Order --</option><option value="${MANUAL_OPT}" ${manualPending?'selected':''}>✎ Manual Order No. (type karein)</option>`
+  sel.innerHTML=`<option value="">-- Select Sales Order --</option><option value="${MANUAL_OPT}" ${manualPending?'selected':''}>✎ Manual Order No. (type it in)</option>`
     +S.orders.map(o=>
     `<option value="${esc(o.order_no)}" ${o.order_no===D.orderNo?'selected':''}>${esc(o.order_no)} — ${esc(o.buyer_name||'')} (${esc(o.order_date||'')})${S.sheetOrders.has(o.order_no)?'  ● saved':''}</option>`).join('');
   // A manual order has no row in the list, so it is appended as its own option
@@ -769,25 +770,25 @@ const hasManualLot = () => D.lots.some(l=>!S.lotByNorm[normLot(l)]);
 const isManualSheet = () => !!(D.manual || hasManualLot());
 function toggleManualOrder(on){
   const want=(on==null)?!D.manual:!!on;
-  if(!want){ if(D.dirty && !confirm('Manual Order band karke list se Order chunna hai? Unsaved changes chale jayenge.')) { renderOrderSelect(); return; }
+  if(!want){ if(D.dirty && !confirm('Close the Manual Order and pick an order from the list? Unsaved changes will be lost.')) { renderOrderSelect(); return; }
     openOrder(''); return; }
   /* Already on a saved Sales Order: going Manual means writing a DIFFERENT,
      hand-written sheet — not relabelling this one as manual, which would claim
      the Order Form has no record of it when it has. So the open sheet is closed
      first. */
   if(D.orderNo && S.orderByNo[D.orderNo]){
-    if(!confirm('Order '+D.orderNo+' Order Form me saved hai.\n\nManual Order No. likhne ke liye ye sheet band hogi.'
-      +(D.dirty?'\n⚠️ Unsaved changes chale jayenge.':'')+'\n\nAage badhein?')){ renderOrderSelect(); return; }
+    if(!confirm('Order '+D.orderNo+' is saved in the Order Form.\n\nThis sheet will close so you can type a Manual Order No.'
+      +(D.dirty?'\nUnsaved changes chale jayenge.':'')+'\n\nAage badhein?')){ renderOrderSelect(); return; }
     openOrder('');
   }
   D.manual=true; renderAll(); $('orderManual').focus();
 }
 function setManualOrder(v){
   const no=String(v||'').trim().toUpperCase();
-  if(!no){ toast('⚠️ Order No. khaali hai'); return; }
-  if(S.orderByNo[no]){ toast('ℹ️ '+no+' Order Form me saved hai — usi ko khol rahe hain'); openOrder(no); return; }
+  if(!no){ toast('The Order No. is empty'); return; }
+  if(S.orderByNo[no]){ toast(''+no+' is saved in the Order Form; opening it'); openOrder(no); return; }
   if(no===D.orderNo){ return; }
-  if(D.dirty && !confirm('Unsaved changes discard karke Order '+no+' kholna hai?')){ renderOrderSelect(); return; }
+  if(D.dirty && !confirm('Discard unsaved changes and open Order '+no+'?')){ renderOrderSelect(); return; }
   openOrder(no, { manual:true });
 }
 // Design slots. Two are always on offer; "+ ADD More Designs" adds Design 3, 4 …
@@ -795,7 +796,7 @@ function renderDesigns(){
   const ro=READ_ONLY()?'disabled':'';
   $('designWrap').innerHTML=D.designs.map((d,i)=>
     `<span class="design-chip"><label>D${i+1}</label><input type="text" value="${esc(d)}" placeholder="Design ${i+1}"
-       oninput="setDesign(${i},this.value)" ${ro}>${(D.designs.length>2&&!READ_ONLY())?`<button onclick="removeDesign(${i})" title="Design ${i+1} hatayein">✕</button>`:''}</span>`).join(' ');
+       oninput="setDesign(${i},this.value)" ${ro}>${(D.designs.length>2&&!READ_ONLY())?`<button onclick="removeDesign(${i})" title="Remove design ${i+1}">✕</button>`:''}</span>`).join(' ');
 }
 /* Stored exactly as typed — the box is uppercased by CSS and the value is
    uppercased once, on the way into the database (sheetPayload), so what is on
@@ -803,7 +804,7 @@ function renderDesigns(){
 function setDesign(i,v){ D.designs[i]=v; setDirty(true); }
 function addDesign(){
   if(READ_ONLY()) return;
-  if(D.designs.length>=20){ toast('20 se zyada design nahi'); return; }
+  if(D.designs.length>=20){ toast('No more than 20 designs'); return; }
   D.designs.push(''); setDirty(true); renderDesigns();
   const inp=$('designWrap').querySelector('.design-chip:last-child input'); if(inp) inp.focus();
 }
@@ -842,7 +843,7 @@ function manualGaps(){
 
 async function onOrderChange(v){
   if(v===MANUAL_OPT){ toggleManualOrder(true); return; }
-  if(D.dirty && !confirm('Unsaved changes discard karke dusra Order kholna hai?')){ renderOrderSelect(); return; }
+  if(D.dirty && !confirm('Discard unsaved changes and open another order?')){ renderOrderSelect(); return; }
   await openOrder(v);
 }
 async function openOrder(orderNo, opts){
@@ -854,7 +855,7 @@ async function openOrder(orderNo, opts){
   D.manual=!!orderNo && (!!(opts&&opts.manual) || !S.orderByNo[orderNo]);
   $('lotInput').value='';
   if(!orderNo){ D.manual=false; D.rows=defaultRows(); setDirty(false); renderAll(); return; }
-  $('banners').innerHTML='<div class="banner info">⏳ Order '+esc(orderNo)+' load ho raha hai…</div>';
+  $('banners').innerHTML='<div class="banner info">Loading Order '+esc(orderNo)+'…</div>';
   try{
     const o=S.orderByNo[orderNo];
     const [ord, sh]=await Promise.all([
@@ -891,29 +892,29 @@ async function openOrder(orderNo, opts){
          does not blank it — and ↺ is there the moment a PR is picked. */
       D.rows.forEach(r=>{ if(!r.prNo && r.poNo) r.poManual=true; if(!r.tDateManual && r.tDate && !canAutoTDate(r)) r.tDateManual=true; });
       setDirty(false);
-      toast('📂 Saved sheet load hui — '+orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
+      toast('Saved sheet loaded: '+orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
     } else {
       D.rows=defaultRows();
       D.rows.forEach(applyAuto);
       setDirty(false);
-      if(!D.order) toast(D.manual?'✎ Manual order '+orderNo+' — Party / Brand / Design bharein, Order Qty manual':'⚠️ Order data nahi mila — Order Qty manual bharein');
+      if(!D.order) toast(D.manual?'✎ Manual order '+orderNo+': fill in Party / Brand / Design; Order Qty is manual':'Order data not found; please fill in Order Qty manually');
     }
     renderAll();
   }catch(e){
-    $('banners').innerHTML='<div class="banner err">❌ '+esc(errMsg(e))+'</div>';
+    $('banners').innerHTML='<div class="banner err">'+esc(errMsg(e))+'</div>';
   }
 }
 
 function addLot(){
   if(READ_ONLY()) return;
   const raw=$('lotInput').value.trim(); if(!raw) return;
-  if(!D.orderNo){ toast('⚠️ Pehle Order No select karein'); return; }
+  if(!D.orderNo){ toast('Please select an Order No first'); return; }
   const n=normLot(raw);
-  if(D.lots.some(l=>normLot(l)===n)){ toast('Lot '+raw+' pehle se linked hai'); return; }
+  if(D.lots.some(l=>normLot(l)===n)){ toast('Lot '+raw+' is already linked'); return; }
   const taken=S.lotLinks[n];
-  if(taken && taken!==D.orderNo){ toast('⛔ Lot '+raw+' pehle se Order '+taken+' se linked hai', 4500); return; }
+  if(taken && taken!==D.orderNo){ toast('Lot '+raw+' is already linked to Order '+taken, 4500); return; }
   const card=S.lotByNorm[n];
-  if(!card && !confirm('Lot Card "'+raw+'" nahi mila.\n\nManual lot ki tarah jodna hai?\n\n• Lot Req Qty haath se bharni hogi\n• Store Issue phir bhi isi Lot No se aayega\n• Party / Brand / Design neeche amber bar me maange jayenge')) return;
+  if(!card && !confirm('Lot Card "'+raw+'" was not found.\n\nAdd it as a manual lot?\n\n• Lot Req Qty must be filled in by hand\n• Store Issue will still come through this Lot No\n• Party / Brand / Design will be asked for in the amber bar below')) return;
   // A manual lot makes the sheet a manual sheet (isManualSheet / hasManualLot),
   // so the amber bar and its required fields come up for it too — the Lot Card
   // would otherwise have carried Brand.
@@ -929,12 +930,12 @@ function addLot(){
   }
   D.rows.forEach(r=>{ const lq=autoLotQty(r); if(!r.lotManual && lq!=null) r.lotQty=lq; });
   setDirty(true); renderAll();
-  toast('🔗 Lot '+(card?card.lot_no:raw)+' linked'+(card?' — Lot Req Qty auto bhari':''));
+  toast('Lot '+(card?card.lot_no:raw)+' linked'+(card?' — Lot Req Qty auto bhari':''));
 }
 function removeLot(i){
   const lot=D.lots[i];
   const used=D.rows.some(r=>issueOf(r,lot)>0);
-  if(!confirm('Lot '+lot+' ko is Order se hatana hai?'+(used?'\n\n⚠️ Is lot ke against Store Issue already hai.':''))) return;
+  if(!confirm('Remove Lot '+lot+' from this order?'+(used?'\n\nThere is already a Store Issue against this lot.':''))) return;
   D.lots.splice(i,1);
   D.rows.forEach(r=>{ if(r.issues) delete r.issues[lot]; const lq=autoLotQty(r); if(!r.lotManual) r.lotQty = lq==null ? '' : lq; });
   setDirty(true); renderAll();
@@ -946,21 +947,21 @@ function renderAll(){
   const ro=READ_ONLY();
   ['btnAdd','btnSave','btnSync','btnReset','btnLot','btnManualOrder'].forEach(id=>{ const b=$(id); if(b) b.disabled=ro; });
   $('lotInput').disabled=ro; $('orderManual').disabled=ro;
-  // btnGenPr jaan-boojh kar is list me nahi — uska disabled ginti se chalta
-  // hai (0 tick = disabled), aur View Only par prEligible khud 0 kar deta
-  // hai. Ginti renderRows() ke andar set hoti hai.
+  // btnGenPr is deliberately not in this list: its disabled state follows the
+  // count (0 ticks = disabled), and on View Only prEligible returns 0 by itself.
+  // The count is set inside renderRows().
 }
 function renderChips(){
   $('lotChips').innerHTML=D.lots.map((l,i)=>{
     const c=S.lotByNorm[normLot(l)];
-    return `<span class="lot-chip ${c?'':'manual'}" title="${c?esc(`${c.brand_name} · ${c.fabric_type} · ${c.bed_size} ${c.blanket_ply} ply · ${fmtN(c.total_pcs)} pcs`):'Manual lot (Lot Card nahi hai)'}">LOT ${esc(l)} <small>${c?fmtN(c.total_pcs)+' pcs':'manual'}</small>${READ_ONLY()?'':`<button onclick="removeLot(${i})" title="Remove">✕</button>`}</span>`;
+    return `<span class="lot-chip ${c?'':'manual'}" title="${c?esc(`${c.brand_name} · ${c.fabric_type} · ${c.bed_size} ${c.blanket_ply} ply · ${fmtN(c.total_pcs)} pcs`):'Manual lot (no Lot Card)'}">LOT ${esc(l)} <small>${c?fmtN(c.total_pcs)+' pcs':'manual'}</small>${READ_ONLY()?'':`<button onclick="removeLot(${i})" title="Remove">✕</button>`}</span>`;
   }).join(' ');
 }
 function renderInfo(){
   const o=D.order, a=D.agg;
   const lotPcs=D.lots.reduce((s,l)=>{ const c=S.lotByNorm[normLot(l)]; return s+(c?num(c.total_pcs):0); },0);
   const designs=D.designs.filter(x=>String(x||'').trim());
-  $('infoStrip').innerHTML=!D.orderNo?'<div class="info">👆 Sales Order select karein (ya ✎ Manual se Order No type karein) — saved sheet ho to wahi khulegi, warna nayi.</div>':`
+  $('infoStrip').innerHTML=!D.orderNo?'<div class="info">Select a Sales Order (or type an Order No with ✎ Manual). A saved sheet opens if one exists; otherwise a new one is created.</div>':`
     <div class="info">${isManualSheet()?'Party (manual)':'Buyer'}<b>${esc(o?o.buyer_name:(D.party||'—'))}</b></div>
     <div class="info">Order Date<b>${esc(o?o.order_date:(isManualSheet()?'manual':'—'))}</b></div>
     ${isManualSheet()?`<div class="info">Brand<b>${esc(D.brand||'—')}</b></div>
@@ -974,29 +975,29 @@ function renderInfo(){
 }
 function renderBanners(){
   const b=[];
-  if(READ_ONLY()) b.push('<div class="banner info">👁 View Only login — changes save nahi honge.</div>');
+  if(READ_ONLY()) b.push('<div class="banner info">View Only login: changes will not be saved.</div>');
   D.staleCount = D.orderNo ? staleCount() : 0;
-  if(D.sheetId && D.staleCount) b.push(`<div class="banner warn"><span>⚠️ Order / Lot me badlav hua hai — ${D.staleCount} auto value(s) saved sheet se alag hain.</span><button class="btn-sync" onclick="syncQty(true)">↻ Sync Qty</button></div>`);
+  if(D.sheetId && D.staleCount) b.push(`<div class="banner warn"><span>The order / lot has changed: ${D.staleCount} automatic value(s) differ from the saved sheet.</span><button class="btn-sync" onclick="syncQty(true)">↻ Sync Qty</button></div>`);
   if(D.orderNo && !D.order) b.push('<div class="banner warn">'+(D.manual
-    ? '✎ <b>Manual Order</b> — ye Order Form me saved nahi hai. Order Qty haath se bharein; Party / Brand / Design amber bar me bharein.'
-    : '⚠️ Ye Order sales_orders me nahi mila — Order Qty manual bharein.')+'</div>');
+    ? '✎ <b>Manual Order</b>: not saved in the Order Form. Fill in Order Qty by hand, and Party / Brand / Design in the amber bar.'
+    : 'This order was not found in sales_orders. Please fill in Order Qty manually.')+'</div>');
   const gaps=manualGaps();
-  if(gaps.length) b.push('<div class="banner warn">✎ Manual sheet ke liye ye bharna zaroori hai: <b>'+esc(gaps.join(', '))+'</b> — bina inke Save nahi hoga.</div>');
-  /* Abhi-abhi is sheet se PR bani hai aur uska number rows par lag gaya hai,
-     par sheet save nahi hui. PR submit karte waqt user Purchase panel par tha
-     aur ye page hidden iframe me, to wahan ka toast kisi ne dekha nahi — ye
-     banner isi liye Save hone tak baitha rehta hai. */
-  if(D.prLinked) b.push('<div class="banner warn"><span>📝 <b>PR '+esc(D.prLinked.no)+'</b> is sheet ki <b>'+D.prLinked.count+'</b> row par lag gayi hai'
-    +(D.prLinked.replaced?(' ('+D.prLinked.replaced+' row par purana PR badla)'):'')
-    +' — abhi <b>save nahi hui</b>.</span><button class="btn-save" onclick="saveData()" style="padding:4px 12px">💾 Save ab</button></div>');
+  if(gaps.length) b.push('<div class="banner warn">✎ A manual sheet needs: <b>'+esc(gaps.join(', '))+'</b>. It cannot be saved without these.</div>');
+  /* A PR has just been created from this sheet and its number is on the rows,
+     but the sheet is not saved. When the PR was submitted the user was on the
+     Purchase panel and this page was in a hidden iframe, so nobody saw the
+     toast there; that is why this banner stays until Save. */
+  if(D.prLinked) b.push('<div class="banner warn"><span><b>PR '+esc(D.prLinked.no)+'</b> has been set on <b>'+D.prLinked.count+'</b> row(s) of this sheet'
+    +(D.prLinked.replaced?(' ('+D.prLinked.replaced+' row(s) had an older PR replaced)'):'')
+    +' but is <b>not saved yet</b>.</span><button class="btn-save" onclick="saveData()" style="padding:4px 12px">Save now</button></div>');
   // The V2 columns, said once and plainly: everything on screen works without
   // them, saving those values does not.
   if(S.v2.sheet===false||S.v2.line===false){
     const miss=[]; if(S.v2.line===false) miss.push('PR No'); if(S.v2.sheet===false) miss.push('Party / Brand / Designs');
-    b.push('<div class="banner err">🗄 <b>TRIMS_MANAGER_V2_MIGRATION.sql</b> abhi run nahi hui — '+esc(miss.join(' aur '))
-      +' screen par kaam karenge par <b>save nahi honge</b>. Supabase SQL Editor me migration chalakar reload karein.</div>');
+    b.push('<div class="banner err"><b>TRIMS_MANAGER_V2_MIGRATION.sql</b> has not been run yet: '+esc(miss.join(' and '))
+      +' work on screen but <b>will not be saved</b>. Run the migration in the Supabase SQL Editor and reload.</div>');
   }
-  if(S.storeAt) b.push(`<div class="banner info"><span>🏬 PO / PR, Qty Received &amp; Lot Issue Store se live hain — last updated ${esc(S.storeAt.toLocaleTimeString('en-IN'))}</span><button class="btn-dark" onclick="refreshStoreData()" style="padding:4px 10px">⟳ Refresh</button></div>`);
+  if(S.storeAt) b.push(`<div class="banner info"><span>PO / PR, Qty Received &amp; Lot Issue are live from the Store; last updated ${esc(S.storeAt.toLocaleTimeString('en-IN'))}</span><button class="btn-dark" onclick="refreshStoreData()" style="padding:4px 10px">⟳ Refresh</button></div>`);
   $('banners').innerHTML=b.join('');
 }
 function renderHead(){
@@ -1010,10 +1011,10 @@ function renderHead(){
     <th style="width:80px;">Order Qty<small>${D.agg?'from Order':''}</small></th>
     <th style="width:90px;">Supplier</th>
     <th style="width:85px;">Lot Req Qty<small>${D.lots.length?'from Lot':''}</small></th>
-    <th class="pr-th" style="width:56px;" title="Items tick karke 📝 Generate New PR dabayein — PR qty = Final PO Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Jo rows PR ke liye ho sakti hain, sab tick / untick"></th>
+    <th class="pr-th" style="width:56px;" title="Tick items and press Generate New PR. PR qty = Final PO Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Tick / untick every row that can go on a PR"></th>
     <th style="width:75px;">Wastage %</th>
     <th style="width:85px;">Final PO Qty</th>
-    <th style="width:170px;">PR NO.<small>select karein</small></th>
+    <th style="width:170px;">PR NO.<small>select</small></th>
     <th style="width:170px;">PO No<small>PR se auto</small></th>
     <th style="width:120px;">Target Date<small>PO delivery</small></th>
     <th style="width:90px;">Qty Received<small>PO / PR ke against</small></th>
@@ -1021,7 +1022,7 @@ function renderHead(){
     ${lots.map((l,i)=>`<th class="lot-th" style="width:95px;">${l?'Lot '+esc(l)+' Issue':'Lot Issue'}<small>Qty + issue date</small></th>`).join('')}
     <th style="width:90px;">Pending Issue<small>Received − Issued</small></th>
     <th style="width:90px;">Dispatch Mode</th>
-    <th style="width:110px;">Final Hisaab</th>
+    <th style="width:110px;">Final Settlement</th>
     <th class="noprint" style="width:30px;"></th>
   </tr>`;
 }
@@ -1038,32 +1039,32 @@ function poOptions(r){
   const missing=r.poNo&&!S.poByNo[r.poNo]?`<option value="${esc(r.poNo)}" selected>${esc(r.poNo)} (not found)</option>`:'';
   return `<option value="">-- PO --</option>${missing}${has.length?`<optgroup label="✓ Is item ke PO">${has.join('')}</optgroup>`:''}<optgroup label="${r.storeId?'Other POs':'All POs'}">${other.join('')}</optgroup>`;
 }
-/* ══ NEW PR SE SHEET SE HI ════════════════════════════════════════════════
-   Item Master ke NEW PR column jaisa: Lot Req Qty ke theek baad ek tick
-   column, upar toolbar me "📝 Generate New PR (n)". Tick karke dabane par ERP
-   ka Purchase › New Entry form khul jaata hai, usi me ye saare item bhar jaate
-   hain — PR qty = FINAL PO QTY (Lot Req × (1 + Wastage%)), kyunki kharidna
-   wahi hai, Lot Req nahi.
+/* ══ NEW PR STRAIGHT FROM THE SHEET ══════════════════════════════════════
+   Like the Item Master's NEW PR column: a tick column right after Lot Req Qty
+   and "Generate New PR (n)" in the toolbar. Ticking and pressing it opens
+   the ERP's Purchase › New Entry form filled with these items, with PR qty =
+   FINAL PO QTY (Lot Req × (1 + Wastage%)), because that is what has to be
+   bought, not the Lot Req.
 
-   PR ka form ISI page par nahi hai — ye page ERP ke iframe me chalta hai aur
-   form parent window me — isi liye asli kaam parent karta hai
-   (store-core.js › sarvGenerateNewPrFromTrims). PR banane ka code do jagah
-   nahi likha jaata, aur Item Master se bani PR aur isse bani PR bilkul ek
-   jaisi hoti hain.
+   The PR form is NOT on this page: this page runs in the ERP's iframe and
+   the form is in the parent window, so the parent does the real work
+   (store-core.js › sarvGenerateNewPrFromTrims). The PR-creation code is not
+   written twice, and a PR made from the Item Master and one made from here
+   are identical.
 
-   PR save hote hi uska number WAPAS inhi rows ke PR NO. column me aa jaata
-   hai (window.trimsPrSaved, neeche) — wahi link jisse PO No, Target Date aur
-   Qty Received apne aap chalne lagte hain. */
+   Once the PR is saved its number comes BACK to these rows' PR NO. column
+   (window.trimsPrSaved, below), which is the link that makes PO No, Target
+   Date and Qty Received work automatically. */
 
-/* Ek row PR ke liye ho sakti hai ya nahi — aur na ho to kyun. Ek hi jagah,
-   taaki checkbox ka disabled hona, uska tooltip, "select all" aur generate
-   waqt ki ginti chaaron ek hi niyam padhein. */
+/* Whether a row can go on a PR, and if not, why. Kept in one place so the
+   checkbox's disabled state, its tooltip, "select all" and the count at
+   generate time all follow the same rule. */
 function prEligible(r){
-  if(READ_ONLY()) return { ok:false, why:'View Only login — PR nahi ban sakti' };
-  // Item Master ka item hi PR line ban sakta hai: PR us item_id par bandhti
-  // hai, aur Store Standard Name ke bina bandhne ko kuch nahi hota.
-  if(!r.storeId) return { ok:false, why:'Pehle Store Standard Name (Item Master) chunein' };
-  if(rowCalc(r).poQty<=0) return { ok:false, why:'Final PO Qty 0 hai — Lot Req Qty bharein' };
+  if(READ_ONLY()) return { ok:false, why:'View Only login: a PR cannot be created' };
+  // Only an Item Master item can become a PR line: the PR is tied to that
+  // item_id, and without a Store Standard Name there is nothing to tie it to.
+  if(!r.storeId) return { ok:false, why:'Choose the Store Standard Name (Item Master) first' };
+  if(rowCalc(r).poQty<=0) return { ok:false, why:'Final PO Qty is 0. Please fill in Lot Req Qty.' };
   return { ok:true, why:'' };
 }
 const prSelRows = () => D.rows.filter(r=>r.prSel && prEligible(r).ok);
@@ -1071,15 +1072,15 @@ function prCellHtml(r, idx, c){
   const e=prEligible(r);
   const has=!!String(r.prNo||'').trim();
   const tip=e.ok
-    ? ('Tick karein → PR qty '+fmtN(c.poQty)+' (Final PO Qty)'+(has?'\n⚠️ Is row par PR '+r.prNo+' pehle se hai — nayi PR use badal degi':''))
+    ? ('Tick → PR qty '+fmtN(c.poQty)+' (Final PO Qty)'+(has?'\nThis row already has PR '+r.prNo+'; a new PR will replace it':''))
     : e.why;
   return `<td class="pr-td ${has?'has-pr':''}" title="${esc(tip)}">`
     +`<input type="checkbox" ${r.prSel&&e.ok?'checked':''} ${e.ok?'':'disabled'} onchange="prToggle(${idx},this.checked)">`
-    +`${has?`<small title="${esc('PR '+r.prNo+' pehle se')}">PR ✓</small>`:''}</td>`;
+    +`${has?`<small title="${esc('PR '+r.prNo+' already set')}">PR ✓</small>`:''}</td>`;
 }
 function prToggle(i, on){
   const r=D.rows[i]; if(!r) return;
-  if(on && !prEligible(r).ok){ toast('⚠️ '+prEligible(r).why); renderRows(); return; }
+  if(on && !prEligible(r).ok){ toast(''+prEligible(r).why); renderRows(); return; }
   r.prSel=!!on;
   syncPrSelUi();
 }
@@ -1088,8 +1089,8 @@ function prSelectAll(on){
   renderRows();
 }
 function clearPrSel(){ D.rows.forEach(r=>{ r.prSel=false; }); renderRows(); }
-/* Button ki ginti aur "select all" ki haalat — poora table dobara render
-   kiye bina, taaki tick karte waqt scroll apni jagah rahe. */
+/* The button count and the "select all" state, updated without re-rendering
+   the whole table so the scroll position stays put while ticking. */
 function syncPrSelUi(){
   const n=prSelRows().length;
   const btn=$('btnGenPr'), cnt=$('prSelCount'), clr=$('btnPrClear');
@@ -1120,7 +1121,7 @@ function prOptions(r){
   });
   const missing=r.prNo&&!S.prByNo[r.prNo]?`<option value="${esc(r.prNo)}" selected>${esc(r.prNo)} (not found)</option>`:'';
   return `<option value="">-- PR --</option>${missing}`
-    +(mine.length?`<optgroup label="✓ Is item ki PR">${mine.join('')}</optgroup>`:'')
+    +(mine.length?`<optgroup label="✓ PRs for this item">${mine.join('')}</optgroup>`:'')
     +`<optgroup label="${r.storeId?'Other PRs':'All PRs'}">${other.join('')}</optgroup>`;
 }
 /* The PO cell. On auto it is a read-only green cell naming whatever PO(s) the
@@ -1133,21 +1134,21 @@ function poCellHtml(r, idx, ro){
   }
   const list=prPoList(r);
   if(!list.length){
-    return `<td class="po-wait" title="PR ${esc(r.prNo)} par is item ka PO abhi nahi bana — bante hi yahan apne aap aa jayega">⏳ PO pending`
-      +`${ro?'':`<button class="ico" onclick="overridePo(${idx})" title="PO haath se chunein">✎</button>`}</td>`;
+    return `<td class="po-wait" title="No PO has been raised for this item on PR ${esc(r.prNo)} yet; it will appear here automatically once raised">PO pending`
+      +`${ro?'':`<button class="ico" onclick="overridePo(${idx})" title="Choose a PO by hand">✎</button>`}</td>`;
   }
   const nos=[...new Set(list.map(x=>x.poNo))];
   const vend=[...new Set(list.map(x=>x.po&&x.po.vendor_name).filter(Boolean))];
   const tip=list.map(x=>`${x.poNo} · ${x.po.vendor_name||''} · Ordered ${fmtN(x.line.ordered_qty)}${x.po.delivery_date?' · Del '+fmtDate(x.po.delivery_date):''}`).join('\n');
   return `<td class="po-auto" title="${esc('PR '+r.prNo+' se auto:\n'+tip)}">${esc(nos.join(', '))}<small>${esc(vend.join(', ')||'PR se auto')}</small>`
-    +`${ro?'':`<button class="ico" onclick="overridePo(${idx})" title="PO haath se chunein">✎</button>`}</td>`;
+    +`${ro?'':`<button class="ico" onclick="overridePo(${idx})" title="Choose a PO by hand">✎</button>`}</td>`;
 }
 
 /* ── Pending Issue cell ────────────────────────────────────────────────────
    Main figure = Qty Received − Total Lot Issue:
-     > 0  store ke paas pada hai, lot ko issue nahi hua   → laal (kaam baaki)
-     = 0  jo aaya wo poora issue ho gaya                   → hara
-     < 0  jitna aaya usse ZYADA issue ho gaya              → laal, OVER tag
+     > 0  in the store but not issued to the lot   → red (work pending)
+     = 0  everything received has been issued      → green
+     < 0  MORE issued than was received            → red, OVER tag
    Second, smaller line = Lot Req Qty − Total Issue, the shortfall against what
    the lots actually asked for. An item that is short because it never came IN
    shows "Req short" here while the main figure reads 0 — without it, that case
@@ -1165,7 +1166,7 @@ function pendSub(c, hasLots){
 }
 function pendTip(c){
   return `Pending Issue = Qty Received (${fmtN(c.rec)}) − Total Lot Issue (${fmtN(c.totalIssue)}) = ${fmtN(c.pendIssue)}\n`
-    +`Lot Req se: ${fmtN(c.reqShort)} ${c.reqShort>0?'baaki':(c.reqShort<0?'zyada issue':'pura')}`;
+    +`vs Lot Req: ${fmtN(c.reqShort)} ${c.reqShort>0?'pending':(c.reqShort<0?'over-issued':'complete')}`;
 }
 
 function renderRows(){
@@ -1175,15 +1176,15 @@ function renderRows(){
     const c=rowCalc(r);
     const oqAuto=autoOrderQty(r)!=null, lqAuto=autoLotQty(r)!=null;
     const recCell = canAutoRec(r)&&!r.recManual
-      ? (()=>{ const x=liveRec(r); return `<td class="live" title="${esc(x.docs.join('\n')||'Is PO / PR ke against is item ka inward abhi nahi hua')}">${fmtN(x.qty)}<small>${x.docs.length} inward</small>${ro?'':`<button class="ico" onclick="overrideRec(${idx})" title="Manual qty">✎</button>`}</td>`; })()
-      : `<td><input type="number" class="${r.recManual?'man':''}" value="${esc(r.rec)}" oninput="setF(${idx},'rec',this.value)" ${ro} title="${(r.prNo||r.poNo)&&!r.storeId?'Store Standard Name chunein — tab PO / PR se auto aayega':''}">${r.recManual&&canAutoRec(r)&&!ro?`<button class="ico" onclick="revert(${idx},'recManual')" title="Store se auto">↺</button>`:''}</td>`;
+      ? (()=>{ const x=liveRec(r); return `<td class="live" title="${esc(x.docs.join('\n')||'No inward yet for this item against this PO / PR')}">${fmtN(x.qty)}<small>${x.docs.length} inward</small>${ro?'':`<button class="ico" onclick="overrideRec(${idx})" title="Manual qty">✎</button>`}</td>`; })()
+      : `<td><input type="number" class="${r.recManual?'man':''}" value="${esc(r.rec)}" oninput="setF(${idx},'rec',this.value)" ${ro} title="${(r.prNo||r.poNo)&&!r.storeId?'Choose the Store Standard Name; it will then come automatically from the PO / PR':''}">${r.recManual&&canAutoRec(r)&&!ro?`<button class="ico" onclick="revert(${idx},'recManual')" title="Automatic from the Store">↺</button>`:''}</td>`;
     // Lot Issue: the qty, with EVERY issuing date under it. Hover gives the
     // issue document numbers and the qty each one took out.
     const issueCells = (lots.length?lots:[null]).map(l=>{
       if(!l) return `<td class="calc" style="color:#aaa">—</td>`;
       if(canAutoIssue(r)&&!r.issueManual){
         const x=liveIssue(r,l), dts=[...new Set(x.dates)];
-        return `<td class="live" title="${esc(x.docs.join('\n')||'Is lot ke against is item ka Store Issue abhi nahi hua')}">${fmtN(x.qty)}`
+        return `<td class="live" title="${esc(x.docs.join('\n')||'No Store Issue yet for this item against this lot')}">${fmtN(x.qty)}`
           +`<small>${x.docs.length} issue</small>${dts.length?`<span class="dts">${dts.map(esc).join('<br>')}</span>`:''}`
           +`${ro?'':`<button class="ico" onclick="overrideIssue(${idx})" title="Manual qty">✎</button>`}</td>`;
       }
@@ -1193,7 +1194,7 @@ function renderRows(){
       <td>${idx+1}</td>
       <td><input type="text" value="${esc(r.desc)}" oninput="setF(${idx},'desc',this.value)" onchange="descChanged(${idx})" ${ro}></td>
       <td><select onchange="setF(${idx},'cat',this.value)" ${ro}>${CATEGORIES.concat(CATEGORIES.includes(r.cat)?[]:[r.cat]).map(x=>`<option ${x===r.cat?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
-      <td class="store-wrap"><input type="text" class="store ${r.storeId?'auto':''}" value="${esc(r.storeName)}" placeholder="🔍 Item Master…" onfocus="itemOpen(this,${idx})" oninput="itemFilter(this,${idx})" onkeydown="itemKey(event,${idx})" onblur="itemBlur(this,${idx})" ${ro} title="${esc(r.storeName)}"></td>
+      <td class="store-wrap"><input type="text" class="store ${r.storeId?'auto':''}" value="${esc(r.storeName)}" placeholder="Item Master…" onfocus="itemOpen(this,${idx})" oninput="itemFilter(this,${idx})" onkeydown="itemKey(event,${idx})" onblur="itemBlur(this,${idx})" ${ro} title="${esc(r.storeName)}"></td>
       <td><select onchange="setBasis(${idx},this.value)" ${ro}>${BASES.map(b=>`<option value="${b[0]}" ${b[0]===r.basis?'selected':''}>${b[1]}</option>`).join('')}</select></td>
       <td><input type="number" class="${r.oQtyManual?'man':(oqAuto?'auto':'')}" value="${esc(r.oQty)}" oninput="setManual(${idx},'oQty','oQtyManual',this.value,this)" ${ro}>${r.oQtyManual&&oqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'oQtyManual')" title="Order se auto">↺</button>`:''}</td>
       <td><select class="${r.supManual?'man':(autoSupplier(r)?'auto':'')}" onchange="setManual(${idx},'sup','supManual',this.value,this)" ${ro}>${SUPPLIERS.map(s=>`<option ${s===r.sup?'selected':''}>${s}</option>`).join('')}</select></td>
@@ -1203,7 +1204,7 @@ function renderRows(){
       <td class="calc poQty">${c.poQty}</td>
       <td><select class="${r.prNo?'auto':''}" onchange="setPr(${idx},this.value)" ${ro}>${prOptions(r)}</select></td>
       ${poCellHtml(r,idx,ro)}
-      <td><input type="date" class="${r.tDateManual?'man':(canAutoTDate(r)?'auto':'')}" value="${esc(tDateOf(r))}" oninput="setManual(${idx},'tDate','tDateManual',this.value,this)" ${ro} title="${canAutoTDate(r)?'PO ki delivery date se auto':'PO lagte hi auto bhar jayegi'}">${r.tDateManual&&canAutoTDate(r)&&!ro?`<button class="ico" onclick="revert(${idx},'tDateManual')" title="PO se auto">↺</button>`:''}</td>
+      <td><input type="date" class="${r.tDateManual?'man':(canAutoTDate(r)?'auto':'')}" value="${esc(tDateOf(r))}" oninput="setManual(${idx},'tDate','tDateManual',this.value,this)" ${ro} title="${canAutoTDate(r)?'Automatic from the PO delivery date':'Fills in automatically once a PO exists'}">${r.tDateManual&&canAutoTDate(r)&&!ro?`<button class="ico" onclick="revert(${idx},'tDateManual')" title="Automatic from the PO">↺</button>`:''}</td>
       ${recCell}
       <td class="calc bal ${c.bal>0?'neg':'ok'}">${fmtN(c.bal)}</td>
       ${issueCells}
@@ -1213,8 +1214,8 @@ function renderRows(){
       <td class="noprint">${ro?'':`<button class="row-del" onclick="removeRow(${idx})" title="Remove row">✕</button>`}</td>
     </tr>`;
   }).join('');
-  // Rows abhi-abhi bani hain, to button ki ginti aur "select all" unke saath
-  // hi theek ho jaate hain.
+  // The rows have just been built, so the button count and "select all" are
+  // brought up to date together with them.
   syncPrSelUi();
 }
 // Recalculate the computed cells of one row without re-rendering inputs (keeps focus)
@@ -1226,10 +1227,10 @@ function refreshCalc(idx){
   const p=tr.querySelector('.pend');
   p.innerHTML=(D.lots.length?fmtN(c.pendIssue):'—')+pendSub(c,D.lots.length);
   p.className='calc pend '+pendCls(c); p.title=pendTip(c);
-  /* NEW PR ka checkbox Final PO Qty par tika hai (0 ho to tick nahi ho sakta),
-     aur Final PO Qty Lot Req Qty / Wastage se badalti hai — isi liye wo bhi
-     yahin refresh hota hai. Bina iske, 0 wali row me Lot Req Qty bharne ke
-     baad bhi checkbox agle poore render tak disabled pada rehta. */
+  /* The NEW PR checkbox depends on Final PO Qty (it can't be ticked at 0), and
+     Final PO Qty changes with Lot Req Qty / Wastage, so it is refreshed here as
+     well. Without this, a row that was at 0 stayed disabled after Lot Req Qty
+     was filled in, until the next full render. */
   const td=tr.querySelector('.pr-td');
   if(td){
     td.outerHTML=prCellHtml(D.rows[idx],idx,c);
@@ -1261,7 +1262,7 @@ function setPr(i,pr){
   if(!pr){ setDirty(true); renderRows(); return; }
   if(r.poManual && autoPoNos(r).length){
     r.poManual=false; r.poNo='';
-    toast('🔗 PR '+pr+' ka PO mil gaya — PO No ab auto hai (✎ se dobara haath se chun sakte hain)');
+    toast('Found the PO for PR '+pr+'; PO No is now automatic (✎ lets you choose it by hand again)');
   }
   // A hand-typed Target Date is kept; an untouched one now comes off the PO.
   setDirty(true); renderRows();
@@ -1285,7 +1286,7 @@ function overrideRec(i){ const r=D.rows[i]; r.rec=liveRec(r).qty; r.recManual=tr
 function overrideIssue(i){ const r=D.rows[i]; r.issues={}; D.lots.forEach(l=>r.issues[l]=liveIssue(r,l).qty); r.issueManual=true; setDirty(true); renderRows(); }
 function removeRow(i){
   const r=D.rows[i];
-  if((r.desc||r.storeName) && !confirm('Row '+(i+1)+' ('+(r.desc||r.storeName)+') hatani hai?')) return;
+  if((r.desc||r.storeName) && !confirm('Remove row '+(i+1)+' ('+(r.desc||r.storeName)+')?')) return;
   D.rows.splice(i,1); setDirty(true); renderRows();
 }
 function addNewItem(){
@@ -1297,35 +1298,35 @@ function addNewItem(){
 }
 
 /* ══ GENERATE NEW PR ══════════════════════════════════════════════════════
-   Ticked rows parent window ke PR form me bhej di jaati hain. Yahan sirf teen
-   kaam hote hain: poochna, payload banana, aur bhejna.
+   The ticked rows are sent to the PR form in the parent window. Only three
+   things happen here: ask, build the payload and send.
 
-   BUYER / FOC rows tick ho sakti hain par bhejne se pehle poocha jaata hai —
-   wo maal buyer deta hai (ya FOC aata hai), uski PR hum nahi banate. Ban
-   sakti hai, par anjaane me nahi. */
+   BUYER / FOC rows can be ticked, but we ask before sending: that material
+   is supplied by the buyer (or arrives FOC), so we don't raise a PR for it.
+   It can still be done, just not by accident. */
 async function generatePrFromSheet(){
   if(READ_ONLY()) return;
   const rows=prSelRows();
-  if(!rows.length){ toast('⚠️ Pehle NEW PR column me items tick karein'); return; }
+  if(!rows.length){ toast('Tick items in the NEW PR column first'); return; }
 
-  // Ye page ERP ke andar hi PR bana sakta hai — form wahan hai.
+  // A PR can only be created from inside the ERP; that's where the form is.
   const P=(()=>{ try{ return (window.parent!==window) ? window.parent : null; }catch(e){ return null; } })();
   if(!P || typeof P.sarvGenerateNewPrFromTrims!=='function'){
-    toast('⚠️ PR form ERP ke andar hai — Trims Manager ko ERP se kholein: Manufacturing › Trims Manager',6000);
+    toast('The PR form is inside the ERP. Open Trims Manager from the ERP: Manufacturing › Trims Manager',6000);
     return;
   }
 
   const buyerRows=rows.filter(r=>/BUYER|FOC/i.test(r.sup||''));
   if(buyerRows.length && !confirm(
-      'In '+buyerRows.length+' item ka Supplier BUYER / FOC hai — ye maal hum nahi kharidte:\n\n'
+      'The supplier for '+buyerRows.length+' item(s) is BUYER / FOC; we do not buy this material:\n\n'
       +buyerRows.map(r=>'• '+(r.desc||r.storeName)+'  ('+r.sup+')').join('\n')
-      +'\n\nPhir bhi PR me bhejna hai?')) return;
+      +'\n\nSend them to the PR anyway?')) return;
 
   const already=rows.filter(r=>String(r.prNo||'').trim());
   if(already.length && !confirm(
-      'In '+already.length+' row par PR pehle se lagi hai — nayi PR us link ko BADAL degi:\n\n'
+      ''+already.length+' row(s) already have a PR; the new PR will REPLACE that link:\n\n'
       +already.map(r=>'• '+(r.desc||r.storeName)+'  → '+r.prNo).join('\n')
-      +'\n\nAage badhein?')) return;
+      +'\n\nContinue?')) return;
 
   const lots=D.lots.join(', ');
   const req={
@@ -1339,12 +1340,12 @@ async function generatePrFromSheet(){
         uid:r.uid,
         itemId:r.storeId,
         name:r.storeName||r.desc||'',
-        // Final PO Qty — Lot Req × (1 + Wastage%). Kharidna yahi hai.
+        // Final PO Qty = Lot Req × (1 + Wastage%). This is what gets bought.
         qty:c.poQty,
         lotReqQty:num(r.lotQty),
         wastagePct:num(r.waste),
-        // PR ki line par trims ka context, taaki Purchaser ko pata ho ye kis
-        // order / lot ke liye hai bina Trims Manager kholne ke.
+        // Trims context on the PR line, so the Purchaser knows which order / lot
+        // it is for without opening the Trims Manager.
         remark:['Trims: Order '+(D.orderNo||'—'), lots?'Lot '+lots:'', r.desc||'', num(r.waste)?('Wastage '+num(r.waste)+'%'):'']
           .filter(Boolean).join(' · ')
       };
@@ -1352,65 +1353,65 @@ async function generatePrFromSheet(){
   };
   try{
     const res=await P.sarvGenerateNewPrFromTrims(req);
-    if(!res || !res.ok){ toast('❌ '+((res&&res.error)||'PR form nahi khul paaya'),5000); return; }
-    // Tick ab apna kaam kar chuke — rows ki pehchaan (uid) parent ke paas hai.
+    if(!res || !res.ok){ toast(''+((res&&res.error)||'The PR form could not be opened'),5000); return; }
+    // The ticks have done their job; the parent now holds the rows' identity (uid).
     D.rows.forEach(r=>{ r.prSel=false; });
     renderRows();
-    toast('📝 '+res.filled+' item ERP ke Purchase › New Entry form me bhar diye — Required By aur Machine bharkar Submit karein. PR No apne aap is sheet me aa jayega.',8000);
+    toast(''+res.filled+' item(s) filled into the ERP Purchase › New Entry form. Fill in Required By and Machine, then Submit. The PR No will appear in this sheet automatically.',8000);
   }catch(e){
-    toast('❌ PR form: '+((e&&e.message)||e),5000);
+    toast('PR form: '+((e&&e.message)||e),5000);
   }
 }
 
-/* ══ PR SAVE HONE PAR WAPAS ═══════════════════════════════════════════════
-   Parent window PR save hote hi ye bulata hai (store-core.js ›
-   sarvTrimsPrNotify_). Jin rows se PR bani thi, unhi ke PR NO. column me wo
-   number lag jaata hai — wahi link jisse PO No, Target Date aur Qty Received
-   apne aap chalne lagte hain.
+/* ══ BACK HERE WHEN THE PR IS SAVED ══════════════════════════════════════
+   The parent window calls this as soon as the PR is saved (store-core.js ›
+   sarvTrimsPrNotify_). The number is placed in the PR NO. column of exactly
+   the rows the PR was created from, which is the link that makes PO No,
+   Target Date and Qty Received work automatically.
 
-   PR submit karte waqt user Purchase panel par hota hai aur ye page us waqt
-   HIDDEN iframe me — isi liye yahan ka toast koi dekhta hi nahi. Do cheezein
-   isi wajah se:
-     • lautaya gaya {ok, msg} parent dikhata hai (uska toast dikhai deta hai);
-     • aur sheet me ek banner baith jaata hai (D.prLinked) jo Save hone tak
-       rehta hai — user jab is tab par wapas aaye, use dikhe ki Save baaki hai.
-   Sheet apne aap SAVE nahi hoti: PR No sheet ka data hai aur Save dabana user
-   ka faisla hai. */
+   When the PR is submitted the user is on the Purchase panel and this page
+   is in a HIDDEN iframe, so nobody sees a toast here. Two things follow from
+   that:
+     • the returned {ok, msg} is shown by the parent (its toast is visible);
+     • a banner appears in the sheet (D.prLinked) and stays until Save, so
+       when the user comes back to this tab they can see Save is pending.
+   The sheet does NOT save itself: the PR No is sheet data and pressing Save
+   is the user's decision. */
 window.trimsPrSaved = async function(reqNo, uids, orderNo){
   const no=String(reqNo||'').trim();
   if(!no || !Array.isArray(uids) || !uids.length)
     return { ok:false, msg:'' };
-  // Beech me user doosra order khol chuka ho to us sheet par PR thopna galat
-  // hoga — row uid bhi nahi milenge, par wajah saaf likhi jaati hai.
+  // If the user has opened another order in the meantime, forcing the PR onto
+  // that sheet would be wrong; the row uids won't match either, but the reason is stated.
   if(orderNo && D.orderNo && orderNo!==D.orderNo){
-    const m='PR '+no+' ban gayi, par Trims Manager me ab Order '+D.orderNo+' khula hai — Order '+orderNo+' kholkar PR NO. column me select karein';
-    toast('ℹ️ '+m,8000);
+    const m='PR '+no+' was created, but Trims Manager now has Order '+D.orderNo+' open. Open Order '+orderNo+' and select it in the PR NO. column.';
+    toast(''+m,8000);
     return { ok:false, msg:m };
   }
   const set=new Set(uids);
   const hit=D.rows.filter(r=>set.has(r.uid));
   if(!hit.length){
-    const m='PR '+no+' ban gayi, par jin rows se bani thi wo ab sheet me nahi hain — PR NO. column se khud select karein';
-    toast('ℹ️ '+m,7000);
+    const m='PR '+no+' was created, but the rows it came from are no longer in the sheet. Select it yourself in the PR NO. column.';
+    toast(''+m,7000);
     return { ok:false, msg:m };
   }
   const replaced=hit.filter(r=>String(r.prNo||'').trim() && r.prNo!==no).length;
   hit.forEach(r=>{
     r.prNo=no;
-    // Naya PR aaya to PO ka auto lookup phir chalu — pehle ka pinned PO
-    // (poManual) is link ko dabaye rakhta.
+    // A new PR turns the automatic PO lookup back on; a previously pinned PO
+    // (poManual) would otherwise hide this link.
     r.poManual=false; r.poNo='';
     r.prSel=false;
   });
-  // Nayi PR dropdown me bhi chahiye, warna cell "not found" dikhata.
+  // The new PR must be in the dropdown too, otherwise the cell shows "not found".
   try{ await loadPrs(); }catch(e){}
   D.prLinked={ no:no, count:hit.length, replaced:replaced };
   setDirty(true);
   renderAll();
-  const m='PR '+no+' Trims sheet ki '+hit.length+' row par lag gayi'
-    +(replaced?(' ('+replaced+' row par purana PR badla)'):'')
-    +' — Trims Manager me 💾 Save dabayein, tabhi sheet me pakki hogi.';
-  toast('✅ '+m,9000);
+  const m='PR '+no+' has been set on '+hit.length+' row(s) of the Trims sheet'
+    +(replaced?(' (replaced the old PR on '+replaced+' row(s))'):'')
+    +'. Press Save in Trims Manager to make it permanent in the sheet.';
+  toast(''+m,9000);
   return { ok:true, count:hit.length, msg:m };
 };
 
@@ -1429,7 +1430,7 @@ function itemFilter(el,idx){
   const b=el.getBoundingClientRect(), p=$('itemPop');
   p.style.left=b.left+'px'; p.style.top=(b.bottom+2)+'px'; p.style.width=Math.max(b.width,340)+'px';
   p.innerHTML=pop.list.length?pop.list.map((it,i)=>`<div class="${i===0?'act':''}" onmousedown="event.preventDefault();itemPick(${i})">${esc(it.name)}<small>${esc(it.category||'')}${it.uom?' · '+esc(it.uom):''}${it.item_code?' · '+esc(it.item_code):''}</small></div>`).join('')
-    :'<div class="none">Item Master me nahi mila — pehle Master Data › Item Master me item banayein</div>';
+    :'<div class="none">Not found in the Item Master. Create the item under Master Data › Item Master first.</div>';
   p.style.display='block';
 }
 function itemKey(e,idx){
@@ -1457,7 +1458,7 @@ function itemBlur(el,idx){
     const exact=S.itemByName[v.toUpperCase()];        // typed the exact Item Master name
     if(exact){ r.storeId=exact.id; r.storeName=exact.name; setDirty(true); renderRows(); return; }
     el.value=r.storeName; el.classList.add('bad'); setTimeout(()=>el.classList.remove('bad'),1200);
-    toast('⚠️ Store Standard Name sirf Item Master list se select karein');
+    toast('Please choose the Store Standard Name from the Item Master list only');
   },160);
 }
 window.addEventListener('scroll',()=>{ if($('itemPop').style.display==='block' && pop.input) itemFilter(pop.input,pop.idx); },true);
@@ -1498,9 +1499,9 @@ function sheetPayload(){
 }
 async function saveData(){
   if(READ_ONLY()) return;
-  if(!D.orderNo){ toast('⚠️ Pehle Order No select karein (ya ✎ Manual se type karein)'); return; }
+  if(!D.orderNo){ toast('Please select an Order No first (or type one with ✎ Manual)'); return; }
   const bad=D.rows.findIndex(r=>r.storeName && !r.storeId);
-  if(bad>=0){ toast('⚠️ Row '+(bad+1)+': Store Standard Name Item Master se select karein'); return; }
+  if(bad>=0){ toast('Row '+(bad+1)+': choose the Store Standard Name from the Item Master'); return; }
   /* A manual sheet without Party / Brand / Design is not saved: nothing else in
      the ERP holds those three, so saving without them produces a sheet whose
      PDF cannot say whose order it is. The missing boxes are outlined. */
@@ -1510,7 +1511,7 @@ async function saveData(){
     if(gaps.includes('Brand Name')) $('mBrand').classList.add('req-bad');
     if(gaps.includes('Design 1')) $('designWrap').querySelector('input')?.classList.add('req-bad');
     $('manualBar').scrollIntoView({behavior:'smooth',block:'center'});
-    toast('⚠️ Manual order ke liye ye zaroori hai: '+gaps.join(', '),5000);
+    toast('A manual order needs: '+gaps.join(', '),5000);
     return;
   }
   const btn=$('btnSave'); btn.disabled=true; btn.textContent='Saving…';
@@ -1518,38 +1519,38 @@ async function saveData(){
     const a=sheetPayload();
     const {data,error}=await SB.rpc('mfg_save_trims_sheet',a);
     if(error) throw error;
-    if(!data||!data.success){ toast('❌ '+((data&&data.error)||'Save failed'),5000); return; }
+    if(!data||!data.success){ toast(''+((data&&data.error)||'Save failed'),5000); return; }
     D.sheetId=data.id; D.meta={ by:erpUserLabel(), at:new Date().toISOString() };
-    // PR ka link ab database me hai — banner ka kaam khatam.
+    // The PR link is now in the database; the banner's job is done.
     D.prLinked=null;
     await loadLinks();
     setDirty(false); renderAll();
     const st=$('saveStatus'); st.style.display='inline'; setTimeout(()=>st.style.display='none',2500);
-    toast('✅ Saved — '+D.orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
+    toast('Saved — '+D.orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
     // Said right after the save, not only in the boot banner: these values went
     // into the payload but the database has nowhere to keep them yet.
     const lost=[];
     if(S.v2.line===false && D.rows.some(r=>r.prNo)) lost.push('PR No');
     if(S.v2.sheet===false && isManualSheet()) lost.push('Party / Brand / Designs');
-    if(lost.length) toast('⚠️ '+lost.join(' aur ')+' save nahi hue — TRIMS_MANAGER_V2_MIGRATION.sql run karein',7000);
-  }catch(e){ toast('❌ '+errMsg(e),5000); }
-  finally{ btn.disabled=READ_ONLY(); btn.textContent='💾 Save'; }
+    if(lost.length) toast(''+lost.join(' and ')+' were not saved. Run TRIMS_MANAGER_V2_MIGRATION.sql',7000);
+  }catch(e){ toast(''+errMsg(e),5000); }
+  finally{ btn.disabled=READ_ONLY(); btn.textContent='Save'; }
 }
 // Two-click confirm, same as the offline sheet: discard unsaved changes and
 // reload this order's saved sheet (or a fresh default sheet if none).
 function resetData(){
   const b=$('btnReset');
   if(window.confirmState){
-    window.confirmState=false; b.innerText='🔄 Reset';
+    window.confirmState=false; b.innerText='Reset';
     setDirty(false); openOrder(D.orderNo);
   } else {
-    window.confirmState=true; b.innerText='⚠️ Click again to confirm Reset!';
-    setTimeout(()=>{ window.confirmState=false; b.innerText='🔄 Reset'; },3000);
+    window.confirmState=true; b.innerText='Click again to confirm Reset!';
+    setTimeout(()=>{ window.confirmState=false; b.innerText='Reset'; },3000);
   }
 }
 async function refreshStoreData(){
-  try{ toast('⟳ Store data load ho raha hai…'); await Promise.all([loadStoreData(), loadLots(), loadPrs()]); renderAll(); toast('✅ PR / PO / Store data updated'); }
-  catch(e){ toast('❌ '+errMsg(e),5000); }
+  try{ toast('⟳ Loading store data…'); await Promise.all([loadStoreData(), loadLots(), loadPrs()]); renderAll(); toast('PR / PO / Store data updated'); }
+  catch(e){ toast(''+errMsg(e),5000); }
 }
 
 // ═══════════════════════ CSV (Excel) ═══════════════════════════════════════
@@ -1558,7 +1559,7 @@ function exportToCSV(){
   // Lot Issue goes out as TWO columns per lot — the qty, and the issuing dates
   // beside it — so a spreadsheet can read either without parsing a cell.
   const head=['SR','Item Description','Category','Store Standard Name','Basis','Order Qty','Supplier','Lot Req Qty','Wastage %','Final PO Qty','PR No','PO No','Target Date','Qty Received','Balance',
-    ...lots.flatMap(l=>['Lot '+l+' Issue','Lot '+l+' Issue Dates']),'Pending Issue (Recd − Issued)','Lot Req Short','Dispatch Mode','Final Hisaab'];
+    ...lots.flatMap(l=>['Lot '+l+' Issue','Lot '+l+' Issue Dates']),'Pending Issue (Recd − Issued)','Lot Req Short','Dispatch Mode','Final Settlement'];
   const rows=[
     ['ORDER NO',D.orderNo,isManualSheet()?'PARTY (manual)':'BUYER',D.order?D.order.buyer_name:(D.party||''),'LOT NO',lots.join(' | '),'STATUS',D.status],
     ...(isManualSheet()?[['MANUAL ORDER','YES','BRAND',D.brand||'','DESIGNS',D.designs.filter(x=>String(x||'').trim()).join(' | ')]]:[]),
@@ -1579,7 +1580,7 @@ function exportToCSV(){
 // no placeholders / dropdown arrows / cut-off text: A4 landscape, company
 // header with the Purchase Order logo, order & lot block, the trims table
 // (headings repeated on every page), summary, signatures and page numbers.
-// Same pages are used for 🖨 Print and 📄 PDF.
+// Same pages are used for Print and PDF.
 const COMPANY = {
   name:'SARV INDIA HOME FURNISHING',
   addr:'Sanoli Road, 11K.M Stone, Near Kurar Village Trun, V.P.O Jalalpur-1, Distt. Panipat- 132103 (Haryana)',
@@ -1639,7 +1640,7 @@ function docTableHead(){
     ${TH('SR','2.4%')}${TH('Item Description','8.4%')}${TH('Category','4.8%')}${TH('Store Standard Name<br><span style="font-weight:400;font-size:5.6pt">Item Master</span>','10.4%')}
     ${TH('Basis','3.2%')}${TH('Supplier','4%')}${TH('Order<br>Qty','4%')}${TH('Lot Req<br>Qty','4%')}${TH('Wst<br>%','2.7%')}${TH('Final<br>PO Qty','4.2%')}
     ${TH('PR No','6.4%')}${TH('PO No / Vendor','8.4%')}${TH('Target<br>Date','4.8%')}${TH('Qty<br>Received','4.4%')}${TH('Balance','4%')}
-    ${lotCols}${D.lots.length?TH('Pending Issue<br><span style="font-weight:400;font-size:5.6pt">Recd − Issued</span>','5%'):''}${TH('Dispatch','3.4%')}${TH('Final Hisaab','6.6%')}
+    ${lotCols}${D.lots.length?TH('Pending Issue<br><span style="font-weight:400;font-size:5.6pt">Recd − Issued</span>','5%'):''}${TH('Dispatch','3.4%')}${TH('Final Settlement','6.6%')}
   </tr></thead>`;
 }
 function docRowHtml(x){
@@ -1752,8 +1753,8 @@ function docSummaryHtml(rows){
       ${stat('Pending Issue',s.pendIssue==null?'—':s.pendIssue,s.pendIssue?'#c0392b':'#1e8449')}${stat('Lot Req Short',s.reqShort==null?'—':s.reqShort,s.reqShort?'#c0392b':'#1e8449')}${stat('No PR / PO (SIHF)',s.needPo.length,s.needPo.length?'#c0392b':'#1e8449')}
     </tr></table>
     <div style="font-size:7pt;margin-top:3pt;line-height:1.5">
-      ${s.prNoPo.length?`<div><b style="color:#8a5300">PR ban gayi, PO abhi nahi:</b> ${s.prNoPo.map(esc).join(', ')}</div>`:''}
-      ${s.needPo.length?`<div><b style="color:#c0392b">PR / PO abhi nahi bani (SIHF supply):</b> ${s.needPo.map(esc).join(', ')}</div>`:''}
+      ${s.prNoPo.length?`<div><b style="color:#8a5300">PR raised, no PO yet:</b> ${s.prNoPo.map(esc).join(', ')}</div>`:''}
+      ${s.needPo.length?`<div><b style="color:#c0392b">No PR / PO raised yet (SIHF supply):</b> ${s.needPo.map(esc).join(', ')}</div>`:''}
       ${s.buyer.length?`<div><b style="color:#1f5d8c">Buyer supplied:</b> ${s.buyer.map(esc).join(', ')}</div>`:''}
     </div>
     <div style="font-size:7.5pt;font-weight:700;color:#1A3C5E;text-transform:uppercase;border-bottom:1pt solid #1A3C5E;padding-bottom:1.5pt;margin:6pt 0 3pt">Approvals</div>
@@ -1774,7 +1775,7 @@ function buildTrimsPages(){
   const pages=chunks.map((ch,i)=>{
     const last=i===chunks.length-1;
     return `<div class="tm-page">${docHeader(i===0)}
-      <table>${docTableHead()}<tbody>${ch.length?ch.map(docRowHtml).join(''):`<tr>${TD('Koi item nahi','text-align:center;color:#888;')}</tr>`}</tbody></table>
+      <table>${docTableHead()}<tbody>${ch.length?ch.map(docRowHtml).join(''):`<tr>${TD('No items','text-align:center;color:#888;')}</tr>`}</tbody></table>
       ${last&&!summaryOwnPage?docSummaryHtml(rows):''}${docFooter()}</div>`;
   });
   if(summaryOwnPage) pages.push(`<div class="tm-page">${docHeader(false)}${docSummaryHtml(rows)}${docFooter()}</div>`);
@@ -1782,7 +1783,7 @@ function buildTrimsPages(){
 }
 
 function printSheet(){
-  if(!D.orderNo){ toast('⚠️ Pehle Order No select karein'); return; }
+  if(!D.orderNo){ toast('Please select an Order No first'); return; }
   $('printDoc').innerHTML=`<div class="tm-doc">${buildTrimsPages().join('')}</div>`;
   setTimeout(()=>window.print(),150);
 }
@@ -1795,7 +1796,7 @@ window.addEventListener('afterprint',()=>{ $('printDoc').innerHTML=''; });
 // (a scrolled page captured blank) and pin html2pdf's container to the left
 // (its margin:auto centring shifted the capture off the page).
 async function generateTrimsPdfBlob(){
-  if(typeof html2pdf==='undefined') throw new Error('html2pdf library load nahi hui — internet check karein');
+  if(typeof html2pdf==='undefined') throw new Error('The html2pdf library did not load. Please check the internet connection.');
   const host=document.createElement('div');
   host.style.cssText='position:fixed;left:-20000px;top:0;width:277mm;background:#fff;';
   host.innerHTML=`<div class="tm-doc">${buildTrimsPages().join('')}</div>`;
@@ -1827,16 +1828,16 @@ async function generateTrimsPdfBlob(){
 }
 
 async function makePdf(){
-  if(!D.orderNo){ toast('⚠️ Pehle Order No select karein'); return; }
+  if(!D.orderNo){ toast('Please select an Order No first'); return; }
   // Unsaved edits are saved first, so the PDF and the saved sheet always agree
   if(D.dirty && !READ_ONLY()){
-    if(!confirm('Unsaved changes hain — pehle Save karke PDF banana hai?')) return;
+    if(!confirm('There are unsaved changes. Save first and then create the PDF?')) return;
     await saveData();
     if(D.dirty) return;   // save failed
   }
   const win=window.open('','_blank');   // opened now, while it still counts as a click
-  if(win) win.document.write('<p style="font:14px Arial;padding:20px">⏳ Trims PDF ban rahi hai…</p>');
-  const btn=$('btnPdf'); btn.disabled=true; btn.textContent='⏳ PDF…';
+  if(win) win.document.write('<p style="font:14px Arial;padding:20px">Creating the Trims PDF…</p>');
+  const btn=$('btnPdf'); btn.disabled=true; btn.textContent='PDF…';
   try{
     const blob=await generateTrimsPdfBlob();
     const fileName=`Trims_${D.orderNo.replace(/[\\/:*?"<>|\s]+/g,'-')}.pdf`;
@@ -1854,18 +1855,18 @@ async function makePdf(){
     const href=url||URL.createObjectURL(blob);
     if(win) win.location.href=href;
     else { const a=document.createElement('a'); a.href=href; a.download=fileName; a.target='_blank'; document.body.appendChild(a); a.click(); a.remove(); }
-    toast(url?'📄 PDF ready — ERP me save ho gayi':'📄 PDF ready (download) — upload nahi ho payi');
+    toast(url?'PDF ready and saved in the ERP':'PDF ready (downloaded); the upload failed');
   }catch(e){
     if(win) win.close();
-    toast('❌ PDF: '+errMsg(e),5000);
-  }finally{ btn.disabled=false; btn.textContent='📄 PDF'; }
+    toast('PDF: '+errMsg(e),5000);
+  }finally{ btn.disabled=false; btn.textContent='PDF'; }
 }
 
 // ═══════════════════════ SAVED SHEETS REGISTER ═════════════════════════════
 let REG=[];
 async function openRegister(){
   $('modal').innerHTML=`<div class="mbg" onclick="if(event.target===this)closeRegister()"><div class="mbox">
-    <div class="mhead"><b>📋 Saved Trims Sheets — Order / Lot Register</b><span><input type="text" id="regQ" placeholder="Search order, buyer, lot, status…" oninput="renderRegister()" style="padding:5px 8px;border-radius:4px;border:none;width:260px"> <button class="btn-ghost" onclick="closeRegister()">✕</button></span></div>
+    <div class="mhead"><b>Saved Trims Sheets — Order / Lot Register</b><span><input type="text" id="regQ" placeholder="Search order, buyer, lot, status…" oninput="renderRegister()" style="padding:5px 8px;border-radius:4px;border:none;width:260px"> <button class="btn-ghost" onclick="closeRegister()">✕</button></span></div>
     <div class="mbody" id="regBody">Loading…</div></div></div>`;
   try{
     // pr_no is asked for only when the V2 migration has run — a database
@@ -1874,13 +1875,13 @@ async function openRegister(){
     const cols='*,mfg_trims_sheet_lots(position,lot_no),mfg_trims_lines(final_po_qty,qty_received,lot_req_qty,lot_issues,po_no'+(S.v2.line?',pr_no':'')+')';
     REG=await fetchAll(()=>SB.from('mfg_trims_sheets').select(cols).order('updated_at',{ascending:false}));
     renderRegister();
-  }catch(e){ $('regBody').innerHTML='<div class="banner err">❌ '+esc(errMsg(e))+'</div>'; }
+  }catch(e){ $('regBody').innerHTML='<div class="banner err">'+esc(errMsg(e))+'</div>'; }
 }
 function closeRegister(){ $('modal').innerHTML=''; }
 function renderRegister(){
   const q=String(($('regQ')||{}).value||'').toLowerCase();
   const list=REG.filter(s=>!q||[s.order_no,s.buyer_name,s.party_name,s.brand_name,(s.designs||[]).join(' '),s.status,(s.mfg_trims_sheet_lots||[]).map(l=>l.lot_no).join(' '),(s.mfg_trims_lines||[]).map(l=>l.pr_no||'').join(' ')].join(' ').toLowerCase().includes(q));
-  $('regBody').innerHTML=!list.length?'<div style="padding:20px;color:#888">Koi saved sheet nahi mili.</div>':`<table><thead><tr>
+  $('regBody').innerHTML=!list.length?'<div style="padding:20px;color:#888">No saved sheets found.</div>':`<table><thead><tr>
     <th>Order No</th><th>Buyer / Party</th><th>Brand / Designs</th><th>Lot No(s)</th><th>Items</th><th>PR raised</th><th>PO pending receipt</th><th>Req short</th><th>Status</th><th>Updated</th><th></th></tr></thead><tbody>
     ${list.map(s=>{
       const lines=s.mfg_trims_lines||[];
@@ -1895,24 +1896,24 @@ function renderRegister(){
         <td>${lines.length}</td><td style="font-weight:700;color:${withPr?'#1f5d8c':'#888'}">${S.v2.line?withPr:'—'}</td><td style="color:${pendRec?'#c0392b':'#1e8449'};font-weight:700">${pendRec}</td><td style="color:${pendIss?'#c0392b':'#1e8449'};font-weight:700">${pendIss}</td>
         <td><span class="pill ${esc(s.status)}">${esc(s.status)}</span></td><td style="font-size:11px">${esc(s.updated_by||'')}<br>${esc(new Date(s.updated_at).toLocaleString('en-IN'))}</td>
         <td style="white-space:nowrap"><button class="btn-export" style="padding:4px 10px" onclick="regOpen('${esc(s.order_no).replace(/'/g,"\\'")}')">Open</button>
-        ${s.pdf_url?`<a href="${esc(s.pdf_url)}" target="_blank" rel="noopener" class="btn-pdf" style="padding:4px 9px;border-radius:4px;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">📄</a>`:''}
-        ${IS_ADMIN()?`<button class="btn-clear" style="padding:4px 8px" onclick="regDelete('${s.id}','${esc(s.order_no).replace(/'/g,"\\'")}')" title="Delete sheet (Admin)">🗑</button>`:''}</td></tr>`;
+        ${s.pdf_url?`<a href="${esc(s.pdf_url)}" target="_blank" rel="noopener" class="btn-pdf" style="padding:4px 9px;border-radius:4px;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">PDF</a>`:''}
+        ${IS_ADMIN()?`<button class="btn-clear" style="padding:4px 8px" onclick="regDelete('${s.id}','${esc(s.order_no).replace(/'/g,"\\'")}')" title="Delete sheet (Admin)">✕</button>`:''}</td></tr>`;
     }).join('')}</tbody></table>
-    <div style="font-size:11px;color:#888;margin-top:6px">Pending / Req short columns = saved snapshot. Sheet kholne par PR / PO aur Store ka live data dikhega.</div>`;
+    <div style="font-size:11px;color:#888;margin-top:6px">Pending / Req short columns = saved snapshot. Opening the sheet shows live PR / PO and Store data.</div>`;
 }
 async function regOpen(orderNo){
-  if(D.dirty && !confirm('Unsaved changes discard karke '+orderNo+' kholna hai?')) return;
+  if(D.dirty && !confirm('Discard unsaved changes and open '+orderNo+'?')) return;
   closeRegister(); await openOrder(orderNo);
 }
 async function regDelete(id, orderNo){
   if(!IS_ADMIN()) return;
-  if(!confirm('Order '+orderNo+' ki trims sheet DELETE karni hai?\n\nLot links bhi hat jayenge. Ye undo nahi hoga.')) return;
+  if(!confirm('DELETE the trims sheet for Order '+orderNo+'?\n\nThe lot links will be removed too. This cannot be undone.')) return;
   try{
     const {error}=await SB.from('mfg_trims_sheets').delete().eq('id',id); if(error) throw error;
     REG=REG.filter(s=>s.id!==id); await loadLinks(); renderRegister();
     if(D.sheetId===id){ D.sheetId=null; D.meta=null; setDirty(true); }
-    renderAll(); toast('🗑 Sheet deleted — '+orderNo);
-  }catch(e){ toast('❌ '+errMsg(e),5000); }
+    renderAll(); toast('Sheet deleted — '+orderNo);
+  }catch(e){ toast(''+errMsg(e),5000); }
 }
 
 window.addEventListener('beforeunload',e=>{ if(D.dirty){ e.preventDefault(); e.returnValue=''; } });
@@ -1921,15 +1922,15 @@ window.addEventListener('beforeunload',e=>{ if(D.dirty){ e.preventDefault(); e.r
 window.onload = async function(){
   D.rows=defaultRows(); renderAll();
   if(window.self===window.top && !erpRole()){
-    $('banners').innerHTML='<div class="banner err">🔒 ERP login required — Trims Manager ERP ke andar se kholein: <b>Manufacturing › Trims Manager</b>. <a href="index.html">Open ERP</a></div>';
+    $('banners').innerHTML='<div class="banner err">ERP login required. Open Trims Manager from inside the ERP: <b>Manufacturing › Trims Manager</b>. <a href="index.html">Open ERP</a></div>';
     document.querySelectorAll('button,input,select').forEach(el=>el.disabled=true); return;
   }
-  if(!SB){ $('banners').innerHTML='<div class="banner err">❌ Supabase library load nahi hui — internet check karke reload karein.</div>'; return; }
-  $('banners').innerHTML='<div class="banner info">⏳ Orders, Lot Cards, Item Master, PR / PO &amp; Store data load ho raha hai…</div>';
+  if(!SB){ $('banners').innerHTML='<div class="banner err">The Supabase library did not load. Check the internet connection and reload.</div>'; return; }
+  $('banners').innerHTML='<div class="banner info">Loading orders, Lot Cards, Item Master, PR / PO &amp; Store data…</div>';
   try{
     await Promise.all([loadOrders(), loadLots(), loadItems(), loadPrs(), loadStoreData(), loadLinks(), probeV2()]);
   }catch(e){
-    $('banners').innerHTML='<div class="banner err">❌ '+esc(isSetupError(e)?'Database setup pending — Supabase SQL Editor me TRIMS_MANAGER_MIGRATION.sql (aur Order Form / Lot Card migrations) run karein, phir reload karein.':errMsg(e))+'</div>';
+    $('banners').innerHTML='<div class="banner err">'+esc(isSetupError(e)?'Database setup pending. Run TRIMS_MANAGER_MIGRATION.sql (and the Order Form / Lot Card migrations) in the Supabase SQL Editor, then reload.':errMsg(e))+'</div>';
     return;
   }
   renderAll();

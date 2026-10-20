@@ -1,519 +1,523 @@
-# Sarv India — Store / Purchase / Production (file layout)
+# Sarv India: Store / Purchase / Production (file layout)
 
-**Zaroori:** ye ab single-file app nahi hai. `Store.html` apne CSS aur JS ko
-saath wali files se load karti hai, isi liye **poora folder saath rakhna /
-bhejna hai**. Sirf `Store.html` kisi ko mail kar dene se wo khaali khulegi.
-(Offline `file://` par chalti hai — classic `<script src>` ko CORS nahi rokta.)
+**Important:** this is no longer a single-file app. `Store.html` loads its CSS
+and JS from the files next to it, so **keep and send the whole folder
+together**. Mailing just `Store.html` to someone gives them an empty page.
+(It works offline over `file://`, because CORS does not block classic
+`<script src>` tags.)
 
 ## Files
 
-| File | Kya hai |
+| File | What it is |
 |---|---|
-| `Store.html` | Desktop app ka markup. ERP shell ka `<link>`/`<script>` sabse aakhir me. |
-| `store.css` | Store ka poora stylesheet — pehle ke 5 inline `<style>` blocks, document order me. **Order load-bearing hai, reorder na karein.** |
-| `store-core.js` | Store ka poora logic (Inward, Outward, Issue, PR, PO, Reports, Tracker, Master Data, Repair, PDF, roles). |
-| `store-design-master.js` | Production › Design Master. `store-core.js` ke `SB` / `escText` / `fetchAllRows` padhta hai, isi liye uske **baad** load hona chahiye. |
-| `store-nav-keys.js` | Dono tab bars ka keyboard navigation. |
-| `erp-shell.css` | ERP navigation shell ka look (sidebar, topbar, KPI tiles). Sab `#erpShell` ke andar scoped. |
-| `erp-shell.js` | ERP sidebar + dashboard + module map. **Sabse aakhir me load hota hai** — `sarvGoHome` / `sarvNavigateFromHome` / `activatePanel` ko wrap karta hai. |
-| `mobile.html` | Mobile approval app ka markup. |
-| `mobile.css` / `mobile-core.js` | Uska style aur logic. |
-| `DESIGN_MASTER_MIGRATION.sql` | Design Master ke do table + storage policies. Supabase › SQL Editor me **ek baar** chalayein. |
-| `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS. Master Data › 🔽 Dropdown Master ke liye. **Ek baar** chalayein. |
-| `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column. Design Master ke Supplier Name field ke liye. **Ek baar** chalayein. |
-| `DESIGN_SKU_MIGRATION.sql` | **`design_master.design_sku_no` column** — Design No ke saath uska SKU No. Create New me Design No ke theek baad (**zaroori**), Live tab me apna column + ▾ filter, Bulk Upload grid me Design No ke neeche (optional), aur Catalogue PDF ke filters + PDF ki spec table me. **Ek baar** chalayein (dobara chalana surakshit). Column nullable hai aur uspar UNIQUE nahi — app khud duplicate SKU par poochti hai; hamesha-unique chahiye to file me commented unique index hai. Migration se pehle bhi screen chalti hai, bas SKU save nahi hota aur app ek baar ye keh deti hai. Neeche dekhein. |
-| `ORDER_FORM_USERS_MIGRATION.sql` | Order Form ke users ERP ki `app_users` me (ek hi user table): `app_users.sales_role`, `sales_users` mirror + trigger, ERP login se Order Form session (`sales_erp_login`). **Ek baar** chalayein. |
-| `printing-lot.html` | Manufacturing › 🖨️ Printing Lot Card (purani "Design Print Manager Pro" + code.gs). `#printingLotPanel` iframe me khulta hai; shop floor par seedha `printing-lot.html#production` bhi. |
-| `PRINTING_LOT_MIGRATION.sql` | Printing Lot ke `prl_*` tables, RPCs, views, bucket `printing-lot` + seed (sections, colors, satin codes). **Ek baar** chalayein (APPROVAL_CHAIN_MIGRATION ke baad). |
-| `FABRIC_BRAND_MASTER_MIGRATION.sql` | `fabric_master` + `brand_master` + `buyer_master` + `agency_master` + `master_revisions` (REV archive), unique index, triggers, RLS aur do rollup view. Master Data › 🧵 Fabric Master / 🏷️ Brand Master / 🏢 Buyer Master (+ Agency table) ke liye. **Ek baar** chalayein, phir Fabric & Brand screen par 🌱 **Seed Excel Data**. Dobara chalana bhi surakshit hai. Neeche dekhein. |
-| `fabric & brand master/SARV INDIA LOT SOFTWARE DATA.xlsx` | Dono master ka source — `FABRIC MASTER` (31 row × 42 column) aur `BRAND MASTER` (65 row × 23 column) sheets. Seed button ki rows isi se nikali hui hain. |
-| `UNIFIED_USERS_MIGRATION.sql` | Ek user / kai role (`app_users.roles[]`), per-user app access (`app_users.app_access`), aur saare apps ka ek session (`app_sessions` + `erp_app_login` / `erp_app_session` / `erp_app_logout`). **ADMIN_PANEL_MIGRATION.sql ke baad** ek baar chalayein. Dobara chalana surakshit. Neeche dekhein. |
-| `launcher.html` | **Login ke baad ka pehla page.** Naam + PIN, aur phir sirf wahi app buttons jinka access hai (ERP / Approvals / Complaint / Packing / Order Form). Ek hi session banata hai jo saare apps chalate hain. Neeche dekhein. |
-| `app-back.js` | Har app me ek hi `<script src>` line — neeche daayein kone me floating **← Apps** button. Khud tay karta hai ki dikhna hai ya nahi: ERP ke iframe ke andar nahi, aur single-login session na ho to nahi (tab banda launcher se aaya hi nahi). z-index 900, isi liye modal iske oopar aate hain. |
-| `sso-preboot.js` | Har app ke `<head>` me sabse pehle. App switch karte waqt login window ki **jhalak** rokta hai: token localStorage me ho (synchronous) to login overlay paint hi nahi hota aur ek spinner splash lag jaati hai; app taiyar hone par khud `sarvSsoPrebootDone()` bulati hai. Token na ho to ye file kuch nahi karti. 9 sec ka backstop — koi spinner par atkta nahi. |
-| `SINGLE_LOGIN_MIGRATION.sql` | Complaint (`cmp_profiles`) aur Packing (`packing.profiles`) ke users ERP ki `app_users` me merge, har naye user ka PIN (+ verify), naye role `CMP_USER` / `PK_USER`, aur `erp_sso_profile()`. Upar `v_admin_pin` bharna hai. **UNIFIED_USERS_MIGRATION.sql ke baad** ek baar. Dobara chalana surakshit. Neeche dekhein. |
-| `FIX_PGCRYPTO_SEARCHPATH.sql` | **Login par `function gen_random_bytes(integer) does not exist [42883]`** aaye to ye chalayein. Wajah: `gen_random_bytes()` pgcrypto ka hai aur Supabase me `extensions` schema me rehta hai, par `erp_app_login()` ke `search_path` me wo schema chhoot gaya hai (purani SQL file se bana function database me waisa hi pada rehta hai — file update hone se DB nahi badalta). **Sahi PIN** par hi dikhta hai, galat PIN par nahi. Sirf search_path theek karti hai (`alter function`), body nahi chhedti. Aakhir me ek `sarv_pgcrypto_report` table deti hai — usme **"5. ASLI JAANCH"** lakeer wahi `gen_random_bytes(32)` sach me chalakar dikhati hai. Dobara chalana surakshit. |
-| `sso-gate.js` | **Saare apps ka EK hi darwaza.** Har app ke `<head>` me `sso-preboot.js` ke baad. Ek jagah par: ERP ka session jaanchna, app ka access jaanchna, us app ka account jaanchna, `erp-sso` se asli auth session banana, aur fail hone par wajah wali screen dikhana (ya launcher par bhej dena). `SARV_GATE.boot()` sirf andar jaane layak hone par resolve hota hai; `logout()` har app me ek jaisa hai; `requireSession()` ERP / mobile ke liye sirf "token na ho to launcher" wali sync rok hai. **Kisi app me koi login form nahi bachta.** |
-| `ONE_USER_TABLE.sql` | **Sirf `public.app_users` bachti hai** — `packing.profiles` aur `sales_users` bhi VIEW ban jaate hain (naam, column aur matlab wahi, isi liye dono apps ka code / trigger / RLS bina badle chalte hain). `cmp_profiles` pehle se VIEW hai. **Do qadam:** pehla sirf report deta hai (column, RLS, FK, trigger, aur har wo function jo in tables ko padhta ya likhta hai); `v_do_it := true` karne par asli kaam, archive ke saath. Nayi views par `security_invoker = true` — warna view owner ke haq se chalti aur `app_users` ki RLS beech me aati hi nahi. Purani `CONSOLIDATE_USER_TABLES.sql` ki jagah (wo ab chalti nahi). |
-| `MERGE_DUPLICATE_USERS.sql` | **Ek hi bande ki do `app_users` rows** (jaise "PARKASH" aur "PARKASH JI", dono emp_code 1460) — ek me milati hai, doosri hatati hai. Auth account ki id ek hi row par ho sakti hai, isi liye duplicate rehte hue Complaint / Packing ka access diya hi nahi ja sakta (`AUTH_ACCOUNT_TAKEN`). `erp_merge_duplicate_user()` roles / app access / Order Form role KEEP row par le aata hai, PIN · sessions · resets · Order Form mirror aur **har** `app_users(id)` wale FK ki rows bhi (list `pg_constraint` se nikalti hai), phir duplicate row delete. Ek transaction — kuch atka to poora palat jaata hai. Pehle chalane par sirf report deti hai; merge aap section 3 se chalate hain. ⚠️ Palta nahi ja sakta. |
-| `CHECK_ORDER_FORM_SESSION.sql` | `CHECK_ORDER_FORM_SETUP` "sab maujood hai" kahe par **phir bhi Order Form na khule** to ye. Kuch badalti nahi. Teen cheezein dekhti hai: (1) `anon` ko har `sales_*` RPC par EXECUTE hai ya nahi — na ho to *"permission denied for function sales_whoami"*, jo purane app me "setup pending" bana kar dikhta tha; (2) `sales_sessions` me session ban rahe hain ya nahi (khaali = launcher ka `sales_erp_login()` token hi nahi bana raha); (3) `sales_users` mirror bhara hai ya nahi. Aakhir me ek commented `grant execute` block — sirf tab chalayein jab section A me rok dikhe. |
-| `BRAND_TRIMS_MIGRATION.sql` | **Brand Master me 7 naye MATERIAL (YES/NO) column** — `label`, `tag`, `bag`, `bore`, `inner_box`, `outer_box`, `foam`. Order Form ke **Bags & Trims** ka material list inhi se banta hai. **Ek baar** chalayein (dobara chalana surakshit — `add column if not exists`). **Jab tak ye nahi chalti, Bags & Trims me sirf "Bora Packing Charge" row dikhegi** (khaali column = NO), aur table khud wajah likh deti hai. Neeche dekhein. |
-| `CHECK_ORDER_FORM_SETUP.sql` | **order-form.html par "Database setup pending"** aaye to ye. Kuch badalti nahi. Order Form ko jo 11 RPC aur 3 table chahiye (`sales_whoami`, `sales_save_order`, `sales_orders` …) un sab ko naam **aur argument** se jaanchti hai — PostgREST naam+argument se function dhoondhta hai, isi liye sahi naam par galat argument bhi "function not found" deta hai. Aakhir me faisla: sab maujood hai / module hi nahi hai / itni cheezein missing hain. **Dhyan:** `ORDER_FORM_MIGRATION.sql` is project tree me kahin nahi hai — isi liye app ka purana message ek band gali tha. |
-| `FIX_PROFILE_ID_COLUMNS.sql` | **`CHECK_PACKING_SSO` me `erp_app_session() = PURANA`** aaye to ye. Haalat ye hai ki `MERGE_PROFILE_IDS...` poori chali nahi, isi liye `app_users.pk_profile_id` / `cmp_profile_id` columns zinda par **khaali** hain — aur teen RPC (`erp_app_session`, `erp_app_login`, `erp_sso_profile`) usi khaali column ko padhte hain, `packing.profiles` ko nahi. Nateeja: tables me sab theek, par app har user par `NO_APP_ACCOUNT`. Ye file column backfill karti hai aur `admin_grant_app_access()` me do line jodti hai taaki aage ke users par bhi bhare. Kisi RPC ka body nahi badalta, id nahi badalti, FK nahi chhedta. MERGE baad me chalani ho to ye uske raaste me nahi aati. |
-| `FIX_APP_ACCOUNT_PROVISION.sql` | **Admin Panel me Save karte waqt "⚠️ Complaint App / Packing ka account nahi bana"** aaye to ye chalayein. Do RPC banati hai: `erp_auth_id_by_email()` (sirf server) aur `erp_link_existing_auth_account()` — jo us bande ka **maujooda** auth account (jo doosri id par pada hai) dhoondh kar `app_users.id` usi par le aata hai, naya banaye bina. Aakhir me report: kis user ka auth account usi id par hai, kis ka doosri id par, aur kis ka hai hi nahi. Kuch maujooda function/table badalti nahi. |
-| `CHECK_PACKING_SSO.sql` | **"packing.html me direct login nahi ho raha"** — kiska aur kyun. Kuch badalti nahi, sirf dekhti hai. Launcher par Packing ka button lagbhag sabko dikhta hai (access ka default `true` hai), par **direct** login ke liye us bande ka Packing ka account bhi chahiye: `auth.users` + `packing.profiles` me usi id se row. Dono Admin Panel › Users › Apps me "Packing & Dispatch" ON karne par khud banti hain. Ye file har user ka verdict deti hai (`DIRECT LOGIN OK` / `AUTH ACCOUNT NAHI` / `PACKING ACCOUNT NAHI` / `PROFILE INACTIVE`) aur saath me setup ke checks. |
-| `USER_SELF_SERVICE_MIGRATION.sql` | **Signup · Forgot PIN · emp_code login.** `app_users` par `dob` / `photo` / `designation` / `department`, emp_code backfill (`employees` se naam-match), aur RPCs `erp_signup` / `erp_forgot_pin_request` / `erp_reset_pin` / `admin_get_user_signature`. PIN kahan likha jaata hai ye GUESS nahi karti — probe user se pata karti hai. Upar `v_admin_pin` bharna hai. **SINGLE_LOGIN ke baad** ek baar. Neeche dekhein. |
-| `CONSOLIDATE_USER_TABLES.sql` | ⚠️ `cmp_profiles` / `packing.profiles` / `sales_users` hata kar `app_users` ko ek hi user store banati hai — par unhi naamon ki **VIEW** chhod jaati hai (app_users se), isi liye dono apps ke trigger / RLS / code bina badle chalte rehte hain. **Pehli baar chalane par sirf plan chhapti hai (dry run)**; `v_do_it := true` karne par kaam karti hai. Archive khud banati hai. |
-| `supabase/functions/erp-sso/index.ts` | Edge Function — ERP ke session token se Complaint / Packing ka **asli** Supabase Auth session banata hai (bina password, bina unki RLS chhede). `supabase functions deploy erp-sso`. |
-| `PURCHASE_TRACKING_VIEW.sql` | `v_purchase_tracking` view — PR → PO → Receiving → Requester ki flat tracking sheet (item lines nahi, sirf totals). Neeche dekhein. |
-| `TRIMS_MANAGER_V2_MIGRATION.sql` | **Trims Manager: Manual Order + PR No.** Teen cheezein: (1) `mfg_trims_sheets` par `order_manual` · `party_name` · `brand_name` · `designs` — Order No haath se likhne par Party / Brand / Design list sheet khud rakhti hai; (2) `mfg_trims_lines` par `pr_no` · `po_manual` · `target_date_manual` — user **PR** chunta hai, PO us PR ke against bante hi `purchase_order_lines.req_no` se khud mil jaata hai; (3) `outward_lines.lot_no` — aage ek ISSUE me kai lot ke liye. Saath me `mfg_save_trims_sheet()` RPC dobara banti hai (purani drop hoti hai). **`TRIMS_MANAGER_MIGRATION.sql` ke baad** ek baar; dobara chalana surakshit. Jab tak na chale, Trims Manager screen par sab chalta hai par PR No / Party / Brand / Design **save nahi hote** — sheet khud laal banner me ye likh deti hai. Neeche dekhein. |
-| `_backup_before_erp_split/` | Split se pehle ki original single-file `Store.html` aur `mobile.html`. |
+| `Store.html` | Markup of the desktop app. The ERP shell's `<link>`/`<script>` come last. |
+| `store.css` | The whole Store stylesheet: the 5 former inline `<style>` blocks, in document order. **The order is load-bearing; do not reorder.** |
+| `store-core.js` | All Store logic (Inward, Outward, Issue, PR, PO, Reports, Tracker, Master Data, Repair, PDF, roles). |
+| `store-design-master.js` | Production › Design Master. It reads `SB` / `escText` / `fetchAllRows` from `store-core.js`, so it must load **after** it. |
+| `store-nav-keys.js` | Keyboard navigation for both tab bars. |
+| `erp-shell.css` | Look of the ERP navigation shell (sidebar, top bar, KPI tiles). Everything is scoped inside `#erpShell`. |
+| `erp-shell.js` | ERP sidebar + dashboard + module map. **Loads last**, because it wraps `sarvGoHome` / `sarvNavigateFromHome` / `activatePanel`. |
+| `mobile.html` | Markup of the mobile approval app. |
+| `mobile.css` / `mobile-core.js` | Its style and logic. |
+| `DESIGN_MASTER_MIGRATION.sql` | Design Master's two tables + storage policies. Run it **once** in Supabase › SQL Editor. |
+| `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS, for Master Data › Dropdown Master. Run **once**. |
+| `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column, for Design Master's Supplier Name field. Run **once**. |
+| `DESIGN_SKU_MIGRATION.sql` | **`design_master.design_sku_no` column**: the SKU No. that goes with a Design No. In Create New it sits right after Design No (**required**); the Live tab has its own column + ▾ filter; in the Bulk Upload grid it is under Design No (optional); it also appears in the Catalogue PDF filters and the PDF spec table. Run **once** (safe to re-run). The column is nullable and not UNIQUE; the app itself asks about a duplicate SKU. If you want it always unique, the file has a commented unique index. Before the migration the screen still works, the SKU just isn't saved and the app says so once. See below. |
+| `ORDER_FORM_USERS_MIGRATION.sql` | Order Form users move into the ERP's `app_users` (a single user table): `app_users.sales_role`, a `sales_users` mirror + trigger, and an Order Form session from the ERP login (`sales_erp_login`). Run **once**. |
+| `printing-lot.html` | Manufacturing › Printing Lot Card (the old "Design Print Manager Pro" + code.gs). Opens in the `#printingLotPanel` iframe; on the shop floor you can also open `printing-lot.html#production` directly. |
+| `PRINTING_LOT_MIGRATION.sql` | Printing Lot's `prl_*` tables, RPCs, views, the `printing-lot` bucket + seed data (sections, colors, satin codes). Run **once** (after APPROVAL_CHAIN_MIGRATION). |
+| `FABRIC_BRAND_MASTER_MIGRATION.sql` | `fabric_master` + `brand_master` + `buyer_master` + `agency_master` + `master_revisions` (REV archive), unique indexes, triggers, RLS and two roll-up views. For Master Data › Fabric Master / Brand Master / Buyer Master (+ Agency table). Run **once**, then press **Seed Excel Data** on the Fabric & Brand screen. Safe to re-run. See below. |
+| `fabric & brand master/SARV INDIA LOT SOFTWARE DATA.xlsx` | Source of both masters: the `FABRIC MASTER` (31 rows × 42 columns) and `BRAND MASTER` (65 rows × 23 columns) sheets. The Seed button's rows were taken from here. |
+| `UNIFIED_USERS_MIGRATION.sql` | One user / many roles (`app_users.roles[]`), per-user app access (`app_users.app_access`), and one session for all apps (`app_sessions` + `erp_app_login` / `erp_app_session` / `erp_app_logout`). Run once, **after ADMIN_PANEL_MIGRATION.sql**. Safe to re-run. See below. |
+| `launcher.html` | **The first page after login.** Name + PIN, then only the app buttons the user has access to (ERP / Approvals / Complaint / Packing / Order Form). It creates one session that every app uses. See below. |
+| `app-back.js` | One `<script src>` line in every app: the floating **← Apps** button in the bottom-right corner. It decides on its own whether to show: not inside the ERP iframe, and not without a single-login session (then the user never came from the launcher). z-index 900, so modals sit above it. |
+| `sso-preboot.js` | First thing in every app's `<head>`. Stops the login window from **flashing** while switching apps: if a token is in localStorage (synchronous), the login overlay never paints and a spinner splash shows instead; the app calls `sarvSsoPrebootDone()` itself once it is ready. With no token, this file does nothing. A 9-second backstop means nobody gets stuck on the spinner. |
+| `SINGLE_LOGIN_MIGRATION.sql` | Merges Complaint (`cmp_profiles`) and Packing (`packing.profiles`) users into the ERP's `app_users`, gives every new user a PIN (+ verify), adds the new roles `CMP_USER` / `PK_USER`, and `erp_sso_profile()`. Fill in `v_admin_pin` at the top. Run once, **after UNIFIED_USERS_MIGRATION.sql**. Safe to re-run. See below. |
+| `FIX_PGCRYPTO_SEARCHPATH.sql` | Run this if login shows **`function gen_random_bytes(integer) does not exist [42883]`**. Cause: `gen_random_bytes()` belongs to pgcrypto, which lives in the `extensions` schema on Supabase, but that schema is missing from `erp_app_login()`'s `search_path` (a function created from an old SQL file stays that way in the database; updating the file does not change the DB). It only shows on the **correct PIN**, never on a wrong one. The file only fixes the search_path (`alter function`) and leaves the body alone. At the end it returns a `sarv_pgcrypto_report` table whose **"5. REAL CHECK"** row actually runs `gen_random_bytes(32)` and shows the result. Safe to re-run. |
+| `sso-gate.js` | **The single entry gate for every app.** Sits in each app's `<head>` after `sso-preboot.js`. In one place it checks the ERP session, the app access and the user's account for that app, creates a real auth session through `erp-sso`, and on failure shows a screen with the reason (or sends the user to the launcher). `SARV_GATE.boot()` resolves only when the user is allowed in; `logout()` is the same in every app; `requireSession()` is just the synchronous "no token, go to the launcher" check for the ERP / mobile. **No app keeps its own login form.** |
+| `ONE_USER_TABLE.sql` | **Only `public.app_users` remains.** `packing.profiles` and `sales_users` also become VIEWs (same names, columns and meaning, so both apps' code / triggers / RLS keep working unchanged). `cmp_profiles` is already a VIEW. **Two steps:** the first run only reports (columns, RLS, FKs, triggers, and every function that reads or writes these tables); `v_do_it := true` does the real work, with an archive. The new views use `security_invoker = true`; otherwise a view runs with its owner's rights and the RLS on `app_users` never applies. Replaces the old `CONSOLIDATE_USER_TABLES.sql` (which no longer runs). |
+| `MERGE_DUPLICATE_USERS.sql` | **Two `app_users` rows for the same person** (e.g. "PARKASH" and "PARKASH JI", both emp_code 1460): merges them into one and removes the other. An auth account id can sit on only one row, so while the duplicate exists you cannot give Complaint / Packing access (`AUTH_ACCOUNT_TAKEN`). `erp_merge_duplicate_user()` moves roles / app access / Order Form role onto the KEEP row, along with the PIN, sessions, resets, the Order Form mirror, and the rows of **every** FK on `app_users(id)` (the list comes from `pg_constraint`), then deletes the duplicate row. One transaction: if anything fails, everything rolls back. The first run only reports; you run the merge from section 3. Cannot be undone. |
+| `CHECK_ORDER_FORM_SESSION.sql` | For when `CHECK_ORDER_FORM_SETUP` says "everything is present" but the **Order Form still won't open**. Changes nothing. It checks three things: (1) whether `anon` has EXECUTE on every `sales_*` RPC (without it you get *"permission denied for function sales_whoami"*, which the old app showed as "setup pending"); (2) whether sessions are being created in `sales_sessions` (empty = the launcher's `sales_erp_login()` isn't creating a token); (3) whether the `sales_users` mirror is filled. At the end there is a commented `grant execute` block; run it only when section A shows a block. |
+| `BRAND_TRIMS_MIGRATION.sql` | **7 new MATERIAL (YES/NO) columns in Brand Master**: `label`, `tag`, `bag`, `bore`, `inner_box`, `outer_box`, `foam`. The Order Form's **Bags & Trims** material list is built from these. Run **once** (safe to re-run: `add column if not exists`). **Until it runs, Bags & Trims shows only the "Bora Packing Charge" row** (an empty column = NO), and the table states the reason itself. See below. |
+| `CHECK_ORDER_FORM_SETUP.sql` | For when **order-form.html says "Database setup pending"**. Changes nothing. It checks the 11 RPCs and 3 tables the Order Form needs (`sales_whoami`, `sales_save_order`, `sales_orders` …) by name **and arguments**; PostgREST finds a function by name + arguments, so the right name with the wrong arguments also says "function not found". At the end it gives a verdict: everything is present / the module is missing / these items are missing. **Note:** `ORDER_FORM_MIGRATION.sql` is nowhere in this project tree, which is why the app's old message was a dead end. |
+| `FIX_PROFILE_ID_COLUMNS.sql` | For when **`CHECK_PACKING_SSO` shows `erp_app_session() = OLD`**. The situation: `MERGE_PROFILE_IDS...` did not finish, so the `app_users.pk_profile_id` / `cmp_profile_id` columns exist but are **empty**, and three RPCs (`erp_app_session`, `erp_app_login`, `erp_sso_profile`) read that empty column, not `packing.profiles`. Result: the tables are fine, but the app says `NO_APP_ACCOUNT` for every user. This file backfills the columns and adds two lines to `admin_grant_app_access()` so future users get them filled too. It doesn't change any RPC body, any id, or any FK. If you need to run the MERGE later, this file doesn't get in its way. |
+| `FIX_APP_ACCOUNT_PROVISION.sql` | Run this if saving in the Admin Panel says **"Complaint App / Packing account was not created"**. It creates two RPCs: `erp_auth_id_by_email()` (server only) and `erp_link_existing_auth_account()`, which finds that person's **existing** auth account (sitting on another id) and moves `app_users.id` onto it, without creating a new one. At the end it reports which users have their auth account on the same id, which on another id, and which have none. It doesn't change any existing function or table. |
+| `CHECK_PACKING_SSO.sql` | **"Direct login isn't working in packing.html"**: for whom, and why. Changes nothing, only looks. Almost everyone sees the Packing button on the launcher (access defaults to `true`), but a **direct** login also needs that person's Packing account: a row with the same id in `auth.users` + `packing.profiles`. Both are created automatically when "Packing & Dispatch" is switched ON in Admin Panel › Users › Apps. This file gives a verdict per user (`DIRECT LOGIN OK` / `NO AUTH ACCOUNT` / `NO PACKING ACCOUNT` / `PROFILE INACTIVE`) along with setup checks. |
+| `USER_SELF_SERVICE_MIGRATION.sql` | **Signup · Forgot PIN · emp_code login.** Adds `dob` / `photo` / `designation` / `department` to `app_users`, backfills emp_code (name match against `employees`), and the RPCs `erp_signup` / `erp_forgot_pin_request` / `erp_reset_pin` / `admin_get_user_signature`. It doesn't GUESS where the PIN is stored; it finds out from a probe user. Fill in `v_admin_pin` at the top. Run once, **after SINGLE_LOGIN**. See below. |
+| `CONSOLIDATE_USER_TABLES.sql` | Removes `cmp_profiles` / `packing.profiles` / `sales_users` and makes `app_users` the only user store, but leaves **VIEWs** with the same names (built on app_users), so both apps' triggers / RLS / code keep running unchanged. **The first run only prints the plan (dry run)**; it does the work with `v_do_it := true`. It creates its own archive. |
+| `supabase/functions/erp-sso/index.ts` | Edge Function: creates a **real** Supabase Auth session for Complaint / Packing from the ERP session token (no password, and their RLS is left alone). `supabase functions deploy erp-sso`. |
+| `PURCHASE_TRACKING_VIEW.sql` | The `v_purchase_tracking` view: a flat tracking sheet of PR → PO → Receiving → Requester (totals only, no item lines). See below. |
+| `TRIMS_MANAGER_V2_MIGRATION.sql` | **Trims Manager: Manual Order + PR No.** Three things: (1) `order_manual` · `party_name` · `brand_name` · `designs` on `mfg_trims_sheets`: when the Order No is typed by hand, the sheet keeps its own Party / Brand / Design list; (2) `pr_no` · `po_manual` · `target_date_manual` on `mfg_trims_lines`: the user picks a **PR**, and once a PO is made against that PR it is found automatically through `purchase_order_lines.req_no`; (3) `outward_lines.lot_no`, for one ISSUE covering several lots later on. The `mfg_save_trims_sheet()` RPC is also recreated (the old one is dropped). Run once, **after `TRIMS_MANAGER_MIGRATION.sql`**; safe to re-run. Until it runs, everything on the Trims Manager screen works, but PR No / Party / Brand / Design are **not saved**, and the sheet says so in a red banner. See below. |
+| `_backup_before_erp_split/` | The original single-file `Store.html` and `mobile.html` from before the split. |
 
-## Script load order — na badlein
+## Script load order: do not change
 
 ```html
 store-core.js  →  store-design-master.js  →  store-nav-keys.js  →  erp-shell.js
 ```
 
-Teeno classic scripts ek hi global lexical scope share karte hain: baad wali
-files pehli wali ke top-level `const` / `let` (`SB`, `SB_READY`, `escText`,
-`fetchAllRows`, `sarvCurrentRole`…) seedha padhti hain. Isi liye:
+These classic scripts share one global lexical scope: the later files read
+the earlier ones' top-level `const` / `let` (`SB`, `SB_READY`, `escText`,
+`fetchAllRows`, `sarvCurrentRole`…) directly. So:
 
-- `type="module"` **na** lagayein — module ka apna scope hota hai, aur `file://`
-  par CORS use block kar deta hai.
-- `defer` **na** lagayein — order toot jayega.
+- Do **not** add `type="module"`. A module gets its own scope, and over
+  `file://` CORS blocks it.
+- Do **not** add `defer`. The order would break.
 
-## `v_purchase_tracking` — PR se Receiving tak ek hi sheet
+## `v_purchase_tracking`: one sheet from PR to Receiving
 
-Database-side view (`PURCHASE_TRACKING_VIEW.sql`). Ek row = **(PR, PO,
-Receiving)**, teeno LEFT — to jis PR par PO nahi bana wo bhi dikhti hai, aur
-jis PO par maal nahi aaya wo bhi. **Item lines nahi** hain, sirf totals
-(`pr_item_count`, `po_pr_ordered_qty`, `rcv_total_value` …), taaki grain na
-toote.
+A database-side view (`PURCHASE_TRACKING_VIEW.sql`). One row = **(PR, PO,
+Receiving)**, all three LEFT joined, so a PR with no PO still shows, and so
+does a PO whose material never arrived. There are **no item lines**, only
+totals (`pr_item_count`, `po_pr_ordered_qty`, `rcv_total_value` …), so the
+grain stays intact.
 
-Link app ke Purchase › Follow-Up Report ka theek wahi hai:
+The links are exactly the ones the app's Purchase › Follow-Up Report uses:
 
-| Jodd | Kahan se |
+| Link | From |
 |---|---|
-| PR → PO | `purchase_order_lines.req_no` (exact). `linked_req_nos` **sirf** us PO par jiski ek bhi line nahi — `trk_pr_po_link` batata hai kaun sa raasta laga |
-| PO → Receipt | `inward_entries.po_number` (comma se judi list) |
-| PR → Receipt | `inward_entries.req_no`, sirf us receipt par jo kisi PO se nahi juda |
+| PR → PO | `purchase_order_lines.req_no` (exact). `linked_req_nos` is used **only** for a PO that has no lines at all; `trk_pr_po_link` says which route was taken |
+| PO → Receipt | `inward_entries.po_number` (comma-separated list) |
+| PR → Receipt | `inward_entries.req_no`, only for a receipt not tied to any PO |
 
-Kaam ke columns: `trk_stage` (kahan tak pahuncha), `trk_waiting_on` (kiska
-intezaar), `trk_days_*` (aging), `trk_pr_*` (PR-level roll-up, har row par
-repeat — `select distinct` se PR-wise summary), aur `*_signed` / `*_by` /
-`*_at` har approval stage ke.
+Useful columns: `trk_stage` (how far it got), `trk_waiting_on` (who it is
+waiting on), `trk_days_*` (aging), `trk_pr_*` (PR-level roll-up, repeated on
+every row; use `select distinct` for a PR-wise summary), and `*_signed` /
+`*_by` / `*_at` for each approval stage.
 
-Do baatein jaan lein:
+Two things to know:
 
-- **Cancelled receipt** ki row banti hai (`rcv_is_cancelled = true`) par wo
-  kisi roll-up me nahi ginti. App jaisa behaviour chahiye to
+- A **cancelled receipt** still gets a row (`rcv_is_cancelled = true`) but it
+  isn't counted in any roll-up. For the app's behaviour, use
   `where not rcv_is_cancelled`.
-- **Naya column** kisi table me jude to view badalni nahi padti —
-  `pr_row` / `po_row` / `rcv_row` jsonb me poori row hai:
-  `select pr_row ->> 'naya_column' from v_purchase_tracking`.
+- When a **new column** is added to a table, the view doesn't need to change:
+  the full row is in the `pr_row` / `po_row` / `rcv_row` jsonb:
+  `select pr_row ->> 'new_column' from v_purchase_tracking`.
 
-Jin columns ka matlab galat samajha ja sakta hai (`pr_gmceo_as`,
-`po_md_approved`, `trk_pr_received_value` …) unka `comment on column`
-database ke andar hi likha hai.
+Columns that are easy to misread (`pr_gmceo_as`, `po_md_approved`,
+`trk_pr_received_value` …) have a `comment on column` written inside the
+database.
 
-## 📞 PO Follow-up — vendor se revised delivery date
+## PO Follow-up: revised delivery date from the vendor
 
-PO vendor ko chala gaya, delivery date aa gayi, maal nahi aaya. Ab tak iska
-koi record kahin nahi tha — phone par baat hoti thi aur baat wahin reh jaati
-thi. Ab wo baat likhi jaati hai.
+The PO went to the vendor, the delivery date came and went, and the material
+didn't arrive. Until now there was no record of this anywhere: the call
+happened on the phone and stayed there. Now it gets written down.
 
-**Likhna kahan:** `mobile.html` › **📞 PO Follow-up** tab (PO Sender ka).
-**Padhna kahan:** `index.html` › PO Generation › **📋 Follow-Up Report** ka
-naya column **Delivery Revise & Remarks**, theek `PO Sent to Vendor` ke baad.
+**Where to write it:** `mobile.html` › **PO Follow-up** tab (the PO Sender's).
+**Where to read it:** `index.html` › PO Generation › **Follow-Up Report**, in
+the new **Delivery Revise & Remarks** column, right after `PO Sent to Vendor`.
 
-### Kaunse PO is tab me aate hain
+### Which POs show up in this tab
 
-Teeno shart saath me:
+All three conditions together:
 
-1. **Vendor ko bhej diya gaya** ho (`purchase_orders.party_sent_at`, ya
-   browser-local fallback — wahi `isPoSentMobile`). Jo PO vendor ke paas
-   pahuncha hi nahi, us par vendor se date poochne ka matlab nahi.
-2. Status **MD Approved** / **Vendor Verified** (legacy, MD ke baad hi aata
-   tha) / **Partially Received**.
-3. Maal **poora nahi aaya** — ye `poReceiptBucket` se tay hota hai, jo lines
-   load hone par **item-wise** dekhta hai. Isi liye wo PO bhi list me rehta
-   hai jiske header totals "Received" keh rahe hon par ek line short ho.
+1. It **has been sent to the vendor** (`purchase_orders.party_sent_at`, or the
+   browser-local fallback; the same `isPoSentMobile`). There's no point asking
+   the vendor for a date on a PO that never reached them.
+2. Status is **MD Approved** / **Vendor Verified** (legacy, it only ever came
+   after MD) / **Partially Received**.
+3. The material has **not fully arrived**. `poReceiptBucket` decides this,
+   and once the lines load it looks **item-wise**. That's why a PO stays in
+   the list when its header totals say "Received" but one line is short.
 
-Do section hain, aur ye stage ki jodi **nahi** hai — dono me wahi PO hain:
+There are two sections, and they are **not** a pair of stages; both hold the
+same kind of PO:
 
-| Section | Matlab |
+| Section | Meaning |
 |---|---|
-| **Follow-up Due** | ek bhi follow-up nahi hua, **ya** di hui revised date nikal gayi |
-| **Date Awaited** | follow-up ho chuka aur vendor ki di hui date abhi aage ki hai |
+| **Follow-up Due** | no follow-up yet, **or** the revised date given has passed |
+| **Date Awaited** | a follow-up was done and the vendor's date is still ahead |
 
-Tab ka badge **Follow-up Due** ka count hai. Sabse oopar wo PO jiski date
-sabse zyada nikal gayi hai.
+The tab badge is the **Follow-up Due** count. The PO whose date passed the
+longest ago is at the top.
 
-### Modal me 📦 Item Details — PO wise
+### Item Details in the modal, PO-wise
 
-PO kholne par wahi **per-item** table dikhti hai jo PO Receipts me hai
-(`openRecvModal`) — `Sr · Item Name · Ordered · Received · Pending · UOM ·
-Status` — neeche TOTAL row aur wahi verdict jo PO ko uske section me rakhta
-hai. Helpers dono tab me **ek hi** hain (`poLineTally_` / `recvLineState_` /
-`RECV_LINE_STATE`); do tab ek hi figure do tarike se nikalein to wahi se
-dono me farq aana shuru hota hai.
+Opening a PO shows the same **per-item** table as PO Receipts
+(`openRecvModal`): `Sr · Item Name · Ordered · Received · Pending · UOM ·
+Status`, with a TOTAL row below and the same verdict that puts the PO in its
+section. The helpers are **shared** by both tabs (`poLineTally_` /
+`recvLineState_` / `RECV_LINE_STATE`); if two tabs work out the same figure
+in two different ways, that is exactly where they start to disagree.
 
-Do baatein PO Receipts se alag hain, jaan-boojh kar:
+Two things differ from PO Receipts, on purpose:
 
-- **Jo item short hain wo sabse oopar** aate hain (uske andar PO ki apni line
-  order barkarar). Baat karte waqt list oopar se niche padhi jaati hai — 20
-  line ke PO me jo 2 baaki hain, wo 18 poore hue items ke beech dabi nahi
-  rehni chahiye. Short lines halki amber tint me hain.
-- Table ke neeche ek line saaf likhti hai **kya maangna hai** — "Vendor se in
-  3 item ki baat karein — kul 40 qty baaki hai (1 item par abhi kuch bhi nahi
-  aaya)". Yahi wo vaakya hai jo Sender screen se padhkar phone par bol deta
-  hai.
+- **Short items come first** (within them, the PO's own line order is kept).
+  During a call the list is read top to bottom; on a 20-line PO, the 2 lines
+  still pending shouldn't be buried among the 18 complete ones. Short lines
+  have a light amber tint.
+- A line under the table says plainly **what to ask for**: "Talk to the
+  vendor about these 3 items; 40 qty pending in total (nothing has arrived
+  yet on 1 item)". That is the sentence the Sender reads off the screen on
+  the phone.
 
-Header par bhi `Ordered / Received`, `Items Complete`, `Excess Received` aur
-`Inward Entries` aa gaye — taaki jo qty kal aa chuki hai wo dobara na maangi
-jaye.
+The header also shows `Ordered / Received`, `Items Complete`, `Excess Received`
+and `Inward Entries`, so nobody asks again for qty that arrived yesterday.
 
-Lines list ke saath hi load ho jaati hain (`attachPoLinesToPos_`, PO Sender
-bhi ab usme shaamil hai), to modal aam taur par bina extra query khulta hai;
-sirf wo lookup fail / skip hua ho to modal apne aap ek baar fetch karta hai.
-`_lines` ka convention wahi hai: `null` = load nahi hui (table kehti hai
-"load nahi ho paayin"), `[]` = load hui aur khali hai ("is PO me koi line
-nahi") — dono ko ek jaisa dikhana sabse galat hota, kyunki `[]` ka matlab
-"kuch order hi nahi hua" padh liya jaata.
+The lines load along with the list (`attachPoLinesToPos_`, which now includes
+the PO Sender too), so the modal usually opens without an extra query; only
+when that lookup failed or was skipped does the modal fetch once on its own.
+The `_lines` convention is the same: `null` = not loaded (the table says
+"could not be loaded"), `[]` = loaded and empty ("this PO has no lines").
+Showing both the same way would be the worst option, because `[]` would be
+read as "nothing was ordered".
 
-### Data kahan baithta hai — koi migration nahi
+### Where the data lives: no migration
 
-`purchase_orders.approvals` ke andar, `followups` **array** me:
+Inside `purchase_orders.approvals`, in a `followups` **array**:
 
 ```json
 { "seq": 2, "revisedDate": "2026-11-05", "prevDate": "2026-10-20",
-  "remarks": "yarn nahi aaya, 5 din me dispatch", "by": "PO Sender",
+  "remarks": "yarn not received, dispatch in 5 days", "by": "PO Sender",
   "role": "PO Sender", "at": "16/10/2026 15:40",
   "atIso": "2026-10-16T10:10:00.000Z", "poNo": "PO/U-2/793" }
 ```
 
-`approvals` hi **ek matra** jsonb column hai jo `purchase_orders` par hai (us
-table par `pdf_snapshot` nahi hota), aur `rejectPO` pehle se isi me ek
-non-stage key (`rejection`) rakhta hai. Is column ko koi **iterate nahi**
-karta — dono app aur dono PDF renderer apni stage key **naam se** padhte hain
-(`approvals.gmCeo` / `.md` / `.store` / `.rejection`), isliye ek extra key un
-sabke liye inert hai. **Isi liye is feature ke liye koi `.sql` chalane ki
-zaroorat nahi.**
+`approvals` is the **only** jsonb column on `purchase_orders` (that table has
+no `pdf_snapshot`), and `rejectPO` already keeps a non-stage key
+(`rejection`) in it. Nothing **iterates** over this column: both apps and both
+PDF renderers read their stage key **by name** (`approvals.gmCeo` / `.md` /
+`.store` / `.rejection`), so one extra key is inert for all of them. **That is
+why this feature needs no `.sql` to be run.**
 
-### Do niyam jo jaan lein
+### Two rules to know
 
-- **Append-only.** Entry na edit hoti hai na delete. Jo date vendor ne di aur
-  nikal gayi — wahi to is record ka asli kaam hai; use mitana matlab saboot
-  mitana. Nayi baat = nayi entry.
-- **PO ki asli `delivery_date` nahi badalti**, aur PO ki PDF dobara nahi
-  banti. Vendor ke haath me jo document hai wo wahi rehta hai. Report me
-  `Delivery Date of PO` = jo tay hua tha, naya column = uske baad kya hua.
-  Nayi date pichli di hui date se **peeche** nahi daali ja sakti (pehli entry
-  par aaj se peeche nahi) — wo revision nahi, typo hoti hai.
+- **Append-only.** An entry is never edited or deleted. A date the vendor gave
+  that then passed is the whole point of this record; erasing it means
+  erasing the evidence. New information = a new entry.
+- **The PO's real `delivery_date` does not change**, and the PO's PDF is not
+  regenerated. The document in the vendor's hands stays as it is. In the
+  report, `Delivery Date of PO` = what was agreed, and the new column = what
+  happened after. A new date cannot be **earlier** than the previous date
+  given (on the first entry, not earlier than today); that would be a typo,
+  not a revision.
 
-Save karte waqt row **dobara padhi** jaati hai aur nayi entry usi taaza array
-par judti hai — do phone ek hi PO chase kar rahe hon to ek doosre ki entry
-mitti nahi (read-modify-write ka race).
+On save the row is **read again** and the new entry is added to that fresh
+array, so if two phones are chasing the same PO, neither wipes out the other's
+entry (the read-modify-write race).
 
-### Report me
+### In the report
 
-Cell par latest date, kitne din late / baaki, remark ki shuruat, aur
-**🕘 History (n)** link — click par us PO ki saari entries (date, remark,
-kisne kab ki, pichli date kya thi). Report me kuch **type nahi hota**: jisne
-vendor se baat ki wahi phone par likhta hai, warna sach do jagah ho jaata hai
-— wahi niyam jo `Bill Checked by GM / MD` columns par hai.
+The cell shows the latest date, how many days late / left, the start of the
+remark, and a **History (n)** link; clicking it shows every entry for that PO
+(date, remark, who made it and when, what the previous date was). Nothing is
+**typed in the report**: the person who spoke to the vendor writes it on the
+phone, otherwise the truth ends up in two places. Same rule as the
+`Bill Checked by GM / MD` columns.
 
-Column filter latest date par chalta hai, search remark ke andar bhi dhoondhti
-hai (`transport` likhne par wo saare PO mil jaate hain), aur CSV me char
-column jaate hain: `Follow-ups`, `Revised Date (latest)`,
-`Latest Follow-up Remarks`, aur poori `Follow-up History` ek cell me.
+The column filter works on the latest date, search also looks inside the
+remark (typing `transport` finds all those POs), and the CSV gets four
+columns: `Follow-ups`, `Revised Date (latest)`, `Latest Follow-up Remarks`,
+and the full `Follow-up History` in one cell.
 
 ### Access
 
-| Jagah | Key | Default |
+| Where | Key | Default |
 |---|---|---|
-| Admin Panel › **Feature Access** | `PO_FOLLOWUP` | sirf **PO Sender** + Admin |
+| Admin Panel › **Feature Access** | `PO_FOLLOWUP` | only **PO Sender** + Admin |
 | Admin Panel › **Tab Visibility** | `M_FOLLOWUP` | `ALL` |
 | | `M_FOLLOWUP_pending` / `M_FOLLOWUP_done` | `ALL` |
 
-Tab dono jagah se pass hona chahiye, isi liye default me wo sirf PO Sender ko
-dikhta hai (wahi tareeka `M_SENT` ka hai). Kisi aur role ko dena ho to
-Feature Access ki `PO_FOLLOWUP` row par tick lagayein — par **likhne** ka haq
-phir bhi PO Sender ka rehta hai (`STAGE_TABS.FOLLOWUP.actor`), baaki ko
-history read-only dikhti hai.
+The tab has to pass both, which is why by default only the PO Sender sees it
+(the same way as `M_SENT`). To give it to another role, tick the
+`PO_FOLLOWUP` row in Feature Access; the right to **write** still stays with
+the PO Sender (`STAGE_TABS.FOLLOWUP.actor`), and everyone else sees the
+history read-only.
 
-## Fixed dropdowns ki values kahan se aati hain
+## Where the fixed dropdown values come from
 
-**Master Data › 🔽 Dropdown Master.** App ke saare fixed dropdowns ki values ek
-hi table me hain — `sales_dropdowns (key, value)`, wahi table jo Sales › Order
-Form bhi padhti hai. Isi liye ERP ke apne keys `erp_` se shuru hote hain aur
-Order Form ke purane generic keys (`category`, `size`, `moq`, `design` …) jaise
-the waise hi hain; dono ek doosre ko overwrite nahi karte.
+**Master Data › Dropdown Master.** The values of every fixed dropdown in the
+app are in one table, `sales_dropdowns (key, value)`, the same table Sales ›
+Order Form reads. That's why the ERP's own keys start with `erp_`, and the
+Order Form's old generic keys (`category`, `size`, `moq`, `design` …) are
+left as they were; neither overwrites the other.
 
-Do niyam — aur inhi ki wajah se migration chalane se app ka behaviour **bilkul
-nahi badalta**:
+Two rules, and because of them running the migration **does not change** the
+app's behaviour at all:
 
-| Table me us key ki rows | Kya chalta hai |
+| Rows for that key in the table | What is used |
 |---|---|
-| ek bhi row hai | **wahi list** — code ka default poora ignore |
-| koi row nahi | code ka default (jo pehle hardcoded tha) |
+| at least one row | **that list**; the code default is ignored completely |
+| no rows | the code default (what used to be hardcoded) |
 
-Add / edit / remove / kram badalna sirf **Admin** login se, sirf is screen se
-(koi SQL nahi). Pehli value add karte hi us key ke baaki defaults bhi apne aap
-table me aa jaate hain, warna list ek-value ki reh jaati.
+Adding / editing / removing / reordering is done only with an **Admin**
+login, only from this screen (no SQL). Adding the first value for a key also
+copies that key's other defaults into the table, otherwise the list would be
+left with a single value.
 
-Naya dropdown jodna ho to `store-core.js` ke `SARV_DROPDOWNS` me ek entry
-jodein: `key`, `label`, `def` (aaj ka hardcoded default) aur jo `selects` /
-`datalists` use list se bharni hain. Jahan option ka value aur screen-text alag
-hain (jaise Inward ka `Repaired` → "Return"), wahan `labels` map use karein —
-database me value hi jaati hai.
+To add a new dropdown, add an entry to `SARV_DROPDOWNS` in `store-core.js`:
+`key`, `label`, `def` (today's hardcoded default) and the `selects` /
+`datalists` to fill from that list. Where an option's value and its screen
+text differ (like Inward's `Repaired` → "Return"), use the `labels` map; the
+value is what goes into the database.
 
-Design Master ke pickers isi se feed hote hain (`store-design-master.js` ka
-`dmFixed()` / `DM_DD_KEY`), aur Home page ka Nature chooser bhi
-(`sarvNatureOpts_`) — to list ek hi jagah badalti hai.
+Design Master's pickers are fed from this (`dmFixed()` / `DM_DD_KEY` in
+`store-design-master.js`), and so is the Home page's Nature chooser
+(`sarvNatureOpts_`), so a list changes in one place only.
 
-## 🧵 Fabric Master & 🏷️ Brand Master
+## Fabric Master & Brand Master
 
-**Master Data › 🧵 Fabric Master** aur **🏷️ Brand Master** —
-`SARV INDIA LOT SOFTWARE DATA.xlsx` ki do sheets ka ERP version.
+**Master Data › Fabric Master** and **Brand Master**: the ERP version of the
+two sheets in `SARV INDIA LOT SOFTWARE DATA.xlsx`.
 
-Setup ek hi baar: `FABRIC_BRAND_MASTER_MIGRATION.sql` chalayein, phir dono
-screen par 🌱 **Seed Excel Data** dabayein (jo row pehle se hai wo chhoot
-jaati hai, to dobara dabane se duplicate nahi bante).
+One-time setup: run `FABRIC_BRAND_MASTER_MIGRATION.sql`, then press **Seed
+Excel Data** on both screens (rows that already exist are skipped, so pressing
+it again does not create duplicates).
 
-**Ek array, paanch kaam.** Har master ka field list (`store-core.js` ka
-`SARV_FAB_FIELDS` / `SARV_BR_FIELDS`) akela hi chalata hai — table ka head
-aur rows, New/Edit/Revise ka form, CSV import ka header match, CSV export
-ke headers, aur revision ka "kya badla". Naya column jodna = us array me
-**ek line** jodna; HTML me kuch nahi badalna padta. Column 42 hain, isi liye
-table horizontally scroll karta hai, pehle do column sticky-left rehte hain
-aur upar ke **Columns** chips se group on/off hote hain (browser me yaad
-rehta hai).
+**One array, five jobs.** Each master's field list (`SARV_FAB_FIELDS` /
+`SARV_BR_FIELDS` in `store-core.js`) drives all of these on its own: the
+table head and rows, the New/Edit/Revise form, the CSV import header match,
+the CSV export headers, and the revision's "what changed". Adding a column =
+adding **one line** to that array; nothing in the HTML needs to change. There
+are 42 columns, so the table scrolls horizontally, the first two columns stay
+sticky on the left, and the **Columns** chips at the top turn groups on/off
+(remembered in the browser).
 
-**Revision control — yahi "Revise 1, 2, 3 …" hai.** Do kaam jaan-boojh kar
-alag hain:
+**Revision control: this is "Revise 1, 2, 3 …".** Two actions are kept
+separate on purpose:
 
-| | Kya karta hai | REV | Kaaran |
+| | What it does | REV | Reason |
 |---|---|---|---|
-| ✏️ **Edit** | galti sudharna | **wahi rehta** | nahi chahiye |
-| 🔁 **Revise** | soch-samajh kar naya version | **+1** | **zaroori** |
+| **Edit** | fixes a mistake | **stays the same** | not needed |
+| **Revise** | a deliberate new version | **+1** | **required** |
 
-Dono soorat me badlav se **pehle** ka poora snapshot `master_revisions` me
-chala jaata hai, us REV number ke saath jo wo tab tha. Isi liye purana lot
-card / PR jis REV par bana tha wo REV aaj bhi padhi ja sakti hai, aur 🕘
-**History** se kisi bhi purani REV par wapas (restore) bhi ja sakte hain —
-restore khud ek nayi REV banta hai, kuch mitta nahi. `master_revisions` na
-mile to screen chalti rehti hai, bas archive skip hota hai (console
-warning) — master ka apna write kabhi isliye fail nahi hota.
+In both cases a full snapshot from **before** the change goes into
+`master_revisions`, with the REV number it had at the time. So the REV an old
+lot card / PR was made on can still be read today, and from **History** you
+can go back (restore) to any old REV; a restore itself creates a new REV, and
+nothing is erased. If `master_revisions` is missing, the screen keeps
+working and only the archive is skipped (console warning); the master's own
+write never fails because of it.
 
-**Dono master jude hain.** Brand ka `FABRIC NAME` Fabric Master ki row ko
-point karta hai:
+**The two masters are linked.** A brand's `FABRIC NAME` points to a row in
+Fabric Master:
 
-* Brand form ka Fabric dropdown **live** `fabric_master` se bharta hai, aur
-  fabric chunne par quality/weights hint me aa jaate hain — khaali
-  `BLANKET WEIGHT` bed-size + ply dekhkar khud bhar jaata hai.
-* Fabric row par uske brands ki chips — click karne par Brand Master us
-  fabric par filter hokar khulta hai (aur ulta bhi).
-* Jis brand ka fabric master me nahi hai uski chip **laal** hai aur toolbar
-  me "⚠️ N unlinked" pill aata hai. Excel me aise do pehle se hain (2.25
-  `RUBRU BLUELILLY DB` aur 3.3 `PARI DB SP`) — galti chhupti nahi, par kaam
-  bhi nahi rukta (isi wajah se FK nahi lagayi).
-* Jis fabric par brands hain wo **delete nahi hota** — 🚫 Inactive hamesha
-  milta hai, aur usse link tootta nahi.
+* The Fabric dropdown on the Brand form fills **live** from `fabric_master`,
+  and picking a fabric puts its quality/weights in the hint; an empty
+  `BLANKET WEIGHT` fills itself from the bed size + ply.
+* A fabric row shows chips for its brands; clicking one opens Brand Master
+  filtered on that fabric (and the other way round).
+* A brand whose fabric is not in the master gets a **red** chip, and the
+  toolbar shows an "N unlinked" pill. The Excel already has two of these
+  (2.25 `RUBRU BLUELILLY DB` and 3.3 `PARI DB SP`). The mistake doesn't hide,
+  but work
+  isn't held up either (which is why no FK was added).
+* A fabric that has brands on it **cannot be deleted**. Inactive is always
+  available, and it doesn't break the link.
 
-**Access.** Admin Panel › **Feature Access** me per master chaar row —
-`FABRIC_NEW / EDIT / REVISE / DELETE` aur waise hi `BRAND_*` — plus dono par
-lagne wale `MASTER_REV_HISTORY`, `MASTER_REV_RESTORE`, `MASTER_ACTIVATE`,
-`MASTER_IMPORT`, `MASTER_EXPORT`. **Tab Visibility** me `MD_FABRIC` /
-`MD_BRAND` poori screen chhupate hain, aur `MD_FABRIC_YARN` /
-`MD_BRAND_PACKING` / `MD_REV_COLUMN` sirf unn **column groups** ko — yani
-yarn planning ya packing/trims ka data role-wise chhupaya ja sakta hai bina
-screen band karne ke (form me bhi wahi group gayab ho jaata hai, aur save par
-us group ke field chhede nahi jaate).
+**Access.** Admin Panel › **Feature Access** has four rows per master:
+`FABRIC_NEW / EDIT / REVISE / DELETE` and the same for `BRAND_*`, plus
+`MASTER_REV_HISTORY`, `MASTER_REV_RESTORE`, `MASTER_ACTIVATE`,
+`MASTER_IMPORT`, `MASTER_EXPORT`, which apply to both. In **Tab Visibility**,
+`MD_FABRIC` / `MD_BRAND` hide the whole screen, and `MD_FABRIC_YARN` /
+`MD_BRAND_PACKING` / `MD_REV_COLUMN` hide only those **column groups**. So yarn
+planning or packing/trims data can be hidden per role without closing the
+screen (the same group also disappears from the form, and on save that
+group's fields are left untouched).
 
-**Sattan ke do column.** `SATTAN SIZE` (4 / 5 / 6 INCH SATTAN / NA) aur
-`SATTAN TYPE` (STANDARD / PREMIUM) — dono Specification group me, dono ka
-apna filter. Pehle ye ek hi column tha jisme `5 INCH SATTAN-NORMAL` jaisi
-mili-juli value aa jaati thi; ab size aur grade alag hain, to "saare PREMIUM
-brands" filter se mil jaate hain. Database column ka naam `sattan` hi hai
-(rename nahi kiya, purana data waise hi padha jaata rahe) — screen par uska
-label `SATTAN SIZE` hai, aur CSV import purane `SATTAN` header ko bhi
-pehchaanta hai.
+**Two Sattan columns.** `SATTAN SIZE` (4 / 5 / 6 INCH SATTAN / NA) and
+`SATTAN TYPE` (STANDARD / PREMIUM), both in the Specification group, each with
+its own filter. It used to be a single column that ended up with mixed values
+like `5 INCH SATTAN-NORMAL`; now size and grade are separate, so "all PREMIUM
+brands" is one filter away. The database column is still called `sattan` (not
+renamed, so old data keeps being read the same way); on screen its label is
+`SATTAN SIZE`, and the CSV import also recognises the old `SATTAN` header.
 
-**Packing 1 aur Packing 2.** Packing ka poora set (master required/type +
-slave required/type) **do baar** hai, kyunki ek hi brand do tarah se pack ho
-sakta hai — jaise MONARCH: bag packing aur gift box packing. Packing 1 =
-asli / default tareeka (Excel ke wahi chaar column, wahi headers, purani
-sheet seedha import hoti rehti hai). Packing 2 optional hai, isi liye table
-me uske column **chips default OFF** hain — form me hamesha dikhta hai, aur
-chip dabaakar table me bhi aa jaata hai.
+**Packing 1 and Packing 2.** The full packing set (master required/type +
+slave required/type) appears **twice**, because one brand can be packed two
+ways, like MONARCH: bag packing and gift box packing. Packing 1 = the real /
+default way (the same four Excel columns, same headers, so the old sheet still
+imports directly). Packing 2 is optional, which is why its table column
+**chips are OFF by default**; it always shows in the form, and pressing the
+chip brings it into the table too.
 
-Dono screen ke saare dropdowns (unit, quality, size, bed size, ply, sattan
-size, sattan type, packing type, YES/NO) **Dropdown Master** se aate hain —
-`erp_fabric*` / `erp_brand*` / `erp_fbmYesNo` keys, jinke default seedha
-Excel ki data validation lists se liye gaye hain. List badalni ho to SQL
-nahi, wahi screen. Dhyan: us key ki ek bhi row `sales_dropdowns` me pehle se
-hai to code ka default poora ignore hota hai — yani list wahin se badlegi.
+All dropdowns on both screens (unit, quality, size, bed size, ply, sattan
+size, sattan type, packing type, YES/NO) come from **Dropdown Master**:
+`erp_fabric*` / `erp_brand*` / `erp_fbmYesNo` keys, whose defaults were taken
+straight from the Excel data validation lists. To change a list, use that
+screen, not SQL. Note: if a key already has even one row in `sales_dropdowns`,
+the code default is ignored completely, so the list only changes from there.
 
-**Naya column aaye to:** `SARV_FAB_FIELDS` / `SARV_BR_FIELDS` me ek line,
-aur `FABRIC_BRAND_MASTER_MIGRATION.sql` ke "Jinhone ye file PEHLE chala li
-thi" block me ek `alter table … add column if not exists` line. Wo file
-dobara chalana hamesha surakshit hai.
+**When a new column comes:** one line in `SARV_FAB_FIELDS` / `SARV_BR_FIELDS`,
+and one `alter table … add column if not exists` line in the "for those who
+ran this file EARLIER" block of `FABRIC_BRAND_MASTER_MIGRATION.sql`. Re-running
+that file is always safe.
 
-### `sales_standard_items` + `brand_master` = ek table
+### `sales_standard_items` + `brand_master` = one table
 
-Pehle **ek hi item code DO jagah** maintain hota tha: Brand Master me
-(fabric, category, weight, size, bed size, ply, sattan, moq, emboss) aur
-Order Form ki apni `sales_standard_items` me (wahi nau + rates). Dono me
-alag-alag data chala jaata tha.
+Previously **one item code was maintained in TWO places**: in Brand Master
+(fabric, category, weight, size, bed size, ply, sattan, moq, emboss) and in the
+Order Form's own `sales_standard_items` (the same nine + rates). The two
+drifted apart.
 
-Ab Brand Master hi ek ghar hai. `sales_standard_items` ke **nau rate /
-packing column** usme aa gaye hain — naya group **💰 Order Form Rates &
-Packing**: `PRICE PER KG`, `PACKING PCS`, aur `LABEL / TAG / BAG / BORE /
-INNER BOX / OUTER BOX / BALE PRICE`. (Paisa hai, isi liye apni Tab
-Visibility row `MD_BRAND_RATES` — default sirf Admin / MD / GM / Accountant
-— aur table me chip default OFF.)
+Now Brand Master is the single home. The **nine rate / packing columns** of
+`sales_standard_items` moved into it as a new group, **Order Form Rates &
+Packing**: `PRICE PER KG`, `PACKING PCS`, and `LABEL / TAG / BAG / BORE /
+INNER BOX / OUTER BOX / BALE PRICE`. (It's money, so it has its own Tab
+Visibility row `MD_BRAND_RATES`, by default only Admin / MD / GM / Accountant,
+and its table chip is OFF by default.)
 
-**Order Form ab item code ke against Brand Master se padhti hai.** Dono ki
-bhasha alag hai, isi liye tarjuma `order-form.html` ke `bmToItem()` me — ek
-hi jagah:
+**The Order Form now reads from Brand Master against the item code.** The two
+use different vocabularies, so the translation lives in one place,
+`bmToItem()` in `order-form.html`:
 
 | `brand_master` | Order Form | Note |
 |---|---|---|
 | `bed_size` DOUBLE BED | `dbsb` DB | combo (free text) |
-| `blanket_ply` SINGLE PLY | `ply` SP | **`<select>`** — value hu-ba-hu milni chahiye |
-| `sattan` 5 INCH SATTAN + `sattan_type` PREMIUM | `sattan` 5" PREMIUM | sattan ka split isi kaam aaya |
-| `size` 205*230 CM | `size` 205×230 CM | separator badalta hai |
+| `blanket_ply` SINGLE PLY | `ply` SP | **`<select>`**: the value must match exactly |
+| `sattan` 5 INCH SATTAN + `sattan_type` PREMIUM | `sattan` 5" PREMIUM | this is where the sattan split paid off |
+| `size` 205*230 CM | `size` 205×230 CM | the separator changes |
 | `emboss` YES/NO/NA | `emboss` | **`<select>`** |
 
-`ply` aur `emboss` `<select>` hain — unme list se baahar ki value chup-chaap
-set hi nahi hoti, isi liye inka map pakka hona zaroori tha. Baaki sab combo
-(free text) hain.
+`ply` and `emboss` are `<select>`s: a value outside the list silently doesn't
+get set, which is why their mapping had to be exact. Everything else is a
+combo (free text).
 
-**Transition surakshit hai — purana data kahin nahi jaata:**
+**The transition is safe; no old data is lost:**
 
-* SQL ka section **2b** `sales_standard_items` ka data ek baar `brand_master`
-  me copy karta hai. Jo item code dono me hai, wahan **brand_master jeetta
-  hai** — sirf uske *khaali* column bharte hain. Jo sirf purani table me
-  hai, uski nayi row banti hai (dbsb/ply/sattan ka ulta tarjuma karke).
-  Purani table ko **chheda nahi jaata, delete bhi nahi**.
-* Order Form me `sales_standard_items` **neeche base** rehti hai aur Brand
-  Master uske upar **field-by-field** overlay hota hai — sirf wahan jahan
-  Brand Master me kuch bhara ho. Poori row se replace *nahi*: migration ke
-  beech ki haalat me ek item Brand Master me ho sakta hai (Excel seed se) par
-  uske rate khaali — poori row chadha dete to us item ka purana price gayab
-  ho jaata aur order **galat rate** par ban jaata.
-* Sab theek chalne ki tasalli ho jaane par `sales_standard_items` aap khud
-  drop kar sakte hain.
+* Section **2b** of the SQL copies `sales_standard_items` data into
+  `brand_master` once. Where an item code exists in both, **brand_master
+  wins** and only its *empty* columns are filled. An item that exists only in
+  the old table gets a new row (with dbsb/ply/sattan translated back). The old
+  table is **not touched, and not deleted**.
+* In the Order Form, `sales_standard_items` stays **underneath as the base**
+  and Brand Master is overlaid on it **field by field**, only where Brand
+  Master has something filled in. *Not* a whole-row replace: midway through
+  the migration an item can be in Brand Master (from the Excel seed) with
+  empty rates; overlaying the whole row would have wiped that item's old price
+  and the order would go out at the **wrong rate**.
+* Once you're satisfied everything works, you can drop `sales_standard_items`
+  yourself.
 
-Do baat jaan lein:
+Two things to know:
 
-* `sales_standard_items.fabric_name` (jaise `2900`) Brand Master ke
-  `fabric_name` (1.5 – 6, Fabric Master ka code) se **alag vocabulary** hai,
-  isi liye merge usko copy **nahi** karta — nayi rows me wo khaali rehta hai
-  aur "⚠️ N unlinked" pill unhe pakad kar dikha deta hai. Wahan sahi fabric
-  chun lein.
-* `moq` purani table me `500 PCS/Colour` jaisi text ho sakti hai (Order Form
-  use `String()` se padhti thi). Merge ka `sarv_to_num()` helper har number
-  me se pehla number nikaal leta hai, isi liye text→numeric ka cast poora
-  merge nahi girata.
+* `sales_standard_items.fabric_name` (like `2900`) is a **different
+  vocabulary** from Brand Master's `fabric_name` (1.5 to 6, the Fabric Master
+  code), so the merge does **not** copy it. It stays empty in new rows and the
+  "N unlinked" pill catches them and shows them. Pick the right fabric there.
+* `moq` in the old table can be text like `500 PCS/Colour` (the Order Form read
+  it with `String()`). The merge's `sarv_to_num()` helper pulls the first
+  number out of each value, so a text→numeric cast doesn't bring the whole
+  merge down.
 
-## 🏢 Buyer Master (+ 🤝 Agency table) — party list ka ek hi ghar
+## Buyer Master (+ Agency table): one home for the party list
 
-**Master Data › 🏢 Buyer Master.** Is EK screen par DO table hain:
+**Master Data › Buyer Master.** This ONE screen has TWO tables:
 
 | Table | Columns |
 |---|---|
 | `buyer_master` | `PARTY NAME` (unique, uppercase), `OWNER NAME`, `CONTACT NO`, `ADDRESS`, `GSTIN`, `PARTY STAFF NAME`, `PARTY STAFF CONTACT NO.`, NOTES |
 | `agency_master` | `AGENCY NAME` (unique, uppercase), `AGENCY CONTACT PERSON`, `AGENCY MOBILE NO.`, NOTES |
 
-Agency ki apni sub-tab nahi — uski poori table Buyer Master ke neeche
-baithti hai (➕ **New Agency** button wahin), kyunki agency aur party
-saath-saath maintain hoti hain aur Order Form me bhi ye do box ek doosre ke
-neeche hain. Agency ko buyer ka *column* banane ke bajay **alag table** isi
-liye rakhi: ek agency ke neeche kai parties hoti hain, to agency ka contact
-badalne par har party ki row chhedni padti — galti ki jad.
+Agency has no sub-tab of its own: its whole table sits below Buyer Master (the
+**New Agency** button is there), because agencies and parties are maintained
+side by side and in the Order Form these two boxes sit one under the other.
+Agency is a **separate table** rather than a *column* on buyer for this
+reason: one agency has many parties, so changing an agency's contact would
+mean editing every party's row, which is where mistakes come from.
 
-Dono tables wahi engine chalati hai jo Fabric / Brand Master chalati hai, to
-Edit / Revise (REV +1) / History / Restore / Active-Inactive / CSV
-import-export sab mil jaate hain. Excel me in dono ki sheet nahi thi, isi
-liye 🌱 Seed button nahi hai — list ➕ **New** ya 📥 **Import CSV** se banti
-hai.
+Both tables run on the same engine as Fabric / Brand Master, so you get Edit /
+Revise (REV +1) / History / Restore / Active-Inactive / CSV import-export. The
+Excel had no sheet for either, so there is no Seed button; the list is built
+with **New** or **Import CSV**.
 
-**Dropdown kahan jaate hain.** Dono jagah ye **jodta** hai, kisi ko hataata
-nahi:
+**Where the dropdowns go.** In both places this **adds**, it removes nothing:
 
-| Screen | Field | Pehle kahan se aata tha | Ab |
+| Screen | Field | Where it used to come from | Now |
 |---|---|---|---|
-| Sales › Order Form | Buyer / Company Name | sirf purane `sales_orders` ke naam | + `buyer_master` |
-| Sales › Order Form | Agency Name | sirf purane `sales_orders` ke naam | + `agency_master` |
-| Packing & Dispatch | naye slip ka Party Name | sirf jin parties ka PENDING order tha | + `buyer_master` |
+| Sales › Order Form | Buyer / Company Name | only names from old `sales_orders` | + `buyer_master` |
+| Sales › Order Form | Agency Name | only names from old `sales_orders` | + `agency_master` |
+| Packing & Dispatch | Party Name on a new slip | only parties with a PENDING order | + `buyer_master` |
 
-Order Form me chunne par details khud bhar jaati hain:
+Picking one in the Order Form fills in the details:
 
 * party → **OWNER NAME** = Contact Person, **CONTACT NO** = Mobile No.,
-  **ADDRESS** = Address, **GSTIN** = GSTIN (aur GSTIN se state /
-  CGST-SGST-vs-IGST wahan khud pakda jaata hai).
+  **ADDRESS** = Address, **GSTIN** = GSTIN (and from the GSTIN the state /
+  CGST-SGST vs IGST is worked out there automatically).
 * agency → **CONTACT PERSON** = Agency Contact Person, **MOBILE NO.** =
   Agency Mobile No.
 
-Jis party / agency ka koi purana order hai uski details **order history se**
-aati hain (wo pichhli baar ka asli billing data hai) — master sirf unko
-bharta hai jinka abhi tak koi order nahi bana. Khaali value kabhi kisi bhari
-hui field ko mitati nahi. `transport_name` master me nahi hai, kyunki wo har
-order ka apna hota hai. Inactive row kisi bhi dropdown me nahi aati, par
-purane order / slip me uska naam likha rehta hai.
+For a party / agency with an older order, the details come **from the order
+history** (that is the real billing data from last time); the master only
+fills in those that have no order yet. An empty value never clears a filled
+field. `transport_name` is not in the master, because it belongs to each
+order. An inactive row doesn't appear in any dropdown, but its name stays
+written on old orders / slips.
 
-Admin Panel › **Tab Visibility** me `MD_BUYER` poori screen, `MD_AGENCY`
-sirf neeche ka Agency dabba, aur `MD_BUYER_BILLING` sirf Address + GSTIN
-columns (form me bhi) chhupata hai.
+In Admin Panel › **Tab Visibility**, `MD_BUYER` hides the whole screen,
+`MD_AGENCY` only the Agency box below, and `MD_BUYER_BILLING` only the
+Address + GSTIN columns (in the form too).
 
-**Jo filters orders par lagte hain, unhe jaan-boojh kar nahi chheda:**
-Packing ka "Select a Party to see pending orders" (`getUniqueParties`) aur
-Pending-list ka party filter (`getPendingFilterOptions`) — ye *maujood
-orders* par filter hain, to inme bina order wali master parties daalne se
-filter kharab hota, behtar nahi.
+**Filters that work on orders were deliberately left alone:** Packing's
+"Select a Party to see pending orders" (`getUniqueParties`) and the
+Pending-list party filter (`getPendingFilterOptions`). These filter *existing
+orders*, so adding master parties with no orders would make the filter worse,
+not better.
 
-**Migration na chali ho to kuch nahi tootta.** Dono files `buyer_master` ko
-alag, apne catch me padhti hain — `order-form.html` ka `fetchBuyerMaster()`
-error nigal kar khaali list deta hai (warna uska `Promise.all` girta aur
-poora form "Database connection failed" me chala jaata), aur `packing.html`
-query ka `error` padhta hi nahi, `data` null aa jaata hai. Dono soorat me
-screens bilkul pehle jaisi chalti hain.
+**Nothing breaks if the migration hasn't run.** Both files read `buyer_master`
+separately, in their own catch: `order-form.html`'s `fetchBuyerMaster()`
+swallows the error and returns an empty list (otherwise its `Promise.all`
+would fail and the whole form would land on "Database connection failed"), and
+`packing.html` doesn't read the query `error` at all, `data` just comes back
+null. Either way the screens work exactly as before.
 
-CSV export ke headers **Excel ke wahi headers** hain, isi liye file Excel me
-kholkar, badalkar, 📥 **Import CSV** se wapas aa sakti hai (natural key par
-match — fabric: `FABRIC NAME + UNIT`, brand: `ITEM CODE`; nayi row insert,
-purani update, aur har update ka snapshot history me).
+The CSV export headers are **the same headers as the Excel**, so a file can be
+opened in Excel, changed, and brought back with **Import CSV** (matched on the
+natural key: fabric `FABRIC NAME + UNIT`, brand `ITEM CODE`; new rows are
+inserted, existing ones updated, and every update's snapshot goes into
+history).
 
-## 🧾 Sales › Order Form — ERP ke andar, ERP ka login
+## Sales › Order Form: inside the ERP, with the ERP login
 
-`order-form.html` ab naye tab me nahi, ERP ke `#orderFormPanel` iframe me
-khulta hai (Lot Card Manager jaisa). User sirf ek jagah banta hai:
+`order-form.html` no longer opens in a new tab; it opens in the ERP's
+`#orderFormPanel` iframe (like Lot Card Manager). A user is created in one
+place only:
 
-| Kya | Kahan |
+| What | Where |
 |---|---|
 | User, PIN, signature | Admin Panel › Users & Roles (`app_users`) |
-| Order Form me kya kar sakta hai | Usi popup ka **Order Form Role** (`app_users.sales_role`): Admin / Manager / Executive / Data Entry / Viewer. Khaali = access nahi |
-| Shared role-PIN login (bina naam) | `sales_erp_role_map`: ADMIN → admin, MD → admin, GM → manager |
+| What they can do in the Order Form | The **Order Form Role** in the same popup (`app_users.sales_role`): Admin / Manager / Executive / Data Entry / Viewer. Empty = no access |
+| Shared role-PIN login (no name) | `sales_erp_role_map`: ADMIN → admin, MD → admin, GM → manager |
 
-- ERP login karte hi Order Form ka session ban jaata hai — andar dobara login nahi.
-- `order-form.html` alag se kholein (phone) to ERP wala **naam + PIN**; shared
-  PIN wale naam ki jagah `ADMIN` / `MD` / `GM`.
-- `sales_users` ab sirf mirror hai (trigger bharta hai) — use seedha edit na
-  karein. Purane Order Form users migration me `app_users` me jud jaate hain
-  (naya user "View Only" ERP role ke saath); jab tak Admin unka PIN set na kare,
-  purana password chalta hai.
-- Order Form signature: ERP me user ka sign ho to wahi Order Form PDF par.
+- Logging into the ERP creates the Order Form session too; no second login inside.
+- If you open `order-form.html` on its own (phone), use the ERP **name + PIN**;
+  for a shared PIN, use `ADMIN` / `MD` / `GM` in place of the name.
+- `sales_users` is now only a mirror (filled by a trigger); don't edit it
+  directly. Old Order Form users are added to `app_users` by the migration (as
+  new users with the "View Only" ERP role); until the Admin sets their PIN,
+  their old password works.
+- Order Form signature: if the user has a signature in the ERP, that one goes
+  on the Order Form PDF.
 
-### ★ Buyer aur Item Code — sirf saved list me se, auto-fill LOCKED
+### ★ Buyer and Item Code: only from the saved list, auto-fill LOCKED
 
-Order Form me do field par ab wahi niyam hai jo **Store Inward ke "Item Name ★"**
-par hai (`store-core.js` → `lockToMasterList` + `addNewRow` ka row template):
+Two Order Form fields now follow the same rule as **Store Inward's "Item Name
+★"** (`store-core.js` → `lockToMasterList` + the row template in `addNewRow`):
 
-| Field | List kahan se | Uske saath locked |
+| Field | List from | Locked with it |
 |---|---|---|
-| **Buyer / Company Name ★** | saved buyers (`buyer_master` + purane orders) | Mobile No. · Contact Person · Address · GSTIN |
-| **Item Code ★** (per product) | `brand_master` | poora **Specifications** block: Fabric, Category, Weight, Size, DB/SB, Ply, Sattan Type, Sattan Size, MOQ |
+| **Buyer / Company Name ★** | saved buyers (`buyer_master` + old orders) | Mobile No. · Contact Person · Address · GSTIN |
+| **Item Code ★** (per product) | `brand_master` | the whole **Specifications** block: Fabric, Category, Weight, Size, DB/SB, Ply, Sattan Type, Sattan Size, MOQ |
 
-Kaise chalta hai — Store Inward jaisa hi:
+How it works, the same as Store Inward:
 
-- Naam wala field **blur** par jaanchta hai. List me na mile to khud khaali ho
-  jaata hai, toast wajah batata hai, aur uske bharose wali saari value bhi saaf
-  ho jaati hai (adhoori value locked field me baithi rehna sabse khatarnak hai).
-- Locked field **readonly** (ya `<select>` ho to `disabled`) hote hain, grey
-  background aur "Master se locked hai" wale title ke saath.
-- **Submit se pehle dobara jaanch** hoti hai. Blur wali jaanch har soorat me
-  nahi chalti (browser autofill, back button se bhari value, ya field ko focus
-  hi na mila ho), aur yahi wo aakhri jagah hai jiske aage galat value
-  **database** me chali jaati — jahan se use nikalna sabse mushkil hai.
+- The name field checks on **blur**. If the value isn't in the list, it
+  clears itself, a toast says why, and every value that depended on it is
+  cleared too (a half-valid value sitting in a locked field is the most
+  dangerous case).
+- Locked fields are **readonly** (or `disabled` for a `<select>`), with a grey
+  background and a "Locked from the master" title.
+- **There is a second check before Submit.** The blur check doesn't run in
+  every case (browser autofill, a value restored by the back button, or a field
+  that never got focus), and Submit is the last place before a wrong value goes
+  into the **database**, where it is hardest to get out.
 
-**Locked specs input box me nahi, ek PATTI me dikhti hain.** Jo value badli hi
-nahi ja sakti uske liye poora input box rakhna sirf jagah khaata tha — nau box
-lagbhag teen qatar le lete the, aur har box sirf ek aisi value dikhata tha jise
-chhua bhi nahi ja sakta. Ab wahi nau value `.spec-view` ki chipon wali patti me
-hai (ek-do qatar), aur Specifications ka poora hissa aadhe se kam jagah leta hai:
+**Locked specs show in a STRIP, not in input boxes.** Keeping a full input box
+for a value that cannot be changed only took up space: nine boxes took about
+three rows, and each box showed one value nobody could touch. Now the same
+nine values sit in a `.spec-view` strip of chips (one or two rows), and the
+whole Specifications part takes less than half the space:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -522,836 +526,837 @@ hai (ek-do qatar), aur Specifications ka poora hissa aadhe se kam jagah leta hai
 └────────────────────────────────────────────────────────────────┘
 ```
 
-Asli `<input>` **gayab nahi hue** — unka `.fg` chhup jaata hai
-(`ofApplySpecLock_`), input DOM me rehta hai. `getProd`, `collectPayload`,
-`learnMasters`, dono PDF renderer aur `applyProductToCard` sab unhi ko
-padhte-likhte hain, isi liye is badlaav se **data ka raasta bilkul nahi
-badla** — aur patti unhi inputs se padhti hai, to alag se kuch sync karne ki
-zaroorat nahi padti (ek sach, do jagah nahi).
+The real `<input>`s **have not gone**: their `.fg` is hidden
+(`ofApplySpecLock_`), and the input stays in the DOM. `getProd`,
+`collectPayload`, `learnMasters`, both PDF renderers and `applyProductToCard`
+all read and write those inputs, so this change **did not alter the data path
+at all**. The strip reads from the same inputs, so nothing needs syncing
+separately (one source of truth, not two).
 
-Jo field **lock nahi** hai wo patti me nahi, apne asli input ke roop me dikhta
-hai — GREY/WHITE FABRIC ka **GSM** (haath se bharta hai), **Emboss**, aur wo
-soorat jab Brand Master load hi na hua ho (tab patti khaali rehti hai aur
-`.spec-view:empty` use chhupa deta hai, saare purane box wapas dikhte hain).
-Sattan ke do field **ek chip** me jude hain — dono ka matlab saath me hi banta
-hai. Khaali spec dhundhle **"—"** ke saath dikhti hai, chhupti nahi: patti ka
-har baar ek jaisa dikhna padhne me aasan hai, aur khaali spec apne aap me khabar
-hai (Brand Master me wo bhari hi nahi gayi).
+A field that **isn't locked** isn't in the strip; it shows as its real input:
+the **GSM** for GREY/WHITE FABRIC (filled by hand), **Emboss**, and the case
+where Brand Master hasn't loaded at all (then the strip is empty,
+`.spec-view:empty` hides it, and all the old boxes show again). The two Sattan
+fields are joined in **one chip**, since they only make sense together. An
+empty spec shows a faint **"—"** rather than hiding: a strip that always looks
+the same is easier to read, and an empty spec is information in itself (it was
+never filled in Brand Master).
 
-Teen cheezein jaan-boojh kar **BAAHAR** rakhi gayi hain:
+Three things were deliberately kept **OUTSIDE** it:
 
-- **Pricing & Delivery** (price, discount, GST, qty, packs) — ye har order ka
-  apna sauda hai, brand ki pehchaan nahi. Lock karne ka matlab hota ki rate
-  badalne ke liye Brand Master kholna pade.
-- **Emboss** — ye order ka faisla hai: ek hi brand ka ek order emboss ke saath
-  aur doosra bina ja sakta hai. Lock karte to 🎨 Emboss Design Photos section
-  haath se kabhi khulta hi nahi.
-- **Transport Name** aur **Agency** — transport order-dar-order badalta hai
-  (master me rehta bhi nahi), aur agency sirf ek naam + do contact hai jispar
-  koi billing ya tax value nahi tangi.
+- **Pricing & Delivery** (price, discount, GST, qty, packs): each order's own
+  deal, not part of the brand's identity. Locking them would mean opening
+  Brand Master to change a rate.
+- **Emboss**: an order decision. One order of a brand can go with emboss and
+  another without. Locking it would mean the Emboss Design Photos section
+  could never open by hand.
+- **Transport Name** and **Agency**: transport changes order to order (it
+  isn't even in the master), and an agency is just a name + two contacts with
+  no billing or tax value attached.
 
-Char cheezein jo chup-chaap tod sakti thin, aur unka ilaaj:
+Four things that could have broken silently, and their fixes:
 
-1. **Locked combo list se badla ja sakta tha.** `readonly` input bhi focus leta
-   hai, aur dropdown khulne par `selectCombo()` seedha `inp.value=val` likh deta
-   hai — `readOnly` ki parwah kiye bina. Ab `openCombo` / `filterCombo` locked
-   field par khulte hi nahi (`comboLocked_`), to ye raasta ek hi jagah band hai.
-2. **Khaali master = form thap.** Net kharab / Supabase band / `fetchDrops`
-   fail — teeno me `STANDARD_ITEMS` khaali rehta hai. Us waqt lock lagta to
-   Item Code chuna na ja sakta (list khaali) **aur** specs bhari na ja sakti
-   (locked). Isi liye **khaali list ka matlab "load nahi hua" hai, "value galat
-   hai" nahi** — jaanch aur lock dono tab hi lagte hain jab list me kuch HO,
-   aur masters aate hi `ofRelockAll_()` lock laga deta hai.
-3. **Purana order kholne par uska item code mar chuka ho.** Brand delete ya
-   Inactive ho gaya to code `STANDARD_ITEMS` me nahi milta, aur us field ko
-   chhoo kar nikalne par blur wali jaanch use khaali kar deti — sirf dekhne ke
-   liye khola gaya purana order bigad jaata. Ab `applyProductToCard` saved
-   order ki apni values se us code ki entry bana deta hai (jhooth nahi — isi
-   code par, inhi specs ke saath wo order bana tha). `DROPS.itemCode` me ye
-   NAHI jaata, to naye order me mara hua code offer bhi nahi hota.
-4. **Party badalne par purana address locked reh jaata.** `selectCombo` ka
-   `setF` pehle `if(e&&v)` tha — khaali value set hi nahi karta tha. Yani jis
-   party ka address khaali hai, uspar **pichhli party ka** address box me baitha
-   rehta, aur ab field locked hone se use hataana bhi mumkin nahi hota —
-   wahi galat address PDF ke bill-to par chhap jaata. Ab khaali value ka matlab
-   "khaali karo" hai.
+1. **A locked combo could be changed from the list.** A `readonly` input still
+   takes focus, and when the dropdown opened `selectCombo()` wrote
+   `inp.value=val` directly, ignoring `readOnly`. Now `openCombo` /
+   `filterCombo` don't open on a locked field at all (`comboLocked_`), so that
+   route is closed in one place.
+2. **Empty master = form stuck.** Bad network / Supabase down / `fetchDrops`
+   failing all leave `STANDARD_ITEMS` empty. If the lock applied then, no Item
+   Code could be picked (empty list) **and** no specs could be filled (locked).
+   So **an empty list means "not loaded", not "wrong value"**: both the check
+   and the lock only apply when the list HAS something, and as soon as the
+   masters arrive `ofRelockAll_()` applies the lock.
+3. **Opening an old order whose item code has died.** If a brand was deleted
+   or made Inactive, its code isn't in `STANDARD_ITEMS`, and touching and
+   leaving that field made the blur check clear it, which damaged an old order
+   opened only to look at. Now `applyProductToCard` creates an entry for that
+   code from the saved order's own values (not a lie: the order was made on
+   this code, with these specs). It does NOT go into `DROPS.itemCode`, so a
+   dead code isn't offered on a new order.
+4. **Changing the party left the old address locked in.** `selectCombo`'s
+   `setF` used to be `if(e&&v)`, which never set an empty value. So for a
+   party with no address, the **previous party's** address stayed in the box,
+   and now that the field is locked it couldn't even be removed; that wrong
+   address would print in the PDF's bill-to. Now an empty value means "clear
+   it".
 
-### 💰 Pricing & Delivery — 4 column × 2 qatar, aur No. of Bora ab AUTO
+### Pricing & Delivery: 4 columns × 2 rows, and No. of Bora is now AUTO
 
 ```
 Packing Type   Quantity (Pcs)       Price (Rs/KG)   Discount %
 No. of Bora    Packing (pcs/pack)   Weight          GST %
 ```
 
-Kram **jodiyon me** padha jaata hai, qatar me nahi: Quantity (Pcs) ke theek
-neeche Packing (pcs/pack) hai, aur un dono se **No. of Bora** banta hai — jo
-input hain wo ek saath, aur jo nikalta hai wo unke pehle column me.
+Read the order **in pairs**, not by row: right under Quantity (Pcs) is
+Packing (pcs/pack), and those two give **No. of Bora**. The inputs sit
+together, and the result sits in the column before them.
 
-**Hisaab ULAT gaya hai:**
+**The calculation has been REVERSED:**
 
-| | Pehle | Ab |
+| | Before | Now |
 |---|---|---|
 | Input | No. of Bora + pcs/pack | **Quantity (Pcs)** + pcs/pack |
-| Nikalta hai | Quantity = packs × pcs/pack | **No. of Bora = Quantity ÷ pcs/pack** |
+| Result | Quantity = packs × pcs/pack | **No. of Bora = Quantity ÷ pcs/pack** |
 
-Pehle Quantity (Pcs) — jo order ka asli aankda hai aur jispar buyer se baat
-hoti hai — **khud type hi nahi ki ja sakti thi**; use paane ke liye ulta hisaab
-lagana padta tha. No. of Bora ab readonly + grey hai (wahi roop jo Weight par
-hai).
+Before, Quantity (Pcs), which is the real figure of the order and the one
+discussed with the buyer, **could not be typed at all**; you had to work
+backwards to get it. No. of Bora is now readonly + grey (the same look as
+Weight).
 
-Teen baatein jaan lein:
+Three things to know:
 
-- **CEIL, exact bhaag nahi.** Bora ek poori cheez hai: 1000 pcs, 48 per bora =
-  20.83 — par 20 bora me 960 pcs hi jaate hain, baaki 40 ke liye **21vaan** bora
-  lagta hai. Isi liye upar wala poora number liya jaata hai, aur field ke neeche
-  ki lakeer asli bhaag bhi dikha deti hai (`1000 ÷ 48 = 20.83 → 21 (aakhri
-  adhoora)`), amber me, taaki pata rahe ki aakhri bora poora nahi bharta.
-- **Weight ab `Qty × per-pc weight` hai**, `packs × pcs/pack × wt` nahi. Pehle
-  wala chalta tha kyunki tab qty KHUD `packs × pcs/pack` hoti thi (dono
-  barabar). Ab packs upar-ka-poora number hai, to `packs × pcs/pack` qty se
-  **zyada** ho sakta hai — 1000 pcs par 21 × 48 = 1008 — aur wahi 8 pcs ka
-  extra weight bill me chala jaata. Label bhi badal kar **(Qty×Wt)** kar diya
-  gaya hai.
-- **pcs/pack 0 ho to No. of Bora CHHUA hi nahi jaata.** 0 se bhaag dena
-  `Infinity` deta, aur purana order kholne par uski saved packs value bhi mit
-  jaati. Isi wajah se `applyProductToCard` me `calcPackQty` **nahi** chalaya
-  jaata — saved `packs` jaisa hai waisa rehta hai (purane order me qty = packs ×
-  pcs/pack thi, to ulta hisaab wahi number deta, par wo `calcTotalWeight` bhi
-  chala deta aur haath se adjust kiya hua `totalWeight` mit jaata). Sirf dekhne
-  ke liye khola gaya order badalna nahi chahiye.
+- **CEIL, not exact division.** A bora is a whole thing: 1000 pcs at 48 per
+  bora = 20.83, but 20 bora hold only 960 pcs, and the remaining 40 need a
+  **21st** bora. So the next whole number is taken, and the line under the
+  field also shows the real division (`1000 ÷ 48 = 20.83 → 21 (last one
+  partial)`), in amber, so it's clear the last bora isn't full.
+- **Weight is now `Qty × per-pc weight`**, not `packs × pcs/pack × wt`. The
+  old way worked because qty itself WAS `packs × pcs/pack` (the two were
+  equal). Now packs is rounded up, so `packs × pcs/pack` can be **more** than
+  qty (1000 pcs gives 21 × 48 = 1008), and those 8 extra pcs of weight would go
+  into the bill. The label was also changed to **(Qty×Wt)**.
+- **If pcs/pack is 0, No. of Bora is NOT TOUCHED.** Dividing by 0 gives
+  `Infinity`, and opening an old order would also wipe its saved packs value.
+  For the same reason `calcPackQty` is **not** run in `applyProductToCard`:
+  the saved `packs` stays as it is (on an old order qty = packs × pcs/pack, so
+  reversing gives the same number, but that also runs `calcTotalWeight`
+  and a hand-adjusted `totalWeight` would be wiped). An order opened only to
+  look at should not change.
 
-### 🎒 Bags & Trims — material list Brand Master se
+### Bags & Trims: the material list comes from Brand Master
 
-> **Setup:** pehle `BRAND_TRIMS_MIGRATION.sql` chalayein, phir har brand par
-> material YES/NO bharein. Warna table me sirf Bora Packing Charge row rahegi.
+> **Setup:** first run `BRAND_TRIMS_MIGRATION.sql`, then fill in material
+> YES/NO on every brand. Otherwise the table will only have the Bora Packing
+> Charge row.
 
-Pehle ye table har brand par ek jaisa tha: chhe fixed row (Label / Tag / Bag /
-Bore / Inner Box / Outer Box) **hamesha**, aur baaki material "Add Row" se
-haath se. Natija — jis brand par Bora nahi lagta uspar bhi Bore ka row baitha
-rehta, aur jis par Dori lagti thi wo yaad rakhne par depend karti.
+This table used to be the same for every brand: six fixed rows (Label / Tag /
+Bag / Bore / Inner Box / Outer Box) **always**, and any other material added by
+hand with "Add Row". The result: a brand that never uses a Bora still had a
+Bore row, and a brand that uses Dori depended on someone remembering it.
 
-Ab list **Brand Master** tay karti hai: jis material par us **Item Code** ke
-saamne **YES** likha hai, usi ka row banta hai. Manual **Add Row hata diya
-gaya** — do raaste rakhne ka matlab hota ki master kabhi poora sach na bane.
+Now **Brand Master** decides the list: a row is created only for materials
+marked **YES** against that **Item Code**. The manual **Add Row was removed**;
+keeping two routes would mean the master never becomes the full truth.
 
-**16 material** ho sakte hain (`OF_MATERIALS`):
+There can be **16 materials** (`OF_MATERIALS`):
 
 | | Material | brand_master column |
 |---|---|---|
-| **fixed** (6) | Label · Tag · Bag · Bore · Inner Box · Outer Box | `label` · `tag` · `bag` · `bore` · `inner_box` · `outer_box` **← naye** |
-| **extra** (10) | Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker | pehle se maujood 9 |
-| | Foam | `foam` **← naya** |
+| **fixed** (6) | Label · Tag · Bag · Bore · Inner Box · Outer Box | `label` · `tag` · `bag` · `bore` · `inner_box` · `outer_box` **← new** |
+| **extra** (10) | Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker | the 9 that already existed |
+| | Foam | `foam` **← new** |
 
-**🟡 "Bora Packing Charge" row HAMESHA dikhti hai** — wo material nahi, packing
-ki mazdoori hai, aur har order par lagti hai.
+**The "Bora Packing Charge" row ALWAYS shows.** It isn't a material, it's the
+packing labour charge, and it applies to every order.
 
-Do tarah ke row ka farq **DB tak jaata hai**:
+The difference between the two kinds of row **goes all the way to the DB**:
 
-- **fixed:true** — in chhe ke apne column `sales_trims_log` me hain
-  (`label_pcs`, `bore_rs`, `inner_box_disc` …) aur PDF ke packing table ka
-  **12-column do-tier header** inhi par bana hai. Row **chhup** sakti hai, par
-  uski jagah DB me rehti hai (0 ke saath) — warna wo table aur wo header dono
-  todne padte.
-- **fixed:false** — baaki material. `full_order` JSON ke `extraTrims` me jaate
-  hain aur PDF ki apni **ADDITIONAL PACKING MATERIALS** table me chhapte hain.
+- **fixed:true**: these six have their own columns in `sales_trims_log`
+  (`label_pcs`, `bore_rs`, `inner_box_disc` …), and the PDF packing table's
+  **12-column two-tier header** is built on them. A row can be **hidden**, but
+  its place stays in the DB (with 0); otherwise both that table and that header
+  would have to be broken.
+- **fixed:false**: the other materials. They go into `extraTrims` in the
+  `full_order` JSON and print in the PDF's own **ADDITIONAL PACKING MATERIALS**
+  table.
 
-Paisa kahan judta hai, wo **nahi badla**: extras ka cost fixed trims ke saath
-hi `trimsCostPerPc` / `trimsCostTotal` me judta hai (`getProd` +
-`trimsCostTotalFor`), to order ka total, GST, bill summary aur dono PDF is
-badlaav se achhoote hain. Sirf ye badla ki **rows kaun tay karta hai**.
+Where the money is added **did not change**: extras' cost is added to
+`trimsCostPerPc` / `trimsCostTotal` along with the fixed trims (`getProd` +
+`trimsCostTotalFor`), so the order total, GST, bill summary and both PDFs are
+untouched by this change. The only change is **who decides the rows**.
 
-Chaar baatein jo chup-chaap galat ja sakti thin:
+Four things that could silently go wrong:
 
-1. **Chhupti row ZERO bhi hoti hai.** Sirf `display:none` karna sabse mehnga
-   bug banata: Bore par SIHF + 500 pcs bhara ho, phir aisa Item Code chuna
-   jaye jispar Bore NO hai — row gayab, par `getProd` use DOM se padhta rehta
-   aur us **chhupi row ka paisa order ke total me jud kar PDF tak** chala
-   jaata. Isi liye chhupate waqt `supp='na'` karke `onSupp()` chalaya jaata
-   hai, jo teeno input zero aur disable kar deta hai.
-2. **Pack Type badalne par bhi list dobara jaanchi jaati hai.**
-   `onPackTypeChange` saare fixed trims ko `'na'` karke Label ko (aur Bora par
-   Bore ko) `'foc'` kar deta hai — **chhupi rows par bhi**. Us `foc` ka paisa 0
-   hota hai, par wo PDF ke packing table me us material ke saamne "FOC" chhaap
-   deta, jo us brand par lagta hi nahi. Ab render dobara chalta hai aur chhupi
-   rows wapas `'na'` par aa jaati hain. Jo pehle se bhara hai wo **preset
-   bankar wapas aata hai**, to Pack Type badalne se typed pcs / cost udti nahi.
-   (Item Code badalne par jaan-boojh kar aisa **nahi** hota — wahan brand hi
-   doosra hai, to pichhle brand ki cost carry karna galat hota.)
-3. **Purana order kholne par saved row dikhti hai, aaj ki list chahe kuch
-   kahe.** Brand ki list baad me badal sakti hai (kisi ne Bore ko NO kar
-   diya); tab purana order kholne par wo row chhup jaati **aur** zero ho
-   jaati — yani sirf dekhne ke liye khola gaya order dobara save karte hi apna
-   Bore ka paisa kho deta. `applyProductToCard` `keepFixed` + `extraPresets`
-   bhejta hai, to **jo bhara tha wo dikhta hai** — wo material bhi jo aaj ki
-   list me hi nahi hai (purane order me haath se joda gaya tha).
-4. **Khaali table toota hua lagta hai.** Ek bhi material row na bache to table
-   khud wajah likhti hai — teen me se ek: Item Code chuna nahi, is brand par
-   sab NO hai, ya `BRAND_TRIMS_MIGRATION.sql` abhi chali nahi (ye teesri baat
-   amber me likhi aati hai).
+1. **A hidden row is also ZEROED.** Only setting `display:none` would make the
+   most expensive bug: SIHF + 500 pcs filled on Bore, then an Item Code picked
+   where Bore is NO. The row disappears, but `getProd` keeps reading it from the
+   DOM and the **hidden row's money is added to the order total, all the way to
+   the PDF**. So hiding sets `supp='na'` and runs `onSupp()`, which zeroes and
+   disables all three inputs.
+2. **Changing Pack Type re-checks the list too.** `onPackTypeChange` sets every
+   fixed trim to `'na'` and Label (and Bore, for Bora) to `'foc'`, **hidden
+   rows included**. That `foc` costs 0, but it would print "FOC" against that
+   material in the PDF's packing table even though the brand doesn't use it.
+   Now the render runs again and hidden rows go back to `'na'`. Whatever was
+   already filled **comes back as a preset**, so changing Pack Type doesn't
+   wipe typed pcs / cost. (Changing the Item Code deliberately does **not** do
+   this: there the brand itself is different, so carrying the previous brand's
+   cost would be wrong.)
+3. **Opening an old order shows its saved rows, whatever today's list says.**
+   A brand's list can change later (someone set Bore to NO); opening an old
+   order would then hide that row **and** zero it, so an order opened just to
+   look at would lose its Bore money the moment it was saved again.
+   `applyProductToCard` passes `keepFixed` + `extraPresets`, so **what was
+   filled is shown**, including a material that isn't on today's list at all
+   (added by hand on the old order).
+4. **An empty table looks broken.** If no material row is left, the table
+   states the reason itself, one of three: no Item Code picked, everything is
+   NO for this brand, or `BRAND_TRIMS_MIGRATION.sql` hasn't run yet (this third
+   one shows in amber).
 
-**`tag` aur `tag_1` DO alag column hain** — dono YES hon to dono rows banengi.
-Order Form ka purana "Tag" row aur Excel ka "TAG 1" ek hi cheez hain ya nahi,
-ye brand-dar-brand badalta hai, isi liye jodd nahi kiya gaya. Jo na chahiye
-use **NO** rakhein.
+**`tag` and `tag_1` are TWO separate columns.** If both are YES, both rows are
+created. Whether the Order Form's old "Tag" row and the Excel's "TAG 1" are the
+same thing varies brand by brand, so they weren't merged. Set the one you don't
+want to **NO**.
 
-### ➕ Add New Brand Item — Brand Master ke saare 45 column
+### Add New Brand Item: all 45 Brand Master columns
 
-Item Code sirf list me se chunna hai, to naya brand banane ka raasta isi form
-me hona zaroori tha — warna ek naye SKU ka order lene ke liye ERP kholna padta
-aur Order Form beech me chhodna padta.
+The Item Code can only be picked from the list, so the way to create a new
+brand had to be in this form; otherwise taking an order for a new SKU would mean
+opening the ERP and leaving the Order Form halfway.
 
-Button Item Code ke sirhane hai. Popup me **saare 45 column**, wahi kram aur
-wahi grouping jo ERP › Master Data › 🏷️ Brand Master ke form me hai:
+The button sits at the head of Item Code. The popup has **all 45 columns**, in
+the same order and grouping as the form in ERP › Master Data › Brand Master:
 
-| Group | Column |
+| Group | Columns |
 |---|---|
-| 🏷️ Identity | Item Code **★** · Fabric Name **★** · Category **★** · Blanket Weight |
-| 📐 Specifications | Size · Bed Size · Blanket Ply · Sattan Size · Sattan Type · MOQ · Emboss · Notes |
-| 💰 Rates | Price/KG · Packing Pcs · Label · Tag · Bag · Bore · Inner Box · Outer Box · Bale |
-| 📦 Packing 1 | Master Req / Type · Slave Req / Type |
-| 📦 Packing 2 | wahi chaar, `_2` (khaali chhoda ja sakta hai) |
-| 🏷️ Materials / Trims | Label · Tag · Bag · Bore · Inner Box · Outer Box · Foam · Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker — **inhi ke YES par Bags & Trims ki rows banti hain** |
+| Identity | Item Code **★** · Fabric Name **★** · Category **★** · Blanket Weight |
+| Specifications | Size · Bed Size · Blanket Ply · Sattan Size · Sattan Type · MOQ · Emboss · Notes |
+| Rates | Price/KG · Packing Pcs · Label · Tag · Bag · Bore · Inner Box · Outer Box · Bale |
+| Packing 1 | Master Req / Type · Slave Req / Type |
+| Packing 2 | the same four, `_2` (can be left empty) |
+| Materials / Trims | Label · Tag · Bag · Bore · Inner Box · Outer Box · Foam · Micro / Small / Big Label · Tag 1 / 2 / 3 · Dori · Insert Card · Barcode Sticker. **The Bags & Trims rows are built from these YES values** |
 
-- Zaroori sirf **teen**: Item Code, Fabric Name, Category — bilkul jaisa ERP me
-  `req:1` hai.
-- Form **JS se banta hai** (`BR_FORM_FIELDS` → `brBuildForm_()`), markup me
-  nahi: 45 field ka hand-written HTML ek jagah column jodne par doosri jagah
-  bhoolne ki poori guarantee hai. **Wo table ERP ke `SARV_BR_FIELDS` ki copy
-  hai — ek jagah column jude to yahan bhi jodna hai.**
-- Dropdown values **ERP ke `erp_*` keys** se aati hain (`erp_brandCategory`,
-  `erp_brandSattan`, `erp_fbmYesNo` …). Wo usi `sales_dropdowns` table me hain
-  jisme Order Form ke apne dropdown hain, aur `fetchDrops` table ki saari keys
-  `DROPS` me daal deta hai — to seedha mil jaate hain. `BR_DD_FALLBACK` sirf
-  fallback hai aur jaan-boojh kar store-core ke `def` arrays ki hu-ba-hu copy
-  hai; dono me farq aane par Brand Master me bhari value Order Form me match
-  nahi karegi.
-- **Fabric Name** suggestion-list hai (hard lock nahi) — `fabric_master` se
-  bhari jaati hai, par us table ke na milne par naya brand banana ruk jaata,
-  jo is button ke hone ka matlab khatam kar deta.
-- Save hote hi brand **Item Code list me aa jaata hai aur usi product card me
-  chun bhi liya jaata hai** — `onItemCodeSelect()` saari specs bhar kar lock
-  bhi laga deta hai. `bmToItem()` se wahi tarjuma hota hai jo `fetchDrops`
-  karta hai (DOUBLE BED → DB, SINGLE PLY → SP waghairah).
-- Khaali number **0 nahi, `null`** jaata hai — 0 ka matlab yahan "set nahi hai"
-  hai aur Order Form use skip karta hai, par `null` hi us column ka asli
-  default hai (ERP ka form bhi wahi likhta hai).
-- Baaki sab wahi jo Buyer / Agency par hai (neeche dekhein): seedha
-  `brand_master` insert, best-effort `master_revisions` archive, duplicate
-  check master par, Viewer ko band, **koi migration nahi**.
+- Only **three** are required: Item Code, Fabric Name, Category, exactly as
+  `req:1` in the ERP.
+- The form is **built by JS** (`BR_FORM_FIELDS` → `brBuildForm_()`), not in
+  markup: hand-written HTML for 45 fields is a guarantee that a column added in
+  one place gets forgotten in the other. **That table is a copy of the ERP's
+  `SARV_BR_FIELDS`; when a column is added there, add it here too.**
+- Dropdown values come from the **ERP's `erp_*` keys** (`erp_brandCategory`,
+  `erp_brandSattan`, `erp_fbmYesNo` …). They are in the same `sales_dropdowns`
+  table as the Order Form's own dropdowns, and `fetchDrops` puts every key of
+  that table into `DROPS`, so they are available directly. `BR_DD_FALLBACK` is
+  only a fallback and is deliberately an exact copy of store-core's `def`
+  arrays; if the two drift apart, a value filled in Brand Master won't match in
+  the Order Form.
+- **Fabric Name** is a suggestion list (not a hard lock): it is filled from
+  `fabric_master`, but if that table were missing, creating a new brand would be
+  blocked, which defeats the point of this button.
+- On save the brand **appears in the Item Code list and is also picked in that
+  same product card**: `onItemCodeSelect()` fills all the specs and applies the
+  lock. `bmToItem()` does the same translation as `fetchDrops` (DOUBLE BED → DB,
+  SINGLE PLY → SP, and so on).
+- An empty number goes as **`null`, not 0**: 0 means "not set" here and the
+  Order Form skips it, but `null` is that column's real default (the ERP form
+  writes the same).
+- Everything else is the same as Buyer / Agency (see below): a direct
+  `brand_master` insert, a best-effort `master_revisions` archive, the duplicate
+  check on the master, closed for Viewer, **no migration**.
 
-### ➕ Add New Buyer / ➕ Add New Agency — entry form se hi
+### Add New Buyer / Add New Agency: straight from the entry form
 
-Buyer Details section me do button hain, apne-apne field ke sirhane:
-**Buyer / Company Name** par `➕ Add New Buyer`, **Agency Name** par
-`➕ Add New Agency`. Dono popup me us master ke **saare column** hote hain,
-wahi kram jo ERP › Master Data › 🏢 Buyer Master ke form me hai:
+The Buyer Details section has two buttons, each at the head of its field:
+`Add New Buyer` on **Buyer / Company Name**, and `Add New Agency` on **Agency
+Name**. Each popup has **all the columns** of that master, in the same order as
+the form in ERP › Master Data › Buyer Master:
 
 | Add New Buyer (`buyer_master`) | Add New Agency (`agency_master`) |
 |---|---|
 | **Party / Company Name** * | **Agency Name** * |
-| Owner Name → Order Form ka *Contact Person* | Agency Contact Person |
-| Contact No. → Order Form ka *Mobile No.* | Agency Mobile No. |
-| Address → PDF ke bill-to par | Notes |
+| Owner Name → the Order Form's *Contact Person* | Agency Contact Person |
+| Contact No. → the Order Form's *Mobile No.* | Agency Mobile No. |
+| Address → on the PDF's bill-to | Notes |
 | GSTIN → state + CGST/SGST vs IGST | |
 | Party Staff Name | |
 | Party Staff Contact No. | |
 | Notes | |
 
-Sirf naam (`*`) zaroori hai. Pehle nayi party ka naam seedha combo me type kar
-diya jaata tha — order ban jaata, par us party ka **address aur GSTIN kahin
-master me nahi jaate**, to agle order par wo dono dobara haath se type hote
-(aur GSTIN me ek digit idhar-udhar ho jaati). Ab yahan se wahi row banti hai
-jo ERP ka form banata hai.
+Only the name (`*`) is required. Before, a new party's name was simply typed
+into the combo: the order was made, but the party's **address and GSTIN never
+went into the master**, so on the next order both were typed by hand again (and
+a GSTIN digit would slip). Now this creates the same row the ERP form creates.
 
-Kaam karne ka tareeka:
+How it works:
 
-- **Wahi table, wahi shape.** `buyer_master` / `agency_master` me seedha
-  insert, `is_active:true, rev_no:1, created_by, updated_by` ke saath —
-  bilkul jaisa `store-core.js` ka `sarvFbmSaveForm()` karta hai. Us screen par
-  bhi **yahi anon key** chalti hai, isi liye RLS yahan bhi wahi raasta deta
-  hai aur alag RPC banane ki zaroorat nahi padi (banayi bhi nahi ja sakti
-  thi — Order Form ki migration SQL is tree me nahi hai). **Koi migration
-  nahi.**
-- **Combo me jo naam type ho chuka hai wahi popup me aage bhar jaata hai** —
-  "add new" aksar tab dabaya jaata hai jab naam type karke list me mila na ho.
-- Save hote hi party **dropdown me aa jaati hai aur chun bhi li jaati hai**,
-  aur uske saath Contact Person / Mobile / Address / GSTIN bhi bhar jaate hain
-  (GSTIN se *Out of Haryana* checkbox bhi khud lagta hai). Poora `fetchDrops`
-  dobara nahi chalaya jaata — wo user ka adha bhara form chhed deta.
-- **Duplicate check sirf MASTER par** (`BUYER_MASTER_ROWS` /
-  `AGENCY_MASTER_ROWS`), `BUYER_DETAILS` par nahi. Wo doosri cheez purane
-  orders + master **milakar** banti hai; us par check karte to jis party ka
-  order pehle se hai par master me row nahi, wo "pehle se hai" keh kar rok di
-  jaati — jabki usi ko master me daalna sabse zaroori kaam hai. Check
-  case aur extra space ignore karta hai, aur Inactive row mile to wo bhi
-  batata hai (use ERP se wapas Active karna hota hai).
-- `master_revisions` ka archive **best-effort** hai, bilkul jaise ERP me hai:
-  wo table na ho to warning console me jaati hai aur party phir bhi save hoti
-  hai. Ek history row na banne se party ka save rok dena ulta nuksan hai.
-- **Viewer** role ko dono button disabled milte hain (`applyRoleRestrictions`
-  `.wrap` ke saare button band kar deta hai), aur `openNewBuyer` /
-  `saveNewBuyer` dono me `canDo('create')` ki apni jaanch bhi hai.
-- Popup **backdrop click ya Esc se band nahi hota** — buyer form me aath field
-  tak bhari hoti hain, aur ek galat click se wo sab chala jaana sabse bura
-  nateeja hai. Band karne ka ek hi raasta: **Cancel**. Enter se save hota hai,
-  par sirf single-line field par (Address textarea me Enter ka matlab nayi
-  line hai). Wahi niyam mobile app ki New PR sheet par bhi hai.
+- **Same table, same shape.** A direct insert into `buyer_master` /
+  `agency_master`, with `is_active:true, rev_no:1, created_by, updated_by`,
+  exactly as `sarvFbmSaveForm()` in `store-core.js` does. That screen runs on
+  **the same anon key**, so RLS allows the same route here and no separate RPC
+  was needed (nor could one be made: the Order Form's migration SQL isn't in
+  this tree). **No migration.**
+- **Whatever name is already typed in the combo is carried into the popup.**
+  "Add new" is usually pressed after typing a name and not finding it in the
+  list.
+- On save the party **appears in the dropdown and is also picked**, and Contact
+  Person / Mobile / Address / GSTIN are filled with it (the GSTIN also ticks the
+  *Out of Haryana* checkbox on its own). The full `fetchDrops` is not re-run;
+  that would disturb the user's half-filled form.
+- **The duplicate check runs only on the MASTER** (`BUYER_MASTER_ROWS` /
+  `AGENCY_MASTER_ROWS`), not on `BUYER_DETAILS`. That one is built from old
+  orders + the master **combined**; checking against it would block a party
+  that already has an order but no master row as "already exists", when putting
+  exactly that party into the master is the most important job. The check
+  ignores case and extra spaces, and if it finds an Inactive row it says so too
+  (that has to be made Active again from the ERP).
+- The `master_revisions` archive is **best-effort**, just as in the ERP: if that
+  table is missing, a warning goes to the console and the party is still saved.
+  Blocking a party's save because one history row couldn't be written would do
+  more harm than good.
+- The **Viewer** role gets both buttons disabled (`applyRoleRestrictions`
+  disables every button in `.wrap`), and `openNewBuyer` / `saveNewBuyer` both
+  have their own `canDo('create')` check as well.
+- The popup **does not close on a backdrop click or Esc**: the buyer form can
+  have up to eight fields filled, and losing all of that to one wrong click is
+  the worst outcome. There is one way to close it: **Cancel**. Enter saves, but
+  only from a single-line field (in the Address textarea Enter means a new
+  line). The mobile app's New PR sheet follows the same rule.
 
-Agar RLS ne kabhi write roka, to popup me seedha wahi likha aata hai
-("…permission nahi hai — ERP › Master Data › 🏢 Buyer Master se add karein"),
-chup-chaap fail nahi hota.
+If RLS ever blocks a write, the popup says so plainly ("…no permission; add it
+from ERP › Master Data › Buyer Master") instead of failing silently.
 
-### Sattan — Type aur Size, do alag dropdown
+### Sattan: Type and Size, two separate dropdowns
 
-Item Specifications me Sattan ab **ek** combo nahi, **do** dropdown hai:
+In Item Specifications, Sattan is now **two** dropdowns, not **one** combo:
 
 | Order Form | Brand Master column | Values |
 |---|---|---|
 | **Sattan Type** | `sattan_type` | STANDARD · PREMIUM · NA |
 | **Sattan Size** | `sattan` | 4 / 5 / 6 INCH SATTAN · NA |
 
-Pehle ek hi field me `5" PREMIUM` jaisi **joint** value likhi jaati thi, jabki
-Brand Master me ye shuru se do column hain — isi liye Item Code chunne par
-banayi hui joint string kabhi wapas match nahi hoti thi. Ab dono dropdown ki
-values **Brand Master ki hi vocabulary** me hain, to **Item Code select karte
-hi dono apne aap chun jaate hain**.
+Before, a **joint** value like `5" PREMIUM` was written into one field, while
+Brand Master has had two columns from the start, so a joint string built when
+picking an Item Code never matched back. Now both dropdowns' values use **Brand
+Master's own vocabulary**, so **picking an Item Code selects both on its own**.
 
-Do baatein jaan lein:
+Two things to know:
 
-- **`sattan` naam ka ek hidden field** ab bhi form me hai, jisme dono ka jodd
-  (`5" PREMIUM`) likha rehta hai. `getProd`, `learnMasters`,
-  `sales_product_details` ka `sattan` column aur **dono PDF renderer** usi ko
-  padhte hain — isi liye **koi migration nahi** chali aur PDF ka "Sattan"
-  column bilkul pehle jaisa chhapta hai.
-- **Purane order** me sirf joint value thi. `setSattan()` use todkar dono
-  dropdown bhar deta hai (`sattanSplit_`), to Edit par Sattan khaali nahi
-  milta aur dobara save karne par udta bhi nahi.
+- **A hidden field named `sattan`** is still in the form, holding the two
+  joined (`5" PREMIUM`). `getProd`, `learnMasters`, the `sattan` column of
+  `sales_product_details` and **both PDF renderers** read it, which is why **no
+  migration** was needed and the PDF's "Sattan" column prints exactly as
+  before.
+- An **old order** had only the joint value. `setSattan()` splits it and fills
+  both dropdowns (`sattanSplit_`), so Sattan isn't empty on Edit and isn't lost
+  when saved again.
 
-Brand Master me koi nayi value aa jaye (jaise `7 INCH SATTAN`) to
-`ensureOpt_()` use dropdown me khud jod deta hai — `<select>` me value list se
-hu-ba-hu milni chahiye, warna wo **chup-chaap** set hi nahi hoti, aur yahi is
-app ki purani chot thi. Dono ki apni rows **ERP › Dropdown Master** me hain
-(`sattanType` / `sattanSize`); purani `sattan` row record ke liye chhodi gayi hai.
+If a new value appears in Brand Master (like `7 INCH SATTAN`), `ensureOpt_()`
+adds it to the dropdown itself: in a `<select>` the value must match the list
+exactly or it **silently** doesn't get set, and that was this app's old wound.
+Both have their own rows in **ERP › Dropdown Master** (`sattanType` /
+`sattanSize`); the old `sattan` row is kept for the record.
 
-### Bags & Trims — "➕ Add Row" wale extra materials
+### Bags & Trims: extra materials from "Add Row"
 
-Upar ke **chhe trim** (Label / Tag / Bag / Bore / Inner / Outer) fixed hain —
-unke apne column `sales_trims_log` me hain aur PDF ka packing table unke
-do-tier header par bana hai. Par asli packing me in chhe ke alawa bhi cheezein
-lagti hain, aur wo order-dar-order badalti hain. Isi liye wo list ab **Add Row**
-se chalti hai:
+The **six trims** at the top (Label / Tag / Bag / Bore / Inner / Outer) are
+fixed: they have their own columns in `sales_trims_log` and the PDF packing
+table is built on their two-tier header. But real packing uses other things
+too, and those change from order to order. That list now runs on **Add Row**:
 
-**Material** dropdown — MICRO LABEL · SMALL LABEL · BIG LABEL · TAG 2 · TAG 3 ·
-DORI · INSERT CARD · BARCODE STICKER · FOAM — aur uske against wahi chaar input
-jo baaki trims par hain: **Supplied By · No. of Pcs · Cost/Pc (₹) · Discount%**.
-Niyam bhi wahi: paisa tabhi bharta hai jab Supplied By = **SIHF Supplied**,
-warna teeno input band aur 0.
+The **Material** dropdown (MICRO LABEL · SMALL LABEL · BIG LABEL · TAG 2 · TAG 3 ·
+DORI · INSERT CARD · BARCODE STICKER · FOAM), with the same four inputs as the
+other trims: **Supplied By · No. of Pcs · Cost/Pc (₹) · Discount%**. The same
+rule too: money is only filled when Supplied By = **SIHF Supplied**, otherwise
+the three inputs are disabled and 0.
 
-Paisa kahan judta hai — **ek hi jagah**: `getProd` me extras `trimsCostPerPc` /
-`trimsCostTotal` me fixed trims ke SAATH jud jaate hain, aur
-`trimsCostTotalFor()` (jo save aur PDF dono chalate hain) me bhi. Isi se
-product ka exGST, GST, Final Price/Pc, bill summary, PDF ka Trims Cost column
-aur Grand Total **sab apne aap** sahi ho jaate hain — har jagah alag se jodna
-padta to ek jagah chhoot jaana tay tha.
+Where the money is added, **in one place**: in `getProd` the extras are added
+into `trimsCostPerPc` / `trimsCostTotal` ALONG WITH the fixed trims, and also in
+`trimsCostTotalFor()` (which both save and the PDF run). That makes the
+product's exGST, GST, Final Price/Pc, bill summary, the PDF's Trims Cost column
+and the Grand Total all come out right **on their own**; adding it separately
+in each place would guarantee one place gets missed.
 
-Save kahan hota hai:
+Where it is saved:
 
-| Kya | Kahan | Migration? |
+| What | Where | Migration? |
 |---|---|---|
-| Poori detail (material, supplier, pcs, cost, disc) | `sales_orders.full_order` → `products[].extraTrims` | **nahi** |
-| Paisa | `sales_trims_log.total_trims_rs` (fixed trims ke saath joda hua) | **nahi** |
+| Full detail (material, supplier, pcs, cost, disc) | `sales_orders.full_order` → `products[].extraTrims` | **no** |
+| Money | `sales_trims_log.total_trims_rs` (added to the fixed trims) | **no** |
 
-`sales_save_order` RPC ki SQL is project tree me **nahi** hai, to ye pakka
-nahi kiya ja sakta ki wo koi anjaan key chup-chaap chhod degi ya error degi —
-aur ek galat guess poora save tod deta. Isi liye us RPC ko **koi nayi key nahi**
-bheji jaati: paisa maujooda column me jaata hai, aur detail `full_order` me,
-jahan se Edit button order wapas kholta hai (`applyProductToCard` rows ko
-waise hi dobara bana deta hai — supplier, pcs, cost, discount aur
-enable/disable haalat sab saved jaisi).
+The SQL of the `sales_save_order` RPC is **not** in this project tree, so there
+is no way to be sure whether it silently drops an unknown key or throws an
+error, and a wrong guess would break every save. So **no new key** is sent to
+that RPC: the money goes into an existing column, and the detail goes into
+`full_order`, from where the Edit button reopens the order (`applyProductToCard`
+rebuilds the rows exactly: supplier, pcs, cost, discount and the
+enabled/disabled state all as saved).
 
-PDF me inki **apni table** hai — packing table ke theek neeche,
-**ADDITIONAL PACKING MATERIALS**. Usi grouped table me nahi ghusaya gaya kyunki
-wo chhe fixed trims ke do-tier header par bana hai. Jis order me ek bhi extra
-row na ho, wahan ye table (heading ke saath) **poori chhup** jaati hai.
+In the PDF they have **their own table**, right under the packing table:
+**ADDITIONAL PACKING MATERIALS**. They weren't pushed into the grouped table
+because that is built on the six fixed trims' two-tier header. An order with no
+extra rows hides this table (heading included) **completely**.
 
-## 📦 Sales › Packing & Dispatch (packing.html)
+## Sales › Packing & Dispatch (packing.html)
 
-Purani Packing App (`PACKING/PACKING.html`, Supabase project
-`hghomygvryyihezvmrjj`) ki ERP copy. Interface, offline queue, PDF (Original +
-Full Copy) — sab hu-ba-hu; farak sirf itna ki data ERP project ke **`packing`
-schema** me hai (wahi table / RPC naam). Purani app aur purana project **bilkul
-nahi badle** — backup ki tarah chalte rehte hain.
+The ERP copy of the old Packing App (`PACKING/PACKING.html`, Supabase project
+`hghomygvryyihezvmrjj`). Interface, offline queue, PDF (Original + Full Copy):
+all exactly the same. The only difference is that the data lives in the ERP
+project's **`packing` schema** (same table / RPC names). The old app and the old
+project are **not changed at all**; they keep running as a backup.
 
-Setup (ERP project › SQL Editor, `PACKING/` folder se, isi kram me):
+Setup (ERP project › SQL Editor, from the `PACKING/` folder, in this order):
 
-| Step | File | Kya |
+| Step | File | What |
 |---|---|---|
-| 1 | `PACKING_1_SCHEMA_CLONE.sql` | Purane project se poora schema (tables, keys, indexes, views, RPCs, triggers, RLS, grants) `packing` me clone. Upar connection string daalein. |
-| — | Dashboard | ERP project › Settings › API › **Exposed schemas** me `packing` jodein. |
-| 2 | `PACKING_2_DATA_TRANSFER.sql` | Saara data + login users + sequences copy. Dobara chalana safe (upsert) — cut-over ke din aakhri baar. |
+| 1 | `PACKING_1_SCHEMA_CLONE.sql` | Clones the whole schema from the old project (tables, keys, indexes, views, RPCs, triggers, RLS, grants) into `packing`. Put the connection string at the top. |
+| — | Dashboard | ERP project › Settings › API › add `packing` to **Exposed schemas**. |
+| 2 | `PACKING_2_DATA_TRANSFER.sql` | Copies all data + login users + sequences. Safe to re-run (upsert); run it one last time on cut-over day. |
 | 3 | `PACKING_3_ERP_ENHANCEMENTS.sql` | Audit trail, ERP PDF index, business views. |
 
-- Login: wahi username / password jo purani app me (auth users copy hote hain).
-- Purani PDFs ke link purane project ke bucket par hain aur wahin se khulte hain;
-  nayi PDFs ERP ke `packing-slips` bucket me.
-- Cut-over: dono apps ek saath chalengi to Slip / Order number takrayenge —
-  aakhri copy ke baad sab ERP wali app par.
+- Login: the same username / password as the old app (auth users are copied).
+- Links to old PDFs point to the old project's bucket and open from there; new
+  PDFs go into the ERP's `packing-slips` bucket.
+- Cut-over: if both apps run at the same time, Slip / Order numbers will clash.
+  After the last copy, everyone moves to the ERP app.
 - Views (`packing.v_dispatch_daily`, `v_party_dispatch_monthly`,
   `v_quality_dispatch_monthly`, `v_order_pending_aging`, `v_slip_pipeline`,
-  `v_weight_variance`, `v_vehicle_utilisation`) dashboard / reports ke liye.
+  `v_weight_variance`, `v_vehicle_utilisation`) are for dashboards / reports.
 
-## 🎨 Production › Design Master — Design SKU No aur Catalogue
+## Production › Design Master: Design SKU No and Catalogue
 
-Setup: `DESIGN_MASTER_MIGRATION.sql`, `DESIGN_SUPPLIER_MIGRATION.sql`, phir
+Setup: `DESIGN_MASTER_MIGRATION.sql`, `DESIGN_SUPPLIER_MIGRATION.sql`, then
 **`DESIGN_SKU_MIGRATION.sql`**.
 
-### Design SKU No — Design No se alag cheez
+### Design SKU No: not the same thing as Design No
 
-**Design No** design ki pehchaan hai; **SKU No** use bechne / stock karne ki.
-Isi liye do alag column (`design_master.design_no`, `design_master.design_sku_no`),
-aur SKU No har jagah Design No ke theek baad baithta hai:
+The **Design No** identifies the design; the **SKU No** is for selling / stocking
+it. Hence two separate columns (`design_master.design_no`,
+`design_master.design_sku_no`), and the SKU No sits right after the Design No
+everywhere:
 
-| Kahan | Kaisa |
+| Where | How |
 |---|---|
-| **Create New** › 1. Design Specifications | Design No ke baad, **bharna zaroori** |
-| **Live** tab | Design No ke baad apna column, apna ▾ multi-select filter, aur upar wale search me bhi aata hai |
-| **Bulk Upload** grid | Design No ke neeche apna box — **optional**, kyunki purane data ke saare SKU pata nahi hote; jo chhoot jaaye wo Live › ✏️ Edit se lag jaata hai |
-| **Catalogue PDF** filters | apna multi-select (Design No ka text box alag hai; dono AND se lagte hain) |
-| **Catalogue PDF** | cover page ki spec table me `DESIGN NO` ke saath `SKU NO` |
-| ✏️ **Edit** popup | optional — purane design ka SKU na pata ho to record kholna band nahi hona chahiye |
+| **Create New** › 1. Design Specifications | after Design No, **required** |
+| **Live** tab | its own column after Design No, its own ▾ multi-select filter, and it is included in the search at the top |
+| **Bulk Upload** grid | its own box under Design No, **optional**, because the SKUs of all old data aren't known; anything missed can be added from Live › Edit |
+| **Catalogue PDF** filters | its own multi-select (separate from the Design No text box; both apply with AND) |
+| **Catalogue PDF** | `SKU NO` next to `DESIGN NO` in the cover page spec table |
+| **Edit** popup | optional: not knowing an old design's SKU shouldn't block opening the record |
 
-**Duplicate SKU par rok nahi, sawaal hai:** "SKU No X pehle se design Y par hai —
-phir bhi save karna hai?" Typo pakda jaata hai, par jaan-boojh kar ek SKU do
-design par rakhna bhi mumkin rehta hai. Database par `UNIQUE` isi liye nahi
-lagaya; hamesha-unique chahiye to `DESIGN_SKU_MIGRATION.sql` me commented unique
-index hai (pehle duplicate hata lein — file me query likhi hai).
+**A duplicate SKU is a question, not a block:** "SKU No X is already on design Y.
+Save anyway?" A typo gets caught, but putting one SKU on two designs on purpose
+stays possible. That's why the database has no `UNIQUE`; if you want it always
+unique, `DESIGN_SKU_MIGRATION.sql` has a commented unique index (remove the
+duplicates first; the query is in the file).
 
-Migration se **pehle** bhi screen poori chalti hai: SKU ke boxes dikhte hain, bas
-us ek column ko save se chhod diya jaata hai (`skuPatch`) aur app ek baar saaf
-keh deti hai ki `DESIGN_SKU_MIGRATION.sql` chalani hai. Khaali database par pehla
-save khud pata kar leta hai (`dmWriteDesign` ek baar bina SKU dobara bhejta hai),
-isi liye kabhi "column does not exist" wala poora save fail nahi hota.
+Even **before** the migration the screen works fully: the SKU boxes show, that
+one column is just left out of the save (`skuPatch`), and the app says once,
+plainly, that `DESIGN_SKU_MIGRATION.sql` needs to be run. On an empty database
+the first save works this out itself (`dmWriteDesign` resends once without the
+SKU), so a whole save never fails on "column does not exist".
 
-### Catalogue PDF — Bed Size / SKU filters, aur preview apne aap
+### Catalogue PDF: Bed Size / SKU filters, and the preview builds itself
 
-- Filters me **BED SIZE** aur **DESIGN SKU NO** bhi aa gaye. Baaki filters ki
-  tarah ye bhi **dependent** hain — ek tick hatate hi doosre columns me se
-  bemaani options gayab ho jaate hain.
-- **Neeche ki preview filter chunte hi apne aap ban jaati hai** — "Generate
-  Preview" dabane ki zaroorat nahi (`renderCatalogueFilters` → `dmCatSchedulePreview`,
-  220 ms ka debounce, aur sirf jab Catalogue tab khuli ho).
-- Bahut bade selection par auto-preview sirf pehle **40** designs render karti
-  hai (`DM_CAT_AUTO_MAX`) aur amber line me likh deti hai kitne bache — warna
-  ek tick par sau-sau page ka DOM banta aur tick karna hi atak jaata.
-  **⚡ Generate Full Preview** us hadd ke bina chalta hai, aur **PDF par is hadd
-  ka koi asar nahi** — Download / Open hamesha poore selection ki banti hai.
+- The filters now include **BED SIZE** and **DESIGN SKU NO** too. Like the other
+  filters they are **dependent**: removing one tick makes meaningless options
+  disappear from the other columns.
+- **The preview below builds itself as soon as a filter is picked**; there's no
+  need to press "Generate Preview" (`renderCatalogueFilters` →
+  `dmCatSchedulePreview`, a 220 ms debounce, and only while the Catalogue tab is
+  open).
+- On a very large selection, the auto-preview renders only the first **40**
+  designs (`DM_CAT_AUTO_MAX`) and says in an amber line how many are left;
+  otherwise one tick would build hundreds of pages of DOM and the tick itself
+  would hang. **Generate Full Preview** runs without that limit, and **the limit
+  has no effect on the PDF**: Download / Open always cover the full selection.
 
-## 🖨️ Printing Lot Card (Manufacturing)
+## Printing Lot Card (Manufacturing)
 
-Purani Google-Sheet wali app ki jagah. Setup: `PRINTING_LOT_MIGRATION.sql` ek
-baar chalayein — bas.
+Replaces the old Google Sheet based app. Setup: run `PRINTING_LOT_MIGRATION.sql`
+once, and that's it.
 
-| Purana (Sheet / Drive / IndexedDB) | Ab |
+| Old (Sheet / Drive / IndexedDB) | Now |
 |---|---|
-| Production Log sheet | `prl_lots` (+ view `v_prl_production_log`, wahi columns) |
-| designs[] me base64 photo | `prl_lot_designs.image_path` → bucket `printing-lot/images/<lot id>/…` (har photo alag file) |
-| Production Tracking sheet | `prl_production_entries` (ek row per lot + section, `data` jsonb) + `prl_production_log` (har save ka itihaas) + view `v_prl_production_tracking` |
-| User Master (plain password) | ERP login + Feature Access `PRL_*`; department masters ke liye `prl_operators` (naam + PIN hash) |
+| Production Log sheet | `prl_lots` (+ view `v_prl_production_log`, same columns) |
+| base64 photos in designs[] | `prl_lot_designs.image_path` → bucket `printing-lot/images/<lot id>/…` (one file per photo) |
+| Production Tracking sheet | `prl_production_entries` (one row per lot + section, `data` jsonb) + `prl_production_log` (history of every save) + view `v_prl_production_tracking` |
+| User Master (plain password) | ERP login + Feature Access `PRL_*`; `prl_operators` (name + PIN hash) for department masters |
 | Drive `ROOT/PARTY/LOT_PARTY.pdf` | `printing-lot/pdfs/PARTY/LOT_PARTY.pdf` + `pdf_documents` (variant `PRINTING_LOT`) |
-| DRAFT-LOT sheet | Saved lot par 5 sec baad auto-save + browser me local backup |
+| DRAFT-LOT sheet | Auto-save 5 sec after a change on a saved lot + a local backup in the browser |
 
-- **Kaun kya kar sakta hai:** Admin Panel › Feature Access › 🖨️ Printing Lot
-  Card (`PRL_EDIT`, `PRL_DELETE`, `PRL_PROD_ALL`, `PRL_MASTER`). Default:
-  Admin + MD edit; baaki view-only.
-- **Department masters** (Raschel, Stenter, Printing…): Printing Lot › Masters ›
-  Department Operators me Admin banata hai (Admin PIN se). Wo Production tab
-  me *Department Login* karke sirf apne sections bharte hain.
+- **Who can do what:** Admin Panel › Feature Access › Printing Lot Card
+  (`PRL_EDIT`, `PRL_DELETE`, `PRL_PROD_ALL`, `PRL_MASTER`). Default: Admin + MD
+  edit; everyone else view-only.
+- **Department masters** (Raschel, Stenter, Printing…): the Admin creates them in
+  Printing Lot › Masters › Department Operators (with the Admin PIN). They use
+  *Department Login* in the Production tab and fill only their own sections.
 - **Lists:** Unit / Category / Bed Size / Ply / Satin Quality / Stenter Times →
-  Dropdown Master (`erp_designUnit`, `erp_prl*`). Blanket colors aur satin
-  codes → Printing Lot › Masters. Production ke fields → table `prl_sections`
-  (`fields` jsonb) — naya field wahan jodein, code nahi badalna.
-- Ek save me poora card (`prl_save_lot` RPC, ek transaction). Do log ek saath
-  badlein to doosre ko `VERSION_CONFLICT` milta hai — kisi ka kaam chupchaap
-  nahi mitta.
+  Dropdown Master (`erp_designUnit`, `erp_prl*`). Blanket colors and satin codes →
+  Printing Lot › Masters. Production fields → the `prl_sections` table (`fields`
+  jsonb); add a new field there, no code change needed.
+- One save writes the whole card (`prl_save_lot` RPC, one transaction). If two
+  people change it at the same time, the second gets `VERSION_CONFLICT`; nobody's
+  work is silently overwritten.
 
-### 🏠 Order Form Home — MTO / MTS → Lot Card
+### Order Form Home: MTO / MTS → Lot Card
 
-`order-form.html` ab seedha form nahi, **Home** se khulta hai:
+`order-form.html` no longer opens straight on the form; it opens on **Home**:
 
-1. **Make to Order** / **Make to Stock** — dono ki apni series:
-   `MTO-SIHF/2026-27/0001`, `MTS-SIHF/2026-27/0001` (FY Apr–Mar IST; 1 April
-   ko khud 0001). Type ka koi column nahi — **Order No ka prefix hi type hai**
-   (`ofTypeOf`). Number client par banta hai (`ofNextOrderNo`, ERP ke
-   `nextNo()` jaisa); DUPLICATE par isi series ka agla. Purane bina-prefix
-   number (`SIHF/2026-27/001`) MTO me, "OLD NO" tag ke saath.
-   `sales_next_order_no()` ab sirf connection check hai. **Koi migration nahi.**
-2. Har type me: **New Order** · **Existing Quotation** (Saved + Sent to
-   Party + anjaan status) · **Confirmed** · **Hold** · **Cancel** · **Close**
-   (`OF_BUCKETS`). Bottom bar me 🏠 se wapas Home.
-3. Confirmed / Hold / Closed order ke card par **🏭 Lot Cards** box — har
-   PRODUCT ka apna lot. **🧾 Generate Lot Card** (sirf Confirmed) Printing Lot
-   kholta hai: header order se bhara (party, brand = item code, fabric,
-   category, bed size, ply, weight, size, satin quality, emboss, qty, packing),
-   design / remarks / label-tag worker notes me, LOT NO = sabse bada numeric +1
-   (sujhaav), aur order ki saari photos **pehle se chuni** (picker me hata
-   sakte hain; photo lot ke apne bucket me copy hoti hai). Lot ban chuka ho to
-   **📍 Track LOT …** (status · sections done) → Production tab.
-4. Jodd: `prl_lots.order_no` + `prl_lots.extra.src_order_line` (aur
-   `src_order_no / src_order_type / src_item_code`). Hand-off localStorage key
-   `sarv_prl_handoff` (v:1, 15 min) — shape `ofGenerateLot()` me, padhne wala
-   `prlRunHandoff_()`. ERP ke andar `sarvNavigateFromHome('PRINTING_LOT')`,
-   bahar naya tab.
+1. **Make to Order** / **Make to Stock**, each with its own series:
+   `MTO-SIHF/2026-27/0001`, `MTS-SIHF/2026-27/0001` (FY Apr–Mar IST; resets to
+   0001 on 1 April by itself). There is no type column: **the Order No prefix is
+   the type** (`ofTypeOf`). The number is made on the client (`ofNextOrderNo`,
+   like the ERP's `nextNo()`); on a DUPLICATE it takes the next one in the same
+   series. Old numbers without a prefix (`SIHF/2026-27/001`) go under MTO, with
+   an "OLD NO" tag. `sales_next_order_no()` is now only a connection check. **No
+   migration.**
+2. Each type has: **New Order** · **Existing Quotation** (Saved + Sent to Party
+   + unknown status) · **Confirmed** · **Hold** · **Cancel** · **Close**
+   (`OF_BUCKETS`). The Home button in the bottom bar goes back to Home.
+3. A Confirmed / Hold / Closed order's card has a **Lot Cards** box, with one lot
+   per PRODUCT. **Generate Lot Card** (Confirmed only) opens Printing Lot: the
+   header is filled from the order (party, brand = item code, fabric, category,
+   bed size, ply, weight, size, satin quality, emboss, qty, packing), design /
+   remarks / label-tag go into the worker notes, LOT NO = the highest numeric + 1
+   (a suggestion), and all of the order's photos are **pre-selected** (they can
+   be removed in the picker; each photo is copied into the lot's own bucket).
+   Once a lot exists, **Track LOT …** (status · sections done) → Production tab.
+4. Links: `prl_lots.order_no` + `prl_lots.extra.src_order_line` (and
+   `src_order_no / src_order_type / src_item_code`). The hand-off localStorage key
+   is `sarv_prl_handoff` (v:1, 15 min); its shape is in `ofGenerateLot()`, the
+   reader is `prlRunHandoff_()`. Inside the ERP it uses
+   `sarvNavigateFromHome('PRINTING_LOT')`; outside, a new tab.
 
-⚠️ Server ka niyam pehle jaisa: Confirmed order **Edit + Submit** karne par
-status wapas **Saved** ho jaata hai (`sales_save_order`) — order Existing
-Quotation me chala jaata hai; bane hue lot juḍe rehte hain.
+Note, the server rule is unchanged: **Edit + Submit** on a Confirmed order sets
+its status back to **Saved** (`sales_save_order`), so the order moves to Existing
+Quotation; lots already made stay linked.
 
-## 🧵 Trims & Packing Material Manager (Manufacturing)
+## Trims & Packing Material Manager (Manufacturing)
 
-`trims-manager.html` — ERP › Manufacturing › Trims Manager. Ek Sales Order ke
-kaun-kaun se trims / packing material chahiye, kis lot ke liye kitne, PR kis par
-bani, PO kab aaya, maal kitna aaya aur kitna lot ko issue hua — sab ek sheet par.
+`trims-manager.html`: ERP › Manufacturing › Trims Manager. For one Sales Order:
+which trims / packing materials are needed, how many for which lot, which PR
+they're on, when the PO came, how much material arrived and how much was issued
+to the lot, all on one sheet.
 
-Setup: `TRIMS_MANAGER_MIGRATION.sql`, phir **`TRIMS_MANAGER_V2_MIGRATION.sql`**.
+Setup: `TRIMS_MANAGER_MIGRATION.sql`, then **`TRIMS_MANAGER_V2_MIGRATION.sql`**.
 
-### ORDER NO · LOT NO — list se, ya haath se
+### ORDER NO · LOT NO: from the list, or typed by hand
 
-| | Kahan se |
+| | From |
 |---|---|
-| **ORDER NO** dropdown | saved Sales Orders (`sales_orders`) — Order Qty, Buyer, Order Date sab wahan se |
-| **ORDER NO** ✎ Manual | khud likha hua. Order Form me iska koi record nahi, isliye sheet khud poochti hai |
-| **LOT NO** list se | saved Lot Cards (`mfg_lot_cards`) — Lot Req Qty lot card se bharti hai |
-| **LOT NO** haath se | jo Lot Card me nahi hai. Confirm maangti hai; Lot Req Qty manual |
+| **ORDER NO** dropdown | saved Sales Orders (`sales_orders`); Order Qty, Buyer, Order Date all come from there |
+| **ORDER NO** ✎ Manual | typed by hand. The Order Form has no record of it, so the sheet asks for the details itself |
+| **LOT NO** from the list | saved Lot Cards (`mfg_lot_cards`); Lot Req Qty is filled from the lot card |
+| **LOT NO** by hand | one that isn't in Lot Card. Asks for confirmation; Lot Req Qty is manual |
 
-**Manual Order ya manual Lot = MANUAL sheet**, aur phir amber bar aati hai:
-**Party Name · Brand Name · Design 1 · Design 2 · ➕ ADD More Designs**
-(Design 3, 4, 5 … ki koi hadd nahi). Teeno **zaroori** hain — inke bina Save nahi
-hota, kyunki poore ERP me inka doosra koi ghar nahi, aur PDF / CSV / Saved Sheets
-register teeno chhapte hain. Saved Sales Order par ye bar dikhti hi nahi.
+**A manual Order or manual Lot = a MANUAL sheet**, and an amber bar appears:
+**Party Name · Brand Name · Design 1 · Design 2 · ADD More Designs** (no limit
+on Design 3, 4, 5 …). All three are **required**; Save doesn't work without them,
+because they have no other home anywhere in the ERP, and the PDF / CSV / Saved
+Sheets register all print them. On a saved Sales Order the bar doesn't show at
+all.
 
-### NEW PR — sheet se hi PR ban jaati hai
+### NEW PR: a PR straight from the sheet
 
-**Lot Req Qty** ke theek baad ek **NEW PR** tick column (Item Master ke NEW PR
-column jaisa), aur upar toolbar me **📝 Generate New PR (n)**. Tick karke dabane
-par ERP ka **Purchase › New Entry** form khul jaata hai, usi me wo saare item
-bhar jaate hain:
+Right after **Lot Req Qty** there is a **NEW PR** tick column (like Item
+Master's NEW PR column), and **Generate New PR (n)** in the toolbar. Tick and
+press it, and the ERP's **Purchase › New Entry** form opens with all those items
+filled in:
 
 | | |
 |---|---|
-| PR qty | **Final PO Qty** = Lot Req × (1 + Wastage%) — kharidna yahi hai, Lot Req nahi |
-| Item ka Description / Make / Category / UOM | **Item Master se**, trims sheet se nahi (jo master kehta hai wahi PR par chhape) |
-| PR line ka remark | `Trims: Order <no> · Lot <no> · <item> · Wastage x%` — Purchaser ko bina Trims Manager kholne pata ho ye kis order ka hai |
-| Purchaser Name | item ki Category se (`category_purchasers`), jaise haath se bhari row par |
-| Required By · Machine | **khaali** — ye do user hi bharta hai, phir Submit |
+| PR qty | **Final PO Qty** = Lot Req × (1 + Wastage%): this is what has to be bought, not Lot Req |
+| Item Description / Make / Category / UOM | **from Item Master**, not from the trims sheet (the PR prints what the master says) |
+| PR line remark | `Trims: Order <no> · Lot <no> · <item> · Wastage x%`, so the Purchaser knows which order it belongs to without opening Trims Manager |
+| Purchaser Name | from the item's Category (`category_purchasers`), as on a hand-filled row |
+| Required By · Machine | **empty**: the user fills these two, then Submits |
 
-Tick **tabhi** hota hai jab row par **Store Standard Name** (Item Master item)
-ho aur **Final PO Qty > 0** — PR us `item_id` par bandhti hai, aur inke bina
-bandhne ko kuch nahi hota. Checkbox ka tooltip wajah likh deta hai. Supplier
-**BUYER / FOC** wali row tick ho sakti hai, par bhejne se pehle poocha jaata hai
-(wo maal hum kharidte nahi).
+A row can be ticked **only** when it has a **Store Standard Name** (an Item
+Master item) and **Final PO Qty > 0**: the PR is tied to that `item_id`, and
+without these there is nothing to tie it to. The checkbox tooltip gives the
+reason. A row whose supplier is **BUYER / FOC** can be ticked, but it asks before
+sending (we don't buy that material).
 
-**PR Submit hote hi uska number WAPAS sheet ke PR NO. column me aa jaata hai** —
-unhi rows par jinse wo bani thi — aur wahi link PO No / Target Date / Qty
-Received chalu kar deta hai. Sheet apne aap save nahi hoti: amber banner
-"PR xyz … abhi save nahi hui" Save dabane tak baitha rehta hai.
+**Once the PR is submitted, its number comes BACK into the sheet's PR NO. column**,
+on the rows it was made from, and that link starts PO No / Target Date / Qty
+Received. The sheet doesn't save itself: an amber banner "PR xyz … not saved yet"
+stays until Save is pressed.
 
-Code kahan hai: PR ka form ERP ke page par hai aur Trims Manager uske iframe
-me, isi liye trims sheet sirf poochti aur bhejti hai —
-`store-core.js › sarvGenerateNewPrFromTrims` form bharta hai,
-`sarvTrimsPrNotify_` save hone par wapas khabar deta hai, aur trims sheet ka
-`window.trimsPrSaved` PR No rows par lagata hai. Item Master se bani PR aur
-isse bani PR ek hi do helpers se guzarti hain (`sarvPrFillRequester_`,
-`sarvPrWireMachineCopy_`), to dono bilkul ek jaisi bharti hain.
-**Access:** `HOME_PR` — jo PR ka form khol sakta hai, wahi yahan se PR bana
-sakta hai (Item Master wala Admin-only `MD_ITEM_NEWPR` jaan-boojh kar nahi,
-kyonki trims sheet bharne wala merchandiser hi PR raise karta hai).
+Where the code is: the PR form is on the ERP page and Trims Manager is in its
+iframe, so the trims sheet only asks and sends:
+`store-core.js › sarvGenerateNewPrFromTrims` fills the form,
+`sarvTrimsPrNotify_` reports back on save, and the trims sheet's
+`window.trimsPrSaved` puts the PR No on the rows. A PR made from Item Master and
+one made from here go through the same two helpers (`sarvPrFillRequester_`,
+`sarvPrWireMachineCopy_`), so both are filled exactly the same way.
+**Access:** `HOME_PR`: whoever can open the PR form can make a PR from here (the
+Admin-only `MD_ITEM_NEWPR` from Item Master is deliberately not used, because the
+merchandiser who fills the trims sheet is the one who raises the PR).
 
-### PR NO. → PO NO. — user PR chunta hai, PO khud aata hai
+### PR NO. → PO NO.: the user picks the PR, the PO comes on its own
 
-Pehle PO No. haath se chunna padta tha, matlab PO banne ka intezaar karke sheet
-dobara kholna. Ab:
+Before, the PO No. had to be picked by hand, which meant waiting for the PO and
+then opening the sheet again. Now:
 
-1. **PR NO.** column me dropdown — `purchase_requirements` ki list. Jis item ki
-   PR hai wo upar apne heading me (`✓ Is item ki PR`), baaki neeche. (Ya upar
-   wale **NEW PR** se wo apne aap lag jaata hai.)
-2. Purchase us PR ke against PO banata hai → **PO NO.** column me wo PO apne aap
-   aa jaata hai (hari cell, neeche vendor ka naam). Jod `purchase_order_lines.req_no`
-   hai — sheet me kuch dobara likhna nahi padta.
-3. **Target Date** us PO ki `delivery_date` se khud bhar jaati hai (ek PR par kai
-   PO ho to **sabse pehli** date — wahi chalani hai).
-4. **Qty Received** us PO ke against uss item ka inward. PO ke bina seedha PR par
-   book hui receipt (FIELD BOY wali "without PO") bhi isme gini jaati hai, aur do
-   baar nahi — dono ka hisaab alag rakha jaata hai.
+1. The **PR NO.** column has a dropdown listing `purchase_requirements`. PRs for
+   that item are at the top under their own heading (`✓ PRs for this item`), the
+   rest below. (Or it is set automatically by **NEW PR** above.)
+2. Purchase makes a PO against that PR → the PO appears in the **PO NO.** column
+   on its own (green cell, vendor name below). The link is
+   `purchase_order_lines.req_no`; nothing has to be retyped in the sheet.
+3. **Target Date** fills itself from that PO's `delivery_date` (if one PR has
+   several POs, the **earliest** date, since that's the one to chase).
+4. **Qty Received** is that item's inward against that PO. A receipt booked
+   straight against the PR without a PO (the FIELD BOY "without PO" kind) is
+   counted too, and not twice: the two are tallied separately.
 
-PO abhi na bana ho to cell amber me **⏳ PO pending** kehti hai (summary me bhi
-"PR → PO Pending" ginti). **✎** se PO haath se pin kar sakte hain (purane order
-ke liye jinki line par `req_no` nahi hai), **↺** se phir auto par.
+If the PO isn't made yet the cell says **PO pending** in amber (and the summary
+counts "PR → PO Pending"). With **✎** you can pin a PO by hand (for old orders
+whose line has no `req_no`), and **↺** puts it back to auto.
 
 ### Lot Issue · Pending Issue
 
-- **Lot N Issue** — Store ki ISSUE entry se uss lot ke against uss item ki qty,
-  aur **neeche har issue ki date**. Hover par issue document no + har issue ki qty.
-- **Pending Issue = Qty Received − Total Lot Issue** — jo maal store me aa gaya
-  par abhi lot ko nahi diya. Neeche chhoti line Lot Req se kami/zyada batati hai
-  (`Req short 120` / `Req pura` / `OVER issued`), taaki wo item bhi dikh jaaye jo
-  kam hai **kyunki aaya hi nahi**.
+- **Lot N Issue**: the qty of that item issued against that lot through the
+  Store's ISSUE entry, with **the date of each issue below**. Hovering shows the
+  issue document no + the qty of each issue.
+- **Pending Issue = Qty Received − Total Lot Issue**: material that reached the
+  store but hasn't been given to the lot yet. A small line below shows the
+  shortfall/excess against Lot Req (`Req short 120` / `Req met` / `OVER issued`),
+  so an item that is short **because it never arrived** also shows up.
 
-### Store Issue — saved Lot se poori item list
+### Store Issue: the full item list from a saved Lot
 
-`index.html` › Outward Desk › Entry Type **ISSUE** › **LOT No.**:
-**📋 Saved Lot** button me wahi lot aate hain jinki Trims sheet saved hai. Ek
-click par:
+`index.html` › Outward Desk › Entry Type **ISSUE** › **LOT No.**: the **Saved
+Lot** button lists the lots whose Trims sheet is saved. One click:
 
-- us lot ki poori **required item list** rows me bhar jaati hai (Item Master se
-  Description / Category / UOM), Qty me **pending** qty;
-- har item ke neeche **sub-row** — `LOT: 1001 · Required Qty · Pending Issue ·
-  Issued Qty · Excess Issue` — bilkul usi tarah jaise PO ke against Inward me PO
-  ki sub-row aati hai (dono ek hi `docStripParts_` se bani hain);
-- **Issue PDF** me wahi sub-row chhapti hai, aur header me Trims Order No ·
-  Party · Brand · Design.
+- fills the rows with that lot's full **required item list** (Description /
+  Category / UOM from Item Master), with the **pending** qty in Qty;
+- puts a **sub-row** under each item (`LOT: 1001 · Required Qty · Pending Issue ·
+  Issued Qty · Excess Issue`), exactly like the PO sub-row on an Inward against a
+  PO (both are built by the same `docStripParts_`);
+- prints the same sub-row in the **Issue PDF**, with Trims Order No · Party ·
+  Brand · Design in the header.
 
-Lot box me koi aur batch no. likhein to kuch nahi badalta — jaisa pehle tha.
-⚠️ **Machine Name & No. ISSUE par har row par zaroori rehta hai**, lot se bhari
-rows par bhi: lot batata hai *kaun sa maal* nikla, machine batati hai *kahan gaya*.
+Typing some other batch no. in the Lot box changes nothing; it works as before.
+Note: **Machine Name & No. is still required on every ISSUE row**, including rows
+filled from a lot: the lot says *which material* went out, the machine says
+*where it went*.
 
-## 👤 Ek user, kai role, ek login
+## One user, many roles, one login
 
-Setup: `UNIFIED_USERS_MIGRATION.sql` (ADMIN_PANEL_MIGRATION ke baad).
+Setup: `UNIFIED_USERS_MIGRATION.sql` (after ADMIN_PANEL_MIGRATION).
 
-### Multi-role — access ka JOD, sign primary se
+### Multi-role: access is the UNION, signature from the primary
 
-`app_users` par ab do cheezein hain, aur ye farq poore design ki jaan hai:
+`app_users` now has two things, and this difference is the heart of the whole
+design:
 
-| | Kitne | Kis kaam ka |
+| | How many | What for |
 |---|---|---|
-| `role` (purana column) | **ek** | **PRIMARY role.** "Kisne kiya" — PR/PO par sign, audit stamp, PDF par naam, role badge. |
-| `roles text[]` (naya) | **kai** | **Sirf ACCESS.** Union: kisi feature par ek bhi role YES kahe to mil jaata hai. |
+| `role` (old column) | **one** | **PRIMARY role.** "Who did it": signature on PR/PO, audit stamp, name on PDF, role badge. |
+| `roles text[]` (new) | **many** | **ACCESS only.** Union: if any one role says YES to a feature, the user gets it. |
 
-Rajesh "Store Incharge + Accountant" ho to use dono ka kaam milta hai, par
-sign hamesha uske primary role se jaata hai — "kis role se sign hua" ka
-jawab kabhi dhundhla nahi hota. Aur kyunki purana `role` column waisa hi
-hai, app ka ek bhi purana `sarvCurrentRole` padhne wala hissa nahi tootta.
+If Rajesh is "Store Incharge + Accountant", he gets the work of both, but the
+signature always goes from his primary role, so "which role signed this" never
+gets blurry. And since the old `role` column is unchanged, none of the app's old
+code that reads `sarvCurrentRole` breaks.
 
-Code me: `sarvCurrentRole` = primary, `sarvCurrentRoles` = sab,
-`sarvRoles_()` = access ke liye list. `sarvCan()` aur `sarvTabVisible()`
-isi par union lagate hain; `isAdmin()` bhi (ADMIN_PIN kisi bhi role me ho).
+In code: `sarvCurrentRole` = primary, `sarvCurrentRoles` = all,
+`sarvRoles_()` = the list for access. `sarvCan()` and `sarvTabVisible()` apply
+the union on it; so does `isAdmin()` (ADMIN_PIN in any role).
 
-### Login ab naam se
+### Login by name now
 
-Login screen par pehle Role chunna padta tha. Ab **naam** — uske saare
-role apne aap lag jaate hain, aur naam type karte waqt niche uske role
-dikh bhi jaate hain. Purana **"Role PIN se login"** link neeche maujood
-hai: jinka naam Admin Panel › Users me nahi hai, aur jahan ye migration
-abhi chali hi nahi, wahan wahi chalta hai (us soorat me access sirf usi
-ek role ka). Isi liye ye badlaav **kisi ko bahar nahi karta**.
+The login screen used to ask for a Role. Now it asks for the **name**: all of
+that user's roles apply automatically, and their roles show below while the
+name is being typed. The old **"Login with Role PIN"** link is still at the
+bottom: it is what works for people whose name isn't in Admin Panel › Users, and
+where this migration hasn't run yet (in that case access is for that one role
+only). So this change **locks nobody out**.
 
-### Per-user app access — tri-state
+### Per-user app access: tri-state
 
-Admin Panel › Users › **📱 Apps** me har app par teen haal:
+In Admin Panel › Users › **Apps**, each app has three states:
 
-| | Matlab |
+| | Meaning |
 |---|---|
-| **auto** (default) | role-wise Tab Visibility jo kahe wahi |
-| **ON** | zaroor dikhao, role kuch bhi kahe |
-| **OFF** | zaroor chhupao, role kuch bhi kahe |
+| **auto** (default) | whatever the role-wise Tab Visibility says |
+| **ON** | always show, whatever the role says |
+| **OFF** | always hide, whatever the role says |
 
-Kram: `user override → role-wise matrix → code ka default`. "auto" default
-isi liye rakha ki role-wise matrix ka matlab bacha rahe — Admin ko sirf us
-ek bande par haath lagana padta hai jiska case alag hai (pehle ek banda
-chhupane ke liye naya role banana padta tha). Keys wahi hain jo Tab
-Visibility me hain (`HOME_*`), to koi nayi vocabulary nahi.
+Order: `user override → role-wise matrix → code default`. "auto" is the default
+so the role-wise matrix keeps its meaning: the Admin only has to touch the one
+person whose case is different (before, hiding one person meant creating a new
+role). The keys are the same as in Tab Visibility (`HOME_*`), so there's no new
+vocabulary.
 
-Users table me `+N role` aur `📱 N` pills se turant dikh jaata hai ki kis
-user par kya haath se set hai — warna "iska button kyun nahi dikh raha"
-dhoondhne me waqt jaata hai.
+The `+N role` and `N` app pills in the Users table show at a glance what has
+been set by hand on which user; otherwise "why can't this person see the
+button" takes time to track down.
 
-### Ek login, saare apps
+### One login, every app
 
-ERP login par `erp_app_login()` ek **session token** banata hai
-(`app_sessions`), jo localStorage me jaata hai — saare apps ek hi origin
-par hain, to wo use padh lete hain. Us session row par `allowed_apps` bhi
-likha jaata hai: "is user ko kaun-kaun se app khul sakte hain", jo faisla
-ERP ki JS karti hai (role matrix + per-user override). Isi liye external
-apps ko permission ka poora matrix samajhne ki zaroorat nahi.
+On ERP login, `erp_app_login()` creates a **session token** (`app_sessions`),
+which goes into localStorage; all the apps are on one origin, so they can read
+it. The session row also records `allowed_apps`: "which apps this user may
+open", decided by the ERP's JS (role matrix + per-user override). So external
+apps don't need to understand the full permission matrix.
 
-| App | Apna login window | Pehchaan kahan se |
+| App | Own login window | Identity from |
 |---|---|---|
-| **launcher.html** | **haan — sirf yahan** | naam + PIN → `erp_app_login()` |
-| ERP (index.html) | nahi | launcher ka session (token na ho to seedha launcher) |
-| Approval App (mobile) | nahi | wahi |
-| Order Form | nahi | launcher ka session + `sales_erp_login` ka token |
-| Complaint App | nahi | launcher ka session + `erp-sso` ka auth session |
-| Packing & Dispatch | nahi | wahi |
+| **launcher.html** | **yes, only here** | name + PIN → `erp_app_login()` |
+| ERP (index.html) | no | the launcher's session (no token = straight to the launcher) |
+| Approval App (mobile) | no | same |
+| Order Form | no | the launcher's session + the `sales_erp_login` token |
+| Complaint App | no | the launcher's session + the `erp-sso` auth session |
+| Packing & Dispatch | no | same |
 
-**Ek darwaza — ab sach me ek.** Pehle har app ka apna login tha: Packing ka
-username + password (`packing.profiles`), Complaint ka Supabase Auth login +
-signup (`cmp_profiles`), Order Form ka naam + PIN (`sales_login`). Teen login,
-teen user list, teen jagah "kaun hai" ka jawab — aur wahi saari ulajhan isi
-se banti thi (ERP me access ON par bhi app ka account na hona, app ka password
-kisi ko yaad na hona, ek hi aadmi do list me do naam se baithna).
+**One door, and now truly one.** Every app used to have its own login: Packing's
+username + password (`packing.profiles`), Complaint's Supabase Auth login +
+signup (`cmp_profiles`), the Order Form's name + PIN (`sales_login`). Three
+logins, three user lists, three places answering "who is this", and that is
+where all the confusion came from (no app account even with access ON in the
+ERP, nobody remembering the app password, one person sitting in two lists under
+two names).
 
-Ab wo teeno login **hata diye gaye hain**, aur unke saath
-`sb.auth.signInWithPassword()` / `signUp()` / `sales_login` wale raaste bhi.
-Sab kuch `sso-gate.js` se hota hai, aur wo koi login form nahi dikhata — jo
-screen dikhti hai wo sirf **wajah** batati hai aur "← Apps par wapas" deti
-hai, kyunki wahan se andar jaane ka koi doosra raasta hi nahi hai.
+Those three logins **have now been removed**, along with the
+`sb.auth.signInWithPassword()` / `signUp()` / `sales_login` routes. Everything
+goes through `sso-gate.js`, and it shows no login form: the screen that appears
+only gives the **reason** and offers "← Back to Apps", because there is no other
+way in from there.
 
-Logout bhi har app me ek hi hai: ERP ka session server par revoke, auth
-session band, app ke local nishaan saaf, aur `launcher.html?bye=1` — jahan
-"Logout ho gaya" likha aa jaata hai. Session beech me khatam ho jaaye to wahi
-raasta, `?why=SESSION_REVOKED` jaisi wajah ke saath.
+Logout is the same in every app: the ERP session is revoked on the server, the
+auth session is closed, the app's local traces are cleared, and it goes to
+`launcher.html?bye=1`, which shows "Logged out". If the session ends midway, the
+same route is taken, with a reason like `?why=SESSION_REVOKED`.
 
-> ⚠️ **Ek shart jo pehle narmi se chhup jaati thi.** Complaint aur Packing ka
-> data Supabase Auth par chalta hai, aur wo auth session sirf `erp-sso` banata
-> hai. Pehle wo fail hone par app apna password maang leti thi; **ab koi
-> fallback nahi hai** — us user ke liye app khulegi hi nahi (wajah screen par
-> likhi aayegi). Isi liye ye badlaav live karne se pehle do cheezein pakki
-> honi chahiye: `erp-sso` ka naya version **deploy** ho, aur Complaint /
-> Packing wale har user ka account bana ho (`sql/CHECK_PACKING_SSO.sql` ki
-> report me sab `DIRECT LOGIN OK`).
+> **A condition that used to be quietly hidden.** Complaint and Packing data
+> run on Supabase Auth, and only `erp-sso` creates that auth session. Before,
+> when it failed the app would ask for its own password; **now there is no
+> fallback**: the app won't open for that user at all (the reason shows on
+> screen). So two things must be in place before this change goes live: the new
+> version of `erp-sso` is **deployed**, and every Complaint / Packing user has an
+> account (`DIRECT LOGIN OK` for everyone in the `sql/CHECK_PACKING_SSO.sql`
+> report).
 
-Logout par token server par revoke hota hai, aur reload par
-`sarvRefreshSsoSession_()` session se taaza roles / app_access le aata hai
-— Admin ne beech me access badla ho ya user band kar diya ho to wo turant
-lagta hai. Net / RPC fail ho to kuch nahi badalta (offline me app khulni
-chahiye).
+On logout the token is revoked on the server, and on reload
+`sarvRefreshSsoSession_()` fetches fresh roles / app_access from the session, so
+if the Admin changed access midway or disabled the user, it takes effect at
+once. If the network / RPC fails, nothing changes (the app should still open
+offline).
 
-### Single login — poora ho gaya
+### Single login: done
 
-Setup, isi kram me:
+Setup, in this order:
 
-| Step | Kya |
+| Step | What |
 |---|---|
-| 1 | `SINGLE_LOGIN_MIGRATION.sql` — upar `v_admin_pin` me apna Admin PIN daalein, phir Supabase › SQL Editor me chalayein. **Ek baar** (dobara chalana surakshit). Iska section 0b pgcrypto ka `search_path` bhi theek kar deta hai; alag se karna ho to `FIX_PGCRYPTO_SEARCHPATH.sql`. |
-| 2 | Aakhir me jo table dikhti hai (`sarv_user_merge_report`) usme har naye user ka **naam + PIN** hai. Wo list nikaal lein / baant dein, phir usi file ke section 9 ka `drop table` chala dein (usme plain PIN hain). |
-| 3 | `supabase/functions/erp-sso/` deploy karein — `supabase functions deploy erp-sso`, ya Dashboard › Edge Functions › naam `erp-sso` › file paste. |
+| 1 | `SINGLE_LOGIN_MIGRATION.sql`: put your Admin PIN in `v_admin_pin` at the top, then run it in Supabase › SQL Editor. **Once** (safe to re-run). Its section 0b also fixes pgcrypto's `search_path`; to do that separately, use `FIX_PGCRYPTO_SEARCHPATH.sql`. |
+| 2 | The table shown at the end (`sarv_user_merge_report`) has every new user's **name + PIN**. Take that list out / hand it over, then run the `drop table` in section 9 of the same file (it holds plain PINs). |
+| 3 | Deploy `supabase/functions/erp-sso/`: `supabase functions deploy erp-sso`, or Dashboard › Edge Functions › name `erp-sso` › paste the file. |
 
-### Packing / Complaint ka direct login — ek shart
+### Direct login to Packing / Complaint: one condition
 
-Launcher par **Packing ka button lagbhag sabko dikhta hai**: access ka
-default `true` hai (`launcher.html › appAllowed` — per-user ya role-wise rok
-na ho to app khuli maani jaati hai). Par *direct* login (bina us app ka apna
-password) ke liye access kaafi nahi — us bande ka **us app ka account** bhi
-hona chahiye:
+On the launcher, **almost everyone sees the Packing button**: access defaults to
+`true` (`launcher.html › appAllowed`: unless a per-user or role-wise block
+applies, the app counts as open). But for a *direct* login (without that app's
+own password), access isn't enough; the person also needs **an account in that
+app**:
 
-| App | Kya hona chahiye |
+| App | What must exist |
 |---|---|
-| Packing | `auth.users` me row (usi id se) **+** `packing.profiles` me row, `active = true` |
-| Complaint | `auth.users` me row (usi id se) **+** `app_users.cmp_username` bhara hua |
+| Packing | a row in `auth.users` (with the same id) **+** a row in `packing.profiles`, `active = true` |
+| Complaint | a row in `auth.users` (with the same id) **+** `app_users.cmp_username` filled |
 
-Dono cheezein **Admin Panel › Users › Apps** me us app ka switch **ON** karne
-par khud banti hain — `admin_grant_app_access()` us app ki row banata hai, aur
-auth account `erp-sso` Edge Function (`action: "provision"`). Switch ka
-tri-state yahan maayne rakhta hai: **`auto` se account nahi banta**, kyunki
-`auto` ka matlab "role-wise matrix jo kahe" hai. Jiska switch `auto` /  OFF
-hai, uske liye `erp_app_session()` ka `pk_profile_id` / `cmp_profile_id`
-**null** aata hai — app andar le jaane ki jagah apna purana
-username/password maang leti hai.
+Both are created automatically when that app's switch is turned **ON** in
+**Admin Panel › Users › Apps**: `admin_grant_app_access()` creates the app's row,
+and the `erp-sso` Edge Function creates the auth account (`action: "provision"`).
+The switch's tri-state matters here: **`auto` does not create an account**,
+because `auto` means "whatever the role-wise matrix says". For anyone whose
+switch is `auto` / OFF, `erp_app_session()` returns a **null**
+`pk_profile_id` / `cmp_profile_id`, and the app asks for its old
+username/password instead of letting them in.
 
-> **Ye pehle tootta tha.** Admin Panel ka Apps switch sirf `app_access` ka
-> jsonb likhta tha (`admin_set_user_app_access`) — `admin_grant_app_access()`
-> aur Edge Function ka provision raasta maujood the, par **unhe koi bulata hi
-> nahi tha**. Isi liye Admin switch ON karta tha, toast "save ho gaya" kehta
-> tha, aur user ke saamne phir bhi `NO_APP_ACCOUNT` aata tha. Ab wo switch
-> dono kaam karta hai, aur Apps list me un dono apps par "ON = account bhi
-> banega" likha rehta hai.
+> **This used to be broken.** The Admin Panel's Apps switch only wrote the
+> `app_access` jsonb (`admin_set_user_app_access`). `admin_grant_app_access()`
+> and the Edge Function's provision route existed, but **nothing called them**.
+> So the Admin turned the switch ON, the toast said "saved", and the user still
+> got `NO_APP_ACCOUNT`. Now that switch does both jobs, and the Apps list says
+> "ON = an account will be created too" on those two apps.
 
-#### Auth account — teen haalat
+#### Auth account: three cases
 
-`admin_grant_app_access()` `AUTH_USER_MISSING` kehta hai, jiska matlab sirf
-itna hai ki **is id par** auth account nahi hai. Aage teen raaste hain:
+`admin_grant_app_access()` says `AUTH_USER_MISSING`, which only means there is
+no auth account **on this id**. From there, three routes:
 
-| Haalat | Kya hota hai | Deploy chahiye? |
+| Case | What happens | Deploy needed? |
 |---|---|---|
-| Account usi id par hai | kuch nahi — seedha grant | nahi |
-| Account hai, par **doosri id** par | `erp_link_existing_auth_account()` use dhoondh kar `app_users.id` usi par le aata hai (`erp_relink_user_id` — PIN key, sessions, resets, Order Form mirror sab ek saath), phir grant | nahi, sirf `FIX_APP_ACCOUNT_PROVISION.sql` |
-| Account hai hi nahi | `erp-sso` ka `provision` naya banata hai (`service_role` sirf wahan hota hai) | **haan** |
+| The account is on the same id | nothing, straight to the grant | no |
+| The account exists, but on **another id** | `erp_link_existing_auth_account()` finds it and moves `app_users.id` onto it (`erp_relink_user_id`: PIN key, sessions, resets, Order Form mirror all together), then grants | no, only `FIX_APP_ACCOUNT_PROVISION.sql` |
+| There is no account at all | `erp-sso`'s `provision` creates a new one (`service_role` exists only there) | **yes** |
 
-Doosri haalat sabse aam hai, aur pehle wahi tooti thi: provision seedha naya
-account banane jaata tha aur GoTrue *"A user with this email address has
-already been registered"* de deta tha.
+The second case is the most common, and it was the one that broke first:
+provision went straight to creating a new account and GoTrue answered *"A user
+with this email address has already been registered"*.
 
-Ek chauthi haalat bhi hai, aur wo **access ka masla hi nahi** hai: `app_users`
-me us bande ki **do rows** hon (jaise "PARKASH" aur "PARKASH JI", dono
-emp_code 1460), aur auth account doosri row par baitha ho. Ek id do rows par
-nahi ho sakti, isi liye `erp_link_existing_auth_account()` saaf mana karta hai
-(`AUTH_ACCOUNT_TAKEN`) — chup-chaap jod dena do logon ki pehchaan mila dene
-jaisa hota. Ilaaj `sql/MERGE_DUPLICATE_USERS.sql` hai: duplicate row ko KEEP
-row me milao, phir access do.
+There is a fourth case too, and it **isn't an access problem at all**: the person
+has **two rows** in `app_users` (like "PARKASH" and "PARKASH JI", both emp_code
+1460), and the auth account sits on the other row. One id can't be on two rows,
+so `erp_link_existing_auth_account()` refuses plainly (`AUTH_ACCOUNT_TAKEN`);
+linking it quietly would be like merging two people's identities. The fix is
+`sql/MERGE_DUPLICATE_USERS.sql`: merge the duplicate row into the KEEP row, then
+grant access.
 
-Teesri haalat bhi tooti thi — *"Database error creating new user"*. Wajah:
-Edge Function `user_metadata.name` bhejta tha, aur us par `auth.users` ka
-trigger `cmp_handle_new_auth_user()` chal padta hai (wo sirf `name` hone par
-chalta hai) aur `app_users` me us bande ki **doosri** row banane ki koshish
-karta hai — naye auth id par, naam se bana `cmp_username` aur wahi
-`contact_no` le kar. Dono par unique index hai
-(`app_users_cmp_username_key` / `app_users_cmp_mobile_key`), to takraav pakka,
-aur trigger ka exception GoTrue ke andar dab kar wahi generic message ban
-jaata hai. Aur insert chal bhi jaata to agla qadam girta:
-`erp_relink_user_id()` `NEW_ID_TAKEN` kehta hai jab nayi id par row maujood
-ho — aur row wahi trigger abhi banakar aaya hota. Yani ye raasta kisi bhi
-**maujooda** ERP user par chal hi nahi sakta tha.
+The third case was broken too, with *"Database error creating new user"*. The
+cause: the Edge Function sent `user_metadata.name`, which fires the
+`auth.users` trigger `cmp_handle_new_auth_user()` (it only runs when `name` is
+present), and that tries to create a **second** row for the person in
+`app_users`, on the new auth id, with a `cmp_username` made from the name and
+the same `contact_no`. Both have unique indexes
+(`app_users_cmp_username_key` / `app_users_cmp_mobile_key`), so a clash was
+certain, and the trigger's exception got swallowed inside GoTrue and turned into
+that generic message. And even if the insert had worked, the next step would
+fail: `erp_relink_user_id()` says `NEW_ID_TAKEN` when a row already exists on the
+new id, and that trigger had just created one. So this route could never work for
+any **existing** ERP user.
 
-Ab Edge Function `name` bhejta hi nahi (trigger beech me aata hi nahi; naam
-app_users me pehle se hai aur `cmp_username` `admin_grant_app_access()` khud
-bharta hai) aur naye account ka `id` khud deta hai — isi liye relink ki
-zaroorat hi nahi padti. Puraane GoTrue par `id` ignore ho jaaye to fallback
-relink hai, aur wo ab surakshit hai.
+Now the Edge Function doesn't send `name` at all (the trigger never gets
+involved; the name is already in app_users and `admin_grant_app_access()` fills
+`cmp_username` itself), and it sets the new account's `id` itself, so no relink
+is needed. If an older GoTrue ignores the `id`, the fallback is a relink, and
+that is now safe.
 
-Pehle ye haalat **chup-chaap** hoti thi (wajah sirf browser console me).
-Ab `packing.html` login box par ek naranji note likh deta hai — wajah ka
-code (`NO_APP_ACCOUNT`, `NO_AUTH_USER`, `PROFILE_READ`, `PROFILE_HIDDEN`,
-`FN_MISSING`, `SESSION_REVOKED` …) aur uska ilaaj, dono. Poori list server
-se dekhni ho to `sql/CHECK_PACKING_SSO.sql` chalayein: wo har user ka verdict
-deti hai.
+This case used to happen **silently** (the reason was only in the browser
+console). Now `packing.html` writes an orange note on the login box with both the
+reason code (`NO_APP_ACCOUNT`, `NO_AUTH_USER`, `PROFILE_READ`, `PROFILE_HIDDEN`,
+`FN_MISSING`, `SESSION_REVOKED` …) and its fix. For the full list from the
+server, run `sql/CHECK_PACKING_SSO.sql`: it gives a verdict for every user.
 
-> Dhyan: ek waqt par **ek hi** live session chalta hai (`erp_app_login()`
-> purane token revoke kar deta hai). Isi liye desktop par login karne ke baad
-> phone wala session `SESSION_REVOKED` deta hai — ab wo note me saaf likha
-> aata hai. Dono saath chahiye to `SINGLE_LOGIN_MIGRATION.sql` ke section 6b
-> wala block (5 live session) chala dein.
+> Note: only **one** live session runs at a time (`erp_app_login()` revokes old
+> tokens). So after logging in on the desktop, the phone session gives
+> `SESSION_REVOKED`; the note now says so plainly. If you need both at once, run
+> the block in section 6b of `SINGLE_LOGIN_MIGRATION.sql` (5 live sessions).
 
-### Aana-jaana — launcher aur "← Apps"
+### Moving around: the launcher and "← Apps"
 
-`launcher.html` hi sabka **pehla page** hai: naam + PIN, aur phir sirf wahi
-app buttons jinka access hai. Har app ka apna rang hai (ERP neela, Approvals
-baingani, Complaint narangi, Packing hara, Order Form gulaabi) — banda rang se
-pehchan leta hai, padhne se pehle. Dark aur light dono mode chalte hain
-(system setting se), aur `prefers-reduced-motion` par animation poori band.
+`launcher.html` is everyone's **first page**: name + PIN, then only the app
+buttons the user has access to. Each app has its own colour (ERP blue, Approvals
+purple, Complaint orange, Packing green, Order Form pink), so people recognise
+it by colour before reading. Dark and light modes both work (from the system
+setting), and with `prefers-reduced-motion` all animation is off.
 
-Wapas aane ke liye har app me neeche daayein kone me floating **← Apps**
-button hai — ek hi file se (`app-back.js`), isi liye paanch apps me paanch
-tarah ke back button nahi bante. Wo khud tay karta hai ki dikhna chahiye ya
-nahi:
+To come back, every app has a floating **← Apps** button in the bottom-right
+corner, from a single file (`app-back.js`), so five apps don't end up with five
+different back buttons. It decides by itself whether to show:
 
-| Soorat | Button |
+| Situation | Button |
 |---|---|
-| App ERP ke **iframe** me khuli hai (Packing, Order Form, Lot Card, Trims) | **nahi** — wahan "wapas" ka matlab poora ERP iframe me khol dena hota |
-| Single-login session **nahi** hai | **nahi** — banda launcher se aaya hi nahi, use ek aur login screen dikhana galat hai |
-| Khud `launcher.html` par | **nahi** — wapas kahan jaana hai |
-| Baaki sab | **haan** |
+| The app is open inside the ERP **iframe** (Packing, Order Form, Lot Card, Trims) | **no**: "back" there would open the whole ERP inside the iframe |
+| There is **no** single-login session | **no**: the user didn't come from the launcher, and showing them another login screen would be wrong |
+| On `launcher.html` itself | **no**: there's nowhere to go back to |
+| Everything else | **yes** |
 
-Back button se **logout nahi hota** — session waisa hi rehta hai, isi liye
-launcher par pahunchte hi doosra app bina PIN khulta hai. Logout ab bhi ek hi
-jagah se hai (launcher ka Logout, ya app ka apna logout jo wahin bhej deta
-hai).
-
-
-### Signup · Forgot PIN · emp_code se login
-
-Setup: `USER_SELF_SERVICE_MIGRATION.sql` (upar `v_admin_pin` bharein,
-`SINGLE_LOGIN_MIGRATION.sql` ke baad).
-
-**Login username = Employee Code.** Purane users par `emp_code` khaali tha;
-migration use `employees.person_name` se naam-match karke bharti hai — par
-**sirf jab wo naam employees me ek hi baar ho**, kyunki galat code daal dena
-ek bande ko doosre ke account par bitha deta. Jinka nahi mila wo report me
-aate hain aur filhaal **apne naam se bhi** login kar sakte hain, isi liye koi
-bahar nahi hota. Admin unka emp_code bhar de, bas.
+The back button **does not log out**: the session stays, so on reaching the
+launcher another app opens without a PIN. Logout is still in one place (the
+launcher's Logout, or an app's own logout, which goes there).
 
 
-**Ek emp_code par do account — ye galti nahi hai.** Aapke data me do aise
-jode hain, aur dono ek hi insaan ke do account hain (alag role ke liye,
+### Signup · Forgot PIN · login with emp_code
+
+Setup: `USER_SELF_SERVICE_MIGRATION.sql` (fill in `v_admin_pin` at the top; run
+after `SINGLE_LOGIN_MIGRATION.sql`).
+
+**Login username = Employee Code.** Old users had an empty `emp_code`; the
+migration fills it by matching names against `employees.person_name`, but **only
+when that name appears exactly once in employees**, because a wrong code would
+put one person into someone else's account. Those not matched appear in the
+report and can **also log in with their name** for now, so nobody is locked out.
+The Admin just needs to fill in their emp_code.
+
+
+**Two accounts on one emp_code is not a mistake.** Your data has two such pairs,
+and in both cases it's the same person with two accounts (for different roles,
 same contact no.):
 
 | emp_code | Accounts |
@@ -1359,167 +1364,241 @@ same contact no.):
 | `1001` | SATINDER JI (Purchaser) + SATINDER GHALYAN (Admin) |
 | `1532` | ANKUR JI (Purchaser) + ANKUR (GM) |
 
-Inhe merge karna ya kisi ek ka emp_code khaali karna **galat hota**: wo
-"… JI" naam `purchase_requirements.purchaser_name` par likhe hue hain (23 aur
-5 PR par) aur mobile app usi naam se us Purchaser ki list chhanta hai. Isi
-liye `emp_code` par **unique index jaan-boojh kar nahi** lagaya — ambiguity
-login par sambhali jaati hai: launcher "Aapka kaun sa account?" poochh leta
-hai aur banda chun leta hai. Naya duplicate ban bhi nahi sakta, kyunki
-`erp_signup()` us code par pehle se account hone par mana kar deta hai.
+Merging them, or clearing one emp_code, **would be wrong**: those "… JI" names
+are written on `purchase_requirements.purchaser_name` (on 23 and 5 PRs), and the
+mobile app filters that Purchaser's list by that name. That's why a **unique
+index on `emp_code` was deliberately not added**; the ambiguity is handled at
+login: the launcher asks "Which account?" and the person picks one. A new
+duplicate can't be created either, because `erp_signup()` refuses when an account
+already exists on that code.
 
-Forgot PIN aise case me emp_code + DOB + contact **teeno** par match karta
-hai; phir bhi do account bache to wo `MULTIPLE_ACCOUNTS` kehkar ruk jaata hai
-— andaza lagakar galat bande ka PIN badal dena sabse bura nateeja hota.
+In such a case Forgot PIN matches on emp_code + DOB + contact, **all three**; if
+two accounts still remain, it stops with `MULTIPLE_ACCOUNTS`. Guessing and
+changing the wrong person's PIN would be the worst outcome.
 
-**Signup** (`🆕 Naya Account`) — banda apna Employee Code daalta hai, uska
-naam / designation / department `employees` se apne aap bhar jaate hain aur
-**read-only** rehte hain (company record hi sach hai). Badal sakta hai sirf
-contact no. Uske baad DOB, PIN, ✍️ signature (draw pad) aur 📷 profile photo
-— **saare field zaroori hain**. Photo client par 256×256 JPEG me simat kar
-data-URL ban jaati hai, bilkul jaise signature pehle se hai (alag storage
-bucket aur uski policies ki zaroorat nahi padti).
+**Signup** (`New Account`): the person enters their Employee Code, their name /
+designation / department fill in from `employees` and stay **read-only** (the
+company record is the truth). Only the contact no. can be changed. After that,
+DOB, PIN, signature (draw pad) and profile photo; **every field is required**.
+The photo is shrunk on the client to a 256×256 JPEG and becomes a data-URL, the
+same way the signature already works (no separate storage bucket or policies
+needed).
 
-Role **server par** `CMP_USER` set hota hai — client jo bheje wo padha hi
-nahi jaata, isi liye is page se koi apne aap ko Admin nahi bana sakta. Naye
-user ko sirf Complaint App ka access milta hai; baaki Admin deta hai.
+The role is set **on the server** to `CMP_USER`; whatever the client sends is
+not read at all, so nobody can make themselves Admin from this page. A new user
+gets Complaint App access only; the Admin gives the rest.
 
-**Forgot PIN** (`🔓 PIN bhool gaye?`) — Emp Code + DOB + Contact No. teeno
-server par match hon to 10 minute ka reset token milta hai, phir banda apna
-naya PIN set kar leta hai. Naya PIN lagte hi uske saare khule session band ho
-jaate hain.
+**Forgot PIN** (`Forgot PIN?`): if Emp Code + DOB + Contact No. all match on the
+server, a 10-minute reset token is issued, and the person sets a new PIN. As soon
+as the new PIN is in place, all of their open sessions are closed.
 
-> **Suraksha ki saaf baat:** in teen factor me `emp_code` aur `contact_no`
-> dono `app_users` me anon ko padhne milte hain (Admin Panel ki list unhi par
-> chalti hai), isi liye asli raaz sirf **DOB** hai. Migration DOB ko
-> jaan-boojh kar anon ke liye **band** kar deti hai (grant ki deny-list me,
-> signature / PIN ki tarah) aur 5 galat koshish / ghanta / emp_code ki hadd
-> lagati hai. Phir bhi ye bank-grade nahi hai — zyada sakhti chahiye to OTP
-> (SMS) ya "Admin approve kare tab reset" jodna behtar rahega.
+> **Being straight about security:** of these three factors, `emp_code` and
+> `contact_no` are both readable by anon in `app_users` (the Admin Panel list
+> runs on them), so the only real secret is the **DOB**. The migration
+> deliberately **closes** DOB to anon (in the grant deny-list, like signature /
+> PIN) and adds a limit of 5 wrong attempts / hour / emp_code. Even so, this is
+> not bank-grade; for more strictness, adding an OTP (SMS) or "reset only after
+> Admin approval" would be better.
 
-**PIN kahan likha jaata hai — ye file guess nahi karti.** PIN
-`role_pins(role, pin_hash)` me hai, par uska key-format aur hashing is
-project me kahin likha nahi (`ADMIN_PANEL_MIGRATION.sql` ki file hi maujood
-nahi hai). Isi liye migration ek **probe user** banati hai, dekhti hai ki
-aapka maujooda `admin_save_user()` kaun sa key aur kaun sa hash likhta hai,
-aur wahi tareeka `app_settings.pin_write_recipe` me likh deti hai. Signup /
-Reset usi recipe se PIN likhte hain aur likhne ke baad
-`verify_app_user_pin()` se **check** bhi karte hain — PIN verify na ho to
-account hi nahi banta (adhoora account chhodne se behtar).
+**This file doesn't guess where the PIN is stored.** The PIN is in
+`role_pins(role, pin_hash)`, but its key format and hashing aren't written down
+anywhere in this project (the `ADMIN_PANEL_MIGRATION.sql` file itself doesn't
+exist). So the migration creates a **probe user**, watches which key and which
+hash your existing `admin_save_user()` writes, and records that method in
+`app_settings.pin_write_recipe`. Signup / Reset write the PIN with that recipe
+and then **check** it with `verify_app_user_pin()`; if the PIN doesn't verify,
+the account isn't created at all (better than leaving a half-made account).
 
-**Admin Panel › Users › Update User** me signature pad ke neeche ab
-**✍️ Use pre saved Sign** button hai. Zaroorat ye thi: Admin extra role dene
-ke liye window kholta hai aur pad khaali dikhta hai — lagta hai sign gum ho
-gaya. Ye button Admin PIN se us user ka saved sign pad par le aata hai
-(`admin_get_user_signature()`; `get_user_signature()` user ka **apna** PIN
-maangta hai, jo Admin ke paas nahi hota — isi liye alag RPC).
+**Admin Panel › Users › Update User** now has a **Use pre saved Sign** button
+under the signature pad. The need: the Admin opens the window to add an extra
+role and the pad looks empty, as if the signature had been lost. This button
+brings the user's saved signature onto the pad with the Admin PIN
+(`admin_get_user_signature()`; `get_user_signature()` asks for the user's **own**
+PIN, which the Admin doesn't have, hence a separate RPC).
 
-### Login window ki jhalak — kyun aati thi, ab kyun nahi
+### The login window flash: why it happened, why it doesn't now
 
-Har app ka login overlay markup me **shuru se** dikhta tha, aur JS use tab
-chhupata tha jab server se session confirm ho jaata (`erp_app_session` /
-`sales_whoami`). Wo ek network call hai — yani launcher se app par jaate waqt
-login window ek-do second ke liye **jhalak** jaati thi, jabki banda pehle se
-logged-in hai.
+Each app's login overlay was visible in the markup **from the start**, and JS
+hid it once the server confirmed the session (`erp_app_session` /
+`sales_whoami`). That is a network call, so when going from the launcher to an
+app the login window would **flash** for a second or two, even though the user
+was already logged in.
 
-`sso-preboot.js` isi liye hai. Wo har app ke `<head>` me **sabse pehle**, bina
-`defer`, chalti hai aur faisla **localStorage se** leti hai — jo synchronous
-hai, network ke intezaar ke bina:
+That's what `sso-preboot.js` is for. It runs **first** in every app's `<head>`,
+without `defer`, and decides **from localStorage**, which is synchronous, with no
+wait on the network:
 
-| Token hai? | Kya hota hai |
+| Token present? | What happens |
 |---|---|
-| **haan** | `<html>` par class lagti hai aur usi waqt CSS inject hoti hai jo `#loginScreen` / `#loginOverlay` / `#sarvLoginGate` ko chhupa deti hai — overlay **ek frame ke liye bhi paint nahi hota**. Saath me ek spinner splash, taaki beech me adhoora app (khaali list, bina mount hui React screen) na dikhe. |
-| **nahi** | Ye file **kuch nahi karti**. Jo banda launcher se nahi aaya, uska apna login screen bilkul pehle jaisa turant dikhta hai. |
+| **yes** | A class goes on `<html>` and CSS is injected right then that hides `#loginScreen` / `#loginOverlay` / `#sarvLoginGate`, so the overlay **doesn't paint for even one frame**. A spinner splash shows too, so a half-built app (empty list, an unmounted React screen) doesn't show in between. |
+| **no** | This file **does nothing**. Someone who didn't come from the launcher sees their own login screen straight away, exactly as before. |
 
-Splash tab hatti hai jab app khud `sarvSsoPrebootDone()` bulati hai — yani jab
-wo kuch dikhane layak ho jaati hai (ya asli screen, ya apna login). Har app me
-wo call **har raaste par** lagi hai (success, fail, aur `finally`), aur upar se
-9 second ka backstop bhi hai: kisi wajah se call na ho (net gir gaya, RPC atak
-gaya) to splash khud hat jaati hai aur login screen aa jaata hai. **Koi
-spinner par atka nahi rehta** — "kuch nahi ho raha" se behtar hai login maang
-lena.
+The splash goes away when the app itself calls `sarvSsoPrebootDone()`, that is,
+once it has something worth showing (either the real screen or its own login).
+Every app makes that call **on every path** (success, failure, and `finally`),
+and on top of that there's a 9-second backstop: if the call never happens for
+some reason (network dropped, RPC stuck), the splash removes itself and the login
+screen appears. **Nobody stays stuck on the spinner**; asking for a login is
+better than "nothing is happening".
 
-Splash ka rang launcher jaisa gehra hai, isi liye launcher se app me jaana ek
-hi screen ka hissa lagta hai, do alag page ki tarah nahi.
+The splash uses the launcher's dark colour, so going from the launcher into an
+app feels like one screen, not two separate pages.
 
-**Ek user table.** `cmp_profiles` (Complaint, 57 user) aur `packing.profiles`
-(Packing, 6 user) ke log ab ERP ki usi `app_users` table me hain. Purane rows
-**mitte nahi** — `app_users.cmp_profile_id` / `pk_profile_id` se jude rehte
-hain, isi liye us bande ka purana kaam (assign ki gayi tasks, uska signature,
-banaye hue slip) poora bacha rehta hai. Un apps ka apna role bhi wahin se
-aata hai (`cmp_profiles.role` / `packing.profiles.role`) — ERP sirf "kaun
-hai" batata hai, "kya kar sakta hai" us app ka apna setup hi tay karta hai.
+**One user table.** The people in `cmp_profiles` (Complaint, 57 users) and
+`packing.profiles` (Packing, 6 users) are now in the ERP's same `app_users`
+table. The old rows are **not erased**: they stay linked through
+`app_users.cmp_profile_id` / `pk_profile_id`, so that person's past work
+(assigned tasks, their signature, slips they made) stays intact. Those apps' own
+roles also still come from there (`cmp_profiles.role` / `packing.profiles.role`):
+the ERP only says "who this is", and the app's own setup decides "what they can
+do".
 
-**Ek PIN.** Naye users ka ERP PIN migration banati hai (Complaint walon ka
-unke mobile ke aakhri 4 digit). PIN kahan/kaise store hota hai, migration ye
-jaanti nahi — wo aapke maujooda `admin_save_user()` se set hota hai aur phir
-`verify_app_user_pin()` se **check** bhi hota hai, isi liye "PIN set hua par
-chalta nahi" chup-chaap nahi ho sakta (report me ⚠️ likha aata hai).
+**One PIN.** The migration creates the ERP PIN for new users (for Complaint users,
+the last 4 digits of their mobile). The migration doesn't know where/how a PIN is
+stored: it is set through your existing `admin_save_user()` and then **checked**
+with `verify_app_user_pin()`, so "PIN set but doesn't work" can't happen silently
+(the report shows a warning).
 
-**Password kaise hata.** Complaint App ka data Supabase Auth par chalta hai —
-`cmp_tasks` / `cmp_notice_board` ke trigger `auth.uid()` maangte hain ("Sirf
-Admin task assign kar sakta hai."). Do raaste the: un policies/triggers ko
-anon-model par laana, ya ERP ke session se us bande ka **asli** auth session
-bana dena. Doosra chuna gaya — usme **ek bhi policy chhedni nahi padti**,
-`auth.uid()` sach me set hota hai, isi liye har purana trigger, RLS aur
-`created_by` bilkul waisa hi kaam karta hai. Wo kaam `erp-sso` Edge Function
-karta hai: ERP token check karke ek one-time magic-link token deta hai, aur
-app `verifyOtp()` se apna session bana leta hai. `service_role` key sirf
-function me rehti hai, kisi page me nahi — aur koi password kahin store nahi
-hota.
+**How the password went away.** Complaint App data runs on Supabase Auth: the
+`cmp_tasks` / `cmp_notice_board` triggers require `auth.uid()` ("Only the Admin
+can assign tasks."). There were two options: move those policies/triggers onto
+the anon model, or create a **real** auth session for the person from the ERP
+session. The second was chosen: it **doesn't touch a single policy**,
+`auth.uid()` is really set, so every old trigger, RLS rule and `created_by` works
+exactly as before. The `erp-sso` Edge Function does that job: it checks the ERP
+token and returns a one-time magic-link token, and the app creates its session
+with `verifyOtp()`. The `service_role` key lives only in the function, not in any
+page, and no password is stored anywhere.
 
-Isi badlaav se Packing ki do purani kharabi bhi theek ho gayi: SSO login par
-`auth.getUser()` khaali hota tha, isi liye **signature save** par TypeError
-aata tha aur PDF par sign lagta hi nahi tha.
+The same change also fixed two old Packing faults: on SSO login `auth.getUser()`
+was empty, so **saving the signature** threw a TypeError and the signature never
+made it onto the PDF.
 
-**Naye role.** `CMP_USER` / `PK_USER` — un logon ke liye jinka kaam sirf apne
-app me hai. Unse ERP ke saare buttons **do tah** se band hain: per-user
-`app_access`, aur role-wise Tab Visibility (migration dono likhti hai). Ek
-nayi key bhi hai — `HOME_ERP_APP`, yani launcher par "ERP" ka button.
+**New roles.** `CMP_USER` / `PK_USER`, for people whose work is only in their own
+app. All ERP buttons are closed to them in **two layers**: per-user
+`app_access`, and role-wise Tab Visibility (the migration writes both). There's
+one new key too: `HOME_ERP_APP`, the "ERP" button on the launcher.
 
-**Jiska us app me account hi nahi hai**, uske login par us app ka button ab
-**chhup** jaata hai (pehle button dikhta tha aur dabane par us app ki apni
-login screen aa jaati thi). Migration ye report me `APP_HIDDEN` likh deti
-hai. Admin us bande ka account bana kar jodd lagaye, phir Users › 📱 Apps me
-wapas auto / ON kar de.
+**For someone with no account in an app**, that app's button is now **hidden**
+at login (before, the button showed and pressing it brought up that app's own
+login screen). The migration marks this as `APP_HIDDEN` in the report. The Admin
+should create the person's account and link it, then set Users › Apps back to
+auto / ON.
 
-**Jo haath se karna padega:** jin naamon par shak tha (ek hi naam ke do ERP
-user, ya `SATINDER_GHALYAN` vs `SATINDER JI` jaise) unhe migration **jodti
-nahi** — galat bande se jodna uska purana kaam doosre ke naam kar deta.
-Report me wo `NEEDS_MANUAL_LINK` me aate hain; unhe Admin Panel › Users ›
-**🔗 Link external accounts** se jodein.
+**What has to be done by hand:** names in doubt (two ERP users with the same
+name, or pairs like `SATINDER_GHALYAN` vs `SATINDER JI`) are **not linked** by the
+migration; linking the wrong person would put their past work under someone
+else's name. They appear under `NEEDS_MANUAL_LINK` in the report; link them from
+Admin Panel › Users › **Link external accounts**.
 
-Dhyan: Complaint App ka apna `admin-users` Edge Function admin ke
-**access_token** par chalta hai, isi liye ERP Admin Panel usse seedha
-user bana nahi sakta — naya Complaint user abhi bhi us app ki signup /
-admin screen se banta hai (uske baad migration dobara chalakar ya haath
-se jodd lagayein).
+Note: the Complaint App's own `admin-users` Edge Function runs on the admin's
+**access_token**, so the ERP Admin Panel can't create users through it directly.
+A new Complaint user is still created from that app's signup / admin screen
+(then run the migration again or link them by hand).
 
-## Sidebar me kaunsa module kisko dikhe
+## Which sidebar module each role sees
 
-**Master Data › Settings › Admin Panel › Tab Visibility › 🏢 ERP Shell ›
-Sidebar Modules** — har module ki ek row, har role ka ek column. Off karne par
-wo module us role ke sidebar se poora hat jaata hai (Coming Soon wale bhi).
+**Master Data › Settings › Admin Panel › Tab Visibility › ERP Shell › Sidebar
+Modules**: one row per module, one column per role. Turning one off removes that
+module from that role's sidebar completely (Coming Soon ones included).
 
-Do level hain, aur dono alag kaam karte hain:
+There are two levels, and they do different jobs:
 
-| Level | Kahan | Kya karta hai |
+| Level | Where | What it does |
 |---|---|---|
-| Module | `🏢 ERP Shell › Sidebar Modules` (`ERP_*`) | Sidebar ka button dikhe ya na dikhe |
-| Screen | `🏠 Home Page` (`HOME_*`) | Us screen par haq hai ya nahi — sidebar ka leaf yahi padhta hai |
+| Module | `ERP Shell › Sidebar Modules` (`ERP_*`) | Whether the sidebar button shows |
+| Screen | `Home Page` (`HOME_*`) | Whether the user has rights to that screen; the sidebar leaf reads this |
 
-To module ON + screen OFF ka matlab: module dikhega, par us screen ka leaf
-nahi. Aur `ERP_*` row sirf chhupati hai — screen ka asli pehra `HOME_*` hi hai,
-isi liye sidebar se kisi ko extra access nahi mil sakta.
+So module ON + screen OFF means: the module shows, but not that screen's leaf. And
+an `ERP_*` row only hides; the real guard on a screen is `HOME_*`, so nobody can
+gain extra access through the sidebar.
 
-Default: sab modules sabko, `Administration` sirf Admin ko. Save dabate hi
-sidebar redraw ho jaata hai (`sarvApplyAccess` se juda hai) — reload nahi
-karna padta. Naya module `erp-shell.js` ke `MODULES` me jode to uski
-`ERP_<key>` row `store-core.js` ke `SARV_TABS` me bhi jodein, warna wo hamesha
-dikhta rahega.
+Default: every module for everyone, `Administration` only for the Admin. Pressing
+Save redraws the sidebar (it's tied to `sarvApplyAccess`); no reload needed. When
+you add a new module to `MODULES` in `erp-shell.js`, also add its `ERP_<key>` row
+to `SARV_TABS` in `store-core.js`, otherwise it will always show.
 
-## ERP shell hatana ho to
+## Removing the ERP shell
 
-`Store.html` se do line hata dein — `<link rel="stylesheet" href="erp-shell.css">`
-aur `<script src="erp-shell.js"></script>`. Purana tile wala Home screen wapas
-aa jayega; baaki kuch nahi badlega, kyunki shell ne `store-core.js` me ek line
-bhi nahi chhedi.
+Remove two lines from `Store.html`: `<link rel="stylesheet" href="erp-shell.css">`
+and `<script src="erp-shell.js"></script>`. The old tile Home screen comes back;
+nothing else changes, because the shell didn't touch a single line of
+`store-core.js`.
+
+## Item Master: Pending PR / PO column
+
+Master Data › Item Master has a **Pending PR / PO** column: for each item, the
+qty still to come into the store. Click a figure for a popup listing every open
+PR and PO behind it, with dates, vendor / requester, qty, what is done, what is
+pending, the due date (red when a PO's delivery date has passed) and an **Open
+PDF** link.
+
+| Part | Rule |
+|---|---|
+| PO | `ordered_qty − received_qty` on POs that are not Received / Closed (Short) / Cancelled / Rejected |
+| PR | requested qty on open PRs (not Completed / Cancelled / Rejected / Closed) that is not on a live PO yet and has not come in "without PO" |
+
+The figure's colour says where the qty sits: **green** = on PO only, **orange**
+= on PR only, **purple** = both (hover for the exact split).
+
+A qty is counted once, never on both sides: a PR line's qty that is already on a
+PO counts on the PO side, using the same `req_no|item name` key as the Pending
+Items table. The lookup (`imLoadPipeline_` in `store-core.js`) runs after the
+table is drawn, so the column shows "…" for a moment; sort, filter, the Columns
+popup and the CSV / PDF export all include it. No migration.
+
+## Purchase sidebar: PO Follow-up Report, PO Details Report; Sales apps in a new tab
+
+- **Purchase › PO Follow-up Report** opens the PR → PO → Inward Follow-Up Report on
+  its own: no PO KPI cards, no Build PO / Generated POs tabs. **Purchase › PO
+  Generation** shows Build PO + Generated POs only. Both are the same panel in two
+  modes (`applyPoOnly` in `erp-shell.js`), and both still obey Tab Visibility
+  (`HOME_PO`, and `PO_SUB_REPORT` for the report).
+- **Purchase › PO Details Report** (ordered vs received per PO line, CSV / PDF) moved
+  here from the Print History / Reports toolbar. Same function (`openPoDetailsReport`),
+  same access row (`HOME_REPORTS`).
+- **Sales › Order Form** and **Sales › Packing & Dispatch** in the sidebar always open
+  the standalone page in a new browser tab, not the ERP iframe. The ERP login carries
+  over (same origin, `sso-gate.js`). If the browser blocks the tab, a toast gives a link.
+
+## Dates: always DD/MM/YYYY
+
+`date-dmy.js` is loaded first in every app's `<head>`. It turns every
+`<input type="date">` (including ones added later, and React ones in Complaint) into
+a DD/MM/YYYY text box, whatever the computer's own date format is. Slashes are typed
+for you, and after DD/MM the current year fills in (selected, so typing replaces it).
+The calendar icon, Alt+Down or F4 opens the normal date picker. An impossible date or
+one outside `min` / `max` gets a red border.
+
+For code nothing changes: the element's `.value` still reads and writes
+`YYYY-MM-DD` ('' while incomplete), and `.valueAsDate` works. The box is now
+`type="text"` with `data-dmy="1"`, so select it with `input[type=date],input[data-dmy]`.
+`datetime-local` boxes are not converted. `today()` in `store-core.js` now returns the
+local date (it used UTC, which gave yesterday's date before 05:30 IST).
+
+## My Day: the Store Incharge's daily task list
+
+`store-mytasks.js` + `store-mytasks.css`. Opens from **Store › My Day (Daily Tasks)**, the
+**Tasks** button in the top bar (with an open-task count on it), and by itself once a day
+after login until that day is closed. Who sees it: Admin Panel › Tab Visibility ›
+`HOME_MYDAY` (default Store In-Charge + Admin).
+
+One step per task. Each step shows a count read from ERP data, a short guide, the open
+rows, a button that opens the exact screen with the filter set, and **Recheck**. A task is
+**done only when its count reaches 0**; it cannot be ticked by hand, only skipped with a
+written reason. The last step, **Close the day**, is allowed once every task is done or
+skipped.
+
+| Task | Counted from | Done when | Due |
+|---|---|---|---|
+| Below-MSV items: raise PRs | Item Master balance < MSV, minus open PR / PO qty (Pending PR / PO column) | every shortfall is on a PR / PO. **Raise PR for ticked items** fills the PR form (qty = Std Order Qty or the shortfall, whichever is more) | 11:00 |
+| Tell requesters material has arrived | PO Follow-up Report: receipts of the last 30 days without "Inform to Requester" | every receipt is ticked | 17:00 |
+| Fix Rejected / Hold PRs | PRs in Rejected / Hold, with the reason | each is resubmitted (back to Pending) or cancelled | 11:00 |
+| PRs waiting 5+ days for a PO | open PR lines with no PO, 5+ days old | each PR is marked "reminded" today | 12:00 |
+| Send entry PDFs on WhatsApp | Inward / Outward / Issue of the last 3 days not sent from this computer | all sent | 17:00 |
+| Physical stock count | 10 items a day, rotating (never counted first, then the oldest count) | all 10 saved. Recording only: nothing changes stock; the MD reviews differences | 16:00 |
+
+**Setup:** run `DAILY_TASKS_MIGRATION.sql` once (tables `daily_task_log` and `stock_counts`).
+Until then everything works except the stock count, and the day's record is kept in the
+browser only (a yellow line says so). The constants at the top of `store-mytasks.js` set the
+stock-count size and the day windows; each task's `due` sets its deadline.

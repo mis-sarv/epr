@@ -2,17 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+<script src="date-dmy.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mobile Approvals Panel</title>
 
-    <!-- Login screen ki jhalak rokta hai: token localStorage me ho to overlay paint hi nahi hota. Sabse pehle chalna chahiye. -->
+    <!-- Prevents the login screen from flashing: with a token in localStorage the overlay is never painted. Must run first. -->
     <script src="sso-preboot.js"></script>
 
-    <!-- Login window ab sirf launcher.html par. Token na ho to ye page
-         khulne se pehle hi wahan bhej deta hai — mobile ka apna
-         role/PIN gate kisi ko dikhta nahi. Dekhein sso-gate.js. -->
+    <!-- The login window now lives only on launcher.html. Without a token
+         this page redirects there before it opens, so nobody sees the
+         mobile app's own role/PIN gate. See sso-gate.js. -->
     <script src="sso-gate.js"></script>
-    <script>if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js load nahi hua — wo file apps ke saath hi rakhni hai.");</script>
+    <script>if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps.");</script>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -27,20 +28,19 @@
 <div class="app-container">
     <div class="modal-overlay" id="loginScreen" style="display:flex; align-items:center;">
         <div class="modal-content">
-            <div class="modal-title"><span>🔐 Approver Login</span></div>
+            <div class="modal-title"><span>Approver Login</span></div>
 
-            <!-- ── Naam se login (ek naam + ek PIN, saare apps) ──────────
-                 Yahi asli raasta hai: ERP, Complaint, Packing aur ye app
-                 sab EK hi `app_users` row se chalte hain. Naam chunte hi
-                 uske role dikh jaate hain, aur login hone par baaki apps
-                 bhi bina dobara PIN khul jaate hain (ek hi session banta
-                 hai). Neeche "Approving As" wala purana raasta chhoda
-                 gaya hai — jinka naam Admin Panel me nahi hai, unka kaam
-                 isi se chalta rehta hai. -->
+            <!-- ── Login by name (one name + one PIN for all apps) ──────
+                 This is the main path: the ERP, Complaint, Packing and this
+                 app all run on ONE `app_users` row. Picking a name shows
+                 that person's roles, and after login the other apps open
+                 without asking for the PIN again (a single session is
+                 created). The older "Approving As" path below is kept for
+                 people whose name is not yet in the Admin Panel. -->
             <div class="form-group">
-                <label>Apna Naam <small style="font-weight:500;color:#6b7280;">— ek PIN, saare apps</small></label>
+                <label>Your Name <small style="font-weight:500;color:#6b7280;">One PIN for all apps</small></label>
                 <input type="text" id="loginName" class="form-select" list="loginNamesDl"
-                       autocomplete="off" placeholder="Naam type karein / chunein">
+                       autocomplete="off" placeholder="Type or pick your name">
                 <datalist id="loginNamesDl"></datalist>
                 <div id="loginNameRoles" style="font-size:0.7rem;font-weight:700;color:#166534;margin-top:4px;min-height:14px;"></div>
             </div>
@@ -48,7 +48,7 @@
             <div id="loginRoleWrap">
                 <div style="display:flex;align-items:center;gap:8px;margin:12px 0 10px;">
                     <span style="flex:1;height:1px;background:#e5e7eb;"></span>
-                    <span style="font-size:0.68rem;color:#9ca3af;font-weight:700;">ya purana tareeka</span>
+                    <span style="font-size:0.68rem;color:#9ca3af;font-weight:700;">or the old way</span>
                     <span style="flex:1;height:1px;background:#e5e7eb;"></span>
                 </div>
                 <div class="form-group">
@@ -94,7 +94,7 @@
         </div>
     </div>
 
-    <div id="busyOverlay"><div>⏳</div><div id="busyText">Working...</div></div>
+    <div id="busyOverlay"><div></div><div id="busyText">Working...</div></div>
 
     <header>
         <!-- The + sits right next to the title because raising a requirement is
@@ -104,10 +104,10 @@
         <span style="display:flex;align-items:center;gap:8px;min-width:0;">
             <span>Approval Dashboard</span>
             <span id="newPrBtn" onclick="openMobilePrForm()" style="display:none;"
-                  title="Naya PERSONNEL ITEM REQUIREMENT FORM bharein">&#10133;</span>
+                  title="Fill a new PERSONNEL ITEM REQUIREMENT FORM">+ New PR</span>
         </span>
         <span style="display:flex;align-items:center;gap:8px;">
-            <span id="searchToggle" onclick="toggleSearchBar()" title="Search">&#128269;</span>
+            <span id="searchToggle" onclick="toggleSearchBar()" title="Search">Search</span>
             <span id="roleBadge" onclick="logoutRole()">-</span>
         </span>
     </header>
@@ -124,7 +124,7 @@
             <!-- Live status: says whether the list is updating itself, so nobody
                  is left wondering whether what they are looking at is current.
                  Tap to force a refresh now. -->
-            <span id="liveStatus" title="List apne aap update hoti hai — tap karke abhi refresh karein"
+            <span id="liveStatus" title="The list updates on its own. Tap to refresh now."
                   style="margin-left:auto;font-size:0.68rem;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:12px;padding:2px 9px;cursor:pointer;white-space:nowrap;display:none;">
                 <span id="liveDot" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;vertical-align:middle;margin-right:5px;"></span><span id="liveText">Live</span>
             </span>
@@ -136,27 +136,27 @@
          everyone else sees it read-only. See STAGE_TABS in the script. -->
     <nav class="stage-tabs" id="stageTabs">
         <div class="stage-tab" data-tab="VI" onclick="switchStageTab('VI')">
-            <span class="st-ico">&#128176;</span><span class="st-lbl">Vendor Info</span><span class="st-count" id="cnt-VI">0</span>
+            <span class="st-ico"></span><span class="st-lbl">Vendor Info</span><span class="st-count" id="cnt-VI">0</span>
         </div>
         <div class="stage-tab" data-tab="POGEN" onclick="switchStageTab('POGEN')">
-            <span class="st-ico">&#129534;</span><span class="st-lbl">PO Generate</span><span class="st-count" id="cnt-POGEN">0</span>
+            <span class="st-ico"></span><span class="st-lbl">PO Generate</span><span class="st-count" id="cnt-POGEN">0</span>
         </div>
         <div class="stage-tab" data-tab="MD" onclick="switchStageTab('MD')">
-            <span class="st-ico">&#9997;&#65039;</span><span class="st-lbl">MD Approval</span><span class="st-count" id="cnt-MD">0</span>
+            <span class="st-ico"></span><span class="st-lbl">MD Approval</span><span class="st-count" id="cnt-MD">0</span>
         </div>
         <div class="stage-tab" data-tab="SENT" onclick="switchStageTab('SENT')">
-            <span class="st-ico">&#128228;</span><span class="st-lbl">PO Sent to Vendor</span><span class="st-count" id="cnt-SENT">0</span>
+            <span class="st-ico"></span><span class="st-lbl">PO Sent to Vendor</span><span class="st-count" id="cnt-SENT">0</span>
         </div>
         <!-- GM and MD: Store entries (Inward / Inward NB / Outward) to be
              checked against their items. GM checks first, then the same entry
              surfaces for MD. See STORE_STAGES. -->
         <div class="stage-tab" data-tab="STORE" onclick="switchStageTab('STORE')">
-            <span class="st-ico">&#128230;</span><span class="st-lbl">Store Check</span><span class="st-count" id="cnt-STORE">0</span>
+            <span class="st-ico"></span><span class="st-lbl">Store Check</span><span class="st-count" id="cnt-STORE">0</span>
         </div>
         <!-- Purchaser: what has actually arrived against the POs raised from
              their own PRs, split Pending / Partially Received / Received. -->
         <div class="stage-tab" data-tab="RECV" onclick="switchStageTab('RECV')">
-            <span class="st-ico">&#128229;</span><span class="st-lbl">PO Receipts</span><span class="st-count" id="cnt-RECV">0</span>
+            <span class="st-ico"></span><span class="st-lbl">PO Receipts</span><span class="st-count" id="cnt-RECV">0</span>
         </div>
         <!-- PO Sender: the POs already WITH the vendor whose material has not
              fully arrived. Each follow-up call is recorded as the revised date
@@ -164,7 +164,7 @@
              STAGE_TABS. The whole history surfaces in STORE.html's Follow-Up
              Report, in the column right after PO Sent to Vendor. -->
         <div class="stage-tab" data-tab="FOLLOWUP" onclick="switchStageTab('FOLLOWUP')">
-            <span class="st-ico">&#128222;</span><span class="st-lbl">PO Follow-up</span><span class="st-count" id="cnt-FOLLOWUP">0</span>
+            <span class="st-ico"></span><span class="st-lbl">PO Follow-up</span><span class="st-count" id="cnt-FOLLOWUP">0</span>
         </div>
     </nav>
     <div class="sub-bar">
@@ -215,14 +215,14 @@
                     <div id="fbChecklistFill" style="height:100%; width:0%; background:#16a34a; transition:width .2s;"></div>
                 </div>
                 <div id="fbChecklistNote" style="font-size:0.68rem; color:#15803d; margin-top:5px; font-weight:600;">
-                    Jo item mil gaya uske saamne ✔ tick karein — har tick turant save hota hai. Saare items tick hote hi ye PR Done me chali jayegi.
+                    Tick ✔ each item once it has been received. Every tick is saved immediately, and the PR moves to Done once all items are ticked.
                 </div>
             </div>
             <div class="table-container">
                 <table class="item-table">
                     <thead>
                         <tr>
-                            <th id="done-col-header" style="display:none;" title="Item mil gaya — tick karte hi save ho jata hai">&#10004;</th>
+                            <th id="done-col-header" style="display:none;" title="Item received. Saved as soon as you tick it.">&#10004;</th>
                             <th>Sr</th>
                             <th>Item Name</th>
                             <th>Description</th>
@@ -235,7 +235,7 @@
                             <th id="vendor-col-header" style="display:none;">Vendor</th>
                             <th id="gst-col-header" style="display:none;" title="GST % for this item on the PO — editable while generating the PO">GST%</th>
                             <th id="basis-col-header" style="display:none;" title="Amount kis par bane — Qty par ya Gross Weight par">Bill On</th>
-                            <th id="amt-col-header" style="display:none;" title="Net rate (rate − disc%) × Qty ya Weight — yahi PO line ka amount hai">Amount</th>
+                            <th id="amt-col-header" style="display:none;" title="Net rate (rate − disc%) × Qty or Weight. This is the PO line amount.">Amount</th>
                         </tr>
                     </thead>
                     <tbody id="modal-item-tbody">
@@ -249,18 +249,18 @@
                  Vendor dropdown below. -->
             <div id="vendorInfoPanel" style="display:none; margin-bottom:12px; border:1px solid #d7dde5; border-radius:8px; overflow:hidden;">
                 <div id="vendorInfoToggle" style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; background:#fff7e6; cursor:pointer; font-weight:700; font-size:0.85rem;">
-                    <span>&#128176; Vendor Rate &amp; Info</span>
+                    <span>Vendor Rate &amp; Info</span>
                     <span id="vendorInfoChevron">&#9662;</span>
                 </div>
                 <div id="vendorInfoBody" style="display:none; padding:10px 12px; background:#fff;">
                     <div style="font-size:0.72rem; color:#6b7280; margin-bottom:8px;">
-                        Vendor chunein, har item ka rate / discount, Bill On aur GST% bharein, neeche PO Details bharein, phir Save dabayein.
-                        Har item ka Approved Vendor grid ke Selected Vendor column me chunein, phir sign karein.
+                        Choose vendors, fill in each item's rate / discount, Bill On and GST%, complete the PO Details below, then tap Save.
+                        Choose each item's Approved Vendor in the Selected Vendor column of the grid, then sign.
                     </div>
                     <!-- Shown once quotes are saved: this form is one-shot from a phone. -->
                     <div id="viLockedNote" style="display:none; background:#fff7e6; border:1px solid #fcd34d; border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:0.72rem; color:#92400e; font-weight:600;">
-                        &#128274; Vendor info aur PO details save ho chuki hain. Inhe ab sirf <b>STORE.html</b> (desktop) ke &#128176; Vendor Rate &amp; Info popup se badla ja sakta hai.
-                        Har item ka <b>Selected Vendor</b> abhi bhi grid me badal kar sign kar sakte hain.
+                        Vendor info and PO details are saved. They can now be changed only from the Vendor Rate &amp; Info popup in <b>STORE.html</b> (desktop).
+                        You can still change each item's <b>Selected Vendor</b> in the grid and sign.
                     </div>
                     <!-- Add Supplier sits ON this grid because this is where the
                          gap is found: the vendor pickers only offer Supplier
@@ -272,10 +272,10 @@
                         <label style="font-size:0.8rem; font-weight:600; margin:0;">Vendor &amp; Item Rates</label>
                         <button type="button" id="viAddSupplierBtn"
                                 style="border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
-                                title="Naya supplier Supplier Master me add karein — neeche ke sabhi vendor dropdowns me turant aa jayega">&#10133; Add Supplier</button>
+                                title="Add a new supplier to the Supplier Master. It appears in every vendor dropdown below immediately.">Add Supplier</button>
                     </div>
                     <div style="font-size:0.68rem; color:#6b7280; margin-bottom:6px;">
-                        Contact no. vendor ke dropdown me hi dikhta hai. Item column aur header freeze hain &mdash; side me scroll karke baaki vendors dekhein.
+                        The contact number is shown in the vendor dropdown. The item column and header are frozen; scroll sideways to see the other vendors.
                     </div>
                     <!-- ONE table, not a vendor list plus a rate table. Each
                          picker is the header of its own Rate / % pair, so a
@@ -299,18 +299,17 @@
                          negotiated with the vendor, so they are filled here,
                          in the same pass as the rates, and PO Generate shows
                          them back locked. -->
-                    <!-- PO Details — ek block PER SELECTED VENDOR ───────
-                         Ek PR jitne alag vendors par bantta hai, utne hi PO
-                         bante hain (autoGeneratePosFromPr vendor-wise group
-                         karta hai). Isi liye Delivery Date, charges aur notes
-                         bhi per PO hain, PR-level nahi — aur har block ke theek
-                         neeche usi vendor ka apna PO Calculation hota hai.
-                         Ye blocks renderViPoBlocks() banata hai, Selected
-                         Vendor column badalne par dobara. -->
+                    <!-- PO Details: one block PER SELECTED VENDOR ───────
+                         A PR produces as many POs as it has distinct vendors
+                         (autoGeneratePosFromPr groups by vendor). So Delivery
+                         Date, charges and notes are per PO, not per PR, and
+                         each block has that vendor's own PO Calculation right
+                         below it. renderViPoBlocks() builds these blocks and
+                         rebuilds them when the Selected Vendor column changes. -->
                     <div id="viPoBlocks"></div>
 
                     <div class="err-banner" id="viError" style="display:none;"></div>
-                    <button class="btn" id="viSaveBtn" style="margin-top:10px;">&#128190; Save Vendor Info &amp; PO Details</button>
+                    <button class="btn" id="viSaveBtn" style="margin-top:10px;">Save Vendor Info &amp; PO Details</button>
                 </div>
             </div>
 
@@ -319,17 +318,17 @@
                  autoGeneratePosFromPr will write: per-line net rate x billed
                  units, each line's own GST, charges at their own GST. Live
                  under the grid while quoting, read-only in PO Generate. -->
-            <!-- PO Generate tab ka read-only calculation — ek card per vendor,
-                 wahi cards jo quote sheet par dikhte hain. Quote sheet apne
-                 cards #viPoBlocks ke andar, apne-apne PO Details block ke
-                 neeche rakhti hai. -->
+            <!-- Read-only calculation for the PO Generate tab: one card per
+                 vendor, the same cards the quote sheet shows. The quote sheet
+                 places its cards inside #viPoBlocks, each under its own PO
+                 Details block. -->
             <div id="poSummaryWrap"></div>
 
             <!-- Saved PO terms, shown back in the PO Generate tab. Locked by
                  design: they were agreed with the vendor at quoting time, and
                  the editable copies live in the Vendor Rate & Info panel. -->
             <div class="po-locked-card" id="poLockedCard" style="display:none;">
-                <div class="po-locked-head">&#128274; PO Details (Vendor Info me save kiye gaye &mdash; locked)</div>
+                <div class="po-locked-head">PO Details (saved in Vendor Info &mdash; locked)</div>
                 <div class="po-locked-grid" id="poLockedGrid"></div>
             </div>
 
@@ -345,14 +344,14 @@
                 <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">
                     Reason / Remarks <span style="color:#dc3545;">*</span>
                 </label>
-                <textarea id="viDecisionRemarks" rows="2" placeholder="Reject ya Hold ki wajah likhein..." style="width:100%;"></textarea>
+                <textarea id="viDecisionRemarks" rows="2" placeholder="Reason for Reject or Hold..." style="width:100%;"></textarea>
                 <div style="display:flex; gap:8px; margin-top:8px;">
                     <button class="btn" id="viRejectBtn" style="flex:1; width:auto; background:#dc3545;">&#10006; Reject PR</button>
-                    <button class="btn" id="viHoldBtn" style="flex:1; width:auto; background:#d97706;">&#9208; Hold</button>
+                    <button class="btn" id="viHoldBtn" style="flex:1; width:auto; background:#d97706;">Hold</button>
                 </div>
                 <div style="font-size:0.7rem; color:#6b7280; margin-top:6px;">
-                    <b>Reject</b> — PR wapas Store ko; wahan sudhar kar dobara bhejenge.
-                    <b>Hold</b> — PR yahin ruki rahegi, PO nahi banega; jab chahein Hold hata dein.
+                    <b>Reject</b>: the PR goes back to Store to be corrected and resubmitted.
+                    <b>Hold</b>: the PR stays here and no PO is created; you can remove the hold any time.
                 </div>
             </div>
 
@@ -367,7 +366,7 @@
                 <label>Delivery Date <span style="color:#dc3545;">*</span></label>
                 <input type="date" id="deliveryDateInput" class="form-select">
                 <div id="deliveryDateHint" style="display:none; font-size:0.72rem; color:#6b7280; margin-top:4px;">
-                    Approve karte hi har approved vendor ka PO isi Delivery Date ke saath ban jayega aur seedha MD approval ke liye jayega.
+                    On approval, a PO is created for every approved vendor with this Delivery Date and sent straight for MD approval.
                 </div>
             </div>
 
@@ -395,7 +394,7 @@
                     </div>
                 </div>
                 <div style="font-size:0.7rem; color:#6b7280; margin-top:4px;">
-                    Ye charges PO ke total me judenge (in par GST % alag lagega). Items alag-alag vendors ke hon to charges pehle PO par lagenge.
+                    These charges are added to the PO total (GST % applies to them separately). If items are spread across vendors, the charges go on the first PO.
                 </div>
             </div>
 
@@ -407,13 +406,13 @@
                 <label id="remarksLabel">Remarks / Notes</label>
                 <textarea id="remarksInput" rows="2" placeholder="Enter remarks (optional)..."></textarea>
                 <div id="remarksHint" style="display:none; font-size:0.7rem; color:#6b7280; margin-top:4px;">
-                    Ye aapke sign ke saath record hota hai. PO par chhapne wale notes <b>Vendor Info</b> ke &#129534; PO Details me hain.
+                    This is recorded with your signature. Notes to be printed on the PO are under PO Details in <b>Vendor Info</b>.
                 </div>
             </div>
 
             <!-- Shown instead of the pad once this user's sign is saved — see applySignPadMode(). -->
             <div id="pinOnlyNote" style="display:none; margin-bottom:12px; padding:10px 12px; border:1px solid #c4b5fd; background:#f5f3ff; border-radius:8px; font-size:0.8rem; color:#5b21b6; font-weight:700;">
-                🔑 Aapka sign saved hai — <b>Approve &amp; Sign</b> dabayein aur apna PIN daalein. Saved sign apne-aap PDF par lag jayega.
+                Your signature is saved. Tap <b>Approve &amp; Sign</b> and enter your PIN; the saved signature is added to the PDF automatically.
             </div>
             <div class="form-group" id="sigPadGroup">
                 <label>
@@ -421,7 +420,7 @@
                     <span style="display:flex; gap:6px; align-items:center;">
                         <!-- Draw once (STORE.html → Admin Panel → Users & Roles), then
                              just the PIN here puts that saved signature on the pad. -->
-                        <button type="button" class="clear-btn" id="pinSignBtn" style="background:#ede9fe; color:#5b21b6; border-color:#a78bfa;">&#128273; PIN se Sign</button>
+                        <button type="button" class="clear-btn" id="pinSignBtn" style="background:#ede9fe; color:#5b21b6; border-color:#a78bfa;">PIN se Sign</button>
                         <button class="clear-btn" onclick="clearSignature()">Clear</button>
                     </span>
                 </label>
@@ -429,7 +428,7 @@
                     <canvas id="sigPad"></canvas>
                 </div>
                 <!-- Approve stays disabled until the pad carries ink — syncApproveBtn(). -->
-                <div id="sigRequiredHint" style="margin-top:6px; font-size:12px; color:#5b21b6; font-weight:600;">🔑 Approve &amp; Sign dabayein — apna PIN daalte hi saved sign yahan apne-aap lag jayega. (Sign saved na ho to yahan sign karein.)</div>
+                <div id="sigRequiredHint" style="margin-top:6px; font-size:12px; color:#5b21b6; font-weight:600;">Tap Approve &amp; Sign. Your saved signature is placed here once you enter your PIN. (If you have no saved signature, sign here.)</div>
             </div>
 
             <div style="display:flex; gap:8px;">
@@ -456,7 +455,7 @@
             <!-- Every document behind this entry: its own PDF, plus the PO and
                  PR it was raised against. Filled on open — see storeModalDocs_. -->
             <div id="storeModalDocs" style="display:none; margin:8px 0 4px; border:1px solid #d7dde5; border-radius:8px; padding:8px 10px; background:#fbfcfe;">
-                <div style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:2px;">📎 Documents</div>
+                <div style="font-size:0.78rem; font-weight:700; color:#334155; margin-bottom:2px;">Documents</div>
                 <div id="storeModalDocsBody" style="font-size:0.78rem;"></div>
             </div>
             <label style="font-size:0.85rem; font-weight:600; margin:8px 0 6px; display:block;">Item Details</label>
@@ -472,7 +471,7 @@
             <div id="storeCheckBox" style="display:none; margin-top:12px;">
                 <div class="form-group">
                     <label>Remarks <small style="font-weight:500;color:#6b7280;">— optional</small></label>
-                    <textarea id="storeCheckRemarks" rows="2" placeholder="Koi note ho to likhein..."></textarea>
+                    <textarea id="storeCheckRemarks" rows="2" placeholder="Add a note if needed..."></textarea>
                 </div>
                 <button class="btn" id="storeCheckBtn" style="background:#16a34a;">&#10004; Check Done</button>
             </div>
@@ -485,16 +484,16 @@
             <div id="inwAppBox" style="display:none; margin-top:12px;">
                 <div id="inwAppReasons" style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:9px 11px; margin-bottom:10px; font-size:0.76rem; color:#9a3412;"></div>
                 <div class="form-group">
-                    <label>Remarks <small style="font-weight:500;color:#6b7280;">— Reject par zaroori</small></label>
-                    <textarea id="inwAppRemarks" rows="2" placeholder="Approve ya Reject ki wajah likhein..."></textarea>
+                    <label>Remarks <small style="font-weight:500;color:#6b7280;">Required for Reject</small></label>
+                    <textarea id="inwAppRemarks" rows="2" placeholder="Reason for Approve or Reject..."></textarea>
                 </div>
                 <div style="display:flex; gap:8px;">
                     <button class="btn" id="inwAppApproveBtn" style="flex:1; width:auto; background:#16a34a;">&#10004; Approve</button>
                     <button class="btn" id="inwAppRejectBtn" style="flex:1; width:auto; background:#dc3545;">&#10006; Reject</button>
                 </div>
                 <div style="font-size:0.7rem; color:#6b7280; margin-top:7px;">
-                    <b>Approve</b> — Store wahi entry dobara Submit karke save kar payega.
-                    <b>Reject</b> — Store ko values theek karni padengi, tab tak Inward save nahi hoga.
+                    <b>Approve</b>: Store can submit the same entry again and save it.
+                    <b>Reject</b>: Store must correct the values; the Inward cannot be saved until then.
                 </div>
             </div>
         </div>
@@ -519,7 +518,7 @@
     <div class="modal-overlay" id="poFollowupModal">
         <div class="modal-content">
             <div class="modal-title">
-                <span id="pfuTitle">&#128222; PO Follow-up</span>
+                <span id="pfuTitle">PO Follow-up</span>
                 <button class="close-btn" onclick="closePoFollowupModal()">×</button>
             </div>
 
@@ -534,15 +533,15 @@
                  Receipts shows (openRecvModal), because it answers the
                  question this whole tab is built around: not "is something
                  outstanding" but WHICH items are, and how much of each. That
-                 is what gets said on the call — "aapke PO ke 3 item me se
-                 2 baaki hain, 40 kg" is a conversation; "maal pending hai"
-                 is not.
+                 is what gets said on the call: "2 of the 3 items on your PO
+                 are still pending, 40 kg" is a conversation; "material is
+                 pending" is not.
 
                  ABOVE the history and the input deliberately: you read the
                  shortfall, then the last thing the vendor said about it, then
                  you write down what they say now. -->
             <label style="font-size:0.85rem; font-weight:600; margin:10px 0 6px; display:block;">
-                &#128230; Item Details <span id="pfuItemCount" style="font-weight:800;color:#0284c7;"></span>
+                Item Details <span id="pfuItemCount" style="font-weight:800;color:#0284c7;"></span>
             </label>
             <div class="table-container">
                 <table class="item-table">
@@ -552,26 +551,26 @@
             </div>
 
             <label style="font-size:0.85rem; font-weight:600; margin:14px 0 6px; display:block;">
-                &#128340; Follow-up History <span id="pfuCount" style="font-weight:800;color:#0284c7;"></span>
+                Follow-up History <span id="pfuCount" style="font-weight:800;color:#0284c7;"></span>
             </label>
             <div id="pfuHistory"></div>
 
             <!-- Add box. Hidden outright for a read-only login — see
                  openPoFollowupModal; a disabled form would only invite a tap. -->
             <div id="pfuAddBox">
-                <div class="pfu-add-head">&#10133; Naya Follow-up</div>
+                <div class="pfu-add-head">New Follow-up</div>
                 <div class="form-group">
                     <label>Revised Delivery Date <span style="color:#dc3545;">*</span></label>
                     <input type="date" id="pfuRevisedDate" class="form-select" autocomplete="off">
-                    <div class="pfu-hint" id="pfuDateHint">Vendor ne jo nayi date di wahi daalein. PO ki original Delivery Date badalti nahi &mdash; wo record me waisi hi rehti hai.</div>
+                    <div class="pfu-hint" id="pfuDateHint">Enter the new date the vendor has given. The PO's original Delivery Date does not change; it stays on record as it is.</div>
                 </div>
                 <div class="form-group">
                     <label>Remarks <span style="color:#dc3545;">*</span></label>
-                    <textarea id="pfuRemarks" rows="3" placeholder="Vendor ne kya kaha — kaaran, kiska naam, kitna maal taiyar hai..."></textarea>
-                    <div class="pfu-hint">Save hone ke baad entry badli nahi ja sakti &mdash; nayi entry jodni padegi.</div>
+                    <textarea id="pfuRemarks" rows="3" placeholder="What the vendor said: reason, contact name, how much material is ready..."></textarea>
+                    <div class="pfu-hint">An entry cannot be edited after it is saved; add a new entry instead.</div>
                 </div>
                 <div class="err-banner" id="pfuError"></div>
-                <button class="btn" id="pfuSaveBtn" style="background:#0284c7;">&#128190; Save Follow-up</button>
+                <button class="btn" id="pfuSaveBtn" style="background:#0284c7;">Save Follow-up</button>
             </div>
             <div class="mode-note" id="pfuModeNote" style="display:none;"></div>
         </div>
@@ -587,12 +586,12 @@
     <div class="modal-overlay" id="poSendPinModal">
         <div class="modal-content">
             <div class="modal-title">
-                <span>&#128274; PO Sender PIN</span>
+                <span>PO Sender PIN</span>
                 <button class="close-btn" onclick="closePoSendPinGate()">×</button>
             </div>
             <div class="req-meta-info" id="poSendPinSubtitle" style="font-weight:700;"></div>
             <div style="font-size:0.76rem; color:#6b7280; margin:8px 0 10px;">
-                Vendor ko PO bhejne se pehle apna <b>PO Sender PIN</b> daalein. Yahi PIN login me use hota hai.
+                Enter your <b>PO Sender PIN</b> before sending the PO to the vendor. It is the same PIN you use to log in.
             </div>
             <div class="form-group">
                 <label>PIN <span style="color:#dc3545;">*</span></label>
@@ -613,11 +612,11 @@
     <div class="modal-overlay" id="pinSignModal" style="z-index:1100;">
         <div class="modal-content">
             <div class="modal-title">
-                <span id="pinSignTitle">&#128273; PIN se Sign</span>
+                <span id="pinSignTitle">PIN se Sign</span>
                 <button class="close-btn" onclick="closePinSign()">×</button>
             </div>
             <div id="pinSignNote" style="font-size:0.76rem; color:#6b7280; margin-bottom:10px;">
-                Draw karne ki jagah apna PIN daalein &mdash; aapka saved signature pad par lag jayega.
+                Enter your PIN instead of drawing; your saved signature will be placed on the pad.
             </div>
             <div class="form-group">
                 <label>User</label>
@@ -629,7 +628,7 @@
             </div>
             <div class="err-banner" id="pinSignError"></div>
             <div style="display:flex; gap:8px;">
-                <button class="btn" id="pinSignOkBtn" style="flex:1; width:auto; background:#16a34a;">&#9997;&#65039; Sign</button>
+                <button class="btn" id="pinSignOkBtn" style="flex:1; width:auto; background:#16a34a;">Sign</button>
                 <button class="btn" style="flex:1; width:auto; background:#6c757d;" onclick="closePinSign()">&#10006; Cancel</button>
             </div>
         </div>
@@ -646,18 +645,18 @@
     <div class="modal-overlay" id="addSupplierModal" style="z-index:1100;">
         <div class="modal-content">
             <div class="modal-title">
-                <span>&#10133; Add Supplier</span>
+                <span>Add Supplier</span>
                 <button class="close-btn" onclick="closeAddSupplierModal()">×</button>
             </div>
             <div style="font-size:0.74rem; color:#6b7280; margin-bottom:10px;">
-                Supplier Master me save hoga aur upar ke sabhi vendor dropdowns me turant dikhne lagega.
+                It is saved to the Supplier Master and appears in every vendor dropdown above immediately.
             </div>
             <div class="form-group">
                 <label>Supplier Name <span style="color:#dc3545;">*</span></label>
                 <input type="text" id="asName" class="form-select" placeholder="M/s ..." autocomplete="off" style="text-transform:uppercase;">
             </div>
             <div class="form-group">
-                <label>Contact No. <small style="font-weight:500;color:#6b7280;">— dropdown me yahi dikhta hai</small></label>
+                <label>Contact No. <small style="font-weight:500;color:#6b7280;">Shown in the dropdown</small></label>
                 <input type="tel" id="asPhone" class="form-select" placeholder="98xxxxxxxx" inputmode="tel" autocomplete="off">
             </div>
             <div class="form-group">
@@ -685,7 +684,7 @@
             </div>
             <div class="err-banner" id="asError" style="display:none;"></div>
             <div style="display:flex; gap:8px;">
-                <button class="btn" id="asSaveBtn" style="flex:1; width:auto; background:#16a34a;">&#128190; Save Supplier</button>
+                <button class="btn" id="asSaveBtn" style="flex:1; width:auto; background:#16a34a;">Save Supplier</button>
                 <button class="btn" id="asCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
             </div>
         </div>
@@ -707,7 +706,7 @@
     <div class="modal-overlay" id="prFormModal" style="z-index:1200;">
         <div class="modal-content">
             <div class="modal-title">
-                <span>&#128221; Personnel Item Requirement</span>
+                <span>Personnel Item Requirement</span>
                 <button class="close-btn" onclick="closeMobilePrForm()">×</button>
             </div>
 
@@ -727,17 +726,17 @@
             <div class="form-group">
                 <label>Required By Date <span style="color:#dc3545;">*</span></label>
                 <input type="date" id="prmRequiredBy" class="form-select" value="" autocomplete="off">
-                <div class="pr-hint">Khud chunna zaroori hai &mdash; koi default date nahi bharti.</div>
+                <div class="pr-hint">Please choose a date; none is filled in by default.</div>
             </div>
             <div class="form-group">
                 <label>Priority <span style="color:#dc3545;">*</span></label>
                 <input type="hidden" id="prmPriority" value="">
                 <div class="pr-prio-group" id="prmPriorityGroup">
-                    <button type="button" class="pr-prio-btn" data-priority="Normal">&#128994; Normal</button>
-                    <button type="button" class="pr-prio-btn" data-priority="Urgent">&#128993; Urgent</button>
-                    <button type="button" class="pr-prio-btn" data-priority="Critical">&#128308; Critical</button>
+                    <button type="button" class="pr-prio-btn" data-priority="Normal">Normal</button>
+                    <button type="button" class="pr-prio-btn" data-priority="Urgent">Urgent</button>
+                    <button type="button" class="pr-prio-btn" data-priority="Critical">Critical</button>
                 </div>
-                <div class="pr-hint">Teeno me se ek chunna zaroori hai — koi default nahi hai.</div>
+                <div class="pr-hint">Choose one of the three; there is no default.</div>
             </div>
             <!-- A Purchaser logged in here cannot change this: the PR is booked
                  against whoever is signed in, and the mobile Purchaser lists
@@ -757,7 +756,7 @@
                     <option value="PRIYA VERMA">PRIYA VERMA</option>
                     <option value="FIELD BOY">FIELD BOY</option>
                 </select>
-                <div class="pr-hint" id="prmPurchaserHint">Pehle item ki Category ke hisaab se apne aap bhar jata hai &mdash; badal sakte hain.</div>
+                <div class="pr-hint" id="prmPurchaserHint">Filled in from the first item's Category. You can change it.</div>
             </div>
 
             <div class="pr-sec-head">Requested By</div>
@@ -766,7 +765,7 @@
                 <input type="text" id="prmEmpCode" class="form-select" placeholder="e.g. EMP-007"
                        list="prm-dl-emp-codes" autocomplete="off" style="text-transform:uppercase;">
                 <datalist id="prm-dl-emp-codes"></datalist>
-                <div id="prmEmpDetails" class="pr-emp-box">Employee Code daalein — Name / Designation / Department / Contact yahan aa jayenge</div>
+                <div id="prmEmpDetails" class="pr-emp-box">Enter the Employee Code; Name / Designation / Department / Contact will appear here</div>
             </div>
 
             <div class="pr-sec-head">
@@ -776,16 +775,16 @@
                 </span>
             </div>
             <div id="prmItemList"></div>
-            <button type="button" class="btn" id="prmAddItemBtn" style="background:#0284c7;margin-bottom:14px;">&#10133; Add Item</button>
+            <button type="button" class="btn" id="prmAddItemBtn" style="background:#0284c7;margin-bottom:14px;">Add Item</button>
 
             <div class="form-group">
                 <label>Overall Remarks <small style="font-weight:500;color:#6b7280;">— optional</small></label>
-                <textarea id="prmRemarks" rows="2" placeholder="Is requirement ke baare me koi note..."></textarea>
+                <textarea id="prmRemarks" rows="2" placeholder="Any note about this requirement..."></textarea>
             </div>
 
             <div class="err-banner" id="prmError"></div>
             <div style="display:flex; gap:8px;">
-                <button class="btn" id="prmSubmitBtn" style="flex:1; width:auto;">&#9989; Submit Requirement</button>
+                <button class="btn" id="prmSubmitBtn" style="flex:1; width:auto;">Submit Requirement</button>
                 <button class="btn" id="prmCancelBtn" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
             </div>
 
@@ -798,7 +797,7 @@
 </div>
 
 <script src="mobile-core.js"></script>
-<!-- "← Apps" wapas jaane wala floating button. Ye file khud tay karti hai ki button dikhana hai ya nahi (iframe me nahi, aur single-login session na ho to nahi) — dekhein app-back.js. -->
+<!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 </body>
 </html>

@@ -639,10 +639,10 @@
             background: #fff;
         }
         .item-table.vi-grid .vi-gst { text-align: right; }
-        /* GST% aur Bill On, dono ka koi default NAHI hai — jo bhara nahi hai
-           wo bhara hua na lage, warna khaali GST "0% tax" ban kar sign ho
-           jaata aur khaali Bill On chupchaap QTY par bill ho jaata. Dono save
-           par compulsory hain, aur ye amber unfilled ka nishaan hai. */
+        /* Neither GST% nor Bill On has a default. An unfilled field must not
+           look filled; otherwise a blank GST would be signed off as "0% tax"
+           and a blank Bill On would quietly bill on QTY. Both are mandatory
+           on save, and this amber marks them as unfilled. */
         .item-table.vi-grid .vi-gst.is-blank,
         .item-table.vi-grid .vi-basis.is-blank {
             border-color: #f59e0b;
@@ -1072,7 +1072,7 @@
             /* A typed remark can be one long unbroken string. */
             overflow-wrap: anywhere;
         }
-        /* "X din late" / "X din baaki" against the promised date. */
+        /* "X days late" / "X days left" against the promised date. */
         .pfu-od { color: #b45309; font-weight: 800; }
         .pfu-ok { color: #15803d; font-weight: 800; }
         .pfu-empty {
@@ -1094,3 +1094,7 @@
             color: #0369a1;
         }
         .pfu-hint { font-size: 0.68rem; color: #6b7280; margin-top: 4px; font-weight: 600; }
+
+        /* Stage tabs carry text only; an empty icon slot takes no room. */
+        .stage-tab .st-ico:empty { display: none; }
+

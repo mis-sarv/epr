@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="date-dmy.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sarv India — Lot Card Manager</title>
 <!--
@@ -57,7 +58,7 @@
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const SB = (window.supabase && window.supabase.createClient) ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth:{ persistSession:false } }) : null;
-const SETUP_HINT = 'Database setup pending — LOT_CARD_MIGRATION.sql run karein';
+const SETUP_HINT = 'Database setup pending. Please run LOT_CARD_MIGRATION.sql.';
 
 // ═══════════════════════ CONSTANTS (utils/storage.ts) ═══════════════════════
 const DEFAULT_MASTER_PACKINGS = [
@@ -101,7 +102,7 @@ function getColorHex(color){
 
 /* Factory Sattan Bundle Rounding:
    4.3 → 4, 4.8 → 4 (any decimal < 0.9 stays at the lower integer),
-   4.9 → 5 (decimal ≥ 0.9 rounds up) — "0.9 wali decimal ke baad 9 wali value ko poora kar de" */
+   4.9 → 5 (decimal ≥ 0.9 rounds up to the next whole number) */
 function getRoundedBundles(bundles){
   if(bundles<=0) return 0;
   const integerPart=Math.floor(bundles);
@@ -282,7 +283,7 @@ async function handleSaveLot(lotData){
     S.activePrintLot=S.lots.find(l=>l.id===res.id)||null;
     setTab('print');
   }catch(e){
-    F.formError='❌ '+errMsg(e); renderFormError();
+    F.formError=''+errMsg(e); renderFormError();
   }finally{
     S.saving=false; setSaveBusy(false);
   }
@@ -300,7 +301,7 @@ async function handleDeleteLot(lot){
     if(S.activePrintLot&&S.activePrintLot.id===lot.id) S.activePrintLot=null;
     showToast(`Lot #${lot.lotNo||''} deleted`,'info');
     renderNavbar(); renderMain();
-  }catch(e){ showToast('❌ '+errMsg(e),'info'); }
+  }catch(e){ showToast(''+errMsg(e),'info'); }
 }
 
 function handleDuplicateLot(lot){
@@ -1353,7 +1354,7 @@ async function saveMasterPackings(updated, okMsg){
     S.masterPackings=updated;
     showToast(okMsg||'Master packing options updated!');
     if(S.tab==='new'&&F) renderTiers();
-  }catch(e){ MM.error='❌ '+errMsg(e); }
+  }catch(e){ MM.error=''+errMsg(e); }
   renderMasterModal();
 }
 function masterAdd(e){
@@ -1431,7 +1432,7 @@ async function saveSlavePackings(updated, okMsg){
     S.slavePackings=updated;
     showToast(okMsg||'Slave / Inner packing options updated!');
     if(S.tab==='new'&&F) renderTiers();
-  }catch(e){ SM.error='❌ '+errMsg(e); }
+  }catch(e){ SM.error=''+errMsg(e); }
   renderSlaveModal();
 }
 function slaveAdd(e){
@@ -1732,7 +1733,7 @@ async function applyImport(mode){
     closeModal(); renderNavbar(); setTab('list');
     showToast(failed.length?`Imported ${done} lot(s), ${failed.length} failed`:(mode==='replace'?`Replaced lots with ${done} imported lots!`:`Added ${done} lots!`), failed.length?'info':'success');
     if(failed.length) console.warn('Import failures:',failed);
-  }catch(e){ DM.busy=''; renderDataModal(); showToast('❌ '+errMsg(e),'info'); }
+  }catch(e){ DM.busy=''; renderDataModal(); showToast(''+errMsg(e),'info'); }
 }
 
 // JSON backup (handleExportData)
@@ -1753,7 +1754,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&modalKind) closeMo
     $('main').innerHTML=`<div class="bg-white p-12 rounded-xl text-center shadow-xs border border-slate-200 max-w-lg mx-auto">
       <div class="text-amber-500 flex justify-center mb-3">${ic('lock','w-10 h-10')}</div>
       <h3 class="text-lg font-black text-slate-900">ERP login required</h3>
-      <p class="text-sm text-slate-500 mt-1">Lot Card Manager ERP ke andar se kholein: <b>Manufacturing › Lot Card Manager</b>.</p>
+      <p class="text-sm text-slate-500 mt-1">Open Lot Card Manager from inside the ERP: <b>Manufacturing › Lot Card Manager</b>.</p>
       <a href="index.html" class="inline-block mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm">Open ERP</a></div>`;
     refreshIcons(); return;
   }
@@ -1764,7 +1765,7 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&modalKind) closeMo
     $('main').innerHTML=`<div class="bg-white p-10 rounded-xl text-center border border-amber-300 max-w-xl mx-auto">
       <div class="text-amber-500 flex justify-center mb-3">${ic('triangle-alert','w-10 h-10')}</div>
       <h3 class="text-lg font-black text-slate-900">${isSetupError(e)?'Database setup pending':'Could not load lot records'}</h3>
-      <p class="text-sm text-slate-600 mt-1">${isSetupError(e)?'Supabase SQL Editor me <b>LOT_CARD_MIGRATION.sql</b> ek baar run karein, phir page reload karein.':esc(errMsg(e))}</p>
+      <p class="text-sm text-slate-600 mt-1">${isSetupError(e)?'Run <b>LOT_CARD_MIGRATION.sql</b> once in the Supabase SQL Editor, then reload this page.':esc(errMsg(e))}</p>
       <button onclick="location.reload()" class="mt-4 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm cursor-pointer">Reload</button></div>`;
     refreshIcons(); return;
   }

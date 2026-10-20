@@ -32,8 +32,8 @@
 #erpShell .erp-side {
   width: 256px;
   flex: 0 0 256px;
-  background: #1d4ed8;
-  color: #dbeafe;
+  background: #0f172a;
+  color: #cbd5e1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -57,7 +57,7 @@
   display: block; color: #fff; font-size: 13px; font-weight: 800; letter-spacing: .6px;
 }
 #erpShell .erp-brand-text small {
-  display: block; font-size: 10px; color: #bfdbfe; letter-spacing: .4px;
+  display: block; font-size: 10px; color: #94a3b8; letter-spacing: .4px;
 }
 
 #erpShell .erp-search-wrap { padding: 10px 12px; flex: 0 0 auto; }
@@ -68,7 +68,7 @@
   background: rgba(255,255,255,.12);
   color: #fff; font-size: 12px; font-family: inherit; outline: none;
 }
-#erpShell .erp-search::placeholder { color: #bfdbfe; }
+#erpShell .erp-search::placeholder { color: #94a3b8; }
 #erpShell .erp-search:focus { border-color: #fff; background: rgba(255,255,255,.2); }
 
 #erpShell .erp-nav { flex: 1; overflow-y: auto; padding: 2px 0 14px; }
@@ -78,14 +78,14 @@
 #erpShell .erp-item {
   display: flex; align-items: center; gap: 10px;
   width: 100%; padding: 9px 14px 9px 12px;
-  border: none; background: none; color: #dbeafe;
+  border: none; background: none; color: #cbd5e1;
   font: inherit; font-size: 12.5px; font-weight: 600;
   text-align: left; cursor: pointer;
   border-left: 3px solid transparent;
 }
 #erpShell .erp-item:hover { background: rgba(255,255,255,.10); color: #fff; }
 #erpShell .erp-item.active {
-  background: #1e3a8a; color: #fff; border-left-color: #93c5fd; font-weight: 800;
+  background: #1e293b; color: #fff; border-left-color: #60a5fa; font-weight: 700;
 }
 #erpShell .erp-item.open { background: rgba(255,255,255,.07); color: #fff; }
 #erpShell .erp-ico { width: 17px; text-align: center; flex: 0 0 auto; font-size: 13px; }
@@ -96,7 +96,7 @@
 /* "Coming soon" marker, on a parent whose whole module is still to be built */
 #erpShell .erp-soon-dot {
   font-size: 8.5px; font-weight: 800; letter-spacing: .4px;
-  background: rgba(255,255,255,.17); color: #bfdbfe;
+  background: rgba(255,255,255,.08); color: #94a3b8;
   border-radius: 9px; padding: 1px 6px; flex: 0 0 auto;
 }
 
@@ -105,20 +105,20 @@
 #erpShell .erp-subitem {
   display: flex; align-items: center; gap: 8px;
   width: 100%; padding: 7px 14px 7px 42px;
-  border: none; background: none; color: #c7d8f5;
+  border: none; background: none; color: #94a3b8;
   font: inherit; font-size: 11.5px; font-weight: 600;
   text-align: left; cursor: pointer;
   border-left: 3px solid transparent;
 }
 #erpShell .erp-subitem:hover { background: rgba(255,255,255,.10); color: #fff; }
 #erpShell .erp-subitem.active {
-  background: #1e3a8a; color: #fff; border-left-color: #93c5fd; font-weight: 800;
+  background: #1e293b; color: #fff; border-left-color: #60a5fa; font-weight: 700;
 }
 #erpShell .erp-subitem .erp-label { flex: 1; }
 /* A leaf that opens a screen which already exists gets a tick; one that does
    not gets nothing, so the sidebar itself says what is live today. */
 #erpShell .erp-live { font-size: 10px; color: #86efac; flex: 0 0 auto; }
-#erpShell .erp-nav-empty { padding: 14px; font-size: 11px; color: #bfdbfe; text-align: center; }
+#erpShell .erp-nav-empty { padding: 14px; font-size: 11px; color: #94a3b8; text-align: center; }
 
 /* ── main column ──────────────────────────────────────────────────── */
 #erpShell .erp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -163,7 +163,7 @@
 #erpShell .erp-user:hover { background: #f1f5f9; }
 #erpShell .erp-avatar {
   width: 25px; height: 25px; border-radius: 50%;
-  background: #1d4ed8; color: #fff;
+  background: #334155; color: #fff;
   display: flex; align-items: center; justify-content: center;
   font-size: 10.5px; font-weight: 800; flex: 0 0 auto;
 }
@@ -173,7 +173,7 @@
 #erpShell .erp-crumb { font-size: 11px; color: #64748b; font-weight: 600; margin-bottom: 9px; }
 #erpShell .erp-crumb b { color: #0f172a; }
 #erpShell .erp-pagehead {
-  background: #e2e8f0; border-left: 4px solid #1d4ed8;
+  background: transparent; border-left: 3px solid #334155;
   border-radius: 6px; padding: 9px 14px; margin-bottom: 16px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
@@ -194,15 +194,16 @@
   gap: 14px; margin-bottom: 18px;
 }
 #erpShell .kpi {
-  height: 150px; border-radius: 12px; padding: 14px;
-  color: #fff; position: relative; overflow: hidden;
-  box-shadow: 0 4px 10px rgba(15,23,42,.10);
+  height: 132px; border-radius: 10px; padding: 14px;
+  background: #fff; color: #0f172a; position: relative; overflow: hidden;
+  border: 1px solid #e2e8f0; border-top: 3px solid var(--kc, #64748b);
+  box-shadow: 0 1px 2px rgba(15,23,42,.05);
 }
-#erpShell .kpi-trend { font-size: 11px; opacity: .85; font-weight: 700; }
-#erpShell .kpi-title { margin-top: 3px; font-size: 12px; font-weight: 700; opacity: .95; }
-#erpShell .kpi-value { font-size: 26px; font-weight: 900; margin-top: 2px; line-height: 1.15; }
-#erpShell .kpi-note { font-size: 10px; opacity: .8; margin-top: 2px; font-weight: 600; }
-#erpShell .kpi-spark { position: absolute; bottom: 0; left: 0; width: 100%; height: 46px; opacity: .72; }
+#erpShell .kpi-trend { font-size: 11px; color: #64748b; font-weight: 600; }
+#erpShell .kpi-title { margin-top: 3px; font-size: 12px; font-weight: 600; color: #475569; }
+#erpShell .kpi-value { font-size: 26px; font-weight: 700; margin-top: 2px; line-height: 1.15; color: #0f172a; }
+#erpShell .kpi-note { font-size: 10.5px; color: #64748b; margin-top: 2px; font-weight: 500; }
+#erpShell .kpi-spark { position: absolute; bottom: 4px; left: 0; width: 100%; height: 36px; opacity: .45; color: var(--kc, #64748b); }
 #erpShell .kpi.is-load { background: #e2e8f0; color: #64748b; animation: erp-pulse 1.3s ease-in-out infinite; }
 #erpShell .kpi.is-err  { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; box-shadow: none; }
 #erpShell .kpi.is-err .kpi-retry {
@@ -211,17 +212,17 @@
 }
 @keyframes erp-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 
-/* Gradient palette, cycled by index % 10 — the skill's order. */
-#erpShell .g0 { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-#erpShell .g1 { background: linear-gradient(135deg, #10b981, #16a34a); }
-#erpShell .g2 { background: linear-gradient(135deg, #ef4444, #dc2626); }
-#erpShell .g3 { background: linear-gradient(135deg, #94a3b8, #64748b); }
-#erpShell .g4 { background: linear-gradient(135deg, #fbbf24, #eab308); }
-#erpShell .g5 { background: linear-gradient(135deg, #475569, #334155); }
-#erpShell .g6 { background: linear-gradient(135deg, #fb7185, #fdba74); }
-#erpShell .g7 { background: linear-gradient(135deg, #262626, #166534); }
-#erpShell .g8 { background: linear-gradient(135deg, #ec4899, #ef4444); }
-#erpShell .g9 { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+/* Accent colour per tile: the top border and the sparkline. */
+#erpShell .g0 { --kc: #2563eb; }
+#erpShell .g1 { --kc: #16a34a; }
+#erpShell .g2 { --kc: #0891b2; }
+#erpShell .g3 { --kc: #64748b; }
+#erpShell .g4 { --kc: #ca8a04; }
+#erpShell .g5 { --kc: #475569; }
+#erpShell .g6 { --kc: #db2777; }
+#erpShell .g7 { --kc: #15803d; }
+#erpShell .g8 { --kc: #dc2626; }
+#erpShell .g9 { --kc: #ea580c; }
 
 /* ── quick-open grid on the dashboard ────────────────────────────── */
 #erpShell .erp-quick {
@@ -231,15 +232,14 @@
   display: flex; align-items: center; gap: 11px;
   background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
   padding: 11px 13px; cursor: pointer; text-align: left; font: inherit;
-  box-shadow: 0 2px 5px rgba(15,23,42,.05);
-  transition: border-color .15s, box-shadow .15s, transform .1s;
+  transition: border-color .15s, box-shadow .15s;
 }
 #erpShell .erp-quick button:hover {
-  border-color: #7dd3fc; box-shadow: 0 5px 13px rgba(2,132,199,.14); transform: translateY(-1px);
+  border-color: #94a3b8; box-shadow: 0 2px 6px rgba(15,23,42,.08);
 }
 #erpShell .erp-quick .q-ico {
   width: 34px; height: 34px; border-radius: 9px;
-  background: #eff6ff; color: #1d4ed8;
+  background: #f1f5f9; color: #334155;
   display: flex; align-items: center; justify-content: center;
   font-size: 15px; flex: 0 0 auto;
 }
@@ -272,14 +272,14 @@
 #erpShell .erp-soon .back:hover { background: #1e40af; }
 
 /* ══ DRAWER MODE ══════════════════════════════════════════════════════
-   Ek hi sidebar, do tarah se dikhta hai:
+   One sidebar, shown in two ways:
 
-     #erpShell.open            poora shell — sidebar + dashboard / Coming Soon
-     #erpShell.open.drawer     sirf sidebar, chalu screen ke UPAR overlay
+     #erpShell.open            full shell: sidebar + dashboard / Coming Soon
+     #erpShell.open.drawer     sidebar only, as an overlay ON TOP of the current screen
 
-   Drawer mode isi liye hai ki koi bhi screen khuli ho, aap seedha doosri
-   screen par ja sakein — pehle Home jaane ki zaroorat nahi. Sidebar ka DOM
-   wahi ek hai aur renderNav bhi wahi, to do navigation alag nahi pad sakti. */
+   Drawer mode lets you jump from any open screen straight to another one
+   without going Home first. It is the same sidebar DOM and the same
+   renderNav, so the two ways of navigating can never drift apart. */
 #erpShell.drawer { background: transparent; }
 #erpShell.drawer .erp-main { display: none; }
 #erpShell.drawer .erp-scrim { display: block; }
@@ -287,29 +287,29 @@
   position: relative; z-index: 3;
   box-shadow: 4px 0 20px rgba(15,23,42,.30);
 }
-/* Drawer khulne ka matlab hi sidebar dikhana hai — side-hidden yahan laagu
-   nahi hota, warna phone par drawer khaali khulta. */
+/* Opening the drawer means showing the sidebar, so side-hidden does not
+   apply here; otherwise the drawer would open empty on phones. */
 #erpShell.drawer.side-hidden .erp-side { margin-left: 0; }
 
 /* ══ EDGE LAUNCHER ════════════════════════════════════════════════════
-   Jab koi screen khuli ho (yaani shell neeche ho), tab baayein kinare par ye
-   handle dikhta hai. Click karne par sidebar drawer ki tarah upar aa jaata
-   hai. z-index 880 — panels ke upar, par app ke modals (3400+), login gate
-   (99999) aur toasts ke neeche, to ek khula modal ise theek se dhak deta hai. */
+   While a screen is open (the shell is down), this handle sits on the left
+   edge. Clicking it brings the sidebar up as a drawer. z-index 880 keeps it
+   above the panels but below the app's modals (3400+), the login gate
+   (99999) and toasts, so an open modal covers it properly. */
 #erpLauncher {
   display: none;
   position: fixed; left: 0; top: 50%; transform: translateY(-50%);
   z-index: 880;
   flex-direction: column; align-items: center; gap: 7px;
-  background: #1d4ed8; color: #fff; border: none;
+  background: #1e293b; color: #fff; border: none;
   border-radius: 0 10px 10px 0;
   padding: 14px 7px 14px 5px; cursor: pointer;
-  box-shadow: 2px 2px 14px rgba(15,23,42,.32);
+  box-shadow: 2px 2px 8px rgba(15,23,42,.22);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   transition: background .15s, padding-left .15s;
 }
 #erpLauncher.on { display: flex; }
-#erpLauncher:hover { background: #1e40af; padding-left: 10px; }
+#erpLauncher:hover { background: #334155; padding-left: 10px; }
 #erpLauncher .erp-l-ico { font-size: 15px; line-height: 1; }
 #erpLauncher .erp-l-txt {
   font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
@@ -320,6 +320,120 @@
   #erpLauncher .erp-l-txt { display: none; }
 }
 @media print { #erpLauncher { display: none !important; } }
+
+/* ══ QUICK NAV: top centre search (erp-shell.js › qnInit / qnPlace) ═══
+   The second piece that lives outside #erpShell (after the launcher): a
+   single input that sits either in the shell's top bar or in the current
+   screen's <header>. The default look is for the dark headers; it is
+   lighter in the shell's white top bar. Inside a header, the nav-tabs are
+   stopped from stretching so the search stays in the middle. */
+.erp-qn {
+  display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 8px 0 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(148,163,184,.40);
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  box-sizing: border-box;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.erp-qn:hover { border-color: rgba(186,230,253,.75); }
+.erp-qn-mag { font-size: 12px; opacity: .85; flex: 0 0 auto; }
+.erp-qn-in {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: 0; background: transparent; color: inherit;
+  font: inherit; font-size: 12.5px; font-weight: 600; padding: 0;
+}
+.erp-qn-in::placeholder { color: rgba(226,232,240,.72); font-weight: 500; }
+.erp-qn-kbd {
+  flex: 0 0 auto; font: 700 9.5px/1 inherit; letter-spacing: .3px;
+  border: 1px solid rgba(255,255,255,.32); border-radius: 5px;
+  padding: 3px 5px; opacity: .85; white-space: nowrap;
+}
+.erp-qn.focus {
+  background: #fff; color: #0f172a; border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56,189,248,.35);
+}
+.erp-qn.focus .erp-qn-in::placeholder { color: #94a3b8; }
+.erp-qn.focus .erp-qn-kbd { border-color: #cbd5e1; color: #64748b; }
+
+/* In the shell's top bar: centred, light */
+#erpShell .erp-top-center { flex: 0 1 460px; min-width: 0; display: flex; }
+#erpShell .erp-top-center .erp-qn { width: 100%; background: #f1f5f9; border-color: #e2e8f0; color: #0f172a; }
+#erpShell .erp-top-center .erp-qn-in::placeholder { color: #64748b; }
+#erpShell .erp-top-center .erp-qn-kbd { border-color: #cbd5e1; color: #64748b; }
+#erpShell .erp-top-center .erp-qn.focus { background: #fff; border-color: #38bdf8; }
+
+/* In a screen header: between the h1 and the nav-tabs, centred */
+header.erp-qn-host > .erp-qn { flex: 0 1 380px; min-width: 170px; margin: 0 auto; }
+#storeInterface > header.erp-qn-host > .nav-tabs,
+#fullPurchasePanel > header.erp-qn-host > .nav-tabs { flex: 0 1 auto; }
+
+/* No header found: floats at the top centre */
+#erpQnFloat {
+  display: none; position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+  z-index: 950; width: min(380px, calc(100vw - 120px));
+}
+#erpQnFloat .erp-qn { width: 100%; background: #0f172a; box-shadow: 0 6px 20px rgba(15,23,42,.35); }
+#erpQnFloat .erp-qn.focus { background: #fff; }
+
+/* Results: fixed, right under the input (qnPosition). Above the shell (900);
+   not kept below the app's modals (3400+), since it only opens on focus. */
+#erpQnPanel {
+  display: none; position: fixed; z-index: 5000;
+  flex-direction: column;
+  background: #fff; color: #0f172a;
+  border: 1px solid #e2e8f0; border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(15,23,42,.30);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+#erpQnPanel .erp-qn-list { overflow-y: auto; padding: 6px; flex: 1 1 auto; }
+#erpQnPanel .erp-qn-head {
+  font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: .4px;
+  text-transform: uppercase; padding: 8px 8px 4px;
+}
+#erpQnPanel .erp-qn-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  border: 0; background: none; text-align: left; cursor: pointer;
+  padding: 7px 9px; border-radius: 8px; font: inherit; color: inherit;
+}
+#erpQnPanel .erp-qn-row.sel { background: #eff6ff; box-shadow: inset 3px 0 0 #2563eb; }
+#erpQnPanel .erp-qn-row.soon { opacity: .62; }
+#erpQnPanel .erp-qn-ico {
+  width: 28px; height: 28px; flex: 0 0 auto; border-radius: 7px;
+  background: #f1f5f9; display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+#erpQnPanel .erp-qn-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#erpQnPanel .erp-qn-txt b { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#erpQnPanel .erp-qn-txt small { font-size: 10.5px; color: #64748b; }
+#erpQnPanel mark { background: #fef08a; color: inherit; border-radius: 2px; padding: 0 1px; }
+#erpQnPanel .erp-qn-tag {
+  flex: 0 0 auto; font-size: 9px; font-weight: 800; letter-spacing: .3px;
+  border-radius: 9px; padding: 2px 7px; background: #f1f5f9; color: #64748b;
+}
+#erpQnPanel .erp-qn-tag.live { background: #dcfce7; color: #15803d; }
+#erpQnPanel .erp-qn-empty { padding: 18px 12px; text-align: center; font-size: 12px; color: #475569; }
+#erpQnPanel .erp-qn-empty small { color: #94a3b8; }
+#erpQnPanel .erp-qn-foot {
+  display: flex; gap: 14px; flex: 0 0 auto;
+  padding: 7px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc;
+  font-size: 10.5px; color: #64748b;
+}
+#erpQnPanel kbd {
+  font: 700 9.5px/1 inherit; border: 1px solid #cbd5e1; border-bottom-width: 2px;
+  border-radius: 4px; padding: 2px 4px; margin-right: 3px; background: #fff; color: #334155;
+}
+@media (max-width: 760px) {
+  header.erp-qn-host > .erp-qn { order: 2; flex: 1 1 160px; min-width: 0; margin: 0; }
+  .erp-qn-kbd { display: none; }
+  #erpQnPanel .erp-qn-foot { display: none; }
+}
+@media (max-width: 600px) {
+  header.erp-qn-host > .erp-qn { flex: 0 0 auto; width: 100%; }
+}
+@media print { .erp-qn, #erpQnPanel, #erpQnFloat { display: none !important; } }
 
 /* ── phone ────────────────────────────────────────────────────────── */
 #erpShell .erp-scrim {
@@ -348,3 +462,28 @@ body.erp-shell-open { overflow: hidden; }
 body.erp-shell-on #sarvHomeDashboard { display: none !important; }
 
 @media print { #erpShell { display: none !important; } }
+
+/* ══ LINE ICONS ══════════════════════════════════════════════════════
+   Inline SVG from erp-shell.js. 1em square, so each slot sizes them with
+   its own font-size and colours them with its own text colour. */
+.erp-svg { width: 1em; height: 1em; display: inline-block; vertical-align: -0.14em; flex: 0 0 auto; }
+#erpShell .erp-ico { font-size: 15px; display: inline-flex; justify-content: center; opacity: .9; }
+#erpShell .erp-burger, #erpShell .erp-iconbtn { display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+#erpShell .erp-brand-mark { font-weight: 800; color: #fff; letter-spacing: 0; }
+#erpShell .erp-soon .big { color: #94a3b8; }
+#erpShell .erp-pagehead h1 .erp-svg { color: #64748b; margin-right: 2px; }
+
+/* Phone top bar: burger, search, bell and avatar must fit in 390px without a
+   sideways scroll. Tasks and History stay reachable from the sidebar. */
+@media (max-width: 600px) {
+  #erpShell .erp-top { gap: 6px; padding: 0 8px; }
+  #erpShell #erpBtnTasks, #erpShell #erpBtnHist, #erpShell .erp-user-text { display: none; }
+  #erpShell .erp-user { padding: 3px; }
+  #erpShell .erp-top-spacer { display: none; }
+  #erpShell .erp-top-center { flex: 1 1 auto; }
+}
+
+/* Purchase › PO Follow-up Report opens the PO panel in report-only mode
+   (erp-shell.js › applyPoOnly): no PO KPI cards and no sub-tab strip. */
+body.erp-po-report-only #p_poKpiGrid,
+body.erp-po-report-only #p_poSubNav { display: none !important; }

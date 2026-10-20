@@ -1,35 +1,32 @@
 /* ════════════════════════════════════════════════════════════════════
-   app-back.js — "← Apps" wapas jaane wala button
+   app-back.js: the floating "← Apps" button
    ────────────────────────────────────────────────────────────────────
-   Ek hi chhoti file, jo har app me ek `<script src>` line se jud jaati
-   hai (ERP, Approvals, Complaint, Packing, Order Form). Isi liye button
-   har app me EK JAISA dikhta hai aur uska behaviour ek hi jagah likha
-   hai — paanch apps me paanch tarah ke back button nahi bante.
+   One small file, added to every app with a single `<script src>` line
+   (ERP, Approvals, Complaint, Packing, Order Form). That way the button
+   looks the same everywhere and its behaviour lives in one place, instead
+   of five apps each growing their own back button.
 
-   Teen soorat me ye button JAAN-BOOJH KAR nahi dikhta:
+   The button is deliberately hidden in three cases:
 
-     1. App kisi IFRAME ke andar khuli ho. Packing, Order Form, Lot Card
-        aur Trims ERP ke andar iframe me khulte hain — wahan "wapas
-        Apps par" ka matlab poora ERP hi iframe me khol dena hota, jo
-        bilkul galat lagta. (window.top se farak pata chal jaata hai.)
+     1. The app is running inside an IFRAME. Packing, Order Form, Lot Card
+        and Trims open inside the ERP in an iframe. "Back to Apps" there
+        would load the whole launcher inside that frame, which is clearly
+        wrong. (Comparing against window.top tells us.)
 
-     2. Single-login ka session na ho (`sarv_sso_token` nahi hai). Aisa
-        banda launcher se nahi aaya — wo app ke apne login se andar hai.
-        Use launcher par bhejna matlab ek aur login screen dikhana, jo
-        usne maanga hi nahi.
+     2. There is no single-login session (`sarv_sso_token` is missing).
+        That user did not come from the launcher, so sending them there
+        would only show a login screen they never asked for.
 
-     3. Khud launcher.html par. Wahan se wapas kahan jaana hai.
+     3. We are on launcher.html itself. There is nowhere to go back to.
 
-   Session baad me ban sakta hai (jaise mobile.html par naam + PIN se
-   login karne par), isi liye button ek hi baar nahi dekhta — thodi der
-   tak chup-chaap dobara check karta rehta hai, aur jab session mil
-   jaata hai to aa jaata hai. Doosre tab me logout ho to `storage`
-   event par hat bhi jaata hai.
+   A session can appear later (for example after a name + PIN login on
+   mobile.html), so the button does not check just once. It keeps checking
+   quietly for a short while and shows up as soon as a session exists. A
+   logout in another tab removes it again through the `storage` event.
 
-   Style jaan-boojh kar gehra (dark) hai: baaki apps halke background
-   wale hain, to ispar nazar turant pad jaati hai. z-index 900 rakha hai
-   — yani modal / overlay (1000+) iske OOPAR aate hain, warna ye button
-   popup ke saamne chipka dikhta.
+   The style is intentionally dark: the other apps use light backgrounds,
+   so it is easy to spot. z-index is 900, which keeps modals and overlays
+   (1000+) above it; otherwise the button would sit on top of popups.
    ════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -38,10 +35,10 @@
   var LAUNCHER = 'launcher.html';
   var EL_ID    = 'sarvAppBack';
 
-  // Iframe ke andar — kuch nahi karna (upar wajah #1).
+  // Inside an iframe: nothing to do (reason 1 above).
   try { if (window.self !== window.top) return; } catch (e) { return; }
 
-  // Khud launcher par — kuch nahi karna (wajah #3).
+  // On the launcher itself: nothing to do (reason 3).
   if (/(^|\/)launcher\.html$/i.test(location.pathname)) return;
 
   function hasSession() {
@@ -55,18 +52,18 @@
     var a = document.createElement('a');
     a.id = EL_ID;
     a.href = LAUNCHER;
-    a.setAttribute('aria-label', 'Wapas apps ki list par jayein');
-    a.title = 'Saare apps — wapas (login waisa hi rahega)';
+    a.setAttribute('aria-label', 'Back to the list of apps');
+    a.title = 'All apps (you stay logged in)';
     a.style.cssText = [
       'position:fixed',
-      // Safe-area: iPhone / notch wale phone par home-bar ke neeche na chhupe.
+      // Safe area: keeps it clear of the home bar on notched phones.
       'bottom:calc(16px + env(safe-area-inset-bottom))',
       'right:calc(16px + env(safe-area-inset-right))',
       'z-index:900',
       'display:inline-flex',
       'align-items:center',
       'gap:7px',
-      // 40px se kam nahi — ye ungli se dabaya jaata hai.
+      // Never below 40px; this is tapped with a finger.
       'min-height:40px',
       'padding:9px 15px 9px 13px',
       'border-radius:999px',
@@ -98,7 +95,7 @@
       a.style.transform = 'none';
       a.style.boxShadow = '0 8px 24px -6px rgba(0,0,0,.55)';
     });
-    // Keyboard se aane par bhi saaf dikhe.
+    // Keep the focus ring visible for keyboard users.
     a.addEventListener('focus', function () {
       a.style.opacity = '1';
       a.style.outline = '2.5px solid #38bdf8';
@@ -125,10 +122,9 @@
   function start() {
     sync();
 
-    /* Session thodi der baad bhi ban sakta hai (mobile.html par naam +
-       PIN se login). Isi liye kuch der tak dobara dekhte rehte hain, aur
-       mil jaane par timer band — hamesha chalne wala timer rakhne ki
-       koi wajah nahi. */
+    /* The session can appear a little later (name + PIN login on
+       mobile.html), so we keep looking for a while and stop the timer once
+       it is found. There is no reason to keep a timer running forever. */
     var tries = 0;
     var t = setInterval(function () {
       tries++;
@@ -136,7 +132,7 @@
       if (document.getElementById(EL_ID) || tries > 60) clearInterval(t);
     }, 2000);
 
-    // Doosre tab me logout hua to yahan se button hat jaana chahiye.
+    // Logged out in another tab: remove the button here as well.
     window.addEventListener('storage', function (e) {
       if (!e || e.key === SSO_KEY || e.key === null) sync();
     });
@@ -147,6 +143,6 @@
   else
     start();
 
-  // App chahe to khud bula sakti hai (jaise login ke turant baad).
+  // An app can also call this itself (for example right after login).
   window.sarvAppBackSync = sync;
 })();

@@ -18,7 +18,7 @@ const APP_URL = self.location.origin + self.location.pathname.replace(/sw\.js$/,
 
 // ---------- Push Event ----------
 self.addEventListener('push', (event) => {
-  let data = { title: '⏰ Task Reminder!', body: 'Aapke liye ek task pending hai.', taskId: null };
+  let data = { title: 'Task Reminder!', body: 'You have a pending task.', taskId: null };
 
   if (event.data) {
     try {

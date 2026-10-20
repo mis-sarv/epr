@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="date-dmy.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>Sarv India — Complaint System</title>
-<!-- Login screen ki jhalak rokta hai — sabse pehle chalna chahiye. -->
+<!-- Prevents the login screen from flashing; must run first. -->
 <script src="sso-preboot.js"></script>
 <script src="sso-gate.js"></script>
 
@@ -69,40 +70,40 @@ const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const ADMIN_FN_URL  = SUPABASE_URL + "/functions/v1/admin-users";
 
-/* ══ EK HI DARWAZA — launcher.html ════════════════════════════════════
-   Is app ka apna login aur signup (Supabase Auth ka email+password,
-   `LoginScreen`) poora hat gaya hai. Login sirf `launcher.html` par hota
-   hai; yahan sirf itna poochha jaata hai — "ERP ka session hai? is app
-   ka access hai? is app ka account hai?" — aur teeno ka jawab
-   `sso-gate.js` deta hai.
+/* ══ ONE ENTRY POINT: launcher.html ═══════════════════════════════════
+   This app's own login and signup (Supabase Auth email + password,
+   `LoginScreen`) have been removed completely. Login happens only on
+   `launcher.html`; here we only ask "is there an ERP session, does it have
+   access to this app, and is there an account in this app?", and
+   `sso-gate.js` answers all three.
 
-   Pehle ye gate jaan-boojh kar NARAM tha: kuch bhi atke to app apna
-   purana login dikha deti thi. Us narmi ki keemat yahi thi ki do login
-   aur do user list zinda rehti thin, aur banda kabhi na samajh paata ki
-   usse kaun sa password poochha ja raha hai. Ab gate SAKHT hai.
+   This gate used to be deliberately LENIENT: if anything got stuck the
+   app showed its old login. The price was that two logins and two user
+   lists stayed alive, and people never knew which password was being
+   asked for. The gate is now STRICT.
 
-   Ek baat jaan-boojh kar waisi hi rakhi hai: is app ka DATA Supabase
-   Auth par chalta hai (`cmp_*` tables ki RLS aur trigger `auth.uid()`
-   maangte hain). Un policies ko chhedna nahi padta — gate `erp-sso` se
-   asli auth session bana deta hai, bina password. Isi liye is app ka
-   permission model bilkul waisa hi hai jaisa pehle tha. */
+   One thing is deliberately unchanged: this app's DATA runs on Supabase
+   Auth (the RLS and triggers on the `cmp_*` tables need `auth.uid()`).
+   Those policies did not have to change: the gate creates a real auth
+   session through `erp-sso`, with no password. So the app's permission
+   model is exactly what it was. */
 const SARV_SSO_KEY = "sarv_sso_token";
 const SARV_APP_KEY = "HOME_COMPLAINT_APP";
-/* undefined = gate ka jawab abhi nahi aaya · object = andar aaya hua
-   user. `null` ab nahi hota: gate andar jaane layak na ho to app ko
-   chalne hi nahi deta. */
+/* undefined = the gate has not answered yet · object = the signed-in user.
+   `null` no longer happens: if entry is not allowed, the gate does not let
+   the app run at all. */
 window.__SARV_SSO = undefined;
 
-/* Ek hi logout — gate ke paas: ERP ka session server par band, auth
-   session band, local nishaan saaf, aur launcher par wapas. Ek login
-   tha, to logout bhi ek hi jagah se. */
+/* One logout, owned by the gate: end the ERP session on the server, end
+   the auth session, clear local traces and return to the launcher. One
+   login, so one place to log out. */
 async function sarvLogoutAll(){
   await SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON,
                            client: (typeof sb !== "undefined" ? sb : null) });
 }
 
-/* Gate ka asli boot `sb` banne ke BAAD hai (neeche) — usse auth session
-   banane ke liye client chahiye, aur `sb` abhi TDZ me hai. */
+/* The gate's real boot happens AFTER `sb` is created (below): it needs the
+   client to create the auth session, and `sb` is still in its TDZ here. */
 const PUSH_FN_URL   = SUPABASE_URL + "/functions/v1/send-push";
 const EMAIL_DOMAIN  = "@sarvindia.com";
 const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8dAHhsx6xyxX1BeHgHJmM63rmPn_mFA";
@@ -118,16 +119,15 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: "sarv-store-cmp-auth" }
 });
 
-/* ── Gate chalu — app ke mount hone se pehle ──────────────────────────
-   Kram jaan-boojh kar yahi hai: pehle asli auth session, phir React.
-   Ulta kar dein to React "login ho gaya" maan kar data maangne lagti hai
-   aur un pehli queries par `auth.uid()` khaali hota hai — yani wahi
-   purani "signed in nahi hain" wali galti, bas der se.
+/* ── Start the gate before the app mounts ─────────────────────────────
+   The order is deliberate: first the real auth session, then React. The
+   other way round, React assumes the user is logged in and starts
+   requesting data while `auth.uid()` is still empty for those first
+   queries, which is the old "not signed in" error, just later.
 
-   `boot()` sirf andar jaane layak hone par resolve hota hai; baaki har
-   soorat me wo khud launcher par bhej deta hai ya wajah wali screen
-   dikha deta hai, aur ye event kabhi nahi chalta. Isi liye React ko
-   "login nahi hua" wala koi raasta rakhne ki zaroorat hi nahi rahi. */
+   `boot()` resolves only when entry is allowed; in every other case it
+   redirects to the launcher or shows the reason screen, and this event
+   never fires. So React no longer needs any "not logged in" path. */
 SARV_GATE.boot({
   url: SUPABASE_URL, key: SUPABASE_ANON, client: sb,
   app: SARV_APP_KEY, label: "Complaint App",
@@ -277,23 +277,23 @@ function subjectSearch(c, D){
     : [machineLabel(c), c.machine_no].filter(Boolean).join(" ");
 }
 // "Not triaged yet" has to read as a real state, not an empty cell.
-const typeLabel = c => c.complaint_type || "Type baaki";
+const typeLabel = c => c.complaint_type || "Type pending";
 const isDataImage = v => typeof v === "string" && /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
 
 // Turn a Supabase/Postgres error into something an operator can act on.
 function friendlyError(e){
   if (!e) return "Something went wrong.";
   const m = String(e.message || e.error_description || e.error || e);
-  if (/Invalid login credentials/i.test(m)) return "Wrong name or password. Dobara try karein.";
+  if (/Invalid login credentials/i.test(m)) return "Wrong name or password. Please try again.";
   if (/insufficient_privilege|permission denied|row-level security/i.test(m))
-    return "Aapke role ko iski permission nahi hai.";
+    return "Your role does not have permission for this.";
   if (/Failed to fetch|NetworkError|network/i.test(m))
-    return "Internet nahi mil raha. Connection check karke dobara try karein.";
-  if (/duplicate key|already exists/i.test(m)) return "Yeh entry pehle se maujood hai.";
-  if (/image_size_cap/i.test(m)) return "Photo bahut badi hai. Thoda paas se photo lein.";
-  if (/stage_evidence/i.test(m)) return "Is step ke liye zaroori detail missing hai.";
-  if (/host_scope_matches_role/i.test(m)) return "Host ko kam se kam ek complaint type dena zaroori hai.";
-  if (/mobile_is_10_digits/i.test(m)) return "Mobile number exactly 10 digit hona chahiye.";
+    return "No internet connection. Please check the connection and try again.";
+  if (/duplicate key|already exists/i.test(m)) return "This entry already exists.";
+  if (/image_size_cap/i.test(m)) return "The photo is too large. Please take it from closer.";
+  if (/stage_evidence/i.test(m)) return "A required detail for this step is missing.";
+  if (/host_scope_matches_role/i.test(m)) return "A Host must be given at least one complaint type.";
+  if (/mobile_is_10_digits/i.test(m)) return "The mobile number must be exactly 10 digits.";
   return m;
 }
 
@@ -456,7 +456,7 @@ async function sendPushToUser(targetUserId, taskDesc, message) {
         'Authorization': `Bearer ${s.access_token}`,
         'apikey': SUPABASE_ANON,
       },
-      body: JSON.stringify({ target_user_id: targetUserId, title: '⏰ Task Reminder!', body: taskDesc, message }),
+      body: JSON.stringify({ target_user_id: targetUserId, title: 'Task Reminder!', body: taskDesc, message }),
     });
   } catch (e) { console.warn('Push send failed:', e); }
 }
@@ -755,7 +755,7 @@ function BarcodeScannerModal({onResult, onClose}){
         // Wait for video to be ready then start scanning
         videoRef.current.onloadeddata = () => { animFrame = requestAnimationFrame(scan); };
       } catch(e) {
-        setErr("Camera open nahi ho paaya. Manual mode use karein.");
+        setErr("Could not open the camera. Please use manual mode.");
         setManualMode(true);
       }
     };
@@ -799,7 +799,7 @@ function BarcodeScannerModal({onResult, onClose}){
               <div className="w-3/4 h-16 border-2 border-teal-400/80 rounded-lg" />
             </div>
             <p className="absolute bottom-2 left-0 right-0 text-center text-white/80 text-[11px]">
-              Barcode ko box ke andar rakho
+              Keep the barcode inside the box
             </p>
           </div>
         ) : null}
@@ -809,8 +809,8 @@ function BarcodeScannerModal({onResult, onClose}){
 
           {!hasBarcodeAPI && !manualMode && (
             <div className="text-center py-2">
-              <p className="text-[13px] text-slate-600 mb-2">Yeh browser barcode scan support nahi karta.</p>
-              <p className="text-[12px] text-slate-500">Manual mode use karein ya Chrome Android try karein.</p>
+              <p className="text-[13px] text-slate-600 mb-2">This browser does not support barcode scanning.</p>
+              <p className="text-[12px] text-slate-500">Use manual mode, or try Chrome on Android.</p>
             </div>
           )}
 
@@ -818,13 +818,13 @@ function BarcodeScannerModal({onResult, onClose}){
           <div>
             {(!manualMode && hasBarcodeAPI) && (
               <button onClick={()=>setManualMode(true)} className="text-[12px] text-teal-600 hover:underline mb-2">
-                Manually type karein?
+                Type it in manually?
               </button>
             )}
             {(manualMode || !hasBarcodeAPI) && (
               <div className="flex gap-2">
                 <input className={inputCls(false)+" flex-1"} value={manualVal} onChange={e=>setManualVal(e.target.value)}
-                  placeholder="Machine no type karein…" autoFocus
+                  placeholder="Type the machine no…" autoFocus
                   onKeyDown={e=>{ if(e.key==="Enter") submitManual(); }} />
                 <Btn variant="primary" size="sm" onClick={submitManual} disabled={!manualVal.trim()}>Done</Btn>
               </div>
@@ -832,7 +832,7 @@ function BarcodeScannerModal({onResult, onClose}){
           </div>
 
           {(!manualMode && hasBarcodeAPI) && (
-            <p className="text-[11px] text-slate-400 text-center">Camera se scan ho raha hai… ya manual type karein</p>
+            <p className="text-[11px] text-slate-400 text-center">Scanning with the camera… or type it in manually</p>
           )}
         </div>
       </div>
@@ -848,12 +848,12 @@ function BarcodeScannerModal({onResult, onClose}){
 // ============================================================
 function compressImage(file){
   return new Promise((resolve, reject) => {
-    if (!file || !/^image\//.test(file.type||"")) return reject(new Error("Yeh image file nahi hai."));
+    if (!file || !/^image\//.test(file.type||"")) return reject(new Error("This is not an image file."));
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error("File padh nahi paaye."));
+    reader.onerror = () => reject(new Error("The file could not be read."));
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error("Image open nahi hui."));
+      img.onerror = () => reject(new Error("The image could not be opened."));
       img.onload = () => {
         try{
           const renderAt = (maxDim, q) => {
@@ -870,10 +870,10 @@ function compressImage(file){
           while (out.length > MAX_IMG_CHARS && q > 0.32){ q -= 0.12; out = renderAt(1280, q); }
           if (out.length > MAX_IMG_CHARS) out = renderAt(900, 0.6);
           if (out.length > MAX_IMG_CHARS) out = renderAt(700, 0.5);
-          if (out.length > MAX_IMG_CHARS) return reject(new Error("Photo bahut badi hai. Paas se photo lein."));
-          if (!isDataImage(out)) return reject(new Error("Photo encode nahi hui."));
+          if (out.length > MAX_IMG_CHARS) return reject(new Error("The photo is too large. Please take it from closer."));
+          if (!isDataImage(out)) return reject(new Error("The photo could not be encoded."));
           resolve(out);
-        } catch(err){ reject(new Error("Is device par photo process nahi hui.")); }
+        } catch(err){ reject(new Error("The photo could not be processed on this device.")); }
       };
       img.src = reader.result;
     };
@@ -889,8 +889,8 @@ function PhotoCapture({photos, setPhotos, onView, toast}){
     let files = Array.from(fileList || []);
     if (!files.length) return;
     const room = MAX_PHOTOS - photos.length;
-    if (room <= 0) return toast(`Zyada se zyada ${MAX_PHOTOS} photo.`, true);
-    if (files.length > room){ toast(`Sirf ${room} aur photo add ho sakti hai.`, true); files = files.slice(0, room); }
+    if (room <= 0) return toast(`A maximum of ${MAX_PHOTOS} photos.`, true);
+    if (files.length > room){ toast(`Only ${room} more photo(s) can be added.`, true); files = files.slice(0, room); }
     setBusy(files.length);
     for (const f of files){
       try { const d = await compressImage(f); setPhotos(p => [...p, d]); }
@@ -930,7 +930,7 @@ function PhotoCapture({photos, setPhotos, onView, toast}){
         </div>
       )}
       <p className="text-[11px] text-slate-500 mt-2.5">
-        Phone par &ldquo;Take photo&rdquo; se camera khulega. {MAX_PHOTOS} tak photo, apne aap compress ho jaati hain.
+        On a phone, &ldquo;Take photo&rdquo; opens the camera. Up to {MAX_PHOTOS} photos, compressed automatically.
       </p>
     </div>
   );
@@ -1001,7 +1001,7 @@ const SignaturePad = React.forwardRef(function SignaturePad(props, ref){
           onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
         {!hasInk && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-500 text-sm">
-            Yahan ungli ya pen se signature banayein
+            Sign here with your finger or a pen
           </div>
         )}
         <div className="absolute left-5 right-5 bottom-7 border-b border-dashed border-slate-300 pointer-events-none" />
@@ -1036,19 +1036,19 @@ function Lightbox({src, onClose}){
 }
 
 // ============================================================
-// 8. LOGIN — yahan se hat gaya
+// 8. LOGIN: removed from this app
 // ============================================================
-/* `LoginScreen` (email + password login, aur naya account banane wala
-   signup) poora hata diya gaya hai, aur uske saath `sb.auth.signInWith
-   Password()` / `sb.auth.signUp()` wale dono raaste bhi.
+/* `LoginScreen` (email + password login, and the signup that created a
+   new account) has been removed completely, along with both the
+   `sb.auth.signInWithPassword()` and `sb.auth.signUp()` paths.
 
-   Wajah: login ab sirf `launcher.html` par hota hai. Us ek darwaze ke
-   peeche pehchaan `app_users` se aati hai, aur yahan ka auth session
-   `erp-sso` khud bana deta hai (dekhein file ke shuru me gate). Do
-   login rakhne ka matlab tha do user list, do password, aur ek hi bande
-   ke do naam — wahi ulajhan hatane ke liye ye sab gaya.
+   Reason: login now happens only on `launcher.html`. Behind that single
+   entry point the identity comes from `app_users`, and this app's auth
+   session is created by `erp-sso` (see the gate at the top of the file).
+   Two logins meant two user lists, two passwords and two names for the
+   same person; all of this went to remove that confusion.
 
-   Naya banda jodna bhi ab ek hi jagah hai: launcher ka Signup, aur
+   Adding a new person also happens in one place now: the launcher's Signup, and
    Admin Panel › Users › Apps me "Complaint App" ON. */
 // ============================================================
 // 9. NEW COMPLAINT
@@ -1104,16 +1104,16 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
 
   const save = async () => {
     const e = {};
-    if (!f.problem_desc || f.problem_desc.trim().length < 4) e.problem_desc = "Problem thoda detail me likhein.";
-    if (!photos.length) e.photos = "Kam se kam ek photo lagana zaroori hai.";
+    if (!f.problem_desc || f.problem_desc.trim().length < 4) e.problem_desc = "Please describe the problem in a little more detail.";
+    if (!photos.length) e.photos = "At least one photo is required.";
     if (isFabric){
-      if (isOtherProcess && !f.other_process_name.trim()) e.other_process_name = "Process ka naam likhein.";
+      if (isOtherProcess && !f.other_process_name.trim()) e.other_process_name = "Please enter the process name.";
       // Numeric, and required: it is how a complaint is tied to a specific lot
       // on the floor, so a blank would make the report unusable later.
-      if (String(f.fabric_quality).trim() === "") e.fabric_quality = "Fabric quality number likhein.";
-      else if (!isFinite(Number(f.fabric_quality))) e.fabric_quality = "Sirf number likhein.";
+      if (String(f.fabric_quality).trim() === "") e.fabric_quality = "Please enter the fabric quality number.";
+      else if (!isFinite(Number(f.fabric_quality))) e.fabric_quality = "Enter a number only.";
     } else {
-      if (isOther && !f.other_machine_name.trim()) e.other_machine_name = "Machine ka naam likhein.";
+      if (isOther && !f.other_machine_name.trim()) e.other_machine_name = "Please enter the machine name.";
     }
     setErrs(e);
     if (Object.keys(e).length) return;
@@ -1155,7 +1155,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
       if (isOtherProcess && f.other_process_name.trim()){
         const newP = { process_name: f.other_process_name.trim(), department: profile.department };
         const { error: pcErr } = await sb.from("cmp_fabric_processes").insert(newP);
-        if (!pcErr) toast("Process list me bhi add ho gaya — " + newP.process_name);
+        if (!pcErr) toast("Also added to the process list: " + newP.process_name);
         else if (!/duplicate|unique/i.test(pcErr.message || "")) console.warn("process auto-add failed:", pcErr.message);
       }
     } else if (isOther && f.other_machine_name.trim()) {
@@ -1165,13 +1165,13 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
         department: profile.department,
       };
       const { error: mErr } = await sb.from("cmp_machine_list").insert(newM);
-      if (!mErr) toast("Machine list me bhi add ho gayi — " + newM.machine_name);
+      if (!mErr) toast("Also added to the machine list: " + newM.machine_name);
       else if (!/duplicate|unique/i.test(mErr.message || "")) console.warn("machine_list auto-add failed:", mErr.message);
     }
 
     setBusy(false);
-    toast(`Complaint ${data.complaint_no} log ho gayi.${photos.length && photoOk ? ` ${photos.length} photo ke saath.` : ""}`);
-    if (!photoOk) toast("Complaint save hui, par photo upload nahi hui. Complaint kholkar dobara add karein.", true);
+    toast(`Complaint ${data.complaint_no} has been logged.${photos.length && photoOk ? ` With ${photos.length} photo(s).` : ""}`);
+    if (!photoOk) toast("The complaint was saved, but the photo did not upload. Open the complaint and add it again.", true);
     onSaved();
   };
 
@@ -1200,7 +1200,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
           <p className="text-[10.5px] uppercase tracking-wide text-slate-500">Date of problem · तारीख</p>
           <p className="text-sm font-semibold text-slate-800">{fmtDateTime(nowRef.current)}</p>
         </div>
-        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500 shrink-0 text-right">Auto<br/>badal nahi sakte</span>
+        <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500 shrink-0 text-right">Auto<br/>not editable</span>
       </div>
 
       {/* ── What the complaint is about ─────────────────────────────
@@ -1214,7 +1214,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
               {(processes||[]).map(p => (
                 <option key={p.process_name} value={p.process_name}>{p.process_name}</option>
               ))}
-              <option value="Other">Other / list me nahi hai</option>
+              <option value="Other">Other / not in the list</option>
             </select>
           </Field>
 
@@ -1243,7 +1243,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
                   {m.machine_no} — {m.machine_name}
                 </option>
               ))}
-              <option value="Other">Other / list me nahi hai</option>
+              <option value="Other">Other / not in the list</option>
             </select>
           </Field>
 
@@ -1260,7 +1260,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
                        onChange={e=>set("machine_no", e.target.value)} placeholder="e.g. KM-04" />
                 <button type="button" onClick={()=>setShowScan(true)}
                   className="shrink-0 w-10 h-10 rounded-lg bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition grid place-items-center"
-                  title="Barcode scan karein">
+                  title="Scan a barcode">
                   <Ico d={I.scan} className="w-5 h-5" />
                 </button>
               </div>
@@ -1274,7 +1274,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
       <Field label="Describe problem" hindi="शिकायत का विवरण" required error={errs.problem_desc}>
         <textarea className={inputCls(errs.problem_desc)+" min-h-[90px] resize-y"} value={f.problem_desc}
                   onChange={e=>set("problem_desc", e.target.value)}
-                  placeholder="Kya problem hai, kab se hai, kaunsa part…" />
+                  placeholder="What is the problem, since when, which part…" />
       </Field>
 
       <Field label="Photo" hindi="शिकायत की फोटो" required error={errs.photos}>
@@ -1287,8 +1287,8 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
       <div className="mt-1 flex items-start gap-2 rounded-lg bg-slate-100 border border-slate-200 px-3 py-2.5 text-[12px] text-slate-600">
         <Ico d={I.info} className="w-4 h-4 mt-0.5 shrink-0 text-slate-500" />
         <span>
-          Complaint ka <b>type</b> aur <b>host</b> aap nahi chunte — <b>{D.triager}</b> complaint
-          dekh kar type tay karenge aur sahi host ko assign karenge.
+          You don't choose the complaint <b>type</b> or <b>host</b>. <b>{D.triager}</b> will review the
+          complaint, decide the type and assign it to the right host.
         </span>
       </div>
     </Modal>
@@ -1354,7 +1354,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
     return { matched, others };
   }, [hosts, effType]);
 
-  // 🔵 Blue tick — when host opens assigned complaint, mark seen
+  // Blue tick — when host opens assigned complaint, mark seen
   useEffect(() => {
     if ((isAssignedHost || isMaint) && !c.seen_by_host_at) markComplaintSeen(c.id, D.table);
   }, [c.id]); // eslint-disable-line
@@ -1376,7 +1376,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
     if (!photoArr.length) return true;
     const { error } = await sb.from(D.photoTable)
       .insert(photoArr.map(p => ({ complaint_id: c.id, image_data: p, mime:"image/jpeg", photo_type: type })));
-    if (error){ toast("Photo upload nahi hui.", true); return false; }
+    if (error){ toast("The photo did not upload.", true); return false; }
     return true;
   };
 
@@ -1397,11 +1397,11 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
      because it picks the host, so splitting them into two saves would let a
      complaint sit classified-but-unassigned with nobody owning it. */
   const assignHost = () => {
-    if (!c.complaint_type && !triageType) return setErr("Complaint type chunein.");
-    if (!selHost) return setErr("Host select karein.");
-    if (!eta) return setErr("Plan date & time chunein.");
+    if (!c.complaint_type && !triageType) return setErr("Choose a complaint type.");
+    if (!selHost) return setErr("Select a host.");
+    if (!eta) return setErr("Choose the planned date & time.");
     const when = new Date(eta);
-    if (isNaN(when)) return setErr("Date & time sahi nahi hai.");
+    if (isNaN(when)) return setErr("The date and time are not valid.");
     const hostObj = hosts.find(h => h.id === selHost);
     run({
       status: "In Progress",
@@ -1415,13 +1415,13 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
       assigned_at: new Date().toISOString(),
       expected_completion: when.toISOString(),
       remarks: remarks.trim() || null,
-    }, `${c.complaint_no} → ${hostObj?.name || "Host"} ko assign ho gayi.`);
+    }, `${c.complaint_no} assigned to ${hostObj?.name || "Host"}.`);
   };
 
   // --- STEP 3: Host resolves with proof photos -> Completed
   const markCompleted = () => {
     if (newProofs.length === 0 && (!proofPhotos || proofPhotos.length === 0))
-      return setErr("Proof photo lagana zaroori hai.");
+      return setErr("A proof photo is required.");
     run({
       status: "Completed",
       completed_at: new Date().toISOString(),
@@ -1433,10 +1433,10 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const confirmFixed = () =>
     run({ status:"Closed", closed_at: new Date().toISOString(),
           feedback_resolved:true, feedback_remarks: fbRemarks.trim() || null, feedback_at: new Date().toISOString() },
-        `${c.complaint_no} close ho gayi. Shukriya!`);
+        `${c.complaint_no} has been closed. Thank you!`);
   const notFixed = () =>
     run({ status:"In Progress", feedback_resolved:false, feedback_remarks: fbRemarks.trim() || null },
-        `${c.complaint_no} wapas host ke paas bhej di.`);
+        `${c.complaint_no} sent back to the host.`);
 
   // --- Delete
   const doDelete = async () => {
@@ -1444,7 +1444,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
     const { error } = await sb.from(D.table).delete().eq("id", c.id);
     setDelBusy(false); setConfirmDel(false);
     if (error){ toast(friendlyError(error), true); return; }
-    toast(`${c.complaint_no} delete ho gayi.`);
+    toast(`${c.complaint_no} has been deleted.`);
     onSaved();
   };
 
@@ -1467,8 +1467,8 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
           {canComplete &&
             <Btn variant="ok" onClick={markCompleted} disabled={busy}>{busy?<Spinner/>:null}Mark Completed</Btn>}
           {canFeedback && <>
-            <Btn variant="outline" onClick={notFixed} disabled={busy}>Nahi, abhi problem hai</Btn>
-            <Btn variant="ok" onClick={confirmFixed} disabled={busy}>{busy?<Spinner/>:null}Haan, theek ho gaya</Btn>
+            <Btn variant="outline" onClick={notFixed} disabled={busy}>No, the problem is still there</Btn>
+            <Btn variant="ok" onClick={confirmFixed} disabled={busy}>{busy?<Spinner/>:null}Yes, it's fixed</Btn>
           </>}
         </>
       }>
@@ -1567,7 +1567,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
       <div className="mb-4">
         <p className="text-[10.5px] uppercase tracking-wide text-slate-500 mb-2">Complaint Photos / शिकायत फोटो</p>
         {photos === null ? <Spinner className="w-4 h-4 text-slate-500" /> :
-         photos.length === 0 ? <p className="text-[12.5px] text-slate-500 mb-2">Koi photo nahi.</p> :
+         photos.length === 0 ? <p className="text-[12.5px] text-slate-500 mb-2">No photos.</p> :
          <div className="flex gap-2 flex-wrap mb-2">
            {photos.map((p,i)=>(
              <img key={p.id} src={p.image_data} alt={`Photo ${i+1}`} onClick={()=>onView(p.image_data)}
@@ -1606,46 +1606,46 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
               to edit here afterwards and the field would only mislead. */}
           {!c.complaint_type && (
             <Field label="Complaint type" hindi="शिकायत का प्रकार" required
-                   hint="Complaint dekh kar type tay karein — isse matching host pehle dikhenge.">
+                   hint="Decide the type after reviewing the complaint; matching hosts are listed first.">
               <select className={inputCls(false)} value={triageType}
                       onChange={e=>{ setTriageType(e.target.value); setSelHost(""); }}>
-                <option value="">— Type chunein —</option>
+                <option value="">— Choose a type —</option>
                 {D.types.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
           )}
 
           <Field label="Select Host" hindi="होस्ट चुनें" required
-                 hint={effType ? `${effType} type ke hosts pehle dikhenge`
-                               : "Pehle type chunein — phir matching hosts upar aa jayenge."}>
+                 hint={effType ? `Hosts for ${effType} are listed first`
+                               : "Choose a type first; matching hosts will move to the top."}>
             <select className={inputCls(false)} value={selHost} onChange={e=>setSelHost(e.target.value)}>
-              <option value="">— Host chunein —</option>
+              <option value="">— Choose a host —</option>
               {filteredHosts.matched.length > 0 && (
-                <optgroup label={`✅ ${effType} Hosts`}>
+                <optgroup label={`${effType} Hosts`}>
                   {filteredHosts.matched.map(h => (
                     <option key={h.id} value={h.id}>{h.name} · {h.department} · {h.mobile}</option>
                   ))}
                 </optgroup>
               )}
               {filteredHosts.others.length > 0 && (
-                <optgroup label={effType ? "👥 Other Hosts" : "👥 All Hosts"}>
+                <optgroup label={effType ? "Other Hosts" : "All Hosts"}>
                   {filteredHosts.others.map(h => (
                     <option key={h.id} value={h.id}>{h.name} · {h.department} · {(h.host_types||[]).join(", ")}</option>
                   ))}
                 </optgroup>
               )}
               {filteredHosts.matched.length === 0 && filteredHosts.others.length === 0 && (
-                <option disabled>Koi host nahi mila — Admin se host add karwayein</option>
+                <option disabled>No host found. Ask the Admin to add a host.</option>
               )}
             </select>
           </Field>
           <Field label="Plan Date &amp; Time" hindi="कब तक ठीक होगा" required
-                 hint="User ko In-progress me yeh date dikhega.">
+                 hint="The user sees this date under In Progress.">
             <input type="datetime-local" className={inputCls(false)} value={eta} onChange={e=>setEta(e.target.value)} />
           </Field>
           <Field label="Remarks / Instructions" hindi="निर्देश">
             <textarea className={inputCls(false)+" min-h-[64px] resize-y"} value={remarks}
-                      onChange={e=>setRemarks(e.target.value)} placeholder="Kya karna hai, spare chahiye, priority…" />
+                      onChange={e=>setRemarks(e.target.value)} placeholder="What needs doing, spares needed, priority…" />
           </Field>
         </div>
       )}
@@ -1657,12 +1657,12 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
             Complete &amp; Upload Proof / पूरा करें
           </p>
           <Field label="Proof Photos" hindi="प्रमाण फोटो" required
-                 hint="Resolve ki photo lagao — Camera ya Gallery se">
+                 hint="Attach a photo of the fix, from the camera or gallery">
             <PhotoCapture photos={newProofs} setPhotos={setNewProofs} toast={toast} onView={onView} />
           </Field>
           <Field label="Completion Remarks" hindi="क्या किया गया">
             <textarea className={inputCls(false)+" min-h-[64px] resize-y"} value={compRemarks}
-                      onChange={e=>setCompRemarks(e.target.value)} placeholder="Kya kiya gaya, kaunsa spare laga…" />
+                      onChange={e=>setCompRemarks(e.target.value)} placeholder="What was done, which spare was used…" />
           </Field>
         </div>
       )}
@@ -1672,7 +1672,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
         <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 mt-5">
           <p className="text-[13px] font-semibold text-violet-800 mb-1">Complaint resolved? / शिकायत ठीक हुई?</p>
           <p className="text-[12.5px] text-slate-500 mb-3">
-            {c.host_name || "Host"} ne complaint complete mark kar di hai. Machine sach me theek ho gayi?
+            {c.host_name || "Host"} has marked the complaint as complete. Is the machine really fixed?
           </p>
           <Field label="Your remarks" hindi="आपकी टिप्पणी">
             <textarea className={inputCls(false)+" min-h-[60px] resize-y"} value={fbRemarks}
@@ -1686,8 +1686,8 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
         <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 mt-5 flex items-start gap-3">
           <Ico d={I.clock} className="w-5 h-5 text-teal-700 mt-0.5 shrink-0" />
           <div>
-            <p className="text-[13px] font-semibold text-teal-800">{c.host_name || "Host"} kaam kar raha hai</p>
-            <p className="text-[13px] text-slate-700 mt-0.5">{fmtDateTime(c.expected_completion)} tak theek hone ki ummeed hai.</p>
+            <p className="text-[13px] font-semibold text-teal-800">{c.host_name || "Host"} is working on it</p>
+            <p className="text-[13px] text-slate-700 mt-0.5">Expected to be fixed by {fmtDateTime(c.expected_completion)}.</p>
           </div>
         </div>
       )}
@@ -1708,7 +1708,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
             </div>
             <div className="px-5 py-4">
               <p className="text-[13.5px] text-slate-700">
-                <strong>{c.complaint_no}</strong> hamesha ke liye delete ho jayegi &mdash; iske saath sab photo bhi mit jayenge.
+                <strong>{c.complaint_no}</strong> will be deleted permanently, along with all its photos.
               </p>
             </div>
             <div className="px-5 py-3.5 border-t border-slate-200 flex gap-2 justify-end">
@@ -1756,7 +1756,7 @@ function ComplaintRow({c, profile, D, onOpen}){
             : <>{c.machine_no || "—"} <span className="font-normal text-slate-500">·</span> <span className="font-normal text-[12px] text-slate-600">{machineLabel(c)}</span></>}
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
-          {showBlueTick && <Ico d={I.checkCheck} className="w-3.5 h-3.5 text-blue-500" title="Host ne dekh liya" />}
+          {showBlueTick && <Ico d={I.checkCheck} className="w-3.5 h-3.5 text-blue-500" title="Seen by the host" />}
           {needsMe ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Needs your action" /> : null}
           <StatusBadge c={c} D={D} />
         </div>
@@ -1770,12 +1770,12 @@ function ComplaintRow({c, profile, D, onOpen}){
         <span>{fmtDate(c.problem_date)}</span>
         <span>·</span>
         <span className="truncate">{c.entered_by}</span>
-        {c.photo_count > 0 && <span className="ml-auto shrink-0">📷 {c.photo_count}</span>}
+        {c.photo_count > 0 && <span className="ml-auto shrink-0">{c.photo_count}</span>}
       </div>
       {/* In Progress: show assigned host + plan date */}
       {c.status === "In Progress" && (c.host_name || c.expected_completion) ? (
         <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-teal-700 font-medium">
-          {c.host_name && <span>👷 {c.host_name}</span>}
+          {c.host_name && <span>{c.host_name}</span>}
           {c.expected_completion && <span>· Plan: {fmtDateTime(c.expected_completion)}</span>}
         </div>
       ) : null}
@@ -1875,7 +1875,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
               classified yet — that is the triager's actual work queue. */}
           <select className={inputCls(false)+" flex-1 sm:w-auto text-[14px]"} value={type} onChange={e=>setType(e.target.value)}>
             <option value="All">All types</option>
-            <option value="__none">Type baaki (untriaged)</option>
+            <option value="__none">Type pending (untriaged)</option>
             {D.types.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
           <Btn variant="outline" icon={I.refresh} onClick={onRefresh} aria-label="Refresh" className="shrink-0" />
@@ -1892,10 +1892,10 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
           <div className="px-4 py-12 sm:py-16 text-center">
             <Ico d={I.clipboard} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
             <p className="font-semibold text-slate-700 text-[13.5px] sm:text-[14px]">
-              {tab === "Pending" ? "Koi pending complaint nahi" : tab === "In Progress" ? "Kuch chal nahi raha" : "Abhi kuch complete nahi hua"}
+              {tab === "Pending" ? "No pending complaints" : tab === "In Progress" ? "Nothing in progress" : "Nothing completed yet"}
             </p>
             <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
-              {rows.length ? "Filter ya search clear karke dekhein." : 'Nayi complaint "New Complaint" se log karein.'}
+              {rows.length ? "Try clearing the filter or search." : 'Log a new complaint with "New Complaint".'}
             </p>
           </div>
         ) : shown.map(c => <ComplaintRow key={c.id} c={c} profile={profile} D={D} onOpen={onOpen} />)}
@@ -1933,12 +1933,12 @@ function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
 
   const save = async () => {
     const e = {};
-    if (f.name.trim().length < 2) e.name = "Poora naam likhein.";
+    if (f.name.trim().length < 2) e.name = "Please enter the full name.";
     if (!/^\d{10}$/.test(digits(f.mobile))) e.mobile = "Exactly 10 digit ka mobile number.";
-    if (!f.designation.trim()) e.designation = "Designation likhein.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dob)) e.dob = "Janm tithi chunein.";
-    if (f.department === "Other" && !f.department_other.trim()) e.department_other = "Naya department ka naam likhein.";
-    if (f.role === "Host" && f.host_types.length === 0) e.host_types = "Host ko kam se kam ek complaint type dein.";
+    if (!f.designation.trim()) e.designation = "Please enter the designation.";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dob)) e.dob = "Choose the date of birth.";
+    if (f.department === "Other" && !f.department_other.trim()) e.department_other = "Enter the new department's name.";
+    if (f.role === "Host" && f.host_types.length === 0) e.host_types = "Give the Host at least one complaint type.";
     setErrs(e);
     if (Object.keys(e).length) return;
 
@@ -1965,7 +1965,7 @@ function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
         footer={<Btn variant="primary" onClick={onClose}>Done</Btn>}>
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
           <p className="text-[13px] text-emerald-800 font-semibold mb-3">
-            {isEdit && !result.password_changed ? "Details update ho gayi. Password wahi hai." : "Yeh login details user ko dein:"}
+            {isEdit && !result.password_changed ? "Details updated. The password is unchanged." : "Give these login details to the user:"}
           </p>
           <div className="space-y-2.5 font-mono text-[13.5px]">
             <div className="flex gap-3"><span className="text-slate-500 w-20 shrink-0">Name</span><span className="text-slate-900 break-all">{f.name}</span></div>
@@ -1974,13 +1974,13 @@ function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
           <Btn size="sm" variant="outline" className="mt-3.5"
             onClick={()=>{
               const text = `Sarv MIS login\nName: ${f.name}\nPassword: ${result.password}`;
-              if (navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast("Copy ho gaya."), ()=>toast("Copy nahi hua.", true));
-              else toast("Copy nahi hua.", true);
+              if (navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast("Copied."), ()=>toast("Could not copy.", true));
+              else toast("Could not copy.", true);
             }}>Copy details</Btn>
         </div>
         <p className="text-[11.5px] text-slate-500 mt-3 leading-relaxed">
           Password rule: mobile number, phir @, phir DDMMYYYY janm tithi.
-          Mobile ya DOB badalne par password apne aap badal jata hai.
+          Changing the mobile number or DOB changes the password automatically.
         </p>
       </Modal>
     );
@@ -2032,7 +2032,7 @@ function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
            Electrical and Width at the same time — common on a small floor
            where the same fitter covers both. */
         <Field label="Host for which complaint types" hindi="किन शिकायतों का होस्ट" required error={errs.host_types}
-               hint="Host sirf inhi types ki complaints dekh payega. Machine aur Fabric dono chun sakte hain.">
+               hint="The Host will see complaints of these types only. You can choose both Machine and Fabric.">
           <div className="space-y-2.5">
             {HOST_TYPE_GROUPS.map(g=>(
               <div key={g.label}>
@@ -2059,12 +2059,12 @@ function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
       )}
       {f.role === "Maintenance" && (
         <p className="text-[12.5px] text-slate-500 rounded-lg bg-slate-100 px-3.5 py-2.5">
-          Maintenance role sabhi hosts ki complaints dekh sakta hai.
+          The Maintenance role can see complaints for all hosts.
         </p>
       )}
       {f.role === "Admin" && (
         <p className="text-[12.5px] text-amber-700 rounded-lg bg-amber-500/10 px-3.5 py-2.5">
-          Admin ko poora access milega — sab complaints aur user management.
+          The Admin gets full access: all complaints and user management.
         </p>
       )}
 
@@ -2111,14 +2111,14 @@ function AdminUsers({profile, toast, callAdmin}){
   const setActive = async (u, active) => {
     const res = await callAdmin({ action:"set_active", id:u.id, is_active:active });
     if (!res.ok) return toast(res.error, true);
-    toast(`${u.name} ${active ? "active" : "deactivate"} ho gaya.`);
+    toast(`${u.name} ${active ? "activated" : "deactivated"}.`);
     load();
   };
   const doDelete = async (u) => {
     const res = await callAdmin({ action:"delete", id:u.id });
     setConfirm(null);
     if (!res.ok) return toast(res.error, true);
-    toast(`${u.name} delete ho gaya.`);
+    toast(`${u.name} has been deleted.`);
     load();
   };
 
@@ -2152,7 +2152,7 @@ function AdminUsers({profile, toast, callAdmin}){
         )) : shown.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <Ico d={I.users} className="w-9 h-9 mx-auto text-slate-300 mb-3" />
-            <p className="font-semibold text-slate-700">Koi user nahi mila</p>
+            <p className="font-semibold text-slate-700">No users found</p>
           </div>
         ) : shown.map(u => (
           <div key={u.id} className={`px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 ${u.is_active?"":"opacity-55"}`}>
@@ -2190,7 +2190,7 @@ function AdminUsers({profile, toast, callAdmin}){
 
       <p className="text-[11.5px] text-slate-400 mt-3 leading-relaxed">
         Password = mobile number + <span className="text-slate-500">@</span> + DDMMYYYY (janm tithi).
-        Mobile ya DOB edit karne par password apne aap badal jata hai &mdash; naya password user ko batana zaroori hai.
+        Editing the mobile number or DOB changes the password automatically; the user must be told the new password.
       </p>
 
       {editing !== undefined && (
@@ -2204,11 +2204,11 @@ function AdminUsers({profile, toast, callAdmin}){
             <Btn variant="danger" onClick={()=>doDelete(confirm)}>Delete permanently</Btn>
           </>}>
           <p className="text-[13.5px] text-slate-700">
-            <strong>{confirm.name}</strong> ka login hamesha ke liye delete ho jayega.
-            Inki purani complaints register me rahengi, par reporter ka naam link nahi rahega.
+            <strong>{confirm.name}</strong>'s login will be deleted permanently.
+            Their old complaints stay in the register, but the reporter's name will no longer be linked.
           </p>
           <p className="text-[13px] text-slate-500 mt-3">
-            Sirf chhutti ya transfer ke liye <em>Deactivate</em> behtar hai — data safe rehta hai.
+            For leave or a transfer, <em>Deactivate</em> is better; the data stays safe.
           </p>
         </Modal>
       )}
@@ -2236,9 +2236,9 @@ function MachineFormModal({editing, onClose, onSaved, toast}){
 
   const save = async () => {
     const e = {};
-    if (!f.machine_name.trim()) e.machine_name = "Machine ka naam likhein.";
-    if (!f.machine_no.trim()) e.machine_no = "Machine number likhein.";
-    if (f.department === "Other" && !f.department_other.trim()) e.department_other = "Naya department ka naam likhein.";
+    if (!f.machine_name.trim()) e.machine_name = "Please enter the machine name.";
+    if (!f.machine_no.trim()) e.machine_no = "Please enter the machine number.";
+    if (f.department === "Other" && !f.department_other.trim()) e.department_other = "Enter the new department's name.";
     setErrs(e);
     if (Object.keys(e).length) return;
 
@@ -2250,7 +2250,7 @@ function MachineFormModal({editing, onClose, onSaved, toast}){
       : await sb.from("cmp_machine_list").insert(row);
     setBusy(false);
     if (error) return toast(friendlyError(error), true);
-    toast(isEdit ? "Machine update ho gayi." : "Machine add ho gayi.");
+    toast(isEdit ? "Machine updated." : "Machine added.");
     onSaved();
     onClose();
   };
@@ -2271,7 +2271,7 @@ function MachineFormModal({editing, onClose, onSaved, toast}){
                  onChange={e=>set("machine_no", e.target.value)} placeholder="KM-05" />
           <button type="button" onClick={()=>setShowScan(true)}
             className="shrink-0 w-10 h-10 rounded-lg bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition grid place-items-center"
-            title="Barcode scan karein">
+            title="Scan a barcode">
             <Ico d={I.scan} className="w-5 h-5" />
           </button>
         </div>
@@ -2328,7 +2328,7 @@ function AdminMachines({toast, onMachinesChanged}){
     setDelBusy(false);
     setConfirm(null);
     if (error) return toast(friendlyError(error), true);
-    toast(`${m.machine_no} delete ho gayi.`);
+    toast(`${m.machine_no} has been deleted.`);
     saved();
   };
 
@@ -2362,7 +2362,7 @@ function AdminMachines({toast, onMachinesChanged}){
         )) : shown.length === 0 ? (
           <div className="px-5 py-14 text-center">
             <Ico d={I.clipboard} className="w-9 h-9 mx-auto text-slate-300 mb-3" />
-            <p className="font-semibold text-slate-700">Koi machine nahi mili</p>
+            <p className="font-semibold text-slate-700">No machines found</p>
           </div>
         ) : shown.map(m => (
           <div key={m.id} className="px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -2385,7 +2385,7 @@ function AdminMachines({toast, onMachinesChanged}){
       </div>
 
       <p className="text-[11.5px] text-slate-400 mt-3 leading-relaxed">
-        Delete permanent hai — list se hamesha ke liye hat jayegi. Purani complaints me machine ka naam text ke roop me safe rehta hai.
+        Delete is permanent; it is removed from the list for good. Old complaints keep the machine name as text.
       </p>
 
       {editing !== undefined && (
@@ -2398,7 +2398,7 @@ function AdminMachines({toast, onMachinesChanged}){
             <Btn variant="danger" onClick={()=>doDelete(confirm)} disabled={delBusy}>{delBusy?<Spinner/>:null}Delete permanently</Btn>
           </>}>
           <p className="text-[13.5px] text-slate-700">
-            <strong>{confirm.machine_name} ({confirm.machine_no})</strong> list se hamesha ke liye hat jayegi.
+            <strong>{confirm.machine_name} ({confirm.machine_no})</strong> will be removed from the list permanently.
           </p>
         </Modal>
       )}
@@ -2450,19 +2450,19 @@ function NoticeComposer({profile, users, toast}){
   };
   const pickPdf = (file) => {
     if (!file) return;
-    if (file.type !== "application/pdf") { toast("Sirf PDF file allowed hai.", true); return; }
-    if (file.size > NB_MAX_PDF_BYTES) { toast("PDF 3 MB se badi hai. Chhoti file lagayein.", true); return; }
+    if (file.type !== "application/pdf") { toast("Only PDF files are allowed.", true); return; }
+    if (file.size > NB_MAX_PDF_BYTES) { toast("The PDF is larger than 3 MB. Please attach a smaller file.", true); return; }
     const reader = new FileReader();
-    reader.onerror = () => toast("PDF padh nahi paaye.", true);
+    reader.onerror = () => toast("The PDF could not be read.", true);
     reader.onload = () => setAtt({data:reader.result, mime:"application/pdf", name:file.name});
     reader.readAsDataURL(file);
     if (pdfRef.current) pdfRef.current.value = "";
   };
 
   const post = async () => {
-    if (!msg.trim() && !att) return toast("Kuch likhein ya photo/PDF lagayein.", true);
+    if (!msg.trim() && !att) return toast("Write something or attach a photo/PDF.", true);
     if (isAdmin && audience === "selected" && picked.length === 0)
-      return toast("Kam se kam ek user select karein, ya \"Sabko\" chunein.", true);
+      return toast("Select at least one user, or choose \"Everyone\".", true);
     setBusy(true);
     const { error } = await sb.from("cmp_notice_board").insert({
       message: msg.trim() || null,
@@ -2484,7 +2484,7 @@ function NoticeComposer({profile, users, toast}){
           {profile.name.slice(0,1).toUpperCase()}
         </div>
         <textarea className={inputCls(false)+" min-h-[54px] resize-y"} value={msg}
-          onChange={e=>setMsg(e.target.value)} placeholder="Notice board par kuch likhein… सूचना यहाँ लिखें" />
+          onChange={e=>setMsg(e.target.value)} placeholder="Write something on the notice board… सूचना यहाँ लिखें" />
       </div>
       {att && (
         <div className="mt-2.5 ml-12">
@@ -2513,7 +2513,7 @@ function NoticeComposer({profile, users, toast}){
             <button type="button" onClick={()=>setAudience("all")}
               className={`rounded-full px-3 py-1 text-[11.5px] font-medium border ${
                 audience==="all" ? "bg-teal-500 border-teal-500 text-slate-950" : "bg-white border-slate-300 text-slate-500 hover:border-slate-400"}`}>
-              Sabko
+              Everyone
             </button>
             <button type="button" onClick={()=>setAudience("selected")}
               className={`rounded-full px-3 py-1 text-[11.5px] font-medium border ${
@@ -2524,7 +2524,7 @@ function NoticeComposer({profile, users, toast}){
           {audience === "selected" && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 max-h-40 overflow-y-auto p-1.5 mb-1">
               {users.length === 0 ? (
-                <p className="text-[12px] text-slate-500 px-2 py-1.5">Koi user nahi mila.</p>
+                <p className="text-[12px] text-slate-500 px-2 py-1.5">No users found.</p>
               ) : users.map(u => (
                 <label key={u.id} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white cursor-pointer text-[12.5px]">
                   <input type="checkbox" checked={picked.includes(u.id)} onChange={()=>togglePick(u.id)} className="accent-teal-500" />
@@ -2592,7 +2592,7 @@ function NoticeCard({post, profile, users, toast, onView}){
             <Badge tone={roleTone(post.created_by_role)}>{post.created_by_role}</Badge>
             {post.recipient_ids?.length ? (
               <Badge tone="violet" title={isAdmin ? recipientNames : undefined}>
-                {isAdmin ? `Sirf: ${recipientNames}` : "Sirf aapke liye"}
+                {isAdmin ? `Only: ${recipientNames}` : "Only for you"}
               </Badge>
             ) : null}
             <span className="ml-auto text-[11px] text-slate-500 font-mono shrink-0">{fmtDateTime(post.created_at)}</span>
@@ -2625,7 +2625,7 @@ function NoticeCard({post, profile, users, toast, onView}){
              onMouseDown={e=>{ if(e.target===e.currentTarget && !delBusy) setConfirmDel(false); }}>
           <div className="bg-white border border-slate-200 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-200"><h3 className="font-semibold text-[15px]">Delete this notice?</h3></div>
-            <div className="px-5 py-4"><p className="text-[13.5px] text-slate-700">Yeh post hamesha ke liye hat jayegi.</p></div>
+            <div className="px-5 py-4"><p className="text-[13.5px] text-slate-700">This post will be removed permanently.</p></div>
             <div className="px-5 py-3.5 border-t border-slate-200 flex gap-2 justify-end">
               <Btn variant="outline" onClick={()=>setConfirmDel(false)} disabled={delBusy}>Cancel</Btn>
               <Btn variant="danger" onClick={doDelete} disabled={delBusy}>{delBusy?<Spinner/>:null}Delete</Btn>
@@ -2679,7 +2679,7 @@ function NoticeBoard({profile, toast, onView}){
     <div>
       <div className="mb-3">
         <h2 className="font-bold text-[15px] sm:text-[17px]">Notice Board</h2>
-        <p className="text-[11px] sm:text-[12.5px] text-slate-500">सूचना पट्ट &mdash; real-time{profile.role==="Admin" ? " · Admin sabko bhej sakta hai" : ""}</p>
+        <p className="text-[11px] sm:text-[12.5px] text-slate-500">सूचना पट्ट &middot; real-time{profile.role==="Admin" ? " · The Admin can post to everyone" : ""}</p>
       </div>
 
       <NoticeComposer profile={profile} users={users} toast={toast} />
@@ -2695,8 +2695,8 @@ function NoticeBoard({profile, toast, onView}){
       ) : posts.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-16 text-center">
           <Ico d={I.doc} className="w-9 h-9 mx-auto text-slate-300 mb-3" />
-          <p className="font-semibold text-slate-700">Abhi koi notice nahi</p>
-          <p className="text-[13px] text-slate-500 mt-1">Sabse pehle aap likhein.</p>
+          <p className="font-semibold text-slate-700">No notices yet</p>
+          <p className="text-[13px] text-slate-500 mt-1">Be the first to post.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -2725,9 +2725,9 @@ function taskUrgency(t){
   const pd = new Date(t.planned_date + "T00:00:00");
   const diffDays = Math.round((pd - today) / 86400000);
   if (diffDays < 0) return { tone:"rose",  border:"#f43f5e", label:`${-diffDays} din late` };
-  if (diffDays === 0) return { tone:"amber", border:"#f59e0b", label:"Aaj" };
+  if (diffDays === 0) return { tone:"amber", border:"#f59e0b", label:"Today" };
   if (diffDays === 1) return { tone:"amber", border:"#f59e0b", label:"Kal" };
-  return { tone:"amber", border:"#f59e0b", label:`${diffDays} din baad` };
+  return { tone:"amber", border:"#f59e0b", label:`In ${diffDays} days` };
 }
 function TaskStatusBadge({t}){
   if (t.status === "Pending Confirmation") return <Badge tone="violet">Awaiting confirmation</Badge>;
@@ -2751,10 +2751,10 @@ function ProofPicker({att, setAtt, toast}){
   };
   const pickPdf = (file) => {
     if (!file) return;
-    if (file.type !== "application/pdf") { toast("Sirf PDF file allowed hai.", true); return; }
-    if (file.size > NB_MAX_PDF_BYTES) { toast("PDF 3 MB se badi hai.", true); return; }
+    if (file.type !== "application/pdf") { toast("Only PDF files are allowed.", true); return; }
+    if (file.size > NB_MAX_PDF_BYTES) { toast("The PDF is larger than 3 MB.", true); return; }
     const reader = new FileReader();
-    reader.onerror = () => toast("PDF padh nahi paaye.", true);
+    reader.onerror = () => toast("The PDF could not be read.", true);
     reader.onload = () => setAtt({data:reader.result, mime:"application/pdf", name:file.name});
     reader.readAsDataURL(file);
     if (pdfRef.current) pdfRef.current.value = "";
@@ -2791,7 +2791,7 @@ function ProofPicker({att, setAtt, toast}){
       {/* Gallery input: NO capture attr → opens gallery / file picker */}
       <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={e=>pickImage(e.target.files?.[0])} />
       <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={e=>pickPdf(e.target.files?.[0])} />
-      <p className="text-[11px] text-slate-500 mt-2.5">Camera se photo lo ya Gallery se pehle ki photo chunein. PDF bhi laga sakte hain.</p>
+      <p className="text-[11px] text-slate-500 mt-2.5">Take a photo with the camera or choose an existing one from the gallery. You can also attach a PDF.</p>
     </div>
   );
 }
@@ -2804,9 +2804,9 @@ function TaskFormModal({profile, doers, onClose, onSaved, toast}){
 
   const save = async () => {
     const e = {};
-    if (!f.assigned_to) e.assigned_to = "Doer chunein.";
-    if (!f.planned_date) e.planned_date = "Planned date chunein.";
-    if (!f.task_desc || f.task_desc.trim().length < 4) e.task_desc = "Task thoda detail me likhein.";
+    if (!f.assigned_to) e.assigned_to = "Choose a doer.";
+    if (!f.planned_date) e.planned_date = "Choose a planned date.";
+    if (!f.task_desc || f.task_desc.trim().length < 4) e.task_desc = "Please describe the task in a little more detail.";
     setErrs(e);
     if (Object.keys(e).length) return;
 
@@ -2816,7 +2816,7 @@ function TaskFormModal({profile, doers, onClose, onSaved, toast}){
     });
     setBusy(false);
     if (error) return toast(friendlyError(error), true);
-    toast("Task assign ho gayi. Doer ki confirmation ka wait hai.");
+    toast("Task assigned. Waiting for the doer to confirm.");
     onSaved(); onClose();
   };
 
@@ -2835,7 +2835,7 @@ function TaskFormModal({profile, doers, onClose, onSaved, toast}){
         </select>
       </Field>
       <Field label="Planned date" hindi="तारीख" required error={errs.planned_date}
-             hint="Doer ke confirm karne ke baad hi task assign maani jayegi.">
+             hint="The task counts as assigned only after the doer confirms it.">
         <input type="date" className={inputCls(errs.planned_date)} value={f.planned_date} min={todayStr()}
                onChange={e=>set("planned_date", e.target.value)} />
       </Field>
@@ -2911,16 +2911,16 @@ function RingAlarmSection({t, ringMsg, setRingMsg, ringAlarm, ringBusy, ringSent
   const fmtAgo = (iso) => {
     if (!iso) return "—";
     const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (sec < 60) return "abhi abhi";
-    if (sec < 3600) return Math.floor(sec/60) + " min pehle";
-    if (sec < 86400) return Math.floor(sec/3600) + " hrs pehle";
-    return Math.floor(sec/86400) + " din pehle";
+    if (sec < 60) return "just now";
+    if (sec < 3600) return Math.floor(sec/60) + " min ago";
+    if (sec < 86400) return Math.floor(sec/3600) + " hrs ago";
+    return Math.floor(sec/86400) + " days ago";
   };
 
   return (
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
       <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold mb-2 flex items-center gap-1.5">
-        <Ico d={I.bell} className="w-3.5 h-3.5" /> Ring alarm — doer ke device par
+        <Ico d={I.bell} className="w-3.5 h-3.5" /> Ring the alarm on the doer's device
       </p>
 
       {/* Doer status indicator */}
@@ -2937,14 +2937,14 @@ function RingAlarmSection({t, ringMsg, setRingMsg, ringAlarm, ringBusy, ringSent
       </div>
 
       <p className="text-[12px] text-slate-500 mb-2.5">
-        Ring bhejne par — in-app alarm + push notification dono jaayenge. Browser band ho tab bhi push notification aayega.
+        Sending a ring triggers both an in-app alarm and a push notification. The push notification arrives even when the browser is closed.
       </p>
 
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <input className={inputCls(false)+" flex-1 min-w-[160px]"} value={ringMsg}
                onChange={e=>setRingMsg(e.target.value)} placeholder="Message (optional)…" />
         <Btn size="sm" variant="primary" icon={I.bell} onClick={ringAlarm} disabled={ringBusy}>
-          {ringBusy?<Spinner/>:null}{ringSent ? "Bhej diya" : "Ring alarm"}
+          {ringBusy?<Spinner/>:null}{ringSent ? "Sent" : "Ring alarm"}
         </Btn>
       </div>
 
@@ -2967,7 +2967,7 @@ function RingAlarmSection({t, ringMsg, setRingMsg, ringAlarm, ringBusy, ringSent
               ) : (
                 <span className="flex items-center gap-1 text-slate-400">
                   <Ico d={I.wifiOff} className="w-3 h-3" />
-                  <span>Device pe abhi nahi mila</span>
+                  <span>Not found on the device yet</span>
                 </span>
               )}
               {r.acknowledged_at ? (
@@ -3016,27 +3016,27 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
   };
 
   const updateDate = () => {
-    if (!newDate) return setErr("Date chunein.");
+    if (!newDate) return setErr("Choose a date.");
     if (newDate === t.planned_date) return onClose();
     run({ planned_date:newDate, date_remarks: dateRemark.trim() || null },
-      t.status === "Pending Confirmation" ? "Planned date update ho gayi." : `Planned date revise ho gayi (${t.revision_count+1}/3).`);
+      t.status === "Pending Confirmation" ? "Planned date updated." : `Planned date revised (${t.revision_count+1}/3).`);
   };
-  const confirmDate = () => run({ status:"Assigned", doer_remarks: doerRemark.trim() || null }, "Task confirm ho gayi — ab yeh assigned hai.");
+  const confirmDate = () => run({ status:"Assigned", doer_remarks: doerRemark.trim() || null }, "Task confirmed. It is now assigned.");
   const requestChange = () => {
-    if (!doerRemark.trim()) return setErr("Date change ki wajah likhein.");
-    run({ doer_remarks: doerRemark.trim() }, "Admin ko date change ki request bhej di.");
+    if (!doerRemark.trim()) return setErr("Please give the reason for the date change.");
+    run({ doer_remarks: doerRemark.trim() }, "Date change request sent to the Admin.");
   };
   const markDone = () => {
-    if (!proof) return setErr("Photo ya document lagana zaroori hai.");
+    if (!proof) return setErr("A photo or document is required.");
     run({ status:"Completed", proof_data:proof.data, proof_mime:proof.mime, proof_name:proof.name, completion_note: note.trim() || null },
-      `Task complete mark ho gayi.`);
+      `Task marked as complete.`);
   };
   const doDelete = async () => {
     setDelBusy(true);
     const { error } = await sb.from("cmp_tasks").delete().eq("id", t.id);
     setDelBusy(false); setConfirmDel(false);
     if (error) return toast(friendlyError(error), true);
-    toast("Task delete ho gayi."); onSaved(); onClose();
+    toast("Task deleted."); onSaved(); onClose();
   };
   const ringAlarm = async () => {
     setRingBusy(true); setErr("");
@@ -3046,7 +3046,7 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
     // Also fire server-side Web Push (background notification even if browser is closed)
     sendPushToUser(t.assigned_to, t.task_desc, ringMsg.trim() || null);
     setRingMsg(""); setRingSent(true);
-    toast("Reminder bhej diya + Push notification bhi.");
+    toast("Reminder sent, along with a push notification.");
     setTimeout(()=>setRingSent(false), 4000);
   };
 
@@ -3063,7 +3063,7 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
       <div className="flex items-center gap-2 flex-wrap mb-4">
         <TaskStatusBadge t={t} />
         {t.first_planned_date !== t.planned_date && <Badge tone="slate">First date: {fmtDate(t.first_planned_date)}</Badge>}
-        {t.date_change_requested && <Badge tone="amber">Doer ne date change maangi hai</Badge>}
+        {t.date_change_requested && <Badge tone="amber">Doer has requested a date change</Badge>}
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-4">
@@ -3126,10 +3126,10 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
       {isAdmin && t.status !== "Completed" && (
         <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 mb-4">
           <p className="text-[11px] uppercase tracking-wide text-teal-700 font-semibold mb-3">
-            {t.status === "Pending Confirmation" ? "Planned date badlein (confirm hone tak free)" : `Planned date revise karein (${t.revision_count}/3 used)`}
+            {t.status === "Pending Confirmation" ? "Change the planned date (free until confirmed)" : `Revise the planned date (${t.revision_count}/3 used)`}
           </p>
           {t.status === "Assigned" && t.revision_count >= 3 ? (
-            <p className="text-[13px] text-rose-600">Revision limit (3/3) khatam ho chuki hai — ab date badal nahi sakte.</p>
+            <p className="text-[13px] text-rose-600">The revision limit (3/3) has been used up; the date can no longer be changed.</p>
           ) : (
             <>
               <div className="flex items-center gap-2 flex-wrap mb-2.5">
@@ -3146,13 +3146,13 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
       {/* ---------- DOER: confirm the date, or ask admin to change it ---------- */}
       {isDoer && t.status === "Pending Confirmation" && (
         <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 mb-4">
-          <p className="text-[13px] font-semibold text-violet-800 mb-1">Is planned date ko confirm karein?</p>
-          <p className="text-[12.5px] text-slate-500 mb-3">Confirm karne ke baad hi yeh task aapko assign maani jayegi.</p>
+          <p className="text-[13px] font-semibold text-violet-800 mb-1">Confirm this planned date?</p>
+          <p className="text-[12.5px] text-slate-500 mb-3">The task counts as assigned to you only after you confirm.</p>
 
           {doerMode === null && (
             <div className="flex items-center gap-2 flex-wrap">
               <Btn variant="ok" icon={I.check} onClick={()=>setDoerMode("confirm")}>Confirm {fmtDate(t.planned_date)}</Btn>
-              <Btn variant="outline" icon={I.calendar} onClick={()=>setDoerMode("change")}>Date change chahiye</Btn>
+              <Btn variant="outline" icon={I.calendar} onClick={()=>setDoerMode("change")}>Request a date change</Btn>
             </div>
           )}
 
@@ -3162,19 +3162,19 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
                         onChange={e=>setDoerRemark(e.target.value)} placeholder="Remark (optional)…" />
               <div className="flex items-center gap-2 flex-wrap">
                 <Btn variant="ok" icon={I.check} onClick={confirmDate} disabled={busy}>{busy?<Spinner/>:null}Confirm {fmtDate(t.planned_date)}</Btn>
-                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Wapas</Btn>
+                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Back</Btn>
               </div>
             </>
           )}
 
           {doerMode === "change" && (
             <>
-              <p className="text-[12px] text-slate-500 mb-2">Date aap khud nahi badal sakte — Admin ko wajah bata dein, wahi date revise karega.</p>
+              <p className="text-[12px] text-slate-500 mb-2">You can't change the date yourself. Tell the Admin the reason and they will revise it.</p>
               <textarea className={inputCls(false)+" min-h-[52px] resize-y mb-2.5"} value={doerRemark}
-                        onChange={e=>setDoerRemark(e.target.value)} placeholder="Date change ki wajah likhein… (zaroori)" />
+                        onChange={e=>setDoerRemark(e.target.value)} placeholder="Reason for the date change… (required)" />
               <div className="flex items-center gap-2 flex-wrap">
-                <Btn variant="primary" icon={I.alert} onClick={requestChange} disabled={busy}>{busy?<Spinner/>:null}Request bhejein</Btn>
-                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Wapas</Btn>
+                <Btn variant="primary" icon={I.alert} onClick={requestChange} disabled={busy}>{busy?<Spinner/>:null}Send request</Btn>
+                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Back</Btn>
               </div>
             </>
           )}
@@ -3184,13 +3184,13 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
       {/* ---------- DOER: mark complete with mandatory proof ---------- */}
       {isDoer && t.status === "Assigned" && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-4">
-          <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">Task complete karein</p>
+          <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">Complete the task</p>
           <Field label="Proof" hindi="फोटो / दस्तावेज़" required>
             <ProofPicker att={proof} setAtt={setProof} toast={toast} />
           </Field>
           <Field label="Note" hindi="टिप्पणी (optional)">
             <textarea className={inputCls(false)+" min-h-[64px] resize-y"} value={note}
-                      onChange={e=>setNote(e.target.value)} placeholder="Kya kiya gaya…" />
+                      onChange={e=>setNote(e.target.value)} placeholder="What was done…" />
           </Field>
           <Btn variant="ok" icon={I.check} onClick={markDone} disabled={busy}>{busy?<Spinner/>:null}Mark complete</Btn>
         </div>
@@ -3207,7 +3207,7 @@ function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
              onMouseDown={e=>{ if(e.target===e.currentTarget && !delBusy) setConfirmDel(false); }}>
           <div className="bg-white border border-slate-200 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl">
             <div className="px-5 py-4 border-b border-slate-200"><h3 className="font-semibold text-[15px]">Delete this task?</h3></div>
-            <div className="px-5 py-4"><p className="text-[13.5px] text-slate-700">Yeh task hamesha ke liye hat jayegi.</p></div>
+            <div className="px-5 py-4"><p className="text-[13.5px] text-slate-700">This task will be removed permanently.</p></div>
             <div className="px-5 py-3.5 border-t border-slate-200 flex gap-2 justify-end">
               <Btn variant="outline" onClick={()=>setConfirmDel(false)} disabled={delBusy}>Cancel</Btn>
               <Btn variant="danger" onClick={doDelete} disabled={delBusy}>{delBusy?<Spinner/>:null}Delete</Btn>
@@ -3350,7 +3350,7 @@ function TaskList({profile, doers, scope, toast, tabSeenMap, onTabSeenRefresh}){
       <div className="flex gap-2 mb-3 flex-wrap">
         <div className="relative grow min-w-0 w-full sm:w-auto sm:min-w-[180px]">
           <Ico d={I.search} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className={inputCls(false)+" pl-9 text-[14px]"} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search naam ya task…" />
+          <input className={inputCls(false)+" pl-9 text-[14px]"} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name or task..." />
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           {scope !== "mine" && (
@@ -3369,9 +3369,9 @@ function TaskList({profile, doers, scope, toast, tabSeenMap, onTabSeenRefresh}){
         )) : shown.length === 0 ? (
           <div className="px-4 py-12 sm:py-16 text-center">
             <Ico d={I.calendar} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
-            <p className="font-semibold text-slate-700 text-[13.5px]">Yahan koi task nahi</p>
+            <p className="font-semibold text-slate-700 text-[13.5px]">No tasks here</p>
             <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
-              {tasks.length ? "Filter ya search clear karke dekhein." : (scope==="mine" ? "Abhi koi task assign nahi hui." : '"Add Task" se nayi task banayein.')}
+              {tasks.length ? "Try clearing the filter or search." : (scope==="mine" ? "No tasks have been assigned yet." : 'Create a new task with "Add Task".')}
             </p>
           </div>
         ) : shown.map(t => <TaskRow key={t.id} t={t} onOpen={setOpenTask} />)}
@@ -3434,7 +3434,7 @@ function Stats({rows, profile, D}){
     const base = [
       { n: rows.filter(r=>r.status==="Pending").length, l:"Pending", c:"text-amber-600" },
       { n: rows.filter(r=>r.status==="In Progress").length, l:"In-progress", c:"text-teal-600" },
-      { n: awaiting, l: profile.role==="User" ? "Aapka OK chahiye" : "Awaiting user OK", c:"text-violet-600" },
+      { n: awaiting, l: profile.role==="User" ? "Needs your OK" : "Awaiting user OK", c:"text-violet-600" },
     ];
     /* The fourth tile differs because the two domains measure different
        damage. For machines it is downtime — how many are stopped right now.
@@ -3446,7 +3446,7 @@ function Stats({rows, profile, D}){
       base.push({ n: down.size, l:"Machines down", c:"text-rose-600" });
       base.push({ n: subjects.size, l:"Machines affected", c:"text-slate-800" });
     } else {
-      base.push({ n: open.filter(r=>!r.complaint_type).length, l:"Type baaki", c:"text-rose-600" });
+      base.push({ n: open.filter(r=>!r.complaint_type).length, l:"Type pending", c:"text-rose-600" });
       base.push({ n: subjects.size, l:"Qualities affected", c:"text-slate-800" });
     }
     return base;
@@ -3477,11 +3477,11 @@ function BellButton({toast}){
     try{
       const p = await Notification.requestPermission();
       setPerm(p);
-      toast(p === "granted" ? "Reminder alerts on ho gaye." : "Alerts allow nahi hue — sirf in-app alarm bajega.");
-    } catch(e){ toast("Yeh browser notifications support nahi karta.", true); }
+      toast(p === "granted" ? "Reminder alerts are on." : "Alerts were not allowed; only the in-app alarm will ring.");
+    } catch(e){ toast("This browser does not support notifications.", true); }
   };
   return (
-    <Btn variant="ghost" icon={I.bell} onClick={ask} className="shrink-0" title="Reminder alerts on karein">
+    <Btn variant="ghost" icon={I.bell} onClick={ask} className="shrink-0" title="Turn on reminder alerts">
       <span className="hidden sm:inline">Alerts</span>
     </Btn>
   );
@@ -3501,7 +3501,7 @@ function ReminderWatcher({profile}){
       // Also re-fire browser notification every 15s so it's hard to miss
       const reNotify = () => {
         const top = queue[0];
-        if (top) notifyBrowser("⏰ PENDING — Task Reminder!", top.task_desc_snapshot, `task-${top.task_id}`);
+        if (top) notifyBrowser("PENDING — Task Reminder!", top.task_desc_snapshot, `task-${top.task_id}`);
       };
       notifyTimerRef.current = setInterval(reNotify, 15000);
     }
@@ -3525,7 +3525,7 @@ function ReminderWatcher({profile}){
         {event:"INSERT", schema:"public", table:"cmp_task_reminders", filter:`assigned_to=eq.${profile.id}`},
         payload => {
           setQueue(q => q.some(x=>x.id===payload.new.id) ? q : [...q, payload.new]);
-          notifyBrowser("⏰ Task Reminder!", payload.new.task_desc_snapshot, `task-${payload.new.task_id}`);
+          notifyBrowser("Task Reminder!", payload.new.task_desc_snapshot, `task-${payload.new.task_id}`);
           // Stamp received_at so Admin can see the ring reached the device
           if (!payload.new.received_at) {
             sb.from("cmp_task_reminders").update({ received_at: new Date().toISOString() }).eq("id", payload.new.id).then(()=>{});
@@ -3565,9 +3565,9 @@ function ReminderWatcher({profile}){
         <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed mb-1.5">{r.task_desc_snapshot}</p>
         <p className="text-[12px] text-slate-500 mb-2">Planned date: {fmtDate(r.planned_date_snapshot)}</p>
         {r.message ? <p className="text-[13px] text-teal-800 bg-teal-500/10 rounded-lg px-3 py-2 italic whitespace-pre-wrap mb-2">"{r.message}"</p> : null}
-        {queue.length > 1 ? <p className="text-[11.5px] text-slate-400 mb-2">+{queue.length-1} aur reminder baaki</p> : null}
+        {queue.length > 1 ? <p className="text-[11.5px] text-slate-400 mb-2">+{queue.length-1} more reminder(s) pending</p> : null}
         <Btn variant="primary" className="w-full justify-center mt-2" onClick={ack} disabled={busy}>
-          {busy?<Spinner/>:null}OK, dekh liya — Alarm band karo
+          {busy?<Spinner/>:null}OK, seen it. Stop the alarm
         </Btn>
       </div>
     </div>
@@ -3620,12 +3620,11 @@ function App(){
     sb.auth.getSession().then(({data}) => setSession(data.session ?? null));
     const { data:{ subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       setSession(s ?? null);
-      /* ERP ke single login par koi Supabase Auth session hota hi NAHI,
-         aur ye listener boot par ek baar `null` ke saath chalta hai —
-         bina is guard ke wo teardown ERP se set kiya hua profile turant
-         mita deta tha aur app login screen par gir jaati thi. SSO wale
-         ka logout sarvLogoutAll() se hota hai (jo ERP par bhej deta
-         hai), isi liye yahan uska teardown chahiye hi nahi. */
+      /* The ERP single login has NO Supabase Auth session, and this
+         listener fires once on boot with `null`. Without this guard that
+         teardown wiped the profile set from the ERP and the app fell back
+         to the login screen. SSO users log out through sarvLogoutAll()
+         (which sends them to the ERP), so no teardown is needed here. */
       const ssoActive = !!(window.__SARV_SSO && window.__SARV_SSO.cmp_profile_id);
       if (!s && !ssoActive){
         // Tear down EVERY view holding data. An open complaint modal that
@@ -3640,29 +3639,29 @@ function App(){
     return ()=> subscription.unsubscribe();
   },[]);
 
-  /* ── ERP ka single login ──────────────────────────────────────────
-     ERP se aaya SSO identity (file ke shuru wala gate). Jis user ka
-     Complaint account Admin Panel se JUDA hua hai (app_users.
-     cmp_profile_id), uska profile seedha usi id se load hota hai —
-     Supabase Auth ka session banane ki zaroorat hi nahi padti, yani
-     is app ka apna password dobara nahi poochha jaata.
+  /* ── ERP single login ─────────────────────────────────────────────
+     The SSO identity that came from the ERP (the gate at the top of the
+     file). For a user whose Complaint account is LINKED in the Admin Panel
+     (app_users.cmp_profile_id), the profile loads straight from that id.
+     No Supabase Auth session has to be created, so this app never asks
+     for its own password again.
 
-     JUDA na ho to SSO chhod deta hai aur app ka purana login aata hai.
-     Isi liye rollout dheere-dheere ho sakta hai: Admin jis-jis ko link
-     karta jaayega, unka password hatta jaayega. Kaun juda hai wo Admin
-     Panel › Users ke 🔗C pill se dikhta hai.
+     If it is NOT linked, SSO steps aside and the app's old login appears.
+     That allows a gradual rollout: as the Admin links people, their
+     passwords drop away. Who is linked shows in Admin Panel › Users as
+     the C pill.
 
-     Role bhi usi cmp_profiles row se aata hai (Admin / Host / User /
-     Maintenance / Production Manager) — yani is app ka apna role setup
-     waisa hi rehta hai, ERP sirf "kaun hai" batata hai. */
+     The role also comes from that cmp_profiles row (Admin / Host / User /
+     Maintenance / Production Manager), so this app's own role setup stays
+     as it is; the ERP only says who the person is. */
   const [ssoWait, setSsoWait] = useState(true);
   useEffect(()=>{
     let alive = true;
-    /* `ssoWait` false hona hi wo pal hai jab app dikhane layak ho jaati
-       hai. Isi pal splash bhi hatani hai (sso-preboot.js), isi liye dono
-       ek hi jagah se hote hain; warna ek hat jaati aur doosri reh jaati.
-       (Pehle yahan "ya apna login" bhi likha tha — wo raasta ab nahi
-       hai, login sirf launcher par hota hai.) */
+    /* `ssoWait` turning false is the moment the app is ready to show. The
+       splash (sso-preboot.js) must go at that same moment, so both happen
+       in one place; otherwise one would go and the other would stay.
+       (This used to say "or its own login" as well; that path no longer
+       exists, login happens only on the launcher.) */
     const ssoReady = () => {
       setSsoWait(false);
       if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
@@ -3674,44 +3673,44 @@ function App(){
         .then(({data,error}) => {
           if (!alive) return;
           ssoReady();
-          /* Profile na mile to ye "login dikhao" wali haalat nahi hai —
-             gate ne session bana diya hai, matlab row maujood hai par
-             dikh nahi rahi (RLS). Wo Admin ka kaam hai, isi liye wahi
-             likhkar rukte hain; khaali screen chhodna sabse bura hota. */
+          /* A missing profile is not a "show the login" situation. The
+             gate has created a session, so the row exists but is not
+             visible (RLS). That is the Admin's job, so we say so and stop;
+             leaving a blank screen would be the worst outcome. */
           if (error || !data){
-            SARV_GATE.halt("Aapki profile padhi nahi ja saki",
-              "Auth session ban gaya, par <code>cmp_profiles</code> ki aapki row dikh nahi rahi — ye RLS policy ka maamla hai. Admin ko ye screen dikhayein.",
+            SARV_GATE.halt("Your profile could not be read",
+              "The auth session was created, but your <code>cmp_profiles</code> row is not visible. This is an RLS policy issue. Please show this screen to the Admin.",
               (error && (error.message || error.code)) || ("id " + u.cmp_profile_id));
             return;
           }
-          if (!data.is_active){ setProfileErr("Aapka account band hai. Admin se sampark karein."); return; }
+          if (!data.is_active){ setProfileErr("Your account is inactive. Please contact the Admin."); return; }
           setProfile(data); setProfileErr("");
         });
     };
-    // Gate pehle hi jawab de chuka ho sakta hai, warna uske event par.
+    // The gate may already have answered; otherwise wait for its event.
     if (window.__SARV_SSO !== undefined){ apply(window.__SARV_SSO); return ()=>{ alive = false; }; }
     const h = e => apply(e.detail);
     window.addEventListener("sarv-sso-ready", h);
-    /* Pehle yahan 4 second ka timeout tha, taaki gate ka jawab na aane
-       par app atki na rahe aur login screen aa jaaye. Wo timeout ab
-       HATA diya gaya hai: login screen to rahi hi nahi, aur gate har
-       soorat me kuch karta hai — kaamyaab hone par ye event, warna khud
-       wajah wali screen ya launcher (dono splash bhi hata dete hain).
-       Timeout rakhne ka ek hi nateeja bachta tha: dheemi net par splash
-       hat jaati aur banda khaali screen dekhta. */
+    /* There used to be a 4 second timeout here so the app wouldn't hang
+       and the login screen would appear if the gate never answered. That
+       timeout has been REMOVED: there is no login screen any more, and the
+       gate always does something (this event on success, otherwise its own
+       reason screen or the launcher, both of which also remove the splash).
+       The only effect a timeout still had was that on a slow connection
+       the splash vanished and the user stared at a blank screen. */
     return ()=>{ alive = false; window.removeEventListener("sarv-sso-ready", h); };
   },[]);
 
   // ---- profile ----
   useEffect(()=>{
-    if (!session){ return; }   // SSO wala profile upar set ho chuka ho sakta hai
+    if (!session){ return; }   // the SSO profile may already have been set above
     let alive = true;
     sb.from("cmp_profiles").select("*").eq("id", session.user.id).maybeSingle()
       .then(({data,error}) => {
         if (!alive) return;
         if (error) return setProfileErr(friendlyError(error));
-        if (!data){ setProfileErr("Aapka profile nahi mila. Admin se sampark karein."); return; }
-        if (!data.is_active){ setProfileErr("Aapka account band hai. Admin se sampark karein."); sb.auth.signOut(); return; }
+        if (!data){ setProfileErr("Your profile was not found. Please contact the Admin."); return; }
+        if (!data.is_active){ setProfileErr("Your account is inactive. Please contact the Admin."); sb.auth.signOut(); return; }
         setProfile(data); setProfileErr("");
       });
     return ()=>{ alive = false; };
@@ -3785,7 +3784,7 @@ function App(){
   const callAdmin = useCallback(async (payload)=>{
     try{
       const { data:{ session:s } } = await sb.auth.getSession();
-      if (!s) return { ok:false, error:"Session khatam ho gaya. Dobara login karein." };
+      if (!s) return { ok:false, error:"Your session has expired. Please log in again." };
       const r = await fetch(ADMIN_FN_URL, {
         method:"POST",
         headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${s.access_token}`, "apikey": SUPABASE_ANON },
@@ -3867,12 +3866,12 @@ function App(){
 
   // ---- render ----
   if (session === undefined) return null;      // boot overlay is still showing
-  /* Pehle yahan login screen aati thi. Ab nahi: gate (file ke shuru me)
-     app ko chalne hi nahi deta jab tak session na ho — na ho to wo khud
-     launcher par bhej deta hai ya wajah wali screen dikha deta hai. Isi
-     liye is haalat ka matlab sirf "abhi intezaar hai" hai, aur boot
-     overlay hi dikhta rehna chahiye. Login form yahan dikhana sirf
-     dhoka hota: us form ka koi raasta hi nahi bacha. */
+  /* The login screen used to appear here. Not any more: the gate (at the
+     top of the file) doesn't let the app run without a session; it
+     redirects to the launcher or shows the reason screen itself. So this
+     state only means "still waiting", and the boot overlay should stay.
+     Showing a login form here would only mislead: there is no path left
+     behind that form. */
   if (!session && !profile) return null;
 
   if (profileErr) return (
@@ -3890,7 +3889,7 @@ function App(){
     profile.role === "Admin" ? "Sab complaints" :
     profile.role === D.triager ? "Sab hosts ki complaints" :
     profile.role === "Host" ? `${(profile.host_types||[]).join(", ")} complaints` :
-    "Sirf aapki complaints";
+    "Only your complaints";
 
   // Nav items with icons for bottom nav
   const navItems = [
@@ -3921,7 +3920,7 @@ function App(){
           <button type="button" ref={domainSwipeRef}
             onClick={()=>switchDomain(otherDomain.key)}
             title={`${otherDomain.title} par jayein`}
-            aria-label={`${D.title}. Badalne ke liye tap karein — ${otherDomain.title}`}
+            aria-label={`${D.title}. Tap to switch to ${otherDomain.title}`}
             className="min-w-0 flex-1 text-left group select-none active:scale-[0.99] transition-transform"
             style={{touchAction:'pan-y'}}>
             <h1 className="font-bold text-[14px] sm:text-[15px] leading-tight truncate flex items-center gap-1.5">
@@ -4048,7 +4047,7 @@ const boot = document.getElementById("boot");
 if (boot) boot.remove();
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
-<!-- "← Apps" wapas jaane wala floating button. Ye file khud tay karti hai ki button dikhana hai ya nahi (ERP ke iframe me nahi, aur single-login session na ho to nahi) — dekhein app-back.js. -->
+<!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside the ERP iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 </body>
 </html>

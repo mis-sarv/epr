@@ -528,10 +528,10 @@ body {
             color: #0f172a;
         }
         /* ── Checkbox filter groups (Entry Type, Nature) ──────────────
-           Pehle ye <select multiple> the. Unme Ctrl+click se hi ek se zyada
-           chuna ja sakta tha — phone aur chhoti screen par wo practically
-           bina-batai feature hai, aur log ek hi value chun paate the. Ab
-           saare options saamne, har ek apna checkbox. */
+           These used to be <select multiple>, where picking more than one
+           value needed Ctrl+click. On phones and small screens that is
+           effectively a hidden feature, so people could only pick one
+           value. Now every option is visible with its own checkbox. */
         .cons-filters label a {
             font-size: 8.5px; font-weight: 800; color: #0369a1;
             cursor: pointer; margin-left: 5px; text-transform: none; letter-spacing: 0;
@@ -548,17 +548,17 @@ body {
             text-transform: none; letter-spacing: 0; cursor: pointer; white-space: nowrap;
         }
         .cons-chk input[type=checkbox] { width: 13px; height: 13px; margin: 0; flex: 0 0 auto; cursor: pointer; }
-        /* BALANCE ek entry type nahi — ye ek column on/off karta hai, isliye
-           dikhne me bhi alag rakha hai, warna wo paanchva type lagta. */
+        /* BALANCE is not an entry type; it switches a column on or off, so
+           it is styled differently. Otherwise it would look like a fifth type. */
         .cons-chk label.cons-chk-calc {
             margin-top: 3px; padding-top: 4px; border-top: 1px dashed #cbd5e1; color: #6d28d9;
         }
         .cons-chk .cons-chk-empty { font-size: 10px; color: #94a3b8; font-weight: 600; padding: 2px; }
 
         /* ── Lot: closed dropdown with a checkbox list inside ─────────
-           Lot list dozens tak ja sakti hai; always-open box baaki saare
-           filters screen se neeche dhakel deta. Shakal wahi jo Inward form ke
-           PO / PR pickers ki hai. */
+           The lot list can run into dozens; an always-open box would push
+           every other filter off the screen. Same shape as the PO / PR
+           pickers on the Inward form. */
         .cons-dd { position: relative; }
         .cons-dd-btn {
             width: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 6px;
@@ -2021,7 +2021,7 @@ body {
             text-transform: uppercase;
         }
         /* Keep password + number + date as-is */
-        input[type="password"], input[type="number"], input[type="date"], input[type="email"] {
+        input[type="password"], input[type="number"], input[type="date"], input[data-dmy], input[type="email"] {
             text-transform: none !important;
         }
         /* Dynamic item row inputs */
@@ -3096,6 +3096,49 @@ body {
     font-size: 11px; line-height: 1; padding: 1px 4px; border-radius: 8px;
 }
 :is(#imFilterChips,#dmLfChips) .imf-chip button:hover { background: #a7f3d0; }
+/* Item Master slicer bar (store-core.js › imRenderSlicers_). Values come from
+   Dropdown Master › Item Master › Slicer Buttons. */
+#imSlicerBar .im-sl-wrap {
+    display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap;
+    background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 6px 8px;
+}
+#imSlicerBar .im-sl-empty { font-size: 10.5px; color: #6b21a8; font-weight: 600; }
+#imSlicerBar .im-sl-title { font-size: 10px; font-weight: 800; color: #6b21a8; letter-spacing: .3px; }
+#imSlicerBar .im-sl-group {
+    display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+    background: #fff; border: 1px solid #e9d5ff; border-radius: 7px; padding: 3px 5px;
+}
+#imSlicerBar .im-sl-group.on { border-color: #a855f7; box-shadow: 0 0 0 1px #e9d5ff; }
+#imSlicerBar .im-sl-lab {
+    font-size: 9.5px; font-weight: 800; color: #475569; text-transform: uppercase;
+    letter-spacing: .3px; margin-right: 2px;
+}
+#imSlicerBar .im-sl-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a;
+    border-radius: 12px; padding: 2px 9px; font-size: 10px; font-weight: 700; cursor: pointer;
+    white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+#imSlicerBar .im-sl-btn:hover { border-color: #a855f7; background: #faf5ff; }
+#imSlicerBar .im-sl-btn .n {
+    background: #e2e8f0; color: #475569; border-radius: 8px; padding: 0 5px; font-size: 9px; font-weight: 800;
+}
+#imSlicerBar .im-sl-btn.on { background: #7c3aed; border-color: #6d28d9; color: #fff; }
+#imSlicerBar .im-sl-btn.on .n { background: rgba(255,255,255,.25); color: #fff; }
+#imSlicerBar .im-sl-btn.zero:not(.on) { opacity: .45; }
+#imSlicerBar .im-sl-x, #imSlicerBar .im-sl-edit {
+    background: none; border: none; cursor: pointer; font-size: 11px; padding: 1px 4px; border-radius: 6px; color: #6d28d9;
+}
+#imSlicerBar .im-sl-x:hover, #imSlicerBar .im-sl-edit:hover { background: #ede9fe; }
+#imSlicerBar .im-sl-clear {
+    background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    border-radius: 12px; padding: 3px 10px; font-size: 10px; font-weight: 800; cursor: pointer;
+}
+#imSlicerBar .im-sl-link {
+    background: none; border: 1px dashed #c4b5fd; color: #6d28d9; border-radius: 12px;
+    padding: 2px 9px; font-size: 10px; font-weight: 800; cursor: pointer;
+}
+#imColPickBtn.im-colpick-on { background: #6d28d9 !important; color: #fff !important; border-color: #5b21b6 !important; }
 /* Searchable select (makeSearchableSelect) */
 .ss-input { box-sizing: border-box; cursor: text; }
 .ss-list { position: fixed; z-index: 2147483000; background: #fff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.18); max-height: 240px; overflow-y: auto; font-size: 12px; }
@@ -3655,8 +3698,8 @@ body { min-width: 0; }
     #storeInterface .section-header-row .btn,
     #fullPurchasePanel .section-header-row .btn { width: 100%; }
 }
-  /* Production panel ko apne aap scroll karne do — Store ka .card flex:1 +
-     overflow:hidden Design Master ke lambe form ko kaat deta tha. */
+  /* Let the Production panel scroll on its own. The Store .card (flex:1 +
+     overflow:hidden) was cutting off the long Design Master form. */
   #storeInterface #productionPanel { overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; padding-right:4px; }
   #storeInterface #productionPanel > .card { overflow:visible; flex:0 0 auto; }
 
@@ -3732,8 +3775,8 @@ body { min-width: 0; }
 
 
   /* ── Live tab: per-column filter row ─────────────────────────────────
-     Header ke theek neeche ki doosri row — thoda halka background, taaki
-     column naam aur uska filter box alag-alag dikhein. */
+     A second row right under the header with a lighter background, so the
+     column name and its filter box read as separate things. */
   .dm-table thead .dm-frow th {
     background:#1e293b; padding:5px 6px; text-transform:none; letter-spacing:0;
   }
@@ -3745,7 +3788,7 @@ body { min-width: 0; }
   .dm-root .dm-fin::placeholder { color:#94a3b8; font-weight:500; }
   .dm-root .dm-fin:focus { border-color:#60a5fa; box-shadow:0 0 0 2px rgba(96,165,250,.35); }
 
-  /* ── Catalogue: dependent filters ka counter aur footer ── */
+  /* ── Catalogue: counter and footer for the dependent filters ── */
   .dm-fcount {
     font-size:9.5px; font-weight:800; color:#64748b; background:#f1f5f9;
     border:1px solid #e2e8f0; border-radius:20px; padding:0 6px; margin-left:3px;
@@ -3790,9 +3833,8 @@ body { min-width: 0; }
   .dm-bulk-row { display:flex; align-items:center; gap:4px; justify-content:space-between; }
   .dm-bulk-frames { background:#f8fafc; padding:7px; border-radius:4px; border:1px solid #e2e8f0; }
   .dm-bulk-total { font-weight:800; color:var(--dm-accent); font-size:11px; text-align:center; margin-top:2px; padding-top:4px; border-top:1px dashed #cbd5e1; }
-  /* Bulk row ka Action cell: status line, phir is row ka apna Save, phir
-     Remove. Buttons poori width lete hain taaki 💾 / ❌ par nishana lagana
-     na pade. */
+  /* Bulk row Action cell: status line, then this row's own Save, then
+     Remove. The buttons take the full width so they are easy to hit. */
   .dm-bulk-act { display:flex; flex-direction:column; gap:5px; align-items:stretch; min-width:104px; }
   .dm-bulk-act .b-state { font-size:10.5px; font-weight:800; color:#64748b; text-align:center; min-height:13px; line-height:1.2; }
   .dm-bulk-act .dm-btn { width:100%; white-space:nowrap; }
@@ -3810,9 +3852,10 @@ body { min-width: 0; }
   .dm-repl { font-size:10.5px; font-weight:800; color:#0369a1; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:5px; padding:4px 9px; cursor:pointer; }
 
   /* ── catalogue preview pages (screen) ── */
-  /* Auto-preview ki hadd ka notice — filter badalte hi preview apne aap banti
-     hai, par bahut bade selection par screen par sirf pehle kuch designs
-     render hote hain. PDF poori banti hai; ye line wahi farq batati hai
+  /* Notice for the auto-preview limit. The preview rebuilds itself when a
+     filter changes, but for a very large selection only the first few
+     designs are rendered on screen. The PDF always has all of them; this
+     line explains the difference
      (store-design-master.js › generatePreview / DM_CAT_AUTO_MAX). */
   .dm-cat-more { width:210mm; max-width:100%; margin:12px auto 0; padding:9px 13px; border-radius:7px;
                  background:#fffbeb; border:1.5px solid #fcd34d; color:#92400e;
@@ -3841,12 +3884,12 @@ body { min-width: 0; }
   #dmLightbox .cap { position:absolute; bottom:18px; left:0; right:0; text-align:center; color:#e2e8f0; font-size:12px; font-weight:700; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MASTER DATA › 🔽 DROPDOWN MASTER
+   MASTER DATA › DROPDOWN MASTER
    ---------------------------------------------------------------------------
-   Do column: left me app ke saare fixed dropdowns ki nav, right me chune
-   hue dropdown ki values ka table. Markup store-core.js banata hai
-   (sarvDdNavHtml_ / sarvDdMainHtml_), isi liye saare class naam `dd-` se
-   shuru hote hain aur kisi aur screen se nahi takrate.
+   Two columns: on the left, a list of every fixed dropdown in the app; on
+   the right, the value table of the selected one. The markup is built by
+   store-core.js (sarvDdNavHtml_ / sarvDdMainHtml_), so every class name
+   starts with `dd-` and cannot clash with another screen.
    ═══════════════════════════════════════════════════════════════════════ */
 #dropdownMasterSub .dd-bar { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
 #dropdownMasterSub .dd-bar .form-control { flex:1; height:30px; font-size:11px; }
@@ -3944,19 +3987,18 @@ body { min-width: 0; }
 #dropdownMasterSub .dd-mini-ok  { background:#dcfce7; border-color:#86efac; color:#166534; }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   FABRIC MASTER & BRAND MASTER  (Master Data ke do naye sub-tabs)
+   FABRIC MASTER & BRAND MASTER  (two Master Data sub-tabs)
    ---------------------------------------------------------------------
-   Dono screens EK hi layout chalati hain, isi liye saara CSS ".fbm-"
-   prefix par hai aur #fabricMasterSub / #brandMasterSub dono par lagta
-   hai. Khaas baat do hain:
+   Both screens share ONE layout, so all the CSS uses the ".fbm-" prefix
+   and applies to both #fabricMasterSub and #brandMasterSub. Two things
+   worth knowing:
 
-     * Table 40+ column ka hai, isi liye wrapper horizontally scroll
-       karta hai aur pehle do column (row no. + naam) sticky-left rehte
-       hain — warna scroll karte hi pata nahi chalta kaunsi row hai.
-     * Column GROUPS chips se on/off hote hain (.fbm-cg). Group off hone
-       par uske th/td ko .fbm-off class milti hai — koi DOM rebuild nahi,
-       sirf display:none. Isi wajah se 42 column ka table bhi laptop par
-       padha-likha rehta hai.
+     * The table has 40+ columns, so the wrapper scrolls horizontally and
+       the first two columns (row no. + name) stay sticky on the left.
+       Otherwise you lose track of which row you are on while scrolling.
+     * Column GROUPS are switched with chips (.fbm-cg). When a group is off
+       its th/td get the .fbm-off class: no DOM rebuild, just
+       display:none. That keeps even a 42-column table readable on a laptop.
    ═══════════════════════════════════════════════════════════════════ */
 #fabricMasterSub, #brandMasterSub { font-size:11px; }
 
@@ -4018,14 +4060,14 @@ body { min-width: 0; }
   background:#0f172a; color:#fff; font-weight:800; font-size:9.5px; text-transform:uppercase;
   position:sticky; top:0; z-index:3; border-bottom:1px solid #334155; text-align:left;
 }
-/* group band above the header row — bas yaad dilata hai konsa column kis
-   group ka hai, isi liye click karne par wahi group band ho jaata hai. */
+/* Group band above the header row. It shows which group a column belongs
+   to, and clicking it switches that group off. */
 .fbm-table thead tr.fbm-gband th {
   top:0; z-index:4; font-size:9px; letter-spacing:.4px; text-align:center;
   background:#1e293b; cursor:pointer;
 }
 .fbm-table thead tr.fbm-hrow th { top:21px; }
-/* sticky left — # aur pehla naam column */
+/* sticky left: # and the first name column */
 .fbm-table th.fbm-stick1, .fbm-table td.fbm-stick1 { position:sticky; left:0;  z-index:2; }
 .fbm-table th.fbm-stick2, .fbm-table td.fbm-stick2 { position:sticky; left:38px; z-index:2; box-shadow:2px 0 0 #cbd5e1; }
 .fbm-table thead th.fbm-stick1, .fbm-table thead th.fbm-stick2 { z-index:5; background:#0f172a; }
@@ -4036,12 +4078,12 @@ body { min-width: 0; }
 .fbm-table tbody tr.fbm-inactive td { opacity:.52; font-style:italic; }
 .fbm-table td.fbm-na { color:#cbd5e1; }
 .fbm-table td.fbm-act { text-align:center; }
-/* Field def ka `ctr:1` — header aur uske saare cells centre. */
+/* Field def `ctr:1`: header and all its cells centred. */
 .fbm-table th.fbm-ctr, .fbm-table td.fbm-ctr { text-align:center; }
 .fbm-off { display:none !important; }
 .fbm-empty { text-align:center; padding:26px 14px; color:#94a3b8; font-size:11px; }
 
-/* row ke chhote buttons */
+/* small row buttons */
 .fbm-ib {
   border:1px solid #cbd5e1; background:#f8fafc; border-radius:4px; padding:1px 6px;
   font-size:10px; cursor:pointer; font-family:inherit; line-height:1.5;
@@ -4102,7 +4144,7 @@ body { min-width: 0; }
 }
 .fbm-foot-note { font-size:10px; color:#64748b; flex:1 1 180px; }
 
-/* form me field groups — ek group = ek fieldset */
+/* field groups in the form: one group = one fieldset */
 .fbm-fs { border:1px solid #e2e8f0; border-radius:8px; padding:9px 11px 11px; margin-bottom:11px; }
 .fbm-fs > legend { font-size:9.5px; font-weight:800; color:#0369a1; text-transform:uppercase; letter-spacing:.4px; padding:0 5px; }
 .fbm-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:8px; }
@@ -4267,3 +4309,19 @@ body { min-width: 0; }
    must not mean one thing on the sheet and another in the popup. */
 #fullPurchasePanel .po-followup-table .fuh-late { color: #b45309; font-weight: 800; }
 #fullPurchasePanel .po-followup-table .fuh-ok { color: #15803d; font-weight: 800; }
+
+/* ── PO Generation KPI tiles: same look as the ERP Home dashboard tiles
+   (erp-shell.css › .kpi). White card, accent colour on the top border and the
+   7-day line; --kc is set per tile in index.html. Filled by renderPoKpiCards. */
+#fullPurchasePanel .po-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+#fullPurchasePanel .po-kpi {
+  position: relative; height: 138px; overflow: hidden; text-align: left;
+  background: #fff; color: #0f172a; border: 1px solid #e2e8f0; border-top: 3px solid var(--kc, #64748b);
+  border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(15,23,42,.05);
+}
+#fullPurchasePanel .po-kpi-trend { font-size: 11px; color: #64748b; font-weight: 600; min-height: 14px; }
+#fullPurchasePanel .po-kpi-title { margin-top: 2px; font-size: 12px; font-weight: 600; color: #475569; line-height: 1.25; }
+#fullPurchasePanel .po-kpi-value { font-size: 26px; font-weight: 700; margin-top: 2px; line-height: 1.15; color: #0f172a; }
+#fullPurchasePanel .po-kpi-note { font-size: 10.5px; color: #64748b; margin-top: 1px; font-weight: 500; }
+#fullPurchasePanel .po-kpi-spark { position: absolute; left: 0; right: 0; bottom: 3px; height: 32px; color: var(--kc, #64748b); opacity: .45; pointer-events: none; }
+#fullPurchasePanel .po-kpi-spark svg { display: block; width: 100%; height: 100%; }

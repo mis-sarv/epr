@@ -94,7 +94,7 @@
             hl = Math.min(hl, Math.max(0, shown.length - 1));
             list.innerHTML = shown.length
                 ? shown.map((o,i) => `<div class="ss-opt${i === hl ? ' hl' : ''}" data-i="${i}">${escText(o.textContent.trim())}</div>`).join('')
-                : '<div class="ss-empty">List me nahi mila</div>';
+                : '<div class="ss-empty">Not found in the list</div>';
             place();
             const h = list.querySelector('.ss-opt.hl'); if(h) h.scrollIntoView({block:'nearest'});
         };
@@ -941,18 +941,18 @@
          RECV  PO Receipts   Purchaser's own POs         → what has arrived (read-only)
          FOLLOWUP PO Follow-up  Sent PO, material short  → PO Sender chases the vendor */
     const STAGE_TABS = {
-        VI:    {module:'PR',    actor:'purchaser', title:'Vendor Info',       action:'Vendor & rates bharein'},
+        VI:    {module:'PR',    actor:'purchaser', title:'Vendor Info',       action:'Fill in vendors & rates'},
         POGEN: {module:'PR',    actor:'purchaser', title:'PO Generate',       action:'Delivery Date + sign → PO banega'},
-        MD:    {module:'PO',    actor:'md',        title:'MD Approval',       action:'MD approve / reject karein'},
-        SENT:  {module:'PO',    actor:'poSender',  title:'PO Sent to Vendor', action:'WhatsApp se vendor ko bhejein'},
-        STORE: {module:'STORE', actor:'gmMd',      title:'Store Check',       action:'Entry kholkar items check karein, phir Check Done'},
-        RECV:  {module:'RECV',  actor:'purchaser', title:'PO Receipts',       action:'Aapke PO par kitna maal aaya — khud update hota hai'},
+        MD:    {module:'PO',    actor:'md',        title:'MD Approval',       action:'MD to approve / reject'},
+        SENT:  {module:'PO',    actor:'poSender',  title:'PO Sent to Vendor', action:'Send to the vendor on WhatsApp'},
+        STORE: {module:'STORE', actor:'gmMd',      title:'Store Check',       action:'Open the entry, check the items, then mark Check Done'},
+        RECV:  {module:'RECV',  actor:'purchaser', title:'PO Receipts',       action:'How much material has arrived against your POs; updates by itself'},
         /* The step that has no record of its own anywhere else: the PO is with
            the vendor, the delivery date has come and the material has not. The
            PO Sender rings the vendor and writes down the new date they promised
            plus what they said. It is the SENDER's tab, not the Purchaser's,
            because sending the PO is what made them the vendor's contact. */
-        FOLLOWUP: {module:'FOLLOWUP', actor:'poSender', title:'PO Follow-up',  action:'Vendor se revised delivery date poochein aur remark likhein'},
+        FOLLOWUP: {module:'FOLLOWUP', actor:'poSender', title:'PO Follow-up',  action:'Ask the vendor for a revised delivery date and add a remark'},
     };
     const ACTOR_LABEL = {purchaser:'Purchaser', md:'MD', poSender:'PO Sender', gm:'GM', gmMd:'GM / MD'};
     /* Which sections the sub-bar offers, per tab. PO Receipts is the only one
@@ -1179,33 +1179,31 @@
         // The markup's fixed names show at once; Admin-added purchasers replace them.
         if(isPurchaser) loadLoginPurchasers();
     });
-    /* ── Naam se login — ek user, ek PIN, saare apps ──────────────────
-       Yahi wahi raasta hai jo launcher.html aur ERP use karte hain:
-       erp_app_login() PIN server par check karta hai aur EK session
-       token banata hai jo saare apps ke liye hai. Isi liye yahan login
-       karne par ERP / Complaint / Packing bhi bina dobara PIN khulte
-       hain — token localStorage me jaata hai aur sab ek hi origin par
-       hain.
+    /* ── Login by name: one user, one PIN, all apps ───────────────────
+       This is the same path launcher.html and the ERP use:
+       erp_app_login() checks the PIN on the server and creates ONE session
+       token for all the apps. That is why logging in here also opens the
+       ERP / Complaint / Packing without another PIN: the token goes into
+       localStorage and everything is on the same origin.
 
-       Stage ka faisla ERP ke role se hota hai (mobStagesForUser_), isi
-       liye "Approving As" chunna nahi padta. */
+       The stage is decided from the ERP role (mobStagesForUser_), so there
+       is no need to choose "Approving As". */
     let mobUsers = [], mobTabVis = null;
 
-    /* "Is user ko kaun-kaun se app mil sakte hain" — wahi teen-tah wala
-       hisaab jo store-core.js ka sarvTabVisible() aur launcher.html
-       karte hain, usi kram me:
+    /* "Which apps can this user open": the same three-level calculation that
+       store-core.js's sarvTabVisible() and launcher.html use, in the same
+       order:
 
-           user ka app_access override → role-wise tab_visibility → default
+           user's app_access override → role-wise tab_visibility → default
 
-       Yahan ye zaroori kyun hai: login ke waqt yahi list session par
-       likhi jaati hai (allowed_apps), aur Complaint / Packing usi list
-       ko padhte hain. Pehle yahan se sirf "ye app" likha jaata tha, to
-       is phone se login karne ke baad Complaint kholne par wo "access
-       nahi hai" keh deta — jabki access tha.
+       Why it matters here: this is the list written on the session at login
+       (allowed_apps), and Complaint / Packing read that list. Previously only
+       "this app" was written from here, so after logging in on this phone,
+       opening Complaint said "no access" even though access existed.
 
-       Saare app keys ka default "dikhao" hai (SARV_TABS me def:'ALL'),
-       isi liye jo key kahin set na ho wo list me aa jaati hai — yani ye
-       hisaab kisi ka access kam nahi karta. */
+       Every app key defaults to "show" (def:'ALL' in SARV_TABS), so a key
+       that is set nowhere ends up in the list; this calculation never
+       reduces anyone's access. */
     const MOB_ALL_APP_KEYS = ['HOME_ERP_APP','HOME_APPROVAL_APP','HOME_COMPLAINT_APP',
         'HOME_PACKING','HOME_ORDER_FORM','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB',
         'HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_MASTER','HOME_REPAIR',
@@ -1247,8 +1245,8 @@
                 dl.appendChild(o);
             });
         }catch(e){
-            /* Chup-chaap — naam ki list na mile to "purana tareeka" waisa
-               hi chalta hai. Console me wajah rehti hai. */
+            /* Quietly: if the name list can't be loaded, the "older method"
+               still works as before. The reason is in the console. */
             console.warn('[MOBILE] app_users list load fail:', e.message || e);
         }
     }
@@ -1258,8 +1256,8 @@
         return mobUsers.find(x => String(x.user_name).toUpperCase() === n) || null;
     };
 
-    /* Naam bharte hi "purana tareeka" chhup jaata hai — do raaste ek
-       saath dikhte rehne se "kaun sa bharna hai" ka confusion hota tha. */
+    /* Filling in a name hides the "older method"; showing both paths at
+       once caused confusion about which one to fill in. */
     document.getElementById('loginName')?.addEventListener('input', function(){
         const u = mobFindUser_(this.value);
         const wrap = document.getElementById('loginRoleWrap');
@@ -1272,43 +1270,43 @@
         const st = mobStagesForUser_(roles, u.user_name);
         note.textContent = st.length
             ? ('✓ ' + st.map(s => s.label).join(' · '))
-            : '⚠️ Is user ka koi approval role nahi hai';
+            : 'This user has no approval role';
     });
 
     async function mobLoginByName_(nm, pin, err){
         const show = m => { err.textContent = m; err.style.display = 'block'; };
         const u = mobFindUser_(nm);
-        if(!u) return show('"' + nm + '" naam ka koi active user nahi mila — list se chunein, ya neeche purane tareeke se login karein');
+        if(!u) return show('No active user named "' + nm + '" was found. Pick from the list, or log in with the older method below.');
         const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
         const stages = mobStagesForUser_(roles, u.user_name);
-        if(!stages.length) return show('Is user ke paas koi approval role nahi hai — Admin se kehein');
+        if(!stages.length) return show('This user has no approval role. Please contact the Admin.');
         try{
-            /* Poori list — sirf "ye app" likhna kaafi nahi hota: yahi list
-               Complaint / Packing padhte hain, aur adhoori list unhe
-               "access nahi hai" kehne par majboor kar deti. */
+            /* The full list; writing only "this app" isn't enough. Complaint /
+               Packing read this same list, and an incomplete one would force
+               them to say "no access". */
             const apps = mobAllowedApps_(roles, u.app_access);
-            /* Admin ne is bande se ye app band kiya hai to login hi nahi.
-               Yahan chup-chaap jodna galat hota — wahi rok jo gate par
-               hai, wahi yahan bhi. */
+            /* If the Admin has turned this app off for this person, no login.
+               Quietly adding it here would be wrong; the same restriction as
+               the gate applies here too. */
             if(apps.indexOf(MOB_APP_KEY) < 0)
-                return show('Aapke login par ye Approval App band hai — Admin se kehein (Users › 📱 Apps)');
+                return show('The Approval App is turned off for your login. Please contact the Admin (Users › Apps).');
             const r = await SB.rpc('erp_app_login', {
                 p_user_id: String(u.id), p_pin: pin, p_allowed_apps: apps
             });
             if(r.error) throw r.error;
             const d = r.data || {};
             if(!d.success){
-                const m = { USER_NOT_FOUND:'User nahi mila — page refresh karein',
-                            USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
-                            PIN_INVALID:'Galat PIN',
-                            PIN_CHECK_UNAVAILABLE:'⚠️ Server par PIN check nahi ho saka' };
-                return show(m[d.error] || ('Login nahi hua: ' + (d.error || 'unknown')));
+                const m = { USER_NOT_FOUND:'User not found. Please refresh the page.',
+                            USER_INACTIVE:'This user is inactive. Please contact the Admin.',
+                            PIN_INVALID:'Incorrect PIN',
+                            PIN_CHECK_UNAVAILABLE:'The PIN could not be checked on the server' };
+                return show(m[d.error] || ('Login failed: ' + (d.error || 'unknown')));
             }
             const su = d.user || {};
             try{
                 localStorage.setItem(SARV_SSO_KEY, d.token);
-                /* Ye teen keys ERP boot par padhta hai — inke bina ERP par
-                   jaakar dobara PIN daalna padta. */
+                /* The ERP reads these three keys on boot; without them the
+                   ERP would ask for the PIN again. */
                 localStorage.setItem('sarv_active_role',  su.primary_role || roles[0] || '');
                 localStorage.setItem('sarv_active_roles', JSON.stringify(
                     (Array.isArray(su.roles) && su.roles.length ? su.roles : roles).filter(Boolean)));
@@ -1326,26 +1324,26 @@
             if(use.length === 1) enterMobile_(use[0].stage, use[0].purchaserName, null);
             else mobShowStagePicker_(use, su.name || u.user_name);
         }catch(e){
-            /* Faisla CODE se, aur asli message hamesha saath. Pehle message
-               par regex chalta tha, jisme kisi bhi aur wajah se aaya error
-               bhi "migration nahi chali" gin liya jaata tha — aur screen par
-               wo baat likhi jaati thi jo sach nahi hoti. */
+            /* Decided by the CODE, and the real message always shown alongside.
+               A regex on the message used to count errors from any other cause
+               as "migration not run", and the screen then said something that
+               wasn't true. */
             const msg = (e && e.message) || String(e || 'unknown error');
             const code = (e && e.code) || '';
-            /* 42883 do wajah se aata hai: (a) erp_app_login hi nahi hai,
-               ya (b) uske ANDAR pgcrypto ka function resolve nahi hua
-               (gen_random_bytes — `extensions` schema function ke
-               search_path me chhoot gaya). Dono ko "migration chalayein"
-               kehna galat tha; farq message me likha hota hai. */
+            /* 42883 has two causes: (a) erp_app_login itself doesn't exist,
+               or (b) a pgcrypto function INSIDE it couldn't be resolved
+               (gen_random_bytes: the `extensions` schema is missing from the
+               function's search_path). Telling both to "run the migration" was
+               wrong; the difference is in the message. */
             const pgc = /\b(gen_random_bytes|gen_salt|crypt|digest|hmac)\s*\(/i.exec(msg);
             if(code === '42883' && pgc)
-                show('⚠️ PIN sahi hai, par session token nahi ban saka: ' + pgc[1] + '() nahi mila. '
-                   + 'Ye pgcrypto ka function hai (extensions schema), aur erp_app_login ke search_path me wo chhoot gaya hai. '
+                show('The PIN is correct, but the session token could not be created: ' + pgc[1] + '() was not found. '
+                   + 'It is a pgcrypto function (extensions schema), and that schema is missing from the search_path of erp_app_login. '
                    + 'Admin se sql/FIX_PGCRYPTO_SEARCHPATH.sql chalwayein.  [42883]');
             else if(code === 'PGRST202' || code === '42883')
-                show('⚠️ erp_app_login() server par nahi mila — UNIFIED_USERS_MIGRATION.sql chalayein, ya SQL Editor me: notify pgrst, \'reload schema\';  [' + code + ']');
+                show('erp_app_login() was not found on the server. Run UNIFIED_USERS_MIGRATION.sql, or in the SQL Editor: notify pgrst, \'reload schema\';  [' + code + ']');
             else if(code === '42501')
-                show('⚠️ Permission nahi hai (anon). ' + msg + ' [42501]');
+                show('Permission denied (anon). ' + msg + ' [42501]');
             else
                 show(msg + (code ? ' [' + code + ']' : ''));
         }
@@ -1358,26 +1356,26 @@
         const pin = document.getElementById('loginPin').value;
         const err = document.getElementById('loginError');
         err.style.display = 'none';
-        // Naam bhara hai to wahi raasta — role dropdown dekha hi nahi jaata.
+        // If a name is filled in, that path is used and the role dropdown is ignored.
         const nameTyped = String(document.getElementById('loginName')?.value || '').trim();
         if(nameTyped){
-            if(!pin){ err.textContent = 'PIN enter karo'; err.style.display='block'; return; }
+            if(!pin){ err.textContent = 'Please enter your PIN'; err.style.display='block'; return; }
             return mobLoginByName_(nameTyped, pin, err);
         }
-        if(!role){ err.textContent = 'Role select karo'; err.style.display='block'; return; }
-        if(role==='vendor' && !vendorName){ err.textContent = 'Vendor Name select karo'; err.style.display='block'; return; }
-        if(role==='purchaser' && !purchaserName){ err.textContent = 'Purchaser Name select karo'; err.style.display='block'; return; }
-        if(!pin){ err.textContent = 'PIN enter karo'; err.style.display='block'; return; }
+        if(!role){ err.textContent = 'Please select a role'; err.style.display='block'; return; }
+        if(role==='vendor' && !vendorName){ err.textContent = 'Please select the vendor name'; err.style.display='block'; return; }
+        if(role==='purchaser' && !purchaserName){ err.textContent = 'Please select the purchaser name'; err.style.display='block'; return; }
+        if(!pin){ err.textContent = 'Please enter your PIN'; err.style.display='block'; return; }
         try{
             // PINs are compared on the server — no pin_hash is ever sent to
-            // this page. Existence is checked first only so that "PIN set
-            // nahi hai" stays distinguishable from "Galat PIN".
+            // this page. Existence is checked first only so that "PIN not
+            // set" stays distinguishable from "Incorrect PIN".
             let exists, verified;
             if(role==='vendor'){
                 const e1 = await SB.rpc('supplier_pin_exists', { p_supplier_name: vendorName });
                 if(e1.error) throw e1.error;
                 exists = !!e1.data;
-                if(!exists){ err.textContent = 'Is vendor ke liye PIN set nahi hai — desktop app ke Supplier Master me set karo.'; err.style.display='block'; return; }
+                if(!exists){ err.textContent = 'No PIN is set for this vendor. Set it in the Supplier Master of the desktop app.'; err.style.display='block'; return; }
                 const v = await SB.rpc('verify_supplier_pin', { p_supplier_name: vendorName, p_pin: pin });
                 if(v.error) throw v.error;
                 verified = !!v.data;
@@ -1390,15 +1388,15 @@
                 exists = !!e1.data;
                 if(!exists){
                     err.textContent = role==='purchaser'
-                        ? ('"'+purchaserName+'" ka PIN set nahi hai — desktop app ke Settings > Change Passwords me set karo.')
-                        : 'Is role ke liye PIN set nahi hai — pehle desktop app ke Settings > Change Passwords me set karo.';
+                        ? ('No PIN is set for "'+purchaserName+'". Set it under Settings > Change Passwords in the desktop app.')
+                        : 'No PIN is set for this role. Set it first under Settings > Change Passwords in the desktop app.';
                     err.style.display='block'; return;
                 }
                 const v = await SB.rpc('verify_role_pin', { p_role: roleKey, p_pin: pin });
                 if(v.error) throw v.error;
                 verified = !!v.data;
             }
-            if(!verified){ err.textContent = 'Galat PIN'; err.style.display='block'; return; }
+            if(!verified){ err.textContent = 'Incorrect PIN'; err.style.display='block'; return; }
             // A Purchaser signs at the GM/CEO stage — see myPurchaserName above.
             myStage = role==='purchaser' ? 'gmCeo' : role;
             myVendorName = role==='vendor' ? vendorName : null;
@@ -1412,7 +1410,7 @@
             loadRolePerms();                // pick up any access change made since the page opened
             renderList().then(liveStart);   // list is on screen — now keep it current by itself
         }catch(e){
-            if(/does not exist|relation/i.test(e.message||'')) err.textContent = '⚠️ role_pins / suppliers table missing — migration run karein';
+            if(/does not exist|relation/i.test(e.message||'')) err.textContent = 'role_pins / suppliers table missing. Please run the migration.';
             else err.textContent = e.message || String(e);
             err.style.display = 'block';
         }
@@ -1424,7 +1422,7 @@
        is FIELD BOY, for whom the three PO tabs are hidden outright. */
     function applyPurchaserScope(){
         applyRoleTabScope();
-        syncNewPrBtn();   // the header ➕ follows the login, here and on logout
+        syncNewPrBtn();   // the header follows the login, here and on logout
         currentStageTab = myStage ? defaultTabForRole() : 'VI';
         if(!visibleTabsForRole().includes(currentStageTab)) currentStageTab = visibleTabsForRole()[0] || 'VI';
         currentView = 'pending';
@@ -1570,29 +1568,29 @@
             const cfg = STAGE_TABS[currentStageTab];
             if(!myStage){ note.textContent = ''; note.className = 'access-note'; }
             // Field Boy's one tab is a tick list, not a quote sheet.
-            else if(isFieldBoy()){ note.textContent = '☑ PR kholkar jo item mil gaya use tick karein'; note.className = 'access-note act'; }
+            else if(isFieldBoy()){ note.textContent = 'Open the PR and tick each item that has been received'; note.className = 'access-note act'; }
             /* PO Receipts is a tracker, not a task: nothing is approved or
                signed there by anyone, so neither role gets a "your job" note
                and neither gets told it is somebody else's. Only the scope
                differs — a Purchaser sees the POs raised from their own PRs,
                MD sees every one. STAGE_TABS.RECV.action is phrased for the
-               Purchaser ("Aapke PO"), so it is not reused here. */
+               Purchaser ("Your POs"), so it is not reused here. */
             /* The Inward Approval section is the exception inside the
                exception: it IS a job, and a blocking one — the store cannot
                save the receipt until it is cleared. So it gets the "your
                work" note the other three sections deliberately do not. */
             else if(currentStageTab === 'RECV' && currentView === INWAPP_VIEW){
                 if(myRoleKey() === 'purchaser'){
-                    note.textContent = '✍️ PO se zyada qty / alag rate / extra item — kholkar Approve ya Reject karein';
+                    note.textContent = 'Qty above the PO / different rate / extra item: open it and Approve or Reject';
                     note.className = 'access-note act';
                 }else{
-                    note.textContent = '👁 View only — faisla Purchaser ka hai';
+                    note.textContent = 'View only; the decision is the Purchaser\'s';
                     note.className = 'access-note view';
                 }
             }
             else if(currentStageTab === 'RECV'){
-                note.textContent = '👁 ' + (myPurchaserName ? 'Aapke PO' : 'Sabhi PO')
-                    + ' par kitna maal aaya — Store ki Inward entries se khud update hota hai';
+                note.textContent = '' + (myPurchaserName ? 'Your POs' : 'All POs')
+                    + '; updates by itself from the Store\'s Inward entries';
                 note.className = 'access-note view';
             }
             /* The Rejected PO section's instruction is not PO Generate's
@@ -1601,10 +1599,10 @@
                the MD objected to, and sign again. */
             else if(currentStageTab === 'POGEN' && currentView === REJPO_VIEW){
                 if(canActIn('POGEN')){
-                    note.textContent = '✖ MD ne PO lauta diya — remark padhein, approval cancel karke sudhar kar dobara sign karein';
+                    note.textContent = '✖ The MD returned the PO. Read the remark, cancel your approval, correct it and sign again';
                     note.className = 'access-note act';
                 }else{
-                    note.textContent = '👁 View only — MD ke lautaye PO; sudhar Purchaser karenge';
+                    note.textContent = 'View only: POs returned by the MD; the Purchaser will correct them';
                     note.className = 'access-note view';
                 }
             }
@@ -1614,16 +1612,16 @@
             else if(currentStageTab === 'FOLLOWUP'){
                 if(canActIn('FOLLOWUP')){
                     note.textContent = currentView === 'done'
-                        ? '🕘 Vendor ki di hui date ka intezaar — chahein to naya follow-up jodein'
-                        : '📞 Vendor se revised delivery date poochein aur remark likhein';
+                        ? 'Waiting for the date the vendor gave; you can add a new follow-up if needed'
+                        : 'Ask the vendor for a revised delivery date and add a remark';
                     note.className = 'access-note ' + (currentView === 'done' ? 'view' : 'act');
                 }else{
-                    note.textContent = '👁 View only — follow-up ' + ACTOR_LABEL[cfg.actor] + ' karta hai';
+                    note.textContent = 'View only: follow-up is done by ' + ACTOR_LABEL[cfg.actor];
                     note.className = 'access-note view';
                 }
             }
-            else if(canActIn(currentStageTab)){ note.textContent = '✍️ ' + cfg.action; note.className = 'access-note act'; }
-            else { note.textContent = '👁 View only — ' + ACTOR_LABEL[cfg.actor] + ' ka kaam'; note.className = 'access-note view'; }
+            else if(canActIn(currentStageTab)){ note.textContent = '' + cfg.action; note.className = 'access-note act'; }
+            else { note.textContent = 'View only — ' + ACTOR_LABEL[cfg.actor] + ' step'; note.className = 'access-note view'; }
         }
     }
     /* ══ LIVE LIST ═══════════════════════════════════════════════════
@@ -1641,7 +1639,7 @@
          data. It is cheap — two capped selects off an already-warm connection.
 
        A refresh is SILENT: loadDashboard() into the cache, then paintList().
-       renderList() is not used because it blanks the list to "⏳ Loading..."
+       renderList() is not used because it blanks the list to "Loading..."
        first, which would flicker the screen every few seconds.
 
        It never runs while the user is in the middle of something — an open
@@ -1830,9 +1828,9 @@
         applyPurchaserScope();
         try{localStorage.removeItem(MOBILE_LOGIN_STORAGE_KEY);}catch(e){}
 
-        /* Single login se aaye the to logout bhi usi ka — warna ERP /
-           Complaint / Packing khule hi rehte aur "logout kiya tha" wala
-           bharosa jhootha nikalta. Ek login tha, to logout bhi ek. */
+        /* If the user came in through the single login, logout belongs to it
+           too; otherwise the ERP / Complaint / Packing would stay open and the
+           user's belief that they had logged out would be false. One login, one logout. */
         let tok = null;
         try{ tok = localStorage.getItem(SARV_SSO_KEY); }catch(e){}
         if(tok){
@@ -1846,12 +1844,11 @@
             return;
         }
 
-        /* Token hi nahi tha. Pehle yahan is app ki apni login screen
-           dobara khul jaati thi — wo poora hissa hat gaya hai, kyunki
-           logout ka matlab har soorat me ek hi hona chahiye: wahi ek
-           darwaza. (Aur ye haalat ab banti bhi nahi — page khulne se
-           pehle `SARV_GATE.requireSession()` launcher par bhej deta
-           hai.) */
+        /* There was no token at all. This used to reopen the app's own login
+           screen; that whole part has been removed, because logout must
+           always lead to the same single entry point. (This state no longer
+           happens anyway: `SARV_GATE.requireSession()` redirects to the
+           launcher before the page opens.) */
         location.replace('launcher.html?bye=1');
     }
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
@@ -1878,33 +1875,31 @@
     document.getElementById('poSendPinCancelBtn')?.addEventListener('click', closePoSendPinGate);
     document.getElementById('poSendPin')?.addEventListener('keydown', e=>{ if(e.key==='Enter') confirmPoSendPin(); });
     document.getElementById('pfuSaveBtn')?.addEventListener('click', () => savePoFollowup());
-    // Typing clears the last error, so a stale "Remarks likhein" does not sit
+    // Typing clears the last error, so a stale "Please write the remarks" does not sit
     // under a box that now has text in it.
     document.getElementById('pfuRemarks')?.addEventListener('input', () => pfuSay_(''));
     document.getElementById('pfuRevisedDate')?.addEventListener('change', () => pfuSay_(''));
     /* No backdrop-tap close, same as the New PR sheet: a stray tap must not
        throw away a typed follow-up remark. The × is the way out. */
-    /* ══ ERP ka single login ══════════════════════════════════════════
-       ERP / launcher.html me login karte hi ek session token ban jaata
-       hai jo SAARE apps ke liye hai (app_sessions). Saare apps ek hi
-       origin par hain, isi liye localStorage saajha hai aur ye app usi
-       token se apni pehchaan le leti hai — yahan dobara PIN nahi.
+    /* ══ ERP single login ═════════════════════════════════════════════
+       Logging in to the ERP / launcher.html creates a session token for ALL
+       apps (app_sessions). All the apps are on the same origin, so
+       localStorage is shared and this app identifies the user from that
+       token; no PIN again here.
 
-       Is app ki pehchaan "stage" hai (gm / md / poSender / purchaser),
-       aur ERP ki pehchaan "role". Neeche wahi jodd hai — STAGE_ROLE_PIN
-       ka ulta. Jiske paas ek hi stage banta hai wo seedha andar; do ya
-       zyada bante hon (jaise Admin) to sirf chunna padta hai, PIN nahi.
+       This app identifies people by "stage" (gm / md / poSender / purchaser),
+       and the ERP by "role". Below is the mapping between them, the reverse
+       of STAGE_ROLE_PIN. Someone with a single stage goes straight in; with
+       two or more (like the Admin) they only choose, no PIN.
 
-       Naram raasta: token na ho, RPC na ho, ya net kharab ho — teeno
-       soorat me ye chup-chaap hat jaata hai aur app ka purana login
-       waisa hi chalta hai. */
+       Lenient path: no token, no RPC, or a bad network; in all three cases
+       this quietly steps aside and the app's old login works as before. */
     const SARV_SSO_KEY = 'sarv_sso_token';
     const MOB_APP_KEY  = 'HOME_APPROVAL_APP';
 
-    /* ERP role → is app ka stage. Ek user ke kai role ho sakte hain, isi
-       liye list lautati hai. PURCHASER ka stage gmCeo hai par NAAM ke
-       saath — wahi naam uski list ko uske apne PR tak seemit rakhta hai
-       (applyPurchaserScope). */
+    /* ERP role → this app's stage. One user can have several roles, so this
+       returns a list. PURCHASER's stage is gmCeo but WITH a name; that name
+       limits their list to their own PRs (applyPurchaserScope). */
     function mobStagesForUser_(roles, userName){
         const out = [], seen = {};
         const add = (stage, pname, label) => {
@@ -1918,15 +1913,15 @@
             else if (r === 'USER_GM_PIN')       add('gm',      null,     'GM');
             else if (r === 'USER_MD_PIN')       add('md',      null,     'MD');
             else if (r === 'PO_SENDER_PIN')     add('poSender',null,     'PO Sender');
-            /* Admin / Edit User ka koi apna approval stage nahi hota, par
-               unhe dekhna sab kuch hota hai — GM ki tarah andar aate hain. */
+            /* Admin / Edit User have no approval stage of their own, but they
+               need to see everything, so they come in like the GM. */
             else if (r === 'ADMIN_PIN' || r === 'EDIT_PASSWORD') add('gm', null, 'GM (Admin)');
         });
         return out;
     }
 
-    /* Login / restore / SSO — teeno ka aakhri qadam ek hi jagah, taaki
-       badge, login screen aur live list teeno me farq na reh jaaye. */
+    /* Login / restore / SSO all finish in one place, so the badge, the
+       login screen and the live list can never disagree. */
     function enterMobile_(stage, purchaserName, vendorName){
         myStage = stage;
         myVendorName = vendorName || null;
@@ -1946,26 +1941,26 @@
         renderList().then(liveStart);
     }
 
-    // Access na ho to app khulti hi nahi — button chhupane ka doosra sira.
+    // Without access the app doesn't open: the other half of hiding the button.
     function mobSsoBlock_(name){
         const d = document.createElement('div');
         d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0f172a;color:#fff;'
             + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
             + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
         d.innerHTML = '<div style="max-width:420px;">'
-            + '<div style="font-size:46px;margin-bottom:14px;">&#128274;</div>'
-            + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">Approval App ka access nahi hai</h2>'
+            + '<div style="font-size:46px;margin-bottom:14px;"></div>'
+            + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">No access to the Approval App</h2>'
             + '<p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#cbd5e1;">'
-            + (name ? '<b>' + String(name).replace(/[<>&]/g, '') + '</b>, aapke' : 'Aapke')
-            + ' login par ye app band hai.<br>Admin se kehein &mdash; <i>Admin Panel &rsaquo; Users &rsaquo; Apps</i>.</p>'
+            + (name ? '<b>' + String(name).replace(/[<>&]/g, '') + '</b>, this app is turned off for your' : 'This app is turned off for your')
+            + ' login.<br>Please contact the Admin: <i>Admin Panel &rsaquo; Users &rsaquo; Apps</i>.</p>'
             + '<button onclick="location.href=\'launcher.html\'" style="background:#0ea5e9;border:none;color:#fff;'
             + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-            + '&larr; Apps par wapas</button></div>';
+            + '&larr; Back to Apps</button></div>';
         (document.body || document.documentElement).appendChild(d);
     }
 
-    /* true = ye function sab sambhaal chuka (andar le gaya ya rok diya),
-       false = ERP se nahi aaye — purana raasta chalne do. */
+    /* true = this function has handled everything (let the user in or stopped
+       them), false = not from the ERP, so let the old path run. */
     async function mobileSsoBoot_(){
         let tok = null;
         try{ tok = localStorage.getItem(SARV_SSO_KEY); }catch(e){}
@@ -1979,7 +1974,7 @@
 
         if(!d.success){
             if(d.error === 'NO_APP_ACCESS'){ mobSsoBlock_(d.user && d.user.name); return true; }
-            // Session khatam / band — saaf karke apna login dikhao.
+            // Session ended or closed: clean up and show our own login.
             try{ localStorage.removeItem(SARV_SSO_KEY); }catch(e){}
             return false;
         }
@@ -1988,9 +1983,9 @@
         const roles = (Array.isArray(su.roles) && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
         const stages = mobStagesForUser_(roles, su.name || '');
         if(!stages.length){
-            /* ERP me hain, is app ka access bhi hai, par koi approval stage
-               nahi banta (jaise sirf Store In-Charge). Saaf kehna behtar hai
-               — warna khaali list dikhti aur wajah kahin likhi nahi hoti. */
+            /* In the ERP, with access to this app, but no approval stage at all
+               (e.g. only Store In-Charge). Better to say so plainly; otherwise
+               an empty list shows with no reason given anywhere. */
             mobSsoBlock_(su.name);
             return true;
         }
@@ -2002,15 +1997,15 @@
         return true;
     }
 
-    /* Ek se zyada stage — sirf chunna, PIN nahi (wo ERP par ho chuka). */
+    /* More than one stage: only choose, no PIN (that was done on the ERP). */
     function mobShowStagePicker_(stages, name){
         const scr = document.getElementById('loginScreen');
         const box = scr && scr.querySelector('.modal-content');
         if(!box){ enterMobile_(stages[0].stage, stages[0].purchaserName, null); return; }
-        box.innerHTML = '<div class="modal-title"><span>&#128075; ' +
+        box.innerHTML = '<div class="modal-title"><span>' +
             String(name || '').replace(/[<>&]/g, '') + '</span></div>'
             + '<div style="font-size:0.78rem;color:#6b7280;margin-bottom:12px;">'
-            + 'ERP ka login ho chuka hai &mdash; sirf chunein ki kis roop me kaam karna hai.</div>'
+            + 'You are already logged in to the ERP; just choose which role to work in.</div>'
             + '<div id="mobStagePick"></div>';
         const holder = document.getElementById('mobStagePick');
         stages.forEach(s => {
@@ -2053,24 +2048,24 @@
         return false;
     }
 
-    /* Boot ka kram — ERP ka single login SABSE PEHLE.
-       Wajah: is phone par pichhli baar kisi aur roop me login hua ho
-       sakta hai (ya kisi aur bande ka), aur ERP ka taaza session hi
-       sach hai. Pehle purana restore kar dete to banda apne hi naye
-       login ke bawajood purani pehchaan me baitha rehta. */
-    /* Jo bhi raasta nikle, aakhir me splash hatani hai — tabhi to pata
-       chalta hai ki andar aa gaye ya login maangna hai. `finally` isi
-       liye: fail hone par bhi banda spinner par atka na rahe.
-       (Splash sso-preboot.js lagata hai — login screen ki jhalak rokne
-       ke liye. Wo file na ho to ye line chup-chaap kuch nahi karti.) */
+    /* Boot order: the ERP single login comes FIRST.
+       Reason: someone may have logged in on this phone last time in another
+       role (or as another person), and the fresh ERP session is the truth.
+       Restoring the old one first would leave the user in their old
+       identity despite their own new login. */
+    /* Whatever path is taken, the splash must be removed at the end; only
+       then is it clear whether we're in or a login is needed. Hence
+       `finally`: even on failure nobody is left stuck on the spinner.
+       (The splash comes from sso-preboot.js, to prevent the login screen
+       flashing. Without that file this line quietly does nothing.) */
     mobileSsoBoot_()
       .then(handled => { if(!handled) restoreMobileLogin(); })
       .catch(()     => { restoreMobileLogin(); })
       .finally(()   => { if(window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); });
 
-    /* Naam ki list hamesha bhar dete hain, chaahe abhi login screen dikh
-       rahi ho ya nahi — Logout kabhi bhi ho sakta hai aur us waqt list
-       ka intezaar karwana theek nahi lagta. Ek chhoti query hai. */
+    /* Always fill the name list, whether or not the login screen is showing
+       right now. Logout can happen at any time, and making the user wait for
+       the list then doesn't feel right. It is a small query. */
     mobLoadNames_();
 
     // Role-wise tab access set by the Admin in STORE.html — applied as soon as it arrives.
@@ -2174,11 +2169,11 @@
     function storeStageText(e){
         const gmTxt = storeCheckedBy(e,'gm')
             ? ('✔ GM ' + (storeCheckStamp_(e,'gm') || 'checked'))
-            : '⏳ GM check pending';
+            : 'GM check pending';
         const mdTxt = storeCheckedBy(e,'md')
             ? ('✔ MD ' + (storeCheckStamp_(e,'md') || 'checked'))
             // Nothing to say about the MD until the GM has opened the gate.
-            : (storeCheckedBy(e,'gm') ? '⏳ MD check pending' : '');
+            : (storeCheckedBy(e,'gm') ? 'MD check pending' : '');
         return mdTxt ? (gmTxt + '  ·  ' + mdTxt) : gmTxt;
     }
 
@@ -2367,29 +2362,27 @@
                     return pending ? prs.filter(r => !PR_DEAD(r) && !prFieldAllDone(r))
                                    : prs.filter(r => !PR_DEAD(r) && prFieldAllDone(r));
                 }
-            /* Teen tarah ki PR yahan PENDING hain:
-                 • jinki vendor info bhari hi nahi — asli kaam
-                 • jo HOLD par hain — held PR har vendor-info haalat me yahan
-                   dikhti hai, taaki wo kisi aise tab me park na ho jaye jo use
-                   dikhata hi nahi; Hold hatane ka control sirf isi screen par
-                   hai
-                 • jinka PO MD ne LAUTA diya, aur jinpar wo lautaya hua kaam
-                   ABHI BAAKI hai — prRejectedPoOpen. "Baaki hai" ka matlab
-                   do cheezein: Cancel My Approval ka raasta khula ho, aur
-                   dobara PO bana na ho. Rework poora ho jaane par (cancel →
-                   sudhaar → dobara sign → naya PO) PR yahan se hat kar Done
-                   me chali jaati hai; pehle wo hamesha ke liye isi Pending me
-                   padi rehti thi.
-                   Pehle aisi PR sirf PO Generate ▸ Rejected PO me milti thi.
-                   Par wahan sirf approval cancel hoti hai; jo cheez MD ne
-                   objection ki (rate, vendor, GST) wo Vendor Rate & Info sheet
-                   me sudharti hai — yani Vendor Info tab me. Aur Purchaser ka
-                   din isi tab ke Pending par shuru hota hai, to lauta hua kaam
-                   wahin dikhna chahiye, warna PR doosre tab me chup-chaap
-                   baithi rehti hai. Card par uska 🚫 Rejected PO number aur
-                   MD ka remark dono chhapte hain — dekhein paintList.
-               Done se ye jaan-boojh kar HATAYI gayi hai: ek hi PR Pending aur
-               Done dono me dikhna "kaam baaki hai" ko hi bemaani kar deta. */
+            /* Three kinds of PR are PENDING here:
+                 • those with no vendor info filled in yet: the real work
+                 • those on HOLD: a held PR shows here in every vendor-info
+                   state, so it never gets parked in a tab that doesn't show
+                   it; the control to remove a Hold exists only on this screen
+                 • those whose PO the MD RETURNED and where that returned work
+                   is STILL PENDING: prRejectedPoOpen. "Still pending" means
+                   two things: the Cancel My Approval path is open, and no new
+                   PO has been raised. Once the rework is complete (cancel →
+                   correct → sign again → new PO) the PR leaves here and moves
+                   to Done; before, it stayed in this Pending list forever.
+                   Such PRs used to appear only under PO Generate ▸ Rejected
+                   PO. But only the approval is cancelled there; what the MD
+                   objected to (rate, vendor, GST) is corrected in the Vendor
+                   Rate & Info sheet, i.e. in the Vendor Info tab. And the
+                   Purchaser's day starts in this tab's Pending list, so
+                   returned work must show there; otherwise the PR sits
+                   unnoticed in another tab. The card shows its Rejected PO
+                   number and the MD's remark; see paintList.
+               It is deliberately REMOVED from Done: showing the same PR in
+               both Pending and Done would make "work pending" meaningless. */
                           return pending ? prs.filter(r => PR_HELD(r) || prRejectedPoOpen(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
                                          : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r) && !prRejectedPoOpen(r));
             case 'POGEN':
@@ -2405,15 +2398,15 @@
                    while it still stands nothing about the PR can change. The
                    Purchaser cancelling it — the step this section exists to
                    prompt — drops the PR straight back into Pending for rework,
-                   still carrying its 🚫 tag and the MD's remark. Without that
+                   still carrying its tag and the MD's remark. Without that
                    test `_poRejected` never empties (a Rejected PO row stays
                    Rejected for ever) and the PR would sit here permanently,
                    long after it had been dealt with.
                    A Cancelled PR is left out — nobody is going to rework it.
-                   Wahi teen shartein ab prRejectedPoOpen() me ek jagah hain,
-                   kyunki Vendor Info ▸ Pending bhi inhi par chalti hai — do
-                   copy hoti to ek din dono alag padhti aur PR ek list me
-                   dikhta, doosri me gayab. */
+                   The same three conditions now live in one place,
+                   prRejectedPoOpen(), because Vendor Info ▸ Pending runs on
+                   them too; with two copies they would one day disagree and
+                   the PR would show in one list and vanish from the other. */
                 if(view === REJPO_VIEW) return prs.filter(prRejectedPoOpen);
                           return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
                                          : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
@@ -2755,7 +2748,7 @@
     function poSendPinBusy_(on){
         const btn = document.getElementById('poSendPinBtn');
         btn.disabled = !!on;
-        btn.textContent = on ? '⏳ Checking...' : PO_SEND_PIN_BTN_LABEL;
+        btn.textContent = on ? 'Checking...' : PO_SEND_PIN_BTN_LABEL;
     }
     async function confirmPoSendPin(){
         // Held on to before anything can clear it — closePoSendPinGate() below
@@ -2765,28 +2758,28 @@
         const inp = document.getElementById('poSendPin');
         const pin = inp.value;
         poSendPinSay_('');
-        if(!pin){ poSendPinSay_('PIN enter karein'); inp.focus(); return; }
+        if(!pin){ poSendPinSay_('Please enter your PIN'); inp.focus(); return; }
         poSendPinBusy_(true);
         try{
-            // Existence first, same as the login — so "PIN set nahi hai" stays
-            // distinguishable from "Galat PIN".
+            // Existence first, same as the login — so "PIN not set" stays
+            // distinguishable from "Incorrect PIN".
             const roleKey = STAGE_ROLE_PIN.poSender;
             const e1 = await SB.rpc('role_pin_exists', { p_role: roleKey });
             if(e1.error) throw e1.error;
             if(!e1.data){
-                poSendPinSay_('PO Sender ka PIN set nahi hai — desktop app ke Settings > Change Passwords me set karein.');
+                poSendPinSay_('No PIN is set for the PO Sender. Set it under Settings > Change Passwords in the desktop app.');
                 poSendPinBusy_(false); return;
             }
             const v = await SB.rpc('verify_role_pin', { p_role: roleKey, p_pin: pin });
             if(v.error) throw v.error;
             if(!v.data){
-                poSendPinSay_('Galat PIN');
+                poSendPinSay_('Incorrect PIN');
                 inp.value = ''; inp.focus();
                 poSendPinBusy_(false); return;
             }
         }catch(e){
             poSendPinSay_(/does not exist|relation/i.test(e.message||'')
-                ? '⚠️ role_pins table missing — migration run karein'
+                ? 'role_pins table missing. Please run the migration.'
                 : (e.message || String(e)));
             poSendPinBusy_(false); return;
         }
@@ -2887,135 +2880,130 @@
     }
     function prRejectedPos(r){ return (r && r._poRejected) || []; }
     function prHasRejectedPo(r){ return prRejectedPos(r).length > 0; }
-    /* ── "Kya ye rejection ab nipat chuki hai?" ──────────────────────
-       Ek MD-rejected PO ka jawaab EK hi cheez hai: usi PR par DOBARA PO ban
-       jaana. Jab tak wo nahi bana, kaam baaki hai; ban gaya, to Purchaser ne
-       jo karna tha kar diya — aur PR ko uski kaam wali list me baithaye rakhna
-       sirf shor hai.
+    /* ── "Has this rejection been dealt with?" ──────────────────────
+       An MD-rejected PO has ONE answer: a NEW PO raised on the same PR. Until
+       that exists the work is pending; once it exists the Purchaser has done
+       what was needed, and keeping the PR in their to-do list is just noise.
 
-       Pehle ye sawaal pucha hi nahi jaata tha, aur wahi dikkat thi:
-       `_poRejected` kabhi khaali nahi hota (ek Rejected PO hamesha Rejected
-       rehta hai), to Purchaser jab approval cancel karke, rate/vendor sudhar
-       kar dobara sign karte the — jisse turant naya PO ban jaata tha — PR
-       phir bhi Vendor Info ▸ Pending me waise hi padi rehti thi, HAMESHA ke
-       liye. Nayi PO bani hui, maal aana shuru, aur list keh rahi hai "ispar
-       kaam karo".
+       This question used to go unasked, and that was the problem:
+       `_poRejected` never empties (a Rejected PO stays Rejected), so when the
+       Purchaser cancelled the approval, fixed the rate/vendor and signed
+       again (which raises a new PO immediately), the PR still sat in Vendor
+       Info ▸ Pending FOREVER. A new PO raised, material starting to arrive,
+       and the list still saying "work on this".
 
-       Isliye: kya koi ZINDA PO is PR par rejection ke BAAD bana hai?
-         • created_at — database me ho to seconds tak sahi jawaab;
-         • warna PO ka apna gmCeo sign ka stamp — mobile se rework karne par
-           naya sign naye waqt ka hota hai, to yahi batata hai ki PO naya hai;
-         • warna po_date (aadhi raat maan kar) — STORE.html se bana PO
-           Purchaser ka PURANA sign carry karta hai, to uske liye tareekh hi
-           sahara hai.
-       Teeno padhe na jaa sakein to jawaab "nahi" hai — PR dikhti rahegi.
-       Chhupana sirf tab, jab pakka pata ho; shak me kaam kabhi chhupta nahi.
+       So: has any LIVE PO been raised on this PR AFTER the rejection?
+         • created_at: if present in the database, accurate to the second;
+         • otherwise the PO's own gmCeo signature stamp: reworking from mobile
+           creates a new signature at a new time, which tells us the PO is new;
+         • otherwise po_date (taken as midnight): a PO created from STORE.html
+           carries the Purchaser's OLD signature, so the date is all we have.
+       If none of the three can be read, the answer is "no" and the PR stays
+       visible. Hide only when certain; when in doubt, work is never hidden.
 
-       Ek PR do vendors par bantti hai to ek saath do PO bante hain (dono ka
-       gmCeo stamp aur date wahi). MD un me se ek lauta de, to doosra ZINDA PO
-       rejection se PEHLE ka nikalta hai — "naya" nahi — aur PR theek se
-       dikhti rehti hai. Yahi wajah hai ki sirf "koi zinda PO hai kya" nahi
-       pucha ja raha. */
+       A PR split across two vendors raises two POs at once (same gmCeo stamp
+       and date). If the MD returns one of them, the other LIVE PO dates from
+       BEFORE the rejection (not "new"), and the PR stays visible as it
+       should. That is why we don't simply ask "is there any live PO". */
     function stampMs_(v){
         const s = String(v || '').trim();
         if(!s) return 0;
-        // pStamp(): DD/MM/YYYY HH:MM:SS — Date.parse() isko bharose se nahi
-        // padh sakta (kahin DD/MM, kahin MM/DD), isliye khud tod kar banate hain.
+        // pStamp(): DD/MM/YYYY HH:MM:SS. Date.parse() can't read this reliably
+        // (DD/MM in some places, MM/DD in others), so we split it ourselves.
         let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
         if(m) return new Date(+m[3], +m[2]-1, +m[1], +(m[4]||0), +(m[5]||0), +(m[6]||0)).getTime() || 0;
-        // YYYY-MM-DD (po_date) — LOCAL aadhi raat. Date.parse ise UTC maanta
-        // hai, jo India me 5:30 am ban jaata hai: usi din hui rejection ke
-        // saath tulna tab galat taraf jhukti.
+        // YYYY-MM-DD (po_date): LOCAL midnight. Date.parse treats it as UTC,
+        // which becomes 5:30 am in India, so a comparison with a rejection
+        // on the same day would lean the wrong way.
         m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
         if(m) return new Date(+m[1], +m[2]-1, +m[3]).getTime() || 0;
         const t = Date.parse(s);            // ISO (created_at / atIso)
         return Number.isNaN(t) ? 0 : t;
     }
-    // Jab ye PO banaya gaya — uparwale teen sources me se jo mil jaye.
+    // When this PO was created: whichever of the three sources above is available.
     function poRaisedAtMs_(po){
         const g = ((po && po.approvals) || {}).gmCeo || {};
         return stampMs_(po && po.created_at) || stampMs_(g.time) || stampMs_(po && po.po_date);
     }
-    // Is PR par aayi sabse NAYI rejection ka waqt.
+    // Time of the NEWEST rejection on this PR.
     function prLastRejectionMs_(r){
         return prRejectedPos(r).reduce((mx, p) => Math.max(mx, stampMs_(poRejectionAt_(p))), 0);
     }
     function prRejectedPoAnswered_(r){
         const rejAt = prLastRejectionMs_(r);
-        if(!rejAt) return false;            // waqt hi nahi pata — chhupayenge nahi
+        if(!rejAt) return false;            // time unknown; we won't hide it
         return ((r && r._poLive) || []).some(p => poRaisedAtMs_(p) > rejAt);
     }
-    /* ── "Is PR par Cancel My Approval ho sakti hai?" ────────────────
-       Rejected PO list ka maqsad EK hi hai: wo PR dikhana jispar Purchaser
-       ABHI <b>Cancel My Approval</b> dabakar, rates/vendor sudhaar kar, dobara
-       sign karke NAYA PO bana sakta hai. Jispar ye raasta band hai, uska card
-       us list me sirf ek band darwaza hai.
+    /* ── "Can Cancel My Approval be done on this PR?" ────────────────
+       The Rejected PO list has ONE purpose: to show PRs where the Purchaser
+       can RIGHT NOW press <b>Cancel My Approval</b>, fix the rates/vendor,
+       sign again and raise a NEW PO. Where that path is closed, the card in
+       that list is just a locked door.
 
-       Yahi teen shartein canCancelApproval() bhi lagata hai (myStage='gmCeo'
-       wale Purchaser ke liye) — par wo `currentModule` / `myStage` jaise
-       screen-ke-waqt ke globals padhta hai, aur ye predicate badge ke count
-       se bhi pucha jaata hai (allRejectedPos_ kisi bhi tab par chal sakta
-       hai). Isliye yahan wahi sawaal bina un globals ke pucha gaya hai:
-       warna list me PR dikhti aur badge kuch aur ginta.
+       canCancelApproval() applies the same three conditions (for the
+       Purchaser with myStage='gmCeo'), but it reads screen-time globals like
+       `currentModule` / `myStage`, while this predicate is also asked by the
+       badge count (allRejectedPos_ can run on any tab). So the same question
+       is asked here without those globals; otherwise the list would show the
+       PR while the badge counted something else.
 
-       prPoLocked_ ek hi jagah likha hai aur prLockedByPo bhi ab wahi padhta
-       hai — do copy hoti to ek din dono alag padhti. Rejected PO
-       DEAD_PO_STATUSES me hai, yani _poLive me hi nahi, to wo khud kabhi lock
-       nahi karta; ek hi PR ke doosre vendor ka PO jo MD approve kar chuke hain
-       — wo karta hai, aur theek karta hai. */
+       prPoLocked_ is written in one place and prLockedByPo now reads it
+       too; with two copies they would one day disagree. A Rejected PO is in
+       DEAD_PO_STATUSES, i.e. not in _poLive, so it never locks by itself; the
+       other vendor's PO on the same PR that the MD has already approved does,
+       and rightly so. */
     function prPoLocked_(r){
         return ((r && r._poLive) || []).some(p => !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
     }
     function prReworkPossible_(r){
         const a = (r && r.approvals) || {};
-        return !!a.gmCeo            // Purchaser ki approval khadi hai — cancel karne layak
-            && !a.md && !a.vendor   // aage kisi stage ne sign nahi kiya
-            && !prPoLocked_(r);     // koi live PO MD se aage nahi badh gaya
+        return !!a.gmCeo            // the Purchaser's approval stands, so it can be cancelled
+            && !a.md && !a.vendor   // no later stage has signed
+            && !prPoLocked_(r);     // no live PO has gone past the MD
     }
-    /* ── "Is PR par MD ka lautaya PO abhi bhi khula hai" ──────────────
-       EK hi jagah ye sawaal tay hota hai, aur DO list ise padhti hain:
-         • Vendor Info ▸ Pending   — yahan kaam dobara shuru hota hai
-         • PO Generate ▸ Rejected PO — yahan approval cancel hoti hai
-       Ek hi predicate isliye ki dono kabhi alag na padein: agar ek list
-       PR ko "khula" maane aur doosri "nipta hua", to wahi PR ek jagah
-       dikhta aur doosri jagah gayab rehta — aur kaam beech me latak jaata.
+    /* ── "Is the PO the MD returned on this PR still open?" ───────────
+       This question is decided in ONE place, and TWO lists read it:
+         • Vendor Info ▸ Pending   - where the work starts again
+         • PO Generate ▸ Rejected PO - where the approval is cancelled
+       One predicate so the two can never disagree: if one list treated the
+       PR as "open" and the other as "done", the PR would show in one place,
+       be missing from the other, and the work would fall through the cracks.
 
-       `gmCeo` signature ka test sirf rejected PO dekhne se zyada zaroori
-       hai: wahi signature wo PO banwata hai jo MD ne lautaya, to jab tak
-       wo khadi hai PR par kuch badla nahi ja sakta. Purchaser use cancel
-       karte hain — yahi wo kadam hai jiske liye ye dono list hain — aur
-       tab PR seedha rework me chala jaata hai (apne 🚫 tag aur MD ke
-       remark ke saath). Ye test na hota to `_poRejected` kabhi khaali
-       hota hi nahi (Rejected PO hamesha Rejected rehta hai) aur PR dono
-       list me hamesha ke liye baitha rehta, nipat jaane ke baad bhi.
+       The `gmCeo` signature test matters more than just looking at the
+       rejected PO: that signature is what raised the PO the MD returned, so
+       while it stands nothing about the PR can change. The Purchaser cancels
+       it (the very step these two lists exist for), and the PR then goes
+       straight into rework (with its tag and the MD's remark). Without this
+       test `_poRejected` would never empty (a Rejected PO stays Rejected) and
+       the PR would sit in both lists forever, even after being dealt with.
 
-       Cancelled PR baahar hai — uspar koi dobara kaam nahi karega.
+       A Cancelled PR is excluded; nobody will rework it.
 
-       DO shartein isme ab aur hain, aur dono ek hi baat kehti hain: ye list
-       sirf wo PR dikhaye jispar Purchaser ABHI Cancel My Approval → sudhaar →
-       dobara sign karke NAYA PO bana sakta hai.
+       TWO more conditions now apply, and both say the same thing: this list
+       should show only PRs where the Purchaser can RIGHT NOW do Cancel My
+       Approval → correct → sign again and raise a NEW PO.
 
-         • prReworkPossible_ — wo raasta khula hai ya nahi. (Pehle yahan sirf
-           `approvals.gmCeo` dekha jaata tha, jo canCancelApproval ki teen
-           shartein me se ek hi hai: ek split PR ka doosra PO MD approve kar
-           chuke hon, to approval cancel hoti hi nahi — aur PR Rejected PO me
-           ek band darwaze wale 🔒 card ki tarah padi rehti thi.)
-         • !prRejectedPoAnswered_ — naya PO BAN CHUKA hai, yani rejection ka
-           jawaab de diya gaya. Iske bina Purchaser ka rework poora hone ke
-           baad bhi PR Vendor Info ▸ Pending aur Rejected PO dono me HAMESHA
-           ke liye padi rehti thi (cancel → sudhaar → dobara sign → naya PO
-           ban gaya, par PR wahin).
+         • prReworkPossible_: whether that path is open. (Previously only
+           `approvals.gmCeo` was checked, which is just one of
+           canCancelApproval's three conditions: if the MD has approved the
+           other PO of a split PR, the approval can't be cancelled at all, and
+           the PR sat in Rejected PO like a card behind a locked door.)
+         • !prRejectedPoAnswered_: a new PO HAS BEEN raised, i.e. the
+           rejection has been answered. Without this, even after the
+           Purchaser's rework was complete the PR stayed in both Vendor Info ▸
+           Pending and Rejected PO FOREVER (cancel → correct → sign again →
+           new PO raised, but the PR still there).
 
-       Dono shartein YAHIN — ek hi jagah — hain, isliye Vendor Info ▸ Pending
-       aur PO Generate ▸ Rejected PO ek saath saaf hote hain; ye wahi predicate
-       hai jise badge ka count bhi padhta hai, to teeno kabhi alag nahi padte.
+       Both conditions live HERE, in one place, so Vendor Info ▸ Pending and
+       PO Generate ▸ Rejected PO clear together; the badge count reads the
+       same predicate, so the three never disagree.
 
-       Jo PR in shartein par hat jaati hai wo KAHIN nahi khoti: Vendor Info ▸
-       Done aur PO Generate ▸ Done me apne 🚫 Rejected PO tag ke saath dikhti
-       hai (ye tag prHasRejectedPo padhta hai, ye predicate nahi), MD ka remark
-       modal me poora khulta hai (renderMdRejectionNote → prRejectedPos), aur
-       lock wali PR par wahi 🔒 Cancel My Approval button Done me milta hai jo
-       wajah bhi batata hai. Sirf KAAM ki list saaf hoti hai. */
+       A PR removed by these conditions is NOT lost: it shows in Vendor Info ▸
+       Done and PO Generate ▸ Done with its Rejected PO tag (that tag reads
+       prHasRejectedPo, not this predicate), the MD's remark opens in full in
+       the modal (renderMdRejectionNote → prRejectedPos), and a locked PR gets
+       the same Cancel My Approval button in Done, which also explains why.
+       Only the WORK list is cleared. */
     function prRejectedPoOpen(r){
         return prHasRejectedPo(r)
             && (r.status||'') !== 'Cancelled'
@@ -3175,7 +3163,7 @@
     async function renderList() {
         const listDiv = document.getElementById('list');
         if(!myStage){ listDiv.innerHTML = ''; syncStageTabsUi(); return; }
-        listDiv.innerHTML = `<p class="empty-msg">⏳ Loading...</p>`;
+        listDiv.innerHTML = `<p class="empty-msg">Loading...</p>`;
         try{ await loadDashboard(); }
         catch(e){ console.error('[MOBILE] Dashboard load failed:', e); }
         paintList();
@@ -3205,49 +3193,49 @@
         if(countEl) countEl.textContent = searchTerm ? rows.length + ' of ' + all.length + ' shown' : '';
 
         if(all.length === 0) {
-            // PO Receipts' three sections are states, not stages, so "koi kaam
-            // pending nahi" would be the wrong thing to say in two of them.
+            // PO Receipts' three sections are states, not stages, so "no work
+            // pending" would be the wrong thing to say in two of them.
             const secLabel = (viewsForTab(tab).find(v => v.v === currentView) || {}).l || '';
-            // On a sub-tab, say which book is empty — "koi kaam pending nahi"
+            // On a sub-tab, say which book is empty — "no work pending"
             // would read as "nothing anywhere" while two other types still have
             // entries waiting.
             if(cfg.module === 'STORE' && storeTypeFilter !== 'ALL'){
                 const tl = (STORE_TYPE_TABS.find(t => t.v === storeTypeFilter) || {}).l || storeTypeFilter;
-                listDiv.innerHTML = `<p class="empty-msg">${escText(tl)} — is section me koi entry nahi. Doosre sub-tab dekhein.</p>`;
+                listDiv.innerHTML = `<p class="empty-msg">${escText(tl)}: no entries in this section. Check the other sub-tabs.</p>`;
                 return;
             }
             if(cfg.module === 'RECV' && currentView === INWAPP_VIEW){
                 listDiv.innerHTML = inwAppTableMissing
-                    ? `<p class="empty-msg">⚠️ <b>inward_approvals</b> table abhi bani nahi hai — Supabase me <b>INWARD_APPROVAL_MIGRATION.sql</b> chalayein.</p>`
-                    : `<p class="empty-msg">🎉 Koi Inward approval pending nahi hai.</p>`;
+                    ? `<p class="empty-msg">The <b>inward_approvals</b> table has not been created yet. Run <b>INWARD_APPROVAL_MIGRATION.sql</b> in Supabase.</p>`
+                    : `<p class="empty-msg">No Inward approvals pending.</p>`;
                 return;
             }
             /* Empty here is good news, and it is not the same good news as
                "no work pending" — nothing has been sent back. */
             if(tab === 'POGEN' && currentView === REJPO_VIEW){
-                listDiv.innerHTML = `<p class="empty-msg">🎉 MD ne koi PO reject nahi kiya — is section me kuch nahi.</p>`;
+                listDiv.innerHTML = `<p class="empty-msg">The MD has not rejected any PO; nothing in this section.</p>`;
                 return;
             }
             /* Empty here needs saying properly, because a PO can be missing
-               from this tab for four quite different reasons and "kuch pending
-               nahi" would hide three of them. */
+               from this tab for four quite different reasons and "nothing pending"
+               would hide three of them. */
             if(cfg.module === 'FOLLOWUP'){
                 listDiv.innerHTML = done
-                    ? `<p class="empty-msg">Kisi PO par aage ki revised date pending nahi hai — jo follow-up baaki hain wo <b>Follow-up Due</b> me dekhein.</p>`
-                    : `<p class="empty-msg">🎉 Koi follow-up baaki nahi.<br><span style="font-size:0.78rem;">Is tab me sirf wo PO aate hain jo <b>vendor ko bhej diye gaye</b> hain, jinka status <b>MD Approved</b> / <b>Partially Received</b> hai, aur jinka maal poora nahi aaya.</span></p>`;
+                    ? `<p class="empty-msg">No PO is waiting on a future revised date. Follow-ups still to be done are under <b>Follow-up Due</b>.</p>`
+                    : `<p class="empty-msg">No follow-ups pending.<br><span style="font-size:0.78rem;">This tab only lists POs that have been <b>sent to the vendor</b>, have the status <b>MD Approved</b> / <b>Partially Received</b>, and have not been fully received.</span></p>`;
                 return;
             }
             listDiv.innerHTML = cfg.module === 'RECV'
-                ? `<p class="empty-msg">${escText(secLabel)} — is section me abhi koi PO nahi.</p>`
+                ? `<p class="empty-msg">${escText(secLabel)}: no POs in this section yet.</p>`
                 : (done
-                    ? `<p class="empty-msg">${escText(cfg.title)} — abhi koi ${escText(secLabel.toLowerCase()||'done')} entry nahi.</p>`
+                    ? `<p class="empty-msg">${escText(cfg.title)}: no ${escText(secLabel.toLowerCase()||'done')} entries yet.</p>`
                     : (canAct
-                        ? `<p class="empty-msg">🎉 ${escText(cfg.title)} me aapka koi kaam pending nahi hai.</p>`
-                        : `<p class="empty-msg">${escText(cfg.title)} me koi pending entry nahi.</p>`));
+                        ? `<p class="empty-msg">Nothing pending for you in ${escText(cfg.title)}.</p>`
+                        : `<p class="empty-msg">No pending entries in ${escText(cfg.title)}.</p>`));
             return;
         }
         if(rows.length === 0) {
-            listDiv.innerHTML = `<p class="empty-msg">Is search se koi entry match nahi hui.</p>`;
+            listDiv.innerHTML = `<p class="empty-msg">No entries match this search.</p>`;
             return;
         }
 
@@ -3271,12 +3259,12 @@
             const card = document.createElement('div');
             const isPr = cfg.module === 'PR';
             const vendorNames = isPr ? prQuotedVendorNames(item) : [];
-            /* Is card par MD ka lautaya PO dikhana hai ya nahi.
-               Rejected PO section me hamesha; aur baaki har list me us PR par
-               jiska rejection abhi khula hai — sabse zyada Vendor Info ▸
-               Pending par, jahan us PR ka kaam dobara shuru hota hai. Pehle ye
-               sirf `rejView` tha, to Pending me aayi lauti hui PR ek aam PR
-               jaisi dikhti thi. */
+            /* Whether this card should show the PO the MD returned.
+               Always in the Rejected PO section, and in every other list for a
+               PR whose rejection is still open; above all in Vendor Info ▸
+               Pending, where the work on that PR starts again. This used to be
+               just `rejView`, so a returned PR in Pending looked like any
+               ordinary PR. */
             const showRej = isPr && (rejView || prRejectedPoOpen(item));
             // The green "vendor info filled" skin would read as all-is-well on a
             // PR whose PO just came back, so the rejection skin wins.
@@ -3301,21 +3289,21 @@
             html += `<div class="card-detail">Status: ${statusBadge(item.status)}</div>`;
 
             const tags = [];
-            if(vendorNames.length) tags.push(`<span class="vendor-filled-tag" style="margin-top:0;">✅ Vendors: ${escText(vendorNames.join(', '))}</span>`);
+            if(vendorNames.length) tags.push(`<span class="vendor-filled-tag" style="margin-top:0;">Vendors: ${escText(vendorNames.join(', '))}</span>`);
             // Which PO came back. Named on every tab, not just the Rejected PO
             // section: a PR sitting in Done with a rejected PO behind it would
             // otherwise look like a finished job.
             if(isPr && prHasRejectedPo(item))
-                tags.push(`<span class="tag rejected">🚫 Rejected PO: ${escText(prRejectedPos(item).map(p => p.po_no).join(', '))}</span>`);
-            if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">🧾 ${escText(item._poNos.join(', '))}</span>`);
+                tags.push(`<span class="tag rejected">Rejected PO: ${escText(prRejectedPos(item).map(p => p.po_no).join(', '))}</span>`);
+            if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">${escText(item._poNos.join(', '))}</span>`);
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
             // How far down the checklist this PR is, without opening it.
             if(isPr && isFieldBoy()){
                 const p = prFieldProgress(item);
-                if(p.total > 0) tags.push(`<span class="tag ${p.done >= p.total ? 'sent' : 'po'}">☑ ${p.done}/${p.total} items</span>`);
+                if(p.total > 0) tags.push(`<span class="tag ${p.done >= p.total ? 'sent' : 'po'}">${p.done}/${p.total} items</span>`);
             }
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
-            if(item.pdf_url) html += `<a class="pdf-link" href="${escText(item.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 View PDF</a>`;
+            if(item.pdf_url) html += `<a class="pdf-link" href="${escText(item.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View PDF</a>`;
             /* The MD's own words, on the card — not behind a tap. This is the
                whole point of the section: the remark says what to change, and a
                Purchaser should not have to open each PR to find out which of
@@ -3327,11 +3315,11 @@
                 const rem = poRejectionRemark(p);
                 const info = poRejectionInfo(p) || {};
                 return `<div class="rej-note">`
-                     + `<div class="rej-note-head">✖ ${escText(p.po_no || 'PO')} — ${escText(poRejectionWho_(p))} ne reject kiya`
+                     + `<div class="rej-note-head">✖ ${escText(p.po_no || 'PO')} — ${escText(poRejectionWho_(p))} rejected it`
                      + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
                      + `<div class="rej-note-body"><b>MD Rejection Remark:</b> `
-                     + (rem ? escText(rem) : `<i>koi remark nahi likha gaya</i>`) + `</div>`
-                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 Rejected PO PDF</a>` : '')
+                     + (rem ? escText(rem) : `<i>no remark was written</i>`) + `</div>`
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Rejected PO PDF</a>` : '')
                      + `</div>`;
             }).join('');
 
@@ -3339,56 +3327,56 @@
             if(rejView){
                 html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
                       + escText(canAct
-                          ? '↩ Approval cancel karke PR sudhaarein, phir dobara sign karein — naya PO ban jayega'
-                          : 'Purchaser isme sudhar karke dobara sign karenge')
+                          ? '↩ Cancel the approval, correct the PR and sign again; a new PO will be raised'
+                          : 'The Purchaser will correct this and sign again')
                       + `</div>`;
             } else if(done){
                 const doneText = {
-                    VI:    isFieldBoy() ? ('✔ Saare items receive ho gaye (' + prFieldProgress(item).total + ')')
-                                        : '✔ Vendor info bhari ja chuki hai',
+                    VI:    isFieldBoy() ? ('✔ All items received (' + prFieldProgress(item).total + ')')
+                                        : '✔ Vendor info has been filled in',
                     /* A PR whose only PO the MD returned is still "approved", and
                        saying just that here would read as a finished job — the
                        Done list is where a Purchaser confirms nothing is left to
                        do. So the rejection is named instead, pointing at the
                        section that carries the remark and the way to fix it. */
                     POGEN: (prHasRejectedPo(item) && !(item._poNos||[]).length)
-                        ? '✖ MD ne PO reject kar diya — "Rejected PO" sub-tab me dekhein'
-                        : '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ' — PO ban gaya' : ''),
+                        ? '✖ The MD rejected the PO. See the "Rejected PO" sub-tab'
+                        : '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ': PO raised' : ''),
                     MD:    '✔ MD approved',
-                    SENT:  '✔ Vendor ko bheja ja chuka hai',
+                    SENT:  '✔ Already sent to the vendor',
                 }[tab];
                 // Green says "settled". A rejection is not, so that line gets
                 // the plain treatment instead.
                 const doneCls = (tab === 'POGEN' && prHasRejectedPo(item) && !(item._poNos||[]).length) ? 'wait' : 'done';
                 html += `<div class="card-action ${doneCls}">${escText(doneText)}</div>`;
             } else if(isPr && PR_HELD(item)){
-                /* Hold ka hint REJECTION se pehle aata hai, aur jaan-boojh
-                   kar: Hold ek hard rok hai — jab tak wo lagi hai is PR par
-                   koi PO ban hi nahi sakta, to pehla kadam Hold hataana hai,
-                   sudhaar uske baad. Rejection chhupti nahi — 🚫 tag aur MD ka
-                   remark dono isi card par upar chhapte hain. */
+                /* The Hold hint comes before the REJECTION on purpose: Hold is
+                   a hard stop. While it is on, no PO can be raised on this PR,
+                   so removing the Hold is the first step and corrections come
+                   after. The rejection isn't hidden: the tag and the MD's
+                   remark are both printed at the top of this same card. */
                 const hi = prHoldInfo(item);
-                html += `<div class="card-action wait">⏸ Hold par — kholkar Hold hatayein${hi && hi.remarks ? ' · ' + escText(hi.remarks) : ''}</div>`;
+                html += `<div class="card-action wait">On hold. Open it to remove the hold${hi && hi.remarks ? ' · ' + escText(hi.remarks) : ''}</div>`;
             } else if(showRej){
-                /* Lauti hui PR, Pending list me. Yahan "Vendor & rates
-                   bharein" likhna galat hota — wo pehle se bhari hain; jo
-                   karna hai wo MD ki baat par SUDHAAR hai. Aur sudhaar do
-                   kadam ka hai, isi liye dono likhe gaye hain: rate / vendor
-                   yahin badalte hain, par naya PO banane ke liye PO Generate
-                   me jaakar purani approval cancel karni padti hai (jab tak
-                   wo khadi hai, PR par kuch pakka nahi hota). */
+                /* A returned PR in the Pending list. "Fill in vendor & rates"
+                   would be wrong here, since they are already filled in; what is
+                   needed is a CORRECTION based on the MD's remark. The
+                   correction has two steps, so both are stated: the rate /
+                   vendor change happens here, but raising a new PO requires
+                   cancelling the old approval in PO Generate (while it stands,
+                   nothing on the PR is final). */
                 html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
                       + escText(canAct
-                          ? '✖ MD ne PO lautaya — remark padhein, yahan vendor / rate sudhaarein, phir "PO Generate ▸ Rejected PO" me approval cancel karke dobara sign karein'
-                          : 'Purchaser isme sudhar karke dobara sign karenge')
+                          ? '✖ The MD returned the PO. Read the remark, correct the vendor / rate here, then cancel the approval under "PO Generate ▸ Rejected PO" and sign again'
+                          : 'The Purchaser will correct this and sign again')
                       + `</div>`;
             } else if(isPr && isFieldBoy() && canAct){
                 const p = prFieldProgress(item);
-                html += `<div class="card-action act">☑ ${escText('Tap karein — items tick karein' + (p.total ? ' (' + p.done + '/' + p.total + ')' : ''))}</div>`;
+                html += `<div class="card-action act">${escText('Tap to tick the items' + (p.total ? ' (' + p.done + '/' + p.total + ')' : ''))}</div>`;
             } else if(canAct){
-                html += `<div class="card-action act">✍️ ${escText(tab === 'SENT' ? cfg.action : 'Tap karein — ' + cfg.action)}</div>`;
+                html += `<div class="card-action act">${escText(tab === 'SENT' ? cfg.action : 'Tap to ' + cfg.action.charAt(0).toLowerCase() + cfg.action.slice(1))}</div>`;
             } else {
-                html += `<div class="card-action wait">⏳ ${escText(ACTOR_LABEL[cfg.actor])} ke paas pending</div>`;
+                html += `<div class="card-action wait">${escText(ACTOR_LABEL[cfg.actor])}: pending</div>`;
             }
             card.innerHTML = html;
 
@@ -3396,8 +3384,8 @@
                 const waBtn = document.createElement('button');
                 waBtn.className = 'btn';
                 waBtn.style.cssText = 'margin-top:8px;background:#25d366;';
-                waBtn.textContent = isPoSentMobile(item) ? '💬 Send Again via WhatsApp' : '💬 Send via WhatsApp';
-                waBtn.title = 'PO Sender PIN maangi jayegi';
+                waBtn.textContent = isPoSentMobile(item) ? 'Send Again via WhatsApp' : 'Send via WhatsApp';
+                waBtn.title = 'The PO Sender PIN will be asked for';
                 // PIN first — see openPoSendPinGate().
                 waBtn.onclick = (e) => { e.stopPropagation(); openPoSendPinGate(item); };
                 card.appendChild(waBtn);
@@ -3415,7 +3403,7 @@
                 const cancelBtn = document.createElement('button');
                 cancelBtn.className = 'clear-btn';
                 cancelBtn.style.cssText = 'margin-top:8px;display:block;width:100%;text-align:center;padding:8px;border:1px solid #dc3545;border-radius:6px;background:#fff5f5;font-weight:700;';
-                cancelBtn.textContent = rejView ? '↩ Cancel My Approval & Sudhaar Karein' : '↩ Cancel My Approval';
+                cancelBtn.textContent = rejView ? '↩ Cancel My Approval & Correct' : '↩ Cancel My Approval';
                 cancelBtn.onclick = (e) => { e.stopPropagation(); cancelMyApproval(item); };
                 card.appendChild(cancelBtn);
             } else if(cancelTab && (item.approvals||{})[myStage] && prLockedByPo(item)){
@@ -3424,8 +3412,8 @@
                 const lockedBtn = document.createElement('button');
                 lockedBtn.disabled = true;
                 lockedBtn.style.cssText = 'margin-top:8px;display:block;width:100%;text-align:center;padding:8px;border:1px solid #cbd5e1;border-radius:6px;background:#f1f5f9;color:#94a3b8;font-weight:700;cursor:not-allowed;';
-                lockedBtn.textContent = '🔒 Cancel My Approval';
-                lockedBtn.title = 'PO ' + item._poNos.join(', ') + ' MD approve kar chuke hain — ab approval cancel nahi ho sakti';
+                lockedBtn.textContent = 'Cancel My Approval';
+                lockedBtn.title = 'The MD has approved PO ' + item._poNos.join(', ') + ', so the approval can no longer be cancelled';
                 card.appendChild(lockedBtn);
                 const note = document.createElement('div');
                 note.style.cssText = 'margin-top:5px;font-size:0.72rem;color:#b45309;font-weight:700;text-align:center;';
@@ -3439,7 +3427,7 @@
     /* One PDF link. stopPropagation matters on a card: without it the tap would
        open the modal behind the new tab. */
     function pdfLink_(url, label){
-        return `<a class="pdf-link" href="${escText(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📄 ${escText(label)}</a>`;
+        return `<a class="pdf-link" href="${escText(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escText(label)}</a>`;
     }
     // A row of links, or a plain line saying which ones aren't there yet.
     function pdfLinkRow_(links, emptyNote){
@@ -3451,7 +3439,7 @@
         if(have.length) html += `<div style="display:flex;flex-wrap:wrap;gap:0 12px;">`
             + have.map(l => pdfLink_(l.url, l.label)).join('') + `</div>`;
         if(miss.length) html += `<div style="font-size:0.68rem;color:#94a3b8;margin-top:4px;">`
-            + escText((emptyNote || 'PDF nahi mila') + ': ' + miss.join(', ')) + `</div>`;
+            + escText((emptyNote || 'PDF not found') + ': ' + miss.join(', ')) + `</div>`;
         return html;
     }
 
@@ -3484,18 +3472,18 @@
                 const when = storeCheckShort_(e, s);
                 tags.push(`<span class="tag sent">✔ ${s.toUpperCase()}${when ? ' · ' + escText(when) : ''}</span>`);
             });
-            if(e.req_no) tags.push(`<span class="tag po">📝 ${escText(e.req_no)}</span>`);
-            if(e.po_number) tags.push(`<span class="tag po">🧾 ${escText(e.po_number)}</span>`);
+            if(e.req_no) tags.push(`<span class="tag po">${escText(e.req_no)}</span>`);
+            if(e.po_number) tags.push(`<span class="tag po">${escText(e.po_number)}</span>`);
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
             // The entry's own PDF, straight off the card. The linked PO / PR
             // documents are resolved when the entry is opened — see openStoreModal.
             if(e.pdf_url) html += pdfLink_(e.pdf_url, (e.entry_type||'Entry') + ' PDF');
             html += `<div class="card-detail" style="margin-top:4px;">${escText(storeStageText(e))}</div>`;
             html += storeAwaitsMe(e)
-                ? `<div class="card-action act">☑ Tap karein — items check karke Check Done</div>`
+                ? `<div class="card-action act">Tap to check the items and mark Check Done</div>`
                 : (storeDoneForMe(e)
-                    ? `<div class="card-action done">✔ Aapka check ho chuka hai</div>`
-                    : `<div class="card-action wait">⏳ ${escText(mine === 'md' ? 'GM ke check ka intezaar' : 'Aapka kaam nahi')}</div>`);
+                    ? `<div class="card-action done">✔ You have already checked this</div>`
+                    : `<div class="card-action wait">${escText(mine === 'md' ? 'Waiting for the GM to check' : 'Not your step')}</div>`);
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
@@ -3534,7 +3522,7 @@
                 // The item-wise line, which is what actually decides the section.
                 html += `<div class="card-detail">Items: <b>${t.itemsFull}/${t.itemsTotal}</b> poore`
                      + (t.itemsPending ? ` · <b style="color:#d97706;">${t.itemsPending}</b> item pending`
-                          + (t.itemsNone ? ` (${t.itemsNone} par kuch nahi aaya)` : '') : '')
+                          + (t.itemsNone ? ` (${t.itemsNone} with nothing received)` : '') : '')
                      + (t.excess > 0 ? ` · <b style="color:#dc2626;">${escText(nNum_(t.excess))}</b> excess` : '')
                      + `</div>`;
             }
@@ -3544,7 +3532,7 @@
             const inws = p._inwards || [];
             if(inws.length){
                 html += `<div class="card-tags">${inws.slice(0,4).map(x =>
-                    `<span class="tag sent">📥 ${escText(x.document_no||'')}${x.receiving_date?' · '+escText(x.receiving_date):''}</span>`
+                    `<span class="tag sent">${escText(x.document_no||'')}${x.receiving_date?' · '+escText(x.receiving_date):''}</span>`
                 ).join('')}${inws.length>4?`<span class="tag po">+${inws.length-4} more</span>`:''}</div>`;
             }
             /* The order itself, plus every receipt booked against it. Shown on
@@ -3553,16 +3541,16 @@
             html += pdfLinkRow_(
                 [{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}]
                     .concat(inws.map(x => ({url: x.pdf_url, label: 'Inward ' + (x.document_no||'')}))),
-                'PDF abhi nahi bana');
+                'PDF not created yet');
             // Says which items are short, not just that something is — that is
             // the figure a Purchaser chases the vendor on.
             const actionText = bucket === 'received'
                 ? (String(p.status||'') === 'Closed (Short)'
-                    ? '✔ Short close — baaki qty ab nahi aayegi'
-                    : '✔ Saare items poore aa gaye')
+                    ? '✔ Short closed; the remaining qty will not come'
+                    : '✔ All items fully received')
                 : (bucket === 'partial'
-                    ? '◑ Kuch aa gaya — ' + (t ? t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty baaki' : 'baaki pending')
-                    : '⏳ Abhi kuch nahi aaya' + (t ? ' — ' + t.itemsTotal + ' item pending' : ''));
+                    ? '◑ Partly received: ' + (t ? t.itemsPending + ' item(s) with ' + nNum_(t.pending) + ' qty pending' : 'remainder pending')
+                    : 'Nothing received yet' + (t ? ': ' + t.itemsTotal + ' item(s) pending' : ''));
             html += `<div class="card-action ${bucket==='received'?'done':'wait'}">${escText(actionText)}</div>`;
             card.innerHTML = html;
             listDiv.appendChild(card);
@@ -3605,11 +3593,11 @@
             if(last){
                 html += `<div class="card-detail">Revised Date: <b>${escText(fmtDate_(last.revisedDate))}</b> · `
                      + (late ? `<span class="pfu-od">${od} din late</span>`
-                             : `<span class="pfu-ok">${od === 0 ? 'aaj' : (-od) + ' din baaki'}</span>`)
+                             : `<span class="pfu-ok">${od === 0 ? 'today' : (-od) + ' days left'}</span>`)
                      + `</div>`;
             }
             html += `<div class="card-detail">Pending Qty: <b>${escText(nNum_(left))}</b>`
-                 + (t ? ` · <b>${t.itemsPending}</b> item baaki` : '')
+                 + (t ? ` · <b>${t.itemsPending}</b> item(s) pending` : '')
                  + `</div>`;
             html += `<div class="card-detail">Status: ${statusBadge(p.status)}</div>`;
 
@@ -3617,8 +3605,8 @@
             if(p.party_sent_at) tags.push(`<span class="tag sent">✔ Sent — ${escText(pStamp(p.party_sent_at))}</span>`);
             else tags.push(`<span class="tag sent">✔ Sent</span>`);
             tags.push(fus.length
-                ? `<span class="tag ${late ? 'fu-od' : 'fu'}">📞 ${fus.length} follow-up</span>`
-                : `<span class="tag po">📞 Koi follow-up nahi</span>`);
+                ? `<span class="tag ${late ? 'fu-od' : 'fu'}">${fus.length} follow-up</span>`
+                : `<span class="tag po">No follow-up yet</span>`);
             html += `<div class="card-tags">${tags.join('')}</div>`;
 
             /* The last thing the vendor said, printed on the card. Same reason
@@ -3629,19 +3617,19 @@
             if(last) html += `<div class="pfu-row${late ? ' od' : ''}" style="margin-top:8px;">`
                  + `<div class="pfu-row-head"><span>Pichla follow-up — ${escText(fmtDate_(last.revisedDate))} ki date mili</span>`
                  + `<span class="pfu-row-who">${escText(last.by||'-')}${last.at ? ' · ' + escText(last.at) : ''}</span></div>`
-                 + `<div class="pfu-row-rem">${last.remarks ? escText(last.remarks) : '<i>koi remark nahi</i>'}</div>`
+                 + `<div class="pfu-row-rem">${last.remarks ? escText(last.remarks) : '<i>no remark</i>'}</div>`
                  + `</div>`;
 
             // The order itself, so the Sender can read what was promised before
             // ringing about it.
-            html += pdfLinkRow_([{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}], 'PO PDF abhi nahi bana');
+            html += pdfLinkRow_([{url: p.pdf_url, label: 'PO ' + (p.po_no||'')}], 'PO PDF not created yet');
 
             const actionText = canAct
                 ? (fus.length === 0
-                    ? '📞 Vendor se delivery date poochein — kholkar revised date + remark likhein'
-                    : (late ? '📞 Di gayi date nikal gayi — dobara follow-up karein'
-                            : '🕘 Vendor ki di hui date ka intezaar — chahein to naya follow-up jodein'))
-                : (fus.length ? '👁 Follow-up history padhne ke liye kholein' : '👁 Abhi koi follow-up record nahi');
+                    ? 'Ask the vendor for a delivery date; open it and record the revised date + remark'
+                    : (late ? 'The promised date has passed; follow up again'
+                            : 'Waiting for the date the vendor gave; you can add a new follow-up if needed'))
+                : (fus.length ? 'Open to read the follow-up history' : 'No follow-up records yet');
             html += `<div class="card-action ${canAct ? (late || !fus.length ? 'act' : 'wait') : 'wait'}">${escText(actionText)}</div>`;
             card.innerHTML = html;
             listDiv.appendChild(card);
@@ -3677,7 +3665,7 @@
     function pfuHistoryHtml_(po){
         const fus = poFollowupsOf_(po);
         if(!fus.length)
-            return `<div class="pfu-empty">Is PO par abhi koi follow-up record nahi hai.</div>`;
+            return `<div class="pfu-empty">There are no follow-up records for this PO yet.</div>`;
         const today = poFuToday_();
         return fus.slice().reverse().map((f, i) => {
             const diff = poFuDayDiff_(f.revisedDate, today);
@@ -3688,15 +3676,15 @@
             const when = diff === null ? ''
                 : (i === 0
                     ? (diff > 0 ? `<span class="pfu-od">${diff} din late</span>`
-                                : `<span class="pfu-ok">${diff === 0 ? 'aaj' : (-diff) + ' din baaki'}</span>`)
+                                : `<span class="pfu-ok">${diff === 0 ? 'today' : (-diff) + ' days left'}</span>`)
                     : '');
             return `<div class="pfu-row${i === 0 ? ' latest' : ''}${late ? ' od' : ''}">`
                  + `<div class="pfu-row-head">`
                  + `<span>#${fus.length - i} · Revised: ${escText(fmtDate_(f.revisedDate))} ${when}</span>`
                  + `<span class="pfu-row-who">${escText(f.by||'-')}${f.role ? ' (' + escText(f.role) + ')' : ''}${f.at ? ' · ' + escText(f.at) : ''}</span>`
                  + `</div>`
-                 + `<div class="pfu-row-rem">${f.remarks ? escText(f.remarks) : '<i>koi remark nahi likha gaya</i>'}</div>`
-                 + (f.prevDate ? `<div class="pfu-row-who" style="margin-top:3px;">Is se pehle ki date: ${escText(fmtDate_(f.prevDate))}</div>` : '')
+                 + `<div class="pfu-row-rem">${f.remarks ? escText(f.remarks) : '<i>no remark was written</i>'}</div>`
+                 + (f.prevDate ? `<div class="pfu-row-who" style="margin-top:3px;">Previous date: ${escText(fmtDate_(f.prevDate))}</div>` : '')
                  + `</div>`;
         }).join('');
     }
@@ -3723,9 +3711,9 @@
     function pfuItemRowsHtml_(po, lines){
         const span = PFU_ITEM_COLS.length;
         if(lines === null)
-            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">PO lines load nahi ho paayin — PO ki PDF se items dekhein</td></tr>`;
+            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">The PO lines could not be loaded; see the items in the PO's PDF</td></tr>`;
         if(!lines.length)
-            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+            return `<tr><td colspan="${span}" style="text-align:center;color:#999;">This PO has no lines</td></tr>`;
         const t = poLineTally_(lines);
         /* SHORT ITEMS FIRST. The list is read top-down while talking to the
            vendor, so the items being chased have to be at the top — on a
@@ -3770,10 +3758,10 @@
         // off the screen onto the call.
         + `<tr><td colspan="${span}" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
             + escText(t.itemsPending
-                ? '📞 Vendor se in ' + t.itemsPending + ' item ki baat karein — kul ' + nNum_(t.pending) + ' qty baaki hai'
-                    + (t.itemsNone ? ' (' + t.itemsNone + ' item par abhi kuch bhi nahi aaya)' : '') + '.'
-                : 'Saare items poore aa gaye hain — is PO par follow-up ki zaroorat nahi.')
-            + (t.excess > 0 ? escText('  ▲ Excess: ' + nNum_(t.excess) + ' (kisi aur item ki kami poori nahi karta).') : '')
+                ? 'Speak to the vendor about these ' + t.itemsPending + ' item(s): ' + nNum_(t.pending) + ' qty pending in total'
+                    + (t.itemsNone ? ' (nothing at all received on ' + t.itemsNone + ' item(s))' : '') + '.'
+                : 'All items have been received in full; no follow-up needed on this PO.')
+            + (t.excess > 0 ? escText('  ▲ Excess: ' + nNum_(t.excess) + ' (does not make up for a shortage on another item).') : '')
           + `</td></tr>`;
     }
     /* Fills the table, fetching the lines only if the list-wide lookup
@@ -3819,16 +3807,16 @@
         const t = (lines && lines.length) ? poLineTally_(lines) : null;
         const left = t ? t.pending : Math.max(0, pNum(po.total_qty) - pNum(po.received_qty));
         pend.style.display = 'block';
-        pend.innerHTML = `⏳ Pending: <b>${escText(nNum_(left))}</b> qty`
-            + (t ? ` · <b>${t.itemsPending}</b> / ${t.itemsTotal} item baaki`
-                 + (t.itemsNone ? ` (${t.itemsNone} par kuch nahi aaya)` : '')
-               : ` (PO ke header totals se — lines load nahi hui)`);
+        pend.innerHTML = `Pending: <b>${escText(nNum_(left))}</b> qty`
+            + (t ? ` · <b>${t.itemsPending}</b> / ${t.itemsTotal} item(s) pending`
+                 + (t.itemsNone ? ` (${t.itemsNone} with nothing received)` : '')
+               : ` (from the PO header totals; the lines did not load)`);
     }
     function openPoFollowupModal(po){
         pfuPo_ = po;
         const canAct = canActIn('FOLLOWUP');
         const fus = poFollowupsOf_(po);
-        document.getElementById('pfuTitle').textContent = '📞 Follow-up — ' + (po.po_no || 'PO');
+        document.getElementById('pfuTitle').textContent = 'Follow-up — ' + (po.po_no || 'PO');
 
         /* Ordered / Received totals on the header, the same pair PO Receipts
            puts there (openRecvModal) — off the LINES where they are loaded,
@@ -3845,7 +3833,7 @@
             // Named "original" on screen so nobody reads it as the live date
             // once revisions exist below it.
             ['Delivery Date (original)', po.delivery_date ? fmtDate_(po.delivery_date) : '-'],
-            ['Vendor ko bheja', po.party_sent_at ? pStamp(po.party_sent_at) : '✔ (date record me nahi)'],
+            ['Sent to vendor', po.party_sent_at ? pStamp(po.party_sent_at) : '✔ (date not recorded)'],
             ['Ordered / Received', nNum_(t ? t.ordered : pNum(po.total_qty))
                 + ' / ' + nNum_(t ? t.received : pNum(po.received_qty))],
             t ? ['Items Complete', t.itemsFull + ' of ' + t.itemsTotal
@@ -3856,7 +3844,7 @@
             // does not chase a quantity that arrived yesterday.
             ['Inward Entries', (po._inwards||[]).length
                 ? (po._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
-                : 'abhi koi inward nahi'],
+                : 'no inward yet'],
         ].filter(Boolean);
         document.getElementById('pfuMeta').innerHTML =
             meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
@@ -3875,7 +3863,7 @@
         const note = document.getElementById('pfuModeNote');
         addBox.style.display = canAct ? 'block' : 'none';
         note.style.display = canAct ? 'none' : 'block';
-        if(!canAct) note.textContent = '👁 View only — follow-up ' + ACTOR_LABEL[STAGE_TABS.FOLLOWUP.actor] + ' record karta hai';
+        if(!canAct) note.textContent = 'View only: follow-ups are recorded by ' + ACTOR_LABEL[STAGE_TABS.FOLLOWUP.actor];
 
         if(canAct){
             const dateEl = document.getElementById('pfuRevisedDate');
@@ -3888,12 +3876,12 @@
             const floor = (last && last.revisedDate) || poFuToday_();
             dateEl.min = floor;
             document.getElementById('pfuDateHint').innerHTML = last
-                ? 'Pichli di hui date <b>' + escText(fmtDate_(last.revisedDate)) + '</b> thi — nayi date us se aage ki honi chahiye. PO ki original Delivery Date badalti nahi.'
-                : 'Vendor ne jo nayi date di wahi daalein. PO ki original Delivery Date badalti nahi &mdash; wo record me waisi hi rehti hai.';
+                ? 'The previous date given was <b>' + escText(fmtDate_(last.revisedDate)) + '</b>; the new date must be later than that. The PO\'s original Delivery Date does not change.'
+                : 'Enter the new date the vendor has given. The PO\'s original Delivery Date does not change; it stays on record as it is.';
             document.getElementById('pfuRemarks').value = '';
             const btn = document.getElementById('pfuSaveBtn');
             btn.disabled = false;
-            btn.innerHTML = '&#128190; Save Follow-up';
+            btn.innerHTML = 'Save Follow-up';
         }
         pfuSay_('');
         document.getElementById('poFollowupModal').style.display = 'flex';
@@ -3901,7 +3889,7 @@
     async function savePoFollowup(){
         const po = pfuPo_;
         if(!po) return closePoFollowupModal();
-        if(!canActIn('FOLLOWUP')){ pfuSay_('Is tab me follow-up record karne ka haq nahi hai'); return; }
+        if(!canActIn('FOLLOWUP')){ pfuSay_('You are not allowed to record follow-ups in this tab'); return; }
         const dateEl = document.getElementById('pfuRevisedDate');
         const remEl  = document.getElementById('pfuRemarks');
         const revised = String(dateEl.value || '').trim();
@@ -3909,19 +3897,19 @@
         pfuSay_('');
         // Both compulsory. A follow-up with no date records nothing the report
         // can show; one with no remark records a date nobody can account for.
-        if(!revised){ pfuSay_('Revised Delivery Date chunein'); dateEl.focus(); return; }
-        if(!remarks){ pfuSay_('Remarks likhein — vendor ne kya kaha'); remEl.focus(); return; }
+        if(!revised){ pfuSay_('Please choose the revised delivery date'); dateEl.focus(); return; }
+        if(!remarks){ pfuSay_('Please write the remarks: what the vendor said'); remEl.focus(); return; }
         const last = poFollowupLatest_(po);
         const floor = (last && last.revisedDate) || poFuToday_();
         if(revised < floor){
             pfuSay_(last
-                ? 'Nayi date pichli di hui date (' + fmtDate_(last.revisedDate) + ') se aage ki honi chahiye'
-                : 'Revised date aaj se pehle ki nahi ho sakti');
+                ? 'The new date must be later than the previous date given (' + fmtDate_(last.revisedDate) + ')'
+                : 'The revised date cannot be earlier than today');
             dateEl.focus(); return;
         }
         const btn = document.getElementById('pfuSaveBtn');
-        btn.disabled = true; btn.textContent = '⏳ Saving...';
-        setBusy(true, 'Follow-up save ho raha hai...');
+        btn.disabled = true; btn.textContent = 'Saving...';
+        setBusy(true, 'Saving the follow-up...');
         try{
             /* Re-read the row first. This is a read-modify-write of one jsonb
                column: writing the array this screen has been holding would
@@ -3941,10 +3929,10 @@
                hand. */
             if(prev && prev.revisedDate && revised < String(prev.revisedDate)){
                 setBusy(false);
-                pfuSay_('Is beech kisi ne ' + fmtDate_(prev.revisedDate)
-                    + ' ki date daal di hai — modal band karke dobara kholein aur us se aage ki date daalein');
+                pfuSay_('Someone has already entered the date ' + fmtDate_(prev.revisedDate)
+                    + ' in the meantime. Close the window, open it again and enter a later date');
                 btn.disabled = false;
-                btn.innerHTML = '&#128190; Save Follow-up';
+                btn.innerHTML = 'Save Follow-up';
                 return;
             }
             approvals.followups = fresh.concat([{
@@ -3978,7 +3966,7 @@
             console.error('[MOBILE] Follow-up save failed:', e);
             pfuSay_(e.message || String(e));
             btn.disabled = false;
-            btn.innerHTML = '&#128190; Save Follow-up';
+            btn.innerHTML = 'Save Follow-up';
         }
     }
 
@@ -4039,8 +4027,8 @@
         const links = [{url: e.pdf_url, label: (e.entry_type||'Entry') + ' ' + (e.document_no||'')}];
         poNos.forEach(no => links.push({url: poMap[no], label: 'PO ' + no}));
         reqNos.forEach(no => links.push({url: prMap[no], label: 'PR ' + no}));
-        const row = pdfLinkRow_(links, 'PDF abhi nahi bana');
-        return row || '<span style="color:#94a3b8;">Is entry se koi document linked nahi hai.</span>';
+        const row = pdfLinkRow_(links, 'PDF not created yet');
+        return row || '<span style="color:#94a3b8;">No document is linked to this entry.</span>';
     }
     async function openStoreModal(e){
         storeEntry = e; storeMode = 'STORE';
@@ -4057,9 +4045,9 @@
             !inw ? ['Receiver', e.receiver_name||'-'] : null,
             // Each stage on its own line with its timestamp, and its remark
             // under it — the one place the full record of the check is shown.
-            ['GM Check', storeCheckedBy(e,'gm') ? ('✔ ' + (storeCheckStamp_(e,'gm') || 'checked')) : '⏳ Pending'],
+            ['GM Check', storeCheckedBy(e,'gm') ? ('✔ ' + (storeCheckStamp_(e,'gm') || 'checked')) : 'Pending'],
             (storeCheckedBy(e,'gm')||{}).remarks ? ['GM Remarks', storeCheckedBy(e,'gm').remarks] : null,
-            ['MD Check', storeCheckedBy(e,'md') ? ('✔ ' + (storeCheckStamp_(e,'md') || 'checked')) : '⏳ Pending'],
+            ['MD Check', storeCheckedBy(e,'md') ? ('✔ ' + (storeCheckStamp_(e,'md') || 'checked')) : 'Pending'],
             (storeCheckedBy(e,'md')||{}).remarks ? ['MD Remarks', storeCheckedBy(e,'md').remarks] : null,
         ].filter(Boolean);
         const metaHtml = meta.map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
@@ -4077,8 +4065,8 @@
         if(storeAwaitsMe(e)){ note.style.display = 'none'; }
         else{
             note.innerHTML = storeDoneForMe(e)
-                ? '✔ <b>Aapka check ho chuka hai</b> — ' + escText(storeStageText(e))
-                : '👁 <b>View only</b> — ' + escText(storeStageText(e));
+                ? '✔ <b>You have already checked this</b>: ' + escText(storeStageText(e))
+                : '<b>View only</b> — ' + escText(storeStageText(e));
             note.style.display = 'block';
         }
         // Documents and items load together; neither blocks the other.
@@ -4098,7 +4086,7 @@
                 <td>${escText(l.uom||'-')}</td>
                 <td>${pNum(l.weight)>0?escText(nNum_(l.weight))+' KGS':'-'}</td>
               </tr>`).join('')
-            : `<tr><td colspan="7" style="text-align:center;color:#999;">Is entry me koi item nahi mila</td></tr>`;
+            : `<tr><td colspan="7" style="text-align:center;color:#999;">No items found in this entry</td></tr>`;
     }
     async function fetchStoreLines_(e){
         const inw = storeIsInward(e);
@@ -4129,9 +4117,9 @@
         if(!stage || !storeAwaitsMe(e)) return;
         const remarks = String(document.getElementById('storeCheckRemarks').value||'').trim();
         const docNo = storeDocNo(e);
-        if(!confirm('"'+docNo+'" ke saare items check kar liye?\n\n'
-            + (stage === 'gm' ? 'GM check lagne ke baad ye entry MD ke paas jayegi.'
-                              : 'MD check lagne ke baad ye entry Complete ho jayegi.'))) return;
+        if(!confirm('Have you checked all the items of "'+docNo+'"?\n\n'
+            + (stage === 'gm' ? 'After the GM check this entry goes to the MD.'
+                              : 'After the MD check this entry is marked Complete.'))) return;
         /* The checker's own PIN, every time — no PIN, no check. If they have a
            saved signature (STORE.html → Admin Panel → Users & Roles) it comes
            back with the PIN and is stamped on the entry's PDF over "GM Sign" /
@@ -4140,7 +4128,7 @@
         if(!sig) return;   // PIN popup cancelled — nothing is saved
         const btn = document.getElementById('storeCheckBtn');
         btn.disabled = true;
-        setBusy(true, 'Check save kar rahe hain...');
+        setBusy(true, 'Saving the check...');
         let pdfNote = '';
         try{
             const table = storeIsInward(e) ? 'inward_entries' : 'outward_entries';
@@ -4171,22 +4159,22 @@
             const upd = await SB.from(table).update({store_checks: checks}).eq('id', e.id);
             if(upd.error){
                 if(/store_checks|column/i.test(upd.error.message||''))
-                    throw new Error('Is database me store_checks column nahi hai — STORE_CHECK_MIGRATION.sql run karein, tab tak check save nahi hoga.');
+                    throw new Error('This database has no store_checks column. Run STORE_CHECK_MIGRATION.sql; until then the check cannot be saved.');
                 throw upd.error;
             }
             e.store_checks = checks;   // keep the loaded row level with the database
             // The check is saved; putting the sign on the PDF is best-effort on top.
             if(signed){
-                setBusy(true, 'PDF par sign laga rahe hain...');
+                setBusy(true, 'Adding the signature to the PDF...');
                 try{ pdfNote = await stampStorePdfSign(e, table, stage, sig.dataUrl, checks[stage], checks._pdf); }
-                catch(err){ pdfNote = '⚠️ PDF par sign nahi lag paya: ' + (err.message || err); }
+                catch(err){ pdfNote = 'The signature could not be added to the PDF: ' + (err.message || err); }
             }
             dashDirty = false;         // reloaded right below
             closeStoreModal();
             await renderList();
-            alert('✔ ' + docNo + ' check ho gaya.\n\n'
-                + (stage === 'gm' ? 'Ab ye entry MD ke paas check ke liye jayegi.'
-                                  : 'Ye entry Complete section me chali gayi.')
+            alert('✔ ' + docNo + ' checked.\n\n'
+                + (stage === 'gm' ? 'This entry now goes to the MD for checking.'
+                                  : 'This entry has moved to the Complete section.')
                 + (pdfNote ? '\n\n' + pdfNote : ''));
         }catch(err){
             alert('Error: ' + (err.message || err));
@@ -4212,9 +4200,9 @@
         return (pub?.data?.publicUrl || '') + '?v=' + Date.now();
     }
     async function stampStorePdfSign(e, table, stage, dataUrl, check, layouts){
-        if(!window.PDFLib) throw new Error('pdf-lib load nahi hua (internet check karein)');
+        if(!window.PDFLib) throw new Error('pdf-lib did not load (please check the internet connection)');
         if(!layouts || !Object.keys(layouts).length)
-            return 'ℹ️ Ye PDF purani hai (sign ki jagah save nahi thi) — STORE.html me entry dobara save hone par sign PDF me aa jayega.';
+            return 'This is an older PDF (the signature position was not saved). The signature will appear once the entry is saved again in STORE.html.';
         const docNo = storeDocNo(e);
         const q = await SB.from('pdf_documents').select('variant,file_path,public_url')
             .eq('document_no', docNo).in('variant', ['SINGLE','TWO_PAGE']);
@@ -4228,7 +4216,7 @@
             if(!slots.length || !row.file_path) continue;
             const src = SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(row.file_path)?.data?.publicUrl || String(row.public_url||'').split('?')[0];
             const res = await fetch(src + '?v=' + Date.now(), {cache:'no-store'});
-            if(!res.ok) throw new Error(row.variant + ' PDF download nahi hui (' + res.status + ')');
+            if(!res.ok) throw new Error(row.variant + ' PDF could not be downloaded (' + res.status + ')');
             const pdf = await PDFDocument.load(await res.arrayBuffer());
             const png = await pdf.embedPng(dataUrl);
             const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -4262,7 +4250,7 @@
             try{ await SB.from(table).update({[col]: url}).eq('id', e.id); }catch(_){}
             done++;
         }
-        return done ? ('✍️ ' + (stage === 'gm' ? 'GM' : 'MD') + ' sign PDF par lag gaya.') : 'ℹ️ Is entry ki PDF nahi mili — sign sirf record me save hua.';
+        return done ? ('' + (stage === 'gm' ? 'GM' : 'MD') + ' signature added to the PDF.') : 'No PDF was found for this entry; the signature was saved in the record only.';
     }
 
     /* ── Add Supplier, from the Vendor Rate & Info grid ───────────────
@@ -4292,13 +4280,13 @@
         const say = m => { if(err){ err.textContent = m; err.style.display = 'block'; } };
         const val = id => String(document.getElementById(id)?.value || '').trim();
         const name = val('asName').toUpperCase();
-        if(!name){ say('Supplier Name likhna zaroori hai'); document.getElementById('asName')?.focus(); return; }
+        if(!name){ say('Supplier Name is required'); document.getElementById('asName')?.focus(); return; }
         // One name, one master row — the same rule STORE.html's Supplier Master
         // enforces. Checked against the list this screen already holds.
-        if(viFindSupplier(name)){ say('"' + name + '" pehle se Supplier Master me hai — dropdown me se chunein'); return; }
+        if(viFindSupplier(name)){ say('"' + name + '" is already in the Supplier Master; choose it from the dropdown'); return; }
         const btn = document.getElementById('asSaveBtn');
         if(btn) btn.disabled = true;
-        setBusy(true, 'Supplier save kar rahe hain...');
+        setBusy(true, 'Saving the supplier...');
         try{
             const payload = {
                 supplier_code: 'SUP-' + (name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,20) || 'VENDOR')
@@ -4325,12 +4313,12 @@
                 wireViItemVendorPickers();
                 refreshViItemVendorPickers();
             }
-            viSay('✅ "' + name + '" Supplier Master me add ho gaya — ab har vendor dropdown me hai.');
+            viSay('"' + name + '" added to the Supplier Master; it is now in every vendor dropdown.');
         }catch(e){
             const msg = String(e.message || e);
             say(/duplicate|unique/i.test(msg)
-                ? 'Ye supplier pehle se master me hai — dropdown refresh karke dekhein'
-                : ('Save nahi hua: ' + msg));
+                ? 'This supplier is already in the master; refresh the dropdown to see it'
+                : ('Not saved: ' + msg));
             if(btn) btn.disabled = false;
         }finally{ setBusy(false); }
     }
@@ -4417,7 +4405,7 @@
             const reasons = inwAppReasons(r);
             if(reasons.length){
                 html += `<div class="card-tags">${reasons.slice(0,3).map(x =>
-                    `<span class="tag po">⚠ ${escText(x)}</span>`).join('')}`
+                    `<span class="tag po">${escText(x)}</span>`).join('')}`
                      + (reasons.length > 3 ? `<span class="tag po">+${reasons.length - 3} more</span>` : '')
                      + `</div>`;
             }
@@ -4426,13 +4414,13 @@
                       + `${r.status === 'Approved' ? '✔' : '✖'} ${escText(r.decided_by || '-')}`
                       + (r.decided_at ? ' · ' + escText(pStamp(r.decided_at)) : '')
                       + (r.remarks ? ' · ' + escText(r.remarks) : '') + `</div>`;
-                if(r.used_on) html += `<div class="card-detail">📥 Inward: <b>${escText(r.used_on)}</b></div>`;
+                if(r.used_on) html += `<div class="card-detail">Inward: <b>${escText(r.used_on)}</b></div>`;
             }
             html += inwAppCanAct(r)
-                ? `<div class="card-action act">✍️ Tap karein — Approve ya Reject</div>`
+                ? `<div class="card-action act">Tap to Approve or Reject</div>`
                 : (pend
-                    ? `<div class="card-action wait">⏳ MD ke faisle ka intezaar</div>`
-                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approve ho chuka — Store ke Inward form me draft save hai' : '✖ Reject — Store ko values theek karni hongi'}</div>`);
+                    ? `<div class="card-action wait">Waiting for the MD's decision</div>`
+                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approved; the draft is saved in the Store\'s Inward form' : '✖ Rejected; the Store must correct the values'}</div>`);
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
@@ -4461,7 +4449,7 @@
         /* Ordered / Already / This Entry / Excess, item by item — the same four
            figures STORE.html draws under each row, so the Purchaser is looking
            at exactly what the store was looking at. */
-        const head = ['Sr','Item','Doc','Ordered','Already','Ab aaya','Excess','Rate','PO Rate']
+        const head = ['Sr','Item','Doc','Ordered','Already','This Time','Excess','Rate','PO Rate']
             .map(h => `<th>${h}</th>`).join('');
         const items = inwAppItems(r);
         const body = items.length ? items.map((it,i) => {
@@ -4490,7 +4478,7 @@
               </tr>` : '';
             return `<tr>
                 <td>${i+1}</td>
-                <td><b>${escText(it.name || '-')}</b>${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">PO par nahi tha</span>' : ''}</td>
+                <td><b>${escText(it.name || '-')}</b>${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">Not on the PO</span>' : ''}</td>
                 <td>${escText(it.docKind ? (it.docKind + ' ' + (it.docNo||'')) : '-')}</td>
                 <td>${escText(nNum_(it.ordered))}</td>
                 <td>${escText(nNum_(it.already))}</td>
@@ -4499,7 +4487,7 @@
                 <td${rateOver ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.rate))}</td>
                 <td>${it.poRate == null ? '-' : escText(nNum_(it.poRate))}</td>
               </tr>` + wtRow;
-        }).join('') : `<tr><td colspan="9" style="text-align:center;color:#999;">Is request me koi item nahi mila</td></tr>`;
+        }).join('') : `<tr><td colspan="9" style="text-align:center;color:#999;">No items found in this request</td></tr>`;
         storeModalShell_((r.request_no || ('#' + r.id)) + ' — Inward Approval', metaHtml, head, body);
         // The GM / MD check box belongs to the other mode — keep it shut.
         document.getElementById('storeCheckBox').style.display = 'none';
@@ -4508,10 +4496,10 @@
         document.getElementById('inwAppRemarks').value = '';
         const reasons = inwAppReasons(r);
         document.getElementById('inwAppReasons').innerHTML =
-            `<div style="font-weight:800;margin-bottom:3px;">⚠ Ye entry PO / PR se aage ja rahi hai:</div>`
+            `<div style="font-weight:800;margin-bottom:3px;">This entry goes beyond the PO / PR:</div>`
             + (reasons.length
                 ? `<ul style="margin:0;padding-left:16px;">${reasons.map(x => `<li>${escText(x)}</li>`).join('')}</ul>`
-                : '<div>Koi wajah darj nahi hui.</div>');
+                : '<div>No reason was recorded.</div>');
         ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
             const b = document.getElementById(id); if(b) b.disabled = false;
         });
@@ -4519,7 +4507,7 @@
         if(inwAppCanAct(r)) note.style.display = 'none';
         else{
             note.innerHTML = inwAppPending(r)
-                ? '👁 <b>View only</b> — faisla sirf MD karte hain'
+                ? '<b>View only</b>; only the MD decides'
                 : (r.status === 'Approved'
                     /* Approving does not just unlock the Submit button any
                        more: STORE.html keeps the approved request as a DRAFT in
@@ -4527,9 +4515,9 @@
                        Weight / Rate locked, and books it whenever the
                        paperwork is ready. Said here because "go and type it
                        again" was the old instruction and is no longer true. */
-                    ? '✔ <b>Approved</b> — Store ke Inward form ki PO Number list me ye draft save hai; '
-                      + 'inhi Qty / Weight / Rate par wo jab chahe Submit kar sakta hai'
-                    : '✖ <b>Rejected</b> — Store ko values theek karke dobara bhejni hongi');
+                    ? '✔ <b>Approved</b>: this draft is saved in the PO Number list of the Store\'s Inward form; '
+                      + 'the Store can submit it whenever ready at these Qty / Weight / Rate values'
+                    : '✖ <b>Rejected</b>: the Store must correct the values and send it again');
             note.style.display = 'block';
         }
         // No documents to list: the receipt does not exist yet — that is what
@@ -4542,19 +4530,19 @@
         const remarks = String(document.getElementById('inwAppRemarks').value || '').trim();
         // A rejection sends somebody back to redo work — it has to say why.
         if(decision === 'Rejected' && !remarks){
-            alert('Reject karne ki wajah likhna zaroori hai.');
+            alert('Please write the reason for rejecting.');
             document.getElementById('inwAppRemarks').focus();
             return;
         }
         const label = r.request_no || ('#' + r.id);
         if(!confirm(decision === 'Approved'
-            ? ('"' + label + '" approve karein?\n\nYe entry Store ke Inward form me DRAFT ban kar save ho jayegi — '
-               + 'inhi Qty / Weight / Rate par, locked. Store jab chahe ise Submit kar sakta hai.')
-            : ('"' + label + '" reject karein?\n\nStore tab tak ye Inward save nahi kar payega.'))) return;
+            ? ('Approve "' + label + '"?\n\nThis entry will be saved as a DRAFT in the Store\'s Inward form, '
+               + 'locked at these Qty / Weight / Rate values. The Store can submit it whenever ready.')
+            : ('Reject "' + label + '"?\n\nThe Store will not be able to save this Inward until then.'))) return;
         ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
             const b = document.getElementById(id); if(b) b.disabled = true;
         });
-        setBusy(true, 'Faisla save kar rahe hain...');
+        setBusy(true, 'Saving the decision...');
         try{
             /* Decided only if it is STILL pending. Two phones can hold the same
                request open; without this the second decision would silently
@@ -4567,14 +4555,14 @@
             }).eq('id', r.id).eq('status', 'Pending').select('id');
             if(upd.error) throw upd.error;
             if(!(upd.data || []).length)
-                throw new Error('Is request par faisla pehle hi ho chuka hai — list refresh karein.');
+                throw new Error('A decision has already been made on this request. Please refresh the list.');
             dashDirty = false;
             closeStoreModal();
             await renderList();
             alert((decision === 'Approved' ? '✔ ' : '✖ ') + label + ' — ' + decision + '.\n\n'
                 + (decision === 'Approved'
-                    ? 'Store ke Inward form me ye draft save ho gaya hai — wo jab chahe Submit kar lega.'
-                    : 'Store ko values theek karni hongi.'));
+                    ? 'This draft is now saved in the Store\'s Inward form; they will submit it when ready.'
+                    : 'The Store must correct the values.'));
         }catch(err){
             alert('Error: ' + (err.message || err));
             ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
@@ -4589,7 +4577,7 @@
     const RECV_LINE_STATE = {
         FULL:   {bg:'#dcfce7', fg:'#15803d', txt:'✔ Full'},
         PARTIAL:{bg:'#fef3c7', fg:'#b45309', txt:'◐ Partial'},
-        PENDING:{bg:'#f1f5f9', fg:'#64748b', txt:'⌛ Pending'},
+        PENDING:{bg:'#f1f5f9', fg:'#64748b', txt:'Pending'},
         EXCESS: {bg:'#fee2e2', fg:'#b91c1c', txt:'▲ Excess'},
         NONE:   {bg:'transparent', fg:'#94a3b8', txt:'—'},
     };
@@ -4621,14 +4609,14 @@
             ['Status', p.status||'-'],
             ['Inward Entries', (p._inwards||[]).length
                 ? (p._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
-                : 'abhi koi inward nahi'],
+                : 'no inward yet'],
         ].filter(Boolean).map(([k,v]) => `<div><b>${escText(k)}:</b> ${escText(v)}</div>`).join('');
         const head = ['Sr','Item Name','Ordered','Received','Pending','UOM','Receipt'].map(h=>`<th>${h}</th>`).join('');
         storeModalShell_((p.po_no||'PO')+' — Receipts', metaHtml, head,
             `<tr><td colspan="7" style="text-align:center;color:#999;">Loading lines...</td></tr>`);
         document.getElementById('storeCheckBox').style.display = 'none';
         const note = document.getElementById('storeModalNote');
-        note.innerHTML = '👁 <b>View only</b> — ye figures Store ki Inward entries se khud update hote hain.';
+        note.innerHTML = '<b>View only</b>: these figures update by themselves from the Store\'s Inward entries.';
         note.style.display = 'block';
         /* The order, every receipt against it, and the PRs it came from. The
            inward PDFs are already on the row (attachInwardsToPos_); only the PR
@@ -4641,9 +4629,9 @@
                 .concat((p._inwards||[]).map(x => ({url: x.pdf_url, label: 'Inward ' + (x.document_no||'')})))
                 .concat(reqNos.map(no => ({url: prMap[no], label: 'PR ' + no})));
             if(storeMode === 'RECV' && storeEntry === p)
-                storeModalDocs_(pdfLinkRow_(links, 'PDF abhi nahi bana'));
+                storeModalDocs_(pdfLinkRow_(links, 'PDF not created yet'));
         })().catch(err => console.warn('[MOBILE] receipt docs skipped:', err.message||err));
-        let rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">PO lines load nahi ho paayin</td></tr>`;
+        let rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">The PO lines could not be loaded</td></tr>`;
         try{
             /* Already loaded for the whole list (attachPoLinesToPos_), so the
                modal normally opens without another round trip; refetched only
@@ -4656,7 +4644,7 @@
                 p._lines = lines;   // and the card's figures catch up on the next paint
             }
             if(!lines.length){
-                rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">Is PO me koi line nahi</td></tr>`;
+                rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#999;">This PO has no lines</td></tr>`;
             }else{
                 const t = poLineTally_(lines);
                 rowsHtml = lines.map((l,i)=>{
@@ -4688,10 +4676,10 @@
                         ${escText(poReceiptBucket(p) === 'received' ? 'Received' : (poReceiptBucket(p) === 'partial' ? 'Partial' : 'Pending'))}</td>
                    </tr>`
                 + `<tr><td colspan="7" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
-                    + escText('ℹ️ Section har item ki pending dekh kar tay hota hai — '
-                        + (t.itemsPending ? t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty baaki hai.'
-                                          : 'saare items poore aa gaye hain.'))
-                    + (t.excess > 0 ? escText('  Excess: ' + nNum_(t.excess) + ' (kisi aur item ki kami poori nahi karta).') : '')
+                    + escText('The section is decided from each item\'s pending qty: '
+                        + (t.itemsPending ? nNum_(t.pending) + ' qty pending on ' + t.itemsPending + ' item(s).'
+                                          : 'all items have been received in full.'))
+                    + (t.excess > 0 ? escText('  Excess: ' + nNum_(t.excess) + ' (does not make up for a shortage on another item).') : '')
                   + `</td></tr>`;
             }
         }catch(err){ console.warn('[MOBILE] PO lines load failed:', err.message||err); }
@@ -4787,7 +4775,7 @@
         // this select (saveVendorInfoMobile, the snapshot) unchanged.
         html += viSuppliers.map(s => {
             const ph = String(s.phone||'').trim();
-            const label = s.supplier_name + (ph ? '  —  ☎ ' + ph : '  —  (no contact)');
+            const label = s.supplier_name + (ph ? '  —  ' + ph : '  —  (no contact)');
             return `<option value="${escText(s.supplier_name)}"${matched && s.id===matched.id ? ' selected' : ''}>${escText(label)}</option>`;
         }).join('');
         return html;
@@ -4848,11 +4836,11 @@
         // Header row 2 — Vendor / Rate / % within each band.
         document.getElementById('viRateHead').innerHTML =
             '<th class="vi-c1">Item</th>' +
-            '<th class="vi-qtyh" style="text-align:center;" title="Requirement Qty — Purchaser ise theek kar sakta hai. Save karne par PR line par hi update hoti hai">Qty</th>' +
-            '<th class="vi-qtyh" style="text-align:center;" title="Gross Weight (kg) — WEIGHT bill basis par PO ka amount isi se banega">Wt kg</th>' +
-            '<th class="vi-sel" style="text-align:center;" title="Is item ka PO isi vendor ke against banega. Pehle item par chunne se wahi sabhi items par lag jayega">Selected</th>' +
-            '<th class="vi-poh" style="text-align:center;" title="Amount kis par bane — Qty par ya Gross Weight par. Pehle item par chunne se wahi sabhi items par lag jayega">Bill On</th>' +
-            '<th class="vi-poh" style="text-align:center;" title="Is item ka PO par GST % — koi default nahi, bharna zaroori hai. Pehle item par bharne se wahi sabhi items par lag jayega">GST%<span style="color:#dc3545;">*</span></th>' +
+            '<th class="vi-qtyh" style="text-align:center;" title="Requirement Qty. The Purchaser can correct it; saving updates the PR line itself.">Qty</th>' +
+            '<th class="vi-qtyh" style="text-align:center;" title="Gross Weight (kg). On the WEIGHT bill basis the PO amount is calculated from this.">Wt kg</th>' +
+            '<th class="vi-sel" style="text-align:center;" title="This item\'s PO is raised against this vendor. Choosing it on the first item applies it to all items.">Selected</th>' +
+            '<th class="vi-poh" style="text-align:center;" title="Whether the amount is calculated on Qty or on Gross Weight. Choosing it on the first item applies it to all items.">Bill On</th>' +
+            '<th class="vi-poh" style="text-align:center;" title="GST % on this item\'s PO. No default; it is required. Filling it on the first item applies it to all items.">GST%<span style="color:#dc3545;">*</span></th>' +
             VI_SLOTS.map((v,i)=>{
                 const alt = i%2 ? ' class="vi-g-alt"' : '';
                 return `<th${alt} style="text-align:center;">Vendor</th><th${alt} style="text-align:center;">Rate</th><th class="vi-disc-head" style="text-align:center;">%</th>`;
@@ -4874,15 +4862,14 @@
             const wt = (line.gross_weight!=null && line.gross_weight!=='')
                 ? pNumM(line.gross_weight)
                 : pNumM((snapItems[i]||{}).grossWeight);
-            /* Bill On ab KHAALI load hota hai — koi default nahi. Pehle QTY
-               apne aap chuna hua aata tha, aur ek pehle se bhara box wahi box
-               hai jise koi dobara nahi padhta: WEIGHT par bikne wala maal
-               chupchaap QTY par bill ho jaata tha. Khaali hone se Purchaser ko
-               batana padta hai ki ye line kis cheez par bill hogi, aur save
-               tab tak nahi hota jab tak har row par ye chuna na jaye — bilkul
-               wahi niyam jo GST% par pehle se hai.
-               Sirf wo value chuni hui aati hai jo is PR par SACH ME save ho
-               chuki hai; kuch aur (ya khaali) = khaali. */
+            /* Bill On now loads EMPTY, with no default. QTY used to come
+               pre-selected, and a pre-filled box is one nobody reads again:
+               material sold by WEIGHT was quietly billed on QTY. Leaving it
+               empty makes the Purchaser state what each line is billed on,
+               and saving is blocked until every row has a choice, the same
+               rule that already applies to GST%.
+               Only a value that has REALLY been saved on this PR comes
+               pre-selected; anything else (or blank) stays blank. */
             const rawBasis = String((snapItems[i]||{}).billBasis || line.bill_basis || '').toUpperCase();
             const savedBasis = (rawBasis === 'WEIGHT' || rawBasis === 'QTY') ? rawBasis : '';
             const firstFilled = (...xs) => {
@@ -4928,12 +4915,12 @@
            same lock covers the PO Details below, which are now saved with them. */
         const viLocked = vendors.some(v => v && String(v.name||'').trim()) && !snap.vendorInfoReopened;
 
-        /* Per-vendor PO Details, jaisa is PR par save hai. viPlan DOM se nahi,
-           snapshot se bharta hai; blocks uske baad renderViPoBlocks banata
-           hai. Purane PR par byVendor nahi hota — tab har vendor ko wahi flat
-           plan mil jaata hai (poPlanFor_ ka fallback), to kuch khaali nahi
-           dikhta. Blocks ka locked flag container par rakha hai, kyonki blocks
-           baad me (vendor badalne par) dobara bante hain. */
+        /* Per-vendor PO Details as saved on this PR. viPlan is filled from the
+           snapshot, not the DOM; renderViPoBlocks builds the blocks afterwards.
+           Old PRs have no byVendor; then every vendor gets the same flat plan
+           (poPlanFor_'s fallback), so nothing shows empty. The blocks' locked
+           flag is kept on the container, because the blocks are rebuilt later
+           (when the vendor changes). */
         viPlan = {};
         const blocksWrap = document.getElementById('viPoBlocks');
         if(blocksWrap) blocksWrap.dataset.locked = viLocked ? '1' : '0';
@@ -4971,10 +4958,10 @@
             syncPoMathsFromGrid_();
             renderPoSummary_();
         };
-        /* PO Details ke boxes ka apna handler nahi — wo blocks ke andar hain
-           aur blocks dobara bante rehte hain, isliye renderViPoBlocks ek
-           delegated handler lagata hai jo viPlan update karke sirf us vendor
-           ka card refresh karta hai. */
+        /* The PO Details boxes have no handler of their own; they sit inside
+           the blocks, which keep being rebuilt, so renderViPoBlocks adds one
+           delegated handler that updates viPlan and refreshes only that
+           vendor's card. */
         renderViPoBlocks();
         renderPoSummary_();
     }
@@ -4998,15 +4985,15 @@
         };
     }
     /* ── Per-vendor plan ─────────────────────────────────────────────
-       Ek PR jitne alag vendors par bantta hai, utne hi PO bante hain. To
-       Delivery Date, Freight / Other Exp., charges ka GST aur PO notes bhi
-       per PO hote hain — pdf_snapshot.poPlan.byVendor[<VENDOR UPPER>] me.
+       A PR produces as many POs as it has distinct vendors. So Delivery
+       Date, Freight / Other Exp., the GST on charges and PO notes are per PO
+       too, in pdf_snapshot.poPlan.byVendor[<VENDOR UPPER>].
 
-       PURANE PR ke liye byVendor nahi hota; tab flat poPlan hi lautata hai, to
-       wo PR jaisa pehle padha jaata tha waisa hi padha jaata rehta hai.
-       Us soorat me charges ka "sirf pehle PO par" wala purana niyam bhi bana
-       rehta hai (dekhein autoGeneratePosFromPr) — warna ek in-flight PR ke
-       dono PO par poora freight chadh jaata, yaani do baar. */
+       OLD PRs have no byVendor; then the flat poPlan is returned, so such a
+       PR keeps being read exactly as before. In that case the old "charges on
+       the first PO only" rule also stays (see autoGeneratePosFromPr);
+       otherwise both POs of an in-flight PR would carry the full freight,
+       i.e. twice. */
     function poPlanByVendor_(snap){
         const bv = (snap && snap.poPlan && snap.poPlan.byVendor) || null;
         return (bv && typeof bv === 'object') ? bv : null;
@@ -5026,23 +5013,22 @@
         };
     }
 
-    /* Jo vendors is waqt Selected Vendor column me chune hue hain — PR par
-       items ke kram me, har vendor ek baar, saath me uski row numbers. Yahi
-       grouping autoGeneratePosFromPr bhi karta hai (vendor ke naam par, upper
-       case), to screen par jitne blocks dikhte hain utne hi PO bante hain. */
-    /* Grid me ABHI chuna hua vendor naam.
+    /* The vendors currently chosen in the Selected Vendor column, in the
+       order of the PR's items, each vendor once, along with its row numbers.
+       autoGeneratePosFromPr groups the same way (by vendor name, upper case),
+       so the number of blocks on screen equals the number of POs raised. */
+    /* The vendor name chosen in the grid RIGHT NOW.
 
-       vendorNameForRow() yahan kaam NAHI karta: wo snapVendorsForRow() se
-       chalta hai, jo SAVE ho chuke pdf_snapshot.items[i].vendors padhta hai.
-       Ek nayi quote sheet par wo khaali hota hai — Purchaser ne V1 me vendor
-       chuna, Selected me V1 chuna, par naam phir bhi '' aata tha, to
-       viVendorGroups() khaali list deti thi aur ek bhi PO Details box nahi
-       banta tha.
+       vendorNameForRow() does NOT work here: it runs off snapVendorsForRow(),
+       which reads the SAVED pdf_snapshot.items[i].vendors. On a new quote
+       sheet that is empty: the Purchaser chose a vendor in V1 and V1 in
+       Selected, yet the name still came back '', so viVendorGroups() returned
+       an empty list and not a single PO Details box was built.
 
-       Live sach viRowVendors hai — grid ke apne pickers wahin likhte hain
-       (viRowVendors[row][slot]) aur refreshViItemVendorPickers bhi wahin se
-       options banata hai. Snapshot sirf us PR ka fallback hai jo pehle se
-       save ho chuka hai aur dusre phone par khola gaya hai. */
+       The live truth is viRowVendors: the grid's own pickers write there
+       (viRowVendors[row][slot]) and refreshViItemVendorPickers builds its
+       options from it too. The snapshot is only a fallback for a PR that was
+       already saved and has been opened on another phone. */
     function viLiveVendorName(i, slot){
         if(slot == null || slot < 0) return '';
         const live = String((((viRowVendors[i] || [])[slot]) || {}).name || '').trim();
@@ -5062,10 +5048,10 @@
         return [...out.values()];
     }
 
-    /* Quote sheet par jo type kiya ja raha hai, uska sach. Blocks dobara
-       render hote hain (Selected Vendor badalne par), isliye values DOM me
-       nahi, yahan rehti hain — warna vendor badalte hi bhari hui Delivery
-       Date gayab ho jaati. */
+    /* The truth for what is being typed on the quote sheet. The blocks are
+       re-rendered (when Selected Vendor changes), so values live here rather
+       than in the DOM; otherwise a filled-in Delivery Date would vanish as
+       soon as the vendor changed. */
     let viPlan = {};            // VENDOR UPPER -> {deliveryDate, freight, otherExp, chargesGst, notes}
     const VI_PLAN_FIELDS = ['deliveryDate', 'freight', 'otherExp', 'chargesGst', 'notes'];
     function viPlanOf(key){
@@ -5090,7 +5076,7 @@
        One set of arrays for both tabs: PO Generate shows these back locked
        rather than keeping a second copy that could disagree. */
     /* ── Grid → the arrays the PO maths reads ─────────────────────────
-       💵 PO Calculation prices off currentItemRates / currentItemDiscs (net
+       PO Calculation prices off currentItemRates / currentItemDiscs (net
        rate), viDisplayItems[i].qty / .weight (billed units) and prItemBasis /
        prItemGst — never off the DOM. Only Bill On and GST% used to be pulled
        across here; the rates, discounts, Qty and Weight were filled just twice,
@@ -5115,7 +5101,7 @@
         rows.forEach((tr,i)=>{
             const b = tr.querySelector('.vi-basis');
             const g = tr.querySelector('.vi-gst');
-            // Khaali ko QTY maan lena wahi chori hai jise hataya gaya hai — '' hi rehta hai.
+            // Treating blank as QTY is exactly the silent default that was removed; it stays ''.
             if(b){ const v = String(b.value||'').toUpperCase(); prItemBasis[i] = (v === 'WEIGHT' || v === 'QTY') ? v : ''; }
             if(g) prItemGst[i] = g.value;
             // V1..V3 rate and discount, slot by slot — poRowNetRate_ takes the
@@ -5157,9 +5143,9 @@
                     prItemBasis[row] = (v === 'WEIGHT' || v === 'QTY') ? v : '';
                     basis.classList.toggle('is-blank', prItemBasis[row] === '');
                     basis.style.borderColor = ''; basis.style.background = '';
-                    /* Khaali cascade nahi hota — wahi niyam jo GST% par hai.
-                       Pehli row ko "--" par wapas karna poore grid ko khaali
-                       kar dena hota, jo kisi ne maanga nahi. */
+                    /* Blank does not cascade, the same rule as GST%. Setting
+                       the first row back to "--" would blank the whole grid,
+                       which nobody asked for. */
                     if(isMaster && rows.length > 1 && prItemBasis[row] !== ''){
                         rows.slice(1).forEach((otr,j)=>{
                             const o = otr.querySelector('.vi-basis');
@@ -5169,7 +5155,7 @@
                             o.style.borderColor = ''; o.style.background = '';
                             prItemBasis[j+1] = prItemBasis[row];
                         });
-                        viSay(`Bill On = ${basis.value} sabhi ${rows.length} items par lag gaya. Kisi bhi item ka alag rakh sakte hain.`);
+                        viSay(`Bill On = ${basis.value} applied to all ${rows.length} items. You can still set any item differently.`);
                     }
                     renderPoSummary_();
                 };
@@ -5188,7 +5174,7 @@
                             o.style.borderColor = ''; o.style.background = '';
                             prItemGst[j+1] = gst.value;
                         });
-                        viSay(`GST ${v}% sabhi ${rows.length} items par lag gaya. Kisi bhi item ka alag rakh sakte hain.`);
+                        viSay(`GST ${v}% applied to all ${rows.length} items. You can still set any item differently.`);
                     }
                     renderPoSummary_();
                 };
@@ -5202,14 +5188,14 @@
        line's own rate, charges taxed at their own rate, grand total on top of
        the taxable value. Computed here so the Purchaser signs off the same six
        figures the printed PO will carry — not a separate estimate. */
-    /* Ek vendor ke PO ke charges. Teen jagah se aa sakte hain, isi tarteeb me:
-         1. quote sheet par jo abhi type ho raha hai (viPlan) — jab wo block
-            screen par hai
-         2. is PR par SAVE hua per-vendor plan
-         3. purana flat plan, ya jis PR ka koi plan hi nahi uske liye PO
-            Generate tab ke legacy charge boxes
-       vendorKey na do to poore PR ka jod (purana vyavhaar) — legacy POGEN
-       raasta isi par chalta hai. */
+    /* Charges for one vendor's PO. They can come from three places, in this order:
+         1. what is being typed on the quote sheet right now (viPlan), when
+            that block is on screen
+         2. the per-vendor plan SAVED on this PR
+         3. the old flat plan, or for a PR with no plan at all, the legacy
+            charge boxes of the PO Generate tab
+       Without a vendorKey it returns the total for the whole PR (the old
+       behaviour); the legacy POGEN path relies on that. */
     function poChargeFiguresFor_(vendorKey){
         const k = String(vendorKey||'').trim().toUpperCase();
         const live = k ? viPlan[k] : null;
@@ -5228,7 +5214,7 @@
         }
         const snap = (currentEntry && currentEntry.pdf_snapshot) || {};
         const plan = k ? poPlanFor_(snap, k) : poPlanOf_(snap);
-        // Legacy: jis PR ka plan hi nahi, uske liye PO Generate ke apne boxes.
+        // Legacy: for a PR with no plan at all, the PO Generate tab's own boxes.
         const box = id => {
             const el = document.getElementById(id);
             if(!el || el.offsetParent === null) return null;
@@ -5245,10 +5231,10 @@
             chargesGst: cgst == null ? SARV_DEFAULT_GST : cgst,
         };
     }
-    /* EK PO ka hisaab. `rows` us vendor ki item row numbers; na do to poore PR
-       ki saari rows (legacy POGEN raasta). Arithmetic bilkul wahi jo
-       autoGeneratePosFromPr PO par likhta hai, to Purchaser jo chhah figures
-       sign karta hai wahi chhapte hain. */
+    /* The working for ONE PO. `rows` = that vendor's item row numbers; if not
+       given, every row of the PR (the legacy POGEN path). The arithmetic is
+       exactly what autoGeneratePosFromPr writes on the PO, so the six figures
+       the Purchaser signs are the ones printed. */
     function poCalcTotals_(rows, vendorKey){
         const idx = (rows && rows.length) ? rows.slice()
             : (viDisplayItems || []).map((_, i) => i);
@@ -5273,24 +5259,24 @@
             taxable: r2(taxable), gst: r2(gst), grandTotal: r2(taxable + gst),
             chargesGst, priced, total: idx.length,
             vendorCount: viVendorGroups().length,
-            // Khaali GST% / Bill On wali rows: card ko batana padta hai ki
-            // total adhoora kyun hai (Bill On bina amount 0 hai — poRowUnits_).
+            // Rows with an empty GST% / Bill On: the card has to explain why
+            // the total is incomplete (without Bill On the amount is 0; see poRowUnits_).
             missingGst, missingBasis,
         };
     }
-    /* Ek PO Calculation card ka HTML. Quote sheet ise apne PO Details block ke
-       neeche rakhti hai, PO Generate tab #poSummaryWrap me — dono ek hi
-       function se, to do jagah do hisaab nahi ban sakte. */
+    /* HTML for one PO Calculation card. The quote sheet puts it under its PO
+       Details block, and the PO Generate tab in #poSummaryWrap; both use this
+       one function, so there can never be two different calculations. */
     function poCardHtml_(g){
         const t = poCalcTotals_(g && g.rows, g && g.key);
         const row = (label, val, cls) =>
             `<div class="po-sum-row${cls ? ' ' + cls : ''}"><span>${label}</span><span>${escText(nMoney_(val))}</span></div>`;
         const notes = [];
-        if(t.missingBasis) notes.push(`⚠️ ${t.missingBasis} item ka Bill On chuna nahi gaya — unka amount abhi 0 hai. Save se pehle QTY ya WEIGHT chunna zaroori hai.`);
-        if(t.missingGst)   notes.push(`⚠️ ${t.missingGst} item ka GST% khali hai — ye GST me nahi gine gaye. Save se pehle bharna zaroori hai.`);
-        if(t.priced < t.total) notes.push(`ℹ️ ${t.total - t.priced} item par abhi rate nahi hai, to unka amount 0 hai.`);
+        if(t.missingBasis) notes.push(`Bill On has not been chosen for ${t.missingBasis} item(s), so their amount is 0 for now. QTY or WEIGHT must be chosen before saving.`);
+        if(t.missingGst)   notes.push(`GST% is empty for ${t.missingGst} item(s), so they are not counted in GST. It must be filled in before saving.`);
+        if(t.priced < t.total) notes.push(`${t.total - t.priced} item(s) have no rate yet, so their amount is 0.`);
         return '<div class="po-sum-card" style="display:block;">'
-            + '<div class="po-sum-head">💵 PO Calculation'
+            + '<div class="po-sum-head">PO Calculation'
             + (g ? ` <small style="font-weight:600;opacity:.85;">— ${escText(g.name)}</small>` : '')
             + (g ? ` <small style="font-weight:600;opacity:.75;">(${g.rows.length} item${g.rows.length > 1 ? 's' : ''})</small>` : '')
             + '</div>'
@@ -5306,25 +5292,24 @@
             + '</div>';
     }
 
-    /* Ek PO Details block + uske neeche usi vendor ka card. Inputs par koi id
-       nahi — data-vk (vendor) aur data-f (field) hai, kyonki ye blocks
-       Selected Vendor badalne par dobara bante hain aur fixed ids tab tak
-       takra jaate. Values viPlan me rehti hain, DOM me nahi, to re-render par
-       bhara hua kuch khota nahi. */
+    /* One PO Details block + that vendor's card below it. The inputs have no
+       ids, only data-vk (vendor) and data-f (field), because these blocks are
+       rebuilt when Selected Vendor changes and fixed ids would clash. Values
+       live in viPlan, not the DOM, so nothing typed is lost on re-render. */
     function viPoBlockHtml_(g, locked){
         const p = viPlanOf(g.key);
         const dis = locked ? ' disabled' : '';
         const a = f => `data-vk="${escText(g.key)}" data-f="${f}"`;
         const min = locked ? '' : ` min="${localIsoDate_()}"`;
         return '<div class="vi-po-block" data-vk="' + escText(g.key) + '">'
-            + `<div class="vi-po-title">🧾 PO Details ( ${escText(g.name)} )</div>`
+            + `<div class="vi-po-title">PO Details ( ${escText(g.name)} )</div>`
             + '<div style="font-size:0.68rem;color:#6b7280;">'
-            + `Is vendor ke <b>${g.rows.length} item</b> ka alag PO banega. Ye seedha usi PO par chhapega — `
-            + 'save ke baad <b>PO Generate</b> tab me <b>locked</b> dikhega.'
+            + `A separate PO will be raised for this vendor's <b>${g.rows.length} item(s)</b>. This is printed directly on that PO and, `
+            + 'after saving, it shows as <b>locked</b> in the <b>PO Generate</b> tab.'
             + '</div>'
             + '<label>Delivery Date <span style="color:#dc3545;">*</span></label>'
             + `<input type="date" ${a('deliveryDate')}${min}${dis} value="${escText(p.deliveryDate||'')}">`
-            + '<label style="margin-bottom:1px;">PO Charges (₹) <small style="font-weight:500;color:#6b7280;">— na ho to khali chhod dein</small></label>'
+            + '<label style="margin-bottom:1px;">PO Charges (₹) <small style="font-weight:500;color:#6b7280;">(leave blank if none)</small></label>'
             + '<div style="display:grid; grid-template-columns:1fr 1fr 70px; gap:6px;">'
             +   '<div><div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">Freight</div>'
             +   `<input type="number" ${a('freight')} min="0" step="0.01" placeholder="0" inputmode="decimal"${dis} value="${escText(p.freight||'')}"></div>`
@@ -5333,16 +5318,16 @@
             +   '<div><div style="font-size:0.66rem;color:#6b7280;font-weight:700;margin-bottom:2px;">GST %</div>'
             +   `<input type="number" ${a('chargesGst')} min="0" max="100" step="0.01" inputmode="decimal" title="Freight + Loading / Other Exp. par GST %"${dis} value="${escText(p.chargesGst == null ? '' : p.chargesGst)}"></div>`
             + '</div>'
-            + '<div style="font-size:0.66rem;color:#6b7280;margin-top:3px;">In charges par GST alag lagta hai, aur ye <b>isi vendor ke PO</b> par lagenge.</div>'
+            + '<div style="font-size:0.66rem;color:#6b7280;margin-top:3px;">GST applies to these charges separately, and they go on <b>this vendor\'s PO</b>.</div>'
             + '<label>PO Remarks / Notes</label>'
-            + `<textarea ${a('notes')} rows="2" placeholder="Is PO par chhapne wale notes (optional)..."${dis}>${escText(p.notes||'')}</textarea>`
+            + `<textarea ${a('notes')} rows="2" placeholder="Notes to print on this PO (optional)..."${dis}>${escText(p.notes||'')}</textarea>`
             + '</div>'
-            // Card apne container me, taaki use akele refresh kiya ja sake —
-            // poora block dobara likhna us input ka focus kha jaata jisme
-            // abhi type ho raha hai.
+            // The card has its own container so it can be refreshed on its own;
+            // rewriting the whole block would steal focus from the input
+            // currently being typed in.
             + `<div data-card="${escText(g.key)}">${poCardHtml_(g)}</div>`;
     }
-    // Sirf cards dobara likhta hai; inputs aur unka focus jaise hain waise.
+    // Rewrites only the cards; the inputs and their focus stay as they are.
     function refreshPoCards(){
         const by = {};
         viVendorGroups().forEach(g => { by[g.key] = g; });
@@ -5351,7 +5336,7 @@
             if(g) box.innerHTML = poCardHtml_(g);
         });
     }
-    // Screen par jo vendors rendered hain, wahi set hai jo chuna hua hai?
+    // Is the set of vendors rendered on screen the same as the set chosen?
     function viBlocksInSync(){
         const want = viVendorGroups().map(g => g.key).join('|');
         const got = [...document.querySelectorAll('#viPoBlocks .vi-po-block[data-vk]')]
@@ -5359,8 +5344,8 @@
         return want === got;
     }
 
-    /* Quote sheet ke blocks. Jitne alag vendors chune hue hain, utne blocks —
-       koi vendor chuna hi nahi to ek line jo wahi batati hai. */
+    /* The quote sheet's blocks: one per distinct vendor chosen. If no vendor
+       is chosen at all, a single line saying so. */
     function renderViPoBlocks(){
         const wrap = document.getElementById('viPoBlocks');
         if(!wrap) return;
@@ -5370,15 +5355,15 @@
             return !!(b && b.dataset.locked === '1');
         })();
         if(!groups.length){
-            wrap.innerHTML = '<div class="vi-po-block"><div class="vi-po-title">🧾 PO Details</div>'
-                + '<div style="font-size:0.72rem;color:#6b7280;">Grid ke <b>Selected</b> column me kisi item ka vendor chunein — '
-                + 'phir yahan us vendor ka PO Details box aur uska PO Calculation aa jayega. '
-                + 'Jitne alag vendors chunenge, utne hi box aur utne hi PO banenge.</div></div>';
+            wrap.innerHTML = '<div class="vi-po-block"><div class="vi-po-title">PO Details</div>'
+                + '<div style="font-size:0.72rem;color:#6b7280;">Choose a vendor for an item in the grid\'s <b>Selected</b> column; '
+                + 'that vendor\'s PO Details box and PO Calculation will then appear here. '
+                + 'You get one box, and one PO, for each different vendor you choose.</div></div>';
             return;
         }
         wrap.innerHTML = groups.map(g => viPoBlockHtml_(g, locked)).join('');
-        // Ek hi delegated handler — blocks dobara bante hain, to per-input
-        // listeners har render par phir lagane padte.
+        // A single delegated handler: the blocks keep being rebuilt, so
+        // per-input listeners would have to be re-attached on every render.
         wrap.oninput = wrap.onchange = e => {
             const el = e.target;
             if(!el || !el.dataset || !el.dataset.f) return;
@@ -5387,13 +5372,13 @@
             p[el.dataset.f] = el.value;
             viDirty = true;
             el.style.borderColor = ''; el.style.background = '';
-            refreshPoCards();          // sirf cards — type karte waqt focus na jaye
+            refreshPoCards();          // cards only, so focus isn't lost while typing
         };
     }
 
-    /* PO Generate tab ka read-only calculation — wahi cards, #poSummaryWrap
-       me. Quote sheet ke cards renderViPoBlocks apne blocks ke andar banata
-       hai, isliye yahan sirf POGEN ka raasta hai. */
+    /* Read-only calculation for the PO Generate tab: the same cards, in
+       #poSummaryWrap. renderViPoBlocks builds the quote sheet's cards inside
+       its own blocks, so only the POGEN path is handled here. */
     function renderPoSummary_(){
         const wrap = document.getElementById('poSummaryWrap');
         const onPr = currentModule === 'PR' && !modalViewOnly && myStage === 'gmCeo'
@@ -5408,9 +5393,9 @@
                     : poCardHtml_(null);
             }
         }
-        /* Quote sheet. Blocks poore tabhi dobara bante hain jab chune hue
-           vendors ka set hi badal gaya ho — warna sirf cards, kyonki poora
-           rebuild us box ka focus kha jaata jisme abhi type ho raha hai. */
+        /* Quote sheet. The blocks are rebuilt in full only when the set of
+           chosen vendors has changed; otherwise only the cards, because a full
+           rebuild would steal focus from the box being typed in. */
         if(onPr && modalTab === 'VI'){
             if(viBlocksInSync()) refreshPoCards();
             else renderViPoBlocks();
@@ -5429,14 +5414,14 @@
         if(!on) return;
         const cell = (lbl, val, wide) =>
             `<div class="po-locked-cell${wide ? ' po-locked-wide' : ''}"><b>${lbl}</b>${escText(val)}</div>`;
-        /* Ek set per vendor — jitne PO banenge, utne hi set. Purane PR par
-           byVendor nahi hota, to poPlanFor_ har vendor ko flat plan de deta
-           hai aur read-back pehle jaisa hi dikhta hai. */
+        /* One set per vendor, as many sets as POs will be raised. Old PRs
+           have no byVendor, so poPlanFor_ gives every vendor the flat plan and
+           the read-back looks just as it did before. */
         const groups = viVendorGroups();
         const planOne = (g) => {
             const plan = g ? poPlanFor_(snap, g.key) : poPlanOf_(snap);
             return (g && groups.length > 1
-                    ? `<div class="po-locked-cell po-locked-wide" style="background:#eff6ff;"><b>🧾 PO — ${escText(g.name)}</b>${g.rows.length} item${g.rows.length>1?'s':''}</div>`
+                    ? `<div class="po-locked-cell po-locked-wide" style="background:#eff6ff;"><b>PO — ${escText(g.name)}</b>${g.rows.length} item${g.rows.length>1?'s':''}</div>`
                     : '')
                 + cell('Delivery Date', plan.deliveryDate ? pDate_(plan.deliveryDate) : '-')
                 + cell('Charges GST %', (plan.chargesGst != null ? plan.chargesGst : SARV_DEFAULT_GST) + '%')
@@ -5544,9 +5529,9 @@
                             osel.title = (osel.selectedOptions[0] && osel.selectedOptions[0].textContent || '').trim();
                             setViRowVendor(j+1, slot, sel.value);
                         });
-                        viSay(`V${slot+1} = ${sel.value} sabhi ${rows.length} items par lag gaya`
-                            + (replaced ? ` (${replaced} item ka alag V${slot+1} replace hua)` : '')
-                            + `. Kisi bhi item ka V${slot+1} alag rakh sakte hain.`);
+                        viSay(`V${slot+1} = ${sel.value} applied to all ${rows.length} items`
+                            + (replaced ? ` (replaced a different V${slot+1} on ${replaced} item(s))` : '')
+                            + `. You can still set V${slot+1} differently for any item.`);
                     }
                     refreshViItemVendorPickers();
                 };
@@ -5557,8 +5542,8 @@
             if(!sel) return;
             sel.disabled = !canAssign;
             sel.title = isMaster
-                ? 'Is item ka PO isi vendor ke against banega. Yahan chunne par wahi slot sabhi items par lag jayega'
-                : 'Is item ka PO isi vendor ke against banega';
+                ? 'This item\'s PO is raised against this vendor. Choosing here applies the same slot to all items'
+                : 'This item\'s PO is raised against this vendor';
             if(isMaster) sel.classList.add('is-master');
             sel.onchange = () => {
                 const idx = pNumM(sel.value);
@@ -5567,9 +5552,9 @@
                     const replaced = rows.slice(1)
                         .filter((_,j) => pNumM(itemVendorIndex[j+1]) >= 0 && pNumM(itemVendorIndex[j+1]) !== idx).length;
                     rows.forEach((_,j)=>{ itemVendorIndex[j] = idx; });
-                    viSay(`Selected Vendor = V${idx+1} sabhi ${rows.length} items par lag gaya`
-                        + (replaced ? ` (${replaced} item ki alag choice replace hui)` : '')
-                        + `. Har item apne V${idx+1} vendor ke against jayega.`);
+                    viSay(`Selected Vendor = V${idx+1} applied to all ${rows.length} items`
+                        + (replaced ? ` (replaced a different choice on ${replaced} item(s))` : '')
+                        + `. Each item goes against its own V${idx+1} vendor.`);
                 }
                 refreshViItemVendorPickers();
                 // The list below shows each item's chosen vendor and its rate,
@@ -5655,8 +5640,8 @@
         if(!on) return;
         const {done, total, allDone} = fbCounts(items);
         document.getElementById('fbChecklistText').textContent =
-            allDone ? ('✅ Saare ' + total + ' items receive ho gaye — PR complete')
-                    : ('☑ ' + done + ' / ' + total + ' items receive ho gaye');
+            allDone ? ('All ' + total + ' items received; PR complete')
+                    : ('' + done + ' / ' + total + ' items received');
         document.getElementById('fbChecklistFill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
         const note = document.getElementById('fbChecklistNote');
         if(note) note.style.display = modalViewOnly ? 'none' : '';
@@ -5684,12 +5669,12 @@
                     dashDirty = false;   // reloaded right below, not by closeModal
                     closeModal();
                     await renderList();
-                    alert('✅ PR ' + (req.req_no||'') + ' ke saare ' + c.total + ' items receive ho gaye.\n\nYe PR ab Done section me hai.');
+                    alert('All ' + c.total + ' items of PR ' + (req.req_no||'') + ' have been received.\n\nThis PR is now in the Done section.');
                 }
             }catch(e){
                 if(before) fbChecklist[key] = true; else delete fbChecklist[key];
                 fbRenderBar(items);
-                alert('Tick save nahi hua — dobara koshish karein.\n' + (e.message || e));
+                alert('The tick was not saved. Please try again.\n' + (e.message || e));
             }finally{
                 if(inputEl){ inputEl.disabled = false; inputEl.checked = !!fbChecklist[key]; }
             }
@@ -5749,8 +5734,8 @@
                      + `<div class="md-reject-remark"><b>MD Rejection Remark:</b> `
                      // A rejection recorded before rejectPO started keeping the
                      // reason says so, rather than showing an empty quote.
-                     + (rem ? escText(rem) : `<i>koi remark record nahi hua</i>`) + `</div>`
-                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener">📄 Rejected PO PDF</a>` : '')
+                     + (rem ? escText(rem) : `<i>no remark was recorded</i>`) + `</div>`
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener">Rejected PO PDF</a>` : '')
                      + `</div>`;
             }).join('')
             // The way out, only for the person who can take it — an MD reading
@@ -5760,7 +5745,7 @@
     }
     /* What to DO about a rejection, for the Purchaser who can do it. Three
        different answers, because there are three different situations — and
-       the old single line ("Cancel My Approval dabayein…") was wrong in two of
+       the old single line ("press Cancel My Approval…") was wrong in two of
        them: it kept pointing at a Rejected PO card that, by design, is no
        longer in that list, and at a Cancel button that was either unnecessary
        or dead. Same three states Rejected PO itself is built on, read in the
@@ -5769,27 +5754,27 @@
         const foot = s => `<div class="md-reject-foot">${s}</div>`;
         const nos = ((r && r._poNos) || []).join(', ');
         if(prRejectedPoAnswered_(r)){
-            // Jawaab de diya gaya — naya PO ban chuka hai.
+            // It has been answered: a new PO has been raised.
             const rejAt = prLastRejectionMs_(r);
             const fresh = ((r && r._poLive) || []).filter(p => poRaisedAtMs_(p) > rejAt).map(p => p.po_no);
-            return foot(`✅ Is PR par rejection ke BAAD naya PO ban chuka hai`
+            return foot(`A new PO has been raised on this PR AFTER the rejection`
                 + (fresh.length ? ` — <b>${escText(fresh.join(', '))}</b>` : '')
-                + `. Ye rejection nipat gayi, isliye PR ab <b>Vendor Info ▸ Pending</b> aur `
-                + `<b>Rejected PO</b> me nahi dikhti — ye remark sirf record ke liye hai.`);
+                + `. This rejection has been dealt with, so the PR no longer shows in <b>Vendor Info ▸ Pending</b> or `
+                + `<b>Rejected PO</b>; this remark is kept for the record only.`);
         }
         if(prPoLocked_(r)){
-            // Raasta band: approval cancel ho hi nahi sakti.
-            return foot(`🔒 PO <b>${escText(nos || '-')}</b> MD approve kar chuke hain, is liye is PR par `
-                + `<b>Cancel My Approval</b> ab nahi ho sakti — aur isi wajah se ye PR `
-                + `<b>Rejected PO</b> list me nahi hai. Jo items is rejected PO me the unka naya PO `
-                + `<b>STORE.html</b> ke PO desk se banega (unki qty wahan dobara pending dikhti hai).`);
+            // Path closed: the approval cannot be cancelled.
+            return foot(`The MD has approved PO <b>${escText(nos || '-')}</b>, so `
+                + `<b>Cancel My Approval</b> is no longer possible on this PR, which is also why it is not in the `
+                + `<b>Rejected PO</b> list. A new PO for the items on the rejected PO will be raised from the PO desk in `
+                + `<b>STORE.html</b> (their qty shows as pending there again).`);
         }
         if(!((r && r.approvals) || {}).gmCeo)
-            // Approval pehle se cancel ho chuki hai — ab sirf sudhaar aur sign.
-            return foot(`↩ Aapki approval cancel ho chuki hai. Ab <b>Vendor Info</b> me rates / vendor `
-                + `theek karein aur <b>PO Generate</b> me dobara sign karein — naya PO ban jayega.`);
-        return foot(`Sudhaar ka raasta: <b>PO Generate ▸ Rejected PO</b> me <b>Cancel My Approval</b> `
-            + `dabayein, PR / rates theek karein, phir dobara sign karein — naya PO ban jayega.`);
+            // The approval has already been cancelled; now just correct and sign.
+            return foot(`↩ Your approval has been cancelled. Now correct the rates / vendor in <b>Vendor Info</b> `
+                + `and sign again in <b>PO Generate</b>; a new PO will be raised.`);
+        return foot(`To fix this: press <b>Cancel My Approval</b> under <b>PO Generate ▸ Rejected PO</b>`
+            + `, correct the PR / rates, then sign again; a new PO will be raised.`);
     }
 
     function toggleVendorInfo(){
@@ -5826,14 +5811,14 @@
         const note = document.getElementById('viHoldNote');
         note.style.display = held ? 'block' : 'none';
         if(held){
-            note.innerHTML = '&#9208; <b>Ye PR Hold par hai.</b>'
-                + (info && info.by ? ' Hold kiya: <b>' + escText(info.by) + '</b>' : '')
+            note.innerHTML = '<b>This PR is on hold.</b>'
+                + (info && info.by ? ' Put on hold by: <b>' + escText(info.by) + '</b>' : '')
                 + (info && info.at ? ' — ' + escText(info.at) : '')
                 + (info && info.remarks ? '<br>Wajah: ' + escText(info.remarks) : '')
-                + '<br>Hold hatane tak is PR ka PO nahi ban sakta.';
+                + '<br>No PO can be raised on this PR until the hold is removed.';
         }
         const holdBtn = document.getElementById('viHoldBtn');
-        holdBtn.innerHTML = held ? '&#9654; Hold Hatao' : '&#9208; Hold';
+        holdBtn.innerHTML = held ? 'Remove Hold' : 'Hold';
         holdBtn.style.background = held ? '#16a34a' : '#d97706';
         // A PR already on hold is rejected by first releasing it — one decision
         // at a time keeps the reason attached to the right action.
@@ -5841,7 +5826,7 @@
         rejBtn.disabled = held;
         rejBtn.style.opacity = held ? '0.5' : '';
         rejBtn.style.cursor = held ? 'not-allowed' : '';
-        rejBtn.title = held ? 'Pehle Hold hatayein, phir reject karein' : '';
+        rejBtn.title = held ? 'Remove the hold first, then reject' : '';
     }
     // The reason both buttons insist on. Returns '' when it is missing.
     function viDecisionReason(){
@@ -5849,12 +5834,12 @@
     }
     async function viRejectPr(){
         if(!currentEntry || currentModule !== 'PR' || modalViewOnly || modalTab !== 'VI') return;
-        if(PR_HELD(currentEntry)) return alert('Ye PR Hold par hai — pehle "Hold Hatao" dabayein, phir reject karein.');
+        if(PR_HELD(currentEntry)) return alert('This PR is on hold. Press "Remove Hold" first, then reject.');
         const reason = viDecisionReason();
-        if(!reason) return alert('Reject karne ki wajah likhna zaroori hai.');
+        if(!reason) return alert('Please write the reason for rejecting.');
         // Captured before closeModal() clears currentEntry.
         const req = currentEntry, docNo = req.req_no || '';
-        if(!confirm('PR ' + docNo + ' reject karein?\n\nYe PR Store ke paas wapas chali jayegi — wahan sudhar kar dobara bheji ja sakti hai.\n\nWajah: ' + reason)) return;
+        if(!confirm('Reject PR ' + docNo + '?\n\nThe PR will go back to the Store, where it can be corrected and resubmitted.\n\nReason: ' + reason)) return;
         setBusy(true, 'Rejecting PR...');
         try{
             // The Purchaser signs the gmCeo stage, and gmCeo has no stage before
@@ -5864,7 +5849,7 @@
             dashDirty = false;
             closeModal();
             await renderList();
-            alert('✖ PR ' + docNo + ' reject ho gayi. Store isme sudhar karke dobara bhej sakta hai.');
+            alert('✖ PR ' + docNo + ' has been rejected. The Store can correct it and resubmit.');
         }catch(e){
             alert('Error: ' + (e.message || e));
         }finally{
@@ -5875,17 +5860,17 @@
         if(!currentEntry || currentModule !== 'PR' || modalViewOnly || modalTab !== 'VI') return;
         const req = currentEntry, held = PR_HELD(req), docNo = req.req_no || '';
         const reason = viDecisionReason();
-        if(!reason) return alert(held ? 'Hold hatane ki wajah likhein.' : 'Hold karne ki wajah likhein.');
+        if(!reason) return alert(held ? 'Please give the reason for removing the hold.' : 'Please give the reason for the hold.');
         if(!confirm(held
-            ? ('PR ' + docNo + ' ka Hold hatayein?\n\nPR wapas pending list me aa jayegi.\n\nWajah: ' + reason)
-            : ('PR ' + docNo + ' ko Hold par rakhein?\n\nJab tak Hold hai, is PR ka PO nahi banega.\n\nWajah: ' + reason))) return;
-        setBusy(true, held ? 'Hold hata rahe hain...' : 'PR hold kar rahe hain...');
+            ? ('Remove the hold on PR ' + docNo + '?\n\nThe PR will return to the pending list.\n\nReason: ' + reason)
+            : ('Put PR ' + docNo + ' on hold?\n\nNo PO will be raised on this PR while it is on hold.\n\nReason: ' + reason))) return;
+        setBusy(true, held ? 'Removing the hold...' : 'Putting the PR on hold...');
         try{
             await setPrHold(req, !held, reason);
             dashDirty = false;
             closeModal();
             await renderList();
-            alert(held ? ('▶ PR ' + docNo + ' ka Hold hat gaya.') : ('⏸ PR ' + docNo + ' Hold par rakh di gayi.'));
+            alert(held ? ('The hold on PR ' + docNo + ' has been removed.') : ('PR ' + docNo + ' has been put on hold.'));
         }catch(e){
             alert('Error: ' + (e.message || e));
         }finally{
@@ -5926,7 +5911,7 @@
         // A held PR is parked on purpose. Saving quotes would push it straight
         // into PO Generate, which is exactly what the hold is there to stop.
         if(PR_HELD(currentEntry)){
-            show('Ye PR Hold par hai — pehle niche "▶ Hold Hatao" dabayein, phir vendor info save karein.');
+            show('This PR is on hold. Press "Remove Hold" below first, then save the vendor info.');
             return;
         }
         const btn = document.getElementById('viSaveBtn');
@@ -5939,7 +5924,7 @@
             [0,1,2].map(k => ({...EMPTY_V, ...((viRowVendors[i]||[])[k]||{})}))
         );
         if(!rowVendorsOut.some(vs => vs.some(v => v.name))){
-            show('Kam se kam ek item par ek vendor select karein.');
+            show('Select a vendor on at least one item.');
             return;
         }
 
@@ -5960,7 +5945,7 @@
             if(wtByRow[i] < 0){ mark('.vi-weight'); badQty.push(nameOf() + ' — Weight'); }
         });
         if(badQty.length){
-            show('Qty 0 se zyada aur Weight 0 ya usse zyada honi chahiye:\n• ' + badQty.join('\n• '));
+            show('Qty must be greater than 0 and Weight 0 or more:\n• ' + badQty.join('\n• '));
             err.style.whiteSpace = 'pre-line';
             if(firstBadQty){ firstBadQty.scrollIntoView({block:'nearest', inline:'center'}); firstBadQty.focus(); }
             return;
@@ -5992,7 +5977,7 @@
             });
         });
         if(missingRate.length){
-            show('Jis V1 / V2 / V3 me vendor select kiya hai, uska Rate 0 se zyada bharein:\n• ' + missingRate.join('\n• '));
+            show('Enter a Rate greater than 0 for each V1 / V2 / V3 where a vendor is selected:\n• ' + missingRate.join('\n• '));
             err.style.whiteSpace = 'pre-line';
             if(firstBad){ firstBad.scrollIntoView({block:'nearest', inline:'center'}); firstBad.focus(); }
             return;
@@ -6009,10 +5994,10 @@
             const v = String(tr.querySelector('.vi-basis')?.value||'').toUpperCase();
             return (v === 'WEIGHT' || v === 'QTY') ? v : '';
         });
-        /* Bill On bhi GST% ki tarah compulsory hai. Khaali ko QTY maan lena
-           hi wo galti thi jo hataai gayi: line WEIGHT par bikti aur PO QTY par
-           ban jaata, aur PO Generate tab use LOCKED dikhata — to ye kabhi
-           pakda hi nahi jaata. */
+        /* Bill On is compulsory, just like GST%. Treating blank as QTY was the
+           very mistake that was removed: the line was sold by WEIGHT but the
+           PO was raised on QTY, and the PO Generate tab showed it LOCKED, so
+           it was never caught. */
         rowEls.forEach(tr => tr.querySelectorAll('.vi-basis').forEach(sel => { sel.style.borderColor = ''; sel.style.background = ''; }));
         const badBasis = [];
         let firstBadBasis = null;
@@ -6020,10 +6005,10 @@
             if(basisByRow[i]) return;
             const sel = tr.querySelector('.vi-basis');
             if(sel){ sel.style.borderColor = '#dc2626'; sel.style.background = '#fef2f2'; firstBadBasis = firstBadBasis || sel; }
-            badBasis.push(nameAt(i) + ' — Bill On chuna nahi gaya');
+            badBasis.push(nameAt(i) + ': Bill On not chosen');
         });
         if(badBasis.length){
-            show('Har item ka Bill On (QTY ya WEIGHT) chunna zaroori hai:\n• ' + badBasis.join('\n• '));
+            show('Bill On (QTY or WEIGHT) must be chosen for every item:\n• ' + badBasis.join('\n• '));
             err.style.whiteSpace = 'pre-line';
             if(firstBadBasis){ firstBadBasis.scrollIntoView({block:'nearest', inline:'center'}); firstBadBasis.focus(); }
             return;
@@ -6038,10 +6023,10 @@
             if(raw !== '' && !isNaN(n) && n >= 0 && n <= 100) return;
             const inp = tr.querySelector('.vi-gst');
             if(inp){ inp.style.borderColor = '#dc2626'; inp.style.background = '#fef2f2'; firstBadGst = firstBadGst || inp; }
-            badGst.push(nameAt(i) + (raw === '' ? ' — GST% khali hai' : ' — GST% 0 se 100 ke beech bharein'));
+            badGst.push(nameAt(i) + (raw === '' ? ': GST% is empty' : ': enter a GST% between 0 and 100'));
         });
         if(badGst.length){
-            show('Har item ka GST% bharna zaroori hai (koi default nahi):\n• ' + badGst.join('\n• '));
+            show('GST% is required for every item (there is no default):\n• ' + badGst.join('\n• '));
             err.style.whiteSpace = 'pre-line';
             if(firstBadGst){ firstBadGst.scrollIntoView({block:'nearest', inline:'center'}); firstBadGst.focus(); }
             return;
@@ -6053,19 +6038,19 @@
             .filter(i => basisByRow[i] === 'WEIGHT' && !(wtByRow[i] > 0))
             .map(i => nameAt(i));
         if(noWeight.length){
-            show('Ye items WEIGHT par bill ho rahe hain lekin Wt kg 0 hai — Wt kg bharein ya Bill On ko QTY karein:\n• ' + noWeight.join('\n• '));
+            show('These items are billed on WEIGHT but Wt kg is 0. Enter Wt kg or change Bill On to QTY:\n• ' + noWeight.join('\n• '));
             err.style.whiteSpace = 'pre-line';
             return;
         }
 
         /* ── PO header, PER VENDOR ───────────────────────────────────────
-           Har chune hue vendor ka apna PO banta hai, to Delivery Date, charges
-           aur notes bhi uske apne. Har block alag jaancha jaata hai aur pehli
-           galti wala box screen par le aaya jaata hai — ek hi "kuch galat hai"
-           se Purchaser ko teen blocks me dhoondhna na pade. */
+           Each chosen vendor gets its own PO, so Delivery Date, charges and
+           notes are its own too. Each block is checked separately and the
+           first box with a problem is brought onto the screen, so a single
+           "something is wrong" doesn't leave the Purchaser searching three blocks. */
         const vGroups = viVendorGroups();
         if(!vGroups.length){
-            show('Grid ke Selected column me kisi item ka vendor chunein — PO Details usi vendor ka bharna hai.');
+            show('Choose a vendor for an item in the grid\'s Selected column; the PO Details are filled in for that vendor.');
             return;
         }
         const focusField = (vk, f) => {
@@ -6078,22 +6063,22 @@
             const p = viPlanOf(g.key);
             const at = ' — ' + g.name;
             const dd = String(p.deliveryDate||'').trim();
-            if(!dd){ show('Delivery Date bharein' + at + ' — is vendor ka PO isi date ke saath banega.'); focusField(g.key,'deliveryDate'); return; }
-            if(dd < localIsoDate_()){ show('Delivery Date aaj se pehle ki nahi ho sakti' + at + '.'); focusField(g.key,'deliveryDate'); return; }
+            if(!dd){ show('Enter the Delivery Date' + at + '; this vendor\'s PO is raised with this date.'); focusField(g.key,'deliveryDate'); return; }
+            if(dd < localIsoDate_()){ show('The Delivery Date cannot be earlier than today' + at + '.'); focusField(g.key,'deliveryDate'); return; }
             const num = v => { const s = String(v||'').trim(); return s === '' ? 0 : Number(s); };
             const fr = num(p.freight), ot = num(p.otherExp), cg = num(p.chargesGst === '' ? SARV_DEFAULT_GST : p.chargesGst);
-            if(isNaN(fr) || fr < 0){ show('Freight 0 ya usse zyada hona chahiye' + at + '.'); focusField(g.key,'freight'); return; }
-            if(isNaN(ot) || ot < 0){ show('Loading / Other Exp. 0 ya usse zyada hona chahiye' + at + '.'); focusField(g.key,'otherExp'); return; }
-            if(isNaN(cg) || cg < 0 || cg > 100){ show('Charges ka GST% 0 se 100 ke beech bharein' + at + '.'); focusField(g.key,'chargesGst'); return; }
+            if(isNaN(fr) || fr < 0){ show('Freight must be 0 or more' + at + '.'); focusField(g.key,'freight'); return; }
+            if(isNaN(ot) || ot < 0){ show('Loading / Other Exp. must be 0 or more' + at + '.'); focusField(g.key,'otherExp'); return; }
+            if(isNaN(cg) || cg < 0 || cg > 100){ show('Enter a GST% for charges between 0 and 100' + at + '.'); focusField(g.key,'chargesGst'); return; }
             planOut[g.key] = {
                 vendorName: g.name, deliveryDate: dd,
                 freight: fr, otherExp: ot, chargesGst: cg,
                 notes: String(p.notes||'').trim(),
             };
         }
-        /* Flat fields bhi likhe jaate hain — pehle vendor ke. poPlanSaved_ aur
-           koi bhi purana reader inhi par chalta hai, aur ek PR par ek hi
-           vendor ki aam soorat me ye bilkul wahi hai jo pehle likha jaata tha. */
+        /* The flat fields are written too, from the first vendor. poPlanSaved_
+           and any older reader rely on them, and in the common case of one
+           vendor per PR this is exactly what used to be written. */
         const firstPlan = planOut[vGroups[0].key];
         const poDeliveryDate = firstPlan.deliveryDate;
         const poFreight = firstPlan.freight, poOtherExp = firstPlan.otherExp, poChargesGst = firstPlan.chargesGst;
@@ -6152,8 +6137,8 @@
                 // The stored PO terms replace what this phone had typed, for the
                 // same reason the rates do: whoever saved first owns them.
                 (()=>{
-                    // Stored per-vendor plan; purane PR par flat plan hi
-                    // milta hai (poPlanFor_ ka fallback).
+                    // Stored per-vendor plan; old PRs only have the flat plan
+                    // (poPlanFor_'s fallback).
                     viPlan = {};
                     viVendorGroups().forEach(g => {
                         const p = poPlanFor_(base, g.key);
@@ -6170,8 +6155,8 @@
                         if(!tr) return;
                         const b = tr.querySelector('.vi-basis'), g = tr.querySelector('.vi-gst');
                         if(b){
-                            // Jo save hua wahi — khaali ko QTY bana dena wahi
-                            // chupchaap default hai jise hataya gaya hai.
+                            // Exactly what was saved; turning blank into QTY is the
+                            // silent default that was removed.
                             const rb = String(it.billBasis||'').toUpperCase();
                             b.value = (rb === 'WEIGHT' || rb === 'QTY') ? rb : '';
                             b.classList.toggle('is-blank', b.value === '');
@@ -6191,7 +6176,7 @@
                 renderViPoBlocks();
                 renderPoSummary_();
                 setVendorInfoLocked(true);
-                show('Is PR par vendor info + PO details pehle se save hain — inhe sirf STORE.html se badla ja sakta hai.');
+                show('Vendor info + PO details are already saved on this PR; they can only be changed from STORE.html.');
                 return;
             }
             /* The corrected Qty / Gross Weight go on the requirement LINE, not
@@ -6279,10 +6264,10 @@
                    locked, so the Purchaser there only signs — Delivery Date,
                    charges and notes are not asked for a second time. */
                 poPlan: {
-                    /* byVendor = sach: ek entry per PO. Neeche ke flat fields
-                       pehle vendor ke hain aur sirf backward compatibility ke
-                       liye likhe jaate hain (poPlanSaved_ aur koi purana
-                       reader inhi par chalta hai). */
+                    /* byVendor = the truth: one entry per PO. The flat fields
+                       below are the first vendor's and are written only for
+                       backward compatibility (poPlanSaved_ and any older reader
+                       rely on them). */
                     byVendor: planOut,
                     deliveryDate: poDeliveryDate,
                     freight: poFreight,
@@ -6296,12 +6281,12 @@
                 // Store In-charge's pad signature rides along untouched.
                 signatures: {...(req.approvals||{}), ...(base.signatures && base.signatures.store ? {store: base.signatures.store} : {})},
             };
-            /* Vendor Info ka apna timestamp — purchase_requirements
-               .vendor_info_saved_at. Jis database me abhi ye column nahi hai
-               wahan save na ruke, isliye error par ek baar bina uske dobara. */
+            /* Vendor Info's own timestamp: purchase_requirements
+               .vendor_info_saved_at. On a database without this column the save
+               must not fail, so on error it retries once without it. */
             let upd = await SB.from('purchase_requirements').update({pdf_snapshot:d, vendor_info_saved_at:new Date().toISOString()}).eq('id', req.id);
             if(upd.error && /vendor_info_saved_at/i.test(upd.error.message||'')){
-                console.warn('[SARV] vendor_info_saved_at column missing — us column ke bina save kiya');
+                console.warn('[SARV] vendor_info_saved_at column missing; saved without it');
                 upd = await SB.from('purchase_requirements').update({pdf_snapshot:d}).eq('id', req.id);
             }
             if(upd.error) throw upd.error;
@@ -6345,7 +6330,7 @@
                 await indexPdfArtifact('REQUIREMENT', req.id, req.req_no, 'REQUIREMENT', artifact);
             }catch(e){ console.warn('[MOBILE] PR PDF regen failed (vendor info still saved):', e); }
 
-            show('✅ Vendor info + PO details save ho gayi. Ab ye PR "PO Generate" tab me hai — wahan Delivery Date, charges, Bill On, GST% aur poora calculation locked dikhega; sirf sign karna hai.');
+            show('Vendor info + PO details saved. This PR is now in the "PO Generate" tab, where Delivery Date, charges, Bill On, GST% and the full calculation show as locked; it only needs signing.');
             err.style.background = '#e8f5e9'; err.style.color = '#1b5e20'; err.style.borderColor = '#a5d6a7';
         }catch(e){
             err.style.background = ''; err.style.color = ''; err.style.borderColor = '';
@@ -6403,7 +6388,7 @@
         };
         // The GST% header carries the asterisk only while it is still a decision.
         const gstHdr = document.getElementById('gst-col-header');
-        if(gstHdr && gstEdit) gstHdr.innerHTML = poTermsLocked ? 'GST% &#128274;' : 'GST%';
+        if(gstHdr && gstEdit) gstHdr.innerHTML = poTermsLocked ? 'GST%' : 'GST%';
         // FIELD BOY only: a tick box per item, ahead of the Sr column.
         const fbOn = fbChecklistMode();
         tbody.innerHTML = items.map((item,i) => {
@@ -6430,7 +6415,7 @@
             }
             const fbDone = fbOn && !!fbChecklist[String(item.lineId)];
             return `<tr${fbDone ? ' style="background:#f0fdf4;"' : ''}>
-                ${fbOn ? `<td style="text-align:center;"><input type="checkbox" class="fb-done-input" data-row="${i}"${fbDone?' checked':''}${modalViewOnly?' disabled':''} style="width:22px;height:22px;accent-color:#16a34a;"${item.lineId==null?' disabled title="Is line ka id nahi mila"':''}></td>` : ''}
+                ${fbOn ? `<td style="text-align:center;"><input type="checkbox" class="fb-done-input" data-row="${i}"${fbDone?' checked':''}${modalViewOnly?' disabled':''} style="width:22px;height:22px;accent-color:#16a34a;"${item.lineId==null?' disabled title="No id found for this line"':''}></td>` : ''}
                 <td>${i+1}</td>
                 <td><b>${escText(item.name)}</b></td>
                 <td>${escText(item.desc||'-')}</td>
@@ -6441,8 +6426,8 @@
                 ${rateCell}
                 ${discCell}
                 ${vendorCell}
-                ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal"${lockAttr} value="${escText(prItemGst[i] ?? '')}" title="${poTermsLocked ? 'Vendor Info me save kiya gaya — locked' : 'Is item ka GST %'}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;${lockStyle}"></td>` : ''}
-                ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}"${lockAttr} title="${poTermsLocked ? 'Vendor Info me save kiya gaya — locked' : 'Amount kis par bane'}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;${lockStyle}"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
+                ${gstEdit ? `<td><input type="number" class="po-gst-input" data-row="${i}" min="0" max="100" step="0.01" inputmode="decimal"${lockAttr} value="${escText(prItemGst[i] ?? '')}" title="${poTermsLocked ? 'Saved in Vendor Info; locked' : 'GST % for this item'}" style="width:62px;font-size:0.78rem;padding:4px;border:1px solid #93c5fd;border-radius:4px;background:#eff6ff;font-weight:700;${lockStyle}"></td>` : ''}
+                ${gstEdit ? `<td><select class="po-basis-input" data-row="${i}"${lockAttr} title="${poTermsLocked ? 'Saved in Vendor Info; locked' : 'What the amount is calculated on'}" style="width:84px;font-size:0.78rem;padding:4px;border:1px solid #fcd34d;border-radius:4px;background:#fffbeb;font-weight:700;${lockStyle}"><option value="QTY"${prItemBasis[i]!=='WEIGHT'?' selected':''}>QTY</option><option value="WEIGHT"${prItemBasis[i]==='WEIGHT'?' selected':''}>WEIGHT</option></select></td>` : ''}
                 ${gstEdit ? `<td class="po-amt-cell" data-row="${i}" style="text-align:right;font-weight:800;color:#166534;white-space:nowrap;">${escText(nNum_(poRowAmount_(i)))}</td>` : ''}
             </tr>`;
         }).join('') || `<tr><td colspan="14" style="text-align:center;color:#999;">No items</td></tr>`;
@@ -6485,10 +6470,10 @@
         const basis = prItemBasis[i];
         if(basis === 'WEIGHT') return pNum(it.weight);
         if(basis === 'QTY')    return pNum(it.qty);
-        /* Bill On abhi chuna nahi gaya — to kis cheez par bill karna hai, pata
-           nahi. Chupchaap Qty par maan lene se card ek aisa amount dikha deta
-           jo kisi ne tay nahi kiya; 0 saaf kehta hai ki abhi faisla baaki hai,
-           aur card ka note batata hai kitni rows par. */
+        /* Bill On hasn't been chosen yet, so we don't know what to bill on.
+           Quietly assuming Qty would make the card show an amount nobody
+           agreed to; 0 says plainly that a decision is pending, and the card's
+           note says on how many rows. */
         return 0;
     }
     function poRowAmount_(i){
@@ -6542,7 +6527,7 @@
         let metaHtml = currentModule === 'PO'
             ? `<strong>Vendor:</strong> ${escText(entry.vendor_name||'-')} | <strong>Grand Total:</strong> ${escText(nMoney_(entry.grand_total))}`
             : `<strong>Requested By:</strong> ${escText(entry.requested_by||'-')} | <strong>Priority:</strong> ${escText(entry.priority||'Normal')}`;
-        if(entry.pdf_url) metaHtml += `<br><a href="${escText(entry.pdf_url)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:9px;text-align:center;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;color:#1d4ed8;font-weight:700;font-size:0.85rem;text-decoration:none;">📄 View Updated PDF (with latest signatures)</a>`;
+        if(entry.pdf_url) metaHtml += `<br><a href="${escText(entry.pdf_url)}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:9px;text-align:center;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;color:#1d4ed8;font-weight:700;font-size:0.85rem;text-decoration:none;">View Updated PDF (with latest signatures)</a>`;
         else if(currentModule === 'PR') metaHtml += `<br><span style="display:block;margin-top:8px;font-size:0.75rem;color:#94a3b8;">PDF not generated yet.</span>`;
         // For a PO, also link every Purchase Requirement PDF it was built from.
         if(currentModule === 'PO'){
@@ -6550,8 +6535,8 @@
             if(prLinks.length){
                 metaHtml += `<div style="margin-top:8px;font-size:0.75rem;font-weight:700;color:#475569;">Linked Purchase Requirement(s):</div>`
                     + prLinks.map(p => p.url
-                        ? `<a href="${escText(p.url)}" target="_blank" rel="noopener" style="display:block;margin-top:5px;padding:8px;text-align:center;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;color:#166534;font-weight:700;font-size:0.8rem;text-decoration:none;">📋 ${escText(p.reqNo)} — View PR PDF</a>`
-                        : `<span style="display:block;margin-top:5px;padding:8px;text-align:center;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;color:#94a3b8;font-size:0.8rem;">📋 ${escText(p.reqNo)} — PDF not available</span>`
+                        ? `<a href="${escText(p.url)}" target="_blank" rel="noopener" style="display:block;margin-top:5px;padding:8px;text-align:center;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;color:#166534;font-weight:700;font-size:0.8rem;text-decoration:none;">${escText(p.reqNo)} — View PR PDF</a>`
+                        : `<span style="display:block;margin-top:5px;padding:8px;text-align:center;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;color:#94a3b8;font-size:0.8rem;">${escText(p.reqNo)} — PDF not available</span>`
                       ).join('');
             }
         }
@@ -6667,12 +6652,12 @@
             });
             if(namesSeen.length <= 1){
                 const v = namesSeen[0] || ((snapVendorsForRow(0)||[])[prLevelApprovedIdx] || {});
-                approvedInfo.innerHTML = `<strong>✅ Approved Vendor:</strong> ${escText(v.name||'-')}` +
+                approvedInfo.innerHTML = `<strong>Approved Vendor:</strong> ${escText(v.name||'-')}` +
                     (v.contact ? ` | <strong>Contact:</strong> ${escText(v.contact)}` : '');
             } else {
                 // Different items went to different vendors — list each one
                 // rather than naming just one, which would hide the split.
-                approvedInfo.innerHTML = `<strong>✅ Approved Vendors (split by item):</strong> ` +
+                approvedInfo.innerHTML = `<strong>Approved Vendors (split by item):</strong> ` +
                     namesSeen.map(v => escText(v.name)).join(', ');
             }
         } else if(currentModule === 'PO'){
@@ -6722,20 +6707,20 @@
         const modeNote = document.getElementById('modalModeNote');
         if(modalViewOnly){
             const cfg = STAGE_TABS[modalTab] || {};
-            modeNote.innerHTML = '👁 <b>View only</b> — ' + escText(cfg.actor && canActIn(modalTab)
-                ? 'ye entry is stage se aage badh chuki hai.'
-                : (ACTOR_LABEL[cfg.actor] || '') + ' is stage ka kaam karte hain.');
+            modeNote.innerHTML = '<b>View only</b> — ' + escText(cfg.actor && canActIn(modalTab)
+                ? 'this entry has already moved past this stage.'
+                : 'this stage is handled by ' + (ACTOR_LABEL[cfg.actor] || '') + '.');
             modeNote.style.display = 'block';
         } else if(quotesOnly && isFieldBoy()){
             // Field Boy has no vendor step, so the standard "fill the rates"
             // note would send them looking for a panel that isn't there.
-            modeNote.innerHTML = '☑ Jo item le aaye hain uske saamne tick karein — har tick turant save hota hai. Is PR ka koi PO nahi banta; saare items tick hote hi PR <b>Done</b> me chali jayegi.';
+            modeNote.innerHTML = 'Tick each item you have brought in; every tick is saved immediately. No PO is raised for this PR; once all items are ticked the PR moves to <b>Done</b>.';
             modeNote.style.display = 'block';
         } else if(quotesOnly){
-            modeNote.innerHTML = '💰 Vendor, rate, Selected Vendor ke saath hi <b>Bill On</b>, <b>GST%</b>, <b>Delivery Date</b>, <b>PO Charges</b> aur <b>PO Remarks</b> bhi yahin bharein, phir <b>Save Vendor Info</b> dabayein. Save hote hi ye PR <b>PO Generate</b> tab me chali jayegi — wahan ye sab <b>locked</b> dikhega aur sirf sign karna hoga.';
+            modeNote.innerHTML = 'Along with vendor, rate and Selected Vendor, fill in <b>Bill On</b>, <b>GST%</b>, <b>Delivery Date</b>, <b>PO Charges</b> and <b>PO Remarks</b> here, then press <b>Save Vendor Info</b>. Once saved, this PR moves to the <b>PO Generate</b> tab, where all of this shows as <b>locked</b> and only needs signing.';
             modeNote.style.display = 'block';
         } else if(gstEditMode() && planned){
-            modeNote.innerHTML = '🔒 Delivery Date, PO Charges, PO Remarks aur har item ka Bill On / GST% <b>Vendor Info</b> me save ho chuke hain — upar <b>PO Calculation</b> aur <b>PO Details</b> card me locked dikh rahe hain. Calculation check karke <b>Approve &amp; Sign</b> dabayein; PO isi par banega.';
+            modeNote.innerHTML = 'Delivery Date, PO Charges, PO Remarks and each item\'s Bill On / GST% have been saved in <b>Vendor Info</b> and show as locked in the <b>PO Calculation</b> and <b>PO Details</b> cards above. Check the calculation and press <b>Approve &amp; Sign</b>; the PO is raised on this basis.';
             modeNote.style.display = 'block';
         } else {
             modeNote.style.display = 'none';
@@ -7030,15 +7015,15 @@
         let first = true;
         for(const g of groups.values()){
             const poNo = await nextPoNo_();
-            /* Is vendor ka apna PO plan, agar quote sheet ne per-vendor likha
-               hai. NAHI likha (purana PR, flat poPlan) to bilkul purana
-               vyavhaar: charges sirf PEHLE PO par. Ye fallback zaroori hai —
-               flat plan ko har vendor par laga dene se do PO par poora freight
-               do baar chadh jaata. */
+            /* This vendor's own PO plan, if the quote sheet wrote one per vendor.
+               If NOT (old PR, flat poPlan), the old behaviour exactly: charges
+               on the FIRST PO only. This fallback matters; applying the flat
+               plan to every vendor would put the full freight on two POs, i.e.
+               twice. */
             const vp = opts.planByVendor ? (opts.planByVendor[g.vendor.name.toUpperCase()] || null) : null;
             const d = {
                 poNo, poDate: localIsoDate_(),
-                // Delivery Date bhi per PO — har vendor apni date deta hai.
+                // Delivery Date is per PO too; each vendor gives its own date.
                 deliveryDate: (vp && vp.deliveryDate) || deliveryDate,
                 vendorName: g.vendor.name, vendorMail: g.vendor.email, vendorContact: g.vendor.contact, vendorAddress: g.vendor.address,
                 paymentTerms: SARV_PO_PAYMENT_TERMS, locationContact: SARV_PO_LOCATION_CONTACT,
@@ -7048,7 +7033,7 @@
                 gstPercent: vp
                     ? (vp.chargesGst != null && String(vp.chargesGst).trim() !== '' ? pNum(vp.chargesGst) : SARV_DEFAULT_GST)
                     : (first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0),
-                // Notes bhi per PO ab — wo is vendor ko di gayi hidayat hai.
+                // Notes are per PO now as well; they are instructions to this vendor.
                 importantNotes: String((vp && vp.notes) || opts.notes || ''),
                 items: g.items,
                 // The PR's Store Incharge signature carries over; the Purchaser
@@ -7332,7 +7317,7 @@
             const ps = await SB.from('purchase_orders').select('id,po_no,status').in('id', poIds);
             if(ps.error) throw ps.error;
             const moved = (ps.data||[]).filter(p => !DEAD_PO_STATUSES.includes(p.status||'') && !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
-            if(moved.length) throw new Error('PO ' + moved.map(p => p.po_no).join(', ') + ' MD approve kar chuke hain — approval cancel nahi ho sakti.');
+            if(moved.length) throw new Error('The MD has already approved PO ' + moved.map(p => p.po_no).join(', ') + '; the approval cannot be cancelled.');
             const cx = await SB.from('purchase_orders').update({status:'Cancelled'}).in('id', poIds).in('status', PRE_MD_PO_STATUSES);
             if(cx.error) throw cx.error;
         }
@@ -7448,10 +7433,10 @@
         if(!canCancelApproval(item)) return;
         const docNo = currentModule === 'PR' ? item.req_no : item.po_no;
         const poNote = (currentModule === 'PR' && (item._poNos||[]).length)
-            ? `\n\nIs approval se bane PO bhi cancel ho jayenge: ${item._poNos.join(', ')}`
+            ? `\n\nPOs made from this approval will also be cancelled: ${item._poNos.join(', ')}`
             : '';
         const reopenNote = (currentModule === 'PR' && myStage === 'gmCeo')
-            ? '\nVendor & Item Rates phir se edit ho sakenge.'
+            ? '\nVendor & Item Rates can be edited again.'
             : '';
         if(!confirm(`Cancel your ${myStageLabel()} approval on ${docNo}? It will go back to pending for you.${reopenNote}${poNote}`)) return;
         setBusy(true, 'Cancelling approval...');
@@ -7473,12 +7458,12 @@
         // Approval (and the PO built from it) uses the SAVED vendor figures, so
         // edits sitting unsaved in a reopened grid would silently not count.
         if(currentModule === 'PR' && viDirty && (currentEntry.pdf_snapshot||{}).vendorInfoReopened){
-            alert('Vendor & Item Rates me badlav save nahi hue — pehle "Save Vendor Info" dabayein, phir approve karein.');
+            alert('Changes to Vendor & Item Rates have not been saved. Press "Save Vendor Info" first, then approve.');
             return;
         }
         if(currentModule === 'PR' && myStage === 'gmCeo' && prHasAnyQuote()
            && viDisplayItems.some((_,i)=> itemVendorIndex[i]==null || itemVendorIndex[i] < 0)) {
-            alert('Har item ke liye Approved Vendor select karein — kuch items abhi bhi unassigned hain.');
+            alert('Select an Approved Vendor for every item; some items are still unassigned.');
             return;
         }
         // A Purchaser's approval is what releases the PR for PO generation, and
@@ -7487,7 +7472,7 @@
         // here, where the form to fix it is one tap away. GM/CEO's existing
         // behaviour is deliberately left as it was.
         if(myPurchaserName && currentModule === 'PR' && !prHasAnyQuote()) {
-            alert('Pehle "💰 Vendor Rate & Info" kholkar vendor aur rate bharein, phir Save Vendor Info dabayein — uske baad hi approve ho sakta hai.');
+            alert('First open "Vendor Rate & Info", fill in the vendor and rate, then press Save Vendor Info. Only then can it be approved.');
             return;
         }
         // Delivery Date is mandatory when the Purchaser approves a PR (it goes
@@ -7505,8 +7490,8 @@
             // a reason to make the PO unapprovable from here, since the date is
             // locked and can only be changed in Vendor Rate & Info / STORE.html.
             if(makesPo && deliveryDate < localIsoDate_()){
-                if(!poPlanned){ alert('Delivery Date aaj se pehle ki nahi ho sakti.'); return; }
-                if(!confirm(`Vendor Info me save ki gayi Delivery Date (${pDate_(deliveryDate)}) nikal chuki hai.\n\nIsi date ke saath PO bana dein?\n\n(Badalna ho to Cancel karke STORE.html se date theek karein.)`)) return;
+                if(!poPlanned){ alert('The Delivery Date cannot be earlier than today.'); return; }
+                if(!confirm(`The Delivery Date saved in Vendor Info (${pDate_(deliveryDate)}) has already passed.\n\nRaise the PO with this date anyway?\n\n(To change it, Cancel and correct the date from STORE.html.)`)) return;
             }
         }
         // Every PO line needs a price. An approved vendor that quoted 0 would
@@ -7516,7 +7501,7 @@
                 const idx = itemVendorIndex[i];
                 return idx != null && idx >= 0 && !(pNum((currentItemRates[i]||{})['V'+(idx+1)]) > 0);
             }).map(it => it.name);
-            if(noRate.length){ alert('In items ke approved vendor ka Rate 0 hai — pehle Vendor Rate & Info me rate bharein:\n• ' + noRate.join('\n• ')); return; }
+            if(noRate.length){ alert('The approved vendor\'s Rate is 0 for these items. Enter the rate in Vendor Rate & Info first:\n• ' + noRate.join('\n• ')); return; }
         }
         // PO Generate: the Purchaser's per-item GST% and the PO charges.
         let poOpts = {};
@@ -7530,8 +7515,8 @@
                 // With a saved plan these cells are locked here, so point at the
                 // one screen that can still fix them rather than at this one.
                 alert(poPlanned
-                    ? 'In items ka GST% khali / galat hai. Ye Vendor Info me save kiya jata hai — STORE.html ke "💰 Vendor Rate & Info" se theek karein:\n• ' + badGst.join('\n• ')
-                    : 'GST% 0 se 100 ke beech bharein:\n• ' + badGst.join('\n• '));
+                    ? 'GST% is empty / invalid for these items. It is saved in Vendor Info; correct it from "Vendor Rate & Info" in STORE.html:\n• ' + badGst.join('\n• ')
+                    : 'Enter a GST% between 0 and 100:\n• ' + badGst.join('\n• '));
                 return;
             }
             // A WEIGHT-billed line prices on Gross Weight, so one with no weight
@@ -7541,7 +7526,7 @@
                 .filter((it,i) => prItemBasis[i] === 'WEIGHT' && !(pNum(it.weight) > 0))
                 .map(it => it.name);
             if(noWeight.length){
-                alert('Ye items WEIGHT par bill ho rahe hain lekin Gross Weight 0 hai — "Vendor Rate & Info" me Wt kg bharein, ya Bill On ko QTY karein:\n• ' + noWeight.join('\n• '));
+                alert('These items are billed on WEIGHT but the Gross Weight is 0. Enter Wt kg in "Vendor Rate & Info", or change Bill On to QTY:\n• ' + noWeight.join('\n• '));
                 return;
             }
             // Charges come from the saved plan where there is one; a PR quoted
@@ -7552,21 +7537,20 @@
             const chargesGst = poPlanned
                 ? (poPlan.chargesGst != null ? poPlan.chargesGst : SARV_DEFAULT_GST)
                 : numOf('poChargesGstInput');
-            if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. 0 ya usse zyada hona chahiye.'); return; }
-            if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Charges ka GST% 0 se 100 ke beech bharein.'); return; }
-            /* Per-vendor plan jahan hai, wahan har PO apne charges aur apni
-               Delivery Date leta hai — autoGeneratePosFromPr isi
-               planByVendor ko padhta hai. Jo PR purane flat plan par hai
-               uske liye ye null rehta hai aur wahan purana niyam chalta hai
-               (charges sirf pehle PO par). freight / other / chargesGst
-               legacy ke liye hi bheje jaate hain. */
+            if([freight, other].some(n => isNaN(n) || n < 0)){ alert('Freight / Loading / Other Exp. must be 0 or more.'); return; }
+            if(isNaN(chargesGst) || chargesGst < 0 || chargesGst > 100){ alert('Enter a GST% for charges between 0 and 100.'); return; }
+            /* Where there is a per-vendor plan, each PO takes its own charges
+               and its own Delivery Date; autoGeneratePosFromPr reads this
+               planByVendor. For a PR on the old flat plan it stays null and the
+               old rule applies (charges on the first PO only). freight / other /
+               chargesGst are sent only for the legacy path. */
             const planByVendor = poPlanByVendor_((currentModule === 'PR' && currentEntry.pdf_snapshot) || {});
             if(planByVendor){
                 const miss = viVendorGroups()
                     .filter(g => !planByVendor[g.key] || !planByVendor[g.key].deliveryDate)
                     .map(g => g.name);
                 if(miss.length){
-                    alert('In vendors ka PO Details save nahi hua — "💰 Vendor Rate & Info" me unka Delivery Date bharkar Save karein:\n• ' + miss.join('\n• '));
+                    alert('PO Details have not been saved for these vendors. Enter their Delivery Date in "Vendor Rate & Info" and Save:\n• ' + miss.join('\n• '));
                     return;
                 }
             }
@@ -7584,11 +7568,11 @@
         if(!pinSig) return;   // PIN popup cancelled — nothing is approved
         if(pinSig.dataUrl){
             try{ await drawSavedSignature(pinSig.dataUrl); }
-            catch(e){ alert('Saved sign load nahi hua — pad par sign karke dobara Approve dabayein.'); return; }
+            catch(e){ alert('The saved signature did not load. Sign on the pad and press Approve again.'); return; }
         }else if(mySignSaved || !hasDrawn || !sigHasInk()){
             // The user picked has no saved sign — bring the pad back for them.
             if(mySignSaved){ mySignSaved = false; applySignPadMode(); resizeCanvas(); clearSignature(); }
-            alert('Aapka signature saved nahi hai — Signature Pad par sign karke dobara Approve dabayein.\n\n(Admin se STORE.html › Settings › Admin Panel › Users & Roles me sign banwa lein, phir sirf PIN se approve hoga.)');
+            alert('You have no saved signature. Sign on the Signature Pad and press Approve again.\n\n(Ask the Admin to set up your signature under STORE.html › Settings › Admin Panel › Users & Roles; after that you can approve with just your PIN.)');
             syncApproveBtn();
             return;
         }
@@ -7613,11 +7597,11 @@
                     try{
                         const made = await autoGeneratePosFromPr(currentEntry, prSnap, deliveryDate, sig, poOpts);
                         poMsg = made.length
-                            ? '✅ PR approved.\n\nPO generate hue aur MD approval ke liye bhej diye gaye:\n• ' + made.map(m => m.poNo + ' — ' + m.vendorName).join('\n• ')
-                            : '✅ PR approved. (Is PR ke saare items ka PO pehle se bana hua hai — naya PO nahi bana.)';
+                            ? 'PR approved.\n\nPOs generated and sent for MD approval:\n• ' + made.map(m => m.poNo + ' — ' + m.vendorName).join('\n• ')
+                            : 'PR approved. (POs already exist for all items of this PR; no new PO was raised.)';
                     }catch(pe){
                         console.error('[MOBILE] Auto PO generation failed:', pe);
-                        poMsg = '⚠️ PR approve ho gaya, lekin PO generate nahi ho paaya:\n' + (pe.message || pe) + '\n\nSTORE.html ke PO Generation se PO bana lein.';
+                        poMsg = 'The PR was approved, but the PO could not be generated:\n' + (pe.message || pe) + '\n\nRaise the PO from PO Generation in STORE.html.';
                     }
                 }
             }
@@ -7649,7 +7633,7 @@
         const backMsg = prevStage
             ? `It will go back to ${STAGE_LABEL[prevStage]}'s pending list for review.`
             : (currentModule === 'PO'
-                ? `Ye PO Rejected ho jayega. Iski PR Purchaser ke "PO Generate ▸ Rejected PO" me aapke remark ke saath dikhegi — wo sudhar karke dobara sign karenge aur naya PO banega.`
+                ? `This PO will be Rejected. Its PR will appear under the Purchaser's "PO Generate ▸ Rejected PO" with your remark; they will correct it, sign again, and a new PO will be raised.`
                 : `This is the first approval stage, so it will be marked Rejected.`);
         if(!confirm(`Reject ${docNo}?\n\n${backMsg}`)) return;
         document.getElementById('rejectBtn').disabled = true;
@@ -7744,7 +7728,7 @@
         // Never locked on the pad any more: Approve asks for the PIN and lays the
         // saved sign itself. The hint below just says so.
         btn.disabled = false;
-        btn.title = signed ? '' : 'Approve dabane par PIN maanga jayega — saved sign apne-aap lagega';
+        btn.title = signed ? '' : 'Pressing Approve will ask for your PIN; the saved signature is added automatically';
         const hint = document.getElementById('sigRequiredHint');
         if(hint) hint.style.display = signed ? 'none' : 'block';
     }
@@ -7815,11 +7799,11 @@
             const purpose = opts.purpose || 'Check Done';
             const sel = document.getElementById('pinSignUser');
             sel.innerHTML = list.length
-                ? list.map(u => '<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature ? '' : ' (sign saved nahi)')+'</option>').join('')
+                ? list.map(u => '<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature ? '' : ' (no saved signature)')+'</option>').join('')
                 : '<option value="role:">'+escText(roleName)+' (Role PIN)</option>';
             sel.disabled = sel.options.length === 1;
-            document.getElementById('pinSignTitle').textContent = '🔒 ' + roleName + ' PIN — ' + purpose;
-            document.getElementById('pinSignNote').textContent = purpose + ' ke liye har baar apna PIN daalein. Saved sign hoga to wo apne-aap PDF par lag jayega.';
+            document.getElementById('pinSignTitle').textContent = '' + roleName + ' PIN — ' + purpose;
+            document.getElementById('pinSignNote').textContent = 'Enter your PIN each time for ' + purpose + '. If you have a saved signature, it is added to the PDF automatically.';
             document.getElementById('pinSignOkBtn').innerHTML = '&#10004; Verify &amp; ' + escText(purpose);
             document.getElementById('pinSignPin').value = '';
             document.getElementById('pinSignError').style.display = 'none';
@@ -7829,9 +7813,9 @@
     }
     // The approval-pad wording, put back whenever the popup is opened for that.
     function resetPinSignText(){
-        document.getElementById('pinSignTitle').textContent = '🔑 PIN se Sign';
-        document.getElementById('pinSignNote').textContent = 'Draw karne ki jagah apna PIN daalein — aapka saved signature pad par lag jayega.';
-        document.getElementById('pinSignOkBtn').innerHTML = '&#9997;&#65039; Sign';
+        document.getElementById('pinSignTitle').textContent = 'PIN se Sign';
+        document.getElementById('pinSignNote').textContent = 'Enter your PIN instead of drawing; your saved signature will be placed on the pad.';
+        document.getElementById('pinSignOkBtn').innerHTML = 'Sign';
     }
     async function openPinSign(){
         const role = myPermRole();
@@ -7844,11 +7828,11 @@
                 ? (u.role === 'PURCHASER' && String(u.user_name).toUpperCase() === String(myPurchaserName).toUpperCase())
                 : u.role === role);
         }catch(e){
-            alert('Saved signatures load nahi hue — STORE.html ka ADMIN_PANEL_MIGRATION.sql run hua hai?');
+            alert('Saved signatures did not load. Has STORE.html\'s ADMIN_PANEL_MIGRATION.sql been run?');
             return;
         }
         if(!list.length){
-            alert('Aapka signature saved nahi hai — Admin se STORE.html › Master Data › Settings › Admin Panel › Users & Roles me ek baar sign banwayein. Tab tak pad par sign karein.');
+            alert('You have no saved signature. Ask the Admin to set it up once under STORE.html › Master Data › Settings › Admin Panel › Users & Roles. Until then, sign on the pad.');
             return;
         }
         resetPinSignText();
@@ -7881,7 +7865,7 @@
                 syncApproveBtn();
                 res();
             };
-            img.onerror = () => rej(new Error('Signature load nahi hua'));
+            img.onerror = () => rej(new Error('The signature did not load'));
             img.src = dataUrl;
         });
     }
@@ -7891,8 +7875,8 @@
         const err = document.getElementById('pinSignError');
         const show = m => { err.textContent = m; err.style.display = 'block'; };
         err.style.display = 'none';
-        if(!id) return show('User select karein');
-        if(!pin) return show('PIN daalein');
+        if(!id) return show('Please select a user');
+        if(!pin) return show('Please enter your PIN');
         const btn = document.getElementById('pinSignOkBtn');
         btn.disabled = true;
         try{
@@ -7903,19 +7887,19 @@
                 if(id === 'role:'){
                     const v = await SB.rpc('verify_role_pin', { p_role: ctxNow.role, p_pin: pin });
                     if(v.error) throw v.error;
-                    if(!v.data) return show('Galat PIN');
+                    if(!v.data) return show('Incorrect PIN');
                     result = {dataUrl: null, name: ''};
                 }else{
                     const u = ctxNow.users.find(x => x.id === id) || {};
                     if(u.has_signature){
                         const r = await SB.rpc('get_user_signature', { p_user_id: id, p_pin: pin });
                         if(r.error) throw r.error;
-                        if(!r.data) return show('Galat PIN');
+                        if(!r.data) return show('Incorrect PIN');
                         result = {dataUrl: r.data, name: u.user_name || ''};
                     }else{
                         const v = await SB.rpc('verify_app_user_pin', { p_user_id: id, p_pin: pin });
                         if(v.error) throw v.error;
-                        if(!v.data) return show('Galat PIN');
+                        if(!v.data) return show('Incorrect PIN');
                         result = {dataUrl: null, name: u.user_name || ''};
                     }
                 }
@@ -7926,7 +7910,7 @@
             }
             const r = await SB.rpc('get_user_signature', { p_user_id: id, p_pin: pin });
             if(r.error) throw r.error;
-            if(!r.data) return show('Galat PIN');
+            if(!r.data) return show('Incorrect PIN');
             await drawSavedSignature(r.data);
             closePinSign();
         }catch(e){ show(e.message || String(e)); }
@@ -7947,7 +7931,7 @@
     }, 5000);
 
     /* ══════════════════════════════════════════════════════════════════
-       NEW PERSONNEL ITEM REQUIREMENT FORM   (the ➕ beside the title)
+       NEW PERSONNEL ITEM REQUIREMENT FORM   (the beside the title)
        ------------------------------------------------------------------
        Raising a PR used to need a desktop. This writes exactly what
        STORE.html's "PERSONNEL ITEM REQUIREMENT FORM" writes — the
@@ -7979,7 +7963,7 @@
     let prmItemMaster = [], prmMachineList = [], prmEmployeeList = [], prmCatPurchaser = {};
     let prmMastersLoaded = false, prmRowSeq = 0, prmPurchaserAuto = false, prmBusy = false;
 
-    /* The ➕ is only meaningful to somebody who is logged in — before that the
+    /* The is only meaningful to somebody who is logged in — before that the
        login sheet covers the screen anyway, and after a logout it must not
        stay behind offering a form that cannot be saved. Called from
        applyPurchaserScope(), which runs on login, session restore and logout. */
@@ -8043,7 +8027,7 @@
         prmAddItemRow();
         prmSay('');
         const btn = document.getElementById('prmSubmitBtn');
-        if(btn){ btn.disabled = false; btn.innerHTML = '&#9989; Submit Requirement'; }
+        if(btn){ btn.disabled = false; btn.innerHTML = 'Submit Requirement'; }
         prmLockPurchaser_();
     }
     /* Purchaser Name is the logged-in Purchaser's own name, and they cannot
@@ -8067,7 +8051,7 @@
             sel.style.background = '';
             sel.style.color = '';
             sel.removeAttribute('title');
-            if(hint) hint.textContent = 'Pehle item ki Category ke hisaab se apne aap bhar jata hai — badal sakte hain.';
+            if(hint) hint.textContent = 'Filled in from the first item\'s Category. You can change it.';
             return;
         }
         /* The login list and this one carry the same seven names, so this only
@@ -8083,9 +8067,9 @@
         sel.disabled = true;      // read back with .value, so the save still sees it
         sel.style.background = '#f1f5f9';
         sel.style.color = '#475569';
-        sel.title = 'Aapke login ka Purchaser name — badla nahi ja sakta';
+        sel.title = 'The Purchaser name of your login; cannot be changed';
         sel.classList.remove('pr-missing');
-        if(hint) hint.textContent = '🔒 Aapke login ka Purchaser — ye PR aapke hi naam par book hogi, badli nahi ja sakti.';
+        if(hint) hint.textContent = 'The Purchaser of your login. This PR is booked under your name and cannot be changed.';
     }
 
     /* Item Master, Machine Master, Employee Master and the category →
@@ -8180,14 +8164,14 @@
         box.classList.remove('is-set', 'is-bad');
         const code = String(document.getElementById('prmEmpCode')?.value || '').trim();
         if(!code){
-            box.textContent = 'Employee Code daalein — Name / Designation / Department / Contact yahan aa jayenge';
+            box.textContent = 'Enter the Employee Code; Name / Designation / Department / Contact will appear here';
             return;
         }
-        if(!prmMastersLoaded){ box.textContent = 'Employee Master load ho raha hai...'; return; }
+        if(!prmMastersLoaded){ box.textContent = 'Loading the Employee Master...'; return; }
         const e = prmFindEmployee(code);
         if(!e){
             box.classList.add('is-bad');
-            box.textContent = '"' + code.toUpperCase() + '" Employee Master me nahi mila';
+            box.textContent = '"' + code.toUpperCase() + '" was not found in the Employee Master';
             return;
         }
         box.classList.add('is-set');
@@ -8209,10 +8193,10 @@
         card.innerHTML =
             '<div class="pr-item-head">'
               + '<span class="pr-item-sr">Item <span class="prm-sr">1</span></span>'
-              + '<button type="button" class="pr-item-del" title="Ye item hatayein">&#10006; Remove</button>'
+              + '<button type="button" class="pr-item-del" title="Remove this item">&#10006; Remove</button>'
             + '</div>'
             + '<div class="pr-f"><label>Item Name <span style="color:#dc3545;">*</span></label>'
-              + '<input class="pr-in prm-name" list="prm-dl-item-names" autocomplete="off" placeholder="Item Master me se chunein"></div>'
+              + '<input class="pr-in prm-name" list="prm-dl-item-names" autocomplete="off" placeholder="Choose from the Item Master"></div>'
             + '<div class="pr-f"><label>Item Description / Spec</label>'
               + '<input class="pr-in prm-desc" readonly placeholder="Item Master se auto"></div>'
             + '<div class="pr-f2">'
@@ -8220,7 +8204,7 @@
               + '<div class="pr-f"><label>MAKE / Brand</label><input class="pr-in prm-make" list="prm-dl-item-makes" autocomplete="off" placeholder="optional"></div>'
             + '</div>'
             + '<div class="pr-f"><label>Machine Name &amp; No. <span style="color:#dc3545;">*</span></label>'
-              + '<input class="pr-in prm-machine" list="prm-dl-machines" autocomplete="off" placeholder="Machine Master me se chunein"></div>'
+              + '<input class="pr-in prm-machine" list="prm-dl-machines" autocomplete="off" placeholder="Choose from the Machine Master"></div>'
             + '<div class="pr-f2">'
               + '<div class="pr-f"><label>Qty <span style="color:#dc3545;">*</span></label>'
                 + '<input type="number" class="pr-in prm-qty" min="0" step="any" inputmode="decimal" placeholder="0"></div>'
@@ -8263,8 +8247,8 @@
         if(!it){
             if(committed && String(nameEl.value || '').trim() && prmMastersLoaded){
                 nameEl.classList.add('pr-missing');
-                prmSay('"' + String(nameEl.value).trim() + '" Item Master me nahi hai — list me se item chunein. '
-                     + 'Naya item desktop app ke Item Master se add hota hai.');
+                prmSay('"' + String(nameEl.value).trim() + '" is not in the Item Master. Choose an item from the list. '
+                     + 'New items are added from the Item Master in the desktop app.');
             }
             return;
         }
@@ -8329,23 +8313,23 @@
         try{ await prmLoadMasters(); }catch(e){}
 
         const requiredBy = val('prmRequiredBy');
-        if(!requiredBy) return stop('prmRequiredBy', '⚠️ Required By Date chunna zaroori hai');
+        if(!requiredBy) return stop('prmRequiredBy', 'Please choose a Required By Date');
         const priority = val('prmPriority');
         if(!priority){
             const g = document.getElementById('prmPriorityGroup');
             if(g){ g.classList.add('pr-missing'); try{ g.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){} }
-            return prmSay('⚠️ Priority chunna zaroori hai — Normal / Urgent / Critical me se ek');
+            return prmSay('Please choose a Priority: Normal, Urgent or Critical');
         }
         /* For a logged-in Purchaser the name comes from the SESSION, not the
            box — the box is disabled for them, and reading the session instead
            means re-enabling it in devtools still cannot book this PR onto
            somebody else's queue. Everyone else picks. */
         const purchaser = myPurchaserName || val('prmPurchaser');
-        if(!purchaser) return stop('prmPurchaser', '⚠️ Purchaser Name chunna zaroori hai');
+        if(!purchaser) return stop('prmPurchaser', 'Please choose a Purchaser Name');
         const empCode = val('prmEmpCode').toUpperCase();
-        if(!empCode) return stop('prmEmpCode', '⚠️ Employee Code daalna zaroori hai');
+        if(!empCode) return stop('prmEmpCode', 'Please enter the Employee Code');
         const emp = prmFindEmployee(empCode);
-        if(!emp) return stop('prmEmpCode', '⚠️ "' + empCode + '" Employee Master me nahi mila — sahi code daalein');
+        if(!emp) return stop('prmEmpCode', '"' + empCode + '" was not found in the Employee Master. Please enter the correct code.');
 
         /* One pass over the item cards. An untouched card is skipped (the form
            always carries one spare); a card somebody started is held to the
@@ -8365,16 +8349,16 @@
                     e.classList.add('pr-missing');
                     try{ e.scrollIntoView({block:'center', behavior:'smooth'}); e.focus(); }catch(err){}
                 }
-                prmSay('⚠️ Item ' + (i + 1) + ': ' + msg);
+                prmSay('Item ' + (i + 1) + ': ' + msg);
             };
             const it = prmFindItem(name);
-            if(!it){ bad('.prm-name', 'Item Master me se Item Name chunein'); return; }
-            if(!(qty > 0)){ bad('.prm-qty', 'Qty 0 se zyada honi chahiye'); return; }
-            if(!machine){ bad('.prm-machine', 'Machine Name & No. bharna zaroori hai'); return; }
+            if(!it){ bad('.prm-name', 'Choose an Item Name from the Item Master'); return; }
+            if(!(qty > 0)){ bad('.prm-qty', 'Qty must be greater than 0'); return; }
+            if(!machine){ bad('.prm-machine', 'Machine Name & No. is required'); return; }
             const mOk = !prmMachineList.length || prmMachineList.some(m =>
                 prmMachineCombo_(m).toLowerCase() === machine.toLowerCase()
                 || String(m.machine_name || '').trim().toLowerCase() === machine.toLowerCase());
-            if(!mOk){ bad('.prm-machine', 'Machine Master list me se chunein'); return; }
+            if(!mOk){ bad('.prm-machine', 'Choose from the Machine Master list'); return; }
             rows.push({
                 itemId: it.id || '',
                 name: it.name,
@@ -8388,12 +8372,12 @@
                 specification: g('.prm-rem')
             });
         }
-        if(!rows.length) return prmSay('⚠️ Kam se kam ek item (Item Name + Qty) bharna zaroori hai');
+        if(!rows.length) return prmSay('Fill in at least one item (Item Name + Qty)');
 
         prmBusy = true;
         const btn = document.getElementById('prmSubmitBtn');
-        if(btn){ btn.disabled = true; btn.innerHTML = '&#8987; Saving...'; }
-        setBusy(true, 'Requirement save kar rahe hain...');
+        if(btn){ btn.disabled = true; btn.innerHTML = 'Saving...'; }
+        setBusy(true, 'Saving the requirement...');
         try{
             // Taken now, not when the form opened — two phones filling a PR at
             // the same time must not both claim the same number.
@@ -8471,7 +8455,7 @@
 
             // The PR PDF. A failure here cannot undo a saved PR, so it only
             // warns — the document can be regenerated from the snapshot later.
-            setBusy(true, 'PR PDF ban rahi hai...');
+            setBusy(true, 'Creating the PR PDF...');
             try{
                 const blob = await buildRequirementNativePdfBlob(snap);
                 const artifact = await uploadPdfArtifact(blob, 'REQUIREMENT', reqNo, 'REQUIREMENT');
@@ -8479,18 +8463,18 @@
             }catch(e){ console.warn('[MOBILE PR] PDF skipped (PR already saved):', e.message || e); }
 
             closeMobilePrForm();
-            alert('✅ Requirement save ho gayi: ' + reqNo
+            alert('Requirement saved: ' + reqNo
                 + '\n\nPurchaser: ' + purchaser + '\nItems: ' + rows.length);
             renderList().catch(() => {});
         }catch(e){
             const msg = String((e && e.message) || e);
             prmSay(/duplicate|unique/i.test(msg)
-                ? 'Ye PR number ab kisi aur ne le liya — dobara Submit dabayein'
-                : ('Save nahi hua: ' + msg));
+                ? 'Someone else has just taken this PR number. Press Submit again.'
+                : ('Not saved: ' + msg));
         }finally{
             prmBusy = false;
             setBusy(false);
-            if(btn){ btn.disabled = false; btn.innerHTML = '&#9989; Submit Requirement'; }
+            if(btn){ btn.disabled = false; btn.innerHTML = 'Submit Requirement'; }
         }
     }
 

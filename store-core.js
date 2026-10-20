@@ -67,7 +67,7 @@ function makeSearchableSelect(sel){
     const q=inp.value.trim().toLowerCase();
     shown=[...sel.options].filter(o=>!q||o.textContent.toLowerCase().includes(q)||o.value.toLowerCase().includes(q));
     hl=Math.min(hl,Math.max(0,shown.length-1));
-    list.innerHTML=shown.length?shown.map((o,i)=>'<div class="ss-opt'+(i===hl?' hl':'')+'" data-i="'+i+'">'+escText(o.textContent.trim())+'</div>').join(''):'<div class="ss-empty">List me nahi mila</div>';
+    list.innerHTML=shown.length?shown.map((o,i)=>'<div class="ss-opt'+(i===hl?' hl':'')+'" data-i="'+i+'">'+escText(o.textContent.trim())+'</div>').join(''):'<div class="ss-empty">Not found in the list</div>';
     place();
     list.querySelector('.ss-opt.hl')?.scrollIntoView({block:'nearest'});
   };
@@ -164,13 +164,15 @@ function exportTableCSV(tbodyId,filename,skipTrailing=1){
   const keepCount=Math.max(0,total-skipTrailing);
   const headers=theadCells.slice(0,keepCount).map(th=>th.textContent.replace(/\s+/g,' ').trim());
   const rows=[...tb.querySelectorAll('tr')].filter(tr=>tr.style.display!=='none'&&tr.children.length===total);
-  if(!rows.length){showToast('⚠️ Export ke liye koi data nahi hai — pehle filter/search check karein','warn');return false;}
+  if(!rows.length){showToast('No data to export. Check the filter / search first.','warn');return false;}
   const data=rows.map(tr=>[...tr.children].slice(0,keepCount).map(td=>td.textContent.replace(/\s+/g,' ').trim()));
   downloadCSV(filename,[headers,...data]);
-  showToast('📥 CSV downloaded — '+rows.length+' rows');
+  showToast('CSV downloaded — '+rows.length+' rows');
   return true;
 }
-function today(){return new Date().toISOString().slice(0,10)}
+// The LOCAL calendar day as YYYY-MM-DD. toISOString() is UTC, which in India
+// gave yesterday's date on every form between midnight and 05:30.
+function today(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
 // India financial year (Apr–Mar), e.g. sarvFinancialYear() -> "2026-27",
 // sarvFinancialYear(true) -> "26-27". Rolls over automatically with the date.
 function sarvFinancialYear(shortStart){
@@ -295,7 +297,7 @@ function lockToMasterList(el,getValidValues){
     const ok=getValidValues().some(v=>(v||'').trim().toLowerCase()===val.toLowerCase());
     if(!ok){
       this.value='';
-      showToast(`❌ "${val}" Master Data mein nahi mila — pehle Master Data tab se add karein`,'warn');
+      showToast(`"${val}" was not found in Master Data. Add it from the Master Data tab first.`,'warn');
     }
   });
 }
@@ -306,14 +308,14 @@ function renderReqEmpDetails(){
   const dept=(byId('p_reqDepartment')?.value||'').trim();
   const contact=(byId('p_reqContact')?.value||'').trim();
   if(!name&&!desig&&!dept&&!contact){
-    box.innerHTML='<span style="color:#94a3b8;font-weight:400;">Employee Code enter karein — Name / Designation / Department / Contact yahan auto-fill honge</span>';
+    box.innerHTML='<span style="color:#94a3b8;font-weight:400;">Enter the Employee Code; Name / Designation / Department / Contact are filled in here</span>';
     return;
   }
   const parts=[];
-  if(name)parts.push('&#128100; <b>'+escText(name)+'</b>');
+  if(name)parts.push('<b>'+escText(name)+'</b>');
   if(desig)parts.push(escText(desig));
   if(dept)parts.push(escText(dept));
-  if(contact)parts.push('&#128222; '+escText(contact));
+  if(contact)parts.push(''+escText(contact));
   box.innerHTML=parts.join(' &nbsp;&middot;&nbsp; ');
 }
 function onEmpCodeInput(val){
@@ -343,7 +345,7 @@ function onEmpCodeInput(val){
   }
   s('p_reqContact', emp.contact_no||'');
   renderReqEmpDetails();
-  showToast(`✅ ${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
+  showToast(`${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
 }
 
 /* The three Receiver fields are read-only, so this is the ONLY thing that
@@ -368,7 +370,7 @@ function onOutEmpCodeInput(val){
   setOutReceiverField('outReceiverName', emp.person_name||'');
   setOutReceiverField('outDesignation',  emp.designation||'');
   setOutReceiverField('outDepartment',   emp.department||'');
-  showToast(`✅ ${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
+  showToast(`${emp.person_name} — ${emp.designation||''} (${emp.department||''})`, 'success');
 }
 /* lockName: only true once the user has actually COMMITTED a pick (the
    'change' event — Enter on a dropdown option, clicking one, or leaving the
@@ -500,18 +502,18 @@ function applyCategoryPurchaser(category){
   const cat=String(category||'').trim();
   if(!cat)return;
   if(!sarvCatPurLoaded){
-    catPurWarnOnce_('notloaded','⚠️ Category-wise Purchaser list load nahi hui — page refresh karein','warn');
+    catPurWarnOnce_('notloaded','The category-wise Purchaser list did not load. Please refresh the page.','warn');
     return;
   }
   // Nothing mapped at all almost always means the table was seeded but never
   // filled in. Saying so beats leaving the field mysteriously blank.
   if(!Object.keys(sarvCategoryPurchasers).length){
-    catPurWarnOnce_('empty','⚠️ Kisi bhi category ka Purchaser set nahi hai — Supabase ke category_purchasers table me purchaser_name bharein','warn');
+    catPurWarnOnce_('empty','No category has a Purchaser set. Fill in purchaser_name in the Supabase category_purchasers table.','warn');
     return;
   }
   const want=sarvCategoryPurchasers[cat.toUpperCase()];
   if(!want){
-    catPurWarnOnce_('nocat:'+cat.toUpperCase(),'ℹ️ "'+cat+'" category ka Purchaser set nahi hai — category_purchasers table me add karein','warn');
+    catPurWarnOnce_('nocat:'+cat.toUpperCase(),'No Purchaser is set for the "'+cat+'" category. Add it to the category_purchasers table.','warn');
     return;
   }
   // Matched case- and space-insensitively, and the dropdown's OWN spelling is
@@ -520,19 +522,19 @@ function applyCategoryPurchaser(category){
   const norm=s=>String(s||'').trim().toUpperCase().replace(/\s+/g,' ');
   const opt=[...sel.options].find(o=>o.value&&norm(o.value)===norm(want));
   if(!opt){
-    catPurWarnOnce_('noopt:'+norm(want),'⚠️ "'+want+'" Purchaser dropdown me nahi hai — category_purchasers me spelling theek karein','warn');
+    catPurWarnOnce_('noopt:'+norm(want),'"'+want+'" is not in the Purchaser dropdown. Correct the spelling in category_purchasers.','warn');
     return;
   }
   if(!sel.value){
     sel.value=opt.value;sarvPurchaserAutoFilled=true;
-    showToast('👤 Purchaser auto-select: '+opt.value+' ('+cat+')');
+    showToast('Purchaser auto-select: '+opt.value+' ('+cat+')');
     return;
   }
   if(norm(sel.value)===norm(opt.value))return;   // already right
   if(sarvPurchaserAutoFilled){
     // We filled it from an earlier row and this row disagrees. Keep the first
     // one and say so — the user decides which is right.
-    showToast('⚠️ "'+cat+'" ka Purchaser "'+opt.value+'" hai, par PR par "'+sel.value+'" laga hai. Zaroorat ho to khud badlein.','warn');
+    showToast('The Purchaser for "'+cat+'" is "'+opt.value+'", but the PR has "'+sel.value+'". Change it yourself if needed.','warn');
   }
 }
 /* ── PO Number picker ────────────────────────────────────────────
@@ -563,7 +565,7 @@ function renderPoNumberPanel(){
   const draftPos=inwDraftPoNoSet_();
   if(!opts.length){
     panel.innerHTML=draftHtml+'<div style="padding:10px;color:#94a3b8;font-size:11px;">'
-      +(sup?'"'+escText(sup)+'" ke liye koi open PO nahi mila.':'Koi open PO nahi hai.')
+      +(sup?'No open PO found for "'+escText(sup)+'".':'There are no open POs.')
       +'</div>';
   }else{
     panel.innerHTML=draftHtml+opts.map(po=>{
@@ -575,7 +577,7 @@ function renderPoNumberPanel(){
         /* Said on the PO's own row as well: whoever ticks this PO to type a
            fresh receipt needs to know an approved one is already waiting for
            it, or the same material gets entered twice. */
-        +(hasDraft?' <span title="Is PO par MD-approved draft save hai — upar se load karein" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:0 5px;font-size:9px;font-weight:800;">✅ APPROVED DRAFT</span>':'')
+        +(hasDraft?' <span title="An MD-approved draft is saved on this PO; load it from above" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;border-radius:4px;padding:0 5px;font-size:9px;font-weight:800;">APPROVED DRAFT</span>':'')
         +'</span></label>';
     }).join('');
   }
@@ -590,7 +592,7 @@ function renderPoNumberPanel(){
       if(sarvInwDraftActive){
         cb.checked=sarvSelectedPoNos.includes(cb.value);
         togglePoNumberPanel(false);
-        return showToast('🔒 '+INW_DRAFT_PICKER_TITLE,'warn');
+        return showToast(''+INW_DRAFT_PICKER_TITLE,'warn');
       }
       sarvSelectedPoNos=[...panel.querySelectorAll('.sarv-po-opt:checked')].map(x=>x.value);
       updatePoNumberBtnText();
@@ -677,8 +679,8 @@ function syncInwPrField(){
   const star=byId('inwPrNoStar');
   if(star)star.style.display=inwPrRequired_()?'':'none';
   btn.title=inwPrRequired_()
-    ?'Without PO par receive karne ke liye kam se kam ek PR select karna zaroori hai'
-    :'Optional — is receipt ko kisi PR se jodna ho to tick karein';
+    ?'At least one PR must be selected to receive Without PO'
+    :'Optional: tick to link this receipt to a PR';
 }
 async function loadPrDropdown_(){
   if(!SB_READY)return;
@@ -744,8 +746,8 @@ function renderPrNumberPanel(){
     // reads very differently from "no PRs exist" when somebody is hunting for
     // one they raised yesterday.
     panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
-      +escText(INW_PR_PURCHASER)+' ki koi aisi PR nahi hai jiska maal abhi aana baaki ho.<br>'
-      +'<span style="color:#64748b;">Jo PR poori receive ho chuki hain wo yahan nahi dikhtin.</span></div>';
+      +escText(INW_PR_PURCHASER)+' has no PR with material still to arrive.<br>'
+      +'<span style="color:#64748b;">PRs that have been fully received are not shown here.</span></div>';
   }else{
     panel.innerHTML=sarvPrCatalog.map(p=>{
       const checked=sarvSelectedPrNos.includes(p.req_no)?' checked':'';
@@ -771,7 +773,7 @@ function renderPrNumberPanel(){
       if(sarvInwDraftActive){
         cb.checked=sarvSelectedPrNos.includes(cb.value);
         togglePrNumberPanel(false);
-        return showToast('🔒 '+INW_DRAFT_PICKER_TITLE,'warn');
+        return showToast(''+INW_DRAFT_PICKER_TITLE,'warn');
       }
       sarvSelectedPrNos=[...panel.querySelectorAll('.sarv-pr-opt:checked')].map(x=>x.value);
       // highlightRequiredField() paints the button red and clears itself on an
@@ -809,7 +811,7 @@ function renderInwPrDetails_(prs,lineCount){
     +' · Purchaser: <b>'+escText(INW_PR_PURCHASER)+'</b>'
     +' · Dept: <b>'+escText(depts.join(', ')||'-')+'</b>'
     +' · Items: <b>'+pNum(lineCount)+'</b>'
-    +' · Rate aur GST bill se bharein — PR me rate nahi hota.';
+    +' · Fill in the Rate and GST from the bill; a PR has no rate.';
   box.style.display='block';
 }
 /* How much of each PR item has ALREADY been booked in, before this entry.
@@ -991,10 +993,10 @@ async function prApplyCompletion_(verdicts){
   }
   return changed;
 }
-/* PO ke through aaya maal, PR no. + item NAME par keyed — bilkul wahi key jo
-   Pending Items list banati hai. Rejected / Cancelled PO ki quantity nahi
-   ginti: us order ka maal aaya hi nahi maana jaata, aur usi PR par naya PO
-   ban sakta hai. */
+/* Material received through a PO, keyed on PR no. + item NAME, exactly the
+   key the Pending Items list uses. Quantities on Rejected / Cancelled POs
+   aren't counted: that order's material is treated as never received, and a
+   new PO can be raised on the same PR. */
 async function prPoReceivedByKey_(reqNos){
   const out={};
   if(!SB_READY||!reqNos||!reqNos.length)return out;
@@ -1111,12 +1113,12 @@ async function loadPrsIntoInward(){
   // One query for every ticked PR, then the lines are laid out PR by PR so the
   // rows read in the same order as the picker.
   const q=await SB.from('purchase_requirement_lines').select('*').in('requirement_id',prs.map(p=>p.id)).order('id');
-  if(q.error){showToast('PR lines load nahi ho paaye: '+q.error.message,'error');return}
+  if(q.error){showToast('PR lines could not be loaded: '+q.error.message,'error');return}
   const allLines=q.data||[];
   const byReq=new Map(prs.map(p=>[String(p.id),[]]));
   allLines.forEach(l=>{const k=String(l.requirement_id);if(byReq.has(k))byReq.get(k).push(l);});
   const empty=prs.filter(p=>!(byReq.get(String(p.id))||[]).length).map(p=>p.req_no);
-  if(empty.length)showToast('⚠️ In PR me koi item nahi hai: '+empty.join(', '),'warn');
+  if(empty.length)showToast('These PRs have no items: '+empty.join(', '),'warn');
   if(tb)tb.innerHTML='';
   // Same Item-Master-only resolve the PO loader uses, so Description and
   // Category are the Master's word rather than a frozen copy on the line.
@@ -1178,10 +1180,10 @@ async function loadPrsIntoInward(){
   if(unresolved.length){
     const names=[...new Set(unresolved)];
     console.warn('[SARV] PR lines not found in Item Master:',names.join(', '));
-    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+    showToast(''+names.length+' item(s) not found in the Item Master; Description / Category are blank: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
   }
   renderInwPrDetails_(prs,total);
-  if(total)showToast('✅ '+prs.length+' PR ke '+total+' item load ho gaye — Qty aur Rate check karke Submit karein');
+  if(total)showToast('Loaded '+total+' item(s) from '+prs.length+' PR(s). Check Qty and Rate, then Submit.');
 }
 function setSelectedPoNos(list){
   sarvSelectedPoNos=[...new Set((list||[]).filter(Boolean))];
@@ -1267,7 +1269,7 @@ async function loadPoIntoInward(poNo){
   // records one supplier's material.
   const vendors=[...new Set(pos.map(p=>String(p.vendor_name||'').trim().toUpperCase()))];
   if(vendors.length>1){
-    showToast('⛔ Alag-alag Supplier ke POs ek saath select nahi ho sakte','error');
+    showToast('POs from different suppliers cannot be selected together','error');
     setSelectedPoNos([pos[0].po_no]);
     return loadPoIntoInward();
   }
@@ -1283,7 +1285,7 @@ async function loadPoIntoInward(poNo){
   const nat=byId('inwNatureOfInward');
   if(nat&&nat.value!=='Purchase'){nat.value='Purchase';nat.dispatchEvent(new Event('change'));}
   const q=await SB.from('purchase_order_lines').select('*').in('purchase_order_id',pos.map(p=>p.id)).order('line_no');
-  if(q.error){showToast('PO lines load nahi ho paaye: '+q.error.message,'error');return}
+  if(q.error){showToast('PO lines could not be loaded: '+q.error.message,'error');return}
   const poById={};pos.forEach(p=>{poById[p.id]=p});
   const lines=q.data||[],tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   // Item Description and Category come from the Item Master and NOWHERE else.
@@ -1344,7 +1346,7 @@ async function loadPoIntoInward(poNo){
   if(unresolved.length){
     const names=[...new Set(unresolved)];
     console.warn('[SARV] PO lines not found in Item Master:',names.join(', '));
-    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+    showToast(''+names.length+' item(s) not found in the Item Master; Description / Category are blank: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
   }
   if(box){
     const ordered=pos.reduce((s,p)=>s+pNum(p.total_qty),0),received=pos.reduce((s,p)=>s+pNum(p.received_qty),0);
@@ -1413,11 +1415,11 @@ function renderPoInfoRow(tr,info){
   // the strip is hidden rather than left as an empty grey band.
   if(!p){cell.innerHTML='';info.style.display='none';return;}
   info.style.display='';
-  /* Rang docStripLines_ tay karta hai — wahi function jo HTML print aur
-     native PDF ko feed karta hai. Yahan sirf pill ki shakl di jaati hai, to
-     screen par jo rang dikhta hai bilkul wahi chhapta bhi hai. */
+  /* The colour is decided by docStripLines_, the same function that feeds the
+     HTML print and the native PDF. Only the pill shape is applied here, so the
+     colour on screen is exactly the colour that prints. */
   const pill=s=>'<span style="display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">'
-    // Caption apni value ke rang me — wahi stripLblColor_ jo dono prints use karte hain.
+    // The caption in its value's colour: the same stripLblColor_ both prints use.
     +'<span style="color:'+stripLblColor_(s)+';font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;">'+escText(s.lbl)+'</span>'
     +'<b style="color:'+s.c+';font-size:11px;'+(s.bg?('background:'+s.bg+';padding:0 4px;border-radius:3px;'):'')+'">'+escText(s.t)+'</b></span>';
   // Blue PO / green PR / amber Return, so the kind of document this row is
@@ -1426,8 +1428,8 @@ function renderPoInfoRow(tr,info){
   const line=(mt,inner)=>'<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:10px;'
     +(mt?'margin-top:4px;':'')+'">'+inner+'</div>';
   const rateNote=docStripRateNote_(p);
-  // Pehli line Qty ki, doosri (jab PO par weight ho) Weight ki — usi chaar
-  // headings ke kram me.
+  // First line for Qty, second (when the PO has a weight) for Weight, in the
+  // same order as the four headings.
   cell.innerHTML=docStripLines_(p).map((segs,i)=>
       line(i>0,segs.map(s=>s.lbl?pill(s):tag(s)).join(''))).join('')
     /* Third line, same as the printed copy — the rate the PO agreed, shown the
@@ -1473,10 +1475,10 @@ function setInwardPoLock(locked){
     el.style.cursor=locked?'not-allowed':'';
     el.title=locked?title:'';
   };
-  lock(byId('supplierName'),'PO ke against Supplier Name PO se aata hai — change nahi kar sakte');
-  document.querySelectorAll('#itemTableBody .item-name').forEach(el=>lock(el,'PO ke against Item Name PO se aata hai — change nahi kar sakte'));
+  lock(byId('supplierName'),'Against a PO, the Supplier Name comes from the PO and cannot be changed');
+  document.querySelectorAll('#itemTableBody .item-name').forEach(el=>lock(el,'Against a PO, the Item Name comes from the PO and cannot be changed'));
   const nat=byId('inwNatureOfInward');
-  if(nat){nat.disabled=locked;nat.style.background=locked?'#f1f5f9':'';nat.title=locked?'PO ke against Nature of Inward hamesha Purchase hota hai':'';}
+  if(nat){nat.disabled=locked;nat.style.background=locked?'#f1f5f9':'';nat.title=locked?'Against a PO, the Nature of Inward is always Purchase':'';}
   // Unlocking above hands the Nature dropdown back; a Nature pinned from the
   // Home chooser outranks that, so it is re-asserted here.
   if(!locked)applyHomeNatureLocks();
@@ -1647,7 +1649,7 @@ async function issuedForLot_(lotNo, excludeId){
 // ── Saved Lot picker (single pick — one Issue entry carries one lot) ──────
 function updateOutLotBtnText(){
   const b=byId('outLotBtn');if(!b)return;
-  b.textContent=sarvActiveTrimsLot?('📋 LOT '+sarvActiveTrimsLot.lotNo):'📋 Saved Lot';
+  b.textContent=sarvActiveTrimsLot?('LOT '+sarvActiveTrimsLot.lotNo):'Saved Lot';
   b.style.background=sarvActiveTrimsLot?'#ede9fe':'';
   b.style.color=sarvActiveTrimsLot?'#4c1d95':'';
 }
@@ -1655,8 +1657,8 @@ function renderOutLotPanel(){
   const panel=byId('outLotPanel');if(!panel)return;
   const opts=sarvTrimsLotCatalog;
   if(!opts.length){
-    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">Koi saved Trims Lot nahi mila.<br>'
-      +'Manufacturing › <b>Trims Manager</b> me Order + Lot ki sheet save karein, phir yahan list me aa jayegi.</div>';
+    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">No saved Trims Lot found.<br>'
+      +'Save the Order + Lot sheet in Manufacturing › <b>Trims Manager</b>, and it will appear in this list.</div>';
     return;
   }
   const cur=sarvActiveTrimsLot?sarvActiveTrimsLot.norm:trimsNormLot_(pVal('outLotNo'));
@@ -1692,8 +1694,8 @@ function renderOutLotDetails_(lot,count){
     +' · '+(lot.manual?'Party':'Buyer')+': <b>'+escText(lot.party||'-')+'</b>'
     +(lot.brand?' · Brand: <b>'+escText(lot.brand)+'</b>':'')
     +(lot.designs.length?' · Design: <b>'+escText(lot.designs.join(', '))+'</b>':'')
-    +' · <b>'+pNum(count)+'</b> required item'+(pNum(count)===1?'':'s')+' Trims sheet se bhare gaye'
-    +' — <span style="font-weight:700;">har row par Machine Name &amp; No. bharna zaroori hai</span>.';
+    +' · <b>'+pNum(count)+'</b> required item'+(pNum(count)===1?'':'s')+' filled from the Trims sheet'
+    +'; <span style="font-weight:700;">Machine Name &amp; No. is required on every row</span>.';
   box.style.display='block';
 }
 
@@ -1717,13 +1719,13 @@ async function loadTrimsLotIntoOutward(rawLot,opts){
     return false;
   }
   if(!lot.lines.length){
-    showToast('⚠️ LOT '+lot.lotNo+' ki Trims sheet me koi aisa item nahi hai jiska Store Standard Name aur Lot Req Qty dono bhare hon — Trims Manager me poora karein','warn');
+    showToast('The Trims sheet for LOT '+lot.lotNo+' has no item with both a Store Standard Name and a Lot Req Qty. Complete it in Trims Manager.','warn');
     renderOutLotDetails_(lot,0);updateOutLotBtnText();
     return false;
   }
   // Anything already typed would be thrown away, so it is asked for first.
   const filled=outwardItemRows_().filter(tr=>(tr.querySelector('.out-item-name')?.value||'').trim()||pNum(tr.querySelector('.out-qty')?.value));
-  if(filled.length&&!o.force&&!confirm('LOT '+lot.lotNo+' ki required item list bharni hai?\n\nAbhi form par bhari '+filled.length+' row hat jayengi.'))
+  if(filled.length&&!o.force&&!confirm('Fill in the required item list for LOT '+lot.lotNo+'?\n\nThe '+filled.length+' row(s) already on the form will be removed.'))
     return false;
 
   let issued={};
@@ -1732,7 +1734,7 @@ async function loadTrimsLotIntoOutward(rawLot,opts){
     // The requirement list is still worth loading without it — the strip then
     // counts "already issued" as 0 and says so rather than being hidden.
     console.warn('[SARV] issued-so-far lookup failed:',e.message||e);
-    showToast('⚠️ Is lot ka pehle issue hua maal nahi pata chala — sub-row me "Already" 0 dikhega: '+(e.message||e),'warn');
+    showToast('Could not find what was already issued for this lot; the sub-row will show "Already" as 0: '+(e.message||e),'warn');
   }
   const resolve=await poLineItemResolver_(lot.lines.map(l=>({item_id:l.itemId,item_name:l.itemName})));
   if(tb)tb.innerHTML='';
@@ -1768,9 +1770,9 @@ async function loadTrimsLotIntoOutward(rawLot,opts){
   updateOutLotBtnText();
   if(unresolved.length){
     const names=[...new Set(unresolved)];
-    showToast('⚠️ '+names.length+' item Item Master me nahi mile — Description / Category blank hain: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
+    showToast(''+names.length+' item(s) not found in the Item Master; Description / Category are blank: '+names.slice(0,3).join(', ')+(names.length>3?' …':''),'warn');
   }
-  showToast('📋 LOT '+lot.lotNo+' ki '+lot.lines.length+' required item bhar gayi — Qty me <b>pending</b> qty aayi hai. Har row par Machine Name &amp; No. chunein.');
+  showToast('Filled '+lot.lines.length+' required item(s) for LOT '+lot.lotNo+'; Qty shows the <b>pending</b> qty. Choose the Machine Name &amp; No. on every row.');
   return true;
 }
 // Takes the lot link off every row (and its sub-row) without touching what was typed.
@@ -1870,7 +1872,7 @@ function renderRepairOutwardPanel(){
   if(hint)hint.textContent=multi?'(tick one or more, same party only)':'(single selection — run the repair_outward_no migration for multi)';
   const opts=sarvRepairOutwardCatalog||[];
   if(!opts.length){
-    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">Koi pending / partial repair outward nahi hai.</div>';
+    panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">There are no pending / partial repair outwards.</div>';
   }else{
     panel.innerHTML=opts.map(o=>{
       const checked=sarvSelectedRepairOutNos.includes(o.document_no)?' checked':'';
@@ -2059,7 +2061,7 @@ async function loadRepairOutwardIntoInward(){
   // belong to the same party - same rule the PO picker enforces.
   const parties=[...new Set(sel.map(o=>String(o.party_name||'').trim().toUpperCase()))];
   if(parties.length>1){
-    showToast('&#9940; Alag-alag Party ke Repair Outwards ek saath select nahi ho sakte','error');
+    showToast('Repair Outwards for different parties cannot be selected together','error');
     setSelectedRepairOutNos([sel[0].document_no]);
     return loadRepairOutwardIntoInward();
   }
@@ -2081,7 +2083,7 @@ async function loadRepairOutwardIntoInward(){
   }else if(stripEl)stripEl.style.display='none';
   const lq=await SB.from('outward_lines').select('*, items(name,description,make,category,uom)')
     .in('outward_id',sel.map(o=>o.id)).order('id');
-  if(lq.error){showToast('Outward lines load nahi ho paaye: '+lq.error.message,'error');return}
+  if(lq.error){showToast('Outward lines could not be loaded: '+lq.error.message,'error');return}
   const outById={};sel.forEach(o=>{outById[o.id]=o});
   const lines=lq.data||[];
   /* What has already come back, PER ITEM per outward. The outward's own
@@ -2132,9 +2134,9 @@ let sarvRepairTrackerRows=[];
 window.loadRepairTracker=async function(){
   const tb=byId('repairTrackerBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
   const statusText=byId('repairStatusText');
-  tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:#94a3b8;">⏳ Loading repair tracker...</td></tr>';
+  tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:#94a3b8;">Loading repair tracker...</td></tr>';
   if(statusText)statusText.textContent='Loading...';
   try{
     const outwards=await fetchAllRows('outward_entries','*','outward_date',q=>q.eq('nature_of_dispatch','Repair'));
@@ -2181,7 +2183,7 @@ window.loadRepairTracker=async function(){
     renderRepairTrackerTable();
   }catch(e){
     dbError(e);
-    tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading repair tracker</td></tr>';
+    tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:16px;color:#ef4444;">Error loading repair tracker</td></tr>';
   }
 };
 window.renderRepairTrackerTable=function(){
@@ -2216,13 +2218,13 @@ window.renderRepairTrackerTable=function(){
     return;
   }
   const statusBadge=s=>{
-    if(s==='COMPLETE')return '<span style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">✅ Complete</span>';
+    if(s==='COMPLETE')return '<span style="background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">Complete</span>';
     if(s==='PARTIAL')return '<span style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">◔ Partial</span>';
     return '<span style="background:#fef3c7;color:#d97706;border:1px solid #fde68a;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">⬤ Pending</span>';
   };
   tb.innerHTML=rows.map((r,i)=>{
     const o=r.o;
-    const outPdf=r.pdfMap[o.document_no]?`<a href="${escText(r.pdfMap[o.document_no])}" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">📄 View PDF</a>`:'<span style="color:#cbd5e1;">—</span>';
+    const outPdf=r.pdfMap[o.document_no]?`<a href="${escText(r.pdfMap[o.document_no])}" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">View PDF</a>`:'<span style="color:#cbd5e1;">—</span>';
     const inwardLinks=r.recvEntries.length?r.recvEntries.map(e=>r.pdfMap[e.document_no]?`<a href="${escText(r.pdfMap[e.document_no])}" target="_blank" rel="noopener" style="color:#16a34a;font-weight:700;text-decoration:none;">${escText(e.document_no)}</a>`:escText(e.document_no)).join(', '):'<span style="color:#cbd5e1;">—</span>';
     return `<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;">
         <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
@@ -2328,7 +2330,7 @@ function askSecret({title,subtitle,recordInfo,label,confirmText}={}){
       // that too, fail loudly rather than throwing inside the save path.
       let v=null;
       try{v=window.prompt((subtitle||title||'Password')+':');}
-      catch(e){showToast('Is browser me password prompt support nahi hai','error');}
+      catch(e){showToast('This browser does not support the password prompt','error');}
       resolve(v);return;
     }
     const setTxt=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
@@ -2338,7 +2340,7 @@ function askSecret({title,subtitle,recordInfo,label,confirmText}={}){
     const lbl=modal.querySelector('.form-group label');
     if(lbl)lbl.textContent=label||'Edit Password';
     const okBtn=byId('pwdGateVerifyBtn'),cancelBtn=byId('pwdGateCancelBtn'),err=byId('pwdGateError');
-    if(okBtn)okBtn.innerHTML=confirmText||'&#128275; Verify &amp; Edit';
+    if(okBtn)okBtn.innerHTML=confirmText||'Verify &amp; Edit';
     if(err){err.style.display='none';err.textContent='';}
     input.value='';
     // Asked for from inside other popups too (Admin Panel → Add User sits at
@@ -2367,7 +2369,7 @@ function askSecret({title,subtitle,recordInfo,label,confirmText}={}){
   });
 }
 async function verifyEditPassword(reason){
-  if(!SB_READY){showToast('Supabase configure karein','warn');return false;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return false;}
   // Only whether a password EXISTS is asked here — the hash itself is never
   // fetched. The comparison happens server-side in verify_role_pin(); see the
   // ROLE PIN MANAGEMENT block for why.
@@ -2377,27 +2379,27 @@ async function verifyEditPassword(reason){
     if(q.error)throw q.error;
     exists=!!q.data;
   }catch(e){
-    showToast('Edit Password check nahi ho paaya: '+(e.message||e),'error');
+    showToast('The Edit Password could not be checked: '+(e.message||e),'error');
     return false;
   }
   if(!exists){
-    showToast('⚠️ Edit Password set nahi hai — Admin Settings > Change Passwords me set kare','warn');
+    showToast('The Edit Password is not set. Set it under Admin Settings > Change Passwords.','warn');
     return false;
   }
   const entered=await askSecret({
     title:'Authorization Required',
-    subtitle:'PO se alag values save karne ke liye Edit Password chahiye',
+    subtitle:'The Edit Password is required to save values that differ from the PO',
     recordInfo:reason||'Record: —',
   });
   if(entered==null)return false;
-  if(!entered.trim()){showToast('Edit Password khali nahi ho sakta','warn');return false;}
+  if(!entered.trim()){showToast('The Edit Password cannot be empty','warn');return false;}
   try{
     const v=await SB.rpc('verify_role_pin',{p_role:'EDIT_PASSWORD',p_pin:entered.trim()});
     if(v.error)throw v.error;
-    if(!v.data){showToast('❌ Galat Edit Password','error');return false;}
+    if(!v.data){showToast('Incorrect Edit Password','error');return false;}
   }catch(e){
     // A check that cannot run must not be read as a pass.
-    showToast('Edit Password verify nahi ho paaya: '+(e.message||e),'error');
+    showToast('The Edit Password could not be verified: '+(e.message||e),'error');
     return false;
   }
   return true;
@@ -2556,8 +2558,8 @@ async function ensureInwardApproval_(rows,overrides){
      to the MD for an entry they have already signed off, and leave the first
      approval sitting unused. */
   if(sarvInwDraftActive&&sarvInwDraftActive.signature&&sig!==sarvInwDraftActive.signature){
-    showToast('⛔ Is form ki values <b>'+escText(sarvInwDraftActive.requestNo)+'</b> ki approved values se '
-      +'mel nahi khaa rahi — draft hatakar dobara load karein, phir Submit karein.','error');
+    showToast('The values on this form and the approved values of <b>'+escText(sarvInwDraftActive.requestNo)+'</b> '
+      +'do not match. Remove the draft, load it again, then Submit.','error');
     return false;
   }
   const reasonText='PO / PR se alag values mili:\n• '+overrides.join('\n• ');
@@ -2571,30 +2573,30 @@ async function ensureInwardApproval_(rows,overrides){
     if(inwardApprovalTableMissing_(e)){
       // No table, no approval desk — fall back to the Edit Password rather
       // than making the receipt unsaveable, and say what to run.
-      showToast('⚠️ <b>inward_approvals</b> table nahi hai — <code>INWARD_APPROVAL_MIGRATION.sql</code> chalayein.<br>Tab tak excess / rate / extra item sirf Edit Password se save hoga.','warn');
+      showToast('The <b>inward_approvals</b> table is missing. Run <code>INWARD_APPROVAL_MIGRATION.sql</code>.<br>Until then, excess / rate / extra items can only be saved with the Edit Password.','warn');
       return await verifyEditPassword(reasonText);
     }
-    showToast('Inward Approval check nahi ho paaya: '+(e.message||e),'error');
+    showToast('The Inward Approval could not be checked: '+(e.message||e),'error');
     return false;
   }
   const status=String((existing&&existing.status)||'');
   if(status==='Approved'){
-    showToast('✅ MD ne ye entry approve kar di hai ('+escText(existing.decided_by||'MD')+') — save ho rahi hai');
+    showToast('The MD has approved this entry ('+escText(existing.decided_by||'MD')+'); saving now');
     return true;
   }
   if(status==='Pending'){
-    showToast('⏳ Ye entry MD ke paas approval ke liye bheji ja chuki hai ('+escText(existing.request_no||'')+').<br>'
-      +'Jab tak mobile app ke <b>PO Receipts ▸ Inward Approval</b> me approve nahi hoti, Submit Inward nahi hoga. '
-      +'Approve hone par ye khud hi <b>PO Number list</b> me draft ban kar aa jayegi — dobara type karne ki zaroorat nahi.','warn');
+    showToast('This entry has already been sent to the MD for approval ('+escText(existing.request_no||'')+').<br>'
+      +'Submit Inward will not work until it is approved in the mobile app under <b>PO Receipts ▸ Inward Approval</b>. '
+      +'Once approved it appears as a draft in the <b>PO Number list</b> by itself; there is no need to type it again.','warn');
     return false;
   }
   const wasRejected=status==='Rejected';
   const ask=wasRejected
-    ?('❌ MD ne ye entry REJECT kar di thi'
+    ?('MD ne ye entry REJECT kar di thi'
       +(existing.remarks?('\n\nWajah: '+existing.remarks):'')
-      +'\n\nValues theek karke dobara approval ke liye bhejein?')
-    :('Is entry me PO / PR se alag values hain:\n\n• '+overrides.join('\n• ')
-      +'\n\nMD ki approval ke bina ye save nahi hogi.\nAbhi approval ke liye bhej dein?');
+      +'\n\nCorrect the values and send it for approval again?')
+    :('This entry has values that differ from the PO / PR:\n\n• '+overrides.join('\n• ')
+      +'\n\nIt cannot be saved without the MD\'s approval.\nSend it for approval now?');
   if(!confirm(ask))return false;
   const purchasers=await inwardApprovalPurchasers_(poNos,prNos);
   const requestNo='IA-'+Date.now().toString(36).toUpperCase()+'-'+Math.floor(Math.random()*900+100);
@@ -2619,12 +2621,12 @@ async function ensureInwardApproval_(rows,overrides){
       : await SB.from(INWARD_APPROVAL_TABLE).insert(payload);
     if(w.error)throw w.error;
   }catch(e){
-    showToast('Approval request bhej nahi paaye: '+(e.message||e),'error');
+    showToast('The approval request could not be sent: '+(e.message||e),'error');
     return false;
   }
-  showToast('📨 Approval request bhej di gayi ('+escText(payload.request_no)+')'
-    +'.<br>MD ke mobile app me <b>PO Receipts ▸ Inward Approval</b> me approve hone ke baad ye entry '
-    +'<b>PO Number list</b> me "MD APPROVED — DRAFT SAVED" ke neeche aa jayegi — wahan se load karke jab chahein Submit karein.','warn');
+  showToast('Approval request sent ('+escText(payload.request_no)+')'
+    +'.<br>Once the MD approves it in the mobile app under <b>PO Receipts ▸ Inward Approval</b>, this entry '
+    +'it will appear in the <b>PO Number list</b> under "MD APPROVED — DRAFT SAVED"; load it from there and Submit whenever you are ready.','warn');
   return false;
 }
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
@@ -2670,7 +2672,7 @@ function inwardDocOverrides(rows){
     if(p&&p.kind!=='RETURN'&&p.excess>0){
       const pending=Math.max(0,p.ordered-p.already);
       out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
-        +', pending sirf '+pending+'  (excess '+p.excess+')');
+        +', only '+pending+' pending  (excess '+p.excess+')');
     }
     /* WEIGHT, on exactly the same footing as qty. Only asked where the document
        actually carries an ordered weight (p.hasWeight) — a qty-only order has
@@ -2681,7 +2683,7 @@ function inwardDocOverrides(rows){
     if(p&&p.kind!=='RETURN'&&p.hasWeight&&p.excWt>0){
       const pendWt=Math.max(0,p.ordWt-p.alreadyWt);
       out.push(r.name+' — '+p.kind+' '+p.no+': received weight '+nWt_(r.weight)
-        +' KGS, pending sirf '+nWt_(pendWt)+' KGS  (excess '+nWt_(p.excWt)+' KGS)');
+        +' KGS, only '+nWt_(pendWt)+' KGS pending  (excess '+nWt_(p.excWt)+' KGS)');
     }
     // Both sides NET of discount: the row's List Price − Disc% against the PO
     // line's unit price − its Disc% (poUnitPrice, see loadPoIntoInward).
@@ -2697,7 +2699,7 @@ function inwardDocOverrides(rows){
        record is not "just added", even when it has no PO link because it
        predates the po_line_id column. */
     if(poBased&&!r.poLineId&&!r.savedLine)
-      out.push(r.name+': PO par ye item hai hi nahi — extra item add kiya gaya hai (qty '+pNum(r.qty)+')');
+      out.push(r.name+': this item is not on the PO at all; an extra item has been added (qty '+pNum(r.qty)+')');
   });
   return out;
 }
@@ -2733,9 +2735,9 @@ function inwardDocOverrides(rows){
 let sarvInwApprovedDrafts=[];      // approved, not-yet-booked approvals
 let sarvInwDraftActive=null;       // the one loaded on the form right now
 let sarvInwDraftListFailed=false;  // table missing / unreadable — asked once
-const INW_DRAFT_LOCK_TITLE='MD ne ye value approve ki hai — draft hataye bina badli nahi ja sakti';
-const INW_DRAFT_PICKER_TITLE='MD-approved draft load hai — PO / PR aur items badle nahi ja sakte. Pehle draft hatayein.';
-const INW_DRAFT_TYPE_MSG='MD-approved draft load hai — Entry Type wahi rahega jis par approval mili thi';
+const INW_DRAFT_LOCK_TITLE='The MD approved this value; it cannot be changed without removing the draft';
+const INW_DRAFT_PICKER_TITLE='An MD-approved draft is loaded; the PO / PR and items cannot be changed. Remove the draft first.';
+const INW_DRAFT_TYPE_MSG='An MD-approved draft is loaded; the Entry Type stays as it was when approved';
 
 /* reasons / payload come back as jsonb on a proper database and as TEXT on an
    older one, so both shapes are read — the same two readers mobile.html uses
@@ -2832,11 +2834,11 @@ function inwDraftListHtml_(){
   const hidden=all.length-mine.length;
   const head='<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;'
     +'background:#f0fdf4;border:1px solid #86efac;border-radius:5px;">'
-    +'<span style="font-size:10px;font-weight:800;color:#15803d;letter-spacing:.3px;">✅ MD APPROVED — DRAFT SAVED</span>'
+    +'<span style="font-size:10px;font-weight:800;color:#15803d;letter-spacing:.3px;">MD APPROVED — DRAFT SAVED</span>'
     +'<span style="background:#15803d;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;font-weight:800;">'+all.length+'</span>'
-    +'<button type="button" class="inw-draft-refresh" title="Approval list dobara padhein" '
+    +'<button type="button" class="inw-draft-refresh" title="Reload the approval list" '
     +'style="margin-left:auto;background:#fff;border:1px solid #86efac;color:#15803d;border-radius:4px;'
-    +'padding:1px 6px;font-size:9px;font-weight:800;cursor:pointer;">🔄 Refresh</button></div>';
+    +'padding:1px 6px;font-size:9px;font-weight:800;cursor:pointer;">Refresh</button></div>';
   const body=mine.length?mine.map(d=>{
     const active=sarvInwDraftActive&&String(sarvInwDraftActive.id)===String(d.id);
     const ex=inwDraftExcess_(d);
@@ -2858,21 +2860,21 @@ function inwDraftListHtml_(){
       +(pills.length?('<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;">'
         +pills.map(x=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 5px;font-size:9px;font-weight:800;">'
           +escText(x[0])+' '+escText(x[1])+'</span>').join('')+'</div>'):'')
-      +(reasons.length?('<div style="font-size:9px;color:#7c2d12;margin-top:3px;font-weight:600;">⚠ '
-        +escText(reasons[0])+(reasons.length>1?(' +'+(reasons.length-1)+' aur'):'')+'</div>'):'')
+      +(reasons.length?('<div style="font-size:9px;color:#7c2d12;margin-top:3px;font-weight:600;">'
+        +escText(reasons[0])+(reasons.length>1?(' +'+(reasons.length-1)+' more'):'')+'</div>'):'')
       +'<div style="font-size:9px;color:#15803d;margin-top:3px;font-weight:700;">✔ '
       +escText(d.decided_by||'MD')+(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</div>'
       +'<div style="margin-top:5px;">'
       +(active
-        ?'<button type="button" class="inw-draft-cancel" style="background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">✖ Draft hatayein</button>'
-        :'<button type="button" class="inw-draft-load" data-draft="'+escText(String(d.id))+'" style="background:#15803d;border:none;color:#fff;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">📥 Form me load karein</button>')
+        ?'<button type="button" class="inw-draft-cancel" style="background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">✖ Remove Draft</button>'
+        :'<button type="button" class="inw-draft-load" data-draft="'+escText(String(d.id))+'" style="background:#15803d;border:none;color:#fff;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">Load into form</button>')
       +'</div></div>';
   }).join(''):'<div style="padding:6px;font-size:10px;color:#64748b;font-weight:600;">'
-      +'Is supplier ke liye koi approved draft nahi — Supplier Name khali karke poori list dekhein.</div>';
+      +'No approved drafts for this supplier. Clear the Supplier Name to see the full list.</div>';
   const note=hidden>0?('<div style="padding:0 6px 5px;font-size:9px;color:#94a3b8;font-weight:600;">'
-    +hidden+' approved draft doosre supplier ke hain — Supplier Name khali karein to dikhenge.</div>'):'';
+    +hidden+' approved draft(s) belong to other suppliers; clear the Supplier Name to see them.</div>'):'';
   const sep='<div style="border-top:1px dashed #cbd5e1;margin:5px 0 4px;padding-top:4px;font-size:9px;'
-    +'font-weight:800;color:#94a3b8;letter-spacing:.3px;">OPEN PO — NAYI ENTRY</div>';
+    +'font-weight:800;color:#94a3b8;letter-spacing:.3px;">OPEN PO: NEW ENTRY</div>';
   return head+body+note+sep;
 }
 // The drafts block's own buttons. Called from renderPoNumberPanel, which
@@ -2883,7 +2885,7 @@ function inwDraftBindPanel_(panel){
     e.preventDefault();e.stopPropagation();
     loadInwardApprovedDrafts_().then(()=>{
       renderPoNumberPanel();
-      showToast('🔄 '+sarvInwApprovedDrafts.length+' MD-approved draft list me hain');
+      showToast(''+sarvInwApprovedDrafts.length+' MD-approved draft(s) in the list');
     }).catch(dbError);
   });
   panel.querySelectorAll('.inw-draft-load').forEach(b=>b.addEventListener('click',e=>{
@@ -3052,9 +3054,9 @@ function inwDraftAddRow_(it,ctx,poNos,prNos){
 }
 /* Load an approved draft onto the Inward form. */
 async function inwDraftLoad_(id){
-  if(!SB_READY)return showToast('Supabase configure karein','warn');
+  if(!SB_READY)return showToast('Please configure Supabase','warn');
   let d=sarvInwApprovedDrafts.find(x=>String(x.id)===String(id));
-  if(!d)return showToast('Ye approved draft list me nahi mila — 🔄 Refresh dabayein','warn');
+  if(!d)return showToast('This approved draft was not found in the list. Press Refresh.','warn');
   /* Re-read it before anything is loaded. "Any time later" can be days later:
      in the meantime the same draft may have been booked at another desk, or the
      MD may have changed their mind. */
@@ -3063,16 +3065,16 @@ async function inwDraftLoad_(id){
     if(q.error)throw q.error;
     if(!q.data){
       await loadInwardApprovedDrafts_();renderPoNumberPanel();
-      return showToast('❌ Ye approval ab database me nahi hai','error');
+      return showToast('This approval is no longer in the database','error');
     }
     d=q.data;
     if(String(d.status||'')!=='Approved'){
       await loadInwardApprovedDrafts_();renderPoNumberPanel();
-      return showToast('⚠️ Is request ka status ab <b>'+escText(d.status||'-')+'</b> hai — draft load nahi hoga','warn');
+      return showToast('This request\'s status is now <b>'+escText(d.status||'-')+'</b>; the draft will not load','warn');
     }
     if(d.used_on){
       await loadInwardApprovedDrafts_();renderPoNumberPanel();
-      return showToast('ℹ️ Ye draft pehle hi <b>'+escText(d.used_on)+'</b> par book ho chuka hai','warn');
+      return showToast('This draft has already been booked on <b>'+escText(d.used_on)+'</b>','warn');
     }
   }catch(e){
     // A re-read that cannot run must not shut the desk: the list row is used
@@ -3080,9 +3082,9 @@ async function inwDraftLoad_(id){
     console.warn('[SARV] Draft re-read skipped:',e.message||e);
   }
   const p=inwDraftPayload_(d), items=inwDraftItems_(d);
-  if(!items.length)return showToast('Is approval me koi item nahi hai — draft load nahi ho sakta','error');
-  if(sarvEditingInwardId&&!confirm('Abhi '+(sarvEditingInwardNo||'ek record')
-    +' edit mode me khula hai.\n\nUse chhodkar MD-approved draft load karein?'))return;
+  if(!items.length)return showToast('This approval has no items, so the draft cannot be loaded','error');
+  if(sarvEditingInwardId&&!confirm((sarvEditingInwardNo||'A record')
+    +' is open in edit mode.\n\nLeave it and load the MD-approved draft?'))return;
   activatePanel('inwardPanel');
   // The draft carries its OWN Nature of Inward — a Nature pinned by the Home
   // chooser must not overwrite what the MD approved.
@@ -3147,9 +3149,9 @@ async function inwDraftLoad_(id){
   const live=rowDataInward();
   const sig=inwardApprovalSignature_(live,inwardPoRefList_(live),inwardPrRefList_(live));
   if(d.signature&&sig!==d.signature)
-    showToast('⚠️ <b>'+escText(sarvInwDraftActive.requestNo)+'</b> load ho gaya, par is form ki values '
-      +'MD ki approved values se bilkul mel nahi khaa rahi — Submit par dobara approval maangi jayegi.<br>'
-      +'PO ya Item Master me badlav hua ho to MD se dobara approve karwayein.','warn');
+    showToast('<b>'+escText(sarvInwDraftActive.requestNo)+'</b> has loaded, but this form\'s values '
+      +'do not match the MD\'s approved values at all; approval will be requested again on Submit.<br>'
+      +'If the PO or Item Master has changed, ask the MD to approve again.','warn');
   const drift=[];
   items.forEach((it,i)=>{
     const r=live[i];if(!r)return;
@@ -3157,11 +3159,11 @@ async function inwDraftLoad_(id){
     if(Math.abs(pNum(sp.already)-pNum(it.already))>0.001)drift.push(it.name||'-');
   });
   if(drift.length)
-    showToast('ℹ️ Approval ke baad in item par aur maal aa chuka hai — strip par Already / Excess badla hua '
+    showToast('More material has arrived for these items since the approval; Already / Excess on the strip have changed '
       +'dikhega: '+escText([...new Set(drift)].slice(0,3).join(', '))+(drift.length>3?' …':'')
-      +'<br>MD ki approval usi Qty / Weight / Rate par hai, wo chalti rahegi.','warn');
-  showToast('✅ MD-approved draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> form me aa gaya — '
-    +'Qty / Weight / Rate locked hain. Remarks aur Photos jodkar jab chahein Submit karein.');
+      +'<br>The MD\'s approval is for that Qty / Weight / Rate and still stands.','warn');
+  showToast('MD-approved draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> loaded into the form; '
+    +'Qty / Weight / Rate are locked. Add Remarks and Photos and Submit whenever you are ready.');
   byId('inwDraftLockStrip')?.scrollIntoView({behavior:'smooth',block:'center'});
 }
 /* Puts the form back to a blank entry and leaves the draft untouched in the
@@ -3169,10 +3171,10 @@ async function inwDraftLoad_(id){
 function inwDraftCancel_(){
   const no=sarvInwDraftActive?sarvInwDraftActive.requestNo:'';
   if(!no)return;
-  if(!confirm('Draft '+no+' form se hata dein?\n\nApproval list me waise hi padi rahegi — jab chahein dobara load kar lein.'))return;
+  if(!confirm('Remove draft '+no+' from the form?\n\nIt stays in the approval list as it is; you can load it again any time.'))return;
   clearInwardForm();          // nulls the draft state and lifts the lock
   renderPoNumberPanel();
-  showToast('Draft '+escText(no)+' form se hata diya — approval list me abhi bhi maujood hai');
+  showToast('Draft '+escText(no)+' removed from the form; it is still in the approval list');
 }
 /* THE LOCK. Everything inwardApprovalSignature_ is computed from — and
    everything else that decides the amount the MD saw — goes read-only while a
@@ -3229,11 +3231,11 @@ function inwDraftRenderStrip_(){
     if(!n){box.style.display='none';box.innerHTML='';return}
     box.style.background='#f0fdf4';box.style.borderColor='#86efac';box.style.color='#14532d';
     box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-      +'<span style="font-weight:800;">✅ '+n+' MD-approved draft taiyar '+(n===1?'hai':'hain')+'</span>'
-      +'<span style="font-weight:600;">— PO Number list kholkar <b>📥 Form me load karein</b> dabayein; '
-      +'poori entry waise hi bhar jayegi jaise MD ne approve ki thi.</span>'
+      +'<span style="font-weight:800;">'+n+' MD-approved draft'+(n===1?' is':'s are')+' ready</span>'
+      +'<span style="font-weight:600;"> Open the PO Number list and press <b>Load into form</b>; '
+      +'the whole entry is filled in exactly as the MD approved it.</span>'
       +'<button type="button" id="inwDraftOpenPickerBtn" style="margin-left:auto;background:#15803d;border:none;'
-      +'color:#fff;border-radius:5px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">📥 Draft list</button>'
+      +'color:#fff;border-radius:5px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">Draft list</button>'
       +'</div>';
     box.style.display='block';
     byId('inwDraftOpenPickerBtn')?.addEventListener('click',e=>{
@@ -3248,7 +3250,7 @@ function inwDraftRenderStrip_(){
   const pill=(l,v)=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 6px;'
     +'font-size:10px;font-weight:800;">'+escText(l)+' '+escText(v)+'</span>';
   box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-    +'<span style="font-weight:800;color:#15803d;">🔒 MD APPROVED DRAFT</span>'
+    +'<span style="font-weight:800;color:#15803d;">MD APPROVED DRAFT</span>'
     +'<span style="font-weight:800;">'+escText(sarvInwDraftActive.requestNo)+'</span>'
     +'<span style="font-weight:700;">'+escText(inwDraftRef_(d))+'</span>'
     +'<span style="font-weight:600;">✔ '+escText(d.decided_by||'MD')
@@ -3257,10 +3259,10 @@ function inwDraftRenderStrip_(){
     +(ex.wt>0?pill('Excess Wt',nWt_(ex.wt)+' KGS'):'')
     +'<button type="button" id="inwDraftCancelBtn" style="margin-left:auto;background:#fee2e2;'
     +'border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 10px;font-size:10px;'
-    +'font-weight:800;cursor:pointer;">✖ Draft hatayein</button></div>'
-    +'<div style="margin-top:4px;font-weight:600;">Qty / Weight / Rate, items aur PO / PR link '
-    +'<b>locked</b> hain — MD ne inhi figures par approval di hai. Remarks aur Photos jodkar jab '
-    +'chahein Submit karein; tab tak ye draft approval list me padi rahegi.</div>'
+    +'font-weight:800;cursor:pointer;">✖ Remove Draft</button></div>'
+    +'<div style="margin-top:4px;font-weight:600;">Qty / Weight / Rate, items and the PO / PR link '
+    +'are <b>locked</b>; the MD approved these figures. Add Remarks and Photos and Submit whenever '
+    +'you are ready; until then this draft stays in the approval list.</div>'
     +(reasons.length?('<ul style="margin:4px 0 0;padding-left:18px;font-weight:600;">'
       +reasons.map(x=>'<li>'+escText(x)+'</li>').join('')+'</ul>'):'');
   box.style.display='block';
@@ -3343,8 +3345,8 @@ function activatePanel(id){
   if(id==='reportsPanel'&&SB_READY) loadReports().catch(()=>{});
   if(id==='itemTrackerPanel'&&SB_READY) initItemTrackerFilters().catch(()=>{});
   if(id==='repairTrackerPanel'&&SB_READY) loadRepairTracker().catch(()=>{});
-  /* Production › Design Master — designs aur unke matchings pehli baar yahan
-     load hote hain (uske baad cache se, Refresh par dobara). */
+  /* Production › Design Master: designs and their matchings load here the
+     first time (from the cache after that, and again on Refresh). */
   if(id==='productionPanel'&&SB_READY&&typeof dmEnsureLoaded==='function') dmEnsureLoaded().catch(()=>{});
 }
 function bindNavigation(){
@@ -3370,7 +3372,7 @@ function addNewRow(afterTr){
  <td><input type="text" class="table-input item-make" placeholder="Make" list="dl-item-make"></td>
  <td><input type="text" class="table-input item-cat" placeholder="Auto from Master" disabled></td>
  <td><input type="number" class="table-input qty-field" value="0" min="0"></td>
- <td><input type="text" class="table-input item-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td>
+ <td><input type="text" class="table-input item-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM is locked from the Item Master"></td>
  <td><input type="number" class="table-input weight-field" value="0" min="0"></td>
  <td><select class="table-input chip-select item-wunit"><option>KGS</option><option>LBS</option></select></td>
  <td><select class="table-input chip-select bill-basis-field"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td>
@@ -3378,7 +3380,7 @@ function addNewRow(afterTr){
  <td><input type="number" class="table-input discount-field" value="0" min="0" max="100" step=".01"></td>
  <td><input type="number" class="table-input rate-field" value="0" disabled></td>
  <td><select class="table-input chip-select item-gst-field"><option>5</option><option>12</option><option>18</option><option>28</option><option>0</option></select></td>
- <td class="row-total-cell">₹0.00</td><td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-btn" title="Ye row hatayein">✕</button></td>`;
+ <td class="row-total-cell">₹0.00</td><td class="row-actions"><button type="button" class="add-row-btn" title="Add a new row below this one">+</button><button type="button" class="delete-btn" title="Remove this row">✕</button></td>`;
  let anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
  if(anchor){const nx=anchor.nextElementSibling;if(nx&&nx.classList.contains('po-info-row'))anchor=nx;}
  if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
@@ -3405,8 +3407,8 @@ function addOutwardItemRow(afterTr){
  const tb=byId('outwardItemTableBody');if(!tb)return;const tr=document.createElement('tr');tr.innerHTML=`
  <td class="out-sr-no">—</td><td><input class="table-input out-item-name" placeholder="Type item name..." list="dl-out-item-name"></td>
  <td><input class="table-input out-item-desc" placeholder="Auto from Master" disabled></td><td><input class="table-input out-item-make" placeholder="Brand / OEM"></td>
- <td><input class="table-input out-item-cat" placeholder="Auto from Master" disabled></td><td><input class="table-input out-machine-name" placeholder="Select machine..." title="Machine Master list se select karein — Machine No. apne-aap bhar jayega"></td><td><input class="table-input out-machine-no" placeholder="No." title="Machine Master list se select karein"></td>
- <td><input type="number" class="table-input out-qty" value="0" min="0" step=".01"></td><td><input class="table-input out-qty-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input out-weight" value="0" min="0" step=".001"></td><td><select class="table-input out-wunit"><option>KGS</option><option>GMS</option><option>LBS</option></select></td><td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-btn" title="Ye row hatayein">✕</button></td>`;
+ <td><input class="table-input out-item-cat" placeholder="Auto from Master" disabled></td><td><input class="table-input out-machine-name" placeholder="Select machine..." title="Select from the Machine Master list; the Machine No. fills in automatically"></td><td><input class="table-input out-machine-no" placeholder="No." title="Select from the Machine Master list"></td>
+ <td><input type="number" class="table-input out-qty" value="0" min="0" step=".01"></td><td><input class="table-input out-qty-uom" value="" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM is locked from the Item Master"></td><td><input type="number" class="table-input out-weight" value="0" min="0" step=".001"></td><td><select class="table-input out-wunit"><option>KGS</option><option>GMS</option><option>LBS</option></select></td><td class="row-actions"><button type="button" class="add-row-btn" title="Add a new row below this one">+</button><button type="button" class="delete-btn" title="Remove this row">✕</button></td>`;
  let anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
  if(anchor){const nx=anchor.nextElementSibling;if(nx&&nx.classList.contains('po-info-row'))anchor=nx;}
  if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
@@ -3460,7 +3462,7 @@ function applyInwardNbGstLock(){
     sel.disabled=isNb;
     sel.style.background=isNb?'#f1f5f9':'';
     sel.style.cursor=isNb?'not-allowed':'';
-    sel.title=isNb?'INWARD NB non-billable hai — GST hamesha 0 rehta hai':'';
+    sel.title=isNb?'INWARD NB is non-billable; GST is always 0':'';
   });
   if(isNb)updateStoreTotals();
 }
@@ -3577,7 +3579,7 @@ const ISSUE_FIXED_FIELDS={
   outTransport:'BY HAND'
 };
 const ISSUE_FIXED_NATURE='CONSUMABLE';
-const ISSUE_FIXED_TITLE='ISSUE entry me yeh field fixed hai — change nahi ho sakta';
+const ISSUE_FIXED_TITLE='This field is fixed for an ISSUE entry and cannot be changed';
 function applyIssueFixedFields(){
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
   Object.keys(ISSUE_FIXED_FIELDS).forEach(id=>{
@@ -3609,9 +3611,9 @@ function populateNatureOfDispatch(){
   const sel=byId('outNatureOfDispatch');if(!sel)return;
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
   const cur=sel.value;
-  /* OUTWARD ki nature list Master Data › Dropdown Master se aati hai
-     (key erp_natureOfDispatch) — table me kuch na ho to wahi purana default.
-     ISSUE ki nature fixed hai, isi liye wo is list se bahar hai. */
+  /* The OUTWARD nature list comes from Master Data › Dropdown Master
+     (key erp_natureOfDispatch); if the table has nothing, the old default is
+     used. The ISSUE nature is fixed, so it is outside this list. */
   let opts=['Non-Returnable','Repair','Transfer','Sample'];
   if(isIssue)opts=[ISSUE_FIXED_NATURE];
   else{try{const l=sarvDropdownList('erp_natureOfDispatch');if(l&&l.length)opts=l;}catch(e){}}
@@ -3628,7 +3630,7 @@ function populateNatureOfDispatch(){
     sel.disabled=true;sel.style.background='#f1f5f9';sel.style.cursor='not-allowed';sel.title=ISSUE_FIXED_TITLE;
   }else{
     sel.disabled=false;sel.style.background='';sel.style.cursor='pointer';
-    sel.title='Compulsory — dispatch ki nature select karein';
+    sel.title='Required: select the nature of dispatch';
     // Only an earlier real pick is carried over; otherwise it stays unselected.
     sel.value=(cur&&opts.includes(cur))?cur:'';
   }
@@ -3653,12 +3655,12 @@ function addPurchaseMainRow(afterTr){
    <td><input class="table-input col-desc" placeholder="Auto from Master" disabled></td>
    <td><input class="table-input col-make" placeholder="Make / Brand" list="p_dl-item-makes" autocomplete="off"></td>
    <td><input class="table-input col-cat" placeholder="Auto from Master" disabled></td>
-   <td><input class="table-input col-machine" placeholder="Select machine..." list="dl-inw-machine-name" autocomplete="off" title="Machine Master list se select karein"></td>
+   <td><input class="table-input col-machine" placeholder="Select machine..." list="dl-inw-machine-name" autocomplete="off" title="Select from the Machine Master list"></td>
    <td><input type="number" class="table-input col-qty" min="0" step="any"></td>
    <td><input class="table-input col-uom" placeholder="Auto from Master" readonly style="background:#f1f5f9;"></td>
    <td><input type="number" class="table-input col-grossweight" min="0" step="any"></td>
    <td><input class="table-input col-rem" placeholder="optional note"></td>
-   <td class="row-actions"><button type="button" class="add-row-btn" title="Iske neeche nayi row jodein">+</button><button type="button" class="delete-row-btn" title="Ye row hatayein">×</button></td>`;
+   <td class="row-actions"><button type="button" class="add-row-btn" title="Add a new row below this one">+</button><button type="button" class="delete-row-btn" title="Remove this row">×</button></td>`;
  const anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
  if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
  tr.querySelector('.delete-row-btn').onclick=()=>{tr.remove();refreshPurchaseTotals()};
@@ -3682,9 +3684,9 @@ function addPurchaseMainRow(afterTr){
  return tr;
 }
 function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
-async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');/* Same rule as saveRequirementWithPdf_: required_by is never written as NULL. */const requiredBy=(byId('p_requiredByDate')?.value||'').trim();if(!requiredBy)return showToast('⚠️ Required By Date chunna zaroori hai','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:requiredBy,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
-async function saveStoreInward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.item-name')?.value,desc:r.querySelector('.item-desc')?.value,make:r.querySelector('.item-make')?.value,cat:r.querySelector('.item-cat')?.value,uom:r.querySelector('.item-uom')?.value,qty:+r.querySelector('.qty-field')?.value||0,weight:+r.querySelector('.weight-field')?.value||0,rate:+r.querySelector('.rate-field')?.value||0,tax:+r.querySelector('.item-gst-field')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one inward item required','warn');const no=await nextNo('INWARD');const h=await SB.from('inward_entries').insert({document_no:no,entry_type:byId('entryTypeSelect')?.value||'INWARD',receiving_date:byId('receivingDate')?.value||today(),invoice_no:byId('invoiceNumber')?.value||null,invoice_date:byId('invoiceDate')?.value||null,party_state:byId('partyState')?.value||null,notes:byId('inwRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.qty*r.rate})}const ins=await SB.from('inward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Inward saved: '+no)}
-async function saveStoreOutward(){if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
+async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');/* Same rule as saveRequirementWithPdf_: required_by is never written as NULL. */const requiredBy=(byId('p_requiredByDate')?.value||'').trim();if(!requiredBy)return showToast('Please choose a Required By Date','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:requiredBy,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
+async function saveStoreInward(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.item-name')?.value,desc:r.querySelector('.item-desc')?.value,make:r.querySelector('.item-make')?.value,cat:r.querySelector('.item-cat')?.value,uom:r.querySelector('.item-uom')?.value,qty:+r.querySelector('.qty-field')?.value||0,weight:+r.querySelector('.weight-field')?.value||0,rate:+r.querySelector('.rate-field')?.value||0,tax:+r.querySelector('.item-gst-field')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one inward item required','warn');const no=await nextNo('INWARD');const h=await SB.from('inward_entries').insert({document_no:no,entry_type:byId('entryTypeSelect')?.value||'INWARD',receiving_date:byId('receivingDate')?.value||today(),invoice_no:byId('invoiceNumber')?.value||null,invoice_date:byId('invoiceDate')?.value||null,party_state:byId('partyState')?.value||null,notes:byId('inwRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.qty*r.rate})}const ins=await SB.from('inward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Inward saved: '+no)}
+async function saveStoreOutward(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
 function bindOriginalControls(){
   const add=(id,fn)=>{const e=byId(id);if(e)e.addEventListener('click',fn)};
   // A row added from the button is scrolled into view with its Item Name
@@ -3846,13 +3848,13 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
   if(id==='employeeMasterSub')loadEmployeeMaster().catch(()=>{});
   if(id==='machineMasterSub') loadMachineMaster().catch(()=>{});
-  /* Fabric aur Brand — dono ek doosre ka data padhte hain (link chips,
-     fabric dropdown, "unlinked" count), isi liye jo khule wo doosre ko
-     bhi chupchaap load karwa leta hai (sarvFbmLoad ke andar). */
+  /* Fabric and Brand read each other's data (link chips, fabric dropdown,
+     the "unlinked" count), so whichever opens also quietly loads the other
+     (inside sarvFbmLoad). */
   if(id==='fabricMasterSub') sarvFbmLoad('FABRIC').catch(()=>{});
   if(id==='brandMasterSub')  sarvFbmLoad('BRAND').catch(()=>{});
-  /* Buyer Master ki screen par DO table hain — party aur agency. Dono
-     alag master hain (alag table, alag access), isi liye dono load. */
+  /* The Buyer Master screen has TWO tables: party and agency. They are
+     separate masters (separate tables, separate access), so both load. */
   if(id==='buyerMasterSub'){
     sarvFbmLoad('BUYER').catch(()=>{});
     sarvFbmLoad('AGENCY').catch(()=>{});
@@ -3912,12 +3914,12 @@ window.submitPasswordChange=async function(){
   const err=byId('pwdChangeError'),ok=byId('pwdChangeSuccess');
   const show=(el,msg)=>{if(!el)return;el.textContent=msg;el.style.display='block';};
   if(err)err.style.display='none';if(ok)ok.style.display='none';
-  if(!sarvCan('CHANGE_PASSWORDS'))return show(err,'⛔ Aapke role ko Change Passwords ka access nahi hai');
-  if(!role)return show(err,'Pehle konsa password change karna hai select karo');
-  if(!SB_READY)return show(err,'Supabase URL/key configure karein');
+  if(!sarvCan('CHANGE_PASSWORDS'))return show(err,'Your role does not have access to Change Passwords');
+  if(!role)return show(err,'First select which password to change');
+  if(!SB_READY)return show(err,'Please configure the Supabase URL/key');
   const newPin=byId('pwdNew')?.value||'',confirmPin=byId('pwdConfirm')?.value||'';
-  if(!newPin||newPin.length<4)return show(err,'New password kam se kam 4 characters ka ho');
-  if(newPin!==confirmPin)return show(err,'New password aur Confirm password match nahi kar rahe');
+  if(!newPin||newPin.length<4)return show(err,'New password must be at least 4 characters');
+  if(newPin!==confirmPin)return show(err,'The new password and the confirmation do not match');
   try{
     // The TARGET role's current password is still not asked for — an Admin
     // resetting someone's forgotten PIN has no way to produce it.
@@ -3927,27 +3929,27 @@ window.submitPasswordChange=async function(){
     // it. A browser saying "I am the Admin" cannot authorise anything; the
     // table is no longer writable directly, which is the whole point.
     const adminPin=await askSecret({
-      title:'Admin PIN Confirm Karein',
-      subtitle:'Password reset server par Admin PIN se authorise hota hai',
+      title:'Confirm with Admin PIN',
+      subtitle:'The password reset is authorised on the server with the Admin PIN',
       recordInfo:'Reset: '+((byId('pwdChangeTarget')?.selectedOptions[0]?.textContent||role).trim()),
       label:'Admin PIN',
-      confirmText:'&#128272; Confirm &amp; Reset'
+      confirmText:'Confirm &amp; Reset'
     });
     if(adminPin==null)return;                       // cancelled
-    if(!adminPin.trim())return show(err,'Admin PIN khali nahi ho sakta');
+    if(!adminPin.trim())return show(err,'The Admin PIN cannot be empty');
     const u=await SB.rpc('set_role_pin',{p_role:role,p_new_pin:newPin,p_admin_pin:adminPin.trim()});
     if(u.error)throw u.error;
-    if(!u.data)return show(err,'❌ Admin PIN galat hai — password change nahi hua');
+    if(!u.data)return show(err,'Incorrect Admin PIN; the password was not changed');
     // The dropdown's own label covers every option, including the ones that
     // aren't login roles (View PIN, Edit Password) and so aren't in SARV_ROLE_LABEL.
     const sel=byId('pwdChangeTarget');
     const label=(sel&&sel.selectedOptions[0]&&sel.selectedOptions[0].textContent.trim())||role;
     show(ok,isAdmin()
-      ? `✅ ${label} reset ho gaya — naya password us user ko de dein`
-      : '✅ Password successfully update ho gaya');
+      ? `${label} has been reset. Give the new password to that user.`
+      : 'Password updated successfully');
     ['pwdOld','pwdNew','pwdConfirm'].forEach(id=>{const e=byId(id);if(e)e.value='';});
   }catch(e){
-    if(/does not exist|relation/i.test(e.message||''))show(err,'⚠️ role_pins table missing — APPROVAL_CHAIN_MIGRATION.sql run karein');
+    if(/does not exist|relation/i.test(e.message||''))show(err,'role_pins table missing. Please run APPROVAL_CHAIN_MIGRATION.sql.');
     else show(err,e.message||String(e));
   }
 };
@@ -3957,45 +3959,45 @@ window.submitPasswordChange=async function(){
    once logged in; sarvCurrentRole is checked only where a specific
    permission is needed (e.g. isAdmin() for cancelling a PO).
 ================================================================ */
-/* CMP_USER / PK_USER — Complaint App aur Packing ke wo users jo
-   SINGLE_LOGIN_MIGRATION.sql se `app_users` me aaye. Unka ERP me koi kaam
-   nahi hai (unka role unke apne app me cmp_profiles.role / packing
-   profiles.role se aata hai, waisa hi); ye role sirf itna kehta hai ki
-   "ye banda ERP ka user hai, par uska app alag hai". Yahan naam hona
-   zaroori hai — boot par login isi map se pehchana jaata hai. */
+/* CMP_USER / PK_USER: users of the Complaint App and Packing who came into
+   `app_users` through SINGLE_LOGIN_MIGRATION.sql. They have no work in the
+   ERP (their role in their own app still comes from cmp_profiles.role /
+   packing profiles.role); this role only says "this person is an ERP user,
+   but their app is a different one". The name must be listed here, because
+   login on boot is recognised from this map. */
 const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User',CMP_USER:'Complaint App User',PK_USER:'Packing User'};
 const SARV_LOGIN_STORAGE_KEY='sarv_active_role';
 const SARV_LOGIN_USER_KEY='sarv_active_user';
 const SARV_LOGIN_SIG_KEY='sarv_active_user_sig';
-/* ── Ek user, kai role ────────────────────────────────────────────────
-   Do alag cheezein, jaan-boojh kar alag:
+/* ── One user, several roles ──────────────────────────────────────────
+   Two different things, kept apart on purpose:
 
-     sarvCurrentRole  — PRIMARY role. Sirf EK. "Kisne kiya" wala kaam isi
-                        se hota hai: PR / PO par sign, audit stamp, PDF
-                        par naam, role badge. Isi wajah se app ka ek bhi
-                        purana `sarvCurrentRole` padhne wala hissa nahi
-                        tootta — uske liye duniya waisi hi hai.
+     sarvCurrentRole  — the PRIMARY role. Only ONE. Everything about "who did
+                        it" uses this: signatures on PR / PO, the audit
+                        stamp, the name on the PDF, the role badge. That is
+                        why no older part of the app that reads
+                        `sarvCurrentRole` breaks; its world is unchanged.
 
-     sarvCurrentRoles — SAARE role. Sirf ACCESS ka faisla isse hota hai,
-                        aur wo JOD (union) par hai: kisi ek feature par
-                        ek bhi role YES kahe to mil jaata hai.
+     sarvCurrentRoles — ALL the roles. Used only to decide ACCESS, and that
+                        is a UNION: if any single role says YES to a
+                        feature, the user gets it.
 
-   Matlab: Rajesh "Store Incharge + Accountant" ho to use dono ka kaam
-   milta hai, par sign hamesha uske primary role se jaata hai — "kis role
-   se sign hua" ka jawab kabhi dhundhla nahi hota. */
+   So if Rajesh is "Store Incharge + Accountant" he gets the work of both,
+   but always signs with his primary role; the answer to "which role signed
+   this" is never ambiguous. */
 let sarvCurrentRole=null;
 let sarvCurrentRoles=[];
-/* Login ke peeche ka user — {id,name,roles,primary_role,app_access,...}.
-   Role-PIN (shared) login par naam nahi hota, tab ye null rehta hai aur
-   access sirf us ek role ka. */
+/* The user behind the login: {id,name,roles,primary_role,app_access,...}.
+   A shared Role-PIN login has no name; then this stays null and access is
+   that one role's only. */
 let sarvCurrentUser=null;
-/* Saare apps ka saajha session token (app_sessions). Complaint App aur
-   Packing isi se apni pehchaan lete hain — unki apni login screen tab
-   dikhti hai jab ye token na ho ya na chale. */
+/* The session token shared by all apps (app_sessions). The Complaint App and
+   Packing identify the user from it; their own login screen shows only when
+   this token is missing or invalid. */
 const SARV_SSO_TOKEN_KEY='sarv_sso_token';
 const SARV_LOGIN_ROLES_KEY='sarv_active_roles';
 
-// Access ke liye role ki list — purane single-role login par bhi chalti hai.
+// The list of roles for access; also works with the old single-role login.
 function sarvRoles_(){
   if(sarvCurrentRoles&&sarvCurrentRoles.length)return sarvCurrentRoles;
   return sarvCurrentRole?[sarvCurrentRole]:[];
@@ -4003,17 +4005,17 @@ function sarvRoles_(){
 function isAdmin(){return sarvRoles_().indexOf('ADMIN_PIN')>=0;}
 function sarvLoginLabel_(){
   const rs=sarvRoles_();
-  // Ek se zyada role ho to badge me "Primary +2" — poori list title me.
+  // With more than one role the badge shows "Primary +2"; the full list is in the title.
   const roleTxt=!rs.length?(sarvCurrentRole||'—')
     :(SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||rs[0])+(rs.length>1?' +'+(rs.length-1):'');
   return roleTxt+(sarvCurrentUser&&sarvCurrentUser.name?' — '+sarvCurrentUser.name:'');
 }
-// Role badge ka hover — saare role poore naam ke saath.
+// Hover text for the role badge: every role in full.
 function sarvRolesTitle_(){
   const rs=sarvRoles_();
   if(rs.length<2)return '';
   return 'Roles: '+rs.map(r=>(SARV_ROLE_LABEL[r]||r)+(r===sarvCurrentRole?' (primary)':'')).join(', ')
-    +'\nAccess in sabka jod hai; sign primary role se jaata hai.';
+    +'\nAccess is the union of all of these; signatures use the primary role.';
 }
 /* Fills the User dropdown under Role from app_users. Purchaser always needs a
    name (each one has their own PIN); for the other roles a user is optional —
@@ -4024,9 +4026,9 @@ async function sarvFillLoginUsers_(){
   if(!grp||!sel)return;
   if(!role){grp.style.display='none';sel.innerHTML='';return;}
   await sarvLoadAppUsers_();
-  /* roles[] par match — jiska ye SECONDARY role hai wo bhi is list me
-     aata hai. Pehle sirf primary `role` dekha jaata tha, to multi-role
-     user apne doosre role ke neeche milta hi nahi tha. */
+  /* Matched on roles[], so users who hold this as a SECONDARY role are in
+     the list too. Only the primary `role` used to be checked, so a
+     multi-role user never appeared under their other role. */
   const users=sarvAppUsers.filter(u=>u.is_active
     &&((u.roles&&u.roles.length)?u.roles.indexOf(role)>=0:u.role===role));
   let opts='';
@@ -4042,10 +4044,10 @@ async function sarvFillLoginUsers_(){
   }
   sel.innerHTML=opts;grp.style.display='';
 }
-/* ── Login mode: naam se (aam) ya Role PIN se (purana) ────────────────
-   Purana raaste ko hataya nahi gaya — jiska naam Admin Panel › Users me
-   nahi hai, ya jahan ye migration abhi chali hi nahi, wahan wahi chalta
-   hai. Isi liye ye badlaav kisi ko bahar nahi karta. */
+/* ── Login mode: by name (normal) or by Role PIN (older) ──────────────
+   The older path was not removed: it is still used by people whose name is
+   not in Admin Panel › Users, and where this migration hasn't run yet. That
+   is why this change locks nobody out. */
 let sarvLoginByRole=false;
 window.sarvToggleLoginMode=function(){
   sarvLoginByRole=!sarvLoginByRole;
@@ -4054,41 +4056,41 @@ window.sarvToggleLoginMode=function(){
   if(ng)ng.style.display=sarvLoginByRole?'none':'';
   if(rg)rg.style.display=sarvLoginByRole?'':'none';
   if(ug&&sarvLoginByRole===false)ug.style.display='none';
-  if(b)b.textContent=sarvLoginByRole?'← Naam se login karein':'Role PIN se login karein';
+  if(b)b.textContent=sarvLoginByRole?'← Log in by name':'Login with Role PIN';
   if(e)e.style.display='none';
   const f=byId(sarvLoginByRole?'sarvLoginRole':'sarvLoginNameBox');
   if(f)setTimeout(()=>{try{f.focus();}catch(x){}},20);
 };
 
-/* Naam ka datalist — saare active users. Ek hi naam do role me ho to
-   bhi ek hi entry (user row ek hi hai, role kai ho sakte hain). */
+/* The name datalist: all active users. A name with two roles still has a
+   single entry (there is one user row, which can hold many roles). */
 async function sarvFillLoginNames_(){
   const dl=byId('sarvLoginNameList');if(!dl)return;
   await sarvLoadAppUsers_();
   const us=sarvAppUsers.filter(u=>u.is_active);
   dl.innerHTML=us.map(u=>'<option value="'+escText(u.user_name)+'"></option>').join('');
-  /* Ek bhi naam nahi (migration nahi chali / koi user nahi bana) to naam
-     se login ka koi matlab nahi — seedha purane raaste par bhej dete
-     hain, warna banda khaali box ke saamne atak jaata hai. */
+  /* No names at all (migration not run / no users created), so logging in
+     by name makes no sense; go straight to the older path, otherwise the user
+     is stuck in front of an empty box. */
   if(!us.length&&!sarvLoginByRole){
     sarvToggleLoginMode();
     const h=byId('sarvLoginNameHint');
     if(h)h.textContent='';
     const e=byId('sarvLoginError');
-    if(e){e.textContent='Abhi koi user nahi bana — Role PIN se login karein (Admin Panel › Users me naam jodein).';e.style.display='block';}
+    if(e){e.textContent='No users have been created yet. Log in with the Role PIN (add names under Admin Panel › Users).';e.style.display='block';}
   }
 }
-/* Naam type karte waqt uske role dikha dete hain — banda login se pehle
-   hi jaan le ki use kya access milega. */
+/* Show the roles while a name is typed, so the user knows what access they
+   will get before logging in. */
 window.sarvLoginNameHint_=function(){
   const h=byId('sarvLoginNameHint');if(!h)return;
   const v=String(byId('sarvLoginNameBox')?.value||'').trim().toUpperCase();
   if(!v){h.textContent='';h.style.color='';return;}
   const u=sarvAppUsers.find(x=>x.is_active&&String(x.user_name).toUpperCase()===v);
-  if(!u){h.textContent='Ye naam list me nahi hai — type karke list se chunein';h.style.color='#b45309';return;}
+  if(!u){h.textContent='This name is not in the list. Type and choose from the list.';h.style.color='#b45309';return;}
   const rs=(u.roles&&u.roles.length?u.roles:[u.role]).filter(Boolean);
-  h.innerHTML='\u{1F464} '+rs.map(r=>escText(SARV_ROLE_LABEL[r]||r)).join(' + ')
-    +(rs.length>1?' <i>(sab ka access milega)</i>':'');
+  h.innerHTML=''+rs.map(r=>escText(SARV_ROLE_LABEL[r]||r)).join(' + ')
+    +(rs.length>1?' <i>(access to all of them)</i>':'');
   h.style.color='#0369a1';
 };
 
@@ -4097,26 +4099,26 @@ async function sarvAttemptLogin(){
   if(err)err.style.display='none';
   const show=msg=>{if(err){err.textContent=msg;err.style.display='block';}};
   const pin=byId('sarvLoginPin')?.value||'';
-  if(!SB_READY)return show('Supabase URL/key configure karein');
+  if(!SB_READY)return show('Please configure the Supabase URL/key');
 
-  /* ── Naam se login: ek user, uske saare role ─────────────────────── */
+  /* ── Login by name: one user, all their roles ────────────────────── */
   if(!sarvLoginByRole){
     const nm=String(byId('sarvLoginNameBox')?.value||'').trim().toUpperCase();
-    if(!nm)return show('Apna naam chunein');
+    if(!nm)return show('Choose your name');
     const u=sarvAppUsers.find(x=>x.is_active&&String(x.user_name).toUpperCase()===nm);
-    if(!u)return show('"'+nm+'" naam ka koi active user nahi mila — list se chunein, ya Role PIN se login karein');
-    if(!pin)return show('PIN enter karo');
+    if(!u)return show('No active user named "'+nm+'" was found. Choose from the list, or log in with the Role PIN.');
+    if(!pin)return show('Please enter your PIN');
     return sarvLoginAsUser_(u,pin,show);
   }
 
   /* ── Purana raasta: Role (+ optional user) + PIN ─────────────────── */
   const role=byId('sarvLoginRole')?.value||'';
   const userVal=byId('sarvLoginUserGroup')?.style.display!=='none'?(byId('sarvLoginUser')?.value||''):'';
-  if(!role)return show('Role select karo');
-  if(role==='PURCHASER'&&!userVal)return show('Purchaser Name select karo');
-  if(!pin)return show('PIN enter karo');
-  // Naam chuna hua ho to wahi multi-role raasta — role dropdown sirf
-  // list chhoti karne ke liye tha.
+  if(!role)return show('Please select a role');
+  if(role==='PURCHASER'&&!userVal)return show('Please select the purchaser name');
+  if(!pin)return show('Please enter your PIN');
+  // If a name is chosen, use the multi-role path; the role dropdown was only
+  // there to shorten the list.
   if(userVal.startsWith('id:')){
     const u=sarvAppUsers.find(x=>String(x.id)===userVal.slice(3));
     if(u)return sarvLoginAsUser_(u,pin,show);
@@ -4128,55 +4130,54 @@ async function sarvAttemptLogin(){
       const id=userVal.slice(3);
       const v=await SB.rpc('verify_app_user_pin',{p_user_id:id,p_pin:pin});
       if(v.error)throw v.error;
-      if(!v.data)return show('Galat PIN');
+      if(!v.data)return show('Incorrect PIN');
       const u=sarvAppUsers.find(x=>x.id===id);
       user={id,name:u?u.user_name:''};
     }else{
       const key=userVal.startsWith('pname:')?('PURCHASER::'+userVal.slice(6)):role;
       const ex=await SB.rpc('role_pin_exists',{p_role:key});
       if(ex.error)throw ex.error;
-      if(!ex.data)return show('Is role / user ke liye PIN set nahi hai — Admin se Settings me set karwayein');
+      if(!ex.data)return show('No PIN is set for this role / user. Ask the Admin to set it in Settings.');
       const v=await SB.rpc('verify_role_pin',{p_role:key,p_pin:pin});
       if(v.error)throw v.error;
-      if(!v.data)return show('Galat PIN');
+      if(!v.data)return show('Incorrect PIN');
       if(userVal.startsWith('pname:'))user={id:null,name:userVal.slice(6)};
     }
-    // Order Form ka session bhi isi PIN se (ek hi login). Rukta nahi — fail ho to
-    // Order Form apni login screen dikhata hai aur wajah bhi.
+    // The Order Form session also comes from this PIN (one login). We don't wait: if it
+    // fails, the Order Form shows its own login screen with the reason.
     sarvSalesSso_(userVal.startsWith('pname:')?('PURCHASER::'+userVal.slice(6)):role,user&&user.id?user.id:null,pin);
-    /* Role PIN wala raasta: access sirf usi EK role ka. Yahan user row
-       nahi hoti (shared PIN hai), isi liye na multi-role milta hai na
-       per-user override — aur yahi iska matlab bhi hai. */
+    /* The Role PIN path: access to that ONE role only. There is no user row
+       here (it is a shared PIN), so there is neither multi-role nor a
+       per-user override, and that is exactly what it means. */
     sarvCurrentRole=role;sarvCurrentRoles=[role];sarvCurrentUser=user;
     sarvFinishLogin_();
   }catch(e){
-    if(/verify_app_user_pin/i.test(e.message||''))show('⚠️ ADMIN_PANEL_MIGRATION.sql abhi run nahi hua — user login ke liye pehle wo chalayein');
-    else if(/does not exist|relation/i.test(e.message||''))show('⚠️ role_pins table missing — APPROVAL_CHAIN_MIGRATION.sql run karein');
+    if(/verify_app_user_pin/i.test(e.message||''))show('ADMIN_PANEL_MIGRATION.sql has not been run yet. Run it first to enable user login.');
+    else if(/does not exist|relation/i.test(e.message||''))show('role_pins table missing. Please run APPROVAL_CHAIN_MIGRATION.sql.');
     else show(e.message||String(e));
   }
 }
-/* ── Naam se login — ek user, uske saare role ─────────────────────────
-   Do kaam hote hain, isi kram me:
+/* ── Login by name: one user, all their roles ─────────────────────────
+   Two things happen, in this order:
 
-     1. erp_app_login() — PIN server par check hota hai aur EK session
-        token banta hai jo SAARE apps ke liye hai (app_sessions). Us row
-        par `allowed_apps` bhi likh dete hain: yani "is user ko kaun-kaun
-        se app khul sakte hain", jo faisla yahan JS me hota hai (role-wise
-        Tab Visibility + per-user override). Complaint App aur Packing
-        wahi list padhte hain — isi liye unhe permission ka poora matrix
-        samajhne ki zaroorat nahi padti.
+     1. erp_app_login(): the PIN is checked on the server and ONE session
+        token is created for ALL the apps (app_sessions). `allowed_apps` is
+        also written on that row, i.e. "which apps this user can open",
+        which is decided here in JS (role-wise Tab Visibility + per-user
+        override). The Complaint App and Packing read that list, so they
+        don't need to understand the whole permission matrix.
 
-     2. Agar wo RPC na ho (migration nahi chali) to CHUPCHAAP purane
-        raaste par — verify_app_user_pin() se PIN check karke single-role
-        login, bilkul pehle jaisa. Isi wajah se ye badlaav kisi ko bahar
-        nahi karta; bas external apps ka SSO us soorat me nahi milega.  */
+     2. If that RPC doesn't exist (migration not run), it QUIETLY falls back
+        to the older path: a single-role login with the PIN checked by
+        verify_app_user_pin(), exactly as before. That is why this change
+        locks nobody out; only SSO for the external apps is unavailable then. */
 async function sarvLoginAsUser_(u,pin,show){
   const roles=(u.roles&&u.roles.length?u.roles:[u.role]).filter(Boolean);
   try{
-    /* allowed_apps pehle nikaalna padta hai, par uske liye is user ka
-       access chahiye — aur access abhi lagu nahi hua. Isi liye thodi der
-       ke liye role/user set karke list banate hain, aur PIN galat nikla
-       to turant wapas khaali kar dete hain (neeche catch / !ok me). */
+    /* allowed_apps has to be worked out first, and that needs this user's
+       access, which isn't applied yet. So the role/user is set briefly to
+       build the list, and cleared again immediately if the PIN turns out to
+       be wrong (in the catch / !ok below). */
     const prevRole=sarvCurrentRole,prevRoles=sarvCurrentRoles,prevUser=sarvCurrentUser;
     sarvCurrentRole=u.role||roles[0];
     sarvCurrentRoles=roles;
@@ -4189,7 +4190,7 @@ async function sarvLoginAsUser_(u,pin,show){
       r=await SB.rpc('erp_app_login',{p_user_id:String(u.id),p_pin:pin,p_allowed_apps:apps});
       if(r.error)throw r.error;
     }catch(e){
-      // RPC hi nahi hai -> purana raasta, SSO ke bina.
+      // The RPC doesn't exist -> older path, without SSO.
       if(/erp_app_login|does not exist|schema cache/i.test(e.message||'')){
         restore();
         return sarvLoginLegacyUser_(u,pin,roles,show);
@@ -4199,11 +4200,11 @@ async function sarvLoginAsUser_(u,pin,show){
     const d=r.data||{};
     if(!d.success){
       restore();
-      const m={USER_NOT_FOUND:'User nahi mila — Refresh karein',USER_INACTIVE:'Ye user Inactive hai — Admin se kehein',
-        PIN_INVALID:'Galat PIN',PIN_CHECK_UNAVAILABLE:'⚠️ ADMIN_PANEL_MIGRATION.sql abhi run nahi hua'};
-      return show(m[d.error]||('Login nahi hua: '+(d.error||'unknown')));
+      const m={USER_NOT_FOUND:'User not found. Please refresh.',USER_INACTIVE:'This user is inactive. Please contact the Admin.',
+        PIN_INVALID:'Incorrect PIN',PIN_CHECK_UNAVAILABLE:'ADMIN_PANEL_MIGRATION.sql has not been run yet'};
+      return show(m[d.error]||('Login failed: '+(d.error||'unknown')));
     }
-    // Server se aayi pehchaan hi sach hai — wahi lagate hain.
+    // The identity from the server is the truth; that is what we apply.
     const su=d.user||{};
     sarvCurrentRole=su.primary_role||u.role||roles[0];
     sarvCurrentRoles=(Array.isArray(su.roles)&&su.roles.length?su.roles:roles).filter(Boolean);
@@ -4213,21 +4214,21 @@ async function sarvLoginAsUser_(u,pin,show){
       cmp_profile_id:su.cmp_profile_id||null,pk_profile_id:su.pk_profile_id||null,
       allowed_apps:Array.isArray(su.allowed_apps)?su.allowed_apps:apps};
     try{localStorage.setItem(SARV_SSO_TOKEN_KEY,d.token);}catch(e){}
-    // Order Form ka apna token (sales_erp_login) — wo pehle se chalta tha.
+    // The Order Form's own token (sales_erp_login); this already worked before.
     sarvSalesSso_(sarvCurrentRole,u.id,pin);
     sarvFinishLogin_();
   }catch(e){
-    if(/does not exist|relation/i.test(e.message||''))show('⚠️ UNIFIED_USERS_MIGRATION.sql abhi run nahi hua');
+    if(/does not exist|relation/i.test(e.message||''))show('UNIFIED_USERS_MIGRATION.sql has not been run yet');
     else show(e.message||String(e));
   }
 }
-/* Purana single-user login — tab chalta hai jab naya session RPC na ho.
-   Multi-role phir bhi milta hai (roles[] app_users se aata hai), bas
-   external apps ka SSO nahi. */
+/* The older single-user login, used when the new session RPC doesn't exist.
+   Multi-role still works (roles[] comes from app_users); only SSO for the
+   external apps is missing. */
 async function sarvLoginLegacyUser_(u,pin,roles,show){
   const v=await SB.rpc('verify_app_user_pin',{p_user_id:String(u.id),p_pin:pin});
   if(v.error)throw v.error;
-  if(!v.data)return show('Galat PIN');
+  if(!v.data)return show('Incorrect PIN');
   sarvCurrentRole=u.role||roles[0];
   sarvCurrentRoles=roles;
   sarvCurrentUser={id:u.id,name:u.user_name,roles:roles,primary_role:u.role,app_access:u.app_access||{}};
@@ -4235,8 +4236,8 @@ async function sarvLoginLegacyUser_(u,pin,roles,show){
   sarvFinishLogin_();
 }
 
-/* Jo har login ke aakhir me ek jaisa hota hai — ek hi jagah, taaki naam
-   wala, role wala aur legacy raasta teeno me farq na reh jaaye. */
+/* What happens the same way at the end of every login, in one place, so the
+   name, role and legacy paths can never drift apart. */
 function sarvFinishLogin_(){
   sarvPadForceDraw=false;
   try{
@@ -4247,7 +4248,7 @@ function sarvFinishLogin_(){
     localStorage.removeItem(SARV_LOGIN_SIG_KEY);
   }catch(e){}
   const badge=byId('sarvRoleBadge');
-  if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
+  if(badge){badge.textContent=''+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
   if(byId('sarvLoginPin'))byId('sarvLoginPin').value='';
   if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
@@ -4255,11 +4256,10 @@ function sarvFinishLogin_(){
   sarvGoHome();
 }
 
-/* "Is user ko kaun-kaun se app khul sakte hain" — Home page ke button hi
-   apps hain, to unhi ki keys (HOME_*) ka hisaab lagta hai. Yahi list
-   session par likhi jaati hai aur Complaint / Packing isi ko padhte
-   hain. Ek hi jagah se tay hota hai, isi liye "Home par button dikha par
-   app khula hi nahi" jaisa farq ban hi nahi sakta. */
+/* "Which apps this user can open": the Home page buttons are the apps, so it
+   is worked out from their keys (HOME_*). This is the list written on the
+   session, and Complaint / Packing read it. It is decided in one place, so
+   "the button showed on Home but the app didn't open" can never happen. */
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM'];
@@ -4267,14 +4267,14 @@ function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
 
-/* Reload par session se taaza pehchaan. Teen haal:
-     * session theek  -> roles / app_access server wale lagte hain
-     * session khatam -> seedha logout screen (Admin ne band kar diya ho
-                         sakta hai, ya 30 din ho gaye)
-     * RPC / net fail -> kuch nahi badalta, purana session chalta rehta
-                         (offline me app khulni chahiye)
-   Server par allowed_apps bhi dobara likh dete hain, taaki Admin ke
-   abhi kiye badlaav external apps me bhi turant lag jaayein. */
+/* A fresh identity from the session on reload. Three cases:
+     * session fine   -> the server's roles / app_access are applied
+     * session ended  -> straight to the logout screen (the Admin may have
+                         deactivated the user, or 30 days have passed)
+     * RPC / net fail -> nothing changes, the old session keeps working
+                         (the app must still open offline)
+   allowed_apps is also written to the server again, so changes the Admin
+   has just made apply in the external apps immediately. */
 async function sarvRefreshSsoSession_(){
   if(!SB_READY)return;
   let tok=null;
@@ -4282,21 +4282,21 @@ async function sarvRefreshSsoSession_(){
   if(!tok)return;
   let r;
   try{r=await SB.rpc('erp_app_session',{p_token:tok});}
-  catch(e){return;}                              // net / RPC nahi — chhodo
+  catch(e){return;}                              // no network / RPC; leave it
   if(r.error)return;
   const d=r.data||{};
   if(!d.success){
-    // Session ab nahi chalta — session khatam hone ka matlab logout hi hai.
+    // The session no longer works; an ended session simply means logout.
     try{localStorage.removeItem(SARV_SSO_TOKEN_KEY);}catch(e){}
     if(d.error==='USER_INACTIVE'||d.error==='SESSION_REVOKED'||d.error==='SESSION_EXPIRED'){
       sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
       try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
           localStorage.removeItem(SARV_LOGIN_USER_KEY);}catch(e){}
-      /* Pehle yahan ERP apna PIN gate khol deta tha. Ab nahi: login
-         sirf launcher.html par hota hai, isi liye wahan bhej dete hain
-         aur wajah URL me saath jaati hai (launcher use likh deta hai).
-         Gate ko ek pal ke liye dikhate hain — sirf parde ki tarah, taaki
-         navigation ke beech purana data khula na rahe. */
+      /* The ERP used to open its own PIN gate here. Not any more: login
+         happens only on launcher.html, so we send the user there with the
+         reason in the URL (the launcher displays it). The gate is shown for
+         a moment, only as a curtain, so old data isn't left visible during
+         the navigation. */
       const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
       location.replace('launcher.html?why='
         +(d.error==='USER_INACTIVE'?'USER_INACTIVE':d.error));
@@ -4318,10 +4318,10 @@ async function sarvRefreshSsoSession_(){
     localStorage.setItem(SARV_LOGIN_USER_KEY,JSON.stringify(sarvCurrentUser));
   }catch(e){}
   const badge=byId('sarvRoleBadge');
-  if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
+  if(badge){badge.textContent=''+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
   sarvApplyAccess();
-  /* Jo abhi hisaab lagaya, wahi session par likh dein — external apps
-     ko naya access bina dobara login kiye mil jaata hai. */
+  /* Write what was just worked out back to the session, so the external apps
+     get the new access without logging in again. */
   const apps=sarvAllowedApps_();
   const was=(su.allowed_apps||[]).join('|');
   if(apps.join('|')!==was){
@@ -4333,11 +4333,11 @@ async function sarvRefreshSsoSession_(){
    Logout button and the role badge in the header — land on this one function.
    The badge in particular sits next to the nav links, so a mis-click used to
    drop the session and send the user back to the PIN screen with no warning. */
-/* ── Order Form: ERP login hi uska login ──────────────────────────────
-   app_users ek hi user table hai (ORDER_FORM_USERS_MIGRATION.sql). ERP login
-   ke waqt PIN haath me hota hai, wahi server par dobara check karke Order Form
-   ka session token banta hai aur usi localStorage key me rakha jaata hai jo
-   order-form.html padhta hai — isi liye iframe bina login screen ke khulta hai. */
+/* ── Order Form: the ERP login is its login ───────────────────────────
+   app_users is the single user table (ORDER_FORM_USERS_MIGRATION.sql). At ERP
+   login the PIN is at hand; it is checked again on the server to create the
+   Order Form session token, which is stored under the same localStorage key
+   order-form.html reads. That is why the iframe opens without a login screen. */
 const SARV_SALES_TOKEN_KEY='sihf_sb_token', SARV_SALES_MSG_KEY='sihf_erp_sso_msg';
 async function sarvSalesSso_(roleKey,userId,pin){
   if(!SB_READY)return;
@@ -4350,28 +4350,28 @@ async function sarvSalesSso_(roleKey,userId,pin){
       localStorage.setItem(SARV_SALES_TOKEN_KEY,r.data.token);
       localStorage.removeItem(SARV_SALES_MSG_KEY);
     }else{
-      localStorage.setItem(SARV_SALES_MSG_KEY,(r.data&&r.data.error)||'Order Form ka access nahi hai');
+      localStorage.setItem(SARV_SALES_MSG_KEY,(r.data&&r.data.error)||'No access to the Order Form');
     }
-    // Pichhle user ka session server par bhi band.
+    // End the previous user's session on the server as well.
     if(old&&old!==(r.data&&r.data.token))SB.rpc('sales_logout',{p_token:old}).then(()=>{},()=>{});
   }catch(e){
-    console.warn('[SARV] Order Form SSO skipped (ORDER_FORM_USERS_MIGRATION.sql run hua?):',e.message||e);
-    try{localStorage.setItem(SARV_SALES_MSG_KEY,'ERP se Order Form login nahi hua — yahan ERP naam + PIN daalein');}catch(x){}
+    console.warn('[SARV] Order Form SSO skipped (has ORDER_FORM_USERS_MIGRATION.sql been run?):',e.message||e);
+    try{localStorage.setItem(SARV_SALES_MSG_KEY,'Order Form login from the ERP failed. Enter your ERP name + PIN here.');}catch(x){}
   }
   sarvResetOrderFormFrame_();
 }
-// Naya user aaya / gaya — khula hua Order Form purane user ka na rahe.
+// A new user arrived / left: an open Order Form must not keep the previous user.
 function sarvResetOrderFormFrame_(){
   const fr=byId('orderFormFrame');if(!fr||!fr.getAttribute('src'))return;
   const panel=byId('orderFormPanel');
   if(panel&&panel.style.display!=='none'){try{fr.contentWindow.location.reload();}catch(e){fr.setAttribute('src',fr.getAttribute('src'));}}
   else fr.removeAttribute('src');
 }
-/* Baaki apps ke iframe bhi naye user par taaza — warna logout ke baad
-   khula hua Packing purane user ka hi dikhta rehta. Complaint App apne
-   tab me khulta hai, use yahan se band nahi kiya ja sakta; uska session
-   server par revoke ho jaata hai (erp_app_logout), aur wo tab agli
-   call par apni login screen par chala jaata hai. */
+/* The other apps' iframes are refreshed for the new user as well; otherwise
+   an open Packing would keep showing the previous user after logout. The
+   Complaint App opens in its own tab and can't be closed from here; its
+   session is revoked on the server (erp_app_logout), and that tab goes to its
+   login screen on its next call. */
 function sarvResetAppFrames_(){
   ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame'].forEach(id=>{
     const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
@@ -4382,13 +4382,13 @@ function sarvResetAppFrames_(){
   });
 }
 function sarvLogout(){
-  if(!confirm('Do you want Log out ?\n\nDobara kaam karne ke liye PIN phir se daalna padega.'))return;
+  if(!confirm('Log out?\n\nYou will need to enter your PIN again to continue.'))return;
   try{
     const tok=localStorage.getItem(SARV_SALES_TOKEN_KEY);
     if(tok&&SB_READY)SB.rpc('sales_logout',{p_token:tok}).then(()=>{},()=>{});
     localStorage.removeItem(SARV_SALES_TOKEN_KEY);localStorage.removeItem(SARV_SALES_MSG_KEY);
-    /* Saare apps ka saajha session bhi server par band — warna Complaint
-       App / Packing ka khula hua tab logout ke baad bhi chalta rehta. */
+    /* End the session shared by all apps on the server too; otherwise an open
+       Complaint App / Packing tab would keep working after logout. */
     const sso=localStorage.getItem(SARV_SSO_TOKEN_KEY);
     if(sso&&SB_READY)SB.rpc('erp_app_logout',{p_token:sso}).then(()=>{},()=>{});
     localStorage.removeItem(SARV_SSO_TOKEN_KEY);
@@ -4398,10 +4398,10 @@ function sarvLogout(){
   sarvCurrentRole=null;sarvCurrentRoles=[];sarvCurrentUser=null;
   try{localStorage.removeItem(SARV_LOGIN_STORAGE_KEY);localStorage.removeItem(SARV_LOGIN_ROLES_KEY);
       localStorage.removeItem(SARV_LOGIN_USER_KEY);localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
-  /* Gate pehle dikha dete hain, phir launcher par bhejte hain: navigation
-     me ek-do pal lagta hai aur us beech screen par purana data khula nahi
-     rehna chahiye. launcher.html isi folder me hai (ye app poora folder
-     saath rakhti hai), isi liye ye link kabhi tootta nahi. */
+  /* Show the gate first, then go to the launcher: navigation takes a moment
+     and old data must not stay visible on screen meanwhile. launcher.html is
+     in the same folder (this app always ships as a whole folder), so this
+     link never breaks. */
   const gate=byId('sarvLoginGate');if(gate)gate.style.display='flex';
   location.href='launcher.html';
 }
@@ -4420,7 +4420,7 @@ function sarvLockNavToSection(){
 }
 function sarvGoHome(){
   const dash=byId('sarvHomeDashboard');if(dash)dash.style.display='block';
-  const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent='👤 '+sarvLoginLabel_();
+  const roleLabel=byId('sarvHomeRoleLabel');if(roleLabel)roleLabel.textContent=''+sarvLoginLabel_();
   sarvApFullScreen_(false);   // a full-screen Admin Panel would sit over the Home page
   poFollowupFullScreen_(false);   // …and so would a full-screen Follow-Up Report
   sarvApplyHomeTiles_();
@@ -4489,9 +4489,9 @@ function sarvNavigateFromHome(target){
        relative, so it serves unchanged from user.github.io/repo/ or a
        custom domain root. */
     case 'COMPLAINT_APP': window.open('complaint.html','_blank'); sarvGoHome(); return;
-    /* Order Form ab ERP ke andar (Design Master / Lot Card jaisa) — iframe.
-       Login ERP wala hi: sarvAttemptLogin ne Order Form ka session pehle hi
-       bana diya hota hai (sarvSalesSso_), isi liye wahan dobara login nahi. */
+    /* The Order Form now opens inside the ERP (like Design Master / Lot Card),
+       in an iframe. It uses the ERP login: sarvAttemptLogin has already created
+       the Order Form session (sarvSalesSso_), so there is no second login there. */
     case 'ORDER_FORM': {
       activatePanel('orderFormPanel');
       const fr=byId('orderFormFrame');
@@ -4512,102 +4512,102 @@ function sarvNavigateFromHome(target){
    it and only then does the screen open. "दोबारा न दिखाएं" skips the click
    message for that button on this browser (the hover card stays). */
 const SARV_HOME_HELP={
-  PR:{icon:'📝',title:'Purchase Requirement (PR)',points:[
+  PR:{icon:'',title:'Purchase Requirement (PR)',points:[
     'नई खरीद ज़रूरत (PR) बनाएं — Employee Code डालते ही नाम, पद, विभाग और संपर्क अपने-आप भर जाएंगे।',
     'हर आइटम का नाम, मात्रा, UOM, मशीन और वज़न भरें; आइटम की कैटेगरी से Purchaser अपने-आप चुना जाएगा।',
     'Priority और Required By Date चुनें, फिर Submit करें — PR नंबर बनेगा और PR की PDF तैयार होगी।',
     'इसके बाद Purchaser मोबाइल ऐप में Vendor Info भरकर PR approve करेगा।']},
-  PO:{icon:'🛒',title:'PO Generation',points:[
+  PO:{icon:'',title:'PO Generation',points:[
     'Pending PR की सूची देखें — "Vendor Rate & Info" से हर आइटम के V1 / V2 / V3 वेंडर और रेट देखें (बदलाव सिर्फ़ Admin कर सकता है)।',
     'Approved PR के आइटम चुनकर PO बनाएं — Delivery Date ज़रूरी है; Freight / अन्य खर्च जोड़ सकते हैं।',
     'बने हुए PO की सूची, स्टेटस और PDF देखें; WhatsApp से वेंडर को PO भेजें।',
     'Pending / Rejected / Hold PR कोई भी edit कर सकता है — save करने पर वह वापस PENDING हो जाती है; बाक़ी स्टेटस सिर्फ़ Admin।',
     'Purchaser मोबाइल ऐप के Vendor Info टैब से PR को Reject या Hold कर सकता है; Hold हटने तक उसका PO नहीं बनेगा।']},
-  IN:{icon:'📥',title:'Material Inward',points:[
+  IN:{icon:'',title:'Material Inward',points:[
     'सप्लायर से आया माल दर्ज करें — Supplier Name, Invoice No. और Invoice Date ज़रूरी हैं।',
     'आगे बढ़ने पर पहले "Nature of Inward ?" पूछा जाएगा (Purchase / Return / Transfer) — वही फ़ॉर्म में lock हो जाएगा।',
     'PO चुनने पर उसके आइटम और रेट अपने-आप आ जाएंगे; मात्रा, वज़न और Bill Basis (QTY / WEIGHT) भरें। PO सिर्फ़ Purchase के साथ चुना जा सकता है।',
     'दाईं ओर Freight, Round off और GST का पूरा हिसाब दिखेगा; Submit से पहले Preview दिखेगा।',
     'सेव होते ही स्टॉक बढ़ेगा और Inward की PDF बनेगी।']},
-  IN_NB:{icon:'📦',title:'Inward (NB) — Non-Billable',points:[
+  IN_NB:{icon:'',title:'Inward (NB) — Non-Billable',points:[
     'बिना बिल वाला आया माल दर्ज करें (जैसे सैंपल, रिपेयर होकर वापस आया माल)।',
     'इसमें हर आइटम का GST हमेशा 0% रहता है।',
     'Passkey के बाद "Nature of Inward ?" पूछा जाएगा (Purchase / Return / Transfer) — वही फ़ॉर्म में lock हो जाएगा।',
     'बाकी तरीका Material Inward जैसा ही है — आइटम और मात्रा भरें, Preview देखकर Submit करें।',
     'इसका नंबर अलग NB सीरीज़ में बनता है।']},
-  OUT:{icon:'📤',title:'Material Outward',points:[
+  OUT:{icon:'',title:'Material Outward',points:[
     'स्टोर से बाहर जाने वाला माल दर्ज करें — Party Name, Location और Target Return Date ज़रूरी हैं।',
     'आगे बढ़ने पर पहले "Nature of Dispatch ?" पूछा जाएगा (Non-Returnable / Repair / Transfer / Sample) — वही फ़ॉर्म में lock हो जाएगा।',
     '"Repair" में भेजा गया माल Repair Tracker में ट्रैक होगा।',
     'OUTWARD में स्टॉक कम होने पर भी entry हो सकती है (Balance माइनस में जा सकता है)।',
     'Preview देखकर Submit करें — स्टॉक घटेगा और Outward की PDF बनेगी।']},
-  ISSUE:{icon:'🧾',title:'Issue',points:[
+  ISSUE:{icon:'',title:'Issue',points:[
     'विभाग / मशीन को इस्तेमाल के लिए स्टोर से माल जारी (Issue) करें।',
     'Receiver का Employee Code डालें — नाम, पद और विभाग अपने-आप भरेंगे; Lot No. और Machine भरें।',
     'ISSUE में स्टॉक से ज़्यादा मात्रा जारी नहीं हो सकती।',
     'Preview देखकर Submit करें — स्टॉक घटेगा और Issue की PDF बनेगी।']},
-  REPORTS:{icon:'🔍',title:'Print History / Reports',points:[
+  REPORTS:{icon:'',title:'Print History / Reports',points:[
     'सभी Inward / Outward / Issue रिकॉर्ड खोजें — नंबर, सप्लायर, आइटम या तारीख से।',
     'हर रिकॉर्ड की 1-पेज / 2-पेज PDF खोलें और दोबारा प्रिंट करें।',
-    'Admin: रिकॉर्ड Edit ✏️ या Cancel ❌ कर सकता है, और CSV डाउनलोड कर सकता है।',
+    'Admin: रिकॉर्ड Edit या Cancel कर सकता है, और CSV डाउनलोड कर सकता है।',
     'Cancel किया गया रिकॉर्ड लाल रंग में "CANCELLED" दिखेगा।']},
-  TRACKER:{icon:'📊',title:'Item Tracker',points:[
+  TRACKER:{icon:'',title:'Item Tracker',points:[
     'किसी भी आइटम का पूरा लेन-देन (In / Out) तारीख-वार देखें।',
     'आइटम, कैटेगरी, पार्टी और तारीख से फ़िल्टर करें।',
     'Opening, Total In, Total Out और Closing Balance दिखेगा।',
     'लेजर को PDF या CSV में डाउनलोड करें।']},
-  MASTER:{icon:'🗂️',title:'Master Data',points:[
+  MASTER:{icon:'',title:'Master Data',points:[
     'Item Master: आइटम जोड़ें / बदलें — कोड, नाम, विवरण, UOM, GST% और MSV (न्यूनतम स्टॉक)।',
     'हर आइटम का IN, OUT और Balance स्टॉक; MSV से नीचे वाले आइटम लाल दिखेंगे।',
     'Supplier Master: सप्लायर का नाम, फ़ोन, ईमेल, GST, शहर और वेंडर PIN।',
     'Employee Master: कर्मचारी का कोड, नाम, पद, विभाग और संपर्क नंबर।']},
-  REPAIR:{icon:'🔧',title:'Repair Tracker',points:[
+  REPAIR:{icon:'',title:'Repair Tracker',points:[
     'रिपेयर के लिए बाहर भेजे गए माल को ट्रैक करें।',
     'कितना भेजा, कितना वापस आया और कितना बाकी है — Outward नंबर के साथ देखें।',
     'Pending / Partial / Received स्टेटस से फ़िल्टर करें।',
     'रिपेयर होकर आया माल Material Inward में "Repaired" चुनकर दर्ज करें।']},
-  PRODUCTION:{icon:'🏭',title:'Production — Design Master',points:[
+  PRODUCTION:{icon:'',title:'Production — Design Master',points:[
     'नया डिज़ाइन बनाएं — Design No, Unit, Bed Size, Quality, Type, Monopoly, फ़्रेम गिनती और Party / Brand भरें; फ़ोटो दाईं तरफ़ दिखेगी।',
     'एक ही डिज़ाइन के कई रंग (Matching / Shade) जोड़ें — एक MASTER रहेगा, बाक़ी SLAVE।',
     'पुराना डेटा Bulk Upload से — एक साथ कई फ़ोटो चुनें, फ़ोटो का नाम ही Design No बन जाता है।',
     'सभी फ़ोटो Supabase में रहती हैं और Design No के फ़ोल्डर से कभी भी लोड हो जाती हैं।',
     'Catalogue PDF टैब से फ़िल्टर लगाकर A4 कैटलॉग की असली PDF डाउनलोड करें।']},
-  APPROVAL_APP:{icon:'📱',title:'Approval App (मोबाइल)',points:[
+  APPROVAL_APP:{icon:'',title:'Approval App (मोबाइल)',points:[
     'मोबाइल Approval ऐप नए टैब में खुलेगा — Purchaser, MD और PO Sender के लिए।',
     'Purchaser: Vendor Info (V1 / V2 / V3 रेट) भरकर PR approve करता है — उसी समय PO बन जाता है।',
     'MD: PO approve या reject करता है।',
     'PO Sender: MD-approved PO WhatsApp से वेंडर को भेजता है।']},
-  COMPLAINT_APP:{icon:'⚠️',title:'Complaint App (मशीन शिकायत)',points:[
+  COMPLAINT_APP:{icon:'',title:'Complaint App (मशीन शिकायत)',points:[
     'मशीन खराबी की शिकायत दर्ज करें — मशीन, समस्या, फ़ोटो और शिकायत का प्रकार (Mechanical / Electrical / Housekeeping / Other)।',
     'शिकायत का रास्ता: User शिकायत डालता है → Maintenance उसे Host को सौंपता है → Host पूरा करके sign करता है → शिकायत डालने वाला confirm करके बंद करता है।',
     'Task टैब: Admin काम सौंपता है, करने वाला पहले date confirm करता है, पूरा करते समय फ़ोटो/PDF proof लगाना ज़रूरी है।',
     'Notice Board: सूचना, फ़ोटो या PDF सबको या चुने हुए लोगों को भेजें।',
     'इसका login अलग है (नाम + password), ERP के PIN से नहीं चलता — password है मोबाइल@DDMMYYYY।']},
-  LOT_CARD:{icon:'🧵',title:'Lot Card Manager (Manufacturing)',points:[
+  LOT_CARD:{icon:'',title:'Lot Card Manager (Manufacturing)',points:[
     'नया production lot बनाएं — Lot No, Brand, Fabric, Bed Size और Ply चुनें।',
     'हर matching में rolls डालते ही pieces अपने-आप बनते हैं (Double: 1 ply 54 / 2 ply 27, Single: 1 ply 84 / 2 ply 42 pcs per roll)।',
     'Master packing (Bora / Box / Bale…) + slave packing (PVC Bag / Gift Box…) जोड़ें; कई master हों तो pieces बाँटें।',
     'Sattan रंग-वार वज़न और 15 kg के bundle (.9 पर अगला bundle) अपने-आप निकलते हैं।',
     'Save करते ही Production Card प्रिंट के लिए तैयार; CSV export / import भी है।']},
-  PRINTING_LOT:{icon:'🖨️',title:'Printing Lot Card (Manufacturing)',points:[
+  PRINTING_LOT:{icon:'',title:'Printing Lot Card (Manufacturing)',points:[
     'A4 Production Lot Card banayein — Lot No, Party, Brand, Fabric, Satin, Labels, Qty, Packing।',
-    'Design photo Upload / Paste (Ctrl+V) / Design Master se — har photo is lot ke folder me alag file बनकर save होती है (12 तक)।',
+    'Design photo: Upload / Paste (Ctrl+V) / from Design Master. Each photo is saved as its own file in this lot\'s folder (up to 12).',
     'Har design par Blanket Color, Sattan Code, Target / Complete Qty; Worker Instructions card par छपते हैं।',
     'Save करते ही database में; PDF party-wise folder में save होकर ERP ke PDF index में आती है।',
-    'Production tab: har department (Raschel, Stenter, Printing, Washing, Packing…) apna section bharta hai — Department Login (naam + PIN) se, कौन/कब का पूरा itihaas।']},
-  TRIMS:{icon:'🏷️',title:'Trims Manager (Manufacturing)',points:[
-    'Sales Order chunein — us order ki trims sheet khulegi (pehle save ki hui ho to wahi).',
-    'Order Qty order ke products se aur Lot Req Qty jode gaye Lot Card se apne-aap bharti hai।',
-    'Store Standard Name sirf Item Master se; PO chunte hi Target Date = PO delivery date।',
-    'Qty Received (PO ke inward) aur Lot Issue (Store Issue) Store se live aate hain।',
-    'Save करने पर sheet Order No. और Lot No. se linked save hoti hai।']},
-  PACKING:{icon:'📦',title:'Packing & Dispatch (Sales)',points:[
+    'Production tab: each department (Raschel, Stenter, Printing, Washing, Packing…) fills in its own section using a Department Login (name + PIN), with a full history of who did what and when.']},
+  TRIMS:{icon:'',title:'Trims Manager (Manufacturing)',points:[
+    'Choose a Sales Order to open its trims sheet (the saved one, if it exists).',
+    'Order Qty comes from the order\'s products, and Lot Req Qty from the linked Lot Card, automatically.',
+    'Store Standard Name comes only from the Item Master; once a PO is chosen, Target Date = the PO delivery date.',
+    'Qty Received (inward against the PO) and Lot Issue (Store Issue) come live from the Store.',
+    'On Save, the sheet is stored linked to the Order No. and Lot No.']},
+  PACKING:{icon:'',title:'Packing & Dispatch (Sales)',points:[
     'Packing Slip बनाएं — Party, Order ID, Quality, हर पैक का Pcs / Weight; Billed / Unbilled अलग नंबर।',
     'Save करते ही Original + Full Copy PDF बनती है — WhatsApp पर भेज सकते हैं, ERP के PDF index में भी।',
     'Orders, Vehicle (Tempo) list, Drafts और Quick Pack assign — पहले जैसा ही।',
     'Verification: Pre-Invoice → Invoice / Chalan / Kanta Weight → Receiving।',
     'Login वही username / password जो पुरानी Packing App में था।']},
-  ORDER_FORM:{icon:'🧾',title:'Order Form (Sales)',points:[
+  ORDER_FORM:{icon:'',title:'Order Form (Sales)',points:[
     'Buyer का order भरें — Item Code चुनते ही specs, price और trims की cost अपने-आप भर जाएगी।',
     'Packing Type, trims (Buyer / SIHF / FOC), discount और GST से पूरा bill अपने-आप बनता है।',
     'Submit करने पर order Supabase में save होता है और Proforma Invoice की PDF बनती है।',
@@ -4642,7 +4642,7 @@ function sarvHomeIntro_(key,go){
   ov.id='sarvHomeIntro';
   ov.innerHTML='<div class="card"><div class="hd"><span>'+h.icon+'</span><span>'+escText(h.title)+'</span></div>'
     +'<div class="bd">'+sarvHomeHelpHtml_(h)+'</div>'
-    +'<div class="ft"><span class="tap">👆 कहीं भी एक बार क्लिक करें — आगे बढ़ें</span>'
+    +'<div class="ft"><span class="tap">कहीं भी एक बार क्लिक करें — आगे बढ़ें</span>'
     +'<label class="skip"><input type="checkbox"> ये संदेश दोबारा न दिखाएं</label></div></div>';
   document.body.appendChild(ov);
   const done=()=>{
@@ -4672,7 +4672,7 @@ const SARV_NB_GATE_CODE='WITHOUTGSTBILL';
 function sarvNbCodeGate_(go){
   const ov=document.createElement('div');
   ov.id='sarvNbGate';
-  ov.innerHTML='<div class="card"><div class="hd"><span>🔒</span><span>Inward (NB) — Non-Billable</span></div>'
+  ov.innerHTML='<div class="card"><div class="hd"><span></span><span>Inward (NB) — Non-Billable</span></div>'
     // SARV_NB_GATE_CODE is never printed anywhere on this card — not as a hint,
     // not as the placeholder, and not in the error below. A passkey shown on
     // screen is no passkey. type="password" keeps it off the screen while it is
@@ -4692,7 +4692,7 @@ function sarvNbCodeGate_(go){
     // shut for good.
     const fold=s=>String(s||'').trim().toUpperCase().replace(/\s+/g,'');
     if(fold(inp.value)===fold(SARV_NB_GATE_CODE)){close();go();return;}
-    err.textContent='❌ Passkey galat hai — dobara likhein';
+    err.textContent='Incorrect passkey. Please try again.';
     inp.select();inp.focus();
   };
   const onKey=e=>{
@@ -4716,26 +4716,26 @@ function sarvNbCodeGate_(go){
    remembering to change a dropdown halfway down a half-filled form.
    Issue is deliberately not here — an ISSUE is always CONSUMABLE. */
 const SARV_NATURE_GATE={
-  IN:    {kind:'inward', icon:'📥', title:'Material Inward', q:'Nature of Inward?'},
-  IN_NB: {kind:'inward', icon:'📦', title:'Inward (NB) — Non-Billable', q:'Nature of Inward?'},
-  OUT:   {kind:'outward',icon:'📤', title:'Material Outward', q:'Nature of Dispatch?'},
+  IN:    {kind:'inward', icon:'', title:'Material Inward', q:'Nature of Inward?'},
+  IN_NB: {kind:'inward', icon:'', title:'Inward (NB) — Non-Billable', q:'Nature of Inward?'},
+  OUT:   {kind:'outward',icon:'', title:'Material Outward', q:'Nature of Dispatch?'},
 };
 /* v = exactly what the form's own dropdown stores (so "Return" is saved as
    Repaired, the value inwNatureOfInward has always used); l = screen label.
-   Home page ka Nature chooser. Values ka ghar Master Data › 🔽 Dropdown Master
-   hai (keys erp_natureOfInward / erp_natureOfDispatch) — wahi list jo Inward /
-   Outward form ke select me jaati hai, isi liye dono kabhi alag nahi hote.
-   Yahan sirf un values ka SHRINGAAR rehta hai: screen-label, rang aur ek line
-   ka matlab. Admin koi nayi value jode to wo bhi chooser me aa jaati hai,
-   neutral rang ke saath. */
+   The Home page's Nature chooser. The values live in Master Data › Dropdown
+   Master (keys erp_natureOfInward / erp_natureOfDispatch), the same list that
+   feeds the Inward / Outward form select, so the two never disagree. Only the
+   presentation of those values is kept here: the screen label, colour and a
+   one-line meaning. If the Admin adds a new value it appears in the chooser
+   too, in a neutral colour. */
 const SARV_NATURE_META={
   inward:[
-    {v:'Purchase', l:'Purchase', c:'#0369a1', note:'Supplier se khareeda hua maal'},
-    {v:'Repaired', l:'Return',   c:'#b45309', note:'Repair hokar wapas aaya maal'},
-    {v:'Transfer', l:'Transfer', c:'#6d28d9', note:'Dusre unit se aaya stock'},
+    {v:'Purchase', l:'Purchase', c:'#0369a1', note:'Material bought from a supplier'},
+    {v:'Repaired', l:'Return',   c:'#b45309', note:'Material returned after repair'},
+    {v:'Transfer', l:'Transfer', c:'#6d28d9', note:'Stock received from another unit'},
   ],
   outward:[
-    {v:'Non-Returnable', l:'Non-Returnable', c:'#0f766e', note:'Wapas nahi aayega'},
+    {v:'Non-Returnable', l:'Non-Returnable', c:'#0f766e', note:'Will not come back'},
     {v:'Repair',         l:'Repair',         c:'#b45309', note:'Repair Tracker me chalega'},
     {v:'Transfer',       l:'Transfer',       c:'#6d28d9', note:'Dusre unit ko bheja'},
     {v:'Sample',         l:'Sample',         c:'#0369a1', note:'Sample dispatch'},
@@ -4766,7 +4766,7 @@ function sarvNatureGate_(key,go){
   ov.id='sarvNatureGate';
   ov.innerHTML='<div class="card"><div class="hd"><span>'+cfg.icon+'</span><span>'+escText(cfg.title)+'</span></div>'
     +'<div class="bd"><div class="q">'+escText(cfg.q)+'</div>'
-    +'<div class="hint">Ek option chunein — form isi par lock hokar khulega, entry ke beech me badla nahi ja sakega.</div>'
+    +'<div class="hint">Choose one option. The form opens locked to it, and it cannot be changed partway through the entry.</div>'
     +'<div class="opts">'
     +opts.map(o=>'<button type="button" data-v="'+escText(o.v)+'" style="border-color:'+o.c+';color:'+o.c+';">'
         +escText(o.l)+'<small>'+escText(o.note)+'</small></button>').join('')
@@ -4803,7 +4803,7 @@ function applyHomeNatureLocks(){
       if(![...el.options].some(o=>o.value===val))el.add(new Option(sarvNatureLabel_(kind,val),val));
       if(el.value!==val){el.value=val;el.dispatchEvent(new Event('change'));}
       el.disabled=true;el.style.background='#f1f5f9';el.style.cursor='not-allowed';
-      el.title='Home page par "'+sarvNatureLabel_(kind,val)+'" chuna gaya hai — is entry me badla nahi ja sakta';
+      el.title='"'+sarvNatureLabel_(kind,val)+'" was chosen on the Home page; it cannot be changed in this entry';
     };
     const inw=sarvHomeNature.inward;
     pin(byId('inwNatureOfInward'),inw,'inward');
@@ -4818,7 +4818,7 @@ function applyHomeNatureLocks(){
         poBtn.disabled=off;
         poBtn.style.background=off?'#f1f5f9':'';
         poBtn.style.cursor=off?'not-allowed':'pointer';
-        poBtn.title=off?('Nature of Inward "'+sarvNatureLabel_('inward',inw)+'" hai — PO ke against sirf Purchase inward hota hai'):'';
+        poBtn.title=off?('The Nature of Inward is "'+sarvNatureLabel_('inward',inw)+'"; only a Purchase inward can be made against a PO'):'';
       }
     }
     // ISSUE owns its own Nature (always CONSUMABLE) — a pin never overrides it.
@@ -4842,9 +4842,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('sarvLoginBtn')?.addEventListener('click',sarvAttemptLogin);
   byId('sarvLoginRole')?.addEventListener('change',()=>sarvFillLoginUsers_().catch(()=>{}));
   byId('sarvLoginPin')?.addEventListener('keydown',e=>{if(e.key==='Enter')sarvAttemptLogin();});
-  /* Naam se login: datalist bharna, naam par uske role dikhana, aur
-     Enter se seedha login (naam bharne ke baad PIN par Enter aam aadat
-     hai, par kuch log naam par hi Enter maarte hain). */
+  /* Login by name: fill the datalist, show the roles for a name, and log in
+     directly on Enter (pressing Enter on the PIN after filling the name is
+     the usual habit, but some people press Enter on the name itself). */
   const nb=byId('sarvLoginNameBox');
   if(nb){
     nb.addEventListener('input',()=>sarvLoginNameHint_());
@@ -4852,11 +4852,11 @@ document.addEventListener('DOMContentLoaded',()=>{
     nb.addEventListener('keydown',e=>{
       if(e.key!=='Enter')return;
       const p=byId('sarvLoginPin');
-      if(p&&!p.value){p.focus();return;}     // naam ho gaya, ab PIN
+      if(p&&!p.value){p.focus();return;}     // name done, now the PIN
       sarvAttemptLogin();
     });
   }
-  // Login screen khuli hui ho to naam ki list turant bhar dein.
+  // If the login screen is open, fill the name list right away.
   if(byId('sarvLoginGate')&&byId('sarvLoginGate').style.display!=='none')
     sarvFillLoginNames_().catch(()=>{});
   const home=byId('sarvHomeDashboard');
@@ -4891,9 +4891,9 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(savedRole&&SARV_ROLE_LABEL[savedRole]){
       sarvCurrentRole=savedRole;
       try{sarvCurrentUser=JSON.parse(localStorage.getItem(SARV_LOGIN_USER_KEY)||'null');}catch(e){sarvCurrentUser=null;}
-      /* Roles alag key me rakhe hain. Purana session (is badlaav se
-         pehle ka) sirf role rakhta tha — wahan roles user row se, warna
-         wahi ek role. Isi liye reload par kisi ka access nahi badalta. */
+      /* Roles are kept under a separate key. An old session (from before this
+         change) stored only the role; there, roles come from the user row,
+         otherwise that single role. So nobody's access changes on reload. */
       try{
         const rr=JSON.parse(localStorage.getItem(SARV_LOGIN_ROLES_KEY)||'null');
         sarvCurrentRoles=Array.isArray(rr)&&rr.length?rr.filter(Boolean)
@@ -4902,22 +4902,22 @@ document.addEventListener('DOMContentLoaded',()=>{
       }catch(e){sarvCurrentRoles=[savedRole];}
       try{localStorage.removeItem(SARV_LOGIN_SIG_KEY);}catch(e){}
       const badge=byId('sarvRoleBadge');
-      if(badge){badge.textContent='👤 '+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
+      if(badge){badge.textContent=''+sarvLoginLabel_();badge.title=sarvRolesTitle_()||badge.title;}
       sarvApplyAccess();
-      /* Server par user ka role / app access badla ho sakta hai jabki
-         browser purana yaad rakhe baitha hai. Session se taaza haal
-         maang lete hain — chupchaap, aur fail ho to purana hi chalta
-         rehta hai (offline me bhi app khulni chahiye). */
+      /* The user's role / app access may have changed on the server while the
+         browser still remembers the old one. We ask the session for the
+         current state, quietly; if that fails the old one keeps working (the
+         app must still open offline). */
       sarvRefreshSsoSession_().catch(()=>{});
       const gate=byId('sarvLoginGate');if(gate)gate.style.display='none';
       if(byId('p_poListBody'))refreshGeneratedPoList().catch(()=>{});
       sarvGoHome();
     }
   }catch(e){}
-  /* Login screen ki jhalak rokne wali splash hata dein — faisla ho chuka
-     hai (ya restore ho gaya, ya gate dikhana hai). Ye localStorage se
-     hota hai, isi liye yahan tak koi network call nahi hui aur splash
-     bas ek-do frame rehti hai. Dekhein sso-preboot.js. */
+  /* Remove the splash that prevents the login screen from flashing; the
+     decision has been made (either restored, or the gate must be shown). This
+     comes from localStorage, so no network call has happened yet and the
+     splash lasts only a frame or two. See sso-preboot.js. */
   if(window.sarvSsoPrebootDone)window.sarvSsoPrebootDone();
 });
 
@@ -4939,155 +4939,154 @@ const SARV_PERM_ROLES=[
   {code:'PURCHASER',label:'Purchaser'},{code:'USER_AC_PIN',label:'Accountant'},{code:'USER_GT_PIN',label:'Gate Man'},
   {code:'ADMIN_PIN',label:'Admin'},{code:'VENDOR_VERIFY_PIN',label:'Vendor'},{code:'PO_SENDER_PIN',label:'PO Sender'},
   {code:'VIEW_PIN',label:'View'},{code:'EDIT_PASSWORD',label:'Edit'},
-  /* Dono ka default har ERP screen par OFF hai — SINGLE_LOGIN_MIGRATION.sql
-     tab_visibility me likh deti hai. Matrix me rakhe isi liye hain ki
-     Admin kisi ek ko chahe to kuch de bhi sake. */
+  /* Both default to OFF on every ERP screen; SINGLE_LOGIN_MIGRATION.sql
+     writes that into tab_visibility. They are in the matrix only so the Admin
+     can grant something to an individual if needed. */
   {code:'CMP_USER',label:'Complaint'},{code:'PK_USER',label:'Packing'}
 ];
 /* def: 'ALL' every role · 'W' every role except View · [codes] only those.
    lock: roles that are always YES (so an Admin cannot lock themself out). */
 const SARV_FEATURES=[
-  {group:'🗂️ Master Data'},
-  {key:'ADD_ITEM',label:'ADD NEW ITEM',hint:'Item Master + forms ka ➕ New Item',def:'W'},
+  {group:'Master Data'},
+  {key:'ADD_ITEM',label:'ADD NEW ITEM',hint:'Item Master + forms ka New Item',def:'W'},
   {key:'DOWNLOAD_CSV',label:'DOWNLOAD CSV',hint:'Master Data lists + Reports ka Download CSV',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN']},
-  {key:'ADD_SUPPLIER',label:'ADD SUPPLIER',hint:'Supplier Master me naya supplier',def:'W'},
-  {key:'ADD_EMPLOYEE',label:'ADD EMPLOYEE',hint:'Employee Master + PR form ka ➕ Add New Employee',def:'W'},
-  {key:'ADD_MACHINE',label:'ADD MACHINE',hint:'Machine List me nayi machine',def:'W'},
-  {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Settings › Change Passwords (Admin PIN phir bhi lagta hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  /* Dropdown Master screen sabko read-only khulti hai; add / edit / remove ke
-     liye ye feature AUR Admin login — dono chahiye (sarvDdGuard_). Isi liye
-     ise kisi aur role ko de dene se bhi wo badlaav nahi kar paayega. */
-  {key:'DROPDOWN_MANAGE',label:'DROPDOWN MASTER EDIT',hint:'Dropdown Master me value add / edit / remove (Admin login bhi zaroori)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'ADD_SUPPLIER',label:'ADD SUPPLIER',hint:'A new supplier in the Supplier Master',def:'W'},
+  {key:'ADD_EMPLOYEE',label:'ADD EMPLOYEE',hint:'Employee Master + PR form ka Add New Employee',def:'W'},
+  {key:'ADD_MACHINE',label:'ADD MACHINE',hint:'A new machine in the Machine List',def:'W'},
+  {key:'CHANGE_PASSWORDS',label:'Change Passwords',hint:'Settings › Change Passwords (the Admin PIN is still required)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* The Dropdown Master screen opens read-only for everyone; adding / editing /
+     removing needs this feature AND an Admin login (sarvDdGuard_). So even
+     granting it to another role won't let that role make changes. */
+  {key:'DROPDOWN_MANAGE',label:'DROPDOWN MASTER EDIT',hint:'Add / edit / remove values in Dropdown Master (an Admin login is also required)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
 
   /* ── Fabric & Brand Master ───────────────────────────────────────
-     Har master par CHAAR alag haq, kyunki ye ek jaise nahi hain:
+     FOUR separate rights on each master, because they are not alike:
 
-       NEW    — nayi row banana (REV 1 par)
-       EDIT   — galti sudharna, REV wahi rehta hai
-       REVISE — soch-samajh kar naya version, REV +1, kaaran ke saath
-       DELETE — hamesha ke liye hatana (sabse khatarnak, isi liye alag)
+       NEW    - create a new row (at REV 1)
+       EDIT   - fix a mistake; REV stays the same
+       REVISE - a deliberate new version; REV +1, with a reason
+       DELETE - remove permanently (the most dangerous, hence separate)
 
-     Yahi wajah hai ki EDIT aur REVISE ek row me nahi hain: production
-     ko "kis REV par bana tha" ka jawab chahiye hota hai, to REV badalne
-     ka haq alag se dena/rokna padta hai. Neeche ke paanch rows DONO
-     master par lagte hain (aur aage jo master banenge un par bhi). */
-  {group:'🧵 Fabric & Brand Master'},
-  {key:'FABRIC_NEW',label:'FABRIC — NEW',hint:'Fabric Master me nayi fabric row (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'FABRIC_EDIT',label:'FABRIC — EDIT',hint:'Fabric row sudharna — REV number wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
-  {key:'FABRIC_REVISE',label:'FABRIC — REVISE (REV +1)',hint:'Naya version banana — REV 1 → 2 → 3 ..., kaaran likhna zaroori',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'FABRIC_DELETE',label:'FABRIC — DELETE',hint:'Fabric row hamesha ke liye hatana (jiske brands hain wo phir bhi nahi hatega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {key:'BRAND_NEW',label:'BRAND — NEW',hint:'Brand Master me naya ITEM CODE (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'BRAND_EDIT',label:'BRAND — EDIT',hint:'Brand row sudharna — REV number wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
-  {key:'BRAND_REVISE',label:'BRAND — REVISE (REV +1)',hint:'Naya version banana — REV 1 → 2 → 3 ..., kaaran likhna zaroori',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'BRAND_DELETE',label:'BRAND — DELETE',hint:'Brand row hamesha ke liye hatana',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  /* Buyer Master ka naam Order Form aur Packing ke dropdown me jaata hai,
-     isi liye NEW thoda khula rakha gaya hai (Store Incharge / Accountant
-     bhi nayi party jod sakte hain — warna slip banate waqt kaam rukta
-     hai). DELETE phir bhi sirf Admin: party ka naam purane order aur
-     packing slip me likha hota hai. */
-  {key:'BUYER_NEW',label:'BUYER — NEW',hint:'Buyer Master me nayi party (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_IC_PIN','USER_AC_PIN']},
-  {key:'BUYER_EDIT',label:'BUYER — EDIT',hint:'Party ka naam / owner / contact sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
-  {key:'BUYER_REVISE',label:'BUYER — REVISE (REV +1)',hint:'Naya version — jaise party ka owner ya number badla, purana record rakhte hue',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'BUYER_DELETE',label:'BUYER — DELETE',hint:'Party hamesha ke liye hatana (purane order / slip me naam phir bhi likha rahega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  /* Agency Master Buyer Master ki hi screen par doosri table hai, par
-     access iska apna hai — agency ka contact badalna aur party ka data
-     badalna do alag kaam hain. */
-  {key:'AGENCY_NEW',label:'AGENCY — NEW',hint:'Buyer Master screen ki Agency table me nayi agency (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
-  {key:'AGENCY_EDIT',label:'AGENCY — EDIT',hint:'Agency ka naam / contact person / mobile sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
-  {key:'AGENCY_REVISE',label:'AGENCY — REVISE (REV +1)',hint:'Naya version — jaise agency ka contact person badla, purana record rakhte hue',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'AGENCY_DELETE',label:'AGENCY — DELETE',hint:'Agency hamesha ke liye hatana (purane order me naam phir bhi likha rahega)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  /* Trims & Packing Rate = paisa. Default MD / GM / Accountant — Order
-     Form ka har naya order isi rate par banta hai. */
-  {key:'TRIMRATE_NEW',label:'TRIMS RATE — NEW',hint:'Trims & Packing Rate master me naya material (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
-  {key:'TRIMRATE_EDIT',label:'TRIMS RATE — EDIT',hint:'Material ka rate / discount / category sudharna — REV wahi rehta hai',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
-  {key:'TRIMRATE_REVISE',label:'TRIMS RATE — REVISE (REV +1)',hint:'Naya rate lagana — purana rate History me rehta hai, kaaran zaroori',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
-  {key:'TRIMRATE_DELETE',label:'TRIMS RATE — DELETE',hint:'Material hamesha ke liye hatana (Inactive behtar hai — purane orders par asar nahi)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {key:'MASTER_REV_HISTORY',label:'MASTER — REVISION HISTORY',hint:'🕘 REV 1 se aaj tak kaun, kab, kya badla — sirf dekhna',def:'ALL'},
-  {key:'MASTER_REV_RESTORE',label:'MASTER — REVISION RESTORE',hint:'Kisi purani REV ki values wapas lagana (wo khud nayi REV banti hai)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {key:'MASTER_ACTIVATE',label:'MASTER — ACTIVE / INACTIVE',hint:'Row ko naye forms se hatana (links zinda rehte hain) — Delete se behtar raasta',def:['ADMIN_PIN','USER_MD_PIN']},
-  {key:'MASTER_IMPORT',label:'MASTER — CSV IMPORT / SEED',hint:'Excel/CSV se bulk import aur 🌱 Seed Excel Data (NEW / EDIT ka haq bhi chahiye)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {key:'MASTER_EXPORT',label:'MASTER — CSV EXPORT',hint:'Fabric / Brand Master ka 💾 Export CSV',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN']},
+     That is why EDIT and REVISE are not one row: production needs to know
+     "which REV was this made on", so the right to change the REV has to be
+     granted / withheld separately. The five rows below apply to BOTH masters
+     (and to any masters added later). */
+  {group:'Fabric & Brand Master'},
+  {key:'FABRIC_NEW',label:'FABRIC — NEW',hint:'A new fabric row in the Fabric Master (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'FABRIC_EDIT',label:'FABRIC — EDIT',hint:'Correct a fabric row; the REV number stays the same',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
+  {key:'FABRIC_REVISE',label:'FABRIC — REVISE (REV +1)',hint:'Create a new version: REV 1 → 2 → 3 ..., a reason is required',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'FABRIC_DELETE',label:'FABRIC — DELETE',hint:'Remove a fabric row permanently (a fabric that has brands still won\'t be removed)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'BRAND_NEW',label:'BRAND — NEW',hint:'A new ITEM CODE in the Brand Master (REV 1)',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BRAND_EDIT',label:'BRAND — EDIT',hint:'Correct a brand row; the REV number stays the same',def:['ADMIN_PIN','USER_MD_PIN','EDIT_PASSWORD']},
+  {key:'BRAND_REVISE',label:'BRAND — REVISE (REV +1)',hint:'Create a new version: REV 1 → 2 → 3 ..., a reason is required',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BRAND_DELETE',label:'BRAND — DELETE',hint:'Remove a brand row permanently',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* The Buyer Master name goes into the Order Form and Packing dropdowns, so
+     NEW is kept a little more open (Store Incharge / Accountant can also add
+     a new party; otherwise work stops while making a slip). DELETE is still
+     Admin only: the party's name is written on old orders and packing slips. */
+  {key:'BUYER_NEW',label:'BUYER — NEW',hint:'A new party in the Buyer Master (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_IC_PIN','USER_AC_PIN']},
+  {key:'BUYER_EDIT',label:'BUYER — EDIT',hint:'Correct the party\'s name / owner / contact; REV stays the same',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
+  {key:'BUYER_REVISE',label:'BUYER — REVISE (REV +1)',hint:'New version, e.g. when the party\'s owner or number changes, keeping the old record',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'BUYER_DELETE',label:'BUYER — DELETE',hint:'Remove a party permanently (the name stays on old orders / slips)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* The Agency Master is a second table on the Buyer Master screen, but it has
+     its own access: changing an agency's contact and changing a party's data
+     are two different jobs. */
+  {key:'AGENCY_NEW',label:'AGENCY — NEW',hint:'A new agency in the Agency table on the Buyer Master screen (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'AGENCY_EDIT',label:'AGENCY — EDIT',hint:'Correct the agency\'s name / contact person / mobile; REV stays the same',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','EDIT_PASSWORD']},
+  {key:'AGENCY_REVISE',label:'AGENCY — REVISE (REV +1)',hint:'New version, e.g. when the agency\'s contact person changes, keeping the old record',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'AGENCY_DELETE',label:'AGENCY — DELETE',hint:'Remove an agency permanently (the name stays on old orders)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Trims & Packing Rate = money. Default MD / GM / Accountant; every new
+     Order Form order is priced on these rates. */
+  {key:'TRIMRATE_NEW',label:'TRIMS RATE — NEW',hint:'A new material in the Trims & Packing Rate master (REV 1)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_EDIT',label:'TRIMS RATE — EDIT',hint:'Correct a material\'s rate / discount / category; REV stays the same',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_REVISE',label:'TRIMS RATE — REVISE (REV +1)',hint:'Apply a new rate; the old rate stays in History, a reason is required',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  {key:'TRIMRATE_DELETE',label:'TRIMS RATE — DELETE',hint:'Remove a material permanently (Inactive is better; it doesn\'t affect old orders)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_REV_HISTORY',label:'MASTER — REVISION HISTORY',hint:'Who changed what and when, from REV 1 to today; view only',def:'ALL'},
+  {key:'MASTER_REV_RESTORE',label:'MASTER — REVISION RESTORE',hint:'Apply an old REV\'s values again (this itself creates a new REV)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_ACTIVATE',label:'MASTER — ACTIVE / INACTIVE',hint:'Remove a row from new forms (links stay intact); a better option than Delete',def:['ADMIN_PIN','USER_MD_PIN']},
+  {key:'MASTER_IMPORT',label:'MASTER — CSV IMPORT / SEED',hint:'Bulk import from Excel/CSV and Seed Excel Data (the NEW / EDIT right is also needed)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MASTER_EXPORT',label:'MASTER — CSV EXPORT',hint:'Fabric / Brand Master ka Export CSV',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN']},
 
-  {group:'📄 Records & Reports'},
+  {group:'Records & Reports'},
   {key:'EXPORT_CSV',label:'EXPORT CSV',hint:'PR / Follow-Up / Item Ledger / PO Details ka Export',def:'ALL'},
   {key:'PDF_VIEW',label:'PDF VIEW',hint:'Reports, PO list, Follow-Up ke PDF links',def:'ALL'},
-  {key:'EDIT',label:'EDIT',hint:'Master Data edit ✏️ + saved record edit',def:['ADMIN_PIN','EDIT_PASSWORD']},
-  {key:'DELETE',label:'DELETE',hint:'Master Data delete + record cancel ❌',def:['ADMIN_PIN']},
-  {group:'🛒 Purchase (Desktop)'},
+  {key:'EDIT',label:'EDIT',hint:'Master Data edit + saved record edit',def:['ADMIN_PIN','EDIT_PASSWORD']},
+  {key:'DELETE',label:'DELETE',hint:'Master Data delete + record cancel',def:['ADMIN_PIN']},
+  {group:'Purchase (Desktop)'},
   {key:'PR_PDF',label:'PR PDF',hint:'PR ki PDF kholna',def:'ALL'},
-  {key:'VENDOR_INFO_DESK',label:'Vendor Info.',hint:'💰 Vendor Rate & Info popup me badlav',def:['ADMIN_PIN']},
+  {key:'VENDOR_INFO_DESK',label:'Vendor Info.',hint:'Vendor Rate & Info popup me badlav',def:['ADMIN_PIN']},
   {key:'EDIT_PR',label:'EDIT PR',hint:'Pending / Rejected / Hold PR edit (Admin: har status)',def:'W'},
   {key:'PO_CANCEL',label:'PO CANCEL',hint:'Approved PO cancel',def:['ADMIN_PIN']},
   {key:'PO_CLOSE',label:'PO CLOSE',hint:'PO short-close',def:['ADMIN_PIN']},
-  {key:'PO_RECEIVED_VIEW',label:'PO RECEIVED/CLOSE VIEW',hint:'Generated POs me Received / Closed dikhana',def:['ADMIN_PIN']},
-  {group:'🏬 Store'},
+  {key:'PO_RECEIVED_VIEW',label:'PO RECEIVED/CLOSE VIEW',hint:'Show Received / Closed in the generated POs',def:['ADMIN_PIN']},
+  {group:'Store'},
   {key:'SUBMIT_INWARD',label:'SUBMIT INWARD',hint:'Inward + Inward (NB) submit',def:'W'},
   {key:'SUBMIT_OUTWARD',label:'SUBMIT OUTWARD',hint:'Outward submit',def:'W'},
   {key:'SUBMIT_ISSUE',label:'SUBMIT ISSUE',hint:'Issue submit',def:'W'},
   {key:'ITEM_LEDGER',label:'ITEM GENERATE LEDGER',hint:'Item Tracker › Generate Ledger',def:'ALL'},
-  {group:'🏭 Production › Design Master'},
-  {key:'DESIGN_SAVE',label:'DESIGN SAVE / EDIT',hint:'Naya design, nayi matching, bulk upload, design edit aur photo badalna',def:'W'},
-  {key:'DESIGN_DISCARD',label:'DESIGN DISCARD / RESTORE',hint:'Design discard ya restore karna, matching hatana',def:'W'},
-  /* printing-lot.html (iframe) yahi rows padhta hai — ERP ke andar parent ka
-     sarvCan(), bahar khula ho to app_settings.role_permissions + yahi defaults. */
-  {group:'🖨️ Manufacturing › Printing Lot Card'},
+  {group:'Production › Design Master'},
+  {key:'DESIGN_SAVE',label:'DESIGN SAVE / EDIT',hint:'New design, new matching, bulk upload, design edit and photo changes',def:'W'},
+  {key:'DESIGN_DISCARD',label:'DESIGN DISCARD / RESTORE',hint:'Discard or restore a design, remove a matching',def:'W'},
+  /* printing-lot.html (iframe) reads these rows: inside the ERP via the parent's
+     sarvCan(); when opened outside, app_settings.role_permissions + these defaults. */
+  {group:'Manufacturing › Printing Lot Card'},
   {key:'PRL_EDIT',label:'PRINTING LOT CREATE / EDIT',hint:'Lot card banana / badalna, photos, Save, Copy, Status',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
-  {key:'PRL_DELETE',label:'PRINTING LOT DELETE',hint:'Lot card poora delete (photos + PDF + production data)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {key:'PRL_PROD_ALL',label:'PRODUCTION — SAB SECTIONS',hint:'Production tab ke saare department sections bharna (baaki log Department Login se sirf apna)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'PRL_DELETE',label:'PRINTING LOT DELETE',hint:'Delete a lot card completely (photos + PDF + production data)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'PRL_PROD_ALL',label:'PRODUCTION — ALL SECTIONS',hint:'Fill in every department section of the Production tab (others fill only their own via Department Login)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'PRL_MASTER',label:'PRINTING LOT MASTERS',hint:'Blanket colors, satin codes, department operators',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {group:'📱 Approval App (mobile.html tabs)'},
+  {group:'Approval App (mobile.html tabs)'},
   {key:'VENDOR_INFO_MOBILE',label:'Vendor Info.',hint:'Mobile › Vendor Info tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'PO_GENERATE',label:'PO GENERATE',hint:'Mobile › PO Generate tab',def:['PURCHASER','USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'MD_APPROVAL',label:'MD APPROVAL',hint:'Mobile › MD Approval tab',def:['USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'PO_SENT',label:'PO SENT TO VENDOR',hint:'Mobile › PO Sent tab',def:['USER_MD_PIN','PO_SENDER_PIN','ADMIN_PIN']},
   {key:'STORE_CHECK',label:'STORE CHECK',hint:'Mobile › Store Check tab',def:['USER_GM_PIN','USER_MD_PIN','ADMIN_PIN']},
   {key:'PO_RECEIPTS',label:'PO RECEIPTS',hint:'Mobile › PO Receipts tab',def:['PURCHASER','USER_MD_PIN','ADMIN_PIN']},
-  /* PO Follow-up default sirf PO Sender ko: PO vendor ke haath me usne diya
-     hai, to vendor usi ko jawab deta hai. Kisi aur role ko dena ho to is row
-     ka tick laga dein — par follow-up LIKHNE ka haq phir bhi PO Sender ka hai
-     (mobile ka canActIn / STAGE_TABS.FOLLOWUP.actor), baaki ko history
-     read-only dikhti hai. */
-  {key:'PO_FOLLOWUP',label:'PO FOLLOW-UP',hint:'Mobile › PO Follow-up tab — bheje hue PO par vendor se revised delivery date + remark',def:['PO_SENDER_PIN','ADMIN_PIN']},
+  /* PO Follow-up defaults to the PO Sender only: they handed the PO to the
+     vendor, so the vendor answers them. To give it to another role, tick this
+     row; but the right to WRITE follow-ups still belongs to the PO Sender
+     (mobile canActIn / STAGE_TABS.FOLLOWUP.actor), and others see the
+     history read-only. */
+  {key:'PO_FOLLOWUP',label:'PO FOLLOW-UP',hint:'Mobile › PO Follow-up tab: revised delivery date + remark from the vendor on POs already sent',def:['PO_SENDER_PIN','ADMIN_PIN']},
 ];
 const SARV_TABS=[
-  /* ── ERP shell ka sidebar ────────────────────────────────────────────
-     Ek row per module. Off karne par wo module us role ke sidebar se poora
-     gayab ho jaata hai — "Coming Soon" wale bhi. Key hamesha
-     'ERP_' + erp-shell.js ke MODULES map ka key hoti hai; naya module wahan
-     jode to uski row yahan bhi jodein, warna wo hamesha dikhta rahega.
+  /* ── ERP shell sidebar ───────────────────────────────────────────────
+     One row per module. Turning it off removes that module completely from
+     the role's sidebar, including "Coming Soon" ones. The key is always
+     'ERP_' + the key in erp-shell.js's MODULES map; when adding a module
+     there, add its row here too, or it will always be shown.
 
-     Dhyan den: ye sirf SIDEBAR ka button chhupata hai. Screen par kiska haq
-     hai, wo neeche '🏠 Home Page' wale HOME_* rows se tay hota hai — sidebar
-     ka leaf unhi ko padhta hai. To module ON aur screen OFF ka matlab hai:
-     module dikhega, par us screen ka leaf nahi. */
-  {group:'🏢 ERP Shell › Sidebar Modules'},
-  {key:'ERP_DASH',label:'Dashboard',hint:'KPI tiles + "jo screens chalu hain" grid',def:'ALL',lock:['ADMIN_PIN']},
+     Note: this only hides the SIDEBAR button. Who has rights to a screen is
+     decided by the HOME_* rows under 'Home Page' below; the sidebar leaf
+     reads those. So module ON and screen OFF means: the module shows, but
+     not that screen's leaf. */
+  {group:'ERP Shell › Sidebar Modules'},
+  {key:'ERP_DASH',label:'Dashboard',hint:'KPI tiles + the "live screens" grid',def:'ALL',lock:['ADMIN_PIN']},
   {key:'ERP_PARTNER',label:'Partner',def:'ALL'},
   {key:'ERP_SALES',label:'Sales',def:'ALL'},
-  {key:'ERP_PURCHASE',label:'Purchase',hint:'PR, PO, Approval App isi ke andar',def:'ALL'},
-  {key:'ERP_WAREHOUSE',label:'Warehouse',hint:'Inward, Outward, Issue, Tracker, Repair, Reports',def:'ALL'},
-  {key:'ERP_MANUF',label:'Manufacturing',hint:'Design Master isi ke andar',def:'ALL'},
+  {key:'ERP_PURCHASE',label:'Purchase',hint:'Contains PR, PO and the Approval App',def:'ALL'},
+  {key:'ERP_WAREHOUSE',label:'Store',hint:'Inward, Outward, Issue, Tracker, Repair, Reports',def:'ALL'},
+  {key:'ERP_MANUF',label:'Manufacturing',hint:'Contains Design Master',def:'ALL'},
   {key:'ERP_QUALITY',label:'Quality',def:'ALL'},
   {key:'ERP_FINANCE',label:'Finance',def:'ALL'},
   {key:'ERP_PM',label:'Project Management',def:'ALL'},
   {key:'ERP_SUPPORT',label:'Support',def:'ALL'},
   {key:'ERP_KAIZEN',label:'Kaizen / 6 Sigma',def:'ALL'},
   {key:'ERP_HR',label:'HR Management',def:'ALL'},
-  {key:'ERP_MASTERS',label:'Masters',hint:'Master Data isi ke andar',def:'ALL'},
+  {key:'ERP_MASTERS',label:'Masters',hint:'Contains Master Data',def:'ALL'},
   {key:'ERP_PRODUCTS',label:'Products',def:'ALL'},
   {key:'ERP_ASSETS',label:'Assets',def:'ALL'},
   {key:'ERP_TENDER',label:'Tender Management',def:'ALL'},
   {key:'ERP_NPD',label:'NPD / R&D (PLM)',def:'ALL'},
   {key:'ERP_KPIT',label:'KPIs & Targets',def:'ALL'},
   {key:'ERP_ACT',label:'All Activities',def:'ALL'},
-  {key:'ERP_ADMIN',label:'Administration',hint:'Admin Panel / Users & Roles — default sirf Admin',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
-  {group:'🏠 Home Page'},
-  /* launcher.html ka "ERP" button. Ye poore desktop ERP ka darwaza hai,
-     isi liye apni ek key — warna shop-floor ke us bande ko bhi ERP ka
-     button dikhta jiska kaam sirf Complaint App me hai (launcher par
-     har app key ka default "dikhao" hai). Iske OFF hone se ERP ke andar
-     ki screens par koi asar nahi padta; wo neeche ki rows se chalti hain. */
-  {key:'HOME_ERP_APP',label:'ERP (poora desktop app)',hint:'launcher.html par ERP ka button — OFF karne par us user ke liye ERP khulta hi nahi',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'ERP_ADMIN',label:'Administration',hint:'Admin Panel / Users & Roles; Admin only by default',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {group:'Home Page'},
+  /* The "ERP" button on launcher.html. It is the entry to the whole desktop
+     ERP, so it has its own key; otherwise a shop-floor user whose only work
+     is in the Complaint App would also see the ERP button (on the launcher
+     every app key defaults to "show"). Turning it OFF doesn't affect the
+     screens inside the ERP; those follow the rows below. */
+  {key:'HOME_ERP_APP',label:'ERP (full desktop app)',hint:'The ERP button on launcher.html; when OFF, the ERP does not open for that user at all',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_PR',label:'Purchase Requirement',def:'ALL'},
   {key:'HOME_PO',label:'PO Generation',def:'ALL'},
   {key:'HOME_IN',label:'Material Inward',def:'ALL'},
@@ -5095,6 +5094,7 @@ const SARV_TABS=[
   {key:'HOME_OUT',label:'Material Outward',def:'ALL'},
   {key:'HOME_ISSUE',label:'Issue',def:'ALL'},
   {key:'HOME_REPORTS',label:'Print History / Reports',def:'ALL'},
+  {key:'HOME_MYDAY',label:'My Day (daily tasks)',hint:'Daily task list: Below-MSV PRs, inform requester, rejected PRs, stock count … (store-mytasks.js)',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
   {key:'HOME_MASTER',label:'Master Data',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
@@ -5103,62 +5103,61 @@ const SARV_TABS=[
   {key:'HOME_PRINTING_LOT',label:'Printing Lot Card',hint:'Manufacturing › A4 production lot card + department-wise production tracking',def:'ALL'},
   {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
-  {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board — apna alag login',def:'ALL'},
-  {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html — apna login)',def:'ALL'},
-  {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF — ERP ke andar khulta hai; andar kya kar sakta hai wo Users & Roles ka "Order Form Role" batata hai',def:'ALL'},
-  {group:'🏭 Production › Sub Tabs'},
+  {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board (opens from the launcher)',def:'ALL'},
+  {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
+  {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
+  {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
-  {group:'🛒 PO Generation › Sub Tabs'},
+  {group:'PO Generation › Sub Tabs'},
   {key:'PO_SUB_PENDING',label:'Pending Items (Build PO)',def:'ALL'},
   {key:'PO_SUB_LIST',label:'Generated POs',def:'ALL'},
   {key:'PO_SUB_REPORT',label:'Follow-Up Report',def:'ALL'},
-  {group:'🗂️ Master Data › Sub Tabs'},
+  {group:'Master Data › Sub Tabs'},
   {key:'MD_ITEM',label:'Item Master',def:'ALL'},
   {key:'MD_SUPPLIER',label:'Supplier Master',def:'ALL'},
   {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
   {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
   {key:'MD_FABRIC',label:'Fabric Master',hint:'Excel ki FABRIC MASTER sheet — fabric name + unit, roll weight, yarn planning, bora',def:'ALL'},
   {key:'MD_BRAND',label:'Brand Master',hint:'Excel ki BRAND MASTER sheet — item code, size, ply, sattan, packing, trims',def:'ALL'},
-  {key:'MD_BUYER',label:'Buyer Master',hint:'Party (buyer) list — Order Form aur Packing ke Party Name dropdown isi se bharte hain',def:'ALL'},
-  {key:'MD_TRIM_RATE',label:'Trims & Packing Rate Master',hint:'Material-wise aaj ka Rate + Discount% — Order Form ke Bags & Trims ka Cost/Pc isi se auto bharta hai',def:'ALL'},
-  /* Agency ki apni sub-tab nahi — ye Buyer Master ki screen par DOOSRI
-     table hai, isi liye row poora dabba on/off karti hai. */
-  {key:'MD_AGENCY',label:'Buyer Master › Agency table',hint:'Usi screen par neeche ki Agency table (Order Form ka Agency Name / Contact / Mobile)',def:'ALL'},
-  {key:'MD_BUYER_BILLING',label:'Buyer Master › Address + GSTIN columns',hint:'Billing group — Order Form ke Address aur GSTIN. Off karne par form me bhi ye do field nahi dikhte.',def:'ALL'},
-  /* Ye teen poori screen nahi, sirf COLUMN GROUPS chhupate hain — form me
-     bhi wahi group gayab ho jaata hai, isi liye jis role ko yarn ka hisaab
-     ya packing ki trims nahi dekhni, uske liye screen band karne ki zaroorat
-     nahi padti. Off hone par us group ke field save par chhede bhi nahi
-     jaate (purani value waisi hi rehti hai). */
-  {key:'MD_FABRIC_YARN',label:'Fabric Master › Yarn Planning columns',hint:'PYLE, PC PO / MICRO denier-filament-ends, yarn per roll aur as-per-order — planning ka data',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
+  {key:'MD_BUYER',label:'Buyer Master',hint:'The party (buyer) list; the Party Name dropdowns in the Order Form and Packing are filled from it',def:'ALL'},
+  {key:'MD_TRIM_RATE',label:'Trims & Packing Rate Master',hint:'Current Rate + Discount% per material; the Order Form\'s Bags & Trims Cost/Pc fills from it automatically',def:'ALL'},
+  /* Agency has no sub-tab of its own; it is a SECOND table on the Buyer Master
+     screen, so this row switches the whole box on or off. */
+  {key:'MD_AGENCY',label:'Buyer Master › Agency table',hint:'The Agency table lower on the same screen (the Order Form\'s Agency Name / Contact / Mobile)',def:'ALL'},
+  {key:'MD_BUYER_BILLING',label:'Buyer Master › Address + GSTIN columns',hint:'Billing group: the Order Form\'s Address and GSTIN. When off, these two fields don\'t show in the form either.',def:'ALL'},
+  /* These three don't hide a whole screen, only COLUMN GROUPS; the same group
+     disappears from the form too, so a role that shouldn't see yarn planning
+     or packing trims doesn't need the whole screen closed. When off, that
+     group's fields aren't touched on save either (old values stay as they are). */
+  {key:'MD_FABRIC_YARN',label:'Fabric Master › Yarn Planning columns',hint:'PYLE, PC PO / MICRO denier-filament-ends, yarn per roll and as-per-order: planning data',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   {key:'MD_BRAND_PACKING',label:'Brand Master › Packing / Trims columns',hint:'Master & slave packing, labels, tags, dori, insert card, barcode sticker',def:'ALL'},
-  {key:'MD_REV_COLUMN',label:'Fabric / Brand Master › REV + Status columns',hint:'REV badge aur Active/Inactive column. Off karne par 🕘 History column bhi chhup jaata hai.',def:'ALL'},
-  {key:'MD_DROPDOWN',label:'Dropdown Master',hint:'App ke saare fixed dropdowns ki values (sales_dropdowns)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'MD_REV_COLUMN',label:'Fabric / Brand Master › REV + Status columns',hint:'The REV badge and Active/Inactive column. When off, the History column is hidden too.',def:'ALL'},
+  {key:'MD_DROPDOWN',label:'Dropdown Master',hint:'The values of every fixed dropdown in the app (sales_dropdowns)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'MD_SETTINGS',label:'Settings',def:'ALL',lock:['ADMIN_PIN']},
-  {key:'MD_ITEM_NEWPR',label:'Item Master › New PR Generation',hint:'NEW PR column + 📝 Generate New PR button',def:['ADMIN_PIN']},
+  {key:'MD_ITEM_NEWPR',label:'Item Master › New PR Generation',hint:'NEW PR column + Generate New PR button',def:['ADMIN_PIN']},
   /* mobile.html reads these from the same tab_visibility row. A mobile tab is
      shown only if its Feature Access row (VENDOR INFO … PO RECEIPTS) is ON too. */
-  {group:'📱 Approval App (mobile) › Tabs — Feature Access ka mobile row bhi ON hona chahiye'},
+  {group:'Approval App (mobile) › Tabs: the mobile row in Feature Access must also be ON'},
   {key:'M_VI',label:'Vendor Info',def:'ALL'},
   {key:'M_POGEN',label:'PO Generate',def:'ALL'},
   {key:'M_MD',label:'MD Approval',def:'ALL'},
   {key:'M_SENT',label:'PO Sent to Vendor',def:'ALL'},
   {key:'M_STORE',label:'Store Check',def:'ALL'},
   {key:'M_RECV',label:'PO Receipts',def:'ALL'},
-  /* Yahan 'ALL' hai par tab phir bhi default sirf PO Sender ko dikhta hai —
-     mobile ka tab DONO jagah se pass hona chahiye, aur Feature Access ki
-     PO_FOLLOWUP row default me sirf PO Sender + Admin ko hai. Isi tarah
-     M_SENT bhi 'ALL' hai. */
-  {key:'M_FOLLOWUP',label:'PO Follow-up',hint:'Bheje hue PO par vendor se revised delivery date + remarks',def:'ALL'},
-  {group:'📱 Approval App (mobile) › Sub Tabs'},
+  /* It is 'ALL' here, yet by default the tab still shows only to the PO
+     Sender: a mobile tab has to pass BOTH places, and the PO_FOLLOWUP row in
+     Feature Access defaults to the PO Sender + Admin only. M_SENT is 'ALL'
+     in the same way. */
+  {key:'M_FOLLOWUP',label:'PO Follow-up',hint:'Revised delivery date + remarks from the vendor on POs already sent',def:'ALL'},
+  {group:'Approval App (mobile) › Sub Tabs'},
   {key:'M_VI_pending',label:'Vendor Info › Pending',def:'ALL'},
   {key:'M_VI_done',label:'Vendor Info › Done',def:'ALL'},
   {key:'M_POGEN_pending',label:'PO Generate › Pending',def:'ALL'},
   {key:'M_POGEN_done',label:'PO Generate › Done',def:'ALL'},
-  /* Jo PO MD ne reject kiya, uski PR yahan aati hai — Purchaser remark padhkar
-     approval cancel karte hain aur sudhar kar dobara sign karte hain. Sab roles
-     ko default ON: Purchaser ko kaam karna hai, baaki ko read-only dikhta hai. */
-  {key:'M_POGEN_rejectedpo',label:'PO Generate › Rejected PO',hint:'MD ne jo PO reject kiye — unki PR, MD ke remark ke saath',def:'ALL'},
+  /* PRs whose PO the MD rejected come here; the Purchaser reads the remark,
+     cancels the approval, corrects it and signs again. On by default for all
+     roles: the Purchaser has work to do, and the others see it read-only. */
+  {key:'M_POGEN_rejectedpo',label:'PO Generate › Rejected PO',hint:'POs the MD rejected: their PRs, with the MD\'s remark',def:'ALL'},
   {key:'M_MD_pending',label:'MD Approval › Pending',def:'ALL'},
   {key:'M_MD_done',label:'MD Approval › Done',def:'ALL'},
   {key:'M_SENT_pending',label:'PO Sent › Pending',def:'ALL'},
@@ -5172,12 +5171,12 @@ const SARV_TABS=[
   {key:'M_RECV_pending',label:'PO Receipts › Pending',def:'ALL'},
   {key:'M_RECV_partial',label:'PO Receipts › Partially Received',def:'ALL'},
   {key:'M_RECV_received',label:'PO Receipts › Received',def:'ALL'},
-  {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Approve / Reject sirf MD kar sakta hai',def:['USER_MD_PIN','ADMIN_PIN']},
-  /* Follow-up ke do section stage ki jodi nahi hain — dono me WAHI PO hain
-     (vendor ko bheje hue, maal poora nahi aaya), bas baant ye hai ki aaj call
-     karni hai ya nahi. Isi liye naam "Due" aur "Awaited" hain. */
-  {key:'M_FOLLOWUP_pending',label:'PO Follow-up › Follow-up Due',hint:'Jin PO par ek bhi follow-up nahi hua, ya di hui revised date nikal gayi',def:'ALL'},
-  {key:'M_FOLLOWUP_done',label:'PO Follow-up › Date Awaited',hint:'Follow-up ho chuka hai aur vendor ki di hui date abhi aage ki hai',def:'ALL'},
+  {key:'M_RECV_inwapproval',label:'PO Receipts › Inward Approval',hint:'Only the MD can Approve / Reject',def:['USER_MD_PIN','ADMIN_PIN']},
+  /* The two follow-up sections are not a pair of stages; both hold the SAME
+     POs (sent to the vendor, material not fully received). The only split is
+     whether a call is needed today. Hence the names "Due" and "Awaited". */
+  {key:'M_FOLLOWUP_pending',label:'PO Follow-up › Follow-up Due',hint:'POs with no follow-up yet, or whose revised date has passed',def:'ALL'},
+  {key:'M_FOLLOWUP_done',label:'PO Follow-up › Date Awaited',hint:'Followed up, and the date the vendor gave is still ahead',def:'ALL'},
 ];
 const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',trimRateMasterSub:'MD_TRIM_RATE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
@@ -5192,19 +5191,19 @@ let sarvSettingsMissing=false;
 let sarvAppUsers=[],sarvAppUsersLoaded=false,sarvAppUsersMissing=false;
 // Sales › Order Form ke role — app_users.sales_role (ek hi user table).
 let sarvSalesRoleReady=false;
-/* UNIFIED_USERS_MIGRATION.sql chali hai ya nahi — yani roles[] /
-   app_access / session wale column maujood hain. false ho to Admin Panel
-   multi-role aur Apps ka hissa chhupa deta hai (adhoora UI dikhane se
-   behtar hai saaf kehna ki migration chalani hai). */
+/* Whether UNIFIED_USERS_MIGRATION.sql has been run, i.e. whether the roles[] /
+   app_access / session columns exist. If false, the Admin Panel hides the
+   multi-role and Apps parts (better to say plainly that the migration needs
+   running than to show a half-working UI). */
 let sarvUnifiedReady=false;
-let sarvUnifiedErr='';   // uski asli wajah, Admin Panel ke note me dikhane ke liye
-let sarvUsersDenied=false; // true = GRANT ki kami (column ki nahi)
+let sarvUnifiedErr='';   // its real reason, shown in the Admin Panel note
+let sarvUsersDenied=false; // true = a missing GRANT (not a missing column)
 const SARV_SALES_ROLES=[
   {v:'admin',l:'Admin',hint:'Create, Edit, Status, Emboss catalog'},
   {v:'manager',l:'Manager',hint:'Create, Edit, Status'},
   {v:'executive',l:'Executive',hint:'Create, Edit'},
-  {v:'data_entry',l:'Data Entry',hint:'Sirf naya order'},
-  {v:'viewer',l:'Viewer',hint:'Sirf dekhna'}
+  {v:'data_entry',l:'Data Entry',hint:'New orders only'},
+  {v:'viewer',l:'Viewer',hint:'View only'}
 ];
 const sarvSalesRoleLabel_=v=>{const r=SARV_SALES_ROLES.find(x=>x.v===v);return r?r.l:'';};
 
@@ -5221,22 +5220,22 @@ function sarvMatrixVal_(matrix,defs,key,role){
   return sarvDefOf_(d,role);
 }
 function sarvCanRole(role,key){return sarvMatrixVal_(sarvSettings.role_permissions,SARV_FEATURES,key,role);}
-/* Access = saare roles ka JOD. Ek bhi role YES kahe to mil jaata hai. */
+/* Access = the UNION of all roles. If any one role says YES, access is granted. */
 function sarvCan(key){
   const rs=sarvRoles_();
   return rs.length>0&&rs.some(r=>sarvCanRole(r,key));
 }
-/* Tab / app ka dikhna teen tah me tay hota hai, isi kram me:
+/* Whether a tab / app shows is decided at three levels, in this order:
 
-     1. Us USER ka apna override (Admin Panel › Users › Apps)
-          true  = zaroor dikhao, role kuch bhi kahe
-          false = zaroor chhupao, role kuch bhi kahe
-     2. role-wise Tab Visibility matrix (saare roles ka jod)
-     3. code ka default (SARV_TABS ka `def`)
+     1. The USER's own override (Admin Panel › Users › Apps)
+          true  = always show, whatever the role says
+          false = always hide, whatever the role says
+     2. the role-wise Tab Visibility matrix (union of all roles)
+     3. the code default (`def` in SARV_TABS)
 
-   Pehli tah hi wo cheez hai jo Admin ko "is ek user se ye button hata
-   do" ki taaqat deti hai bina uske poore role ko chhede — warna ek
-   banda chhupane ke liye naya role banana padta tha. */
+   The first level is what lets the Admin "remove this button for this one
+   user" without touching their whole role; before, hiding something from
+   one person meant creating a new role. */
 function sarvTabVisible(key){
   const rs=sarvRoles_();
   if(!rs.length)return true;
@@ -5244,8 +5243,8 @@ function sarvTabVisible(key){
   if(typeof ov==='boolean')return ov;
   return rs.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,r));
 }
-/* Is user ka apna faisla is key par — true / false, ya undefined ("auto",
-   yani role se jo mile wahi). */
+/* This user's own decision on this key: true / false, or undefined ("auto",
+   i.e. whatever the role gives). */
 function sarvUserAccessOverride_(key){
   const a=sarvCurrentUser&&sarvCurrentUser.app_access;
   if(!a||typeof a!=='object')return undefined;
@@ -5258,9 +5257,9 @@ function sarvNavTargetVisible_(target){
 }
 function sarvFeatureLabel_(key){const d=SARV_FEATURES.find(f=>f.key===key);return d?d.label:key;}
 function sarvDeny(key){
-  // Kai role ho to saare gino — warna user sochta hai "mera to doosra role hai na".
+  // With several roles, count them all; otherwise the user thinks "but I have another role".
   const rn=sarvRoles_().map(r=>SARV_ROLE_LABEL[r]||r).join(' + ');
-  showToast('⛔ "'+sarvFeatureLabel_(key)+'" — '+(rn||'is role')+' ko access nahi hai. Admin se Settings › Admin Panel me access lein.','warn');
+  showToast('"'+sarvFeatureLabel_(key)+'": '+(rn||'this role')+' does not have access. Ask the Admin for access under Settings › Admin Panel.','warn');
 }
 function sarvGuard(key){if(sarvCan(key))return true;sarvDeny(key);return false;}
 
@@ -5324,11 +5323,11 @@ function sarvApplySubTabs_(){
     b.style.display=(!k||sarvTabVisible(k))?'':'none';
   });
   const ap=byId('sarvAdminPanel');if(ap)ap.style.display=isAdmin()?'':'none';
-  /* Fabric / Brand Master ka poora table — columns, chips aur row ke
-     buttons — Feature Access aur Tab Visibility se banta hai. Admin ne
-     abhi matrix save kiya ho to khuli screen turant naye hisaab se dikhni
-     chahiye, warna purane buttons dikhte rehte hain aur sirf click par
-     "access nahi" milta. Sirf JO KHULI HAI usi ko dobara banate hain. */
+  /* The whole Fabric / Brand Master table (columns, chips and row buttons)
+     is built from Feature Access and Tab Visibility. If the Admin has just
+     saved the matrix, the open screen should reflect it immediately;
+     otherwise the old buttons stay visible and only a click says "no
+     access". Only the screen that IS OPEN is rebuilt. */
   if(typeof sarvFbmRender==='function'){
     [['fabricMasterSub','FABRIC'],['brandMasterSub','BRAND'],
      ['buyerMasterSub','BUYER'],['buyerMasterSub','AGENCY'],['trimRateMasterSub','TRIMRATE']].forEach(([sub,code])=>{
@@ -5381,7 +5380,7 @@ async function sarvLoadSettings_(){
     sarvSettingsMissing=false;
   }catch(e){
     sarvSettingsMissing=true;
-    console.warn('[SARV] app_settings not loaded (ADMIN_PANEL_MIGRATION.sql run hua?):',e.message||e);
+    console.warn('[SARV] app_settings not loaded (has ADMIN_PANEL_MIGRATION.sql been run?):',e.message||e);
   }
   sarvApplyAccess();
 }
@@ -5390,30 +5389,30 @@ async function sarvLoadAppUsers_(force){
   if(!SB_READY)return sarvAppUsers;
   try{
     // signature is deliberately not selectable — only get_user_signature() returns it.
-    // sales_role (Order Form Role) ORDER_FORM_USERS_MIGRATION.sql se aata hai; wo
-    // na chala ho to bina us column ke dobara — users ki list kabhi khaali na ho.
+    // sales_role (Order Form Role) comes from ORDER_FORM_USERS_MIGRATION.sql; if
+    // that hasn't run, retry without that column so the user list is never empty.
     const cols='id,user_name,role,emp_code,contact_no,has_signature,is_active,created_at,updated_at';
-    /* Teen tah ka fallback, sabse naye se sabse purane tak — jis setup me
-       jo migration chali ho, users ki list wahan bhi khaali na ho:
+    /* A three-level fallback, from newest to oldest, so that whichever
+       migrations a setup has run, its user list is never empty:
          1. + roles / app_access / links  (UNIFIED_USERS_MIGRATION.sql)
          2. + sales_role                  (ORDER_FORM_USERS_MIGRATION.sql)
-         3. sirf base columns             (ADMIN_PANEL_MIGRATION.sql) */
+         3. base columns only             (ADMIN_PANEL_MIGRATION.sql) */
     const uniCols=',roles,app_access,cmp_profile_id,pk_profile_id';
     let q=await SB.from('app_users').select(cols+',sales_role'+uniCols).order('user_name');
     sarvUnifiedReady=!q.error;
-    /* Asli wajah bachakar rakhte hain. "Extra Roles kyun nahi dikh rahe"
-       ka jawab dhoondhne me sabse zyada waqt isi me jaata tha — ab
-       Admin Panel ka note yahi message dikha deta hai. */
+    /* Keep the real reason. Most of the time spent answering "why aren't the
+       Extra Roles showing" went into finding this; now the Admin Panel note
+       shows this message directly. */
     sarvUnifiedErr=q.error?(q.error.message||String(q.error)):'';
-    /* "permission denied" aur "column nahi mila" DO ALAG baatein hain —
-       pehle dono par ek hi message aata tha aur wo galat migration ko
-       blame karta tha. Grant wali galti Supabase me aam hai: RLS policy
-       bana dete hain par table-level GRANT bhool jaate hain, aur RLS
-       grant ke bina kaam hi nahi karti. */
+    /* "permission denied" and "column not found" are TWO DIFFERENT things;
+       both used to get the same message, which blamed the wrong migration.
+       The GRANT mistake is common in Supabase: an RLS policy is created but
+       the table-level GRANT is forgotten, and RLS doesn't work without the
+       grant. */
     sarvUsersDenied=!!q.error&&/permission denied/i.test(sarvUnifiedErr);
     if(q.error)console.warn('[SARV] app_users read fail ('
-      +(sarvUsersDenied?'GRANT missing — UNIFIED_USERS_MIGRATION.sql ka section 1b chalayein'
-                       :'column missing — UNIFIED_USERS_MIGRATION.sql run hua?')+'):',sarvUnifiedErr);
+      +(sarvUsersDenied?'GRANT missing: run section 1b of UNIFIED_USERS_MIGRATION.sql'
+                       :'column missing: has UNIFIED_USERS_MIGRATION.sql been run?')+'):',sarvUnifiedErr);
     sarvSalesRoleReady=!q.error;
     if(q.error){
       q=await SB.from('app_users').select(cols+',sales_role').order('user_name');
@@ -5424,7 +5423,7 @@ async function sarvLoadAppUsers_(force){
     sarvAppUsers=q.data||[];sarvAppUsersMissing=false;
   }catch(e){
     sarvAppUsers=[];sarvAppUsersMissing=true;
-    console.warn('[SARV] app_users not loaded (ADMIN_PANEL_MIGRATION.sql run hua?):',e.message||e);
+    console.warn('[SARV] app_users not loaded (has ADMIN_PANEL_MIGRATION.sql been run?):',e.message||e);
   }
   sarvAppUsersLoaded=true;
   sarvRefreshPurchaserLists_();
@@ -5463,28 +5462,28 @@ function sarvRenderAdminPanel(){
   const note=byId('ap_migrationNote');
   Promise.all([sarvLoadSettings_(),sarvLoadAppUsers_(true)]).then(()=>{
     if(note){
-      /* Kaun si migration baaki hai — ek-ek karke naam ke saath. Pehle
-         sirf ADMIN_PANEL ka zikr tha, isi liye UNIFIED na chali ho to
-         "Extra Roles / Apps" chup-chaap gayab rehte the aur Admin ko
-         lagta tha ki feature hi nahi hai. Ab wajah saamne likhi hai. */
+      /* Which migrations are still pending, one by one, by name. Only
+         ADMIN_PANEL used to be mentioned, so if UNIFIED hadn't run, "Extra
+         Roles / Apps" silently stayed hidden and the Admin assumed the feature
+         didn't exist. Now the reason is spelled out. */
       const miss=[];
-      /* GRANT ki kami sabse pehle — ye "table hi nahi hai" jaisi dikhti
-         hai par bilkul alag cheez hai, aur iska ilaaj bhi alag hai. */
+      /* A missing GRANT first: it looks like "the table doesn't exist" but is
+         something quite different, with a different fix. */
       if(sarvUsersDenied)
-        miss.push('<b>app_users par <code>anon</code> ko SELECT ka GRANT nahi hai</b> &mdash; isi liye users ki list khaali hai. '
+        miss.push('<b><code>anon</code> has no SELECT GRANT on app_users</b> &mdash; that is why the user list is empty. '
           +'Supabase ne kaha: <code>permission denied for table app_users</code>.<br>'
-          +'Ilaaj: <code>UNIFIED_USERS_MIGRATION.sql</code> ka <b>section 1b</b> chalayein (wo sirf GRANT deta hai, '
-          +'aur <code>signature</code> / <code>pin_hash</code> jaan-boojh kar chhod deta hai).');
+          +'Fix: run <b>section 1b</b> of <code>UNIFIED_USERS_MIGRATION.sql</code> (it only grants access, '
+          +'and deliberately leaves out <code>signature</code> / <code>pin_hash</code>).');
       else if(sarvSettingsMissing||sarvAppUsersMissing)
-        miss.push('<code>ADMIN_PANEL_MIGRATION.sql</code> &mdash; tab tak defaults chal rahe hain aur Save nahi hoga');
+        miss.push('<code>ADMIN_PANEL_MIGRATION.sql</code> &mdash; until then the defaults are in use and Save will not work');
       else if(!sarvUnifiedReady)
-        miss.push('<code>UNIFIED_USERS_MIGRATION.sql</code> &mdash; iske bina <b>Extra Roles</b> (ek user, kai role) aur <b>&#128241; Apps</b> '
-          +'(per-user app access) ka hissa user form me nahi dikhta, aur Complaint App / Packing apna alag password maangte rehte hain');
+        miss.push('<code>UNIFIED_USERS_MIGRATION.sql</code> &mdash; without it the <b>Extra Roles</b> (one user, several roles) and <b>Apps</b> '
+          +'(per-user app access) parts don\'t show in the user form, and the Complaint App / Packing keep asking for their own password');
       note.style.display=miss.length?'block':'none';
       note.innerHTML=miss.length
-        ?'&#9888;&#65039; Supabase &rsaquo; SQL Editor me ye abhi run nahi hua: '+miss.join('<br>')
-          +'<br><small>Chala chuke hain par phir bhi ye dikh raha hai? Supabase &rsaquo; SQL Editor me <code>notify pgrst, \'reload schema\';</code> '
-          +'chalayein (API ka column cache purana reh jaata hai), phir ye page reload karein.'
+        ?'Not yet run in Supabase &rsaquo; SQL Editor: '+miss.join('<br>')
+          +'<br><small>Already run it and still seeing this? Run <code>notify pgrst, \'reload schema\';</code> in Supabase &rsaquo; SQL Editor '
+          +'(the API\'s column cache can be stale), then reload this page.'
           +(sarvUnifiedErr?'<br>Supabase ne kaha: <code>'+escText(sarvUnifiedErr)+'</code>':'')+'</small>'
         :'';
     }
@@ -5500,7 +5499,7 @@ function sarvApFullScreen_(on){
   const ap=byId('sarvAdminPanel');if(!ap)return;
   ap.classList.toggle('ap-full',!!on);
   const b=byId('ap_fullScreenBtn');
-  if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'&#9974; Full Screen';b.title=on?'Wapas Settings me (Esc)':'Admin Panel ko poori screen par kholein (Esc se wapas)';}
+  if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'Full Screen';b.title=on?'Back to Settings (Esc)':'Open the Admin Panel full screen (Esc to exit)';}
   if(on)ap.scrollTop=0;
 }
 function sarvShowApPane_(p){
@@ -5513,38 +5512,38 @@ function sarvRenderUsers_(){
   const tb=byId('ap_usersBody');if(!tb)return;
   const rf=byId('ap_userRoleFilter');
   if(rf&&rf.options.length<=1)rf.innerHTML='<option value="">All Roles</option>'+SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'">'+escText(r.label)+'</option>').join('');
-  if(sarvAppUsersMissing){tb.innerHTML='<tr><td colspan="9" class="ap-empty">app_users table nahi mili — ADMIN_PANEL_MIGRATION.sql run karein.</td></tr>';return;}
+  if(sarvAppUsersMissing){tb.innerHTML='<tr><td colspan="9" class="ap-empty">The app_users table was not found. Run ADMIN_PANEL_MIGRATION.sql.</td></tr>';return;}
   const role=rf?.value||'',q=(byId('ap_userSearch')?.value||'').trim().toLowerCase();
   const order=SARV_PERM_ROLES.map(r=>r.code);
   const rows=sarvAppUsers.filter(u=>(!role||u.role===role)&&(!q||[u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role)].join(' ').toLowerCase().includes(q)))
     .sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role)||String(a.user_name).localeCompare(String(b.user_name)));
-  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="ap-empty">Koi user nahi — ➕ Add User se banayein.</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="ap-empty">No users yet. Create one with Add User.</td></tr>';return;}
   tb.innerHTML=rows.map((u,i)=>'<tr>'
     +'<td style="color:#94a3b8;">'+(i+1)+'</td>'
     +'<td style="font-weight:800;">'+escText(u.user_name)+'</td>'
-    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;" title="Primary role — sign / audit isi se">'+escText(sarvRoleLabelOf_(u.role))+'</span>'
-      /* Extra roles ki ginti — poori list hover me. Saare pills likhne
-         par row chaudhi ho jaati thi aur naam hi khisak jaata tha. */
+    +'<td><span class="ap-pill" style="background:#e0f2fe;color:#0369a1;" title="Primary role, used for signatures / audit">'+escText(sarvRoleLabelOf_(u.role))+'</span>'
+      /* The count of extra roles; the full list is in the hover. Writing out
+         every pill made the row wide and pushed the name aside. */
       +(((u.roles&&u.roles.length)||0)>1
         ?' <span class="ap-pill" style="background:#ede9fe;color:#5b21b6;" title="'
           +escText(u.roles.map(r=>sarvRoleLabelOf_(r)+(r===u.role?' (primary)':'')).join(', ')
-            +' — access in sabka jod hai')+'">+'+(u.roles.length-1)+' role</span>':'')
-      /* Per-user app override — Admin ko turant pata chale ki is banda
-         par kuch haath se set hai, warna "iska button kyun nahi dikh
-         raha" dhoondhne me waqt jaata hai. */
+            +'; access is the union of all of these')+'">+'+(u.roles.length-1)+' role</span>':'')
+      /* Per-user app override: the Admin sees immediately that something is
+         set by hand for this person; otherwise time goes into working out
+         "why isn't this button showing for them". */
       +(u.app_access&&Object.keys(u.app_access).length
         ?' <span class="ap-pill" style="background:#fff7ed;color:#9a3412;" title="'
           +escText(Object.keys(u.app_access).map(k=>(SARV_APP_LABEL[k]||k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
-          +'">&#128241; '+Object.keys(u.app_access).length+'</span>':'')
-      +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">&#129534; '+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')
-      +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Complaint App ke purane account se juda">&#128279;C</span>':'')
-      +(u.pk_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Packing ke purane account se juda">&#128279;P</span>':'')
+          +'">'+Object.keys(u.app_access).length+'</span>':'')
+      +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">'+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')
+      +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Complaint App account">C</span>':'')
+      +(u.pk_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Packing account">P</span>':'')
       +'</td>'
     +'<td>'+escText(u.emp_code||'—')+'</td>'
     +'<td>'+escText(u.contact_no||'—')+'</td>'
-    +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved — PIN se sign kar sakte hain">&#9997;&#65039; &#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="Signature abhi nahi bana">&mdash;</span>')+'</td>'
+    +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved; can sign with PIN">&#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="No signature yet">&mdash;</span>')+'</td>'
     +'<td style="text-align:center;"><span class="ap-pill" style="background:'+(u.is_active?'#dcfce7':'#fee2e2')+';color:'+(u.is_active?'#166534':'#dc2626')+';">'+(u.is_active?'Active':'Inactive')+'</span></td>'
-    +'<td style="text-align:center;"><button type="button" class="ap-ibtn" data-ap-edit="'+escText(u.id)+'" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;">&#9999;&#65039;</button></td>'
+    +'<td style="text-align:center;"><button type="button" class="ap-ibtn" data-ap-edit="'+escText(u.id)+'" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;" title="Edit user">✎</button></td>'
     +'<td style="text-align:center;"><button type="button" class="ap-ibtn" data-ap-del="'+escText(u.id)+'" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;">&#10005;</button></td>'
     +'</tr>').join('');
 }
@@ -5553,11 +5552,11 @@ function sarvRenderMatrix_(tableId,defs,which){
   const m=sarvApDraft[which]||{};
   const saved=which==='perms'?sarvFullMatrix_(sarvSettings.role_permissions,SARV_FEATURES):sarvFullMatrix_(sarvSettings.tab_visibility,SARV_TABS);
   let h='<thead><tr><th>'+(which==='perms'?'FEATURES':'TABS / SUB TABS')+'</th>'
-    +SARV_PERM_ROLES.map(r=>'<th data-ap-col="'+r.code+'" title="Click — poora column YES / NO">'+escText(r.label)+'</th>').join('')+'</tr></thead><tbody>';
+    +SARV_PERM_ROLES.map(r=>'<th data-ap-col="'+r.code+'" title="Click: the whole column YES / NO">'+escText(r.label)+'</th>').join('')+'</tr></thead><tbody>';
   defs.forEach(d=>{
     if(d.group){h+='<tr class="ap-group"><td colspan="'+(SARV_PERM_ROLES.length+1)+'">'+escText(d.group)+'</td></tr>';return;}
     const dirty=SARV_PERM_ROLES.some(r=>!!(m[d.key]||{})[r.code]!==!!(saved[d.key]||{})[r.code]);
-    h+='<tr data-ap-key="'+d.key+'"'+(dirty?' class="ap-dirty"':'')+'><th data-ap-row="'+d.key+'" title="Click — poori row YES / NO">'+escText(d.label)+(d.hint?'<small>'+escText(d.hint)+'</small>':'')+'</th>';
+    h+='<tr data-ap-key="'+d.key+'"'+(dirty?' class="ap-dirty"':'')+'><th data-ap-row="'+d.key+'" title="Click: the whole row YES / NO">'+escText(d.label)+(d.hint?'<small>'+escText(d.hint)+'</small>':'')+'</th>';
     SARV_PERM_ROLES.forEach(r=>{
       const locked=!!(d.lock&&d.lock.includes(r.code));
       const on=locked||!!(m[d.key]||{})[r.code];
@@ -5589,22 +5588,22 @@ function sarvMatrixClick_(e){
   }
 }
 async function sarvSaveMatrix_(which){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login','warn');
+  if(!isAdmin())return showToast('Admin login only','warn');
   const key=which==='perms'?'role_permissions':'tab_visibility';
-  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:(which==='perms'?'Feature Access':'Tab Visibility')+' save karne ke liye',
-    recordInfo:'Sabhi roles par turant lagu hoga (mobile app me bhi)',label:'Admin PIN',confirmText:'&#128190; Save'});
+  const adminPin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save '+(which==='perms'?'Feature Access':'Tab Visibility'),
+    recordInfo:'Applies to all roles immediately (in the mobile app too)',label:'Admin PIN',confirmText:'Save'});
   if(adminPin==null)return;
-  if(!adminPin.trim())return showToast('Admin PIN khali nahi ho sakta','warn');
+  if(!adminPin.trim())return showToast('The Admin PIN cannot be empty','warn');
   try{
     const r=await SB.rpc('admin_save_setting',{p_key:key,p_value:sarvApDraft[which],p_admin_pin:adminPin.trim()});
     if(r.error)throw r.error;
-    if(!r.data)return showToast('❌ Admin PIN galat hai — save nahi hua','error');
+    if(!r.data)return showToast('Incorrect Admin PIN; not saved','error');
     sarvSettings[key]=JSON.parse(JSON.stringify(sarvApDraft[which]));
     sarvApplyAccess();
     sarvRenderMatrix_(which==='perms'?'ap_permMatrix':'ap_tabMatrix',which==='perms'?SARV_FEATURES:SARV_TABS,which);
-    showToast('✅ '+(which==='perms'?'Feature Access':'Tab Visibility')+' save ho gaya');
+    showToast(''+(which==='perms'?'Feature Access':'Tab Visibility')+' saved');
   }catch(e){
-    if(/admin_save_setting|does not exist/i.test(e.message||''))showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');
+    if(/admin_save_setting|does not exist/i.test(e.message||''))showToast('Run ADMIN_PANEL_MIGRATION.sql first','warn');
     else dbError(e);
   }
 }
@@ -5640,22 +5639,22 @@ function sarvDrawSigInto_(canvas,dataUrl){
       cx.drawImage(img,(canvas.width-w)/2,(canvas.height-h)/2,w,h);
       res();
     };
-    img.onerror=()=>rej(new Error('Signature image load nahi hui'));
+    img.onerror=()=>rej(new Error('The signature image did not load'));
     img.src=dataUrl;
   });
 }
 
 /* ── User add / edit popup ──────────────────────────────────────── */
 /* ── User form: EXTRA ROLES ───────────────────────────────────────────
-   Primary role upar apne dropdown me hai; yahan uske alawa jo role bhi
-   dene hain. Access in SABKA jod hota hai. Primary ka checkbox dikhta
-   hai par disabled + ticked — taaki saaf rahe ki wo bhi ginta hai, aur
-   use yahan se hatana mumkin na ho (wo upar dropdown se badalta hai). */
+   The primary role has its own dropdown above; here go any other roles to
+   grant. Access is the union of ALL of them. The primary's checkbox is shown
+   disabled + ticked, to make clear that it counts too and that it can't be
+   removed here (it is changed from the dropdown above). */
 function sarvUserRolesHtml_(u,role){
   const have=(u&&u.roles&&u.roles.length)?u.roles:(u?[u.role]:[]);
   return '<div class="fg" style="grid-column:1 / -1;">'
-    +'<label>&#128100; Extra Roles <small style="text-transform:none;font-weight:600;">'
-    +'(primary ke alawa — access in sabka JOD hoga)</small></label>'
+    +'<label>Extra Roles <small style="text-transform:none;font-weight:600;">'
+    +'(besides the primary; access is the UNION of all of these)</small></label>'
     +'<div data-f="roleswrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:4px 10px;'
     +'border:1px solid #cbd5e1;border-radius:7px;padding:8px 10px;background:#f8fafc;">'
     +SARV_PERM_ROLES.map(r=>{
@@ -5671,96 +5670,94 @@ function sarvUserRolesHtml_(u,role){
 }
 
 /* ── User form: APPS (tri-state) ──────────────────────────────────────
-   Teen haal har app par:
-     auto  — role-wise Tab Visibility jo kahe wahi (default)
-     ON    — zaroor dikhao, role kuch bhi kahe
-     OFF   — zaroor chhupao, role kuch bhi kahe
-   "auto" ko jaan-boojh kar default rakha gaya: tabhi role-wise matrix ka
-   matlab bachta hai, aur Admin ko sirf us ek banda par haath lagana
-   padta hai jiska case alag hai. Neeche "role se abhi kya milega" bhi
-   likha rehta hai, taaki auto chunne par andaza na lagana pade. */
+   Three states for each app:
+     auto  - whatever the role-wise Tab Visibility says (default)
+     ON    - always show, whatever the role says
+     OFF   - always hide, whatever the role says
+   "auto" is the default on purpose: that keeps the role-wise matrix
+   meaningful, and the Admin only has to touch the one person whose case is
+   different. Below it, "what the role gives right now" is shown too, so
+   choosing auto involves no guesswork. */
 const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOME_IN:'Material Inward',
   HOME_IN_NB:'Inward (NB)',HOME_OUT:'Material Outward',HOME_ISSUE:'Issue',HOME_REPORTS:'Print History / Reports',
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
   HOME_ORDER_FORM:'Order Form (Sales)'};
-// Jo apps apni alag file me khulte hain — unka SSO isi access par chalta hai.
+// Apps that open in their own file; their SSO runs on this access.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1};
 
-/* ── Jin apps ko apna ACCOUNT bhi chahiye ────────────────────────────
-   Complaint aur Packing ka data Supabase Auth par chalta hai (unki RLS
-   aur trigger `auth.uid()` maangte hain). Isi liye in dono me DIRECT
-   login (bina us app ka apna password) tabhi hota hai jab us bande ka
-   us app ka account bhi ho:
-     Complaint → app_users.cmp_username bhara hua + auth.users me row
-     Packing   → packing.profiles me row (usi id se) + auth.users me row
-   Order Form isme nahi hai — uska SSO sirf access par chalta hai, usko
-   auth session nahi chahiye.
+/* ── Apps that also need their own ACCOUNT ───────────────────────────
+   Complaint and Packing data run on Supabase Auth (their RLS and triggers
+   need `auth.uid()`). So DIRECT login to these two (without that app's own
+   password) works only when the person also has an account in that app:
+     Complaint → app_users.cmp_username filled in + a row in auth.users
+     Packing   → a row in packing.profiles (same id) + a row in auth.users
+   The Order Form isn't included: its SSO runs on access alone and needs no
+   auth session.
 
-   YE WAHI KAMI THI: upar ka switch ON karne par sirf `app_access` ka
-   jsonb likha jaata tha (`admin_set_user_app_access`), aur ye account
-   banta hi nahi tha. Admin ko lagta tha kaam ho gaya, par user ke
-   saamne phir bhi "NO_APP_ACCOUNT" aata tha. Account banane wala RPC
-   (`admin_grant_app_access`) aur Edge Function ka provision raasta
-   pehle se maujood the — unhe koi bulata hi nahi tha. */
+   THIS WAS THE GAP: switching the toggle above ON only wrote the
+   `app_access` jsonb (`admin_set_user_app_access`), and this account was
+   never created. The Admin thought it was done, but the user still saw
+   "NO_APP_ACCOUNT". The account-creating RPC (`admin_grant_app_access`)
+   and the Edge Function's provision path already existed; nothing called them. */
 const SARV_APP_NEEDS_ACCOUNT={HOME_COMPLAINT_APP:1,HOME_PACKING:1};
 
-/* ON/OFF ko us app ke account tak le jaata hai.
-   Jawab: { id, note } — `id` jaan-boojh kar lautate hain, kyunki naya
-   auth account banne par app_users.id usi naye auth id par le aayi
-   jaati hai (erp_relink_user_id). Aage ka koi bhi kaam purani id par
-   karne se "USER_NOT_FOUND" milta. */
+/* Carries ON/OFF through to that app's account.
+   Returns { id, note }. `id` is returned on purpose: when a new auth account
+   is created, app_users.id is moved to that new auth id
+   (erp_relink_user_id). Doing anything further with the old id would give
+   "USER_NOT_FOUND". */
 async function sarvSyncExternalAppAccount_(adminPin,userId,appKey,on){
   const label=SARV_APP_LABEL[appKey]||appKey;
   const r=await SB.rpc('admin_grant_app_access',
     {p_admin_pin:adminPin,p_user_id:userId,p_app_key:appKey,p_on:on});
   if(r.error){
     const m=String(r.error.message||r.error);
-    return {id:userId,note:' — ⚠️ '+label+' ka account nahi bana: '
+    return {id:userId,note:'; Warning: the '+label+' account was not created: '
       +(/does not exist|schema cache|PGRST202/i.test(m)
-          ? 'MERGE_PROFILE_IDS_INTO_APP_USER_ID.sql chalayein'
+          ? 'run MERGE_PROFILE_IDS_INTO_APP_USER_ID.sql'
           : m)};
   }
   const d=r.data||{};
   if(d.success)return {id:userId,note:''};
   if(d.error!=='AUTH_USER_MISSING')
-    return {id:userId,note:' — ⚠️ '+label+': '+(d.error||'unknown')};
+    return {id:userId,note:' — '+label+': '+(d.error||'unknown')};
 
-  /* ── "AUTH_USER_MISSING" ka matlab "account nahi hai" nahi hai ──────
-     Iska matlab sirf itna hai ki IS id par account nahi hai. Aksar
-     account maujood HOTA hai, bas doosri id par — aur tab naya banane ki
-     koshish "A user with this email address has already been registered"
-     par girti thi. Isi liye pehle wahi dhoondhte hain aur usi se id jod
-     dete hain; ye poora SQL se hota hai, Edge Function ki zaroorat nahi.
+  /* ── "AUTH_USER_MISSING" doesn't mean "no account" ──────────────────
+     It only means there is no account on THIS id. Often the account DOES
+     exist, just on another id, and trying to create a new one used to fail
+     with "A user with this email address has already been registered". So we
+     look for that one first and link the id to it; this is all done in SQL,
+     with no Edge Function needed.
      (`erp_link_existing_auth_account` — sql/FIX_APP_ACCOUNT_PROVISION.sql) */
   const lk=await SB.rpc('erp_link_existing_auth_account',
     {p_admin_pin:adminPin,p_user_id:userId,p_email:null});
   if(!lk.error&&lk.data&&lk.data.success){
     const newId=String(lk.data.user_id||userId);
-    // Id jud gayi — ab wahi grant dobara, nayi id par.
+    // The id is linked; now the same grant again, on the new id.
     const r2=await SB.rpc('admin_grant_app_access',
       {p_admin_pin:adminPin,p_user_id:newId,p_app_key:appKey,p_on:on});
     if(!r2.error&&r2.data&&r2.data.success)
-      return {id:newId,note:' · '+label+' ka account jud gaya'
+      return {id:newId,note:' · '+label+' account linked'
         +(lk.data.changed?' (purana auth account '+(lk.data.email||'')+')':'')};
-    return {id:newId,note:' — ⚠️ '+label+': id jud gayi par access nahi laga: '
+    return {id:newId,note:'; Warning: '+label+': the id was linked but access was not applied: '
       +((r2.error&&r2.error.message)||(r2.data&&r2.data.error)||'unknown')};
   }
   if(lk.data&&lk.data.error==='AUTH_ACCOUNT_TAKEN')
-    return {id:userId,note:' — ⚠️ '+label+': '+(lk.data.hint||'auth account kisi doosre ERP user se juda hai')};
+    return {id:userId,note:'; Warning: '+label+': '+(lk.data.hint||'the auth account is linked to another ERP user')};
   const lkErr=(lk.data&&lk.data.error)||(lk.error&&lk.error.message)||'';
-  /* RPC hi nahi hai to aage badhna bekaar hai: naya auth account banane
-     wala raasta bhi isi par tika hai. Saaf keh dete hain. */
+  /* If the RPC doesn't exist there's no point going further: the path that
+     creates a new auth account depends on it too. We say so plainly. */
   if(/does not exist|schema cache|PGRST202/i.test(lkErr))
-    return {id:userId,note:' — ⚠️ '+label+': pehle SQL Editor me sql/FIX_APP_ACCOUNT_PROVISION.sql chalayein'};
+    return {id:userId,note:'; Warning: '+label+': first run sql/FIX_APP_ACCOUNT_PROVISION.sql in the SQL Editor'};
   if(lkErr&&!/NO_AUTH_ACCOUNT_FOUND/.test(lkErr))
-    return {id:userId,note:' — ⚠️ '+label+': '+lkErr};
+    return {id:userId,note:' — '+label+': '+lkErr};
 
-  /* Sach me auth account hai hi nahi. Wo sirf service_role bana sakta
-     hai, aur wo key browser me kabhi nahi aati — isi liye ye kaam Edge
-     Function karta hai: account banata hai (usi id se), aur phir yahi
-     RPC khud bulakar access de deta hai. */
+  /* There really is no auth account. Only service_role can create one, and
+     that key never reaches the browser, so the Edge Function does this: it
+     creates the account (with the same id) and then calls this same RPC
+     itself to grant access. */
   let fr=null,fd=null;
   try{
     fr=await fetch(SUPABASE_URL+'/functions/v1/erp-sso',{
@@ -5770,23 +5767,23 @@ async function sarvSyncExternalAppAccount_(adminPin,userId,appKey,on){
       body:JSON.stringify({action:'provision',admin_pin:adminPin,user_id:userId,app:appKey})});
     fd=await fr.json().catch(()=>null);
   }catch(e){
-    return {id:userId,note:' — ⚠️ '+label+': Edge Function tak pahunch nahi hui ('+(e.message||e)+')'};
+    return {id:userId,note:'; Warning: '+label+': could not reach the Edge Function ('+(e.message||e)+')'};
   }
   if(!fr.ok||!fd||!fd.success){
     const why=(fd&&(fd.message||fd.detail||fd.error))||('HTTP '+fr.status);
-    /* Ye do message purane (deploy na hue) erp-sso se aate hain, aur
-       dono par asli kaam deploy karna hai. Hint client se jodte hain,
-       kyunki wahan ka jawab hi purana hai — usse hint nahi aayega. */
+    /* These two messages come from an old (not yet redeployed) erp-sso, and
+       in both cases the real fix is to deploy. The hint is added on the
+       client, because the reply comes from the old version and carries no hint. */
     let fix='';
     if(/database error creating new user/i.test(why))
-      fix=' → erp-sso ka naya version deploy karein (purana version auth.users ke trigger se takra raha hai): '
+      fix=' → deploy the new version of erp-sso (the old version clashes with the auth.users trigger): '
         +'supabase functions deploy erp-sso';
     else if(/already been registered/i.test(why))
-      fix=' → account maujood hai, bas doosri id par. SQL Editor me sql/FIX_APP_ACCOUNT_PROVISION.sql chalayein, phir dobara Save karein.';
-    return {id:userId,note:' — ⚠️ '+label+' ka account nahi bana: '
-      +(fr.status===404?'erp-sso Edge Function deploy nahi hai (supabase functions deploy erp-sso)':why)+fix};
+      fix=' → the account exists, just on another id. Run sql/FIX_APP_ACCOUNT_PROVISION.sql in the SQL Editor, then Save again.';
+    return {id:userId,note:'; Warning: the '+label+' account was not created: '
+      +(fr.status===404?'the erp-sso Edge Function is not deployed (supabase functions deploy erp-sso)':why)+fix};
   }
-  return {id:fd.user_id||userId,note:' · '+label+' ka account ban gaya'};
+  return {id:fd.user_id||userId,note:' · '+label+' account created'};
 }
 
 function sarvUserAppsHtml_(u){
@@ -5796,23 +5793,22 @@ function sarvUserAppsHtml_(u){
     ? roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r))
     : null;
   return '<div class="fg" style="grid-column:1 / -1;">'
-    +'<label>&#128241; Apps <small style="text-transform:none;font-weight:600;">'
-    +'(Home page ke button. <b>auto</b> = role se jo mile; ON / OFF sirf is user par lagta hai)</small></label>'
+    +'<label>Apps <small style="text-transform:none;font-weight:600;">'
+    +'(Home page buttons. <b>auto</b> = whatever the role gives; ON / OFF applies to this user only)</small></label>'
     +'<div data-f="appswrap" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 0;background:#f8fafc;'
     +'max-height:230px;overflow:auto;">'
     +SARV_APP_KEYS.map(k=>{
         const v=typeof acc[k]==='boolean'?(acc[k]?'1':'0'):'';
         const rs=roleSays(k);
-        const hint=rs===null?'':(rs?'role se: dikhega':'role se: nahi dikhega');
+        const hint=rs===null?'':(rs?'from role: shown':'from role: hidden');
         return '<div style="display:flex;align-items:center;gap:8px;padding:3px 10px;">'
           +'<span style="flex:1 1 auto;font-size:11px;font-weight:700;color:#334155;">'
             +escText(SARV_APP_LABEL[k]||k)
             +(SARV_APP_EXTERNAL[k]?' <small style="color:#7c3aed;font-weight:700;">alag app</small>':'')
-            /* In dono par ON ka matlab sirf button dikhana nahi hai — us
-               app ka account bhi ban jaata hai (aur OFF par deactivate).
-               Admin ko ye pehle se pata hona chahiye, warna "sirf switch
-               hai" samajh kar wo 'auto' chhod deta hai aur user ka direct
-               login kabhi nahi banta. */
+            /* For these two, ON doesn't just show a button; it also creates
+               that app's account (and OFF deactivates it). The Admin needs to
+               know this up front; otherwise they'd take it for "just a toggle",
+               leave it on 'auto', and the user's direct login would never be set up. */
             +(SARV_APP_NEEDS_ACCOUNT[k]?' <small style="color:#047857;font-weight:700;text-transform:none;">ON = account bhi banega</small>':'')
             +(hint?' <small style="color:#94a3b8;font-weight:600;text-transform:none;">— '+hint+'</small>':'')
           +'</span>'
@@ -5830,64 +5826,64 @@ function sarvUserAppsHtml_(u){
     +'<button type="button" class="b no sm" data-f="appson">Sab ON</button>'
     +'<button type="button" class="b no sm" data-f="appsoff">Sab OFF</button>'
     +'<span style="flex:1 1 auto;"></span>'
-    +(u?'<button type="button" class="b no sm" data-f="applink" title="Complaint App / Packing ke purane account se naam ke hisaab se jodd lagayein">&#128279; Link external accounts</button>':'')
+    +(u?'<button type="button" class="b no sm" data-f="applink" title="Link to the old Complaint App / Packing accounts by name">Link external accounts</button>':'')
     +'</div></div>';
 }
 
 function sarvOpenUserModal(id,presetRole){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login users bana sakta hai','warn');
-  if(sarvAppUsersMissing)return showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');
+  if(!isAdmin())return showToast('Only an Admin login can create users','warn');
+  if(sarvAppUsersMissing)return showToast('Run ADMIN_PANEL_MIGRATION.sql first','warn');
   const u=id?sarvAppUsers.find(x=>x.id===id):null;
   const role=u?u.role:(presetRole||'');
   const ov=document.createElement('div');
   ov.className='sarv-ov';ov.id='sarvUserModal';
-  ov.innerHTML='<div class="card"><div class="hd">'+(u?'&#9999;&#65039; Update User — '+escText(u.user_name):(presetRole==='PURCHASER'?'&#10133; Add New Purchaser':'&#10133; Add User'))+'</div><div class="bd">'
+  ov.innerHTML='<div class="card"><div class="hd">'+(u?'Update User — '+escText(u.user_name):(presetRole==='PURCHASER'?'Add New Purchaser':'Add User'))+'</div><div class="bd">'
     +'<div class="err" data-f="err"></div>'
     +'<div class="g2">'
     +'<div class="fg"><label>'+(sarvUnifiedReady?'Primary Role':'Role')+' <span class="req">*</span>'
-      +(sarvUnifiedReady?' <small style="text-transform:none;font-weight:600;">(sign / audit isi se jaata hai)</small>':'')
+      +(sarvUnifiedReady?' <small style="text-transform:none;font-weight:600;">(used for signatures / audit)</small>':'')
       +'</label><select data-f="role"><option value="">-- Select Role --</option>'
       +SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'"'+(r.code===role?' selected':'')+'>'+escText(r.label)+'</option>').join('')+'</select></div>'
     +'<div class="fg"><label>User Name <span class="req">*</span></label><input data-f="name" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.user_name:'')+'" placeholder="Full name"></div>'
     +'<div class="fg"><label>Employee Code</label><input data-f="emp" list="dl-emp-codes" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.emp_code||'':'')+'" placeholder="optional — auto-fill"></div>'
     +'<div class="fg"><label>Contact No.</label><input data-f="contact" type="tel" maxlength="15" value="'+escText(u?u.contact_no||'':'')+'" placeholder="optional"></div>'
-    +'<div class="fg" style="grid-column:1 / -1;"><label>&#129534; Order Form Role <small style="text-transform:none;font-weight:600;">(Sales › Order Form — isi naam + PIN se)</small></label>'
-      +'<select data-f="srole"'+(sarvSalesRoleReady?'':' disabled title="ORDER_FORM_USERS_MIGRATION.sql pehle run karein"')+'><option value="">— Order Form access nahi —</option>'
+    +'<div class="fg" style="grid-column:1 / -1;"><label>Order Form Role <small style="text-transform:none;font-weight:600;">(Sales › Order Form, with this same name + PIN)</small></label>'
+      +'<select data-f="srole"'+(sarvSalesRoleReady?'':' disabled title="Run ORDER_FORM_USERS_MIGRATION.sql first"')+'><option value="">— No Order Form access —</option>'
       +SARV_SALES_ROLES.map(r=>'<option value="'+r.v+'"'+(u&&u.sales_role===r.v?' selected':'')+'>'+escText(r.l+' — '+r.hint)+'</option>').join('')+'</select></div>'
     +'<div class="fg"><label>'+(u?'New PIN <small style="text-transform:none;font-weight:600;">(khali = purana PIN)</small>':'PIN <span class="req">*</span>')+'</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>'
-    +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="dobara"></div>'
+    +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="again"></div>'
     +'</div>'
-    +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (login + PIN se sign kar sakta hai)</span></div>'
+    +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (can log in and sign with PIN)</span></div>'
     /* ── Extra roles + Apps ─────────────────────────────────────────
-       Column maujood ho to poora UI; na ho to CHUP-CHAAP CHHUPANA NAHI
-       — wahi galti pehle ki thi, aur Admin ko lagta tha ki feature hi
-       nahi hai. Ab usi jagah saaf likha jaata hai ki kya chalana hai. */
+       If the columns exist, show the full UI; if not, DON'T HIDE IT QUIETLY,
+       which was the earlier mistake that made the Admin think the feature
+       didn't exist. Now the same spot says exactly what needs to be run. */
     +(sarvUnifiedReady
       ? sarvUserRolesHtml_(u,role)+sarvUserAppsHtml_(u)
       : '<div class="fg" style="grid-column:1 / -1;">'
         +'<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;">'
         +'<div style="font-size:11.5px;font-weight:800;color:#92400e;margin-bottom:4px;">'
-        +'&#128100; Extra Roles aur &#128241; Apps abhi band hain</div>'
+        +'Extra Roles and Apps are not available yet</div>'
         +'<div style="font-size:11px;color:#92400e;line-height:1.65;">'
-        +'Ek user ko <b>kai role</b> dena, aur per-user <b>app access</b> (Home ke button ON/OFF) '
-        +'&mdash; dono ke liye Supabase &rsaquo; SQL Editor me <code>UNIFIED_USERS_MIGRATION.sql</code> '
-        +'ek baar chalani hai. Uske baad ye dabba yahin khul jaayega.'
-        +'<br><br>Chala chuke hain? To <code>notify pgrst, \'reload schema\';</code> chalayein '
-        +'(Supabase ke API ka column cache purana reh jaata hai) aur page reload karein.'
+        +'Giving one user <b>several roles</b>, and per-user <b>app access</b> (Home buttons ON/OFF), '
+        +'&mdash; both need <code>UNIFIED_USERS_MIGRATION.sql</code> run once in Supabase &rsaquo; SQL Editor. '
+        +'After that this box opens right here.'
+        +'<br><br>Already run it? Then run <code>notify pgrst, \'reload schema\';</code> '
+        +'(the Supabase API\'s column cache can be stale) and reload the page.'
         +'</div></div></div>')
-    +'<div class="fg"><label>&#9997;&#65039; Digital Signature '+(u&&u.has_signature?'<span style="color:#15803d;text-transform:none;">— saved &#10004; (naya banayein to replace hoga)</span>':'<span style="color:#b45309;text-transform:none;">— user yahan ek baar sign kare</span>')+'</label>'
-    +'<div class="pad"><canvas width="900" height="220"></canvas><div class="padbar"><span>Mouse / touch / stylus se sign karein</span>'
+    +'<div class="fg"><label>Digital Signature '+(u&&u.has_signature?'<span style="color:#15803d;text-transform:none;">— saved &#10004; (drawing a new one replaces it)</span>':'<span style="color:#b45309;text-transform:none;">— the user signs here once</span>')+'</label>'
+    +'<div class="pad"><canvas width="900" height="220"></canvas><div class="padbar"><span>Sign with a mouse, touch or stylus</span>'
     +'<span style="display:flex;gap:8px;align-items:center;">'
-    +(u&&u.has_signature?'<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;font-size:11px;color:#b91c1c;font-weight:700;"><input data-f="sigdel" type="checkbox" style="width:14px;height:14px;"> Saved sign hatayein</label>':'')
-    /* "Use pre saved Sign" — sirf us user par jiska sign pehle se hai.
-       Zaroorat ye thi: Admin extra role dene ke liye ye window kholta hai,
-       aur pad khaali dikhta hai — to lagta hai sign gum ho gaya. Ye button
-       usi ka saved sign pad par laakar dikha deta hai (Admin PIN se, kyunki
-       get_user_signature() user ka APNA PIN maangta hai aur wo Admin ke
-       paas nahi hota — isi liye admin_get_user_signature() alag hai). */
-    +(u&&u.has_signature?'<button type="button" class="b no sm" data-f="sigpre" title="Is user ka pehle se saved signature pad par laayein">&#9997;&#65039; Use pre saved Sign</button>':'')
+    +(u&&u.has_signature?'<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;font-size:11px;color:#b91c1c;font-weight:700;"><input data-f="sigdel" type="checkbox" style="width:14px;height:14px;"> Remove saved signature</label>':'')
+    /* "Use pre saved Sign": only for a user who already has a signature.
+       The need: the Admin opens this window to add an extra role, sees an
+       empty pad, and thinks the signature has been lost. This button puts the
+       user's saved signature on the pad (with the Admin PIN, because
+       get_user_signature() asks for the user's OWN PIN, which the Admin
+       doesn't have; hence the separate admin_get_user_signature()). */
+    +(u&&u.has_signature?'<button type="button" class="b no sm" data-f="sigpre" title="Put this user\'s saved signature on the pad">Use pre saved Sign</button>':'')
     +'<button type="button" class="b no sm" data-f="sigclr">&#10006; Clear</button></span></div></div></div>'
-    +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">&#128190; Save User</button></div></div>';
+    +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">Save User</button></div></div>';
   document.body.appendChild(ov);
   const f=k=>ov.querySelector('[data-f="'+k+'"]');
   const pad=sarvMakeSigPad_(ov.querySelector('canvas'));
@@ -5896,37 +5892,37 @@ function sarvOpenUserModal(id,presetRole){
   const onKey=e=>{if(e.key==='Escape'&&byId('pwdGateModal')?.style.display!=='flex'){e.preventDefault();close();}};
   document.addEventListener('keydown',onKey,true);
   const err=msg=>{const el=f('err');el.textContent=msg;el.style.display=msg?'block':'none';if(msg)ov.querySelector('.card').scrollTop=0;};
-  /* "Use pre saved Sign" se aaya hua signature. Pad ka apna `ink` counter
-     isse nahi badalta (wo sirf haath se khinchi lakeer ginta hai), isi
-     liye use alag yaad rakhna padta hai — warna Save par wo chhoot jaata. */
+  /* A signature brought in via "Use pre saved Sign". The pad's own `ink`
+     counter doesn't change for it (it only counts strokes drawn by hand), so
+     it has to be remembered separately; otherwise it would be lost on Save. */
   let preSig=null;
   f('sigclr').addEventListener('click',()=>{pad.clear();preSig=null;});
   f('sigpre')?.addEventListener('click',async()=>{
     if(!u||!u.id)return;
-    const adminPin=await askSecret({title:'Admin PIN Confirm Karein',
-      subtitle:'Saved signature pad par laane ke liye',
-      recordInfo:u.user_name||'',label:'Admin PIN',confirmText:'&#9997;&#65039; Sign laayein'});
+    const adminPin=await askSecret({title:'Confirm with Admin PIN',
+      subtitle:'To put the saved signature on the pad',
+      recordInfo:u.user_name||'',label:'Admin PIN',confirmText:'Sign laayein'});
     if(adminPin==null)return;
-    if(!adminPin.trim())return err('Admin PIN khali nahi ho sakta');
+    if(!adminPin.trim())return err('The Admin PIN cannot be empty');
     try{
       const r=await SB.rpc('admin_get_user_signature',{p_admin_pin:adminPin.trim(),p_user_id:String(u.id)});
       if(r.error)throw r.error;
-      if(!r.data)return err('Is user ka saved signature nahi mila');
+      if(!r.data)return err('No saved signature found for this user');
       await sarvDrawSigInto_(ov.querySelector('canvas'),r.data);
       preSig=r.data;
       err('');
-      showToast('✍️ Saved sign pad par lag gaya — Save karne par wahi rahega','ok');
+      showToast('The saved signature is on the pad and will be kept on Save','ok');
     }catch(e){
       const m=e.message||String(e);
-      err(/ADMIN_PIN_INVALID/i.test(m)?'❌ Galat Admin PIN'
+      err(/ADMIN_PIN_INVALID/i.test(m)?'Incorrect Admin PIN'
          :(/admin_get_user_signature|does not exist|schema cache/i.test(m)
-            ?'⚠️ admin_get_user_signature() nahi mila — USER_SELF_SERVICE_MIGRATION.sql chalayein':m));
+            ?'admin_get_user_signature() not found. Run USER_SELF_SERVICE_MIGRATION.sql':m));
     }
   });
   f('cancel').addEventListener('click',close);
-  /* Apps ke dropdown: rang se turant dikhe ki kya chuna hai, aur teen
-     shortcut button (sab auto / ON / OFF) — 18 apps ek-ek karke set
-     karna hi wo kaam hai jo koi nahi karta. */
+  /* Apps dropdowns: colour shows at a glance what is chosen, plus three
+     shortcut buttons (all auto / ON / OFF); setting 18 apps one by one is
+     exactly the kind of job nobody does. */
   const appSel=()=>[...ov.querySelectorAll('select[data-app]')];
   const paintApp=s=>{s.style.background=s.value===''?'#fff':(s.value==='1'?'#dcfce7':'#fee2e2');};
   appSel().forEach(s=>s.addEventListener('change',()=>paintApp(s)));
@@ -5934,9 +5930,9 @@ function sarvOpenUserModal(id,presetRole){
   f('appsauto')?.addEventListener('click',()=>setAllApps(''));
   f('appson') ?.addEventListener('click',()=>setAllApps('1'));
   f('appsoff')?.addEventListener('click',()=>setAllApps('0'));
-  /* Primary role badla — uska checkbox hi primary ban jaata hai, isi
-     liye roles ka dabba dobara banana padta hai (warna purana primary
-     disabled-ticked hi atka rehta). */
+  /* The primary role changed; its checkbox becomes the primary, so the roles
+     box has to be rebuilt (otherwise the old primary would stay stuck
+     disabled-and-ticked). */
   f('role')?.addEventListener('change',()=>{
     const w=f('roleswrap');if(!w)return;
     const now=f('role').value;
@@ -5954,7 +5950,7 @@ function sarvOpenUserModal(id,presetRole){
       }
     });
   });
-  // Complaint / Packing ke purane account se naam ke hisaab se jodd.
+  // Link to the old Complaint / Packing accounts by name.
   f('applink')?.addEventListener('click',()=>sarvAutolinkProfiles_());
   // Employee Code fills the name / contact from Employee Master.
   f('emp').addEventListener('input',()=>{
@@ -5965,31 +5961,31 @@ function sarvOpenUserModal(id,presetRole){
   f('save').addEventListener('click',async()=>{
     err('');
     const roleV=f('role').value,name=f('name').value.trim().toUpperCase(),pin=f('pin').value,pin2=f('pin2').value;
-    if(!roleV)return err('Role select karein');
-    if(!name)return err('User Name zaroori hai');
+    if(!roleV)return err('Please select a role');
+    if(!name)return err('User Name is required');
     const dup=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name&&x.id!==(u&&u.id));
-    if(dup)return err('Is role me "'+name+'" pehle se hai');
-    if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN zaroori hai');
-    if(pin&&pin.length<4)return err('PIN kam se kam 4 digit ka ho');
-    if(pin!==pin2)return err('PIN aur Confirm PIN match nahi kar rahe');
-    /* Kram maayne rakhta hai: haath se khincha hua sign sabse oopar, uske
-       baad "Use pre saved Sign" wala, phir "hatayein". `null` ka matlab
-       hai "signature ko chhedo hi nahi". */
+    if(dup)return err('"'+name+'" already exists in this role');
+    if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN is required');
+    if(pin&&pin.length<4)return err('PIN must be at least 4 digits');
+    if(pin!==pin2)return err('PIN and Confirm PIN do not match');
+    /* Order matters: a signature drawn by hand comes first, then the one from
+       "Use pre saved Sign", then "remove". `null` means "don't touch the
+       signature at all". */
     let sig=null;
     if(pad.hasInk())sig=pad.dataUrl();
     else if(preSig)sig=preSig;
     else if(f('sigdel')&&f('sigdel').checked)sig='';
-    const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:(u?'User update':'Naya user')+' save karne ke liye',
-      recordInfo:sarvRoleLabelOf_(roleV)+' — '+name,label:'Admin PIN',confirmText:'&#128190; Save User'});
+    const adminPin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save '+(u?'the user update':'the new user'),
+      recordInfo:sarvRoleLabelOf_(roleV)+' — '+name,label:'Admin PIN',confirmText:'Save User'});
     if(adminPin==null)return;
-    if(!adminPin.trim())return err('Admin PIN khali nahi ho sakta');
-    const btn=f('save');btn.disabled=true;btn.textContent='⏳ Saving...';
+    if(!adminPin.trim())return err('The Admin PIN cannot be empty');
+    const btn=f('save');btn.disabled=true;btn.textContent='Saving...';
     try{
       const r=await SB.rpc('admin_save_user',{p_id:u?u.id:null,p_user_name:name,p_role:roleV,
         p_emp_code:f('emp').value.trim().toUpperCase()||null,p_contact_no:f('contact').value.trim()||null,
         p_is_active:f('active').checked,p_new_pin:pin||null,p_signature:sig,p_admin_pin:adminPin.trim()});
       if(r.error)throw r.error;
-      // Order Form Role — alag RPC (admin_save_user ko chhede bina), wahi Admin PIN.
+      // Order Form Role: a separate RPC (admin_save_user is left untouched), same Admin PIN.
       const sroleV=f('srole')?f('srole').value:'';
       let sroleNote='';
       if(sarvSalesRoleReady&&sroleV!==((u&&u.sales_role)||'')){
@@ -5997,16 +5993,16 @@ function sarvOpenUserModal(id,presetRole){
         const saved=u?sarvAppUsers.find(x=>x.id===u.id):sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
         if(saved){
           const s=await SB.rpc('admin_set_sales_role',{p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_sales_role:sroleV||null});
-          if(s.error)sroleNote=' — ⚠️ Order Form Role save nahi hua: '+(s.error.message||s.error);
+          if(s.error)sroleNote='; Warning: Order Form Role was not saved: '+(s.error.message||s.error);
           else sroleNote=sroleV?' · Order Form: '+sarvSalesRoleLabel_(sroleV):' · Order Form access hataya';
         }
       }
-      /* ── Extra roles + Apps — alag RPC, wahi Admin PIN ─────────────
-         admin_save_user() ko jaan-boojh kar nahi chheda (wo
-         ADMIN_PANEL_MIGRATION.sql ka hai), isi liye ye do baat uske
-         baad apne RPC se jaati hain — wahi tareeka jo Order Form Role
-         ka pehle se hai. Inme se kuch fail ho to user to save ho hi
-         chuka hota hai, isi liye wajah toast me saaf likhi jaati hai. */
+      /* ── Extra roles + Apps: separate RPCs, same Admin PIN ─────────
+         admin_save_user() was deliberately left alone (it belongs to
+         ADMIN_PANEL_MIGRATION.sql), so these two go after it through their own
+         RPCs, the same way the Order Form Role already does. If any of them
+         fails, the user has already been saved, so the reason is stated
+         clearly in the toast. */
       let uniNote='';
       if(sarvUnifiedReady){
         await sarvLoadAppUsers_(true);
@@ -6018,12 +6014,12 @@ function sarvOpenUserModal(id,presetRole){
           if(rw){
             const picked=[...rw.querySelectorAll('input[data-role]')]
               .filter(cb=>cb.checked||cb.disabled).map(cb=>cb.dataset.role);
-            // Primary hamesha list me — server bhi yahi maangta hai.
+            // The primary is always in the list; the server requires it too.
             const roles=[roleV].concat(picked.filter(r=>r!==roleV));
             const rr=await SB.rpc('admin_set_user_roles',
               {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_roles:roles,p_primary_role:roleV});
             if(rr.error||!(rr.data&&rr.data.success))
-              uniNote+=' — ⚠️ Roles save nahi hue: '+((rr.error&&rr.error.message)||(rr.data&&rr.data.error)||'unknown');
+              uniNote+='; Warning: Roles were not saved: '+((rr.error&&rr.error.message)||(rr.data&&rr.data.error)||'unknown');
             else if(roles.length>1)uniNote+=' · '+roles.length+' roles';
           }
           const aw=f('appswrap');
@@ -6032,28 +6028,27 @@ function sarvOpenUserModal(id,presetRole){
             [...aw.querySelectorAll('select[data-app]')].forEach(s=>{
               if(s.value==='1')acc[s.dataset.app]=true;
               else if(s.value==='0')acc[s.dataset.app]=false;
-              // 'auto' ko bheja hi nahi jaata — key na hona hi "auto" hai
+              // 'auto' is never sent; the absence of the key is what "auto" means
             });
             const ar=await SB.rpc('admin_set_user_app_access',
               {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_app_access:acc});
             if(ar.error||!(ar.data&&ar.data.success))
-              uniNote+=' — ⚠️ Apps access save nahi hua: '+((ar.error&&ar.error.message)||(ar.data&&ar.data.error)||'unknown');
+              uniNote+='; Warning: App access was not saved: '+((ar.error&&ar.error.message)||(ar.data&&ar.data.error)||'unknown');
             else{
               const n=Object.keys(acc).length;
               if(n)uniNote+=' · '+n+' app override';
 
-              /* Complaint / Packing par switch sirf jsonb likhne se kaam
-                 nahi chalta — un apps ka apna account bhi chahiye, warna
-                 user ke saamne "NO_APP_ACCOUNT" aata hai. Wahi yahan
-                 banta (ya band hota) hai.
+              /* For Complaint / Packing, writing the jsonb isn't enough: those
+                 apps also need their own account, otherwise the user sees
+                 "NO_APP_ACCOUNT". That account is created (or deactivated) here.
 
-                 Sirf saaf ON/OFF par — 'auto' par haath nahi lagate, kyunki
-                 'auto' ka matlab "role-wise matrix jo kahe" hai, aur uske
-                 liye har bande ka auth account banana galat hoga.
+                 Only on an explicit ON/OFF; 'auto' is left alone, because
+                 'auto' means "whatever the role-wise matrix says", and creating
+                 an auth account for everyone on that basis would be wrong.
 
-                 Kram se (Promise.all se nahi): naya auth account banne par
-                 user ki id badal jaati hai, aur agli call usi nayi id par
-                 honi chahiye. */
+                 One at a time (not Promise.all): when a new auth account is
+                 created the user's id changes, and the next call must use that
+                 new id. */
               let curId=String(saved.id);
               for(const k of Object.keys(SARV_APP_NEEDS_ACCOUNT)){
                 if(typeof acc[k]!=='boolean')continue;
@@ -6066,61 +6061,61 @@ function sarvOpenUserModal(id,presetRole){
       }
       await sarvLoadAppUsers_(true);
       sarvRenderUsers_();
-      // Khud ka access badla ho to turant lagu — warna Admin ko apna
-      // hi naya access dikhne ke liye reload karna padta.
+      // If you changed your own access, apply it immediately; otherwise the Admin
+      // would have to reload to see their own new access.
       if(sarvCurrentUser&&u&&String(sarvCurrentUser.id)===String(u.id))sarvRefreshSsoSession_().catch(()=>{});
       close();
-      const warn=(sroleNote+uniNote).includes('⚠️');
-      showToast('✅ '+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'update':'add')+' ho gaya'+sroleNote+uniNote
-        +(roleV==='PURCHASER'?' — PR form aur mobile login me ab dikhega':''),warn?'warn':undefined);
+      const warn=(sroleNote+uniNote).includes('Warning:');
+      showToast(''+name+' ('+sarvRoleLabelOf_(roleV)+') '+(u?'updated':'added')+sroleNote+uniNote
+        +(roleV==='PURCHASER'?'; now shown in the PR form and mobile login':''),warn?'warn':undefined);
     }catch(e){
       const m=String(e.message||e);
-      const map={ADMIN_PIN_INVALID:'❌ Admin PIN galat hai',PIN_REQUIRED:'Is user ka PIN abhi set nahi hai — PIN daalein',PIN_TOO_SHORT:'PIN kam se kam 4 digit ka ho',
-        USER_EXISTS:'Is role me ye naam pehle se hai',ROLE_INVALID:'Role galat hai',NAME_ROLE_REQUIRED:'Role aur naam zaroori hain',USER_NOT_FOUND:'User nahi mila — Refresh karein'};
+      const map={ADMIN_PIN_INVALID:'Incorrect Admin PIN',PIN_REQUIRED:'This user has no PIN yet. Please enter one.',PIN_TOO_SHORT:'The PIN must be at least 4 digits',
+        USER_EXISTS:'This name already exists in this role',ROLE_INVALID:'Invalid role',NAME_ROLE_REQUIRED:'Role and name are required',USER_NOT_FOUND:'User not found. Please refresh.'};
       const k=Object.keys(map).find(x=>m.includes(x));
-      err(k?map[k]:(/admin_save_user|does not exist/i.test(m)?'⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein':m));
-    }finally{btn.disabled=false;btn.innerHTML='&#128190; Save User';}
+      err(k?map[k]:(/admin_save_user|does not exist/i.test(m)?'Run ADMIN_PANEL_MIGRATION.sql first':m));
+    }finally{btn.disabled=false;btn.innerHTML='Save User';}
   });
   setTimeout(()=>(role?f('name'):f('role')).focus(),30);
 }
-/* Complaint App / Packing ke purane account se naam ke hisaab se jodd.
-   Faida: us bande ka purana kaam (assign ki gayi tasks, uska signature,
-   banaye hue slip) naye single login ke saath juda rehta hai. Jo naam
-   do baar ho use chhod diya jaata hai (galat jodd se bina jodd behtar
-   hai) — unhe Admin haath se jod sakta hai. */
+/* Links to the old Complaint App / Packing accounts by name.
+   The benefit: the person's earlier work (assigned tasks, their signature,
+   slips they made) stays linked to the new single login. Names that occur
+   twice are skipped (no link is better than a wrong link); the Admin can
+   link those by hand. */
 async function sarvAutolinkProfiles_(){
-  if(!isAdmin())return showToast('⛔ Sirf Admin','warn');
-  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',
-    subtitle:'Complaint App / Packing ke purane account se jodd lagane ke liye',
-    recordInfo:'Naam se match — jo naam do baar ho wo chhoot jaayega',
-    label:'Admin PIN',confirmText:'&#128279; Link'});
+  if(!isAdmin())return showToast('Admin only','warn');
+  const adminPin=await askSecret({title:'Confirm with Admin PIN',
+    subtitle:'To link the old Complaint App / Packing accounts',
+    recordInfo:'Matched by name; names that occur twice are skipped',
+    label:'Admin PIN',confirmText:'Link'});
   if(adminPin==null)return;
-  if(!adminPin.trim())return showToast('Admin PIN khali nahi ho sakta','warn');
+  if(!adminPin.trim())return showToast('The Admin PIN cannot be empty','warn');
   try{
     const r=await SB.rpc('admin_autolink_user_profiles',{p_admin_pin:adminPin.trim()});
     if(r.error)throw r.error;
     const d=r.data||{};
-    if(!d.success)return showToast(d.error==='ADMIN_PIN_INVALID'?'❌ Admin PIN galat hai':('❌ '+(d.error||'fail')),'error');
+    if(!d.success)return showToast(d.error==='ADMIN_PIN_INVALID'?'Incorrect Admin PIN':(''+(d.error||'fail')),'error');
     await sarvLoadAppUsers_(true);sarvRenderUsers_();
-    showToast('🔗 Jodd lag gayi — Complaint: '+(d.complaint_linked||0)+', Packing: '+(d.packing_linked||0)
-      +((d.complaint_linked||d.packing_linked)?'':' (koi naya match nahi mila)'));
+    showToast('Linked. Complaint: '+(d.complaint_linked||0)+', Packing: '+(d.packing_linked||0)
+      +((d.complaint_linked||d.packing_linked)?'':' (no new matches found)'));
   }catch(e){
     if(/admin_autolink_user_profiles|does not exist/i.test(e.message||''))
-      showToast('⚠️ UNIFIED_USERS_MIGRATION.sql pehle run karein','warn');
+      showToast('Run UNIFIED_USERS_MIGRATION.sql first','warn');
     else dbError(e);
   }
 }
 async function sarvDeleteUser_(id){
   const u=sarvAppUsers.find(x=>x.id===id);if(!u)return;
-  if(!confirm('"'+u.user_name+'" ('+sarvRoleLabelOf_(u.role)+') ko delete karein?\n\nUska PIN aur saved signature bhi hat jayega.'+(u.role==='PURCHASER'?'\nPurchaser mobile app me login nahi kar payega.':'')+'\n\n(Sirf rokna ho to Edit karke "Active" hata dein.)'))return;
-  const adminPin=await askSecret({title:'Admin PIN Confirm Karein',subtitle:'User delete karne ke liye',recordInfo:u.user_name,label:'Admin PIN',confirmText:'&#128465; Delete'});
+  if(!confirm('Delete "'+u.user_name+'" ('+sarvRoleLabelOf_(u.role)+')?\n\nTheir PIN and saved signature will be removed too.'+(u.role==='PURCHASER'?'\nThe Purchaser will no longer be able to log in to the mobile app.':'')+'\n\n(To only block them, Edit and untick "Active".)'))return;
+  const adminPin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To delete the user',recordInfo:u.user_name,label:'Admin PIN',confirmText:'Delete'});
   if(adminPin==null)return;
   try{
     const r=await SB.rpc('admin_delete_user',{p_id:id,p_admin_pin:adminPin.trim()});
     if(r.error)throw r.error;
-    if(!r.data)return showToast('❌ Admin PIN galat hai — delete nahi hua','error');
+    if(!r.data)return showToast('Incorrect Admin PIN; not deleted','error');
     await sarvLoadAppUsers_(true);sarvRenderUsers_();
-    showToast('🗑️ '+u.user_name+' delete ho gaya');
+    showToast(''+u.user_name+' deleted');
   }catch(e){dbError(e);}
 }
 
@@ -6130,34 +6125,34 @@ async function sarvDeleteUser_(id){
    Resolves {dataUrl,name} or null when cancelled. */
 async function sarvPinSign(opts={}){
   await sarvLoadAppUsers_();
-  if(sarvAppUsersMissing){if(!opts.quiet)showToast('⚠️ ADMIN_PANEL_MIGRATION.sql pehle run karein','warn');return null;}
+  if(sarvAppUsersMissing){if(!opts.quiet)showToast('Run ADMIN_PANEL_MIGRATION.sql first','warn');return null;}
   let users=sarvAppUsers.filter(u=>u.is_active&&u.has_signature);
   if(opts.roles&&opts.roles.length){const f=users.filter(u=>opts.roles.includes(u.role));if(f.length||opts.strictRoles)users=f;}
-  if(!users.length){if(!opts.quiet)showToast('Kisi user ka signature saved nahi hai — Admin Panel › Users & Roles me sign banwayein','warn');return null;}
+  if(!users.length){if(!opts.quiet)showToast('No user has a saved signature. Set one up under Admin Panel › Users & Roles.','warn');return null;}
   const pre=(sarvCurrentUser&&users.find(u=>u.id===sarvCurrentUser.id))?sarvCurrentUser.id:(users.length===1?users[0].id:'');
   return new Promise(resolve=>{
     const ov=document.createElement('div');
     ov.className='sarv-ov';
-    ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">&#128273; PIN se Sign — '+escText(opts.title||'Digital Signature')+'</div><div class="bd">'
+    ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">PIN se Sign — '+escText(opts.title||'Digital Signature')+'</div><div class="bd">'
       +'<div class="err" data-f="err"></div>'
       +'<div class="fg"><label>User</label><select data-f="user"><option value="">-- Select --</option>'
       +users.map(u=>'<option value="'+escText(u.id)+'"'+(u.id===pre?' selected':'')+'>'+escText(u.user_name)+' ('+escText(sarvRoleLabelOf_(u.role))+')</option>').join('')+'</select></div>'
-      +'<div class="fg"><label>Apna PIN</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
-      +'<div style="font-size:11px;color:#64748b;">'+escText(opts.note||'Sahi PIN par aapka saved signature pad par lag jayega.')+'</div>'
-      +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">&#9997;&#65039; Sign</button></div></div>';
+      +'<div class="fg"><label>Your PIN</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
+      +'<div style="font-size:11px;color:#64748b;">'+escText(opts.note||'With the correct PIN your saved signature will be placed on the pad.')+'</div>'
+      +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">Sign</button></div></div>';
     document.body.appendChild(ov);
     const f=k=>ov.querySelector('[data-f="'+k+'"]');
     const done=v=>{document.removeEventListener('keydown',onKey,true);ov.remove();resolve(v);};
     const submit=async()=>{
       const id=f('user').value,pin=f('pin').value,er=f('err');
       er.style.display='none';
-      if(!id){er.textContent='User select karein';er.style.display='block';return;}
-      if(!pin){er.textContent='PIN daalein';er.style.display='block';return;}
+      if(!id){er.textContent='Please select a user';er.style.display='block';return;}
+      if(!pin){er.textContent='Please enter your PIN';er.style.display='block';return;}
       f('ok').disabled=true;
       try{
         const r=await SB.rpc('get_user_signature',{p_user_id:id,p_pin:pin});
         if(r.error)throw r.error;
-        if(!r.data){er.textContent='❌ Galat PIN';er.style.display='block';f('pin').select();return;}
+        if(!r.data){er.textContent='Incorrect PIN';er.style.display='block';f('pin').select();return;}
         done({dataUrl:r.data,name:(users.find(u=>u.id===id)||{}).user_name||''});
       }catch(e){er.textContent=e.message||String(e);er.style.display='block';}
       finally{if(f('ok'))f('ok').disabled=false;}
@@ -6169,13 +6164,13 @@ async function sarvPinSign(opts={}){
     setTimeout(()=>(pre?f('pin'):f('user')).focus(),30);
   });
 }
-/* A "🔑 PIN se Sign" button beside the Clear button of each signature pad. */
+/* A "PIN se Sign" button beside the Clear button of each signature pad. */
 function sarvAttachPinSign_(clearBtnId,canvasId,timeFieldId,title,roles,canUse){
   const clr=byId(clearBtnId);if(!clr||clr.dataset.pinSign)return;
   clr.dataset.pinSign='1';
   const b=document.createElement('button');
-  b.type='button';b.className='sarv-pinsign-btn';b.innerHTML='&#128273; PIN se Sign';
-  b.title='Draw karne ki jagah apna PIN daalein — saved signature lag jayega';
+  b.type='button';b.className='sarv-pinsign-btn';b.innerHTML='PIN se Sign';
+  b.title='Enter your PIN instead of drawing; your saved signature will be applied';
   b.style.marginRight='6px';
   clr.parentNode.insertBefore(b,clr);
   b.addEventListener('click',async()=>{
@@ -6185,7 +6180,7 @@ function sarvAttachPinSign_(clearBtnId,canvasId,timeFieldId,title,roles,canUse){
     try{
       await sarvDrawSigInto_(c,r.dataUrl);
       const tf=byId(timeFieldId);if(tf)tf.textContent=pStamp()+' — '+r.name;
-      showToast('✍️ '+r.name+' ka signature lag gaya');
+      showToast(''+r.name+'\'s signature applied');
     }catch(e){showToast(e.message||String(e),'error');}
   });
 }
@@ -6216,7 +6211,7 @@ function sarvApplyPadPinMode_(){
       note=document.createElement('div');
       note.id=p.canvas+'_pinNote';
       note.style.cssText='padding:10px 12px;border:1px solid #c4b5fd;background:#f5f3ff;border-radius:6px;font-size:12px;font-weight:700;color:#5b21b6;';
-      note.innerHTML='&#128273; Aapka sign saved hai &mdash; <b>'+escText(p.title)+'</b> dabate hi apna PIN daalein, sign apne-aap lag jayega.';
+      note.innerHTML='Your signature is saved. Press <b>'+escText(p.title)+'</b> and enter your PIN; the signature is applied automatically.';
       pad.parentNode.insertBefore(note,pad.nextSibling);
     }
     note.style.display=on?'':'none';
@@ -6238,10 +6233,10 @@ function sarvBindPinPads_(){
       const c=byId(p.canvas);
       if(!r.dataUrl||!c){
         sarvPadForceDraw=true;sarvApplyPadPinMode_();
-        return showToast('Is user ka saved sign nahi mila — pad par sign karke dobara dabayein','warn');
+        return showToast('No saved signature found for this user. Sign on the pad and press again.','warn');
       }
       try{await sarvDrawSigInto_(c,r.dataUrl);}
-      catch(err){sarvPadForceDraw=true;sarvApplyPadPinMode_();return showToast('Saved sign load nahi hua — pad par sign karein','warn');}
+      catch(err){sarvPadForceDraw=true;sarvApplyPadPinMode_();return showToast('The saved signature did not load. Please sign on the pad.','warn');}
       const tf=byId(p.time);if(tf)tf.textContent=pStamp()+' — '+r.name;
       b.dataset.pinPass='1';
       b.click();
@@ -6272,8 +6267,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   ['ap_permMatrix','ap_tabMatrix'].forEach(id=>byId(id)?.addEventListener('click',sarvMatrixClick_));
   byId('ap_permSaveBtn')?.addEventListener('click',()=>sarvSaveMatrix_('perms'));
   byId('ap_tabSaveBtn')?.addEventListener('click',()=>sarvSaveMatrix_('tabs'));
-  byId('ap_permResetBtn')?.addEventListener('click',()=>{sarvApDraft.perms=sarvFullMatrix_(null,SARV_FEATURES);sarvRenderMatrix_('ap_permMatrix',SARV_FEATURES,'perms');showToast('Default lag gaye — Save dabane par lagu honge');});
-  byId('ap_tabResetBtn')?.addEventListener('click',()=>{sarvApDraft.tabs=sarvFullMatrix_(null,SARV_TABS);sarvRenderMatrix_('ap_tabMatrix',SARV_TABS,'tabs');showToast('Default lag gaye — Save dabane par lagu honge');});
+  byId('ap_permResetBtn')?.addEventListener('click',()=>{sarvApDraft.perms=sarvFullMatrix_(null,SARV_FEATURES);sarvRenderMatrix_('ap_permMatrix',SARV_FEATURES,'perms');showToast('Defaults restored; they apply when you press Save');});
+  byId('ap_tabResetBtn')?.addEventListener('click',()=>{sarvApDraft.tabs=sarvFullMatrix_(null,SARV_TABS);sarvRenderMatrix_('ap_tabMatrix',SARV_TABS,'tabs');showToast('Defaults restored; they apply when you press Save');});
   // PIN-sign on the two Store Incharge pads
   sarvAttachPinSign_('p_poStoreSignClearBtn','p_poStoreSignCanvas','p_poStoreSignTimeField','Store Incharge (PO)',['USER_IC_PIN','ADMIN_PIN']);
   sarvAttachPinSign_('p_viSignClearBtn','p_viSignCanvas','p_viSignTimeField','Store Incharge (Vendor Info)',['USER_IC_PIN','ADMIN_PIN'],
@@ -6281,10 +6276,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   sarvApplyAccess();
   sarvLoadSettings_();
   sarvLoadAppUsers_();
-  /* Fixed dropdowns ki values poore app ke forms par lagti hain (Inward ka
-     Party State, PR ka Department, Item Master ki Category/UOM/GST …), isi
-     liye ye Master Data kholne ka intezaar nahi kar sakti — startup par hi
-     load hoti hain. Table na mile to code ke default chalte rehte hain. */
+  /* The fixed dropdown values apply to forms across the whole app (Inward's
+     Party State, the PR's Department, the Item Master's Category/UOM/GST …),
+     so they can't wait for Master Data to be opened; they load at startup. If
+     the table isn't found, the code defaults keep working. */
   sarvLoadDropdowns_();
 });
 
@@ -6585,7 +6580,10 @@ const SARV_IM_FILTER_COLS={
   soq: {label:'STD ORDER QTY',      numeric:true, get:r=>itemStdOrderQty_(r.it)},
   in:  {label:'IN Qty',             numeric:true, get:r=>r.inQty},
   out: {label:'OUT Qty',            numeric:true, get:r=>r.outQty},
-  bal: {label:'Balance Qty',        numeric:true, get:r=>r.bal}
+  bal: {label:'Balance Qty',        numeric:true, get:r=>r.bal},
+  // null until the background PR / PO lookup lands (imLoadPipeline_), then a
+  // number, 0 included: "nothing pending" is a value you can filter on.
+  pipe:{label:'Pending PR / PO Qty',numeric:true, get:r=>r.pipe==null?null:r.pipe}
 };
 const IM_BLANK='(Blank)';
 /* Applied filters, by column id: {values:Set<string>|null, min:number|null,
@@ -6632,8 +6630,11 @@ function imColPass_(col,row){
 }
 /* The non-column filters — the search box and the Stock/MSV dropdown. Pulled
    out so the dependent option lists apply them too; a value that only occurs
-   in rows the search has already hidden is not a value worth offering. */
-function imBasePass_(row){
+   in rows the search has already hidden is not a value worth offering.
+   The slicer buttons sit here too, for the same reason. slicerExcept leaves
+   one slicer column out — only the slicer bar's own counts use it. */
+function imBasePass_(row,slicerExcept){
+  if(!imSlicerPass_(row,slicerExcept))return false;
   const q=(byId('itemMasterSearch')?.value||'').toLowerCase().trim();
   const msvFilter=byId('itemMasterMsvFilter')?.value||'ALL';
   if(msvFilter!=='ALL'){
@@ -6655,6 +6656,258 @@ function imBasePass_(row){
 function imRowPass_(row,exceptCol){
   if(!imBasePass_(row))return false;
   return Object.keys(SARV_IM_FILTER_COLS).every(c=>c===exceptCol||imColPass_(c,row));
+}
+
+/* ══ ITEM MASTER: SLICER BUTTONS ═════════════════════════════════════
+   Excel-style slicers: one-click buttons above the list, by column. The
+   values come from Dropdown Master: each slicer column has its own key
+   (erp_imSlicer_<col>) in `sales_dropdowns`. So adding a new slicer needs
+   neither SQL nor code: in Dropdown Master › Item Master › Slicer Buttons,
+   choose the column (that is the slicer's heading) and add a value.
+
+   Rules, as in Excel slicers:
+     * several buttons within one column = OR  (Category: YARN or FABRIC)
+     * across different columns          = AND
+     * also AND with the search, Stock and ▾ column filters
+   On Item Name / Description a button matches "contains the word": writing
+   the full name in a slicer would be pointless, and "BEARING" should bring
+   up every bearing. Other columns match the whole value, ignoring case.
+
+   The code default is EMPTY: until the Admin adds a slicer the bar doesn't
+   show at all (the Admin just sees a "set up" link). A chosen slicer
+   survives Refresh (like the column filters) but not a page reload. */
+const IM_SLICER_COLS=['cat','size','mat','uom','make','gst','code','name','desc'];
+const IM_SLICER_CONTAINS={name:1,desc:1};
+const imSlicerKey_=col=>'erp_imSlicer_'+col;
+// col -> Set of slicer values, exactly as Dropdown Master holds them.
+let sarvImSlicerSel={};
+
+// GST "18%" and "18" are the same; the button works even if the Admin types the %.
+function imSlNorm_(col,v){
+  let s=String(v==null?'':v).trim().toUpperCase();
+  if(col==='gst')s=s.replace(/\s*%$/,'');
+  return s;
+}
+/* The defined slicers, in column order: [{col, values:[…]}]. If Dropdown
+   Master hasn't loaded yet (or the table doesn't exist), empty: the bar
+   hides and the list is unaffected. */
+function imSlicerDefs_(){
+  try{
+    return IM_SLICER_COLS.map(col=>({col,values:[...new Set(sarvDropdownList(imSlicerKey_(col))
+        .map(v=>String(v==null?'':v).trim()).filter(Boolean))]}))
+      .filter(g=>g.values.length);
+  }catch(e){return [];}
+}
+function imSlicerMatch_(col,val,row){
+  const cell=imCellKey_(col,row);
+  if(cell===IM_BLANK)return false;
+  const c=imSlNorm_(col,cell),v=imSlNorm_(col,val);
+  return IM_SLICER_CONTAINS[col]?c.includes(v):c===v;
+}
+function imSlicerPass_(row,exceptCol){
+  for(const col in sarvImSlicerSel){
+    if(col===exceptCol)continue;
+    const set=sarvImSlicerSel[col];
+    if(!set||!set.size)continue;
+    let ok=false;
+    for(const v of set){if(imSlicerMatch_(col,v,row)){ok=true;break;}}
+    if(!ok)return false;
+  }
+  return true;
+}
+function imActiveSlicerCols_(){return Object.keys(sarvImSlicerSel).filter(c=>sarvImSlicerSel[c]&&sarvImSlicerSel[c].size);}
+function imSlicerSummary_(){
+  return imActiveSlicerCols_().map(c=>SARV_IM_FILTER_COLS[c].label+': '+[...sarvImSlicerSel[c]].join(' / '));
+}
+/* If a value is removed or changed in Dropdown Master it can't stay selected;
+   otherwise a slicer with no visible button would still be filtering the
+   list. Runs BEFORE render, so the table and the bar read the same state. */
+function imPruneSlicers_(){
+  const defs=imSlicerDefs_();
+  Object.keys(sarvImSlicerSel).forEach(col=>{
+    const g=defs.find(x=>x.col===col),set=sarvImSlicerSel[col];
+    [...set].forEach(v=>{if(!g||g.values.indexOf(v)<0)set.delete(v);});
+    if(!set.size)delete sarvImSlicerSel[col];
+  });
+}
+/* By value index, not by value: that leaves no room for escaping mistakes
+   with a quote / apostrophe inside onclick (5" PREMIUM, D'SOUZA). */
+window.imToggleSlicer=function(col,i){
+  const g=imSlicerDefs_().find(x=>x.col===col);
+  const val=g&&g.values[i];if(val==null)return;
+  const set=sarvImSlicerSel[col]||(sarvImSlicerSel[col]=new Set());
+  if(set.has(val))set.delete(val);else set.add(val);
+  if(!set.size)delete sarvImSlicerSel[col];
+  renderItemMasterTable();
+};
+window.imClearSlicers=function(col){
+  if(col)delete sarvImSlicerSel[col];else sarvImSlicerSel={};
+  renderItemMasterTable();
+};
+/* Admin shortcut: straight to that slicer column in Dropdown Master. */
+window.imOpenSlicerSetup=function(col){
+  sarvDdPick=imSlicerKey_(col&&IM_SLICER_COLS.indexOf(col)>=0?col:IM_SLICER_COLS[0]);
+  sarvDdEditId=null;
+  switchMasterSubTab('dropdownMasterSub');
+};
+/* Each button's count = how many items that value would show after
+   everything else (search, Stock, column filters, slicers on OTHER columns).
+   Slicers in the same column aren't counted: that is OR, so the count says
+   how many would be ADDED by pressing the button. A 0 button is greyed out
+   but still clickable: a selected 0 button also needs to be removable. */
+function imRenderSlicers_(){
+  const bar=byId('imSlicerBar');if(!bar)return;
+  const defs=imSlicerDefs_();
+  const admin=(typeof isAdmin==='function'&&isAdmin())&&sarvCan('DROPDOWN_MANAGE');
+  if(!defs.length){
+    if(!admin){bar.style.display='none';bar.innerHTML='';return;}
+    bar.style.display='block';
+    bar.innerHTML='<div class="im-sl-wrap im-sl-empty"><b>Slicer buttons</b> have not been set up yet. In '
+      +'<button type="button" class="im-sl-link" onclick="imOpenSlicerSetup(\'cat\')">Dropdown Master › Item Master › Slicer Buttons</button>'
+      +', choose a column and add a value; the button will appear here.</div>';
+    return;
+  }
+  const rows=sarvItemMasterRows||[];
+  let html='<div class="im-sl-wrap"><span class="im-sl-title">SLICERS</span>';
+  defs.forEach(g=>{
+    const sel=sarvImSlicerSel[g.col]||new Set();
+    const pool=rows.filter(r=>imBasePass_(r,g.col)&&Object.keys(SARV_IM_FILTER_COLS).every(c=>imColPass_(c,r)));
+    html+='<div class="im-sl-group'+(sel.size?' on':'')+'"><span class="im-sl-lab">'+escText(SARV_IM_FILTER_COLS[g.col].label)+'</span>';
+    g.values.forEach((v,i)=>{
+      const n=pool.reduce((s,r)=>s+(imSlicerMatch_(g.col,v,r)?1:0),0);
+      const on=sel.has(v);
+      html+='<button type="button" class="im-sl-btn'+(on?' on':'')+(n?'':' zero')+'" onclick="imToggleSlicer(\''+g.col+'\','+i+')" '
+        +'title="'+escText(SARV_IM_FILTER_COLS[g.col].label+': '+v+(IM_SLICER_CONTAINS[g.col]?' (contains the word)':'')
+        +': '+n+' item(s)'+(on?' · click to remove':''))+'">'
+        +escText(v)+'<span class="n">'+n+'</span></button>';
+    });
+    if(sel.size)html+='<button type="button" class="im-sl-x" onclick="imClearSlicers(\''+g.col+'\')" title="Remove this column\'s slicers">&#10006;</button>';
+    if(admin)html+='<button type="button" class="im-sl-edit" onclick="imOpenSlicerSetup(\''+g.col+'\')" title="Change this slicer\'s values in Dropdown Master">✎</button>';
+    html+='</div>';
+  });
+  const nOn=imActiveSlicerCols_().length;
+  if(nOn)html+='<button type="button" class="im-sl-clear" onclick="imClearSlicers()">&#10006; Clear Slicers</button>';
+  if(admin)html+='<button type="button" class="im-sl-link" onclick="imOpenSlicerSetup()" title="Add a new slicer column / value">Slicer</button>';
+  html+='</div>';
+  bar.style.display='block';
+  bar.innerHTML=html;
+}
+
+/* ══ ITEM MASTER: COLUMN SHOW / HIDE ═════════════════════════════════
+   Columns the user unticks in the Columns popup are hidden from the table.
+   Only the DISPLAY changes: filters, sort, search, slicers and CSV / PDF
+   (which have their own column picker) work as before. The choice is
+   remembered in the browser (by key, not index, so a newly added column
+   can't shift someone's choice onto the neighbouring column).
+
+   Hiding is done in CSS: every <th>/<td> has data-imc="<col>", and a
+   <style> applies display:none to the hidden keys. So nothing breaks
+   mid-render; only the colspan of the SUBTOTAL label cell is counted.
+   #, NEW PR and Edit/Delete are always shown: they are action columns, not
+   data (NEW PR has its own access rule). */
+const IM_VIEW_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make','msv','soq','in','out','bal','pipe'];
+// The SUBTOTAL label spans these (from # to Make).
+const IM_LABEL_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make'];
+const IM_COLHIDE_KEY='sarv_im_hidecols';
+function imColHidden_(){
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(IM_COLHIDE_KEY)||'null');}catch(e){}
+  if(!Array.isArray(saved))return new Set();
+  const keep=saved.filter(k=>IM_VIEW_COLS.indexOf(k)>=0);
+  // If all are hidden (an old / corrupt choice), hide nothing; better than an empty table.
+  return keep.length>=IM_VIEW_COLS.length?new Set():new Set(keep);
+}
+function imColSaveHidden_(set){
+  try{localStorage.setItem(IM_COLHIDE_KEY,JSON.stringify([...set]));}catch(e){}
+}
+function imApplyColVisibility_(){
+  const hid=imColHidden_();
+  let st=byId('imColHideStyle');
+  if(!st){st=document.createElement('style');st.id='imColHideStyle';document.head.appendChild(st);}
+  st.textContent=[...hid].map(k=>'#itemMasterTable [data-imc="'+k+'"]{display:none;}').join('\n');
+  const btn=byId('imColPickBtn');
+  if(btn){
+    btn.innerHTML='Columns'+(hid.size?' <b>('+hid.size+' hidden)</b>':'');
+    btn.classList.toggle('im-colpick-on',hid.size>0);
+  }
+  return hid;
+}
+function imCloseColPick(){const ov=byId('imColPickOverlay');if(ov)ov.style.display='none';}
+window.imCloseColPick=imCloseColPick;
+/* The popup is built once and reused, like the export picker, in the same
+   place (inside #storeInterface, otherwise the overlay CSS doesn't apply).
+   The table changes as soon as a tick changes, visibly behind the popup. */
+window.imOpenColPick=function(){
+  let ov=byId('imColPickOverlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='imColPickOverlay';
+    ov.className='secure-modal-overlay';
+    ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:29500;padding:14px;';
+    ov.innerHTML='<div style="background:#fff;width:min(520px,96vw);max-height:92vh;border-radius:12px;'
+      +'box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;">'
+        +'<strong style="font-size:13px;">Item Master: show / hide columns</strong>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imcpClose" style="border:1px solid #64748b;background:transparent;color:#fff;'
+        +'border-radius:6px;padding:4px 9px;font-size:15px;cursor:pointer;">&#10005;</button></div>'
+      +'<div style="padding:8px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;color:#334155;font-weight:600;">'
+        +'Untick a column to hide it from the table. Filter / sort / search keep working, '
+        +'and the choice is remembered in this browser. CSV / PDF columns are chosen separately.</div>'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px;">'
+        +'<span style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">Ticked = shown</span>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imcpAll" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;'
+        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">Show all</button></div>'
+      +'<div id="imcpList" style="flex:1;overflow-y:auto;padding:4px 14px 10px;display:grid;'
+        +'grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px 14px;"></div>'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;">'
+        +'<span id="imcpCount" style="font-size:11px;font-weight:800;color:#0369a1;"></span>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="imcpDone" style="background:#6d28d9;color:#fff;border:0;border-radius:6px;'
+        +'padding:7px 16px;font-size:12px;font-weight:800;cursor:pointer;">&#10004; Done</button></div>'
+      +'</div>';
+    (byId('storeInterface')||document.body).appendChild(ov);
+    byId('imcpClose').addEventListener('click',imCloseColPick);
+    byId('imcpDone').addEventListener('click',imCloseColPick);
+    ov.addEventListener('click',e=>{if(e.target===ov)imCloseColPick();});
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&byId('imColPickOverlay')?.style.display==='flex')imCloseColPick();
+    });
+    byId('imcpAll').addEventListener('click',()=>{
+      imColSaveHidden_(new Set());
+      renderItemMasterTable();imcpFill_();
+    });
+    byId('imcpList').addEventListener('change',e=>{
+      const cb=e.target.closest('.imcp-col');if(!cb)return;
+      const hid=imColHidden_();
+      if(cb.checked)hid.delete(cb.value);else hid.add(cb.value);
+      if(hid.size>=IM_VIEW_COLS.length){
+        cb.checked=true;
+        return showToast('At least one column must stay visible','warn');
+      }
+      imColSaveHidden_(hid);
+      renderItemMasterTable();imcpFill_();
+    });
+  }
+  imcpFill_();
+  ov.style.display='flex';
+};
+function imcpFill_(){
+  const hid=imColHidden_();
+  const sl=new Set(imActiveSlicerCols_());
+  byId('imcpList').innerHTML=IM_VIEW_COLS.map(k=>{
+    /* If a hidden column has a filter / slicer applied, it is still filtering
+       the list; that is noted right here, otherwise "where did the rows go" has no answer. */
+    const busy=imHasFilter_(k)||sl.has(k);
+    return '<label style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11.5px;font-weight:600;color:#0f172a;cursor:pointer;">'
+      +'<input type="checkbox" class="imcp-col" value="'+k+'"'+(hid.has(k)?'':' checked')+' style="width:14px;height:14px;cursor:pointer;">'
+      +'<span>'+escText(SARV_IM_FILTER_COLS[k].label)+'</span>'
+      +(busy?'<span style="font-size:9px;font-weight:800;color:#b45309;background:#fef3c7;border-radius:8px;padding:1px 6px;" title="A filter / slicer is applied to this column">filtered</span>':'')
+      +'</label>';
+  }).join('');
+  const el=byId('imcpCount');
+  if(el)el.textContent=(IM_VIEW_COLS.length-hid.size)+' of '+IM_VIEW_COLS.length+' columns shown';
 }
 /* The value list for one column: what is left after every OTHER filter, with
    a count each. Sorted by number on numeric columns and alphabetically
@@ -6770,9 +7023,9 @@ function imRenderFilterPanel_(){
       +'<input type="checkbox" data-v="'+escText(o.value)+'"'+(ticked(o.value)?' checked':'')+'>'
       +'<span class="t" title="'+escText(o.value)+'">'+escText(o.value)+'</span>'
       +'<span class="n">'+(o.gone?'0':o.count)+'</span></label>').join('')
-    : '<div style="color:#94a3b8;padding:6px 2px;">'+(term?'Is search par koi value nahi mili.':'Baaki filters ke baad is column me koi value nahi bachi.')+'</div>';
+    : '<div style="color:#94a3b8;padding:6px 2px;">'+(term?'No values match this search.':'No values left in this column after the other filters.')+'</div>';
   const clipNote=shown.length>LIMIT
-    ? '<div style="color:#b45309;font-size:10px;padding:4px 2px 0;">Pehli '+LIMIT+' values dikh rahi hain ('+shown.length+' me se) — upar search karke chhota karein.</div>'
+    ? '<div style="color:#b45309;font-size:10px;padding:4px 2px 0;">Showing the first '+LIMIT+' values (of '+shown.length+'). Use the search above to narrow it down.</div>'
     : '';
   const rangeHtml=meta.numeric
     ? '<div class="imf-range">'
@@ -6782,12 +7035,12 @@ function imRenderFilterPanel_(){
     : '';
   p.innerHTML=
      '<div class="imf-head">'+escText(meta.label)
-    +'<div class="imf-sub">'+opts.length+' value(s) &middot; baaki filters ke hisaab se</div></div>'
+    +'<div class="imf-sub">'+opts.length+' value(s) &middot; based on the other filters</div></div>'
     +'<div class="imf-body">'+rangeHtml
-    +'<input type="text" id="imfSearch" placeholder="&#128269; Values me search..." value="'+escText(sarvImDraft.search||'')+'">'
+    +'<input type="text" id="imfSearch" placeholder="Values me search..." value="'+escText(sarvImDraft.search||'')+'">'
     +'<div style="display:flex;justify-content:space-between;margin-top:6px;">'
-    +'<button type="button" class="imf-mini" id="imfAll">&#9745; Select All</button>'
-    +'<button type="button" class="imf-mini" id="imfNone" style="color:#b91c1c;">&#9744; Clear</button></div>'
+    +'<button type="button" class="imf-mini" id="imfAll">Select All</button>'
+    +'<button type="button" class="imf-mini" id="imfNone" style="color:#b91c1c;">Clear</button></div>'
     +'<div class="imf-list" id="imfList">'+rowsHtml+'</div>'+clipNote
     +'</div>'
     +'<div class="imf-foot">'
@@ -6848,7 +7101,7 @@ window.imApplyFilter=function(){
   const col=sarvImPanelCol;
   // Said out loud rather than returning quietly: a dead Apply button used to
   // be indistinguishable from one that applied a filter matching everything.
-  if(!col){showToast('⚠️ Filter panel band ho chuka tha — column ke ▾ par dobara click karke filter lagayein','warn');return;}
+  if(!col){showToast('The filter panel had already closed. Click the column\'s ▾ again to apply a filter.','warn');return;}
   const d=sarvImDraft||{};
   const label=SARV_IM_FILTER_COLS[col].label;
   let {min,max}=d;
@@ -6889,12 +7142,12 @@ window.imApplyFilter=function(){
   }
   if(values==null&&min==null&&max==null){
     imRemoveFilter(col,true);
-    showToast('ℹ️ <b>'+escText(label)+'</b> par koi filter nahi laga — saari values tick thi, to poori list dikh rahi hai.<br>'
-      +'<span style="font-size:10px;">Sirf kuch values chahiye to panel me <b>☐ Clear</b> dabakar wahi values tick karein, phir Apply.</span>','warn');
+    showToast('No filter applied on <b>'+escText(label)+'</b>: every value was ticked, so the full list is shown.<br>'
+      +'<span style="font-size:10px;">To keep only some values, press <b>Clear</b> in the panel, tick just those values, then Apply.</span>','warn');
     return;
   }
   if(values&&values.size===0){
-    showToast('⚠️ <b>'+escText(label)+'</b> me koi value tick nahi hai — is filter par list khali rahegi','warn');
+    showToast('No value is ticked in <b>'+escText(label)+'</b>; with this filter the list will be empty','warn');
   }
   sarvImFilters[col]={values:values?new Set(values):null,min,max};
   imCloseFilterPanel();
@@ -6902,8 +7155,8 @@ window.imApplyFilter=function(){
   /* Always says what landed. If this toast does not appear, Apply never ran —
      which is a different fault from a filter that ran and matched everything,
      and the two were impossible to tell apart before. */
-  showToast('🔍 <b>'+escText(label)+'</b> filter: '+escText(imFilterSummary_(col))
-    +' — <b>'+(sarvItemMasterShown||[]).length+'</b> of '+(sarvItemMasterRows||[]).length+' item dikh rahe hain');
+  showToast('<b>'+escText(label)+'</b> filter: '+escText(imFilterSummary_(col))
+    +': <b>'+(sarvItemMasterShown||[]).length+'</b> of '+(sarvItemMasterRows||[]).length+' items shown');
 };
 /* quiet=true when imApplyFilter is the caller — it says its own piece, and two
    toasts for one button press read as something having gone wrong. */
@@ -6912,16 +7165,16 @@ window.imRemoveFilter=function(col,quiet){
   delete sarvImFilters[col];
   if(sarvImPanelCol===col)imCloseFilterPanel();
   renderItemMasterTable();
-  if(!quiet&&had)showToast('✖ <b>'+escText(SARV_IM_FILTER_COLS[col].label)+'</b> ka filter hata diya — '
-    +'<b>'+(sarvItemMasterShown||[]).length+'</b> item dikh rahe hain');
+  if(!quiet&&had)showToast('✖ Filter removed from <b>'+escText(SARV_IM_FILTER_COLS[col].label)+'</b>: '
+    +'<b>'+(sarvItemMasterShown||[]).length+'</b> items shown');
 };
 window.imClearAllFilters=function(){
   const n=imActiveCols_().length;
   sarvImFilters={};
   imCloseFilterPanel();
   renderItemMasterTable();
-  if(n)showToast('✖ Saare column filters hata diye ('+n+') — '
-    +'<b>'+(sarvItemMasterShown||[]).length+'</b> item dikh rahe hain');
+  if(n)showToast('✖ All column filters removed ('+n+'): '
+    +'<b>'+(sarvItemMasterShown||[]).length+'</b> items shown');
 };
 function imCloseFilterPanel(){
   const p=byId('imFilterPanel');if(p)p.style.display='none';
@@ -6983,16 +7236,16 @@ function imRenderFilterIndicators_(){
     const on=imHasFilter_(col);
     btn.classList.toggle('on',on);
     btn.innerHTML=on?'&#9776;':'&#9662;';
-    btn.title=on?(SARV_IM_FILTER_COLS[col].label+' filter: '+imFilterSummary_(col)+' — click karke badlein ya hatayein')
+    btn.title=on?(SARV_IM_FILTER_COLS[col].label+' filter: '+imFilterSummary_(col)+'. Click to change or remove')
                  :('Filter '+SARV_IM_FILTER_COLS[col].label);
   });
   const bar=byId('imFilterChips');if(!bar)return;
   const cols=imActiveCols_();
   if(!cols.length){bar.style.display='none';bar.innerHTML='';return;}
   bar.style.display='flex';
-  bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#475569;">&#128269; FILTERS:</span>'
+  bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#475569;">FILTERS:</span>'
     +cols.map(c=>'<span class="imf-chip">'+escText(SARV_IM_FILTER_COLS[c].label)+': '+escText(imFilterSummary_(c))
-      +'<button type="button" onclick="imRemoveFilter(\''+c+'\')" title="Is column ka filter hatayein">&#10006;</button></span>').join('')
+      +'<button type="button" onclick="imRemoveFilter(\''+c+'\')" title="Remove this column\'s filter">&#10006;</button></span>').join('')
     +'<button type="button" onclick="imClearAllFilters()" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'
     +'border-radius:12px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters ('+cols.length+')</button>';
 }
@@ -7031,12 +7284,12 @@ function warnItemColumnsMissing_(cols){
   const fresh=(cols||[]).filter(c=>SARV_ITEM_OPTIONAL_COLUMNS[c]&&!sarvItemColumnWarned.has(c));
   if(!fresh.length)return;
   fresh.forEach(c=>sarvItemColumnWarned.add(c));
-  showToast('⚠️ '+fresh.map(c=>SARV_ITEM_OPTIONAL_COLUMNS[c].label).join(' / ')+' save nahi hua — items table me '
-    +fresh.map(c=>'<b>'+c+'</b>').join(', ')+' column hi nahi hai.<br>'
-    +'Supabase → SQL Editor me ek baar ye chalayein:<br>'
+  showToast(''+fresh.map(c=>SARV_ITEM_OPTIONAL_COLUMNS[c].label).join(' / ')+' was not saved: the items table has no '
+    +fresh.map(c=>'<b>'+c+'</b>').join(', ')+' column.<br>'
+    +'Run this once in Supabase → SQL Editor:<br>'
     +fresh.map(c=>'<code>'+SARV_ITEM_OPTIONAL_COLUMNS[c].ddl+'</code>').join('<br>')+'<br>'
     +"<code>notify pgrst, 'reload schema';</code><br>"
-    +'Uske baad item dobara save karein — ye fields tab se save hone lagengi.','warn');
+    +'Then save the item again; these fields will save from then on.','warn');
 }
 // Kept as a thin wrapper: older call sites still ask specifically about GST.
 function warnGstColumnMissing_(){warnItemColumnsMissing_(['gst_pct'])}
@@ -7116,16 +7369,16 @@ function openNewItemMasterModal(target){
        all suggest what the master already holds, so the store's own vocabulary
        gets reused instead of five spellings of the same brand. */
     ov.innerHTML='<div class="secure-modal-box" style="max-width:520px;width:94vw;">'
-      +'<h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">&#10133; Add New Item</h3>'
-      +'<p style="margin:0 0 14px;font-size:11px;color:#64748b;">Item Master me save hoga aur Item Name list me turant dikhne lagega.</p>'
+      +'<h3 style="margin:0 0 2px;font-size:15px;color:#0f172a;">Add New Item</h3>'
+      +'<p style="margin:0 0 14px;font-size:11px;color:#64748b;">It is saved to the Item Master and appears in the Item Name list immediately.</p>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;">'
         +cell('Item Name <span style="color:#dc2626;">&#9733;</span>',
-              txt('ni_name','Type karein — saved items suggest honge','list="dl-ni-item-name" autocomplete="off"')
+              txt('ni_name','Start typing; saved items will be suggested','list="dl-ni-item-name" autocomplete="off"')
               +'<datalist id="dl-ni-item-name"></datalist>'
               +'<div id="ni_nameHint" style="min-height:13px;margin-top:3px;font-size:10px;font-weight:700;"></div>',2)
-        +cell('Item Description',txt('ni_desc','Type karein — saved descriptions suggest honge','list="dl-ni-item-desc" autocomplete="off"')+'<datalist id="dl-ni-item-desc"></datalist>',2)
+        +cell('Item Description',txt('ni_desc','Start typing; saved descriptions will be suggested','list="dl-ni-item-desc" autocomplete="off"')+'<datalist id="dl-ni-item-desc"></datalist>',2)
         +cell('Category',sel('ni_cat'))
-        +cell('Make / Brand',txt('ni_make','Type karein — saved makes suggest honge','list="dl-ni-item-make" autocomplete="off"')+'<datalist id="dl-ni-item-make"></datalist>')
+        +cell('Make / Brand',txt('ni_make','Start typing; saved makes will be suggested','list="dl-ni-item-make" autocomplete="off"')+'<datalist id="dl-ni-item-make"></datalist>')
         +cell('Item Size',txt('ni_itemSize','e.g. 1/2 INCH, M8 x 40, 24&quot;','list="dl-ni-itemSize" autocomplete="off"')+'<datalist id="dl-ni-itemSize"></datalist>')
         +cell('Material Type',txt('ni_materialType','e.g. SS 304, MS, BRASS','list="dl-ni-materialType" autocomplete="off"')+'<datalist id="dl-ni-materialType"></datalist>')
         +cell('UOM',sel('ni_uom'))
@@ -7136,7 +7389,7 @@ function openNewItemMasterModal(target){
       +'</div>'
       +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'
       +'<button type="button" id="ni_cancel" class="btn" style="background:#e2e8f0;color:#0f172a;">Cancel</button>'
-      +'<button type="button" id="ni_save" class="btn btn-primary">&#128190; Save Item</button>'
+      +'<button type="button" id="ni_save" class="btn btn-primary">Save Item</button>'
       +'</div></div>';
     /* Mounted on <body>, NOT inside #storeInterface. That panel is set to
        display:none whenever the Purchase panel is open (see activatePanel), so
@@ -7216,18 +7469,18 @@ function refreshNewItemNameHint_(){
   const hint=byId('ni_nameHint');if(!hint)return;
   const dup=newItemDuplicate_(byId('ni_name')?.value);
   hint.style.color='#b45309';
-  hint.textContent=dup?('⚠️ Ye item pehle se master me hai ('+(dup.item_code||dup.uom||'')+') — list me se select karein'):'';
+  hint.textContent=dup?('This item is already in the master ('+(dup.item_code||dup.uom||'')+'). Select it from the list.'):'';
 }
 function closeNewItemMasterModal(){const ov=byId('sarvNewItemModal');if(ov)ov.style.display='none';}
 async function saveNewItemFromModal_(){
-  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
   const name=(byId('ni_name')?.value||'').trim().toUpperCase();
-  if(!name){showToast('❌ Item Name required!','error');byId('ni_name')?.focus();return;}
+  if(!name){showToast('Item Name required!','error');byId('ni_name')?.focus();return;}
   // Same rule the Item Master screen applies: one name, one master row.
   if(newItemDuplicate_(name))
-    return showToast('⚠️ "'+name+'" pehle se Item Master me hai — list me se select karein','warn');
+    return showToast('"'+name+'" is already in the Item Master. Select it from the list.','warn');
   const btn=byId('ni_save');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Saving…';}
+  if(btn){btn.disabled=true;btn.textContent='Saving…';}
   try{
     const payload={
       name,
@@ -7259,10 +7512,10 @@ async function saveNewItemFromModal_(){
     if(!q.error&&q.data)refreshItemDatalist(q.data);
     closeNewItemMasterModal();
     fillNewItemIntoEntryRow_(name);
-    showToast('✅ "'+name+'" Item Master me add ho gaya');
+    showToast('"'+name+'" added to the Item Master');
     if(typeof loadItemMaster==='function')loadItemMaster().catch(()=>{});
   }catch(e){dbError(e);}
-  finally{if(btn){btn.disabled=false;btn.innerHTML='&#128190; Save Item';}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='Save Item';}}
 }
 /* Drops the new name into the first empty Item Name box of the entry that
    asked for it, adding a row when every one is filled, and runs the normal
@@ -7344,7 +7597,7 @@ function refreshItemAttributeDatalists_(items){
     }
   }
 }
-/* ── "Ye naam pehle se master me hai" ───────────────────────────────
+/* ── "This name is already in the master" ─────────────────────────────
    The Item Name box now offers every name already on file, so the one thing
    it can be used to do by accident is pick a name that exists — which
    addMasterItem refuses, and rightly: the entry forms match typed names back
@@ -7369,10 +7622,10 @@ function miSyncItemNameHint_(){
     &&String(it.id)!==String(sarvEditingItemId)):null;
   if(!hit){box.style.display='none';box.innerHTML='';return;}
   const canEdit=sarvCan('EDIT');
-  box.innerHTML='&#9888;&#65039; <b>'+escText(hit.name)+'</b> pehle se master me hai'
+  box.innerHTML='<b>'+escText(hit.name)+'</b> is already in the master'
     +(hit.item_code?(' <span style="color:#92400e;">('+escText(hit.item_code)+')</span>'):'')
-    +' — isi naam se naya item save nahi hoga.'
-    +(canEdit?' <a href="#" id="mi_itemNameEditLink" style="color:#b45309;font-weight:800;">&#9999;&#65039; Usi item ko edit karein</a>':'');
+    +'; a new item with this name will not be saved.'
+    +(canEdit?' <a href="#" id="mi_itemNameEditLink" style="color:#b45309;font-weight:800;">Edit that item instead</a>':'');
   box.style.display='block';
   /* Bound, not an inline onclick: an id goes into that attribute, and a uuid
      through escText would come back with its quotes escaped into the JS. */
@@ -7405,7 +7658,8 @@ const SARV_ITEM_SORTERS={
   soq: {text:false,get:r=>itemStdOrderQty_(r.it)},
   in:  {text:false,get:r=>r.inQty},
   out: {text:false,get:r=>r.outQty},
-  bal: {text:false,get:r=>r.bal}
+  bal: {text:false,get:r=>r.bal},
+  pipe:{text:false,get:r=>r.pipe==null?null:r.pipe}
 };
 /* Sort state. key===null means the list keeps the name order it arrives in. */
 let sarvItemMasterSort={key:null,dir:1};
@@ -7428,6 +7682,8 @@ window.renderItemMasterTable=function(){
   if(!tb)return;
   const q=(byId('itemMasterSearch')?.value||'').toLowerCase().trim();
   const msvFilter=byId('itemMasterMsvFilter')?.value||'ALL';
+  imPruneSlicers_();
+  const hiddenCols=imApplyColVisibility_();
   /* The search box and the Stock dropdown live in imBasePass_, the column
      filters in imColPass_, and imRowPass_ puts them together — the same three
      functions the dependent option lists use. One code path, so what a column
@@ -7459,32 +7715,37 @@ window.renderItemMasterTable=function(){
   sarvItemMasterShown=rows;
   updateItemMasterSortIndicators_();
   imRenderFilterIndicators_();
+  imRenderSlicers_();
   // The chip bar appears and disappears with the filters, which moves the top
   // of the list — so the height is re-fitted on every render, not just on load.
   fitItemListHeight_();
   const activeCols=imActiveCols_();
-  const filterActive=activeCols.length>0||!!q||msvFilter!=='ALL';
+  const slicerOn=imActiveSlicerCols_().length>0;
+  const filterActive=activeCols.length>0||slicerOn||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
   if(!sarvItemMasterRows.length){
-    tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above ⬆️</td></tr>';
+    tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above</td></tr>';
     return;
   }
   if(!rows.length){
     /* An empty list has to say WHICH filter emptied it, and give the way out
        in the same breath. "No items match" on its own is how someone decides
        their Item Master has lost its data. */
-    const why=activeCols.length
-      ? 'In column filters ke baad koi item nahi bacha: '
-        +activeCols.map(c=>SARV_IM_FILTER_COLS[c].label+' ('+imFilterSummary_(c)+')').join(', ')
-      : msvFilter==='BELOW'?'Koi item MSV se neeche nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
-      : msvFilter==='ABOVE'?'Koi item MSV se upar nahi hai (jin items ka MSV set nahi hai wo is filter me nahi aate).'
-      : 'Is search par koi item nahi mila.';
-    tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
-      +(activeCols.length?'<br><button type="button" onclick="imClearAllFilters()" style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters</button>':'')
+    const why=(activeCols.length||slicerOn)
+      ? 'No items left after these filters: '
+        +activeCols.map(c=>SARV_IM_FILTER_COLS[c].label+' ('+imFilterSummary_(c)+')')
+          .concat(imSlicerSummary_().map(s=>'Slicer '+s)).join(', ')
+      : msvFilter==='BELOW'?'No item is below its MSV (items without an MSV are not included in this filter).'
+      : msvFilter==='ABOVE'?'No item is above its MSV (items without an MSV are not included in this filter).'
+      : 'No item matches this search.';
+    tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
+      +(activeCols.length||slicerOn?'<br>':'')
+      +(activeCols.length?'<button type="button" onclick="imClearAllFilters()" style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters</button>':'')
+      +(slicerOn?'<button type="button" onclick="imClearSlicers()" style="margin:8px 0 0 6px;background:#f5f3ff;border:1px solid #ddd6fe;color:#6d28d9;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear Slicers</button>':'')
       +'</td></tr>';
     return;
   }
-  let totalIn=0,totalOut=0,totalBal=0;
+  let totalIn=0,totalOut=0,totalBal=0,totalPipe=0;
   /* Display only: a whole number stays as it is (12), a decimal one is
      rounded to two places (12.345 → 12.35, 0.1+0.2 → 0.30). The MSV check,
      sorting and filters still work on the exact figures. */
@@ -7494,7 +7755,7 @@ window.renderItemMasterTable=function(){
   byId('itemMasterTable')?.classList.toggle('im-hide-newpr',!prAdmin);
   const bodyRows=rows.map((row,i)=>{
     const{it,inQty,outQty,bal}=row;
-    totalIn+=inQty;totalOut+=outQty;totalBal+=bal;
+    totalIn+=inQty;totalOut+=outQty;totalBal+=bal;totalPipe+=pNum(row.pipe);
     const balColor=bal>0?'#166534':bal<0?'#dc2626':'#64748b';
     // Minimum Stock Value — read through the same helper the stock filter and
     // the sort use, so the red low-stock flag and the "Below the MSV" view can
@@ -7504,24 +7765,25 @@ window.renderItemMasterTable=function(){
     const below=isBelowMsv_(row);
     return `<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;" data-id="${it.id}">
         <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
-        <td style="padding:5px 6px;font-weight:700;color:#0369a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escText(it.item_code)}">${escText(it.item_code)}</td>
-        <td style="padding:5px 6px;font-weight:700;">${escText(it.name)}</td>
-        <td style="padding:5px 6px;color:#64748b;">${escText(it.description||'—')}</td>
-        <td style="padding:5px 6px;">${escText(it.category||'—')}</td>
-        <td style="padding:5px 6px;text-align:center;background:#ecfeff;font-weight:700;color:#0e7490;">${escText(itemSize_(it)||'—')}</td>
-        <td style="padding:5px 6px;background:#ecfeff;color:#155e75;">${escText(itemMaterial_(it)||'—')}</td>
-        <td style="padding:5px 6px;text-align:right;">₹${Number(it.rate||0).toFixed(2)}</td>
-        <td style="padding:5px 6px;text-align:center;background:#f5f3ff;font-weight:700;color:#5b21b6;">${itemGst_(it)}%</td>
-        <td style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
-        <td style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fffbeb;font-weight:700;color:#92400e;">${msv!=null?q2(msv):'—'}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fdf2f8;font-weight:700;color:#9d174d;">${soq!=null?q2(soq):'—'}</td>
-        <td style="padding:5px 6px;text-align:center;background:#f0fdf4;font-weight:700;color:#166534;">${q2(inQty)}</td>
-        <td style="padding:5px 6px;text-align:center;background:#fef2f2;font-weight:700;color:#dc2626;">${q2(outQty)}</td>
-        <td style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'#eff6ff'};font-weight:800;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${q2(bal)} is below the minimum stock qty of ${q2(msv)}"`:''}>${q2(bal)}${below?' &#9888;':''}</td>
-        <td class="im-newpr-col" style="padding:5px 6px;text-align:center;background:#f0fdf4;"><input type="checkbox" class="im-pr-sel" data-id="${it.id}"${sarvItemPrSel.has(String(it.id))?' checked':''}${prAdmin?'':' disabled'} title="${prAdmin?(soq!=null?'New PR me qty '+soq+' (Std Order Qty)':'Std Order Qty set nahi — PR me qty khud bharni hogi'):'Sirf Admin tick kar sakta hai'}" style="width:14px;height:14px;cursor:${prAdmin?'pointer':'not-allowed'};"></td>
+        <td data-imc="code" style="padding:5px 6px;font-weight:700;color:#0369a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escText(it.item_code)}">${escText(it.item_code)}</td>
+        <td data-imc="name" style="padding:5px 6px;font-weight:700;">${escText(it.name)}</td>
+        <td data-imc="desc" style="padding:5px 6px;color:#64748b;">${escText(it.description||'—')}</td>
+        <td data-imc="cat" style="padding:5px 6px;">${escText(it.category||'—')}</td>
+        <td data-imc="size" style="padding:5px 6px;text-align:center;font-weight:600;color:#334155;">${escText(itemSize_(it)||'—')}</td>
+        <td data-imc="mat" style="padding:5px 6px;color:#334155;">${escText(itemMaterial_(it)||'—')}</td>
+        <td data-imc="rate" style="padding:5px 6px;text-align:right;">₹${Number(it.rate||0).toFixed(2)}</td>
+        <td data-imc="gst" style="padding:5px 6px;text-align:center;color:#334155;">${itemGst_(it)}%</td>
+        <td data-imc="uom" style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
+        <td data-imc="make" style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
+        <td data-imc="msv" style="padding:5px 6px;text-align:center;font-weight:600;color:#475569;">${msv!=null?q2(msv):'—'}</td>
+        <td data-imc="soq" style="padding:5px 6px;text-align:center;font-weight:600;color:#475569;">${soq!=null?q2(soq):'—'}</td>
+        <td data-imc="in" style="padding:5px 6px;text-align:center;font-weight:600;color:#15803d;">${q2(inQty)}</td>
+        <td data-imc="out" style="padding:5px 6px;text-align:center;font-weight:600;color:#b91c1c;">${q2(outQty)}</td>
+        <td data-imc="bal" style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'transparent'};font-weight:700;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${q2(bal)} is below the minimum stock qty of ${q2(msv)}"`:''}>${q2(bal)}${below?'':''}</td>
+        <td data-imc="pipe" style="padding:5px 6px;text-align:center;">${imPipeCell_(it,q2)}</td>
+        <td class="im-newpr-col" style="padding:5px 6px;text-align:center;"><input type="checkbox" class="im-pr-sel" data-id="${it.id}"${sarvItemPrSel.has(String(it.id))?' checked':''}${prAdmin?'':' disabled'} title="${prAdmin?(soq!=null?'Qty '+soq+' on the New PR (Std Order Qty)':'No Std Order Qty set; enter the qty on the PR yourself'):'Only the Admin can tick this'}" style="width:14px;height:14px;cursor:${prAdmin?'pointer':'not-allowed'};"></td>
         <td style="padding:5px 6px;text-align:center;">
-          ${(sarvCan('EDIT')||sarvCan('DELETE'))?`${sarvCan('EDIT')?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} — item details badlein">&#9999;&#65039;</button>`:''}${sarvCan('DELETE')?`<button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}`:'<span style="color:#cbd5e1;">—</span>'}
+          ${(sarvCan('EDIT')||sarvCan('DELETE'))?`${sarvCan('EDIT')?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} : change the item details">✎</button>`:''}${sarvCan('DELETE')?`<button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
   }).join('');
@@ -7531,14 +7793,18 @@ window.renderItemMasterTable=function(){
   // Qty then sit between Make and IN Qty, both unsummed — a minimum stock
   // level and a standard order size are per-item settings, and adding them up
   // across the list would be a number that means nothing.
-  const totalsRow=`<tr style="background:#1e293b;color:#fff;font-weight:800;">
-      <td colspan="11" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
-      <td style="padding:6px;text-align:center;background:#78350f;">—</td>
-      <td style="padding:6px;text-align:center;background:#831843;">—</td>
-      <td style="padding:6px;text-align:center;background:#0c4a3e;">${q2(totalIn)}</td>
-      <td style="padding:6px;text-align:center;background:#7c2d12;">${q2(totalOut)}</td>
-      <td style="padding:6px;text-align:center;background:#1e3a5f;color:${totalBal<0?'#fca5a5':'#fff'};">${q2(totalBal)}</td>
-      <td class="im-newpr-col" style="padding:6px;text-align:center;background:#14532d;" title="Ticked for New PR">${sarvItemPrSel.size||'—'}</td>
+  // Columns hidden from the Columns popup drop out of that span, or the
+  // figures would slide out from under their own headers.
+  const labelSpan=1+IM_LABEL_COLS.filter(k=>!hiddenCols.has(k)).length;
+  const totalsRow=`<tr style="background:#f1f5f9;color:#0f172a;font-weight:700;border-bottom:2px solid #cbd5e1;">
+      <td colspan="${labelSpan}" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
+      <td data-imc="msv" style="padding:6px;text-align:center;color:#94a3b8;">—</td>
+      <td data-imc="soq" style="padding:6px;text-align:center;color:#94a3b8;">—</td>
+      <td data-imc="in" style="padding:6px;text-align:center;color:#15803d;">${q2(totalIn)}</td>
+      <td data-imc="out" style="padding:6px;text-align:center;color:#b91c1c;">${q2(totalOut)}</td>
+      <td data-imc="bal" style="padding:6px;text-align:center;color:${totalBal<0?'#b91c1c':'#0f172a'};">${q2(totalBal)}</td>
+      <td data-imc="pipe" style="padding:6px;text-align:center;color:#1d4ed8;" title="Pending PR / PO qty of the items shown">${sarvImPipe?q2(totalPipe):'…'}</td>
+      <td class="im-newpr-col" style="padding:6px;text-align:center;" title="Ticked for New PR">${sarvItemPrSel.size||'—'}</td>
       <td></td>
     </tr>`;
   tb.innerHTML=totalsRow+bodyRows;
@@ -7556,14 +7822,14 @@ window.renderItemMasterTable=function(){
    Why this replaced exportTableCSV() on this table: that helper scrapes the
    rendered DOM, which on this table meant
      • headers carrying the sort arrow and the filter caret — "Code⇕▾";
-     • a "#" serial column, the NEW PR tick column and the 🗑 column, none of
+     • a "#" serial column, the NEW PR tick column and the column, none of
        which are data;
-     • Rate as "₹1,234.00", GST as "18%", Balance as "12 ⚠" — text, so a
+     • Rate as "₹1,234.00", GST as "18%", Balance as "12" — text, so a
        spreadsheet can neither sum nor sort any of it.
    The columns below are the ones the Item Master actually holds, each read
    through the SAME helper the table reads (itemMsv_ / itemStdOrderQty_ /
    itemSize_ / itemMaterial_ / itemGst_), so a figure on paper is the figure on
-   screen. The ⚠ flag becomes a column of its own — Stock Status — because a
+   screen. The flag becomes a column of its own — Stock Status — because a
    warning sign glued onto a number is unusable in a filter, and BELOW MSV in
    its own column is exactly what somebody sorting a purchase list wants.
 
@@ -7585,6 +7851,9 @@ const IM_EXPORT_COLS=[
   {k:'in',   h:'IN Qty',              w:14, num:true, total:true, tint:[240,253,244], get:r=>r.inQty},
   {k:'out',  h:'OUT Qty',             w:14, num:true, total:true, tint:[254,242,242], get:r=>r.outQty},
   {k:'bal',  h:'Balance Qty',         w:15, num:true, total:true, tint:[239,246,255], lowFlag:true, get:r=>r.bal},
+  // Open PO qty still to come in + PR qty not yet on any PO (imLoadPipeline_).
+  // Blank if the lookup hasn't finished, rather than a misleading 0.
+  {k:'pipe', h:'Pending PR / PO Qty', w:16, num:true, total:true, get:r=>r.pipe==null?null:r.pipe},
   // Blank where the item has no MSV: it cannot be judged against one, which is
   // the same reason such items fall out of both Stock filter views.
   {k:'stk',  h:'Stock Status',        w:17, center:true, lowFlag:true,
@@ -7629,10 +7898,11 @@ function imFilterText_(){
   else if(msv==='ABOVE')bits.push('Stock: Above the MSV');
   // The same labels and the same summaries the filter chips show on screen.
   imActiveCols_().forEach(c=>bits.push(SARV_IM_FILTER_COLS[c].label+': '+imFilterSummary_(c)));
+  imSlicerSummary_().forEach(s=>bits.push('Slicer '+s));
   const srt=SARV_ITEM_SORTERS[sarvItemMasterSort&&sarvItemMasterSort.key];
   const sortTxt=srt?('Sorted by '+(SARV_IM_FILTER_COLS[sarvItemMasterSort.key]||{label:sarvItemMasterSort.key}).label
     +' ('+(sarvItemMasterSort.dir<0?'descending':'ascending')+')'):'';
-  if(!bits.length)return 'Filter: none — poora Item Master'+(sortTxt?('   ·   '+sortTxt):'');
+  if(!bits.length)return 'Filter: none (the whole Item Master)'+(sortTxt?('   ·   '+sortTxt):'');
   return bits.join('   ·   ')+(sortTxt?('   ·   '+sortTxt):'');
 }
 /* The rows to export, or null after saying why there are none. Deliberately
@@ -7641,13 +7911,13 @@ function imFilterText_(){
 function imExportRows_(what){
   const rows=(sarvItemMasterShown||[]).filter(Boolean);
   if(!rows.length){
-    showToast('⚠️ '+what+' ke liye koi item nahi — list khali hai, pehle search / filter check karein'
-      +(imActiveCols_().length?' (ya <b>Clear All Filters</b> dabayein)':''),'warn');
+    showToast('No items for '+what+'; the list is empty. Check the search / filter first.'
+      +(imActiveCols_().length?' (or press <b>Clear All Filters</b>)':''),'warn');
     return null;
   }
   return rows;
 }
-// Figures as NUMBERS in the CSV — no ₹, no %, no ⚠ — so Excel can sum, sort
+// Figures as NUMBERS in the CSV — no ₹, no %, no — so Excel can sum, sort
 // and pivot them. A blank stays blank: 0 and "not set" are different answers
 // (an item with no MSV has not been given one; an MSV of 0 has).
 function imCsvCell_(col,row){
@@ -7683,14 +7953,14 @@ function imRunExportCsv_(cols){
      as the header. What the file was filtered by is said in the toast instead,
      and printed in full on the PDF, which is a report rather than a dataset. */
   downloadCSV('SARV_Item_Master_'+today()+'.csv',[head,...data,totals]);
-  showToast('📥 CSV downloaded — '+rows.length+' item'+(rows.length===1?'':'s')
+  showToast('CSV downloaded — '+rows.length+' item'+(rows.length===1?'':'s')
     +' of '+(sarvItemMasterRows||[]).length+' · '+cols.length+' column'+(cols.length===1?'':'s')
     +'<br><span style="font-size:10px;">'+escText(imFilterText_())+'</span>');
 }
 async function imRunExportPdf_(cols){
   cols=(cols&&cols.length)?cols:imExportSelCols_();
   const rows=imExportRows_('PDF');if(!rows)return;
-  if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua — page refresh karein','error');
+  if(!jspdfNativeReady_())return showToast('jsPDF did not load. Please refresh the page.','error');
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
   const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
@@ -7795,7 +8065,7 @@ async function imRunExportPdf_(cols){
   // Same preview the other reports open with, so the file can be checked (and
   // shared) without hunting through the Downloads folder.
   showSarvPdfPreview(blob,name,'');
-  showToast('📄 Item Master PDF ready — '+rows.length+' item'+(rows.length===1?'':'s')
+  showToast('Item Master PDF ready — '+rows.length+' item'+(rows.length===1?'':'s')
     +' · '+cols.length+' column'+(cols.length===1?'':'s'));
 }
 /* ══ EXPORT COLUMN PICKER ═══════════════════════════════════════════
@@ -7817,7 +8087,7 @@ function imCloseExportPick(){const ov=byId('imExportPickOverlay');if(ov)ov.style
 window.imCloseExportPick=imCloseExportPick;
 function imOpenExportPick_(kind){
   // Nothing to export: say so here rather than after the columns are chosen.
-  if(!imExportRows_(kind))return;
+  if(!imExportRows_(kind||'Download'))return;
   let ov=byId('imExportPickOverlay');
   if(!ov){
     ov=document.createElement('div');
@@ -7827,7 +8097,7 @@ function imOpenExportPick_(kind){
     ov.innerHTML='<div style="background:#fff;width:min(560px,96vw);max-height:92vh;border-radius:12px;'
       +'box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
       +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;">'
-        +'<strong id="imxTitle" style="font-size:13px;">&#128202; Columns chunein</strong>'
+        +'<strong id="imxTitle" style="font-size:13px;">Choose columns</strong>'
         +'<span style="flex:1;"></span>'
         +'<button type="button" id="imxClose" style="border:1px solid #64748b;background:transparent;color:#fff;'
         +'border-radius:6px;padding:4px 9px;font-size:15px;cursor:pointer;">&#10005;</button></div>'
@@ -7835,20 +8105,22 @@ function imOpenExportPick_(kind){
         +'font-size:11px;color:#334155;font-weight:600;"></div>'
       +'<div style="display:flex;align-items:center;gap:8px;padding:8px 14px 4px;">'
         +'<span style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;">'
-        +'Jo tick honge wahi CSV / PDF me aayenge</span>'
+        +'Only ticked columns go into the CSV / PDF</span>'
         +'<span style="flex:1;"></span>'
         +'<button type="button" id="imxAll" style="background:#f0fdf4;border:1px solid #86efac;color:#15803d;'
-        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">&#9745; Select All</button>'
+        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">Select All</button>'
         +'<button type="button" id="imxNone" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'
-        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">&#9744; Clear</button></div>'
+        +'border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">Clear</button></div>'
       +'<div id="imxList" style="flex:1;overflow-y:auto;padding:4px 14px 10px;display:grid;'
         +'grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 14px;"></div>'
       +'<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;'
         +'border-top:1px solid #e2e8f0;">'
         +'<span id="imxCount" style="font-size:11px;font-weight:800;color:#0369a1;"></span>'
         +'<span style="flex:1;"></span>'
-        +'<button type="button" id="imxGo" style="background:#16a34a;color:#fff;border:0;border-radius:6px;'
-        +'padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">&#128190; Download</button>'
+        +'<button type="button" class="imx-go" id="imxCsv" style="background:#16a34a;color:#fff;border:0;border-radius:6px;'
+        +'padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">Download CSV</button>'
+        +'<button type="button" class="imx-go" id="imxPdf" style="background:#dc2626;color:#fff;border:0;border-radius:6px;'
+        +'padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">Download PDF</button>'
         +'<button type="button" id="imxCancel" style="background:#e2e8f0;color:#475569;border:0;border-radius:6px;'
         +'padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Cancel</button></div>'
       +'</div>';
@@ -7872,16 +8144,29 @@ function imOpenExportPick_(kind){
     byId('imxAll').addEventListener('click',()=>imxSetAll_(true));
     byId('imxNone').addEventListener('click',()=>imxSetAll_(false));
     byId('imxList').addEventListener('change',imxSyncCount_);
+    /* One popup, two downloads. The format is chosen AFTER the columns; the
+       toolbar used to have two buttons that opened the same popup, now it has
+       one and the format is chosen down here. Bound once: neither handler
+       closes over anything that changes between openings. */
+    const run=fmt=>{
+      const keys=[...document.querySelectorAll('#imxList .imx-col:checked')].map(x=>x.value);
+      if(!keys.length)return showToast('Tick at least one column','warn');
+      imExportSaveSelKeys_(keys);
+      const picked=imExportSelCols_();
+      imCloseExportPick();
+      if(fmt==='PDF')imRunExportPdf_(picked).catch(dbError);
+      else imRunExportCsv_(picked);
+    };
+    byId('imxCsv').addEventListener('click',()=>run('CSV'));
+    byId('imxPdf').addEventListener('click',()=>run('PDF'));
   }
-  // Which button opened it — the one thing that changes between the two.
-  ov.dataset.kind=kind;
-  const isPdf=kind==='PDF';
-  byId('imxTitle').innerHTML=(isPdf?'&#128196;':'&#128190;')+' '+escText(kind)+' — columns chunein';
-  byId('imxGo').innerHTML=(isPdf?'&#128196; Download PDF':'&#128190; Download CSV');
-  byId('imxGo').style.background=isPdf?'#dc2626':'#16a34a';
+  /* The old CSV / PDF entry points (downloadItemMasterCsv / …Pdf) still come
+     here; in that case the button for the requested format gets the focus. */
+  ov.dataset.kind=kind||'';
+  byId('imxTitle').innerHTML='Download: choose columns';
   const rows=(sarvItemMasterShown||[]).length;
-  byId('imxScope').innerHTML='&#128203; <b>'+rows+'</b> item'+(rows===1?'':'s')
-    +' export honge (list par jo filter laga hai wahi) — <span style="color:#64748b;">'
+  byId('imxScope').innerHTML='<b>'+rows+'</b> item'+(rows===1?'':'s')
+    +' will be exported (with the list\'s current filters): <span style="color:#64748b;">'
     +escText(imFilterText_())+'</span>';
   const sel=new Set(imExportSelKeys_());
   byId('imxList').innerHTML=IM_EXPORT_COLS.map(c=>
@@ -7891,19 +8176,9 @@ function imOpenExportPick_(kind){
     +' style="width:14px;height:14px;cursor:pointer;">'
     +'<span>'+escText(c.h)+'</span></label>').join('');
   imxSyncCount_();
-  const go=byId('imxGo');
-  // Replaced, not added to: this handler closes over `kind`, and a second
-  // opening would otherwise leave the first one still bound and fire both.
-  go.onclick=()=>{
-    const keys=[...document.querySelectorAll('#imxList .imx-col:checked')].map(x=>x.value);
-    if(!keys.length)return showToast('⚠️ Kam se kam ek column tick karein','warn');
-    imExportSaveSelKeys_(keys);
-    const picked=imExportSelCols_();
-    imCloseExportPick();
-    if(kind==='PDF')imRunExportPdf_(picked).catch(dbError);
-    else imRunExportCsv_(picked);
-  };
   ov.style.display='flex';
+  const pref=kind==='PDF'?byId('imxPdf'):kind==='CSV'?byId('imxCsv'):null;
+  if(pref)pref.focus();
 }
 function imxSetAll_(on){
   document.querySelectorAll('#imxList .imx-col').forEach(cb=>{cb.checked=on;});
@@ -7914,7 +8189,9 @@ function imxSyncCount_(){
   const n=document.querySelectorAll('#imxList .imx-col:checked').length;
   el.textContent=n+' of '+IM_EXPORT_COLS.length+' columns selected';
   el.style.color=n?'#0369a1':'#b91c1c';
-  const go=byId('imxGo');if(go){go.disabled=!n;go.style.opacity=n?'1':'.5';go.style.cursor=n?'pointer':'not-allowed';}
+  document.querySelectorAll('#imExportPickOverlay .imx-go').forEach(go=>{
+    go.disabled=!n;go.style.opacity=n?'1':'.5';go.style.cursor=n?'pointer':'not-allowed';
+  });
 }
 /* What the two toolbar buttons call: pick the columns, then export.
 
@@ -7925,6 +8202,7 @@ function imxSyncCount_(){
    replaced the workers outright: the picker's Download button called the bare
    name, got the picker-opener back, and re-opened the popup it had just
    closed — "the button does nothing". Separate names, no shadowing. */
+window.downloadItemMaster=()=>imOpenExportPick_('');
 window.downloadItemMasterCsv=()=>imOpenExportPick_('CSV');
 window.downloadItemMasterPdf=()=>imOpenExportPick_('PDF');
 /* ── Item Master → New PR ────────────────────────────────────────────
@@ -7950,43 +8228,59 @@ function sarvSyncItemPrSelUi_(){
   }
 }
 window.sarvClearItemPrSel=function(){sarvItemPrSel.clear();renderItemMasterTable();};
-// Defaults for a PR generated from Item Master. Required By is deliberately
-// NOT one of them — see sarvGenerateNewPrFromItems.
-const SARV_GEN_PR_EMP_CODE='1439';   // Requested By
+// Requested By default for a generated PR. Used by the Trims Manager route
+// only: a PR from the Item Master leaves Requested By blank and the user must
+// pick the person (sarvPrNeedsRequester_ makes Submit insist on it).
+const SARV_GEN_PR_EMP_CODE='1439';
+let sarvPrNeedsRequester_=false;     // set by Item Master → New PR, cleared by clearPrForm
 window.sarvGenerateNewPrFromItems=async function(){
-  if(!sarvTabVisible('MD_ITEM_NEWPR'))return showToast('⛔ Aapke role ko Item Master se New PR banane ka access nahi hai','warn');
+  if(!sarvTabVisible('MD_ITEM_NEWPR'))return showToast('Your role cannot create a New PR from the Item Master','warn');
   const picked=sarvItemMasterRows.map(r=>r.it).filter(it=>sarvItemPrSel.has(String(it.id)));
-  if(!picked.length)return showToast('Pehle NEW PR column me items tick karein','warn');
+  if(!picked.length)return showToast('Tick items in the NEW PR column first','warn');
   const noSoq=picked.filter(it=>itemStdOrderQty_(it)==null);
+  if(!(await sarvFillPrFromItems_(picked.map(it=>({it,qty:itemStdOrderQty_(it)})))))return;
+  sarvItemPrSel.clear();
+  showToast('Filled '+picked.length+' item(s) into the New PR form: qty = Std Order Qty, Purchaser from Category. Choose <b>Requested By</b> (Employee Code) and <b>Required By</b> yourself; choose the Machine on the first row and it applies to all rows.');
+  if(noSoq.length)showToast('These items had no Std Order Qty; enter the qty yourself: '+noSoq.map(it=>it.name).slice(0,5).join(', ')+(noSoq.length>5?' …':''),'warn');
+};
+/* Opens New Entry on a clean form and puts one row per Item Master item in it.
+   list = [{it, qty, remark}]. Requested By is left blank and Submit insists on
+   it (sarvPrNeedsRequester_). Shared by Item Master › Generate New PR and
+   My Day › Below-MSV (store-mytasks.js), so both fill the form the same way.
+   Returns false if the PR form could not be reached. */
+async function sarvFillPrFromItems_(list){
   // Open New Entry the way the Home page does, on a clean form.
   sarvNavigateFromHome('PR');
   clearPrForm();
-  const tb=byId('p_itemTableBody');if(!tb)return;
+  const tb=byId('p_itemTableBody');if(!tb)return false;
   tb.innerHTML='';
-  picked.forEach(it=>{
+  (list||[]).forEach(x=>{
+    const it=x.it||{};
     const tr=addPurchaseMainRow();if(!tr)return;
     const set=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??'';};
     // Pinned to this exact Item Master row, so a same-named duplicate can't be bound on save.
     tr.dataset.itemId=it.id;
     set('.col-name',it.name||'');set('.col-desc',it.description||'');set('.col-make',it.make||'');
     set('.col-cat',it.category||'');set('.col-uom',it.uom||'');
-    const soq=itemStdOrderQty_(it);set('.col-qty',soq!=null?soq:'');
+    set('.col-qty',x.qty!=null&&x.qty!==''?x.qty:'');
+    if(x.remark)set('.col-rem',x.remark);
     const nameEl=tr.querySelector('.col-name');
-    if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='Item Master se aaya — badalna ho to row hata kar nayi jodein';}
+    if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='From the Item Master; to change it, remove the row and add a new one';}
     // Purchaser by Category — first row fills it, a disagreeing row warns (applyCategoryPurchaser).
     applyCategoryPurchaser(it.category);
   });
   refreshPurchaseTotals();
-  sarvItemPrSel.clear();
-  await sarvPrFillRequester_();
+  await sarvPrFillRequester_({requester:false});
+  sarvPrNeedsRequester_=true;
+  if(typeof highlightRequiredField==='function')highlightRequiredField('p_reqEmpCode');
   sarvPrWireMachineCopy_();
-  showToast('📝 New PR form me '+picked.length+' item(s) bhar diye — qty = Std Order Qty, Purchaser = Category se, Requested By = '+SARV_GEN_PR_EMP_CODE+'. Required By khud bharein; pehli row me Machine chunein — sab rows me lag jayegi.');
-  if(noSoq.length)showToast('⚠️ In items ka Std Order Qty set nahi tha — qty khud bharein: '+noSoq.map(it=>it.name).slice(0,5).join(', ')+(noSoq.length>5?' …':''),'warn');
-};
-/* ── Ek generated PR form ke do common hisse ─────────────────────────
-   Item Master se bani PR aur Trims Manager se bani PR — dono inhi do
-   functions se guzarti hain, isi liye dono bilkul ek jaisi bharti hain. */
-async function sarvPrFillRequester_(){
+  return true;
+}
+/* ── Two shared parts of a generated PR form ─────────────────────────
+   A PR made from the Item Master and one made from the Trims Manager both go
+   through these two functions, so both are filled in exactly the same way. */
+async function sarvPrFillRequester_(opts){
+  const fillRequester=!(opts&&opts.requester===false);
   /* Required By is left BLANK on a generated form too, exactly as on a
      hand-started one. It used to arrive pre-filled with today + 7 days, which
      is the one field on this form nobody else can answer — the date the
@@ -7995,13 +8289,14 @@ async function sarvPrFillRequester_(){
      saveRequirementWithPdf_ refuses a blank. */
   const rb=byId('p_requiredByDate');
   if(rb){rb.value='';rb.min=today();rb.dispatchEvent(new Event('change'));}
-  // Requested By: the default Employee Code, filled through the same lookup as typing it.
+  // Requested By: the default Employee Code, filled through the same lookup as
+  // typing it. Skipped for an Item Master PR, where the user picks the person.
   const ec=byId('p_reqEmpCode');
-  if(ec){
+  if(ec&&fillRequester){
     if(!lookupEmployee(SARV_GEN_PR_EMP_CODE)&&SB_READY){try{await loadEmployeeMaster();}catch(e){}}
     ec.value=SARV_GEN_PR_EMP_CODE;
     onEmpCodeInput(SARV_GEN_PR_EMP_CODE);
-    if(!lookupEmployee(SARV_GEN_PR_EMP_CODE))showToast('⚠️ Employee Code '+SARV_GEN_PR_EMP_CODE+' Employee Master me nahi mila — Requested By khud bharein','warn');
+    if(!lookupEmployee(SARV_GEN_PR_EMP_CODE))showToast('Employee Code '+SARV_GEN_PR_EMP_CODE+' was not found in the Employee Master; fill in Requested By yourself','warn');
   }
 }
 /* Machine: picking it on the FIRST row puts the same machine on every other
@@ -8024,44 +8319,44 @@ function sarvPrWireMachineCopy_(){
     prev=v;
   };
   firstMc.addEventListener('change',copy);
-  firstMc.title='Yahan machine chunte hi neeche ki saari rows me wahi machine lag jayegi';
+  firstMc.title='Choosing a machine here applies the same machine to all the rows below';
 }
 
 /* ══ TRIMS SHEET → NEW PR ════════════════════════════════════════════
-   Manufacturing › Trims Manager (iframe) me Lot Req Qty ke baad NEW PR column
-   hai; wahan items tick karke "📝 Generate New PR" dabane par wo page YAHI
-   function bulata hai. Wajah: PR ka form is page par hai, trims sheet iframe
-   me — to PR banane ka code do jagah nahi likha jaata, aur Item Master se
-   bani PR aur trims se bani PR bilkul ek jaisi hoti hain
-   (sarvPrFillRequester_ / sarvPrWireMachineCopy_ dono ke liye wahi).
+   Manufacturing › Trims Manager (iframe) has a NEW PR column after Lot Req
+   Qty; ticking items there and pressing "Generate New PR" makes that page
+   call THIS function. Reason: the PR form is on this page and the trims sheet
+   is in the iframe, so the PR-creation code isn't written twice, and a PR made
+   from the Item Master and one made from trims are identical
+   (sarvPrFillRequester_ / sarvPrWireMachineCopy_ serve both).
 
-   Qty trims sheet se aati hai (FINAL PO QTY = Lot Req × (1 + Wastage%)) —
-   Item Master wali Std Order Qty yahan ka jawab nahi hai: kitna chahiye ye lot
-   batata hai, item master nahi.
+   The qty comes from the trims sheet (FINAL PO QTY = Lot Req × (1 + Wastage%));
+   the Item Master's Std Order Qty is not the answer here: the lot says how
+   much is needed, not the item master.
 
-   Access: HOME_PR. Jaan-boojh kar Item Master wala MD_ITEM_NEWPR nahi — wo
-   Admin-only hai, aur trims sheet bharne wala merchandiser hi PR raise karta
-   hai. Niyam seedha hai: jo PR ka form khol sakta hai, wahi yahan se PR bana
-   sakta hai. */
-let sarvTrimsPrPending=null;   // {uids:[], orderNo, at} — PR save hone par wapas bhejne ke liye
+   Access: HOME_PR. Deliberately not the Item Master's MD_ITEM_NEWPR, which is
+   Admin-only, because the merchandiser who fills the trims sheet is the one
+   who raises the PR. The rule is simple: whoever can open the PR form can
+   raise a PR from here. */
+let sarvTrimsPrPending=null;   // {uids:[], orderNo, at}; used to send the number back once the PR is saved
 window.sarvGenerateNewPrFromTrims=async function(req){
   try{
     if(!sarvTabVisible('HOME_PR')){
-      showToast('⛔ Aapke role ko Purchase Requirement banane ka access nahi hai','warn');
-      return { ok:false, error:'Aapke role ko PR banane ka access nahi hai' };
+      showToast('Your role cannot create a Purchase Requirement','warn');
+      return { ok:false, error:'Your role cannot create a PR' };
     }
     const items=(req&&Array.isArray(req.items))?req.items.filter(x=>x&&x.itemId&&pNum(x.qty)>0):[];
-    if(!items.length) return { ok:false, error:'Koi item nahi aaya (itemId ya qty khaali)' };
+    if(!items.length) return { ok:false, error:'No items received (itemId or qty empty)' };
 
-    // Item Master se poora item — Description / Make / Category / UOM wahan se
-    // aate hain, trims sheet se nahi, taaki PR par wahi likha ho jo master
-    // kehta hai. Wahi resolver jo PO lines ke liye chalta hai.
+    // The full item from the Item Master: Description / Make / Category / UOM
+    // come from there, not from the trims sheet, so the PR says what the master
+    // says. The same resolver used for PO lines.
     const resolve=await poLineItemResolver_(items.map(x=>({ item_id:x.itemId, item_name:x.name })));
 
     sarvNavigateFromHome('PR');
-    clearPrForm();                 // ye sarvTrimsPrPending bhi saaf karta hai — isi liye pending NEECHE set hota hai
+    clearPrForm();                 // this also clears sarvTrimsPrPending, which is why pending is set BELOW
     const tb=byId('p_itemTableBody');
-    if(!tb) return { ok:false, error:'PR form nahi mila' };
+    if(!tb) return { ok:false, error:'PR form not found' };
     tb.innerHTML='';
     const unresolved=[], used=[];
     items.forEach(x=>{
@@ -8079,7 +8374,7 @@ window.sarvGenerateNewPrFromTrims=async function(req){
       set('.col-qty',pNum(x.qty));
       set('.col-rem',x.remark||'');
       const nameEl=tr.querySelector('.col-name');
-      if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='Trims sheet se aaya — badalna ho to row hata kar nayi jodein';}
+      if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='From the Trims sheet; to change it, remove the row and add a new one';}
       // Purchaser by Category — first row fills it, a disagreeing row warns.
       applyCategoryPurchaser(it.category);
       used.push(x.uid);
@@ -8088,32 +8383,32 @@ window.sarvGenerateNewPrFromTrims=async function(req){
     await sarvPrFillRequester_();
     sarvPrWireMachineCopy_();
 
-    /* Ab yaad rakha jaata hai ki ye PR kin trims rows se bani thi. Submit hote
-       hi PR No wapas unhi rows par chala jaata hai — sarvTrimsPrNotify_. */
+    /* Now we remember which trims rows this PR came from. On Submit the PR No
+       goes straight back to those rows: sarvTrimsPrNotify_. */
     sarvTrimsPrPending={ uids:used, orderNo:(req&&req.orderNo)||'', at:Date.now() };
 
     const lots=(req&&Array.isArray(req.lots))?req.lots.join(', '):'';
-    showToast('📝 Trims sheet se '+used.length+' item New PR form me bhar diye'
+    showToast('Filled '+used.length+' item(s) from the Trims sheet into the New PR form'
       +(req&&req.orderNo?' — Order '+escText(req.orderNo):'')+(lots?' · Lot '+escText(lots):'')
-      +'. Qty = Final PO Qty (Lot Req + Wastage). <b>Required By</b> aur pehli row me <b>Machine</b> bharkar Submit karein — PR No apne aap Trims sheet me lag jayega.');
-    if(unresolved.length)showToast('⚠️ '+unresolved.length+' item Item Master me nahi mile — Description / Category khaali hain: '+unresolved.slice(0,3).map(escText).join(', ')+(unresolved.length>3?' …':''),'warn');
+      +'. Qty = Final PO Qty (Lot Req + Wastage). Fill in <b>Required By</b> and the <b>Machine</b> on the first row, then Submit; the PR No will be set in the Trims sheet automatically.');
+    if(unresolved.length)showToast(''+unresolved.length+' item(s) not found in the Item Master; Description / Category are empty: '+unresolved.slice(0,3).map(escText).join(', ')+(unresolved.length>3?' …':''),'warn');
     return { ok:true, filled:used.length };
   }catch(e){
     console.error('[SARV] Trims → PR failed:',e);
     return { ok:false, error:(e&&e.message)||String(e) };
   }
 };
-// Trims Manager ka iframe — ERP me ek hi hai.
+// The Trims Manager iframe; there is only one in the ERP.
 function sarvTrimsFrameWin_(){
   try{ return byId('trimsFrame')?.contentWindow||null; }catch(e){ return null; }
 }
-/* PR save hote hi uska number un trims rows par bhej diya jaata hai jinse wo
-   bani thi. Ek baar ka kaam — pending yahin khatam ho jaata hai, taaki agli
-   (bina trims wali) PR galti se usi sheet par na lage.
+/* As soon as the PR is saved, its number is sent to the trims rows it came
+   from. A one-time job: pending ends here, so that the next PR (one without
+   trims) doesn't land on that sheet by mistake.
 
-   Trims page band / badla hua ho to kuch nahi tootta: wahan ka trimsPrSaved
-   khud bata deta hai, aur yahan ka fallback toast user ko keh deta hai ki PR
-   NO. column me khud select kar lein. */
+   If the Trims page is closed / changed, nothing breaks: its trimsPrSaved
+   reports that itself, and the fallback toast here tells the user to select
+   it in the PR NO. column themselves. */
 function sarvTrimsPrNotify_(reqNo){
   const p=sarvTrimsPrPending;
   if(!p||!reqNo)return;
@@ -8121,22 +8416,22 @@ function sarvTrimsPrNotify_(reqNo){
   const w=sarvTrimsFrameWin_();
   try{
     if(w&&typeof w.trimsPrSaved==='function'){
-      /* Natija YAHAN dikhaya jaata hai, iframe me nahi: PR submit karte waqt
-         user is panel par hai aur trims page chhupa hua hota hai, to wahan ka
-         toast kisi ko dikhta hi nahi. Trims sheet apni taraf banner bhi
-         chhod deti hai, Save hone tak. */
+      /* The result is shown HERE, not in the iframe: while submitting the PR
+         the user is on this panel and the trims page is hidden, so a toast
+         there would be seen by nobody. The Trims sheet also leaves a banner
+         on its side until Save. */
       Promise.resolve(w.trimsPrSaved(reqNo,p.uids,p.orderNo))
-        .then(res=>{ if(res&&res.msg)showToast((res.ok?'✅ ':'ℹ️ ')+res.msg, res.ok?'success':'warn'); })
+        .then(res=>{ if(res&&res.msg)showToast((res.ok?'':'')+res.msg, res.ok?'success':'warn'); })
         .catch(e=>console.warn('[SARV] trims PR write-back failed:',e&&e.message||e));
       return;
     }
   }catch(e){ console.warn('[SARV] trims PR write-back skipped:',e.message||e); }
-  showToast('ℹ️ PR '+escText(reqNo)+' ban gayi. Trims Manager khula nahi tha, isi liye uske PR NO. column me khud select karein (Manufacturing › Trims Manager → ⟳ Store Data).','warn');
+  showToast('PR '+escText(reqNo)+' has been created. Trims Manager was not open, so select it yourself in its PR NO. column (Manufacturing › Trims Manager → ⟳ Store Data).','warn');
 }
 document.addEventListener('DOMContentLoaded',()=>{
   byId('itemMasterBody')?.addEventListener('change',e=>{
     const cb=e.target.closest('.im-pr-sel');if(!cb)return;
-    if(!sarvTabVisible('MD_ITEM_NEWPR')){cb.checked=false;return showToast('⛔ Aapke role ko New PR Generation ka access nahi hai','warn');}
+    if(!sarvTabVisible('MD_ITEM_NEWPR')){cb.checked=false;return showToast('Your role does not have access to New PR Generation','warn');}
     if(cb.checked)sarvItemPrSel.add(String(cb.dataset.id));else sarvItemPrSel.delete(String(cb.dataset.id));
     // Subtotal cell + button count, without re-rendering (keeps scroll position).
     const sub=byId('itemMasterBody').querySelector('tr td[title="Ticked for New PR"]');if(sub)sub.textContent=sarvItemPrSel.size||'—';
@@ -8353,8 +8648,8 @@ function refreshSupplierDatalist(suppliers){
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
   try{
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
@@ -8377,8 +8672,298 @@ window.loadItemMaster=async function(){
     renderItemMasterTable();
     refreshItemDatalist(items);
     refreshItemAttributeDatalists_(items);
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="18" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading items</td></tr>';}
+    // Not awaited: the table is usable straight away and the column fills in
+    // when the PR / PO lookup lands. The promise is kept for anything that
+    // needs the figures (My Day › Below-MSV).
+    sarvImPipePromise=imLoadPipeline_(items);
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:16px;color:#ef4444;">Error loading items</td></tr>';}
 };
+
+/* ══ ITEM MASTER › PENDING PR / PO QTY ════════════════════════════════
+   For every item: how much is still to come into the store, from two places.
+     • PO  — open POs (not Received / Closed (Short) / Cancelled / Rejected):
+             ordered_qty − received_qty on each line.
+     • PR  — open PRs (not Completed / Cancelled / Rejected / Closed): the part
+             of each line that is not on a live PO yet and has not come in
+             "without PO" either.
+   The two never overlap. A PR line's qty that is already on a PO is counted
+   once, on the PO side, using the same req_no|item-name key the Pending
+   Items table uses (refreshPendingRequirements), so the two screens agree.
+
+   Loaded after the table is drawn (four queries, paged), so Item Master opens
+   as fast as it did before. Until it lands the cells show "…" and row.pipe
+   stays null, which the sort and the column filter treat as "not set". */
+let sarvImPipe=null;            // Map item id -> {po,pr,total,docs:[]}; null = not loaded
+let sarvImPipeErr='';
+let sarvImPipeSeq=0;            // a newer load wins over a slower older one
+let sarvImPipePromise=null;     // the latest imLoadPipeline_ run, for code that has to wait on it
+const IM_PIPE_PO_DONE=['Received','Closed (Short)','Cancelled','Rejected'];
+const IM_PIPE_PO_DEAD=['Cancelled','Rejected'];
+const imPipePrClosed_=s=>/^(completed|cancelled|rejected|closed)/i.test(String(s||'').trim());
+const imPipeNorm_=v=>String(v==null?'':v).toLowerCase().trim();
+
+// A select that names columns, with '*' as the fallback for a database that
+// doesn't have one of them (PostgREST rejects the whole query otherwise).
+async function imPipeFetch_(table,cols,order){
+  try{return await fetchAllRows(table,cols,order);}
+  catch(e){
+    if(/column|does not exist|schema cache/i.test(e.message||''))return await fetchAllRows(table,'*',order);
+    throw e;
+  }
+}
+async function imPipePdfMap_(nos){
+  const map={},list=[...new Set((nos||[]).filter(Boolean).map(String))];
+  for(let i=0;i<list.length;i+=200){
+    try{
+      const q=await SB.from('pdf_documents').select('document_no,variant,public_url').in('document_no',list.slice(i,i+200));
+      if(q.error)throw q.error;
+      (q.data||[]).forEach(p=>{
+        if(!p.public_url)return;
+        const m=map[p.document_no]=map[p.document_no]||{};
+        m[p.variant||'SINGLE']=p.public_url;
+      });
+    }catch(e){console.warn('[SARV] Pending PR/PO PDF lookup skipped:',e.message||e);}
+  }
+  return map;
+}
+function imPipePdfPick_(map,no,prefer){
+  const m=map[String(no||'')];if(!m)return '';
+  for(const v of prefer)if(m[v])return m[v];
+  const k=Object.keys(m);return k.length?m[k[0]]:'';
+}
+async function imLoadPipeline_(items){
+  if(!SB_READY)return;
+  const seq=++sarvImPipeSeq;
+  try{
+    const [prs,prLines,pos,poLines]=await Promise.all([
+      imPipeFetch_('purchase_requirements','id,req_no,request_date,required_by,requested_by,purchaser_name,department,priority,status','id'),
+      imPipeFetch_('purchase_requirement_lines','id,requirement_id,item_id,requested_qty,uom','id'),
+      imPipeFetch_('purchase_orders','id,po_no,po_date,delivery_date,vendor_name,status,pdf_url','id'),
+      imPipeFetch_('purchase_order_lines','id,purchase_order_id,req_no,item_id,item_name,ordered_qty,received_qty','id')
+    ]);
+    if(seq!==sarvImPipeSeq)return;
+    const list=items||sarvItemMasterRows.map(r=>r.it);
+    const itemById=new Map(list.map(it=>[String(it.id),it]));
+    // Name → id, for PO lines saved before item_id was written. A name that two
+    // items share resolves to nothing rather than to the wrong one.
+    const byName=new Map();
+    list.forEach(it=>{const k=imPipeNorm_(it.name);if(!k)return;byName.set(k,byName.has(k)?null:String(it.id));});
+    const resolve=(id,name)=>(id!=null&&itemById.has(String(id)))?String(id):(byName.get(imPipeNorm_(name))||null);
+
+    const out=new Map();
+    const bucket=id=>{let b=out.get(id);if(!b){b={po:0,pr:0,total:0,docs:[]};out.set(id,b);}return b;};
+
+    // ── PO side ──
+    const poById=new Map(pos.map(p=>[p.id,p]));
+    const poOrderedByKey={};          // req_no|item name, live POs only
+    poLines.forEach(l=>{
+      const po=poById.get(l.purchase_order_id);
+      const st=String((po&&po.status)||'Generated');
+      if(IM_PIPE_PO_DEAD.includes(st))return;
+      if(l.req_no){
+        String(l.req_no).split(',').map(s=>s.trim()).filter(Boolean).forEach(no=>{
+          const k=no+'|'+imPipeNorm_(l.item_name);
+          poOrderedByKey[k]=(poOrderedByKey[k]||0)+pNum(l.ordered_qty);
+        });
+      }
+      if(!po||IM_PIPE_PO_DONE.includes(st))return;
+      const pending=pNum(l.ordered_qty)-pNum(l.received_qty);
+      if(pending<=0.0001)return;
+      const id=resolve(l.item_id,l.item_name);if(!id)return;
+      const b=bucket(id);b.po+=pending;
+      b.docs.push({type:'PO',no:po.po_no||'',date:po.po_date||'',status:st,party:po.vendor_name||'',
+        ref:l.req_no||'',qty:pNum(l.ordered_qty),done:pNum(l.received_qty),pending,due:po.delivery_date||'',
+        url:po.pdf_url||''});
+    });
+
+    // ── PR side ──
+    const openPrs=prs.filter(p=>!imPipePrClosed_(p.status));
+    const prById=new Map(openPrs.map(p=>[p.id,p]));
+    let direct={};
+    try{direct=await prReceivedQtys_(openPrs.map(p=>p.req_no));}
+    catch(e){console.warn('[SARV] Pending PR/PO direct receipts skipped:',e.message||e);}
+    if(seq!==sarvImPipeSeq)return;
+    // One requirement can carry the same item on two lines, so the PO qty and
+    // the "without PO" receipts are pooled per key and handed out in line order.
+    const poPool={},directPool={};
+    prLines.forEach(l=>{
+      const pr=prById.get(l.requirement_id);if(!pr)return;
+      const id=resolve(l.item_id,null);if(!id)return;
+      const it=itemById.get(id)||{};
+      const requested=pNum(l.requested_qty);if(requested<=0)return;
+      const pk=String(pr.req_no||'')+'|'+imPipeNorm_(it.name);
+      if(!(pk in poPool))poPool[pk]=poOrderedByKey[pk]||0;
+      const onPo=Math.min(poPool[pk],requested);poPool[pk]-=onPo;
+      const dk=String(pr.req_no||'').trim().toUpperCase()+'|'+String(l.item_id||'');
+      if(!(dk in directPool))directPool[dk]=pNum((direct[dk]||{}).qty);
+      const recv=Math.min(directPool[dk],requested-onPo);directPool[dk]-=recv;
+      const pending=requested-onPo-recv;
+      if(pending<=0.0001)return;
+      const b=bucket(id);b.pr+=pending;
+      b.docs.push({type:'PR',no:pr.req_no||'',date:pr.request_date||'',status:pr.status||'Pending',
+        party:[pr.requested_by,pr.department].filter(Boolean).join(' · '),ref:pr.purchaser_name||'',
+        qty:requested,done:onPo+recv,pending,due:pr.required_by||'',url:''});
+    });
+
+    // ── PDF links: the index first, then the PO's own pdf_url ──
+    const allDocs=[];out.forEach(b=>b.docs.forEach(d=>allDocs.push(d)));
+    const pdfMap=await imPipePdfMap_(allDocs.map(d=>d.no));
+    if(seq!==sarvImPipeSeq)return;
+    allDocs.forEach(d=>{
+      const u=d.type==='PO'?imPipePdfPick_(pdfMap,d.no,['PO','SINGLE','TWO_PAGE'])
+                          :imPipePdfPick_(pdfMap,d.no,['REQUIREMENT','SINGLE','TWO_PAGE']);
+      d.url=u||d.url||'';
+    });
+    out.forEach(b=>{
+      b.total=b.po+b.pr;
+      // POs first, then PRs; oldest document first inside each.
+      b.docs.sort((x,y)=>(x.type===y.type?0:x.type==='PO'?-1:1)
+        ||String(x.date||'').localeCompare(String(y.date||''))
+        ||String(x.no).localeCompare(String(y.no),undefined,{numeric:true}));
+    });
+    sarvImPipe=out;sarvImPipeErr='';
+  }catch(e){
+    if(seq!==sarvImPipeSeq)return;
+    console.warn('[SARV] Pending PR/PO qty unavailable:',e.message||e);
+    sarvImPipe=new Map();sarvImPipeErr=e.message||String(e);
+  }
+  sarvItemMasterRows.forEach(r=>{
+    const b=sarvImPipe.get(String(r.it.id));
+    r.pipe=sarvImPipeErr?null:(b?Number(b.total.toFixed(3)):0);
+  });
+  if(byId('itemMasterBody'))renderItemMasterTable();
+  if(byId('imPipeOverlay')?.style.display==='flex'&&sarvImPipeOpenId!=null)imPipeFill_(sarvImPipeOpenId);
+}
+// The table cell. A button when there is something pending, a dash when not.
+function imPipeCell_(it,q2){
+  if(!sarvImPipe)return '<span style="color:#cbd5e1;" title="Loading pending PR / PO qty">…</span>';
+  if(sarvImPipeErr)return '<span style="color:#cbd5e1;" title="'+escText('Could not load: '+sarvImPipeErr)+'">—</span>';
+  const b=sarvImPipe.get(String(it.id));
+  if(!b||b.total<=0)return '<span style="color:#cbd5e1;">—</span>';
+  // Colour says where the qty sits: green = PO only, orange = PR only,
+  // purple = both. The exact split is in the tooltip and the popup.
+  const onPo=b.po>0,onPr=b.pr>0;
+  const color=onPo&&onPr?'#7e22ce':onPo?'#15803d':'#c2410c';
+  const split=[onPo?'PO '+q2(Number(b.po.toFixed(3))):'',onPr?'PR '+q2(Number(b.pr.toFixed(3))):''].filter(Boolean).join(' + ');
+  return '<button type="button" class="im-pipe-btn" onclick="imOpenPipe(\''+escText(String(it.id))+'\')"'
+    +' title="'+escText(split+'. Click for PR / PO details and PDFs')+'"'
+    +' style="background:transparent;border:0;color:'+color+';padding:2px 6px;'
+    +'font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;">'
+    +q2(Number(b.total.toFixed(3)))
+    +'</button>';
+}
+let sarvImPipeOpenId=null;
+function imClosePipe(){
+  const ov=byId('imPipeOverlay');if(ov)ov.style.display='none';
+  sarvImPipeOpenId=null;
+}
+window.imClosePipe=imClosePipe;
+window.imOpenPipe=function(itemId){
+  let ov=byId('imPipeOverlay');
+  if(!ov){
+    ov=document.createElement('div');
+    ov.id='imPipeOverlay';
+    ov.className='secure-modal-overlay';
+    ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:29500;padding:14px;';
+    ov.innerHTML='<div style="background:#fff;width:min(1060px,97vw);max-height:92vh;border-radius:12px;'
+      +'box-shadow:0 20px 50px rgba(15,23,42,.30);display:flex;flex-direction:column;overflow:hidden;">'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;">'
+        +'<div style="min-width:0;"><strong style="font-size:13px;">Pending PR / PO</strong>'
+        +'<div id="impItem" style="font-size:11px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div></div>'
+        +'<span style="flex:1;"></span>'
+        +'<button type="button" id="impRefresh" style="border:1px solid #64748b;background:transparent;color:#fff;'
+        +'border-radius:6px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;">Refresh</button>'
+        +'<button type="button" id="impClose" style="border:1px solid #64748b;background:transparent;color:#fff;'
+        +'border-radius:6px;padding:4px 9px;font-size:15px;cursor:pointer;">&#10005;</button></div>'
+      +'<div id="impSummary" style="display:flex;flex-wrap:wrap;gap:8px;padding:10px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;"></div>'
+      +'<div id="impBody" style="flex:1;overflow:auto;padding:0 14px 12px;"></div>'
+      +'<div style="padding:8px 14px;border-top:1px solid #e2e8f0;background:#f8fafc;font-size:10.5px;color:#64748b;line-height:1.5;">'
+        +'<b>PO</b>: ordered minus received, on POs that are not yet Received / Closed / Cancelled / Rejected. '
+        +'<b>PR</b>: requested qty not yet on a PO and not received without a PO. A qty is counted once, never on both.</div>'
+      +'</div>';
+    (byId('storeInterface')||document.body).appendChild(ov);
+    byId('impClose').addEventListener('click',imClosePipe);
+    byId('impRefresh').addEventListener('click',()=>{
+      sarvImPipe=null;
+      if(sarvImPipeOpenId!=null)imPipeFill_(sarvImPipeOpenId);
+      renderItemMasterTable();
+      imLoadPipeline_(null);
+    });
+    ov.addEventListener('click',e=>{if(e.target===ov)imClosePipe();});
+    document.addEventListener('keydown',e=>{
+      if(e.key==='Escape'&&byId('imPipeOverlay')?.style.display==='flex')imClosePipe();
+    });
+  }
+  sarvImPipeOpenId=String(itemId);
+  imPipeFill_(sarvImPipeOpenId);
+  ov.style.display='flex';
+};
+function imPipeFill_(itemId){
+  const row=sarvItemMasterRows.find(r=>String(r.it.id)===String(itemId));
+  const it=row?row.it:{};
+  const uom=it.uom||'PCS';
+  const q=v=>{const n=Number(v);return !isFinite(n)?'—':(Number.isInteger(n)?String(n):n.toFixed(2));};
+  const dt=v=>{
+    if(!v)return '—';
+    const s=String(v).slice(0,10),m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    return m?m[3]+'/'+m[2]+'/'+m[1]:escText(String(v));
+  };
+  byId('impItem').textContent=[it.item_code,it.name].filter(Boolean).join(' · ')+(row?'  |  Balance in store: '+q(row.bal)+' '+uom:'');
+  const sum=byId('impSummary'),body=byId('impBody');
+  if(!sarvImPipe){
+    sum.innerHTML='';
+    body.innerHTML='<div style="padding:26px;text-align:center;color:#64748b;font-size:12px;">Loading pending PRs and POs...</div>';
+    return;
+  }
+  if(sarvImPipeErr){
+    sum.innerHTML='';
+    body.innerHTML='<div style="padding:26px;text-align:center;color:#b91c1c;font-size:12px;">Could not load PR / PO data: '+escText(sarvImPipeErr)+'</div>';
+    return;
+  }
+  const b=sarvImPipe.get(String(itemId))||{po:0,pr:0,total:0,docs:[]};
+  const chip=(label,val,c,bg)=>'<span style="background:'+bg+';color:'+c+';border:1px solid '+c+'33;border-radius:8px;padding:5px 11px;font-size:11px;font-weight:600;">'
+    +label+': <b style="font-size:13px;">'+q(val)+'</b> '+escText(uom)+'</span>';
+  sum.innerHTML=chip('On PO, to be received',b.po,'#1d4ed8','#eff6ff')
+    +chip('On PR, PO not yet made',b.pr,'#b45309','#fffbeb')
+    +chip('Total pending',b.total,'#0f172a','#fff');
+  if(!b.docs.length){
+    body.innerHTML='<div style="padding:26px;text-align:center;color:#64748b;font-size:12px;">No open PR or PO for this item. Nothing is waiting to be received.</div>';
+    return;
+  }
+  const th='padding:7px 8px;text-align:left;font-size:10px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #e2e8f0;background:#fff;position:sticky;top:0;white-space:nowrap;';
+  const td='padding:7px 8px;font-size:11.5px;color:#0f172a;border-bottom:1px solid #f1f5f9;vertical-align:top;';
+  const num=td+'text-align:right;white-space:nowrap;';
+  const head='<tr><th style="'+th+'">Type</th><th style="'+th+'">Document No</th><th style="'+th+'">Date</th>'
+    +'<th style="'+th+'">Status</th><th style="'+th+'">Vendor / Requested by</th><th style="'+th+'">Linked</th>'
+    +'<th style="'+th+'text-align:right;">Qty</th><th style="'+th+'text-align:right;">Done</th>'
+    +'<th style="'+th+'text-align:right;">Pending</th><th style="'+th+'">Due / Req. by</th><th style="'+th+'">PDF</th></tr>';
+  const rows=b.docs.map(d=>{
+    const isPo=d.type==='PO';
+    const badge='<span style="display:inline-block;min-width:26px;text-align:center;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;'
+      +(isPo?'background:#dbeafe;color:#1d4ed8;':'background:#fef3c7;color:#92400e;')+'">'+d.type+'</span>';
+    const pdf=d.url
+      ?'<a href="'+escText(d.url)+'" target="_blank" rel="noopener" style="display:inline-block;background:#fff;border:1px solid #cbd5e1;color:#0f172a;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap;">Open PDF</a>'
+      :'<span style="color:#94a3b8;font-size:11px;">Not generated</span>';
+    const done=isPo?'Received':'On PO / received';
+    const overdue=isPo&&d.due&&String(d.due).slice(0,10)<today();
+    return '<tr>'
+      +'<td style="'+td+'">'+badge+'</td>'
+      +'<td style="'+td+'font-weight:700;white-space:nowrap;">'+escText(d.no||'—')+'</td>'
+      +'<td style="'+td+'white-space:nowrap;">'+dt(d.date)+'</td>'
+      +'<td style="'+td+'">'+escText(d.status||'—')+'</td>'
+      +'<td style="'+td+'">'+escText(d.party||'—')+'</td>'
+      +'<td style="'+td+'color:#475569;">'+(d.ref?(isPo?'PR ':'Purchaser: ')+escText(d.ref):'—')+'</td>'
+      +'<td style="'+num+'">'+q(d.qty)+'</td>'
+      +'<td style="'+num+'color:#475569;" title="'+done+'">'+q(d.done)+'</td>'
+      +'<td style="'+num+'font-weight:700;color:'+(isPo?'#1d4ed8':'#b45309')+';">'+q(d.pending)+'</td>'
+      +'<td style="'+td+'white-space:nowrap;'+(overdue?'color:#b91c1c;font-weight:700;':'')+'"'+(overdue?' title="Delivery date has passed"':'')+'>'+dt(d.due)+'</td>'
+      +'<td style="'+td+'">'+pdf+'</td>'
+      +'</tr>';
+  }).join('');
+  body.innerHTML='<table style="width:100%;border-collapse:collapse;margin-top:2px;"><thead>'+head+'</thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr><td colspan="8" style="'+td+'text-align:right;font-weight:700;border-bottom:0;">Total pending</td>'
+    +'<td style="'+num+'font-weight:800;border-bottom:0;">'+q(b.total)+'</td><td colspan="2" style="'+td+'border-bottom:0;color:#64748b;">'+escText(uom)+'</td></tr></tfoot></table>';
+}
 
 /* ── Item Master edit (Admin only) ────────────────────────────────
    Loads an existing item back into the Add New Item form. The Item Code is
@@ -8401,7 +8986,7 @@ window.editMasterItem=function(id){
   if(!sarvCan('EDIT'))return sarvDeny('EDIT');
   const row=sarvItemMasterRows.find(x=>x.it.id===id);
   const it=row&&row.it;
-  if(!it)return showToast('Item data nahi mila — list refresh karein','warn');
+  if(!it)return showToast('Item data not found. Please refresh the list.','warn');
   sarvEditingItemId=id;
   const set=(fid,v)=>{const e=byId(fid);if(e)e.value=v==null?'':v;};
   set('mi_itemName',it.name);
@@ -8423,8 +9008,8 @@ window.editMasterItem=function(id){
   set('mi_uom',it.uom||'PCS');
   set('mi_gst',String(itemGst_(it)));
   const head=byId('mi_formHeading');
-  if(head)head.innerHTML='&#9999;&#65039; Editing Item — <span style="color:#b45309;">'+escText(it.item_code||'')+'</span>';
-  const btn=byId('addItemBtn');if(btn)btn.innerHTML='&#128190; Update Item';
+  if(head)head.innerHTML='Editing Item — <span style="color:#b45309;">'+escText(it.item_code||'')+'</span>';
+  const btn=byId('addItemBtn');if(btn)btn.innerHTML='Update Item';
   const cancel=byId('mi_cancelEditBtn');if(cancel)cancel.style.display='';
   // The form may be collapsed — an edit that filled fields nobody could see
   // would look like the Edit button did nothing. Opened without remembering,
@@ -8436,7 +9021,7 @@ window.editMasterItem=function(id){
      THIS item (sarvEditingItemId is set above, which is what excludes it). */
   miSyncItemNameHint_();
   byId('mi_itemName')?.scrollIntoView({behavior:'smooth',block:'center'});
-  showToast('✏️ '+(it.item_code||it.name)+' edit ke liye khula — badlaav karke Update Item dabayein');
+  showToast(''+(it.item_code||it.name)+' is open for editing. Make your changes and press Update Item.');
 };
 // Keeps a value that isn't in a <select>'s option list from being silently
 // dropped when an existing record is loaded into the form.
@@ -8455,8 +9040,8 @@ window.cancelItemEdit=function(){
   if(byId('mi_rate'))byId('mi_rate').value='0';
   if(byId('mi_uom'))byId('mi_uom').value='PCS';
   if(byId('mi_category'))byId('mi_category').value='';
-  const head=byId('mi_formHeading');if(head)head.innerHTML='&#10133; Add New Item';
-  const btn=byId('addItemBtn');if(btn)btn.innerHTML='&#10133; Add Item';
+  const head=byId('mi_formHeading');if(head)head.innerHTML='Add New Item';
+  const btn=byId('addItemBtn');if(btn)btn.innerHTML='Add Item';
   const cancel=byId('mi_cancelEditBtn');if(cancel)cancel.style.display='none';
   // Back to however the user normally keeps the form — editMasterItem opened it
   // without remembering, so this is what undoes that.
@@ -8481,8 +9066,8 @@ async function syncItemNameOnPoLines_(itemId,oldName,newName){
 
 window.addMasterItem=async function(){
   const name=(byId('mi_itemName')?.value||'').trim().toUpperCase();
-  if(!name){showToast('❌ Item Name required!','error');byId('mi_itemName')?.focus();return;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  if(!name){showToast('Item Name required!','error');byId('mi_itemName')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
   const editingId=sarvEditingItemId;
   if(editingId&&!sarvCan('EDIT'))return sarvDeny('EDIT');
   if(!editingId&&!sarvGuard('ADD_ITEM'))return;
@@ -8490,7 +9075,7 @@ window.addMasterItem=async function(){
   const oldName=before?.it?.name||'';
   const code=before?.it?.item_code||'';
   const btn=byId('addItemBtn');
-  if(btn){btn.disabled=true;btn.textContent=editingId?'⏳ Updating...':'⏳ Saving...';}
+  if(btn){btn.disabled=true;btn.textContent=editingId?'Updating...':'Saving...';}
   try{
     // The name has to stay unique: the entry forms match typed item names back
     // to the master, and the Item Master pools balances by name, so two rows
@@ -8509,7 +9094,7 @@ window.addMasterItem=async function(){
       if(editingId)chkQ=chkQ.neq('id',editingId);
       const chk=await chkQ;
       if(chk.error)throw chk.error;
-      if((chk.data||[]).length){showToast(`⚠️ "${name}" already exists in Item Master!`,'warn');return;}
+      if((chk.data||[]).length){showToast(`"${name}" already exists in Item Master!`,'warn');return;}
     }
     const payload={
       name:name,
@@ -8558,13 +9143,13 @@ window.addMasterItem=async function(){
       try{ poCount=await syncItemNameOnPoLines_(editingId,oldName,name); }
       catch(poErr){ console.error('[SARV] PO line name sync failed:',poErr); poFailed=poErr; }
       if(poFailed){
-        showToast(`⚠️ ${code||name} save ho gaya${renamed?` ("${oldName}" → "${name}")`:''}, lekin purane PO lines ka naam update nahi hua`
-          +` (${poFailed.message||poFailed}). Isi item ko dobara Update Item karein — wo PO lines ko phir se sync karega.`,'warn');
+        showToast(`${code||name} was saved${renamed?` ("${oldName}" → "${name}")`:''}, but the name on older PO lines was not updated`
+          +` (${poFailed.message||poFailed}). Press Update Item on this item again; it will re-sync those PO lines.`,'warn');
       }else if(renamed){
-        showToast(`✅ "${oldName}" → "${name}" — IN / OUT / PR entries automatic naye naam se dikhengi`
-          +(poCount?`, ${poCount} PO line(s) bhi update ki gayin`:''));
+        showToast(`"${oldName}" → "${name}": IN / OUT / PR entries will show the new name automatically`
+          +(poCount?`, ${poCount} PO line(s) also updated`:''));
       }else{
-        showToast(`✅ ${code||name} updated`);
+        showToast(`${code||name} updated`);
       }
       cancelItemEdit();
     }else{
@@ -8572,7 +9157,7 @@ window.addMasterItem=async function(){
       const {error,dropped}=await saveItemRow_({item_code:newCode,...payload},null);
       if(error)throw error;
       warnItemColumnsMissing_(dropped);
-      showToast(`✅ "${name}" added to Item Master!`);
+      showToast(`"${name}" added to Item Master!`);
       cancelItemEdit();   // same field reset the add path always did
     }
     await loadItemMaster();
@@ -8582,22 +9167,22 @@ window.addMasterItem=async function(){
       btn.disabled=false;
       // cancelItemEdit() has already restored the label on the success path;
       // on a failure the form must still read "Update Item".
-      btn.innerHTML=sarvEditingItemId?'&#128190; Update Item':'&#10133; Add Item';
+      btn.innerHTML=sarvEditingItemId?'Update Item':'Add Item';
     }
   }
 };
 
 window.deleteMasterItem=async function(id){
   if(!sarvCan('DELETE'))return sarvDeny('DELETE');
-  if(!confirm('Ye item delete karein?\n\n⚠️ Agar kisi Inward/Outward entry se linked hai toh error aayega.'))return;
+  if(!confirm('Delete this item?\n\nIf it is linked to any Inward/Outward entry, you will get an error.'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('items').delete().eq('id',id);
   if(error){
-    if(error.code==='23503')showToast('❌ Delete nahi ho sakta — Inward/Outward entries se linked hai','error');
+    if(error.code==='23503')showToast('Cannot delete: it is linked to Inward/Outward entries','error');
     else dbError(error);
     return;
   }
-  showToast('🗑️ Item deleted');
+  showToast('Item deleted');
   await loadItemMaster();
 };
 
@@ -8610,8 +9195,8 @@ const SARV_SUPPLIER_COLS='id,supplier_code,supplier_name,contact_person,phone,em
 window.loadSupplierMaster=async function(){
   const tb=byId('supplierMasterBody'),cnt=byId('supplierMasterCount');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
   try{
     // Columns are listed explicitly rather than '*' because pin_hash is no
     // longer readable by this key — selecting it would fail the whole query.
@@ -8633,8 +9218,8 @@ window.loadSupplierMaster=async function(){
     renderSupplierMasterTable();
   }catch(e){
     if(e?.message?.includes('does not exist')||e?.code==='42P01'){
-      tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Suppliers table missing — SQL patch run karein</td></tr>';
-    }else{dbError(e);tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading suppliers</td></tr>';}
+      tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#f59e0b;">Suppliers table missing. Please run the SQL patch.</td></tr>';
+    }else{dbError(e);tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:16px;color:#ef4444;">Error loading suppliers</td></tr>';}
   }
 };
 window.renderSupplierMasterTable=function(){
@@ -8645,7 +9230,7 @@ window.renderSupplierMasterTable=function(){
     [s.supplier_code,s.supplier_name,s.contact_person,s.phone,s.gst_no,s.state,s.city]
       .map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvSupplierMasterRows.length+' suppliers':rows.length+' suppliers';
-  if(!sarvSupplierMasterRows.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">No suppliers yet — Add your first supplier above ⬆️</td></tr>';return;}
+  if(!sarvSupplierMasterRows.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">No suppliers yet — Add your first supplier above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">No supplier matches this search.</td></tr>';return;}
   tb.innerHTML=rows.map((s,i)=>`<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;">
       <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
@@ -8656,8 +9241,8 @@ window.renderSupplierMasterTable=function(){
       <td style="padding:5px 6px;font-size:10px;">${escText(s.gst_no||'—')}</td>
       <td style="padding:5px 6px;">${escText(s.state||'—')}</td>
       <td style="padding:5px 6px;">${escText(s.city||'—')}</td>
-      <td style="padding:5px 6px;text-align:center;">${isAdmin()?`<button onclick="setSupplierPin('${s.id}','${escText(s.supplier_name).replace(/'/g,"\\'")}')" style="background:${s.has_pin?'#eff6ff':'#fef9c3'};border:1px solid ${s.has_pin?'#93c5fd':'#fde68a'};color:${s.has_pin?'#1d4ed8':'#92400e'};border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="${s.has_pin?'Change vendor login PIN':'Set vendor login PIN'}">${s.has_pin?'🔑 Change':'🔑 Set'}</button>`:(s.has_pin?'<span style="color:#16a34a;" title="PIN set">✓ Set</span>':'<span style="color:#cbd5e1;">—</span>')}</td>
-      <td style="padding:5px 6px;text-align:center;">${sarvCan('EDIT')?`<button onclick="editMasterSupplier('${s.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Edit supplier details">&#9999;&#65039;</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
+      <td style="padding:5px 6px;text-align:center;">${isAdmin()?`<button onclick="setSupplierPin('${s.id}','${escText(s.supplier_name).replace(/'/g,"\\'")}')" style="background:${s.has_pin?'#eff6ff':'#fef9c3'};border:1px solid ${s.has_pin?'#93c5fd':'#fde68a'};color:${s.has_pin?'#1d4ed8':'#92400e'};border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="${s.has_pin?'Change vendor login PIN':'Set vendor login PIN'}">${s.has_pin?'Change':'Set'}</button>`:(s.has_pin?'<span style="color:#16a34a;" title="PIN set">✓ Set</span>':'<span style="color:#cbd5e1;">—</span>')}</td>
+      <td style="padding:5px 6px;text-align:center;">${sarvCan('EDIT')?`<button onclick="editMasterSupplier('${s.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Edit supplier details">✎</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
       <td style="padding:5px 6px;text-align:center;">${sarvCan('DELETE')?`<button onclick="deleteMasterSupplier('${s.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}</td>
     </tr>`).join('');
 };
@@ -8666,30 +9251,30 @@ let sarvEditingSupplierId=null;
 window.editMasterSupplier=function(id){
   if(!sarvCan('EDIT'))return sarvDeny('EDIT');
   const s=sarvSupplierCatalog.find(x=>x.id===id);
-  if(!s)return showToast('Supplier data nahi mila — list refresh karein','warn');
+  if(!s)return showToast('Supplier data not found. Please refresh the list.','warn');
   sarvEditingSupplierId=id;
   const set=(fid,v)=>{const e=byId(fid);if(e)e.value=v||'';};
   set('ms_supplierName',s.supplier_name);set('ms_contactPerson',s.contact_person);set('ms_phone',s.phone);
   set('ms_email',s.email);set('ms_gstNo',s.gst_no);set('ms_city',s.city);
   if(byId('ms_state'))byId('ms_state').value=s.state||'HARYANA (LOCAL)';
   const pinEl=byId('ms_vendorPin');if(pinEl){pinEl.value='';pinEl.placeholder=s.has_pin?'leave blank to keep existing PIN':'optional — 4+ digits';}
-  const saveBtn=byId('ms_saveBtn');if(saveBtn)saveBtn.innerHTML='💾 Update Supplier';
+  const saveBtn=byId('ms_saveBtn');if(saveBtn)saveBtn.innerHTML='Update Supplier';
   if(byId('ms_cancelEditBtn'))byId('ms_cancelEditBtn').style.display='';
   byId('ms_supplierName')?.scrollIntoView({behavior:'smooth',block:'center'});
-  showToast('Editing "'+s.supplier_name+'" — badlaav karke Update Supplier dabayein');
+  showToast('Editing "'+s.supplier_name+'". Make your changes and press Update Supplier.');
 };
 window.cancelSupplierEdit=function(){
   sarvEditingSupplierId=null;
   ['ms_supplierName','ms_contactPerson','ms_phone','ms_email','ms_gstNo','ms_city','ms_vendorPin'].forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('ms_state'))byId('ms_state').value='HARYANA (LOCAL)';
   const pinEl=byId('ms_vendorPin');if(pinEl)pinEl.placeholder='optional — 4+ digits';
-  const saveBtn=byId('ms_saveBtn');if(saveBtn)saveBtn.innerHTML='&#10133; Add Supplier';
+  const saveBtn=byId('ms_saveBtn');if(saveBtn)saveBtn.innerHTML='Add Supplier';
   if(byId('ms_cancelEditBtn'))byId('ms_cancelEditBtn').style.display='none';
 };
 window.addMasterSupplier=async function(){
   const name=(byId('ms_supplierName')?.value||'').trim().toUpperCase();
-  if(!name){showToast('❌ Supplier Name required!','error');byId('ms_supplierName')?.focus();return;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  if(!name){showToast('Supplier Name required!','error');byId('ms_supplierName')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
   const editingId=sarvEditingSupplierId;
   if(editingId&&!sarvCan('EDIT'))return sarvDeny('EDIT');
   if(!editingId&&!sarvGuard('ADD_SUPPLIER'))return;
@@ -8711,7 +9296,7 @@ window.addMasterSupplier=async function(){
     if(editingId){
       const{error}=await SB.from('suppliers').update(payload).eq('id',editingId);
       if(error)throw error;
-      showToast(`✅ "${name}" updated in Supplier Master!`);
+      showToast(`"${name}" updated in Supplier Master!`);
       cancelSupplierEdit();
     }else{
       const code='SUP-'+name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,20)+'-'+String(Date.now()).slice(-4);
@@ -8719,18 +9304,18 @@ window.addMasterSupplier=async function(){
       const{data,error}=await SB.from('suppliers').insert(payload).select('id').single();
       if(error)throw error;
       supplierId=data?.id||null;
-      showToast(`✅ "${name}" added to Supplier Master!`);
+      showToast(`"${name}" added to Supplier Master!`);
       ['ms_supplierName','ms_contactPerson','ms_phone','ms_email','ms_gstNo','ms_city','ms_vendorPin'].forEach(id=>{const e=byId(id);if(e)e.value='';});
     }
     if(pin&&supplierId)await applySupplierPin_(supplierId,pin,name);
     await loadSupplierMaster();
   }catch(e){
-    if(e?.message?.includes('does not exist')||e?.code==='42P01')showToast('❌ Suppliers table missing — SQL patch run karein','error');
+    if(e?.message?.includes('does not exist')||e?.code==='42P01')showToast('Suppliers table missing. Please run the SQL patch.','error');
     else dbError(e);
   }
 };
 window.setSupplierPin=async function(id,name){
-  if(!isAdmin())return showToast('⛔ Sirf Admin login vendor PIN set kar sakta hai','warn');
+  if(!isAdmin())return showToast('Only an Admin login can set a vendor PIN','warn');
   if(!SB_READY)return;
   // Same reason as verifyEditPassword: window.prompt() is blocked in embedded
   // hosts, so this went through askSecret's modal too.
@@ -8739,10 +9324,10 @@ window.setSupplierPin=async function(id,name){
     subtitle:'Set / change the mobile approval PIN (4+ digits)',
     recordInfo:'Vendor: '+name,
     label:'New PIN',
-    confirmText:'&#128273; Save PIN',
+    confirmText:'Save PIN',
   });
   if(pin==null)return;
-  if(!pin.trim())return showToast('PIN khali nahi ho sakta','warn');
+  if(!pin.trim())return showToast('The PIN cannot be empty','warn');
   try{
     if(await applySupplierPin_(id,pin.trim(),name))await loadSupplierMaster();
   }catch(e){dbError(e);}
@@ -8753,28 +9338,28 @@ window.setSupplierPin=async function(id,name){
    computed in, or sent from, this page. Returns true on success. */
 async function applySupplierPin_(supplierId,pin,name){
   const adminPin=await askSecret({
-    title:'Admin PIN Confirm Karein',
-    subtitle:'Vendor PIN set karna server par Admin PIN se authorise hota hai',
+    title:'Confirm with Admin PIN',
+    subtitle:'Setting a vendor PIN is authorised on the server with the Admin PIN',
     recordInfo:'Vendor: '+(name||'—'),
     label:'Admin PIN',
-    confirmText:'&#128273; Confirm &amp; Save PIN'
+    confirmText:'Confirm &amp; Save PIN'
   });
   if(adminPin==null)return false;                  // cancelled
-  if(!adminPin.trim()){showToast('Admin PIN khali nahi ho sakta','warn');return false;}
+  if(!adminPin.trim()){showToast('The Admin PIN cannot be empty','warn');return false;}
   const r=await SB.rpc('set_supplier_pin',{p_supplier_id:supplierId,p_new_pin:pin,p_admin_pin:adminPin.trim()});
   if(r.error){dbError(r.error);return false;}
-  if(!r.data){showToast('❌ Admin PIN galat hai — vendor PIN save nahi hua','error');return false;}
-  showToast('✅ PIN updated for '+(name||'vendor'));
+  if(!r.data){showToast('Incorrect Admin PIN; the vendor PIN was not saved','error');return false;}
+  showToast('PIN updated for '+(name||'vendor'));
   return true;
 }
 
 window.deleteMasterSupplier=async function(id){
   if(!sarvCan('DELETE'))return sarvDeny('DELETE');
-  if(!confirm('Ye supplier delete karein?'))return;
+  if(!confirm('Delete this supplier?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('suppliers').delete().eq('id',id);
   if(error){dbError(error);return;}
-  showToast('🗑️ Supplier deleted');
+  showToast('Supplier deleted');
   await loadSupplierMaster();
 };
 
@@ -8792,8 +9377,8 @@ function refreshEmployeeDatalist(employees){
 window.loadEmployeeMaster=async function(){
   const tb=byId('employeeMasterBody'),cnt=byId('employeeMasterCount');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
   try{
     const{data,error}=await SB.from('employees').select('*').order('emp_code');
     if(error)throw error;
@@ -8802,8 +9387,8 @@ window.loadEmployeeMaster=async function(){
     renderEmployeeMasterTable();
   }catch(e){
     if(e?.message?.includes('does not exist')||e?.code==='42P01'){
-      tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Employees table missing — SQL run karein</td></tr>';
-    }else{dbError(e);tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading employees</td></tr>';}
+      tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#f59e0b;">Employees table missing. Please run the SQL.</td></tr>';
+    }else{dbError(e);tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:16px;color:#ef4444;">Error loading employees</td></tr>';}
   }
 };
 window.renderEmployeeMasterTable=function(){
@@ -8814,7 +9399,7 @@ window.renderEmployeeMasterTable=function(){
     [e.emp_code,e.person_name,e.designation,e.department,e.contact_no]
       .map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvEmployeeMasterRows.length+' employees':rows.length+' employees';
-  if(!sarvEmployeeMasterRows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No employees yet — Add above ⬆️</td></tr>';return;}
+  if(!sarvEmployeeMasterRows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No employees yet — Add above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No employee matches this search.</td></tr>';return;}
   tb.innerHTML=rows.map((e,i)=>`<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;">
       <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
@@ -8835,15 +9420,15 @@ window.renderEmployeeMasterTable=function(){
 window.addMasterEmployee=async function(){
   const code=(byId('me_empCode')?.value||'').trim().toUpperCase();
   const name=(byId('me_personName')?.value||'').trim().toUpperCase();
-  if(!code){showToast('❌ Employee Code required!','error');byId('me_empCode')?.focus();return;}
-  if(!name){showToast('❌ Person Name required!','error');byId('me_personName')?.focus();return;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  if(!code){showToast('Employee Code required!','error');byId('me_empCode')?.focus();return;}
+  if(!name){showToast('Person Name required!','error');byId('me_personName')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
   const btn=document.querySelector('#employeeMasterSub .btn-primary');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     // Duplicate check
     const chk=await SB.from('employees').select('id').eq('emp_code',code).maybeSingle();
-    if(chk.data){showToast(`⚠️ Employee Code "${code}" already exists!`,'warn');return;}
+    if(chk.data){showToast(`Employee Code "${code}" already exists!`,'warn');return;}
     const{error}=await SB.from('employees').insert({
       emp_code:    code,
       person_name: name,
@@ -8853,15 +9438,15 @@ window.addMasterEmployee=async function(){
       is_active:   true
     });
     if(error)throw error;
-    showToast(`✅ "${name}" (${code}) added to Employee Master!`);
+    showToast(`"${name}" (${code}) added to Employee Master!`);
     ['me_empCode','me_personName','me_designation','me_contactNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
     if(byId('me_department'))byId('me_department').value='';
     await loadEmployeeMaster();
   }catch(e){dbError(e);}
-  finally{if(btn){btn.disabled=false;btn.innerHTML='&#10133; Add Employee';}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='Add Employee';}}
 };
 
-/* PR form → Requested By → "➕ Add New Employee". Same employees table and same
+/* PR form → Requested By → "Add New Employee". Same employees table and same
    rules as addMasterEmployee above; on save the new code is put straight into
    the PR's Employee Code box so the person does not have to type it again. */
 const PR_ADD_EMP_FIELDS=['p_aeEmpCode','p_aePersonName','p_aeDesignation','p_aeDepartment','p_aeContactNo'];
@@ -8877,15 +9462,15 @@ function closePrAddEmployeeModal(){byId('p_addEmpModal')?.classList.remove('acti
 async function savePrAddEmployee(){
   const code=(byId('p_aeEmpCode')?.value||'').trim().toUpperCase();
   const name=(byId('p_aePersonName')?.value||'').trim().toUpperCase();
-  if(!code){showToast('❌ Employee Code required!','error');byId('p_aeEmpCode')?.focus();return;}
-  if(!name){showToast('❌ Person Name required!','error');byId('p_aePersonName')?.focus();return;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  if(!code){showToast('Employee Code required!','error');byId('p_aeEmpCode')?.focus();return;}
+  if(!name){showToast('Person Name required!','error');byId('p_aePersonName')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
   const btn=byId('p_aeSaveBtn');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     const chk=await SB.from('employees').select('id').eq('emp_code',code).maybeSingle();
     if(chk.error)throw chk.error;
-    if(chk.data){showToast(`⚠️ Employee Code "${code}" already exists!`,'warn');byId('p_aeEmpCode')?.focus();return;}
+    if(chk.data){showToast(`Employee Code "${code}" already exists!`,'warn');byId('p_aeEmpCode')?.focus();return;}
     const{error}=await SB.from('employees').insert({
       emp_code:    code,
       person_name: name,
@@ -8895,14 +9480,14 @@ async function savePrAddEmployee(){
       is_active:   true
     });
     if(error)throw error;
-    showToast(`✅ "${name}" (${code}) added to Employee Master!`);
+    showToast(`"${name}" (${code}) added to Employee Master!`);
     await loadEmployeeMaster();   // refreshes the code datalist + sarvEmployeeCatalog
     closePrAddEmployeeModal();
     const codeBox=byId('p_reqEmpCode');
     if(codeBox){codeBox.value=code;codeBox.style.border='';}
     onEmpCodeInput(code);
   }catch(e){dbError(e);}
-  finally{if(btn){btn.disabled=false;btn.innerHTML='&#128190; Save Employee';}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='Save Employee';}}
 }
 document.addEventListener('DOMContentLoaded',()=>{
   byId('p_reqAddEmpBtn')?.addEventListener('click',openPrAddEmployeeModal);
@@ -8916,11 +9501,11 @@ document.addEventListener('DOMContentLoaded',()=>{
 
 window.deleteEmployee=async function(id){
   if(!sarvCan('DELETE'))return sarvDeny('DELETE');
-  if(!confirm('Ye employee delete karein?'))return;
+  if(!confirm('Delete this employee?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('employees').delete().eq('id',id);
   if(error){dbError(error);return;}
-  showToast('🗑️ Employee deleted');
+  showToast('Employee deleted');
   await loadEmployeeMaster();
 };
 
@@ -8979,7 +9564,7 @@ function attachMachinePair_(tr,nameSel,noSel){
     if(findMachine_(v)){resolve(nameEl);return;}
     if(!machinesByName_(v).length){
       nameEl.value='';noEl.value='';
-      showToast('❌ Machine "'+escText(v)+'" Machine Master me nahi hai — list se hi select karein','warn');
+      showToast('Machine "'+escText(v)+'" is not in the Machine Master. Please select from the list.','warn');
     }
   });
   noEl.addEventListener('blur',()=>{
@@ -8987,10 +9572,10 @@ function attachMachinePair_(tr,nameSel,noSel){
     const no=noEl.value.trim();if(!no)return;
     if(findMachine_(no)){resolve(noEl);return;}
     const n=nameEl.value.trim();
-    if(!n){if(!resolve(noEl)){noEl.value='';showToast('❌ Machine No. "'+escText(no)+'" Machine Master me nahi hai — list se hi select karein','warn');}return;}
+    if(!n){if(!resolve(noEl)){noEl.value='';showToast('Machine No. "'+escText(no)+'" is not in the Machine Master. Please select from the list.','warn');}return;}
     if(!sarvMachineCatalog.some(m=>machineKey_(m.machine_name)===machineKey_(n)&&machineKey_(m.machine_no)===machineKey_(no))){
       noEl.value='';
-      showToast('❌ "'+escText(n)+'" ki Machine No. "'+escText(no)+'" Machine Master me nahi hai — list se hi select karein','warn');
+      showToast('Machine No. "'+escText(no)+'" for "'+escText(n)+'" is not in the Machine Master. Please select from the list.','warn');
     }
   });
 }
@@ -8998,8 +9583,8 @@ function attachMachinePair_(tr,nameSel,noSel){
 window.loadMachineMaster=async function(){
   const tb=byId('machineMasterBody'),cnt=byId('machineMasterCount');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">⏳ Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
   try{
     const{data,error}=await SB.from('machines').select('*').order('machine_name');
     if(error)throw error;
@@ -9008,8 +9593,8 @@ window.loadMachineMaster=async function(){
     renderMachineMasterTable();
   }catch(e){
     if(e?.message?.includes('does not exist')||e?.code==='42P01'){
-      tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Machines table missing — SQL run karein</td></tr>';
-    }else{dbError(e);tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:16px;color:#ef4444;">❌ Error loading machines</td></tr>';}
+      tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#f59e0b;">Machines table missing. Please run the SQL.</td></tr>';
+    }else{dbError(e);tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:16px;color:#ef4444;">Error loading machines</td></tr>';}
   }
 };
 window.renderMachineMasterTable=function(){
@@ -9019,7 +9604,7 @@ window.renderMachineMasterTable=function(){
   const rows=!q?sarvMachineMasterRows:sarvMachineMasterRows.filter(m=>
     [m.machine_name,m.machine_no].map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvMachineMasterRows.length+' machines':rows.length+' machines';
-  if(!sarvMachineMasterRows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No machines yet — Add above ⬆️</td></tr>';return;}
+  if(!sarvMachineMasterRows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No machines yet — Add above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No machine matches this search.</td></tr>';return;}
   tb.innerHTML=rows.map((m,i)=>`<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;">
       <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
@@ -9037,11 +9622,11 @@ window.renderMachineMasterTable=function(){
 window.addMasterMachine=async function(){
   const name=(byId('mm_machineName')?.value||'').trim().toUpperCase();
   const no=(byId('mm_machineNo')?.value||'').trim().toUpperCase();
-  if(!name){showToast('❌ Machine Name required!','error');byId('mm_machineName')?.focus();return;}
-  if(!no){showToast('❌ Machine No. required!','error');byId('mm_machineNo')?.focus();return;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return;}
+  if(!name){showToast('Machine Name required!','error');byId('mm_machineName')?.focus();return;}
+  if(!no){showToast('Machine No. required!','error');byId('mm_machineNo')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
   const btn=document.querySelector('#machineMasterSub .btn-primary');
-  if(btn){btn.disabled=true;btn.textContent='⏳ Saving...';}
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
   try{
     // A Machine No. may repeat across different machines — only the PAIR
     // (Machine Name + Machine No.) has to be unique. Checking machine_no on
@@ -9050,30 +9635,30 @@ window.addMasterMachine=async function(){
       .ilike('machine_name',name).ilike('machine_no',no).limit(1);
     if(chk.error)throw chk.error;
     if((chk.data||[]).length){
-      showToast(`⚠️ "${name}" + "${no}" pehle se Machine List me hai!`,'warn');
+      showToast(`"${name}" + "${no}" is already in the Machine List`,'warn');
       return;
     }
     const{error}=await SB.from('machines').insert({machine_name:name,machine_no:no,is_active:true});
     // The database enforces the same rule, so a race between two users still
     // lands here rather than creating a duplicate pair.
     if(error){
-      if(error.code==='23505'){showToast(`⚠️ "${name}" + "${no}" pehle se Machine List me hai!`,'warn');return;}
+      if(error.code==='23505'){showToast(`"${name}" + "${no}" is already in the Machine List`,'warn');return;}
       throw error;
     }
-    showToast(`✅ "${name}" (${no}) added to Machine Master!`);
+    showToast(`"${name}" (${no}) added to Machine Master!`);
     ['mm_machineName','mm_machineNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});
     await loadMachineMaster();
   }catch(e){dbError(e);}
-  finally{if(btn){btn.disabled=false;btn.innerHTML='&#10133; Add Machine';}}
+  finally{if(btn){btn.disabled=false;btn.innerHTML='Add Machine';}}
 };
 
 window.deleteMachine=async function(id){
   if(!sarvCan('DELETE'))return sarvDeny('DELETE');
-  if(!confirm('Ye machine delete karein?'))return;
+  if(!confirm('Delete this machine?'))return;
   if(!SB_READY)return;
   const{error}=await SB.from('machines').delete().eq('id',id);
   if(error){dbError(error);return;}
-  showToast('🗑️ Machine deleted');
+  showToast('Machine deleted');
   await loadMachineMaster();
 };
 
@@ -9117,40 +9702,40 @@ function highlightPriorityGroup_(){
 
 
 /* ================================================================
-   MASTER DATA — Dropdown Master  (table: sales_dropdowns)
+   MASTER DATA: Dropdown Master  (table: sales_dropdowns)
    ----------------------------------------------------------------
-   App ke saare FIXED dropdowns ki values ek hi jagah se aati hain:
-   Supabase table `sales_dropdowns` (key, value). Wahi table Sales ›
-   Order Form (order-form.html) bhi padhti hai, isi liye use COMMON
-   maan kar ERP ke apne keys `erp_` se shuru hote hain — Order Form ke
-   purane generic keys (category, size, design, moq …) jaise the waise
-   hi rehte hain aur dono ek doosre ko kabhi overwrite nahi karte.
+   The values of every FIXED dropdown in the app come from one place:
+   the Supabase table `sales_dropdowns` (key, value). Sales › Order Form
+   (order-form.html) reads the same table, so it is treated as SHARED: the
+   ERP's own keys start with `erp_`, the Order Form's older generic keys
+   (category, size, design, moq …) stay as they were, and the two never
+   overwrite each other.
 
-   Do saaf niyam, isi liye migration chalane se app ka behaviour
-   bilkul nahi badalta:
+   Two clear rules, which is why running the migration doesn't change the
+   app's behaviour at all:
 
-     * Us key ki ek bhi row table me hai  -> list WAHI hai (code ka
-       default poora ignore ho jaata hai).
-     * Us key ki ek bhi row nahi          -> code ka default chalta hai.
+     * the key has at least one row in the table -> THAT is the list (the
+       code default is ignored entirely).
+     * the key has no rows                       -> the code default is used.
 
-   Add / Edit / Remove sirf is screen se hota hai (koi SQL nahi) aur
-   sirf Admin ko milta hai — DROPDOWN_MANAGE feature se.
+   Add / Edit / Remove happens only on this screen (no SQL) and only for the
+   Admin, through the DROPDOWN_MANAGE feature.
 
-   Table banane / RLS ke liye: DROPDOWN_MASTER_MIGRATION.sql.
+   For the table / RLS: DROPDOWN_MASTER_MIGRATION.sql.
 ================================================================ */
 const SARV_DD_TABLE='sales_dropdowns';
 
-/* Har fixed dropdown ki ek entry. `def` = aaj ka hardcoded default (wahi jo
-   migration se pehle screen par tha). `selects` wo <select> jinhe ye list
-   dobara bharti hai, `datalists` wo <datalist>. `labels` sirf dikhane ke liye
-   hai — jahan option ka VALUE aur TEXT alag hain (database me value jaati hai,
-   label screen par dikhta hai), wahan purana jodd tootne se bach jaata hai.
-   `dm` wali keys Design Master ke apne pickers ko feed karti hain
-   (store-design-master.js > dmValues), isi liye unka koi DOM target nahi. */
+/* One entry per fixed dropdown. `def` = today's hardcoded default (what the
+   screen showed before the migration). `selects` are the <select>s this list
+   refills, `datalists` the <datalist>s. `labels` is display-only: where an
+   option's VALUE and TEXT differ (the value goes to the database, the label
+   shows on screen), it keeps the old pairing from breaking.
+   Keys with `dm` feed Design Master's own pickers
+   (store-design-master.js > dmValues), so they have no DOM target. */
 const SARV_DROPDOWNS=[
-  {group:'📦 Item Master'},
+  {group:'Item Master'},
   {key:'erp_itemCategory',label:'Item Category',
-   hint:'Item Master › Category aur ➕ New Item popup (dono ek hi list padhte hain)',
+   hint:'Item Master › Category and the New Item popup (both read the same list)',
    where:'#mi_category → #ni_cat',
    selects:[{id:'mi_category',placeholder:'-- Select Category --'}],
    def:['BLANKET','BOILER CHEMICAL','BOILER FUEL','CARPET','CONSUMABLE','ELECTRICAL','ELECTRICAL ITEM',
@@ -9161,40 +9746,55 @@ const SARV_DROPDOWNS=[
         'RO CHEMICAL','SAMPLE','SANITORY ITEM','STATIONARY','STITCHING  PART','STITCHING YARN',
         'STRUCTURE ITEM','TAG','TOOLS','TRIMS','WASHING CHEMICAL','WASTE FABRIC','WEAVING YARN','YARN','OTHER']},
   {key:'erp_itemUom',label:'UOM (Unit of Measure)',
-   hint:'Item Master › UOM, ➕ New Item popup aur PR ki item rows',
+   hint:'Item Master › UOM, the New Item popup and the PR item rows',
    where:'#mi_uom → #ni_uom',
    selects:[{id:'mi_uom',pick:'PCS'}],
    def:['PCS','BOX','KGS','ROLL','LTR','SQFT','SET','KG','FEET','PKT','HOUR','ROUND','MTR','BANDAL','BORA','FT']},
   {key:'erp_itemGst',label:'GST %',
-   hint:'Item par GST rate — Inward rows aur PO lines isi se auto-fill hoti hain',
+   hint:'The item\'s GST rate; Inward rows and PO lines auto-fill from it',
    where:'#mi_gst → #ni_gst',
    selects:[{id:'mi_gst',pick:'18'}],
    def:['18','0','5','12','28']},
 
-  {group:'🏭 Supplier / Party'},
+  /* The slicer buttons above the Item Master list: each column has its own key,
+     and every value of that key is a button. This is the "slicer heading +
+     value": choose the column (the heading) on the left, then add values. The
+     default is empty, so until a value is added the Item Master shows no slicers.
+     Logic: store-core.js › ITEM MASTER — SLICER BUTTONS (imRenderSlicers_). */
+  {group:'Item Master › Slicer Buttons'},
+  ...IM_SLICER_COLS.map(col=>({key:imSlicerKey_(col),label:'Slicer — '+SARV_IM_FILTER_COLS[col].label,imSlicerCol:col,
+    hint:'Each value becomes a slicer button under the "'+SARV_IM_FILTER_COLS[col].label+'" heading above the Item Master list. '
+      +(IM_SLICER_CONTAINS[col]
+        ?'On this column a button matches "contains the word"; e.g. BEARING matches every bearing item.'
+        :'A button matches the whole value (ignoring case); write the value exactly as it is in the Item Master.')
+      +' Ek heading ke kai button = OR, alag headings = AND.',
+    where:'Master Data › Item Master — slicer bar',
+    def:[]})),
+
+  {group:'Supplier / Party'},
   {key:'erp_partyState',label:'Party / Supplier State',
-   hint:'Inward ka Party State aur Supplier Master ka State — GST local/outside isi se tay hota hai',
+   hint:'Inward\'s Party State and the Supplier Master\'s State; GST local/outside is decided by this',
    where:'#partyState · #ms_state',
    selects:[{id:'partyState'},{id:'ms_state'}],
    def:['HARYANA (LOCAL)','OUT OF STATE']},
 
-  {group:'🏬 Store — Inward / Outward'},
+  {group:'Store — Inward / Outward'},
   {key:'erp_natureOfInward',label:'Nature of Inward',
    hint:'Inward form ka "Nature of Inward"',
    where:'#inwNatureOfInward',
    selects:[{id:'inwNatureOfInward'}],
-   /* "Repaired" ka screen-label "Return" hai — value database me jaati hai,
-      label sirf dikhta hai. Isi liye dono alag rakhe gaye hain. */
+   /* "Repaired" has the screen label "Return": the value goes to the database,
+      the label is only displayed. That is why the two are kept separate. */
    labels:{'Repaired':'Return'},
    def:['Purchase','Repaired','Transfer']},
   {key:'erp_natureOfDispatch',label:'Nature of Dispatch (Outward)',
-   hint:'Outward ka "Nature of Dispatch". Dhyan: "Repair" hata dene par dispatch Repair Tracker me nahi jaayega. ISSUE ki apni locked nature isse nahi badalti.',
+   hint:'Outward\'s "Nature of Dispatch". Note: removing "Repair" means dispatches won\'t go to the Repair Tracker. ISSUE\'s own locked nature is not affected.',
    where:'#outNatureOfDispatch (OUTWARD)',
    def:['Non-Returnable','Repair','Transfer','Sample']},
 
-  {group:'👤 Employee / Purchase Requirement'},
+  {group:'Employee / Purchase Requirement'},
   {key:'erp_department',label:'Department',
-   hint:'Employee Master, New PR ka Department, Add Employee popup aur PO list ka Department filter — sab ek hi list',
+   hint:'Employee Master, the New PR Department, the Add Employee popup and the PO list Department filter all use this one list',
    where:'#me_department · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept',
    selects:[{id:'me_department',placeholder:'-- Select --'},
             {id:'p_reqDepartment',placeholder:'-- Select --'},
@@ -9203,8 +9803,8 @@ const SARV_DROPDOWNS=[
    def:['Weaving','Dyeing','Finishing','Raising','Cutting / Stitching','Packing','Quality Control',
         'Maintenance','Store','Dispatch','Admin / HR','Accounts','Other']},
 
-  {group:'🏭 Production › Design Master'},
-  {key:'erp_designUnit',label:'Design Unit',hint:'Design Master ke Unit pickers + Printing Lot Card ka Unit',dm:'unit',
+  {group:'Production › Design Master'},
+  {key:'erp_designUnit',label:'Design Unit',hint:'Unit pickers in Design Master + the Unit on the Printing Lot Card',dm:'unit',
    def:['UNIT 1','UNIT 2']},
   {key:'erp_designBedSize',label:'Bed Size',hint:'Design Master ke Bed Size pickers',dm:'bed',
    def:['DOUBLE BED','SINGLE BED']},
@@ -9217,23 +9817,23 @@ const SARV_DROPDOWNS=[
   {key:'erp_designMonopoly',label:'Monopoly',hint:'Design Master ka Monopoly (YES / NO)',dm:'mono',
    def:['NO','YES']},
   {key:'erp_designSupplier',label:'Supplier Name (Design)',
-   hint:'Design Master ka SUPPLIER NAME — Create New, Bulk Upload, Live filter aur Catalogue filter',dm:'supplier',def:[]},
+   hint:'Design Master\'s SUPPLIER NAME: Create New, Bulk Upload, the Live filter and the Catalogue filter',dm:'supplier',def:[]},
   {key:'erp_designShade',label:'Shade / Matching Name',
-   hint:'Design Master ki shade list (V18 ki 65 shades). Table khaali chhodne par code ki poori list chalti hai.',
+   hint:'Design Master\'s shade list (the 65 shades from V18). If the table is left empty, the full list from the code is used.',
    dm:'shade',defFn:()=>(window.dmShadeDefaults||[]).slice()},
 
-  /* printing-lot.html ye keys seedha sales_dropdowns se padhta hai (wahi niyam:
-     rows hain to wahi, warna ye default). Unit ke liye erp_designUnit hi. */
+  /* printing-lot.html reads these keys straight from sales_dropdowns (the same
+     rule: rows if any, otherwise this default). Unit uses erp_designUnit. */
   /* ── Fabric & Brand Master ───────────────────────────────────────
-     Ye saare `def` seedha Excel sheet ki DATA VALIDATION lists se liye
-     gaye hain (wahi options jo sheet ke dropdown me the). Matlab: list
-     badalni ho to SQL nahi, is screen se badlegi — aur dono master ke
-     form turant nayi list padhne lagenge. DOM target jaan-boojh kar
-     nahi hai: Fabric / Brand ke form JS se bante hain aur har baar
-     sarvDropdownList() se taaza list lete hain. */
-  {group:'🧵 Fabric & Brand Master'},
+     All these `def`s are taken straight from the Excel sheet's DATA
+     VALIDATION lists (the same options as the sheet's dropdowns). So a list
+     is changed on this screen, not with SQL, and both masters' forms pick up
+     the new list immediately. There is deliberately no DOM target: the Fabric
+     / Brand forms are built in JS and fetch a fresh list from
+     sarvDropdownList() every time. */
+  {group:'Fabric & Brand Master'},
   {key:'erp_fabricUnit',label:'Fabric Unit',
-   hint:'Fabric Master › UNIT. Ek hi fabric name dono unit me ho sakta hai — 1.8 UNIT 1 aur 1.8 UNIT 2 alag rows hain.',
+   hint:'Fabric Master › UNIT. The same fabric name can exist in both units; 1.8 UNIT 1 and 1.8 UNIT 2 are separate rows.',
    where:'Fabric Master form + filter',
    def:['UNIT 1','UNIT 2']},
   {key:'erp_fabricQuality',label:'Fabric Quality',
@@ -9241,7 +9841,7 @@ const SARV_DROPDOWNS=[
    where:'Fabric Master form + filter',
    def:['MINK','MINK PLUS','SUPERSOFT','SUPER CLOUDY','DIGITAL-350GSM','DIGITAL-450GSM']},
   {key:'erp_brandCategory',label:'Brand Category',
-   hint:'Brand Master › CATEGORY. Dhyan: Fabric Quality me "SUPERSOFT" hai par Brand sheet me "SUPER SOFT" — dono list alag isi liye rakhi hain.',
+   hint:'Brand Master › CATEGORY. Note: Fabric Quality has "SUPERSOFT" but the Brand sheet has "SUPER SOFT"; that is why the two lists are kept separate.',
    where:'Brand Master form + filter',
    def:['MINK','MINK PLUS','SUPER CLOUDY','SUPER SOFT']},
   {key:'erp_brandSize',label:'Blanket Size (Brand)',
@@ -9257,11 +9857,11 @@ const SARV_DROPDOWNS=[
    where:'Brand Master form + filter',
    def:['SINGLE PLY','DOUBLE PLY','THREE PLY']},
   {key:'erp_brandSattan',label:'Sattan Size (Brand)',
-   hint:'Brand Master › SATTAN SIZE — kitne inch ka. "NA" khud ek valid option hai (jahan sattan lagta hi nahi). Grade ki apni alag list hai: Sattan Type.',
+   hint:'Brand Master › SATTAN SIZE: how many inches. "NA" is a valid option in itself (where no sattan is used). The grade has its own list: Sattan Type.',
    where:'Brand Master form + filter',
    def:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA']},
   {key:'erp_brandSattanType',label:'Sattan Type (Brand)',
-   hint:'Brand Master › SATTAN TYPE — sattan ka grade. Size se alag rakha gaya hai, isi liye "saare PREMIUM brands" filter se mil jaate hain.',
+   hint:'Brand Master › SATTAN TYPE: the grade of the sattan. Kept separate from Size, so "all PREMIUM brands" can be found with a filter.',
    where:'Brand Master form + filter',
    def:['STANDARD','PREMIUM']},
   {key:'erp_brandMasterPackType',label:'Master Packing Type',
@@ -9269,7 +9869,7 @@ const SARV_DROPDOWNS=[
    where:'Brand Master form',
    def:['BALE','BORA','OUTER BOX','ROLL','NA']},
   {key:'erp_brandSlavePackType',label:'Slave Packing Type',
-   hint:'Brand Master › SLAVE PACKING TYPE — Order Form ka Slave Packing Type (locked) yahi banta hai. BORA / BALE / BOX par Bags & Trims me usi naam ka material row aata hai.',
+   hint:'Brand Master › SLAVE PACKING TYPE: this becomes the Order Form\'s Slave Packing Type (locked). For BORA / BALE / BOX, a material row with the same name appears in Bags & Trims.',
    where:'Brand Master form',
    def:['BORA','BALE','BOX','BAG','INNER BOX','LOOSE PCS','NA']},
   {key:'erp_trimRateCategory',label:'Trims Rate Category',
@@ -9277,37 +9877,37 @@ const SARV_DROPDOWNS=[
    where:'Trims & Packing Rate form + filter',
    def:['TRIMS','PACKING MATERIAL']},
   {key:'erp_fbmYesNo',label:'YES / NO (Master fields)',
-   hint:'Emboss, packing required aur saari labels / tags / dori / insert card / barcode sticker — sab yahi list padhte hain',
+   hint:'Emboss, packing required and all the labels / tags / dori / insert card / barcode sticker fields read this list',
    where:'Brand Master form ke YES/NO fields',
    def:['NO','YES','NA']},
 
-  {group:'🖨️ Manufacturing › Printing Lot Card'},
+  {group:'Manufacturing › Printing Lot Card'},
   {key:'erp_prlFabricCategory',label:'Fabric Category',hint:'Printing Lot Card › Fabric Category',def:['MINK','SUPER CLOUDY','SHERPA','FLANNEL']},
   {key:'erp_prlBedSize',label:'Bed Size (Lot Card)',hint:'Printing Lot Card › Bed Size',def:['Double Bed','Single Bed','King Size','Queen Size']},
   {key:'erp_prlBlanketPly',label:'Blanket Ply',hint:'Printing Lot Card › Blanket Ply',def:['Single Ply','Double Ply','Three Ply']},
   {key:'erp_prlSatinQuality',label:'Satin Quality',hint:'Printing Lot Card › Satin Quality. Har quality ke codes: Printing Lot › Masters › Satin Codes',def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM']},
   {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
 
-  {group:'🛒 Sales › Order Form (order-form.html)'},
+  {group:'Sales › Order Form (order-form.html)'},
   {key:'dbsb',label:'DB / SB',hint:'Order Form › product ka DB/SB',def:['DB','DP','SB','SS','SC'],sales:1},
   {key:'fabricCode',label:'Fabric Code',hint:'Order Form › Fabric',def:['2900','3100','3500','4000'],sales:1},
   {key:'category',label:'Category',hint:'Order Form › product Category',sales:1,
    def:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY']},
   {key:'size',label:'Size',hint:'Order Form › product Size',sales:1,
    def:['210×230 CM','150×200 CM','200×220 CM','220×240 CM','60×90 CM (Baby)']},
-  /* Order Form me Sattan ab DO dropdown hai — Type aur Size — jo Brand Master
-     ke `sattan_type` / `sattan` column se auto-select hote hain. Isi liye in
-     dono ki values Brand Master ki hi list (erp_brandSattanType /
-     erp_brandSattan) jaisi rakhein, warna Item Code chunne par value match
-     nahi karegi.
-     Purani `sattan` row NAHI hataai gayi: us waqt ke orders me joint value
-     ('5" PREMIUM') likhi hai, aur Order Form aaj bhi wahi joint value
-     sales_product_details ke `sattan` column me likhti hai. */
-  {key:'sattanType',label:'Sattan Type (Order Form)',hint:'Order Form › Sattan Type — Brand Master ke SATTAN TYPE se auto-select hota hai',sales:1,
+  /* Sattan in the Order Form is now TWO dropdowns, Type and Size, auto-selected
+     from the Brand Master's `sattan_type` / `sattan` columns. So keep these two
+     lists the same as the Brand Master's own lists (erp_brandSattanType /
+     erp_brandSattan); otherwise the value won't match when an Item Code is
+     chosen.
+     The old `sattan` row was NOT removed: orders from that time have the joint
+     value ('5" PREMIUM') written, and the Order Form still writes that joint
+     value to the `sattan` column of sales_product_details. */
+  {key:'sattanType',label:'Sattan Type (Order Form)',hint:'Order Form › Sattan Type; auto-selected from the Brand Master\'s SATTAN TYPE',sales:1,
    def:['STANDARD','PREMIUM','NA']},
-  {key:'sattanSize',label:'Sattan Size (Order Form)',hint:'Order Form › Sattan Size — Brand Master ke SATTAN SIZE se auto-select hota hai',sales:1,
+  {key:'sattanSize',label:'Sattan Size (Order Form)',hint:'Order Form › Sattan Size; auto-selected from the Brand Master\'s SATTAN SIZE',sales:1,
    def:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA']},
-  {key:'sattan',label:'Sattan (purana joint field)',hint:'Purane orders ki joint value jaise 5" PREMIUM. Naya form Type + Size use karta hai; ye row record ke liye hai.',sales:1,
+  {key:'sattan',label:'Sattan (old joint field)',hint:'The joint value used by old orders, e.g. 5" PREMIUM. The new form uses Type + Size; this row is kept for the record.',sales:1,
    def:['5" PREMIUM','4" STANDARD','3" BASIC']},
   {key:'moq',label:'MOQ',hint:'Order Form › MOQ',sales:1,
    def:['500 PCS/Colour','1000 PCS/Colour','2000 PCS/Colour']},
@@ -9319,10 +9919,10 @@ const SARV_DROPDOWNS=[
    def:['5 New Designs Single Matching Each Design','3 New Designs','Custom Design']},
 ];
 
-let sarvDdRows=[];            // [{id,key,value}] — table ke apne kram me
+let sarvDdRows=[];            // [{id,key,value}], in the table's own order
 let sarvDdLoaded=false;
-let sarvDdPick=null;          // screen par khula hua key
-let sarvDdEditId=null;        // jis row ka edit dabaya gaya
+let sarvDdPick=null;          // the key open on screen
+let sarvDdEditId=null;        // the row whose Edit was pressed
 
 const sarvDdDef=key=>SARV_DROPDOWNS.find(d=>d.key===key)||null;
 function sarvDdDefaults(key){
@@ -9330,19 +9930,19 @@ function sarvDdDefaults(key){
   if(d.defFn){try{return d.defFn()||[];}catch(e){return [];}}
   return (d.def||[]).slice();
 }
-/* Us key ki saved rows — table ka kram, kyunki Order Form bhi `order('id')`
-   se padhti hai aur dono jagah option ek hi tarteeb me dikhne chahiye. */
+/* That key's saved rows, in table order, because the Order Form also reads
+   with `order('id')` and the options must appear in the same order in both places. */
 const sarvDdRowsOf=key=>sarvDdRows.filter(r=>r.key===key);
 
-/* Poore app ke liye EK hi raasta: "is dropdown me kya-kya hai?".
-   Saved rows hain to wahi, warna code ka default. */
+/* ONE path for the whole app: "what's in this dropdown?".
+   The saved rows if any, otherwise the code default. */
 function sarvDropdownList(key){
   const rows=sarvDdRowsOf(key);
   return rows.length?rows.map(r=>r.value):sarvDdDefaults(key);
 }
 window.sarvDropdownList=sarvDropdownList;
 
-/* ── saved values ko asli dropdowns par chadhana ──────────────────── */
+/* ── apply saved values to the real dropdowns ──────────────────── */
 function sarvDdApplyOne_(def){
   if(!def||def.group)return;
   const vals=sarvDropdownList(def.key);
@@ -9352,9 +9952,9 @@ function sarvDdApplyOne_(def){
     const cur=sel.value;
     sel.innerHTML=(t.placeholder?'<option value="">'+escText(t.placeholder)+'</option>':'')
       +vals.map(v=>'<option value="'+escText(v)+'">'+escText(label(v))+'</option>').join('');
-    /* Jo pehle chuna hua tha wahi chuna rehna chahiye. Wo value list se hat
-       gayi ho to definition ka pick, warna placeholder (aur placeholder na ho
-       to pehla option — browser khud wahi karta hai). */
+    /* Whatever was selected before should stay selected. If that value has
+       been removed from the list, use the definition's pick, otherwise the
+       placeholder (and with no placeholder, the first option; the browser does that itself). */
     if(cur&&vals.indexOf(cur)>=0)sel.value=cur;
     else if(t.pick&&vals.indexOf(t.pick)>=0)sel.value=t.pick;
     else if(t.placeholder)sel.value='';
@@ -9366,13 +9966,15 @@ function sarvDdApplyOne_(def){
 }
 function sarvDdApplyAll_(){
   SARV_DROPDOWNS.forEach(d=>{if(!d.group)sarvDdApplyOne_(d);});
-  // Outward ki nature JS se banti hai (ISSUE par locked rehti hai) — usse
-  // dobara bulwana padta hai, warna naya option add karne par nahi dikhega.
+  // Outward's nature is built in JS (it is locked on ISSUE), so it has to be
+  // rebuilt; otherwise a newly added option wouldn't appear.
   if(typeof populateNatureOfDispatch==='function'){try{populateNatureOfDispatch();}catch(e){}}
-  // Consumption report ka Nature filter bhi inhi do lists se banta hai.
+  // The Consumption report's Nature filter is also built from these two lists.
   if(typeof consRefreshNature_==='function'){try{consRefreshNature_();}catch(e){}}
-  // Design Master ke pickers / datalists apni list yahin se banate hain.
+  // Design Master's pickers / datalists build their lists from here.
   if(typeof dmRefreshDropdowns==='function'){try{dmRefreshDropdowns();}catch(e){}}
+  // The Item Master slicer buttons are built from this table; re-render if the list has loaded.
+  if(sarvItemMasterRows.length){try{renderItemMasterTable();}catch(e){}}
 }
 window.sarvDropdownsApply=sarvDdApplyAll_;
 
@@ -9393,39 +9995,39 @@ async function sarvLoadDropdowns_(force){
 window.sarvReloadDropdowns=async function(){
   await sarvLoadDropdowns_(true);
   if(byId('dropdownMasterSub')&&byId('dropdownMasterSub').style.display!=='none')sarvDdRender_();
-  showToast('🔽 Dropdown list refresh ho gayi');
+  showToast('Dropdown list refreshed');
 };
 
-/* ── writes (sirf Admin) ──────────────────────────────────────────── */
+/* ── writes (Admin only) ──────────────────────────────────────────── */
 function sarvDdGuard_(){
-  if(!isAdmin()){showToast('⛔ Dropdown Master me badlaav sirf Admin login se hota hai','warn');return false;}
+  if(!isAdmin()){showToast('Only an Admin login can change the Dropdown Master','warn');return false;}
   if(!sarvCan('DROPDOWN_MANAGE')){sarvDeny('DROPDOWN_MANAGE');return false;}
-  if(!SB_READY){showToast('Supabase configure karein','warn');return false;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return false;}
   return true;
 }
 function sarvDdTableMissing_(e){
   const m=String((e&&(e.message||e))||'');
   if(/does not exist|schema cache|Could not find the table/i.test(m)||(e&&e.code==='42P01')){
-    showToast('❌ '+SARV_DD_TABLE+' table nahi mila — pehle DROPDOWN_MASTER_MIGRATION.sql chalayein','error');
+    showToast('The '+SARV_DD_TABLE+' table was not found. Run DROPDOWN_MASTER_MIGRATION.sql first.','error');
     return true;
   }
-  if(/duplicate key|unique/i.test(m)){showToast('⚠️ Ye value is dropdown me pehle se hai','warn');return true;}
+  if(/duplicate key|unique/i.test(m)){showToast('This value is already in this dropdown','warn');return true;}
   return false;
 }
 
-/* Pehli baar seed: code ke default rows table me daal deta hai, taaki Admin
-   unhe wahin se edit / remove kar sake. Jo values pehle se hain wo chhut
-   jaati hain, isi liye dobara dabane se duplicate nahi bante. */
+/* First-time seed: puts the code default rows into the table so the Admin
+   can edit / remove them there. Values that already exist are skipped, so
+   pressing it again creates no duplicates. */
 window.sarvDdSeedDefaults=async function(key){
   if(!sarvDdGuard_())return;
   const have=new Set(sarvDdRowsOf(key).map(r=>r.value.trim().toUpperCase()));
   const add=sarvDdDefaults(key).filter(v=>String(v).trim()&&!have.has(String(v).trim().toUpperCase()));
-  if(!add.length)return showToast('Sab default values pehle se list me hain');
+  if(!add.length)return showToast('All the default values are already in the list');
   try{
     const {error}=await SB.from(SARV_DD_TABLE).insert(add.map(v=>({key:key,value:String(v)})));
     if(error)throw error;
     await sarvLoadDropdowns_(true);sarvDdRender_();
-    showToast('✅ '+add.length+' default values add ho gayi');
+    showToast(''+add.length+' default value(s) added');
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
@@ -9433,13 +10035,13 @@ window.sarvDdAddValue=async function(key){
   if(!sarvDdGuard_())return;
   const inp=byId('dd_newValue');
   const val=((inp&&inp.value)||'').trim();
-  if(!val){showToast('❌ Value khaali nahi ho sakti','error');if(inp)inp.focus();return;}
+  if(!val){showToast('The value cannot be empty','error');if(inp)inp.focus();return;}
   if(sarvDdRowsOf(key).some(r=>r.value.trim().toUpperCase()===val.toUpperCase()))
-    return showToast('⚠️ "'+val+'" is dropdown me pehle se hai','warn');
+    return showToast('"'+val+'" is already in this dropdown','warn');
   try{
-    /* Pehli value add karte waqt baaki defaults bhi saath aane chahiye, warna
-       ek value daalne se list ek-value ki ho jaati (niyam: rows hain to code ka
-       default poora ignore). Isi liye pehle defaults seed hote hain. */
+    /* When the first value is added, the other defaults must come along too;
+       otherwise adding one value would leave a one-value list (the rule: if
+       rows exist, the code default is ignored entirely). So the defaults are seeded first. */
     const seed=sarvDdRowsOf(key).length?[]
       :sarvDdDefaults(key).filter(v=>String(v).trim()&&String(v).trim().toUpperCase()!==val.toUpperCase());
     const rows=seed.map(v=>({key:key,value:String(v)})).concat([{key:key,value:val}]);
@@ -9448,7 +10050,7 @@ window.sarvDdAddValue=async function(key){
     if(inp)inp.value='';
     await sarvLoadDropdowns_(true);sarvDdRender_();
     const nx=byId('dd_newValue');if(nx)nx.focus();
-    showToast('✅ "'+val+'" add ho gaya');
+    showToast('"'+val+'" added');
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
@@ -9464,36 +10066,36 @@ window.sarvDdSaveEdit=async function(id){
   const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
   const box=byId('dd_editBox');
   const val=((box&&box.value)||'').trim();
-  if(!val){showToast('❌ Value khaali nahi ho sakti','error');return;}
+  if(!val){showToast('The value cannot be empty','error');return;}
   if(val===row.value){sarvDdEditId=null;sarvDdRender_();return;}
   if(sarvDdRowsOf(row.key).some(r=>r.id!==id&&r.value.trim().toUpperCase()===val.toUpperCase()))
-    return showToast('⚠️ "'+val+'" is dropdown me pehle se hai','warn');
+    return showToast('"'+val+'" is already in this dropdown','warn');
   try{
     const {error}=await SB.from(SARV_DD_TABLE).update({value:val}).eq('id',id);
     if(error)throw error;
     sarvDdEditId=null;
     await sarvLoadDropdowns_(true);sarvDdRender_();
-    showToast('✅ Value update ho gayi — "'+row.value+'" se "'+val+'"');
+    showToast('Value updated from "'+row.value+'" to "'+val+'"');
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
 window.sarvDdDeleteValue=async function(id){
   if(!sarvDdGuard_())return;
   const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
-  /* Purane records me ye value likhi ho sakti hai — wahan se nahi hatti, bas
-     aage ke forms me offer nahi hogi. Confirm me yahi saaf kaha gaya hai. */
-  if(!confirm('"'+row.value+'" ko is dropdown se hata dein?\n\nPurane saved records me ye value jaisi hai waisi rahegi — aage ke forms me option nahi dikhega.'))return;
+  /* Old records may have this value written in them; it isn't removed from
+     there, it just won't be offered in future forms. The confirm says exactly that. */
+  if(!confirm('Remove "'+row.value+'" from this dropdown?\n\nOld saved records keep this value as it is; it just won\'t be offered as an option in future forms.'))return;
   try{
     const {error}=await SB.from(SARV_DD_TABLE).delete().eq('id',id);
     if(error)throw error;
     await sarvLoadDropdowns_(true);sarvDdRender_();
-    showToast('🗑️ "'+row.value+'" hat gaya');
+    showToast('"'+row.value+'" removed');
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
-/* Kram badalna: do rows ki `value` aapas me badal di jaati hain. id wahi
-   rehti hai, isi liye Order Form ka `order('id')` bhi naya kram waise hi
-   dekhta hai aur koi extra column (sort_order) nahi chahiye. */
+/* Reordering: the `value`s of two rows are swapped. The ids stay the same, so
+   the Order Form's `order('id')` sees the new order too, and no extra column
+   (sort_order) is needed. */
 window.sarvDdMoveValue=async function(id,dir){
   if(!sarvDdGuard_())return;
   const row=sarvDdRows.find(r=>r.id===id);if(!row)return;
@@ -9502,8 +10104,8 @@ window.sarvDdMoveValue=async function(id,dir){
   if(i<0||j<0||j>=list.length)return;
   const other=list[j];
   try{
-    /* Unique index (key, value) ke kaaran seedha swap nahi ho sakta — beech me
-       ek aisi value rakhni padti hai jo kisi aur row ki na ho. */
+    /* The unique index (key, value) prevents a direct swap, so a temporary
+       value that no other row has is put in between. */
     const tmp='__dd_swap_'+Date.now()+'__';
     let r=await SB.from(SARV_DD_TABLE).update({value:tmp}).eq('id',row.id);
     if(r.error)throw r.error;
@@ -9535,48 +10137,67 @@ function sarvDdNavHtml_(){
     const n=sarvDdRowsOf(d.key).length,saved=n>0;
     pending.push('<button type="button" class="dd-nav-item'+(sarvDdPick===d.key?' active':'')+'" onclick="sarvDdSelect(\''+d.key+'\')">'
       +'<span class="dd-nav-label">'+escText(d.label)+'</span>'
-      +'<span class="dd-nav-n'+(saved?' saved':'')+'" title="'+(saved?n+' values table me hain':'Code ka default — abhi table me kuch nahi')+'">'
+      +'<span class="dd-nav-n'+(saved?' saved':'')+'" title="'+(saved?n+' values in the table':'Code default; nothing in the table yet')+'">'
       +(saved?n:sarvDdDefaults(d.key).length+'<small>d</small>')+'</span></button>');
   });
   flush();
-  return html||'<div class="dd-nav-empty">Is khoj se koi dropdown nahi mila.</div>';
+  return html||'<div class="dd-nav-empty">No dropdown matches this search.</div>';
 }
 
 function sarvDdMainHtml_(){
   const d=sarvDdDef(sarvDdPick);
-  if(!d)return '<div class="dd-blank">Left se koi dropdown chunein.</div>';
+  if(!d)return '<div class="dd-blank">Choose a dropdown on the left.</div>';
   const rows=sarvDdRowsOf(d.key),defs=sarvDdDefaults(d.key),live=sarvDropdownList(d.key);
   const admin=isAdmin()&&sarvCan('DROPDOWN_MANAGE');
   const srcTag=rows.length
-    ? '<span class="dd-tag dd-tag-db">🗄️ Table se — '+rows.length+' values</span>'
-    : '<span class="dd-tag dd-tag-def">📄 Code ka default — '+defs.length+' values (table me kuch nahi)</span>';
+    ? '<span class="dd-tag dd-tag-db">Table se — '+rows.length+' values</span>'
+    : '<span class="dd-tag dd-tag-def">Code default: '+defs.length+' values (nothing in the table)</span>';
 
   let h='<div class="dd-head">'
     +'<div><div class="dd-head-title">'+escText(d.label)+'</div>'
     +'<div class="dd-head-key">key: <code>'+escText(d.key)+'</code>'
-    +(d.sales?' <span class="dd-tag dd-tag-sales">Sales Order Form bhi yahi padhti hai</span>':'')+'</div></div>'
+    +(d.sales?' <span class="dd-tag dd-tag-sales">The Sales Order Form reads this too</span>':'')+'</div></div>'
     +srcTag+'</div>';
   if(d.hint)h+='<div class="dd-hint">'+escText(d.hint)+'</div>';
-  if(d.where)h+='<div class="dd-where">Kahan lagti hai: <code>'+escText(d.where)+'</code></div>';
+  if(d.where)h+='<div class="dd-where">Used in: <code>'+escText(d.where)+'</code></div>';
+
+  /* Suggestions for slicer values: the real values of the same Item Master
+     column, so buttons get created without spelling mistakes (on a whole-value
+     column, one letter off = 0 items). Values that are already slicers are left out. */
+  let slSuggest='';
+  if(d.imSlicerCol){
+    const src=(sarvItemMasterRows&&sarvItemMasterRows.length)?sarvItemMasterRows
+      :(sarvItemCatalog||[]).map(it=>({it,catKey:(it.category&&String(it.category).trim())?String(it.category).trim():'(No Category)'}));
+    const have=new Set(rows.map(r=>imSlNorm_(d.imSlicerCol,r.value)));
+    const vals=[...new Set(src.map(r=>{try{return imCellKey_(d.imSlicerCol,r);}catch(e){return IM_BLANK;}}))]
+      .filter(v=>v!==IM_BLANK&&!have.has(imSlNorm_(d.imSlicerCol,v)))
+      .sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
+    slSuggest='<datalist id="dd_slicerSuggest">'+vals.slice(0,1000).map(v=>'<option value="'+escText(v)+'"></option>').join('')+'</datalist>';
+    h+='<div class="dd-where">'+(src.length
+      ?'As you type in the value box, the <b>'+vals.length+'</b> values of this Item Master column are suggested.'
+      :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
+  }
 
   if(admin){
     h+='<div class="dd-add">'
-      +'<input type="text" id="dd_newValue" class="form-control" placeholder="Nayi value… (Enter dabayein)" autocomplete="off" '
+      +'<input type="text" id="dd_newValue" class="form-control" placeholder="'+(d.imSlicerCol?'Slicer value… (press Enter)':'New value… (press Enter)')+'" autocomplete="off" '
+      +(d.imSlicerCol?'list="dd_slicerSuggest" ':'')
       +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();sarvDdAddValue(\''+d.key+'\');}">'
-      +'<button class="btn btn-primary" onclick="sarvDdAddValue(\''+d.key+'\')">➕ Add Value</button>';
+      +slSuggest
+      +'<button class="btn btn-primary" onclick="sarvDdAddValue(\''+d.key+'\')">Add Value</button>';
     if(defs.length)h+='<button class="btn dd-seed" onclick="sarvDdSeedDefaults(\''+d.key+'\')" '
-      +'title="Code ke default values table me daal dein, taaki unhe bhi yahin se edit / remove kar sakein">📄 Seed Defaults</button>';
+      +'title="Put the code default values into the table so they can be edited / removed here as well">Seed Defaults</button>';
     h+='</div>';
     if(!rows.length&&defs.length)
-      h+='<div class="dd-warn">Abhi ye list <b>code ke default</b> se chal rahi hai. Pehli value add karte hi baaki defaults bhi apne aap table me aa jaayenge — list kabhi ek value ki nahi reh jaayegi.</div>';
+      h+='<div class="dd-warn">This list currently runs on the <b>code defaults</b>. As soon as you add the first value, the other defaults are added to the table automatically, so the list never shrinks to a single value.</div>';
   }else{
-    h+='<div class="dd-warn">🔒 Values add / edit / remove sirf <b>Admin</b> login se hota hai. Neeche ki list read-only hai.</div>';
+    h+='<div class="dd-warn">Only an <b>Admin</b> login can add, edit or remove values. The list below is read-only.</div>';
   }
 
   h+='<div class="table-container dd-table-wrap">'
     +'<table class="dd-table"><thead><tr>'
     +'<th style="width:46px;">#</th><th>Value</th><th style="width:160px;">Screen par</th>'
-    +'<th style="width:82px;">Kram</th><th style="width:46px;">✏️</th><th style="width:46px;">🗑️</th>'
+    +'<th style="width:82px;">Kram</th><th style="width:46px;">Edit</th><th style="width:46px;">Delete</th>'
     +'</tr></thead><tbody>';
 
   if(!rows.length){
@@ -9584,7 +10205,7 @@ function sarvDdMainHtml_(){
       ? live.map((v,i)=>'<tr class="dd-row-def"><td class="dd-dim">'+(i+1)+'</td><td><b>'+escText(v)+'</b></td>'
           +'<td class="dd-dim">'+escText((d.labels&&d.labels[v])||v)+'</td>'
           +'<td colspan="3" class="dd-dim">default</td></tr>').join('')
-      : '<tr><td colspan="6" class="dd-dim" style="text-align:center;padding:18px;">Is dropdown ki koi value nahi hai — upar se add karein.</td></tr>';
+      : '<tr><td colspan="6" class="dd-dim" style="text-align:center;padding:18px;">This dropdown has no values. Add them above.</td></tr>';
   }else{
     rows.forEach((r,i)=>{
       const editing=sarvDdEditId===r.id;
@@ -9597,13 +10218,13 @@ function sarvDdMainHtml_(){
         +'<td class="dd-dim">'+escText((d.labels&&d.labels[r.value])||r.value)+'</td>';
       if(editing){
         h+='<td colspan="3" class="dd-act">'
-          +'<button class="dd-mini dd-mini-ok" onclick="sarvDdSaveEdit('+r.id+')">💾 Save</button>'
+          +'<button class="dd-mini dd-mini-ok" onclick="sarvDdSaveEdit('+r.id+')">Save</button>'
           +'<button class="dd-mini" onclick="sarvDdCancelEdit()">✕</button></td>';
       }else if(admin){
         h+='<td class="dd-act">'
-          +'<button class="dd-mini" title="Upar" onclick="sarvDdMoveValue('+r.id+',-1)"'+(i===0?' disabled':'')+'>▲</button>'
-          +'<button class="dd-mini" title="Neeche" onclick="sarvDdMoveValue('+r.id+',1)"'+(i===rows.length-1?' disabled':'')+'>▼</button></td>'
-          +'<td class="dd-act"><button class="dd-mini dd-mini-ed" title="Edit" onclick="sarvDdStartEdit('+r.id+')">✏️</button></td>'
+          +'<button class="dd-mini" title="Up" onclick="sarvDdMoveValue('+r.id+',-1)"'+(i===0?' disabled':'')+'>▲</button>'
+          +'<button class="dd-mini" title="Down" onclick="sarvDdMoveValue('+r.id+',1)"'+(i===rows.length-1?' disabled':'')+'>▼</button></td>'
+          +'<td class="dd-act"><button class="dd-mini dd-mini-ed" title="Edit" onclick="sarvDdStartEdit('+r.id+')">✎</button></td>'
           +'<td class="dd-act"><button class="dd-mini dd-mini-del" title="Remove" onclick="sarvDdDeleteValue('+r.id+')">✕</button></td>';
       }else{
         h+='<td colspan="3" class="dd-dim">—</td>';
@@ -9617,7 +10238,7 @@ function sarvDdMainHtml_(){
 
 function sarvDdRender_(){
   if(!byId('dropdownMasterSub'))return;
-  // Screen sabko khulti hai (read-only), par badlaav sirf Admin ka.
+  // The screen opens for everyone (read-only), but only the Admin can change it.
   const locked=byId('dd_lockedNotice');if(locked)locked.style.display=isAdmin()?'none':'block';
   if(!sarvDdPick){
     const first=SARV_DROPDOWNS.find(d=>!d.group);
@@ -9750,13 +10371,13 @@ async function buildItemLedger(){
 
 async function loadItemTracker(){
   const host=byId('itLeResults');if(!host)return;
-  if(!SB_READY){host.innerHTML='<div style="text-align:center;padding:24px;color:#f59e0b;">⚠️ Supabase not configured</div>';return}
-  host.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;">⏳ Ledger ban raha hai...</div>';
+  if(!SB_READY){host.innerHTML='<div style="text-align:center;padding:24px;color:#f59e0b;">Supabase not configured</div>';return}
+  host.innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;">Building the ledger...</div>';
   try{
     sarvItemLedger=await buildItemLedger();
   }catch(e){
     sarvItemLedger=[];
-    host.innerHTML='<div style="text-align:center;padding:24px;color:#ef4444;">❌ Ledger load nahi hua: '+escText(e.message||e)+'</div>';
+    host.innerHTML='<div style="text-align:center;padding:24px;color:#ef4444;">The ledger did not load: '+escText(e.message||e)+'</div>';
     setItemLedgerExportsEnabled(false);
     return;
   }
@@ -9785,8 +10406,8 @@ function itemLedgerDocCell_(doc){
   if(!doc)return '—';
   const m=sarvItemLedgerPdf[doc]||{};
   const one=m.SINGLE||'',two=m.TWO_PAGE||'';
-  if(!one&&!two)return '<span title="Is record ki PDF index me nahi mili">'+escText(doc)+'</span>';
-  return '<a class="it-doc" href="'+escText(one||two)+'" target="_blank" rel="noopener" title="'+escText(doc)+' — PDF kholne ke liye click karein" style="color:#1d4ed8;text-decoration:underline;">'+escText(doc)+'</a>'
+  if(!one&&!two)return '<span title="No PDF found in the index for this record">'+escText(doc)+'</span>';
+  return '<a class="it-doc" href="'+escText(one||two)+'" target="_blank" rel="noopener" title="'+escText(doc)+': click to open the PDF" style="color:#1d4ed8;text-decoration:underline;">'+escText(doc)+'</a>'
     +(one&&two?' <a class="it-doc" href="'+escText(two)+'" target="_blank" rel="noopener" title="Two-page PDF" style="font-size:9px;font-weight:800;color:#166534;background:#f0fdf4;border:1px solid #86efac;border-radius:4px;padding:0 4px;text-decoration:none;">2-Pg</a>':'');
 }
 
@@ -9807,7 +10428,7 @@ function renderItemLedger(){
   set('itLeNet',nNum_(tIn-tOut));
   setItemLedgerExportsEnabled(!!txns||!!sarvItemLedger.length);
   if(!sarvItemLedger.length){
-    host.innerHTML='<div style="text-align:center;padding:36px 16px;color:#94a3b8;font-size:12px;">Is filter par koi movement nahi mila.</div>';
+    host.innerHTML='<div style="text-align:center;padding:36px 16px;color:#94a3b8;font-size:12px;">No movements match this filter.</div>';
     return;
   }
   const th='padding:6px 7px;background:#0d5c53;color:#fff;font-size:10px;font-weight:800;text-align:left;white-space:nowrap;';
@@ -9816,7 +10437,7 @@ function renderItemLedger(){
   // is a party-wise net — not the item's stock on hand. Say so plainly.
   const partyNote=itLeVal('itLeSupplier')
     ? '<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:7px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:#92400e;font-weight:600;">'
-      +'&#9432; Party filter lagaa hai — Balance sirf <b>'+escText(itLeVal('itLeSupplier'))+'</b> ke movements ka net hai, item ka total stock nahi.</div>'
+      +'A party filter is applied: the Balance is the net of movements with <b>'+escText(itLeVal('itLeSupplier'))+'</b> only, not the item\'s total stock.</div>'
     : '';
   host.innerHTML=partyNote+sarvItemLedger.map(g=>{
     const head='<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;background:#eff6ff;border:1px solid #bfdbfe;border-bottom:none;border-radius:8px 8px 0 0;padding:8px 12px;">'
@@ -9868,7 +10489,7 @@ function itemLedgerFilterText(){
 }
 
 function exportItemLedgerCsv(){
-  if(!sarvItemLedger.length)return showToast('Pehle ledger generate karein','warn');
+  if(!sarvItemLedger.length)return showToast('Generate the ledger first','warn');
   const esc=v=>{const s=String(v??'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   const out=[];
   out.push(['SARV INDIA HOME FURNISHING — ITEM STOCK LEDGER'].map(esc).join(','));
@@ -9936,20 +10557,20 @@ let consPdfIndex={};        // document_no -> {SINGLE:url, TWO_PAGE:url}
 let consEntryCache=null;    // {at, inward:[], outward:[]} — headers, re-used by the dependent pickers
 
 function consVal(id){return (byId(id)?.value||'').trim()}
-/* Ek multi-pick filter ki chuni hui values.
-   Entry Type, Nature aur Lot ab checkbox groups hain (Ctrl+click wala
-   <select multiple> phone aur chhoti screen par practically bina-batai
-   feature tha — log ek hi value chun paate the). Ye function dono shakal
-   padhta hai, isi liye niche ke saare call sites (filter build, scope
-   signature, chips, CSV, print) jaise the waise hi chal rahe hain. */
+/* The chosen values of a multi-pick filter.
+   Entry Type, Nature and Lot are now checkbox groups (the Ctrl+click
+   <select multiple> was effectively a hidden feature on phones and small
+   screens; people could only pick one value). This function reads both
+   shapes, so all the call sites below (filter build, scope signature, chips,
+   CSV, print) keep working as they were. */
 function consMulti(id){
   const host=byId(id);
   if(!host)return [];
   if(host.tagName==='SELECT')return [...host.selectedOptions].map(o=>o.value).filter(Boolean);
   return [...host.querySelectorAll('input[type=checkbox]:checked')].map(c=>c.value).filter(Boolean);
 }
-/* Ek checkbox group ki values set karna — Reset aur "All / Clear" isse
-   chalte hain. `values` null do to sab tick. */
+/* Sets the values of a checkbox group; Reset and "All / Clear" use this.
+   Pass `values` as null to tick everything. */
 function consSetMulti_(id,values){
   const host=byId(id);if(!host)return;
   const want=values==null?null:new Set(values);
@@ -9957,26 +10578,25 @@ function consSetMulti_(id,values){
     c.checked=want?want.has(c.value):true;
   });
 }
-/* Report ki qty.
-   nNum_ hamesha do decimal likhta hai (wo paison ke liye bana hai), to 50
-   bhi "50.00" dikhta tha aur poori grid decimal se bhari lagti thi. Yahan
-   decimal SIRF tab dikhta hai jab figure me sach me decimal ho, aur tab do
-   jagah tak — screen, subtotal, CSV aur PDF, sab isi se. */
+/* Report quantities.
+   nNum_ always writes two decimals (it was made for money), so even 50 showed
+   as "50.00" and the whole grid looked full of decimals. Here decimals show
+   ONLY when the figure really has one, and then to two places: screen,
+   subtotal, CSV and PDF all use this. */
 const consQty_=v=>{
   const n=pNum(v);
-  /* Poora number plain (50), decimal wala POORE do jagah tak (50.5 → 50.50) —
-     taaki ek column ke figures ek seedh me padhe jaayein. 1e-7 ka guard float
-     drift ke liye hai: 50.0000000001 ko 50 hi maana jaata hai, warna wo
-     bewajah "50.00" ban jaata. */
+  /* A whole number plain (50), a decimal one to a FULL two places (50.5 → 50.50),
+     so a column's figures line up when read. The 1e-7 guard is for float drift:
+     50.0000000001 is treated as 50, otherwise it would needlessly become "50.00". */
   const dec=Math.abs(n%1)>1e-7?2:0;
   return n.toLocaleString('en-IN',{minimumFractionDigits:dec,maximumFractionDigits:dec});
 };
 /* Entry types the report is running on. Nothing ticked is read as "all of
    them" rather than "none" — an empty grid would just look broken. */
 function consSelectedTypes(){
-  // BALANCE koi entry type nahi — wo sirf ek column on/off karta hai
-  // (consBalanceOn_), isliye yahan se nikal diya jaata hai. Warna filter
-  // "BALANCE" naam ka entry type dhoondhta aur report khaali aati.
+  // BALANCE is not an entry type; it only switches a column on or off
+  // (consBalanceOn_), so it is removed here. Otherwise the filter would look
+  // for an entry type called "BALANCE" and the report would come back empty.
   const picked=consMulti('consEntryType').filter(v=>v!=='BALANCE');
   return picked.length?picked:Object.keys(CONS_TYPES);
 }
@@ -10078,9 +10698,9 @@ function consFilterEntries_(cache,opts={}){
    in play), and Lot numbers come from the entries those types actually have —
    so a lot that belongs only to an OUTWARD disappears the moment OUTWARD is
    unticked. Both keep the user's current pick where it is still valid. */
-/* Inward / Outward ki nature list Dropdown Master se aati hai (wahi jo form
-   offer karta hai), taaki wahan add ki gayi nayi nature yahan filter me bhi
-   dikhe. ISSUE ki apni locked nature hai, wo CONS_TYPES se hi aati hai. */
+/* The Inward / Outward nature list comes from Dropdown Master (the same one
+   the form offers), so a nature added there also shows in this filter.
+   ISSUE has its own locked nature, which comes from CONS_TYPES. */
 const CONS_NATURE_DD_KEY={'INWARD':'erp_natureOfInward','INWARD NB':'erp_natureOfInward','OUTWARD':'erp_natureOfDispatch'};
 function consTypeNatures_(t){
   const k=CONS_NATURE_DD_KEY[t];
@@ -10096,7 +10716,7 @@ function consRefreshNature_(){
   host.innerHTML=names.length
     ? names.map(n=>'<label><input type="checkbox" value="'+escText(n)+'"'+(keep.has(n)?' checked':'')+'> '
         +escText(CONS_NATURE_LABEL[n]||n)+'</label>').join('')
-    : '<span class="cons-chk-empty">Chune hue Entry Type par koi nature nahi</span>';
+    : '<span class="cons-chk-empty">No natures for the chosen Entry Type</span>';
 }
 /* Rebuilds one dependent <select> from a list of values, keeping the current
    pick where it survives. A pick that no longer exists falls back to "All"
@@ -10120,12 +10740,11 @@ function consFillMultiPicker_(id,values,emptyTitle,countNoun){
     ? values.map(v=>'<label><input type="checkbox" value="'+escText(v)+'"'+(keep.has(v)?' checked':'')+'> '
         +escText(v)+'</label>').join('')
     : '<span class="cons-chk-empty">'+escText(emptyTitle)+'</span>';
-  host.title=values.length?(values.length+' '+countNoun+' — kuch na chunein to saare'):emptyTitle;
+  host.title=values.length?(values.length+' '+countNoun+'; choose none for all'):emptyTitle;
   consSyncLotBtn_();
 }
-/* Lot button ka label — band dropdown ko khud batana padta hai ki andar kya
-   chuna hua hai, warna ek narrowed report bilkul ek khaali report jaisi
-   dikhti hai. */
+/* The Lot button's label: a closed dropdown has to say itself what is chosen
+   inside, otherwise a narrowed report looks exactly like an empty one. */
 function consSyncLotBtn_(){
   const btn=byId('consLotBtn'),txt=byId('consLotBtnText');
   if(!btn||!txt)return;
@@ -10134,11 +10753,11 @@ function consSyncLotBtn_(){
   txt.textContent=!picked.length?'All Lots'
     :(picked.length===1?picked[0]:picked.length+' of '+total+' lots');
   btn.classList.toggle('is-set',picked.length>0);
-  btn.title=picked.length?('Chune hue lots: '+picked.join(', ')):'Koi lot nahi chuna — saare lots';
+  btn.title=picked.length?('Chosen lots: '+picked.join(', ')):'No lot chosen; all lots';
 }
-/* All / Clear ke baad: Lot ka label theek karo, aur Entry Type / Nature / Lot
-   me se kuch badla ho to neeche ki dependent lists dobara banwao — wahi kaam
-   jo un pickers ka apna change event karta hai. */
+/* After All / Clear: fix the Lot label, and if Entry Type / Nature / Lot
+   changed, rebuild the dependent lists below, the same thing those pickers'
+   own change event does. */
 function consAfterMulti_(id){
   if(id==='consLot')consSyncLotBtn_();
   if(id==='consEntryType')consRefreshNature_();
@@ -10150,7 +10769,7 @@ function consToggleLotPanel_(open){
   p.classList.toggle('open',want);
   if(want){const s=byId('consLotSearch');if(s){s.value='';consFilterLotList_();s.focus();}}
 }
-// Panel ke andar ka search — lambi lot list me ek lot dhoondhne ke liye.
+// Search inside the panel, to find one lot in a long lot list.
 function consFilterLotList_(){
   const q=(byId('consLotSearch')?.value||'').trim().toUpperCase();
   byId('consLot')?.querySelectorAll('label').forEach(l=>{
@@ -10165,7 +10784,7 @@ async function consRefreshLots_(){
     lots=[...new Set(consFilterEntries_(cache,{ignore:{lot:true}}).map(e=>e.lot).filter(Boolean))]
       .sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   }catch(e){console.warn('[SARV] Consumption lot list skipped:',e.message||e);}
-  consFillMultiPicker_('consLot',lots,'In filters par koi Lot No. nahi mila','lot(s)');
+  consFillMultiPicker_('consLot',lots,'No Lot No. found for these filters','lot(s)');
 }
 async function consRefreshParties_(){
   if(!byId('consParty'))return;
@@ -10175,7 +10794,7 @@ async function consRefreshParties_(){
     parties=[...new Set(consFilterEntries_(cache,{ignore:{party:true}}).map(e=>e.party).filter(p=>p&&p!=='-'))]
       .sort((a,b)=>a.localeCompare(b));
   }catch(e){console.warn('[SARV] Consumption party list skipped:',e.message||e);}
-  consFillPicker_('consParty',parties,'All Parties','In filters par koi party nahi mili','party/parties');
+  consFillPicker_('consParty',parties,'All Parties','No party found for these filters','party/parties');
 }
 /* ── Item picker ──────────────────────────────────────────────────
    The only dependent picker that needs the LINES, because "which items moved"
@@ -10193,7 +10812,7 @@ async function consRefreshItems_(){
   if(!byId('consItem'))return;
   const sig=consScopeSig_();
   if(consItemScope.sig===sig){
-    consFillPicker_('consItem',consItemScope.names,'All Items','In filters par kisi item ka movement nahi','item(s)');
+    consFillPicker_('consItem',consItemScope.names,'All Items','No item movements for these filters','item(s)');
     return;
   }
   let names=[];
@@ -10226,7 +10845,7 @@ async function consRefreshItems_(){
       .filter(it=>!cat||String(it.category||'')===cat)
       .map(it=>it.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   }
-  consFillPicker_('consItem',names,'All Items','In filters par kisi item ka movement nahi','item(s)');
+  consFillPicker_('consItem',names,'All Items','No item movements for these filters','item(s)');
 }
 /* Entry Type is the root: Nature, then Lot and Party off the headers, then
    Items off the lines. Run in that order because each one narrows the next. */
@@ -10303,11 +10922,11 @@ function consBuildColumns_(from,to,period){
 /* ── The report ───────────────────────────────────────────────────── */
 async function buildConsumptionReport(){
   const from=consVal('consFrom'), to=consVal('consTo');
-  if(!from||!to)throw new Error('From Date aur To Date dono bharein.');
-  if(from>to)throw new Error('From Date, To Date se baad ki nahi ho sakti.');
+  if(!from||!to)throw new Error('Please fill in both From Date and To Date.');
+  if(from>to)throw new Error('The From Date cannot be later than the To Date.');
   const period=consVal('consPeriod')||'DAY';
   const cols=consBuildColumns_(from,to,period);
-  if(!cols.length)throw new Error('Is period me koi column nahi bana — dates check karein.');
+  if(!cols.length)throw new Error('No columns were created for this period. Please check the dates.');
 
   const cache=await consFetchEntries_(true);
   const entries=consFilterEntries_(cache);
@@ -10433,14 +11052,14 @@ function consPdfUrl_(doc){
 
 async function runConsumptionReport(){
   const host=byId('consBody');if(!host)return;
-  if(!SB_READY){host.innerHTML='<div class="cons-empty">⚠️ Supabase not configured</div>';return}
-  host.innerHTML='<div class="cons-empty">⏳ Report ban rahi hai...</div>';
+  if(!SB_READY){host.innerHTML='<div class="cons-empty">Supabase not configured</div>';return}
+  host.innerHTML='<div class="cons-empty">Building the report...</div>';
   consSetExportsEnabled(false);
   try{
     consReport=await buildConsumptionReport();
   }catch(e){
     consReport=null;
-    host.innerHTML='<div class="cons-empty" style="color:#ef4444;">❌ '+escText(e.message||e)+'</div>';
+    host.innerHTML='<div class="cons-empty" style="color:#ef4444;">'+escText(e.message||e)+'</div>';
     return;
   }
   await consLoadPdfIndex_(consReport.meta.docs);
@@ -10466,9 +11085,9 @@ function consSetExportsEnabled(on){
    where a part's specification belongs. TOTAL QTY is deliberately the last
    frozen column: it is the one figure that has to stay readable while the
    dates scroll past it. */
-/* Frozen (left-hand) columns. `balance` tabhi aata hai jab Entry Type ke
-   checkboxes me BALANCE ticked ho — isi liye yahan poori list hai aur
-   consFixedCols_() us waqt ki active list deta hai. */
+/* Frozen (left-hand) columns. `balance` appears only when BALANCE is ticked in
+   the Entry Type checkboxes, which is why the full list is here and
+   consFixedCols_() returns the list active at that moment. */
 const CONS_ALL_FIXED_COLS=[
   {key:'party',  label:'PARTY / SUPPLIER', w:168, cls:'cons-party', filter:'text'},
   {key:'name',   label:'ITEM NAME',        w:196, cls:'cons-name',  filter:'text'},
@@ -10478,10 +11097,10 @@ const CONS_ALL_FIXED_COLS=[
   {key:'total',  label:'TOTAL QTY',        w:92,  cls:'cons-total', filter:'num'},
   {key:'balance',label:'BALANCE',          w:92,  cls:'cons-total', filter:'num', optional:'BALANCE'},
 ];
-/* BALANCE ticked hai ya nahi. Ye Entry Type ke checkbox group me 5va box hai,
-   par ye koi entry type NAHI hai — ye sirf ek column on/off karta hai, isliye
-   consSelectedTypes() ise jaan-boojh kar nikal deta hai (warna wo "BALANCE"
-   naam ka entry type dhoondhne lagta aur report khaali aati). */
+/* Whether BALANCE is ticked. It is the 5th box in the Entry Type checkbox
+   group, but it is NOT an entry type; it only switches a column on or off, so
+   consSelectedTypes() deliberately leaves it out (otherwise it would look for
+   an entry type called "BALANCE" and the report would come back empty). */
 function consBalanceOn_(){return consMulti('consEntryType').indexOf('BALANCE')>=0}
 function consFixedCols_(){
   return CONS_ALL_FIXED_COLS.filter(c=>!c.optional||(c.optional==='BALANCE'&&consBalanceOn_()));
@@ -10498,9 +11117,9 @@ function consRowValue_(r,key){
     case 'desc': return r.it.description||'';
     case 'cat':  return r.it.category||'';
     case 'uom':  return r.uom||'';
-    // BALANCE = total IN − total OUT. r.total isi tarah banta hai (IN jodta
-    // hai, OUT ghatata hai — dekhein consAddLine_), to dono column ek hi
-    // figure dikhate hain; BALANCE wo figure apne naam se dikhane ke liye hai.
+    // BALANCE = total IN − total OUT. r.total is built the same way (it adds IN
+    // and subtracts OUT; see consAddLine_), so both columns show the same
+    // figure; BALANCE exists to show that figure under its own name.
     case 'total':
     case 'balance':return consQty_(r.total);
     default:     return '';
@@ -10520,7 +11139,7 @@ function renderConsumptionReport(){
   if(sub)sub.textContent=consFilterText_();
   consSetExportsEnabled(!!rows.length);
   if(!rows.length){
-    host.innerHTML='<div class="cons-empty">In filters par koi item nahi mila.</div>';
+    host.innerHTML='<div class="cons-empty">No items found for these filters.</div>';
     set('consRowCount','0');set('consDocCount','0');
     set('consTotalIn','0');set('consTotalOut','0');set('consNet','0');
     consRenderChips_();
@@ -10531,9 +11150,9 @@ function renderConsumptionReport(){
     '<th class="cons-frz'+(i===consFixedCols_().length-1?' cons-last':'')
     +(consColFilterOn_(c.key)?' is-filtered':'')+'"'
     +' style="left:'+consFixedLeft_(i)+'px;width:'+c.w+'px;min-width:'+c.w+'px;"'
-    +' title="'+escText(c.label+(consColFilterOn_(c.key)?' — filter lagaa hai':''))+'">'
+    +' title="'+escText(c.label+(consColFilterOn_(c.key)?' (filtered)':''))+'">'
     +escText(c.label)
-    +'<span class="cons-fbtn" data-fcol="'+escText(c.key)+'" title="Is column par filter lagayein">&#9662;</span>'
+    +'<span class="cons-fbtn" data-fcol="'+escText(c.key)+'" title="Filter this column">&#9662;</span>'
     +'</th>').join('');
   // The label goes in a <span> so the rotation lives there and not on the
   // sticky <th> — see the .cons-dh > span note in the stylesheet.
@@ -10573,7 +11192,7 @@ function renderConsumptionReport(){
       const dir=cell.inQty&&cell.outQty?'mix':(cell.inQty?'in':'out');
       const shown=dir==='in'?cell.inQty:dir==='out'?cell.outQty:(cell.inQty-cell.outQty);
       const tip=cell.docs.map(d=>(d.dir==='IN'?'▲ ':'▼ ')+d.doc+'  '+consQty_(d.qty)).join('\n')
-        +'\n\nClick: in-out PDF kholein';
+        +'\n\nClick: open the in/out PDF';
       return '<td class="cons-cell">'
         +'<span class="cons-hit dir-'+dir+'" data-r="'+ri+'" data-c="'+escText(c.key)+'" title="'+escText(tip)+'">'
         +escText(consQty_(shown))+'</span></td>';
@@ -10624,7 +11243,7 @@ function consOpenCellDocs_(span){
   if(docs.length===1){
     const url=consPdfUrl_(docs[0].doc);
     if(url){window.open(url,'_blank','noopener');return;}
-    showToast('⚠️ '+escText(docs[0].doc)+' ki PDF index me nahi mili — Print History se check karein','warn');
+    showToast('No PDF found in the index for '+escText(docs[0].doc)+'. Check Print History.','warn');
     return;
   }
   const pop=document.createElement('div');
@@ -10637,8 +11256,8 @@ function consOpenCellDocs_(span){
         +'<span style="color:#64748b;font-size:10px;">'+escText(d.type)+(d.nature?(' · '+escText(CONS_NATURE_LABEL[d.nature]||d.nature)):'')+'</span>'
         +'<span class="q" style="color:'+(d.dir==='IN'?'#166534':'#b91c1c')+';">'+escText(consQty_(d.qty))+'</span>';
       return url
-        ? '<a class="cons-pop-row" href="'+escText(url)+'" target="_blank" rel="noopener" title="PDF kholein">'+left+'</a>'
-        : '<div class="cons-pop-row no-pdf" title="Is record ki PDF index me nahi mili">'+left+'</div>';
+        ? '<a class="cons-pop-row" href="'+escText(url)+'" target="_blank" rel="noopener" title="Open PDF">'+left+'</a>'
+        : '<div class="cons-pop-row no-pdf" title="No PDF found in the index for this record">'+left+'</div>';
     }).join('');
   document.body.appendChild(pop);
   // Anchored to the cell, then nudged back inside the viewport.
@@ -10769,14 +11388,14 @@ function consRenderChips_(){
   const on=consFixedCols_().filter(c=>consColFilterOn_(c.key));
   if(!on.length){bar.style.display='none';bar.innerHTML='';return;}
   bar.style.display='flex';
-  bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#92400e;">&#128269; COLUMN FILTERS:</span>'
+  bar.innerHTML='<span style="font-size:10px;font-weight:800;color:#92400e;">COLUMN FILTERS:</span>'
     +on.map(c=>{
       const f=consColFilters[c.key];
       const txt=f.vals
         ? (f.vals.size<=2?[...f.vals].join(', '):f.vals.size+' values')
         : ((f.min!=null?('≥'+f.min):'')+(f.min!=null&&f.max!=null?' & ':'')+(f.max!=null?('≤'+f.max):''));
       return '<span class="cons-chip">'+escText(c.label)+': '+escText(txt)
-        +'<button type="button" data-clearcol="'+escText(c.key)+'" title="Is column ka filter hatayein">&#10006;</button></span>';
+        +'<button type="button" data-clearcol="'+escText(c.key)+'" title="Remove this column\'s filter">&#10006;</button></span>';
     }).join('')
     +'<button type="button" data-clearcol="*" style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'
     +'border-radius:12px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">&#10006; Clear All ('+on.length+')</button>';
@@ -10801,7 +11420,7 @@ function consOpenColFilter_(btn){
       +'<input type="number" step="any" id="consFMin" value="'+(f.min!=null?escText(f.min):'')+'">'
       +'<span style="font-size:10px;font-weight:800;color:#475569;">MAX</span>'
       +'<input type="number" step="any" id="consFMax" value="'+(f.max!=null?escText(f.max):'')+'"></div>'
-      +'<div style="padding:0 10px 8px;font-size:10px;color:#64748b;">Khali chhodein to us taraf koi limit nahi.</div>'
+      +'<div style="padding:0 10px 8px;font-size:10px;color:#64748b;">Leave a side empty for no limit on that side.</div>'
       +'<div class="cons-fbar"><button type="button" data-fact="clear">Clear</button>'
       +'<button type="button" class="ok" data-fact="apply">Apply</button></div>';
   }else{
@@ -10884,7 +11503,7 @@ function consFilterText_(){
    direction is written as a sign (receipts +, issues −) because a spreadsheet
    has no colour to carry it. */
 function exportConsumptionCsv(){
-  if(!consReport||!consReport.rows.length)return showToast('Pehle report generate karein','warn');
+  if(!consReport||!consReport.rows.length)return showToast('Generate the report first','warn');
   const esc=v=>{const s=String(v??'');return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   const {cols,rows}=consReport;
   const out=[];
@@ -10944,9 +11563,9 @@ function consVisibleRows_(){
    switching Columns to Week or Month, which is said out loud rather than
    silently producing a wall of 4pt digits. */
 function printConsumptionReport(){
-  if(!consReport||!consReport.rows.length)return showToast('Pehle report generate karein','warn');
+  if(!consReport||!consReport.rows.length)return showToast('Generate the report first','warn');
   const rows=consVisibleRows_();
-  if(!rows.length)return showToast('Filters ne saari rows hata di hain — pehle filter hatayein','warn');
+  if(!rows.length)return showToast('The filters have removed every row. Remove a filter first.','warn');
   const {cols}=consReport;
   // Fewer columns → bigger type. The numbers are the point; the grid lines are not.
   const fs=cols.length<=14?9:cols.length<=26?7.5:cols.length<=40?6.2:5.2;
@@ -10994,15 +11613,14 @@ function printConsumptionReport(){
     +'h1{font-size:13px;margin:0 0 2px}'
     +'.meta{font-size:8.5px;color:#475569;margin-bottom:6px;line-height:1.45}'
     /* ── AUTOFIT ─────────────────────────────────────────────────────
-       table-layout:auto, taaki browser har column ko uske content ke hisaab
-       se naape. Pehle `fixed` tha with per-column hard widths + nowrap +
-       ellipsis: lamba item naam beech se kat jaata tha aur "YARN 2/32 CO…"
-       chhap kar jaata, jo ek stock report me padhne layak hi nahi.
+       table-layout:auto, so the browser sizes each column to its content. It
+       used to be `fixed` with hard per-column widths + nowrap + ellipsis: a
+       long item name was cut in the middle and printed as "YARN 2/32 CO…",
+       which is unreadable in a stock report.
 
-       Text columns ab wrap karti hain (word-break ke saath, taaki ek lamba
-       code bhi column tod kar bahar na nikle) aur row ki height us wrap ke
-       hisaab se khud badh jaati hai. Number columns nowrap rehti hain —
-       ek figure do lines me tootna nahi chahiye. */
+       Text columns now wrap (with word-break, so even a long code can't burst
+       out of its column) and the row height grows with the wrap. Number
+       columns stay nowrap; a figure must never break across two lines. */
     +'table{border-collapse:collapse;width:100%;table-layout:auto;font-size:'+fs+'px}'
     // Repeat the header on every printed page — the one thing the on-screen
     // grid's sticky header cannot do on paper.
@@ -11010,11 +11628,11 @@ function printConsumptionReport(){
     +'th,td{border:.5px solid #94a3b8;padding:1.5px 3px;'
       +'white-space:normal;overflow-wrap:break-word;word-break:break-word;vertical-align:top}'
     +'th{background:#d9e84a;color:#1a2e05;font-size:'+(fs-.5)+'px;text-align:left}'
-    /* Date headers: rotated text, par height FIX nahi. Pehle height:62px tha,
-       to chhota label (month) bhi 62px ki patti leta aur lamba label kat
-       jaata. Height chhodne par rotated box apne text ke hisaab se khud
-       naapta hai — yani sabse lambe label ke mutabik, jo asli autofit hai.
-       min-height sirf itni ki chhota label bhi dabba jaisa lage. */
+    /* Date headers: rotated text, but NO fixed height. It used to be
+       height:62px, so a short label (a month) took a 62px strip and a long
+       label got cut. Without a height the rotated box sizes itself to its text,
+       i.e. to the longest label, which is real autofit. min-height is only
+       enough for a short label to still look like a box. */
     +'th.dh{text-align:center;min-width:'+dw+'px;'
       +'writing-mode:vertical-rl;transform:rotate(180deg);'
       +'min-height:44px;padding:3px 1px;white-space:nowrap}'
@@ -11030,10 +11648,10 @@ function printConsumptionReport(){
     +'tr.sub th.d{text-align:center}'
     +'tr.sub th.tot{background:#047857}'
     +'tr.sub th:first-child{text-align:left;text-transform:uppercase;letter-spacing:.2px}'
-    /* Per-column hints, HARD width nahi. `width` dene se table-layout:auto ka
-       naapna bekaar ho jaata hai; min/max dene se column apne content ke
-       hisaab se saans leti hai par ek lamba description poori table ko
-       nigal bhi nahi sakti. */
+    /* Per-column hints, not HARD widths. Setting `width` defeats
+       table-layout:auto's sizing; min/max lets a column breathe with its
+       content while stopping one long description from swallowing the whole
+       table. */
     +consFixedCols_().map((c,i)=>'th.fx:nth-child('+(i+1)+'),td.fx:nth-child('+(i+1)+'){min-width:'
       +Math.round(c.w*0.42)+'px;max-width:'+Math.round(c.w*0.95)+'px}').join('')
     +'</style></head><body>'
@@ -11085,8 +11703,8 @@ function printConsumptionReport(){
   };
   document.body.appendChild(ifr);
   ifr.srcdoc=html;
-  showToast('🖨 Print dialog khul raha hai — <b>Landscape</b> aur <b>"Background graphics"</b> on rakhein. Wahin se "Save as PDF" bhi hota hai.','warn');
-  if(cols.length>45)showToast('ℹ️ '+cols.length+' date columns — print par bahut chhote padenge. Columns ko <b>Week-wise</b> ya <b>Month-wise</b> karke dobara print karein.','warn');
+  showToast('The print dialog is opening. Keep <b>Landscape</b> and <b>"Background graphics"</b> on. "Save as PDF" is also available there.','warn');
+  if(cols.length>45)showToast(''+cols.length+' date columns will be very small in print. Switch the columns to <b>Week-wise</b> or <b>Month-wise</b> and print again.','warn');
 }
 /* Last resort when a frame cannot be printed: a real tab holding a real
    document (a blob URL, not about:blank), which the user can print by hand. */
@@ -11096,20 +11714,20 @@ function consPrintFallbackTab_(html){
     const w=window.open(url,'_blank');
     if(!w){
       URL.revokeObjectURL(url);
-      showToast('⚠️ Print window block ho gayi — is site ke liye pop-ups allow karein, ya <b>CSV</b> export use karein','error');
+      showToast('The print window was blocked. Allow pop-ups for this site, or use the <b>CSV</b> export.','error');
       return;
     }
     setTimeout(()=>URL.revokeObjectURL(url),60000);
-    showToast('🖨 Report nayi tab me khul gayi — wahan Ctrl+P dabakar print / PDF save karein','warn');
+    showToast('The report opened in a new tab. Press Ctrl+P there to print or save as PDF.','warn');
   }catch(e){
-    showToast('⚠️ Print nahi ho paaya: '+escText(e.message||e)+' — CSV export use karein','error');
+    showToast('Printing failed: '+escText(e.message||e)+'. Use the CSV export instead.','error');
   }
 }
 
 /* ── Open / close / wiring ────────────────────────────────────────── */
 function consResetFilters_(){
-  // Chaar entry types ticked, BALANCE nahi — wo ek extra column hai, default
-  // nahi (saari reports ko ek dohraya hua column dene ka matlab nahi).
+  // The four entry types ticked, not BALANCE: it is an extra column, not a
+  // default (there's no reason to give every report a duplicated column).
   consSetMulti_('consEntryType',['INWARD','INWARD NB','OUTWARD','ISSUE']);
   // A fortnight is what the reference sheet shows and what fits on a screen
   // without scrolling sideways — a sensible place to start, not a limit.
@@ -11129,7 +11747,7 @@ function consResetFilters_(){
 }
 async function openConsumptionTracker(){
   const ov=byId('consOverlay');if(!ov)return;
-  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
   ov.classList.add('active');
   /* Category is the only picker read straight off the Item Master — it is a
      property of the catalogue, not of what moved. Lot, Party and Item are all
@@ -11159,7 +11777,7 @@ function closeConsumptionTracker(){
 }
 
 /* ================================================================
-   PO DETAILS REPORT — Print History / Reports → 📋 PO Details
+   PO DETAILS REPORT — Print History / Reports → PO Details
    One row per PO line, showing what was ordered against what has actually
    been received, in both Qty and Weight:
      PO Rate / Rec. Rate are AFTER discount, i.e. what the line really costs.
@@ -11248,7 +11866,7 @@ function updatePodStatusBtnLabel(){
   // Everything ticked filters nothing out, so it reads the same as nothing
   // ticked — "All" — and the button stays neutral instead of looking armed.
   const narrowing=n>0&&n<total;
-  btn.innerHTML='&#128278; PO Status: '+(narrowing?(n===1?escText([...sarvPodStatusSel][0]):n+' of '+total):'All')+' &#9662;';
+  btn.innerHTML='PO Status: '+(narrowing?(n===1?escText([...sarvPodStatusSel][0]):n+' of '+total):'All')+' &#9662;';
   btn.style.background=narrowing?'#fee2e2':'#eef2ff';
   btn.style.color=narrowing?'#b91c1c':'#4338ca';
   btn.style.borderColor=narrowing?'#fca5a5':'transparent';
@@ -11284,9 +11902,9 @@ function togglePodStatusFilter(){
   p.style.display=(p.style.display==='none'||!p.style.display)?'block':'none';
 }
 async function loadPoDetailsReport(){
-  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
   const body=byId('pod_tbody');
-  if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">⏳ Loading…</td></tr>';
+  if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
   try{
     const [pos,poLines,inwLines,items]=await Promise.all([
       fetchAllRows('purchase_orders','id,po_no,po_date,vendor_name,status'),
@@ -11345,7 +11963,7 @@ async function loadPoDetailsReport(){
     renderPoDetailsReport();
   }catch(e){
     dbError(e);
-    if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#ef4444;">❌ '+escText(e.message||e)+'</td></tr>';
+    if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#ef4444;">'+escText(e.message||e)+'</td></tr>';
   }
 }
 function renderPoDetailsReport(){
@@ -11353,7 +11971,7 @@ function renderPoDetailsReport(){
   const rows=poDetailsFiltered_();
   const status=byId('pod_status_text');
   if(status)status.textContent=rows.length?(rows.length+' PO line(s)'):'No PO lines match this filter';
-  if(!rows.length){tb.innerHTML='<tr><td colspan="'+POD_HEAD.length+'" style="text-align:center;padding:18px;color:#94a3b8;">Koi PO line nahi mili — filter badal kar dekhein</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="'+POD_HEAD.length+'" style="text-align:center;padding:18px;color:#94a3b8;">No PO lines found. Try changing the filter.</td></tr>';return;}
   const TD='padding:4px 6px;border:1px solid #e2e8f0;font-size:11px;';
   const R=TD+'text-align:right;white-space:nowrap;';
   const num=(v,unit)=>v===0||v?nNum_(v)+(unit?' '+unit:''):'';
@@ -11420,7 +12038,7 @@ function podStatusStyle_(s){
 }
 function downloadPoDetailsCsv(){
   const rows=poDetailsFiltered_();
-  if(!rows.length)return showToast('⚠️ Export ke liye koi data nahi — pehle filter check karein','warn');
+  if(!rows.length)return showToast('No data to export. Check the filter first.','warn');
   const n=v=>(v===0||v)?Number(v.toFixed?v.toFixed(3):v):'';
   // Every column is filled on every row here, unlike the screen and the PDF:
   // a CSV with blanks in the PO No. column cannot be sorted or pivoted.
@@ -11428,12 +12046,12 @@ function downloadPoDetailsCsv(){
     n(r.poQty),n(r.poWeight),n(r.poRate),n(r.recQty),n(r.recWeight),n(r.recRate),
     n(r.pendingQty),n(r.pendingWeight),n(r.excessQty),n(r.excessWeight)]);
   downloadCSV('PO_Details_'+today()+'.csv',[POD_HEAD,...data]);
-  showToast('📥 CSV downloaded — '+rows.length+' PO lines');
+  showToast('CSV downloaded — '+rows.length+' PO lines');
 }
 async function downloadPoDetailsPdf(){
   const rows=poDetailsFiltered_();
-  if(!rows.length)return showToast('⚠️ PDF ke liye koi data nahi — pehle filter check karein','warn');
-  if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua','error');
+  if(!rows.length)return showToast('No data for the PDF. Check the filter first.','warn');
+  if(!jspdfNativeReady_())return showToast('jsPDF did not load','error');
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
   const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
@@ -11529,9 +12147,18 @@ async function downloadPoDetailsPdf(){
   const blob=doc.output('blob');
   downloadBlob(blob,name);
   showSarvPdfPreview(blob,name,'');
-  showToast('📄 PO Details PDF ready');
+  showToast('PO Details PDF ready');
 }
-function closePoDetailsReport(){const ov=byId('poDetailsOverlay');if(ov)ov.style.display='none';}
+function closePoDetailsReport(){
+  const ov=byId('poDetailsOverlay');if(!ov)return;
+  ov.style.display='none';
+  // Put #storeInterface back the way openPoDetailsReport found it.
+  if(ov.dataset.restoreStore){
+    delete ov.dataset.restoreStore;
+    const si=byId('storeInterface'),fp=byId('fullPurchasePanel');
+    if(si&&fp&&fp.style.display!=='none')si.style.display='none';
+  }
+}
 function openPoDetailsReport(){
   let ov=byId('poDetailsOverlay');
   if(!ov){
@@ -11542,17 +12169,17 @@ function openPoDetailsReport(){
     ov.style.cssText='display:none;align-items:center;justify-content:center;z-index:29000;padding:14px;';
     ov.innerHTML='<div style="background:#fff;width:min(1500px,98vw);height:min(94vh,940px);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
       +'<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
-        +'<strong style="font-size:14px;">&#128203; PO Details — Ordered vs Received</strong>'
+        +'<strong style="font-size:14px;">PO Details — Ordered vs Received</strong>'
         +'<span id="pod_status_text" style="font-size:11px;color:#cbd5e1;font-weight:600;"></span>'
         +'<span style="flex:1;"></span>'
-        +'<button type="button" id="pod_csv" style="background:#16a34a;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128190; CSV</button>'
-        +'<button type="button" id="pod_pdf" style="background:#dc2626;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128196; PDF</button>'
+        +'<button type="button" id="pod_csv" style="background:#16a34a;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">CSV</button>'
+        +'<button type="button" id="pod_pdf" style="background:#dc2626;color:#fff;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">PDF</button>'
         +'<button type="button" id="pod_close" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;">&#10005;</button>'
       +'</div>'
       +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">'
-        +'<input type="text" id="pod_po" placeholder="&#128269; PO No." '+IN+' style="height:28px;font-size:11px;width:140px;">'
-        +'<input type="text" id="pod_supplier" placeholder="&#128269; Supplier" '+IN+' style="height:28px;font-size:11px;width:170px;">'
-        +'<input type="text" id="pod_item" placeholder="&#128269; Item / Category" '+IN+' style="height:28px;font-size:11px;width:190px;">'
+        +'<input type="text" id="pod_po" placeholder="PO No." '+IN+' style="height:28px;font-size:11px;width:140px;">'
+        +'<input type="text" id="pod_supplier" placeholder="Supplier" '+IN+' style="height:28px;font-size:11px;width:170px;">'
+        +'<input type="text" id="pod_item" placeholder="Item / Category" '+IN+' style="height:28px;font-size:11px;width:190px;">'
         +'<label style="font-size:10px;font-weight:700;color:#475569;">FROM</label>'
         +'<input type="date" id="pod_from" '+IN+' style="height:28px;font-size:11px;width:130px;">'
         +'<label style="font-size:10px;font-weight:700;color:#475569;">TO</label>'
@@ -11565,7 +12192,7 @@ function openPoDetailsReport(){
           +'<option value="NOTRECEIVED">Nothing received</option>'
         +'</select>'
         +'<div style="position:relative;">'
-          +'<button type="button" id="pod_po_status_btn" class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid transparent;height:28px;padding:0 10px;font-size:11px;white-space:nowrap;">&#128278; PO Status: All &#9662;</button>'
+          +'<button type="button" id="pod_po_status_btn" class="btn" style="background:#eef2ff;color:#4338ca;border:1px solid transparent;height:28px;padding:0 10px;font-size:11px;white-space:nowrap;">PO Status: All &#9662;</button>'
           +'<div id="pod_po_status_panel" style="display:none;position:absolute;top:31px;left:0;z-index:30;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.18);padding:8px 10px;min-width:230px;">'
             +'<div style="font-size:9.5px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:6px;">Show only these POs</div>'
             +'<div id="pod_po_status_list" style="display:flex;flex-direction:column;gap:2px;font-size:11px;color:#0f172a;max-height:260px;overflow-y:auto;"></div>'
@@ -11573,11 +12200,11 @@ function openPoDetailsReport(){
               +'<button type="button" id="pod_po_status_all" style="font-size:10px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:4px;padding:2px 8px;cursor:pointer;">Tick all</button>'
               +'<button type="button" id="pod_po_status_none" style="font-size:10px;background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:4px;padding:2px 8px;cursor:pointer;">Clear</button>'
             +'</div>'
-            +'<div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4;">Kuch bhi tick na ho to saare PO dikhte hain. Right side ka number us status ki PO line count hai.</div>'
+            +'<div style="font-size:9.5px;color:#94a3b8;margin-top:6px;line-height:1.4;">With nothing ticked, all POs are shown. The number on the right is the PO line count for that status.</div>'
           +'</div>'
         +'</div>'
         +'<button type="button" id="pod_clear" class="btn" style="background:#e2e8f0;color:#475569;height:28px;padding:0 12px;font-size:11px;">&#10005; Clear</button>'
-        +'<button type="button" id="pod_reload" class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px;">&#128260; Refresh</button>'
+        +'<button type="button" id="pod_reload" class="btn btn-primary" style="height:28px;padding:0 12px;font-size:11px;">Refresh</button>'
       +'</div>'
       +'<div style="flex:1;overflow:auto;padding:0 10px 10px;">'
         +'<table style="width:100%;border-collapse:collapse;min-width:1470px;">'
@@ -11613,13 +12240,20 @@ function openPoDetailsReport(){
     ['pod_from','pod_to','pod_status'].forEach(id=>byId(id)?.addEventListener('change',renderPoDetailsReport));
     ov.addEventListener('click',e=>{if(e.target===ov)closePoDetailsReport();});
   }
+  /* The report now opens from the ERP sidebar (Purchase › PO Details Report),
+     so it can be called while the Purchase panel is the active one, and
+     activatePanel hides #storeInterface (the overlay's parent) then. It is
+     shown for as long as the popup is up, under the popup's full-screen
+     backdrop, and closePoDetailsReport puts it back. */
+  const si=byId('storeInterface');
+  if(si&&si.style.display==='none'&&si.contains(ov)){si.style.display='';ov.dataset.restoreStore='1';}
   ov.style.display='flex';
   loadPoDetailsReport();
 }
 window.openPoDetailsReport=openPoDetailsReport;
 async function exportItemLedgerPdf(){
-  if(!sarvItemLedger.length)return showToast('Pehle ledger generate karein','warn');
-  if(!jspdfNativeReady_())return showToast('jsPDF load nahi hua','error');
+  if(!sarvItemLedger.length)return showToast('Generate the ledger first','warn');
+  if(!jspdfNativeReady_())return showToast('jsPDF did not load','error');
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
   const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
@@ -11696,8 +12330,8 @@ window.loadReports=async function(){
   const tb=byId('searchResultsBody'),statusEl=byId('searchStatusText');
   if(!tb)return;
   const csvBtn=byId('excelDownloadBtn');if(csvBtn)csvBtn.style.display=sarvCan('DOWNLOAD_CSV')?'':'none';
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#f59e0b;">⚠️ Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8;">⏳ Loading entries...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8;">Loading entries...</td></tr>';
   if(statusEl)statusEl.textContent='Loading...';
   try{
     const typeF=byId('searchTypeFilter')?.value||'ALL';
@@ -11759,14 +12393,14 @@ window.loadReports=async function(){
     const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
     // Editing an already-saved record is an Admin-only action — everyone else
     // sees a dash in the Edit column.
-    // Admin Panel → Feature Access: EDIT gives the ✏️, DELETE gives the ❌.
+    // Admin Panel → Feature Access: EDIT gives the, DELETE gives the.
     const canEditRec=sarvCan('EDIT'),canCancelRec=sarvCan('DELETE');
     const canEdit=canEditRec||canCancelRec;
     tb.innerHTML=filtered.map(r=>{
       const col=tc[r.type]||'#64748b';
       // A cancelled record stays listed (its number is never reused) but is
       // struck through, badged, and has no Edit / Cancel left.
-      const cxBadge=r.cancelled?`<div style="margin-top:2px;"><span title="${escText(r.notes)}" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;font-size:8.5px;font-weight:800;white-space:nowrap;">❌ CANCELLED</span></div>`:'';
+      const cxBadge=r.cancelled?`<div style="margin-top:2px;"><span title="${escText(r.notes)}" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;font-size:8.5px;font-weight:800;white-space:nowrap;">CANCELLED</span></div>`:'';
       return `<tr style="font-size:11px;border-bottom:1px solid #f1f5f9;${r.cancelled?'background:#fef2f2;opacity:.75;':''}">
         <td style="padding:5px 6px;"><span style="background:${col}18;color:${col};border:1px solid ${col}33;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;white-space:nowrap;">${escText(r.type)}</span></td>
         <td style="padding:5px 6px;font-weight:800;color:${r.cancelled?'#b91c1c':'#0284c7'};white-space:nowrap;${r.cancelled?'text-decoration:line-through;':''}">${escText(r.no||'—')}${cxBadge}</td>
@@ -11779,14 +12413,14 @@ window.loadReports=async function(){
         <td style="padding:5px 6px;text-align:center;">
           <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
             <div style="display:flex;gap:4px;">
-              ${r.pdfSingle?`<a href="${escText(r.pdfSingle)}" target="_blank" rel="noopener" title="Single-page (landscape, both copies side-by-side)" style="display:inline-flex;align-items:center;gap:3px;background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">&#128196; 1-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">1-Pg —</span>'}
-              ${r.pdfTwoPage?`<a href="${escText(r.pdfTwoPage)}" target="_blank" rel="noopener" title="Two-page (portrait, one copy per page)" style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">&#128203; 2-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">2-Pg —</span>'}
+              ${r.pdfSingle?`<a href="${escText(r.pdfSingle)}" target="_blank" rel="noopener" title="Single-page (landscape, both copies side-by-side)" style="display:inline-flex;align-items:center;gap:3px;background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">1-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">1-Pg —</span>'}
+              ${r.pdfTwoPage?`<a href="${escText(r.pdfTwoPage)}" target="_blank" rel="noopener" title="Two-page (portrait, one copy per page)" style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">2-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">2-Pg —</span>'}
             </div>
             <span style="font-size:9px;color:#94a3b8;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escText(r.items)}">${escText(r.items||'—')}</span>
           </div>
         </td>
         <td style="padding:5px 6px;text-align:center;">
-          ${(canEdit&&!r.cancelled)?`<div style="display:flex;gap:4px;justify-content:center;">${canEditRec?`<button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Is Record No. ki poori entry edit mode me kholein" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">&#9999;&#65039;</button>`:''}${canCancelRec?`<button type="button" data-cancel-kind="${escText(r.kind)}" data-cancel-id="${escText(r.id)}" data-cancel-no="${escText(r.no||'')}" title="Is Record No. ko cancel karein" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;cursor:pointer;">&#10060;</button>`:''}</div>`:'<span style="color:#cbd5e1;">—</span>'}
+          ${(canEdit&&!r.cancelled)?`<div style="display:flex;gap:4px;justify-content:center;">${canEditRec?`<button type="button" data-edit-kind="${escText(r.kind)}" data-edit-id="${escText(r.id)}" data-edit-no="${escText(r.no||'')}" title="Open this Record No.'s full entry in edit mode" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:700;cursor:pointer;">✎</button>`:''}${canCancelRec?`<button type="button" data-cancel-kind="${escText(r.kind)}" data-cancel-id="${escText(r.id)}" data-cancel-no="${escText(r.no||'')}" title="Cancel this Record No." style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:5px;padding:3px 8px;font-size:11px;font-weight:800;cursor:pointer;">✕</button>`:''}</div>`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
     }).join('');
@@ -11799,15 +12433,15 @@ window.loadReports=async function(){
     tb.querySelectorAll('button[data-cancel-id]').forEach(b=>{
       b.addEventListener('click',()=>cancelStoreRecord(b.dataset.cancelKind,b.dataset.cancelId,b.dataset.cancelNo).catch(dbError));
     });
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#ef4444;">❌ Error loading reports</td></tr>';}
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#ef4444;">Error loading reports</td></tr>';}
 };
 
 /* ================================================================
-   RECORD CANCEL — Print History / Reports → ❌  (Admin only)
+   RECORD CANCEL — Print History / Reports →  (Admin only)
 
    The record is voided, not deleted: the header stays under its Record No.
    (so the number is never handed out again and the PDFs remain), its notes
-   are stamped "❌ CANCELLED …" with the date, reason and the items it
+   are stamped "CANCELLED …" with the date, reason and the items it
    carried, and its item lines are removed. Removing the lines is what makes
    every stock figure correct on its own — Item Master balance, Item Ledger,
    the outward stock guard, PO receipts and the repair tracker all read
@@ -11817,18 +12451,18 @@ window.loadReports=async function(){
      • an Inward whose stock has already gone out (balance would go negative);
      • an Outward that a Repair Return inward has already been received on.
 ================================================================ */
-const SARV_CANCEL_MARK='❌ CANCELLED';
+const SARV_CANCEL_MARK='CANCELLED';
 function isStoreRecordCancelled_(notes){return String(notes||'').startsWith(SARV_CANCEL_MARK);}
 window.cancelStoreRecord=async function(kind,id,no){
   if(!sarvCan('DELETE'))return sarvDeny('DELETE');
   if(!SB_READY)return;
   const isIn=kind==='inward';
   if((isIn&&sarvEditingInwardId===id)||(!isIn&&sarvEditingOutwardId===id))
-    return showToast('⚠️ '+no+' abhi edit mode me khula hai — pehle edit band karein','warn');
+    return showToast(''+no+' is open in edit mode. Close the edit first.','warn');
   const hTable=isIn?'inward_entries':'outward_entries', lTable=isIn?'inward_lines':'outward_lines', fk=isIn?'inward_id':'outward_id';
   const h=await SB.from(hTable).select('*').eq('id',id).single();
   if(h.error)throw h.error;
-  if(isStoreRecordCancelled_(h.data.notes))return showToast(no+' pehle se cancelled hai','warn');
+  if(isStoreRecordCancelled_(h.data.notes))return showToast(no+' is already cancelled','warn');
   const lq=await SB.from(lTable).select('*, items(name,uom)').eq(fk,id);
   if(lq.error)throw lq.error;
   const lines=lq.data||[];
@@ -11836,7 +12470,7 @@ window.cancelStoreRecord=async function(kind,id,no){
   if(isIn){
     // The goods this inward brought in must still be in the store.
     const short=await outwardStockShortfalls(lines.map(l=>({itemName:l.items?.name||'',qty:pNum(l.qty)})),null);
-    if(short.length)return showToast('⛔ '+escText(no)+' cancel nahi ho sakta — is inward ka maal issue/outward ho chuka hai:<br>'+short.map(s=>escText(s.name)+': Stock '+nNum_(s.stock)+' &lt; '+nNum_(s.want)).join('<br>'),'error');
+    if(short.length)return showToast(''+escText(no)+' cannot be cancelled: material from this inward has already been issued / sent out:<br>'+short.map(s=>escText(s.name)+': Stock '+nNum_(s.stock)+' &lt; '+nNum_(s.want)).join('<br>'),'error');
   }else{
     // A repair return already booked against this outward would be orphaned.
     let returned=false;
@@ -11846,22 +12480,22 @@ window.cancelStoreRecord=async function(kind,id,no){
       const r2=await SB.from('inward_entries').select('id,notes').eq('nature_of_inward','Repaired').eq('gate_pass_no',no);
       if(!r2.error&&(r2.data||[]).some(e=>!isStoreRecordCancelled_(e.notes)))returned=true;
     }
-    if(returned)return showToast('⛔ '+escText(no)+' cancel nahi ho sakta — is outward ke against Repair Return inward ho chuka hai. Pehle wo inward cancel karein.','error');
+    if(returned)return showToast(''+escText(no)+' cannot be cancelled: a Repair Return inward has already been made against this outward. Cancel that inward first.','error');
   }
 
   const itemsTxt=lines.map(l=>(l.items?.name||'Item')+' × '+pNum(l.qty)+' '+(l.uom||l.items?.uom||'')).join(', ');
   // Explicit yes/no first — a cancel reverses stock, so it must never happen
   // on a stray click.
-  if(!confirm('⚠️ Kya aap sach me '+no+' ko CANCEL karna chahte hain?\n\n'
+  if(!confirm('Do you really want to CANCEL '+no+'?\n\n'
     +'Type: '+(h.data.entry_type||(isIn?'INWARD':'OUTWARD'))+'\n'
     +'Party: '+((isIn?h.data.supplier_name:h.data.party_name)||'—')+'\n'
     +'Items: '+(itemsTxt||'—')+'\n\n'
-    +'• Stock se ye qty '+(isIn?'hat':'wapas aa')+' jayegi\n'
-    +'• Record No. list me CANCELLED dikhega aur edit nahi ho payega\n'
-    +'• Ye wapas undo nahi hoga'))return;
-  const reason=prompt('Cancel '+no+' — reason likhein (zaroori):');
+    +'• This qty will be '+(isIn?'removed from':'returned to')+' stock\n'
+    +'• The Record No. will show as CANCELLED in the list and cannot be edited\n'
+    +'• This cannot be undone'))return;
+  const reason=prompt('Cancel '+no+': enter a reason (required):');
   if(reason===null)return;
-  if(!reason.trim())return showToast('Reason likhna zaroori hai — cancel nahi hua','warn');
+  if(!reason.trim())return showToast('A reason is required; the record was not cancelled','warn');
 
   const stamp=SARV_CANCEL_MARK+' on '+pStamp()+' by Admin — Reason: '+reason.trim()+' | Items: '+(itemsTxt||'—')+(h.data.notes?' | Earlier notes: '+h.data.notes:'');
   const u=await SB.from(hTable).update({notes:stamp}).eq('id',id);
@@ -11886,13 +12520,13 @@ window.cancelStoreRecord=async function(kind,id,no){
         String(h.data.po_number||'').split(',').map(s=>s.trim()).filter(Boolean),reqNos));
     }catch(e){console.warn('[SARV] PR status sync after cancel failed:',e.message||e);}
   }
-  showToast('✅ '+escText(no)+' cancel ho gaya — stock update ho gaya');
+  showToast(''+escText(no)+' cancelled; stock updated');
   await loadReports();
   if(typeof loadItemMaster==='function')loadItemMaster().catch(()=>{});
 };
 
 /* ================================================================
-   RECORD EDIT — Print History / Reports → ✏️  (Admin only)
+   RECORD EDIT — Print History / Reports →  (Admin only)
 
    Loads a saved Inward / Outward entry back into its own entry form in
    full edit mode and writes it BACK ONTO THE SAME Record No.
@@ -11932,14 +12566,14 @@ let sarvEditingInwardReqNos=[];
    Switching type means going back to Home and picking that section, which sets
    the type itself. */
 let sarvInwardTypePinned=false, sarvOutwardTypePinned=false;
-const SARV_TYPE_PINNED_MSG='Entry submit ho chuki hai — Entry Type ab change nahi hoga. Dusra type chahiye to Home par jaakar wo section chunein';
+const SARV_TYPE_PINNED_MSG='The entry has been submitted, so the Entry Type can no longer change. For another type, go Home and choose that section';
 
 function lockEntryTypeForEdit_(sel,locked,why){
   if(!sel)return;
   sel.disabled=locked;
   sel.style.background=locked?'#f1f5f9':'';
   sel.style.cursor=locked?'not-allowed':'pointer';
-  sel.title=locked?(why||'Edit mode me Entry Type change nahi ho sakta — Record No. isi series ka hai'):'';
+  sel.title=locked?(why||'The Entry Type cannot change in edit mode; the Record No. belongs to this series'):'';
 }
 function refreshStoreEditUi(){
   const inOn=!!sarvEditingInwardId, outOn=!!sarvEditingOutwardId;
@@ -11950,8 +12584,8 @@ function refreshStoreEditUi(){
   const draftOn=!!sarvInwDraftActive;
   const ib=byId('inwEditBanner');     if(ib)ib.style.display=inOn?'flex':'none';
   const ibn=byId('inwEditBannerNo');  if(ibn)ibn.textContent=sarvEditingInwardNo||'';
-  const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('💾 Update '+(sarvEditingInwardNo||'Inward'))
-                                        :(draftOn?('✅ Submit MD-Approved '+(sarvInwDraftActive.requestNo||'Draft')):'Submit Inward');
+  const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('Update '+(sarvEditingInwardNo||'Inward'))
+                                        :(draftOn?('Submit MD-Approved '+(sarvInwDraftActive.requestNo||'Draft')):'Submit Inward');
   lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn||sarvInwardTypePinned||draftOn,
     inOn?'':(draftOn?INW_DRAFT_TYPE_MSG:SARV_TYPE_PINNED_MSG));
   const ob=byId('outEditBanner');     if(ob)ob.style.display=outOn?'flex':'none';
@@ -11959,7 +12593,7 @@ function refreshStoreEditUi(){
   // Submit label carries the entry-type wording too, so an ISSUE reads
   // "Submit Issue". Both concerns land on the same element, so they are
   // resolved in one place rather than overwriting each other.
-  const osb=byId('outSubmitBtn');     if(osb)osb.textContent=outOn?('💾 Update '+(sarvEditingOutwardNo||'Outward')):('Submit '+outwardWord_());
+  const osb=byId('outSubmitBtn');     if(osb)osb.textContent=outOn?('Update '+(sarvEditingOutwardNo||'Outward')):('Submit '+outwardWord_());
   lockEntryTypeForEdit_(byId('outEntryTypeSelect'),outOn||sarvOutwardTypePinned,outOn?'':SARV_TYPE_PINNED_MSG);
 }
 
@@ -11990,15 +12624,15 @@ function applyOutwardWording(){
 window.cancelStoreEdit=function(kind){
   if(kind==='outward'){sarvEditingOutwardId=null;sarvEditingOutwardNo='';clearOutwardForm();}
   else{sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];clearInwardForm();}
-  showToast('Edit cancel — form ab naye entry ke liye khaali hai');
+  showToast('Edit cancelled; the form is now empty for a new entry');
 };
 
 window.editStoreRecord=async function(kind,id,no){
   if(!sarvCan('EDIT'))return sarvDeny('EDIT');
-  if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
-  if(!id)return showToast('⚠️ Record ki id nahi mili — Reports refresh karein','warn');
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
+  if(!id)return showToast('The record id was not found. Please refresh Reports.','warn');
   const busy=sarvEditingInwardNo||sarvEditingOutwardNo;
-  if(busy&&busy!==no&&!window.confirm(busy+' abhi edit mode me khula hai.\nUse chhod kar '+no+' kholein?'))return;
+  if(busy&&busy!==no&&!window.confirm(busy+' is open in edit mode.\nLeave it and open '+no+'?'))return;
   try{
     if(kind==='outward')await loadOutwardForEdit(id,no);
     else await loadInwardForEdit(id,no);
@@ -12008,7 +12642,7 @@ window.editStoreRecord=async function(kind,id,no){
 async function loadInwardForEdit(id,no){
   const h=await SB.from('inward_entries').select('*').eq('id',id).maybeSingle();
   if(h.error)throw h.error;
-  if(!h.data){showToast('❌ '+(no||'Record')+' ab database me nahi hai — shayad delete ho chuka hai','error');return loadReports();}
+  if(!h.data){showToast(''+(no||'Record')+' is no longer in the database; it may have been deleted','error');return loadReports();}
   const lq=await SB.from('inward_lines').select('*, items(name,description,make,category,uom)').eq('inward_id',id).order('id');
   if(lq.error)throw lq.error;
   const e=h.data, lines=lq.data||[];
@@ -12279,18 +12913,18 @@ async function loadInwardForEdit(id,no){
     set('freightExp',pNum(e.freight_exp));
     set('roundOffInput',pNum(e.round_off).toFixed(2));
   }else{
-    showToast('⚠️ Is database me Freight / Round off save nahi hote — edit karne se pehle dono dobara bharein (freight_exp, round_off columns add karein)','warn');
+    showToast('This database does not save Freight / Round off. Re-enter both before editing (add the freight_exp and round_off columns).','warn');
   }
   applyInwardNbGstLock();
   updateStoreTotals();
   refreshStoreEditUi();
-  showToast('✏️ '+(sarvEditingInwardNo||'Record')+' edit mode me khul gaya — badlaav karke Update dabayein');
+  showToast(''+(sarvEditingInwardNo||'Record')+' is open in edit mode. Make your changes and press Update.');
 }
 
 async function loadOutwardForEdit(id,no){
   const h=await SB.from('outward_entries').select('*').eq('id',id).maybeSingle();
   if(h.error)throw h.error;
-  if(!h.data){showToast('❌ '+(no||'Record')+' ab database me nahi hai — shayad delete ho chuka hai','error');return loadReports();}
+  if(!h.data){showToast(''+(no||'Record')+' is no longer in the database; it may have been deleted','error');return loadReports();}
   const lq=await SB.from('outward_lines').select('*, items(name,description,make,category,uom)').eq('outward_id',id).order('id');
   if(lq.error)throw lq.error;
   const e=h.data, lines=lq.data||[];
@@ -12381,7 +13015,7 @@ async function loadOutwardForEdit(id,no){
      must not hold up the edit. */
   if((e.entry_type||'')==='ISSUE'&&String(e.lot_no||'').trim())
     restoreOutLotStrips_(e.lot_no).catch(err=>console.warn('[SARV] lot strip restore skipped:',err.message||err));
-  showToast('✏️ '+(sarvEditingOutwardNo||'Record')+' edit mode me khul gaya — badlaav karke Update dabayein');
+  showToast(''+(sarvEditingOutwardNo||'Record')+' is open in edit mode. Make your changes and press Update.');
 }
 /* Re-links the rows now on the form to a saved lot's requirement list, matched
    on the Item Master id each row is pinned to. Rows the sheet says nothing
@@ -12507,11 +13141,11 @@ async function syncPoReceiptsForLines(lineIds){
 // login only.
 window.downloadFilteredExcel=function(){
   if(!sarvCan('DOWNLOAD_CSV'))return sarvDeny('DOWNLOAD_CSV');
-  if(!sarvLastReportsFiltered.length)return showToast('⚠️ Pehle Search / All Records se data laayein','warn');
+  if(!sarvLastReportsFiltered.length)return showToast('Load data with Search / All Records first','warn');
   const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items'];
   const rows=sarvLastReportsFiltered.map(r=>[r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'']);
   downloadCSV('SARV_Reports_'+today()+'.csv',[headers,...rows]);
-  showToast('📥 CSV downloaded — '+rows.length+' records');
+  showToast('CSV downloaded — '+rows.length+' records');
 };
 window.addEventListener('DOMContentLoaded',()=>{
   bindNavigation();
@@ -12539,7 +13173,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('#p_itemTableBody tr').forEach(tr=>lockMachineField_(tr.querySelector('.col-machine')));
   // Invoice Date and Target Return Date must start blank/un-selected so the
   // mandatory-field check below actually forces the user to pick one.
-  document.querySelectorAll('input[type=date]').forEach(e=>{if(!e.value&&e.id!=='invoiceDate'&&e.id!=='outTargetReturnDate')e.value=today()});
+  // input[data-dmy]: date boxes that date-dmy.js has already turned into DD/MM/YYYY text boxes.
+  document.querySelectorAll('input[type=date],input[data-dmy]').forEach(e=>{if(!e.value&&e.id!=='invoiceDate'&&e.id!=='outTargetReturnDate')e.value=today()});
   if(SB_READY){
     // Pre-load Inward serial no (default active panel)
     nextNo('INWARD').then(no=>{const e=byId('regEntryNo');if(e)e.value=no;}).catch(()=>{});
@@ -12700,7 +13335,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     setItemLedgerExportsEnabled(false);
     ['itLeItemCount','itLeTxnCount','itLeTotalIn','itLeTotalOut','itLeNet'].forEach(id=>{const e=byId(id);if(e)e.textContent='0'});
     const host=byId('itLeResults');
-    if(host)host.innerHTML='<div style="text-align:center;padding:36px 16px;color:#94a3b8;font-size:12px;">&#9203; Filter chunkar <b>Generate Ledger</b> dabayein.</div>';
+    if(host)host.innerHTML='<div style="text-align:center;padding:36px 16px;color:#94a3b8;font-size:12px;">Choose a filter and press <b>Generate Ledger</b>.</div>';
   });
   // Enter anywhere in the filter bar runs the ledger.
   ['itLeItem','itLeSupplier','itLeFrom','itLeTo'].forEach(id=>{
@@ -12727,10 +13362,10 @@ window.addEventListener('DOMContentLoaded',()=>{
       e.dataset.consBound='1';
     }
   });
-  /* Checkbox groups ki "All / Clear" links, aur Lot ka dropdown.
-     Ek hi delegated handler poore filter bar par — Nature aur Lot ki lists
-     har Entry Type change par dobara banti hain, to per-checkbox listeners
-     har baar phir lagane padte. */
+  /* The checkbox groups' "All / Clear" links, and the Lot dropdown.
+     A single delegated handler on the whole filter bar: the Nature and Lot
+     lists are rebuilt on every Entry Type change, so per-checkbox listeners
+     would have to be re-attached every time. */
   {
     const bar=document.querySelector('#consOverlay .cons-filters');
     if(bar&&!bar.dataset.consChkBound){
@@ -12741,7 +13376,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         if(t.dataset.none){ev.preventDefault();consSetMulti_(t.dataset.none,[]);consAfterMulti_(t.dataset.none);return;}
         if(t.closest&&t.closest('#consLotBtn')){ev.preventDefault();consToggleLotPanel_();return;}
       });
-      // Lot ke apne checkboxes: button ka label turant sach bole.
+      // Lot's own checkboxes: the button label must reflect the truth immediately.
       bar.addEventListener('change',ev=>{
         if(ev.target&&ev.target.closest&&ev.target.closest('#consLot'))consSyncLotBtn_();
       });
@@ -12750,11 +13385,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     const ls=byId('consLotSearch');
     if(ls&&!ls.dataset.consBound){
       ls.addEventListener('input',()=>consFilterLotList_());
-      // Panel ke andar Enter report chala de, search box band na kare.
+      // Enter inside the panel runs the report and doesn't close the search box.
       ls.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();runConsumptionReport().catch(dbError)}});
       ls.dataset.consBound='1';
     }
-    // Bahar click karne par Lot panel band — warna wo baaki filters ke upar khula rehta.
+    // A click outside closes the Lot panel; otherwise it stays open on top of the other filters.
     if(!document.body.dataset.consDdBound){
       document.addEventListener('click',ev=>{
         const p=byId('consLotPanel');
@@ -12821,7 +13456,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     });
     document.body.dataset.consPopBound='1';
   }
-  add2('clearSearchBtn',()=>{['searchQuery','filterDateFrom','filterDateTo'].forEach(id=>{const e=byId(id);if(e)e.value='';});byId('searchTypeFilter')&&(byId('searchTypeFilter').value='ALL');const tb=byId('searchResultsBody');if(tb)tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">&#9203; Use Search or Load All Records</td></tr>';});
+  add2('clearSearchBtn',()=>{['searchQuery','filterDateFrom','filterDateTo'].forEach(id=>{const e=byId(id);if(e)e.value='';});byId('searchTypeFilter')&&(byId('searchTypeFilter').value='ALL');const tb=byId('searchResultsBody');if(tb)tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">Use Search or Load All Records</td></tr>';});
 });
 
 /* ================================================================
@@ -12854,7 +13489,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     box.innerHTML=poAttachFiles.map((f,i)=>{
       const isImg=f.type.startsWith('image/');
       return `<div style="position:relative;border:1.5px solid #cbd5e1;border-radius:6px;overflow:hidden;background:#f8fafc;min-width:80px;max-width:80px;flex-shrink:0;text-align:center;">
-        ${isImg?`<img src="${f.dataUrl}" style="width:80px;height:68px;object-fit:cover;display:block;">`:'<div style="font-size:22px;padding:12px 0;">📄</div>'}
+        ${isImg?`<img src="${f.dataUrl}" style="width:80px;height:68px;object-fit:cover;display:block;">`:'<div style="font-size:22px;padding:12px 0;"></div>'}
         <div style="font-size:8px;padding:3px 4px;background:#f1f5f9;color:#475569;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escText(f.name)}</div>
         <button onclick="removePoAttach(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.55);color:#fff;border:none;border-radius:50%;width:16px;height:16px;font-size:9px;cursor:pointer;padding:0;line-height:16px;">✕</button>
       </div>`;
@@ -13135,28 +13770,28 @@ window.addEventListener('DOMContentLoaded',()=>{
     is measured against is readable at a glance without reading the number:
     blue for a PO, green for a PR, amber for a Repair Return. One table, three
     renderers (the live row, the HTML print, the native print). */
- /* Ek hi hex table. Pehle iske saath DOC_STRIP_ACCENT_RGB bhi tha (native PDF
-    ke liye wahi teen rang dobara, RGB me) — wo hata diya: hexRgb_ ab kisi bhi
-    hex ko RGB me badal deta hai, to ek rang do jagah likha hone ki zaroorat
-    nahi, aur dono ke alag ho jaane ka raasta bhi band. */
+ /* A single hex table. DOC_STRIP_ACCENT_RGB used to sit alongside it (the same
+    three colours again, in RGB, for the native PDF). That was removed: hexRgb_
+    now converts any hex to RGB, so no colour needs to be written in two places,
+    and the two can never drift apart. */
  const DOC_STRIP_ACCENT={PO:'#1d4ed8',PR:'#15803d',RETURN:'#b45309',LOT:'#7c3aed'};
  function docStripAccent_(p){return DOC_STRIP_ACCENT[p&&p.kind]||DOC_STRIP_ACCENT.PO;}
 
- /* ── Sub-row ke rang, ek hi jagah ───────────────────────────────────
-    Teen renderers hain — live row, HTML print, native PDF — aur teeno yahin
-    se padhte hain, to teen copies kabhi alag rang nahi dikha sakti.
+ /* ── Sub-row colours, in one place ───────────────────────────────────
+    There are three renderers (live row, HTML print, native PDF) and all three
+    read from here, so the three copies can never show different colours.
 
-    Niyam (jaisa maanga gaya):
-      Pending Qty = 0   → LAAL      is PO line par aur kuch aana baaki nahi
-      Pending Qty > 0   → HARA      maal abhi aana baaki hai
-      Excess Qty  > 0   → JAMUNI, aur us figure ke peeche PEELA background
+    Rules (as requested):
+      Pending Qty = 0   → RED       nothing more to come on this PO line
+      Pending Qty > 0   → GREEN     material still to arrive
+      Excess Qty  > 0   → PURPLE, with a YELLOW background behind that figure
 
-    Hex ek hi jagah likha hai; native PDF ke liye wahi hex hexRgb_ se RGB ban
-    jaata hai, to do jagah do number rakhne ki zaroorat nahi. */
+    The hex is written in one place; for the native PDF the same hex becomes
+    RGB through hexRgb_, so there is no need to keep two numbers in two places. */
  const STRIP_COLOR={
    plain:'#0f172a', muted:'#64748b', dim:'#94a3b8', received:'#0f766e',
    pendDone:'#dc2626',          // pending 0 — laal
-   pendLeft:'#16a34a',          // pending bacha hai — hara
+   pendLeft:'#16a34a',          // still pending: green
    excess:'#7e22ce',            // excess — jamuni
    excessBg:'#fde047',          // excess figure ka peela background
    alert:'#dc2626', info:'#334155',
@@ -13165,16 +13800,16 @@ window.addEventListener('DOMContentLoaded',()=>{
  const stripPendColor_=n=>pNum(n)>0?STRIP_COLOR.pendLeft:STRIP_COLOR.pendDone;
  const stripExcColor_ =n=>pNum(n)>0?STRIP_COLOR.excess:STRIP_COLOR.dim;
  const stripExcBg_    =n=>pNum(n)>0?STRIP_COLOR.excessBg:null;
- /* ── Caption ka rang ────────────────────────────────────────────────
-    Pehle har caption HAMESHA grey (STRIP_COLOR.muted) chhapta tha, chahe uski
-    value laal ho, hari ho ya jamuni — to "Pending Qty" grey me aur uske saath
-    ka 50 hare me aata tha, aur aankh ko wo ek figure ki do alag cheezein
-    lagti thi. Rang ka poora matlab hi value par simat jaata tha.
+ /* ── Caption colour ─────────────────────────────────────────────────
+    Every caption used to print ALWAYS in grey (STRIP_COLOR.muted), whether its
+    value was red, green or purple, so "Pending Qty" came out grey next to a
+    green 50, and the eye read them as two separate things in one figure.
+    The whole meaning of the colour was squeezed into the value.
 
-    Ab caption apni hi value ka rang leta hai: "Pending Qty: 50" poora hara,
-    "Excess Qty: 12" poora jamuni, "Order Qty: 500" poora kaala. Ek hi niyam,
-    ek hi jagah — teeno renderer (live row, HTML print, native PDF) yahin se
-    padhte hain, to teen copies kabhi alag rang nahi dikha saktin. */
+    Now the caption takes its own value's colour: "Pending Qty: 50" all green,
+    "Excess Qty: 12" all purple, "Order Qty: 500" all black. One rule, one
+    place: all three renderers (live row, HTML print, native PDF) read from
+    here, so the three copies can never show different colours. */
  const stripLblColor_=s=>(s&&s.c)||STRIP_COLOR.muted;
 
  /* The strip as coloured segments — one list per printed line (Qty, then
@@ -13213,36 +13848,37 @@ window.addEventListener('DOMContentLoaded',()=>{
     it: whoever checks this bill later needs the PO's own figure on the page,
     not just the one that was charged. */
  /* ── Rate line ──────────────────────────────────────────────────────
-    PO ke against har receipt par HAMESHA chhapti hai (pehle sirf tab chhapti
-    thi jab receipt PO se aage nikal gayi ho — qty ya rate par). Wajah: jo
-    aadmi baad me ye bill check karta hai uske saamne PO nahi hota, aur
-    "rate theek tha" ek maujood line se padhna, ek gaayab line se andaaza
-    lagane se bilkul alag cheez hai. Sahi receipt par bhi ab likha milta hai
-    ki PO ka rate kya tha aur bill kis rate par bana.
+    It now ALWAYS prints on every receipt against a PO (it used to print only
+    when the receipt went beyond the PO, on qty or rate). Reason: whoever
+    checks this bill later doesn't have the PO in front of them, and reading
+    "the rate was fine" from a line that is there is quite different from
+    guessing it from a line that is missing. Even a correct receipt now states
+    what the PO rate was and what rate the bill was made at.
 
-    PO par rate hi na ho to line phir bhi chhapti hai, "—" ke saath: tab bhi
-    sach yahi hai ki PO se tulna nahi ho sakti, aur wo likha hona chahiye. */
+    If the PO has no rate at all, the line still prints, with "—": even then
+    the truth is that no comparison with the PO is possible, and that should
+    be written down. */
  function docStripRateNote_(p){
    if(!p||p.kind!=='PO')return '';
    const billed='Billed Rate: '+nMoney_(p.rate);
-   if(p.poRate==null)return '(PO Actual Rate: —  (PO par rate nahi)   |   '+billed+')';
+   if(p.poRate==null)return '(PO Actual Rate: —  (no rate on the PO)   |   '+billed+')';
    const bits=['PO Actual Rate: '+nMoney_(p.poRate),billed];
    if(p.rateOver)bits.push(nMoney_(p.rate-p.poRate)+' HIGHER');
    else if(p.rate<p.poRate-0.001)bits.push(nMoney_(p.poRate-p.rate)+' lower');
    else bits.push('rate PO ke barabar');
-   if(p.excess>0)bits.push('extra qty '+p.excess+' is PO par ordered nahi thi');
+   if(p.excess>0)bits.push('extra qty '+p.excess+' was not ordered on this PO');
    return '('+bits.join('   |   ')+')';
  }
- /* ── Native PDF: strip ka cell haath se ──────────────────────────────
-    autoTable ek cell ko ek hi rang de sakta hai, aur is sub-row me ek line me
-    teen rang chahiye + ek figure ke peeche peela highlight. Isi liye cell
-    KHAALI chhoda jaata hai (taaki autoTable column widths par asar na pade —
-    7 alag cells daalne se item table ki columns hil jaati hain) aur yahan
-    didDrawCell hook se khud likha jaata hai.
+ /* ── Native PDF: drawing the strip cell by hand ──────────────────────
+    autoTable can give a cell only one colour, and this sub-row needs three
+    colours on one line + a yellow highlight behind one figure. So the cell is
+    left EMPTY (so it doesn't affect autoTable's column widths; adding 7
+    separate cells shifts the item table's columns) and the text is drawn here
+    through the didDrawCell hook.
 
-    Baayein se daayein, har segment ke baad asli text width se aage badhte
-    hain. Cell ke daayein kinare par pahunch kar rukta hai — PDF me text kabhi
-    cell se bahar nahi nikalta. */
+    From left to right, advancing by the real text width after each segment.
+    It stops at the cell's right edge, so text never spills out of the cell
+    in the PDF. */
  const STRIP_FS=6.2, STRIP_LH=2.9;
  function drawStripCell_(doc,cell,lines){
    const left=cell.x+1.6, right=cell.x+cell.width-1.6;
@@ -13252,7 +13888,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const cy=cell.y+2.9+li*STRIP_LH;
      for(const s of segs){
        if(s.lbl){
-         // Caption apni value ke rang me — dekhein stripLblColor_.
+         // The caption in its value's colour; see stripLblColor_.
          doc.setFont(undefined,'normal');doc.setTextColor(...hexRgb_(stripLblColor_(s)));
          const lt=s.lbl+': ',lw=doc.getTextWidth(lt);
          if(cx+lw>right)break;
@@ -13268,15 +13904,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    });
    doc.setTextColor(0,0,0);doc.setFont(undefined,'normal');
  }
- /* Rate line laal me jaye ya saade slate me — laal sirf tab, jab receipt
-    sach me PO se aage nikli ho (zyada rate ya zyada qty). Warna wahi line ek
-    normal record hai, aur har receipt ko laal karna laal ka matlab hi khatam
-    kar deta. */
+ /* Whether the rate line goes red or plain slate: red only when the receipt
+    really went beyond the PO (higher rate or more qty). Otherwise the line is
+    a normal record, and making every receipt red would rob red of its meaning. */
  function docStripRateAlert_(p){ return !!(p&&p.kind==='PO'&&(p.rateOver||p.excess>0)); }
- /* docStripText_ hata diya gaya: wo native PDF ke liye poori strip ek single
-    string banata tha, aur ek string ko autoTable ek hi rang de sakta tha. Ab
-    docStripLines_ + drawStripCell_ us kaam ko karte hain, per-figure rang ke
-    saath. */
+ /* docStripText_ has been removed: it built the whole strip as a single string
+    for the native PDF, and autoTable could give one string only one colour.
+    docStripLines_ + drawStripCell_ now do that job, with per-figure colours. */
  /* "PO/U-2/0001, PO/U-2/0002  (2 POs)" for the printed PO Reference. The count
     makes a multi-PO receipt unmistakable, and a single PO prints unadorned. */
  function poRefDisplay_(v){
@@ -13322,7 +13956,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function pRows(selector){return [...document.querySelectorAll(selector)]}
  function pImagesHtml(images, label){
    if(!images?.length)return '';
-   let out='<div class="photos-page"><h3>📎 ATTACHMENTS</h3><div class="photos-meta">'+pEsc(label||'Attached Photos')+' • '+images.length+' photo(s)</div><div class="photos-grid">';
+   let out='<div class="photos-page"><h3>ATTACHMENTS</h3><div class="photos-meta">'+pEsc(label||'Attached Photos')+' • '+images.length+' photo(s)</div><div class="photos-grid">';
    images.forEach((x,i)=>{if(!String(x.dataUrl||'').startsWith('data:image'))return;out+='<div class="photo-cell"><img src="'+x.dataUrl+'"><div class="photo-label">Photo '+(i+1)+' of '+images.length+(x.name?' — '+pEsc(x.name):'')+'</div></div>'});
    return out+'</div></div>';
  }
@@ -13477,7 +14111,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      cells+='<div class="photo-cell"><img src="'+x.dataUrl+'" alt="Photo '+(i+1)+'"><div class="photo-label">Photo '+(i+1)+' of '+images.length+(x.name?' — '+pEsc(x.name):'')+'</div></div>';
    });
    if(!cells)return '';
-   return '<div class="photos-page"><h3>📎 ATTACHMENTS</h3><div class="photos-meta">'+pEsc(label||'')+'</div><div class="photos-grid">'+cells+'</div></div>';
+   return '<div class="photos-page"><h3>ATTACHMENTS</h3><div class="photos-meta">'+pEsc(label||'')+'</div><div class="photos-grid">'+cells+'</div></div>';
  }
 
  // ─────────────────────────────────────────────────────────────
@@ -13498,16 +14132,16 @@ window.addEventListener('DOMContentLoaded',()=>{
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
-       /* PO / PR ke against: item ke theek neeche wahi strip jo entry form
-          dikhata hai. docStripParts_ dono ko ek hi shakl deta hai, isliye yahan
-          sirf label aur rang badalta hai — layout ek hi hai. */
+       /* Against a PO / PR: right under the item, the same strip the entry form
+          shows. docStripParts_ gives both the same shape, so only the label and
+          colour change here; the layout is the same. */
        const strip=docStripParts_(it);
        if(strip){
          const rateNote=docStripRateNote_(strip);
-         /* Qty pehli line par, Weight uske neeche usi Order / Pending /
-            Received / Excess kram me — dono ek hi chaar headings ki do
-            parallel rows ki tarah padhti hain. Rang docStripLines_ tay karta
-            hai, yahan sirf draw hota hai. */
+         /* Qty on the first line, Weight under it in the same Order / Pending /
+            Received / Excess order; both read as two parallel rows under the
+            same four headings. docStripLines_ decides the colour; this only
+            draws it. */
          const seg=s=>(s.lbl?('<span style="color:'+stripLblColor_(s)+';">'+pEsc(s.lbl)+': </span>'):'')
            +'<b style="color:'+s.c+';'+(s.bg?('background:'+s.bg+';padding:0 3px;border-radius:2px;'):'')+'">'
            +pEsc(s.t)+'</b>';
@@ -13516,8 +14150,8 @@ window.addEventListener('DOMContentLoaded',()=>{
            +'</div>';
          itemRows+='<tr style="background:#f8fafc;"><td colspan="7" style="padding:2px 6px;font-size:8px;color:#334155;">'
            +docStripLines_(strip).map((segs,i)=>line(segs,i>0)).join('')
-           // Teesri line — PO ka apna rate. Ab har PO receipt par chhapti hai;
-           // laal sirf tab jab receipt PO se aage nikli ho.
+           // The third line: the PO's own rate. It now prints on every PO receipt;
+           // red only when the receipt went beyond the PO.
            +(rateNote?('<div style="margin-top:1px;font-weight:800;color:'
                +(docStripRateAlert_(strip)?STRIP_COLOR.alert:STRIP_COLOR.info)+';">'+pEsc(rateNote)+'</div>'):'')
            +'</td></tr>';
@@ -13554,7 +14188,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        '<th style="width:12%">List Price</th><th style="width:8%">Disc%</th><th style="width:12%">Rate (₹)</th><th style="width:18%">Total</th>'+
      '</tr></thead><tbody>'+itemRows+'</tbody></table>'+
      '<div class="summary">'+
-       '<div class="box"><h4>🚚 Freight Calculator Summary</h4><table>'+
+       '<div class="box"><h4>Freight Calculator Summary</h4><table>'+
          '<tr><td class="lbl">Net Weight (Items):</td><td class="val">'+pEsc(d.netWeight!=null&&d.netWeight!==''?nWt_(d.netWeight):(inTotWeight?nWt_(inTotWeight):'-'))+'</td></tr>'+
          '<tr><td class="lbl">Gross Weight:</td><td class="val">'+pEsc(d.grossWeight||d.calcGrossWeight||0)+' KGS</td></tr>'+
          '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoneyX(d.freightRate||d.calcFreightRate)+'</td></tr>'+
@@ -13601,10 +14235,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        outTotQty    += pNum(it.qty);
        outTotWeight += pNum(it.weight);
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small></td><td>'+pEsc(it.make||'-')+'<br><small style="color:#555">'+pEsc(it.cat||it.category||'')+'</small></td><td>'+pEsc(it.machineName||it.machine||'-')+'<br><small style="color:#555">'+pEsc(it.machineNo||'')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||it.qtyUom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td></tr>';
-       /* LOT ke against: item ke theek neeche wahi strip jo Issue form dikhata
-          hai — Required / Pending / Issued / Excess. Bilkul usi tarah jaise PO
-          ke against Inward PDF me PO ki sub-row chhapti hai; docStripParts_
-          dono ko ek hi shakl deta hai, isliye layout ek hi hai. */
+       /* Against a LOT: right under the item, the same strip the Issue form
+          shows: Required / Pending / Issued / Excess. Exactly as the PO sub-row
+          prints in the Inward PDF against a PO; docStripParts_ gives both the
+          same shape, so the layout is the same. */
        const strip=docStripParts_(it);
        if(strip){
          const seg=s=>(s.lbl?('<span style="color:'+stripLblColor_(s)+';">'+pEsc(s.lbl)+': </span>'):'')
@@ -13650,7 +14284,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         '<th style="width:36%">Item Name / Description</th><th style="width:16%">Make / Category</th>'+
        '<th style="width:18%">Machine</th><th style="width:15%">Qty</th><th style="width:15%">Weight</th>'+
      '</tr></thead><tbody>'+itemRows+'</tbody></table>'+
-      '<div class="summary"><div class="box full"><h4>👤 Receiver Details</h4><table>'+
+      '<div class="summary"><div class="box full"><h4>Receiver Details</h4><table>'+
        '<tr><td class="lbl">Receiver Name:</td><td class="val">'+pEsc(d.receiverName||d.receiver_name||'-')+'</td></tr>'+
        '<tr><td class="lbl">Designation:</td><td class="val">'+pEsc(d.designation||'-')+'</td></tr>'+
        '<tr><td class="lbl">Department:</td><td class="val">'+pEsc(d.department||'-')+'</td></tr>'+
@@ -13778,9 +14412,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    yy=Math.max(ly,ry)+2;
    // Items table
    let head,body,foot;
-   /* body row index → us strip ki coloured lines. didDrawCell isi se padhta
-      hai. Inward par PO / PR / Return ki strip, Outward par LOT ki — dono
-      yahin jama hoti hain, isliye hook ek hi hai. */
+   /* body row index → that strip's coloured lines. didDrawCell reads from this.
+      The PO / PR / Return strip on Inward, the LOT strip on Outward: both are
+      collected here, so there is a single hook. */
    const stripRows={};
    if(!isOut){
      head=[['Material Configuration / Specs','Qty','Weight','List Price','Disc%','Rate','Total']];
@@ -13789,30 +14423,29 @@ window.addEventListener('DOMContentLoaded',()=>{
        const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
        body.push([spec,pNum(it.qty)+' '+(it.uom||''),nWt_(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
-       /* PO / PR ke against: item ke theek neeche uski strip, poori width me.
-          Cell khaali jaata hai aur drawStripCell_ ise didDrawCell me likhta
-          hai — tabhi Pending / Excess ko apna-apna rang aur excess figure ko
-          peela background mil sakta hai (autoTable ek cell ko ek hi rang deta
-          hai). minCellHeight row ki oonchai sambhalti hai, kyonki content
-          khaali hone par autoTable ke paas naapne ko kuch nahi hota. */
+       /* Against a PO / PR: its strip right under the item, at full width. The
+          cell goes in empty and drawStripCell_ writes it in didDrawCell; only
+          then can Pending / Excess get their own colours and the excess figure
+          a yellow background (autoTable gives a cell only one colour).
+          minCellHeight keeps the row height, because with empty content
+          autoTable has nothing to measure. */
        const bits=docStripParts_(it);
        if(bits){
          const lines=docStripLines_(bits);
-         stripRows[body.length]=lines;      // jo row abhi push hone wali hai
+         stripRows[body.length]=lines;      // the row about to be pushed
          body.push([{content:'',colSpan:7,
            styles:{fillColor:[248,250,252],minCellHeight:1.6+lines.length*STRIP_LH,
              cellPadding:{top:0.8,bottom:0.8,left:1.6,right:1.6}}}]);
-         /* Teesri line — PO ka apna rate, ab har PO receipt par. ALAG row,
-            upar wale cell ke andar \n nahi: autoTable poore cell ko ek rang
-            deta hai, to andar ye line usi rang me phans jaati. Top padding 0
-            rakha hai, isliye ye strip ki apni aakhri line jaisi padhti hai,
-            alag row jaisi nahi. */
+         /* The third line: the PO's own rate, now on every PO receipt. A SEPARATE
+            row, not a \n inside the cell above: autoTable gives the whole cell one
+            colour, so this line would be stuck in that colour. Top padding is 0,
+            so it reads as the strip's own last line rather than a separate row. */
          const rateNote=docStripRateNote_(bits);
-         /* Beech me (halign:'center'), left par nahi. Ye line ek vaakya hai —
-            PO ka rate, bill ka rate, aur dono ka antar — na ki upar wali do
-            lines jaisi column-wise figures ki qataar. Left par wo unke neeche
-            ek adhoori chauthi qataar jaisi padhti thi; poori width ke beech me
-            wo saaf taur par us item ka rate-statement lagti hai. */
+         /* Centred (halign:'center'), not left. This line is a sentence (the PO
+            rate, the bill rate and the difference), not a row of column-wise
+            figures like the two lines above. On the left it read like an
+            unfinished fourth row under them; centred across the full width it
+            clearly reads as that item's rate statement. */
          if(rateNote)body.push([{content:rateNote,colSpan:7,
            styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'center',fillColor:[248,250,252],
              textColor:hexRgb_(docStripRateAlert_(bits)?STRIP_COLOR.alert:STRIP_COLOR.info),
@@ -13832,10 +14465,10 @@ window.addEventListener('DOMContentLoaded',()=>{
          pNum(it.qty)+' '+(it.qtyUom||''),
          nWt_(it.weight)+' '+(it.wUnit||'KGS')
        ]);
-       /* LOT ke against: item ke theek neeche uski strip, poori width me —
-          bilkul usi tarah jaise Inward par PO ki strip chhapti hai. Cell khaali
-          jaata hai aur drawStripCell_ ise didDrawCell me likhta hai, tabhi
-          Pending / Excess ko apna-apna rang mil sakta hai. */
+       /* Against a LOT: its strip right under the item, at full width, exactly
+          as the PO strip prints on Inward. The cell goes in empty and
+          drawStripCell_ writes it in didDrawCell; only then can Pending /
+          Excess get their own colours. */
        const bits=docStripParts_(it);
        if(bits){
          const lines=docStripLines_(bits);
@@ -13856,10 +14489,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      headStyles:{fillColor:[255,255,255],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
      footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
      theme:'grid',
-     // Strip rows ka content khaali hai — unhe yahan likha jaata hai, taaki
-     // har figure apna rang le sake. Baaki saare cells autoTable khud likhta
-     // hai. Page break par bhi hook per-cell chalta hai, to strip apne page
-     // par sahi jagah bani rehti hai.
+     // The strip rows have empty content; they are written here so each figure
+     // can take its own colour. autoTable writes all the other cells itself.
+     // On a page break the hook still runs per cell, so the strip stays in the
+     // right place on its page.
      didDrawCell:data=>{
        if(data.section!=='body'||data.column.index!==0)return;
        const lines=stripRows[data.row.index];
@@ -14106,13 +14739,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      const ov=document.createElement('div');
      ov.className='sarv-ov';
      const opts=users.length
-       ?users.map(u=>'<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature?'':' (sign saved nahi)')+'</option>').join('')
+       ?users.map(u=>'<option value="'+escText(u.id)+'">'+escText(u.user_name)+(u.has_signature?'':' (no saved signature)')+'</option>').join('')
        :'<option value="role:">'+escText(roleName)+' (Role PIN)</option>';
-     ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">&#128274; PIN Confirm — '+escText(title)+'</div><div class="bd">'
+     ov.innerHTML='<div class="card" style="max-width:400px;"><div class="hd">PIN Confirm — '+escText(title)+'</div><div class="bd">'
        +'<div class="err" data-f="err"></div>'
        +'<div class="fg"><label>User</label><select data-f="user"'+((users.length<=1)?' disabled':'')+'>'+opts+'</select></div>'
-       +'<div class="fg"><label>Apna PIN <span class="req">*</span></label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
-       +'<div style="font-size:11px;color:#64748b;">Submit ke liye har baar apna PIN daalein. Saved sign hoga to PDF me <b>Store In-Charge</b> ke upar time ke saath lagega.</div>'
+       +'<div class="fg"><label>Your PIN <span class="req">*</span></label><input data-f="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter PIN"></div>'
+       +'<div style="font-size:11px;color:#64748b;">Enter your PIN every time you submit. If you have a saved signature, it is placed above <b>Store In-Charge</b> on the PDF with the time.</div>'
        +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">&#10004; Verify &amp; Submit</button></div></div>';
      document.body.appendChild(ov);
      const f=k=>ov.querySelector('[data-f="'+k+'"]');
@@ -14121,26 +14754,26 @@ window.addEventListener('DOMContentLoaded',()=>{
      const submit=async()=>{
        err('');
        const id=f('user').value,pin=f('pin').value;
-       if(!pin)return err('PIN daalein');
-       if(!SB_READY)return err('Supabase configure karein');
+       if(!pin)return err('Please enter your PIN');
+       if(!SB_READY)return err('Please configure Supabase');
        f('ok').disabled=true;
        try{
          if(id==='role:'){
            const v=await SB.rpc('verify_role_pin',{p_role:roleKey,p_pin:pin});
            if(v.error)throw v.error;
-           if(!v.data){err('❌ Galat PIN');f('pin').select();return;}
+           if(!v.data){err('Incorrect PIN');f('pin').select();return;}
            return done({dataUrl:null,name:(sarvCurrentUser&&sarvCurrentUser.name)||''});
          }
          const u=users.find(x=>x.id===id)||{};
          if(u.has_signature){
            const r=await SB.rpc('get_user_signature',{p_user_id:id,p_pin:pin});
            if(r.error)throw r.error;
-           if(!r.data){err('❌ Galat PIN');f('pin').select();return;}
+           if(!r.data){err('Incorrect PIN');f('pin').select();return;}
            return done({dataUrl:r.data,name:u.user_name||''});
          }
          const v=await SB.rpc('verify_app_user_pin',{p_user_id:id,p_pin:pin});
          if(v.error)throw v.error;
-         if(!v.data){err('❌ Galat PIN');f('pin').select();return;}
+         if(!v.data){err('Incorrect PIN');f('pin').select();return;}
          done({dataUrl:null,name:u.user_name||''});
        }catch(e){err(e.message||String(e));}
        finally{const b=f('ok');if(b)b.disabled=false;}
@@ -14626,7 +15259,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    let html='';
    pages.forEach((pg,pi)=>{
      html+='<div style="page-break-before:always;padding-top:20px;">';
-     html+='<div style="text-align:center;margin-bottom:14px;font-size:14px;font-weight:800;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:6px;">📎 ATTACHMENTS'+(pages.length>1?' (Page '+(pi+1)+' of '+pages.length+')':'')+'</div>';
+     html+='<div style="text-align:center;margin-bottom:14px;font-size:14px;font-weight:800;color:#0f172a;border-bottom:2px solid #0f172a;padding-bottom:6px;">ATTACHMENTS'+(pages.length>1?' (Page '+(pi+1)+' of '+pages.length+')':'')+'</div>';
      html+='<div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">';
      pg.forEach((img,ii)=>{
        const src=(img.dataUrl&&String(img.dataUrl).indexOf('data:image')===0)?img.dataUrl:'';
@@ -15285,7 +15918,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       }
     }
     pdfLinkQueueWrite_(keep);
-    if(fixed&&!opts.quiet)showToast('🔗 '+fixed+' PDF ka database link baad me jud gaya'+(keep.length?(' — '+keep.length+' abhi bhi pending'):''),'success');
+    if(fixed&&!opts.quiet)showToast('Database link added later for '+fixed+' PDF(s)'+(keep.length?('; '+keep.length+' still pending'):''),'success');
     return fixed;
   }
   /* Says it out loud, once, when links are still outstanding. A PDF that cannot
@@ -15293,7 +15926,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      the day it happens, not on the day somebody needs the document. */
   function reportPdfLinkBacklog_(){
     const n=pdfLinkQueue_().length;
-    if(n)showToast('⚠️ '+n+' PDF ka database link abhi pending hai — internet aane par apne aap jud jayega. Reports me ye document turant nahi dikhega.','warn');
+    if(n)showToast('The database link for '+n+' PDF(s) is still pending; it will be added automatically when the internet is back. These documents won\'t show in Reports straight away.','warn');
     return n;
   }
 
@@ -15309,7 +15942,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     const up=await pdfWithRetry_('storage upload '+path,
       ()=>SB.storage.from(SARV_PDF_BUCKET).upload(path,blob,{upsert:true,contentType:'application/pdf',cacheControl:'3600'}));
     if(!up.ok){
-      showToast('⚠️ PDF file could NOT be saved to Supabase Storage: '+(up.error?.message||up.error)+' — preview/download still works, and the link will be retried automatically.','warn');
+      showToast('PDF file could NOT be saved to Supabase Storage: '+(up.error?.message||up.error)+' — preview/download still works, and the link will be retried automatically.','warn');
       return {blob,path,url:'',name};
     }
     // Same storage path every regeneration (upsert overwrite) means the same
@@ -15334,7 +15967,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       path is enough: the file is already uploaded, so finishing the job later is
       just re-writing the two database rows. */
    pdfLinkQueueAdd_({kind,recordId:recordId||null,recordNo,variant,path:artifact.path,url:artifact.url||'',missing});
-   showToast('⚠️ '+recordNo+' ka PDF ban gaya lekin database link ('+missing.join(' + ')+') abhi save nahi hua — apne aap dobara try hoga.','warn');
+   showToast('The PDF for '+recordNo+' was created, but its database link ('+missing.join(' + ')+') hasn\'t been saved yet; it will be retried automatically.','warn');
  }
  function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
   function closeSarvPdfPreview(){
@@ -15357,7 +15990,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   // What the preview modal is showing right now, for its Send / Print buttons.
   let sarvPdfShareCtx=null;
   /* ── Recipient number ────────────────────────────────────────────
-     "Jise bhejna chahiye" — the number is resolved from the masters the entry
+     "Who it should go to": the number is resolved from the masters the entry
      already names (Outward/Issue: the receiver employee's Contact No, else the
      party's Supplier Master phone; Inward: the supplier's phone), shown for
      confirmation and still editable. Numbers typed by hand are remembered so
@@ -15410,9 +16043,9 @@ window.addEventListener('DOMContentLoaded',()=>{
         document.body.appendChild(ov);
       }
       ov.innerHTML='<div style="background:#fff;width:min(460px,96vw);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;">'
-        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">&#128242; Kise bhejna hai? &mdash; '+escText(ctx.docNo||'')+'</div>'
+        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">Send to whom? &mdash; '+escText(ctx.docNo||'')+'</div>'
         +'<div style="padding:14px 16px;">'
-        +'<label style="display:block;font-size:11px;font-weight:800;color:#334155;margin-bottom:5px;">WhatsApp Number (country code ke saath, e.g. 919812345678)</label>'
+        +'<label style="display:block;font-size:11px;font-weight:800;color:#334155;margin-bottom:5px;">WhatsApp Number (with country code, e.g. 919812345678)</label>'
         +'<input id="sarvWaPhoneInput" type="tel" inputmode="numeric" value="'+escText(sug[0]?.phone||'')+'" placeholder="91XXXXXXXXXX" '
           +'style="width:100%;box-sizing:border-box;padding:9px 11px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:14px;font-weight:700;letter-spacing:.5px;">'
         +(sug.length?'<div style="margin-top:10px;font-size:10.5px;font-weight:800;color:#64748b;">MASTER / RECENT</div>'
@@ -15420,11 +16053,11 @@ window.addEventListener('DOMContentLoaded',()=>{
             +sug.map(s=>'<button type="button" data-num="'+escText(s.phone)+'" style="background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;">'
                 +escText(s.phone)+' &middot; '+escText(s.label)+'</button>').join('')
             +'</div>':'<div style="margin-top:9px;font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 9px;">'
-            +'Is entry ke Party / Receiver ka number Master me nahi mila &mdash; number type karein.</div>')
+            +'The number of this entry\'s Party / Receiver was not found in the Master &mdash; please type the number.</div>')
         +'</div>'
         +'<div style="display:flex;justify-content:flex-end;gap:9px;padding:11px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;">'
         +'<button type="button" data-act="cancel" style="background:#e2e8f0;color:#334155;border:0;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;">Cancel</button>'
-        +'<button type="button" data-act="ok" style="background:#25d366;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">&#128242; WhatsApp Kholein</button>'
+        +'<button type="button" data-act="ok" style="background:#25d366;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">Open WhatsApp</button>'
         +'</div></div>';
       const input=byId('sarvWaPhoneInput');
       const finish=val=>{
@@ -15435,7 +16068,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       const submit=()=>{
         const p=storeWaDigits_(input?.value);
         if(!p||p.length<10){
-          showToast('⚠️ Poora WhatsApp number daalein (country code ke saath)','warn');
+          showToast('Enter the full WhatsApp number (with country code)','warn');
           input?.focus();return;
         }
         storeWaRememberNum_(p);finish(p);
@@ -15458,7 +16091,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
   /* WhatsApp Web gives a page no way to know whether the message actually went,
      so on that path the send is confirmed by the person who sent it. Print is
-     unlocked only on "Haan, bhej diya" — "Abhi nahi" leaves the entry locked. */
+     unlocked only on "Yes, sent" — "Not yet" leaves the entry locked. */
   function confirmWhatsappSent_(ctx){
     return new Promise(resolve=>{
       let ov=byId('sarvWaSentOverlay');
@@ -15469,19 +16102,19 @@ window.addEventListener('DOMContentLoaded',()=>{
         document.body.appendChild(ov);
       }
       ov.innerHTML='<div style="background:#fff;width:min(470px,96vw);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);overflow:hidden;">'
-        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">&#128242; WhatsApp par bhej diya?</div>'
+        +'<div style="padding:11px 16px;background:#075e54;color:#fff;font-size:14px;font-weight:800;">Sent on WhatsApp?</div>'
         +'<div style="padding:14px 16px;font-size:12px;color:#334155;line-height:1.65;">'
-        +'<b>'+escText(ctx.docNo||'')+'</b> ki PDF download ho gayi hai aur WhatsApp Web khul gaya hai.'
+        +'The PDF for <b>'+escText(ctx.docNo||'')+'</b> has downloaded and WhatsApp Web has opened.'
         +'<div style="margin:10px 0;background:#f8fafc;border-left:3px solid #25d366;padding:8px 11px;border-radius:5px;">'
-        +'1. WhatsApp me <b>&#128206; Attach &rarr; Document</b> dabayein<br>'
-        +'2. Downloads me se <b>'+escText(ctx.filename||'ye PDF')+'</b> chunein<br>'
-        +'3. <b>Send</b> dabayein</div>'
+        +'1. In WhatsApp press <b>Attach &rarr; Document</b><br>'
+        +'2. Choose <b>'+escText(ctx.filename||'this PDF')+'</b> from Downloads<br>'
+        +'3. Press <b>Send</b></div>'
         +'<div style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 9px;font-size:11px;">'
-        +'Browser khud file attach nahi kar sakta &mdash; attach karke Send dabane ke baad hi niche "Haan" dabayein. '
+        +'The browser cannot attach the file itself &mdash; press "Yes" below only after attaching it and pressing Send. '
         +'Print tabhi khulega.</div></div>'
         +'<div style="display:flex;justify-content:flex-end;gap:9px;padding:11px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;">'
-        +'<button type="button" data-act="no" style="background:#e2e8f0;color:#334155;border:0;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;">Abhi nahi</button>'
-        +'<button type="button" data-act="yes" style="background:#16a34a;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">&#10003; Haan, bhej diya</button>'
+        +'<button type="button" data-act="no" style="background:#e2e8f0;color:#334155;border:0;border-radius:7px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;">Not yet</button>'
+        +'<button type="button" data-act="yes" style="background:#16a34a;color:#fff;border:0;border-radius:7px;padding:8px 18px;font-size:12px;font-weight:800;cursor:pointer;">&#10003; Yes, sent</button>'
         +'</div></div>';
       const finish=ok=>{
         ov.style.display='none';ov.onclick=null;
@@ -15522,7 +16155,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     }
     const sent=isStoreEntrySent_(ctx.docNo);
     wa.style.display='';
-    wa.innerHTML=sent?'&#128242; Dobara Bhejein':'&#128242; Send via WhatsApp';
+    wa.innerHTML=sent?'Send Again':'Send via WhatsApp';
     /* Until the entry has gone out, WhatsApp Send is the only thing on this
        header. Print AND Download are hidden outright rather than greyed out —
        a downloadable PDF is a printable PDF, so leaving Download open would
@@ -15531,7 +16164,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(dl)dl.style.display=(sent&&dl.getAttribute('href'))?'':'none';
     if(hint){
       hint.style.display=sent?'none':'';
-      hint.textContent='🔒 Print / Download WhatsApp par bhejne ke baad khulega';
+      hint.textContent='Print / Download unlocks after it is sent on WhatsApp';
     }
     // The out-of-modal Drive links follow the same gate.
     applyStoreLinkGate_(sarvPdfState.current?.kind||"",ctx.docNo);
@@ -15542,23 +16175,23 @@ window.addEventListener('DOMContentLoaded',()=>{
      file, so it is tried first (mobile Chrome/Safari over HTTPS): the PDF
      arrives as a real attachment. Desktop browsers have no such API, so there
      the PDF is downloaded, WhatsApp Web opens on the chosen recipient's chat
-     with the message (and the PDF's permanent link) pre-filled, and the 📎
+     with the message (and the PDF's permanent link) pre-filled, and the
      attach is the one manual step that cannot be automated away. */
   async function sendStoreEntryWhatsapp_(){
     const ctx=sarvPdfShareCtx;if(!ctx)return;
-    if(!ctx.blob&&!ctx.pdfUrl)return showToast('⚠️ PDF file ready nahi hai — attach nahi ho sakti','warn');
+    if(!ctx.blob&&!ctx.pdfUrl)return showToast('The PDF file is not ready, so it cannot be attached','warn');
     const phone=await pickWhatsappRecipient_(ctx);
-    if(!phone)return;                       // picker se back — kuch nahi bheja
+    if(!phone)return;                       // back from the picker; nothing sent
     const msg=(ctx.text||ctx.docNo||'')+(ctx.pdfUrl?('\nPDF: '+ctx.pdfUrl):'');
     const pdfFile=()=>new File([ctx.blob],ctx.filename,{type:'application/pdf'});
     if(ctx.blob&&navigator.canShare&&navigator.canShare({files:[pdfFile()]})){
       try{
         await navigator.share({files:[pdfFile()],title:ctx.docNo,text:msg});
         markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
-        showToast('✅ '+ctx.docNo+' bhej diya — ab print kar sakte hain');
+        showToast(''+ctx.docNo+' sent; you can print it now');
         return;
       }catch(e){
-        if(e.name==='AbortError')return;    // share sheet band kar diya
+        if(e.name==='AbortError')return;    // share sheet was closed
         console.warn('[SARV] Native PDF share failed:',e.message||e);
       }
     }
@@ -15569,20 +16202,20 @@ window.addEventListener('DOMContentLoaded',()=>{
     // confirmWhatsappSent_.
     if(await confirmWhatsappSent_(ctx)){
       markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
-      showToast('✅ '+ctx.docNo+' bhej diya — ab print kar sakte hain');
+      showToast(''+ctx.docNo+' sent; you can print it now');
     }else{
-      showToast('🔒 '+ctx.docNo+' abhi bheja nahi gaya — Print band hai','warn');
+      showToast(''+ctx.docNo+' has not been sent yet, so Print is disabled','warn');
     }
   }
   function printStoreEntryPdf_(){
     const ctx=sarvPdfShareCtx;if(!ctx)return;
-    if(!isStoreEntrySent_(ctx.docNo))return showToast('⛔ Pehle WhatsApp par bhejein — uske baad hi print milega','warn');
+    if(!isStoreEntrySent_(ctx.docNo))return showToast('Send it on WhatsApp first; printing is available only after that','warn');
     // Printed from the generated file itself, so the paper copy is exactly the
     // PDF that was sent. Only a failed PDF build falls back to HTML printing.
     if(!ctx.blob)return window.triggerSystemPrint('BOTH');
     const url=URL.createObjectURL(ctx.blob);
     const w=window.open(url,'_blank');
-    if(!w){URL.revokeObjectURL(url);return showToast('Print ke liye pop-ups allow karein','warn');}
+    if(!w){URL.revokeObjectURL(url);return showToast('Please allow pop-ups to print','warn');}
     setTimeout(()=>{try{w.focus();w.print()}catch(e){}},900);
     setTimeout(()=>URL.revokeObjectURL(url),120000);
   }
@@ -15601,10 +16234,10 @@ window.addEventListener('DOMContentLoaded',()=>{
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
         +'<strong id="sarvPdfViewerTitle" style="font-size:14px;">PDF Preview</strong>'
         +'<div style="display:flex;gap:8px;align-items:center;">'
-        +'<button type="button" id="sarvPdfWaBtn" style="display:none;color:#fff;background:#25d366;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128242; Send via WhatsApp</button>'
-        +'<span id="sarvPdfGateHint" style="display:none;font-size:11px;font-weight:700;color:#fca5a5;">&#128274; Print / Download WhatsApp par bhejne ke baad khulega</span>'
-        +'<button type="button" id="sarvPdfPrintBtn" style="display:none;color:#fff;background:#475569;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">&#128424; Print</button>'
-        +'<a id="sarvPdfDownloadBtn" href="#" download style="color:#fff;background:#0284c7;border-radius:6px;padding:7px 11px;text-decoration:none;font-size:12px;font-weight:700;">⬇ Download PDF</a>'
+        +'<button type="button" id="sarvPdfWaBtn" style="display:none;color:#fff;background:#25d366;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">Send via WhatsApp</button>'
+        +'<span id="sarvPdfGateHint" style="display:none;font-size:11px;font-weight:700;color:#fca5a5;">Print / Download unlocks after it is sent on WhatsApp</span>'
+        +'<button type="button" id="sarvPdfPrintBtn" style="display:none;color:#fff;background:#475569;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">Print</button>'
+        +'<a id="sarvPdfDownloadBtn" href="#" download style="color:#fff;background:#0284c7;border-radius:6px;padding:7px 11px;text-decoration:none;font-size:12px;font-weight:700;">Download PDF</a>'
         +'<button type="button" id="sarvPdfViewerClose" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;">✕</button>'
         +'</div></div><iframe id="sarvPdfViewerFrame" title="PDF preview" style="border:0;flex:1;width:100%;background:#fff;"></iframe></div>';
       document.body.appendChild(overlay);
@@ -15686,7 +16319,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         await indexPdfArtifact(kind,recordId,no,variant,result[variant]);
       }catch(e){
         console.warn('[SARV PDF] '+kind+' '+variant+' native PDF generation failed, HTML preview still available:',e.message||e);
-        showToast('⚠️ '+kind+' '+variant+' PDF could not be built: '+(e.message||e),'warn');
+        showToast(''+kind+' '+variant+' PDF could not be built: '+(e.message||e),'warn');
         result[variant]={blob:null,path:'',url:'',name:filename,html};
       }
     }
@@ -15806,7 +16439,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const first=byId(missing[0].id);
    first?.scrollIntoView({behavior:'smooth',block:'center'});
    first?.focus();
-   showToast('⚠️ '+missing.map(f=>f.label).join(', ')+' compulsory hai — highlighted field(s) fill karein','warn');
+   showToast(''+missing.map(f=>f.label).join(', ')+' required. Please fill in the highlighted field(s).','warn');
    return false;
  }
  /* Pre-submit preview for Inward / Outward. Runs after every validation and
@@ -15827,18 +16460,18 @@ window.addEventListener('DOMContentLoaded',()=>{
          +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
          +'<strong id="sarvEntryPreviewTitle" style="font-size:14px;">Preview</strong>'
          +'<button type="button" data-act="back" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:6px;padding:6px 10px;font-size:16px;cursor:pointer;" title="Back to form">✕</button></div>'
-         +'<div style="padding:8px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e;font-weight:600;">⚠️ Submit karne se pehle entry check karein — sab sahi ho to <b>Confirm &amp; Submit</b>, warna <b>Back / Edit</b> karke form me sudharein.</div>'
+         +'<div style="padding:8px 14px;background:#fffbeb;border-bottom:1px solid #fde68a;font-size:12px;color:#92400e;font-weight:600;">Check the entry before submitting. If everything is correct press <b>Confirm &amp; Submit</b>; otherwise press <b>Back / Edit</b> and correct the form.</div>'
          +'<iframe id="sarvEntryPreviewFrame" title="Entry preview" style="border:0;flex:1;width:100%;background:#f1f5f9;"></iframe>'
          +'<div style="display:flex;justify-content:flex-end;gap:10px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;">'
-         +'<button type="button" class="btn" data-act="back" style="background:#e2e8f0;color:#334155;font-weight:700;padding:0 18px;height:36px;">✏️ Back / Edit</button>'
-         +'<button type="button" class="btn" data-act="ok" style="background:var(--btn-success-grad,#16a34a);color:#fff;font-weight:800;padding:0 22px;height:36px;border:none;">✅ Confirm &amp; Submit</button>'
+         +'<button type="button" class="btn" data-act="back" style="background:#e2e8f0;color:#334155;font-weight:700;padding:0 18px;height:36px;">Back / Edit</button>'
+         +'<button type="button" class="btn" data-act="ok" style="background:var(--btn-success-grad,#16a34a);color:#fff;font-weight:800;padding:0 22px;height:36px;border:none;">Confirm &amp; Submit</button>'
          +'</div></div>';
        document.body.appendChild(ov);
      }
      const isOut=kind==='OUTWARD'||kind==='ISSUE';
      const images=window.getPhotos?window.getPhotos(isOut?'outward':'inward'):[];
      const no=d.inwardNo||d.outwardNo;
-     byId('sarvEntryPreviewTitle').textContent='🔍 '+(isOut?'Outward':'Inward')+' Preview — '+no;
+     byId('sarvEntryPreviewTitle').textContent=''+(isOut?'Outward':'Inward')+' Preview — '+no;
      byId('sarvEntryPreviewFrame').srcdoc=buildStorePdfCopyHtml(kind,d,items,'ACCOUNT COPY',images||[]);
      const finish=ok=>{
        ov.style.display='none';
@@ -15881,7 +16514,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  const sarvSaveLocks={};
  async function withStoreSaveLock_(key,fn){
    if(sarvSaveLocks[key]){
-     showToast('⏳ Pichhli entry abhi save ho rahi hai — ruk kar dobara dabayein (do baar save nahi hoga)','warn');
+     showToast('The previous entry is still saving. Wait a moment and press again (it won\'t be saved twice).','warn');
      return;
    }
    sarvSaveLocks[key]=true;
@@ -15977,7 +16610,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // is a safety net, not the gate. Said out loud so the operator knows the
      // net was down for this one.
      console.warn('[SARV] Duplicate entry check skipped:',e.message||e);
-     showToast('⚠️ Duplicate check nahi ho paaya ('+(e.message||e)+') — save aage badh raha hai, Record No. khud verify karein','warn');
+     showToast('The duplicate check could not run ('+(e.message||e)+'); saving continues. Please verify the Record No. yourself.','warn');
      return null;
    }
  }
@@ -15989,21 +16622,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    const dup=await findDuplicateStoreEntry_(kind,rows,excludeId);
    if(!dup)return true;
    if(dup.exact){
-     showToast('⛔ Ye bilkul yahi entry pehle se <b>'+escText(dup.documentNo)+'</b> par save hai — duplicate nahi banega.<br>'
-       +'Badlav karna ho to Print History / Reports me <b>'+escText(dup.documentNo)+'</b> ko ✏️ se edit karein.','error');
-     alert('Duplicate entry\n\nYahi data pehle se is Record No. par save hai:\n  '+dup.documentNo
-       +'\n\nNaya Record No. nahi banega. Badlav ke liye Print History / Reports se usi entry ko edit karein.');
+     showToast('This exact entry is already saved as <b>'+escText(dup.documentNo)+'</b>; no duplicate will be created.<br>'
+       +'To make changes, edit <b>'+escText(dup.documentNo)+'</b> with in Print History / Reports.','error');
+     alert('Duplicate entry\n\nThis same data is already saved under this Record No.:\n  '+dup.documentNo
+       +'\n\nNo new Record No. will be created. To make changes, edit that entry from Print History / Reports.');
      return false;
    }
-   return confirm('Is invoice / gate pass par pehle se entry hai:\n  '+dup.documentNo
-     +'\n\nIs baar ke items / quantity alag hain, to ye ek alag (partial) receipt maana jayega.\n\nNaya Record No. banakar save karein?');
+   return confirm('There is already an entry for this invoice / gate pass:\n  '+dup.documentNo
+     +'\n\nThe items / quantities this time are different, so it will be treated as a separate (partial) receipt.\n\nSave it under a new Record No.?');
  }
 
  async function saveInwardWithPdf(){
    return withStoreSaveLock_('INWARD',saveInwardWithPdf_);
  }
  async function saveInwardWithPdf_(){
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
    /* Without PO, a Purchase receipt has to say which requirement it met —
       otherwise the PR it satisfied stays open with nothing linking the two.
@@ -16013,7 +16646,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const el=byId('prNumberBtn');
      el?.scrollIntoView({behavior:'smooth',block:'center'});
      togglePrNumberPanel(true);
-     return showToast('⚠️ PO ke bina receive karne ke liye kam se kam ek PR Number tick karna zaroori hai ('+escText(INW_PR_PURCHASER)+' ki PR)','warn');
+     return showToast('To receive without a PO, tick at least one PR Number ('+escText(INW_PR_PURCHASER)+'\'s PR)','warn');
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    /* Before anything is written, and before the user is asked for a PIN: is this
@@ -16055,9 +16688,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(pVal('entryTypeSelect')==='INWARD'&&!isSarvOwnUnitSupplier(pVal('supplierName'))){
      const zeroGst=rows.filter(r=>pNum(r.tax)===0).map(r=>r.name);
      if(zeroGst.length&&!await verifyEditPassword('GST% = 0 par item(s):\n• '+zeroGst.join('\n• ')))
-       return showToast('⛔ Edit Password ke bina GST = 0 wali INWARD entry save nahi hogi','warn');
+       return showToast('An INWARD entry with GST = 0 cannot be saved without the Edit Password','warn');
    }
-   if(pVal('inwNatureOfInward')==='Repaired'&&!getSelectedRepairOutNos().length)return showToast('Repair Return ke liye pending Outward select karna zaroori hai','warn');
+   if(pVal('inwNatureOfInward')==='Repaired'&&!getSelectedRepairOutNos().length)return showToast('For a Repair Return, a pending Outward must be selected','warn');
    const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText'),btn=byId('submitBtn');
    // Editing an existing record? Then the document number is the one it
    // already carries — nextNo() must not be called, or the record would be
@@ -16072,7 +16705,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const inwSign=await sarvSubmitPinGate_(editId?('Update '+editNo):('Submit '+(pVal('entryTypeSelect')||'Inward')));
    if(!inwSign)return;
    sarvPendingStoreSign=inwSign;
-   if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=editId?'⏳ Updating...':'⏳ Saving...';}
+   if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=editId?'Updating...':'Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=editId?('Updating '+editNo+'…'):'Saving Inward entry…';overlay.classList.add('active');}
    try{
      const no=editId?editNo:await nextNo(pVal('entryTypeSelect')==='INWARD NB'?'NB':'INWARD');
@@ -16108,7 +16741,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        // same Record No. is impossible.
        h=await writeInwHeader(p=>SB.from('inward_entries').update(p).eq('id',editId).select().maybeSingle());
        if(h.error)throw h.error;
-       if(!h.data)throw new Error(editNo+' database me nahi mila — ho sakta hai kisi ne delete kar diya ho. Kuch save nahi hua.');
+       if(!h.data)throw new Error(editNo+' was not found in the database; someone may have deleted it. Nothing was saved.');
        // Old lines go before the new ones land, so a row the Admin removed
        // really disappears and an unchanged row is never stored twice.
        const del=await SB.from('inward_lines').delete().eq('inward_id',editId);
@@ -16119,7 +16752,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      }
      // Said plainly rather than left to be noticed later: the PR link printed on
      // this entry but is not stored, so Reports can't trace the receipt back.
-     if(inwShapeUsed>0&&full.req_no)showToast('⚠️ Is database me PR link save nahi hota — inward_entries me req_no column add karein (INWARD_PR_LINK_MIGRATION.sql)','warn');
+     if(inwShapeUsed>0&&full.req_no)showToast('This database does not save the PR link. Add the req_no column to inward_entries (INWARD_PR_LINK_MIGRATION.sql).','warn');
      // Freight + Round off stored on the header so an Admin edit brings them
      // back (see loadInwardForEdit). Written separately and best-effort: a
      // database without these columns must not lose the rest of the header to
@@ -16184,7 +16817,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           pdfUrl is the permanent link that rides along in the message. */
        {docNo:no,party:d.supplier,receiver:'',pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
         text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
-     showToast(editId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Inward saved: '+no));
+     showToast(editId?(''+no+' updated; saved under the same Record No.'):('Inward saved: '+no));
      /* Stamp the Purchaser's approval with the receipt it ended up on, so the
         Inward Approval list can say "this became SIHF-II/…/017" rather than
         leaving an approved request looking like it was never used. The
@@ -16278,7 +16911,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const box=byId('outStockWarning');
    if(!box)return;
    if(!short||!short.length){box.style.display='none';box.innerHTML='';return;}
-   box.innerHTML='<div style="font-weight:800;margin-bottom:6px;">&#9888;&#65039; Stock kam hai — entry submit nahi ho sakti</div>'
+   box.innerHTML='<div style="font-weight:800;margin-bottom:6px;">Not enough stock; the entry cannot be submitted</div>'
      +short.map(s=>'<div style="margin-left:4px;">&bull; <b>'+escText(s.name)+'</b> — STOCK QTY '
        +nNum_(s.stock)+' &lt; OUT QTY '+nNum_(s.want)+'</div>').join('')
      +'<div style="margin-top:7px;font-weight:800;color:#7f1d1d;">PLEASE INWARD FIRST</div>';
@@ -16289,7 +16922,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    return withStoreSaveLock_('OUTWARD',saveOutwardWithPdf_);
  }
  async function saveOutwardWithPdf_(){
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    // Target Return Date is hidden on an ISSUE (consumables don't come back),
    // so it is only a required field while the form is an OUTWARD.
    const outReq=[{id:'outPartyName',label:'Party Name'},{id:'outLocation',label:'Location'}];
@@ -16311,8 +16944,8 @@ window.addEventListener('DOMContentLoaded',()=>{
        missing.forEach(f=>highlightRequiredField(f.id));
        const code=byId('outReceiverEmpCode');
        if(code){highlightRequiredField('outReceiverEmpCode');code.scrollIntoView({behavior:'smooth',block:'center'});code.focus();}
-       return showToast('⚠️ Receiver '+missing.map(f=>f.label).join(' / ')
-         +' khaali hai — Emp Code box me employee ka code daalein, teeno field khud bhar jayenge','warn');
+       return showToast('Receiver '+missing.map(f=>f.label).join(' / ')
+         +' empty. Enter the employee\'s code in the Emp Code box and all three fields fill in automatically.','warn');
      }
    }
    const rows=rowDataOutward();if(!rows.length)return showToast('At least one outward item required','warn');
@@ -16335,13 +16968,13 @@ window.addEventListener('DOMContentLoaded',()=>{
          if(mn&&(!n||!known)){mn.style.border='2px solid #dc2626';mn.style.background='#fef2f2';}
          if(mo&&(!no||!known)){mo.style.border='2px solid #dc2626';mo.style.background='#fef2f2';}
          [mn,mo].forEach(el=>el&&el.addEventListener('input',function(){mn.style.border='';mn.style.background='';mo.style.border='';mo.style.background='';},{once:true}));
-         bad.push({tr,nm,why:(!n||!no)?'Machine Name / No. khaali':'Machine Master me nahi'});
+         bad.push({tr,nm,why:(!n||!no)?'Machine Name / No. is empty':'not in the Machine Master'});
        }
      });
      if(bad.length){
        const f=bad[0].tr.querySelector((bad[0].tr.querySelector('.out-machine-name')?.value||'').trim()?'.out-machine-no':'.out-machine-name');
        f?.scrollIntoView({block:'nearest',behavior:'smooth'});f?.focus();
-       return showToast('⚠️ ISSUE ke liye har item par Machine Name & Machine No. (Machine Master list se) zaroori hai:<br>'+bad.map(b=>'• '+escText(b.nm)+' — '+b.why).join('<br>'),'warn');
+       return showToast('For an ISSUE, every item needs a Machine Name & Machine No. (from the Machine Master list):<br>'+bad.map(b=>'• '+escText(b.nm)+': '+b.why).join('<br>'),'warn');
      }
    }
    // Stock guard runs before ANY write — a blocked entry must leave no
@@ -16357,13 +16990,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      const short=await outwardStockShortfalls(rows,outEditId);
      if(short.length){
        showOutStockWarning(short);
-       showToast('⛔ '+short.map(s=>escText(s.name)+': STOCK QTY '+nNum_(s.stock)+' &lt; OUT QTY '+nNum_(s.want)).join('<br>')+'<br><b>PLEASE INWARD FIRST</b>','error');
+       showToast(''+short.map(s=>escText(s.name)+': STOCK QTY '+nNum_(s.stock)+' &lt; OUT QTY '+nNum_(s.want)).join('<br>')+'<br><b>PLEASE INWARD FIRST</b>','error');
        return;
      }
    }catch(e){
      // A stock lookup that can't run must not silently allow the dispatch.
      console.error('[SARV] Stock check failed:',e);
-     showToast('Stock check nahi ho paaya — entry rok di gayi: '+(e.message||e),'error');
+     showToast('The stock check could not run, so the entry was stopped: '+(e.message||e),'error');
      return;
    }
    const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText'),btn=byId('outSubmitBtn');
@@ -16376,7 +17009,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const outSign=await sarvSubmitPinGate_(outEditId?('Update '+outEditNo):('Submit '+(pVal('outEntryTypeSelect')||'Outward')));
    if(!outSign)return;
    sarvPendingStoreSign=outSign;
-   if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=outEditId?'⏳ Updating...':'⏳ Saving...';}
+   if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=outEditId?'Updating...':'Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=outEditId?('Updating '+outEditNo+'…'):'Saving Outward entry…';overlay.classList.add('active');}
    try{
      // On an edit the record keeps the number it already has — nextNo() would
@@ -16416,7 +17049,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        // impossible, and the old lines go before the new ones land.
        h=await writeOutHeader(p=>SB.from('outward_entries').update(p).eq('id',outEditId).select().maybeSingle());
        if(h.error)throw h.error;
-       if(!h.data)throw new Error(outEditNo+' database me nahi mila — ho sakta hai kisi ne delete kar diya ho. Kuch save nahi hua.');
+       if(!h.data)throw new Error(outEditNo+' was not found in the database; someone may have deleted it. Nothing was saved.');
        const del=await SB.from('outward_lines').delete().eq('outward_id',outEditId);
        if(del.error)throw del.error;
      }else{
@@ -16426,7 +17059,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // The receiver columns aren't there yet, so Designation / Department print
      // on this PDF but won't come back when the entry is reopened for edit.
      // Said plainly rather than left to be discovered on the next edit.
-     if(outShapeUsed>0)showToast('⚠️ Is database me Receiver Designation / Department save nahi hote — edit me dobara Emp Code daalna padega (receiver_designation, receiver_department, receiver_emp_code columns add karein)','warn');
+     if(outShapeUsed>0)showToast('This database does not save the Receiver Designation / Department; the Emp Code must be entered again when editing (add the receiver_designation, receiver_department and receiver_emp_code columns).','warn');
      /* lot_no on the LINE, not only on the header.
         Today an ISSUE carries one lot, so the line's value is the same as the
         header's and nothing reads differently. What it buys is the next step:
@@ -16446,7 +17079,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
        {docNo:no,party:d.partyName,receiver:d.receiverName,pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
         text:(d.entryType==='ISSUE'?'ISSUE ':'OUTWARD ')+no+' — '+(d.partyName||'-')+(d.receiverName?(' | Receiver '+d.receiverName):'')+(d.gatePass?(' | Gate Pass '+d.gatePass):'')});}
-     showToast(outEditId?('✅ '+no+' updated — usi Record No. par save hua'):('✅ Outward saved: '+no));
+     showToast(outEditId?(''+no+' updated; saved under the same Record No.'):('Outward saved: '+no));
      // Repair-nature outward — refresh the Repair Items Tracker so this
      // entry (and its sent/balance figures) show up immediately, not only
      // after manually opening that tab and clicking Refresh.
@@ -16469,7 +17102,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    return withStoreSaveLock_('REQUIREMENT',saveRequirementWithPdf_);
  }
  async function saveRequirementWithPdf_(){
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    /* Required By Date and Priority are checked FIRST, before the item rows:
       neither has a default any more (see clearPrForm / syncPriorityButtons),
       so a form that was filled without looking at them has to be sent back
@@ -16479,11 +17112,19 @@ window.addEventListener('DOMContentLoaded',()=>{
      highlightRequiredField('p_requiredByDate');
      byId('p_requiredByDate')?.scrollIntoView({behavior:'smooth',block:'center'});
      byId('p_requiredByDate')?.focus();
-     return showToast('⚠️ Required By Date chunna zaroori hai — highlighted field bharein','warn');
+     return showToast('Please choose a Required By Date in the highlighted field','warn');
    }
    if(!pVal('p_priority').trim()){
      highlightPriorityGroup_();
-     return showToast('⚠️ Priority chunna zaroori hai — Normal / Urgent / Critical me se ek','warn');
+     return showToast('Please choose a Priority: Normal, Urgent or Critical','warn');
+   }
+   // A PR generated from the Item Master has no default requester: the person
+   // has to be chosen, not left to save as "Unknown".
+   if(sarvPrNeedsRequester_&&!(pVal('p_reqEmpCode').trim()&&pVal('p_reqPersonName').trim())){
+     highlightRequiredField('p_reqEmpCode');
+     byId('p_reqEmpCode')?.scrollIntoView({behavior:'smooth',block:'center'});
+     byId('p_reqEmpCode')?.focus();
+     return showToast('Please choose Requested By: enter the Employee Code in the highlighted field','warn');
    }
    const rows=pRows('#p_itemTableBody tr').map(r=>({name:r.querySelector('.col-name')?.value||'',description:r.querySelector('.col-desc')?.value||'',make:r.querySelector('.col-make')?.value||'',category:r.querySelector('.col-cat')?.value||'',machine:r.querySelector('.col-machine')?.value||'',qty:pNum(r.querySelector('.col-qty')?.value),uom:r.querySelector('.col-uom')?.value||'',grossWeight:pNum(r.querySelector('.col-grossweight')?.value),specification:r.querySelector('.col-rem')?.value||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0);
    if(!rows.length)return showToast('At least one item required','warn');
@@ -16501,13 +17142,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      });
      missingMachineRows[0].querySelector('.col-machine')?.scrollIntoView({behavior:'smooth',block:'center'});
      missingMachineRows[0].querySelector('.col-machine')?.focus();
-     return showToast('⚠️ Machine Name & No. is compulsory — highlighted row(s) me fill karein','warn');
+     return showToast('Machine Name & No. is required. Please fill in the highlighted row(s).','warn');
    }
    const btn=byId('p_submitBtn');
    if(btn&&btn.disabled)return; // already processing — ignore double-click/double-tap
    const overlay=byId('p_syncOverlay'),msgEl=byId('p_syncMsg');
    const setMsg=t=>{if(msgEl)msgEl.textContent=t};
-   if(btn){btn.disabled=true;btn.innerHTML='⏳ Saving...';}
+   if(btn){btn.disabled=true;btn.innerHTML='Saving...';}
    if(overlay){setMsg(sarvEditingRequirementId?'Updating Requirement...':'Saving Requirement...');overlay.classList.add('active');}
    try{
      // purchaser_name is its own column, NOT requested_by: requested_by is the
@@ -16522,12 +17163,12 @@ window.addEventListener('DOMContentLoaded',()=>{
         the top of this function; this is the guard that makes it impossible
         for any future path to bypass that check. */
      const requiredBy=pVal('p_requiredByDate').trim();
-     if(!requiredBy)throw new Error('Required By Date khali hai — PR save nahi ho sakti. Form me date chunein.');
+     if(!requiredBy)throw new Error('Required By Date is empty, so the PR cannot be saved. Please choose a date in the form.');
      const payload={request_date:pVal('p_reqDate')||today(),required_by:requiredBy,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority'),notes:pVal('p_overallRemarks')||null};
      let h,no,reopenedFrom='';
-     /* Padha jaata hai AB, kyonki sarvEditingRequirementId PDF banne ke baad
-        null kar diya jaata hai — niche "edit tha ya naya?" poochne ke liye wo
-        flag tab tak bach nahi paata. */
+     /* Read NOW, because sarvEditingRequirementId is set to null after the PDF
+        is built; that flag wouldn't survive until "was this an edit or new?" is
+        asked below. */
      const wasEdit=!!sarvEditingRequirementId;
      if(sarvEditingRequirementId){
        // Re-checked against the stored status: the PR may have been approved
@@ -16535,7 +17176,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        // Rejected or Hold PR.
        const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot').eq('id',sarvEditingRequirementId).single();
        if(cur.error)throw cur.error;
-       if(!canEditPr_(cur.data))throw new Error('Ye PR ab "'+(cur.data.status||'')+'" hai — sirf Pending / Rejected / Hold PR edit ho sakti hai. Admin login se update karein.');
+       if(!canEditPr_(cur.data))throw new Error('This PR is now "'+(cur.data.status||'')+'"; only Pending / Rejected / Hold PRs can be edited. Update it with an Admin login.');
        /* A corrected Rejected PR goes back into the flow as Pending, with the
           approval chain cleared so the Purchaser signs it afresh. The Store
           Incharge's own signature is kept. A Hold is treated the same way: the
@@ -16575,12 +17216,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      setMsg('Generating PR PDF...');
      const d=collectRequirementData(no,rows),pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
-     showToast(reopenedFrom?('✅ '+no+' update ho gayi — '+reopenedFrom+' se wapas PENDING me bhej di gayi'):('✅ Requirement saved: '+no));
-     /* Ye PR Trims Manager se generate hui thi? To uska number wapas unhi
-        trims rows ke PR NO. column me chala jaata hai — wahi link jisse us
-        sheet par PO No, Target Date aur Qty Received apne aap chalne lagte
-        hain. Edit par nahi: PR No pehle se wahan lag chuka hota hai.
-        clearPrForm() se PEHLE, kyunki wo pending ko saaf kar deta hai. */
+     showToast(reopenedFrom?(''+no+' updated and moved back from '+reopenedFrom+' to PENDING'):('Requirement saved: '+no));
+     /* Was this PR generated from the Trims Manager? Then its number goes back
+        to the PR NO. column of those same trims rows, the link that makes PO
+        No, Target Date and Qty Received work automatically on that sheet. Not
+        on Edit: the PR No is already there. BEFORE clearPrForm(), because that
+        clears the pending state. */
      if(!wasEdit)sarvTrimsPrNotify_(no);
      await refreshPendingRequirements();
      // ── Clear form after save ──────────────────────────────────
@@ -16588,7 +17229,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      return h.data;
    } finally {
      if(overlay)overlay.classList.remove('active');
-     if(btn){btn.disabled=false;btn.innerHTML=sarvEditingRequirementId?'💾 Update Requirement':'✅ Submit & Sync';}
+     if(btn){btn.disabled=false;btn.innerHTML=sarvEditingRequirementId?'Update Requirement':'Submit & Sync';}
    }
  }
 
@@ -16744,12 +17385,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(SB_READY){nextNo((byId('outEntryTypeSelect')?.value||'')==='ISSUE'?'ISSUE':'OUTWARD').then(no=>{const e=byId('outRegEntryNo');if(e&&!sarvEditingOutwardId)e.value=no;}).catch(()=>{});refreshSerialNo('OUTWARD').catch(()=>{});}
  }
  function clearPrForm(){
-   /* Trims sheet se aaya link is form ke saath jeeta-marta hai: form khaali
-      hone ka matlab hai ki wo request ab is form par nahi hai. Bina iske, ek
-      chhodi hui trims PR ka link agli (bilkul alag) PR par chipak jaata aur
-      uska number galat rows par ja kar baith jaata.
-      sarvGenerateNewPrFromTrims is liye pending ISKE BAAD set karta hai. */
+   /* The link from the Trims sheet lives and dies with this form: an empty form
+      means that request is no longer on it. Without this, the link of an
+      abandoned trims PR would stick to the next (completely unrelated) PR and
+      its number would land on the wrong rows.
+      That is why sarvGenerateNewPrFromTrims sets pending AFTER this. */
    sarvTrimsPrPending=null;
+   sarvPrNeedsRequester_=false;
    ['p_requiredByDate','p_reqPersonName','p_reqEmpCode','p_reqDesignation','p_reqDepartment','p_reqContact','p_reqGeneratedBy','p_overallRemarks'].forEach(id=>{const e=byId(id);if(e)e.value='';});
    // Purchaser Name is blank again, so the next item's category is free to
    // fill it — without this reset a fresh PR would still count as "already
@@ -16768,7 +17410,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(byId('p_reqNoField'))byId('p_reqNoField').value='';
    const tb=byId('p_itemTableBody');if(tb){tb.innerHTML='';addPurchaseMainRow();}
    sarvEditingRequirementId=null;
-   const btn=byId('p_submitBtn');if(btn)btn.textContent='✅ Submit & Sync';
+   const btn=byId('p_submitBtn');if(btn)btn.textContent='Submit & Sync';
    if(SB_READY)nextNo('REQ').then(no=>{if(byId('p_reqNoField'))byId('p_reqNoField').value=no;}).catch(()=>{});
  }
 
@@ -16855,7 +17497,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // #1000 resolve to {} here and show blank Make/Category in the PR
      // and Build-PO tables.
      // '*' rather than a column list: Build PO reads uom and gst_pct off these
-     // rows too (appendPoBuildRow — "UOM Item Master se locked hai" and
+     // rows too (appendPoBuildRow — "UOM is locked from the Item Master" and
      // itemGst_), and naming gst_pct explicitly would make PostgREST reject the
      // whole query on a database that predates that column. With a short list
      // both silently fell back — every PO line got the default GST instead of
@@ -16976,7 +17618,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    prApplyCompletion_(prVerdicts).then(n=>{
      if(!n)return;
      renderPendingRequirementsTable();
-     showToast('🔄 '+n+' PR ka status receiving ke hisaab se update kiya gaya');
+     showToast('Updated the status of '+n+' PR(s) based on receiving');
    }).catch(e=>console.warn('[SARV] PR status reconcile skipped:',e.message||e));
  }
  // Does this pending line survive the filter bar above the table?
@@ -17035,10 +17677,10 @@ window.addEventListener('DOMContentLoaded',()=>{
         PR's own status is kept on the badge's tooltip. */
      const statusVal=x.completed?'Completed':(x.req.status||'Pending'),sc=statusColors[statusVal]||'#64748b';
      const statusTitle=x.completed
-       ?('Maal Inward ho chuka hai — received '+pNum(x.received)+' / required '+pNum(x.requested)+' (PR status: '+(x.req.status||'Pending')+')')
+       ?('Material already received through Inward: received '+pNum(x.received)+' / required '+pNum(x.requested)+' (PR status: '+(x.req.status||'Pending')+')')
        :'';
      const statusBadge='<span title="'+pEsc(statusTitle)+'" style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'+(x.completed?'&#10004; ':'')+pEsc(statusVal)+'</span>';
-     const vendorBtnLabel=x.approvedVendor?'&#9989; '+pEsc(x.approvedVendor.name||'Vendor'):'&#128176; Vendor Info';
+     const vendorBtnLabel=x.approvedVendor?''+pEsc(x.approvedVendor.name||'Vendor'):'Vendor Info';
      /* Three states, so the PO desk can see where each PR stands without
         opening it:
           purple — no vendor quotes on this PR yet
@@ -17052,14 +17694,14 @@ window.addEventListener('DOMContentLoaded',()=>{
             : 'linear-gradient(180deg,#8b5cf6 0%,#6d28d9 100%)');
      const vendorBtnTitle=x.approvedRate!=null
        ? 'Approved rate: '+nNum_(x.approvedRate)
-       : (x.vendorInfoFilled?'Vendor rates bhari hui hain — approved vendor abhi select nahi hua':'Vendor rates abhi bhari nahi gayi');
+       : (x.vendorInfoFilled?'Vendor rates are filled in; no approved vendor selected yet':'Vendor rates not filled in yet');
      // A Completed line has nothing left to buy, so it can never go into a PO —
      // its tick box is dead even in the Completed / All views.
      const pickCell=x.completed
-       ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="Is line ka maal Inward ho chuka hai — ab PO nahi banega">'
+       ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="This line\'s material has already been received; no PO will be raised now">'
        :(x.poEligible
          ?'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'">'
-         :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="PO sirf GM/CEO Approved (ya aage) requirements se hi build ho sakta hai">');
+         :'<input type="checkbox" class="sarv-po-pick" data-index="'+i+'" disabled title="A PO can only be built from GM/CEO Approved (or later) requirements">');
      /* Pending, Rejected and Hold are editable by anyone here; once the
         Purchaser has approved it (POs may already be built) it is Admin-only —
         see canEditPr_. A Rejected / Hold PR is called out on the button so it
@@ -17067,10 +17709,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      const needsFix=['Rejected','Hold'].includes(statusVal);
      const editCell=canEditPr_(x.req)
        ?'<button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'"'
-         +(needsFix?' title="'+pEsc(statusVal)+' PR — sudhar kar save karein, wapas PENDING ho jayegi" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
+         +(needsFix?' title="'+pEsc(statusVal)+' PR: correct it and save, and it goes back to PENDING" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
          +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
-       :'<button type="button" class="btn btn-sm" disabled title="Sirf Pending / Rejected / Hold PR edit ho sakti hai — '+pEsc(statusVal)+' PR sirf Admin login se edit hogi" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Edit PR</button>';
-     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">&#128196; PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
+       :'<button type="button" class="btn btn-sm" disabled title="Only Pending / Rejected / Hold PRs can be edited; a '+pEsc(statusVal)+' PR can only be edited with an Admin login" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">Edit PR</button>';
+     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
    });
    if(!shown){
      const total=sarvPendingRequirements.length;
@@ -17089,52 +17731,118 @@ window.addEventListener('DOMContentLoaded',()=>{
    updatePoSelectionCount();
    renderPoKpiCards();
  }
+ /* ── 7-day line on each PO Generation KPI tile ──────────────────────
+    The tiles look like the Home dashboard's (erp-shell.js › tileHtml): a
+    week-over-week badge on top, the count, a note, and a line at the bottom.
+    What the line plots is how many of the records counted in that tile were
+    ADDED on each of the last 7 days (by PO date / PR request date). There is no
+    status history to rebuild "how big was the backlog last Tuesday", so the
+    line says only what the data can honestly back: where this pile came from
+    this week. The badge compares those 7 days with the 7 before. */
+ function poKpiDayKey_(v){
+   if(!v)return null;
+   const s=String(v);
+   if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
+   const d=new Date(s);if(isNaN(d))return null;
+   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+ }
+ function poKpiDays_(n){
+   const out=[],now=new Date();
+   for(let i=n-1;i>=0;i--){
+     const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-i);
+     out.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
+   }
+   return out;
+ }
+ // Same drawing as the dashboard's sparkSvg, in the tile's accent colour.
+ function poKpiSparkSvg_(data){
+   const w=200,h=34;
+   if(!data||data.length<2)return '';
+   const max=Math.max.apply(null,data),min=Math.min.apply(null,data);
+   const at=i=>[Math.round((i/(data.length-1))*w*10)/10,Math.round((h-3-((data[i]-min)/((max-min)||1))*(h-6))*10)/10];
+   let pts='',dots='';
+   data.forEach((v,i)=>{const p=at(i);pts+=p[0]+','+p[1]+' ';
+     dots+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(i===data.length-1?3.2:2)+'" fill="currentColor"></circle>';});
+   return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'
+     +'<polyline points="'+pts.trim()+'" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>'+dots+'</svg>';
+ }
+ function poKpiTrend_(id,dates,noun){
+   const days=poKpiDays_(14),per={};days.forEach(d=>{per[d]=0});
+   (dates||[]).forEach(v=>{const k=poKpiDayKey_(v);if(k&&per[k]!=null)per[k]++;});
+   const series=days.map(d=>per[d]),last7=series.slice(7),prev7=series.slice(0,7);
+   const sum=a=>a.reduce((x,y)=>x+y,0),l=sum(last7),p=sum(prev7);
+   const tr=byId(id+'_trend'),note=byId(id+'_note'),sp=byId(id+'_spark');
+   if(tr){
+     if(!l&&!p)tr.innerHTML='&nbsp;';
+     else{const pct=p?((l-p)/p)*100:100;tr.textContent='('+(pct>=0?'+':'')+pct.toFixed(1)+'% '+(pct<0?'↓':'↑')+')';}
+     tr.title='Added in the last 7 days: '+l+' · the 7 days before: '+p;
+   }
+   if(note)note.textContent=l+' '+noun+' added in the last 7 days';
+   if(sp){sp.innerHTML=poKpiSparkSvg_(last7);sp.title='Added per day, last 7 days: '+last7.join(', ');}
+ }
  function renderPoKpiCards(){
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // ---- Top-of-panel PO lifecycle cards (from Generated POs) ----
    // Completed lines never count as pending work anywhere on this panel —
    // their material is already in the store.
    const openPending=sarvPendingRequirements.filter(x=>!x.completed);
-   set('p_kpiPoGenPending',openPending.filter(x=>x.poEligible).length);
+   const poDate=p=>p.po_date||p.created_at;
+   const genLines=openPending.filter(x=>x.poEligible);
+   set('p_kpiPoGenPending',genLines.length);
+   poKpiTrend_('p_kpiPoGenPending',genLines.map(x=>x.req.request_date||x.req.created_at),'PR line(s)');
    // No GM/CEO step on POs any more — mobile.html's MD list takes both a
    // purchaser-approved PO ("GM/CEO Approved") and a plain "Generated" one.
-   set('p_kpiPoMdPending',sarvGeneratedPos.filter(p=>['Generated','GM/CEO Approved'].includes(p.status||'Generated')).length);
+   const mdPos=sarvGeneratedPos.filter(p=>['Generated','GM/CEO Approved'].includes(p.status||'Generated'));
+   set('p_kpiPoMdPending',mdPos.length);
+   poKpiTrend_('p_kpiPoMdPending',mdPos.map(poDate),'PO(s)');
    // MD has signed it off, so it's ready to go out — it stops counting the
    // moment WhatsApp Send is pressed, not when the vendor verifies.
-   set('p_kpiPoPartyPending',sarvGeneratedPos.filter(p=>p.status==='MD Approved'&&!isPoPartySent(p)).length);
+   const sendPos=sarvGeneratedPos.filter(p=>p.status==='MD Approved'&&!isPoPartySent(p));
+   set('p_kpiPoPartyPending',sendPos.length);
+   poKpiTrend_('p_kpiPoPartyPending',sendPos.map(poDate),'PO(s)');
    // The two receiving cards are driven by received vs ordered quantity rather
    // than by status, and are mutually exclusive. A PO that is cancelled,
    // rejected or short-closed is settled, so neither card counts it.
    const recvOpen=p=>!['Cancelled','Rejected','Closed (Short)'].includes(p.status||'');
-   set('p_kpiPoTotalRecvPending',sarvGeneratedPos.filter(p=>recvOpen(p)&&pNum(p.received_qty)===0).length);
-   set('p_kpiPoPartialRecvPending',sarvGeneratedPos.filter(p=>{
+   const noRecvPos=sarvGeneratedPos.filter(p=>recvOpen(p)&&pNum(p.received_qty)===0);
+   set('p_kpiPoTotalRecvPending',noRecvPos.length);
+   poKpiTrend_('p_kpiPoTotalRecvPending',noRecvPos.map(poDate),'PO(s)');
+   const partPos=sarvGeneratedPos.filter(p=>{
      if(!recvOpen(p))return false;
      const recv=pNum(p.received_qty);
      return recv>0&&recv!==pNum(p.total_qty);
-   }).length);
+   });
+   set('p_kpiPoPartialRecvPending',partPos.length);
+   poKpiTrend_('p_kpiPoPartialRecvPending',partPos.map(poDate),'PO(s)');
 
    // ---- Pending Items (Build PO) sub-panel cards — grouped per distinct PR ----
    const byReq=new Map();
    openPending.forEach(x=>{if(!byReq.has(x.req.id))byReq.set(x.req.id,x.req)});
    const todayMs=Date.now();
-   let vendorInfoPending=0,gmApprovalPending=0,approvedPoPending=0,fiveDaysOld=0;
+   // Each counter keeps the request dates of the PRs it counts, for its line.
+   const vendorInfoPending=[],gmApprovalPending=[],approvedPoPending=[],fiveDaysOld=[];
    byReq.forEach(req=>{
      const status=req.status||'Pending';
      const vendors=(req.pdf_snapshot&&req.pdf_snapshot.vendors)||[];
      const vendorFilled=vendors.some(v=>v&&String(v.name||'').trim());
      const poEligible=['GM/CEO Approved','MD Approved','Vendor Verified'].includes(status);
-     if(status==='Pending'&&!vendorFilled)vendorInfoPending++;
-     if(status==='Pending'&&vendorFilled)gmApprovalPending++;
-     if(poEligible)approvedPoPending++;
+     const d=req.request_date||req.created_at;
+     if(status==='Pending'&&!vendorFilled)vendorInfoPending.push(d);
+     if(status==='Pending'&&vendorFilled)gmApprovalPending.push(d);
+     if(poEligible)approvedPoPending.push(d);
      if(status!=='Cancelled'&&req.request_date){
        const days=(todayMs-new Date(req.request_date).getTime())/86400000;
-       if(days>=5)fiveDaysOld++;
+       if(days>=5)fiveDaysOld.push(d);
      }
    });
-   set('p_kpiPrVendorInfoPending',vendorInfoPending);
-   set('p_kpiPrGmApprovalPending',gmApprovalPending);
-   set('p_kpiPrApprovedPoPending',approvedPoPending);
-   set('p_kpiPr5DaysOld',fiveDaysOld);
+   set('p_kpiPrVendorInfoPending',vendorInfoPending.length);
+   set('p_kpiPrGmApprovalPending',gmApprovalPending.length);
+   set('p_kpiPrApprovedPoPending',approvedPoPending.length);
+   set('p_kpiPr5DaysOld',fiveDaysOld.length);
+   poKpiTrend_('p_kpiPrVendorInfoPending',vendorInfoPending,'PR(s)');
+   poKpiTrend_('p_kpiPrGmApprovalPending',gmApprovalPending,'PR(s)');
+   poKpiTrend_('p_kpiPrApprovedPoPending',approvedPoPending,'PR(s)');
+   poKpiTrend_('p_kpiPr5DaysOld',fiveDaysOld,'PR(s)');
  }
  function updatePoSelectionCount(){
    const picked=[...document.querySelectorAll('#p_poPendingBody .sarv-po-pick:checked')],qty=picked.reduce((s,e)=>s+pNum(sarvPendingRequirements[+e.dataset.index]?.available),0);
@@ -17156,7 +17864,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const warn=byId('p_poMixedVendorWarning');
    if(warn){
      warn.style.display=mixedVendors?'inline':'none';
-     warn.textContent=mixedVendors?('ℹ️ '+vendorNames.length+' vendors → '+vendorNames.length+' alag PO banenge'):'';
+     warn.textContent=mixedVendors?(''+vendorNames.length+' vendors → '+vendorNames.length+' alag PO banenge'):'';
      warn.style.color='#0369a1';
    }
  }
@@ -17164,7 +17872,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* ── Vendor Rate & Info popup (per-requirement) ────────────── */
  let sarvVendorInfoState=null;
  async function openVendorInfoModal(reqNo){
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    const rq=await SB.from('purchase_requirements').select('*').eq('req_no',reqNo).single();
    if(rq.error)return dbError(rq.error);
    const lq=await SB.from('purchase_requirement_lines').select('*, items(name,description,make,category,uom)').eq('requirement_id',rq.data.id).order('id');
@@ -17242,7 +17950,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // and the moment of picking is the moment it is wanted. The option VALUE
      // stays the bare supplier_name, so everything that reads this select
      // (saveVendorInfo, the PO builder, the snapshot) is untouched.
-     const supplierLabel=s=>{const ph=String(s.phone||'').trim();return s.supplier_name+(ph?'  —  ☎ '+ph:'  —  (no contact)')};
+     const supplierLabel=s=>{const ph=String(s.phone||'').trim();return s.supplier_name+(ph?'  —  '+ph:'  —  (no contact)')};
      const supplierOptionsHtml=name=>{
        const matched=name&&findSupplier(name);
        let html='<option value="">-- Select Supplier --</option>';
@@ -17330,17 +18038,17 @@ window.addEventListener('DOMContentLoaded',()=>{
              setRowVendor(otr,slot,sel.value);
              refreshRowApprovedPicker(otr);
            });
-           showToast('V'+(slot+1)+' = '+escText(sel.value)+' sabhi '+rowEls.length+' items par lag gaya'
-             +(replaced?' ('+replaced+' item ka alag V'+(slot+1)+' replace hua)':'')
-             +'. Kisi bhi item ka V'+(slot+1)+' alag rakh sakte hain.');
+           showToast('V'+(slot+1)+' = '+escText(sel.value)+' applied to all '+rowEls.length+' items'
+             +(replaced?' (replaced a different V'+(slot+1)+' on '+replaced+' item(s))':'')
+             +'. You can still set V'+(slot+1)+' differently for any item.');
          };
        });
        // --- this row's Selected Vendor ---
        const appr=tr.querySelector('.vi-item-vendor');
        if(appr){
          appr.title=isMaster
-           ? 'Is item ka PO isi vendor ke against banega. Yahan chunne par wahi slot sabhi items par lag jayega — baad me kisi bhi item ko alag kar sakte hain'
-           : 'Is item ka PO isi vendor ke against banega';
+           ? 'This item\'s PO is raised against this vendor. Choosing here applies the same slot to all items; you can change any item afterwards'
+           : 'This item\'s PO is raised against this vendor';
          if(isMaster)appr.classList.add('is-master');
          refreshRowApprovedPicker(tr);
          appr.onchange=()=>{
@@ -17354,9 +18062,9 @@ window.addEventListener('DOMContentLoaded',()=>{
              return s&&pNum(s.value)>=0&&pNum(s.value)!==idx;
            }).length;
            others.forEach(otr=>markApproved(otr,idx));
-           showToast('Selected Vendor = V'+(idx+1)+' sabhi '+rowEls.length+' items par lag gaya'
-             +(replaced?' ('+replaced+' item ki alag choice replace hui)':'')
-             +'. Har item apne V'+(idx+1)+' vendor ke against jayega.');
+           showToast('Selected Vendor = V'+(idx+1)+' applied to all '+rowEls.length+' items'
+             +(replaced?' (replaced a different choice on '+replaced+' item(s))':'')
+             +'. Each item goes against its own V'+(idx+1)+' vendor.');
          };
        }
      });
@@ -17377,8 +18085,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  }
  async function saveVendorInfo(){
    if(!sarvCan('VENDOR_INFO_DESK'))return sarvDeny('VENDOR_INFO_DESK');
-   const state=sarvVendorInfoState;if(!state)return showToast('Pehle Vendor Info kholo','warn');
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   const state=sarvVendorInfoState;if(!state)return showToast('Open the Vendor Info first','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    if(!byId('p_viItemsBody'))return;
    const rowVendors=state.rowVendors||{};
    const overlay=byId('p_syncOverlay'),msgEl=byId('p_syncMsg'),saveBtn=byId('p_viSaveBtn');
@@ -17479,18 +18187,18 @@ window.addEventListener('DOMContentLoaded',()=>{
        // `approvals` is the single shared column both surfaces read/write.
        signatures:{...(state.req.approvals||{}),store:storeSignature},
      };
-     /* Vendor Info ka apna timestamp — purchase_requirements.vendor_info_saved_at.
-        created_at PR banne ka waqt hai; ye wo waqt hai jab rates/vendors bhare
-        gaye. Jis database me abhi column nahi hai wahan save na ruke, isliye
-        error par ek baar bina us column ke dobara. */
+     /* Vendor Info's own timestamp: purchase_requirements.vendor_info_saved_at.
+        created_at is when the PR was created; this is when the rates/vendors
+        were filled in. On a database without the column the save must not fail,
+        so on error it retries once without that column. */
      const vendorInfoPatch={pdf_snapshot:d,approvals:d.signatures};
      let upd=await SB.from('purchase_requirements').update({...vendorInfoPatch,vendor_info_saved_at:new Date().toISOString()}).eq('id',state.req.id);
      if(upd.error&&/vendor_info_saved_at/i.test(upd.error.message||'')){
-       console.warn('[SARV] vendor_info_saved_at column missing — us column ke bina save kiya');
+       console.warn('[SARV] vendor_info_saved_at column missing; saved without it');
        upd=await SB.from('purchase_requirements').update(vendorInfoPatch).eq('id',state.req.id);
      }
      if(upd.error){
-       if(/column|does not exist/i.test(upd.error.message||''))showToast('⚠️ pdf_snapshot column missing — VENDOR_INFO_MIGRATION.sql run karein','warn');
+       if(/column|does not exist/i.test(upd.error.message||''))showToast('pdf_snapshot column missing. Please run VENDOR_INFO_MIGRATION.sql.','warn');
        else dbError(upd.error);
        return;
      }
@@ -17498,7 +18206,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      try{
        const artifact=await generateRequirementPdf(d,state.req.id);
        showSarvPdfPreview(artifact?.blob,state.req.req_no+'_Requester.pdf',artifact?.html||'');
-       showToast('✅ PR PDF regenerated with vendor info');
+       showToast('PR PDF regenerated with vendor info');
      }catch(e){dbError(e);}
      byId('p_vendorInfoModal')?.classList.remove('active');
      sarvVendorInfoState=null;
@@ -17557,7 +18265,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // reopened PR showed the remark as the item's description and reprinted it
      // that way.
      const setRow=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};setRow('.col-name',line.item_name);setRow('.col-desc',line.item?.description||'');setRow('.col-make',line.item?.make||'');setRow('.col-cat',line.item?.category||'General');setRow('.col-machine',line.machine||'');setRow('.col-qty',line.requested_qty);setRow('.col-uom',line.uom||'Pcs');setRow('.col-grossweight',pNum(line.grossWeight)||'');setRow('.col-rem',line.specification||'')});
-   refreshPurchaseTotals();const btn=byId('p_submitBtn');if(btn)btn.textContent='💾 Update Requirement';showToast('PR '+req.req_no+' edit ke liye open hai');
+   refreshPurchaseTotals();const btn=byId('p_submitBtn');if(btn)btn.textContent='Update Requirement';showToast('PR '+req.req_no+' is open for editing');
  }
  // Plain wa.me links can only pre-fill text — WhatsApp's click-to-chat API
  // has no way to attach a file. The Web Share API is the only web-standard
@@ -17622,8 +18330,8 @@ window.addEventListener('DOMContentLoaded',()=>{
        console.warn('[SARV] Native PDF share failed, falling back to WhatsApp link:',e.message||e);
      }
    }
-   if(!po.pdf_url)showToast('PDF abhi generate nahi hua — link ke saath WhatsApp khul raha hai','warn');
-   else if(!navigator.share)showToast('Is browser me file attach nahi ho sakti — PDF link ke saath WhatsApp khul raha hai','warn');
+   if(!po.pdf_url)showToast('The PDF has not been generated yet; WhatsApp is opening with the link','warn');
+   else if(!navigator.share)showToast('This browser cannot attach files; WhatsApp is opening with the PDF link','warn');
    const fallbackMsg=msg+(po.pdf_url?'\nPDF: '+po.pdf_url:'');
    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(fallbackMsg),'_blank');
  }
@@ -17711,7 +18419,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        ok++;
      }catch(e){console.warn('[SARV] PO status reconcile failed for '+f.po.po_no+':',e.message||e);}
    }
-   if(ok)showToast('🔄 '+ok+' PO ka status item-wise receiving ke hisaab se update kiya gaya');
+   if(ok)showToast('Updated the status of '+ok+' PO(s) based on item-wise receiving');
  }
  // Split out of refreshGeneratedPoList so the search box and Status dropdown
  // re-render from the already-loaded sarvGeneratedPos instead of refetching on
@@ -17746,7 +18454,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +(scRec.by?('\nBy: '+scRec.by):'')+(scRec.at?('\nOn: '+pStamp(scRec.at)):'')):'';
      const statusBadge='<span'+(scTip?' title="'+pEsc(scTip)+'"':'')
        +' style="background:'+sc+'18;color:'+sc+';border:1px solid '+sc+'33;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:800;white-space:nowrap;">'
-       +pEsc(statusVal)+(scRec?' &#128221;':'')+'</span>';
+       +pEsc(statusVal)+(scRec?'':'')+'</span>';
      // Editable only until GM/CEO signs off — once approved, the
      // vendor/rate/items are locked; from there only an Admin login can
      // cancel the PO.
@@ -17755,11 +18463,11 @@ window.addEventListener('DOMContentLoaded',()=>{
      // open with less received than ordered.
      const shortCloseable=sarvCan('PO_CLOSE')&&!['Received','Closed (Short)','Cancelled','Rejected','Generated'].includes(statusVal);
      const actionCell=(editable
-       ?'<button type="button" class="sarv-po-edit btn btn-neutral btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">&#9999;&#65039; Edit</button>'
+       ?'<button type="button" class="sarv-po-edit btn btn-neutral btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">Edit</button>'
        :(sarvCan('PO_CANCEL')
-         ?'<button type="button" class="sarv-po-cancel btn btn-danger btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">&#10060; Cancel</button>'
-         :'<button type="button" class="btn btn-sm" disabled title="GM/CEO approval ke baad sirf Admin login cancel kar sakta hai" style="padding:3px 10px;font-size:11px;background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">&#128274; Locked</button>'))
-       +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Short quantity par PO band karein — Remarks popup khulega (remarks likhna zaroori hai)" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">&#9989; Close</button>':'');
+         ?'<button type="button" class="sarv-po-cancel btn btn-danger btn-sm" data-po="'+pEsc(po.po_no)+'" style="padding:3px 10px;font-size:11px;">Cancel</button>'
+         :'<button type="button" class="btn btn-sm" disabled title="After GM/CEO approval only an Admin login can cancel" style="padding:3px 10px;font-size:11px;background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">Locked</button>'))
+       +(shortCloseable?' <button type="button" class="sarv-po-shortclose btn btn-sm" data-po="'+pEsc(po.po_no)+'" title="Close the PO on a short quantity; a Remarks popup opens (remarks are required)" style="padding:3px 10px;font-size:11px;background:#0f766e;color:#fff;border:none;">Close</button>':'');
      const lm=poLineMap[po.id]||{lines:[]};
      /* Received reads "got / ordered", so the number behind the status badge is
         visible without expanding the PO. Ordered is summed off the lines when
@@ -17776,10 +18484,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      const waCell='<button type="button" class="sarv-po-wa" data-po="'+pEsc(po.po_no)+'"'
        +(partySent?' title="Already sent to party'+(po.party_sent_at?' on '+pEsc(pStamp(po.party_sent_at)):'')+' — click to send again"':'')
        +' style="background:none;border:none;color:'+(partySent?'#94a3b8':'#16a34a')+';font-weight:700;cursor:pointer;padding:0;font-size:inherit;">'
-       +(partySent?'&#10004; Sent':'&#128172; Send')+'</button>';
+       +(partySent?'&#10004; Sent':'Send')+'</button>';
      const tr=document.createElement('tr');
      tr.className='sarv-po-row';tr.dataset.poId=po.id;tr.style.cursor='pointer';
-     tr.title='Click karke is PO ke saare items dekhein';
+     tr.title='Click to see all the items of this PO';
      tr.innerHTML='<td><span class="sarv-po-caret" style="color:#94a3b8;font-weight:800;">&#9656;</span> '+pEsc(po.po_no)+'</td><td>'+pEsc(po.po_date||'')+'</td><td>'+pEsc(po.vendor_name||'')+'</td><td>'+pEsc(po.linked_req_nos||'')+'</td><td style="text-align:center;">'+pNum(po.total_items)+'</td><td style="text-align:center;">'+pNum(po.total_qty)+'</td><td style="text-align:right;">'+pMoney(po.grand_total)+'</td><td>'+statusBadge+'</td>'+rcvCell+'<td>'+((po.pdf_url)?'<a href="'+pEsc(po.pdf_url)+'" target="_blank" rel="noopener">Open</a>':'—')+'</td><td>'+waCell+'</td><td>'+actionCell+'</td>';
      tb.appendChild(tr);
      // Collapsed item-detail row, revealed by clicking the PO row.
@@ -17806,7 +18514,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  const PO_LINE_STATE_STYLE={
    FULL:   {bg:'#dcfce7',fg:'#15803d',txt:'&#10004; Full'},
    PARTIAL:{bg:'#fef3c7',fg:'#b45309',txt:'&#9681; Partial'},
-   PENDING:{bg:'#f1f5f9',fg:'#64748b',txt:'&#8987; Pending'},
+   PENDING:{bg:'#f1f5f9',fg:'#64748b',txt:'Pending'},
    EXCESS: {bg:'#fee2e2',fg:'#b91c1c',txt:'&#9650; Excess'},
    '—':    {bg:'transparent',fg:'#94a3b8',txt:'&mdash;'}
  };
@@ -17817,14 +18525,14 @@ window.addEventListener('DOMContentLoaded',()=>{
    const r=poShortCloseRecord_(po);if(!r)return '';
    const meta=[r.by?('By '+r.by):'',r.at?pStamp(r.at):''].filter(Boolean).join(' · ');
    return '<div style="margin-bottom:8px;padding:8px 10px;border:1px solid #99f6e4;border-left:4px solid #0f766e;border-radius:6px;background:#f0fdfa;">'
-     +'<div style="font-size:10.5px;font-weight:800;color:#0f766e;">&#128221; SHORT-CLOSE REMARKS</div>'
+     +'<div style="font-size:10.5px;font-weight:800;color:#0f766e;">SHORT-CLOSE REMARKS</div>'
      +'<div style="font-size:11.5px;font-weight:700;color:#134e4a;margin-top:2px;overflow-wrap:anywhere;">'+pEsc(r.remarks||'—')+'</div>'
      +(meta?'<div style="font-size:10px;color:#0f766e;margin-top:3px;font-weight:600;">'+pEsc(meta)+'</div>':'')
      +'</div>';
  }
  function buildPoItemsDetailHtml(lines,po){
    const scNote=poShortCloseNoteHtml_(po);
-   if(!lines||!lines.length)return scNote+'<div style="color:#94a3b8;font-size:11px;">Is PO ke items nahi mile.</div>';
+   if(!lines||!lines.length)return scNote+'<div style="color:#94a3b8;font-size:11px;">No items found for this PO.</div>';
    const th='padding:4px 6px;background:#e2e8f0;font-size:10px;font-weight:800;text-align:left;';
    const td='padding:4px 6px;font-size:11px;border-bottom:1px solid #e2e8f0;';
    const tf='padding:5px 6px;font-size:11px;font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;';
@@ -17855,8 +18563,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    const verdict=poReceiptStatus_(lines,po&&po.status);
    const vc=verdict==='Received'?'#16a34a':(verdict==='Partially Received'?'#d97706':'#64748b');
    const note=tot.balance>0
-     ? (lines.filter(l=>poLineReceipt_(l).balance>0).length+' item par '+nNum_(tot.balance)+' qty baaki hai')
-     : 'Saare items poore receive ho gaye';
+     ? (nNum_(tot.balance)+' qty pending on '+lines.filter(l=>poLineReceipt_(l).balance>0).length+' item(s)')
+     : 'All items fully received';
    return scNote+'<table style="width:100%;border-collapse:collapse;">'
      +'<thead><tr><th style="'+th+'width:4%;text-align:center;">Sr</th><th style="'+th+'width:15%;">Item Name</th><th style="'+th+'width:13%;">Description</th><th style="'+th+'width:7%;">Make</th><th style="'+th+'width:9%;text-align:center;">Ordered</th><th style="'+th+'width:8%;text-align:center;">Received</th><th style="'+th+'width:8%;text-align:center;">Pending</th><th style="'+th+'width:9%;text-align:center;">Receipt</th><th style="'+th+'width:5%;text-align:center;">Basis</th><th style="'+th+'width:7%;text-align:right;">Rate</th><th style="'+th+'width:4%;text-align:center;">Disc%</th><th style="'+th+'width:4%;text-align:center;">GST%</th><th style="'+th+'width:7%;text-align:right;">Amount</th></tr></thead>'
      +'<tbody>'+rows+'</tbody>'
@@ -17868,7 +18576,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td style="'+tf+'text-align:center;color:'+vc+';" colspan="6">'+pEsc(verdict)+'</td>'
      +'</tr>'
      +'<tr><td colspan="13" style="padding:5px 6px;font-size:10.5px;color:#475569;background:#f8fafc;">'
-       +'&#8505;&#65039; PO status har item ka receiving dekh kar banta hai &mdash; '+pEsc(note)+'.</td></tr>'
+       +'The PO status is worked out from each item\'s receipts &mdash; '+pEsc(note)+'.</td></tr>'
      +'</tfoot></table>';
  }
  // "Show Received" toggle — Admin-only, sits above the Generated POs table.
@@ -17883,7 +18591,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      btn.addEventListener('click',()=>{sarvShowReceivedPos=!sarvShowReceivedPos;refreshGeneratedPoList().catch(dbError);});
      host.appendChild(btn);
    }
-   btn.textContent=sarvShowReceivedPos?'👁️ Hide Received / Closed':'✅ Show Received / Closed'+(doneCount?' ('+doneCount+')':'');
+   btn.textContent=sarvShowReceivedPos?'Hide Received / Closed':'Show Received / Closed'+(doneCount?' ('+doneCount+')':'');
    btn.style.background=sarvShowReceivedPos?'#0f766e':'#fff';
    btn.style.color=sarvShowReceivedPos?'#fff':'#0f766e';
  }
@@ -18258,16 +18966,16 @@ window.addEventListener('DOMContentLoaded',()=>{
  function renderPoFollowupDiag_(legacyPoLinks,orphanPoNos){
    const el=byId('p_poRepDiag');if(!el)return;
    const parts=[];
-   if(legacyPoLinks)parts.push('<b>'+legacyPoLinks+'</b> PO link purane tareeke se (<code>linked_req_nos</code>) joda gaya — '
-     +'un POs ki <code>purchase_order_lines</code> me koi row hi nahi hai. Aise PO ke number par hover karein, wahan likha hoga.');
-   if(orphanPoNos.length)parts.push('<b>'+orphanPoNos.length+'</b> PO me kuch lines par <code>req_no</code> khali hai, '
-     +'isliye wo lines kisi bhi PR ke saath nahi dikhengi: '
+   if(legacyPoLinks)parts.push('<b>'+legacyPoLinks+'</b> PO link(s) were made the old way (<code>linked_req_nos</code>): '
+     +'those POs have no rows at all in <code>purchase_order_lines</code>. Hover over such a PO number to see this noted there.');
+   if(orphanPoNos.length)parts.push('<b>'+orphanPoNos.length+'</b> PO(s) have some lines with an empty <code>req_no</code>, '
+     +'so those lines won\'t show against any PR: '
      +orphanPoNos.slice(0,8).map(n=>pEsc(shortDocNo_(n,'PO'))).join(', ')+(orphanPoNos.length>8?' …':''));
    if(!parts.length){el.style.display='none';el.innerHTML='';return;}
    el.style.display='block';
-   el.innerHTML='&#9888;&#65039; <b>PR &rarr; PO link audit</b><br>'+parts.join('<br>')
-     +'<br><span style="color:#b45309;">Baaki saare PO apni hi lines ke <code>req_no</code> se jude hain &mdash; wo exact hain. '
-     +'Theek karne ke liye <code>FOLLOWUP_AUTO_COLUMNS_MIGRATION.sql</code> ke neeche di gayi queries chalayein.</span>';
+   el.innerHTML='<b>PR &rarr; PO link audit</b><br>'+parts.join('<br>')
+     +'<br><span style="color:#b45309;">All other POs are linked through their own lines\' <code>req_no</code> &mdash; those are exact. '
+     +'To fix this, run the queries at the bottom of <code>FOLLOWUP_AUTO_COLUMNS_MIGRATION.sql</code>.</span>';
  }
 
  // Rebuilt from the loaded rows rather than hard-coded, so a new purchaser
@@ -18283,7 +18991,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 
  const fuTick_=ok=>ok?'<span class="fu-tick">&#10004;</span>':'<span class="fu-dash">&ndash;</span>';
  /* A number with no indexed PDF is still PRINTED — it just isn't a link. A dead
-    link would read as "broken"; plain text reads as "PDF nahi bani", which is
+    link would read as "broken"; plain text reads as "no PDF yet", which is
     the truth. The short form is what shows; the full number is the tooltip. */
  function fuDocLink_(no,url,kind,extraTitle){
    const full=String(no||'').trim();
@@ -18291,8 +18999,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    const short=shortDocNo_(full,kind)||full;
    const tip=full+(extraTitle?('\n'+extraTitle):'');
    return url
-     ? '<a class="fu-doc" data-doc="'+pEsc(kind||'')+'" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nPDF kholne ke liye click karein')+'">'+pEsc(short)+'</a>'
-     : '<span class="fu-doc" style="color:#64748b;" title="'+pEsc(tip+'\n(Is document ki PDF abhi generate / index nahi hui)')+'">'+pEsc(short)+'</span>';
+     ? '<a class="fu-doc" data-doc="'+pEsc(kind||'')+'" href="'+pEsc(url)+'" target="_blank" rel="noopener" title="'+pEsc(tip+'\nClick to open the PDF')+'">'+pEsc(short)+'</a>'
+     : '<span class="fu-doc" style="color:#64748b;" title="'+pEsc(tip+'\n(No PDF has been generated / indexed for this document yet)')+'">'+pEsc(short)+'</span>';
  }
  /* ── PO FOLLOW-UP, read off the PO ────────────────────────────────
     mobile.html's PO Follow-up tab records every chase of a vendor in
@@ -18359,24 +19067,24 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Said differently depending on whether a follow-up is even due, because
      // a dash on a PO that was never sent means something else entirely.
      return poFuChaseable_(po)
-       ? '<span class="fu-wait" title="'+pEsc('Is PO par abhi koi follow-up record nahi hua.\nmobile app ke PO Follow-up tab me PO Sender revised date daalega to yahan apne aap aa jayegi.')+'">&#9203; koi follow-up nahi</span>'
-       : '<span class="fu-nodoc" title="'+pEsc('Follow-up sirf un PO par hota hai jo vendor ko bhej diye gaye hon aur jinka maal poora na aaya ho (MD Approved / Partially Received).')+'">&ndash;</span>';
+       ? '<span class="fu-wait" title="'+pEsc('No follow-up has been recorded on this PO yet.\nIt appears here automatically once the PO Sender enters a revised date in the mobile app\'s PO Follow-up tab.')+'">no follow-up</span>'
+       : '<span class="fu-nodoc" title="'+pEsc('Follow-up applies only to POs that have been sent to the vendor and not fully received (MD Approved / Partially Received).')+'">&ndash;</span>';
    }
    const last=list[list.length-1];
    const diff=poFuOverdue_(po);
    const late=diff!==null&&diff>0;
    const when=diff===null?''
      :(late?' <span class="fuh-late">('+diff+'d late)</span>'
-           :' <span class="fuh-ok">('+(diff===0?'aaj':(-diff)+'d baaki')+')</span>');
+           :' <span class="fuh-ok">('+(diff===0?'today':(-diff)+'d left')+')</span>');
    const tip='Revised: '+pDate(last.revisedDate)
-     +(last.prevDate?('\nIs se pehle: '+pDate(last.prevDate)):'')
+     +(last.prevDate?('\nPrevious date: '+pDate(last.prevDate)):'')
      +'\n'+(last.by||'—')+(last.at?(' · '+last.at):'')
-     +'\n\n'+(last.remarks||'(koi remark nahi)')
-     +'\n\nPoori history ke liye History par click karein ('+list.length+' entry)';
+     +'\n\n'+(last.remarks||'(no remark)')
+     +'\n\nClick History for the full history ('+list.length+' entries)';
    return '<span class="fu-rev'+(late?' od':'')+'" title="'+pEsc(tip)+'">'+pEsc(pDate(last.revisedDate))+'</span>'+when
      +'<span class="fu-revn" title="'+pEsc(last.remarks||'')+'">'+pEsc(last.remarks||'—')+'</span>'
      +'<button type="button" class="fu-hist" data-po="'+pEsc(po.po_no||'')+'"'
-     +' title="Is PO ki saari follow-up entries dekhein">&#128340; History ('+list.length+')</button>';
+     +' title="See all follow-up entries for this PO">History ('+list.length+')</button>';
  }
  function fuStatusCell_(statuses){
    if(!statuses||!statuses.length)return '<span class="fu-nodoc">&ndash;</span>';
@@ -18414,7 +19122,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function fuInformCell_(group,inward){
    const meta=PO_FOLLOWUP_FLAGS[FU_INFORM_LEGACY_KEY];
    if(!inward)
-     return '<span class="fu-nodoc" title="Is row par koi inward nahi hai — maal aane par yahan Done button aa jayega">&ndash;</span>';
+     return '<span class="fu-nodoc" title="No inward on this row yet; a Done button appears here once material arrives">&ndash;</span>';
    const no=inward.document_no||'';
    const shortNo=shortDocNo_(no,'INWARD')||no;
    const st=poFollowupInformState_(group.req,no);
@@ -18423,33 +19131,33 @@ window.addEventListener('DOMContentLoaded',()=>{
      const admin=isAdmin();
      const title=meta.label+' ✔ '+(st.by||'—')+(st.at?' • '+pStamp(st.at):'')
        +'\nInward: '+no
-       +(st.legacy?'\n(Purani PR-level entry — is PR ke har inward par lagu hai)':'')
-       +(admin?'\n\nAdmin ho — hatane ke liye click karein (Admin PIN lagega).'
-              :'\n\n🔒 Lock ho chuka hai. Sirf Admin login ise hata sakta hai.');
+       +(st.legacy?'\n(An older PR-level entry; applies to every inward of this PR)':'')
+       +(admin?'\n\nYou are the Admin; click to remove it (the Admin PIN is required).'
+              :'\n\nLocked. Only an Admin login can remove it.');
      return '<button type="button" class="fu-flag done'+(admin?' admin':'')+'"'+data+' data-on="1"'
        +(admin?'':' disabled')+' title="'+pEsc(title)+'">&#10004; Done'
-       +(admin?' <span class="fu-unlock">&#128275;</span>':' <span class="fu-lockicon">&#128274;</span>')
+       +(admin?' <span class="fu-unlock"></span>':' <span class="fu-lockicon"></span>')
        +'</button>';
    }
-   const needs=meta.role?(SARV_ROLE_LABEL[meta.role]||meta.role)+' ka PIN':'aapke apne role ka PIN';
+   const needs=meta.role?'the '+(SARV_ROLE_LABEL[meta.role]||meta.role)+' PIN':'your own role\'s PIN';
    return '<button type="button" class="fu-flag"'+data+' data-on="0"'
      +' title="'+pEsc(meta.label+' — Inward '+shortNo+' ('+no+')'
-       +'\n\nClick karne par '+needs+' maanga jayega.\nEk baar done hone ke baad sirf Admin hata sakta hai.')+'">'
-     +'&#9744; Done</button>';
+       +'\n\nClicking asks for '+needs+'.\nOnce done, only the Admin can remove it.')+'">'
+     +'Done</button>';
  }
  /* GM / MD bill check for ONE receipt. Read-only by design — mobile.html's
     Store Check tab is where it is done, and a second place to tick it would be
     a second truth. The MD cell says "GM pending" rather than a bare dash while
     the GM has not signed, because that is the gate the mobile app enforces. */
  function fuBillCell_(inward,stage){
-   if(!inward)return '<span class="fu-nodoc" title="Is row par koi inward nahi hai — check karne ko kuch nahi">&ndash;</span>';
+   if(!inward)return '<span class="fu-nodoc" title="No inward on this row; nothing to check">&ndash;</span>';
    const c=inwStoreCheck_(inward,stage);
    if(c){
      return '<span class="fu-tick" title="'+pEsc((stage==='gm'?'GM':'MD')+' Store Check ✔ '+(inwStoreCheckText_(inward,stage)||'checked'))+'">&#10004;</span>';
    }
    if(stage==='md'&&!inwStoreCheck_(inward,'gm'))
-     return '<span class="fu-wait" title="MD ka check GM ke baad hi aata hai — abhi GM pending hai">&#9203; GM</span>';
-   return '<span class="fu-wait" title="mobile.html ke Store Check tab me '+(stage==='gm'?'GM':'MD')+' ke check karne par yahan apne aap ✔ aa jayega">&#9203;</span>';
+     return '<span class="fu-wait" title="The MD\'s check comes only after the GM\'s; the GM is still pending">GM</span>';
+   return '<span class="fu-wait" title="Ticks ✔ here automatically once the '+(stage==='gm'?'GM':'MD')+' checks it in the Store Check tab of mobile.html">Pending</span>';
  }
  // What the "Only Incomplete Follow-Up" filter means: anything still owed on
  // this PR, whether that is a PO nobody raised or a bill nobody checked.
@@ -18510,7 +19218,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      }
      case 'status':{if(!po)return FU_NO_PO;const s=po.status||'Generated';return PO_FOLLOWUP_STATUS_TEXT[s]||s;}
      case 'inward':return i?(shortDocNo_(i.document_no,'INWARD')||i.document_no):FU_NO_INW;
-     case 'informed':return i?(poFollowupInformState_(g.req,i.document_no)?'✔ Done':'☐ Pending'):FU_NO_INW;
+     case 'informed':return i?(poFollowupInformState_(g.req,i.document_no)?'✔ Done':'Pending'):FU_NO_INW;
      case 'gm':return i?yn(!!inwStoreCheck_(i,'gm')):FU_NO_INW;
      case 'md':return i?yn(!!inwStoreCheck_(i,'md')):FU_NO_INW;
    }
@@ -18523,7 +19231,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const col=b.dataset.col,s=sarvFuColSel[col],on=!!(s&&s.size);
      b.classList.toggle('active',on);
      b.innerHTML=escText(on?(s.size===1?[...s][0]:s.size+' selected'):'All')+' &#9662;';
-     b.title=on?((FU_COL_LABEL[col]||col)+':\n'+[...s].join('\n')):'Filter — click karke ek ya zyada values chunein';
+     b.title=on?((FU_COL_LABEL[col]||col)+':\n'+[...s].join('\n')):'Filter: click to choose one or more values';
      if(on)f[col]=s;
    });
    return f;
@@ -18551,9 +19259,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    const d=document.createElement('div');
    d.id='fuColDrop';d.dataset.col=col;
    d.innerHTML='<div class="fd-hd">'+escText(FU_COL_LABEL[col]||col)+'</div>'
-     +'<input class="fd-search" type="text" placeholder="&#128269; Search...">'
-     +'<div class="fd-acts"><button type="button" data-a="all">&#10004; Select All (dikh rahe)</button><button type="button" data-a="none">&#10006; Clear</button></div>'
-     +'<div class="fd-list">'+(vals.length?vals.map(v=>'<label data-v="'+escText(v)+'"><input type="checkbox"'+(sel.has(v)?' checked':'')+'><span>'+escText(v)+'</span><span class="n">'+counts.get(v)+'</span></label>').join(''):'<div style="padding:8px 10px;color:#94a3b8;">Pehle report load karein</div>')+'</div>'
+     +'<input class="fd-search" type="text" placeholder="Search...">'
+     +'<div class="fd-acts"><button type="button" data-a="all">&#10004; Select All (visible)</button><button type="button" data-a="none">&#10006; Clear</button></div>'
+     +'<div class="fd-list">'+(vals.length?vals.map(v=>'<label data-v="'+escText(v)+'"><input type="checkbox"'+(sel.has(v)?' checked':'')+'><span>'+escText(v)+'</span><span class="n">'+counts.get(v)+'</span></label>').join(''):'<div style="padding:8px 10px;color:#94a3b8;">Load the report first</div>')+'</div>'
      +'<div class="fd-ft"><button type="button" class="fd-clr" data-a="reset">Show All</button><button type="button" class="fd-ok" data-a="close">OK</button></div>';
    document.body.appendChild(d);
    const r=btn.getBoundingClientRect();
@@ -18587,7 +19295,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const p=byId('p_poReportPanel');if(!p)return;
    p.classList.toggle('fu-full',!!on);
    const b=byId('p_poRepFsBtn');
-   if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'&#9974; Full Screen';b.title=on?'Wapas (Esc)':'Report ko poori screen par dekhein (Esc se wapas)';}
+   if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'Full Screen';b.title=on?'Back (Esc)':'View the report full screen (Esc to exit)';}
    closeFuColFilter_();
  }
  function poFollowupVisibleGroups(){
@@ -18636,8 +19344,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Which of this PR's items ride on this PO — what makes the link checkable
      // from the sheet rather than taken on trust.
      const itemsTip=b?(b.lines.length
-       ? 'Is PO par is PR ke '+b.lines.length+' item:\n'+b.lines.map(l=>'• '+(l.item_name||'Item')+' × '+pNum(l.ordered_qty)).join('\n')
-       : 'Is PO ki koi line is PR se match nahi hui — purana PO hai, linked_req_nos se joda gaya hai'):'';
+       ? 'This PO carries '+b.lines.length+' item(s) of this PR:\n'+b.lines.map(l=>'• '+(l.item_name||'Item')+' × '+pNum(l.ordered_qty)).join('\n')
+       : 'No line of this PO matches this PR; it is an old PO, linked through linked_req_nos'):'';
      return '<tr'+(hasCf&&poFollowupRowMatch_(r,cf)?' class="fu-hit"':'')+(r.groupFirst?' style="border-top:2px solid #cbd5e1;"':'')+'>'
        +pr(fuDocLink_(g.req.req_no,g.prPdf,'PR'),prCell)
        +pr('<span style="color:#7c2d12;">'+pEsc(g.req.requested_by||'—')+'</span>',prCell)
@@ -18662,7 +19370,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'</tr>';
    }).join('')
      : '<tr><td colspan="16" style="text-align:center;color:#94a3b8;padding:18px;">'
-       +(sarvPoFollowupGroups.length?'Is filter par koi PR nahi mila.':'Abhi koi PR nahi hai.')+'</td></tr>';
+       +(sarvPoFollowupGroups.length?'No PR matches this filter.':'There are no PRs yet.')+'</td></tr>';
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v};
    // Counted in PRs, not rows — "12 of 40" meaning rows would be unreadable
    // once one PR can occupy five of them.
@@ -18685,15 +19393,15 @@ window.addEventListener('DOMContentLoaded',()=>{
  function fuSentCell_(po){
    if(!po)return '<span class="fu-nodoc">&ndash;</span>';
    if(po.party_sent_at)
-     return '<span class="fu-tick" title="'+pEsc('Vendor ko bheja gaya: '+pStamp(po.party_sent_at))+'">&#10004;</span>';
+     return '<span class="fu-tick" title="'+pEsc('Sent to the vendor: '+pStamp(po.party_sent_at))+'">&#10004;</span>';
    /* isPoPartySent also honours a browser-local fallback, used only on a
       database without the party_sent_at column. It is marked differently
       because that record lives in ONE browser — a send done from the phone is
       invisible here, and a tick that cannot be trusted should not look like one
       that can. */
    if(isPoPartySent(po))
-     return '<span class="fu-tick" style="color:#b45309;" title="Is browser me sent mark hai, lekin database me party_sent_at column nahi hai — mobile se bheja gaya PO yahan nahi dikhega. PO_FOLLOWUP note dekhein.">&#10004;?</span>';
-   return '<span class="fu-wait" title="mobile.html ke PO Sender ke WhatsApp par bhejte hi yahan apne aap ✔ aa jayega">&#9203;</span>';
+     return '<span class="fu-tick" style="color:#b45309;" title="Marked as sent in this browser, but the database has no party_sent_at column, so a PO sent from mobile won\'t show here. See the PO_FOLLOWUP note.">&#10004;?</span>';
+   return '<span class="fu-wait" title="Ticks ✔ here automatically once the PO Sender sends it on WhatsApp from mobile.html">Pending</span>';
  }
 
  /* ── PO Follow-up history dialog ──────────────────────────────────
@@ -18729,13 +19437,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(String((b.po||{}).po_no||'')===no){po=b.po;return true}
      return false;
    }));
-   if(!po)return showToast('Yeh PO list me nahi mila — Reload karein','warn');
+   if(!po)return showToast('This PO was not found in the list. Please reload.','warn');
    const list=poFuList_(po);
    const m=byId('fuHistModal');
    if(!m){
      // No dialog in the DOM — say the record exists rather than doing nothing
      // silently, which looks identical to a broken button.
-     showToast(list.length?(no+' par '+list.length+' follow-up hain — dialog load nahi hua'):'Is PO par koi follow-up nahi','warn');
+     showToast(list.length?(no+' has '+list.length+' follow-up(s), but the dialog did not load'):'This PO has no follow-ups','warn');
      return;
    }
    const set=(id,v)=>{const e=byId(id);if(e)e.textContent=v==null?'':v};
@@ -18749,7 +19457,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      // Labelled "original" so it is never read as the live date with the
      // revisions listed under it.
      ['Delivery Date (original)',po.delivery_date?pDate(po.delivery_date):'—'],
-     ['Vendor ko bheja',po.party_sent_at?pStamp(po.party_sent_at):(isPoPartySent(po)?'✔ (date record me nahi)':'⏳ nahi bheja')],
+     ['Sent to vendor',po.party_sent_at?pStamp(po.party_sent_at):(isPoPartySent(po)?'✔ (date not recorded)':'not sent')],
      ['PO Status',po.status||'—'],
    ];
    const mt=byId('fuHistMeta');
@@ -18757,8 +19465,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    const box=byId('fuHistList');
    if(box){
      if(!list.length){
-       box.innerHTML='<div class="fuh-empty">Is PO par abhi koi follow-up record nahi hua.<br>'
-         +'mobile app ke <b>PO Follow-up</b> tab me PO Sender revised date aur remark daalega to wo yahan aa jayega.</div>';
+       box.innerHTML='<div class="fuh-empty">No follow-up has been recorded on this PO yet.<br>'
+         +'Once the PO Sender enters a revised date and remark in the mobile app\'s <b>PO Follow-up</b> tab, it will appear here.</div>';
      }else{
        const today=poFuToday_();
        box.innerHTML=list.slice().reverse().map((f,idx)=>{
@@ -18769,15 +19477,15 @@ window.addEventListener('DOMContentLoaded',()=>{
          const late=idx===0&&diff!==null&&diff>0;
          const when=(idx===0&&diff!==null)
            ?(diff>0?' <span class="fuh-late">('+diff+' din late)</span>'
-                   :' <span class="fuh-ok">('+(diff===0?'aaj':(-diff)+' din baaki')+')</span>')
+                   :' <span class="fuh-ok">('+(diff===0?'today':(-diff)+' days left')+')</span>')
            :'';
          return '<div class="fuh-row'+(idx===0?' latest':'')+(late?' od':'')+'">'
            +'<div class="fuh-head">'
            +'<span>#'+(list.length-idx)+' &nbsp;Revised: '+pEsc(pDate(f.revisedDate))+when+'</span>'
            +'<span class="fuh-who">'+pEsc(f.by||'—')+(f.role?(' ('+pEsc(f.role)+')'):'')+(f.at?(' · '+pEsc(f.at)):'')+'</span>'
            +'</div>'
-           +'<div class="fuh-rem">'+(f.remarks?pEsc(f.remarks):'<i>koi remark nahi likha gaya</i>')+'</div>'
-           +(f.prevDate?('<div class="fuh-prev">Is se pehle ki date: '+pEsc(pDate(f.prevDate))+'</div>'):'')
+           +'<div class="fuh-rem">'+(f.remarks?pEsc(f.remarks):'<i>no remark was written</i>')+'</div>'
+           +(f.prevDate?('<div class="fuh-prev">Previous date: '+pEsc(pDate(f.prevDate))+'</div>'):'')
            +'</div>';
        }).join('');
      }
@@ -18817,7 +19525,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      set('fuDlgTitle',o.title||'Confirm');
      set('fuDlgSubtitle',o.subtitle||'');
      set('fuDlgPinLabel',o.pinLabel||'PIN');
-     const icon=byId('fuDlgIcon');if(icon)icon.innerHTML=o.icon||'&#128226;';
+     const icon=byId('fuDlgIcon');if(icon)icon.innerHTML=o.icon||'';
      const rows=byId('fuDlgRows');
      if(rows)rows.innerHTML=(o.rows||[]).map(r=>
        '<tr'+(r[2]?' class="hi"':'')+'><td class="k">'+pEsc(r[0])+'</td><td class="v">'+pEsc(r[1]||'—')+'</td></tr>').join('');
@@ -18825,7 +19533,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(note){note.innerHTML=o.note||'';note.style.display=o.note?'block':'none';
        note.classList.toggle('danger',!!o.danger);}
      const ok=byId('fuDlgOkBtn'),cancel=byId('fuDlgCancelBtn'),err=byId('fuDlgError');
-     if(ok){ok.innerHTML=o.confirmText||'&#9989; Confirm';ok.classList.toggle('danger',!!o.danger);ok.disabled=false;}
+     if(ok){ok.innerHTML=o.confirmText||'Confirm';ok.classList.toggle('danger',!!o.danger);ok.disabled=false;}
      if(err){err.style.display='none';err.textContent='';}
      input.value='';
      /* Shown by CLASS, not by setting display inline — the element carries an
@@ -18912,11 +19620,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    // it has to go back as innerHTML — textContent would print the markup.
    const unbusy=()=>{if(btn){btn.disabled=false;if(btn.dataset.label)btn.innerHTML=btn.dataset.label;}};
    if(!meta)return;
-   if(!SB_READY){showToast('Supabase URL/key configure karein','warn');return unbusy()}
+   if(!SB_READY){showToast('Please configure the Supabase URL/key','warn');return unbusy()}
    const g=sarvPoFollowupGroups.find(x=>String(x.req.req_no||'')===String(reqNo));
-   if(!g){showToast('Yeh PR list me nahi mila — Reload karein','warn');return unbusy()}
+   if(!g){showToast('This PR was not found in the list. Please reload.','warn');return unbusy()}
    const no=String(inwardNo||'').trim();
-   if(!no){showToast('Is row par koi inward nahi hai','warn');return unbusy()}
+   if(!no){showToast('There is no inward on this row','warn');return unbusy()}
 
    // What the RECORD says, not what the button said — the sheet may have been
    // sitting open while somebody else ticked it.
@@ -18927,23 +19635,23 @@ window.addEventListener('DOMContentLoaded',()=>{
       everyone else, so reaching here without Admin means the click came from
       somewhere else — it is refused on its own merits rather than trusted. */
    if(!wantOn&&!isAdmin()){
-     showToast('🔒 '+meta.label+' lock ho chuka hai — sirf Admin login ise hata sakta hai','warn');
+     showToast(''+meta.label+' is locked; only an Admin login can remove it','warn');
      return unbusy();
    }
    // Ticking uses the logged-in user's own role PIN; unticking uses the Admin's.
    const role=wantOn?(meta.role||sarvCurrentRole):'ADMIN_PIN';
-   if(!role){showToast('Pehle login karein — apne role ke PIN se hi tick hota hai','warn');return unbusy()}
+   if(!role){showToast('Please log in first; a tick needs your own role\'s PIN','warn');return unbusy()}
    const roleLabel=SARV_ROLE_LABEL[role]||role;
    try{
      const ex=await SB.rpc('role_pin_exists',{p_role:role});
      if(ex.error)throw ex.error;
      if(!ex.data){
-       showToast('⚠️ '+roleLabel+' ka PIN set nahi hai — Master Data > Settings > Change Passwords me set karein, tab tak ye tick nahi hoga','warn');
+       showToast('No PIN is set for '+roleLabel+'. Set it under Master Data > Settings > Change Passwords; until then this cannot be ticked.','warn');
        return unbusy();
      }
    }catch(e){
      // A check that cannot run must never be read as a pass.
-     showToast('PIN check nahi ho paaya: '+(e.message||e),'error');return unbusy();
+     showToast('The PIN could not be checked: '+(e.message||e),'error');return unbusy();
    }
    /* The popup names THIS receipt before asking for the PIN — the PR it answers,
       who raised it, the PO it was ordered on, and the Inward itself. The Inward
@@ -18953,7 +19661,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const poOfInward=(g.poBlocks||[]).find(b=>(b.inwards||[]).some(i=>String(i.document_no||'')===no));
    const poTxt=poOfInward
      ? (shortDocNo_(poOfInward.po.po_no,'PO')+'   ('+(poOfInward.po.po_no||'')+')')
-     : '— (PO ke bina seedha PR par receive hua)';
+     : '— (received directly against the PR, without a PO)';
    const dlgRows=[
      ['Inward No.',(shortDocNo_(no,'INWARD')||no)+'   ('+no+')',true],
      ['Receiving Date',inwRow.receiving_date||'—'],
@@ -18964,30 +19672,30 @@ window.addEventListener('DOMContentLoaded',()=>{
      ['PO No.',poTxt]
    ];
    if(!wantOn&&priorFlag)
-     dlgRows.push(['Abhi Tick Hai',(priorFlag.by||'—')+(priorFlag.at?' • '+pStamp(priorFlag.at):'')
+     dlgRows.push(['Currently Ticked',(priorFlag.by||'—')+(priorFlag.at?' • '+pStamp(priorFlag.at):'')
        +(priorFlag.legacy?'   (purani PR-level entry)':'')]);
    const note=wantOn
-     ? 'Confirm karne par <b>sirf is Inward</b> ka tick lagega aur <b>lock</b> ho jayega. Hatane ke liye Admin login aur Admin PIN chahiye hoga.'
+     ? 'Confirming ticks <b>only this Inward</b> and <b>locks</b> it. Removing it will need an Admin login and the Admin PIN.'
      : (priorFlag&&priorFlag.legacy
-         ? '⚠️ Ye purani <b>PR-level</b> entry hai jo is PR ke <b>har inward</b> par lagu hai. Hatane par is PR ke saare inward ka tick hat jayega.'
-         : 'Is Inward ka lock hata kar tick wapas le liya jayega. Baad me koi bhi user dobara tick kar sakta hai.');
+         ? 'This is an older <b>PR-level</b> entry that applies to <b>every inward</b> of this PR. Removing it untics every inward of this PR.'
+         : 'This Inward\'s lock is removed and the tick withdrawn. Any user can tick it again later.');
    const entered=await fuAskConfirm_({
      title:meta.label+(wantOn?' — Confirm':' — Unlock & Undo'),
-     subtitle:(wantOn?'Requester ko inform karne ke baad confirm karein':'Lock hata kar tick wapas lein'),
-     icon:wantOn?'&#128226;':'&#128275;',
+     subtitle:(wantOn?'Confirm after informing the requester':'Remove the lock and withdraw the tick'),
+     icon:wantOn?'':'',
      rows:dlgRows,note,
      danger:!wantOn,
      pinLabel:roleLabel+' PIN',
-     confirmText:wantOn?'&#9989; Confirm':'&#128275; Unlock &amp; Undo',
+     confirmText:wantOn?'Confirm':'Unlock &amp; Undo',
      fallbackInfo:'Inward: '+no+'  •  PR: '+(g.req.req_no||'—')
    });
    if(entered==null)return unbusy();                 // cancelled
-   if(!String(entered).trim()){showToast('PIN khali nahi ho sakta','warn');return unbusy()}
+   if(!String(entered).trim()){showToast('The PIN cannot be empty','warn');return unbusy()}
    try{
      const v=await SB.rpc('verify_role_pin',{p_role:role,p_pin:String(entered).trim()});
      if(v.error)throw v.error;
-     if(!v.data){showToast('❌ Galat '+roleLabel+' PIN','error');return unbusy()}
-   }catch(e){showToast('PIN verify nahi ho paaya: '+(e.message||e),'error');return unbusy()}
+     if(!v.data){showToast('Incorrect '+roleLabel+' PIN','error');return unbusy()}
+   }catch(e){showToast('The PIN could not be verified: '+(e.message||e),'error');return unbusy()}
    try{
      /* Re-read approvals immediately before merging. Two people working the
         same sheet from two machines would otherwise overwrite each other's
@@ -19027,10 +19735,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      g.req.approvals=saved;
      const ok=!!poFollowupInformState_(g.req,no)===!!wantOn;
      if(!ok){
-       showToast('⚠️ '+meta.label+' database me save nahi hua — purchase_requirements.approvals par write permission check karein','error');
+       showToast(''+meta.label+' was not saved to the database. Check write permission on purchase_requirements.approvals.','error');
      }else{
-       showToast((wantOn?'✅ ':'🔓 ')+meta.label+' — Inward '+(shortDocNo_(no,'INWARD')||no)
-         +(wantOn?' tick ho gaya aur lock ho gaya':' ka lock hata kar tick wapas le liya'));
+       showToast((wantOn?'':'')+meta.label+' — Inward '+(shortDocNo_(no,'INWARD')||no)
+         +(wantOn?' ticked and locked':': lock removed and tick withdrawn'));
      }
    }catch(e){
      dbError(e);return unbusy();
@@ -19041,7 +19749,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function exportPoFollowupCsv(){
    const visible=new Set(poFollowupVisibleGroups().map(g=>g.req.req_no));
    const rows=sarvPoFollowupRows.filter(r=>visible.has(r.req.req_no));
-   if(!rows.length)return showToast('Export karne ke liye koi row nahi hai','warn');
+   if(!rows.length)return showToast('There are no rows to export','warn');
    /* FULL document numbers in the file, short ones only on screen. A CSV is a
       record that gets filed, mailed and matched against other systems, and
       PR608 cannot be matched back to a year or a series. Both are exported so
@@ -19064,8 +19772,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       as separate lines in the cell. */
    const fuHist=po=>poFuList_(po).map((f,n)=>
      '#'+(n+1)+' '+pDate(f.revisedDate)
-     +(f.prevDate?(' (pehle '+pDate(f.prevDate)+')'):'')
-     +' — '+(f.remarks||'(koi remark nahi)')
+     +(f.prevDate?(' (previously '+pDate(f.prevDate)+')'):'')
+     +' — '+(f.remarks||'(no remark)')
      +' [ '+(f.by||'—')+(f.at?(' · '+f.at):'')+' ]').join('\n');
    const body=rows.map(r=>{
      const g=r.group,po=r.po,i=r.inward;
@@ -19093,7 +19801,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const a=document.createElement('a');
    a.href='data:text/csv;charset=utf-8,%EF%BB%BF'+encodeURIComponent(csv);
    a.download='PR_PO_FollowUp_'+today()+'.csv';a.click();
-   showToast('CSV download ho gayi ('+rows.length+' rows)');
+   showToast('CSV downloaded ('+rows.length+' rows)');
  }
 
  /* One switch for the PO tab's three sub-panels, so adding this third one
@@ -19163,13 +19871,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(!poNo)return closePoShortCloseModal();
    const remarks=String(byId('p_poCloseRemarks')?.value||'').trim();
    if(!remarks){
-     showToast('⚠️ Close Remarks likhna zaroori hai','warn');
+     showToast('Close Remarks are required','warn');
      byId('p_poCloseRemarks')?.focus();
      return;
    }
    const by=String(byId('p_poCloseBy')?.value||'').trim();
    const btn=byId('p_poCloseConfirmBtn');
-   if(btn){if(btn.disabled)return;btn.disabled=true;btn.innerHTML='⏳ Saving...';}
+   if(btn){if(btn.disabled)return;btn.disabled=true;btn.innerHTML='Saving...';}
    try{
      // Read the live approvals so this never overwrites a signature the
      // approval chain (mobile.html) recorded while the list sat open here.
@@ -19183,13 +19891,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        p=>SB.from('purchase_orders').update(p).eq('po_no',poNo),['status','approvals']);
      if(u.error)throw u.error;
      closePoShortCloseModal();
-     showToast('✅ PO '+poNo+' short-close kar diya gaya — remarks save ho gaye');
+     showToast('PO '+poNo+' has been short-closed; remarks saved');
      await loadOpenPoDropdown();
      await refreshGeneratedPoList();
    }catch(e){
      dbError(e);
    }finally{
-     if(btn){btn.disabled=false;btn.innerHTML='✅ Close PO &amp; Save Remarks';}
+     if(btn){btn.disabled=false;btn.innerHTML='Close PO &amp; Save Remarks';}
    }
  }
  // Kept as the one entry point the PO list calls, so the permission check and
@@ -19197,14 +19905,14 @@ window.addEventListener('DOMContentLoaded',()=>{
  function shortClosePurchaseOrder(poNo){openPoShortCloseModal(poNo);}
  async function cancelPurchaseOrder(poNo){
    if(!sarvCan('PO_CANCEL'))return sarvDeny('PO_CANCEL');
-   if(!confirm('PO "'+poNo+'" ko cancel karein? Yeh wapas nahi hoga.'))return;
+   if(!confirm('Cancel PO "'+poNo+'"? This cannot be undone.'))return;
    const u=await SB.from('purchase_orders').update({status:'Cancelled'}).eq('po_no',poNo);
    if(u.error)return dbError(u.error);
-   showToast('PO '+poNo+' cancel kar diya gaya');
+   showToast('PO '+poNo+' has been cancelled');
    await refreshGeneratedPoList();
  }
  async function editPurchaseOrder(poNo){
-   if(!SB_READY)return showToast('Supabase URL/key configure karein','warn');
+   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    const h=await SB.from('purchase_orders').select('*').eq('po_no',poNo).single();if(h.error)return dbError(h.error);
    const po=h.data;
    const l=await SB.from('purchase_order_lines').select('*').eq('purchase_order_id',po.id).order('line_no');if(l.error)return dbError(l.error);
@@ -19261,10 +19969,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        tr.querySelector('.po-billbasis')?.addEventListener('change',recalc);
      });
    }
-   const title=byId('p_poBuildModalTitle');if(title)title.textContent='✏️ Edit Purchase Order '+po.po_no;
+   const title=byId('p_poBuildModalTitle');if(title)title.textContent='Edit Purchase Order '+po.po_no;
    const modal=byId('p_poBuildModal');if(modal)modal.classList.add('active');
    recomputePoBuildTotals();
-   showToast('Editing PO '+po.po_no+' — badlaav karke Generate PO dabayein');
+   showToast('Editing PO '+po.po_no+'. Make your changes and press Generate PO.');
  }
  // Supabase answers "Could not find the 'X' column of 'T' in the schema cache"
  // (or "column T.X does not exist") when a migration hasn't been run yet. Pull
@@ -19371,7 +20079,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const cur=locEl.value.trim();
    if(!cur||cur===sarvLastOutPartyCity){
      locEl.value=city;
-     locEl.title=city?'Supplier Master ki City se auto-filled — change kar sakte hain':'';
+     locEl.title=city?'Auto-filled from the Supplier Master\'s City; you can change it':'';
    }
    sarvLastOutPartyCity=city;
  }
@@ -19425,8 +20133,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    // or that PR's PDF snapshot for older records) — it stays editable because
    // the actual weight can differ from what was estimated on the PR.
    const prGw=(x.grossWeight!=null&&x.grossWeight!=='')?pNum(x.grossWeight):pNum(x.line.gross_weight||0);
-   const gwAttrs=prGw>0?' style="background:#fef9c3;font-weight:700;color:#854d0e;" title="PR se auto-filled Gross Weight — change kar sakte hain"':' title="Gross weight (kg) — WEIGHT bill basis par isi se amount banega"';
-   tr.innerHTML='<td style="text-align:center;">'+(tb.children.length+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req.req_no)+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.name)+'" readonly></td><td><input class="table-input po-item-desc" value="'+pEsc(x.line.specification||x.item.description||'')+'" readonly></td><td><input class="table-input po-make" value="'+pEsc(x.item.make||'')+'" readonly></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+pNum(x.line.requested_qty)+'</td><td class="po-available">'+pNum(x.available)+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+pNum(x.available)+'" value="'+pNum(x.available)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.line.uom||x.item.uom||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM Item Master se locked hai"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+prGw+'"'+gwAttrs+'></td><td><select class="table-input chip-select po-billbasis"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.approvedRate||0)+'"'+rateAttrs+' title="'+(locked?'Approved rate — GM/CEO chosen vendor, cannot change':'')+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.approvedDiscount||0)+'"'+discAttrs+' title="'+discTitle+'"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.line.tax_pct||itemGst_(x.item))+'" title="GST % Item Master se aaya hai"></td><td class="po-line-total">₹0.00</td>';
+   const gwAttrs=prGw>0?' style="background:#fef9c3;font-weight:700;color:#854d0e;" title="Gross Weight auto-filled from the PR; you can change it"':' title="Gross weight (kg); on the WEIGHT bill basis the amount is calculated from this"';
+   tr.innerHTML='<td style="text-align:center;">'+(tb.children.length+1)+'</td><td><input class="table-input po-req-no" value="'+pEsc(x.req.req_no)+'" readonly></td><td><input class="table-input po-item-name" value="'+pEsc(x.name)+'" readonly></td><td><input class="table-input po-item-desc" value="'+pEsc(x.line.specification||x.item.description||'')+'" readonly></td><td><input class="table-input po-make" value="'+pEsc(x.item.make||'')+'" readonly></td><td class="po-req-qty" style="text-align:center;font-weight:800;color:#854d0e;background:#fef9c3;">'+pNum(x.line.requested_qty)+'</td><td class="po-available">'+pNum(x.available)+'</td><td><input type="number" class="table-input po-qty" min="0" max="'+pNum(x.available)+'" value="'+pNum(x.available)+'"></td><td><input type="number" class="table-input po-cancel" min="0" value="0"></td><td><input class="table-input po-uom" value="'+pEsc(x.line.uom||x.item.uom||'')+'" readonly style="background:#f1f5f9;cursor:not-allowed;" title="UOM is locked from the Item Master"></td><td><input type="number" class="table-input po-grossweight" min="0" step="any" value="'+prGw+'"'+gwAttrs+'></td><td><select class="table-input chip-select po-billbasis"><option value="QTY">QTY</option><option value="WEIGHT">WEIGHT</option></select></td><td><input type="number" class="table-input po-unitprice" min="0" step=".01" value="'+pNum(x.approvedRate||0)+'"'+rateAttrs+' title="'+(locked?'Approved rate — GM/CEO chosen vendor, cannot change':'')+'"></td><td><input type="number" class="table-input po-discount" min="0" max="100" step=".01" value="'+pNum(x.approvedDiscount||0)+'"'+discAttrs+' title="'+discTitle+'"></td><td><input type="number" class="table-input po-gst" min="0" max="100" step=".01" value="'+pNum(x.line.tax_pct||itemGst_(x.item))+'" title="GST % comes from the Item Master"></td><td class="po-line-total">₹0.00</td>';
    tb.appendChild(tr);
    // The Item Master row and the requesting department ride along on the build
    // row so poRowToItem_ can put them on the saved PO line. Without item_id the
@@ -19471,7 +20179,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       hand. The vendor fields below show the first group; each PO is built
       from its own group's vendor, not from what is on screen. */
    if(vendorNames.size>1){
-     showToast('ℹ️ '+vendorNames.size+' alag vendor select hue ('+[...vendorNames].join(' / ')+') — Generate dabane par har vendor ka ALAG PO apne aap ban jayega.');
+     showToast(''+vendorNames.size+' different vendors selected ('+[...vendorNames].join(' / ')+'). Pressing Generate creates a SEPARATE PO for each vendor automatically.');
    }
    const lockFields=['p_poVendorField','p_poVendorMailField','p_poVendorContactField'];
    if(vendor){
@@ -19524,7 +20232,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     // has not gone out on WhatsApp yet cannot be printed from here either.
     if(c.kind==='INWARD'||c.kind==='OUTWARD'||c.kind==='ISSUE'){
       const docNo=c.data?.inwardNo||c.data?.outwardNo||'';
-      if(docNo&&!isStoreEntrySent_(docNo))return showToast('⛔ '+docNo+' pehle WhatsApp par bhejein — uske baad hi print milega','warn');
+      if(docNo&&!isStoreEntrySent_(docNo))return showToast('Send '+docNo+' on WhatsApp first; printing is available only after that','warn');
     }
     let html;
     if(c.kind==='REQUIREMENT'){
@@ -19586,7 +20294,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      const csv='Item Name,Description,Make,Category,Qty,UOM\n'+rows.join('\n');
      const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='PR_Items_'+today()+'.csv';a.click();showToast('CSV downloaded');
    });
-   on('p_cancelEditBtn',()=>{sarvEditingRequirementId=null;const btn=byId('p_submitBtn');if(btn)btn.textContent='✅ Submit & Sync';showToast('Edit cancelled');});
+   on('p_cancelEditBtn',()=>{sarvEditingRequirementId=null;const btn=byId('p_submitBtn');if(btn)btn.textContent='Submit & Sync';showToast('Edit cancelled');});
 
    // ── PO sub-panels ────────────────────────────────────────────
    on('p_poRefreshBtn',()=>refreshPendingRequirements().catch(dbError));
@@ -19599,7 +20307,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      .forEach(id=>onFilter(id,renderGeneratedPoTable));
    on('p_poSubPendingBtn',()=>{showPoSubPanel('pending');refreshPendingRequirements().catch(dbError)});
    on('p_poSubListBtn',()=>{showPoSubPanel('list');refreshGeneratedPoList().catch(dbError)});
-   // ── Short-Close popup (Generated POs → ✅ Close) ──────────────
+   // ── Short-Close popup (Generated POs → Close) ──────────────
    on('p_poCloseCancelBtn',closePoShortCloseModal);
    on('p_poCloseConfirmBtn',()=>confirmPoShortClose());
    on('p_poSubReportBtn',()=>{showPoSubPanel('report');refreshPoFollowupReport().catch(dbError)});
@@ -19648,10 +20356,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    on('p_poAddItemsPickerCloseBtn',()=>{const panel=byId('p_poAddItemsPickerPanel');if(panel)panel.style.display='none';});
    on('p_poAddSelectedItemsBtn',()=>{
      const checks=[...document.querySelectorAll('#p_poAddItemsPickerList .sarv-picker-item:checked')];
-     if(!checks.length)return showToast('Pehle kam se kam ek item select karo','warn');
+     if(!checks.length)return showToast('Select at least one item first','warn');
      checks.forEach(ck=>{const x=sarvPendingRequirements[+ck.dataset.index];if(x)appendPoBuildRow(x);});
      applyApprovedVendorLock();
-     showToast(checks.length+' item(s) PO mein add kiye ✅');
+     showToast(checks.length+' item(s) added to the PO');
      const panel=byId('p_poAddItemsPickerPanel');if(panel)panel.style.display='none';
    });
 
@@ -19665,7 +20373,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      pending.addEventListener('click',e=>{
        const editBtn=e.target.closest('.sarv-edit-pr');if(editBtn){
          const x=sarvPendingRequirements[+editBtn.dataset.index];
-         if(x&&!canEditPr_(x.req))return showToast('⛔ Sirf Pending / Rejected / Hold PR edit ho sakti hai — '+pEsc(x.req.status||'')+' PR ko sirf Admin login edit kar sakta hai','warn');
+         if(x&&!canEditPr_(x.req))return showToast('Only Pending / Rejected / Hold PRs can be edited; a '+pEsc(x.req.status||'')+' PR can only be edited with an Admin login','warn');
          populateRequirementEditor(x);return;}
        const viBtn=e.target.closest('.sarv-vendor-info');if(viBtn)openVendorInfoModal(viBtn.dataset.req).catch(dbError);
      });
@@ -19722,7 +20430,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(byId('p_poOtherLabelField'))byId('p_poOtherLabelField').value='Labour/Loading/Other Exp.';
    if(byId('p_poOtherExpField'))byId('p_poOtherExpField').value='0';
    const tb=byId('p_poBuildBody');if(tb)tb.innerHTML='';
-   const buildTitle=byId('p_poBuildModalTitle');if(buildTitle)buildTitle.textContent='🛒 Build New Purchase Order';
+   const buildTitle=byId('p_poBuildModalTitle');if(buildTitle)buildTitle.textContent='Build New Purchase Order';
    applyApprovedVendorLock();
    ['p_poSubtotalView','p_poGstAmtView','p_poFreightView','p_poOtherView','p_poGrandTotalView'].forEach(id=>{const e=byId(id);if(e)e.textContent='0.00';});
    const canvas=byId('p_poStoreSignCanvas');if(canvas)canvas.getContext('2d')?.clearRect(0,0,canvas.width,canvas.height);
@@ -19848,7 +20556,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const poDateVal=pVal('p_poDateField')||today();
    if(pVal('p_poDeliveryField')<poDateVal){
      highlightRequiredField('p_poDeliveryField');byId('p_poDeliveryField')?.focus();
-     return showToast('⚠️ Delivery Date PO Date ('+fmtDate_(poDateVal)+') se pehle ki nahi ho sakti','warn');
+     return showToast('The Delivery Date cannot be earlier than the PO Date ('+fmtDate_(poDateVal)+')','warn');
    }
 
    /* Group by approved vendor. A PO is raised on ONE vendor, and a PR's items
@@ -19891,10 +20599,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      sarvPdfState.current={kind:'PO',data:first.d,items:first.d.items,images,result:{PO:first.artifact}};
      showSarvPdfPreview(first.blob,first.d.poNo+'_'+(first.d.vendorName||'Vendor')+'.pdf',first.html);
      await refreshGeneratedPoList();await refreshPendingRequirements();resetPoBuildForm();
-     const sentToMd=purchaserSign?' MD approval ke liye bhej diya gaya.':'';
+     const sentToMd=purchaserSign?' Sent for MD approval.':'';
      showToast(made.length>1
-       ? '✅ '+made.length+' PO generate hue (vendor-wise): '+made.map(m=>pEsc(m.d.poNo)+' — '+pEsc(m.d.vendorName||'Vendor')).join(', ')+'.'+sentToMd
-       : '✅ PO '+pEsc(first.d.poNo)+' generate ho gaya.'+sentToMd);
+       ? ''+made.length+' PO(s) generated (vendor-wise): '+made.map(m=>pEsc(m.d.poNo)+' — '+pEsc(m.d.vendorName||'Vendor')).join(', ')+'.'+sentToMd
+       : 'PO '+pEsc(first.d.poNo)+' generated.'+sentToMd);
    } finally {
      if(overlay)overlay.classList.remove('active');
      genBtns.forEach(b=>b.disabled=false);
@@ -19920,7 +20628,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   setTimeout(()=>{
     flushPdfLinkQueue_({quiet:true})
       .then(fixed=>{
-        if(fixed)showToast('🔗 '+fixed+' pending PDF link database me jud gaya','success');
+        if(fixed)showToast(''+fixed+' pending PDF link(s) added to the database','success');
         reportPdfLinkBacklog_();
       })
       .catch(e=>console.warn('[SARV PDF] startup link flush skipped:',e.message||e));
@@ -19931,80 +20639,78 @@ window.addEventListener('DOMContentLoaded',()=>{
    FABRIC & BRAND MASTER   (tables: fabric_master, brand_master,
                             master_revisions)
    ----------------------------------------------------------------
-   "SARV INDIA LOT SOFTWARE DATA.xlsx" ki do sheets — FABRIC MASTER
-   (31 rows x 42 column) aur BRAND MASTER (65 rows x 23 column) — ka
-   ERP version. Dono screens EK hi engine chalati hain; farq sirf
-   SARV_FBM ke do config object ka hai.
+   The ERP version of two sheets from "SARV INDIA LOT SOFTWARE
+   DATA.xlsx": FABRIC MASTER (31 rows x 42 columns) and BRAND MASTER
+   (65 rows x 23 columns). Both screens run ONE engine; the only
+   difference is SARV_FBM's two config objects.
 
-   EK ARRAY, PAANCH KAAM
-   ---------------------
-   Har master ka `fields` array (SARV_FAB_FIELDS / SARV_BR_FIELDS)
-   akela hi chalata hai:
-       1. table ka head + rows        4. CSV export ke headers
-       2. New / Edit / Revise ka form 5. revision diff ("kya badla")
-       3. CSV import ka header match
-   Isi liye naya column jodna = us array me EK line jodna. HTML me
-   kuch nahi badalna padta.
+   ONE ARRAY, FIVE JOBS
+   --------------------
+   Each master's `fields` array (SARV_FAB_FIELDS / SARV_BR_FIELDS)
+   drives on its own:
+       1. the table head + rows        4. the CSV export headers
+       2. the New / Edit / Revise form 5. the revision diff ("what changed")
+       3. the CSV import header match
+   So adding a column means adding ONE line to that array. Nothing in
+   the HTML has to change.
 
-   REVISION CONTROL  (yahi "Revise 1, 2, 3 ..." hai)
-   -------------------------------------------------
-   Har row par `rev_no` hai, Rev 1 se shuru. Do alag kaam, jaan-boojh
-   kar alag rakhe gaye:
+   REVISION CONTROL  (this is "Revise 1, 2, 3 ...")
+   ------------------------------------------------
+   Every row has a `rev_no`, starting at Rev 1. Two different jobs,
+   kept apart on purpose:
 
-     * EDIT   — galti sudharna. rev_no WAHI rehta hai.
-     * REVISE — soch-samajh kar naya version. rev_no +1 hota hai aur
-                KAARAN likhna zaroori hai.
+     * EDIT   - fix a mistake. rev_no stays THE SAME.
+     * REVISE - a deliberate new version. rev_no goes +1 and a REASON
+                is required.
 
-   Dono soorat me badlav se PEHLE ka poora snapshot
-   `master_revisions` me chala jaata hai, us rev_no ke saath jo wo tab
-   tha. Faida: purana lot card / PR jis rev par bana tha, wo rev aaj
-   bhi padhi ja sakti hai — aur 🕘 History se kisi bhi purani rev par
-   wapas (restore) bhi ja sakte hain (wo khud ek nayi rev banti hai,
-   kuch mitta nahi).
+   In both cases the full snapshot from BEFORE the change goes into
+   `master_revisions`, with the rev_no it had at that time. Benefit: the
+   rev an old lot card / PR was made on can still be read today, and
+   History can restore any old rev (the restore itself becomes a new
+   rev; nothing is deleted).
 
-   `master_revisions` na mile to screen chalti rehti hai, bas archive
-   skip ho jaata hai (console warning) — master ka apna write kabhi
-   isliye fail nahi hota.
+   If `master_revisions` is missing the screen keeps working; only the
+   archive is skipped (console warning). The master's own write never
+   fails because of it.
 
-   LINK  (dono master aapas me jude hain)
-   --------------------------------------
-   Brand ka FABRIC NAME Fabric Master ki row ko point karta hai:
-     * Brand form ka Fabric dropdown LIVE fabric_master se bharta hai.
-     * Fabric row par uske brands ki chips — click karne par Brand
-       Master us fabric par filter hokar khulta hai.
-     * Jis brand ka fabric master me nahi hai (Excel me aise 2 hain —
-       2.25 aur 3.3) uski chip LAAL dikhti hai aur toolbar me "⚠️ N
-       unlinked" pill aata hai. Data pehle se galat tha; ab dikhta hai.
-     * Fabric DELETE roka jaata hai jab tak uske brands hain —
-       Inactive karna hamesha mil jaata hai (links tootte nahi).
+   LINK  (the two masters are connected)
+   -------------------------------------
+   A brand's FABRIC NAME points to a Fabric Master row:
+     * The Brand form's Fabric dropdown fills LIVE from fabric_master.
+     * A fabric row shows chips for its brands; clicking one opens the
+       Brand Master filtered on that fabric.
+     * A brand whose fabric is missing from the master (there are 2 in
+       the Excel: 2.25 and 3.3) shows a RED chip, and a "N unlinked"
+       pill appears in the toolbar. The data was already wrong; now it shows.
+     * Deleting a fabric is blocked while it has brands; making it
+       Inactive is always allowed (links don't break).
 
    ACCESS  (Admin Panel › Feature Access / Tab Visibility)
    -------------------------------------------------------
-   NEW / EDIT / DELETE / REVISE — chaar alag feature rows per master,
+   NEW / EDIT / DELETE / REVISE: four separate feature rows per master,
    plus MASTER_REV_HISTORY, MASTER_REV_RESTORE, MASTER_ACTIVATE,
-   MASTER_IMPORT, MASTER_EXPORT jo dono par lagte hain. Tab Visibility
-   me MD_FABRIC / MD_BRAND poori screen chhupate hain, aur
-   MD_FABRIC_YARN / MD_BRAND_PACKING / MD_REV_COLUMN sirf unn column
-   groups ko — yani yarn aur packing ka data role-wise chhupaya ja
-   sakta hai bina screen band karne ke.
+   MASTER_IMPORT, MASTER_EXPORT, which apply to both. In Tab Visibility,
+   MD_FABRIC / MD_BRAND hide the whole screen, and MD_FABRIC_YARN /
+   MD_BRAND_PACKING / MD_REV_COLUMN hide only those column groups, so
+   yarn and packing data can be hidden per role without closing the screen.
 
-   Table banane / RLS ke liye: FABRIC_BRAND_MASTER_MIGRATION.sql.
+   For the tables / RLS: FABRIC_BRAND_MASTER_MIGRATION.sql.
 ================================================================ */
 
-/* Field ke `t` (type):
-     num   — number box
-     text  — text box
-     dd    — <select>, options sarvDropdownList(f.dd) se (Dropdown Master)
-     fab   — <select>, options LIVE fabric_master se (brand ka link)
-     tags  — comma se alag kai value, database me text[]
-   `g`  = column group (SARV_FBM[...].groups me defined)
-   `l`  = label — yahi table ka header AUR CSV ka header hai, isi liye
-          Excel ke header se hu-ba-hu match rakha gaya hai.
-   `alias` = CSV import me isi header ko bhi maan lo (Excel ke purane /
-          typo wale header, taaki sheet seedha paste ho jaaye). */
+/* A field's `t` (type):
+     num   - number box
+     text  - text box
+     dd    - <select>, options from sarvDropdownList(f.dd) (Dropdown Master)
+     fab   - <select>, options LIVE from fabric_master (the brand's link)
+     tags  - several comma-separated values, text[] in the database
+   `g`  = column group (defined in SARV_FBM[...].groups)
+   `l`  = label; this is both the table header AND the CSV header, so it is
+          kept identical to the Excel header.
+   `alias` = also accept this header on CSV import (old / misspelt Excel
+          headers, so a sheet can be pasted straight in). */
 const SARV_FAB_FIELDS=[
-  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'num',req:1,step:'0.001',hint:'Fabric ka weight code — 1.5, 2.2, 4.8 ... (UNIT ke saath milkar unique)'},
-  {k:'unit',l:'UNIT',g:'ident',t:'dd',dd:'erp_fabricUnit',req:1,hint:'Ek hi fabric name dono unit me ho sakta hai — 1.8 UNIT 1 aur 1.8 UNIT 2 alag rows hain'},
+  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'num',req:1,step:'0.001',hint:'The fabric\'s weight code: 1.5, 2.2, 4.8 ... (unique together with UNIT)'},
+  {k:'unit',l:'UNIT',g:'ident',t:'dd',dd:'erp_fabricUnit',req:1,hint:'The same fabric name can exist in both units; 1.8 UNIT 1 and 1.8 UNIT 2 are separate rows'},
   {k:'fabric_quality',l:'FABRIC QUALITY',g:'ident',t:'dd',dd:'erp_fabricQuality',req:1},
   {k:'raschel_gauge',l:'RASCHEL GUAGE',g:'ident',t:'num',hint:'16 ya 18'},
 
@@ -20047,33 +20753,33 @@ const SARV_FAB_FIELDS=[
   {k:'bora_avg_weight',l:'1 BORA AVG WEIGHT',g:'pack',t:'num'},
   {k:'req_with_bora_weight',l:'REQ. WITH BORA WEIGHT',g:'pack',t:'num',alias:['REQ, WITH BORA WEIGHT']},
 
-  /* Excel me BRAND 1 ... BRAND 5 paanch alag column the. Yahan ek
-     text[] hai — paanch ki hadd khatam, aur "is fabric ke brands"
-     poochhna ek hi jagah se ho jaata hai. CSV me wapas comma se alag
-     hokar jaata hai, to sheet round-trip ho jaati hai. */
-  {k:'brands',l:'BRANDS',g:'link',t:'tags',hint:'Comma se alag karein — BRAND 1..5 columns yahi hain. Khaali chhod dein to Brand Master ka link khud se nikal aata hai.'},
+  /* The Excel had five separate columns, BRAND 1 ... BRAND 5. Here it is one
+     text[]: no limit of five, and "which brands use this fabric" is answered
+     from one place. In the CSV it goes back out comma-separated, so the sheet
+     round-trips. */
+  {k:'brands',l:'BRANDS',g:'link',t:'tags',hint:'Separate with commas; these are the BRAND 1..5 columns. Leave empty and the Brand Master link is worked out automatically.'},
   {k:'notes',l:'NOTES',g:'link',t:'text'},
 ];
 
 const SARV_BR_FIELDS=[
   {k:'item_code',l:'ITEM CODE',g:'ident',t:'text',req:1,uc:1,hint:'Brand / SKU ka naam — unique'},
-  /* ctr:1 — table me ye column centre align hota hai (header bhi). Yahan
-     isi liye ki iski value ek chhota number-chip hai, aur baayein chipke
-     rehne se padosi column se chipka hua lagta tha. */
-  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'fab',req:1,ctr:1,hint:'Fabric Master ki row — list wahin se aati hai'},
+  /* ctr:1: this column is centred in the table (header too). Used here
+     because its value is a small number chip, and stuck to the left it
+     looked glued to the neighbouring column. */
+  {k:'fabric_name',l:'FABRIC NAME',g:'ident',t:'fab',req:1,ctr:1,hint:'A Fabric Master row; the list comes from there'},
   {k:'category',l:'CATEGORY',g:'ident',t:'dd',dd:'erp_brandCategory',req:1},
   {k:'blanket_weight',l:'BLANKET WEIGHT',g:'ident',t:'num',step:'0.001'},
 
   {k:'size',l:'SIZE',g:'spec',t:'dd',dd:'erp_brandSize'},
   {k:'bed_size',l:'BED SIZE',g:'spec',t:'dd',dd:'erp_brandBedSize'},
   {k:'blanket_ply',l:'BLANKET PLY',g:'spec',t:'dd',dd:'erp_brandPly'},
-  /* Sattan ke do alag sawaal hain, isi liye do column:
-       SATTAN SIZE — kitne inch ka (4 / 5 / 6 INCH SATTAN)
-       SATTAN TYPE — kis grade ka (STANDARD / PREMIUM)
-     Pehle ye ek hi column tha jisme "5 INCH SATTAN-NORMAL" jaisi mili-juli
-     value likhi jaati thi — size aur grade ek saath. Ab alag hain, to
-     "saare PREMIUM brands" jaisa sawaal filter se poochha ja sakta hai.
-     Purane CSV / Excel ka header "SATTAN" tha, isi liye alias me pada hai. */
+  /* Sattan raises two separate questions, hence two columns:
+       SATTAN SIZE - how many inches (4 / 5 / 6 INCH SATTAN)
+       SATTAN TYPE - which grade (STANDARD / PREMIUM)
+     This used to be one column holding mixed values like
+     "5 INCH SATTAN-NORMAL" (size and grade together). Now they are separate,
+     so a question like "all PREMIUM brands" can be answered with a filter.
+     Old CSV / Excel files used the header "SATTAN", which is why it is an alias. */
   {k:'sattan',l:'SATTAN SIZE',g:'spec',t:'dd',dd:'erp_brandSattan',alias:['SATTAN'],
    hint:'Kitne inch ka sattan — 4 / 5 / 6 INCH. Grade alag column me (SATTAN TYPE).'},
   {k:'sattan_type',l:'SATTAN TYPE',g:'spec',t:'dd',dd:'erp_brandSattanType',
@@ -20082,85 +20788,83 @@ const SARV_BR_FIELDS=[
   {k:'emboss',l:'Emboss',g:'spec',t:'dd',dd:'erp_fbmYesNo'},
 
   /* ── Packing 1 / Packing 2 ───────────────────────────────────────
-     Ek hi brand do tarah se pack ho sakta hai (jaise MONARCH — bag
-     packing aur gift box packing), isi liye packing ka poora set DO baar
-     hai. Packing 1 = asli / default tareeka (Excel ke wahi chaar column,
-     wahi headers — purani sheet seedha import hoti rehti hai).
-     Packing 2 = doosra tareeka, khaali chhoda ja sakta hai.
+     One brand can be packed in two ways (e.g. MONARCH: bag packing and gift
+     box packing), so the whole packing set appears TWICE. Packing 1 = the
+     main / default way (the same four Excel columns with the same headers;
+     the old sheet still imports directly).
+     Packing 2 = the second way, and can be left empty.
 
-     Table me Packing 2 ke chips DEFAULT OFF hain (`off:1` group par),
-     kyunki zyadatar brands par ye khaali rehta hai — par form me hamesha
-     dikhta hai, aur chip dabaakar table me bhi aa jaata hai. */
-  /* PACKING PCS dono packing me apna — ek hi brand Bora me 20 aur Gift
-     Box me 1 pc ja sakta hai. Order Form ka Packing (pcs/pack) Pack Type
-     dekh kar inme se ek uthata hai: Pack Type agar MASTER PACKING TYPE 2
-     se milta hai (aur Packing 1 se nahi) to PACKING PCS 2, warna PACKING
-     PCS. Column `packing_pcs` wahi purana hai — data waisa hi rehta hai.
+     In the table the Packing 2 chips are OFF BY DEFAULT (`off:1` on the
+     group), because for most brands it stays empty; but it always shows in
+     the form, and pressing the chip brings it into the table too. */
+  /* PACKING PCS is separate for each packing: the same brand can go 20 to a
+     Bora and 1 to a Gift Box. The Order Form's Packing (pcs/pack) picks one
+     of these by the Pack Type: if the Pack Type matches MASTER PACKING TYPE 2
+     (and not Packing 1), PACKING PCS 2, otherwise PACKING PCS. The column
+     `packing_pcs` is the same old one; the data stays as it was.
 
-     Pehle yahan ek "Order Form Rates" group tha (price per kg + saat trim
-     rate, har brand par alag). Wo hata diya gaya: trim ka rate MATERIAL ka
-     hota hai, brand ka nahi — ab wo 💰 Trims & Packing Rate master me hai
-     (SARV_TRIMRATE_FIELDS), aur price/kg order par hi tay hota hai. */
-  /* Label = Order Form ka "Slave Packing Standard Qty". Purana CSV header
-     "PACKING PCS" alias me hai, taaki purani sheet import hoti rahe.
-     Kram (dono packing me): SLAVE PACKING TYPE → SLAVE PACKING STANDARD
-     QUANTITY → MASTER PACKING TYPE. "MASTER / SLAVE PACKING REQUIRED"
-     YES/NO column hata diye gaye (BRAND_PACKING_CLEANUP_MIGRATION.sql) —
-     Type bhara hai to packing lagti hai, khaali / NA hai to nahi. */
+     There used to be an "Order Form Rates" group here (price per kg + seven
+     trim rates, separate for every brand). It was removed: a trim's rate
+     belongs to the MATERIAL, not the brand. It is now in the Trims & Packing
+     Rate master (SARV_TRIMRATE_FIELDS), and price/kg is decided on the order. */
+  /* Label = the Order Form's "Slave Packing Standard Qty". The old CSV header
+     "PACKING PCS" is an alias, so old sheets keep importing.
+     Order (in both packings): SLAVE PACKING TYPE → SLAVE PACKING STANDARD
+     QUANTITY → MASTER PACKING TYPE. The "MASTER / SLAVE PACKING REQUIRED"
+     YES/NO columns were removed (BRAND_PACKING_CLEANUP_MIGRATION.sql): if the
+     Type is filled in, packing applies; empty / NA means it doesn't. */
   {k:'slave_pack_type',l:'SLAVE PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandSlavePackType'},
   {k:'packing_pcs',l:'SLAVE PACKING STANDARD QUANTITY',g:'pack1',t:'num',alias:['PACKING PCS'],
    hint:'Packing 1 — ek slave pack me kitne pcs (Order Form ka Slave Packing Standard Qty)'},
   {k:'master_pack_type',l:'MASTER PACKING TYPE',g:'pack1',t:'dd',dd:'erp_brandMasterPackType'},
-  /* showIf — form me sirf MASTER PACKING TYPE = OUTER BOX par dikhta hai,
-     aur tab ZAROORI hai (sarvFbmShowIf_). Chhupa ho to save par null.
-     YES = Order Form ke Bags & Trims me "OUTER BOX BORA" row (jab order par
-     ye packing lage). Pehle ye Materials group me tha. */
+  /* showIf: shown in the form only when MASTER PACKING TYPE = OUTER BOX, and
+     REQUIRED then (sarvFbmShowIf_). When hidden it saves as null.
+     YES = an "OUTER BOX BORA" row in the Order Form's Bags & Trims (when the
+     order uses this packing). It used to be in the Materials group. */
   {k:'outer_box_bora',l:'OUTER BOX BORA',g:'pack1',t:'dd',dd:'erp_fbmYesNo',showIf:{k:'master_pack_type',v:'OUTER BOX'},
-   hint:'YES = Order Form › Bags & Trims me "OUTER BOX BORA" row. Rate: 💰 Trims & Packing Rate › OUTER BOX BORA.'},
+   hint:'YES = Order Form › Bags & Trims me "OUTER BOX BORA" row. Rate: Trims & Packing Rate › OUTER BOX BORA.'},
 
-  /* Alias ki zaroorat nahi: CSV ka header match "normalised" hota hai
-     (space / bracket / dash / case sab ignore), isi liye "MASTER PACKING
-     TYPE 2", "MASTER PACKING TYPE (2)" aur "MASTER PACKING TYPE-2" teeno
-     apne aap ek hi column par aa jaate hain. */
+  /* No alias needed: the CSV header match is "normalised" (spaces / brackets
+     / dashes / case all ignored), so "MASTER PACKING TYPE 2", "MASTER PACKING
+     TYPE (2)" and "MASTER PACKING TYPE-2" all land on the same column. */
   {k:'slave_pack_type_2',l:'SLAVE PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandSlavePackType'},
   {k:'packing_pcs_2',l:'SLAVE PACKING STANDARD QUANTITY 2',g:'pack2',t:'num',alias:['PACKING PCS 2'],
-   hint:'Packing 2 — ek slave pack me kitne pcs. Order ka Slave Packing Type MASTER PACKING TYPE 2 ho to Order Form yahi uthata hai.'},
+   hint:'Packing 2: how many pcs in one slave pack. If the order\'s Slave Packing Type is MASTER PACKING TYPE 2, the Order Form uses this.'},
   {k:'master_pack_type_2',l:'MASTER PACKING TYPE 2',g:'pack2',t:'dd',dd:'erp_brandMasterPackType'},
   {k:'outer_box_bora_2',l:'OUTER BOX BORA 2',g:'pack2',t:'dd',dd:'erp_fbmYesNo',showIf:{k:'master_pack_type_2',v:'OUTER BOX'},
-   hint:'YES = jab order par Packing 2 lage, Bags & Trims me "OUTER BOX BORA" row.'},
+   hint:'YES = when the order uses Packing 2, an "OUTER BOX BORA" row in Bags & Trims.'},
 
-  /* ── Order Form ke Bags & Trims wale 6 purane row + FOAM ─────────
-     Ye saat column `BRAND_TRIMS_MIGRATION.sql` se aate hain.
+  /* ── The Order Form's 6 old Bags & Trims rows + FOAM ───────────
+     These seven columns come from `BRAND_TRIMS_MIGRATION.sql`.
 
-     Pehle ye chhe cheezein Brand Master me sirf RATE ke roop me thin
-     (label_price, bore_price ...) — "ye material is brand par lagta hai
-     ya nahi" ka jawab kahin likha hi nahi tha, aur Order Form sabhi
-     chhe rows har brand par dikhata tha, chahe lagti ho ya na. Ab
-     Bags & Trims ki poori list yahi se tay hoti hai: jo YES hai wahi
-     row banti hai.
+     These six used to exist in the Brand Master only as RATES (label_price,
+     bore_price ...); "is this material used on this brand?" was never
+     written anywhere, and the Order Form showed all six rows on every brand,
+     whether used or not. Now the whole Bags & Trims list is decided here:
+     a row is created only for YES.
 
-     Dhyan: `tag` aur `tag_1` DO alag column hain (dono YES hon to dono
-     rows banengi) — Order Form ka purana "Tag" row aur Excel ka
-     "TAG 1" ek hi cheez hain ya nahi, ye brand-dar-brand badalta hai,
-     isi liye jodd nahi kiya gaya. Jo na chahiye use NO rakhein.
-     `foam` ka koi rate column nahi hai — uski cost order me bharti hai. */
-  /* LABEL, BORE aur OUTER BOX column hata diye gaye (backup ke saath —
+     Note: `tag` and `tag_1` are TWO separate columns (if both are YES, both
+     rows appear). Whether the Order Form's old "Tag" row and the Excel's
+     "TAG 1" are the same thing varies brand by brand, so they weren't
+     merged. Set whichever isn't needed to NO.
+     `foam` has no rate column; its cost is filled in on the order. */
+  /* The LABEL, BORE and OUTER BOX columns were removed (with a backup:
      BRAND_PACKING_CLEANUP / BRAND_OUTER_BOX_MIGRATION.sql). OUTER BOX BORA
-     ab Packing 1 / 2 me hai (Master Packing Type = OUTER BOX par). */
+     is now in Packing 1 / 2 (when Master Packing Type = OUTER BOX). */
   {k:'tag',l:'TAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',
-   hint:'Order Form › Bags & Trims ka Tag row. TAG 1 / 2 / 3 isse alag column hain.'},
-  {k:'bag',l:'BAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: 💰 Trims & Packing Rate › BAG'},
-  {k:'inner_box',l:'INNER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: 💰 Trims & Packing Rate › INNER BOX'},
+   hint:'The Tag row in Order Form › Bags & Trims. TAG 1 / 2 / 3 are separate columns.'},
+  {k:'bag',l:'BAG',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: Trims & Packing Rate › BAG'},
+  {k:'inner_box',l:'INNER BOX',g:'trims',t:'dd',dd:'erp_fbmYesNo',hint:'Rate: Trims & Packing Rate › INNER BOX'},
   {k:'foam',l:'FOAM',g:'trims',t:'dd',dd:'erp_fbmYesNo',
-   hint:'Rate: 💰 Trims & Packing Rate › FOAM'},
+   hint:'Rate: Trims & Packing Rate › FOAM'},
 
   {k:'micro_label',l:'MICRO LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'small_label',l:'SMALL LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'big_label',l:'BIG LABEL',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'tag_1',l:'TAG 1',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'tag_2',l:'TAG 2',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
-  /* Excel me do column ka naam ek hi "TAG 2" tha — teesra TAG 3 hai.
-     CSV import purane header ko bhi pehchaanta hai (alias). */
+  /* In the Excel two columns were both named "TAG 2"; the third is TAG 3.
+     CSV import also recognises the old header (alias). */
   {k:'tag_3',l:'TAG 3',g:'trims',t:'dd',dd:'erp_fbmYesNo',alias:['TAG 2_2','TAG 2 (2)']},
   {k:'dori',l:'DORI',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
   {k:'insert_card',l:'INSERT CARD',g:'trims',t:'dd',dd:'erp_fbmYesNo'},
@@ -20168,88 +20872,87 @@ const SARV_BR_FIELDS=[
   {k:'notes',l:'NOTES',g:'spec',t:'text'},
 ];
 
-/* Buyer Master — party (buyer) ka ek hi sach, poore app ke liye.
-   Iska PARTY NAME do jagah dropdown bharta hai:
-     * Sales › Order Form  — "Buyer / Company Name" ka combo, aur party
-       chunne par OWNER NAME → Contact Person, CONTACT NO → Mobile khud
-       bhar jaate hain (sirf un parties ke liye jinka koi purana order
-       nahi — jahan order history hai wahan wahi jeette hai, kyunki wo
-       pichhli baar ka asli billing contact hai).
-     * Packing & Dispatch — naye slip ka "Party Name". Pehle wahan sirf
-       wo parties aati thin jinka koi PENDING order tha, isi liye nayi
-       party type karni padti thi; ab master ki saari parties milti hain.
+/* Buyer Master: the single source for parties (buyers) across the app.
+   Its PARTY NAME fills dropdowns in two places:
+     * Sales › Order Form: the "Buyer / Company Name" combo; choosing a party
+       fills OWNER NAME → Contact Person and CONTACT NO → Mobile (only for
+       parties with no earlier order; where there is order history, that wins,
+       because it is the real billing contact from last time).
+     * Packing & Dispatch: the "Party Name" on a new slip. Only parties with a
+       PENDING order used to appear there, so a new party had to be typed;
+       now every party in the master is available.
 
-   Dono jagah ye ADD hota hai, replace nahi — purana behaviour waisa hi
-   rehta hai, aur `buyer_master` table na ho to dono screen chup-chaap
-   pehle jaisi chalti hain (koi error nahi). */
+   In both places this ADDS, it doesn't replace: the old behaviour stays,
+   and without the `buyer_master` table both screens quietly work as before
+   (no error). */
 const SARV_BUYER_FIELDS=[
   {k:'party_name',l:'PARTY NAME',g:'ident',t:'text',req:1,uc:1,
-   hint:'Party / company ka naam — unique. Yahi Order Form aur Packing ke dropdown me jaata hai.'},
+   hint:'The party / company name; unique. This goes into the Order Form and Packing dropdowns.'},
   {k:'owner_name',l:'OWNER NAME',g:'ident',t:'text',
-   hint:'Malik ka naam — Order Form me "Contact Person" bharta hai'},
+   hint:'The owner\'s name; fills "Contact Person" in the Order Form'},
   {k:'contact_no',l:'CONTACT NO',g:'ident',t:'tel',
-   hint:'Owner ka number — Order Form me "Mobile No." bharta hai'},
+   hint:'The owner\'s number; fills "Mobile No." in the Order Form'},
 
-  /* Billing — seedha Order Form ke "Buyer Details" box me jaata hai.
-     Pehle ye do cheezein sirf PURANE order se aati thin, isi liye nayi
-     party ka pehla order banate waqt address aur GSTIN haath se type
-     karne padte the (aur GSTIN me ek digit galat ho jaati thi). */
-  {k:'address',l:'ADDRESS',g:'bill',t:'area',ph:'Poora billing address...',
-   hint:'Order Form me "Address" bharta hai (PDF ke bill-to par yahi jaata hai)'},
+  /* Billing: goes straight into the Order Form's "Buyer Details" box.
+     These two used to come only from an OLD order, so for a new party's
+     first order the address and GSTIN had to be typed by hand (and a GSTIN
+     digit often went wrong). */
+  {k:'address',l:'ADDRESS',g:'bill',t:'area',ph:'Full billing address...',
+   hint:'Fills "Address" in the Order Form (this goes to the bill-to on the PDF)'},
   {k:'gstin',l:'GSTIN',g:'bill',t:'text',uc:1,ph:'15-digit GSTIN',
-   hint:'Order Form me "GSTIN" bharta hai — wahan se state aur CGST/SGST vs IGST khud pakda jaata hai'},
+   hint:'Fills "GSTIN" in the Order Form; the state and CGST/SGST vs IGST are worked out from it'},
 
   {k:'party_staff_name',l:'PARTY STAFF NAME',g:'staff',t:'text',
-   hint:'Roz kaam karne wala banda (purchase / dispatch dekhne wala)'},
+   hint:'The person who handles it day to day (purchase / dispatch)'},
   {k:'party_staff_contact_no',l:'PARTY STAFF CONTACT NO.',g:'staff',t:'tel',
    alias:['PARTY STAFF CONTACT NO','PARTY STAFF CONTACT']},
 
   {k:'notes',l:'NOTES',g:'misc',t:'text'},
 ];
 
-/* Agency Master — Buyer Master ki SCREEN par doosri table (apna sub-tab
-   nahi). Jaan-boojh kar alag table hai, buyer me column nahi:
-   ek agency ke neeche kai parties hoti hain, aur ek hi agency ka contact
-   badalne par har party ki row chhedni padti — galti ki jad. Order Form
-   me bhi ye do alag box hain ("Agency" aur "Buyer Details").
+/* Agency Master: a second table on the Buyer Master SCREEN (no sub-tab of its
+   own). It is deliberately a separate table, not columns on buyer: one
+   agency covers many parties, and changing one agency's contact would mean
+   editing every party row, which is where mistakes start. The Order Form also
+   has these as two separate boxes ("Agency" and "Buyer Details").
 
-   Iska AGENCY NAME Order Form ke "Agency Name" combo me jaata hai, aur
-   agency chunne par Contact Person / Mobile khud bhar jaate hain. */
+   Its AGENCY NAME goes into the Order Form's "Agency Name" combo, and
+   choosing an agency fills Contact Person / Mobile automatically. */
 const SARV_AGENCY_FIELDS=[
   {k:'agency_name',l:'AGENCY NAME',g:'ident',t:'text',req:1,uc:1,
-   hint:'Agency ka naam — unique. Yahi Order Form ke Agency Name combo me jaata hai.'},
+   hint:'The agency name; unique. This goes into the Order Form\'s Agency Name combo.'},
   {k:'contact_person',l:'AGENCY CONTACT PERSON',g:'ident',t:'text',
    alias:['CONTACT PERSON','AGENCY CONTACT'],
-   hint:'Order Form me "Agency Contact Person" bharta hai'},
+   hint:'Fills "Agency Contact Person" in the Order Form'},
   {k:'mobile_no',l:'AGENCY MOBILE NO.',g:'ident',t:'tel',
    alias:['AGENCY MOBILE NO','MOBILE NO.','MOBILE NO','AGENCY MOBILE'],
-   hint:'Order Form me "Agency Mobile No." bharta hai'},
+   hint:'Fills "Agency Mobile No." in the Order Form'},
   {k:'notes',l:'NOTES',g:'misc',t:'text'},
 ];
 
-/* Trims & Packing Material Rate — ek row = ek MATERIAL, uska AAJ ka rate.
-   Order Form ke Bags & Trims me "SIHF Supplied" chunte hi us material ka
-   Cost/Pc aur Disc % yahin se bharta hai (order-form.html › TRIM_RATES /
-   ofTrimRate_). Match MATERIAL ke naam se hota hai (case / space ignore),
-   isi liye yahan naya material jodne par (LABEL, TAG, BALE ...) Order Form
-   bina code badle uska rate uthane lagta hai.
+/* Trims & Packing Material Rate: one row = one MATERIAL and its CURRENT rate.
+   When "SIHF Supplied" is chosen in the Order Form's Bags & Trims, that
+   material's Cost/Pc and Disc % are filled from here (order-form.html ›
+   TRIM_RATES / ofTrimRate_). Matched on the MATERIAL name (case / spaces
+   ignored), so a material added here (LABEL, TAG, BALE ...) is picked up by
+   the Order Form with no code change.
 
-   Rate badalna = ✏️ Edit (galti) ya 🔁 Revise (naya rate, REV +1) — purana
-   rate 🕘 History me rehta hai. Purane order apni saved value par khulte
-   hain, unhe ye table chhooti nahi. Inactive material ka rate nahi bharta. */
+   Changing a rate = Edit (a mistake) or Revise (a new rate, REV +1);
+   the old rate stays in History. Old orders open with their saved value
+   and this table doesn't touch them. An Inactive material's rate isn't filled. */
 const SARV_TRIMRATE_FIELDS=[
   {k:'material',l:'MATERIALS',g:'ident',t:'text',req:1,uc:1,alias:['MATERIAL','MATERIAL NAME'],
-   hint:'Order Form ki row isi naam se milti hai — BAG, BORA, DORI, TAG 1 ...'},
+   hint:'The Order Form row is matched by this name: BAG, BORA, DORI, TAG 1 ...'},
   {k:'category',l:'CATEGORY',g:'ident',t:'dd',dd:'erp_trimRateCategory',req:1,
    hint:'Trims ya Packing Material'},
   {k:'rate',l:'RATE',g:'rate',t:'num',step:'0.01',alias:['RATE (RS)','RATE RS','COST'],
-   hint:'₹ per pc — Order Form ka Cost/Pc. Khaali = set nahi (Order Form khaali chhodta hai).'},
+   hint:'₹ per pc; the Order Form\'s Cost/Pc. Empty = not set (the Order Form leaves it empty).'},
   {k:'discount_pct',l:'DISCOUNT%',g:'rate',t:'num',step:'0.01',alias:['DISCOUNT %','DISCOUNT','DISC %','DISC'],
    hint:'0 – 100. Order Form ka Disc %.'},
   {k:'notes',l:'NOTES',g:'misc',t:'text'},
 ];
-/* Seed — wahi 15 material jo TRIMS_RATE_MASTER_MIGRATION.sql bhi daalti
-   hai. Rate khaali: asli rate screen se bharein. */
+/* Seed: the same 15 materials that TRIMS_RATE_MASTER_MIGRATION.sql inserts.
+   Rates are empty; fill in the real rates on screen. */
 const SARV_TRIMRATE_SEED_COLS=['material','category','discount_pct'];
 const SARV_TRIMRATE_SEED=[
   ['MICRO LABEL','TRIMS',0],['SMALL LABEL','TRIMS',0],['BIG LABEL','TRIMS',0],
@@ -20260,9 +20963,9 @@ const SARV_TRIMRATE_SEED=[
   ['OUTER BOX BORA','PACKING MATERIAL',0]
 ];
 
-/* Seed — Excel sheet ki asli rows, wahi kram. Array-of-array jaan-boojh
-   kar: 96 rows x 38/23 column object banane se file teen guna ho jaati.
-   `null` = sheet me khaali ya "NA" tha (matlab: is fabric par lagu nahi). */
+/* Seed: the Excel sheet's real rows, in the same order. An array of arrays on
+   purpose: building 96 rows x 38/23 column objects would triple the file size.
+   `null` = empty or "NA" in the sheet (meaning: doesn't apply to this fabric). */
 const SARV_FAB_SEED_COLS=['fabric_name','unit','fabric_quality','raschel_gauge','raschel_roll_weight','slitting_roll_weight',
   'sb_sp_weight','sb_dp_weight','db_sp_weight','db_dp_weight','sb_sp_repeat','sb_dp_repeat','db_sp_repeat','db_dp_repeat',
   'sb_sp_pcs_printed','sb_dp_pcs_printed','db_sp_pcs_printed','db_dp_pcs_printed','pyle',
@@ -20377,23 +21080,23 @@ const SARV_BR_SEED=[
 /* Do master, ek engine. */
 const SARV_FBM={
   FABRIC:{
-    code:'FABRIC', table:'fabric_master', label:'Fabric Master', icon:'\u{1F9F5}',
+    code:'FABRIC', table:'fabric_master', label:'Fabric Master', icon:'',
     fields:SARV_FAB_FIELDS, tabKey:'MD_FABRIC',
     feat:{nw:'FABRIC_NEW',ed:'FABRIC_EDIT',dl:'FABRIC_DELETE',rv:'FABRIC_REVISE'},
-    /* FABRIC NAME akela unique nahi hai — 1.8 UNIT 1 aur 1.8 UNIT 2 do
-       alag fabric hain. Isi liye natural key dono column ka JODA hai. */
+    /* FABRIC NAME alone isn't unique: 1.8 UNIT 1 and 1.8 UNIT 2 are two
+       different fabrics. So the natural key is the PAIR of both columns. */
     keyCols:['fabric_name','unit'],
     order:'fabric_name',
     groups:[
-      {g:'ident',l:'\u{1F9FE} Identity',lock:1},
-      {g:'roll', l:'\u{1F9F6} Roll Weight'},
-      {g:'wt',   l:'⚖️ Pcs Weight (SB/DB × SP/DP)'},
-      {g:'rep',  l:'\u{1F501} Repeat'},
-      {g:'prn',  l:'\u{1F5A8}️ Pcs Printed'},
-      {g:'yarn', l:'\u{1F9F5} Yarn Planning', tab:'MD_FABRIC_YARN'},
-      {g:'pack', l:'\u{1F4E6} Cutting / Sattan / Bora'},
-      {g:'link', l:'\u{1F517} Brands & Notes'},
-      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+      {g:'ident',l:'Identity',lock:1},
+      {g:'roll', l:'Roll Weight'},
+      {g:'wt',   l:'Pcs Weight (SB/DB × SP/DP)'},
+      {g:'rep',  l:'Repeat'},
+      {g:'prn',  l:'Pcs Printed'},
+      {g:'yarn', l:'Yarn Planning', tab:'MD_FABRIC_YARN'},
+      {g:'pack', l:'Cutting / Sattan / Bora'},
+      {g:'link', l:'Brands & Notes'},
+      {g:'rev',  l:'Revision', tab:'MD_REV_COLUMN'}
     ],
     seedCols:SARV_FAB_SEED_COLS, seedRows:SARV_FAB_SEED,
     ids:{search:'fbm_fabSearch',head:'fbm_fabHead',body:'fbm_fabBody',cg:'fbm_fabCg',pills:'fbm_fabPills',note:'fbm_fabNote',
@@ -20405,20 +21108,20 @@ const SARV_FBM={
     sub:'fabricMasterSub'
   },
   BRAND:{
-    code:'BRAND', table:'brand_master', label:'Brand Master', icon:'\u{1F3F7}️',
+    code:'BRAND', table:'brand_master', label:'Brand Master', icon:'',
     fields:SARV_BR_FIELDS, tabKey:'MD_BRAND',
     feat:{nw:'BRAND_NEW',ed:'BRAND_EDIT',dl:'BRAND_DELETE',rv:'BRAND_REVISE'},
     keyCols:['item_code'],
     order:'item_code',
     groups:[
-      {g:'ident',l:'\u{1F9FE} Identity',lock:1},
-      {g:'spec', l:'\u{1F4D0} Specification'},
-      {g:'pack1',l:'\u{1F4E6} Packing 1', tab:'MD_BRAND_PACKING'},
-      /* off:1 — table me chip default OFF. Form me ye group hamesha
-         dikhta hai; `off` sirf column chips ka shuruaati haal hai. */
-      {g:'pack2',l:'\u{1F4E6} Packing 2', tab:'MD_BRAND_PACKING', off:1},
-      {g:'trims',l:'\u{1F3F7}️ Labels / Tags / Trims', tab:'MD_BRAND_PACKING'},
-      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+      {g:'ident',l:'Identity',lock:1},
+      {g:'spec', l:'Specification'},
+      {g:'pack1',l:'Packing 1', tab:'MD_BRAND_PACKING'},
+      /* off:1: the chip is OFF by default in the table. In the form this group
+         is always shown; `off` is only the column chips' starting state. */
+      {g:'pack2',l:'Packing 2', tab:'MD_BRAND_PACKING', off:1},
+      {g:'trims',l:'Labels / Tags / Trims', tab:'MD_BRAND_PACKING'},
+      {g:'rev',  l:'Revision', tab:'MD_REV_COLUMN'}
     ],
     seedCols:SARV_BR_SEED_COLS, seedRows:SARV_BR_SEED,
     ids:{search:'fbm_brSearch',head:'fbm_brHead',body:'fbm_brBody',cg:'fbm_brCg',pills:'fbm_brPills',note:'fbm_brNote',
@@ -20432,46 +21135,46 @@ const SARV_FBM={
     sub:'brandMasterSub'
   },
   BUYER:{
-    code:'BUYER', table:'buyer_master', label:'Buyer Master', icon:'\u{1F3E2}',
+    code:'BUYER', table:'buyer_master', label:'Buyer Master', icon:'',
     fields:SARV_BUYER_FIELDS, tabKey:'MD_BUYER',
     feat:{nw:'BUYER_NEW',ed:'BUYER_EDIT',dl:'BUYER_DELETE',rv:'BUYER_REVISE'},
     keyCols:['party_name'],
     order:'party_name',
     groups:[
-      {g:'ident',l:'\u{1F3E2} Party',lock:1},
-      {g:'bill', l:'\u{1F9FE} Billing (Order Form)', tab:'MD_BUYER_BILLING'},
-      {g:'staff',l:'\u{1F464} Party Staff'},
-      {g:'misc', l:'\u{1F4DD} Notes'},
-      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+      {g:'ident',l:'Party',lock:1},
+      {g:'bill', l:'Billing (Order Form)', tab:'MD_BUYER_BILLING'},
+      {g:'staff',l:'Party Staff'},
+      {g:'misc', l:'Notes'},
+      {g:'rev',  l:'Revision', tab:'MD_REV_COLUMN'}
     ],
-    /* Fabric / Brand ki tarah koi categorical filter nahi — paanch hi
-       column hain aur unme se koi "list" wala nahi. Khaali array chalta
-       hai: search aur Active/Inactive dono phir bhi kaam karte hain. */
+    /* No categorical filter like Fabric / Brand: there are only five columns
+       and none of them is a "list" type. An empty array works: search and
+       Active/Inactive still both work. */
     filters:[],
     statusId:'fbm_byStatus',
-    seedCols:[], seedRows:[],   // Excel me buyer ki sheet nahi thi
+    seedCols:[], seedRows:[],   // the Excel had no buyer sheet
     ids:{search:'fbm_bySearch',head:'fbm_byHead',body:'fbm_byBody',cg:'fbm_byCg',pills:'fbm_byPills',note:'fbm_byNote',
          tbl:'fbm_byTable',newBtn:'fbm_byNewBtn',seedBtn:'fbm_bySeedBtn',csvBtn:'fbm_byCsvBtn',impBtn:'fbm_byImpBtn'},
     nameOf:r=>String(r.party_name||'-'),
     sub:'buyerMasterSub'
   },
   AGENCY:{
-    code:'AGENCY', table:'agency_master', label:'Agency Master', icon:'\u{1F91D}',
+    code:'AGENCY', table:'agency_master', label:'Agency Master', icon:'',
     fields:SARV_AGENCY_FIELDS, tabKey:'MD_AGENCY',
     feat:{nw:'AGENCY_NEW',ed:'AGENCY_EDIT',dl:'AGENCY_DELETE',rv:'AGENCY_REVISE'},
     keyCols:['agency_name'],
     order:'agency_name',
     groups:[
-      {g:'ident',l:'\u{1F91D} Agency',lock:1},
-      {g:'misc', l:'\u{1F4DD} Notes'},
-      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+      {g:'ident',l:'Agency',lock:1},
+      {g:'misc', l:'Notes'},
+      {g:'rev',  l:'Revision', tab:'MD_REV_COLUMN'}
     ],
     filters:[],
     statusId:'fbm_agStatus',
     seedCols:[], seedRows:[],
-    /* Apna sub-tab NAHI — ye table Buyer Master ki screen par neeche
-       baithti hai. `blockId` us dabbe ka id hai: MD_AGENCY off hone par
-       poora dabba gayab ho jaata hai (column group nahi, poora block). */
+    /* NOT a sub-tab of its own: this table sits lower on the Buyer Master
+       screen. `blockId` is that box's id: when MD_AGENCY is off, the whole box
+       disappears (the whole block, not a column group). */
     blockId:'fbm_agBlock',
     ids:{search:'fbm_agSearch',head:'fbm_agHead',body:'fbm_agBody',cg:'fbm_agCg',pills:'fbm_agPills',note:'fbm_agNote',
          tbl:'fbm_agTable',newBtn:'fbm_agNewBtn',seedBtn:'fbm_agSeedBtn',csvBtn:'fbm_agCsvBtn',impBtn:'fbm_agImpBtn'},
@@ -20479,19 +21182,19 @@ const SARV_FBM={
     sub:'buyerMasterSub'
   },
   TRIMRATE:{
-    code:'TRIMRATE', table:'trims_rate_master', label:'Trims & Packing Rate Master', icon:'\u{1F4B0}',
+    code:'TRIMRATE', table:'trims_rate_master', label:'Trims & Packing Rate Master', icon:'',
     fields:SARV_TRIMRATE_FIELDS, tabKey:'MD_TRIM_RATE',
     feat:{nw:'TRIMRATE_NEW',ed:'TRIMRATE_EDIT',dl:'TRIMRATE_DELETE',rv:'TRIMRATE_REVISE'},
     keyCols:['material'],
     order:'material',
-    /* Apni migration — table nahi mili / save fail par yahi file batayi
-       jaati hai (baaki masters ki FABRIC_BRAND_MASTER_MIGRATION.sql). */
+    /* Its own migration: this file is named when the table isn't found / a
+       save fails (the other masters use FABRIC_BRAND_MASTER_MIGRATION.sql). */
     sql:'TRIMS_RATE_MASTER_MIGRATION.sql',
     groups:[
-      {g:'ident',l:'\u{1F9FE} Material',lock:1},
-      {g:'rate', l:'\u{1F4B0} Rate & Discount'},
-      {g:'misc', l:'\u{1F4DD} Notes'},
-      {g:'rev',  l:'\u{1F552} Revision', tab:'MD_REV_COLUMN'}
+      {g:'ident',l:'Material',lock:1},
+      {g:'rate', l:'Rate & Discount'},
+      {g:'misc', l:'Notes'},
+      {g:'rev',  l:'Revision', tab:'MD_REV_COLUMN'}
     ],
     filters:[{id:'fbm_trCategory',k:'category'}],
     statusId:'fbm_trStatus',
@@ -20512,53 +21215,53 @@ const sarvFbmState={
   AGENCY:{rows:[],loaded:false,missing:false,cg:null},
   TRIMRATE:{rows:[],loaded:false,missing:false,cg:null}
 };
-/* Buyer Master ka "bina contact" pill — chalu hai ya nahi. Select nahi
-   banaya kyunki ye filter kabhi-kabhi (data saaf karte waqt) lagta hai;
-   pill hi toggle hai, dobara dabaane par poori list wapas. */
+/* Whether the Buyer Master's "without contact" pill is on. It isn't a select
+   because this filter is used only occasionally (while cleaning data); the
+   pill itself is the toggle, and pressing it again brings back the full list. */
 let sarvFbmByNoContact=false;
 let sarvFbmForm=null;      // {code, mode:'NEW'|'EDIT'|'REVISE', id, draft}
 let sarvFbmHist=null;      // {code, id}
-let sarvFbmImpCode=null;   // kis master ka import chal raha hai
+let sarvFbmImpCode=null;   // which master's import is running
 
-/* ── chhote helpers ──────────────────────────────────────────────── */
+/* ── small helpers ──────────────────────────────────────────────── */
 const sarvFbmCfg_=code=>SARV_FBM[code]||null;
 const sarvFbmSt_=code=>sarvFbmState[code];
-// Kis master ki table kaunsi SQL banati hai — "table nahi mili" wale message ke liye.
+// Which SQL creates each master's table, for the "table not found" message.
 const sarvFbmSql_=code=>(sarvFbmCfg_(code)&&sarvFbmCfg_(code).sql)||'FABRIC_BRAND_MASTER_MIGRATION.sql';
 function sarvFbmActor_(){
   return (sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'—';
 }
-/* 2.2000000000000002 ko "2.2" dikhane ke liye — Excel se aaye float ka
-   poonchh kaatna. Khaali / null hamesha '' deta hai. */
+/* Shows 2.2000000000000002 as "2.2", trimming the tail off floats that came
+   from Excel. Empty / null always gives ''. */
 function sarvFbmNumTxt_(v){
   if(v===null||v===undefined||v==='')return '';
   const n=Number(v);
   if(!Number.isFinite(n))return String(v);
   return String(Math.round(n*1000)/1000);
 }
-/* Fabric name ko hamesha 3 decimal par round karke compare karte hain,
-   warna 2.2 (form se) aur 2.2000000000000002 (Excel se) do alag fabric
-   lagte hain aur link toot jaata hai. */
+/* Fabric names are always compared rounded to 3 decimals; otherwise 2.2
+   (from the form) and 2.2000000000000002 (from Excel) look like two
+   different fabrics and the link breaks. */
 const sarvFbmNumKey_=v=>(v===null||v===undefined||v==='')?'':String(Math.round(Number(v)*1000)/1000);
 function sarvFbmFieldsOf_(code){return sarvFbmCfg_(code).fields;}
 const sarvFbmField_=(code,k)=>sarvFbmFieldsOf_(code).find(f=>f.k===k)||null;
 
-/* Field ki value screen par kaise dikhe */
+/* How a field's value is shown on screen */
 function sarvFbmFmt_(f,v){
   if(f.t==='tags')return (Array.isArray(v)?v:[]).join(', ');
   if(v===null||v===undefined||v==='')return '';
   if(f.t==='num'||f.t==='fab')return sarvFbmNumTxt_(v);
   return String(v);
 }
-/* Form / CSV ki value ko database ki shakal me */
+/* Form / CSV value into the shape the database expects */
 function sarvFbmParse_(f,raw){
   let v=raw===null||raw===undefined?'':String(raw).trim();
   if(f.t==='tags'){
     return v.split(/[,;]/).map(x=>x.trim().toUpperCase()).filter(Boolean);
   }
-  /* "NA" sheet me "is fabric par lagu nahi" ka matlab rakhta tha. Numeric
-     column par wo null banta hai; text / dropdown par NA khud ek valid
-     option hai (SATTAN = NA), isi liye wahan waisa hi rehta hai. */
+  /* In the sheet "NA" meant "doesn't apply to this fabric". On a numeric
+     column it becomes null; on text / dropdown columns NA is itself a valid
+     option (SATTAN = NA), so it stays as it is there. */
   if(f.t==='num'||f.t==='fab'){
     if(v===''||/^na$/i.test(v))return null;
     const n=Number(v.replace(/,/g,''));
@@ -20568,13 +21271,13 @@ function sarvFbmParse_(f,raw){
   if(f.uc)v=v.toUpperCase();
   return v;
 }
-/* Jo groups is role ko dikhte hain (Tab Visibility) */
+/* The groups this role can see (Tab Visibility) */
 function sarvFbmGroups_(code){
   return sarvFbmCfg_(code).groups.filter(g=>!g.tab||sarvTabVisible(g.tab));
 }
 const sarvFbmGroupOk_=(code,g)=>sarvFbmGroups_(code).some(x=>x.g===g);
 
-/* Column-group on/off — browser me yaad rehta hai, per master. */
+/* Column groups on/off, remembered in the browser per master. */
 function sarvFbmCgKey_(code){return 'sarv_fbm_cols_'+code;}
 function sarvFbmCg_(code){
   const st=sarvFbmSt_(code);
@@ -20583,11 +21286,11 @@ function sarvFbmCg_(code){
     try{saved=JSON.parse(localStorage.getItem(sarvFbmCgKey_(code))||'null');}catch(e){saved=null;}
     st.cg={};
     sarvFbmCfg_(code).groups.forEach(g=>{
-      /* Default: sab ON, taaki pehli baar poori sheet dikhe (wahi jo Excel
-         me thi). Sirf `off:1` wale group band khulte hain — wo khaali
-         rehne wale columns hain (jaise Packing 2), aur table pehli nazar
-         me chaudha na lage. Ek baar chip dabaane ke baad browser ki yaad
-         hi chalti hai, ye default phir kabhi nahi lagta. */
+      /* Default: all ON, so the full sheet shows the first time (as it was in
+         Excel). Only `off:1` groups start closed: they are columns that stay
+         mostly empty (such as Packing 2), so the table doesn't look wide at
+         first glance. Once a chip has been pressed, the browser's memory
+         applies and this default is never used again. */
       st.cg[g.g]=(saved&&typeof saved[g.g]==='boolean')?saved[g.g]:!g.off;
     });
   }
@@ -20595,13 +21298,13 @@ function sarvFbmCg_(code){
 }
 window.sarvFbmToggleCg=function(code,g){
   const cfg=sarvFbmCfg_(code),def=cfg.groups.find(x=>x.g===g);
-  if(!def||def.lock)return;                   // Identity hamesha dikhta hai
+  if(!def||def.lock)return;                   // Identity is always shown
   const cg=sarvFbmCg_(code);
   cg[g]=!cg[g];
   try{localStorage.setItem(sarvFbmCgKey_(code),JSON.stringify(cg));}catch(e){}
   sarvFbmApplyCg_(code);
 };
-/* Sirf class lagti / hatti hai — table dobara nahi banta. */
+/* Only a class is added / removed; the table isn't rebuilt. */
 function sarvFbmApplyCg_(code){
   const cfg=sarvFbmCfg_(code),cg=sarvFbmCg_(code),tbl=byId(cfg.ids.tbl);
   if(!tbl)return;
@@ -20623,10 +21326,10 @@ function sarvFbmRenderCg_(code){
   bar.innerHTML='<b>Columns</b>'+gs.map(g=>
     '<button type="button" class="fbm-cg" data-cg="'+g.g+'" '
     +'onclick="sarvFbmToggleCg(\''+code+'\',\''+g.g+'\')" '
-    +'title="'+escText(g.l+(g.lock?' — hamesha dikhta hai':' — column group on / off'))+'">'
+    +'title="'+escText(g.l+(g.lock?': always shown':': switch the column group on / off'))+'">'
     +escText(g.l)+'</button>').join('')
-    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',true)" title="Saare columns dikhayein">Show all</button>'
-    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',false)" title="Sirf Identity chhodkar sab chhupa dein">Minimal</button>';
+    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',true)" title="Show all columns">Show all</button>'
+    +'<button type="button" class="fbm-cg" onclick="sarvFbmAllCg(\''+code+'\',false)" title="Hide everything except Identity">Minimal</button>';
   sarvFbmApplyCg_(code);
 }
 window.sarvFbmAllCg=function(code,on){
@@ -20637,9 +21340,9 @@ window.sarvFbmAllCg=function(code,on){
 };
 
 /* ── link: fabric <-> brand ──────────────────────────────────────── */
-/* "Is fabric ke brands" — Brand Master ki asli rows se (ye sach hai),
-   plus fabric row ke apne BRANDS column se (Excel ka purana data). Dono
-   milakar, duplicate hataakar. */
+/* "This fabric's brands": from the Brand Master's real rows (the truth),
+   plus the fabric row's own BRANDS column (old data from Excel). Both
+   combined, duplicates removed. */
 function sarvFbmBrandsOfFabric_(fabRow){
   const key=sarvFbmNumKey_(fabRow.fabric_name);
   const live=sarvFbmSt_('BRAND').rows
@@ -20654,8 +21357,8 @@ const sarvFbmFabricRow_=name=>{
   const key=sarvFbmNumKey_(name);
   return sarvFbmSt_('FABRIC').rows.find(f=>sarvFbmNumKey_(f.fabric_name)===key)||null;
 };
-/* Jin brands ka fabric Fabric Master me nahi hai — Excel me aise do the
-   (2.25 "RUBRU BLUELILLY DB" aur 3.3 "PARI DB SP"). Pill inhe ginta hai. */
+/* Brands whose fabric isn't in the Fabric Master; the Excel had two such
+   (2.25 "RUBRU BLUELILLY DB" and 3.3 "PARI DB SP"). The pill counts these. */
 function sarvFbmUnlinkedBrands_(){
   const fab=sarvFbmSt_('FABRIC');
   if(!fab.loaded||!fab.rows.length)return [];
@@ -20665,22 +21368,22 @@ function sarvFbmUnlinkedBrands_(){
     return k===''||!have.has(k);
   });
 }
-/* Fabric row ki brand chip dabai -> Brand Master us fabric par khulta hai */
+/* A brand chip on a fabric row was clicked -> the Brand Master opens on that fabric */
 window.sarvFbmGotoBrands=async function(fabName){
   switchMasterSubTab('brandMasterSub');
   await sarvFbmLoad('BRAND');
   const sel=byId('fbm_brFabric'),srch=byId('fbm_brSearch'),st=byId('fbm_brStatus');
   if(srch)srch.value='';
-  if(st)st.value='';                                     // active + inactive — kuch chhupe na
+  if(st)st.value='';                                     // active + inactive; nothing hidden
   const want=sarvFbmNumKey_(fabName);
   if(sel){
     const opt=[...sel.options].find(o=>sarvFbmNumKey_(o.value)===want);
     sel.value=opt?opt.value:'';
-    if(!opt&&srch)srch.value=sarvFbmNumTxt_(fabName);     // fabric list me nahi — search se dikha do
+    if(!opt&&srch)srch.value=sarvFbmNumTxt_(fabName);     // not in the fabric list; show it via search
   }
   sarvFbmRender('BRAND');
 };
-/* Brand row ka fabric chip dabaya -> Fabric Master us fabric par */
+/* Fabric chip on a Brand row clicked -> Fabric Master on that fabric */
 window.sarvFbmGotoFabric=async function(fabName){
   switchMasterSubTab('fabricMasterSub');
   await sarvFbmLoad('FABRIC');
@@ -20691,8 +21394,8 @@ window.sarvFbmGotoFabric=async function(fabName){
   if(q)q.value='';
   sarvFbmRender('FABRIC');
 };
-/* Buyer Master ka "N bina contact" pill — toggle. Dobara dabane par
-   poori list wapas aa jaati hai. */
+/* The Buyer Master's "N without contact" pill: a toggle. Pressing it again
+   brings back the full list. */
 window.sarvFbmShowNoContact=function(){
   sarvFbmByNoContact=!sarvFbmByNoContact;
   if(sarvFbmByNoContact){
@@ -20701,11 +21404,11 @@ window.sarvFbmShowNoContact=function(){
   }
   sarvFbmRender('BUYER');
   showToast(sarvFbmByNoContact
-    ?'\u{1F4DE} Sirf wo parties jinka koi contact number nahi — pill dobara dabaayein to poori list'
-    :'Poori Buyer Master list wapas');
+    ?'Only parties with no contact number; press the pill again for the full list'
+    :'Back to the full Buyer Master list');
 };
 
-/* "N unlinked" pill — Brand Master me sirf wahi rows chhod deta hai */
+/* The "N unlinked" pill: keeps only those rows in the Brand Master */
 window.sarvFbmShowUnlinked=function(){
   switchMasterSubTab('brandMasterSub');
   const st=byId('fbm_brStatus'),sel=byId('fbm_brFabric'),srch=byId('fbm_brSearch');
@@ -20713,7 +21416,7 @@ window.sarvFbmShowUnlinked=function(){
   if(sel)sel.value='__UNLINKED__';
   if(srch)srch.value='';
   sarvFbmRender('BRAND');
-  showToast('⚠️ Sirf wo brands dikh rahe hain jinka FABRIC NAME Fabric Master me nahi hai','warn');
+  showToast('Showing only brands whose FABRIC NAME is not in the Fabric Master','warn');
 };
 
 /* ── load ────────────────────────────────────────────────────────── */
@@ -20721,10 +21424,10 @@ function sarvFbmMissing_(e){
   const m=String((e&&(e.message||e))||'');
   return /does not exist|schema cache|Could not find the table/i.test(m)||(e&&e.code==='42P01');
 }
-/* Brand Master ko Fabric Master ki rows CHAHIYE (dropdown, link chips,
-   unlinked count) aur ulta bhi — isi liye jo screen khule, dono load
-   hote hain. Doosra load chup-chaap hota hai: fail ho to screen chalti
-   rehti hai, bas link chips nahi dikhte. */
+/* The Brand Master NEEDS the Fabric Master's rows (dropdown, link chips,
+   unlinked count) and vice versa, so whichever screen opens, both load. The
+   second load is quiet: if it fails the screen keeps working; only the link
+   chips don't show. */
 window.sarvFbmLoad=async function(code,force){
   const cfg=sarvFbmCfg_(code),st=sarvFbmSt_(code);
   if(!cfg)return;
@@ -20732,10 +21435,10 @@ window.sarvFbmLoad=async function(code,force){
   const body=byId(cfg.ids.body);
   if(!SB_READY){
     st.missing=false;
-    if(body)body.innerHTML='<tr><td class="fbm-empty" style="color:#f59e0b;">⚠️ Supabase configured nahi hai</td></tr>';
+    if(body)body.innerHTML='<tr><td class="fbm-empty" style="color:#f59e0b;">Supabase is not configured</td></tr>';
     return;
   }
-  if(body&&!st.loaded)body.innerHTML='<tr><td class="fbm-empty">⏳ Loading '+escText(cfg.label)+'...</td></tr>';
+  if(body&&!st.loaded)body.innerHTML='<tr><td class="fbm-empty">Loading '+escText(cfg.label)+'...</td></tr>';
   try{
     st.rows=await fetchAllRows(cfg.table,'*',cfg.order);
     st.loaded=true;st.missing=false;
@@ -20744,10 +21447,10 @@ window.sarvFbmLoad=async function(code,force){
     st.missing=sarvFbmMissing_(e);
     if(!st.missing)dbError(e);
   }
-  /* Saathi master — sirf Fabric aur Brand ka joda hai (ek doosre ke link
-     chips, fabric dropdown aur "unlinked" count ke liye). Buyer Master
-     akela khada hai, uska `pair` nahi hai — isi liye use kholne par koi
-     doosri table bekaar me nahi padhi jaati. */
+  /* The companion master: only Fabric and Brand are a pair (for each other's
+     link chips, the fabric dropdown and the "unlinked" count). The Buyer
+     Master stands alone and has no `pair`, so opening it doesn't read
+     another table for nothing. */
   const other=sarvFbmCfg_(code).pair;
   const ost=other?sarvFbmSt_(other):null;
   if(ost&&!ost.loaded&&!ost.missing){
@@ -20761,8 +21464,8 @@ window.sarvFbmLoad=async function(code,force){
   if(ost&&ost.loaded)sarvFbmRenderPills_(other);
 };
 
-/* Filter dropdowns table ke apne data se bharte hain — jo value sach me
-   rows me hai, sirf wahi offer hoti hai. */
+/* The filter dropdowns fill from the table's own data: only values that
+   really occur in the rows are offered. */
 function sarvFbmSyncFilters_(code){
   const cfg=sarvFbmCfg_(code),rows=sarvFbmSt_(code).rows;
   cfg.filters.forEach(ft=>{
@@ -20772,7 +21475,7 @@ function sarvFbmSyncFilters_(code){
       .sort((a,b)=>(f.t==='num'||f.t==='fab')?Number(a)-Number(b):String(a).localeCompare(String(b)));
     const keep=sel.value,first=sel.options[0]?sel.options[0].outerHTML:'<option value="">All</option>';
     sel.innerHTML=first
-      +(ft.k==='fabric_name'?'<option value="__UNLINKED__">⚠️ Unlinked only</option>':'')
+      +(ft.k==='fabric_name'?'<option value="__UNLINKED__">Unlinked only</option>':'')
       +vals.map(v=>'<option value="'+escText(v)+'">'+escText(v)+'</option>').join('');
     if([...sel.options].some(o=>o.value===keep))sel.value=keep;
   });
@@ -20798,8 +21501,8 @@ function sarvFbmVisibleRows_(code){
       if(sarvFbmFmt_(sarvFbmField_(code,ft.k),r[ft.k])!==want)return false;
     }
     if(!q)return true;
-    // search poore row par — chhupe column par bhi, warna "FANTASY" dhundhne
-    // par brands column off hone se row mil hi nahi paati.
+    // Search covers the whole row, including hidden columns; otherwise searching
+    // "FANTASY" with the brands column off would never find the row.
     const hay=cfg.fields.map(f=>sarvFbmFmt_(f,r[f.k])).join(' ')
       +' '+(code==='FABRIC'?sarvFbmBrandsOfFabric_(r).join(' '):'');
     return hay.toLowerCase().includes(q);
@@ -20814,10 +21517,10 @@ function sarvFbmVisibleRows_(code){
 window.sarvFbmRender=function(code){
   const cfg=sarvFbmCfg_(code),st=sarvFbmSt_(code);
   if(!cfg)return;
-  /* `blockId` wale master (Agency) ki apni sub-tab nahi hai — wo doosre
-     master ki screen par ek dabba hai. Tab Visibility off ho to poora
-     dabba chhupana padta hai, kyunki sirf columns chhupane se khaali
-     toolbar aur table ka dhancha phir bhi dikhta rehta. */
+  /* A master with `blockId` (Agency) has no sub-tab of its own; it is a box on
+     another master's screen. If Tab Visibility is off, the whole box has to
+     be hidden, because hiding only the columns would still leave an empty
+     toolbar and the table frame showing. */
   if(cfg.blockId){
     const blk=byId(cfg.blockId);
     const on=!cfg.tabKey||sarvTabVisible(cfg.tabKey);
@@ -20828,10 +21531,10 @@ window.sarvFbmRender=function(code){
   sarvFbmRenderBtns_(code);
   sarvFbmRenderCg_(code);
   sarvFbmRenderHead_(code);
-  /* Head abhi naya bana hai, to off groups ki class dobara lagani padti
-     hai — warna neeche ke early-return waale haal (table missing / loading
-     / khaali) me header poora khula dikhta hai jabki chips "off" kehti
-     hain. Body ke cells ke liye yahi call aakhir me phir chalta hai. */
+  /* The head has just been rebuilt, so the off groups' class must be applied
+     again; otherwise in the early-return cases below (table missing / loading
+     / empty) the header would show fully open while the chips say "off". This
+     same call runs again at the end for the body cells. */
   sarvFbmApplyCg_(code);
   sarvFbmRenderPills_(code);
 
@@ -20839,20 +21542,20 @@ window.sarvFbmRender=function(code){
   const cols=sarvFbmColCount_(code);
   if(st.missing){
     body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'" style="color:#b45309;">'
-      +'⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili — Supabase › SQL Editor me '
-      +'<code>'+escText(sarvFbmSql_(code))+'</code> ek baar chalayein.</td></tr>';
+      +'<b>'+escText(cfg.table)+'</b> table was not found. In Supabase › SQL Editor, '
+      +'Run <code>'+escText(sarvFbmSql_(code))+'</code> once.</td></tr>';
     return;
   }
-  if(!st.loaded){body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">⏳ Loading...</td></tr>';return;}
+  if(!st.loaded){body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">Loading...</td></tr>';return;}
   const rows=sarvFbmVisibleRows_(code);
   if(!st.rows.length){
     body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">'
-      +escText(cfg.label)+' abhi khaali hai — \u{1F331} <b>Seed Excel Data</b> dabaakar sheet ki rows daal dein, '
-      +'ya ➕ New se ek-ek jodein.</td></tr>';
+      +escText(cfg.label)+' is empty. Press <b>Seed Excel Data</b> to load the sheet\'s rows, '
+      +'or add them one by one with New.</td></tr>';
     return;
   }
   if(!rows.length){
-    body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">Is filter / search par koi row nahi mili.</td></tr>';
+    body.innerHTML='<tr><td class="fbm-empty" colspan="'+cols+'">No rows match this filter / search.</td></tr>';
     return;
   }
   body.innerHTML=rows.map((r,i)=>sarvFbmRowHtml_(code,r,i+1)).join('');
@@ -20860,12 +21563,12 @@ window.sarvFbmRender=function(code){
 };
 
 function sarvFbmColCount_(code){
-  // # + naam + baaki fields + rev block (3) — colspan ke liye kaafi
+  // # + name + other fields + rev block (3); enough for the colspan
   return sarvFbmCfg_(code).fields.length+6;
 }
 
-/* head = group band (ek row) + header row. Pehla field sticky-left
-   rehta hai, isi liye wo group band me bhi akela baith jaata hai. */
+/* head = group band (one row) + header row. The first field stays sticky on
+   the left, so it also sits alone in the group band. */
 function sarvFbmRenderHead_(code){
   const cfg=sarvFbmCfg_(code),head=byId(cfg.ids.head);
   if(!head)return;
@@ -20886,7 +21589,7 @@ function sarvFbmRenderHead_(code){
     const fs=fields.filter(f=>f.g===g.g&&f!==first);
     if(!fs.length)return;
     band+='<th data-cg="'+g.g+'" colspan="'+fs.length+'" onclick="sarvFbmToggleCg(\''+code+'\',\''+g.g+'\')" '
-      +'title="'+escText(g.l+(g.lock?'':' — click karke ye group chhupa dein'))+'">'+escText(g.l)+'</th>';
+      +'title="'+escText(g.l+(g.lock?'':': click to hide this group'))+'">'+escText(g.l)+'</th>';
     hrow+=fs.map(f=>'<th data-cg="'+g.g+'"'+(f.ctr?' class="fbm-ctr"':'')
       +' title="'+escText((f.hint||f.l))+'">'+escText(f.l)+'</th>').join('');
   });
@@ -20918,13 +21621,12 @@ function sarvFbmRowHtml_(code,r,n){
   return h;
 }
 
-/* Ek cell. Do column khaas hain:
-     fabric_name (BRAND)  -> Fabric Master ka clickable chip; na mila to laal
-     brands      (FABRIC) -> Brand Master ke clickable chips */
+/* One cell. Two columns are special:
+     fabric_name (BRAND)  -> a clickable Fabric Master chip; red if not found
+     brands      (FABRIC) -> clickable Brand Master chips */
 function sarvFbmCellHtml_(code,r,f,g){
-  // Field ka `ctr` flag — header aur cell dono ko ek hi jagah se centre
-  // karta hai, isi liye naya column centre karne ke liye array me bas
-  // `ctr:1` likhna padta hai.
+  // The field's `ctr` flag centres both the header and the cell from one place,
+  // so centring a new column only needs `ctr:1` in the array.
   const ctr=f.ctr?' fbm-ctr':'';
   if(code==='BRAND'&&f.k==='fabric_name'){
     const txt=sarvFbmNumTxt_(r.fabric_name);
@@ -20932,8 +21634,8 @@ function sarvFbmCellHtml_(code,r,f,g){
     const ok=!!sarvFbmFabricRow_(r.fabric_name);
     return '<td data-cg="'+g+'"'+(ctr?' class="'+ctr.trim()+'"':'')+'><button type="button" class="fbm-link'+(ok?'':' fbm-link-bad')+'" '
       +'onclick="sarvFbmGotoFabric(\''+escText(txt)+'\')" '
-      +'title="'+(ok?'Fabric Master me kholein':'⚠️ Ye fabric Fabric Master me nahi hai — pehle wahan banayein')+'">'
-      +escText(txt)+(ok?'':' ⚠️')+'</button></td>';
+      +'title="'+(ok?'Open in the Fabric Master':'This fabric is not in the Fabric Master. Create it there first.')+'">'
+      +escText(txt)+(ok?'':'')+'</button></td>';
   }
   if(code==='FABRIC'&&f.k==='brands'){
     const bs=sarvFbmBrandsOfFabric_(r);
@@ -20941,44 +21643,44 @@ function sarvFbmCellHtml_(code,r,f,g){
     const show=bs.slice(0,3),rest=bs.length-show.length;
     return '<td data-cg="'+g+'">'
       +show.map(b=>'<button type="button" class="fbm-link" onclick="sarvFbmGotoBrands(\''+escText(sarvFbmNumTxt_(r.fabric_name))+'\')" '
-        +'title="Brand Master me is fabric ke saare brands">'+escText(b)+'</button>').join('')
+        +'title="All brands of this fabric in the Brand Master">'+escText(b)+'</button>').join('')
       +(rest>0?'<button type="button" class="fbm-link" onclick="sarvFbmGotoBrands(\''+escText(sarvFbmNumTxt_(r.fabric_name))+'\')" '
         +'title="'+escText(bs.join(', '))+'">+'+rest+' more</button>':'')
       +'</td>';
   }
   const v=sarvFbmFmt_(f,r[f.k]);
   const cls=((v===''?'fbm-na':'')+ctr).trim();
-  // Lambi text (address, notes) table me kaati jaati hai — poori baat
-  // hover ke title me rehti hai, aur form me to poori hi dikhti hai.
+  // Long text (address, notes) is truncated in the table; the full text is
+  // in the hover title, and the form always shows it in full.
   const clip=(f.t==='text'||f.t==='area')&&v.length>24;
   return '<td data-cg="'+g+'"'+(cls?' class="'+cls+'"':'')+' '
     +(clip?'title="'+escText(v)+'"':'')+'>'
     +escText(v===''?'—':(clip?v.slice(0,24)+'…':v))+'</td>';
 }
 
-/* Row ke chaar kaam. Jo feature nahi hai wo button DIKHTA hai par dabta
-   nahi (greyed + reason) — chhupa dene se log samajh nahi paate ki
-   option hai hi, aur Admin se maangna hi nahi aata. */
+/* The row's four actions. A button whose feature is missing is SHOWN but
+   doesn't work (greyed + reason); hiding it means people don't realise the
+   option exists, and never think to ask the Admin for it. */
 function sarvFbmActionsHtml_(code,r){
   const cfg=sarvFbmCfg_(code),id=escText(r.id);
   const b=(can,cls,icon,title,fn,denyKey)=>can
     ?'<button type="button" class="fbm-ib '+cls+'" onclick="'+fn+'" title="'+escText(title)+'">'+icon+'</button>'
-    :'<button type="button" class="fbm-ib '+cls+' fbm-ib-off" onclick="sarvDeny(\''+denyKey+'\')" title="'+escText(title+' — is role ko access nahi')+'">'+icon+'</button>';
+    :'<button type="button" class="fbm-ib '+cls+' fbm-ib-off" onclick="sarvDeny(\''+denyKey+'\')" title="'+escText(title+' (no access for this role)')+'">'+icon+'</button>';
   const inactive=r.is_active===false;
-  return b(sarvCan(cfg.feat.ed),'fbm-ib-ed','✏️','Edit — galti sudharein (REV wahi rehta hai)',
+  return b(sarvCan(cfg.feat.ed),'fbm-ib-ed','Edit','Edit: fix a mistake (REV stays the same)',
             'sarvFbmEdit(\''+code+'\',\''+id+'\')',cfg.feat.ed)
-    +' '+b(sarvCan(cfg.feat.rv),'fbm-ib-rv','\u{1F501}','Revise — naya version (REV '+((r.rev_no||1)+1)+'), kaaran likhna zaroori',
+    +' '+b(sarvCan(cfg.feat.rv),'fbm-ib-rv','Revise','Revise: new version (REV '+((r.rev_no||1)+1)+'), a reason is required',
             'sarvFbmRevise(\''+code+'\',\''+id+'\')',cfg.feat.rv)
-    +' '+b(sarvCan('MASTER_REV_HISTORY'),'fbm-ib-hs','\u{1F552}','Revision history — REV 1 se aaj tak',
+    +' '+b(sarvCan('MASTER_REV_HISTORY'),'fbm-ib-hs','History','Revision history: REV 1 to today',
             'sarvFbmOpenHistory(\''+code+'\',\''+id+'\')','MASTER_REV_HISTORY')
-    +' '+b(sarvCan('MASTER_ACTIVATE'),'fbm-ib',inactive?'✅':'\u{1F6AB}',
-            inactive?'Wapas Active karein':'Inactive karein — naye forms me nahi aayega, purane records jude rehte hain',
+    +' '+b(sarvCan('MASTER_ACTIVATE'),'fbm-ib',inactive?'Activate':'Deactivate',
+            inactive?'Make Active again':'Make Inactive; it won\'t appear in new forms, and old records stay linked',
             'sarvFbmToggleActive(\''+code+'\',\''+id+'\')','MASTER_ACTIVATE')
-    +' '+b(sarvCan(cfg.feat.dl),'fbm-ib-del','✕','Delete — hamesha ke liye hata dein',
+    +' '+b(sarvCan(cfg.feat.dl),'fbm-ib-del','✕','Delete permanently',
             'sarvFbmDelete(\''+code+'\',\''+id+'\')',cfg.feat.dl);
 }
 
-/* Toolbar ke pills — kitni rows, aur link ki sehat */
+/* Toolbar pills: row count, and the health of the links */
 function sarvFbmRenderPills_(code){
   const cfg=sarvFbmCfg_(code),box=byId(cfg.ids.pills);
   if(!box)return;
@@ -20986,83 +21688,83 @@ function sarvFbmRenderPills_(code){
   if(!st.loaded){box.innerHTML='';return;}
   const shown=sarvFbmVisibleRows_(code).length,total=st.rows.length;
   const off=st.rows.filter(r=>r.is_active===false).length;
-  let h='<span class="fbm-pill fbm-pill-n" title="Filter ke baad dikh rahi rows / kul rows">'
+  let h='<span class="fbm-pill fbm-pill-n" title="Rows shown after filtering / total rows">'
     +shown+(shown!==total?' / '+total:'')+' rows</span>';
-  if(off)h+='<span class="fbm-pill fbm-pill-n" title="Inactive rows — naye forms me nahi aati">\u{1F6AB} '+off+' inactive</span>';
+  if(off)h+='<span class="fbm-pill fbm-pill-n" title="Inactive rows; they don\'t appear in new forms">'+off+' inactive</span>';
   if(code==='BRAND'){
     const bad=sarvFbmUnlinkedBrands_().length;
     h+=bad
-      ?'<span class="fbm-pill fbm-pill-er" onclick="sarvFbmShowUnlinked()" title="Inka FABRIC NAME Fabric Master me nahi hai — click karke dekhein">⚠️ '+bad+' unlinked</span>'
+      ?'<span class="fbm-pill fbm-pill-er" onclick="sarvFbmShowUnlinked()" title="Their FABRIC NAME is not in the Fabric Master; click to see them">'+bad+' unlinked</span>'
       :(sarvFbmSt_('FABRIC').loaded&&sarvFbmSt_('FABRIC').rows.length
-        ?'<span class="fbm-pill fbm-pill-ok" title="Har brand ka fabric Fabric Master me maujood hai">✅ all linked</span>':'');
+        ?'<span class="fbm-pill fbm-pill-ok" title="Every brand\'s fabric exists in the Fabric Master">all linked</span>':'');
   }else if(code==='FABRIC'){
     const nob=st.rows.filter(r=>r.is_active!==false&&!sarvFbmBrandsOfFabric_(r).length).length;
-    if(nob)h+='<span class="fbm-pill fbm-pill-wr" title="In fabrics par abhi koi brand nahi bana — Brand Master khaali ho to ye normal hai">\u{1F517} '+nob+' bina brand</span>';
+    if(nob)h+='<span class="fbm-pill fbm-pill-wr" title="No brand has been created on these fabrics yet; this is normal if the Brand Master is empty">'+nob+' without brand</span>';
   }else if(code==='BUYER'){
-    /* Contact number ke bina party ka master adhoora hai — Order Form /
-       Packing me uska mobile khud nahi bharega. Isi liye ginti saamne. */
+    /* A party master without a contact number is incomplete: its mobile won't
+       fill in automatically in the Order Form / Packing. Hence the count. */
     const noc=st.rows.filter(r=>r.is_active!==false
       &&!String(r.contact_no||'').trim()&&!String(r.party_staff_contact_no||'').trim()).length;
     if(noc)h+='<span class="fbm-pill fbm-pill-wr" onclick="sarvFbmShowNoContact()" '
-      +'title="In parties ka koi bhi contact number nahi — click karke dekhein">\u{1F4DE} '+noc+' bina contact</span>';
+      +'title="These parties have no contact number at all; click to see them">'+noc+' without contact</span>';
   }else if(code==='TRIMRATE'){
-    /* Jis material ka rate khaali hai, Order Form uska Cost/Pc khaali
-       chhodta hai — ginti saamne, taaki rate bharna yaad rahe. */
+    /* For a material with no rate, the Order Form leaves its Cost/Pc empty;
+       the count is shown so filling in the rate isn't forgotten. */
     const nor=st.rows.filter(r=>r.is_active!==false&&!(Number(r.rate)>0)).length;
     h+=nor
-      ?'<span class="fbm-pill fbm-pill-wr" title="In material ka RATE abhi khaali hai — Order Form inka Cost/Pc khud nahi bharega">\u{1F4B0} '+nor+' rate pending</span>'
-      :(st.rows.length?'<span class="fbm-pill fbm-pill-ok" title="Har active material ka rate bhara hai">✅ all rates set</span>':'');
+      ?'<span class="fbm-pill fbm-pill-wr" title="These materials have no RATE yet; the Order Form won\'t fill their Cost/Pc">'+nor+' rate pending</span>'
+      :(st.rows.length?'<span class="fbm-pill fbm-pill-ok" title="Every active material has a rate">all rates set</span>':'');
   }
   box.innerHTML=h;
 }
 
-/* Screen ke top ka note — table missing, ya login hi nahi. */
+/* The note at the top of the screen: table missing, or not logged in. */
 function sarvFbmRenderNote_(code){
   const cfg=sarvFbmCfg_(code),el=byId(cfg.ids.note);
   if(!el)return;
   if(sarvFbmSt_(code).missing){
-    el.innerHTML='<div class="fbm-note fbm-note-w">⚠️ <b>'+escText(cfg.table)+'</b> table nahi mili. '
-      +'Supabase › SQL Editor me <code>'+escText(sarvFbmSql_(code))+'</code> ek baar chalayein — '
-      +'uske baad \u{1F331} <b>Seed</b> button se shuruaati rows aa jaayengi.</div>';
+    el.innerHTML='<div class="fbm-note fbm-note-w"><b>'+escText(cfg.table)+'</b> table was not found. '
+      +'Run <code>'+escText(sarvFbmSql_(code))+'</code> once in Supabase › SQL Editor; '
+      +'after that the <b>Seed</b> button adds the starting rows.</div>';
     return;
   }
   const cfgRev=sarvFbmGroupOk_(code,'rev');
   el.innerHTML='<div class="fbm-note">'+cfg.icon+' <b>'+escText(cfg.label)+'</b> — '
     +(code==='FABRIC'
-      ?'ek row = ek fabric (<b>FABRIC NAME + UNIT</b>). 42 column hain, isi liye upar ke <b>Columns</b> chips se group on / off karein.'
+      ?'one row = one fabric (<b>FABRIC NAME + UNIT</b>). There are 42 columns, so switch groups on / off with the <b>Columns</b> chips above.'
      :code==='BUYER'
-      ?'ek row = ek <b>PARTY</b>. Yahi list <b>Sales › Order Form</b> ke "Buyer / Company Name" aur <b>Packing &amp; Dispatch</b> ke "Party Name" me dropdown banti hai — '
-        +'aur Order Form me party chunne par <b>OWNER NAME</b> &rarr; Contact Person, <b>CONTACT NO</b> &rarr; Mobile, '
-        +'<b>ADDRESS</b> &rarr; Address aur <b>GSTIN</b> &rarr; GSTIN khud bhar jaate hain.'
+      ?'one row = one <b>PARTY</b>. This list becomes the dropdown for "Buyer / Company Name" in <b>Sales › Order Form</b> and "Party Name" in <b>Packing &amp; Dispatch</b>, '
+        +'and choosing a party in the Order Form fills <b>OWNER NAME</b> &rarr; Contact Person, <b>CONTACT NO</b> &rarr; Mobile, '
+        +'<b>ADDRESS</b> &rarr; Address and <b>GSTIN</b> &rarr; GSTIN automatically.'
      :code==='AGENCY'
-      ?'ek row = ek <b>AGENCY</b>. Buyer se alag table isi liye ki ek agency ke neeche kai parties hoti hain. '
-        +'Order Form me agency chunne par <b>CONTACT PERSON</b> aur <b>MOBILE NO.</b> khud bhar jaate hain.'
+      ?'one row = one <b>AGENCY</b>. It is a separate table from Buyer because one agency covers many parties. '
+        +'Choosing an agency in the Order Form fills <b>CONTACT PERSON</b> and <b>MOBILE NO.</b> automatically.'
      :code==='TRIMRATE'
-      ?'ek row = ek <b>MATERIAL</b> ka aaj ka rate. <b>Sales › Order Form</b> ke Bags &amp; Trims me <b>SIHF Supplied</b> chunte hi '
-        +'<b>RATE</b> &rarr; Cost/Pc aur <b>DISCOUNT%</b> &rarr; Disc % khud bhar jaate hain (material ke naam se match). '
-        +'Naya material (jaise LABEL, TAG, BALE) yahan jodte hi Order Form use bhi uthane lagta hai. Purane order apne saved rate par hi khulte hain.'
-      :'ek row = ek <b>ITEM CODE</b>. Iska <b>FABRIC NAME</b> Fabric Master ki row se judta hai — chip dabaakar wahan ja sakte hain.')
-    +(cfgRev?' ✏️ <b>Edit</b> = galti sudharna (REV wahi), \u{1F501} <b>Revise</b> = naya version (REV +1, kaaran ke saath), \u{1F552} se poora itihaas.':'')
+      ?'one row = one <b>MATERIAL</b>\'s current rate. Choosing <b>SIHF Supplied</b> in the Bags &amp; Trims of <b>Sales › Order Form</b> '
+        +'fills <b>RATE</b> &rarr; Cost/Pc and <b>DISCOUNT%</b> &rarr; Disc % automatically (matched on the material name). '
+        +'A new material added here (such as LABEL, TAG, BALE) is picked up by the Order Form straight away. Old orders open with their saved rate.'
+      :'one row = one <b>ITEM CODE</b>. Its <b>FABRIC NAME</b> links to a Fabric Master row; press the chip to go there.')
+    +(cfgRev?' <b>Edit</b> = fix a mistake (REV unchanged), <b>Revise</b> = new version (REV +1, with a reason), for the full history.':'')
     +'</div>';
 }
 
-/* Jo button feature ke bina kaam nahi karega, use disable kar dete hain
-   (click guard phir bhi lagta hai — dono taraf se bandh). */
+/* A button that can't work without its feature is disabled (the click guard
+   still applies; it is blocked from both sides). */
 function sarvFbmRenderBtns_(code){
   const cfg=sarvFbmCfg_(code),q=(id,can,why)=>{
     const b=byId(id);if(!b)return;
     b.disabled=!can;
     if(!can)b.title=why;
   };
-  q(cfg.ids.newBtn,sarvCan(cfg.feat.nw),'Is role ko "'+sarvFeatureLabel_(cfg.feat.nw)+'" access nahi hai');
-  q(cfg.ids.seedBtn,sarvCan(cfg.feat.nw)&&sarvCan('MASTER_IMPORT'),'Seed ke liye NEW + IMPORT dono access chahiye');
-  q(cfg.ids.impBtn,sarvCan('MASTER_IMPORT'),'Is role ko "'+sarvFeatureLabel_('MASTER_IMPORT')+'" access nahi hai');
-  q(cfg.ids.csvBtn,sarvCan('MASTER_EXPORT'),'Is role ko "'+sarvFeatureLabel_('MASTER_EXPORT')+'" access nahi hai');
+  q(cfg.ids.newBtn,sarvCan(cfg.feat.nw),'This role does not have "'+sarvFeatureLabel_(cfg.feat.nw)+'" access');
+  q(cfg.ids.seedBtn,sarvCan(cfg.feat.nw)&&sarvCan('MASTER_IMPORT'),'Seeding needs both NEW and IMPORT access');
+  q(cfg.ids.impBtn,sarvCan('MASTER_IMPORT'),'This role does not have "'+sarvFeatureLabel_('MASTER_IMPORT')+'" access');
+  q(cfg.ids.csvBtn,sarvCan('MASTER_EXPORT'),'This role does not have "'+sarvFeatureLabel_('MASTER_EXPORT')+'" access');
 }
 
 /* ── guards ──────────────────────────────────────────────────────── */
 function sarvFbmGuard_(feat){
-  if(!SB_READY){showToast('Supabase configure karein','warn');return false;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return false;}
   if(!sarvCan(feat)){sarvDeny(feat);return false;}
   return true;
 }
@@ -21072,19 +21774,19 @@ const sarvFbmRow_=(code,id)=>sarvFbmSt_(code).rows.find(r=>String(r.id)===String
 window.sarvFbmNew=function(code){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.nw))return;
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('Run '+sarvFbmSql_(code)+' first','error');
   sarvFbmOpenForm_(code,'NEW',null);
 };
 window.sarvFbmEdit=function(code,id){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.ed))return;
-  if(!sarvFbmRow_(code,id))return showToast('Row nahi mili — Refresh karein','warn');
+  if(!sarvFbmRow_(code,id))return showToast('Row not found. Please refresh.','warn');
   sarvFbmOpenForm_(code,'EDIT',id);
 };
 window.sarvFbmRevise=function(code,id){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.rv))return;
-  if(!sarvFbmRow_(code,id))return showToast('Row nahi mili — Refresh karein','warn');
+  if(!sarvFbmRow_(code,id))return showToast('Row not found. Please refresh.','warn');
   sarvFbmOpenForm_(code,'REVISE',id);
 };
 
@@ -21095,16 +21797,16 @@ function sarvFbmOpenForm_(code,mode,id){
   sarvFbmForm={code:code,mode:mode,id:id,draft:draft,base:row?JSON.parse(JSON.stringify(row)):null};
 
   const curRev=row?(row.rev_no||1):0;
-  const titles={NEW:'➕ New '+cfg.label.replace(' Master',''),EDIT:'✏️ Edit',REVISE:'\u{1F501} Revise'};
+  const titles={NEW:'New '+cfg.label.replace(' Master',''),EDIT:'Edit',REVISE:'Revise'};
   byId('fbm_formTitle').innerHTML=cfg.icon+' '+titles[mode]+(row?' — '+escText(cfg.nameOf(row)):'');
   byId('fbm_formSub').innerHTML=
-    mode==='NEW' ?'Nayi row <b>REV 1</b> par banegi.'
-   :mode==='EDIT'?'Galti sudhaarna — REV <b>'+curRev+'</b> wahi rahega, par purana snapshot history me chala jaayega.'
-   :'Naya version — REV <b>'+curRev+'</b> → <b>'+(curRev+1)+'</b>. Purani REV history me surakshit rehti hai.';
-  byId('fbm_formSaveBtn').innerHTML=mode==='REVISE'?'\u{1F501} Save as REV '+(curRev+1):'\u{1F4BE} Save';
+    mode==='NEW' ?'The new row will be created at <b>REV 1</b>.'
+   :mode==='EDIT'?'Fixing a mistake: REV <b>'+curRev+'</b> stays the same, but the old snapshot goes into the history.'
+   :'New version: REV <b>'+curRev+'</b> → <b>'+(curRev+1)+'</b>. The old REV stays safe in the history.';
+  byId('fbm_formSaveBtn').innerHTML=mode==='REVISE'?'Save as REV '+(curRev+1):'Save';
   byId('fbm_formNote').innerHTML=mode==='REVISE'
-    ?'Kaaran (Reason) bharna zaroori hai — wahi history me dikhega.'
-    :'<b>'+escText(cfg.keyCols.map(k=>sarvFbmField_(code,k).l).join(' + '))+'</b> duplicate nahi ho sakta.';
+    ?'A Reason is required; it is what shows in the history.'
+    :'<b>'+escText(cfg.keyCols.map(k=>sarvFbmField_(code,k).l).join(' + '))+'</b> cannot be duplicated.';
 
   byId('fbm_formBodyWrap').innerHTML=sarvFbmFormHtml_(code,mode,row);
   byId('fbm_formOv').classList.add('open');
@@ -21115,9 +21817,9 @@ function sarvFbmOpenForm_(code,mode,id){
   sarvFbmShowIf_();
 }
 
-/* ── showIf: field sirf tab jab doosre dropdown me khaas value ho ─────
-   (jaise OUTER BOX BORA sirf MASTER PACKING TYPE = OUTER BOX par). Dikhe
-   to zaroori; chhupa ho to save par null. Field par `showIf:{k,v}`. */
+/* ── showIf: a field shown only when another dropdown has a specific value ──
+   (e.g. OUTER BOX BORA only when MASTER PACKING TYPE = OUTER BOX). Required
+   when shown; null on save when hidden. Set `showIf:{k,v}` on the field. */
 function sarvFbmShowIfOn_(f){
   if(!f.showIf)return true;
   const dep=byId('fbm_in_'+f.showIf.k);
@@ -21136,15 +21838,15 @@ function sarvFbmFormHtml_(code,mode,row){
   const cfg=sarvFbmCfg_(code);
   let h='';
   if(mode==='REVISE'){
-    h+='<fieldset class="fbm-fs"><legend>\u{1F501} Revision</legend><div class="fbm-grid">'
-      +'<div class="fbm-f" style="grid-column:1/-1;"><label>Kaaran / Reason <span class="fbm-req">★</span></label>'
-      +'<input type="text" id="fbm_in__reason" maxlength="240" placeholder="e.g. Raschel roll weight 252 se 256 — party approval ke baad" autocomplete="off">'
-      +'<small>Yahi line history me REV '+((row.rev_no||1)+1)+' ke saath dikhegi.</small></div>'
+    h+='<fieldset class="fbm-fs"><legend>Revision</legend><div class="fbm-grid">'
+      +'<div class="fbm-f" style="grid-column:1/-1;"><label>Reason <span class="fbm-req">★</span></label>'
+      +'<input type="text" id="fbm_in__reason" maxlength="240" placeholder="e.g. Raschel roll weight 252 to 256, after party approval" autocomplete="off">'
+      +'<small>This line shows in the history with REV '+((row.rev_no||1)+1)+'.</small></div>'
       +'</div></fieldset>';
   }
   cfg.groups.forEach(g=>{
     if(g.g==='rev')return;
-    if(!sarvFbmGroupOk_(code,g.g))return;    // group chhupa hai to form me bhi nahi
+    if(!sarvFbmGroupOk_(code,g.g))return;    // a hidden group is left out of the form too
     const fs=cfg.fields.filter(f=>f.g===g.g);
     if(!fs.length)return;
     h+='<fieldset class="fbm-fs"><legend>'+escText(g.l)+'</legend><div class="fbm-grid">'
@@ -21165,10 +21867,10 @@ function sarvFbmFieldHtml_(code,f,row){
     const has=opts.some(o=>String(o)===cur);
     ctl='<select id="'+id+'"'+(f.t==='fab'?' onchange="sarvFbmFormHints_()"':' onchange="sarvFbmShowIf_()"')+'>'
       +'<option value="">—</option>'
-      /* Jo value row me pehle se hai par list me nahi (purana data ya
-         dropdown se hata di gayi) — use khona nahi chahiye, isi liye
-         usi ka ek option bana dete hain, nishaan ke saath. */
-      +(cur&&!has?'<option value="'+escText(cur)+'" selected>'+escText(cur)+' ⚠️ (list me nahi)</option>':'')
+      /* A value already in the row but not in the list (old data, or removed
+         from the dropdown) must not be lost, so an option is created for it,
+         with a marker. */
+      +(cur&&!has?'<option value="'+escText(cur)+'" selected>'+escText(cur)+' (not in the list)</option>':'')
       +opts.map(o=>'<option value="'+escText(o)+'"'+(String(o)===cur?' selected':'')+'>'+escText(o)+'</option>').join('')
       +'</select>';
   }else if(f.t==='num'){
@@ -21177,14 +21879,14 @@ function sarvFbmFieldHtml_(code,f,row){
   }else if(f.t==='tags'){
     ctl='<input type="text" id="'+id+'" value="'+escText(sarvFbmFmt_(f,v))+'" placeholder="BRAND 1, BRAND 2, ..." autocomplete="off">';
   }else if(f.t==='area'){
-    // Address jaisi lambi cheez — ek line ke box me likhi nahi jaati.
+    // Something long like an address doesn't fit in a one-line box.
     ctl='<textarea id="'+id+'" rows="3" placeholder="'+escText(f.ph||'—')+'" '
       +(f.uc?'style="text-transform:uppercase;"':'')+'>'
       +escText(v===null||v===undefined?'':String(v))+'</textarea>';
   }else{
-    /* t:'tel' — database me text hi hai (number nahi), kyunki "+91",
-       leading zero aur "98xxx / 99xxx" jaise do number ek saath sab
-       bachne chahiye. type="tel" sirf phone ka keypad khol deta hai. */
+    /* t:'tel': stored as text in the database (not a number), because "+91",
+       a leading zero, and two numbers together like "98xxx / 99xxx" must all
+       survive. type="tel" only brings up the phone keypad. */
     ctl='<input type="'+(f.t==='tel'?'tel':'text')+'" id="'+id+'" value="'+escText(v===null||v===undefined?'':String(v))+'" '
       +'placeholder="'+escText(f.ph||(f.t==='tel'?'e.g. 98XXXXXXXX':'—'))+'"'
       +(f.uc?' style="text-transform:uppercase;"':'')+' autocomplete="off">';
@@ -21193,19 +21895,19 @@ function sarvFbmFieldHtml_(code,f,row){
   return '<div class="fbm-f" id="'+id+'_w"'+wide+'>'+lab+ctl+hint+'</div>';
 }
 
-/* Brand form ka Fabric dropdown — LIVE fabric_master se. Inactive fabric
-   offer nahi hote, par jo row me pehle se hai wo upar (sarvFbmFieldHtml_)
-   bach jaata hai. */
+/* The Brand form's Fabric dropdown, LIVE from fabric_master. Inactive fabrics
+   aren't offered, but one already in the row survives above
+   (sarvFbmFieldHtml_). */
 function sarvFbmFabricOptions_(){
   const rows=sarvFbmSt_('FABRIC').rows.filter(r=>r.is_active!==false);
   const vals=[...new Set(rows.map(r=>sarvFbmNumTxt_(r.fabric_name)).filter(Boolean))];
   return vals.sort((a,b)=>Number(a)-Number(b));
 }
 
-/* Brand form me fabric chunne par: uski quality / weights hint me dikhti
-   hain aur khaali BLANKET WEIGHT khud bhar jaata hai (bharey hue ko kabhi
-   nahi chhedta). Fabric Master me 42 column pade hain — unhe dobara haath
-   se likhwana hi galti ki jad hai. */
+/* Choosing a fabric in the Brand form shows its quality / weights in the hint
+   and fills an empty BLANKET WEIGHT automatically (a filled one is never
+   touched). The Fabric Master holds 42 columns; making people type them
+   again by hand is exactly where mistakes come from. */
 window.sarvFbmFormHints_=function(){
   if(!sarvFbmForm)return;
   const code=sarvFbmForm.code;
@@ -21213,17 +21915,17 @@ window.sarvFbmFormHints_=function(){
     const sel=byId('fbm_in_fabric_name');if(!sel)return;
     const h=byId('fbm_in_fabric_name_h'),f=sel.value?sarvFbmFabricRow_(sel.value):null;
     if(h){
-      h.innerHTML=!sel.value?'Fabric Master ki row — list wahin se aati hai'
-        :f?('\u{1F9F5} '+escText([f.fabric_quality,f.unit,f.raschel_gauge?('GUAGE '+f.raschel_gauge):''].filter(Boolean).join(' · '))
+      h.innerHTML=!sel.value?'A Fabric Master row; the list comes from there'
+        :f?(''+escText([f.fabric_quality,f.unit,f.raschel_gauge?('GUAGE '+f.raschel_gauge):''].filter(Boolean).join(' · '))
             +' · SB-SP '+(sarvFbmNumTxt_(f.sb_sp_weight)||'—')+' / SB-DP '+(sarvFbmNumTxt_(f.sb_dp_weight)||'—')
             +' / DB-SP '+(sarvFbmNumTxt_(f.db_sp_weight)||'—')+' / DB-DP '+(sarvFbmNumTxt_(f.db_dp_weight)||'—'))
-        :'⚠️ Ye fabric Fabric Master me nahi hai — save ho jaayega par link toota rahega';
+        :'This fabric is not in the Fabric Master; it will save, but the link will stay broken';
       h.style.color=!f&&sel.value?'#b91c1c':'';
     }
     const cat=byId('fbm_in_category');
     if(f&&cat&&!cat.value){
       const want=[...cat.options].find(o=>String(o.value).toUpperCase()===String(f.fabric_quality||'').toUpperCase());
-      if(want)cat.value=want.value;           // MINK / SUPER CLOUDY dono sheets me same hai
+      if(want)cat.value=want.value;           // MINK / SUPER CLOUDY are the same in both sheets
     }
     const bw=byId('fbm_in_blanket_weight');
     if(f&&bw&&!String(bw.value||'').trim()){
@@ -21235,7 +21937,7 @@ window.sarvFbmFormHints_=function(){
       if(t){
         bw.value=t;
         const bh=byId('fbm_in_blanket_weight_h');
-        if(bh)bh.innerHTML='✨ Fabric Master se bhara gaya ('+(sb?'SB':'DB')+'-'+(dp?'DP':'SP')+') — badal sakte hain';
+        if(bh)bh.innerHTML='Filled from the Fabric Master ('+(sb?'SB':'DB')+'-'+(dp?'DP':'SP')+'); you can change it';
       }
     }
   }
@@ -21245,8 +21947,8 @@ window.sarvFbmFormHints_=function(){
       const dup=sarvFbmSt_('FABRIC').rows.filter(r=>sarvFbmNumKey_(r.fabric_name)===sarvFbmNumKey_(inp.value)
         &&String(r.id)!==String(sarvFbmForm.id||''));
       h.innerHTML=dup.length
-        ?'ℹ️ Ye fabric name pehle se hai: '+escText(dup.map(d=>d.unit||'-').join(', '))+' — doosra UNIT chunein'
-        :'Ek hi fabric name dono unit me ho sakta hai';
+        ?'This fabric name already exists: '+escText(dup.map(d=>d.unit||'-').join(', '))+'. Choose another UNIT.'
+        :'The same fabric name can exist in both units';
     }
   }
 };
@@ -21268,15 +21970,15 @@ window.sarvFbmSaveForm=async function(){
   const vals={};
   cfg.fields.forEach(f=>{
     const el=byId('fbm_in_'+f.k);
-    if(!el){                 // group chhupa tha — purani value chhedni nahi
+    if(!el){                 // the group was hidden; leave the old value alone
       if(mode!=='NEW')vals[f.k]=sarvFbmForm.base?sarvFbmForm.base[f.k]:null;
       return;
     }
-    // showIf field chhupa hai = lagu nahi = null (purana YES na bacha rahe)
+    // A hidden showIf field = not applicable = null (so an old YES doesn't linger)
     vals[f.k]=sarvFbmShowIfOn_(f)?sarvFbmParse_(f,el.value):null;
   });
 
-  // validation — req:1, aur dikh rahe showIf field
+  // validation: req:1, and visible showIf fields
   const bad=[];
   cfg.fields.forEach(f=>{
     const w=byId('fbm_in_'+f.k+'_w');
@@ -21286,16 +21988,16 @@ window.sarvFbmSaveForm=async function(){
     const empty=v===null||v===undefined||v===''||(Array.isArray(v)&&!v.length);
     if(empty){bad.push(f.l);if(w)w.classList.add('bad');}
   });
-  if(bad.length)return showToast('❌ Ye field zaroori hain: '+bad.join(', '),'error');
+  if(bad.length)return showToast('These fields are required: '+bad.join(', '),'error');
   if(code==='FABRIC'&&!(Number(vals.fabric_name)>0))
-    return showToast('❌ FABRIC NAME 0 se bada number hona chahiye','error');
+    return showToast('FABRIC NAME must be a number greater than 0','error');
   if(code==='TRIMRATE'){
-    // Khaali discount = 0 (Order Form bhi yahi maanta hai); rate khaali chal sakta hai.
+    // An empty discount = 0 (the Order Form treats it the same); the rate can be empty.
     if(vals.discount_pct===null||vals.discount_pct===undefined)vals.discount_pct=0;
     if(vals.rate!==null&&vals.rate!==undefined&&Number(vals.rate)<0)
-      return showToast('❌ RATE minus me nahi ho sakta','error');
+      return showToast('RATE cannot be negative','error');
     if(Number(vals.discount_pct)<0||Number(vals.discount_pct)>100)
-      return showToast('❌ DISCOUNT% 0 se 100 ke beech hona chahiye','error');
+      return showToast('DISCOUNT% must be between 0 and 100','error');
   }
 
   let reason=null;
@@ -21303,7 +22005,7 @@ window.sarvFbmSaveForm=async function(){
     reason=String(byId('fbm_in__reason')?.value||'').trim();
     if(!reason){
       byId('fbm_in__reason')?.focus();
-      return showToast('❌ Revise ke liye kaaran likhna zaroori hai','error');
+      return showToast('A reason is required to Revise','error');
     }
   }
 
@@ -21314,49 +22016,49 @@ window.sarvFbmSaveForm=async function(){
   }).join('│');
   const mine=keyOf(vals);
   const clash=sarvFbmSt_(code).rows.find(r=>String(r.id)!==String(id||'')&&keyOf(r)===mine);
-  if(clash)return showToast('⚠️ "'+cfg.nameOf(clash)+'" pehle se '+cfg.label+' me hai','warn');
+  if(clash)return showToast('"'+cfg.nameOf(clash)+'" is already in '+cfg.label,'warn');
 
   const btn=byId('fbm_formSaveBtn'),old=btn?btn.innerHTML:'';
-  if(btn){btn.disabled=true;btn.innerHTML='⏳ Saving...';}
+  if(btn){btn.disabled=true;btn.innerHTML='Saving...';}
   try{
     if(mode==='NEW'){
       const ins=Object.assign({},vals,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()});
       const {data,error}=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).insert(b).select().maybeSingle(),ins);
       if(error)throw error;
       if(data)await sarvFbmArchive_(cfg,data,'CREATE',null,null);
-      showToast('✅ '+cfg.label+' me "'+cfg.nameOf(data||vals)+'" add ho gaya (REV 1)');
+      showToast(''+cfg.label+' : "'+cfg.nameOf(data||vals)+'" added (REV 1)');
     }else{
       const base=sarvFbmForm.base||sarvFbmRow_(code,id);
-      if(!base)throw new Error('Row nahi mili');
+      if(!base)throw new Error('Row not found');
       const changed=sarvFbmDiff_(code,base,vals);
       if(!changed.length&&mode==='EDIT'){
         sarvFbmCloseForm();
-        return showToast('Kuch badla nahi — kuch save bhi nahi hua');
+        return showToast('Nothing changed, so nothing was saved');
       }
-      /* Pehle ARCHIVE, phir UPDATE. Ulta karne par, archive fail hone par,
-         purani value kahin bachti hi nahi. */
+      /* ARCHIVE first, then UPDATE. The other way round, if the archive
+         failed, the old value would survive nowhere. */
       await sarvFbmArchive_(cfg,base,mode,reason,changed);
       const upd=Object.assign({},vals,{updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
       if(mode==='REVISE'){upd.rev_no=(base.rev_no||1)+1;upd.rev_reason=reason;}
       const {error}=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).update(b).eq('id',id),upd);
       if(error)throw error;
       showToast(mode==='REVISE'
-        ?'\u{1F501} "'+cfg.nameOf(base)+'" ab REV '+upd.rev_no+' par hai ('+changed.length+' field badle)'
-        :'✅ "'+cfg.nameOf(base)+'" update ho gaya ('+changed.length+' field badle, REV '+(base.rev_no||1)+' wahi)');
+        ?'"'+cfg.nameOf(base)+'" is now at REV '+upd.rev_no+' ('+changed.length+' field(s) changed)'
+        :'"'+cfg.nameOf(base)+'" updated ('+changed.length+' field(s) changed, REV '+(base.rev_no||1)+' unchanged)');
     }
     sarvFbmCloseForm();
     await sarvFbmLoad(code,true);
   }catch(e){
-    if(/duplicate key|unique/i.test(e.message||''))showToast('⚠️ Ye row pehle se '+cfg.label+' me hai','warn');
-    else if(sarvFbmMissing_(e))showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
+    if(/duplicate key|unique/i.test(e.message||''))showToast('This row is already in '+cfg.label,'warn');
+    else if(sarvFbmMissing_(e))showToast('Run '+sarvFbmSql_(code)+' first','error');
     else dbError(e);
   }finally{if(btn){btn.disabled=false;btn.innerHTML=old;}}
 };
 
-/* Master row likhna — database me jo column ABHI nahi (migration nahi chali,
-   jaise "Could not find the 'outer_box_bora_2' column") use chhod kar baaki
-   save. Natural key (keyCols) kabhi nahi chhoda jaata. Chhoota column aur
-   chalani wali SQL toast me. sbSaveDroppingMissingColumns_ ka hi upyog. */
+/* Writes a master row: a column the database does NOT have yet (migration not
+   run, e.g. "Could not find the 'outer_box_bora_2' column") is left out and the
+   rest is saved. The natural key (keyCols) is never left out. The skipped
+   column and the SQL to run are shown in a toast. Uses sbSaveDroppingMissingColumns_. */
 const SARV_FBM_COL_SQL={outer_box_bora:'BRAND_OUTER_BOX_MIGRATION.sql',outer_box_bora_2:'BRAND_OUTER_BOX_MIGRATION.sql',
   packing_pcs_2:'TRIMS_RATE_MASTER_MIGRATION.sql'};
 async function sarvFbmWrite_(cfg,attempt,payload){
@@ -21365,13 +22067,13 @@ async function sarvFbmWrite_(cfg,attempt,payload){
   const dropped=Object.keys(payload).filter(k=>!(k in last));
   if(dropped.length&&!res.error){
     const sqls=[...new Set(dropped.map(c=>SARV_FBM_COL_SQL[c]||sarvFbmSql_(cfg.code)))];
-    setTimeout(()=>showToast('⚠️ Save ho gaya, par ye field database me abhi nahi hain: '+dropped.join(', ')
-      +' — Supabase me '+sqls.join(' + ')+' chalayein','warn'),900);
+    setTimeout(()=>showToast('Saved, but these fields are not in the database yet: '+dropped.join(', ')
+      +'. Run '+sqls.join(' + ')+' in Supabase','warn'),900);
   }
   return res;
 }
 
-/* "Kya badla" — history me aur toast me, dono me yahi list jaati hai. */
+/* "What changed": this list goes into both the history and the toast. */
 function sarvFbmDiff_(code,oldRow,newVals){
   const out=[];
   sarvFbmFieldsOf_(code).forEach(f=>{
@@ -21382,8 +22084,8 @@ function sarvFbmDiff_(code,oldRow,newVals){
   return out;
 }
 
-/* Revision archive. Jaan-boojh kar NON-FATAL: master_revisions na ho
-   (migration adhoori) to master ka apna write rukna nahi chahiye. */
+/* Revision archive. Deliberately NON-FATAL: if master_revisions is missing
+   (migration incomplete), the master's own write must not be blocked. */
 async function sarvFbmArchive_(cfg,row,action,reason,changed){
   if(!SB_READY||!row)return;
   try{
@@ -21400,25 +22102,25 @@ async function sarvFbmArchive_(cfg,row,action,reason,changed){
 }
 
 /* ── Active / Inactive ───────────────────────────────────────────── */
-/* Delete ki jagah yahi default raasta hai: row kahin se gayab nahi hoti,
-   bas aage ke forms / dropdowns me offer nahi hoti, aur purane PR / lot
-   card ka link zinda rehta hai. */
+/* This is the default route instead of Delete: the row doesn't disappear, it
+   is just no longer offered in future forms / dropdowns, and the link from
+   old PRs / lot cards stays alive. */
 window.sarvFbmToggleActive=async function(code,id){
   if(!sarvFbmGuard_('MASTER_ACTIVATE'))return;
   const cfg=sarvFbmCfg_(code),row=sarvFbmRow_(code,id);
   if(!row)return;
-  const on=row.is_active===false;      // on = ab active karna hai
+  const on=row.is_active===false;      // on = to be made active now
   if(!on&&code==='FABRIC'){
     const bs=sarvFbmBrandsOfFabric_(row);
-    if(bs.length&&!confirm('"'+cfg.nameOf(row)+'" par '+bs.length+' brand jude hain:\n\n'
+    if(bs.length&&!confirm(bs.length+' brand(s) are linked to "'+cfg.nameOf(row)+'":\n\n'
       +bs.slice(0,12).join(', ')+(bs.length>12?' ...':'')
-      +'\n\nInactive karne par ye brands jude REHENGE, par naye form me ye fabric nahi aayega.\n\nAage badhein?'))return;
+      +'\n\nAfter making it Inactive these brands STAY linked, but this fabric won\'t appear in new forms.\n\nContinue?'))return;
   }
   try{
     const {error}=await SB.from(cfg.table).update({is_active:on,updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()}).eq('id',id);
     if(error)throw error;
     await sarvFbmArchive_(cfg,row,on?'RESTORE':'DEACTIVATE',null,[{k:'is_active',l:'STATUS',o:on?'Inactive':'Active',n:on?'Active':'Inactive'}]);
-    showToast(on?'✅ "'+cfg.nameOf(row)+'" wapas Active':'\u{1F6AB} "'+cfg.nameOf(row)+'" Inactive kar diya');
+    showToast(on?'"'+cfg.nameOf(row)+'" is Active again':'"'+cfg.nameOf(row)+'" made Inactive');
     await sarvFbmLoad(code,true);
   }catch(e){dbError(e);}
 };
@@ -21429,24 +22131,24 @@ window.sarvFbmDelete=async function(code,id){
   if(!sarvFbmGuard_(cfg.feat.dl))return;
   const row=sarvFbmRow_(code,id);
   if(!row)return;
-  /* Jis fabric par brands hain use delete karne se Brand Master ki rows
-     anaath ho jaati — isi liye roka jaata hai. Inactive hamesha milta hai. */
+  /* Deleting a fabric that has brands would orphan rows in the Brand Master,
+     so it is blocked. Inactive is always available. */
   if(code==='FABRIC'){
     const bs=sarvFbmSt_('BRAND').rows.filter(b=>sarvFbmNumKey_(b.fabric_name)===sarvFbmNumKey_(row.fabric_name));
     if(bs.length){
-      return showToast('⛔ "'+cfg.nameOf(row)+'" delete nahi ho sakta — Brand Master me iske '+bs.length
-        +' brand hain ('+bs.slice(0,4).map(b=>b.item_code).join(', ')+(bs.length>4?' ...':'')
-        +'). Pehle wo brands badlein, ya is fabric ko \u{1F6AB} Inactive kar dein.','warn');
+      return showToast('"'+cfg.nameOf(row)+'" cannot be deleted: the Brand Master has '+bs.length
+        +' brand(s) on it ('+bs.slice(0,4).map(b=>b.item_code).join(', ')+(bs.length>4?' ...':'')
+        +'). Change those brands first, or make this fabric Inactive.','warn');
     }
   }
-  if(!confirm('"'+cfg.nameOf(row)+'" ko '+cfg.label+' se HAMESHA ke liye hata dein?\n\n'
-    +'Revision history (REV 1 … '+(row.rev_no||1)+') archive me reh jaayegi, par row screen se chali jaayegi.\n\n'
-    +'Agar sirf "aage use na ho" chahiye to Delete ki jagah \u{1F6AB} Inactive behtar hai.'))return;
+  if(!confirm('Remove "'+cfg.nameOf(row)+'" from '+cfg.label+' PERMANENTLY?\n\n'
+    +'The revision history (REV 1 … '+(row.rev_no||1)+') stays in the archive, but the row will be removed from the screen.\n\n'
+    +'If you only want it not to be used from now on, Inactive is better than Delete.'))return;
   try{
     await sarvFbmArchive_(cfg,row,'DELETE',null,null);
     const {error}=await SB.from(cfg.table).delete().eq('id',id);
     if(error)throw error;
-    showToast('\u{1F5D1}️ "'+cfg.nameOf(row)+'" delete ho gaya');
+    showToast('"'+cfg.nameOf(row)+'" deleted');
     await sarvFbmLoad(code,true);
   }catch(e){dbError(e);}
 };
@@ -21457,9 +22159,9 @@ window.sarvFbmOpenHistory=async function(code,id){
   const cfg=sarvFbmCfg_(code),row=sarvFbmRow_(code,id);
   if(!row)return;
   sarvFbmHist={code:code,id:id};
-  byId('fbm_histTitle').innerHTML='\u{1F552} Revision History — '+escText(cfg.nameOf(row));
-  byId('fbm_histSub').innerHTML=cfg.icon+' '+escText(cfg.label)+' · abhi <b>REV '+(row.rev_no||1)+'</b> chal rahi hai';
-  byId('fbm_histBody').innerHTML='<div class="fbm-empty">⏳ History load ho rahi hai...</div>';
+  byId('fbm_histTitle').innerHTML='Revision History — '+escText(cfg.nameOf(row));
+  byId('fbm_histSub').innerHTML=cfg.icon+' '+escText(cfg.label)+' · currently on <b>REV '+(row.rev_no||1)+'</b>';
+  byId('fbm_histBody').innerHTML='<div class="fbm-empty">Loading history...</div>';
   byId('fbm_histOv').classList.add('open');
   let revs=[];
   try{
@@ -21468,8 +22170,8 @@ window.sarvFbmOpenHistory=async function(code,id){
     if(error)throw error;
     revs=data||[];
   }catch(e){
-    byId('fbm_histBody').innerHTML='<div class="fbm-note fbm-note-w">⚠️ <b>'+escText(SARV_FBM_REV_TABLE)
-      +'</b> table nahi mili — <code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> chalane ke baad se har badlav yahan dikhne lagega.</div>';
+    byId('fbm_histBody').innerHTML='<div class="fbm-note fbm-note-w"><b>'+escText(SARV_FBM_REV_TABLE)
+      +'</b> table was not found. Once <code>FABRIC_BRAND_MASTER_MIGRATION.sql</code> has been run, every change will show here.</div>';
     return;
   }
   byId('fbm_histBody').innerHTML=sarvFbmHistHtml_(code,row,revs);
@@ -21479,23 +22181,23 @@ window.sarvFbmCloseHistory=function(){
   sarvFbmHist=null;
 };
 
-const SARV_FBM_ACT={CREATE:{i:'➕',l:'Banaya gaya'},EDIT:{i:'✏️',l:'Edit (galti sudhaari)'},
-  REVISE:{i:'\u{1F501}',l:'Revise (naya version)'},RESTORE:{i:'↩️',l:'Purani REV wapas lagayi'},
-  DEACTIVATE:{i:'\u{1F6AB}',l:'Inactive kiya'},DELETE:{i:'\u{1F5D1}️',l:'Delete kiya'},
-  IMPORT:{i:'\u{1F4E5}',l:'CSV import se badla'},SEED:{i:'\u{1F331}',l:'Excel seed se aaya'}};
+const SARV_FBM_ACT={CREATE:{i:'',l:'Created'},EDIT:{i:'',l:'Edit (mistake fixed)'},
+  REVISE:{i:'',l:'Revise (new version)'},RESTORE:{i:'↩️',l:'Old REV restored'},
+  DEACTIVATE:{i:'',l:'Made inactive'},DELETE:{i:'',l:'Deleted'},
+  IMPORT:{i:'',l:'Changed by CSV import'},SEED:{i:'',l:'Came from the Excel seed'}};
 
 function sarvFbmHistHtml_(code,row,revs){
   const cfg=sarvFbmCfg_(code),canR=sarvCan('MASTER_REV_RESTORE');
   let h='<div class="fbm-rv-row cur">'
     +'<div class="fbm-rv-n">REV '+(row.rev_no||1)+'</div>'
-    +'<div class="fbm-rv-mid"><div class="fbm-rv-act">✅ Aaj chal rahi version</div>'
+    +'<div class="fbm-rv-mid"><div class="fbm-rv-act">Current version</div>'
     +'<div class="fbm-rv-meta">'+escText(row.updated_by||row.created_by||'—')
     +(row.updated_at?' · '+escText(String(row.updated_at).slice(0,16).replace('T',' ')):'')+'</div>'
-    +(row.rev_reason?'<div class="fbm-rv-why">\u{1F4AC} '+escText(row.rev_reason)+'</div>':'')
+    +(row.rev_reason?'<div class="fbm-rv-why">'+escText(row.rev_reason)+'</div>':'')
     +'</div></div>';
   if(!revs.length){
-    return h+'<div class="fbm-note">ℹ️ Is row par abhi koi purani version nahi hai — jab pehli baar '
-      +'✏️ Edit ya \u{1F501} Revise hoga, usse pehle ka poora snapshot yahin aa jaayega.</div>';
+    return h+'<div class="fbm-note">This row has no older versions yet. The first time it is '
+      +'edited () or revised (), the full snapshot from before will appear here.</div>';
   }
   h+=revs.map(rv=>{
     const a=SARV_FBM_ACT[rv.action]||{i:'•',l:rv.action||'—'};
@@ -21506,23 +22208,23 @@ function sarvFbmHistHtml_(code,row,revs){
         +'<div class="fbm-rv-act">'+a.i+' '+escText(a.l)+'</div>'
         +'<div class="fbm-rv-meta">'+escText(rv.created_by||'—')
         +(rv.created_at?' · '+escText(String(rv.created_at).slice(0,16).replace('T',' ')):'')+'</div>'
-        +(rv.reason?'<div class="fbm-rv-why">\u{1F4AC} '+escText(rv.reason)+'</div>':'')
+        +(rv.reason?'<div class="fbm-rv-why">'+escText(rv.reason)+'</div>':'')
         +(ch.length?'<div class="fbm-rv-diff">'+ch.slice(0,8).map(c=>
             '<code>'+escText(c.l)+'</code> <span class="o">'+escText(c.o||'—')+'</span> → <span class="n">'+escText(c.n||'—')+'</span>'
-          ).join('<br>')+(ch.length>8?'<br><i>+'+(ch.length-8)+' aur field</i>':'')+'</div>':'')
+          ).join('<br>')+(ch.length>8?'<br><i>+'+(ch.length-8)+' more field(s)</i>':'')+'</div>':'')
       +'</div>'
       +'<div class="fbm-rv-side">'
         +(canR
           ?'<button type="button" class="fbm-ib fbm-ib-rv" onclick="sarvFbmRestoreRev(\''+escText(rv.id)+'\')" '
-            +'title="Is version ki values wapas laga dein — wo khud ek nayi REV banegi, kuch mitta nahi">↩️ Restore</button>'
-          :'<button type="button" class="fbm-ib fbm-ib-off" onclick="sarvDeny(\'MASTER_REV_RESTORE\')" title="Is role ko restore ka access nahi">↩️ Restore</button>')
+            +'title="Apply this version\'s values again; this creates a new REV and deletes nothing">↩️ Restore</button>'
+          :'<button type="button" class="fbm-ib fbm-ib-off" onclick="sarvDeny(\'MASTER_REV_RESTORE\')" title="This role cannot restore">↩️ Restore</button>')
       +'</div></div>';
   }).join('');
   return h;
 }
 
-/* Restore bhi ek nayi REV banata hai — purani rev mitti nahi, isi liye
-   "restore karke wapas pehle jaisa" bhi ho sakta hai. */
+/* A restore also creates a new REV; the old rev isn't deleted, so even
+   "restore back to how it was before" is possible. */
 window.sarvFbmRestoreRev=async function(revId){
   if(!sarvFbmHist)return;
   if(!sarvFbmGuard_('MASTER_REV_RESTORE'))return;
@@ -21533,35 +22235,35 @@ window.sarvFbmRestoreRev=async function(revId){
     const {data,error}=await SB.from(SARV_FBM_REV_TABLE).select('*').eq('id',revId).maybeSingle();
     if(error)throw error;
     const snap=data&&data.snapshot;
-    if(!snap)return showToast('Is revision ka snapshot nahi mila','warn');
+    if(!snap)return showToast('No snapshot found for this revision','warn');
     const vals={};
     cfg.fields.forEach(f=>{vals[f.k]=(f.k in snap)?snap[f.k]:null;});
     const changed=sarvFbmDiff_(code,cur,vals);
-    if(!changed.length)return showToast('Ye version aaj ki version jaisi hi hai — kuch badla nahi');
-    if(!confirm('REV '+(data.rev_no||1)+' ki values wapas lagayein?\n\n'+changed.length
-      +' field badlenge, aur row REV '+((cur.rev_no||1)+1)+' par chali jaayegi.\n\n'
+    if(!changed.length)return showToast('This version is the same as the current one; nothing to change');
+    if(!confirm('Apply the values of REV '+(data.rev_no||1)+' again?\n\n'+changed.length
+      +' field(s) will change, and the row will move to REV '+((cur.rev_no||1)+1)+'.\n\n'
       +changed.slice(0,8).map(c=>'• '+c.l+': '+(c.o||'—')+' → '+(c.n||'—')).join('\n')
-      +(changed.length>8?'\n• ... +'+(changed.length-8)+' aur':'')))return;
+      +(changed.length>8?'\n• ... +'+(changed.length-8)+' more':'')))return;
     await sarvFbmArchive_(cfg,cur,'REVISE','REV '+(data.rev_no||1)+' se restore',changed);
     const upd=Object.assign({},vals,{rev_no:(cur.rev_no||1)+1,rev_reason:'REV '+(data.rev_no||1)+' se restore',
       updated_by:sarvFbmActor_(),updated_at:new Date().toISOString()});
     const u=await sarvFbmWrite_(cfg,b=>SB.from(cfg.table).update(b).eq('id',id),upd);
     if(u.error)throw u.error;
-    showToast('↩️ REV '+(data.rev_no||1)+' wapas lag gayi — ab REV '+upd.rev_no);
+    showToast('↩️ REV '+(data.rev_no||1)+' restored; now at REV '+upd.rev_no);
     sarvFbmCloseHistory();
     await sarvFbmLoad(code,true);
   }catch(e){dbError(e);}
 };
 
 /* ── CSV export ──────────────────────────────────────────────────── */
-/* Headers field ke `l` se bante hain — yani Excel ke wahi headers. Isi
-   liye ye file Excel me kholkar, badalkar, Import CSV se wapas aa sakti
-   hai. Chhupe column bhi jaate hain (export poora hota hai), par rows
-   wahi jo screen par filter ke baad dikh rahi hain. */
+/* The headers come from each field's `l`, i.e. the same headers as the Excel.
+   So this file can be opened in Excel, changed and brought back with Import
+   CSV. Hidden columns are included too (the export is complete), but the rows
+   are the ones shown on screen after filtering. */
 window.sarvFbmExport=function(code){
   if(!sarvCan('MASTER_EXPORT'))return sarvDeny('MASTER_EXPORT');
   const cfg=sarvFbmCfg_(code),rows=sarvFbmVisibleRows_(code);
-  if(!rows.length)return showToast('Export ke liye koi row nahi','warn');
+  if(!rows.length)return showToast('There are no rows to export','warn');
   const q=v=>{
     const s=v===null||v===undefined?'':String(v);
     return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
@@ -21574,27 +22276,27 @@ window.sarvFbmExport=function(code){
     if(f.k==='__by') return q(r.updated_by||r.created_by||'');
     return q(sarvFbmFmt_(f,r[f.k]));
   }).join(',')).join('\r\n');
-  /* BOM — iske bina Excel UTF-8 nahi maanta aur "₹", "°" jaise akshar
-     tut jaate hain. */
+  /* BOM: without it Excel doesn't treat the file as UTF-8 and characters like
+     "₹" and "°" get garbled. */
   const blob=new Blob(['﻿'+head+'\r\n'+body],{type:'text/csv;charset=utf-8;'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
   a.download='SARV_'+({FABRIC:'Fabric_Master',BUYER:'Buyer_Master',AGENCY:'Agency_Master',TRIMRATE:'Trims_Packing_Rate_Master'}[code]||'Brand_Master')+'_'+today()+'.csv';
   document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},400);
-  showToast('\u{1F4BE} '+rows.length+' rows export ho gayi');
+  showToast(''+rows.length+' rows exported');
 };
 
 /* ── CSV import ──────────────────────────────────────────────────── */
 window.sarvFbmImportPick=function(code){
   if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('Run '+sarvFbmSql_(code)+' first','error');
   sarvFbmImpCode=code;
   const inp=byId('fbm_impFile');
   if(inp){inp.value='';inp.click();}
 };
-/* Chhota par poora CSV parser — quoted field, andar ke comma, "" se
-   escape kiya quote aur CRLF, chaaron sambhalta hai. */
+/* A small but complete CSV parser: handles quoted fields, commas inside them,
+   quotes escaped as "" and CRLF. */
 function sarvFbmCsvParse_(text){
   const rows=[];let row=[],cell='',q=false;
   text=String(text).replace(/^﻿/,'');
@@ -21624,36 +22326,35 @@ window.sarvFbmImportFile=async function(inp){
   const cfg=sarvFbmCfg_(code);
   let rows;
   try{rows=sarvFbmCsvParse_(await file.text());}
-  catch(e){return showToast('❌ CSV padhi nahi ja saki: '+(e.message||e),'error');}
-  if(rows.length<2)return showToast('❌ CSV me header ke baad koi row nahi','error');
+  catch(e){return showToast('The CSV could not be read: '+(e.message||e),'error');}
+  if(rows.length<2)return showToast('The CSV has no rows after the header','error');
 
-  /* Header -> field. `l` ya kisi bhi `alias` se match hota hai, aur
-     match "normalised" hota hai (space / dot / comma / case ignore) —
-     isi liye "REQ, WITH BORA WEIGHT" aur "REQ. WITH BORA WEIGHT" dono
-     chal jaate hain. */
+  /* Header -> field. Matched on `l` or any `alias`, and the match is
+     "normalised" (spaces / dots / commas / case ignored), so both
+     "REQ, WITH BORA WEIGHT" and "REQ. WITH BORA WEIGHT" work. */
   const map={};
   const want={};
   cfg.fields.forEach(f=>{
     want[sarvFbmHnorm_(f.l)]=f;
     (f.alias||[]).forEach(a=>{want[sarvFbmHnorm_(a)]=f;});
   });
-  /* Excel ki BRAND MASTER sheet me "TAG 2" do baar aata hai — doosre ko
-     TAG 3 maan lete hain, warna dono ek hi field par gir jaate. */
+  /* The Excel BRAND MASTER sheet has "TAG 2" twice; the second is taken as
+     TAG 3, otherwise both would land on the same field. */
   const seen={};
   rows[0].forEach((h,i)=>{
     const n=sarvFbmHnorm_(h);if(!n)return;
     let f=want[n];
     if(f&&seen[f.k]){
       if(f.k==='tag_2'&&want['TAG3'])f=want['TAG3'];
-      else return;                       // wahi header dobara — pehla hi maanenge
+      else return;                       // the same header again; the first one wins
     }
     if(f){map[i]=f;seen[f.k]=1;}
   });
   const got=Object.values(map).map(f=>f.k);
   const missReq=cfg.fields.filter(f=>f.req&&got.indexOf(f.k)<0);
   if(missReq.length)
-    return showToast('❌ CSV me ye column chahiye: '+missReq.map(f=>f.l).join(', ')
-      +' — pehle \u{1F4BE} Export CSV karein aur usi file ko bharein','error');
+    return showToast('The CSV needs these columns: '+missReq.map(f=>f.l).join(', ')
+      +'. Use Export CSV first and fill in that file.','error');
   const unknown=rows[0].filter((h,i)=>String(h).trim()&&!map[i]&&!/^(REV NO|STATUS|UPDATED BY)$/i.test(String(h).trim()));
 
   // rows -> values
@@ -21674,24 +22375,24 @@ window.sarvFbmImportFile=async function(inp){
       const base=existing[k],ch=sarvFbmDiff_(code,base,vals);
       if(ch.length)upd.push({row:base,vals:vals,changed:ch});
     }else{
-      if(ins.some(x=>keyOf(x.vals)===k)){skip.push('Row '+(i+1)+': CSV ke andar hi duplicate');continue;}
+      if(ins.some(x=>keyOf(x.vals)===k)){skip.push('Row '+(i+1)+': duplicate within the CSV');continue;}
       ins.push({vals:vals});
     }
   }
   if(ins.length&&!sarvCan(cfg.feat.nw))
-    return showToast('⛔ CSV me '+ins.length+' NAYI rows hain par is role ko "'+sarvFeatureLabel_(cfg.feat.nw)+'" access nahi','warn');
+    return showToast('The CSV has '+ins.length+' NEW row(s), but this role does not have "'+sarvFeatureLabel_(cfg.feat.nw)+'" access','warn');
   if(upd.length&&!sarvCan(cfg.feat.ed))
-    return showToast('⛔ CSV '+upd.length+' purani rows badalti hai par is role ko "'+sarvFeatureLabel_(cfg.feat.ed)+'" access nahi','warn');
+    return showToast('The CSV changes '+upd.length+' existing row(s), but this role does not have "'+sarvFeatureLabel_(cfg.feat.ed)+'" access','warn');
   if(!ins.length&&!upd.length)
-    return showToast('ℹ️ CSV me kuch naya nahi mila'+(skip.length?' ('+skip.length+' row chhodi gayi)':''));
+    return showToast('Nothing new found in the CSV'+(skip.length?' ('+skip.length+' row(s) skipped)':''));
 
   if(!confirm(cfg.label+' — CSV import\n\n'
-    +'➕ Nayi rows        : '+ins.length+'\n'
-    +'✏️ Update hone wali : '+upd.length+'\n'
-    +(skip.length?'⚠️ Chhodi gayi      : '+skip.length+'\n':'')
-    +(unknown.length?'ℹ️ Na-pehchaane column (ignore honge): '+unknown.slice(0,5).join(', ')+(unknown.length>5?' ...':'')+'\n':'')
-    +'\nUpdate hone wali har row ka purana snapshot history me chala jaayega '
-    +'(REV number nahi badlega — import EDIT ginta hai).\n\nAage badhein?'))return;
+    +'New rows         : '+ins.length+'\n'
+    +'To be updated   : '+upd.length+'\n'
+    +(skip.length?'Skipped          : '+skip.length+'\n':'')
+    +(unknown.length?'Unrecognised columns (ignored): '+unknown.slice(0,5).join(', ')+(unknown.length>5?' ...':'')+'\n':'')
+    +'\nThe old snapshot of every row being updated will go into the history '
+    +'(the REV number won\'t change; an import counts as an EDIT).\n\nContinue?'))return;
 
   let okI=0,okU=0;
   try{
@@ -21710,26 +22411,26 @@ window.sarvFbmImportFile=async function(inp){
       if(error)throw error;
       okU++;
     }
-    showToast('\u{1F4E5} Import ho gaya — '+okI+' nayi, '+okU+' update'
+    showToast('Import complete: '+okI+' new, '+okU+' updated'
       +(skip.length?', '+skip.length+' chhodi':''));
-    if(skip.length)console.warn('[SARV FBM] import me chhodi gayi rows:\n'+skip.join('\n'));
+    if(skip.length)console.warn('[SARV FBM] rows skipped during import:\n'+skip.join('\n'));
     await sarvFbmLoad(code,true);
   }catch(e){
-    showToast('❌ Import adhoora ruk gaya ('+okI+' nayi, '+okU+' update ho chuki thi)','error');
+    showToast('The import stopped partway ('+okI+' new, '+okU+' updated so far)','error');
     dbError(e);
     await sarvFbmLoad(code,true);
   }
 };
 
 /* ── Seed (Excel sheet ki asli rows) ─────────────────────────────── */
-/* Dropdown Master ke sarvDdSeedDefaults jaisa hi niyam: jo pehle se hai
-   wo CHHOOT jaata hai, isi liye dobara dabane se duplicate nahi bante
-   aur haath se kiye badlav mitte nahi. */
+/* The same rule as Dropdown Master's sarvDdSeedDefaults: whatever already
+   exists is SKIPPED, so pressing it again creates no duplicates and manual
+   changes are never wiped. */
 window.sarvFbmSeed=async function(code){
   const cfg=sarvFbmCfg_(code);
   if(!sarvFbmGuard_(cfg.feat.nw))return;
   if(!sarvCan('MASTER_IMPORT'))return sarvDeny('MASTER_IMPORT');
-  if(sarvFbmSt_(code).missing)return showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
+  if(sarvFbmSt_(code).missing)return showToast('Run '+sarvFbmSql_(code)+' first','error');
   await sarvFbmLoad(code,true);
 
   const keyOf=v=>cfg.keyCols.map(k=>{
@@ -21740,47 +22441,47 @@ window.sarvFbmSeed=async function(code){
   const add=[];
   cfg.seedRows.forEach(arr=>{
     const v={};
-    /* Sirf wahi column jo aaj bhi form me hain — Excel seed me kuch aise
-       column bache hain jo table se hata diye gaye (MASTER / SLAVE PACKING
-       REQUIRED); unhe bhejna poora insert fail kar deta. */
+    /* Only the columns that are still in the form today: the Excel seed still
+       has some columns that were removed from the table (MASTER / SLAVE PACKING
+       REQUIRED), and sending them would fail the whole insert. */
     cfg.seedCols.forEach((k,i)=>{if(sarvFbmField_(code,k))v[k]=arr[i]===undefined?null:arr[i];});
     if(!have.has(keyOf(v)))add.push(v);
   });
-  if(!add.length)return showToast('✅ Excel sheet ki saari rows pehle se '+cfg.label+' me hain');
+  if(!add.length)return showToast('Every row of the Excel sheet is already in '+cfg.label);
   if(!confirm(cfg.label+' — Seed Excel Data\n\n'
-    +'Sheet me '+cfg.seedRows.length+' rows hain, inme se '+add.length+' abhi missing hain.\n\n'
-    +'Jo pehle se hai use chheda NAHI jaayega.\n\n'+add.length+' rows add karein?'))return;
+    +'The sheet has '+cfg.seedRows.length+' rows, of which '+add.length+' are missing right now.\n\n'
+    +'Existing rows will NOT be touched.\n\nAdd '+add.length+' row(s)?'))return;
   try{
     const payload=add.map(v=>Object.assign({},v,{is_active:true,rev_no:1,created_by:sarvFbmActor_(),updated_by:sarvFbmActor_()}));
     const {data,error}=await SB.from(cfg.table).insert(payload).select();
     if(error)throw error;
     for(const r of (data||[]))await sarvFbmArchive_(cfg,r,'SEED',null,null);
-    showToast('\u{1F331} '+add.length+' rows '+cfg.label+' me add ho gayi');
+    showToast(''+add.length+' rows added to '+cfg.label);
     await sarvFbmLoad(code,true);
-    // Fabric seed ke baad Brand ka link / unlinked count bhi naya ho jaata hai
+    // After the Fabric seed, the Brand link / unlinked count is refreshed as well
     if(code==='FABRIC'&&sarvFbmSt_('BRAND').loaded)sarvFbmRenderPills_('BRAND');
   }catch(e){
-    if(sarvFbmMissing_(e))showToast('❌ Pehle '+sarvFbmSql_(code)+' chalayein','error');
+    if(sarvFbmMissing_(e))showToast('Run '+sarvFbmSql_(code)+' first','error');
     else dbError(e);
   }
 };
 
 /* ── wiring ──────────────────────────────────────────────────────── */
-/* HTML ke onclick se bulaya jaata hai (jahan feature nahi hai wahan greyed
-   button) — isi liye sarvDeny ko window par laana zaroori hai. */
+/* Called from HTML onclick (greyed buttons where the feature is missing), so
+   sarvDeny has to be on window. */
 window.sarvDeny=sarvDeny;
 
-/* Esc se dialog band — form pehle, uske baad history.
-   CAPTURE phase me, stopImmediatePropagation ke saath: Admin Panel ka apna
-   Esc handler (full-screen se bahar) bhi document par hai, aur mera dialog
-   khula ho to Esc sirf dialog band kare — peeche ka panel na hile. */
+/* Esc closes a dialog: the form first, then the history.
+   In the CAPTURE phase, with stopImmediatePropagation: the Admin Panel's own
+   Esc handler (leaving full screen) is also on the document, and when my
+   dialog is open Esc should only close the dialog, not move the panel behind. */
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const f=byId('fbm_formOv'),h=byId('fbm_histOv');
   if(f&&f.classList.contains('open')){sarvFbmCloseForm();e.stopImmediatePropagation();e.preventDefault();return;}
   if(h&&h.classList.contains('open')){sarvFbmCloseHistory();e.stopImmediatePropagation();e.preventDefault();}
 },true);
-/* Backdrop par click — box ke bahar dabane par band. */
+/* Backdrop click: pressing outside the box closes it. */
 ['fbm_formOv','fbm_histOv'].forEach(id=>{
   document.addEventListener('click',e=>{
     const ov=byId(id);
@@ -21788,7 +22489,7 @@ document.addEventListener('keydown',e=>{
     if(e.target===ov){ if(id==='fbm_formOv')sarvFbmCloseForm(); else sarvFbmCloseHistory(); }
   });
 });
-/* Form me Ctrl+Enter = Save (42 field ke baad mouse dhoondhna na pade). */
+/* Ctrl+Enter in the form = Save (so nobody has to hunt for the mouse after 42 fields). */
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&byId('fbm_formOv')?.classList.contains('open')){
     e.preventDefault();sarvFbmSaveForm();

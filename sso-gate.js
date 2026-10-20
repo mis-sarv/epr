@@ -1,43 +1,42 @@
 /* ════════════════════════════════════════════════════════════════════════
-   sso-gate.js — SAARE apps ka EK hi darwaza
+   sso-gate.js: the ONE entry point for every app
    ════════════════════════════════════════════════════════════════════════
 
-   Pehle har app ka apna login tha:
-     packing.html   → apna username + password (packing.profiles)
-     complaint.html → Supabase Auth ka apna login + signup (cmp_profiles)
-     order-form.html→ apna naam + PIN (sales_login / sales_users)
+   Each app used to have its own login:
+     packing.html   → its own username + password (packing.profiles)
+     complaint.html → its own Supabase Auth login + signup (cmp_profiles)
+     order-form.html→ its own name + PIN (sales_login / sales_users)
 
-   Teen login, teen user list, teen jagah "kaun hai" ka jawab — aur isi
-   se wo poori ulajhan banti thi: ek bande ka ERP me access ON hota, par
-   us app me account na hota; ya app ka password kisi ko yaad na hota; ya
-   ek hi aadmi do list me do naam se baith jaata.
+   Three logins, three user lists, three answers to "who is this?". That is
+   where all the confusion came from: a person had access ON in the ERP but
+   no account in the app, or nobody remembered the app's password, or the
+   same person sat in two lists under two names.
 
-   Ab EK hi darwaza hai: `launcher.html`. Har app sirf utna poochhti hai —
-   "ERP ka session hai? is app ka access hai?" — aur bas. Session na ho to
-   app apna login NAHI dikhati; seedha launcher par bhej deti hai. Isi
-   liye logout bhi hamesha launcher par le jaata hai: ek login tha, to
-   logout bhi ek hi jagah se.
+   Now there is ONE way in: `launcher.html`. Each app only asks "is there an
+   ERP session, and does it have access to this app?" and nothing more. With
+   no session the app does NOT show a login of its own; it sends the user
+   straight to the launcher. Logout always goes back to the launcher too:
+   one login, one place to log out.
 
-   Ye file koi login screen nahi banati. Jo screen ye dikhati hai wo sirf
-   WAJAH batati hai (aur kiska kaam hai — user ka ya Admin ka), kyunki
-   yahan se andar jaane ka koi doosra raasta hi nahi hai.
+   This file never builds a login form. The only screen it shows explains
+   the REASON (and whose job it is to fix: the user's or the Admin's),
+   because there is no other way in from here.
 
-   ── Istemaal ───────────────────────────────────────────────────────────
-     <script src="sso-preboot.js"></script>   <!-- pehle, jhalak rokne ko -->
+   ── Usage ───────────────────────────────────────────────────────────────
+     <script src="sso-preboot.js"></script>   <!-- first, to stop the flash -->
      <script src="sso-gate.js"></script>
 
      const u = await SARV_GATE.boot({
        url: SUPABASE_URL, key: SUPABASE_ANON_KEY,
        app: 'HOME_PACKING', label: 'Packing & Dispatch',
-       client: supabaseClient,        // sirf needAuth ke liye
-       needAuth: true,                // Complaint / Packing: haan
-       accountKey: 'pk_profile_id'    // us app ka account hona zaroori hai
+       client: supabaseClient,        // only needed with needAuth
+       needAuth: true,                // Complaint / Packing: yes
+       accountKey: 'pk_profile_id'    // the user must have an account in that app
      });
 
-   `boot()` sirf tab resolve hota hai jab sach me andar jaane layak ho.
-   Baaki har soorat me wo khud launcher par bhej deta hai ya wajah wali
-   screen dikha deta hai — aur uska promise kabhi resolve NAHI hota, isi
-   liye call karne wale ko "fail" sambhalna hi nahi padta.
+   `boot()` resolves only when the user may really enter. In every other
+   case it redirects to the launcher or shows the reason screen, and its
+   promise NEVER resolves, so the caller never has to handle a failure.
    ════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -45,37 +44,36 @@
   var SSO_KEY  = 'sarv_sso_token';
   var LAUNCHER = 'launcher.html';
 
-  /* App-local session keys. Logout par aur gate band hone par inhe mitana
-     zaroori hai: warna app ka purana localStorage session darwaze ko
-     bypass kar sakta hai (pehle packing.html me theek yahi hota tha). */
+  /* App-local session keys. These must be cleared on logout and whenever the
+     gate refuses entry; otherwise an old localStorage session could bypass
+     the gate (this is exactly what used to happen in packing.html). */
   var LOCAL_KEYS = ['erpPackingAppSession', 'sihf_sb_token', 'sihf_erp_sso_msg'];
 
-  /* Wajah → kya likhna hai. Jo baat user khud theek kar sake wo user ko,
-     aur jo Admin ka kaam hai wo saaf Admin ke naam likhte hain — "kuch
-     galat ho gaya" se kisi ka kaam nahi banta. */
+  /* Reason → message. Anything the user can fix is addressed to the user;
+     anything that is the Admin's job says so plainly. "Something went
+     wrong" helps nobody. */
   var WHY = {
-    NO_TOKEN:        'Aap Apps page se nahi aaye. Wahin se login karein.',
-    NO_SESSION:      'ERP ka session server par nahi mila — dobara login karein.',
-    SESSION_REVOKED: 'Ye session band ho gaya. Ek waqt par ek hi login chalta hai, isi liye kahin aur (doosre phone / desktop par) login karne se ye wala band ho jaata hai.',
-    SESSION_EXPIRED: 'Session purana ho gaya — dobara login karein.',
-    USER_INACTIVE:   'Aapka account band hai — Admin se kehein.',
-    NO_APP_ACCESS:   'Aapke login par ye app band hai. Admin se kehein — <i>Master Data › Settings › Admin Panel › Users › Apps</i> me ise <b>ON</b> karna hoga.',
-    NO_APP_ACCOUNT:  'Is app ka account aapke naam par bana hi nahi hai. Admin: <i>Users</i> › aapko edit karke <i>Apps</i> me is app ko <b>ON</b> (auto nahi) karke Save karein — account khud ban jaayega.',
-    NO_AUTH_USER:    'Aapka Supabase Auth account nahi mila. Admin: <i>Users › Apps</i> me ise OFF karke, Save karke, dobara ON karein.',
-    AUTH_ACCOUNT_TAKEN: 'Aapke naam ki do ERP entries hain aur account doosri par juda hai. Admin: <code>sql/MERGE_DUPLICATE_USERS.sql</code> se dono ko milayein.',
-    FN_MISSING:      'SSO ka Edge Function (<code>erp-sso</code>) server par nahi hai. Admin: <code>supabase functions deploy erp-sso</code>',
-    FN_FAIL:         'SSO ka Edge Function error de raha hai — Admin ko ye screen dikhayein.',
-    OTP_FAIL:        'Login token reject ho gaya — ek baar dobara koshish karein.',
-    PROFILE_READ:    'Aapki profile padhi nahi ja saki (auth session nahi bana) — Admin ko ye screen dikhayein.',
-    RPC_HTTP:        'Server ka darwaza (<code>erp_app_session</code>) jawab nahi de raha — Admin: migration / schema cache check karwayein.',
-    NET:             'Server tak pahunch nahi hui — internet / firewall check karein.',
-    UNKNOWN:         'Andar nahi ja sake.'
+    NO_TOKEN:        'You did not come from the Apps page. Please log in there.',
+    NO_SESSION:      'Your ERP session was not found on the server. Please log in again.',
+    SESSION_REVOKED: 'This session has ended. Only one login is allowed at a time, so logging in somewhere else (another phone or desktop) closes this one.',
+    SESSION_EXPIRED: 'Your session has expired. Please log in again.',
+    USER_INACTIVE:   'Your account is inactive. Please contact the Admin.',
+    NO_APP_ACCESS:   'This app is turned off for your login. Ask the Admin to switch it <b>ON</b> under <i>Master Data › Settings › Admin Panel › Users › Apps</i>.',
+    NO_APP_ACCOUNT:  'No account exists for you in this app yet. Admin: open <i>Users</i>, edit this user, set this app to <b>ON</b> (not auto) under <i>Apps</i> and Save. The account is created automatically.',
+    NO_AUTH_USER:    'Your Supabase Auth account was not found. Admin: under <i>Users › Apps</i>, switch this app OFF, Save, then switch it ON again.',
+    AUTH_ACCOUNT_TAKEN: 'There are two ERP entries under your name and the account is linked to the other one. Admin: merge them with <code>sql/MERGE_DUPLICATE_USERS.sql</code>.',
+    FN_MISSING:      'The SSO Edge Function (<code>erp-sso</code>) is not deployed on the server. Admin: <code>supabase functions deploy erp-sso</code>',
+    FN_FAIL:         'The SSO Edge Function returned an error. Please show this screen to the Admin.',
+    OTP_FAIL:        'The login token was rejected. Please try once more.',
+    PROFILE_READ:    'Your profile could not be read (no auth session was created). Please show this screen to the Admin.',
+    RPC_HTTP:        'The server is not responding (<code>erp_app_session</code>). Admin: check the migration and the schema cache.',
+    NET:             'Could not reach the server. Please check the internet connection or firewall.',
+    UNKNOWN:         'Could not sign you in.'
   };
 
-  /* Jin wajahon ka ilaaj sirf "dobara login" hai, un par screen dikhane
-     ka koi faayda nahi — seedha launcher bhej dete hain. Baaki (access /
-     account / setup wali) par screen dikhti hai, kyunki launcher par
-     jaakar bhi wahi dobara hoga. */
+  /* When the only fix is "log in again", a reason screen adds nothing, so we
+     go straight to the launcher. The other reasons (access, account, setup)
+     get a screen, because going to the launcher would only repeat them. */
   var SEND_TO_LAUNCHER = {
     NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1
   };
@@ -98,8 +96,8 @@
     try { return localStorage.getItem(SSO_KEY) || ''; } catch (e) { return ''; }
   }
 
-  /* `replace` jaan-boojh kar (`href` nahi): Back dabane par banda us app
-     par wapas nahi aata jahan se use bheja gaya tha. */
+  /* `replace` on purpose (not `href`): pressing Back must not return the
+     user to the app that just sent them away. */
   function goLauncher(why) {
     clearLocal();
     try { localStorage.removeItem(SSO_KEY); } catch (e) {}
@@ -120,17 +118,17 @@
       + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
       + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
     d.innerHTML = '<div style="max-width:460px;">'
-      + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">' + (opts.icon || '&#128274;') + '</div>'
+      + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">' + (opts.icon || '') + '</div>'
       + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">' + esc(appLabel) + '</h2>'
       + '<p style="margin:0 0 16px;font-size:13px;line-height:1.7;color:#cbd5e1;">'
       + (WHY[why] || WHY.UNKNOWN) + '</p>'
       + '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">'
       + '<button type="button" id="sarvGateBack" style="background:#0ea5e9;border:none;color:#fff;'
       + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-      + '&larr; Apps par wapas</button>'
+      + '&larr; Back to Apps</button>'
       + '<button type="button" id="sarvGateRetry" style="background:transparent;border:1px solid #475569;'
       + 'color:#cbd5e1;border-radius:8px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-      + 'Dobara koshish</button></div>'
+      + 'Try again</button></div>'
       + '<p style="margin:16px 0 0;font-size:10.5px;color:#64748b;line-height:1.6;">wajah: '
       + esc(why) + (detail ? ' — ' + esc(detail) : '') + '</p>'
       + '</div>';
@@ -141,10 +139,9 @@
     if (r) r.onclick = function () { location.reload(); };
   }
 
-  /* Jab andar jaane layak na ho: screen dikhao (ya launcher bhejo) aur
-     phir ek aisa promise lauta do jo kabhi poora nahi hota. Isse call
-     karne wali app ka aage ka code chalta hi nahi — na aadha boot, na
-     "login screen" ki jhalak. */
+  /* When entry is not allowed: show the screen (or go to the launcher) and
+     return a promise that never settles. The calling app's remaining code
+     then never runs: no half boot, no flash of a login screen. */
   function stop(appLabel, why, detail) {
     if (SEND_TO_LAUNCHER[why]) goLauncher(why);
     else panel(appLabel, why, detail);
@@ -161,12 +158,12 @@
     return { ok: r.ok, status: r.status, data: d };
   }
 
-  /* Gate ke BAAD bhi koi app apni ek shart par ruk sakti hai (jaise
-     Packing ki profile row na dikhe, ya Order Form ka session na bana
-     ho). Us soorat me screen bilkul waisi hi honi chahiye jaisi gate ki
-     — kyunki wahan se bhi andar jaane ka koi doosra raasta nahi hai, aur
-     login form dikhana sirf dhoka hota. Isi liye wo screen yahan ek hi
-     jagah likhi hai, teen jagah nahi. */
+  /* An app can still stop on a condition of its own AFTER the gate (for
+     example the Packing profile row is not visible, or the Order Form
+     session was not created). That screen must look exactly like the
+     gate's, because there is no other way in from there either, and a
+     login form would only mislead. So it is defined here once, not in
+     three places. */
   function halt(title, bodyHtml, detail) {
     if (shown) return;
     shown = true;
@@ -178,12 +175,12 @@
       + 'display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;'
       + "font-family:'Segoe UI',system-ui,-apple-system,sans-serif;";
     d.innerHTML = '<div style="max-width:460px;">'
-      + '<div style="font-size:46px;line-height:1;margin-bottom:14px;">&#128274;</div>'
+      + '<div style="font-size:46px;line-height:1;margin-bottom:14px;"></div>'
       + '<h2 style="margin:0 0 8px;font-size:18px;font-weight:800;">' + esc(title) + '</h2>'
       + '<p style="margin:0 0 16px;font-size:13px;line-height:1.7;color:#cbd5e1;">' + (bodyHtml || '') + '</p>'
       + '<button type="button" id="sarvHaltBack" style="background:#0ea5e9;border:none;color:#fff;'
       + 'border-radius:8px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">'
-      + '&larr; Apps par wapas</button>'
+      + '&larr; Back to Apps</button>'
       + '<p style="margin:16px 0 0;font-size:10.5px;color:#64748b;">wajah: ' + esc(detail || '') + '</p>'
       + '</div>';
     (document.body || document.documentElement).appendChild(d);
@@ -192,20 +189,20 @@
   }
 
   var GATE = {
-    /* App apni shart par ruk jaane ke liye — upar wali halt() hi. */
+    /* For an app to stop on its own condition: the halt() above. */
     halt: halt,
 
-    /* ERP (index.html) aur mobile.html ke liye — sirf itni rok.
-       Un dono ke paas apna role/PIN wala gate pehle se hai aur usi par
-       unka poora permission model tika hai, isi liye wo machinery chhedi
-       nahi gayi. Bas ab wo gate kisi ko DIKHTA nahi: token na ho to
-       page khulne se pehle hi launcher par bhej dete hain.
+    /* For the ERP (index.html) and mobile.html: only this check.
+       Both already have their own role / PIN gate and their whole
+       permission model depends on it, so that machinery was left alone.
+       The only change is that nobody SEES that gate any more: without a
+       token the page redirects to the launcher before it opens.
 
-       Ye jaan-boojh kar synchronous hai aur koi network call nahi karta:
-       `<head>` me chalta hai, isi liye ek bhi pixel paint hone se pehle
-       faisla ho jaata hai. Session sach me chalta hai ya nahi — wo in
-       dono apps ka apna `erp_app_session` check batata hai, jo pehle se
-       maujood hai; ye rok sirf "login window" hatane ke liye hai. */
+       Deliberately synchronous with no network call. It runs in `<head>`,
+       so the decision is made before a single pixel is painted. Whether
+       the session is actually valid is checked by each app's own
+       `erp_app_session` call, which already exists; this check only
+       removes the login window. */
     requireSession: function () {
       if (!tokenGet()) {
         try { location.replace(LAUNCHER + '?why=NO_TOKEN'); } catch (e) {}
@@ -214,15 +211,15 @@
       return true;
     },
 
-    /* boot() ke baad ye bhar jaate hain — app inhe seedha padh sakti hai,
-       apna koi user record rakhne ki zaroorat nahi. */
+    /* Filled in after boot(). Apps can read these directly instead of
+       keeping a user record of their own. */
     user: null,
     token: '',
     app: '',
 
-    /* Is user ko kaun-kaun si app milti hai — wahi list jo launcher ne
-       login ke waqt session par likhi thi. App ko permission ka poora
-       matrix samajhne ki zaroorat nahi. */
+    /* Which apps this user may open: the same list the launcher wrote on
+       the session at login. Apps do not need to understand the whole
+       permission matrix. */
     can: function (appKey) {
       var a = (this.user && this.user.allowed_apps) || [];
       return a.indexOf(appKey) >= 0;
@@ -260,33 +257,32 @@
         return stop(label, WHY[d.error] ? d.error : 'UNKNOWN', d.error || '');
       }
       var u = d.user || null;
-      if (!u) return stop(label, 'UNKNOWN', 'jawab me user nahi aaya');
+      if (!u) return stop(label, 'UNKNOWN', 'no user in the response');
       this.user = u;
 
-      // ── 2. Us app ka account ─────────────────────────────────────────
-      // Complaint / Packing ka data auth.uid() par chalta hai, isi liye
-      // unka account hona zaroori hai. Order Form ko iski zaroorat nahi.
+      // ── 2. The account in this app ───────────────────────────────────
+      // Complaint / Packing data is keyed on auth.uid(), so the user must
+      // have an account there. Order Form does not need one.
       if (o.accountKey && !u[o.accountKey]) return stop(label, 'NO_APP_ACCOUNT');
 
-      // ── 3. Asli auth session (bina password) ─────────────────────────
+      // ── 3. The real auth session (no password) ───────────────────────
       if (o.needAuth) {
         var why = await this.signIn(o, u);
         if (why !== true) return stop(label, why.why, why.detail);
       }
 
-      /* Kaamyaabi par splash yahan se NAHI hatate — app jab sach me
-         dikhne layak ho tab wo khud `sarvSsoPrebootDone()` bulati hai.
-         Yahan hata dein to ek pal ko khaali page jhalakta hai, jo theek
-         usi jhalak jaisa dikhta hai jise rokne ke liye splash banayi
-         gayi thi. (Har fail wale raaste par splash zaroor hatti hai —
-         goLauncher / panel / halt teeno me.) */
+      /* On success the splash is NOT removed here. The app calls
+         `sarvSsoPrebootDone()` itself once it is really ready to show.
+         Removing it here flashes a blank page for a moment, which looks
+         exactly like the flash the splash exists to prevent. (Every
+         failure path does remove it: goLauncher, panel and halt.) */
       return u;
     },
 
-    /* ERP ke session se asli Supabase Auth session — `erp-sso` Edge
-       Function ek one-time magic-link token deta hai, aur usse poora
-       session ban jaata hai. Bina password, aur un apps ki ek bhi RLS
-       policy ya trigger chhede bina. */
+    /* A real Supabase Auth session from the ERP session: the `erp-sso`
+       Edge Function returns a one-time magic-link token and the full
+       session is built from it. No password, and not a single RLS policy
+       or trigger in those apps had to change. */
     async signIn(o, u) {
       var want = u[o.accountKey] || u.id;
       try {
@@ -306,10 +302,10 @@
           if (!WHY[w]) w = 'FN_FAIL';
           return { why: w, detail: (fd && (fd.message || fd.detail || fd.error)) || ('HTTP ' + r.status) };
         }
-        /* Dono type try karte hain — galat type par token kharch nahi
-           hota, isi liye doosri koshish poori tarah valid rehti hai.
-           (supabase-js ke version ke hisaab se magiclink ka hash
-           'magiclink' ya 'email' maangta hai.) */
+        /* Try both types. A wrong type does not use up the token, so the
+           second attempt is still fully valid. (Depending on the
+           supabase-js version, the magic-link hash expects either
+           'magiclink' or 'email'.) */
         var v = await o.client.auth.verifyOtp({ token_hash: fd.token_hash, type: 'magiclink' });
         if (v.error) v = await o.client.auth.verifyOtp({ token_hash: fd.token_hash, type: 'email' });
         if (v.error) return { why: 'OTP_FAIL', detail: v.error.message };
@@ -319,8 +315,9 @@
       }
     },
 
-    /* Ek hi logout — har app me wahi. ERP ka session server par band,
-       auth session band, app ke local nishaan saaf, aur launcher par. */
+    /* One logout, the same in every app: end the ERP session on the
+       server, end the auth session, clear the app's local traces, and go
+       to the launcher. */
     async logout(o) {
       o = o || {};
       var tok = tokenGet();

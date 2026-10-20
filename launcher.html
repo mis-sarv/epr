@@ -2,27 +2,28 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="date-dmy.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b1220">
 <title>Sarv India — Apps</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 /* ════════════════════════════════════════════════════════════════════
-   SARV INDIA — LAUNCHER (look)
+   SARV INDIA: LAUNCHER (look)
    ────────────────────────────────────────────────────────────────────
-   Dark-first, kyunki ye page din bhar me kai baar khulta hai aur
-   factory floor ke phone par bhi padhna aasaan rehna chahiye. Light
-   mode bhi hai (prefers-color-scheme), isi liye har rang token hai.
+   Dark-first, because this page is opened many times a day and must be
+   easy to read on a factory-floor phone too. There is a light mode as
+   well (prefers-color-scheme), which is why every colour is a token.
 
-   Teen baatein jaan-boojh kar:
-     * Har app ka apna ACCENT rang — banda rang se pehchan leta hai,
-       padhne se pehle. Icon tile, hover glow aur left border teeno
-       wahi rang lete hain.
-     * Animation sirf pehli baar, aur `prefers-reduced-motion` par
-       poori band — har reload par uchhalti screen professional nahi
-       lagti.
-     * Touch target 44px se kam nahi, focus ring saaf — ye phone par
-       aur keyboard se chalne wali screen hai.
+   Deliberate choices:
+     * Each app has its own ACCENT colour so people recognise it by
+       colour before reading. The icon tile, hover glow and left border
+       all use that colour.
+     * Animation runs only on first entry and is switched off entirely
+       under `prefers-reduced-motion`; a screen that bounces on every
+       reload does not look professional.
+     * Touch targets are at least 44px and the focus ring is clear; this
+       screen is used on phones and with a keyboard.
    ════════════════════════════════════════════════════════════════════ */
 :root{
   --bg:#0b1220;
@@ -75,8 +76,8 @@ body{
   padding:clamp(18px,5vw,44px) 16px calc(40px + env(safe-area-inset-bottom));
   position:relative; overflow-x:hidden;
 }
-/* Aurora — do dheeme bahte gradient. Position fixed, isi liye scroll par
-   hilte nahi aur list lambi ho to bhi background shaant rehta hai. */
+/* Background: two slow-moving gradients. Position fixed, so they don't move
+   on scroll and the background stays calm even with a long list. */
 body::before, body::after{
   content:''; position:fixed; z-index:-1; border-radius:50%;
   filter:blur(90px); opacity:.55; pointer-events:none;
@@ -160,7 +161,7 @@ input:focus{
   border-color:var(--accent);
   box-shadow:0 0 0 3.5px rgba(56,189,248,.20);
 }
-/* `employees` se aaye hue field — dikhte hain par badle nahi ja sakte. */
+/* Fields that come from `employees`: shown, but not editable. */
 input[readonly]{
   background:rgba(255,255,255,.04); color:var(--txt-2);
   border-style:dashed; cursor:default;
@@ -179,9 +180,9 @@ input[readonly]:focus{border-color:var(--hairline); box-shadow:none;}
   font-size:11.5px; color:var(--ok); margin-top:8px;
   min-height:15px; font-weight:650; letter-spacing:.01em;
 }
-/* Ek emp_code par do account (ek hi insaan ke do role) — tab ye chunne
-   wale buttons aate hain. Do se zyada kabhi hote nahi, isi liye saada
-   row hi kaafi hai. */
+/* Two accounts on one emp_code (two roles of the same person): these
+   picker buttons appear. There are never more than two, so a plain row
+   is enough. */
 .picks{display:flex; flex-wrap:wrap; gap:8px;}
 .picks button{
   flex:1 1 auto; min-width:140px; min-height:46px;
@@ -220,7 +221,7 @@ button.go:disabled{opacity:.62; cursor:default; filter:none; transform:none;}
 }
 .hint{font-size:11.5px; color:var(--txt-3); margin-top:14px; line-height:1.6;}
 
-/* ── Card ke neeche ke do raaste (Signup / Forgot) ──────────────────── */
+/* ── The two links under the card (Signup / Forgot) ─────────────────── */
 .alt{
   display:flex; gap:10px; margin-top:18px; padding-top:16px;
   border-top:1px solid var(--hairline);
@@ -334,14 +335,14 @@ a.app{
   box-shadow:var(--shadow);
   transition:transform .14s, border-color .16s, box-shadow .16s;
 }
-/* Baayin kinare ki patli lakeer — app ka rang, bina poore card ko rangne. */
+/* Thin line on the left edge in the app's colour, without colouring the whole card. */
 a.app::before{
   content:''; position:absolute; inset:0 auto 0 0; width:3px;
   background:var(--a); opacity:.85;
 }
-/* color-mix() purane browser me nahi hai, isi liye pehle saada fallback
-   likha hai aur uske baad color-mix wali line — jo browser samajhta hai
-   wahi aakhir me lagti hai, baaki use chhod dete hain. */
+/* color-mix() is missing in older browsers, so a plain fallback comes
+   first and the color-mix line after it. The browser applies the last one
+   it understands and ignores the rest. */
 a.app:hover{
   transform:translateY(-3px);
   border-color:var(--a);
@@ -358,7 +359,7 @@ a.app:focus-visible{outline:2.5px solid var(--a); outline-offset:3px;}
 a.app .tile{
   width:42px; height:42px; border-radius:12px; flex:0 0 auto;
   display:flex; align-items:center; justify-content:center; font-size:21px;
-  /* Fallback pehle — neeche @supports wala block isse badal deta hai. */
+  /* Fallback first; the @supports block below replaces it. */
   background:rgba(255,255,255,.07);
   border:1px solid var(--hairline);
 }
@@ -393,7 +394,7 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
 .spin .dot:nth-child(3){animation-delay:.32s;}
 @keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-7px);opacity:1}}
 
-/* Pehli baar andar aane wali halki si harkat. */
+/* A light entrance movement, first time only. */
 .rise{animation:rise .42s cubic-bezier(.22,1,.36,1) both;}
 @keyframes rise{from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:none;}}
 
@@ -401,69 +402,78 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
   *,*::before,*::after{animation:none !important; transition:none !important;}
   a.app:hover{transform:none;}
 }
-</style>
+
+/* Line icons (inline SVG) in the inputs, the logo and the app tiles. */
+.ctrl .ico{display:flex; align-items:center;}
+.logo{font-size:28px; font-weight:800; color:#fff;}
+a.app .tile{color:var(--a);}
+a.app .tile svg, .photo .prev svg{display:block;}
+.photo .prev svg{width:28px; height:28px;}/* Flat fills instead of gradients and glows. */
+.logo{background:#2563eb; box-shadow:none;}
+button.go{background:#2563eb; box-shadow:none;}
+button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
 </head>
 <body>
 <div class="wrap">
 
   <div class="brand rise">
-    <div class="logo">🏭</div>
+    <div class="logo">S</div>
     <h1>Sarv India</h1>
-    <p>Ek login — aapke saare apps</p>
+    <p>One login for all your apps</p>
   </div>
 
   <div id="boot" class="spin">
     <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-    <div style="margin-top:14px;">Dekh rahe hain…</div>
+    <div style="margin-top:14px;">Checking…</div>
   </div>
 
   <!-- ── Login ──────────────────────────────────────────────────────── -->
   <div class="card rise" id="loginCard" style="display:none;">
     <h2>Login</h2>
-    <p class="sub">Apna <b>Employee Code</b> aur PIN daalein.</p>
+    <p class="sub">Enter your <b>Employee Code</b> and PIN.</p>
     <div class="err" id="err"></div>
     <div class="fg">
       <label for="nameBox">Employee Code</label>
       <div class="ctrl">
-        <span class="ico">🆔</span>
-        <input id="nameBox" list="namesDl" autocomplete="off" placeholder="Jaise 1386">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 16a4 4 0 0 1 8 0M15 9h4M15 13h4"/></svg></span>
+        <input id="nameBox" list="namesDl" autocomplete="off" placeholder="e.g. 1386">
       </div>
       <datalist id="namesDl"></datalist>
       <div class="roles" id="rolesNote"></div>
     </div>
-    <!-- Ek emp_code par do account hon to hi dikhta hai — dekhein
+    <!-- Shown only when one emp_code has two accounts. See
          loadMasters / syncPicks. -->
     <div class="fg" id="pickWrap" style="display:none;">
-      <label>Aapka kaun sa account?</label>
+      <label>Which account?</label>
       <div class="picks" id="pickList"></div>
     </div>
     <div class="fg">
       <label for="pinBox">PIN</label>
       <div class="ctrl">
-        <span class="ico">🔑</span>
-        <input id="pinBox" type="password" inputmode="numeric" autocomplete="off" placeholder="Apna PIN">
-        <button type="button" class="peek" id="peekBtn" aria-label="PIN dikhayein">👁</button>
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+        <input id="pinBox" type="password" inputmode="numeric" autocomplete="off" placeholder="Your PIN">
+        <button type="button" class="peek" id="peekBtn" aria-label="Show PIN">Show</button>
       </div>
     </div>
     <button class="go" id="goBtn">Login</button>
     <div class="alt">
-      <button type="button" id="toSignup">🆕 Naya Account</button>
-      <button type="button" id="toForgot">🔓 PIN bhool gaye?</button>
+      <button type="button" id="toSignup">New Account</button>
+      <button type="button" id="toForgot">Forgot PIN?</button>
     </div>
     <div class="hint">
-      Employee Code hi aapka username hai. Code na chale to Admin se
-      kehein — ya niche <b>Naya Account</b> se khud banayein.
+      Your Employee Code is your username. If your code doesn't work,
+      contact the Admin, or create one yourself with <b>New Account</b> below.
     </div>
   </div>
 
   <!-- ── Signup ─────────────────────────────────────────────────────── -->
   <div class="card rise" id="signupCard" style="display:none;">
-    <button type="button" class="back" id="suBack">← Login par wapas</button>
-    <h2>Naya Account</h2>
+    <button type="button" class="back" id="suBack">← Back to Login</button>
+    <h2>New Account</h2>
     <p class="sub">
-      Employee Code daalein — aapka naam, designation aur department
-      apne aap aa jayenge. Sirf contact no. badal sakte hain.
-      <b>Saare field zaroori hain.</b>
+      Enter your Employee Code; your name, designation and department are
+      filled in automatically. Only the contact number can be changed.
+      <b>All fields are required.</b>
     </p>
     <div class="err" id="suErr"></div>
     <div class="okbox" id="suOk"></div>
@@ -471,16 +481,16 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
     <div class="fg">
       <label for="suCode">Employee Code <span class="req">*</span></label>
       <div class="ctrl">
-        <span class="ico">🆔</span>
-        <input id="suCode" list="empDl" autocomplete="off" placeholder="Jaise 1386">
+        <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 16a4 4 0 0 1 8 0M15 9h4M15 13h4"/></svg></span>
+        <input id="suCode" list="empDl" autocomplete="off" placeholder="e.g. 1386">
       </div>
       <datalist id="empDl"></datalist>
       <div class="roles" id="suLookup"></div>
     </div>
 
     <div class="fg">
-      <label for="suName">Naam <small style="text-transform:none;font-weight:600;">— badla nahi ja sakta</small></label>
-      <input id="suName" class="plain" readonly placeholder="Employee Code daalein">
+      <label for="suName">Name <small style="text-transform:none;font-weight:600;">Cannot be changed</small></label>
+      <input id="suName" class="plain" readonly placeholder="Enter your Employee Code">
     </div>
     <div class="row2">
       <div class="fg">
@@ -496,7 +506,7 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
       <div class="fg">
         <label for="suContact">Contact No. <span class="req">*</span></label>
         <div class="ctrl">
-          <span class="ico">📞</span>
+          <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
           <input id="suContact" type="tel" inputmode="numeric" autocomplete="off" placeholder="10 digit">
         </div>
       </div>
@@ -508,17 +518,17 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
 
     <div class="row2">
       <div class="fg">
-        <label for="suPin">Naya PIN <span class="req">*</span></label>
+        <label for="suPin">New PIN <span class="req">*</span></label>
         <div class="ctrl">
-          <span class="ico">🔑</span>
+          <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
           <input id="suPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4–8 digit">
         </div>
       </div>
       <div class="fg">
-        <label for="suPin2">PIN dobara <span class="req">*</span></label>
+        <label for="suPin2">Repeat PIN <span class="req">*</span></label>
         <div class="ctrl">
-          <span class="ico">🔁</span>
-          <input id="suPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Wahi PIN">
+          <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4M9 16l2 2 4-4"/></svg></span>
+          <input id="suPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Same PIN">
         </div>
       </div>
     </div>
@@ -526,40 +536,40 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
     <div class="fg">
       <label>Profile Photo <span class="req">*</span></label>
       <div class="photo">
-        <div class="prev" id="suPhotoPrev">👤</div>
+        <div class="prev" id="suPhotoPrev"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg></div>
         <div class="pick">
-          <button type="button" id="suPhotoBtn">📷 Photo chunein</button>
-          <div class="note">Launcher par aapke profile icon me yahi dikhegi. 256×256 me simat kar jati hai.</div>
+          <button type="button" id="suPhotoBtn">Choose Photo</button>
+          <div class="note">Shown on your profile icon in the launcher. It is resized to 256×256.</div>
           <input id="suPhotoFile" type="file" accept="image/*" style="display:none;">
         </div>
       </div>
     </div>
 
     <div class="fg">
-      <label>✍️ Digital Signature <span class="req">*</span></label>
+      <label>Digital Signature <span class="req">*</span></label>
       <div class="pad">
         <canvas id="suSig" width="900" height="300"></canvas>
         <div class="padbar">
-          <span>Mouse / ungli / stylus se sign karein</span>
+          <span>Sign with a mouse, finger or stylus</span>
           <button type="button" id="suSigClr">✖ Clear</button>
         </div>
       </div>
     </div>
 
-    <button class="go" id="suGo">✅ Account banayein</button>
+    <button class="go" id="suGo">Account banayein</button>
     <div class="hint">
-      Shuru me aapko sirf <b>Complaint App</b> ka access milta hai.
-      Baaki apps ka access Admin deta hai.
+      To begin with you get access to the <b>Complaint App</b> only.
+      The Admin grants access to the other apps.
     </div>
   </div>
 
   <!-- ── Forgot PIN ─────────────────────────────────────────────────── -->
   <div class="card rise" id="forgotCard" style="display:none;">
-    <button type="button" class="back" id="fpBack">← Login par wapas</button>
+    <button type="button" class="back" id="fpBack">← Back to Login</button>
     <h2>PIN Reset</h2>
     <p class="sub" id="fpSub">
-      Apni teen details daalein — jo database me saved hain unse match
-      hone par aap naya PIN set kar sakte hain.
+      Enter these three details. If they match the ones saved in the
+      database, you can set a new PIN.
     </p>
     <div class="err" id="fpErr"></div>
     <div class="okbox" id="fpOk"></div>
@@ -568,8 +578,8 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
       <div class="fg">
         <label for="fpCode">Employee Code <span class="req">*</span></label>
         <div class="ctrl">
-          <span class="ico">🆔</span>
-          <input id="fpCode" autocomplete="off" placeholder="Jaise 1386">
+          <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 16a4 4 0 0 1 8 0M15 9h4M15 13h4"/></svg></span>
+          <input id="fpCode" autocomplete="off" placeholder="e.g. 1386">
         </div>
       </div>
       <div class="row2">
@@ -580,35 +590,35 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
         <div class="fg">
           <label for="fpContact">Contact No. <span class="req">*</span></label>
           <div class="ctrl">
-            <span class="ico">📞</span>
+            <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
             <input id="fpContact" type="tel" inputmode="numeric" autocomplete="off" placeholder="10 digit">
           </div>
         </div>
       </div>
-      <button class="go" id="fpVerify">🔎 Verify karein</button>
+      <button class="go" id="fpVerify">Verify</button>
     </div>
 
     <div id="fpStep2" style="display:none;">
       <div class="row2">
         <div class="fg">
-          <label for="fpPin">Naya PIN <span class="req">*</span></label>
+          <label for="fpPin">New PIN <span class="req">*</span></label>
           <div class="ctrl">
-            <span class="ico">🔑</span>
+            <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
             <input id="fpPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4–8 digit">
           </div>
         </div>
         <div class="fg">
-          <label for="fpPin2">PIN dobara <span class="req">*</span></label>
+          <label for="fpPin2">Repeat PIN <span class="req">*</span></label>
           <div class="ctrl">
-            <span class="ico">🔁</span>
-            <input id="fpPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Wahi PIN">
+            <span class="ico"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4M9 16l2 2 4-4"/></svg></span>
+            <input id="fpPin2" type="password" inputmode="numeric" autocomplete="off" placeholder="Same PIN">
           </div>
         </div>
       </div>
-      <button class="go" id="fpSave">💾 Naya PIN save karein</button>
+      <button class="go" id="fpSave">Save New PIN</button>
       <div class="hint">
-        PIN badalne par aapke saare khule session band ho jayenge —
-        har app me naya PIN se login karna hoga.
+        Changing your PIN logs out all your open sessions; you will need
+        to log in to each app with the new PIN.
       </div>
     </div>
   </div>
@@ -624,15 +634,15 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
       </div>
       <button class="out" id="outBtn">Logout</button>
     </div>
-    <div class="sec-h" id="appsHead" style="display:none;">Aapke Apps</div>
+    <div class="sec-h" id="appsHead" style="display:none;">Your Apps</div>
     <div class="grid" id="appGrid"></div>
     <div class="none" id="noApps" style="display:none;">
-      🔒 Aapke login par abhi koi app chalu nahi hai.<br>
-      Admin se kehein — <i>Admin Panel › Users › 📱 Apps</i>.
+      No apps are enabled for your login yet.<br>
+      Admin se kehein — <i>Admin Panel › Users › Apps</i>.
     </div>
     <div class="foot">
-      Jis app par click karenge wo seedha khulega — dobara login nahi.<br>
-      Logout sirf yahan se — ek hi baar, saare apps ka.
+      Any app you click opens directly, with no second login.<br>
+      Logging out here logs you out of all apps at once.
     </div>
   </div>
 
@@ -642,31 +652,31 @@ a.app:hover .go{color:var(--a); transform:translateX(3px);}
 /* ════════════════════════════════════════════════════════════════════
    SARV INDIA — LAUNCHER
    ────────────────────────────────────────────────────────────────────
-   Login ke baad ka PEHLA page. Teen kaam karta hai:
+   The FIRST page after login. It does three things:
 
      1. emp_code + PIN se login — `erp_app_login()` ek session token
-        banata hai jo SAARE apps ke liye hai (app_sessions). Saare apps
-        ek hi origin par hain, isi liye localStorage saajha hai aur
-        baaki apps usi token se apni pehchaan le lete hain. Yahin wo
-        localStorage keys bhi likhi jaati hain jo index.html boot par
-        padhta hai (`sarv_active_role` / `_roles` / `_user`) — isi liye
-        ERP par jaate hi wo bina PIN khul jaata hai.
+        creates the session used by ALL the apps (app_sessions). All the
+        apps are on the same origin, so localStorage is shared and the
+        other apps identify the user from that token. The localStorage
+        keys that index.html reads on boot (`sarv_active_role` / `_roles`
+        / `_user`) are written here too, which is why the ERP opens
+        without asking for the PIN.
 
-     2. SIGNUP aur FORGOT PIN — dono ka poora faisla SERVER par hota
-        hai (`erp_signup` / `erp_forgot_pin_request` + `erp_reset_pin`).
-        Yahan se jo role bheja jaaye wo padha hi nahi jaata: naya user
-        hamesha `CMP_USER` banta hai. Isi liye is page se koi apne aap
-        ko Admin nahi bana sakta.
+     2. SIGNUP and FORGOT PIN: both are decided entirely on the SERVER
+        (`erp_signup` / `erp_forgot_pin_request` + `erp_reset_pin`).
+        Any role sent from here is ignored: a new user is always created
+        as `CMP_USER`. So nobody can make themselves an Admin from this
+        page.
 
-     3. Sirf WAHI app buttons dikhana jinka access hai. Faisla theek
-        wahi teen-tah wala hai jo store-core.js ka sarvTabVisible()
-        karta hai, usi kram me:
+     3. Showing ONLY the app buttons the user has access to. The decision
+        is the same three-level one used by store-core.js's sarvTabVisible()
+        uses, in the same order:
 
            user ka app_access override → role-wise tab_visibility → default
 
-   Ye page apne aap me koi rok NAHI hai — asli rok har app ke apne gate
-   par hai (wo session se dobara poochhte hain). Yahan button chhupane ka
-   matlab sirf itna hai ki galti se khulne wali cheez saamne na rahe.
+   This page is NOT a security barrier on its own; the real check is each
+   app's own gate (they ask the session again). Hiding a button here only
+   keeps things the user shouldn't open out of the way.
    ════════════════════════════════════════════════════════════════════ */
 
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
@@ -676,29 +686,29 @@ const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
-/* Wahi keys jo store-core.js padhta / likhta hai — naam badla to ERP
-   launcher ke login ko pehchanna band kar dega. */
+/* The same keys store-core.js reads and writes. Renaming them would stop
+   the ERP from recognising the launcher's login. */
 const K_SSO    = 'sarv_sso_token';
 const K_ROLE   = 'sarv_active_role';
 const K_ROLES  = 'sarv_active_roles';
 const K_USER   = 'sarv_active_user';
-const K_SALES  = 'sihf_sb_token';      // Order Form ka apna token
+const K_SALES  = 'sihf_sb_token';      // the Order Form's own token
 const K_SALES_MSG = 'sihf_erp_sso_msg';
 
-/* Launcher par dikhne wale apps. `key` wahi hai jo Admin Panel › Tab
-   Visibility aur per-user Apps me hai, isi liye koi nayi vocabulary
-   nahi — aur naya app jodna ek line ka kaam hai. `accent` sirf dikhne
-   ke liye hai: banda rang se app pehchan le, padhne se pehle. */
+/* Apps shown on the launcher. `key` is the same key used in Admin Panel ›
+   Tab Visibility and per-user Apps, so there is no new vocabulary, and
+   adding an app is a one-line change. `accent` is purely visual: people
+   recognise the app by colour before reading. */
 const APPS = [
-  { key:'HOME_ERP_APP',       href:'index.html',      ico:'🏢', accent:'#38bdf8',
+  { key:'HOME_ERP_APP',       href:'index.html',      ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>', accent:'#38bdf8',
     title:'ERP',        sub:'Store, Purchase, Production, Masters' },
-  { key:'HOME_APPROVAL_APP',  href:'mobile.html',     ico:'✍️', accent:'#a78bfa',
+  { key:'HOME_APPROVAL_APP',  href:'mobile.html',     ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>', accent:'#a78bfa',
     title:'Approvals',  sub:'PR / PO approve, Store check' },
-  { key:'HOME_COMPLAINT_APP', href:'complaint.html',  ico:'🛠️', accent:'#fb923c',
+  { key:'HOME_COMPLAINT_APP', href:'complaint.html',  ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>', accent:'#fb923c',
     title:'Complaint',  sub:'Machine complaints, Tasks, Notice' },
-  { key:'HOME_PACKING',       href:'packing.html',    ico:'📦', accent:'#34d399',
+  { key:'HOME_PACKING',       href:'packing.html',    ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg>', accent:'#34d399',
     title:'Packing',    sub:'Packing slips & dispatch' },
-  { key:'HOME_ORDER_FORM',    href:'order-form.html', ico:'🧾', accent:'#f472b6',
+  { key:'HOME_ORDER_FORM',    href:'order-form.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>', accent:'#f472b6',
     title:'Order Form', sub:'Sales order + Proforma Invoice' }
 ];
 
@@ -717,93 +727,91 @@ let USERS = [], TABVIS = null;
 const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 function showErr(m){ const e=$('err'); e.innerHTML=m; e.style.display='block'; }
 function hideErr(){ $('err').style.display='none'; }
-// Chhote helper — teen card ek jaise error / ok dabbe use karte hain.
+// Small helpers; all three cards use the same error / success boxes.
 const setBox = (id, html) => { const e=$(id); e.innerHTML=html||''; e.style.display=html?'block':'none'; };
 
-/* ── Error ko sach-sach dikhana ───────────────────────────────────────
-   Pehle yahan message par regex chalta tha ("does not exist" mila to
-   maan lo migration nahi chali"). Wo galat tha: kisi bhi aur wajah se
-   aaya error bhi usi me gin jaata tha, aur phir screen par wo baat
-   likhi jaati thi jo sach nahi thi — jaise "SQL file chalayein" jabki
-   wo chal chuki hoti.
+/* ── Reporting errors honestly ─────────────────────────────────────────
+   This used to run a regex on the message ("if it says 'does not exist',
+   assume the migration hasn't run"). That was wrong: errors from any other
+   cause were counted the same way, and the screen then said something
+   untrue, such as "run the SQL file" when it had already been run.
 
-   Ab faisla CODE se hota hai (PostgREST / Postgres ka apna code), aur
-   asli message HAMESHA saath dikhta hai. Wajah pata na ho to jhooth
-   bolne se behtar hai asli baat dikha dena. */
+   Now the decision is made from the CODE (PostgREST / Postgres's own
+   code), and the real message is ALWAYS shown alongside. When the cause is
+   unknown, showing the real message beats guessing. */
 function explainErr(e, fnName){
   const msg  = (e && (e.message || e.msg)) || String(e || 'unknown error');
   const code = (e && e.code) || '';
   const tail = '<br><small style="opacity:.85;">' + esc(msg)
              + (code ? ' <b>[' + esc(code) + ']</b>' : '') + '</small>';
 
-  /* 42883 do bilkul alag wajah se aata hai, aur dono ko ek hi message
-     dena jhooth tha ("migration chali nahi" — jabki function maujood
-     hai):
-       (a) jis function ko hum bula rahe hain wahi nahi hai, ya
-       (b) us function ke ANDAR kisi doosre function ka naam resolve
-           nahi hua. Supabase me ye lagbhag hamesha pgcrypto hota hai
-           (gen_random_bytes / crypt / gen_salt / digest / hmac): wo
-           `extensions` schema me rehta hai, aur bulaye ja rahe function
-           ke `search_path` me wo schema chhoot gaya hai.
-     Farq message me likha hota hai, isi liye wahin se pehchante hain. */
+  /* 42883 comes from two quite different causes, and giving both the same
+     message was misleading ("migration not run" when the function exists):
+       (a) the function we are calling does not exist, or
+       (b) a function name INSIDE that function could not be resolved.
+           On Supabase this is almost always pgcrypto (gen_random_bytes /
+           crypt / gen_salt / digest / hmac): it lives in the `extensions`
+           schema, and that schema is missing from the called function's
+           `search_path`.
+     The difference is in the message, so that is where we tell them apart. */
   const pgc = /\b(gen_random_bytes|gen_salt|crypt|digest|hmac)\s*\(/i.exec(msg);
   if (code === '42883' && pgc)
-    return '⚠️ Login ka aakhri qadam atka — PIN sahi hai, par session token nahi ban saka.<br>'
-         + 'Server par <b>' + esc(pgc[1]) + '()</b> nahi mila: ye pgcrypto ka function hai aur '
-         + 'Supabase me <code>extensions</code> schema me rehta hai, par <b>' + esc(fnName)
-         + '()</b> ke <code>search_path</code> me wo schema chhoot gaya hai.<br>'
-         + 'Ilaaj: SQL Editor me <code>sql/FIX_PGCRYPTO_SEARCHPATH.sql</code> chalayein '
-         + '(kuch bharna nahi hai — wo khud dhoondh kar theek kar deti hai).' + tail;
+    return 'The last login step failed. The PIN is correct, but the session token could not be created.<br>'
+         + '<b>' + esc(pgc[1]) + '()</b> was not found on the server. It is a pgcrypto function that '
+         + 'lives in the <code>extensions</code> schema on Supabase, but that schema is missing from the <code>search_path</code> of <b>' + esc(fnName)
+         + '()</b>.<br>'
+         + 'Fix: run <code>sql/FIX_PGCRYPTO_SEARCHPATH.sql</code> in the SQL Editor '
+         + '(nothing to fill in; it finds and fixes the problem itself).' + tail;
 
-  // PGRST202 = PostgREST ko is naam/arguments ka function mila hi nahi.
-  // 42883   = Postgres me aisa function nahi hai.
+  // PGRST202 = PostgREST found no function with this name/arguments.
+  // 42883   = no such function in Postgres.
   if (code === 'PGRST202' || code === '42883')
-    return '⚠️ <b>' + esc(fnName) + '()</b> server par nahi mila.<br>'
-         + 'Migration chali nahi, ya Supabase ka schema cache purana hai — '
-         + 'SQL Editor me <code>notify pgrst, \'reload schema\';</code> chalakar dobara koshish karein.' + tail;
+    return '<b>' + esc(fnName) + '()</b> was not found on the server.<br>'
+         + 'Either the migration has not been run, or the Supabase schema cache is stale. '
+         + 'Run <code>notify pgrst, \'reload schema\';</code> in the SQL Editor and try again.' + tail;
   if (code === '42501')
-    return '⚠️ Permission nahi hai (anon is function/table ko nahi chala sakta).' + tail;
+    return 'Permission denied (anon cannot run this function/table).' + tail;
   if (code === 'PGRST301' || code === '401')
-    return '⚠️ Supabase key reject ho gayi — anon key check karein.' + tail;
+    return 'The Supabase key was rejected. Please check the anon key.' + tail;
   if (/failed to fetch|networkerror|load failed/i.test(msg))
-    return '⚠️ Server tak pahunch nahi hui — internet / firewall check karein.' + tail;
-  return '⚠️ Kaam nahi hua.' + tail;
+    return 'Could not reach the server. Please check the internet connection or firewall.' + tail;
+  return 'The request failed.' + tail;
 }
 
-/* Server se aaye error code ka seedha matlab — ek hi jagah, taaki Signup
-   aur Forgot dono wahi bhasha bolein. */
+/* Plain meaning of each error code from the server, in one place so that
+   Signup and Forgot PIN use the same wording. */
 const SRV_MSG = {
-  EMP_CODE_REQUIRED:'Employee Code daalein',
-  CONTACT_REQUIRED:'Contact no. daalein',
-  DOB_REQUIRED:'Date of Birth chunein',
-  DOB_INVALID:'Date of Birth sahi nahi lagti — dobara dekhein',
-  PIN_INVALID_FORMAT:'PIN sirf 4 se 8 digit ka number ho',
+  EMP_CODE_REQUIRED:'Please enter the Employee Code',
+  CONTACT_REQUIRED:'Please enter the contact number',
+  DOB_REQUIRED:'Please choose the date of birth',
+  DOB_INVALID:'The date of birth does not look right. Please check it.',
+  PIN_INVALID_FORMAT:'The PIN must be a 4 to 8 digit number',
   SIGNATURE_REQUIRED:'Signature banayein',
-  PHOTO_REQUIRED:'Profile photo chunein',
-  PHOTO_TOO_BIG:'Photo bahut badi hai — doosri chunein',
-  SIGNATURE_TOO_BIG:'Signature bahut bada hai — Clear karke dobara banayein',
-  EMP_NOT_FOUND:'Ye Employee Code company record me nahi mila — Admin se check karwayein',
-  EMP_INACTIVE:'Ye Employee Code inactive hai — Admin se kehein',
-  ALREADY_REGISTERED:'Is Employee Code ka account pehle se bana hua hai — Login karein, ya PIN bhool gaye to "PIN Reset" use karein',
-  EMP_NAME_MISSING:'Company record me is code par naam nahi hai — Admin se kehein',
-  PIN_RECIPE_MISSING:'⚠️ Server par PIN setup adhoora hai — Admin se USER_SELF_SERVICE_MIGRATION.sql chalwayein',
-  PIN_VERIFY_FAILED:'⚠️ PIN save hua par chala nahi — Admin se kehein',
-  ALL_FIELDS_REQUIRED:'Teeno field bharein',
-  TOO_MANY_ATTEMPTS:'Bahut baar galat koshish ho gayi — ek ghante baad try karein, ya Admin se PIN reset karwayein',
-  NO_MATCH:'Ye teen details database se match nahi hui. Dhyan dein: DOB aur Contact no. wahi hon jo account banate waqt diye the.',
-  MULTIPLE_ACCOUNTS:'Is Employee Code par ek se zyada account hain aur dono ki details ek jaisi hain — yahan se kaun sa chunna hai ye tay nahi ho sakta. Admin se PIN reset karwayein (Admin Panel › Users).',
-  USER_INACTIVE:'Aapka account band hai — Admin se kehein',
-  BAD_TOKEN:'Reset link sahi nahi — dobara Verify karein',
-  TOKEN_USED:'Ye reset pehle use ho chuka — dobara Verify karein',
-  TOKEN_EXPIRED:'10 minute ho gaye — dobara Verify karein'
+  PHOTO_REQUIRED:'Please choose a profile photo',
+  PHOTO_TOO_BIG:'The photo is too large. Please choose another one.',
+  SIGNATURE_TOO_BIG:'The signature is too large. Clear it and sign again.',
+  EMP_NOT_FOUND:'This Employee Code was not found in the company records. Please ask the Admin to check.',
+  EMP_INACTIVE:'This Employee Code is inactive. Please contact the Admin.',
+  ALREADY_REGISTERED:'An account already exists for this Employee Code. Please log in, or use "PIN Reset" if you have forgotten your PIN.',
+  EMP_NAME_MISSING:'The company record has no name for this code. Please contact the Admin.',
+  PIN_RECIPE_MISSING:'PIN setup on the server is incomplete. Ask the Admin to run USER_SELF_SERVICE_MIGRATION.sql.',
+  PIN_VERIFY_FAILED:'The PIN was saved but does not work. Please contact the Admin.',
+  ALL_FIELDS_REQUIRED:'Please fill in all three fields',
+  TOO_MANY_ATTEMPTS:'Too many failed attempts. Try again after an hour, or ask the Admin to reset your PIN.',
+  NO_MATCH:'These details do not match the database. Note: the DOB and contact number must be the ones given when the account was created.',
+  MULTIPLE_ACCOUNTS:'This Employee Code has more than one account with identical details, so we cannot tell which one to reset. Please ask the Admin to reset your PIN (Admin Panel › Users).',
+  USER_INACTIVE:'Your account is inactive. Please contact the Admin.',
+  BAD_TOKEN:'The reset link is not valid. Please verify again.',
+  TOKEN_USED:'This reset has already been used. Please verify again.',
+  TOKEN_EXPIRED:'The 10 minutes have expired. Please verify again.'
 };
-const srvMsg = c => SRV_MSG[c] || ('Nahi hua: ' + esc(c || 'unknown'));
+const srvMsg = c => SRV_MSG[c] || ('Failed: ' + esc(c || 'unknown'));
 
-/* ── Access ka faisla — store-core.js ke sarvTabVisible() jaisa ────────
-   Launcher par saare app keys ka default `true` hai (SARV_TABS me in
-   sab par def:'ALL' hai). Isi liye yahan sirf do tah chahiye: user ka
-   apna override, phir role-wise matrix. Jo key kahin set na ho wo
-   dikhti hai — yani ye page kisi ka maujooda access kam nahi karta. */
+/* ── Access decision, same as store-core.js's sarvTabVisible() ─────────
+   On the launcher every app key defaults to `true` (SARV_TABS has
+   def:'ALL' for all of them), so only two levels are needed here: the
+   user's own override, then the role-wise matrix. A key that is set
+   nowhere is shown, so this page never reduces anyone's existing access. */
 function appAllowed(key, roles, appAccess){
   const ov = appAccess && typeof appAccess === 'object' ? appAccess[key] : undefined;
   if (typeof ov === 'boolean') return ov;                 // 1. per-user
@@ -834,21 +842,21 @@ async function loadMasters(){
   USERS = (u.data || []).filter(x => x.is_active !== false);
   TABVIS = (!s.error && s.data && s.data[0] && s.data[0].value) || null;
 
-  /* Dropdown me emp_code hi value hai (login username wahi hai), aur
-     label me naam — taaki banda apna code dhoondh sake. Jiska code
-     khaali hai uska naam value banta hai, warna wo login hi na kar
-     paaye (backfill me naam match na hua ho to aisa hota hai). */
+  /* The dropdown value is the emp_code (that is the login username), and
+     the label is the name, so people can find their code. When the code is
+     blank the name becomes the value; otherwise that person couldn't log in
+     at all (this happens when the backfill found no name match). */
   const dl = $('namesDl');
   dl.innerHTML = '';
-  /* Ek hi code do account par ho sakta hai — dropdown me wo ek hi baar
-     aana chahiye (chunav baad me login card par hota hai). Isi liye
-     value par dedupe, aur label me dono naam jod dete hain. */
+  /* One code can belong to two accounts. It should appear only once in the
+     dropdown (the choice is made later on the login card), so we dedupe on
+     the value and join both names in the label. */
   const seen = new Map();
   USERS.forEach(x => {
     const code = String(x.emp_code || '').trim();
     const val  = code || x.user_name;
     if (!val) return;
-    const label = code ? x.user_name : (x.user_name + ' (code nahi — naam se login)');
+    const label = code ? x.user_name : (x.user_name + ' (no code, log in by name)');
     if (seen.has(val)) seen.set(val, seen.get(val) + ' / ' + x.user_name);
     else seen.set(val, label);
   });
@@ -859,14 +867,13 @@ async function loadMasters(){
   });
 }
 
-/* Login box me emp_code bhi chalta hai aur naam bhi. Naam jaan-boojh kar
-   chhoda hai: backfill me jin logon ka naam `employees` se match nahi
-   hua unka emp_code khaali hai, aur sirf code maanne se wo log bahar ho
-   jaate.
+/* The login box accepts both the emp_code and the name. Names are kept on
+   purpose: people whose name did not match `employees` during the backfill
+   have a blank emp_code, and accepting only codes would lock them out.
 
-   Ek emp_code par DO account ho sakte hain (ek hi insaan ke do role —
-   jaise "ANKUR JI / Purchaser" aur "ANKUR / GM"). Isi liye ye LIST
-   lautata hai, ek user nahi. */
+   One emp_code can have TWO accounts (two roles of the same person, e.g.
+   "ANKUR JI / Purchaser" and "ANKUR / GM"). That is why this returns a
+   LIST, not a single user. */
 const findUsers = nm => {
   const n = String(nm||'').trim().toUpperCase();
   if (!n) return [];
@@ -875,8 +882,8 @@ const findUsers = nm => {
   return USERS.filter(x => String(x.user_name||'').trim().toUpperCase() === n);
 };
 
-/* Jab do account hon to banda chunta hai; ek ho to kuch poochhna hi
-   nahi. `pickedId` tabhi set hota hai jab sach me chunav hua ho. */
+/* With two accounts the user chooses; with one there is nothing to ask.
+   `pickedId` is set only when a choice was actually made. */
 let pickedId = null;
 
 function syncPicks(list){
@@ -887,7 +894,7 @@ function syncPicks(list){
   }
   wrap.style.display = 'block';
   box.innerHTML = '';
-  // Pichhla chunav is naam me na ho to saaf kar dein.
+  // If the previous choice doesn't belong to this name, clear it.
   if (!list.some(u => String(u.id) === pickedId)) pickedId = null;
   list.forEach(u => {
     const rs = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
@@ -905,14 +912,14 @@ function syncPicks(list){
   });
 }
 
-/* Code / naam type karte hi uska naam aur role dikha dete hain — "main
-   sahi account par hoon" ka jawab PIN daalne se pehle mil jaata hai. */
+/* As soon as a code or name is typed, show the name and role, so users
+   know they are on the right account before entering the PIN. */
 $('nameBox').addEventListener('input', function(){
   const list = findUsers(this.value);
   syncPicks(list);
   if (!list.length){ $('rolesNote').textContent = ''; return; }
   if (list.length > 1){
-    $('rolesNote').textContent = '⚠️ Is code par ' + list.length + ' account hain — niche apna chunein';
+    $('rolesNote').textContent = 'This code has ' + list.length + ' accounts. Choose yours below.';
     return;
   }
   const u = list[0];
@@ -920,16 +927,15 @@ $('nameBox').addEventListener('input', function(){
   $('rolesNote').textContent = '✓ ' + u.user_name + ' — ' + rs.map(roleLabel).join(' + ');
 });
 
-/* PIN dikhane/chhupane ka toggle — factory phone par chhote keypad se
-   galat PIN type ho jaana aam hai, aur "Galat PIN" se behtar hai banda
-   khud dekh le. */
+/* Show/hide toggle for the PIN. Mistyping on a small factory-phone keypad
+   is common, and letting the user see it beats a "Wrong PIN" message. */
 function wirePeek(btnId, inputId){
   $(btnId).addEventListener('click', () => {
     const b = $(inputId);
     const show = b.type === 'password';
     b.type = show ? 'text' : 'password';
-    $(btnId).textContent = show ? '🙈' : '👁';
-    $(btnId).setAttribute('aria-label', show ? 'PIN chhupayein' : 'PIN dikhayein');
+    $(btnId).textContent = show ? 'Hide' : 'Show';
+    $(btnId).setAttribute('aria-label', show ? 'Hide PIN' : 'Show PIN');
     b.focus();
   });
 }
@@ -939,25 +945,25 @@ async function doLogin(){
   hideErr();
   const nm  = $('nameBox').value.trim();
   const pin = $('pinBox').value;
-  if (!nm)  return showErr('Apna Employee Code daalein');
+  if (!nm)  return showErr('Please enter your Employee Code');
   const list = findUsers(nm);
   if (!list.length)
-    return showErr('"' + esc(nm) + '" ka koi active account nahi mila. Naya hai? niche <b>Naya Account</b> dabayein.');
-  // Do account hon to chunav zaroori — andaza lagakar galat account par
-  // login karwana sabse bura nateeja hai.
+    return showErr('No active account found for "' + esc(nm) + '". New here? Tap <b>New Account</b> below.');
+  // With two accounts a choice is required; logging into the wrong account
+  // by guessing is the worst possible outcome.
   const u = (list.length === 1) ? list[0] : list.find(x => String(x.id) === pickedId);
-  if (!u){ syncPicks(list); return showErr('Is code par ' + list.length + ' account hain — upar apna account chunein'); }
-  if (!pin) return showErr('PIN daalein');
+  if (!u){ syncPicks(list); return showErr('This code has ' + list.length + ' accounts. Choose your account above.'); }
+  if (!pin) return showErr('Please enter your PIN');
 
   const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
   const apps  = allowedAppKeys(roles, u.app_access);
 
   const btn = $('goBtn');
-  btn.disabled = true; btn.textContent = '⏳ Check kar rahe hain…';
+  btn.disabled = true; btn.textContent = 'Checking…';
   try{
-    /* allowed_apps session par likh diya jaata hai — baaki apps usi list
-       ko padhte hain, unhe permission ka poora matrix samajhna nahi
-       padta. Ye wahi raasta hai jo ERP ka login use karta hai. */
+    /* allowed_apps is written on the session, and the other apps read that
+       list instead of having to understand the full permission matrix. This
+       is the same path the ERP login uses. */
     const r = await SB.rpc('erp_app_login', {
       p_user_id: String(u.id), p_pin: pin, p_allowed_apps: apps
     });
@@ -965,18 +971,18 @@ async function doLogin(){
     const d = r.data || {};
     if (!d.success){
       const m = {
-        USER_NOT_FOUND:'User nahi mila — page refresh karein',
-        USER_INACTIVE:'Ye account band hai — Admin se kehein',
-        PIN_INVALID:'Galat PIN — bhool gaye to "PIN bhool gaye?" dabayein',
-        PIN_CHECK_UNAVAILABLE:'⚠️ Server par PIN check nahi ho saka — Admin se kehein'
+        USER_NOT_FOUND:'User not found. Please refresh the page.',
+        USER_INACTIVE:'This account is inactive. Please contact the Admin.',
+        PIN_INVALID:'Incorrect PIN. If you have forgotten it, tap "Forgot PIN?".',
+        PIN_CHECK_UNAVAILABLE:'The PIN could not be checked on the server. Please contact the Admin.'
       };
-      return showErr(m[d.error] || ('Login nahi hua: ' + esc(d.error || 'unknown')));
+      return showErr(m[d.error] || ('Login failed: ' + esc(d.error || 'unknown')));
     }
     await finishLogin(d, pin);
   }catch(e){
-    /* Poora error object console me bhi — screen par chhoti si lakeer
-       aati hai, par wajah dhoondhne ke liye code / details / hint teeno
-       chahiye hote hain. */
+    /* Log the full error object to the console as well. The screen shows a
+       short line, but tracking down the cause needs the code, details and
+       hint. */
     console.error('[LAUNCHER] login fail:', e);
     showErr(explainErr(e, 'erp_app_login'));
   }finally{
@@ -997,19 +1003,19 @@ async function finishLogin(d, pin){
   };
   try{
     localStorage.setItem(K_SSO, d.token);
-    /* Ye teen keys index.html boot par padhta hai — inke bina ERP
-       apni PIN screen dikha dega, jabki login ho chuka hai. */
+    /* index.html reads these three keys on boot. Without them the ERP
+       would show its PIN screen even though the user has logged in. */
     localStorage.setItem(K_ROLE,  su.primary_role || roles[0] || '');
     localStorage.setItem(K_ROLES, JSON.stringify(roles));
     localStorage.setItem(K_USER,  JSON.stringify(user));
   }catch(e){}
 
-  /* Order Form ka apna session — uska token alag key me jaata hai.
-     Rukte nahi: fail ho to Order Form apni login screen dikha dega aur
-     wajah bhi, baaki apps par koi asar nahi. */
+  /* The Order Form's own session; its token goes under a separate key.
+     We don't wait on it: if it fails, the Order Form shows its own login
+     screen with the reason, and the other apps are unaffected. */
   if (user.allowed_apps.indexOf('HOME_ORDER_FORM') >= 0) await salesSso(su.primary_role, su.id, pin);
-  /* Access hi nahi hai to pichhle user ke nishan mitane padte hain —
-     warna uska purana token / wajah is user par lag jaati. */
+  /* No access at all: clear the previous user's traces, otherwise their
+     old token or message would apply to this user. */
   else try{ localStorage.removeItem(K_SALES); localStorage.removeItem(K_SALES_MSG); }catch(e){}
 
   $('pinBox').value = '';
@@ -1027,19 +1033,19 @@ async function salesSso(roleKey, userId, pin){
     }else{
       localStorage.removeItem(K_SALES);
       localStorage.setItem(K_SALES_MSG,
-        (r.data && r.data.error) || 'Order Form ka access nahi hai');
+        (r.data && r.data.error) || 'No access to the Order Form');
     }
   }catch(e){
-    try{ localStorage.setItem(K_SALES_MSG, 'Order Form login nahi hua — wahan apna naam + PIN daalein'); }catch(x){}
+    try{ localStorage.setItem(K_SALES_MSG, 'Order Form login failed. Please enter your name and PIN there.'); }catch(x){}
   }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   SIGNATURE PAD — Signup ke liye
+   SIGNATURE PAD: for Signup
    ──────────────────────────────────────────────────────────────────── */
 function makeSigPad(canvas){
   const ctx = canvas.getContext('2d');
-  // Pad gora rehta hai aur ink kaali — PDF par bhi wahi dikhti hai.
+  // White pad, black ink; it looks the same on the PDF.
   ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3.2;
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   let down = false, ink = 0, lx = 0, ly = 0;
@@ -1058,12 +1064,12 @@ function makeSigPad(canvas){
   canvas.addEventListener('touchend',stop);
   return {
     clear(){ ctx.clearRect(0,0,canvas.width,canvas.height); ink = 0; },
-    // 30px se kam lakeer "galti se chhua" hai, sign nahi.
+    // A stroke under 30px is an accidental touch, not a signature.
     hasInk(){ return ink >= 30; },
     dataUrl(){
-      /* PNG transparent hota hai; PDF / screen par kahin kaali background
-         par lage to sign gayab lagta. Isi liye safed background pehle
-         bhar kar bhejte hain. */
+      /* PNG is transparent; on a dark background (PDF or screen) the
+         signature would disappear. So a white background is filled in
+         before sending. */
       const o = document.createElement('canvas');
       o.width = canvas.width; o.height = canvas.height;
       const c = o.getContext('2d');
@@ -1074,18 +1080,18 @@ function makeSigPad(canvas){
   };
 }
 
-/* Photo ko 256×256 JPEG me simet dete hain — DB me data-URL jaata hai,
-   isi liye size maayne rakhta hai (4 MB ki selfie seedha nahi bhej
-   sakte). Centre se crop, taaki chehra beech me rahe. */
+/* Shrink the photo to a 256×256 JPEG. It is stored in the DB as a data
+   URL, so size matters (a 4 MB selfie cannot be sent as it is). Cropped
+   from the centre so the face stays in the middle. */
 function shrinkPhoto(file){
   return new Promise((res, rej) => {
-    if (!file) return rej(new Error('Koi file nahi chuni'));
-    if (!/^image\//.test(file.type)) return rej(new Error('Sirf image file chunein'));
+    if (!file) return rej(new Error('No file selected'));
+    if (!/^image\//.test(file.type)) return rej(new Error('Please choose an image file'));
     const fr = new FileReader();
-    fr.onerror = () => rej(new Error('File padhi nahi ja saki'));
+    fr.onerror = () => rej(new Error('The file could not be read'));
     fr.onload = () => {
       const img = new Image();
-      img.onerror = () => rej(new Error('Ye image kholi nahi ja saki'));
+      img.onerror = () => rej(new Error('This image could not be opened'));
       img.onload = () => {
         const S = 256;
         const c = document.createElement('canvas');
@@ -1104,17 +1110,17 @@ function shrinkPhoto(file){
 /* ════════════════════════════════════════════════════════════════════
    VIEW SWITCHING — login / signup / forgot
    ──────────────────────────────────────────────────────────────────── */
-/* Chaaron screen ek hi jagah se switch hoti hain — isi liye "do card ek
-   saath khule reh gaye" jaisa haal ban hi nahi sakta. */
+/* All four screens are switched from one place, so two cards can never be
+   left open at the same time. */
 function showView(which){
   ['loginCard','signupCard','forgotCard','homeWrap'].forEach(id => {
     $(id).style.display = (id === which) ? 'block' : 'none';
   });
   $('boot').style.display = 'none';
 }
-/* App se wapas aane ki baat (logout / session khatam) yahan rakhi jaati
-   hai aur login screen par hi dikhti hai — showView se pehle likhne par
-   wo hi usko chhupa deta. Ek baar dikhakar saaf ho jaati hai. */
+/* A message about returning from an app (logout / session ended) is kept
+   here and shown on the login screen; writing it before showView would get
+   it hidden again. It is shown once and then cleared. */
 let gateNote = '';
 function showLogin(){
   showView('loginCard');
@@ -1127,10 +1133,10 @@ function showLogin(){
    ──────────────────────────────────────────────────────────────────── */
 let suPad = null, suPhoto = null, suEmp = null;
 
-/* Employee Code se naam / designation / department — wahi `employees`
-   table jo PR form bhi padhta hai. Yahan se aaye teen field read-only
-   hain: company record hi sach hai, aur use launcher se badalne dena
-   galat hota. Contact no. badla ja sakta hai (wo purana ho sakta hai). */
+/* Name / designation / department from the Employee Code, read from the
+   same `employees` table the PR form uses. These three fields are
+   read-only: the company record is the source of truth and the launcher
+   must not change it. The contact number can be changed (it may be outdated). */
 async function suLookup(){
   const code = $('suCode').value.trim();
   const note = $('suLookup');
@@ -1138,16 +1144,16 @@ async function suLookup(){
   $('suName').value = ''; $('suDesig').value = ''; $('suDept').value = '';
   if (!code){ note.textContent = ''; return; }
 
-  // Pehle se account bana ho to turant bata dein — form bharwane se pehle.
+  // If an account already exists, say so straight away, before the form is filled.
   const already = USERS.find(x => String(x.emp_code||'').trim().toUpperCase() === code.toUpperCase());
   if (already){
     note.style.color = 'var(--err-tx)';
-    note.textContent = '⚠️ Is code ka account pehle se hai (' + already.user_name + ') — Login karein';
+    note.textContent = 'An account already exists for this code (' + already.user_name + '). Please log in.';
     return;
   }
 
   note.style.color = 'var(--txt-3)';
-  note.textContent = '⏳ Dekh rahe hain…';
+  note.textContent = 'Checking…';
   try{
     const q = await SB.from('employees')
       .select('emp_code,person_name,designation,department,contact_no,is_active')
@@ -1156,19 +1162,19 @@ async function suLookup(){
     const e = (q.data || [])[0];
     if (!e){
       note.style.color = 'var(--err-tx)';
-      note.textContent = '✖ Ye Employee Code company record me nahi mila';
+      note.textContent = '✖ This Employee Code was not found in the company records';
       return;
     }
     if (e.is_active === false){
       note.style.color = 'var(--err-tx)';
-      note.textContent = '✖ Ye Employee Code inactive hai — Admin se kehein';
+      note.textContent = '✖ This Employee Code is inactive. Please contact the Admin.';
       return;
     }
     suEmp = e;
     $('suName').value  = e.person_name || '';
     $('suDesig').value = e.designation || '';
     $('suDept').value  = e.department  || '';
-    // Contact pehle se bhara nahi ho to company record se bhar dete hain.
+    // If the contact field is empty, fill it from the company record.
     if (!$('suContact').value.trim()) $('suContact').value = e.contact_no || '';
     note.style.color = 'var(--ok)';
     note.textContent = '✓ ' + (e.person_name || '') + (e.department ? ' · ' + e.department : '');
@@ -1186,24 +1192,24 @@ async function doSignup(){
   const pin     = $('suPin').value;
   const pin2    = $('suPin2').value;
 
-  // Sab kuch zaroori — ek-ek karke saaf batate hain, sab ek saath nahi.
-  if (!code)                    return setBox('suErr','Employee Code daalein');
-  if (!suEmp)                   return setBox('suErr','Employee Code verify nahi hua — code dobara check karein');
-  if (!contact)                 return setBox('suErr','Contact no. daalein');
+  // Everything is required; report problems one at a time, not all at once.
+  if (!code)                    return setBox('suErr','Please enter the Employee Code');
+  if (!suEmp)                   return setBox('suErr','The Employee Code could not be verified. Please check it.');
+  if (!contact)                 return setBox('suErr','Please enter the contact number');
   if (contact.replace(/\D/g,'').length < 10)
-                                return setBox('suErr','Contact no. poora daalein (kam se kam 10 digit)');
-  if (!dob)                     return setBox('suErr','Date of Birth chunein');
-  if (!/^[0-9]{4,8}$/.test(pin))return setBox('suErr','PIN 4 se 8 digit ka number ho');
-  if (pin !== pin2)             return setBox('suErr','Dono PIN ek jaise nahi hain');
-  if (!suPhoto)                 return setBox('suErr','Profile photo chunein');
-  if (!suPad || !suPad.hasInk())return setBox('suErr','✍️ Signature banayein — pad par sign karein');
+                                return setBox('suErr','Please enter the full contact number (at least 10 digits)');
+  if (!dob)                     return setBox('suErr','Please choose the date of birth');
+  if (!/^[0-9]{4,8}$/.test(pin))return setBox('suErr','PIN must be a 4 to 8 digit number');
+  if (pin !== pin2)             return setBox('suErr','The two PINs do not match');
+  if (!suPhoto)                 return setBox('suErr','Please choose a profile photo');
+  if (!suPad || !suPad.hasInk())return setBox('suErr','Please sign on the pad');
 
   const btn = $('suGo');
-  btn.disabled = true; btn.textContent = '⏳ Account bana rahe hain…';
+  btn.disabled = true; btn.textContent = 'Creating account…';
   try{
-    /* Role yahan se NAHI bhejte — server khud `CMP_USER` lagata hai.
-       Isi liye is request ko badal kar koi apne aap ko Admin nahi bana
-       sakta. */
+    /* The role is NOT sent from here; the server sets `CMP_USER` itself.
+       So nobody can make themselves an Admin by tampering with this
+       request. */
     const r = await SB.rpc('erp_signup', {
       p_emp_code: code,
       p_contact_no: contact,
@@ -1216,9 +1222,9 @@ async function doSignup(){
     const d = r.data || {};
     if (!d.success) return setBox('suErr', srvMsg(d.error));
 
-    setBox('suOk','✅ Account ban gaya — <b>' + esc(d.name || '') + '</b><br>'
-      + 'Ab apne Employee Code <b>' + esc(d.emp_code || code) + '</b> aur isi PIN se login karein.');
-    // Login screen ke liye naam/code taiyar kar dete hain.
+    setBox('suOk','Account created: <b>' + esc(d.name || '') + '</b><br>'
+      + 'You can now log in with your Employee Code <b>' + esc(d.emp_code || code) + '</b> and this PIN.');
+    // Prepare the name/code for the login screen.
     await loadMasters().catch(()=>{});
     setTimeout(() => {
       showLogin();
@@ -1230,7 +1236,7 @@ async function doSignup(){
     console.error('[LAUNCHER] signup fail:', e);
     setBox('suErr', explainErr(e, 'erp_signup'));
   }finally{
-    btn.disabled = false; btn.textContent = '✅ Account banayein';
+    btn.disabled = false; btn.textContent = 'Account banayein';
   }
 }
 
@@ -1244,10 +1250,10 @@ async function doForgotVerify(){
   const code    = $('fpCode').value.trim();
   const dob     = $('fpDob').value;
   const contact = $('fpContact').value.trim();
-  if (!code || !dob || !contact) return setBox('fpErr','Teeno field bharein');
+  if (!code || !dob || !contact) return setBox('fpErr','Please fill in all three fields');
 
   const btn = $('fpVerify');
-  btn.disabled = true; btn.textContent = '⏳ Verify kar rahe hain…';
+  btn.disabled = true; btn.textContent = 'Verifying…';
   try{
     const r = await SB.rpc('erp_forgot_pin_request', {
       p_emp_code: code, p_dob: dob, p_contact_no: contact
@@ -1257,28 +1263,28 @@ async function doForgotVerify(){
     if (!d.success) return setBox('fpErr', srvMsg(d.error));
 
     fpToken = d.token;
-    setBox('fpOk','✓ Pehchaan ho gayi — <b>' + esc(d.name || '') + '</b>. Ab naya PIN set karein.');
+    setBox('fpOk','✓ Verified: <b>' + esc(d.name || '') + '</b>. You can now set a new PIN.');
     $('fpStep1').style.display = 'none';
     $('fpStep2').style.display = 'block';
-    $('fpSub').textContent = 'Naya PIN chunein — 4 se 8 digit ka number.';
+    $('fpSub').textContent = 'Choose a new PIN: a 4 to 8 digit number.';
     $('fpPin').focus();
   }catch(e){
     console.error('[LAUNCHER] forgot verify fail:', e);
     setBox('fpErr', explainErr(e, 'erp_forgot_pin_request'));
   }finally{
-    btn.disabled = false; btn.textContent = '🔎 Verify karein';
+    btn.disabled = false; btn.textContent = 'Verify';
   }
 }
 
 async function doForgotSave(){
   setBox('fpErr','');
   const pin = $('fpPin').value, pin2 = $('fpPin2').value;
-  if (!/^[0-9]{4,8}$/.test(pin)) return setBox('fpErr','PIN 4 se 8 digit ka number ho');
-  if (pin !== pin2)              return setBox('fpErr','Dono PIN ek jaise nahi hain');
-  if (!fpToken)                  return setBox('fpErr','Pehle Verify karein');
+  if (!/^[0-9]{4,8}$/.test(pin)) return setBox('fpErr','PIN must be a 4 to 8 digit number');
+  if (pin !== pin2)              return setBox('fpErr','The two PINs do not match');
+  if (!fpToken)                  return setBox('fpErr','Please verify first');
 
   const btn = $('fpSave');
-  btn.disabled = true; btn.textContent = '⏳ Save kar rahe hain…';
+  btn.disabled = true; btn.textContent = 'Saving…';
   try{
     const r = await SB.rpc('erp_reset_pin', { p_token: fpToken, p_new_pin: pin });
     if (r.error) throw r.error;
@@ -1286,7 +1292,7 @@ async function doForgotSave(){
     if (!d.success) return setBox('fpErr', srvMsg(d.error));
 
     fpToken = null;
-    setBox('fpOk','✅ Naya PIN save ho gaya — ab isi PIN se login karein.');
+    setBox('fpOk','New PIN saved. You can now log in with it.');
     setTimeout(() => {
       showLogin();
       $('nameBox').value = $('fpCode').value.trim();
@@ -1297,7 +1303,7 @@ async function doForgotSave(){
     console.error('[LAUNCHER] reset pin fail:', e);
     setBox('fpErr', explainErr(e, 'erp_reset_pin'));
   }finally{
-    btn.disabled = false; btn.textContent = '💾 Naya PIN save karein';
+    btn.disabled = false; btn.textContent = 'Save New PIN';
   }
 }
 
@@ -1310,8 +1316,8 @@ const greet = () => {
   return 'Shubh Sandhya';
 };
 
-/* Profile photo alag se maangte hain: wo data-URL hai aur user list me
-   70 photos kheenchna bekaar bhaari pad jaata. Sirf is ek user ki. */
+/* The profile photo is fetched separately: it is a data URL, and pulling
+   70 photos with the user list would be needlessly heavy. Only this user's. */
 async function loadMyPhoto(id){
   if (!id) return;
   try{
@@ -1323,7 +1329,7 @@ async function loadMyPhoto(id){
     const im = document.createElement('img');
     im.alt = ''; im.src = p;
     av.appendChild(im);
-  }catch(e){ /* photo na mile to pehla akshar hi theek hai */ }
+  }catch(e){ /* without a photo the first letter is fine */ }
 }
 
 function renderHome(user){
@@ -1344,18 +1350,18 @@ function renderHome(user){
     rl.appendChild(s);
   });
 
-  /* Session par likhi hui list hi sach hai — wahi baaki apps bhi padhte
-     hain. Us list ke bina (purana session) hisaab dobara laga lete hain. */
+  /* The list written on the session is the source of truth; the other apps
+     read the same list. Without it (an old session) we work it out again. */
   let keys = (user.allowed_apps && user.allowed_apps.length)
     ? user.allowed_apps
     : allowedAppKeys(roles, user.app_access);
 
-  /* Order Form ka access ERP role se nahi, `app_users.sales_role` (+ shared
-     role map) se tay hota hai — wo hisaab server par hai, yahan nahi. Isi
-     liye andaza nahi lagate: login ke waqt sales_erp_login ne jo kaha wahi
-     maante hain. Token mila = access hai; wajah mili = nahi hai, to button
-     hata dete hain (warna click karke Order Form ki apni login screen par
-     pahunchna padta, jo "ek login" ke vaade ke khilaaf lagta). */
+  /* Order Form access comes from `app_users.sales_role` (+ the shared role
+     map), not from the ERP role, and that calculation lives on the server.
+     So we don't guess: we go by what sales_erp_login said at login. A token
+     means access; a reason means none, so the button is hidden (otherwise a
+     click would lead to the Order Form's own login screen, which goes
+     against the "one login" promise). */
   try{
     if (!localStorage.getItem(K_SALES) && localStorage.getItem(K_SALES_MSG))
       keys = keys.filter(k => k !== 'HOME_ORDER_FORM');
@@ -1383,9 +1389,9 @@ function renderHome(user){
   $('noApps').style.display   = n ? 'none' : 'block';
 }
 
-/* ── Logout — ek jagah se, saare apps ka ─────────────────────────── */
+/* ── Logout: from one place, for all apps ──────────────────────────── */
 async function doLogout(){
-  if (!confirm('Logout karein?\n\nSaare apps se nikal jayenge — dobara PIN daalna padega.')) return;
+  if (!confirm('Log out?\n\nYou will be logged out of all apps and will need to enter your PIN again.')) return;
   let tok = null, sal = null;
   try{ tok = localStorage.getItem(K_SSO); sal = localStorage.getItem(K_SALES); }catch(e){}
   try{ if (tok) await SB.rpc('erp_app_logout', { p_token: tok }); }catch(e){}
@@ -1409,7 +1415,7 @@ async function doLogout(){
   $('toSignup').addEventListener('click', () => {
     showView('signupCard');
     if (!suPad) suPad = makeSigPad($('suSig'));
-    // Employee Code ka dropdown — pehli baar hi bharte hain (257 rows).
+    // Employee Code dropdown: filled only the first time (257 rows).
     fillEmpDatalist();
     $('suCode').focus();
   });
@@ -1419,7 +1425,7 @@ async function doLogout(){
     fpToken = null;
     $('fpStep1').style.display = 'block';
     $('fpStep2').style.display = 'none';
-    $('fpSub').textContent = 'Apni teen details daalein — jo database me saved hain unse match hone par aap naya PIN set kar sakte hain.';
+    $('fpSub').textContent = 'Enter these three details. If they match the ones saved in the database, you can set a new PIN.';
     $('fpCode').focus();
   });
   $('suBack').addEventListener('click', showLogin);
@@ -1442,7 +1448,7 @@ async function doLogout(){
       setBox('suErr','');
     }catch(e){
       suPhoto = null;
-      setBox('suErr', 'Photo nahi li ja saki: ' + (e.message || e));
+      setBox('suErr', 'The photo could not be taken: ' + (e.message || e));
     }
   });
   $('suGo').addEventListener('click', doSignup);
@@ -1450,36 +1456,35 @@ async function doLogout(){
   $('fpSave').addEventListener('click', doForgotSave);
   $('fpPin2').addEventListener('keydown', e => { if (e.key === 'Enter') doForgotSave(); });
 
-  /* ── App se wapas aaye hain? ───────────────────────────────────────
-     Ab kisi bhi app ka apna login window nahi hai (dekhein sso-gate.js):
-     session khatam ho ya logout ho, app seedha yahan bhej deti hai. Us
-     safar ki wajah URL me aati hai, aur yahan likh dete hain — warna
-     banda bina kuch bataye login screen par aa khada hota aur samajhta
-     ki app kharab hai.
-     URL turant saaf bhi kar dete hain, taaki refresh par purani baat
-     dobara na dikhe. */
+  /* ── Returning from an app? ────────────────────────────────────────
+     No app has its own login window any more (see sso-gate.js): when the
+     session ends or the user logs out, the app sends them here. The reason
+     comes in the URL and is shown here; otherwise people would land on the
+     login screen with no explanation and assume the app was broken.
+     The URL is cleaned straight away so a refresh doesn't show the old
+     message again. */
   const qs = new URLSearchParams(location.search);
   const bye = qs.get('bye'), gateWhy = qs.get('why');
   if (bye || gateWhy){
     try{ history.replaceState(null, '', location.pathname); }catch(e){}
     const GATE_WHY = {
-      NO_TOKEN:        'Us app me seedha jaane ka raasta nahi hai — login yahin se hota hai.',
-      NO_SESSION:      'Session server par nahi mila — dobara login karein.',
-      SESSION_REVOKED: 'Session band ho gaya tha. Ek waqt par ek hi login chalta hai, isi liye kahin aur login karne se pichhla band ho jaata hai.',
-      SESSION_EXPIRED: 'Session purana ho gaya tha — dobara login karein.',
-      USER_INACTIVE:   'Aapka account Admin ne band kar diya hai — unse kehein.'
+      NO_TOKEN:        'That app cannot be opened directly. Please log in here.',
+      NO_SESSION:      'Your session was not found on the server. Please log in again.',
+      SESSION_REVOKED: 'Your session was closed. Only one login is allowed at a time, so logging in elsewhere ends the previous one.',
+      SESSION_EXPIRED: 'Your session expired. Please log in again.',
+      USER_INACTIVE:   'Your account has been deactivated by the Admin. Please contact them.'
     };
     gateNote = bye
-      ? '✅ Logout ho gaya. Dobara kaam karne ke liye niche login karein.'
-      : 'ℹ️ ' + (GATE_WHY[gateWhy] || 'Dobara login karein.');
+      ? 'You have been logged out. Log in below to continue.'
+      : '' + (GATE_WHY[gateWhy] || 'Please log in again.');
   }
 
   let tok = null;
   try{ tok = localStorage.getItem(K_SSO); }catch(e){}
 
-  /* Pehle se login hai? To seedha buttons — PIN dobara nahi.
-     Session se taaza roles / access aate hain, isi liye Admin ka
-     beech me kiya badlaav turant lagta hai. */
+  /* Already logged in? Then go straight to the buttons; no PIN again.
+     Fresh roles / access come from the session, so any change the Admin
+     made in between applies immediately. */
   if (tok){
     try{
       const r = await SB.rpc('erp_app_session', { p_token: tok });
@@ -1493,14 +1498,14 @@ async function doLogout(){
           cmp_profile_id: su.cmp_profile_id || null,
           pk_profile_id: su.pk_profile_id || null
         });
-        /* Dropdown chup-chaap peeche bhar jaata hai, taaki Logout ke
-           baad login screen turant kaam kare. */
+        /* The dropdown fills quietly in the background so the login screen
+           works immediately after a Logout. */
         loadMasters().catch(()=>{});
         return;
       }
-      // Session khatam / band — saaf karke login dikhao.
+      // Session ended or closed: clean up and show the login.
       [K_SSO,K_ROLE,K_ROLES,K_USER,K_SALES].forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
-    }catch(e){ /* net kharab — neeche login screen */ }
+    }catch(e){ /* network failed; the login screen below */ }
   }
 
   try{
@@ -1509,14 +1514,14 @@ async function doLogout(){
   }catch(e){
     showLogin();
     showErr(e && e.code === '42501'
-      ? ('⚠️ Users ki list padhne ki permission nahi hai — Admin se <b>SINGLE_LOGIN_MIGRATION.sql</b> ka section 6 chalwayein.'
+      ? ('No permission to read the user list. Ask the Admin to run section 6 of <b>SINGLE_LOGIN_MIGRATION.sql</b>.'
          + '<br><small style="opacity:.85;">' + esc(e.message || '') + ' <b>[42501]</b></small>')
       : explainErr(e, 'app_users'));
   }
 })();
 
-/* Employee Code ka dropdown — 257 rows, isi liye sirf tab bharte hain
-   jab Signup khula ho, aur ek hi baar. */
+/* Employee Code dropdown: 257 rows, so it is filled only when Signup is
+   open, and only once. */
 let empFilled = false;
 async function fillEmpDatalist(){
   if (empFilled) return;
@@ -1534,13 +1539,13 @@ async function fillEmpDatalist(){
       dl.appendChild(o);
     });
   }catch(e){
-    empFilled = false;   // agli baar dobara koshish
+    empFilled = false;   // try again next time
     console.warn('[LAUNCHER] employees list load fail:', e.message || e);
   }
 }
 </script>
-<!-- Login screen ki jhalak rokne wali splash isi page par nahi chalti
-     (sso-preboot.js launcher ko chhodta hai) — yahan login screen dikhna
-     hi chahiye. -->
+<!-- The splash that prevents the login screen from flashing does not run on
+     this page (sso-preboot.js skips the launcher); the login screen must show
+     here. -->
 </body>
 </html>

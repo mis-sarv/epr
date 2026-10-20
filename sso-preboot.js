@@ -1,38 +1,36 @@
 /* ════════════════════════════════════════════════════════════════════
-   sso-preboot.js — app switch karte waqt login screen ki JHALAK rokna
+   sso-preboot.js: stops the login screen from FLASHING when switching apps
    ────────────────────────────────────────────────────────────────────
-   Samasya:
-     Har app ka login overlay markup me SHURU SE dikhta hai, aur JS use
-     tab chhupata hai jab server se session confirm ho jaata hai
-     (`erp_app_session` / `sales_whoami`). Wo ek network call hai — yani
-     launcher se app par jaate waqt login window ek-do second ke liye
-     jhalak jaati thi, jabki banda pehle se logged-in hai.
+   Problem:
+     Every app's login overlay is visible in the markup FROM THE START, and
+     JS hides it only once the server confirms the session
+     (`erp_app_session` / `sales_whoami`). That is a network call, so when
+     moving from the launcher to an app the login window flashed for a
+     second or two even though the user was already logged in.
 
-   Ilaaj:
-     Faisla NETWORK se pehle, localStorage se — aur wo SYNCHRONOUS hai.
-     Ye file `<head>` me, bina defer, sabse pehle chalti hai: token
-     maujood hai to `<html>` par ek class lag jaati hi hai aur usi waqt
-     CSS inject ho jaati hai jo login overlay ko chhupa deti hai. Yani
-     wo overlay ek frame ke liye bhi paint nahi hota.
+   Fix:
+     Decide BEFORE the network, from localStorage, which is SYNCHRONOUS.
+     This file runs first in `<head>`, without defer. If a token exists it
+     adds a class to `<html>` and injects CSS that hides the login overlay
+     right away, so the overlay is never painted, not even for one frame.
 
-     Saath hi ek saada spinner splash bhi lagti hai, taaki beech ke us
-     waqt me adhoora app (khaali list, bina mount hui React screen)
-     na dikhe. App taiyar hone par khud `sarvSsoPrebootDone()` bulati
-     hai aur splash hat jaati hai.
+     It also shows a plain spinner splash so the half-built app (empty
+     list, React screen not mounted yet) is not visible in between. When
+     the app is ready it calls `sarvSsoPrebootDone()` and the splash goes.
 
-   Do baatein jaan-boojh kar:
+   Two deliberate choices:
 
-     * Token NA ho to ye file kuch nahi karti — ek bhi line nahi. Jo
-       banda launcher se nahi aaya uska apna login screen bilkul pehle
-       jaisa turant dikhta hai.
+     * With NO token this file does nothing at all. A user who did not
+       come from the launcher sees their own login screen immediately,
+       exactly as before.
 
-     * 9 second ka hard timeout hai. Agar kisi wajah se app
-       `sarvSsoPrebootDone()` na bula paaye (net gir gaya, RPC atak
-       gaya), to splash khud hat jaati hai aur app ka apna login screen
-       aa jaata hai. Banda kabhi spinner par atka nahi rehta — "kuch
-       nahi ho raha" se behtar hai login maang lena.
+     * There is a hard 9 second timeout. If the app never manages to call
+       `sarvSsoPrebootDone()` (network dropped, RPC stuck), the splash
+       removes itself and the app's own login screen appears. Nobody is
+       left staring at a spinner; asking for a login is better than a
+       screen where nothing happens.
 
-   Jodna: har app ke `<head>` me, baaki sab se PEHLE —
+   Usage: in every app's `<head>`, BEFORE everything else:
        <script src="sso-preboot.js"></script>
    ════════════════════════════════════════════════════════════════════ */
 (function () {
@@ -42,29 +40,29 @@
   var CLS = 'sarv-sso-pending';
   var STYLE_ID = 'sarvSsoPrebootCss';
 
-  // Launcher par kuch nahi — wahan login screen dikhna hi chahiye.
+  // Nothing on the launcher: the login screen must show there.
   if (/(^|\/)launcher\.html$/i.test(location.pathname)) return;
 
   var tok = null;
   try { tok = localStorage.getItem(KEY); } catch (e) {}
-  // Single login nahi hai — app ka apna login turant dikhe, bilkul pehle jaisa.
+  // No single login: show the app's own login immediately, as before.
   if (!tok) return;
 
   var root = document.documentElement;
   root.className += (root.className ? ' ' : '') + CLS;
 
-  /* Jin apps ke login overlay ko chhupana hai:
-       #loginScreen  — mobile.html aur order-form.html
-       #loginOverlay — packing.html
-       #sarvLoginGate — index.html (ERP)
-     complaint.html ka login React se banta hai aur wo pehle se hi khud
-     ko rok leta hai (ssoWait), isi liye wahan sirf splash kaafi hai. */
+  /* Login overlays to hide:
+       #loginScreen  - mobile.html and order-form.html
+       #loginOverlay - packing.html
+       #sarvLoginGate - index.html (ERP)
+     complaint.html builds its login in React and already holds itself
+     back (ssoWait), so the splash alone is enough there. */
   var css =
       'html.' + CLS + ' #loginScreen,'
     + 'html.' + CLS + ' #loginOverlay,'
     + 'html.' + CLS + ' #sarvLoginGate{display:none !important;}'
-    // Splash — html ke pseudo-element se, taaki <body> ka intezaar na karna pade
-    // (ye file head me chalti hai, wahan document.body abhi hota hi nahi).
+    // Splash drawn with a pseudo-element on html, so we don't have to wait
+    // for <body> (this file runs in head, where document.body doesn't exist yet).
     + 'html.' + CLS + '::before{content:"";position:fixed;inset:0;z-index:2147482000;'
     + 'background:#0b1220;}'
     + 'html.' + CLS + '::after{content:"";position:fixed;z-index:2147482001;'
@@ -83,7 +81,7 @@
   function finish() {
     if (done) return;
     done = true;
-    // classList purane browser par bhi chale, isi liye string se hataya.
+    // Removed via the string so it also works on old browsers without classList.
     root.className = (' ' + root.className + ' ')
       .replace(' ' + CLS + ' ', ' ')
       .replace(/^\s+|\s+$/g, '');
@@ -91,10 +89,10 @@
     if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
-  // App taiyar hone par ise bulati hai.
+  // The app calls this once it is ready.
   window.sarvSsoPrebootDone = finish;
 
-  /* Backstop — kabhi atke nahi. App ne na bulaya to 9 second me splash
-     khud hat jaati hai aur uska apna login screen dikh jaata hai. */
+  /* Backstop so it can never get stuck. If the app never calls this, the
+     splash removes itself after 9 seconds and the app's own login shows. */
   setTimeout(finish, 9000);
 })();
