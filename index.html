@@ -1641,17 +1641,18 @@
                                 <button type="button" class="btn btn-primary" id="ap_addUserBtn">Add User</button>
                                 <button type="button" class="btn btn-primary" id="ap_addPurchaserBtn" style="background:linear-gradient(135deg,#b45309,#d97706);">Add New Purchaser</button>
                                 <select class="form-control" id="ap_userRoleFilter" style="width:180px;height:32px;font-size:11px;"><option value="">All Roles</option></select>
+                                <select class="form-control" id="ap_userUnitFilter" style="width:130px;height:32px;font-size:11px;"><option value="">All Units</option></select>
                                 <input type="text" class="form-control" id="ap_userSearch" placeholder="Search user..." style="flex:1;min-width:140px;height:32px;font-size:11px;">
                                 <button type="button" class="btn btn-neutral" id="ap_reloadUsersBtn" style="height:32px;font-size:11px;">Refresh</button>
                             </div>
                             <div class="table-container ap-users-wrap">
                                 <table class="ap-table">
                                     <thead><tr>
-                                        <th>#</th><th>User Name</th><th>Role</th><th>Emp Code</th><th>Contact</th>
+                                        <th>#</th><th>User Name</th><th>Role</th><th>Unit</th><th>Emp Code</th><th>Contact</th>
                                         <th style="text-align:center;">Signature</th><th style="text-align:center;">Status</th>
                                         <th style="text-align:center;">Edit</th><th style="text-align:center;">Delete</th>
                                     </tr></thead>
-                                    <tbody id="ap_usersBody"><tr><td colspan="9" class="ap-empty">Loading…</td></tr></tbody>
+                                    <tbody id="ap_usersBody"><tr><td colspan="10" class="ap-empty">Loading…</td></tr></tbody>
                                 </table>
                             </div>
                             <div class="ap-note">

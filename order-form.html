@@ -2577,16 +2577,20 @@ async function fetchDrops(){
       const agency=String(r.agency_name||'').trim();
       if(agency) ad[agency]={contact:String(r.agency_contact||''),mobile:String(r.agency_mobile||'')};
     });
-    BUYER_DETAILS=bd; AGENCY_DETAILS=ad;
+    AGENCY_DETAILS=ad;
 
-    /* The Buyer / Agency Masters are MERGED in, not used as a replacement. A
-       party with an earlier order keeps the details from there (in `bd` /
-       `ad` above): that is the REAL billing contact, address, GST and
-       transport from last time. The master's job is to bring in parties that
-       have no order yet, and to fill in their details:
+    /* Buyer / Company Name comes ONLY from buyer_master.party_name. Names
+       that exist only in old orders or in `sales_dropdowns` are no longer
+       offered: they were how the same party crept in under two spellings.
+       A master party that has an earlier order still keeps the details from
+       there (in `bd` above): that is the REAL billing contact, address, GST
+       and transport from last time. A party with no order yet gets them
+       from the master:
            OWNER NAME → Contact Person      CONTACT NO → Mobile
            ADDRESS    → Address             GSTIN      → GSTIN
+       The Agency Master is still MERGED with agencies from old orders.
        Inactive rows don't appear in any dropdown. */
+    BUYER_DETAILS={};
     // The master rows are also kept separately; the "+ Add New Buyer / Agency"
     // duplicate check runs on them. See BUYER_MASTER_ROWS.
     BUYER_MASTER_ROWS=(bmRows||[]).slice();
@@ -2597,6 +2601,7 @@ async function fetchDrops(){
       if(r.is_active===false) return;
       const p=String(r.party_name||'').trim();
       if(!p || BUYER_DETAILS[p]) return;
+      if(bd[p]){ BUYER_DETAILS[p]=bd[p]; return; }
       BUYER_DETAILS[p]={
         contactPerson: String(r.owner_name||r.party_staff_name||''),
         mobile:        String(r.contact_no||r.party_staff_contact_no||''),
@@ -2612,7 +2617,8 @@ async function fetchDrops(){
       AGENCY_DETAILS[a]={contact:String(r.contact_person||''),mobile:String(r.mobile_no||'')};
     });
 
-    Object.keys(BUYER_DETAILS).forEach(b=>{ if(!DROPS.buyerName) DROPS.buyerName=[]; if(!DROPS.buyerName.includes(b)) DROPS.buyerName.push(b); });
+    // Replaced, not merged: any buyerName rows in sales_dropdowns or the cached list are dropped.
+    DROPS.buyerName=Object.keys(BUYER_DETAILS).sort((a,b)=>a.localeCompare(b));
     Object.keys(AGENCY_DETAILS).forEach(a=>{ if(!DROPS.agencyName) DROPS.agencyName=[]; if(!DROPS.agencyName.includes(a)) DROPS.agencyName.push(a); });
     localStorage.setItem(LS_DROPS,JSON.stringify(DROPS));
     refreshAllCombos();

@@ -125,6 +125,13 @@
       { label: 'Material Outward', go: 'OUT' },
       { label: 'Issue', go: 'ISSUE' },
       { label: 'Item Tracker', go: 'TRACKER' },
+      /* The item × date matrix that otherwise opens only from Item Tracker ›
+         Stock Ledger. It is a full-screen overlay (#consOverlay) at body
+         level, so it opens straight from here (store-core.js ›
+         openConsumptionTracker). Same access row as Item Tracker: it reads
+         the same entries, so whoever may see one may see the other. */
+      { label: 'Consumption Tracker', action: 'openConsumptionTracker', access: 'HOME_TRACKER',
+        words: 'consumption tracker matrix item date daily usage issue stock movement report' },
       { label: 'Repair Challans', go: 'REPAIR' },
       { label: 'Print History / Reports', go: 'REPORTS' },
       { label: 'Material Requests' }, { label: 'Gate Processes' },

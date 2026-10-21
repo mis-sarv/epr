@@ -31,8 +31,9 @@
        app: 'HOME_PACKING', label: 'Packing & Dispatch',
        client: supabaseClient,        // only needed with needAuth
        needAuth: true,                // Complaint / Packing: yes
-       accountKey: 'pk_profile_id'    // the user must have an account in that app
-     });
+       accountKey: 'pk_profile_id',   // the user must have an account in that app
+       selfProvision: false           // true: create that account on first open
+     });                              //   (Complaint only; see erp-sso selfProvision)
 
    `boot()` resolves only when the user may really enter. In every other
    case it redirects to the launcher or shows the reason screen, and its
@@ -60,6 +61,7 @@
     USER_INACTIVE:   'Your account is inactive. Please contact the Admin.',
     NO_APP_ACCESS:   'This app is turned off for your login. Ask the Admin to switch it <b>ON</b> under <i>Master Data › Settings › Admin Panel › Users › Apps</i>.',
     NO_APP_ACCOUNT:  'No account exists for you in this app yet. Admin: open <i>Users</i>, edit this user, set this app to <b>ON</b> (not auto) under <i>Apps</i> and Save. The account is created automatically.',
+    PROVISION_FAILED: 'Your account for this app could not be set up automatically. Please show this screen to the Admin.',
     NO_AUTH_USER:    'Your Supabase Auth account was not found. Admin: under <i>Users › Apps</i>, switch this app OFF, Save, then switch it ON again.',
     AUTH_ACCOUNT_TAKEN: 'There are two ERP entries under your name and the account is linked to the other one. Admin: merge them with <code>sql/MERGE_DUPLICATE_USERS.sql</code>.',
     FN_MISSING:      'The SSO Edge Function (<code>erp-sso</code>) is not deployed on the server. Admin: <code>supabase functions deploy erp-sso</code>',
@@ -263,7 +265,12 @@
       // ── 2. The account in this app ───────────────────────────────────
       // Complaint / Packing data is keyed on auth.uid(), so the user must
       // have an account there. Order Form does not need one.
-      if (o.accountKey && !u[o.accountKey]) return stop(label, 'NO_APP_ACCOUNT');
+      // With `selfProvision` (Complaint) a missing account is not the end:
+      // signIn() asks erp-sso to create it, since the access is already
+      // given (a launcher signup has it). Without that flag, or with an old
+      // erp-sso, it ends at NO_APP_ACCOUNT exactly as before.
+      if (o.accountKey && !u[o.accountKey] && !(o.selfProvision && o.needAuth))
+        return stop(label, 'NO_APP_ACCOUNT');
 
       // ── 3. The real auth session (no password) ───────────────────────
       if (o.needAuth) {
@@ -285,16 +292,19 @@
        or trigger in those apps had to change. */
     async signIn(o, u) {
       var want = u[o.accountKey] || u.id;
+      var provision = !!(o.selfProvision && o.accountKey && !u[o.accountKey]);
       try {
         var cur = (await o.client.auth.getSession()).data.session;
-        if (cur && cur.user && cur.user.id === want) return true;
+        // (Not when the account still has to be made: the session alone
+        // would let the app in with no Complaint profile behind it.)
+        if (!provision && cur && cur.user && cur.user.id === want) return true;
         // Shared factory phone / dispatch desk — pichhle bande ka session band.
         if (cur) { try { await o.client.auth.signOut(); } catch (e) {} }
 
         var r = await fetch(o.url + '/functions/v1/erp-sso', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'apikey': o.key, 'Authorization': 'Bearer ' + o.key },
-          body: JSON.stringify({ token: this.token, app: o.app })
+          body: JSON.stringify({ token: this.token, app: o.app, provision: provision })
         });
         var fd = await r.json().catch(function () { return null; });
         if (!r.ok || !fd || !fd.success) {
@@ -309,6 +319,9 @@
         var v = await o.client.auth.verifyOtp({ token_hash: fd.token_hash, type: 'magiclink' });
         if (v.error) v = await o.client.auth.verifyOtp({ token_hash: fd.token_hash, type: 'email' });
         if (v.error) return { why: 'OTP_FAIL', detail: v.error.message };
+        // Just created: the app reads its profile id from here (e.g.
+        // complaint.html loads cmp_profiles by u.cmp_profile_id).
+        if (provision && fd.profile_id) u[o.accountKey] = fd.profile_id;
         return true;
       } catch (e) {
         return { why: 'NET', detail: (e && e.message) || '' };

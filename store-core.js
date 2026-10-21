@@ -5198,6 +5198,40 @@ let sarvSalesRoleReady=false;
    running than to show a half-working UI). */
 let sarvUnifiedReady=false;
 let sarvUnifiedErr='';   // its real reason, shown in the Admin Panel note
+/* ── Unit (Unit-1 / Unit-2) + Complaint App profile ──────────────────
+   Every user belongs to one factory unit (app_users.cmp_unit). It is asked
+   at Signup on the launcher and is REQUIRED here. The Complaint App stamps
+   it on every complaint the user raises, and only that unit's hosts /
+   triagers get the complaint.
+
+   The Complaint App's own "Users" tab is gone: its role, host types,
+   "All units", department and designation are managed here, in the same
+   user form (admin_save_user_unit_profile, Admin PIN). The Complaint
+   account itself is still created by Apps › Complaint App = ON.
+
+   The unit list comes from `cmp_units` (a Unit-3 later is a row there). */
+let sarvUnitReady=false;
+let sarvUnits=[{code:'Unit-1',name:'Unit-1'},{code:'Unit-2',name:'Unit-2'}];
+async function sarvLoadUnits_(){
+  try{
+    const r=await SB.from('cmp_units').select('code,name,sort_order').eq('is_active',true).order('sort_order').order('code');
+    if(!r.error&&r.data&&r.data.length)sarvUnits=r.data;
+  }catch(e){console.warn('[SARV] cmp_units not loaded, using the fallback list:',e.message||e);}
+}
+const sarvUnitName_=code=>{const x=sarvUnits.find(u=>u.code===code);return x?(x.name||x.code):(code||'');};
+// Must stay in step with complaint.html (ROLES / MACHINE_TYPES / FABRIC_TYPES)
+// and admin_save_user_unit_profile().
+const SARV_CMP_ROLES=['User','Host','Admin','Maintenance','Production Manager'];
+const SARV_CMP_TYPE_GROUPS=[
+  {label:'Machine',types:['Mechanical','Electrical','Housekeeping','Other']},
+  {label:'Fabric',types:['Shade','Weight/GSM','Width','Hole/Cut','Stain','Print Defect','Finishing Defect','Other Fabric Defect']}
+];
+// "All units" means nothing for a plain User (sees only their own) or the
+// Admin (always sees every unit).
+const SARV_CMP_ALL_UNIT_ROLES=['Host','Maintenance','Production Manager'];
+const SARV_UNIT_ERR={ADMIN_PIN_INVALID:'Incorrect Admin PIN',USER_NOT_FOUND:'User not found. Please refresh.',
+  UNIT_REQUIRED:'Please choose the unit',UNIT_INVALID:'That unit is not active',CMP_ROLE_INVALID:'Invalid Complaint App role',
+  HOST_TYPES_REQUIRED:'A Host needs at least one complaint type',HOST_TYPE_INVALID:'Unknown complaint type'};
 let sarvUsersDenied=false; // true = a missing GRANT (not a missing column)
 const SARV_SALES_ROLES=[
   {v:'admin',l:'Admin',hint:'Create, Edit, Status, Emboss catalog'},
@@ -5399,7 +5433,17 @@ async function sarvLoadAppUsers_(force){
          2. + sales_role                  (ORDER_FORM_USERS_MIGRATION.sql)
          3. base columns only             (ADMIN_PANEL_MIGRATION.sql) */
     const uniCols=',roles,app_access,cmp_profile_id,pk_profile_id';
-    let q=await SB.from('app_users').select(cols+',sales_role'+uniCols).order('user_name');
+    /* Level 0: unit + Complaint App profile (COMPLAINT_UNITS_MIGRATION.sql +
+       UNIT_SIGNUP_ADMIN_MIGRATION.sql). Tried first and dropped on its own,
+       so a setup without those two still gets level 1 below. */
+    const unitCols=',cmp_unit,cmp_all_units,cmp_role,cmp_host_types,cmp_username,department,designation';
+    let q=await SB.from('app_users').select(cols+',sales_role'+uniCols+unitCols).order('user_name');
+    sarvUnitReady=!q.error;
+    if(q.error){
+      console.warn('[SARV] app_users unit columns not readable (run UNIT_SIGNUP_ADMIN_MIGRATION.sql):',q.error.message||q.error);
+      q=await SB.from('app_users').select(cols+',sales_role'+uniCols).order('user_name');
+    }
+    if(sarvUnitReady)await sarvLoadUnits_();
     sarvUnifiedReady=!q.error;
     /* Keep the real reason. Most of the time spent answering "why aren't the
        Extra Roles showing" went into finding this; now the Admin Panel note
@@ -5513,12 +5557,25 @@ function sarvRenderUsers_(){
   const tb=byId('ap_usersBody');if(!tb)return;
   const rf=byId('ap_userRoleFilter');
   if(rf&&rf.options.length<=1)rf.innerHTML='<option value="">All Roles</option>'+SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'">'+escText(r.label)+'</option>').join('');
-  if(sarvAppUsersMissing){tb.innerHTML='<tr><td colspan="9" class="ap-empty">The app_users table was not found. Run ADMIN_PANEL_MIGRATION.sql.</td></tr>';return;}
+  if(sarvAppUsersMissing){tb.innerHTML='<tr><td colspan="10" class="ap-empty">The app_users table was not found. Run ADMIN_PANEL_MIGRATION.sql.</td></tr>';return;}
+  // Unit filter: rebuilt each time (the unit list loads with the users),
+  // keeping the current choice; hidden until the unit columns exist.
+  const uf=byId('ap_userUnitFilter');
+  if(uf){
+    uf.style.display=sarvUnitReady?'':'none';
+    const keep=uf.value;
+    uf.innerHTML='<option value="">All Units</option>'+sarvUnits.map(x=>'<option value="'+escText(x.code)+'">'+escText(x.name||x.code)+'</option>').join('')
+      +'<option value="__none">Unit not set</option>';
+    uf.value=keep;
+  }
+  const unitV=sarvUnitReady&&uf?uf.value:'';
   const role=rf?.value||'',q=(byId('ap_userSearch')?.value||'').trim().toLowerCase();
   const order=SARV_PERM_ROLES.map(r=>r.code);
-  const rows=sarvAppUsers.filter(u=>(!role||u.role===role)&&(!q||[u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role)].join(' ').toLowerCase().includes(q)))
+  const rows=sarvAppUsers.filter(u=>(!role||u.role===role)
+      &&(!unitV||(unitV==='__none'?!u.cmp_unit:u.cmp_unit===unitV))
+      &&(!q||[u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role),u.cmp_unit,u.cmp_role].join(' ').toLowerCase().includes(q)))
     .sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role)||String(a.user_name).localeCompare(String(b.user_name)));
-  if(!rows.length){tb.innerHTML='<tr><td colspan="9" class="ap-empty">No users yet. Create one with Add User.</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="10" class="ap-empty">No users yet. Create one with Add User.</td></tr>';return;}
   tb.innerHTML=rows.map((u,i)=>'<tr>'
     +'<td style="color:#94a3b8;">'+(i+1)+'</td>'
     +'<td style="font-weight:800;">'+escText(u.user_name)+'</td>'
@@ -5540,6 +5597,16 @@ function sarvRenderUsers_(){
       +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Complaint App account">C</span>':'')
       +(u.pk_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Packing account">P</span>':'')
       +'</td>'
+    /* Unit, and the Complaint App role under it for anyone with a complaint
+       account (that tab used to live inside the Complaint App). */
+    +'<td>'+(!sarvUnitReady?'—'
+      :(u.cmp_unit
+        ?'<span class="ap-pill" style="background:#ede9fe;color:#5b21b6;">'+escText(sarvUnitName_(u.cmp_unit))
+          +(u.cmp_all_units&&SARV_CMP_ALL_UNIT_ROLES.indexOf(u.cmp_role)>=0?' + all':'')+'</span>'
+        :'<span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Required: Edit the user and choose a unit">Not set</span>')
+      +(u.cmp_username?'<div style="font-size:10px;color:#64748b;margin-top:2px;" title="Complaint App role'
+          +((u.cmp_host_types||[]).length?': '+escText(u.cmp_host_types.join(', ')):'')+'">Complaint: '+escText(u.cmp_role||'User')+'</div>':''))
+    +'</td>'
     +'<td>'+escText(u.emp_code||'—')+'</td>'
     +'<td>'+escText(u.contact_no||'—')+'</td>'
     +'<td style="text-align:center;">'+(u.has_signature?'<span style="color:#15803d;font-weight:800;" title="Signature saved; can sign with PIN">&#10004;</span>':'<span style="color:#b45309;font-weight:700;" title="No signature yet">&mdash;</span>')+'</td>'
@@ -5831,6 +5898,52 @@ function sarvUserAppsHtml_(u){
     +'</div></div>';
 }
 
+/* Unit (required) + Complaint App profile, in the user form. If the
+   migration hasn't run, the same spot says so rather than hiding it. */
+function sarvUserUnitHtml_(u){
+  if(!sarvUnitReady)
+    return '<div class="fg" style="grid-column:1 / -1;"><div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:10px 12px;'
+      +'font-size:11px;color:#92400e;line-height:1.65;"><b>Unit and Complaint App profile are not available yet.</b> '
+      +'Run <code>COMPLAINT_UNITS_MIGRATION.sql</code> and then <code>UNIT_SIGNUP_ADMIN_MIGRATION.sql</code> in Supabase &rsaquo; SQL Editor, then reload.</div></div>';
+  const unit=u?(u.cmp_unit||''):'';
+  const cr=u?(u.cmp_role||''):'';
+  const types=(u&&u.cmp_host_types)||[];
+  const box='border:1px solid #cbd5e1;border-radius:7px;padding:8px 10px;background:#f8fafc;';
+  return '<div class="fg" style="grid-column:1 / -1;"><label>Unit <span class="req">*</span> '
+      +'<small style="text-transform:none;font-weight:600;">(the user\'s factory unit; their complaints are saved under it and go to that unit\'s hosts)</small></label>'
+    +'<div data-f="unitwrap" style="display:flex;gap:8px;flex-wrap:wrap;">'
+    +sarvUnits.map(x=>'<label style="flex:1 1 120px;display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;'
+        +'background:#fff;cursor:pointer;text-transform:none;font-size:12.5px;font-weight:800;color:#334155;">'
+        +'<input type="radio" name="sarvUnitPick" data-unit="'+escText(x.code)+'"'+(x.code===unit?' checked':'')+' style="width:15px;height:15px;"> '
+        +escText(x.name||x.code)+'</label>').join('')
+    +'</div>'
+    +(u&&!unit?'<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px;">Unit not set yet: this user cannot raise a complaint until it is.</div>':'')
+    +(u&&unit?'<div style="font-size:10.5px;color:#64748b;margin-top:4px;">Changing it moves only NEW complaints; complaints already raised stay in their old unit.</div>':'')
+    +'</div>'
+    /* The Complaint App's old "Users" tab, here instead. */
+    +'<div class="fg" style="grid-column:1 / -1;"><label>Complaint App <small style="text-transform:none;font-weight:600;">'
+      +'(the account itself is created by Apps &rsaquo; Complaint App = ON'+(u&&u.cmp_username?'; <span style="color:#15803d;">account exists</span>':'')+')</small></label>'
+    +'<div style="'+box+'">'
+    +'<div class="g2">'
+    +'<div class="fg"><label>Complaint Role</label><select data-f="cmprole">'
+      +SARV_CMP_ROLES.map(r=>'<option value="'+r+'"'+((cr||'User')===r?' selected':'')+'>'+escText(r)+'</option>').join('')+'</select></div>'
+    +'<div class="fg" data-f="allunitswrap"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:8px;margin:0;text-transform:none;font-size:12px;font-weight:700;color:#334155;cursor:pointer;">'
+      +'<input data-f="allunits" type="checkbox" style="width:15px;height:15px;"'+(u&&u.cmp_all_units?' checked':'')+'> Covers all units</label>'
+      +'<small data-f="allunitshint" style="display:block;font-size:10.5px;color:#64748b;margin-top:2px;"></small></div>'
+    +'<div class="fg"><label>Department</label><input data-f="cmpdept" style="text-transform:uppercase;" value="'+escText(u?(u.department||''):'')+'" placeholder="e.g. RASCHEL"></div>'
+    +'<div class="fg"><label>Designation</label><input data-f="cmpdesig" value="'+escText(u?(u.designation||''):'')+'" placeholder="e.g. Machine Operator"></div>'
+    +'</div>'
+    +'<div data-f="hostwrap" style="margin-top:6px;"><label style="font-size:10.5px;">Host for which complaint types <span class="req">*</span></label>'
+    +SARV_CMP_TYPE_GROUPS.map(g=>'<div style="margin:4px 0 6px;"><div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;">'+escText(g.label)+'</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+        +g.types.map(t=>'<label style="display:flex;align-items:center;gap:5px;margin:0;padding:4px 9px;border:1px solid #cbd5e1;border-radius:999px;background:#fff;'
+            +'text-transform:none;font-size:11.5px;font-weight:700;color:#334155;cursor:pointer;">'
+            +'<input type="checkbox" data-htype="'+escText(t)+'"'+(types.indexOf(t)>=0?' checked':'')+' style="width:13px;height:13px;"> '+escText(t)+'</label>').join('')
+        +'</div></div>').join('')
+    +'</div>'
+    +'</div></div>';
+}
+
 function sarvOpenUserModal(id,presetRole){
   if(!isAdmin())return showToast('Only an Admin login can create users','warn');
   if(sarvAppUsersMissing)return showToast('Run ADMIN_PANEL_MIGRATION.sql first','warn');
@@ -5855,6 +5968,7 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="again"></div>'
     +'</div>'
     +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (can log in and sign with PIN)</span></div>'
+    +sarvUserUnitHtml_(u)
     /* ── Extra roles + Apps ─────────────────────────────────────────
        If the columns exist, show the full UI; if not, DON'T HIDE IT QUIETLY,
        which was the earlier mistake that made the Admin think the feature
@@ -5921,6 +6035,31 @@ function sarvOpenUserModal(id,presetRole){
     }
   });
   f('cancel').addEventListener('click',close);
+  /* Complaint role decides what else applies: host types only for a Host,
+     "All units" only for Host / Maintenance / Production Manager. */
+  const paintCmp=()=>{
+    const r=f('cmprole');if(!r)return;
+    const hw=f('hostwrap'),aw=f('allunitswrap'),hint=f('allunitshint');
+    if(hw)hw.style.display=r.value==='Host'?'':'none';
+    const canAll=SARV_CMP_ALL_UNIT_ROLES.indexOf(r.value)>=0;
+    if(aw)aw.style.visibility=canAll?'visible':'hidden';
+    if(hint)hint.textContent=r.value==='Host'?'Can be assigned complaints from every unit'
+      :canAll?'Sees and assigns every unit\'s complaints':'';
+  };
+  f('cmprole')?.addEventListener('change',paintCmp);
+  paintCmp();
+  /* Read the unit / complaint section. Returns {err} or the values. */
+  const readUnitForm=()=>{
+    if(!sarvUnitReady)return null;
+    const pick=ov.querySelector('input[name="sarvUnitPick"]:checked');
+    if(!pick)return {err:'Please choose the user\'s Unit (required)'};
+    const cr=f('cmprole')?f('cmprole').value:'User';
+    const types=[...ov.querySelectorAll('input[data-htype]')].filter(cb=>cb.checked).map(cb=>cb.dataset.htype);
+    if(cr==='Host'&&!types.length)return {err:'A Complaint App Host needs at least one complaint type'};
+    return {unit:pick.dataset.unit,cmpRole:cr,hostTypes:cr==='Host'?types:[],
+      allUnits:SARV_CMP_ALL_UNIT_ROLES.indexOf(cr)>=0&&!!(f('allunits')&&f('allunits').checked),
+      dept:(f('cmpdept')?f('cmpdept').value.trim().toUpperCase():''),desig:(f('cmpdesig')?f('cmpdesig').value.trim():'')};
+  };
   /* Apps dropdowns: colour shows at a glance what is chosen, plus three
      shortcut buttons (all auto / ON / OFF); setting 18 apps one by one is
      exactly the kind of job nobody does. */
@@ -5969,6 +6108,8 @@ function sarvOpenUserModal(id,presetRole){
     if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN is required');
     if(pin&&pin.length<4)return err('PIN must be at least 4 digits');
     if(pin!==pin2)return err('PIN and Confirm PIN do not match');
+    const uf=readUnitForm();
+    if(uf&&uf.err)return err(uf.err);
     /* Order matters: a signature drawn by hand comes first, then the one from
        "Use pre saved Sign", then "remove". `null` means "don't touch the
        signature at all". */
@@ -6005,12 +6146,16 @@ function sarvOpenUserModal(id,presetRole){
          fails, the user has already been saved, so the reason is stated
          clearly in the toast. */
       let uniNote='';
+      // The user's id as it stands at the end (creating a Complaint / Packing
+      // auth account can move it; see sarvSyncExternalAppAccount_).
+      let finalId=u?String(u.id):null;
       if(sarvUnifiedReady){
         await sarvLoadAppUsers_(true);
         const saved=u?sarvAppUsers.find(x=>x.id===u.id)
                      :sarvAppUsers.find(x=>String(x.user_name).toUpperCase()===name
                         &&((x.roles&&x.roles.length)?x.roles.indexOf(roleV)>=0:x.role===roleV));
         if(saved){
+          finalId=String(saved.id);
           const rw=f('roleswrap');
           if(rw){
             const picked=[...rw.querySelectorAll('input[data-role]')]
@@ -6056,8 +6201,29 @@ function sarvOpenUserModal(id,presetRole){
                 const res=await sarvSyncExternalAppAccount_(adminPin.trim(),curId,k,acc[k]);
                 curId=res.id; uniNote+=res.note;
               }
+              finalId=curId;
             }
           }
+        }
+      }
+      /* Unit + Complaint App profile: its own RPC, same Admin PIN, LAST, so it
+         lands on the final id. Like the steps above, a failure here leaves the
+         user saved and says so in the toast. */
+      if(uf){
+        if(!finalId){
+          await sarvLoadAppUsers_(true);
+          const s=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
+          if(s)finalId=String(s.id);
+        }
+        if(!finalId)uniNote+='; Warning: Unit was not saved (user not found after save). Edit the user and save again.';
+        else{
+          const ur=await SB.rpc('admin_save_user_unit_profile',{p_admin_pin:adminPin.trim(),p_user_id:finalId,
+            p_unit:uf.unit,p_cmp_role:uf.cmpRole,p_host_types:uf.hostTypes,p_all_units:uf.allUnits,
+            p_department:uf.dept||null,p_designation:uf.desig||null});
+          const ue=(ur.error&&(ur.error.message||String(ur.error)))||(ur.data&&!ur.data.success&&ur.data.error)||'';
+          if(ue)uniNote+='; Warning: Unit / Complaint profile was not saved: '
+            +(/admin_save_user_unit_profile|PGRST202|schema cache/i.test(ue)?'run UNIT_SIGNUP_ADMIN_MIGRATION.sql':(SARV_UNIT_ERR[ue]||ue));
+          else uniNote+=' · '+sarvUnitName_(uf.unit);
         }
       }
       await sarvLoadAppUsers_(true);
@@ -6260,6 +6426,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('ap_addPurchaserBtn')?.addEventListener('click',()=>sarvOpenUserModal(null,'PURCHASER'));
   byId('ap_reloadUsersBtn')?.addEventListener('click',()=>sarvLoadAppUsers_(true).then(sarvRenderUsers_));
   byId('ap_userRoleFilter')?.addEventListener('change',sarvRenderUsers_);
+  byId('ap_userUnitFilter')?.addEventListener('change',sarvRenderUsers_);
   byId('ap_userSearch')?.addEventListener('input',sarvRenderUsers_);
   byId('ap_usersBody')?.addEventListener('click',e=>{
     const ed=e.target.closest('[data-ap-edit]');if(ed)return sarvOpenUserModal(ed.dataset.apEdit);

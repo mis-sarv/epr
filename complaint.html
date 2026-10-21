@@ -68,7 +68,6 @@
 // its own Supabase Auth login (the ERP authenticates by PIN instead).
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
-const ADMIN_FN_URL  = SUPABASE_URL + "/functions/v1/admin-users";
 
 /* ══ ONE ENTRY POINT: launcher.html ═══════════════════════════════════
    This app's own login and signup (Supabase Auth email + password,
@@ -105,7 +104,6 @@ async function sarvLogoutAll(){
 /* The gate's real boot happens AFTER `sb` is created (below): it needs the
    client to create the auth session, and `sb` is still in its TDZ here. */
 const PUSH_FN_URL   = SUPABASE_URL + "/functions/v1/send-push";
-const EMAIL_DOMAIN  = "@sarvindia.com";
 const VAPID_PUBLIC  = "BHpS4eQ196F4NO3sremWwvIMtvcUmiGzu4YEOOTok4GTnBJANLoswIoT8dAHhsx6xyxX1BeHgHJmM63rmPn_mFA";
 
 // storageKey is deliberately NOT the old app's "sarv-mis-auth". While both
@@ -131,7 +129,11 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
 SARV_GATE.boot({
   url: SUPABASE_URL, key: SUPABASE_ANON, client: sb,
   app: SARV_APP_KEY, label: "Complaint App",
-  needAuth: true, accountKey: "cmp_profile_id"
+  needAuth: true, accountKey: "cmp_profile_id",
+  /* A launcher signup has Complaint access but no account yet; the account
+     is created on this first open (erp-sso selfProvision), so the Admin
+     doesn't have to set Apps › Complaint App = ON for every new person. */
+  selfProvision: true
 }).then(u => {
   window.__SARV_SSO = u;
   try { window.dispatchEvent(new CustomEvent("sarv-sso-ready", { detail: u })); } catch(e) {}
@@ -160,16 +162,13 @@ const DEPARTMENTS = ["RASCHEL","PRINTING","PRODUCTION","ADMIN","FINISHING","MAIN
 const MACHINE_TYPES = ["Mechanical","Electrical","Housekeeping","Other"];
 const FABRIC_TYPES  = ["Shade","Weight/GSM","Width","Hole/Cut","Stain",
                        "Print Defect","Finishing Defect","Other Fabric Defect"];
-// Kept under the old name because the Admin → Users host picker and a few
-// other places still mean "the machine vocabulary" when they say this.
+// Kept under the old name because a few places still mean "the machine
+// vocabulary" when they say this.
 const COMPLAINT_TYPES = MACHINE_TYPES;
-// A Host may answer for machine AND fabric kinds — one array in the DB
-// (cmp_profiles.host_types) spans both, so the picker offers both, grouped.
-const HOST_TYPE_GROUPS = [
-  { label:"Machine", hi:"मशीन",   types: MACHINE_TYPES },
-  { label:"Fabric",  hi:"फैब्रिक", types: FABRIC_TYPES  },
-];
-const ROLES = ["User","Host","Admin","Maintenance","Production Manager"];
+/* Roles (User / Host / Admin / Maintenance / Production Manager) and a
+   Host's types are set in ERP › Admin Panel › Users; store-core.js
+   SARV_CMP_ROLES / SARV_CMP_TYPE_GROUPS must stay in step with the type
+   lists above. */
 
 const DOMAINS = {
   machine: {
@@ -183,6 +182,10 @@ const DOMAINS = {
     unitWord:"Machine", unitWordHi:"मशीन",
     badgeCls:"bg-teal-500", fabCls:"bg-teal-500 fab-pulse",
     ringCls:"text-teal-600", chipCls:"bg-teal-50 text-teal-700 border-teal-200",
+    // The register switch under the header: selected / not selected.
+    segIcon:"wrench",
+    segOnCls:"bg-teal-500 border-teal-500 text-white shadow-md",
+    segOffCls:"bg-white border-teal-200 text-teal-700 hover:bg-teal-50",
     seqPrefix:"MC",
   },
   fabric: {
@@ -194,35 +197,71 @@ const DOMAINS = {
     unitWord:"Process", unitWordHi:"प्रोसेस",
     badgeCls:"bg-blue-600", fabCls:"bg-blue-600 fab-pulse-blue",
     ringCls:"text-blue-600", chipCls:"bg-blue-50 text-blue-700 border-blue-200",
+    segIcon:"layers",
+    segOnCls:"bg-blue-600 border-blue-600 text-white shadow-md",
+    segOffCls:"bg-white border-blue-200 text-blue-700 hover:bg-blue-50",
     seqPrefix:"FC",
   },
 };
 const DOMAIN_KEYS = ["machine","fabric"];
+/* Which registers a person gets. Each triager role has ONE register: the
+   machine side is Maintenance's job and the fabric side the Production
+   Manager's (DOMAINS[*].triager), so the other register is only noise on
+   their screen and its tab is not shown. Everyone else (User, Host, Admin)
+   keeps both. */
+const domainsFor = p =>
+  p?.role === "Maintenance"        ? ["machine"] :
+  p?.role === "Production Manager" ? ["fabric"]  :
+  DOMAIN_KEYS;
 const DOMAIN_STORE_KEY = "sarv-cmp-domain";
+
+/* ── Units (Unit-1 / Unit-2) ─────────────────────────────────────────
+   Both factory units share the same tables. Each user has ONE unit, set by
+   the Admin when the user is created; every complaint they raise is stamped
+   with it by the database (cmp_stamp_unit trigger), never chosen in the
+   form. A Host is only assigned complaints of their own unit, and the
+   triager (Maintenance / Production Manager) sees only their own unit's
+   queue unless the Admin ticked "All units". The Admin sees every unit.
+   See COMPLAINT_UNITS_MIGRATION.sql.
+
+   The list of units comes from the cmp_units table, so a Unit-3 later is a
+   row there, not a code change. UNIT_FALLBACK is only used when that table
+   can't be read.
+
+   Graceful before the migration: until it has run, profiles have no `unit`
+   column at all, unitsOn() is false, and the app behaves exactly as before
+   (no picker, no filter, no "unit not set" block). */
+const UNIT_FALLBACK = [{ code:"Unit-1", name:"Unit-1" }, { code:"Unit-2", name:"Unit-2" }];
+const UNIT_FILTER_KEY = "sarv-cmp-unit-filter";
+const UnitsCtx = React.createContext(UNIT_FALLBACK);
+const unitsOn = p => !!p && Object.prototype.hasOwnProperty.call(p, "unit");
+// Admin always; anyone else only when the Admin ticked "All units" on them.
+const seesAllUnits = p => !!p && (p.role === "Admin" || !!p.all_units);
+const unitName = (units, code) => (units.find(u => u.code === code) || {}).name || code || "—";
 
 const MAX_PHOTOS = 4;
 const MAX_IMG_CHARS = 380000;   // DB cap is 400,000 — leave headroom
 const NB_MAX_PDF_BYTES = 3 * 1024 * 1024;   // Notice Board PDF cap — keeps the row and mobile data sane
 
+/* "Awaiting" holds what the Host has marked Completed and the person who
+   raised it has not yet confirmed; it used to be mixed into "Completed"
+   with the closed ones, so a complaint waiting on the user's OK was easy to
+   miss. "Completed" now means really finished (Closed).
+   The label speaks to a plain User, whose own complaints these are; anyone
+   else (Host, triager, Admin) sees other people's too, so for them it is
+   just "Awaiting OK" (labelOthers / hiOthers). */
 const TABS = [
   { key:"Pending",     label:"Pending",     hi:"बाकी",      statuses:["Pending"] },
   { key:"In Progress", label:"In-progress", hi:"चल रहा है",  statuses:["In Progress"] },
-  { key:"Completed",   label:"Completed",   hi:"पूरा हुआ",   statuses:["Completed","Closed"] },
+  { key:"Awaiting",    label:"Awaiting Your OK", hi:"आपकी मंज़ूरी बाकी",
+    labelOthers:"Awaiting OK", hiOthers:"यूज़र की मंज़ूरी बाकी", statuses:["Completed"] },
+  { key:"Completed",   label:"Completed",   hi:"पूरा हुआ",   statuses:["Closed"] },
 ];
 
 // ============================================================
 // 3. HELPERS
 // ============================================================
 const digits = s => String(s||"").replace(/\D/g,"");
-const makeUsername = n => String(n||"").trim().replace(/\s+/g," ").toLowerCase();
-const makeEmail = n => makeUsername(n).replace(/\s/g,".") + EMAIL_DOMAIN;
-// The password rule, mirrored from the database's make_password().
-function makePassword(mobile, dob){
-  const m = digits(mobile);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob||"")) return "";
-  const [y,mo,d] = dob.split("-");
-  return `${m}@${d}${mo}${y}`;
-}
 const todayStr = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
 
 function fmtDate(s){
@@ -285,6 +324,9 @@ function friendlyError(e){
   if (!e) return "Something went wrong.";
   const m = String(e.message || e.error_description || e.error || e);
   if (/Invalid login credentials/i.test(m)) return "Wrong name or password. Please try again.";
+  // The unit triggers raise "UNIT_NOT_SET: <plain sentence>"; show the sentence.
+  const unitMsg = m.match(/\bUNIT_[A-Z_]+:\s*(.+)$/);
+  if (unitMsg) return unitMsg[1];
   if (/insufficient_privilege|permission denied|row-level security/i.test(m))
     return "Your role does not have permission for this.";
   if (/Failed to fetch|NetworkError|network/i.test(m))
@@ -588,6 +630,7 @@ const I = {
   home:'<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>',
   wrench:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   megaphone:'<path d="m3 11 18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
+  layers:'<path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/>',
   list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   scan:'<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/><path d="M7 8h2"/><path d="M7 16h2"/><path d="M15 8h2"/><path d="M15 16h2"/>',
   userPlus:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>',
@@ -1055,8 +1098,19 @@ function Lightbox({src, onClose}){
 //    Name and Department are NOT asked — the database stamps them from the
 //    signed-in user (mc_stamp_owner), so they cannot be faked either.
 // ============================================================
-function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, toast, onView}){
+function NewComplaintModal({profile, machines: allMachines, processes, D, onClose, onSaved, toast, onView}){
   const isFabric = D.key === "fabric";
+  const units = React.useContext(UnitsCtx);
+  /* The unit is the raiser's own and the database stamps it. Only someone
+     covering every unit (Admin, or "All units") picks one here, defaulting
+     to their own; the trigger ignores a value sent by anybody else. */
+  const hasUnits = unitsOn(profile);
+  const pickUnit = hasUnits && seesAllUnits(profile);
+  const [unit, setUnit] = useState(profile.unit || (units[0] && units[0].code) || "");
+  // A machine with no unit is shared by every unit; others only in their own.
+  const machines = useMemo(() => hasUnits
+    ? allMachines.filter(m => !m.unit || m.unit === unit)
+    : allMachines, [allMachines, unit, hasUnits]);
   const [f, setF] = useState({
     machine_pick: machines.length ? `${machines[0].machine_name}||${machines[0].machine_no}` : "Other",
     other_machine_name: "",
@@ -1090,6 +1144,14 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
     setF(s=>({...s, machine_pick:val, machine_no:no||"", other_machine_name:""}));
   };
 
+  // Switching unit can drop the picked machine out of the list; move to the
+  // new list's first machine rather than submit one from the other unit.
+  useEffect(() => {
+    if (f.machine_pick === "Other") return;
+    if (machines.some(m => `${m.machine_name}||${m.machine_no}` === f.machine_pick)) return;
+    pickMachine(machines.length ? `${machines[0].machine_name}||${machines[0].machine_no}` : "Other");
+  }, [machines]);   // eslint-disable-line
+
   // Barcode scan result → auto-match machine from list
   const handleScanResult = (code) => {
     setShowScan(false);
@@ -1118,16 +1180,21 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
     setErrs(e);
     if (Object.keys(e).length) return;
 
+    if (hasUnits && !unit) return toast("Choose the unit.", true);
+
     setBusy(true);
     // problem_date, entered_by, department, status and raised_by_user_id are
     // NOT sent for either domain — the insert trigger stamps them from the
     // session and the server clock, so none of them can be faked or backdated.
+    // `unit` is sent only by someone allowed to pick it (see pickUnit).
+    const unitPart = pickUnit ? { unit } : {};
     const row = isFabric
       ? {
           process_name: (isOtherProcess ? f.other_process_name.trim() : f.process_pick),
           fabric_quality: Number(f.fabric_quality),
           problem_desc: f.problem_desc.trim(),
           entered_by: profile.name, department: profile.department,
+          ...unitPart,
         }
       : {
           machine_name: isOther ? "Other" : f.machine_pick.split("||")[0],
@@ -1135,6 +1202,7 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
           other_machine_name: isOther ? f.other_machine_name.trim() : null,
           problem_desc: f.problem_desc.trim(),
           entered_by: profile.name, department: profile.department,
+          ...unitPart,
         };
 
     const { data, error } = await sb.from(D.table).insert(row).select("id, complaint_no").single();
@@ -1163,6 +1231,8 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
         machine_name: f.other_machine_name.trim(),
         machine_no: f.machine_no.trim() || f.other_machine_name.trim().toUpperCase().replace(/\s+/g,"-").slice(0,20),
         department: profile.department,
+        // A machine first reported from a unit belongs to that unit.
+        ...(hasUnits ? { unit } : {}),
       };
       const { error: mErr } = await sb.from("cmp_machine_list").insert(newM);
       if (!mErr) toast("Also added to the machine list: " + newM.machine_name);
@@ -1202,6 +1272,32 @@ function NewComplaintModal({profile, machines, processes, D, onClose, onSaved, t
         </div>
         <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500 shrink-0 text-right">Auto<br/>not editable</span>
       </div>
+
+      {/* Unit: fixed for almost everybody (set on their user by the Admin),
+          so it is shown like name and date. Only someone who covers every
+          unit gets a choice. */}
+      {hasUnits && (pickUnit ? (
+        <Field label="Unit" hindi="यूनिट" required hint="You cover every unit, so choose where this problem is.">
+          <div className="flex gap-2">
+            {units.map(u => (
+              <button key={u.code} type="button" onClick={()=>setUnit(u.code)} aria-pressed={unit === u.code}
+                className={`flex-1 rounded-lg border-2 px-3 py-2 text-[13px] font-semibold transition-colors ${
+                  unit === u.code ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                {u.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+      ) : (
+        <div className="rounded-xl bg-slate-100 border border-slate-200 px-3.5 py-3 mb-4 flex items-center gap-3">
+          <Ico d={I.home} className="w-5 h-5 text-teal-700 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[10.5px] uppercase tracking-wide text-slate-500">Unit · यूनिट</p>
+            <p className="text-sm font-semibold text-slate-800">{unitName(units, profile.unit)}</p>
+          </div>
+          <span className="ml-auto text-[10px] uppercase tracking-wide text-slate-500 shrink-0 text-right">Auto<br/>not editable</span>
+        </div>
+      ))}
 
       {/* ── What the complaint is about ─────────────────────────────
           Machine: which machine, and its number (scannable).
@@ -1339,6 +1435,14 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const isAssignedHost = profile.role === "Host" && c.host_user_id === profile.id;
   const canAssign = isMaint && c.status === "Pending";
   const canComplete = (isAssignedHost || isMaint) && c.status === "In Progress";
+  /* Re-assigning: the triager may move the complaint to another host at
+     any point until that host marks it Completed. The database enforces the
+     same window and roles (cmp_unit_guard). */
+  const canChangeHost = isMaint && c.status === "In Progress" && !!c.host_user_id;
+  const [chOpen, setChOpen] = useState(false);
+  const [chHost, setChHost] = useState("");
+  const [chEta, setChEta] = useState(toLocalInput(c.expected_completion || new Date(Date.now()+4*3600e3).toISOString()));
+  const [chReason, setChReason] = useState("");
   const canFeedback = isOwner && c.status === "Completed";
   const canDelete = profile.role === "Admin" || (isOwner && c.status === "Pending");
 
@@ -1348,11 +1452,15 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
      breath as the host. */
   const filteredHosts = useMemo(() => {
     if (!hosts?.length) return { matched:[], others:[] };
-    if (!effType) return { matched:[], others: hosts };
-    const matched = hosts.filter(h => (h.host_types || []).includes(effType));
-    const others  = hosts.filter(h => !(h.host_types || []).includes(effType));
+    /* Only hosts of this complaint's unit (or hosts covering every unit).
+       The database refuses any other assignment anyway (cmp_unit_guard);
+       this keeps the picker from offering a choice that would then fail. */
+    const pool = c.unit ? hosts.filter(h => h.all_units || h.unit === c.unit) : hosts;
+    if (!effType) return { matched:[], others: pool };
+    const matched = pool.filter(h => (h.host_types || []).includes(effType));
+    const others  = pool.filter(h => !(h.host_types || []).includes(effType));
     return { matched, others };
-  }, [hosts, effType]);
+  }, [hosts, effType, c.unit]);
 
   // Blue tick — when host opens assigned complaint, mark seen
   useEffect(() => {
@@ -1418,6 +1526,31 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
     }, `${c.complaint_no} assigned to ${hostObj?.name || "Host"}.`);
   };
 
+  /* --- Change host (In Progress only). The reason is required and is kept
+     as a dated line in Remarks, so the record shows who moved it, from whom,
+     to whom and why; there is no separate history table to look in.
+     seen_by_host_at is cleared so the blue tick waits for the NEW host. */
+  const changeHost = () => {
+    if (!chHost) return setErr("Select the new host.");
+    if (chHost === c.host_user_id) return setErr("That is already the assigned host.");
+    if (chReason.trim().length < 3) return setErr("Write the reason for changing the host.");
+    const when = new Date(chEta);
+    if (!chEta || isNaN(when)) return setErr("Choose the planned date & time.");
+    const hostObj = hosts.find(h => h.id === chHost);
+    const nowIso = new Date().toISOString();
+    const line = `[${fmtDateTime(nowIso)}] Host changed by ${profile.name}: ${c.host_name || "—"} → ${hostObj?.name || "—"}. Reason: ${chReason.trim()}`;
+    run({
+      host_user_id: chHost,
+      host_name: hostObj?.name || "—",
+      assigned_by_user_id: profile.id,
+      assigned_by_name: profile.name,
+      assigned_at: nowIso,
+      expected_completion: when.toISOString(),
+      remarks: c.remarks ? `${c.remarks}\n${line}` : line,
+      seen_by_host_at: null,
+    }, `${c.complaint_no} moved to ${hostObj?.name || "the new host"}.`);
+  };
+
   // --- STEP 3: Host resolves with proof photos -> Completed
   const markCompleted = () => {
     if (newProofs.length === 0 && (!proofPhotos || proofPhotos.length === 0))
@@ -1478,6 +1611,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
         {/* An untriaged complaint says so rather than showing a blank chip —
             amber, because it is a thing somebody still has to do. */}
         <Badge tone={c.complaint_type ? "slate" : "amber"}>{typeLabel(c)}</Badge>
+        {c.unit ? <Badge tone="violet">{c.unit}</Badge> : null}
         <Badge tone="slate">{c.department}</Badge>
       </div>
 
@@ -1635,7 +1769,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
                 </optgroup>
               )}
               {filteredHosts.matched.length === 0 && filteredHosts.others.length === 0 && (
-                <option disabled>No host found. Ask the Admin to add a host.</option>
+                <option disabled>{c.unit ? `No ${c.unit} host found. Ask the Admin to add one.` : "No host found. Ask the Admin to add a host."}</option>
               )}
             </select>
           </Field>
@@ -1647,6 +1781,63 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
             <textarea className={inputCls(false)+" min-h-[64px] resize-y"} value={remarks}
                       onChange={e=>setRemarks(e.target.value)} placeholder="What needs doing, spares needed, priority…" />
           </Field>
+        </div>
+      )}
+
+      {/* ========== CHANGE HOST (triager, In Progress) ==========
+           Collapsed by default: most visits to an In Progress complaint are
+           to check on it, not to move it. */}
+      {canChangeHost && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mt-5">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold">Change Host / होस्ट बदलें</p>
+              <p className="text-[12.5px] text-slate-600 mt-0.5">
+                Now with <b>{c.host_name || "—"}</b>. Can be changed until the host marks it Completed.
+              </p>
+            </div>
+            {!chOpen && (
+              <Btn variant="outline" size="sm" className="ml-auto shrink-0"
+                   onClick={()=>{ setChOpen(true); setErr(""); }}>Change</Btn>
+            )}
+          </div>
+          {chOpen && (
+            <div className="mt-3">
+              <Field label="New Host" hindi="नया होस्ट" required
+                     hint={c.complaint_type ? `Hosts for ${c.complaint_type} are listed first` : undefined}>
+                <select className={inputCls(false)} value={chHost} onChange={e=>setChHost(e.target.value)}>
+                  <option value="">— Choose the new host —</option>
+                  {filteredHosts.matched.filter(h => h.id !== c.host_user_id).length > 0 && (
+                    <optgroup label={`${c.complaint_type} Hosts`}>
+                      {filteredHosts.matched.filter(h => h.id !== c.host_user_id).map(h => (
+                        <option key={h.id} value={h.id}>{h.name} · {h.department} · {h.mobile}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {filteredHosts.others.filter(h => h.id !== c.host_user_id).length > 0 && (
+                    <optgroup label={c.complaint_type ? "Other Hosts" : "All Hosts"}>
+                      {filteredHosts.others.filter(h => h.id !== c.host_user_id).map(h => (
+                        <option key={h.id} value={h.id}>{h.name} · {h.department} · {(h.host_types||[]).join(", ")}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </Field>
+              <Field label="Plan Date &amp; Time" hindi="कब तक ठीक होगा" required
+                     hint="Kept as it was unless you change it.">
+                <input type="datetime-local" className={inputCls(false)} value={chEta} onChange={e=>setChEta(e.target.value)} />
+              </Field>
+              <Field label="Reason for change" hindi="बदलने का कारण" required>
+                <textarea className={inputCls(false)+" min-h-[56px] resize-y"} value={chReason}
+                          onChange={e=>setChReason(e.target.value)} placeholder="e.g. Host on leave, needs an electrician…" />
+              </Field>
+              <div className="flex gap-2 justify-end">
+                <Btn variant="outline" size="sm" disabled={busy}
+                     onClick={()=>{ setChOpen(false); setChHost(""); setChReason(""); setErr(""); }}>Cancel</Btn>
+                <Btn variant="primary" size="sm" onClick={changeHost} disabled={busy}>{busy?<Spinner/>:null}Save new host</Btn>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1725,7 +1916,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
 // ============================================================
 // 11. COMPLAINTS VIEW (3 tabs)
 // ============================================================
-function ComplaintRow({c, profile, D, onOpen}){
+function ComplaintRow({c, profile, D, onOpen, showUnit}){
   // needsMe logic per workflow:
   // Pending → this domain's triager needs to classify + assign
   // In Progress → assigned Host needs to complete
@@ -1766,6 +1957,9 @@ function ComplaintRow({c, profile, D, onOpen}){
       {/* Bottom row: meta info */}
       <div className="flex items-center gap-2 mt-1.5 text-[10.5px] sm:text-[11.5px] text-slate-500">
         <span className="font-mono">{c.complaint_no}</span>
+        {/* Only for someone looking at more than one unit; for everybody
+            else every row would carry the same tag. */}
+        {showUnit && c.unit ? <span className="shrink-0 rounded px-1.5 py-[1px] bg-violet-500/15 text-violet-700 font-semibold">{c.unit}</span> : null}
         <span>·</span>
         <span>{fmtDate(c.problem_date)}</span>
         <span>·</span>
@@ -1783,7 +1977,7 @@ function ComplaintRow({c, profile, D, onOpen}){
   );
 }
 
-function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, tabSeenMap, onTabSeenRefresh}){
+function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, tabSeenMap, onTabSeenRefresh, showUnit}){
   const [tab, setTab] = useState("Pending");
   const [q, setQ] = useState("");
   const [type, setType] = useState("All");
@@ -1817,7 +2011,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
       if (type === "__none") { if (r.complaint_type) return false; }
       else if (type !== "All" && r.complaint_type !== type) return false;
       if (needle){
-        const hay = [r.complaint_no, r.entered_by, subjectSearch(r, D), r.problem_desc, r.complaint_type]
+        const hay = [r.complaint_no, r.entered_by, subjectSearch(r, D), r.problem_desc, r.complaint_type, r.unit]
           .join(" ").toLowerCase();
         if (!hay.includes(needle)) return false;
       }
@@ -1835,7 +2029,9 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
   // Tab colors per status
   const tabColors = { "Pending": { active:"bg-amber-500/15 border-amber-500/60 text-amber-800", dot:"bg-amber-500" },
                       "In Progress": { active:"bg-teal-500/15 border-teal-500/60 text-teal-800", dot:"bg-teal-500" },
-                      "Completed": { active:"bg-violet-500/15 border-violet-500/60 text-violet-800", dot:"bg-violet-500" } };
+                      "Awaiting": { active:"bg-violet-500/15 border-violet-500/60 text-violet-800", dot:"bg-violet-500" },
+                      "Completed": { active:"bg-emerald-500/15 border-emerald-500/60 text-emerald-800", dot:"bg-emerald-500" } };
+  const ownLabel = profile.role === "User";
 
   return (
     <div ref={swipeRef}>
@@ -1855,9 +2051,9 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
                 </span>
               )}
               <span className="block text-[12px] sm:text-[13px] font-semibold">
-                {t.label} <span className="font-mono text-[10.5px] sm:text-[11.5px] opacity-70">{counts[t.key]}</span>
+                {(ownLabel ? t.label : (t.labelOthers || t.label))} <span className="font-mono text-[10.5px] sm:text-[11.5px] opacity-70">{counts[t.key]}</span>
               </span>
-              <span className="block text-[9.5px] sm:text-[11px] text-slate-500">{t.hi}</span>
+              <span className="block text-[9.5px] sm:text-[11px] text-slate-500">{ownLabel ? t.hi : (t.hiOthers || t.hi)}</span>
             </button>
           );
         })}
@@ -1892,342 +2088,44 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
           <div className="px-4 py-12 sm:py-16 text-center">
             <Ico d={I.clipboard} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
             <p className="font-semibold text-slate-700 text-[13.5px] sm:text-[14px]">
-              {tab === "Pending" ? "No pending complaints" : tab === "In Progress" ? "Nothing in progress" : "Nothing completed yet"}
+              {tab === "Pending" ? "No pending complaints" : tab === "In Progress" ? "Nothing in progress"
+                : tab === "Awaiting" ? "Nothing waiting for an OK" : "Nothing completed yet"}
             </p>
             <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
               {rows.length ? "Try clearing the filter or search." : 'Log a new complaint with "New Complaint".'}
             </p>
           </div>
-        ) : shown.map(c => <ComplaintRow key={c.id} c={c} profile={profile} D={D} onOpen={onOpen} />)}
+        ) : shown.map(c => <ComplaintRow key={c.id} c={c} profile={profile} D={D} onOpen={onOpen} showUnit={showUnit} />)}
       </div>
     </div>
   );
 }
 
 // ============================================================
-// 12. ADMIN — USER MANAGEMENT PANEL
+// 12. USER MANAGEMENT — moved to the ERP
+//     The Users tab that lived here (add / edit / deactivate / delete,
+//     role, host types, unit) is now ERP › Admin Panel › Users, the one
+//     place every app's users are managed. The complaint account is
+//     created there by Apps › Complaint App = ON, and the role, host
+//     types, unit, "All units", department and designation are set in the
+//     same user form (admin_save_user_unit_profile). New people sign up on
+//     the launcher, which asks for their unit.
 // ============================================================
-function UserFormModal({editing, onClose, onSaved, toast, callAdmin}){
-  const isEdit = !!editing;
-  const knownDept = editing?.department && DEPARTMENTS.includes(editing.department);
-  const [f, setF] = useState({
-    name: editing?.name || "", mobile: editing?.mobile || "",
-    department: knownDept ? editing.department : (editing?.department ? "Other" : DEPARTMENTS[0]),
-    department_other: (editing?.department && !knownDept) ? editing.department : "",
-    designation: editing?.designation || "",
-    dob: editing?.dob || "", role: editing?.role || "User",
-    host_types: editing?.host_types || [],
-  });
-  const [errs, setErrs] = useState({});
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);
-  const set = (k,v) => setF(s => ({...s, [k]:v}));
-
-  const preview = useMemo(()=>({
-    username: makeUsername(f.name),
-    password: makePassword(f.mobile, f.dob),
-  }),[f.name, f.mobile, f.dob]);
-
-  const toggleType = (t) =>
-    set("host_types", f.host_types.includes(t) ? f.host_types.filter(x=>x!==t) : [...f.host_types, t]);
-
-  const save = async () => {
-    const e = {};
-    if (f.name.trim().length < 2) e.name = "Please enter the full name.";
-    if (!/^\d{10}$/.test(digits(f.mobile))) e.mobile = "Exactly 10 digit ka mobile number.";
-    if (!f.designation.trim()) e.designation = "Please enter the designation.";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(f.dob)) e.dob = "Choose the date of birth.";
-    if (f.department === "Other" && !f.department_other.trim()) e.department_other = "Enter the new department's name.";
-    if (f.role === "Host" && f.host_types.length === 0) e.host_types = "Give the Host at least one complaint type.";
-    setErrs(e);
-    if (Object.keys(e).length) return;
-
-    const finalDept = f.department === "Other" ? f.department_other.trim() : f.department;
-    setBusy(true);
-    const payload = {
-      action: isEdit ? "update" : "create",
-      id: editing?.id,
-      name: f.name.trim(), mobile: digits(f.mobile),
-      department: finalDept, designation: f.designation.trim(),
-      dob: f.dob, role: f.role,
-      host_types: f.role === "Host" ? f.host_types : [],
-    };
-    const res = await callAdmin(payload);
-    setBusy(false);
-    if (!res.ok) return toast(res.error, true);
-    setResult(res);       // show the credentials so the admin can hand them over
-    onSaved();
-  };
-
-  if (result){
-    return (
-      <Modal title={isEdit ? "User updated" : "User created"} subtitle={f.name} onClose={onClose}
-        footer={<Btn variant="primary" onClick={onClose}>Done</Btn>}>
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
-          <p className="text-[13px] text-emerald-800 font-semibold mb-3">
-            {isEdit && !result.password_changed ? "Details updated. The password is unchanged." : "Give these login details to the user:"}
-          </p>
-          <div className="space-y-2.5 font-mono text-[13.5px]">
-            <div className="flex gap-3"><span className="text-slate-500 w-20 shrink-0">Name</span><span className="text-slate-900 break-all">{f.name}</span></div>
-            <div className="flex gap-3"><span className="text-slate-500 w-20 shrink-0">Password</span><span className="text-teal-700 break-all">{result.password}</span></div>
-          </div>
-          <Btn size="sm" variant="outline" className="mt-3.5"
-            onClick={()=>{
-              const text = `Sarv MIS login\nName: ${f.name}\nPassword: ${result.password}`;
-              if (navigator.clipboard) navigator.clipboard.writeText(text).then(()=>toast("Copied."), ()=>toast("Could not copy.", true));
-              else toast("Could not copy.", true);
-            }}>Copy details</Btn>
-        </div>
-        <p className="text-[11.5px] text-slate-500 mt-3 leading-relaxed">
-          Password rule: mobile number, phir @, phir DDMMYYYY janm tithi.
-          Changing the mobile number or DOB changes the password automatically.
-        </p>
-      </Modal>
-    );
-  }
-
-  return (
-    <Modal title={isEdit ? "Edit user" : "Add new user"} subtitle={isEdit ? editing.name : "नया यूज़र जोड़ें"} onClose={onClose}
-      footer={<>
-        <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-        <Btn variant="primary" onClick={save} disabled={busy}>{busy?<Spinner/>:null}{busy?"Saving…":(isEdit?"Save changes":"Create user")}</Btn>
-      </>}>
-      <div className="grid sm:grid-cols-2 gap-x-3">
-        <Field label="Name" hindi="नाम" required error={errs.name}>
-          <input className={inputCls(errs.name)} value={f.name} onChange={e=>set("name", e.target.value)} placeholder="Ramesh Kumar" />
-        </Field>
-        <Field label="Mobile" hindi="मोबाइल" required error={errs.mobile}>
-          <input className={inputCls(errs.mobile)} value={f.mobile} inputMode="numeric" maxLength={14}
-                 onChange={e=>set("mobile", e.target.value)} placeholder="9896011223" />
-        </Field>
-        <Field label="Department" hindi="विभाग" required>
-          <select className={inputCls(false)} value={f.department} onChange={e=>set("department", e.target.value)}>
-            {DEPARTMENTS.map(d=><option key={d} value={d}>{d}</option>)}
-          </select>
-        </Field>
-        {f.department === "Other" && (
-          <Field label="New department name" hindi="नया विभाग का नाम" required error={errs.department_other}>
-            <input className={inputCls(errs.department_other)} value={f.department_other}
-                   onChange={e=>set("department_other", e.target.value)} placeholder="e.g. QUALITY CHECK" />
-          </Field>
-        )}
-        <Field label="Designation" hindi="पद" required error={errs.designation}>
-          <input className={inputCls(errs.designation)} value={f.designation}
-                 onChange={e=>set("designation", e.target.value)} placeholder="Machine Operator" />
-        </Field>
-        <Field label="Date of birth" hindi="जन्म तिथि" required error={errs.dob}>
-          <input type="date" className={inputCls(errs.dob)} value={f.dob} max={todayStr()}
-                 onChange={e=>set("dob", e.target.value)} />
-        </Field>
-        <Field label="Role" hindi="भूमिका" required>
-          <select className={inputCls(false)} value={f.role} onChange={e=>set("role", e.target.value)}>
-            {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
-          </select>
-        </Field>
-      </div>
-
-      {f.role === "Host" && (
-        /* Machine and fabric types are grouped but stored in ONE array
-           (cmp_profiles.host_types), so one person can be the host for, say,
-           Electrical and Width at the same time — common on a small floor
-           where the same fitter covers both. */
-        <Field label="Host for which complaint types" hindi="किन शिकायतों का होस्ट" required error={errs.host_types}
-               hint="The Host will see complaints of these types only. You can choose both Machine and Fabric.">
-          <div className="space-y-2.5">
-            {HOST_TYPE_GROUPS.map(g=>(
-              <div key={g.label}>
-                <p className="text-[10.5px] uppercase tracking-wide text-slate-500 mb-1.5">
-                  {g.label} · {g.hi}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {g.types.map(t=>(
-                    <button key={t} type="button" onClick={()=>toggleType(t)}
-                      className={`rounded-full px-3 py-1.5 text-[12px] font-medium border transition-colors ${
-                        f.host_types.includes(t)
-                          ? (g.label === "Fabric"
-                              ? "bg-blue-600 border-blue-600 text-white"
-                              : "bg-teal-500 border-teal-500 text-slate-950")
-                          : "bg-white border-slate-300 text-slate-500 hover:border-slate-400"}`}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Field>
-      )}
-      {f.role === "Maintenance" && (
-        <p className="text-[12.5px] text-slate-500 rounded-lg bg-slate-100 px-3.5 py-2.5">
-          The Maintenance role can see complaints for all hosts.
-        </p>
-      )}
-      {f.role === "Admin" && (
-        <p className="text-[12.5px] text-amber-700 rounded-lg bg-amber-500/10 px-3.5 py-2.5">
-          The Admin gets full access: all complaints and user management.
-        </p>
-      )}
-
-      {/* Live credential preview — the rule made visible */}
-      <div className="rounded-xl border border-slate-300 bg-slate-100 p-3.5 mt-2">
-        <p className="text-[10.5px] uppercase tracking-wide text-slate-500 mb-2">Login banega</p>
-        <div className="font-mono text-[13px] space-y-1.5">
-          <div className="flex gap-3"><span className="text-slate-500 w-20 shrink-0">Name</span>
-            <span className={preview.username ? "text-slate-800" : "text-slate-400"}>{preview.username || "—"}</span></div>
-          <div className="flex gap-3"><span className="text-slate-500 w-20 shrink-0">Password</span>
-            <span className={preview.password ? "text-teal-700" : "text-slate-400"}>{preview.password || "mobile@DDMMYYYY"}</span></div>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function AdminUsers({profile, toast, callAdmin}){
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [roleF, setRoleF] = useState("All");
-  const [editing, setEditing] = useState(undefined);   // undefined = closed, null = new
-  const [confirm, setConfirm] = useState(null);
-
-  const load = useCallback(async ()=>{
-    setLoading(true);
-    const { data, error } = await sb.from("cmp_profiles").select("*").order("role").order("name");
-    setLoading(false);
-    if (error) return toast(friendlyError(error), true);
-    setUsers(data || []);
-  },[toast]);
-  useEffect(()=>{ load(); },[load]);
-
-  const shown = useMemo(()=>{
-    const n = q.trim().toLowerCase();
-    return users.filter(u => {
-      if (roleF !== "All" && u.role !== roleF) return false;
-      if (n && ![u.name,u.mobile,u.department,u.designation].join(" ").toLowerCase().includes(n)) return false;
-      return true;
-    });
-  },[users,q,roleF]);
-
-  const setActive = async (u, active) => {
-    const res = await callAdmin({ action:"set_active", id:u.id, is_active:active });
-    if (!res.ok) return toast(res.error, true);
-    toast(`${u.name} ${active ? "activated" : "deactivated"}.`);
-    load();
-  };
-  const doDelete = async (u) => {
-    const res = await callAdmin({ action:"delete", id:u.id });
-    setConfirm(null);
-    if (!res.ok) return toast(res.error, true);
-    toast(`${u.name} has been deleted.`);
-    load();
-  };
-
-  const roleTone = r => r==="Admin"?"rose":r==="Maintenance"?"violet":r==="Host"?"teal":"slate";
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <div>
-          <h2 className="font-bold text-[15px] sm:text-[17px]">User Management</h2>
-          <p className="text-[11px] sm:text-[12.5px] text-slate-500">यूज़र प्रबंधन &mdash; admin only</p>
-        </div>
-        <Btn variant="primary" size="sm" icon={I.plus} className="ml-auto" onClick={()=>setEditing(null)}>Add user</Btn>
-      </div>
-
-      <div className="flex gap-2 mb-3 flex-wrap">
-        <div className="relative grow min-w-[180px]">
-          <Ico d={I.search} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className={inputCls(false)+" pl-9"} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search naam, mobile, department…" />
-        </div>
-        <select className={inputCls(false)+" w-auto"} value={roleF} onChange={e=>setRoleF(e.target.value)}>
-          <option value="All">All roles</option>
-          {ROLES.map(r=><option key={r} value={r}>{r}</option>)}
-        </select>
-        <Btn variant="outline" icon={I.refresh} onClick={load} aria-label="Refresh" />
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden divide-y divide-slate-200 shadow-sm">
-        {loading ? Array.from({length:4}).map((_,i)=>(
-          <div key={i} className="px-4 py-4"><div className="h-3 rounded bg-slate-100 animate-pulse" style={{width:`${50+i*10}%`}}/></div>
-        )) : shown.length === 0 ? (
-          <div className="px-5 py-14 text-center">
-            <Ico d={I.users} className="w-9 h-9 mx-auto text-slate-300 mb-3" />
-            <p className="font-semibold text-slate-700">No users found</p>
-          </div>
-        ) : shown.map(u => (
-          <div key={u.id} className={`px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 ${u.is_active?"":"opacity-55"}`}>
-            <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 grid place-items-center font-bold text-sm shrink-0">
-              {u.name.slice(0,1).toUpperCase()}
-            </div>
-            <div className="min-w-0 sm:w-52">
-              <p className="font-semibold text-[13.5px] truncate">
-                {u.name}
-                {u.id === profile.id ? <span className="ml-2 text-[10px] uppercase tracking-wide text-teal-600">you</span> : null}
-              </p>
-              <p className="text-[11.5px] text-slate-500 truncate font-mono">{u.mobile}</p>
-            </div>
-            <div className="min-w-0 sm:w-48">
-              <p className="text-[12.5px] text-slate-700 truncate">{u.designation}</p>
-              <p className="text-[11.5px] text-slate-500 truncate">{u.department}</p>
-            </div>
-            <div className="grow min-w-0 flex items-center gap-1.5 flex-wrap">
-              <Badge tone={roleTone(u.role)}>{u.role}</Badge>
-              {(u.host_types||[]).map(t => <Badge key={t} tone="slate">{t}</Badge>)}
-              {!u.is_active ? <Badge tone="rose">Inactive</Badge> : null}
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <Btn size="sm" variant="outline" icon={I.pen} onClick={()=>setEditing(u)}>Edit</Btn>
-              <Btn size="sm" variant="ghost" icon={u.is_active?I.ban:I.check}
-                   onClick={()=>setActive(u, !u.is_active)}
-                   disabled={u.id === profile.id}
-                   title={u.is_active?"Deactivate":"Reactivate"} />
-              <Btn size="sm" variant="ghost" icon={I.x} onClick={()=>setConfirm(u)}
-                   disabled={u.id === profile.id} title="Delete" />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-[11.5px] text-slate-400 mt-3 leading-relaxed">
-        Password = mobile number + <span className="text-slate-500">@</span> + DDMMYYYY (janm tithi).
-        Editing the mobile number or DOB changes the password automatically; the user must be told the new password.
-      </p>
-
-      {editing !== undefined && (
-        <UserFormModal editing={editing} onClose={()=>setEditing(undefined)}
-                       onSaved={load} toast={toast} callAdmin={callAdmin} />
-      )}
-      {confirm && (
-        <Modal title="Delete user?" subtitle={confirm.name} onClose={()=>setConfirm(null)}
-          footer={<>
-            <Btn variant="outline" onClick={()=>setConfirm(null)}>Cancel</Btn>
-            <Btn variant="danger" onClick={()=>doDelete(confirm)}>Delete permanently</Btn>
-          </>}>
-          <p className="text-[13.5px] text-slate-700">
-            <strong>{confirm.name}</strong>'s login will be deleted permanently.
-            Their old complaints stay in the register, but the reporter's name will no longer be linked.
-          </p>
-          <p className="text-[13px] text-slate-500 mt-3">
-            For leave or a transfer, <em>Deactivate</em> is better; the data stays safe.
-          </p>
-        </Modal>
-      )}
-    </div>
-  );
-}
 
 // ============================================================
 // 12A. ADMIN — MACHINE LIST PANEL
 //      Direct table CRUD — RLS already grants Admin full access (ml_write).
 // ============================================================
-function MachineFormModal({editing, onClose, onSaved, toast}){
+function MachineFormModal({editing, onClose, onSaved, toast, unitsEnabled}){
   const isEdit = !!editing;
+  const units = React.useContext(UnitsCtx);
   const knownDept = editing?.department && DEPARTMENTS.includes(editing.department);
   const [f, setF] = useState({
     machine_name: editing?.machine_name || "",
     machine_no: editing?.machine_no || "",
     department: knownDept ? editing.department : (editing?.department ? "Other" : DEPARTMENTS[0]),
     department_other: (editing?.department && !knownDept) ? editing.department : "",
+    unit: editing?.unit || "",   // "" = shared by every unit
   });
   const [errs, setErrs] = useState({});
   const [busy, setBusy] = useState(false);
@@ -2244,7 +2142,8 @@ function MachineFormModal({editing, onClose, onSaved, toast}){
 
     const finalDept = f.department === "Other" ? f.department_other.trim() : f.department;
     setBusy(true);
-    const row = { machine_name: f.machine_name.trim(), machine_no: f.machine_no.trim(), department: finalDept };
+    const row = { machine_name: f.machine_name.trim(), machine_no: f.machine_no.trim(), department: finalDept,
+                  ...(unitsEnabled ? { unit: f.unit || null } : {}) };
     const { error } = isEdit
       ? await sb.from("cmp_machine_list").update(row).eq("id", editing.id)
       : await sb.from("cmp_machine_list").insert(row);
@@ -2288,11 +2187,21 @@ function MachineFormModal({editing, onClose, onSaved, toast}){
                  onChange={e=>set("department_other", e.target.value)} placeholder="e.g. QUALITY CHECK" />
         </Field>
       )}
+      {unitsEnabled && (
+        <Field label="Unit" hindi="यूनिट" hint="Users see only their own unit's machines. Shared machines appear in every unit.">
+          <select className={inputCls(false)} value={f.unit} onChange={e=>set("unit", e.target.value)}>
+            <option value="">Shared · every unit</option>
+            {units.map(u=><option key={u.code} value={u.code}>{u.name}</option>)}
+          </select>
+        </Field>
+      )}
     </Modal>
   );
 }
 
-function AdminMachines({toast, onMachinesChanged}){
+function AdminMachines({toast, onMachinesChanged, unitsEnabled}){
+  const units = React.useContext(UnitsCtx);
+  const [unitF, setUnitF] = useState("All");
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -2315,10 +2224,11 @@ function AdminMachines({toast, onMachinesChanged}){
     const n = q.trim().toLowerCase();
     return list.filter(m => {
       if (deptF !== "All" && m.department !== deptF) return false;
+      if (unitF === "__shared" ? !!m.unit : (unitF !== "All" && m.unit !== unitF)) return false;
       if (n && ![m.machine_name,m.machine_no,m.department].join(" ").toLowerCase().includes(n)) return false;
       return true;
     });
-  },[list,q,deptF]);
+  },[list,q,deptF,unitF]);
 
   const saved = () => { load(); onMachinesChanged && onMachinesChanged(); };
 
@@ -2352,6 +2262,13 @@ function AdminMachines({toast, onMachinesChanged}){
             <option value="All">All departments</option>
             {DEPARTMENTS.map(d=><option key={d} value={d}>{d}</option>)}
           </select>
+          {unitsEnabled && (
+            <select className={inputCls(false)+" flex-1 sm:w-auto text-[14px]"} value={unitF} onChange={e=>setUnitF(e.target.value)}>
+              <option value="All">All units</option>
+              {units.map(u=><option key={u.code} value={u.code}>{u.name}</option>)}
+              <option value="__shared">Shared</option>
+            </select>
+          )}
           <Btn variant="outline" icon={I.refresh} onClick={load} aria-label="Refresh" className="shrink-0" />
         </div>
       </div>
@@ -2373,8 +2290,9 @@ function AdminMachines({toast, onMachinesChanged}){
               <p className="font-semibold text-[13.5px] truncate">{m.machine_name}</p>
               <p className="text-[11.5px] text-slate-500 truncate font-mono">{m.machine_no}</p>
             </div>
-            <div className="grow min-w-0">
+            <div className="grow min-w-0 flex items-center gap-1.5 flex-wrap">
               <Badge tone="slate">{m.department}</Badge>
+              {unitsEnabled && <Badge tone={m.unit ? "violet" : "slate"}>{m.unit ? unitName(units, m.unit) : "Shared"}</Badge>}
             </div>
             <div className="flex gap-1.5 shrink-0">
               <Btn size="sm" variant="outline" icon={I.pen} onClick={()=>setEditing(m)}>Edit</Btn>
@@ -2389,7 +2307,7 @@ function AdminMachines({toast, onMachinesChanged}){
       </p>
 
       {editing !== undefined && (
-        <MachineFormModal editing={editing} onClose={()=>setEditing(undefined)} onSaved={saved} toast={toast} />
+        <MachineFormModal editing={editing} onClose={()=>setEditing(undefined)} onSaved={saved} toast={toast} unitsEnabled={unitsEnabled} />
       )}
       {confirm && (
         <Modal title="Delete machine?" subtitle={confirm.machine_no} onClose={()=>setConfirm(null)}
@@ -3580,7 +3498,7 @@ function ReminderWatcher({profile}){
 // Helper: compute nav keys for swipe (must be outside component for stable reference in setter callback)
 function _navKeys(profile) {
   const keys = ["complaints","notices","tasks"];
-  if (profile?.role === "Admin") keys.push("machines","users");
+  if (profile?.role === "Admin") keys.push("machines");
   return keys;
 }
 
@@ -3592,6 +3510,14 @@ function App(){
   const [machines, setMachines] = useState([]);
   const [processes, setProcesses] = useState([]);   // fabric side's subject master
   const [hosts, setHosts] = useState([]);   // Host role profiles — for the assign flow
+  const [units, setUnits] = useState(UNIT_FALLBACK);   // from cmp_units
+  /* Unit filter, for someone who sees every unit (Admin / "All units").
+     Remembered per device like the register, because an Admin who looks
+     after Unit-2 today will look after it tomorrow too. */
+  const [unitF, setUnitF] = useState(() => {
+    try { return localStorage.getItem(UNIT_FILTER_KEY) || "All"; } catch(e){ return "All"; }
+  });
+  useEffect(()=>{ try { localStorage.setItem(UNIT_FILTER_KEY, unitF); } catch(e){} },[unitF]);
   /* Which register is on screen. Remembered per device, because a fabric
      inspector opens this app twenty times a day and should not have to
      switch every time. Falls back to machine if the stored value is stale. */
@@ -3599,7 +3525,12 @@ function App(){
     try { const v = localStorage.getItem(DOMAIN_STORE_KEY); return DOMAIN_KEYS.includes(v) ? v : "machine"; }
     catch(e){ return "machine"; }
   });
-  const D = DOMAINS[domainKey] || DOMAINS.machine;
+  /* The register actually shown: the remembered one if this role may see
+     it, else the role's own. Worked out here from the profile (not fixed up
+     in an effect), so a Maintenance login never fetches the fabric table
+     even for one frame, whatever this device remembered from someone else. */
+  const myDomains = domainsFor(profile);
+  const D = DOMAINS[myDomains.includes(domainKey) ? domainKey : myDomains[0]] || DOMAINS.machine;
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("complaints");
   const [detail, setDetail] = useState(null);
@@ -3740,7 +3671,9 @@ function App(){
   },[toast, D.table, D.photoTable]);
 
   const loadMachines = useCallback(async ()=>{
-    const { data, error } = await sb.from("cmp_machine_list").select("machine_name,machine_no,department").eq("is_active",true)
+    // "*" rather than a column list so `unit` comes along once the migration
+    // has run, and the query still works before it.
+    const { data, error } = await sb.from("cmp_machine_list").select("*").eq("is_active",true)
       .order("department").order("machine_name").order("machine_no");
     if (!error) setMachines(data||[]);
   },[]);
@@ -3752,10 +3685,18 @@ function App(){
   },[]);
 
   const loadHosts = useCallback(async ()=>{
+    // "*" for the same reason as loadMachines: unit / all_units ride along.
     const { data, error } = await sb.from("cmp_profiles")
-      .select("id,name,mobile,department,host_types")
+      .select("*")
       .eq("role","Host").eq("is_active",true).order("name");
     if (!error) setHosts(data||[]);
+  },[]);
+
+  // Missing table (migration not run) or empty: keep the fallback list.
+  const loadUnits = useCallback(async ()=>{
+    const { data, error } = await sb.from("cmp_units").select("code,name,sort_order")
+      .eq("is_active",true).order("sort_order").order("code");
+    if (!error && data && data.length) setUnits(data);
   },[]);
 
   /* loadRows is in the dependency list and is itself keyed to D.table, so
@@ -3767,6 +3708,7 @@ function App(){
     loadMachines();
     loadProcesses();
     loadHosts();
+    loadUnits();
     const iv = setInterval(()=>{
       if (document.visibilityState === "visible" && !detail && !showNew) loadRows(false);
     }, 60000);
@@ -3779,22 +3721,6 @@ function App(){
     const fresh = rows.find(r => r.id === detail.id);
     if (fresh && fresh.updated_at !== detail.updated_at) setDetail(fresh);
   },[rows]);   // eslint-disable-line
-
-  // ---- admin edge function ----
-  const callAdmin = useCallback(async (payload)=>{
-    try{
-      const { data:{ session:s } } = await sb.auth.getSession();
-      if (!s) return { ok:false, error:"Your session has expired. Please log in again." };
-      const r = await fetch(ADMIN_FN_URL, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${s.access_token}`, "apikey": SUPABASE_ANON },
-        body: JSON.stringify(payload),
-      });
-      const j = await r.json().catch(()=>({}));
-      if (!r.ok) return { ok:false, error: j.error || `Server error (${r.status}).` };
-      return j;
-    } catch(e){ return { ok:false, error: friendlyError(e) }; }
-  },[]);
 
   // ---- Tab badge system (MUST be before early returns — hooks can't be conditional) ----
   const [tabSeenMap, reloadTabSeen] = useTabSeen(profile?.id);
@@ -3828,11 +3754,13 @@ function App(){
   useEffect(()=>{
     try { localStorage.setItem(DOMAIN_STORE_KEY, domainKey); } catch(e){}
   },[domainKey]);
-  const otherDomain = DOMAINS[DOMAIN_KEYS.find(k => k !== domainKey)];
-  // Swipe either way on the title toggles between the two registers.
+  // With a single register (Maintenance / Production Manager) there is
+  // nothing to swipe to, so the gesture does nothing.
+  const otherKey = myDomains.find(k => k !== D.key);
+  // Swipe either way on the register buttons toggles between the two.
   const domainSwipeRef = useSwipe(
-    () => switchDomain(otherDomain.key),
-    () => switchDomain(otherDomain.key)
+    () => { if (otherKey) switchDomain(otherKey); },
+    () => { if (otherKey) switchDomain(otherKey); }
   );
 
   // Mark main tab as seen on switch
@@ -3891,6 +3819,30 @@ function App(){
     profile.role === "Host" ? `${(profile.host_types||[]).join(", ")} complaints` :
     "Only your complaints";
 
+  // ---- units ----
+  const hasUnits = unitsOn(profile);
+  const allUnits = hasUnits && seesAllUnits(profile);
+  // A unit filter left over from another login (or a unit since retired)
+  // must not silently empty the list.
+  /* "__mine" (My Complaints) sits in the same row: the complaints this
+     person raised themselves, across every unit. The Admin sees every
+     unit's complaints, so their own were otherwise lost among them. */
+  const MINE = "__mine";
+  const isMine = r => r.raised_by_user_id === profile.id;
+  const effUnitF = allUnits && (unitF === MINE || units.some(u => u.code === unitF)) ? unitF : "All";
+  const viewRows = effUnitF === "All" ? rows
+    : effUnitF === MINE ? rows.filter(isMine)
+    : rows.filter(r => r.unit === effUnitF);
+  /* No unit on this user yet (an older account, or one whose unit the Admin
+     hasn't set in ERP › Admin Panel › Users). The database would refuse the
+     complaint anyway; saying so before the form is filled in saves them the
+     typing. */
+  const unitBlocked = hasUnits && !profile.unit && !allUnits;
+  const openNew = () => {
+    if (unitBlocked) return toast("Your unit is not set yet. Ask the Admin to set Unit-1 / Unit-2 on your user (ERP › Admin Panel › Users).", true);
+    setShowNew(true);
+  };
+
   // Nav items with icons for bottom nav
   const navItems = [
     { key:"complaints", label:"Complaints", hi:"शिकायत", icon:I.clipboard, color:"text-amber-600", bg:"bg-amber-500", dot:"bg-amber-500" },
@@ -3898,66 +3850,112 @@ function App(){
     { key:"tasks", label:"Tasks", hi:"कार्य", icon:I.list, color:"text-teal-600", bg:"bg-teal-500", dot:"bg-teal-500" },
     ...(profile.role === "Admin" ? [
       { key:"machines", label:"Machines", hi:"मशीन", icon:I.wrench, color:"text-purple-600", bg:"bg-purple-500", dot:"bg-purple-500" },
-      { key:"users", label:"Users", hi:"यूजर", icon:I.users, color:"text-rose-600", bg:"bg-rose-500", dot:"bg-rose-500" },
+      // Users: managed in ERP › Admin Panel › Users now (see section 12).
     ] : []),
   ];
 
   return (
+    <UnitsCtx.Provider value={units}>
     <div className="min-h-screen flex flex-col bg-slate-50 sm:bg-white">
 
       {/* ===== MOBILE TOP BAR =====
-           The title is the register switch: swipe it either way, or tap it,
-           to go Machine to Fabric and back. It is a real button element so it
-           is reachable by keyboard and screen readers too — a swipe-only
-           control would be invisible to both, and most people will discover
-           the tap first anyway. The arrow and the other register's initials
-           are shown so the gesture does not have to be guessed. */}
+           The register switch is the pair of large buttons under the title:
+           Machine Complaint and Fabric Complaint, split side by side. The
+           selected one grows wider and fills with its colour, so which
+           register is on screen is obvious at a glance; the other stays
+           smaller and outlined. They are real buttons (keyboard and screen
+           readers reach them, aria-pressed says which is on), and a swipe
+           either way across the pair still toggles, as the title used to. */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-3xl mx-auto flex items-center gap-2.5 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="max-w-3xl mx-auto flex items-center gap-2.5 px-3 pt-2.5 pb-2 sm:px-4 sm:pt-3">
           <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg text-white grid place-items-center font-extrabold text-[12px] sm:text-[13px] shrink-0 transition-colors ${D.badgeCls}`}>
             {D.badge}
           </div>
-          <button type="button" ref={domainSwipeRef}
-            onClick={()=>switchDomain(otherDomain.key)}
-            title={`${otherDomain.title} par jayein`}
-            aria-label={`${D.title}. Tap to switch to ${otherDomain.title}`}
-            className="min-w-0 flex-1 text-left group select-none active:scale-[0.99] transition-transform"
-            style={{touchAction:'pan-y'}}>
-            <h1 className="font-bold text-[14px] sm:text-[15px] leading-tight truncate flex items-center gap-1.5">
-              <span>{D.title}</span>
-              <span className={`shrink-0 rounded-full border px-1.5 py-[1px] text-[9px] font-semibold leading-none ${D.chipCls}`}>
-                ⇄ {otherDomain.badge}
-              </span>
-            </h1>
-            <p className="text-[10.5px] sm:text-[11.5px] text-slate-500 truncate">{profile.name} · {profile.role}</p>
-          </button>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-bold text-[14px] sm:text-[15px] leading-tight truncate">{D.title}</h1>
+            <p className="text-[10.5px] sm:text-[11.5px] text-slate-500 truncate">
+              {profile.name} · {profile.role}
+              {hasUnits && <> · <span className="font-semibold text-violet-700">{allUnits ? "All units" : (profile.unit ? unitName(units, profile.unit) : "No unit")}</span></>}
+            </p>
+          </div>
           <BellButton toast={toast} />
           <Btn variant="ghost" size="sm" icon={I.logout} onClick={sarvLogoutAll} aria-label="Logout" className="shrink-0" />
         </div>
+        {/* Only when there is a choice: a Maintenance / Production Manager
+            login has one register, already named in the title above. */}
+        {myDomains.length > 1 && (
+        <div ref={domainSwipeRef} role="group" aria-label="Complaint register"
+          className="max-w-3xl mx-auto flex items-stretch gap-2 px-3 pb-2.5 sm:px-4 sm:pb-3 select-none"
+          style={{touchAction:'pan-y'}}>
+          {myDomains.map(k => {
+            const X = DOMAINS[k], on = k === D.key;
+            return (
+              <button key={k} type="button" onClick={()=>switchDomain(k)}
+                aria-pressed={on}
+                title={on ? X.title : `${X.title} par jayein`}
+                className={`min-w-0 rounded-xl border-2 flex items-center justify-center gap-2 px-2 font-bold transition-all duration-200 active:scale-[0.98] ${
+                  on ? `flex-[1.6] py-3.5 text-[15px] sm:text-[16px] ${X.segOnCls}`
+                     : `flex-1 py-2.5 text-[12.5px] sm:text-[13.5px] ${X.segOffCls}`}`}>
+                <Ico d={I[X.segIcon]} className={on ? "w-6 h-6 shrink-0" : "w-4 h-4 shrink-0"} />
+                <span className="min-w-0 text-left leading-tight">
+                  <span className="block truncate">{X.title}</span>
+                  <span className={`block truncate font-medium ${on ? "text-[11px] opacity-90" : "text-[10px] opacity-75"}`}>{X.hi}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        )}
+        {/* Unit filter — only for someone who sees more than one unit, and
+            only on the complaint lists (Notices / Tasks are company-wide). */}
+        {allUnits && view === "complaints" && (
+          <div role="group" aria-label="Unit filter"
+            className="max-w-3xl mx-auto flex items-center gap-1.5 px-3 pb-2.5 sm:px-4 overflow-x-auto">
+            <span className="text-[10.5px] uppercase tracking-wide text-slate-500 shrink-0 mr-0.5">Unit</span>
+            {[{ code:"All", name:"All units" }, ...units, { code:MINE, name:"My Complaints" }].map(u => {
+              const on = effUnitF === u.code;
+              const n = u.code === "All" ? rows.length
+                : u.code === MINE ? rows.filter(isMine).length
+                : rows.filter(r => r.unit === u.code).length;
+              return (
+                <button key={u.code} type="button" onClick={()=>setUnitF(u.code)} aria-pressed={on}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${
+                    on ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                  {u.name} <span className="font-mono text-[10.5px] opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </header>
 
       {/* ===== MAIN CONTENT — scrollable, padded for bottom nav ===== */}
       <main ref={mainSwipeRef} className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-4 pt-3 sm:pt-4 pb-24 sm:pb-6">
-        {view === "users" && profile.role === "Admin" ? (
-          <AdminUsers profile={profile} toast={toast} callAdmin={callAdmin} />
-        ) : view === "machines" && profile.role === "Admin" ? (
-          <AdminMachines toast={toast} onMachinesChanged={loadMachines} />
+        {view === "machines" && profile.role === "Admin" ? (
+          <AdminMachines toast={toast} onMachinesChanged={loadMachines} unitsEnabled={hasUnits} />
         ) : view === "notices" ? (
           <NoticeBoard profile={profile} toast={toast} onView={setLightbox} />
         ) : view === "tasks" ? (
           <TasksPanel profile={profile} toast={toast} tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen} />
         ) : (
           <>
-            <Stats rows={rows} profile={profile} D={D} />
-            <ComplaintsView profile={profile} rows={rows} loading={loading} D={D}
+            {unitBlocked && (
+              <div className="mb-3 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/30 px-3 py-2.5 text-[12.5px] text-amber-800">
+                <Ico d={I.alert} className="w-4 h-4 mt-0.5 shrink-0" />
+                <span><b>Your unit is not set yet.</b> You can't raise a complaint until the Admin sets Unit-1 / Unit-2 on your user.</span>
+              </div>
+            )}
+            <Stats rows={viewRows} profile={profile} D={D} />
+            <ComplaintsView profile={profile} rows={viewRows} loading={loading} D={D}
               onRefresh={()=>loadRows(true)} onOpen={setDetail} toast={toast}
-              tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen} />
+              tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen}
+              showUnit={allUnits && (effUnitF === "All" || effUnitF === MINE)} />
           </>
         )}
       </main>
 
       {/* ===== FAB — New Complaint (mobile: bottom-right above nav, desktop: inline) ===== */}
-      <button onClick={()=>setShowNew(true)}
+      <button onClick={openNew}
         title={`New ${D.title}`}
         className={`sm:hidden fixed z-50 right-4 bottom-20 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform ${D.fabCls}`}
         style={{marginBottom:'env(safe-area-inset-bottom,0px)'}}>
@@ -4020,7 +4018,7 @@ function App(){
             </button>
           );
         })}
-        <Btn variant="primary" icon={I.plus} onClick={()=>setShowNew(true)} className="ml-auto shrink-0">{"New " + D.title}</Btn>
+        <Btn variant="primary" icon={I.plus} onClick={openNew} className="ml-auto shrink-0">{"New " + D.title}</Btn>
       </div>
 
       {showNew && (
@@ -4037,6 +4035,7 @@ function App(){
       <ReminderWatcher profile={profile} />
       <Toasts items={toasts} dismiss={dismiss} />
     </div>
+    </UnitsCtx.Provider>
   );
 }
 

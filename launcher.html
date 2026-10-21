@@ -502,6 +502,13 @@ button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
         <input id="suDept" class="plain" readonly placeholder="—">
       </div>
     </div>
+    <!-- Which factory unit the person works in. Their complaints are saved
+         under it and go to that unit's hosts. Only the Admin can change it
+         later (ERP › Admin Panel › Users). -->
+    <div class="fg">
+      <label id="suUnitLbl">Unit <span class="req">*</span></label>
+      <div class="picks" id="suUnit" role="radiogroup" aria-labelledby="suUnitLbl"></div>
+    </div>
     <div class="row2">
       <div class="fg">
         <label for="suContact">Contact No. <span class="req">*</span></label>
@@ -796,6 +803,8 @@ const SRV_MSG = {
   EMP_NAME_MISSING:'The company record has no name for this code. Please contact the Admin.',
   PIN_RECIPE_MISSING:'PIN setup on the server is incomplete. Ask the Admin to run USER_SELF_SERVICE_MIGRATION.sql.',
   PIN_VERIFY_FAILED:'The PIN was saved but does not work. Please contact the Admin.',
+  UNIT_REQUIRED:'Please choose your unit (Unit-1 / Unit-2)',
+  UNIT_INVALID:'That unit is not in use any more. Reload the page and choose again.',
   ALL_FIELDS_REQUIRED:'Please fill in all three fields',
   TOO_MANY_ATTEMPTS:'Too many failed attempts. Try again after an hour, or ask the Admin to reset your PIN.',
   NO_MATCH:'These details do not match the database. Note: the DOB and contact number must be the ones given when the account was created.',
@@ -1131,7 +1140,49 @@ function showLogin(){
 /* ════════════════════════════════════════════════════════════════════
    SIGNUP
    ──────────────────────────────────────────────────────────────────── */
-let suPad = null, suPhoto = null, suEmp = null;
+let suPad = null, suPhoto = null, suEmp = null, suUnit = '';
+
+/* ── Unit (Unit-1 / Unit-2) ───────────────────────────────────────────
+   The list comes from `cmp_units`, so a Unit-3 later is a row there, not a
+   change here. The fallback is only for when that table can't be read.
+   Nothing is pre-selected: the person must say which unit, on purpose,
+   because a wrong default would quietly send their complaints to the
+   other unit's hosts. */
+const UNIT_FALLBACK = [{code:'Unit-1', name:'Unit-1'}, {code:'Unit-2', name:'Unit-2'}];
+let suUnitsLoaded = false;
+function renderUnitPicks(list){
+  const box = $('suUnit');
+  box.innerHTML = '';
+  list.forEach(u => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.setAttribute('role', 'radio');
+    b.dataset.unit = u.code;
+    b.textContent = u.name || u.code;
+    const on = u.code === suUnit;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+    b.addEventListener('click', () => {
+      suUnit = u.code;
+      [...box.children].forEach(x => {
+        const sel = x.dataset.unit === suUnit;
+        x.classList.toggle('on', sel);
+        x.setAttribute('aria-checked', sel ? 'true' : 'false');
+      });
+      setBox('suErr','');
+    });
+    box.appendChild(b);
+  });
+}
+async function loadUnitPicks(){
+  if (suUnitsLoaded) return;
+  renderUnitPicks(UNIT_FALLBACK);
+  try{
+    const q = await SB.from('cmp_units').select('code,name,sort_order')
+      .eq('is_active', true).order('sort_order').order('code');
+    if (!q.error && q.data && q.data.length){ renderUnitPicks(q.data); suUnitsLoaded = true; }
+  }catch(e){ console.warn('[LAUNCHER] units not loaded, using the fallback list:', e); }
+}
 
 /* Name / designation / department from the Employee Code, read from the
    same `employees` table the PR form uses. These three fields are
@@ -1195,6 +1246,7 @@ async function doSignup(){
   // Everything is required; report problems one at a time, not all at once.
   if (!code)                    return setBox('suErr','Please enter the Employee Code');
   if (!suEmp)                   return setBox('suErr','The Employee Code could not be verified. Please check it.');
+  if (!suUnit)                  return setBox('suErr', SRV_MSG.UNIT_REQUIRED);
   if (!contact)                 return setBox('suErr','Please enter the contact number');
   if (contact.replace(/\D/g,'').length < 10)
                                 return setBox('suErr','Please enter the full contact number (at least 10 digits)');
@@ -1210,14 +1262,22 @@ async function doSignup(){
     /* The role is NOT sent from here; the server sets `CMP_USER` itself.
        So nobody can make themselves an Admin by tampering with this
        request. */
-    const r = await SB.rpc('erp_signup', {
+    const args = {
       p_emp_code: code,
       p_contact_no: contact,
       p_dob: dob,
       p_pin: pin,
       p_signature: suPad.dataUrl(),
       p_photo: suPhoto
-    });
+    };
+    // The unit goes through the 7-argument erp_signup (UNIT_SIGNUP_ADMIN_MIGRATION.sql).
+    let r = await SB.rpc('erp_signup', Object.assign({ p_unit: suUnit }, args));
+    /* Not run yet: create the account the old way rather than block every
+       new signup. The Admin Panel then shows this person as "Unit not set". */
+    if (r.error && /PGRST202|Could not find the function|schema cache/i.test(r.error.message || r.error.code || '')){
+      console.warn('[LAUNCHER] erp_signup(p_unit) missing; run UNIT_SIGNUP_ADMIN_MIGRATION.sql. Signing up without the unit.');
+      r = await SB.rpc('erp_signup', args);
+    }
     if (r.error) throw r.error;
     const d = r.data || {};
     if (!d.success) return setBox('suErr', srvMsg(d.error));
@@ -1417,6 +1477,7 @@ async function doLogout(){
     if (!suPad) suPad = makeSigPad($('suSig'));
     // Employee Code dropdown: filled only the first time (257 rows).
     fillEmpDatalist();
+    loadUnitPicks();
     $('suCode').focus();
   });
   $('toForgot').addEventListener('click', () => {
