@@ -124,3 +124,22 @@ body.wf-open { overflow: hidden; }
   #wfDay .wf-bar { width: 70px; }
   #wfDay .wf-top-title span { display: none; }
 }
+
+/* Below-MSV filter buttons (store-mytasks.js › msvSlicerHtml): Category, plus
+   the columns ticked under Item Master › Slicer Columns. Same look as the
+   Item Master slicer bar, so the two read as one feature. */
+#wfDay .wf-sl { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 6px 8px; margin: 10px 0 8px; }
+#wfDay .wf-sl-title { font-size: 10px; font-weight: 800; color: #6b21a8; letter-spacing: .3px; }
+#wfDay .wf-sl-group { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; background: #fff; border: 1px solid #e9d5ff; border-radius: 7px; padding: 3px 5px; }
+#wfDay .wf-sl-group.on { border-color: #a855f7; }
+#wfDay .wf-sl-lab { font-size: 9.5px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: .3px; margin-right: 2px; }
+#wfDay .wf-sl-btn { display: inline-flex; align-items: center; gap: 5px; background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; border-radius: 12px; padding: 2px 9px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+#wfDay .wf-sl-btn:hover { border-color: #a855f7; background: #faf5ff; }
+#wfDay .wf-sl-btn .n { background: #e2e8f0; color: #475569; border-radius: 8px; padding: 0 5px; font-size: 9.5px; font-weight: 800; }
+#wfDay .wf-sl-btn.on { background: #7c3aed; border-color: #6d28d9; color: #fff; }
+#wfDay .wf-sl-btn.on .n { background: rgba(255,255,255,.25); color: #fff; }
+#wfDay .wf-sl-btn.zero:not(.on) { opacity: .45; }
+#wfDay .wf-sl-x { background: none; border: none; cursor: pointer; font-size: 11px; padding: 1px 4px; border-radius: 6px; color: #6d28d9; }
+#wfDay .wf-sl-x:hover { background: #ede9fe; }
+#wfDay .wf-sl-count { font-size: 11px; font-weight: 700; color: #64748b; }
+#wfDay .wf-sl-clear { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; border-radius: 12px; padding: 3px 10px; font-size: 10px; font-weight: 800; cursor: pointer; }

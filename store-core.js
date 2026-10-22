@@ -6914,14 +6914,134 @@ function imSlNorm_(col,v){
 /* The defined slicers, in column order: [{col, values:[…]}]. If Dropdown
    Master hasn't loaded yet (or the table doesn't exist), empty: the bar
    hides and the list is unaffected. */
-function imSlicerDefs_(){
+/* ── Slicers made from a column's own VALUES ──────────────────────────
+   The per-column route above needs every button typed in by an Admin.
+   For the columns that hold a short list of repeating values, the Admin can
+   instead tick the whole column (one or several) and get one button per
+   distinct value actually present in the Item Master —
+   a new Category or Make shows up as a button the moment an item carries
+   it. One column or several; several behave as above (OR within a column,
+   AND across columns). Name / Description / Code are left out: they are
+   different on nearly every row, so a button per value would be the list
+   itself. The choice is made ONCE, by an Admin, in Dropdown Master › Item
+   Master › Slicer Buttons › "Slicer Columns (one button per value)" — key
+   erp_imSlicerAutoCols, one row per column — so every login sees the same
+   slicers. My Day's Below-MSV list reads the same choice. A row may hold the
+   column key (cat) or its label (Category); both are accepted. */
+const IM_SLICER_AUTO_COLS=['cat','size','mat','uom','make','gst'];
+const IM_SLICER_AUTO_DD_KEY='erp_imSlicerAutoCols';
+function imSlicerAutoCols_(){
   try{
-    return IM_SLICER_COLS.map(col=>({col,values:[...new Set(sarvDropdownList(imSlicerKey_(col))
-        .map(v=>String(v==null?'':v).trim()).filter(Boolean))]}))
+    const want=new Set(sarvDropdownList(IM_SLICER_AUTO_DD_KEY).map(v=>String(v==null?'':v).trim().toUpperCase()));
+    return IM_SLICER_AUTO_COLS.filter(c=>want.has(c.toUpperCase())||want.has(String(SARV_IM_FILTER_COLS[c].label).toUpperCase()));
+  }catch(e){return [];}
+}
+// Distinct non-blank values of one column across `rows`, in natural order
+// (ITEM-2 before ITEM-10). "18" and "18%" count once — see imSlNorm_.
+function imColDistinct_(col,rows){
+  const seen=new Map();
+  (rows||[]).forEach(r=>{
+    const k=imCellKey_(col,r);if(k===IM_BLANK)return;
+    const u=imSlNorm_(col,k);if(!seen.has(u))seen.set(u,k);
+  });
+  return [...seen.values()].sort((a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true,sensitivity:'base'}));
+}
+/* The defined slicers, in column order: [{col, values:[…], auto}]. Dropdown
+   Master values come first (the Admin's order), then — for a column ticked
+   in the picker — every other value the data holds. Order is stable between
+   a render and the click that follows, which imToggleSlicer's index needs. */
+function imSlicerDefs_(){
+  const auto=new Set(imSlicerAutoCols_());
+  try{
+    return IM_SLICER_COLS.map(col=>{
+      let vals=[];
+      try{vals=sarvDropdownList(imSlicerKey_(col)).map(v=>String(v==null?'':v).trim()).filter(Boolean);}catch(e){}
+      vals=[...new Set(vals)];
+      if(auto.has(col)){
+        const have=new Set(vals.map(v=>imSlNorm_(col,v)));
+        imColDistinct_(col,sarvItemMasterRows).forEach(v=>{
+          const u=imSlNorm_(col,v);if(!have.has(u)){have.add(u);vals.push(v);}
+        });
+      }
+      return {col,values:vals,auto:auto.has(col)};
+    }).concat([{col:IM_SLICER_COMBO,values:imComboList_(),auto:false}])
       .filter(g=>g.values.length);
   }catch(e){return [];}
 }
+
+/* ── Combined slicers: ONE button, several columns ─────────────────────
+   Dropdown Master › Item Master › Slicer Buttons › "Combined Slicers". Each
+   value is one button, written as its conditions joined by "~":
+       4 INCH SATTAN ~ TRIMS
+   Every condition must hold (AND). A plain condition is looked for in every
+   slicer column — whole value on Category / Size / Make / UOM / GST / Code,
+   "contains" on Item Name / Description — so the line above means "name says
+   4 INCH SATTAN AND Category is TRIMS" without naming either column. Where
+   a word could hit the wrong column, the column can be named:
+       Item Name: 4 INCH SATTAN ~ Category: TRIMS     (or name=… ~ cat=…)
+   The buttons sit under their own heading, "Combined", and behave like any
+   other slicer: OR with each other, AND with the other headings, dependent
+   counts, kept out of the list once the value is removed. */
+const IM_SLICER_COMBO='combo';
+const IM_SLICER_COMBO_DD_KEY='erp_imSlicerCombo';
+function imComboList_(){
+  try{return [...new Set(sarvDropdownList(IM_SLICER_COMBO_DD_KEY).map(v=>String(v==null?'':v).trim()).filter(Boolean))];}
+  catch(e){return [];}
+}
+function imComboParts_(val){
+  return String(val||'').split('~').map(s=>s.trim()).filter(Boolean).map(p=>{
+    const m=p.match(/^([^:=]+?)\s*[:=]\s*(.+)$/);
+    if(m){
+      const nm=m[1].trim().toUpperCase();
+      const col=IM_SLICER_COLS.find(c=>c.toUpperCase()===nm||String(SARV_IM_FILTER_COLS[c].label).toUpperCase()===nm);
+      if(col)return {col,v:m[2].trim()};
+    }
+    return {col:null,v:p};   // an unknown "xyz:" prefix is just part of the text
+  });
+}
+function imComboMatch_(val,row){
+  const parts=imComboParts_(val);
+  if(!parts.length)return false;
+  return parts.every(p=>p.col?imSlicerMatch_(p.col,p.v,row):IM_SLICER_COLS.some(c=>imSlicerMatch_(c,p.v,row)));
+}
+// Heading text for a slicer column, the Combined one included.
+function imSlicerLabel_(col){
+  return col===IM_SLICER_COMBO?'Combined':((SARV_IM_FILTER_COLS[col]||{}).label||col);
+}
+/* Dropdown Master's tick-box row for erp_imSlicerAutoCols: one tick per
+   eligible column, with how many buttons it would make. Ticking writes /
+   removes that column's row in sales_dropdowns, so the choice is shared. */
+function imSlicerAutoPickHtml_(admin){
+  const auto=new Set(imSlicerAutoCols_());
+  const src=sarvItemMasterRows||[];
+  return '<div class="dd-sl-pick">'
+    +IM_SLICER_AUTO_COLS.map(c=>{
+      const n=src.length?imColDistinct_(c,src).length:null;
+      return '<label class="dd-sl-pickc'+(auto.has(c)?' on':'')+'">'
+        +'<input type="checkbox"'+(auto.has(c)?' checked':'')+(admin?' onchange="sarvDdToggleSlicerCol(\''+c+'\')"':' disabled')+'> '
+        +escText(SARV_IM_FILTER_COLS[c].label)+(n!=null?' <span class="n" title="buttons it makes">'+n+'</span>':'')+'</label>';
+    }).join('')+'</div>';
+}
+window.sarvDdToggleSlicerCol=async function(col){
+  if(!sarvDdGuard_())return;
+  if(IM_SLICER_AUTO_COLS.indexOf(col)<0)return;
+  const label=String(SARV_IM_FILTER_COLS[col].label).toUpperCase();
+  const have=sarvDdRowsOf(IM_SLICER_AUTO_DD_KEY).filter(r=>{
+    const v=String(r.value||'').trim().toUpperCase();return v===col.toUpperCase()||v===label;
+  });
+  try{
+    const q=have.length
+      ? SB.from(SARV_DD_TABLE).delete().in('id',have.map(r=>r.id))
+      : SB.from(SARV_DD_TABLE).insert([{key:IM_SLICER_AUTO_DD_KEY,value:col}]);
+    const {error}=await q;
+    if(error)throw error;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    if(typeof renderItemMasterTable==='function')renderItemMasterTable();
+    showToast(SARV_IM_FILTER_COLS[col].label+(have.length?' slicer buttons removed':' slicer buttons added: one per value'));
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
 function imSlicerMatch_(col,val,row){
+  if(col===IM_SLICER_COMBO)return imComboMatch_(val,row);
   const cell=imCellKey_(col,row);
   if(cell===IM_BLANK)return false;
   const c=imSlNorm_(col,cell),v=imSlNorm_(col,val);
@@ -6940,7 +7060,7 @@ function imSlicerPass_(row,exceptCol){
 }
 function imActiveSlicerCols_(){return Object.keys(sarvImSlicerSel).filter(c=>sarvImSlicerSel[c]&&sarvImSlicerSel[c].size);}
 function imSlicerSummary_(){
-  return imActiveSlicerCols_().map(c=>SARV_IM_FILTER_COLS[c].label+': '+[...sarvImSlicerSel[c]].join(' / '));
+  return imActiveSlicerCols_().map(c=>imSlicerLabel_(c)+': '+[...sarvImSlicerSel[c]].join(' / '));
 }
 /* If a value is removed or changed in Dropdown Master it can't stay selected;
    otherwise a slicer with no visible button would still be filtering the
@@ -6969,49 +7089,69 @@ window.imClearSlicers=function(col){
 };
 /* Admin shortcut: straight to that slicer column in Dropdown Master. */
 window.imOpenSlicerSetup=function(col){
-  sarvDdPick=imSlicerKey_(col&&IM_SLICER_COLS.indexOf(col)>=0?col:IM_SLICER_COLS[0]);
+  // 'auto' = the "Slicer Columns" row (one button per value).
+  sarvDdPick=col==='auto'?IM_SLICER_AUTO_DD_KEY
+    :col===IM_SLICER_COMBO?IM_SLICER_COMBO_DD_KEY
+    :imSlicerKey_(col&&IM_SLICER_COLS.indexOf(col)>=0?col:IM_SLICER_COLS[0]);
   sarvDdEditId=null;
   switchMasterSubTab('dropdownMasterSub');
 };
 /* Each button's count = how many items that value would show after
    everything else (search, Stock, column filters, slicers on OTHER columns).
    Slicers in the same column aren't counted: that is OR, so the count says
-   how many would be ADDED by pressing the button. A 0 button is greyed out
-   but still clickable: a selected 0 button also needs to be removable. */
+   how many would be ADDED by pressing the button.
+   DEPENDENT: a button whose count is 0 is HIDDEN, not just greyed — press
+   YARN under Category and the Make / Size buttons that no yarn item carries
+   disappear, so what is left on the bar is only what can still be narrowed
+   to. A selected button is always drawn (even at 0), so it can be taken off;
+   a heading with nothing left to offer and nothing selected goes too. */
 function imRenderSlicers_(){
   const bar=byId('imSlicerBar');if(!bar)return;
   const defs=imSlicerDefs_();
   const admin=(typeof isAdmin==='function'&&isAdmin())&&sarvCan('DROPDOWN_MANAGE');
+  const setupBtn=admin?'<button type="button" class="im-sl-link" onclick="imOpenSlicerSetup(\'auto\')" '
+    +'title="Dropdown Master › Item Master › Slicer Buttons: choose the columns, or add fixed values">&#9776; Set up Slicers</button>':'';
   if(!defs.length){
     if(!admin){bar.style.display='none';bar.innerHTML='';return;}
     bar.style.display='block';
-    bar.innerHTML='<div class="im-sl-wrap im-sl-empty"><b>Slicer buttons</b> have not been set up yet. In '
-      +'<button type="button" class="im-sl-link" onclick="imOpenSlicerSetup(\'cat\')">Dropdown Master › Item Master › Slicer Buttons</button>'
-      +', choose a column and add a value; the button will appear here.</div>';
+    bar.innerHTML='<div class="im-sl-wrap im-sl-empty">'+setupBtn
+      +'<span>No slicers yet. In Dropdown Master › Item Master › Slicer Buttons, tick one or more columns '
+      +'(Category, Size, Make …) to get one button per value, or add fixed values to a column.</span></div>';
     return;
   }
   const rows=sarvItemMasterRows||[];
+  // A column with very many values would bury the list under buttons; the
+  // rest stay reachable through that column's ▾ filter.
+  const SHOW_MAX=40;
   let html='<div class="im-sl-wrap"><span class="im-sl-title">SLICERS</span>';
   defs.forEach(g=>{
     const sel=sarvImSlicerSel[g.col]||new Set();
     const pool=rows.filter(r=>imBasePass_(r,g.col)&&Object.keys(SARV_IM_FILTER_COLS).every(c=>imColPass_(c,r)));
-    html+='<div class="im-sl-group'+(sel.size?' on':'')+'"><span class="im-sl-lab">'+escText(SARV_IM_FILTER_COLS[g.col].label)+'</span>';
+    // Index i is kept with each button: imToggleSlicer looks the value up by it.
+    const live=[];
     g.values.forEach((v,i)=>{
       const n=pool.reduce((s,r)=>s+(imSlicerMatch_(g.col,v,r)?1:0),0);
-      const on=sel.has(v);
-      html+='<button type="button" class="im-sl-btn'+(on?' on':'')+(n?'':' zero')+'" onclick="imToggleSlicer(\''+g.col+'\','+i+')" '
-        +'title="'+escText(SARV_IM_FILTER_COLS[g.col].label+': '+v+(IM_SLICER_CONTAINS[g.col]?' (contains the word)':'')
-        +': '+n+' item(s)'+(on?' · click to remove':''))+'">'
-        +escText(v)+'<span class="n">'+n+'</span></button>';
+      if(n||sel.has(v))live.push({v,i,n,on:sel.has(v)});
     });
+    if(!live.length)return;
+    // Past the cap only the selected ones are drawn, so a tick can always be taken off.
+    const shown=live.filter((b,k)=>k<SHOW_MAX||b.on);
+    html+='<div class="im-sl-group'+(sel.size?' on':'')+'"><span class="im-sl-lab">'+escText(imSlicerLabel_(g.col))+'</span>';
+    shown.forEach(b=>{
+      html+='<button type="button" class="im-sl-btn'+(b.on?' on':'')+(b.n?'':' zero')+'" onclick="imToggleSlicer(\''+g.col+'\','+b.i+')" '
+        +'title="'+escText(imSlicerLabel_(g.col)+': '+b.v+(IM_SLICER_CONTAINS[g.col]?' (contains the word)':'')
+        +(g.col===IM_SLICER_COMBO?' (every part must match)':'')
+        +': '+b.n+' item(s)'+(b.on?' · click to remove':''))+'">'
+        +escText(b.v)+'<span class="n">'+b.n+'</span></button>';
+    });
+    if(live.length>shown.length)html+='<span class="im-sl-more" title="Use the column\'s ▾ filter for the rest">+'+(live.length-shown.length)+' more</span>';
     if(sel.size)html+='<button type="button" class="im-sl-x" onclick="imClearSlicers(\''+g.col+'\')" title="Remove this column\'s slicers">&#10006;</button>';
-    if(admin)html+='<button type="button" class="im-sl-edit" onclick="imOpenSlicerSetup(\''+g.col+'\')" title="Change this slicer\'s values in Dropdown Master">✎</button>';
+    if(admin)html+='<button type="button" class="im-sl-edit" onclick="imOpenSlicerSetup(\''+(g.auto?'auto':g.col)+'\')" title="Change this slicer in Dropdown Master">✎</button>';
     html+='</div>';
   });
   const nOn=imActiveSlicerCols_().length;
   if(nOn)html+='<button type="button" class="im-sl-clear" onclick="imClearSlicers()">&#10006; Clear Slicers</button>';
-  if(admin)html+='<button type="button" class="im-sl-link" onclick="imOpenSlicerSetup()" title="Add a new slicer column / value">Slicer</button>';
-  html+='</div>';
+  html+=setupBtn+'</div>';
   bar.style.display='block';
   bar.innerHTML=html;
 }
@@ -9985,6 +10125,25 @@ const SARV_DROPDOWNS=[
      default is empty, so until a value is added the Item Master shows no slicers.
      Logic: store-core.js › ITEM MASTER — SLICER BUTTONS (imRenderSlicers_). */
   {group:'Item Master › Slicer Buttons'},
+  /* One or more WHOLE columns as slicers: every value the column holds
+     becomes a button, no value typed in. Shown as tick-boxes (see
+     imSlicerAutoPickHtml_); each tick is one row here holding the column key.
+     Fixed per-column values below still work alongside. */
+  {key:IM_SLICER_AUTO_DD_KEY,label:'Slicer Columns (one button per value)',imSlicerAuto:true,
+   hint:'Tick one or more columns. Every value in that Item Master column becomes a slicer button by itself; a new value gets its own button as soon as an item carries it. '
+     +'The same columns also filter My Day › Below-MSV items. Buttons with no items under the current selection hide themselves.',
+   where:'Master Data › Item Master — slicer bar · My Day › Below-MSV',
+   labels:Object.fromEntries(IM_SLICER_AUTO_COLS.map(c=>[c,SARV_IM_FILTER_COLS[c].label])),
+   def:[]},
+  /* One button that checks SEVERAL columns at once — logic in
+     imComboParts_ / imComboMatch_. */
+  {key:IM_SLICER_COMBO_DD_KEY,label:'Combined Slicers (one button, several columns)',
+   hint:'Each value is ONE button. Join its conditions with "~", and every condition must match, e.g. 4 INCH SATTAN ~ TRIMS '
+     +'(name contains 4 INCH SATTAN AND Category is TRIMS). A plain condition is looked for in every column: whole value on Category / Size / Material / UOM / Make / GST / Code, '
+     +'"contains" on Item Name / Description. To tie a condition to one column, name it: Item Name: 4 INCH SATTAN ~ Category: TRIMS. '
+     +'The buttons appear under the "Combined" heading on the Item Master slicer bar and in My Day › Below-MSV.',
+   where:'Master Data › Item Master — slicer bar (Combined) · My Day › Below-MSV',
+   def:[]},
   ...IM_SLICER_COLS.map(col=>({key:imSlicerKey_(col),label:'Slicer — '+SARV_IM_FILTER_COLS[col].label,imSlicerCol:col,
     hint:'Each value becomes a slicer button under the "'+SARV_IM_FILTER_COLS[col].label+'" heading above the Item Master list. '
       +(IM_SLICER_CONTAINS[col]
@@ -10399,6 +10558,16 @@ function sarvDdMainHtml_(){
     h+='<div class="dd-where">'+(src.length
       ?'As you type in the value box, the <b>'+vals.length+'</b> values of this Item Master column are suggested.'
       :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
+  }
+
+  // Slicer Columns: tick-boxes instead of a free-text box — a typo in a
+  // column name would just make nothing happen.
+  if(d.imSlicerAuto){
+    h+=imSlicerAutoPickHtml_(admin);
+    if(!admin)h+='<div class="dd-warn">Only an <b>Admin</b> login can change the slicer columns.</div>';
+    if(!(sarvItemMasterRows&&sarvItemMasterRows.length))
+      h+='<div class="dd-where">Open the Item Master once to see how many buttons each column makes.</div>';
+    return h;
   }
 
   if(admin){

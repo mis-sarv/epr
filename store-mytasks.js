@@ -119,28 +119,40 @@
       key: 'MSV', title: 'Below-MSV items: raise PRs', due: '11:00', access: 'HOME_PR',
       guide: [
         'These items are below their Minimum Stock Value and the shortfall is not yet covered by an open PR or PO.',
-        'Tick the items, press <b>Raise PR for ticked items</b>. The PR form opens filled: qty = Std Order Qty (or the shortfall, whichever is more), Purchaser from the Category.',
+        'Use the <b>Category</b> buttons (and any other filter buttons) above the list to show one group at a time, for example one Purchaser\'s categories. More filter columns are added by the Admin in Dropdown Master › Item Master › <b>Slicer Columns</b>.',
+        'Tick the items, press <b>Raise PR for ticked items</b>. Only the ticked items still shown go into the PR. The PR form opens filled: qty = Std Order Qty (or the shortfall, whichever is more), Purchaser from the Category.',
         'Fill <b>Requested By</b>, <b>Required By</b>, Priority and the Machine, then Submit.',
         'Come back here and press Recheck. Items now on a PR drop off the list.'
       ],
-      head: ['', 'Code', 'Item', 'Balance / MSV', 'On PR / PO', 'Short'],
+      head: ['', 'Category', 'Item', 'Balance / MSV', 'On PR / PO', 'Short'],
+      /* EVERY item below its MSV is listed, including those whose shortfall
+         is already covered by an open PR / PO: the store sees the whole
+         below-MSV picture in one place. Covered items are greyed, not ticked
+         by default and sorted last, and they do not count as open work — the
+         task is done when nothing UNCOVERED is left, so a PR already raised
+         is not asked for twice. */
       async load() {
         const rows = await loadItems();
         const pipeKnown = typeof sarvImPipe !== 'undefined' && sarvImPipe && !(typeof sarvImPipeErr !== 'undefined' && sarvImPipeErr);
         const list = rows.filter(r => typeof isBelowMsv_ === 'function' && isBelowMsv_(r)).map(r => {
           const msv = itemMsv_(r.it), cover = num(r.pipe), shortBy = msv - num(r.bal);
-          return { r, msv, cover, open: shortBy - cover };
-        }).filter(x => x.open > 0.0001).sort((a, b) => b.open - a.open);
+          return { r, msv, cover, shortBy, open: shortBy - cover };
+        }).sort((a, b) => ((b.open > 0.0001) - (a.open > 0.0001)) || (b.open - a.open) || (b.shortBy - a.shortBy));
+        const openCount = list.filter(x => x.open > 0.0001).length;
+        const covered = list.length - openCount;
         return {
-          count: list.length,
-          note: pipeKnown ? '' : 'Open PR / PO quantities could not be loaded, so items already on a PR may be listed too.',
+          count: openCount,
+          note: (pipeKnown ? '' : 'Open PR / PO quantities could not be loaded, so items already on a PR may be listed as open. ') +
+            (covered ? covered + ' of the ' + list.length + ' below-MSV items are already covered by an open PR / PO; they are greyed and not ticked.' : ''),
           rows: list.map(x => {
-            const it = x.r.it, uom = esc(it.uom || 'PCS');
+            const it = x.r.it, uom = esc(it.uom || 'PCS'), isOpen = x.open > 0.0001;
+            const cat = x.r.catKey || it.category || '';
             return {
-              id: String(it.id), pick: true, data: x,
-              cells: [esc(it.item_code || ''), '<b>' + esc(it.name || '') + '</b>',
+              id: String(it.id), pick: true, preTick: isOpen, muted: !isOpen, data: x,
+              cells: [esc(cat), '<b>' + esc(it.name || '') + '</b>' + (it.item_code ? '<small class="wf-sub">' + esc(it.item_code) + '</small>' : ''),
                 q2(x.r.bal) + ' / ' + q2(x.msv) + ' ' + uom, x.cover ? q2(x.cover) : '—',
-                '<b style="color:#b91c1c;">' + q2(x.open) + ' ' + uom + '</b>']
+                isOpen ? '<b style="color:#b91c1c;">' + q2(x.open) + ' ' + uom + '</b>'
+                       : '<span title="Short ' + q2(x.shortBy) + ', covered by PR / PO">Covered</span>']
             };
           })
         };
@@ -402,8 +414,8 @@
         }
         saveTaskLog(st);
       }
-      // Rows picked by default (Below-MSV): all of them.
-      st.picked = new Set((res.rows || []).filter(r => r.pick).map(r => r.id));
+      // Rows picked by default (Below-MSV): the uncovered ones (preTick); a row without the flag counts as ticked.
+      st.picked = new Set((res.rows || []).filter(r => r.pick && r.preTick !== false).map(r => r.id));
     } catch (e) {
       st.error = (e && e.message) || String(e);
       console.warn('[MyDay] ' + st.task.key + ' check failed:', st.error);
@@ -453,7 +465,8 @@
     if (!picked.length) { toast('Tick at least one item', 'warn'); return; }
     const list = picked.map(row => {
       const x = row.data, it = x.r.it, soq = typeof itemStdOrderQty_ === 'function' ? itemStdOrderQty_(it) : null;
-      const need = Math.ceil(x.open * 100) / 100;
+      // A covered item ticked on purpose has no open shortfall; its full shortfall below MSV is the floor then.
+      const need = Math.ceil((x.open > 0.0001 ? x.open : x.shortBy) * 100) / 100;
       return { it, qty: soq != null && soq >= need ? soq : need,
         remark: 'Below MSV: balance ' + q2(x.r.bal) + ', MSV ' + q2(x.msv) + (x.cover ? ', already on PR/PO ' + q2(x.cover) : '') };
     });
@@ -576,7 +589,8 @@
     if (kind === 'unskip') { unskipTask(st); return; }
     if (kind === 'act') {
       const a = (st.task.actions || [])[+b.dataset.a]; if (!a) return;
-      const picked = (st.result && st.result.rows || []).filter(r => st.picked.has(r.id));
+      // Only what the slicers leave on screen: a ticked row that is filtered out is not sent.
+      const picked = pickedVisible(st);
       a.fn(st, picked); return;
     }
     if (kind === 'row') {
@@ -587,7 +601,12 @@
       const id = b.dataset.id; if (b.checked) st.picked.add(id); else st.picked.delete(id); paintCount(); return;
     }
     if (kind === 'pick-all') {
-      (st.result.rows || []).forEach(r => { if (b.checked) st.picked.add(r.id); else st.picked.delete(r.id); });
+      visibleRows(st).forEach(r => { if (b.checked) st.picked.add(r.id); else st.picked.delete(r.id); });
+      paint(); return;
+    }
+    if (kind === 'msv-sl') { msvToggle(st, b.dataset.col, +b.dataset.i); paint(); return; }
+    if (kind === 'msv-sl-clear') {
+      if (b.dataset.col && st.slicer) delete st.slicer[b.dataset.col]; else st.slicer = {};
       paint(); return;
     }
     if (kind === 'stock-save') { saveStockRows(st, [b.dataset.id]); return; }
@@ -596,7 +615,106 @@
   }
   function paintCount() {
     const st = day.states[day.cur], el = $('wfPickCount');
-    if (el && st) el.textContent = st.picked.size;
+    if (el && st) el.textContent = pickedVisible(st).length;
+  }
+
+  /* ══ BELOW-MSV SLICERS ═══════════════════════════════════════════════
+     Category buttons over the Below-MSV list — PRs are raised per Purchaser,
+     and the Purchaser follows the Category — plus a button row for every
+     column ticked in Dropdown Master › Item Master › Slicer Columns (imSlicerAutoCols_), so
+     the two screens slice the same way. Values come from THIS list, not the
+     whole Item Master: a button for a category with nothing below MSV would
+     only ever show 0. OR within a column, AND across columns, as in Item
+     Master. Ticks and Raise PR work on the rows the slicers leave on screen;
+     a ticked row that a slicer hides is not sent to the PR form. */
+  /* 'combo' = the Combined Slicers of Dropdown Master (one button, several
+     columns, e.g. "4 INCH SATTAN ~ TRIMS"): fixed values, matched by Item
+     Master's imComboMatch_, not by a single cell. */
+  const COMBO = 'combo';
+  const comboList = () => { try { return typeof imComboList_ === 'function' ? imComboList_() : []; } catch (e) { return []; } };
+  function msvSlicerCols() {
+    const auto = typeof imSlicerAutoCols_ === 'function' ? imSlicerAutoCols_() : [];
+    return ['cat'].concat(auto.filter(c => c !== 'cat'), comboList().length ? [COMBO] : []);
+  }
+  const msvNorm = (col, v) => typeof imSlNorm_ === 'function' ? imSlNorm_(col, v) : String(v == null ? '' : v).trim().toUpperCase();
+  function msvCell(col, row) {
+    try { return imCellKey_(col, row.data.r); } catch (e) { return ''; }
+  }
+  // Does this row carry value v of column col? (For Combined: do all of v's conditions match?)
+  function msvRowIs(col, row, v) {
+    if (col === COMBO) { try { return imComboMatch_(v, row.data.r); } catch (e) { return false; } }
+    return msvNorm(col, msvCell(col, row)) === msvNorm(col, v);
+  }
+  function msvPass(st, row, exceptCol) {
+    const sel = st.slicer || {};
+    for (const col in sel) {
+      if (col === exceptCol || !sel[col] || !sel[col].size) continue;
+      if (col === COMBO) {
+        const combos = comboList();
+        if (![...sel[col]].some(k => { const v = combos.find(c => msvNorm(col, c) === k); return v != null && msvRowIs(col, row, v); })) return false;
+        continue;
+      }
+      if (!sel[col].has(msvNorm(col, msvCell(col, row)))) return false;
+    }
+    return true;
+  }
+  // The rows on screen: the whole result, less what the slicers hide.
+  function visibleRows(st) {
+    const rows = (st.result && st.result.rows) || [];
+    return st.task.key === 'MSV' && st.slicer ? rows.filter(r => msvPass(st, r)) : rows;
+  }
+  function pickedVisible(st) { return visibleRows(st).filter(r => st.picked.has(r.id)); }
+  // Distinct values of one column across the list (blank included, so items
+  // with no Category can be picked out too), natural order.
+  function msvValues(rows, col) {
+    if (col === COMBO) return comboList();   // the Admin's own order
+    const m = new Map();
+    rows.forEach(r => { const v = msvCell(col, r); const k = msvNorm(col, v); if (!m.has(k)) m.set(k, v); });
+    return [...m.values()].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
+  }
+  function msvSlicerHtml(st) {
+    const rows = (st.result && st.result.rows) || [];
+    if (!rows.length) return '';
+    st.slicer = st.slicer || {};
+    const label = c => c === COMBO ? 'Combined'
+      : (typeof SARV_IM_FILTER_COLS !== 'undefined' && SARV_IM_FILTER_COLS[c]) ? SARV_IM_FILTER_COLS[c].label : c;
+    let h = '<div class="wf-sl"><span class="wf-sl-title">FILTER</span>';
+    msvSlicerCols().forEach(col => {
+      const vals = msvValues(rows, col);
+      const sel = st.slicer[col];
+      // A value gone after a Recheck can't stay ticked — it would filter with no button to undo it.
+      if (sel) { [...sel].forEach(k => { if (!vals.some(v => msvNorm(col, v) === k)) sel.delete(k); }); if (!sel.size) delete st.slicer[col]; }
+      // One value only: nothing to choose between (a single Combined button is still a real filter).
+      if (col !== COMBO && vals.length < 2 && !st.slicer[col]) return;
+      const pool = rows.filter(r => msvPass(st, r, col));
+      /* Dependent, as in Item Master: a button with no item left under the
+         other headings' selection is hidden; a selected one always stays so
+         it can be taken off. data-i is the index in the FULL value list. */
+      const btns = [];
+      vals.forEach((v, i) => {
+        const k = msvNorm(col, v), on = !!(st.slicer[col] && st.slicer[col].has(k));
+        const n = pool.filter(r => msvRowIs(col, r, v)).length;
+        if (!n && !on) return;
+        btns.push('<button type="button" class="wf-sl-btn' + (on ? ' on' : '') + (n ? '' : ' zero') + '" data-wf="msv-sl" data-col="' + col + '" data-i="' + i + '">' +
+          esc(v) + '<span class="n">' + n + '</span></button>');
+      });
+      if (!btns.length) return;
+      h += '<div class="wf-sl-group' + (st.slicer[col] ? ' on' : '') + '"><span class="wf-sl-lab">' + esc(label(col)) + '</span>' + btns.join('');
+      if (st.slicer[col]) h += '<button type="button" class="wf-sl-x" data-wf="msv-sl-clear" data-col="' + col + '" title="Clear this filter">&#10006;</button>';
+      h += '</div>';
+    });
+    const vis = visibleRows(st).length;
+    h += '<span class="wf-sl-count">' + (vis === rows.length ? rows.length + ' items' : vis + ' of ' + rows.length + ' items') + '</span>';
+    if (Object.keys(st.slicer).length) h += '<button type="button" class="wf-sl-clear" data-wf="msv-sl-clear">&#10006; Clear filters</button>';
+    return h + '</div>';
+  }
+  function msvToggle(st, col, i) {
+    const rows = (st.result && st.result.rows) || [];
+    const v = msvValues(rows, col)[i]; if (v == null) return;
+    st.slicer = st.slicer || {};
+    const set = st.slicer[col] || (st.slicer[col] = new Set()), k = msvNorm(col, v);
+    if (set.has(k)) set.delete(k); else set.add(k);
+    if (!set.size) delete st.slicer[col];
   }
 
   function paint() {
@@ -626,6 +744,9 @@
 
   function stepHtml(st, i) {
     const t = st.task, status = taskStatus(st), res = st.result || {}, rows = res.rows || [];
+    // Below-MSV slicers: built first, since they also tidy away a stale tick.
+    const slicerHtml = t.key === 'MSV' ? msvSlicerHtml(st) : '';
+    const vis = visibleRows(st), nPicked = pickedVisible(st).length;
     const count = res.count;
     let h = '<div class="wf-card">' +
       '<div class="wf-card-head"><div><div class="wf-kicker">Step ' + (i + 1) + ' of ' + (day.states.length + 1) + '</div>' +
@@ -642,8 +763,8 @@
     h += '<details class="wf-guide"' + (count ? ' open' : '') + '><summary>How to do it</summary><ol>' + t.guide.map(g => '<li>' + g + '</li>').join('') + '</ol></details>';
     // Actions
     const acts = (t.actions || []).map((a, k) => '<button type="button" class="wf-btn' + (a.primary ? ' wf-pri' : '') + '" data-wf="act" data-a="' + k + '"' +
-      (a.primary && t.key === 'MSV' && !rows.length ? ' disabled' : '') + '>' + esc(a.label) +
-      (a.primary && t.key === 'MSV' ? ' (<span id="wfPickCount">' + st.picked.size + '</span>)' : '') + '</button>').join('');
+      (a.primary && t.key === 'MSV' && !vis.length ? ' disabled' : '') + '>' + esc(a.label) +
+      (a.primary && t.key === 'MSV' ? ' (<span id="wfPickCount">' + nPicked + '</span>)' : '') + '</button>').join('');
     h += '<div class="wf-acts">' + acts + '<button type="button" class="wf-btn" data-wf="recheck">Recheck</button>' +
       (status !== 'done' && status !== 'skipped' && !res.setup ? '<button type="button" class="wf-btn wf-ghost" data-wf="skip">Skip today…</button>' : '') + '</div>';
     if (st.skipping) {
@@ -653,10 +774,13 @@
         '<button type="button" class="wf-btn" data-wf="skip-cancel">Cancel</button></div></div>';
     }
     // Rows
-    if (rows.length) {
-      const MAX = 60, show = rows.slice(0, MAX);
+    h += slicerHtml;
+    if (rows.length && !vis.length) h += '<div class="wf-note">No item left under these filters. Clear a filter to see the others.</div>';
+    if (vis.length) {
+      // `vis` is `rows` for every task but Below-MSV, so row actions (data-r) still index the full list.
+      const MAX = 60, show = vis.slice(0, MAX);
       h += '<div class="wf-table-wrap"><table class="wf-table"><thead><tr>' +
-        (t.key === 'MSV' ? '<th><input type="checkbox" data-wf="pick-all"' + (st.picked.size === rows.length ? ' checked' : '') + ' title="Tick / untick all"></th>' : '') +
+        (t.key === 'MSV' ? '<th><input type="checkbox" data-wf="pick-all"' + (nPicked === vis.length ? ' checked' : '') + ' title="Tick / untick all shown"></th>' : '') +
         t.head.filter((x, k) => !(t.key === 'MSV' && k === 0)).map(x => '<th>' + esc(x) + '</th>').join('') + '</tr></thead><tbody>';
       show.forEach((r, k) => {
         if (r.stockRow) { h += stockRowHtml(r); return; }
@@ -667,7 +791,7 @@
           '</tr>';
       });
       h += '</tbody></table></div>';
-      if (rows.length > MAX) h += '<div class="wf-more">+ ' + (rows.length - MAX) + ' more. Use the screen\'s own list for the rest.</div>';
+      if (vis.length > MAX) h += '<div class="wf-more">+ ' + (vis.length - MAX) + ' more. Narrow it with the filters above, or use the screen\'s own list.</div>';
     }
     h += '</div>';
     h += '<div class="wf-nav"><button type="button" class="wf-btn" data-wf="prev"' + (i === 0 ? ' disabled' : '') + '>&#8249; Previous</button>' +
