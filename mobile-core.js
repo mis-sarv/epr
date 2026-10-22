@@ -5806,7 +5806,10 @@
                 return `<div class="md-reject-row">`
                      + `<div class="md-reject-po">${escText(p.po_no || 'PO')}`
                      + ` — ${cx ? 'Cancelled' + (info.by ? ' by ' + escText(info.by) : '') : escText(poRejectionWho_(p))}`
-                     + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
+                     + (info.at ? ` · ${escText(info.at)}` : '')
+                     // The MD's choice on reject: which desk the PR went back to.
+                     + (!cx && info.sendTo ? ` · ${info.sendTo === 'STORE' ? 'PR sent back to Store' : 'sent to Purchaser (Vendor Info)'}` : '')
+                     + `</div>`
                      + `<div class="md-reject-remark"><b>${cx ? 'Cancellation Remark' : 'MD Rejection Remark'}:</b> `
                      // A rejection recorded before rejectPO started keeping the
                      // reason says so, rather than showing an empty quote.
@@ -7216,9 +7219,15 @@
     //    before the current one (that stage re-reviews it from their own
     //    pending list). The very first stage (gmCeo) has nobody before it,
     //    so rejecting there marks the record terminally 'Rejected'. ───────
-    async function rejectPR(req, stage, remarks){
-        const prevStage = PREV_STAGE_OF[stage];
+    /* opts.toStore: the MD rejected a PO raised off this PR and chose "PR
+       Reject". The PR is not stepped back one stage (that would put it with
+       the Purchaser); it goes all the way back to the Store as Rejected, with
+       the Purchaser's signature taken off, where Edit PR corrects and
+       resubmits it. */
+    async function rejectPR(req, stage, remarks, opts = {}){
+        const prevStage = opts.toStore ? null : PREV_STAGE_OF[stage];
         const newApprovals = {...(req.approvals||{})};
+        if(opts.toStore) delete newApprovals.gmCeo;
         let newStatus;
         if(prevStage){
             delete newApprovals[prevStage];
@@ -7277,7 +7286,10 @@
             })),
             vendors: base.vendors || [],
             signatures: newApprovals,
-            lastRejection: {stage, by: STAGE_LABEL[stage], at: pStamp(), remarks: remarks||''},
+            lastRejection: {stage, by: STAGE_LABEL[stage], at: pStamp(), remarks: remarks||'',
+                ...(opts.poNo ? {poNo: opts.poNo, sendTo: 'STORE'} : {})},
+            // A PR going back to the Store is out of any rework the Purchaser had open.
+            ...(opts.toStore ? {vendorInfoReopened: false, reworkPending: false} : {}),
         };
         if(base.signatures && base.signatures.store) d.signatures.store = base.signatures.store;
 
@@ -7291,7 +7303,8 @@
         }catch(e){ console.warn('[MOBILE] PR PDF regen failed (reject still saved):', e); }
     }
 
-    async function rejectPO(po, stage, remarks){
+    // opts.sendTo: 'STORE' (PR Reject) or 'PURCHASER' (PO Reject) — the MD's choice, kept on the rejection note.
+    async function rejectPO(po, stage, remarks, opts = {}){
         const prevStage = prevStageOf(stage);
         const newApprovals = {...(po.approvals||{})};
         let newStatus;
@@ -7319,6 +7332,7 @@
             atIso: new Date().toISOString(),
             remarks: remarks || '',
             poNo: po.po_no || '',
+            sendTo: opts.sendTo || 'PURCHASER',
         };
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
@@ -7814,6 +7828,63 @@
         }
     }
 
+    /* The PR(s) a PO was raised from, read fresh: linked_req_nos is the
+       comma list the PO carries, and the PO's own lines are asked too, for a
+       PO built before that column was always filled. */
+    async function poLinkedReqNos_(po){
+        const nos = new Set(String(po.linked_req_nos || '').split(',').map(s => s.trim()).filter(Boolean));
+        try{
+            const lq = await SB.from('purchase_order_lines').select('req_no').eq('purchase_order_id', po.id);
+            if(!lq.error) (lq.data || []).forEach(l => { const n = String(l.req_no || '').trim(); if(n) nos.add(n); });
+        }catch(e){ console.warn('[MOBILE] PO line PR lookup skipped:', e.message || e); }
+        return [...nos];
+    }
+    /* PR Reject: every live PR behind this PO goes back to the Store as
+       Rejected (rejectPR with toStore). Already Rejected / Cancelled PRs are
+       left as they are. Returns the PR numbers actually sent back. */
+    async function rejectPoPrsToStore_(po, remarks){
+        const nos = await poLinkedReqNos_(po);
+        if(!nos.length) return [];
+        const q = await SB.from('purchase_requirements').select('*').in('req_no', nos);
+        if(q.error) throw q.error;
+        const sent = [];
+        for(const req of (q.data || []).filter(r => !PR_DEAD(r))){
+            await rejectPR(req, 'md', remarks, {toStore: true, poNo: po.po_no || ''});
+            sent.push(req.req_no);
+        }
+        return sent;
+    }
+    /* The MD's choice for a PO reject: resolves 'STORE' (PR Reject),
+       'PURCHASER' (PO Reject) or null (cancelled). The PR numbers are shown so
+       the MD knows which requirement a PR Reject sends back, and a PR still
+       feeding another live PO is named, because sending it to the Store does
+       not stop that other order. */
+    function askMdRejectMode_(po){
+        return new Promise(resolve => {
+            const modal = document.getElementById('mdRejectChoiceModal');
+            if(!modal){ resolve(confirm(`Reject ${po.po_no}?`) ? 'PURCHASER' : null); return; }
+            const info = document.getElementById('mdrcInfo');
+            document.getElementById('mdrcTitle').textContent = 'Reject ' + (po.po_no || 'PO');
+            info.innerHTML = `<b>Vendor:</b> ${escText(po.vendor_name || '-')} · <b>PR:</b> ${escText(po.linked_req_nos || '-')}`;
+            // Other live POs off the same PR(s), for the warning line.
+            const reqs = String(po.linked_req_nos || '').split(',').map(s => s.trim()).filter(Boolean);
+            const others = [...new Set((dash.pos || []).filter(p => p.id !== po.id && !PO_DEAD(p)
+                && String(p.linked_req_nos || '').split(',').map(s => s.trim()).some(n => reqs.includes(n)))
+                .map(p => p.po_no))];
+            if(others.length) info.innerHTML += `<div style="margin-top:6px;color:#b45309;font-weight:700;">This PR also has live PO ${escText(others.join(', '))}. PR Reject does not cancel it.</div>`;
+            const done = v => {
+                modal.style.display = 'none';
+                ['mdrcPrBtn','mdrcPoBtn','mdrcCancelBtn','mdrcCloseBtn'].forEach(id => { document.getElementById(id).onclick = null; });
+                resolve(v);
+            };
+            document.getElementById('mdrcPrBtn').onclick = () => done('STORE');
+            document.getElementById('mdrcPoBtn').onclick = () => done('PURCHASER');
+            document.getElementById('mdrcCancelBtn').onclick = () => done(null);
+            document.getElementById('mdrcCloseBtn').onclick = () => done(null);
+            modal.style.display = 'flex';
+        });
+    }
+
     async function rejectEntry() {
         if(!currentEntry || !myStage || modalViewOnly || modalTab === 'VI') return;
         const remarks = document.getElementById('remarksInput').value.trim();
@@ -7825,20 +7896,39 @@
            told what their reject actually does: the PR it was raised from
            surfaces in the Purchaser's PO Generate ▸ Rejected PO with this
            remark on it, and they re-quote and re-sign from there. */
-        const backMsg = prevStage
-            ? `It will go back to ${STAGE_LABEL[prevStage]}'s pending list for review.`
-            : (currentModule === 'PO'
-                ? `This PO will be Rejected. Its PR will appear under the Purchaser's "PO Generate ▸ Rejected PO" with your remark; they will correct it, sign again, and a new PO will be raised.`
-                : `This is the first approval stage, so it will be marked Rejected.`);
-        if(!confirm(`Reject ${docNo}?\n\n${backMsg}`)) return;
+        /* A PO with no earlier approver (the MD's own reject) asks WHERE the
+           work goes back to — PR Reject (Store) or PO Reject (Purchaser). The
+           choice popup is the confirmation, so no second confirm box. */
+        const askWhere = currentModule === 'PO' && !prevStage;
+        let sendTo = null;
+        if(askWhere){
+            sendTo = await askMdRejectMode_(currentEntry);
+            if(!sendTo) return;
+        } else {
+            const backMsg = prevStage
+                ? `It will go back to ${STAGE_LABEL[prevStage]}'s pending list for review.`
+                : `This is the first approval stage, so it will be marked Rejected.`;
+            if(!confirm(`Reject ${docNo}?\n\n${backMsg}`)) return;
+        }
         document.getElementById('rejectBtn').disabled = true;
         setBusy(true, 'Rejecting...');
         try{
+            let doneMsg = '';
             if(currentModule === 'PR') await rejectPR(currentEntry, myStage, remarks);
-            else await rejectPO(currentEntry, myStage, remarks);
+            else {
+                await rejectPO(currentEntry, myStage, remarks, {sendTo: sendTo || 'PURCHASER'});
+                if(sendTo === 'STORE'){
+                    const sent = await rejectPoPrsToStore_(currentEntry, remarks);
+                    doneMsg = `✖ PO ${docNo} rejected.\n\n`
+                        + (sent.length ? `PR ${sent.join(', ')} sent back to the Store as Rejected.` : 'No open PR was found to send back to the Store.');
+                } else if(sendTo === 'PURCHASER'){
+                    doneMsg = `✖ PO ${docNo} rejected.\n\nThe PR is back in the Purchaser's Vendor Info tab for correction.`;
+                }
+            }
             dashDirty = false; // reloaded right below
             closeModal();
             await renderList();
+            if(doneMsg) alert(doneMsg);
         }catch(e){
             alert('Error: ' + (e.message || e));
         }finally{
