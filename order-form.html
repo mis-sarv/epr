@@ -1552,9 +1552,15 @@ const OF_MATERIALS=[
   {n:'INSERT CARD',     bm:'insert_card',     fixed:false},
   {n:'BARCODE STICKER', bm:'barcode_sticker', fixed:false},
   {n:'FOAM',            bm:'foam',            fixed:false},
-  {n:'SATTAN',          bm:'sattan',          fixed:false,
-     yes:v=>{ const s=String(v==null?'':v).trim(); return !!s && !/^na$/i.test(s); }},
+  /* SATTAN was removed from this list: it is a production material (issued
+     colour-wise against the lot, see Printing Lot page 2 / Lot Card Manager),
+     not a bag or trim, so it must not appear in Bags & Trims. The Brand
+     Master's Sattan Size / Type still fill the product's Sattan fields. */
 ];
+/* Materials no longer offered. An old saved order's row for one of these is
+   dropped when the order is reopened, unless it actually has pcs filled in
+   (then it stays, so that order's trims cost / total does not silently change). */
+const OF_DROPPED_MATS=['SATTAN'];
 const OF_FIXED=OF_MATERIALS.filter(m=>m.fixed);
 const OF_EXTRA=OF_MATERIALS.filter(m=>!m.fixed);
 /* TRIMS is the same six fixed rows in the same order, but it is now BUILT from
@@ -4958,7 +4964,9 @@ function ofRenderMaterials_(id,opts){
      row), it shows as well. The record must stay exactly as it was saved. */
   Object.keys(presets).forEach(k=>{
     if(added.has(k) || OF_EXTRA.some(m=>m.n.toUpperCase()===k)) return;
-    ofAddMaterialRow_(id,presets[k].mat,presets[k]);
+    const pr=presets[k];
+    if(OF_DROPPED_MATS.includes(k) && (!pr || pr.supp==='na' || !(Number(pr.pcs)>0))) return;
+    ofAddMaterialRow_(id,pr.mat,pr);
     shown++;
   });
 

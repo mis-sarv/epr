@@ -304,15 +304,15 @@ function subjectOf(c, D){
 }
 function subjectDetailOf(c, D){
   if (D.key === "fabric") {
-    const q = (c.fabric_quality === null || c.fabric_quality === undefined) ? "" : `Quality ${c.fabric_quality}`;
-    return q;
+    const q = (c.fabric_quality === null || c.fabric_quality === undefined) ? "" : `Fabric ${c.fabric_quality}`;
+    return [q, c.lot_card_no ? `Lot ${c.lot_card_no}` : ""].filter(Boolean).join(" · ");
   }
   return c.machine_no ? `No. ${c.machine_no}` : "";
 }
 // One searchable string per complaint, domain-aware.
 function subjectSearch(c, D){
   return D.key === "fabric"
-    ? [c.process_name, c.fabric_quality].filter(v => v !== null && v !== undefined).join(" ")
+    ? [c.process_name, c.fabric_quality, c.lot_card_no].filter(v => v !== null && v !== undefined).join(" ")
     : [machineLabel(c), c.machine_no].filter(Boolean).join(" ");
 }
 // "Not triaged yet" has to read as a real state, not an empty cell.
@@ -1098,8 +1098,26 @@ function Lightbox({src, onClose}){
 //    Name and Department are NOT asked — the database stamps them from the
 //    signed-in user (mc_stamp_owner), so they cannot be faked either.
 // ============================================================
-function NewComplaintModal({profile, machines: allMachines, processes, D, onClose, onSaved, toast, onView}){
+/* Machine and fabric subjects are picked, never typed:
+     Machine        — ERP Master Data › Machine Master (`machines`). Only a Host
+                      or Admin sees "+ Add new machine", which saves the machine
+                      into Machine Master first and then logs the complaint on it.
+     Fabric         — ERP Fabric Master › FABRIC NAME values (numbers such as
+                      1.8), saved in the complaint's fabric_quality column.
+     Lot Card No.   — Lot Card Manager lots (optional).
+   The lot_card_no column needs CMP_FABRIC_LOT_MIGRATION.sql (see migrationHint_ below). */
+const NEW_MACHINE = "__new_machine";
+const normKey_ = v => String(v || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+function migrationHint_(e){
+  const m = (e && e.message) || "";
+  return /lot_card_no/i.test(m)
+    ? "The database update for Lot Card No. has not been run yet. Ask the Admin to run CMP_FABRIC_LOT_MIGRATION.sql."
+    : null;
+}
+function NewComplaintModal({profile, machines: allMachines, processes, fabricQualities, lotCards, D, onClose, onSaved, toast, onView}){
   const isFabric = D.key === "fabric";
+  const canAddMachine = profile.role === "Host" || profile.role === "Admin";
+  const qualities = fabricQualities || [], lots = lotCards || [];
   const units = React.useContext(UnitsCtx);
   /* The unit is the raiser's own and the database stamps it. Only someone
      covering every unit (Admin, or "All units") picks one here, defaulting
@@ -1112,13 +1130,16 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
     ? allMachines.filter(m => !m.unit || m.unit === unit)
     : allMachines, [allMachines, unit, hasUnits]);
   const [f, setF] = useState({
-    machine_pick: machines.length ? `${machines[0].machine_name}||${machines[0].machine_no}` : "Other",
-    other_machine_name: "",
-    machine_no: machines.length ? machines[0].machine_no : "",
-    // Fabric side: which production stage, and the quality number on it.
+    // Nothing pre-picked: a pre-selected first machine was too easy to submit by mistake.
+    machine_pick: "",
+    machine_no: "",
+    new_machine_name: "",     // Host / Admin only, with machine_pick = NEW_MACHINE
+    new_machine_no: "",
+    // Fabric side: which production stage, its quality and the lot.
     process_pick: processes && processes.length ? processes[0].process_name : "Other",
     other_process_name: "",
     fabric_quality: "",
+    lot_card_no: "",
     problem_desc: "",
     // complaint_type is NOT here any more. Whoever reports a problem rarely
     // knows whether it is mechanical or electrical, or which fabric defect
@@ -1134,34 +1155,39 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
   // clock, not the value that gets saved. Frozen at mount so it doesn't tick.
   const nowRef = useRef(new Date().toISOString());
 
-  const isOther = f.machine_pick === "Other";
+  const isNewMachine = f.machine_pick === NEW_MACHINE;
   const isOtherProcess = f.process_pick === "Other";
   const set = (k,v) => setF(s => ({...s, [k]:v}));
 
   const pickMachine = (val) => {
-    if (val === "Other"){ setF(s=>({...s, machine_pick:"Other", machine_no:"", other_machine_name:""})); return; }
-    const [nm, no] = val.split("||");
-    setF(s=>({...s, machine_pick:val, machine_no:no||"", other_machine_name:""}));
+    if (val === NEW_MACHINE){ setF(s=>({...s, machine_pick:NEW_MACHINE, machine_no:"", new_machine_name:"", new_machine_no:""})); return; }
+    const [, no] = String(val || "").split("||");
+    setF(s=>({...s, machine_pick:val || "", machine_no:no||""}));
   };
 
-  // Switching unit can drop the picked machine out of the list; move to the
-  // new list's first machine rather than submit one from the other unit.
+  // Switching unit can drop the picked machine out of the list; clear the
+  // pick rather than submit one from the other unit.
   useEffect(() => {
-    if (f.machine_pick === "Other") return;
+    if (!f.machine_pick || f.machine_pick === NEW_MACHINE) return;
     if (machines.some(m => `${m.machine_name}||${m.machine_no}` === f.machine_pick)) return;
-    pickMachine(machines.length ? `${machines[0].machine_name}||${machines[0].machine_no}` : "Other");
+    pickMachine("");
   }, [machines]);   // eslint-disable-line
 
-  // Barcode scan result → auto-match machine from list
+  const pickLot = (no) => set("lot_card_no", no);
+
+  // Barcode scan → the Machine Master machine with that number. A number that
+  // isn't there is never accepted as typed; a Host / Admin may add it instead.
   const handleScanResult = (code) => {
     setShowScan(false);
-    const match = machines.find(m => m.machine_no && m.machine_no.trim().toLowerCase() === code.trim().toLowerCase());
-    if (match) {
-      pickMachine(`${match.machine_name}||${match.machine_no}`);
-    } else {
-      // No match — set machine_no, keep current pick or switch to Other
-      setF(s => ({...s, machine_no: code.trim()}));
+    const c = code.trim();
+    if (isNewMachine){ set("new_machine_no", c.toUpperCase()); return; }
+    const match = machines.find(m => m.machine_no && m.machine_no.trim().toLowerCase() === c.toLowerCase());
+    if (match) return pickMachine(`${match.machine_name}||${match.machine_no}`);
+    if (canAddMachine){
+      setF(s=>({...s, machine_pick:NEW_MACHINE, machine_no:"", new_machine_name:"", new_machine_no:c.toUpperCase()}));
+      return toast(`Machine no. ${c} is not in the Machine Master. Enter its name to add it.`);
     }
+    toast(`Machine no. ${c} is not in the Machine Master. Pick the machine from the list, or ask a Host / Admin to add it.`, true);
   };
 
   const save = async () => {
@@ -1170,12 +1196,14 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
     if (!photos.length) e.photos = "At least one photo is required.";
     if (isFabric){
       if (isOtherProcess && !f.other_process_name.trim()) e.other_process_name = "Please enter the process name.";
-      // Numeric, and required: it is how a complaint is tied to a specific lot
-      // on the floor, so a blank would make the report unusable later.
-      if (String(f.fabric_quality).trim() === "") e.fabric_quality = "Please enter the fabric quality number.";
-      else if (!isFinite(Number(f.fabric_quality))) e.fabric_quality = "Enter a number only.";
-    } else {
-      if (isOther && !f.other_machine_name.trim()) e.other_machine_name = "Please enter the machine name.";
+      // Required, and only a Fabric Master fabric name, so reports group cleanly.
+      if (!f.fabric_quality) e.fabric_quality = "Choose the fabric.";
+    } else if (isNewMachine) {
+      if (!canAddMachine) e.machine_pick = "Only a Host or Admin can add a machine.";
+      if (!f.new_machine_name.trim()) e.new_machine_name = "Enter the machine name.";
+      if (!f.new_machine_no.trim()) e.new_machine_no = "Enter the machine number.";
+    } else if (!f.machine_pick) {
+      e.machine_pick = "Choose the machine.";
     }
     setErrs(e);
     if (Object.keys(e).length) return;
@@ -1183,6 +1211,23 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
     if (hasUnits && !unit) return toast("Choose the unit.", true);
 
     setBusy(true);
+    /* A new machine (Host / Admin) goes into Machine Master BEFORE the
+       complaint, so the complaint always names a machine that is in the list.
+       The pair (name + no) is unique there: an existing pair is simply reused. */
+    let mName = "", mNo = "";
+    if (!isFabric){
+      if (isNewMachine){
+        mName = f.new_machine_name.trim().toUpperCase(); mNo = f.new_machine_no.trim().toUpperCase();
+        const have = allMachines.some(m => normKey_(m.machine_name) === normKey_(mName) && normKey_(m.machine_no) === normKey_(mNo));
+        if (!have){
+          const { error: mErr } = await sb.from("machines").insert({ machine_name:mName, machine_no:mNo, is_active:true });
+          if (mErr && mErr.code !== "23505"){ setBusy(false); return toast("Could not add the machine to Machine Master: " + friendlyError(mErr), true); }
+          if (!mErr) toast(`Added to Machine Master: ${mName} (${mNo})`);
+        }
+      } else {
+        [mName, mNo] = f.machine_pick.split("||");
+      }
+    }
     // problem_date, entered_by, department, status and raised_by_user_id are
     // NOT sent for either domain — the insert trigger stamps them from the
     // session and the server clock, so none of them can be faked or backdated.
@@ -1191,22 +1236,24 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
     const row = isFabric
       ? {
           process_name: (isOtherProcess ? f.other_process_name.trim() : f.process_pick),
-          fabric_quality: Number(f.fabric_quality),
+          fabric_quality: f.fabric_quality,
+          // Sent only when picked, so a complaint without a lot doesn't need the column
+          ...(f.lot_card_no ? { lot_card_no: f.lot_card_no } : {}),
           problem_desc: f.problem_desc.trim(),
           entered_by: profile.name, department: profile.department,
           ...unitPart,
         }
       : {
-          machine_name: isOther ? "Other" : f.machine_pick.split("||")[0],
-          machine_no: f.machine_no.trim() || null,
-          other_machine_name: isOther ? f.other_machine_name.trim() : null,
+          machine_name: mName,
+          machine_no: mNo || null,
+          other_machine_name: null,
           problem_desc: f.problem_desc.trim(),
           entered_by: profile.name, department: profile.department,
           ...unitPart,
         };
 
     const { data, error } = await sb.from(D.table).insert(row).select("id, complaint_no").single();
-    if (error){ setBusy(false); return toast(friendlyError(error), true); }
+    if (error){ setBusy(false); return toast(migrationHint_(error) || friendlyError(error), true); }
 
     let photoOk = true;
     if (photos.length){
@@ -1215,28 +1262,16 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
       if (pErr) photoOk = false;
     }
 
-    /* A subject that wasn't in the master list is added to it, so the next
-       person finds it in the dropdown instead of typing a variant spelling.
+    /* A process that wasn't in the list is added to it, so the next person
+       finds it in the dropdown instead of typing a variant spelling.
        Duplicates are expected and ignored — two people can report the same
-       new machine or process within seconds of each other. */
-    if (isFabric){
-      if (isOtherProcess && f.other_process_name.trim()){
-        const newP = { process_name: f.other_process_name.trim(), department: profile.department };
-        const { error: pcErr } = await sb.from("cmp_fabric_processes").insert(newP);
-        if (!pcErr) toast("Also added to the process list: " + newP.process_name);
-        else if (!/duplicate|unique/i.test(pcErr.message || "")) console.warn("process auto-add failed:", pcErr.message);
-      }
-    } else if (isOther && f.other_machine_name.trim()) {
-      const newM = {
-        machine_name: f.other_machine_name.trim(),
-        machine_no: f.machine_no.trim() || f.other_machine_name.trim().toUpperCase().replace(/\s+/g,"-").slice(0,20),
-        department: profile.department,
-        // A machine first reported from a unit belongs to that unit.
-        ...(hasUnits ? { unit } : {}),
-      };
-      const { error: mErr } = await sb.from("cmp_machine_list").insert(newM);
-      if (!mErr) toast("Also added to the machine list: " + newM.machine_name);
-      else if (!/duplicate|unique/i.test(mErr.message || "")) console.warn("machine_list auto-add failed:", mErr.message);
+       new process within seconds of each other. (Machines are no longer
+       auto-added: only a Host / Admin adds one, above, into Machine Master.) */
+    if (isFabric && isOtherProcess && f.other_process_name.trim()){
+      const newP = { process_name: f.other_process_name.trim(), department: profile.department };
+      const { error: pcErr } = await sb.from("cmp_fabric_processes").insert(newP);
+      if (!pcErr) toast("Also added to the process list: " + newP.process_name);
+      else if (!/duplicate|unique/i.test(pcErr.message || "")) console.warn("process auto-add failed:", pcErr.message);
     }
 
     setBusy(false);
@@ -1321,39 +1356,58 @@ function NewComplaintModal({profile, machines: allMachines, processes, D, onClos
                        onChange={e=>set("other_process_name", e.target.value)} placeholder="Process ka naam" />
               </Field>
             )}
-            <Field label="Fabric quality" hindi="फैब्रिक क्वालिटी · नंबर" required error={errs.fabric_quality}>
-              {/* inputMode="decimal" so a phone shows the number pad, and
-                  step="any" so a decimal quality is not rejected. */}
-              <input type="number" inputMode="decimal" step="any"
-                     className={inputCls(errs.fabric_quality)} value={f.fabric_quality}
-                     onChange={e=>set("fabric_quality", e.target.value)} placeholder="e.g. 220" />
+            <Field label="Fabric name" hindi="फैब्रिक नाम" required error={errs.fabric_quality}
+                   hint={qualities.length ? "From ERP › Master Data › Fabric Master" : "No fabric found in ERP › Master Data › Fabric Master."}>
+              <select className={inputCls(errs.fabric_quality)} value={f.fabric_quality}
+                      onChange={e=>set("fabric_quality", e.target.value)}>
+                <option value="">Select fabric…</option>
+                {qualities.map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+            </Field>
+            <Field label="Lot Card No." hindi="लॉट कार्ड नंबर"
+                   hint={lots.length ? "From Lot Card Manager · leave blank if not known" : "No lot found in Lot Card Manager."}>
+              <select className={inputCls(false)} value={f.lot_card_no} onChange={e=>pickLot(e.target.value)}>
+                <option value="">Select lot…</option>
+                {lots.map(l => (
+                  <option key={l.lot_no} value={l.lot_no}>
+                    {l.lot_no}{(l.brand_name || l.fabric_type) ? " — " + [l.brand_name, l.fabric_type].filter(Boolean).join(" · ") : ""}
+                  </option>
+                ))}
+              </select>
             </Field>
           </div>
         </>
       ) : (
         <>
-          <Field label="Machine" hindi="मशीन का नाम" required>
-            <select className={inputCls(false)} value={f.machine_pick} onChange={e=>pickMachine(e.target.value)}>
+          <Field label="Machine" hindi="मशीन का नाम" required error={errs.machine_pick}
+                 hint={machines.length ? "From ERP › Master Data › Machine Master" : "No machine in ERP › Master Data › Machine Master yet. Ask a Host / Admin."}>
+            <select className={inputCls(errs.machine_pick)} value={f.machine_pick} onChange={e=>pickMachine(e.target.value)}>
+              <option value="">Select machine…</option>
               {machines.map(m => (
-                <option key={m.machine_name+m.machine_no} value={`${m.machine_name}||${m.machine_no}`}>
+                <option key={m.machine_name+"||"+m.machine_no} value={`${m.machine_name}||${m.machine_no}`}>
                   {m.machine_no} — {m.machine_name}
                 </option>
               ))}
-              <option value="Other">Other / not in the list</option>
+              {canAddMachine && <option value={NEW_MACHINE}>+ Add new machine to Machine Master</option>}
             </select>
           </Field>
 
           <div className="grid sm:grid-cols-2 gap-x-3">
-            {isOther && (
-              <Field label="Machine name" hindi="मशीन का नाम लिखें" required error={errs.other_machine_name}>
-                <input className={inputCls(errs.other_machine_name)} value={f.other_machine_name}
-                       onChange={e=>set("other_machine_name", e.target.value)} placeholder="Machine ka naam" />
+            {isNewMachine && (
+              <Field label="New machine name" hindi="नई मशीन का नाम" required error={errs.new_machine_name}
+                     hint="Host / Admin only · saved into Machine Master">
+                <input className={inputCls(errs.new_machine_name)+" uppercase"} value={f.new_machine_name}
+                       onChange={e=>set("new_machine_name", e.target.value)} placeholder="e.g. PRINTING" />
               </Field>
             )}
-            <Field label="Machine no" hindi="मशीन नंबर · स्कैन / टाइप">
+            <Field label="Machine no" hindi={isNewMachine ? "मशीन नंबर · स्कैन / टाइप" : "मशीन नंबर · स्कैन"}
+                   required={isNewMachine} error={errs.new_machine_no}>
               <div className="flex gap-2">
-                <input className={inputCls(false)+" flex-1"} value={f.machine_no}
-                       onChange={e=>set("machine_no", e.target.value)} placeholder="e.g. KM-04" />
+                {isNewMachine
+                  ? <input className={inputCls(errs.new_machine_no)+" flex-1 uppercase"} value={f.new_machine_no}
+                           onChange={e=>set("new_machine_no", e.target.value)} placeholder="e.g. 3" />
+                  : <input className={inputCls(false)+" flex-1 bg-slate-100 text-slate-600"} value={f.machine_no} readOnly
+                           placeholder="Comes with the machine" title="Pick the machine, or scan its barcode" />}
                 <button type="button" onClick={()=>setShowScan(true)}
                   className="shrink-0 w-10 h-10 rounded-lg bg-teal-500/10 text-teal-600 hover:bg-teal-500/20 transition grid place-items-center"
                   title="Scan a barcode">
@@ -2248,6 +2302,7 @@ function AdminMachines({toast, onMachinesChanged, unitsEnabled}){
         <div>
           <h2 className="font-bold text-[15px] sm:text-[17px]">Machine List</h2>
           <p className="text-[11px] sm:text-[12.5px] text-slate-500">मशीन सूची &mdash; admin only</p>
+          <p className="text-[11px] sm:text-[12px] text-amber-700 mt-0.5">The New Machine Complaint form now picks machines from ERP › Master Data › Machine Master. This old list is kept for reference only.</p>
         </div>
         <Btn variant="primary" size="sm" icon={I.plus} className="ml-auto" onClick={()=>setEditing(null)}>Add machine</Btn>
       </div>
@@ -3509,6 +3564,8 @@ function App(){
   const [rows, setRows] = useState([]);
   const [machines, setMachines] = useState([]);
   const [processes, setProcesses] = useState([]);   // fabric side's subject master
+  const [fabricQualities, setFabricQualities] = useState([]);   // ERP Fabric Master › FABRIC NAME values
+  const [lotCards, setLotCards] = useState([]);                 // Lot Card Manager (mfg_lot_cards)
   const [hosts, setHosts] = useState([]);   // Host role profiles — for the assign flow
   const [units, setUnits] = useState(UNIT_FALLBACK);   // from cmp_units
   /* Unit filter, for someone who sees every unit (Admin / "All units").
@@ -3670,12 +3727,36 @@ function App(){
     setRows((data||[]).map(r => ({...r, photo_count: r.photo_count?.[0]?.count ?? 0})));
   },[toast, D.table, D.photoTable]);
 
+  /* The machine to complain about comes ONLY from the ERP's Master Data ›
+     Machine Master (table `machines`), the same list the Store uses, so a
+     machine has one name everywhere. cmp_machine_list (this app's old list)
+     is no longer read by the form. `machines` has no unit, so every machine
+     shows in every unit. A new machine can be added only by a Host or Admin,
+     from the New Complaint form (it goes into `machines`). */
   const loadMachines = useCallback(async ()=>{
-    // "*" rather than a column list so `unit` comes along once the migration
-    // has run, and the query still works before it.
-    const { data, error } = await sb.from("cmp_machine_list").select("*").eq("is_active",true)
-      .order("department").order("machine_name").order("machine_no");
-    if (!error) setMachines(data||[]);
+    const { data, error } = await sb.from("machines").select("id,machine_name,machine_no,is_active").eq("is_active",true)
+      .order("machine_name").order("machine_no");
+    if (error) return console.warn("Machine Master:", error.message);
+    setMachines(data||[]);
+  },[]);
+
+  /* Fabric complaint pickers, both from ERP data (read-only here):
+       Fabric         — the distinct FABRIC NAME values of active rows in
+                        Master Data › Fabric Master (fabric_master.fabric_name,
+                        a number such as 1.8), lowest first. It is saved in the
+                        complaint's fabric_quality column, which is numeric too.
+       Lot Card No.   — lots saved in Manufacturing › Lot Card Manager (mfg_lot_cards), newest first */
+  const loadFabricMasters = useCallback(async ()=>{
+    const [fq, lc] = await Promise.all([
+      sb.from("fabric_master").select("fabric_name,is_active"),
+      sb.from("mfg_lot_cards").select("lot_no,brand_name,fabric_type,lot_date,created_at").order("created_at",{ascending:false}),
+    ]);
+    if (fq.error) console.warn("Fabric Master:", fq.error.message);
+    else setFabricQualities([...new Set((fq.data||[]).filter(r => r.is_active !== false)
+      .map(r => String(r.fabric_name ?? "").trim()).filter(Boolean))]
+      .sort((a, b) => (Number(a) - Number(b)) || a.localeCompare(b)));
+    if (lc.error) console.warn("Lot Card Manager:", lc.error.message);
+    else setLotCards((lc.data||[]).filter(r => String(r.lot_no||"").trim()));
   },[]);
 
   const loadProcesses = useCallback(async ()=>{
@@ -3707,6 +3788,7 @@ function App(){
     loadRows(true);
     loadMachines();
     loadProcesses();
+    loadFabricMasters();
     loadHosts();
     loadUnits();
     const iv = setInterval(()=>{
@@ -4023,9 +4105,10 @@ function App(){
 
       {showNew && (
         <NewComplaintModal profile={profile} machines={machines} processes={processes} D={D}
+          fabricQualities={fabricQualities} lotCards={lotCards}
           toast={toast} onView={setLightbox}
           onClose={()=>setShowNew(false)}
-          onSaved={()=>{ setShowNew(false); loadRows(false); loadMachines(); loadProcesses(); }} />
+          onSaved={()=>{ setShowNew(false); loadRows(false); loadMachines(); loadProcesses(); loadFabricMasters(); }} />
       )}
       {detail && (
         <ComplaintDetail complaint={detail} profile={profile} hosts={hosts} D={D} toast={toast} onView={setLightbox}

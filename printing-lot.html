@@ -73,6 +73,8 @@
      but it stays in the DOM so Tailwind has already generated its classes
      and the images have already loaded. */
   #print-root { position:absolute; left:-99999px; top:0; width:297mm; background:#fff; }
+  /* Page 2 (Sattan & Packing calculation) always starts on a new sheet when printed */
+  .prl-page-break { break-before:page; page-break-before:always; }
 
   @media print {
     @page { size:A4 landscape; margin:0; }
@@ -135,6 +137,12 @@
         <p class="text-[10px] text-amber-700 mt-0.5">Creating or editing lot cards needs the ERP Feature Access <b>PRINTING LOT CREATE / EDIT</b>. You can fill in your department's data in the <b>Production</b> tab.</p>
       </div>
 
+      <!-- Values from Order Form › Confirmed Orders (read-only reference; filled by renderOrderInfo) -->
+      <details id="order-info" class="hidden bg-sky-50/70 border border-sky-200 rounded-xl" open>
+        <summary class="cursor-pointer select-none px-3 py-2 font-bold text-gray-800 text-xs flex items-center gap-1.5"><i class="ph ph-info text-sky-600 text-sm"></i> <span id="order-info-title">Order Info</span></summary>
+        <div class="px-3 pb-2"><table class="w-full text-[10px]"><tbody id="order-info-body"></tbody></table></div>
+      </details>
+
       <div class="bg-blue-50/70 border border-blue-100 p-3 rounded-xl">
         <h2 class="font-bold text-gray-800 mb-2.5 border-b border-blue-200 pb-1.5 flex items-center justify-between text-xs">
           <span class="flex items-center gap-1.5"><i class="ph ph-list-dashes text-blue-600 text-sm"></i> Order Parameters</span>
@@ -188,6 +196,30 @@
             <span>Fill the Packing / Contractor details and Start–End date on the card <b>from production data</b> (leave unticked to keep them blank for writing by hand)</span>
           </label>
         </div>
+      </div>
+
+      <!-- Page 2 settings. Every box left blank uses the automatic value (shown as the grey placeholder); see lotCalc(). -->
+      <details id="calc-box" class="bg-emerald-50/70 border border-emerald-200 rounded-xl">
+        <summary class="cursor-pointer select-none px-3 py-2 font-bold text-gray-800 text-xs flex items-center gap-1.5"><i class="ph ph-calculator text-emerald-600 text-sm"></i> Page 2 · Sattan &amp; Packing Calculation</summary>
+        <div class="px-3 pb-3 space-y-2">
+          <p class="text-[10px] text-gray-500 leading-relaxed"><b>TGT</b> on each design = printing rolls; its <b>Sattan Code</b> gives the sattan colour. Leave a box blank to use the automatic value shown in grey.</p>
+          <div class="grid grid-cols-2 gap-2">
+            <div><label class="lbl">Pcs per Roll</label><input type="number" data-calc="pcs_per_roll" class="fld" min="0" step="1"></div>
+            <div><label class="lbl">Sattan Kg / Pc</label><input type="number" data-calc="kg_per_pc" class="fld" min="0" step="0.001"></div>
+            <div><label class="lbl">Master Packing</label><input data-calc="master_pack" class="fld uppercase"></div>
+            <div><label class="lbl">Pcs per Pack</label><input type="number" data-calc="pack_pcs" class="fld" min="0" step="1"></div>
+          </div>
+          <label class="flex items-start gap-2 text-[10px] font-semibold text-gray-700 bg-white border border-gray-200 rounded p-1.5 cursor-pointer">
+            <input type="checkbox" id="in-calc_page" class="mt-0.5">
+            <span>Include page 2 (Sattan, Packing &amp; Trims calculation) in <b>Print / PDF</b></span>
+          </label>
+        </div>
+      </details>
+
+      <!-- Stenter size per stage + printing chemicals (renderProcBox; saved in extra.process, printed on page 2) -->
+      <div id="proc-box" class="bg-violet-50/70 border border-violet-200 p-2.5 rounded-xl">
+        <h2 class="font-bold text-gray-800 mb-1.5 border-b border-violet-200 pb-1 flex items-center gap-1.5 text-xs"><i class="ph ph-flask text-violet-600 text-sm"></i> Stenter Size &amp; Printing Chemical</h2>
+        <div id="proc-body" class="space-y-1.5"></div>
       </div>
 
       <div class="bg-amber-50/70 border border-amber-200 p-2.5 rounded-xl">
@@ -574,7 +606,7 @@ function markDirty(){
   setSaveState('dirty');
   saveLocalDraft();
   scheduleAutosave();
-  schedulePrintRoot();
+  refreshCalcPageSoon();          // page 2 follows every change (rolls, sattan, fields); it also refreshes the print copy
 }
 function saveLocalDraft(){
   try {
@@ -614,6 +646,10 @@ function renderForm(){
   $('in-total_designs').placeholder = 'auto (' + L.designs.length + ')';
   $('stenter-times-box').classList.toggle('hidden', L.f.stenter !== 'YES');
   $('in-fill_prod').checked = !!(L.extra && L.extra.fill_prod);
+  renderOrderInfo();
+  renderCalcBox(true);
+  renderProcBox();
+  loadOrderLink();
   applyRO();
   renderNotesList();
   renderMeta();
@@ -630,7 +666,7 @@ function renderMeta(){
     if(L.lot_card_ref) m.push('Lot Card Manager se juda');
     if(L.extra && L.extra.src_order_no) m.push('Order se bana: <b>' + esc(L.extra.src_order_no) + '</b> · Product #' + esc(L.extra.src_order_line || '-'));
   } else {
-    if(L.extra && L.extra.src_order_no) m.push('Filled from Order <b>' + esc(L.extra.src_order_no) + '</b> · Product #' + esc(L.extra.src_order_line || '-') + '. Please check it and <b>Save</b>.');
+    if(L.extra && L.extra.src_order_no) m.push('Started from Order <b>' + esc(L.extra.src_order_no) + '</b> · Product #' + esc(L.extra.src_order_line || '-') + '. Fill the remaining fields and <b>Save</b>.');
     m.push('New card: it goes into the database the first time you <b>Save</b>. Until then a backup is kept in the browser.');
   }
   $('meta-box').innerHTML = m.join('<br>');
@@ -666,6 +702,7 @@ function onFieldInput(k, el, final){
     renderSheet();
   } else updateDisplays();
   if(k === 'lot_no') checkDuplicateLot();
+  if(k === 'order_no' || k === 'brand_name') loadOrderLinkSoon();
   markDirty();
 }
 
@@ -730,7 +767,8 @@ const SPEC_ROWS = [
   ['total_designs','Total Designs','font-bold text-[9px] text-red-600'],
   ['total_colors','Total Colors','font-semibold text-[9px] text-gray-900'],
   ['finished_size','Final Size L x W','font-semibold text-[9px] text-gray-900 truncate uppercase'],
-  ['@satin'],
+  // The "Satin Selection" list (every design's Sattan Code) was removed from this side panel:
+  // each design card already shows its own code, and page 2 has the full colour-wise sattan list.
   ['satin_quality','Satin','font-semibold text-[8.5px] text-gray-900'],
   ['emboss','Emboss','font-bold text-[9px] text-gray-900'],
   ['corner_label','Corner Label','font-semibold text-[9px] text-gray-900'],
@@ -738,17 +776,8 @@ const SPEC_ROWS = [
   ['quantity','Quantity','font-bold text-[9px] text-indigo-700'],
   ['packing','Packing','font-bold text-[9px] text-green-700'],
 ];
-function satinListHTML(){
-  const rows = L.designs.filter(d => d.satin_code);
-  if(!rows.length) return '';
-  return `<div class="flex flex-col gap-[1px] w-full border-b border-dashed border-gray-300 pb-0.5">
-    <span class="text-[7.5px] text-gray-500 font-bold uppercase w-full">Satin Selection:</span>
-    <div class="flex flex-col gap-[1px]">${rows.map(d => `<div class="flex justify-between items-center text-[8px] px-0.5">
-      <span class="font-bold text-gray-700">${esc(d.title_label)}</span><span class="font-semibold text-gray-600">${esc(d.satin_code)} — ${esc(d.satin_color)}</span></div>`).join('')}</div></div>`;
-}
 function specHTML(){
   return SPEC_ROWS.map((r, i) => {
-    if(r[0] === '@satin') return `<div data-satin-list>${satinListHTML()}</div>`;
     const last = i === SPEC_ROWS.length - 1;
     const red = r[0] === 'stenter' && L.f.stenter === 'YES' && L.f.stenter_times ? ' !text-red-600 !font-bold' : '';
     return `<div class="flex justify-between items-end ${last ? '' : 'border-b border-dashed border-gray-300'} pb-0.5">
@@ -825,7 +854,14 @@ function designCardHTML(d, idx, mode){
     <div class="flex items-stretch border-t border-gray-400 bg-white h-[14px]">${qtyCell('TGT','target_qty')}${qtyCell('COMP','complete_qty')}</div>
   </div>`;
 }
+// Page 1 (the lot card) + page 2 (calculation). In edit mode page 2 sits under the card in
+// its own [data-calc-page] box so refreshCalcPage() can redraw just that part.
 function sheetHTML(mode){
+  const p2 = !(L.extra && L.extra.no_calc_page);
+  if(mode !== 'edit') return page1HTML(mode) + (p2 ? calcSheetHTML(mode) : '');
+  return page1HTML(mode) + `<div data-calc-page class="mt-6">${calcSheetWrapHTML()}</div>`;
+}
+function page1HTML(mode){
   const pf = prodFill();
   const designs = L.designs.length
     ? L.designs.map((d, i) => designCardHTML(d, i, mode)).join('')
@@ -898,11 +934,465 @@ function updateDisplays(){
     const k = el.dataset.disp; el.textContent = dispVal(k);
     if(k === 'stenter') el.classList.toggle('!text-red-600', L.f.stenter === 'YES' && !!L.f.stenter_times);
   });
-  const sl = document.querySelector('#sheet-host [data-satin-list]'); if(sl) sl.innerHTML = satinListHTML();
   schedulePrintRoot();
 }
 const schedulePrintRoot = debounce(() => { $('print-root').innerHTML = sheetHTML('static'); }, 200);
 function renderPrintRootNow(){ $('print-root').innerHTML = sheetHTML('static'); }
+
+// ═══════════════════════ PAGE 2: SATTAN & PACKING CALCULATION ═══════════════
+/* The Lot Card Manager's calculation (lot-card-manager.html calc() /
+   computeColorBreakdown / getRoundedBundles / getPcsPerRoll), applied to this
+   card's designs:
+     TGT (target_qty) of a design   = printing rolls   (its "Matching" row there)
+     the design's Sattan Code/Color = the sattan colour
+     pcs  = rolls × pcs per roll (bed size + ply)
+     kg   = pcs × sattan kg per blanket (fabric)
+     bundles per colour: 15 kg each, decimal ≥ .9 → next bundle, the rest is issued loose.
+   The packing estimate follows its "Packing Material Requirement Estimate":
+   master units = ceil(pcs ÷ pcs per pack), one inner (slave) pack per blanket.
+   The Order Form's Bags & Trims for the linked order product are read live from
+   sales_orders.full_order (loadOrderLink), so a later edit of the order shows here.
+
+   Future changes without touching code: an app_settings row with key
+   'prl_calc_rules' (value = jsonb shaped like CALC_RULES) overrides any of these
+   numbers (loadCalcRules); a missing row just keeps the defaults. Per lot, the
+   sidebar box "Page 2" can override pcs/roll, kg/pc, master pack and pcs/pack
+   (saved in extra.calc), and extra.no_calc_page leaves page 2 out of Print / PDF. */
+const CALC_RULES = {
+  bundle_kg: 15,
+  round_up_at: 0.9,
+  pcs_per_roll: { DOUBLE:{ '1':54, other:27 }, SINGLE:{ '1':84, other:42 } },
+  fabric: { MINK:{ inch:4, kg:0.12 }, SUPERSOFT:{ inch:5, kg:0.24 }, SUPERCLOUDY:{ inch:5, kg:0.24 }, FLANNEL:{ inch:4, kg:0.15 } },
+  fabric_default: { inch:5, kg:0.24 },
+  pack_pcs: { BORA:10, BOX:10, BALE:25, CARTON:12, 'JUMBO BORA':20, 'ROLL PACK':8 },
+  // Sidebar "Stenter Size & Printing Chemical" starting lists (more can be added per lot).
+  // multi = several Name + Qty lines; req = when ticked, every line needs both Name and Qty.
+  stenter_stages: ['HEATSET', 'AFTER DRYER', 'AFTER RAISING', 'AFTER FINAL'],
+  chemicals: [
+    { label:'GUM' }, { label:'HYBRID THICKNER' }, { label:'SYNTHETIC THICKNER' },
+    { label:'WASHING SILICON', multi:true, req:true }, { label:'BRUSHING' },
+  ],
+};
+async function loadCalcRules(){
+  try {
+    const r = await SB.from('app_settings').select('value').eq('key', 'prl_calc_rules').maybeSingle();
+    const v = !r.error && r.data && r.data.value;
+    if(v && typeof v === 'object') Object.keys(CALC_RULES).forEach(k => {
+      if(v[k] == null) return;
+      // Lists are replaced whole; objects are merged key by key
+      CALC_RULES[k] = Array.isArray(CALC_RULES[k]) ? (Array.isArray(v[k]) ? v[k] : CALC_RULES[k])
+        : (typeof CALC_RULES[k] === 'object') ? Object.assign({}, CALC_RULES[k], v[k]) : v[k];
+    });
+  } catch(e){ console.warn('[PRL] prl_calc_rules:', e.message || e); }
+}
+// Lot Card Manager's getRoundedBundles: 4.3 / 4.8 → 4, 4.9 → 5
+function roundBundles(b){
+  if(!(b > 0)) return 0;
+  const i = Math.floor(b), dec = Number((b - i).toFixed(4));   // avoids 4.9 - 4 = 0.8999…
+  return dec >= CALC_RULES.round_up_at - 0.001 ? i + 1 : i;
+}
+function fabricKeyOf(){
+  const keys = Object.keys(CALC_RULES.fabric);
+  const c = up(L.f.fabric_category).replace(/[^A-Z]/g, ''), n = up(L.f.fabric_name).replace(/[^A-Z]/g, '');
+  return keys.find(k => c === k) || keys.find(k => c.includes(k)) || keys.find(k => n.includes(k)) || '';
+}
+
+// The linked Order Form product (for its Bags & Trims and packing). Matched by
+// extra.src_order_line; a hand-made lot with only an Order No. matches a
+// single-product order, or the product whose Item Code = this card's Brand.
+let OL = { key:'', state:'', prod:null, line:0, msg:'' };
+async function loadOrderLink(){
+  const no = String((L.extra && L.extra.src_order_no) || L.f.order_no || '').trim();
+  const line = Number(L.extra && L.extra.src_order_line) || 0;
+  const key = no ? no + '#' + line + '#' + up(L.f.brand_name) : '';
+  if(key === OL.key) return;
+  OL = { key, state:no ? 'loading' : '', prod:null, line:0, msg:'' };
+  refreshCalcPageSoon();
+  if(!no || !SB) return;
+  try {
+    const { data, error } = await SB.from('sales_orders').select('full_order').eq('order_no', no).maybeSingle();
+    if(OL.key !== key) return;
+    if(error) throw error;
+    const prods = (data && data.full_order && data.full_order.products) || [];
+    const i = line ? line - 1 : prods.length === 1 ? 0 : prods.findIndex(p => up(p.itemCode) && up(p.itemCode) === up(L.f.brand_name));
+    const p = i >= 0 ? prods[i] : null;
+    OL = p ? { key, state:'ok', prod:p, line:i + 1, msg:'' }
+           : { key, state:'missing', prod:null, line:0, msg:!data ? 'Order ' + no + ' was not found in the Order Form' : prods.length ? 'Could not tell which product of Order ' + no + ' this lot is' : 'Order ' + no + ' has no product data' };
+  } catch(e){
+    if(OL.key !== key) return;
+    OL = { key, state:'error', prod:null, line:0, msg:isSetupError(e) ? 'The Order Form table could not be read' : (e.message || String(e)) };
+  }
+  refreshCalcPage();
+}
+const loadOrderLinkSoon = debounce(loadOrderLink, 600);
+
+// Order Form › Bags & Trims rows of the linked product (fixed trims + Brand Master extras), scaled to this lot.
+const TRIM_NAMES = { label:'Label', tag:'Tag', bag:'Bag', bore:'Bore', inner:'Inner Box', outer:'Outer Box' };
+const TRIM_SUPP = { seller:'SIHF', buyer:'Buyer', foc:'FOC' };
+function orderTrimRows(lotPcs){
+  const p = OL.prod; if(!p) return [];
+  const oq = num(p.qty) || 0, out = [];
+  const add = (name, supp, pcs) => {
+    pcs = num(pcs) || 0;
+    if(!supp || supp === 'na' || pcs <= 0) return;
+    const per = oq ? pcs / oq : 0;
+    out.push({ name, supp:TRIM_SUPP[supp] || up(supp), pcs, per, lot:per && lotPcs ? Math.ceil(per * lotPcs) : pcs });
+  };
+  const t = (p.trims && typeof p.trims === 'object') ? p.trims : {};
+  Object.keys(t).forEach(k => {
+    const nm = TRIM_NAMES[k] || up(k);
+    add(k === 'bore' && p.packType ? nm + ' (' + up(p.packType) + ')' : nm, t[k] && t[k].supp, t[k] && t[k].pcs);
+  });
+  (Array.isArray(p.extraTrims) ? p.extraTrims : []).forEach(x => add(up(x.mat), x.supp, x.pcs));
+  return out;
+}
+
+function lotCalc(){
+  const R = CALC_RULES, f = L.f, x = (L.extra && L.extra.calc) || {};
+  const bed = /SINGLE/.test(up(f.bed_size)) ? 'SINGLE' : 'DOUBLE';            // King / Queen follow the Double Bed rule
+  const ply = /SINGLE|^1\b/.test(up(f.blanket_ply)) ? '1' : 'other';
+  const pr = R.pcs_per_roll[bed] || {};
+  const pprAuto = Number(pr[ply] != null ? pr[ply] : pr.other) || 0;
+  const fk = fabricKeyOf(), spec = R.fabric[fk] || R.fabric_default;
+  const kgAuto = Number(spec.kg) || 0;
+  const ppr = num(x.pcs_per_roll) || pprAuto, kg = num(x.kg_per_pc) || kgAuto;
+  const inch = (up(f.satin_quality).match(/(\d+(?:\.\d+)?)\s*INCH/) || [])[1] || spec.inch;
+  const rows = L.designs.map((d, i) => {
+    const rolls = num(d.target_qty) || 0, pcs = Math.round(rolls * ppr);
+    return { d, i, rolls, pcs, kg:pcs * kg };
+  });
+  // Sattan by colour (Sattan Code, else the colour name), in the order the designs show
+  const gm = new Map();
+  rows.forEach(r => {
+    const key = r.d.satin_code || up(r.d.satin_color) || '';
+    if(!gm.has(key)) gm.set(key, { code:r.d.satin_code || '', color:r.d.satin_color || '', designs:[], rolls:0, pcs:0, kg:0 });
+    const g = gm.get(key); g.designs.push(r.d.title_label || 'COLOR ' + (r.i + 1)); g.rolls += r.rolls; g.pcs += r.pcs; g.kg += r.kg;
+  });
+  const groups = [...gm.values()].filter(g => g.rolls > 0).map(g => {
+    const exact = g.kg / R.bundle_kg, bundles = roundBundles(exact);
+    return Object.assign(g, { exact, bundles, loose:Math.max(0, g.kg - bundles * R.bundle_kg) });
+  });
+  const totalRolls = rows.reduce((s, r) => s + r.rolls, 0), totalPcs = rows.reduce((s, r) => s + r.pcs, 0);
+  const totalKg = totalPcs * kg;
+  // Packing: pcs from the rolls; before any TGT is entered, the card's Quantity
+  const qtyCard = num(f.quantity) || 0;
+  const basisPcs = totalPcs || qtyCard, basisFrom = totalPcs ? 'rolls' : qtyCard ? 'card' : '';
+  const packCount = num(f.packing) || 0, packWord = up(f.packing).replace(/^[\d.,\s]+/, '');
+  const op = OL.prod || {};
+  const typeAuto = up(op.packType) || packWord || 'BORA';
+  const type = up(x.master_pack) || typeAuto;
+  const stdAuto = num(op.packPcs) || (qtyCard && packCount ? Math.round(qtyCard / packCount) : 0) || R.pack_pcs[type] || 10;
+  const std = num(x.pack_pcs) || stdAuto;
+  const units = basisPcs ? Math.ceil(basisPcs / std) : 0, full = basisPcs ? Math.floor(basisPcs / std) : 0;
+  return {
+    bed, ply, ppr, pprAuto, kg, kgAuto, fk, inch, rows, groups, totalRolls, totalPcs, totalKg,
+    totalExact:totalKg / R.bundle_kg, totalBundles:groups.reduce((s, g) => s + g.bundles, 0), totalLoose:groups.reduce((s, g) => s + g.loose, 0),
+    noTarget:rows.filter(r => !r.rolls).length, noSatin:rows.filter(r => r.rolls && !r.d.satin_code && !r.d.satin_color).length,
+    qtyCard, basisPcs, basisFrom,
+    pack:{ type, typeAuto, std, stdAuto, units, full, left:basisPcs ? basisPcs % std : 0 },
+    trims:orderTrimRows(basisPcs),
+  };
+}
+
+function calcSheetWrapHTML(){
+  const off = L.extra && L.extra.no_calc_page;
+  return (off ? `<div class="max-w-[297mm] mx-auto mb-2 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-300 rounded px-3 py-1.5">Page 2 is not included in Print / PDF (switch it on in the sidebar box "Page 2").</div>` : '')
+    + calcSheetHTML('edit');
+}
+function calcSheetHTML(mode){
+  const c = calcSafe(); if(!c) return '';
+  const f = L.f, R = CALC_RULES;
+  const fx = (v, d) => Number(v || 0).toFixed(d == null ? 2 : d);
+  const n0 = v => Number(v || 0).toLocaleString('en-IN');
+  const TH = 'border border-gray-800 px-1 py-[2px]', TD = 'border border-gray-400 px-1 py-[1.5px]';
+  const tick = '<span class="inline-block w-[9px] h-[9px] border border-gray-800 bg-white align-middle"></span>';
+  const head = (t, sub) => `<div class="bg-gray-800 text-white font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px] flex justify-between gap-2"><span>${t}</span>${sub ? `<span class="font-semibold normal-case tracking-normal text-gray-300 text-[8px]">${sub}</span>` : ''}</div>`;
+  const sw = name => `<span class="inline-block w-[8px] h-[8px] rounded-full border border-gray-500 align-middle mr-1" style="background:${esc(colorHexOf(name) || '#e5e7eb')}"></span>`;
+  const empty = (cols, msg) => `<tr><td colspan="${cols}" class="${TD} text-center text-gray-400 py-2">${msg}</td></tr>`;
+  const auto = (v, a) => v === a ? '' : ' <span class="text-red-600">(manual)</span>';
+
+  const strip = [['Lot No.', f.lot_no], ['Order No.', f.order_no || (L.extra && L.extra.src_order_no)], ['Party', f.party_name], ['Brand', f.brand_name],
+    ['Fabric', [f.fabric_category, f.fabric_name].filter(Boolean).join(' · ')], ['Bed / Ply', [f.bed_size, f.blanket_ply].filter(Boolean).join(' · ')],
+    ['Satin', f.satin_quality], ['Card Qty', f.quantity]]
+    .map(([k, v]) => `<div class="px-1.5 py-0.5 border-r border-gray-300 last:border-r-0 min-w-0"><div class="text-[6.5px] font-black text-gray-500 uppercase">${k}</div><div class="text-[8.5px] font-bold text-gray-900 truncate">${esc(v || '-')}</div></div>`).join('');
+
+  const basis = `Pcs / Roll <b>${c.ppr}</b>${auto(c.ppr, c.pprAuto)} (${c.bed === 'SINGLE' ? 'Single' : 'Double'} Bed, ${c.ply === '1' ? 'Single' : 'Double / more'} Ply) · Sattan <b>${fx(c.kg, 3)} kg</b>/blanket${auto(c.kg, c.kgAuto)} (${esc(c.fk || 'default fabric')}) · Width <b>${esc(c.inch)} INCH</b>`;
+
+  const sched = c.rows.length ? c.rows.map(r => `<tr>
+      <td class="${TD} text-center font-bold">${r.i + 1}</td>
+      <td class="${TD} font-bold uppercase">${esc(r.d.title_label || '')}</td>
+      <td class="${TD} uppercase">${sw(r.d.color_name)}${esc(r.d.color_name || '-')}</td>
+      <td class="${TD} uppercase">${r.d.satin_code || r.d.satin_color ? `<b>${esc(r.d.satin_code || '')}</b> ${esc(r.d.satin_color || '')}` : '<span class="text-red-600 font-bold">NOT SELECTED</span>'}</td>
+      <td class="${TD} text-right font-bold">${r.rolls ? fx(r.rolls, r.rolls % 1 ? 2 : 0) : '<span class="text-red-600">-</span>'}</td>
+      <td class="${TD} text-right font-bold">${n0(r.pcs)}</td>
+      <td class="${TD} text-right">${fx(r.kg)}</td></tr>`).join('')
+    : empty(7, 'No designs on the card');
+
+  const colors = c.groups.length ? c.groups.map(g => `<tr>
+      <td class="${TD} uppercase font-bold">${sw(g.color)}${g.code ? esc(g.code) + ' · ' : ''}${esc(g.color || (g.code ? '' : 'NOT SELECTED'))}</td>
+      <td class="${TD} text-[7.5px] uppercase">${esc(g.designs.join(', '))}</td>
+      <td class="${TD} text-right">${fx(g.rolls, g.rolls % 1 ? 2 : 0)}</td>
+      <td class="${TD} text-right font-bold">${n0(g.pcs)}</td>
+      <td class="${TD} text-right font-bold">${fx(g.kg)}</td>
+      <td class="${TD} text-right text-gray-600">${fx(g.exact)}</td>
+      <td class="${TD} text-right font-black bg-amber-50">${g.bundles}</td>
+      <td class="${TD} text-right">${g.loose > 0.004 ? fx(g.loose) : '-'}</td>
+      <td class="${TD} text-center">${tick}</td></tr>`).join('')
+    : empty(9, 'Enter TGT (printing rolls) on the designs to see the colour-wise sattan');
+
+  const P = c.pack, bp = c.basisPcs;
+  const lbl = k => up(f[k]) === 'YES';
+  const packRows = [
+    [`<b>${esc(P.type)}</b> (Master Packing)${auto(P.type, P.typeAuto)}`, `${n0(bp)} pcs ÷ ${P.std} pcs${auto(P.std, P.stdAuto)}`, `${n0(P.units)} ${esc(P.type)}`, `${n0(P.full)} full${P.left ? ` + 1 of ${P.left} pcs` : ''}`],
+    ['Inner / Slave Packing', '1 per blanket', `${n0(bp)} pcs`, ''],
+    lbl('corner_label') ? ['Corner Label', '1 per blanket', `${n0(bp)} pcs`, ''] : null,
+    lbl('small_label') ? ['Small Label', '1 per blanket', `${n0(bp)} pcs`, ''] : null,
+    c.groups.length ? ['Sattan (all colours)', `${c.groups.length} colour(s) · ${fx(c.totalKg)} kg`, `${c.totalBundles} bundles`, c.totalLoose > 0.004 ? `+ ${fx(c.totalLoose)} kg loose` : ''] : null,
+  ].filter(Boolean);
+
+  const ordNo = (L.extra && L.extra.src_order_no) || f.order_no;
+  const op = OL.prod;
+  const trimSub = op ? `Order ${esc(ordNo)} · Product #${OL.line} · ${n0(num(op.qty))} pcs on order` : '';
+  const trimMsg = !ordNo ? 'This lot is not linked to an order (no Order No.)'
+    : OL.state === 'loading' || OL.state === '' ? 'Reading the order…'
+    : OL.state !== 'ok' ? esc(OL.msg)
+    : 'The order has no Bags &amp; Trims quantities';
+  const trims = c.trims.length ? c.trims.map(t => `<tr>
+      <td class="${TD} font-bold uppercase">${esc(t.name)}</td>
+      <td class="${TD} text-center">${esc(t.supp)}</td>
+      <td class="${TD} text-right">${n0(t.pcs)}</td>
+      <td class="${TD} text-right text-gray-600">${t.per ? +t.per.toFixed(3) : '-'}</td>
+      <td class="${TD} text-right font-black bg-amber-50">${n0(t.lot)}</td>
+      <td class="${TD} text-center">${tick}</td></tr>`).join('')
+    : empty(6, trimMsg);
+
+  const warn = [];
+  if(c.noTarget && c.rows.length) warn.push(`${c.noTarget} design(s) have no TGT (printing rolls)`);
+  if(c.noSatin) warn.push(`${c.noSatin} design(s) with rolls have no Sattan Code`);
+  if(c.totalPcs && c.qtyCard && c.totalPcs !== c.qtyCard) warn.push(`Card Quantity ${n0(c.qtyCard)} pcs ≠ ${n0(c.totalPcs)} pcs from the rolls`);
+  if(!c.totalPcs && c.basisFrom === 'card') warn.push('Packing is worked out from the card Quantity until TGT rolls are entered');
+
+  return `<div class="a4-sheet ${mode === 'static' ? 'static-sheet prl-page-break' : ''} relative bg-white">
+    <div>
+      <div class="border-b-[2px] border-gray-900 pb-0.5 mb-1 w-full text-center relative">
+        <h1 class="text-base font-black text-gray-900 tracking-widest uppercase leading-none">Sarv India Home Furnishing</h1>
+        <h2 class="text-[9px] font-bold text-gray-600 tracking-wider uppercase mt-0.5">Production Lot Card · Page 2 · Sattan &amp; Packing Calculation</h2>
+        <span class="absolute right-0 top-0 border border-gray-900 px-2 py-0.5 text-[9px] font-black">LOT ${esc(f.lot_no || '-')}</span>
+      </div>
+      <div class="grid grid-cols-8 border border-gray-400 mb-1 bg-gray-50">${strip}</div>
+      <div class="text-[8px] text-gray-700 mb-1">${basis}</div>
+      <div class="flex gap-2 items-start">
+        <div class="w-[57%] flex flex-col gap-1.5">
+          <div class="border-2 border-gray-800">
+            ${head('1. Printing &amp; Sattan Matching Schedule', 'TGT = printing rolls')}
+            <table class="w-full border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black">
+              <th class="${TH} w-[5%]">#</th><th class="${TH}">Design</th><th class="${TH}">Blanket Color</th><th class="${TH}">Sattan Code · Color</th>
+              <th class="${TH} text-right">Rolls</th><th class="${TH} text-right">Blankets</th><th class="${TH} text-right">Sattan Kg</th></tr></thead>
+              <tbody>${sched}<tr class="bg-gray-100 font-black">
+                <td colspan="4" class="${TD} text-right uppercase">Total</td><td class="${TD} text-right">${fx(c.totalRolls, c.totalRolls % 1 ? 2 : 0)}</td>
+                <td class="${TD} text-right">${n0(c.totalPcs)}</td><td class="${TD} text-right">${fx(c.totalKg)}</td></tr></tbody></table>
+          </div>
+          <div class="border-2 border-gray-800">
+            ${head('2. Sattan Calculation by Color · Store Issue', `${R.bundle_kg} kg / bundle · decimal ≥ ${R.round_up_at} → next bundle (4.3 / 4.8 → 4, 4.9 → 5) · rest issued loose`)}
+            <table class="w-full border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black">
+              <th class="${TH}">Sattan Code · Color</th><th class="${TH}">Designs</th><th class="${TH} text-right">Rolls</th><th class="${TH} text-right">Blankets</th>
+              <th class="${TH} text-right">Weight Kg</th><th class="${TH} text-right">Exact Bdl</th><th class="${TH} text-right bg-amber-100">Bundles</th><th class="${TH} text-right">Loose Kg</th><th class="${TH} w-[7%]">Issued</th></tr></thead>
+              <tbody>${colors}<tr class="bg-gray-100 font-black">
+                <td colspan="2" class="${TD} uppercase">Total Sattan Requisition (${esc(c.inch)} INCH)</td><td class="${TD} text-right">${fx(c.totalRolls, c.totalRolls % 1 ? 2 : 0)}</td>
+                <td class="${TD} text-right">${n0(c.totalPcs)}</td><td class="${TD} text-right">${fx(c.totalKg)}</td><td class="${TD} text-right text-gray-600">${fx(c.totalExact)}</td>
+                <td class="${TD} text-right bg-amber-100">${c.totalBundles}</td><td class="${TD} text-right">${c.totalLoose > 0.004 ? fx(c.totalLoose) : '-'}</td><td class="${TD}"></td></tr></tbody></table>
+          </div>
+          ${procPageHTML(TH, TD)}
+        </div>
+        <div class="flex-1 flex flex-col gap-1.5 min-w-0">
+          <div class="border-2 border-gray-800">
+            ${head('3. Packing Material Requirement Estimate &amp; Checklist', bp ? `${n0(bp)} blankets (${c.basisFrom === 'rolls' ? 'from rolls' : 'from card Quantity'})` : '')}
+            <div class="grid grid-cols-3 text-center border-b border-gray-400">
+              <div class="py-1 border-r border-gray-300"><div class="text-[6.5px] font-black text-gray-500 uppercase">Blankets</div><div class="text-[12px] font-black">${n0(bp)}</div></div>
+              <div class="py-1 border-r border-gray-300"><div class="text-[6.5px] font-black text-gray-500 uppercase">Master · ${P.std} pcs / unit</div><div class="text-[12px] font-black text-blue-800">${n0(P.units)} ${esc(P.type)}</div></div>
+              <div class="py-1"><div class="text-[6.5px] font-black text-gray-500 uppercase">Inner / Slave</div><div class="text-[12px] font-black text-emerald-800">${n0(bp)}</div></div>
+            </div>
+            <table class="w-full border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black">
+              <th class="${TH}">Item</th><th class="${TH}">Basis</th><th class="${TH} text-right">Required</th><th class="${TH}">Note</th><th class="${TH} w-[9%]">Done</th></tr></thead>
+              <tbody>${bp ? packRows.map(r => `<tr><td class="${TD}">${r[0]}</td><td class="${TD}">${r[1]}</td><td class="${TD} text-right font-black">${r[2]}</td><td class="${TD} text-[7.5px]">${r[3]}</td><td class="${TD} text-center">${tick}</td></tr>`).join('')
+                : empty(5, 'Enter TGT rolls on the designs (or the card Quantity) to estimate packing')}</tbody></table>
+          </div>
+          <div class="border-2 border-gray-800">
+            ${head('4. Order Form · Required Trims &amp; Packing Material', trimSub)}
+            <table class="w-full border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black">
+              <th class="${TH}">Material</th><th class="${TH}">Supplied By</th><th class="${TH} text-right">Order Qty</th><th class="${TH} text-right">Per Pc</th>
+              <th class="${TH} text-right bg-amber-100">This Lot</th><th class="${TH} w-[9%]">Recd.</th></tr></thead>
+              <tbody>${trims}</tbody></table>
+            ${c.trims.length ? `<div class="text-[7px] text-gray-500 px-1 py-0.5">This Lot = Order Qty ÷ order pcs × ${n0(bp)} blankets, rounded up.</div>` : ''}
+          </div>
+          ${warn.length ? `<div class="border border-red-300 bg-red-50 text-red-700 text-[8px] font-bold px-1.5 py-1">${warn.map(esc).join('<br>')}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-4 gap-6 px-2 pt-2 text-center text-[8.5px] font-bold text-gray-800">
+      ${['Sattan Master', 'Store Incharge', 'Production Incharge', 'Packing Supervisor'].map(s => `<div><div class="border-b border-dashed border-gray-500 h-5 mb-0.5"></div>${s}</div>`).join('')}
+    </div>
+  </div>`;
+}
+// A calculation bug must never stop the lot card itself from rendering or printing.
+function calcSafe(){ try { return lotCalc(); } catch(e){ console.warn('[PRL] page 2:', e); return null; } }
+function renderCalcBox(withValues){
+  const x = (L.extra && L.extra.calc) || {}, c = calcSafe();
+  document.querySelectorAll('#calc-box [data-calc]').forEach(el => {
+    const k = el.dataset.calc;
+    if(withValues) el.value = x[k] == null ? '' : x[k];
+    if(c) el.placeholder = 'auto ' + ({ pcs_per_roll:c.pprAuto, kg_per_pc:c.kgAuto, master_pack:c.pack.typeAuto, pack_pcs:c.pack.stdAuto }[k]);
+  });
+  if(withValues) $('in-calc_page').checked = !(L.extra && L.extra.no_calc_page);
+}
+function refreshCalcPage(){
+  const el = document.querySelector('#sheet-host [data-calc-page]'); if(el) el.innerHTML = calcSheetWrapHTML();
+  renderCalcBox(false);
+  schedulePrintRoot();
+}
+const refreshCalcPageSoon = debounce(refreshCalcPage, 250);
+
+// ═══════════════════════ STENTER SIZE & PRINTING CHEMICAL ═══════════════════
+/* Saved in extra.process (jsonb, no migration):
+     stenter: [{ label, on, size, custom }]
+     chem:    [{ label, on, multi, req, custom, rows:[{ name, qty }] }]
+   The lists start from CALC_RULES.stenter_stages / .chemicals (so an
+   app_settings 'prl_calc_rules' row can change them for every lot); a lot keeps
+   its own order and its added items, and a stage / chemical added later to the
+   defaults is appended to old lots automatically. Only ticked items print on page 2.
+   Required: a ticked stage needs its size; a ticked `req` chemical (Washing
+   Silicon) needs Name + Qty on every line. Checked on Save / Print / PDF, not on
+   the silent autosave, so half-typed work is still kept. */
+const isBlank = v => !String(v == null ? '' : v).trim();
+function proc(){
+  const x = (L.extra && L.extra.process) || {};
+  const st = Array.isArray(x.stenter) ? x.stenter.map(s => Object.assign({}, s)) : [];
+  CALC_RULES.stenter_stages.forEach(lab => { lab = up(lab); if(lab && !st.some(s => up(s.label) === lab)) st.push({ label:lab, on:false, size:'' }); });
+  const ch = Array.isArray(x.chem) ? x.chem.map(c => Object.assign({}, c, { rows:(c.rows || []).map(r => Object.assign({}, r)) })) : [];
+  CALC_RULES.chemicals.forEach(d => {
+    d = typeof d === 'string' ? { label:d } : d;
+    const lab = up(d.label); if(!lab) return;
+    const have = ch.find(c => up(c.label) === lab);
+    if(have){ have.multi = !!d.multi || !!have.multi; have.req = !!d.req || !!have.req; }
+    else ch.push({ label:lab, on:false, multi:!!d.multi, req:!!d.req, rows:[] });
+  });
+  ch.forEach(c => { if(!c.rows.length) c.rows.push({ name:'', qty:'' }); });
+  const p = { stenter:st, chem:ch };
+  L.extra = Object.assign({}, L.extra, { process:p });
+  return p;
+}
+function procProblems(){
+  const p = (L.extra && L.extra.process) || {}, out = [];
+  (p.stenter || []).forEach(s => { if(s.on && isBlank(s.size)) out.push('Stenter size for ' + s.label); });
+  (p.chem || []).forEach(c => {
+    if(!c.on || !c.req) return;
+    const used = (c.rows || []).filter(r => !isBlank(r.name) || !isBlank(r.qty));
+    if(!used.length || used.some(r => isBlank(r.name) || isBlank(r.qty))) out.push(c.label + ' (Name and Qty)');
+  });
+  return out;
+}
+// Save (manual) / Print / PDF stop here when a required value is missing.
+function procBlock(){
+  if(!canEdit()) return false;      // a view-only user can't fix it; page 2 shows NOT FILLED instead
+  const pr = procProblems(); if(!pr.length) return false;
+  showToast('Please fill in: ' + pr.join(', '), 'error');
+  try { $('proc-box').scrollIntoView({ behavior:'smooth', block:'center' }); } catch(e){}
+  return true;
+}
+function renderProcBox(){
+  const p = proc();
+  const red = bad => bad ? ' !border-red-500 bg-red-50' : '';
+  const x = (k, title) => `<button type="button" data-${k} class="edit-only text-gray-400 hover:text-red-600 text-xs px-1" title="${title}">✕</button>`;
+  const addRow = (id, ph) => `<div class="flex gap-1 edit-only-block"><input id="${id}-new" class="fld uppercase" placeholder="${ph}"><button type="button" id="${id}-add" class="shrink-0 px-2 text-[10px] font-bold text-violet-700 bg-white border border-violet-300 rounded hover:bg-violet-100">+ Add</button></div>`;
+  const stenter = p.stenter.map((s, i) => `<div class="flex items-center gap-1.5">
+      <label class="flex items-center gap-1.5 w-[48%] text-[10px] font-bold text-gray-700 uppercase cursor-pointer"><input type="checkbox" data-pst-on="${i}" ${s.on ? 'checked' : ''}> ${esc(s.label)}</label>
+      <input data-pst-size="${i}" value="${esc(s.size || '')}" ${s.on ? '' : 'readonly tabindex="-1"'} placeholder="${s.on ? 'Size *' : '-'}" class="fld uppercase flex-1 min-w-0${s.on ? '' : ' !bg-gray-100 text-gray-400'}${red(s.on && isBlank(s.size))}">
+      ${s.custom ? x(`pst-del="${i}"`, 'Remove this stage') : ''}</div>`).join('');
+  const chem = p.chem.map((c, i) => `<div class="pt-1 border-t border-violet-100">
+      <div class="flex items-center gap-1.5">
+        <label class="flex items-center gap-1.5 flex-1 text-[10px] font-bold text-gray-700 uppercase cursor-pointer"><input type="checkbox" data-pch-on="${i}" ${c.on ? 'checked' : ''}> ${esc(c.label)}${c.req ? ' <span class="text-red-600">*</span>' : ''}</label>
+        ${c.custom ? x(`pch-del="${i}"`, 'Remove this chemical') : ''}</div>
+      ${c.on ? c.rows.map((r, j) => {
+        const bad = c.req && (isBlank(r.name) || isBlank(r.qty));
+        return `<div class="flex items-center gap-1 mt-1 pl-5">
+          <input data-pch-name="${i}.${j}" value="${esc(r.name || '')}" placeholder="${c.req ? 'Name *' : 'Name / Make'}" class="fld uppercase flex-1 min-w-0${red(bad && isBlank(r.name))}">
+          <input data-pch-qty="${i}.${j}" value="${esc(r.qty || '')}" placeholder="${c.req ? 'Qty *' : 'Qty'}" class="fld uppercase w-[32%]${red(bad && isBlank(r.qty))}">
+          ${c.multi && c.rows.length > 1 ? x(`pch-rdel="${i}.${j}"`, 'Remove this line') : ''}</div>`;
+      }).join('') + (c.multi ? `<button type="button" data-pch-radd="${i}" class="edit-only ml-5 mt-1 text-[10px] font-bold text-violet-700 hover:underline">+ Add another name</button>` : '') : ''}
+    </div>`).join('');
+  $('proc-body').innerHTML = `
+    <div class="text-[9.5px] font-black text-violet-800 uppercase tracking-wide">Stenter Size <span class="font-semibold normal-case text-gray-500">(tick a stage, then its size is required)</span></div>
+    ${stenter}${addRow('pst', 'Add stage, e.g. AFTER EMBOSS')}
+    <div class="text-[9.5px] font-black text-violet-800 uppercase tracking-wide pt-1.5">Printing Chemical</div>
+    ${chem}${addRow('pch', 'Add chemical')}`;
+}
+function wireProcBox(){
+  const body = $('proc-body');
+  const P = () => (L.extra && L.extra.process) || proc();
+  const ij = s => s.split('.').map(Number);
+  const redraw = focusSel => { renderProcBox(); applyRO(); markDirty(); if(focusSel){ const el = body.querySelector(focusSel); if(el) el.focus(); } };
+  body.addEventListener('change', e => {
+    const t = e.target, d = t.dataset;
+    if(d.pstOn != null){ const s = P().stenter[+d.pstOn]; s.on = t.checked; redraw(s.on && isBlank(s.size) ? `[data-pst-size="${d.pstOn}"]` : null); }
+    else if(d.pchOn != null){ P().chem[+d.pchOn].on = t.checked; redraw(t.checked ? `[data-pch-name="${d.pchOn}.0"]` : null); }
+  });
+  // Typing only updates the value (and the red mark); a full redraw would lose the cursor
+  body.addEventListener('input', e => {
+    const t = e.target, d = t.dataset; let bad = null;
+    if(d.pstSize != null){ const s = P().stenter[+d.pstSize]; if(!s.on) return; s.size = up(t.value); bad = isBlank(s.size); }
+    else if(d.pchName != null || d.pchQty != null){
+      const [i, j] = ij(d.pchName != null ? d.pchName : d.pchQty), c = P().chem[i], r = c.rows[j];
+      if(d.pchName != null) r.name = up(t.value); else r.qty = up(t.value);
+      bad = c.req && isBlank(t.value);
+    } else return;
+    t.classList.toggle('!border-red-500', !!bad); t.classList.toggle('bg-red-50', !!bad);
+    markDirty();
+  });
+  body.addEventListener('focusout', e => { const t = e.target; if(t.matches('[data-pst-size],[data-pch-name],[data-pch-qty]')) t.value = up(t.value); });
+  body.addEventListener('keydown', e => {
+    if(e.key !== 'Enter' || !/^(pst|pch)-new$/.test(e.target.id || '')) return;
+    e.preventDefault(); $(e.target.id.replace('-new', '-add')).click();
+  });
+  body.addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b || !canEdit()) return;
+    const d = b.dataset, p = P();
+    if(b.id === 'pst-add' || b.id === 'pch-add'){
+      const st = b.id === 'pst-add', inp = $(st ? 'pst-new' : 'pch-new'), lab = up(inp.value).replace(/\s+/g, ' ');
+      const list = st ? p.stenter : p.chem;
+      if(!lab) return inp.focus();
+      if(list.some(x => up(x.label) === lab)) return showToast(lab + ' is already in the list', 'info');
+      list.push(st ? { label:lab, on:true, size:'', custom:true } : { label:lab, on:true, multi:true, req:false, custom:true, rows:[{ name:'', qty:'' }] });
+      redraw(st ? `[data-pst-size="${list.length - 1}"]` : `[data-pch-name="${list.length - 1}.0"]`);
+    }
+    else if(d.pstDel != null){ p.stenter.splice(+d.pstDel, 1); redraw(); }
+    else if(d.pchDel != null){ p.chem.splice(+d.pchDel, 1); redraw(); }
+    else if(d.pchRadd != null){ const c = p.chem[+d.pchRadd]; c.rows.push({ name:'', qty:'' }); redraw(`[data-pch-name="${d.pchRadd}.${c.rows.length - 1}"]`); }
+    else if(d.pchRdel != null){ const [i, j] = ij(d.pchRdel); p.chem[i].rows.splice(j, 1); redraw(); }
+  });
+}
+// Page 2 section 5: only the ticked stages / chemicals
+function procPageHTML(TH, TD){
+  const p = (L.extra && L.extra.process) || {};
+  const st = (p.stenter || []).filter(s => s.on), ch = (p.chem || []).filter(c => c.on);
+  if(!st.length && !ch.length) return '';
+  const miss = '<span class="text-red-600 font-bold">NOT FILLED</span>';
+  const chRows = ch.map(c => {
+    const rows = (c.rows || []).filter(r => !isBlank(r.name) || !isBlank(r.qty));
+    const list = rows.length ? rows : [{ name:'', qty:'' }];
+    return list.map((r, j) => `<tr>${j === 0 ? `<td class="${TD} font-bold uppercase" rowspan="${list.length}">${esc(c.label)}</td>` : ''}
+      <td class="${TD} uppercase">${isBlank(r.name) ? (c.req ? miss : '-') : esc(r.name)}</td>
+      <td class="${TD} text-right font-bold uppercase">${isBlank(r.qty) ? (c.req ? miss : '-') : esc(r.qty)}</td></tr>`).join('');
+  }).join('');
+  return `<div class="border-2 border-gray-800">
+    <div class="bg-gray-800 text-white font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px]">5. Stenter Size &amp; Printing Chemical</div>
+    <div class="flex items-start">
+      <table class="w-[38%] border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black"><th class="${TH}">Stenter Stage</th><th class="${TH} text-right">Size</th></tr></thead>
+        <tbody>${st.length ? st.map(s => `<tr><td class="${TD} font-bold uppercase">${esc(s.label)}</td><td class="${TD} text-right font-black uppercase">${isBlank(s.size) ? miss : esc(s.size)}</td></tr>`).join('')
+          : `<tr><td colspan="2" class="${TD} text-center text-gray-400">None</td></tr>`}</tbody></table>
+      <table class="flex-1 border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black"><th class="${TH}">Chemical</th><th class="${TH}">Name / Make</th><th class="${TH} text-right">Qty</th></tr></thead>
+        <tbody>${chRows || `<tr><td colspan="3" class="${TD} text-center text-gray-400">None</td></tr>`}</tbody></table>
+    </div></div>`;
+}
 
 // Changes inside a design card: a single listener (event delegation).
 function designOf(el){ const c = el.closest('.design-card'); return c ? L.designs.find(d => d.id === c.dataset.id) : null; }
@@ -1098,6 +1588,7 @@ async function saveLot(opts){
   if(!canEdit()){ if(!opts.silent) showToast('You do not have permission to save lot cards', 'error'); return false; }
   if(conflict){ if(!opts.silent) showToast('Someone else has changed this lot. Please Reload first.', 'error'); return false; }
   if(!up(L.f.lot_no)){ if(!opts.silent){ showToast('Lot No is required to save', 'error'); $('in-lot_no').focus(); } return false; }
+  if(!opts.silent && procBlock()) return false;     // autosave still keeps half-filled stenter / chemical entries
   if(saving){ pendingSave = true; return false; }
   saving = true; setSaveState('saving');
   const seq = changeSeq;
@@ -1271,6 +1762,7 @@ async function waitImages(root){
   await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; setTimeout(r, 8000); })));
 }
 async function printCard(){
+  if(procBlock()) return;
   renderPrintRootNow();
   await new Promise(r => setTimeout(r, 120));   // give Tailwind time to generate the new classes
   await waitImages($('print-root'));
@@ -1285,15 +1777,20 @@ async function buildPdfBlob(){
   renderPrintRootNow();
   await new Promise(r => setTimeout(r, 150));
   await waitImages($('print-root'));
-  const el = $('print-root').firstElementChild;
+  const pages = [...$('print-root').children].filter(p => p.classList.contains('a4-sheet'));
   const opt = { margin:0, filename:pdfFileName(), image:{ type:'jpeg', quality:0.96 },
     html2canvas:{ scale:2.5, useCORS:true, logging:false, backgroundColor:'#ffffff', scrollX:0, scrollY:0 },
     jsPDF:{ unit:'mm', format:'a4', orientation:'landscape' }, pagebreak:{ mode:['avoid-all'] } };
-  return await html2pdf().set(opt).from(el).outputPdf('blob');
+  // Each A4 sheet is rendered on its own and added as a new PDF page, so page 2
+  // can never shift page 1 or leave a blank page in between.
+  let w = html2pdf().set(opt).from(pages[0]).toPdf();
+  pages.slice(1).forEach(p => { w = w.get('pdf').then(pdf => { pdf.addPage('a4', 'landscape'); }).from(p).toContainer().toCanvas().toPdf(); });
+  return await w.outputPdf('blob');
 }
 // code.gs ka savePdfToDrive: ROOT / PARTY / LOT_PARTY.pdf, purani file overwrite.
 async function makePdf(){
   if(!up(L.f.party_name)){ showToast('Fill in the Party Name before creating the PDF', 'error'); $('in-party_name').focus(); return; }
+  if(procBlock()) return;
   if(canEdit() && (dirty || !L.version)){
     if(!(await saveLot())) return;
   }
@@ -1813,30 +2310,105 @@ async function suggestLotNo(){
     return max ? String(max + 1) : '';
   } catch(e){ return ''; }
 }
+/* A card made from an order gets the order's values in L.f (so they print), but
+   in Order Parameters the input boxes of those fields are HIDDEN: the values are
+   shown read-only in the collapsible "Order Info" table above the form instead.
+   Only the fields the order did not supply (Unit, LOT NO, Stenter, labels, …)
+   stay as input boxes for manual entry. This holds every time the card is
+   opened, saved or not.
+     - The order's values are kept in extra.src_order_info (jsonb, no migration).
+       Older linked cards don't have it; for them the order fields that hold a
+       value are treated as coming from the order (orderInfoOf).
+     - "✎" on a row shows that field's box again for a correction (this session
+       only); a field that is blank on the card stays visible, with a "Use" button.
+     - Design / Remarks / Label rows have "Use" to add them as a worker note. */
+const ORDER_INFO_ROWS = [
+  ['order_no','Order No.'], ['party_name','Party Name'], ['brand_name','Brand / Item Code'], ['fabric_name','Fabric Name'],
+  ['fabric_category','Fabric Category'], ['bed_size','Bed Size'], ['blanket_ply','Blanket Ply'], ['actual_weight','Actual Weight'],
+  ['finished_size','Finished L x W'], ['satin_quality','Satin Quality'], ['emboss','Emboss'], ['quantity','Quantity'], ['packing','Packing'],
+  ['note:DESIGN','Design'], ['note:ORDER REMARKS','Order Remarks'], ['note:LABEL / TAG','Label / Tag'],
+];
 function lotFromOrder(h){
   const o = h.order || {}, p = h.product || {};
-  const n = blankLot(), f = n.f;
+  const n = blankLot(), info = {};
   const numv = v => { const x = num(v); return x && x > 0 ? x : null; };
-  f.order_no = up(o.orderNo);
-  f.party_name = up(o.buyerName);
-  f.brand_name = up(p.itemCode);
-  f.fabric_name = String(p.fabric || '').trim();
-  f.fabric_category = pickOpt(ddList('fabric_category'), p.category);
-  f.bed_size = pickOpt(ddList('bed_size'), { DB:'Double Bed', SB:'Single Bed' }[up(p.dbsb)] || p.dbsb);
-  f.blanket_ply = pickOpt(ddList('blanket_ply'), { SP:'Single Ply', DP:'Double Ply', '3 PLY':'Three Ply', NA:'' }[up(p.ply)] ?? p.ply);
-  if(numv(p.weight)) f.actual_weight = numv(p.weight) + ' KG';
-  f.finished_size = up(p.size).replace(/\s*[×X*]\s*/g, ' X ');
-  f.satin_quality = satinFromOrder(p.sattanSize, p.sattanType);
-  f.emboss = ['YES','NO'].includes(up(p.emboss)) ? up(p.emboss) : '';
-  if(numv(p.qty)) f.quantity = numv(p.qty) + ' PCS';
-  if(numv(p.packs)) f.packing = numv(p.packs) + ' ' + (up(p.packType) || 'BORA');
+  info.order_no = up(o.orderNo);
+  info.party_name = up(o.buyerName);
+  info.brand_name = up(p.itemCode);
+  info.fabric_name = String(p.fabric || '').trim();
+  info.fabric_category = pickOpt(ddList('fabric_category'), p.category);
+  info.bed_size = pickOpt(ddList('bed_size'), { DB:'Double Bed', SB:'Single Bed' }[up(p.dbsb)] || p.dbsb);
+  info.blanket_ply = pickOpt(ddList('blanket_ply'), { SP:'Single Ply', DP:'Double Ply', '3 PLY':'Three Ply', NA:'' }[up(p.ply)] ?? p.ply);
+  if(numv(p.weight)) info.actual_weight = numv(p.weight) + ' KG';
+  info.finished_size = up(p.size).replace(/\s*[×X*]\s*/g, ' X ');
+  info.satin_quality = satinFromOrder(p.sattanSize, p.sattanType);
+  info.emboss = ['YES','NO'].includes(up(p.emboss)) ? up(p.emboss) : '';
+  if(numv(p.qty)) info.quantity = numv(p.qty) + ' PCS';
+  if(numv(p.packs)) info.packing = numv(p.packs) + ' ' + (up(p.packType) || 'BORA');
+  info['note:DESIGN'] = String(p.design || '').trim();
+  info['note:ORDER REMARKS'] = String(p.remarks || '').trim();
+  info['note:LABEL / TAG'] = String(p.labelTagComment || '').trim();
+  Object.keys(info).forEach(k => { if(!info[k]) delete info[k]; else if(!k.startsWith('note:')) n.f[k] = info[k]; });
   n.extra = { src_order_no:up(o.orderNo), src_order_line:Number(o.line) || 1, src_order_lines:Number(o.totalLines) || 1,
-              src_order_type:o.orderType || '', src_item_code:up(p.itemCode), src_linked_at:new Date().toISOString() };
-  const note = (name, text) => { text = String(text || '').trim(); if(text) n.notes.push({ id:uuid(), process_name:name, note_text:text, font_color:'#dc2626' }); };
-  note('DESIGN', p.design);
-  note('ORDER REMARKS', p.remarks);
-  note('LABEL / TAG', p.labelTagComment);
+              src_order_type:o.orderType || '', src_item_code:up(p.itemCode), src_linked_at:new Date().toISOString(),
+              src_order_info:info };
   return n;
+}
+let oiShown = { lot:null, keys:new Set() };    // fields un-hidden with ✎, for the open card only
+function orderInfoOf(){
+  const x = L.extra || {};
+  if(x.src_order_info) return x.src_order_info;
+  if(!x.src_order_no) return null;
+  const info = {};
+  ORDER_INFO_ROWS.forEach(([k]) => { if(!k.startsWith('note:') && L.f[k]) info[k] = L.f[k]; });
+  return info;
+}
+// Order fields whose box is hidden right now: supplied by the order, holding a value on the card, not opened with ✎
+function orderHiddenKeys(){
+  const info = orderInfoOf(); if(!info) return new Set();
+  if(oiShown.lot !== L.id) oiShown = { lot:L.id, keys:new Set() };
+  return new Set(ORDER_INFO_ROWS.map(([k]) => k).filter(k => !k.startsWith('note:') && info[k] && L.f[k] && !oiShown.keys.has(k)));
+}
+function renderOrderInfo(){
+  const box = $('order-info'), info = orderInfoOf();
+  const hidden = orderHiddenKeys();
+  // Hide each order field's box (and a grid row when both its boxes are hidden)
+  ORDER_INFO_ROWS.forEach(([k]) => { const el = $('in-' + k); if(el) el.parentElement.classList.toggle('hidden', hidden.has(k)); });
+  document.querySelectorAll('#sidebar .grid.grid-cols-2').forEach(g => {
+    if(!g.querySelector('[id^="in-"]')) return;
+    g.classList.toggle('hidden', [...g.children].every(c => c.classList.contains('hidden')));
+  });
+  const rows = info ? ORDER_INFO_ROWS.filter(([k]) => info[k]) : [];
+  box.classList.toggle('hidden', !rows.length);
+  if(!rows.length) return;
+  $('order-info-title').textContent = 'Order Info · ' + (L.extra.src_order_no || '') + ' · Product #' + (L.extra.src_order_line || '-');
+  const btn = (k, text, title) => `<button type="button" data-oi-use="${esc(k)}" class="edit-only text-[10px] font-bold text-sky-700 bg-white border border-sky-200 rounded px-1.5 hover:bg-sky-100" title="${title}">${text}</button>`;
+  $('order-info-body').innerHTML = rows.map(([k, label]) => {
+    const isNote = k.startsWith('note:');
+    // A field row shows what is on the card now; the order's own value only if it was changed
+    const cur = isNote ? info[k] : (L.f[k] || '');
+    const changed = !isNote && cur && String(cur) !== String(info[k]);
+    const act = isNote ? btn(k, 'Use', 'Add as a worker note')
+      : !cur ? btn(k, 'Use', 'Copy into the form field')
+      : hidden.has(k) ? btn(k, '✎', 'Show this field in the form to change it') : '';
+    return `<tr class="border-t border-sky-100 align-top">
+      <td class="py-1 pr-2 text-gray-500 font-semibold whitespace-nowrap">${esc(label)}</td>
+      <td class="py-1 pr-2 font-bold text-gray-800 break-words">${cur ? esc(cur) : '<span class="text-gray-400 font-normal">blank on card</span>'}${changed || !cur ? `<div class="text-[9px] text-gray-400 font-normal">Order: ${esc(info[k])}</div>` : ''}</td>
+      <td class="py-1 text-right whitespace-nowrap">${act}</td></tr>`;
+  }).join('');
+}
+function useOrderInfo(k){
+  const info = orderInfoOf() || {};
+  if(!k.startsWith('note:') && L.f[k]){       // ✎: show the hidden box and put the cursor in it
+    if(!canEdit()) return;
+    oiShown.keys.add(k); renderOrderInfo(); applyRO();
+    const el = $('in-' + k); if(el) el.focus();
+    return;
+  }
+  const v = info[k]; if(!v || !canEdit()) return;
+  if(k.startsWith('note:')) L.notes.push({ id:uuid(), process_name:k.slice(5), note_text:v, font_color:'#dc2626' });
+  else L.f[k] = v;
+  renderForm(); renderSheet(); markDirty();
 }
 // Choosing the order's photos: ALL are pre-selected; click the ones you don't want.
 function pickOrderImages(h){
@@ -1894,7 +2466,8 @@ async function prlRunHandoff_(h){
   const o = h.order;
   // Is there already a lot for this order + product? Then offer to open it instead of creating a new one.
   try {
-    const { data } = await SB.from('prl_lots').select('id,lot_no,extra').eq('order_no', up(o.orderNo));
+    // Matched on extra.src_order_no: the Order No. field is no longer filled automatically, so it may be blank or typed differently
+    const { data } = await SB.from('prl_lots').select('id,lot_no,extra').eq('extra->>src_order_no', up(o.orderNo));
     const hit = (data || []).find(r => Number(r.extra && r.extra.src_order_line) === Number(o.line));
     if(hit){
       if(await confirmBox(`LOT ${hit.lot_no} already exists for product #${o.line} of Order ${o.orderNo}.\nOpen it?`, 'Yes, open it', false)) await openLot(hit.id, { force:true });
@@ -1912,9 +2485,9 @@ async function prlRunHandoff_(h){
   clearLocalDraft();
   try { localStorage.removeItem(LAST_KEY); } catch(e){}
   renderForm(); renderSheet(); markDirty(); showView('card');
-  banner(`Filled from Order <b class="mx-1">${esc(o.orderNo)}</b> · Product #${esc(o.line)}/${esc(o.totalLines || 1)}. LOT NO ${n.f.lot_no ? '<b class="mx-1">' + esc(n.f.lot_no) + '</b> has been suggested (you can change it)' : 'needs to be filled in'} · Choose the Unit · check and <b class="ml-1">Save</b>.`, 'info');
+  banner(`Started from Order <b class="mx-1">${esc(o.orderNo)}</b> · Product #${esc(o.line)}/${esc(o.totalLines || 1)}. The order's details are filled in and shown in the <b class="mx-1">Order Info</b> table above the form. LOT NO ${n.f.lot_no ? '<b class="mx-1">' + esc(n.f.lot_no) + '</b> has been suggested (you can change it)' : 'needs to be filled in'} · Choose the Unit · check and <b class="ml-1">Save</b>.`, 'info');
   if((h.images || []).length) await pickOrderImages(h);
-  showToast('Card filled from the order. Please check it and Save.', 'success');
+  showToast('Card filled from the order. Fill the remaining fields, then Save.', 'success');
   setTimeout(() => $(L.f.unit ? 'in-lot_no' : 'in-unit').focus(), 80);
 }
 
@@ -1944,6 +2517,17 @@ function wire(){
     el.addEventListener('change', () => onFieldInput(k, el, true));
   });
   $('in-fill_prod').onchange = e => { L.extra = Object.assign({}, L.extra, { fill_prod:e.target.checked }); renderSheet(); markDirty(); };
+  $('order-info-body').onclick = e => { const b = e.target.closest('[data-oi-use]'); if(b) useOrderInfo(b.dataset.oiUse); };
+  document.querySelectorAll('#calc-box [data-calc]').forEach(el => el.addEventListener('change', () => {
+    const k = el.dataset.calc;
+    const v = k === 'master_pack' ? up(el.value) : (num(el.value) > 0 ? num(el.value) : '');
+    el.value = v;
+    const c = Object.assign({}, L.extra && L.extra.calc);
+    if(v === '') delete c[k]; else c[k] = v;
+    L.extra = Object.assign({}, L.extra, { calc:c }); markDirty();
+  }));
+  wireProcBox();
+  $('in-calc_page').onchange = e => { L.extra = Object.assign({}, L.extra, { no_calc_page:!e.target.checked }); markDirty(); };
   $('btn-add-note').onclick = addNote;
   $('notes-list').onclick = e => {
     const del = e.target.closest('[data-note-del]'), upb = e.target.closest('[data-note-up]');
@@ -2015,7 +2599,7 @@ async function init(){
   renderWho();
   if(!SB){ banner('The Supabase library did not load. Please check the internet connection.', 'err'); return; }
   renderForm(); renderSheet(); setSaveState(canEdit() ? 'new' : 'ro');
-  await Promise.all([loadPerms(), loadMasters()]);
+  await Promise.all([loadPerms(), loadMasters(), loadCalcRules()]);
   banner(modeBanner(), 'err');
   renderWho(); renderForm(); renderSheet(); applyRO();
   $('tab-masters').style.display = (can('PRL_MASTER') || can('PRL_EDIT')) ? '' : 'none';
