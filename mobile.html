@@ -21,7 +21,8 @@
     <!-- Stamps the GM / MD signature onto the Store Inward / Outward PDF STORE.html already uploaded. -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 
-    <link rel="stylesheet" href="mobile.css">
+    <!-- Build stamp: see the note on mobile-core.js at the end of the page. -->
+    <link rel="stylesheet" href="mobile.css?v=20261022a">
 </head>
 <body>
 
@@ -796,7 +797,12 @@
     </div>
 </div>
 
-<script src="mobile-core.js"></script>
+<!-- ?v= is the build stamp. A phone browser keeps its own copy of these two
+     files, so without a new address after an update one phone can go on
+     running the OLD calculation code and show a different PO amount from the
+     next. Change the stamp (here and on mobile.css above) whenever
+     mobile-core.js or mobile.css changes. -->
+<script src="mobile-core.js?v=20261022a"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 </body>

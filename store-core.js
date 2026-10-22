@@ -15727,7 +15727,73 @@ window.addEventListener('DOMContentLoaded',()=>{
      }catch(e){}
      if(img.name){doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(String(img.name),pageW/2,pageH-M-4,{align:'center'});doc.setTextColor(0,0,0);}
    }
+   stampPoStatusWatermark_(doc,d.status);
    return doc.output('blob');
+ }
+ /* REJECTED / CANCELLED watermark — the same stamp mobile-core.js puts on a
+    dead PO. A vendor may already hold this file, so its face has to say it is
+    no longer valid. Drawn last, on every page, at low opacity so the order
+    underneath stays readable for the record. Only d.status decides it, and
+    only regenPoPdfFromDb_ (after a cancel) passes one. */
+ function stampPoStatusWatermark_(doc,status){
+   const st=String(status||'').trim();
+   if(st!=='Rejected'&&st!=='Cancelled')return;
+   const main=st.toUpperCase()+' PO',sub='NOT VALID FOR SUPPLY';
+   const pageW=doc.internal.pageSize.getWidth(),pageH=doc.internal.pageSize.getHeight();
+   const cx=pageW/2,cy=pageH/2;
+   const ang=Math.atan2(pageH,pageW)*180/Math.PI;   // corner to corner
+   const rad=ang*Math.PI/180,cos=Math.cos(rad),sin=Math.sin(rad);
+   const MM_PER_PT=25.4/72;
+   // jsPDF rotates text about its start point, so the start is worked back
+   // from the page centre along the slope (y grows downwards).
+   const centred=(txt,size,drop)=>{
+     doc.setFontSize(size);
+     const tw=doc.getTextWidth(txt);
+     const lift=size*MM_PER_PT*0.35+drop;   // centre the cap height on the line; drop = below it
+     doc.text(txt,cx-(tw/2)*cos+lift*sin,cy+(tw/2)*sin+lift*cos,{angle:ang});
+   };
+   const n=doc.getNumberOfPages();
+   for(let p=1;p<=n;p++){
+     doc.setPage(p);
+     let gs=false;
+     try{if(doc.GState&&doc.setGState){doc.saveGraphicsState();doc.setGState(new doc.GState({opacity:0.2}));gs=true;}}catch(e){}
+     doc.setFont('helvetica','bold');
+     doc.setTextColor(220,38,38);
+     centred(main,72,0);
+     centred(sub,22,22);
+     if(gs){try{doc.restoreGraphicsState();}catch(e){}}
+   }
+   doc.setTextColor(0,0,0);
+ }
+ /* Re-renders one stored PO with its current status, so a cancelled PO's PDF
+    carries the CANCELLED watermark. Same field mapping the mobile app uses
+    when it regenerates a PO after an approval or a reject. */
+ async function regenPoPdfFromDb_(poNo){
+   const h=await SB.from('purchase_orders').select('*').eq('po_no',poNo).single();
+   if(h.error)throw h.error;
+   const po=h.data;
+   const lq=await SB.from('purchase_order_lines').select('*').eq('purchase_order_id',po.id).order('line_no');
+   if(lq.error)throw lq.error;
+   const d={
+     poNo:po.po_no,poDate:po.po_date,deliveryDate:po.delivery_date,
+     vendorName:po.vendor_name,vendorMail:po.vendor_mail,vendorContact:po.vendor_contact,vendorAddress:po.vendor_address,
+     paymentTerms:po.payment_terms,locationContact:po.location_contact||SARV_PO_LOCATION_CONTACT,freight:po.freight,otherExpense:po.other_expense,
+     otherExpenseLabel:po.other_expense_label||'Labour Other Exp.',gstPercent:po.gst_percent,grandTotal:po.grand_total,
+     gstAmount:po.gst_amount,subtotal:po.subtotal,importantNotes:po.important_notes||'',
+     items:(lq.data||[]).map(l=>({
+       reqNo:l.req_no,itemName:l.item_name,itemDesc:l.item_description,make:l.make,
+       itemSize:l.item_size||'',materialType:l.material_type||'',
+       qty:l.ordered_qty,uom:l.uom,unitPrice:l.unit_price,discountPercent:l.discount_pct||0,
+       netUnitPrice:l.unit_price,total:l.line_total,grossWeight:l.gross_weight||0,
+       billBasis:l.bill_basis||'QTY',taxPct:l.tax_pct||0
+     })),
+     signatures:po.approvals||{},
+     status:po.status
+   };
+   const blob=await buildPoNativePdfBlob(d,[]);
+   const artifact=await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
+   await indexPdfArtifact('PO',po.id,po.po_no,'PO',artifact);
+   flushPdfLinkQueue_().catch(e=>console.warn('[SARV PDF] link queue flush skipped:',e.message||e));
  }
  /* One complete render at a given scale. S multiplies every font size and
     every vertical measurement in the tail and the items table; the company
@@ -20129,9 +20195,26 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function cancelPurchaseOrder(poNo){
    if(!sarvCan('PO_CANCEL'))return sarvDeny('PO_CANCEL');
    if(!confirm('Cancel PO "'+poNo+'"? This cannot be undone.'))return;
-   const u=await SB.from('purchase_orders').update({status:'Cancelled'}).eq('po_no',poNo);
+   // Optional reason. It is shown to the Purchaser in mobile.html, where the
+   // PR comes back to Vendor Info for correction on its own.
+   const reason=prompt('Reason for cancelling PO "'+poNo+'" (optional):','');
+   if(reason===null)return;
+   /* The cancellation note rides in approvals (the same jsonb the MD's
+      rejection note uses), read live so no signature recorded meanwhile is
+      overwritten. Its time is what tells mobile.html whether a newer PO has
+      since been raised for the same PR. */
+   const cur=await SB.from('purchase_orders').select('approvals').eq('po_no',poNo).maybeSingle();
+   if(cur.error)return dbError(cur.error);
+   const approvals={...((cur.data&&cur.data.approvals)||{}),cancellation:{
+     by:(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||'',
+     at:pStamp(),atIso:new Date().toISOString(),remarks:String(reason||'').trim()
+   }};
+   const u=await SB.from('purchase_orders').update({status:'Cancelled',approvals}).eq('po_no',poNo);
    if(u.error)return dbError(u.error);
    showToast('PO '+poNo+' has been cancelled');
+   // CANCELLED watermark on the PO PDF. The cancel is already saved, so a
+   // failure here only leaves the old file in place.
+   regenPoPdfFromDb_(poNo).catch(e=>console.warn('[SARV PDF] Cancelled PO PDF regen failed:',e.message||e));
    await refreshGeneratedPoList();
  }
  async function editPurchaseOrder(poNo){

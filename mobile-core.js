@@ -894,7 +894,44 @@
             if(img.name){doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(String(img.name),pageW/2,pageH-M-4,{align:'center'});doc.setTextColor(0,0,0);}
         }
 
+        stampPoStatusWatermark_(doc, d.status);
         return doc.output('blob');
+    }
+    /* ── REJECTED / CANCELLED watermark ───────────────────────────────
+       A dead PO's PDF is still the same file the vendor may already hold, so
+       it has to say on its face that it is no longer valid. Drawn LAST, across
+       every page, at low opacity so the order underneath stays readable for
+       the record. Only d.status decides it: rejectPO, cancelPRApproval and
+       regenPoPdf_ pass the PO's new status; every other caller passes none. */
+    function stampPoStatusWatermark_(doc, status){
+        const st = String(status || '').trim();
+        if(st !== 'Rejected' && st !== 'Cancelled') return;
+        const main = st.toUpperCase() + ' PO', sub = 'NOT VALID FOR SUPPLY';
+        const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+        const cx = pageW / 2, cy = pageH / 2;
+        const ang = Math.atan2(pageH, pageW) * 180 / Math.PI;   // corner to corner
+        const rad = ang * Math.PI / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+        const MM_PER_PT = 25.4 / 72;
+        // jsPDF rotates text about its start point, so the start is worked
+        // back from the page centre along the slope (y grows downwards).
+        const centred = (txt, size, drop) => {
+            doc.setFontSize(size);
+            const tw = doc.getTextWidth(txt);
+            const lift = size * MM_PER_PT * 0.35 + drop;   // centre the cap height on the line; drop = below it
+            doc.text(txt, cx - (tw / 2) * cos + lift * sin, cy + (tw / 2) * sin + lift * cos, {angle: ang});
+        };
+        const n = doc.getNumberOfPages();
+        for(let p = 1; p <= n; p++){
+            doc.setPage(p);
+            let gs = false;
+            try{ if(doc.GState && doc.setGState){ doc.saveGraphicsState(); doc.setGState(new doc.GState({opacity: 0.2})); gs = true; } }catch(e){}
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(220, 38, 38);
+            centred(main, 72, 0);
+            centred(sub, 22, 22);
+            if(gs){ try{ doc.restoreGraphicsState(); }catch(e){} }
+        }
+        doc.setTextColor(0, 0, 0);
     }
 
     // ── Approval chain config ────────────────────────────────────
@@ -1646,7 +1683,8 @@
        modal (half-drawn signature, typed GST, unsaved Qty), a busy overlay, or
        a backgrounded tab. Those cases set a pending flag and refresh the moment
        the way is clear, so nothing is merely skipped. */
-    const LIVE_POLL_MS = 15000;
+    // 10 s: the floor for when Realtime is not delivering; Realtime itself is instant.
+    const LIVE_POLL_MS = 10000;
     let livePollTimer = null, liveChannel = null;
     let liveBusy = false, livePending = false, liveOn = false;
 
@@ -1692,7 +1730,15 @@
              (r._poRejected||[]).map(rejPoKey_).join('+'),
              r.updated_at, r.delivery_date,
              // PO Receipts moves a card between its three sections on these two.
-             r.received_qty, r.total_qty, (r._inwards||[]).length].join('~')
+             r.received_qty, r.total_qty, (r._inwards||[]).length,
+             /* The money and the snapshot, not just the status. A PO repriced
+                in STORE.html, or a PR whose rates were saved on another phone,
+                keeps its status and — where the table has no updated_at —
+                nothing above changes, so the card went on showing the OLD
+                amount until the app was reopened. A short hash keeps the key
+                small. */
+             r.grand_total, r.subtotal, r.gst_amount, r.freight, r.other_expense,
+             liveHash_(r.pdf_snapshot), liveHash_(r.approvals)].join('~')
         ).join('|');
         // Store Check: which of the two checks are on each entry is what moves a
         // card from Pending to Complete, so it belongs in the fingerprint.
@@ -1721,6 +1767,14 @@
             [r.id, r.status, r.used_on, r.decided_at].join('~')).join('|');
         return part(dash.prs, 'req_no') + '#' + part(dash.pos, 'po_no') + '#' + storePart + '#' + recvPart
              + '#' + inwAppPart;
+    }
+    // 32-bit FNV-1a of the JSON — enough to notice a change, cheap for 200 rows.
+    function liveHash_(v){
+        if(v == null) return '';
+        let s; try{ s = JSON.stringify(v); }catch(e){ return ''; }
+        let h = 0x811c9dc5;
+        for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+        return (h >>> 0).toString(36);
     }
     let liveLastSig = '';
     async function liveRefresh_(force){
@@ -2383,8 +2437,12 @@
                    number and the MD's remark; see paintList.
                It is deliberately REMOVED from Done: showing the same PR in
                both Pending and Done would make "work pending" meaningless. */
-                          return pending ? prs.filter(r => PR_HELD(r) || prRejectedPoOpen(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
-                                         : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r) && !prRejectedPoOpen(r));
+            /* prInRework_ also covers a PO that was CANCELLED, and a PR that has
+               been reopened for correction but not saved again yet. Opening such
+               a PR here reopens its quote sheet by itself — no Cancel My
+               Approval step (see reopenPrForRework_). */
+                          return pending ? prs.filter(r => PR_HELD(r) || prInRework_(r) || (PR_OPEN(r) && !prVendorInfoFilled(r)))
+                                         : prs.filter(r => prVendorInfoFilled(r) && !PR_DEAD(r) && !PR_HELD(r) && !prInRework_(r));
             case 'POGEN':
                 /* Rejected PO is its own question, not a stage of the other
                    two: the PR has been signed (so it is out of Pending) and a
@@ -2407,8 +2465,13 @@
                    prRejectedPoOpen(), because Vendor Info ▸ Pending runs on
                    them too; with two copies they would one day disagree and
                    the PR would show in one list and vanish from the other. */
-                if(view === REJPO_VIEW) return prs.filter(prRejectedPoOpen);
-                          return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r))
+                /* Kept as a read-out of the same rework list; tapping a card
+                   takes the Purchaser to Vendor Info, where it is corrected.
+                   A PR in rework stays out of Pending until its corrected
+                   vendor info is saved, so it is never offered for signing
+                   on the old figures. */
+                if(view === REJPO_VIEW) return prs.filter(r => prHasRejectedPo(r) && prInRework_(r));
+                          return pending ? prs.filter(r => PR_OPEN(r) && prVendorInfoFilled(r) && !prInRework_(r))
                                          : prs.filter(r => (r.approvals||{}).gmCeo && !PR_DEAD(r));
             // No GM/CEO step on POs: a purchaser-approved PO arrives as "GM/CEO
             // Approved", one that never carried a Purchaser signature stays
@@ -2451,6 +2514,13 @@
         let prq = SB.from('purchase_requirements').select('*').order('req_no', {ascending:false}).limit(200);
         if(myPurchaserName) prq = prq.eq('purchaser_name', myPurchaserName);
         const poq = SB.from('purchase_orders').select('*').order('po_no', {ascending:false}).limit(200);
+        /* Store entries depend on nothing above, so they load in the same
+           round trip as the PRs and POs instead of after them. Every later
+           lookup (PDF links, PR→PO tags, PO lines, inwards, inward approvals)
+           needs only prs / pos and runs as ONE parallel round below — on a
+           phone each sequential round trip is what the wait is made of. */
+        const storeP = loadStoreEntries_();
+        storeP.catch(() => {});   // awaited below; this only stops an "unhandled" warning if the PR read fails first
         const [pr, po] = await Promise.all([prq, poq]);
         if(pr.error) console.error(pr.error);
         if(po.error) console.error(po.error);
@@ -2465,8 +2535,7 @@
            read-only, not in the counts, not in a live refresh. Dropping it here
            (the single source every tab reads) covers all of them at once. */
         if(myStage === 'poSender') pos = pos.filter(PO_MD_APPROVED);
-        const store = await loadStoreEntries_();
-        await Promise.all([attachPdfUrls_(prs, 'REQUIREMENT', 'req_no'), attachPdfUrls_(pos, 'PO', 'po_no'), tagRequirementsWithPos(prs)]);
+        const firstRound = Promise.all([storeP, attachPdfUrls_(prs, 'REQUIREMENT', 'req_no'), attachPdfUrls_(pos, 'PO', 'po_no'), tagRequirementsWithPos(prs)]);
         // A Purchaser's PO Receipts cards name the inward documents that fed each
         // PO. inward_entries.po_number already carries the comma-joined PO list,
         // so one query covers it — no per-line join.
@@ -2487,12 +2556,11 @@
         const needPoDetail = ['purchaser','md','poSender'].includes(myRoleKey());
         const needInwApp   = ['purchaser','md'].includes(myRoleKey());
         let inwApprovals = [];
-        if(needPoDetail){
-            const jobs = [attachInwardsToPos_(pos), attachPoLinesToPos_(pos)];
-            if(needInwApp) jobs.push(loadInwardApprovals_());
-            const out = await Promise.all(jobs);
-            if(needInwApp) inwApprovals = out[2] || [];
-        }
+        const detailRound = needPoDetail
+            ? Promise.all([attachInwardsToPos_(pos), attachPoLinesToPos_(pos), needInwApp ? loadInwardApprovals_() : null])
+            : Promise.resolve([]);
+        const [[store], detail] = await Promise.all([firstRound, detailRound]);
+        if(needInwApp) inwApprovals = detail[2] || [];
         dash = {prs, pos, store, inwApprovals};
     }
     /* Every line of these POs, so PO Receipts can judge an order item by item
@@ -2832,9 +2900,14 @@
             const livePo = {}, rejPo = {};
             (pq.data||[]).forEach(p => {
                 if(!DEAD_PO_STATUSES.includes(p.status||'')) livePo[p.id] = p;
-                // Only Rejected, not Cancelled: a cancel is this side's own
-                // doing (cancelPRApproval), not a decision sent back to answer.
-                else if((p.status||'') === 'Rejected') rejPo[p.id] = p;
+                /* Rejected AND Cancelled. A PO cancelled from STORE.html (or by
+                   anyone other than this PR's own Cancel My Approval) leaves its
+                   items un-ordered just as a rejection does, and the PR has to go
+                   back to the Purchaser for correction in both cases. The one
+                   cancel that is NOT returned work is cancelPRApproval's own: it
+                   marks the PO selfCancel, and the PR is already reopened. */
+                else if((p.status||'') === 'Rejected'
+                     || !(((p.approvals||{}).cancellation||{}).selfCancel)) rejPo[p.id] = p;
             });
             const byReq = {}, rejByReq = {};
             lq.data.forEach(l => {
@@ -2866,10 +2939,17 @@
        from: the Purchaser takes their approval back, fixes whatever the remark
        objects to, and signs again — which raises a fresh PO. These helpers are
        what the Rejected PO section, its badge and the modal's notice all read. */
+    /* The rejection note, or for a Cancelled PO its cancellation note (written
+       by cancelPRApproval here and by cancelPurchaseOrder in STORE.html), so a
+       cancelled PO reads back through the same helpers a rejected one does. */
     function poRejectionInfo(po){
-        const r = ((po && po.approvals) || {}).rejection;
+        const a = (po && po.approvals) || {};
+        const r = (po && po.status === 'Cancelled' && a.cancellation) || a.rejection;
         return (r && typeof r === 'object') ? r : null;
     }
+    const poIsCancelled_ = po => ((po && po.status) || '') === 'Cancelled';
+    // "Rejected" or "Cancelled": the word every notice and card uses for this PO.
+    const poDeadWord_ = po => poIsCancelled_(po) ? 'Cancelled' : 'Rejected';
     // Sortable rejection moment; '' on a PO rejected before this was recorded.
     function poRejectionAt_(po){
         const r = poRejectionInfo(po) || {};
@@ -2927,88 +3007,68 @@
     }
     // Time of the NEWEST rejection on this PR.
     function prLastRejectionMs_(r){
-        return prRejectedPos(r).reduce((mx, p) => Math.max(mx, stampMs_(poRejectionAt_(p))), 0);
+        return prRejectedPos(r).reduce((mx, p) => Math.max(mx, poDeadAtMs_(p)), 0);
+    }
+    /* When this PO came back. A PO cancelled from STORE.html before the
+       cancellation note existed has no stamp at all, so the moment it was
+       raised stands in: a PO raised after THAT is still a newer order. */
+    function poDeadAtMs_(p){
+        return stampMs_(poRejectionAt_(p)) || poRaisedAtMs_(p);
+    }
+    // Has a fresh live PO been raised on this PR after this one came back?
+    function prDeadPoAnswered_(r, p){
+        const at = poDeadAtMs_(p);
+        if(!at) return false;               // time unknown; we won't hide it
+        return ((r && r._poLive) || []).some(l => poRaisedAtMs_(l) > at);
+    }
+    /* The returned POs the Purchaser has already taken back into Vendor Info
+       (reopenPrForRework_ / saveVendorInfoMobile write their numbers here).
+       Without this a returned PO whose items all went onto another live PO
+       would pull the PR back to Pending after every re-sign. */
+    function prReworkAck_(r){
+        const a = ((r && r.pdf_snapshot) || {}).reworkAck;
+        return new Set(Array.isArray(a) ? a : []);
     }
     function prRejectedPoAnswered_(r){
         const rejAt = prLastRejectionMs_(r);
         if(!rejAt) return false;            // time unknown; we won't hide it
         return ((r && r._poLive) || []).some(p => poRaisedAtMs_(p) > rejAt);
     }
-    /* ── "Can Cancel My Approval be done on this PR?" ────────────────
-       The Rejected PO list has ONE purpose: to show PRs where the Purchaser
-       can RIGHT NOW press <b>Cancel My Approval</b>, fix the rates/vendor,
-       sign again and raise a NEW PO. Where that path is closed, the card in
-       that list is just a locked door.
-
-       canCancelApproval() applies the same three conditions (for the
-       Purchaser with myStage='gmCeo'), but it reads screen-time globals like
-       `currentModule` / `myStage`, while this predicate is also asked by the
-       badge count (allRejectedPos_ can run on any tab). So the same question
-       is asked here without those globals; otherwise the list would show the
-       PR while the badge counted something else.
-
-       prPoLocked_ is written in one place and prLockedByPo now reads it
-       too; with two copies they would one day disagree. A Rejected PO is in
-       DEAD_PO_STATUSES, i.e. not in _poLive, so it never locks by itself; the
-       other vendor's PO on the same PR that the MD has already approved does,
-       and rightly so. */
+    /* prPoLocked_: a live PO off this PR has gone past the MD. prLockedByPo
+       (Cancel My Approval's lock) reads it, so the two can never disagree. A
+       Rejected / Cancelled PO is in DEAD_PO_STATUSES, i.e. not in _poLive, so
+       it never locks by itself. */
     function prPoLocked_(r){
         return ((r && r._poLive) || []).some(p => !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
     }
-    function prReworkPossible_(r){
-        const a = (r && r.approvals) || {};
-        return !!a.gmCeo            // the Purchaser's approval stands, so it can be cancelled
-            && !a.md && !a.vendor   // no later stage has signed
-            && !prPoLocked_(r);     // no live PO has gone past the MD
-    }
-    /* ── "Is the PO the MD returned on this PR still open?" ───────────
-       This question is decided in ONE place, and TWO lists read it:
-         • Vendor Info ▸ Pending   - where the work starts again
-         • PO Generate ▸ Rejected PO - where the approval is cancelled
-       One predicate so the two can never disagree: if one list treated the
-       PR as "open" and the other as "done", the PR would show in one place,
-       be missing from the other, and the work would fall through the cracks.
+    /* ── "Is a PO that came back off this PR still waiting for rework?" ──
+       Decided in ONE place and read by Vendor Info ▸ Pending, PO Generate ▸
+       Rejected PO and the badge, so the three can never disagree.
 
-       The `gmCeo` signature test matters more than just looking at the
-       rejected PO: that signature is what raised the PO the MD returned, so
-       while it stands nothing about the PR can change. The Purchaser cancels
-       it (the very step these two lists exist for), and the PR then goes
-       straight into rework (with its tag and the MD's remark). Without this
-       test `_poRejected` would never empty (a Rejected PO stays Rejected) and
-       the PR would sit in both lists forever, even after being dealt with.
+       A PO that the MD rejected, or that was cancelled, leaves its items
+       un-ordered. The PR goes straight back to the Purchaser in Vendor Info ▸
+       Pending, with the remark, and opening it there reopens the quote sheet
+       by itself (reopenPrForRework_). There is no Cancel My Approval step any
+       more: that step existed only to take back the signature that raised the
+       returned PO, and the app now does it for them.
 
-       A Cancelled PR is excluded; nobody will rework it.
-
-       TWO more conditions now apply, and both say the same thing: this list
-       should show only PRs where the Purchaser can RIGHT NOW do Cancel My
-       Approval → correct → sign again and raise a NEW PO.
-
-         • prReworkPossible_: whether that path is open. (Previously only
-           `approvals.gmCeo` was checked, which is just one of
-           canCancelApproval's three conditions: if the MD has approved the
-           other PO of a split PR, the approval can't be cancelled at all, and
-           the PR sat in Rejected PO like a card behind a locked door.)
-         • !prRejectedPoAnswered_: a new PO HAS BEEN raised, i.e. the
-           rejection has been answered. Without this, even after the
-           Purchaser's rework was complete the PR stayed in both Vendor Info ▸
-           Pending and Rejected PO FOREVER (cancel → correct → sign again →
-           new PO raised, but the PR still there).
-
-       Both conditions live HERE, in one place, so Vendor Info ▸ Pending and
-       PO Generate ▸ Rejected PO clear together; the badge count reads the
-       same predicate, so the three never disagree.
-
-       A PR removed by these conditions is NOT lost: it shows in Vendor Info ▸
-       Done and PO Generate ▸ Done with its Rejected PO tag (that tag reads
-       prHasRejectedPo, not this predicate), the MD's remark opens in full in
-       the modal (renderMdRejectionNote → prRejectedPos), and a locked PR gets
-       the same Cancel My Approval button in Done, which also explains why.
-       Only the WORK list is cleared. */
+       Still open while the PR is alive AND at least one returned PO is
+         • not yet taken back into Vendor Info (reworkAck), and
+         • not yet answered by a fresh live PO raised after it came back.
+       A PR whose other PO the MD has already approved is NOT excluded any
+       more: the re-sign raises a PO only for what is still un-ordered (see
+       autoGeneratePosFromPr), so the approved PO is left alone. */
     function prRejectedPoOpen(r){
-        return prHasRejectedPo(r)
-            && (r.status||'') !== 'Cancelled'
-            && prReworkPossible_(r)
-            && !prRejectedPoAnswered_(r);
+        if(!prHasRejectedPo(r) || PR_DEAD(r)) return false;
+        const ack = prReworkAck_(r);
+        return prRejectedPos(r).some(p => !ack.has(p.po_no) && !prDeadPoAnswered_(r, p));
+    }
+    /* The PR is in rework: either a returned PO is still open (above), or it
+       has been reopened for correction and the corrected vendor info has not
+       been saved yet (pdf_snapshot.reworkPending). Both keep it in Vendor
+       Info ▸ Pending and out of PO Generate ▸ Pending. */
+    function prInRework_(r){
+        return prRejectedPoOpen(r) || (PR_OPEN(r) && !!((r && r.pdf_snapshot) || {}).reworkPending);
     }
     /* One line naming who sent it back and when — the card's headline. The
        remark itself is printed under it, and in full in the modal. */
@@ -3064,7 +3124,12 @@
             const {data, error} = await SB.from('purchase_requirement_lines')
                 .select('*, items(name,description,make,category,uom)')
                 .eq('requirement_id', record.id).order('id');
-            if(error){ console.error(error); return []; }
+            if(error){ console.error(error); viLines = []; return []; }
+            /* The raw lines of THIS PR. openModal seeds Bill On / GST% from
+               viLines before renderVendorInfoForm reloads them; without this it
+               read the PREVIOUS PR's lines, so a PR opened after another one
+               could be priced on that other PR's GST / Bill On. */
+            viLines = data || [];
             // Older PRs kept Gross Weight only inside pdf_snapshot, not on the
             // line — same fallback STORE.html uses.
             const snapItems = (record.pdf_snapshot && record.pdf_snapshot.items) || [];
@@ -3265,7 +3330,7 @@
                Pending, where the work on that PR starts again. This used to be
                just `rejView`, so a returned PR in Pending looked like any
                ordinary PR. */
-            const showRej = isPr && (rejView || prRejectedPoOpen(item));
+            const showRej = isPr && (rejView || prInRework_(item));
             // The green "vendor info filled" skin would read as all-is-well on a
             // PR whose PO just came back, so the rejection skin wins.
             card.className = 'card' + (showRej ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''));
@@ -3273,7 +3338,12 @@
             // other tap opens the record read-only. The PO Sender's action is
             // the WhatsApp button itself, so their card opens read-only too.
             const actHere = canAct && !done && !rejView && tab !== 'SENT';
-            card.onclick = () => openModal(item, {viewOnly: !actHere, tab});
+            /* A Rejected PO card is corrected in Vendor Info, not here, so the
+               Purchaser's tap goes straight there (the quote sheet reopens by
+               itself — reopenPrForRework_). Everyone else reads it. */
+            card.onclick = (rejView && canActIn('VI'))
+                ? () => { switchStageTab('VI'); openModal(item, {viewOnly: false, tab: 'VI'}); }
+                : () => openModal(item, {viewOnly: !actHere, tab});
 
             let html = `<div class="card-header"><span>${escText(isPr ? item.req_no : item.po_no)}</span>`;
             if(isPr){
@@ -3294,7 +3364,7 @@
             // section: a PR sitting in Done with a rejected PO behind it would
             // otherwise look like a finished job.
             if(isPr && prHasRejectedPo(item))
-                tags.push(`<span class="tag rejected">Rejected PO: ${escText(prRejectedPos(item).map(p => p.po_no).join(', '))}</span>`);
+                tags.push(`<span class="tag rejected">Rejected / Cancelled PO: ${escText(prRejectedPos(item).map(p => p.po_no + ' (' + poDeadWord_(p) + ')').join(', '))}</span>`);
             if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">${escText(item._poNos.join(', '))}</span>`);
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
             // How far down the checklist this PR is, without opening it.
@@ -3315,19 +3385,19 @@
                 const rem = poRejectionRemark(p);
                 const info = poRejectionInfo(p) || {};
                 return `<div class="rej-note">`
-                     + `<div class="rej-note-head">✖ ${escText(p.po_no || 'PO')} — ${escText(poRejectionWho_(p))} rejected it`
+                     + `<div class="rej-note-head">✖ ${escText(p.po_no || 'PO')} — ${poIsCancelled_(p) ? 'Cancelled' : escText(poRejectionWho_(p)) + ' rejected it'}`
                      + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
-                     + `<div class="rej-note-body"><b>MD Rejection Remark:</b> `
+                     + `<div class="rej-note-body"><b>${poIsCancelled_(p) ? 'Cancellation Remark' : 'MD Rejection Remark'}:</b> `
                      + (rem ? escText(rem) : `<i>no remark was written</i>`) + `</div>`
-                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Rejected PO PDF</a>` : '')
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${poDeadWord_(p)} PO PDF</a>` : '')
                      + `</div>`;
             }).join('');
 
             // What happens next, in one line.
             if(rejView){
-                html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
-                      + escText(canAct
-                          ? '↩ Cancel the approval, correct the PR and sign again; a new PO will be raised'
+                html += `<div class="card-action ${canActIn('VI') ? 'act' : 'wait'}">`
+                      + escText(canActIn('VI')
+                          ? 'Tap to correct it in Vendor Info (vendor / qty / rate), save, then sign; a new PO will be raised'
                           : 'The Purchaser will correct this and sign again')
                       + `</div>`;
             } else if(done){
@@ -3340,7 +3410,7 @@
                        do. So the rejection is named instead, pointing at the
                        section that carries the remark and the way to fix it. */
                     POGEN: (prHasRejectedPo(item) && !(item._poNos||[]).length)
-                        ? '✖ The MD rejected the PO. See the "Rejected PO" sub-tab'
+                        ? '✖ The PO was rejected / cancelled. See the "Rejected PO" sub-tab'
                         : '✔ Approved by ' + (((item.approvals||{}).gmCeo||{}).signedBy || 'Purchaser') + ((item._poNos||[]).length ? ': PO raised' : ''),
                     MD:    '✔ MD approved',
                     SENT:  '✔ Already sent to the vendor',
@@ -3367,7 +3437,7 @@
                    nothing on the PR is final). */
                 html += `<div class="card-action ${canAct ? 'act' : 'wait'}">`
                       + escText(canAct
-                          ? '✖ The MD returned the PO. Read the remark, correct the vendor / rate here, then cancel the approval under "PO Generate ▸ Rejected PO" and sign again'
+                          ? '✖ The PO came back. Tap to correct vendor / qty / rate (the sheet opens unlocked), save, then sign in PO Generate; a new PO will be raised'
                           : 'The Purchaser will correct this and sign again')
                       + `</div>`;
             } else if(isPr && isFieldBoy() && canAct){
@@ -3398,12 +3468,14 @@
                DEAD_PO_STATUSES, so it is not in _poLive and prLockedByPo does
                not block this; a SECOND PO off the same split PR that MD has
                already approved still does, correctly. */
-            const cancelTab = canAct && (tab === 'MD' ? done : (tab === 'POGEN' && (done || rejView)));
+            /* Not in Rejected PO any more: a returned PO's PR is reopened for
+               correction by itself from Vendor Info (reopenPrForRework_). */
+            const cancelTab = canAct && (tab === 'MD' ? done : (tab === 'POGEN' && done));
             if(cancelTab && canCancelApproval(item)){
                 const cancelBtn = document.createElement('button');
                 cancelBtn.className = 'clear-btn';
                 cancelBtn.style.cssText = 'margin-top:8px;display:block;width:100%;text-align:center;padding:8px;border:1px solid #dc3545;border-radius:6px;background:#fff5f5;font-weight:700;';
-                cancelBtn.textContent = rejView ? '↩ Cancel My Approval & Correct' : '↩ Cancel My Approval';
+                cancelBtn.textContent = '↩ Cancel My Approval';
                 cancelBtn.onclick = (e) => { e.stopPropagation(); cancelMyApproval(item); };
                 card.appendChild(cancelBtn);
             } else if(cancelTab && (item.approvals||{})[myStage] && prLockedByPo(item)){
@@ -5722,25 +5794,29 @@
             : (currentModule === 'PR' ? prRejectedPos(entry)
                : (poRejectionInfo(entry) ? [entry] : []));
         if(!rejected.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
-        const one = rejected.length === 1;
-        box.innerHTML = `<div class="md-reject-head">✖ ${escText(one ? 'PO Rejected by MD' : rejected.length + ' PO Rejected by MD')}</div>`
+        const nRej = rejected.filter(p => !poIsCancelled_(p)).length;
+        const nCx = rejected.length - nRej;
+        const head = [nRej ? (nRej > 1 ? nRej + ' POs' : 'PO') + ' Rejected by MD' : '',
+                      nCx ? (nCx > 1 ? nCx + ' POs' : 'PO') + ' Cancelled' : ''].filter(Boolean).join(' · ');
+        box.innerHTML = `<div class="md-reject-head">✖ ${escText(head)}</div>`
             + rejected.map(p => {
                 const info = poRejectionInfo(p) || {};
                 const rem = poRejectionRemark(p);
+                const cx = poIsCancelled_(p);
                 return `<div class="md-reject-row">`
                      + `<div class="md-reject-po">${escText(p.po_no || 'PO')}`
-                     + ` — ${escText(poRejectionWho_(p))}`
+                     + ` — ${cx ? 'Cancelled' + (info.by ? ' by ' + escText(info.by) : '') : escText(poRejectionWho_(p))}`
                      + (info.at ? ` · ${escText(info.at)}` : '') + `</div>`
-                     + `<div class="md-reject-remark"><b>MD Rejection Remark:</b> `
+                     + `<div class="md-reject-remark"><b>${cx ? 'Cancellation Remark' : 'MD Rejection Remark'}:</b> `
                      // A rejection recorded before rejectPO started keeping the
                      // reason says so, rather than showing an empty quote.
                      + (rem ? escText(rem) : `<i>no remark was recorded</i>`) + `</div>`
-                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener">Rejected PO PDF</a>` : '')
+                     + (p.pdf_url ? `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener">${poDeadWord_(p)} PO PDF</a>` : '')
                      + `</div>`;
             }).join('')
             // The way out, only for the person who can take it — an MD reading
-            // their own rejection back does not cancel anybody's approval.
-            + (currentModule === 'PR' && canActIn('POGEN') ? prRejectionFootHtml_(entry) : '');
+            // their own rejection back has nothing to correct.
+            + (currentModule === 'PR' && canActIn('VI') ? prRejectionFootHtml_(entry) : '');
         box.style.display = 'block';
     }
     /* What to DO about a rejection, for the Purchaser who can do it. Three
@@ -5753,6 +5829,17 @@
     function prRejectionFootHtml_(r){
         const foot = s => `<div class="md-reject-foot">${s}</div>`;
         const nos = ((r && r._poNos) || []).join(', ');
+        /* In rework: the quote sheet is open (or opens the moment the PR is
+           opened from Vendor Info). Items already on a live PO are not
+           ordered twice — the re-sign raises a PO only for what is still
+           un-ordered — so those POs are named. */
+        if(prInRework_(r)){
+            return foot(`This PR is open for correction: change the vendor / qty / rate / GST in <b>Vendor Rate &amp; Info</b> `
+                + `below and press <b>Save</b>, then sign in <b>PO Generate</b>; a new PO will be raised. `
+                + `No Cancel My Approval is needed.`
+                + (nos ? ` Items already on live PO <b>${escText(nos)}</b> are not ordered again.` : '')
+                + ` To change item names or add items, use Edit PR in STORE.html.`);
+        }
         if(prRejectedPoAnswered_(r)){
             // It has been answered: a new PO has been raised.
             const rejAt = prLastRejectionMs_(r);
@@ -5762,19 +5849,10 @@
                 + `. This rejection has been dealt with, so the PR no longer shows in <b>Vendor Info ▸ Pending</b> or `
                 + `<b>Rejected PO</b>; this remark is kept for the record only.`);
         }
-        if(prPoLocked_(r)){
-            // Path closed: the approval cannot be cancelled.
-            return foot(`The MD has approved PO <b>${escText(nos || '-')}</b>, so `
-                + `<b>Cancel My Approval</b> is no longer possible on this PR, which is also why it is not in the `
-                + `<b>Rejected PO</b> list. A new PO for the items on the rejected PO will be raised from the PO desk in `
-                + `<b>STORE.html</b> (their qty shows as pending there again).`);
-        }
-        if(!((r && r.approvals) || {}).gmCeo)
-            // The approval has already been cancelled; now just correct and sign.
-            return foot(`↩ Your approval has been cancelled. Now correct the rates / vendor in <b>Vendor Info</b> `
-                + `and sign again in <b>PO Generate</b>; a new PO will be raised.`);
-        return foot(`To fix this: press <b>Cancel My Approval</b> under <b>PO Generate ▸ Rejected PO</b>`
-            + `, correct the PR / rates, then sign again; a new PO will be raised.`);
+        // Taken back into Vendor Info and corrected already (reworkAck).
+        return foot(`This PO has already been taken back for correction`
+            + (nos ? `; live PO on this PR: <b>${escText(nos)}</b>` : '')
+            + `. The remark is kept for the record only.`);
     }
 
     function toggleVendorInfo(){
@@ -6224,6 +6302,13 @@
                 purpose: base.purpose || req.purpose,
                 overallRemarks: base.overallRemarks || req.notes,
                 status: req.status,
+                /* The correction is saved: the PR leaves Vendor Info for PO
+                   Generate, and every PO that came back so far counts as dealt
+                   with (reworkAck) — including one returned while this sheet
+                   was open, which the corrected figures answer just the same. */
+                reworkPending: false,
+                reworkAck: [...new Set([...(Array.isArray(base.reworkAck) ? base.reworkAck : []),
+                                        ...prRejectedPos(currentEntry).map(p => p.po_no).filter(Boolean)])].slice(-100),
                 items: viLines.map((line,i)=>({
                     name: line.item_name || (line.items && line.items.name) || '',
                     desc: line.specification || (line.items && line.items.description) || '',
@@ -6512,6 +6597,16 @@
         modalViewOnly = !!opts.viewOnly;
         modalTab = opts.tab || currentStageTab;
         itemVendorIndex = [];
+        /* A PR whose PO came back (rejected / cancelled) opens for correction
+           straight away — no Cancel My Approval step. Only for the Purchaser
+           working it from Vendor Info; everyone else reads it as it is. */
+        if(currentModule === 'PR' && modalTab === 'VI' && !modalViewOnly && myStage === 'gmCeo'
+           && !isFieldBoy() && prRejectedPoOpen(entry)){
+            setBusy(true, 'Opening the PR for correction...');
+            try{ await reopenPrForRework_(entry); }
+            catch(e){ alert('The PR could not be opened for correction: ' + (e.message || e)); }
+            finally{ setBusy(false); }
+        }
         // Hidden by default and collapsed; only the PR GM/CEO stage re-opens it.
         const viPanel = document.getElementById('vendorInfoPanel');
         if(viPanel) viPanel.style.display = 'none';
@@ -6802,8 +6897,9 @@
             overallRemarks: base.overallRemarks || req.notes,
             status: newStatus,
             approvedVendorIndex,
-            // Approving again closes a grid a cancel had reopened.
+            // Approving again closes a grid a cancel / rework had reopened.
             vendorInfoReopened: false,
+            reworkPending: false,
             items: lines.map((line,i)=>({
                 name: line.item_name || line.items?.name || '',
                 desc: line.specification || line.items?.description || '',
@@ -7244,6 +7340,8 @@
                 billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
             })),
             signatures: newApprovals,
+            // 'Rejected' puts the REJECTED PO watermark on every page.
+            status: newStatus,
         };
 
         const updErr = await SB.from('purchase_orders').update({status:newStatus, approvals:newApprovals}).eq('id', po.id);
@@ -7254,6 +7352,89 @@
             const artifact = await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
             await indexPdfArtifact('PO', po.id, po.po_no, 'PO', artifact);
         }catch(e){ console.warn('[MOBILE] PO PDF regen failed (reject still saved):', e); }
+    }
+
+    /* Re-renders one PO's PDF from what is stored, with its current status —
+       used after a cancel, so the file the vendor may already hold is
+       replaced by one marked CANCELLED. Same field mapping as rejectPO. */
+    async function regenPoPdf_(poId){
+        const h = await SB.from('purchase_orders').select('*').eq('id', poId).single();
+        if(h.error) throw h.error;
+        const po = h.data;
+        const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
+        if(lq.error) throw lq.error;
+        const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
+        const d = {
+            poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
+            vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
+            paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
+            otherExpenseLabel: po.other_expense_label || 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
+            gstAmount: po.gst_amount, subtotal: po.subtotal,
+            items: lines.map(l=>({
+                reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
+                itemSize: l.item_size || '', materialType: l.material_type || '',
+                qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
+                netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
+                billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
+            })),
+            signatures: po.approvals || {},
+            status: po.status,
+        };
+        const blob = await buildPoNativePdfBlob(d, []);
+        const artifact = await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
+        await indexPdfArtifact('PO', po.id, po.po_no, 'PO', artifact);
+    }
+
+    /* ── A returned PO's PR goes back for correction by itself ─────────
+       Called when the Purchaser opens, from Vendor Info, a PR whose PO the MD
+       rejected or someone cancelled. It does what Cancel My Approval used to
+       make them do by hand — takes back the signature that raised the
+       returned PO — and nothing more:
+         • the PR goes back to Pending and its quote sheet is unlocked
+           (vendorInfoReopened), so vendor / qty / rate / GST / PO details can
+           all be corrected;
+         • the vendors and Selected Vendor already chosen are KEPT, so only
+           what the remark objects to has to be changed;
+         • live POs off the same PR are left exactly as they are. The re-sign
+           raises a PO only for what is still un-ordered (autoGeneratePosFromPr),
+           so nothing is ordered twice;
+         • the returned POs are recorded in reworkAck, and reworkPending holds
+           the PR in Vendor Info until the corrected sheet is saved.
+       Re-reads the row first: another phone may already have reopened it. */
+    async function reopenPrForRework_(req){
+        const fresh = await SB.from('purchase_requirements').select('*').eq('id', req.id).single();
+        if(fresh.error) throw fresh.error;
+        const row = fresh.data;
+        const base = row.pdf_snapshot || {};
+        const ack = new Set(Array.isArray(base.reworkAck) ? base.reworkAck : []);
+        prRejectedPos(req).forEach(p => { if(p.po_no) ack.add(p.po_no); });
+        const newApprovals = {...(row.approvals || {})};
+        delete newApprovals.gmCeo;
+        // A held PR stays held; the hold is a separate decision.
+        const newStatus = PR_HELD(row) ? row.status : PREV_STATUS_PR.gmCeo;
+        const d = {
+            ...base,
+            status: newStatus,
+            vendorInfoReopened: true,
+            reworkPending: true,
+            reworkAck: [...ack].slice(-100),
+            reopenedForRework: {by: myPurchaserName || '', at: pStamp(), poNos: prRejectedPos(req).map(p => p.po_no)},
+            signatures: {...newApprovals, ...(base.signatures && base.signatures.store ? {store: base.signatures.store} : {})},
+        };
+        const upd = await SB.from('purchase_requirements')
+            .update({status: newStatus, approvals: newApprovals, pdf_snapshot: d}).eq('id', req.id);
+        if(upd.error) throw upd.error;
+        // The open modal and the list both read this same object.
+        Object.assign(req, {status: newStatus, approvals: newApprovals, pdf_snapshot: d});
+        dashDirty = true;
+        // The PR PDF without the withdrawn signature — in the background, so
+        // the sheet opens at once.
+        (async () => {
+            const blob = await buildRequirementNativePdfBlob(d);
+            const artifact = await uploadPdfArtifact(blob,'REQUIREMENT',req.req_no,'REQUIREMENT');
+            await indexPdfArtifact('REQUIREMENT', req.id, req.req_no, 'REQUIREMENT', artifact);
+        })().catch(e => console.warn('[MOBILE] PR PDF regen failed (reopen still saved):', e));
     }
 
     // ── Cancel a completed approval — only allowed while no later stage
@@ -7314,12 +7495,26 @@
         // first: if MD approved one since the list loaded, nothing is touched.
         const poIds = (req._poLive||[]).map(p => p.id);
         if(poIds.length){
-            const ps = await SB.from('purchase_orders').select('id,po_no,status').in('id', poIds);
+            const ps = await SB.from('purchase_orders').select('id,po_no,status,approvals').in('id', poIds);
             if(ps.error) throw ps.error;
             const moved = (ps.data||[]).filter(p => !DEAD_PO_STATUSES.includes(p.status||'') && !PRE_MD_PO_STATUSES.includes(p.status||'Generated'));
             if(moved.length) throw new Error('The MD has already approved PO ' + moved.map(p => p.po_no).join(', ') + '; the approval cannot be cancelled.');
-            const cx = await SB.from('purchase_orders').update({status:'Cancelled'}).in('id', poIds).in('status', PRE_MD_PO_STATUSES);
-            if(cx.error) throw cx.error;
+            /* One by one, so each carries its own cancellation note. selfCancel
+               tells tagRequirementsWithPos this PO is not returned work — the PR
+               is reopened right here — so it does not come back as a rework. */
+            const cancelled = [];
+            for(const p of (ps.data||[]).filter(p => PRE_MD_PO_STATUSES.includes(p.status||'Generated'))){
+                const appr = {...(p.approvals||{}), cancellation: {
+                    selfCancel: true, by: myPurchaserName || myStageLabel(), at: pStamp(),
+                    atIso: new Date().toISOString(), remarks: 'Cancelled with the Purchaser\'s PR approval (' + (req.req_no||'') + ')',
+                }};
+                const cx = await SB.from('purchase_orders').update({status:'Cancelled', approvals:appr})
+                    .eq('id', p.id).in('status', PRE_MD_PO_STATUSES);
+                if(cx.error) throw cx.error;
+                cancelled.push(p.id);
+            }
+            // CANCELLED watermark on each PO's PDF — background, the cancel is saved.
+            cancelled.forEach(id => regenPoPdf_(id).catch(e => console.warn('[MOBILE] Cancelled PO PDF regen failed:', e)));
         }
         const newApprovals = {...(req.approvals||{})};
         delete newApprovals[myStage];
