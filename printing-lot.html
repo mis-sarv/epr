@@ -183,10 +183,9 @@
             <div><label class="lbl">Satin Quality</label><select id="in-satin_quality" class="fld"></select></div>
             <div><label class="lbl">Emboss</label><select id="in-emboss" class="fld"></select></div>
           </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div><label class="lbl">Corner Label</label><select id="in-corner_label" class="fld"></select></div>
-            <div><label class="lbl">Small Label</label><select id="in-small_label" class="fld"></select></div>
-          </div>
+          <!-- Corner Label / Small Label boxes removed: the Order Form decides them
+               (YES / NO) against the Brand Master. The keys stay in F_KEYS so an
+               older lot keeps its saved values in the register. -->
           <div class="grid grid-cols-2 gap-2">
             <div><label class="lbl">Quantity</label><input id="in-quantity" class="fld uppercase" placeholder="0"></div>
             <div><label class="lbl">Packing</label><input id="in-packing" class="fld uppercase" placeholder="0"></div>
@@ -771,8 +770,7 @@ const SPEC_ROWS = [
   // each design card already shows its own code, and page 2 has the full colour-wise sattan list.
   ['satin_quality','Satin','font-semibold text-[8.5px] text-gray-900'],
   ['emboss','Emboss','font-bold text-[9px] text-gray-900'],
-  ['corner_label','Corner Label','font-semibold text-[9px] text-gray-900'],
-  ['small_label','Small Label','font-semibold text-[9px] text-gray-900'],
+  // Corner Label / Small Label left out: no longer asked on this card (the Order Form decides them).
   ['quantity','Quantity','font-bold text-[9px] text-indigo-700'],
   ['packing','Packing','font-bold text-[9px] text-green-700'],
 ];
@@ -845,7 +843,8 @@ function designCardHTML(d, idx, mode){
         ? `<input type="number" data-act="${key}" value="${esc(d[key] == null ? '' : d[key])}" ${edit ? '' : 'disabled'} class="qty-input flex-1 text-center text-[8.5px] font-black text-red-600 bg-transparent outline-none focus:bg-red-50 px-0.5 w-full" placeholder="0" min="0">`
         : `<span class="flex-1 text-center text-[8.5px] font-black text-red-600">${esc(d[key] == null || d[key] === '' ? '' : d[key])}</span>`}</div>`;
   return `<div class="design-card flex flex-col border border-gray-400 bg-white relative break-inside-avoid" data-id="${esc(d.id)}">
-    <div class="bg-gray-800 text-white text-center font-black text-[9px] py-[1.5px] uppercase flex justify-between px-1.5 ${edit ? 'cursor-grab drag-handle' : ''}">
+    <!-- White bar with a rule under it, not a black fill: a solid black strip per design card was most of the page's toner. -->
+    <div class="bg-white text-gray-900 border-b border-gray-800 text-center font-black text-[9px] py-[1.5px] uppercase flex justify-between px-1.5 ${edit ? 'cursor-grab drag-handle' : ''}">
       <span ${edit ? 'contenteditable="true" data-act="title"' : ''} class="outline-none min-w-[30px] whitespace-nowrap text-left flex-1 px-0.5">${esc(d.title_label)}</span>
       ${edit ? '<span class="text-[8px] opacity-70 pointer-events-none"><i class="ph ph-dots-six-vertical"></i></span>' : ''}
     </div>
@@ -906,7 +905,8 @@ function page1HTML(mode){
         <div class="flex items-center gap-2"><span>Start Date =</span> <span class="border-b border-dashed border-gray-500 w-28 inline-block min-h-[11px]">${esc(pf ? pf.start : '')}</span></div>
         <div class="flex items-center gap-2"><span>End Date &nbsp;&nbsp;=</span> <span class="border-b border-dashed border-gray-500 w-28 inline-block min-h-[11px]">${esc(pf ? pf.end : '')}</span></div>
       </div>
-      <div class="text-center flex flex-col items-center"><div class="border-b border-gray-800 w-28 mb-0.5 h-2.5"></div><span class="tracking-wider text-[8.5px]">AUTHORISED SIGN.</span></div>
+      <!-- h-8 (about 8 mm) above the line: enough room to actually sign by hand. -->
+      <div class="text-center flex flex-col items-center"><div class="border-b border-gray-800 w-32 mb-0.5 h-8"></div><span class="tracking-wider text-[8.5px]">AUTHORISED SIGN.</span></div>
     </div>
   </div>`;
 }
@@ -1079,17 +1079,22 @@ function lotCalc(){
   const basisPcs = totalPcs || qtyCard, basisFrom = totalPcs ? 'rolls' : qtyCard ? 'card' : '';
   const packCount = num(f.packing) || 0, packWord = up(f.packing).replace(/^[\d.,\s]+/, '');
   const op = OL.prod || {};
+  /* Master Packing and Pcs per Pack come from the linked Order Form product
+     and are LOCKED when it has them: the order is what was agreed with the
+     buyer, so a hand-typed override here (extra.calc) is ignored. Only a lot
+     with no order data for one of them falls back to the editable box. */
+  const typeLocked = !!up(op.packType), stdLocked = num(op.packPcs) > 0;
   const typeAuto = up(op.packType) || packWord || 'BORA';
-  const type = up(x.master_pack) || typeAuto;
+  const type = typeLocked ? typeAuto : (up(x.master_pack) || typeAuto);
   const stdAuto = num(op.packPcs) || (qtyCard && packCount ? Math.round(qtyCard / packCount) : 0) || R.pack_pcs[type] || 10;
-  const std = num(x.pack_pcs) || stdAuto;
+  const std = stdLocked ? stdAuto : (num(x.pack_pcs) || stdAuto);
   const units = basisPcs ? Math.ceil(basisPcs / std) : 0, full = basisPcs ? Math.floor(basisPcs / std) : 0;
   return {
     bed, ply, ppr, pprAuto, kg, kgAuto, fk, inch, rows, groups, totalRolls, totalPcs, totalKg,
     totalExact:totalKg / R.bundle_kg, totalBundles:groups.reduce((s, g) => s + g.bundles, 0), totalLoose:groups.reduce((s, g) => s + g.loose, 0),
     noTarget:rows.filter(r => !r.rolls).length, noSatin:rows.filter(r => r.rolls && !r.d.satin_code && !r.d.satin_color).length,
     qtyCard, basisPcs, basisFrom,
-    pack:{ type, typeAuto, std, stdAuto, units, full, left:basisPcs ? basisPcs % std : 0 },
+    pack:{ type, typeAuto, std, stdAuto, typeLocked, stdLocked, units, full, left:basisPcs ? basisPcs % std : 0 },
     trims:orderTrimRows(basisPcs),
   };
 }
@@ -1106,7 +1111,8 @@ function calcSheetHTML(mode){
   const n0 = v => Number(v || 0).toLocaleString('en-IN');
   const TH = 'border border-gray-800 px-1 py-[2px]', TD = 'border border-gray-400 px-1 py-[1.5px]';
   const tick = '<span class="inline-block w-[9px] h-[9px] border border-gray-800 bg-white align-middle"></span>';
-  const head = (t, sub) => `<div class="bg-gray-800 text-white font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px] flex justify-between gap-2"><span>${t}</span>${sub ? `<span class="font-semibold normal-case tracking-normal text-gray-300 text-[8px]">${sub}</span>` : ''}</div>`;
+  // Section headings print as dark text over a rule, not white on black — saves printer ink.
+  const head = (t, sub) => `<div class="bg-white text-gray-900 border-b-2 border-gray-800 font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px] flex justify-between gap-2"><span>${t}</span>${sub ? `<span class="font-semibold normal-case tracking-normal text-gray-600 text-[8px]">${sub}</span>` : ''}</div>`;
   const sw = name => `<span class="inline-block w-[8px] h-[8px] rounded-full border border-gray-500 align-middle mr-1" style="background:${esc(colorHexOf(name) || '#e5e7eb')}"></span>`;
   const empty = (cols, msg) => `<tr><td colspan="${cols}" class="${TD} text-center text-gray-400 py-2">${msg}</td></tr>`;
   const auto = (v, a) => v === a ? '' : ' <span class="text-red-600">(manual)</span>';
@@ -1134,19 +1140,15 @@ function calcSheetHTML(mode){
       <td class="${TD} text-right">${fx(g.rolls, g.rolls % 1 ? 2 : 0)}</td>
       <td class="${TD} text-right font-bold">${n0(g.pcs)}</td>
       <td class="${TD} text-right font-bold">${fx(g.kg)}</td>
-      <td class="${TD} text-right text-gray-600">${fx(g.exact)}</td>
       <td class="${TD} text-right font-black bg-amber-50">${g.bundles}</td>
-      <td class="${TD} text-right">${g.loose > 0.004 ? fx(g.loose) : '-'}</td>
       <td class="${TD} text-center">${tick}</td></tr>`).join('')
-    : empty(9, 'Enter TGT (printing rolls) on the designs to see the colour-wise sattan');
+    : empty(7, 'Enter TGT (printing rolls) on the designs to see the colour-wise sattan');
 
   const P = c.pack, bp = c.basisPcs;
-  const lbl = k => up(f[k]) === 'YES';
+  // Corner / Small Label rows dropped: labels come from the Order Form's Bags & Trims (table 4).
   const packRows = [
-    [`<b>${esc(P.type)}</b> (Master Packing)${auto(P.type, P.typeAuto)}`, `${n0(bp)} pcs ÷ ${P.std} pcs${auto(P.std, P.stdAuto)}`, `${n0(P.units)} ${esc(P.type)}`, `${n0(P.full)} full${P.left ? ` + 1 of ${P.left} pcs` : ''}`],
+    [`<b>${esc(P.type)}</b> (Master Packing)${P.typeLocked ? ' <span class="text-gray-500">(Order Form)</span>' : auto(P.type, P.typeAuto)}`, `${n0(bp)} pcs ÷ ${P.std} pcs${P.stdLocked ? '' : auto(P.std, P.stdAuto)}`, `${n0(P.units)} ${esc(P.type)}`, `${n0(P.full)} full${P.left ? ` + 1 of ${P.left} pcs` : ''}`],
     ['Inner / Slave Packing', '1 per blanket', `${n0(bp)} pcs`, ''],
-    lbl('corner_label') ? ['Corner Label', '1 per blanket', `${n0(bp)} pcs`, ''] : null,
-    lbl('small_label') ? ['Small Label', '1 per blanket', `${n0(bp)} pcs`, ''] : null,
     c.groups.length ? ['Sattan (all colours)', `${c.groups.length} colour(s) · ${fx(c.totalKg)} kg`, `${c.totalBundles} bundles`, c.totalLoose > 0.004 ? `+ ${fx(c.totalLoose)} kg loose` : ''] : null,
   ].filter(Boolean);
 
@@ -1193,14 +1195,15 @@ function calcSheetHTML(mode){
                 <td class="${TD} text-right">${n0(c.totalPcs)}</td><td class="${TD} text-right">${fx(c.totalKg)}</td></tr></tbody></table>
           </div>
           <div class="border-2 border-gray-800">
-            ${head('2. Sattan Calculation by Color · Store Issue', `${R.bundle_kg} kg / bundle · decimal ≥ ${R.round_up_at} → next bundle (4.3 / 4.8 → 4, 4.9 → 5) · rest issued loose`)}
+            ${head('2. Sattan Calculation by Color · Store Issue', `${R.bundle_kg} kg / bundle · decimal ≥ ${R.round_up_at} → next bundle (4.3 / 4.8 → 4, 4.9 → 5)`)}
+            <!-- Exact Bdl and Loose Kg columns removed: the store issues by Bundles. -->
             <table class="w-full border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black">
               <th class="${TH}">Sattan Code · Color</th><th class="${TH}">Designs</th><th class="${TH} text-right">Rolls</th><th class="${TH} text-right">Blankets</th>
-              <th class="${TH} text-right">Weight Kg</th><th class="${TH} text-right">Exact Bdl</th><th class="${TH} text-right bg-amber-100">Bundles</th><th class="${TH} text-right">Loose Kg</th><th class="${TH} w-[7%]">Issued</th></tr></thead>
+              <th class="${TH} text-right">Weight Kg</th><th class="${TH} text-right bg-amber-100">Bundles</th><th class="${TH} w-[7%]">Issued</th></tr></thead>
               <tbody>${colors}<tr class="bg-gray-100 font-black">
                 <td colspan="2" class="${TD} uppercase">Total Sattan Requisition (${esc(c.inch)} INCH)</td><td class="${TD} text-right">${fx(c.totalRolls, c.totalRolls % 1 ? 2 : 0)}</td>
-                <td class="${TD} text-right">${n0(c.totalPcs)}</td><td class="${TD} text-right">${fx(c.totalKg)}</td><td class="${TD} text-right text-gray-600">${fx(c.totalExact)}</td>
-                <td class="${TD} text-right bg-amber-100">${c.totalBundles}</td><td class="${TD} text-right">${c.totalLoose > 0.004 ? fx(c.totalLoose) : '-'}</td><td class="${TD}"></td></tr></tbody></table>
+                <td class="${TD} text-right">${n0(c.totalPcs)}</td><td class="${TD} text-right">${fx(c.totalKg)}</td>
+                <td class="${TD} text-right bg-amber-100">${c.totalBundles}</td><td class="${TD}"></td></tr></tbody></table>
           </div>
           ${procPageHTML(TH, TD)}
         </div>
@@ -1240,6 +1243,19 @@ function renderCalcBox(withValues){
   const x = (L.extra && L.extra.calc) || {}, c = calcSafe();
   document.querySelectorAll('#calc-box [data-calc]').forEach(el => {
     const k = el.dataset.calc;
+    // Filled from the Order Form and locked (see lotCalc); re-run when the order loads.
+    const locked = !!c && ((k === 'master_pack' && c.pack.typeLocked) || (k === 'pack_pcs' && c.pack.stdLocked));
+    if(locked){
+      el.value = k === 'master_pack' ? c.pack.type : c.pack.std;
+      el.disabled = true;
+      el.classList.add('bg-gray-100', 'cursor-not-allowed');
+      el.title = 'From the Order Form (locked)';
+      return;
+    }
+    if(el.disabled){   // was locked for a previous order — free it, back to this lot's own value
+      el.disabled = false; el.classList.remove('bg-gray-100', 'cursor-not-allowed'); el.title = '';
+      el.value = x[k] == null ? '' : x[k];
+    }
     if(withValues) el.value = x[k] == null ? '' : x[k];
     if(c) el.placeholder = 'auto ' + ({ pcs_per_roll:c.pprAuto, kg_per_pc:c.kgAuto, master_pack:c.pack.typeAuto, pack_pcs:c.pack.stdAuto }[k]);
   });
@@ -1384,7 +1400,7 @@ function procPageHTML(TH, TD){
       <td class="${TD} text-right font-bold uppercase">${isBlank(r.qty) ? (c.req ? miss : '-') : esc(r.qty)}</td></tr>`).join('');
   }).join('');
   return `<div class="border-2 border-gray-800">
-    <div class="bg-gray-800 text-white font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px]">5. Stenter Size &amp; Printing Chemical</div>
+    <div class="bg-white text-gray-900 border-b-2 border-gray-800 font-black text-[8.5px] uppercase tracking-widest px-1.5 py-[2px]">5. Stenter Size &amp; Printing Chemical</div>
     <div class="flex items-start">
       <table class="w-[38%] border-collapse text-[8px]"><thead><tr class="bg-gray-100 text-[7px] uppercase font-black"><th class="${TH}">Stenter Stage</th><th class="${TH} text-right">Size</th></tr></thead>
         <tbody>${st.length ? st.map(s => `<tr><td class="${TD} font-bold uppercase">${esc(s.label)}</td><td class="${TD} text-right font-black uppercase">${isBlank(s.size) ? miss : esc(s.size)}</td></tr>`).join('')

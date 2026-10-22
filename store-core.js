@@ -2293,8 +2293,9 @@ async function updatePoReceipt(poNos,rows){
   const selected=rows.filter(x=>x.poLineId&&x.qty>0);if(!selected.length)return;
   for(const row of selected){
     const ordered=pNum(row.poOrderedQty),old=pNum(row.poReceivedQty);
-    // Over-receipt is allowed only behind the Edit Password gate, which the
-    // save flow has already cleared before reaching here.
+    // Over-receipt reaches here only within the item's PO Excess Allowed %
+    // (at the PO rate) or after the MD's Inward Approval / the Edit Password,
+    // all cleared by the save flow before this runs (inwardDocOverrides).
     const next=old+pNum(row.qty);
     const u=await SB.from('purchase_order_lines').update({received_qty:next}).eq('id',row.poLineId);if(u.error)throw u.error;
   }
@@ -2662,6 +2663,15 @@ function inwardDocOverrides(rows){
   const poBased=inwardPoRefList_(rows).length>0;
   (rows||[]).forEach(r=>{
     const p=docStripParts_(r);
+    /* PO Excess Allowed % (Item Master, default 5). On a PO line, received at
+       the PO's own rate, an excess up to that % of the ordered qty / weight
+       is not a reason to ask the MD. Measured cumulatively — p.excess already
+       counts what earlier receipts brought in. Anything past the limit, at a
+       different rate, against a PR, or for an item not on the PO, still goes
+       to the MD exactly as before. The excess still shows on the strip / PDF. */
+    const sameRate=!(r.poLineId&&r.poUnitPrice!=null&&r.poUnitPrice!==''&&Math.abs(pNum(r.rate)-pNum(r.poUnitPrice))>0.001);
+    const tolPct=(p&&p.kind==='PO'&&sameRate)?itemExcessTol_(itemForInwardRow_(r)):0;
+    const withinTol=(excess,ordered)=>tolPct>0&&ordered>0&&excess<=ordered*tolPct/100+0.0005;
     /* RETURN strips are deliberately NOT a reason to ask anybody. A repair
        return is the unit's own material coming back on a gate pass — there is
        no PO, no agreed price and no Purchaser who negotiated it, so routing an
@@ -2669,7 +2679,7 @@ function inwardDocOverrides(rows){
        someone with no basis to judge it. The excess is still shown in red on
        the row's strip and printed on the PDF; it just does not gate the save,
        which is exactly how it behaved before the strip existed. */
-    if(p&&p.kind!=='RETURN'&&p.excess>0){
+    if(p&&p.kind!=='RETURN'&&p.excess>0&&!withinTol(p.excess,p.ordered)){
       const pending=Math.max(0,p.ordered-p.already);
       out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
         +', only '+pending+' pending  (excess '+p.excess+')');
@@ -2680,7 +2690,7 @@ function inwardDocOverrides(rows){
        receipt that happens to record a weight. RETURN is excluded for the same
        reason it is above: a repair return is the unit's own material and there
        is no Purchaser who negotiated it. */
-    if(p&&p.kind!=='RETURN'&&p.hasWeight&&p.excWt>0){
+    if(p&&p.kind!=='RETURN'&&p.hasWeight&&p.excWt>0&&!withinTol(p.excWt,p.ordWt)){
       const pendWt=Math.max(0,p.ordWt-p.alreadyWt);
       out.push(r.name+' — '+p.kind+' '+p.no+': received weight '+nWt_(r.weight)
         +' KGS, only '+nWt_(pendWt)+' KGS pending  (excess '+nWt_(p.excWt)+' KGS)');
@@ -6801,6 +6811,7 @@ const SARV_IM_FILTER_COLS={
   make:{label:'Make',               numeric:false,get:r=>r.it.make},
   msv: {label:'MIN STOCK QTY (MSV)',numeric:true, get:r=>itemMsv_(r.it)},
   soq: {label:'STD ORDER QTY',      numeric:true, get:r=>itemStdOrderQty_(r.it)},
+  xtol:{label:'PO EXCESS ALLOWED %',numeric:true, get:r=>itemExcessTol_(r.it)},
   in:  {label:'IN Qty',             numeric:true, get:r=>r.inQty},
   out: {label:'OUT Qty',            numeric:true, get:r=>r.outQty},
   bal: {label:'Balance Qty',        numeric:true, get:r=>r.bal},
@@ -7168,7 +7179,7 @@ function imRenderSlicers_(){
    mid-render; only the colspan of the SUBTOTAL label cell is counted.
    #, NEW PR and Edit/Delete are always shown: they are action columns, not
    data (NEW PR has its own access rule). */
-const IM_VIEW_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make','msv','soq','in','out','bal','pipe'];
+const IM_VIEW_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make','msv','soq','xtol','in','out','bal','pipe'];
 // The SUBTOTAL label spans these (from # to Make).
 const IM_LABEL_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make'];
 const IM_COLHIDE_KEY='sarv_im_hidecols';
@@ -7638,7 +7649,9 @@ const SARV_ITEM_OPTIONAL_COLUMNS={
   gst_pct:      {label:'GST %',              ddl:'alter table items add column gst_pct numeric default 18;'},
   item_size:    {label:'Item Size',          ddl:'alter table items add column item_size text;'},
   material_type:{label:'Material Type',      ddl:'alter table items add column material_type text;'},
-  std_order_qty:{label:'Standard Order Qty', ddl:'alter table items add column std_order_qty numeric;'}
+  std_order_qty:{label:'Standard Order Qty', ddl:'alter table items add column std_order_qty numeric;'},
+  // "default 5" also fills every existing item with 5 the moment the column is added.
+  excess_tol_pct:{label:'PO Excess Allowed %', ddl:'alter table items add column excess_tol_pct numeric default 5;'}
 };
 /* Shown once per session PER COLUMN, with the exact migration, instead of the
    same vague line on every single item save. */
@@ -7747,6 +7760,7 @@ function openNewItemMasterModal(target){
         +cell('UOM',sel('ni_uom'))
         +cell('Minimum Stock Qty (MSV)',num('ni_msv','optional','any'))
         +cell('Standard Order Qty',num('ni_stdOrderQty','e.g. 10','any'))
+        +cell('PO Excess Allowed %',num('ni_excessTol','5','any'))
         +cell('GST %',sel('ni_gst'))
         +cell('Rate (&#8377;)',num('ni_rate','0','.01'))
       +'</div>'
@@ -7817,6 +7831,7 @@ function openNewItemMasterModal(target){
   ['ni_name','ni_desc','ni_make','ni_msv','ni_itemSize','ni_materialType','ni_stdOrderQty']
     .forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('ni_rate'))byId('ni_rate').value='0';
+  if(byId('ni_excessTol'))byId('ni_excessTol').value=String(SARV_DEFAULT_EXCESS_TOL);
   if(byId('ni_cat'))byId('ni_cat').value='';
   if(byId('ni_gst'))byId('ni_gst').value=String(SARV_DEFAULT_GST);
   refreshNewItemNameHint_();
@@ -7863,7 +7878,8 @@ async function saveNewItemFromModal_(){
          rather than an empty string, the same as the Item Master form. */
       item_size:(byId('ni_itemSize')?.value||'').trim()||null,
       material_type:(byId('ni_materialType')?.value||'').trim()||null,
-      std_order_qty:(byId('ni_stdOrderQty')?.value||'').trim()===''?null:Number(byId('ni_stdOrderQty').value)
+      std_order_qty:(byId('ni_stdOrderQty')?.value||'').trim()===''?null:Number(byId('ni_stdOrderQty').value),
+      excess_tol_pct:excessTolFromBox_('ni_excessTol')
     };
     const code=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
     const {error,dropped}=await saveItemRow_({item_code:code,...payload},null);
@@ -8004,6 +8020,39 @@ function itemStdOrderQty_(it){
   const n=Number(raw);
   return isNaN(n)?null:n;
 }
+/* ── PO Excess Allowed % ─────────────────────────────────────────────
+   How far over its PO line this item may be received — qty AND weight, at
+   the PO's own rate — without going to the MD for Inward Approval. Suppliers
+   of yarn, fabric, chemicals and the like cannot cut a delivery to the exact
+   kilo, and sending every 2 % overrun to the MD buried the real exceptions.
+   Measured on the PO line's ordered qty / weight, CUMULATIVELY across all
+   receipts against that line (docStripParts_ already counts what came before),
+   so three small overruns cannot add up past the limit. Past it, or at any
+   other rate, the MD approves as before — see inwardDocOverrides.
+   5 % for every item with nothing saved (a database without the column, or an
+   item saved before it existed); 0 means "no excess at all without the MD". */
+const SARV_DEFAULT_EXCESS_TOL=5;
+function itemExcessTol_(it){
+  const raw=it&&it.excess_tol_pct;
+  if(raw==null||String(raw).trim()==='')return SARV_DEFAULT_EXCESS_TOL;
+  const n=Number(raw);
+  return isNaN(n)||n<0?SARV_DEFAULT_EXCESS_TOL:n;
+}
+// The Item Master row behind an Inward row: the pinned id first, else the name.
+function itemForInwardRow_(r){
+  const id=String((r&&r.itemId)||'');
+  const cat=sarvItemCatalog||[];
+  if(id){const hit=cat.find(it=>String(it.id)===id);if(hit)return hit;}
+  const n=String((r&&r.name)||'').trim().toLowerCase();
+  return n?(cat.find(it=>String(it.name||'').trim().toLowerCase()===n)||null):null;
+}
+// The value an Excess % box saves: blank or nonsense falls back to the 5 % default, capped at 100.
+function excessTolFromBox_(id){
+  const raw=String(byId(id)?.value||'').trim();
+  const n=Number(raw);
+  if(raw===''||isNaN(n)||n<0)return SARV_DEFAULT_EXCESS_TOL;
+  return Math.min(100,n);
+}
 function isBelowMsv_(row){
   const msv=itemMsv_(row.it);
   return msv!=null&&msv>0&&row.bal<msv;
@@ -8019,6 +8068,7 @@ const SARV_ITEM_SORTERS={
   mat: {text:true, get:r=>itemMaterial_(r.it)},
   msv: {text:false,get:r=>itemMsv_(r.it)},
   soq: {text:false,get:r=>itemStdOrderQty_(r.it)},
+  xtol:{text:false,get:r=>itemExcessTol_(r.it)},
   in:  {text:false,get:r=>r.inQty},
   out: {text:false,get:r=>r.outQty},
   bal: {text:false,get:r=>r.bal},
@@ -8087,7 +8137,7 @@ window.renderItemMasterTable=function(){
   const filterActive=activeCols.length>0||slicerOn||!!q||msvFilter!=='ALL';
   if(cnt)cnt.textContent=filterActive?`${rows.length} of ${sarvItemMasterRows.length} items`:`${sarvItemMasterRows.length} items`;
   if(!sarvItemMasterRows.length){
-    tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above</td></tr>';
+    tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#94a3b8;">No items yet — Add your first item above</td></tr>';
     return;
   }
   if(!rows.length){
@@ -8101,7 +8151,7 @@ window.renderItemMasterTable=function(){
       : msvFilter==='BELOW'?'No item is below its MSV (items without an MSV are not included in this filter).'
       : msvFilter==='ABOVE'?'No item is above its MSV (items without an MSV are not included in this filter).'
       : 'No item matches this search.';
-    tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
+    tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#94a3b8;">'+escText(why)
       +(activeCols.length||slicerOn?'<br>':'')
       +(activeCols.length?'<button type="button" onclick="imClearAllFilters()" style="margin-top:8px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear All Filters</button>':'')
       +(slicerOn?'<button type="button" onclick="imClearSlicers()" style="margin:8px 0 0 6px;background:#f5f3ff;border:1px solid #ddd6fe;color:#6d28d9;border-radius:12px;padding:4px 14px;font-size:11px;font-weight:800;cursor:pointer;">&#10006; Clear Slicers</button>':'')
@@ -8140,6 +8190,7 @@ window.renderItemMasterTable=function(){
         <td data-imc="make" style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
         <td data-imc="msv" style="padding:5px 6px;text-align:center;font-weight:600;color:#475569;">${msv!=null?q2(msv):'—'}</td>
         <td data-imc="soq" style="padding:5px 6px;text-align:center;font-weight:600;color:#475569;">${soq!=null?q2(soq):'—'}</td>
+        <td data-imc="xtol" style="padding:5px 6px;text-align:center;font-weight:600;color:#7c3aed;" title="Up to this % over the PO line (qty / weight, same rate) is received without MD Inward Approval${it.excess_tol_pct==null||String(it.excess_tol_pct).trim()===''?' · default':''}">${q2(itemExcessTol_(it))}%</td>
         <td data-imc="in" style="padding:5px 6px;text-align:center;font-weight:600;color:#15803d;">${q2(inQty)}</td>
         <td data-imc="out" style="padding:5px 6px;text-align:center;font-weight:600;color:#b91c1c;">${q2(outQty)}</td>
         <td data-imc="bal" style="padding:5px 6px;text-align:center;background:${below?'#fee2e2':'transparent'};font-weight:700;color:${below?'#b91c1c':balColor};"${below?` title="Balance ${q2(bal)} is below the minimum stock qty of ${q2(msv)}"`:''}>${q2(bal)}${below?'':''}</td>
@@ -8163,6 +8214,7 @@ window.renderItemMasterTable=function(){
       <td colspan="${labelSpan}" style="padding:6px 8px;text-align:right;">SUBTOTAL (${rows.length} shown)</td>
       <td data-imc="msv" style="padding:6px;text-align:center;color:#94a3b8;">—</td>
       <td data-imc="soq" style="padding:6px;text-align:center;color:#94a3b8;">—</td>
+      <td data-imc="xtol" style="padding:6px;text-align:center;color:#94a3b8;">—</td>
       <td data-imc="in" style="padding:6px;text-align:center;color:#15803d;">${q2(totalIn)}</td>
       <td data-imc="out" style="padding:6px;text-align:center;color:#b91c1c;">${q2(totalOut)}</td>
       <td data-imc="bal" style="padding:6px;text-align:center;color:${totalBal<0?'#b91c1c':'#0f172a'};">${q2(totalBal)}</td>
@@ -8211,6 +8263,7 @@ const IM_EXPORT_COLS=[
   {k:'make', h:'Make',                w:17, get:r=>r.it.make||''},
   {k:'msv',  h:'Min Stock Qty (MSV)', w:16, num:true, tint:[255,251,235], get:r=>itemMsv_(r.it)},
   {k:'soq',  h:'Std Order Qty',       w:15, num:true, tint:[253,242,248], get:r=>itemStdOrderQty_(r.it)},
+  {k:'xtol', h:'PO Excess Allowed %', w:15, num:true, tint:[245,243,255], get:r=>itemExcessTol_(r.it)},
   {k:'in',   h:'IN Qty',              w:14, num:true, total:true, tint:[240,253,244], get:r=>r.inQty},
   {k:'out',  h:'OUT Qty',             w:14, num:true, total:true, tint:[254,242,242], get:r=>r.outQty},
   {k:'bal',  h:'Balance Qty',         w:15, num:true, total:true, tint:[239,246,255], lowFlag:true, get:r=>r.bal},
@@ -9011,8 +9064,8 @@ function refreshSupplierDatalist(suppliers){
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
   try{
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
@@ -9039,7 +9092,7 @@ window.loadItemMaster=async function(){
     // when the PR / PO lookup lands. The promise is kept for anything that
     // needs the figures (My Day › Below-MSV).
     sarvImPipePromise=imLoadPipeline_(items);
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="19" style="text-align:center;padding:16px;color:#ef4444;">Error loading items</td></tr>';}
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:16px;color:#ef4444;">Error loading items</td></tr>';}
 };
 
 /* ══ ITEM MASTER › PENDING PR / PO QTY ════════════════════════════════
@@ -9362,6 +9415,8 @@ window.editMasterItem=function(id){
   set('mi_itemSize',itemSize_(it));
   set('mi_materialType',itemMaterial_(it));
   set('mi_stdOrderQty',itemStdOrderQty_(it));
+  // An item saved before the column existed shows (and re-saves) the 5 % default.
+  set('mi_excessTol',itemExcessTol_(it));
   // A category or UOM that isn't one of the listed options would silently land
   // on the first option, so anything unknown is added to the dropdown first.
   ensureSelectOption_('mi_category',it.category);
@@ -9400,6 +9455,7 @@ window.cancelItemEdit=function(){
   sarvEditingItemId=null;
   ['mi_itemName','mi_itemDesc','mi_minStockQty','mi_make','mi_itemSize','mi_materialType','mi_stdOrderQty']
     .forEach(id=>{const e=byId(id);if(e)e.value='';});
+  if(byId('mi_excessTol'))byId('mi_excessTol').value=String(SARV_DEFAULT_EXCESS_TOL);
   if(byId('mi_rate'))byId('mi_rate').value='0';
   if(byId('mi_uom'))byId('mi_uom').value='PCS';
   if(byId('mi_category'))byId('mi_category').value='';
@@ -9483,7 +9539,8 @@ window.addMasterItem=async function(){
          different answers, and only NULL reads back as the first one. */
       item_size:(byId('mi_itemSize')?.value||'').trim()||null,
       material_type:(byId('mi_materialType')?.value||'').trim()||null,
-      std_order_qty:(byId('mi_stdOrderQty')?.value||'').trim()===''?null:Number(byId('mi_stdOrderQty').value)
+      std_order_qty:(byId('mi_stdOrderQty')?.value||'').trim()===''?null:Number(byId('mi_stdOrderQty').value),
+      excess_tol_pct:excessTolFromBox_('mi_excessTol')
     };
     if(editingId){
       // item_code is deliberately left out of the payload — it is the handle

@@ -1126,6 +1126,10 @@
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Item Size</label><input type="text" class="form-control" id="mi_itemSize" list="dl-mi-itemSize" placeholder="e.g. 1/2 INCH, M8 x 40, 24&quot;" autocomplete="off"></div>
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;">Material Type</label><input type="text" class="form-control" id="mi_materialType" list="dl-mi-materialType" placeholder="e.g. SS 304, MS, BRASS" autocomplete="off"></div>
                             <div class="form-group" style="margin:0;"><label style="font-size:9px;" title="The quantity this item is normally ordered in; used as a suggestion on PRs and POs">STANDARD ORDER QTY</label><input type="number" class="form-control" id="mi_stdOrderQty" placeholder="e.g. 10" min="0" step="any"></div>
+                            <!-- How far over its PO line this item may be received (qty and weight, at the PO rate)
+                                 before the Inward needs MD Inward Approval. Starts at 5; 0 = every excess goes to the MD.
+                                 See itemExcessTol_ / inwardDocOverrides in store-core.js. -->
+                            <div class="form-group" style="margin:0;"><label style="font-size:9px;" title="Inward may receive up to this % more than the PO (qty / weight) at the same rate without MD Inward Approval. 0 = no excess without the MD.">PO EXCESS ALLOWED %</label><input type="number" class="form-control" id="mi_excessTol" value="5" placeholder="5" min="0" max="100" step="any"></div>
                             <div class="form-group" style="margin:0; display:flex; align-items:flex-end; gap:6px;">
                                 <button class="btn btn-primary" id="addItemBtn" onclick="addMasterItem()" style="flex:1; height:32px; font-size:11px;">Add Item</button>
                                 <!-- Only visible while an existing item is loaded for editing -->
@@ -1217,6 +1221,8 @@
                                 <th data-imc="make" style="padding:6px; width:6%;">Make<span class="im-fbtn" id="imF-make" data-fcol="make" title="Filter">&#9662;</span></th>
                                 <th data-imc="msv" data-sort="msv" style="padding:6px; width:6%; cursor:pointer; user-select:none;" title="Minimum Stock Value — balance below this is flagged. Click to sort low&rarr;high / high&rarr;low">MIN STOCK QTY (MSV)<span id="imSort-msv" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-msv" data-fcol="msv" title="Filter">&#9662;</span></th>
                                 <th data-imc="soq" data-sort="soq" style="padding:6px; width:6%; cursor:pointer; user-select:none;" title="Standard Order Qty: the quantity this item is normally ordered in. Click to sort low&rarr;high / high&rarr;low">STD ORDER QTY<span id="imSort-soq" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-soq" data-fcol="soq" title="Filter">&#9662;</span></th>
+                                <!-- PO Excess Allowed %: how far over the PO line (qty / weight, same rate) an Inward may go without MD Inward Approval. 5% where nothing is saved. -->
+                                <th data-imc="xtol" data-sort="xtol" style="padding:6px; width:5%; cursor:pointer; user-select:none;" title="PO Excess Allowed %: up to this % above the PO line's qty / weight, at the PO rate, the Inward is saved without MD Inward Approval. Default 5%. Click to sort">PO EXCESS ALLOWED %<span id="imSort-xtol" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-xtol" data-fcol="xtol" title="Filter">&#9662;</span></th>
                                 <th data-imc="in" data-sort="in" style="padding:6px; width:5%; cursor:pointer; user-select:none;" title="Click to sort low&rarr;high / high&rarr;low">IN Qty<span id="imSort-in" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-in" data-fcol="in" title="Filter">&#9662;</span></th>
                                 <th data-imc="out" data-sort="out" style="padding:6px; width:5%; cursor:pointer; user-select:none;" title="Click to sort low&rarr;high / high&rarr;low">OUT Qty<span id="imSort-out" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-out" data-fcol="out" title="Filter">&#9662;</span></th>
                                 <th data-imc="bal" data-sort="bal" style="padding:6px; width:6%; cursor:pointer; user-select:none;" title="Click to sort low&rarr;high / high&rarr;low">Balance Qty<span id="imSort-bal" style="margin-left:3px;">&#8693;</span><span class="im-fbtn" id="imF-bal" data-fcol="bal" title="Filter">&#9662;</span></th>
@@ -1227,7 +1233,7 @@
                                 <th style="padding:6px; width:4%;">Actions</th>
                             </tr></thead>
                             <tbody id="itemMasterBody">
-                                <tr><td colspan="19" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
+                                <tr><td colspan="20" style="text-align:center; padding:20px; color:#94a3b8;">Loading items...</td></tr>
                             </tbody>
                         </table>
                     </div>
