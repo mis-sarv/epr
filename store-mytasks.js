@@ -568,6 +568,15 @@
       const d = Math.round((v - sys) * 1000) / 1000;
       cell.innerHTML = d === 0 ? '<span class="wf-ok">Matches</span>' : '<b class="' + (d < 0 ? 'wf-neg' : 'wf-pos') + '">' + (d > 0 ? '+' : '') + q2(d) + '</b>';
     });
+    // Below-MSV Category dropdown: one category, or all (value '').
+    el.addEventListener('change', e => {
+      const s = e.target.closest('select[data-wf-cat]'); if (!s || !day) return;
+      const st = day.states[day.cur], rows = (st.result && st.result.rows) || [];
+      st.slicer = st.slicer || {};
+      const v = s.value === '' ? null : msvValues(rows, 'cat')[+s.value];
+      if (v == null) delete st.slicer.cat; else st.slicer.cat = new Set([msvNorm('cat', v)]);
+      paint();
+    });
     // Enter in a quantity box saves that row.
     el.addEventListener('keydown', e => {
       const inp = e.target.closest('input[data-stock],input[data-stock-rem]'); if (!inp || e.key !== 'Enter' || !day) return;
@@ -605,6 +614,9 @@
       paint(); return;
     }
     if (kind === 'msv-sl') { msvToggle(st, b.dataset.col, +b.dataset.i); paint(); return; }
+    if (kind === 'msv-sl-fold') { msvFoldToggle(); paint(); return; }
+    // The click lands before <details> toggles itself, hence the "not".
+    if (kind === 'guide') { st.guideOpen = !b.parentNode.open; return; }
     if (kind === 'msv-sl-clear') {
       if (b.dataset.col && st.slicer) delete st.slicer[b.dataset.col]; else st.slicer = {};
       paint(); return;
@@ -678,7 +690,9 @@
     st.slicer = st.slicer || {};
     const label = c => c === COMBO ? 'Combined'
       : (typeof SARV_IM_FILTER_COLS !== 'undefined' && SARV_IM_FILTER_COLS[c]) ? SARV_IM_FILTER_COLS[c].label : c;
-    let h = '<div class="wf-sl"><span class="wf-sl-title">FILTER</span>';
+    // Same colour per heading as Item Master's slicer bar (store-core.js › IM_SL_COLORS).
+    const colour = c => { try { return imSlicerColorStyle_(c); } catch (e) { return ''; } };
+    let h = '', catSel = '';
     msvSlicerCols().forEach(col => {
       const vals = msvValues(rows, col);
       const sel = st.slicer[col];
@@ -687,6 +701,24 @@
       // One value only: nothing to choose between (a single Combined button is still a real filter).
       if (col !== COMBO && vals.length < 2 && !st.slicer[col]) return;
       const pool = rows.filter(r => msvPass(st, r, col));
+      /* Category is a dropdown in the panel's head, not a row of buttons: one
+         category at a time (PRs go per Purchaser, and the Purchaser follows the
+         Category), and it stays in view when the buttons are collapsed. Same
+         dependent rule: a category with nothing left under the other filters
+         is not offered, unless it is the one selected. value = index in vals. */
+      if (col === 'cat') {
+        const cur = st.slicer.cat && [...st.slicer.cat][0];
+        let opts = '<option value="">All categories (' + pool.length + ')</option>';
+        vals.forEach((v, i) => {
+          const k = msvNorm(col, v), on = cur === k;
+          const n = pool.filter(r => msvRowIs(col, r, v)).length;
+          if (!n && !on) return;
+          opts += '<option value="' + i + '"' + (on ? ' selected' : '') + '>' + esc(v) + ' (' + n + ')</option>';
+        });
+        catSel = '<label class="slp-sel' + (cur ? ' on' : '') + '" style="' + colour(col) + '">' + esc(label(col)) +
+          '<select data-wf-cat="1" title="Show the Below-MSV items of one category">' + opts + '</select></label>';
+        return;
+      }
       /* Dependent, as in Item Master: a button with no item left under the
          other headings' selection is hidden; a selected one always stays so
          it can be taken off. data-i is the index in the FULL value list. */
@@ -695,18 +727,43 @@
         const k = msvNorm(col, v), on = !!(st.slicer[col] && st.slicer[col].has(k));
         const n = pool.filter(r => msvRowIs(col, r, v)).length;
         if (!n && !on) return;
-        btns.push('<button type="button" class="wf-sl-btn' + (on ? ' on' : '') + (n ? '' : ' zero') + '" data-wf="msv-sl" data-col="' + col + '" data-i="' + i + '">' +
+        btns.push('<button type="button" class="slp-btn' + (on ? ' on' : '') + (n ? '' : ' zero') + '" data-wf="msv-sl" data-col="' + col + '" data-i="' + i + '" ' +
+          'title="' + esc(label(col) + ': ' + v + ': ' + n + ' item(s)' + (on ? ' · click to remove' : '')) + '">' +
           esc(v) + '<span class="n">' + n + '</span></button>');
       });
       if (!btns.length) return;
-      h += '<div class="wf-sl-group' + (st.slicer[col] ? ' on' : '') + '"><span class="wf-sl-lab">' + esc(label(col)) + '</span>' + btns.join('');
-      if (st.slicer[col]) h += '<button type="button" class="wf-sl-x" data-wf="msv-sl-clear" data-col="' + col + '" title="Clear this filter">&#10006;</button>';
-      h += '</div>';
+      // No heading for the Combined buttons, as in Item Master.
+      const noLab = col === COMBO;
+      h += '<div class="slp-group' + (st.slicer[col] ? ' on' : '') + (noLab ? ' nolab' : '') + '" style="' + colour(col) + '">' +
+        (noLab ? '' : '<span class="slp-lab">' + esc(label(col)) + '<small>' + btns.length + '</small></span>') +
+        '<div class="slp-btns">' + btns.join('') + '</div><span class="slp-acts">';
+      if (st.slicer[col]) h += '<button type="button" class="slp-x" data-wf="msv-sl-clear" data-col="' + col + '" title="Clear this filter">&#10006;</button>';
+      h += '</span></div>';
     });
     const vis = visibleRows(st).length;
-    h += '<span class="wf-sl-count">' + (vis === rows.length ? rows.length + ' items' : vis + ' of ' + rows.length + ' items') + '</span>';
-    if (Object.keys(st.slicer).length) h += '<button type="button" class="wf-sl-clear" data-wf="msv-sl-clear">&#10006; Clear filters</button>';
-    return h + '</div>';
+    const count = '<span class="slp-count">' + (vis === rows.length ? rows.length + ' items' : vis + ' of ' + rows.length + ' items') + '</span>';
+    const clear = Object.keys(st.slicer).length ? '<button type="button" class="slp-clear" data-wf="msv-sl-clear">&#10006; Clear filters</button>' : '';
+    // Category shows in its own dropdown, so it is left out of the chips.
+    const summary = Object.keys(st.slicer).filter(c => c !== 'cat').map(c => label(c) + ': ' + [...st.slicer[c]].join(' / '));
+    // Only a Category to choose and no button rows: no body to hide, so no Hide / Show either.
+    if (!h) return catSel ? '<div class="wf-slp"><div class="slp collapsed"><div class="slp-head">' + catSel +
+      '<span class="slp-sum"></span>' + count + clear + '</div></div></div>' : '';
+    if (typeof sarvSlicerPanelHtml_ === 'function') {
+      return '<div class="wf-slp">' + sarvSlicerPanelHtml_({ title: 'FILTER', collapsed: msvFolded(), toggle: 'data-wf="msv-sl-fold"',
+        summary, lead: catSel, groups: h, count, tail: clear }) + '</div>';
+    }
+    return '<div class="wf-slp"><div class="slp"><div class="slp-head">' + catSel + count + clear + '</div><div class="slp-body">' + h + '</div></div></div>';
+  }
+  // Open / collapsed, remembered per browser; collapsed leaves the whole list on screen.
+  const MSV_FOLD_KEY = 'sarv_wf_msv_slicers_collapsed';
+  let msvFoldMem = null;
+  function msvFolded() {
+    if (msvFoldMem == null) { try { msvFoldMem = localStorage.getItem(MSV_FOLD_KEY) === '1'; } catch (e) { msvFoldMem = false; } }
+    return msvFoldMem;
+  }
+  function msvFoldToggle() {
+    msvFoldMem = !msvFolded();
+    try { localStorage.setItem(MSV_FOLD_KEY, msvFoldMem ? '1' : '0'); } catch (e) {}
   }
   function msvToggle(st, col, i) {
     const rows = (st.result && st.result.rows) || [];
@@ -760,7 +817,9 @@
     if (res.note) h += '<div class="wf-note">' + esc(res.note) + '</div>';
     if (status === 'skipped') h += '<div class="wf-note wf-note-skip">Skipped today: ' + esc(st.log.skipReason || '') + ' <button type="button" class="wf-link" data-wf="unskip">Undo skip</button></div>';
     // Guide
-    h += '<details class="wf-guide"' + (count ? ' open' : '') + '><summary>How to do it</summary><ol>' + t.guide.map(g => '<li>' + g + '</li>').join('') + '</ol></details>';
+    // Closed by default: the steps are a reference, the list under them is the work.
+    // Once opened it stays open for that task (st.guideOpen) across repaints.
+    h += '<details class="wf-guide"' + (st.guideOpen ? ' open' : '') + '><summary data-wf="guide">How to do it</summary><ol>' + t.guide.map(g => '<li>' + g + '</li>').join('') + '</ol></details>';
     // Actions
     const acts = (t.actions || []).map((a, k) => '<button type="button" class="wf-btn' + (a.primary ? ' wf-pri' : '') + '" data-wf="act" data-a="' + k + '"' +
       (a.primary && t.key === 'MSV' && !vis.length ? ' disabled' : '') + '>' + esc(a.label) +

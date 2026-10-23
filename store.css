@@ -3100,46 +3100,113 @@ body {
    Dropdown Master › Item Master › Slicer Buttons. */
 #imSlicerBar .im-sl-wrap {
     display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap;
-    background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 6px 8px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 8px;
 }
-#imSlicerBar .im-sl-empty { font-size: 10.5px; color: #6b21a8; font-weight: 600; }
-#imSlicerBar .im-sl-title { font-size: 10px; font-weight: 800; color: #6b21a8; letter-spacing: .3px; }
-#imSlicerBar .im-sl-group {
-    display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
-    background: #fff; border: 1px solid #e9d5ff; border-radius: 7px; padding: 3px 5px;
-}
-#imSlicerBar .im-sl-group.on { border-color: #a855f7; box-shadow: 0 0 0 1px #e9d5ff; }
-#imSlicerBar .im-sl-lab {
-    font-size: 9.5px; font-weight: 800; color: #475569; text-transform: uppercase;
-    letter-spacing: .3px; margin-right: 2px;
-}
-#imSlicerBar .im-sl-btn {
-    display: inline-flex; align-items: center; gap: 5px;
-    background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a;
-    border-radius: 12px; padding: 2px 9px; font-size: 10px; font-weight: 700; cursor: pointer;
-    white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis;
-}
-#imSlicerBar .im-sl-btn:hover { border-color: #a855f7; background: #faf5ff; }
-#imSlicerBar .im-sl-btn .n {
-    background: #e2e8f0; color: #475569; border-radius: 8px; padding: 0 5px; font-size: 9px; font-weight: 800;
-}
-#imSlicerBar .im-sl-btn.on { background: #7c3aed; border-color: #6d28d9; color: #fff; }
-#imSlicerBar .im-sl-btn.on .n { background: rgba(255,255,255,.25); color: #fff; }
-#imSlicerBar .im-sl-btn.zero:not(.on) { opacity: .45; }
-#imSlicerBar .im-sl-x, #imSlicerBar .im-sl-edit {
-    background: none; border: none; cursor: pointer; font-size: 11px; padding: 1px 4px; border-radius: 6px; color: #6d28d9;
-}
-#imSlicerBar .im-sl-x:hover, #imSlicerBar .im-sl-edit:hover { background: #ede9fe; }
-#imSlicerBar .im-sl-clear {
-    background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
-    border-radius: 12px; padding: 3px 10px; font-size: 10px; font-weight: 800; cursor: pointer;
-}
+#imSlicerBar .im-sl-empty { font-size: 10.5px; color: #1e3a8a; font-weight: 600; }
 #imSlicerBar .im-sl-link {
-    background: none; border: 1px dashed #c4b5fd; color: #6d28d9; border-radius: 12px;
-    padding: 2px 9px; font-size: 10px; font-weight: 800; cursor: pointer;
+    background: none; border: 1px dashed #93c5fd; color: #1e40af; border-radius: 5px;
+    padding: 5px 10px; font-size: 11px; font-weight: 800; cursor: pointer; white-space: nowrap;
 }
-#imSlicerBar .im-sl-link.on { background: #ede9fe; border-style: solid; }
-#imSlicerBar .im-sl-more { font-size: 9.5px; font-weight: 700; color: #64748b; }
+#imSlicerBar .im-sl-link:hover { background: #eff6ff; }
+#imSlicerBar .im-sl-link.on { background: #eff6ff; border-style: solid; }
+/* The slicer panel itself, shared by Item Master (#imSlicerBar) and My Day ›
+   Below-MSV (store-core.js › sarvSlicerPanelHtml_). Full width; one row per
+   heading with the buttons wrapping inside it; the body scrolls past a height
+   cap, so new buttons fit in the box instead of pushing the list down.
+   Each heading brings its own colour as --c (solid) / --t (tint) / --b
+   (border) from IM_SL_COLORS: tinted buttons, solid when selected. */
+.slp {
+    width: 100%; box-sizing: border-box; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 1px 3px rgba(15,23,42,.06);
+}
+.slp-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; border-radius: 10px 10px 0 0;
+}
+.slp.collapsed .slp-head { border-bottom: none; border-radius: 10px; }
+.slp.collapsed .slp-body { display: none; }
+.slp-title {
+    display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+    font-size: 12px; font-weight: 800; letter-spacing: .6px; color: #0f172a;
+    padding-left: 8px; border-left: 4px solid #1e3a8a;
+}
+.slp-badge { background: #1e3a8a; color: #fff; border-radius: 4px; padding: 1px 7px; font-size: 10.5px; letter-spacing: 0; }
+/* Hide / Show switch: a real labelled button at the right end of the bar. */
+.slp-toggle {
+    display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0; margin-left: auto;
+    background: #1e3a8a; color: #fff; border: 1px solid #1e3a8a; border-radius: 5px;
+    padding: 6px 14px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap;
+}
+.slp-toggle:hover { background: #172554; border-color: #172554; }
+.slp.collapsed .slp-toggle { background: #fff; color: #1e3a8a; }
+.slp.collapsed .slp-toggle:hover { background: #eff6ff; }
+.slp-caret { font-size: 11px; }
+/* A heading shown as a dropdown in the head instead of a button row
+   (My Day › Below-MSV › Category). Coloured like that heading's buttons. */
+.slp-sel {
+    display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+    font-size: 11.5px; font-weight: 800; color: var(--c, #1e40af); text-transform: uppercase; letter-spacing: .4px;
+}
+.slp-sel select {
+    height: 30px; min-width: 200px; max-width: 320px; padding: 0 8px;
+    border: 1px solid var(--b, #cbd5e1); border-radius: 5px; background: #fff;
+    font-size: 12.5px; font-weight: 700; color: #1e293b; text-transform: none; letter-spacing: 0; cursor: pointer;
+}
+.slp-sel select:focus { outline: none; border-color: var(--c, #1e40af); box-shadow: 0 0 0 2px var(--t, #eff6ff); }
+.slp-sel.on select { background: var(--t, #eff6ff); border-color: var(--c, #1e40af); color: var(--c, #1e40af); }
+.slp-sum { flex: 1; min-width: 0; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.slp-chip {
+    background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; border-radius: 4px;
+    padding: 2px 9px; font-size: 11.5px; font-weight: 700; max-width: 360px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.slp-hint { font-size: 11.5px; color: #94a3b8; font-weight: 600; }
+.slp-count { font-size: 12.5px; font-weight: 800; color: #475569; white-space: nowrap; }
+.slp-clear {
+    background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    border-radius: 5px; padding: 5px 12px; font-size: 11.5px; font-weight: 800; cursor: pointer; white-space: nowrap;
+}
+.slp-clear:hover { background: #fee2e2; }
+.slp-body {
+    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+    max-height: 48vh; overflow-y: auto;
+}
+.slp-group {
+    display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: start;
+    background: #fff; border: 1px solid var(--b, #e2e8f0); border-left: 4px solid var(--c, #1e40af);
+    border-radius: 8px; padding: 8px 10px;
+}
+/* Combined: no heading, so the buttons take the heading's column too. */
+.slp-group.nolab { grid-template-columns: 1fr auto; }
+.slp-group.on { background: var(--t, #eff6ff); }
+.slp-lab {
+    display: flex; align-items: center; gap: 6px; padding-top: 6px;
+    font-size: 12px; font-weight: 800; color: var(--c, #475569); text-transform: uppercase; letter-spacing: .4px;
+}
+.slp-lab small { background: var(--t, #f1f5f9); border: 1px solid var(--b, #e2e8f0); color: var(--c, #475569); border-radius: 4px; padding: 0 6px; font-size: 10.5px; }
+.slp-btns { display: flex; flex-wrap: wrap; gap: 7px; min-width: 0; }
+.slp-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--t, #f8fafc); border: 1px solid var(--b, #cbd5e1); color: #1e293b;
+    border-radius: 5px; padding: 6px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+    white-space: nowrap; max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+    transition: transform .08s, box-shadow .08s, background .08s;
+}
+.slp-btn:hover { border-color: var(--c, #1e40af); transform: translateY(-1px); box-shadow: 0 2px 5px rgba(15,23,42,.10); }
+.slp-btn .n { background: #fff; color: var(--c, #475569); border-radius: 3px; padding: 1px 7px; font-size: 11px; font-weight: 800; }
+.slp-btn.on { background: var(--c, #1e40af); border-color: var(--c, #1e40af); color: #fff; }
+.slp-btn.on .n { background: rgba(255,255,255,.25); color: #fff; }
+.slp-btn.zero:not(.on) { opacity: .45; }
+.slp-more { font-size: 9.5px; font-weight: 700; color: #64748b; align-self: center; }
+.slp-acts { display: flex; gap: 2px; }
+.slp-x {
+    background: none; border: none; cursor: pointer; font-size: 11px; padding: 2px 5px; border-radius: 6px; color: var(--c, #1e40af);
+}
+.slp-x:hover { background: var(--t, #eff6ff); }
+@media (max-width: 640px) {
+    .slp-group { grid-template-columns: 1fr auto; }
+    .slp-group:not(.nolab) .slp-btns { grid-column: 1 / -1; grid-row: 2; }
+}
 /* Dropdown Master › Slicer Columns: tick a column, get a button per value
    (store-core.js › imSlicerAutoPickHtml_). */
 .dd-sl-pick {
@@ -3976,6 +4043,19 @@ body { min-width: 0; }
 #dropdownMasterSub .dd-add .form-control { flex:1; min-width:180px; height:30px; font-size:11.5px; }
 #dropdownMasterSub .dd-add .btn { height:30px; font-size:11px; padding:0 12px; white-space:nowrap; }
 #dropdownMasterSub .dd-add .dd-seed { background:#f1f5f9; color:#334155; border:1px solid #e2e8f0; }
+/* Combined Slicers: dependent suggestion list under the value box
+   (store-core.js › sarvDdCmbRender_). Lives on <body>, hence not scoped. */
+.dd-cmb-pop { position:fixed; z-index:2147483000; display:none; background:#fff; border:1px solid #cbd5e1; border-radius:6px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.18); max-height:320px; overflow-y:auto; font-size:11.5px; }
+.dd-cmb-pop .dd-cmb-head { padding:6px 9px; font-size:10.5px; color:#475569; background:#f8fafc; border-bottom:1px solid #e2e8f0; position:sticky; top:0; }
+.dd-cmb-pop .dd-cmb-grp { padding:5px 9px 3px; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.3px; color:#5b21b6; }
+.dd-cmb-pop .dd-cmb-grp span { color:#94a3b8; font-weight:700; }
+.dd-cmb-pop .dd-cmb-opt { display:flex; justify-content:space-between; gap:10px; padding:4px 9px 4px 16px; cursor:pointer; color:#0f172a; }
+.dd-cmb-pop .dd-cmb-opt span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dd-cmb-pop .dd-cmb-opt small { color:#94a3b8; font-weight:700; flex-shrink:0; }
+.dd-cmb-pop .dd-cmb-opt:hover { background:#f1f5f9; }
+.dd-cmb-pop .dd-cmb-opt.hl { background:#ede9fe; color:#5b21b6; font-weight:700; }
+.dd-cmb-pop .dd-cmb-more, .dd-cmb-pop .dd-cmb-empty { padding:4px 9px 6px 16px; font-size:10px; color:#94a3b8; }
 
 /* ── values table ── */
 #dropdownMasterSub .dd-table-wrap { max-height:420px; overflow-y:auto; margin-top:10px; }

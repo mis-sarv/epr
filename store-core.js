@@ -6917,6 +6917,21 @@ const imSlicerKey_=col=>'erp_imSlicer_'+col;
 // col -> Set of slicer values, exactly as Dropdown Master holds them.
 let sarvImSlicerSel={};
 
+/* One colour per slicer column (solid, tint, border), fixed by column so
+   Category is the same violet on Item Master and on My Day › Below-MSV and
+   the eye learns where each heading is. Read through imSlicerColorStyle_,
+   which hands them to the CSS as --c / --t / --b (store.css › .slp-*). */
+// Muted business tones (navy, teal, steel, slate…): distinct, but nothing loud.
+const IM_SL_COLORS={
+  cat:['#1e40af','#eff6ff','#bfdbfe'], size:['#0f766e','#f0fdfa','#99f6e4'], mat:['#475569','#f8fafc','#cbd5e1'],
+  uom:['#0369a1','#f0f9ff','#bae6fd'], make:['#3730a3','#eef2ff','#c7d2fe'], gst:['#15803d','#f0fdf4','#bbf7d0'],
+  code:['#0e7490','#ecfeff','#a5f3fc'], name:['#334155','#f1f5f9','#cbd5e1'], desc:['#92400e','#fffbeb','#fde68a'],
+  combo:['#1e3a8a','#eef2ff','#c7d2fe']
+};
+function imSlicerColorStyle_(col){
+  const c=IM_SL_COLORS[col]||IM_SL_COLORS.cat;
+  return '--c:'+c[0]+';--t:'+c[1]+';--b:'+c[2];
+}
 // GST "18%" and "18" are the same; the button works even if the Admin types the %.
 function imSlNorm_(col,v){
   let s=String(v==null?'':v).trim().toUpperCase();
@@ -7016,6 +7031,124 @@ function imComboMatch_(val,row){
   if(!parts.length)return false;
   return parts.every(p=>p.col?imSlicerMatch_(p.col,p.v,row):IM_SLICER_COLS.some(c=>imSlicerMatch_(c,p.v,row)));
 }
+/* ── Combined Slicers: dependent suggestions while typing ──────────────
+   Dropdown Master's value box for erp_imSlicerCombo. Everything before the
+   last "~" is taken as the conditions already chosen; the list under the box
+   then offers only the values of the Item Master rows that still pass them,
+   column by column, so each "~" narrows the next pick the same way the
+   button itself will narrow the list. After the first condition, a column
+   with a single value left is skipped: as a further condition it would
+   narrow nothing. Typing a column name and a colon ("Category:") limits the
+   list to that column. Options are picked by index (sarvDdCmbOpts_), as in
+   imToggleSlicer, so a quote inside an item name can't break an onclick. */
+let sarvDdCmbOpts_=[],sarvDdCmbHi_=-1;
+// The Item Master rows, or the bare catalogue if the Item Master hasn't been opened yet.
+function sarvDdItemSrc_(){
+  return (sarvItemMasterRows&&sarvItemMasterRows.length)?sarvItemMasterRows
+    :(sarvItemCatalog||[]).map(it=>({it,catKey:(it.category&&String(it.category).trim())?String(it.category).trim():'(No Category)'}));
+}
+function sarvDdCmbState_(text){
+  const segs=String(text||'').split('~');
+  const cur=segs.pop().replace(/^\s+/,'');
+  const prev=segs.join('~');
+  const src=sarvDdItemSrc_();
+  const rows=prev.trim()?src.filter(r=>{try{return imComboMatch_(prev,r);}catch(e){return false;}}):src;
+  // "Category: TRI" → Category only, query TRI. An unknown prefix stays part of the query.
+  let only=null,q=cur,prefix=false;
+  const m=cur.match(/^([^:=]+?)\s*[:=]\s*(.*)$/);
+  if(m){
+    const nm=m[1].trim().toUpperCase();
+    const col=IM_SLICER_COLS.find(c=>c.toUpperCase()===nm||String(SARV_IM_FILTER_COLS[c].label).toUpperCase()===nm);
+    if(col){only=col;q=m[2];prefix=true;}
+  }
+  return {segs:segs.map(x=>x.trim()).filter(Boolean),prev,rows,only,q:q.trim().toUpperCase(),prefix,src};
+}
+function sarvDdCmbHide_(){const p=byId('dd_cmbPop');if(p)p.style.display='none';}
+function sarvDdCmbRender_(){
+  const inp=byId('dd_newValue');
+  if(!inp||document.activeElement!==inp)return sarvDdCmbHide_();
+  let pop=byId('dd_cmbPop');
+  if(!pop){
+    pop=document.createElement('div');pop.id='dd_cmbPop';pop.className='dd-cmb-pop';
+    pop.addEventListener('mousedown',e=>e.preventDefault());   // keep the focus in the value box
+    document.body.appendChild(pop);
+    // position:fixed, so any outside scroll would leave it floating in the wrong place
+    window.addEventListener('scroll',e=>{if(!pop.contains(e.target))sarvDdCmbHide_();},true);
+  }
+  const s=sarvDdCmbState_(inp.value);
+  sarvDdCmbOpts_=[];sarvDdCmbHi_=-1;
+  let h;
+  if(!s.src.length){
+    h='<div class="dd-cmb-empty">The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.</div>';
+  }else{
+    const named=new Set(imComboParts_(s.prev).filter(p=>p.col).map(p=>p.col));
+    h='<div class="dd-cmb-head">'+(s.prev.trim()
+      ?'<b>'+s.rows.length+'</b> item(s) pass the conditions before the last "~"; the values below come from those items only.'
+      :'Pick the first condition, then type "~" for the next column.')+'</div>';
+    const PER=s.only?200:25;
+    (s.only?[s.only]:IM_SLICER_COLS.filter(c=>!named.has(c))).forEach(col=>{
+      const m=new Map();
+      s.rows.forEach(r=>{
+        const k=imCellKey_(col,r);if(k===IM_BLANK)return;
+        const u=imSlNorm_(col,k),e=m.get(u);if(e)e.n++;else m.set(u,{v:k,n:1});
+      });
+      if(s.segs.length&&!s.only&&m.size<2)return;
+      let list=[...m.values()];
+      if(s.q)list=list.filter(e=>String(e.v).toUpperCase().includes(s.q));
+      if(!list.length)return;
+      list.sort((a,b)=>String(a.v).localeCompare(String(b.v),undefined,{numeric:true,sensitivity:'base'}));
+      h+='<div class="dd-cmb-grp">'+escText(SARV_IM_FILTER_COLS[col].label)+' <span>'+list.length+'</span></div>';
+      list.slice(0,PER).forEach(e=>{
+        const i=sarvDdCmbOpts_.push({col,v:e.v})-1;
+        h+='<div class="dd-cmb-opt" data-i="'+i+'" onclick="sarvDdCmbPick('+i+')"><span>'+escText(e.v)+'</span><small>'+e.n+'</small></div>';
+      });
+      if(list.length>PER)h+='<div class="dd-cmb-more">+'+(list.length-PER)+' more; keep typing to narrow the list</div>';
+    });
+    if(!sarvDdCmbOpts_.length)h+='<div class="dd-cmb-empty">'+(s.rows.length
+      ?'No value contains "'+escText(s.q)+'" among these items.'
+      :'No item passes the conditions so far; check the text before the last "~".')+'</div>';
+  }
+  pop.innerHTML=h;
+  const b=inp.getBoundingClientRect();
+  pop.style.left=b.left+'px';pop.style.top=(b.bottom+2)+'px';pop.style.width=Math.max(b.width,320)+'px';
+  pop.style.display='block';
+}
+window.sarvDdCmbInput=function(){sarvDdCmbRender_();};
+/* The value goes in plain ("TRIMS") when it picks the same items as the
+   column-named form; it is named ("Category: TRIMS") only where the plain
+   word would also hit another column (e.g. a Make that also appears in item
+   names), or where the Admin already typed the column name. */
+window.sarvDdCmbPick=function(i){
+  const o=sarvDdCmbOpts_[i],inp=byId('dd_newValue');if(!o||!inp)return;
+  const s=sarvDdCmbState_(inp.value);
+  const pinned=s.rows.filter(r=>imSlicerMatch_(o.col,o.v,r)).length;
+  const plain=s.rows.filter(r=>IM_SLICER_COLS.some(c=>imSlicerMatch_(c,o.v,r))).length;
+  const part=(s.prefix||pinned!==plain?SARV_IM_FILTER_COLS[o.col].label+': ':'')+o.v;
+  inp.value=s.segs.concat([part]).join(' ~ ');
+  inp.focus();
+  sarvDdCmbHide_();   // opens again as soon as the next "~" is typed
+};
+window.sarvDdCmbKey=function(ev,key){
+  const pop=byId('dd_cmbPop'),open=!!(pop&&pop.style.display!=='none'&&sarvDdCmbOpts_.length);
+  if(ev.key==='ArrowDown'&&!open){ev.preventDefault();sarvDdCmbRender_();return;}
+  if(open&&(ev.key==='ArrowDown'||ev.key==='ArrowUp')){
+    ev.preventDefault();
+    const n=sarvDdCmbOpts_.length;
+    sarvDdCmbHi_=ev.key==='ArrowDown'?(sarvDdCmbHi_+1)%n:(sarvDdCmbHi_<=0?n-1:sarvDdCmbHi_-1);
+    pop.querySelectorAll('.dd-cmb-opt').forEach(el=>{
+      const on=+el.dataset.i===sarvDdCmbHi_;el.classList.toggle('hl',on);if(on)el.scrollIntoView({block:'nearest'});
+    });
+    return;
+  }
+  if(ev.key==='Escape'){sarvDdCmbHide_();return;}
+  if(ev.key==='Enter'){
+    ev.preventDefault();
+    // Enter on a highlighted option fills it in; otherwise it adds the value, as in every other dropdown.
+    if(open&&sarvDdCmbHi_>=0)return sarvDdCmbPick(sarvDdCmbHi_);
+    sarvDdCmbHide_();
+    sarvDdAddValue(key);
+  }
+};
 // Heading text for a slicer column, the Combined one included.
 function imSlicerLabel_(col){
   return col===IM_SLICER_COMBO?'Combined':((SARV_IM_FILTER_COLS[col]||{}).label||col);
@@ -7134,8 +7267,8 @@ function imRenderSlicers_(){
   const rows=sarvItemMasterRows||[];
   // A column with very many values would bury the list under buttons; the
   // rest stay reachable through that column's ▾ filter.
-  const SHOW_MAX=40;
-  let html='<div class="im-sl-wrap"><span class="im-sl-title">SLICERS</span>';
+  const SHOW_MAX=60;
+  let html='';
   defs.forEach(g=>{
     const sel=sarvImSlicerSel[g.col]||new Set();
     const pool=rows.filter(r=>imBasePass_(r,g.col)&&Object.keys(SARV_IM_FILTER_COLS).every(c=>imColPass_(c,r)));
@@ -7148,25 +7281,72 @@ function imRenderSlicers_(){
     if(!live.length)return;
     // Past the cap only the selected ones are drawn, so a tick can always be taken off.
     const shown=live.filter((b,k)=>k<SHOW_MAX||b.on);
-    html+='<div class="im-sl-group'+(sel.size?' on':'')+'"><span class="im-sl-lab">'+escText(imSlicerLabel_(g.col))+'</span>';
+    // The Combined buttons carry their own wording, so they go without a heading.
+    const noLab=g.col===IM_SLICER_COMBO;
+    html+='<div class="slp-group'+(sel.size?' on':'')+(noLab?' nolab':'')+'" style="'+imSlicerColorStyle_(g.col)+'">'
+      +(noLab?'':'<span class="slp-lab">'+escText(imSlicerLabel_(g.col))+'<small>'+live.length+'</small></span>')+'<div class="slp-btns">';
     shown.forEach(b=>{
-      html+='<button type="button" class="im-sl-btn'+(b.on?' on':'')+(b.n?'':' zero')+'" onclick="imToggleSlicer(\''+g.col+'\','+b.i+')" '
+      html+='<button type="button" class="slp-btn'+(b.on?' on':'')+(b.n?'':' zero')+'" onclick="imToggleSlicer(\''+g.col+'\','+b.i+')" '
         +'title="'+escText(imSlicerLabel_(g.col)+': '+b.v+(IM_SLICER_CONTAINS[g.col]?' (contains the word)':'')
         +(g.col===IM_SLICER_COMBO?' (every part must match)':'')
         +': '+b.n+' item(s)'+(b.on?' · click to remove':''))+'">'
         +escText(b.v)+'<span class="n">'+b.n+'</span></button>';
     });
-    if(live.length>shown.length)html+='<span class="im-sl-more" title="Use the column\'s ▾ filter for the rest">+'+(live.length-shown.length)+' more</span>';
-    if(sel.size)html+='<button type="button" class="im-sl-x" onclick="imClearSlicers(\''+g.col+'\')" title="Remove this column\'s slicers">&#10006;</button>';
-    if(admin)html+='<button type="button" class="im-sl-edit" onclick="imOpenSlicerSetup(\''+(g.auto?'auto':g.col)+'\')" title="Change this slicer in Dropdown Master">✎</button>';
-    html+='</div>';
+    if(live.length>shown.length)html+='<span class="slp-more" title="Use the column\'s ▾ filter for the rest">+'+(live.length-shown.length)+' more</span>';
+    html+='</div><span class="slp-acts">';
+    if(sel.size)html+='<button type="button" class="slp-x" onclick="imClearSlicers(\''+g.col+'\')" title="Remove this column\'s slicers">&#10006;</button>';
+    if(admin)html+='<button type="button" class="slp-x" onclick="imOpenSlicerSetup(\''+(g.auto?'auto':g.col)+'\')" title="Change this slicer in Dropdown Master">✎</button>';
+    html+='</span></div>';
   });
-  const nOn=imActiveSlicerCols_().length;
-  if(nOn)html+='<button type="button" class="im-sl-clear" onclick="imClearSlicers()">&#10006; Clear Slicers</button>';
-  html+=setupBtn+'</div>';
   bar.style.display='block';
-  bar.innerHTML=html;
+  bar.innerHTML=sarvSlicerPanelHtml_({
+    title:'SLICERS',collapsed:imSlicerCollapsed_(),toggle:'onclick="imToggleSlicerPanel()"',
+    summary:imSlicerSummary_(),groups:html,
+    tail:(imActiveSlicerCols_().length?'<button type="button" class="slp-clear" onclick="imClearSlicers()">&#10006; Clear Slicers</button>':'')+setupBtn
+  });
 }
+/* The slicer box, shared by Item Master and My Day › Below-MSV: a full-width
+   panel whose head (title, what is selected, Clear) always shows, and whose
+   body holds one row per heading, buttons wrapping inside it. The body has a
+   height cap and scrolls, so adding buttons grows the box only so far and
+   never pushes the list off the screen. Collapsing hides the body and keeps
+   the head, so a selection is never invisible: its summary sits in the head.
+   o = {title, collapsed, toggle (attributes for the head button), summary
+   (array of "Heading: a / b" strings), lead (html right after the title, e.g.
+   a dropdown that must stay in view when collapsed), groups, count, tail (html)}. */
+function sarvSlicerPanelHtml_(o){
+  const sum=(o.summary||[]);
+  /* The collapse switch is a labelled button at the right end ("Hide slicers ▴"
+     / "Show slicers ▾"), not just a caret on the title: a bare caret was too
+     easy to miss, and nobody found out the buttons could be put away. */
+  return '<div class="slp'+(o.collapsed?' collapsed':'')+'">'
+    +'<div class="slp-head">'
+    +'<span class="slp-title">'+escText(o.title)
+    +(sum.length?'<span class="slp-badge">'+sum.length+' on</span>':'')+'</span>'
+    +(o.lead||'')
+    +'<span class="slp-sum">'+(sum.length
+      ?sum.map(s=>'<span class="slp-chip">'+escText(s)+'</span>').join('')
+      :'<span class="slp-hint">'+(o.collapsed?'Slicer buttons are hidden; nothing selected':'Click a button to filter; buttons in one heading = OR, across headings = AND')+'</span>')+'</span>'
+    +(o.count||'')+(o.tail||'')
+    +'<button type="button" class="slp-toggle" '+o.toggle+' title="'+(o.collapsed?'Show the slicer buttons again':'Hide the slicer buttons to give the list the whole screen')+'">'
+    +(o.collapsed?'Show slicers <span class="slp-caret">&#9662;</span>':'Hide slicers <span class="slp-caret">&#9652;</span>')+'</button>'
+    +'</div>'
+    +'<div class="slp-body">'+o.groups+'</div></div>';
+}
+// Collapsed or open, remembered per browser like the column choice.
+const IM_SL_COLLAPSE_KEY='sarv_im_slicers_collapsed';
+// Held in memory too, so the toggle still works where storage is blocked.
+let imSlCollapsed=null;
+function imSlicerCollapsed_(){
+  if(imSlCollapsed==null){try{imSlCollapsed=localStorage.getItem(IM_SL_COLLAPSE_KEY)==='1';}catch(e){imSlCollapsed=false;}}
+  return imSlCollapsed;
+}
+window.imToggleSlicerPanel=function(){
+  imSlCollapsed=!imSlicerCollapsed_();
+  try{localStorage.setItem(IM_SL_COLLAPSE_KEY,imSlCollapsed?'1':'0');}catch(e){}
+  imRenderSlicers_();
+  fitItemListHeight_();   // the list takes over the room the buttons gave up
+};
 
 /* ══ ITEM MASTER: COLUMN SHOW / HIDE ═════════════════════════════════
    Columns the user unticks in the Columns popup are hidden from the table.
@@ -10199,6 +10379,7 @@ const SARV_DROPDOWNS=[
    hint:'Each value is ONE button. Join its conditions with "~", and every condition must match, e.g. 4 INCH SATTAN ~ TRIMS '
      +'(name contains 4 INCH SATTAN AND Category is TRIMS). A plain condition is looked for in every column: whole value on Category / Size / Material / UOM / Make / GST / Code, '
      +'"contains" on Item Name / Description. To tie a condition to one column, name it: Item Name: 4 INCH SATTAN ~ Category: TRIMS. '
+     +'While typing, a list under the box offers the Item Master values; after each "~" it shows only the values left for the items that pass the conditions before it. '
      +'The buttons appear under the "Combined" heading on the Item Master slicer bar and in My Day › Below-MSV.',
    where:'Master Data › Item Master — slicer bar (Combined) · My Day › Below-MSV',
    def:[]},
@@ -10628,11 +10809,18 @@ function sarvDdMainHtml_(){
     return h;
   }
 
+  const combo=d.key===IM_SLICER_COMBO_DD_KEY;
+  if(combo&&admin)h+='<div class="dd-where">'+(sarvDdItemSrc_().length
+    ?'As you type, a list under the value box offers the Item Master values; after each "~" it shows only what is left for the items that pass the conditions before it. ↑ ↓ to move, Enter to pick.'
+    :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
+
   if(admin){
     h+='<div class="dd-add">'
-      +'<input type="text" id="dd_newValue" class="form-control" placeholder="'+(d.imSlicerCol?'Slicer value… (press Enter)':'New value… (press Enter)')+'" autocomplete="off" '
+      +'<input type="text" id="dd_newValue" class="form-control" placeholder="'+(combo?'e.g. 4 INCH SATTAN ~ TRIMS (type ~ for the next column, Enter to add)':d.imSlicerCol?'Slicer value… (press Enter)':'New value… (press Enter)')+'" autocomplete="off" '
       +(d.imSlicerCol?'list="dd_slicerSuggest" ':'')
-      +'onkeydown="if(event.key===\'Enter\'){event.preventDefault();sarvDdAddValue(\''+d.key+'\');}">'
+      +(combo
+        ?'oninput="sarvDdCmbInput()" onfocus="sarvDdCmbInput()" onblur="setTimeout(sarvDdCmbRender_,0)" onkeydown="sarvDdCmbKey(event,\''+d.key+'\')">'
+        :'onkeydown="if(event.key===\'Enter\'){event.preventDefault();sarvDdAddValue(\''+d.key+'\');}">')
       +slSuggest
       +'<button class="btn btn-primary" onclick="sarvDdAddValue(\''+d.key+'\')">Add Value</button>';
     if(defs.length)h+='<button class="btn dd-seed" onclick="sarvDdSeedDefaults(\''+d.key+'\')" '
@@ -10688,6 +10876,7 @@ function sarvDdMainHtml_(){
 
 function sarvDdRender_(){
   if(!byId('dropdownMasterSub'))return;
+  sarvDdCmbHide_();   // the value box it belongs to is about to be replaced
   // The screen opens for everyone (read-only), but only the Admin can change it.
   const locked=byId('dd_lockedNotice');if(locked)locked.style.display=isAdmin()?'none':'block';
   if(!sarvDdPick){
