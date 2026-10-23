@@ -6825,6 +6825,12 @@
         }
 
         document.getElementById('remarksInput').value = '';
+        // MD's rejection reasons: only for the MD, cleared for every record.
+        const mdReasons = document.getElementById('mdReasonGroup');
+        if(mdReasons){
+            mdReasons.style.display = (showApproval && myStage === 'md') ? 'block' : 'none';
+            mdReasons.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = false; });
+        }
         // Two "remarks" are on screen in PO Generate — this one signs, the PO's
         // own notes print. Named apart so neither is typed into the other.
         document.getElementById('remarksLabel').textContent = planned ? 'Approval Remarks' : 'Remarks / Notes';
@@ -7287,6 +7293,7 @@
             vendors: base.vendors || [],
             signatures: newApprovals,
             lastRejection: {stage, by: STAGE_LABEL[stage], at: pStamp(), remarks: remarks||'',
+                ...(opts.reasons && opts.reasons.length ? {reasons: opts.reasons} : {}),
                 ...(opts.poNo ? {poNo: opts.poNo, sendTo: 'STORE'} : {})},
             // A PR going back to the Store is out of any rework the Purchaser had open.
             ...(opts.toStore ? {vendorInfoReopened: false, reworkPending: false} : {}),
@@ -7333,6 +7340,8 @@
             remarks: remarks || '',
             poNo: po.po_no || '',
             sendTo: opts.sendTo || 'PURCHASER',
+            // The MD's ticked reasons; also written into `remarks` (mdRejectText_).
+            ...(opts.reasons && opts.reasons.length ? {reasons: opts.reasons} : {}),
         };
         const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
         if(lq.error) throw lq.error;
@@ -7828,102 +7837,57 @@
         }
     }
 
-    /* The PR(s) a PO was raised from, read fresh: linked_req_nos is the
-       comma list the PO carries, and the PO's own lines are asked too, for a
-       PO built before that column was always filled. */
-    async function poLinkedReqNos_(po){
-        const nos = new Set(String(po.linked_req_nos || '').split(',').map(s => s.trim()).filter(Boolean));
-        try{
-            const lq = await SB.from('purchase_order_lines').select('req_no').eq('purchase_order_id', po.id);
-            if(!lq.error) (lq.data || []).forEach(l => { const n = String(l.req_no || '').trim(); if(n) nos.add(n); });
-        }catch(e){ console.warn('[MOBILE] PO line PR lookup skipped:', e.message || e); }
-        return [...nos];
+    /* The reasons the MD ticked (mobile.html › #mdReasonList), in list order. */
+    function mdRejectReasons_(){
+        const box = document.getElementById('mdReasonGroup');
+        if(!box || box.style.display === 'none') return [];
+        return [...box.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
     }
-    /* PR Reject: every live PR behind this PO goes back to the Store as
-       Rejected (rejectPR with toStore). Already Rejected / Cancelled PRs are
-       left as they are. Returns the PR numbers actually sent back. */
-    async function rejectPoPrsToStore_(po, remarks){
-        const nos = await poLinkedReqNos_(po);
-        if(!nos.length) return [];
-        const q = await SB.from('purchase_requirements').select('*').in('req_no', nos);
-        if(q.error) throw q.error;
-        const sent = [];
-        for(const req of (q.data || []).filter(r => !PR_DEAD(r))){
-            await rejectPR(req, 'md', remarks, {toStore: true, poNo: po.po_no || ''});
-            sent.push(req.req_no);
-        }
-        return sent;
-    }
-    /* The MD's choice for a PO reject: resolves 'STORE' (PR Reject),
-       'PURCHASER' (PO Reject) or null (cancelled). The PR numbers are shown so
-       the MD knows which requirement a PR Reject sends back, and a PR still
-       feeding another live PO is named, because sending it to the Store does
-       not stop that other order. */
-    function askMdRejectMode_(po){
-        return new Promise(resolve => {
-            const modal = document.getElementById('mdRejectChoiceModal');
-            if(!modal){ resolve(confirm(`Reject ${po.po_no}?`) ? 'PURCHASER' : null); return; }
-            const info = document.getElementById('mdrcInfo');
-            document.getElementById('mdrcTitle').textContent = 'Reject ' + (po.po_no || 'PO');
-            info.innerHTML = `<b>Vendor:</b> ${escText(po.vendor_name || '-')} · <b>PR:</b> ${escText(po.linked_req_nos || '-')}`;
-            // Other live POs off the same PR(s), for the warning line.
-            const reqs = String(po.linked_req_nos || '').split(',').map(s => s.trim()).filter(Boolean);
-            const others = [...new Set((dash.pos || []).filter(p => p.id !== po.id && !PO_DEAD(p)
-                && String(p.linked_req_nos || '').split(',').map(s => s.trim()).some(n => reqs.includes(n)))
-                .map(p => p.po_no))];
-            if(others.length) info.innerHTML += `<div style="margin-top:6px;color:#b45309;font-weight:700;">This PR also has live PO ${escText(others.join(', '))}. PR Reject does not cancel it.</div>`;
-            const done = v => {
-                modal.style.display = 'none';
-                ['mdrcPrBtn','mdrcPoBtn','mdrcCancelBtn','mdrcCloseBtn'].forEach(id => { document.getElementById(id).onclick = null; });
-                resolve(v);
-            };
-            document.getElementById('mdrcPrBtn').onclick = () => done('STORE');
-            document.getElementById('mdrcPoBtn').onclick = () => done('PURCHASER');
-            document.getElementById('mdrcCancelBtn').onclick = () => done(null);
-            document.getElementById('mdrcCloseBtn').onclick = () => done(null);
-            modal.style.display = 'flex';
-        });
+    /* The reasons ride INSIDE the saved remark ("Reasons: Review Qty, Review
+       Rate. <remark>"), not only in their own field, so every place that
+       already reads the remark back — the Rejected PO card, the modal's
+       rejection note, the notifications and STORE.html — shows them without
+       a change of its own. The bare list is kept beside it as `reasons`. */
+    function mdRejectText_(reasons, remarks){
+        const r = reasons.length ? 'Reasons: ' + reasons.join(', ') + '.' : '';
+        return [r, remarks].filter(Boolean).join(' ');
     }
 
     async function rejectEntry() {
         if(!currentEntry || !myStage || modalViewOnly || modalTab === 'VI') return;
-        const remarks = document.getElementById('remarksInput').value.trim();
-        if(!remarks) { alert('Please enter a remark explaining the rejection.'); return; }
+        const typed = document.getElementById('remarksInput').value.trim();
+        const reasons = myStage === 'md' ? mdRejectReasons_() : [];
+        // MD: a tick is reason enough, the remark is optional. Everyone else still writes one.
+        if(myStage === 'md' ? (!reasons.length && !typed) : !typed){
+            alert(myStage === 'md'
+                ? 'Tick at least one Reason for Rejection, or write a remark.'
+                : 'Please enter a remark explaining the rejection.');
+            return;
+        }
+        const remarks = mdRejectText_(reasons, typed);
         const prevStage = prevStageOf(myStage);
         const docNo = currentModule === 'PR' ? currentEntry.req_no : currentEntry.po_no;
-        /* On a PO there is no earlier approver to send it back to, so the reject
-           ends that PO — but it is NOT the end of the work, and the MD should be
-           told what their reject actually does: the PR it was raised from
-           surfaces in the Purchaser's PO Generate ▸ Rejected PO with this
-           remark on it, and they re-quote and re-sign from there. */
-        /* A PO with no earlier approver (the MD's own reject) asks WHERE the
-           work goes back to — PR Reject (Store) or PO Reject (Purchaser). The
-           choice popup is the confirmation, so no second confirm box. */
-        const askWhere = currentModule === 'PO' && !prevStage;
-        let sendTo = null;
-        if(askWhere){
-            sendTo = await askMdRejectMode_(currentEntry);
-            if(!sendTo) return;
-        } else {
-            const backMsg = prevStage
+        /* The MD's PO reject ends that PO and always sends the work to the
+           Purchaser: the PR comes back in their Vendor Info / PO Generate ▸
+           Rejected PO with these reasons on it, to re-quote and sign again.
+           There is no "PR Reject to Store" choice here any more; if the
+           requirement itself has to go, the Purchaser rejects the PR from
+           Vendor Info (they know whether it is the PR or only the purchase). */
+        const toPurchaser = currentModule === 'PO' && !prevStage;
+        const backMsg = toPurchaser
+            ? `The PO will be marked Rejected and the PR goes back to the Purchaser to correct.`
+            : prevStage
                 ? `It will go back to ${STAGE_LABEL[prevStage]}'s pending list for review.`
                 : `This is the first approval stage, so it will be marked Rejected.`;
-            if(!confirm(`Reject ${docNo}?\n\n${backMsg}`)) return;
-        }
+        if(!confirm(`Reject ${docNo}?\n\n` + (reasons.length ? 'Reasons: ' + reasons.join(', ') + '\n\n' : '') + backMsg)) return;
         document.getElementById('rejectBtn').disabled = true;
         setBusy(true, 'Rejecting...');
         try{
             let doneMsg = '';
-            if(currentModule === 'PR') await rejectPR(currentEntry, myStage, remarks);
+            if(currentModule === 'PR') await rejectPR(currentEntry, myStage, remarks, {reasons});
             else {
-                await rejectPO(currentEntry, myStage, remarks, {sendTo: sendTo || 'PURCHASER'});
-                if(sendTo === 'STORE'){
-                    const sent = await rejectPoPrsToStore_(currentEntry, remarks);
-                    doneMsg = `✖ PO ${docNo} rejected.\n\n`
-                        + (sent.length ? `PR ${sent.join(', ')} sent back to the Store as Rejected.` : 'No open PR was found to send back to the Store.');
-                } else if(sendTo === 'PURCHASER'){
-                    doneMsg = `✖ PO ${docNo} rejected.\n\nThe PR is back in the Purchaser's Vendor Info tab for correction.`;
-                }
+                await rejectPO(currentEntry, myStage, remarks, {sendTo: 'PURCHASER', reasons});
+                if(toPurchaser) doneMsg = `✖ PO ${docNo} rejected.\n\nThe PR is back with the Purchaser for correction.`;
             }
             dashDirty = false; // reloaded right below
             closeModal();

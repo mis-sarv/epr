@@ -770,7 +770,8 @@
     const v = msvValues(rows, col)[i]; if (v == null) return;
     st.slicer = st.slicer || {};
     const set = st.slicer[col] || (st.slicer[col] = new Set()), k = msvNorm(col, v);
-    if (set.has(k)) set.delete(k); else set.add(k);
+    // Combined buttons are one at a time, as in Item Master.
+    if (set.has(k)) set.delete(k); else { if (col === COMBO) set.clear(); set.add(k); }
     if (!set.size) delete st.slicer[col];
   }
 

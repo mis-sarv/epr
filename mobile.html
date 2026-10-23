@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -22,7 +22,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 
     <!-- Build stamp: see the note on mobile-core.js at the end of the page. -->
-    <link rel="stylesheet" href="mobile.css?v=20261022b">
+    <link rel="stylesheet" href="mobile.css?v=20261023a">
 </head>
 <body>
 
@@ -399,6 +399,26 @@
                 </div>
             </div>
 
+            <!-- ── MD: reasons for rejection ───────────────────────────
+                 MD only (PR or PO). The ticked reasons are saved with the
+                 rejection and printed ahead of the remark wherever it is read
+                 back, so the Purchaser sees at a glance WHAT to recheck. With
+                 at least one tick the remark is optional. Shown / reset in
+                 openModal; read by mdRejectReasons_() in rejectEntry. -->
+            <div class="form-group md-reasons" id="mdReasonGroup" style="display:none;">
+                <label>Reason for Rejection <small style="font-weight:500;color:#6b7280;">tick all that apply</small></label>
+                <div class="md-reasons-grid" id="mdReasonList">
+                    <label><input type="checkbox" value="Review Qty"> Review Qty</label>
+                    <label><input type="checkbox" value="Review Rate"> Review Rate</label>
+                    <label><input type="checkbox" value="Review GST"> Review GST</label>
+                    <label><input type="checkbox" value="Review Freight"> Review Freight</label>
+                    <label><input type="checkbox" value="Review Vendor"> Review Vendor</label>
+                    <label><input type="checkbox" value="Review Bill Basis"> Review Bill Basis</label>
+                    <label><input type="checkbox" value="Review Item Names"> Review Item Names</label>
+                    <label><input type="checkbox" value="Cancel Purchaser Requirement"> Cancel Purchaser Requirement</label>
+                </div>
+            </div>
+
             <!-- The APPROVAL's remarks, which ride on the signature. Not the
                  same thing as PO Remarks / Notes (filled on the quote sheet and
                  printed on the PO) — relabelled in openModal where both are on
@@ -606,33 +626,6 @@
         </div>
     </div>
 
-    <!-- ── MD rejects a PO: where does the work go back to? ──────────────
-         Two different mistakes look the same from the PO: the REQUIREMENT
-         itself is wrong (item, qty, need), or only the PURCHASE is (vendor,
-         rate, GST). The first belongs with the Store, which raised the PR;
-         the second with the Purchaser. The MD picks, so the PR lands on the
-         desk that can actually fix it. Opens over the approval modal; the
-         buttons are wired in askMdRejectMode_(). -->
-    <div class="modal-overlay" id="mdRejectChoiceModal" style="z-index:1100;">
-        <div class="modal-content">
-            <div class="modal-title">
-                <span id="mdrcTitle">Reject PO</span>
-                <button class="close-btn" id="mdrcCloseBtn">×</button>
-            </div>
-            <div id="mdrcInfo" style="font-size:0.76rem; color:#475569; margin-bottom:10px;"></div>
-            <div style="font-size:0.8rem; font-weight:700; margin-bottom:8px;">Where should this go back to?</div>
-            <button type="button" id="mdrcPrBtn" style="display:block; width:100%; text-align:left; margin-bottom:8px; padding:10px 12px; border:1px solid #fca5a5; border-radius:8px; background:#fef2f2; cursor:pointer;">
-                <div style="font-size:0.86rem; font-weight:800; color:#b91c1c;">&#10006; PR Reject &mdash; goes to Store</div>
-                <div style="font-size:0.72rem; color:#7f1d1d; margin-top:3px;">The requirement itself is wrong (item / qty / need). The PO is rejected and the PR goes back to the Store as <b>Rejected</b>; the Store corrects it or raises a new PR.</div>
-            </button>
-            <button type="button" id="mdrcPoBtn" style="display:block; width:100%; text-align:left; margin-bottom:10px; padding:10px 12px; border:1px solid #fcd34d; border-radius:8px; background:#fffbeb; cursor:pointer;">
-                <div style="font-size:0.86rem; font-weight:800; color:#92400e;">&#10006; PO Reject &mdash; goes to Purchaser</div>
-                <div style="font-size:0.72rem; color:#78350f; margin-top:3px;">Only the purchase is wrong (vendor / rate / GST / terms). The PO is rejected and the PR goes back to the Purchaser's <b>Vendor Info</b> tab to correct and sign again.</div>
-            </button>
-            <button type="button" class="btn" id="mdrcCancelBtn" style="background:#6c757d;">Cancel</button>
-        </div>
-    </div>
-
     <!-- ── Sign with PIN ────────────────────────────────────────────────
          Opens over the approval modal. The signature the user drew once in
          STORE.html (Admin Panel → Users & Roles) comes back from
@@ -829,7 +822,7 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261022b"></script>
+<script src="mobile-core.js?v=20261023a"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 </body>

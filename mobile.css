@@ -315,6 +315,18 @@
         .card-action.wait { background: #f8fafc; color: #64748b; border: 1px dashed #cbd5e1; }
         .card-action.done { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
 
+        /* ── MD: Reason for Rejection checklist (above Remarks) ────────
+           Two to a row, each a whole tappable box: a phone tick-box alone
+           is too small a target. A ticked box turns red, like the Reject button. */
+        .md-reasons-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .md-reasons-grid label {
+            display: flex; align-items: center; gap: 7px; margin: 0;
+            border: 1px solid #e5e7eb; border-radius: 6px; background: #fff;
+            padding: 8px 9px; font-size: 0.78rem; font-weight: 600; color: #1f2937; cursor: pointer;
+        }
+        .md-reasons-grid label:has(input:checked) { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
+        .md-reasons-grid input { width: 16px; height: 16px; margin: 0; flex-shrink: 0; accent-color: #dc2626; }
+
         /* ── MD Rejection Remark, in the open record ──────────────────
            Solid red rather than .mode-note's dashed grey: this is not a note
            about the screen, it is the decision that sent the work back, and it

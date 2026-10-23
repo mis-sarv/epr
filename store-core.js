@@ -7149,6 +7149,119 @@ window.sarvDdCmbKey=function(ev,key){
     sarvDdAddValue(key);
   }
 };
+
+/* ── Combined Slicers: the Column → Value builder ──────────────────────
+   The easy way to make a Combined button, with no "~" to type: one row per
+   condition, a Column dropdown and then that column's Value dropdown. Each
+   row only offers what is left for the items that pass the rows above it
+   (dependent, like the slicer bar), and once a row is complete the next
+   empty row appears by itself as long as some column can still narrow the
+   list. Create Button writes the same "a ~ b" text the typed box would, so
+   the slicer bar and My Day read it exactly as before. Item Name and
+   Description take a typed word (they match "contains") with the names
+   offered as suggestions; the other columns are plain dropdowns.
+   sarvDdCmbB holds the rows between re-renders: [{col, v}]. */
+let sarvDdCmbB=[{col:'',v:''}];
+const sarvDdCbDone_=c=>!!(c.col&&String(c.v||'').trim());
+// The items that pass the builder's complete rows above row k.
+function sarvDdCbRows_(k){
+  const conds=sarvDdCmbB.slice(0,k).filter(sarvDdCbDone_);
+  return sarvDdItemSrc_().filter(r=>conds.every(c=>imSlicerMatch_(c.col,String(c.v).trim(),r)));
+}
+// Columns row k may offer: not used by another row, and (after the first row)
+// with at least two values left, since one value would narrow nothing.
+function sarvDdCbCols_(k,rows){
+  const used=new Set(sarvDdCmbB.filter((x,j)=>j!==k&&x.col).map(x=>x.col));
+  return IM_SLICER_COLS.filter(col=>{
+    if(used.has(col))return false;
+    if(sarvDdCmbB[k]&&sarvDdCmbB[k].col===col)return true;
+    return imColDistinct_(col,rows).length>(k?1:0);
+  });
+}
+/* The button text. A value goes in plain ("TRIMS") when it picks the same
+   items as the column-named form, and named ("Make: SATTAN") only where the
+   plain word would also hit another column; the same rule as sarvDdCmbPick. */
+function sarvDdCbText_(){
+  let rows=sarvDdItemSrc_();const parts=[];
+  sarvDdCmbB.filter(sarvDdCbDone_).forEach(c=>{
+    const v=String(c.v).trim();
+    const pinned=rows.filter(r=>imSlicerMatch_(c.col,v,r));
+    const plain=rows.filter(r=>IM_SLICER_COLS.some(x=>imSlicerMatch_(x,v,r))).length;
+    parts.push((pinned.length!==plain?SARV_IM_FILTER_COLS[c.col].label+': ':'')+v);
+    rows=pinned;
+  });
+  return {text:parts.join(' ~ '),n:rows.length,parts:parts.length};
+}
+function sarvDdCbHtml_(key){
+  if(!sarvDdItemSrc_().length)
+    return '<div class="dd-warn">The Item Master hasn\'t loaded yet. Open the Item Master once, then come back here to build a Combined button.</div>';
+  let h='<div class="dd-cb"><div class="dd-cb-title">Create a Combined button: choose a column, then its value. '
+    +'Add as many rows as you need; an item must match <b>every</b> row.</div>';
+  sarvDdCmbB.forEach((c,k)=>{
+    const rows=sarvDdCbRows_(k),cols=sarvDdCbCols_(k,rows);
+    h+='<div class="dd-cb-row"><span class="dd-cb-n">'+(k?'AND':'WHERE')+'</span>'
+      +'<select class="form-control dd-cb-col" id="dd_cbCol'+k+'" onchange="sarvDdCbSet('+k+',\'col\',this.value)">'
+      +'<option value="">Choose column…</option>'
+      +cols.map(col=>'<option value="'+col+'"'+(col===c.col?' selected':'')+'>'+escText(SARV_IM_FILTER_COLS[col].label)+'</option>').join('')
+      +'</select>';
+    if(c.col){
+      const m=new Map();
+      rows.forEach(r=>{
+        const x=imCellKey_(c.col,r);if(x===IM_BLANK)return;
+        const u=imSlNorm_(c.col,x),e=m.get(u);if(e)e.n++;else m.set(u,{v:x,n:1});
+      });
+      const list=[...m.values()].sort((a,b)=>String(a.v).localeCompare(String(b.v),undefined,{numeric:true,sensitivity:'base'}));
+      if(IM_SLICER_CONTAINS[c.col]){
+        h+='<input type="text" class="form-control dd-cb-val" id="dd_cbVal'+k+'" list="dd_cbList'+k+'" autocomplete="off" '
+          +'placeholder="Type a word (e.g. 4 INCH SATTAN) or pick a name…" value="'+escText(c.v)+'" '
+          +'onchange="sarvDdCbSet('+k+',\'v\',this.value)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">'
+          +'<datalist id="dd_cbList'+k+'">'+list.slice(0,1000).map(e=>'<option value="'+escText(e.v)+'"></option>').join('')+'</datalist>';
+      }else{
+        h+='<select class="form-control dd-cb-val" id="dd_cbVal'+k+'" onchange="sarvDdCbSet('+k+',\'v\',this.value)">'
+          +'<option value="">Choose '+escText(SARV_IM_FILTER_COLS[c.col].label)+'…</option>'
+          +list.map(e=>'<option value="'+escText(e.v)+'"'+(c.v&&imSlNorm_(c.col,e.v)===imSlNorm_(c.col,c.v)?' selected':'')+'>'
+            +escText(e.v)+'  ('+e.n+')</option>').join('')+'</select>';
+      }
+    }else{
+      h+='<span class="dd-cb-ph">'+(k?'optional: add one more condition':'then choose its value')+'</span>';
+    }
+    if(c.col||k)h+='<button type="button" class="dd-mini dd-mini-del" title="Remove this row" onclick="sarvDdCbDel('+k+')">✕</button>';
+    h+='</div>';
+  });
+  const b=sarvDdCbText_();
+  h+='<div class="dd-cb-foot">'
+    +(b.parts
+      ?'<span class="dd-cb-prev">Button: <b>'+escText(b.text)+'</b><span class="dd-cb-cnt'+(b.n?'':' zero')+'">'+b.n+' item(s)</span></span>'
+      :'<span class="dd-cb-ph">Choose at least one column and its value.</span>')
+    +(b.parts?'<button type="button" class="btn dd-seed" onclick="sarvDdCbReset()">Start over</button>':'')
+    +'<button type="button" class="btn btn-primary" '+(b.parts&&b.n?'':'disabled ')+'onclick="sarvDdCbCreate(\''+key+'\')">Create Button</button>'
+    +'</div></div>';
+  return h;
+}
+window.sarvDdCbSet=function(k,f,v){
+  const c=sarvDdCmbB[k];if(!c)return;
+  c[f]=v;if(f==='col')c.v='';
+  // The rows below were chosen from what this row left; they no longer hold.
+  sarvDdCmbB=sarvDdCmbB.slice(0,k+1);
+  // Row complete: ask for the next column straight away, if any column can still narrow.
+  if(sarvDdCbDone_(c)&&sarvDdCbCols_(k+1,sarvDdCbRows_(k+1)).length)sarvDdCmbB.push({col:'',v:''});
+  sarvDdRender_();
+  // Put the cursor where the next choice is: the value of this row, or the next row's column.
+  const nx=byId(f==='col'&&c.col?'dd_cbVal'+k:'dd_cbCol'+(sarvDdCmbB.length-1));
+  if(nx&&!(f==='v'&&nx.id==='dd_cbCol'+k))nx.focus();
+};
+window.sarvDdCbDel=function(k){
+  sarvDdCmbB.splice(k,1);
+  if(!sarvDdCmbB.length||sarvDdCbDone_(sarvDdCmbB[sarvDdCmbB.length-1]))sarvDdCmbB.push({col:'',v:''});
+  sarvDdRender_();
+};
+window.sarvDdCbReset=function(){sarvDdCmbB=[{col:'',v:''}];sarvDdRender_();};
+window.sarvDdCbCreate=async function(key){
+  const b=sarvDdCbText_();
+  if(!b.parts)return showToast('Choose a column and its value first','warn');
+  if(!b.n)return showToast('No item matches these conditions; the button would always show 0','warn');
+  if(await sarvDdAddValue(key,b.text)){sarvDdCmbB=[{col:'',v:''}];sarvDdRender_();}
+};
 // Heading text for a slicer column, the Combined one included.
 function imSlicerLabel_(col){
   return col===IM_SLICER_COMBO?'Combined':((SARV_IM_FILTER_COLS[col]||{}).label||col);
@@ -7224,7 +7337,8 @@ window.imToggleSlicer=function(col,i){
   const g=imSlicerDefs_().find(x=>x.col===col);
   const val=g&&g.values[i];if(val==null)return;
   const set=sarvImSlicerSel[col]||(sarvImSlicerSel[col]=new Set());
-  if(set.has(val))set.delete(val);else set.add(val);
+  // Combined buttons are one at a time: pressing another replaces the first.
+  if(set.has(val))set.delete(val);else{if(col===IM_SLICER_COMBO)set.clear();set.add(val);}
   if(!set.size)delete sarvImSlicerSel[col];
   renderItemMasterTable();
 };
@@ -10376,7 +10490,8 @@ const SARV_DROPDOWNS=[
   /* One button that checks SEVERAL columns at once — logic in
      imComboParts_ / imComboMatch_. */
   {key:IM_SLICER_COMBO_DD_KEY,label:'Combined Slicers (one button, several columns)',
-   hint:'Each value is ONE button. Join its conditions with "~", and every condition must match, e.g. 4 INCH SATTAN ~ TRIMS '
+   hint:'Each value is ONE button. The easy way: in the builder below, choose a column and its value, row by row, then Create Button. '
+     +'Typed by hand, conditions are joined with "~", and every condition must match, e.g. 4 INCH SATTAN ~ TRIMS '
      +'(name contains 4 INCH SATTAN AND Category is TRIMS). A plain condition is looked for in every column: whole value on Category / Size / Material / UOM / Make / GST / Code, '
      +'"contains" on Item Name / Description. To tie a condition to one column, name it: Item Name: 4 INCH SATTAN ~ Category: TRIMS. '
      +'While typing, a list under the box offers the Item Master values; after each "~" it shows only the values left for the items that pass the conditions before it. '
@@ -10652,10 +10767,12 @@ window.sarvDdSeedDefaults=async function(key){
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
-window.sarvDdAddValue=async function(key){
+// `given` = a value built elsewhere (the Combined builder) instead of the text box.
+// Resolves true once the value is saved.
+window.sarvDdAddValue=async function(key,given){
   if(!sarvDdGuard_())return;
   const inp=byId('dd_newValue');
-  const val=((inp&&inp.value)||'').trim();
+  const val=String(given!=null?given:((inp&&inp.value)||'')).trim();
   if(!val){showToast('The value cannot be empty','error');if(inp)inp.focus();return;}
   if(sarvDdRowsOf(key).some(r=>r.value.trim().toUpperCase()===val.toUpperCase()))
     return showToast('"'+val+'" is already in this dropdown','warn');
@@ -10670,8 +10787,9 @@ window.sarvDdAddValue=async function(key){
     if(error)throw error;
     if(inp)inp.value='';
     await sarvLoadDropdowns_(true);sarvDdRender_();
-    const nx=byId('dd_newValue');if(nx)nx.focus();
+    const nx=byId('dd_newValue');if(nx&&given==null)nx.focus();
     showToast('"'+val+'" added');
+    return true;
   }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
 };
 
@@ -10810,9 +10928,15 @@ function sarvDdMainHtml_(){
   }
 
   const combo=d.key===IM_SLICER_COMBO_DD_KEY;
-  if(combo&&admin)h+='<div class="dd-where">'+(sarvDdItemSrc_().length
-    ?'As you type, a list under the value box offers the Item Master values; after each "~" it shows only what is left for the items that pass the conditions before it. ↑ ↓ to move, Enter to pick.'
-    :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
+  // Combined: the Column → Value builder is the main way in; the typed "~"
+  // box stays below it, folded away, for whoever prefers typing.
+  if(combo&&admin){
+    h+=sarvDdCbHtml_(d.key)
+      +'<details class="dd-cb-adv"><summary>Or type it yourself (advanced, with "~")</summary>'
+      +'<div class="dd-where">'+(sarvDdItemSrc_().length
+        ?'As you type, a list under the value box offers the Item Master values; after each "~" it shows only what is left for the items that pass the conditions before it. ↑ ↓ to move, Enter to pick.'
+        :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
+  }
 
   if(admin){
     h+='<div class="dd-add">'
@@ -10826,6 +10950,7 @@ function sarvDdMainHtml_(){
     if(defs.length)h+='<button class="btn dd-seed" onclick="sarvDdSeedDefaults(\''+d.key+'\')" '
       +'title="Put the code default values into the table so they can be edited / removed here as well">Seed Defaults</button>';
     h+='</div>';
+    if(combo)h+='</details>';
     if(!rows.length&&defs.length)
       h+='<div class="dd-warn">This list currently runs on the <b>code defaults</b>. As soon as you add the first value, the other defaults are added to the table automatically, so the list never shrinks to a single value.</div>';
   }else{
