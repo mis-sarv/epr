@@ -19328,11 +19328,16 @@ window.addEventListener('DOMContentLoaded',()=>{
      // instead of being taken on trust.
      fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no,line_no,item_name,ordered_qty','id').catch(skip('PO lines')),
      fetchAllRows('inward_entries','*','id').catch(skip('inward')),
-     /* The PR's own items, only for the Search box (Item Name / Description).
-        Taken from the PR rather than the PO lines so a PR with no PO yet is
-        found by its item too. Failing it only takes item search away. '*' on
-        purpose: a database that lacks item_description must not fail this. */
-     fetchAllRows('purchase_requirement_lines','*','id').catch(skip('PR lines'))
+     /* The PR's own items: for the Search box (+ its suggestions) and the
+        PR → PO → Inward detail view. Taken from the PR rather than the PO
+        lines so a PR with no PO yet is found by its item too. A PR line holds
+        only item_id + specification, so the name / description come from the
+        Item Master through the embed; if the embed is refused, the plain rows
+        are resolved against sarvItemCatalog below. Failing both only takes
+        item search away. */
+     fetchAllRows('purchase_requirement_lines','*, items(name,description,make,uom)','id')
+       .catch(()=>fetchAllRows('purchase_requirement_lines','*','id'))
+       .catch(skip('PR lines'))
    ]);
    if(!reqsRaw)return;   // the PR list is the sheet itself — without it there is nothing to show
    // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a plain
@@ -19410,11 +19415,23 @@ window.addEventListener('DOMContentLoaded',()=>{
      ...inwRows.map(i=>i.document_no)
    ]);
    const inwUrl=i=>poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||'';
-   // PR id -> "item name + description" text of all its lines, for the Search box.
-   const prItemText={};
+   // PR id -> its lines, each with a resolved name / description / qty.
+   const catById={};
+   (typeof sarvItemCatalog!=='undefined'&&Array.isArray(sarvItemCatalog)?sarvItemCatalog:[]).forEach(i=>{if(i&&i.id!=null)catById[i.id]=i});
+   const prLinesByReq={};
    prlRows.forEach(l=>{
      const k=String(l.requirement_id||'');if(!k)return;
-     prItemText[k]=(prItemText[k]||'')+' '+(l.item_name||'')+' '+(l.item_description||'');
+     const it=l.items||catById[l.item_id]||{};
+     (prLinesByReq[k]=prLinesByReq[k]||[]).push({
+       id:l.id,itemId:l.item_id,
+       name:String(l.item_name||it.name||'').trim(),
+       desc:String(l.item_description||it.description||'').trim(),
+       spec:String(l.specification||'').trim(),
+       make:String(l.make||it.make||'').trim(),
+       qty:pNum(l.requested_qty!=null?l.requested_qty:l.qty),
+       uom:l.uom||it.uom||'',
+       weight:pNum(l.gross_weight),machine:l.machine||''
+     });
    });
 
    sarvPoFollowupGroups=reqs.map(req=>{
@@ -19450,9 +19467,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        statuses:[...new Set(decidePos.map(p=>p.status||'Generated'))],
        prPdf:poFollowupPdfUrl_(pdfMap,req.req_no,['REQUIREMENT','SINGLE','TWO_PAGE'])||req.pdf_url||req.pdf_url_single||'',
        vendors:[...new Set(rPos.map(p=>String(p.vendor_name||'').trim()).filter(Boolean))],
+       prLines:prLinesByReq[String(req.id)]||[],
        // The PR's items plus this PR's items as named on its POs (a PO line
-       // can carry a corrected name).
-       itemText:(prItemText[String(req.id)]||'')+' '+poBlocks.map(b=>b.lines.map(l=>l.item_name||'').join(' ')).join(' '),
+       // can carry a corrected name). Unique, for search + suggestions.
+       items:poFollowupItems_(prLinesByReq[String(req.id)]||[],poBlocks),
        inwUrlOf:inwUrl
      };
    });
@@ -19859,12 +19877,13 @@ window.addEventListener('DOMContentLoaded',()=>{
         gets asked most. */
      const fuText=g.poBlocks.reduce((a,b)=>a.concat(poFuList_(b.po).map(f=>(f.remarks||'')+' '+(f.revisedDate||''))),[]);
      return nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
-       .concat(fuText).concat([g.itemText])
+       .concat(fuText).concat((g.items||[]).map(i=>i.name+' '+i.desc+' '+i.spec))
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
  }
  function renderPoFollowupReport(){
    const tb=byId('p_poReportBody');if(!tb)return;
+   fudCss_();   // the clickable PO Status badge's styles (once)
    const groups=poFollowupVisibleGroups();
    const visible=new Set(groups.map(g=>g.req.req_no));
    const rows=sarvPoFollowupRows.filter(r=>visible.has(r.req.req_no));
@@ -19896,7 +19915,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        // Per PO, merged down its receipts like the rest of the PO block: the
        // follow-up is a conversation about the ORDER, not about one receipt.
        +poCell(po?fuRevisedCell_(po):'<span class="fu-nodoc">&ndash;</span>','background:#fffdf5;')
-       +poCell(po?fuStatusCell_([po.status||'Generated']):'<span class="fu-nodoc">&ndash;</span>','')
+       // Clickable: opens the PR → PO → Inward detail view (openPoFollowupDetail_).
+       +poCell(po
+         ?('<button type="button" class="fu-stbtn" data-req="'+pEsc(g.req.req_no||'')+'" data-po="'+pEsc(po.po_no||'')+'" title="Click for the full PR → PO → Inward details">'+fuStatusCell_([po.status||'Generated'])+'</button>')
+         :('<button type="button" class="fu-stbtn nopo" data-req="'+pEsc(g.req.req_no||'')+'" title="No PO yet. Click for the PR details and its items">PR details &rsaquo;</button>'),'')
        +'<td style="background:#fdeaf0;">'+(r.inward?fuDocLink_(r.inward.document_no,g.inwUrlOf(r.inward),'INWARD'):'<span class="fu-nodoc">&ndash;</span>')+'</td>'
        // Per receipt, not merged down the PR — it sits across from the Inward
        // No. in the previous column, which is the receipt it refers to.
@@ -19922,6 +19944,714 @@ window.addEventListener('DOMContentLoaded',()=>{
    // the buttons are live even if this panel is reached some other way.
    bindPoFollowupFlagClicks_();
  }
+ /* A PR's items, unique by name + description: its own lines first, then any
+    name its POs carry for it (a PO line can hold a corrected name). Feeds the
+    Search box and its suggestions. */
+ function poFollowupItems_(prLines,poBlocks){
+   const out=[],seen=new Set();
+   const add=(name,desc,spec)=>{
+     name=String(name||'').trim();desc=String(desc||'').trim();spec=String(spec||'').trim();
+     if(!name&&!desc)return;
+     const k=(name+'|'+desc).toLowerCase();
+     if(seen.has(k))return;seen.add(k);
+     out.push({name,desc,spec});
+   };
+   (prLines||[]).forEach(l=>add(l.name,l.desc,l.spec));
+   (poBlocks||[]).forEach(b=>(b.lines||[]).forEach(l=>add(l.item_name,'','')));
+   return out;
+ }
+
+ /* ── SEARCH SUGGESTIONS (under p_poRepSearch) ────────────────────────
+    As the user types, every searchable column is offered as its own group:
+    the values that contain the typed text, with how many PRs carry each.
+    Picking one puts that exact value in the box, so "BLANKET BOX" from the
+    list narrows the sheet to exactly the PRs that have that item.
+
+    One column list (FU_SUG_COLS) drives both the index and the popup, so a
+    new searchable column is one line here. The index is built once per load
+    of the report (it is keyed on the sarvPoFollowupGroups array itself, which
+    refreshPoFollowupReport replaces), not on every keystroke.
+
+    The popup lives on <body> with position:fixed, so neither the filter
+    bar's overflow nor the full-screen report (z-index 9800) can clip it. */
+ const FU_SUG_COLS=[
+   {key:'pr',       label:'PR No.',           kind:'PR',     vals:g=>[g.req.req_no]},
+   {key:'po',       label:'PO No.',           kind:'PO',     vals:g=>g.poBlocks.map(b=>b.po.po_no)},
+   {key:'inward',   label:'Inward No.',       kind:'INWARD', vals:g=>g.allInwards.map(i=>i.document_no)},
+   {key:'item',     label:'Item Name',                       vals:g=>(g.items||[]).map(i=>i.name)},
+   {key:'desc',     label:'Item Description',                vals:g=>(g.items||[]).map(i=>i.desc).concat((g.items||[]).map(i=>i.spec))},
+   {key:'vendor',   label:'Vendor',                          vals:g=>g.vendors},
+   {key:'requester',label:'Requested By',                    vals:g=>[g.req.requested_by]},
+   {key:'purchaser',label:'Purchaser',                       vals:g=>[poFollowupPurchaser_(g.req)]},
+   {key:'dept',     label:'Department',                      vals:g=>[g.req.department]},
+   {key:'status',   label:'PO Status',                       vals:g=>g.statuses},
+   {key:'remark',   label:'Follow-up Remark',                vals:g=>g.poBlocks.reduce((a,b)=>a.concat(poFuList_(b.po).map(f=>f.remarks)),[])}
+ ];
+ let fuSugIdx_=null,fuSugFor_=null,fuSugActive_=-1,fuSugItems_=[],fuSugMute_=false;
+ function fuSugIndex_(){
+   if(fuSugIdx_&&fuSugFor_===sarvPoFollowupGroups)return fuSugIdx_;
+   const maps=FU_SUG_COLS.map(()=>new Map());
+   sarvPoFollowupGroups.forEach(g=>FU_SUG_COLS.forEach((c,ci)=>{
+     const seen=new Set();
+     let vals=[];try{vals=c.vals(g)||[]}catch(e){}
+     vals.forEach(v=>{
+       v=String(v==null?'':v).replace(/\s+/g,' ').trim();if(!v)return;
+       const k=v.toLowerCase();if(seen.has(k))return;seen.add(k);
+       const o=maps[ci].get(k)||{v,short:c.kind?(shortDocNo_(v,c.kind)||''):'',n:0};
+       o.n++;maps[ci].set(k,o);
+     });
+   }));
+   fuSugIdx_=FU_SUG_COLS.map((c,ci)=>({c,list:[...maps[ci].values()]}));
+   fuSugFor_=sarvPoFollowupGroups;
+   return fuSugIdx_;
+ }
+ // Escaped text with the first match of `q` marked.
+ function fuSugMark_(text,q){
+   const s=String(text||''),i=q?s.toLowerCase().indexOf(q):-1;
+   if(i<0)return pEsc(s);
+   return pEsc(s.slice(0,i))+'<mark>'+pEsc(s.slice(i,i+q.length))+'</mark>'+pEsc(s.slice(i+q.length));
+ }
+ function fuSugPop_(){
+   let p=byId('fuSugPop');
+   if(!p){
+     fudCss_();
+     p=document.createElement('div');
+     p.id='fuSugPop';p.className='fus-pop';p.setAttribute('role','listbox');
+     // mousedown, not click: keeps focus in the box so blur doesn't close it first.
+     p.addEventListener('mousedown',e=>{
+       e.preventDefault();
+       const it=e.target.closest('.fus-it');
+       if(it)fuSugPick_(+it.dataset.i);
+     });
+     document.body.appendChild(p);
+   }
+   return p;
+ }
+ function fuSugPlace_(){
+   const p=byId('fuSugPop'),inp=byId('p_poRepSearch');
+   if(!p||!inp||p.style.display==='none')return;
+   const r=inp.getBoundingClientRect();
+   const w=Math.min(Math.max(r.width,460),window.innerWidth-16);
+   p.style.width=w+'px';
+   p.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+'px';
+   p.style.top=(r.bottom+4)+'px';
+   p.style.maxHeight=Math.max(180,window.innerHeight-r.bottom-20)+'px';
+ }
+ function fuSugClose_(){
+   const p=byId('fuSugPop');if(p)p.style.display='none';
+   fuSugActive_=-1;fuSugItems_=[];
+ }
+ function fuSugShow_(){
+   if(fuSugMute_)return;
+   const inp=byId('p_poRepSearch');if(!inp)return;
+   const q=inp.value.trim().toLowerCase();
+   if(!q||!sarvPoFollowupGroups.length)return fuSugClose_();
+   const groups=[];
+   fuSugIndex_().forEach(e=>{
+     const hits=e.list.filter(o=>o.v.toLowerCase().includes(q)||(o.short&&o.short.toLowerCase().includes(q)));
+     if(!hits.length)return;
+     // Starts-with first (what the user is most likely typing), then the most used.
+     const rank=o=>(o.v.toLowerCase().startsWith(q)||(o.short&&o.short.toLowerCase().startsWith(q)))?0:1;
+     hits.sort((a,b)=>rank(a)-rank(b)||b.n-a.n||a.v.localeCompare(b.v,undefined,{numeric:true}));
+     groups.push({c:e.c,hits,total:hits.length});
+   });
+   const p=fuSugPop_();
+   fuSugItems_=[];fuSugActive_=-1;
+   if(!groups.length){
+     p.innerHTML='<div class="fus-none">No column has &ldquo;'+pEsc(inp.value.trim())+'&rdquo;</div>';
+   }else{
+     // One group alone gets more room; many groups share it.
+     const per=groups.length===1?14:(groups.length<=3?7:5);
+     let html='';
+     groups.forEach(gr=>{
+       html+='<div class="fus-h"><span>'+pEsc(gr.c.label)+'</span><span>'+gr.total+(gr.total===1?' value':' values')+'</span></div>';
+       gr.hits.slice(0,per).forEach(o=>{
+         const i=fuSugItems_.length;
+         fuSugItems_.push(o.v);
+         const main=gr.c.kind&&o.short&&o.short!==o.v
+           ?fuSugMark_(o.short,q)+' <small>'+fuSugMark_(o.v,q)+'</small>'
+           :fuSugMark_(o.v.length>90?o.v.slice(0,90)+'…':o.v,q);
+         html+='<div class="fus-it" role="option" data-i="'+i+'"><span class="fus-v">'+main+'</span>'
+           +'<span class="fus-n" title="PRs with this value">'+o.n+' PR</span></div>';
+       });
+       if(gr.total>per)html+='<div class="fus-more">+'+(gr.total-per)+' more — keep typing to narrow</div>';
+     });
+     html+='<div class="fus-foot">&uarr; &darr; move &nbsp;·&nbsp; Enter pick &nbsp;·&nbsp; Esc close</div>';
+     p.innerHTML=html;
+   }
+   p.style.display='block';
+   fuSugPlace_();
+ }
+ function fuSugMove_(d){
+   const p=byId('fuSugPop');if(!p||!fuSugItems_.length)return;
+   fuSugActive_=(fuSugActive_+d+fuSugItems_.length)%fuSugItems_.length;
+   p.querySelectorAll('.fus-it').forEach(el=>el.classList.toggle('on',+el.dataset.i===fuSugActive_));
+   const on=p.querySelector('.fus-it.on');if(on)on.scrollIntoView({block:'nearest'});
+ }
+ function fuSugPick_(i){
+   const v=fuSugItems_[i],inp=byId('p_poRepSearch');
+   if(v==null||!inp)return;
+   fuSugClose_();
+   inp.value=v;
+   // The report re-renders off the box's own input event; the popup must not
+   // reopen on the value it just wrote.
+   fuSugMute_=true;
+   inp.dispatchEvent(new Event('input',{bubbles:true}));
+   fuSugMute_=false;
+   inp.focus();
+ }
+ function fuSugBind_(){
+   const inp=byId('p_poRepSearch');
+   if(!inp||inp.dataset.sugBound)return;
+   inp.setAttribute('autocomplete','off');
+   inp.addEventListener('input',fuSugShow_);
+   inp.addEventListener('focus',()=>{if(inp.value.trim())fuSugShow_()});
+   inp.addEventListener('blur',()=>setTimeout(fuSugClose_,120));
+   inp.addEventListener('keydown',e=>{
+     const open=byId('fuSugPop')&&byId('fuSugPop').style.display==='block';
+     if(e.key==='ArrowDown'){if(!open)fuSugShow_();else fuSugMove_(1);e.preventDefault();}
+     else if(e.key==='ArrowUp'&&open){fuSugMove_(-1);e.preventDefault();}
+     else if(e.key==='Enter'&&open){if(fuSugActive_>=0){e.preventDefault();fuSugPick_(fuSugActive_);}else fuSugClose_();}
+     else if(e.key==='Escape'&&open){e.preventDefault();e.stopPropagation();fuSugClose_();}
+   });
+   window.addEventListener('resize',fuSugPlace_);
+   window.addEventListener('scroll',fuSugPlace_,true);
+   inp.dataset.sugBound='1';
+ }
+
+ /* ── PR → PO → INWARD DETAIL VIEW ────────────────────────────────────
+    Opened by clicking a PO Status badge (or "PR details" on a PR with no PO).
+    One screen that answers everything asked about a requirement:
+      * the journey: PR raised → vendor info → PO → GM/CEO → MD → sent →
+        received → bill checked → requester informed, each with who / when
+      * PR, PO, delivery and receipt summary cards
+      * every PR item: requested, which PO(s) ordered it, received, pending
+      * the selected PO's lines: rate, amount, received, pending, excess
+      * every receipt: invoice, items that came in, inform / GM / MD sign-offs
+      * the full vendor follow-up history
+    A PR with several POs gets one tab per PO.
+
+    READ-ONLY. Headers come from what the report already loaded; only the
+    full PO lines and the inward lines are fetched, once per PR, when the
+    view opens (Refresh fetches again). Each fetch fails on its own: a missing
+    table blanks its own figures, never the whole view. */
+ const fudCache_=new Map();
+ let fudCur_={req:'',po:''};
+ const FUD_CSS=`
+ .fus-pop{position:fixed;z-index:9950;display:none;background:#fff;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 16px 40px -10px rgba(15,23,42,.35);overflow-y:auto;font-family:'Segoe UI',system-ui,sans-serif;padding:4px 0;}
+ .fus-h{display:flex;justify-content:space-between;padding:7px 12px 3px;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#64748b;border-top:1px solid #f1f5f9;}
+ .fus-h:first-child{border-top:0;}
+ .fus-it{display:flex;align-items:center;gap:10px;padding:6px 12px;cursor:pointer;font-size:12px;color:#0f172a;}
+ .fus-it:hover,.fus-it.on{background:#eff6ff;}
+ .fus-it .fus-v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+ .fus-it small{color:#64748b;font-size:10.5px;margin-left:4px;}
+ .fus-it mark{background:#fde68a;color:inherit;padding:0 1px;border-radius:2px;}
+ .fus-n{font-size:10px;font-weight:700;color:#475569;background:#f1f5f9;border-radius:999px;padding:1px 7px;white-space:nowrap;}
+ .fus-more{padding:2px 12px 6px;font-size:10.5px;color:#94a3b8;font-style:italic;}
+ .fus-none{padding:12px;font-size:12px;color:#94a3b8;}
+ .fus-foot{position:sticky;bottom:-4px;background:#f8fafc;border-top:1px solid #e2e8f0;padding:5px 12px;font-size:10px;color:#94a3b8;margin-top:4px;}
+ .fu-stbtn{background:none;border:0;padding:0;cursor:pointer;font:inherit;text-align:left;}
+ .fu-stbtn:hover .fu-status{outline:2px solid #2563eb;outline-offset:1px;}
+ .fu-stbtn.nopo{font-size:10.5px;font-weight:700;color:#2563eb;white-space:nowrap;}
+ .fu-stbtn.nopo:hover{text-decoration:underline;}
+ #fudModal{position:fixed;inset:0;z-index:9900;display:none;align-items:center;justify-content:center;padding:12px;background:rgba(15,23,42,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}
+ #fudModal.open{display:flex;}
+ .fud{background:#f8fafc;width:min(1400px,98vw);height:min(94vh,980px);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.4);display:flex;flex-direction:column;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;color:#0f172a;}
+ .fud-top{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;}
+ .fud-top b{font-size:14px;letter-spacing:.02em;}
+ .fud-top .sub{font-size:11.5px;color:#cbd5e1;font-weight:600;}
+ .fud-top .sp{flex:1;}
+ .fud-top button{border:1px solid #475569;background:transparent;color:#fff;border-radius:6px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;}
+ .fud-top button:hover{background:#1e293b;}
+ .fud-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px;background:#fff;border-bottom:1px solid #e2e8f0;}
+ .fud-tab{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;color:#334155;display:inline-flex;gap:6px;align-items:center;}
+ .fud-tab.on{background:#1d4ed8;border-color:#1d4ed8;color:#fff;}
+ .fud-tab .d{width:8px;height:8px;border-radius:50%;}
+ .fud-body{flex:1;overflow:auto;padding:14px;}
+ .fud-steps{display:flex;gap:0;overflow-x:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 8px 10px;margin-bottom:12px;}
+ .fud-step{flex:1 0 108px;text-align:center;position:relative;padding:0 4px;}
+ .fud-step::before{content:'';position:absolute;top:13px;left:-50%;width:100%;height:3px;background:#e2e8f0;z-index:0;}
+ .fud-step:first-child::before{display:none;}
+ .fud-step.done::before,.fud-step.cur::before{background:#22c55e;}
+ .fud-step .c{position:relative;z-index:1;width:28px;height:28px;border-radius:50%;margin:0 auto 6px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;background:#fff;border:2px solid #cbd5e1;color:#94a3b8;}
+ .fud-step.done .c{background:#22c55e;border-color:#22c55e;color:#fff;}
+ .fud-step.cur .c{border-color:#f59e0b;color:#b45309;background:#fffbeb;}
+ .fud-step.bad .c{background:#ef4444;border-color:#ef4444;color:#fff;}
+ .fud-step .t{font-size:11px;font-weight:800;color:#0f172a;line-height:1.25;}
+ .fud-step .s{font-size:10px;color:#64748b;margin-top:2px;line-height:1.35;word-break:break-word;}
+ .fud-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;margin-bottom:12px;}
+ .fud-card{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;border-top:3px solid var(--c,#64748b);}
+ .fud-card h4{margin:0 0 8px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--c,#64748b);display:flex;justify-content:space-between;align-items:center;gap:8px;}
+ .fud-card h4 a{font-size:10.5px;text-transform:none;letter-spacing:0;color:#2563eb;text-decoration:none;font-weight:700;}
+ .fud-card h4 a:hover{text-decoration:underline;}
+ .fud-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;}
+ .fud-kv .k{color:#64748b;white-space:nowrap;}
+ .fud-kv .v{font-weight:650;word-break:break-word;}
+ .fud-big{font-size:22px;font-weight:800;line-height:1.1;}
+ .fud-bar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin:6px 0 4px;}
+ .fud-bar i{display:block;height:100%;background:#22c55e;border-radius:999px;}
+ .fud-bar i.over{background:#ef4444;}
+ .fud-sec{background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px;overflow:hidden;}
+ .fud-sec > h3{margin:0;padding:9px 14px;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:#f1f5f9;border-bottom:1px solid #e2e8f0;display:flex;gap:10px;align-items:center;}
+ .fud-sec > h3 small{font-weight:600;text-transform:none;letter-spacing:0;color:#64748b;}
+ .fud-tw{overflow-x:auto;}
+ .fud-t{width:100%;border-collapse:collapse;font-size:11.5px;}
+ .fud-t th{background:#f8fafc;color:#334155;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:left;white-space:nowrap;}
+ .fud-t td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top;}
+ .fud-t td.n,.fud-t th.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+ .fud-t tr.tot td{background:#f8fafc;font-weight:800;border-top:2px solid #e2e8f0;}
+ .fud-t tr.oth td{color:#94a3b8;}
+ .fud-t tr.fud-polink:hover td{background:#eff6ff;}
+ .fud-t .nm{font-weight:700;}
+ .fud-t .ds{color:#64748b;font-size:10.5px;}
+ .fud-chip{display:inline-block;border-radius:4px;padding:1px 7px;font-size:10px;font-weight:800;white-space:nowrap;}
+ .fud-chip.ok{background:#dcfce7;color:#166534;}
+ .fud-chip.part{background:#e0f2fe;color:#075985;}
+ .fud-chip.pend{background:#fef3c7;color:#92400e;}
+ .fud-chip.over{background:#fee2e2;color:#991b1b;}
+ .fud-chip.none{background:#f1f5f9;color:#64748b;}
+ .fud-chip.oth{background:#f1f5f9;color:#64748b;}
+ .fud-mini{height:5px;width:70px;border-radius:999px;background:#e2e8f0;overflow:hidden;display:inline-block;vertical-align:middle;margin-left:6px;}
+ .fud-mini i{display:block;height:100%;background:#22c55e;}
+ .fud-pos{color:#b45309;font-weight:800;}
+ .fud-neg{color:#dc2626;font-weight:800;}
+ .fud-zero{color:#16a34a;}
+ .fud-tick{color:#16a34a;font-weight:800;}
+ .fud-wait{color:#b45309;font-weight:700;}
+ .fud-fu{padding:10px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;}
+ .fud-fu:last-child{border-bottom:0;}
+ .fud-fu .h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-weight:700;}
+ .fud-fu .w{color:#64748b;font-weight:600;font-size:11px;}
+ .fud-fu .r{margin-top:3px;color:#334155;}
+ .fud-fu.latest{background:#fffbeb;}
+ .fud-empty{padding:14px;font-size:12px;color:#94a3b8;}
+ .fud-note{font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px;margin-bottom:12px;}
+ .fud-load{font-size:11px;color:#64748b;font-weight:600;}
+ @media (max-width:700px){.fud{height:96vh;width:100vw;border-radius:0;}.fud-body{padding:10px;}}
+ @media print{
+   body *{visibility:hidden !important;}
+   #fudModal,#fudModal *{visibility:visible !important;}
+   #fudModal{position:absolute;inset:0;background:#fff;padding:0;display:block !important;}
+   .fud{width:100%;height:auto;box-shadow:none;border-radius:0;}
+   .fud-body{overflow:visible;}
+   .fud-top button,.fud-tabs{display:none !important;}
+   .fud-sec,.fud-card,.fud-steps{break-inside:avoid;}
+ }`;
+ function fudCss_(){
+   if(byId('fudCss'))return;
+   const s=document.createElement('style');
+   s.id='fudCss';s.textContent=FUD_CSS;
+   document.head.appendChild(s);
+ }
+ function fudModal_(){
+   let m=byId('fudModal');
+   if(m)return m;
+   fudCss_();
+   m=document.createElement('div');
+   m.id='fudModal';
+   m.setAttribute('role','dialog');m.setAttribute('aria-modal','true');
+   m.innerHTML='<div class="fud">'
+     +'<div class="fud-top"><b>PR &rarr; PO &rarr; Inward Details</b><span class="sub" id="fudSub"></span><span class="fud-load" id="fudLoad"></span>'
+     +'<span class="sp"></span>'
+     +'<button type="button" id="fudRefresh" title="Fetch the PO and inward lines again">&#8635; Refresh</button>'
+     +'<button type="button" id="fudPrint" title="Print this view">Print</button>'
+     +'<button type="button" id="fudClose" title="Close (Esc)" style="font-size:15px;">&#10005;</button></div>'
+     +'<div class="fud-tabs" id="fudTabs"></div>'
+     +'<div class="fud-body" id="fudBody"></div></div>';
+   document.body.appendChild(m);
+   byId('fudClose').onclick=fudClose_;
+   byId('fudPrint').onclick=()=>window.print();
+   byId('fudRefresh').onclick=()=>{fudCache_.delete(fudCur_.req);openPoFollowupDetail_(fudCur_.req,fudCur_.po);};
+   m.addEventListener('mousedown',e=>{if(e.target===m)fudClose_();});
+   byId('fudTabs').addEventListener('click',e=>{
+     const t=e.target.closest('.fud-tab');if(!t)return;
+     fudCur_.po=t.dataset.po||'';
+     fudDraw_();
+   });
+   // A PO row in the PR overview's "Purchase Orders" card opens that PO's tab.
+   byId('fudBody').addEventListener('click',e=>{
+     const r=e.target.closest('.fud-polink');if(!r)return;
+     fudCur_.po=r.dataset.po||'';
+     fudDraw_();
+     byId('fudBody').scrollTop=0;
+   });
+   return m;
+ }
+ function fudClose_(){
+   const m=byId('fudModal');if(m)m.classList.remove('open');
+   document.removeEventListener('keydown',fudKey_,true);
+ }
+ function fudKey_(e){
+   if(e.key==='Escape'){e.preventDefault();e.stopPropagation();fudClose_();}
+ }
+ async function openPoFollowupDetail_(reqNo,poNo){
+   const g=sarvPoFollowupGroups.find(x=>String(x.req.req_no||'')===String(reqNo||''));
+   if(!g)return showToast('This PR was not found in the list. Please reload the report.','warn');
+   const m=fudModal_();
+   fudCur_={req:g.req.req_no,po:poNo||''};
+   m.classList.add('open');
+   document.addEventListener('keydown',fudKey_,true);
+   fudDraw_();                                   // instant, from what is loaded
+   if(fudCache_.has(g.req.req_no))return;
+   byId('fudLoad').textContent='Loading lines…';
+   const data=await fudLoad_(g);
+   fudCache_.set(g.req.req_no,data);
+   if(fudCur_.req!==g.req.req_no)return;          // user already moved to another PR
+   byId('fudLoad').textContent='';
+   fudDraw_();
+ }
+ async function fudLoad_(g){
+   const out={poLines:{},inwLines:{},errors:[]};
+   const poIds=g.poBlocks.map(b=>b.po.id).filter(Boolean);
+   const inwIds=g.allInwards.map(i=>i.id).filter(Boolean);
+   const pl=poIds.length?SB.from('purchase_order_lines').select('*').in('purchase_order_id',poIds)
+     .then(r=>{if(r.error)throw r.error;return r.data||[]}):Promise.resolve([]);
+   const il=inwIds.length?SB.from('inward_lines').select('*, items(name,description,uom)').in('inward_id',inwIds)
+     .then(r=>{if(r.error)throw r.error;return r.data||[]})
+     .catch(()=>SB.from('inward_lines').select('*').in('inward_id',inwIds).then(r=>{if(r.error)throw r.error;return r.data||[]}))
+     :Promise.resolve([]);
+   const [a,b]=await Promise.all([
+     pl.catch(e=>{out.errors.push('PO lines: '+(e.message||e));return null}),
+     il.catch(e=>{out.errors.push('Inward lines: '+(e.message||e));return null})
+   ]);
+   out.poLinesOk=!!a;out.inwLinesOk=!!b;
+   (a||[]).forEach(l=>{(out.poLines[l.purchase_order_id]=out.poLines[l.purchase_order_id]||[]).push(l)});
+   Object.keys(out.poLines).forEach(k=>out.poLines[k].sort((x,y)=>pNum(x.line_no)-pNum(y.line_no)||pNum(x.id)-pNum(y.id)));
+   (b||[]).forEach(l=>{(out.inwLines[l.inward_id]=out.inwLines[l.inward_id]||[]).push(l)});
+   return out;
+ }
+ // ── small formatters for this view ──
+ const fudN_=v=>{const n=pNum(v);return (Math.round(n*1000)/1000).toLocaleString('en-IN',{maximumFractionDigits:3})};
+ const fudRs_=v=>'₹ '+pNum(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const fudD_=v=>v?pDate(String(v).slice(0,10)):'—';
+ /* An approval stage as mobile.html writes it:
+      {name: <signature PNG data URL>, time: pStamp(), remarks, signerName?, signedBy?}
+    `name` is the signature IMAGE, not a person, so it is never shown. Only the
+    time and the remark are, and a data: string is refused wherever it turns up. */
+ const fudSig_=s=>{
+   if(!s||typeof s!=='object')return null;
+   const clean=v=>{v=String(v==null?'':v).trim();return /^data:/i.test(v)?'':v};
+   const at=clean(s.time||s.signedAt||s.at||s.atIso);
+   const remarks=clean(s.remarks||s.remark);
+   return (at||remarks||s.name||s.dataUrl)?{at,remarks}:null;
+ };
+ // pStamp() output is already formatted text; only an ISO value is re-formatted.
+ const fudStamp_=v=>{
+   if(!v)return '';
+   if(/^\d{4}-\d{2}-\d{2}T/.test(String(v))){try{return pStamp(v)}catch(e){}}
+   return String(v);
+ };
+ const fudSigTx_=(sig,fallback)=>sig
+   ?([sig.at?pEsc(sig.at):'approved',sig.remarks?'<i>&ldquo;'+pEsc(sig.remarks)+'&rdquo;</i>':''].filter(Boolean).join('<br>'))
+   :fallback;
+ function fudStatusChip_(s){
+   const st=PO_FOLLOWUP_STATUS_STYLE[s]||{bg:'#e2e8f0',fg:'#334155'};
+   return '<span class="fu-status" style="background:'+st.bg+';color:'+st.fg+';border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:800;white-space:nowrap;">'+pEsc(PO_FOLLOWUP_STATUS_TEXT[s]||s)+'</span>';
+ }
+ function fudLineAmt_(l){
+   if(l.line_total!=null&&l.line_total!=='')return pNum(l.line_total);
+   return pNum(l.ordered_qty)*fudLineRate_(l);
+ }
+ function fudLineRate_(l){return pNum(l.unit_price)*(1-pNum(l.discount_pct)/100)}
+ // Received per PO line from the inward lines that point at it; the line's own
+ // received_qty counter only when no receipt points at it at all.
+ function fudRecByLine_(data){
+   const m={};
+   Object.values(data.inwLines||{}).forEach(ls=>ls.forEach(l=>{
+     if(!l.po_line_id)return;
+     const b=m[l.po_line_id]||(m[l.po_line_id]={qty:0,weight:0,last:''});
+     b.qty+=pNum(l.qty);b.weight+=pNum(l.weight);
+   }));
+   return m;
+ }
+ function fudRecv_(line,rec){const r=rec[line.id];return r?r.qty:pNum(line.received_qty)}
+ function fudProgChip_(ord,recv){
+   if(ord<=0&&recv<=0)return '<span class="fud-chip none">—</span>';
+   if(recv<=0)return '<span class="fud-chip pend">Pending</span>';
+   if(recv>ord+1e-9)return '<span class="fud-chip over">Excess</span>';
+   if(recv>=ord-1e-9)return '<span class="fud-chip ok">Received</span>';
+   return '<span class="fud-chip part">Part '+Math.round(recv/ord*100)+'%</span>';
+ }
+ function fudMini_(ord,recv){
+   const p=ord>0?Math.min(100,Math.round(recv/ord*100)):0;
+   return '<span class="fud-mini" title="'+p+'%"><i style="width:'+p+'%"></i></span>';
+ }
+ function fudSigned_(v){
+   if(Math.abs(v)<1e-9)return '<span class="fud-zero">0</span>';
+   return '<span class="'+(v>0?'fud-pos':'fud-neg')+'">'+fudN_(v)+'</span>';
+ }
+
+ function fudDraw_(){
+   const g=sarvPoFollowupGroups.find(x=>String(x.req.req_no||'')===String(fudCur_.req));
+   const body=byId('fudBody');if(!g||!body)return;
+   const data=fudCache_.get(g.req.req_no)||null;
+   const req=g.req;
+   // Selected PO: the one asked for, else the first live one, else none (PR-only).
+   let blk=g.poBlocks.find(b=>String(b.po.po_no||'')===String(fudCur_.po))||null;
+   if(!blk&&fudCur_.po!=='__PR__')blk=g.poBlocks.find(b=>!['Cancelled','Rejected'].includes(b.po.status||''))||g.poBlocks[0]||null;
+   fudCur_.po=blk?blk.po.po_no:'__PR__';
+   const po=blk&&blk.po;
+
+   byId('fudSub').textContent=(shortDocNo_(req.req_no,'PR')||req.req_no)
+     +(po?'  ·  '+(shortDocNo_(po.po_no,'PO')||po.po_no)+'  ·  '+(po.vendor_name||''):'  ·  no PO yet');
+
+   // Tabs: one per PO, plus the PR's own view (items + receipts without PO).
+   const tabs=g.poBlocks.map(b=>{
+     const st=PO_FOLLOWUP_STATUS_STYLE[b.po.status||'Generated']||{fg:'#64748b'};
+     return '<button type="button" class="fud-tab'+(blk===b?' on':'')+'" data-po="'+pEsc(b.po.po_no||'')+'" title="'+pEsc((b.po.po_no||'')+' · '+(b.po.vendor_name||'')+' · '+(b.po.status||'Generated'))+'">'
+       +'<span class="d" style="background:'+st.fg+'"></span>'+pEsc(shortDocNo_(b.po.po_no,'PO')||b.po.po_no)+' · '+pEsc(String(b.po.vendor_name||'').slice(0,22))+'</button>';
+   });
+   tabs.push('<button type="button" class="fud-tab'+(!blk?' on':'')+'" data-po="__PR__" title="The PR\'s items across all its POs'+(g.looseInwards.length?', plus receipts taken without a PO':'')+'">PR overview'
+     +(g.looseInwards.length?' · '+g.looseInwards.length+' without PO':'')+'</button>');
+   byId('fudTabs').innerHTML=tabs.join('');
+
+   const rec=data?fudRecByLine_(data):{};
+   const lines=po&&data&&data.poLines[po.id]||[];
+   const inwards=blk?blk.inwards:g.looseInwards;
+   let html='';
+
+   if(data&&data.errors.length)
+     html+='<div class="fud-note">Some details could not be loaded, so their figures are blank: '+pEsc(data.errors.join(' · '))+'</div>';
+   if(po&&['Cancelled','Rejected'].includes(po.status||''))
+     html+='<div class="fud-note" style="color:#991b1b;background:#fef2f2;border-color:#fecaca;">This PO is <b>'+pEsc(po.status)+'</b>. Its figures are shown for the record; nothing more is expected against it.</div>';
+
+   html+=fudSteps_(g,blk,inwards);
+   html+=fudCards_(g,blk,lines,rec,data,inwards);
+   // PR items across all POs belong to the overview; a PO tab shows that PO's own lines.
+   if(po)html+=fudPoLines_(po,lines,rec,data,req.req_no);
+   else html+=fudPrItems_(g,data,rec);
+   html+=fudInwards_(g,inwards,data,po?lines:null,blk);
+   if(po)html+=fudFollowups_(po);
+   body.innerHTML=html;
+ }
+
+ function fudSteps_(g,blk,inwards){
+   const req=g.req,po=blk&&blk.po,ap=(po&&po.approvals)||{};
+   const dead=po&&['Cancelled','Rejected'].includes(po.status||'');
+   const after=s=>po&&['GM/CEO Approved','MD Approved','Vendor Verified','Partially Received','Received','Closed (Short)'].includes(po.status||'');
+   const gm=fudSig_(ap.gmCeo),md=fudSig_(ap.md);
+   const recvAll=po&&['Received','Closed (Short)'].includes(po.status||'');
+   const inwN=(inwards||[]).length;
+   const checked=k=>inwN>0&&inwards.every(i=>inwStoreCheck_(i,k));
+   const informed=inwN>0&&inwards.every(i=>poFollowupInformState_(req,i.document_no));
+   const who=(a,b)=>[a,b].filter(Boolean).map(pEsc).join('<br>');
+   const steps=[
+     {t:'PR Raised',ok:true,s:who(fudD_(req.request_date||req.created_at),req.requested_by)},
+     {t:'Vendor Info',ok:g.vendorInfo,s:g.vendorInfo?'quotes in':'not filled'},
+     {t:'PO Generated',ok:!!po,s:po?who(fudD_(po.po_date),shortDocNo_(po.po_no,'PO')||po.po_no):'pending'},
+     {t:'GM / CEO',ok:!!(gm||after()),s:fudSigTx_(gm,after()?'approved':'pending')},
+     {t:'MD Approved',ok:!!(po&&poFollowupMdApproved_(po)),s:fudSigTx_(md,po&&poFollowupMdApproved_(po)?'approved':'pending')},
+     {t:'Sent to Vendor',ok:!!(po&&isPoPartySent(po)),s:po&&po.party_sent_at?pEsc(fudStamp_(po.party_sent_at)):(po&&isPoPartySent(po)?'sent':'pending')},
+     {t:'Material Received',ok:!!recvAll,part:inwN>0&&!recvAll,s:inwN?(inwN+(inwN===1?' inward':' inwards')+(recvAll?'':' · part')):'nothing yet'},
+     {t:'Bill Check GM',ok:checked('gm'),part:inwN>0&&!checked('gm')&&inwards.some(i=>inwStoreCheck_(i,'gm')),s:inwN?(inwards.filter(i=>inwStoreCheck_(i,'gm')).length+' / '+inwN):'—'},
+     {t:'Bill Check MD',ok:checked('md'),part:inwN>0&&!checked('md')&&inwards.some(i=>inwStoreCheck_(i,'md')),s:inwN?(inwards.filter(i=>inwStoreCheck_(i,'md')).length+' / '+inwN):'—'},
+     {t:'Requester Informed',ok:informed,part:inwN>0&&!informed&&inwards.some(i=>poFollowupInformState_(req,i.document_no)),s:inwN?(inwards.filter(i=>poFollowupInformState_(req,i.document_no)).length+' / '+inwN):'—'}
+   ];
+   /* PR overview (no single PO picked): the PR-level answer across ALL its
+      live POs, from the same flags the report's own columns use. Receipts
+      taken without a PO are added only when there are some. */
+   const n=g.poBlocks.length;
+   const allIn=g.statuses.length&&g.statuses.every(s=>['Received','Closed (Short)'].includes(s));
+   const anyIn=g.poBlocks.some(b=>b.inwards.length);
+   const prSteps=[
+     steps[0],steps[1],
+     {t:'PO Generated',ok:g.poGenerated,s:n?(n+(n===1?' PO':' POs')):'pending'},
+     {t:'MD Approved',ok:g.mdApproved,s:n?(g.poBlocks.filter(b=>poFollowupMdApproved_(b.po)).length+' / '+n):'pending'},
+     {t:'Sent to Vendor',ok:g.poSent,s:n?(g.poBlocks.filter(b=>isPoPartySent(b.po)).length+' / '+n):'pending'},
+     {t:'Fully Received',ok:!!allIn,part:!allIn&&anyIn,s:g.allInwards.length?(g.allInwards.length+(g.allInwards.length===1?' inward':' inwards')):'nothing yet'}
+   ].concat(inwN?[{t:'Without-PO Receipts',ok:true,s:inwN+' inward'+(inwN===1?'':'s')}]:[]);
+   const list=blk?steps:prSteps;
+   // done = ticked; cur = the first open step (and any half-done one), amber;
+   // bad = a cancelled / rejected PO's remaining steps.
+   let firstOpen=true;
+   return '<div class="fud-steps">'+list.map((s,i)=>{
+     let cls='';
+     if(s.ok)cls='done';
+     else if(dead&&i>=2)cls='bad';
+     else if(s.part||firstOpen){cls='cur';firstOpen=false;}
+     const icon=s.ok?'&#10003;':(cls==='bad'?'&#10005;':String(i+1));
+     return '<div class="fud-step '+cls+'"><div class="c">'+icon+'</div><div class="t">'+pEsc(s.t)+'</div><div class="s">'+(s.s||'')+'</div></div>';
+   }).join('')+'</div>';
+ }
+
+ function fudCards_(g,blk,lines,rec,data,inwards){
+   const req=g.req,po=blk&&blk.po;
+   const kv=rows=>'<div class="fud-kv">'+rows.filter(r=>r&&r[1]!=null&&r[1]!=='').map(r=>'<span class="k">'+pEsc(r[0])+'</span><span class="v">'+(r[2]?r[1]:pEsc(r[1]))+'</span>').join('')+'</div>';
+   const link=(url,t)=>url?'<a href="'+pEsc(url)+'" target="_blank" rel="noopener">'+t+' &#8599;</a>':'';
+   let h='<div class="fud-cards">';
+   h+='<div class="fud-card" style="--c:#c2410c;"><h4>Purchase Requirement'+link(g.prPdf,'PR PDF')+'</h4>'+kv([
+     ['PR No.',req.req_no],['Date',fudD_(req.request_date||req.created_at)],['Requested by',req.requested_by||'—'],
+     ['Department',req.department||''],['Priority',req.priority||''],['Purchaser',poFollowupPurchaser_(req)||''],
+     ['PR Status',req.status||''],['Items',String(g.prLines.length||g.items.length||0)],
+     ['POs against it',String(g.poBlocks.length)]
+   ])+'</div>';
+   if(po){
+     const amt=lines.length?lines.reduce((s,l)=>s+fudLineAmt_(l),0):null;
+     h+='<div class="fud-card" style="--c:#1d4ed8;"><h4>Purchase Order'+link(blk.url,'PO PDF')+'</h4>'+kv([
+       ['PO No.',po.po_no],['PO Date',fudD_(po.po_date)],['Vendor',po.vendor_name||'—'],
+       ['Status',fudStatusChip_(po.status||'Generated'),true],
+       ['Vendor contact',po.vendor_contact||''],['Payment terms',po.payment_terms||''],
+       ['Lines value',amt!=null?fudRs_(amt):(data?'—':'…')],
+       ['Grand total',po.grand_total!=null&&po.grand_total!==''?fudRs_(po.grand_total):''],
+       ['Other PRs on PO',(po.linked_req_nos||'').split(',').map(s=>s.trim()).filter(s=>s&&s!==req.req_no).join(', ')]
+     ])+'</div>';
+     const diff=poFuOverdue_(po),rev=poFuRevised_(po);
+     const origLate=!rev&&po.delivery_date&&!['Received','Closed (Short)','Cancelled','Rejected'].includes(po.status||'')?poFuDayDiff_(String(po.delivery_date).slice(0,10),poFuToday_()):null;
+     const lateTx=d=>d==null?'':(d>0?'<span class="fud-neg">'+d+' days late</span>':'<span class="fud-zero">'+(d===0?'due today':(-d)+' days left')+'</span>');
+     h+='<div class="fud-card" style="--c:#b45309;"><h4>Delivery</h4>'+kv([
+       ['Delivery date (PO)',fudD_(po.delivery_date)],
+       ['Latest revised',rev?fudD_(rev):'—'],
+       ['Position',lateTx(rev?diff:origLate)||'—',true],
+       ['Follow-ups',String(poFuList_(po).length)],
+       ['Sent to vendor',po.party_sent_at?fudStamp_(po.party_sent_at):(isPoPartySent(po)?'yes':'not yet')]
+     ])+'</div>';
+     let ord=0,got=0;
+     lines.forEach(l=>{ord+=pNum(l.ordered_qty);got+=fudRecv_(l,rec)});
+     const pct=ord>0?Math.round(got/ord*100):0;
+     h+='<div class="fud-card" style="--c:#15803d;"><h4>Receipt Progress</h4>'
+       +(data&&data.poLinesOk?('<div class="fud-big">'+pct+'%</div>'
+         +'<div class="fud-bar"><i class="'+(got>ord+1e-9?'over':'')+'" style="width:'+Math.min(100,pct)+'%"></i></div>'
+         +kv([['Ordered qty',fudN_(ord)],['Received qty',fudN_(got)],['Pending qty',fudSigned_(Math.max(0,ord-got)),true],
+              ['Inwards',String((inwards||[]).length)],
+              ['Last receipt',(inwards||[]).length?fudD_(inwards.map(i=>i.receiving_date||i.created_at||'').sort().pop()):'—']]))
+         :'<div class="fud-load">'+(data?'PO lines unavailable':'Loading…')+'</div>')
+       +'</div>';
+   }else if(g.poBlocks.length){
+     /* PR overview: every PO raised on this PR, one line each; a click on the
+        line opens that PO's own tab. */
+     h+='<div class="fud-card" style="--c:#1d4ed8;grid-column:1/-1;"><h4>Purchase Orders on this PR <span style="text-transform:none;letter-spacing:0;color:#64748b;">'+g.poBlocks.length+'</span></h4>'
+       +'<table class="fud-t"><thead><tr><th>PO No.</th><th>Date</th><th>Vendor</th><th>Status</th><th class="n">Items of this PR</th><th class="n">Inwards</th><th>Delivery</th></tr></thead><tbody>'
+       +g.poBlocks.map(b=>{
+         const p=b.po,rev=poFuRevised_(p);
+         return '<tr class="fud-polink" data-po="'+pEsc(p.po_no||'')+'" style="cursor:pointer;" title="Open this PO\'s tab">'
+           +'<td><b style="color:#1d4ed8;">'+pEsc(shortDocNo_(p.po_no,'PO')||p.po_no)+' &rsaquo;</b></td>'
+           +'<td>'+fudD_(p.po_date)+'</td><td>'+pEsc(p.vendor_name||'—')+'</td>'
+           +'<td>'+fudStatusChip_(p.status||'Generated')+'</td>'
+           +'<td class="n">'+(b.lines.length||'—')+'</td><td class="n">'+b.inwards.length+'</td>'
+           +'<td>'+fudD_(rev||p.delivery_date)+(rev?' <span class="ds">(revised)</span>':'')+'</td></tr>';
+       }).join('')+'</tbody></table></div>';
+   }else{
+     h+='<div class="fud-card" style="--c:#64748b;"><h4>Purchase Order</h4><div class="fud-big" style="font-size:16px;color:#b45309;">PO not generated yet</div>'
+       +kv([['Vendor info',g.vendorInfo?'filled':'not filled'],['Receipts without PO',String(g.looseInwards.length)]])+'</div>';
+   }
+   return h+'</div>';
+ }
+
+ // Every PR item: requested, which PO(s) carry it, ordered, received, pending.
+ function fudPrItems_(g,data,rec){
+   const req=g.req;
+   const poLinesForPr=[];
+   g.poBlocks.forEach(b=>{
+     const ls=data&&data.poLines[b.po.id];
+     (ls||[]).filter(l=>String(l.req_no||'').trim()===req.req_no||!(b.lines||[]).length).forEach(l=>poLinesForPr.push({l,po:b.po}));
+   });
+   const key=s=>String(s||'').trim().toLowerCase();
+   const used=new Set();
+   const match=pl=>poLinesForPr.filter(x=>!used.has(x)&&((pl.itemId!=null&&x.l.item_id!=null&&String(pl.itemId)===String(x.l.item_id))||(pl.name&&key(x.l.item_name)===key(pl.name))));
+   const rows=g.prLines.map(pl=>{
+     const m=match(pl);m.forEach(x=>used.add(x));
+     const ord=m.reduce((s,x)=>s+pNum(x.l.ordered_qty),0);
+     const got=m.reduce((s,x)=>s+fudRecv_(x.l,rec),0);
+     return {pl,m,ord,got};
+   });
+   const extra=poLinesForPr.filter(x=>!used.has(x));   // on a PO for this PR, but not matched to a PR line
+   const body=rows.map((r,i)=>{
+     const pos=[...new Set(r.m.map(x=>shortDocNo_(x.po.po_no,'PO')||x.po.po_no))];
+     return '<tr><td>'+(i+1)+'</td>'
+       +'<td><div class="nm">'+pEsc(r.pl.name||'—')+'</div>'+(r.pl.desc||r.pl.spec?'<div class="ds">'+pEsc([r.pl.desc,r.pl.spec&&r.pl.spec!==r.pl.desc?r.pl.spec:''].filter(Boolean).join(' · '))+'</div>':'')+'</td>'
+       +'<td>'+pEsc(r.pl.make||'')+'</td>'
+       +'<td class="n">'+fudN_(r.pl.qty)+' '+pEsc(r.pl.uom||'')+'</td>'
+       +'<td>'+(pos.length?pEsc(pos.join(', ')):(data?'<span class="fud-wait">not on a PO</span>':'…'))+'</td>'
+       +'<td class="n">'+(data?fudN_(r.ord):'…')+'</td>'
+       +'<td class="n">'+(data?fudN_(r.got)+fudMini_(r.ord||r.pl.qty,r.got):'…')+'</td>'
+       +'<td class="n">'+(data?fudSigned_(Math.max(0,(r.ord||r.pl.qty)-r.got)):'…')+'</td>'
+       +'<td>'+(data?(r.m.length?fudProgChip_(r.ord,r.got):'<span class="fud-chip pend">No PO</span>'):'')+'</td></tr>';
+   }).join('')+extra.map(x=>'<tr class="oth"><td>+</td><td><div class="nm">'+pEsc(x.l.item_name||'—')+'</div><div class="ds">on the PO but not matched to a PR line</div></td><td></td><td class="n">—</td>'
+       +'<td>'+pEsc(shortDocNo_(x.po.po_no,'PO')||x.po.po_no)+'</td><td class="n">'+fudN_(x.l.ordered_qty)+'</td><td class="n">'+fudN_(fudRecv_(x.l,rec))+'</td>'
+       +'<td class="n">'+fudSigned_(Math.max(0,pNum(x.l.ordered_qty)-fudRecv_(x.l,rec)))+'</td><td>'+fudProgChip_(pNum(x.l.ordered_qty),fudRecv_(x.l,rec))+'</td></tr>').join('');
+   return '<div class="fud-sec"><h3>PR Items &rarr; PO &rarr; Received <small>'+g.prLines.length+' item(s) on '+pEsc(shortDocNo_(req.req_no,'PR')||req.req_no)+', across all its POs</small></h3>'
+     +(g.prLines.length||extra.length
+       ?'<div class="fud-tw"><table class="fud-t"><thead><tr><th>#</th><th>Item / Description</th><th>Make</th><th class="n">Requested</th><th>On PO</th><th class="n">Ordered</th><th class="n">Received</th><th class="n">Pending</th><th>Status</th></tr></thead><tbody>'+body+'</tbody></table></div>'
+       :'<div class="fud-empty">The PR\'s item lines could not be read.</div>')
+     +'</div>';
+ }
+
+ // The selected PO, line by line. Lines of OTHER PRs on the same PO are kept
+ // (greyed) so the PO reads as the vendor sees it.
+ function fudPoLines_(po,lines,rec,data,reqNo){
+   if(!data)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">Loading…</div></div>';
+   if(!data.poLinesOk)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">The PO lines could not be loaded.</div></div>';
+   if(!lines.length)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">This PO has no item lines (an old PO linked only by PR number).</div></div>';
+   let tq=0,tr=0,ta=0,tw=0;
+   const body=lines.map((l,i)=>{
+     const ord=pNum(l.ordered_qty),got=fudRecv_(l,rec),amt=fudLineAmt_(l);
+     const mine=!l.req_no||String(l.req_no).trim()===reqNo;
+     tq+=ord;tr+=got;ta+=amt;tw+=pNum(l.gross_weight);
+     const r=rec[l.id];
+     return '<tr'+(mine?'':' class="oth"')+'><td>'+(i+1)+'</td>'
+       +'<td><div class="nm">'+pEsc(l.item_name||'—')+'</div>'+(l.item_description||l.make?'<div class="ds">'+pEsc([l.item_description,l.make].filter(Boolean).join(' · '))+'</div>':'')+'</td>'
+       +'<td>'+(mine?'':'<span class="fud-chip oth">'+pEsc(shortDocNo_(l.req_no,'PR')||l.req_no)+'</span>')+'</td>'
+       +'<td class="n">'+fudN_(ord)+' '+pEsc(l.uom||'')+'</td>'
+       +'<td class="n">'+(pNum(l.gross_weight)?fudN_(l.gross_weight)+' kg':'')+'</td>'
+       +'<td class="n">'+(pNum(l.unit_price)?fudN_(fudLineRate_(l))+(pNum(l.discount_pct)?' <span class="ds">(-'+fudN_(l.discount_pct)+'%)</span>':''):'')+'</td>'
+       +'<td class="n">'+(amt?fudRs_(amt):'')+'</td>'
+       +'<td class="n">'+fudN_(got)+fudMini_(ord,got)+(r&&r.weight?'<div class="ds">'+fudN_(r.weight)+' kg</div>':'')+'</td>'
+       +'<td class="n">'+fudSigned_(Math.max(0,ord-got))+'</td>'
+       +'<td class="n">'+(got>ord+1e-9?'<span class="fud-neg">'+fudN_(got-ord)+'</span>':'')+'</td>'
+       +'<td>'+fudProgChip_(ord,got)+'</td></tr>';
+   }).join('');
+   return '<div class="fud-sec"><h3>PO Lines <small>'+lines.length+' line(s) on '+pEsc(shortDocNo_(po.po_no,'PO')||po.po_no)+'; greyed lines belong to other PRs on the same PO</small></h3>'
+     +'<div class="fud-tw"><table class="fud-t"><thead><tr><th>#</th><th>Item / Description</th><th>PR</th><th class="n">Ordered</th><th class="n">Weight</th><th class="n">Rate (net)</th><th class="n">Amount</th><th class="n">Received</th><th class="n">Pending</th><th class="n">Excess</th><th>Status</th></tr></thead><tbody>'
+     +body+'<tr class="tot"><td></td><td>Total</td><td></td><td class="n">'+fudN_(tq)+'</td><td class="n">'+(tw?fudN_(tw)+' kg':'')+'</td><td></td><td class="n">'+fudRs_(ta)+'</td><td class="n">'+fudN_(tr)+'</td><td class="n">'+fudSigned_(Math.max(0,tq-tr))+'</td><td></td><td></td></tr>'
+     +'</tbody></table></div></div>';
+ }
+
+ function fudInwards_(g,inwards,data,poLines,blk){
+   const title=blk?'Inwards against this PO':'Inwards without a PO';
+   if(!inwards.length)return '<div class="fud-sec"><h3>'+title+'</h3><div class="fud-empty">'+(blk?'No material has been received against this PO yet.':'No receipt was taken against this PR without a PO.')+'</div></div>';
+   const poLineIds=new Set((poLines||[]).map(l=>l.id));
+   const body=inwards.slice().sort((a,b)=>String(a.receiving_date||a.created_at||'').localeCompare(String(b.receiving_date||b.created_at||''))).map(i=>{
+     let ls=(data&&data.inwLines[i.id])||[];
+     // One inward can cover several POs; show only what came in for THIS PO
+     // (lines with no PO link are kept, they cannot be placed elsewhere).
+     if(poLines&&poLines.length)ls=ls.filter(l=>!l.po_line_id||poLineIds.has(l.po_line_id));
+     const items=ls.length?ls.map(l=>{
+       const nm=(l.items&&l.items.name)||l.item_name||((poLines||[]).find(p=>p.id===l.po_line_id)||{}).item_name||'Item';
+       return pEsc(nm)+' &times; <b>'+fudN_(l.qty)+'</b>'+(pNum(l.weight)?' ('+fudN_(l.weight)+' kg)':'');
+     }).join('<br>'):(data?(data.inwLinesOk?'<span class="ds">no lines</span>':'<span class="ds">lines unavailable</span>'):'…');
+     const inf=poFollowupInformState_(g.req,i.document_no);
+     const chk=k=>{const c=inwStoreCheck_(i,k);return c?'<span class="fud-tick" title="'+pEsc(inwStoreCheckText_(i,k))+'">&#10004;</span><div class="ds">'+pEsc(inwStoreCheckText_(i,k))+'</div>':'<span class="fud-wait">Pending</span>'};
+     const url=g.inwUrlOf(i);
+     return '<tr><td>'+(url?'<a href="'+pEsc(url)+'" target="_blank" rel="noopener" style="font-weight:800;color:#1d4ed8;text-decoration:none;">'+pEsc(shortDocNo_(i.document_no,'INWARD')||i.document_no)+' &#8599;</a>':'<b>'+pEsc(shortDocNo_(i.document_no,'INWARD')||i.document_no)+'</b>')
+       +'<div class="ds">'+pEsc(i.document_no||'')+(i.entry_type?' · '+pEsc(i.entry_type):'')+'</div></td>'
+       +'<td>'+fudD_(i.receiving_date||i.created_at)+'</td>'
+       +'<td>'+pEsc(i.invoice_no||'—')+(i.invoice_date?'<div class="ds">'+fudD_(i.invoice_date)+'</div>':'')+'</td>'
+       +'<td>'+items+'</td>'
+       +'<td class="n">'+(ls.length?fudN_(ls.reduce((s,l)=>s+pNum(l.qty),0)):'')+'</td>'
+       +'<td>'+(inf?'<span class="fud-tick">&#10004;</span><div class="ds">'+pEsc([inf.by,inf.at?fudStamp_(inf.at):''].filter(Boolean).join(' · '))+'</div>':'<span class="fud-wait">Pending</span>')+'</td>'
+       +'<td>'+chk('gm')+'</td><td>'+chk('md')+'</td></tr>';
+   }).join('');
+   return '<div class="fud-sec"><h3>'+title+' <small>'+inwards.length+' receipt(s)</small></h3>'
+     +'<div class="fud-tw"><table class="fud-t"><thead><tr><th>Inward No.</th><th>Received on</th><th>Invoice</th><th>Items received</th><th class="n">Qty</th><th>Requester informed</th><th>Bill check GM</th><th>Bill check MD</th></tr></thead><tbody>'
+     +body+'</tbody></table></div></div>';
+ }
+
+ function fudFollowups_(po){
+   const list=poFuList_(po);
+   if(!list.length)return '<div class="fud-sec"><h3>Vendor Follow-up History</h3><div class="fud-empty">'
+     +(poFuChaseable_(po)?'No follow-up has been recorded on this PO yet. The PO Sender records them in the mobile app\'s PO Follow-up tab.':'No follow-up needed or recorded for this PO.')+'</div></div>';
+   const today=poFuToday_();
+   return '<div class="fud-sec"><h3>Vendor Follow-up History <small>'+list.length+' entr'+(list.length===1?'y':'ies')+', newest first</small></h3>'
+     +list.slice().reverse().map((f,idx)=>{
+       const d=idx===0?poFuDayDiff_(f.revisedDate,today):null;
+       return '<div class="fud-fu'+(idx===0?' latest':'')+'"><div class="h"><span>#'+(list.length-idx)+' · Revised to '+pEsc(fudD_(f.revisedDate))
+         +(f.prevDate?' <span class="w">(was '+pEsc(fudD_(f.prevDate))+')</span>':'')
+         +(d!=null?(d>0?' <span class="fud-neg">'+d+' days late</span>':' <span class="fud-zero">'+(d===0?'due today':(-d)+' days left')+'</span>'):'')
+         +'</span><span class="w">'+pEsc(f.by||'—')+(f.role?' ('+pEsc(f.role)+')':'')+(f.at?' · '+pEsc(f.at):'')+'</span></div>'
+         +'<div class="r">'+(f.remarks?pEsc(f.remarks):'<i>no remark was written</i>')+'</div></div>';
+     }).join('')+'</div>';
+ }
+
  /* PO Sent to Vendor. Nobody ticks this either: mobile.html's PO Sender writes
     purchase_orders.party_sent_at the moment it sends the PO on WhatsApp, and
     STORE.html's own Send button writes the same column — so the tick appears
@@ -20118,6 +20848,12 @@ window.addEventListener('DOMContentLoaded',()=>{
         tbody survives every render and the controls inside it do not. It is
         read-only, so it is handled before the PIN-gated Done button and
         returns — there is nothing to disable and nothing to write. */
+     const st=e.target.closest('.fu-stbtn');
+     if(st){
+       e.preventDefault();
+       openPoFollowupDetail_(st.dataset.req,st.dataset.po||'');
+       return;
+     }
      const hist=e.target.closest('.fu-hist');
      if(hist){
        e.preventDefault();
@@ -20872,6 +21608,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    // rows, Reload is what goes back to the database.
    ['p_poRepSearch','p_poRepStatus','p_poRepRequester','p_poRepPending']
      .forEach(id=>onFilter(id,renderPoFollowupReport));
+   fuSugBind_();   // value suggestions under the Search box
    // Header filter buttons → multi-select dropdown (openFuColFilter_).
    document.querySelectorAll('#p_poReportPanel .fu-colf').forEach(e=>{
      if(e.dataset.filterBound)return;
