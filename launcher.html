@@ -716,7 +716,10 @@ const APPS = [
   { key:'HOME_PACKING',       href:'packing.html',    ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg>', accent:'#34d399',
     title:'Packing',    sub:'Packing slips & dispatch' },
   { key:'HOME_ORDER_FORM',    href:'order-form.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>', accent:'#f472b6',
-    title:'Order Form', sub:'Sales order + Proforma Invoice' }
+    title:'Order Form', sub:'Sales order + Proforma Invoice' },
+  /* The file name has spaces (kept, as people already know it), hence the %20. */
+  { key:'HOME_SHEET_LINKS',   href:'google%20sheet%20links.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 9h18M3 15h18M9 9v12"/></svg>', accent:'#22c55e',
+    title:'Sheet Links', sub:'Your own Google Sheet shortcuts' }
 ];
 
 const ROLE_LABEL = {
@@ -1449,6 +1452,35 @@ function renderHome(user){
   $('noApps').style.display   = n ? 'none' : 'block';
 }
 
+/* ── An app added after this session was created ───────────────────────
+   allowed_apps is written on the session at login, so a session from before
+   an app existed (e.g. Sheet Links) does not list it: the button stays
+   hidden and the app's gate refuses it until the next login. Here the
+   launcher's own apps that the user IS allowed (same decision as at login)
+   are added to the session's list. Nothing is ever removed, so this can
+   only fill a gap, never take access away. Needs TABVIS, hence after
+   loadMasters(). If the RPC is missing, nothing changes. */
+async function addNewAppsToSession(tok, su){
+  const have = Array.isArray(su.allowed_apps) ? su.allowed_apps : [];
+  if (!have.length) return;   // an old session without a list: renderHome already works it out
+  const roles = (su.roles && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
+  const add = allowedAppKeys(roles, su.app_access || {}).filter(k => have.indexOf(k) < 0 && k !== 'HOME_ORDER_FORM');
+  if (!add.length) return;
+  const next = have.concat(add);
+  try{
+    const r = await SB.rpc('erp_app_touch_apps', { p_token: tok, p_allowed_apps: next });
+    if (r.error) return;
+  }catch(e){ return; }
+  su.allowed_apps = next;
+  renderHome({
+    id: su.id, name: su.name, primary_role: su.primary_role,
+    roles: su.roles || [], app_access: su.app_access || {},
+    allowed_apps: next,
+    cmp_profile_id: su.cmp_profile_id || null,
+    pk_profile_id: su.pk_profile_id || null
+  });
+}
+
 /* ── Logout: from one place, for all apps ──────────────────────────── */
 async function doLogout(){
   if (!confirm('Log out?\n\nYou will be logged out of all apps and will need to enter your PIN again.')) return;
@@ -1561,7 +1593,7 @@ async function doLogout(){
         });
         /* The dropdown fills quietly in the background so the login screen
            works immediately after a Logout. */
-        loadMasters().catch(()=>{});
+        loadMasters().then(() => addNewAppsToSession(tok, su)).catch(()=>{});
         return;
       }
       // Session ended or closed: clean up and show the login.

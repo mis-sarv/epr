@@ -4273,7 +4273,7 @@ function sarvFinishLogin_(){
    "the button showed on Home but the app didn't open" can never happen. */
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
-  'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM'];
+  'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5117,6 +5117,7 @@ const SARV_TABS=[
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board (opens from the launcher)',def:'ALL'},
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
+  {key:'HOME_SHEET_LINKS',label:'Sheet Links',hint:'Each user\'s own Google Sheet shortcut board (google sheet links.html, opens from the launcher)',def:'ALL'},
   {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'PO Generation › Sub Tabs'},
@@ -5761,9 +5762,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1};
 
 /* ── Apps that also need their own ACCOUNT ───────────────────────────
    Complaint and Packing data run on Supabase Auth (their RLS and triggers
@@ -18955,7 +18956,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    const visiblePos=openPos.filter(po=>{
      if(statusFilter&&String(po.status||'Generated')!==statusFilter)return false;
      if(!term)return true;
+     /* Item name / description come from the line items already cached in
+        sarvPoLineMap, so searching "blanket box" finds every PO carrying that
+        item without another fetch. If the lines failed to load, the PO-level
+        fields still match as before. */
+     const lines=(sarvPoLineMap[po.id]&&sarvPoLineMap[po.id].lines)||[];
      return [po.po_no,po.vendor_name,po.linked_req_nos,po.po_date]
+       .concat(lines.map(l=>(l.item_name||'')+' '+(l.item_description||'')))
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
    renderPoListDoneToggle(doneCount);
@@ -19313,14 +19320,19 @@ window.addEventListener('DOMContentLoaded',()=>{
       degrades on its own: a lookup that fails leaves its own columns blank
       rather than taking the whole sheet down. */
    const skip=(what)=>e=>{console.warn('[SARV] Follow-up '+what+' skipped:',e.message||e);return[]};
-   const [reqsRaw,pos,plRows,inwRows]=await Promise.all([
+   const [reqsRaw,pos,plRows,inwRows,prlRows]=await Promise.all([
      fetchAllRows('purchase_requirements','*','id').catch(e=>{dbError(e);return null}),
      fetchAllRows('purchase_orders','*','id').catch(skip('PO headers')),
      // item_name / ordered_qty come along so the PO cell can SHOW which of this
      // PR's items are on that PO — the link is then auditable from the sheet
      // instead of being taken on trust.
      fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no,line_no,item_name,ordered_qty','id').catch(skip('PO lines')),
-     fetchAllRows('inward_entries','*','id').catch(skip('inward'))
+     fetchAllRows('inward_entries','*','id').catch(skip('inward')),
+     /* The PR's own items, only for the Search box (Item Name / Description).
+        Taken from the PR rather than the PO lines so a PR with no PO yet is
+        found by its item too. Failing it only takes item search away. '*' on
+        purpose: a database that lacks item_description must not fail this. */
+     fetchAllRows('purchase_requirement_lines','*','id').catch(skip('PR lines'))
    ]);
    if(!reqsRaw)return;   // the PR list is the sheet itself — without it there is nothing to show
    // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a plain
@@ -19398,6 +19410,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      ...inwRows.map(i=>i.document_no)
    ]);
    const inwUrl=i=>poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||'';
+   // PR id -> "item name + description" text of all its lines, for the Search box.
+   const prItemText={};
+   prlRows.forEach(l=>{
+     const k=String(l.requirement_id||'');if(!k)return;
+     prItemText[k]=(prItemText[k]||'')+' '+(l.item_name||'')+' '+(l.item_description||'');
+   });
 
    sarvPoFollowupGroups=reqs.map(req=>{
      const rPos=(posByReq[req.req_no]||[]).slice()
@@ -19432,6 +19450,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        statuses:[...new Set(decidePos.map(p=>p.status||'Generated'))],
        prPdf:poFollowupPdfUrl_(pdfMap,req.req_no,['REQUIREMENT','SINGLE','TWO_PAGE'])||req.pdf_url||req.pdf_url_single||'',
        vendors:[...new Set(rPos.map(p=>String(p.vendor_name||'').trim()).filter(Boolean))],
+       // The PR's items plus this PR's items as named on its POs (a PO line
+       // can carry a corrected name).
+       itemText:(prItemText[String(req.id)]||'')+' '+poBlocks.map(b=>b.lines.map(l=>l.item_name||'').join(' ')).join(' '),
        inwUrlOf:inwUrl
      };
    });
@@ -19838,7 +19859,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         gets asked most. */
      const fuText=g.poBlocks.reduce((a,b)=>a.concat(poFuList_(b.po).map(f=>(f.remarks||'')+' '+(f.revisedDate||''))),[]);
      return nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
-       .concat(fuText)
+       .concat(fuText).concat([g.itemText])
        .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
    });
  }

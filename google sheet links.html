@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Sarv India — Sheet Links</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!--
+  SHEET LINKS: each user's own shortcut board for Google Sheets / Docs / Forms
+  (or any web link), grouped by department.
+
+  Opened from launcher.html (app key HOME_SHEET_LINKS). Identity comes from the
+  launcher's session through sso-gate.js; this page has no login of its own.
+
+  Storage: one row per user in `public.sheet_links`, read and written ONLY
+  through `sheet_links_get` / `sheet_links_save` (SHEET_LINKS_MIGRATION.sql).
+  Both resolve the user from the session token on the server, so one person
+  can never see or change another person's links.
+  If that migration has not been run yet, the page still works: the list is
+  kept in this browser (per user) and a banner says so. A copy is also kept
+  in this browser after every load / save, so a network drop on the factory
+  floor still opens the last known list.
+
+  The old version kept ONE shared list in a Google Apps Script sheet. That
+  list can be pulled into your own list once, from Settings › Backup.
+
+  Two modes:
+    * normal   : clean board, a click opens the link in a new tab
+    * Settings : the side panel (add / remove department, backup) appears and
+                 the board becomes editable: drag tiles or departments to
+                 re-arrange them, or use the arrow buttons (phones).
+-->
+<style>
+:root{
+  --bg:#0b1220;
+  --bg-2:#0f172a;
+  --surface:rgba(255,255,255,.045);
+  --surface-2:rgba(255,255,255,.075);
+  --surface-3:rgba(255,255,255,.11);
+  --hairline:rgba(255,255,255,.10);
+  --hairline-s:rgba(255,255,255,.18);
+  --txt:#eef2f8;
+  --txt-2:#9fb0c7;
+  --txt-3:#6b7f99;
+  --accent:#38bdf8;
+  --ok:#34d399;
+  --warn:#fbbf24;
+  --err:#f87171;
+  --err-bg:rgba(239,68,68,.10);
+  --err-br:rgba(239,68,68,.32);
+  --input:rgba(0,0,0,.24);
+  --shadow:0 18px 50px -14px rgba(0,0,0,.65);
+  --shadow-s:0 6px 18px -8px rgba(0,0,0,.55);
+  --radius:16px;
+  --side-w:310px;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#eef2f7;
+    --bg-2:#ffffff;
+    --surface:rgba(255,255,255,.82);
+    --surface-2:#ffffff;
+    --surface-3:#f1f5f9;
+    --hairline:rgba(15,23,42,.10);
+    --hairline-s:rgba(15,23,42,.20);
+    --txt:#0f172a;
+    --txt-2:#475569;
+    --txt-3:#64748b;
+    --err-bg:rgba(220,38,38,.07);
+    --err-br:rgba(220,38,38,.28);
+    --err:#dc2626;
+    --input:#ffffff;
+    --shadow:0 18px 44px -18px rgba(15,23,42,.30);
+    --shadow-s:0 6px 16px -10px rgba(15,23,42,.35);
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--txt);
+  min-height:100vh; min-height:100dvh;
+  font-family:'Segoe UI',system-ui,-apple-system,"Helvetica Neue",sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+/* The same two slow background glows as the launcher, so moving from the
+   launcher into this app feels like one product. */
+body::before,body::after{
+  content:''; position:fixed; z-index:-1; border-radius:50%;
+  filter:blur(90px); opacity:.45; pointer-events:none;
+}
+body::before{
+  width:60vmax; height:60vmax; top:-24vmax; left:-16vmax;
+  background:radial-gradient(circle at 30% 30%, #1d4ed8, transparent 62%);
+  animation:drift1 28s ease-in-out infinite alternate;
+}
+body::after{
+  width:52vmax; height:52vmax; bottom:-22vmax; right:-18vmax;
+  background:radial-gradient(circle at 60% 60%, #047857, transparent 62%);
+  animation:drift2 34s ease-in-out infinite alternate;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]) body::before,
+  :root:not([data-theme="dark"]) body::after{opacity:.22;}
+}
+@keyframes drift1{to{transform:translate3d(8vmax,6vmax,0) scale(1.12);}}
+@keyframes drift2{to{transform:translate3d(-7vmax,-5vmax,0) scale(1.08);}}
+
+svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+button{font-family:inherit;}
+:focus-visible{outline:2.5px solid var(--accent); outline-offset:2px;}
+
+/* ── Side panel (Settings only) ─────────────────────────────────────── */
+#side{
+  position:fixed; top:0; left:0; bottom:0; width:var(--side-w); z-index:60;
+  background:var(--bg-2); border-right:1px solid var(--hairline);
+  box-shadow:var(--shadow);
+  padding:22px 20px calc(80px + env(safe-area-inset-bottom));
+  overflow-y:auto;
+  transform:translateX(-102%); visibility:hidden;
+  transition:transform .28s cubic-bezier(.2,.8,.2,1), visibility 0s linear .28s;
+}
+body.settings #side{transform:none; visibility:visible; transition:transform .28s cubic-bezier(.2,.8,.2,1);}
+.side-h{display:flex; align-items:center; gap:10px; margin-bottom:20px;}
+.side-h b{font-size:15px; letter-spacing:.02em;}
+.side-h .x{margin-left:auto;}
+.blk{
+  background:var(--surface); border:1px solid var(--hairline);
+  border-radius:14px; padding:15px; margin-bottom:14px;
+}
+.blk h4{
+  margin:0 0 11px; font-size:11px; font-weight:750; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--txt-2); display:flex; align-items:center; gap:7px;
+}
+.blk h4.red{color:var(--err);}
+.blk p{margin:0 0 10px; font-size:12px; line-height:1.55; color:var(--txt-3);}
+.blk .row{display:flex; gap:8px; flex-wrap:wrap;}
+
+input[type=text],input[type=url],select{
+  width:100%; min-height:42px; padding:10px 12px; margin:0 0 10px;
+  background:var(--input); border:1px solid var(--hairline); border-radius:10px;
+  color:var(--txt); font-size:14px; font-family:inherit; outline:none;
+  transition:border-color .15s, box-shadow .15s;
+}
+input:focus,select:focus{border-color:var(--accent); box-shadow:0 0 0 3.5px rgba(56,189,248,.18);}
+select option{background:var(--bg-2); color:var(--txt);}
+label.f{display:block; font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--txt-2); margin:0 0 6px;}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  min-height:40px; padding:9px 14px; border-radius:10px;
+  border:1px solid var(--hairline-s); background:var(--surface-2); color:var(--txt);
+  font-size:13px; font-weight:650; cursor:pointer; white-space:nowrap;
+  transition:background .15s, border-color .15s, transform .1s, color .15s;
+}
+.btn:hover{border-color:var(--accent); background:var(--surface-3);}
+.btn:active{transform:translateY(1px);}
+.btn.full{width:100%;}
+.btn.pri{background:#2563eb; border-color:#2563eb; color:#fff;}
+.btn.pri:hover{background:#1d4ed8; border-color:#1d4ed8;}
+.btn.ok{background:#059669; border-color:#059669; color:#fff;}
+.btn.ok:hover{background:#047857;}
+.btn.danger{background:transparent; border-color:var(--err-br); color:var(--err);}
+.btn.danger:hover{background:var(--err-bg); border-color:var(--err);}
+.btn.ghost{background:transparent; border-color:transparent; color:var(--txt-2);}
+.btn.ghost:hover{color:var(--txt); background:var(--surface-2);}
+.btn.sm{min-height:32px; padding:6px 10px; font-size:12px; border-radius:8px;}
+.btn svg.i{width:16px;height:16px;}
+.ib{
+  width:32px; height:32px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;
+  background:transparent; border:1px solid transparent; color:var(--txt-2); cursor:pointer; font-size:14px; line-height:1;
+  transition:background .15s, color .15s, border-color .15s;
+}
+.ib:hover{background:var(--surface-3); color:var(--txt); border-color:var(--hairline);}
+.ib.red:hover{color:var(--err); border-color:var(--err-br); background:var(--err-bg);}
+.ib svg.i{width:16px;height:16px;}
+
+.swatches{display:flex; flex-wrap:wrap; gap:7px; margin:0 0 12px;}
+.swatches label{position:relative; cursor:pointer;}
+.swatches input{position:absolute; opacity:0; pointer-events:none;}
+.swatches span{
+  display:block; width:26px; height:26px; border-radius:50%; background:var(--c);
+  border:2px solid transparent; box-shadow:inset 0 0 0 2px var(--bg-2);
+  transition:transform .12s;
+}
+.swatches input:checked + span{border-color:var(--c); transform:scale(1.12);}
+.swatches input:focus-visible + span{outline:2px solid var(--accent); outline-offset:2px;}
+
+/* ── Main ──────────────────────────────────────────────────────────── */
+#main{
+  max-width:1320px; margin:0 auto;
+  padding:22px clamp(16px,3vw,36px) calc(90px + env(safe-area-inset-bottom));
+  transition:padding-left .28s cubic-bezier(.2,.8,.2,1);
+}
+@media (min-width:1001px){
+  body.settings #main{padding-left:calc(var(--side-w) + 28px);}
+}
+.top{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+.brand{display:flex; align-items:center; gap:12px; min-width:0;}
+.logo{
+  width:44px; height:44px; border-radius:13px; flex:none;
+  background:#059669; color:#fff; display:flex; align-items:center; justify-content:center;
+  box-shadow:0 8px 22px -8px rgba(5,150,105,.8), inset 0 1px 0 rgba(255,255,255,.3);
+}
+.logo svg.i{width:23px;height:23px;}
+.brand .t{font-size:16px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; line-height:1.15;}
+.brand .s{font-size:11.5px; color:var(--txt-3); letter-spacing:.03em; margin-top:2px;}
+.top .sp{flex:1;}
+.who{
+  display:flex; align-items:center; gap:10px; padding:6px 14px 6px 6px;
+  border:1px solid var(--hairline); background:var(--surface); border-radius:999px;
+}
+.who .av{
+  width:34px; height:34px; border-radius:50%; background:#1e40af; color:#fff;
+  display:flex; align-items:center; justify-content:center; font-weight:800; font-size:14px;
+}
+.who .nm{font-size:13px; font-weight:700; line-height:1.15; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.who .ck{font-size:11px; color:var(--txt-3); font-variant-numeric:tabular-nums;}
+#setBtn.on{background:#2563eb; border-color:#2563eb; color:#fff;}
+
+.hero{
+  display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap;
+  margin:30px 0 22px;
+}
+.hero h1{margin:0; font-size:clamp(24px,3.4vw,34px); font-weight:800; letter-spacing:-.02em; line-height:1.1;}
+.hero .sub{margin:8px 0 0; color:var(--txt-2); font-size:13.5px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+.chip{
+  display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px;
+  border:1px solid var(--hairline); background:var(--surface); font-size:11.5px; font-weight:650; color:var(--txt-2);
+}
+.chip .dt{width:7px; height:7px; border-radius:50%; background:var(--txt-3);}
+.chip.ok .dt{background:var(--ok);}
+.chip.busy .dt{background:var(--warn); animation:blink 1s ease-in-out infinite;}
+.chip.err{color:var(--err); border-color:var(--err-br);}
+.chip.err .dt{background:var(--err);}
+.chip.local .dt{background:var(--warn);}
+@keyframes blink{50%{opacity:.25;}}
+
+.search{position:relative; flex:1 1 320px; max-width:460px; margin-left:auto;}
+.search svg.i{position:absolute; left:14px; top:50%; transform:translateY(-50%); color:var(--txt-3); pointer-events:none;}
+.search input{
+  margin:0; min-height:46px; padding-left:42px; padding-right:44px; border-radius:12px;
+  background:var(--surface); font-size:14.5px;
+}
+.search kbd{
+  position:absolute; right:10px; top:50%; transform:translateY(-50%);
+  font:600 11px/1 'Segoe UI',sans-serif; color:var(--txt-3);
+  border:1px solid var(--hairline-s); border-radius:6px; padding:4px 7px; pointer-events:none;
+}
+
+.banner{
+  display:none; align-items:flex-start; gap:10px; padding:12px 14px; margin:0 0 18px;
+  border-radius:12px; border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.08);
+  font-size:12.5px; line-height:1.55; color:var(--txt);
+}
+.banner.on{display:flex;}
+.banner svg.i{color:var(--warn); margin-top:1px;}
+.banner code{background:var(--surface-3); padding:1px 6px; border-radius:5px; font-size:11.5px;}
+
+.edit-hint{
+  display:none; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 14px; margin:0 0 18px; border-radius:12px;
+  border:1px dashed rgba(56,189,248,.45); background:rgba(56,189,248,.07);
+  font-size:12.5px; color:var(--txt-2);
+}
+body.settings .edit-hint{display:flex;}
+.edit-hint b{color:var(--txt);}
+.edit-hint .sp{flex:1;}
+
+/* ── Department section ────────────────────────────────────────────── */
+.dept{
+  --a:#38bdf8;
+  position:relative; margin:0 0 18px; padding:18px 18px 20px;
+  background:var(--surface); border:1px solid var(--hairline); border-radius:var(--radius);
+  box-shadow:var(--shadow-s);
+  backdrop-filter:blur(14px) saturate(140%); -webkit-backdrop-filter:blur(14px) saturate(140%);
+}
+.dept::before{
+  content:''; position:absolute; left:0; top:18px; bottom:18px; width:3px;
+  border-radius:0 3px 3px 0; background:var(--a);
+}
+.dh{display:flex; align-items:center; gap:10px; margin:0 0 14px; min-height:32px;}
+.dh .dico{
+  width:32px; height:32px; border-radius:9px; flex:none; display:flex; align-items:center; justify-content:center;
+  color:var(--a); background:var(--surface-2); border:1px solid var(--hairline);
+  background:color-mix(in srgb, var(--a) 15%, transparent);
+  border-color:color-mix(in srgb, var(--a) 30%, transparent);
+}
+.dh .dico svg.i{width:17px;height:17px;}
+.dh h2{margin:0; font-size:15.5px; font-weight:750; letter-spacing:.04em; text-transform:uppercase; min-width:0; overflow-wrap:anywhere;}
+.dh .cnt{font-size:11.5px; color:var(--txt-3); font-weight:650; padding:2px 8px; border-radius:999px; border:1px solid var(--hairline);}
+.dh .sp{flex:1;}
+.dh .tools{display:none; align-items:center; gap:2px;}
+body.settings .dh .tools{display:flex;}
+.grip{
+  display:none; width:24px; height:32px; align-items:center; justify-content:center;
+  color:var(--txt-3); cursor:grab; border-radius:6px; flex:none;
+}
+.grip:hover{color:var(--txt); background:var(--surface-3);}
+.grip:active{cursor:grabbing;}
+body.settings .grip{display:inline-flex;}
+
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; min-height:20px;}
+.empty-d{grid-column:1/-1; font-size:12.5px; color:var(--txt-3); padding:6px 2px;}
+
+/* ── Link tile ─────────────────────────────────────────────────────── */
+.tile{
+  --a:#38bdf8;
+  position:relative; display:flex; align-items:center; gap:12px;
+  min-height:64px; padding:11px 12px 11px 11px; border-radius:13px;
+  background:var(--surface-2); border:1px solid var(--hairline);
+  color:var(--txt); text-decoration:none; cursor:pointer; user-select:none;
+  transition:transform .16s ease, border-color .16s, box-shadow .16s, background .16s;
+}
+a.tile:hover{
+  transform:translateY(-2px);
+  border-color:var(--a);
+  border-color:color-mix(in srgb, var(--a) 60%, transparent);
+  box-shadow:0 12px 26px -14px color-mix(in srgb, var(--a) 70%, transparent);
+}
+a.tile:hover .go{opacity:1; transform:translate(0,0); color:var(--a);}
+.tile .ti{
+  width:38px; height:38px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center;
+  color:var(--a); background:var(--surface-3);
+  background:color-mix(in srgb, var(--a) 14%, transparent);
+}
+.tile .tb{min-width:0; flex:1;}
+.tile .tn{display:block; font-size:13.5px; font-weight:650; line-height:1.3; overflow-wrap:anywhere;}
+.tile .th{display:block; font-size:11px; color:var(--txt-3); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.tile .go{color:var(--txt-3); opacity:.55; transform:translate(-3px,3px); transition:opacity .16s, transform .16s, color .16s;}
+.tile .go svg.i{width:16px;height:16px;}
+.tile .tt{display:none; gap:0; flex-wrap:nowrap;}
+.tile.ed{cursor:default; border-style:dashed; padding-left:6px;}
+.tile.ed .tt{display:flex;}
+.tile.ed .tt .ib{width:28px; height:28px;}
+.tile.ed .grip{display:inline-flex; width:20px;}
+.tile.ed .grip svg.i{width:15px;height:15px;}
+.tile.dragging,.dept.dragging{opacity:.4;}
+.tile.drop-before{box-shadow:-4px 0 0 0 var(--accent);}
+.tile.drop-after{box-shadow:4px 0 0 0 var(--accent);}
+.dept.drop-before{box-shadow:0 -4px 0 0 var(--accent);}
+.dept.drop-after{box-shadow:0 4px 0 0 var(--accent);}
+.dept.drop-into{border-color:var(--accent); background:rgba(56,189,248,.07);}
+.tile.flash{animation:flash 1.1s ease;}
+@keyframes flash{0%{border-color:var(--accent); box-shadow:0 0 0 4px rgba(56,189,248,.30);} 100%{}}
+.tile.add{
+  justify-content:center; border-style:dashed; color:var(--txt-2); font-size:13px; font-weight:650;
+  background:transparent; display:none;
+}
+.tile.add:hover{color:var(--accent); border-color:var(--accent);}
+body.settings .tile.add{display:flex;}
+
+/* First paint only, and never with reduced motion. */
+.rise{animation:rise .45s cubic-bezier(.2,.8,.2,1) both;}
+@keyframes rise{from{opacity:0; transform:translateY(10px);}}
+
+/* ── Empty / no results ────────────────────────────────────────────── */
+.blank{
+  text-align:center; padding:60px 20px; border:1px dashed var(--hairline-s); border-radius:var(--radius);
+  color:var(--txt-2); background:var(--surface);
+}
+.blank .bi{
+  width:58px; height:58px; margin:0 auto 14px; border-radius:16px; display:flex; align-items:center; justify-content:center;
+  background:rgba(5,150,105,.14); color:var(--ok);
+}
+.blank .bi svg.i{width:28px;height:28px;}
+.blank h3{margin:0 0 6px; color:var(--txt); font-size:17px;}
+.blank p{margin:0 auto 18px; max-width:420px; font-size:13px; line-height:1.6;}
+.blank .row{display:flex; gap:8px; justify-content:center; flex-wrap:wrap;}
+
+/* Loading skeleton, shown until the first list arrives. */
+.sk{height:150px; border-radius:var(--radius); margin:0 0 18px; background:var(--surface); border:1px solid var(--hairline); position:relative; overflow:hidden;}
+.sk::after{content:''; position:absolute; inset:0; transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent); animation:shim 1.3s infinite;}
+@keyframes shim{to{transform:translateX(100%);}}
+
+/* ── Dialog ────────────────────────────────────────────────────────── */
+#dlg{
+  position:fixed; inset:0; z-index:1000; display:none; align-items:center; justify-content:center; padding:16px;
+  background:rgba(2,6,23,.62); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+}
+#dlg.on{display:flex;}
+#dlg form{
+  width:100%; max-width:440px; background:var(--bg-2); border:1px solid var(--hairline-s);
+  border-radius:18px; box-shadow:var(--shadow); padding:22px;
+  animation:pop .2s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes pop{from{opacity:0; transform:translateY(8px) scale(.98);}}
+#dlg h3{margin:0 0 4px; font-size:17px;}
+#dlg .dsub{margin:0 0 18px; font-size:12.5px; color:var(--txt-2); line-height:1.55;}
+#dlg .derr{display:none; margin:-2px 0 12px; font-size:12px; color:var(--err);}
+#dlg .act{display:flex; justify-content:flex-end; gap:8px; margin-top:8px;}
+
+/* ── Toast ─────────────────────────────────────────────────────────── */
+#toast{
+  position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom)); z-index:1100;
+  transform:translate(-50%,20px); opacity:0; pointer-events:none;
+  display:flex; align-items:center; gap:12px; padding:10px 10px 10px 16px; border-radius:12px;
+  background:#0f172a; color:#f1f5f9; border:1px solid rgba(255,255,255,.16); box-shadow:var(--shadow);
+  font-size:13px; transition:opacity .2s, transform .2s; max-width:calc(100vw - 32px);
+}
+#toast.on{opacity:1; transform:translate(-50%,0); pointer-events:auto;}
+#toast button{background:transparent; border:1px solid rgba(255,255,255,.25); color:#7dd3fc; border-radius:8px; padding:6px 10px; font-weight:700; font-size:12px; cursor:pointer;}
+
+/* ── Phone / tablet ────────────────────────────────────────────────── */
+@media (max-width:1000px){
+  /* The side panel becomes a block above the board, so the board stays
+     visible while arranging; a drawer over it would hide the tiles. */
+  #side{
+    position:static; width:auto; transform:none; visibility:visible; display:none;
+    box-shadow:none; border-right:none; border:1px solid var(--hairline); border-radius:var(--radius);
+    margin:0 0 18px; padding:16px; background:var(--surface);
+  }
+  body.settings #side{display:block;}
+  #side .side-h{display:none;}
+  #side .blocks{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px;}
+  #side .blk{margin:0;}
+}
+@media (max-width:640px){
+  .who .ck{display:none;}
+  .who{padding-right:10px;}
+  .search{flex-basis:100%; max-width:none; order:5;}
+  .search kbd{display:none;}
+  .hero{margin:22px 0 16px;}
+  .grid{grid-template-columns:1fr;}
+  .dept{padding:15px 13px 16px;}
+  .brand .s{display:none;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none !important; transition:none !important;}
+}
+</style>
+</head>
+<body>
+
+<div id="main">
+  <header class="top">
+    <div class="brand">
+      <div class="logo"><svg class="i" viewBox="0 0 24 24"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 9h18M3 15h18M9 9v12"/></svg></div>
+      <div>
+        <div class="t">Sheet Links</div>
+        <div class="s">Sarv India Home Furnishing · Panipat</div>
+      </div>
+    </div>
+    <div class="sp"></div>
+    <div class="who" title="Logged in">
+      <div class="av" id="av">?</div>
+      <div>
+        <div class="nm" id="whoName">—</div>
+        <div class="ck" id="clock"></div>
+      </div>
+    </div>
+    <button class="btn" id="setBtn" type="button" aria-pressed="false" title="Add, edit and arrange your links">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      <span id="setBtnTx">Settings</span>
+    </button>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>My Google Sheet Links</h1>
+      <div class="sub">
+        <span id="stats">Loading…</span>
+        <span class="chip" id="sync"><span class="dt"></span><span id="syncTx">Connecting…</span></span>
+      </div>
+    </div>
+    <div class="search">
+      <svg class="i" viewBox="0 0 24 24"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35"/></svg>
+      <input type="text" id="q" placeholder="Search a process or department…" autocomplete="off" aria-label="Search links">
+      <kbd>/</kbd>
+    </div>
+  </section>
+
+  <div class="banner" id="banner">
+    <svg class="i" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+    <div id="bannerTx"></div>
+  </div>
+
+  <aside id="side" aria-label="Settings">
+    <div class="side-h">
+      <svg class="i" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+      <b>Settings</b>
+      <button class="ib x" type="button" id="sideClose" title="Close Settings" aria-label="Close Settings">✕</button>
+    </div>
+    <div class="blocks">
+      <div class="blk">
+        <h4>Add new department</h4>
+        <input type="text" id="newDept" placeholder="Department name, e.g. Weaving" maxlength="60">
+        <div class="swatches" id="newDeptColors"></div>
+        <button class="btn ok full" type="button" id="addDeptBtn">
+          <svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Create department
+        </button>
+      </div>
+      <div class="blk">
+        <h4 class="red">Remove department</h4>
+        <select id="delDept"><option value="">— Select department —</option></select>
+        <button class="btn danger full" type="button" id="delDeptBtn">
+          <svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></svg> Remove department
+        </button>
+      </div>
+      <div class="blk">
+        <h4>Arrange buttons</h4>
+        <p>Drag a link tile to a new place, or into another department. Drag a department by its handle to move the whole group. On a phone, use the ‹ › and ▴ ▾ buttons.</p>
+        <div class="row">
+          <button class="btn sm" type="button" id="sortDeptsBtn">Sort departments A–Z</button>
+          <button class="btn sm" type="button" id="sortAllBtn">Sort all links A–Z</button>
+        </div>
+      </div>
+      <div class="blk">
+        <h4>Backup</h4>
+        <p id="storeNote">Your links are saved to your own account.</p>
+        <div class="row">
+          <button class="btn sm" type="button" id="expBtn">Export file</button>
+          <button class="btn sm" type="button" id="impBtn">Import file</button>
+          <button class="btn sm" type="button" id="oldBtn" title="Copy the links from the old shared Google Sheet into your own list">Import old shared links</button>
+        </div>
+        <input type="file" id="impFile" accept=".json,application/json" hidden>
+      </div>
+    </div>
+  </aside>
+
+  <div class="edit-hint">
+    <svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    <span><b>Settings mode.</b> Drag to re-arrange · ✎ edit · ✕ remove. Changes save on their own.</span>
+    <span class="sp"></span>
+    <button class="btn sm pri" type="button" id="doneBtn">Done</button>
+  </div>
+
+  <div id="depts"><div class="sk"></div><div class="sk"></div></div>
+</div>
+
+<div id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT">
+  <form id="dlgForm" novalidate>
+    <h3 id="dlgT"></h3>
+    <p class="dsub" id="dlgSub"></p>
+    <div id="dlgBody"></div>
+    <div class="derr" id="dlgErr"></div>
+    <div class="act">
+      <button class="btn ghost" type="button" id="dlgCancel">Cancel</button>
+      <button class="btn pri" type="submit" id="dlgOk">Save</button>
+    </div>
+  </form>
+</div>
+
+<div id="toast" role="status" aria-live="polite"><span id="toastTx"></span><button type="button" id="toastUndo" hidden>Undo</button></div>
+
+<script>
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_SHEET_LINKS';
+
+/* The old shared list (Google Apps Script). Only READ now, for the one-time
+   "Import old shared links"; nothing is written back to it any more. */
+const OLD_SHEET_URL = "https://script.google.com/macros/s/AKfycbzt51pSzef4Tkf_Z2b1wgsLsN7TzT0S9Q4s3tVaZcWZUnGKNEddLTsGex_lU_TSntf5/exec";
+
+const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+  auth: { persistSession: false, autoRefreshToken: false }
+});
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+const uid_ = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* Department colours. Picked per department so people find "their" group by
+   colour before reading, the same idea as the launcher's app accents. */
+const COLORS = ['#38bdf8','#34d399','#a78bfa','#fb923c','#f472b6','#facc15','#60a5fa','#f87171','#2dd4bf','#c084fc'];
+
+let DATA = [];            // [{id, name, color, subs:[{id, name, url}]}]
+let USER = null;          // from SARV_GATE
+let STORE = 'cloud';      // 'cloud' = Supabase; 'local' = this browser only (migration not run)
+let SETTINGS = false;
+let firstPaint = true;
+
+/* ── Icons ─────────────────────────────────────────────────────────── */
+const P = {
+  sheet:'M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 9h18M3 15h18M9 9v12',
+  doc:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+  form:'M9 2h6v3H9zM8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2M8 12h8M8 16h5',
+  slides:'M3 4h18v12H3zM8 20h8M12 16v4',
+  folder:'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
+  chart:'M3 3v18h18M7 15l4-4 3 3 5-6',
+  truck:'M1 4h14v12H1zM15 9h4l3 3v4h-7M5.5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18.5 21a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
+  box:'M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8',
+  store:'M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1',
+  cut:'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12',
+  drop:'M12 2.7l5.7 5.7a8 8 0 1 1-11.4 0z',
+  check:'M22 11.1V12a10 10 0 1 1-5.9-9.1M22 4L12 14l-3-3',
+  print:'M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z',
+  layers:'M12 2L2 7l10 5 10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  tune:'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  money:'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  people:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  cart:'M9 22a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM20 22a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6',
+  wrench:'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+  link:'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  out:'M7 17L17 7M8 7h9v9',
+  grip:'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+  plus:'M12 5v14M5 12h14',
+  edit:'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z'
+};
+const svg = (k, extra) => '<svg class="i" viewBox="0 0 24 24"' + (extra ? ' style="' + extra + '"' : '') + '><path d="' + P[k] + '"' + (k === 'grip' ? ' stroke-width="3"' : '') + '/></svg>';
+
+/* The icon follows the process name first (that is what people recognise),
+   and falls back to the kind of link (Sheet / Doc / Form …). */
+const NAME_ICONS = [
+  [/weav|loom|knit|yarn/, 'layers'], [/dye|dyeing|colou?r|shade/, 'drop'], [/print/, 'print'],
+  [/pack/, 'box'], [/dispatch|deliver|transport|vehicle/, 'truck'], [/quality|check|inspect|\bqc\b|\bok\b/, 'check'],
+  [/report|mis|data|summary|analysis/, 'chart'], [/stock|store|inventory|warehouse/, 'store'],
+  [/raise|raising|finish|machine|maint|repair/, 'tune'], [/cut/, 'cut'], [/purchase|\bpo\b|\bpr\b|order|sale/, 'cart'],
+  [/account|payment|bill|invoice|salary|cost/, 'money'], [/hr\b|staff|attend|employee|labou?r/, 'people'], [/complain|service/, 'wrench']
+];
+function linkKind(url){
+  const u = String(url || '').toLowerCase();
+  if (u.includes('docs.google.com/spreadsheets')) return { label:'Google Sheets', icon:'sheet' };
+  if (u.includes('docs.google.com/document'))     return { label:'Google Docs',   icon:'doc' };
+  if (u.includes('docs.google.com/forms') || u.includes('forms.gle')) return { label:'Google Forms', icon:'form' };
+  if (u.includes('docs.google.com/presentation')) return { label:'Google Slides', icon:'slides' };
+  if (u.includes('drive.google.com'))             return { label:'Google Drive',  icon:'folder' };
+  if (u.includes('lookerstudio.google.com') || u.includes('datastudio.google.com')) return { label:'Looker Studio', icon:'chart' };
+  let host = '';
+  try{ host = new URL(url).hostname.replace(/^www\./, ''); }catch(e){}
+  return { label: host || 'Web link', icon:'link' };
+}
+function tileIcon(name, url){
+  const n = String(name || '').toLowerCase();
+  for (const [re, k] of NAME_ICONS) if (re.test(n)) return k;
+  return linkKind(url).icon;
+}
+function deptIcon(name){
+  const n = String(name || '').toLowerCase();
+  for (const [re, k] of NAME_ICONS) if (re.test(n)) return k;
+  return 'folder';
+}
+
+/* Only http(s) links are accepted. Anything else (javascript:, data: …)
+   would run code when the tile is clicked, so it is refused here, and again
+   when the list is loaded, in case an old or imported list carries one. */
+function safeUrl(raw){
+  let u = String(raw || '').trim();
+  if (!u) return '';
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(u)) u = 'https://' + u;
+  try{
+    const x = new URL(u);
+    if (x.protocol !== 'http:' && x.protocol !== 'https:') return '';
+    return x.href;
+  }catch(e){ return ''; }
+}
+
+/* Opening a Google Sheet with `usp=drivesdk` makes the Sheets app on a phone
+   take it, instead of the mobile browser's read-only view. Kept from the old page. */
+function openHref(url){
+  if (url.includes('docs.google.com/spreadsheets') && !url.includes('usp=')){
+    return url + (url.includes('?') ? '&' : '?') + 'usp=drivesdk';
+  }
+  return url;
+}
+
+/* Every list that comes in (server, local copy, file, old sheet) passes
+   through here, so the rest of the page can trust its shape. Old numeric
+   ids are kept (as strings) so nothing moves around. */
+function normalise(list){
+  if (!Array.isArray(list)) return [];
+  return list.filter(d => d && typeof d === 'object' && String(d.name || '').trim()).map((d, i) => ({
+    id: String(d.id != null ? d.id : uid_()),
+    name: String(d.name).trim().slice(0, 60),
+    color: COLORS.includes(d.color) ? d.color : COLORS[i % COLORS.length],
+    subs: (Array.isArray(d.subs) ? d.subs : []).map(s => ({
+      id: String(s && s.id != null ? s.id : uid_()),
+      name: String((s && s.name) || '').trim().slice(0, 80),
+      url: safeUrl(s && s.url)
+    })).filter(s => s.name && s.url)
+  }));
+}
+
+const findDept = id => DATA.find(d => d.id === id);
+const findLink = (dId, lId) => { const d = findDept(dId); return d ? d.subs.find(s => s.id === lId) : null; };
+
+/* ════════════════════════════════════════════════════════════════════
+   STORAGE
+   ──────────────────────────────────────────────────────────────────── */
+/* Local copy, per user: a shared factory PC must never show the previous
+   person's links. */
+const localKey = () => 'sarv_sheet_links_u_' + (USER && USER.id);
+function localGet(){
+  try{ return JSON.parse(localStorage.getItem(localKey()) || 'null'); }catch(e){ return null; }
+}
+function localPut(){
+  try{ localStorage.setItem(localKey(), JSON.stringify({ at: Date.now(), data: DATA })); }catch(e){}
+}
+
+/* The session ended in the middle (logged in elsewhere, Admin revoked):
+   same route as every other app, back to the launcher with the reason. */
+const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1 };
+function sessionGone(code){
+  try{ localStorage.removeItem('sarv_sso_token'); }catch(e){}
+  location.replace('launcher.html?why=' + encodeURIComponent(code));
+}
+const fnMissing = e => !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|schema cache/i.test(e.message || ''));
+
+function setSync(state, text){
+  const c = $('sync');
+  c.className = 'chip ' + state;
+  $('syncTx').textContent = text;
+}
+function showBanner(html){
+  $('bannerTx').innerHTML = html;
+  $('banner').classList.toggle('on', !!html);
+}
+
+let serverHadRow = true;
+async function loadData(){
+  setSync('busy', 'Loading…');
+  try{
+    const r = await SB.rpc('sheet_links_get', { p_token: SARV_GATE.token });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success){
+      if (SESSION_ERR[d.error]) return sessionGone(d.error);
+      throw Object.assign(new Error(d.error || 'unknown'), { code: d.error });
+    }
+    STORE = 'cloud';
+    serverHadRow = !!d.exists;
+    DATA = normalise(d.data);
+    localPut();
+    setSync('ok', 'Saved to your account');
+    showBanner('');
+  }catch(e){
+    const cached = localGet();
+    DATA = normalise(cached && cached.data);
+    if (fnMissing(e)){
+      /* Migration not run yet: keep working in this browser rather than
+         block the page. It moves to the server by itself once the SQL runs
+         (the next save goes there). */
+      STORE = 'local';
+      setSync('local', 'Saved on this device only');
+      showBanner('Your links are being kept <b>in this browser only</b>, because the server storage is not set up yet. '
+        + 'Admin: run <code>SHEET_LINKS_MIGRATION.sql</code> in the Supabase SQL Editor. After that, open this page once and your links move to your account.');
+    }else{
+      console.error('[SHEET LINKS] load failed:', e);
+      STORE = 'cloud';
+      setSync('err', 'Offline copy');
+      showBanner('Could not reach the server, so the last copy saved on this device is shown. '
+        + 'Changes made now may not reach your account. <small>(' + esc(e.message || e) + ')</small>');
+    }
+  }
+  render();
+}
+
+/* Saves are batched: a drag or a burst of edits produces ONE request, and
+   a save that starts while another is in flight waits and sends the latest
+   list, so the server can never end up with an older version. */
+let saveT = null, saving = false, again = false, dirty = false;
+function queueSave(){
+  localPut();
+  dirty = true;
+  clearTimeout(saveT);
+  setSync('busy', 'Saving…');
+  saveT = setTimeout(flush, 450);
+}
+async function flush(){
+  if (saving){ again = true; return; }
+  saving = true;
+  const snapshot = JSON.parse(JSON.stringify(DATA));
+  try{
+    const r = await SB.rpc('sheet_links_save', { p_token: SARV_GATE.token, p_data: snapshot });
+    if (r.error) throw r.error;
+    const d = r.data || {};
+    if (!d.success){
+      if (SESSION_ERR[d.error]) return sessionGone(d.error);
+      throw Object.assign(new Error(d.error || 'unknown'), { code: d.error });
+    }
+    if (STORE === 'local'){ STORE = 'cloud'; showBanner(''); toast('Your links are now saved to your account'); }
+    serverHadRow = true;
+    dirty = false;
+    const t = d.updated_at ? new Date(d.updated_at) : new Date();
+    setSync('ok', 'Saved · ' + t.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }));
+  }catch(e){
+    if (fnMissing(e)){
+      STORE = 'local';
+      dirty = false;
+      setSync('local', 'Saved on this device only');
+    }else{
+      console.error('[SHEET LINKS] save failed:', e);
+      setSync('err', 'Not saved — will retry');
+      // One quiet retry; the next change retries again anyway.
+      clearTimeout(saveT);
+      saveT = setTimeout(flush, 8000);
+    }
+  }finally{
+    saving = false;
+    if (again){ again = false; flush(); }
+    updateStoreNote();
+  }
+}
+window.addEventListener('beforeunload', e => {
+  if (dirty && STORE === 'cloud'){ e.preventDefault(); e.returnValue = ''; }
+});
+function updateStoreNote(){
+  $('storeNote').textContent = STORE === 'cloud'
+    ? 'Your links are saved to your own account and follow you to any device. Export a file to keep a copy.'
+    : 'Server storage is not set up yet, so links are kept in this browser. Export a file to be safe.';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   RENDER
+   ──────────────────────────────────────────────────────────────────── */
+function render(){
+  const box = $('depts');
+  const total = DATA.reduce((n, d) => n + d.subs.length, 0);
+  $('stats').textContent = DATA.length
+    ? DATA.length + (DATA.length === 1 ? ' department' : ' departments') + ' · ' + total + (total === 1 ? ' link' : ' links')
+    : 'No links yet';
+
+  // Remove-department dropdown follows the same order as the board.
+  const sel = $('delDept'), keep = sel.value;
+  sel.innerHTML = '<option value="">— Select department —</option>'
+    + DATA.map(d => '<option value="' + esc(d.id) + '">' + esc(d.name) + ' (' + d.subs.length + ')</option>').join('');
+  if (findDept(keep)) sel.value = keep;
+
+  if (!DATA.length){
+    box.innerHTML = '<div class="blank rise">'
+      + '<div class="bi">' + svg('sheet') + '</div>'
+      + '<h3>Your board is empty</h3>'
+      + '<p>Create a department (Weaving, Dyeing, Packing …) and add the Google Sheet links you open every day. Only you see this list.</p>'
+      + '<div class="row">'
+      + '<button class="btn pri" type="button" data-act="start">' + svg('plus') + ' Add my first department</button>'
+      + (!serverHadRow || STORE === 'local' ? '<button class="btn" type="button" data-act="import-old">Import old shared links</button>' : '')
+      + '</div></div>';
+    firstPaint = false;
+    return;
+  }
+
+  let n = 0;
+  box.innerHTML = DATA.map((d, di) => {
+    const tiles = d.subs.map((s, si) => {
+      const k = linkKind(s.url);
+      const delay = firstPaint ? ' style="--a:' + d.color + ';animation-delay:' + Math.min(0.03 * n++, 0.6).toFixed(2) + 's"' : ' style="--a:' + d.color + '"';
+      const inner = '<span class="ti">' + svg(tileIcon(s.name, s.url)) + '</span>'
+        + '<span class="tb"><span class="tn">' + esc(s.name) + '</span><span class="th">' + esc(k.label) + '</span></span>';
+      if (!SETTINGS){
+        return '<a class="tile' + (firstPaint ? ' rise' : '') + '"' + delay + ' href="' + esc(openHref(s.url)) + '" target="_blank" rel="noopener noreferrer"'
+          + ' data-d="' + esc(d.id) + '" data-l="' + esc(s.id) + '" title="' + esc(s.url) + '">'
+          + inner + '<span class="go">' + svg('out') + '</span></a>';
+      }
+      return '<div class="tile ed" draggable="true" style="--a:' + d.color + '" data-d="' + esc(d.id) + '" data-l="' + esc(s.id) + '">'
+        + '<span class="grip" title="Drag to move">' + svg('grip') + '</span>'
+        + inner
+        + '<span class="tt">'
+        + (si > 0 ? '<button class="ib" type="button" data-act="l-left" title="Move left" aria-label="Move left">‹</button>' : '')
+        + (si < d.subs.length - 1 ? '<button class="ib" type="button" data-act="l-right" title="Move right" aria-label="Move right">›</button>' : '')
+        + '<button class="ib" type="button" data-act="l-edit" title="Edit link" aria-label="Edit link">✎</button>'
+        + '<button class="ib red" type="button" data-act="l-del" title="Remove link" aria-label="Remove link">✕</button>'
+        + '</span></div>';
+    }).join('');
+
+    const empty = !d.subs.length && !SETTINGS ? '<div class="empty-d">No links in this department yet. Open Settings to add one.</div>' : '';
+    const add = '<button class="tile add" type="button" data-act="l-add" data-d="' + esc(d.id) + '">' + svg('plus') + ' Add link</button>';
+
+    return '<section class="dept' + (firstPaint ? ' rise' : '') + '" style="--a:' + d.color + (firstPaint ? ';animation-delay:' + (0.04 * di).toFixed(2) + 's' : '') + '" data-d="' + esc(d.id) + '">'
+      + '<div class="dh">'
+      + '<span class="grip" draggable="true" data-dgrip="1" title="Drag to move this department">' + svg('grip') + '</span>'
+      + '<span class="dico">' + svg(deptIcon(d.name)) + '</span>'
+      + '<h2>' + esc(d.name) + '</h2>'
+      + '<span class="cnt">' + d.subs.length + '</span>'
+      + '<span class="sp"></span>'
+      + '<span class="tools">'
+      + (di > 0 ? '<button class="ib" type="button" data-act="d-up" title="Move up" aria-label="Move department up">▴</button>' : '')
+      + (di < DATA.length - 1 ? '<button class="ib" type="button" data-act="d-down" title="Move down" aria-label="Move department down">▾</button>' : '')
+      + (d.subs.length > 1 ? '<button class="ib" type="button" data-act="d-sort" title="Sort links A–Z" aria-label="Sort links A to Z" style="font-size:11px;font-weight:800;width:auto;padding:0 7px;">A–Z</button>' : '')
+      + '<button class="ib" type="button" data-act="d-edit" title="Rename / colour" aria-label="Rename department">✎</button>'
+      + '<button class="btn sm pri" type="button" data-act="l-add" style="margin-left:4px;">' + svg('plus') + ' Add link</button>'
+      + '</span></div>'
+      + '<div class="grid">' + tiles + empty + (SETTINGS ? add : '') + '</div>'
+      + '</section>';
+  }).join('') + '<div class="blank" id="noHits" style="display:none;"><h3>Nothing matches</h3><p>No department or link has that name. Try a shorter word.</p></div>';
+
+  firstPaint = false;
+  applySearch();
+}
+
+function flashTile(lId){
+  const t = document.querySelector('.tile[data-l="' + CSS.escape(lId) + '"]');
+  if (!t) return;
+  t.classList.add('flash');
+  t.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  setTimeout(() => t.classList.remove('flash'), 1200);
+}
+
+/* ── Search ───────────────────────────────────────────────────────── */
+function applySearch(){
+  const q = $('q').value.toLowerCase().trim();
+  let any = false;
+  document.querySelectorAll('#depts .dept').forEach(sec => {
+    const d = findDept(sec.dataset.d);
+    const deptHit = !q || d.name.toLowerCase().includes(q);
+    let hits = 0;
+    sec.querySelectorAll('.tile[data-l]').forEach(t => {
+      const s = d.subs.find(x => x.id === t.dataset.l);
+      const ok = deptHit || (s && s.name.toLowerCase().includes(q));
+      t.style.display = ok ? '' : 'none';
+      if (ok) hits++;
+    });
+    const show = deptHit || hits > 0;
+    sec.style.display = show ? '' : 'none';
+    if (show) any = true;
+  });
+  const nh = $('noHits');
+  if (nh) nh.style.display = (q && !any) ? 'block' : 'none';
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SETTINGS MODE
+   ──────────────────────────────────────────────────────────────────── */
+function setSettings(on){
+  SETTINGS = !!on;
+  document.body.classList.toggle('settings', SETTINGS);
+  $('setBtn').classList.toggle('on', SETTINGS);
+  $('setBtn').setAttribute('aria-pressed', SETTINGS ? 'true' : 'false');
+  $('setBtnTx').textContent = SETTINGS ? 'Done' : 'Settings';
+  try{ sessionStorage.setItem('sarv_sheet_links_settings', SETTINGS ? '1' : ''); }catch(e){}
+  render();
+  if (SETTINGS && innerWidth <= 1000) $('side').scrollIntoView({ block:'start', behavior:'smooth' });
+}
+
+function swatchHtml(name, current){
+  return COLORS.map(c => '<label title="' + c + '"><input type="radio" name="' + name + '" value="' + c + '"' + (c === current ? ' checked' : '') + '><span style="--c:' + c + '"></span></label>').join('');
+}
+function nextColor(){ return COLORS[DATA.length % COLORS.length]; }
+
+function addDepartment(name, color){
+  name = String(name || '').trim();
+  if (!name){ toast('Type a department name first'); $('newDept').focus(); return null; }
+  if (DATA.some(d => d.name.toLowerCase() === name.toLowerCase())){ toast('"' + name + '" already exists'); return null; }
+  const d = { id: uid_(), name: name.slice(0, 60), color: color || nextColor(), subs: [] };
+  DATA.push(d);
+  queueSave(); render();
+  return d;
+}
+
+/* ── Undo ─────────────────────────────────────────────────────────── */
+/* Every removal can be undone for a few seconds; much kinder than an
+   "Are you sure?" box for something as small as one link. */
+let undoSnap = null, toastT = null;
+function toast(msg, snap){
+  $('toastTx').textContent = msg;
+  undoSnap = snap || null;
+  $('toastUndo').hidden = !undoSnap;
+  $('toast').classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => { $('toast').classList.remove('on'); undoSnap = null; }, undoSnap ? 6000 : 2600);
+}
+const snap = () => JSON.stringify(DATA);
+
+/* ── Dialog ───────────────────────────────────────────────────────── */
+let dlgSubmit = null, dlgReturn = null;
+function dlgOpen(o){
+  dlgReturn = document.activeElement;
+  $('dlgT').textContent = o.title;
+  $('dlgSub').textContent = o.sub || '';
+  $('dlgSub').style.display = o.sub ? '' : 'none';
+  $('dlgBody').innerHTML = o.body || '';
+  $('dlgErr').style.display = 'none';
+  $('dlgOk').textContent = o.ok || 'Save';
+  $('dlgOk').className = 'btn ' + (o.danger ? 'danger' : 'pri');
+  dlgSubmit = o.onOk;
+  $('dlg').classList.add('on');
+  setTimeout(() => { const f = $('dlgBody').querySelector('input,select'); (f || $('dlgOk')).focus(); }, 30);
+}
+function dlgClose(){
+  $('dlg').classList.remove('on');
+  dlgSubmit = null;
+  if (dlgReturn && dlgReturn.focus) try{ dlgReturn.focus(); }catch(e){}
+}
+function dlgErr(m){ const e = $('dlgErr'); e.textContent = m; e.style.display = 'block'; }
+
+function openLinkDialog(dId, lId){
+  const s = lId ? findLink(dId, lId) : null;
+  dlgOpen({
+    title: s ? 'Edit link' : 'Add link',
+    sub: s ? '' : 'Paste the Google Sheet (or any web) link and give it a short name.',
+    body: '<label class="f" for="fName">Name</label>'
+      + '<input type="text" id="fName" maxlength="80" placeholder="e.g. Daily Weaving Report" value="' + esc(s ? s.name : '') + '">'
+      + '<label class="f" for="fUrl">Link</label>'
+      + '<input type="url" id="fUrl" placeholder="https://docs.google.com/spreadsheets/…" value="' + esc(s ? s.url : '') + '">'
+      + '<label class="f" for="fDept">Department</label>'
+      + '<select id="fDept">' + DATA.map(d => '<option value="' + esc(d.id) + '"' + (d.id === dId ? ' selected' : '') + '>' + esc(d.name) + '</option>').join('') + '</select>',
+    ok: s ? 'Save' : 'Add link',
+    onOk(){
+      const name = $('fName').value.trim();
+      const url = safeUrl($('fUrl').value);
+      const to = $('fDept').value;
+      if (!name) return dlgErr('Please give the link a name'), false;
+      if (!url) return dlgErr('That does not look like a web link. It should start with https://'), false;
+      const dst = findDept(to);
+      if (!dst) return dlgErr('Choose a department'), false;
+      let id;
+      if (s){
+        s.name = name.slice(0, 80); s.url = url; id = s.id;
+        if (to !== dId){
+          const src = findDept(dId);
+          src.subs = src.subs.filter(x => x.id !== s.id);
+          dst.subs.push(s);
+        }
+      }else{
+        id = uid_();
+        dst.subs.push({ id, name: name.slice(0, 80), url });
+      }
+      queueSave(); render(); flashTile(id);
+      toast(s ? 'Link updated' : 'Link added to ' + dst.name);
+      return true;
+    }
+  });
+}
+
+function openDeptDialog(dId){
+  const d = findDept(dId);
+  if (!d) return;
+  dlgOpen({
+    title: 'Edit department',
+    body: '<label class="f" for="fDName">Name</label>'
+      + '<input type="text" id="fDName" maxlength="60" value="' + esc(d.name) + '">'
+      + '<label class="f">Colour</label><div class="swatches">' + swatchHtml('fDColor', d.color) + '</div>',
+    onOk(){
+      const name = $('fDName').value.trim();
+      if (!name) return dlgErr('Please enter a name'), false;
+      if (DATA.some(x => x !== d && x.name.toLowerCase() === name.toLowerCase())) return dlgErr('Another department already has this name'), false;
+      d.name = name.slice(0, 60);
+      const c = document.querySelector('input[name=fDColor]:checked');
+      if (c) d.color = c.value;
+      queueSave(); render();
+      return true;
+    }
+  });
+}
+
+function removeDepartment(dId){
+  const d = findDept(dId);
+  if (!d){ toast('Choose a department to remove'); return; }
+  const go = () => {
+    const before = snap();
+    DATA = DATA.filter(x => x.id !== dId);
+    queueSave(); render();
+    toast('"' + d.name + '" removed', before);
+  };
+  if (!d.subs.length) return go();
+  dlgOpen({
+    title: 'Remove "' + d.name + '"?',
+    sub: 'This department has ' + d.subs.length + (d.subs.length === 1 ? ' link' : ' links') + '. They will be removed with it. You can undo for a few seconds afterwards.',
+    ok: 'Remove department', danger: true,
+    onOk(){ go(); return true; }
+  });
+}
+
+const byName = (a, b) => a.name.localeCompare(b.name, 'en', { sensitivity:'base', numeric:true });
+
+/* ── Import (file / old shared sheet) ─────────────────────────────── */
+/* Imports MERGE, never replace: a department with the same name is joined,
+   and a link already present (same address) is skipped. So importing the
+   same file twice changes nothing. */
+function mergeIn(list){
+  let dAdded = 0, lAdded = 0;
+  normalise(list).forEach(src => {
+    let d = DATA.find(x => x.name.toLowerCase() === src.name.toLowerCase());
+    if (!d){
+      d = { id: uid_(), name: src.name, color: nextColor(), subs: [] };
+      DATA.push(d); dAdded++;
+    }
+    src.subs.forEach(s => {
+      if (d.subs.some(x => x.url === s.url)) return;
+      d.subs.push({ id: uid_(), name: s.name, url: s.url }); lAdded++;
+    });
+  });
+  return { dAdded, lAdded };
+}
+function confirmMerge(list, from){
+  const clean = normalise(list);
+  const links = clean.reduce((n, d) => n + d.subs.length, 0);
+  if (!clean.length){ toast('Nothing to import from ' + from); return; }
+  dlgOpen({
+    title: 'Import from ' + from + '?',
+    sub: clean.length + ' departments with ' + links + ' links were found. They will be ADDED to your list; links you already have are skipped, and nothing of yours is removed.',
+    ok: 'Import',
+    onOk(){
+      const before = snap();
+      const r = mergeIn(clean);
+      queueSave(); render();
+      toast('Imported ' + r.lAdded + ' links' + (r.dAdded ? ' in ' + r.dAdded + ' new departments' : ''), before);
+      return true;
+    }
+  });
+}
+async function importOld(){
+  setSync('busy', 'Reading old sheet…');
+  try{
+    const r = await fetch(OLD_SHEET_URL + '?t=' + Date.now());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const tx = await r.text();
+    restoreSync();
+    confirmMerge(tx && tx.trim() ? JSON.parse(tx) : [], 'the old shared sheet');
+  }catch(e){
+    restoreSync();
+    console.error('[SHEET LINKS] old sheet import failed:', e);
+    toast('The old Google Sheet could not be read (' + (e.message || e) + ')');
+  }
+}
+function restoreSync(){
+  if (STORE === 'local') setSync('local', 'Saved on this device only');
+  else setSync('ok', 'Saved to your account');
+}
+function exportFile(){
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  const nm = String((USER && USER.name) || 'user').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sheet-links-' + nm + '-' + today_() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function today_(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   DRAG & DROP (Settings mode)
+   ──────────────────────────────────────────────────────────────────── */
+let drag = null, drop = null;
+function clearMarks(){
+  document.querySelectorAll('.drop-before,.drop-after,.drop-into').forEach(el => el.classList.remove('drop-before','drop-after','drop-into'));
+}
+function moveLink(fromD, lId, toD, refL, after){
+  const src = findDept(fromD), dst = findDept(toD);
+  if (!src || !dst) return;
+  const i = src.subs.findIndex(x => x.id === lId);
+  if (i < 0) return;
+  const [item] = src.subs.splice(i, 1);
+  let j = refL ? dst.subs.findIndex(x => x.id === refL) : -1;
+  if (j < 0) j = dst.subs.length; else if (after) j++;
+  dst.subs.splice(j, 0, item);
+}
+function moveDept(dId, refD, after){
+  const i = DATA.findIndex(x => x.id === dId);
+  if (i < 0) return;
+  const [item] = DATA.splice(i, 1);
+  let j = DATA.findIndex(x => x.id === refD);
+  if (j < 0) j = DATA.length; else if (after) j++;
+  DATA.splice(j, 0, item);
+}
+function wireDrag(box){
+  box.addEventListener('dragstart', e => {
+    if (!SETTINGS) return;
+    const g = e.target.closest && e.target.closest('[data-dgrip]');
+    if (g){
+      const sec = g.closest('.dept');
+      drag = { k:'dept', d: sec.dataset.d };
+      sec.classList.add('dragging');
+      try{ e.dataTransfer.setDragImage(sec, 24, 24); }catch(x){}
+    }else{
+      const t = e.target.closest && e.target.closest('.tile.ed');
+      if (!t) return;
+      drag = { k:'link', d: t.dataset.d, l: t.dataset.l };
+      t.classList.add('dragging');
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    try{ e.dataTransfer.setData('text/plain', ''); }catch(x){}   // Firefox needs data to start a drag
+  });
+  box.addEventListener('dragover', e => {
+    if (!drag) return;
+    const sec = e.target.closest('.dept');
+    if (!sec) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    clearMarks();
+    if (drag.k === 'link'){
+      const t = e.target.closest('.tile[data-l]');
+      if (t && t.dataset.l !== drag.l){
+        const r = t.getBoundingClientRect();
+        // In a one-column grid (phone width) the tiles stack, so compare on Y there.
+        const oneCol = r.width > sec.getBoundingClientRect().width * 0.6;
+        const after = oneCol ? e.clientY > r.top + r.height / 2 : e.clientX > r.left + r.width / 2;
+        t.classList.add(after ? 'drop-after' : 'drop-before');
+        drop = { d: sec.dataset.d, l: t.dataset.l, after };
+      }else if (!t){
+        sec.classList.add('drop-into');
+        drop = { d: sec.dataset.d, l: null };
+      }else drop = null;
+    }else{
+      if (sec.dataset.d === drag.d){ drop = null; return; }
+      const r = sec.getBoundingClientRect();
+      const after = e.clientY > r.top + r.height / 2;
+      sec.classList.add(after ? 'drop-after' : 'drop-before');
+      drop = { d: sec.dataset.d, after };
+    }
+  });
+  box.addEventListener('drop', e => {
+    if (!drag) return;
+    e.preventDefault();
+    const dg = drag, dp = drop;
+    drag = drop = null;
+    clearMarks();
+    if (!dp) return render();
+    if (dg.k === 'link') moveLink(dg.d, dg.l, dp.d, dp.l, dp.after);
+    else moveDept(dg.d, dp.d, dp.after);
+    queueSave(); render();
+    if (dg.k === 'link') flashTile(dg.l);
+  });
+  box.addEventListener('dragend', () => {
+    drag = drop = null;
+    clearMarks();
+    document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   CLICKS (one delegated handler for the whole board)
+   ──────────────────────────────────────────────────────────────────── */
+function onBoardClick(e){
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  const sec = b.closest('.dept');
+  const dId = (sec && sec.dataset.d) || b.dataset.d;
+  const t = b.closest('.tile[data-l]');
+  const lId = t && t.dataset.l;
+  const d = findDept(dId);
+
+  switch (act){
+    case 'start':      setSettings(true); setTimeout(() => $('newDept').focus(), 320); break;
+    case 'import-old': importOld(); break;
+    case 'l-add':      openLinkDialog(dId); break;
+    case 'l-edit':     openLinkDialog(dId, lId); break;
+    case 'l-del': {
+      const s = findLink(dId, lId);
+      if (!s) return;
+      const before = snap();
+      d.subs = d.subs.filter(x => x.id !== lId);
+      queueSave(); render();
+      toast('"' + s.name + '" removed', before);
+      break;
+    }
+    case 'l-left': case 'l-right': {
+      const i = d.subs.findIndex(x => x.id === lId), j = i + (act === 'l-left' ? -1 : 1);
+      if (i < 0 || j < 0 || j >= d.subs.length) return;
+      [d.subs[i], d.subs[j]] = [d.subs[j], d.subs[i]];
+      queueSave(); render(); flashTile(lId);
+      break;
+    }
+    case 'd-up': case 'd-down': {
+      const i = DATA.findIndex(x => x.id === dId), j = i + (act === 'd-up' ? -1 : 1);
+      if (i < 0 || j < 0 || j >= DATA.length) return;
+      [DATA[i], DATA[j]] = [DATA[j], DATA[i]];
+      queueSave(); render();
+      const el = document.querySelector('.dept[data-d="' + CSS.escape(dId) + '"]');
+      if (el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
+      break;
+    }
+    case 'd-sort': {
+      const before = snap();
+      d.subs.sort(byName);
+      queueSave(); render();
+      toast('Links in ' + d.name + ' sorted A–Z', before);
+      break;
+    }
+    case 'd-edit': openDeptDialog(dId); break;
+  }
+}
+
+/* ── Clock ────────────────────────────────────────────────────────── */
+function tick(){
+  const now = new Date();
+  $('clock').textContent = now.toLocaleDateString('en-IN', { weekday:'short', day:'2-digit', month:'short' })
+    + ' · ' + now.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   BOOT
+   ──────────────────────────────────────────────────────────────────── */
+(async function boot(){
+  // Resolves only when this user may open the app; otherwise the gate
+  // redirects to the launcher or shows the reason screen.
+  USER = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Sheet Links' });
+
+  const nm = USER.name || 'User';
+  $('whoName').textContent = nm;
+  $('av').textContent = nm.trim().charAt(0).toUpperCase();
+  tick(); setInterval(tick, 1000);
+
+  $('newDeptColors').innerHTML = swatchHtml('newDeptColor', COLORS[0]);
+
+  const box = $('depts');
+  box.addEventListener('click', onBoardClick);
+  wireDrag(box);
+
+  $('setBtn').addEventListener('click', () => setSettings(!SETTINGS));
+  $('doneBtn').addEventListener('click', () => setSettings(false));
+  $('sideClose').addEventListener('click', () => setSettings(false));
+
+  $('addDeptBtn').addEventListener('click', () => {
+    const c = document.querySelector('input[name=newDeptColor]:checked');
+    const d = addDepartment($('newDept').value, c && c.value);
+    if (!d) return;
+    $('newDept').value = '';
+    // Pre-pick the next colour so departments don't all come out the same.
+    const nx = document.querySelector('input[name=newDeptColor][value="' + nextColor() + '"]');
+    if (nx) nx.checked = true;
+    toast('Department "' + d.name + '" created');
+    const el = document.querySelector('.dept[data-d="' + CSS.escape(d.id) + '"]');
+    if (el) el.scrollIntoView({ block:'center', behavior:'smooth' });
+  });
+  $('newDept').addEventListener('keydown', e => { if (e.key === 'Enter') $('addDeptBtn').click(); });
+  $('delDeptBtn').addEventListener('click', () => removeDepartment($('delDept').value));
+
+  $('sortDeptsBtn').addEventListener('click', () => {
+    if (DATA.length < 2) return;
+    const before = snap();
+    DATA.sort(byName); queueSave(); render();
+    toast('Departments sorted A–Z', before);
+  });
+  $('sortAllBtn').addEventListener('click', () => {
+    if (!DATA.length) return;
+    const before = snap();
+    DATA.forEach(d => d.subs.sort(byName)); queueSave(); render();
+    toast('All links sorted A–Z', before);
+  });
+
+  $('expBtn').addEventListener('click', exportFile);
+  $('impBtn').addEventListener('click', () => $('impFile').click());
+  $('impFile').addEventListener('change', async function(){
+    const f = this.files && this.files[0];
+    this.value = '';
+    if (!f) return;
+    try{ confirmMerge(JSON.parse(await f.text()), f.name); }
+    catch(e){ toast('That file could not be read as a Sheet Links backup'); }
+  });
+  $('oldBtn').addEventListener('click', importOld);
+
+  $('toastUndo').addEventListener('click', () => {
+    if (!undoSnap) return;
+    DATA = normalise(JSON.parse(undoSnap));
+    undoSnap = null;
+    queueSave(); render();
+    $('toast').classList.remove('on');
+  });
+
+  $('dlgForm').addEventListener('submit', e => {
+    e.preventDefault();
+    if (dlgSubmit && dlgSubmit() !== false) dlgClose();
+  });
+  $('dlgCancel').addEventListener('click', dlgClose);
+  $('dlg').addEventListener('mousedown', e => { if (e.target === $('dlg')) dlgClose(); });
+
+  $('q').addEventListener('input', applySearch);
+  $('q').addEventListener('keydown', e => {
+    // Enter opens the first match, so "search, Enter" is the fastest way in.
+    if (e.key === 'Enter' && !SETTINGS){
+      const first = [...document.querySelectorAll('#depts a.tile')].find(t => t.style.display !== 'none');
+      if (first) first.click();
+    }
+    if (e.key === 'Escape'){ $('q').value = ''; applySearch(); $('q').blur(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && $('dlg').classList.contains('on')) return dlgClose();
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement || {}).tagName || '');
+    if (e.key === '/' && !typing){ e.preventDefault(); $('q').focus(); }
+  });
+
+  updateStoreNote();
+  await loadData();
+  updateStoreNote();
+
+  // A refresh while arranging stays in Settings.
+  try{ if (sessionStorage.getItem('sarv_sheet_links_settings')) setSettings(true); }catch(e){}
+
+  if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+})();
+</script>
+
+<!-- Floating "← Apps" button (hidden inside iframes / without a session). See app-back.js. -->
+<script src="app-back.js"></script>
+</body>
+</html>

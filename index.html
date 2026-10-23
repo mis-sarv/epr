@@ -2983,8 +2983,8 @@
                 <div id="p_poListPanel" style="display:none;">
                     <div class="filter-bar" style="grid-template-columns: 3fr 1fr auto;">
                         <div class="form-group">
-                            <label>Search (PO No / Vendor / Req No)</label>
-                            <input type="text" class="form-control" id="p_poListSearch" placeholder="e.g. PO/U-2/0001 or vendor name">
+                            <label>Search (PO No / Vendor / Req No / Item)</label>
+                            <input type="text" class="form-control" id="p_poListSearch" placeholder="e.g. PO/U-2/0001, vendor or item name">
                         </div>
                         <div class="form-group">
                             <label>Status</label>
@@ -3030,8 +3030,8 @@
                 <div id="p_poReportPanel" style="display:none;">
                     <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto auto;">
                         <div class="form-group">
-                            <label>Search (PR / PO / Inward / Requester / Vendor)</label>
-                            <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR608, PO793, 1913 or GOURAV" title="Search works with both the short number (PR608) and the full number (PR/26-27/608)">
+                            <label>Search (PR / PO / Inward / Requester / Vendor / Item)</label>
+                            <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR608, PO793, GOURAV or item name" title="Search works with both the short number (PR608) and the full number (PR/26-27/608), and with any word of an item name or description">
                         </div>
                         <div class="form-group">
                             <label>PO Status</label>
@@ -3072,7 +3072,11 @@
                         <span class="totals-pill"><span class="lbl">Requester Informed</span><span class="val" id="p_poRepInformed">0</span></span>
                     </div>
 
-                    <div style="font-size:11px;color:#64748b;margin:-4px 0 8px;line-height:1.6;">
+                    <!-- Help text: closed by default so the table starts higher up; one
+                         click on the line opens it. A plain <details>, so no JS. -->
+                    <details style="font-size:11px;color:#64748b;margin:-4px 0 8px;line-height:1.6;">
+                        <summary style="cursor:pointer;color:#2563eb;font-weight:700;width:max-content;user-select:none;" title="Show / hide the notes on how to read this report">&#9432; How to read this report</summary>
+                        <div style="margin-top:4px;">
                         Numbers are shown in short form (<b>PR/26-27/608 &rarr; PR608</b>, <b>PO/U-2/793 &rarr; PO793</b>,
                         <b>SIHF-II/2026-27/1913 &rarr; 1913</b>, <b>NB/2/2026-27/1250 &rarr; NB1250</b>) &mdash;
                         the full number shows on hover, and clicking opens that document's PDF.<br>
@@ -3085,7 +3089,8 @@
                         records the vendor's new delivery date, it shows here (latest first). Click
                         <b>History</b> in the cell to see every follow-up entry: date, remark, who made it and when.
                         The PO's original <b>Delivery Date of PO</b> does not change; it stays what was sent to the vendor.
-                    </div>
+                        </div>
+                    </details>
                     <!-- Link audit. Silent when every PO reaches its PR through its own
                          lines, which is the only way the two can be trusted to match.
                          Speaks up the moment something had to be guessed at. -->
