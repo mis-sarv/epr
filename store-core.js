@@ -3834,6 +3834,7 @@ function addPurchaseMainRow(afterTr){
    <td><input class="table-input col-uom" placeholder="Auto from Master" readonly style="background:#f1f5f9;"></td>
    <td><input type="number" class="table-input col-grossweight" min="0" step="any"></td>
    <td><input class="table-input col-rem" placeholder="optional note"></td>
+   <td class="col-stock" style="padding:3px 6px;vertical-align:middle;"></td>
    <td class="row-actions"><button type="button" class="add-row-btn" title="Add a new row below this one">+</button><button type="button" class="delete-row-btn" title="Remove this row">×</button></td>`;
  const anchor=(afterTr&&afterTr.parentNode===tb)?afterTr:null;
  if(anchor)anchor.insertAdjacentElement('afterend',tr);else tb.appendChild(tr);
@@ -3857,7 +3858,186 @@ function addPurchaseMainRow(afterTr){
  // the Add New Item popup can drop a fresh name straight into it.
  return tr;
 }
-function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q}
+function refreshPurchaseTotals(){const rows=[...document.querySelectorAll('#p_itemTableBody tr')];let q=0;rows.forEach((r,i)=>{r.querySelector('.sr-cell').textContent=i+1;q+=+r.querySelector('.col-qty')?.value||0});if(byId('p_totalItemCount'))byId('p_totalItemCount').textContent=rows.length;if(byId('p_totalQty'))byId('p_totalQty').textContent=q;
+ // Every way a PR row gets its item (typed, Item Master NEW PR, Trims sheet,
+ // reopened for edit) ends here, so the Stock / MSV column follows them all.
+ prStockRefresh_();}
+
+/* ══ ITEM STOCK SNAPSHOT — Balance Stock, the same rule everywhere ═══════════
+   Balance Stock = Stock on hand − open requirement of the saved trims sheets.
+     • Stock on hand   = every inward qty − every outward qty for the item (the
+                         Item Master's Balance Qty, so the screens agree).
+     • Open requirement = for each saved Trims Manager sheet that is not
+                         Completed / Closed: its Order Qty for the item minus
+                         what has already been ISSUED to that sheet's lots
+                         (issued material has already left the stock, so the
+                         full requirement would count it twice).
+   trims-manager.html works this out with the identical rule (loadStockOnHand_
+   / loadSavedSheetReqs_ / stockOf) — change one, change the other.
+
+   Read once and cached for STOCK_SNAP_TTL; a failed read of the sheets leaves
+   reserve null (on hand is still shown), a failed read of the stock leaves the
+   whole snapshot null (the cell says it could not load) — never a wrong 0. */
+const STOCK_SNAP_TTL=120000;
+let sarvStockSnap=null,sarvStockSnapAt=0,sarvStockSnapP=null;
+const sarvNormLot_=s=>String(s||'').toUpperCase().replace(/LOT|NO\.?|#|:|-|\s/g,'').replace(/^0+(?=\d)/,'');
+async function sarvLoadStockSnapshot_(force){
+  if(!SB_READY)return null;
+  if(!force&&sarvStockSnap&&Date.now()-sarvStockSnapAt<STOCK_SNAP_TTL)return sarvStockSnap;
+  if(sarvStockSnapP)return sarvStockSnapP;
+  sarvStockSnapP=(async()=>{
+    try{
+      // outward_lines with its lot (line first, header as the fallback) so the
+      // same read gives both the stock and what each lot has been issued.
+      const outRead=()=>fetchAllRows('outward_lines','item_id,qty,outward_id,lot_no','id')
+        .catch(()=>fetchAllRows('outward_lines','item_id,qty,outward_id','id'));
+      const [inl,outl,issues]=await Promise.all([
+        fetchAllRows('inward_lines','item_id,qty','id'),
+        outRead(),
+        fetchAllRows('outward_entries','id,lot_no','id',q=>q.eq('entry_type','ISSUE')).catch(()=>[])
+      ]);
+      const onHand={};
+      inl.forEach(l=>{if(l.item_id)onHand[l.item_id]=(onHand[l.item_id]||0)+pNum(l.qty);});
+      outl.forEach(l=>{if(l.item_id)onHand[l.item_id]=(onHand[l.item_id]||0)-pNum(l.qty);});
+      // lot → item → issued qty
+      const issueLot={};issues.forEach(e=>{issueLot[e.id]=e.lot_no;});
+      const issued={};
+      outl.forEach(l=>{
+        if(!l.item_id||!(l.outward_id in issueLot))return;
+        const lot=sarvNormLot_(l.lot_no||issueLot[l.outward_id]);if(!lot)return;
+        const m=issued[lot]=issued[lot]||{};m[l.item_id]=(m[l.item_id]||0)+pNum(l.qty);
+      });
+      let reserve=null;
+      try{
+        const [sheets,lots,lines]=await Promise.all([
+          fetchAllRows('mfg_trims_sheets','id,order_no,status','id'),
+          fetchAllRows('mfg_trims_sheet_lots','sheet_id,lot_no','sheet_id'),
+          fetchAllRows('mfg_trims_lines','sheet_id,store_item_id,order_qty','id')
+        ]);
+        const lotsBy={};lots.forEach(x=>{(lotsBy[x.sheet_id]=lotsBy[x.sheet_id]||[]).push(sarvNormLot_(x.lot_no));});
+        const reqBy={};
+        lines.forEach(l=>{if(!l.store_item_id)return;const m=reqBy[l.sheet_id]=reqBy[l.sheet_id]||{};m[l.store_item_id]=(m[l.store_item_id]||0)+pNum(l.order_qty);});
+        reserve={};
+        sheets.forEach(sh=>{
+          if(/^(completed|closed)$/i.test(String(sh.status||'').trim()))return;
+          const sl=(lotsBy[sh.id]||[]).filter(Boolean);
+          Object.entries(reqBy[sh.id]||{}).forEach(([itemId,req])=>{
+            const iss=sl.reduce((s,lot)=>s+pNum(issued[lot]&&issued[lot][itemId]),0);
+            const open=Math.max(0,req-iss);
+            if(open>0)(reserve[itemId]=reserve[itemId]||[]).push({orderNo:sh.order_no,req,issued:iss,open});
+          });
+        });
+      }catch(e){console.warn('[SARV] Trims sheet requirements unavailable — Balance Stock shows on hand only:',e.message||e);}
+      sarvStockSnap={onHand,reserve};sarvStockSnapAt=Date.now();
+      return sarvStockSnap;
+    }catch(e){
+      console.warn('[SARV] Stock snapshot unavailable:',e.message||e);
+      return null;
+    }finally{sarvStockSnapP=null;}
+  })();
+  return sarvStockSnapP;
+}
+// Balance Stock for one item; excludeOrderNo leaves that order's own sheet out.
+function sarvStockFor_(itemId,excludeOrderNo){
+  const s=sarvStockSnap;if(!s||!itemId)return null;
+  const onHand=pNum(s.onHand[itemId]);
+  const res=((s.reserve&&s.reserve[itemId])||[]).filter(x=>x.orderNo!==excludeOrderNo);
+  const reserved=res.reduce((a,x)=>a+x.open,0);
+  return {onHand,reserved,free:onHand-reserved,res,resKnown:!!s.reserve};
+}
+
+/* ── PR form: "Stock / MSV / Std Order Qty" column ──────────────────────────
+   One cell per item row, three readings stacked:
+     Bal <free>                      Balance Stock (on hand − other orders)
+     On hand X · Other orders Y
+     MSV M · Std Order Qty S         from the Item Master
+   Red when the free balance is below MSV (the item needs buying), green
+   otherwise; hover gives the working, order by order. The row's item comes
+   from dataset.itemId when the row was filled from a record, else the name. */
+function prRowItem_(tr){
+  const id=tr.dataset.itemId;
+  if(id){const c=(sarvItemCatalog||[]).find(it=>String(it.id)===String(id));if(c)return c;}
+  return lookupItem(tr.querySelector('.col-name')?.value)||null;
+}
+function prStockCellHtml_(it){
+  if(!it)return '<span style="color:#94a3b8;">—</span>';
+  const st=sarvStockFor_(it.id);
+  const msv=itemMsv_(it),soq=itemStdOrderQty_(it),uom=it.uom||'';
+  const f=v=>nNum_(v);
+  const setLine='<div style="font-size:9.5px;color:#475569;white-space:nowrap;">MSV <b>'+(msv==null?'—':f(msv))+'</b> · Std Order <b>'+(soq==null?'—':f(soq))+'</b></div>'
+    +prPipeLineHtml_(it);
+  if(!st)return '<div style="font-size:10px;color:#94a3b8;" title="Stock is loading or could not be read">Stock …</div>'+setLine;
+  const low=msv!=null&&st.free<msv;
+  const tip='Stock on hand: '+f(st.onHand)+' '+uom
+    +(st.res.length?'\nLess open requirement of saved orders (Trims sheets):\n'+st.res.map(x=>'  '+x.orderNo+': Req '+f(x.req)+' − Issued '+f(x.issued)+' = '+f(x.open)).join('\n'):'\nNo saved order needs this item')
+    +(st.resKnown?'':'\n(Saved orders could not be read; not deducted)')
+    +'\n= Balance Stock '+f(st.free)+' '+uom
+    +'\nMSV: '+(msv==null?'not set':f(msv))+(low?'  → BELOW MSV':'')
+    +'\nStandard Order Qty: '+(soq==null?'not set':f(soq));
+  return '<div title="'+escText(tip)+'" style="line-height:1.25;cursor:help;">'
+    +'<div style="font-weight:800;font-size:12px;color:'+(st.free<0||low?'#dc2626':'#15803d')+';white-space:nowrap;">Bal '+f(st.free)+'</div>'
+    +'<div style="font-size:9.5px;color:#64748b;white-space:nowrap;">On hand '+f(st.onHand)+(st.reserved?' · Other orders '+f(st.reserved):'')+'</div>'
+    +setLine+'</div>';
+}
+/* ── "In PR / PO" on the same cell ─────────────────────────────────────────
+   The Item Master's Pending PR / PO figure (imLoadPipeline_), so the PR form,
+   the Item Master column and My Day all read ONE number:
+     In PO = open POs, still to be received (on each line's Bill Basis)
+     In PR = open PRs, not yet on a PO and not received "without PO"
+   Rejected / Cancelled PRs and POs are already left out there.
+   A PR open here for EDIT is not counted against itself — its own lines are
+   what is being typed. Loaded on demand, reused for STOCK_SNAP_TTL, and marked
+   stale after any Inward / Outward or PR save. */
+let sarvPrPipeAt=0,sarvPrPipeP=null,sarvEditingReqNo_='';
+function prPipeEnsure_(){
+  if(sarvImPipe&&!sarvImPipeErr&&Date.now()-sarvPrPipeAt<STOCK_SNAP_TTL)return null;
+  if(sarvPrPipeP)return sarvPrPipeP;
+  const items=(sarvItemCatalog&&sarvItemCatalog.length)?sarvItemCatalog:null;
+  // No item list yet (still loading at startup): building now would resolve
+  // nothing and cache zeros — wait, the next refresh tries again.
+  if(!items&&!(sarvItemMasterRows||[]).length)return null;
+  sarvPrPipeP=sarvImPipePromise=imLoadPipeline_(items)
+    .catch(e=>console.warn('[SARV] PR form PR/PO qty unavailable:',e.message||e))
+    .finally(()=>{sarvPrPipeAt=Date.now();sarvPrPipeP=null;});
+  return sarvPrPipeP;
+}
+function prPipeFor_(it){
+  if(!it)return null;
+  if(!sarvImPipe)return {loading:true};
+  if(sarvImPipeErr)return {err:sarvImPipeErr};
+  const b=sarvImPipe.get(String(it.id))||{po:0,pr:0,docs:[]};
+  const editNo=sarvEditingRequirementId?sarvEditingReqNo_:'';
+  const docs=(b.docs||[]).filter(d=>!(editNo&&d.type==='PR'&&d.no===editNo));
+  const own=(b.docs||[]).filter(d=>editNo&&d.type==='PR'&&d.no===editNo).reduce((s,d)=>s+pNum(d.pending),0);
+  return {po:pNum(b.po),pr:Math.max(0,pNum(b.pr)-own),docs};
+}
+function prPipeLineHtml_(it){
+  const p=prPipeFor_(it);
+  if(!p)return '';
+  if(p.loading)return '<div style="font-size:9.5px;color:#94a3b8;">In PR / PO …</div>';
+  if(p.err)return '<div style="font-size:9.5px;color:#94a3b8;" title="'+escText('Could not load: '+p.err)+'">In PR / PO —</div>';
+  const f=v=>nNum_(Math.round(v*1000)/1000);
+  const tip=p.docs.length
+    ?p.docs.slice(0,12).map(d=>d.type+' '+d.no+' · '+(d.status||'')+' · Pending '+f(d.pending)+(d.unit?' '+d.unit:'')).join('\n')+(p.docs.length>12?'\n… and '+(p.docs.length-12)+' more':'')
+    :'No open PR or PO for this item';
+  return '<div style="font-size:9.5px;white-space:nowrap;" title="'+escText(tip)+'">'
+    +'<span style="color:#b45309;">In PR <b>'+f(p.pr)+'</b></span> · '
+    +'<span style="color:#1d4ed8;">In PO <b>'+f(p.po)+'</b></span></div>';
+}
+function prStockRepaint_(){
+  document.querySelectorAll('#p_itemTableBody tr').forEach(tr=>{const c=tr.querySelector('.col-stock');if(c)c.innerHTML=prStockCellHtml_(prRowItem_(tr));});
+}
+function prStockRefresh_(){
+  const rows=[...document.querySelectorAll('#p_itemTableBody tr')];
+  if(!rows.length)return;
+  // First paint from whatever is cached; a stale / missing snapshot or PR/PO
+  // figure is fetched once and the cells repainted when it lands.
+  prStockRepaint_();
+  if(!sarvStockSnap||Date.now()-sarvStockSnapAt>=STOCK_SNAP_TTL)
+    sarvLoadStockSnapshot_().then(s=>{if(s)prStockRepaint_();});
+  const pp=prPipeEnsure_();
+  if(pp)pp.then(prStockRepaint_);
+}
 async function saveFullPurchaseRequirement(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#p_itemTableBody tr')].map(r=>({name:r.querySelector('.col-name')?.value,description:r.querySelector('.col-desc')?.value,make:r.querySelector('.col-make')?.value,category:r.querySelector('.col-cat')?.value,uom:r.querySelector('.col-uom')?.value,qty:+r.querySelector('.col-qty')?.value||0,specification:r.querySelector('.col-rem')?.value})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one item required','warn');/* Same rule as saveRequirementWithPdf_: required_by is never written as NULL. */const requiredBy=(byId('p_requiredByDate')?.value||'').trim();if(!requiredBy)return showToast('Please choose a Required By Date','warn');const no=await nextNo('REQ');const h=await SB.from('purchase_requirements').insert({req_no:no,request_date:byId('p_reqDate').value||today(),required_by:requiredBy,requested_by:byId('p_reqPersonName').value||byId('p_reqGeneratedBy').value||'Unknown',purchaser_name:byId('p_reqGeneratedBy').value||null,employee_code:byId('p_reqEmpCode').value||null,department:byId('p_reqDepartment').value||null,purpose:'Purchase requirement',priority:byId('p_priority').value||'Normal',notes:byId('p_overallRemarks').value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom})}const ins=await SB.from('purchase_requirement_lines').insert(ls);if(ins.error)throw ins.error;showToast('Requirement saved: '+no);}
 async function saveStoreInward(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.item-name')?.value,desc:r.querySelector('.item-desc')?.value,make:r.querySelector('.item-make')?.value,cat:r.querySelector('.item-cat')?.value,uom:r.querySelector('.item-uom')?.value,qty:+r.querySelector('.qty-field')?.value||0,weight:+r.querySelector('.weight-field')?.value||0,rate:+r.querySelector('.rate-field')?.value||0,tax:+r.querySelector('.item-gst-field')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one inward item required','warn');const no=await nextNo('INWARD');const h=await SB.from('inward_entries').insert({document_no:no,entry_type:byId('entryTypeSelect')?.value||'INWARD',receiving_date:byId('receivingDate')?.value||today(),invoice_no:byId('invoiceNumber')?.value||null,invoice_date:byId('invoiceDate')?.value||null,party_state:byId('partyState')?.value||null,notes:byId('inwRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({inward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight,rate:r.rate,gst_pct:r.tax,line_total:r.qty*r.rate})}const ins=await SB.from('inward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Inward saved: '+no)}
 async function saveStoreOutward(){if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');const rows=[...document.querySelectorAll('#outwardItemTableBody tr:not(.po-info-row)')].map(r=>({name:r.querySelector('.out-item-name')?.value,desc:r.querySelector('.out-item-desc')?.value,make:r.querySelector('.out-item-make')?.value,cat:r.querySelector('.out-item-cat')?.value,uom:r.querySelector('.out-qty-uom')?.value,qty:+r.querySelector('.out-qty')?.value||0,weight:+r.querySelector('.out-weight')?.value||0})).filter(x=>x.name&&x.qty>0);if(!rows.length)return showToast('At least one outward item required','warn');const no=await nextNo('OUTWARD');const h=await SB.from('outward_entries').insert({document_no:no,entry_type:byId('outEntryTypeSelect')?.value||'OUTWARD',outward_date:byId('outDate')?.value||today(),party_name:byId('outPartyName')?.value||'Unknown',location:byId('outLocation')?.value||null,receiver_name:byId('outReceiverName')?.value||null,target_return_date:byId('outTargetReturnDate')?.value||null,gate_pass_no:byId('outGatePassNo')?.value||null,transport:byId('outTransport')?.value||null,notes:byId('outRemarks')?.value||null}).select().single();if(h.error)throw h.error;const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.desc,r.make,r.cat,r.uom);ls.push({outward_id:h.data.id,item_id:it.id,qty:r.qty,uom:r.uom||it.uom,weight:r.weight})}const ins=await SB.from('outward_lines').insert(ls);if(ins.error)throw ins.error;showToast('Outward saved: '+no)}
@@ -9314,7 +9494,7 @@ window.sarvGenerateNewPrFromTrims=async function(req){
     const lots=(req&&Array.isArray(req.lots))?req.lots.join(', '):'';
     showToast('Filled '+used.length+' item(s) from the Trims sheet into the New PR form'
       +(req&&req.orderNo?' — Order '+escText(req.orderNo):'')+(lots?' · Lot '+escText(lots):'')
-      +'. Qty = Final PO Qty (Lot Req + Wastage). Fill in <b>Required By</b> and the <b>Machine</b> on the first row, then Submit; the PR No will be set in the Trims sheet automatically.');
+      +'. Qty = New PR Qty from the Trims sheet (Order Qty + MSV − Balance Stock). Fill in <b>Required By</b> and the <b>Machine</b> on the first row, then Submit; the PR No will be set in the Trims sheet automatically.');
     if(unresolved.length)showToast(''+unresolved.length+' item(s) not found in the Item Master; Description / Category are empty: '+unresolved.slice(0,3).map(escText).join(', ')+(unresolved.length>3?' …':''),'warn');
     return { ok:true, filled:used.length };
   }catch(e){
@@ -17927,6 +18107,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      regenerated PDF keeps the GM / MD signs. A new record has none yet, so that
      round trip is skipped. */
   async function generateStorePdfs(kind,d,items,recordId,photoInput,opts={}){
+    // An Inward / Outward / Issue has just been saved: the stock (and what is
+    // still owed on POs / PRs) moved, so the PR form must not read the old figures.
+    sarvStockSnapAt=0;sarvPrPipeAt=0;
     // The photo engine's store is the source of truth: it holds BOTH camera and
     // gallery shots and honours anything removed with the preview's ✕.
     const photoKey=(kind==='OUTWARD'||kind==='ISSUE')?'outward':'inward';
@@ -18056,6 +18239,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      designs:(sarvActiveTrimsLot.designs||[]).slice(),manual:!!sarvActiveTrimsLot.manual}:null}}
  function collectRequirementData(no,rows){return {reqNo:no,ts:new Date(),date:pVal('p_reqDate'),requiredByDate:pVal('p_requiredByDate'),priority:pVal('p_priority'),generatedBy:pVal('p_reqGeneratedBy'),personName:pVal('p_reqPersonName'),empCode:pVal('p_reqEmpCode'),designation:pVal('p_reqDesignation'),department:pVal('p_reqDepartment'),contact:pVal('p_reqContact'),overallRemarks:pVal('p_overallRemarks'),items:rows.map(x=>({name:x.name,desc:x.description,make:x.make,category:x.category,machine:x.machine,qty:x.qty,uom:x.uom,grossWeight:x.grossWeight,remarks:x.specification}))}}
  async function generateRequirementPdf(d,recordId){
+   // A PR was just saved — the next PR form must count it under "In PR".
+   sarvPrPipeAt=0;
    const html=buildRequirementPdfHtml(d);
    let blob;
    try{ blob=await buildRequirementNativePdfBlob(d); }
@@ -19895,7 +20080,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    document.querySelectorAll('#fullPurchasePanel .tab-content').forEach(e=>{e.style.display='none';e.classList.remove('active')});
    const entry=byId('p_tab-entry');if(entry){entry.style.display='block';entry.classList.add('active')}
    const set=(id,v)=>{if(byId(id))byId(id).value=v??''};
-   sarvEditingRequirementId=req.id;set('p_reqDate',req.request_date);set('p_requiredByDate',req.required_by);
+   sarvEditingRequirementId=req.id;sarvEditingReqNo_=req.req_no||"";set('p_reqDate',req.request_date);set('p_requiredByDate',req.required_by);
    /* An already-saved PR may have been needed by a date that has since passed.
       The picker's floor is today for a NEW form, so it is lowered to whatever
       this PR already carries — otherwise reopening an old PR would show its own

@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><script src="date-dmy.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
+<!doctype html><html lang="en"><head><script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
 
 <div id="sarvLoginGate" style="position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;">
   <div style="background:#fff;border-radius:14px;padding:26px 28px;max-width:360px;width:92%;box-shadow:0 20px 50px rgba(0,0,0,0.35);">
@@ -2824,15 +2824,16 @@
                             <tr>
                                 <th style="width: 4%; text-align: center;">Sr.</th>
                                 <th style="width: 14%;">Item Name <span style="color:#dc2626;">*</span><br><button type="button" class="th-new-item-btn" onclick="openNewItemMasterModal('purchase')" title="Add a new item to the Item Master. It appears in this list immediately.">+ Add New Item</button></th>
-                                <th style="width: 18%;">Item Description / Spec</th>
-                                <th style="width: 9%;">MAKE / Brand</th>
-                                <th style="width: 10%;">Category</th>
-                                <th style="width: 11%;">Machine Name &amp; No. <span style="color:#dc2626;">*</span></th>
+                                <th style="width: 14%;">Item Description / Spec</th>
+                                <th style="width: 8%;">MAKE / Brand</th>
+                                <th style="width: 8%;">Category</th>
+                                <th style="width: 10%;">Machine Name &amp; No. <span style="color:#dc2626;">*</span></th>
                                 <th style="width: 7%;">Qty <span style="color:#dc2626;">*</span></th>
-                                <th style="width: 7%;">UOM</th>
-                                <th style="width: 8%;">Gross Wt. (kg)</th>
-                                <th style="width: 10%;">Item Remarks</th>
-                                <th style="width: 6%;"></th>
+                                <th style="width: 6%;">UOM</th>
+                                <th style="width: 7%;">Gross Wt. (kg)</th>
+                                <th style="width: 9%;">Item Remarks</th>
+                                <th style="width: 10%;" title="Balance Stock = Stock on hand − open requirement of saved orders (Trims sheets). MSV and Standard Order Qty from the Item Master. In PR / In PO = qty already requested / ordered and not yet received (same figure as the Item Master's Pending PR / PO). Red = below MSV.">Balance Stock</th>
+                                <th style="width: 5%;"></th>
                             </tr>
                         </thead>
                         <tbody id="p_itemTableBody"></tbody>

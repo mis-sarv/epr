@@ -26,7 +26,7 @@ ERP iframes in `index.html` (~line 2057) use `data-src` and are loaded lazily.
 ## Desktop ERP script order — do not change
 
 ```
-index.html <head>: date-dmy.js → sso-preboot.js → sso-gate.js → store.css → erp-shell.css → store-mytasks.css
+index.html <head>: date-dmy.js → caps-input.js → sso-preboot.js → sso-gate.js → store.css → erp-shell.css → store-mytasks.css
 end of <body>:     store-core.js → store-design-master.js → store-nav-keys.js → store-mytasks.js → erp-shell.js → app-back.js
 ```
 
@@ -99,6 +99,10 @@ jsonb columns to avoid migrations (e.g. PO follow-ups in `purchase_orders.approv
   `launcher.html`); small table actions use text labels or plain glyphs (✎ ✕ ✓ ↻ ☰ ▾). Prefer flat fills,
   thin borders and light shadows over gradients and glows.
 - Always escape user data with `escText()` when building HTML strings.
+- `caps-input.js` (every app page except `launcher.html`, right after `date-dmy.js`) shows and saves all typed
+  text in CAPITALS. It skips password/email/url/number/date inputs, `data-dmy` boxes, read-only boxes and any
+  box named as a PIN/password/OTP/token/email/mail/url field; mark a container `data-no-caps` to opt out.
+  Keep name/item lookups case-insensitive (`ilike` / lower-cased compare) so capitals never create duplicates.
 - Dates: every app loads `date-dmy.js` first, which turns `<input type="date">` into a DD/MM/YYYY text box
   (`data-dmy="1"`) whose `.value` still reads/writes `YYYY-MM-DD`. Select date boxes with
   `input[type=date],input[data-dmy]`. Use `today()` (local date), never `toISOString().slice(0,10)` for "today".

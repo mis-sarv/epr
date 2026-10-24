@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<script src="date-dmy.js"></script>
+<script src="date-dmy.js"></script><script src="caps-input.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SARV INDIA — Order Form</title>
 <!-- Prevents the login screen from flashing; must run first. -->
@@ -534,6 +534,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .oh-lot-btn.track:hover{background:#115E59}
 .oh-lot-btn small{font-weight:600;opacity:.85;font-size:9.5px}
 .oh-lot-btn:disabled{opacity:.55;cursor:wait}
+/* PROCUREMENT (TRIMS MANAGER): amber until the product's material requirement
+   is saved, green once it is. Generate Lot Card waits on it (locked state). */
+.oh-lot-btn.proc{background:#B45309;color:#fff}
+.oh-lot-btn.proc:hover{background:#92400E}
+.oh-lot-btn.proc.done{background:#15803D}
+.oh-lot-btn.proc.done:hover{background:#166534}
+.oh-lot-btn.gen.locked,.oh-lot-btn.gen.locked:hover{background:#CBD5E1;color:#475569;cursor:not-allowed;opacity:1}
 .oh-lot-muted{color:var(--muted);font-size:10.5px;font-style:italic}
 
 /* ═══════════════════════ TOAST ═══════════════════════ */
@@ -6730,6 +6737,7 @@ async function ofFillLotBoxes(){
     (ordRes.data||[]).forEach(r=>{ if(r.full_order) OF_FULL[r.order_no]=r.full_order; });
     const lotErr=lotRes.error?(isSetupError(lotRes.error)?'The Printing Lot table was not found':lotRes.error.message):'';
     const lots=lotRes.error?[]:(lotRes.data||[]);
+    const req=await ofLoadTrimsReq_(nos);
     const total=(!secRes.error && secRes.count)||11;
     const prog={};
     if(lots.length){
@@ -6739,14 +6747,58 @@ async function ofFillLotBoxes(){
     if(seq!==_ofLotSeq) return;   // the list was rebuilt in the meantime
     boxes.forEach(box=>{
       const no=box.dataset.order;
-      ofRenderLotBox(box,no,box.dataset.status,(OF_FULL[no]&&OF_FULL[no].products)||[],lots.filter(l=>l.order_no===no),prog,total,lotErr);
+      ofRenderLotBox(box,no,box.dataset.status,(OF_FULL[no]&&OF_FULL[no].products)||[],lots.filter(l=>l.order_no===no),prog,total,lotErr,req);
     });
   }catch(e){
     if(seq!==_ofLotSeq) return;
     boxes.forEach(b=>{ b.innerHTML='<div class="oh-lot-hd">Lot Cards <span class="oh-lot-muted">'+esc(e.message||e)+'</span></div>'; });
   }
 }
-function ofRenderLotBox(box,orderNo,status,products,lots,prog,total,lotErr){
+/* ── Material requirement (Trims Manager) per order product ──────────────────
+   A product's Lot Card can be generated only once its trims / packing material
+   requirement is SAVED in the Trims Manager: Order Form → PROCUREMENT (Trims
+   Manager, product-wise) → Generate Lot Card. "Saved" = the product's sheet
+   has at least one line with an Item Master item and an Order Qty above 0.
+
+   Returns {mode, by, err}:
+     mode 'line'  — product-wise sheets (TRIMS_MANAGER_V3_MIGRATION.sql run);
+                    by["ORDER|line"] = {items, sheetId}
+     mode 'order' — no order_line column yet: the whole-order sheet unlocks
+                    every product of that order; by["ORDER|0"]
+     mode 'off'   — the Trims tables do not exist at all: the gate is not
+                    applied (nothing could ever unlock it), and the box says so
+     err          — a real read failure: Generate stays locked, with the reason,
+                    rather than letting a lot through unchecked. */
+async function ofLoadTrimsReq_(nos){
+  const out={mode:'line',by:{},err:''};
+  if(!nos.length) return out;
+  const sel=v3=>SB.from('mfg_trims_sheets')
+    .select('id,order_no,'+(v3?'order_line,':'')+'mfg_trims_lines(store_item_id,order_qty)').in('order_no',nos);
+  let r=await sel(true);
+  if(r.error && /order_line/i.test(r.error.message||'')){ out.mode='order'; r=await sel(false); }
+  if(r.error){
+    if(isSetupError(r.error)){ out.mode='off'; return out; }
+    out.err=r.error.message||String(r.error); return out;
+  }
+  (r.data||[]).forEach(s=>{
+    const items=(s.mfg_trims_lines||[]).filter(l=>l.store_item_id&&Number(l.order_qty)>0).length;
+    const key=String(s.order_no||'').trim().toUpperCase()+'|'+(out.mode==='line'?(Number(s.order_line)||0):0);
+    out.by[key]={items,sheetId:s.id};
+  });
+  return out;
+}
+// The requirement state of one product: {saved, items, label}.
+function ofReqState_(req,orderNo,line){
+  if(!req) return {saved:false,items:0,label:'checking…'};
+  if(req.mode==='off') return {saved:true,items:0,off:true,label:'Trims Manager not set up'};
+  if(req.err) return {saved:false,items:0,label:'could not check: '+req.err};
+  const k=String(orderNo||'').trim().toUpperCase()+'|'+(req.mode==='line'?line:0);
+  const s=req.by[k];
+  return s&&s.items>0
+    ? {saved:true,items:s.items,label:s.items+' material item(s) saved'}
+    : {saved:false,items:s?s.items:0,label:s?'sheet saved without any Item Master item / qty':'material requirement not saved yet'};
+}
+function ofRenderLotBox(box,orderNo,status,products,lots,prog,total,lotErr,req){
   const canGen=status==='Confirmed';
   const jsNo=esc(orderNo).replace(/'/g,"\\'");
   const byLine={}; let other=[];
@@ -6760,16 +6812,29 @@ function ofRenderLotBox(box,orderNo,status,products,lots,prog,total,lotErr){
   let h=`<div class="oh-lot-hd">Lot Cards <span>${products.length?made+' / '+products.length+' bane':''}</span></div>`;
   if(lotErr) h+=`<div class="oh-lot-muted">${esc(lotErr)}</div>`;
   if(!products.length) h+='<div class="oh-lot-muted">No product data found for this order (an old order?). Edit it and Submit again.</div>';
+  if(req&&req.mode==='order') h+='<div class="oh-lot-muted">Trims requirement is checked per ORDER (run TRIMS_MANAGER_V3_MIGRATION.sql for product-wise sheets).</div>';
+  if(req&&req.mode==='off') h+='<div class="oh-lot-muted">Trims Manager tables not found, so the material requirement is not checked before a Lot Card.</div>';
   products.forEach((p,i)=>{
     const ln=i+1, ls=byLine[ln]||[];
     const photos=(p.photoUrls||[]).length+(p.embossPhotoUrls||[]).length;
     const qty=Number(p.qty)||0;
+    const rs=ofReqState_(req,orderNo,ln);
+    /* Step 1 — the material requirement, in the Trims Manager (this product's
+       own sheet). Always offered on a lot-stage order, also after the lot
+       exists, so the requirement can still be opened and followed up. */
+    const procBtn=(req&&req.mode==='off')?''
+      :`<button type="button" class="oh-lot-btn proc ${rs.saved?'done':''}" onclick="ofOpenTrims('${jsNo}',${ln})" title="${esc('Trims & packing material requirement for product #'+ln+': '+rs.label)}">${rs.saved?'✓ ':''}PROCUREMENT (TRIMS MANAGER)${rs.saved?` <small>${rs.items} item(s)</small>`:''}</button>`;
+    /* Step 2 — the Lot Card, only after step 1 is saved. */
+    const genBtn=rs.saved
+      ?`<button type="button" class="oh-lot-btn gen" onclick="ofGenerateLot('${jsNo}',${ln},this)">Generate Lot Card</button>`
+      :`<button type="button" class="oh-lot-btn gen locked" disabled title="${esc('Save the material requirement first: PROCUREMENT (TRIMS MANAGER) → fill the item rows → Save. ('+rs.label+')')}">Generate Lot Card</button>`;
     h+=`<div class="oh-lot-row">
       <div class="oh-lot-prod">#${ln} ${esc(p.itemCode||p.fabric||'Product')}
-        <small>${esc([p.category,p.size,qty?qty.toLocaleString('en-IN')+' pcs':''].filter(Boolean).join(' · '))}${photos?' · '+photos:''}</small></div>
-      <div class="oh-lot-btns">${ls.map(trackBtn).join('')}${
+        <small>${esc([p.category,p.size,qty?qty.toLocaleString('en-IN')+' pcs':''].filter(Boolean).join(' · '))}${photos?' · '+photos:''}</small>
+        ${canGen&&!ls.length&&!rs.saved?`<small style="color:#B45309;font-weight:600;">Requirement: ${esc(rs.label)}</small>`:''}</div>
+      <div class="oh-lot-btns">${procBtn}${ls.map(trackBtn).join('')}${
         ls.length?'':(canGen
-          ?`<button type="button" class="oh-lot-btn gen" onclick="ofGenerateLot('${jsNo}',${ln},this)">Generate Lot Card</button>`
+          ?genBtn
           :'<span class="oh-lot-muted">No lot card yet; available once the order is Confirmed</span>')}</div>
     </div>`;
   });
@@ -6786,6 +6851,15 @@ async function ofGenerateLot(orderNo,line,btn){
     }
     const p=fo&&(fo.products||[])[line-1];
     if(!p){ toast('Product #'+line+' of Order '+orderNo+' was not found'); return; }
+    /* Re-checked against the database at the moment of generating, not just
+       from the button's state: the list may have been open for a while, or the
+       sheet deleted since. No saved requirement → no Lot Card. */
+    const rs=ofReqState_(await ofLoadTrimsReq_([orderNo]),orderNo,line);
+    if(!rs.saved){
+      toast('Product #'+line+': save the material requirement in PROCUREMENT (TRIMS MANAGER) first ('+rs.label+')');
+      ofFillLotBoxes();
+      return;
+    }
     const images=[
       ...(p.photoUrls||[]).map(url=>({url,tag:'PRODUCT'})),
       ...(p.embossPhotoUrls||[]).map(url=>({url,tag:'EMBOSS'}))
@@ -6806,6 +6880,28 @@ async function ofGenerateLot(orderNo,line,btn){
   finally{ if(btn){ btn.disabled=false; btn.textContent='Generate Lot Card'; } }
 }
 function ofTrackLot(lotId){ ofHandoff({v:1, kind:'TRACK_LOT', at:Date.now(), lotId}); }
+/* PROCUREMENT (TRIMS MANAGER): opens this product's material requirement sheet.
+   Same pattern as the Printing Lot hand-off: the request goes in localStorage
+   (trims-manager.html › trimsHandoff reads it — change both sides and bump v to
+   add a field); inside the ERP the Trims Manager panel opens and, if already
+   loaded, is told directly; outside the ERP a new tab opens. */
+const OF_TRIMS_HANDOFF='sarv_trims_handoff';
+function ofOpenTrims(orderNo,line){
+  try{ localStorage.setItem(OF_TRIMS_HANDOFF,JSON.stringify({v:1,kind:'OPEN_ORDER_LINE',at:Date.now(),orderNo,line:Number(line)||null})); }
+  catch(e){ toast('Browser storage is blocked, so the order cannot be passed to the Trims Manager'); return; }
+  try{
+    const P=window.parent;
+    if(P && P!==window && typeof P.sarvNavigateFromHome==='function'){
+      P.sarvNavigateFromHome('TRIMS');
+      const fr=P.document.getElementById('trimsFrame');
+      const w=fr&&fr.contentWindow;
+      if(w && typeof w.trimsHandoff==='function') w.trimsHandoff();
+      return;
+    }
+  }catch(e){ console.warn('[ORDER FORM] ERP navigation (Trims):',e.message||e); }
+  const win=window.open('trims-manager.html','_blank');
+  if(!win) location.href='trims-manager.html';
+}
 /* Inside the ERP: Printing Lot's own panel (iframe) opens. On first open
    that page reads the hand-off on boot; if it is already open, its
    prlHandoff() is called directly. Outside the ERP (phone / separate tab): a new tab. */

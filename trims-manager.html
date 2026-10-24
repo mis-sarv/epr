@@ -2,7 +2,7 @@
 <html lang="hi">
 <head>
 <meta charset="UTF-8">
-<script src="date-dmy.js"></script>
+<script src="date-dmy.js"></script><script src="caps-input.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TRIMS & PACKING MATERIAL MANAGER</title>
 <!--
@@ -17,10 +17,13 @@
                       read, so the sheet asks for Party Name, Brand Name and the
                       Design list itself — see MANUAL ORDER below.
     Order Qty       → per row from the order's products / trims (pcs or packs)
-    LOT NO(s)       → saved Lot Cards (mfg_lot_cards) or typed by hand; Lot Req Qty
-                      per row from the lot
+    LOT NO(s)       → saved Lot Cards (mfg_lot_cards) or typed by hand — used for
+                      the Lot Issue columns. There is NO Lot Req Qty column: the
+                      lot is made later (Order Form → Requirement → Lot), so what
+                      is bought is worked out from the ORDER:
+    Final PO Qty    → Order Qty × (1 + Wastage%)
     Store Std Name  → Item Master (items) — only values from the list
-    NEW PR (tick)   → right after Lot Req Qty. Ticking rows and pressing "Generate
+    NEW PR (tick)   → right after Supplier. Ticking rows and pressing "Generate
                       New PR" fills the ERP's Purchase › New Entry form with those
                       items (PR qty = FINAL PO QTY). The form lives in the parent
                       window, so the real work is done by store-core.js ›
@@ -38,7 +41,9 @@
                       qty with each issuing date under it — live
     Pending Issue   → Qty Received − total Lot Issue qty (what the store has in hand
                       for this item and has not issued yet), with the shortfall
-                      against Lot Req Qty as a second, smaller line.
+                      against Order Qty as a second, smaller line.
+    Add Item        → the + at the head of the last (action) column adds a row at
+                      the end; the + on a row inserts a new row right below it.
   Saved per Order No in mfg_trims_sheets / mfg_trims_sheet_lots / mfg_trims_lines
   (TRIMS_MANAGER_MIGRATION.sql, then TRIMS_MANAGER_V2_MIGRATION.sql for the PR No /
   Party / Brand / Design columns — the sheet says so itself if V2 is not run yet).
@@ -133,7 +138,7 @@
   td.po-auto small { display:block; font-weight:500; color:#7f8c8d; font-size:9.5px; }
   td.po-wait { background:#fff8e1; color:#8a5300; font-weight:700; font-size:11px; }
 
-  /* NEW PR column, right after Lot Req Qty. Works like the Item Master's NEW PR
+  /* NEW PR column, right after Supplier. Works like the Item Master's NEW PR
      column: tick several items and send them in a single PR. */
   th.pr-th { background:#5e35b1; }
   th.pr-th input { width:14px; height:14px; cursor:pointer; margin-top:2px; }
@@ -149,6 +154,13 @@
   .store-wrap input.bad { border-color:#e74c3c; background:#fdecea; }
   .row-del { background:transparent; color:#c0392b; padding:2px 6px; font-size:13px; }
   .row-del:hover { background:#fdecea; }
+  /* Add Item lives in the action column: + in its header adds a row at the end,
+     + on a row inserts one right below that row. */
+  .row-add { background:transparent; color:#1e8449; padding:2px 6px; font-size:15px; font-weight:800; line-height:1; }
+  .row-add:hover { background:#eafaf1; }
+  th .th-add { background:#27ae60; color:#fff; padding:1px 7px; font-size:15px; font-weight:800; line-height:18px; border-radius:4px; }
+  th .th-add:hover { background:#1e8449; }
+  td.act { white-space:nowrap; }
   .badge-saved { color: #2ecc71; font-size: 13px; font-weight: bold; margin-left: 10px; display: none; }
   .dirty-dot { color:#f1c40f; font-weight:700; font-size:12px; display:none; }
   .legend { font-size:11px; color:#666; margin:6px 2px 0; display:flex; gap:14px; flex-wrap:wrap; }
@@ -209,13 +221,12 @@
     <div class="controls">
       <span id="saveStatus" class="badge-saved">✔ Saved!</span>
       <span id="dirtyDot" class="dirty-dot">● Unsaved changes</span>
-      <button class="btn-add" onclick="addNewItem()" id="btnAdd">Add Item</button>
       <!-- Ticking rows in the NEW PR column creates a single PR from here.
            The PR form is in the ERP's Purchase panel (this page runs inside
            its iframe), so the real work happens in the parent window:
            store-core.js › sarvGenerateNewPrFromTrims. -->
       <button class="btn-pr" onclick="generatePrFromSheet()" id="btnGenPr" disabled
-              title="Tick items in the NEW PR column (after Lot Req Qty). PR qty = Final PO Qty (Lot Req + Wastage)">Generate New PR (<span id="prSelCount">0</span>)</button>
+              title="Tick items in the NEW PR column. PR qty = New PR Qty (Order Qty + MSV − Balance Stock)">Generate New PR (<span id="prSelCount">0</span>)</button>
       <button class="btn-ghost" onclick="clearPrSel()" id="btnPrClear" style="display:none" title="Remove all ticks">✖ Clear Ticks</button>
       <button class="btn-save" onclick="saveData()" id="btnSave">Save</button>
       <button class="btn-sync" onclick="syncQty(true)" id="btnSync" title="Refill the automatic quantities from the order / lot (manual ✎ values are kept)">↻ Sync Qty</button>
@@ -242,6 +253,10 @@
              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onchange="setManualOrder(this.value)">
       <button class="btn-ghost" id="btnManualOrder" style="padding:5px 10px" onclick="toggleManualOrder()"
               title="Type the Order No. by hand (not saved in the Order Form)">✎ Manual</button>
+      <!-- Product of the order: each product has its own requirement sheet
+           (the Order Form's PROCUREMENT button opens straight on it). -->
+      <select id="lineSel" style="display:none;font-weight:600;" onchange="onLineChange(this.value)"
+              title="The order product this sheet is for. Each product's material requirement is saved separately."></select>
     </div>
     <div>
       <label>LOT NO:</label>
@@ -293,8 +308,8 @@
     <span class="l-auto">Auto (Order / Lot / Store / PO se)</span>
     <span class="l-man">Manual ✎ (changed by you; ↺ returns it to auto)</span>
     <span class="l-calc">Calculated</span>
-    <span style="padding-left:0">Final PO Qty = Lot Req × (1 + Wastage%) · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (short line = below Lot Req)</span>
-    <span style="padding-left:0">Tick in the <b>NEW PR</b> column → <b>Generate New PR</b> → the ERP's Purchase form opens (PR qty = Final PO Qty). Once submitted, the PR No appears in this sheet's PR NO. column automatically. Then press Save.</span>
+    <span style="padding-left:0"><b>Final PO Qty = Order Qty × (1 + Wastage%)</b> · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (short line = below Order Qty) · <b>+</b> in the last column adds an item</span>
+    <span style="padding-left:0">Tick in the <b>NEW PR</b> column → <b>Generate New PR</b> → the ERP's Purchase form opens (PR qty = <b>New PR Qty</b> = Order Qty + MSV − Balance Stock, 0 if negative; editable). Once submitted, the PR No appears in this sheet's PR NO. column automatically. Then press Save.</span>
   </div>
 
   <div id="itemPop"></div>
@@ -388,10 +403,16 @@ const S = {
   // Is the V2 migration (PR No / Party / Brand / Designs columns) in place?
   // Probed once at boot — see probeV2 / renderBanners.
   v2:{ sheet:null, line:null },
+  // TRIMS_MANAGER_V3_MIGRATION.sql (mfg_trims_sheets.order_line) — product-wise
+  // sheets. null = not probed yet, false = not run (whole-order sheets only).
+  v3:null,
 };
 // Current sheet.  party / brand / designs are only used (and only required) on a
 // MANUAL sheet — a saved Sales Order carries all three in the Order Form.
-const D = { orderNo:'', order:null, agg:null, sheetId:null, lots:[], status:'Open', notes:'', rows:[], dirty:false, meta:null, staleCount:0,
+/* line / product: the ORDER PRODUCT this sheet is for (1, 2 … — the same line
+   number the Order Form generates a Lot Card for), and that product from the
+   order. null line = the whole-order sheet. See TRIMS_MANAGER_V3_MIGRATION.sql. */
+const D = { orderNo:'', line:null, product:null, order:null, agg:null, sheetId:null, lots:[], status:'Open', notes:'', rows:[], dirty:false, meta:null, staleCount:0,
             manual:false, party:'', brand:'', designs:['',''],
             /* Number of the PR just created from this sheet: {no, count, replaced}.
                It stays in the banner until Save, because when the PR is
@@ -410,6 +431,7 @@ function blankRow(p){
   return Object.assign({ uid:'r'+(++rowSeq), prSel:false,
     desc:'', cat:'TRIMS', storeId:null, storeName:'', basis:'PCS', oQty:'', oQtyManual:false,
     sup:'SELLER', supManual:false, lotQty:'', lotManual:false, waste:0, prNo:'', poNo:'', poManual:false,
+    prQty:'', prQtyManual:false,
     tDate:'', tDateManual:false, rec:'', recManual:false,
     issues:{}, issueManual:false, disp:'AUTO', hisaab:'' }, p||{});
 }
@@ -432,8 +454,14 @@ async function loadLinks(){
   S.lotLinks={}; S.sheetOrders=new Set();
   rows.forEach(s=>{ S.sheetOrders.add(s.order_no); (s.mfg_trims_sheet_lots||[]).forEach(l=>S.lotLinks[normLot(l.lot_no)]=s.order_no); });
 }
+// One Item Master load per page, shared by boot and loadStoreData (which needs
+// the names to resolve PO / inward lines saved without an item_id).
+function itemsOnce(){ return S.itemsP||(S.itemsP=loadItems().catch(e=>{ S.itemsP=null; throw e; })); }
 async function loadItems(){
-  const rows=await fetchAll(()=>SB.from('items').select('id,item_code,name,category,uom').order('name'));
+  // sub_category holds the item's MSV (minimum stock value) — see New PR Qty.
+  let rows;
+  try{ rows=await fetchAll(()=>SB.from('items').select('id,item_code,name,category,uom,sub_category').order('name')); }
+  catch(e){ rows=await fetchAll(()=>SB.from('items').select('id,item_code,name,category,uom').order('name')); }
   S.items=rows; S.itemById={}; S.itemByName={};
   rows.forEach(i=>{ S.itemById[i.id]=i; S.itemByName[String(i.name||'').trim().toUpperCase()]=i; });
 }
@@ -493,12 +521,19 @@ async function loadIssues_(){
    The filter matters: without it this read pulls EVERY inward the factory has
    ever booked, on every page open, to find the handful that carry a PR. */
 async function loadInwards_(){
-  const sel=(line,head)=>fetchAll(()=>{
+  /* poLine: inward_lines.po_line_id names the exact PO line a receipt was
+     booked against — the only reliable answer when one inward covers SEVERAL
+     POs (its header po_number then reads "PO/1, PO/2"). item_name comes along
+     for the few lines saved without an item_id. Widest shape first. */
+  const sel=(line,head,poLine)=>fetchAll(()=>{
     let q=SB.from('inward_entries')
-      .select('id,document_no,po_number,receiving_date'+(head?',req_no':'')+',inward_lines(item_id,qty'+(line?',req_no':'')+')');
+      .select('id,document_no,po_number,receiving_date'+(head?',req_no':'')
+        +',inward_lines(item_id,qty'+(line?',req_no':'')+(poLine?',po_line_id,items(name)':'')+')');
     return head ? q.or('po_number.not.is.null,req_no.not.is.null')
                 : q.not('po_number','is',null);
   });
+  try{ return { rows:await sel(true,true,true), perLine:true }; }
+  catch(e){}
   try{ return { rows:await sel(true,true), perLine:true }; }
   catch(e){}
   try{ return { rows:await sel(false,true), perLine:false }; }
@@ -506,14 +541,59 @@ async function loadInwards_(){
   return { rows:await sel(false,false), perLine:false };
 }
 
+/* ── BALANCE STOCK: what is free in the store for this item ──────────────
+   Stock on hand per Item Master item = every inward qty − every outward qty
+   (the same sum as the Item Master's Balance Qty, so the two screens agree).
+   From it, every OTHER saved trims sheet's still-open requirement is taken
+   out: its Order Qty for the item minus what has already been issued to that
+   sheet's lots (issued material has already left the stock, so subtracting
+   the full requirement would count it twice). Sheets marked Completed / Closed
+   reserve nothing. The current order is never counted against itself.
+   The PR form in the ERP shows the same figure with the identical rule
+   (store-core.js › sarvLoadStockSnapshot_ / sarvStockFor_) — change one,
+   change the other. */
+async function loadStockOnHand_(){
+  const [inl,outl]=await Promise.all([
+    fetchAll(()=>SB.from('inward_lines').select('item_id,qty').order('id')),
+    fetchAll(()=>SB.from('outward_lines').select('item_id,qty').order('id')),
+  ]);
+  const m={};
+  inl.forEach(l=>{ if(l.item_id) m[l.item_id]=(m[l.item_id]||0)+num(l.qty); });
+  outl.forEach(l=>{ if(l.item_id) m[l.item_id]=(m[l.item_id]||0)-num(l.qty); });
+  return m;
+}
+async function loadSavedSheetReqs_(){
+  // order_line (V3) tells product sheets of one order apart; without the column
+  // every sheet is a whole-order sheet, exactly as before.
+  const sel=v3=>fetchAll(()=>SB.from('mfg_trims_sheets')
+    .select('id,order_no,'+(v3?'order_line,':'')+'status,mfg_trims_sheet_lots(lot_no),mfg_trims_lines(store_item_id,order_qty)').order('order_no'));
+  try{ return await sel(true); }catch(e){ return await sel(false); }
+}
 // PO list + PR→PO index + inward receipts + store issues (the "live" part)
 async function loadStoreData(){
+  // Balance Stock is best-effort: a failed read leaves the column blank ('…')
+  // rather than taking the PO / Qty Received figures down with it.
+  const stockP=loadStockOnHand_().catch(e=>{ console.warn('[TRIMS] Stock on hand unavailable:',e.message||e); return null; });
+  const sheetsP=loadSavedSheetReqs_().catch(e=>{ console.warn('[TRIMS] Saved sheet requirements unavailable:',e.message||e); return null; });
   const [pos, inwQ, issQ] = await Promise.all([
     loadPos_(),
     loadInwards_(),
     loadIssues_(),
   ]);
   S.pos=pos; S.poByNo={}; pos.forEach(p=>S.poByNo[p.po_no]=p);
+  /* Every PO line gets __itemId: its own item_id, or — for the lines saved
+     before item_id was written (about one in seven in this database) — the
+     Item Master item of the same name. Without this those lines never linked
+     PR → PO → item, so the row showed "PO pending" and Qty Received stayed 0
+     even with the material in. The Item Master list is loaded in parallel at
+     boot, so it is waited for here. */
+  await itemsOnce();
+  const idOfName=n=>{ const it=S.itemByName&&S.itemByName[String(n||'').trim().toUpperCase()]; return it?it.id:null; };
+  S.poLineToPo={};
+  pos.forEach(p=>(p.purchase_order_lines||[]).forEach(l=>{
+    l.__itemId=l.item_id||idOfName(l.item_name);
+    S.poLineToPo[l.id]=p.po_no;
+  }));
   // ── PR → PO, per item ───────────────────────────────────────────────────
   // Cancelled / rejected orders are left out: a PR whose only PO was cancelled
   // is still waiting for one, and showing the dead number as the answer would
@@ -522,9 +602,9 @@ async function loadStoreData(){
   pos.forEach(p=>{
     if(/cancel|reject/i.test(p.status||'')) return;
     (p.purchase_order_lines||[]).forEach(l=>{
-      const pr=String(l.req_no||'').trim(); if(!pr||!l.item_id) return;
+      const pr=String(l.req_no||'').trim(); if(!pr||!l.__itemId) return;
       const m=(S.poByPr[pr]=S.poByPr[pr]||{});
-      (m[l.item_id]=m[l.item_id]||[]).push({ poNo:p.po_no, po:p, line:l });
+      (m[l.__itemId]=m[l.__itemId]||[]).push({ poNo:p.po_no, po:p, line:l });
     });
   });
   // ── Inward → Qty Received, against the PO and against the PR ────────────
@@ -535,17 +615,26 @@ async function loadStoreData(){
     x.qty+=num(qty); x.docs.push(label); if(date) x.dates.push(date);
   };
   inwQ.rows.forEach(e=>{
-    const po=String(e.po_number||'').trim();
+    // An inward against several POs stores them all in one header field.
+    const poList=String(e.po_number||'').split(',').map(s=>s.trim()).filter(Boolean);
     const headPr=String(e.req_no||'').trim();
     const d=fmtDate(e.receiving_date);
     (e.inward_lines||[]).forEach(l=>{
-      if(!l.item_id) return;
+      const itemId=l.item_id||idOfName(l.items&&l.items.name);
+      if(!itemId) return;
       const label=`${e.document_no||'Inward'} (${d}): ${fmtN(l.qty)}`;
-      if(po) bump(S.recv,po,l.item_id,l.qty,label,d);
+      /* Which PO this line belongs to: the PO line it was booked against when
+         that is recorded; otherwise the header's single PO; on a multi-PO
+         header without a line link, the first of those POs that ordered this
+         item. Each receipt is credited to ONE PO, so nothing is counted twice. */
+      let po=(l.po_line_id&&S.poLineToPo[l.po_line_id])||'';
+      if(!po&&poList.length===1) po=poList[0];
+      if(!po&&poList.length>1) po=poList.find(n=>{ const p=S.poByNo[n]; return p&&(p.purchase_order_lines||[]).some(x=>x.__itemId===itemId); })||poList[0];
+      if(po) bump(S.recv,po,itemId,l.qty,label,d);
       // Only a receipt with NO PO is credited to the PR here — a PO receipt is
       // already counted above, and counting it twice would double Qty Received.
       const pr=String(l.req_no||'').trim()||headPr;
-      if(!po && pr) bump(S.recvPr,pr,l.item_id,l.qty,label,d);
+      if(!poList.length && pr) bump(S.recvPr,pr,itemId,l.qty,label,d);
     });
   });
   // ── Store ISSUE → Lot Issue, per lot per item, with every issuing date ───
@@ -557,6 +646,26 @@ async function loadStoreData(){
       bump(S.issues,lot,l.item_id,l.qty,`${e.document_no||'Issue'} (${d}): ${fmtN(l.qty)}`,d);
     });
   });
+  // ── Balance Stock: on hand, and what other saved sheets still need ──────
+  const [stock,sheets]=await Promise.all([stockP,sheetsP]);
+  S.stock=stock;                       // null = could not be read
+  S.reserve=null;
+  if(sheets){
+    S.reserve={};                      // itemId → [{orderNo, req, issued, open}]
+    sheets.forEach(sh=>{
+      if(/^(completed|closed)$/i.test(String(sh.status||'').trim())) return;
+      const lots=(sh.mfg_trims_sheet_lots||[]).map(x=>normLot(x.lot_no)).filter(Boolean);
+      const reqBy={};
+      (sh.mfg_trims_lines||[]).forEach(l=>{ if(l.store_item_id) reqBy[l.store_item_id]=(reqBy[l.store_item_id]||0)+num(l.order_qty); });
+      Object.keys(reqBy).forEach(itemId=>{
+        const req=reqBy[itemId];
+        const issued=lots.reduce((s,lot)=>s+num(S.issues[lot]&&S.issues[lot][itemId]&&S.issues[lot][itemId].qty),0);
+        const open=Math.max(0,req-issued);
+        if(open<=0) return;
+        (S.reserve[itemId]=S.reserve[itemId]||[]).push({ orderNo:sh.order_no, line:Number(sh.order_line)||null, req, issued, open });
+      });
+    });
+  }
   S.storeAt=new Date();
 }
 
@@ -568,6 +677,7 @@ async function probeV2(){
   const ok=async(table,cols)=>{ try{ const {error}=await SB.from(table).select(cols).limit(1); return !error; }catch(e){ return false; } };
   S.v2.sheet=await ok('mfg_trims_sheets','party_name,brand_name,designs,order_manual');
   S.v2.line =await ok('mfg_trims_lines','pr_no,po_manual,target_date_manual');
+  S.v3      =await ok('mfg_trims_sheets','order_line');
 }
 
 // ═══════════════════════ ORDER → ORDER QTY ═════════════════════════════════
@@ -614,6 +724,9 @@ function autoSupplier(r){
 }
 
 // ═══════════════════════ LOT CARD → LOT REQ QTY ════════════════════════════
+/* No longer on screen or in the maths: Final PO Qty comes from Order Qty, since
+   the lot is generated after the order (Order Form → Requirement → Lot). Kept so
+   a linked lot's figure is still saved on the line (lot_req_qty) for later use. */
 const LOT_TRIM_ALIASES={ BIGLABEL:['MAINLABEL'], MAINLABEL:['BIGLABEL'], BARCODESTICKER:['BARCODETAG'], BARCODETAG:['BARCODESTICKER'] };
 function lotTiers(lot){ return Array.isArray(lot.packing_tiers)?lot.packing_tiers:[]; }
 function lotTierPcs(lot, tier){
@@ -673,6 +786,75 @@ function autoTargetDate(r){
 const canAutoTDate = r => autoTargetDate(r)!=null;
 function tDateOf(r){ if(r.tDateManual) return r.tDate||''; const a=autoTargetDate(r); return a!=null?a:(r.tDate||''); }
 
+// ═══════════════════════ BALANCE STOCK (free) ══════════════════════════════
+/* For the row's Item Master item: stock on hand − the open requirement of every
+   OTHER saved sheet (see loadStoreData). null when there is no item picked or
+   the stock could not be read. */
+function stockOf(r){
+  if(!r.storeId||!S.stock) return null;
+  const onHand=num(S.stock[r.storeId]);
+  // Only THIS sheet (Order No + product line) is left out; another product of
+  // the same order has its own requirement and does reserve stock.
+  const res=((S.reserve&&S.reserve[r.storeId])||[]).filter(x=>!(String(x.orderNo||'').toUpperCase()===String(D.orderNo||'').toUpperCase()&&(x.line||null)===(D.line||null)));
+  const reserved=res.reduce((s,x)=>s+x.open,0);
+  return { onHand, reserved, free:onHand-reserved, res, resKnown:!!S.reserve };
+}
+function stockCellHtml(r){
+  if(!r.storeId) return `<td class="calc" style="color:#aaa" title="Choose the Store Standard Name to see its stock">—</td>`;
+  const s=stockOf(r);
+  if(!s) return `<td class="calc" style="color:#aaa" title="Stock could not be loaded; press ⟳ Store Data">…</td>`;
+  const tip=`Stock on hand: ${fmtN(s.onHand)}`
+    +(s.res.length?`\nLess open requirement of other saved orders:\n`+s.res.map(x=>`  ${x.orderNo}${x.line?' #'+x.line:''}: Req ${fmtN(x.req)} − Issued ${fmtN(x.issued)} = ${fmtN(x.open)}`).join('\n'):'\nNo other saved order needs this item')
+    +(s.resKnown?'':'\n(Saved orders could not be read; not deducted)')
+    +`\n= Balance Stock ${fmtN(s.free)}`;
+  return `<td class="calc stk ${s.free<0?'neg':'ok'}" title="${esc(tip)}">${fmtN(s.free)}`
+    +`<span class="sub">Stock ${fmtN(s.onHand)}${s.reserved?` · Other orders ${fmtN(s.reserved)}`:''}</span></td>`;
+}
+
+// ═══════════════════════ NEW PR QTY ════════════════════════════════════════
+/* What to buy for this row: enough to cover the Order Qty AND bring the item
+   back up to its MSV, after using what is free in the store:
+       New PR Qty = Order Qty + MSV − Balance Stock (on hand − other orders)
+   shown as 0 when negative (the free stock already covers it). MSV is the Item
+   Master's sub_category, as everywhere else in the ERP. Pre-filled; typing a
+   figure makes it manual (amber), ↺ puts it back on auto. Generate New PR uses
+   this figure as the PR qty. null = cannot be worked out yet (no item picked,
+   or the stock did not load). */
+function msvOf(r){
+  const it=r.storeId&&S.itemById&&S.itemById[r.storeId];
+  const n=it?Number(it.sub_category):NaN;
+  return isFinite(n)&&n>0?n:0;
+}
+function autoPrQty(r){
+  const s=stockOf(r); if(!s) return null;
+  return Math.max(0,Math.round(num(r.oQty)+msvOf(r)-s.free));
+}
+function prQtyOf(r){
+  if(r.prQtyManual) return num(r.prQty);
+  const a=autoPrQty(r); return a==null?0:a;
+}
+function prQtyTip(r){
+  const s=stockOf(r);
+  if(!r.storeId) return 'Choose the Store Standard Name first';
+  if(!s) return 'Stock could not be loaded; press ⟳ Store Data';
+  const raw=num(r.oQty)+msvOf(r)-s.free;
+  return `New PR Qty = Order Qty ${fmtN(num(r.oQty))} + MSV ${fmtN(msvOf(r))} − Balance Stock ${fmtN(s.free)} = ${fmtN(raw)}`
+    +(raw<0?' → 0 (free stock already covers it)':'')
+    +(r.prQtyManual?`\nManual: ${fmtN(num(r.prQty))} (↺ for auto)`:'');
+}
+function prQtyCellHtml(r, idx, ro){
+  const auto=autoPrQty(r), man=!!r.prQtyManual;
+  const val=man?r.prQty:(auto==null?'':auto);
+  return `<td class="prq" title="${esc(prQtyTip(r))}"><input type="number" min="0" class="${man?'man':(auto!=null?'auto':'')}" value="${esc(val)}" `
+    +`oninput="setPrQty(${idx},this.value,this)" ${ro}>`
+    +`${man&&auto!=null&&!ro?`<button class="ico" onclick="revert(${idx},'prQtyManual')" title="Back to auto (Order + MSV − Balance Stock)">↺</button>`:''}</td>`;
+}
+function setPrQty(i,v,el){
+  const r=D.rows[i]; r.prQty=v; r.prQtyManual=true; setDirty(true);
+  if(el){ el.classList.remove('auto'); el.classList.add('man'); }
+  refreshCalc(i);
+}
+
 // ═══════════════════════ STORE → RECEIVED / ISSUE ══════════════════════════
 // Received against the PO(s) above, PLUS anything booked straight against the
 // PR (a "without PO" receipt). The two can never overlap — loadStoreData only
@@ -700,15 +882,19 @@ function issueDates(r, lot){
    Pending Issue is QTY RECEIVED − TOTAL LOT ISSUE: of the material the store has
    actually taken in for this item, how much is still lying with the store and
    not yet issued to a lot. reqShort is the second, smaller figure — the shortfall
-   against what the lots asked for — so an item that is short because it never
+   against the Order Qty — so an item that is short because it never
    came IN is still visible and does not read as "nothing pending". */
 function rowCalc(r){
-  const lotQty=num(r.lotQty), waste=num(r.waste), rec=recOf(r);
-  const poQty=Math.round(lotQty*(1+waste/100));
+  /* Final PO Qty comes straight from the ORDER: Order Qty × (1 + Wastage%).
+     There is no Lot Req step any more — the lot is generated later
+     (Order Form → Requirement → Lot), so the order is what has to be bought
+     for. reqShort is measured against the Order Qty for the same reason. */
+  const oQty=num(r.oQty), waste=num(r.waste), rec=recOf(r);
+  const poQty=Math.round(oQty*(1+waste/100));
   const totalIssue=D.lots.reduce((s,l)=>s+issueOf(r,l),0);
   return { poQty, rec, bal:poQty-rec, totalIssue,
            pendIssue:rec-totalIssue,
-           reqShort:lotQty-totalIssue };
+           reqShort:oQty-totalIssue };
 }
 
 // Apply auto values to every field the user hasn't overridden
@@ -722,7 +908,6 @@ function staleCount(){
   let n=0;
   D.rows.forEach(r=>{
     const oq=autoOrderQty(r); if(!r.oQtyManual && oq!=null && num(r.oQty)!==oq) n++;
-    const lq=autoLotQty(r); if(!r.lotManual && lq!=null && num(r.lotQty)!==lq) n++;
   });
   return n;
 }
@@ -841,12 +1026,39 @@ function manualGaps(){
   return g;
 }
 
+// "SO/26-27/012" or "SO/26-27/012 · Product #2" — every message / file name.
+function sheetLabel(){ return D.orderNo+(D.line?' · Product #'+D.line:''); }
+/* Product picker beside the Order No: the whole order, or one of its products
+   (each product has its own sheet once V3 is in). Hidden for a manual order
+   or an order with a single product and no product sheet in play. */
+function renderLineSelect(){
+  const sel=$('lineSel'); if(!sel) return;
+  const prods=(D.order&&D.order.full_order&&D.order.full_order.products)||[];
+  const show=!!(S.v3 && D.orderNo && !D.manual && prods.length);
+  sel.style.display=show?'':'none';
+  if(!show) return;
+  sel.innerHTML=`<option value="">Whole order</option>`+prods.map((p,i)=>{
+    const qty=num(p.qty);
+    const lbl=`#${i+1} ${p.itemCode||p.fabric||'Product'}${p.size?' · '+p.size:''}${qty?' · '+fmtN(qty)+' pcs':''}`;
+    return `<option value="${i+1}" ${D.line===i+1?'selected':''}>${esc(lbl)}</option>`;
+  }).join('');
+}
+async function onLineChange(v){
+  if(D.dirty && !confirm('Discard unsaved changes and open another product?')){ renderLineSelect(); return; }
+  await openOrder(D.orderNo,{line:Number(v)||null});
+}
 async function onOrderChange(v){
   if(v===MANUAL_OPT){ toggleManualOrder(true); return; }
   if(D.dirty && !confirm('Discard unsaved changes and open another order?')){ renderOrderSelect(); return; }
   await openOrder(v);
 }
+/* opts.line — open the sheet of ONE product of the order (1-based, as the
+   Order Form numbers them). Needs TRIMS_MANAGER_V3_MIGRATION.sql; without it
+   the whole-order sheet opens instead and the banner says why. */
 async function openOrder(orderNo, opts){
+  const wantLine=Number(opts&&opts.line)||null;
+  D.line=(wantLine&&S.v3)?wantLine:null; D.product=null;
+  if(wantLine&&!S.v3) toast('Product-wise sheets need TRIMS_MANAGER_V3_MIGRATION.sql; the whole-order sheet is open instead',6000);
   D.orderNo=orderNo; D.order=null; D.agg=null; D.sheetId=null; D.lots=[]; D.status='Open'; D.notes=''; D.meta=null; D.rows=[];
   D.party=''; D.brand=''; D.designs=['','']; D.prLinked=null;
   // Manual = the Order No is not one of the saved Sales Orders. Asked for
@@ -854,18 +1066,28 @@ async function openOrder(orderNo, opts){
   // so a sheet whose order was later deleted still collects its own details.
   D.manual=!!orderNo && (!!(opts&&opts.manual) || !S.orderByNo[orderNo]);
   $('lotInput').value='';
-  if(!orderNo){ D.manual=false; D.rows=defaultRows(); setDirty(false); renderAll(); return; }
-  $('banners').innerHTML='<div class="banner info">Loading Order '+esc(orderNo)+'…</div>';
+  if(!orderNo){ D.manual=false; D.line=null; D.rows=defaultRows(); setDirty(false); renderAll(); return; }
+  $('banners').innerHTML='<div class="banner info">Loading Order '+esc(sheetLabel())+'…</div>';
   try{
     const o=S.orderByNo[orderNo];
+    // The sheet for exactly this Order No + product line (NULL line = whole
+    // order). Without the V3 column there is only the whole-order sheet.
+    let shQ=SB.from('mfg_trims_sheets').select('*, mfg_trims_sheet_lots(position,lot_no,lot_id), mfg_trims_lines(*)').ilike('order_no',orderNo.replace(/[%_]/g,'\\$&'));
+    if(S.v3) shQ = D.line ? shQ.eq('order_line',D.line) : shQ.is('order_line',null);
     const [ord, sh]=await Promise.all([
       o?SB.from('sales_orders').select('id,order_no,order_date,buyer_name,total_qty,full_order').eq('id',o.id).maybeSingle():Promise.resolve({data:null}),
-      SB.from('mfg_trims_sheets').select('*, mfg_trims_sheet_lots(position,lot_no,lot_id), mfg_trims_lines(*)').ilike('order_no',orderNo.replace(/[%_]/g,'\\$&')).maybeSingle()
+      shQ.maybeSingle()
     ]);
     if(ord.error) throw ord.error;
     if(sh.error) throw sh.error;
     D.order=ord.data||null;
-    D.agg=D.order?orderAgg(D.order.full_order):null;
+    /* Product-wise: Order Qty, packs and the order's own trims are taken from
+       THIS product only, so each product's sheet asks for what that product
+       needs. A line the order no longer has falls back to the whole order. */
+    const prods=(D.order&&D.order.full_order&&D.order.full_order.products)||[];
+    if(D.line && !prods[D.line-1]){ toast('Product #'+D.line+' is not on Order '+orderNo+' any more; the whole-order sheet is open',6000); return openOrder(orderNo); }
+    D.product=D.line?prods[D.line-1]:null;
+    D.agg=D.order?orderAgg(D.product?{products:[D.product]}:D.order.full_order):null;
     if(sh.data){
       // Saved sheet → show exactly what was saved
       const s=sh.data;
@@ -892,7 +1114,7 @@ async function openOrder(orderNo, opts){
          does not blank it — and ↺ is there the moment a PR is picked. */
       D.rows.forEach(r=>{ if(!r.prNo && r.poNo) r.poManual=true; if(!r.tDateManual && r.tDate && !canAutoTDate(r)) r.tDateManual=true; });
       setDirty(false);
-      toast('Saved sheet loaded: '+orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
+      toast('Saved sheet loaded: '+sheetLabel()+(D.lots.length?' · Lot '+D.lots.join(', '):''));
     } else {
       D.rows=defaultRows();
       D.rows.forEach(applyAuto);
@@ -914,7 +1136,7 @@ function addLot(){
   const taken=S.lotLinks[n];
   if(taken && taken!==D.orderNo){ toast('Lot '+raw+' is already linked to Order '+taken, 4500); return; }
   const card=S.lotByNorm[n];
-  if(!card && !confirm('Lot Card "'+raw+'" was not found.\n\nAdd it as a manual lot?\n\n• Lot Req Qty must be filled in by hand\n• Store Issue will still come through this Lot No\n• Party / Brand / Design will be asked for in the amber bar below')) return;
+  if(!card && !confirm('Lot Card "'+raw+'" was not found.\n\nAdd it as a manual lot?\n\n• Store Issue will still come through this Lot No\n• Party / Brand / Design will be asked for in the amber bar below')) return;
   // A manual lot makes the sheet a manual sheet (isManualSheet / hasManualLot),
   // so the amber bar and its required fields come up for it too — the Lot Card
   // would otherwise have carried Brand.
@@ -930,7 +1152,7 @@ function addLot(){
   }
   D.rows.forEach(r=>{ const lq=autoLotQty(r); if(!r.lotManual && lq!=null) r.lotQty=lq; });
   setDirty(true); renderAll();
-  toast('Lot '+(card?card.lot_no:raw)+' linked'+(card?' — Lot Req Qty auto bhari':''));
+  toast('Lot '+(card?card.lot_no:raw)+' linked');
 }
 function removeLot(i){
   const lot=D.lots[i];
@@ -943,7 +1165,7 @@ function removeLot(i){
 
 // ═══════════════════════ RENDER ════════════════════════════════════════════
 function renderAll(){
-  renderOrderSelect(); renderLotList(); renderManualLists(); renderManualBar(); renderChips(); renderInfo(); renderBanners(); renderHead(); renderRows();
+  renderOrderSelect(); renderLineSelect(); renderLotList(); renderManualLists(); renderManualBar(); renderChips(); renderInfo(); renderBanners(); renderHead(); renderRows();
   const ro=READ_ONLY();
   ['btnAdd','btnSave','btnSync','btnReset','btnLot','btnManualOrder'].forEach(id=>{ const b=$(id); if(b) b.disabled=ro; });
   $('lotInput').disabled=ro; $('orderManual').disabled=ro;
@@ -964,6 +1186,7 @@ function renderInfo(){
   $('infoStrip').innerHTML=!D.orderNo?'<div class="info">Select a Sales Order (or type an Order No with ✎ Manual). A saved sheet opens if one exists; otherwise a new one is created.</div>':`
     <div class="info">${isManualSheet()?'Party (manual)':'Buyer'}<b>${esc(o?o.buyer_name:(D.party||'—'))}</b></div>
     <div class="info">Order Date<b>${esc(o?o.order_date:(isManualSheet()?'manual':'—'))}</b></div>
+    ${D.product?`<div class="info">Product #${D.line}<b>${esc([D.product.itemCode||D.product.fabric,D.product.size,D.product.category].filter(Boolean).join(' · ')||'—')}</b></div>`:''}
     ${isManualSheet()?`<div class="info">Brand<b>${esc(D.brand||'—')}</b></div>
     <div class="info">Designs<b>${designs.length?esc(designs.join(', ')):'—'}</b></div>`:''}
     <div class="info">Order Pcs<b>${a?fmtN(a.pcs):'—'}</b></div>
@@ -1007,11 +1230,12 @@ function renderHead(){
     <th style="width:130px;">Item Description</th>
     <th style="width:120px;">Category</th>
     <th style="width:190px;">Store Standard Name<small>Item Master</small></th>
+    <th style="width:95px;" title="Stock on hand − open requirement of all other saved orders' trims sheets">Balance Stock<small>On hand − other orders</small></th>
     <th style="width:96px;">Basis</th>
     <th style="width:80px;">Order Qty<small>${D.agg?'from Order':''}</small></th>
     <th style="width:90px;">Supplier</th>
-    <th style="width:85px;">Lot Req Qty<small>${D.lots.length?'from Lot':''}</small></th>
-    <th class="pr-th" style="width:56px;" title="Tick items and press Generate New PR. PR qty = Final PO Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Tick / untick every row that can go on a PR"></th>
+    <th style="width:85px;" title="Pre-filled: Order Qty + MSV − Balance Stock (0 if negative). Editable. This is the qty Generate New PR uses.">New PR Qty<small>Order + MSV − Bal.</small></th>
+    <th class="pr-th" style="width:56px;" title="Tick items and press Generate New PR. PR qty = New PR Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Tick / untick every row that can go on a PR"></th>
     <th style="width:75px;">Wastage %</th>
     <th style="width:85px;">Final PO Qty</th>
     <th style="width:170px;">PR NO.<small>select</small></th>
@@ -1023,7 +1247,7 @@ function renderHead(){
     <th style="width:90px;">Pending Issue<small>Received − Issued</small></th>
     <th style="width:90px;">Dispatch Mode</th>
     <th style="width:110px;">Final Settlement</th>
-    <th class="noprint" style="width:30px;"></th>
+    <th class="noprint" style="width:58px;">${READ_ONLY()?'':'<button class="th-add" onclick="addNewItem()" title="Add Item (new row at the end)">+</button>'}</th>
   </tr>`;
 }
 
@@ -1032,7 +1256,7 @@ function poOptions(r){
   S.pos.forEach(p=>{
     const dead=/cancel|reject/i.test(p.status||'');
     if(dead && p.po_no!==r.poNo) return;
-    const line=r.storeId&&(p.purchase_order_lines||[]).find(l=>l.item_id===r.storeId);
+    const line=r.storeId&&(p.purchase_order_lines||[]).find(l=>(l.__itemId||l.item_id)===r.storeId);
     const label=`${p.po_no} · ${p.vendor_name||''}${p.delivery_date?' · Del '+fmtDate(p.delivery_date):''}${line?' · Qty '+fmtN(line.ordered_qty):''}${dead?' · '+p.status:''}`;
     (line?has:other).push(`<option value="${esc(p.po_no)}" ${p.po_no===r.poNo?'selected':''}>${esc(label)}</option>`);
   });
@@ -1040,11 +1264,11 @@ function poOptions(r){
   return `<option value="">-- PO --</option>${missing}${has.length?`<optgroup label="✓ Is item ke PO">${has.join('')}</optgroup>`:''}<optgroup label="${r.storeId?'Other POs':'All POs'}">${other.join('')}</optgroup>`;
 }
 /* ══ NEW PR STRAIGHT FROM THE SHEET ══════════════════════════════════════
-   Like the Item Master's NEW PR column: a tick column right after Lot Req Qty
+   Like the Item Master's NEW PR column: a tick column right after Supplier
    and "Generate New PR (n)" in the toolbar. Ticking and pressing it opens
    the ERP's Purchase › New Entry form filled with these items, with PR qty =
-   FINAL PO QTY (Lot Req × (1 + Wastage%)), because that is what has to be
-   bought, not the Lot Req.
+   FINAL PO QTY (Order Qty × (1 + Wastage%)), because that is what has to be
+   bought.
 
    The PR form is NOT on this page: this page runs in the ERP's iframe and
    the form is in the parent window, so the parent does the real work
@@ -1064,7 +1288,7 @@ function prEligible(r){
   // Only an Item Master item can become a PR line: the PR is tied to that
   // item_id, and without a Store Standard Name there is nothing to tie it to.
   if(!r.storeId) return { ok:false, why:'Choose the Store Standard Name (Item Master) first' };
-  if(rowCalc(r).poQty<=0) return { ok:false, why:'Final PO Qty is 0. Please fill in Lot Req Qty.' };
+  if(prQtyOf(r)<=0) return { ok:false, why:'New PR Qty is 0: the free Balance Stock already covers Order Qty + MSV (or type a qty in New PR Qty)' };
   return { ok:true, why:'' };
 }
 const prSelRows = () => D.rows.filter(r=>r.prSel && prEligible(r).ok);
@@ -1072,7 +1296,7 @@ function prCellHtml(r, idx, c){
   const e=prEligible(r);
   const has=!!String(r.prNo||'').trim();
   const tip=e.ok
-    ? ('Tick → PR qty '+fmtN(c.poQty)+' (Final PO Qty)'+(has?'\nThis row already has PR '+r.prNo+'; a new PR will replace it':''))
+    ? ('Tick → PR qty '+fmtN(prQtyOf(r))+' (New PR Qty)'+(has?'\nThis row already has PR '+r.prNo+'; a new PR will replace it':''))
     : e.why;
   return `<td class="pr-td ${has?'has-pr':''}" title="${esc(tip)}">`
     +`<input type="checkbox" ${r.prSel&&e.ok?'checked':''} ${e.ok?'':'disabled'} onchange="prToggle(${idx},this.checked)">`
@@ -1149,8 +1373,8 @@ function poCellHtml(r, idx, ro){
      > 0  in the store but not issued to the lot   → red (work pending)
      = 0  everything received has been issued      → green
      < 0  MORE issued than was received            → red, OVER tag
-   Second, smaller line = Lot Req Qty − Total Issue, the shortfall against what
-   the lots actually asked for. An item that is short because it never came IN
+   Second, smaller line = Order Qty − Total Issue, the shortfall against what
+   the order needs. An item that is short because it never came IN
    shows "Req short" here while the main figure reads 0 — without it, that case
    is invisible. Hidden when the two agree, so the cell stays quiet when nothing
    needs saying. */
@@ -1160,13 +1384,13 @@ function pendSub(c, hasLots){
   if(c.pendIssue<0) return '<span class="sub" style="color:#c0392b">OVER issued</span>';
   const short=c.reqShort;
   if(short===c.pendIssue) return '';                 // nothing new to say
-  if(short>0) return `<span class="sub" style="color:#c0392b">Req short ${fmtN(short)}</span>`;
-  if(short<0) return `<span class="sub" style="color:#7e22ce">Req +${fmtN(-short)}</span>`;
-  return '<span class="sub" style="color:#1e8449">Req pura</span>';
+  if(short>0) return `<span class="sub" style="color:#c0392b">Order short ${fmtN(short)}</span>`;
+  if(short<0) return `<span class="sub" style="color:#7e22ce">Order +${fmtN(-short)}</span>`;
+  return '<span class="sub" style="color:#1e8449">Order complete</span>';
 }
 function pendTip(c){
   return `Pending Issue = Qty Received (${fmtN(c.rec)}) − Total Lot Issue (${fmtN(c.totalIssue)}) = ${fmtN(c.pendIssue)}\n`
-    +`vs Lot Req: ${fmtN(c.reqShort)} ${c.reqShort>0?'pending':(c.reqShort<0?'over-issued':'complete')}`;
+    +`vs Order Qty: ${fmtN(c.reqShort)} ${c.reqShort>0?'pending':(c.reqShort<0?'over-issued':'complete')}`;
 }
 
 function renderRows(){
@@ -1174,7 +1398,7 @@ function renderRows(){
   const lots=D.lots;
   $('tableBody').innerHTML=D.rows.map((r,idx)=>{
     const c=rowCalc(r);
-    const oqAuto=autoOrderQty(r)!=null, lqAuto=autoLotQty(r)!=null;
+    const oqAuto=autoOrderQty(r)!=null;
     const recCell = canAutoRec(r)&&!r.recManual
       ? (()=>{ const x=liveRec(r); return `<td class="live" title="${esc(x.docs.join('\n')||'No inward yet for this item against this PO / PR')}">${fmtN(x.qty)}<small>${x.docs.length} inward</small>${ro?'':`<button class="ico" onclick="overrideRec(${idx})" title="Manual qty">✎</button>`}</td>`; })()
       : `<td><input type="number" class="${r.recManual?'man':''}" value="${esc(r.rec)}" oninput="setF(${idx},'rec',this.value)" ${ro} title="${(r.prNo||r.poNo)&&!r.storeId?'Choose the Store Standard Name; it will then come automatically from the PO / PR':''}">${r.recManual&&canAutoRec(r)&&!ro?`<button class="ico" onclick="revert(${idx},'recManual')" title="Automatic from the Store">↺</button>`:''}</td>`;
@@ -1195,10 +1419,11 @@ function renderRows(){
       <td><input type="text" value="${esc(r.desc)}" oninput="setF(${idx},'desc',this.value)" onchange="descChanged(${idx})" ${ro}></td>
       <td><select onchange="setF(${idx},'cat',this.value)" ${ro}>${CATEGORIES.concat(CATEGORIES.includes(r.cat)?[]:[r.cat]).map(x=>`<option ${x===r.cat?'selected':''}>${esc(x)}</option>`).join('')}</select></td>
       <td class="store-wrap"><input type="text" class="store ${r.storeId?'auto':''}" value="${esc(r.storeName)}" placeholder="Item Master…" onfocus="itemOpen(this,${idx})" oninput="itemFilter(this,${idx})" onkeydown="itemKey(event,${idx})" onblur="itemBlur(this,${idx})" ${ro} title="${esc(r.storeName)}"></td>
+      ${stockCellHtml(r)}
       <td><select onchange="setBasis(${idx},this.value)" ${ro}>${BASES.map(b=>`<option value="${b[0]}" ${b[0]===r.basis?'selected':''}>${b[1]}</option>`).join('')}</select></td>
       <td><input type="number" class="${r.oQtyManual?'man':(oqAuto?'auto':'')}" value="${esc(r.oQty)}" oninput="setManual(${idx},'oQty','oQtyManual',this.value,this)" ${ro}>${r.oQtyManual&&oqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'oQtyManual')" title="Order se auto">↺</button>`:''}</td>
       <td><select class="${r.supManual?'man':(autoSupplier(r)?'auto':'')}" onchange="setManual(${idx},'sup','supManual',this.value,this)" ${ro}>${SUPPLIERS.map(s=>`<option ${s===r.sup?'selected':''}>${s}</option>`).join('')}</select></td>
-      <td><input type="number" class="${r.lotManual?'man':(lqAuto?'auto':'')}" value="${esc(r.lotQty)}" oninput="setManual(${idx},'lotQty','lotManual',this.value,this)" ${ro}>${r.lotManual&&lqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'lotManual')" title="Lot se auto">↺</button>`:''}</td>
+      ${prQtyCellHtml(r,idx,ro)}
       ${prCellHtml(r,idx,c)}
       <td><select onchange="setF(${idx},'waste',this.value)" ${ro}>${WASTE_OPTS.concat(WASTE_OPTS.includes(num(r.waste))?[]:[num(r.waste)]).map(w=>`<option value="${w}" ${num(r.waste)===w?'selected':''}>${w}%</option>`).join('')}</select></td>
       <td class="calc poQty">${c.poQty}</td>
@@ -1211,7 +1436,7 @@ function renderRows(){
       <td class="calc pend ${pendCls(c)}" title="${esc(pendTip(c))}">${lots.length?fmtN(c.pendIssue):'—'}${pendSub(c,lots.length)}</td>
       <td><select onchange="setF(${idx},'disp',this.value)" ${ro}><option ${r.disp==='AUTO'?'selected':''}>AUTO</option><option ${r.disp==='MANUAL'?'selected':''}>MANUAL</option></select></td>
       <td><input type="text" value="${esc(r.hisaab)}" oninput="setF(${idx},'hisaab',this.value)" ${ro}></td>
-      <td class="noprint">${ro?'':`<button class="row-del" onclick="removeRow(${idx})" title="Remove row">✕</button>`}</td>
+      <td class="noprint act">${ro?'':`<button class="row-add" onclick="addNewItem(${idx})" title="Add Item below this row">+</button><button class="row-del" onclick="removeRow(${idx})" title="Remove row">✕</button>`}</td>
     </tr>`;
   }).join('');
   // The rows have just been built, so the button count and "select all" are
@@ -1227,10 +1452,19 @@ function refreshCalc(idx){
   const p=tr.querySelector('.pend');
   p.innerHTML=(D.lots.length?fmtN(c.pendIssue):'—')+pendSub(c,D.lots.length);
   p.className='calc pend '+pendCls(c); p.title=pendTip(c);
-  /* The NEW PR checkbox depends on Final PO Qty (it can't be ticked at 0), and
-     Final PO Qty changes with Lot Req Qty / Wastage, so it is refreshed here as
-     well. Without this, a row that was at 0 stayed disabled after Lot Req Qty
-     was filled in, until the next full render. */
+  /* New PR Qty follows Order Qty while it is on auto. Only the value and the
+     tooltip are touched — the box itself is not rebuilt — so a user typing in
+     it (manual) keeps focus and caret. */
+  const r=D.rows[idx], pq=tr.querySelector('.prq');
+  if(pq){
+    pq.title=prQtyTip(r);
+    const inp=pq.querySelector('input');
+    if(inp&&!r.prQtyManual&&document.activeElement!==inp){ const a=autoPrQty(r); inp.value=a==null?'':a; }
+  }
+  /* The NEW PR checkbox depends on New PR Qty (it can't be ticked at 0), which
+     changes with Order Qty, so it is refreshed here as well. Without this, a
+     row that was at 0 stayed disabled after Order Qty was filled in, until the
+     next full render. */
   const td=tr.querySelector('.pr-td');
   if(td){
     td.outerHTML=prCellHtml(D.rows[idx],idx,c);
@@ -1289,12 +1523,15 @@ function removeRow(i){
   if((r.desc||r.storeName) && !confirm('Remove row '+(i+1)+' ('+(r.desc||r.storeName)+')?')) return;
   D.rows.splice(i,1); setDirty(true); renderRows();
 }
-function addNewItem(){
+/* Add Item, from the action column: the header's + adds a row at the end;
+   a row's own + (after = that row's index) inserts the new row right below it. */
+function addNewItem(after){
   if(READ_ONLY()) return;
   const r=blankRow({ desc:'', cat:'TRIMS', sup:'SELLER', waste:0 }); applyAuto(r);
-  D.rows.push(r); setDirty(true); renderRows();
-  const w=$('tableWrap'); w.scrollTop=w.scrollHeight;
-  const inp=document.querySelector(`#tableBody tr[data-i="${D.rows.length-1}"] td:nth-child(2) input`); if(inp) inp.focus();
+  const at=(after==null||after<0||after>=D.rows.length) ? D.rows.length : after+1;
+  D.rows.splice(at,0,r); setDirty(true); renderRows();
+  const tr=document.querySelector(`#tableBody tr[data-i="${at}"]`);
+  if(tr){ tr.scrollIntoView({block:'nearest'}); const inp=tr.querySelector('td:nth-child(2) input'); if(inp) inp.focus(); }
 }
 
 /* ══ GENERATE NEW PR ══════════════════════════════════════════════════════
@@ -1340,13 +1577,15 @@ async function generatePrFromSheet(){
         uid:r.uid,
         itemId:r.storeId,
         name:r.storeName||r.desc||'',
-        // Final PO Qty = Lot Req × (1 + Wastage%). This is what gets bought.
-        qty:c.poQty,
-        lotReqQty:num(r.lotQty),
+        // New PR Qty = Order Qty + MSV − Balance Stock (or the figure typed in).
+        // Final PO Qty (Order × (1 + Wastage%)) rides along for reference.
+        qty:prQtyOf(r),
+        finalPoQty:c.poQty,
+        orderQty:num(r.oQty),
         wastagePct:num(r.waste),
         // Trims context on the PR line, so the Purchaser knows which order / lot
         // it is for without opening the Trims Manager.
-        remark:['Trims: Order '+(D.orderNo||'—'), lots?'Lot '+lots:'', r.desc||'', num(r.waste)?('Wastage '+num(r.waste)+'%'):'']
+        remark:['Trims: Order '+(D.orderNo?sheetLabel():'—'), lots?'Lot '+lots:'', r.desc||'', num(r.waste)?('Wastage '+num(r.waste)+'%'):'']
           .filter(Boolean).join(' · ')
       };
     })
@@ -1469,6 +1708,9 @@ function sheetPayload(){
   const designs=D.designs.map(x=>String(x||'').trim().toUpperCase()).filter(Boolean);
   return {
     p_sheet:{ order_no:D.orderNo, order_id:o?o.id:null,
+      // Product line (V3). Sent only when the database has the column: an older
+      // save function ignores unknown keys anyway, but this keeps it explicit.
+      ...(S.v3?{order_line:D.line||null}:{}),
       // On a manual sheet the typed Party Name IS the buyer — it is what the PDF
       // and the Saved Sheets register print, so it goes in buyer_name too and
       // every existing reader keeps working without knowing about party_name.
@@ -1526,7 +1768,15 @@ async function saveData(){
     await loadLinks();
     setDirty(false); renderAll();
     const st=$('saveStatus'); st.style.display='inline'; setTimeout(()=>st.style.display='none',2500);
-    toast('Saved — '+D.orderNo+(D.lots.length?' · Lot '+D.lots.join(', '):''));
+    toast('Saved — '+sheetLabel()+(D.lots.length?' · Lot '+D.lots.join(', '):''));
+    /* The Order Form unlocks "Generate Lot Card" for this product once its
+       requirement is saved. Inside the ERP it is told straight away (if its
+       panel is loaded); otherwise it re-reads when it regains focus. */
+    try{
+      const fr=window.parent&&window.parent!==window&&window.parent.document.getElementById('orderFormFrame');
+      const w=fr&&fr.contentWindow;
+      if(w&&typeof w.ofFillLotBoxes==='function') w.ofFillLotBoxes();
+    }catch(e){}
     // Said right after the save, not only in the boot banner: these values went
     // into the payload but the database has nowhere to keep them yet.
     const lost=[];
@@ -1542,7 +1792,7 @@ function resetData(){
   const b=$('btnReset');
   if(window.confirmState){
     window.confirmState=false; b.innerText='Reset';
-    setDirty(false); openOrder(D.orderNo);
+    setDirty(false); openOrder(D.orderNo,{line:D.line});
   } else {
     window.confirmState=true; b.innerText='Click again to confirm Reset!';
     setTimeout(()=>{ window.confirmState=false; b.innerText='Reset'; },3000);
@@ -1558,20 +1808,20 @@ function exportToCSV(){
   const lots=D.lots;
   // Lot Issue goes out as TWO columns per lot — the qty, and the issuing dates
   // beside it — so a spreadsheet can read either without parsing a cell.
-  const head=['SR','Item Description','Category','Store Standard Name','Basis','Order Qty','Supplier','Lot Req Qty','Wastage %','Final PO Qty','PR No','PO No','Target Date','Qty Received','Balance',
-    ...lots.flatMap(l=>['Lot '+l+' Issue','Lot '+l+' Issue Dates']),'Pending Issue (Recd − Issued)','Lot Req Short','Dispatch Mode','Final Settlement'];
+  const head=['SR','Item Description','Category','Store Standard Name','Balance Stock (On hand − other orders)','Basis','Order Qty','Supplier','New PR Qty (Order + MSV − Balance)','Wastage %','Final PO Qty','PR No','PO No','Target Date','Qty Received','Balance',
+    ...lots.flatMap(l=>['Lot '+l+' Issue','Lot '+l+' Issue Dates']),'Pending Issue (Recd − Issued)','Order Short (Order − Issued)','Dispatch Mode','Final Settlement'];
   const rows=[
-    ['ORDER NO',D.orderNo,isManualSheet()?'PARTY (manual)':'BUYER',D.order?D.order.buyer_name:(D.party||''),'LOT NO',lots.join(' | '),'STATUS',D.status],
+    ['ORDER NO',sheetLabel(),isManualSheet()?'PARTY (manual)':'BUYER',D.order?D.order.buyer_name:(D.party||''),'LOT NO',lots.join(' | '),'STATUS',D.status],
     ...(isManualSheet()?[['MANUAL ORDER','YES','BRAND',D.brand||'','DESIGNS',D.designs.filter(x=>String(x||'').trim()).join(' | ')]]:[]),
     [],head];
   D.rows.forEach((r,i)=>{ const c=rowCalc(r);
-    rows.push([i+1,r.desc,r.cat,r.storeName,r.basis,r.oQty,r.sup,r.lotQty,num(r.waste)+'%',c.poQty,r.prNo,effPoNos(r).join(', '),tDateOf(r),c.rec,c.bal,
+    rows.push([i+1,r.desc,r.cat,r.storeName,(stockOf(r)?stockOf(r).free:''),r.basis,r.oQty,r.sup,(r.storeId?prQtyOf(r):''),num(r.waste)+'%',c.poQty,r.prNo,effPoNos(r).join(', '),tDateOf(r),c.rec,c.bal,
       ...lots.flatMap(l=>[issueOf(r,l),issueDates(r,l).join(' / ')]),
       lots.length?c.pendIssue:'',lots.length?c.reqShort:'',r.disp,r.hisaab]); });
   const csv='\ufeff'+rows.map(r=>r.map(v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\n');
   const link=document.createElement('a');
   link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
-  link.setAttribute('download',`Trims_Manager_${(D.orderNo||'sheet').replace(/[\\/:*?"<>|]+/g,'-')}.csv`);
+  link.setAttribute('download',`Trims_Manager_${(D.orderNo?D.orderNo+(D.line?'_P'+D.line:''):'sheet').replace(/[\\/:*?"<>|]+/g,'-')}.csv`);
   document.body.appendChild(link); link.click(); document.body.removeChild(link);
 }
 
@@ -1591,7 +1841,7 @@ const SARV_LOGO_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAUAAAAChCAYAAAC2/2Y5AAAAAXNSR0
 const PDF_BUCKET = 'sarv-pdfs';
 /* Rows per page. Lower than before because a row can now be three lines tall
    (Lot Issue prints every issuing date under the qty, Pending Issue prints the
-   Lot Req line under the figure) and the first page also carries a taller
+   Order short line under the figure) and the first page also carries a taller
    Order Details box on a manual sheet. SUMMARY_ROWS is how much room the
    summary + approvals block needs, in row-heights. */
 const ROWS_FIRST_PAGE = 15, ROWS_PER_PAGE = 22, SUMMARY_ROWS = 10;
@@ -1637,8 +1887,8 @@ const TD = (t,extra) => `<td style="font-size:7pt;padding:3pt 2.5pt;border:0.5pt
 function docTableHead(){
   const lotCols=D.lots.map(l=>TH('Lot '+esc(l)+' Issue<br><span style="font-weight:400;font-size:5.6pt">Qty + date</span>','5.4%','background:#5b3f8c;border-color:#5b3f8c;')).join('');
   return `<thead><tr>
-    ${TH('SR','2.4%')}${TH('Item Description','8.4%')}${TH('Category','4.8%')}${TH('Store Standard Name<br><span style="font-weight:400;font-size:5.6pt">Item Master</span>','10.4%')}
-    ${TH('Basis','3.2%')}${TH('Supplier','4%')}${TH('Order<br>Qty','4%')}${TH('Lot Req<br>Qty','4%')}${TH('Wst<br>%','2.7%')}${TH('Final<br>PO Qty','4.2%')}
+    ${TH('SR','2.4%')}${TH('Item Description','12.4%')}${TH('Category','4.8%')}${TH('Store Standard Name<br><span style="font-weight:400;font-size:5.6pt">Item Master</span>','10.4%')}
+    ${TH('Basis','3.2%')}${TH('Supplier','4%')}${TH('Order<br>Qty','4%')}${TH('Wst<br>%','2.7%')}${TH('Final<br>PO Qty','4.2%')}
     ${TH('PR No','6.4%')}${TH('PO No / Vendor','8.4%')}${TH('Target<br>Date','4.8%')}${TH('Qty<br>Received','4.4%')}${TH('Balance','4%')}
     ${lotCols}${D.lots.length?TH('Pending Issue<br><span style="font-weight:400;font-size:5.6pt">Recd − Issued</span>','5%'):''}${TH('Dispatch','3.4%')}${TH('Final Settlement','6.6%')}
   </tr></thead>`;
@@ -1666,21 +1916,21 @@ function docRowHtml(x){
     const dts=x.issueDates[i]||[];
     return TD(`${nIN(v)}${dts.length?`<br><span style="font-size:5.6pt;color:#5b3f8c;font-weight:600">${dts.map(esc).join('<br>')}</span>`:''}`,'text-align:right;');
   }).join('');
-  // Pending Issue = Received − Issued, with the Lot Req shortfall under it.
+  // Pending Issue = Received − Issued, with the Order Qty shortfall under it.
   const pendCell=(()=>{
     const main=`<b>${nIN(c.pendIssue)}</b>`;
     let sub='';
     if(c.pendIssue<0) sub='<br><span style="font-size:5.6pt;color:#c0392b;font-weight:700">OVER ISSUED</span>';
     else if(c.reqShort!==c.pendIssue){
-      if(c.reqShort>0) sub=`<br><span style="font-size:5.6pt;color:#c0392b;font-weight:600">Req short ${nIN(c.reqShort)}</span>`;
-      else if(c.reqShort<0) sub=`<br><span style="font-size:5.6pt;color:#7e22ce;font-weight:600">Req +${nIN(-c.reqShort)}</span>`;
-      else sub='<br><span style="font-size:5.6pt;color:#1e8449;font-weight:600">Req pura</span>';
+      if(c.reqShort>0) sub=`<br><span style="font-size:5.6pt;color:#c0392b;font-weight:600">Order short ${nIN(c.reqShort)}</span>`;
+      else if(c.reqShort<0) sub=`<br><span style="font-size:5.6pt;color:#7e22ce;font-weight:600">Order +${nIN(-c.reqShort)}</span>`;
+      else sub='<br><span style="font-size:5.6pt;color:#1e8449;font-weight:600">Order complete</span>';
     }
     return TD(main+sub,'text-align:right;'+(c.pendIssue===0?'color:#1e8449;':'color:#c0392b;'));
   })();
   return `<tr style="${zebra}page-break-inside:avoid;">
     ${TD(x.sr,'text-align:center;')}${TD('<b>'+dash(r.desc)+'</b>')}${TD(cat,'text-align:center;')}${TD(r.storeName?esc(r.storeName):'<span style="color:#aaa">—</span>')}
-    ${TD(basis,'text-align:center;')}${TD(sup,'text-align:center;')}${TD(r.oQty===''?'—':nIN(r.oQty),'text-align:right;')}${TD(r.lotQty===''?'—':nIN(r.lotQty),'text-align:right;')}
+    ${TD(basis,'text-align:center;')}${TD(sup,'text-align:center;')}${TD(r.oQty===''?'—':nIN(r.oQty),'text-align:right;')}
     ${TD(num(r.waste)+'%','text-align:center;')}${TD('<b>'+nIN(c.poQty)+'</b>','text-align:right;background:#eef2f7;')}
     ${TD(prCell)}${TD(poCell)}${TD(dateCell,'text-align:center;'+(x.overdue?'background:#fdecea;':''))}
     ${TD(hasPo||r.prNo||num(c.rec)?nIN(c.rec):'—','text-align:right;')}${TD(hasPo?nIN(c.bal):'—','text-align:right;'+balStyle)}
@@ -1701,7 +1951,7 @@ function docHeader(first){
       </div>
       <div style="text-align:right">
         <div style="font-size:${first?'13pt':'10pt'};font-weight:700;color:#D4870A">TRIMS &amp; PACKING MATERIAL SHEET</div>
-        <div style="font-size:7.5pt;color:#1A3C5E;margin-top:1pt"><b>Order No:</b> ${esc(D.orderNo||'—')}${isManualSheet()?' <span style="font-size:6pt;color:#8a5300;font-weight:700">(MANUAL)</span>':''}${first?'':' &nbsp;·&nbsp; <b>'+(isManualSheet()?'Party':'Buyer')+':</b> '+esc(o?o.buyer_name:(D.party||'—'))}</div>
+        <div style="font-size:7.5pt;color:#1A3C5E;margin-top:1pt"><b>Order No:</b> ${esc(D.orderNo?sheetLabel():'—')}${isManualSheet()?' <span style="font-size:6pt;color:#8a5300;font-weight:700">(MANUAL)</span>':''}${first?'':' &nbsp;·&nbsp; <b>'+(isManualSheet()?'Party':'Buyer')+':</b> '+esc(o?o.buyer_name:(D.party||'—'))}</div>
         ${first?`<div style="font-size:6.8pt;color:#555">Date: ${esc(new Date().toLocaleDateString('en-IN'))} &nbsp;·&nbsp; Status: <b>${esc(D.status)}</b></div>`:''}
       </div>
     </div>`;
@@ -1718,7 +1968,7 @@ function docHeader(first){
      because for such a sheet this PDF is the only record of them. */
   const manual=isManualSheet();
   const designs=D.designs.map(x=>String(x||'').trim()).filter(Boolean);
-  const orderBox=kv('Order No',esc(D.orderNo||'—')+(manual?' <span style="color:#8a5300;font-weight:700">(manual)</span>':''))
+  const orderBox=kv('Order No',esc(D.orderNo?sheetLabel():'—')+(manual?' <span style="color:#8a5300;font-weight:700">(manual)</span>':''))
     +kv('Order Date',esc(o?o.order_date:(manual?'—':'—')))
     +kv(manual?'Party Name':'Buyer',esc(o?o.buyer_name:(D.party||'—')))
     +(manual?kv('Brand Name',esc(D.brand||'—'))
@@ -1750,7 +2000,7 @@ function docSummaryHtml(rows){
     <table><tr>
       ${stat('Total Items',s.items)}${stat('PO Raised',s.withPo)}${stat('Pending Receipt',s.pendRec,s.pendRec?'#c0392b':'#1e8449')}
       ${stat('Overdue (PO)',s.overdue,s.overdue?'#c0392b':'#1e8449')}${stat('PR → PO Pending',s.prNoPo.length,s.prNoPo.length?'#8a5300':'#1e8449')}
-      ${stat('Pending Issue',s.pendIssue==null?'—':s.pendIssue,s.pendIssue?'#c0392b':'#1e8449')}${stat('Lot Req Short',s.reqShort==null?'—':s.reqShort,s.reqShort?'#c0392b':'#1e8449')}${stat('No PR / PO (SIHF)',s.needPo.length,s.needPo.length?'#c0392b':'#1e8449')}
+      ${stat('Pending Issue',s.pendIssue==null?'—':s.pendIssue,s.pendIssue?'#c0392b':'#1e8449')}${stat('Order Short',s.reqShort==null?'—':s.reqShort,s.reqShort?'#c0392b':'#1e8449')}${stat('No PR / PO (SIHF)',s.needPo.length,s.needPo.length?'#c0392b':'#1e8449')}
     </tr></table>
     <div style="font-size:7pt;margin-top:3pt;line-height:1.5">
       ${s.prNoPo.length?`<div><b style="color:#8a5300">PR raised, no PO yet:</b> ${s.prNoPo.map(esc).join(', ')}</div>`:''}
@@ -1840,7 +2090,8 @@ async function makePdf(){
   const btn=$('btnPdf'); btn.disabled=true; btn.textContent='PDF…';
   try{
     const blob=await generateTrimsPdfBlob();
-    const fileName=`Trims_${D.orderNo.replace(/[\\/:*?"<>|\s]+/g,'-')}.pdf`;
+    // Product sheets of one order each keep their own file (…_P2.pdf).
+    const fileName=`Trims_${(D.orderNo+(D.line?'_P'+D.line:'')).replace(/[\\/:*?"<>|\s]+/g,'-')}.pdf`;
     let url='';
     try{
       const path='trims-sheets/'+fileName;
@@ -1848,7 +2099,7 @@ async function makePdf(){
       if(up.error) throw up.error;
       url=SB.storage.from(PDF_BUCKET).getPublicUrl(path).data.publicUrl+'?v='+Date.now();
       // Shared PDF index (same one Print History / Reports read) + the sheet's own link
-      await SB.from('pdf_documents').upsert({ document_type:'TRIMS_SHEET', document_id:D.sheetId||null, document_no:D.orderNo, variant:'SINGLE',
+      await SB.from('pdf_documents').upsert({ document_type:'TRIMS_SHEET', document_id:D.sheetId||null, document_no:D.orderNo+(D.line?' #'+D.line:''), variant:'SINGLE',
         file_path:path, public_url:url, schema_version:'trims-v1' },{ onConflict:'document_no,variant' });
       if(D.sheetId) await SB.from('mfg_trims_sheets').update({ pdf_url:url, pdf_path:path }).eq('id',D.sheetId);
     }catch(e){ console.warn('Trims PDF upload skipped:',e.message||e); url=''; }
@@ -1889,22 +2140,43 @@ function renderRegister(){
       const pendIss=lines.filter(l=>{ const t=Object.values(l.lot_issues||{}).reduce((a,v)=>a+num(v),0); return num(l.lot_req_qty)>t; }).length;
       const withPr=lines.filter(l=>String(l.pr_no||'').trim()).length;
       const dz=Array.isArray(s.designs)?s.designs.filter(Boolean):[];
-      return `<tr><td><b>${esc(s.order_no)}</b>${s.order_manual?'<br><small style="color:#8a5300;font-weight:700">✎ manual</small>':''}</td>
+      return `<tr><td><b>${esc(s.order_no)}</b>${s.order_line?`<br><small style="color:#5e35b1;font-weight:700">Product #${esc(s.order_line)}</small>`:''}${s.order_manual?'<br><small style="color:#8a5300;font-weight:700">✎ manual</small>':''}</td>
         <td>${esc(s.buyer_name||s.party_name||'')}</td>
         <td style="font-size:11px">${esc(s.brand_name||'—')}${dz.length?'<br><span style="color:#888">'+esc(dz.join(', '))+'</span>':''}</td>
         <td>${esc((s.mfg_trims_sheet_lots||[]).sort((a,b)=>a.position-b.position).map(l=>l.lot_no).join(', ')||'—')}</td>
         <td>${lines.length}</td><td style="font-weight:700;color:${withPr?'#1f5d8c':'#888'}">${S.v2.line?withPr:'—'}</td><td style="color:${pendRec?'#c0392b':'#1e8449'};font-weight:700">${pendRec}</td><td style="color:${pendIss?'#c0392b':'#1e8449'};font-weight:700">${pendIss}</td>
         <td><span class="pill ${esc(s.status)}">${esc(s.status)}</span></td><td style="font-size:11px">${esc(s.updated_by||'')}<br>${esc(new Date(s.updated_at).toLocaleString('en-IN'))}</td>
-        <td style="white-space:nowrap"><button class="btn-export" style="padding:4px 10px" onclick="regOpen('${esc(s.order_no).replace(/'/g,"\\'")}')">Open</button>
+        <td style="white-space:nowrap"><button class="btn-export" style="padding:4px 10px" onclick="regOpen('${esc(s.order_no).replace(/'/g,"\\'")}',${Number(s.order_line)||0})">Open</button>
         ${s.pdf_url?`<a href="${esc(s.pdf_url)}" target="_blank" rel="noopener" class="btn-pdf" style="padding:4px 9px;border-radius:4px;font-size:13px;font-weight:600;text-decoration:none;display:inline-block">PDF</a>`:''}
         ${IS_ADMIN()?`<button class="btn-clear" style="padding:4px 8px" onclick="regDelete('${s.id}','${esc(s.order_no).replace(/'/g,"\\'")}')" title="Delete sheet (Admin)">✕</button>`:''}</td></tr>`;
     }).join('')}</tbody></table>
     <div style="font-size:11px;color:#888;margin-top:6px">Pending / Req short columns = saved snapshot. Opening the sheet shows live PR / PO and Store data.</div>`;
 }
-async function regOpen(orderNo){
-  if(D.dirty && !confirm('Discard unsaved changes and open '+orderNo+'?')) return;
-  closeRegister(); await openOrder(orderNo);
+async function regOpen(orderNo, line){
+  if(D.dirty && !confirm('Discard unsaved changes and open '+orderNo+(line?' · Product #'+line:'')+'?')) return;
+  closeRegister(); await openOrder(orderNo,{line:line||null});
 }
+
+/* ══ HAND-OFF FROM THE ORDER FORM ══════════════════════════════════════════
+   Order Form › Confirmed order › Lot Cards › "PROCUREMENT (TRIMS MANAGER)"
+   writes {v:1, kind:'OPEN_ORDER_LINE', orderNo, line, at} to localStorage and
+   opens this panel. Read once on boot (after the order list has loaded) and,
+   if this page is already open, through trimsHandoff() called by the Order
+   Form. To add a field, change both sides and bump v. */
+const TRIMS_HANDOFF_KEY='sarv_trims_handoff';
+let BOOTED=false;
+async function trimsHandoff(){
+  if(!BOOTED) return;                       // boot runs it once the lists are in
+  let h=null;
+  try{ h=JSON.parse(localStorage.getItem(TRIMS_HANDOFF_KEY)||'null'); localStorage.removeItem(TRIMS_HANDOFF_KEY); }catch(e){}
+  if(!h||h.v!==1||h.kind!=='OPEN_ORDER_LINE'||!h.orderNo) return;
+  if(Date.now()-Number(h.at||0)>10*60*1000) return;   // a stale one from another day
+  if(D.dirty && !(D.orderNo===h.orderNo&&D.line===(Number(h.line)||null))
+     && !confirm('Discard unsaved changes on '+sheetLabel()+' and open '+h.orderNo+(h.line?' · Product #'+h.line:'')+'?')) return;
+  if(!S.orderByNo[h.orderNo]) await loadOrders().catch(()=>{});   // an order confirmed since this page loaded
+  await openOrder(h.orderNo,{line:Number(h.line)||null});
+}
+window.trimsHandoff=trimsHandoff;
 async function regDelete(id, orderNo){
   if(!IS_ADMIN()) return;
   if(!confirm('DELETE the trims sheet for Order '+orderNo+'?\n\nThe lot links will be removed too. This cannot be undone.')) return;
@@ -1928,12 +2200,14 @@ window.onload = async function(){
   if(!SB){ $('banners').innerHTML='<div class="banner err">The Supabase library did not load. Check the internet connection and reload.</div>'; return; }
   $('banners').innerHTML='<div class="banner info">Loading orders, Lot Cards, Item Master, PR / PO &amp; Store data…</div>';
   try{
-    await Promise.all([loadOrders(), loadLots(), loadItems(), loadPrs(), loadStoreData(), loadLinks(), probeV2()]);
+    await Promise.all([loadOrders(), loadLots(), itemsOnce(), loadPrs(), loadStoreData(), loadLinks(), probeV2()]);
   }catch(e){
     $('banners').innerHTML='<div class="banner err">'+esc(isSetupError(e)?'Database setup pending. Run TRIMS_MANAGER_MIGRATION.sql (and the Order Form / Lot Card migrations) in the Supabase SQL Editor, then reload.':errMsg(e))+'</div>';
     return;
   }
   renderAll();
+  BOOTED=true;
+  await trimsHandoff();                     // opened from the Order Form's PROCUREMENT button
 };
 </script>
 </body>
