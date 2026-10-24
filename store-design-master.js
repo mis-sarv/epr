@@ -1942,7 +1942,9 @@
   }
   async function downloadPdf(){
     const doc = await buildCataloguePdf(); if (!doc) return;
-    doc.save(pdfFileName());
+    // Through downloadBlob (store-core.js) rather than doc.save(), so the
+    // ERP's download stamp (user + time footer) is applied like everywhere else.
+    downloadBlob(doc.output('blob'), pdfFileName());
     toast('Catalogue PDF downloaded.', 'success');
   }
   async function openPdf(){

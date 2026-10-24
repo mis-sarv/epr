@@ -2254,22 +2254,63 @@
        no nuts, and received (20) >= ordered (20) called the PO fully Received
        with the nuts still outstanding. `excess` is kept separately for the
        same reason — the two must never net each other off. */
+    /* ── Each PO line in what it is BILLED on (same rule as STORE.html's
+       poLineMeasure_) ──
+         QTY    → ordered_qty vs received_qty
+         WEIGHT → gross_weight (KGS) vs the weight received on it (__recWt,
+                  summed off inward_lines by attachRecWeightsM_)
+       A WEIGHT line whose received weight was not loaded falls back to qty —
+       how it was always read — never to a zero. */
+    function poLineMeasureM_(l){
+        const isWt = String(l && l.bill_basis || '').toUpperCase() === 'WEIGHT'
+            && pNum(l && l.gross_weight) > 0 && l.__recWt !== undefined;
+        return isWt
+            ? {o: pNum(l.gross_weight), r: pNum(l.__recWt), unit: 'KGS', wt: true}
+            : {o: pNum(l && l.ordered_qty), r: pNum(l && l.received_qty), unit: String(l && l.uom || ''), wt: false};
+    }
+    async function attachRecWeightsM_(lines){
+        const wt = (lines||[]).filter(l => l && l.id && String(l.bill_basis||'').toUpperCase() === 'WEIGHT');
+        if(!wt.length) return;
+        try{
+            const ids = [...new Set(wt.map(l => l.id))], sums = {};
+            for(let i = 0; i < ids.length; i += 200){
+                const q = await SB.from('inward_lines').select('po_line_id,weight').in('po_line_id', ids.slice(i, i + 200));
+                if(q.error) throw q.error;
+                (q.data||[]).forEach(r => { sums[r.po_line_id] = (sums[r.po_line_id]||0) + pNum(r.weight); });
+            }
+            wt.forEach(l => { l.__recWt = sums[l.id] || 0; });
+        }catch(e){ console.warn('[MOBILE] Received weight unavailable — WEIGHT lines read on qty:', e.message||e); }
+    }
+    // "250 KGS + 6 PCS" — totals per unit, so kilos are never added to pieces.
+    function unitTotalsTxt_(map){
+        const ks = Object.keys(map);
+        if(!ks.length) return '0';
+        return ks.map(u => nNum_(map[u]) + (u ? ' ' + u : '')).join(' + ');
+    }
     function poLineTally_(lines){
         const t = {ordered:0, received:0, pending:0, excess:0,
                    itemsTotal:0, itemsPending:0, itemsFull:0, itemsNone:0, anyOrdered:false};
+        const by = {ordered:{}, received:{}, pending:{}, excess:{}};
+        const add = (k, u, v) => { by[k][u] = (by[k][u]||0) + v; };
         (lines||[]).forEach(l => {
-            const ord = pNum(l.ordered_qty), rec = pNum(l.received_qty);
+            const m = poLineMeasureM_(l), ord = m.o, rec = m.r;
             t.ordered  += ord;
             t.received += rec;
             t.pending  += Math.max(0, ord - rec);
             t.excess   += Math.max(0, rec - ord);
+            add('ordered', m.unit, ord); add('received', m.unit, rec);
+            if(ord - rec > 0.0005) add('pending', m.unit, ord - rec);
+            if(rec - ord > 0.0005) add('excess', m.unit, rec - ord);
             t.itemsTotal++;
             if(ord > 0) t.anyOrdered = true;
             // A line ordered as 0 has nothing outstanding, so it counts as
             // settled and cannot hold the order open.
-            if(ord > 0 && rec < ord){ t.itemsPending++; if(rec <= 0) t.itemsNone++; }
+            if(ord > 0 && rec < ord - 0.0005){ t.itemsPending++; if(rec <= 0) t.itemsNone++; }
             else t.itemsFull++;
         });
+        // Display strings, unit by unit (the plain sums above stay for the maths).
+        t.ordTxt = unitTotalsTxt_(by.ordered); t.recTxt = unitTotalsTxt_(by.received);
+        t.pendTxt = unitTotalsTxt_(by.pending); t.excTxt = unitTotalsTxt_(by.excess);
         return t;
     }
     /* Which of the three sections a PO belongs in. Decided from its own lines
@@ -2579,14 +2620,16 @@
             const PAGE = 1000;
             const all = [];
             for(let from = 0; ; from += PAGE){
+                // '*' — bill_basis / gross_weight decide how each line is measured.
                 const q = await SB.from('purchase_order_lines')
-                    .select('id,purchase_order_id,line_no,item_name,uom,ordered_qty,received_qty')
+                    .select('*')
                     .in('purchase_order_id', ids).order('id').range(from, from + PAGE - 1);
                 if(q.error) throw q.error;
                 const rows = q.data || [];
                 all.push(...rows);
                 if(rows.length < PAGE) break;
             }
+            await attachRecWeightsM_(all);
             const byPo = {};
             all.forEach(l => { (byPo[l.purchase_order_id] = byPo[l.purchase_order_id] || []).push(l); });
             // Paged by id for a stable window; the modal wants PO line order.
@@ -2680,7 +2723,8 @@
                 .eq('document_type', docType).in('document_no', nos);
             if(q.error) throw q.error;
             (q.data||[]).forEach(p => {
-                if(!p.public_url) return;
+                // The Original Invoice (photos only) is never the entry's own PDF.
+                if(!p.public_url || p.variant === 'INVOICE') return;
                 const cur = out[p.document_no];
                 // First row wins unless a later one is the variant we asked for.
                 if(!cur || (preferVariant && p.variant === preferVariant)) out[p.document_no] = p.public_url;
@@ -3589,13 +3633,13 @@
             let html = `<div class="card-header"><span>${escText(p.po_no||'-')}</span><span>${escText(nMoney_(p.grand_total))}</span></div>`;
             html += `<div class="card-detail">Vendor: <b>${escText(p.vendor_name||'-')}</b></div>`;
             if(p.linked_req_nos) html += `<div class="card-detail">PR: <b>${escText(p.linked_req_nos)}</b></div>`;
-            html += `<div class="card-detail">Ordered: <b>${escText(nNum_(ordered))}</b> · Received: <b style="color:${col};">${escText(nNum_(got))}</b> · Pending: <b>${escText(nNum_(left))}</b></div>`;
+            html += `<div class="card-detail">Ordered: <b>${escText(t ? t.ordTxt : nNum_(ordered))}</b> · Received: <b style="color:${col};">${escText(t ? t.recTxt : nNum_(got))}</b> · Pending: <b>${escText(t ? t.pendTxt : nNum_(left))}</b></div>`;
             if(t){
                 // The item-wise line, which is what actually decides the section.
                 html += `<div class="card-detail">Items: <b>${t.itemsFull}/${t.itemsTotal}</b> poore`
                      + (t.itemsPending ? ` · <b style="color:#d97706;">${t.itemsPending}</b> item pending`
                           + (t.itemsNone ? ` (${t.itemsNone} with nothing received)` : '') : '')
-                     + (t.excess > 0 ? ` · <b style="color:#dc2626;">${escText(nNum_(t.excess))}</b> excess` : '')
+                     + (t.excess > 0 ? ` · <b style="color:#dc2626;">${escText(t.excTxt)}</b> excess` : '')
                      + `</div>`;
             }
             html += `<div style="height:6px;background:#e9edf2;border-radius:4px;margin-top:6px;overflow:hidden;">`
@@ -3621,7 +3665,7 @@
                     ? '✔ Short closed; the remaining qty will not come'
                     : '✔ All items fully received')
                 : (bucket === 'partial'
-                    ? '◑ Partly received: ' + (t ? t.itemsPending + ' item(s) with ' + nNum_(t.pending) + ' qty pending' : 'remainder pending')
+                    ? '◑ Partly received: ' + (t ? t.itemsPending + ' item(s) with ' + t.pendTxt + ' pending' : 'remainder pending')
                     : 'Nothing received yet' + (t ? ': ' + t.itemsTotal + ' item(s) pending' : ''));
             html += `<div class="card-action ${bucket==='received'?'done':'wait'}">${escText(actionText)}</div>`;
             card.innerHTML = html;
@@ -3668,7 +3712,7 @@
                              : `<span class="pfu-ok">${od === 0 ? 'today' : (-od) + ' days left'}</span>`)
                      + `</div>`;
             }
-            html += `<div class="card-detail">Pending Qty: <b>${escText(nNum_(left))}</b>`
+            html += `<div class="card-detail">Pending: <b>${escText(t ? t.pendTxt : nNum_(left))}</b>`
                  + (t ? ` · <b>${t.itemsPending}</b> item(s) pending` : '')
                  + `</div>`;
             html += `<div class="card-detail">Status: ${statusBadge(p.status)}</div>`;
@@ -3793,13 +3837,13 @@
            among eighteen that are settled. Within each group the PO's own
            line order is kept, so a line can still be found by its number. */
         const ordered = lines.map((l, i) => ({l, i})).sort((a, b) => {
-            const short = x => { const o = pNum(x.l.ordered_qty), r = pNum(x.l.received_qty);
+            const short = x => { const m = poLineMeasureM_(x.l), o = m.o, r = m.r;
                                  return (o > 0 && r < o) ? 0 : 1; };
             return short(a) - short(b) || a.i - b.i;
         });
         const bucket = poReceiptBucket(po);
         return ordered.map(({l, i}) => {
-            const o = pNum(l.ordered_qty), r = pNum(l.received_qty);
+            const mm = poLineMeasureM_(l), o = mm.o, r = mm.r;   // on its Bill Basis (KGS for WEIGHT)
             // What this line still OWES. An over-receipt reads as 0 pending
             // with an Excess chip, never as a negative that could offset
             // another line that never arrived.
@@ -3813,15 +3857,15 @@
                 <td><b>${escText(nNum_(o))}</b></td>
                 <td><b style="color:${st.fg};">${escText(nNum_(r))}</b></td>
                 <td><b style="color:${left > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(left))}</b></td>
-                <td>${escText(l.uom||'-')}</td>
+                <td>${escText(mm.wt ? 'KGS' : (l.uom||'-'))}</td>
                 <td><span style="background:${st.bg};color:${st.fg};border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:800;white-space:nowrap;">${st.txt}</span></td>
             </tr>`;
         }).join('')
         + `<tr style="background:#f1f5f9;font-weight:800;">
             <td colspan="2">TOTAL — ${t.itemsTotal} item(s)</td>
-            <td>${escText(nNum_(t.ordered))}</td>
-            <td style="color:#16a34a;">${escText(nNum_(t.received))}</td>
-            <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(t.pending))}</td>
+            <td>${escText(t.ordTxt)}</td>
+            <td style="color:#16a34a;">${escText(t.recTxt)}</td>
+            <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(t.pendTxt)}</td>
             <td></td>
             <td style="color:${bucket === 'received' ? '#16a34a' : (bucket === 'partial' ? '#d97706' : '#64748b')};">
                 ${escText(bucket === 'received' ? 'Received' : (bucket === 'partial' ? 'Partial' : 'Pending'))}</td>
@@ -3830,10 +3874,10 @@
         // off the screen onto the call.
         + `<tr><td colspan="${span}" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
             + escText(t.itemsPending
-                ? 'Speak to the vendor about these ' + t.itemsPending + ' item(s): ' + nNum_(t.pending) + ' qty pending in total'
+                ? 'Speak to the vendor about these ' + t.itemsPending + ' item(s): ' + t.pendTxt + ' pending in total'
                     + (t.itemsNone ? ' (nothing at all received on ' + t.itemsNone + ' item(s))' : '') + '.'
                 : 'All items have been received in full; no follow-up needed on this PO.')
-            + (t.excess > 0 ? escText('  ▲ Excess: ' + nNum_(t.excess) + ' (does not make up for a shortage on another item).') : '')
+            + (t.excess > 0 ? escText('  ▲ Excess: ' + t.excTxt + ' (does not make up for a shortage on another item).') : '')
           + `</td></tr>`;
     }
     /* Fills the table, fetching the lines only if the list-wide lookup
@@ -3856,10 +3900,11 @@
         let lines = null;
         try{
             const q = await SB.from('purchase_order_lines')
-                .select('id,purchase_order_id,line_no,item_name,uom,ordered_qty,received_qty')
+                .select('*')
                 .eq('purchase_order_id', po.id).order('line_no');
             if(q.error) throw q.error;
             lines = q.data || [];
+            await attachRecWeightsM_(lines);
             po._lines = lines;   // the card's figures catch up on the next paint
         }catch(e){ console.warn('[MOBILE] Follow-up PO lines load failed:', e.message||e); }
         if(pfuPo_ !== po) return;
@@ -3879,7 +3924,7 @@
         const t = (lines && lines.length) ? poLineTally_(lines) : null;
         const left = t ? t.pending : Math.max(0, pNum(po.total_qty) - pNum(po.received_qty));
         pend.style.display = 'block';
-        pend.innerHTML = `Pending: <b>${escText(nNum_(left))}</b> qty`
+        pend.innerHTML = `Pending: <b>${escText(t ? t.pendTxt : nNum_(left) + ' qty')}</b>`
             + (t ? ` · <b>${t.itemsPending}</b> / ${t.itemsTotal} item(s) pending`
                  + (t.itemsNone ? ` (${t.itemsNone} with nothing received)` : '')
                : ` (from the PO header totals; the lines did not load)`);
@@ -3906,11 +3951,11 @@
             // once revisions exist below it.
             ['Delivery Date (original)', po.delivery_date ? fmtDate_(po.delivery_date) : '-'],
             ['Sent to vendor', po.party_sent_at ? pStamp(po.party_sent_at) : '✔ (date not recorded)'],
-            ['Ordered / Received', nNum_(t ? t.ordered : pNum(po.total_qty))
-                + ' / ' + nNum_(t ? t.received : pNum(po.received_qty))],
+            ['Ordered / Received', (t ? t.ordTxt : nNum_(pNum(po.total_qty)))
+                + ' / ' + (t ? t.recTxt : nNum_(pNum(po.received_qty)))],
             t ? ['Items Complete', t.itemsFull + ' of ' + t.itemsTotal
-                    + (t.itemsPending ? '  ·  ' + t.itemsPending + ' item par ' + nNum_(t.pending) + ' qty pending' : '')] : null,
-            t && t.excess > 0 ? ['Excess Received', nNum_(t.excess)] : null,
+                    + (t.itemsPending ? '  ·  ' + t.itemsPending + ' item par ' + t.pendTxt + ' pending' : '')] : null,
+            t && t.excess > 0 ? ['Excess Received', t.excTxt] : null,
             ['Status', po.status || '-'],
             // Which receipts have already landed against this PO — so a Sender
             // does not chase a quantity that arrived yesterday.
@@ -4525,7 +4570,13 @@
             .map(h => `<th>${h}</th>`).join('');
         const items = inwAppItems(r);
         const body = items.length ? items.map((it,i) => {
-            const over = pNum(it.excess) > 0;
+            /* Only ONE of Qty / Weight was checked for this row — the line's Bill
+               Basis (checkBasis, sent by STORE.html). That excess is marked red;
+               the other is still shown, greyed, for reference. A request raised
+               before checkBasis existed has neither greyed, as before. */
+            const cb = String(it.checkBasis || '').toUpperCase();
+            const offQty = cb === 'WEIGHT', offWt = cb === 'QTY';
+            const over = !offQty && pNum(it.excess) > 0;
             const rateOver = it.poRate != null && pNum(it.rate) > pNum(it.poRate) + 0.001;
             /* WEIGHT on a second row under the item, in the same column order.
                A receipt can sit exactly on the ordered Qty, at exactly the PO's
@@ -4537,10 +4588,11 @@
                (hasWeight); a request raised before weight was checked has no
                weight figures in its payload and simply shows the qty row, as
                before. */
-            const wtOver = pNum(it.excessWt) > 0;
-            const wtRow = it.hasWeight ? `<tr style="background:${wtOver ? '#fef2f2' : '#f8fafc'};">
+            const wtOver = !offWt && pNum(it.excessWt) > 0;
+            const tag = on => on ? ' <span style="background:#e0e7ff;color:#4338ca;border-radius:3px;padding:0 4px;font-size:0.6rem;font-weight:800;">BILL BASIS</span>' : '';
+            const wtRow = it.hasWeight ? `<tr style="background:${wtOver ? '#fef2f2' : '#f8fafc'};${offWt ? 'color:#94a3b8;' : ''}">
                 <td></td>
-                <td style="font-size:0.68rem;color:#475569;font-weight:700;">Weight (KGS)</td>
+                <td style="font-size:0.68rem;color:#475569;font-weight:700;">Weight (KGS)${tag(cb === 'WEIGHT')}</td>
                 <td></td>
                 <td>${escText(nNum_(it.orderedWt))}</td>
                 <td>${escText(nNum_(it.alreadyWt))}</td>
@@ -4550,12 +4602,12 @@
               </tr>` : '';
             return `<tr>
                 <td>${i+1}</td>
-                <td><b>${escText(it.name || '-')}</b>${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">Not on the PO</span>' : ''}</td>
+                <td><b>${escText(it.name || '-')}</b>${tag(cb === 'QTY' && it.hasWeight)}${it.extraItem ? '<br><span style="color:#dc2626;font-weight:800;font-size:0.66rem;">Not on the PO</span>' : ''}</td>
                 <td>${escText(it.docKind ? (it.docKind + ' ' + (it.docNo||'')) : '-')}</td>
                 <td>${escText(nNum_(it.ordered))}</td>
                 <td>${escText(nNum_(it.already))}</td>
                 <td><b>${escText(nNum_(it.qty))}</b> ${escText(it.uom || '')}</td>
-                <td${over ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.excess))}</td>
+                <td${over ? ' style="color:#dc2626;font-weight:800;"' : (offQty ? ' style="color:#94a3b8;" title="Not the Bill Basis — not checked"' : '')}>${escText(nNum_(it.excess))}</td>
                 <td${rateOver ? ' style="color:#dc2626;font-weight:800;"' : ''}>${escText(nNum_(it.rate))}</td>
                 <td>${it.poRate == null ? '-' : escText(nNum_(it.poRate))}</td>
               </tr>` + wtRow;
@@ -4654,10 +4706,10 @@
         NONE:   {bg:'transparent', fg:'#94a3b8', txt:'—'},
     };
     function recvLineState_(l){
-        const ord = pNum(l && l.ordered_qty), rec = pNum(l && l.received_qty);
+        const m = poLineMeasureM_(l), ord = m.o, rec = m.r;   // on the line's Bill Basis
         if(ord <= 0) return 'NONE';
-        if(rec > ord) return 'EXCESS';
-        if(rec >= ord) return 'FULL';
+        if(rec > ord + 0.0005) return 'EXCESS';
+        if(rec >= ord - 0.0005) return 'FULL';
         return rec > 0 ? 'PARTIAL' : 'PENDING';
     }
     async function openRecvModal(p){
@@ -4673,11 +4725,11 @@
             ['PO Date', p.po_date||'-'],
             ['Delivery Date', p.delivery_date||'-'],
             ['PR', p.linked_req_nos||'-'],
-            ['Ordered / Received', nNum_(ordered) + ' / ' + nNum_(got)],
+            ['Ordered / Received', (pre ? pre.ordTxt : nNum_(ordered)) + ' / ' + (pre ? pre.recTxt : nNum_(got))],
             // The item-wise reading, which is what puts this PO in its section.
             pre ? ['Items Complete', pre.itemsFull + ' of ' + pre.itemsTotal
-                    + (pre.itemsPending ? '  ·  ' + pre.itemsPending + ' item par ' + nNum_(pre.pending) + ' qty pending' : '')] : null,
-            pre && pre.excess > 0 ? ['Excess Received', nNum_(pre.excess)] : null,
+                    + (pre.itemsPending ? '  ·  ' + pre.itemsPending + ' item par ' + pre.pendTxt + ' pending' : '')] : null,
+            pre && pre.excess > 0 ? ['Excess Received', pre.excTxt] : null,
             ['Status', p.status||'-'],
             ['Inward Entries', (p._inwards||[]).length
                 ? (p._inwards||[]).map(x => x.document_no + (x.receiving_date ? ' ('+x.receiving_date+')' : '')).join(', ')
@@ -4713,6 +4765,7 @@
                 const q = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', p.id).order('line_no');
                 if(q.error) throw q.error;
                 lines = q.data || [];
+                await attachRecWeightsM_(lines);
                 p._lines = lines;   // and the card's figures catch up on the next paint
             }
             if(!lines.length){
@@ -4720,7 +4773,7 @@
             }else{
                 const t = poLineTally_(lines);
                 rowsHtml = lines.map((l,i)=>{
-                    const o = pNum(l.ordered_qty), r = pNum(l.received_qty);
+                    const mm = poLineMeasureM_(l), o = mm.o, r = mm.r;   // on its Bill Basis (KGS for WEIGHT)
                     // What this line still OWES. An over-receipt shows as 0
                     // pending with an Excess badge, never as a negative that
                     // could offset another line.
@@ -4732,7 +4785,7 @@
                         <td><b>${escText(nNum_(o))}</b></td>
                         <td><b style="color:${st.fg};">${escText(nNum_(r))}</b></td>
                         <td><b style="color:${left > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(left))}</b></td>
-                        <td>${escText(l.uom||'-')}</td>
+                        <td>${escText(mm.wt ? 'KGS' : (l.uom||'-'))}</td>
                         <td><span style="background:${st.bg};color:${st.fg};border-radius:4px;padding:1px 6px;font-size:0.68rem;font-weight:800;white-space:nowrap;">${st.txt}</span></td>
                     </tr>`;
                 }).join('')
@@ -4740,18 +4793,18 @@
                 // produce — the same call that placed this PO in its section.
                 + `<tr style="background:#f1f5f9;font-weight:800;">
                     <td colspan="2">TOTAL — ${t.itemsTotal} item(s)</td>
-                    <td>${escText(nNum_(t.ordered))}</td>
-                    <td style="color:#16a34a;">${escText(nNum_(t.received))}</td>
-                    <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(nNum_(t.pending))}</td>
+                    <td>${escText(t.ordTxt)}</td>
+                    <td style="color:#16a34a;">${escText(t.recTxt)}</td>
+                    <td style="color:${t.pending > 0 ? '#dc2626' : '#64748b'};">${escText(t.pendTxt)}</td>
                     <td></td>
                     <td style="color:${poReceiptBucket(p) === 'received' ? '#16a34a' : (poReceiptBucket(p) === 'partial' ? '#d97706' : '#64748b')};">
                         ${escText(poReceiptBucket(p) === 'received' ? 'Received' : (poReceiptBucket(p) === 'partial' ? 'Partial' : 'Pending'))}</td>
                    </tr>`
                 + `<tr><td colspan="7" style="background:#f8fafc;color:#475569;font-size:0.7rem;padding:5px 6px;">`
                     + escText('The section is decided from each item\'s pending qty: '
-                        + (t.itemsPending ? nNum_(t.pending) + ' qty pending on ' + t.itemsPending + ' item(s).'
+                        + (t.itemsPending ? t.pendTxt + ' pending on ' + t.itemsPending + ' item(s).'
                                           : 'all items have been received in full.'))
-                    + (t.excess > 0 ? escText('  Excess: ' + nNum_(t.excess) + ' (does not make up for a shortage on another item).') : '')
+                    + (t.excess > 0 ? escText('  Excess: ' + t.excTxt + ' (does not make up for a shortage on another item).') : '')
                   + `</td></tr>`;
             }
         }catch(err){ console.warn('[MOBILE] PO lines load failed:', err.message||err); }

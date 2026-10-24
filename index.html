@@ -416,9 +416,9 @@
                     <textarea class="form-control" id="inwRemarks" rows="2" placeholder="Any note about this inward..." style="height: 50px; resize: vertical; padding: 6px 10px;"></textarea>
                 </div>
 
-                <!-- ── v6: Optional multi-photo upload ── -->
-                <div class="form-group" style="margin-top: 10px;">
-                    <label>Photos (optional) <small style="color:#94a3b8; font-weight:500;">— camera or gallery, preview below · uploaded to Supabase on submit</small></label>
+                <!-- ── Original invoice / material photos: at least one is required ── -->
+                <div class="form-group" id="inwPhotoGroup" style="margin-top: 10px; border-radius:8px;">
+                    <label>Photos / Original Invoice <span style="color:#dc2626;">*</span> <small style="color:#94a3b8; font-weight:500;">— at least one photo required · each photo becomes a full page of the Original Invoice PDF</small></label>
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <label for="inwPhotoCameraInput" id="inwCameraBtnLabel" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; border:1.5px dashed #93c5fd; color:#1d4ed8; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Take Photo
@@ -614,9 +614,9 @@
                     <textarea class="form-control" id="outRemarks" rows="2" placeholder="Any note about this outward..." style="height: 50px; resize: vertical; padding: 6px 10px;"></textarea>
                 </div>
 
-                <!-- ── v6: Optional multi-photo upload ── -->
-                <div class="form-group" style="margin-top: 10px;">
-                    <label>Photos (optional) <small style="color:#94a3b8; font-weight:500;">— camera or gallery, preview below · uploaded to Supabase on submit</small></label>
+                <!-- ── Gate pass / material photos: at least one is required ── -->
+                <div class="form-group" id="outPhotoGroup" style="margin-top: 10px; border-radius:8px;">
+                    <label>Photos / Original Document <span style="color:#dc2626;">*</span> <small style="color:#94a3b8; font-weight:500;">— at least one photo required · each photo becomes a full page of the Original Invoice PDF</small></label>
                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <label for="outPhotoCameraInput" id="outCameraBtnLabel" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; border:1.5px dashed #93c5fd; color:#1d4ed8; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Take Photo

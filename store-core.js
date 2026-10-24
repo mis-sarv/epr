@@ -574,6 +574,8 @@ function renderPoNumberPanel(){
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
         +'<input type="checkbox" class="sarv-po-opt" value="'+escText(po.po_no)+'"'+checked+'>'
         +'<span>'+escText(po.po_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(po.vendor_name||'Vendor')+' — '+escText(po.status||'Generated')+'</span>'
+        // What is still owed, on each line's Bill Basis (KGS for WEIGHT lines).
+        +(po.__pendTxt?' <span title="Still pending on this PO, by Bill Basis" style="color:#b45309;font-weight:700;white-space:nowrap;">· Pending: '+escText(po.__pendTxt)+'</span>':'')
         /* Said on the PO's own row as well: whoever ticks this PO to type a
            fresh receipt needs to know an approved one is already waiting for
            it, or the same material gets entered twice. */
@@ -1195,11 +1197,69 @@ function togglePoNumberPanel(show){
   if(open)renderPoNumberPanel();
   panel.style.display=open?'block':'none';
 }
+/* ── Which POs the Inward picker offers: decided on each line's Bill Basis ──
+   The saved status alone is not enough. It is re-graded on Bill Basis only
+   when something re-saves it (an inward, or the Purchase PO list loading), so
+   a WEIGHT-billed PO can still carry an old qty-based verdict here:
+     • "Received" because all the bags came, with KGS still owed → it must be
+       offered, or the rest of the material can never be booked against it;
+     • "Partially Received" because one bag is short, with every KGS in → it
+       must NOT be offered, or it gets received twice.
+   So the lines of every approved PO (and of every "Received" one) are read,
+   graded with poReceiptStatus_ — the same rule the status itself uses — and
+   the PO is offered only while something is still owed on its Bill Basis.
+   Any status found to be wrong is corrected in the database on the way.
+   Each offered PO carries __pendTxt ("250 KGS + 6 PCS") for the picker row.
+   If the lines cannot be read, the saved status decides, exactly as before. */
+const INW_PO_OPEN=['MD Approved','Partially Received','Vendor Verified'];
+async function inwOpenPosByBasis_(all){
+  const byStatus=all.filter(x=>INW_PO_OPEN.includes(String(x.status||'')));
+  const cands=all.filter(x=>INW_PO_OPEN.includes(String(x.status||''))||String(x.status||'')==='Received');
+  if(!cands.length)return byStatus;
+  let lines=[];
+  try{
+    const ids=cands.map(p=>p.id);
+    for(let i=0;i<ids.length;i+=200){
+      const lq=await SB.from('purchase_order_lines').select('*').in('purchase_order_id',ids.slice(i,i+200));
+      if(lq.error)throw lq.error;
+      lines.push(...(lq.data||[]));
+    }
+  }catch(e){
+    console.warn('[SARV] Inward PO picker: PO lines unavailable, using saved status:',e.message||e);
+    return byStatus;
+  }
+  if(!await poAttachRecWeights_(lines))return byStatus;
+  const byPo={};lines.forEach(l=>{(byPo[l.purchase_order_id]=byPo[l.purchase_order_id]||[]).push(l);});
+  const out=[],fixes=[];
+  cands.forEach(po=>{
+    const ls=byPo[po.id]||[];
+    // A PO with no lines (an old one linked only by PR number) keeps its status.
+    if(!ls.length){if(INW_PO_OPEN.includes(String(po.status||'')))out.push(po);return;}
+    const graded=poReceiptStatus_(ls,po.status);
+    if(graded!==(po.status||'')&&(graded==='Received'||graded==='Partially Received'))fixes.push({po,status:graded});
+    if(graded==='Received')return;
+    const ut=poUnitTotals_(ls);
+    po.__pendTxt=ut.owed;
+    out.push(po);
+  });
+  // Best-effort and not awaited: the picker must not wait on the write-back.
+  if(fixes.length)(async()=>{
+    for(const f of fixes){
+      try{
+        const u=await SB.from('purchase_orders').update({status:f.status,updated_at:new Date().toISOString()}).eq('id',f.po.id);
+        if(u.error)throw u.error;
+        f.po.status=f.status;
+      }catch(e){console.warn('[SARV] PO status correction failed for '+f.po.po_no+':',e.message||e);}
+    }
+    renderPoNumberPanel();
+  })();
+  return out;
+}
 async function loadOpenPoDropdown(){
   if(!SB_READY)return;
   const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
   if(q.error){console.warn('[SARV] PO dropdown unavailable:',q.error.message);return}
-  sarvPoCatalog=(q.data||[]).filter(x=>['MD Approved','Partially Received','Vendor Verified'].includes(String(x.status||'')));
+  sarvPoCatalog=await inwOpenPosByBasis_(q.data||[]);
   /* Drop any previously-ticked PO that is no longer open — EXCEPT while an
      MD-approved draft is loaded. A draft can be submitted long after its PO
      has been graded Received by another receipt, and the approved entry still
@@ -1309,6 +1369,8 @@ async function loadPoIntoInward(poNo){
     tr.dataset.poLineId=line.id;tr.dataset.poOrderedQty=line.ordered_qty||0;tr.dataset.poReceivedQty=line.received_qty||0;
     tr.dataset.poOrderedWeight=pNum(line.gross_weight);
     tr.dataset.poReceivedWeight=pNum(poRecWt[line.id]);
+    // The PO line's Bill Basis — what this line is measured on (poLineMeasure_).
+    tr.dataset.poBillBasis=String(line.bill_basis||'QTY').toUpperCase();
     tr.dataset.poNo=poById[line.purchase_order_id]?.po_no||'';
     /* The PO's agreed price is its NET rate — unit price AFTER the line's own
        discount. That is what the receipt's rate (also net: List Price − Disc%)
@@ -1332,6 +1394,21 @@ async function loadPoIntoInward(poNo){
     // receipt totals correctly out of the box; it stays editable because the
     // actually-received weight can differ from what was ordered.
     if(line.gross_weight!=null&&line.gross_weight!=='')set('.weight-field',pNum(line.gross_weight));
+    /* A WEIGHT-billed line is measured in KGS, so what it still owes is its
+       PENDING weight, not the whole Order Wt: a second receipt against a
+       half-received 500 KGS line opens on 250, the same way Qty opens on the
+       pending qty. */
+    if(tr.dataset.poBillBasis==='WEIGHT'&&pNum(line.gross_weight)>0){
+      const owedWt=Math.max(0,+(pNum(line.gross_weight)-pNum(poRecWt[line.id])).toFixed(3));
+      set('.weight-field',owedWt);
+      /* Qty follows the KGS too. All the bags in but KGS still owed would
+         otherwise open at Qty 0 — and a 0-qty row is dropped on save, so the
+         remaining weight could never be booked. It opens on the bags those KGS
+         come to at the PO's own bags-per-kg (at least 1); KGS all in opens at 0,
+         so nothing more is received on a line that is complete. Both editable. */
+      const pq=owedWt<=0?0:(pending>0?pending:Math.max(1,Math.round(pNum(line.ordered_qty)*owedWt/pNum(line.gross_weight))));
+      set('.qty-field',pq);
+    }
     // Bill Basis follows the PO line as well: a WEIGHT-billed order arriving
     // as a QTY receipt would re-cost itself the moment it was received.
     if(line.bill_basis)set('.bill-basis-field',line.bill_basis);
@@ -2161,8 +2238,9 @@ window.loadRepairTracker=async function(){
     const pdfMap={};
     if(allDocNos.length){
       try{
-        const pdfq=await SB.from('pdf_documents').select('document_no,public_url').in('document_no',allDocNos);
-        (pdfq.data||[]).forEach(p=>{if(p.public_url)pdfMap[p.document_no]=p.public_url;});
+        const pdfq=await SB.from('pdf_documents').select('document_no,variant,public_url').in('document_no',allDocNos);
+        // The entry's own PDF, never its Original Invoice (photos only).
+        (pdfq.data||[]).forEach(p=>{if(p.public_url&&p.variant!=='INVOICE')pdfMap[p.document_no]=p.public_url;});
       }catch(e){/* pdf lookup is best-effort — tracker still works without links */}
     }
     sarvRepairTrackerRows=outwards.map(o=>{
@@ -2262,6 +2340,48 @@ window.renderRepairTrackerTable=function(){
    A line ordered as 0 has nothing outstanding and so cannot hold the PO open;
    if NO line carries an ordered qty there is nothing to receive against and the
    status is left alone rather than being called Received on an empty promise. */
+/* ── A PO line is measured in what it is BILLED on ─────────────────
+   Bill Basis on the PO line decides what "ordered", "received" and "pending"
+   mean for it — and so what the PO's status is:
+     QTY    → Order Qty  vs received_qty
+     WEIGHT → Order Wt (gross_weight, KGS) vs the weight received on it
+   Yarn ordered as 500 KGS in 20 bags is complete when 500 KGS has come in,
+   whatever the bag count; a qty-billed line is complete on its count, however
+   much it weighed. Grading every line on qty used to leave a WEIGHT-billed PO
+   "Received" with kilos still owed, or "Partially Received" for ever because
+   the bag count never matched.
+
+   The received weight has no column on purchase_order_lines; it is summed off
+   inward_lines and attached as l.__recWt by poAttachRecWeights_. A WEIGHT line
+   whose weight could not be read (or whose PO line has no Order Wt) falls back
+   to qty, which is exactly how it was graded before — never a guess. */
+function poLineMeasure_(l){
+  const isWt=String(l&&l.bill_basis||'').toUpperCase()==='WEIGHT'
+    &&pNum(l&&l.gross_weight)>0&&l.__recWt!==undefined;
+  return isWt
+    ?{basis:'WEIGHT',unit:'KGS',ordered:pNum(l.gross_weight),received:pNum(l.__recWt)}
+    :{basis:'QTY',unit:String(l&&l.uom||''),ordered:pNum(l&&l.ordered_qty),received:pNum(l&&l.received_qty)};
+}
+/* Attaches __recWt to every WEIGHT-billed line in `lines` (needs their id).
+   Returns false when the inward_lines read failed — the lines are then left
+   without __recWt and grade on qty, as before, rather than on a zero. */
+async function poAttachRecWeights_(lines){
+  const wt=(lines||[]).filter(l=>l&&l.id&&String(l.bill_basis||'').toUpperCase()==='WEIGHT');
+  if(!wt.length||!SB_READY)return true;
+  try{
+    const ids=[...new Set(wt.map(l=>l.id))],sums={};
+    for(let i=0;i<ids.length;i+=200){
+      const q=await SB.from('inward_lines').select('po_line_id,weight').in('po_line_id',ids.slice(i,i+200));
+      if(q.error)throw q.error;
+      (q.data||[]).forEach(r=>{sums[r.po_line_id]=(sums[r.po_line_id]||0)+pNum(r.weight);});
+    }
+    wt.forEach(l=>{l.__recWt=sums[l.id]||0;});
+    return true;
+  }catch(e){
+    console.warn('[SARV] Received weight for WEIGHT-billed PO lines unavailable — graded on qty:',e.message||e);
+    return false;
+  }
+}
 function poReceiptStatus_(lines,currentStatus){
   const cur=currentStatus||'Generated';
   // A short-closed PO stays closed — a later or corrected receipt must not
@@ -2271,20 +2391,39 @@ function poReceiptStatus_(lines,currentStatus){
   if(!rows.length)return cur;
   let anyOrdered=false,anyReceived=false,allComplete=true;
   rows.forEach(l=>{
-    const ord=pNum(l.ordered_qty),rec=pNum(l.received_qty);
-    if(rec>0)anyReceived=true;
-    if(ord>0){anyOrdered=true;if(rec<ord)allComplete=false;}
+    // Each line on its own Bill Basis (poLineMeasure_). A tiny tolerance keeps
+    // a weight such as 499.9999 from holding a 500 KGS line open.
+    const m=poLineMeasure_(l);
+    if(m.received>0||pNum(l.received_qty)>0)anyReceived=true;
+    if(m.ordered>0){anyOrdered=true;if(m.received<m.ordered-0.0005)allComplete=false;}
   });
   if(!anyOrdered)return cur;
   if(allComplete)return 'Received';
   return anyReceived?'Partially Received':cur;
 }
-// Per-line receipt state, for the item-wise breakdown under a PO row.
+// Per-line receipt state, for the item-wise breakdown under a PO row — in the
+// line's own Bill Basis unit (qty, or KGS for a WEIGHT-billed line).
 function poLineReceipt_(l){
-  const ordered=pNum(l&&l.ordered_qty),received=pNum(l&&l.received_qty);
-  const balance=ordered-received;
-  return {ordered,received,balance,
+  const m=poLineMeasure_(l);
+  const ordered=m.ordered,received=m.received;
+  const balance=Math.abs(ordered-received)<0.0005?0:ordered-received;
+  return {ordered,received,balance,basis:m.basis,unit:m.unit,
     state:ordered<=0?'—':(received<=0?'PENDING':(balance>0?'PARTIAL':(balance<0?'EXCESS':'FULL')))};
+}
+/* A PO's lines summed per unit on their Bill Basis — "500 KGS + 20 PCS" —
+   for the screens that show one Ordered / Received / Pending figure per PO.
+   Kilos and pieces are never added into one number. */
+function poUnitTotals_(lines){
+  const m={};
+  (lines||[]).forEach(l=>{
+    const r=poLineReceipt_(l),u=r.unit||'';
+    const t=m[u]=m[u]||{ord:0,got:0,owed:0};
+    t.ord+=r.ordered;t.got+=r.received;t.owed+=Math.max(0,r.balance);
+  });
+  const txt=k=>{const ks=Object.keys(m).filter(u=>k!=='owed'||m[u].owed>0.0005);
+    return ks.length?ks.map(u=>nNum_(m[u][k])+(u?' '+u:'')).join(' + '):'0';};
+  return {ord:txt('ord'),got:txt('got'),owed:txt('owed'),
+    anyGot:Object.values(m).some(t=>t.got>0),allDone:Object.values(m).every(t=>t.owed<=0.0005)};
 }
 // Rows carry their own PO (tr.dataset.poNo), so one Inward can post receipts
 // back across several selected POs at once.
@@ -2302,13 +2441,18 @@ async function updatePoReceipt(poNos,rows){
   const touched=[...new Set(selected.map(r=>r.poNo).filter(Boolean))];
   for(const poNo of (touched.length?touched:wanted)){
     const po=sarvPoCatalog.find(x=>x.po_no===poNo);if(!po)continue;
-    const q=await SB.from('purchase_order_lines').select('ordered_qty,received_qty').eq('purchase_order_id',po.id);if(q.error)throw q.error;
+    // '*' — bill_basis / gross_weight / id are needed to grade WEIGHT-billed lines.
+    const q=await SB.from('purchase_order_lines').select('*').eq('purchase_order_id',po.id);if(q.error)throw q.error;
     const lines=q.data||[];
+    // If the received weight cannot be read, the status is left as it is (only
+    // the qty total is written) rather than re-graded on half the picture.
+    const wOk=await poAttachRecWeights_(lines);
     // Status from the lines item by item (poReceiptStatus_); received_qty stays
     // the plain sum, because that column is a quantity, not a verdict.
     const received=lines.reduce((s,x)=>s+pNum(x.received_qty),0);
-    const status=poReceiptStatus_(lines,po.status);
-    const u=await SB.from('purchase_orders').update({received_qty:received,status,updated_at:new Date().toISOString()}).eq('id',po.id);if(u.error)throw u.error;
+    const patch={received_qty:received,updated_at:new Date().toISOString()};
+    if(wOk)patch.status=poReceiptStatus_(lines,po.status);
+    const u=await SB.from('purchase_orders').update(patch).eq('id',po.id);if(u.error)throw u.error;
   }
   await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
 }
@@ -2540,6 +2684,9 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
         alreadyWt:p?pNum(p.alreadyWt):0,
         pendingWt:p?Math.max(0,pNum(p.ordWt)-pNum(p.alreadyWt)):0,
         excessWt:p?pNum(p.excWt):0,
+        /* The one measure this row's excess was checked on (inwardRowBasis_),
+           so mobile.html can mark that figure and grey the other. */
+        checkBasis:inwardRowBasis_(r,p),
         poRate:(p&&p.poRate!=null)?pNum(p.poRate):null,
         // An item the PO never ordered — no line to measure it against.
         extraItem:!!(poNos.length&&!r.poLineId&&!r.savedLine)
@@ -2654,6 +2801,14 @@ async function ensureInwardApproval_(rows,overrides){
      now it gates the save, like every other figure that goes past the order.
    • RATE — a PO line's agreed price changed on the way in. PR has no agreed
      price (the bill's rate is typed in), so this one is PO-only. */
+/* Which single measure an inward row is judged on for excess: its PO line's
+   Bill Basis on a PO receipt, otherwise the row's own Bill Basis field. WEIGHT
+   only counts where the document actually carries an ordered weight to be over
+   on; without one the row falls back to QTY rather than going unchecked. */
+function inwardRowBasis_(r,p){
+  const b=String((p&&p.kind==='PO'&&r&&r.poBillBasis)||(r&&r.billBasis)||'QTY').toUpperCase();
+  return (b==='WEIGHT'&&p&&p.hasWeight&&pNum(p.ordWt)>0)?'WEIGHT':'QTY';
+}
 function inwardDocOverrides(rows){
   const out=[];
   /* Is this receipt booked against a PO at all? Read the same three ways the
@@ -2679,7 +2834,15 @@ function inwardDocOverrides(rows){
        someone with no basis to judge it. The excess is still shown in red on
        the row's strip and printed on the PDF; it just does not gate the save,
        which is exactly how it behaved before the strip existed. */
-    if(p&&p.kind!=='RETURN'&&p.excess>0&&!withinTol(p.excess,p.ordered)){
+    /* ONE measure per row, never both — the Bill Basis decides which:
+         WEIGHT → only the KGS are checked (one bag more of the same 500 KGS is
+                  not an over-receipt)
+         QTY    → only the count is checked (a heavier lot of the same 20 bags
+                  is not an over-receipt)
+       The same rule the PO's status is graded on (inwardRowBasis_). */
+    const basis=inwardRowBasis_(r,p);
+    const checkQty=basis==='QTY', checkWt=basis==='WEIGHT';
+    if(checkQty&&p&&p.kind!=='RETURN'&&p.excess>0&&!withinTol(p.excess,p.ordered)){
       const pending=Math.max(0,p.ordered-p.already);
       out.push(r.name+' — '+p.kind+' '+p.no+': qty '+pNum(r.qty)
         +', only '+pending+' pending  (excess '+p.excess+')');
@@ -2690,7 +2853,7 @@ function inwardDocOverrides(rows){
        receipt that happens to record a weight. RETURN is excluded for the same
        reason it is above: a repair return is the unit's own material and there
        is no Purchaser who negotiated it. */
-    if(p&&p.kind!=='RETURN'&&p.hasWeight&&p.excWt>0&&!withinTol(p.excWt,p.ordWt)){
+    if(checkWt&&p&&p.kind!=='RETURN'&&p.hasWeight&&p.excWt>0&&!withinTol(p.excWt,p.ordWt)){
       const pendWt=Math.max(0,p.ordWt-p.alreadyWt);
       out.push(r.name+' — '+p.kind+' '+p.no+': received weight '+nWt_(r.weight)
         +' KGS, only '+nWt_(pendWt)+' KGS pending  (excess '+nWt_(p.excWt)+' KGS)');
@@ -2999,6 +3162,7 @@ function inwDraftAddRow_(it,ctx,poNos,prNos){
     tr.dataset.poReceivedQty=pNum(line.received_qty);
     tr.dataset.poOrderedWeight=pNum(line.gross_weight);
     tr.dataset.poReceivedWeight=pNum(ctx.recWt[line.id]);
+    tr.dataset.poBillBasis=String(line.bill_basis||'QTY').toUpperCase();
     tr.dataset.poNo=ctx.poNoById[String(line.purchase_order_id)]||String(it.poNo||'');
     const disc=pNum(line.discount_pct);
     tr.dataset.poUnitPrice=pNum(line.unit_price)-pNum(line.unit_price)*disc/100;
@@ -6546,20 +6710,65 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(cnt) cnt.textContent=s.files.length?s.files.length+' photo'+(s.files.length>1?'s':''):'' ;
   }
 
+  /* Phone photos arrive at 3–12 MB each. Embedded as they are, they made every
+     PDF slow to build and slower still to upload on a weak connection. Each one
+     is shrunk ONCE, here, the moment it is picked — long side capped at 2000 px
+     (an invoice stays readable when zoomed) and re-encoded as JPEG, which jsPDF
+     embeds as-is without re-compressing. By the time Submit is pressed the work
+     is already done. A photo the browser cannot decode is kept as it came. */
+  const PHOTO_MAX_SIDE=2000,PHOTO_JPEG_Q=0.82;
+  function readAsDataUrl(f){
+    return new Promise(res=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=()=>res('');r.readAsDataURL(f);});
+  }
+  function compressPhoto(f){
+    return new Promise(res=>{
+      const url=URL.createObjectURL(f),img=new Image();
+      const fallback=()=>{URL.revokeObjectURL(url);readAsDataUrl(f).then(d=>res(d?{name:f.name,type:f.type,dataUrl:d,file:f}:null));};
+      img.onload=()=>{
+        try{
+          const w0=img.naturalWidth,h0=img.naturalHeight;
+          if(!w0||!h0)return fallback();
+          const k=Math.min(1,PHOTO_MAX_SIDE/Math.max(w0,h0));
+          const w=Math.round(w0*k),h=Math.round(h0*k);
+          const c=document.createElement('canvas');c.width=w;c.height=h;
+          const cx=c.getContext('2d');
+          // White under any transparency, or a PNG's clear areas turn black in JPEG.
+          cx.fillStyle='#fff';cx.fillRect(0,0,w,h);cx.drawImage(img,0,0,w,h);
+          const dataUrl=c.toDataURL('image/jpeg',PHOTO_JPEG_Q);
+          URL.revokeObjectURL(url);
+          res({name:f.name,type:'image/jpeg',dataUrl,w,h,file:f});
+        }catch(e){fallback();}
+      };
+      img.onerror=fallback;
+      img.src=url;
+    });
+  }
+
   function addFiles(key, fileList){
     const s=stores[key];
     const newFiles=[...fileList].filter(f=>f.type.startsWith('image/'));
-    const readers=newFiles.map(f=>new Promise(res=>{
-      const r=new FileReader();
-      r.onload=()=>res({name:f.name,type:f.type,dataUrl:r.result,file:f});
-      r.onerror=()=>res(null);
-      r.readAsDataURL(f);
-    }));
-    Promise.all(readers).then(results=>{
-      s.files=[...s.files,...results.filter(Boolean)];
+    if(!newFiles.length)return;
+    // Clear the "photo required" outline as soon as something is picked.
+    const grp=byId(key==='inward'?'inwPhotoGroup':'outPhotoGroup');
+    if(grp){grp.style.outline='';grp.style.background='';}
+    if(byId(s.count))byId(s.count).textContent='Processing '+newFiles.length+' photo(s)…';
+    /* One at a time, so a burst of camera shots does not hold a dozen decoded
+       bitmaps in memory together on a low-end phone. Chained onto `pending`,
+       which Submit awaits (window.photosReady) so a photo still being processed
+       can never be left out of the PDF. */
+    // A form cleared (or swapped to a draft) mid-way must not receive photos
+    // picked for the entry before it — gen changes on every clear / take.
+    const gen=s.gen||0;
+    s.pending=(s.pending||Promise.resolve()).then(async()=>{
+      for(const f of newFiles){
+        const p=await compressPhoto(f);
+        if((s.gen||0)!==gen)return;
+        if(p){s.files=[...s.files,p];renderPreviews(key);}
+      }
       renderPreviews(key);
     });
   }
+  window.photosReady=function(key){ return (stores[key]&&stores[key].pending)||Promise.resolve(); };
 
   window.removePhotoAt=function(key,idx){
     if(!stores[key]) return;
@@ -6572,6 +6781,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   // draft and empty the preview, then give a draft's photos back.
   window.takePhotos=function(key){
     if(!stores[key])return [];
+    stores[key].gen=(stores[key].gen||0)+1;
     const files=stores[key].files;stores[key].files=[];renderPreviews(key);return files;
   };
   window.putPhotos=function(key,files){
@@ -6582,7 +6792,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   // store kept the previous entry's photos and attached them to the next one.
   window.clearPhotos=function(key){
     if(!stores[key])return;
+    stores[key].gen=(stores[key].gen||0)+1;
     stores[key].files=[];
+    const grp=byId(key==='inward'?'inwPhotoGroup':'outPhotoGroup');
+    if(grp){grp.style.outline='';grp.style.background='';}
     const cam=byId(stores[key].camera),gal=byId(stores[key].gallery);
     if(cam)cam.value=''; if(gal)gal.value='';
     renderPreviews(key);
@@ -9440,7 +9653,7 @@ async function imPipePdfMap_(nos){
 function imPipePdfPick_(map,no,prefer){
   const m=map[String(no||'')];if(!m)return '';
   for(const v of prefer)if(m[v])return m[v];
-  const k=Object.keys(m);return k.length?m[k[0]]:'';
+  const k=Object.keys(m).filter(v=>v!=='INVOICE');return k.length?m[k[0]]:'';
 }
 async function imLoadPipeline_(items){
   if(!SB_READY)return;
@@ -9450,7 +9663,7 @@ async function imLoadPipeline_(items){
       imPipeFetch_('purchase_requirements','id,req_no,request_date,required_by,requested_by,purchaser_name,department,priority,status','id'),
       imPipeFetch_('purchase_requirement_lines','id,requirement_id,item_id,requested_qty,uom','id'),
       imPipeFetch_('purchase_orders','id,po_no,po_date,delivery_date,vendor_name,status,pdf_url','id'),
-      imPipeFetch_('purchase_order_lines','id,purchase_order_id,req_no,item_id,item_name,ordered_qty,received_qty','id')
+      imPipeFetch_('purchase_order_lines','id,purchase_order_id,req_no,item_id,item_name,ordered_qty,received_qty,uom,bill_basis,gross_weight','id')
     ]);
     if(seq!==sarvImPipeSeq)return;
     const list=items||sarvItemMasterRows.map(r=>r.it);
@@ -9466,6 +9679,13 @@ async function imLoadPipeline_(items){
 
     // ── PO side ──
     const poById=new Map(pos.map(p=>[p.id,p]));
+    /* Received KGS for the WEIGHT-billed lines of the still-open POs, so their
+       pending is measured on weight like the PO status is (poLineMeasure_). */
+    await poAttachRecWeights_(poLines.filter(l=>{
+      const po=poById.get(l.purchase_order_id);
+      return po&&!IM_PIPE_PO_DONE.includes(String(po.status||'Generated'));
+    }));
+    if(seq!==sarvImPipeSeq)return;
     const poOrderedByKey={};          // req_no|item name, live POs only
     poLines.forEach(l=>{
       const po=poById.get(l.purchase_order_id);
@@ -9478,13 +9698,24 @@ async function imLoadPipeline_(items){
         });
       }
       if(!po||IM_PIPE_PO_DONE.includes(st))return;
-      const pending=pNum(l.ordered_qty)-pNum(l.received_qty);
-      if(pending<=0.0001)return;
+      /* Measured on the line's Bill Basis. A WEIGHT line still owes KGS; that is
+         what its document row shows. The item's Pending figure is kept in the
+         item's own unit: KGS as they are when the item is stocked in kg,
+         otherwise the KGS still owed turned back into the item's unit at the
+         line's own ordered qty-per-kg (500 KGS in 20 bags, 250 KGS owed → 10). */
+      const m=poLineMeasure_(l);
+      const owed=m.ordered-m.received;
+      if(owed<=0.0001)return;
       const id=resolve(l.item_id,l.item_name);if(!id)return;
+      let pending=owed;
+      if(m.basis==='WEIGHT'){
+        const itUom=String((itemById.get(id)||{}).uom||l.uom||'').toUpperCase();
+        if(!/^KG|^KGS$|^KILO/.test(itUom))pending=pNum(l.ordered_qty)*owed/m.ordered;
+      }
       const b=bucket(id);b.po+=pending;
       b.docs.push({type:'PO',no:po.po_no||'',date:po.po_date||'',status:st,party:po.vendor_name||'',
-        ref:l.req_no||'',qty:pNum(l.ordered_qty),done:pNum(l.received_qty),pending,due:po.delivery_date||'',
-        url:po.pdf_url||''});
+        ref:l.req_no||'',qty:m.ordered,done:m.received,pending:owed,due:po.delivery_date||'',
+        url:po.pdf_url||'',unit:m.basis==='WEIGHT'?'KGS':'',itemPending:pending});
     });
 
     // ── PR side ──
@@ -9664,9 +9895,13 @@ function imPipeFill_(itemId){
       +'<td style="'+td+'">'+escText(d.status||'—')+'</td>'
       +'<td style="'+td+'">'+escText(d.party||'—')+'</td>'
       +'<td style="'+td+'color:#475569;">'+(d.ref?(isPo?'PR ':'Purchaser: ')+escText(d.ref):'—')+'</td>'
-      +'<td style="'+num+'">'+q(d.qty)+'</td>'
-      +'<td style="'+num+'color:#475569;" title="'+done+'">'+q(d.done)+'</td>'
-      +'<td style="'+num+'font-weight:700;color:'+(isPo?'#1d4ed8':'#b45309')+';">'+q(d.pending)+'</td>'
+      // A WEIGHT-billed PO line reads in KGS (its Bill Basis); the hover says
+      // what that comes to in the item's own unit, which the totals above use.
+      +'<td style="'+num+'">'+q(d.qty)+(d.unit?' '+escText(d.unit):'')+'</td>'
+      +'<td style="'+num+'color:#475569;" title="'+done+'">'+q(d.done)+(d.unit?' '+escText(d.unit):'')+'</td>'
+      +'<td style="'+num+'font-weight:700;color:'+(isPo?'#1d4ed8':'#b45309')+';"'
+        +(d.unit&&d.itemPending!==d.pending?' title="Bill Basis WEIGHT — about '+q(d.itemPending)+' '+escText(uom)+' of this item"':'')+'>'
+        +q(d.pending)+(d.unit?' '+escText(d.unit):'')+'</td>'
       +'<td style="'+td+'white-space:nowrap;'+(overdue?'color:#b91c1c;font-weight:700;':'')+'"'+(overdue?' title="Delivery date has passed"':'')+'>'+dt(d.due)+'</td>'
       +'<td style="'+td+'">'+pdf+'</td>'
       +'</tr>';
@@ -12593,6 +12828,19 @@ function poDetailsFilters_(){
     poStatus:sarvPodStatusSel
   };
 }
+function podMeasure_(r){
+  return r.basis==='WEIGHT'
+    ?{pending:r.pendingWeight,excess:r.excessWeight,rec:r.recWeight}
+    :{pending:r.pendingQty,excess:r.excessQty,rec:r.recQty};
+}
+/* Is report column c (POD_HEAD index) the Pending / Excess figure that does NOT
+   count for this line? Those are still shown, for reference, but greyed so the
+   eye goes to the Bill Basis pair. */
+function podOffBasisCol_(r,c){
+  if(c===12||c===14)return r.basis==='WEIGHT';
+  if(c===13||c===15)return r.basis!=='WEIGHT';
+  return false;
+}
 function poDetailsFiltered_(){
   const f=poDetailsFilters_();
   return sarvPoDetailsRows.filter(r=>{
@@ -12602,10 +12850,13 @@ function poDetailsFiltered_(){
     if(f.from&&(!r.poDate||r.poDate<f.from))return false;
     if(f.to&&(!r.poDate||r.poDate>f.to))return false;
     if(f.poStatus.size&&!f.poStatus.has(r.poStatus||POD_NO_STATUS))return false;
-    if(f.status==='PENDING'&&!(r.pendingQty>0))return false;
-    if(f.status==='EXCESS'&&!(r.excessQty>0))return false;
-    if(f.status==='COMPLETE'&&r.pendingQty!==0)return false;
-    if(f.status==='NOTRECEIVED'&&r.recQty!==0)return false;
+    // Pending / Excess / Complete / Not received are judged on the line's
+    // Bill Basis: KGS for a WEIGHT line, qty otherwise (podMeasure_).
+    const m=podMeasure_(r);
+    if(f.status==='PENDING'&&!(m.pending>0.0005))return false;
+    if(f.status==='EXCESS'&&!(m.excess>0.0005))return false;
+    if(f.status==='COMPLETE'&&Math.abs(m.pending)>0.0005)return false;
+    if(f.status==='NOTRECEIVED'&&m.rec!==0)return false;
     return true;
   });
 }
@@ -12717,6 +12968,11 @@ async function loadPoDetailsReport(){
         // place the figures are built, so the screen, the CSV, the PDF, the
         // PDF totals and the "Excess only" filter all agree.
         excessQty:Math.max(0,recQty-poQty),excessWeight:Math.max(0,recWeight-poWeight),
+        /* The line's Bill Basis — which pair of Pending / Excess columns is the
+           one that counts (the same rule the PO status is graded on). A WEIGHT
+           line with no Order Wt has nothing to be measured on in KGS, so it
+           reads on qty. */
+        basis:(String(line.bill_basis||'').toUpperCase()==='WEIGHT'&&poWeight>0)?'WEIGHT':'QTY',
         lineNo:pNum(line.line_no)
       };
     }).sort((a,b)=>String(b.poDate||'').localeCompare(String(a.poDate||''))
@@ -12741,7 +12997,9 @@ function renderPoDetailsReport(){
   const num=(v,unit)=>v===0||v?nNum_(v)+(unit?' '+unit:''):'';
   // Sign colouring: a shortfall is amber, an over-receipt red — the same
   // reading the store gets off the entry form's PO strip.
-  const signed=(v,unit,goodWhenZero)=>'<td style="'+R+(v>0?'color:#b45309;font-weight:700;':(v<0?'color:#dc2626;font-weight:700;':(goodWhenZero?'color:#16a34a;':'')))+'">'+num(v,unit)+'</td>';
+  // `off`: not this line's Bill Basis — shown, but greyed (podOffBasisCol_).
+  const signed=(v,unit,goodWhenZero,off)=>'<td style="'+R+(off?'color:#cbd5e1;':(v>0?'color:#b45309;font-weight:700;':(v<0?'color:#dc2626;font-weight:700;':(goodWhenZero?'color:#16a34a;':''))))+'"'
+    +(off?' title="Not the Bill Basis of this line"':'')+'>'+num(v,unit)+'</td>';
   let last='';
   tb.innerHTML=rows.map(r=>{
     // PO No. / Date print once per order, the way the reference sheet reads.
@@ -12754,7 +13012,8 @@ function renderPoDetailsReport(){
       +'<td style="'+TD+podStatusStyle_(r.poStatus)+'white-space:nowrap;">'+escText(r.poStatus||'—')+'</td>'
       +'<td style="'+TD+'font-weight:700;color:#1d4ed8;white-space:nowrap;">'+(head?escText(fmtDate_(r.poDate)):'')+'</td>'
       +'<td style="'+TD+'font-weight:700;color:#1d4ed8;">'+escText(r.supplier)+'</td>'
-      +'<td style="'+TD+'">'+escText(r.itemName)+'</td>'
+      +'<td style="'+TD+'">'+escText(r.itemName)
+        +(r.basis==='WEIGHT'?' <span title="Bill Basis: WEIGHT — pending / excess counted in KGS" style="background:#e0e7ff;color:#4338ca;border-radius:3px;padding:0 4px;font-size:9px;font-weight:800;white-space:nowrap;">BY WT</span>':'')+'</td>'
       +'<td style="'+TD+'">'+escText(r.category)+'</td>'
       +'<td style="'+R+'background:#fef9c3;">'+num(r.poQty,r.uom)+'</td>'
       +'<td style="'+R+'background:#fef9c3;">'+num(r.poWeight,'kg')+'</td>'
@@ -12762,10 +13021,10 @@ function renderPoDetailsReport(){
       +'<td style="'+R+'background:#dcfce7;">'+num(r.recQty,r.uom)+'</td>'
       +'<td style="'+R+'background:#dcfce7;">'+num(r.recWeight,'kg')+'</td>'
       +'<td style="'+R+'background:#dcfce7;">'+num(r.recRate)+'</td>'
-      +signed(r.pendingQty,r.uom,true)
-      +signed(r.pendingWeight,'kg',true)
-      +signed(r.excessQty,r.uom,false)
-      +signed(r.excessWeight,'kg',false)
+      +signed(r.pendingQty,r.uom,true,podOffBasisCol_(r,12))
+      +signed(r.pendingWeight,'kg',true,podOffBasisCol_(r,13))
+      +signed(r.excessQty,r.uom,false,podOffBasisCol_(r,14))
+      +signed(r.excessWeight,'kg',false,podOffBasisCol_(r,15))
       +'</tr>';
   }).join('');
 }
@@ -12838,7 +13097,7 @@ async function downloadPoDetailsPdf(){
   let last='';
   const body=rows.map(r=>{
     const head=(r.poNo!==last);last=r.poNo;
-    return [head?r.poNo:'',r.poStatus||'—',head?fmtDate_(r.poDate):'',r.supplier,r.itemName,r.category,
+    return [head?r.poNo:'',r.poStatus||'—',head?fmtDate_(r.poDate):'',r.supplier,r.itemName+(r.basis==='WEIGHT'?' (by WT)':''),r.category,
       num(r.poQty,r.uom),num(r.poWeight,'kg'),num(r.poRate),
       num(r.recQty,r.uom),num(r.recWeight,'kg'),num(r.recRate),
       num(r.pendingQty,r.uom),num(r.pendingWeight,'kg'),
@@ -12898,6 +13157,8 @@ async function downloadPoDetailsPdf(){
         return;
       }
       const v=c===12?r.pendingQty:c===13?r.pendingWeight:c===14?r.excessQty:c===15?r.excessWeight:null;
+      // The pair that is not this line's Bill Basis prints grey, as on screen.
+      if(v!==null&&podOffBasisCol_(r,c)){h.cell.styles.textColor=[203,213,225];return;}
       if(v!==null&&v!==0){h.cell.styles.textColor=v>0?[180,83,9]:[220,38,38];h.cell.styles.fontStyle='bold';}
     }
   });
@@ -13141,7 +13402,7 @@ window.loadReports=async function(){
         if(!pdfErr&&pdfRows){
           const pdfMap={};
           pdfRows.forEach(p=>{if(!p.public_url)return;if(!pdfMap[p.document_no])pdfMap[p.document_no]={};pdfMap[p.document_no][p.variant]=p.public_url;});
-          results.forEach(r=>{const m=pdfMap[r.no]||{};r.pdfSingle=m.SINGLE||'';r.pdfTwoPage=m.TWO_PAGE||'';});
+          results.forEach(r=>{const m=pdfMap[r.no]||{};r.pdfSingle=m.SINGLE||'';r.pdfTwoPage=m.TWO_PAGE||'';r.pdfInvoice=m.INVOICE||'';});
         }
       }
     }catch(e){console.warn('[SARV] pdf_documents lookup skipped:',e.message||e);}
@@ -13179,6 +13440,7 @@ window.loadReports=async function(){
             <div style="display:flex;gap:4px;">
               ${r.pdfSingle?`<a href="${escText(r.pdfSingle)}" target="_blank" rel="noopener" title="Single-page (landscape, both copies side-by-side)" style="display:inline-flex;align-items:center;gap:3px;background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">1-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">1-Pg —</span>'}
               ${r.pdfTwoPage?`<a href="${escText(r.pdfTwoPage)}" target="_blank" rel="noopener" title="Two-page (portrait, one copy per page)" style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">2-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">2-Pg —</span>'}
+              ${r.pdfInvoice?`<a href="${escText(r.pdfInvoice)}" target="_blank" rel="noopener" title="Original Invoice: every attached photo, one per page" style="display:inline-flex;align-items:center;gap:3px;background:#fff7ed;border:1px solid #fdba74;color:#c2410c;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">Invoice</a>`:'<span title="No Original Invoice PDF for this entry" style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">Inv —</span>'}
             </div>
             <span style="font-size:9px;color:#94a3b8;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escText(r.items)}">${escText(r.items||'—')}</span>
           </div>
@@ -13481,7 +13743,7 @@ async function loadInwardForEdit(id,no){
   if(poLineIds.length){
     try{
       const pl=await SB.from('purchase_order_lines')
-        .select('id,purchase_order_id,ordered_qty,received_qty,gross_weight').in('id',poLineIds);
+        .select('*').in('id',poLineIds);   // '*' so bill_basis comes back where the column exists
       if(pl.error)throw pl.error;
       const poIds=[...new Set((pl.data||[]).map(l=>l.purchase_order_id).filter(Boolean))];
       const nameById={};
@@ -13494,7 +13756,8 @@ async function loadInwardForEdit(id,no){
       (pl.data||[]).forEach(l=>{poLineInfo[l.id]={
         poNo:nameById[l.purchase_order_id]||'',
         ordered:pNum(l.ordered_qty),received:pNum(l.received_qty),
-        ordWt:pNum(l.gross_weight),recWt:pNum(recWt[l.id])
+        ordWt:pNum(l.gross_weight),recWt:pNum(recWt[l.id]),
+        basis:String(l.bill_basis||'QTY').toUpperCase()
       }});
     }catch(err){console.warn('[SARV] PO line figures for edit skipped:',err.message||err);}
   }
@@ -13587,6 +13850,7 @@ async function loadInwardForEdit(id,no){
     if(pi){
       tr.dataset.poOrderedQty=pi.ordered;
       tr.dataset.poOrderedWeight=pi.ordWt;
+      tr.dataset.poBillBasis=pi.basis;
       /* "Already received" has to mean BEFORE this entry. The stored counters
          include this entry's own lines, so this line's own qty and weight are
          taken back out — otherwise reopening a receipt would count it twice
@@ -13887,15 +14151,17 @@ async function syncPoReceiptsForLines(lineIds){
     if(u.data&&u.data.purchase_order_id)poIds.add(u.data.purchase_order_id);
   }
   for(const poId of poIds){
-    const lq=await SB.from('purchase_order_lines').select('ordered_qty,received_qty').eq('purchase_order_id',poId);
+    const lq=await SB.from('purchase_order_lines').select('*').eq('purchase_order_id',poId);
     if(lq.error)throw lq.error;
     const lines=lq.data||[];
+    const wOk=await poAttachRecWeights_(lines);   // WEIGHT-billed lines grade on KGS
     const po=sarvPoCatalog.find(x=>x.id===poId);
     // Same item-wise rule as updatePoReceipt — one function, so an edited
     // receipt can never grade a PO differently from the original one.
     const received=lines.reduce((s,x)=>s+pNum(x.received_qty),0);
-    const status=poReceiptStatus_(lines,po&&po.status);
-    const u=await SB.from('purchase_orders').update({received_qty:received,status,updated_at:new Date().toISOString()}).eq('id',poId);
+    const patch={received_qty:received,updated_at:new Date().toISOString()};
+    if(wOk)patch.status=poReceiptStatus_(lines,po&&po.status);
+    const u=await SB.from('purchase_orders').update(patch).eq('id',poId);
     if(u.error)throw u.error;
   }
   await loadOpenPoDropdown();await loadPrDropdown_();await refreshGeneratedPoList();
@@ -14574,7 +14840,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     "Excess Qty: 12" all purple, "Order Qty: 500" all black. One rule, one
     place: all three renderers (live row, HTML print, native PDF) read from
     here, so the three copies can never show different colours. */
- const stripLblColor_=s=>(s&&s.c)||STRIP_COLOR.muted;
+ /* `lc` overrides it for one caption: "Excess Qty" is always purple, even
+    when its value is 0 and prints grey, so the caption is easy to find on
+    every PO sub-row. */
+ const stripLblColor_=s=>(s&&(s.lc||s.c))||STRIP_COLOR.muted;
 
  /* The strip as coloured segments — one list per printed line (Qty, then
     Weight when the PO line carries one). Every segment is
@@ -14592,7 +14861,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      {lbl:p.ordLabel,  t:String(p.ordered),  c:STRIP_COLOR.plain},
      {lbl:p.pendLabel||'Pending Qty',  t:String(p.pending),  c:stripPendColor_(p.pending)},
      {lbl:p.recLabel ||'Received Qty', t:String(p.received), c:STRIP_COLOR.received},
-     {lbl:p.excLabel ||'Excess Qty',   t:String(p.excess),   c:stripExcColor_(p.excess), bg:stripExcBg_(p.excess)},
+     {lbl:p.excLabel ||'Excess Qty',   t:String(p.excess),   c:stripExcColor_(p.excess), bg:stripExcBg_(p.excess), lc:STRIP_COLOR.excess},
    ]];
    if(p.hasWeight)lines.push([
      {t:'Weight (KGS)',c:accent,bold:true},
@@ -15205,15 +15474,15 @@ window.addEventListener('DOMContentLoaded',()=>{
             colour, so this line would be stuck in that colour. Top padding is 0,
             so it reads as the strip's own last line rather than a separate row. */
          const rateNote=docStripRateNote_(bits);
-         /* Centred (halign:'center'), not left. This line is a sentence (the PO
-            rate, the bill rate and the difference), not a row of column-wise
-            figures like the two lines above. On the left it read like an
-            unfinished fourth row under them; centred across the full width it
-            clearly reads as that item's rate statement. */
+         /* Left-aligned, starting at the same 1.6 mm inset as the Qty / Weight
+            lines above (drawStripCell_), so the rate reads straight down from
+            them. valign:'middle' with equal top / bottom padding keeps the text
+            centred between the cell's top and bottom borders — the old
+            top:0 / bottom:0.8 padding pushed it against the top line. */
          if(rateNote)body.push([{content:rateNote,colSpan:7,
-           styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'center',fillColor:[248,250,252],
+           styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'left',valign:'middle',fillColor:[248,250,252],
              textColor:hexRgb_(docStripRateAlert_(bits)?STRIP_COLOR.alert:STRIP_COLOR.info),
-             cellPadding:{top:0,bottom:0.8,left:1.6,right:1.6}}}]);
+             cellPadding:{top:0.5,bottom:0.5,left:1.6,right:1.6}}}]);
        }
      });
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
@@ -15344,52 +15613,70 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.setTextColor(0,0,0);
  }
 
- /* Appends one or more ATTACHMENTS pages carrying the photos taken/uploaded
-    with the entry. The HTML preview has always shown these (buildPhotosHtml_),
-    but the NATIVE builder — which is what actually gets saved and uploaded —
-    ignored them, so attachments never appeared in the stored PDF.
-    Laid out 2 per row, 2 rows per page, each scaled to fit its cell. */
- function drawAttachmentPages_(doc,images,label){
+ /* ── ORIGINAL INVOICE PDF ─────────────────────────────────────────
+    The photos taken / uploaded with a Store entry (the supplier's original
+    invoice, the gate pass, the material) used to be squeezed 4 to a page at the
+    end of BOTH entry PDFs — too small to read an invoice from, and it made both
+    files heavy and slow to build and upload. They now go into a separate file
+    of their own: ONE photo per full A4 page, page turned to suit the photo
+    (a landscape shot gets a landscape page), each page headed with the
+    Inward / Outward No. so a loose printed page is never anonymous.
+    Photos come in already shrunk to JPEG by the photo engine, so addImage just
+    copies the bytes in — no re-encoding, which is what keeps this fast. */
+ function storeInvoiceLabel_(kind,d){
+   const isOut=(kind==='OUTWARD'||kind==='ISSUE');
+   const type=String(d.entryType||kind).toUpperCase();
+   return (isOut?(type==='ISSUE'?'Issue No: ':'Outward No: '):(type==='INWARD NB'?'Inward (NB) No: ':'Inward No: '))
+     +(d.outwardNo||d.inwardNo||d.document_no||'-');
+ }
+ function buildStoreInvoicePdfBlob(kind,d,images){
+   if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
    const photos=(images||[]).filter(x=>String(x&&x.dataUrl||'').startsWith('data:image'));
-   if(!photos.length)return;
-   const M=10;
-   const PER_ROW=2,ROWS=2,PER_PAGE=PER_ROW*ROWS;
+   if(!photos.length)return null;
+   const {jsPDF}=window.jspdf;
+   const isOut=(kind==='OUTWARD'||kind==='ISSUE');
+   const label=storeInvoiceLabel_(kind,d);
+   const party=isOut?(d.partyName||''):(d.supplier||'');
+   const ref=isOut
+     ?[d.gatePass?('Gate Pass: '+d.gatePass):'',d.date?('Date: '+pDate(d.date)):''].filter(Boolean).join('   ')
+     :[d.invoiceNum?('Invoice No: '+d.invoiceNum):'',d.invoiceDate?('Invoice Date: '+pDate(d.invoiceDate)):''].filter(Boolean).join('   ');
+   const orientOf=p=>(p.w&&p.h&&p.w>p.h)?'landscape':'portrait';
+   const doc=new jsPDF({unit:'mm',format:'a4',orientation:orientOf(photos[0]),compress:true});
+   const M=8,HEAD=17,FOOT=6;
    photos.forEach((img,i)=>{
-     const slot=i%PER_PAGE;
-     if(slot===0){
-       doc.addPage('a4','portrait');
-       const pw=doc.internal.pageSize.getWidth();
-       doc.setFont(undefined,'bold');doc.setFontSize(13);doc.setTextColor(13,92,83);
-       doc.text('ATTACHMENTS',pw/2,M+6,{align:'center'});
-       doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(71,85,105);
-       doc.text(String(label||'')+'  •  '+photos.length+' photo(s)',pw/2,M+11.5,{align:'center'});
-       doc.setTextColor(0,0,0);
-       doc.setDrawColor(203,213,225);doc.setLineWidth(0.3);
-       doc.line(M,M+14,pw-M,M+14);
-     }
+     if(i>0)doc.addPage('a4',orientOf(img));
      const pw=doc.internal.pageSize.getWidth(),ph=doc.internal.pageSize.getHeight();
-     const top=M+19,gap=6;
-     const cellW=(pw-M*2-gap)/PER_ROW, cellH=(ph-top-M-gap-6)/ROWS;
-     const col=slot%PER_ROW,row=Math.floor(slot/PER_ROW);
-     const cx=M+col*(cellW+gap), cy=top+row*(cellH+gap);
-     doc.setDrawColor(203,213,225);doc.setLineWidth(0.25);
-     doc.rect(cx,cy,cellW,cellH);
+     // Header band — In/Out No. on the left, page count on the right.
+     doc.setFillColor(13,92,83);doc.rect(0,0,pw,HEAD-4,'F');
+     doc.setTextColor(255,255,255);doc.setFont(undefined,'bold');doc.setFontSize(12);
+     doc.text(label,M,7.2);
+     doc.setFontSize(8.5);
+     doc.text('ORIGINAL INVOICE / ATTACHMENT',pw-M,7.2,{align:'right'});
+     doc.setFont(undefined,'normal');doc.setFontSize(7.5);
+     const sub=[party,ref].filter(Boolean).join('   |   ');
+     if(sub)doc.text(doc.splitTextToSize(sub,pw-M*2-40)[0],M,11.2);
+     doc.text('Page '+(i+1)+' of '+photos.length,pw-M,11.2,{align:'right'});
+     doc.setTextColor(0,0,0);
+     // The photo, contain-fitted to everything below the header.
+     const top=HEAD,maxW=pw-M*2,maxH=ph-top-FOOT-2;
      try{
-       const dim=doc.getImageProperties(img.dataUrl);
-       // Contain-fit inside the cell so nothing is stretched or cropped.
-       const pad=3,maxW=cellW-pad*2,maxH=cellH-pad*2-4;
-       let iw=maxW,ih=iw*dim.height/dim.width;
-       if(ih>maxH){ih=maxH;iw=ih*dim.width/dim.height;}
-       doc.addImage(img.dataUrl,dim.fileType||'JPEG',cx+(cellW-iw)/2,cy+pad,iw,ih);
+       let w=img.w,h=img.h,type='JPEG';
+       if(!(w&&h)){const dim=doc.getImageProperties(img.dataUrl);w=dim.width;h=dim.height;type=dim.fileType||'JPEG';}
+       else if(/^data:image\/png/i.test(img.dataUrl))type='PNG';
+       let iw=maxW,ih=iw*h/w;
+       if(ih>maxH){ih=maxH;iw=ih*w/h;}
+       doc.addImage(img.dataUrl,type,M+(maxW-iw)/2,top+(maxH-ih)/2,iw,ih,'inv'+i,'FAST');
      }catch(e){
-       doc.setFontSize(8);doc.setTextColor(180,83,9);
-       doc.text('Image could not be embedded',cx+cellW/2,cy+cellH/2,{align:'center'});
+       doc.setFontSize(10);doc.setTextColor(180,83,9);
+       doc.text('Photo '+(i+1)+' could not be embedded',pw/2,ph/2,{align:'center'});
        doc.setTextColor(0,0,0);
      }
-     doc.setFontSize(7.5);doc.setTextColor(71,85,105);
-     doc.text('Photo '+(i+1)+' of '+photos.length,cx+cellW/2,cy+cellH-2,{align:'center'});
+     doc.setFontSize(6.5);doc.setTextColor(100,116,139);
+     doc.text((img.name?String(img.name)+'   ·   ':'')+'Printed: '+pStamp(),M,ph-3);
+     doc.text(label,pw-M,ph-3,{align:'right'});
      doc.setTextColor(0,0,0);
    });
+   return doc.output('blob');
  }
  async function buildStoreNativePdfBlob(kind,d,items,variant,images=[]){
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
@@ -15416,9 +15703,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(doc.setLineDashPattern)doc.setLineDashPattern([],0);
      drawStoreCopyNative_(doc,kind,d,items,copyBTitle,margin+colW+gap,margin,colW,pageH-margin*2);
    }
-   // Photos always follow the document copies, on their own page(s).
-   const isOutKind=(kind==='OUTWARD'||kind==='ISSUE');
-   drawAttachmentPages_(doc,images,(isOutKind?'Outward No: ':'Inward No: ')+(d.outwardNo||d.inwardNo||d.document_no||'-'));
+   // Photos are NOT added here any more: they go into their own Original
+   // Invoice PDF (buildStoreInvoicePdfBlob), one photo per full page. `images`
+   // stays in the signature only so older callers keep working.
    const blob=doc.output('blob');
    // Where each signature goes in THIS file (mm, top-left origin), for mobile.html's stamping.
    blob.sigLayout={pw:pageW,ph:pageH,slots:doc.__sigSlots};
@@ -16702,7 +16989,9 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(!indexed)missing.push('index');
 
     const table=pdfParentTable_(kind);
-    if(table&&recordId){
+    // The Original Invoice has no pdf_url_* column on the parent row; it is
+    // found through pdf_documents (variant INVOICE) alone.
+    if(table&&recordId&&variant!=='INVOICE'){
       if(!url){
         // No link to write yet — the file is in storage (or will be re-uploaded
         // by the queue) but its URL never resolved. Worth a retry later, not a
@@ -16760,7 +17049,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     return n;
   }
 
-  async function uploadPdfArtifact(blob,kind,recordNo,variant,filenameOverride=''){
+  async function uploadPdfArtifact(blob,kind,recordNo,variant,filenameOverride='',opts={}){
     const safe=pdfSafeName_(recordNo||kind), name=filenameOverride||safe+'_'+variant+'.pdf', path=`${kind.toLowerCase()}/${safe}/${name}`;
     if(!SB_READY)return {blob,path,url:'',name};
     /* upsert:true + a path built only from the record number and variant is
@@ -16772,7 +17061,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     const up=await pdfWithRetry_('storage upload '+path,
       ()=>SB.storage.from(SARV_PDF_BUCKET).upload(path,blob,{upsert:true,contentType:'application/pdf',cacheControl:'3600'}));
     if(!up.ok){
-      showToast('PDF file could NOT be saved to Supabase Storage: '+(up.error?.message||up.error)+' — preview/download still works, and the link will be retried automatically.','warn');
+      // quiet: the Store outbox reports one summary for the whole entry instead.
+      if(!opts.quiet)showToast('PDF file could NOT be saved to Supabase Storage: '+(up.error?.message||up.error)+' — preview/download still works, and the link will be retried automatically.','warn');
       return {blob,path,url:'',name};
     }
     // Same storage path every regeneration (upsert overwrite) means the same
@@ -16799,7 +17089,439 @@ window.addEventListener('DOMContentLoaded',()=>{
    pdfLinkQueueAdd_({kind,recordId:recordId||null,recordNo,variant,path:artifact.path,url:artifact.url||'',missing});
    showToast('The PDF for '+recordNo+' was created, but its database link ('+missing.join(' + ')+') hasn\'t been saved yet; it will be retried automatically.','warn');
  }
+ /* ══ PDF OUTBOX: SHOWN AT ONCE, UPLOADED WHENEVER THE NETWORK ALLOWS ══
+    A Store entry's PDFs used to be built, uploaded, indexed and read back one
+    after another while the operator watched a spinner — on a slow line that was
+    most of a minute, and a dropped connection meant no PDF at all. Now the
+    files are built on this computer (a second or two), shown straight away, and
+    handed to this outbox, which uploads them in the background.
+
+    Every job is first written to IndexedDB, blob and all, so it survives a
+    reload, a closed tab or a dead network: it is retried on the next page load,
+    when the browser reports it is back online, and every two minutes while
+    anything is waiting. The localStorage link queue above still covers the
+    database rows; this covers the FILE, which that queue never could (it only
+    keeps the storage path, and a file that never uploaded has nothing there).
+
+    Job shapes (key is unique per document + variant, so a regenerated PDF
+    replaces a still-waiting older one instead of queueing beside it):
+      {type:'pdf',    key:'pdf|NO|VARIANT', kind, recordId, recordNo, variant, filename, blob, at}
+      {type:'checks', key:'checks|NO', table, recordId, recordNo, store, sigDataUrl, pdfLayout, at} */
+ const PDF_OUTBOX_DB='sarvPdfOutbox',PDF_OUTBOX_STORE='jobs';
+ let pdfOutboxDbP_=null;
+ function pdfOutboxDb_(){
+   if(pdfOutboxDbP_)return pdfOutboxDbP_;
+   pdfOutboxDbP_=new Promise(res=>{
+     try{
+       if(!window.indexedDB)return res(null);
+       const rq=indexedDB.open(PDF_OUTBOX_DB,1);
+       rq.onupgradeneeded=()=>{const db=rq.result;if(!db.objectStoreNames.contains(PDF_OUTBOX_STORE))db.createObjectStore(PDF_OUTBOX_STORE,{keyPath:'key'});};
+       rq.onsuccess=()=>res(rq.result);
+       rq.onerror=()=>res(null);
+       rq.onblocked=()=>res(null);
+     }catch(e){res(null);}   // private mode / blocked storage: in-memory only
+   });
+   return pdfOutboxDbP_;
+ }
+ /* One transaction; resolves the request's result, true when there is none,
+    and null on any failure — callers only ever need "did it work". */
+ async function pdfOutboxOp_(mode,fn){
+   const db=await pdfOutboxDb_();if(!db)return null;
+   return new Promise(res=>{
+     try{
+       const tx=db.transaction(PDF_OUTBOX_STORE,mode),st=tx.objectStore(PDF_OUTBOX_STORE);
+       const rq=fn(st);let out;
+       if(rq)rq.onsuccess=()=>{out=rq.result;};
+       tx.oncomplete=()=>res(out===undefined?true:out);
+       tx.onerror=tx.onabort=()=>res(null);
+     }catch(e){res(null);}
+   });
+ }
+ const pdfOutboxPut_=job=>pdfOutboxOp_('readwrite',st=>st.put(job));
+ const pdfOutboxAll_=async()=>{const r=await pdfOutboxOp_('readonly',st=>st.getAll());return Array.isArray(r)?r:[];};
+ /* Removes / re-counts a job only if it is still the SAME attempt (same `at`).
+    An edit that regenerated the PDF meanwhile has replaced it with newer bytes,
+    and those must not be deleted by the older upload finishing. */
+ function pdfOutboxDone_(job){
+   return pdfOutboxOp_('readwrite',st=>{const g=st.get(job.key);g.onsuccess=()=>{if(g.result&&g.result.at===job.at)st.delete(job.key);};return null;});
+ }
+ function pdfOutboxBump_(job){
+   return pdfOutboxOp_('readwrite',st=>{const g=st.get(job.key);g.onsuccess=()=>{if(g.result&&g.result.at===job.at)st.put({...g.result,tries:(g.result.tries||0)+1,lastTry:new Date().toISOString()});};return null;});
+ }
+ // Jobs IndexedDB could not keep: held in memory, and closing the tab warns.
+ const pdfMemJobs_=new Map();
+ const pdfInFlight_=new Map();   // key|at → promise, so one attempt never runs twice at once
+ const sarvStorePdfJobs={};      // document no → its background promise (WhatsApp send waits on it briefly)
+
+ /* store_checks after the PDFs: the Store In-Charge's signature image goes to
+    storage, and the record learns where each signature cell sits in the new
+    files (mobile.html stamps GM / MD signs there). Merged into what is on the
+    row NOW rather than written over it, so a GM / MD sign added meanwhile on
+    mobile is never lost to a late flush. */
+ async function runStoreChecksJob_(job){
+   let store=job.store?{...job.store}:null;
+   if(store&&job.sigDataUrl&&!store.signUrl){
+     try{store.signUrl=await sarvUploadSignature_(job.recordNo,'store',job.sigDataUrl);}
+     catch(e){
+       // After a few tries it is the storage, not the network: the name and
+       // time are still worth saving, the image stays printed on the PDF.
+       if((job.tries||0)<4)throw e;
+       console.warn('[SARV PDF] Store signature upload given up — name/time kept, image only on the PDF:',e.message||e);
+     }
+   }
+   const q=await SB.from(job.table).select('store_checks').eq('id',job.recordId).maybeSingle();
+   if(q.error){
+     // No store_checks column on this database: nothing to write, nothing to retry.
+     if(/column|does not exist|schema cache/i.test(q.error.message||''))return true;
+     throw q.error;
+   }
+   if(!q.data)return true;   // record deleted since — nothing left to attach to
+   const cur=(q.data.store_checks&&typeof q.data.store_checks==='object')?{...q.data.store_checks}:{};
+   // A sign already saved on the record is kept (an edit never re-signs).
+   if(store&&!(cur.store&&cur.store.signUrl)&&(store.signUrl||!cur.store))cur.store=store;
+   if(job.pdfLayout&&Object.keys(job.pdfLayout).length)cur._pdf=job.pdfLayout;
+   const u=await SB.from(job.table).update({store_checks:cur}).eq('id',job.recordId);
+   if(u.error)throw u.error;
+   return true;
+ }
+ async function runPdfOutboxJob_(job){
+   if(job.type==='checks')return runStoreChecksJob_(job);
+   const art=await uploadPdfArtifact(job.blob,job.kind,job.recordNo,job.variant,job.filename,{quiet:true});
+   if(!art.url)return null;   // still offline — stays in the outbox
+   await indexPdfArtifact(job.kind,job.recordId,job.recordNo,job.variant,art);
+   return art;
+ }
+ function pdfJobRun_(job){
+   const id=job.key+'|'+job.at;
+   if(pdfInFlight_.has(id))return pdfInFlight_.get(id);
+   const p=(async()=>{
+     if(!SB_READY)return null;
+     let r=null;
+     try{r=await runPdfOutboxJob_(job);}
+     catch(e){console.warn('[SARV PDF] background job '+job.key+' failed (will retry):',e.message||e);}
+     if(r){
+       pdfMemJobs_.delete(id);
+       await pdfOutboxDone_(job);
+       if(job.type==='pdf')storePdfUrlLanded_(job.kind,job.recordNo,job.variant,r.url,r.path);
+     }else{
+       job.tries=(job.tries||0)+1;
+       await pdfOutboxBump_(job);
+     }
+     return r;
+   })().finally(()=>pdfInFlight_.delete(id));
+   pdfInFlight_.set(id,p);
+   return p;
+ }
+ /* Everything still waiting, from IndexedDB and memory. Never throws. */
+ let pdfOutboxFlushing_=null;
+ function flushPdfOutbox_(opts={}){
+   if(pdfOutboxFlushing_)return pdfOutboxFlushing_;
+   pdfOutboxFlushing_=(async()=>{
+     if(!SB_READY||navigator.onLine===false)return 0;
+     const seen=new Set(),jobs=[];
+     [...await pdfOutboxAll_(),...pdfMemJobs_.values()].forEach(j=>{const id=j.key+'|'+j.at;if(!seen.has(id)){seen.add(id);jobs.push(j);}});
+     if(!jobs.length)return 0;
+     let done=0;
+     await Promise.all(jobs.map(async j=>{if(await pdfJobRun_(j))done++;}));
+     const left=jobs.length-done;
+     if(done&&!opts.quiet)showToast(done+' pending PDF upload(s) completed'+(left?('; '+left+' still waiting'):''),'success');
+     return done;
+   })().catch(e=>{console.warn('[SARV PDF] outbox flush skipped:',e.message||e);return 0;})
+     .finally(()=>{pdfOutboxFlushing_=null;});
+   return pdfOutboxFlushing_;
+ }
+ /* A file that has just reached storage: its link goes everywhere this
+    session is still showing that entry — the Drive-link bar, the preview's
+    WhatsApp message, the in-memory result. */
+ function storePdfUrlLanded_(kind,no,variant,url,path){
+   const r=sarvPdfState.urls&&sarvPdfState.urls[no];
+   if(r&&r[variant]){r[variant].url=url;r[variant].path=path||r[variant].path;}
+   const cur=sarvPdfState.current,curNo=cur&&(cur.data?.inwardNo||cur.data?.outwardNo);
+   if(curNo===no){
+     const a=variant==='SINGLE'?byId('dlbLink'):variant==='TWO_PAGE'?byId('dlbLinkTwoPage'):null;
+     if(a){a.href=url;a.dataset.gateUrl='1';}
+     applyStoreLinkGate_(kind,no);
+   }
+   const ctx=sarvPdfShareCtx;
+   if(ctx&&ctx.docNo===no){
+     if(variant==='INVOICE')ctx.invoiceUrl=url;
+     else if(variant==='SINGLE'||!ctx.pdfUrl)ctx.pdfUrl=url;
+   }
+ }
+ /* Hands a Store entry's freshly built files to the outbox: persisted first
+    (fast, local), then uploaded together. Resolves once every job has had its
+    first try; the operator is only told when something is left waiting. */
+ async function storePdfBackground_(no,jobs){
+   const saved=await Promise.all(jobs.map(j=>pdfOutboxPut_(j)));
+   jobs.forEach((j,i)=>{if(!saved[i])pdfMemJobs_.set(j.key+'|'+j.at,j);});
+   const res=await Promise.all(jobs.map(j=>pdfJobRun_(j)));
+   const left=res.filter(r=>!r).length;
+   if(left){
+     showToast('Internet slow / offline: '+left+' upload(s) for '+escText(no)+' are waiting'
+       +(pdfMemJobs_.size?' (keep this tab open)':' on this computer')
+       +' and will go up automatically. The PDF is ready to use now.','warn');
+   }
+   return left;
+ }
+ window.addEventListener('online',()=>{setTimeout(()=>flushPdfOutbox_(),1500);});
+ setInterval(()=>{if(navigator.onLine!==false)flushPdfOutbox_({quiet:true});},120000);
+ window.addEventListener('beforeunload',e=>{
+   // Only jobs IndexedDB could not keep are at risk; persisted ones resume on the next load.
+   if(pdfMemJobs_.size){e.preventDefault();e.returnValue='Some PDFs have not uploaded yet.';return e.returnValue;}
+ });
+ // Does this entry already have an Original Invoice PDF? '' when not, or when it cannot be told.
+ async function storeInvoicePdfUrl_(no){
+   if(!SB_READY||!no)return '';
+   try{
+     const q=await SB.from('pdf_documents').select('public_url').eq('document_no',no).eq('variant','INVOICE').limit(1);
+     if(q.error)throw q.error;
+     return (q.data&&q.data[0]&&q.data[0].public_url)||'';
+   }catch(e){console.warn('[SARV PDF] invoice lookup skipped:',e.message||e);return null;}
+ }
+ /* Submit gate: an Inward / Outward / Issue needs at least one photo (the
+    original invoice / gate pass). Waits for photos still being processed first.
+    An Admin EDIT of an entry that already has its Original Invoice PDF may go
+    without new photos — the stored one is kept as it is. */
+ async function ensureStorePhotos_(key,editNo){
+   if(window.photosReady)await window.photosReady(key);
+   if(window.getPhotos&&window.getPhotos(key).length)return true;
+   if(editNo){
+     const url=await storeInvoicePdfUrl_(editNo);
+     // null = could not check (network); the server-side record is not at risk
+     // from an edit, so the edit is not blocked on a lookup.
+     if(url||url===null)return true;
+   }
+   const grp=byId(key==='inward'?'inwPhotoGroup':'outPhotoGroup');
+   if(grp){
+     grp.style.outline='2px solid #dc2626';grp.style.outlineOffset='4px';grp.style.background='#fef2f2';
+     grp.scrollIntoView({behavior:'smooth',block:'center'});
+   }
+   showToast('Please attach at least one photo of the original invoice / document (Take Photo or Choose Files). The entry cannot be submitted without it.','warn');
+   return false;
+ }
  function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+ /* ══ DOWNLOAD STAMP: WHO TOOK THIS FILE, AND WHEN ═══════════════════
+    Every PDF or CSV that leaves the ERP carries a fixed footer naming the
+    logged-in user and the moment of download — on every page of a PDF, as the
+    closing lines of a CSV. A copy found later can then always be traced back.
+
+    Done in ONE place rather than in each of the dozen builders: every download
+    in this app ends in an <a download> being clicked (downloadBlob,
+    downloadCSV, the data: URL exports, the preview's Download button), so that
+    click is intercepted, the file stamped, and the download re-issued. Stored
+    PDFs opened from Reports / ledgers / the link bar (Supabase public URLs) are
+    stamped the same way before they open in the new tab.
+    If stamping fails for any reason the ORIGINAL file still downloads — a
+    missing footer must never cost anyone their document. */
+ const PDF_LIB_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js';
+ let sarvPdfLibP_=null;
+ // pdf-lib is loaded only when first needed (and pre-fetched once the page is idle).
+ function sarvLoadPdfLib_(){
+   if(window.PDFLib)return Promise.resolve(window.PDFLib);
+   if(sarvPdfLibP_)return sarvPdfLibP_;
+   sarvPdfLibP_=new Promise((res,rej)=>{
+     const s=document.createElement('script');s.src=PDF_LIB_URL;
+     s.onload=()=>window.PDFLib?res(window.PDFLib):rej(new Error('pdf-lib did not initialise'));
+     s.onerror=()=>{sarvPdfLibP_=null;rej(new Error('pdf-lib could not be loaded'));};
+     document.head.appendChild(s);
+   });
+   return sarvPdfLibP_;
+ }
+ window.addEventListener('load',()=>setTimeout(()=>sarvLoadPdfLib_().catch(()=>{}),6000));
+ function sarvDownloadStampText_(){
+   const who=(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'Unknown user';
+   const role=SARV_ROLE_LABEL[sarvCurrentRole]||sarvCurrentRole||'';
+   return {who:who+(role&&role!==who?' ('+role+')':''),at:pStamp(new Date())};
+ }
+ async function sarvStampPdf_(blob){
+   const {PDFDocument,StandardFonts,rgb}=await sarvLoadPdfLib_();
+   const pdf=await PDFDocument.load(await blob.arrayBuffer(),{ignoreEncryption:true});
+   const font=await pdf.embedFont(StandardFonts.Helvetica);
+   const st=sarvDownloadStampText_();
+   // Helvetica here only knows Latin-1; anything else would throw, so it is dropped.
+   const text=('Downloaded by: '+st.who+'   |   Download Time: '+st.at+'   |   SARV INDIA ERP').replace(/[^\x20-\x7E]/g,'');
+   const size=6;
+   pdf.getPages().forEach((page,i,all)=>{
+     const {width}=page.getSize();
+     const t=text+(all.length>1?('   |   Page '+(i+1)+'/'+all.length):'');
+     const w=font.widthOfTextAtSize(t,size);
+     // 4 pt (~1.4 mm) off the bottom edge: below every builder's own footer.
+     page.drawRectangle({x:(width-w)/2-3,y:1.5,width:w+6,height:size+2.5,color:rgb(1,1,1),opacity:0.85});
+     page.drawText(t,{x:(width-w)/2,y:4,size,font,color:rgb(0.28,0.33,0.41)});
+   });
+   return new Blob([await pdf.save()],{type:'application/pdf'});
+ }
+ /* ── CSV → Excel (.xlsx) with a PRINT-ONLY header / footer ─────────────
+    A CSV has no notion of a page: anything written into it becomes a row of
+    the table, so "Downloaded by / Time" there sat inside the data, got sorted
+    and filtered with it, and broke any formula pointing at the last row. So a
+    CSV export is now handed over as a real Excel workbook instead, whose page
+    setup carries:
+      Header  → Downloaded Time: <dd/mm/yyyy hh:mm:ss>
+      Footer  → Downloaded by: <user (role)>   ·   Page N of M
+    Excel shows these only in Print / Print Preview / Page Layout view, never
+    in the grid. The table itself is exactly the CSV's rows: row 1 bold and
+    repeated on every printed page, columns sized to their content, printed
+    landscape and fitted to the page width.
+    Built by hand (a few XML parts in an uncompressed zip) so no library has to
+    load — it works offline, and only the file extension changes. */
+ function sarvParseCsv_(txt){
+   const rows=[];let row=[],cell='',q=false;
+   for(let i=0;i<txt.length;i++){
+     const c=txt[i];
+     if(q){
+       if(c==='"'){if(txt[i+1]==='"'){cell+='"';i++;}else q=false;}
+       else cell+=c;
+     }else if(c==='"')q=true;
+     else if(c===','){row.push(cell);cell='';}
+     else if(c==='\n'||c==='\r'){
+       if(c==='\r'&&txt[i+1]==='\n')i++;
+       row.push(cell);rows.push(row);row=[];cell='';
+     }else cell+=c;
+   }
+   if(cell!==''||row.length){row.push(cell);rows.push(row);}
+   return rows;
+ }
+ const SARV_CRC_TABLE_=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+ function sarvCrc32_(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=SARV_CRC_TABLE_[(c^u8[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+ // Minimal "stored" (no compression) zip — all an .xlsx needs to be valid.
+ function sarvZip_(files){
+   const enc=new TextEncoder(),parts=[],central=[];let off=0;
+   const u16=v=>[v&255,(v>>>8)&255],u32=v=>[v&255,(v>>>8)&255,(v>>>16)&255,(v>>>24)&255];
+   files.forEach(f=>{
+     const name=enc.encode(f.name),data=typeof f.data==='string'?enc.encode(f.data):f.data,crc=sarvCrc32_(data);
+     const head=[...u32(0x04034b50),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0)];
+     parts.push(new Uint8Array(head),name,data);
+     central.push(new Uint8Array([...u32(0x02014b50),...u16(20),...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),name);
+     off+=head.length+name.length+data.length;
+   });
+   const cdSize=central.reduce((s,p)=>s+p.length,0);
+   const end=new Uint8Array([...u32(0x06054b50),...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(cdSize),...u32(off),...u16(0)]);
+   return new Blob([...parts,...central,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+ }
+ function sarvRowsToXlsx_(rows,stamp){
+   const x=v=>String(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'');
+   const col=i=>{let s='';i++;while(i>0){const m=(i-1)%26;s=String.fromCharCode(65+m)+s;i=Math.floor((i-1)/26);}return s;};
+   /* Numbers go in as numbers so Excel can total them — but only plain ones.
+      A code with a leading zero (00123), a 15+ digit number (it would lose
+      digits) or a phone / GSTIN stays text, exactly as it was in the CSV. */
+   const isNum=v=>/^-?(0|[1-9]\d{0,13})(\.\d+)?$/.test(v);
+   const ncol=rows.reduce((m,r)=>Math.max(m,r.length),0);
+   const width=Array(ncol).fill(8);
+   rows.forEach(r=>r.forEach((v,i)=>{width[i]=Math.min(60,Math.max(width[i],String(v).length+2));}));
+   const sheetRows=rows.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>{
+     const ref=col(ci)+(ri+1),s=ri===0?' s="1"':'';
+     if(v==='')return ri===0?'<c r="'+ref+'"'+s+'/>':'';
+     if(ri>0&&isNum(v))return '<c r="'+ref+'"><v>'+v+'</v></c>';
+     return '<c r="'+ref+'" t="inlineStr"'+s+'><is><t xml:space="preserve">'+x(v)+'</t></is></c>';
+   }).join('')+'</row>').join('');
+   // &C = centre section; && is a literal ampersand inside Excel's header code.
+   const hf=v=>x(String(v).replace(/&/g,'&&'));
+   const sheet='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+     +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+     +'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
+     +'<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+     +'<cols>'+width.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>').join('')+'</cols>'
+     +'<sheetData>'+sheetRows+'</sheetData>'
+     +'<pageMargins left="0.4" right="0.4" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>'
+     +'<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>'
+     +'<headerFooter><oddHeader>&amp;R&amp;8Downloaded Time: '+hf(stamp.at)+'</oddHeader>'
+     +'<oddFooter>&amp;L&amp;8Downloaded by: '+hf(stamp.who)+'&amp;R&amp;8Page &amp;P of &amp;N</oddFooter></headerFooter>'
+     +'</worksheet>';
+   const files=[
+     {name:'[Content_Types].xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'},
+     {name:'_rels/.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'},
+     {name:'xl/workbook.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Report" sheetId="1" r:id="rId1"/></sheets>'
+       // Row 1 repeats at the top of every printed page.
+       +(rows.length?'<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">Report!$1:$1</definedName></definedNames>':'')
+       +'</workbook>'},
+     {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+     {name:'xl/styles.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Calibri"/></font><font><b/><sz val="10"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'},
+     {name:'xl/worksheets/sheet1.xml',data:sheet},
+   ];
+   return sarvZip_(files);
+ }
+ async function sarvStampCsv_(blob){
+   const txt=(await blob.text()).replace(/^﻿/,'');
+   return sarvRowsToXlsx_(sarvParseCsv_(txt),sarvDownloadStampText_());
+ }
+ function sarvStampKind_(name,type){
+   const n=String(name||'').toLowerCase(),t=String(type||'').toLowerCase();
+   if(n.endsWith('.pdf')||t.includes('pdf'))return 'pdf';
+   if(n.endsWith('.csv')||t.includes('csv'))return 'csv';
+   return '';
+ }
+ async function sarvStampBlob_(blob,name){
+   const k=sarvStampKind_(name,blob.type);
+   if(k==='pdf')return sarvStampPdf_(blob);
+   if(k==='csv')return sarvStampCsv_(blob);
+   return blob;
+ }
+ const sarvAnchorClick_=HTMLAnchorElement.prototype.click;
+ function sarvIssueDownload_(href,name){
+   const a=document.createElement('a');a.href=href;a.download=name;a.__sarvStamped=true;
+   sarvAnchorClick_.call(a);
+ }
+ async function sarvStampAndDownload_(href,name){
+   try{
+     const blob=await (await fetch(href)).blob();
+     const out=await sarvStampBlob_(blob,name);
+     // A CSV comes back as an Excel workbook (see sarvStampCsv_), so its name follows.
+     const outName=sarvStampKind_(name,blob.type)==='csv'?String(name).replace(/\.csv$/i,'')+'.xlsx':name;
+     const url=URL.createObjectURL(out);
+     sarvIssueDownload_(url,outName);
+     setTimeout(()=>URL.revokeObjectURL(url),10000);
+   }catch(e){
+     console.warn('[SARV] Download stamp skipped for '+name+':',e.message||e);
+     sarvIssueDownload_(href,name);
+   }
+ }
+ function sarvShouldStamp_(a){
+   if(!a||a.__sarvStamped||!a.hasAttribute('download'))return false;
+   return !!sarvStampKind_(a.getAttribute('download')||a.href,'');
+ }
+ // Programmatic downloads: a.click() on an <a download> (attached or not).
+ HTMLAnchorElement.prototype.click=function(){
+   if(sarvShouldStamp_(this)){sarvStampAndDownload_(this.href,this.getAttribute('download')||'download');return;}
+   return sarvAnchorClick_.call(this);
+ };
+ /* A stored PDF opened in a new tab (Reports 1-Pg / 2-Pg / Invoice, ledger and
+    tracker links, the link bar). The tab is opened at once — inside the click,
+    so no pop-up blocker — and pointed at the stamped copy when it is ready. */
+ function sarvIsStoredPdfLink_(a){
+   if(!a||a.hasAttribute('download')||a.__sarvStamped)return false;
+   const h=a.getAttribute('href')||'';
+   if(!/^https?:/i.test(h))return false;
+   return /\.pdf(\?|#|$)/i.test(h)||h.includes('/storage/v1/object/public/'+SARV_PDF_BUCKET+'/');
+ }
+ async function sarvOpenStampedPdf_(href,win){
+   try{
+     const r=await fetch(href,{cache:'no-store'});
+     if(!r.ok)throw new Error('HTTP '+r.status);
+     const out=await sarvStampPdf_(await r.blob());
+     win.location.href=URL.createObjectURL(out);
+   }catch(e){
+     console.warn('[SARV] Stamp skipped for opened PDF:',e.message||e);
+     win.location.href=href;
+   }
+ }
+ document.addEventListener('click',e=>{
+   if(e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+   const a=e.target.closest&&e.target.closest('a[href]');
+   if(!a)return;
+   if(sarvShouldStamp_(a)){
+     e.preventDefault();
+     sarvStampAndDownload_(a.href,a.getAttribute('download')||'download');
+     return;
+   }
+   if(sarvIsStoredPdfLink_(a)){
+     const win=window.open('','_blank');
+     if(!win)return;   // blocked: let the plain link go through unstamped
+     e.preventDefault();
+     try{win.document.title='Opening PDF…';win.document.body.style.cssText='font:14px sans-serif;color:#475569;padding:24px';win.document.body.textContent='Preparing PDF…';}catch(_){}
+     sarvOpenStampedPdf_(a.href,win);
+   }
+ },true);
   function closeSarvPdfPreview(){
     const overlay=byId('sarvPdfViewerOverlay');
     if(overlay)overlay.style.display='none';
@@ -16937,7 +17659,8 @@ window.addEventListener('DOMContentLoaded',()=>{
         +'The PDF for <b>'+escText(ctx.docNo||'')+'</b> has downloaded and WhatsApp Web has opened.'
         +'<div style="margin:10px 0;background:#f8fafc;border-left:3px solid #25d366;padding:8px 11px;border-radius:5px;">'
         +'1. In WhatsApp press <b>Attach &rarr; Document</b><br>'
-        +'2. Choose <b>'+escText(ctx.filename||'this PDF')+'</b> from Downloads<br>'
+        +'2. Choose <b>'+escText(ctx.filename||'this PDF')+'</b>'
+        +(ctx.invoiceBlob?(' and <b>'+escText(ctx.invoiceName||'the Original Invoice')+'</b>'):'')+' from Downloads<br>'
         +'3. Press <b>Send</b></div>'
         +'<div style="color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 9px;font-size:11px;">'
         +'The browser cannot attach the file itself &mdash; press "Yes" below only after attaching it and pressing Send. '
@@ -17010,13 +17733,26 @@ window.addEventListener('DOMContentLoaded',()=>{
   async function sendStoreEntryWhatsapp_(){
     const ctx=sarvPdfShareCtx;if(!ctx)return;
     if(!ctx.blob&&!ctx.pdfUrl)return showToast('The PDF file is not ready, so it cannot be attached','warn');
+    /* The links ride along in the message, and they exist only once the
+       background upload lands. Give it a few seconds if it is still going —
+       never longer: the files themselves are already here, and a slow line
+       must not hold the send up. Done BEFORE the picker so the picker's own
+       click is the gesture the share sheet needs. */
+    if((!ctx.pdfUrl||(ctx.invoiceBlob&&!ctx.invoiceUrl))&&sarvStorePdfJobs[ctx.docNo])
+      await Promise.race([sarvStorePdfJobs[ctx.docNo],new Promise(r=>setTimeout(r,4000))]);
     const phone=await pickWhatsappRecipient_(ctx);
     if(!phone)return;                       // back from the picker; nothing sent
-    const msg=(ctx.text||ctx.docNo||'')+(ctx.pdfUrl?('\nPDF: '+ctx.pdfUrl):'');
-    const pdfFile=()=>new File([ctx.blob],ctx.filename,{type:'application/pdf'});
-    if(ctx.blob&&navigator.canShare&&navigator.canShare({files:[pdfFile()]})){
+    const msg=(ctx.text||ctx.docNo||'')+(ctx.pdfUrl?('\nPDF: '+ctx.pdfUrl):'')
+      +(ctx.invoiceUrl?('\nOriginal Invoice: '+ctx.invoiceUrl):'');
+    // Both files go as real attachments where the platform allows it.
+    const shareFiles=()=>{
+      const f=[new File([ctx.blob],ctx.filename,{type:'application/pdf'})];
+      if(ctx.invoiceBlob)f.push(new File([ctx.invoiceBlob],ctx.invoiceName||'Original_Invoice.pdf',{type:'application/pdf'}));
+      return f;
+    };
+    if(ctx.blob&&navigator.canShare&&navigator.canShare({files:shareFiles()})){
       try{
-        await navigator.share({files:[pdfFile()],title:ctx.docNo,text:msg});
+        await navigator.share({files:shareFiles(),title:ctx.docNo,text:msg});
         markStoreEntrySent_(ctx.docNo);applyStorePrintGate_();
         showToast(''+ctx.docNo+' sent; you can print it now');
         return;
@@ -17026,6 +17762,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       }
     }
     if(ctx.blob)downloadBlob(ctx.blob,ctx.filename);
+    if(ctx.invoiceBlob)setTimeout(()=>downloadBlob(ctx.invoiceBlob,ctx.invoiceName||'Original_Invoice.pdf'),400);
     window.open('https://web.whatsapp.com/send?phone='+encodeURIComponent(phone)
       +'&text='+encodeURIComponent(msg),'_blank');
     // The gate turns only on the sender's own confirmation — see
@@ -17042,8 +17779,16 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(!isStoreEntrySent_(ctx.docNo))return showToast('Send it on WhatsApp first; printing is available only after that','warn');
     // Printed from the generated file itself, so the paper copy is exactly the
     // PDF that was sent. Only a failed PDF build falls back to HTML printing.
-    if(!ctx.blob)return window.triggerSystemPrint('BOTH');
-    const url=URL.createObjectURL(ctx.blob);
+    // Whichever of Entry / Original Invoice is on screen is the one printed.
+    if(ctx.view==='invoice'){
+      if(!ctx.invoiceBlob){
+        if(!ctx.invoiceUrl)return;
+        const w=window.open(ctx.invoiceUrl,'_blank');
+        if(!w)showToast('Please allow pop-ups to print','warn');
+        return;
+      }
+    }else if(!ctx.blob)return window.triggerSystemPrint('BOTH');
+    const url=URL.createObjectURL(ctx.view==='invoice'?ctx.invoiceBlob:ctx.blob);
     const w=window.open(url,'_blank');
     if(!w){URL.revokeObjectURL(url);return showToast('Please allow pop-ups to print','warn');}
     setTimeout(()=>{try{w.focus();w.print()}catch(e){}},900);
@@ -17063,6 +17808,11 @@ window.addEventListener('DOMContentLoaded',()=>{
       overlay.innerHTML='<div style="background:#fff;width:min(1100px,96vw);height:min(92vh,900px);border-radius:12px;box-shadow:0 25px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden;">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:#0f172a;color:#fff;flex-wrap:wrap;">'
         +'<strong id="sarvPdfViewerTitle" style="font-size:14px;">PDF Preview</strong>'
+        // Store entries only: switch between the entry and its Original Invoice.
+        +'<div id="sarvPdfTabs" style="display:none;gap:0;border:1px solid #475569;border-radius:7px;overflow:hidden;">'
+        +'<button type="button" id="sarvPdfTabEntry" style="border:0;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Entry PDF</button>'
+        +'<button type="button" id="sarvPdfTabInv" style="border:0;border-left:1px solid #475569;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;">Original Invoice PDF</button>'
+        +'</div>'
         +'<div style="display:flex;gap:8px;align-items:center;">'
         +'<button type="button" id="sarvPdfWaBtn" style="display:none;color:#fff;background:#25d366;border:0;border-radius:6px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;">Send via WhatsApp</button>'
         +'<span id="sarvPdfGateHint" style="display:none;font-size:11px;font-weight:700;color:#fca5a5;">Print / Download unlocks after it is sent on WhatsApp</span>'
@@ -17074,6 +17824,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       byId('sarvPdfViewerClose')?.addEventListener('click',closeSarvPdfPreview);
       byId('sarvPdfWaBtn')?.addEventListener('click',sendStoreEntryWhatsapp_);
       byId('sarvPdfPrintBtn')?.addEventListener('click',printStoreEntryPdf_);
+      byId('sarvPdfTabEntry')?.addEventListener('click',()=>sarvPdfSwitchView_('entry'));
+      byId('sarvPdfTabInv')?.addEventListener('click',()=>sarvPdfSwitchView_('invoice'));
       overlay.addEventListener('click',e=>{if(e.target===overlay)closeSarvPdfPreview();});
     }
     if(sarvPdfPreviewUrl){URL.revokeObjectURL(sarvPdfPreviewUrl);sarvPdfPreviewUrl='';}
@@ -17091,94 +17843,161 @@ window.addEventListener('DOMContentLoaded',()=>{
       else { download.removeAttribute('href'); download.style.display='none'; }
     }
     overlay.style.display='flex';
-    sarvPdfShareCtx=share?{...share,blob,filename}:null;
+    sarvPdfShareCtx=share?{...share,blob,filename,previewHtml,view:'entry'}:null;
+    if(sarvPdfShareCtx){
+      // Any upload that already landed (a fast line) — links straight in.
+      const r=sarvPdfState.urls&&sarvPdfState.urls[share.docNo];
+      if(r){sarvPdfShareCtx.pdfUrl=sarvPdfShareCtx.pdfUrl||r.SINGLE?.url||r.TWO_PAGE?.url||'';sarvPdfShareCtx.invoiceUrl=r.INVOICE?.url||'';}
+      /* No new photos (an Admin edit keeping the stored invoice): offer the
+         Original Invoice already on file, found without holding up the preview. */
+      if(!share.invoiceBlob){
+        const ctx=sarvPdfShareCtx;
+        storeInvoicePdfUrl_(share.docNo).then(url=>{
+          if(url&&sarvPdfShareCtx===ctx&&!ctx.invoiceUrl){ctx.invoiceUrl=url;renderSarvPdfTabs_();}
+        });
+      }
+    }
+    renderSarvPdfTabs_();
     applyStorePrintGate_();
   }
-  async function generateStorePdfs(kind,d,items,recordId,photoInput){
+  function renderSarvPdfTabs_(){
+    const box=byId('sarvPdfTabs'),te=byId('sarvPdfTabEntry'),ti=byId('sarvPdfTabInv');
+    if(!box||!te||!ti)return;
+    const ctx=sarvPdfShareCtx;
+    if(!ctx){box.style.display='none';return;}
+    box.style.display='flex';
+    const hasInv=!!(ctx.invoiceBlob||ctx.invoiceUrl);
+    const paint=(b,on)=>{b.style.background=on?'#0284c7':'transparent';b.style.color=on?'#fff':'#cbd5e1';};
+    paint(te,ctx.view!=='invoice');paint(ti,ctx.view==='invoice');
+    ti.disabled=!hasInv;ti.style.opacity=hasInv?'1':'.45';ti.style.cursor=hasInv?'pointer':'not-allowed';
+    ti.title=hasInv?'Every attached photo, one per page':'No Original Invoice for this entry';
+  }
+  /* Entry ↔ Original Invoice inside the same preview. Download and Print follow
+     whichever is on screen; the send-before-print gate covers both. */
+  function sarvPdfSwitchView_(view){
+    const ctx=sarvPdfShareCtx;if(!ctx)return;
+    const frame=byId('sarvPdfViewerFrame'),download=byId('sarvPdfDownloadBtn'),title=byId('sarvPdfViewerTitle');
+    let blob=null,url='',name='',html='';
+    if(view==='invoice'){
+      blob=ctx.invoiceBlob||null;url=blob?'':(ctx.invoiceUrl||'');name=ctx.invoiceName||((ctx.docNo||'')+'_INVOICE.pdf');
+      if(!blob&&!url)return showToast('No Original Invoice PDF for this entry','warn');
+    }else{
+      blob=ctx.blob||null;name=ctx.filename||'';html=blob?'':(ctx.previewHtml||'');
+    }
+    ctx.view=view;
+    if(sarvPdfPreviewUrl){URL.revokeObjectURL(sarvPdfPreviewUrl);sarvPdfPreviewUrl='';}
+    if(title)title.textContent='PDF Preview — '+name;
+    if(frame){
+      if(html){frame.removeAttribute('src');frame.srcdoc=html;}
+      else{frame.removeAttribute('srcdoc');if(blob)sarvPdfPreviewUrl=URL.createObjectURL(blob);frame.src=sarvPdfPreviewUrl||url;}
+    }
+    if(download){
+      const href=sarvPdfPreviewUrl||url;
+      if(href){download.href=href;download.download=name;}else download.removeAttribute('href');
+    }
+    renderSarvPdfTabs_();
+    applyStorePrintGate_();
+  }
+  /* Builds a Store entry's PDFs and returns as soon as they exist ON THIS
+     COMPUTER — the operator gets the preview in a second or two whatever the
+     network is doing. Uploading, indexing and the signature bookkeeping carry
+     on in the background through the PDF outbox (storePdfBackground_), which
+     keeps retrying until they land.
+       SINGLE    — A4 landscape, Account + Supplier/Receiver copies side by side
+       TWO_PAGE  — A4 portrait, one copy per page
+       INVOICE   — Original Invoice: every attached photo, one per full page
+     opts.isEdit — an Admin edit: the record's saved signatures are read so the
+     regenerated PDF keeps the GM / MD signs. A new record has none yet, so that
+     round trip is skipped. */
+  async function generateStorePdfs(kind,d,items,recordId,photoInput,opts={}){
     // The photo engine's store is the source of truth: it holds BOTH camera and
     // gallery shots and honours anything removed with the preview's ✕.
-    // readPdfImages(photoInput) only ever saw the gallery <input>, so camera
-    // photos were dropped and deleted ones were still attached.
     const photoKey=(kind==='OUTWARD'||kind==='ISSUE')?'outward':'inward';
-    const images=window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput);
+    const images=(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput)).slice();
     const no=d.inwardNo||d.outwardNo, result={};
     /* ── Signatures ─────────────────────────────────────────────────
        store_checks carries who signed which cell: store (here, on submit),
-       gm / md (mobile.html Check Done). An edit re-draws whatever is already
-       there, so a regenerated PDF never loses a GM / MD sign; the Store
-       In-Charge sign is taken once, when the entry is first signed — from
-       the PIN confirmed at submit (sarvSubmitPinGate_ → sarvPendingStoreSign). */
+       gm / md (mobile.html Check Done). The Store In-Charge sign is taken once,
+       when the entry is first signed — from the PIN confirmed at submit
+       (sarvSubmitPinGate_ → sarvPendingStoreSign). It is drawn from the local
+       image; uploading it is the outbox's job. */
     const me=sarvPendingStoreSign;sarvPendingStoreSign=null;
     const sigTable=(kind==='OUTWARD'||kind==='ISSUE')?'outward_entries':'inward_entries';
-    let checks={},checksOk=false;
-    if(SB_READY&&recordId){
+    let checks={};
+    if(opts.isEdit&&SB_READY&&recordId){
       try{
         const q=await SB.from(sigTable).select('store_checks').eq('id',recordId).maybeSingle();
         if(q.error)throw q.error;
         checks=(q.data&&q.data.store_checks&&typeof q.data.store_checks==='object')?{...q.data.store_checks}:{};
-        checksOk=true;
       }catch(e){console.warn('[SARV PDF] store_checks unavailable — PDF without saved signatures:',e.message||e);}
     }
     // A saved sign on the record is kept; otherwise the submitter's (image if they
     // have one, else just their name and the time).
-    if(checksOk&&me&&!(checks.store&&checks.store.signUrl)&&(me.dataUrl||!checks.store)){
+    let storeSign=null;
+    if(me&&!(checks.store&&checks.store.signUrl)&&(me.dataUrl||!checks.store)){
       const now=new Date();
-      checks.store={by:me.name||SARV_ROLE_LABEL[sarvCurrentRole]||'',at:pStamp(now),atIso:now.toISOString()};
-      if(me.dataUrl){
-        checks.store.__dataUrl=me.dataUrl;
-        try{checks.store.signUrl=await sarvUploadSignature_(no,'store',me.dataUrl);}
-        catch(e){console.warn('[SARV PDF] Store signature upload failed — printed on this PDF only:',e.message||e);}
-      }
+      storeSign={by:me.name||SARV_ROLE_LABEL[sarvCurrentRole]||'',at:pStamp(now),atIso:now.toISOString()};
+      checks.store={...storeSign,__dataUrl:me.dataUrl||''};
     }
     d.__sigs=await sarvLoadStoreSigs_(checks);
     const sigLayouts={};
-    // Store submit output follows the approved reference PDFs:
-    // one A4 landscape file (Account + Supplier/Receiver side-by-side) AND
-    // one A4 portrait 2-page file (one copy per page) — both saved & indexed
-    // so Print History / Reports can offer either.
-    const specs=[['SINGLE','landscape'],['TWO_PAGE','portrait']];
-    for(const [variant,orientation] of specs){
-      const filename=storePdfFilename_(kind,d,variant), html=buildStorePdfHtml(kind,d,items,variant,images);
+    // Lets the "Generating PDF…" overlay repaint between the CPU-bound builds.
+    const yieldUi=()=>new Promise(r=>setTimeout(r,0));
+    for(const variant of ['SINGLE','TWO_PAGE']){
+      const filename=storePdfFilename_(kind,d,variant);
       try{
         // Native jsPDF/autoTable build — real vector text, no DOM/canvas
         // rendering involved, so it can't produce a blank screenshot.
-        const blob=await buildStoreNativePdfBlob(kind,d,items,variant,images);
+        const blob=await buildStoreNativePdfBlob(kind,d,items,variant);
         if(blob.sigLayout)sigLayouts[variant]=blob.sigLayout;
-        result[variant]=await uploadPdfArtifact(blob,kind,no,variant,filename);
-        result[variant].html=html;
-        await indexPdfArtifact(kind,recordId,no,variant,result[variant]);
+        result[variant]={blob,path:'',url:'',name:filename};
       }catch(e){
         console.warn('[SARV PDF] '+kind+' '+variant+' native PDF generation failed, HTML preview still available:',e.message||e);
         showToast(''+kind+' '+variant+' PDF could not be built: '+(e.message||e),'warn');
-        result[variant]={blob:null,path:'',url:'',name:filename,html};
+        result[variant]={blob:null,path:'',url:'',name:filename,html:buildStorePdfHtml(kind,d,items,variant,[])};
       }
+      await yieldUi();
     }
     delete d.__sigs;
-    /* Saved back with the slot positions of the files just uploaded, so the
-       GM / MD Check Done on mobile can stamp their sign onto these exact files. */
-    if(checksOk){
-      if(checks.store)delete checks.store.__dataUrl;
-      checks._pdf=sigLayouts;
+    if(images.length){
+      const filename=storePdfFilename_(kind,d,'INVOICE');
       try{
-        const u=await SB.from(sigTable).update({store_checks:checks}).eq('id',recordId);
-        if(u.error)throw u.error;
-      }catch(e){console.warn('[SARV PDF] store_checks (signatures) not saved:',e.message||e);}
+        const blob=buildStoreInvoicePdfBlob(kind,d,images);
+        if(blob)result.INVOICE={blob,path:'',url:'',name:filename};
+      }catch(e){
+        console.warn('[SARV PDF] Original Invoice PDF failed:',e.message||e);
+        showToast('Original Invoice PDF could not be built: '+(e.message||e),'warn');
+      }
     }
-   sarvPdfState.current={kind,data:d,items,images,result}; sarvPdfState.blobs={...sarvPdfState.blobs,[no]:result}; sarvPdfState.urls[no]=result;
-   /* The Drive-link bar's two anchors open the stored PDF in a new tab, which
-      is a print away — so on a Store entry they follow the same send-first gate
-      as the Print buttons. Their href is set either way; only the visibility
-      waits, and applyStoreLinkGate_ reveals them the moment the entry goes. */
-   const one=result.SINGLE?.url||'', two=result.TWO_PAGE?.url||'';
-   if(byId('dlbLink')){byId('dlbLink').href=one||'#';byId('dlbLink').dataset.gateUrl=one?'1':'';}
-   if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href=two||'#';byId('dlbLinkTwoPage').dataset.gateUrl=two?'1':'';}
-   applyStoreLinkGate_(kind,no);
-   /* Anything whose database link is still parked gets another go now — the
-      network is demonstrably up, since the PDFs just uploaded. Fire-and-forget:
-      the preview must not wait on somebody else's retry. */
-   flushPdfLinkQueue_().catch(e=>console.warn('[SARV PDF] link queue flush skipped:',e.message||e));
-   return result;
- }
+    // Background: every built file, then the signature bookkeeping.
+    const at=Date.now(),jobs=[];
+    ['SINGLE','TWO_PAGE','INVOICE'].forEach(v=>{
+      const r=result[v];
+      if(r&&r.blob)jobs.push({type:'pdf',key:'pdf|'+no+'|'+v,kind,recordId:recordId||null,recordNo:no,variant:v,filename:r.name,blob:r.blob,at});
+    });
+    if(recordId&&(storeSign||Object.keys(sigLayouts).length))
+      jobs.push({type:'checks',key:'checks|'+no,table:sigTable,recordId,recordNo:no,store:storeSign,sigDataUrl:(me&&me.dataUrl)||'',pdfLayout:sigLayouts,at});
+    /* images:[] — the entry PDF and its HTML print copies no longer carry the
+       photos; they live in the Original Invoice (invoiceImages). */
+    sarvPdfState.current={kind,data:d,items,images:[],invoiceImages:images,result};
+    sarvPdfState.blobs={...sarvPdfState.blobs,[no]:result};sarvPdfState.urls[no]=result;
+    /* The Drive-link bar's two anchors open the stored PDF in a new tab, which
+       is a print away — so on a Store entry they follow the same send-first gate
+       as the Print buttons. They stay hidden until the upload lands and
+       storePdfUrlLanded_ fills them in. */
+    if(byId('dlbLink')){byId('dlbLink').href='#';byId('dlbLink').dataset.gateUrl='';}
+    if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href='#';byId('dlbLinkTwoPage').dataset.gateUrl='';}
+    applyStoreLinkGate_(kind,no);
+    sarvStorePdfJobs[no]=storePdfBackground_(no,jobs)
+      .catch(e=>console.warn('[SARV PDF] background upload for '+no+' failed to start:',e.message||e))
+      .finally(()=>{
+        /* Anything parked from earlier (links or whole files) gets another go
+           too. Fire-and-forget: nobody is waiting on somebody else's retry. */
+        flushPdfLinkQueue_().catch(e=>console.warn('[SARV PDF] link queue flush skipped:',e.message||e));
+        flushPdfOutbox_({quiet:true});
+      });
+    return result;
+  }
  function collectInwardData(no,rows){
    // Same maths as updateStoreTotals(): each row's total already honours its
    // Bill Basis (WEIGHT → Gross Wt × rate, QTY → Qty × rate), so the summary
@@ -17235,7 +18054,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    flushPdfLinkQueue_().catch(e=>console.warn('[SARV PDF] link queue flush skipped:',e.message||e));
    return artifact;
  }
- function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',repairOutQty:pNum(r.dataset.repairOutQty),repairReceivedQty:pNum(r.dataset.repairReceivedQty),repairOutWeight:pNum(r.dataset.repairOutWeight),repairReceivedWeight:pNum(r.dataset.repairReceivedWeight),itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight),savedLine:r.dataset.savedLine||''})).filter(x=>x.name&&x.qty>0).map(x=>{
+ function rowDataInward(){return pRows('#itemTableBody tr:not(.po-info-row)').map(r=>({name:r.querySelector('.item-name')?.value||'',desc:r.querySelector('.item-desc')?.value||'',make:r.querySelector('.item-make')?.value||'',cat:r.querySelector('.item-cat')?.value||'',qty:pNum(r.querySelector('.qty-field')?.value),uom:r.querySelector('.item-uom')?.value||'',weight:pNum(r.querySelector('.weight-field')?.value),wunit:r.querySelector('.item-wunit')?.value||'',listPrice:pNum(r.querySelector('.list-price-field')?.value),discountPct:pNum(r.querySelector('.discount-field')?.value),rate:pNum(r.querySelector('.rate-field')?.value),tax:pNum(r.querySelector('.item-gst-field')?.value),billBasis:r.querySelector('.bill-basis-field')?.value||'QTY',poLineId:r.dataset.poLineId||'',poOrderedQty:pNum(r.dataset.poOrderedQty),poReceivedQty:pNum(r.dataset.poReceivedQty),poOrderedWeight:pNum(r.dataset.poOrderedWeight),poReceivedWeight:pNum(r.dataset.poReceivedWeight),poNo:r.dataset.poNo||'',poBillBasis:r.dataset.poBillBasis||'',poUnitPrice:r.dataset.poUnitPrice,repairOutNo:r.dataset.repairOutNo||'',repairOutQty:pNum(r.dataset.repairOutQty),repairReceivedQty:pNum(r.dataset.repairReceivedQty),repairOutWeight:pNum(r.dataset.repairOutWeight),repairReceivedWeight:pNum(r.dataset.repairReceivedWeight),itemId:r.dataset.itemId||'',prNo:r.dataset.reqNo||'',prRequiredQty:pNum(r.dataset.prRequiredQty),prReceivedQty:pNum(r.dataset.prReceivedQty),prRequiredWeight:pNum(r.dataset.prRequiredWeight),prReceivedWeight:pNum(r.dataset.prReceivedWeight),savedLine:r.dataset.savedLine||''})).filter(x=>x.name&&x.qty>0).map(x=>{
     /* The saved record and the PDF must match the entry form's Final Amount to
        the paisa, so nothing is pre-rounded here. `.rate-field` only ever holds
        the net rate rounded to 2dp for display, and pRound() clipped each line
@@ -17468,6 +18287,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function saveInwardWithPdf_(){
    if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
+   // The original invoice photo is mandatory — it becomes the Original Invoice PDF.
+   if(!await ensureStorePhotos_('inward',sarvEditingInwardId?sarvEditingInwardNo:''))return;
    /* Without PO, a Purchase receipt has to say which requirement it met —
       otherwise the PR it satisfied stays open with nothing linking the two.
       Checked here as well as on the field, because the box can be left blank. */
@@ -17640,12 +18461,15 @@ window.addEventListener('DOMContentLoaded',()=>{
          [...sarvEditingInwardReqNos,...inwardPrRefList_(rows)]));
      }catch(e){console.warn('[SARV] PR status sync after inward skipped:',e.message||e);}
      if(msgEl)msgEl.textContent='Generating PDF…';
-     const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput');
+     const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput',{isEdit:!!editId});
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
        /* Send-before-print: the preview's only button is WhatsApp Send until
           this PDF has gone out — party/receiver feed the recipient picker and
-          pdfUrl is the permanent link that rides along in the message. */
+          pdfUrl is the permanent link that rides along in the message (filled
+          in by the outbox once the upload lands). invoiceBlob is the Original
+          Invoice PDF, the preview's second tab. */
        {docNo:no,party:d.supplier,receiver:'',pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
+        invoiceBlob:pdfs.INVOICE?.blob||null,invoiceName:pdfs.INVOICE?.name||storePdfFilename_('INWARD',d,'INVOICE'),
         text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
      showToast(editId?(''+no+' updated; saved under the same Record No.'):('Inward saved: '+no));
      /* Stamp the Purchaser's approval with the receipt it ended up on, so the
@@ -17763,6 +18587,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      outReq.push({id:'outNatureOfDispatch',label:'Nature of Dispatch'});
    }
    if(!validateRequiredFields(outReq))return;
+   // A photo of the gate pass / material is mandatory — it becomes the Original Invoice PDF.
+   if(!await ensureStorePhotos_('outward',sarvEditingOutwardId?sarvEditingOutwardNo:''))return;
    /* Receiver Name / Department carry a ★ but were never actually checked. They
       are read-only now, so an empty one means no employee was picked — and the
       field itself can't be fixed, the Emp Code box can. That is what gets
@@ -17905,9 +18731,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(ins.error&&/\blot_no\b|column/i.test(ins.error.message||'')){ls=ls.map(({lot_no,...x})=>x);ins=await SB.from('outward_lines').insert(ls)}
      if(ins.error)throw ins.error;
      if(msgEl)msgEl.textContent='Generating PDF…';
-     const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput');
+     const d=collectOutwardData(no),pdfs=await generateStorePdfs('OUTWARD',d,rows,h.data.id,'outPhotoGalleryInput',{isEdit:!!outEditId});
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('OUTWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
        {docNo:no,party:d.partyName,receiver:d.receiverName,pdfUrl:pdfs.SINGLE?.url||pdfs.TWO_PAGE?.url||'',
+        invoiceBlob:pdfs.INVOICE?.blob||null,invoiceName:pdfs.INVOICE?.name||storePdfFilename_('OUTWARD',d,'INVOICE'),
         text:(d.entryType==='ISSUE'?'ISSUE ':'OUTWARD ')+no+' — '+(d.partyName||'-')+(d.receiverName?(' | Receiver '+d.receiverName):'')+(d.gatePass?(' | Gate Pass '+d.gatePass):'')});}
      showToast(outEditId?(''+no+' updated; saved under the same Record No.'):('Outward saved: '+no));
      // Repair-nature outward — refresh the Repair Items Tracker so this
@@ -18637,11 +19464,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    const noRecvPos=sarvGeneratedPos.filter(p=>recvOpen(p)&&pNum(p.received_qty)===0);
    set('p_kpiPoTotalRecvPending',noRecvPos.length);
    poKpiTrend_('p_kpiPoTotalRecvPending',noRecvPos.map(poDate),'PO(s)');
-   const partPos=sarvGeneratedPos.filter(p=>{
-     if(!recvOpen(p))return false;
-     const recv=pNum(p.received_qty);
-     return recv>0&&recv!==pNum(p.total_qty);
-   });
+   /* Partially received = the status itself, which is graded line by line on
+      each line's Bill Basis (poReceiptStatus_) and re-checked on every load.
+      The old received_qty ≠ total_qty test counted a WEIGHT-billed PO whose
+      KGS were complete but bag count differed as still partial. */
+   const partPos=sarvGeneratedPos.filter(p=>recvOpen(p)&&p.status==='Partially Received');
    set('p_kpiPoPartialRecvPending',partPos.length);
    poKpiTrend_('p_kpiPoPartialRecvPending',partPos.map(poDate),'PO(s)');
 
@@ -19199,6 +20026,12 @@ window.addEventListener('DOMContentLoaded',()=>{
          .sort((a,b)=>pNum(a.line_no)-pNum(b.line_no)||pNum(a.id)-pNum(b.id)));
      }
      linesLoaded=true;
+     /* Received weight for the WEIGHT-billed lines, so both the status and the
+        item breakdown measure them in KGS. If it cannot be read, those lines
+        grade on qty exactly as before, and the reconcile below is skipped for
+        this load so a half-known picture is never written to the database. */
+     const allLines=Object.values(poLineMap).flatMap(m=>m.lines);
+     if(!await poAttachRecWeights_(allLines))linesLoaded=false;
    }catch(e){console.warn('[SARV] PO line item lookup skipped:',e.message||e);}
    sarvPoLineMap=poLineMap;
    // Only with a complete line set in hand — see reconcilePoReceiptStatuses_.
@@ -19309,11 +20142,19 @@ window.addEventListener('DOMContentLoaded',()=>{
         visible without expanding the PO. Ordered is summed off the lines when
         they are loaded rather than read from purchase_orders.total_qty, which
         is written once at generation and does not follow a later line edit. */
-     const rcvOrd=lm.lines.length?lm.lines.reduce((s,l)=>s+pNum(l.ordered_qty),0):pNum(po.total_qty);
-     const rcvGot=pNum(po.received_qty);
-     const rcvCol=(rcvOrd>0&&rcvGot>=rcvOrd)?'#16a34a':(rcvGot>0?'#d97706':'#64748b');
-     const rcvCell='<td style="text-align:center;white-space:nowrap;"><b style="color:'+rcvCol+';">'+rcvGot+'</b>'
-       +'<span style="color:#94a3b8;"> / '+rcvOrd+'</span></td>';
+     // Off the lines on their Bill Basis (KGS for WEIGHT lines) when loaded.
+     let rcvCell;
+     if(lm.lines.length){
+       const ut=poUnitTotals_(lm.lines);
+       const rcvCol=ut.allDone?'#16a34a':(ut.anyGot?'#d97706':'#64748b');
+       rcvCell='<td style="text-align:center;white-space:nowrap;"><b style="color:'+rcvCol+';">'+pEsc(ut.got)+'</b>'
+         +'<span style="color:#94a3b8;"> / '+pEsc(ut.ord)+'</span></td>';
+     }else{
+       const rcvOrd=pNum(po.total_qty),rcvGot=pNum(po.received_qty);
+       const rcvCol=(rcvOrd>0&&rcvGot>=rcvOrd)?'#16a34a':(rcvGot>0?'#d97706':'#64748b');
+       rcvCell='<td style="text-align:center;white-space:nowrap;"><b style="color:'+rcvCol+';">'+rcvGot+'</b>'
+         +'<span style="color:#94a3b8;"> / '+rcvOrd+'</span></td>';
+     }
      // Once sent, the button stays usable (you can resend) but reads as sent,
      // so the PO PARTY SEND PENDING card and this list agree at a glance.
      const partySent=isPoPartySent(po);
@@ -19372,22 +20213,28 @@ window.addEventListener('DOMContentLoaded',()=>{
    const th='padding:4px 6px;background:#e2e8f0;font-size:10px;font-weight:800;text-align:left;';
    const td='padding:4px 6px;font-size:11px;border-bottom:1px solid #e2e8f0;';
    const tf='padding:5px 6px;font-size:11px;font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;';
-   const tot={ordered:0,received:0,balance:0};
+   /* Totals are kept PER UNIT (e.g. KGS for the WEIGHT-billed lines, PCS for
+      the rest): adding kilos to pieces would give a number that means nothing. */
+   const tot={};
+   const addTot=(u,k,v)=>{const t=tot[u]=tot[u]||{ordered:0,received:0,balance:0};t[k]+=v;};
+   const fmt=(v,u)=>nNum_(v)+(u?' '+u:'');
    const rows=lines.map((l,i)=>{
+     // In the line's own Bill Basis: Order Wt / received KGS on a WEIGHT line.
      const r=poLineReceipt_(l),st=PO_LINE_STATE_STYLE[r.state]||PO_LINE_STATE_STYLE['—'];
-     tot.ordered+=r.ordered;tot.received+=r.received;
+     const u=r.unit||'';
+     addTot(u,'ordered',r.ordered);addTot(u,'received',r.received);
      // Totalled as what is still OWED, so one item's excess cannot cancel
      // another item's shortfall the way a plain ordered-minus-received would.
-     tot.balance+=Math.max(0,r.balance);
+     addTot(u,'balance',Math.max(0,r.balance));
      return '<tr>'
      +'<td style="'+td+'text-align:center;">'+(i+1)+'</td>'
      +'<td style="'+td+'font-weight:700;">'+pEsc(l.item_name||'—')+'</td>'
      +'<td style="'+td+'color:#64748b;">'+pEsc(l.item_description||'—')+'</td>'
      +'<td style="'+td+'">'+pEsc(l.make||'—')+'</td>'
-     +'<td style="'+td+'text-align:center;">'+r.ordered+' '+pEsc(l.uom||'')+'</td>'
-     +'<td style="'+td+'text-align:center;color:#16a34a;font-weight:700;">'+r.received+'</td>'
+     +'<td style="'+td+'text-align:center;">'+pEsc(fmt(r.ordered,u))+'</td>'
+     +'<td style="'+td+'text-align:center;color:#16a34a;font-weight:700;">'+pEsc(fmt(r.received,u))+'</td>'
      +'<td style="'+td+'text-align:center;font-weight:800;color:'+(r.balance>0?'#dc2626':(r.balance<0?'#b91c1c':'#64748b'))+';">'
-       +(r.balance>0?r.balance:(r.balance<0?'+'+(-r.balance):'0'))+'</td>'
+       +pEsc(r.balance>0?fmt(r.balance,u):(r.balance<0?'+'+fmt(-r.balance,u):'0'))+'</td>'
      +'<td style="'+td+'text-align:center;"><span style="background:'+st.bg+';color:'+st.fg+';border-radius:4px;padding:1px 6px;font-size:10px;font-weight:800;white-space:nowrap;">'+st.txt+'</span></td>'
      +'<td style="'+td+'text-align:center;">'+pEsc(l.bill_basis||'QTY')+'</td>'
      +'<td style="'+td+'text-align:right;">'+pMoney(l.unit_price)+'</td>'
@@ -19398,21 +20245,24 @@ window.addEventListener('DOMContentLoaded',()=>{
    // The verdict these lines produce — the same call the header is graded by.
    const verdict=poReceiptStatus_(lines,po&&po.status);
    const vc=verdict==='Received'?'#16a34a':(verdict==='Partially Received'?'#d97706':'#64748b');
-   const note=tot.balance>0
-     ? (nNum_(tot.balance)+' qty pending on '+lines.filter(l=>poLineReceipt_(l).balance>0).length+' item(s)')
+   const units=Object.keys(tot);
+   const totStr=k=>units.map(u=>fmt(tot[u][k],u)).join(' + ')||'0';
+   const owed=units.filter(u=>tot[u].balance>0.0005);
+   const note=owed.length
+     ? (owed.map(u=>fmt(tot[u].balance,u)).join(' + ')+' pending on '+lines.filter(l=>poLineReceipt_(l).balance>0).length+' item(s)')
      : 'All items fully received';
    return scNote+'<table style="width:100%;border-collapse:collapse;">'
      +'<thead><tr><th style="'+th+'width:4%;text-align:center;">Sr</th><th style="'+th+'width:15%;">Item Name</th><th style="'+th+'width:13%;">Description</th><th style="'+th+'width:7%;">Make</th><th style="'+th+'width:9%;text-align:center;">Ordered</th><th style="'+th+'width:8%;text-align:center;">Received</th><th style="'+th+'width:8%;text-align:center;">Pending</th><th style="'+th+'width:9%;text-align:center;">Receipt</th><th style="'+th+'width:5%;text-align:center;">Basis</th><th style="'+th+'width:7%;text-align:right;">Rate</th><th style="'+th+'width:4%;text-align:center;">Disc%</th><th style="'+th+'width:4%;text-align:center;">GST%</th><th style="'+th+'width:7%;text-align:right;">Amount</th></tr></thead>'
      +'<tbody>'+rows+'</tbody>'
      +'<tfoot><tr>'
        +'<td style="'+tf+'" colspan="4">TOTAL &mdash; '+lines.length+' item(s)</td>'
-       +'<td style="'+tf+'text-align:center;">'+nNum_(tot.ordered)+'</td>'
-       +'<td style="'+tf+'text-align:center;color:#16a34a;">'+nNum_(tot.received)+'</td>'
-       +'<td style="'+tf+'text-align:center;color:'+(tot.balance>0?'#dc2626':'#64748b')+';">'+nNum_(tot.balance)+'</td>'
+       +'<td style="'+tf+'text-align:center;">'+pEsc(totStr('ordered'))+'</td>'
+       +'<td style="'+tf+'text-align:center;color:#16a34a;">'+pEsc(totStr('received'))+'</td>'
+       +'<td style="'+tf+'text-align:center;color:'+(owed.length?'#dc2626':'#64748b')+';">'+pEsc(totStr('balance'))+'</td>'
        +'<td style="'+tf+'text-align:center;color:'+vc+';" colspan="6">'+pEsc(verdict)+'</td>'
      +'</tr>'
      +'<tr><td colspan="13" style="padding:5px 6px;font-size:10.5px;color:#475569;background:#f8fafc;">'
-       +'The PO status is worked out from each item\'s receipts &mdash; '+pEsc(note)+'.</td></tr>'
+       +'The PO status is worked out from each item\'s receipts, on its Bill Basis (QTY lines on qty, WEIGHT lines on KGS) &mdash; '+pEsc(note)+'.</td></tr>'
      +'</tfoot></table>';
  }
  // "Show Received" toggle — Admin-only, sits above the Generated POs table.
@@ -19544,7 +20394,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function poFollowupPdfUrl_(map,no,prefer){
    const m=map[String(no||'')];if(!m)return '';
    for(const v of (prefer||[]))if(m[v])return m[v];
-   const k=Object.keys(m);return k.length?m[k[0]]:'';
+   const k=Object.keys(m).filter(v=>v!=='INVOICE');return k.length?m[k[0]]:'';
  }
  // Comma-joined columns (po_number, linked_req_nos, req_no) all split the same
  // way, so one helper keeps the three readings consistent.
@@ -20679,6 +21529,23 @@ window.addEventListener('DOMContentLoaded',()=>{
    return m;
  }
  function fudRecv_(line,rec){const r=rec[line.id];return r?r.qty:pNum(line.received_qty)}
+ /* A PO line in what it is BILLED on — the same rule the PO status uses
+    (poLineMeasure_). WEIGHT → Order Wt vs the KGS on its receipts; QTY → qty.
+    A WEIGHT line with receipts that are not in this view (rec has no entry
+    though the line's counter says something came) reads on qty rather than
+    pretending nothing arrived. */
+ function fudMeasure_(l,rec){
+   const r=rec[l.id];
+   if(String(l.bill_basis||'').toUpperCase()==='WEIGHT'&&pNum(l.gross_weight)>0&&(r||pNum(l.received_qty)<=0))
+     return {ord:pNum(l.gross_weight),got:r?pNum(r.weight):0,unit:'KGS',wt:true};
+   return {ord:pNum(l.ordered_qty),got:fudRecv_(l,rec),unit:String(l.uom||''),wt:false};
+ }
+ // "250 KGS + 6 PCS" — per-unit totals, so kilos are never added to pieces.
+ function fudUnitTot_(list,key){
+   const m={};list.forEach(x=>{m[x.unit]=(m[x.unit]||0)+x[key];});
+   const ks=Object.keys(m);
+   return ks.length?ks.map(u=>fudN_(m[u])+(u?' '+u:'')).join(' + '):'0';
+ }
  function fudProgChip_(ord,recv){
    if(ord<=0&&recv<=0)return '<span class="fud-chip none">—</span>';
    if(recv<=0)return '<span class="fud-chip pend">Pending</span>';
@@ -20819,13 +21686,19 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Follow-ups',String(poFuList_(po).length)],
        ['Sent to vendor',po.party_sent_at?fudStamp_(po.party_sent_at):(isPoPartySent(po)?'yes':'not yet')]
      ])+'</div>';
-     let ord=0,got=0;
-     lines.forEach(l=>{ord+=pNum(l.ordered_qty);got+=fudRecv_(l,rec)});
-     const pct=ord>0?Math.round(got/ord*100):0;
+     /* Each line on its own Bill Basis (fudMeasure_). Progress is the average
+        of the lines' own completion, so a KGS line and a PCS line each count
+        for what they are instead of being added into one meaningless total. */
+     const ms=lines.map(l=>{const m=fudMeasure_(l,rec);return {...m,owed:Math.max(0,m.ord-m.got)};});
+     const done=ms.filter(m=>m.ord>0);
+     const pct=done.length?Math.round(done.reduce((s,m)=>s+Math.min(1,m.got/m.ord),0)/done.length*100):0;
+     const over=ms.some(m=>m.got>m.ord+1e-9);
+     const anyOwed=ms.some(m=>m.owed>1e-9);
      h+='<div class="fud-card" style="--c:#15803d;"><h4>Receipt Progress</h4>'
        +(data&&data.poLinesOk?('<div class="fud-big">'+pct+'%</div>'
-         +'<div class="fud-bar"><i class="'+(got>ord+1e-9?'over':'')+'" style="width:'+Math.min(100,pct)+'%"></i></div>'
-         +kv([['Ordered qty',fudN_(ord)],['Received qty',fudN_(got)],['Pending qty',fudSigned_(Math.max(0,ord-got)),true],
+         +'<div class="fud-bar"><i class="'+(over?'over':'')+'" style="width:'+Math.min(100,pct)+'%"></i></div>'
+         +kv([['Ordered',fudUnitTot_(ms,'ord')],['Received',fudUnitTot_(ms,'got')],
+              ['Pending',anyOwed?'<span class="fud-pos">'+pEsc(fudUnitTot_(ms.filter(m=>m.owed>1e-9),'owed'))+'</span>':'<span class="fud-zero">0</span>',true],
               ['Inwards',String((inwards||[]).length)],
               ['Last receipt',(inwards||[]).length?fudD_(inwards.map(i=>i.receiving_date||i.created_at||'').sort().pop()):'—']]))
          :'<div class="fud-load">'+(data?'PO lines unavailable':'Loading…')+'</div>')
@@ -20864,10 +21737,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    const match=pl=>poLinesForPr.filter(x=>!used.has(x)&&((pl.itemId!=null&&x.l.item_id!=null&&String(pl.itemId)===String(x.l.item_id))||(pl.name&&key(x.l.item_name)===key(pl.name))));
    const rows=g.prLines.map(pl=>{
      const m=match(pl);m.forEach(x=>used.add(x));
-     const ord=m.reduce((s,x)=>s+pNum(x.l.ordered_qty),0);
-     const got=m.reduce((s,x)=>s+fudRecv_(x.l,rec),0);
-     return {pl,m,ord,got};
+     // On the PO lines' Bill Basis: a WEIGHT-billed item reads in KGS.
+     const ms=m.map(x=>fudMeasure_(x.l,rec));
+     const ord=ms.reduce((s,z)=>s+z.ord,0);
+     const got=ms.reduce((s,z)=>s+z.got,0);
+     return {pl,m,ord,got,u:ms.some(z=>z.wt)?' KGS':''};
    });
+   const xm=x=>fudMeasure_(x.l,rec);
    const extra=poLinesForPr.filter(x=>!used.has(x));   // on a PO for this PR, but not matched to a PR line
    const body=rows.map((r,i)=>{
      const pos=[...new Set(r.m.map(x=>shortDocNo_(x.po.po_no,'PO')||x.po.po_no))];
@@ -20876,13 +21752,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td>'+pEsc(r.pl.make||'')+'</td>'
        +'<td class="n">'+fudN_(r.pl.qty)+' '+pEsc(r.pl.uom||'')+'</td>'
        +'<td>'+(pos.length?pEsc(pos.join(', ')):(data?'<span class="fud-wait">not on a PO</span>':'…'))+'</td>'
-       +'<td class="n">'+(data?fudN_(r.ord):'…')+'</td>'
-       +'<td class="n">'+(data?fudN_(r.got)+fudMini_(r.ord||r.pl.qty,r.got):'…')+'</td>'
-       +'<td class="n">'+(data?fudSigned_(Math.max(0,(r.ord||r.pl.qty)-r.got)):'…')+'</td>'
+       +'<td class="n">'+(data?fudN_(r.ord)+r.u:'…')+'</td>'
+       +'<td class="n">'+(data?fudN_(r.got)+r.u+fudMini_(r.ord||r.pl.qty,r.got):'…')+'</td>'
+       +'<td class="n">'+(data?fudSigned_(Math.max(0,(r.ord||r.pl.qty)-r.got))+r.u:'…')+'</td>'
        +'<td>'+(data?(r.m.length?fudProgChip_(r.ord,r.got):'<span class="fud-chip pend">No PO</span>'):'')+'</td></tr>';
    }).join('')+extra.map(x=>'<tr class="oth"><td>+</td><td><div class="nm">'+pEsc(x.l.item_name||'—')+'</div><div class="ds">on the PO but not matched to a PR line</div></td><td></td><td class="n">—</td>'
-       +'<td>'+pEsc(shortDocNo_(x.po.po_no,'PO')||x.po.po_no)+'</td><td class="n">'+fudN_(x.l.ordered_qty)+'</td><td class="n">'+fudN_(fudRecv_(x.l,rec))+'</td>'
-       +'<td class="n">'+fudSigned_(Math.max(0,pNum(x.l.ordered_qty)-fudRecv_(x.l,rec)))+'</td><td>'+fudProgChip_(pNum(x.l.ordered_qty),fudRecv_(x.l,rec))+'</td></tr>').join('');
+       +'<td>'+pEsc(shortDocNo_(x.po.po_no,'PO')||x.po.po_no)+'</td><td class="n">'+fudN_(xm(x).ord)+(xm(x).wt?' KGS':'')+'</td><td class="n">'+fudN_(xm(x).got)+(xm(x).wt?' KGS':'')+'</td>'
+       +'<td class="n">'+fudSigned_(Math.max(0,xm(x).ord-xm(x).got))+(xm(x).wt?' KGS':'')+'</td><td>'+fudProgChip_(xm(x).ord,xm(x).got)+'</td></tr>').join('');
    return '<div class="fud-sec"><h3>PR Items &rarr; PO &rarr; Received <small>'+g.prLines.length+' item(s) on '+pEsc(shortDocNo_(req.req_no,'PR')||req.req_no)+', across all its POs</small></h3>'
      +(g.prLines.length||extra.length
        ?'<div class="fud-tw"><table class="fud-t"><thead><tr><th>#</th><th>Item / Description</th><th>Make</th><th class="n">Requested</th><th>On PO</th><th class="n">Ordered</th><th class="n">Received</th><th class="n">Pending</th><th>Status</th></tr></thead><tbody>'+body+'</tbody></table></div>'
@@ -20896,11 +21772,16 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(!data)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">Loading…</div></div>';
    if(!data.poLinesOk)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">The PO lines could not be loaded.</div></div>';
    if(!lines.length)return '<div class="fud-sec"><h3>PO Lines</h3><div class="fud-empty">This PO has no item lines (an old PO linked only by PR number).</div></div>';
-   let tq=0,tr=0,ta=0,tw=0;
+   let tq=0,ta=0,tw=0;
+   const msAll=[];
    const body=lines.map((l,i)=>{
-     const ord=pNum(l.ordered_qty),got=fudRecv_(l,rec),amt=fudLineAmt_(l);
+     /* Ordered / Weight columns stay as the PO wrote them; Received, Pending,
+        Excess and Status follow the line's Bill Basis (fudMeasure_) — in KGS
+        for a WEIGHT-billed line. */
+     const m=fudMeasure_(l,rec),ord=m.ord,got=m.got,amt=fudLineAmt_(l),u=m.wt?' KGS':'';
      const mine=!l.req_no||String(l.req_no).trim()===reqNo;
-     tq+=ord;tr+=got;ta+=amt;tw+=pNum(l.gross_weight);
+     tq+=pNum(l.ordered_qty);ta+=amt;tw+=pNum(l.gross_weight);
+     msAll.push({...m,owed:Math.max(0,ord-got)});
      const r=rec[l.id];
      return '<tr'+(mine?'':' class="oth"')+'><td>'+(i+1)+'</td>'
        +'<td><div class="nm">'+pEsc(l.item_name||'—')+'</div>'+(l.item_description||l.make?'<div class="ds">'+pEsc([l.item_description,l.make].filter(Boolean).join(' · '))+'</div>':'')+'</td>'
@@ -20909,14 +21790,18 @@ window.addEventListener('DOMContentLoaded',()=>{
        +'<td class="n">'+(pNum(l.gross_weight)?fudN_(l.gross_weight)+' kg':'')+'</td>'
        +'<td class="n">'+(pNum(l.unit_price)?fudN_(fudLineRate_(l))+(pNum(l.discount_pct)?' <span class="ds">(-'+fudN_(l.discount_pct)+'%)</span>':''):'')+'</td>'
        +'<td class="n">'+(amt?fudRs_(amt):'')+'</td>'
-       +'<td class="n">'+fudN_(got)+fudMini_(ord,got)+(r&&r.weight?'<div class="ds">'+fudN_(r.weight)+' kg</div>':'')+'</td>'
-       +'<td class="n">'+fudSigned_(Math.max(0,ord-got))+'</td>'
-       +'<td class="n">'+(got>ord+1e-9?'<span class="fud-neg">'+fudN_(got-ord)+'</span>':'')+'</td>'
-       +'<td>'+fudProgChip_(ord,got)+'</td></tr>';
+       +'<td class="n">'+fudN_(got)+u+fudMini_(ord,got)
+         // The other measure, small, under it: qty on a WEIGHT line, kg on a QTY line.
+         +(m.wt?'<div class="ds">'+fudN_(fudRecv_(l,rec))+' '+pEsc(l.uom||'qty')+'</div>':(r&&r.weight?'<div class="ds">'+fudN_(r.weight)+' kg</div>':''))+'</td>'
+       +'<td class="n">'+fudSigned_(Math.max(0,ord-got))+u+'</td>'
+       +'<td class="n">'+(got>ord+1e-9?'<span class="fud-neg">'+fudN_(got-ord)+u+'</span>':'')+'</td>'
+       +'<td>'+fudProgChip_(ord,got)+(m.wt?' <span class="ds">by weight</span>':'')+'</td></tr>';
    }).join('');
+   const anyOwed=msAll.some(x=>x.owed>1e-9);
    return '<div class="fud-sec"><h3>PO Lines <small>'+lines.length+' line(s) on '+pEsc(shortDocNo_(po.po_no,'PO')||po.po_no)+'; greyed lines belong to other PRs on the same PO</small></h3>'
      +'<div class="fud-tw"><table class="fud-t"><thead><tr><th>#</th><th>Item / Description</th><th>PR</th><th class="n">Ordered</th><th class="n">Weight</th><th class="n">Rate (net)</th><th class="n">Amount</th><th class="n">Received</th><th class="n">Pending</th><th class="n">Excess</th><th>Status</th></tr></thead><tbody>'
-     +body+'<tr class="tot"><td></td><td>Total</td><td></td><td class="n">'+fudN_(tq)+'</td><td class="n">'+(tw?fudN_(tw)+' kg':'')+'</td><td></td><td class="n">'+fudRs_(ta)+'</td><td class="n">'+fudN_(tr)+'</td><td class="n">'+fudSigned_(Math.max(0,tq-tr))+'</td><td></td><td></td></tr>'
+     +body+'<tr class="tot"><td></td><td>Total</td><td></td><td class="n">'+fudN_(tq)+'</td><td class="n">'+(tw?fudN_(tw)+' kg':'')+'</td><td></td><td class="n">'+fudRs_(ta)+'</td><td class="n">'+pEsc(fudUnitTot_(msAll,'got'))+'</td><td class="n">'
+       +(anyOwed?'<span class="fud-pos">'+pEsc(fudUnitTot_(msAll.filter(x=>x.owed>1e-9),'owed'))+'</span>':'<span class="fud-zero">0</span>')+'</td><td></td><td></td></tr>'
      +'</tbody></table></div></div>';
  }
 
@@ -21431,14 +22316,16 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(sum){
      if(po){
        const lm=(sarvPoLineMap||{})[po.id]||{lines:[]};
-       const ord=lm.lines.length?lm.lines.reduce((s,l)=>s+pNum(l.ordered_qty),0):pNum(po.total_qty);
-       const got=pNum(po.received_qty);
        const row=(l,v)=>'<div class="row"><span class="lbl">'+l+'</span><span class="val">'+v+'</span></div>';
+       // On each line's Bill Basis when the lines are loaded (KGS for WEIGHT lines).
+       let ordTx,gotTx,shortTx;
+       if(lm.lines.length){const ut=poUnitTotals_(lm.lines);ordTx=ut.ord;gotTx=ut.got;shortTx=ut.owed;}
+       else{const ord=pNum(po.total_qty),got=pNum(po.received_qty);ordTx=nNum_(ord);gotTx=nNum_(got);shortTx=nNum_(Math.max(0,ord-got));}
        sum.innerHTML=row('Vendor',pEsc(po.vendor_name||'—'))
          +row('Linked PR',pEsc(po.linked_req_nos||'—'))
-         +row('Ordered Qty',nNum_(ord))
-         +row('Received Qty',nNum_(got))
-         +row('Short (written off)',nNum_(Math.max(0,ord-got)));
+         +row('Ordered',pEsc(ordTx))
+         +row('Received',pEsc(gotTx))
+         +row('Short (written off)',pEsc(shortTx));
      }else sum.innerHTML='';
    }
    const r=byId('p_poCloseRemarks');if(r)r.value='';
@@ -22236,6 +23123,8 @@ window.addEventListener('DOMContentLoaded',()=>{
         reportPdfLinkBacklog_();
       })
       .catch(e=>console.warn('[SARV PDF] startup link flush skipped:',e.message||e));
+    // PDF files built on an earlier visit that never reached storage.
+    flushPdfOutbox_();
   },4000);   // after the page's own first loads, not competing with them
 });
 
