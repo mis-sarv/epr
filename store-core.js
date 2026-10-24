@@ -9687,10 +9687,19 @@ async function imLoadPipeline_(items){
     }));
     if(seq!==sarvImPipeSeq)return;
     const poOrderedByKey={};          // req_no|item name, live POs only
+    const poDeadByKey={};             // req_no|item name, Rejected / Cancelled POs
     poLines.forEach(l=>{
       const po=poById.get(l.purchase_order_id);
       const st=String((po&&po.status)||'Generated');
-      if(IM_PIPE_PO_DEAD.includes(st))return;
+      if(IM_PIPE_PO_DEAD.includes(st)){
+        /* Remembered, not counted: a PR item that went onto a PO which was then
+           Rejected / Cancelled is not "still to come" either — see the PR side. */
+        if(l.req_no)String(l.req_no).split(',').map(s=>s.trim()).filter(Boolean).forEach(no=>{
+          const k=no+'|'+imPipeNorm_(l.item_name);
+          poDeadByKey[k]=(poDeadByKey[k]||0)+pNum(l.ordered_qty);
+        });
+        return;
+      }
       if(l.req_no){
         String(l.req_no).split(',').map(s=>s.trim()).filter(Boolean).forEach(no=>{
           const k=no+'|'+imPipeNorm_(l.item_name);
@@ -9727,7 +9736,13 @@ async function imLoadPipeline_(items){
     if(seq!==sarvImPipeSeq)return;
     // One requirement can carry the same item on two lines, so the PO qty and
     // the "without PO" receipts are pooled per key and handed out in line order.
-    const poPool={},directPool={};
+    /* deadPool: the part of a PR item that was put on a PO which was then
+       Rejected / Cancelled. That quantity is NOT shown as pending — the order
+       for it was turned down, so nothing is on its way (the PR usually stays
+       "Pending" after its PO is rejected, which is how it used to leak back in
+       here as PR qty). Taken after the live PO and the direct receipts, so a
+       re-raised live PO for the same item still counts first. */
+    const poPool={},directPool={},deadPool={};
     prLines.forEach(l=>{
       const pr=prById.get(l.requirement_id);if(!pr)return;
       const id=resolve(l.item_id,null);if(!id)return;
@@ -9739,7 +9754,9 @@ async function imLoadPipeline_(items){
       const dk=String(pr.req_no||'').trim().toUpperCase()+'|'+String(l.item_id||'');
       if(!(dk in directPool))directPool[dk]=pNum((direct[dk]||{}).qty);
       const recv=Math.min(directPool[dk],requested-onPo);directPool[dk]-=recv;
-      const pending=requested-onPo-recv;
+      if(!(pk in deadPool))deadPool[pk]=poDeadByKey[pk]||0;
+      const dead=Math.min(deadPool[pk],requested-onPo-recv);deadPool[pk]-=dead;
+      const pending=requested-onPo-recv-dead;
       if(pending<=0.0001)return;
       const b=bucket(id);b.pr+=pending;
       b.docs.push({type:'PR',no:pr.req_no||'',date:pr.request_date||'',status:pr.status||'Pending',
