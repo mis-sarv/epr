@@ -20,6 +20,7 @@ changing a feature. Note: the README and older comments say `Store.html`; that f
 | `lot-card-manager.html` | Manufacturing › Lot Card Manager | Iframe; separate page because Tailwind would reset ERP styles |
 | `printing-lot.html` | Manufacturing › Printing Lot Card | Iframe; also `printing-lot.html#production` for shop floor |
 | `trims-manager.html` | Manufacturing › Trims & Packing Material Manager | Iframe |
+| `task_manager.html` | Task Manager (employee checklists, EA, buddy, score card; Tailwind) | Launcher app `HOME_TASK_MANAGER`; SSO via `sso-gate.js`; inner buttons = `TM_*` rows in `SARV_TABS`, enforced server-side by `tm_perms_` (`TASK_MANAGER_MIGRATION.sql`; keep its defaults in sync) |
 
 ERP iframes in `index.html` (~line 2057) use `data-src` and are loaded lazily.
 

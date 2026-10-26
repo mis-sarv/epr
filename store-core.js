@@ -4617,7 +4617,8 @@ function sarvFinishLogin_(){
    "the button showed on Home but the app didn't open" can never happen. */
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
-  'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS'];
+  'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
+  'HOME_TASK_MANAGER','HOME_MY_TASKS'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5462,6 +5463,30 @@ const SARV_TABS=[
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
   {key:'HOME_SHEET_LINKS',label:'Sheet Links',hint:'Each user\'s own Google Sheet shortcut board (google sheet links.html, opens from the launcher)',def:'ALL'},
+  {key:'HOME_TASK_MANAGER',label:'Task Manager',hint:'Employee checklists, EA tasks, buddy cover, score card (task_manager.html, opens from the launcher)',def:'ALL'},
+  /* Its own launcher tile, so every account (new self-signups included) has
+     its own checklist without getting the whole Task Manager. Through this
+     tile the server allows only TM_MY_TASKS (tm_ctx_). */
+  {key:'HOME_MY_TASKS',label:'My Tasks (launcher tile)',hint:'Straight to the user\'s own Task Manager checklist; on for everyone, new self-signup accounts included',def:'ALL'},
+  /* task_manager.html's own home buttons. The page hides a button without
+     access, and the SERVER checks the same key on every read and write
+     (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
+     not just hidden buttons. Defaults here MUST match tm_perm_default_()
+     there: this list is what the matrix shows, that one is what the server
+     allows while a role has no tick yet. Per-user ON/OFF: Users › Apps. */
+  {group:'Task Manager › Home Buttons (task_manager.html)'},
+  {key:'TM_ADD_TASK',label:'Add New Task List',hint:'Register / edit an employee and their daily-weekly-monthly-yearly checklist',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_MD_VIEW',label:'MD Oversight View',hint:'Every employee\'s live month sheet',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_SCORE_CARD',label:'Employee Score Card',hint:'Performance % of all employees (week / month / year)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_MY_TASKS',label:'My Tasks (employee checklist)',hint:'The user\'s own sheet, found by their Emp Code; ticking needs a photo',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'TM_DIRECTORY',label:'Employee Directory',hint:'List of employees with a task list; remove an employee',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_CHART',label:'Completion Chart',hint:'Printable monthly report per employee',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_SCORE_MASTER',label:'Score Master',hint:'Penalty rules for late tasks',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_EA',label:'EA Delegation',hint:'Assign and postpone one-off EA tasks',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_BUDDY',label:'Assign Buddy',hint:'Hand an employee\'s tasks to a buddy during leave',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* Not a home button: the right that replaced the PC / EA PINs (approve a
+     past day as late, or reschedule it, from MD Oversight View or a sheet). */
+  {key:'TM_LATE_APPROVE',label:'Late Approval / Reschedule',hint:'Approve a missed task as late, or move it to a later day (replaces the old PC / EA PIN)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'PO Generation › Sub Tabs'},
@@ -5946,7 +5971,7 @@ function sarvRenderUsers_(){
          "why isn't this button showing for them". */
       +(u.app_access&&Object.keys(u.app_access).length
         ?' <span class="ap-pill" style="background:#fff7ed;color:#9a3412;" title="'
-          +escText(Object.keys(u.app_access).map(k=>(SARV_APP_LABEL[k]||k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
+          +escText(Object.keys(u.app_access).map(k=>(SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
           +'">'+Object.keys(u.app_access).length+'</span>':'')
       +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">'+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')
       +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Complaint App account">C</span>':'')
@@ -6106,9 +6131,15 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1};
+/* Buttons INSIDE an app that also get a per-user ON / OFF in the user
+   form (below the apps). Read from SARV_TABS, so adding a TM_* row there
+   is all it takes. */
+const SARV_APP_INNER_GROUPS=[
+  {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)}
+];
 
 /* ── Apps that also need their own ACCOUNT ───────────────────────────
    Complaint and Packing data run on Supabase Auth (their RLS and triggers
@@ -6215,18 +6246,26 @@ function sarvUserAppsHtml_(u){
   const roleSays=k=>roles.length
     ? roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r))
     : null;
+  const tabLabel=k=>{const d=SARV_TABS.find(t=>t.key===k);return d?d.label:k;};
   return '<div class="fg" style="grid-column:1 / -1;">'
     +'<label>Apps <small style="text-transform:none;font-weight:600;">'
     +'(Home page buttons. <b>auto</b> = whatever the role gives; ON / OFF applies to this user only)</small></label>'
     +'<div data-f="appswrap" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 0;background:#f8fafc;'
     +'max-height:230px;overflow:auto;">'
-    +SARV_APP_KEYS.map(k=>{
+    /* The apps, then each app's own inner buttons under a small heading.
+       Same select[data-app], so saving them needs no extra code: they all
+       go into app_access, which the app's server functions read. */
+    +SARV_APP_KEYS.concat(...SARV_APP_INNER_GROUPS.map(g=>['#'+g.title].concat(g.keys))).map(k=>{
+        if(k.charAt(0)==='#')
+          return '<div style="padding:6px 10px 2px;font-size:10px;font-weight:800;color:#7c3aed;'
+            +'text-transform:uppercase;letter-spacing:.04em;border-top:1px solid #e2e8f0;margin-top:4px;">'
+            +escText(k.slice(1))+'</div>';
         const v=typeof acc[k]==='boolean'?(acc[k]?'1':'0'):'';
         const rs=roleSays(k);
         const hint=rs===null?'':(rs?'from role: shown':'from role: hidden');
         return '<div style="display:flex;align-items:center;gap:8px;padding:3px 10px;">'
           +'<span style="flex:1 1 auto;font-size:11px;font-weight:700;color:#334155;">'
-            +escText(SARV_APP_LABEL[k]||k)
+            +escText(SARV_APP_LABEL[k]||tabLabel(k))
             +(SARV_APP_EXTERNAL[k]?' <small style="color:#7c3aed;font-weight:700;">alag app</small>':'')
             /* For these two, ON doesn't just show a button; it also creates
                that app's account (and OFF deactivates it). The Admin needs to

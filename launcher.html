@@ -719,7 +719,20 @@ const APPS = [
     title:'Order Form', sub:'Sales order + Proforma Invoice' },
   /* The file name has spaces (kept, as people already know it), hence the %20. */
   { key:'HOME_SHEET_LINKS',   href:'google%20sheet%20links.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM3 9h18M3 15h18M9 9v12"/></svg>', accent:'#22c55e',
-    title:'Sheet Links', sub:'Your own Google Sheet shortcuts' }
+    title:'Sheet Links', sub:'Your own Google Sheet shortcuts' },
+  /* Which buttons show INSIDE the Task Manager is set in the Admin Panel
+     (Tab Visibility › Task Manager › Home Buttons, and per user under
+     Users › Apps); the server applies it, so nothing about it lives here. */
+  { key:'HOME_TASK_MANAGER',  href:'task_manager.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>', accent:'#facc15',
+    title:'Task Manager', sub:'Daily checklist, EA tasks, Score card' },
+  /* The Task Manager's "My Tasks" button, as its own tile: straight to the
+     user's own checklist. Its key is in no list that erp_signup switches
+     OFF, so it is ON for every new self-signup account (and on its first
+     open the Task Manager makes that person's profile from the Employee
+     Master). Through this tile the server gives only "My Tasks", never the
+     admin screens. */
+  { key:'HOME_MY_TASKS',      href:'task_manager.html#my-tasks', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>', accent:'#fbbf24',
+    title:'My Tasks', sub:'Your own daily checklist' }
 ];
 
 const ROLE_LABEL = {
