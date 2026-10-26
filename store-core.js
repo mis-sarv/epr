@@ -4618,7 +4618,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS'];
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5468,6 +5468,7 @@ const SARV_TABS=[
      its own checklist without getting the whole Task Manager. Through this
      tile the server allows only TM_MY_TASKS (tm_ctx_). */
   {key:'HOME_MY_TASKS',label:'My Tasks (launcher tile)',hint:'Straight to the user\'s own Task Manager checklist; on for everyone, new self-signup accounts included',def:'ALL'},
+  {key:'HOME_MY_REQUESTS',label:'Track My Store Request',hint:'The user\'s own PRs (by Emp Code) tracked PR → PO → receipt, and their receipt confirmation with photo + PIN (my-requests.html); on for everyone by default',def:'ALL'},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -5484,6 +5485,7 @@ const SARV_TABS=[
   {key:'TM_SCORE_MASTER',label:'Score Master',hint:'Penalty rules for late tasks',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'TM_EA',label:'EA Delegation',hint:'Assign and postpone one-off EA tasks',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'TM_BUDDY',label:'Assign Buddy',hint:'Hand an employee\'s tasks to a buddy during leave',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'TM_PC_FOLLOWUP',label:'PC Follow-up',hint:'Process Coordinator: each employee\'s pending tasks of the day, reschedule task-wise with remarks (history shows in MD Oversight)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   /* Not a home button: the right that replaced the PC / EA PINs (approve a
      past day as late, or reschedule it, from MD Oversight View or a sheet). */
   {key:'TM_LATE_APPROVE',label:'Late Approval / Reschedule',hint:'Approve a missed task as late, or move it to a later day (replaces the old PC / EA PIN)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
@@ -6131,9 +6133,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */

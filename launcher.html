@@ -732,7 +732,12 @@ const APPS = [
      Master). Through this tile the server gives only "My Tasks", never the
      admin screens. */
   { key:'HOME_MY_TASKS',      href:'task_manager.html#my-tasks', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg>', accent:'#fbbf24',
-    title:'My Tasks', sub:'Your own daily checklist' }
+    title:'My Tasks', sub:'Your own daily checklist' },
+  /* Every PR the user raised (matched by Emp Code), tracked like a parcel,
+     with the receipt confirmation at the end. Like My Tasks, its key is in
+     no list erp_signup switches OFF, so every new account has it. */
+  { key:'HOME_MY_REQUESTS',   href:'my-requests.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/><circle cx="18" cy="17" r="3"/><path d="M20.2 19.2L22 21"/></svg>', accent:'#2dd4bf',
+    title:'Track My Store Request', sub:'Your PRs, orders & deliveries' }
 ];
 
 const ROLE_LABEL = {

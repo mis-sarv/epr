@@ -57,6 +57,8 @@
         .signal-red { width: 10px; height: 10px; border-radius: 50%; background-color: #ef4444; }
         .signal-purple { width: 14px; height: 14px; border-radius: 50%; background-color: #8b5cf6; animation: blinkFast 0.5s infinite step-start; }
         .signal-purple-slow { width: 14px; height: 14px; border-radius: 50%; background-color: #8b5cf6; animation: blinkNormal 1.5s infinite ease-in-out; }
+        /* Dark purple, blinking: "this task has a PC / MD follow-up" (click = history). */
+        .signal-fu { width: 9px; height: 9px; border-radius: 50%; background-color: #4c1d95; border: 1.5px solid #fff; animation: blinkFast 0.9s infinite step-start; box-shadow: 0 0 0 1px #4c1d95; }
 
         /* Animated Red Dashed Line for EA Follow-up / Postponed Tasks */
         @keyframes dashMoveForward { 0% { background-position: 0 0; } 100% { background-position: 20px 0; } }
@@ -252,7 +254,7 @@
                 <p class="text-sm text-purple-800 font-extrabold mb-2">2. Reschedule Follow-up</p>
                 <div class="grid grid-cols-2 gap-2 mb-2">
                     <input type="date" id="followUpDate" class="w-full text-sm font-medium px-3 py-2 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400">
-                    <input type="time" id="followUpTime" class="w-full text-sm font-medium px-3 py-2 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400">
+                    <select id="followUpTime" data-hour data-blank="Same as task" class="w-full text-sm font-medium px-3 py-2 border border-purple-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-400"></select>
                 </div>
                 <input type="text" id="followUpRemarks" placeholder="Remarks..." class="w-full text-sm font-medium px-3 py-2 border border-purple-200 rounded-lg mb-3 outline-none focus:ring-2 focus:ring-purple-400">
                 <button onclick="submitFollowUp()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-sm transition-colors">Submit Follow-up</button>
@@ -267,7 +269,7 @@
             <p class="text-xs text-rose-600 font-bold mb-4 bg-rose-50 p-2 rounded-lg border border-rose-100 shadow-inner">Note: Extra penalty points will be applied for extending deadline.</p>
             <div class="grid grid-cols-2 gap-3 mb-5">
                 <input type="date" id="eaPostponeDate" class="w-full text-sm font-medium px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all">
-                <input type="time" id="eaPostponeTime" class="w-full text-sm font-medium px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all">
+                <select id="eaPostponeTime" data-hour data-blank="-- Hour --" class="w-full text-sm font-medium px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all"></select>
             </div>
             <div class="flex gap-3">
                 <button onclick="closeEAPostponeModal()" class="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl font-bold transition-colors">Cancel</button>
@@ -284,7 +286,7 @@
             <input type="text" id="selfTaskDesc" placeholder="Task Description..." class="w-full px-4 py-3 bg-slate-50 border border-slate-300 rounded-xl mb-4 outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium transition-all">
             <div class="grid grid-cols-2 gap-3 mb-6">
                 <input type="date" id="selfTaskDate" class="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium text-sm transition-all">
-                <input type="time" id="selfTaskTime" class="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium text-sm transition-all">
+                <select id="selfTaskTime" data-hour data-blank="Any time" class="w-full px-3 py-3 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white font-medium text-sm transition-all"></select>
             </div>
             <div class="flex gap-3">
                 <button onclick="closeSelfTaskModal()" class="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-colors">Cancel</button>
@@ -400,6 +402,47 @@
                 <div class="w-14 h-14 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-teal-100"><i class="ph-fill ph-users text-3xl"></i></div>
                 <h3 class="text-lg font-extrabold text-slate-800 mb-1">9. Assign Buddy</h3><p class="text-sm font-medium text-slate-500">Transfer tasks during off days.</p>
             </button>
+            <button data-tm="TM_PC_FOLLOWUP" onclick="openScreen('pc-followup')" class="tm-home-btn bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-violet-500 hover:-translate-y-1 transition-all text-left group">
+                <div class="w-14 h-14 bg-violet-50 text-violet-800 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-violet-100"><i class="ph-fill ph-phone-call text-3xl"></i></div>
+                <h3 class="text-lg font-extrabold text-slate-800 mb-1">10. PC Follow-up</h3><p class="text-sm font-medium text-slate-500">Pending tasks of the day: reschedule with remarks.</p>
+            </button>
+        </div>
+
+        <!-- PC FOLLOW-UP: employee list (with counts + search) → that day's pending
+             tasks → reschedule date / time / remarks task-wise → Confirm & Save.
+             A followed-up task leaves this list and comes back on its new date. -->
+        <div id="screen-pc-followup" class="screen-view hidden max-w-6xl mx-auto mt-4">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-phone-call mr-2 text-violet-800 text-3xl"></i> PC Follow-up</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Pick an employee, give each pending task a new date and a remark, then confirm.</p>
+                    </div>
+                    <div class="flex items-center gap-3 w-full md:w-auto">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Day</label>
+                            <input type="date" id="pcDate" onchange="pcDateChanged()" class="px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-slate-700 text-sm">
+                        </div>
+                        <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2.5 rounded-xl border shadow-sm shrink-0 self-end"><i class="ph-bold ph-x text-xl"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-5">
+                    <!-- Employees -->
+                    <div class="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-200 p-4 bg-slate-50/50">
+                        <div class="relative mb-3">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass text-lg"></i></div>
+                            <input type="text" id="pcSearch" oninput="renderPcEmpList()" autocomplete="off" placeholder="Search name, code, department" class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-sm">
+                        </div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-3 cursor-pointer select-none"><input type="checkbox" id="pcOnlyPending" checked onchange="renderPcEmpList()" class="accent-violet-700"> Only employees with pending tasks</label>
+                        <div id="pcTotals" class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2"></div>
+                        <div id="pcEmpList" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1"></div>
+                    </div>
+                    <!-- That employee's pending tasks -->
+                    <div class="lg:col-span-3 p-4 md:p-6">
+                        <div id="pcTaskPane"><div class="text-center text-sm font-bold text-slate-400 py-16">Select an employee on the left.</div></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 2. SCORE MASTER -->
@@ -501,7 +544,7 @@
                             </div>
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Target Time</label>
-                                <input type="time" id="eaTime" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 bg-slate-50 font-medium text-sm transition-all">
+                                <select id="eaTime" data-hour data-blank="-- Hour --" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 bg-slate-50 font-medium text-sm transition-all"></select>
                             </div>
                         </div>
                         <div class="pt-5 mt-2 border-t border-slate-100 flex justify-end">
@@ -981,6 +1024,23 @@
         function todayStr() { return `${appState.currentYear}-${String(appState.currentMonth).padStart(2,'0')}-${String(appState.currentDay).padStart(2,'0')}`; }
         // '14:05' (time box) -> '2:05 PM' (the form stored on the sheet and checked by the server)
         function to12h(tm) { if(!tm) return ''; let[h,m]=tm.split(':'); let hr=parseInt(h,10); let a=hr>=12?'PM':'AM'; hr=hr%12; hr=hr?hr:12; return `${hr}:${m} ${a}`; }
+        /* Every time box is an HOUR dropdown (12-hour clock, minutes always
+           :00), not a time picker. Its value stays 'HH:00' (24h), so to12h()
+           and the server's '10:00 AM' format are unchanged. A saved time with
+           minutes (old data) is kept as an extra "(current)" option instead
+           of being rounded off without anyone noticing. */
+        function hourOptions(sel, blank) {
+            sel = sel || ''; let h = blank != null ? `<option value="">${esc(blank)}</option>` : ''; let found = !sel;
+            for (let i = 0; i < 24; i++) { const v = String(i).padStart(2, '0') + ':00'; if (v === sel) found = true; h += `<option value="${v}"${v === sel ? ' selected' : ''}>${to12h(v)}</option>`; }
+            if (!found) h += `<option value="${esc(sel)}" selected>${esc(to12h(sel))} (current)</option>`;
+            return h;
+        }
+        function setHour(el, v) {
+            v = v || '';
+            if (v && ![...el.options].some(o => o.value === v)) el.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(to12h(v))} (current)</option>`);
+            el.value = v;
+        }
+        document.querySelectorAll('select[data-hour]').forEach(el => { el.innerHTML = hourOptions('', el.dataset.blank); });
         function fmtClock(iso) { const n = new Date(iso); if (isNaN(n)) return ''; let h=n.getHours(); let m=n.getMinutes(); let a = h>=12?'PM':'AM'; h=h%12; h=h?h:12; return h+':'+(m<10?'0'+m:m)+' '+a; }
         const can = k => !!(appState.perms && appState.perms[k]);
 
@@ -1032,7 +1092,8 @@
             NOT_FOUND: 'That record was not found. Reload the page and try again.',
             NO_PROOF: 'No photo was saved for this task.',
             BAD_DATA: 'Some of the values are not valid.',
-            BAD_RANGE: 'That date range is too large.'
+            BAD_RANGE: 'That date range is too large.',
+            MOVED: 'This task was moved to a later day by a follow-up. Complete it on that day.'
         };
         function tmErr(res, title) {
             const msg = TM_ERR[res.error] || ('The request failed: ' + esc(res.error));
@@ -1062,7 +1123,7 @@
                     // "Done at" time: the real moment if known, else the old app's text.
                     rec.timestamp = rec.doneAt ? fmtClock(rec.doneAt) : (rec.legacyTime || (rec.updatedAt ? fmtClock(rec.updatedAt) : ''));
                 }));
-                return { ...e, dept: e.dept || '', desig: e.desig || '', tasks: e.tasks || [], records };
+                return { ...e, dept: e.dept || '', desig: e.desig || '', tasks: e.tasks || [], records, followups: e.followups || [] };
             });
             appState.buddyDelegations = (d.buddies || []).map(b => ({ id: b.id, primaryEmpCode: b.primaryEmpCode, buddyEmpCode: b.buddyEmpCode, startDate: b.startDate, endDate: b.endDate, createdBy: b.createdBy }));
             appState.scoreVersions = (d.scoreVersions || []).map(v => ({ id: v.id, at: new Date(v.effectiveAt), value: v.value || {}, by: v.by || '' })).sort((a, b) => a.at - b.at);
@@ -1083,6 +1144,7 @@
             const s = appState.currentScreen;
             if (s === 'employee-dashboard') renderDashboard();
             else if (s === 'score-master') initScoreMaster();
+            else if (s === 'pc-followup') { renderPcEmpList(); renderPcTasks(); }
             else if (s === 'employee-sheet' && appState.currentLoggedInEmp) renderEmployeeSheet(appState.currentLoggedInEmp);
             else if (s === 'task-list') { if (activeTaskCategory === 'completed-self') openCompletedSelfTasks(); else if (activeTaskCategory) openTaskCategory(activeTaskCategory, activeTaskCategoryTitle); }
             else if (s === 'md-view') {
@@ -1145,7 +1207,7 @@
            ones are numbered again so there is no gap. The server checks the
            same key again on every save. */
         const ROUTE_KEY = { 'add-task': 'TM_ADD_TASK', 'md-view': 'TM_MD_VIEW', 'score-card': 'TM_SCORE_CARD', 'employee-list': 'TM_DIRECTORY',
-            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY' };
+            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY', 'pc-followup': 'TM_PC_FOLLOWUP' };
 
         function applyHomeAccess() {
             let n = 0;
@@ -1215,6 +1277,7 @@
             document.querySelectorAll('.screen-view').forEach(el => el.classList.add('hidden')); document.getElementById('screen-' + sId).classList.remove('hidden');
             if(sId==='home') applyHomeAccess(); else if(sId==='add-task') initAddTaskScreen(); else if(sId==='md-view') renderMDView(); else if(sId==='score-card') renderScoreCard(); else if(sId==='employee-list') renderEmployeeList(); else if(sId==='completion-chart') initCompletionChart(); else if(sId==='ea-delegation') initEADelegation(); else if(sId==='assign-buddy') initAssignBuddy();
             else if(sId==='score-master') initScoreMaster();
+            else if(sId==='pc-followup') initPcFollowup();
             const emp = appState.currentLoggedInEmp;
             if(emp && sId==='employee-sheet') renderEmployeeSheet(emp);
             else if(emp && sId==='employee-dashboard') renderDashboard();
@@ -1358,8 +1421,8 @@
             if (u) { h.className = 'text-[10px] font-bold mt-1 text-emerald-600'; h.textContent = 'ERP login: ' + u.name; const n = document.getElementById('addEmpName'); if (!n.value.trim()) n.value = u.name; }
             else { h.className = 'text-[10px] font-bold mt-1 text-amber-600'; h.textContent = 'No ERP login has this code yet. The employee can open their sheet only after the Admin sets this Emp Code on their user.'; }
         };
-        window.loadEmployeeForEdit = function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']); if(rec.length===0) for(let i=0;i<3;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.frequency||'daily'; handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; r.querySelector('.task-time').value=`${h.toString().padStart(2,'0')}:${m}`; } }); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.`); }
-        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><input type="time" class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" value="10:00"></td><td class="p-4 text-center"><button onclick="this.closest('tr').remove(); updateSrNos();" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
+        window.loadEmployeeForEdit = function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']); if(rec.length===0) for(let i=0;i<3;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.frequency||'daily'; handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.`); }
+        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="this.closest('tr').remove(); updateSrNos();" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
         window.handleFreqChange = function(sel) { const c = sel.closest('tr').querySelector('.task-param-container'); const f = sel.value; if(f==='daily') c.innerHTML='<span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span>'; else if(f==='weekly') c.innerHTML=`<select class="task-param-week w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option><option value="0">Sun</option></select>`; else if(f==='monthly') c.innerHTML=`<input type="number" min="1" max="31" class="task-param-month w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Date (1-31)">`; else if(f==='yearly') c.innerHTML=`<div class="flex gap-2"><select class="task-param-year-m w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></select><input type="number" min="1" max="31" class="task-param-year-d w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="DD"></div>`; }
         function updateSrNos() { document.querySelectorAll('#taskInputBody tr').forEach((r,i)=>r.querySelector('.sr-no').textContent=i+1); }
         async function saveEmployee() {
@@ -1597,7 +1660,8 @@
         // Does this task land on this day of the sheet? (buddy range, EA postponed → only the final day)
         function occursOn(t, ds, rec) {
             const [y, m, d] = ds.split('-').map(Number);
-            const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done');
+            // A follow-up keeps the day on the sheet: moved from here (rescheduled) or moved to here.
+            const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done' || rec.status === 'rescheduled');
             if (t.isBuddyTask && (ds < t.buddyStart || ds > t.buddyEnd)) return false;
             if (t.active === false && t.deactivatedAt && ds >= ymd(new Date(t.deactivatedAt))) return false;
             if (!(taskAppliesToDate(t, y, m, d) || isR)) return false;
@@ -1787,7 +1851,7 @@
             });
             // Most urgent first: overdue, then by target time; done ones last.
             const now = new Date();
-            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => s.state === 'done' ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || (sa.deadline - sb.deadline); });
+            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved') ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
 
             // Header strip: this list's points today.
             let g = 0, p = 0; fTasks.forEach(t => { if (t.isSelfTask) return; const s = taskScore(t, today, t.rec, now); if (s.state === 'upcoming' || s.state === 'moved') return; g += s.pts; p += s.base; });
@@ -1803,7 +1867,8 @@
                         trackHTML = `<div class="text-[10px] text-rose-700 bg-rose-50 px-2 py-1 rounded mt-2 border border-rose-200 font-bold w-fit shadow-inner"><i class="ph-bold ph-git-merge mr-1"></i> Track: ${esc(t.postponeHistory.join(' ➔ '))}</div>`;
                     }
 
-                    let html=done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${today}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${today}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> Complete (Upload Proof)</button>`;
+                    const moved = t.rec && t.rec.status === 'rescheduled';
+                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${today}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${today}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${today}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> Complete (Upload Proof)</button>`;
                     let warn='';
                     if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, today); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
                     let bt=t.isBuddyTask?`<span class="bg-teal-50 text-teal-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-teal-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users mr-1"></i> BUDDY: ${esc(t.primaryName)}</span>`:'';
@@ -1934,7 +1999,7 @@
             if(!pendingMDOverride) return; const nd=document.getElementById('followUpDate').value; const nt=to12h(document.getElementById('followUpTime').value); const r=document.getElementById('followUpRemarks').value.trim();
             if(!nd||nd<=pendingMDOverride.d) return showCustomModal("Error", "Valid future date required.", true);
             const p = pendingMDOverride;
-            const res = await tmRpc('tm_follow_up', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_next_date: nd, p_next_time: nt, p_remarks: r });
+            const res = await tmRpc('tm_follow_up', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_next_date: nd, p_next_time: nt, p_remarks: r, p_source: 'MD' });
             if (!res.ok) return tmErr(res);
             closeMDOverrideModal(); await refreshAndRerender();
         }
@@ -1944,6 +2009,158 @@
             if (!res.ok) return tmErr(res);
             closeMDOverrideModal(); await refreshAndRerender();
         }
+
+        /* ── Follow-up history (tm_followups) ────────────────────────────
+           Every reschedule (PC Follow-up or MD Oversight), oldest first, so
+           a task moved twice reads D1 → D2 → D3. Opened from the dark-purple
+           dot, a moved cell, or the "↻ N follow-ups" chip on a task. */
+        function followupsOf(owner, taskNo) {
+            const e = appState.employees.find(x => x.empCode === owner);
+            return e ? (e.followups || []).filter(f => f.taskNo === taskNo) : [];
+        }
+        function fuChip(t) {
+            const n = followupsOf(t.ownerCode, t.id).length; if (!n) return '';
+            return `<button onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id})" class="text-[9px] font-extrabold text-violet-900 bg-violet-100 px-2 py-0.5 rounded border border-violet-300 mt-1 mr-1 inline-flex items-center gap-1 uppercase tracking-wider hover:bg-violet-200"><span class="signal-fu" style="width:7px;height:7px"></span> ↻ ${n} follow-up${n > 1 ? 's' : ''}</button>`;
+        }
+        window.showFollowupHistory = function(owner, taskNo, ds) {
+            const t = findTask(owner, taskNo); const list = followupsOf(owner, taskNo);
+            const fd = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+            let h = `<div class="text-left"><div class="font-extrabold text-slate-800 leading-tight mb-1">${esc(t ? t.desc : 'Task ' + taskNo)}</div><div class="text-[11px] font-bold text-slate-500 mb-3">${esc(empName(owner))} · target ${esc(t && t.time || 'all day')}</div>`;
+            if (!list.length) h += '<div class="text-sm font-bold text-slate-400 py-4 text-center">No follow-ups for this task.</div>';
+            else {
+                h += '<div class="space-y-2 max-h-[45vh] overflow-y-auto pr-1">' + list.slice().reverse().map(f => {
+                    const r = recOf({ ...t, ownerCode: owner }, f.toDate) || {}; const doneThere = r.checked;
+                    const hit = ds && (f.fromDate === ds || f.toDate === ds);
+                    return `<div class="rounded-xl border ${hit ? 'border-violet-400 bg-violet-50' : 'border-slate-200 bg-white'} p-3">`
+                        + `<div class="flex items-center justify-between gap-2"><span class="text-sm font-extrabold text-slate-800">${fd(f.fromDate)} → <span class="text-violet-800">${fd(f.toDate)}</span>${f.toTime ? ' <span class="text-xs text-slate-500">' + esc(f.toTime) + '</span>' : ''}</span>`
+                        + `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${f.source === 'PC' ? 'text-violet-800 bg-violet-100 border-violet-200' : 'text-purple-700 bg-purple-50 border-purple-200'}">${f.source === 'PC' ? 'PC Follow-up' : 'MD'}</span></div>`
+                        + (f.remarks ? `<div class="text-xs font-bold text-slate-600 mt-1.5 italic">“${esc(f.remarks)}”</div>` : '')
+                        + `<div class="text-[10px] font-bold text-slate-400 mt-1.5">by ${esc(f.by || '-')} · ${esc(fmtWhen(new Date(f.at)))} · ${doneThere ? '<span class="text-green-600">done on the new date</span>' : (f.toDate < todayStr() ? '<span class="text-red-600">not done on the new date</span>' : '<span class="text-violet-700">due on the new date</span>')}</div></div>`;
+                }).join('') + '</div>';
+            }
+            h += '</div>';
+            showCustomModal('Follow-up History', h);
+            const ic = document.getElementById('modalIcon'); ic.className = "w-20 h-20 rounded-full bg-violet-50 text-violet-800 flex items-center justify-center mx-auto mb-4 border-4 border-violet-100 shadow-inner"; ic.innerHTML = '<i class="ph-fill ph-phone-call text-4xl"></i>';
+            document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
+        };
+
+        /* ── PC Follow-up ─────────────────────────────────────────────────
+           The Process Coordinator's daily round: who still has work pending
+           today (or on a past day), and for each pending task a new date +
+           remark. Saving moves the task (tm_follow_up, source 'PC'): it leaves
+           this list, shows on the new date as a follow-up, and is scored there.
+           Tasks still pending on that new date show up here again. */
+        let pcSelected = null;
+        const pcDay = () => document.getElementById('pcDate').value || todayStr();
+        const nextDayOf = ds => { const d = dateAt(ds); d.setDate(d.getDate() + 1); return ymd(d); };
+        const to24 = tm => { const p = parse12h(tm); return p ? String(p.h).padStart(2, '0') + ':' + String(p.m).padStart(2, '0') : ''; };
+        function initPcFollowup() {
+            const d = document.getElementById('pcDate'); if (!d.value || d.value > todayStr()) d.value = todayStr();
+            renderPcEmpList(); renderPcTasks();
+        }
+        window.pcDateChanged = async function() {
+            let ds = pcDay(); if (ds > todayStr()) { document.getElementById('pcDate').value = todayStr(); ds = todayStr(); showCustomModal('Not yet', 'A day that has not come cannot be followed up.', true); }
+            if (!(await ensureLoaded(ds, ds))) return;
+            renderPcEmpList(); renderPcTasks();
+        };
+        // An employee's own tasks of that day that are not done and not moved yet (personal tasks excluded).
+        function pcPending(emp, ds, now) {
+            const out = [];
+            emp.tasks.forEach(x => {
+                if (x.isSelfTask || x.active === false) return;
+                const t = { ...x, ownerCode: emp.empCode }; const rec = recOf(t, ds);
+                if (!occursOn(t, ds, rec)) return;
+                const sc = taskScore(t, ds, rec, now); if (sc.state === 'done' || sc.state === 'moved') return;
+                out.push({ t, rec, sc });
+            });
+            // Most urgent first.
+            return out.sort((a, b) => (a.sc.state === 'upcoming') - (b.sc.state === 'upcoming') || a.sc.deadline - b.sc.deadline);
+        }
+        function pcStats(emp, ds, now) {
+            const p = pcPending(emp, ds, now);
+            const fu = (emp.followups || []).filter(f => f.fromDate === ds).length;
+            const d = dayScore(emp, ds, now);
+            return { pending: p.length, overdue: p.filter(x => x.sc.state !== 'upcoming').length, done: d.done, total: d.total, followed: fu };
+        }
+        window.renderPcEmpList = function() {
+            const ds = pcDay(), now = new Date(), q = document.getElementById('pcSearch').value.trim().toUpperCase(), only = document.getElementById('pcOnlyPending').checked;
+            let rows = appState.employees.map(e => ({ e, s: pcStats(e, ds, now) }))
+                .filter(({ e }) => !q || [e.empName, e.empCode, e.dept, e.desig].join(' ').toUpperCase().includes(q));
+            const all = rows.length;
+            if (only) rows = rows.filter(r => r.s.pending > 0 || (pcSelected && r.e.empCode === pcSelected));
+            rows.sort((a, b) => b.s.overdue - a.s.overdue || b.s.pending - a.s.pending || a.e.empName.localeCompare(b.e.empName));
+            const totP = rows.reduce((n, r) => n + r.s.pending, 0);
+            document.getElementById('pcTotals').textContent = `${rows.length} of ${all} employee(s) · ${totP} pending task(s)`;
+            document.getElementById('pcEmpList').innerHTML = rows.length ? rows.map(({ e, s }) => {
+                const sel = e.empCode === pcSelected; const mx = masterByCode(e.empCode);
+                return `<button onclick="openPcEmp('${esc(e.empCode)}')" class="w-full text-left rounded-2xl border p-3.5 transition-colors ${sel ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-300'}">`
+                    + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 truncate">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${mx && mx.contact ? ' · ' + esc(mx.contact) : ''}</div></div>`
+                    + `<div class="text-right shrink-0"><div class="text-2xl font-extrabold leading-none ${s.pending ? 'text-violet-800' : 'text-green-600'}">${s.pending}</div><div class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">pending</div></div></div>`
+                    + `<div class="flex flex-wrap gap-1.5 mt-2 text-[9px] font-extrabold uppercase tracking-wider">`
+                    + (s.overdue ? `<span class="px-2 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${s.overdue} overdue</span>` : '')
+                    + (s.pending - s.overdue ? `<span class="px-2 py-0.5 rounded border text-emerald-700 bg-emerald-50 border-emerald-200">${s.pending - s.overdue} not due yet</span>` : '')
+                    + `<span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">${s.done}/${s.total} done</span>`
+                    + (s.followed ? `<span class="px-2 py-0.5 rounded border text-violet-800 bg-violet-100 border-violet-200">↻ ${s.followed} followed up</span>` : '')
+                    + `</div></button>`;
+            }).join('') : `<div class="text-center text-sm font-bold text-slate-400 py-8 bg-white border border-dashed border-slate-200 rounded-2xl">${only ? 'No pending tasks for this day.' : 'No employee matches.'}</div>`;
+        };
+        window.openPcEmp = function(code) { pcSelected = code; renderPcEmpList(); renderPcTasks(); if (window.innerWidth < 1024) document.getElementById('pcTaskPane').scrollIntoView({ behavior: 'smooth' }); };
+        window.renderPcTasks = function() {
+            const pane = document.getElementById('pcTaskPane'); const e = pcSelected && appState.employees.find(x => x.empCode === pcSelected);
+            if (!e) { pane.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">Select an employee on the left.</div>'; return; }
+            const ds = pcDay(), now = new Date(), list = pcPending(e, ds, now), mx = masterByCode(e.empCode);
+            const inp = 'px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white text-sm font-bold';
+            const done = (e.followups || []).filter(f => f.fromDate === ds);
+            let h = `<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 class="text-xl font-extrabold text-slate-800">${esc(e.empName)}</h3><div class="text-[11px] font-bold text-slate-500">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${e.desig ? ' · ' + esc(e.desig) : ''}${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}</div></div>`
+                + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="text-sm font-extrabold text-violet-800">${list.length} pending</div></div></div>`;
+            if (!list.length) h += '<div class="text-center p-8 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold">Nothing pending for this day.</div>';
+            else {
+                h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Rows with a new date are saved; date and remark are both needed.</span></div>`;
+                h += '<div class="space-y-3">' + list.map(({ t, rec, sc }) => {
+                    const stCls = sc.state === 'upcoming' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200';
+                    const stTxt = sc.state === 'upcoming' ? 'Not due yet · ' + esc(fmtClock(sc.deadline)) : (sc.state === 'missed' ? 'Missed' : 'Overdue') + ' · ' + (sc.pts < 0 ? signed(sc.pts) : sc.pts) + ' pts now';
+                    const fuFrom = rec && rec.status === 'pending-reschedule' ? `<div class="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 mt-1.5 inline-flex items-center gap-1.5"><span class="signal-fu" style="width:7px;height:7px"></span> Follow-up from ${esc(rec.origDate || '')}${rec.remarks ? ': “' + esc(rec.remarks) + '”' : ''}</div>` : '';
+                    return `<div class="rounded-2xl border border-slate-200 p-4 bg-white" data-pc-row data-task="${t.id}">`
+                        + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
+                        + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
+                        + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">${esc(getFrequencyText(t))}</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span><span class="px-2 py-0.5 rounded border ${stCls}">${stTxt}</span></div>`
+                        + fuFrom + fuChip(t) + `</div></div>`
+                        + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
+                        + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Reschedule date</label><input type="date" data-pc-date min="${nextDayOf(ds)}" onchange="pcRowTouched(this)" class="w-full ${inp}"></div>`
+                        + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time class="w-full ${inp}">${hourOptions(to24(rec && rec.time || t.time), 'Same as task')}</select></div>`
+                        + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
+                        + `</div></div>`;
+                }).join('') + '</div>';
+                h += `<div class="flex justify-end mt-5"><button id="pcSaveBtn" onclick="pcSave()" class="bg-violet-800 hover:bg-violet-900 text-white font-bold px-8 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Confirm &amp; Save Follow-up</button></div>`;
+            }
+            if (done.length) h += `<div class="mt-6 pt-4 border-t border-slate-100"><h4 class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Already followed up for this day</h4><div class="space-y-1.5">` + done.slice().reverse().map(f => { const tk = findTask(e.empCode, f.taskNo); return `<button onclick="showFollowupHistory('${esc(e.empCode)}',${f.taskNo},'${esc(ds)}')" class="w-full text-left text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100"><b class="text-slate-800">${esc(tk ? tk.desc : 'Task ' + f.taskNo)}</b> <span class="text-violet-800 font-extrabold">→ ${esc(f.toDate)}${f.toTime ? ' ' + esc(f.toTime) : ''}</span>${f.remarks ? ' <span class="text-slate-500 italic">“' + esc(f.remarks) + '”</span>' : ''} <span class="text-slate-400 font-bold">· ${esc(f.by || '')}</span></button>`; }).join('') + '</div></div>';
+            pane.innerHTML = h;
+        };
+        // Typing a date or a remark ticks the row, so nothing entered is left out by accident.
+        window.pcRowTouched = function(el) { const r = el.closest('[data-pc-row]'); const d = r.querySelector('[data-pc-date]').value; r.querySelector('[data-pc-check]').checked = !!d || !!r.querySelector('[data-pc-remarks]').value.trim(); };
+        window.pcFillNextDay = function() { const nd = nextDayOf(pcDay()); document.querySelectorAll('#pcTaskPane [data-pc-row]').forEach(r => { const d = r.querySelector('[data-pc-date]'); if (!d.value) d.value = nd; r.querySelector('[data-pc-check]').checked = true; }); };
+        window.pcSave = async function() {
+            const ds = pcDay(), code = pcSelected; if (!code) return;
+            const rows = [...document.querySelectorAll('#pcTaskPane [data-pc-row]')].filter(r => r.querySelector('[data-pc-check]').checked);
+            if (!rows.length) return showCustomModal('Nothing selected', 'Give at least one task a new date and a remark.', true);
+            const items = [], bad = [];
+            rows.forEach(r => {
+                const id = +r.dataset.task, nd = r.querySelector('[data-pc-date]').value, rm = r.querySelector('[data-pc-remarks]').value.trim(), tm = to12h(r.querySelector('[data-pc-time]').value);
+                const t = findTask(code, id);
+                if (!nd || nd <= ds || !rm) bad.push(esc(t ? t.desc : 'Task ' + id) + (!nd ? ': no date' : (nd <= ds ? ': date must be after ' + esc(ds) : ': no remark')));
+                else items.push({ id, nd, rm, tm });
+            });
+            if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
+            if (!confirm(`Save follow-up for ${items.length} task(s) of ${empName(code)}?`)) return;
+            setBusy('pcSaveBtn', true);
+            const fail = [];
+            for (const it of items) {
+                const res = await tmRpc('tm_follow_up', { p_emp: code, p_task_no: it.id, p_date: ds, p_next_date: it.nd, p_next_time: it.tm, p_remarks: it.rm, p_source: 'PC' });
+                if (!res.ok) { const t = findTask(code, it.id); fail.push(esc(t ? t.desc : it.id) + ': ' + (TM_ERR[res.error] || esc(res.error))); }
+            }
+            await refreshAndRerender();
+            showCustomModal(fail.length ? 'Partly saved' : 'Follow-up Saved', `${items.length - fail.length} task(s) rescheduled. They show again on their new date.` + (fail.length ? '<br><br>' + fail.join('<br>') : ''), fail.length > 0);
+        };
 
         /* ── Month navigation (My Month View + MD sheet) ─────────────────
            12 months back, 1 ahead. A month outside what is loaded is fetched
@@ -2001,7 +2218,7 @@
                 const oc=esc(t.ownerCode);
                 let bb=t.isBuddyTask?`<span class="text-[9px] font-extrabold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 mt-1 inline-block uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users"></i> Buddy (${esc(t.primaryName)})</span>`:''; let sb=t.isSelfTask?`<span class="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 inline-block uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user"></i> Self · not counted</span>`:'';
                 const off = t.active===false ? `<span class="text-[9px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 mt-1 inline-block uppercase tracking-wider">Removed ${esc(t.deactivatedAt ? ymd(new Date(t.deactivatedAt)) : '')}</span>` : '';
-                let rH=`<td class="p-4 sticky-col border-b border-slate-300 bg-white group-hover:bg-slate-50 transition-colors"><div class="flex items-start"><span class="text-slate-400 font-mono text-xs font-extrabold mr-3 mt-0.5 w-5 text-right">${t.id}.</span><div><div class="font-extrabold text-slate-800 leading-tight text-sm">${esc(t.desc)}</div><div class="flex flex-wrap gap-x-2 gap-y-1.5 mt-1.5">${t.time?`<span class="text-[9px] font-extrabold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shadow-inner tracking-wider uppercase"><i class="ph-bold ph-clock"></i> ${esc(t.time)}</span>`:''}<span class="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 uppercase tracking-widest shadow-inner"><i class="ph-bold ph-calendar"></i> ${esc(getFrequencyText(t))}</span></div>${bb}${sb}${off}</div></div></td>`;
+                let rH=`<td class="p-4 sticky-col border-b border-slate-300 bg-white group-hover:bg-slate-50 transition-colors"><div class="flex items-start"><span class="text-slate-400 font-mono text-xs font-extrabold mr-3 mt-0.5 w-5 text-right">${t.id}.</span><div><div class="font-extrabold text-slate-800 leading-tight text-sm">${esc(t.desc)}</div><div class="flex flex-wrap gap-x-2 gap-y-1.5 mt-1.5">${t.time?`<span class="text-[9px] font-extrabold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shadow-inner tracking-wider uppercase"><i class="ph-bold ph-clock"></i> ${esc(t.time)}</span>`:''}<span class="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 uppercase tracking-widest shadow-inner"><i class="ph-bold ph-calendar"></i> ${esc(getFrequencyText(t))}</span></div>${bb}${sb}${off}${fuChip(t)}</div></div></td>`;
 
                 for(let d=1;d<=dim;d++){
                     const ds=dsOf(d);
@@ -2028,7 +2245,7 @@
                     const tip = rec ? esc((rec.timestamp||'') + (rec.doneBy ? ' · ' + rec.doneBy : '') + (sc.state === 'done' ? ' · ' + sc.pts + ' pts' : '')) : '';
                     const ptsBtn = (cls) => `<button onclick="event.stopPropagation(); showPointsBreakdown('${oc}',${t.id},'${ds}')" class="text-[9px] font-extrabold ${cls} px-1 rounded border absolute top-0.5 right-0.5 z-30 hover:scale-110 transition-transform leading-tight">${sc.pts}</button>`;
 
-                    if(sc.state==='moved'){ cc+=`<div class="absolute inset-0 flex flex-col items-center justify-center bg-purple-50 group z-20" title="Rescheduled. Rem: ${esc(rec.remarks)}${rec.doneBy?' · by '+esc(rec.doneBy):''}"><i class="ph-bold ph-arrow-u-down-right text-purple-500 text-xl"></i><span class="text-[9px] font-extrabold text-purple-700">${esc(String(rec.nextDate||'').split('-')[2]||'')}</span></div>`; cx+=' bg-purple-50/50'; }
+                    if(sc.state==='moved'){ cc+=`<div onclick="showFollowupHistory('${oc}',${t.id},'${ds}')" class="absolute inset-0 flex flex-col items-center justify-center bg-purple-100 cursor-pointer z-20" title="Followed up to ${esc(rec.nextDate)}${rec.remarks?' · '+esc(rec.remarks):''}${rec.doneBy?' · by '+esc(rec.doneBy):''} · click for history"><div class="signal-fu absolute top-1 right-1"></div><i class="ph-bold ph-arrow-u-down-right text-purple-800 text-lg"></i><span class="text-[9px] font-extrabold text-purple-900">→${esc(String(rec.nextDate||'').split('-')[2]||'')}</span></div>`; cx+=' bg-purple-50/50'; }
                     else if(sc.state==='done'){
                         const bg = rec.status==='rescheduled-done' ? 'bg-purple-50 text-purple-600' : (sc.phase==='on-time' ? 'bg-green-50 text-green-600' : (sc.phase==='grace' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600'));
                         const act = rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`;
@@ -2045,6 +2262,8 @@
                         else cc+=`<div onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')" class="absolute inset-0 w-full h-full flex items-center justify-center cursor-pointer z-20">${sc.state==='overdue'?ptsBtn('text-red-800 bg-red-100 border-red-200'):''}<div class="${isR?'signal-purple':'signal-orange'} shadow-md"></div></div>`;
                     }
                     else if(isF) { cc+=`<div onclick="showUpcomingTaskDetails('${oc}',${t.id},'${ds}')" class="absolute inset-0 w-full h-full flex items-center justify-center cursor-pointer hover:bg-slate-100 z-20">${isFinalPlan?'':`<div class="${isR?'signal-purple-slow':'signal-green'} shadow-sm"></div>`}</div>`; }
+                    // Moved here by a follow-up and not done yet: the blinking dark-purple dot (click = history).
+                    if (rec && rec.status==='pending-reschedule' && !rec.checked) cc+=`<div onclick="event.stopPropagation(); showFollowupHistory('${oc}',${t.id},'${ds}')" title="Follow-up from ${esc(rec.origDate||'')}${rec.remarks?' · '+esc(rec.remarks):''}" class="signal-fu absolute top-1 left-1 z-40 cursor-pointer"></div>`;
                     rH+=`<td class="${cx}">${cc}</td>`;
                 } tr.innerHTML=rH; tb.appendChild(tr);
             });

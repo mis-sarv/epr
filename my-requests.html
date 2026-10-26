@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script>
+<script src="caps-input.js"></script>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Sarv India — Track My Store Request</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!--
+  TRACK MY STORE REQUEST: every Purchase Requirement (PR) the logged-in user
+  raised, followed like a parcel: PR → approvals → PO → sent to vendor →
+  vendor follow-ups → material received → the user's own confirmation.
+
+  Opened from launcher.html (app key HOME_MY_REQUESTS). Identity comes from
+  the launcher's session through sso-gate.js; this page has no login of its
+  own. A PR is "mine" when purchase_requirements.employee_code is my ERP
+  emp_code; the server decides that, never the page.
+
+  Data: ONLY through the mr_* functions (sql/MY_REQUESTS_MIGRATION.sql), which
+  read the existing PR / PO / inward tables and leave out every price.
+
+  Confirm receipt: allowed only when every live PO of the PR is Received or
+  Closed (Short) by the MD; a partly received PR stays in "In progress".
+  Quality OK + Quantity OK ticks, a photo (mandatory), remarks (mandatory
+  when something is not OK), then the user's OWN login PIN. The server checks
+  the PIN, the ownership and the "fully received" rule again on submit.
+-->
+<style>
+  :root{
+    --bg:#f1f5f9; --card:#fff; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0;
+    --ok:#16a34a; --okbg:#dcfce7; --warn:#b45309; --warnbg:#fef3c7; --bad:#dc2626; --badbg:#fee2e2;
+    --pri:#0f766e; --pribg:#ccfbf1; --blue:#2563eb; --bluebg:#dbeafe; --vio:#6d28d9; --viobg:#ede9fe;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+  button{font-family:inherit}
+  .top{position:sticky;top:0;z-index:20;background:#0f172a;color:#fff;padding:12px 16px;display:flex;align-items:center;gap:12px}
+  .top h1{font-size:16px;margin:0;font-weight:800;letter-spacing:.01em}
+  .top .who{font-size:11px;color:#94a3b8;font-weight:600}
+  .top .sp{flex:1}
+  .ibtn{background:transparent;border:1px solid #334155;color:#cbd5e1;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .ibtn:hover{color:#fff;border-color:#64748b}
+  .wrap{max-width:980px;margin:0 auto;padding:14px 16px 90px}
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;margin-bottom:10px;scrollbar-width:none}
+  .tab{flex:0 0 auto;border:1px solid var(--line);background:#fff;color:#334155;border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .tab b{display:inline-block;min-width:18px;margin-left:4px;padding:0 6px;border-radius:999px;background:#f1f5f9;color:#334155;font-size:11px}
+  .tab.on{background:#0f172a;color:#fff;border-color:#0f172a}
+  .tab.on b{background:#334155;color:#fff}
+  .tab.act b{background:#f59e0b;color:#fff}
+  .search{position:relative;margin-bottom:12px}
+  .search input{width:100%;border:1px solid var(--line);background:#fff;border-radius:10px;padding:11px 12px 11px 38px;font-size:14px;font-weight:600;outline:none}
+  .search input:focus{border-color:#94a3b8}
+  .search svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .card:hover{border-color:#cbd5e1;box-shadow:0 2px 10px rgba(15,23,42,.06)}
+  .card.act{border-left:4px solid #f59e0b}
+  .row{display:flex;align-items:flex-start;gap:10px}
+  .grow{flex:1;min-width:0}
+  .prno{font-weight:800;font-size:15px}
+  .meta{color:var(--mut);font-size:11.5px;font-weight:600;margin-top:2px}
+  .items{margin-top:8px;font-size:12.5px;color:#334155;font-weight:600;line-height:1.45}
+  .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:800;white-space:nowrap}
+  .c-ok{background:var(--okbg);color:#166534}.c-warn{background:var(--warnbg);color:#92400e}.c-bad{background:var(--badbg);color:#991b1b}
+  .c-pri{background:var(--pribg);color:#115e59}.c-blue{background:var(--bluebg);color:#1e40af}.c-mut{background:#f1f5f9;color:#475569}.c-vio{background:var(--viobg);color:#5b21b6}
+  .eta{margin-top:8px;font-size:12px;font-weight:700;color:#0f766e}
+  .eta.late{color:var(--bad)}
+  /* Parcel-style progress: Requested → Approved → Ordered → Sent → Received → Confirmed */
+  .prog{display:flex;align-items:center;margin:12px 2px 2px}
+  .prog .st{position:relative;flex:1;text-align:center;font-size:9.5px;font-weight:700;color:#94a3b8;padding-top:16px;line-height:1.2}
+  .prog .st::before{content:'';position:absolute;top:4px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#cbd5e1;z-index:1}
+  .prog .st::after{content:'';position:absolute;top:8px;left:-50%;width:100%;height:3px;background:#e2e8f0}
+  .prog .st:first-child::after{display:none}
+  .prog .st.done{color:#166534}.prog .st.done::before{background:var(--ok)}.prog .st.done::after{background:var(--ok)}
+  .prog .st.half{color:#92400e}.prog .st.half::before{background:#f59e0b;box-shadow:0 0 0 3px #fde68a}.prog .st.half::after{background:linear-gradient(90deg,var(--ok),#f59e0b)}
+  .prog .st.bad{color:#991b1b}.prog .st.bad::before{background:var(--bad)}
+  .empty{text-align:center;color:var(--mut);font-weight:700;padding:40px 16px;background:#fff;border:1px dashed var(--line);border-radius:14px}
+  .note{border-radius:12px;padding:12px 14px;font-size:13px;font-weight:600;line-height:1.5;margin-bottom:12px}
+  .n-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}.n-bad{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
+  .n-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}.n-blue{background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af}
+  /* Detail panel */
+  .panel{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;display:none}
+  .panel.open{display:block}
+  .ptop{position:sticky;top:0;z-index:5;background:#fff;border-bottom:1px solid var(--line);padding:10px 16px;display:flex;align-items:center;gap:10px}
+  .back{border:1px solid var(--line);background:#fff;border-radius:10px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#334155}
+  .sec{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:12px;overflow:hidden}
+  .sec h3{margin:0;padding:11px 14px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#475569;background:#f8fafc;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;padding:12px 14px;font-size:13px}
+  .kv .k{color:var(--mut);font-weight:600;white-space:nowrap}.kv .v{font-weight:700;word-break:break-word}
+  table.it{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.it th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding:8px 10px;border-bottom:1px solid var(--line);background:#fcfdfe}
+  table.it td{padding:9px 10px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+  table.it td.n,table.it th.n{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .bar{height:6px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:4px;min-width:60px}
+  .bar i{display:block;height:100%;background:var(--ok)}
+  .bar i.part{background:#f59e0b}
+  /* Vertical tracking line */
+  .tl{list-style:none;margin:0;padding:14px 14px 6px 14px}
+  .ev{position:relative;padding:0 0 16px 30px}
+  .ev::before{content:'';position:absolute;left:8px;top:14px;bottom:-2px;width:2px;background:#e2e8f0}
+  .ev:last-child::before{display:none}
+  .ev .dot{position:absolute;left:0;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--ok)}
+  .ev.done .dot{background:var(--ok)}
+  .ev.fu .dot{border-color:var(--vio);background:var(--viobg)}
+  .ev.bad .dot{border-color:var(--bad);background:var(--bad)}
+  .ev.recv .dot{border-color:var(--pri);background:var(--pri)}
+  .ev.me .dot{border-color:var(--blue);background:var(--blue)}
+  .ev.next .dot{border-color:#cbd5e1;border-style:dashed;background:#fff}
+  .ev.next .t{color:#94a3b8}
+  .ev .t{font-weight:800;font-size:13.5px}
+  .ev .w{font-size:11.5px;color:var(--mut);font-weight:700;margin-top:1px}
+  .ev .d{font-size:12.5px;color:#334155;margin-top:4px;line-height:1.45}
+  .ev .q{font-style:italic;color:#334155;background:#f8fafc;border-left:3px solid #cbd5e1;padding:5px 9px;border-radius:0 8px 8px 0;margin-top:5px;font-size:12.5px}
+  .ev .tag{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;background:#f1f5f9;color:#475569;margin-left:6px;vertical-align:1px}
+  .ev .lst{margin:5px 0 0;padding-left:16px;font-size:12px;color:#334155}
+  .btn{border:0;border-radius:12px;padding:14px 18px;font-size:14px;font-weight:800;cursor:pointer}
+  .btn.pri{background:#0f766e;color:#fff}.btn.pri:hover{background:#115e59}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:#334155}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .cta{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  /* Sheets (confirm / PIN / photo / message) */
+  .sheet{position:fixed;inset:0;z-index:60;background:rgba(15,23,42,.55);display:none;align-items:flex-end;justify-content:center}
+  .sheet.open{display:flex}
+  .sbox{background:#fff;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border-radius:18px 18px 0 0;padding:18px 16px 22px}
+  @media (min-width:640px){.sheet{align-items:center}.sbox{border-radius:18px}}
+  .sbox h2{margin:0 0 4px;font-size:18px;font-weight:800}
+  .sbox .sub{color:var(--mut);font-size:12.5px;font-weight:600;margin-bottom:14px}
+  .chk{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;cursor:pointer}
+  .chk input{width:20px;height:20px;margin-top:1px;accent-color:#0f766e;flex:0 0 auto}
+  .chk b{display:block;font-size:14px}.chk span{font-size:12px;color:var(--mut);font-weight:600}
+  .lbl{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#475569;margin:12px 0 6px}
+  .lbl i{color:var(--bad);font-style:normal}
+  textarea,.pin{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px 12px;font-size:14px;font-family:inherit;outline:none}
+  textarea:focus,.pin:focus{border-color:#0f766e}
+  .photo{border:2px dashed #cbd5e1;border-radius:12px;padding:14px;text-align:center;color:var(--mut);font-weight:700;cursor:pointer;position:relative}
+  .photo img{max-width:100%;max-height:220px;border-radius:8px;display:block;margin:0 auto}
+  .photo input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .pin{font-size:24px;letter-spacing:.5em;text-align:center;font-weight:800}
+  .err{color:var(--bad);font-size:12.5px;font-weight:700;margin-top:8px;min-height:1em}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .muted{color:var(--mut)}
+  .lnk{color:var(--blue);font-weight:700;cursor:pointer;text-decoration:underline;background:none;border:0;padding:0;font-size:inherit}
+  @media (max-width:480px){.hide-sm{display:none}}
+  .skel{height:120px;border-radius:14px;background:linear-gradient(90deg,#e2e8f0,#f1f5f9,#e2e8f0);background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
+  @keyframes sk{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div>
+    <h1>Track My Store Request</h1>
+    <div class="who" id="who">&nbsp;</div>
+  </div>
+  <span class="sp"></span>
+  <button class="ibtn" onclick="load(true)" title="Refresh">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg><span class="hide-sm">Refresh</span>
+  </button>
+  <button class="ibtn" onclick="SARV_GATE.logout({url:SUPABASE_URL,key:SUPABASE_ANON})" title="Log out of all apps">Log out</button>
+</div>
+
+<div class="wrap">
+  <div id="banner"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q" type="text" autocomplete="off" placeholder="Search PR no., item, PO no., vendor" oninput="renderList()">
+  </div>
+  <div id="list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+</div>
+
+<!-- One PR, in full -->
+<div class="panel" id="panel">
+  <div class="ptop">
+    <button class="back" onclick="closeDetail()" title="Back">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="grow"><div class="prno" id="dTitle"></div><div class="meta" id="dSub"></div></div>
+    <span id="dChip"></span>
+  </div>
+  <div class="wrap" id="dBody"></div>
+</div>
+
+<!-- Confirm receipt -->
+<div class="sheet" id="confirmSheet" onclick="if(event.target===this)closeSheet('confirmSheet')">
+  <div class="sbox">
+    <h2>Confirm material received</h2>
+    <div class="sub" id="cfSub"></div>
+    <label class="chk"><input type="checkbox" id="cfQuality"><div><b>Quality is OK</b><span>The material is as asked for and in good condition.</span></div></label>
+    <label class="chk"><input type="checkbox" id="cfQuantity"><div><b>Quantity is OK</b><span>I got the full quantity I needed.</span></div></label>
+    <div id="cfIssueNote" class="note n-warn" style="display:none;margin:4px 0 0;">Leave a box unticked to report a problem. Please write what is wrong in the remarks.</div>
+    <span class="lbl">Photo of the material <i>*</i></span>
+    <div class="photo" id="cfPhotoBox">
+      <div id="cfPhotoTxt">Tap to take or choose a photo</div>
+      <img id="cfPhotoImg" alt="" style="display:none">
+      <input type="file" id="cfPhoto" accept="image/*" capture="environment" onchange="pickPhoto(this)">
+    </div>
+    <span class="lbl">Remarks <i id="cfRemReq" style="display:none">*</i></span>
+    <textarea id="cfRemarks" rows="3" placeholder="Anything the store should know (optional when all is OK)"></textarea>
+    <div class="err" id="cfErr"></div>
+    <div class="cta" style="margin-top:12px">
+      <button class="btn ghost" onclick="closeSheet('confirmSheet')">Cancel</button>
+      <button class="btn pri" onclick="toPin()">Continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN -->
+<div class="sheet" id="pinSheet" onclick="if(event.target===this)closeSheet('pinSheet')">
+  <div class="sbox">
+    <h2>Enter your PIN</h2>
+    <div class="sub">Your own login PIN. It signs this confirmation in your name.</div>
+    <input class="pin" id="pinIn" type="password" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')submitConfirm()">
+    <div class="err" id="pinErr"></div>
+    <div class="cta" style="margin-top:14px">
+      <button class="btn ghost" onclick="closeSheet('pinSheet');openSheet('confirmSheet')">Back</button>
+      <button class="btn pri" id="pinBtn" onclick="submitConfirm()">Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- Message / photo -->
+<div class="sheet" id="msgSheet" onclick="if(event.target===this)closeSheet('msgSheet')">
+  <div class="sbox" style="text-align:center">
+    <div id="msgBody"></div>
+    <button class="btn pri" style="width:100%;margin-top:16px" onclick="closeSheet('msgSheet')">OK</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_MY_REQUESTS';
+const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+let USER = null, DATA = [], TAB = 'action', OPEN = null, PHOTO = null;
+
+/* ── Dates ─────────────────────────────────────────────────────────────
+   The apps store times two ways: ISO ("2026-10-25T11:53:52Z") and the
+   pStamp() text "25/10/2026 15:57:42". A plain date ("2026-10-26") has no
+   time and is shown as a date only. */
+function parseAt(v) {
+  if (!v) return null; const s = String(v).trim();
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})(?:[ ,T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(s);
+  if (m) return { d: new Date(+m[3], +m[2] - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)), t: !!m[4] };
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) return { d: new Date(+m[1], +m[2] - 1, +m[3]), t: false };
+  const d = new Date(s); return isNaN(d) ? null : { d, t: true };
+}
+const fDate = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+const fTime = d => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+const fFull = p => p ? (p.t ? fDate(p.d) + ', ' + fTime(p.d) : fDate(p.d)) : '';
+const fD = v => { const p = parseAt(v); return p ? fDate(p.d) : ''; };
+const shortNo = (no, k) => { const s = String(no || ''); const parts = s.split('/').filter(Boolean); return parts.length > 1 ? (k || '') + parts[parts.length - 1] : s; };
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const nfmt = v => (Math.round(num(v) * 1000) / 1000).toLocaleString('en-IN', { maximumFractionDigits: 3 });
+function ago(d) { const s = (Date.now() - d) / 1000; if (s < 90) return 'just now'; const m = s / 60; if (m < 60) return Math.round(m) + ' min ago'; const h = m / 60; if (h < 24) return Math.round(h) + ' h ago'; const dd = h / 24; return Math.round(dd) + ' day' + (Math.round(dd) > 1 ? 's' : '') + ' ago'; }
+
+/* ── Server ───────────────────────────────────────────────────────────── */
+const ERR = {
+  NO_MIGRATION: 'This page is not set up on the server yet. Admin: run <code>sql/MY_REQUESTS_MIGRATION.sql</code> in the Supabase SQL Editor.',
+  NO_EMP_CODE: 'Your login has no Employee Code, so your requests cannot be found. Ask the Admin to fill it in under <i>Admin Panel › Users &amp; Roles</i>.',
+  NET: 'Could not reach the server. Please check the internet and try again.',
+  PIN_INVALID: 'Wrong PIN. Please try again.',
+  TOO_MANY_ATTEMPTS: 'Too many wrong PINs. Please wait 15 minutes and try again.',
+  PIN_CHECK_UNAVAILABLE: 'The PIN could not be checked right now. Please try again later.',
+  NOT_YOUR_REQUEST: 'This request is not yours.',
+  ALREADY_CONFIRMED: 'You have already confirmed this request.',
+  PHOTO_REQUIRED: 'Please add a photo of the material.',
+  REMARKS_REQUIRED: 'Please write what is wrong in the remarks.',
+  NOT_FOUND: 'This request was not found. Please refresh.'
+};
+const SESSION_ERRORS = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
+async function rpc(fn, args) {
+  let r;
+  try { r = await SB.rpc(fn, Object.assign({ p_token: SARV_GATE.token }, args || {})); }
+  catch (e) { return { ok: false, error: 'NET', detail: e && e.message }; }
+  if (r.error) { const c = r.error.code || ''; return { ok: false, error: (c === 'PGRST202' || c === '42883') ? 'NO_MIGRATION' : 'RPC', detail: r.error.message }; }
+  const d = r.data || {};
+  if (!d.success) {
+    if (SESSION_ERRORS[d.error]) { location.replace('launcher.html?why=' + encodeURIComponent(d.error)); return new Promise(() => {}); }
+    return { ok: false, error: d.error || 'UNKNOWN' };
+  }
+  return { ok: true, data: d };
+}
+function errText(res) {
+  if (String(res.error).startsWith('NOT_READY')) return 'This request is not fully received yet, so it cannot be confirmed. Please refresh.';
+  return ERR[res.error] || ('Something went wrong: ' + esc(res.error) + (res.detail ? '<br><small>' + esc(res.detail) + '</small>' : ''));
+}
+
+/* ── Reading one PR ─────────────────────────────────────────────────────
+   The server decides the state; everything below only describes it. */
+const LIVE = p => !['Cancelled', 'Rejected'].includes(p.status);
+const STATE = {
+  READY:       { tab: 'action',   chip: 'c-warn', label: 'Received · please confirm' },
+  ISSUE:       { tab: 'action',   chip: 'c-bad',  label: 'Problem reported' },
+  PARTIAL:     { tab: 'progress', chip: 'c-blue', label: 'Partly received' },
+  IN_PROGRESS: { tab: 'progress', chip: 'c-pri',  label: 'On the way' },
+  WAITING_PO:  { tab: 'progress', chip: 'c-mut',  label: 'Being processed' },
+  CONFIRMED:   { tab: 'done',     chip: 'c-ok',   label: 'Confirmed by you' },
+  REJECTED:    { tab: 'rejected', chip: 'c-bad',  label: 'Rejected' }
+};
+// How far along, in the 6 steps a person cares about.
+function stage(pr) {
+  const live = (pr.pos || []).filter(LIVE);
+  const md = live.some(p => p.md || ['MD Approved', 'Vendor Verified', 'Partially Received', 'Received', 'Closed (Short)'].includes(p.status));
+  const sent = live.some(p => p.sentAt);
+  const recv = ['READY', 'CONFIRMED', 'ISSUE'].includes(pr.state), part = pr.state === 'PARTIAL';
+  return [
+    { t: 'Requested', s: 'done' },
+    { t: 'Approved', s: (pr.gmSign || live.length) ? 'done' : (pr.state === 'REJECTED' ? 'bad' : '') },
+    { t: 'Ordered', s: md ? 'done' : (live.length ? 'half' : '') },
+    { t: 'Sent to vendor', s: sent ? 'done' : '' },
+    { t: 'Received', s: recv ? 'done' : (part ? 'half' : '') },
+    { t: 'Confirmed', s: pr.state === 'CONFIRMED' ? 'done' : (pr.state === 'ISSUE' ? 'bad' : '') }
+  ];
+}
+function progHtml(pr) { return '<div class="prog">' + stage(pr).map(s => `<div class="st ${s.s}">${s.t}</div>`).join('') + '</div>'; }
+// Received share across this PR's PO lines (by the line's billing basis).
+function receivedPct(pr) {
+  let o = 0, g = 0;
+  (pr.pos || []).filter(LIVE).forEach(p => (p.lines || []).forEach(l => {
+    const wt = String(l.basis || '').toUpperCase() === 'WEIGHT' && num(l.orderedWt) > 0;
+    const ord = wt ? num(l.orderedWt) : num(l.ordered), got = wt ? num(l.receivedWt) : num(l.received);
+    if (ord > 0) { o += 1; g += Math.min(1, got / ord); }
+  }));
+  return o ? Math.round(g / o * 100) : null;
+}
+// When to expect it: the latest revised date a vendor gave, else the PO's delivery date.
+function eta(pr) {
+  let best = null, revised = 0;
+  (pr.pos || []).filter(p => LIVE(p) && !['Received', 'Closed (Short)'].includes(p.status)).forEach(p => {
+    const fu = (p.followups || []).filter(f => f.revisedDate); revised += fu.length;
+    const d = fu.length ? fu[fu.length - 1].revisedDate : p.deliveryDate;
+    const pd = parseAt(d); if (pd && (!best || pd.d > best)) best = pd.d;
+  });
+  return best ? { d: best, revised } : null;
+}
+function itemsSummary(pr) {
+  const it = (pr.items || []).map(x => x.item).filter(Boolean);
+  if (!it.length) return '<span class="muted">No items listed</span>';
+  return esc(it.slice(0, 2).join(', ')) + (it.length > 2 ? ` <span class="muted">+${it.length - 2} more</span>` : '');
+}
+
+/* ── List ───────────────────────────────────────────────────────────── */
+const TABS = [
+  { k: 'action', t: 'Needs your action' }, { k: 'progress', t: 'In progress' },
+  { k: 'done', t: 'Completed' }, { k: 'rejected', t: 'Rejected' }, { k: 'all', t: 'All' }
+];
+function renderTabs() {
+  const n = k => k === 'all' ? DATA.length : DATA.filter(p => (STATE[p.state] || {}).tab === k).length;
+  $('tabs').innerHTML = TABS.map(x => `<button class="tab ${TAB === x.k ? 'on' : ''} ${x.k === 'action' && n('action') ? 'act' : ''}" onclick="setTab('${x.k}')">${x.t}<b>${n(x.k)}</b></button>`).join('');
+}
+function setTab(k) { TAB = k; try { sessionStorage.setItem('mr_tab', k); } catch (e) {} renderTabs(); renderList(); }
+function matches(pr, q) {
+  if (!q) return true;
+  const hay = [pr.reqNo, pr.department, pr.purpose, pr.notes, ...(pr.items || []).map(i => i.item + ' ' + (i.desc || '') + ' ' + (i.spec || '')),
+               ...(pr.pos || []).map(p => p.poNo + ' ' + (p.vendor || ''))].join(' ').toUpperCase();
+  return q.split(/\s+/).every(w => hay.includes(w));
+}
+function renderList() {
+  const q = $('q').value.trim().toUpperCase();
+  const list = DATA.filter(p => (TAB === 'all' || (STATE[p.state] || {}).tab === TAB) && matches(p, q));
+  if (!list.length) {
+    const why = q ? 'Nothing matches your search.' : ({ action: 'Nothing needs your action right now.', progress: 'No request is in progress.', done: 'No completed requests yet.', rejected: 'No rejected requests.', all: 'You have not raised any Purchase Requirement yet.' })[TAB];
+    $('list').innerHTML = `<div class="empty">${why}</div>`; return;
+  }
+  $('list').innerHTML = list.map(pr => {
+    const st = STATE[pr.state] || { chip: 'c-mut', label: pr.state };
+    const pct = receivedPct(pr), e = eta(pr), act = STATE[pr.state] && STATE[pr.state].tab === 'action';
+    const lab = pr.state === 'PARTIAL' && pct != null ? `Partly received · ${pct}%` : st.label;
+    const etaH = e && !['READY', 'CONFIRMED', 'ISSUE', 'REJECTED'].includes(pr.state)
+      ? `<div class="eta ${e.d < new Date(new Date().toDateString()) ? 'late' : ''}">Expected by ${fDate(e.d)}${e.revised ? ` · vendor revised ${e.revised}×` : ''}${e.d < new Date(new Date().toDateString()) ? ' · overdue' : ''}</div>` : '';
+    return `<div class="card ${act ? 'act' : ''}" onclick="openDetail('${esc(pr.reqNo)}')">
+      <div class="row"><div class="grow"><div class="prno">${esc(shortNo(pr.reqNo, 'PR'))} <span class="muted" style="font-size:11px;font-weight:600">${esc(pr.reqNo)}</span></div>
+      <div class="meta">${esc(fD(pr.requestDate || pr.createdAt))}${pr.department ? ' · ' + esc(pr.department) : ''}${(pr.pos || []).length ? ' · ' + (pr.pos || []).map(p => esc(shortNo(p.poNo, 'PO'))).join(', ') : ''}</div></div>
+      <span class="chip ${st.chip}">${esc(lab)}</span></div>
+      <div class="items">${itemsSummary(pr)}</div>${etaH}${progHtml(pr)}
+      ${act && pr.state === 'READY' ? '<div class="note n-warn" style="margin:10px 0 0;padding:8px 12px;font-size:12px">All material has arrived. Tap to confirm you received it.</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+/* ── Detail ─────────────────────────────────────────────────────────── */
+function openDetail(reqNo) {
+  const pr = DATA.find(p => p.reqNo === reqNo); if (!pr) return;
+  OPEN = reqNo;
+  const st = STATE[pr.state] || { chip: 'c-mut', label: pr.state };
+  $('dTitle').textContent = shortNo(pr.reqNo, 'PR') + '  ·  ' + pr.reqNo;
+  $('dSub').textContent = [fD(pr.requestDate || pr.createdAt), pr.department, pr.priority].filter(Boolean).join(' · ');
+  $('dChip').innerHTML = `<span class="chip ${st.chip}">${esc(st.label)}</span>`;
+  $('dBody').innerHTML = actionBox(pr) + `<div class="sec"><h3>Progress</h3><div style="padding:4px 12px 12px">${progHtml(pr)}</div></div>`
+    + itemsSec(pr) + `<div class="sec"><h3><span>Tracking</span><span class="muted" style="text-transform:none;letter-spacing:0">newest at the bottom</span></h3><ul class="tl">${timeline(pr)}</ul></div>` + infoSec(pr);
+  $('panel').classList.add('open'); $('panel').scrollTop = 0;
+  try { history.replaceState(null, '', '#' + encodeURIComponent(reqNo)); } catch (e) {}
+}
+function closeDetail() { $('panel').classList.remove('open'); OPEN = null; try { history.replaceState(null, '', location.pathname); } catch (e) {} }
+
+// What the user can (or cannot yet) do, said plainly at the top.
+function actionBox(pr) {
+  const live = (pr.pos || []).filter(LIVE);
+  if (pr.state === 'READY') return `<div class="note n-warn"><b>Your material has arrived.</b> Please check it and confirm you received it (quality, quantity and a photo).<div class="cta" style="margin-top:10px"><span></span><button class="btn pri" onclick="openConfirm()">Confirm receipt</button></div></div>`;
+  if (pr.state === 'ISSUE') { const c = (pr.confirmations || []).slice(-1)[0] || {}; return `<div class="note n-bad"><b>You reported a problem</b> on ${esc(fFull(parseAt(c.at)))}${c.remarks ? ': “' + esc(c.remarks) + '”' : ''}. When it is sorted out, confirm again.<div class="cta" style="margin-top:10px"><span></span><button class="btn pri" onclick="openConfirm()">Confirm again</button></div></div>`; }
+  if (pr.state === 'CONFIRMED') { const c = (pr.confirmations || []).slice(-1)[0] || {}; return `<div class="note n-ok"><b>Confirmed by you</b> on ${esc(fFull(parseAt(c.at)))}. Thank you.</div>`; }
+  if (pr.state === 'PARTIAL') {
+    const open = live.filter(p => !['Received', 'Closed (Short)'].includes(p.status));
+    const pct = receivedPct(pr);
+    return `<div class="note n-blue"><b>Partly received${pct != null ? ' (' + pct + '%)' : ''}.</b> ${open.length} order${open.length > 1 ? 's are' : ' is'} still open (${open.map(p => esc(shortNo(p.poNo, 'PO'))).join(', ')}). You can confirm once everything arrives, or when the MD closes the order.</div>`;
+  }
+  if (pr.state === 'REJECTED') return `<div class="note n-bad"><b>This request was rejected.</b>${pr.rejection && pr.rejection.remarks ? ' Reason: “' + esc(pr.rejection.remarks) + '”' : ''}</div>`;
+  if (pr.state === 'WAITING_PO') return `<div class="note n-blue"><b>Being processed.</b> Purchasing is getting quotes and preparing the order.</div>`;
+  const e = eta(pr);
+  return `<div class="note n-blue"><b>On the way.</b>${e ? ' Expected by <b>' + fDate(e.d) + '</b>' + (e.revised ? ' (date revised ' + e.revised + '× by the vendor)' : '') + '.' : ''}</div>`;
+}
+function itemsSec(pr) {
+  // Requested → ordered → received per item (matched by item name across this PR's live POs).
+  const recv = {}, ord = {};
+  (pr.pos || []).filter(LIVE).forEach(p => (p.lines || []).forEach(l => {
+    const k = String(l.item || '').toUpperCase(); const wt = String(l.basis || '').toUpperCase() === 'WEIGHT' && num(l.orderedWt) > 0;
+    (ord[k] = ord[k] || { q: 0, u: wt ? 'KGS' : (l.uom || '') }).q += wt ? num(l.orderedWt) : num(l.ordered);
+    (recv[k] = recv[k] || { q: 0 }).q += wt ? num(l.receivedWt) : num(l.received);
+  }));
+  const rows = (pr.items || []).map(i => {
+    const k = String(i.item || '').toUpperCase(), o = ord[k], r = recv[k];
+    const pct = o && o.q > 0 ? Math.min(100, Math.round((r ? r.q : 0) / o.q * 100)) : null;
+    return `<tr><td><b>${esc(i.item || '-')}</b>${i.spec ? `<div class="muted" style="font-size:11px">${esc(i.spec)}</div>` : ''}${i.machine ? `<div class="muted" style="font-size:11px">Machine: ${esc(i.machine)}</div>` : ''}</td>
+      <td class="n">${nfmt(i.qty)} ${esc(i.uom || '')}</td>
+      <td class="n">${o ? nfmt(o.q) + ' ' + esc(o.u) : '<span class="muted">–</span>'}</td>
+      <td class="n">${o ? nfmt(r ? r.q : 0) : '<span class="muted">–</span>'}${pct != null ? `<div class="bar"><i class="${pct < 100 ? 'part' : ''}" style="width:${pct}%"></i></div>` : ''}</td></tr>`;
+  }).join('');
+  return `<div class="sec"><h3>Items</h3><div style="overflow-x:auto"><table class="it"><thead><tr><th>Item</th><th class="n">Asked</th><th class="n">Ordered</th><th class="n">Received</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">No items listed.</td></tr>'}</tbody></table></div></div>`;
+}
+function infoSec(pr) {
+  const kv = (k, v) => v ? `<div class="k">${k}</div><div class="v">${v}</div>` : '';
+  return `<div class="sec"><h3>Request details</h3><div class="kv">${kv('PR No.', esc(pr.reqNo))}${kv('Raised', esc(fFull(parseAt(pr.createdAt)) || fD(pr.requestDate)))}${kv('Required by', esc(fD(pr.requiredBy)))}${kv('Department', esc(pr.department))}${kv('Purpose', esc(pr.purpose))}${kv('Priority', esc(pr.priority))}${kv('Notes', esc(pr.notes))}${kv('Purchaser', esc(pr.purchaser))}</div></div>`;
+}
+
+/* The vertical tracking line: every step with its full date and time,
+   oldest first, then the steps still to come in grey. Several POs are
+   merged into one line, each step tagged with its PO. */
+function timeline(pr) {
+  const ev = [];
+  const add = (at, cls, t, who, body, tag) => { const p = parseAt(at); if (p) ev.push({ p, cls, t, who, body, tag }); };
+  const q = s => s ? `<div class="q">“${esc(s)}”</div>` : '';
+  const by = s => s && (s.by || s.as) ? 'by ' + esc([s.by, s.as && s.as !== s.by ? '(' + s.as + ')' : ''].filter(Boolean).join(' ')) : '';
+  add(pr.createdAt || pr.requestDate, 'done', 'Request raised', 'by ' + esc(pr.requestedBy || 'you'), (pr.items || []).length + ' item(s)' + (pr.requiredBy ? ' · needed by ' + esc(fD(pr.requiredBy)) : ''));
+  if (pr.storeSign) add(pr.storeSign.at, 'done', 'Checked by Store', by(pr.storeSign), q(pr.storeSign.remarks));
+  if (pr.gmSign) add(pr.gmSign.at, 'done', 'Request approved', by(pr.gmSign), '');
+  if (pr.rejection) add(pr.rejection.at, 'bad', 'Request rejected', by(pr.rejection), q(pr.rejection.remarks));
+  if (pr.vendorInfoAt) add(pr.vendorInfoAt, 'done', 'Vendor quotes collected', '', '');
+  (pr.pos || []).forEach(p => {
+    const tag = shortNo(p.poNo, 'PO');
+    add(p.createdAt || p.poDate, 'done', 'Purchase order created', '', `${esc(p.poNo)} · ${esc(p.vendor || '')}${p.deliveryDate ? '<br>Promised delivery: <b>' + esc(fD(p.deliveryDate)) + '</b>' : ''}`, tag);
+    if (p.gm) add(p.gm.at, 'done', 'Order approved by GM / CEO', by(p.gm), q(p.gm.remarks), tag);
+    if (p.md) add(p.md.at, 'done', 'Order approved by MD', by(p.md), q(p.md.remarks), tag);
+    if (p.rejection) add(p.rejection.at, 'bad', 'Order rejected', by(p.rejection), q(p.rejection.remarks), tag);
+    if (p.cancellation) add(p.cancellation.at, 'bad', 'Order cancelled', by(p.cancellation), q(p.cancellation.remarks), tag);
+    if (p.sentAt) add(p.sentAt, 'done', 'Order sent to vendor', '', esc(p.vendor || ''), tag);
+    (p.followups || []).forEach((f, i) => add(f.at, 'fu', 'Vendor follow-up' + (f.seq ? ' #' + f.seq : ' #' + (i + 1)), 'by ' + esc(f.by || f.role || 'Purchase'),
+      (f.revisedDate ? `New delivery date: <b>${esc(fD(f.revisedDate))}</b>${f.prevDate ? ' <span class="muted">(was ' + esc(fD(f.prevDate)) + ')</span>' : ''}` : '') + q(f.remarks), tag));
+    const inw = p.inwards || [];
+    inw.forEach((w, i) => {
+      const last = i === inw.length - 1 && p.status === 'Received';
+      add(w.createdAt || w.date, 'recv', last ? 'Material received in full' : 'Material received' + (inw.length > 1 ? ' (lot ' + (i + 1) + ')' : ''), 'Store entry ' + esc(shortNo(w.docNo)),
+        (w.items && w.items.length ? '<ul class="lst">' + w.items.map(x => `<li>${esc(x.item || '')}: <b>${nfmt(x.qty)} ${esc(x.uom || '')}</b>${num(x.weight) ? ' · ' + nfmt(x.weight) + ' kg' : ''}</li>`).join('') + '</ul>' : ''), tag);
+      if (w.storeCheck) add(w.storeCheck.at, 'done', 'Receipt checked by Store', by(w.storeCheck), '', tag);
+      if (w.gmCheck) add(w.gmCheck.at, 'done', 'Bill verified by GM', by(w.gmCheck), '', tag);
+      if (w.mdCheck) add(w.mdCheck.at, 'done', 'Bill verified by MD', by(w.mdCheck), '', tag);
+      if (w.informed) add(w.informed.at, 'done', 'Store informed you', 'by ' + esc(w.informed.by || 'Store'), '', tag);
+    });
+    if (p.shortClose) add(p.shortClose.at, 'done', 'Order closed by MD', by(p.shortClose), q(p.shortClose.remarks) || '<span class="muted">The rest will not come against this order.</span>', tag);
+  });
+  (pr.looseInwards || []).forEach(w => {
+    add(w.createdAt || w.date, 'recv', 'Material received (without PO)', 'Store entry ' + esc(shortNo(w.docNo)), w.items && w.items.length ? '<ul class="lst">' + w.items.map(x => `<li>${esc(x.item || '')}: <b>${nfmt(x.qty)} ${esc(x.uom || '')}</b></li>`).join('') + '</ul>' : '');
+    if (w.informed) add(w.informed.at, 'done', 'Store informed you', 'by ' + esc(w.informed.by || 'Store'), '');
+  });
+  (pr.confirmations || []).forEach(c => add(c.at, c.outcome === 'OK' ? 'me' : 'bad', c.outcome === 'OK' ? 'You confirmed receipt' : 'You reported a problem', 'by ' + esc(c.by || 'you'),
+    `Quality: <b>${c.qualityOk ? 'OK' : 'Not OK'}</b> · Quantity: <b>${c.quantityOk ? 'OK' : 'Not OK'}</b>${q(c.remarks)}${c.hasPhoto ? `<div style="margin-top:5px"><button class="lnk" onclick="viewPhoto(${Number(c.id)})">View photo</button></div>` : ''}`));
+  ev.sort((a, b) => a.p.d - b.p.d);
+
+  // Steps still to come, in grey.
+  const live = (pr.pos || []).filter(LIVE), next = [];
+  if (pr.state !== 'REJECTED' && pr.state !== 'CONFIRMED') {
+    if (!live.length) next.push('Purchase order');
+    else {
+      if (live.some(p => !(p.md || ['MD Approved', 'Vendor Verified', 'Partially Received', 'Received', 'Closed (Short)'].includes(p.status)))) next.push('Order approval');
+      if (live.some(p => !p.sentAt && !['Received', 'Closed (Short)'].includes(p.status))) next.push('Order sent to vendor');
+      if (live.some(p => !['Received', 'Closed (Short)'].includes(p.status))) { const e = eta(pr); next.push('Material receipt' + (e ? ' · expected ' + fDate(e.d) : '')); }
+    }
+    next.push('Your confirmation');
+  }
+  return ev.map(e => `<li class="ev ${e.cls}"><span class="dot"></span><div class="t">${e.t}${e.tag ? `<span class="tag">${esc(e.tag)}</span>` : ''}</div><div class="w">${esc(fFull(e.p))}${e.p.t ? ' · ' + ago(e.p.d) : ''}${e.who ? ' · ' + e.who : ''}</div>${e.body ? `<div class="d">${e.body}</div>` : ''}</li>`).join('')
+       + next.map(t => `<li class="ev next"><span class="dot"></span><div class="t">${esc(t)}</div><div class="w">Pending</div></li>`).join('');
+}
+
+/* ── Confirm receipt ─────────────────────────────────────────────────── */
+function openSheet(id) { $(id).classList.add('open'); }
+function closeSheet(id) { $(id).classList.remove('open'); }
+function openConfirm() {
+  const pr = DATA.find(p => p.reqNo === OPEN); if (!pr) return;
+  $('cfSub').textContent = pr.reqNo + ' · ' + (pr.items || []).map(i => i.item).filter(Boolean).slice(0, 3).join(', ');
+  $('cfQuality').checked = true; $('cfQuantity').checked = true; $('cfRemarks').value = ''; $('cfErr').textContent = '';
+  PHOTO = null; $('cfPhoto').value = ''; $('cfPhotoImg').style.display = 'none'; $('cfPhotoTxt').style.display = '';
+  issueUi(); openSheet('confirmSheet');
+}
+function issueUi() { const issue = !$('cfQuality').checked || !$('cfQuantity').checked; $('cfIssueNote').style.display = issue ? '' : 'none'; $('cfRemReq').style.display = issue ? '' : 'none'; }
+$('cfQuality').onchange = issueUi; $('cfQuantity').onchange = issueUi;
+// 800 px JPEG, the same size every other proof photo in the ERP uses.
+function pickPhoto(inp) {
+  const f = inp.files && inp.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = e => { const img = new Image(); img.onload = () => { const cv = document.createElement('canvas'); let w = img.width, h = img.height; if (w > 800 || h > 800) { if (w > h) { h *= 800 / w; w = 800; } else { w *= 800 / h; h = 800; } } cv.width = w; cv.height = h; cv.getContext('2d').drawImage(img, 0, 0, w, h); PHOTO = cv.toDataURL('image/jpeg', 0.7); $('cfPhotoImg').src = PHOTO; $('cfPhotoImg').style.display = 'block'; $('cfPhotoTxt').style.display = 'none'; $('cfErr').textContent = ''; }; img.onerror = () => { $('cfErr').textContent = 'That file is not a photo.'; }; img.src = e.target.result; };
+  r.readAsDataURL(f);
+}
+function toPin() {
+  const issue = !$('cfQuality').checked || !$('cfQuantity').checked;
+  if (!PHOTO) return $('cfErr').textContent = 'Please add a photo of the material.';
+  if (issue && !$('cfRemarks').value.trim()) return $('cfErr').textContent = 'Please write what is wrong in the remarks.';
+  closeSheet('confirmSheet'); $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
+}
+async function submitConfirm() {
+  const pin = $('pinIn').value.trim();
+  if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
+  const b = $('pinBtn'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Submitting';
+  const res = await rpc('mr_confirm_receipt', { p_pin: pin, p_req_no: OPEN, p_quality_ok: $('cfQuality').checked, p_quantity_ok: $('cfQuantity').checked, p_photo: PHOTO, p_remarks: $('cfRemarks').value.trim() });
+  b.disabled = false; b.textContent = 'Submit';
+  if (!res.ok) {
+    if (res.error === 'PIN_INVALID' || res.error === 'TOO_MANY_ATTEMPTS') { $('pinErr').innerHTML = errText(res); $('pinIn').value = ''; return; }
+    closeSheet('pinSheet'); return message('Not submitted', errText(res), true);
+  }
+  closeSheet('pinSheet');
+  const ok = res.data.outcome === 'OK', reqNo = OPEN;
+  await load(false); if (DATA.some(p => p.reqNo === reqNo)) openDetail(reqNo);
+  message(ok ? 'Thank you!' : 'Problem reported', ok ? 'Your confirmation is saved. The store can see it.' : 'Your report is saved. The store will look into it; confirm again when it is sorted out.', !ok);
+}
+async function viewPhoto(id) {
+  message('Photo', '<span class="spin"></span>');
+  const res = await rpc('mr_get_photo', { p_confirmation_id: id });
+  $('msgBody').innerHTML = res.ok ? `<h2 style="margin:0 0 10px">Your photo</h2><img src="${esc(res.data.image)}" style="max-width:100%;border-radius:10px" alt="">` : `<h2 style="margin:0 0 6px">Photo</h2><div class="muted">${res.error === 'NO_PHOTO' ? 'No photo was saved.' : errText(res)}</div>`;
+}
+function message(title, html, bad) { $('msgBody').innerHTML = `<h2 style="margin:0 0 6px;color:${bad ? 'var(--bad)' : 'var(--ink)'}">${esc(title)}</h2><div style="font-weight:600;color:#334155;line-height:1.5">${html}</div>`; openSheet('msgSheet'); }
+
+/* ── Load / boot ──────────────────────────────────────────────────────── */
+async function load(showSkel) {
+  if (showSkel) $('list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
+  const res = await rpc('mr_my_requests');
+  if (!res.ok) { $('banner').innerHTML = `<div class="note n-bad">${errText(res)}</div>`; $('list').innerHTML = ''; $('tabs').innerHTML = ''; return; }
+  $('banner').innerHTML = '';
+  DATA = res.data.requests || [];
+  $('who').textContent = (res.data.me.name || '') + ' · ' + (res.data.me.empCode || '');
+  // Open on the tab that has something; "Needs your action" first.
+  if (showSkel === 'boot') { let k = null; try { k = sessionStorage.getItem('mr_tab'); } catch (e) {} TAB = k || (DATA.some(p => (STATE[p.state] || {}).tab === 'action') ? 'action' : 'progress'); }
+  renderTabs(); renderList();
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { ['msgSheet', 'pinSheet', 'confirmSheet'].forEach(closeSheet); } });
+
+(async function boot() {
+  USER = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Track My Store Request' });
+  try {
+    $('who').textContent = USER.name || '';
+    await load('boot');
+    // A link with #PR/26-27/814 opens that request straight away.
+    const h = decodeURIComponent(location.hash.slice(1)); if (h && DATA.some(p => p.reqNo === h)) openDetail(h);
+  } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+})();
+</script>
+<!-- Floating "← Apps" button (hidden inside iframes / without a session). See app-back.js. -->
+<script src="app-back.js"></script>
+</body>
+</html>
