@@ -17717,19 +17717,26 @@ window.addEventListener('DOMContentLoaded',()=>{
     A report / master export used to be named only by its master and the day
     ("SARV_Item_Master_2026-10-27.csv"), so three differently filtered copies
     taken the same morning were indistinguishable in the Downloads folder.
-    The name now also carries every filter that was applied when it was taken:
-      SARV_Item_Master_CATEGORY-SPARES_Below-the-MSV_2026-10-27.xlsx
-      PO_Details_Supplier-ABC-TRADERS_FROM-01-10-2026_2026-10-27.pdf
+    Every such file is now named
+        {Master Name}-{Filter / Slicer values applied}-{Time stamp}
+      Item_Master-SPARES+Below_the_MSV-27-10-2026_14-35.xlsx
+      PO_Details-ABC_TRADERS+FROM_01.10.2026-27-10-2026_14-35.pdf
+      Supplier_Master-All-27-10-2026_14-35.xlsx        (nothing filtered)
+    The three parts are separated by "-", several filters by "+", and words
+    inside one part by "_". A filter contributes its VALUE (SPARES, ABC
+    TRADERS); its heading is added only where the value alone would not say
+    what it is: a date (FROM / TO), a number range, or "3 selected". Dates
+    inside the filter part use dots so they do not read as separators.
     Done here, in the one place every download passes through, rather than in
     each builder. Only names that end in _YYYY-MM-DD (the report / master
     exports) are touched; a document PDF is named by its own number
     (INW-0012.pdf, REQ-0045_Requester.pdf) and is left exactly as it is.
     The filters are read from the screen the download button sits on: from the
     button that was clicked, up to the nearest container holding filter boxes
-    (search, dropdown, date). Column filters, which live in header pop-ups
-    rather than boxes, are added by SARV_EXPORT_TAGS for the screens that have
-    them (added to, not instead of, the boxes). Anything that goes wrong just
-    keeps the original name. */
+    (search, dropdown, date). Column filters and slicer buttons, which are not
+    boxes, are added by SARV_EXPORT_TAGS for the screens that have them (added
+    to, not instead of, the boxes). Anything that goes wrong just keeps the
+    original name. */
  let sarvLastClickEl_=null;
  document.addEventListener('click',e=>{sarvLastClickEl_=e.target;},true);
  // Picks up a filter control: a visible text / search / date box or a dropdown,
@@ -17741,11 +17748,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    const t=String(el.getAttribute('type')||'text').toLowerCase();
    return t==='text'||t==='search'||t==='date'||el.hasAttribute('data-dmy');
  }
+ // One filter as a file-name piece: words joined by "_", and none of the
+ // characters a file name cannot hold or that the format uses as separators.
  function sarvExportTag_(s){
    return String(s==null?'':s).replace(/≥/g,'min ').replace(/≤/g,'max ').replace(/[–—]/g,' to ')
-     .replace(/[\\/:*?"<>|,;]+/g,'-').replace(/[^\p{L}\p{N}\s\-.&()+]/gu,'')
-     .trim().replace(/\s+/g,'-').replace(/-{2,}/g,'-').slice(0,40).replace(/^-+|-+$/g,'');
+     .replace(/[\\/:*?"<>|,;+]+/g,' ').replace(/[^\p{L}\p{N}\s\-.&()]/gu,'')
+     .trim().replace(/\s+/g,'_').replace(/_{2,}/g,'_').slice(0,40).replace(/^[_\-.]+|[_\-.]+$/g,'');
  }
+ // A filter summary that only makes sense under its heading.
+ const sarvNeedsLabel_=t=>/selected|values|^none$|≥|≤|–/i.test(String(t));
  function sarvCtlLabel_(el){
    let t='';
    if(el.id){const l=document.querySelector('label[for="'+CSS.escape(el.id)+'"]');if(l)t=l.textContent;}
@@ -17765,9 +17776,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      return sarvExportTag_(txt);
    }
    let v=String(el.value||'').trim();if(!v)return '';
-   if(/^\d{4}-\d{2}-\d{2}$/.test(v))v=v.slice(8,10)+'-'+v.slice(5,7)+'-'+v.slice(0,4);
-   const l=sarvCtlLabel_(el);
-   return sarvExportTag_(l?(l+' '+v):v);
+   // A date needs its FROM / TO heading; a typed value speaks for itself.
+   if(/^\d{4}-\d{2}-\d{2}$/.test(v)){
+     v=v.slice(8,10)+'.'+v.slice(5,7)+'.'+v.slice(0,4);
+     const l=sarvCtlLabel_(el);
+     return sarvExportTag_(l?(l+' '+v):v);
+   }
+   return sarvExportTag_(v);
  }
  // Filters on the screen the clicked button belongs to.
  function sarvScreenFilterTags_(start){
@@ -17787,13 +17802,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    // the list's own toolbar and header.
    SARV_Item_Master:()=>[
      ...sarvScreenFilterTags_(byId('itemMasterSearch')),
-     ...imActiveCols_().map(c=>sarvExportTag_(SARV_IM_FILTER_COLS[c].label+' '+imFilterSummary_(c)))
+     ...imActiveCols_().map(c=>{
+       const t=imFilterSummary_(c);
+       return sarvExportTag_(sarvNeedsLabel_(t)?(SARV_IM_FILTER_COLS[c].label+' '+t):t);
+     }),
+     // Slicer buttons pressed above the list (Category, Make, …).
+     ...imActiveSlicerCols_().map(c=>{
+       const v=[...sarvImSlicerSel[c]];
+       return sarvExportTag_(v.length<=3?v.join(' '):(imSlicerLabel_(c)+' '+v.length+' selected'));
+     })
    ],
    Consumption_Report:()=>consFixedCols_().filter(c=>consColFilterOn_(c.key)).map(c=>{
      const f=consColFilters[c.key];
      const txt=f.vals?(f.vals.size<=2?[...f.vals].join(' '):f.vals.size+' values')
        :((f.min!=null?('≥'+f.min):'')+(f.min!=null&&f.max!=null?' ':'')+(f.max!=null?('≤'+f.max):''));
-     return sarvExportTag_(c.label+' '+txt);
+     return sarvExportTag_(sarvNeedsLabel_(txt)?(c.label+' '+txt):txt);
    }),
    // Exports the PR form's own item rows; there is nothing filtered about it.
    PR_Items:()=>null,
@@ -17814,10 +17837,14 @@ window.addEventListener('DOMContentLoaded',()=>{
      const own=key?SARV_EXPORT_TAGS[key]():[];
      if(own===null)return name;
      const tags=[...new Set([...sarvScreenFilterTags_(sarvLastClickEl_),...own].filter(Boolean))];
-     if(!tags.length)return name;
-     let mid=tags.join('_');
-     if(mid.length>150)mid=mid.slice(0,150).replace(/[_-]+[^_]*$/,'');
-     const out=base+'_'+mid+'_'+m[2]+'.'+m[3];
+     // Master Name: the builder's own name without the SARV_ prefix.
+     const master=base.replace(/^SARV_/i,'').replace(/-+/g,'_')||'Export';
+     let mid=tags.join('+')||'All';
+     // Long filter lists are cut at a whole filter, never mid-word.
+     if(mid.length>150)mid=mid.slice(0,150).replace(/\+[^+]*$/,'');
+     const z=n=>String(n).padStart(2,'0'),d=new Date();
+     const stamp=z(d.getDate())+'-'+z(d.getMonth()+1)+'-'+d.getFullYear()+'_'+z(d.getHours())+'-'+z(d.getMinutes());
+     const out=master+'-'+mid+'-'+stamp+'.'+m[3];
      sarvExportNameCache_[name]={name:out,at:Date.now()};
      return out;
    }catch(e){
