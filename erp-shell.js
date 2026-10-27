@@ -193,13 +193,32 @@
       { label: 'Time Study' }, { label: 'Cost-Benefit Analysis' },
       { label: 'RAID Log' } ] },
 
+    /* HR & Payroll is its own app (hr-payroll.html, launcher key
+       HOME_HR_PAYROLL), opened in a new tab like Order Form. It has no button
+       on the old tile home, so these leaves carry their `access` row
+       themselves (see leafVisible / leafLive) and the #hash picks the screen. */
     { key: 'HR', icon: I.hr, label: 'HR Management', children: [
-      { label: 'HR Dashboard' }, { label: 'Employee' }, { label: 'Attendance' },
-      { label: 'Salary Calculation' }, { label: 'Payroll' }, { label: 'Leaves' },
+      { label: 'HR Dashboard', external: 'hr-payroll.html#dashboard', access: 'HOME_HR_PAYROLL',
+        words: 'hr payroll dashboard headcount salary cost' },
+      { label: 'Employee', external: 'hr-payroll.html#employees', access: 'HOME_HR_PAYROLL',
+        words: 'employee master worker staff karigar' },
+      { label: 'Attendance', external: 'hr-payroll.html#attendance', access: 'HOME_HR_PAYROLL',
+        words: 'attendance hajri hours present absent machine data' },
+      { label: 'Salary Calculation', external: 'hr-payroll.html#salary', access: 'HOME_HR_PAYROLL',
+        words: 'salary sheet payroll ot overtime payslip tankhwa' },
+      { label: 'PF / ESI / LWF', external: 'hr-payroll.html#statutory', access: 'HOME_HR_PAYROLL',
+        words: 'pf esi lwf welfare on roll cheque statutory' },
+      { label: 'Loans & Salary Advances', external: 'hr-payroll.html#advances', access: 'HOME_HR_PAYROLL',
+        words: 'advance loan emi food debit note emp exp' },
+      { label: 'HR Import', external: 'hr-payroll.html#import', access: 'HOME_HR_PAYROLL',
+        words: 'import csv google sheet employee master' },
+      { label: 'Leaves' },
       { label: 'Holiday' }, { label: 'Employee Contract' }, { label: 'Recruitment' },
-      { label: 'Training' }, { label: 'Loans & Salary Advances' },
+      { label: 'Training' },
       { label: 'Transport' }, { label: 'HR Policies' },
-      { label: 'HR Reports' }, { label: 'HR Config' } ] },
+      { label: 'HR Reports' },
+      { label: 'HR Config', external: 'hr-payroll.html#settings', access: 'HOME_HR_PAYROLL',
+        words: 'hr settings salary class weekly off rule' } ] },
 
     /* Each Master Data sub-tab is its own leaf. There used to be a single
        leaf that opened the panel on its default (Item Master), and reaching
@@ -270,7 +289,8 @@
   function leafVisible(leaf) {
     // A leaf that runs a function rather than opening a screen carries its own
     // access row.
-    if (leaf.action) {
+    // So does a standalone app with no tile-home button (HR & Payroll).
+    if (leaf.action || (leaf.external && leaf.access)) {
       try { return typeof sarvTabVisible !== 'function' || !leaf.access || sarvTabVisible(leaf.access); }
       catch (e) { return true; }
     }
@@ -310,6 +330,7 @@
   // A leaf only counts as live if its original button actually exists.
   function leafLive(leaf) {
     if (leaf.action) return typeof window[leaf.action] === 'function';
+    if (leaf.external && leaf.access) return true;   // its own page, always there
     return !!leaf.go && !!document.querySelector('#sarvHomeDashboard .sarv-home-row[data-go="' + leaf.go + '"]');
   }
 

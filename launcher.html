@@ -744,7 +744,13 @@ const APPS = [
      store-core.js's SARV_TABS. */
   { key:'HOME_DISPATCH_REPORT', href:'dispatch_report_interface.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>', accent:'#0ea5e9',
     defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],
-    title:'Dispatch Report', sub:'Party / product / slip-wise dispatch' }
+    title:'Dispatch Report', sub:'Party / product / slip-wise dispatch' },
+  /* Salaries: the same default roles as HOME_HR_PAYROLL in store-core.js's
+     SARV_TABS. What the user can do inside is the HR_* rights, checked by
+     the server (hr_perms_ in HR_PAYROLL_MIGRATION.sql). */
+  { key:'HOME_HR_PAYROLL', href:'hr-payroll.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 16a4 4 0 0 1 8 0M15 9h4M15 13h4"/></svg>', accent:'#818cf8',
+    defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],
+    title:'HR & Payroll', sub:'Attendance, advances, salary sheet' }
 ];
 
 const ROLE_LABEL = {

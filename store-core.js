@@ -4618,7 +4618,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT'];
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5474,6 +5474,9 @@ const SARV_TABS=[
      and there together, or the launcher and the ERP disagree on a role the
      Admin has not set. */
   {key:'HOME_DISPATCH_REPORT',label:'Dispatch Report',hint:'Packing dispatch by date: party / product / slip-wise, matrix, analytics, CSV (dispatch_report_interface.html, opens from the launcher)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  /* Salaries, so not on for everyone: the same four roles as launcher.html's
+     APPS entry (its defRoles). Change both together. */
+  {key:'HOME_HR_PAYROLL',label:'HR & Payroll',hint:'Employees, attendance, advances, PF/ESI and the monthly salary sheet (hr-payroll.html, opens from the launcher or ERP › HR Management)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -5494,6 +5497,18 @@ const SARV_TABS=[
   /* Not a home button: the right that replaced the PC / EA PINs (approve a
      past day as late, or reschedule it, from MD Oversight View or a sheet). */
   {key:'TM_LATE_APPROVE',label:'Late Approval / Reschedule',hint:'Approve a missed task as late, or move it to a later day (replaces the old PC / EA PIN)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* hr-payroll.html's rights. As with TM_*, the SERVER checks the same key on
+     every read and write (hr_perms_ in HR_PAYROLL_MIGRATION.sql), and these
+     defaults MUST match hr_perm_default_() there. Any HR right also gives
+     HR_VIEW. Per-user ON/OFF: Users › Apps. */
+  {group:'HR & Payroll › Rights (hr-payroll.html)'},
+  {key:'HR_VIEW',label:'See HR data & reports',hint:'Dashboard, employees, attendance, salary sheet, payslips (read only)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_EMPLOYEES',label:'Employees & salary rows',hint:'Add / edit employees, duty hours and salary revisions, Employee Master import',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_ATTENDANCE',label:'Import attendance',hint:'Biometric machine-data import (the Attendance screen itself is read-only)',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_TXN',label:'Advances, loans, PF/ESI',hint:'EMP. EXP entries, loans + EMIs, the ON ROLL register',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_PAYROLL',label:'Compute salary',hint:'Compute / recompute the salary sheet, enter Net Cash Paid',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_LOCK',label:'Lock / unlock a month',hint:'A locked month freezes its attendance, advances, PF/ESI and salary sheet',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'HR_SETTINGS',label:'HR settings',hint:'Days basis, weekly-off rule, cash rounding, salary class rules',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'PO Generation › Sub Tabs'},
@@ -6138,14 +6153,15 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
 const SARV_APP_INNER_GROUPS=[
-  {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)}
+  {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)},
+  {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)}
 ];
 
 /* ── Apps that also need their own ACCOUNT ───────────────────────────

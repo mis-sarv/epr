@@ -1603,3 +1603,61 @@ skipped.
 Until then everything works except the stock count, and the day's record is kept in the
 browser only (a yellow line says so). The constants at the top of `store-mytasks.js` set the
 stock-count size and the day windows; each task's `due` sets its deadline.
+
+## HR & Payroll (hr-payroll.html)
+
+Replaces the "MONTHLY ATTENDANCE UNIT-2" Google workbook. Opens from the launcher tile
+**HR & Payroll** (`HOME_HR_PAYROLL`, default Admin / MD / GM / Accountant) or from
+ERP › HR Management (each leaf opens the app on its screen, e.g. `hr-payroll.html#attendance`).
+The header has an **ERP** button back to `index.html` (shown only with ERP access).
+
+| Workbook tab | Screen | Table(s) |
+|---|---|---|
+| EMPLOYEE MASTER | Employees | `hr_employees`, `hr_salary_structures` (duty hours + salary, effective from a month) |
+| MACHINE DATA | Attendance (read-only month view; filled only by Import › Attendance: machine data) | `hr_attendance` (one row per employee per day) |
+| EMP. EXP | Advances & Deductions, Loans | `hr_transactions`, `hr_loans` (EMIs post as `LOAN_EMI`) |
+| ON ROLL-&lt;Month&gt;-26 | PF / ESI / LWF | `hr_statutory` |
+| SALARY SHEET | Salary Sheet, payslips, register | `hr_payroll_runs`, `hr_payroll_lines` |
+
+**The calculation runs on the server** (`hr_compute_` in `HR_PAYROLL_MIGRATION.sql`), column
+by column as in the SALARY SHEET (K … AI; the formulas are listed in the SQL and under
+"How each column is calculated" on the Salary Sheet screen). Differences from the sheet,
+on purpose: salary is effective-dated instead of one Hour/Salary pair per month; salary-class
+behaviour is the `hr_salary_classes` table; the days basis, weekly-off rule and cash rounding
+are settings; the hard-coded `-26`, `1-JUN-2026` and range mismatches are gone; `INCENTIVE` /
+`ARREAR` entries add to X (0 when unused). A **locked** month freezes its attendance,
+transactions, PF/ESI and sheet. Net Cash Paid (AI) is typed per row and survives a recompute.
+
+**Security:** every `hr_*` table has RLS on with **no** policy, so the anon key reads nothing.
+The page only calls `hr_*` RPCs, which take the launcher session token and check the
+`HR_*` right (Admin Panel › Tab Visibility › HR & Payroll › Rights, or per user under
+Users › Apps). Defaults live in two places that must match: `SARV_TABS` in `store-core.js`
+and `hr_perm_default_()` in the SQL.
+
+**Setup:** run `HR_PAYROLL_MIGRATION.sql` once in the SQL Editor (idempotent). It also copies
+the ERP `employees` list (code, name, department, designation) into `hr_employees` as a head
+start. Until it is run the page shows a setup screen. Users who logged in before the tile
+existed get it on their next launcher visit (or log out and in).
+
+**First month from the sheet:** Import › Employee Master (map DUTY HOUR / SALARY to the month's
+Hour / Salary columns) → Attendance: machine data (the only way attendance is entered) → EMP. EXP (re-import is safe,
+duplicates are skipped) → ON ROLL (defaults to columns G / AC / AD / AE / AG, header row 2) →
+Salary Sheet › Compute. Check one FIXED, one MONTHLY and one CLASS 2 employee against the old
+sheet before going live.
+
+**Attendance is import-only.** The Attendance screen shows the month but cannot be edited.
+Hours come only from the biometric machine export (Import › Attendance: machine data);
+`hr_save_attendance` refuses any other source (`ATTENDANCE_IMPORT_ONLY`). To correct a day,
+fix it in the machine export and import again: the same employee + date is overwritten.
+
+**Export:** every list (Employees, Attendance, Advances, PF / ESI, Salary Sheet) has
+Export CSV (raw values, for Excel) and Export PDF (A4 landscape, company name, filters in
+the title, totals row, page numbers; jsPDF + autotable, the same builds as the ERP).
+
+**Employee fields (added):** LWF ID (on the form where Class was), Emp - Casual / On Roll
+(`ON ROLL` / `CASUAL`), Emp - Type (`COMPANY` / `CONTRACTOR`), Shift from / to (HH:MM), City,
+State. They are columns of `hr_employees` with checks on the two dropdowns; the Employee Master
+import reads `LWF ID`, `EMP-CASWAL/ON ROLL`, `EMP-TYPE`, `SHIFT FROM`, `SHIFT TO`, `CITY`, `STATE`
+(times as 08:00 / 8 PM; CASWAL is read as CASUAL). `emp_class` is no longer on the form or
+in the import but stays in the table for the class rules: give CLASS 2 rules with
+Salary Class = CLASS 2.

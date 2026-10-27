@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script><script src="caps-input.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR & Payroll</title>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<!--
+  HR & PAYROLL: replaces the "MONTHLY ATTENDANCE UNIT-2" Google workbook.
+
+    Workbook tab           → here
+    EMPLOYEE MASTER        → Employees (hr_employees + effective-dated hr_salary_structures)
+    ATTENDENCE ANNUAL /
+    MACHINE DATA           → Attendance (hr_attendance, one row per employee per day)
+    EMP. EXP               → Advances & Deductions (hr_transactions, hr_loans)
+    ON ROLL-<Month>-26     → Statutory (hr_statutory)
+    SALARY SHEET           → Salary Sheet (hr_payroll_runs / hr_payroll_lines)
+
+  The salary is calculated on the SERVER (hr_compute_ in HR_PAYROLL_MIGRATION.sql),
+  column by column as the SALARY SHEET does it, so this page, a payslip and any
+  later report always show the same number. The page only displays and edits.
+
+  LOGIN = ERP LOGIN. Launcher app key HOME_HR_PAYROLL; sso-gate.js checks the
+  session. The hr_* tables have RLS on with no policy, so nothing is readable with
+  the anon key: every call goes through an hr_* RPC that takes the session token
+  and checks the HR_* right (Admin Panel › Tab Visibility › HR & Payroll, or per
+  user under Users › Apps). Buttons without the right are hidden here, but the
+  server is what actually refuses.
+
+  Without the migration the page shows a setup screen instead of failing.
+-->
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Export PDF: the same jsPDF + autotable builds the ERP loads. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+/* Same tokens as order-form.html, so the two apps look like one product. */
+:root{
+  --navy:#1A3C5E;--blue:#2E6DA4;--lblue:#D6E8F7;
+  --amber:#D4870A;--lamber:#FDF3E1;--green:#1B6B3A;--lgreen:#E6F4EC;
+  --red:#C0392B;--lred:#FBEAEA;--bg:#F2F5F9;--card:#fff;
+  --border:#E0E6ED;--text:#1A1A2E;--muted:#6B7897;--input:#F8FAFC;
+  --sun:#FFF6E5;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+button,input,select,textarea{font-family:inherit;font-size:13px}
+.mono{font-family:'DM Mono',monospace}
+a{color:var(--blue)}
+
+/* ── Header ── */
+.hdr{background:var(--navy);position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(26,60,94,.25)}
+.hdr-in{display:flex;align-items:center;gap:14px;padding:10px 18px;max-width:1500px;margin:0 auto;flex-wrap:wrap}
+.brand h1{color:#fff;font-size:15px;font-weight:700;line-height:1.2;letter-spacing:.2px}
+.brand span{color:#9EC8E8;font-size:11px;display:block}
+.hdr-mid{flex:1;display:flex;justify-content:center;min-width:180px}
+.msel{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:4px 6px 4px 10px}
+.msel label{color:#9EC8E8;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.msel select{background:transparent;border:none;color:#fff;font-weight:700;font-size:14px;padding:4px;cursor:pointer;outline:none}
+.msel select option{color:var(--text)}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.hdr-user{color:#cfe3f3;font-size:12px;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;padding:7px 12px;font-size:12px;font-weight:700;text-decoration:none;cursor:pointer}
+.hbtn:hover{background:rgba(255,255,255,.2)}
+.hbtn.erp{background:#fff;color:var(--navy);border-color:#fff}
+.hbtn svg{width:15px;height:15px}
+
+/* ── Nav ── */
+.nav{background:#fff;border-bottom:1px solid var(--border);position:sticky;top:56px;z-index:90}
+.nav-in{display:flex;gap:2px;max-width:1500px;margin:0 auto;padding:0 12px;overflow-x:auto;scrollbar-width:none}
+.nav-in::-webkit-scrollbar{display:none}
+.nav button{background:none;border:none;border-bottom:3px solid transparent;padding:12px 14px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;font-size:13px}
+.nav button:hover{color:var(--navy)}
+.nav button.on{color:var(--navy);border-bottom-color:var(--amber)}
+
+.main{max-width:1500px;margin:0 auto;padding:18px}
+.loading{padding:60px;text-align:center;color:var(--muted)}
+
+/* ── Building blocks ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(26,60,94,.05)}
+.card h3{font-size:13px;font-weight:700;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card h3 small{font-weight:500;color:var(--muted);font-size:11px}
+.grid{display:grid;gap:14px}
+.g-kpi{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.g3{grid-template-columns:2fr 1fr}
+@media (max-width:900px){.g3{grid-template-columns:1fr}.g2{grid-template-columns:1fr}}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:12px;padding:14px 16px;border-left:4px solid var(--blue)}
+.kpi .l{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.kpi .v{font-size:22px;font-weight:700;color:var(--navy);margin-top:6px;font-family:'DM Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .s{font-size:11.5px;color:var(--muted);margin-top:4px}
+.kpi.green{border-left-color:var(--green)}.kpi.amber{border-left-color:var(--amber)}.kpi.red{border-left-color:var(--red)}.kpi.navy{border-left-color:var(--navy)}
+
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.toolbar .sp{flex:1}
+.toolbar h2{font-size:17px;color:var(--navy);font-weight:700;margin-right:6px}
+.inp,.sel{padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--input);color:var(--text);outline:none}
+.inp:focus,.sel:focus{border-color:var(--blue);background:#fff}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1.5px solid var(--border);background:#fff;color:var(--navy);font-weight:700;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--blue)}
+.btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn.pri:hover{background:var(--blue);border-color:var(--blue)}
+.btn.ok{background:var(--green);color:#fff;border-color:var(--green)}
+.btn.warn{background:var(--amber);color:#fff;border-color:var(--amber)}
+.btn.dan{color:var(--red);border-color:#f0c4bf}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.3px;background:var(--lblue);color:var(--navy);white-space:nowrap}
+.badge.green{background:var(--lgreen);color:var(--green)}.badge.amber{background:var(--lamber);color:#8a5600}.badge.red{background:var(--lred);color:var(--red)}.badge.grey{background:#eef1f5;color:var(--muted)}
+.note{background:var(--lblue);border:1px solid #b9d5ee;color:var(--navy);border-radius:10px;padding:10px 14px;font-size:12.5px;line-height:1.6;margin-bottom:12px}
+.note.warn{background:var(--lamber);border-color:#f0d39c;color:#6b4300}
+.note.red{background:var(--lred);border-color:#f0c4bf;color:#7d2219}
+.muted{color:var(--muted)}
+.right{text-align:right}
+.alerts{display:flex;flex-direction:column;gap:8px}
+.alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;background:var(--input);border:1px solid var(--border);font-size:12.5px;line-height:1.5}
+.alert b{color:var(--navy)}
+.alert .dot{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none;background:var(--blue)}
+.alert.red .dot{background:var(--red)}.alert.amber .dot{background:var(--amber)}.alert.green .dot{background:var(--green)}
+.chart-box{position:relative;height:250px}
+
+/* ── Tables ── */
+.tw{overflow:auto;border:1px solid var(--border);border-radius:10px;background:#fff;max-height:calc(100vh - 240px)}
+table.t{border-collapse:separate;border-spacing:0;width:100%;font-size:12.5px}
+table.t th{position:sticky;top:0;background:#EEF3F9;color:var(--navy);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:8px 9px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;z-index:2}
+table.t th .lt{display:block;font-size:9.5px;color:var(--muted);font-weight:600}
+table.t td{padding:7px 9px;border-bottom:1px solid #EEF1F5;white-space:nowrap}
+table.t tbody tr:hover td{background:#F7FAFD}
+table.t td.n,table.t th.n{text-align:right;font-family:'DM Mono',monospace}
+table.t tr.tot td{background:#FFF9EC;font-weight:700;position:sticky;top:33px;z-index:1;border-bottom:2px solid #f0d39c}
+table.t tr.click{cursor:pointer}
+table.t .lnk{color:var(--blue);cursor:pointer;font-weight:600}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+
+/* Attendance grid */
+.att{font-size:12px}
+.att th,.att td{padding:0!important;text-align:center}
+.att th{padding:5px 2px!important;min-width:38px}
+.att th small{display:block;font-size:9px;color:var(--muted);font-weight:600}
+.att .stk{position:sticky;left:0;z-index:3;background:#fff;text-align:left;padding:5px 8px!important}
+.att th.stk{background:#EEF3F9;z-index:4}
+.att .c2{left:64px;min-width:150px;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.att .c1{min-width:64px}
+.att td.sun,.att th.sun{background:var(--sun)}
+.att td.ac{width:38px;height:28px;font-family:'DM Mono',monospace;font-size:12px;color:var(--text)}
+.att td.ac.ot{color:var(--amber);font-weight:700}
+.att td.ac.zero{color:var(--red)}
+.att td.off{background:repeating-linear-gradient(45deg,#f4f6f9,#f4f6f9 4px,#eceff3 4px,#eceff3 8px)}
+.att td.sm{padding:0 6px!important;font-family:'DM Mono',monospace;font-size:11.5px;text-align:right;background:#FAFBFD}
+
+/* Salary sheet */
+.sal input.np{width:92px;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;background:var(--input)}
+.sal td.neg{color:var(--red);font-weight:700}
+.sal td.cash{background:#F2FAF5;font-weight:700;color:var(--green)}
+.sal th.grpE{background:#E9F4EC}.sal th.grpD{background:#FBEFEF}.sal th.grpA{background:#EEF3F9}
+details.how{margin-bottom:12px}
+details.how summary{cursor:pointer;font-weight:700;color:var(--navy);font-size:12.5px}
+details.how .body{margin-top:10px;font-size:12.5px;line-height:1.75;columns:2;column-gap:28px}
+@media (max-width:900px){details.how .body{columns:1}}
+details.how code{font-family:'DM Mono',monospace;background:var(--input);border:1px solid var(--border);border-radius:4px;padding:0 4px;font-size:11.5px}
+
+/* ── Modal ── */
+.mbg{position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:1000;display:none;align-items:flex-start;justify-content:center;padding:28px 12px;overflow:auto}
+.mbg.on{display:flex}
+.mdl{background:#fff;border-radius:14px;width:100%;max-width:760px;box-shadow:0 20px 60px rgba(0,0,0,.3);display:flex;flex-direction:column;max-height:calc(100vh - 56px)}
+.mdl.wide{max-width:1100px}
+.mdl-h{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.mdl-h h2{font-size:15px;color:var(--navy);flex:1}
+.mdl-h .x{background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer;padding:2px 8px}
+.mdl-b{padding:16px 18px;overflow:auto}
+.mdl-f{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 14px}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.fg input,.fg select,.fg textarea{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--input);outline:none}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--blue);background:#fff}
+.fg.chk{display:flex;align-items:center;gap:8px;padding-top:18px}
+.fg.chk input{width:auto}
+.fg.chk label{margin:0}
+.fsec{font-size:11.5px;font-weight:700;color:var(--amber);text-transform:uppercase;letter-spacing:.6px;margin:16px 0 8px;border-bottom:1px dashed var(--border);padding-bottom:4px}
+.fsec:first-child{margin-top:0}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px;overflow-x:auto}
+.tabs button{background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.tabs button.on{color:var(--navy);border-bottom-color:var(--amber)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 18px;font-size:12.5px}
+.kv div span{display:block;font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase}
+
+/* ── Import ── */
+.kinds{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:14px}
+.kind{border:1.5px solid var(--border);border-radius:10px;padding:12px;background:#fff;cursor:pointer;text-align:left}
+.kind b{display:block;color:var(--navy);font-size:13px}
+.kind span{display:block;color:var(--muted);font-size:11.5px;margin-top:3px}
+.kind.on{border-color:var(--navy);box-shadow:0 0 0 2px var(--lblue)}
+textarea.paste{width:100%;min-height:120px;padding:10px;border:1.5px dashed var(--border);border-radius:8px;font-family:'DM Mono',monospace;font-size:11.5px;background:var(--input)}
+.prog{height:8px;background:#eef1f5;border-radius:99px;overflow:hidden;margin:10px 0}
+.prog div{height:100%;background:var(--green);width:0;transition:width .2s}
+
+/* ── Toast ── */
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;font-weight:600;z-index:2000;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:min(560px,calc(100vw - 32px));display:none}
+.toast.err{background:var(--red)}.toast.ok{background:var(--green)}
+
+#printFrame{position:fixed;width:0;height:0;border:0;right:0;bottom:0}
+@media (max-width:640px){
+  .main{padding:12px 16px}
+  .hdr-in{padding:8px 16px}
+  .hdr-mid{order:3;flex-basis:100%;justify-content:flex-start}
+  .nav{top:96px}
+  .hdr-user{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <div class="brand"><h1>SARV INDIA HOME FURNISHING</h1><span>HR & Payroll</span></div>
+    <div class="hdr-mid">
+      <div class="msel"><label for="monthSel">Month</label><select id="monthSel" onchange="setMonth(this.value)"></select></div>
+    </div>
+    <div class="hdr-right">
+      <span class="hdr-user" id="hdrUser"></span>
+      <!-- Back to the desktop ERP (same login; sso-gate.js). Hidden for a user without ERP access. -->
+      <a class="hbtn erp" id="erpBtn" href="index.html" style="display:none" title="Open the ERP">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></svg>ERP</a>
+      <a class="hbtn" href="launcher.html" title="All apps">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>Apps</a>
+    </div>
+  </div>
+</header>
+<nav class="nav"><div class="nav-in" id="nav"></div></nav>
+<main class="main" id="view"><div class="loading">Loading…</div></main>
+
+<div class="mbg" id="mbg" onclick="if(event.target===this)closeModal()">
+  <div class="mdl" id="mdl">
+    <div class="mdl-h"><h2 id="mdlTitle"></h2><button class="x" onclick="closeModal()" title="Close">✕</button></div>
+    <div class="mdl-b" id="mdlBody"></div>
+    <div class="mdl-f" id="mdlFoot"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<iframe id="printFrame" title="print"></iframe>
+<datalist id="empList"></datalist>
+<datalist id="deptList"></datalist>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   SETUP: same project & anon key as the ERP. The anon key reads nothing
+   from hr_* directly (RLS, no policies); it can only call the hr_* RPCs,
+   and every one of those checks the session token first.
+   ════════════════════════════════════════════════════════════════════ */
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_HR_PAYROLL';
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+let BOOT = null, P = {};
+const S = { month: null, emps: [], empMap: {}, view: 'dashboard' };
+let CHARTS = [];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const can = k => !!P[k];
+// Local date, never toISOString() (that is UTC and gives yesterday before 5:30 am).
+function localISO(d){ d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+const monthStart = iso => String(iso).slice(0, 7) + '-01';
+function monthLabel(iso){ const [y, m] = String(iso).split('-'); return MONTHS[+m - 1] + ' ' + y; }
+function daysIn(iso){ const [y, m] = String(iso).split('-').map(Number); return new Date(y, m, 0).getDate(); }
+function dmy(iso){ if (!iso) return ''; const s = String(iso).slice(0, 10).split('-'); return s.length === 3 ? s[2] + '/' + s[1] + '/' + s[0] : iso; }
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const fmtM = n => (n == null || n === '') ? '' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const fmtR = n => '₹ ' + Math.round(num(n)).toLocaleString('en-IN');
+const fmtH = n => (n == null || n === '') ? '' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+/* ── Server calls ─────────────────────────────────────────────────────
+   One door for every hr_* RPC. A session problem goes back to the
+   launcher (as sso-gate does); a missing function means the migration has
+   not been run, and that gets its own screen instead of a raw error. */
+const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1 };
+const ERR_TEXT = {
+  MONTH_LOCKED: 'This month is locked. Someone with the Lock right has to unlock it in the Salary Sheet first.',
+  NOT_COMPUTED: 'Compute the salary sheet for this month first.',
+  USED_BY_LOCKED_MONTH: 'This salary row is used by a locked month and cannot be removed.',
+  NOT_FOUND: 'Record not found (it may have been removed by someone else). Refresh and try again.',
+  EMP_CODE_REQUIRED: 'Emp. Code is required.',
+  NAME_REQUIRED: 'Name is required for a new employee.',
+  ATTENDANCE_IMPORT_ONLY: 'Attendance can only come from Import › Attendance: machine data.'
+};
+function errText(e){
+  e = String(e || 'Unknown error');
+  if (e.indexOf('NO_PERMISSION:') === 0)
+    return 'You do not have the right for this (' + e.slice(14) + '). Ask the Admin: Admin Panel › Tab Visibility › HR & Payroll, or Users › Apps.';
+  for (const k in ERR_TEXT) if (e.indexOf(k) >= 0) return ERR_TEXT[k];
+  return e;
+}
+async function rpc(fn, args){
+  let r;
+  try {
+    r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify(Object.assign({ p_token: SARV_GATE.token }, args || {}))
+    });
+  } catch (e) { throw new Error('Could not reach the server. Please check the internet connection.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) {
+    const code = d && d.code;
+    if (code === 'PGRST202' || code === '42883' || code === '42P01') {
+      const e = new Error('SETUP'); e.setup = true; e.detail = (d && d.message) || ''; throw e;
+    }
+    throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
+  }
+  if (d && d.success === false) {
+    const err = String(d.error || '');
+    if (SESSION_ERR[err]) { location.replace('launcher.html?why=' + err); return new Promise(() => {}); }
+    if (err === 'NO_APP_ACCESS') {
+      SARV_GATE.halt('HR & Payroll', 'HR & Payroll is turned off for your login. Ask the Admin to switch it <b>ON</b> under <i>Admin Panel › Users › Apps</i>, then log in again.', err);
+      return new Promise(() => {});
+    }
+    throw new Error(errText(err));
+  }
+  return d;
+}
+const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+
+/* ── Small UI kit ─────────────────────────────────────────────────── */
+let toastT = null;
+function toast(msg, kind){
+  const t = $('toast'); t.textContent = msg; t.className = 'toast' + (kind ? ' ' + kind : ''); t.style.display = 'block';
+  clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, kind === 'err' ? 6500 : 3200);
+}
+function openModal(title, body, foot, wide){
+  $('mdlTitle').textContent = title; $('mdlBody').innerHTML = body; $('mdlFoot').innerHTML = foot || '';
+  $('mdlFoot').style.display = foot ? '' : 'none';
+  $('mdl').className = 'mdl' + (wide ? ' wide' : ''); $('mbg').classList.add('on');
+}
+function closeModal(){ $('mbg').classList.remove('on'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('mbg').classList.contains('on')) closeModal(); });
+async function busy(btn, fn){
+  const b = btn && btn.tagName ? btn : null, old = b ? b.innerHTML : '';
+  if (b) { b.disabled = true; b.innerHTML = 'Please wait…'; }
+  try { return await fn(); }
+  catch (e) { toast(e.message || String(e), 'err'); }
+  finally { if (b) { b.disabled = false; b.innerHTML = old; } }
+}
+function downloadCSV(name, head, rows){
+  const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = '﻿' + [head].concat(rows).map(r => r.map(q).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+/* Export PDF: the same rows as Export CSV, laid out on A4 with the company
+   name, the screen's title, the print time, page numbers and an optional
+   totals row. Money / hours are formatted en-IN; the ₹ sign is left out
+   because the PDF's built-in font has no glyph for it. opt: num (column
+   indexes to right-align and format), foot (totals row), portrait,
+   fontSize, didParseCell (autotable hook, e.g. to shade Sundays). */
+function exportPDF(file, title, head, rows, opt){
+  opt = opt || {};
+  const J = window.jspdf && window.jspdf.jsPDF;
+  if (!J || !(J.API && J.API.autoTable)) { toast('The PDF library did not load (check the internet). Export CSV still works.', 'err'); return; }
+  const doc = new J({ orientation: opt.portrait ? 'portrait' : 'landscape', unit: 'mm', format: 'a4' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), st = (BOOT && BOOT.settings) || {};
+  const numSet = new Set(opt.num || []);
+  const cell = (v, i) => v == null || v === '' ? '' : (numSet.has(i) && v !== true && v !== false && !isNaN(+v) ? fmtM(+v) : String(v));
+  const fs = opt.fontSize || (head.length > 24 ? 5.5 : head.length > 14 ? 6.5 : 8);
+  const colStyles = {}; numSet.forEach(i => { colStyles[i] = { halign: 'right' }; });
+  doc.autoTable({
+    head: [head], body: rows.map(r => r.map(cell)), foot: opt.foot ? [opt.foot.map(cell)] : undefined, showFoot: 'lastPage',
+    startY: 22, margin: { top: 22, left: 8, right: 8, bottom: 10 }, theme: 'grid',
+    styles: { fontSize: fs, cellPadding: 1, lineColor: [224, 230, 237], lineWidth: 0.1, textColor: [26, 26, 46], overflow: 'linebreak' },
+    headStyles: { fillColor: [26, 60, 94], textColor: 255, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+    footStyles: { fillColor: [255, 249, 236], textColor: [26, 26, 46], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [247, 250, 253] },
+    columnStyles: colStyles,
+    didParseCell: opt.didParseCell,
+    didDrawPage: () => {
+      doc.setFont(undefined, 'bold'); doc.setFontSize(12); doc.setTextColor(26, 60, 94);
+      doc.text(st.company || 'SARV INDIA HOME FURNISHING', 8, 11);
+      doc.setFont(undefined, 'normal'); doc.setFontSize(9); doc.setTextColor(80);
+      doc.text(title, 8, 16.5);
+      doc.setFontSize(7); doc.setTextColor(120);
+      doc.text('Printed ' + new Date().toLocaleString('en-IN') + (BOOT && BOOT.user && BOOT.user.name ? ' by ' + BOOT.user.name : ''), W - 8, 16.5, { align: 'right' });
+      doc.text('Page ' + doc.internal.getNumberOfPages(), W - 8, H - 5, { align: 'right' });
+    }
+  });
+  doc.save(file + '.pdf');
+}
+function exportTable(fmt, file, title, head, rows, opt){
+  if (fmt === 'pdf') exportPDF(file, title, head, rows, opt);
+  else downloadCSV(file + '.csv', head, rows);
+}
+function monthOptions(sel){
+  const now = new Date(), out = [];
+  for (let i = 2; i >= -24; i--) out.push(localISO(new Date(now.getFullYear(), now.getMonth() + i, 1)));
+  if (sel && out.indexOf(sel) < 0) out.push(sel);
+  return out.map(m => '<option value="' + m + '"' + (m === sel ? ' selected' : '') + '>' + monthLabel(m) + '</option>').join('');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   BOOT
+   ════════════════════════════════════════════════════════════════════ */
+const VIEWS = [
+  { key: 'dashboard',  label: 'Dashboard',            fn: () => renderDashboard() },
+  { key: 'employees',  label: 'Employees',            fn: () => renderEmployees() },
+  { key: 'attendance', label: 'Attendance',           fn: () => renderAttendance() },
+  { key: 'advances',   label: 'Advances & Deductions', fn: () => renderAdvances() },
+  { key: 'statutory',  label: 'PF / ESI / LWF',       fn: () => renderStatutory() },
+  { key: 'salary',     label: 'Salary Sheet',         fn: () => renderSalary() },
+  { key: 'import',     label: 'Import',               fn: () => renderImport(), need: ['HR_EMPLOYEES','HR_ATTENDANCE','HR_TXN'] },
+  { key: 'settings',   label: 'Settings',             fn: () => renderSettings() }
+];
+
+(async function boot(){
+  // Resolves only when the user may enter; otherwise the gate shows the reason.
+  await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'HR & Payroll' });
+  try {
+    BOOT = await rpc('hr_bootstrap');
+    P = BOOT.perms || {};
+    $('hdrUser').textContent = (BOOT.user && BOOT.user.name) || '';
+    $('erpBtn').style.display = SARV_GATE.can('HOME_ERP_APP') ? '' : 'none';
+    buildMonthSelect();
+    buildNav();
+    await loadEmployees();
+    window.addEventListener('hashchange', route);
+    route();
+  } catch (e) {
+    if (e.setup) showSetup(e.detail); else showFatal(e.message || String(e));
+  } finally {
+    if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+  }
+})();
+
+function showSetup(detail){
+  $('nav').innerHTML = '';
+  $('view').innerHTML = '<div class="card" style="max-width:640px;margin:40px auto"><h3>HR database is not set up yet</h3>'
+    + '<p style="line-height:1.7">The HR & Payroll tables and functions are not on the server yet. Admin: open the Supabase '
+    + '<b>SQL Editor</b>, paste the whole of <code>HR_PAYROLL_MIGRATION.sql</code> (in this folder) and press <b>Run</b>. '
+    + 'It is safe to run again. Then reload this page.</p>'
+    + '<p class="muted" style="margin-top:10px;font-size:11.5px">Server said: ' + esc(detail) + '</p></div>';
+}
+function showFatal(msg){
+  $('view').innerHTML = '<div class="note red" style="max-width:640px;margin:40px auto">Could not open HR & Payroll: '
+    + esc(msg) + '<br><button class="btn sm" style="margin-top:8px" onclick="location.reload()">↻ Try again</button></div>';
+}
+
+function buildMonthSelect(){
+  const now = new Date(), opts = [];
+  for (let i = 1; i >= -24; i--) opts.push(localISO(new Date(now.getFullYear(), now.getMonth() + i, 1)));
+  (BOOT.runs || []).forEach(r => { if (opts.indexOf(r.pay_month) < 0) opts.push(r.pay_month); });
+  opts.sort().reverse();
+  let saved = null; try { saved = localStorage.getItem('hr_month'); } catch (e) {}
+  if (!S.month) S.month = opts.indexOf(saved) >= 0 ? saved : localISO(new Date(now.getFullYear(), now.getMonth(), 1));
+  const st = {}; (BOOT.runs || []).forEach(r => { st[r.pay_month] = r.status; });
+  $('monthSel').innerHTML = opts.map(m => '<option value="' + m + '"' + (m === S.month ? ' selected' : '') + '>'
+    + monthLabel(m) + (st[m] === 'LOCKED' ? '  · locked' : st[m] ? '  · draft' : '') + '</option>').join('');
+}
+async function refreshRuns(){ try { const b = await rpc('hr_bootstrap'); BOOT = b; P = b.perms || P; buildMonthSelect(); } catch (e) {} }
+function setMonth(m){
+  if (!leaveOk()) { $('monthSel').value = S.month; return; }
+  S.month = m; try { localStorage.setItem('hr_month', m); } catch (e) {}
+  route();
+}
+function buildNav(){
+  $('nav').innerHTML = VIEWS.filter(v => !v.need || v.need.some(can))
+    .map(v => '<button data-v="' + v.key + '" onclick="go(\'' + v.key + '\')">' + esc(v.label) + '</button>').join('');
+}
+function go(k){ if (location.hash === '#' + k) route(); else location.hash = k; }
+function route(){
+  if (!leaveOk()) { history.replaceState(null, '', '#' + S.view); return; }
+  const k = (location.hash || '#dashboard').slice(1);
+  const v = VIEWS.find(x => x.key === k && (!x.need || x.need.some(can))) || VIEWS[0];
+  S.view = v.key;
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v.key));
+  CHARTS.forEach(c => { try { c.destroy(); } catch (e) {} }); CHARTS = [];
+  $('view').innerHTML = '<div class="loading">Loading…</div>';
+  Promise.resolve(v.fn()).catch(e => {
+    if (e && e.setup) showSetup(e.detail);
+    else $('view').innerHTML = '<div class="note red">' + esc(e.message || e) + '</div>';
+  });
+}
+/* Unsaved attendance / statutory edits: ask before throwing them away. */
+function leaveOk(){
+  const n = (ATT && Object.keys(ATT.dirty).length) || (STAT && Object.keys(STAT.dirty).length) || 0;
+  if (!n) return true;
+  if (!confirm(n + ' unsaved change(s) will be lost. Leave anyway?')) return false;
+  if (ATT) ATT.dirty = {}; if (STAT) STAT.dirty = {};
+  return true;
+}
+window.addEventListener('beforeunload', e => {
+  if ((ATT && Object.keys(ATT.dirty).length) || (STAT && Object.keys(STAT.dirty).length)) { e.preventDefault(); e.returnValue = ''; }
+});
+
+async function loadEmployees(){
+  const d = await rpc('hr_list_employees');
+  S.emps = d.rows || []; S.empMap = {};
+  S.emps.forEach(e => { S.empMap[e.emp_code] = e; });
+  $('empList').innerHTML = S.emps.map(e => '<option value="' + esc(e.emp_code) + '">' + esc(e.name) + (e.department ? ' · ' + esc(e.department) : '') + '</option>').join('');
+  const depts = [...new Set(S.emps.map(e => e.department).filter(Boolean))].sort();
+  $('deptList').innerHTML = depts.map(d => '<option value="' + esc(d) + '">').join('');
+}
+const deptOptions = (list, sel) => '<option value="">All departments</option>'
+  + [...new Set(list.map(e => e.department).filter(Boolean))].sort()
+    .map(d => '<option' + (d === sel ? ' selected' : '') + '>' + esc(d) + '</option>').join('');
+
+/* ════════════════════════════════════════════════════════════════════
+   DASHBOARD
+   ════════════════════════════════════════════════════════════════════ */
+async function renderDashboard(){
+  const d = await rpc('hr_dashboard', { p_month: S.month });
+  const run = d.run || null, t = (run && run.totals) || {}, hc = d.headcount || {}, tx = d.txn || {}, ln = d.loans || {};
+  const dim = daysIn(S.month);
+  const worked = (d.daily || []).filter(x => x.present > 0);
+  const avgPresent = worked.length ? worked.reduce((a, b) => a + b.present, 0) / worked.length : 0;
+  const attPct = hc.active ? Math.round(avgPresent / hc.active * 100) : 0;
+  const prev = (d.trend || []).filter(r => r.pay_month < S.month).slice(-1)[0];
+  const delta = (prev && run) ? num(t.total_salary) - num(prev.totals.total_salary) : null;
+  const status = run ? (run.status === 'LOCKED' ? '<span class="badge green">LOCKED</span>' : '<span class="badge amber">DRAFT</span>')
+                     : '<span class="badge grey">NOT COMPUTED</span>';
+
+  const alerts = [];
+  if (d.missing_structure) alerts.push(['red', '<b>' + d.missing_structure + ' employee(s) have no salary structure</b> (duty hours + salary), so they are left out of the salary sheet. <a href="#employees" onclick="EMPF.missing=1">Show them</a>']);
+  if (!d.has_payroll) alerts.push(['amber', '<b>Salary sheet not computed</b> for ' + monthLabel(S.month) + '. ' + (can('HR_PAYROLL') ? '<a href="#salary">Open Salary Sheet</a>' : '')]);
+  if (run && t.flagged) alerts.push(['amber', '<b>' + t.flagged + ' salary row(s) flagged</b>: no attendance, negative cash, missing PF/ESI entry or on hold. <a href="#salary">Review</a>']);
+  if (tx.pending) alerts.push(['amber', '<b>' + tx.pending + ' pending advance / deduction entr' + (tx.pending > 1 ? 'ies' : 'y') + '</b> (' + fmtR(tx.pending_amt) + ') are not counted until marked PAID. <a href="#advances">Open</a>']);
+  if (run && run.status !== 'LOCKED' && d.has_payroll && num(t.net_cash_paid) > 0) alerts.push(['blue', 'Cash is being handed over (' + fmtR(t.net_cash_paid) + ' recorded). Lock the month when payment is complete so it cannot change.']);
+  if (!alerts.length) alerts.push(['green', 'Nothing needs attention for ' + monthLabel(S.month) + '.']);
+
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>${monthLabel(S.month)}</h2>${status}
+    <span class="muted" style="font-size:12px">${run && run.computed_at ? 'computed ' + new Date(run.computed_at).toLocaleString('en-IN') + ' by ' + esc(run.computed_by || '') : ''}</span>
+    <span class="sp"></span><button class="btn sm" onclick="route()">↻ Refresh</button></div>
+  <div class="grid g-kpi">
+    <div class="kpi navy"><div class="l">Active employees</div><div class="v">${hc.active || 0}</div><div class="s">+${hc.joined || 0} joined · −${hc.left || 0} left${hc.on_hold ? ' · ' + hc.on_hold + ' on hold' : ''}</div></div>
+    <div class="kpi green"><div class="l">Avg. daily present</div><div class="v">${Math.round(avgPresent)} <small style="font-size:13px">(${attPct}%)</small></div><div class="s">${worked.length} working day(s) with attendance of ${dim}</div></div>
+    <div class="kpi"><div class="l">Gross salary (X)</div><div class="v">${run ? fmtR(t.total_salary) : '—'}</div><div class="s">${delta == null ? (run ? run.emp_count + ' on the sheet' : 'compute the sheet') : (delta >= 0 ? '▲ ' : '▼ ') + fmtR(Math.abs(delta)) + ' vs last month'}</div></div>
+    <div class="kpi amber"><div class="l">Overtime</div><div class="v">${run ? fmtH(t.ot_hours) + ' h' : '—'}</div><div class="s">${run ? fmtR(t.ot_amt) + ' OT amount' : ''}</div></div>
+    <div class="kpi red"><div class="l">Deductions (AF)</div><div class="v">${run ? fmtR(t.total_deduction) : '—'}</div><div class="s">${run ? 'Adv ' + fmtR(t.advance) + ' · PF/ESI/WF ' + fmtR(num(t.pf) + num(t.esi) + num(t.lwf)) : ''}</div></div>
+    <div class="kpi green"><div class="l">Cash payable (AH)</div><div class="v">${run ? fmtR(t.cash) : '—'}</div><div class="s">${run ? 'Cheque ' + fmtR(t.cheque_amt) + ' · Paid ' + fmtR(t.net_cash_paid) : ''}</div></div>
+    <div class="kpi"><div class="l">Advances this month</div><div class="v">${fmtR(tx.advance)}</div><div class="s">Food ${fmtR(tx.food)} · Debit ${fmtR(tx.debit)}</div></div>
+    <div class="kpi navy"><div class="l">Loans outstanding</div><div class="v">${fmtR(ln.outstanding)}</div><div class="s">${ln.open || 0} open loan(s) · PF ${hc.pf || 0} / ESI ${hc.esi || 0} members</div></div>
+  </div>
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card"><h3>Daily attendance <small>employees present, Sundays shaded</small></h3><div class="chart-box"><canvas id="chDaily"></canvas></div></div>
+    <div class="card"><h3>Needs attention</h3><div class="alerts">${alerts.map(a => '<div class="alert ' + a[0] + '"><span class="dot"></span><div>' + a[1] + '</div></div>').join('')}</div></div>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h3>${d.departments.length ? 'Salary cost by department' : 'Headcount by department'} <small>${d.departments.length ? 'gross X' : 'active'}</small></h3><div class="chart-box"><canvas id="chDept"></canvas></div></div>
+    <div class="card"><h3>Payroll trend <small>last 12 computed months</small></h3><div class="chart-box"><canvas id="chTrend"></canvas></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:14px">
+    <div class="card"><h3>Top overtime <small>${monthLabel(S.month)}</small></h3>${(d.top_ot || []).length ? `
+      <div class="tw" style="max-height:320px"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Dept</th><th class="n">OT hrs</th><th class="n">OT amt</th></tr></thead><tbody>
+      ${d.top_ot.map(r => `<tr class="click" onclick="openEmployee('${esc(r.emp_code)}')"><td class="mono">${esc(r.emp_code)}</td><td>${esc(r.name)}</td><td>${esc(r.department || '')}</td><td class="n">${fmtH(r.total_ot)}</td><td class="n">${fmtM(r.ot_amt)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">No overtime yet (compute the salary sheet).</div>'}</div>
+    <div class="card"><h3>Salary class mix · this month's birthdays & work anniversaries</h3>
+      <div style="display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start">
+        <div class="chart-box" style="height:200px"><canvas id="chClass"></canvas></div>
+        <div style="font-size:12.5px;line-height:1.9;max-height:220px;overflow:auto">
+          ${(d.birthdays || []).map(b => '<div><span class="badge">Birthday ' + dmy(b.dob).slice(0, 5) + '</span> ' + esc(b.name) + ' <span class="muted mono">' + esc(b.emp_code) + '</span></div>').join('')}
+          ${(d.anniversaries || []).map(b => '<div><span class="badge green">' + (+S.month.slice(0, 4) - +String(b.doj).slice(0, 4)) + ' yr</span> ' + esc(b.name) + ' <span class="muted mono">' + esc(b.emp_code) + '</span></div>').join('')}
+          ${!(d.birthdays || []).length && !(d.anniversaries || []).length ? '<span class="muted">No dates this month (add DOB / DOJ in Employees).</span>' : ''}
+        </div>
+      </div></div>
+  </div>`;
+  drawDashCharts(d);
+}
+function drawDashCharts(d){
+  if (typeof Chart === 'undefined') return;   // chart library blocked/offline: the numbers above still show
+  Chart.defaults.font.family = "'DM Sans', sans-serif"; Chart.defaults.color = '#6B7897';
+  const navy = '#1A3C5E', blue = '#2E6DA4', amber = '#D4870A', green = '#1B6B3A';
+  const daily = d.daily || [];
+  CHARTS.push(new Chart($('chDaily'), { type: 'bar',
+    data: { labels: daily.map(x => x.day), datasets: [{ label: 'Present', data: daily.map(x => x.present),
+      backgroundColor: daily.map(x => x.dow === 7 ? amber : blue), borderRadius: 3 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, grid: { color: '#EEF1F5' } }, x: { grid: { display: false } } } } }));
+  const dep = d.departments.length ? d.departments : (d.dept_heads || []);
+  const depVal = d.departments.length ? dep.map(x => Math.round(num(x.cost))) : dep.map(x => x.heads);
+  CHARTS.push(new Chart($('chDept'), { type: 'bar',
+    data: { labels: dep.map(x => x.department), datasets: [{ data: depVal, backgroundColor: navy, borderRadius: 3 }] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false },
+      tooltip: { callbacks: { label: c => d.departments.length ? fmtR(c.raw) + ' · ' + dep[c.dataIndex].heads + ' heads' : c.raw + ' heads' } } },
+      scales: { x: { beginAtZero: true, grid: { color: '#EEF1F5' } }, y: { grid: { display: false } } } } }));
+  const tr = d.trend || [];
+  CHARTS.push(new Chart($('chTrend'), { type: 'line',
+    data: { labels: tr.map(r => monthLabel(r.pay_month).slice(0, 3) + ' ' + r.pay_month.slice(2, 4)),
+      datasets: [
+        { label: 'Gross (X)', data: tr.map(r => Math.round(num(r.totals.total_salary))), borderColor: navy, backgroundColor: navy, tension: .3 },
+        { label: 'Cash (AH)', data: tr.map(r => Math.round(num(r.totals.cash))), borderColor: green, backgroundColor: green, tension: .3 },
+        { label: 'OT amount', data: tr.map(r => Math.round(num(r.totals.ot_amt))), borderColor: amber, backgroundColor: amber, tension: .3 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } },
+      tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmtR(c.raw) } } }, scales: { y: { beginAtZero: true, grid: { color: '#EEF1F5' } }, x: { grid: { display: false } } } } }));
+  const cl = d.classes || [];
+  CHARTS.push(new Chart($('chClass'), { type: 'doughnut',
+    data: { labels: cl.map(x => x.salary_class), datasets: [{ data: cl.map(x => x.heads), backgroundColor: [navy, blue, amber, green, '#8E9AAF', '#C0392B'] }] },
+    options: { maintainAspectRatio: false, cutout: '62%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } } }));
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   EMPLOYEES
+   ════════════════════════════════════════════════════════════════════ */
+const EMPF = { q: '', dept: '', cls: '', status: 'ACTIVE', missing: 0, cat: '', etype: '' };
+/* Dropdowns store the CAPITAL value (as caps-input.js would) and show the label. */
+const EMP_CATEGORY = [['ON ROLL', 'On Roll'], ['CASUAL', 'Casual']];
+const EMP_TYPE = [['COMPANY', 'Company'], ['CONTRACTOR', 'Contractor']];
+const optLabel = (list, v) => { const o = list.find(x => x[0] === v); return o ? o[1] : (v || ''); };
+const shiftText = e => e.shift_from || e.shift_to ? String(e.shift_from || '').slice(0, 5) + '–' + String(e.shift_to || '').slice(0, 5) : '';
+/* Class (the master's CLASS column) is no longer on the form: LWF ID took its
+   place. The column stays in hr_employees, so the class rules still read it,
+   but CLASS 2 rules are now given by choosing Salary Class = CLASS 2. */
+const EMP_FIELDS = [
+  ['Identity'],
+  ['emp_code', 'Emp. Code', 'text', { req: 1 }], ['name', 'Name', 'text', { req: 1 }], ['father_name', 'Father Name'],
+  ['gender', 'Gender', 'select', ['', 'MALE', 'FEMALE', 'OTHER']], ['religion', 'Religion'], ['dob', 'Date of Birth', 'date'],
+  ['mobile', 'Mobile'], ['aadhaar', 'Aadhaar'], ['pan', 'PAN'], ['address', 'Address'], ['city', 'City'], ['state', 'State'],
+  ['Job'],
+  ['status', 'Status', 'select', ['ACTIVE', 'HOLD', 'LEFT']], ['doj', 'Date of Joining', 'date'], ['doe', 'Date of Exit', 'date'],
+  ['department', 'Department', 'text', { list: 'deptList' }], ['sub_department', 'Sub Department'], ['designation', 'Designation'],
+  ['unit', 'Unit'], ['lwf_id', 'LWF ID'], ['salary_class', 'Salary Class', 'class'],
+  ['emp_category', 'Emp - Casual / On Roll', 'select', EMP_CATEGORY], ['emp_type', 'Emp - Type', 'select', EMP_TYPE],
+  ['shift_from', 'Shift from', 'time'], ['shift_to', 'Shift to', 'time'],
+  ['Statutory & bank'],
+  ['pf_flag', 'PF', 'check'], ['esi_flag', 'ESI', 'check'], ['welfare_flag', 'Welfare (LWF)', 'check'],
+  ['uan', 'UAN'], ['esic_no', 'ESIC No.'], ['bank_name', 'Bank'], ['bank_ac', 'Bank A/c No.'], ['ifsc', 'IFSC'],
+  ['remarks', 'Remarks']
+];
+function renderEmployees(){
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Employees</h2>
+    <input class="inp" id="eQ" placeholder="Search code / name / designation" value="${esc(EMPF.q)}" oninput="EMPF.q=this.value;drawEmps()" style="min-width:230px">
+    <select class="sel" id="eDept" onchange="EMPF.dept=this.value;drawEmps()">${deptOptions(S.emps, EMPF.dept)}</select>
+    <select class="sel" onchange="EMPF.cls=this.value;drawEmps()"><option value="">All salary classes</option>${(BOOT.classes || []).map(c => '<option' + (c.code === EMPF.cls ? ' selected' : '') + '>' + esc(c.code) + '</option>').join('')}</select>
+    <select class="sel" onchange="EMPF.cat=this.value;drawEmps()"><option value="">On Roll + Casual</option>${EMP_CATEGORY.map(o => '<option value="' + o[0] + '"' + (o[0] === EMPF.cat ? ' selected' : '') + '>' + o[1] + '</option>').join('')}</select>
+    <select class="sel" onchange="EMPF.etype=this.value;drawEmps()"><option value="">Company + Contractor</option>${EMP_TYPE.map(o => '<option value="' + o[0] + '"' + (o[0] === EMPF.etype ? ' selected' : '') + '>' + o[1] + '</option>').join('')}</select>
+    <select class="sel" onchange="EMPF.status=this.value;drawEmps()">${['ACTIVE', 'HOLD', 'LEFT', ''].map(s => '<option value="' + s + '"' + (s === EMPF.status ? ' selected' : '') + '>' + (s || 'Any status') + '</option>').join('')}</select>
+    <label style="font-size:12px;display:flex;gap:5px;align-items:center"><input type="checkbox" ${EMPF.missing ? 'checked' : ''} onchange="EMPF.missing=this.checked?1:0;drawEmps()"> No salary yet</label>
+    <span class="sp"></span>
+    <button class="btn" onclick="exportEmps('csv')">Export CSV</button><button class="btn" onclick="exportEmps('pdf')">Export PDF</button>
+    ${can('HR_EMPLOYEES') ? '<button class="btn pri" onclick="editEmployee()">+ New Employee</button>' : ''}
+  </div>
+  <div id="empTbl"></div>`;
+  drawEmps();
+}
+function filteredEmps(){
+  const q = EMPF.q.trim().toUpperCase();
+  return S.emps.filter(e => (!EMPF.dept || e.department === EMPF.dept) && (!EMPF.cls || e.salary_class === EMPF.cls)
+    && (!EMPF.status || e.status === EMPF.status) && (!EMPF.missing || e.duty_hours == null)
+    && (!EMPF.cat || e.emp_category === EMPF.cat) && (!EMPF.etype || e.emp_type === EMPF.etype)
+    && (!q || [e.emp_code, e.name, e.designation, e.father_name, e.sub_department, e.lwf_id, e.city].some(v => String(v || '').toUpperCase().indexOf(q) >= 0)));
+}
+function drawEmps(){
+  const rows = filteredEmps();
+  $('empTbl').innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px">${rows.length} of ${S.emps.length} employees</div>
+  <div class="tw"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Father</th><th>Department</th><th>Sub Dept</th><th>Designation</th>
+    <th>On Roll / Casual</th><th>Type</th><th>Shift</th><th>LWF ID</th>
+    <th>Sal. Class</th><th class="n">Duty Hr</th><th class="n">Salary</th><th>Since</th><th>DOJ</th><th>PF/ESI</th><th>Status</th></tr></thead><tbody>
+  ${rows.map(e => `<tr class="click" onclick="openEmployee('${esc(e.emp_code)}')">
+    <td class="mono">${esc(e.emp_code)}</td><td><b>${esc(e.name)}</b></td><td>${esc(e.father_name || '')}</td><td>${esc(e.department || '')}</td>
+    <td>${esc(e.sub_department || '')}</td><td>${esc(e.designation || '')}</td>
+    <td>${e.emp_category ? '<span class="badge ' + (e.emp_category === 'CASUAL' ? 'amber' : '') + '">' + esc(optLabel(EMP_CATEGORY, e.emp_category)) + '</span>' : ''}</td>
+    <td>${esc(optLabel(EMP_TYPE, e.emp_type))}</td><td class="mono">${esc(shiftText(e))}</td><td class="mono">${esc(e.lwf_id || '')}</td>
+    <td>${esc(e.salary_class || '')}</td>
+    <td class="n">${e.duty_hours == null ? '<span class="badge red">none</span>' : fmtH(e.duty_hours)}</td><td class="n">${fmtM(e.monthly_salary)}</td>
+    <td class="muted">${e.effective_from ? monthLabel(e.effective_from).slice(0, 3) + ' ' + e.effective_from.slice(0, 4) : ''}</td>
+    <td>${dmy(e.doj)}</td><td>${e.pf_flag ? '<span class="badge">PF</span> ' : ''}${e.esi_flag ? '<span class="badge">ESI</span>' : ''}</td>
+    <td><span class="badge ${e.status === 'ACTIVE' ? 'green' : e.status === 'HOLD' ? 'amber' : 'grey'}">${esc(e.status)}</span></td></tr>`).join('')
+    || '<tr><td colspan="17" class="empty">No employees match. Use Import › Employee Master to bring the sheet in.</td></tr>'}
+  </tbody></table></div>`;
+}
+function exportEmps(fmt){
+  // The PDF gets the list's own columns: all 30 master fields do not fit a page.
+  if (fmt === 'pdf') {
+    const rows = filteredEmps();
+    return exportPDF('employees', 'Employees · ' + rows.length + ' of ' + S.emps.length + (EMPF.dept ? ' · ' + EMPF.dept : '') + (EMPF.status ? ' · ' + EMPF.status : ''),
+      ['Code', 'Name', 'Father', 'Department', 'Sub Dept', 'Designation', 'On Roll / Casual', 'Type', 'Shift', 'LWF ID', 'Sal. Class', 'Duty Hr', 'Salary', 'Since', 'DOJ', 'DOE', 'PF', 'ESI', 'City', 'Status'],
+      rows.map(e => [e.emp_code, e.name, e.father_name || '', e.department || '', e.sub_department || '', e.designation || '',
+        optLabel(EMP_CATEGORY, e.emp_category), optLabel(EMP_TYPE, e.emp_type), shiftText(e), e.lwf_id || '', e.salary_class || '',
+        e.duty_hours, e.monthly_salary, e.effective_from ? monthLabel(e.effective_from) : '', dmy(e.doj), dmy(e.doe), e.pf_flag ? 'YES' : '', e.esi_flag ? 'YES' : '', e.city || '', e.status]),
+      { num: [11, 12] });
+  }
+  const keys = EMP_FIELDS.filter(f => f.length > 1).map(f => f[0]);
+  downloadCSV('employees.csv', keys.map(k => k.toUpperCase()).concat(['DUTY HOURS', 'SALARY', 'EFFECTIVE FROM']),
+    filteredEmps().map(e => keys.map(k => typeof e[k] === 'boolean' ? (e[k] ? 'YES' : 'NO') : (/^do[bje]$/.test(k) ? dmy(e[k]) : /^shift_/.test(k) ? String(e[k] || '').slice(0, 5) : e[k]))
+      .concat([e.duty_hours, e.monthly_salary, dmy(e.effective_from)])));
+}
+function fieldHtml(f, v){
+  const [k, label, type, opt] = f, id = 'ef_' + k;
+  if (type === 'check') return `<div class="fg chk"><input type="checkbox" id="${id}" ${v ? 'checked' : ''}><label for="${id}">${label}</label></div>`;
+  let input;
+  // Select options are plain values, or [value, label] pairs.
+  if (type === 'select') input = `<select id="${id}">${opt.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o];
+    return '<option value="' + esc(val) + '"' + (val === (v || '') ? ' selected' : '') + '>' + esc(lab) + '</option>'; }).join('')}</select>`;
+  else if (type === 'class') input = `<select id="${id}">${(BOOT.classes || []).map(c => '<option' + (c.code === (v || 'MONTHLY') ? ' selected' : '') + '>' + esc(c.code) + '</option>').join('')}</select>`;
+  else if (type === 'time') input = `<input id="${id}" type="time" value="${esc(v == null ? '' : String(v).slice(0, 5))}">`;
+  else input = `<input id="${id}" type="${type === 'date' ? 'date' : 'text'}" value="${esc(v == null ? '' : String(v).slice(0, type === 'date' ? 10 : 500))}" ${opt && opt.list ? 'list="' + opt.list + '"' : ''}>`;
+  return `<div class="fg"><label for="${id}">${label}${opt && opt.req ? ' *' : ''}</label>${input}</div>`;
+}
+function editEmployee(code){
+  const e = code ? (S.empMap[code] || {}) : { status: 'ACTIVE', salary_class: 'MONTHLY', emp_category: 'ON ROLL', emp_type: 'COMPANY' };
+  let html = '', open = false;
+  EMP_FIELDS.forEach(f => {
+    if (f.length === 1) { if (open) html += '</div>'; html += '<div class="fsec">' + f[0] + '</div><div class="fgrid">'; open = true; return; }
+    html += fieldHtml(f, e[f[0]]);
+  });
+  html += '</div><div class="fsec">' + (code ? 'Salary revision (leave blank for no change)' : 'Salary') + '</div>'
+    + (code && e.duty_hours != null ? '<div class="note" style="margin-bottom:10px">Now: <b>' + fmtH(e.duty_hours) + ' hrs</b> duty, <b>' + fmtR(e.monthly_salary) + '</b> a month, since ' + monthLabel(e.effective_from) + '. A new row below starts from the month you choose; earlier months keep the old salary.</div>' : '')
+    + '<div class="fgrid"><div class="fg"><label>Applies from month</label><select id="ef_from">' + monthOptions(S.month) + '</select></div>'
+    + '<div class="fg"><label>Duty hours / day (K)</label><input id="ef_duty" type="number" step="0.5" min="1" max="24" value="' + (code ? '' : '') + '"></div>'
+    + '<div class="fg"><label>Monthly salary (L)</label><input id="ef_sal" type="number" step="1" min="0"></div></div>';
+  openModal(code ? 'Edit ' + e.name + ' (' + code + ')' : 'New Employee', html,
+    '<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveEmployee(this,' + (code ? 'true' : 'false') + ')">Save</button>', true);
+  if (code) $('ef_emp_code').readOnly = true;
+}
+async function saveEmployee(btn, isEdit){
+  const p = {};
+  EMP_FIELDS.filter(f => f.length > 1).forEach(([k, , type]) => {
+    const el = $('ef_' + k); p[k] = type === 'check' ? el.checked : el.value.trim();
+  });
+  if (!p.emp_code || !p.name) { toast('Emp. Code and Name are required.', 'err'); return; }
+  if (!isEdit && S.empMap[p.emp_code.toUpperCase()]) { toast('Emp. Code ' + p.emp_code + ' already exists. Open it to edit.', 'err'); return; }
+  const duty = $('ef_duty').value, sal = $('ef_sal').value;
+  if ((duty === '') !== (sal === '')) { toast('Enter both duty hours and salary, or leave both blank.', 'err'); return; }
+  const st = duty !== '' ? { effective_from: $('ef_from').value, duty_hours: duty, monthly_salary: sal } : null;
+  await busy(btn, async () => {
+    const r = await rpc('hr_save_employee', { p_emp: p, p_structure: st });
+    closeModal(); toast('Saved ' + r.emp_code, 'ok');
+    await loadEmployees(); if (S.view === 'employees') drawEmps();
+  });
+}
+async function openEmployee(code){
+  const d = await rpc('hr_employee_detail', { p_code: code }).catch(e => { toast(e.message, 'err'); });
+  if (!d || !d.employee) return;
+  const e = d.employee, tabs = ['Profile', 'Salary history', 'Payroll', 'Advances', 'Loans'];
+  const prof = '<div class="kv">' + EMP_FIELDS.filter(f => f.length > 1).map(([k, l, t, o]) =>
+    '<div><span>' + l + '</span>' + (t === 'check' ? (e[k] ? 'Yes' : 'No') : t === 'date' ? (dmy(e[k]) || '—')
+      : t === 'time' ? (e[k] ? String(e[k]).slice(0, 5) : '—')
+      : t === 'select' && Array.isArray(o[0]) ? esc(optLabel(o, e[k]) || '—') : esc(e[k] || '—')) + '</div>').join('') + '</div>';
+  const sal = '<table class="t"><thead><tr><th>From</th><th class="n">Duty Hr</th><th class="n">Salary</th><th class="n">Hourly rate*</th><th>By</th><th></th></tr></thead><tbody>'
+    + (d.structures.map(s => '<tr><td>' + monthLabel(s.effective_from) + '</td><td class="n">' + fmtH(s.duty_hours) + '</td><td class="n">' + fmtM(s.monthly_salary)
+      + '</td><td class="n">' + fmtM(num(s.monthly_salary) / 30 / num(s.duty_hours)) + '</td><td class="muted">' + esc(s.created_by || '') + '</td><td>'
+      + (can('HR_EMPLOYEES') ? '<button class="btn sm dan" onclick="delStructure(' + s.id + ',\'' + esc(code) + '\')">✕</button>' : '') + '</td></tr>').join('')
+      || '<tr><td colspan="6" class="empty">No salary yet. Edit the employee to add duty hours and salary.</td></tr>')
+    + '</tbody></table><p class="muted" style="font-size:11px;margin-top:6px">*Shown for a 30-day month; the sheet uses that month\'s calendar days (L ÷ days ÷ K).</p>';
+  const pay = '<table class="t"><thead><tr><th>Month</th><th class="n">Present</th><th class="n">Total days</th><th class="n">OT hrs</th><th class="n">Gross X</th><th class="n">Deduct.</th><th class="n">Cash AH</th><th class="n">Paid AI</th><th></th></tr></thead><tbody>'
+    + (d.payroll.map(l => '<tr><td>' + monthLabel(l.pay_month) + '</td><td class="n">' + l.present_days + '</td><td class="n">' + fmtH(l.total_days) + '</td><td class="n">' + fmtH(l.total_ot)
+      + '</td><td class="n">' + fmtM(l.total_salary) + '</td><td class="n">' + fmtM(l.total_deduction) + '</td><td class="n">' + fmtM(l.cash) + '</td><td class="n">' + fmtM(l.net_cash_paid)
+      + '</td><td><button class="btn sm" onclick="printPayslips([' + esc(JSON.stringify(l)) + '])">Payslip</button></td></tr>').join('')
+      || '<tr><td colspan="9" class="empty">Not on any salary sheet yet.</td></tr>') + '</tbody></table>';
+  const adv = '<table class="t"><thead><tr><th>Date</th><th>Month</th><th>Type</th><th class="n">Amount</th><th>Status</th><th>Detail</th></tr></thead><tbody>'
+    + (d.transactions.map(t => '<tr><td>' + dmy(t.txn_date) + '</td><td>' + monthLabel(t.pay_month) + '</td><td>' + esc(t.entry_type) + '</td><td class="n">' + fmtM(t.amount)
+      + '</td><td><span class="badge ' + (t.status === 'PAID' ? 'green' : 'amber') + '">' + t.status + '</span></td><td>' + esc(t.detail || '') + '</td></tr>').join('')
+      || '<tr><td colspan="6" class="empty">No entries.</td></tr>') + '</tbody></table>';
+  const loans = '<table class="t"><thead><tr><th>Date</th><th class="n">Principal</th><th class="n">EMI</th><th class="n">Repaid</th><th class="n">Balance</th><th>Status</th></tr></thead><tbody>'
+    + (d.loans.map(l => '<tr><td>' + dmy(l.loan_date) + '</td><td class="n">' + fmtM(l.principal) + '</td><td class="n">' + fmtM(l.emi) + '</td><td class="n">' + fmtM(l.repaid)
+      + '</td><td class="n">' + fmtM(num(l.principal) - num(l.repaid)) + '</td><td>' + esc(l.status) + '</td></tr>').join('')
+      || '<tr><td colspan="6" class="empty">No loans.</td></tr>') + '</tbody></table>';
+  const panes = [prof, sal, pay, adv, loans];
+  openModal(e.name + ' · ' + e.emp_code,
+    '<div class="tabs">' + tabs.map((t, i) => '<button class="' + (i ? '' : 'on') + '" onclick="empTab(this,' + i + ')">' + t + '</button>').join('') + '</div>'
+    + panes.map((p, i) => '<div class="epane" style="' + (i ? 'display:none' : '') + '">' + p + '</div>').join(''),
+    '<button class="btn" onclick="closeModal()">Close</button>' + (can('HR_EMPLOYEES') ? '<button class="btn pri" onclick="editEmployee(\'' + esc(code) + '\')">Edit</button>' : ''), true);
+}
+function empTab(b, i){
+  b.parentNode.querySelectorAll('button').forEach((x, j) => x.classList.toggle('on', j === i));
+  document.querySelectorAll('.epane').forEach((p, j) => { p.style.display = j === i ? '' : 'none'; });
+}
+async function delStructure(id, code){
+  if (!confirm('Remove this salary row? Months computed after it will use the previous row on the next compute.')) return;
+  try { await rpc('hr_delete_structure', { p_id: id }); toast('Removed', 'ok'); await loadEmployees(); openEmployee(code); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ATTENDANCE: one month, employees × days, hours per cell (like
+   ATTENDENCE ANNUAL). READ ONLY on purpose: the hours come only from the
+   biometric machine, through Import › Attendance: machine data, so no day
+   can be typed or changed by hand (hr_save_attendance on the server also
+   refuses anything that is not an import). To correct a day, fix it in the
+   machine export and import that file again: the same day is overwritten.
+   Hours above duty hours show amber (OT), 0 shows red, Sundays are shaded,
+   days before joining / after exit are hatched.
+   ════════════════════════════════════════════════════════════════════ */
+let ATT = null;
+const ATTF = { q: '', dept: '' };
+async function renderAttendance(){
+  const d = await rpc('hr_attendance_month', { p_month: S.month });
+  // `dirty` stays empty (nothing is editable); leaveOk() still reads it.
+  ATT = { month: S.month, locked: d.locked, emps: d.employees || [], hours: d.hours || {}, dirty: {}, dim: daysIn(S.month) };
+  const canImp = can('HR_ATTENDANCE') && !ATT.locked;
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Attendance · ${monthLabel(S.month)}</h2>
+    <input class="inp" placeholder="Search code / name" value="${esc(ATTF.q)}" oninput="ATTF.q=this.value;drawAtt()">
+    <select class="sel" onchange="ATTF.dept=this.value;drawAtt()">${deptOptions(ATT.emps, ATTF.dept)}</select>
+    <span class="sp"></span>
+    <span class="muted" style="font-size:11.5px">Hours per day · <b style="color:var(--amber)">amber</b> = above duty hours · <b style="color:var(--red)">0</b> = absent</span>
+    <button class="btn" onclick="exportAtt('csv')">Export CSV</button><button class="btn" onclick="exportAtt('pdf')">Export PDF</button>
+    ${canImp ? '<button class="btn pri" onclick="IMP.kind=\'ATT_LONG\';IMP.raw=null;go(\'import\')">Import machine data</button>' : ''}
+  </div>
+  <div class="note">Attendance is <b>read only</b>. It comes only from the biometric machine through <b>Import › Attendance: machine data</b>. To correct a day, fix it in the machine export and import the file again; the same day is overwritten.</div>
+  ${ATT.locked ? '<div class="note warn">This month is <b>locked</b> (salary paid). New imports for it are refused until it is unlocked in the Salary Sheet.</div>' : ''}
+  ${!ATT.emps.length ? '<div class="note">No employees for this month. Import the Employee Master first (Import tab).</div>' : ''}
+  <div class="tw" id="attWrap"></div>`;
+  drawAtt();
+}
+function attRows(){
+  const q = ATTF.q.trim().toUpperCase();
+  return ATT.emps.filter(e => (!ATTF.dept || e.department === ATTF.dept) && (!q || (e.emp_code + ' ' + e.name).toUpperCase().indexOf(q) >= 0));
+}
+function attVal(code, day){
+  const h = (ATT.hours[code] || {})[day];
+  return h == null ? '' : String(+h);
+}
+function attDows(){
+  const [y, m] = ATT.month.split('-').map(Number), out = [];
+  for (let d = 1; d <= ATT.dim; d++) out.push(new Date(y, m - 1, d).getDay());
+  return out;
+}
+/* One employee's month: the day values plus the three totals. */
+function attLine(e, dows){
+  const days = []; let hrs = 0, pres = 0, sun = 0;
+  for (let d = 1; d <= ATT.dim; d++) {
+    const v = attVal(e.emp_code, d); days.push(v);
+    if (v === '') continue;
+    const n = +v; hrs += n; if (n > 0) pres++; if (dows[d - 1] === 0) sun += n;
+  }
+  return { days, hrs: Math.round(hrs * 100) / 100, pres, sun: Math.round(sun * 100) / 100 };
+}
+function drawAtt(){
+  const dim = ATT.dim, dows = attDows();
+  let h = '<table class="t att"><thead><tr><th class="stk c1">Code</th><th class="stk c2">Name</th><th>Duty</th>';
+  for (let d = 1; d <= dim; d++) h += '<th class="' + (dows[d - 1] === 0 ? 'sun' : '') + '">' + d + '<small>' + 'SMTWTFS'[dows[d - 1]] + '</small></th>';
+  h += '<th>Hours</th><th>Present</th><th>Sun h</th></tr></thead><tbody>';
+  attRows().forEach(e => {
+    const L = attLine(e, dows);
+    h += '<tr><td class="stk c1 mono">' + esc(e.emp_code) + '</td><td class="stk c2" title="' + esc(e.name + ' · ' + (e.department || '')) + '">' + esc(e.name) + '</td>'
+      + '<td class="sm">' + (e.duty_hours == null ? '—' : fmtH(e.duty_hours)) + '</td>';
+    L.days.forEach((v, i) => {
+      const iso = ATT.month.slice(0, 8) + pad(i + 1), off = (e.doj && iso < e.doj) || (e.doe && iso > e.doe);
+      h += '<td class="ac' + (dows[i] === 0 ? ' sun' : '') + (off ? ' off' : '') + cellCls(v, e.duty_hours) + '">' + esc(v) + '</td>';
+    });
+    h += '<td class="sm">' + fmtH(L.hrs) + '</td><td class="sm">' + L.pres + '</td><td class="sm">' + (L.sun ? fmtH(L.sun) : '') + '</td></tr>';
+  });
+  $('attWrap').innerHTML = h + '</tbody></table>';
+}
+function cellCls(v, duty){
+  if (v === '') return '';
+  const n = +v;
+  return n === 0 ? ' zero' : (duty != null && n > +duty ? ' ot' : '');
+}
+function exportAtt(fmt){
+  const dim = ATT.dim, dows = attDows(), file = 'attendance-' + ATT.month.slice(0, 7);
+  const head = ['EMP. CODE', 'NAME', 'DEPARTMENT', 'DUTY HOUR'];
+  for (let d = 1; d <= dim; d++) head.push(fmt === 'pdf' ? d + '\n' + 'SMTWTFS'[dows[d - 1]] : String(d));
+  head.push('HOURS', 'PRESENT', 'SUN HRS');
+  const rows = attRows().map(e => {
+    const L = attLine(e, dows);
+    return [e.emp_code, e.name, e.department || '', e.duty_hours].concat(L.days.map(v => v === '' ? '' : +v), [L.hrs, L.pres, L.sun || '']);
+  });
+  exportTable(fmt, file, 'Attendance · ' + monthLabel(ATT.month) + ' · hours per day (biometric machine)', head, rows, {
+    num: head.map((_, i) => i).filter(i => i >= 3), fontSize: 5.5,
+    didParseCell: c => { if (c.section !== 'foot' && c.column.index >= 4 && c.column.index < 4 + dim && dows[c.column.index - 4] === 0 && c.section === 'body') c.cell.styles.fillColor = [255, 246, 229]; }
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   ADVANCES & DEDUCTIONS (EMP. EXP) + LOANS
+   ════════════════════════════════════════════════════════════════════ */
+const TXN_TYPES = [['ADVANCE', 'Advance'], ['FOOD', 'Night food'], ['DEBIT', 'Debit note'], ['LOAN_EMI', 'Loan EMI'], ['INCENTIVE', 'Incentive (+)'], ['ARREAR', 'Arrear (+)']];
+const TXF = { q: '', type: '', status: '' };
+let TXD = null;
+async function renderAdvances(){
+  TXD = await rpc('hr_list_transactions', { p_month: S.month });
+  const w = can('HR_TXN') && !TXD.locked;
+  const sum = {}; TXN_TYPES.forEach(t => { sum[t[0]] = 0; });
+  TXD.rows.forEach(r => { if (r.status === 'PAID') sum[r.entry_type] = (sum[r.entry_type] || 0) + num(r.amount); });
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Advances & Deductions · ${monthLabel(S.month)}</h2><span class="sp"></span>
+    ${w ? '<button class="btn pri" onclick="editTxn()">+ New Entry</button>' : ''}</div>
+  ${TXD.locked ? '<div class="note warn">This month is locked; entries are read-only.</div>' : ''}
+  <div class="grid g-kpi" style="margin-bottom:14px">${TXN_TYPES.map(t => '<div class="kpi ' + (t[0] === 'INCENTIVE' || t[0] === 'ARREAR' ? 'green' : t[0] === 'ADVANCE' ? 'amber' : '') + '"><div class="l">' + t[1] + '</div><div class="v">' + fmtR(sum[t[0]]) + '</div><div class="s">PAID entries of the month</div></div>').join('')}</div>
+  <div class="note">Only <b>PAID</b> entries are cut from salary (as the sheet's SUMIFS on STATUS = PAID). The <b>pay month</b> is the month the amount is cut in; it may differ from the entry date.</div>
+  <div class="toolbar">
+    <input class="inp" placeholder="Search code / name / detail" value="${esc(TXF.q)}" oninput="TXF.q=this.value;drawTxn()">
+    <select class="sel" onchange="TXF.type=this.value;drawTxn()"><option value="">All types</option>${TXN_TYPES.map(t => '<option value="' + t[0] + '"' + (t[0] === TXF.type ? ' selected' : '') + '>' + t[1] + '</option>').join('')}</select>
+    <select class="sel" onchange="TXF.status=this.value;drawTxn()"><option value="">Any status</option><option${TXF.status === 'PAID' ? ' selected' : ''}>PAID</option><option${TXF.status === 'PENDING' ? ' selected' : ''}>PENDING</option></select>
+    <span class="sp"></span><button class="btn" onclick="exportTxn('csv')">Export CSV</button><button class="btn" onclick="exportTxn('pdf')">Export PDF</button></div>
+  <div id="txnTbl"></div>
+  <div class="toolbar" style="margin-top:22px"><h2>Loans</h2><span class="muted" style="font-size:12px">Recovered month by month as Loan EMI entries; balance = principal − EMIs paid.</span><span class="sp"></span>
+    ${w ? '<button class="btn" onclick="postEmis(this)">Post EMIs for ' + monthLabel(S.month) + '</button><button class="btn pri" onclick="editLoan()">+ New Loan</button>' : ''}</div>
+  <div class="tw" style="max-height:420px"><table class="t"><thead><tr><th>Code</th><th>Name</th><th>Date</th><th class="n">Principal</th><th class="n">EMI</th><th class="n">Repaid</th><th class="n">Balance</th><th>Status</th><th>Remarks</th><th></th></tr></thead><tbody>
+  ${TXD.loans.map(l => `<tr><td class="mono">${esc(l.emp_code)}</td><td>${esc(l.name || '')}</td><td>${dmy(l.loan_date)}</td><td class="n">${fmtM(l.principal)}</td><td class="n">${fmtM(l.emi)}</td>
+    <td class="n">${fmtM(l.repaid)}</td><td class="n"><b>${fmtM(num(l.principal) - num(l.repaid))}</b></td><td><span class="badge ${l.status === 'OPEN' ? 'amber' : 'grey'}">${esc(l.status)}</span></td><td>${esc(l.remarks || '')}</td>
+    <td>${can('HR_TXN') ? '<button class="btn sm" onclick="editLoan(' + l.id + ')">✎</button>' : ''}</td></tr>`).join('') || '<tr><td colspan="10" class="empty">No loans.</td></tr>'}
+  </tbody></table></div>`;
+  drawTxn();
+}
+function txnRows(){
+  const q = TXF.q.trim().toUpperCase();
+  return TXD.rows.filter(r => (!TXF.type || r.entry_type === TXF.type) && (!TXF.status || r.status === TXF.status)
+    && (!q || [r.emp_code, r.name, r.detail, r.debit_by].some(v => String(v || '').toUpperCase().indexOf(q) >= 0)));
+}
+function drawTxn(){
+  const rows = txnRows(), w = can('HR_TXN') && !TXD.locked, tl = {}; TXN_TYPES.forEach(t => { tl[t[0]] = t[1]; });
+  const tot = rows.reduce((a, r) => a + num(r.amount), 0);
+  $('txnTbl').innerHTML = `<div class="tw" style="max-height:480px"><table class="t"><thead><tr><th>Date</th><th>Code</th><th>Name</th><th>Type</th><th class="n">Amount</th><th>Status</th><th>Detail</th><th>Debit by</th><th>By</th><th></th></tr></thead><tbody>
+  <tr class="tot"><td colspan="4">${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}</td><td class="n">${fmtM(tot)}</td><td colspan="5"></td></tr>
+  ${rows.map(r => `<tr><td>${dmy(r.txn_date)}</td><td class="mono">${esc(r.emp_code)}</td><td>${esc(r.name || '')}</td><td>${esc(tl[r.entry_type] || r.entry_type)}</td>
+    <td class="n">${fmtM(r.amount)}</td><td><span class="badge ${r.status === 'PAID' ? 'green' : 'amber'}">${r.status}</span></td><td>${esc(r.detail || '')}</td><td>${esc(r.debit_by || '')}</td><td class="muted">${esc(r.created_by || '')}</td>
+    <td>${w ? '<button class="btn sm" onclick="editTxn(' + r.id + ')">✎</button> <button class="btn sm dan" onclick="delTxn(' + r.id + ')">✕</button>' : ''}</td></tr>`).join('')
+    || '<tr><td colspan="10" class="empty">No entries for this month.</td></tr>'}</tbody></table></div>`;
+}
+function exportTxn(fmt){
+  if (fmt === 'pdf') {
+    const rows = txnRows(), tl = {}; TXN_TYPES.forEach(t => { tl[t[0]] = t[1]; });
+    return exportPDF('emp-exp-' + S.month.slice(0, 7), 'Advances & Deductions · ' + monthLabel(S.month) + (TXF.type ? ' · ' + tl[TXF.type] : '') + (TXF.status ? ' · ' + TXF.status : ''),
+      ['Date', 'Code', 'Name', 'Type', 'Amount', 'Status', 'Detail', 'Debit by', 'Entered by'],
+      rows.map(r => [dmy(r.txn_date), r.emp_code, r.name || '', tl[r.entry_type] || r.entry_type, num(r.amount), r.status, r.detail || '', r.debit_by || '', r.created_by || '']),
+      { num: [4], foot: ['', '', rows.length + ' entries', '', rows.reduce((a, r) => a + num(r.amount), 0), '', '', '', ''] });
+  }
+  downloadCSV('emp-exp-' + S.month.slice(0, 7) + '.csv', ['MONTH', 'DATE', 'ENTRY TYPE', 'EMP. CODE', 'NAME', 'AMOUNT', 'STATUS', 'DETAIL', 'DEBIT BY'],
+    txnRows().map(r => [MONTHS[+r.pay_month.slice(5, 7) - 1], dmy(r.txn_date), r.entry_type, r.emp_code, r.name, r.amount, r.status, r.detail, r.debit_by]));
+}
+function editTxn(id){
+  const r = id ? TXD.rows.find(x => x.id === id) : { txn_date: localISO(), pay_month: S.month, entry_type: 'ADVANCE', status: 'PAID' };
+  openModal(id ? 'Edit entry' : 'New advance / deduction', `<div class="fgrid">
+    <div class="fg"><label>Emp. Code *</label><input id="tx_code" list="empList" value="${esc(r.emp_code || '')}" oninput="txName()"><div class="muted" id="tx_name" style="font-size:11.5px;margin-top:3px"></div></div>
+    <div class="fg"><label>Type</label><select id="tx_type">${TXN_TYPES.map(t => '<option value="' + t[0] + '"' + (t[0] === r.entry_type ? ' selected' : '') + '>' + t[1] + '</option>').join('')}</select></div>
+    <div class="fg"><label>Amount *</label><input id="tx_amt" type="number" min="0" step="1" value="${esc(r.amount || '')}"></div>
+    <div class="fg"><label>Entry date</label><input id="tx_date" type="date" value="${esc(String(r.txn_date || '').slice(0, 10))}"></div>
+    <div class="fg"><label>Cut in pay month</label><select id="tx_month">${monthOptions(r.pay_month)}</select></div>
+    <div class="fg"><label>Status</label><select id="tx_status"><option${r.status === 'PAID' ? ' selected' : ''}>PAID</option><option${r.status === 'PENDING' ? ' selected' : ''}>PENDING</option></select></div>
+    <div class="fg"><label>Detail</label><input id="tx_detail" value="${esc(r.detail || '')}"></div>
+    <div class="fg"><label>Debit by</label><input id="tx_by" value="${esc(r.debit_by || '')}"></div></div>`,
+    '<button class="btn" onclick="closeModal()">Cancel</button>' + (id ? '' : '<button class="btn" onclick="saveTxn(this,0,1)">Save & add another</button>')
+    + '<button class="btn pri" onclick="saveTxn(this,' + (id || 0) + ',0)">Save</button>');
+  txName(); setTimeout(() => $('tx_code').focus(), 50);
+}
+function txName(){ const e = S.empMap[($('tx_code').value || '').trim().toUpperCase()]; $('tx_name').textContent = e ? e.name + (e.department ? ' · ' + e.department : '') : ''; }
+async function saveTxn(btn, id, again){
+  const code = $('tx_code').value.trim().toUpperCase(), amt = $('tx_amt').value;
+  if (!S.empMap[code]) { toast('Unknown Emp. Code ' + code, 'err'); return; }
+  if (!(+amt > 0)) { toast('Enter an amount.', 'err'); return; }
+  const row = { id: id || null, emp_code: code, entry_type: $('tx_type').value, amount: amt, txn_date: $('tx_date').value,
+    pay_month: $('tx_month').value, status: $('tx_status').value, detail: $('tx_detail').value, debit_by: $('tx_by').value };
+  await busy(btn, async () => {
+    await rpc('hr_save_transaction', { p_row: row });
+    toast('Saved ' + code + ' ' + fmtR(amt), 'ok');
+    if (again) { $('tx_code').value = ''; $('tx_amt').value = ''; $('tx_detail').value = ''; txName(); $('tx_code').focus(); TXD = await rpc('hr_list_transactions', { p_month: S.month }); return; }
+    closeModal(); renderAdvances();
+  });
+  if (again) drawTxn();
+}
+async function delTxn(id){
+  if (!confirm('Delete this entry?')) return;
+  try { await rpc('hr_delete_transaction', { p_id: id }); toast('Deleted', 'ok'); renderAdvances(); } catch (e) { toast(e.message, 'err'); }
+}
+function editLoan(id){
+  const l = id ? TXD.loans.find(x => x.id === id) : { loan_date: localISO(), status: 'OPEN' };
+  openModal(id ? 'Edit loan' : 'New loan', `<div class="fgrid">
+    <div class="fg"><label>Emp. Code *</label><input id="ln_code" list="empList" value="${esc(l.emp_code || '')}" ${id ? 'readonly' : ''}></div>
+    <div class="fg"><label>Loan date</label><input id="ln_date" type="date" value="${esc(String(l.loan_date || '').slice(0, 10))}"></div>
+    <div class="fg"><label>Principal *</label><input id="ln_p" type="number" min="1" value="${esc(l.principal || '')}"></div>
+    <div class="fg"><label>EMI per month</label><input id="ln_emi" type="number" min="0" value="${esc(l.emi || '')}"></div>
+    <div class="fg"><label>Status</label><select id="ln_st"><option${l.status === 'OPEN' ? ' selected' : ''}>OPEN</option><option${l.status === 'CLOSED' ? ' selected' : ''}>CLOSED</option></select></div>
+    <div class="fg"><label>Remarks</label><input id="ln_rm" value="${esc(l.remarks || '')}"></div></div>
+    <p class="muted" style="font-size:11.5px;margin-top:10px">The loan amount handed over is not a salary deduction. Each month "Post EMIs" adds a Loan EMI entry (never more than the balance), which is cut in AA ADVANCE.</p>`,
+    '<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveLoan(this,' + (id || 0) + ')">Save</button>');
+}
+async function saveLoan(btn, id){
+  const code = $('ln_code').value.trim().toUpperCase();
+  if (!S.empMap[code]) { toast('Unknown Emp. Code ' + code, 'err'); return; }
+  if (!(+$('ln_p').value > 0)) { toast('Enter the principal.', 'err'); return; }
+  await busy(btn, async () => {
+    await rpc('hr_save_loan', { p_row: { id: id || null, emp_code: code, loan_date: $('ln_date').value, principal: $('ln_p').value,
+      emi: $('ln_emi').value, status: $('ln_st').value, remarks: $('ln_rm').value } });
+    closeModal(); toast('Loan saved', 'ok'); renderAdvances();
+  });
+}
+async function postEmis(btn){
+  if (!confirm('Add this month\'s EMI for every open loan that has none yet?')) return;
+  await busy(btn, async () => { const r = await rpc('hr_post_loan_emis', { p_month: S.month }); toast(r.posted + ' EMI entr' + (r.posted === 1 ? 'y' : 'ies') + ' posted', 'ok'); renderAdvances(); });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   STATUTORY (the ON ROLL register): PF / ESI / LWF / cheque per month
+   ════════════════════════════════════════════════════════════════════ */
+let STAT = null;
+async function renderStatutory(){
+  const d = await rpc('hr_list_statutory', { p_month: S.month });
+  STAT = { rows: d.rows || [], locked: d.locked, dirty: {} };
+  const w = can('HR_TXN') && !STAT.locked;
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>PF / ESI / LWF / Cheque · ${monthLabel(S.month)}</h2>
+    <input class="inp" id="stQ" placeholder="Search" oninput="drawStat()"><span class="sp"></span>
+    ${w ? '<input class="inp" id="stAdd" list="empList" placeholder="Add Emp. Code" style="width:140px"><button class="btn" onclick="addStatRow()">+ Add</button>' : ''}
+    <button class="btn" onclick="exportStat('csv')">Export CSV</button><button class="btn" onclick="exportStat('pdf')">Export PDF</button>
+    ${w ? '<button class="btn ok" id="stSave" onclick="saveStat(this)" disabled>Save</button>' : ''}</div>
+  <div class="note">This is the <b>ON ROLL-${MONTHS[+S.month.slice(5, 7) - 1]}</b> register: PF (AB), ESI (AC), Welfare / LWF (AD) and the amount paid by <b>cheque</b> (AG) are cut from the cash. Employees marked PF / ESI / Welfare are listed; add anyone else by code. The quickest way to fill it is <a href="#import">Import › ON ROLL register</a>.</div>
+  ${STAT.locked ? '<div class="note warn">This month is locked; read-only.</div>' : ''}
+  <div class="tw" id="stTbl" data-no-caps></div>`;
+  drawStat();
+}
+function drawStat(){
+  const q = (($('stQ') || {}).value || '').trim().toUpperCase(), w = can('HR_TXN') && !STAT.locked;
+  const rows = STAT.rows.filter(r => !q || (r.emp_code + ' ' + r.name).toUpperCase().indexOf(q) >= 0);
+  const tot = { pf: 0, esi: 0, lwf: 0, cheque_amt: 0 };
+  rows.forEach(r => { for (const k in tot) tot[k] += num(stv(r, k)); });
+  const cell = (r, k) => w ? '<input class="inp mono" style="width:100px;text-align:right;padding:5px 7px" type="number" min="0" step="0.01" data-c="' + esc(r.emp_code) + '" data-k="' + k + '" value="' + esc(stv(r, k)) + '" oninput="statEdit(this)">' : fmtM(r[k]);
+  $('stTbl').innerHTML = `<table class="t"><thead><tr><th>Code</th><th>Name</th><th>Dept</th><th>Flags</th><th class="n">PF <span class="lt">AB</span></th><th class="n">ESI <span class="lt">AC</span></th><th class="n">Welfare <span class="lt">AD</span></th><th class="n">Cheque <span class="lt">AG</span></th></tr></thead><tbody>
+  <tr class="tot"><td colspan="4">${rows.length} employee(s)</td><td class="n">${fmtM(tot.pf)}</td><td class="n">${fmtM(tot.esi)}</td><td class="n">${fmtM(tot.lwf)}</td><td class="n">${fmtM(tot.cheque_amt)}</td></tr>
+  ${rows.map(r => `<tr><td class="mono">${esc(r.emp_code)}</td><td>${esc(r.name || '')}</td><td>${esc(r.department || '')}</td>
+    <td>${r.pf_flag ? '<span class="badge">PF</span> ' : ''}${r.esi_flag ? '<span class="badge">ESI</span> ' : ''}${r.welfare_flag ? '<span class="badge">LWF</span>' : ''}</td>
+    <td class="n">${cell(r, 'pf')}</td><td class="n">${cell(r, 'esi')}</td><td class="n">${cell(r, 'lwf')}</td><td class="n">${cell(r, 'cheque_amt')}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="empty">Nobody is marked PF / ESI / Welfare for this month.</td></tr>'}</tbody></table>`;
+}
+const stv = (r, k) => { const d = STAT.dirty[r.emp_code]; return d && k in d ? d[k] : (r[k] == null ? '' : r[k]); };
+function statEdit(i){
+  const c = i.dataset.c; STAT.dirty[c] = STAT.dirty[c] || {}; STAT.dirty[c][i.dataset.k] = i.value;
+  const b = $('stSave'), n = Object.keys(STAT.dirty).length; b.disabled = !n; b.textContent = 'Save ' + n + ' row' + (n > 1 ? 's' : '');
+}
+function addStatRow(){
+  const c = $('stAdd').value.trim().toUpperCase(), e = S.empMap[c];
+  if (!e) { toast('Unknown Emp. Code', 'err'); return; }
+  if (!STAT.rows.find(r => r.emp_code === c)) STAT.rows.unshift({ emp_code: c, name: e.name, department: e.department, pf_flag: e.pf_flag, esi_flag: e.esi_flag, welfare_flag: e.welfare_flag });
+  $('stAdd').value = ''; drawStat();
+}
+async function saveStat(btn){
+  const rows = Object.keys(STAT.dirty).map(c => { const r = STAT.rows.find(x => x.emp_code === c) || {}; const o = { emp_code: c };
+    ['pf', 'esi', 'lwf', 'cheque_amt'].forEach(k => { o[k] = stv(r, k) || 0; }); return o; });
+  await busy(btn, async () => {
+    const r = await rpc('hr_save_statutory', { p_month: S.month, p_rows: rows, p_source: 'MANUAL' });
+    STAT.dirty = {}; toast(r.saved + ' row(s) saved' + (r.errors.length ? ', ' + r.errors.length + ' failed' : ''), r.errors.length ? 'err' : 'ok'); renderStatutory();
+  });
+}
+function exportStat(fmt){
+  const rows = STAT.rows.map(r => [r.emp_code, r.name, stv(r, 'pf'), stv(r, 'esi'), stv(r, 'lwf'), stv(r, 'cheque_amt')]);
+  exportTable(fmt, 'on-roll-' + S.month.slice(0, 7), 'PF / ESI / LWF / Cheque · ' + monthLabel(S.month),
+    ['EMP. CODE', 'NAME', 'PF', 'ESI', 'LWF', 'CHEQUE'], rows,
+    { num: [2, 3, 4, 5], portrait: true, foot: ['', rows.length + ' employees'].concat([2, 3, 4, 5].map(i => rows.reduce((a, r) => a + num(r[i]), 0))) });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SALARY SHEET: the SALARY SHEET tab, computed on the server
+   ════════════════════════════════════════════════════════════════════ */
+// key, label, sheet column, kind (t text, h hours, d days, i int, m money), group, in compact view
+const SHEET_COLS = [
+  ['emp_code', 'Code', 'B', 't', 'A', 1], ['name', 'Name', 'D', 't', 'A', 1], ['department', 'Dept', 'G', 't', 'A', 1],
+  ['designation', 'Designation', 'I', 't', 'A', 0], ['salary_class', 'Sal. Class', 'J', 't', 'A', 1],
+  ['duty_hours', 'Duty Hr', 'K', 'h', 'A', 1], ['salary', 'Salary', 'L', 'm', 'A', 1],
+  ['work_hours', 'W.Hrs', 'M', 'h', 'A', 0], ['reg_ot', 'Reg. OT', 'N', 'h', 'A', 0], ['sunday_hours', 'Sun. Hrs', 'O', 'h', 'A', 0],
+  ['total_ot', 'Total OT', 'P', 'h', 'A', 1], ['days', 'Days', 'Q', 'd', 'A', 0], ['absent_days', 'Absent', 'R', 'i', 'A', 0],
+  ['present_days', 'Present', 'S', 'i', 'A', 1], ['weekly_off', 'W.Off', 'T', 'i', 'A', 1], ['total_days', 'Total Days', 'U', 'd', 'A', 1],
+  ['ot_amt', 'OT Amt', 'V', 'm', 'E', 1], ['salary_amt', 'Salary Amt', 'W', 'm', 'E', 1], ['other_earn', 'Incent./Arrear', '+', 'm', 'E', 0],
+  ['total_salary', 'Total Salary', 'X', 'm', 'E', 1],
+  ['food', 'Night Food', 'Y', 'm', 'D', 0], ['debit', 'Debit Note', 'Z', 'm', 'D', 0], ['advance', 'Advance', 'AA', 'm', 'D', 0],
+  ['pf', 'PF', 'AB', 'm', 'D', 0], ['esi', 'ESI', 'AC', 'm', 'D', 0], ['lwf', 'Welfare', 'AD', 'm', 'D', 0],
+  ['statutory_total', 'PF/ESI/WF', 'AE', 'm', 'D', 0], ['total_deduction', 'Total Ded.', 'AF', 'm', 'D', 1],
+  ['cheque_amt', 'Cheque', 'AG', 'm', 'D', 1], ['cash', 'Cash', 'AH', 'm', 'E', 1], ['net_cash_paid', 'Net Cash Paid', 'AI', 'm', 'E', 1]
+];
+const FLAG_TEXT = { NO_ATTENDANCE: 'No attendance', NEGATIVE_CASH: 'Negative cash', NO_STATUTORY: 'PF/ESI entry missing', ON_HOLD: 'On hold' };
+const SALF = { q: '', dept: '', flag: '', full: 0 };
+let PAY = null;
+function loadSalPrefs(){ try { SALF.full = +(localStorage.getItem('hr_sal_full') || 0); } catch (e) {} }
+loadSalPrefs();
+async function renderSalary(){
+  PAY = await rpc('hr_get_payroll', { p_month: S.month });
+  const run = PAY.run, locked = run && run.status === 'LOCKED';
+  const miss = (run && run.missing) || [];
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Salary Sheet · ${monthLabel(S.month)}</h2>
+    ${run ? (locked ? '<span class="badge green">LOCKED by ' + esc(run.locked_by || '') + '</span>' : '<span class="badge amber">DRAFT</span>') : '<span class="badge grey">NOT COMPUTED</span>'}
+    <span class="muted" style="font-size:12px">${run && run.computed_at ? 'computed ' + new Date(run.computed_at).toLocaleString('en-IN') + ' by ' + esc(run.computed_by || '') + ' · ' + daysIn(S.month) + '-day month' : ''}</span>
+    <span class="sp"></span>
+    ${can('HR_PAYROLL') && !locked ? '<button class="btn pri" onclick="computeMonth(this)">' + (run ? '↻ Recompute' : 'Compute salary') + '</button>' : ''}
+    ${can('HR_LOCK') && run ? (locked ? '<button class="btn warn" onclick="lockMonth(this,false)">Unlock</button>' : '<button class="btn ok" onclick="lockMonth(this,true)">Lock month</button>') : ''}
+  </div>
+  ${miss.length ? '<div class="note red"><b>' + miss.length + ' employee(s) are not on this sheet</b> because they have no salary structure (duty hours + salary): '
+    + miss.slice(0, 12).map(m => '<a href="javascript:void 0" onclick="openEmployee(\'' + esc(m.emp_code) + '\')">' + esc(m.emp_code) + ' ' + esc(m.name) + '</a>').join(', ') + (miss.length > 12 ? ' and ' + (miss.length - 12) + ' more' : '') + '.</div>' : ''}
+  <details class="how"><summary>How each column is calculated (same as the SALARY SHEET)</summary><div class="body">
+    <div><b>K</b> duty hours and <b>L</b> salary: the employee's salary row in force for this month.</div>
+    <div><b>P TOTAL OT</b> = hours above K on weekdays + every hour worked on Sunday. 0 for a class with OT not counted (CLASS 2).</div>
+    <div><b>O</b> = Sunday hours · <b>N</b> = P − O · <b>M W.HRS</b> = all hours − P · <b>Q DAYS</b> = M ÷ K</div>
+    <div><b>R</b> = days employed with no hours · <b>S</b> = days with hours</div>
+    <div><b>T W.OFF</b>: for each Sunday, 1 if the employee worked more than ${esc((BOOT.settings || {}).wo_min_hours)} hrs on at least ${esc((BOOT.settings || {}).wo_min_days)} of the ${esc((BOOT.settings || {}).wo_window_days)} days ending that Sunday. 0 for PER DAY and CLASS 2.</div>
+    <div><b>U</b> = T + Q · days in month = ${(BOOT.settings || {}).days_basis === 'FIXED' ? esc(BOOT.settings.fixed_days) + ' (fixed)' : 'calendar days (' + daysIn(S.month) + ')'}</div>
+    <div><b>V OT AMT</b> = P ÷ days ÷ K × L (0 for FIXED) · <b>W</b> = L for FIXED, else U ÷ days × L · <b>X</b> = W + V (+ incentive / arrear)</div>
+    <div><b>Y / Z / AA</b> = PAID night food / debit notes / advances (+ loan EMI) cut in this month</div>
+    <div><b>AB / AC / AD / AG</b> = PF / ESI / Welfare / cheque from the ON ROLL register · <b>AE</b> = AB + AC + AD · <b>AF</b> = Y + Z + AA + AE</div>
+    <div><b>AH CASH</b> = X − AF − AG · <b>AI NET CASH PAID</b> is typed in when cash is handed over and survives a recompute.</div>
+  </div></details>
+  ${run ? `<div class="toolbar">
+    <input class="inp" placeholder="Search code / name" value="${esc(SALF.q)}" oninput="SALF.q=this.value;drawSal()">
+    <select class="sel" onchange="SALF.dept=this.value;drawSal()">${deptOptions(PAY.lines, SALF.dept)}</select>
+    <select class="sel" onchange="SALF.flag=this.value;drawSal()"><option value="">All rows</option><option value="ANY"${SALF.flag === 'ANY' ? ' selected' : ''}>Flagged only</option>${Object.keys(FLAG_TEXT).map(k => '<option value="' + k + '"' + (SALF.flag === k ? ' selected' : '') + '>' + FLAG_TEXT[k] + '</option>').join('')}<option value="UNPAID"${SALF.flag === 'UNPAID' ? ' selected' : ''}>Cash not yet paid</option></select>
+    <label style="font-size:12px;display:flex;gap:5px;align-items:center"><input type="checkbox" ${SALF.full ? 'checked' : ''} onchange="SALF.full=this.checked?1:0;try{localStorage.setItem('hr_sal_full',SALF.full)}catch(e){};drawSal()"> All columns</label>
+    <span class="sp"></span>
+    <button class="btn" onclick="exportSal('csv')">Export CSV</button><button class="btn" onclick="exportSal('pdf')">Export PDF</button>
+    <button class="btn" onclick="printPayslips(salRows())">Print payslips</button>
+    <button class="btn" onclick="printRegister()">Print register</button>
+  </div><div class="tw sal" id="salTbl" data-no-caps></div>`
+  : '<div class="card" style="text-align:center;padding:40px"><p style="margin-bottom:12px">The salary sheet for ' + monthLabel(S.month) + ' has not been computed yet.</p>'
+    + '<p class="muted" style="font-size:12.5px">Before computing: employees with duty hours + salary, the month\'s attendance, advances (PAID), and the PF / ESI register.</p></div>'}`;
+  if (run) drawSal();
+}
+function salRows(){
+  const q = SALF.q.trim().toUpperCase();
+  return PAY.lines.filter(l => (!SALF.dept || l.department === SALF.dept)
+    && (!q || (l.emp_code + ' ' + l.name).toUpperCase().indexOf(q) >= 0)
+    && (!SALF.flag || (SALF.flag === 'ANY' ? (l.flags || []).length : SALF.flag === 'UNPAID' ? l.net_cash_paid == null : (l.flags || []).indexOf(SALF.flag) >= 0)));
+}
+function fmtCol(kind, v){ return kind === 'm' ? fmtM(v) : kind === 'h' ? fmtH(v) : kind === 'd' ? fmtH(Math.round(num(v) * 100) / 100) : esc(v == null ? '' : v); }
+function drawSal(){
+  const cols = SHEET_COLS.filter(c => SALF.full || c[5]), rows = salRows();
+  const editable = can('HR_PAYROLL') && PAY.run && PAY.run.status !== 'LOCKED';
+  const tot = {}; cols.forEach(c => { if (c[3] !== 't') tot[c[0]] = rows.reduce((a, r) => a + num(r[c[0]]), 0); });
+  let h = '<table class="t"><thead><tr>' + cols.map(c => '<th class="' + (c[3] === 't' ? '' : 'n ') + 'grp' + c[4] + '">' + c[1] + '<span class="lt">' + c[2] + '</span></th>').join('') + '<th>Flags</th></tr></thead><tbody>';
+  h += '<tr class="tot">' + cols.map((c, i) => i === 0 ? '<td colspan="1">' + rows.length + '</td>' : c[3] === 't' ? '<td>' + (i === 1 ? 'TOTAL (filtered)' : '') + '</td>'
+    : '<td class="n">' + (c[0] === 'duty_hours' ? '' : fmtCol(c[3], tot[c[0]])) + '</td>').join('') + '<td></td></tr>';
+  rows.forEach(l => {
+    h += '<tr>' + cols.map(c => {
+      const v = l[c[0]];
+      if (c[0] === 'name') return '<td><span class="lnk" onclick="openEmployee(\'' + esc(l.emp_code) + '\')">' + esc(v) + '</span></td>';
+      if (c[0] === 'net_cash_paid' && editable) return '<td class="n"><input class="np" type="number" step="1" min="0" value="' + (v == null ? '' : v) + '" placeholder="' + Math.round(num(l.cash)) + '" data-c="' + esc(l.emp_code) + '" onchange="setNetPaid(this)" title="Cash actually handed over"></td>';
+      if (c[0] === 'cash') return '<td class="n cash' + (num(v) < 0 ? ' neg' : '') + '">' + fmtM(v) + '</td>';
+      return '<td class="' + (c[3] === 't' ? '' : 'n') + (c[0] === 'emp_code' ? ' mono' : '') + '">' + fmtCol(c[3], v) + '</td>';
+    }).join('') + '<td>' + (l.flags || []).map(f => '<span class="badge ' + (f === 'NEGATIVE_CASH' ? 'red' : 'amber') + '">' + esc(FLAG_TEXT[f] || f) + '</span> ').join('')
+      + ' <button class="btn sm" onclick="printPayslips([PAY.lines.find(x=>x.emp_code===' + esc(JSON.stringify(l.emp_code)) + ')])">Slip</button></td></tr>';
+  });
+  if (!rows.length) h += '<tr><td colspan="' + (cols.length + 1) + '" class="empty">No rows match.</td></tr>';
+  $('salTbl').innerHTML = h + '</tbody></table>';
+}
+async function computeMonth(btn){
+  if (PAY && PAY.run && !confirm('Recompute ' + monthLabel(S.month) + ' from the current attendance, salary rows, advances and PF/ESI? Net Cash Paid (AI) is kept.')) return;
+  await busy(btn, async () => {
+    const r = await rpc('hr_compute_month', { p_month: S.month });
+    toast(r.count + ' employees computed · Cash ' + fmtR(r.totals.cash) + (r.missing.length ? ' · ' + r.missing.length + ' without salary left out' : ''), 'ok');
+    await refreshRuns(); renderSalary();
+  });
+}
+async function lockMonth(btn, lock){
+  const msg = lock ? 'Lock ' + monthLabel(S.month) + '? Attendance, advances, PF/ESI and the salary sheet of this month become read-only.'
+                   : 'Unlock ' + monthLabel(S.month) + '? It can then be changed and recomputed. This is recorded in the audit log.';
+  if (!confirm(msg)) return;
+  await busy(btn, async () => { await rpc('hr_lock_month', { p_month: S.month, p_lock: lock }); toast(lock ? 'Month locked' : 'Month unlocked', 'ok'); await refreshRuns(); renderSalary(); });
+}
+async function setNetPaid(inp){
+  const v = inp.value === '' ? null : Number(inp.value);
+  try {
+    await rpc('hr_set_net_paid', { p_month: S.month, p_code: inp.dataset.c, p_amount: v, p_remarks: null });
+    const l = PAY.lines.find(x => x.emp_code === inp.dataset.c); if (l) l.net_cash_paid = v;
+    inp.style.borderColor = 'var(--green)'; setTimeout(() => { inp.style.borderColor = ''; }, 1200);
+  } catch (e) { toast(e.message, 'err'); inp.style.borderColor = 'var(--red)'; }
+}
+function exportSal(fmt){
+  // PDF: the columns on screen (compact, or all with "All columns"), filtered rows, totals at the end.
+  if (fmt === 'pdf') {
+    const rows = salRows(), cols = SHEET_COLS.filter(c => SALF.full || c[5]);
+    const foot = cols.map((c, i) => i === 1 ? 'TOTAL (' + rows.length + ')' : (c[3] === 't' || c[0] === 'duty_hours') ? ''
+      : Math.round(rows.reduce((a, r) => a + num(r[c[0]]), 0) * 100) / 100);
+    const st = PAY.run ? (PAY.run.status === 'LOCKED' ? 'LOCKED' : 'DRAFT') : '';
+    return exportPDF('salary-sheet-' + S.month.slice(0, 7), 'Salary Sheet · ' + monthLabel(S.month) + ' · ' + st + (SALF.dept ? ' · ' + SALF.dept : ''),
+      cols.map(c => c[1] + (c[2] ? '\n' + c[2] : '')),
+      rows.map(l => cols.map(c => c[3] === 'd' ? Math.round(num(l[c[0]]) * 100) / 100 : l[c[0]])),
+      { num: cols.map((c, i) => c[3] === 't' ? -1 : i).filter(i => i >= 0), foot });
+  }
+  downloadCSV('salary-sheet-' + S.month.slice(0, 7) + '.csv', SHEET_COLS.map(c => c[1] + ' (' + c[2] + ')').concat(['FLAGS']),
+    salRows().map(l => SHEET_COLS.map(c => l[c[0]]).concat([(l.flags || []).join(' ')])));
+}
+
+/* ── Payslip / register printing (a hidden iframe, so no pop-up blocker) ── */
+const PRINT_CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',Arial,sans-serif;color:#111;font-size:11.5px}
+.slip{border:1px solid #333;padding:14px 16px;margin:0 0 14px;page-break-inside:avoid}.slip+.slip{}
+.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid #1A3C5E;padding-bottom:6px;margin-bottom:8px}
+.hd h1{font-size:15px;color:#1A3C5E}.hd .m{font-weight:700;font-size:12.5px}
+.info{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 12px;margin-bottom:8px}.info span{display:block;font-size:9px;color:#666;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;margin-top:4px}td,th{border:1px solid #bbb;padding:3px 6px;text-align:left}th{background:#eef3f9;font-size:10px;text-transform:uppercase}
+td.n{text-align:right;font-family:Consolas,monospace}.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.net{margin-top:8px;display:flex;justify-content:space-between;align-items:center;border:1.5px solid #1B6B3A;background:#f2faf5;padding:6px 10px;font-size:13px}
+.net b{font-size:15px}.sig{display:flex;justify-content:space-between;margin-top:26px;font-size:10.5px;color:#444}
+.reg td,.reg th{font-size:9.5px;padding:2px 4px}@page{size:A4;margin:10mm}@media print{.slip:nth-child(3n){page-break-after:always}}`;
+function printHtml(title, inner, landscape){
+  const f = $('printFrame');
+  f.onload = () => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { toast('Could not open the print dialog.', 'err'); } };
+  f.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' + PRINT_CSS
+    + (landscape ? '@page{size:A4 landscape;margin:8mm}' : '') + '</style></head><body>' + inner + '</body></html>';
+}
+function inWords(n){
+  n = Math.round(Math.abs(num(n)));
+  if (!n) return 'Zero';
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const two = x => x < 20 ? a[x] : b[Math.floor(x / 10)] + (x % 10 ? ' ' + a[x % 10] : '');
+  const three = x => (x >= 100 ? a[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' ' : '') : '') + (x % 100 ? two(x % 100) : '');
+  const cr = Math.floor(n / 1e7); n %= 1e7; const lk = Math.floor(n / 1e5); n %= 1e5; const th = Math.floor(n / 1e3); n %= 1e3;
+  return ((cr ? three(cr) + ' Crore ' : '') + (lk ? two(lk) + ' Lakh ' : '') + (th ? two(th) + ' Thousand ' : '') + (n ? three(n) : '')).trim();
+}
+function payslipHtml(l){
+  const e = S.empMap[l.emp_code] || {}, st = BOOT.settings || {};
+  const row = (k, v) => '<tr><td>' + k + '</td><td class="n">' + fmtM(v) + '</td></tr>';
+  const payable = l.net_cash_paid != null ? l.net_cash_paid : l.cash;
+  return '<div class="slip"><div class="hd"><div><h1>' + esc(st.company || 'SARV INDIA HOME FURNISHING') + '</h1><div>' + esc(st.unit || '') + ' · Salary slip</div></div>'
+    + '<div class="m">' + monthLabel(l.pay_month) + '</div></div>'
+    + '<div class="info"><div><span>Emp. Code</span><b>' + esc(l.emp_code) + '</b></div><div><span>Name</span><b>' + esc(l.name) + '</b></div>'
+    + '<div><span>Father</span>' + esc(e.father_name || '') + '</div><div><span>Department</span>' + esc(l.department || '') + '</div>'
+    + '<div><span>Designation</span>' + esc(l.designation || '') + '</div><div><span>Salary class</span>' + esc(l.salary_class || '') + '</div>'
+    + '<div><span>Duty hrs / Salary</span>' + fmtH(l.duty_hours) + ' h / ' + fmtM(l.salary) + '</div><div><span>UAN / ESIC</span>' + esc(e.uan || '—') + ' / ' + esc(e.esic_no || '—') + '</div>'
+    + '<div><span>On Roll / Casual · Type</span>' + esc(optLabel(EMP_CATEGORY, e.emp_category) || '—') + ' · ' + esc(optLabel(EMP_TYPE, e.emp_type) || '—') + '</div>'
+    + '<div><span>Shift</span>' + esc(shiftText(e) || '—') + '</div><div><span>LWF ID</span>' + esc(e.lwf_id || '—') + '</div>'
+    + '<div><span>City / State</span>' + esc([e.city, e.state].filter(Boolean).join(', ') || '—') + '</div></div>'
+    + '<div class="cols"><table><tr><th colspan="2">Attendance</th></tr>' + '<tr><td>Present days</td><td class="n">' + l.present_days + '</td></tr><tr><td>Absent days</td><td class="n">' + l.absent_days
+    + '</td></tr><tr><td>Weekly off paid</td><td class="n">' + l.weekly_off + '</td></tr><tr><td>Working hours</td><td class="n">' + fmtH(l.work_hours) + '</td></tr><tr><td>OT hours</td><td class="n">' + fmtH(l.total_ot)
+    + '</td></tr><tr><td><b>Total paid days</b></td><td class="n"><b>' + fmtH(Math.round(num(l.total_days) * 100) / 100) + '</b></td></tr></table>'
+    + '<table><tr><th colspan="2">Earnings</th></tr>' + row('Salary amount', l.salary_amt) + row('OT amount', l.ot_amt) + (num(l.other_earn) ? row('Incentive / arrear', l.other_earn) : '')
+    + '<tr><td><b>Total salary</b></td><td class="n"><b>' + fmtM(l.total_salary) + '</b></td></tr></table>'
+    + '<table><tr><th colspan="2">Deductions</th></tr>' + row('Night food', l.food) + row('Debit note', l.debit) + row('Advance / loan EMI', l.advance) + row('PF', l.pf) + row('ESI', l.esi) + row('Welfare (LWF)', l.lwf)
+    + '<tr><td><b>Total deduction</b></td><td class="n"><b>' + fmtM(l.total_deduction) + '</b></td></tr>' + row('Paid by cheque', l.cheque_amt) + '</table></div>'
+    + '<div class="net"><span>Cash payable (Total − Deductions − Cheque)</span><b>₹ ' + fmtM(l.cash) + '</b></div>'
+    + (l.net_cash_paid != null ? '<div style="margin-top:4px">Cash paid: <b>₹ ' + fmtM(l.net_cash_paid) + '</b></div>' : '')
+    + '<div style="margin-top:4px;font-size:10.5px">Rupees ' + inWords(payable) + ' only</div>'
+    + '<div class="sig"><span>Prepared by</span><span>Checked by</span><span>Employee signature / thumb</span></div></div>';
+}
+function printPayslips(lines){
+  lines = (lines || []).filter(Boolean);
+  if (!lines.length) { toast('Nothing to print.', 'err'); return; }
+  printHtml('Payslips ' + monthLabel(lines[0].pay_month), lines.map(payslipHtml).join(''));
+}
+function printRegister(){
+  const rows = salRows(), cols = SHEET_COLS.filter(c => c[0] !== 'designation');
+  const tot = {}; cols.forEach(c => { if (c[3] !== 't') tot[c[0]] = rows.reduce((a, r) => a + num(r[c[0]]), 0); });
+  printHtml('Salary register ' + monthLabel(S.month), '<div class="hd"><h1>' + esc((BOOT.settings || {}).company || '') + ' · Salary register</h1><div class="m">' + monthLabel(S.month) + '</div></div>'
+    + '<table class="reg"><tr>' + cols.map(c => '<th>' + c[1] + '</th>').join('') + '<th>Sign</th></tr>'
+    + rows.map(l => '<tr>' + cols.map(c => '<td class="' + (c[3] === 't' ? '' : 'n') + '">' + fmtCol(c[3], l[c[0]]) + '</td>').join('') + '<td style="width:60px"></td></tr>').join('')
+    + '<tr>' + cols.map((c, i) => '<th class="n">' + (c[3] === 't' ? (i === 1 ? 'TOTAL' : '') : c[0] === 'duty_hours' ? '' : fmtCol(c[3], tot[c[0]])) + '</th>').join('') + '<th></th></tr></table>', true);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   IMPORT: CSV / pasted cells from the old workbook's tabs. Columns are
+   matched by header name, every match can be changed, and a preview shows
+   exactly what will be saved before anything is sent.
+   (Google Sheets: File › Download › CSV for the tab, or select the cells
+   and paste them straight into the box.)
+   ════════════════════════════════════════════════════════════════════ */
+const IMPORTS = {
+  EMPLOYEES: { label: 'Employee Master', sheet: 'EMPLOYEE MASTER', need: 'HR_EMPLOYEES', headerRow: 1, month: 'Salary applies from', batch: 250,
+    hint: 'One row per employee. Blank cells keep what is already saved. Map DUTY HOUR and SALARY to the Hour / Salary columns of the month you choose below (in the master they are the monthly pairs from column AJ on) to create the salary row.',
+    fields: [
+      ['emp_code', 'Emp. Code', ['EMP. CODE', 'EMP CODE', 'EMPCODE', 'CODE', 'EMPLOYEE CODE'], 'code', 1],
+      ['name', 'Name', ['NAME', 'EMPLOYEE NAME', 'EMP NAME']], ['father_name', 'Father name', ['FATHER NAME', 'FATHERS NAME', 'FATHER']],
+      ['religion', 'Religion', ['RELIGION']], ['gender', 'Gender', ['GENDER', 'SEX']],
+      ['dob', 'Date of birth', ['DOB', 'DATE OF BIRTH', 'BIRTH DATE'], 'date'], ['doj', 'Date of joining', ['DOJ', 'DATE OF JOINING', 'JOINING DATE'], 'date'],
+      ['doe', 'Date of exit', ['DOE', 'DATE OF EXIT', 'LEFT DATE', 'EXIT DATE'], 'date'],
+      ['department', 'Department', ['DEPARTMENT', 'DEPT']], ['sub_department', 'Sub department', ['SUB DEPARTMENT', 'SUB DEPT', 'SUBDEPARTMENT']],
+      ['designation', 'Designation', ['DEGINATION', 'DESIGNATION', 'DESIGANTION']], ['unit', 'Unit', ['UNIT']],
+      ['lwf_id', 'LWF ID', ['LWF ID', 'LWF NO', 'LWF NUMBER']], ['salary_class', 'Salary class', ['SALARY CLASS', 'SAL CLASS']],
+      ['emp_category', 'On Roll / Casual', ['EMP-CASWAL/ON ROLL', 'EMP-CASUAL/ON ROLL', 'ON ROLL/CASUAL', 'CASUAL/ON ROLL', 'EMP CATEGORY', 'CATEGORY'], 'category'],
+      ['emp_type', 'Employee type', ['EMP-TYPE', 'EMP TYPE', 'EMPLOYEE TYPE'], 'etype'],
+      ['shift_from', 'Shift from', ['SHIFT FROM', 'SHIFT START', 'SHIFT IN'], 'time'], ['shift_to', 'Shift to', ['SHIFT TO', 'SHIFT END', 'SHIFT OUT'], 'time'],
+      ['city', 'City', ['CITY']], ['state', 'State', ['STATE']],
+      ['welfare_flag', 'Welfare', ['WELFARE', 'LWF'], 'flag'], ['pf_flag', 'PF', ['PF', 'EPF'], 'flag'], ['esi_flag', 'ESI', ['ESI', 'ESIC'], 'flag'],
+      ['uan', 'UAN', ['UAN', 'UAN NO']], ['esic_no', 'ESIC no.', ['ESIC NO', 'ESI NO', 'IP NO']], ['aadhaar', 'Aadhaar', ['AADHAAR', 'AADHAR', 'AADHAR NO', 'AADHAAR NO']],
+      ['pan', 'PAN', ['PAN', 'PAN NO']], ['bank_name', 'Bank', ['BANK', 'BANK NAME']], ['bank_ac', 'Bank A/c', ['BANK AC', 'BANK A/C', 'ACCOUNT NO', 'AC NO', 'BANK ACCOUNT']],
+      ['ifsc', 'IFSC', ['IFSC', 'IFSC CODE']], ['mobile', 'Mobile', ['MOBILE', 'MOBILE NO', 'CONTACT', 'CONTACT NO', 'PHONE']], ['address', 'Address', ['ADDRESS']],
+      ['status', 'Status', ['STATUS']],
+      ['duty_hours', 'Duty hour (K)', ['DUTY HOUR', 'DUTY HOURS', 'HOUR', 'HOURS'], 'num'], ['monthly_salary', 'Salary (L)', ['SALARY', 'MONTHLY SALARY'], 'num']],
+    build(r, ctx){ if (r.duty_hours != null && r.monthly_salary != null) r.effective_from = ctx.month; return r; },
+    run: rows => rpc('hr_import', { p_kind: 'EMPLOYEES', p_rows: rows }) },
+  STRUCTURES: { label: 'Salary rows only', sheet: 'any list', need: 'HR_EMPLOYEES', headerRow: 1, month: 'Default month (when no date column)', batch: 400,
+    hint: 'Emp. code + duty hours + salary, optionally a month/date it applies from. Use it to load the history month by month (one import per month).',
+    fields: [['emp_code', 'Emp. Code', ['EMP. CODE', 'EMP CODE', 'CODE'], 'code', 1], ['duty_hours', 'Duty hours', ['DUTY HOUR', 'DUTY HOURS', 'HOUR'], 'num', 1],
+      ['monthly_salary', 'Salary', ['SALARY', 'MONTHLY SALARY'], 'num', 1], ['effective_from', 'Applies from', ['EFFECTIVE FROM', 'FROM', 'MONTH', 'DATE'], 'date']],
+    build(r, ctx){ r.effective_from = r.effective_from || ctx.month; return r; },
+    run: rows => rpc('hr_import', { p_kind: 'STRUCTURES', p_rows: rows }) },
+  /* The ONLY way attendance gets in: the biometric machine's export. The
+     Attendance screen is read-only and there is no month-grid import, so
+     every hour on the salary sheet traces back to a machine punch. */
+  ATT_LONG: { label: 'Attendance: machine data', sheet: 'MACHINE DATA', need: 'HR_ATTENDANCE', headerRow: 1, batch: 1000,
+    hint: 'The only way attendance is entered. One row per punch day from the biometric machine: Date, CODE, TOTAL HOURS (8.5 or 08:30), optional InTime / OutTime / Shift / PRESENT. A row marked A with no hours is saved as 0. Importing a day again overwrites it, which is how a wrong day is corrected.',
+    fields: [['emp_code', 'Emp. Code', ['CODE', 'EMP. CODE', 'EMP CODE', 'EMPCODE'], 'code', 1], ['att_date', 'Date', ['DATE', 'ATT DATE', 'PUNCH DATE'], 'date', 1],
+      ['hours', 'Total hours', ['TOTAL HOURS', 'TOTALHOURS', 'HOURS', 'WORK HOURS', 'W.HRS'], 'hours'], ['in_time', 'In time', ['INTIME', 'IN TIME', 'IN']],
+      ['out_time', 'Out time', ['OUTTIME', 'OUT TIME', 'OUT']], ['shift', 'Shift', ['SHIFT']], ['present', 'Present (P/A)', ['PRESENT', 'STATUS']]],
+    build(r){ if (r.hours == null && /^A/i.test(r.present || '')) r.hours = 0; if (r.hours == null) return null; delete r.present; return r; },
+    run: rows => rpc('hr_save_attendance', { p_rows: rows, p_source: 'IMPORT' }) },
+  TXNS: { label: 'Advances / food / debit', sheet: 'EMP. EXP', need: 'HR_TXN', headerRow: 1, batch: 300,
+    hint: 'MONTH, DATE, ENTRY TYPE, EMP. CODE, Advance Amount, STATUS, DETAIL, DEBIT BY. Only rows with STATUS = PAID are cut from salary; others come in as PENDING. Entries already saved (same code, date, type, amount, detail) are skipped, so a tab can be imported again safely.',
+    fields: [['pay_month', 'Month', ['MONTH'], 'text'], ['txn_date', 'Date', ['DATE'], 'date', 1], ['entry_type', 'Entry type', ['ENTRY TYPE', 'TYPE'], 'text', 1],
+      ['emp_code', 'Emp. Code', ['EMP. CODE', 'EMP CODE', 'CODE'], 'code', 1], ['amount', 'Amount', ['ADVANCE AMOUNT', 'AMOUNT', 'AMT'], 'num', 1],
+      ['status', 'Status', ['STATUS']], ['detail', 'Detail', ['DETAIL', 'DETAILS', 'REMARKS']], ['debit_by', 'Debit by', ['DEBIT BY']]],
+    build(r){
+      if (!r.amount || r.amount <= 0) return null;
+      const t = String(r.entry_type || '').toUpperCase();
+      r.entry_type = /FOOD/.test(t) ? 'FOOD' : /DEBIT/.test(t) ? 'DEBIT' : /EMI|LOAN/.test(t) ? 'LOAN_EMI' : /INCENT/.test(t) ? 'INCENTIVE' : /ARREAR/.test(t) ? 'ARREAR' : /ADV/.test(t) ? 'ADVANCE' : null;
+      if (!r.entry_type) throw new Error('Unknown entry type "' + t + '"');
+      r.pay_month = monthFromName(r.pay_month, r.txn_date);
+      r.status = /PAID/i.test(r.status || '') ? 'PAID' : 'PENDING';
+      return r;
+    },
+    async dedupe(rows){
+      const months = [...new Set(rows.map(r => r.pay_month))], have = {};
+      for (const m of months) {
+        const d = await rpc('hr_list_transactions', { p_month: m });
+        d.rows.forEach(t => { const k = txKey(t); have[k] = (have[k] || 0) + 1; });
+      }
+      return rows.filter(r => { const k = txKey(r); if (have[k]) { have[k]--; return false; } return true; });
+    },
+    run: rows => rpc('hr_import', { p_kind: 'TRANSACTIONS', p_rows: rows }) },
+  STATUTORY: { label: 'ON ROLL register', sheet: 'ON ROLL-<Month>-26', need: 'HR_TXN', headerRow: 2, month: 'Month of the register', batch: 500,
+    hint: 'Header row 2, data from row 3. Default columns as in the sheet: G = CODE CASWAL, AC = PF amount, AD = ESI, AE = LWF, AG = NET / cheque. Re-importing a month overwrites its values.',
+    fields: [['emp_code', 'Emp. Code', ['CODE CASWAL', 'CODE CASUAL', 'EMP. CODE', 'EMP CODE'], 'code', 1, 'G'], ['pf', 'PF amount (AB)', ['PF AMOUNT', 'PF AMT'], 'num', 0, 'AC'],
+      ['esi', 'ESI (AC)', ['ESI', 'ESI AMOUNT', 'ESIC'], 'num', 0, 'AD'], ['lwf', 'LWF (AD)', ['LWF', 'WELFARE'], 'num', 0, 'AE'],
+      ['cheque_amt', 'Cheque / net (AG)', ['NET', 'NET AMOUNT', 'CHEQUE', 'CHEQ', 'NET PAY'], 'num', 0, 'AG']],
+    run: (rows, ctx) => rpc('hr_save_statutory', { p_month: ctx.month, p_rows: rows, p_source: 'IMPORT' }) }
+};
+const txKey = t => [t.emp_code, String(t.txn_date).slice(0, 10), t.entry_type, Number(t.amount).toFixed(2), String(t.detail || '').trim().toUpperCase()].join('|');
+
+/* ── Sample sheets ─────────────────────────────────────────────────────
+   One downloadable CSV per import type, laid out exactly as the importer
+   reads it by default: the same header names (each field's first name in
+   IMPORTS), the same header row, and for ON ROLL the same column letters. So a sample opened in Google Sheets, filled in and
+   downloaded again imports with no column changes. Dates are in the month
+   chosen on the Import screen; the people are made up (codes 1001–1003). */
+const SAMPLES = {
+  EMPLOYEES: () => [
+    { emp_code: '1001', name: 'RAMESH KUMAR', father_name: 'SURESH KUMAR', religion: 'HINDU', gender: 'MALE', dob: '15/08/1990', doj: '01/04/2024',
+      department: 'WEAVING', sub_department: 'LOOM', designation: 'OPERATOR', unit: 'UNIT-2', lwf_id: 'LWF10021', salary_class: 'MONTHLY',
+      emp_category: 'ON ROLL', emp_type: 'COMPANY', shift_from: '08:00', shift_to: '20:00', city: 'PANIPAT', state: 'HARYANA',
+      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'YES', uan: '100123456789', esic_no: '2012345678', aadhaar: '123412341234', bank_name: 'SBI',
+      bank_ac: '12345678901', ifsc: 'SBIN0001234', mobile: '9876543210', address: 'WARD 7, MODEL TOWN', status: 'ACTIVE', duty_hours: '12', monthly_salary: '18000' },
+    { emp_code: '1002', name: 'SUNITA DEVI', father_name: 'RAM PAL', religion: 'HINDU', gender: 'FEMALE', dob: '02/01/1995', doj: '10/06/2025',
+      department: 'PACKING', sub_department: 'FOLDING', designation: 'HELPER', unit: 'UNIT-2', lwf_id: '', salary_class: 'PER DAY',
+      emp_category: 'CASUAL', emp_type: 'CONTRACTOR', shift_from: '09:00', shift_to: '17:00', city: 'SAMALKHA', state: 'HARYANA',
+      welfare_flag: 'NO', pf_flag: 'NO', esi_flag: 'YES', mobile: '9812345678', status: 'ACTIVE', duty_hours: '8', monthly_salary: '11000' },
+    { emp_code: '1003', name: 'AMIT SHARMA', father_name: 'VIJAY SHARMA', religion: 'HINDU', gender: 'MALE', dob: '20/11/1985', doj: '01/01/2020',
+      department: 'ADMIN', sub_department: 'OFFICE', designation: 'SUPERVISOR', unit: 'UNIT-2', lwf_id: 'LWF10007', salary_class: 'FIXED',
+      emp_category: 'ON ROLL', emp_type: 'COMPANY', shift_from: '09:30', shift_to: '19:30', city: 'PANIPAT', state: 'HARYANA',
+      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'NO', uan: '100987654321', pan: 'ABCDE1234F', bank_name: 'HDFC', bank_ac: '50100123456789',
+      ifsc: 'HDFC0001234', mobile: '9898989898', status: 'ACTIVE', duty_hours: '10', monthly_salary: '43000' }],
+  STRUCTURES: m => [
+    { emp_code: '1001', duty_hours: '12', monthly_salary: '18500', effective_from: dmy(m) },
+    { emp_code: '1002', duty_hours: '8', monthly_salary: '11500', effective_from: dmy(m) },
+    { emp_code: '1003', duty_hours: '10', monthly_salary: '45000', effective_from: dmy(m) }],
+  ATT_LONG: m => [
+    { emp_code: '1001', att_date: dmy(m.slice(0, 8) + '01'), hours: '12:00', in_time: '08:00', out_time: '20:00', shift: 'DAY', present: 'P' },
+    { emp_code: '1001', att_date: dmy(m.slice(0, 8) + '02'), hours: '13.5', in_time: '08:00', out_time: '21:30', shift: 'DAY', present: 'P' },
+    { emp_code: '1002', att_date: dmy(m.slice(0, 8) + '01'), hours: '8', in_time: '09:00', out_time: '17:00', shift: 'DAY', present: 'P' },
+    { emp_code: '1002', att_date: dmy(m.slice(0, 8) + '02'), hours: '', in_time: '', out_time: '', shift: '', present: 'A' },
+    { emp_code: '1003', att_date: dmy(m.slice(0, 8) + '01'), hours: '10', in_time: '09:00', out_time: '19:00', shift: 'GEN', present: 'P' }],
+  TXNS: m => [
+    { pay_month: MONTHS[+m.slice(5, 7) - 1], txn_date: dmy(m.slice(0, 8) + '05'), entry_type: 'ADVANCE', emp_code: '1001', amount: '3000', status: 'PAID' },
+    { pay_month: MONTHS[+m.slice(5, 7) - 1], txn_date: dmy(m.slice(0, 8) + '08'), entry_type: 'DEBIT', emp_code: '1001', amount: '200', status: 'PAID', detail: 'MENDING', debit_by: 'SUNNY' },
+    { pay_month: MONTHS[+m.slice(5, 7) - 1], txn_date: dmy(m.slice(0, 8) + '15'), entry_type: 'FOOD', emp_code: '1002', amount: '450', status: 'PAID', detail: 'NIGHT FOOD 9 DAYS' },
+    { pay_month: MONTHS[+m.slice(5, 7) - 1], txn_date: dmy(m.slice(0, 8) + '20'), entry_type: 'ADVANCE', emp_code: '1003', amount: '5000', status: 'PENDING' }],
+  STATUTORY: () => [
+    { emp_code: '1001', name: 'RAMESH KUMAR', pf: '1800', esi: '135', lwf: '34', cheque_amt: '15000' },
+    { emp_code: '1002', name: 'SUNITA DEVI', pf: '0', esi: '83', lwf: '0', cheque_amt: '0' },
+    { emp_code: '1003', name: 'AMIT SHARMA', pf: '1800', esi: '0', lwf: '34', cheque_amt: '20000' }]
+};
+function sampleSheet(kind, m){
+  const def = IMPORTS[kind];
+  if (kind === 'STATUTORY') {
+    /* The ON ROLL register: a title in row 1, headers in row 2, and the
+       columns the importer reads at their letters G / AC / AD / AE / AG. */
+    const width = colIndex('AG') + 1, at = { G: 'emp_code', AC: 'pf', AD: 'esi', AE: 'lwf', AG: 'cheque_amt' };
+    const head = Array(width).fill('');
+    head[0] = 'SR'; head[1] = 'NAME';
+    Object.keys(at).forEach(L => { head[colIndex(L)] = def.fields.find(f => f[0] === at[L])[2][0]; });
+    const rows = SAMPLES.STATUTORY().map((s, i) => {
+      const r = Array(width).fill(''); r[0] = String(i + 1); r[1] = s.name;
+      Object.keys(at).forEach(L => { r[colIndex(L)] = s[at[L]]; });
+      return r;
+    });
+    return [['ON ROLL-' + MONTHS[+m.slice(5, 7) - 1].toUpperCase() + '-' + m.slice(2, 4)], head].concat(rows);
+  }
+  const head = def.fields.map(f => f[2][0]);
+  return [head].concat(SAMPLES[kind](m).map(r => def.fields.map(f => r[f[0]] == null ? '' : r[f[0]])));
+}
+function downloadSample(){
+  const rows = sampleSheet(IMP.kind, IMP.month || S.month);
+  downloadCSV('sample-' + IMPORTS[IMP.kind].label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-$/, '') + '.csv', rows[0], rows.slice(1));
+}
+/* The columns the importer looks for, shown above the file box. */
+function expectedCols(kind){
+  const def = IMPORTS[kind];
+  return def.fields.map(f => {
+    const name = f[3] === 'col' ? 'Day 1 … ' + daysIn(IMP.month || S.month) + ' (from column ' + f[5] + ')' : f[2][0];
+    return '<span class="badge' + (f[4] ? '' : ' grey') + '" title="' + esc(f[1] + (f[2].length > 1 ? ' · also read: ' + f[2].slice(1).join(', ') : '')) + '">'
+      + (f[5] && f[3] !== 'col' ? f[5] + ': ' : '') + esc(name) + (f[4] ? ' *' : '') + '</span>';
+  }).join(' ');
+}
+const IMP = { kind: null, raw: null, map: {}, headerRow: 1, month: null };
+
+function normHead(s){ return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function colLetter(i){ let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
+function colIndex(L){ let n = 0; for (const ch of String(L).toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; }
+function normCode(v){ return String(v == null ? '' : v).trim().toUpperCase().replace(/\.0+$/, ''); }
+function toNum(v){ if (v == null) return null; const s = String(v).replace(/[₹,\s]/g, ''); if (s === '' || s === '-') return null; const n = Number(s); return isFinite(n) ? n : null; }
+function toHours(v){
+  const s = String(v == null ? '' : v).trim(); if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(s); if (m) return Math.round((+m[1] + +m[2] / 60) * 100) / 100;
+  return toNum(s);
+}
+function toFlag(v){
+  const s = String(v == null ? '' : v).trim().toUpperCase(); if (!s) return null;
+  if (/^(Y|YES|TRUE|1|ON|APPLICABLE|PF|ESI|ESIC|LWF|WELFARE|✓)$/.test(s)) return true;
+  if (/^(N|NO|FALSE|0|OFF|NA|N\/A|-|NOT APPLICABLE)$/.test(s)) return false;
+  return null;
+}
+/* Shift time → HH:MM (24 h). Takes 8:00, 08:00, 20:00, 8 PM, 8:30 am, 0800.
+   null = empty; undefined = present but unreadable (the row is reported). */
+function toTime(v){
+  const s = String(v == null ? '' : v).trim().toUpperCase(); if (!s) return null;
+  const m = /^(\d{1,2})(?:[:.]?(\d{2}))?(?::\d{2})?\s*(AM|PM)?$/.exec(s); if (!m) return undefined;
+  let h = +m[1]; const mi = +(m[2] || 0);
+  if (m[3] === 'PM' && h < 12) h += 12; if (m[3] === 'AM' && h === 12) h = 0;
+  return h > 23 || mi > 59 ? undefined : pad(h) + ':' + pad(mi);
+}
+const toCategory = v => { const s = normHead(v); if (!s) return null; return /CAS/.test(s) ? 'CASUAL' : /ROLL/.test(s) ? 'ON ROLL' : undefined; };
+const toEmpType = v => { const s = normHead(v); if (!s) return null; return /CONTRACT|THEKED/.test(s) ? 'CONTRACTOR' : /COMPANY|COMP|OWN/.test(s) ? 'COMPANY' : undefined; };
+function toISODate(v){
+  const s = String(v == null ? '' : v).trim(); if (!s) return null;
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(s); if (m) return m[1] + '-' + pad(m[2]) + '-' + pad(m[3]);
+  m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/.exec(s);
+  if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + pad(m[2]) + '-' + pad(m[1]); }
+  m = /^(\d{1,2})[\s\-\/]+([A-Za-z]{3,9})[\s\-\/,]+(\d{2,4})$/.exec(s);
+  if (m) { const i = MONTHS.findIndex(x => x.slice(0, 3).toUpperCase() === m[2].slice(0, 3).toUpperCase()); if (i >= 0) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + pad(i + 1) + '-' + pad(m[1]); }
+  if (/^\d{5}$/.test(s)) { const d = new Date(Date.UTC(1899, 11, 30) + (+s) * 864e5); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  return undefined;   // present but unreadable
+}
+/* The sheet's MONTH column is a bare name ("June"). The year comes from the
+   entry date, moved across a year end when the two are far apart
+   (a December cut entered on 2 January belongs to the old year). */
+function monthFromName(name, dateIso){
+  const i = MONTHS.findIndex(x => x.slice(0, 3).toUpperCase() === String(name || '').trim().slice(0, 3).toUpperCase());
+  if (i < 0) return dateIso ? monthStart(dateIso) : S.month;
+  let y = dateIso ? +dateIso.slice(0, 4) : +S.month.slice(0, 4);
+  const dm = dateIso ? +dateIso.slice(5, 7) - 1 : i;
+  if (i - dm > 6) y--; if (dm - i > 6) y++;
+  return y + '-' + pad(i + 1) + '-01';
+}
+function parseDelimited(text){
+  text = String(text || '').replace(/^﻿/, '');
+  const sample = text.split(/\r?\n/).slice(0, 6).join('\n');
+  const delim = (sample.split('\t').length > sample.split(',').length) ? '\t' : ',';
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; }
+    else if (ch === '"' && f === '') q = true;
+    else if (ch === delim) { row.push(f); f = ''; }
+    else if (ch === '\n') { row.push(f); rows.push(row); row = []; f = ''; }
+    else if (ch !== '\r') f += ch;
+  }
+  if (f !== '' || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+
+function renderImport(){
+  const kinds = Object.keys(IMPORTS).filter(k => can(IMPORTS[k].need));
+  if (!IMP.kind || kinds.indexOf(IMP.kind) < 0) IMP.kind = kinds[0];
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Import from the Google Sheet</h2></div>
+  <div class="note">Suggested order for a fresh start: <b>1.</b> Employee Master (with this month's Hour + Salary) → <b>2.</b> Attendance: machine data (the only way attendance is entered) → <b>3.</b> EMP. EXP → <b>4.</b> ON ROLL → then <a href="#salary">Salary Sheet › Compute</a> and compare a FIXED, a MONTHLY and a CLASS 2 employee with the old sheet.<br>
+    Not sure of the layout? Each type has a <b>Download sample (.csv)</b> button: the right headers with 3 example employees, ready to fill in.</div>
+  <div class="kinds">${kinds.map(k => '<button class="kind' + (k === IMP.kind ? ' on' : '') + '" onclick="IMP.kind=\'' + k + '\';IMP.raw=null;renderImport()"><b>' + IMPORTS[k].label + '</b><span>Sheet tab: ' + esc(IMPORTS[k].sheet) + '</span></button>').join('')}</div>
+  <div class="card" data-no-caps id="impCard"></div>`;
+  drawImport();
+}
+function drawImport(){
+  const def = IMPORTS[IMP.kind];
+  if (!IMP.raw) { IMP.headerRow = def.headerRow; IMP.month = S.month; }
+  $('impCard').innerHTML = `<h3>${def.label}<button class="btn sm" onclick="downloadSample()" title="A CSV with the right headers and 3 example employees; open it in Google Sheets, replace the rows with yours, download as CSV and import">Download sample (.csv)</button></h3>
+    <p class="muted" style="font-size:12.5px;line-height:1.6;margin-bottom:10px">${esc(def.hint)}</p>
+    <div style="margin-bottom:12px;font-size:12px;line-height:2"><b style="color:var(--navy)">Columns read</b> <span class="muted">(header row ${def.headerRow}; * = required, hover for other accepted names)</span><br><span id="impCols">${expectedCols(IMP.kind)}</span></div>
+    <div class="toolbar">
+      <input type="file" accept=".csv,.tsv,.txt" onchange="impFile(this)">
+      <label class="muted" style="font-size:12px">Header row <input class="inp" type="number" min="1" max="20" value="${IMP.headerRow}" style="width:64px" onchange="IMP.headerRow=+this.value||1;impMapAuto();drawImportBody()"></label>
+      ${def.month ? '<label class="muted" style="font-size:12px">' + def.month + ' <select class="sel" onchange="IMP.month=this.value;$(\'impCols\').innerHTML=expectedCols(IMP.kind);drawImportBody()">' + monthOptions(IMP.month) + '</select></label>' : ''}
+    </div>
+    <textarea class="paste" id="impPaste" placeholder="…or paste the cells here (select them in Google Sheets, Ctrl+C, then Ctrl+V here)" oninput="impText(this.value)"></textarea>
+    <div id="impBody"></div>`;
+  if (IMP.raw) drawImportBody();
+}
+function impFile(inp){
+  const f = inp.files && inp.files[0]; if (!f) return;
+  const rd = new FileReader(); rd.onload = () => impText(String(rd.result)); rd.readAsText(f);
+}
+function impText(t){
+  IMP.raw = parseDelimited(t).filter(r => r.some(c => String(c).trim() !== ''));
+  impMapAuto(); drawImportBody();
+}
+function impHeaders(){ return (IMP.raw && IMP.raw[IMP.headerRow - 1]) || []; }
+function impMapAuto(){
+  const def = IMPORTS[IMP.kind], hd = impHeaders().map(normHead), width = Math.max(0, ...(IMP.raw || []).map(r => r.length));
+  IMP.map = {};
+  def.fields.forEach(f => {
+    const [k, , syn, , , letter] = f;
+    let idx = -1;
+    if (letter && colIndex(letter) < width) idx = colIndex(letter);     // the sheet's own column wins where it is known
+    if (idx < 0) for (const s of syn) { const j = hd.indexOf(normHead(s)); if (j >= 0 && Object.values(IMP.map).indexOf(j) < 0) { idx = j; break; } }
+    IMP.map[k] = idx;
+  });
+}
+function impBuild(){
+  const def = IMPORTS[IMP.kind], ctx = { month: IMP.month }, out = [], errs = [];
+  (IMP.raw || []).slice(IMP.headerRow).forEach((raw, n) => {
+    const rowNo = IMP.headerRow + n + 1;
+    try {
+      if (def.expand) { out.push(...def.expand(raw, IMP.map, ctx)); return; }
+      const r = {};
+      def.fields.forEach(([k, , , type]) => {
+        const i = IMP.map[k]; if (i == null || i < 0) return;
+        const v = raw[i];
+        if (type === 'code') r[k] = normCode(v);
+        else if (type === 'num') r[k] = toNum(v);
+        else if (type === 'hours') r[k] = toHours(v);
+        else if (type === 'flag') { const b = toFlag(v); if (b != null) r[k] = b; }
+        else if (type === 'date') { const d = toISODate(v); if (d === undefined) throw new Error(k + ' "' + v + '" is not a date'); r[k] = d; }
+        else if (type === 'time') { const t = toTime(v); if (t === undefined) throw new Error(k + ' "' + v + '" is not a time (use 08:00 or 8 PM)'); if (t) r[k] = t; }
+        else if (type === 'category') { const c = toCategory(v); if (c === undefined) throw new Error('"' + v + '" must be ON ROLL or CASUAL'); if (c) r[k] = c; }
+        else if (type === 'etype') { const c = toEmpType(v); if (c === undefined) throw new Error('"' + v + '" must be COMPANY or CONTRACTOR'); if (c) r[k] = c; }
+        else r[k] = String(v == null ? '' : v).trim();
+      });
+      if (!r.emp_code) return;                                    // blank / total rows
+      const missing = def.fields.filter(f => f[4] && f[3] !== 'col' && (r[f[0]] == null || r[f[0]] === '')).map(f => f[1]);
+      if (missing.length) throw new Error('missing ' + missing.join(', '));
+      const b = def.build ? def.build(r, ctx) : r;
+      if (b) out.push(b);
+    } catch (e) { errs.push('Row ' + rowNo + ': ' + e.message); }
+  });
+  return { rows: out, errs };
+}
+function drawImportBody(){
+  const def = IMPORTS[IMP.kind], hd = impHeaders(), width = Math.max(0, ...(IMP.raw || []).map(r => r.length));
+  if (!IMP.raw || !IMP.raw.length) { $('impBody').innerHTML = ''; return; }
+  const opts = sel => '<option value="-1">— not in file —</option>' + Array.from({ length: width }, (_, i) =>
+    '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + colLetter(i) + ': ' + esc(String(hd[i] || '').slice(0, 30)) + '</option>').join('');
+  const { rows, errs } = impBuild();
+  const unknown = rows.filter(r => r.emp_code && !S.empMap[r.emp_code] && IMP.kind !== 'EMPLOYEES');
+  const unknownCodes = [...new Set(unknown.map(r => r.emp_code))];
+  const pk = rows.length ? Object.keys(rows[0]) : [];
+  $('impBody').innerHTML = `
+    <div class="fsec">Columns</div>
+    <div class="fgrid">${def.fields.map(f => '<div class="fg"><label>' + f[1] + (f[4] ? ' *' : '') + '</label><select onchange="IMP.map[\'' + f[0] + '\']=+this.value;drawImportBody()">' + opts(IMP.map[f[0]]) + '</select></div>').join('')}</div>
+    <div class="fsec">Preview · ${IMP.raw.length - IMP.headerRow} data row(s) in file → <b>${rows.length}</b> record(s) to save${errs.length ? ' · <span style="color:var(--red)">' + errs.length + ' row(s) with problems</span>' : ''}</div>
+    ${unknownCodes.length ? '<div class="note warn">' + unknownCodes.length + ' code(s) are not in Employees yet and will fail: ' + esc(unknownCodes.slice(0, 15).join(', ')) + (unknownCodes.length > 15 ? '…' : '') + '. Import the Employee Master first.</div>' : ''}
+    ${errs.length ? '<div class="note red" style="max-height:120px;overflow:auto">' + errs.slice(0, 50).map(esc).join('<br>') + '</div>' : ''}
+    <div class="tw" style="max-height:300px"><table class="t"><thead><tr>${pk.map(k => '<th>' + esc(k) + '</th>').join('')}</tr></thead><tbody>
+      ${rows.slice(0, 10).map(r => '<tr>' + pk.map(k => '<td>' + esc(typeof r[k] === 'boolean' ? (r[k] ? 'YES' : 'NO') : r[k]) + '</td>').join('') + '</tr>').join('')}</tbody></table></div>
+    <div class="prog" id="impProg" style="display:none"><div></div></div>
+    <div class="toolbar" style="margin-top:12px"><span class="sp"></span><span class="muted" id="impStat" style="font-size:12px"></span>
+      <button class="btn pri" ${rows.length ? '' : 'disabled'} onclick="runImport(this)">Import ${rows.length} record(s)</button></div>`;
+}
+async function runImport(btn){
+  const def = IMPORTS[IMP.kind], ctx = { month: IMP.month };
+  let { rows } = impBuild();
+  if (!rows.length) return;
+  if (!confirm('Save ' + rows.length + ' record(s) from "' + def.label + '"' + (def.month ? ' for ' + monthLabel(IMP.month) : '') + '?')) return;
+  await busy(btn, async () => {
+    if (def.dedupe) { const before = rows.length; rows = await def.dedupe(rows); if (before !== rows.length) toast((before - rows.length) + ' entr' + (before - rows.length === 1 ? 'y was' : 'ies were') + ' already saved and skipped'); }
+    const pg = $('impProg'); pg.style.display = ''; const bar = pg.firstChild;
+    let saved = 0, done = 0; const errs = [];
+    for (const part of chunk(rows, def.batch)) {
+      const r = await def.run(part, ctx);
+      saved += r.saved || 0; errs.push(...(r.errors || []));
+      done += part.length; bar.style.width = Math.round(done / rows.length * 100) + '%';
+      $('impStat').textContent = done + ' / ' + rows.length;
+    }
+    await loadEmployees();
+    $('impStat').innerHTML = '<b style="color:var(--green)">' + saved + ' saved</b>' + (errs.length ? ' · <b style="color:var(--red)">' + errs.length + ' failed</b>' : '');
+    if (errs.length) $('impBody').insertAdjacentHTML('beforeend', '<div class="note red" style="max-height:180px;overflow:auto;margin-top:10px"><b>Failed rows (first 50):</b><br>'
+      + errs.slice(0, 50).map(e => esc((e.row && (e.row.emp_code || '')) + ' ' + (e.row && (e.row.att_date || e.row.txn_date || '') || '') + ': ' + errText(e.error))).join('<br>') + '</div>');
+    toast(saved + ' record(s) saved' + (errs.length ? ', ' + errs.length + ' failed' : ''), errs.length ? 'err' : 'ok');
+  });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SETTINGS: payroll policy, class rules, my rights, audit log
+   ════════════════════════════════════════════════════════════════════ */
+async function renderSettings(){
+  const s = BOOT.settings || {}, w = can('HR_SETTINGS');
+  const dis = w ? '' : ' disabled';
+  const RIGHTS = { HR_VIEW: 'See HR data & reports', HR_EMPLOYEES: 'Employees & salary rows', HR_ATTENDANCE: 'Import attendance (machine data)', HR_TXN: 'Advances, loans, PF/ESI',
+    HR_PAYROLL: 'Compute salary, net cash paid', HR_LOCK: 'Lock / unlock a month', HR_SETTINGS: 'Change these settings' };
+  $('view').innerHTML = `
+  <div class="toolbar"><h2>Settings</h2><span class="sp"></span>${w ? '<button class="btn pri" onclick="saveSettings(this)">Save settings</button>' : ''}</div>
+  <div class="grid g2">
+    <div class="card"><h3>Payroll policy <small>applies from the next compute</small></h3><div class="fgrid">
+      <div class="fg"><label>Company name (payslip)</label><input id="st_company" value="${esc(s.company || '')}"${dis}></div>
+      <div class="fg"><label>Unit</label><input id="st_unit" value="${esc(s.unit || '')}"${dis}></div>
+      <div class="fg"><label>Days in month</label><select id="st_basis"${dis}><option value="CALENDAR"${s.days_basis !== 'FIXED' ? ' selected' : ''}>Calendar days (as the sheet)</option><option value="FIXED"${s.days_basis === 'FIXED' ? ' selected' : ''}>Fixed number</option></select></div>
+      <div class="fg"><label>Fixed days (if fixed)</label><input id="st_fixed" type="number" min="20" max="31" value="${esc(s.fixed_days || 26)}"${dis}></div>
+      <div class="fg"><label>Weekly off: window (days ending Sunday)</label><input id="st_win" type="number" min="1" max="14" value="${esc(s.wo_window_days || 7)}"${dis}></div>
+      <div class="fg"><label>Weekly off: at least … days</label><input id="st_mind" type="number" min="0" max="14" value="${esc(s.wo_min_days || 4)}"${dis}></div>
+      <div class="fg"><label>… with more than … hours</label><input id="st_minh" type="number" min="0" max="24" step="0.5" value="${esc(s.wo_min_hours || 5)}"${dis}></div>
+      <div class="fg"><label>Cash (AH) rounding</label><select id="st_round"${dis}><option value="NONE"${s.cash_rounding !== 'RUPEE' ? ' selected' : ''}>None, paise kept (as the sheet)</option><option value="RUPEE"${s.cash_rounding === 'RUPEE' ? ' selected' : ''}>Nearest rupee</option></select></div>
+    </div></div>
+    <div class="card"><h3>My rights <small>set by the Admin: Tab Visibility › HR & Payroll, or Users › Apps</small></h3>
+      <div class="alerts">${Object.keys(RIGHTS).map(k => '<div class="alert ' + (P[k] ? 'green' : '') + '"><span class="dot" style="' + (P[k] ? '' : 'background:#c9d1dc') + '"></span><div><b>' + RIGHTS[k] + '</b> <span class="muted mono" style="font-size:11px">' + k + '</span> · ' + (P[k] ? 'yes' : 'no') + '</div></div>').join('')}</div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Salary classes <small>an employee's rules = their Salary Class row AND their Class row (a class with no row has no restriction)</small></h3>
+    <div class="tw" style="max-height:none"><table class="t" id="clsTbl"><thead><tr><th>Code</th><th>Description</th><th>OT counted (P)</th><th>OT paid (V)</th><th>Weekly off paid (T)</th><th>Fixed pay (W = L)</th><th>Order</th></tr></thead><tbody>
+    ${(BOOT.classes || []).map(clsRow).join('')}</tbody></table></div>
+    ${w ? '<button class="btn sm" style="margin-top:8px" onclick="document.querySelector(\'#clsTbl tbody\').insertAdjacentHTML(\'beforeend\',clsRow({code:\'\',label:\'\',count_ot:true,pay_ot:true,weekly_off_paid:true,fixed_pay:false,sort_no:9},true))">+ Add class</button>' : ''}</div>
+  <div class="card" style="margin-top:14px"><h3>Audit log <small>last 200 changes</small></h3><div id="auditBox" class="loading">Loading…</div></div>`;
+  try {
+    const a = await rpc('hr_audit_list', { p_limit: 200 });
+    $('auditBox').className = ''; $('auditBox').innerHTML = '<div class="tw" style="max-height:420px"><table class="t"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Emp.</th><th>Month</th><th>Detail</th></tr></thead><tbody>'
+      + (a.rows.map(r => '<tr><td>' + new Date(r.at).toLocaleString('en-IN') + '</td><td>' + esc(r.by_name || '') + '</td><td><span class="badge">' + esc(r.action) + '</span></td><td class="mono">' + esc(r.emp_code || '')
+        + '</td><td>' + (r.pay_month ? monthLabel(r.pay_month) : '') + '</td><td class="muted" style="max-width:420px;overflow:hidden;text-overflow:ellipsis" title="' + esc(JSON.stringify(r.detail || '')) + '">' + esc(JSON.stringify(r.detail || '')).slice(0, 140) + '</td></tr>').join('')
+        || '<tr><td colspan="6" class="empty">Nothing yet.</td></tr>') + '</tbody></table></div>';
+  } catch (e) { $('auditBox').textContent = e.message; }
+}
+function clsRow(c, isNew){
+  const w = can('HR_SETTINGS'), d = w ? '' : ' disabled', ck = k => '<td style="text-align:center"><input type="checkbox" data-k="' + k + '"' + (c[k] ? ' checked' : '') + d + '></td>';
+  return '<tr><td>' + (isNew ? '<input class="inp" data-k="code" style="width:110px">' : '<b class="mono" data-code="' + esc(c.code) + '">' + esc(c.code) + '</b>') + '</td>'
+    + '<td><input class="inp" data-k="label" value="' + esc(c.label || '') + '" style="width:100%;min-width:220px"' + d + '></td>'
+    + ck('count_ot') + ck('pay_ot') + ck('weekly_off_paid') + ck('fixed_pay')
+    + '<td><input class="inp" data-k="sort_no" type="number" value="' + esc(c.sort_no) + '" style="width:64px"' + d + '></td></tr>';
+}
+async function saveSettings(btn){
+  const st = { company: $('st_company').value.trim(), unit: $('st_unit').value.trim(), days_basis: $('st_basis').value,
+    fixed_days: +$('st_fixed').value || 26, wo_window_days: +$('st_win').value || 7, wo_min_days: +$('st_mind').value,
+    wo_min_hours: +$('st_minh').value, cash_rounding: $('st_round').value };
+  const classes = [];
+  document.querySelectorAll('#clsTbl tbody tr').forEach(tr => {
+    const codeEl = tr.querySelector('[data-code]'), code = codeEl ? codeEl.dataset.code : (tr.querySelector('[data-k=code]').value || '').trim().toUpperCase();
+    if (!code) return;
+    const o = { code };
+    tr.querySelectorAll('[data-k]').forEach(i => { if (i.dataset.k !== 'code') o[i.dataset.k] = i.type === 'checkbox' ? i.checked : i.value; });
+    classes.push(o);
+  });
+  await busy(btn, async () => { await rpc('hr_save_settings', { p_settings: st, p_classes: classes }); await refreshRuns(); toast('Settings saved. Recompute open months to apply them.', 'ok'); renderSettings(); });
+}
+</script>
+<!-- Floating "← Apps" button (hidden inside iframes / without a session). See app-back.js. -->
+<script src="app-back.js"></script>
+</body>
+</html>
