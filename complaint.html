@@ -339,86 +339,6 @@ function friendlyError(e){
   return m;
 }
 
-// ---- Global AudioContext — warmed on FIRST user interaction ----
-// Browsers block AudioContext.play() until the user has interacted with
-// the page (click / tap / keydown). We create the context early and
-// resume() it on the very first gesture so that later calls to
-// playAlarm() (which come from Realtime events, not user clicks) are
-// never silent.
-const _AudioCtx = window.AudioContext || window.webkitAudioContext;
-let _sharedAudioCtx = null;
-
-function _getAudioCtx() {
-  if (!_AudioCtx) return null;
-  if (!_sharedAudioCtx || _sharedAudioCtx.state === "closed") {
-    _sharedAudioCtx = new _AudioCtx();
-  }
-  // Always try to resume — no-op if already running
-  if (_sharedAudioCtx.state === "suspended") {
-    _sharedAudioCtx.resume().catch(() => {});
-  }
-  return _sharedAudioCtx;
-}
-
-// Warm the AudioContext on the earliest user gesture so that when a
-// Realtime reminder arrives later, sound plays immediately.
-(function warmAudio() {
-  const warm = () => {
-    _getAudioCtx();                               // create + resume
-    document.removeEventListener("click", warm, true);
-    document.removeEventListener("touchstart", warm, true);
-    document.removeEventListener("keydown", warm, true);
-  };
-  document.addEventListener("click", warm, true);
-  document.addEventListener("touchstart", warm, true);
-  document.addEventListener("keydown", warm, true);
-})();
-
-// Three short beeps via the Web Audio API — no audio file, no CDN, so it
-// works even if the factory network is down (purely client-side synthesis).
-// Sound is a nice-to-have: any failure here must never break the UI.
-// Returns a stop() function. Alarm loops every 1.6s until stop() is called.
-function playAlarm(){
-  try{
-    const ctx = _getAudioCtx();
-    if (!ctx) return ()=>{};
-    let stopped = false;
-    let timer = null;
-    const cycle = () => {
-      if (stopped || ctx.state === "closed") return;
-      // If still suspended (user never clicked anything), try again
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      const beep = (t, freq) => {
-        try{
-          const osc = ctx.createOscillator(), gain = ctx.createGain();
-          osc.type = "square"; osc.frequency.value = freq;
-          osc.connect(gain); gain.connect(ctx.destination);
-          gain.gain.setValueAtTime(0.0001, ctx.currentTime + t);
-          gain.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + t + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.3);
-          osc.start(ctx.currentTime + t); osc.stop(ctx.currentTime + t + 0.32);
-        }catch(e){}
-      };
-      beep(0, 880); beep(0.36, 660); beep(0.72, 880);
-      try{ if (navigator.vibrate) navigator.vibrate([300,150,300,150,300]); }catch(e){}
-      timer = setTimeout(cycle, 1600);
-    };
-    cycle();
-    return () => { stopped = true; clearTimeout(timer); };
-  } catch(e){ return ()=>{}; }
-}
-// Fire a native browser notification if the user already granted permission.
-// Requesting permission itself must happen from a real click (see BellButton) —
-// browsers ignore or auto-deny a silent/unsolicited request.
-function notifyBrowser(title, body, tag){
-  try{
-    if (window.Notification && Notification.permission === "granted") {
-      new Notification(title, { body, tag });
-    }
-  } catch(e){ /* ignore */ }
-  try{ if (navigator.vibrate) navigator.vibrate([300,150,300,150,300]); } catch(e){}
-}
-
 // ============================================================
 // 3b. WEB PUSH — Service Worker + Push Subscription
 // ============================================================
@@ -485,35 +405,6 @@ async function subscribePush(userId) {
     );
   } catch (e) { console.warn('Push subscription failed:', e); }
 }
-
-// Trigger server-side push for a specific user (called by Admin on Ring Alarm)
-async function sendPushToUser(targetUserId, taskDesc, message) {
-  try {
-    const { data: { session: s } } = await sb.auth.getSession();
-    if (!s) return;
-    await fetch(PUSH_FN_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${s.access_token}`,
-        'apikey': SUPABASE_ANON,
-      },
-      body: JSON.stringify({ target_user_id: targetUserId, title: 'Task Reminder!', body: taskDesc, message }),
-    });
-  } catch (e) { console.warn('Push send failed:', e); }
-}
-
-// ============================================================
-// 3c. PRESENCE — heartbeat last_online_at every 60s
-// ============================================================
-let _presenceTimer = null;
-function startPresence(userId) {
-  if (_presenceTimer) return;
-  const beat = () => sb.from("cmp_profiles").update({ last_online_at: new Date().toISOString() }).eq("id", userId).then(()=>{});
-  beat();
-  _presenceTimer = setInterval(beat, 60000);
-}
-function stopPresence() { clearInterval(_presenceTimer); _presenceTimer = null; }
 
 // ============================================================
 // 3d. TAB BADGE — track last-seen per section in user_tab_seen
@@ -2681,717 +2572,6 @@ function NoticeBoard({profile, toast, onView}){
 }
 
 // ============================================================
-// 12C. TASKS — Admin delegates with a planned date, the doer confirms it,
-//      Admin can revise the date up to 3 times, completion needs proof.
-// ============================================================
-const TASK_STAGES = [
-  { key:"Pending Confirmation", label:"Awaiting confirmation", hi:"पुष्टि बाकी" },
-  { key:"Assigned",             label:"Assigned",              hi:"सौंपा गया" },
-  { key:"Completed",            label:"Completed",             hi:"पूरा हुआ" },
-];
-
-// Yellow while on track, red once the planned date has passed — only meaningful
-// once a task is actually Assigned (confirmed); Pending/Completed aren't "due".
-function taskUrgency(t){
-  if (t.status !== "Assigned") return null;
-  const today = new Date(); today.setHours(0,0,0,0);
-  const pd = new Date(t.planned_date + "T00:00:00");
-  const diffDays = Math.round((pd - today) / 86400000);
-  if (diffDays < 0) return { tone:"rose",  border:"#f43f5e", label:`${-diffDays} din late` };
-  if (diffDays === 0) return { tone:"amber", border:"#f59e0b", label:"Today" };
-  if (diffDays === 1) return { tone:"amber", border:"#f59e0b", label:"Kal" };
-  return { tone:"amber", border:"#f59e0b", label:`In ${diffDays} days` };
-}
-function TaskStatusBadge({t}){
-  if (t.status === "Pending Confirmation") return <Badge tone="violet">Awaiting confirmation</Badge>;
-  if (t.status === "Completed") return <Badge tone="emerald">Completed</Badge>;
-  const u = taskUrgency(t);
-  return <Badge tone={u.tone}>{u.tone==="rose" ? `Overdue · ${u.label}` : `On track · ${u.label}`}</Badge>;
-}
-
-// Shared single-attachment picker (image from camera OR gallery, OR one PDF) — used for
-// task completion proof. Mirrors the Notice Board attachment pattern.
-function ProofPicker({att, setAtt, toast}){
-  const [imgBusy, setImgBusy] = useState(false);
-  const camRef = useRef(null), galRef = useRef(null), pdfRef = useRef(null);
-
-  const pickImage = async (file) => {
-    if (!file) return;
-    setImgBusy(true);
-    try { const d = await compressImage(file); setAtt({data:d, mime:"image/jpeg", name:null}); }
-    catch(e){ toast(e.message, true); }
-    finally { setImgBusy(false); if (camRef.current) camRef.current.value = ""; if (galRef.current) galRef.current.value = ""; }
-  };
-  const pickPdf = (file) => {
-    if (!file) return;
-    if (file.type !== "application/pdf") { toast("Only PDF files are allowed.", true); return; }
-    if (file.size > NB_MAX_PDF_BYTES) { toast("The PDF is larger than 3 MB.", true); return; }
-    const reader = new FileReader();
-    reader.onerror = () => toast("The PDF could not be read.", true);
-    reader.onload = () => setAtt({data:reader.result, mime:"application/pdf", name:file.name});
-    reader.readAsDataURL(file);
-    if (pdfRef.current) pdfRef.current.value = "";
-  };
-
-  return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-3">
-      {!att ? (
-        <div className="flex gap-2 flex-wrap">
-          <Btn size="sm" variant="outline" icon={I.camera} type="button" disabled={imgBusy} onClick={()=>camRef.current?.click()}>
-            {imgBusy ? "Adding…" : "Camera"}
-          </Btn>
-          <Btn size="sm" variant="outline" icon={I.image} type="button" disabled={imgBusy} onClick={()=>galRef.current?.click()}>
-            Gallery
-          </Btn>
-          <Btn size="sm" variant="outline" icon={I.doc} type="button" onClick={()=>pdfRef.current?.click()}>PDF</Btn>
-        </div>
-      ) : att.mime === "application/pdf" ? (
-        <div className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[12.5px]">
-          <Ico d={I.doc} className="w-4 h-4 text-rose-500" /><span className="truncate max-w-[200px]">{att.name}</span>
-          <button type="button" onClick={()=>setAtt(null)} className="ml-1 text-slate-400 hover:text-slate-700"><Ico d={I.x} className="w-3.5 h-3.5"/></button>
-        </div>
-      ) : (
-        <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-300 bg-white">
-          <img src={att.data} className="w-full h-full object-cover" alt="Proof preview" />
-          <button type="button" onClick={()=>setAtt(null)}
-            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/70 text-white flex items-center justify-center">
-            <Ico d={I.x} className="w-3 h-3"/>
-          </button>
-        </div>
-      )}
-      {/* Camera input: capture="environment" opens rear camera directly */}
-      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>pickImage(e.target.files?.[0])} />
-      {/* Gallery input: NO capture attr → opens gallery / file picker */}
-      <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={e=>pickImage(e.target.files?.[0])} />
-      <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={e=>pickPdf(e.target.files?.[0])} />
-      <p className="text-[11px] text-slate-500 mt-2.5">Take a photo with the camera or choose an existing one from the gallery. You can also attach a PDF.</p>
-    </div>
-  );
-}
-
-function TaskFormModal({profile, doers, onClose, onSaved, toast}){
-  const [f, setF] = useState({ assigned_to:"", planned_date:"", task_desc:"" });
-  const [errs, setErrs] = useState({});
-  const [busy, setBusy] = useState(false);
-  const set = (k,v) => setF(s => ({...s, [k]:v}));
-
-  const save = async () => {
-    const e = {};
-    if (!f.assigned_to) e.assigned_to = "Choose a doer.";
-    if (!f.planned_date) e.planned_date = "Choose a planned date.";
-    if (!f.task_desc || f.task_desc.trim().length < 4) e.task_desc = "Please describe the task in a little more detail.";
-    setErrs(e);
-    if (Object.keys(e).length) return;
-
-    setBusy(true);
-    const { error } = await sb.from("cmp_tasks").insert({
-      assigned_to: f.assigned_to, planned_date: f.planned_date, task_desc: f.task_desc.trim(),
-    });
-    setBusy(false);
-    if (error) return toast(friendlyError(error), true);
-    toast("Task assigned. Waiting for the doer to confirm.");
-    onSaved(); onClose();
-  };
-
-  return (
-    <Modal title="Add New Task" subtitle="नया टास्क सौंपें" onClose={onClose}
-      footer={<>
-        <Btn variant="outline" onClick={onClose}>Cancel</Btn>
-        <Btn variant="primary" onClick={save} disabled={busy}>{busy?<Spinner/>:null}{busy?"Saving…":"Assign task"}</Btn>
-      </>}>
-      <Field label="Select doer" hindi="किसे सौंपें" required error={errs.assigned_to}>
-        <select className={inputCls(errs.assigned_to)} value={f.assigned_to} onChange={e=>set("assigned_to", e.target.value)}>
-          <option value="">Choose a person…</option>
-          {doers.map(d => (
-            <option key={d.id} value={d.id}>{d.name} — {d.department} · {d.mobile}</option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Planned date" hindi="तारीख" required error={errs.planned_date}
-             hint="The task counts as assigned only after the doer confirms it.">
-        <input type="date" className={inputCls(errs.planned_date)} value={f.planned_date} min={todayStr()}
-               onChange={e=>set("planned_date", e.target.value)} />
-      </Field>
-      <Field label="Task" hindi="टास्क का विवरण" required error={errs.task_desc}>
-        <textarea className={inputCls(errs.task_desc)+" min-h-[90px] resize-y"} value={f.task_desc}
-                  onChange={e=>set("task_desc", e.target.value)} placeholder="Describe the task in detail" />
-      </Field>
-    </Modal>
-  );
-}
-
-function TaskRow({t, onOpen}){
-  const u = taskUrgency(t);
-  const borderColor = t.status === "Completed" ? "#10b981" : t.status === "Pending Confirmation" ? "#8b5cf6" : (u ? u.border : "#cbd5e1");
-  return (
-    <button onClick={()=>onOpen(t)}
-      className="w-full text-left px-3 sm:px-4 py-3 sm:py-3.5 hover:bg-slate-100/80 active:bg-slate-100 transition-colors border-l-[3px] card-press"
-      style={{borderLeftColor: borderColor}}>
-      {/* Top row: name + badge */}
-      <div className="flex items-center gap-2 mb-1">
-        <span className="font-semibold text-[13px] truncate flex-1">{t.assigned_to_name}</span>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {t.date_change_requested && <Badge tone="amber">Change req.</Badge>}
-          <TaskStatusBadge t={t} />
-        </div>
-      </div>
-      {/* Task description */}
-      <p className="text-[12.5px] sm:text-[13px] text-slate-700 truncate leading-snug">{t.task_desc}</p>
-      {/* Bottom row: meta */}
-      <div className="flex items-center gap-2 mt-1.5 text-[10.5px] sm:text-[11.5px] text-slate-500">
-        <span>{fmtDate(t.planned_date)}</span>
-        <span>·</span>
-        <span className="truncate">By {t.assigned_by_name}</span>
-        {t.revision_count > 0 && <span className="ml-auto shrink-0">Revised {t.revision_count}/3</span>}
-      </div>
-    </button>
-  );
-}
-
-// Ring Alarm section with delivery status (online/offline, push sent, ring received)
-function RingAlarmSection({t, ringMsg, setRingMsg, ringAlarm, ringBusy, ringSent}){
-  const [doerStatus, setDoerStatus] = useState(null); // {online, lastSeen}
-  const [reminders, setReminders] = useState([]);
-
-  // Fetch doer's last_online_at + recent reminders for this task
-  useEffect(()=>{
-    let alive = true;
-    (async()=>{
-      const [profRes, remRes] = await Promise.all([
-        sb.from("cmp_profiles").select("last_online_at").eq("id", t.assigned_to).maybeSingle(),
-        sb.from("cmp_task_reminders").select("id,sent_at,acknowledged_at,received_at").eq("task_id", t.id).order("sent_at",{ascending:false}).limit(5),
-      ]);
-      if (!alive) return;
-      if (profRes.data){
-        const last = profRes.data.last_online_at;
-        const online = last && (Date.now() - new Date(last).getTime()) < 90000; // 90s threshold
-        setDoerStatus({online, lastSeen: last});
-      }
-      if (remRes.data) setReminders(remRes.data);
-    })();
-    return ()=>{ alive = false; };
-  },[t.id, t.assigned_to, ringSent]); // re-fetch after sending ring
-
-  // Live-update reminders when received_at or acknowledged_at changes
-  useEffect(()=>{
-    const ch = sb.channel(`ring_status_${t.id}`)
-      .on("postgres_changes", {event:"UPDATE", schema:"public", table:"cmp_task_reminders", filter:`task_id=eq.${t.id}`},
-        payload => { setReminders(prev => prev.map(r => r.id===payload.new.id ? {...r, ...payload.new} : r)); })
-      .subscribe();
-    return ()=>{ sb.removeChannel(ch); };
-  },[t.id]);
-
-  const fmtAgo = (iso) => {
-    if (!iso) return "—";
-    const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-    if (sec < 60) return "just now";
-    if (sec < 3600) return Math.floor(sec/60) + " min ago";
-    if (sec < 86400) return Math.floor(sec/3600) + " hrs ago";
-    return Math.floor(sec/86400) + " days ago";
-  };
-
-  return (
-    <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
-      <p className="text-[11px] uppercase tracking-wide text-amber-700 font-semibold mb-2 flex items-center gap-1.5">
-        <Ico d={I.bell} className="w-3.5 h-3.5" /> Ring the alarm on the doer's device
-      </p>
-
-      {/* Doer status indicator */}
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <div className="flex items-center gap-1.5">
-          <span className={`w-2.5 h-2.5 rounded-full ${doerStatus?.online ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
-          <span className="text-[12.5px] font-medium text-slate-700">
-            {t.assigned_to_name}: {doerStatus?.online ? "Online" : "Offline"}
-          </span>
-        </div>
-        {doerStatus && !doerStatus.online && doerStatus.lastSeen && (
-          <span className="text-[11px] text-slate-500">Last seen: {fmtAgo(doerStatus.lastSeen)}</span>
-        )}
-      </div>
-
-      <p className="text-[12px] text-slate-500 mb-2.5">
-        Sending a ring triggers both an in-app alarm and a push notification. The push notification arrives even when the browser is closed.
-      </p>
-
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <input className={inputCls(false)+" flex-1 min-w-[160px]"} value={ringMsg}
-               onChange={e=>setRingMsg(e.target.value)} placeholder="Message (optional)…" />
-        <Btn size="sm" variant="primary" icon={I.bell} onClick={ringAlarm} disabled={ringBusy}>
-          {ringBusy?<Spinner/>:null}{ringSent ? "Sent" : "Ring alarm"}
-        </Btn>
-      </div>
-
-      {/* Recent ring delivery status */}
-      {reminders.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[10.5px] uppercase tracking-wide text-slate-500">Recent rings — delivery status</p>
-          {reminders.map(r => (
-            <div key={r.id} className="flex items-center gap-2 text-[12px] bg-white/60 rounded-lg px-3 py-1.5 flex-wrap">
-              <span className="text-slate-500 shrink-0">{fmtDateTime(r.sent_at)}</span>
-              <span className="flex items-center gap-1">
-                <Ico d={I.send} className="w-3 h-3 text-slate-400" />
-                <span className="text-slate-600">Sent</span>
-              </span>
-              {r.received_at ? (
-                <span className="flex items-center gap-1 text-emerald-700">
-                  <Ico d={I.wifi} className="w-3 h-3" />
-                  <span>Device pe mila</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-slate-400">
-                  <Ico d={I.wifiOff} className="w-3 h-3" />
-                  <span>Not found on the device yet</span>
-                </span>
-              )}
-              {r.acknowledged_at ? (
-                <span className="flex items-center gap-1 text-teal-700 font-semibold">
-                  <Ico d={I.check} className="w-3 h-3" />
-                  <span>Dekh liya</span>
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-amber-600">
-                  <Ico d={I.clock} className="w-3 h-3" />
-                  <span>Pending</span>
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TaskDetailModal({task, profile, doers, onClose, onSaved, toast}){
-  const t = task;
-  const isAdmin = profile.role === "Admin";
-  const isDoer = t.assigned_to === profile.id;
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [newDate, setNewDate] = useState(t.planned_date);
-  const [dateRemark, setDateRemark] = useState("");
-  const [doerMode, setDoerMode] = useState(null); // null | "confirm" | "change"
-  const [doerRemark, setDoerRemark] = useState("");
-  const [note, setNote] = useState("");
-  const [proof, setProof] = useState(null);
-  const [confirmDel, setConfirmDel] = useState(false);
-  const [delBusy, setDelBusy] = useState(false);
-  const [ringMsg, setRingMsg] = useState("");
-  const [ringBusy, setRingBusy] = useState(false);
-  const [ringSent, setRingSent] = useState(false);
-
-  const run = async (patch, msg) => {
-    setBusy(true); setErr("");
-    const { error } = await sb.from("cmp_tasks").update(patch).eq("id", t.id);
-    setBusy(false);
-    if (error){ setErr(friendlyError(error)); return; }
-    toast(msg); onSaved(); onClose();
-  };
-
-  const updateDate = () => {
-    if (!newDate) return setErr("Choose a date.");
-    if (newDate === t.planned_date) return onClose();
-    run({ planned_date:newDate, date_remarks: dateRemark.trim() || null },
-      t.status === "Pending Confirmation" ? "Planned date updated." : `Planned date revised (${t.revision_count+1}/3).`);
-  };
-  const confirmDate = () => run({ status:"Assigned", doer_remarks: doerRemark.trim() || null }, "Task confirmed. It is now assigned.");
-  const requestChange = () => {
-    if (!doerRemark.trim()) return setErr("Please give the reason for the date change.");
-    run({ doer_remarks: doerRemark.trim() }, "Date change request sent to the Admin.");
-  };
-  const markDone = () => {
-    if (!proof) return setErr("A photo or document is required.");
-    run({ status:"Completed", proof_data:proof.data, proof_mime:proof.mime, proof_name:proof.name, completion_note: note.trim() || null },
-      `Task marked as complete.`);
-  };
-  const doDelete = async () => {
-    setDelBusy(true);
-    const { error } = await sb.from("cmp_tasks").delete().eq("id", t.id);
-    setDelBusy(false); setConfirmDel(false);
-    if (error) return toast(friendlyError(error), true);
-    toast("Task deleted."); onSaved(); onClose();
-  };
-  const ringAlarm = async () => {
-    setRingBusy(true); setErr("");
-    const { error } = await sb.from("cmp_task_reminders").insert({ task_id: t.id, message: ringMsg.trim() || null });
-    setRingBusy(false);
-    if (error) return setErr(friendlyError(error));
-    // Also fire server-side Web Push (background notification even if browser is closed)
-    sendPushToUser(t.assigned_to, t.task_desc, ringMsg.trim() || null);
-    setRingMsg(""); setRingSent(true);
-    toast("Reminder sent, along with a push notification.");
-    setTimeout(()=>setRingSent(false), 4000);
-  };
-
-  const Row = ({k, v}) => (
-    <div className="min-w-0"><p className="text-[10.5px] uppercase tracking-wide text-slate-500">{k}</p><p className="text-[13.5px] text-slate-800 break-words">{v}</p></div>
-  );
-
-  return (
-    <Modal title="Task" subtitle={`${t.assigned_to_name} · ${fmtDate(t.planned_date)}`} onClose={onClose}
-      footer={<>
-        {isAdmin && <Btn variant="danger" icon={I.trash} className="mr-auto" onClick={()=>setConfirmDel(true)} disabled={busy}>Delete</Btn>}
-        <Btn variant="outline" onClick={onClose}>Close</Btn>
-      </>}>
-      <div className="flex items-center gap-2 flex-wrap mb-4">
-        <TaskStatusBadge t={t} />
-        {t.first_planned_date !== t.planned_date && <Badge tone="slate">First date: {fmtDate(t.first_planned_date)}</Badge>}
-        {t.date_change_requested && <Badge tone="amber">Doer has requested a date change</Badge>}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <Row k="Doer" v={<>{t.assigned_to_name}<br/><span className="text-slate-500 font-mono text-[12px]">{t.assigned_to_mobile}</span></>} />
-        <Row k="Assigned by" v={t.assigned_by_name} />
-      </div>
-
-      <div className="mb-4">
-        <p className="text-[10.5px] uppercase tracking-wide text-slate-500 mb-1.5">Task / विवरण</p>
-        <p className="rounded-lg bg-slate-100 px-3.5 py-3 text-[13.5px] whitespace-pre-wrap leading-relaxed">{t.task_desc}</p>
-      </div>
-
-      {t.revision_history?.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[10.5px] uppercase tracking-wide text-slate-500 mb-1.5">Revision history</p>
-          <div className="rounded-xl border border-slate-200 divide-y divide-slate-200">
-            {t.revision_history.map((r,i)=>(
-              <div key={i} className="px-3.5 py-2 text-[12.5px]">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  {r.event === "confirmed" ? (
-                    <><Ico d={I.check} className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      <span className="text-slate-700 font-semibold">Confirmed {fmtDate(r.date)}</span></>
-                  ) : r.event === "change_requested" ? (
-                    <><Ico d={I.alert} className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="text-slate-700 font-semibold">Date change maangi (tha {fmtDate(r.date)})</span></>
-                  ) : (
-                    <><Ico d={I.refresh} className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="text-slate-500">{fmtDate(r.old_date)} → <span className="text-slate-800 font-semibold">{fmtDate(r.new_date)}</span></span>
-                      {r.stage === "Pending Confirmation" && <Badge tone="slate">Pre-confirm</Badge>}</>
-                  )}
-                  <span className="ml-auto text-slate-400 shrink-0">{r.revised_by} · {fmtDateTime(r.revised_at)}</span>
-                </div>
-                {r.remarks ? <p className="text-slate-600 mt-1 pl-6 whitespace-pre-wrap">"{r.remarks}"</p> : null}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {isAdmin && t.status !== "Completed" && (
-        <RingAlarmSection t={t} ringMsg={ringMsg} setRingMsg={setRingMsg} ringAlarm={ringAlarm} ringBusy={ringBusy} ringSent={ringSent} />
-      )}
-
-      {t.status === "Completed" && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-4">
-          <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-2">Completed · {fmtDateTime(t.completed_at)}</p>
-          {t.completion_note ? <p className="text-[13px] text-slate-700 whitespace-pre-wrap mb-2">{t.completion_note}</p> : null}
-          {t.proof_mime === "application/pdf" ? (
-            <a href={t.proof_data} download={t.proof_name || "proof.pdf"} target="_blank" rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-[12.5px] text-slate-700 hover:border-slate-400">
-              <Ico d={I.doc} className="w-4 h-4 text-rose-500" />{t.proof_name || "Proof.pdf"}
-            </a>
-          ) : (
-            <img src={t.proof_data} alt="Completion proof" className="w-28 h-28 rounded-lg object-cover border border-slate-300" />
-          )}
-        </div>
-      )}
-
-      {/* ---------- ADMIN: free edit before confirmation / capped revision after ---------- */}
-      {isAdmin && t.status !== "Completed" && (
-        <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 mb-4">
-          <p className="text-[11px] uppercase tracking-wide text-teal-700 font-semibold mb-3">
-            {t.status === "Pending Confirmation" ? "Change the planned date (free until confirmed)" : `Revise the planned date (${t.revision_count}/3 used)`}
-          </p>
-          {t.status === "Assigned" && t.revision_count >= 3 ? (
-            <p className="text-[13px] text-rose-600">The revision limit (3/3) has been used up; the date can no longer be changed.</p>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 flex-wrap mb-2.5">
-                <input type="date" className={inputCls(false)+" w-auto"} value={newDate} min={todayStr()} onChange={e=>setNewDate(e.target.value)} />
-                <Btn size="sm" variant="primary" onClick={updateDate} disabled={busy}>{busy?<Spinner/>:null}Save date</Btn>
-              </div>
-              <textarea className={inputCls(false)+" min-h-[52px] resize-y"} value={dateRemark}
-                        onChange={e=>setDateRemark(e.target.value)} placeholder="Date badalne ki wajah (optional) — remarks…" />
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ---------- DOER: confirm the date, or ask admin to change it ---------- */}
-      {isDoer && t.status === "Pending Confirmation" && (
-        <div className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 mb-4">
-          <p className="text-[13px] font-semibold text-violet-800 mb-1">Confirm this planned date?</p>
-          <p className="text-[12.5px] text-slate-500 mb-3">The task counts as assigned to you only after you confirm.</p>
-
-          {doerMode === null && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Btn variant="ok" icon={I.check} onClick={()=>setDoerMode("confirm")}>Confirm {fmtDate(t.planned_date)}</Btn>
-              <Btn variant="outline" icon={I.calendar} onClick={()=>setDoerMode("change")}>Request a date change</Btn>
-            </div>
-          )}
-
-          {doerMode === "confirm" && (
-            <>
-              <textarea className={inputCls(false)+" min-h-[52px] resize-y mb-2.5"} value={doerRemark}
-                        onChange={e=>setDoerRemark(e.target.value)} placeholder="Remark (optional)…" />
-              <div className="flex items-center gap-2 flex-wrap">
-                <Btn variant="ok" icon={I.check} onClick={confirmDate} disabled={busy}>{busy?<Spinner/>:null}Confirm {fmtDate(t.planned_date)}</Btn>
-                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Back</Btn>
-              </div>
-            </>
-          )}
-
-          {doerMode === "change" && (
-            <>
-              <p className="text-[12px] text-slate-500 mb-2">You can't change the date yourself. Tell the Admin the reason and they will revise it.</p>
-              <textarea className={inputCls(false)+" min-h-[52px] resize-y mb-2.5"} value={doerRemark}
-                        onChange={e=>setDoerRemark(e.target.value)} placeholder="Reason for the date change… (required)" />
-              <div className="flex items-center gap-2 flex-wrap">
-                <Btn variant="primary" icon={I.alert} onClick={requestChange} disabled={busy}>{busy?<Spinner/>:null}Send request</Btn>
-                <Btn variant="outline" onClick={()=>{setDoerMode(null); setDoerRemark("");}} disabled={busy}>Back</Btn>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ---------- DOER: mark complete with mandatory proof ---------- */}
-      {isDoer && t.status === "Assigned" && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 mb-4">
-          <p className="text-[11px] uppercase tracking-wide text-emerald-700 font-semibold mb-3">Complete the task</p>
-          <Field label="Proof" hindi="फोटो / दस्तावेज़" required>
-            <ProofPicker att={proof} setAtt={setProof} toast={toast} />
-          </Field>
-          <Field label="Note" hindi="टिप्पणी (optional)">
-            <textarea className={inputCls(false)+" min-h-[64px] resize-y"} value={note}
-                      onChange={e=>setNote(e.target.value)} placeholder="What was done…" />
-          </Field>
-          <Btn variant="ok" icon={I.check} onClick={markDone} disabled={busy}>{busy?<Spinner/>:null}Mark complete</Btn>
-        </div>
-      )}
-
-      {err ? (
-        <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 text-rose-700 px-3 py-2.5 text-[13px]">
-          <Ico d={I.alert} className="w-4 h-4 mt-0.5 shrink-0" /><span>{err}</span>
-        </div>
-      ) : null}
-
-      {confirmDel && (
-        <div className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-             onMouseDown={e=>{ if(e.target===e.currentTarget && !delBusy) setConfirmDel(false); }}>
-          <div className="bg-white border border-slate-200 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl">
-            <div className="px-5 py-4 border-b border-slate-200"><h3 className="font-semibold text-[15px]">Delete this task?</h3></div>
-            <div className="px-5 py-4"><p className="text-[13.5px] text-slate-700">This task will be removed permanently.</p></div>
-            <div className="px-5 py-3.5 border-t border-slate-200 flex gap-2 justify-end">
-              <Btn variant="outline" onClick={()=>setConfirmDel(false)} disabled={delBusy}>Cancel</Btn>
-              <Btn variant="danger" onClick={doDelete} disabled={delBusy}>{delBusy?<Spinner/>:null}Delete</Btn>
-            </div>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// Both the Admin's full board and everyone's "My Tasks" view share this list
-// engine — realtime-subscribed, filterable, tabbed by stage.
-function TaskList({profile, doers, scope, toast, tabSeenMap, onTabSeenRefresh}){
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [stage, setStage] = useState("Assigned");
-  const [q, setQ] = useState("");
-  const [doerF, setDoerF] = useState("All");
-  const [openTask, setOpenTask] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-
-  const load = useCallback(async ()=>{
-    setLoading(true);
-    let query = sb.from("cmp_tasks").select("*").order("created_at", {ascending:false});
-    if (scope === "mine") query = query.eq("assigned_to", profile.id);
-    const { data, error } = await query;
-    setLoading(false);
-    if (error) return toast(friendlyError(error), true);
-    setTasks(data || []);
-  },[toast, scope, profile.id]);
-  useEffect(()=>{ load(); },[load]);
-
-  useEffect(()=>{
-    const channel = sb.channel(`tasks_live_${scope}`)
-      .on("postgres_changes", {event:"*", schema:"public", table:"cmp_tasks"}, payload => {
-        setTasks(prev => {
-          const belongs = row => scope !== "mine" || row.assigned_to === profile.id;
-          if (payload.eventType === "INSERT"){
-            if (!belongs(payload.new) || prev.some(x=>x.id===payload.new.id)) return prev;
-            return [payload.new, ...prev];
-          }
-          if (payload.eventType === "UPDATE"){
-            if (!belongs(payload.new)) return prev.filter(x=>x.id!==payload.new.id);
-            return prev.map(x => x.id===payload.new.id ? payload.new : x);
-          }
-          if (payload.eventType === "DELETE") return prev.filter(x => x.id !== payload.old.id);
-          return prev;
-        });
-      }).subscribe();
-    return ()=>{ sb.removeChannel(channel); };
-  },[scope, profile.id]);
-
-  // Keep an open detail modal in sync with live updates.
-  useEffect(()=>{
-    if (!openTask) return;
-    const fresh = tasks.find(x=>x.id===openTask.id);
-    if (fresh && fresh.updated_at !== openTask.updated_at) setOpenTask(fresh);
-    if (!fresh) setOpenTask(null);
-  },[tasks]);   // eslint-disable-line
-
-  // Mark current sub-tab as seen on mount
-  const switchStage = (key) => { setStage(key); markTabSeen("tasks:" + key); if (onTabSeenRefresh) onTabSeenRefresh(); };
-  useEffect(() => { markTabSeen("tasks:" + stage); }, []); // eslint-disable-line
-
-  const counts = useMemo(()=>{
-    const o = {}; TASK_STAGES.forEach(s => o[s.key] = tasks.filter(t=>t.status===s.key).length); return o;
-  },[tasks]);
-
-  // Unseen count per sub-tab
-  const unseenCounts = useMemo(()=>{
-    const o = {};
-    TASK_STAGES.forEach(s => {
-      const lastSeen = tabSeenMap?.["tasks:" + s.key];
-      if (!lastSeen) { o[s.key] = tasks.filter(t=>t.status===s.key).length; return; }
-      o[s.key] = tasks.filter(t => t.status===s.key && t.updated_at > lastSeen).length;
-    });
-    return o;
-  },[tasks, tabSeenMap]);
-
-  const shown = useMemo(()=>{
-    const n = q.trim().toLowerCase();
-    return tasks.filter(t => {
-      if (t.status !== stage) return false;
-      if (doerF !== "All" && t.assigned_to !== doerF) return false;
-      if (n && ![t.assigned_to_name, t.task_desc, t.assigned_by_name].join(" ").toLowerCase().includes(n)) return false;
-      return true;
-    }).sort((a,b) => (a.planned_date||"").localeCompare(b.planned_date||""));
-  },[tasks, stage, q, doerF]);
-
-  // Swipe to switch sub-tabs
-  const stageKeys = TASK_STAGES.map(s=>s.key);
-  const swipeRef = useSwipe(
-    () => { const i = stageKeys.indexOf(stage); if (i < stageKeys.length-1) switchStage(stageKeys[i+1]); },
-    () => { const i = stageKeys.indexOf(stage); if (i > 0) switchStage(stageKeys[i-1]); }
-  );
-
-  // Stage tab colors
-  const stageColors = {
-    "Pending Confirmation": { active:"bg-violet-500/15 border-violet-500/60 text-violet-800", dot:"bg-violet-500" },
-    "Assigned":            { active:"bg-teal-500/15 border-teal-500/60 text-teal-800", dot:"bg-teal-500" },
-    "Completed":           { active:"bg-emerald-500/15 border-emerald-500/60 text-emerald-800", dot:"bg-emerald-500" },
-  };
-
-  return (
-    <div ref={swipeRef}>
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <div>
-          <h2 className="font-bold text-[15px] sm:text-[17px]">{scope==="mine" ? "My Tasks" : "All Tasks"}</h2>
-          <p className="text-[11px] sm:text-[12.5px] text-slate-500">{scope==="mine" ? "आपके टास्क" : "सब टास्क — admin only"}</p>
-        </div>
-        {scope !== "mine" && (
-          <Btn variant="primary" size="sm" icon={I.plus} className="ml-auto" onClick={()=>setShowNew(true)}>Add Task</Btn>
-        )}
-      </div>
-
-      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-0.5">
-        {TASK_STAGES.map(s => {
-          const sc = stageColors[s.key] || stageColors["Assigned"];
-          const isActive = stage === s.key;
-          const unseen = unseenCounts[s.key] || 0;
-          return (
-            <button key={s.key} onClick={()=>switchStage(s.key)}
-              className={`shrink-0 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-left transition-all border relative ${
-                isActive ? sc.active : "bg-white border-slate-200 hover:border-slate-300 text-slate-700"}`}>
-              {unseen > 0 && !isActive && (
-                <span className={`absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full ${sc.dot} text-white text-[9px] font-bold flex items-center justify-center px-0.5 shadow-sm`}>
-                  {unseen > 99 ? "99+" : unseen}
-                </span>
-              )}
-              <span className="block text-[12px] sm:text-[13px] font-semibold">
-                {s.label} <span className="font-mono text-[10.5px] sm:text-[11.5px] opacity-70">{counts[s.key]||0}</span>
-              </span>
-              <span className="block text-[9.5px] sm:text-[11px] text-slate-500">{s.hi}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex gap-2 mb-3 flex-wrap">
-        <div className="relative grow min-w-0 w-full sm:w-auto sm:min-w-[180px]">
-          <Ico d={I.search} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className={inputCls(false)+" pl-9 text-[14px]"} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name or task..." />
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          {scope !== "mine" && (
-            <select className={inputCls(false)+" flex-1 sm:w-auto text-[14px]"} value={doerF} onChange={e=>setDoerF(e.target.value)}>
-              <option value="All">All doers</option>
-              {doers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          )}
-          <Btn variant="outline" icon={I.refresh} onClick={load} aria-label="Refresh" className="shrink-0" />
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white sm:bg-slate-50 overflow-hidden divide-y divide-slate-100 sm:divide-slate-200 shadow-sm">
-        {loading ? Array.from({length:4}).map((_,i)=>(
-          <div key={i} className="px-3 py-3.5 sm:px-4 sm:py-4"><div className="h-3 rounded bg-slate-100 animate-pulse" style={{width:`${55+i*9}%`}} /></div>
-        )) : shown.length === 0 ? (
-          <div className="px-4 py-12 sm:py-16 text-center">
-            <Ico d={I.calendar} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
-            <p className="font-semibold text-slate-700 text-[13.5px]">No tasks here</p>
-            <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
-              {tasks.length ? "Try clearing the filter or search." : (scope==="mine" ? "No tasks have been assigned yet." : 'Create a new task with "Add Task".')}
-            </p>
-          </div>
-        ) : shown.map(t => <TaskRow key={t.id} t={t} onOpen={setOpenTask} />)}
-      </div>
-
-      {showNew && (
-        <TaskFormModal profile={profile} doers={doers} toast={toast} onClose={()=>setShowNew(false)} onSaved={load} />
-      )}
-      {openTask && (
-        <TaskDetailModal task={openTask} profile={profile} doers={doers} toast={toast}
-          onClose={()=>setOpenTask(null)} onSaved={load} />
-      )}
-    </div>
-  );
-}
-
-function TasksPanel({profile, toast, tabSeenMap, onTabSeenRefresh}){
-  const [sub, setSub] = useState("mine");
-  const [doers, setDoers] = useState([]);
-
-  useEffect(()=>{
-    sb.from("cmp_profiles").select("id,name,mobile,department").eq("is_active", true).order("name")
-      .then(({data}) => setDoers(data || []));
-  },[]);
-
-  if (profile.role !== "Admin") return <TaskList profile={profile} doers={doers} scope="mine" toast={toast} tabSeenMap={tabSeenMap} onTabSeenRefresh={onTabSeenRefresh} />;
-
-  return (
-    <div>
-      <div className="flex rounded-lg border border-slate-200 overflow-hidden w-fit mb-4">
-        <button onClick={()=>setSub("mine")}
-          className={`px-3.5 py-2.5 text-[13px] font-medium min-h-[40px] ${sub==="mine"?"bg-slate-100 text-slate-900":"text-slate-500 hover:text-slate-800"}`}>
-          My Tasks
-        </button>
-        <button onClick={()=>setSub("all")}
-          className={`px-3.5 py-2.5 text-[13px] font-medium min-h-[40px] ${sub==="all"?"bg-slate-100 text-slate-900":"text-slate-500 hover:text-slate-800"}`}>
-          All Tasks
-        </button>
-      </div>
-      {sub === "mine"
-        ? <TaskList profile={profile} doers={doers} scope="mine" toast={toast} tabSeenMap={tabSeenMap} onTabSeenRefresh={onTabSeenRefresh} />
-        : <TaskList profile={profile} doers={doers} scope="all" toast={toast} tabSeenMap={tabSeenMap} onTabSeenRefresh={onTabSeenRefresh} />}
-    </div>
-  );
-}
-
-// ============================================================
 // 13. STATS STRIP
 // ============================================================
 function Stats({rows, profile, D}){
@@ -3437,11 +2617,11 @@ function Stats({rows, profile, D}){
 }
 
 // ============================================================
-// 13B. TASK REMINDERS — Admin "ring alarm" pings a doer's device.
-//      In-tab: Sound + browser Notification fire via Realtime.
-//      Background: Server-side DB trigger sends Web Push even if
-//      the browser is fully closed — 100% delivery guarantee.
-//      Acknowledging is mandatory so nothing silently vanishes.
+// 13B. ALERTS — asks for notification permission from a real click.
+//      The complaint push notifications (server-side DB triggers →
+//      send-push, see section 3b) only show once it is granted.
+//      The Tasks system and its "ring alarm" reminders were removed;
+//      this button now serves the complaint alerts alone.
 // ============================================================
 function BellButton({toast}){
   const [perm, setPerm] = useState(()=> (window.Notification ? Notification.permission : "unsupported"));
@@ -3450,100 +2630,13 @@ function BellButton({toast}){
     try{
       const p = await Notification.requestPermission();
       setPerm(p);
-      toast(p === "granted" ? "Reminder alerts are on." : "Alerts were not allowed; only the in-app alarm will ring.");
+      toast(p === "granted" ? "Complaint alerts are on." : "Alerts were not allowed; complaint updates will show only inside the app.");
     } catch(e){ toast("This browser does not support notifications.", true); }
   };
   return (
-    <Btn variant="ghost" icon={I.bell} onClick={ask} className="shrink-0" title="Turn on reminder alerts">
+    <Btn variant="ghost" icon={I.bell} onClick={ask} className="shrink-0" title="Turn on complaint alerts">
       <span className="hidden sm:inline">Alerts</span>
     </Btn>
-  );
-}
-
-function ReminderWatcher({profile}){
-  const [queue, setQueue] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const stopAlarmRef = useRef(null);
-  const notifyTimerRef = useRef(null);
-
-  // Start / stop continuous alarm based on queue
-  useEffect(()=>{
-    if (queue.length > 0 && !stopAlarmRef.current) {
-      // Start looping alarm
-      stopAlarmRef.current = playAlarm();
-      // Also re-fire browser notification every 15s so it's hard to miss
-      const reNotify = () => {
-        const top = queue[0];
-        if (top) notifyBrowser("PENDING — Task Reminder!", top.task_desc_snapshot, `task-${top.task_id}`);
-      };
-      notifyTimerRef.current = setInterval(reNotify, 15000);
-    }
-    if (queue.length === 0 && stopAlarmRef.current) {
-      stopAlarmRef.current();
-      stopAlarmRef.current = null;
-      clearInterval(notifyTimerRef.current);
-      notifyTimerRef.current = null;
-    }
-    return () => {
-      if (stopAlarmRef.current) { stopAlarmRef.current(); stopAlarmRef.current = null; }
-      if (notifyTimerRef.current) { clearInterval(notifyTimerRef.current); notifyTimerRef.current = null; }
-    };
-  },[queue.length]);
-
-  // Realtime subscription
-  useEffect(()=>{
-    if (!profile?.id) return;
-    const channel = sb.channel(`task_reminders_${profile.id}`)
-      .on("postgres_changes",
-        {event:"INSERT", schema:"public", table:"cmp_task_reminders", filter:`assigned_to=eq.${profile.id}`},
-        payload => {
-          setQueue(q => q.some(x=>x.id===payload.new.id) ? q : [...q, payload.new]);
-          notifyBrowser("Task Reminder!", payload.new.task_desc_snapshot, `task-${payload.new.task_id}`);
-          // Stamp received_at so Admin can see the ring reached the device
-          if (!payload.new.received_at) {
-            sb.from("cmp_task_reminders").update({ received_at: new Date().toISOString() }).eq("id", payload.new.id).then(()=>{});
-          }
-        })
-      .subscribe();
-    return ()=>{ sb.removeChannel(channel); };
-  },[profile?.id]);
-
-  if (!queue.length) return null;
-  const r = queue[0];
-
-  const ack = async () => {
-    setBusy(true);
-    await sb.from("cmp_task_reminders").update({ acknowledged_at: new Date().toISOString() }).eq("id", r.id);
-    setBusy(false);
-    // Drop from queue → alarm stops automatically via useEffect above
-    setQueue(q => q.filter(x=>x.id!==r.id));
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 border-2 border-amber-400 animate-pulse-border">
-        <style>{`@keyframes pulse-border{0%,100%{border-color:#fbbf24}50%{border-color:#ef4444}} .animate-pulse-border{animation:pulse-border 1s ease-in-out infinite}`}</style>
-        <div className="flex items-center gap-2 mb-2.5">
-          <div className="w-9 h-9 rounded-full bg-amber-500/15 text-amber-600 grid place-items-center shrink-0">
-            <Ico d={I.bell} className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <h3 className="font-bold text-[15.5px] text-slate-900">Task Reminder</h3>
-            <p className="text-[11px] text-slate-500">{r.sent_by_name} · {fmtDateTime(r.sent_at)}</p>
-          </div>
-          <div className="ml-auto text-[11px] font-bold text-red-600 bg-red-100 px-2 py-1 rounded-full animate-pulse">
-            RINGING
-          </div>
-        </div>
-        <p className="text-[13.5px] text-slate-800 whitespace-pre-wrap leading-relaxed mb-1.5">{r.task_desc_snapshot}</p>
-        <p className="text-[12px] text-slate-500 mb-2">Planned date: {fmtDate(r.planned_date_snapshot)}</p>
-        {r.message ? <p className="text-[13px] text-teal-800 bg-teal-500/10 rounded-lg px-3 py-2 italic whitespace-pre-wrap mb-2">"{r.message}"</p> : null}
-        {queue.length > 1 ? <p className="text-[11.5px] text-slate-400 mb-2">+{queue.length-1} more reminder(s) pending</p> : null}
-        <Btn variant="primary" className="w-full justify-center mt-2" onClick={ack} disabled={busy}>
-          {busy?<Spinner/>:null}OK, seen it. Stop the alarm
-        </Btn>
-      </div>
-    </div>
   );
 }
 
@@ -3552,7 +2645,7 @@ function ReminderWatcher({profile}){
 // ============================================================
 // Helper: compute nav keys for swipe (must be outside component for stable reference in setter callback)
 function _navKeys(profile) {
-  const keys = ["complaints","notices","tasks"];
+  const keys = ["complaints","notices"];
   if (profile?.role === "Admin") keys.push("machines");
   return keys;
 }
@@ -3618,7 +2711,6 @@ function App(){
         // Tear down EVERY view holding data. An open complaint modal that
         // survives sign-out would show the previous user's complaint to
         // whoever signs in next on the same shared factory phone.
-        stopPresence();
         setProfile(null); setRows([]); setMachines([]);
         setView("complaints"); setDetail(null); setShowNew(false); setLightbox(null);
         setToasts([]);   // old toasts can name the previous user's complaints
@@ -3807,13 +2899,6 @@ function App(){
   // ---- Tab badge system (MUST be before early returns — hooks can't be conditional) ----
   const [tabSeenMap, reloadTabSeen] = useTabSeen(profile?.id);
 
-  // ---- Presence heartbeat ----
-  useEffect(()=>{
-    if (!profile?.id) return;
-    startPresence(profile.id);
-    return ()=> stopPresence();
-  },[profile?.id]);
-
   /* Switching register. Anything holding a row from the old table has to go
      with it: an open ComplaintDetail would keep its `D` from the new domain
      while its complaint came from the old one, and its next save would hit
@@ -3829,7 +2914,7 @@ function App(){
     setDomainKey(prev => (prev === key ? prev : key));
     setDetail(null); setShowNew(false); setLightbox(null);
     setRows([]);           // don't show the other register's rows for a frame
-    setView("complaints"); // the switch is meaningless on Notices/Tasks/Users
+    setView("complaints"); // the switch is meaningless on Notices/Users
   },[]);
   // Persisted here rather than inside the updater above — a state updater
   // must stay free of side effects.
@@ -3861,10 +2946,6 @@ function App(){
     const notLastSeen = tabSeenMap["main:notices"];
     c.notices = 0;
     if (!notLastSeen) c.notices = -1; // flag: show dot without number
-    // Tasks: show dot if main:tasks never seen
-    const taskLastSeen = tabSeenMap["main:tasks"];
-    c.tasks = 0;
-    if (!taskLastSeen) c.tasks = -1;
     return c;
   },[rows, tabSeenMap]);
 
@@ -3929,7 +3010,6 @@ function App(){
   const navItems = [
     { key:"complaints", label:"Complaints", hi:"शिकायत", icon:I.clipboard, color:"text-amber-600", bg:"bg-amber-500", dot:"bg-amber-500" },
     { key:"notices", label:"Notices", hi:"सूचना", icon:I.megaphone, color:"text-blue-600", bg:"bg-blue-500", dot:"bg-blue-500" },
-    { key:"tasks", label:"Tasks", hi:"कार्य", icon:I.list, color:"text-teal-600", bg:"bg-teal-500", dot:"bg-teal-500" },
     ...(profile.role === "Admin" ? [
       { key:"machines", label:"Machines", hi:"मशीन", icon:I.wrench, color:"text-purple-600", bg:"bg-purple-500", dot:"bg-purple-500" },
       // Users: managed in ERP › Admin Panel › Users now (see section 12).
@@ -3989,7 +3069,7 @@ function App(){
         </div>
         )}
         {/* Unit filter — only for someone who sees more than one unit, and
-            only on the complaint lists (Notices / Tasks are company-wide). */}
+            only on the complaint lists (Notices are company-wide). */}
         {allUnits && view === "complaints" && (
           <div role="group" aria-label="Unit filter"
             className="max-w-3xl mx-auto flex items-center gap-1.5 px-3 pb-2.5 sm:px-4 overflow-x-auto">
@@ -4017,8 +3097,6 @@ function App(){
           <AdminMachines toast={toast} onMachinesChanged={loadMachines} unitsEnabled={hasUnits} />
         ) : view === "notices" ? (
           <NoticeBoard profile={profile} toast={toast} onView={setLightbox} />
-        ) : view === "tasks" ? (
-          <TasksPanel profile={profile} toast={toast} tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen} />
         ) : (
           <>
             {unitBlocked && (
@@ -4082,7 +3160,6 @@ function App(){
           const activeCls = {
             complaints:"bg-amber-500/15 border-amber-500/60 text-amber-800",
             notices:"bg-blue-500/15 border-blue-500/60 text-blue-800",
-            tasks:"bg-teal-500/15 border-teal-500/60 text-teal-800",
             machines:"bg-purple-500/15 border-purple-500/60 text-purple-800",
             users:"bg-rose-500/15 border-rose-500/60 text-rose-800",
           }[n.key] || "";
@@ -4115,7 +3192,6 @@ function App(){
           onClose={()=>setDetail(null)} onSaved={()=>{ setDetail(null); loadRows(false); }} />
       )}
       {lightbox && <Lightbox src={lightbox} onClose={()=>setLightbox(null)} />}
-      <ReminderWatcher profile={profile} />
       <Toasts items={toasts} dismiss={dismiss} />
     </div>
     </UnitsCtx.Provider>

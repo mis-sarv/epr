@@ -1460,8 +1460,9 @@ with `verify_app_user_pin()`, so "PIN set but doesn't work" can't happen silentl
 (the report shows a warning).
 
 **How the password went away.** Complaint App data runs on Supabase Auth: the
-`cmp_tasks` / `cmp_notice_board` triggers require `auth.uid()` ("Only the Admin
-can assign tasks."). There were two options: move those policies/triggers onto
+`cmp_notice_board` triggers (and, before the Tasks system was removed on
+27/10/2026, `cmp_tasks`: "Only the Admin can assign tasks.") require
+`auth.uid()`. There were two options: move those policies/triggers onto
 the anon model, or create a **real** auth session for the person from the ERP
 session. The second was chosen: it **doesn't touch a single policy**,
 `auth.uid()` is really set, so every old trigger, RLS rule and `created_by` works

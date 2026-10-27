@@ -27,6 +27,17 @@
    The style is intentionally dark: the other apps use light backgrounds,
    so it is easy to spot. z-index is 900, which keeps modals and overlays
    (1000+) above it; otherwise the button would sit on top of popups.
+
+   DRAG TO MOVE. A fixed corner is bound to cover some app's own button
+   on some screen size (a Save button, a FAB, a bottom nav), so the user
+   can drag it out of the way with a finger or the mouse. On release it
+   snaps to the nearer side edge, left or right, at the height where it
+   was dropped, and stays inside the screen. The spot is remembered in
+   this browser (one key for all apps, same origin), so it does not have
+   to be moved again on every page. A press that moves less than a few
+   pixels is still a plain tap and opens the launcher; a real drag never
+   does. Until it is first moved it sits where it always did,
+   bottom-right.
    ════════════════════════════════════════════════════════════════════ */
 (function () {
   'use strict';
@@ -34,6 +45,9 @@
   var SSO_KEY  = 'sarv_sso_token';
   var LAUNCHER = 'launcher.html';
   var EL_ID    = 'sarvAppBack';
+  var POS_KEY  = 'sarv_app_back_pos';   // {side:'left'|'right', top:0..1 of the screen height}
+  var EDGE     = 16;                    // gap from the screen edge, px
+  var DRAG_MIN = 6;                     // movement below this is a tap, not a drag
 
   // Inside an iframe: nothing to do (reason 1 above).
   try { if (window.self !== window.top) return; } catch (e) { return; }
@@ -77,9 +91,15 @@
       '-webkit-backdrop-filter:blur(8px)',
       'backdrop-filter:blur(8px)',
       'cursor:pointer',
+      // The page must not scroll under a finger that is dragging the button.
+      'touch-action:none',
+      '-webkit-user-select:none',
+      'user-select:none',
+      '-webkit-touch-callout:none',
       'opacity:.80',
       'transition:opacity .16s, transform .12s, box-shadow .16s'
     ].join(';');
+    a.draggable = false;   // no native link drag-and-drop ghost on desktop
 
     a.innerHTML =
       '<span style="font-size:14px;line-height:1;">&#8592;</span>' +
@@ -107,6 +127,97 @@
     });
 
     document.body.appendChild(a);
+    applyPos(a, loadPos());
+    enableDrag(a);
+  }
+
+  /* ── Position: remembered side + height ─────────────────────────── */
+  function loadPos() {
+    try {
+      var p = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+      if (p && (p.side === 'left' || p.side === 'right') && typeof p.top === 'number') return p;
+    } catch (e) {}
+    return null;
+  }
+  function savePos(p) {
+    try { localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch (e) {}
+  }
+  // Keeps the button fully on screen, clear of the safe-area edges.
+  function clampTop(px, h) {
+    var max = window.innerHeight - h - EDGE;
+    return Math.max(EDGE, Math.min(max, px));
+  }
+  function applyPos(a, p) {
+    if (!p) return;   // never moved: stays on the default bottom-right
+    var top = clampTop(p.top * window.innerHeight, a.offsetHeight || 40);
+    a.style.bottom = 'auto';
+    a.style.top = top + 'px';
+    if (p.side === 'left') {
+      a.style.right = 'auto';
+      a.style.left = 'calc(' + EDGE + 'px + env(safe-area-inset-left))';
+    } else {
+      a.style.left = 'auto';
+      a.style.right = 'calc(' + EDGE + 'px + env(safe-area-inset-right))';
+    }
+  }
+
+  /* ── Drag: pointer events cover mouse, touch and pen alike ──────── */
+  function enableDrag(a) {
+    var drag = null;          // {id, dx, dy, x0, y0, moved}
+    var swallowClick = false; // the click that ends a real drag must not navigate
+
+    a.addEventListener('pointerdown', function (e) {
+      if (e.button !== undefined && e.button !== 0) return;
+      var r = a.getBoundingClientRect();
+      drag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top,
+               x0: e.clientX, y0: e.clientY, moved: false };
+    });
+
+    a.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (!drag.moved) {
+        if (Math.abs(e.clientX - drag.x0) < DRAG_MIN && Math.abs(e.clientY - drag.y0) < DRAG_MIN) return;
+        drag.moved = true;
+        try { a.setPointerCapture(e.pointerId); } catch (err) {}
+        a.style.transition = 'opacity .16s, box-shadow .16s';
+        a.style.transform = 'none';
+        a.style.opacity = '1';
+      }
+      e.preventDefault();
+      var w = a.offsetWidth, h = a.offsetHeight;
+      var x = Math.max(0, Math.min(window.innerWidth - w, e.clientX - drag.dx));
+      var y = clampTop(e.clientY - drag.dy, h);
+      a.style.right = 'auto'; a.style.bottom = 'auto';
+      a.style.left = x + 'px'; a.style.top = y + 'px';
+    });
+
+    function end(e) {
+      if (!drag || (e && e.pointerId !== drag.id)) return;
+      var d = drag; drag = null;
+      if (!d.moved) return;   // a tap: let the click open the launcher
+      swallowClick = true;
+      setTimeout(function () { swallowClick = false; }, 400);
+      var r = a.getBoundingClientRect();
+      // Snap to whichever side edge the button's centre is nearer.
+      var p = { side: (r.left + r.width / 2) < window.innerWidth / 2 ? 'left' : 'right',
+                top: r.top / window.innerHeight };
+      a.style.transition = 'opacity .16s, transform .12s, box-shadow .16s, left .18s, right .18s, top .18s';
+      applyPos(a, p);
+      savePos(p);
+      a.style.opacity = '.80';
+    }
+    a.addEventListener('pointerup', end);
+    a.addEventListener('pointercancel', end);
+
+    a.addEventListener('click', function (e) {
+      if (swallowClick) { e.preventDefault(); e.stopPropagation(); swallowClick = false; }
+    }, true);
+    // A finger held still to start a drag would otherwise open the browser's
+    // "open link / copy link" menu on Android.
+    a.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    // Rotating a phone or resizing the window must not leave it off screen.
+    window.addEventListener('resize', function () { applyPos(a, loadPos()); });
   }
 
   function remove() {

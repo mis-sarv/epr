@@ -18,7 +18,10 @@ const APP_URL = self.location.origin + self.location.pathname.replace(/sw\.js$/,
 
 // ---------- Push Event ----------
 self.addEventListener('push', (event) => {
-  let data = { title: 'Task Reminder!', body: 'You have a pending task.', taskId: null };
+  // Generic fallback only: every complaint push sends its own title / body.
+  // (The Complaint App's Tasks system, which used to send "Task Reminder!",
+  // has been removed.)
+  let data = { title: 'Sarv India', body: 'There is an update in the Complaint App.', taskId: null };
 
   if (event.data) {
     try {

@@ -16187,10 +16187,11 @@ window.addEventListener('DOMContentLoaded',()=>{
      const by=String((sign&&sign.signedBy)||'').trim();
      return by||'GM / CEO';
    };
-   // Store Incharge + GM/CEO (or Purchaser) = 2 cells on a PR, so each takes
-   // half the width. Declared before sigCellHtml so the value is in scope
-   // however the builder is reached.
-   const PR_SIG_CELL_W='50%';
+   // Prepared By (when the PR has one) + Store Incharge + GM/CEO (or
+   // Purchaser), so each cell takes a third — or half on an older PR raised
+   // before the Prepared By sign existed. Declared before sigCellHtml so the
+   // value is in scope however the builder is reached.
+   const PR_SIG_CELL_W=(d.preparedBy?'33.33':'50')+'%';
    const sigCellHtml=(label,sign)=>{
      const data=String((sign&&sign.name)||'').trim(),time=(sign&&sign.time)||'';
      let inner;
@@ -16215,6 +16216,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      +'<table style="margin-top:26px;border-collapse:collapse;width:100%;"><tr>'
      // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
      // MD / Vendor Verified belong to the PO chain and are not printed here.
+     // Prepared By is the user who raised it, signed with their PIN at submit.
+     +(d.preparedBy?sigCellHtml(pEsc(prPreparedLabel_(d.preparedBy)),d.preparedBy):'')
      +sigCellHtml('Store Incharge',sigs.store)
      +sigCellHtml(prGmCeoLabel_(sigs.gmCeo),sigs.gmCeo)
      +'</tr></table>'
@@ -16230,6 +16233,15 @@ window.addEventListener('DOMContentLoaded',()=>{
     Date are deliberately not printed. The same helpers live in mobile.html
     so a PR PDF regenerated on either side is identical. */
  const PR_TEAL=[13,92,83];
+ /* Caption of the "Prepared By" signature box: the preparer's name when it is
+    known. preparedBy.name holds the saved signature image (or just the name
+    when the user has none saved), so without the caption an image-signed box
+    would not say whose signature it is. A PR raised before this box existed
+    has no preparedBy, and its footer is printed without the box. */
+ function prPreparedLabel_(p){
+   const by=String((p&&p.by)||'').trim();
+   return by?('Prepared By: '+by):'Prepared By';
+ }
  /* Requested By details come from the PR, but Designation / Contact have no
     column on the PR header — they live only in the PDF snapshot, and a PR
     whose snapshot never got them (older PRs, an edit, a regenerate from
@@ -16438,10 +16450,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    // MD / Vendor Verified belong to the PO chain and are not printed here;
    // their signatures stay in `signatures` untouched either way.
    const sigCols=[
+     ...(d.preparedBy?[{label:prPreparedLabel_(d.preparedBy),sign:d.preparedBy}]:[]),
      {label:'Store Incharge',sign:sigs.store},
      {label:gmCeoLabel,sign:sigs.gmCeo},
    ];
-   // Half the width each, not a quarter — see the HTML variant's note.
+   // Equal shares of the width — see the HTML variant's note.
    const segW=W/sigCols.length;
    doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);
    sigCols.forEach((col,i)=>{
@@ -17599,8 +17612,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       Footer  → Downloaded by: <user (role)>   ·   Page N of M
     Excel shows these only in Print / Print Preview / Page Layout view, never
     in the grid. The table itself is exactly the CSV's rows: row 1 bold and
-    repeated on every printed page, columns sized to their content, printed
-    landscape and fitted to the page width.
+    repeated on every printed page, every cell bordered, columns sized to
+    their content, printed landscape and fitted to the page width.
     Built by hand (a few XML parts in an uncompressed zip) so no library has to
     load — it works offline, and only the file extension changes. */
  function sarvParseCsv_(txt){
@@ -17647,10 +17660,15 @@ window.addEventListener('DOMContentLoaded',()=>{
    const ncol=rows.reduce((m,r)=>Math.max(m,r.length),0);
    const width=Array(ncol).fill(8);
    rows.forEach(r=>r.forEach((v,i)=>{width[i]=Math.min(60,Math.max(width[i],String(v).length+2));}));
-   const sheetRows=rows.map((r,ri)=>'<row r="'+(ri+1)+'">'+r.map((v,ci)=>{
-     const ref=col(ci)+(ri+1),s=ri===0?' s="1"':'';
-     if(v==='')return ri===0?'<c r="'+ref+'"'+s+'/>':'';
-     if(ri>0&&isNum(v))return '<c r="'+ref+'"><v>'+v+'</v></c>';
+   /* Every cell of the table carries a thin border — blank ones and short rows
+      included, padded out to the full width — so the sheet opens already
+      ruled like the on-screen table instead of as bare gridlines that do not
+      print. Style 1 = header (bold, grey fill, border), 2 = body (border). */
+   const sheetRows=rows.map((r,ri)=>'<row r="'+(ri+1)+'">'+Array.from({length:ncol},(_,ci)=>{
+     const v=r[ci]==null?'':String(r[ci]);
+     const ref=col(ci)+(ri+1),s=ri===0?' s="1"':' s="2"';
+     if(v==='')return '<c r="'+ref+'"'+s+'/>';
+     if(ri>0&&isNum(v))return '<c r="'+ref+'"'+s+'><v>'+v+'</v></c>';
      return '<c r="'+ref+'" t="inlineStr"'+s+'><is><t xml:space="preserve">'+x(v)+'</t></is></c>';
    }).join('')+'</row>').join('');
    // &C = centre section; && is a literal ampersand inside Excel's header code.
@@ -17674,7 +17692,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        +(rows.length?'<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">Report!$1:$1</definedName></definedNames>':'')
        +'</workbook>'},
      {name:'xl/_rels/workbook.xml.rels',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
-     {name:'xl/styles.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Calibri"/></font><font><b/><sz val="10"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'},
+     {name:'xl/styles.xml',data:'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><name val="Calibri"/></font><font><b/><sz val="10"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF000000"/></left><right style="thin"><color rgb="FF000000"/></right><top style="thin"><color rgb="FF000000"/></top><bottom style="thin"><color rgb="FF000000"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'},
      {name:'xl/worksheets/sheet1.xml',data:sheet},
    ];
    return sarvZip_(files);
@@ -17695,12 +17713,126 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(k==='csv')return sarvStampCsv_(blob);
    return blob;
  }
+ /* ══ DOWNLOAD FILE NAME: MASTER NAME + THE FILTERS IT WAS TAKEN WITH ════
+    A report / master export used to be named only by its master and the day
+    ("SARV_Item_Master_2026-10-27.csv"), so three differently filtered copies
+    taken the same morning were indistinguishable in the Downloads folder.
+    The name now also carries every filter that was applied when it was taken:
+      SARV_Item_Master_CATEGORY-SPARES_Below-the-MSV_2026-10-27.xlsx
+      PO_Details_Supplier-ABC-TRADERS_FROM-01-10-2026_2026-10-27.pdf
+    Done here, in the one place every download passes through, rather than in
+    each builder. Only names that end in _YYYY-MM-DD (the report / master
+    exports) are touched; a document PDF is named by its own number
+    (INW-0012.pdf, REQ-0045_Requester.pdf) and is left exactly as it is.
+    The filters are read from the screen the download button sits on: from the
+    button that was clicked, up to the nearest container holding filter boxes
+    (search, dropdown, date). Column filters, which live in header pop-ups
+    rather than boxes, are added by SARV_EXPORT_TAGS for the screens that have
+    them (added to, not instead of, the boxes). Anything that goes wrong just
+    keeps the original name. */
+ let sarvLastClickEl_=null;
+ document.addEventListener('click',e=>{sarvLastClickEl_=e.target;},true);
+ // Picks up a filter control: a visible text / search / date box or a dropdown,
+ // never a cell of the data table itself.
+ function sarvIsFilterCtl_(el){
+   if(!el||el.disabled||el.closest('tbody'))return false;
+   if(!el.getClientRects().length)return false;
+   if(el.tagName==='SELECT')return true;
+   const t=String(el.getAttribute('type')||'text').toLowerCase();
+   return t==='text'||t==='search'||t==='date'||el.hasAttribute('data-dmy');
+ }
+ function sarvExportTag_(s){
+   return String(s==null?'':s).replace(/≥/g,'min ').replace(/≤/g,'max ').replace(/[–—]/g,' to ')
+     .replace(/[\\/:*?"<>|,;]+/g,'-').replace(/[^\p{L}\p{N}\s\-.&()+]/gu,'')
+     .trim().replace(/\s+/g,'-').replace(/-{2,}/g,'-').slice(0,40).replace(/^-+|-+$/g,'');
+ }
+ function sarvCtlLabel_(el){
+   let t='';
+   if(el.id){const l=document.querySelector('label[for="'+CSS.escape(el.id)+'"]');if(l)t=l.textContent;}
+   if(!t){const p=el.previousElementSibling;if(p&&p.tagName==='LABEL')t=p.textContent;}
+   if(!t){const g=el.closest('.form-group');const gl=g&&g.querySelector('label');if(gl)t=gl.textContent;}
+   if(!t)t=el.getAttribute('aria-label')||el.placeholder||'';
+   t=t.replace(/\s+/g,' ').trim();
+   // A "Search: invoice / inward no / ..." hint says nothing the value does not.
+   return /^search\b/i.test(t)?'':t.slice(0,20);
+ }
+ function sarvCtlTag_(el){
+   if(el.tagName==='SELECT'){
+     const o=el.options[el.selectedIndex];if(!o)return '';
+     const txt=o.textContent.replace(/[ ↳]/g,' ').replace(/\s+/g,' ').trim();
+     // The "All …" / blank first choice is no filter at all.
+     if(!el.value||/^all$/i.test(el.value)||(el.selectedIndex===0&&/^(all\b|-+\s*select)/i.test(txt)))return '';
+     return sarvExportTag_(txt);
+   }
+   let v=String(el.value||'').trim();if(!v)return '';
+   if(/^\d{4}-\d{2}-\d{2}$/.test(v))v=v.slice(8,10)+'-'+v.slice(5,7)+'-'+v.slice(0,4);
+   const l=sarvCtlLabel_(el);
+   return sarvExportTag_(l?(l+' '+v):v);
+ }
+ // Filters on the screen the clicked button belongs to.
+ function sarvScreenFilterTags_(start){
+   let a=start&&start.nodeType===1?start:(start&&start.parentElement);
+   for(;a&&a!==document.body&&a!==document.documentElement;a=a.parentElement){
+     const ctls=[...a.querySelectorAll('input,select')].filter(sarvIsFilterCtl_);
+     if(ctls.length)return ctls.map(sarvCtlTag_).filter(Boolean);
+   }
+   return [];
+ }
+ /* Screens whose filters are not (only) boxes beside the button. Keyed by the
+    start of the file name. Each returns its extra tags, or null for an export
+    that must keep its plain name. */
+ const SARV_EXPORT_TAGS={
+   // The Item Master downloads from its column picker pop-up, which holds no
+   // filters itself: the search box, Stock dropdown and column filters are on
+   // the list's own toolbar and header.
+   SARV_Item_Master:()=>[
+     ...sarvScreenFilterTags_(byId('itemMasterSearch')),
+     ...imActiveCols_().map(c=>sarvExportTag_(SARV_IM_FILTER_COLS[c].label+' '+imFilterSummary_(c)))
+   ],
+   Consumption_Report:()=>consFixedCols_().filter(c=>consColFilterOn_(c.key)).map(c=>{
+     const f=consColFilters[c.key];
+     const txt=f.vals?(f.vals.size<=2?[...f.vals].join(' '):f.vals.size+' values')
+       :((f.min!=null?('≥'+f.min):'')+(f.min!=null&&f.max!=null?' ':'')+(f.max!=null?('≤'+f.max):''));
+     return sarvExportTag_(c.label+' '+txt);
+   }),
+   // Exports the PR form's own item rows; there is nothing filtered about it.
+   PR_Items:()=>null,
+ };
+ /* The same file downloaded twice (the automatic download, then the preview's
+    Download button) gets the same name, even though the second click was in
+    the preview, where no filter is on screen. */
+ const sarvExportNameCache_={};
+ function sarvExportFileName_(name){
+   try{
+     const m=/^(.*?)_(\d{4}-\d{2}-\d{2})\.(csv|pdf)$/i.exec(String(name||''));
+     if(!m)return name;
+     const base=m[1];
+     const hit=sarvExportNameCache_[name];
+     const fromPreview=!!(sarvLastClickEl_&&sarvLastClickEl_.closest&&sarvLastClickEl_.closest('#sarvPdfViewerOverlay'));
+     if(fromPreview)return (hit&&Date.now()-hit.at<10*60*1000)?hit.name:name;
+     const key=Object.keys(SARV_EXPORT_TAGS).find(k=>base===k||base.indexOf(k+'_')===0);
+     const own=key?SARV_EXPORT_TAGS[key]():[];
+     if(own===null)return name;
+     const tags=[...new Set([...sarvScreenFilterTags_(sarvLastClickEl_),...own].filter(Boolean))];
+     if(!tags.length)return name;
+     let mid=tags.join('_');
+     if(mid.length>150)mid=mid.slice(0,150).replace(/[_-]+[^_]*$/,'');
+     const out=base+'_'+mid+'_'+m[2]+'.'+m[3];
+     sarvExportNameCache_[name]={name:out,at:Date.now()};
+     return out;
+   }catch(e){
+     console.warn('[SARV] Filter file name skipped:',e.message||e);
+     return name;
+   }
+ }
  const sarvAnchorClick_=HTMLAnchorElement.prototype.click;
  function sarvIssueDownload_(href,name){
    const a=document.createElement('a');a.href=href;a.download=name;a.__sarvStamped=true;
    sarvAnchorClick_.call(a);
  }
  async function sarvStampAndDownload_(href,name){
+   // Read NOW, inside the click: the filters on screen are what the file holds.
+   name=sarvExportFileName_(name);
    try{
      const blob=await (await fetch(href)).blob();
      const out=await sarvStampBlob_(blob,name);
@@ -19046,10 +19178,22 @@ window.addEventListener('DOMContentLoaded',()=>{
    }
    const btn=byId('p_submitBtn');
    if(btn&&btn.disabled)return; // already processing — ignore double-click/double-tap
+   /* A NEW PR is signed by the person raising it: the same PIN Confirm gate
+      Inward / Outward use, so their saved signature and the time go on the PR
+      PDF over "Prepared By". Cancel = nothing saved. An edit does not ask
+      again — the PR keeps the preparer who signed it first (carried over from
+      its pdf_snapshot below), because correcting a PR does not make the editor
+      the person who raised it. */
+   let prepSign=null;
+   if(!sarvEditingRequirementId){
+     prepSign=await sarvSubmitPinGate_('Submit Purchase Requirement');
+     if(!prepSign)return;
+   }
    const overlay=byId('p_syncOverlay'),msgEl=byId('p_syncMsg');
    const setMsg=t=>{if(msgEl)msgEl.textContent=t};
    if(btn){btn.disabled=true;btn.innerHTML='Saving...';}
    if(overlay){setMsg(sarvEditingRequirementId?'Updating Requirement...':'Saving Requirement...');overlay.classList.add('active');}
+   let preparedBy=prepSign?{name:prepSign.dataUrl||prepSign.name||'',by:prepSign.name||'',time:pStamp()}:null;
    try{
      // purchaser_name is its own column, NOT requested_by: requested_by is the
      // employee who raised the requirement (anyone), while Purchaser Name is
@@ -19077,6 +19221,8 @@ window.addEventListener('DOMContentLoaded',()=>{
        const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot').eq('id',sarvEditingRequirementId).single();
        if(cur.error)throw cur.error;
        if(!canEditPr_(cur.data))throw new Error('This PR is now "'+(cur.data.status||'')+'"; only Pending / Rejected / Hold PRs can be edited. Update it with an Admin login.');
+       // The original preparer's sign survives the edit (see the gate above).
+       if(cur.data.pdf_snapshot&&cur.data.pdf_snapshot.preparedBy)preparedBy=cur.data.pdf_snapshot.preparedBy;
        /* A corrected Rejected PR goes back into the flow as Pending, with the
           approval chain cleared so the Purchaser signs it afresh. The Store
           Incharge's own signature is kept. A Hold is treated the same way: the
@@ -19114,7 +19260,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      const ls=[];for(const r of rows){const it=await ensureItem(r.name,r.description,r.make,r.category,r.uom,r.itemId);ls.push({requirement_id:h.data.id,item_id:it.id,specification:r.specification||r.description,requested_qty:r.qty,uom:r.uom||it.uom,gross_weight:pNum(r.grossWeight)||null,machine:r.machine||null})}
      const ins=await sbSaveDroppingMissingColumns_(ls,lineRows=>SB.from('purchase_requirement_lines').insert(lineRows),['requirement_id','requested_qty']);if(ins.error)throw ins.error;
      setMsg('Generating PR PDF...');
-     const d=collectRequirementData(no,rows),pdf=await generateRequirementPdf(d,h.data.id);
+     const d=collectRequirementData(no,rows);
+     if(preparedBy)d.preparedBy=preparedBy;
+     const pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
      showToast(reopenedFrom?(''+no+' updated and moved back from '+reopenedFrom+' to PENDING'):('Requirement saved: '+no));
      /* Was this PR generated from the Trims Manager? Then its number goes back

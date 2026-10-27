@@ -536,12 +536,17 @@
         // MD and Vendor Verified belong to the PO chain and are not printed
         // here. Their signatures, if any exist in `signatures`, are left in the
         // record untouched — this only changes what the PR sheet shows.
+        // Prepared By is the user who raised the PR, signed with their PIN at
+        // submit (d.preparedBy, kept in pdf_snapshot). A PR raised before that
+        // existed has none and prints without the box. Same as STORE.html.
+        const prepBy=String((d.preparedBy&&d.preparedBy.by)||'').trim();
         const sigCols=[
+            ...(d.preparedBy?[{label:prepBy?('Prepared By: '+prepBy):'Prepared By',sign:d.preparedBy}]:[]),
             {label:'Store Incharge',sign:sigs.store},
             {label:gmCeoLabel,sign:sigs.gmCeo},
         ];
-        // Two columns now, so each one takes half the width instead of a
-        // quarter — otherwise both would huddle in the left half of the page.
+        // Equal shares of the width — otherwise the boxes would huddle in the
+        // left part of the page.
         const segW=W/sigCols.length;
         doc.setDrawColor(0,0,0);doc.setLineWidth(0.3);
         sigCols.forEach((col,i)=>{
@@ -8677,6 +8682,30 @@
         }
         if(!rows.length) return prmSay('Fill in at least one item (Item Name + Qty)');
 
+        /* The person raising the PR signs it with their own PIN, the same way
+           the desktop form does: their saved signature (or just their name if
+           none is saved) and the time go on the PR PDF over "Prepared By".
+           The login user comes from the shared session keys; a login that
+           cannot be matched to a role skips the box rather than block the PR.
+           The PIN popup sits under this form's overlay, so it is lifted above
+           it while open. */
+        let prepSign = null;
+        {
+            let me = null;
+            try{ me = JSON.parse(localStorage.getItem('sarv_active_user') || 'null'); }catch(e){}
+            const signRole = myPurchaserName ? 'PURCHASER' : ((me && me.primary_role) || myPermRole());
+            const signName = myPurchaserName || (me && me.name) || '';
+            if(signRole){
+                const pm = document.getElementById('pinSignModal');
+                const z = pm ? pm.style.zIndex : '';
+                if(pm) pm.style.zIndex = '1300';
+                try{
+                    prepSign = await pickSignature(signRole, signName ? {name: signName, purpose: 'Submit PR'} : {purpose: 'Submit PR'});
+                }finally{ if(pm) pm.style.zIndex = z; }
+                if(!prepSign) return prmSay('Not submitted: the PIN confirmation was cancelled.');
+            }
+        }
+
         prmBusy = true;
         const btn = document.getElementById('prmSubmitBtn');
         if(btn){ btn.disabled = true; btn.innerHTML = 'Saving...'; }
@@ -8747,6 +8776,9 @@
                 contact: emp.contact_no || '',
                 overallRemarks: payload.notes || '',
                 status: 'Pending',
+                preparedBy: prepSign
+                    ? {name: prepSign.dataUrl || prepSign.name || '', by: prepSign.name || '', time: pStamp()}
+                    : null,
                 items: rows.map(r => ({
                     name: r.name, desc: r.description, make: r.make, category: r.category,
                     machine: r.machine, qty: r.qty, uom: r.uom,
