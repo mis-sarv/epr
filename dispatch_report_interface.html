@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Pinch zoom stays allowed (maximum-scale 5, user-scalable yes): this is a
+     report people read figures off on a phone. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
 <title>Dispatch Report</title>
 <!-- Same head order as every other app page: dates first, then capitals,
      then the single-login splash and gate. -->
@@ -63,6 +65,52 @@
     .print-only { display:block !important; }
   }
   .print-only { display:none; }
+
+  /* ── Matrix: party names stand upright in their header cells ──────────
+     Reads bottom-to-top, the way a spreadsheet's rotated header does, so
+     a column is only as wide as its figures instead of as wide as the
+     party's name. Long names wrap onto a second upright line rather than
+     being cut. */
+  .rot { vertical-align:bottom; padding:8px 4px !important; }
+  .rot > span { writing-mode:vertical-rl; transform:rotate(180deg); white-space:normal; max-height:170px;
+    display:inline-block; text-align:left; line-height:1.15; font-size:11px; }
+  .pivot td.td { white-space:nowrap; }
+
+  /* ── Zoom / sideways scroll ───────────────────────────────────────────
+     A wide table must scroll inside its own card, never drag the whole
+     page sideways: that is what made pinch-zoom jump on phones. `clip`
+     does this without turning <body> into a scroll box, so the sticky
+     header still sticks. */
+  html, body { overflow-x:clip; }
+  html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+  main, section, .card { min-width:0; }
+
+  /* ── Collapsible blocks ───────────────────────────────────────────── */
+  .fold > summary { display:flex; align-items:center; gap:8px; }
+  .fold > summary .fold-chev { transition:transform .15s; color:#94a3b8; }
+  .fold[open] > summary .fold-chev { transform:rotate(90deg); }
+
+  /* ── Phone layout ─────────────────────────────────────────────────── */
+  @media (max-width: 767px) {
+    /* 16px stops iOS zooming in on its own when a box is tapped. */
+    input, select, textarea { font-size:16px !important; }
+    .sel { max-width:none; width:100%; }
+    .th { padding:7px 8px; font-size:10px; }
+    .td { padding:6px 8px; font-size:12px; }
+    .compact .td { padding-top:3px; padding-bottom:3px; font-size:11px; }
+    .m-hide { display:none !important; }
+    .kpi-more { display:none; }
+    .kpis-open .kpi-more { display:block; }
+    .chip { padding:5px 10px; }
+    .hscroll { flex-wrap:nowrap !important; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
+    .hscroll::-webkit-scrollbar { display:none; }
+    .rot > span { max-height:120px; font-size:10px; }
+    .pivot .sticky.left-0 { min-width:130px !important; max-width:150px; white-space:normal !important; }
+  }
+  @media (min-width: 768px) {
+    .d-only-summary > summary { display:none !important; }   /* always open on desktop */
+    #kpiMoreBtn { display:none; }
+  }
 </style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
@@ -95,17 +143,20 @@
   <!-- ── Controls ─────────────────────────────────────────────────── -->
   <section class="card p-4 mb-5 no-print space-y-3">
     <!-- Row 1: date range -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Date</span>
-      <div id="presetChips" class="flex flex-wrap gap-1.5"></div>
-      <div class="flex items-center gap-1.5 ml-auto flex-wrap">
-        <button class="btn px-2" onclick="DR.shift(-1)" title="Previous period">&#9664;</button>
-        <label class="text-[11px] font-bold text-slate-500" for="dFrom">FROM</label>
-        <input type="date" id="dFrom" class="sel" style="width:130px">
-        <label class="text-[11px] font-bold text-slate-500" for="dTo">TO</label>
-        <input type="date" id="dTo" class="sel" style="width:130px">
-        <button class="btn px-2" onclick="DR.shift(1)" title="Next period">&#9654;</button>
-        <button class="btn pri" onclick="DR.applyDates()">Load</button>
+    <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 shrink-0">Date</span>
+        <div id="presetChips" class="flex flex-wrap gap-1.5 hscroll min-w-0"></div>
+      </div>
+      <!-- Phone: ◀ [from] [to] ▶ on one line, Load under it, full width. -->
+      <div class="grid grid-cols-[auto_1fr_1fr_auto] md:flex items-center gap-1.5 md:ml-auto">
+        <button class="btn px-2.5 justify-center" onclick="DR.shift(-1)" title="Previous period" aria-label="Previous period">&#9664;</button>
+        <label class="hidden md:inline text-[11px] font-bold text-slate-500" for="dFrom">FROM</label>
+        <input type="date" id="dFrom" class="sel md:!w-[130px]" aria-label="From date">
+        <label class="hidden md:inline text-[11px] font-bold text-slate-500" for="dTo">TO</label>
+        <input type="date" id="dTo" class="sel md:!w-[130px]" aria-label="To date">
+        <button class="btn px-2.5 justify-center" onclick="DR.shift(1)" title="Next period" aria-label="Next period">&#9654;</button>
+        <button class="btn pri justify-center col-span-4 md:col-span-1" onclick="DR.applyDates()">Load</button>
       </div>
     </div>
 
@@ -120,35 +171,47 @@
       <div id="viewTabs" class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 overflow-x-auto sb max-w-full"></div>
     </div>
 
-    <!-- Row 3: slicers -->
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t border-slate-100">
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Category</span>
-        <div id="catChips" class="flex flex-wrap gap-1.5"></div>
+    <!-- Row 3: slicers. Folded away on a phone behind one "Filters" bar that
+         says how many are on; always open on a desktop (no bar there). -->
+    <details id="filtersBox" class="fold d-only-summary pt-3 border-t border-slate-100">
+      <summary class="py-1 text-sm font-semibold text-slate-700">
+        <span class="fold-chev">&#9654;</span> Filters <span id="filterCount" class="text-xs font-bold text-brand-700"></span>
+      </summary>
+      <div class="flex flex-col md:flex-row md:flex-wrap md:items-center gap-x-4 gap-y-2 pt-2 md:pt-0">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Category</span>
+          <div id="catChips" class="flex flex-wrap gap-1.5 hscroll min-w-0"></div>
+        </div>
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Bill</span>
+          <div id="billChips" class="flex flex-wrap gap-1.5 hscroll min-w-0"></div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 md:flex items-center gap-2 md:flex-wrap md:ml-auto">
+          <select id="partySel" class="sel" onchange="DR.setFilter('party',this.value)" aria-label="Party"></select>
+          <select id="itemSel" class="sel" onchange="DR.setFilter('item',this.value)" aria-label="Item / Quality"></select>
+          <select id="priceSel" class="sel" onchange="DR.setFilter('price',this.value)" aria-label="Price type">
+            <option value="ALL">All Price Types</option>
+            <option value="PRICED">Priced only</option>
+            <option value="UNPRICED">Unpriced (-) only</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn" id="densityBtn" onclick="DR.toggleDensity()" title="Row spacing">Standard</button>
+          <button class="btn" onclick="DR.resetFilters()" style="color:#be123c;border-color:#fecdd3">Reset</button>
+        </div>
       </div>
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Bill</span>
-        <div id="billChips" class="flex flex-wrap gap-1.5"></div>
-      </div>
-      <div class="flex items-center gap-2 flex-wrap ml-auto">
-        <select id="partySel" class="sel" onchange="DR.setFilter('party',this.value)"></select>
-        <select id="itemSel" class="sel" onchange="DR.setFilter('item',this.value)"></select>
-        <select id="priceSel" class="sel" onchange="DR.setFilter('price',this.value)">
-          <option value="ALL">All Price Types</option>
-          <option value="PRICED">Priced only</option>
-          <option value="UNPRICED">Unpriced (-) only</option>
-        </select>
-        <button class="btn" id="densityBtn" onclick="DR.toggleDensity()" title="Row spacing">Standard</button>
-        <button class="btn" onclick="DR.resetFilters()" style="color:#be123c;border-color:#fecdd3">Reset</button>
-      </div>
-    </div>
+    </details>
   </section>
 
   <!-- Messages: server errors, empty ranges, notes. -->
   <div id="banner" class="hidden mb-5 rounded-lg border px-4 py-3 text-sm"></div>
 
   <!-- ── KPIs ──────────────────────────────────────────────────────── -->
-  <section id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></section>
+  <!-- Phone: the first four figures, the rest behind "More figures". -->
+  <section id="kpiWrap" class="mb-5">
+    <div id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3"></div>
+    <button id="kpiMoreBtn" class="btn w-full justify-center mt-2.5 no-print" onclick="DR.toggleKpis()">More figures</button>
+  </section>
 
   <!-- Loading skeleton -->
   <div id="loading" class="hidden space-y-4 mb-5">
@@ -158,13 +221,13 @@
 
   <div id="content" class="space-y-6">
     <!-- Category summary: always on top, whatever the view. -->
-    <section class="card overflow-hidden">
-      <div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap gap-2 justify-between items-center">
-        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2"><span data-ico="pie" class="text-brand-600"></span> Category Summary</h2>
+    <details id="catBox" class="card overflow-hidden fold" open>
+      <summary class="bg-slate-50 border-b border-slate-200 px-4 md:px-5 py-3 flex-wrap justify-between">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2"><span class="fold-chev">&#9654;</span><span data-ico="pie" class="text-brand-600"></span> Category Summary</h2>
         <span id="filterBadge" class="text-xs font-semibold text-slate-600 bg-slate-200 px-2.5 py-0.5 rounded-full"></span>
-      </div>
+      </summary>
       <div class="overflow-x-auto sb"><table class="min-w-full" id="catTable"></table></div>
-    </section>
+    </details>
 
     <section id="view"></section>
   </div>
@@ -259,6 +322,15 @@ const ICONS = {
   chev:'<path d="M9 6l6 6-6 6"/>',
 };
 const ico = (k, cls) => '<svg class="ico ' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[k] || '') + '</svg>';
+/* Phone or desktop: one breakpoint for the CSS (767px) and the script.
+   The page re-lays itself out when it crosses it (rotating a tablet,
+   resizing a window), so it is never stuck in the wrong layout. */
+const MOBILE_MQ = window.matchMedia('(max-width: 767px)');
+const isMobile = () => MOBILE_MQ.matches;
+// A block that starts open on a desktop and folded on a phone.
+const openAttr = () => isMobile() ? '' : ' open';
+// Chart labels: long party / item names are shortened on a phone only.
+const shortLabel = s => { s = String(s); const n = isMobile() ? 16 : 34; return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 function paintIcons(root){ (root || document).querySelectorAll('[data-ico]').forEach(el => { if (!el.dataset.done){ el.innerHTML = ico(el.dataset.ico); el.dataset.done = '1'; } }); }
 
 /* Per-viewer conveniences only (view, density, matrix metric); the page
@@ -443,7 +515,9 @@ document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('.chip[data-k]');
   if (b) DR.setFilter(b.dataset.k, b.dataset.v);
   const p = e.target.closest && e.target.closest('[data-pick]');
-  if (p){ const [k, ...v] = p.dataset.pick.split('|'); DR.setFilter(k, v.join('|')); }
+  // preventDefault: an "Only this" button inside a fold's heading must
+  // filter, not also fold the block it sits in.
+  if (p){ e.preventDefault(); const [k, ...v] = p.dataset.pick.split('|'); DR.setFilter(k, v.join('|')); }
 });
 
 /* ── Dates ────────────────────────────────────────────────────────── */
@@ -509,6 +583,8 @@ function renderHeader(){
   $('printSub').textContent = rangeText() + (fl.length ? ' · Filters: ' + fl.join(', ') : '') + ' · Printed ' + new Date().toLocaleString('en-IN');
   document.title = 'Dispatch Report | ' + rangeText();
   $('filterBadge').textContent = 'Showing ' + S.filtered.length + ' of ' + S.rows.length + ' lines';
+  // The folded Filters bar on a phone still says how many are on.
+  $('filterCount').textContent = fl.filter(x => x[0] !== '"').length ? '(' + fl.filter(x => x[0] !== '"').length + ' on)' : '';
 }
 function banner(kind, html){
   const b = $('banner');
@@ -548,23 +624,30 @@ function renderKpis(){
     { l:'Avg Rate / kg', v:avgKg == null ? '-' : money(avgKg), s:'Priced kg lines, incl. GST', c:'text-slate-900' },
     { l:'Unpriced Lines',v:qtyf(t.unpriced),       s:'Shown as (-), not in amount', c:t.unpriced ? 'text-amber-600' : 'text-slate-900' },
   ];
-  $('kpis').innerHTML = cards.map(k => '<div class="card p-4"><div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">' + k.l
-    + '</div><div class="text-xl md:text-2xl font-extrabold num ' + k.c + '">' + k.v + '</div><div class="text-xs text-slate-400 mt-1">' + k.s + '</div></div>').join('');
+  // Cards 5-8 fold away on a phone (.kpi-more) until "More figures".
+  $('kpis').innerHTML = cards.map((k, i) => '<div class="card p-3 md:p-4' + (i >= 4 ? ' kpi-more' : '') + '"><div class="text-[10px] md:text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">' + k.l
+    + '</div><div class="text-lg md:text-2xl font-extrabold num break-words ' + k.c + '">' + k.v + '</div><div class="text-[11px] md:text-xs text-slate-400 mt-1 leading-snug">' + k.s + '</div></div>').join('');
 }
+DR.toggleKpis = function(){
+  const on = $('kpiWrap').classList.toggle('kpis-open');
+  $('kpiMoreBtn').textContent = on ? 'Fewer figures' : 'More figures';
+};
 
 /* ── Category summary ─────────────────────────────────────────────── */
 function renderCatTable(){
   const m = agg(S.filtered, r => r.category), t = totals(S.filtered);
   const rows = [...m.values()].sort((a, b) => catSort(a.key, b.key));
-  $('catTable').innerHTML = '<thead><tr><th class="th">Category</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Net Amount</th><th class="th r">Share</th></tr></thead><tbody>'
+  // Phone: Category | Qty | Net Amount (+ the share bar under the amount);
+  // Pieces / Weight / Share% columns come back on a wider screen.
+  $('catTable').innerHTML = '<thead><tr><th class="th">Category</th><th class="th r">Qty</th><th class="th r m-hide">Pieces</th><th class="th r m-hide">Weight</th><th class="th r">Net Amount</th><th class="th r m-hide">Share</th></tr></thead><tbody>'
     + (rows.length ? rows.map(a => {
       const share = t.amount ? (a.amount / t.amount * 100) : 0;
       return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="cat|' + esc(a.key) + '" title="Show only ' + esc(a.key) + '"><td class="td font-semibold">' + esc(a.key)
-        + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num">' + qtyf(a.pcs) + '</td><td class="td r num">' + kg(a.weight)
-        + '</td><td class="td r num ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a)) + '</td><td class="td r num" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
+        + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num m-hide">' + qtyf(a.pcs) + '</td><td class="td r num m-hide">' + kg(a.weight)
+        + '</td><td class="td r num ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a)) + '<div class="bar md:hidden"><i style="width:' + share.toFixed(1) + '%"></i></div></td><td class="td r num m-hide" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
     }).join('') : '<tr><td class="td text-center text-slate-400" colspan="6">No data</td></tr>')
-    + '</tbody><tfoot><tr class="bg-slate-50 font-bold"><td class="td">GRAND TOTAL</td><td class="td r num">' + qtyf(t.qty) + '</td><td class="td r num">' + qtyf(t.pcs)
-    + '</td><td class="td r num">' + kg(t.weight) + '</td><td class="td r num text-brand-700">' + money(t.amount) + '</td><td class="td"></td></tr></tfoot>';
+    + '</tbody><tfoot><tr class="bg-slate-50 font-bold"><td class="td">GRAND TOTAL</td><td class="td r num">' + qtyf(t.qty) + '</td><td class="td r num m-hide">' + qtyf(t.pcs)
+    + '</td><td class="td r num m-hide">' + kg(t.weight) + '</td><td class="td r num text-brand-700">' + money(t.amount) + '</td><td class="td m-hide"></td></tr></tfoot>';
 }
 
 /* ── Views ────────────────────────────────────────────────────────── */
@@ -587,20 +670,31 @@ const sectionHead = (icon, title, right) => '<div class="bg-slate-50 border-b bo
 // 1. Category → Party → Item, the layout of the printed report.
 function viewParty(el){
   const byCat = agg(S.filtered, r => r.category);
-  el.innerHTML = '<div class="space-y-5">' + [...byCat.values()].sort((a, b) => catSort(a.key, b.key)).map(c => {
+  /* Category and party are both folds: a heading tap folds / unfolds it,
+     and the small "Only this" button filters to it instead. Every category
+     starts open (it is the printed layout); on a phone the PARTIES start
+     folded, showing name + totals, so a long day is a short list to scan. */
+  const onlyBtn = (k, v) => '<button type="button" class="chip !py-0.5 !text-[11px] no-print" data-pick="' + k + '|' + esc(v) + '" title="Show only this">Only this</button>';
+  el.innerHTML = '<div class="space-y-4 md:space-y-5">' + [...byCat.values()].sort((a, b) => catSort(a.key, b.key)).map(c => {
     const parties = [...agg(c.rows, r => r.party).values()].sort((a, b) => a.key.localeCompare(b.key));
-    return '<div class="card overflow-hidden"><div class="bg-brand-50 border-b border-brand-100 px-5 py-2.5 flex justify-between items-center"><h2 class="text-base font-extrabold text-brand-900">' + esc(c.key)
-      + '</h2><span class="text-xs font-semibold text-brand-700">' + parties.length + ' part' + (parties.length === 1 ? 'y' : 'ies') + '</span></div>'
-      + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th">Item / Quality</th><th class="th r">Qty</th><th class="th r">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
-      + parties.map(p => {
+    return '<details class="card overflow-hidden fold" open><summary class="bg-brand-50 border-b border-brand-100 px-4 md:px-5 py-2.5">'
+      + '<span class="fold-chev">&#9654;</span><h2 class="text-base font-extrabold text-brand-900">' + esc(c.key) + '</h2>'
+      + '<span class="ml-auto text-xs font-semibold text-brand-700 text-right num">' + qtyf(c.qty) + ' qty · ' + money(amt(c)) + '</span>' + onlyBtn('cat', c.key) + '</summary>'
+      + '<div class="divide-y divide-slate-100">' + parties.map(p => {
         // Same item on several slips of one party = one line, as on paper.
         const items = [...agg(p.rows, r => r.item).values()].sort((a, b) => a.key.localeCompare(b.key));
-        return '<tr><td class="td bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-700 cursor-pointer" colspan="4" data-pick="party|' + esc(p.key) + '" title="Show only this party">' + esc(p.key) + '</td></tr>'
-          + items.map(i => '<tr class="hover:bg-slate-50"><td class="td pl-6">' + esc(i.key) + (i.n > 1 ? ' <span class="text-[11px] text-slate-400">(' + i.n + ' lines)</span>' : '')
-            + '</td><td class="td r num">' + qtyf(i.qty) + '</td><td class="td r num">' + kg(i.weight) + '</td><td class="td r num ' + (i.priced ? '' : 'unpriced') + '">' + money(amt(i)) + '</td></tr>').join('')
-          + '<tr class="font-semibold bg-slate-50/60"><td class="td r italic text-slate-600">Party Total</td><td class="td r num">' + qtyf(p.qty) + '</td><td class="td r num">' + kg(p.weight) + '</td><td class="td r num text-brand-700">' + money(amt(p)) + '</td></tr>';
-      }).join('')
-      + '</tbody><tfoot><tr class="bg-brand-50 font-bold text-brand-900"><td class="td">' + esc(c.key) + ' CATEGORY TOTAL</td><td class="td r num">' + qtyf(c.qty) + '</td><td class="td r num">' + kg(c.weight) + '</td><td class="td r num">' + money(amt(c)) + '</td></tr></tfoot></table></div></div>';
+        return '<details class="fold"' + openAttr() + '><summary class="px-4 md:px-5 py-2 bg-slate-50 hover:bg-slate-100">'
+          + '<span class="fold-chev">&#9654;</span><span class="text-xs font-bold uppercase tracking-wide text-slate-700 min-w-0 break-words">' + esc(p.key) + '</span>'
+          + '<span class="ml-auto text-xs text-slate-600 num text-right whitespace-nowrap"><b>' + qtyf(p.qty) + '</b> · <b class="' + (p.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(p)) + '</b></span>'
+          + onlyBtn('party', p.key) + '</summary>'
+          + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th">Item / Quality</th><th class="th r">Qty</th><th class="th r m-hide">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
+          + items.map(i => '<tr class="hover:bg-slate-50"><td class="td">' + esc(i.key) + (i.n > 1 ? ' <span class="text-[11px] text-slate-400">(' + i.n + ' lines)</span>' : '')
+            + '</td><td class="td r num">' + qtyf(i.qty) + '</td><td class="td r num m-hide">' + kg(i.weight) + '</td><td class="td r num ' + (i.priced ? '' : 'unpriced') + '">' + money(amt(i)) + '</td></tr>').join('')
+          + '<tr class="font-semibold bg-slate-50/60"><td class="td r italic text-slate-600">Party Total</td><td class="td r num">' + qtyf(p.qty) + '</td><td class="td r num m-hide">' + kg(p.weight) + '</td><td class="td r num text-brand-700">' + money(amt(p)) + '</td></tr>'
+          + '</tbody></table></div></details>';
+      }).join('') + '</div>'
+      + '<div class="bg-brand-50 border-t border-brand-200 px-4 md:px-5 py-2.5 flex flex-wrap gap-x-4 gap-y-1 justify-between font-bold text-brand-900 text-sm">'
+      + '<span>' + esc(c.key) + ' CATEGORY TOTAL</span><span class="num">' + qtyf(c.qty) + ' qty<span class="m-hide"> · ' + kg(c.weight) + '</span> · ' + money(amt(c)) + '</span></div></details>';
   }).join('') + '</div>';
 }
 
@@ -609,16 +703,17 @@ function viewProduct(el){
   const t = totals(S.filtered);
   const list = [...agg(S.filtered, r => r.item).values()].sort((a, b) => (b.amount - a.amount) || (b.qty - a.qty));
   el.innerHTML = '<div class="card overflow-hidden">' + sectionHead('box', 'Product-wise Totals', '<span class="text-xs text-slate-500">Across all parties and categories · ' + list.length + ' products</span>')
-    + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th">#</th><th class="th">Item / Quality</th><th class="th r">Parties</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Avg ₹ / kg</th><th class="th r">Net Amount</th><th class="th r">Share</th></tr></thead><tbody>'
+    + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th m-hide">#</th><th class="th">Item / Quality</th><th class="th r m-hide">Parties</th><th class="th r">Qty</th><th class="th r m-hide">Pieces</th><th class="th r">Weight</th><th class="th r m-hide">Avg ₹ / kg</th><th class="th r">Net Amount</th><th class="th r m-hide">Share</th></tr></thead><tbody>'
     + list.map((a, i) => {
       const parties = new Set(a.rows.map(r => r.party)).size;
       const kgRows = a.rows.filter(r => r.amount != null && r.basis === 'kg'), w = kgRows.reduce((s, r) => s + r.weight, 0);
       const avg = w ? kgRows.reduce((s, r) => s + r.amount, 0) / w : null;
       const share = t.amount ? a.amount / t.amount * 100 : 0;
-      return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="item|' + esc(a.key) + '" title="Show only this item"><td class="td text-slate-400 num">' + (i + 1) + '</td><td class="td font-medium">' + esc(a.key)
-        + '</td><td class="td r num">' + parties + '</td><td class="td r num font-semibold">' + qtyf(a.qty) + '</td><td class="td r num">' + qtyf(a.pcs) + '</td><td class="td r num">' + kg(a.weight)
-        + '</td><td class="td r num">' + (avg == null ? '-' : money(avg)) + '</td><td class="td r num font-bold ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a))
-        + '</td><td class="td r num" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
+      return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="item|' + esc(a.key) + '" title="Show only this item"><td class="td text-slate-400 num m-hide">' + (i + 1) + '</td><td class="td font-medium">' + esc(a.key)
+        + '<div class="md:hidden text-[11px] text-slate-400">' + parties + ' part' + (parties === 1 ? 'y' : 'ies') + (avg == null ? '' : ' · ' + money(avg) + '/kg') + '</div>'
+        + '</td><td class="td r num m-hide">' + parties + '</td><td class="td r num font-semibold">' + qtyf(a.qty) + '</td><td class="td r num m-hide">' + qtyf(a.pcs) + '</td><td class="td r num">' + kg(a.weight)
+        + '</td><td class="td r num m-hide">' + (avg == null ? '-' : money(avg)) + '</td><td class="td r num font-bold ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a))
+        + '<div class="bar md:hidden"><i style="width:' + share.toFixed(1) + '%"></i></div></td><td class="td r num m-hide" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
     }).join('') + '</tbody></table></div></div>';
 }
 
@@ -629,16 +724,19 @@ function viewSlips(el){
     + '<div class="divide-y divide-slate-100">' + slips.map(s => {
       const h = s.rows[0];
       const meta = [dmy(h.date), h.bill, h.vehicle && ('Vehicle ' + h.vehicle), h.invoice && ('Invoice ' + h.invoice), h.chalan && ('Chalan ' + h.chalan), h.contractor && ('Loading: ' + h.contractor)].filter(Boolean);
-      return '<details><summary class="px-5 py-3 hover:bg-slate-50 flex flex-wrap items-center gap-x-4 gap-y-1">'
+      return '<details><summary class="px-4 md:px-5 py-3 hover:bg-slate-50 flex flex-wrap items-center gap-x-4 gap-y-1">'
         + '<span class="chev text-slate-400">' + ico('chev') + '</span>'
         + '<span class="font-bold text-slate-900 num">' + esc(s.key) + '</span>'
-        + '<span class="font-semibold text-slate-700">' + esc(h.party) + '</span>'
-        + '<span class="text-xs text-slate-500">' + meta.map(esc).join(' · ') + '</span>'
-        + '<span class="ml-auto text-sm num"><b>' + qtyf(s.qty) + '</b> qty · ' + kg(s.weight) + ' · <b class="' + (s.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(s)) + '</b></span></summary>'
-        + '<div class="overflow-x-auto sb bg-slate-50/50"><table class="min-w-full"><thead><tr><th class="th">Category</th><th class="th">Item</th><th class="th">Order</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Rate</th><th class="th r">Disc %</th><th class="th r">Amount</th></tr></thead><tbody>'
-        + s.rows.map(r => '<tr><td class="td">' + esc(r.category) + '</td><td class="td">' + esc(r.item) + '</td><td class="td text-slate-500">' + esc(r.orderId) + '</td><td class="td r num">' + qtyf(r.qty)
-          + '</td><td class="td r num">' + qtyf(r.pcs) + '</td><td class="td r num">' + kg(r.weight) + '</td><td class="td r num">' + (r.rate == null ? '-' : fN.format(r.rate) + '/' + r.basis)
-          + '</td><td class="td r num">' + (r.disc ? r.disc : '-') + '</td><td class="td r num ' + (r.amount == null ? 'unpriced' : '') + '">' + money(r.amount) + '</td></tr>').join('')
+        + '<span class="font-semibold text-slate-700 min-w-0 break-words">' + esc(h.party) + '</span>'
+        + '<span class="text-xs text-slate-500 w-full md:w-auto pl-6 md:pl-0">' + meta.map(esc).join(' · ') + '</span>'
+        + '<span class="w-full md:w-auto md:ml-auto pl-6 md:pl-0 text-sm num"><b>' + qtyf(s.qty) + '</b> qty · ' + kg(s.weight) + ' · <b class="' + (s.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(s)) + '</b></span></summary>'
+        // Phone: Item (with category / order under it) | Qty | Amount.
+        + '<div class="overflow-x-auto sb bg-slate-50/50"><table class="min-w-full"><thead><tr><th class="th m-hide">Category</th><th class="th">Item</th><th class="th m-hide">Order</th><th class="th r">Qty</th><th class="th r m-hide">Pieces</th><th class="th r m-hide">Weight</th><th class="th r m-hide">Rate</th><th class="th r m-hide">Disc %</th><th class="th r">Amount</th></tr></thead><tbody>'
+        + s.rows.map(r => '<tr><td class="td m-hide">' + esc(r.category) + '</td><td class="td">' + esc(r.item)
+          + '<div class="md:hidden text-[11px] text-slate-400">' + esc([r.category, r.orderId && ('Order ' + r.orderId), kg(r.weight), r.rate == null ? '' : '@ ' + fN.format(r.rate) + '/' + r.basis + (r.disc ? ' −' + r.disc + '%' : '')].filter(x => x && x !== '-').join(' · ')) + '</div>'
+          + '</td><td class="td text-slate-500 m-hide">' + esc(r.orderId) + '</td><td class="td r num">' + qtyf(r.qty)
+          + '</td><td class="td r num m-hide">' + qtyf(r.pcs) + '</td><td class="td r num m-hide">' + kg(r.weight) + '</td><td class="td r num m-hide">' + (r.rate == null ? '-' : fN.format(r.rate) + '/' + r.basis)
+          + '</td><td class="td r num m-hide">' + (r.disc ? r.disc : '-') + '</td><td class="td r num ' + (r.amount == null ? 'unpriced' : '') + '">' + money(r.amount) + '</td></tr>').join('')
         + '</tbody></table></div></details>';
     }).join('') + '</div></div>';
 }
@@ -652,17 +750,20 @@ function viewMatrix(el){
   const items = [...agg(S.filtered, r => r.item).values()].sort((a, b) => b.amount - a.amount || a.key.localeCompare(b.key));
   const cell = new Map(); S.filtered.forEach(r => { const k = r.item + '\u0000' + r.party; if (!cell.has(k)) cell.set(k, []); cell.get(k).push(r); });
   const t = totals(S.filtered);
-  const side = (title, icon, list, field) => '<div class="card overflow-hidden flex flex-col">' + sectionHead(icon, title, '<span class="text-xs text-slate-500">' + list.length + '</span>')
-    + '<div class="overflow-auto sb max-h-96"><table class="min-w-full"><thead class="sticky top-0"><tr><th class="th">' + (field === 'party' ? 'Party' : 'Item / Quality') + '</th><th class="th r">Qty</th><th class="th r">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
-    + list.map(a => '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="' + field + '|' + esc(a.key) + '"><td class="td font-semibold">' + esc(a.key) + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num">' + kg(a.weight)
-      + '</td><td class="td r num font-bold ' + (a.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(a)) + '</td></tr>').join('') + '</tbody></table></div></div>';
+  // Folds: open on a desktop, folded on a phone so the pivot is one scroll away.
+  const side = (title, icon, list, field) => '<details class="card overflow-hidden fold"' + openAttr() + '><summary class="bg-slate-50 border-b border-slate-200 px-4 md:px-5 py-3">'
+    + '<span class="fold-chev">&#9654;</span><h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">' + ico(icon, 'text-brand-600') + esc(title) + '</h2><span class="ml-auto text-xs text-slate-500">' + list.length + '</span></summary>'
+    + '<div class="overflow-auto sb max-h-96"><table class="min-w-full"><thead class="sticky top-0"><tr><th class="th">' + (field === 'party' ? 'Party' : 'Item / Quality') + '</th><th class="th r">Qty</th><th class="th r m-hide">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
+    + list.map(a => '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="' + field + '|' + esc(a.key) + '"><td class="td font-semibold">' + esc(a.key) + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num m-hide">' + kg(a.weight)
+      + '</td><td class="td r num font-bold ' + (a.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(a)) + '</td></tr>').join('') + '</tbody></table></div></details>';
   const metricBtns = Object.keys(METRICS).map(k => '<button class="chip' + (k === S.metric ? ' on' : '') + '" onclick="DR.setMetric(\'' + k + '\')">' + METRICS[k].l + '</button>').join('');
   // Heat shading: how big each cell is next to the biggest one.
   const max = Math.max(1, ...[...cell.values()].map(rs => { const v = val(totals(rs)); return v == null ? 0 : v; }));
-  el.innerHTML = '<div class="space-y-5"><div class="grid grid-cols-1 lg:grid-cols-2 gap-5">' + side('Party-wise Totals', 'tree', parties, 'party') + side('Item-wise Totals', 'box', items, 'item') + '</div>'
-    + '<div class="card overflow-hidden">' + sectionHead('grid', 'Party × Item Pivot', '<div class="flex gap-1.5 items-center"><span class="text-xs text-slate-500 mr-1">Show</span>' + metricBtns + '</div>')
-    + '<div class="overflow-auto sb max-h-[560px]"><table class="pivot min-w-full text-xs border-collapse"><thead class="sticky top-0 z-20"><tr><th class="th sticky left-0 z-30" style="min-width:220px">Item \\ Party</th>'
-    + parties.map(p => '<th class="th text-center">' + esc(p.key) + '</th>').join('') + '<th class="th r bg-brand-50">Total</th></tr></thead><tbody>'
+  el.innerHTML = '<div class="space-y-4 md:space-y-5"><div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-5 items-start">' + side('Party-wise Totals', 'tree', parties, 'party') + side('Item-wise Totals', 'box', items, 'item') + '</div>'
+    + '<div class="card overflow-hidden">' + sectionHead('grid', 'Party × Item Pivot', '<div class="flex gap-1.5 items-center hscroll"><span class="text-xs text-slate-500 mr-1 shrink-0">Show</span>' + metricBtns + '</div>')
+    + '<div class="overflow-auto sb max-h-[70vh] md:max-h-[600px]"><table class="pivot min-w-full text-xs border-collapse"><thead class="sticky top-0 z-20"><tr><th class="th sticky left-0 z-30 align-bottom" style="min-width:220px">Item \\ Party</th>'
+    // Party names stand upright (.rot): the column is as wide as its figures.
+    + parties.map(p => '<th class="th rot" title="' + esc(p.key) + '"><span>' + esc(p.key) + '</span></th>').join('') + '<th class="th rot bg-brand-50"><span>TOTAL</span></th></tr></thead><tbody>'
     + items.map(i => '<tr><td class="td sticky left-0 bg-white z-10 font-semibold">' + esc(i.key) + '</td>' + parties.map(p => {
         const rs = cell.get(i.key + '\u0000' + p.key);
         if (!rs) return '<td class="td text-center text-slate-300">-</td>';
@@ -676,7 +777,7 @@ function viewMatrix(el){
 // 5. Charts. Each one is rebuilt from the filtered rows on every change.
 const PALETTE = ['#0d9488', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#dc2626', '#475569', '#ca8a04'];
 function chart(id, cfg){ const c = $(id); if (!c || !window.Chart) return; charts.push(new Chart(c.getContext('2d'), cfg)); }
-const chartCard = (id, title, icon, tall) => '<div class="card p-5"><h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">' + ico(icon, 'text-brand-600') + esc(title) + '</h3><div class="' + (tall ? 'h-80' : 'h-64') + '"><canvas id="' + id + '"></canvas></div></div>';
+const chartCard = (id, title, icon, tall) => '<div class="card p-3 md:p-5"><h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">' + ico(icon, 'text-brand-600') + esc(title) + '</h3><div class="relative ' + (tall ? 'h-72 md:h-80' : 'h-56 md:h-64') + '"><canvas id="' + id + '"></canvas></div></div>';
 function topN(map, n, field){
   const all = [...map.values()].sort((a, b) => b[field] - a[field]);
   const top = all.slice(0, n), rest = all.slice(n);
@@ -697,17 +798,21 @@ function viewAnalytics(el){
   chart('chCat', { type:'doughnut', data:{ labels:cats.map(a => a.key), datasets:[{ data:cats.map(a => round2(a.amount)), backgroundColor:PALETTE }] }, options:{ ...base, plugins:{ ...base.plugins, tooltip:moneyTip } } });
   const bills = [...agg(S.filtered, r => r.bill).values()];
   chart('chBill', { type:'doughnut', data:{ labels:bills.map(a => a.key), datasets:[{ data:bills.map(a => round2(a.amount)), backgroundColor:['#0d9488', '#d97706', '#64748b'] }] }, options:{ ...base, plugins:{ ...base.plugins, tooltip:moneyTip } } });
+  // Bar labels are shortened on a phone; the tooltip always names it in full.
+  const fullTitle = list => ({ title:items => items.length ? list[items[0].dataIndex].key : '' });
+  const yTicks = { font:{ size:isMobile() ? 10 : 11 } };
   const tp = topN(agg(S.filtered, r => r.party), 10, 'amount');
-  chart('chParty', { type:'bar', data:{ labels:tp.map(a => a.key), datasets:[{ label:'Net Amount', data:tp.map(a => round2(a.amount)), backgroundColor:'#14b8a6', borderRadius:4 }] },
-    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:c => ' ' + money(c.parsed.x) } } }, scales:{ x:{ beginAtZero:true, ticks:{ callback:v => '₹' + fN.format(v / 100000) + 'L' } } } } });
+  chart('chParty', { type:'bar', data:{ labels:tp.map(a => shortLabel(a.key)), datasets:[{ label:'Net Amount', data:tp.map(a => round2(a.amount)), backgroundColor:'#14b8a6', borderRadius:4 }] },
+    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ ...fullTitle(tp), label:c => ' ' + money(c.parsed.x) } } }, scales:{ y:{ ticks:yTicks }, x:{ beginAtZero:true, ticks:{ callback:v => '₹' + fN.format(v / 100000) + 'L' } } } } });
   const ti = topN(agg(S.filtered, r => r.item), 10, 'qty');
-  chart('chItem', { type:'bar', data:{ labels:ti.map(a => a.key), datasets:[{ label:'Qty', data:ti.map(a => a.qty), backgroundColor:'#2563eb', borderRadius:4 }] },
-    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } } });
+  chart('chItem', { type:'bar', data:{ labels:ti.map(a => shortLabel(a.key)), datasets:[{ label:'Qty', data:ti.map(a => a.qty), backgroundColor:'#2563eb', borderRadius:4 }] },
+    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ callbacks:fullTitle(ti) } }, scales:{ y:{ ticks:yTicks }, x:{ beginAtZero:true } } } });
   if (multiDay){
     // Every day of the range, so a day with no dispatch shows as a gap at zero.
     const byDay = agg(S.filtered, r => r.date), days = [];
     for (let d = S.from; d <= S.to; d = addDays(d, 1)) days.push(d);
-    chart('chTrend', { type:'bar', data:{ labels:days.map(dmy), datasets:[
+    // DD/MM on a phone: the year is in the date range above anyway.
+    chart('chTrend', { type:'bar', data:{ labels:days.map(d => isMobile() ? dmy(d).slice(0, 5) : dmy(d)), datasets:[
         { type:'bar', label:'Qty', data:days.map(d => byDay.has(d) ? byDay.get(d).qty : 0), backgroundColor:'#99f6e4', yAxisID:'y' },
         { type:'line', label:'Net Amount', data:days.map(d => byDay.has(d) ? round2(byDay.get(d).amount) : 0), borderColor:'#0f766e', backgroundColor:'#0f766e', tension:.25, yAxisID:'y1', pointRadius:2 } ] },
       options:{ ...base, interaction:{ mode:'index', intersect:false },
@@ -739,7 +844,7 @@ function viewGrid(el){
     return asc ? cmp(x[key], y[key]) : cmp(y[key], x[key]);
   });
   el.innerHTML = '<div class="card overflow-hidden">' + sectionHead('list', 'Explorer', '<span class="text-xs text-slate-500">' + rows.length + ' lines · click a heading to sort</span>')
-    + '<div class="overflow-auto sb max-h-[640px]"><table class="min-w-full"><thead class="sticky top-0"><tr>'
+    + '<div class="overflow-auto sb max-h-[70vh] md:max-h-[640px]"><table class="min-w-full"><thead class="sticky top-0"><tr>'
     + GRID_COLS.map(c => '<th class="th sortable' + (c.r ? ' r' : '') + '" onclick="DR.sort(\'' + c.k + '\')">' + c.l + (key === c.k ? (asc ? ' ▴' : ' ▾') : '') + '</th>').join('')
     + '</tr></thead><tbody>' + rows.map(r => '<tr class="hover:bg-slate-50">' + GRID_COLS.map(c => {
       const v = r[c.k];
@@ -783,6 +888,26 @@ function init(){
     if (VIEWS.some(v => v.key === p.get('view'))) S.view = p.get('view');
   } catch (e) {}
   syncDateBoxes(); renderTabs(); applyDensity();
+  /* Filters: open on a desktop (its fold bar is hidden there), folded on a
+     phone. Crossing the breakpoint re-applies that and redraws the view, so
+     its folds, column set and chart labels follow the new width. */
+  const relayout = () => { $('filtersBox').open = !isMobile(); if (S.rows.length) renderView(); };
+  $('filtersBox').open = !isMobile();
+  if (MOBILE_MQ.addEventListener) MOBILE_MQ.addEventListener('change', relayout);
+  else if (MOBILE_MQ.addListener) MOBILE_MQ.addListener(relayout);   // older Safari
+  // A folded block would print as just its heading: unfold all for paper,
+  // then put back exactly what was folded.
+  let folded = [], kpiWasOpen = false;
+  window.addEventListener('beforeprint', () => {
+    folded = [...document.querySelectorAll('#content details:not([open])')];
+    folded.forEach(d => { d.open = true; });
+    kpiWasOpen = $('kpiWrap').classList.contains('kpis-open');
+    $('kpiWrap').classList.add('kpis-open');
+  });
+  window.addEventListener('afterprint', () => {
+    folded.forEach(d => { d.open = false; }); folded = [];
+    if (!kpiWasOpen) $('kpiWrap').classList.remove('kpis-open');
+  });
   // Enter in either date box loads, like pressing Load.
   ['dFrom', 'dTo'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') DR.applyDates(); }));
   DR.load();
