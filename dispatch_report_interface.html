@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dispatch Report</title>
+<!-- Same head order as every other app page: dates first, then capitals,
+     then the single-login splash and gate. -->
+<script src="date-dmy.js"></script>
+<script src="caps-input.js"></script>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    fontFamily: { sans: ['Inter', 'sans-serif'] },
+    colors: { brand: { 50:'#f0fdfa', 100:'#ccfbf1', 200:'#99f6e4', 500:'#14b8a6', 600:'#0d9488', 700:'#0f766e', 800:'#115e59', 900:'#134e4a' } }
+  } } };
+</script>
+<style>
+  body { background:#f8fafc; }
+  .sb::-webkit-scrollbar { height:6px; width:6px; }
+  .sb::-webkit-scrollbar-track { background:#f1f5f9; }
+  .sb::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+  .ico { width:15px; height:15px; display:inline-block; vertical-align:-2px; flex-shrink:0; }
+  .chip { padding:4px 10px; font-size:12px; font-weight:600; border-radius:999px; border:1px solid #e2e8f0; background:#f8fafc; color:#334155; white-space:nowrap; }
+  .chip:hover { background:#f1f5f9; }
+  .chip.on { background:#0d9488; border-color:#0d9488; color:#fff; }
+  .tab { padding:6px 11px; font-size:12px; font-weight:600; border-radius:6px; color:#475569; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; }
+  .tab.on { background:#fff; color:#0f172a; box-shadow:0 1px 2px rgba(0,0,0,.08); border:1px solid #e2e8f0; }
+  .sel { font-size:12px; border:1px solid #cbd5e1; border-radius:8px; padding:6px 8px; background:#fff; color:#334155; max-width:220px; }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px; font-weight:600; border-radius:8px; border:1px solid #cbd5e1; background:#fff; color:#334155; white-space:nowrap; }
+  .btn:hover { background:#f8fafc; }
+  .btn.pri { background:#0d9488; border-color:#0d9488; color:#fff; }
+  .btn.pri:hover { background:#0f766e; }
+  .btn:disabled { opacity:.55; cursor:not-allowed; }
+  .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .th { padding:9px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:#475569; background:#f1f5f9; text-align:left; white-space:nowrap; }
+  .th.r, .td.r { text-align:right; }
+  .th.sortable { cursor:pointer; user-select:none; }
+  .th.sortable:hover { background:#e2e8f0; }
+  .td { padding:8px 12px; font-size:13px; color:#334155; border-top:1px solid #f1f5f9; }
+  .compact .td { padding-top:4px; padding-bottom:4px; font-size:12px; }
+  .num { font-variant-numeric:tabular-nums; }
+  .unpriced { color:#b45309; font-weight:600; }
+  .bar { height:4px; background:#e2e8f0; border-radius:2px; overflow:hidden; margin-top:3px; }
+  .bar > i { display:block; height:100%; background:#14b8a6; }
+  .kpi-d.up { color:#047857; } .kpi-d.down { color:#b91c1c; }
+  .pivot td, .pivot th { border:1px solid #e2e8f0; }
+  details > summary { list-style:none; cursor:pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  details[open] .chev { transform:rotate(90deg); }
+  .chev { transition:transform .15s; }
+  @media print {
+    .no-print { display:none !important; }
+    body { background:#fff; }
+    .card { box-shadow:none; break-inside:avoid; }
+    .print-only { display:block !important; }
+  }
+  .print-only { display:none; }
+</style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-30 no-print">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 bg-brand-600 rounded-lg flex items-center justify-center text-white shrink-0" data-ico="truck"></div>
+      <div class="min-w-0">
+        <div class="font-bold text-[17px] leading-tight text-slate-900">Dispatch Report</div>
+        <div id="hdrSub" class="text-xs text-slate-500 truncate">Loading…</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button class="btn" onclick="DR.exportCsv()" title="Download the filtered rows as CSV"><span data-ico="download"></span><span class="hidden sm:inline">Export CSV</span></button>
+      <button class="btn" onclick="window.print()" title="Print the current view"><span data-ico="print"></span><span class="hidden sm:inline">Print</span></button>
+      <button class="btn pri" id="reloadBtn" onclick="DR.load()" title="Fetch again from the server"><span data-ico="refresh"></span><span class="hidden sm:inline">Refresh</span></button>
+    </div>
+  </div>
+</header>
+
+<main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 w-full">
+
+  <!-- Printed title: the screen header is hidden on paper. -->
+  <div class="print-only mb-3">
+    <div class="text-xl font-extrabold">Dispatch Report</div>
+    <div id="printSub" class="text-xs text-slate-600"></div>
+  </div>
+
+  <!-- ── Controls ─────────────────────────────────────────────────── -->
+  <section class="card p-4 mb-5 no-print space-y-3">
+    <!-- Row 1: date range -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Date</span>
+      <div id="presetChips" class="flex flex-wrap gap-1.5"></div>
+      <div class="flex items-center gap-1.5 ml-auto flex-wrap">
+        <button class="btn px-2" onclick="DR.shift(-1)" title="Previous period">&#9664;</button>
+        <label class="text-[11px] font-bold text-slate-500" for="dFrom">FROM</label>
+        <input type="date" id="dFrom" class="sel" style="width:130px">
+        <label class="text-[11px] font-bold text-slate-500" for="dTo">TO</label>
+        <input type="date" id="dTo" class="sel" style="width:130px">
+        <button class="btn px-2" onclick="DR.shift(1)" title="Next period">&#9654;</button>
+        <button class="btn pri" onclick="DR.applyDates()">Load</button>
+      </div>
+    </div>
+
+    <!-- Row 2: search + views -->
+    <div class="flex flex-col md:flex-row gap-3 md:items-center justify-between pt-3 border-t border-slate-100">
+      <div class="relative flex-1">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" data-ico="search"></span>
+        <input type="text" id="searchInput" oninput="DR.setSearch(this.value)" placeholder="Search party, item, slip no, vehicle, invoice..."
+               class="w-full pl-9 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-slate-50">
+        <button id="clearSearchBtn" onclick="DR.setSearch('',true)" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-sm" title="Clear search">&#10005;</button>
+      </div>
+      <div id="viewTabs" class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 overflow-x-auto sb max-w-full"></div>
+    </div>
+
+    <!-- Row 3: slicers -->
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t border-slate-100">
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Category</span>
+        <div id="catChips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">Bill</span>
+        <div id="billChips" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap ml-auto">
+        <select id="partySel" class="sel" onchange="DR.setFilter('party',this.value)"></select>
+        <select id="itemSel" class="sel" onchange="DR.setFilter('item',this.value)"></select>
+        <select id="priceSel" class="sel" onchange="DR.setFilter('price',this.value)">
+          <option value="ALL">All Price Types</option>
+          <option value="PRICED">Priced only</option>
+          <option value="UNPRICED">Unpriced (-) only</option>
+        </select>
+        <button class="btn" id="densityBtn" onclick="DR.toggleDensity()" title="Row spacing">Standard</button>
+        <button class="btn" onclick="DR.resetFilters()" style="color:#be123c;border-color:#fecdd3">Reset</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Messages: server errors, empty ranges, notes. -->
+  <div id="banner" class="hidden mb-5 rounded-lg border px-4 py-3 text-sm"></div>
+
+  <!-- ── KPIs ──────────────────────────────────────────────────────── -->
+  <section id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></section>
+
+  <!-- Loading skeleton -->
+  <div id="loading" class="hidden space-y-4 mb-5">
+    <div class="h-28 rounded-xl bg-slate-200 animate-pulse"></div>
+    <div class="h-64 rounded-xl bg-slate-200 animate-pulse"></div>
+  </div>
+
+  <div id="content" class="space-y-6">
+    <!-- Category summary: always on top, whatever the view. -->
+    <section class="card overflow-hidden">
+      <div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap gap-2 justify-between items-center">
+        <h2 class="text-sm font-bold text-slate-800 flex items-center gap-2"><span data-ico="pie" class="text-brand-600"></span> Category Summary</h2>
+        <span id="filterBadge" class="text-xs font-semibold text-slate-600 bg-slate-200 px-2.5 py-0.5 rounded-full"></span>
+      </div>
+      <div class="overflow-x-auto sb"><table class="min-w-full" id="catTable"></table></div>
+    </section>
+
+    <section id="view"></section>
+  </div>
+</main>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   DISPATCH REPORT
+   ────────────────────────────────────────────────────────────────────
+   Reads the packing slips of the OLD packing project
+   (hghomygvryyihezvmrjj) through one read-only function,
+   dispatch_report_rows(from, to): see sql/DISPATCH_REPORT_RPC.sql, which
+   explains why the data is reached that way and what that trade-off is.
+   Who may open THIS page is decided by the ERP: the single-login gate and
+   the HOME_DISPATCH_REPORT key in Admin Panel › Tab Visibility / per-user
+   Apps.
+
+   Everything about how a figure is worked out lives in RULES below, so a
+   GST change or a new per-piece item type is a one-line edit, not a hunt
+   through the views. The categories, bill types, parties and items on the
+   slicers come from the data itself, so a new category simply appears.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Connections ──────────────────────────────────────────────────── */
+// The ERP project: only for the login gate and app access.
+const ERP_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const ERP_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY  = 'HOME_DISPATCH_REPORT';
+// The packing data project.
+const DATA_URL  = "https://hghomygvryyihezvmrjj.supabase.co";
+const DATA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnaG9teWd2cnl5aWhlenZtcmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxMjQ2MDgsImV4cCI6MjEwMjcwMDYwOH0.KY1AMj--baFuH6wmS2mBxytBRL-ePdhNctCSOY6rixg";
+const DATA_FN   = 'dispatch_report_rows';
+// Separate storage key and no saved session: this client only ever calls
+// the anon function, and must never clash with another app's login.
+const DB = window.supabase.createClient(DATA_URL, DATA_ANON, {
+  auth: { persistSession: false, autoRefreshToken: false, storageKey: 'sarv-dispatch-report' }
+});
+
+/* ── How the figures are worked out ───────────────────────────────── */
+const RULES = {
+  /* Net Amount = basis × rate × (1 − discount %) × (1 + GST).
+     Checked against the printed Dispatch Report of 23/10/2026: ORCHID
+     3500 BOX, 909.95 kg × ₹241.31 × 1.05 = ₹2,30,559.04, and every
+     party total on that sheet ties out the same way. */
+  GST: 0.05,
+  // Billed per PIECE, not per kg (a PVC bag is priced per bag).
+  PER_PCS_TYPES: ['PVC BAG'],
+  // A rate at or below this is a placeholder, not a price: the line prints
+  // as "-" (unpriced), exactly as on the paper report.
+  PLACEHOLDER_RATE: 1,
+  /* Packing material rides along with the blankets it holds, so its
+     pieces are the SAME pieces counted again. Kept out of the Pcs total. */
+  NOT_PIECES_TYPES: ['PVC BAG'],
+  // Category order on screen; anything not listed follows alphabetically.
+  CATEGORY_ORDER: ['BORA', 'BOX', 'BALE', 'ROLL', 'LOOSE PCS', 'PVC BAG', 'OTHER'],
+  // The server refuses longer; checked here first so the message is clear.
+  MAX_DAYS: 400,
+};
+
+/* ── Small helpers ────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const round2 = n => Math.round(n * 100) / 100;
+const fINR = new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', minimumFractionDigits:2, maximumFractionDigits:2 });
+const fN   = new Intl.NumberFormat('en-IN', { maximumFractionDigits:2 });
+const money = v => (v == null || !isFinite(v)) ? '-' : fINR.format(v);
+const qtyf  = v => (v == null || !isFinite(v)) ? '-' : fN.format(v);
+const kg    = v => (v == null || !isFinite(v) || !v) ? '-' : fN.format(round2(v)) + ' kg';
+// Local calendar day as YYYY-MM-DD (toISOString is UTC: wrong before 05:30 IST).
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const parseIso = s => { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseIso(s); d.setDate(d.getDate() + n); return iso(d); };
+const daysBetween = (a, b) => Math.round((parseIso(b) - parseIso(a)) / 86400000);
+const dmy = s => s ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) + '/' + String(s).slice(0, 4) : '';
+const today = () => iso(new Date());
+
+/* Inline line icons (no icon font: same convention as the rest of the ERP). */
+const ICONS = {
+  truck:'<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7M7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM17 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/>',
+  download:'<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  print:'<path d="M6 9V3h12v6M6 18H4v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6h-2M7 14h10v7H7z"/>',
+  refresh:'<path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  pie:'<path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+  tree:'<path d="M4 4h6v6H4zM14 14h6v6h-6zM7 10v7h7"/>',
+  box:'<path d="M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/>',
+  grid:'<path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>',
+  chart:'<path d="M3 21h18M7 17V9M12 17V5M17 17v-6"/>',
+  list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  slip:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/>',
+  chev:'<path d="M9 6l6 6-6 6"/>',
+};
+const ico = (k, cls) => '<svg class="ico ' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[k] || '') + '</svg>';
+function paintIcons(root){ (root || document).querySelectorAll('[data-ico]').forEach(el => { if (!el.dataset.done){ el.innerHTML = ico(el.dataset.ico); el.dataset.done = '1'; } }); }
+
+/* Per-viewer conveniences only (view, density, matrix metric); the page
+   works the same without them (private window, blocked storage). */
+const PREF_KEY = 'sarv_dispatch_report_prefs';
+function loadPrefs(){ try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } }
+function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ view:S.view, density:S.density, metric:S.metric })); } catch (e) {} }
+
+/* ── State ────────────────────────────────────────────────────────── */
+const VIEWS = [
+  { key:'party',     label:'Party-wise',   ico:'tree'  },
+  { key:'product',   label:'Product-wise', ico:'box'   },
+  { key:'slips',     label:'Slip-wise',    ico:'slip'  },
+  { key:'matrix',    label:'Matrix',       ico:'grid'  },
+  { key:'analytics', label:'Analytics',    ico:'chart' },
+  { key:'grid',      label:'Explorer',     ico:'list'  },
+];
+const PRESETS = [
+  { key:'today',     label:'Today',        range:() => [today(), today()] },
+  { key:'yesterday', label:'Yesterday',    range:() => { const y = addDays(today(), -1); return [y, y]; } },
+  { key:'7d',        label:'Last 7 days',  range:() => [addDays(today(), -6), today()] },
+  { key:'30d',       label:'Last 30 days', range:() => [addDays(today(), -29), today()] },
+  { key:'month',     label:'This month',   range:() => { const t = today(); return [t.slice(0, 8) + '01', t]; } },
+  { key:'lastmonth', label:'Last month',   range:() => { const d = parseIso(today()); const a = new Date(d.getFullYear(), d.getMonth() - 1, 1), b = new Date(d.getFullYear(), d.getMonth(), 0); return [iso(a), iso(b)]; } },
+];
+const prefs = loadPrefs();
+const S = {
+  from: today(), to: today(),
+  rows: [], prevRows: null, filtered: [],
+  f: { cat:'ALL', bill:'ALL', party:'ALL', item:'ALL', price:'ALL', q:'' },
+  view: VIEWS.some(v => v.key === prefs.view) ? prefs.view : 'party',
+  density: prefs.density === 'compact' ? 'compact' : 'standard',
+  metric: ['qty', 'amount', 'weight'].includes(prefs.metric) ? prefs.metric : 'qty',
+  sort: { key:'date', asc:true },
+  loading: false, reqId: 0,
+};
+let charts = [];
+
+/* ── Data ─────────────────────────────────────────────────────────── */
+// One server row → one report line, with the amount worked out by RULES.
+function toLine(r){
+  const cat = String(r.item_type || 'OTHER').trim().toUpperCase() || 'OTHER';
+  const rate = r.rate == null ? null : num(r.rate);
+  const disc = num(r.discount);
+  const pcs = num(r.bd_pcs), weight = num(r.bd_weight);
+  const perPcs = RULES.PER_PCS_TYPES.includes(cat);
+  let amount = null;
+  if (rate != null && rate > RULES.PLACEHOLDER_RATE){
+    amount = round2((perPcs ? pcs : weight) * rate * (1 - disc / 100) * (1 + RULES.GST));
+  }
+  return {
+    date: r.slip_date, slipNo: r.slip_no || '', slipId: r.slip_id,
+    bill: r.packing_type || '-', party: String(r.party_name || 'UNKNOWN').trim(),
+    category: cat, item: String(r.quality || '-').trim(),
+    qty: num(r.pack_count), pcs: RULES.NOT_PIECES_TYPES.includes(cat) ? 0 : pcs, weight,
+    rate, disc, amount, basis: perPcs ? 'pcs' : 'kg',
+    orderId: r.order_id || '', invoice: r.actual_invoice_no || '', chalan: r.chalan_no || '',
+    vehicle: r.tempo_no || '', contractor: r.loading_contractor || '', preparedBy: r.prepared_by_name || '',
+    marka: r.private_marka || '', shipTo: r.ship_to || '', dispatchTo: r.dispatch_to || '',
+  };
+}
+async function fetchRange(from, to){
+  const { data, error } = await DB.rpc(DATA_FN, { p_from: from, p_to: to });
+  if (error) throw error;
+  return (data || []).map(toLine);
+}
+
+const DR = {};
+
+DR.load = async function(){
+  if (daysBetween(S.from, S.to) < 0) return banner('warn', 'The TO date is before the FROM date.');
+  if (daysBetween(S.from, S.to) > RULES.MAX_DAYS) return banner('warn', 'Please choose at most ' + RULES.MAX_DAYS + ' days at a time.');
+  const id = ++S.reqId;   // a slower, older request must not overwrite a newer one
+  S.loading = true; setLoading(true); banner();
+  // The period just before, of the same length, for the "vs previous" figures.
+  const len = daysBetween(S.from, S.to) + 1;
+  const pFrom = addDays(S.from, -len), pTo = addDays(S.from, -1);
+  try {
+    const [cur, prev] = await Promise.all([
+      fetchRange(S.from, S.to),
+      fetchRange(pFrom, pTo).catch(() => null),   // comparison is a nice-to-have
+    ]);
+    if (id !== S.reqId) return;
+    S.rows = cur; S.prevRows = prev;
+    syncUrl();
+    buildSlicers();
+    apply();
+    if (!cur.length) banner('info', 'No dispatch found between ' + dmy(S.from) + ' and ' + dmy(S.to) + '. Try another date or a preset above.');
+  } catch (e) {
+    if (id !== S.reqId) return;
+    S.rows = []; S.prevRows = null; buildSlicers(); apply();
+    banner('error', explain(e));
+  } finally {
+    if (id === S.reqId){ S.loading = false; setLoading(false); }
+  }
+};
+// The real message always goes with the explanation.
+function explain(e){
+  const msg = (e && (e.message || e.msg)) || String(e || 'unknown error'), code = (e && e.code) || '';
+  let why = 'The report could not be loaded.';
+  if (code === 'PGRST202' || code === '42883') why = 'The report function was not found on the packing server. Run <code>sql/DISPATCH_REPORT_RPC.sql</code> in the packing project (hghomygvryyihezvmrjj).';
+  else if (code === '42501') why = 'The packing server refused the request (permission). Re-run <code>sql/DISPATCH_REPORT_RPC.sql</code>; it grants the function to the page\'s key.';
+  else if (/failed to fetch|networkerror|load failed/i.test(msg)) why = 'Could not reach the packing server. Please check the internet connection.';
+  return why + '<br><small class="opacity-80">' + esc(msg) + (code ? ' [' + esc(code) + ']' : '') + '</small>';
+}
+
+/* ── Filters ──────────────────────────────────────────────────────── */
+function passes(r, skip){
+  const f = S.f;
+  if (skip !== 'cat'   && f.cat   !== 'ALL' && r.category !== f.cat) return false;
+  if (skip !== 'bill'  && f.bill  !== 'ALL' && r.bill !== f.bill) return false;
+  if (skip !== 'party' && f.party !== 'ALL' && r.party !== f.party) return false;
+  if (skip !== 'item'  && f.item  !== 'ALL' && r.item !== f.item) return false;
+  if (f.price === 'PRICED' && r.amount == null) return false;
+  if (f.price === 'UNPRICED' && r.amount != null) return false;
+  if (f.q){
+    const q = f.q.toLowerCase();
+    const hay = [r.party, r.item, r.category, r.slipNo, r.vehicle, r.invoice, r.chalan, r.orderId, r.marka, r.bill].join(' ').toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  return true;
+}
+function apply(){
+  S.filtered = S.rows.filter(r => passes(r));
+  refreshSlicerCounts();
+  renderHeader(); renderKpis(); renderCatTable(); renderView();
+}
+DR.setFilter = function(k, v){ S.f[k] = v; apply(); };
+DR.setSearch = function(v, clearBox){
+  S.f.q = String(v || '').trim();
+  if (clearBox) $('searchInput').value = '';
+  $('clearSearchBtn').classList.toggle('hidden', !S.f.q);
+  clearTimeout(DR._t); DR._t = setTimeout(apply, 120);
+};
+DR.resetFilters = function(){
+  S.f = { cat:'ALL', bill:'ALL', party:'ALL', item:'ALL', price:'ALL', q:'' };
+  $('searchInput').value = ''; $('clearSearchBtn').classList.add('hidden');
+  $('priceSel').value = 'ALL';
+  apply();
+};
+
+/* ── Slicers: built from the data, counts follow the OTHER filters ── */
+const catSort = (a, b) => {
+  const ia = RULES.CATEGORY_ORDER.indexOf(a), ib = RULES.CATEGORY_ORDER.indexOf(b);
+  return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+};
+function buildSlicers(){
+  // A pick that no longer exists in the new date range is dropped.
+  const has = (k, field) => S.f[k] === 'ALL' || S.rows.some(r => r[field] === S.f[k]);
+  if (!has('cat', 'category')) S.f.cat = 'ALL';
+  if (!has('bill', 'bill')) S.f.bill = 'ALL';
+  if (!has('party', 'party')) S.f.party = 'ALL';
+  if (!has('item', 'item')) S.f.item = 'ALL';
+}
+function counted(field, skip){
+  const m = new Map();
+  S.rows.forEach(r => { if (passes(r, skip)) m.set(r[field], (m.get(r[field]) || 0) + r.qty); });
+  return m;
+}
+function chips(boxId, fkey, field, sorter){
+  const m = counted(field, fkey);
+  const all = [...new Set(S.rows.map(r => r[field]))].sort(sorter || ((a, b) => a.localeCompare(b)));
+  const cur = S.f[fkey];
+  $(boxId).innerHTML = '<button class="chip' + (cur === 'ALL' ? ' on' : '') + '" data-k="' + fkey + '" data-v="ALL">All</button>'
+    + all.map(v => '<button class="chip' + (cur === v ? ' on' : '') + '" data-k="' + fkey + '" data-v="' + esc(v) + '">'
+      + esc(v) + ' <span class="opacity-70">' + qtyf(m.get(v) || 0) + '</span></button>').join('');
+}
+function options(selId, fkey, field, allLabel){
+  const m = counted(field, fkey);
+  const all = [...new Set(S.rows.map(r => r[field]))].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  const live = all.filter(v => m.has(v) || v === S.f[fkey]);
+  $(selId).innerHTML = '<option value="ALL">' + esc(allLabel) + ' (' + live.length + ')</option>'
+    + live.map(v => '<option value="' + esc(v) + '"' + (v === S.f[fkey] ? ' selected' : '') + '>' + esc(v) + '</option>').join('');
+}
+function refreshSlicerCounts(){
+  chips('catChips', 'cat', 'category', catSort);
+  chips('billChips', 'bill', 'bill');
+  options('partySel', 'party', 'party', 'All Parties');
+  options('itemSel', 'item', 'item', 'All Items / Qualities');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('.chip[data-k]');
+  if (b) DR.setFilter(b.dataset.k, b.dataset.v);
+  const p = e.target.closest && e.target.closest('[data-pick]');
+  if (p){ const [k, ...v] = p.dataset.pick.split('|'); DR.setFilter(k, v.join('|')); }
+});
+
+/* ── Dates ────────────────────────────────────────────────────────── */
+function renderPresets(){
+  $('presetChips').innerHTML = PRESETS.map(p => {
+    const [a, b] = p.range();
+    return '<button class="chip' + (a === S.from && b === S.to ? ' on' : '') + '" onclick="DR.preset(\'' + p.key + '\')">' + p.label + '</button>';
+  }).join('');
+}
+DR.preset = function(k){ const p = PRESETS.find(x => x.key === k); if (!p) return; [S.from, S.to] = p.range(); syncDateBoxes(); DR.load(); };
+DR.applyDates = function(){
+  const a = $('dFrom').value, b = $('dTo').value;
+  if (!a || !b) return banner('warn', 'Please choose both dates.');
+  S.from = a; S.to = b; DR.load();
+};
+// Step the whole range back / forward by its own length (a day, a week, ...).
+DR.shift = function(dir){
+  const len = daysBetween(S.from, S.to) + 1;
+  S.from = addDays(S.from, dir * len); S.to = addDays(S.to, dir * len);
+  syncDateBoxes(); DR.load();
+};
+function syncDateBoxes(){ $('dFrom').value = S.from; $('dTo').value = S.to; renderPresets(); }
+// The range (and view) in the address, so a link or a reload opens the same report.
+function syncUrl(){
+  try {
+    const u = new URL(location.href);
+    u.searchParams.set('from', S.from); u.searchParams.set('to', S.to); u.searchParams.set('view', S.view);
+    history.replaceState(null, '', u);
+  } catch (e) {}
+}
+
+/* ── Aggregation ──────────────────────────────────────────────────── */
+function agg(rows, keyFn){
+  const m = new Map();
+  rows.forEach(r => {
+    const k = keyFn(r);
+    let a = m.get(k);
+    if (!a){ a = { key:k, qty:0, pcs:0, weight:0, amount:0, priced:false, unpriced:0, n:0, rows:[] }; m.set(k, a); }
+    a.qty += r.qty; a.pcs += r.pcs; a.weight += r.weight; a.n++; a.rows.push(r);
+    if (r.amount != null){ a.amount += r.amount; a.priced = true; } else a.unpriced++;
+  });
+  return m;
+}
+const totals = rows => [...agg(rows, () => 'T').values()][0] || { qty:0, pcs:0, weight:0, amount:0, priced:false, unpriced:0, n:0, rows:[] };
+// The amount a group prints: "-" only when NONE of its lines has a price.
+const amt = a => a.priced ? a.amount : null;
+
+/* ── Header / banner / loading ────────────────────────────────────── */
+function rangeText(){ return S.from === S.to ? dmy(S.from) : dmy(S.from) + ' to ' + dmy(S.to); }
+function activeFilterText(){
+  const f = S.f, parts = [];
+  if (f.cat !== 'ALL') parts.push(f.cat);
+  if (f.bill !== 'ALL') parts.push(f.bill);
+  if (f.party !== 'ALL') parts.push(f.party);
+  if (f.item !== 'ALL') parts.push(f.item);
+  if (f.price !== 'ALL') parts.push(f.price === 'PRICED' ? 'Priced only' : 'Unpriced only');
+  if (f.q) parts.push('"' + f.q + '"');
+  return parts;
+}
+function renderHeader(){
+  const fl = activeFilterText();
+  $('hdrSub').textContent = rangeText() + (fl.length ? ' · ' + fl.join(' · ') : '');
+  $('printSub').textContent = rangeText() + (fl.length ? ' · Filters: ' + fl.join(', ') : '') + ' · Printed ' + new Date().toLocaleString('en-IN');
+  document.title = 'Dispatch Report | ' + rangeText();
+  $('filterBadge').textContent = 'Showing ' + S.filtered.length + ' of ' + S.rows.length + ' lines';
+}
+function banner(kind, html){
+  const b = $('banner');
+  if (!kind){ b.classList.add('hidden'); b.innerHTML = ''; return; }
+  const cls = { error:'bg-rose-50 border-rose-200 text-rose-800', warn:'bg-amber-50 border-amber-200 text-amber-800', info:'bg-sky-50 border-sky-200 text-sky-800' }[kind];
+  b.className = 'mb-5 rounded-lg border px-4 py-3 text-sm ' + cls;
+  b.innerHTML = html;
+}
+function setLoading(on){
+  $('loading').classList.toggle('hidden', !on);
+  $('content').classList.toggle('opacity-50', on);
+  $('reloadBtn').disabled = on;
+}
+
+/* ── KPIs, with the change against the previous period ────────────── */
+function renderKpis(){
+  const t = totals(S.filtered);
+  const prev = S.prevRows ? totals(S.prevRows.filter(r => passes(r))) : null;
+  const slips = new Set(S.filtered.map(r => r.slipNo)).size;
+  const parties = new Set(S.filtered.map(r => r.party)).size;
+  const items = new Set(S.filtered.map(r => r.item)).size;
+  const pricedKg = S.filtered.filter(r => r.amount != null && r.basis === 'kg');
+  const kgSum = pricedKg.reduce((s, r) => s + r.weight, 0);
+  const avgKg = kgSum ? pricedKg.reduce((s, r) => s + r.amount, 0) / kgSum : null;
+  const delta = (cur, old) => {
+    if (!prev || old == null || !isFinite(old) || old === 0) return '';
+    const p = (cur - old) / old * 100;
+    return '<span class="kpi-d ' + (p >= 0 ? 'up' : 'down') + ' font-semibold">' + (p >= 0 ? '+' : '') + p.toFixed(1) + '%</span> vs previous ' + (daysBetween(S.from, S.to) + 1) + ' day(s)';
+  };
+  const cards = [
+    { l:'Total Qty',     v:qtyf(t.qty),            s:delta(t.qty, prev && prev.qty) || 'Packs / bundles', c:'text-slate-900' },
+    { l:'Net Amount',    v:money(t.amount),        s:delta(t.amount, prev && prev.amount) || 'Incl. ' + (RULES.GST * 100) + '% GST', c:'text-brand-700' },
+    { l:'Weight',        v:kg(t.weight),           s:delta(t.weight, prev && prev.weight) || 'Total dispatched', c:'text-slate-900' },
+    { l:'Pieces',        v:qtyf(t.pcs),            s:'Excl. packing material', c:'text-slate-900' },
+    { l:'Slips',         v:qtyf(slips),            s:parties + ' part' + (parties === 1 ? 'y' : 'ies'), c:'text-slate-900' },
+    { l:'Products',      v:qtyf(items),            s:'Distinct qualities', c:'text-slate-900' },
+    { l:'Avg Rate / kg', v:avgKg == null ? '-' : money(avgKg), s:'Priced kg lines, incl. GST', c:'text-slate-900' },
+    { l:'Unpriced Lines',v:qtyf(t.unpriced),       s:'Shown as (-), not in amount', c:t.unpriced ? 'text-amber-600' : 'text-slate-900' },
+  ];
+  $('kpis').innerHTML = cards.map(k => '<div class="card p-4"><div class="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">' + k.l
+    + '</div><div class="text-xl md:text-2xl font-extrabold num ' + k.c + '">' + k.v + '</div><div class="text-xs text-slate-400 mt-1">' + k.s + '</div></div>').join('');
+}
+
+/* ── Category summary ─────────────────────────────────────────────── */
+function renderCatTable(){
+  const m = agg(S.filtered, r => r.category), t = totals(S.filtered);
+  const rows = [...m.values()].sort((a, b) => catSort(a.key, b.key));
+  $('catTable').innerHTML = '<thead><tr><th class="th">Category</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Net Amount</th><th class="th r">Share</th></tr></thead><tbody>'
+    + (rows.length ? rows.map(a => {
+      const share = t.amount ? (a.amount / t.amount * 100) : 0;
+      return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="cat|' + esc(a.key) + '" title="Show only ' + esc(a.key) + '"><td class="td font-semibold">' + esc(a.key)
+        + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num">' + qtyf(a.pcs) + '</td><td class="td r num">' + kg(a.weight)
+        + '</td><td class="td r num ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a)) + '</td><td class="td r num" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
+    }).join('') : '<tr><td class="td text-center text-slate-400" colspan="6">No data</td></tr>')
+    + '</tbody><tfoot><tr class="bg-slate-50 font-bold"><td class="td">GRAND TOTAL</td><td class="td r num">' + qtyf(t.qty) + '</td><td class="td r num">' + qtyf(t.pcs)
+    + '</td><td class="td r num">' + kg(t.weight) + '</td><td class="td r num text-brand-700">' + money(t.amount) + '</td><td class="td"></td></tr></tfoot>';
+}
+
+/* ── Views ────────────────────────────────────────────────────────── */
+function renderTabs(){
+  $('viewTabs').innerHTML = VIEWS.map(v => '<button class="tab' + (v.key === S.view ? ' on' : '') + '" onclick="DR.setView(\'' + v.key + '\')">' + ico(v.ico, 'text-brand-600') + v.label + '</button>').join('');
+}
+DR.setView = function(k){ S.view = k; savePrefs(); syncUrl(); renderTabs(); renderView(); };
+DR.toggleDensity = function(){ S.density = S.density === 'compact' ? 'standard' : 'compact'; savePrefs(); applyDensity(); };
+function applyDensity(){ document.body.classList.toggle('compact', S.density === 'compact'); $('densityBtn').textContent = S.density === 'compact' ? 'Compact' : 'Standard'; }
+function empty(msg){ return '<div class="card p-10 text-center text-slate-400 font-medium">' + esc(msg || 'No matching dispatch lines.') + '</div>'; }
+function renderView(){
+  charts.forEach(c => { try { c.destroy(); } catch (e) {} }); charts = [];
+  const el = $('view');
+  if (!S.filtered.length){ el.innerHTML = empty(S.rows.length ? 'No lines match these filters.' : 'No dispatch in this date range.'); return; }
+  ({ party:viewParty, product:viewProduct, slips:viewSlips, matrix:viewMatrix, analytics:viewAnalytics, grid:viewGrid }[S.view] || viewParty)(el);
+}
+const sectionHead = (icon, title, right) => '<div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap gap-2 justify-between items-center"><h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">'
+  + ico(icon, 'text-brand-600') + esc(title) + '</h2>' + (right || '') + '</div>';
+
+// 1. Category → Party → Item, the layout of the printed report.
+function viewParty(el){
+  const byCat = agg(S.filtered, r => r.category);
+  el.innerHTML = '<div class="space-y-5">' + [...byCat.values()].sort((a, b) => catSort(a.key, b.key)).map(c => {
+    const parties = [...agg(c.rows, r => r.party).values()].sort((a, b) => a.key.localeCompare(b.key));
+    return '<div class="card overflow-hidden"><div class="bg-brand-50 border-b border-brand-100 px-5 py-2.5 flex justify-between items-center"><h2 class="text-base font-extrabold text-brand-900">' + esc(c.key)
+      + '</h2><span class="text-xs font-semibold text-brand-700">' + parties.length + ' part' + (parties.length === 1 ? 'y' : 'ies') + '</span></div>'
+      + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th">Item / Quality</th><th class="th r">Qty</th><th class="th r">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
+      + parties.map(p => {
+        // Same item on several slips of one party = one line, as on paper.
+        const items = [...agg(p.rows, r => r.item).values()].sort((a, b) => a.key.localeCompare(b.key));
+        return '<tr><td class="td bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-700 cursor-pointer" colspan="4" data-pick="party|' + esc(p.key) + '" title="Show only this party">' + esc(p.key) + '</td></tr>'
+          + items.map(i => '<tr class="hover:bg-slate-50"><td class="td pl-6">' + esc(i.key) + (i.n > 1 ? ' <span class="text-[11px] text-slate-400">(' + i.n + ' lines)</span>' : '')
+            + '</td><td class="td r num">' + qtyf(i.qty) + '</td><td class="td r num">' + kg(i.weight) + '</td><td class="td r num ' + (i.priced ? '' : 'unpriced') + '">' + money(amt(i)) + '</td></tr>').join('')
+          + '<tr class="font-semibold bg-slate-50/60"><td class="td r italic text-slate-600">Party Total</td><td class="td r num">' + qtyf(p.qty) + '</td><td class="td r num">' + kg(p.weight) + '</td><td class="td r num text-brand-700">' + money(amt(p)) + '</td></tr>';
+      }).join('')
+      + '</tbody><tfoot><tr class="bg-brand-50 font-bold text-brand-900"><td class="td">' + esc(c.key) + ' CATEGORY TOTAL</td><td class="td r num">' + qtyf(c.qty) + '</td><td class="td r num">' + kg(c.weight) + '</td><td class="td r num">' + money(amt(c)) + '</td></tr></tfoot></table></div></div>';
+  }).join('') + '</div>';
+}
+
+// 2. Product totals across parties, largest amount first, with its share.
+function viewProduct(el){
+  const t = totals(S.filtered);
+  const list = [...agg(S.filtered, r => r.item).values()].sort((a, b) => (b.amount - a.amount) || (b.qty - a.qty));
+  el.innerHTML = '<div class="card overflow-hidden">' + sectionHead('box', 'Product-wise Totals', '<span class="text-xs text-slate-500">Across all parties and categories · ' + list.length + ' products</span>')
+    + '<div class="overflow-x-auto sb"><table class="min-w-full"><thead><tr><th class="th">#</th><th class="th">Item / Quality</th><th class="th r">Parties</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Avg ₹ / kg</th><th class="th r">Net Amount</th><th class="th r">Share</th></tr></thead><tbody>'
+    + list.map((a, i) => {
+      const parties = new Set(a.rows.map(r => r.party)).size;
+      const kgRows = a.rows.filter(r => r.amount != null && r.basis === 'kg'), w = kgRows.reduce((s, r) => s + r.weight, 0);
+      const avg = w ? kgRows.reduce((s, r) => s + r.amount, 0) / w : null;
+      const share = t.amount ? a.amount / t.amount * 100 : 0;
+      return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="item|' + esc(a.key) + '" title="Show only this item"><td class="td text-slate-400 num">' + (i + 1) + '</td><td class="td font-medium">' + esc(a.key)
+        + '</td><td class="td r num">' + parties + '</td><td class="td r num font-semibold">' + qtyf(a.qty) + '</td><td class="td r num">' + qtyf(a.pcs) + '</td><td class="td r num">' + kg(a.weight)
+        + '</td><td class="td r num">' + (avg == null ? '-' : money(avg)) + '</td><td class="td r num font-bold ' + (a.priced ? '' : 'unpriced') + '">' + money(amt(a))
+        + '</td><td class="td r num" style="min-width:90px">' + share.toFixed(1) + '%<div class="bar"><i style="width:' + share.toFixed(1) + '%"></i></div></td></tr>';
+    }).join('') + '</tbody></table></div></div>';
+}
+
+// 3. One block per packing slip: vehicle, invoice / chalan, and its lines.
+function viewSlips(el){
+  const slips = [...agg(S.filtered, r => r.slipNo).values()].sort((a, b) => (a.rows[0].date || '').localeCompare(b.rows[0].date || '') || a.key.localeCompare(b.key, undefined, { numeric:true }));
+  el.innerHTML = '<div class="card overflow-hidden">' + sectionHead('slip', 'Slip-wise', '<span class="text-xs text-slate-500">' + slips.length + ' slips · click a slip to see its lines</span>')
+    + '<div class="divide-y divide-slate-100">' + slips.map(s => {
+      const h = s.rows[0];
+      const meta = [dmy(h.date), h.bill, h.vehicle && ('Vehicle ' + h.vehicle), h.invoice && ('Invoice ' + h.invoice), h.chalan && ('Chalan ' + h.chalan), h.contractor && ('Loading: ' + h.contractor)].filter(Boolean);
+      return '<details><summary class="px-5 py-3 hover:bg-slate-50 flex flex-wrap items-center gap-x-4 gap-y-1">'
+        + '<span class="chev text-slate-400">' + ico('chev') + '</span>'
+        + '<span class="font-bold text-slate-900 num">' + esc(s.key) + '</span>'
+        + '<span class="font-semibold text-slate-700">' + esc(h.party) + '</span>'
+        + '<span class="text-xs text-slate-500">' + meta.map(esc).join(' · ') + '</span>'
+        + '<span class="ml-auto text-sm num"><b>' + qtyf(s.qty) + '</b> qty · ' + kg(s.weight) + ' · <b class="' + (s.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(s)) + '</b></span></summary>'
+        + '<div class="overflow-x-auto sb bg-slate-50/50"><table class="min-w-full"><thead><tr><th class="th">Category</th><th class="th">Item</th><th class="th">Order</th><th class="th r">Qty</th><th class="th r">Pieces</th><th class="th r">Weight</th><th class="th r">Rate</th><th class="th r">Disc %</th><th class="th r">Amount</th></tr></thead><tbody>'
+        + s.rows.map(r => '<tr><td class="td">' + esc(r.category) + '</td><td class="td">' + esc(r.item) + '</td><td class="td text-slate-500">' + esc(r.orderId) + '</td><td class="td r num">' + qtyf(r.qty)
+          + '</td><td class="td r num">' + qtyf(r.pcs) + '</td><td class="td r num">' + kg(r.weight) + '</td><td class="td r num">' + (r.rate == null ? '-' : fN.format(r.rate) + '/' + r.basis)
+          + '</td><td class="td r num">' + (r.disc ? r.disc : '-') + '</td><td class="td r num ' + (r.amount == null ? 'unpriced' : '') + '">' + money(r.amount) + '</td></tr>').join('')
+        + '</tbody></table></div></details>';
+    }).join('') + '</div></div>';
+}
+
+// 4. Party × Item pivot, on the chosen measure, plus both sets of totals.
+const METRICS = { qty:{ l:'Qty', f:qtyf }, weight:{ l:'Weight', f:kg }, amount:{ l:'Net Amount', f:money } };
+DR.setMetric = function(m){ S.metric = m; savePrefs(); renderView(); };
+function viewMatrix(el){
+  const M = METRICS[S.metric], val = a => S.metric === 'amount' ? amt(a) : a[S.metric];
+  const parties = [...agg(S.filtered, r => r.party).values()].sort((a, b) => b.amount - a.amount || a.key.localeCompare(b.key));
+  const items = [...agg(S.filtered, r => r.item).values()].sort((a, b) => b.amount - a.amount || a.key.localeCompare(b.key));
+  const cell = new Map(); S.filtered.forEach(r => { const k = r.item + '\u0000' + r.party; if (!cell.has(k)) cell.set(k, []); cell.get(k).push(r); });
+  const t = totals(S.filtered);
+  const side = (title, icon, list, field) => '<div class="card overflow-hidden flex flex-col">' + sectionHead(icon, title, '<span class="text-xs text-slate-500">' + list.length + '</span>')
+    + '<div class="overflow-auto sb max-h-96"><table class="min-w-full"><thead class="sticky top-0"><tr><th class="th">' + (field === 'party' ? 'Party' : 'Item / Quality') + '</th><th class="th r">Qty</th><th class="th r">Weight</th><th class="th r">Net Amount</th></tr></thead><tbody>'
+    + list.map(a => '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="' + field + '|' + esc(a.key) + '"><td class="td font-semibold">' + esc(a.key) + '</td><td class="td r num">' + qtyf(a.qty) + '</td><td class="td r num">' + kg(a.weight)
+      + '</td><td class="td r num font-bold ' + (a.priced ? 'text-brand-700' : 'unpriced') + '">' + money(amt(a)) + '</td></tr>').join('') + '</tbody></table></div></div>';
+  const metricBtns = Object.keys(METRICS).map(k => '<button class="chip' + (k === S.metric ? ' on' : '') + '" onclick="DR.setMetric(\'' + k + '\')">' + METRICS[k].l + '</button>').join('');
+  // Heat shading: how big each cell is next to the biggest one.
+  const max = Math.max(1, ...[...cell.values()].map(rs => { const v = val(totals(rs)); return v == null ? 0 : v; }));
+  el.innerHTML = '<div class="space-y-5"><div class="grid grid-cols-1 lg:grid-cols-2 gap-5">' + side('Party-wise Totals', 'tree', parties, 'party') + side('Item-wise Totals', 'box', items, 'item') + '</div>'
+    + '<div class="card overflow-hidden">' + sectionHead('grid', 'Party × Item Pivot', '<div class="flex gap-1.5 items-center"><span class="text-xs text-slate-500 mr-1">Show</span>' + metricBtns + '</div>')
+    + '<div class="overflow-auto sb max-h-[560px]"><table class="pivot min-w-full text-xs border-collapse"><thead class="sticky top-0 z-20"><tr><th class="th sticky left-0 z-30" style="min-width:220px">Item \\ Party</th>'
+    + parties.map(p => '<th class="th text-center">' + esc(p.key) + '</th>').join('') + '<th class="th r bg-brand-50">Total</th></tr></thead><tbody>'
+    + items.map(i => '<tr><td class="td sticky left-0 bg-white z-10 font-semibold">' + esc(i.key) + '</td>' + parties.map(p => {
+        const rs = cell.get(i.key + '\u0000' + p.key);
+        if (!rs) return '<td class="td text-center text-slate-300">-</td>';
+        const v = val(totals(rs)), op = v == null ? 0 : Math.min(.55, .08 + v / max * .47);
+        return '<td class="td r num" style="background:rgba(20,184,166,' + op.toFixed(2) + ')">' + M.f(v) + '</td>';
+      }).join('') + '<td class="td r num font-bold bg-brand-50">' + M.f(val(i)) + '</td></tr>').join('')
+    + '<tr class="font-bold bg-slate-100"><td class="td sticky left-0 bg-slate-100 z-10">TOTAL</td>' + parties.map(p => '<td class="td r num">' + M.f(val(p)) + '</td>').join('')
+    + '<td class="td r num bg-brand-100 text-brand-900">' + M.f(val(t)) + '</td></tr></tbody></table></div></div></div>';
+}
+
+// 5. Charts. Each one is rebuilt from the filtered rows on every change.
+const PALETTE = ['#0d9488', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#dc2626', '#475569', '#ca8a04'];
+function chart(id, cfg){ const c = $(id); if (!c || !window.Chart) return; charts.push(new Chart(c.getContext('2d'), cfg)); }
+const chartCard = (id, title, icon, tall) => '<div class="card p-5"><h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">' + ico(icon, 'text-brand-600') + esc(title) + '</h3><div class="' + (tall ? 'h-80' : 'h-64') + '"><canvas id="' + id + '"></canvas></div></div>';
+function topN(map, n, field){
+  const all = [...map.values()].sort((a, b) => b[field] - a[field]);
+  const top = all.slice(0, n), rest = all.slice(n);
+  if (rest.length) top.push({ key:'Others (' + rest.length + ')', [field]:rest.reduce((s, a) => s + a[field], 0) });
+  return top;
+}
+function viewAnalytics(el){
+  if (!window.Chart){ el.innerHTML = empty('The chart library did not load. Check the internet connection.'); return; }
+  const multiDay = S.from !== S.to;
+  el.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 gap-5">'
+    + (multiDay ? '<div class="md:col-span-2">' + chartCard('chTrend', 'Daily Trend: Qty and Net Amount', 'chart', true) + '</div>' : '')
+    + chartCard('chCat', 'Net Amount by Category', 'pie') + chartCard('chBill', 'Billed vs Non-Bill (Net Amount)', 'pie')
+    + chartCard('chParty', 'Top 10 Parties by Net Amount', 'chart', true) + chartCard('chItem', 'Top 10 Products by Qty', 'chart', true)
+    + '</div>';
+  const base = { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } } };
+  const moneyTip = { callbacks:{ label:c => ' ' + (c.label || c.dataset.label) + ': ' + money(c.parsed.y != null ? c.parsed.y : c.parsed) } };
+  const cats = [...agg(S.filtered, r => r.category).values()].sort((a, b) => catSort(a.key, b.key));
+  chart('chCat', { type:'doughnut', data:{ labels:cats.map(a => a.key), datasets:[{ data:cats.map(a => round2(a.amount)), backgroundColor:PALETTE }] }, options:{ ...base, plugins:{ ...base.plugins, tooltip:moneyTip } } });
+  const bills = [...agg(S.filtered, r => r.bill).values()];
+  chart('chBill', { type:'doughnut', data:{ labels:bills.map(a => a.key), datasets:[{ data:bills.map(a => round2(a.amount)), backgroundColor:['#0d9488', '#d97706', '#64748b'] }] }, options:{ ...base, plugins:{ ...base.plugins, tooltip:moneyTip } } });
+  const tp = topN(agg(S.filtered, r => r.party), 10, 'amount');
+  chart('chParty', { type:'bar', data:{ labels:tp.map(a => a.key), datasets:[{ label:'Net Amount', data:tp.map(a => round2(a.amount)), backgroundColor:'#14b8a6', borderRadius:4 }] },
+    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:c => ' ' + money(c.parsed.x) } } }, scales:{ x:{ beginAtZero:true, ticks:{ callback:v => '₹' + fN.format(v / 100000) + 'L' } } } } });
+  const ti = topN(agg(S.filtered, r => r.item), 10, 'qty');
+  chart('chItem', { type:'bar', data:{ labels:ti.map(a => a.key), datasets:[{ label:'Qty', data:ti.map(a => a.qty), backgroundColor:'#2563eb', borderRadius:4 }] },
+    options:{ ...base, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true } } } });
+  if (multiDay){
+    // Every day of the range, so a day with no dispatch shows as a gap at zero.
+    const byDay = agg(S.filtered, r => r.date), days = [];
+    for (let d = S.from; d <= S.to; d = addDays(d, 1)) days.push(d);
+    chart('chTrend', { type:'bar', data:{ labels:days.map(dmy), datasets:[
+        { type:'bar', label:'Qty', data:days.map(d => byDay.has(d) ? byDay.get(d).qty : 0), backgroundColor:'#99f6e4', yAxisID:'y' },
+        { type:'line', label:'Net Amount', data:days.map(d => byDay.has(d) ? round2(byDay.get(d).amount) : 0), borderColor:'#0f766e', backgroundColor:'#0f766e', tension:.25, yAxisID:'y1', pointRadius:2 } ] },
+      options:{ ...base, interaction:{ mode:'index', intersect:false },
+        plugins:{ ...base.plugins, tooltip:{ callbacks:{ label:c => ' ' + c.dataset.label + ': ' + (c.dataset.yAxisID === 'y1' ? money(c.parsed.y) : qtyf(c.parsed.y)) } } },
+        scales:{ y:{ beginAtZero:true, position:'left', title:{ display:true, text:'Qty' } }, y1:{ beginAtZero:true, position:'right', grid:{ drawOnChartArea:false }, ticks:{ callback:v => '₹' + fN.format(v / 100000) + 'L' } } } } });
+  }
+}
+
+// 6. Every line with every column, sortable.
+const GRID_COLS = [
+  { k:'date', l:'Date', f:dmy }, { k:'slipNo', l:'Slip' }, { k:'bill', l:'Bill' }, { k:'party', l:'Party' },
+  { k:'category', l:'Category' }, { k:'item', l:'Item' }, { k:'qty', l:'Qty', r:1, f:qtyf }, { k:'pcs', l:'Pieces', r:1, f:qtyf },
+  { k:'weight', l:'Weight', r:1, f:kg }, { k:'rate', l:'Rate', r:1, f:v => v == null ? '-' : fN.format(v) }, { k:'disc', l:'Disc %', r:1, f:v => v ? v : '-' },
+  { k:'amount', l:'Net Amount', r:1, f:money }, { k:'vehicle', l:'Vehicle' }, { k:'invoice', l:'Invoice' }, { k:'orderId', l:'Order' },
+];
+DR.sort = function(k){ S.sort = { key:k, asc:S.sort.key === k ? !S.sort.asc : true }; renderView(); };
+function cmp(a, b){
+  // Blanks always go last, whichever way the column is sorted.
+  const ea = a == null || a === '', eb = b == null || b === '';
+  if (ea || eb) return ea && eb ? 0 : ea ? 1 : -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric:true });
+}
+function viewGrid(el){
+  const { key, asc } = S.sort;
+  const rows = [...S.filtered].sort((x, y) => {
+    const ex = x[key] == null || x[key] === '', ey = y[key] == null || y[key] === '';
+    if (ex || ey) return cmp(x[key], y[key]);
+    return asc ? cmp(x[key], y[key]) : cmp(y[key], x[key]);
+  });
+  el.innerHTML = '<div class="card overflow-hidden">' + sectionHead('list', 'Explorer', '<span class="text-xs text-slate-500">' + rows.length + ' lines · click a heading to sort</span>')
+    + '<div class="overflow-auto sb max-h-[640px]"><table class="min-w-full"><thead class="sticky top-0"><tr>'
+    + GRID_COLS.map(c => '<th class="th sortable' + (c.r ? ' r' : '') + '" onclick="DR.sort(\'' + c.k + '\')">' + c.l + (key === c.k ? (asc ? ' ▴' : ' ▾') : '') + '</th>').join('')
+    + '</tr></thead><tbody>' + rows.map(r => '<tr class="hover:bg-slate-50">' + GRID_COLS.map(c => {
+      const v = r[c.k];
+      return '<td class="td' + (c.r ? ' r num' : '') + (c.k === 'amount' && v == null ? ' unpriced' : '') + (c.k === 'party' ? ' font-semibold' : '') + '">' + esc(c.f ? c.f(v) : v) + '</td>';
+    }).join('') + '</tr>').join('') + '</tbody></table></div></div>';
+}
+
+/* ── CSV ──────────────────────────────────────────────────────────── */
+/* Named {Master Name}-{filters}-{time stamp}, the same pattern as every ERP
+   download: Dispatch_Report-23.10.2026+BORA+SK_17_INTERNATIONAL-27-10-2026_14-35.csv */
+function fileTag(s){
+  return String(s).replace(/[\\/:*?"<>|,;+]+/g, ' ').replace(/[^\p{L}\p{N}\s\-.&()]/gu, '').trim().replace(/\s+/g, '_').slice(0, 40);
+}
+DR.exportCsv = function(){
+  const rows = S.filtered;
+  if (!rows.length) return banner('warn', 'Nothing to export: no lines in the current range / filters.');
+  const q = v => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const head = ['Date', 'Slip No', 'Bill', 'Party', 'Category', 'Item / Quality', 'Qty', 'Pieces', 'Weight (kg)', 'Rate', 'Rate Basis', 'Disc %', 'Net Amount', 'Vehicle', 'Invoice', 'Chalan', 'Order', 'Loading Contractor'];
+  const lines = rows.map(r => [dmy(r.date), r.slipNo, r.bill, r.party, r.category, r.item, r.qty, r.pcs, round2(r.weight), r.rate == null ? '' : r.rate, r.basis, r.disc || '', r.amount == null ? '' : r.amount.toFixed(2), r.vehicle, r.invoice, r.chalan, r.orderId, r.contractor]);
+  const t = totals(rows);
+  lines.push(['TOTAL', '', '', '', '', '', t.qty, t.pcs, round2(t.weight), '', '', '', round2(t.amount).toFixed(2), '', '', '', '', '']);
+  const csv = [head, ...lines].map(r => r.map(q).join(',')).join('\r\n');
+  const range = S.from === S.to ? dmy(S.from).replace(/\//g, '.') : dmy(S.from).replace(/\//g, '.') + '_to_' + dmy(S.to).replace(/\//g, '.');
+  const tags = [range, ...activeFilterText().map(fileTag)].filter(Boolean).join('+');
+  const z = n => String(n).padStart(2, '0'), d = new Date();
+  const stamp = z(d.getDate()) + '-' + z(d.getMonth() + 1) + '-' + d.getFullYear() + '_' + z(d.getHours()) + '-' + z(d.getMinutes());
+  // BOM: without it Excel misreads ₹ and other non-ASCII text.
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'Dispatch_Report-' + tags + '-' + stamp + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+
+/* ── Start ────────────────────────────────────────────────────────── */
+function init(){
+  paintIcons();
+  // ?from=YYYY-MM-DD&to=YYYY-MM-DD&view=… opens a specific report (a shared link).
+  try {
+    const p = new URL(location.href).searchParams, ok = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+    if (ok(p.get('from')) && ok(p.get('to'))){ S.from = p.get('from'); S.to = p.get('to'); }
+    if (VIEWS.some(v => v.key === p.get('view'))) S.view = p.get('view');
+  } catch (e) {}
+  syncDateBoxes(); renderTabs(); applyDensity();
+  // Enter in either date box loads, like pressing Load.
+  ['dFrom', 'dTo'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') DR.applyDates(); }));
+  DR.load();
+}
+
+/* The ERP decides who may open this page (HOME_DISPATCH_REPORT). The gate
+   resolves only when access is granted; otherwise it sends the user to the
+   launcher or shows the reason itself, and this page never starts. */
+(async () => {
+  try {
+    await SARV_GATE.boot({ url: ERP_URL, key: ERP_ANON, app: APP_KEY, label: 'Dispatch Report' });
+    if (document.readyState === 'loading') await new Promise(r => document.addEventListener('DOMContentLoaded', r));
+    init();
+  } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+})();
+</script>
+<script src="app-back.js"></script>
+</body>
+</html>

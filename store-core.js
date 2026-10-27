@@ -4618,7 +4618,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS'];
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5459,7 +5459,7 @@ const SARV_TABS=[
   {key:'HOME_PRINTING_LOT',label:'Printing Lot Card',hint:'Manufacturing › A4 production lot card + department-wise production tracking',def:'ALL'},
   {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
-  {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine complaints / Tasks / Notice Board (opens from the launcher)',def:'ALL'},
+  {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine / fabric complaints and Notice Board (opens from the launcher)',def:'ALL'},
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
   {key:'HOME_SHEET_LINKS',label:'Sheet Links',hint:'Each user\'s own Google Sheet shortcut board (google sheet links.html, opens from the launcher)',def:'ALL'},
@@ -5469,6 +5469,11 @@ const SARV_TABS=[
      tile the server allows only TM_MY_TASKS (tm_ctx_). */
   {key:'HOME_MY_TASKS',label:'My Tasks (launcher tile)',hint:'Straight to the user\'s own Task Manager checklist; on for everyone, new self-signup accounts included',def:'ALL'},
   {key:'HOME_MY_REQUESTS',label:'Track My Store Request',hint:'The user\'s own PRs (by Emp Code) tracked PR → PO → receipt, and their receipt confirmation with photo + PIN (my-requests.html); on for everyone by default',def:'ALL'},
+  /* Party-wise dispatch amounts, so NOT on for everyone: the same four roles
+     launcher.html's APPS entry defaults to (its defRoles). Change it here
+     and there together, or the launcher and the ERP disagree on a role the
+     Admin has not set. */
+  {key:'HOME_DISPATCH_REPORT',label:'Dispatch Report',hint:'Packing dispatch by date: party / product / slip-wise, matrix, analytics, CSV (dispatch_report_interface.html, opens from the launcher)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -6133,9 +6138,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
