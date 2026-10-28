@@ -2853,6 +2853,110 @@ function inwardDraftExtra_(){
     freightExp:pVal('freightExp'),roundOffInput:pVal('roundOffInput'),
     calcGrossWeight:pVal('calcGrossWeight'),calcFreightRate:pVal('calcFreightRate')};
 }
+/* ── Which supervisor gets the request ────────────────────────────────
+   The store picks ONE supervisor on Submit; only that person sees the
+   request in unloader.html and only they can decide it (enforced on the
+   server by UNLOADER_ASSIGN_MIGRATION.sql, not just hidden here).
+
+   "Supervisors" = active logins that would get the Unloader Supervisor app
+   (HOME_UNLOADER) by the same rule the launcher uses: the user's own override
+   (Admin Panel › Users › Apps) first, then the role-wise Tab Visibility
+   matrix, then the code default. So switching the app on for someone is all
+   it takes to put them in this list.
+
+   The last choice is remembered on this PC (it is usually the same person on
+   a shift) and comes pre-selected. */
+const UL_LAST_SUP_KEY='sarv_ul_last_supervisor';
+let sarvUlAssignWarned=false;
+function ulUserHasApp_(u,key){
+  const a=u&&u.app_access;
+  if(a&&typeof a==='object'&&typeof a[key]==='boolean')return a[key];
+  const rs=((u.roles&&u.roles.length)?u.roles:[u.role]).filter(Boolean);
+  return rs.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,r));
+}
+/* null = the user list could not be read (old setup); the caller then sends
+   the request unassigned, as before, rather than blocking the desk. */
+async function ulSupervisorList_(){
+  await sarvLoadAppUsers_();
+  if(sarvAppUsersMissing)return null;
+  return (sarvAppUsers||[]).filter(u=>u&&u.id&&u.is_active!==false&&ulUserHasApp_(u,'HOME_UNLOADER'))
+    .sort((a,b)=>String(a.user_name||'').localeCompare(String(b.user_name||'')));
+}
+/* The picker. Resolves {id,name} or null (Cancel / Esc). `intro` is plain
+   text (escaped here); `preUid` is pre-selected, else the last choice. */
+function ulPickSupervisor_(list,title,intro,preUid,okLabel){
+  return new Promise(resolve=>{
+    let last='';try{last=localStorage.getItem(UL_LAST_SUP_KEY)||'';}catch(e){}
+    let sel=String(preUid||'');
+    if(!list.some(u=>String(u.id)===sel))sel=list.some(u=>String(u.id)===last)?last:(list.length===1?String(list[0].id):'');
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML='<div style="background:#fff;border-radius:8px;box-shadow:0 8px 28px rgba(0,0,0,.25);width:min(460px,100%);max-height:86vh;display:flex;flex-direction:column;font-size:13px;">'
+      +'<div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;">'+escText(title)+'</div>'
+      +'<div style="padding:10px 14px 4px;color:#475569;white-space:pre-line;line-height:1.45;">'+escText(intro)+'</div>'
+      +(list.length>6?'<div style="padding:6px 14px;"><input id="ulSupQ" placeholder="Search name / Emp Code / mobile" autocomplete="off" '
+        +'style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e1;border-radius:5px;"></div>':'')
+      +'<div id="ulSupList" style="overflow:auto;padding:4px 14px 8px;flex:1;"></div>'
+      +'<div style="padding:10px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button type="button" id="ulSupCancel" style="padding:7px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;">Cancel</button>'
+      +'<button type="button" id="ulSupOk" style="padding:7px 14px;border:0;background:#c2410c;color:#fff;font-weight:700;border-radius:5px;cursor:pointer;">'+escText(okLabel||'Send')+'</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    const box=ov.querySelector('#ulSupList'),ok=ov.querySelector('#ulSupOk'),q=ov.querySelector('#ulSupQ');
+    const draw=()=>{
+      const t=q?q.value.trim().toLowerCase():'';
+      const shown=list.filter(u=>!t||[u.user_name,u.emp_code,u.contact_no,u.designation,u.department]
+        .some(v=>String(v||'').toLowerCase().indexOf(t)>=0));
+      box.innerHTML=shown.length?shown.map(u=>{
+        const on=String(u.id)===sel;
+        const sub=[u.emp_code,u.designation,u.department,u.contact_no].filter(Boolean).join(' · ');
+        return '<label data-uid="'+escText(String(u.id))+'" style="display:flex;gap:8px;align-items:flex-start;padding:7px 8px;margin:3px 0;cursor:pointer;'
+          +'border:1px solid '+(on?'#c2410c':'#e2e8f0')+';border-radius:6px;background:'+(on?'#fff7ed':'#fff')+';">'
+          +'<input type="radio" name="ulSup" '+(on?'checked':'')+' style="margin-top:2px;">'
+          +'<span><b>'+escText(u.user_name||'-')+'</b>'+(sub?'<br><span style="font-size:11px;color:#64748b;">'+escText(sub)+'</span>':'')+'</span></label>';
+      }).join(''):'<div style="color:#94a3b8;padding:8px 0;">Nobody matches the search.</div>';
+      ok.disabled=!sel;ok.style.opacity=sel?'1':'.5';
+    };
+    const done=v=>{document.removeEventListener('keydown',key,true);ov.remove();resolve(v);};
+    const pick=()=>{
+      const u=list.find(x=>String(x.id)===sel);if(!u)return;
+      try{localStorage.setItem(UL_LAST_SUP_KEY,String(u.id));}catch(e){}
+      done({id:String(u.id),name:u.user_name||''});
+    };
+    const key=e=>{
+      if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(null);}
+      else if(e.key==='Enter'&&sel){e.preventDefault();e.stopPropagation();pick();}
+    };
+    box.addEventListener('click',e=>{const l=e.target.closest('label[data-uid]');if(l){sel=l.getAttribute('data-uid');draw();}});
+    box.addEventListener('dblclick',e=>{if(e.target.closest('label[data-uid]'))pick();});
+    if(q)q.addEventListener('input',draw);
+    ov.querySelector('#ulSupCancel').onclick=()=>done(null);
+    ok.onclick=pick;
+    document.addEventListener('keydown',key,true);
+    draw();
+    (q||ok).focus();
+  });
+}
+/* The supervisor for a request: picker, or the reason it cannot be sent.
+   Returns {id,name}, {id:''} (old setup: send to all) or null (stop). */
+async function ulChooseSupervisor_(title,intro,preUid,okLabel){
+  const list=await ulSupervisorList_();
+  if(list===null){return confirm(intro)?{id:'',name:''}:null;}
+  if(!list.length){
+    showToast('No login has the <b>Unloader Supervisor</b> app, so nobody can verify this Inward. '
+      +'Admin: switch it ON for the supervisors under <i>Admin Panel › Users › Apps</i> (or Tab Visibility for their role).','error');
+    return null;
+  }
+  return ulPickSupervisor_(list,title,intro,preUid,okLabel);
+}
+/* The old ul_request_create (before UNLOADER_ASSIGN_MIGRATION.sql) does not
+   return assigned_to: the request then shows to every supervisor. Said once. */
+function ulAssignCheck_(d,sup){
+  if(!sup||!sup.id||(d&&'assigned_to' in d)||sarvUlAssignWarned)return;
+  sarvUlAssignWarned=true;
+  showToast('The request went to ALL Unloader Supervisors, not only '+escText(sup.name)+'. '
+    +'Admin: run <code>UNLOADER_ASSIGN_MIGRATION.sql</code> to send it to the chosen one only.','warn');
+}
 /* The gate. True only when this exact submission carries the supervisor's
    approval (and then sarvInwUnloadActive holds their details for the PDF). */
 async function ensureUnloaderApproval_(rows){
@@ -2877,20 +2981,40 @@ async function ensureUnloaderApproval_(rows){
     showToast('Unloading verified by <b>'+escText(row.decided_by||'Unloader Supervisor')+'</b> ('+escText(row.request_no||'')+')');
     return true;
   }
+
   if(st==='Pending'){
-    showToast('This entry is waiting for the Unloader Supervisor ('+escText(row.request_no||'')+').<br>'
-      +'Submit will work once they approve it in the <b>Unloader Supervisor</b> app. If this form is closed, '
-      +'the approved entry appears in the <b>PO Number list</b> to load back.','warn');
+    const withWho=row.assigned_to?(' with '+row.assigned_to):'';
+    /* Pressing Submit while it waits is when the store would want to move it
+       (the chosen supervisor is on leave / off shift), so the choice is
+       offered here. Cancel just keeps waiting. */
+    const sup=await ulChooseSupervisor_('Waiting for unloading verification',
+      'This entry ('+(row.request_no||'')+') is waiting'+withWho+'.\n'
+      +'Submit will work once it is approved in the Unloader Supervisor app.\n\n'
+      +'To send it to a different supervisor, pick them and press Move. Cancel keeps it'+(withWho||' where it is')+'.',
+      row.assigned_to_uid,'Move');
+    if(sup&&sup.id&&sup.id!==String(row.assigned_to_uid||'')){
+      try{
+        const d=await ulRpc_('ul_request_create',{p_req:{signature:sig,entry_type:pVal('entryTypeSelect')||'INWARD',
+          supplier_name:pVal('supplierName')||'',invoice_no:pVal('invoiceNumber')||'',invoice_date:pVal('invoiceDate')||null,
+          po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload:Object.assign(inwardApprovalPayload_(rows,[],poNos,prNos),{extra:inwardDraftExtra_()}),
+          assigned_to_uid:sup.id}});
+        if(d.reassigned)showToast('Moved '+escText(d.request_no||'')+' to <b>'+escText(d.assigned_to||sup.name)+'</b>.');
+        else ulAssignCheck_(d,sup);
+      }catch(e){showToast('The request could not be moved: '+escText(e.message||e),'error');}
+      loadInwardApprovedDrafts_().then(()=>{renderPoNumberPanel();inwDraftRenderStrip_();}).catch(()=>{});
+    }
     return false;
   }
   const ask=st==='Rejected'
     ?('The Unloader Supervisor REJECTED this entry ('+(row.request_no||'')+')'
       +(row.decided_by?(' — '+row.decided_by):'')+(row.remarks?('\n\nReason: '+row.remarks):'')
-      +'\n\nCorrect the values and send it for verification again?')
-    :('This Inward must be verified by the Unloader Supervisor before it is saved.\n\n'
-      +'They check the material, take item photos and approve with their PIN in the Unloader Supervisor app. '
-      +'After that, press Submit again (Final Submit).\n\nSend it for unloading verification now?');
-  if(!confirm(ask))return false;
+      +'\n\nCorrect the values, choose the supervisor and send it for verification again.')
+    :('This Inward must be verified by an Unloader Supervisor before it is saved.\n\n'
+      +'Choose who checks the material. Only they will see it in the Unloader Supervisor app; '
+      +'they take item photos and approve with their PIN. After that, press Submit again (Final Submit).');
+  const sup=await ulChooseSupervisor_('Send for unloading verification',ask,
+    st==='Rejected'?row.decided_by_uid:'','Send');
+  if(!sup)return false;
   /* No reasons: excess / rate / extra item are the MD's call (a separate
      request). The supervisor confirms the unloaded quantities; each row still
      carries its PO / PR pending and excess figures for that. */
@@ -2900,10 +3024,13 @@ async function ensureUnloaderApproval_(rows){
     const d=await ulRpc_('ul_request_create',{p_req:{
       signature:sig,entry_type:pVal('entryTypeSelect')||'INWARD',
       supplier_name:pVal('supplierName')||'',invoice_no:pVal('invoiceNumber')||'',
-      invoice_date:pVal('invoiceDate')||null,po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload}});
+      invoice_date:pVal('invoiceDate')||null,po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload,
+      assigned_to_uid:sup.id||''}});
     // Approved in the moment between the read above and this call.
     if(d.status==='Approved')return ensureUnloaderApproval_(rows);
-    showToast('Sent to the Unloader Supervisor (<b>'+escText(d.request_no||'')+'</b>).<br>'
+    ulAssignCheck_(d,sup);
+    showToast('Sent to '+(d.assigned_to?('<b>'+escText(d.assigned_to)+'</b>'):'the Unloader Supervisor')
+      +' (<b>'+escText(d.request_no||'')+'</b>).<br>'
       +'Once they approve it with photos and PIN, press <b>Submit</b> again with the same values, or load it from the '
       +'<b>PO Number list</b> ("APPROVED — DRAFT SAVED") and Submit.','warn');
   }catch(e){
@@ -3221,7 +3348,7 @@ function inwUnloadPendingHtml_(){
     +'<div style="font-size:10px;font-weight:800;color:#c2410c;letter-spacing:.3px;margin-bottom:3px;">'
     +'WAITING AT UNLOADER SUPERVISOR <span style="background:#c2410c;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;">'+list.length+'</span></div>'
     +list.slice(0,20).map(d=>'<div style="font-size:10px;color:#7c2d12;font-weight:600;padding:2px 0;border-top:1px dashed #fed7aa;">'
-      +'<b>'+escText(d.request_no||('#'+d.id))+'</b> · '+escText(d.supplier_name||'-')
+      +'<b>'+escText(d.request_no||('#'+d.id))+'</b>'+(d.assigned_to?(' → '+escText(d.assigned_to)):'')+' · '+escText(d.supplier_name||'-')
       +' · Invoice '+escText(d.invoice_no||'-')+' · '+inwDraftItems_(d).length+' item'
       +(d.requested_at?(' · sent '+escText(pStamp(d.requested_at))):'')+'</div>').join('')
     +'</div>';
@@ -4859,7 +4986,8 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER'];
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
+  'HOME_YARN_UNLOADING'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5704,7 +5832,7 @@ const SARV_TABS=[
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
   {key:'HOME_SHEET_LINKS',label:'Sheet Links',hint:'Each user\'s own Google Sheet shortcut board (google sheet links.html, opens from the launcher)',def:'ALL'},
-  {key:'HOME_TASK_MANAGER',label:'Task Manager',hint:'Employee checklists, EA tasks, buddy cover, score card (task_manager.html, opens from the launcher)',def:'ALL'},
+  {key:'HOME_TASK_MANAGER',label:'Task Manager',hint:'Employee checklists, EA tasks, buddy cover, score card (task_manager.html, opens from the launcher). OFF for every NEW user until switched ON (My Tasks stays ON)',def:'ALL'},
   /* Its own launcher tile, so every account (new self-signups included) has
      its own checklist without getting the whole Task Manager. Through this
      tile the server allows only TM_MY_TASKS (tm_ctx_). */
@@ -5724,6 +5852,11 @@ const SARV_TABS=[
      default: turn it ON for the supervisor(s) here or under Users › Apps.
      The same default as launcher.html's APPS entry (its defRoles). */
   {key:'HOME_UNLOADER',label:'Unloader Supervisor',hint:'Verify every new Inward at unloading: item photos + own PIN, approve or reject (unloader.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Inward PDF)',def:['ADMIN_PIN']},
+  /* Yarn-Unloading.html: box-wise yarn weights at the godown (offline-first,
+     cloud mirror in yarn_unloading_drafts). OFF for everyone, Admin included,
+     until switched ON here or under Users › Apps. Same default (no roles) as
+     launcher.html's APPS entry. */
+  {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -5760,6 +5893,13 @@ const SARV_TABS=[
   {key:'HR_PAYROLL',label:'Compute salary',hint:'Compute / recompute the salary sheet, enter Net Cash Paid',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_LOCK',label:'Lock / unlock a month',hint:'A locked month freezes its attendance, advances, PF/ESI and salary sheet',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_SETTINGS',label:'HR settings',hint:'Days basis, weekly-off rule, cash rounding, salary class rules',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* Yarn-Unloading.html's buttons. They replace that page's old passwords
+     (each phone's master password, and 1700 for Cloud Reports). The page
+     works this out itself (it has no server functions of its own), so these
+     defaults MUST match YU_DEFAULTS in Yarn-Unloading.html. */
+  {group:'Yarn Unloading › Buttons (Yarn-Unloading.html)'},
+  {key:'YU_ENTRY',label:'New Entry / Saved Draft / Download Report',hint:'Weigh and save unloading entries on the phone, continue any phone\'s draft, the phone\'s own reports',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'YU_CLOUD',label:'Cloud Reports',hint:'Every phone\'s saved entries from the cloud, PDF / CSV (was password 1700)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'PO Generation › Sub Tabs'},
@@ -6390,30 +6530,37 @@ function sarvUserRolesHtml_(u,role){
     +'</div></div>';
 }
 
-/* ── User form: APPS (tri-state) ──────────────────────────────────────
-   Three states for each app:
-     auto  - whatever the role-wise Tab Visibility says (default)
+/* ── User form: APPS (ON / OFF) ───────────────────────────────────────
+   Two states for each app and inner button:
      ON    - always show, whatever the role says
      OFF   - always hide, whatever the role says
-   "auto" is the default on purpose: that keeps the role-wise matrix
-   meaningful, and the Admin only has to touch the one person whose case is
-   different. Below it, "what the role gives right now" is shown too, so
-   choosing auto involves no guesswork. */
+   There used to be a third, "auto" (= whatever the role-wise Tab Visibility
+   says); it was removed on request so every button of a user is a clear
+   ON or OFF. A key the user has no value for yet starts at what the role
+   gives today (sarvUserAppStart_), so opening and saving the form never
+   changes anyone's access by itself; after Save every key is the user's own,
+   and later role-wise changes no longer move that user. */
 const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOME_IN:'Material Inward',
   HOME_IN_NB:'Inward (NB)',HOME_OUT:'Material Outward',HOME_ISSUE:'Issue',HOME_REPORTS:'Print History / Reports',
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
 const SARV_APP_INNER_GROUPS=[
   {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)},
-  {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)}
+  {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)},
+  {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)}
 ];
+/* Apps a NEW login does not get until the Admin switches them ON: the user
+   form starts them at OFF, and NEW_USER_APP_DEFAULTS_MIGRATION.sql does the
+   same on the server for self-signups (launcher). Existing users keep what
+   they have. My Tasks (HOME_MY_TASKS) is deliberately not here. */
+const SARV_NEW_USER_OFF=['HOME_TASK_MANAGER','HOME_YARN_UNLOADING'];
 
 /* ── Apps that also need their own ACCOUNT ───────────────────────────
    Complaint and Packing data run on Supabase Auth (their RLS and triggers
@@ -6514,16 +6661,23 @@ async function sarvSyncExternalAppAccount_(adminPin,userId,appKey,on){
   return {id:fd.user_id||userId,note:' · '+label+' account created'};
 }
 
+/* What a key starts as when this user has no ON / OFF of their own yet:
+   what the role gives today; for a NEW user (no role ticked yet) the code
+   default, except the apps in SARV_NEW_USER_OFF, which a new login never
+   gets until the Admin switches them ON. */
+function sarvUserAppStart_(u,k){
+  const roles=(u&&u.roles&&u.roles.length)?u.roles:(u&&u.role?[u.role]:[]);
+  if(u&&roles.length)return roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
+  if(SARV_NEW_USER_OFF.indexOf(k)>=0)return false;
+  const d=SARV_TABS.find(t=>t.key===k);
+  return !d||d.def==='ALL'||d.def==='W';
+}
 function sarvUserAppsHtml_(u){
   const acc=(u&&u.app_access&&typeof u.app_access==='object')?u.app_access:{};
-  const roles=(u&&u.roles&&u.roles.length)?u.roles:(u&&u.role?[u.role]:[]);
-  const roleSays=k=>roles.length
-    ? roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r))
-    : null;
   const tabLabel=k=>{const d=SARV_TABS.find(t=>t.key===k);return d?d.label:k;};
   return '<div class="fg" style="grid-column:1 / -1;">'
     +'<label>Apps <small style="text-transform:none;font-weight:600;">'
-    +'(Home page buttons. <b>auto</b> = whatever the role gives; ON / OFF applies to this user only)</small></label>'
+    +'(Home page buttons, ON / OFF for this user. "not set" = what the role gives today; Save makes it this user\'s own)</small></label>'
     +'<div data-f="appswrap" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 0;background:#f8fafc;'
     +'max-height:230px;overflow:auto;">'
     /* The apps, then each app's own inner buttons under a small heading.
@@ -6534,9 +6688,12 @@ function sarvUserAppsHtml_(u){
           return '<div style="padding:6px 10px 2px;font-size:10px;font-weight:800;color:#7c3aed;'
             +'text-transform:uppercase;letter-spacing:.04em;border-top:1px solid #e2e8f0;margin-top:4px;">'
             +escText(k.slice(1))+'</div>';
-        const v=typeof acc[k]==='boolean'?(acc[k]?'1':'0'):'';
-        const rs=roleSays(k);
-        const hint=rs===null?'':(rs?'from role: shown':'from role: hidden');
+        /* Only ON / OFF (the old "auto" is gone). A key this user has no
+           value for starts at what they get today, so opening and saving the
+           form changes nobody's access; data-set="0" marks it for the save. */
+        const own=typeof acc[k]==='boolean';
+        const v=(own?acc[k]:sarvUserAppStart_(u,k))?'1':'0';
+        const hint=own?'':'not set';
         return '<div style="display:flex;align-items:center;gap:8px;padding:3px 10px;">'
           +'<span style="flex:1 1 auto;font-size:11px;font-weight:700;color:#334155;">'
             +escText(SARV_APP_LABEL[k]||tabLabel(k))
@@ -6548,17 +6705,15 @@ function sarvUserAppsHtml_(u){
             +(SARV_APP_NEEDS_ACCOUNT[k]?' <small style="color:#047857;font-weight:700;text-transform:none;">ON = account bhi banega</small>':'')
             +(hint?' <small style="color:#94a3b8;font-weight:600;text-transform:none;">— '+hint+'</small>':'')
           +'</span>'
-          +'<select data-app="'+k+'" style="flex:0 0 auto;width:78px;height:24px;font-size:10.5px;padding:0 4px;'
+          +'<select data-app="'+k+'" data-set="'+(own?'1':'0')+'" data-init="'+v+'" style="flex:0 0 auto;width:78px;height:24px;font-size:10.5px;padding:0 4px;'
             +'border:1px solid #cbd5e1;border-radius:5px;font-family:inherit;'
-            +'background:'+(v===''?'#fff':(v==='1'?'#dcfce7':'#fee2e2'))+';">'
-          +'<option value=""'+(v===''?' selected':'')+'>auto</option>'
+            +'background:'+(v==='1'?'#dcfce7':'#fee2e2')+';">'
           +'<option value="1"'+(v==='1'?' selected':'')+'>ON</option>'
           +'<option value="0"'+(v==='0'?' selected':'')+'>OFF</option>'
           +'</select></div>';
       }).join('')
     +'</div>'
     +'<div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;">'
-    +'<button type="button" class="b no sm" data-f="appsauto">Sab auto</button>'
     +'<button type="button" class="b no sm" data-f="appson">Sab ON</button>'
     +'<button type="button" class="b no sm" data-f="appsoff">Sab OFF</button>'
     +'<span style="flex:1 1 auto;"></span>'
@@ -6728,14 +6883,13 @@ function sarvOpenUserModal(id,presetRole){
       allUnits:SARV_CMP_ALL_UNIT_ROLES.indexOf(cr)>=0&&!!(f('allunits')&&f('allunits').checked),
       dept:(f('cmpdept')?f('cmpdept').value.trim().toUpperCase():''),desig:(f('cmpdesig')?f('cmpdesig').value.trim():'')};
   };
-  /* Apps dropdowns: colour shows at a glance what is chosen, plus three
-     shortcut buttons (all auto / ON / OFF); setting 18 apps one by one is
-     exactly the kind of job nobody does. */
+  /* Apps dropdowns: colour shows at a glance what is chosen, plus two
+     shortcut buttons (all ON / OFF); setting 18 apps one by one is exactly
+     the kind of job nobody does. */
   const appSel=()=>[...ov.querySelectorAll('select[data-app]')];
-  const paintApp=s=>{s.style.background=s.value===''?'#fff':(s.value==='1'?'#dcfce7':'#fee2e2');};
+  const paintApp=s=>{s.style.background=s.value==='1'?'#dcfce7':'#fee2e2';};
   appSel().forEach(s=>s.addEventListener('change',()=>paintApp(s)));
   const setAllApps=v=>appSel().forEach(s=>{s.value=v;paintApp(s);});
-  f('appsauto')?.addEventListener('click',()=>setAllApps(''));
   f('appson') ?.addEventListener('click',()=>setAllApps('1'));
   f('appsoff')?.addEventListener('click',()=>setAllApps('0'));
   /* The primary role changed; its checkbox becomes the primary, so the roles
@@ -6838,26 +6992,41 @@ function sarvOpenUserModal(id,presetRole){
           }
           const aw=f('appswrap');
           if(aw){
-            const acc={};
+            /* Every key is sent as ON or OFF (there is no "auto" any more).
+               `touched` = keys the Admin actually decided: already this user's
+               own, or changed in this form. Only those may create / deactivate
+               a Complaint / Packing account below; a key that merely carried
+               over what the role gives must not create accounts on Save. */
+            const acc={},touched={};
+            /* A key nobody touched takes what the roles saved just above give
+               (the form's start value was worked out before the roles were
+               ticked, and for a new user without any role at all). New-user
+               OFF apps stay OFF for a new user. */
+            const rwNow=f('roleswrap');
+            const finalRoles=rwNow
+              ?[roleV].concat([...rwNow.querySelectorAll('input[data-role]')]
+                  .filter(cb=>(cb.checked||cb.disabled)&&cb.dataset.role!==roleV).map(cb=>cb.dataset.role))
+              :[roleV];
             [...aw.querySelectorAll('select[data-app]')].forEach(s=>{
-              if(s.value==='1')acc[s.dataset.app]=true;
-              else if(s.value==='0')acc[s.dataset.app]=false;
-              // 'auto' is never sent; the absence of the key is what "auto" means
+              const k=s.dataset.app;
+              if(s.dataset.set==='1'||s.value!==s.dataset.init){touched[k]=1;acc[k]=s.value==='1';return;}
+              acc[k]=(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)?false
+                :finalRoles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
             });
             const ar=await SB.rpc('admin_set_user_app_access',
               {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_app_access:acc});
             if(ar.error||!(ar.data&&ar.data.success))
               uniNote+='; Warning: App access was not saved: '+((ar.error&&ar.error.message)||(ar.data&&ar.data.error)||'unknown');
             else{
-              const n=Object.keys(acc).length;
-              if(n)uniNote+=' · '+n+' app override';
+              const n=Object.keys(acc).filter(k=>acc[k]).length;
+              uniNote+=' · '+n+' app/button ON';
 
               /* For Complaint / Packing, writing the jsonb isn't enough: those
                  apps also need their own account, otherwise the user sees
                  "NO_APP_ACCOUNT". That account is created (or deactivated) here.
 
-                 Only on an explicit ON/OFF; 'auto' is left alone, because
-                 'auto' means "whatever the role-wise matrix says", and creating
+                 Only for a key the Admin decided (`touched`); one that just
+                 carried over the role's value is left alone, because creating
                  an auth account for everyone on that basis would be wrong.
 
                  One at a time (not Promise.all): when a new auth account is
@@ -6865,7 +7034,7 @@ function sarvOpenUserModal(id,presetRole){
                  new id. */
               let curId=String(saved.id);
               for(const k of Object.keys(SARV_APP_NEEDS_ACCOUNT)){
-                if(typeof acc[k]!=='boolean')continue;
+                if(!touched[k])continue;
                 const res=await sarvSyncExternalAppAccount_(adminPin.trim(),curId,k,acc[k]);
                 curId=res.id; uniNote+=res.note;
               }

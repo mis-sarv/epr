@@ -181,7 +181,9 @@ const ERR_TEXT = {
   ALREADY_APPROVED: 'This entry has already been approved.',
   ALREADY_REJECTED: 'This entry has already been rejected.',
   ALREADY_CANCELLED: 'The store has replaced this entry with a corrected one. Refresh the list.',
-  NOT_FOUND: 'This entry was not found. Refresh the list.'
+  NOT_FOUND: 'This entry was not found. Refresh the list.',
+  // The store moved it to another supervisor while it was open here.
+  NOT_ASSIGNED: 'The store has sent this entry to a different supervisor. It is no longer in your list.'
 };
 async function rpc(fn, args){
   let r;
@@ -243,7 +245,7 @@ function renderList(){
   const list = ROWS[TAB].filter(r => !q || [r.request_no, r.supplier_name, r.invoice_no, r.po_numbers, r.req_numbers, r.requested_by]
     .some(v => String(v || '').toUpperCase().indexOf(q) >= 0));
   if (!list.length) {
-    $('list').innerHTML = '<p class="empty-msg">' + (q ? 'Nothing matches the search.' : TAB === 'PENDING' ? 'Nothing waiting. New Inward entries appear here as soon as the store submits them.' : 'Nothing verified in the last 60 days.') + '</p>';
+    $('list').innerHTML = '<p class="empty-msg">' + (q ? 'Nothing matches the search.' : TAB === 'PENDING' ? 'Nothing waiting. New Inward entries appear here as soon as the store sends them to you.' : 'Nothing verified in the last 60 days.') + '</p>';
     return;
   }
   $('list').innerHTML = list.map(r => {
@@ -258,7 +260,8 @@ function renderList(){
       + '<div class="card-detail">Supplier: <b>' + esc(r.supplier_name || '-') + '</b></div>'
       + '<div class="card-detail">Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '</div>'
       + '<div class="card-detail">' + esc(ref) + ' · <b>' + it.length + '</b> item(s) · Qty <b>' + esc(fmtN(qty)) + '</b></div>'
-      + '<div class="card-detail" style="font-size:0.75rem;">Sent by ' + esc(r.requested_by || '-') + ' · ' + esc(stamp(r.requested_at)) + '</div>'
+      + '<div class="card-detail" style="font-size:0.75rem;">Sent by ' + esc(r.requested_by || '-') + ' · ' + esc(stamp(r.requested_at))
+      + (r.assigned_to ? ' · to ' + esc(r.assigned_to) : '') + '</div>'
       + act + '</div>';
   }).join('');
 }
@@ -383,7 +386,7 @@ async function submitDecision(){
     await load();
   } catch (e) {
     if (e.code === 'PIN_INVALID' || e.code === 'TOO_MANY_ATTEMPTS') { $('pinIn').value = ''; showErr(e.message); }
-    else { closePin(); alert(e.message || e); if (/^ALREADY_/.test(e.code || '')) { closeModal(); load(); } }
+    else { closePin(); alert(e.message || e); if (/^ALREADY_|^NOT_ASSIGNED$/.test(e.code || '')) { PHOTOS = []; closeModal(); load(); } }
   } finally { b.disabled = false; b.textContent = old; busy(false); }
 }
 

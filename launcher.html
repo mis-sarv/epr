@@ -757,7 +757,15 @@ const APPS = [
      the same key on every approval (UNLOADER_APPROVAL_MIGRATION.sql). */
   { key:'HOME_UNLOADER', href:'unloader.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/><path d="M15.5 16.5l1.5 1.5 3-3"/></svg>', accent:'#f97316',
     defRoles:['ADMIN_PIN'],
-    title:'Unloader Supervisor', sub:'Verify Inward: item photos + PIN' }
+    title:'Unloader Supervisor', sub:'Verify Inward: item photos + PIN' },
+  /* Box-wise yarn weights at the godown. OFF for everyone (no defRoles, Admin
+     included) until the Admin switches it ON in Tab Visibility or Users ›
+     Apps; same default as HOME_YARN_UNLOADING in store-core.js's SARV_TABS.
+     Its buttons inside are the YU_* rights, set in the same places. The
+     file name has a capital and a hyphen, kept as people already know it. */
+  { key:'HOME_YARN_UNLOADING', href:'Yarn-Unloading.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="6" ry="2.5"/><path d="M6 5v14c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5V5"/><path d="M6 9.5c2 1.2 10 1.2 12 0M6 14c2 1.2 10 1.2 12 0"/></svg>', accent:'#e879f9',
+    defRoles:[],
+    title:'Yarn Unloading', sub:'Box-wise yarn weights, drafts, reports' }
 ];
 
 const ROLE_LABEL = {

@@ -1,0 +1,1821 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sarv India - High Contrast Yarn Unloading</title>
+    <!-- PDF Generation Library -->
+    <!-- html2pdf की ऑटो-पेजिंग से ब्लैंक पेज आता था, इसलिए हर पेज खुद रेंडर करते हैं -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Supabase client: live draft sync (SARV-STORE project) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- ERP single sign-on: login only from launcher.html (app key HOME_YARN_UNLOADING) -->
+    <script src="sso-preboot.js"></script>
+    <script src="sso-gate.js"></script>
+    <style>
+        * { box-sizing: border-box; transition: all 0.2s ease; }
+
+        /* FIX (स्पीड): 900 रो वाली टेबल में हर सेल पर transition चलने से सस्ते फोन पर
+           टाइपिंग अटकती थी. बटन/फ़ील्ड की animation बरकरार है, सिर्फ़ टेबल के अंदर बंद. */
+        table, thead, tbody, tr, td, th, .w-input { transition: none !important; }
+        
+        body { 
+            font-family: 'Segoe UI', Roboto, sans-serif; 
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); 
+            color: #0f172a;
+            padding: 15px; 
+            margin: 0; 
+            margin-bottom: 140px;
+            min-height: 100vh;
+        }
+
+        .container { 
+            max-width: 950px; 
+            margin: auto; 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 25px; 
+            border-radius: 24px; 
+            border: 2px solid #cbd5e1;
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08); 
+        }
+
+        .main-title { 
+            text-align: center; 
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1d4ed8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 28px; 
+            margin-bottom: 5px; 
+            text-transform: uppercase; 
+            font-weight: 900; 
+            letter-spacing: 2px;
+            filter: drop-shadow(0 2px 4px rgba(30, 58, 138, 0.2));
+        }
+
+        h3 { 
+            text-align: center; 
+            color: #475569; 
+            font-size: 14px; 
+            margin-top: 0; 
+            margin-bottom: 25px; 
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .floating-total-box { 
+            position: fixed; 
+            top: 15px; 
+            right: 15px; 
+            background: rgba(30, 41, 59, 0.95); 
+            backdrop-filter: blur(8px);
+            color: #ffffff; 
+            padding: 12px 20px; 
+            border-radius: 14px; 
+            z-index: 1001; 
+            text-align: center; 
+            font-weight: bold; 
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+            border: 1px solid #475569;
+        }
+
+        .btn-floating-add { 
+            position: fixed; 
+            bottom: 110px; 
+            right: 25px; 
+            width: 65px; 
+            height: 65px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); 
+            color: white; 
+            font-size: 38px; 
+            border: 3px solid #fff;
+            cursor: pointer; 
+            z-index: 1000; 
+            box-shadow: 0 6px 0 #1e40af, 0 10px 20px rgba(37, 99, 235, 0.4);
+        }
+        .btn-floating-add:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #1e40af, 0 6px 10px rgba(37, 99, 235, 0.4);
+        }
+
+        .btn-floating-save { 
+            position: fixed; 
+            bottom: 25px; 
+            right: 25px; 
+            width: 85px; 
+            height: 85px; 
+            border-radius: 50%; 
+            background: linear-gradient(135deg, #10b981 0%, #047857 100%); 
+            color: white; 
+            font-weight: 900; 
+            border: 3px solid #fff;
+            cursor: pointer; 
+            z-index: 1000; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            box-shadow: 0 6px 0 #065f46, 0 10px 20px rgba(16, 185, 129, 0.4);
+            font-size: 15px;
+            letter-spacing: 1px;
+        }
+        .btn-floating-save:active {
+            transform: translateY(4px);
+            box-shadow: 0 2px 0 #065f46, 0 6px 10px rgba(16, 185, 129, 0.4);
+        }
+
+        #dashboard-screen, #report-screen, #entry-screen, #cloud-screen, #draft-screen { display: none; }
+        .status-chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; letter-spacing: 0.5px; margin-left: 6px; vertical-align: middle; }
+        .chip-saved { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+        .chip-draft { background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }
+        
+        .dash-container { display: flex; flex-direction: column; gap: 20px; max-width: 500px; margin: 10vh auto; padding: 35px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 2px solid #cbd5e1; }
+        .dash-btn { padding: 25px; font-size: 20px; font-weight: 800; border: none; border-radius: 15px; cursor: pointer; color: white; text-align: center; box-shadow: 0 8px 20px rgba(0,0,0,0.2); transition: all 0.2s; letter-spacing: 1px; }
+        .dash-btn:active { transform: translateY(4px); box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .btn-new { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); }
+        .btn-report { background: linear-gradient(135deg, #10b981 0%, #047857 100%); }
+        .btn-draft { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .btn-load { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; box-shadow: 0 4px 10px rgba(245,158,11,0.3); }
+        .chip-mine { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+        
+        .back-btn { background: #64748b; color: white; padding: 10px 20px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; margin-bottom: 20px; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .back-btn:active { transform: translateY(2px); }
+        
+        .report-card { background: white; padding: 15px; border-radius: 15px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border: 2px solid #e2e8f0; }
+        .report-info { font-size: 15px; color: #1e293b; }
+        .report-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+        .report-actions button { padding: 10px 13px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 13px; }
+        .btn-print { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; box-shadow: 0 4px 10px rgba(59,130,246,0.3); }
+        .btn-csv { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; box-shadow: 0 4px 10px rgba(22,163,74,0.3); }
+        .btn-del-report { background: #fee2e2; color: #dc2626; border: 2px solid #fca5a5; }
+        .btn-export-all { background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: white; border: none; padding: 13px; width: 100%; border-radius: 12px; font-weight: 800; font-size: 15px; cursor: pointer; letter-spacing: 1px; margin-bottom: 18px; box-shadow: 0 4px 0 #14532d, 0 8px 15px rgba(22,163,74,0.25); }
+        .btn-export-all:active { transform: translateY(3px); box-shadow: 0 1px 0 #14532d; }
+
+        .top-meta-fields, .header-fields { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); 
+            gap: 15px; 
+            margin-bottom: 20px; 
+            background: #ffffff; 
+            padding: 15px; 
+            border-radius: 16px; 
+            border: 2px solid #cbd5e1; 
+        }
+        
+        .top-meta-fields { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+
+        .field { 
+            display: flex; 
+            flex-direction: column; 
+            font-weight: 700; 
+            font-size: 14px; 
+            color: #1e293b;
+        }
+
+        input { 
+            padding: 12px; 
+            margin-top: 6px; 
+            background: #f8fafc;
+            border: 2px solid #94a3b8; 
+            border-radius: 10px; 
+            font-size: 16px; 
+            font-weight: bold;
+            width: 100%; 
+            color: #0f172a;
+        }
+        input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+            background: #ffffff;
+        }
+
+        .btn-3d {
+            padding: 14px; 
+            border: none; 
+            border-radius: 12px; 
+            font-weight: 800; 
+            font-size: 14px;
+            letter-spacing: 1px;
+            cursor: pointer;
+        }
+        .btn-excel {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 0 #047857, 0 8px 15px rgba(16, 185, 129, 0.2);
+        }
+        .btn-excel:active { transform: translateY(3px); box-shadow: 0 1px 0 #047857; }
+
+        .btn-clear {
+            background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+            color: white;
+            box-shadow: 0 4px 0 #475569, 0 8px 15px rgba(100, 116, 139, 0.2);
+        }
+        .btn-clear:active { transform: translateY(3px); box-shadow: 0 1px 0 #475569; }
+
+        table { width: 100%; border-collapse: separate; border-spacing: 0 8px; margin-top: 15px; }
+        th { background: #1e3a8a; color: #ffffff; padding: 14px; font-weight: 800; text-transform: uppercase; font-size: 13px; letter-spacing: 1px; }
+        th:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; }
+        th:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; }
+        
+        td { background: #ffffff; padding: 10px; text-align: center; border: 1px solid #e2e8f0; color: #0f172a; }
+        tr:hover td { background: #f1f5f9; }
+        td:first-child { border-top-left-radius: 10px; border-bottom-left-radius: 10px; border-right: none; }
+        td:last-child { border-top-right-radius: 10px; border-bottom-right-radius: 10px; border-left: none; }
+
+        .w-input { width: 85%; text-align: center; font-weight: 800; font-size: 18px; background: #f8fafc; border: 2px solid #cbd5e1; border-radius: 8px; padding: 8px; color: #0f172a; }
+        .w-input:focus { border-color: #2563eb; background: #fff; }
+        
+        .filled-row td { background-color: #bae6fd !important; border-top: 1px solid #0284c7; border-bottom: 1px solid #0284c7; }
+
+        .btn-delete { background: #fee2e2; color: #dc2626; border: 2px solid #fca5a5; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .btn-delete:hover { background: #dc2626; color: white; }
+
+        #sig-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); z-index: 2000; justify-content: center; align-items: center; padding: 10px; }
+        .modal-content { background: #ffffff; border: 2px solid #94a3b8; padding: 25px; border-radius: 20px; text-align: center; width: 100%; max-width: 400px; box-shadow: 0 25px 50px rgba(0,0,0,0.2); }
+        canvas { border: 2px dashed #64748b; border-radius: 10px; background: #fff; width: 100%; touch-action: none; }
+        
+        .error-toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background-color: #b91c1c; color: white; padding: 14px 30px; border-radius: 10px; font-weight: bold; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 3000; display: none; font-size: 16px; }
+
+        #lock-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #e2e8f0; z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .lock-box { background: #ffffff; border: 2px solid #cbd5e1; color: #0f172a; padding: 40px 30px; border-radius: 24px; width: 100%; max-width: 380px; text-align: center; box-shadow: 0 25px 50px rgba(0,0,0,0.1); }
+        .lock-box h2 { margin-top: 0; color: #1e3a8a; font-weight: 800; }
+        .lock-btn { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; border: none; padding: 14px; width: 100%; border-radius: 10px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 20px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3); }
+
+        @media print { .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+
+<!-- The old lock screen (phone-wise master password, PIN 1700 for Cloud
+     Reports) is gone: the ERP login from launcher.html is the only way in,
+     and the buttons below are switched ON / OFF in the ERP Admin Panel
+     (YU_ENTRY / YU_CLOUD). -->
+
+<!-- NEW: DASHBOARD SCREEN -->
+<div id="dashboard-screen">
+    <div class="dash-container">
+        <h2 style="text-align:center; color:#1e3a8a; margin-top:0; font-weight:900; letter-spacing:1px;">SARV INDIA DASHBOARD</h2>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:-10px; font-size:13px; font-weight:700; color:#475569;">
+            <span id="yuWho" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</span>
+            <button type="button" onclick="yuAskLogout()" style="background:#fff; color:#b91c1c; border:1px solid #fca5a5; border-radius:8px; padding:6px 12px; font-weight:800; cursor:pointer;">Log out</button>
+        </div>
+        <div id="yuOffline" style="display:none; background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:10px; padding:8px 10px; font-size:12px; font-weight:700;"></div>
+        <button class="dash-btn btn-new yu-entry" onclick="showNewEntry()">📝 NEW ENTRY</button>
+        <button class="dash-btn btn-draft yu-entry" onclick="showPendingDrafts()">📋 SAVED DRAFT</button>
+        <button class="dash-btn btn-report yu-entry" onclick="showReports()">📊 DOWNLOAD REPORT</button>
+        <button class="dash-btn yu-cloud" style="background:#1e3a8a;" onclick="showCloudReports()">CLOUD REPORTS</button>
+        <p id="yuNone" style="display:none; text-align:center; color:#b91c1c; font-weight:700; font-size:14px; margin:0;">
+            No button of this app is ON for your login. Ask the Admin to switch it ON under ERP › Admin Panel › Users › Apps (Yarn Unloading buttons).
+        </p>
+    </div>
+</div>
+
+<!-- NEW: REPORTS SCREEN -->
+<div id="report-screen">
+    <div class="container" style="margin-top:20px; max-width:800px;">
+        <button class="back-btn" onclick="showDashboard()">⬅ Back to Dashboard</button>
+        <h2 style="color:#1e3a8a; font-weight:900; margin-top:0;">SAVED REPORTS</h2>
+        <button class="btn-export-all" onclick="exportAllReportsCSV()">⬇️ EXPORT ALL REPORTS (CSV / EXCEL)</button>
+        <div id="report-list"></div>
+    </div>
+</div>
+
+<!-- SAVED DRAFT SCREEN — सिर्फ़ वो एंट्री जो फाइनल सेव नहीं हुईं -->
+<div id="draft-screen">
+    <div class="container" style="margin-top:20px; max-width:800px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px;">
+            <button class="back-btn" style="margin:0;" onclick="showDashboard()">⬅ Dashboard</button>
+            <button class="back-btn" style="margin:0; background:#2563eb;" onclick="loadPendingDrafts()">🔄 Refresh</button>
+        </div>
+        <h2 style="color:#b45309; font-weight:900; margin:0 0 6px 0;">📋 SAVED DRAFT (PENDING)</h2>
+        <p style="color:#64748b; font-size:13px; font-weight:600; margin:0 0 18px 0;">
+            जो एंट्री अभी फाइनल सेव नहीं हुई — किसी भी फोन से की गई हो, यहाँ से खोलकर आगे भरी जा सकती है।
+        </p>
+        <div id="draft-list"></div>
+    </div>
+</div>
+
+<!-- CLOUD (SUPABASE) REPORTS SCREEN — पासवर्ड 1700 से खुलता है -->
+<div id="cloud-screen">
+    <div class="container" style="margin-top:20px; max-width:800px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:18px;">
+            <button class="back-btn" style="margin:0;" onclick="cloudLogout()">⬅ Dashboard</button>
+            <button class="back-btn" style="margin:0; background:#2563eb;" onclick="loadCloudReports()">🔄 Refresh</button>
+            <button class="btn-export-all" style="width:auto; flex:1; min-width:140px; margin:0; padding:11px 14px; font-size:13px;" onclick="exportAllCloudCSV()">⬇️ ALL CSV</button>
+        </div>
+        <h2 style="color:#1e3a8a; font-weight:900; margin:0 0 6px 0;">☁️ CLOUD REPORTS</h2>
+        <p style="color:#64748b; font-size:13px; font-weight:600; margin:0 0 18px 0;">
+            Supabase (SARV-STORE) पर सेव हुआ डेटा — किसी भी फोन से की गई एंट्री यहाँ दिखेगी।
+        </p>
+        <div id="cloud-list"></div>
+    </div>
+</div>
+
+<!-- MOVED: DRAFT RECOVERY MODAL (Now outside entry-screen so it is always visible when called) -->
+<div id="draft-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(8px); z-index: 2500; justify-content: center; align-items: center; padding: 20px;">
+    <div class="modal-content" style="max-width: 380px;">
+        <h3 style="color: #dc2626; border: none; font-size: 24px; margin-bottom: 10px; font-weight: 900;">⚠️ Pending Data Found!</h3>
+        <p style="color: #334155; font-size: 15px; font-weight: 600; margin-bottom: 25px; line-height: 1.5;">
+            आपका पुराना अनसेव्ड (Unsaved) डेटा मौजूद है।<br><br>क्या आप इसे <b>Save</b> करना चाहते हैं या <b>Delete</b> करके नयी एंट्री करना चाहते हैं?
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <button onclick="resumeDraft()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; padding:14px; border:none; border-radius:12px; font-weight: 900; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+                🟢 CONTINUE & SAVE
+            </button>
+            <button onclick="deleteDraftWithPassword()" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color:white; padding:14px; border:none; border-radius:12px; font-weight: 900; font-size: 16px; cursor: pointer; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);">
+                🔴 DELETE DATA
+            </button>
+            <button onclick="document.getElementById('draft-modal').style.display='none';" style="background: #94a3b8; color:white; padding:12px; border:none; border-radius:12px; font-weight: bold; font-size: 15px; cursor: pointer;">
+                CANCEL (Back)
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- WRAPPER: ENTRY SCREEN -->
+<div id="entry-screen">
+    <button class="no-print back-btn" style="position:fixed; top:20px; left:20px; z-index:1002;" onclick="showDashboard()">⬅ Dashboard</button>
+
+    <div id="errorToast" class="error-toast">⚠️ कृपया वेट DATA एंटर करे</div>
+    <div class="no-print floating-total-box">
+        <small>TOTAL WEIGHT</small><br>
+        <span id="liveTotalDisplay" style="font-size: 22px; color: #38bdf8;">0.00 kg</span>
+        <div id="cloudStatus" style="font-size: 10px; font-weight: 700; margin-top: 4px; color: #94a3b8; letter-spacing: 0.3px;">☁️ —</div>
+    </div>
+
+    <button class="no-print btn-floating-add" onclick="clickPlusButton()">+</button>
+    <button class="no-print btn-floating-save" onclick="startSave()">SAVE</button>
+
+    <div id="sig-modal">
+        <div class="modal-content">
+            <h3 style="color: #0f172a; border: none; font-size: 18px; margin-bottom: 15px;">Verification System</h3>
+            <input type="text" id="receiverNameInput" placeholder="Receiver Name लिखें..." style="background: #f8fafc; margin-bottom: 10px;">
+            <div id="sig-pad-area" style="display:none; margin-top:15px;">
+                <p id="sig-label" style="font-weight:bold; color: #334155; margin-bottom: 8px;"></p>
+                <canvas id="sig-canvas" width="300" height="150"></canvas><br>
+                <button onclick="clearSig()" style="margin-top:10px; width:100%; padding:8px; background: #64748b; color: white; border: none; border-radius: 6px; cursor: pointer;">Clear Sign</button>
+            </div>
+            <div style="margin-top:20px; display: flex; gap: 12px;">
+            <button onclick="closeModal()" style="background:#94a3b8; color:white; padding:12px; flex: 1; border:none; border-radius:10px; font-weight: bold; cursor: pointer;">CANCEL</button>
+            <button id="modal-next-btn" onclick="nextStep()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color:white; padding:12px; flex: 1; border:none; border-radius:10px; font-weight: bold; cursor: pointer;">Next</button>
+        </div>
+    </div>
+</div>
+
+<div class="container no-print">
+    <div class="main-title">SARV INDIA HOME FURNISHING</div>
+        <h3>YARN UNLOADING FORMAT</h3>
+        
+        <div class="top-meta-fields">
+            <div class="field">Bill Date: <input type="date" id="billDate" oninput="saveToLocal()"></div>
+            <div class="field">Invoice No: <input type="text" id="invoiceNo" placeholder="Invoice No." oninput="saveToLocal()"></div>
+            <div class="field">PO Number: <input type="text" id="poNumber" placeholder="PO No." oninput="saveToLocal()"></div>
+            <div class="field">Gate Entry: <input type="text" id="gateEntry" placeholder="No." oninput="saveToLocal()"></div>
+        <div class="field">Recv Date: <input type="date" id="recvDate" oninput="saveToLocal()"></div>
+    </div>
+
+    <div class="header-fields">
+        <div class="field">Party Name: <input type="text" id="pName" placeholder="Party Name" oninput="saveToLocal()"></div>
+        <div class="field">Gaadi No: <input type="text" id="gNo" placeholder="Vehicle No" oninput="saveToLocal()"></div>
+        <div class="field">Brand: <input type="text" id="yBrand" placeholder="Brand Name" oninput="saveToLocal()"></div>
+        <div class="field">Denier: <input type="text" id="yDenier" placeholder="Denier" oninput="saveToLocal()"></div>
+        <div class="field">Batch No: <input type="text" id="bNo" placeholder="Batch No" oninput="saveToLocal()"></div>
+        <div class="field">Unloader: <input type="text" id="uName" placeholder="Unloader Name" oninput="saveToLocal()"></div>
+        <div class="field">Rate (Per Box): <input type="number" id="uRate" placeholder="₹ Rate" oninput="saveToLocal()"></div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+        <button class="btn-3d btn-excel" onclick="exportEntryCSV()">⬇️ EXCEL / CSV EXPORT</button>
+        <button class="btn-3d btn-clear" onclick="clearData()">CLEAR ALL</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width:25%">Box No.</th>
+                <th style="width:55%">Weight (kg)</th>
+                <th style="width:20%">Action</th>
+            </tr>
+        </thead>
+        <tbody id="inputRows"></tbody>
+    </table>
+    </div> <!-- END CONTAINER -->
+</div> <!-- END ENTRY SCREEN -->
+
+<script>
+    let canvas, ctx;
+    let drawing = false;
+    let currentStep = 1; 
+    let recvSigData = null, inchargeSigData = null;
+    let sigDrawn = false;                 // सिग्नेचर असल में बना है या खाली है
+    const BLANK_IMG = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+    /* ===================================================================
+       SUPABASE LIVE DRAFT SYNC  —  project SARV-STORE
+       Table: public.yarn_unloading_drafts (बिल्कुल अलग टेबल, ERP से कोई लिंक नहीं)
+
+       ⚠ ज़रूरी बात: localStorage ही असली (primary) स्टोरेज है, क्योंकि गोदाम में
+       नेट नहीं रहता. क्लाउड सिर्फ़ लाइव मिरर है — नेट हो तो ड्राफ्ट वहाँ भी
+       पहुँचता रहेगा, न हो तो ऐप पहले जैसा ही चलेगा, एक भी एंट्री नहीं रुकेगी.
+       =================================================================== */
+    const SUPABASE_URL = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_ShXJT031BhcC4WtQPdQqhg_hP8WKgdM";
+    const DRAFT_TABLE  = "yarn_unloading_drafts";
+
+    let sb = null;
+    try {
+        if (window.supabase && window.supabase.createClient) {
+            sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+                auth: { persistSession: false, autoRefreshToken: false }
+            });
+        }
+    } catch (e) { console.error("Supabase init failed", e); }
+
+    // file:// पर भी काम करने वाला UUID जेनरेटर (crypto.randomUUID हर जगह नहीं मिलता)
+    function uuid4() {
+        try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch(e) {}
+        try {
+            if (window.crypto && crypto.getRandomValues) {
+                const b = crypto.getRandomValues(new Uint8Array(16));
+                b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+                const h = Array.from(b).map(x => x.toString(16).padStart(2,'0')).join('');
+                return h.slice(0,8)+'-'+h.slice(8,12)+'-'+h.slice(12,16)+'-'+h.slice(16,20)+'-'+h.slice(20);
+            }
+        } catch(e) {}
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = Math.random()*16|0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+        });
+    }
+
+    function getDeviceId() {
+        let id = localStorage.getItem('yarn_device_id');
+        if (!id) { id = uuid4(); localStorage.setItem('yarn_device_id', id); }
+        return id;
+    }
+
+    // हर एंट्री सेशन का अपना row — बार-बार उसी row पर upsert होता है
+    function getDraftId() {
+        let id = localStorage.getItem('yarn_draft_id');
+        if (!id) { id = uuid4(); localStorage.setItem('yarn_draft_id', id); }
+        return id;
+    }
+
+    function setSyncStatus(state) {
+        const el = document.getElementById('cloudStatus');
+        if (!el) return;
+        if (state === 'ok')   { el.innerText = "☁️ CLOUD SAVED";  el.style.color = "#4ade80"; }
+        if (state === 'sync') { el.innerText = "☁️ SAVING...";    el.style.color = "#fbbf24"; }
+        if (state === 'fail') { el.innerText = "⚠️ OFFLINE (LOCAL OK)"; el.style.color = "#fca5a5"; }
+        if (state === 'off')  { el.innerText = "☁️ CLOUD OFF";    el.style.color = "#94a3b8"; }
+        if (state === 'ready'){ el.innerText = "☁️ CLOUD READY";  el.style.color = "#94a3b8"; }
+    }
+
+    // खाली फॉर्म पर क्लाउड में junk row न बने, इसलिए null लौटाते हैं
+    function buildDraftRow() {
+        const val = (id) => (document.getElementById(id).value || '').trim();
+        const dte = (id) => document.getElementById(id).value || null;   // खाली date => null
+
+        const weights = [];
+        document.querySelectorAll('.w-input').forEach((i, idx) => {
+            if (parseFloat(i.value) > 0) weights.push({ n: idx + 1, w: parseFloat(i.value).toFixed(2) });
+        });
+
+        const row = {
+            id:          getDraftId(),
+            device_id:   getDeviceId(),
+            status:      'draft',
+            bill_date:   dte('billDate'),
+            recv_date:   dte('recvDate'),
+            invoice_no:  val('invoiceNo') || null,
+            po_number:   val('poNumber')  || null,
+            gate_entry:  val('gateEntry') || null,
+            party_name:  val('pName')     || null,
+            vehicle_no:  val('gNo')       || null,
+            brand:       val('yBrand')    || null,
+            denier:      val('yDenier')   || null,
+            batch_no:    val('bNo')       || null,
+            unloader:    val('uName')     || null,
+            rate:        parseFloat(document.getElementById('uRate').value) || null,
+            weights:     weights,
+            box_count:   weights.length,
+            total_weight: weights.reduce((s, x) => s + parseFloat(x.w), 0).toFixed(2)
+        };
+
+        const anyField = ['bill_date','recv_date','invoice_no','po_number','gate_entry','party_name',
+                          'vehicle_no','brand','denier','batch_no','unloader','rate'].some(k => row[k]);
+        if (!weights.length && !anyField) return null;
+        return row;
+    }
+
+    let cloudTimer = null, cloudBusy = false, cloudAgain = false;
+
+    // लोकल सेव के बाद कॉल होता है. 2.5 सेकंड रुककर भेजता है ताकि हर कीस्ट्रोक
+    // पर रिक्वेस्ट न जाए (900 बॉक्स की लिस्ट हर बार भेजना भारी पड़ता है).
+    function queueCloudSync() {
+        if (!sb) { setSyncStatus('off'); return; }
+        setSyncStatus('sync');
+        clearTimeout(cloudTimer);
+        cloudTimer = setTimeout(pushDraftToCloud, 2500);
+    }
+
+    function pushDraftToCloud() {
+        if (!sb) return;
+        const es = document.getElementById('entry-screen');
+        if (!es || es.style.display !== 'block') return;
+        if (cloudBusy) { cloudAgain = true; return; }
+
+        const row = buildDraftRow();
+        if (!row) { setSyncStatus('ready'); return; }   // फॉर्म खाली है, भेजने लायक कुछ नहीं
+
+        cloudBusy = true;
+        sb.from(DRAFT_TABLE).upsert(row, { onConflict: 'id' })
+          .then(({ error }) => {
+              if (error) { console.error("Draft cloud sync failed", error); setSyncStatus('fail'); }
+              else setSyncStatus('ok');
+          })
+          .catch((err) => { console.error("Draft cloud sync failed", err); setSyncStatus('fail'); })
+          .finally(() => {
+              cloudBusy = false;
+              if (cloudAgain) { cloudAgain = false; setTimeout(pushDraftToCloud, 400); }
+          });
+    }
+
+    // फाइनल रिपोर्ट सेव होने पर क्लाउड row को 'saved' मार्क करें और
+    // अगली एंट्री के लिए नया row शुरू करें
+    function markDraftSavedInCloud(rep) {
+        localStorage.removeItem('yarn_draft_id');
+        return pushSavedReportToCloud(rep);
+    }
+
+    /* सेव हुई रिपोर्ट को क्लाउड row (id = rep.cloudId) में लिखता है.
+       Promise<boolean> लौटाता है — PDF अपलोड इसी के बाद होता है, ताकि
+       pdf_url लिखते समय row मौजूद हो. नेट न हो तो false, ऐप चलता रहता है. */
+    function pushSavedReportToCloud(rep) {
+        if (!sb || !rep.cloudId) return Promise.resolve(false);
+        const nd = (x) => (x && x !== '-') ? x : null;    // "-" को date कॉलम में न भेजें
+        return sb.from(DRAFT_TABLE).upsert({
+            id: rep.cloudId, device_id: getDeviceId(), status: 'saved',
+            bill_date: nd(rep.billDate), recv_date: nd(rep.recvDate),
+            invoice_no: nd(rep.invoiceNo), po_number: nd(rep.poNumber), gate_entry: nd(rep.gateEntry),
+            party_name: nd(rep.pName), vehicle_no: nd(rep.gNo), brand: nd(rep.yBrand),
+            denier: nd(rep.yDenier), batch_no: nd(rep.batchNo), unloader: nd(rep.uName),
+            rate: parseFloat(rep.uRate) || null,
+            weights: rep.weights, box_count: rep.count, total_weight: rep.total,
+            receiver_name: nd(rep.receiverName),
+            // सिग्नेचर भी भेजें, वरना क्लाउड से बनी PDF में साइन की जगह खाली रहेगी
+            recv_sig: rep.recvSigData || null, incharge_sig: rep.inchargeSigData || null,
+            saved_at: new Date().toISOString()
+        }, { onConflict: 'id' })
+        .then(({ error }) => {
+            if (error) { console.error("Cloud final-save failed", error); return false; }
+            return true;
+        })
+        .catch((err) => { console.error("Cloud final-save failed", err); return false; });
+    }
+
+    /* PDF को Storage (bucket sarv-pdfs / yarn-unloading/<row id>.pdf) में डालकर
+       उसका लिंक टेबल के pdf_url कॉलम में सेव करता है. फाइल नाम row id पर है,
+       इसलिए दोबारा अपलोड करने पर पुरानी फाइल ही बदलती है, डुप्लीकेट नहीं बनती. */
+    const PDF_BUCKET = "sarv-pdfs";
+
+    function uploadPdfToCloud(cloudId, blob, rowReady) {
+        if (!sb || !cloudId || !blob) return Promise.resolve(null);
+        const path = 'yarn-unloading/' + cloudId + '.pdf';
+        return Promise.resolve(rowReady).then((ok) => {
+            if (ok === false) return null;                 // row ही नहीं बना, तो लिंक कहाँ लिखें
+            return sb.storage.from(PDF_BUCKET)
+                .upload(path, blob, { contentType: 'application/pdf', upsert: true })
+                .then(({ error }) => {
+                    if (error) throw error;
+                    // ?v= ताकि दोबारा बनी PDF पर CDN पुरानी कॉपी न दिखाए
+                    const url = sb.storage.from(PDF_BUCKET).getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+                    return sb.from(DRAFT_TABLE).update({ pdf_url: url }).eq('id', cloudId)
+                        .then(({ error }) => { if (error) throw error; return url; });
+                });
+        }).catch((err) => { console.error("PDF cloud upload failed", err); return null; });
+    }
+
+    // लोकल रिपोर्ट में pdfUrl लिख दें — जिनमें ये नहीं है, उनकी PDF अगली बार फिर अपलोड होगी
+    function setLocalPdfUrl(cloudId, url) {
+        try {
+            const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+            const r = reports.find(x => x.cloudId === cloudId);
+            if (!r) return;
+            r.pdfUrl = url;
+            localStorage.setItem('yarn_reports', JSON.stringify(reports));
+        } catch (e) { console.error(e); }
+    }
+
+    // ड्राफ्ट छोड़ा/डिलीट किया गया — क्लाउड से भी हटा दें, वरना अधूरा row पड़ा रहेगा
+    function dropCloudDraft() {
+        const id = localStorage.getItem('yarn_draft_id');
+        localStorage.removeItem('yarn_draft_id');
+        if (!sb || !id) return;
+        sb.from(DRAFT_TABLE).delete().eq('id', id).eq('status', 'draft')
+          .then(({ error }) => { if (error) console.error("Cloud draft delete failed", error); })
+          .catch((err) => console.error("Cloud draft delete failed", err));
+    }
+
+    window.onload = () => {
+        canvas = document.getElementById('sig-canvas');
+        if(canvas) ctx = canvas.getContext('2d');
+        document.getElementById('inputRows').innerHTML = '';
+        if(canvas) initCanvas();
+        yuBoot();
+    };
+
+    /* ===================================================================
+       LOGIN + RIGHTS FROM THE ERP
+       Before: each phone had its own master password (set by whoever opened
+       the app first) and PIN 1700 opened Cloud Reports. Now the ERP login is
+       the only way in (launcher.html, app key HOME_YARN_UNLOADING, OFF by
+       default) and the buttons are rights set in the ERP Admin Panel:
+
+         YU_ENTRY  New Entry / Saved Draft / Download Report   (default: everyone with the app)
+         YU_CLOUD  Cloud Reports (was PIN 1700)                (default: Admin)
+
+       Same rule as store-core.js's sarvTabVisible(): the user's own ON / OFF
+       (Users › Apps) first, then the role-wise Tab Visibility (union of the
+       roles, Admin locked ON), then the default below. Keep YU_DEFAULTS in
+       step with the YU_* rows of SARV_TABS in store-core.js.
+
+       The godown often has no net, so a phone that has opened the app once
+       while online keeps working offline: the last identity and rights are
+       kept with the session token for YU_OFFLINE_DAYS. A logout, another
+       login, or the Admin switching the app OFF (seen at the next online
+       open) ends that.
+       =================================================================== */
+    const YU_APP = 'HOME_YARN_UNLOADING';
+    // The anon JWT, for the gate's own calls (the publishable key above is for the data client).
+    const YU_GATE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+    const YU_DEFAULTS = { YU_ENTRY: 'ALL', YU_CLOUD: ['ADMIN_PIN'] };
+    const YU_LOCK = ['ADMIN_PIN'];
+    const YU_CACHE_KEY = 'yarn_sso_cache';
+    const YU_OFFLINE_DAYS = 7;
+    let YU_USER = null, YU_RIGHTS = { YU_ENTRY: false, YU_CLOUD: false }, YU_OFFLINE = false;
+
+    function yuRolesOf(u) { return ((u && u.roles && u.roles.length) ? u.roles : [u && u.primary_role]).filter(Boolean); }
+    function yuRight(key, u, tabvis) {
+        const acc = u && u.app_access;
+        if (acc && typeof acc === 'object' && typeof acc[key] === 'boolean') return acc[key];
+        const row = tabvis && tabvis[key];
+        const def = YU_DEFAULTS[key];
+        return yuRolesOf(u).some(r => {
+            if (YU_LOCK.indexOf(r) >= 0) return true;
+            if (row && typeof row[r] === 'boolean') return row[r];
+            return def === 'ALL' || (Array.isArray(def) && def.indexOf(r) >= 0);
+        });
+    }
+    function yuToken() { try { return localStorage.getItem('sarv_sso_token') || ''; } catch (e) { return ''; } }
+    function yuReadCache() {
+        try {
+            const c = JSON.parse(localStorage.getItem(YU_CACHE_KEY) || 'null');
+            if (!c || !c.token || c.token !== yuToken()) return null;
+            if (Date.now() - (c.at || 0) > YU_OFFLINE_DAYS * 86400000) return null;
+            return c;
+        } catch (e) { return null; }
+    }
+
+    // Is the server reachable at all? Only a network failure counts as "offline";
+    // every real answer (good or bad) goes through SARV_GATE.boot below.
+    async function yuServerReachable() {
+        const ctl = window.AbortController ? new AbortController() : null;
+        const t = setTimeout(() => { if (ctl) ctl.abort(); }, 8000);
+        try {
+            await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_session', {
+                method: 'POST', signal: ctl ? ctl.signal : undefined,
+                headers: { 'Content-Type': 'application/json', apikey: YU_GATE_KEY, Authorization: 'Bearer ' + YU_GATE_KEY },
+                body: JSON.stringify({ p_token: yuToken(), p_app: YU_APP })
+            });
+            return true;
+        } catch (e) { return false; }
+        finally { clearTimeout(t); }
+    }
+
+    async function yuBoot() {
+        try {
+            if (yuToken() && !(await yuServerReachable())) {
+                const c = yuReadCache();
+                if (c) {
+                    YU_USER = c.user; YU_RIGHTS = c.rights; YU_OFFLINE = true;
+                    yuStart();
+                    return;
+                }
+            }
+            // Resolves only when the user may enter; otherwise the gate shows the reason / goes to the launcher.
+            const u = await SARV_GATE.boot({ url: SUPABASE_URL, key: YU_GATE_KEY, app: YU_APP, label: 'Yarn Unloading' });
+            let tabvis = null;
+            try {
+                const s = await sb.from('app_settings').select('value').eq('key', 'tab_visibility').limit(1);
+                if (!s.error && s.data && s.data[0]) tabvis = s.data[0].value;
+            } catch (e) { console.warn('Tab Visibility not read, defaults used', e); }
+            YU_USER = { id: u.id, name: u.name, emp_code: u.emp_code || '', roles: yuRolesOf(u) };
+            YU_RIGHTS = { YU_ENTRY: yuRight('YU_ENTRY', u, tabvis), YU_CLOUD: yuRight('YU_CLOUD', u, tabvis) };
+            try { localStorage.setItem(YU_CACHE_KEY, JSON.stringify({ token: yuToken(), at: Date.now(), user: YU_USER, rights: YU_RIGHTS })); } catch (e) {}
+            yuStart();
+        } catch (e) {
+            console.error('Yarn Unloading boot failed', e);
+            alert('The app could not start: ' + (e.message || e));
+        } finally {
+            if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+        }
+    }
+
+    function yuStart() {
+        document.getElementById('yuWho').textContent = (YU_USER.name || '-') + (YU_USER.emp_code ? ' (' + YU_USER.emp_code + ')' : '');
+        document.querySelectorAll('.yu-entry').forEach(b => b.style.display = YU_RIGHTS.YU_ENTRY ? '' : 'none');
+        document.querySelectorAll('.yu-cloud').forEach(b => b.style.display = YU_RIGHTS.YU_CLOUD ? '' : 'none');
+        document.getElementById('yuNone').style.display = (YU_RIGHTS.YU_ENTRY || YU_RIGHTS.YU_CLOUD) ? 'none' : 'block';
+        const off = document.getElementById('yuOffline');
+        off.style.display = YU_OFFLINE ? 'block' : 'none';
+        off.textContent = 'No internet: working offline with your last login. Entries are kept on this phone and go to the cloud when the net is back.';
+        // Only Cloud Reports ON: straight there, as PIN 1700 used to do.
+        if (!YU_RIGHTS.YU_ENTRY && YU_RIGHTS.YU_CLOUD && !YU_OFFLINE) showCloudReports();
+        else showDashboard();
+    }
+
+    function yuAskLogout() {
+        if (!confirm('Do you want Log out?')) return;
+        flushToLocal();   // the unsaved draft stays on this phone, as before
+        try { localStorage.removeItem(YU_CACHE_KEY); } catch (e) {}
+        SARV_GATE.logout({ url: SUPABASE_URL, key: YU_GATE_KEY });
+    }
+
+    /* Replaces the old phone-wise master password before throwing data away:
+       the user's own ERP login PIN, checked on the server. Without net the
+       PIN cannot be checked, so a plain confirmation is asked instead.
+       Resolves true to go ahead. */
+    async function yuConfirmPin(what) {
+        if (!YU_USER || !YU_USER.id) return confirm(what + '?');
+        const pin = prompt(what + ' — enter your login PIN:');
+        if (pin === null) return false;
+        try {
+            const r = await sb.rpc('verify_app_user_pin', { p_user_id: YU_USER.id, p_pin: String(pin).trim() });
+            if (r.error) throw r.error;
+            if (r.data === true) return true;
+            alert("❌ गलत PIN! (Wrong PIN)");
+            return false;
+        } catch (e) {
+            console.warn('PIN check unavailable', e);
+            return confirm('The PIN could not be checked (no internet?).\n\n' + what + ' anyway?');
+        }
+    }
+
+    /* --- NEW NAVIGATION FUNCTIONS --- */
+    function showDashboard() {
+        flushToLocal();   // डैशबोर्ड पर जाते समय बाकी ड्राफ्ट पक्का सेव कर दें
+        document.getElementById('dashboard-screen').style.display = 'block';
+        document.getElementById('entry-screen').style.display = 'none';
+        document.getElementById('report-screen').style.display = 'none';
+        document.getElementById('draft-screen').style.display = 'none';
+        document.getElementById('cloud-screen').style.display = 'none';
+    }
+
+    /* इस फोन पर कोई अधूरा ड्राफ्ट बचा है या नहीं — एक ही जगह तय होता है.
+       FIX: पहले खाली रो भी ड्राफ्ट मानी जाती थी (वज़न बॉक्स को छूकर बिना कुछ लिखे
+       हटने पर weights:[""] सेव हो जाता था), जिससे बेवजह "Pending Data Found!"
+       दिखता था. Denier (d.d) और Rate (d.r) भी चेक में जोड़े — पहले छूटे थे. */
+    function localDraftHasData() {
+        const raw = localStorage.getItem('yarn_data');
+        if (!raw) return false;
+        try {
+            const d = JSON.parse(raw);
+            if (!d) return false;
+            const real = Array.isArray(d.weights) ? d.weights.filter(w => parseFloat(w) > 0) : [];
+            return !!(real.length || d.p || d.g || d.inv || d.u || d.b || d.bill ||
+                      d.recv || d.po || d.ge || d.bt || d.d || d.r);
+        } catch (e) {
+            console.error("Draft parsing error", e);
+            localStorage.removeItem('yarn_data');   // खराब डेटा हटा दें
+            return false;
+        }
+    }
+
+    function showNewEntry() {
+        if (localDraftHasData()) document.getElementById('draft-modal').style.display = 'flex';
+        else startFreshEntry();
+    }
+
+    function startFreshEntry() {
+        dropCloudDraft();     // पुराना अधूरा क्लाउड ड्राफ्ट हटाकर नया सेशन शुरू करें
+        document.getElementById('dashboard-screen').style.display = 'none';
+        document.getElementById('entry-screen').style.display = 'block';
+        document.getElementById('inputRows').innerHTML = '';
+        document.querySelectorAll('.top-meta-fields input, .header-fields input').forEach(i => i.value = '');
+        localStorage.removeItem('yarn_data');
+        setSyncStatus(sb ? 'ready' : 'off');
+        uSum();
+        addNewBox();
+    }
+
+    function resumeDraft() {
+        document.getElementById('draft-modal').style.display = 'none';
+        document.getElementById('dashboard-screen').style.display = 'none';
+        document.getElementById('entry-screen').style.display = 'block';
+        loadSavedData();
+        queueCloudSync();   // रिज्यूम किया हुआ ड्राफ्ट भी क्लाउड पर भेज दें
+    }
+
+    // Was the phone's master password; now the user's own ERP PIN (yuConfirmPin).
+    async function deleteDraftWithPassword() {
+        if (!(await yuConfirmPin('Delete the old unsaved data'))) return;
+        localStorage.removeItem('yarn_data');
+        document.getElementById('draft-modal').style.display = 'none';
+        startFreshEntry();
+    }
+
+    function showReports() {
+        document.getElementById('dashboard-screen').style.display = 'none';
+        document.getElementById('report-screen').style.display = 'block';
+        renderReports();
+    }
+
+    function loadOrNew(){ if(localStorage.getItem('yarn_data')) loadSavedData(); else addNewBox(); }
+
+    function initCanvas() {
+        ctx.lineWidth = 2.5; ctx.strokeStyle = '#000';
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+        /* FIX: canvas का CSS width 100% (~350px) है पर असली width=300px.
+           पहले स्केलिंग नहीं थी, इसलिए मोबाइल पर जहाँ उंगली रखते थे वहाँ से
+           हटकर लाइन बनती थी (जितना दाएँ जाएँ उतना ज़्यादा फ़र्क). अब स्केल किया गया है. */
+        const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const src  = (e.touches && e.touches.length) ? e.touches[0] : e;
+            const sx   = canvas.width  / rect.width;
+            const sy   = canvas.height / rect.height;
+            return { x: (src.clientX - rect.left) * sx, y: (src.clientY - rect.top) * sy };
+        };
+        const start = (e) => { e.preventDefault(); drawing = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+        const move  = (e) => { if(!drawing) return; e.preventDefault(); const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); sigDrawn = true; };
+        const stop  = () => { drawing = false; };
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('touchstart', start, { passive: false });
+        canvas.addEventListener('mousemove', move);
+        canvas.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('mouseup', stop);
+        // FIX: पहले touchend नहीं था, इसलिए उंगली उठाने के बाद भी drawing=true रहता था
+        canvas.addEventListener('touchend', stop);
+        canvas.addEventListener('touchcancel', stop);
+    }
+
+    // skipFocus = बल्क लोड के लिए (हर रो पर focus करना 900 रो पर बहुत धीमा है)
+    function addNewBox(val = '', skipFocus = false) {
+        const tbody = document.getElementById('inputRows');
+        const row = document.createElement('tr');
+        const id = 'r' + Date.now() + Math.random(); row.id = id;
+        
+        let formattedVal = val;
+        if(val !== '' && !isNaN(parseFloat(val))) { formattedVal = parseFloat(val).toFixed(2); }
+
+        row.innerHTML = `<td class="box-num"><b>${tbody.children.length + 1}</b></td>
+            <td><input type="text" class="w-input" value="${formattedVal}" inputmode="decimal" onblur="fBlur(this)" oninput="handleInput(this)" onkeydown="if(event.key==='Enter'){ fBlur(this); event.preventDefault(); if(parseFloat(this.value)>0) addNewBox(); else showErr(); }"></td>
+            <td><button class="btn-delete" onclick="document.getElementById('${id}').remove(); updateBoxLabels(); saveToLocal(); uSum();">✕</button></td>`;
+        tbody.appendChild(row);
+        if(val !== '' && !isNaN(parseFloat(val))) { row.classList.add('filled-row'); }
+        if (!skipFocus) setTimeout(()=>row.querySelector('input').focus(), 50);
+    }
+
+    function handleInput(inp) {
+        let val = inp.value.replace(/[^0-9.]/g, '');
+        if (val.length === 2 && !val.includes('.') && (window.event && window.event.inputType !== 'deleteContentBackward')) { val = val + '.'; }
+        inp.value = val;
+        const row = inp.parentElement.parentElement;
+        (parseFloat(val) > 0) ? row.classList.add('filled-row') : row.classList.remove('filled-row');
+        uSum(); saveToLocal();
+    }
+
+    function fBlur(i){ if(!isNaN(parseFloat(i.value))) i.value = parseFloat(i.value).toFixed(2); saveToLocal(); uSum(); }
+    function uSum(){ let t=0; document.querySelectorAll('.w-input').forEach(i=>t+=parseFloat(i.value)||0); document.getElementById('liveTotalDisplay').innerText = t.toFixed(2)+" kg"; return t;}
+    function showErr(){ document.getElementById('errorToast').style.display='block'; setTimeout(()=>document.getElementById('errorToast').style.display='none', 2500); }
+    
+    function clickPlusButton(){ 
+        const ins = document.querySelectorAll('.w-input'); 
+        if(ins.length > 0) {
+            const last = ins[ins.length-1]; fBlur(last);
+            if(parseFloat(last.value)>0) addNewBox(); else { last.focus(); showErr(); }
+        } else { addNewBox(); }
+    }
+
+    function startSave() { 
+        const count = document.querySelectorAll('.filled-row').length;
+        if(count === 0) return alert("Please enter at least one box weight before saving!");
+        currentStep = 1;
+        // FIX: पिछली बार CANCEL किया हो तो पुराना सिग्नेचर कैनवास पर पड़ा रह जाता था
+        recvSigData = null; inchargeSigData = null;
+        clearSig();
+        document.getElementById('sig-modal').style.display='flex';
+        document.getElementById('receiverNameInput').style.display='block'; 
+        document.getElementById('sig-pad-area').style.display='none'; 
+    }
+    
+    function closeModal(){ document.getElementById('sig-modal').style.display='none'; }
+
+    function nextStep() {
+        if(currentStep === 1){
+            if(!document.getElementById('receiverNameInput').value.trim()) return alert("Name Please!");
+            currentStep = 2; document.getElementById('receiverNameInput').style.display='none'; document.getElementById('sig-pad-area').style.display='block'; document.getElementById('sig-label').innerText="Receiver Sign:";
+            clearSig();
+        } else if(currentStep === 2){
+            // FIX: पहले खाली कैनवास भी सेव हो जाता था (PDF में ब्लैंक सिग्नेचर आता था)
+            if(!sigDrawn) return alert("कृपया Receiver / Driver का सिग्नेचर करें!");
+            recvSigData = canvas.toDataURL(); currentStep = 3; clearSig(); document.getElementById('sig-label').innerText="Store Incharge Sign:";
+        } else {
+            if(!sigDrawn) return alert("कृपया Store Incharge का सिग्नेचर करें!");
+            inchargeSigData = canvas.toDataURL(); saveFinalReport();
+        }
+    }
+
+    function saveFinalReport() {
+        const total = uSum(), count = document.querySelectorAll('.filled-row').length;
+        const rate = parseFloat(document.getElementById('uRate').value)||0;
+        
+        const weights = []; 
+        document.querySelectorAll('.w-input').forEach((i,idx) => { 
+            if(parseFloat(i.value) > 0) weights.push({n:idx+1, w:parseFloat(i.value).toFixed(2)}); 
+        });
+
+        const reportData = {
+            id: Date.now(),
+            dateSaved: new Date().toLocaleString('en-IN'),
+            billDate: document.getElementById('billDate').value || "-",
+            invoiceNo: document.getElementById('invoiceNo').value || "-",
+            poNumber: document.getElementById('poNumber').value || "-",
+            gateEntry: document.getElementById('gateEntry').value || "-",
+            recvDate: document.getElementById('recvDate').value || "-",
+            pName: document.getElementById('pName').value || "-",
+            gNo: document.getElementById('gNo').value || "-",
+            yBrand: document.getElementById('yBrand').value || "-",
+            yDenier: document.getElementById('yDenier').value || "-",
+            batchNo: document.getElementById('bNo').value || "-",
+            uName: document.getElementById('uName').value || "-",
+            uRate: rate,
+            weights: weights,
+            total: total.toFixed(2),
+            count: count,
+            amount: (count * rate).toFixed(2),
+            avg: count > 0 ? (total / count).toFixed(2) : "0.00",
+            receiverName: document.getElementById('receiverNameInput').value,
+            recvSigData: recvSigData,
+            inchargeSigData: inchargeSigData,
+            // क्लाउड row की id — PDF लिंक इसी row में जाता है. नेट बंद रहा हो
+            // तो draft id नहीं बनी होगी, इसलिए नई बना लेते हैं.
+            cloudId: localStorage.getItem('yarn_draft_id') || uuid4(),
+            pdfUrl: null
+        };
+
+        // Save into array of reports
+        let savedReports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+        savedReports.unshift(reportData); // add to top
+
+        /* FIX: पहले यहाँ कोई सेफ्टी नहीं थी. स्टोरेज भरने पर setItem एरर फेंकता,
+           फंक्शन बीच में रुक जाता — यूज़र को कोई मैसेज नहीं मिलता और वो समझता कि
+           रिपोर्ट सेव हो गई. अब साफ़ मैसेज मिलता है और ड्राफ्ट सुरक्षित रहता है. */
+        try {
+            localStorage.setItem('yarn_reports', JSON.stringify(savedReports));
+        } catch (err) {
+            console.error(err);
+            alert("❌ रिपोर्ट सेव नहीं हो पाई — फोन की स्टोरेज भर गई है!\n\n'DOWNLOAD REPORT' में जाकर पुरानी रिपोर्ट्स की PDF निकाल लें और उन्हें डिलीट करें, फिर दोबारा SAVE दबाएँ।\n\n✅ आपका आज का डेटा सुरक्षित है, कहीं नहीं गया।");
+            return;
+        }
+
+        // क्लाउड ड्राफ्ट को 'saved' मार्क करें (अगली एंट्री के लिए नया row बनेगा)
+        const rowReady = markDraftSavedInCloud(reportData);
+
+        // Clear draft memory entirely
+        localStorage.removeItem('yarn_data');
+        document.getElementById('inputRows').innerHTML = '';
+        document.querySelectorAll('input').forEach(i => { if(i.type !== 'password') i.value = ''; });
+
+        closeModal();
+        showDashboard();
+
+        // सेव होते ही PDF सीधे डाउनलोड + क्लाउड पर अपलोड (लिंक टेबल में)
+        buildPdf(reportData, null, {
+            cloudId: reportData.cloudId,
+            rowReady: rowReady,
+            msgPrefix: "✅ Data Saved Successfully!\n\n"
+        });
+    }
+
+    /* =========================================================
+       COMMON HELPERS
+       ========================================================= */
+
+    // yyyy-mm-dd  =>  dd-mm-yyyy  (सिर्फ़ दिखाने के लिए; सेव ISO में ही रहता है)
+    function fmtDate(s) {
+        if (!s || s === '-') return '-';
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s));
+        return m ? (m[3] + '-' + m[2] + '-' + m[1]) : String(s);
+    }
+
+    // इनवॉइस नंबर में "/" होता है (जैसे 26-27/0754) जो फाइल नाम तोड़ देता है
+    function safeName(s) {
+        return String(s || '').replace(/[\\\/:*?"<>|]/g, '-').replace(/\s+/g, '_');
+    }
+
+    /* =========================================================
+       CSV / EXCEL EXPORT
+       एक्सेल में सीधा खुलता है. हर बॉक्स की एक लाइन, साथ में हेडर
+       डिटेल्स — जिससे Excel में फ़िल्टर/पिवट आसानी से लग जाए.
+       ========================================================= */
+    const CSV_COLS = ["Invoice No","PO Number","Gate Entry No","Bill Date","Recv Date","Party Name",
+                      "Vehicle No","Brand","Denier","Batch No","Unloading Contractor","Rate Per Box",
+                      "Box No","Weight KG","Total Boxes","Total Weight KG","Average Weight KG",
+                      "Total Amount","Receiver Name","Saved On"];
+
+    function csvCell(v) {
+        if (v === null || v === undefined) return '""';
+        return '"' + String(v).replace(/"/g, '""') + '"';
+    }
+    function csvRow(arr) { return arr.map(csvCell).join(',') + '\r\n'; }
+
+    function reportToCsvRows(d) {
+        const wts  = Array.isArray(d.weights) ? d.weights : [];
+        const base = [d.invoiceNo, d.poNumber, d.gateEntry, fmtDate(d.billDate), fmtDate(d.recvDate),
+                      d.pName, d.gNo, d.yBrand, d.yDenier, d.batchNo, d.uName, d.uRate];
+        const tail = [d.count, d.total, d.avg, d.amount, d.receiverName || '', d.dateSaved || ''];
+        if (!wts.length) return csvRow(base.concat(['', ''], tail));
+        let out = '';
+        wts.forEach(w => { out += csvRow(base.concat([w.n, w.w], tail)); });
+        return out;
+    }
+
+    function downloadCSV(filename, csv) {
+        try {
+            // ﻿ (BOM) ज़रूरी है, वरना Excel में हिंदी/₹ टूटकर दिखता है
+            const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click();
+            setTimeout(() => {
+                if (a.parentNode) document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 1500);
+            return true;
+        } catch (err) {
+            console.error("CSV download failed", err);
+            alert("❌ CSV डाउनलोड नहीं हो पाया।\n" + (err && err.message ? err.message : ''));
+            return false;
+        }
+    }
+
+    // चालू एंट्री (जो स्क्रीन पर खुली है) — बिना सेव किए भी एक्सपोर्ट हो जाएगी
+    function currentEntryAsReport() {
+        const weights = [];
+        document.querySelectorAll('.w-input').forEach((i, idx) => {
+            if (parseFloat(i.value) > 0) weights.push({ n: idx + 1, w: parseFloat(i.value).toFixed(2) });
+        });
+        const total = weights.reduce((s, x) => s + parseFloat(x.w), 0);
+        const count = weights.length;
+        const rate  = parseFloat(document.getElementById('uRate').value) || 0;
+        const g = (id) => document.getElementById(id).value || "-";
+        return {
+            billDate: g('billDate'), recvDate: g('recvDate'), invoiceNo: g('invoiceNo'),
+            poNumber: g('poNumber'), gateEntry: g('gateEntry'), pName: g('pName'), gNo: g('gNo'),
+            yBrand: g('yBrand'), yDenier: g('yDenier'), batchNo: g('bNo'), uName: g('uName'),
+            uRate: rate, weights: weights, count: count, total: total.toFixed(2),
+            avg: count > 0 ? (total / count).toFixed(2) : "0.00",
+            amount: (count * rate).toFixed(2), receiverName: "", dateSaved: ""
+        };
+    }
+
+    function exportEntryCSV() {
+        const d = currentEntryAsReport();
+        if (!d.weights.length) return alert("पहले कम से कम एक बॉक्स का वज़न डालें!");
+        const csv  = csvRow(CSV_COLS) + reportToCsvRows(d);
+        const name = 'SARV_INDIA_' + safeName(d.invoiceNo !== '-' ? d.invoiceNo : 'INV') +
+                     '_' + safeName(d.recvDate !== '-' ? d.recvDate : 'Date') + '.csv';
+        if (downloadCSV(name, csv)) {
+            alert("✅ CSV फाइल डाउनलोड हो गई (" + d.count + " बॉक्स)।\nExcel में सीधा खुल जाएगी।");
+        }
+    }
+
+    function exportReportCSV(idx) {
+        const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+        const d = reports[idx];
+        if (!d) return alert("Error loading report!");
+        const csv  = csvRow(CSV_COLS) + reportToCsvRows(d);
+        const name = 'SARV_INDIA_' + safeName(d.invoiceNo || 'INV') + '_' + safeName(d.recvDate || 'Date') + '.csv';
+        if (downloadCSV(name, csv)) alert("✅ CSV फाइल डाउनलोड हो गई!");
+    }
+
+    function exportAllReportsCSV() {
+        const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+        if (!reports.length) return alert("कोई रिपोर्ट सेव नहीं है!");
+        let csv = csvRow(CSV_COLS);
+        let boxes = 0;
+        reports.forEach(r => { csv += reportToCsvRows(r); boxes += (r.count || 0); });
+        const today = new Date().toISOString().slice(0, 10);
+        if (downloadCSV('SARV_INDIA_ALL_REPORTS_' + today + '.csv', csv)) {
+            alert("✅ सभी " + reports.length + " रिपोर्ट्स की CSV डाउनलोड हो गई (कुल " + boxes + " बॉक्स)।");
+        }
+    }
+
+    /* =========================================================
+       CLOUD REPORTS (SUPABASE)  —  सुपरवाइज़र व्यू (पहले पासवर्ड 1700;
+       अब ERP Admin Panel का YU_CLOUD right)
+       किसी भी फोन से की गई एंट्री यहाँ दिखती है, और उसी की PDF/CSV
+       यहीं से बन जाती है.
+       ========================================================= */
+    let cloudRows = [];
+
+    /* लिस्ट में weights और signature नहीं मँगाते — 200 एंट्री × 950 वज़न + साइन
+       मिलाकर कई MB हो जाते हैं, जो मोबाइल डेटा पर भारी पड़ता. लिस्ट को box_count
+       और total_weight से काम चल जाता है; पूरा डेटा सिर्फ़ PDF/CSV के वक़्त
+       उसी एक row का मँगाया जाता है. */
+    const CLOUD_LITE_COLS = 'id,device_id,status,bill_date,recv_date,invoice_no,po_number,' +
+                            'gate_entry,party_name,vehicle_no,brand,denier,batch_no,unloader,' +
+                            'rate,box_count,total_weight,receiver_name,saved_at,updated_at,pdf_url';
+
+    function fetchCloudRow(id) {
+        return sb.from(DRAFT_TABLE).select('*').eq('id', id).limit(1)
+                 .then(({ data, error }) => {
+                     if (error) throw error;
+                     return (data && data[0]) ? data[0] : null;
+                 });
+    }
+
+    function cloudBtnBusy(btn, busy, label) {
+        if (!btn) return;
+        btn.innerText = busy ? label : (btn.className.indexOf('btn-csv') >= 0 ? "📄 CSV" : "🖨️ PDF");
+        btn.style.pointerEvents = busy ? "none" : "auto";
+        btn.style.opacity = busy ? "0.7" : "1";
+    }
+
+    // दूसरे फोन से आया डेटा सीधे HTML में डालना ठीक नहीं — टैग बनाने वाले
+    // कैरेक्टर हटा देते हैं (CSV/PDF में टेक्स्ट साफ़ भी रहता है)
+    function safeTxt(v) {
+        return String(v === null || v === undefined ? '' : v).replace(/[<>]/g, '');
+    }
+
+    /* =========================================================
+       SAVED DRAFT (PENDING) — अधूरी एंट्री खोलकर आगे भरना
+       लिस्ट क्लाउड से आती है, इसलिए किसी भी फोन की अधूरी एंट्री
+       यहाँ से उठाकर जारी रखी जा सकती है.
+       ========================================================= */
+    let draftRows = [];
+
+    function showPendingDrafts() {
+        flushToLocal();     // इस फोन का ड्राफ्ट भी लिस्ट में दिखे
+        document.getElementById('dashboard-screen').style.display = 'none';
+        document.getElementById('entry-screen').style.display = 'none';
+        document.getElementById('report-screen').style.display = 'none';
+        document.getElementById('cloud-screen').style.display = 'none';
+        document.getElementById('draft-screen').style.display = 'block';
+        loadPendingDrafts();
+    }
+
+    function loadPendingDrafts() {
+        const list = document.getElementById('draft-list');
+        const msg = (t) => { list.innerHTML = "<p style='text-align:center; color:#64748b; padding:25px; font-weight:600;'>" + t + "</p>"; };
+
+        if (!sb) return msg("❌ Supabase लाइब्रेरी लोड नहीं हुई।<br>इंटरनेट चालू करके ऐप दोबारा खोलें।");
+        msg("⏳ पेंडिंग ड्राफ्ट लोड हो रहे हैं...");
+
+        sb.from(DRAFT_TABLE)
+          .select(CLOUD_LITE_COLS)
+          .eq('status', 'draft')                      // सिर्फ़ अनसेव्ड एंट्री
+          .order('updated_at', { ascending: false })
+          .limit(100)
+          .then(({ data, error }) => {
+              if (error) {
+                  console.error("Pending drafts load failed", error);
+                  return msg("❌ लोड नहीं हो पाया।<br><small>" + safeTxt(error.message || '') + "</small>");
+              }
+              draftRows = Array.isArray(data) ? data : [];
+              renderPendingDrafts();
+          })
+          .catch((err) => {
+              console.error("Pending drafts load failed", err);
+              msg("❌ नेटवर्क एरर — इंटरनेट चेक करें।");
+          });
+    }
+
+    function renderPendingDrafts() {
+        const list = document.getElementById('draft-list');
+        if (!draftRows.length) {
+            list.innerHTML = "<p style='text-align:center; color:#15803d; padding:25px; font-weight:700;'>✅ कोई पेंडिंग ड्राफ्ट नहीं।<br><small style='color:#64748b; font-weight:600;'>सारी एंट्री फाइनल सेव हो चुकी हैं।</small></p>";
+            return;
+        }
+        const myId = localStorage.getItem('yarn_draft_id');
+        let html = '';
+        draftRows.forEach((r, idx) => {
+            const isMine = (r.id === myId);
+            html += `<div class="report-card">
+                <div class="report-info">
+                    <b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
+                    ${isMine ? '<span class="status-chip chip-mine">इस फोन का</span>' : ''}<br>
+                    <small style="color:#64748b;">
+                        ${r.updated_at ? new Date(r.updated_at).toLocaleString('en-IN') : ''} -
+                        <b>${r.box_count || 0} Boxes</b> (${safeTxt(r.total_weight) || 0} KG)
+                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}
+                    </small>
+                </div>
+                <div class="report-actions">
+                    <button class="btn-load" onclick="loadPendingDraft(${idx})">▶ LOAD &amp; CONTINUE</button>
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html;
+    }
+
+    function loadPendingDraft(index) {
+        const lite = draftRows[index];
+        if (!lite || !lite.id) return alert("Error loading draft!");
+
+        const myId = localStorage.getItem('yarn_draft_id');
+
+        // इस फोन पर दूसरा अधूरा ड्राफ्ट खुला है तो वो हट जाएगा —
+        // पर क्लाउड में सुरक्षित है और इसी लिस्ट में मिलेगा
+        if (myId && myId !== lite.id && localDraftHasData()) {
+            if (!confirm("⚠️ इस फोन पर एक और अधूरी एंट्री मौजूद है।\n\nवो क्लाउड में सेव है और इसी लिस्ट में मिलती रहेगी, पर फोन से हट जाएगी।\n\nआगे बढ़ें?")) return;
+        }
+
+        // एक ही एंट्री दो फोन पर साथ भरने से डेटा गड़बड़ हो सकता है
+        if (lite.device_id && lite.device_id !== getDeviceId()) {
+            if (!confirm("ℹ️ ये एंट्री किसी दूसरे फोन पर शुरू हुई थी।\n\nध्यान रखें — एक ही एंट्री दो फोन पर साथ-साथ न भरें, वरना एक का डेटा दूसरे से मिट सकता है।\n\nखोलें?")) return;
+        }
+
+        const btn = document.querySelectorAll('#draft-list .btn-load')[index];
+        const btnBusy = (busy) => {
+            if (!btn) return;
+            btn.innerText = busy ? "⏳ Loading..." : "▶ LOAD & CONTINUE";
+            btn.style.pointerEvents = busy ? "none" : "auto";
+            btn.style.opacity = busy ? "0.7" : "1";
+        };
+        btnBusy(true);
+
+        fetchCloudRow(lite.id).then((full) => {
+            btnBusy(false);
+            if (!full) return alert("❌ क्लाउड से पूरा डेटा नहीं मिला।");
+            if (full.status === 'saved') {
+                alert("ये एंट्री अब फाइनल सेव हो चुकी है — पेंडिंग लिस्ट में नहीं है।");
+                return loadPendingDrafts();
+            }
+
+            // क्लाउड row को लोकल ड्राफ्ट फॉर्मैट में बदलें
+            const ws = Array.isArray(full.weights) ? full.weights.map(x => String(x.w)) : [];
+            const yarnData = {
+                p: full.party_name || "", g: full.vehicle_no || "", b: full.brand || "",
+                d: full.denier || "", bt: full.batch_no || "", bill: full.bill_date || "",
+                recv: full.recv_date || "", ge: full.gate_entry || "", po: full.po_number || "",
+                inv: full.invoice_no || "", u: full.unloader || "",
+                r: (full.rate === null || full.rate === undefined) ? "" : String(full.rate),
+                weights: ws
+            };
+
+            try {
+                localStorage.setItem('yarn_data', JSON.stringify(yarnData));
+                // ज़रूरी: वही क्लाउड row आगे अपडेट होता रहे, नया row न बने
+                localStorage.setItem('yarn_draft_id', full.id);
+            } catch (err) {
+                console.error(err);
+                return alert("❌ फोन की स्टोरेज भरी है — ड्राफ्ट लोड नहीं हो पाया।");
+            }
+
+            document.getElementById('draft-screen').style.display = 'none';
+            document.getElementById('dashboard-screen').style.display = 'none';
+            document.getElementById('entry-screen').style.display = 'block';
+            loadSavedData();
+            setSyncStatus(sb ? 'ready' : 'off');
+            alert("✅ ड्राफ्ट लोड हो गया (" + ws.length + " बॉक्स)।\nअब आगे की एंट्री जारी रखें।");
+        }).catch((err) => {
+            console.error("Draft load failed", err);
+            btnBusy(false);
+            alert("❌ ड्राफ्ट लोड नहीं हो पाया — इंटरनेट चेक करें।");
+        });
+    }
+
+    function showCloudReports() {
+        document.getElementById('dashboard-screen').style.display = 'none';
+        document.getElementById('entry-screen').style.display = 'none';
+        document.getElementById('report-screen').style.display = 'none';
+        document.getElementById('cloud-screen').style.display = 'block';
+        loadCloudReports();
+    }
+
+    // Leaving Cloud Reports (used to go back to the lock screen; now the dashboard).
+    function cloudLogout() {
+        cloudRows = [];
+        document.getElementById('cloud-list').innerHTML = '';
+        showDashboard();
+    }
+
+    function loadCloudReports() {
+        const list = document.getElementById('cloud-list');
+        const msg = (t) => { list.innerHTML = "<p style='text-align:center; color:#64748b; padding:25px; font-weight:600;'>" + t + "</p>"; };
+
+        if (!sb) return msg("❌ Supabase लाइब्रेरी लोड नहीं हुई।<br>इंटरनेट चालू करके ऐप दोबारा खोलें।");
+        msg("⏳ क्लाउड से डेटा लोड हो रहा है...");
+
+        sb.from(DRAFT_TABLE)
+          .select(CLOUD_LITE_COLS)
+          .order('updated_at', { ascending: false })
+          .limit(200)
+          .then(({ data, error }) => {
+              if (error) {
+                  console.error("Cloud load failed", error);
+                  return msg("❌ डेटा लोड नहीं हो पाया।<br><small>" + safeTxt(error.message || '') + "</small>");
+              }
+              cloudRows = Array.isArray(data) ? data : [];
+              renderCloudReports();
+          })
+          .catch((err) => {
+              console.error("Cloud load failed", err);
+              msg("❌ नेटवर्क एरर — इंटरनेट चेक करें।");
+          });
+    }
+
+    function renderCloudReports() {
+        const list = document.getElementById('cloud-list');
+        if (!cloudRows.length) {
+            list.innerHTML = "<p style='text-align:center; color:#64748b; padding:25px; font-weight:600;'>क्लाउड पर अभी कोई एंट्री नहीं है।</p>";
+            return;
+        }
+        let html = '';
+        cloudRows.forEach((r, idx) => {
+            const isSaved = r.status === 'saved';
+            const when    = r.saved_at || r.updated_at;
+            html += `<div class="report-card">
+                <div class="report-info">
+                    <b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
+                    <span class="status-chip ${isSaved ? 'chip-saved' : 'chip-draft'}">${isSaved ? 'SAVED' : 'DRAFT'}</span><br>
+                    <small style="color:#64748b;">
+                        ${when ? new Date(when).toLocaleString('en-IN') : ''} -
+                        <b>${r.box_count || 0} Boxes</b> (${safeTxt(r.total_weight) || 0} KG)
+                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}
+                    </small>
+                </div>
+                <div class="report-actions">
+                    <button class="btn-print" onclick="generateCloudPrintout(${idx})">🖨️ PDF</button>
+                    <button class="btn-csv" onclick="exportCloudCSV(${idx})">📄 CSV</button>
+                    ${/^https:\/\//.test(r.pdf_url || '') ? `<a class="btn-print" style="text-decoration:none; text-align:center;" href="${safeTxt(r.pdf_url).replace(/"/g, '%22')}" target="_blank" rel="noopener">🔗 Saved PDF</a>` : ''}
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html;
+    }
+
+    // Supabase की row को उसी शेप में बदलें जिसमें लोकल रिपोर्ट रहती है,
+    // ताकि PDF/CSV का वही पुराना कोड बिना बदलाव चल जाए
+    function cloudRowToReport(r) {
+        const wts   = Array.isArray(r.weights) ? r.weights : [];
+        const count = r.box_count || wts.length;
+        const total = parseFloat(r.total_weight) || wts.reduce((s, x) => s + (parseFloat(x.w) || 0), 0);
+        const rate  = parseFloat(r.rate) || 0;
+        const when  = r.saved_at || r.updated_at;
+        return {
+            billDate:   r.bill_date  || "-",
+            recvDate:   r.recv_date  || "-",
+            invoiceNo:  safeTxt(r.invoice_no) || "-",
+            poNumber:   safeTxt(r.po_number)  || "-",
+            gateEntry:  safeTxt(r.gate_entry) || "-",
+            pName:      safeTxt(r.party_name) || "-",
+            gNo:        safeTxt(r.vehicle_no) || "-",
+            yBrand:     safeTxt(r.brand)      || "-",
+            yDenier:    safeTxt(r.denier)     || "-",
+            batchNo:    safeTxt(r.batch_no)   || "-",
+            uName:      safeTxt(r.unloader)   || "-",
+            uRate:      rate,
+            weights:    wts,
+            count:      count,
+            total:      Number(total).toFixed(2),
+            avg:        count > 0 ? (total / count).toFixed(2) : "0.00",
+            amount:     (count * rate).toFixed(2),
+            receiverName: safeTxt(r.receiver_name) || "-",
+            recvSigData:     r.recv_sig     || null,
+            inchargeSigData: r.incharge_sig || null,
+            dateSaved:  when ? new Date(when).toLocaleString('en-IN') : ""
+        };
+    }
+
+    function generateCloudPrintout(index) {
+        const lite = cloudRows[index];
+        if (!lite) return alert("Error loading report!");
+        const btn = document.querySelectorAll('#cloud-list .btn-print')[index];
+        cloudBtnBusy(btn, true, "⏳ Loading...");
+
+        fetchCloudRow(lite.id).then((full) => {
+            cloudBtnBusy(btn, false);
+            if (!full) return alert("❌ क्लाउड से पूरा डेटा नहीं मिला।");
+            const d = cloudRowToReport(full);
+            if (!d.weights.length) return alert("इस एंट्री में अभी कोई वज़न नहीं है — PDF नहीं बन सकती।");
+            if (!full.recv_sig && !full.incharge_sig) {
+                // ड्राफ्ट अभी फाइनल सेव नहीं हुआ, इसलिए साइन मौजूद नहीं हैं
+                if (!confirm("⚠️ ये एंट्री अभी फाइनल सेव नहीं हुई है, इसलिए PDF में साइन की जगह खाली रहेगी।\n\nफिर भी PDF बनाएँ?")) return;
+            }
+            // सेव हुई एंट्री का लिंक अभी तक नहीं है तो यहीं से अपलोड कर दें
+            const needUpload = full.status === 'saved' && !full.pdf_url;
+            buildPdf(d, btn, needUpload ? { cloudId: full.id } : {});
+        }).catch((err) => {
+            console.error("Cloud row fetch failed", err);
+            cloudBtnBusy(btn, false);
+            alert("❌ क्लाउड से डेटा लाने में दिक्कत — इंटरनेट चेक करें।");
+        });
+    }
+
+    function exportCloudCSV(index) {
+        const lite = cloudRows[index];
+        if (!lite) return alert("Error loading report!");
+        const btn = document.querySelectorAll('#cloud-list .btn-csv')[index];
+        cloudBtnBusy(btn, true, "⏳");
+
+        fetchCloudRow(lite.id).then((full) => {
+            cloudBtnBusy(btn, false);
+            if (!full) return alert("❌ क्लाउड से पूरा डेटा नहीं मिला।");
+            const d    = cloudRowToReport(full);
+            const csv  = csvRow(CSV_COLS) + reportToCsvRows(d);
+            const name = 'SARV_INDIA_CLOUD_' + safeName(d.invoiceNo) + '_' + safeName(d.recvDate) + '.csv';
+            if (downloadCSV(name, csv)) alert("✅ CSV फाइल डाउनलोड हो गई!");
+        }).catch((err) => {
+            console.error("Cloud row fetch failed", err);
+            cloudBtnBusy(btn, false);
+            alert("❌ क्लाउड से डेटा लाने में दिक्कत — इंटरनेट चेक करें।");
+        });
+    }
+
+    function exportAllCloudCSV() {
+        if (!sb) return alert("Supabase लोड नहीं हुआ!");
+        if (!cloudRows.length) return alert("क्लाउड पर अभी कोई एंट्री नहीं है!");
+        if (!confirm("क्लाउड की सभी " + cloudRows.length + " एंट्री की CSV बनानी है?\nइसमें थोड़ा डेटा डाउनलोड होगा।")) return;
+
+        // साइन छोड़कर (भारी होते हैं) बाकी सब एक ही क्वेरी में
+        sb.from(DRAFT_TABLE)
+          .select(CLOUD_LITE_COLS + ',weights')
+          .order('updated_at', { ascending: false })
+          .limit(200)
+          .then(({ data, error }) => {
+              if (error) throw error;
+              const rows = Array.isArray(data) ? data : [];
+              if (!rows.length) return alert("कोई एंट्री नहीं मिली!");
+              let csv = csvRow(CSV_COLS), boxes = 0;
+              rows.forEach(r => {
+                  const d = cloudRowToReport(r);
+                  csv += reportToCsvRows(d);
+                  boxes += (d.count || 0);
+              });
+              const today = new Date().toISOString().slice(0, 10);
+              if (downloadCSV('SARV_INDIA_CLOUD_ALL_' + today + '.csv', csv)) {
+                  alert("✅ क्लाउड की सभी " + rows.length + " एंट्री की CSV डाउनलोड हो गई (कुल " + boxes + " बॉक्स)।");
+              }
+          })
+          .catch((err) => {
+              console.error("Cloud export failed", err);
+              alert("❌ एक्सपोर्ट नहीं हो पाया — इंटरनेट चेक करें।");
+          });
+    }
+
+    function renderReports() {
+        const list = document.getElementById('report-list');
+        const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+        if(reports.length === 0) {
+            list.innerHTML = "<p style='text-align:center; color:#64748b; padding:20px;'>No reports saved yet.</p>";
+            return;
+        }
+
+        let html = '';
+        reports.forEach((r, idx) => {
+            html += `<div class="report-card">
+                <div class="report-info">
+                    <b>Inv: ${r.invoiceNo}</b> | Party: ${r.pName}<br>
+                    <small style="color:#64748b;">${r.dateSaved} - <b>${r.count} Boxes</b> (${r.total} KG)</small>
+                </div>
+                <div class="report-actions">
+                    <button class="btn-print" onclick="generatePrintout(${idx})">🖨️ PDF</button>
+                    <button class="btn-csv" onclick="exportReportCSV(${idx})">📄 CSV</button>
+                    <button class="btn-del-report" onclick="deleteReport(${idx})">🗑️</button>
+                </div>
+            </div>`;
+        });
+        list.innerHTML = html;
+    }
+
+    function deleteReport(idx) {
+        if(confirm("Are you sure you want to delete this report permanently?")) {
+            let reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+            reports.splice(idx, 1);
+            localStorage.setItem('yarn_reports', JSON.stringify(reports));
+            renderReports();
+        }
+    }
+
+    function generatePrintout(index) {
+        const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+        const d = reports[index];
+        if(!d) return alert("Error loading report!");
+        // जिस रिपोर्ट की PDF अभी क्लाउड पर नहीं पहुँची (सेव के वक़्त नेट नहीं था),
+        // उसका row और PDF दोनों अभी भेज दें. पुरानी रिपोर्ट्स में cloudId नहीं है, वो छोड़ दें.
+        const opts = (d.cloudId && !d.pdfUrl) ? { cloudId: d.cloudId, rowReady: pushSavedReportToCloud(d) } : {};
+        // #report-list से स्कोप किया है, वरना क्लाउड लिस्ट के बटन भी मैच हो जाते
+        buildPdf(d, document.querySelectorAll('#report-list .btn-print')[index], opts);
+    }
+
+    /* PDF बनाने वाला असली फंक्शन. लोकल रिपोर्ट और क्लाउड रिपोर्ट — दोनों इसी को
+       कॉल करती हैं, इसलिए PDF का लेआउट एक ही जगह है.
+       btn = वो बटन जिस पर "Generating..." दिखाना है (न हो तो कोई बात नहीं).
+       opts.cloudId  = दिया हो तो PDF क्लाउड पर अपलोड होकर उस row के pdf_url में जाएगी
+       opts.rowReady = Promise — अपलोड से पहले क्लाउड row बनने का इंतज़ार
+       opts.msgPrefix = सफलता वाले मैसेज के आगे जोड़ने वाला टेक्स्ट */
+    function buildPdf(d, btn, opts) {
+        opts = opts || {};
+        /* FIX: पुरानी या अधूरी रिपोर्ट (weights/सिग्नेचर मिसिंग) पर PDF क्रैश हो जाती थी.
+           अब खाली वैल्यू पर भी PDF बन जाएगी, सिर्फ़ सिग्नेचर की जगह खाली रहेगी. */
+        const wts     = Array.isArray(d.weights) ? d.weights : [];
+        const recvSig = d.recvSigData || BLANK_IMG;
+        const inchSig = d.inchargeSigData || BLANK_IMG;
+
+        // बटन का टेक्स्ट बदलें ताकि यूज़र को पता चले कि PDF बन रही है
+        if (btn) {
+            btn.innerText = "⏳ Generating PDF...";
+            btn.style.pointerEvents = "none";
+            btn.style.opacity = "0.7";
+        }
+
+        /* =========================================================
+           STRICT 2-PAGE LAYOUT ENGINE
+           Page 1 = Summary  |  Page 2 = Weight Grid (auto-fit)
+           ========================================================= */
+        const PX_MM    = 3.7795275591;              // 1mm = 3.78px @96dpi
+        const PAGE_H   = 297 * PX_MM;               // A4 full height (px)
+        const PAGE_PAD = 20  * PX_MM;               // 10mm top + 10mm bottom
+        const RESERVED = 64 + 34 + 60 + 16;         // header + footer + sign strip + gaps
+        const GRID_H   = PAGE_H - PAGE_PAD - RESERVED;
+        const GRID_W   = 190 * PX_MM;               // 210mm - 20mm padding
+
+        const totalBoxes = wts.length;
+
+        /* एक कॉलम में SN ("1300") और WT ("25.50") दोनों सेल आते हैं. उस चौड़ाई में
+           जो फॉन्ट फिट होता है उससे बड़ा नहीं ले सकते, वरना वैल्यू कटकर दिखेगी. */
+        const fontByWidth  = (c) => (GRID_W / c) / 5.5;
+        const fontByHeight = (r) => (GRID_H / (r + 1)) - 2.5;
+
+        // कम बॉक्स पर कॉलम घटा दें, वरना 40 बॉक्स पर 6 कॉलम खाली दिखते थे
+        let cols = 10;
+        if (totalBoxes > 0 && totalBoxes <= 200) {
+            cols = Math.ceil(totalBoxes / 20);
+            if (cols < 2)  cols = 2;
+            if (cols > 10) cols = 10;
+        }
+        let rowsPerCol = Math.ceil(totalBoxes / cols) || 10;
+
+        /* बहुत ज़्यादा बॉक्स हों तो कॉलम बढ़ाएँ — रो घटती हैं और फॉन्ट पढ़ने लायक
+           रहता है. 950 बॉक्स तक 10 कॉलम वाला पुराना लुक वैसा ही रहता है;
+           1300 बॉक्स पर फॉन्ट 4.2px की जगह ~6.8px आता है. */
+        while (cols < 16 && fontByHeight(rowsPerCol) < 6) {
+            const nc = cols + 2, nr = Math.ceil(totalBoxes / nc);
+            if (Math.min(fontByHeight(nr), fontByWidth(nc)) <=
+                Math.min(fontByHeight(rowsPerCol), fontByWidth(cols))) break;
+            cols = nc; rowsPerCol = nr;
+        }
+        if (rowsPerCol < 10) rowsPerCol = 10;
+
+        // रो की ऊँचाई + फॉन्ट ऑटो-फिट, ताकि ग्रिड कभी पेज से बाहर न जाए
+        let rowH = GRID_H / (rowsPerCol + 1);       // +1 = header row
+        if (rowH > 16) rowH = 16;
+        let cellFont = Math.min(rowH - 2.5, fontByWidth(cols), 10);
+        if (cellFont < 4) cellFont = 4;
+        const headFont = Math.min(cellFont + 0.5, 10.5);
+
+        let printHTML = `
+        <div id="pdf-wrapper" style="width: 210mm; font-family: sans-serif; background: #ffffff; color: #000000; margin: 0; box-sizing: border-box;">
+            <style>
+                #pdf-wrapper * { box-sizing: border-box; }
+
+                /* हर पेज की ऊँचाई A4 पर लॉक + overflow hidden => तीसरा पेज कभी नहीं बनेगा */
+                .pdf-page { width: 210mm; height: 297mm; padding: 10mm; overflow: hidden;
+                            background: #fff; position: relative; display: flex; flex-direction: column; }
+
+                .summary-table { width: 100%; margin: 18px auto 0 auto; border-collapse: collapse; font-size: 14px; text-align: left; }
+                .summary-table td, .summary-table th { border: 1.5px solid #000; padding: 9px 10px; }
+                .summary-table th { background: #f1f5f9; width: 20%; color: #1e293b; }
+                .summary-table td { width: 30%; font-weight: 500; }
+                .big-sigs { display: flex; justify-content: space-around; font-size: 14px; font-weight: bold;
+                            margin-top: auto; padding-bottom: 10px; }
+
+                .grid { display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 1px; }
+                .grid table { width: 100%; border-collapse: collapse; table-layout: fixed;
+                              font-size: ${cellFont}px; line-height: 1; }
+                .grid td, .grid th { border: 0.3px solid #000; text-align: center; color: #000;
+                                     height: ${rowH}px; padding: 0; overflow: hidden; }
+                .grid th { background: #f1f5f9; font-weight: bold; font-size: ${headFont}px; }
+
+                .compact-header { border-bottom: 1.5px solid #000; text-align: center; padding-bottom: 3px; margin-bottom: 4px; }
+                .details-footer { margin-top: 4px; padding: 5px; border: 1.5px solid #000; display: flex;
+                                  justify-content: space-between; font-size: 10.5px; font-weight: bold; background: #f8fafc; }
+                .compact-sig { display: flex; justify-content: space-between; margin-top: 8px; font-size: 8.5px; font-weight: bold; }
+            </style>
+
+            <!-- ============== PAGE 1 : SUMMARY ============== -->
+            <div class="pdf-page">
+                <div style="text-align: center;">
+                    <h1 style="margin:0; font-size:26px; color:#000; font-weight:900;">SARV INDIA HOME FURNISHING</h1>
+                    <h2 style="margin:8px 0 0 0; text-decoration:underline; font-size:18px; color:#333;">YARN UNLOADING SUMMARY</h2>
+                </div>
+
+                <table class="summary-table">
+                    <tr><th>Recv Date</th><td>${fmtDate(d.recvDate)}</td><th>Bill Date</th><td>${fmtDate(d.billDate)}</td></tr>
+                    <tr><th>Invoice No</th><td><b>${d.invoiceNo}</b></td><th>PO Number</th><td>${d.poNumber}</td></tr>
+                    <tr><th>Gate Entry No</th><td>${d.gateEntry}</td><th>Party Name</th><td><b>${d.pName}</b></td></tr>
+                    <tr><th>Vehicle No</th><td><b>${d.gNo}</b></td><th>Brand Name</th><td>${d.yBrand}</td></tr>
+                    <tr><th>Denier</th><td>${d.yDenier}</td><th>Batch No</th><td><b>${d.batchNo}</b></td></tr>
+                    <tr><th>Unloading Contractor</th><td colspan="3"><b>${d.uName}</b></td></tr>
+                    <tr><th>Total Boxes</th><td><b>${d.count}</b></td><th>Total Weight</th><td><b>${d.total} KG</b></td></tr>
+                    <tr><th>Average Weight</th><td><b>${d.avg} KG/BOX</b></td><th>Rate (Per Box)</th><td>₹ ${d.uRate}</td></tr>
+                    <tr>
+                        <th colspan="3" style="text-align: right; font-size: 17px; padding-right: 15px;">TOTAL AMOUNT TO PAY</th>
+                        <td style="font-size: 21px; background: #e2e8f0;"><b>₹ ${d.amount}</b></td>
+                    </tr>
+                </table>
+
+                <div class="big-sigs">
+                    <div style="text-align: center;">Sign: <b>${d.receiverName}</b><br><br><img src="${recvSig}" height="55" style="border-bottom: 1px solid #000; padding-bottom: 5px;"><br>Receiver / Driver</div>
+                    <div style="text-align: center;"><br><br><img src="${inchSig}" height="55" style="border-bottom: 1px solid #000; padding-bottom: 5px;"><br>Store Incharge</div>
+                </div>
+            </div>
+
+            <!-- ============== PAGE 2 : WEIGHT DETAILS ============== -->
+            <div class="pdf-page">
+                <div class="compact-header">
+                    <h3 style="margin:0; font-size:13px; color:#000; font-weight:bold;">YARN UNLOADING WEIGHT DETAILS</h3>
+                    <p style="margin:2px; font-size:9px; font-weight:bold;">
+                        Date: ${fmtDate(d.recvDate)} | Inv No: ${d.invoiceNo} | Batch No: ${d.batchNo} | PO: ${d.poNumber} | Gate: ${d.gateEntry}<br>
+                        Party: ${d.pName} | Vehicle: ${d.gNo} | Brand: ${d.yBrand} | Denier: ${d.yDenier}
+                    </p>
+                </div>
+
+                <div class="grid">`;
+
+        // डायनामिक ग्रिड: cols × rowsPerCol (सिर्फ ज़रूरत के हिसाब से)
+        for (let c = 0; c < cols; c++) {
+            printHTML += `<table><tr><th>SN</th><th>WT</th></tr>`;
+            for (let r = 0; r < rowsPerCol; r++) {
+                const idx = (c * rowsPerCol) + r;
+                if (idx < wts.length) {
+                    printHTML += `<tr><td>${wts[idx].n}</td><td><b>${wts[idx].w}</b></td></tr>`;
+                } else {
+                    printHTML += `<tr><td>&nbsp;</td><td>&nbsp;</td></tr>`;
+                }
+            }
+            printHTML += `</table>`;
+        }
+
+        printHTML += `</div>`;
+
+        printHTML += `
+                <div class="details-footer">
+                    <div>TOTAL BOXES: ${d.count}</div>
+                    <div>TOTAL WEIGHT: ${d.total} KG</div>
+                    <div>AVERAGE WEIGHT: ${d.avg} KG/BOX</div>
+                </div>
+
+                <div class="compact-sig">
+                    <div>Driver</div>
+                    <div style="text-align:center;">Sign: <b>${d.receiverName}</b><br><img src="${recvSig}" height="30"></div>
+                    <div style="text-align:center;">Incharge<br><img src="${inchSig}" height="30"></div>
+                </div>
+            </div>
+        </div>`;
+
+        // safeName ज़रूरी है: इनवॉइस नंबर में "/" फाइल नाम तोड़ देता है
+        const fileName = 'SARV_INDIA_' + safeName(d.invoiceNo || 'INV') + '_' + safeName(d.recvDate || 'Date') + '.pdf';
+
+        const resetPrintBtn = () => {
+            if (btn) {
+                btn.innerText = "🖨️ PDF";
+                btn.style.pointerEvents = "auto";
+                btn.style.opacity = "1";
+            }
+        };
+
+        // FIX: लाइब्रेरी CDN से आती है. इंटरनेट न हो तो पहले बिना वजह
+        // "PDF Generate Error" दिखता था — अब असली कारण बताता है.
+        const JsPDF = window.jspdf && window.jspdf.jsPDF;
+        if (!JsPDF || typeof html2canvas === 'undefined') {
+            resetPrintBtn();
+            return alert((opts.msgPrefix || "") + "❌ PDF लाइब्रेरी लोड नहीं हुई है!\n\nपहली बार PDF बनाने के लिए इंटरनेट चालू होना ज़रूरी है। इंटरनेट ऑन करके ऐप दोबारा खोलें।");
+        }
+
+        // 1. एक टेम्प्रेरी (छुपा हुआ) एलिमेंट बनाएं
+        const workerContainer = document.createElement('div');
+        workerContainer.innerHTML = printHTML;
+        workerContainer.style.position = 'absolute';
+        workerContainer.style.left = '-10000px';
+        workerContainer.style.top = '0';
+        workerContainer.style.width = '210mm';
+        document.body.appendChild(workerContainer);
+        const cleanup = () => { if (workerContainer.parentNode) document.body.removeChild(workerContainer); };
+
+        /* 2. FIX (ब्लैंक पेज): पहले html2pdf पूरा रैपर एक ही लंबी इमेज बनाकर खुद
+           पेज काटता था. पेज-1 ठीक 297mm का होने से page-break एक पूरा खाली पेज
+           जोड़ देता था, फिर "2 से ज़्यादा पेज डिलीट" वाला कोड असली वज़न वाला
+           पेज ही हटा देता था — इसलिए पेज 2 सफ़ेद आता था.
+           अब हर .pdf-page की अलग इमेज बनती है और वो ठीक एक A4 पेज पर जाती है.
+           पेज जितने .pdf-page उतने ही — कभी खाली/एक्स्ट्रा पेज नहीं बन सकता. */
+        const pages = Array.from(workerContainer.querySelectorAll('.pdf-page'));
+        const pdf = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+
+        let chain = Promise.resolve();
+        pages.forEach((pageEl, i) => {
+            chain = chain.then(() => html2canvas(pageEl, {
+                scale: 2, useCORS: true, logging: false, backgroundColor: '#ffffff',
+                // फिक्स विंडो साइज़ — छोटे मोबाइल पर भी A4 लेआउट एक जैसा रेंडर हो
+                windowWidth: 794, windowHeight: 1123, scrollX: 0, scrollY: 0
+            })).then((canvas) => {
+                if (i > 0) pdf.addPage('a4', 'portrait');
+                pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+            });
+        });
+
+        return chain.then(() => {
+            cleanup();
+            pdf.save(fileName);
+            resetPrintBtn();
+
+            const done = (url) => {
+                let m = (opts.msgPrefix || "") + "✅ PDF फाइल डाउनलोड हो गई है! कृपया अपने फाइल मैनेजर या डाउनलोड फोल्डर में चेक करें।";
+                if (opts.cloudId) m += url ? "\n\n☁️ PDF क्लाउड पर भी सेव हो गई।"
+                                           : "\n\n⚠️ PDF क्लाउड पर अपलोड नहीं हुई (नेट नहीं है?) — अगली बार इस रिपोर्ट की PDF बनाने पर दोबारा कोशिश होगी।";
+                alert(m);
+            };
+
+            if (!opts.cloudId) return done(null);
+            if (btn) { btn.innerText = "☁️ Uploading..."; btn.style.pointerEvents = "none"; }
+            return uploadPdfToCloud(opts.cloudId, pdf.output('blob'), opts.rowReady).then((url) => {
+                resetPrintBtn();
+                if (url) setLocalPdfUrl(opts.cloudId, url);
+                done(url);
+            });
+        }).catch((err) => {
+            console.error(err);
+            cleanup();
+            resetPrintBtn();
+            alert((opts.msgPrefix || "") + "❌ PDF Generate Error. ऐप दोबारा खोलकर 'DOWNLOAD REPORT' से PDF बनाएँ।");
+        });
+    }
+
+    /* FIX: पहले हर एक कीस्ट्रोक पर पूरी 900-बॉक्स लिस्ट JSON में बदलकर localStorage
+       में लिखी जाती थी (सिंक्रोनस डिस्क राइट) — सस्ते फोन पर टाइपिंग अटकती थी.
+       अब 400ms का डिबाउंस है, और ऐप बंद/पीछे जाने पर तुरंत फ्लश हो जाता है,
+       जिससे एक भी एंट्री नहीं छूटती. */
+    let saveTimer = null;
+    function saveToLocal() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(flushToLocal, 400);
+    }
+
+    function flushToLocal() {
+        clearTimeout(saveTimer); saveTimer = null;
+        /* ज़रूरी गार्ड: एंट्री स्क्रीन खुली न हो तो कुछ भी सेव न करें.
+           वरना लॉगिन के समय खाली फॉर्म की वैल्यू पुराने ड्राफ्ट के ऊपर लिख जाती
+           और सारा पेंडिंग डेटा मिट जाता. */
+        const es = document.getElementById('entry-screen');
+        if (!es || es.style.display !== 'block') return;
+
+        const ws = []; document.querySelectorAll('.w-input').forEach(i=>ws.push(i.value));
+        try {
+        localStorage.setItem('yarn_data', JSON.stringify({ p:document.getElementById('pName').value, g:document.getElementById('gNo').value, b:document.getElementById('yBrand').value, d:document.getElementById('yDenier').value, bt:document.getElementById('bNo').value, bill:document.getElementById('billDate').value, recv:document.getElementById('recvDate').value, ge:document.getElementById('gateEntry').value, po:document.getElementById('poNumber').value, inv:document.getElementById('invoiceNo').value, u:document.getElementById('uName').value, r:document.getElementById('uRate').value, weights:ws }));
+        } catch (err) { console.error("Draft save failed (storage full?)", err); }
+
+        queueCloudSync();      // लोकल सेव के साथ-साथ क्लाउड ड्राफ्ट भी अपडेट
+    }
+
+    // ऐप बंद होने / बैकग्राउंड में जाने पर बचा हुआ ड्राफ्ट तुरंत सेव करें
+    window.addEventListener('beforeunload', flushToLocal);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            flushToLocal();
+            clearTimeout(cloudTimer);   // 2.5 सेकंड का इंतज़ार छोड़कर अभी भेजो
+            pushDraftToCloud();
+        }
+    });
+
+    function loadSavedData() {
+        const d = JSON.parse(localStorage.getItem('yarn_data')); if(!d) return;
+        document.getElementById('inputRows').innerHTML = '';
+        document.getElementById('pName').value = d.p || ""; document.getElementById('gNo').value = d.g || ""; document.getElementById('yBrand').value = d.b || ""; document.getElementById('yDenier').value = d.d || ""; document.getElementById('bNo').value = d.bt || ""; document.getElementById('billDate').value = d.bill || ""; document.getElementById('recvDate').value = d.recv || ""; document.getElementById('gateEntry').value = d.ge || ""; document.getElementById('poNumber').value = d.po || ""; document.getElementById('invoiceNo').value = d.inv || ""; document.getElementById('uName').value = d.u || ""; document.getElementById('uRate').value = d.r || "";
+        if(d.weights && d.weights.length > 0) {
+            d.weights.forEach(v => addNewBox(v, true));     // बल्क लोड, बिना focus
+            const ins = document.querySelectorAll('.w-input');
+            if (ins.length) setTimeout(() => ins[ins.length - 1].focus(), 60);
+        } else addNewBox();
+        uSum();
+    }
+
+    // FIX: पहले confirm या prompt पर CANCEL दबाने पर भी "गलत पासवर्ड" का अलर्ट आता था
+    // The master password is now the user's own ERP PIN (yuConfirmPin).
+    async function clearData() {
+        if(!confirm("Clear Draft Data?")) return;
+        if (await yuConfirmPin('Clear the draft data')) startFreshEntry();
+    }
+    function updateBoxLabels(){ document.querySelectorAll('.box-num').forEach((td, i)=>td.innerHTML=`<b>${i+1}</b>`); }
+    function clearSig() { if(ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); sigDrawn = false; }
+</script>
+</body>
+</html>

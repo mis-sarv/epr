@@ -1706,6 +1706,18 @@ every call and takes the approver's details from `app_users`, so the page cannot
 
 **Setup:** run `UNLOADER_APPROVAL_MIGRATION.sql` once in the SQL Editor (safe to re-run). Until
 it runs, Inward saves exactly as before and the ERP shows a one-time warning naming the file.
+Then run `UNLOADER_ASSIGN_MIGRATION.sql` (after it, also safe to re-run).
+
+**Choosing the supervisor:** on Submit the ERP lists every active login that gets the Unloader
+Supervisor app (same rule as the launcher: user override → role Tab Visibility → default), with
+Emp Code / designation / mobile and a search box when the list is long. The store picks one; the
+last choice is remembered on that PC. Only that supervisor sees the request in the app and only
+they can approve / reject it (`ul_list` / `ul_decide` check `assigned_to_uid` on the server,
+`NOT_ASSIGNED` otherwise). Pressing Submit again while it waits offers **Move** to a different
+supervisor (same request, no duplicate). A rejected entry pre-selects the person who rejected it.
+The ERP "WAITING AT UNLOADER SUPERVISOR" list shows `→ name`. Requests raised before the
+migration have no supervisor and stay visible to all. Without `UNLOADER_ASSIGN_MIGRATION.sql`
+the request still goes to every supervisor and the ERP warns once.
 
 ## Store In / Out PDF Checklists (Dropdown Master)
 
@@ -1753,3 +1765,45 @@ Until it is run, a same-day save is refused by the server with "Please choose a 
 **EA Delegation › Active EA Follow-ups** has two sections: **1. Follow-up** (EA tasks due today
 or earlier and not done, oldest first, marked Overdue / Due today) and **2. All Delegated Tasks
 Pending** (every EA task not done, upcoming ones included, by due date).
+
+## Yarn Unloading (Yarn-Unloading.html)
+
+Box-wise yarn weights at the godown (New Entry, Saved Draft, Download Report, Cloud Reports; data in
+`yarn_unloading_drafts`, PDFs in bucket `sarv-pdfs/yarn-unloading/`). The entry screen, drafts,
+PDF / CSV and the offline-first local storage work exactly as before.
+
+**Login:** only from the launcher (ERP single sign-on, app key `HOME_YARN_UNLOADING`). The old
+per-phone master password and the Cloud Reports password 1700 are gone. Clearing / deleting an
+unsaved draft now asks for the user's own login PIN (checked on the server; with no net, a plain
+confirmation). The dashboard shows the user's name and a Log out button ("Do you want Log out?").
+
+**Access:** the launcher tile is **OFF for everyone by default** (Admin included). Switch it ON
+under Admin Panel › Tab Visibility › Home Page (role-wise) or Users › Apps (per user). The buttons
+inside are rights in the same two places:
+
+| Key | Button | Default |
+|---|---|---|
+| `YU_ENTRY` | New Entry / Saved Draft / Download Report | everyone who has the app |
+| `YU_CLOUD` | Cloud Reports (was password 1700) | Admin |
+
+A user with only `YU_CLOUD` goes straight to Cloud Reports. The page works these out itself
+(`YU_DEFAULTS` in the page must match the `YU_*` rows of `SARV_TABS`). The yarn table itself is
+still open to the anon key as before, so these are screen rights, not database rights.
+
+**Offline:** the godown often has no net. A phone that opened the app online keeps working offline
+for 7 days with the last login and rights (yellow note on the dashboard); logout or a new login
+ends that.
+
+## Admin Panel › Users › Apps: only ON / OFF
+
+The per-user Apps list (apps and inner buttons) has only **ON** and **OFF**; "auto" was removed.
+A key the user has no value for yet shows "not set" and starts at what the role gives today, so
+opening and saving changes nobody's access. On Save every key becomes the user's own value
+(untouched keys take what the saved roles give); after that, role-wise Tab Visibility changes no
+longer move that user. Complaint / Packing accounts are created or deactivated only for keys the
+Admin actually set or changed.
+
+**New users:** the full **Task Manager** tile and **Yarn Unloading** start OFF for every new login
+(`SARV_NEW_USER_OFF`); **My Tasks** stays ON. For launcher self-signups the server does the same:
+run `sql/NEW_USER_APP_DEFAULTS_MIGRATION.sql` once (trigger on `app_users` insert; existing users
+are not touched; safe to re-run).
