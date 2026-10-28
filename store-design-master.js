@@ -62,6 +62,9 @@
      fail (Postgres rejects the entire row for an unknown column). It is first
      found out on load, from whether the first row of dmDesigns has the key. */
   let dmHasSku = null;
+  /* Same idea for the PSD columns (psd_path / psd_name / psd_size), i.e.
+     whether DESIGN_PSD_MIGRATION.sql has been run. null = not known yet. */
+  let dmHasPsd = null;
 
   /* ── small helpers ─────────────────────────────────────────────────── */
   const q = id => document.getElementById(id);
@@ -149,9 +152,11 @@
     });
   }
 
-  async function uploadDesignImage(designNo, file){
-    const blob = await compressImage(file);
-    const path = DM_FOLDER + '/' + pathSafe(designNo) + '/' +
+  // opt = { folder, maxSide, quality }: Add Photoshoot uses its own folder and a larger size.
+  async function uploadDesignImage(designNo, file, opt){
+    opt = opt || {};
+    const blob = await compressImage(file, opt.maxSide, opt.quality);
+    const path = (opt.folder || DM_FOLDER) + '/' + pathSafe(designNo) + '/' +
                  Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.jpg';
     const res = await SB.storage.from(DM_BUCKET).upload(path, blob, {
       upsert: true, contentType: 'image/jpeg', cacheControl: '31536000'
@@ -166,6 +171,63 @@
     if (!path) return;
     try { await SB.storage.from(DM_BUCKET).remove([path]); }
     catch (e) { console.warn('[DM] could not delete the old image:', path, e.message || e); }
+  }
+
+  /* ── PSD (Photoshop source file) ─────────────────────────────────────
+     One .psd per design, in the same public bucket but its own folder:
+     design-psd/<DESIGN NO>/<stamp>-<file name>.psd. Uploaded exactly as it
+     is (no compression, unlike the photos), so the download is the original
+     file. Required on Create New; optional on Edit, because old designs have
+     no PSD and that must not block editing the rest of the record. */
+  const DM_PSD_FOLDER = 'design-psd';
+  const isPsd = f => !!f && /\.psd$/i.test(f.name || '');
+  const fmtSize = b => {
+    const n = Number(b) || 0;
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  };
+  async function uploadDesignPsd(designNo, file){
+    const base = String(file.name || 'design.psd').replace(/\.psd$/i, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'design';
+    const path = DM_PSD_FOLDER + '/' + pathSafe(designNo) + '/' + Date.now() + '-' + base + '.psd';
+    const res = await SB.storage.from(DM_BUCKET).upload(path, file, {
+      upsert: true, contentType: 'image/vnd.adobe.photoshop', cacheControl: '31536000'
+    });
+    if (res.error) throw res.error;
+    return { psd_path: path, psd_name: file.name || (base + '.psd'), psd_size: file.size || null };
+  }
+  /* Download link: the `download` option makes Storage send the file as an
+     attachment under its original name, so the browser saves it straight
+     away instead of trying to open a 200 MB PSD. */
+  function dmPsdUrl(d){
+    if (!d || !d.psd_path) return '';
+    try {
+      const r = SB.storage.from(DM_BUCKET).getPublicUrl(d.psd_path, { download: d.psd_name || (pathSafe(d.design_no) + '.psd') });
+      return (r && r.data && r.data.publicUrl) || '';
+    } catch (e) { return ''; }
+  }
+  function downloadPsd(id){
+    const d = dmDesigns.find(x => x.id === id);
+    const url = dmPsdUrl(d);
+    if (!url) { toast('No PSD file on design ' + (d ? d.design_no : '') + '. Add it via Edit.', 'warn'); return; }
+    const a = document.createElement('a');
+    a.href = url; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+  // Before the migration the PSD keys are dropped, like skuPatch.
+  function psdPatch(p){ return (dmHasPsd === false || !p) ? {} : p; }
+  let dmPsdWarned = false;
+  function dmPsdNotice(){
+    if (dmHasPsd !== false || dmPsdWarned) return;
+    dmPsdWarned = true;
+    toast('The PSD file will not be linked to the design. Run DESIGN_PSD_MIGRATION.sql in the Supabase SQL Editor first.', 'warn');
+  }
+  // Shows the chosen file's name / size under a PSD button.
+  function psdPicked(input, labelId){
+    const el = q(labelId); if (!el) return;
+    const f = (input.files || [])[0];
+    if (!f) { el.textContent = el.getAttribute('data-empty') || ''; el.classList.remove('bad'); return; }
+    el.textContent = f.name + ' · ' + fmtSize(f.size) + (isPsd(f) ? '' : '  (not a .psd file)');
+    el.classList.toggle('bad', !isPsd(f));
   }
 
   /* ── image → dataURL (for jsPDF): fetched once, then cached ────────── */
@@ -236,8 +298,10 @@
          all it stays null and is found out on the first save (skuPatch
          handles both cases). */
       if (dmDesigns.length) dmHasSku = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'design_sku_no');
+      if (dmDesigns.length) dmHasPsd = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'psd_path');
       setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
       dmSkuNotice();
+      dmPsdNotice();
       renderAll();
       if (force) toast('Design Master refreshed: ' + dmDesigns.length + ' designs.', 'success');
     } catch (e) {
@@ -306,6 +370,12 @@
     if (r.error && /design_sku_no/i.test(r.error.message || '') && ('design_sku_no' in payload)) {
       dmHasSku = false; dmSkuWarned = false; dmSkuNotice();
       delete payload.design_sku_no;
+      r = await run(payload);
+    }
+    // The PSD columns the same way (DESIGN_PSD_MIGRATION.sql not run yet).
+    if (r.error && /psd_(path|name|size)/i.test(r.error.message || '') && ('psd_path' in payload)) {
+      dmHasPsd = false; dmPsdWarned = false; dmPsdNotice();
+      delete payload.psd_path; delete payload.psd_name; delete payload.psd_size;
       r = await run(payload);
     }
     return r;
@@ -382,6 +452,11 @@
       case 'shade':   return [...new Set(dmFixed('shade').concat(
         dmDesigns.reduce((a, d) => a.concat((d.matchings || []).map(m => m.matching_name)), [])
           .filter(Boolean)))];
+      // Add Photoshoot: only the matchings of the design chosen on that tab.
+      case 'psmatch': {
+        const d = findByNo((q('dmPsDesign') || {}).value);
+        return d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
+      }
       default:        return [];
     }
   }
@@ -551,7 +626,7 @@
     ['dmDesignType', 'type'], ['dmMonopoly', 'mono'], ['dmFrameType', 'frame'],
     ['dmPartyName', 'party'], ['dmBrandName', 'brand'], ['dmSupplierName', 'supplier'],
     ['dmInitialMatchingName', 'shade'],
-    ['dmNewMatchingName', 'shade'], ['dmMatchingBlanketQuality', 'quality'],
+    ['dmMatchingBlanketQuality', 'quality'],
     ['dmEditDesignUnit', 'unit'], ['dmEditBedSize', 'bed'], ['dmEditBlanketQuality', 'quality'],
     ['dmEditDesignType', 'type'], ['dmEditMonopoly', 'mono'], ['dmEditFrameType', 'frame'],
     ['dmEditPartyName', 'party'], ['dmEditBrandName', 'brand'], ['dmEditSupplierName', 'supplier'],
@@ -845,7 +920,7 @@
 
     const tb = q('dmLiveTableBody'); if (!tb) return;
     if (!rows.length) {
-      tb.innerHTML = '<tr><td colspan="16" class="dm-empty-row">' +
+      tb.innerHTML = '<tr><td colspan="17" class="dm-empty-row">' +
         (all.length ? 'No design matches this search / filter.' : 'No Live Designs yet. Start with “Create New”.') +
         '</td></tr>';
       return;
@@ -872,6 +947,10 @@
         '<td><span class="dm-badge dm-badge-count">' + (d.matchings || []).length + ' Shades</span></td>' +
         '<td><span class="dm-badge dm-badge-master">' + esc(m ? m.matching_name : 'N/A') + '</span></td>' +
         '<td><span class="dm-badge dm-badge-live">LIVE</span></td>' +
+        '<td>' + (d.psd_path
+          ? '<button type="button" class="dm-btn dm-btn-success dm-btn-xs" title="' + esc((d.psd_name || '') + (d.psd_size ? ' · ' + fmtSize(d.psd_size) : '')) +
+            '" onclick="dmDownloadPsd(' + d.id + ')">Download PSD</button>'
+          : '<span class="dm-muted" title="No PSD yet. Add it via Edit.">No PSD</span>') + '</td>' +
       '</tr>';
     }).join('');
   }
@@ -906,7 +985,6 @@
   ════════════════════════════════════════════════════════════════════ */
   const EMPTY_NEW = '<span style="font-size:2rem;"></span><span>[ Passport Size Preview ]</span>' +
                     '<small>Fill in the details on the left while looking at the photo</small>';
-  const EMPTY_MTC = '<span style="font-size:2rem;"></span><span>[ Passport Size Preview ]</span>';
 
   function previewInto(boxId, file, emptyHtml){
     const box = q(boxId); if (!box) return;
@@ -950,15 +1028,39 @@
       toast('Design No ' + designNo + ' already exists. Use “Add Matching”.', 'warn');
       return;
     }
+    /* The PSD is REQUIRED on Create New, and it must really be a .psd (the
+       file box's `accept` is only a hint; any file can still be picked). */
+    const psdFile = (q('dmNewPsd').files || [])[0] || null;
+    if (!psdFile) { toast('PSD FILE is required. Select the design’s Photoshop (.psd) file.', 'error'); return; }
+    if (!isPsd(psdFile)) { toast('“' + psdFile.name + '” is not a .psd file. Select the Photoshop (.psd) file.', 'error'); return; }
     // Same SKU on another design? Not a block, just a question (skuOkToSave).
     if (!skuOkToSave(skuNo, null)) { q('dmDesignSkuNo').focus(); return; }
     dmSkuNotice();
+    dmPsdNotice();
 
     const file = (q('dmInitialImage').files || [])[0] || null;
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-    setSync('Saving…', 'busy');
+    if (btn) { btn.disabled = true; btn.textContent = 'Uploading PSD (' + fmtSize(psdFile.size) + ')…'; }
+    setSync('Uploading PSD…', 'busy');
+    /* Unlike the photo, the PSD goes up BEFORE the insert: it is required,
+       so a design must not be created if its PSD cannot be stored. The
+       duplicate Design No is already checked above; if the insert still
+       fails, the uploaded file is removed again in the catch. */
+    let psd = null;
     try {
-      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(skuNo), {
+      psd = await uploadDesignPsd(designNo, psdFile);
+    } catch (e) {
+      console.error('[DM] psd upload fail:', e);
+      setSync('Upload fail', 'err');
+      toast('PSD upload failed, the design was not saved: ' + (e.message || e) +
+        (/size|large|413/i.test(e.message || '') ? ' (the file is larger than the Supabase upload limit)' : ''), 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Save New Design'; }
+      return;
+    }
+    if (btn) btn.textContent = 'Saving…';
+    setSync('Saving…', 'busy');
+    let designSaved = false;
+    try {
+      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(skuNo), psdPatch(psd), {
         design_no:       designNo,
         party_name:      q('dmPartyName').value.trim(),
         brand_name:      q('dmBrandName').value.trim(),
@@ -977,6 +1079,7 @@
       }));
       if (ins.error) throw ins.error;
       const design = ins.data;
+      designSaved = true;
 
       /* The photo is uploaded AFTER the design is created, so a duplicate
          Design No stops the insert and leaves no orphan file in the bucket.
@@ -1014,10 +1117,13 @@
       q('dmFrameType').value = 'MS ROUND FRAME';
       q('dmTotalFrames').value = '0';
       q('dmNewDesignPreview').innerHTML = EMPTY_NEW;
+      psdPicked(q('dmNewPsd'), 'dmNewPsdName');
       toast('Design ' + designNo + ' saved.', 'success');
       showPane('dmLivePane');
     } catch (e) {
       console.error('[DM] save fail:', e);
+      // The design row never got made, so its PSD would be junk in the bucket.
+      if (!designSaved && psd) await removeStored(psd.psd_path);
       setSync('Save fail', 'err');
       toast(/duplicate key|unique/i.test(e.message || '')
         ? 'Design No ' + designNo + ' already exists in the database.'
@@ -1035,6 +1141,7 @@
     const pb = q('dmMatchingPartyBrand');
     const live = d && d.status === 'LIVE';
     if (pb) pb.value = live ? ((d.party_name || '') + ' | ' + (d.brand_name || '') + ' (' + (d.bed_size || '') + ')') : '';
+    renderSavedMatchings(live ? d : null);
     const info = q('dmMatchingExisting'); if (!info) return;
     if (!live) { info.innerHTML = ''; return; }
     if (d.blanket_quality) q('dmMatchingBlanketQuality').value = d.blanket_quality;
@@ -1044,67 +1151,365 @@
         esc(m.matching_name) + '</span>').join(' ');
   }
 
-  async function addMatching(ev){
-    ev.preventDefault();
+  /* Left column, under the form: the selected design's photos that are already
+     saved (MASTER first, then the rest in their order), each as a small
+     passport-size card. So while adding a new matching the user can see what
+     the design already has and doesn't upload the same shade twice. A click
+     opens the photo full screen in the same lightbox the Live tab uses. */
+  // boxId: Add Matching's box by default; Add Photoshoot shows the same view in its own box.
+  function renderSavedMatchings(d, boxId){
+    const list = d ? (d.matchings || []).slice()
+      .sort((a, b) => (a.matching_type === 'MASTER' ? 0 : 1) - (b.matching_type === 'MASTER' ? 0 : 1)) : [];
+    renderSavedCards(boxId || 'dmMatchingSaved', d, list, 'matching(s)', 'No matching saved on this design yet.',
+      m => '<span class="dm-badge ' + (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' +
+           esc(m.matching_type || '') + '</span>');
+  }
+  /* One passport-card grid for both "Saved" boxes (Add Matching and Add
+     Photoshoot), so they look and behave the same. `extra(row)` adds the
+     line under the name (the MASTER/SLAVE tag, or a remove button). */
+  function renderSavedCards(boxId, d, list, noun, emptyMsg, extra){
+    const box = q(boxId); if (!box) return;
+    if (!d) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    box.innerHTML = '<div class="dm-saved-head">Saved: ' + esc(d.design_no) + ' · ' + list.length + ' ' + noun + '</div>' +
+      (list.length ? '<div class="dm-saved-grid">' + list.map(m => {
+        const src = dmImgSrc(m);
+        const cap = d.design_no + ' · ' + (m.matching_name || '') + (m.matching_type ? ' (' + m.matching_type + ')' : '');
+        return '<div class="dm-saved-card">' +
+          (src
+            ? '<img loading="lazy" src="' + esc(src) + '" alt="' + esc(cap) + '" title="Click for full screen"' +
+              ' onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">'
+            : '<div class="dm-saved-nophoto">No photo</div>') +
+          '<div class="dm-saved-name">' + esc(m.matching_name || '') + '</div>' +
+          (extra ? extra(m) : '') +
+        '</div>';
+      }).join('') + '</div>'
+      : '<p class="dm-hint">' + esc(emptyMsg) + '</p>');
+  }
+
+  /* ══ BATCH: MANY PHOTOS AT ONCE ══════════════════════════════════════
+     Add Matching and Add Photoshoot both work the same way: pick many photos
+     in one go, each becomes a passport card under "New … to Save" with its
+     own Matching Name box (the same real dropdown as everywhere else), and
+     one "Save All" button saves them one by one.
+
+       • A card that saves is removed from the list; a card that fails stays
+         with the reason on it, so only the failures need another try.
+       • Everything is checked BEFORE the first upload (empty name, duplicate,
+         two MASTERs …), because a half-saved batch is the worst outcome.
+
+     The rows live in DM_BATCH[key].rows; the typed values are read from the
+     card's inputs at save time. */
+  const DM_BATCH = {
+    // Matching: name from the shade list, plus its own MASTER / SLAVE.
+    mtc: { list: 'dmMtcBatch', sum: 'dmMtcSum', save: 'dmMtcSaveBtn', kind: 'shade', withType: true,
+           noun: 'matching', empty: 'Select photos on the right (many at once), or add a matching without a photo.' },
+    // Photoshoot: name only from THIS design's matchings (dmValues 'psmatch').
+    ps:  { list: 'dmPsBatch',  sum: 'dmPsSum',  save: 'dmPsSaveBtn',  kind: 'psmatch', withType: false,
+           noun: 'photo', empty: 'Select photoshoot photos on the right (many at once).' }
+  };
+  Object.keys(DM_BATCH).forEach(k => { DM_BATCH[k].rows = []; });
+  let dmBatchSeq = 0;
+
+  function batchAddFiles(key, input){
+    const files = Array.from(input.files || []).filter(f => /^image\//i.test(f.type || '') || /\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(f.name || ''));
+    const skipped = (input.files || []).length - files.length;
+    input.value = '';
+    files.forEach(f => batchAddRow(key, f));
+    if (skipped) toast(skipped + ' file(s) skipped: not a photo.', 'warn');
+  }
+  function batchAddBlank(key){ batchAddRow(key, null); }
+
+  function batchAddRow(key, file){
+    const b = DM_BATCH[key];
+    const box = q(b.list); if (!box) return;
+    const rid = 'dmBt_' + key + '_' + (++dmBatchSeq);
+    const url = file ? URL.createObjectURL(file) : '';
+    b.rows.push({ rid: rid, file: file, url: url });
+    const empty = box.querySelector('.dm-batch-empty'); if (empty) empty.remove();
+    const card = document.createElement('div');
+    card.className = 'dm-batch-card';
+    card.id = rid;
+    card.innerHTML =
+      (url
+        ? '<img src="' + url + '" alt="' + esc(file.name || '') + '" title="' + esc(file.name || '') + ' · click for full screen" onclick="dmShowLightbox(this.src,this.alt)">'
+        : '<div class="dm-saved-nophoto">No photo</div>') +
+      '<input type="text" class="dm-bulk-in bt-name" placeholder="Matching Name…">' +
+      (b.withType
+        ? '<select class="dm-bulk-in bt-type"><option value="SLAVE">SLAVE</option><option value="MASTER">MASTER</option></select>'
+        : '') +
+      '<div class="dm-batch-foot"><span class="bt-state"></span>' +
+        '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Remove from this list" onclick="dmBatchRemove(\'' + key + '\',\'' + rid + '\')">✕</button></div>';
+    box.appendChild(card);
+    attachPicker(card.querySelector('.bt-name'), b.kind);
+    batchSum(key);
+  }
+
+  function batchRemove(key, rid){
+    const b = DM_BATCH[key];
+    const r = b.rows.find(x => x.rid === rid);
+    if (r && r.url) URL.revokeObjectURL(r.url);
+    b.rows = b.rows.filter(x => x.rid !== rid);
+    const el = q(rid); if (el) el.remove();
+    batchSum(key);
+  }
+
+  function batchSum(key){
+    const b = DM_BATCH[key];
+    const box = q(b.list);
+    if (box && !b.rows.length) box.innerHTML = '<p class="dm-hint dm-batch-empty">' + esc(b.empty) + '</p>';
+    const s = q(b.sum);
+    if (s) {
+      const withPhoto = b.rows.filter(r => r.file).length;
+      const noPhoto = b.rows.length - withPhoto;
+      s.textContent = b.rows.length
+        ? (b.rows.length + ' ' + b.noun + '(s) ready' + (noPhoto ? ' · ' + noPhoto + ' without photo' : ''))
+        : 'Nothing selected yet';
+    }
+    const sv = q(b.save); if (sv) sv.disabled = !b.rows.length;
+  }
+
+  function batchMark(rid, txt, bad){
+    const el = q(rid); if (!el) return;
+    const s = el.querySelector('.bt-state');
+    if (s) { s.textContent = txt || ''; s.title = txt || ''; }
+    el.classList.toggle('bad', !!bad);
+  }
+  const batchVal = (rid, sel) => { const el = q(rid) && q(rid).querySelector(sel); return el ? el.value.trim() : ''; };
+
+  /* Save All on Add Matching. */
+  async function mtcSaveAll(){
     if (!sbReady() || !guard('DESIGN_SAVE')) return;
     await loadDesigns();
     const d = findByNo(q('dmSelectDesign').value);
-    if (!d || d.status !== 'LIVE') { toast('Please choose a valid LIVE Design No.', 'error'); return; }
+    if (!d || d.status !== 'LIVE') { q('dmSelectDesign').focus(); toast('Please choose a valid LIVE Design No first.', 'error'); return; }
+    const b = DM_BATCH.mtc;
+    if (!b.rows.length) { toast('Select the matching photos first.', 'error'); return; }
+    const quality = q('dmMatchingBlanketQuality').value.trim();
+    if (!quality) { q('dmMatchingBlanketQuality').focus(); toast('BLANKET QUALITY is required.', 'error'); return; }
 
-    const name = q('dmNewMatchingName').value.trim();
-    if (!name) { toast('Matching name is required.', 'error'); return; }
-    if ((d.matchings || []).some(m => up(m.matching_name) === up(name))) {
-      toast('“' + name + '” already exists on this design.', 'warn');
-      return;
-    }
+    // Check everything first: the batch either starts clean or not at all.
+    const items = b.rows.map(r => ({ r: r, name: batchVal(r.rid, '.bt-name'), master: batchVal(r.rid, '.bt-type') === 'MASTER' }));
+    const have = new Set((d.matchings || []).map(m => up(m.matching_name)));
+    const seen = new Set();
+    let err = '';
+    items.forEach(it => {
+      let e = '';
+      if (!it.name) e = 'Matching name required';
+      else if (have.has(up(it.name))) e = 'Already on this design';
+      else if (seen.has(up(it.name))) e = 'Same name twice in this list';
+      seen.add(up(it.name));
+      batchMark(it.r.rid, e, !!e);
+      if (e && !err) err = (it.name ? '“' + it.name + '”: ' : '') + e + '.';
+    });
+    if (items.filter(it => it.master).length > 1) err = err || 'Only one matching can be MASTER.';
+    if (err) { toast(err, 'error'); return; }
 
-    const wantMaster = up(q('dmNewMatchingType').value) === 'MASTER';
-    const file = (q('dmNewMatchingImage').files || [])[0] || null;
-    const btn = ev.target.querySelector('button[type=submit]');
-    if (btn) { btn.disabled = true; btn.textContent = 'Adding…'; }
+    const btn = q(b.save);
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
     setSync('Saving…', 'busy');
+    let ok = 0, fail = 0;
     try {
-      let img = { path: null, url: null };
-      if (file) {
-        try { img = await uploadDesignImage(d.design_no, file); }
-        catch (e) { toast('Photo upload failed. The matching is being added without a photo.', 'warn'); }
-      }
       /* There can be only one MASTER (partial unique index), so the others
          must be made SLAVE first before a new MASTER can be created. */
-      if (wantMaster) {
+      if (items.some(it => it.master)) {
         const dem = await SB.from('design_matchings').update({ matching_type: 'SLAVE' })
           .eq('design_id', d.id).eq('matching_type', 'MASTER');
         if (dem.error) throw dem.error;
         (d.matchings || []).forEach(m => { m.matching_type = 'SLAVE'; });
       }
-      const ins = await SB.from('design_matchings').insert({
-        design_id:       d.id,
-        design_no:       d.design_no,
-        matching_name:   name,
-        blanket_quality: q('dmMatchingBlanketQuality').value.trim(),
-        matching_type:   wantMaster ? 'MASTER' : 'SLAVE',
-        image_path:      img.path,
-        image_url:       img.url,
-        sort_order:      (d.matchings || []).length,
-        created_by:      whoAmI()
-      }).select().single();
-      if (ins.error) throw ins.error;
-
-      d.matchings = (d.matchings || []).concat([ins.data]);
-      renderAll();
-      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
-      q('dmAddMatchingForm').reset();
-      q('dmNewMatchingType').value = 'SLAVE';
-      q('dmMatchingBlanketQuality').value = 'MINK';
-      q('dmMatchingPreview').innerHTML = EMPTY_MTC;
-      q('dmMatchingExisting').innerHTML = '';
-      toast('Matching “' + name + '” added.', 'success');
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (btn) btn.textContent = 'Saving ' + (i + 1) + ' / ' + items.length + '…';
+        batchMark(it.r.rid, 'saving…', false);
+        try {
+          /* If the photo can't go up, this card is NOT saved without it (the
+             single-photo form used to do that); it stays in the list so it
+             can simply be tried again. */
+          let img = { path: null, url: null };
+          if (it.r.file) img = await uploadDesignImage(d.design_no, it.r.file);
+          const ins = await SB.from('design_matchings').insert({
+            design_id:       d.id,
+            design_no:       d.design_no,
+            matching_name:   it.name,
+            blanket_quality: quality,
+            matching_type:   it.master ? 'MASTER' : 'SLAVE',
+            image_path:      img.path,
+            image_url:       img.url,
+            sort_order:      (d.matchings || []).length,
+            created_by:      whoAmI()
+          }).select().single();
+          if (ins.error) { await removeStored(img.path); throw ins.error; }
+          d.matchings = (d.matchings || []).concat([ins.data]);
+          batchRemove('mtc', it.r.rid);
+          ok++;
+        } catch (e) {
+          console.error('[DM] matching fail:', it.name, e);
+          batchMark(it.r.rid, '✗ ' + (e.message || e), true);
+          fail++;
+        }
+      }
     } catch (e) {
       console.error('[DM] matching fail:', e);
-      setSync('Save fail', 'err');
       toast('Matching add fail: ' + (e.message || e), 'error');
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Add Matching'; }
+      if (btn) btn.textContent = 'Save All Matchings';
+      batchSum('mtc');
+      renderAll();
+      populateMatchingInfo();   // the design stays selected; its Saved list now shows the new ones
+      setSync(fail ? 'Some failed' : '✓ ' + dmDesigns.length + ' designs', fail ? 'err' : 'ok');
+      if (ok || fail) toast(ok + ' matching(s) added to ' + d.design_no + (fail ? ', ' + fail + ' failed (still in the list)' : '') + '.', fail ? 'warn' : 'success');
+    }
+  }
+
+  /* ════════════════════════════════════════════════════════════════════
+     ADD PHOTOSHOOT
+     Photoshoot photos per design, in their own table design_photoshoots
+     (DESIGN_PHOTOSHOOT_MIGRATION.sql) and their own folder
+     design-photoshoot/<DESIGN NO>/. Each photo is tagged with one of the
+     design's existing matchings. Loaded only when this tab is used, since
+     no other screen needs them.
+  ════════════════════════════════════════════════════════════════════ */
+  const DM_PS_FOLDER = 'design-photoshoot';
+  let dmPsByDesign = new Map();   // design_id → [rows]
+  let dmPsLoaded = false;
+  let dmPsLoading = null;
+  let dmPsMissing = false;        // true = table not there (migration not run)
+
+  async function loadPhotoshoots(force){
+    if (!sbReady()) return;
+    if (dmPsLoading) return dmPsLoading;
+    if (dmPsLoaded && !force) return;
+    dmPsLoading = (async () => {
+      try {
+        const rows = await fetchAllRows('design_photoshoots', '*', 'id');
+        const map = new Map();
+        (rows || []).forEach(r => {
+          if (!map.has(r.design_id)) map.set(r.design_id, []);
+          map.get(r.design_id).push(r);
+        });
+        dmPsByDesign = map; dmPsLoaded = true; dmPsMissing = false;
+      } catch (e) {
+        dmPsMissing = /does not exist|schema cache|Could not find the table/i.test(e.message || '');
+        console.warn('[DM] photoshoot load fail:', e.message || e);
+        toast(dmPsMissing
+          ? 'Photoshoot table not found. Run DESIGN_PHOTOSHOOT_MIGRATION.sql in the Supabase SQL Editor first.'
+          : 'Photoshoot load fail: ' + (e.message || e), dmPsMissing ? 'warn' : 'error');
+      } finally { dmPsLoading = null; }
+    })();
+    return dmPsLoading;
+  }
+  const psOf = d => (d && dmPsByDesign.get(d.id)) || [];
+
+  async function populatePsInfo(){
+    const d = findByNo(q('dmPsDesign').value);
+    const live = d && d.status === 'LIVE';
+    const pb = q('dmPsPartyBrand');
+    if (pb) pb.value = live ? ((d.party_name || '') + ' | ' + (d.brand_name || '') + ' (' + (d.bed_size || '') + ')') : '';
+    const info = q('dmPsExisting');
+    if (!live) { if (info) info.innerHTML = ''; renderSavedMatchings(null, 'dmPsMatchSaved'); renderSavedPhotoshoots(null); return; }
+    renderSavedMatchings(d, 'dmPsMatchSaved');
+    await loadPhotoshoots();
+    // The box may have changed while loading; draw only for what is in it now.
+    if (findByNo(q('dmPsDesign').value) !== d) return;
+    if (info) info.innerHTML = 'Pick each photo’s matching from <b>' + esc(d.design_no) + '</b>’s ' +
+      (d.matchings || []).length + ' matching(s): ' +
+      (d.matchings || []).map(m => '<span class="dm-badge ' +
+        (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' + esc(m.matching_name) + '</span>').join(' ') +
+      '<br><span class="dm-muted">A shade that isn’t listed must be added from Add Matching first.</span>';
+    renderSavedPhotoshoots(d);
+  }
+
+  // Saved photoshoot photos, grouped by matching (in the design's matching order).
+  function renderSavedPhotoshoots(d){
+    if (!d) { renderSavedCards('dmPsSaved', null); return; }
+    const order = (d.matchings || []).map(m => up(m.matching_name));
+    const rank = n => { const i = order.indexOf(up(n)); return i < 0 ? 999 : i; };
+    const list = psOf(d).slice().sort((a, b) => rank(a.matching_name) - rank(b.matching_name) || a.id - b.id);
+    renderSavedCards('dmPsSaved', d, list, 'photoshoot photo(s)',
+      dmPsMissing ? 'Photoshoot table not found. Run DESIGN_PHOTOSHOOT_MIGRATION.sql first.' : 'No photoshoot photo saved on this design yet.',
+      p => '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Delete this photo" onclick="dmPsDelete(' + d.id + ',' + p.id + ')">✕ Remove</button>');
+  }
+
+  async function psSaveAll(){
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    await loadDesigns();
+    const d = findByNo(q('dmPsDesign').value);
+    if (!d || d.status !== 'LIVE') { q('dmPsDesign').focus(); toast('Please choose a valid LIVE Design No first.', 'error'); return; }
+    await loadPhotoshoots();
+    if (dmPsMissing) { toast('Run DESIGN_PHOTOSHOOT_MIGRATION.sql in the Supabase SQL Editor first.', 'error'); return; }
+    const b = DM_BATCH.ps;
+    if (!b.rows.length) { toast('Select the photoshoot photos first.', 'error'); return; }
+
+    // The name must be one of THIS design's matchings (saved with its exact spelling).
+    const byName = new Map((d.matchings || []).map(m => [up(m.matching_name), m.matching_name]));
+    const items = b.rows.map(r => ({ r: r, name: byName.get(up(batchVal(r.rid, '.bt-name'))) || '', typed: batchVal(r.rid, '.bt-name') }));
+    let err = '';
+    items.forEach(it => {
+      const e = !it.typed ? 'Matching name required' : (!it.name ? 'Not a matching of ' + d.design_no : '');
+      batchMark(it.r.rid, e, !!e);
+      if (e && !err) err = (it.typed ? '“' + it.typed + '”: ' : '') + e + '.';
+    });
+    if (err) { toast(err + (/Not a matching/.test(err) ? ' Add it from Add Matching first.' : ''), 'error'); return; }
+
+    const btn = q(b.save);
+    if (btn) btn.disabled = true;
+    setSync('Saving…', 'busy');
+    let ok = 0, fail = 0;
+    const list = psOf(d).slice();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (btn) btn.textContent = 'Uploading ' + (i + 1) + ' / ' + items.length + '…';
+      batchMark(it.r.rid, 'uploading…', false);
+      let img = null;
+      try {
+        // Photoshoot photos are kept sharper than the matching swatches.
+        img = await uploadDesignImage(d.design_no, it.r.file, { folder: DM_PS_FOLDER, maxSide: 2400, quality: 0.9 });
+        const ins = await SB.from('design_photoshoots').insert({
+          design_id:     d.id,
+          design_no:     d.design_no,
+          matching_name: it.name,
+          image_path:    img.path,
+          image_url:     img.url,
+          sort_order:    list.length,
+          created_by:    whoAmI()
+        }).select().single();
+        if (ins.error) throw ins.error;
+        list.push(ins.data);
+        dmPsByDesign.set(d.id, list);
+        batchRemove('ps', it.r.rid);
+        ok++;
+      } catch (e) {
+        console.error('[DM] photoshoot fail:', it.name, e);
+        if (img) await removeStored(img.path);
+        batchMark(it.r.rid, '✗ ' + (e.message || e), true);
+        fail++;
+      }
+    }
+    if (btn) btn.textContent = 'Save All Photos';
+    batchSum('ps');
+    renderSavedPhotoshoots(d);
+    setSync(fail ? 'Some failed' : '✓ ' + dmDesigns.length + ' designs', fail ? 'err' : 'ok');
+    toast(ok + ' photoshoot photo(s) added to ' + d.design_no + (fail ? ', ' + fail + ' failed (still in the list)' : '') + '.', fail ? 'warn' : 'success');
+  }
+
+  async function psDelete(designId, psId){
+    if (!sbReady() || !guard('DESIGN_DISCARD')) return;
+    const d = dmDesigns.find(x => x.id === designId); if (!d) return;
+    const p = psOf(d).find(x => x.id === psId); if (!p) return;
+    if (!confirm('Remove this photoshoot photo (' + (p.matching_name || '') + ') from ' + d.design_no + '?')) return;
+    setSync('Saving…', 'busy');
+    try {
+      const r = await SB.from('design_photoshoots').delete().eq('id', psId);
+      if (r.error) throw r.error;
+      await removeStored(p.image_path);
+      dmPsByDesign.set(d.id, psOf(d).filter(x => x.id !== psId));
+      renderSavedPhotoshoots(d);
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Photoshoot photo removed.', 'success');
+    } catch (e) {
+      setSync('Save fail', 'err');
+      toast('Photo delete fail: ' + (e.message || e), 'error');
     }
   }
 
@@ -1407,10 +1812,25 @@
     q('dmEditBrandName').value      = d.brand_name || '';
     q('dmEditSupplierName').value   = d.supplier_name || '';
     calcEditTotal();
+    renderEditPsd(d);
     renderEditMatchings(d);
     q('dmEditModal').classList.add('open');
   }
   function closeEditModal(){ q('dmEditModal').classList.remove('open'); }
+
+  /* Edit popup › PSD: the current file (with Download) and a box to pick a
+     new one. A picked file is uploaded only on "Update & Save", along with the
+     design's own fields, and then replaces the old one. */
+  function renderEditPsd(d){
+    const inp = q('dmEditPsd'); if (inp) inp.value = '';
+    const cur = q('dmEditPsdCurrent');
+    if (cur) cur.innerHTML = d.psd_path
+      ? 'Current: <b>' + esc(d.psd_name || 'design.psd') + '</b>' + (d.psd_size ? ' · ' + fmtSize(d.psd_size) : '') +
+        ' <button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmDownloadPsd(' + d.id + ')">Download PSD</button>'
+      : '<span class="dm-muted">No PSD on this design yet.</span>';
+    psdPicked(inp || {}, 'dmEditPsdName');
+    const lbl = q('dmEditPsdBtnText'); if (lbl) lbl.textContent = d.psd_path ? 'Replace PSD File' : 'Select PSD File';
+  }
 
   function renderEditMatchings(d){
     const box = q('dmEditMatchingsList'); if (!box) return;
@@ -1528,7 +1948,27 @@
     const newSku = up(q('dmEditDesignSkuNo').value);
     if (!skuOkToSave(newSku, id)) { q('dmEditDesignSkuNo').focus(); return; }
     dmSkuNotice();
-    const patch = Object.assign(skuPatch(newSku), {
+    const psdFile = (q('dmEditPsd').files || [])[0] || null;
+    if (psdFile && !isPsd(psdFile)) { toast('“' + psdFile.name + '” is not a .psd file. Select the Photoshop (.psd) file.', 'error'); return; }
+    if (psdFile) dmPsdNotice();
+    const btn = ev.target.querySelector('button[type=submit]');
+    /* New PSD first: if the upload fails, nothing about the design changes and
+       the user can simply try again. The old file is removed only after the
+       row points at the new one. */
+    let psd = null;
+    if (psdFile) {
+      if (btn) { btn.disabled = true; btn.textContent = 'Uploading PSD (' + fmtSize(psdFile.size) + ')…'; }
+      setSync('Uploading PSD…', 'busy');
+      try { psd = await uploadDesignPsd(newNo, psdFile); }
+      catch (e) {
+        setSync('Upload fail', 'err');
+        toast('PSD upload failed, nothing was changed: ' + (e.message || e), 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = 'Update &amp; Save'; }
+        return;
+      }
+    }
+    const oldPsd = d.psd_path || null;
+    const patch = Object.assign(skuPatch(newSku), psdPatch(psd), {
       design_no:       newNo,
       design_unit:     q('dmEditDesignUnit').value.trim(),
       bed_size:        q('dmEditBedSize').value.trim(),
@@ -1554,8 +1994,14 @@
       if (up(d.design_no) !== newNo) {
         const rm = await SB.from('design_matchings').update({ design_no: newNo }).eq('design_id', id);
         if (!rm.error) d.matchings.forEach(m => { m.design_no = newNo; });
+        // Photoshoot rows follow too; a failure (e.g. table not made yet) is ignored.
+        try {
+          const rp = await SB.from('design_photoshoots').update({ design_no: newNo }).eq('design_id', id);
+          if (!rp.error) psOf(d).forEach(p => { p.design_no = newNo; });
+        } catch (e) {}
       }
       Object.assign(d, patch);
+      if (psd && patch.psd_path && oldPsd && oldPsd !== patch.psd_path) await removeStored(oldPsd);
       renderAll();
       setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
       closeEditModal();
@@ -1563,6 +2009,10 @@
     } catch (e) {
       setSync('Save fail', 'err');
       toast('Update fail: ' + (e.message || e), 'error');
+      // The row still points at the old PSD, so the new upload is junk.
+      if (psd) await removeStored(psd.psd_path);
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Update &amp; Save'; }
     }
   }
 
@@ -1613,9 +2063,17 @@
   const dmCatChecked = (name, v) => !(dmCatState[name] && dmCatState[name][v] === false);
   const dmCatSort = (a, b) => String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
 
+  /* Design No box. Earlier every number had to match exactly, so the preview
+     stayed empty until the full number was typed. Now the number still being
+     typed (the last one, with no comma / space after it yet) matches as
+     "contains", so the PDFs narrow down letter by letter; numbers already
+     closed with a comma / space stay exact, so "101, 205" never pulls in 1010. */
   function dmCatNos(){
     const b = q('dmCatDesignNos');
-    return String(b ? b.value : '').split(/[,\s]+/).map(up).filter(Boolean);
+    const raw = String(b ? b.value : '');
+    const parts = raw.split(/[,\s]+/).map(up);
+    const typing = /[,\s]$/.test(raw) ? '' : (parts.pop() || '');
+    return { exact: parts.filter(Boolean), partial: typing };
   }
   /* The full working for one render: live designs, each filter's domain and
      its ticked values. Built once and reused for every design; otherwise each
@@ -1637,7 +2095,11 @@
   // Everything except the `skipName` column is applied; that is how the
   // column's own options are worked out.
   function dmCatPass(ctx, d, skipName){
-    if (ctx.nos.length && ctx.nos.indexOf(up(d.design_no)) < 0) return false;
+    const nos = ctx.nos;
+    if (nos.exact.length || nos.partial) {
+      const no = up(d.design_no);
+      if (nos.exact.indexOf(no) < 0 && !(nos.partial && no.indexOf(nos.partial) >= 0)) return false;
+    }
     return DM_CAT_FILTERS.every(f => {
       if (f.name === skipName) return true;
       return ctx.picked[f.name].set.has(dmCatVal(f, d));
@@ -1953,6 +2415,701 @@
     if (!win) toast('The popup was blocked. Use “Download PDF” instead.', 'warn');
   }
 
+  /* ════════════════════════════════════════════════════════════════════
+     ONLINE CATALOGUE — the saved photoshoots as a customer presentation
+     ----------------------------------------------------------------------
+     A landscape, slide-like PDF meant to be sent to customers (WhatsApp /
+     email) as a catalogue-cum-quotation:
+
+       1. Cover        company, catalogue title, "prepared for", contact,
+                       one big photoshoot photo
+       2. Index        "The Collection": a card per design; tapping a card
+                       jumps to that design's page (PDF internal links)
+       3. One page per design: ALL its photoshoot photos fitted on that one
+                       page (the layout adapts to the count and the photos'
+                       shape), its specs, its shades as small swatches, and
+                       the rate box, which opens WhatsApp / mail with the
+                       design number already written
+       4. Quotation    summary table (rates if printed) + terms
+       5. Thank-you    contact buttons (WhatsApp, call, email, website),
+                       factory address, GSTIN
+
+     Deliberately NOT printed: party, brand, supplier, frames (internal /
+     another customer's information). MONOPOLY designs are left out unless
+     ticked, since they are made exclusively for one party.
+
+     The on-screen preview IS the generated PDF (in a frame), so what is
+     seen is exactly what is sent, links included. jsPDF's standard
+     helvetica only covers WinAnsi, so "Rs." is used, not the rupee sign.
+  ════════════════════════════════════════════════════════════════════ */
+  const OC = { w: 297, h: 210, m: 12 };
+  const OC_C = {
+    navy: [10, 58, 94], ink: [30, 41, 59], muted: [100, 116, 139], gold: [176, 137, 74],
+    paper: [246, 244, 239], soft: [203, 213, 225], light: [203, 213, 225], white: [255, 255, 255]
+  };
+  // Settings that are the same for every catalogue a person sends; kept in
+  // this browser only (a convenience, so they needn't be typed every time).
+  const OC_KEEP = ['dmOcTitle', 'dmOcPerson', 'dmOcPhone', 'dmOcEmail', 'dmOcWebsite', 'dmOcRateUnit', 'dmOcMoq', 'dmOcTerms'];
+  const OC_STORE = 'dm_oc_settings_v1';
+  const OC_TERMS = [
+    'All rates are exclusive of GST; GST extra as applicable.',
+    'Rates are valid for 15 days from the date of this catalogue.',
+    'Colours may vary slightly from the photographs.',
+    'Delivery schedule as confirmed at the time of order.'
+  ].join('\n');
+  const OC_AUTO_MAX = 8;          // auto-preview only up to this many designs
+  const ocRates = {};             // design id → rate typed in the list
+  const ocCropCache = new Map();  // url|aspect|size → Promise<img>
+  let ocTimer = null, ocBusy = false, ocAgain = false, ocUrl = '';
+
+  const ocV = id => { const el = q(id); return el ? String(el.value || '').trim() : ''; };
+  const ocStatus = t => { const el = q('dmOcStatus'); if (el) el.textContent = t || ''; };
+  const ocMoney = v => 'Rs. ' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+  const ocCo = () => (typeof SARV_COMPANY !== 'undefined' && SARV_COMPANY) ? SARV_COMPANY : {
+    fullName: 'SARV INDIA HOME FURNISHING', tagline: 'Manufacturers of all kinds of blankets',
+    address: 'Panipat, Haryana', gstin: '', juris: 'Subject to Panipat Jurisdiction'
+  };
+
+  function ocInit(){
+    let saved = {};
+    try { saved = JSON.parse(localStorage.getItem(OC_STORE) || '{}') || {}; } catch (e) { saved = {}; }
+    const def = {
+      dmOcTitle: 'Premium Blanket Collection', dmOcRateUnit: 'per piece', dmOcTerms: OC_TERMS,
+      dmOcWebsite: (typeof SARV_WEBSITE_URL !== 'undefined' ? SARV_WEBSITE_URL : 'https://www.sarvindia.com').replace(/^https?:\/\//, '')
+    };
+    OC_KEEP.forEach(id => { const el = q(id); if (el) el.value = (saved[id] != null ? saved[id] : (def[id] || '')); });
+    const keep = () => {
+      const o = {}; OC_KEEP.forEach(id => { o[id] = q(id) ? q(id).value : ''; });
+      try { localStorage.setItem(OC_STORE, JSON.stringify(o)); } catch (e) {}
+    };
+    OC_KEEP.concat(['dmOcCustomer']).forEach(id => { const el = q(id); if (el) el.addEventListener('input', () => { keep(); ocSchedule(); }); });
+    q('dmOcShowRate').addEventListener('change', ocSchedule);
+    // Filter ticks: the rows keep re-rendering, so the listener sits on the grid.
+    q('dmOcFilterGrid').addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox]');
+      if (!cb || !cb.name) return;
+      const st = ocCatState[cb.name] || (ocCatState[cb.name] = {});
+      if (cb.checked) delete st[cb.value]; else st[cb.value] = false;
+      ocRender();
+    });
+    let t = null;
+    q('dmOcNoSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(ocRenderFilters, 150); });
+    q('dmOcList').addEventListener('input', e => {
+      const r = e.target.closest('.oc-rate'); if (!r) return;
+      ocRates[+r.dataset.id] = r.value; ocSchedule();
+    });
+  }
+
+  /* ══ DEPENDENT MULTI-SELECT FILTERS (same engine as the Catalogue PDF) ═
+     Its own tick state (ocCatState), so the two tabs never disturb each
+     other, but the same rules: a column's options are what is left after ALL
+     the other columns; only unticks are remembered, so a value that comes
+     back returns ticked. Design No is a column like the others, so its list
+     shrinks / grows with every other filter. The design pool is only LIVE
+     designs that have photoshoot photos. MONOPOLY = YES starts unticked: a
+     monopoly design is made for one party and must not reach other
+     customers by accident. */
+  const OC_FILTERS = [
+    { name:'ocUnitF',     box:'dmOcUnitBox',     count:'dmOcUnitCount',     get:d => d.design_unit },
+    { name:'ocBedF',      box:'dmOcBedBox',      count:'dmOcBedCount',      get:d => d.bed_size },
+    { name:'ocQualityF',  box:'dmOcQualityBox',  count:'dmOcQualityCount',  get:d => d.blanket_quality },
+    { name:'ocPartyF',    box:'dmOcPartyBox',    count:'dmOcPartyCount',    get:d => d.party_name },
+    { name:'ocBrandF',    box:'dmOcBrandBox',    count:'dmOcBrandCount',    get:d => d.brand_name },
+    { name:'ocSupplierF', box:'dmOcSupplierBox', count:'dmOcSupplierCount', get:d => d.supplier_name },
+    { name:'ocTypeF',     box:'dmOcTypeBox',     count:'dmOcTypeCount',     get:d => d.design_type },
+    { name:'ocFramesF',   box:'dmOcFramesBox',   count:'dmOcFramesCount',   get:d => String(totalFrames(d)) },
+    { name:'ocMonoF',     box:'dmOcMonoBox',     count:'dmOcMonoCount',     get:d => d.monopoly || 'NO' },
+    { name:'ocSkuF',      box:'dmOcSkuBox',      count:'dmOcSkuCount',      get:d => d.design_sku_no },
+    { name:'ocNoF',       box:'dmOcNoBox',       count:'dmOcNoCount',       get:d => d.design_no },
+  ];
+  const ocDefaultState = () => ({ ocMonoF: { YES: false } });
+  let ocCatState = ocDefaultState();
+  const ocChecked = (name, v) => !(ocCatState[name] && ocCatState[name][v] === false);
+
+  // Only designs that can be shown: LIVE and with at least one photoshoot photo.
+  const ocCandidates = () => dmDesigns.filter(d => d.status === 'LIVE' && psOf(d).length);
+  function ocCtx(){
+    const live = ocCandidates();
+    const picked = {};
+    OC_FILTERS.forEach(f => {
+      picked[f.name] = new Set([...new Set(live.map(d => dmCatVal(f, d)))].filter(v => ocChecked(f.name, v)));
+    });
+    return { live: live, picked: picked };
+  }
+  const ocPass = (ctx, d, skip) => OC_FILTERS.every(f => f.name === skip || ctx.picked[f.name].has(dmCatVal(f, d)));
+  function ocFiltered(){
+    const ctx = ocCtx();
+    return ctx.live.filter(d => ocPass(ctx, d, null)).sort((a, b) => dmCatSort(a.design_no, b.design_no));
+  }
+  const ocSelected = ocFiltered;
+
+  function ocRenderFilters(){
+    const ctx = ocCtx();
+    const search = up(ocV('dmOcNoSearch'));
+    OC_FILTERS.forEach(f => {
+      const avail = [...new Set(ctx.live.filter(d => ocPass(ctx, d, f.name)).map(d => dmCatVal(f, d)))].sort(dmCatSort);
+      // The Design No search only narrows what is shown; ticks stay as they are.
+      const shown = (f.name === 'ocNoF' && search) ? avail.filter(v => up(v).indexOf(search) >= 0) : avail;
+      const box = q(f.box);
+      if (box) box.innerHTML = shown.length
+        ? shown.map(v => '<label><input type="checkbox" name="' + f.name + '" value="' + esc(v) + '"' +
+            (ocChecked(f.name, v) ? ' checked' : '') + '> ' + esc(v) + '</label>').join('')
+        : '<span class="dm-empty">' + (avail.length ? 'No design no matches this search' : 'Nothing left here after the other filters') + '</span>';
+      const c = q(f.count);
+      if (c) {
+        const on = avail.filter(v => ocChecked(f.name, v)).length;
+        c.textContent = avail.length ? (on + '/' + avail.length) : '0';
+        c.className = 'dm-fcount' + (avail.length && on < avail.length ? ' on' : '');
+      }
+    });
+    const mc = q('dmOcMatchCount');
+    if (mc) mc.textContent = ctx.live.filter(d => ocPass(ctx, d, null)).length + ' / ' + ctx.live.length + ' designs with photoshoots match this filter';
+  }
+  /* All / Clear: the whole column record, so values hidden by a cross-filter
+     follow too (same as the Catalogue PDF tab). */
+  function ocToggle(name, all){
+    const f = OC_FILTERS.find(x => x.name === name); if (!f) return;
+    const st = ocCatState[name] = {};
+    if (!all) ocCandidates().forEach(d => { st[dmCatVal(f, d)] = false; });
+    ocRender();
+  }
+  function ocResetFilters(){
+    ocCatState = ocDefaultState();
+    const s = q('dmOcNoSearch'); if (s) s.value = '';
+    ocRender();
+  }
+
+  function ocRender(){
+    ocRenderFilters();
+    const cands = ocCandidates();
+    const list = ocFiltered();
+    const tb = q('dmOcList');
+    if (tb) tb.innerHTML = list.length ? list.map((d, i) =>
+      '<tr><td>' + (i + 1) + '</td>' +
+      '<td><strong>' + esc(d.design_no) + '</strong>' + (d.monopoly === 'YES' ? ' <span class="dm-badge dm-badge-mono">MONOPOLY</span>' : '') + '</td>' +
+      '<td>' + esc(d.design_sku_no || '—') + '</td>' +
+      '<td>' + esc(d.blanket_quality || '') + '</td>' +
+      '<td>' + esc(d.bed_size || '') + '</td>' +
+      '<td>' + (d.matchings || []).length + '</td>' +
+      '<td>' + psOf(d).length + '</td>' +
+      '<td><input type="number" min="0" step="0.01" class="dm-bulk-in oc-rate" data-id="' + d.id + '" value="' + esc(ocRates[d.id] || '') + '" placeholder="optional"></td></tr>'
+    ).join('')
+      : '<tr><td colspan="8" class="dm-empty-row">' + (dmPsMissing
+          ? 'Photoshoot table not found. Run DESIGN_PHOTOSHOOT_MIGRATION.sql first.'
+          : (cands.length ? 'No design matches these filters.' : 'No design has photoshoot photos yet. Add them from the Add Photoshoot tab.')) + '</td></tr>';
+    ocSchedule();
+  }
+
+  /* Small selections preview by themselves (debounced); a big one waits for
+     the button, since every preview loads and places every photo. */
+  function ocSchedule(){
+    const pane = q('dmOnlineCatPane');
+    if (!pane || !pane.classList.contains('active')) return;
+    clearTimeout(ocTimer);
+    const n = ocSelected().length;
+    if (!n) { ocShow(''); ocStatus('No design selected.'); return; }
+    if (n > OC_AUTO_MAX) { ocStatus(n + ' designs selected · press Full Preview to see the PDF'); return; }
+    ocTimer = setTimeout(() => ocPreview(false), 900);
+  }
+  function ocShow(url){
+    const box = q('dmOcPreview'); if (!box) return;
+    if (ocUrl) { try { URL.revokeObjectURL(ocUrl); } catch (e) {} }
+    ocUrl = url || '';
+    box.innerHTML = url ? '<iframe class="dm-oc-frame" title="Online Catalogue preview" src="' + url + '#view=FitH"></iframe>' : '';
+  }
+  async function ocPreview(){
+    if (ocBusy) { ocAgain = true; return; }
+    ocBusy = true;
+    try {
+      const doc = await ocBuild();
+      if (doc) ocShow(doc.output('bloburl'));
+    } catch (e) {
+      console.error('[DM] online catalogue fail:', e);
+      ocStatus('Preview failed: ' + (e.message || e));
+    } finally {
+      ocBusy = false;
+      if (ocAgain) { ocAgain = false; ocPreview(); }
+    }
+  }
+
+  /* Cover-crops a photo to the box's shape (so every tile is filled edge to
+     edge, like a slide), and downsizes it for the PDF. A photo whose shape is
+     very different from the box is NOT cropped (that would cut the blanket);
+     it is only resized and later placed whole (`contain`). */
+  function ocCrop(url, img, aspect, maxSide){
+    if (!img) return Promise.resolve(null);
+    const key = url + '|' + aspect.toFixed(3) + '|' + maxSide;
+    if (ocCropCache.has(key)) return ocCropCache.get(key);
+    const p = new Promise(resolve => {
+      const ia = img.w / img.h;
+      const contain = Math.abs(Math.log(ia / aspect)) > Math.log(1.6);
+      let sw = img.w, sh = img.h;
+      if (!contain) { if (ia > aspect) sw = img.h * aspect; else sh = img.w / aspect; }
+      const sc = Math.min(1, maxSide / Math.max(sw, sh));
+      const tw = Math.max(1, Math.round(sw * sc)), th = Math.max(1, Math.round(sh * sc));
+      const el = new Image();
+      el.onload = () => {
+        try {
+          const c = document.createElement('canvas'); c.width = tw; c.height = th;
+          const ctx = c.getContext('2d');
+          ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, tw, th);
+          ctx.drawImage(el, (img.w - sw) / 2, (img.h - sh) / 2, sw, sh, 0, 0, tw, th);
+          resolve({ dataUrl: c.toDataURL('image/jpeg', 0.86), w: tw, h: th, fmt: 'JPEG', contain: contain });
+        } catch (e) { resolve(Object.assign({ contain: true }, img)); }
+      };
+      el.onerror = () => resolve(null);
+      el.src = img.dataUrl;
+    });
+    ocCropCache.set(key, p);
+    return p;
+  }
+  // Places a photo filling the box; a missing photo becomes a quiet placeholder.
+  async function ocImg(doc, url, img, x, y, w, h, maxSide){
+    const r = await ocCrop(url, img, w / h, maxSide || 1400);
+    if (!r) {
+      doc.setFillColor.apply(doc, OC_C.paper); doc.rect(x, y, w, h, 'F');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor.apply(doc, OC_C.muted);
+      doc.text('PHOTO', x + w / 2, y + h / 2, { align: 'center', baseline: 'middle' });
+      return;
+    }
+    try {
+      if (!r.contain) { doc.addImage(r.dataUrl, r.fmt, x, y, w, h); return; }
+      doc.setFillColor.apply(doc, OC_C.paper); doc.rect(x, y, w, h, 'F');
+      const s = Math.min(w / r.w, h / r.h), iw = r.w * s, ih = r.h * s;
+      doc.addImage(r.dataUrl, r.fmt, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+    } catch (e) { console.warn('[DM] oc addImage fail:', e.message || e); }
+  }
+
+  /* Where each photo goes on a design page. 1 photo = the whole area;
+     2 = side by side; 3–5 = one large "hero" photo + the rest beside it;
+     more = the column count that gives each photo the largest size for the
+     photos' own shape (`aspect` = width / height). A short last row is
+     centred. Same function for every page, so all pages feel alike. */
+  function ocLayout(n, box, aspect, gap){
+    if (n <= 0) return [];
+    if (n === 1) return [box];
+    if (n >= 3 && n <= 5) {
+      const hw = (box.w - gap) * (aspect >= 1.2 ? 0.5 : 0.48);
+      const hero = { x: box.x, y: box.y, w: hw, h: box.h };
+      const rest = ocGrid(n - 1, { x: box.x + hw + gap, y: box.y, w: box.w - hw - gap, h: box.h }, aspect, gap);
+      return [hero].concat(rest);
+    }
+    return ocGrid(n, box, aspect, gap);
+  }
+  function ocGrid(n, box, aspect, gap){
+    let best = null;
+    for (let c = 1; c <= n; c++) {
+      const r = Math.ceil(n / c);
+      const cw = (box.w - gap * (c - 1)) / c, ch = (box.h - gap * (r - 1)) / r;
+      if (cw <= 0 || ch <= 0) continue;
+      // Size of the photo kept whole in the cell; crop then only trims a little.
+      const fw = Math.min(cw, ch * aspect);
+      const score = fw * (fw / aspect) * n - (c * r - n) * 0.15 * cw * ch;
+      if (!best || score > best.score) best = { c: c, r: r, cw: cw, ch: ch, score: score };
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const row = Math.floor(i / best.c), col = i % best.c;
+      const inRow = Math.min(best.c, n - row * best.c);
+      const off = (best.c - inRow) * (best.cw + gap) / 2;
+      out.push({ x: box.x + off + col * (best.cw + gap), y: box.y + row * (best.ch + gap), w: best.cw, h: best.ch });
+    }
+    return out;
+  }
+
+  /* The Customer & Contact boxes were taken off the screen on request, so
+     every value here falls back to the company default when its box is not
+     on the page (title, website from SARV_WEBSITE_URL, "per piece", the
+     standard terms). Putting a box back with the same id brings its value
+     back into the PDF without any other change. */
+  function ocSettings(){
+    const site = q('dmOcWebsite') ? ocV('dmOcWebsite')
+      : (typeof SARV_WEBSITE_URL !== 'undefined' ? SARV_WEBSITE_URL : 'https://www.sarvindia.com').replace(/^https?:\/\//, '');
+    const phone = ocV('dmOcPhone');
+    let digits = phone.replace(/\D/g, '');
+    if (digits.length === 10) digits = '91' + digits;
+    return {
+      title: ocV('dmOcTitle') || 'Premium Blanket Collection',
+      customer: ocV('dmOcCustomer'), person: ocV('dmOcPerson'),
+      phone: phone, wa: digits.length >= 11 ? digits : '', email: ocV('dmOcEmail'),
+      site: site, siteUrl: site ? (/^https?:\/\//i.test(site) ? site : 'https://' + site) : '',
+      unit: ocV('dmOcRateUnit') || 'per piece', moq: ocV('dmOcMoq'),
+      terms: (q('dmOcTerms') ? ocV('dmOcTerms') : OC_TERMS).split(/\n+/).map(s => s.trim()).filter(Boolean),
+      showRate: !!(q('dmOcShowRate') && q('dmOcShowRate').checked),
+      date: new Date().toLocaleDateString('en-GB'),
+      month: new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    };
+  }
+  const ocRate = (d, s) => {
+    const v = parseFloat(ocRates[d.id]);
+    return (s.showRate && Number.isFinite(v) && v > 0) ? v : null;
+  };
+  // The enquiry link: WhatsApp with the design already named, else mail.
+  function ocEnquire(s, d){
+    const msg = 'Hello Sarv India, I am interested in ' + (d ? 'design ' + d.design_no : 'your ' + s.title) +
+                (s.customer ? ' (' + s.customer + ')' : '') + '. Please share details.';
+    if (s.wa) return 'https://wa.me/' + s.wa + '?text=' + encodeURIComponent(msg);
+    if (s.email) return 'mailto:' + s.email + '?subject=' + encodeURIComponent('Enquiry: ' + (d ? 'Design ' + d.design_no : s.title)) + '&body=' + encodeURIComponent(msg);
+    return s.siteUrl || '';
+  }
+  // A design's photoshoot photos, in its matching order (MASTER first).
+  function ocPhotos(d){
+    const order = (d.matchings || []).map(m => up(m.matching_name));
+    const rank = n => { const i = order.indexOf(up(n)); return i < 0 ? 999 : i; };
+    return psOf(d).slice().sort((a, b) => rank(a.matching_name) - rank(b.matching_name) || a.id - b.id)
+      .map(p => ({ p: p, url: dmImgSrc(p) })).filter(x => x.url);
+  }
+  function ocLogo(doc, x, y, w){
+    try { if (typeof SARV_LOGO_DATA_URL !== 'undefined') doc.addImage(SARV_LOGO_DATA_URL, 'PNG', x, y, w, w * 161 / 320); }
+    catch (e) {}
+  }
+  const ocFill = (doc, c) => doc.setFillColor(c[0], c[1], c[2]);
+  const ocInk = (doc, c) => doc.setTextColor(c[0], c[1], c[2]);
+  const ocDraw = (doc, c) => doc.setDrawColor(c[0], c[1], c[2]);
+
+  // Header of the inner pages: logo + company on the left, page title on the right.
+  function ocHead(doc, title, sub){
+    const co = ocCo();
+    ocLogo(doc, OC.m, 7.5, 22);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); ocInk(doc, OC_C.navy);
+    doc.text(String(co.fullName || 'SARV INDIA HOME FURNISHING'), OC.m + 25, 12.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); ocInk(doc, OC_C.muted);
+    doc.text('Manufacturers of all kinds of blankets  ·  Panipat, Haryana', OC.m + 25, 17);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); ocInk(doc, OC_C.navy);
+    doc.text(String(title), OC.w - OC.m, 13, { align: 'right' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); ocInk(doc, OC_C.gold);
+    doc.text(String(sub || ''), OC.w - OC.m, 18.5, { align: 'right' });
+    ocDraw(doc, OC_C.gold); doc.setLineWidth(0.5); doc.line(OC.m, 23, OC.w - OC.m, 23);
+  }
+  function ocFoot(doc, pageNo, total, s, backTo){
+    ocDraw(doc, OC_C.soft); doc.setLineWidth(0.2); doc.line(OC.m, 200.5, OC.w - OC.m, 200.5);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7); ocInk(doc, OC_C.muted);
+    const left = 'Sarv India Home Furnishing' + (s.site ? '  ·  ' + s.site : '');
+    doc.text(left, OC.m, 205.5);
+    if (s.siteUrl) doc.link(OC.m, 202, doc.getTextWidth(left), 5, { url: s.siteUrl });
+    doc.text('Page ' + pageNo + ' / ' + total, OC.w - OC.m, 205.5, { align: 'right' });
+    if (backTo) {
+      doc.setFont('helvetica', 'bold'); ocInk(doc, OC_C.gold);
+      const t = 'Back to the collection';
+      doc.text(t, OC.w / 2, 205.5, { align: 'center' });
+      const tw = doc.getTextWidth(t);
+      doc.link(OC.w / 2 - tw / 2, 202, tw, 5, { pageNumber: backTo });
+    }
+  }
+
+  async function ocCover(doc, s, hero){
+    const co = ocCo();
+    ocFill(doc, OC_C.navy); doc.rect(0, 0, 118, OC.h, 'F');
+    ocFill(doc, OC_C.gold); doc.rect(118, 0, 1.6, OC.h, 'F');
+    await ocImg(doc, hero && hero.url, hero && hero.img, 119.6, 0, OC.w - 119.6, OC.h, 1800);
+    ocFill(doc, OC_C.white); doc.roundedRect(14, 16, 50, 27, 2, 2, 'F');
+    ocLogo(doc, 17, 18.5, 44);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(30); ocInk(doc, OC_C.white);
+    doc.text('SARV INDIA', 14, 80);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(13);
+    doc.text('HOME FURNISHING', 14, 89, { charSpace: 1.2 });
+    ocDraw(doc, OC_C.gold); doc.setLineWidth(0.8); doc.line(14, 95, 60, 95);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16); ocInk(doc, OC_C.white);
+    const tl = doc.splitTextToSize(s.title, 92).slice(0, 3);
+    doc.text(tl, 14, 106, { lineHeightFactor: 1.25 });
+    let y = 106 + tl.length * 7;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); ocInk(doc, OC_C.light);
+    doc.text('Collection  ·  ' + s.month, 14, y + 1);
+    if (s.customer) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); ocInk(doc, OC_C.gold);
+      doc.text('PREPARED FOR', 14, 140, { charSpace: 0.6 });
+      doc.setFontSize(13); ocInk(doc, OC_C.white);
+      doc.text(doc.splitTextToSize(s.customer, 92).slice(0, 2), 14, 147);
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); ocInk(doc, OC_C.white);
+    y = 168;
+    const line = (t, url) => {
+      doc.text(t, 14, y);
+      if (url) doc.link(14, y - 3.5, doc.getTextWidth(t), 5, { url: url });
+      y += 5.2;
+    };
+    if (s.person) line(s.person);
+    if (s.phone) line('Phone / WhatsApp: ' + s.phone, s.wa ? 'https://wa.me/' + s.wa : 'tel:' + s.phone.replace(/\s+/g, ''));
+    if (s.email) line(s.email, 'mailto:' + s.email);
+    if (s.site) line(s.site, s.siteUrl);
+    doc.setFontSize(6.8); ocInk(doc, OC_C.light);
+    doc.text(doc.splitTextToSize(String(co.address || ''), 96).slice(0, 2), 14, 196);
+  }
+
+  async function ocIndex(doc, s, items, pageOf, total, list){
+    ocHead(doc, 'THE COLLECTION', s.title + '  ·  ' + total + ' designs');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); ocInk(doc, OC_C.muted);
+    doc.text('Tap any design to open its page.', OC.m, 29);
+    const cols = 4, gap = 6, x0 = OC.m, y0 = 33;
+    const cw = (OC.w - 2 * OC.m - gap * (cols - 1)) / cols, ch = (196 - y0 - gap) / 2;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], d = it.d;
+      const x = x0 + (i % cols) * (cw + gap), y = y0 + Math.floor(i / cols) * (ch + gap);
+      ocDraw(doc, OC_C.soft); ocFill(doc, OC_C.white); doc.setLineWidth(0.25);
+      doc.roundedRect(x, y, cw, ch, 1.5, 1.5, 'FD');
+      await ocImg(doc, it.cover && it.cover.url, it.cover && it.cover.img, x + 2.5, y + 2.5, cw - 5, ch - 17, 700);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); ocInk(doc, OC_C.navy);
+      doc.text('Design ' + d.design_no, x + 3, y + ch - 8.5, { maxWidth: cw - 26 });
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); ocInk(doc, OC_C.muted);
+      doc.text((d.matchings || []).length + ' shades  ·  ' + (d.blanket_quality || ''), x + 3, y + ch - 4, { maxWidth: cw - 6 });
+      const rate = ocRate(d, s);
+      if (rate) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); ocInk(doc, OC_C.gold);
+        doc.text(ocMoney(rate), x + cw - 3, y + ch - 8.5, { align: 'right' });
+      }
+      doc.link(x, y, cw, ch, { pageNumber: pageOf(list.indexOf(d)) });
+    }
+  }
+
+  async function ocDesign(doc, s, d, photos, swatches){
+    ocHead(doc, 'DESIGN ' + d.design_no, s.title);
+    const x = OC.m, w = 72;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); ocInk(doc, OC_C.gold);
+    doc.text('DESIGN NO', x, 31, { charSpace: 0.6 });
+    doc.setFontSize(22); ocInk(doc, OC_C.navy);
+    doc.text(String(d.design_no), x, 40.5, { maxWidth: w });
+    if (d.monopoly === 'YES') {
+      ocFill(doc, OC_C.gold); doc.roundedRect(x + w - 19, 34.5, 19, 5.5, 1, 1, 'F');
+      doc.setFontSize(6.5); ocInk(doc, OC_C.white); doc.text('EXCLUSIVE', x + w - 9.5, 38.2, { align: 'center' });
+    }
+    if (d.design_sku_no) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); ocInk(doc, OC_C.muted);
+      doc.text('SKU  ' + d.design_sku_no, x, 46);
+    }
+    let y = 53;
+    [['QUALITY', d.blanket_quality], ['BED SIZE', d.bed_size], ['DESIGN TYPE', d.design_type && d.design_type !== 'N/A' ? d.design_type : '']]
+      .filter(r => r[1]).forEach(r => {
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(6.8); ocInk(doc, OC_C.muted);
+        doc.text(r[0], x, y, { charSpace: 0.4 });
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(10); ocInk(doc, OC_C.ink);
+        doc.text(String(r[1]), x, y + 5, { maxWidth: w });
+        y += 11.5;
+      });
+    ocDraw(doc, OC_C.soft); doc.setLineWidth(0.2); doc.line(x, y - 2, x + w, y - 2);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7); ocInk(doc, OC_C.gold);
+    doc.text('AVAILABLE SHADES (' + (d.matchings || []).length + ')', x, y + 4, { charSpace: 0.4 });
+
+    // Shade swatches: 2 per row, as many rows as fit above the rate box.
+    const rateTop = 168, sy = y + 7, rowH = 11;
+    const fit = Math.max(0, Math.floor((rateTop - 4 - sy) / rowH)) * 2;
+    const all = d.matchings || [];
+    const show = all.length > fit ? all.slice(0, Math.max(0, fit - 1)) : all;
+    for (let i = 0; i < show.length; i++) {
+      const m = show[i], sw = swatches.get(m.id);
+      const cx = x + (i % 2) * 37, cy = sy + Math.floor(i / 2) * rowH;
+      await ocImg(doc, sw && sw.url, sw && sw.img, cx, cy, 9, 9, 240);
+      ocDraw(doc, OC_C.soft); doc.setLineWidth(0.2); doc.rect(cx, cy, 9, 9, 'S');
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); ocInk(doc, OC_C.ink);
+      const nm = doc.splitTextToSize(String(m.matching_name || ''), 26).slice(0, 2);
+      doc.text(nm, cx + 11, cy + (nm.length > 1 ? 3.4 : 5.4), { lineHeightFactor: 1.15 });
+    }
+    if (all.length > show.length) {
+      const i = show.length, cx = x + (i % 2) * 37, cy = sy + Math.floor(i / 2) * rowH;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); ocInk(doc, OC_C.navy);
+      doc.text('+' + (all.length - show.length) + ' more shades', cx, cy + 5.4);
+    }
+
+    // Rate / enquiry box; the whole box opens WhatsApp (or mail).
+    const rate = ocRate(d, s), link = ocEnquire(s, d);
+    ocFill(doc, OC_C.navy); doc.roundedRect(x, rateTop, w, 27, 2, 2, 'F');
+    ocFill(doc, OC_C.gold); doc.rect(x, rateTop + 5, 1.2, 17, 'F');
+    if (rate) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); ocInk(doc, OC_C.light);
+      doc.text('OFFER PRICE', x + 5, rateTop + 6.5, { charSpace: 0.5 });
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(17); ocInk(doc, OC_C.white);
+      doc.text(ocMoney(rate), x + 5, rateTop + 15.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); ocInk(doc, OC_C.light);
+      doc.text(s.unit + (link ? '  ·  tap to order' : ''), x + 5, rateTop + 22);
+    } else {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); ocInk(doc, OC_C.white);
+      doc.text('Ask for the best price', x + 5, rateTop + 11.5);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); ocInk(doc, OC_C.light);
+      doc.text(link ? (s.wa ? 'Tap to enquire on WhatsApp' : s.email ? 'Tap to enquire by email' : 'Tap to visit ' + (s.site || 'our website'))
+                    : (s.phone || 'Contact us for rates'), x + 5, rateTop + 18.5);
+    }
+    if (link) doc.link(x, rateTop, w, 27, { url: link });
+
+    // All the design's photoshoot photos on this one page.
+    const box = { x: 90, y: 29, w: OC.w - OC.m - 90, h: 196 - 29 };
+    const aspects = photos.filter(p => p.img).map(p => p.img.w / p.img.h).sort((a, b) => a - b);
+    const aspect = aspects.length ? aspects[Math.floor(aspects.length / 2)] : 0.8;
+    const rects = ocLayout(photos.length, box, aspect, photos.length > 8 ? 3 : 4);
+    for (let i = 0; i < photos.length; i++) {
+      const ph = photos[i], r = rects[i];
+      await ocImg(doc, ph.url, ph.img, r.x, r.y, r.w, r.h, photos.length > 6 ? 1000 : 1500);
+      if (r.h >= 32 && r.w >= 28 && ph.p.matching_name) {
+        ocFill(doc, OC_C.white); doc.rect(r.x, r.y + r.h - 6, r.w, 6, 'F');
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(7); ocInk(doc, OC_C.ink);
+        doc.text(String(ph.p.matching_name), r.x + r.w / 2, r.y + r.h - 1.9, { align: 'center', maxWidth: r.w - 4 });
+      }
+    }
+  }
+
+  function ocQuote(doc, s, list, kinds){
+    const anyRate = list.some(d => ocRate(d, s));
+    const title = anyRate ? 'QUOTATION' : 'COLLECTION SUMMARY';
+    const sub = s.title + '  ·  ' + s.date;
+    doc.addPage(); kinds[doc.getNumberOfPages()] = 'quote';
+    ocHead(doc, title, sub);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); ocInk(doc, OC_C.ink);
+    if (s.customer) { doc.setFont('helvetica', 'bold'); doc.text('Prepared for: ' + s.customer, OC.m, 30); }
+    doc.setFont('helvetica', 'normal'); ocInk(doc, OC_C.muted);
+    doc.text('Date: ' + s.date + (s.moq ? '      Minimum order: ' + s.moq : ''), OC.m, 35);
+    const head = ['#', 'DESIGN NO', 'SKU NO', 'QUALITY', 'BED SIZE', 'DESIGN TYPE', 'SHADES', 'PHOTOS'];
+    if (anyRate) head.push('RATE (' + s.unit.toUpperCase() + ')');
+    doc.autoTable({
+      startY: 39,
+      margin: { left: OC.m, right: OC.m, top: 28, bottom: 14 },
+      theme: 'grid',
+      head: [head],
+      body: list.map((d, i) => {
+        const r = [String(i + 1), String(d.design_no), String(d.design_sku_no || '-'), String(d.blanket_quality || '-'),
+          String(d.bed_size || '-'), String(d.design_type && d.design_type !== 'N/A' ? d.design_type : '-'),
+          String((d.matchings || []).length), String(psOf(d).length)];
+        if (anyRate) { const v = ocRate(d, s); r.push(v ? ocMoney(v) : 'On request'); }
+        return r;
+      }),
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.2, lineColor: OC_C.soft, lineWidth: 0.2, textColor: OC_C.ink },
+      headStyles: { fillColor: OC_C.navy, textColor: OC_C.white, fontStyle: 'bold', fontSize: 8 },
+      alternateRowStyles: { fillColor: [249, 248, 245] },
+      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { fontStyle: 'bold' }, 6: { halign: 'center' }, 7: { halign: 'center' },
+                      8: { halign: 'right', fontStyle: 'bold' } },
+      didDrawPage: () => {
+        const p = doc.getNumberOfPages();
+        if (!kinds[p]) { kinds[p] = 'quote'; ocHead(doc, title, sub); }
+      }
+    });
+    let y = (doc.lastAutoTable ? doc.lastAutoTable.finalY : 60) + 9;
+    if (!s.terms.length) return;
+    const lines = s.terms.map(t => doc.splitTextToSize('-  ' + t, OC.w - 2 * OC.m));
+    const need = 7 + lines.reduce((n, l) => n + l.length * 4.2, 0);
+    if (y + need > 196) { doc.addPage(); kinds[doc.getNumberOfPages()] = 'quote'; ocHead(doc, title, sub); y = 31; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); ocInk(doc, OC_C.gold);
+    doc.text('TERMS & CONDITIONS', OC.m, y, { charSpace: 0.5 });
+    y += 5.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); ocInk(doc, OC_C.ink);
+    lines.forEach(l => { doc.text(l, OC.m, y); y += l.length * 4.2; });
+  }
+
+  async function ocContact(doc, s, side){
+    const co = ocCo();
+    ocFill(doc, OC_C.navy); doc.rect(0, 0, OC.w, OC.h, 'F');
+    await ocImg(doc, side && side.url, side && side.img, 205, 0, OC.w - 205, OC.h, 1400);
+    ocFill(doc, OC_C.gold); doc.rect(203.4, 0, 1.6, OC.h, 'F');
+    ocFill(doc, OC_C.white); doc.roundedRect(24, 22, 50, 27, 2, 2, 'F');
+    ocLogo(doc, 27, 24.5, 44);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(34); ocInk(doc, OC_C.white);
+    doc.text('Thank you', 24, 76);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(12); ocInk(doc, OC_C.light);
+    doc.text('Let us make your next bestselling blanket range together.', 24, 86, { maxWidth: 170 });
+
+    // Contact buttons: real links, so the customer can act from the PDF itself.
+    const btns = [];
+    if (s.wa) btns.push(['WhatsApp us', ocEnquire(s, null), true]);
+    if (s.phone) btns.push(['Call ' + s.phone, 'tel:' + s.phone.replace(/\s+/g, ''), !s.wa]);
+    if (s.email) btns.push(['Email us', 'mailto:' + s.email + '?subject=' + encodeURIComponent('Enquiry: ' + s.title), false]);
+    if (s.siteUrl) btns.push(['Visit website', s.siteUrl, !s.wa && !s.phone]);
+    let bx = 24;
+    btns.slice(0, 4).forEach(b => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      const bw = Math.max(34, doc.getTextWidth(b[0]) + 12);
+      if (b[2]) { ocFill(doc, OC_C.gold); doc.roundedRect(bx, 100, bw, 12, 2, 2, 'F'); ocInk(doc, OC_C.white); }
+      else { ocDraw(doc, OC_C.white); doc.setLineWidth(0.4); doc.roundedRect(bx, 100, bw, 12, 2, 2, 'S'); ocInk(doc, OC_C.white); }
+      doc.text(b[0], bx + bw / 2, 107.6, { align: 'center' });
+      doc.link(bx, 100, bw, 12, { url: b[1] });
+      bx += bw + 5;
+    });
+
+    let y = 128;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); ocInk(doc, OC_C.white);
+    [s.person, s.phone && ('Phone / WhatsApp: ' + s.phone), s.email, s.site].filter(Boolean).forEach(t => { doc.text(t, 24, y); y += 5.6; });
+    y = Math.max(y + 6, 160);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); ocInk(doc, OC_C.gold);
+    doc.text('FACTORY', 24, y, { charSpace: 0.6 });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); ocInk(doc, OC_C.white);
+    const ad = doc.splitTextToSize(String(co.fullName || '') + ', ' + String(co.address || ''), 170);
+    doc.text(ad, 24, y + 5.5);
+    y += 5.5 + ad.length * 4.4;
+    doc.setFontSize(7.5); ocInk(doc, OC_C.light);
+    doc.text([co.gstin ? 'GSTIN: ' + co.gstin : '', co.juris || ''].filter(Boolean).join('   ·   '), 24, y + 1.5);
+  }
+
+  async function ocBuild(){
+    if (typeof jspdfNativeReady_ === 'function' ? !jspdfNativeReady_() : !(window.jspdf && window.jspdf.jsPDF)) {
+      toast('jsPDF did not load. Please reload the page.', 'error');
+      return null;
+    }
+    await loadPhotoshoots();
+    const list = ocSelected();
+    if (!list.length) { ocStatus('No design selected.'); return null; }
+    const s = ocSettings();
+
+    // Load every photo first (cached), so building the PDF has no network waits.
+    const photosOf = new Map(), swatches = new Map();
+    const jobs = [];
+    list.forEach(d => {
+      const ph = ocPhotos(d); photosOf.set(d.id, ph);
+      ph.forEach(x => jobs.push(x));
+      (d.matchings || []).forEach(m => { const u = dmImgSrc(m); if (u) { const x = { url: u }; swatches.set(m.id, x); jobs.push(x); } });
+    });
+    for (let i = 0; i < jobs.length; i++) {
+      if (i % 4 === 0) ocStatus('Loading photos (' + (i + 1) + '/' + jobs.length + ')…');
+      jobs[i].img = await imgData(jobs[i].url);
+    }
+    ocStatus('Building the catalogue…');
+
+    const jsPDF = window.jspdf.jsPDF;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape', compress: true });
+    doc.setProperties({ title: 'Sarv India Home Furnishing - ' + s.title, author: 'Sarv India Home Furnishing', subject: s.customer ? 'Prepared for ' + s.customer : s.title });
+    const kinds = {};
+    const per = 8, idxPages = Math.ceil(list.length / per);
+    const designPage = i => 1 + idxPages + i + 1;
+    const firstPhoto = d => (photosOf.get(d.id) || [])[0] || null;
+
+    kinds[1] = 'cover';
+    await ocCover(doc, s, firstPhoto(list[0]));
+    for (let p = 0; p < idxPages; p++) {
+      doc.addPage(); kinds[doc.getNumberOfPages()] = 'index';
+      const items = list.slice(p * per, p * per + per).map(d => ({ d: d, cover: firstPhoto(d) }));
+      await ocIndex(doc, s, items, designPage, list.length, list);
+    }
+    for (let i = 0; i < list.length; i++) {
+      ocStatus('Building the catalogue (' + (i + 1) + '/' + list.length + ')…');
+      doc.addPage(); kinds[doc.getNumberOfPages()] = 'design';
+      await ocDesign(doc, s, list[i], photosOf.get(list[i].id) || [], swatches);
+    }
+    ocQuote(doc, s, list, kinds);
+    doc.addPage(); kinds[doc.getNumberOfPages()] = 'contact';
+    const side = list.length > 1 ? firstPhoto(list[1]) : ((photosOf.get(list[0].id) || [])[1] || firstPhoto(list[0]));
+    await ocContact(doc, s, side);
+
+    const total = doc.getNumberOfPages();
+    for (let p = 1; p <= total; p++) {
+      const k = kinds[p] || 'quote';
+      if (k === 'cover' || k === 'contact') continue;
+      doc.setPage(p);
+      ocFoot(doc, p, total, s, k === 'design' ? 2 : null);
+    }
+    doc.setPage(total);
+    ocStatus(list.length + ' designs · ' + total + ' pages');
+    return doc;
+  }
+
+  function ocFileName(){
+    const c = ocV('dmOcCustomer').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return 'Sarv_India_Catalogue' + (c ? '_' + c : '') + '_' + new Date().toISOString().slice(0, 10) + '.pdf';
+  }
+  async function ocDownload(){
+    const doc = await ocBuild(); if (!doc) { if (!ocSelected().length) toast('Select at least one design.', 'warn'); return; }
+    downloadBlob(doc.output('blob'), ocFileName());
+    toast('Online Catalogue PDF downloaded.', 'success');
+  }
+  async function ocOpen(){
+    const doc = await ocBuild(); if (!doc) { if (!ocSelected().length) toast('Select at least one design.', 'warn'); return; }
+    const win = window.open(doc.output('bloburl'), '_blank');
+    if (!win) toast('The popup was blocked. Use “Download PDF” instead.', 'warn');
+  }
+
   /* ── JSON backup (V18 ka Download Backup) ───────────────────────── */
   function exportBackup(){
     if (!dmDesigns.length) { toast('There is no data to back up.', 'warn'); return; }
@@ -2001,6 +3158,8 @@
     root.querySelectorAll('.dm-pane').forEach(p => p.classList.toggle('active', p.id === paneId));
     root.querySelectorAll('.dm-tab').forEach(b => b.classList.toggle('active', b.dataset.dmtab === paneId));
     if (paneId === 'dmCataloguePane') renderCatalogueFilters();
+    if (paneId === 'dmAddPhotoshootPane') loadPhotoshoots().then(populatePsInfo);
+    if (paneId === 'dmOnlineCatPane') { ocStatus('Loading photoshoots…'); loadPhotoshoots().then(() => { ocStatus(''); ocRender(); }); }
   }
 
   /* ════════════════════════════════════════════════════════════════════
@@ -2014,7 +3173,6 @@
       b.addEventListener('click', () => showPane(b.dataset.dmtab)));
 
     q('dmNewDesignForm').addEventListener('submit', saveNewDesign);
-    q('dmAddMatchingForm').addEventListener('submit', addMatching);
     q('dmEditDesignForm').addEventListener('submit', updateDesign);
 
     ['dmLargeFrame', 'dmMediumFrame', 'dmSmallFrame'].forEach(id => q(id).addEventListener('input', calcNewTotal));
@@ -2022,8 +3180,17 @@
 
     q('dmInitialImage').addEventListener('change', e =>
       previewInto('dmNewDesignPreview', (e.target.files || [])[0], EMPTY_NEW));
-    q('dmNewMatchingImage').addEventListener('change', e =>
-      previewInto('dmMatchingPreview', (e.target.files || [])[0], EMPTY_MTC));
+    q('dmMtcFiles').addEventListener('change', e => batchAddFiles('mtc', e.target));
+    q('dmPsFiles').addEventListener('change', e => batchAddFiles('ps', e.target));
+    batchSum('mtc'); batchSum('ps');
+    ocInit();
+    q('dmPsDesign').addEventListener('input', e => {
+      e.target.value = e.target.value.toUpperCase();
+      populatePsInfo();
+    });
+
+    q('dmNewPsd').addEventListener('change', e => psdPicked(e.target, 'dmNewPsdName'));
+    q('dmEditPsd').addEventListener('change', e => psdPicked(e.target, 'dmEditPsdName'));
 
     q('dmSelectDesign').addEventListener('input', e => {
       e.target.value = e.target.value.toUpperCase();
@@ -2099,7 +3266,21 @@
   };
 
   /* Handles needed by the inline onclick / onchange in the HTML. */
-  window.dmReload                   = force => loadDesigns(force !== false);
+  window.dmReload                   = force => {
+    // Photoshoots reload too (lazily: next time the tab or a design needs them).
+    if (force !== false) dmPsLoaded = false;
+    return loadDesigns(force !== false);
+  };
+  window.dmBatchAddBlank            = batchAddBlank;
+  window.dmBatchRemove              = batchRemove;
+  window.dmMtcSaveAll               = mtcSaveAll;
+  window.dmPsSaveAll                = psSaveAll;
+  window.dmPsDelete                 = psDelete;
+  window.dmOcPreview                = ocPreview;
+  window.dmOcDownload               = ocDownload;
+  window.dmOcOpen                   = ocOpen;
+  window.dmOcToggle                 = ocToggle;
+  window.dmOcResetFilters           = ocResetFilters;
   window.dmExportBackup             = exportBackup;
   window.dmSetStatus                = setStatus;
   window.dmOpenEditModal            = openEditModal;
@@ -2121,6 +3302,7 @@
   window.dmShowLightbox             = showLightbox;
   window.dmCloseLightbox            = closeLightbox;
   window.dmImgFail                  = imgFail;
+  window.dmDownloadPsd              = downloadPsd;
 
   /* Two direct routes for future design-wise image updates: give a design
      number and get all its photos (path + URL), or get that design's bucket

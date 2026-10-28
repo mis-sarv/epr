@@ -1720,10 +1720,12 @@
                     <div class="dm-nav">
                         <button type="button" class="dm-tab active" data-dmtab="dmNewEntryPane">Create New</button>
                         <button type="button" class="dm-tab" data-dmtab="dmAddMatchingPane">Add Matching</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmAddPhotoshootPane">Add Photoshoot</button>
                         <button type="button" class="dm-tab dm-tab-bulk" data-dmtab="dmBulkUploadPane">Bulk Upload</button>
                         <button type="button" class="dm-tab" data-dmtab="dmLivePane">Live (<span id="dmLiveCount">0</span>)</button>
                         <button type="button" class="dm-tab" data-dmtab="dmDiscardedPane">Discarded (<span id="dmDiscardCount">0</span>)</button>
                         <button type="button" class="dm-tab" data-dmtab="dmCataloguePane">Catalogue PDF</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmOnlineCatPane">Online Catalogue</button>
                         <span class="dm-nav-right">
                             <span class="dm-sync" id="dmSyncStatus">&mdash;</span>
                             <button type="button" class="dm-btn dm-btn-ghost" onclick="dmReload(true)" title="Reload from Supabase">Refresh</button>
@@ -1787,6 +1789,14 @@
                               <span>[ Passport Size Preview ]</span>
                               <small>Fill in the details on the left while looking at the photo</small>
                             </div>
+                            <!-- The design's Photoshop source file. REQUIRED on Create New (checked in
+                                 saveNewDesign); stored in sarv-pdfs/design-psd/ (DESIGN_PSD_MIGRATION.sql). -->
+                            <div class="dm-sec dm-sec-plain">PSD File (Photoshop) *</div>
+                            <label class="dm-btn dm-btn-primary dm-file-btn">
+                              Select PSD File
+                              <input type="file" id="dmNewPsd" accept=".psd,image/vnd.adobe.photoshop" hidden>
+                            </label>
+                            <div class="dm-psd-name" id="dmNewPsdName" data-empty="No PSD selected (required)">No PSD selected (required)</div>
                             <button type="submit" class="dm-btn dm-btn-success dm-btn-wide">Save New Design</button>
                           </div>
                         </div>
@@ -1795,34 +1805,65 @@
 
                     <!-- ───────── Add Matching ───────── -->
                     <div class="dm-pane" id="dmAddMatchingPane">
-                      <form id="dmAddMatchingForm" autocomplete="off">
-                        <div class="dm-split">
-                          <div class="dm-form-col">
-                            <div class="dm-sec">Select Design &amp; Add Matching</div>
-                            <div class="dm-grid">
-                              <div class="dm-fg"><label>SEARCH DESIGN NO *</label><input type="text" id="dmSelectDesign" list="dmLiveDesignList" required placeholder="Type Design No..."></div>
-                              <div class="dm-fg"><label>PARTY &amp; BRAND</label><input type="text" id="dmMatchingPartyBrand" readonly class="dm-readonly"></div>
-                              <div class="dm-fg"><label>NEW MATCHING NAME *</label><input type="text" id="dmNewMatchingName" list="dmShadeList" required placeholder="Search Shade..."></div>
-                              <div class="dm-fg"><label>BLANKET QUALITY *</label><input type="text" id="dmMatchingBlanketQuality" list="dmQualityList" value="MINK" required></div>
-                              <div class="dm-fg"><label>MATCHING TYPE *</label><input type="text" id="dmNewMatchingType" list="dmMatchingTypeList" value="SLAVE" required></div>
-                            </div>
-                            <div class="dm-note" id="dmMatchingExisting"></div>
+                      <!-- Many photos at once: each picked photo becomes a card in "New Matchings
+                           to Save" with its own Matching Name + Type (store-design-master.js › BATCH). -->
+                      <div class="dm-split">
+                        <div class="dm-form-col">
+                          <div class="dm-sec">Select Design &amp; Add Matching</div>
+                          <div class="dm-grid">
+                            <div class="dm-fg"><label>SEARCH DESIGN NO *</label><input type="text" id="dmSelectDesign" list="dmLiveDesignList" autocomplete="off" placeholder="Type Design No..."></div>
+                            <div class="dm-fg"><label>PARTY &amp; BRAND</label><input type="text" id="dmMatchingPartyBrand" readonly class="dm-readonly"></div>
+                            <div class="dm-fg"><label>BLANKET QUALITY * (all new matchings)</label><input type="text" id="dmMatchingBlanketQuality" list="dmQualityList" value="MINK"></div>
                           </div>
-
-                          <div class="dm-img-col">
-                            <div class="dm-sec dm-sec-plain">Upload &amp; Preview</div>
-                            <label class="dm-btn dm-btn-primary dm-file-btn">
-                              Select Photo First
-                              <input type="file" id="dmNewMatchingImage" accept="image/*" hidden>
-                            </label>
-                            <div class="dm-preview" id="dmMatchingPreview">
-                              <span style="font-size:2rem;"></span>
-                              <span>[ Passport Size Preview ]</span>
-                            </div>
-                            <button type="submit" class="dm-btn dm-btn-success dm-btn-wide">Add Matching</button>
-                          </div>
+                          <div class="dm-note" id="dmMatchingExisting"></div>
+                          <div class="dm-sec">New Matchings to Save</div>
+                          <div id="dmMtcBatch" class="dm-batch"></div>
+                          <div id="dmMatchingSaved" class="dm-saved" style="display:none;"></div>
                         </div>
-                      </form>
+
+                        <div class="dm-img-col">
+                          <div class="dm-sec dm-sec-plain">Upload &amp; Save</div>
+                          <label class="dm-btn dm-btn-primary dm-file-btn">
+                            Select Photos (multiple)
+                            <input type="file" id="dmMtcFiles" accept="image/*" multiple hidden>
+                          </label>
+                          <button type="button" class="dm-btn dm-btn-ghost" onclick="dmBatchAddBlank('mtc')" title="A matching that has no photo yet">+ Matching without Photo</button>
+                          <div class="dm-batch-sum" id="dmMtcSum"></div>
+                          <button type="button" class="dm-btn dm-btn-success dm-btn-wide" id="dmMtcSaveBtn" onclick="dmMtcSaveAll()">Save All Matchings</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- ───────── Add Photoshoot ───────── -->
+                    <!-- Photoshoot photos of a design, many at once; each photo is tagged with one
+                         of that design's matchings (DESIGN_PHOTOSHOOT_MIGRATION.sql). -->
+                    <div class="dm-pane" id="dmAddPhotoshootPane">
+                      <div class="dm-split">
+                        <div class="dm-form-col">
+                          <div class="dm-sec">Select Design &amp; Add Photoshoot</div>
+                          <div class="dm-grid">
+                            <div class="dm-fg"><label>SEARCH DESIGN NO *</label><input type="text" id="dmPsDesign" list="dmLiveDesignList" autocomplete="off" placeholder="Type Design No..."></div>
+                            <div class="dm-fg"><label>PARTY &amp; BRAND</label><input type="text" id="dmPsPartyBrand" readonly class="dm-readonly"></div>
+                          </div>
+                          <div class="dm-note" id="dmPsExisting"></div>
+                          <!-- The design's saved matchings, passport view: so the right matching is
+                               picked for each photoshoot photo by looking at the shade itself. -->
+                          <div id="dmPsMatchSaved" class="dm-saved" style="display:none;"></div>
+                          <div class="dm-sec">New Photoshoot Photos to Save</div>
+                          <div id="dmPsBatch" class="dm-batch"></div>
+                          <div id="dmPsSaved" class="dm-saved" style="display:none;"></div>
+                        </div>
+
+                        <div class="dm-img-col">
+                          <div class="dm-sec dm-sec-plain">Upload &amp; Save</div>
+                          <label class="dm-btn dm-btn-primary dm-file-btn">
+                            Select Photos (multiple)
+                            <input type="file" id="dmPsFiles" accept="image/*" multiple hidden>
+                          </label>
+                          <div class="dm-batch-sum" id="dmPsSum"></div>
+                          <button type="button" class="dm-btn dm-btn-success dm-btn-wide" id="dmPsSaveBtn" onclick="dmPsSaveAll()">Save All Photos</button>
+                        </div>
+                      </div>
                     </div>
 
                     <!-- ───────── Bulk Upload ───────── -->
@@ -1889,6 +1930,7 @@
                               <th>Matchings<span class="im-fbtn" id="dmLF-mcount" onclick="dmLiveOpenFilter(event,'mcount')" title="Filter">&#9662;</span></th>
                               <th>Master Matching<span class="im-fbtn" id="dmLF-master" onclick="dmLiveOpenFilter(event,'master')" title="Filter">&#9662;</span></th>
                               <th>Status</th>
+                              <th>PSD</th>
                             </tr>
                           </thead>
                           <tbody id="dmLiveTableBody"></tbody>
@@ -1988,6 +2030,93 @@
                         <span class="dm-cat-status" id="dmCatStatus"></span>
                       </div>
                       <div id="dmCataloguePrintArea"></div>
+                    </div>
+
+                    <!-- ───────── Online Catalogue ───────── -->
+                    <!-- Customer-facing presentation of the saved PHOTOSHOOTS: cover, clickable
+                         index, one landscape slide per design (all its photoshoot photos fitted
+                         on that one page), quotation page, contact page. Built in
+                         store-design-master.js › ONLINE CATALOGUE (oc*). data-no-caps: this text
+                         goes to customers, so it keeps the case it was typed in. -->
+                    <div class="dm-pane" id="dmOnlineCatPane">
+                      <div data-no-caps>
+                        <div class="dm-sec">Online Catalogue Multi-Selection Filters</div>
+                        <p class="dm-hint" style="margin-bottom:10px;">
+                          Same as the Catalogue PDF tab: all filters are <b>linked to each other</b>, and the
+                          <b>DESIGN NO</b> list shows only the designs left after the other filters. Only LIVE designs
+                          that have photoshoot photos are counted. <b>MONOPOLY = YES starts unticked</b>, since those
+                          designs are made for one party only; tick it to include them. Party, brand, supplier and frames
+                          only filter here; they are never printed.
+                        </p>
+                        <!-- Built by store-design-master.js › ocRenderFilters (state in ocCatState). -->
+                        <div class="dm-grid dm-grid-filters" id="dmOcFilterGrid">
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>DESIGN UNIT <span class="dm-fcount" id="dmOcUnitCount"></span></label><span><a onclick="dmOcToggle('ocUnitF',true)">All</a> | <a onclick="dmOcToggle('ocUnitF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcUnitBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>BED SIZE <span class="dm-fcount" id="dmOcBedCount"></span></label><span><a onclick="dmOcToggle('ocBedF',true)">All</a> | <a onclick="dmOcToggle('ocBedF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcBedBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>BLANKET QUALITY <span class="dm-fcount" id="dmOcQualityCount"></span></label><span><a onclick="dmOcToggle('ocQualityF',true)">All</a> | <a onclick="dmOcToggle('ocQualityF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcQualityBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>PARTY NAME <span class="dm-fcount" id="dmOcPartyCount"></span></label><span><a onclick="dmOcToggle('ocPartyF',true)">All</a> | <a onclick="dmOcToggle('ocPartyF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcPartyBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>BRAND NAME <span class="dm-fcount" id="dmOcBrandCount"></span></label><span><a onclick="dmOcToggle('ocBrandF',true)">All</a> | <a onclick="dmOcToggle('ocBrandF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcBrandBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>SUPPLIER NAME <span class="dm-fcount" id="dmOcSupplierCount"></span></label><span><a onclick="dmOcToggle('ocSupplierF',true)">All</a> | <a onclick="dmOcToggle('ocSupplierF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcSupplierBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>DESIGN TYPE <span class="dm-fcount" id="dmOcTypeCount"></span></label><span><a onclick="dmOcToggle('ocTypeF',true)">All</a> | <a onclick="dmOcToggle('ocTypeF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcTypeBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>TOTAL FRAMES <span class="dm-fcount" id="dmOcFramesCount"></span></label><span><a onclick="dmOcToggle('ocFramesF',true)">All</a> | <a onclick="dmOcToggle('ocFramesF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcFramesBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>MONOPOLY <span class="dm-fcount" id="dmOcMonoCount"></span></label><span><a onclick="dmOcToggle('ocMonoF',true)">All</a> | <a onclick="dmOcToggle('ocMonoF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcMonoBox"></div>
+                          </div>
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>DESIGN SKU NO <span class="dm-fcount" id="dmOcSkuCount"></span></label><span><a onclick="dmOcToggle('ocSkuF',true)">All</a> | <a onclick="dmOcToggle('ocSkuF',false)">Clear</a></span></div>
+                            <div class="dm-filter-box" id="dmOcSkuBox"></div>
+                          </div>
+                          <!-- Design No: a dependent tick list like the others (only the numbers left
+                               after every other filter); the search box only narrows what is SHOWN. -->
+                          <div class="dm-fg">
+                            <div class="dm-filter-head"><label>DESIGN NO <span class="dm-fcount" id="dmOcNoCount"></span></label><span><a onclick="dmOcToggle('ocNoF',true)">All</a> | <a onclick="dmOcToggle('ocNoF',false)">Clear</a></span></div>
+                            <input type="text" id="dmOcNoSearch" class="dm-oc-nosearch" placeholder="Search design no...">
+                            <div class="dm-filter-box" id="dmOcNoBox"></div>
+                          </div>
+                        </div>
+                        <div class="dm-filter-foot">
+                          <span class="dm-filter-live" id="dmOcMatchCount"></span>
+                          <label class="dm-oc-rate-toggle"><input type="checkbox" id="dmOcShowRate" checked> Print rates</label>
+                          <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmOcResetFilters()" title="Tick every filter fully again (MONOPOLY YES stays unticked)">&#8635; Reset All Filters</button>
+                        </div>
+                        <div class="dm-sec">Selected Designs &amp; Rates</div>
+                        <div class="dm-table-wrap"><table class="dm-table dm-oc-table">
+                          <thead><tr><th>#</th><th>Design No</th><th>SKU No</th><th>Quality</th><th>Bed Size</th><th>Matchings</th><th>Photos</th><th>Rate (Rs.)</th></tr></thead>
+                          <tbody id="dmOcList"></tbody>
+                        </table></div>
+                      </div>
+
+                      <div class="dm-btn-row" style="margin-top:12px;">
+                        <button type="button" class="dm-btn dm-btn-success" onclick="dmOcDownload()">Download PDF</button>
+                        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcOpen()">Open PDF in New Tab</button>
+                        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcPreview()" title="Build the PDF and show it below (small selections update by themselves)">Full Preview</button>
+                        <span class="dm-cat-status" id="dmOcStatus"></span>
+                      </div>
+                      <div id="dmOcPreview" class="dm-oc-preview"></div>
                     </div>
 
                 </div><!-- /designMasterProdSub -->
@@ -3744,6 +3873,16 @@
         <div class="dm-fg"><label>PARTY NAME</label><input type="text" id="dmEditPartyName" list="dmPartyList" required></div>
         <div class="dm-fg"><label>BRAND NAME</label><input type="text" id="dmEditBrandName" list="dmBrandList" required></div>
         <div class="dm-fg"><label>SUPPLIER NAME</label><input type="text" id="dmEditSupplierName" list="dmSupplierList"></div>
+      </div>
+      <!-- PSD: optional here (old designs have none); a picked file is uploaded on Update & Save. -->
+      <div class="dm-sec">PSD File (Photoshop)</div>
+      <div class="dm-psd-edit">
+        <div id="dmEditPsdCurrent"></div>
+        <label class="dm-btn dm-btn-primary dm-btn-xs dm-file-btn">
+          <span id="dmEditPsdBtnText">Select PSD File</span>
+          <input type="file" id="dmEditPsd" accept=".psd,image/vnd.adobe.photoshop" hidden>
+        </label>
+        <div class="dm-psd-name" id="dmEditPsdName" data-empty="">&nbsp;</div>
       </div>
       <div class="dm-sec">Matchings Management</div>
       <p class="dm-hint" style="margin-bottom:8px;">Changing a master, a photo or removing a matching is saved to Supabase immediately. The Update button below is only for the design's own fields.</p>

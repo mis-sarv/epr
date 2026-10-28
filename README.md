@@ -936,6 +936,74 @@ plainly, that `DESIGN_SKU_MIGRATION.sql` needs to be run. On an empty database
 the first save works this out itself (`dmWriteDesign` resends once without the
 SKU), so a whole save never fails on "column does not exist".
 
+### Add Matching / Add Photoshoot: many photos at once
+
+Setup for Add Photoshoot: **`DESIGN_PHOTOSHOOT_MIGRATION.sql`** (table
+`design_photoshoots`; photos in `sarv-pdfs` under `design-photoshoot/<DESIGN NO>/`,
+2400px JPEG, sharper than the 1500px matching swatches).
+
+Both tabs work the same way: choose the Design No, click **Select Photos
+(multiple)**, and every photo becomes a passport card with its own **Matching
+Name** dropdown; **Save All** saves them one by one.
+
+| | Add Matching | Add Photoshoot |
+|---|---|---|
+| Matching Name list | shade list (Dropdown Master) + names already used | only the chosen design's own matchings; a new shade is added from Add Matching first |
+| Per photo | Matching Name + MASTER / SLAVE | Matching Name |
+| Common | Blanket Quality | — |
+| Extra | "+ Matching without Photo" | saved photos can be removed (✕ Remove, needs `DESIGN_DISCARD`) |
+
+Everything is checked before the first upload (empty name, name already on the
+design, same name twice, more than one MASTER). A card that saves leaves the
+list; a failed one stays with the reason, so only the failures need another
+try. The design stays selected after saving, and its Saved list on the left
+shows the new photos (click any photo for full screen).
+
+### Online Catalogue (customer presentation of the photoshoots)
+
+Tab **Online Catalogue**: a landscape, slide-style PDF to send to customers,
+built only from LIVE designs that have photoshoot photos. Pages: cover (big
+photo, company, title) → **The Collection** index (tap a card to jump to the
+design) → **one page per design** with ALL its photoshoot photos fitted on
+that page (1 = full, 2 = side by side, 3-5 = hero + rest, more = best grid),
+its specs, shade swatches and a rate / enquiry box → **Quotation** (or
+Collection Summary when no rate is typed) with terms → **Thank you** page with
+the factory address and GSTIN. Every inner page has "Back to the collection".
+
+- Designs are chosen with the **same dependent multi-select filters as the
+  Catalogue PDF tab** (Unit, Bed Size, Quality, Party, Brand, Supplier, Type,
+  Total Frames, Monopoly, SKU) plus a **Design No tick list** that shows only the
+  numbers left after the other filters (with a search box that narrows the
+  list shown). Own tick state (`ocCatState`), so the two tabs don't affect each
+  other. Below: the selected designs with an optional rate each; "Print rates"
+  on/off.
+- **Never printed:** party, brand, supplier, frames (they only filter).
+  **MONOPOLY = YES starts unticked** (also after Reset), so monopoly designs
+  go in only when deliberately ticked.
+- The preview below the buttons is the real PDF; up to 8 designs it rebuilds
+  by itself, beyond that press **Full Preview**.
+- Contact details are company defaults (title "Premium Blanket Collection",
+  website from `SARV_WEBSITE_URL`, standard terms, "per piece"); the
+  Customer & Contact boxes were removed on request. `ocSettings()` still
+  reads those boxes if they are put back with the same ids.
+
+### PSD file (Photoshop source) per design
+
+Setup: **`DESIGN_PSD_MIGRATION.sql`** (adds `psd_path`, `psd_name`, `psd_size` to
+`design_master`). The file goes to the `sarv-pdfs` bucket under
+`design-psd/<DESIGN NO>/`, uploaded as-is (no compression).
+
+| Where | How |
+|---|---|
+| **Create New** › right column | "Select PSD File", **required**, must be a `.psd`; it is uploaded before the design row is made, so a design is never created without its PSD |
+| **Edit** popup | current file with Download, plus "Replace PSD File"; **optional**, because old designs have no PSD; the new file is uploaded on Update & Save and the old one is deleted |
+| **Live** tab | last column: **Download PSD** per design (saved under its original name), or "No PSD" |
+
+Before the migration the screen still works: the PSD columns are left out of the
+save (`psdPatch`) and the app says once that the migration needs to be run. A
+very large PSD can be refused by the project's global Storage upload limit
+(Supabase › Storage › Settings); the error says so and the design is not saved.
+
 ### Catalogue PDF: Bed Size / SKU filters, and the preview builds itself
 
 - The filters now include **BED SIZE** and **DESIGN SKU NO** too. Like the other
@@ -1803,7 +1871,9 @@ opening and saving changes nobody's access. On Save every key becomes the user's
 longer move that user. Complaint / Packing accounts are created or deactivated only for keys the
 Admin actually set or changed.
 
-**New users:** the full **Task Manager** tile and **Yarn Unloading** start OFF for every new login
-(`SARV_NEW_USER_OFF`); **My Tasks** stays ON. For launcher self-signups the server does the same:
+**New users:** the full **Task Manager** tile, **Yarn Unloading** and **Sheet Links** start OFF for
+every new login (`SARV_NEW_USER_OFF`); **My Tasks** stays ON. For launcher self-signups the server does the same:
 run `sql/NEW_USER_APP_DEFAULTS_MIGRATION.sql` once (trigger on `app_users` insert; existing users
-are not touched; safe to re-run).
+are not touched; safe to re-run). **`NEW_USER_SHEET_LINKS_OFF_MIGRATION.sql`** also writes these three
+apps as OFF directly inside `erp_signup` (its key list had no `HOME_SHEET_LINKS`, so every signup
+fell through to Sheet Links' default of ALL). It changes only that list; existing users are untouched.

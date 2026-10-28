@@ -6559,8 +6559,11 @@ const SARV_APP_INNER_GROUPS=[
 /* Apps a NEW login does not get until the Admin switches them ON: the user
    form starts them at OFF, and NEW_USER_APP_DEFAULTS_MIGRATION.sql does the
    same on the server for self-signups (launcher). Existing users keep what
-   they have. My Tasks (HOME_MY_TASKS) is deliberately not here. */
-const SARV_NEW_USER_OFF=['HOME_TASK_MANAGER','HOME_YARN_UNLOADING'];
+   they have. My Tasks (HOME_MY_TASKS) is deliberately not here. Sheet Links
+   is here on request: a new account must not show that button until the
+   Admin switches it ON (NEW_USER_SHEET_LINKS_OFF_MIGRATION.sql does the same
+   for self-signups). */
+const SARV_NEW_USER_OFF=['HOME_TASK_MANAGER','HOME_YARN_UNLOADING','HOME_SHEET_LINKS'];
 
 /* ── Apps that also need their own ACCOUNT ───────────────────────────
    Complaint and Packing data run on Supabase Auth (their RLS and triggers
