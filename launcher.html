@@ -750,7 +750,14 @@ const APPS = [
      the server (hr_perms_ in HR_PAYROLL_MIGRATION.sql). */
   { key:'HOME_HR_PAYROLL', href:'hr-payroll.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM5 16a4 4 0 0 1 8 0M15 9h4M15 13h4"/></svg>', accent:'#818cf8',
     defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],
-    title:'HR & Payroll', sub:'Attendance, advances, salary sheet' }
+    title:'HR & Payroll', sub:'Attendance, advances, salary sheet' },
+  /* Verifies every new Inward at unloading (photos + PIN) before the ERP can
+     save it. Admin only by default, as HOME_UNLOADER in store-core.js's
+     SARV_TABS; the Admin turns it on for the supervisor(s). The server checks
+     the same key on every approval (UNLOADER_APPROVAL_MIGRATION.sql). */
+  { key:'HOME_UNLOADER', href:'unloader.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/><path d="M15.5 16.5l1.5 1.5 3-3"/></svg>', accent:'#f97316',
+    defRoles:['ADMIN_PIN'],
+    title:'Unloader Supervisor', sub:'Verify Inward: item photos + PIN' }
 ];
 
 const ROLE_LABEL = {

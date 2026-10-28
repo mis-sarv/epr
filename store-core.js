@@ -2777,6 +2777,210 @@ async function ensureInwardApproval_(rows,overrides){
     +'it will appear in the <b>PO Number list</b> under "MD APPROVED — DRAFT SAVED"; load it from there and Submit whenever you are ready.','warn');
   return false;
 }
+/* ══ UNLOADER-SUPERVISOR VERIFICATION ═══════════════════════════════
+   Every NEW Inward is verified at the unloading point before it can be
+   saved. Submit Inward sends the entry to unloader.html (launcher tile
+   "Unloader Supervisor", app key HOME_UNLOADER); the supervisor checks the
+   material, takes item photos and approves with their own PIN, or rejects
+   with a reason. Only then does Submit (the "Final Submit") save it.
+
+   Built on the same rails as the MD Inward Approval above, on purpose:
+     • keyed by inwardApprovalSignature_, so the approval covers exactly the
+       figures that were shown, and changing one asks again;
+     • an approved request becomes a DRAFT in the PO Number list (merged into
+       sarvInwApprovedDrafts with _src 'UL'), so nobody re-types the entry if
+       the form was closed while waiting;
+     • the two approvals are separate and run IN PARALLEL: the supervisor
+       confirms the unloaded Qty / Weight on every new entry, and the MD still
+       approves anything beyond the PO / PR (excess qty / weight, rate, extra
+       item). One Submit sends both requests; Final Submit needs both.
+
+   Writes go through ul_* RPCs (UNLOADER_APPROVAL_MIGRATION.sql), which check
+   the session and the PIN on the server and copy the supervisor's Name / Emp
+   Code / Mobile from app_users. ul_mark_used writes those onto the saved
+   record (inward_entries.unload_info); the PDF prints them and the unloading
+   photos are added to the Original Invoice PDF.
+
+   An Admin EDIT of a saved record is not sent again (the material was
+   verified when it came in). On a database without the migration the desk is
+   not locked out: the save goes through as before, with a one-time warning. */
+const UNLOAD_APPROVAL_TABLE='inward_unload_approvals';
+let sarvInwUnloadActive=null;       // unload_info for the PDF of the entry on the form
+let sarvUnloadPending=[];           // requests still waiting at the supervisor
+let sarvUnloadTableMissing=false;
+let sarvUnloadMissingWarned=false;
+function unloadTableMissing_(e){
+  const m=String((e&&e.message)||e||'');
+  return /inward_unload|ul_request_create|ul_mark_used/i.test(m)&&/does not exist|relation|schema cache|could not find/i.test(m);
+}
+function unloadMissingWarn_(){
+  sarvUnloadTableMissing=true;
+  if(sarvUnloadMissingWarned)return;
+  sarvUnloadMissingWarned=true;
+  showToast('Unloader-Supervisor verification is not set up yet, so this Inward is saved without it. '
+    +'Admin: run <code>UNLOADER_APPROVAL_MIGRATION.sql</code>.','warn');
+}
+const UL_ERR_TEXT={
+  NO_TOKEN:'Your login session was not found. Log out and log in again from the launcher.',
+  NO_SESSION:'Your login session has ended. Log out and log in again from the launcher.',
+  SESSION_REVOKED:'Your login session has ended. Log out and log in again from the launcher.',
+  SESSION_EXPIRED:'Your login session has expired. Log out and log in again from the launcher.',
+  NO_ITEMS:'The entry has no items to verify.',
+  NOT_APPROVED:'The Unloader Supervisor\'s approval for these exact values was not found.'
+};
+async function ulRpc_(fn,args){
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  const r=await SB.rpc(fn,Object.assign({p_token:tok},args||{}));
+  if(r.error)throw r.error;
+  const d=r.data;
+  if(d&&d.success===false){const c=String(d.error||'');throw new Error(UL_ERR_TEXT[c]||c||'Unknown error');}
+  return d;
+}
+/* What the PDF prints, from either an approval row (approver jsonb inside) or
+   a saved unload_info (the same fields at the top level). */
+function unloadInfoFrom_(src){
+  if(!src||typeof src!=='object')return null;
+  const a=(src.approver&&typeof src.approver==='object')?src.approver:src;
+  if(!a.name)return null;
+  return {name:a.name,empCode:a.emp_code||'',contact:a.contact_no||'',designation:a.designation||'',
+    department:a.department||'',at:a.at||src.decided_at||'',requestNo:src.request_no||'',
+    approvalId:src.approval_id||(src.approver?src.id:null)||null,photoCount:pNum(src.photo_count),remarks:src.remarks||''};
+}
+/* The fields of the Inward header that are not in inwardApprovalPayload_,
+   kept so a draft loaded back is complete (inwDraftLoad_ restores them). */
+function inwardDraftExtra_(){
+  return {gatePassNo:pVal('gatePassNo'),lotNo:pVal('lotNo'),inwMachineName:pVal('inwMachineName'),
+    freightExp:pVal('freightExp'),roundOffInput:pVal('roundOffInput'),
+    calcGrossWeight:pVal('calcGrossWeight'),calcFreightRate:pVal('calcFreightRate')};
+}
+/* The gate. True only when this exact submission carries the supervisor's
+   approval (and then sarvInwUnloadActive holds their details for the PDF). */
+async function ensureUnloaderApproval_(rows){
+  if(!SB_READY)return true;
+  if(sarvUnloadTableMissing){unloadMissingWarn_();return true;}
+  const poNos=inwardPoRefList_(rows),prNos=inwardPrRefList_(rows);
+  const sig=inwardApprovalSignature_(rows,poNos,prNos);
+  let row=null;
+  try{
+    const q=await SB.from(UNLOAD_APPROVAL_TABLE).select('*')
+      .eq('signature',sig).is('used_on',null).order('id',{ascending:false}).limit(1);
+    if(q.error)throw q.error;
+    row=(q.data||[])[0]||null;
+  }catch(e){
+    if(unloadTableMissing_(e)){unloadMissingWarn_();return true;}
+    showToast('The Unloader-Supervisor verification could not be checked: '+escText(e.message||e),'error');
+    return false;
+  }
+  const st=String((row&&row.status)||'');
+  if(st==='Approved'){
+    sarvInwUnloadActive=unloadInfoFrom_(row);
+    showToast('Unloading verified by <b>'+escText(row.decided_by||'Unloader Supervisor')+'</b> ('+escText(row.request_no||'')+')');
+    return true;
+  }
+  if(st==='Pending'){
+    showToast('This entry is waiting for the Unloader Supervisor ('+escText(row.request_no||'')+').<br>'
+      +'Submit will work once they approve it in the <b>Unloader Supervisor</b> app. If this form is closed, '
+      +'the approved entry appears in the <b>PO Number list</b> to load back.','warn');
+    return false;
+  }
+  const ask=st==='Rejected'
+    ?('The Unloader Supervisor REJECTED this entry ('+(row.request_no||'')+')'
+      +(row.decided_by?(' — '+row.decided_by):'')+(row.remarks?('\n\nReason: '+row.remarks):'')
+      +'\n\nCorrect the values and send it for verification again?')
+    :('This Inward must be verified by the Unloader Supervisor before it is saved.\n\n'
+      +'They check the material, take item photos and approve with their PIN in the Unloader Supervisor app. '
+      +'After that, press Submit again (Final Submit).\n\nSend it for unloading verification now?');
+  if(!confirm(ask))return false;
+  /* No reasons: excess / rate / extra item are the MD's call (a separate
+     request). The supervisor confirms the unloaded quantities; each row still
+     carries its PO / PR pending and excess figures for that. */
+  const payload=inwardApprovalPayload_(rows,[],poNos,prNos);
+  payload.extra=inwardDraftExtra_();
+  try{
+    const d=await ulRpc_('ul_request_create',{p_req:{
+      signature:sig,entry_type:pVal('entryTypeSelect')||'INWARD',
+      supplier_name:pVal('supplierName')||'',invoice_no:pVal('invoiceNumber')||'',
+      invoice_date:pVal('invoiceDate')||null,po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload}});
+    // Approved in the moment between the read above and this call.
+    if(d.status==='Approved')return ensureUnloaderApproval_(rows);
+    showToast('Sent to the Unloader Supervisor (<b>'+escText(d.request_no||'')+'</b>).<br>'
+      +'Once they approve it with photos and PIN, press <b>Submit</b> again with the same values, or load it from the '
+      +'<b>PO Number list</b> ("APPROVED — DRAFT SAVED") and Submit.','warn');
+  }catch(e){
+    if(unloadTableMissing_(e)){unloadMissingWarn_();return true;}
+    showToast('The verification request could not be sent: '+escText(e.message||e),'error');
+    return false;
+  }
+  loadInwardApprovedDrafts_().then(()=>{renderPoNumberPanel();inwDraftRenderStrip_();})
+    .catch(e=>console.warn('[SARV] Draft list refresh skipped:',e.message||e));
+  return false;
+}
+/* After the record is written: retire the approval and stamp the supervisor's
+   details on the record. The server returns the authoritative unload_info,
+   which is what the PDF then prints. If the RPC cannot run, the snapshot the
+   gate read is written instead so the record is never left without it. */
+async function unloadMarkUsed_(rows,docNo,inwardId){
+  if(!sarvInwUnloadActive||sarvUnloadTableMissing)return;
+  const sig=inwardApprovalSignature_(rows,inwardPoRefList_(rows),inwardPrRefList_(rows));
+  try{
+    const d=await ulRpc_('ul_mark_used',{p_signature:sig,p_doc_no:docNo,p_inward_id:inwardId});
+    const info=unloadInfoFrom_(d&&d.unload_info);
+    if(info)sarvInwUnloadActive=info;
+  }catch(e){
+    console.warn('[SARV] Unloader approval stamp failed:',e.message||e);
+    const u=sarvInwUnloadActive;
+    try{
+      await SB.from('inward_entries').update({unload_info:{name:u.name,emp_code:u.empCode,contact_no:u.contact,
+        designation:u.designation,department:u.department,at:u.at,request_no:u.requestNo,
+        approval_id:u.approvalId,photo_count:u.photoCount,remarks:u.remarks}}).eq('id',inwardId);
+    }catch(x){}
+    showToast('Saved, but the Unloader approval could not be marked as used ('+escText(e.message||e)+').','warn');
+  }
+}
+/* The supervisor's photos, as images for the Original Invoice PDF. */
+async function unloadPhotosForPdf_(u){
+  if(!u||!u.approvalId||!SB_READY)return [];
+  try{
+    const q=await SB.from('inward_unload_photos').select('seq,image_data').eq('approval_id',u.approvalId).order('seq');
+    if(q.error)throw q.error;
+    const list=(q.data||[]).filter(p=>String(p.image_data||'').startsWith('data:image'));
+    return list.map((p,i)=>({name:'UNLOADING PHOTO '+(i+1)+' of '+list.length+' - verified by '+u.name+(u.empCode?' ('+u.empCode+')':''),
+      type:'image/jpeg',dataUrl:p.image_data}));
+  }catch(e){
+    console.warn('[SARV PDF] Unloading photos skipped:',e.message||e);
+    showToast('The unloading photos could not be added to the Original Invoice PDF: '+escText(e.message||e),'warn');
+    return [];
+  }
+}
+/* Requests waiting at the supervisor, plus the approved-but-unbooked ones
+   (returned, tagged _src 'UL', for the drafts list). */
+async function loadUnloadDraftRows_(){
+  if(!SB_READY||sarvUnloadTableMissing){sarvUnloadPending=[];return [];}
+  try{
+    const q=await SB.from(UNLOAD_APPROVAL_TABLE).select('*')
+      .in('status',['Approved','Pending']).is('used_on',null).order('id',{ascending:false}).limit(200);
+    if(q.error)throw q.error;
+    const rows=(q.data||[]).filter(r=>inwDraftItems_(r).length);
+    sarvUnloadPending=rows.filter(r=>r.status==='Pending');
+    return rows.filter(r=>r.status==='Approved').map(r=>({...r,_src:'UL'}));
+  }catch(e){
+    if(unloadTableMissing_(e))sarvUnloadTableMissing=true;
+    else console.warn('[SARV] Unloader drafts load skipped:',e.message||e);
+    sarvUnloadPending=[];
+    return [];
+  }
+}
+// The PDF's meta rows for the supervisor (Inward only).
+function inwUnloadRows_(d){
+  // d.unloader on a fresh entry; unload_info on a record read back from the database.
+  const u=d&&(d.unloader||unloadInfoFrom_(d.unload_info));
+  if(!u||!u.name)return [];
+  return [
+    ['Unloaded By:',u.name+(u.empCode?' ('+u.empCode+')':'')+(u.designation?' - '+u.designation:'')],
+    ['Unloader Mob.:',u.contact||'-'],
+    ['Unload Verified:',(u.at?pStamp(u.at):'-')+(u.requestNo?'  |  '+u.requestNo:'')+(u.photoCount?'  |  '+u.photoCount+' photo(s)':'')]
+  ];
+}
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
 /* Everything this receipt does that goes BEYOND the document it is booked
    against. Each one needs the Purchaser's approval before it can be saved —
@@ -2908,9 +3112,9 @@ function inwardDocOverrides(rows){
 let sarvInwApprovedDrafts=[];      // approved, not-yet-booked approvals
 let sarvInwDraftActive=null;       // the one loaded on the form right now
 let sarvInwDraftListFailed=false;  // table missing / unreadable — asked once
-const INW_DRAFT_LOCK_TITLE='The MD approved this value; it cannot be changed without removing the draft';
-const INW_DRAFT_PICKER_TITLE='An MD-approved draft is loaded; the PO / PR and items cannot be changed. Remove the draft first.';
-const INW_DRAFT_TYPE_MSG='An MD-approved draft is loaded; the Entry Type stays as it was when approved';
+const INW_DRAFT_LOCK_TITLE='This value was approved; it cannot be changed without removing the draft';
+const INW_DRAFT_PICKER_TITLE='An approved draft is loaded; the PO / PR and items cannot be changed. Remove the draft first.';
+const INW_DRAFT_TYPE_MSG='An approved draft is loaded; the Entry Type stays as it was when approved';
 
 /* reasons / payload come back as jsonb on a proper database and as TEXT on an
    older one, so both shapes are read — the same two readers mobile.html uses
@@ -2961,23 +3165,32 @@ function inwDraftExcess_(d){
    the only thing that retires a draft, so a database that predates that column
    is filtered in memory instead of having its query refused outright. */
 async function loadInwardApprovedDrafts_(){
-  if(!SB_READY||sarvInwDraftListFailed){sarvInwApprovedDrafts=[];return sarvInwApprovedDrafts}
-  try{
-    let q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
-      .eq('status','Approved').is('used_on',null).order('id',{ascending:false}).limit(200);
-    if(q.error&&/used_on/i.test(q.error.message||''))
-      q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
-        .eq('status','Approved').order('id',{ascending:false}).limit(200);
-    if(q.error)throw q.error;
-    sarvInwApprovedDrafts=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length);
-  }catch(e){
-    // No table, no approval desk — and no drafts section either. Said in the
-    // console only: the Submit path already names the migration to run, and
-    // repeating it on every PO refresh would be noise.
-    if(inwardApprovalTableMissing_(e))sarvInwDraftListFailed=true;
-    else console.warn('[SARV] Approved inward drafts load skipped:',e.message||e);
-    sarvInwApprovedDrafts=[];
+  if(!SB_READY){sarvInwApprovedDrafts=[];return sarvInwApprovedDrafts}
+  let md=[];
+  if(!sarvInwDraftListFailed){
+    try{
+      let q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
+        .eq('status','Approved').is('used_on',null).order('id',{ascending:false}).limit(200);
+      if(q.error&&/used_on/i.test(q.error.message||''))
+        q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
+          .eq('status','Approved').order('id',{ascending:false}).limit(200);
+      if(q.error)throw q.error;
+      md=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length).map(r=>({...r,_src:'MD'}));
+    }catch(e){
+      // No table, no approval desk — and no drafts section either. Said in the
+      // console only: the Submit path already names the migration to run, and
+      // repeating it on every PO refresh would be noise.
+      if(inwardApprovalTableMissing_(e))sarvInwDraftListFailed=true;
+      else console.warn('[SARV] Approved inward drafts load skipped:',e.message||e);
+    }
   }
+  /* Unloader-verified entries join the same list. One entry approved by both
+     (same signature) is shown once, as the MD card marked "Unloader ✔". */
+  const ul=await loadUnloadDraftRows_();
+  const ulSigs=new Set(ul.map(r=>r.signature));
+  const mdSigs=new Set(md.map(r=>r.signature));
+  sarvInwApprovedDrafts=md.map(r=>({...r,_ulOk:ulSigs.has(r.signature)}))
+    .concat(ul.filter(r=>!mdSigs.has(r.signature)));
   return sarvInwApprovedDrafts;
 }
 /* Which drafts belong on this form right now. Narrowed by Supplier Name for
@@ -2999,15 +3212,30 @@ function inwDraftPoNoSet_(){
 }
 /* The drafts block at the top of the PO Number panel. Returns '' when there is
    nothing approved and waiting, so the panel looks exactly as it did before. */
+/* Requests still with the Unloader Supervisor: listed (not loadable) so the
+   store can see what it is waiting for, newest first. */
+function inwUnloadPendingHtml_(){
+  const list=sarvUnloadPending||[];
+  if(!list.length)return '';
+  return '<div style="padding:5px 6px;margin-bottom:5px;background:#fff7ed;border:1px solid #fdba74;border-radius:5px;">'
+    +'<div style="font-size:10px;font-weight:800;color:#c2410c;letter-spacing:.3px;margin-bottom:3px;">'
+    +'WAITING AT UNLOADER SUPERVISOR <span style="background:#c2410c;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;">'+list.length+'</span></div>'
+    +list.slice(0,20).map(d=>'<div style="font-size:10px;color:#7c2d12;font-weight:600;padding:2px 0;border-top:1px dashed #fed7aa;">'
+      +'<b>'+escText(d.request_no||('#'+d.id))+'</b> · '+escText(d.supplier_name||'-')
+      +' · Invoice '+escText(d.invoice_no||'-')+' · '+inwDraftItems_(d).length+' item'
+      +(d.requested_at?(' · sent '+escText(pStamp(d.requested_at))):'')+'</div>').join('')
+    +'</div>';
+}
 function inwDraftListHtml_(){
-  if(sarvInwDraftListFailed)return '';
   const all=sarvInwApprovedDrafts;
-  if(!all.length)return '';
+  const waiting=inwUnloadPendingHtml_();
+  if(!all.length)return waiting?(waiting+'<div style="border-top:1px dashed #cbd5e1;margin:5px 0 4px;padding-top:4px;font-size:9px;'
+    +'font-weight:800;color:#94a3b8;letter-spacing:.3px;">OPEN PO: NEW ENTRY</div>'):'';
   const mine=inwDraftsForSupplier_();
   const hidden=all.length-mine.length;
-  const head='<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;'
+  const head=waiting+'<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;margin-bottom:4px;'
     +'background:#f0fdf4;border:1px solid #86efac;border-radius:5px;">'
-    +'<span style="font-size:10px;font-weight:800;color:#15803d;letter-spacing:.3px;">MD APPROVED — DRAFT SAVED</span>'
+    +'<span style="font-size:10px;font-weight:800;color:#15803d;letter-spacing:.3px;">APPROVED — DRAFT SAVED</span>'
     +'<span style="background:#15803d;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;font-weight:800;">'+all.length+'</span>'
     +'<button type="button" class="inw-draft-refresh" title="Reload the approval list" '
     +'style="margin-left:auto;background:#fff;border:1px solid #86efac;color:#15803d;border-radius:4px;'
@@ -3023,6 +3251,9 @@ function inwDraftListHtml_(){
       +';border-radius:6px;padding:6px 7px;margin-bottom:5px;">'
       +'<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#14532d;">'
       +'<span>'+escText(d.request_no||('#'+d.id))+'</span>'
+      +'<span style="background:'+(d._src==='UL'?'#c2410c':'#15803d')+';color:#fff;border-radius:4px;padding:0 5px;font-size:9px;font-weight:800;">'
+      +(d._src==='UL'?'UNLOADER':'MD')+'</span>'
+      +(d._ulOk?'<span style="background:#ffedd5;color:#c2410c;border-radius:4px;padding:0 5px;font-size:9px;font-weight:800;">UNLOADER ✓</span>':'')
       +'<span style="color:#15803d;font-weight:700;font-size:10px;">'+escText(inwDraftRef_(d))+'</span>'
       +(active?'<span style="margin-left:auto;background:#15803d;color:#fff;border-radius:9px;padding:0 6px;font-size:9px;font-weight:800;">FORM ME LOADED</span>':'')
       +'</div>'
@@ -3036,7 +3267,8 @@ function inwDraftListHtml_(){
       +(reasons.length?('<div style="font-size:9px;color:#7c2d12;margin-top:3px;font-weight:600;">'
         +escText(reasons[0])+(reasons.length>1?(' +'+(reasons.length-1)+' more'):'')+'</div>'):'')
       +'<div style="font-size:9px;color:#15803d;margin-top:3px;font-weight:700;">✔ '
-      +escText(d.decided_by||'MD')+(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</div>'
+      +escText(d.decided_by||(d._src==='UL'?'Unloader Supervisor':'MD'))+(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')
+      +(d._src==='UL'&&d.photo_count?(' · '+escText(d.photo_count)+' photo(s)'):'')+'</div>'
       +'<div style="margin-top:5px;">'
       +(active
         ?'<button type="button" class="inw-draft-cancel" style="background:#fee2e2;border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;cursor:pointer;">✖ Remove Draft</button>'
@@ -3058,7 +3290,8 @@ function inwDraftBindPanel_(panel){
     e.preventDefault();e.stopPropagation();
     loadInwardApprovedDrafts_().then(()=>{
       renderPoNumberPanel();
-      showToast(''+sarvInwApprovedDrafts.length+' MD-approved draft(s) in the list');
+      showToast(''+sarvInwApprovedDrafts.length+' approved draft(s) in the list'
+        +(sarvUnloadPending.length?(' · '+sarvUnloadPending.length+' waiting at the Unloader Supervisor'):''));
     }).catch(dbError);
   });
   panel.querySelectorAll('.inw-draft-load').forEach(b=>b.addEventListener('click',e=>{
@@ -3231,17 +3464,20 @@ async function inwDraftLoad_(id){
   if(!SB_READY)return showToast('Please configure Supabase','warn');
   let d=sarvInwApprovedDrafts.find(x=>String(x.id)===String(id));
   if(!d)return showToast('This approved draft was not found in the list. Press Refresh.','warn');
+  // MD and Unloader approvals live in different tables, and their ids can clash.
+  const src=d._src||'MD', ulOk=!!d._ulOk;
+  const who=src==='UL'?'Unloader-verified':'MD-approved';
   /* Re-read it before anything is loaded. "Any time later" can be days later:
      in the meantime the same draft may have been booked at another desk, or the
      MD may have changed their mind. */
   try{
-    const q=await SB.from(INWARD_APPROVAL_TABLE).select('*').eq('id',d.id).maybeSingle();
+    const q=await SB.from(src==='UL'?UNLOAD_APPROVAL_TABLE:INWARD_APPROVAL_TABLE).select('*').eq('id',d.id).maybeSingle();
     if(q.error)throw q.error;
     if(!q.data){
       await loadInwardApprovedDrafts_();renderPoNumberPanel();
       return showToast('This approval is no longer in the database','error');
     }
-    d=q.data;
+    d={...q.data,_src:src,_ulOk:ulOk};
     if(String(d.status||'')!=='Approved'){
       await loadInwardApprovedDrafts_();renderPoNumberPanel();
       return showToast('This request\'s status is now <b>'+escText(d.status||'-')+'</b>; the draft will not load','warn');
@@ -3258,7 +3494,7 @@ async function inwDraftLoad_(id){
   const p=inwDraftPayload_(d), items=inwDraftItems_(d);
   if(!items.length)return showToast('This approval has no items, so the draft cannot be loaded','error');
   if(sarvEditingInwardId&&!confirm((sarvEditingInwardNo||'A record')
-    +' is open in edit mode.\n\nLeave it and load the MD-approved draft?'))return;
+    +' is open in edit mode.\n\nLeave it and load the '+who+' draft?'))return;
   activatePanel('inwardPanel');
   // The draft carries its OWN Nature of Inward — a Nature pinned by the Home
   // chooser must not overwrite what the MD approved.
@@ -3283,6 +3519,11 @@ async function inwDraftLoad_(id){
   set('inwRemarks',p.remarks||'');
   const nat=byId('inwNatureOfInward');
   if(nat){nat.value=p.natureOfInward||'Purchase';nat.dispatchEvent(new Event('change'));}
+  /* Gate Pass, Lot, Machine and the freight figures. Only an Unloader request
+     carries these (inwardDraftExtra_); set after the Nature change above,
+     whose handler may reset some of them. */
+  const ex=(p.extra&&typeof p.extra==='object')?p.extra:{};
+  Object.keys(ex).forEach(k=>{if(ex[k]!==''&&ex[k]!=null&&byId(k))set(k,ex[k]);});
   // ── The PO / PR link ───────────────────────────────────────────
   const poNos=inwDraftPoNos_(d), prNos=inwDraftPrNos_(d);
   if(poNos.length){
@@ -3305,7 +3546,7 @@ async function inwDraftLoad_(id){
   setInwardPoLock(poNos.length>0);
   updateStoreTotals();
   // ── Locked, and announced ──────────────────────────────────────
-  sarvInwDraftActive={id:d.id,requestNo:d.request_no||('#'+d.id),signature:d.signature||'',row:d};
+  sarvInwDraftActive={id:d.id,requestNo:d.request_no||('#'+d.id),signature:d.signature||'',row:d,src};
   inwDraftApplyLock_();
   renderPoNumberPanel();
   /* Two checks the user is better off reading now than at Submit.
@@ -3324,8 +3565,8 @@ async function inwDraftLoad_(id){
   const sig=inwardApprovalSignature_(live,inwardPoRefList_(live),inwardPrRefList_(live));
   if(d.signature&&sig!==d.signature)
     showToast('<b>'+escText(sarvInwDraftActive.requestNo)+'</b> has loaded, but this form\'s values '
-      +'do not match the MD\'s approved values at all; approval will be requested again on Submit.<br>'
-      +'If the PO or Item Master has changed, ask the MD to approve again.','warn');
+      +'do not match the approved values at all; approval will be requested again on Submit.<br>'
+      +'If the PO or Item Master has changed, it has to be approved again.','warn');
   const drift=[];
   items.forEach((it,i)=>{
     const r=live[i];if(!r)return;
@@ -3336,7 +3577,7 @@ async function inwDraftLoad_(id){
     showToast('More material has arrived for these items since the approval; Already / Excess on the strip have changed '
       +'dikhega: '+escText([...new Set(drift)].slice(0,3).join(', '))+(drift.length>3?' …':'')
       +'<br>The MD\'s approval is for that Qty / Weight / Rate and still stands.','warn');
-  showToast('MD-approved draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> loaded into the form; '
+  showToast(who+' draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> loaded into the form; '
     +'Qty / Weight / Rate are locked. Add Remarks and Photos and Submit whenever you are ready.');
   byId('inwDraftLockStrip')?.scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -3401,13 +3642,13 @@ function inwDraftRenderStrip_(){
   const box=byId('inwDraftLockStrip');if(!box)return;
   const d=sarvInwDraftActive&&sarvInwDraftActive.row;
   if(!d){
-    const n=sarvInwDraftListFailed?0:inwDraftsForSupplier_().length;
+    const n=inwDraftsForSupplier_().length;
     if(!n){box.style.display='none';box.innerHTML='';return}
     box.style.background='#f0fdf4';box.style.borderColor='#86efac';box.style.color='#14532d';
     box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-      +'<span style="font-weight:800;">'+n+' MD-approved draft'+(n===1?' is':'s are')+' ready</span>'
+      +'<span style="font-weight:800;">'+n+' approved draft'+(n===1?' is':'s are')+' ready</span>'
       +'<span style="font-weight:600;"> Open the PO Number list and press <b>Load into form</b>; '
-      +'the whole entry is filled in exactly as the MD approved it.</span>'
+      +'the whole entry is filled in exactly as it was approved.</span>'
       +'<button type="button" id="inwDraftOpenPickerBtn" style="margin-left:auto;background:#15803d;border:none;'
       +'color:#fff;border-radius:5px;padding:3px 10px;font-size:10px;font-weight:800;cursor:pointer;">Draft list</button>'
       +'</div>';
@@ -3424,10 +3665,10 @@ function inwDraftRenderStrip_(){
   const pill=(l,v)=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 6px;'
     +'font-size:10px;font-weight:800;">'+escText(l)+' '+escText(v)+'</span>';
   box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-    +'<span style="font-weight:800;color:#15803d;">MD APPROVED DRAFT</span>'
+    +'<span style="font-weight:800;color:#15803d;">'+(sarvInwDraftActive.src==='UL'?'UNLOADER VERIFIED DRAFT':'MD APPROVED DRAFT')+'</span>'
     +'<span style="font-weight:800;">'+escText(sarvInwDraftActive.requestNo)+'</span>'
     +'<span style="font-weight:700;">'+escText(inwDraftRef_(d))+'</span>'
-    +'<span style="font-weight:600;">✔ '+escText(d.decided_by||'MD')
+    +'<span style="font-weight:600;">✔ '+escText(d.decided_by||(sarvInwDraftActive.src==='UL'?'Unloader Supervisor':'MD'))
       +(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</span>'
     +(ex.qty>0?pill('Excess Qty',nWt_(ex.qty)):'')
     +(ex.wt>0?pill('Excess Wt',nWt_(ex.wt)+' KGS'):'')
@@ -3435,7 +3676,7 @@ function inwDraftRenderStrip_(){
     +'border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 10px;font-size:10px;'
     +'font-weight:800;cursor:pointer;">✖ Remove Draft</button></div>'
     +'<div style="margin-top:4px;font-weight:600;">Qty / Weight / Rate, items and the PO / PR link '
-    +'are <b>locked</b>; the MD approved these figures. Add Remarks and Photos and Submit whenever '
+    +'are <b>locked</b>; these figures were approved. Add Remarks and Photos and Submit whenever '
     +'you are ready; until then this draft stays in the approval list.</div>'
     +(reasons.length?('<ul style="margin:4px 0 0;padding-left:18px;font-weight:600;">'
       +reasons.map(x=>'<li>'+escText(x)+'</li>').join('')+'</ul>'):'');
@@ -4618,7 +4859,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL'];
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5477,6 +5718,12 @@ const SARV_TABS=[
   /* Salaries, so not on for everyone: the same four roles as launcher.html's
      APPS entry (its defRoles). Change both together. */
   {key:'HOME_HR_PAYROLL',label:'HR & Payroll',hint:'Employees, attendance, advances, PF/ESI and the monthly salary sheet (hr-payroll.html, opens from the launcher or ERP › HR Management)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN']},
+  /* Approves every new Inward at the unloading point (unloader.html). The
+     server checks this key on every approval (ul_ctx_ in
+     UNLOADER_APPROVAL_MIGRATION.sql), so it is a real right. Admin only by
+     default: turn it ON for the supervisor(s) here or under Users › Apps.
+     The same default as launcher.html's APPS entry (its defRoles). */
+  {key:'HOME_UNLOADER',label:'Unloader Supervisor',hint:'Verify every new Inward at unloading: item photos + own PIN, approve or reject (unloader.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Inward PDF)',def:['ADMIN_PIN']},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -5505,6 +5752,10 @@ const SARV_TABS=[
   {key:'HR_VIEW',label:'See HR data & reports',hint:'Dashboard, employees, attendance, salary sheet, payslips (read only)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_EMPLOYEES',label:'Employees & salary rows',hint:'Add / edit employees, duty hours and salary revisions, Employee Master import',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_ATTENDANCE',label:'Import attendance',hint:'Biometric machine-data import (the Attendance screen itself is read-only)',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  /* Shows the "Machine data" button on the Attendance screen: view the
+     imported rows (in / out / shift / source) and correct, add or delete a
+     day by hand with a reason. Server: HR_MACHINE_EDIT_MIGRATION.sql. */
+  {key:'HR_MACHINE_EDIT',label:'Machine data: view & edit',hint:'Attendance › Machine data button: see the imported punch rows and correct / add / delete a day (reason required, audit-logged)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_TXN',label:'Advances, loans, PF/ESI',hint:'EMP. EXP entries, loans + EMIs, the ON ROLL register',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_PAYROLL',label:'Compute salary',hint:'Compute / recompute the salary sheet, enter Net Cash Paid',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HR_LOCK',label:'Lock / unlock a month',hint:'A locked month freezes its attendance, advances, PF/ESI and salary sheet',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
@@ -6153,9 +6404,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -11021,6 +11272,17 @@ const SARV_DROPDOWNS=[
    hint:'Outward\'s "Nature of Dispatch". Note: removing "Repair" means dispatches won\'t go to the Repair Tracker. ISSUE\'s own locked nature is not affected.',
    where:'#outNatureOfDispatch (OUTWARD)',
    def:['Non-Returnable','Repair','Transfer','Sample']},
+  /* One row per checklist (a JSON value), edited with its own builder, not
+     the plain value box — see STORE CHECKLISTS (sarvChkMainHtml_). The key is
+     written out, not SARV_CHK_DD_KEY: that const is declared further down
+     and this array is built when the file loads. Keep the two the same. */
+  {key:'erp_storeChecklist',label:'Store In / Out PDF Checklist',storeChecklist:true,
+   hint:'Checklist lines printed with tick-boxes on the Inward / Outward / Issue PDF. Each checklist is set for Inward, Outward or both, '
+     +'optionally for chosen Entry Types (INWARD, INWARD NB, OUTWARD, ISSUE), and for all items or only items of chosen Categories, '
+     +'or whose Description / Item Name contains a text. Every checklist that matches the entry and at least one of its items is printed, '
+     +'with the items it applies to.',
+   where:'Inward / Outward / Issue PDFs (both copies) and the pre-submit preview',
+   def:[]},
 
   {group:'Employee / Purchase Requirement'},
   /* HR & Payroll's Employee form and Employee Master import also take their
@@ -11445,6 +11707,9 @@ function sarvDdMainHtml_(){
     return h;
   }
 
+  // Store checklists: their own builder and table (a row is JSON, not a word).
+  if(d.storeChecklist){h+=sarvChkMainHtml_(admin);return h;}
+
   const combo=d.key===IM_SLICER_COMBO_DD_KEY;
   // Combined: the Column → Value builder is the main way in; the typed "~"
   // box stays below it, folded away, for whoever prefers typing.
@@ -11536,6 +11801,334 @@ window.loadDropdownMaster=async function(){
   await sarvLoadDropdowns_(!sarvDdLoaded);
   sarvDdRender_();
 };
+
+/* ================================================================
+   STORE CHECKLISTS on the In / Out PDFs  (Dropdown Master key erp_storeChecklist)
+   ----------------------------------------------------------------
+   The Admin sets checklists in Master Data › Dropdown Master › "Store In /
+   Out PDF Checklist". Each checklist says WHEN it applies and WHAT to tick:
+     dir    IN (Inward), OUT (Outward / Issue) or BOTH
+     types  Entry Types it is limited to (INWARD, INWARD NB, OUTWARD, ISSUE);
+            none ticked = every Entry Type of that direction
+     by     ALL (every entry), CATEGORY (the item's Category equals one of
+            `match`), DESCRIPTION / ITEM (the item's Description / Name
+            contains one of `match`); case does not matter
+     lines  the checklist points, each printed with an empty tick-box
+     on     false pauses a checklist without deleting it
+   When a Store entry is submitted, every checklist that matches its
+   direction, Entry Type and at least one of its items is printed on the
+   entry's PDF (both copies, both layouts, and the pre-submit preview), with
+   the items it was matched by.
+
+   Stored as ONE row of sales_dropdowns per checklist, the value being a
+   small JSON object with a version number (v:1). So there is no new table or
+   migration: Admin-only writes, reorder, load and cache are the Dropdown
+   Master's own. A field added later is read with a default, so old rows keep
+   working, and a row that cannot be read is listed (to delete) and never
+   printed. Lists are matched from the Master as it is when the PDF is built.
+================================================================ */
+const SARV_CHK_DD_KEY='erp_storeChecklist';
+const SARV_CHK_TYPES={IN:['INWARD','INWARD NB'],OUT:['OUTWARD','ISSUE']};
+const SARV_CHK_DIR={IN:'Inward',OUT:'Outward / Issue',BOTH:'Inward + Outward'};
+const SARV_CHK_BY={ALL:'All items',CATEGORY:'Item Category',DESCRIPTION:'Item Description (contains)',ITEM:'Item Name (contains)'};
+const SARV_CHK_MAX_LINES=40;
+let sarvChkEditId=null;      // the checklist open in the builder: 0 = new, null = builder closed
+
+function sarvChkParse_(row){
+  try{
+    const o=JSON.parse(row.value);
+    if(!o||typeof o!=='object'||!Array.isArray(o.lines))return null;
+    const up=s=>String(s==null?'':s).trim();
+    return {id:row.id,v:o.v||1,name:up(o.name),
+      dir:SARV_CHK_DIR[o.dir]?o.dir:'BOTH',
+      types:Array.isArray(o.types)?o.types.map(s=>up(s).toUpperCase()).filter(Boolean):[],
+      by:SARV_CHK_BY[o.by]?o.by:'ALL',
+      match:Array.isArray(o.match)?o.match.map(up).filter(Boolean):[],
+      lines:o.lines.map(up).filter(Boolean),
+      on:o.on!==false};
+  }catch(e){return null;}
+}
+function sarvChecklists_(){return sarvDdRowsOf(SARV_CHK_DD_KEY).map(sarvChkParse_).filter(Boolean);}
+/* The three fields a checklist can match on, from an Inward row (name / desc /
+   cat) or an Outward row (itemName / itemDesc / category), topped up from the
+   Item Master where the row itself does not carry them. */
+function sarvChkItemFields_(it){
+  const name=String(it.name||it.itemName||'').trim();
+  let desc=String(it.desc||it.itemDesc||it.description||'').trim();
+  let cat=String(it.cat||it.category||'').trim();
+  if((!desc||!cat)&&name&&typeof lookupItem==='function'){
+    const m=lookupItem(name)||{};
+    if(!desc)desc=String(m.description||'').trim();
+    if(!cat)cat=String(m.category||'').trim();
+  }
+  return {name,N:name.toUpperCase(),D:desc.toUpperCase(),C:cat.toUpperCase()};
+}
+function sarvChkItemMatch_(c,f){
+  if(c.by==='ALL')return true;
+  const hay=c.by==='CATEGORY'?f.C:c.by==='DESCRIPTION'?f.D:f.N;
+  if(!hay)return false;
+  return c.match.some(m=>{const v=m.toUpperCase();return c.by==='CATEGORY'?hay===v:hay.indexOf(v)>=0;});
+}
+/* The checklists to print for one entry: [{title, items:[names], lines:[…]}]. */
+function sarvStoreChecklistsFor_(kind,d,items){
+  const dir=(kind==='OUTWARD'||kind==='ISSUE')?'OUT':'IN';
+  const et=String((d&&d.entryType)||kind||'').trim().toUpperCase();
+  const rows=(items||[]).map(sarvChkItemFields_);
+  const out=[];
+  sarvChecklists_().forEach(c=>{
+    if(!c.on||!c.lines.length)return;
+    if(c.dir!=='BOTH'&&c.dir!==dir)return;
+    if(c.types.length&&c.types.indexOf(et)<0)return;
+    let names=[];
+    if(c.by!=='ALL'){
+      names=[...new Set(rows.filter(f=>sarvChkItemMatch_(c,f)).map(f=>f.name).filter(Boolean))];
+      if(!names.length)return;
+    }
+    out.push({title:c.name||(c.by==='ALL'?'General checklist':c.match.join(', ')),items:names,lines:c.lines});
+  });
+  return out;
+}
+// HTML copy (pre-submit preview and the HTML fallback of the PDF).
+function storeChecklistHtml_(kind,d,items){
+  const g=sarvStoreChecklistsFor_(kind,d,items);
+  if(!g.length)return '';
+  const box='<span style="display:inline-block;width:8px;height:8px;border:1px solid #0f172a;flex:0 0 auto;margin-top:2px;"></span>';
+  return '<div style="margin-top:6px;border:1px solid #0f172a;border-radius:3px;padding:4px 7px;page-break-inside:avoid;">'
+    +'<div style="font-size:9px;font-weight:900;letter-spacing:.4px;color:#0d5c53;">CHECKLIST</div>'
+    +g.map(c=>'<div style="margin-top:3px;">'
+      +'<div style="font-size:8.5px;font-weight:800;">'+pEsc(c.title)
+      +(c.items.length?' <span style="font-weight:600;color:#475569;">(for: '+pEsc(c.items.join(', '))+')</span>':'')+'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;column-gap:12px;row-gap:1px;">'
+      +c.lines.map(l=>'<div style="font-size:8.5px;display:flex;gap:5px;align-items:flex-start;">'+box+'<span>'+pEsc(l)+'</span></div>').join('')
+      +'</div></div>').join('')
+    +'</div>';
+}
+/* Native PDF. Two columns of tick-box lines inside a box, under Remarks and
+   above the signatures. maxY is the lowest the block may reach before it
+   crowds the signature line. If it does not fit: smaller type first; then, on
+   a full-width copy (canBreak), it continues on a new page; on a half-page
+   copy (landscape SINGLE, two copies side by side) the rest is cut with a
+   note pointing to the TWO PAGE PDF, which always has the full list.
+   Returns the y below the block. */
+function drawStoreChecklistNative_(doc,kind,d,items,x,y,w,maxY,canBreak){
+  const groups=sarvStoreChecklistsFor_(kind,d,items);
+  if(!groups.length)return y;
+  const gap=4,colW=(w-4-gap)/2;
+  const plan=fs=>{
+    doc.setFontSize(fs);
+    const lh=fs*0.42,ops=[];let h=4.6;
+    groups.forEach(c=>{
+      doc.setFont(undefined,'bold');
+      const head=doc.splitTextToSize(c.title+(c.items.length?'  (for: '+c.items.join(', ')+')':''),w-4);
+      ops.push({t:'h',a:head,dy:h});h+=head.length*lh+0.6;
+      doc.setFont(undefined,'normal');
+      for(let i=0;i<c.lines.length;i+=2){
+        const a=doc.splitTextToSize(c.lines[i],colW-lh-2);
+        const b=i+1<c.lines.length?doc.splitTextToSize(c.lines[i+1],colW-lh-2):null;
+        ops.push({t:'r',a,b,dy:h});h+=Math.max(a.length,b?b.length:1)*lh+0.8;
+      }
+      h+=0.6;
+    });
+    return {fs,lh,ops,h:h+0.8};
+  };
+  let p=plan(7);
+  if(y+p.h>maxY)p=plan(6);
+  if(y+p.h>maxY&&canBreak){doc.addPage();y=8;}
+  const top=y,limit=canBreak?doc.internal.pageSize.getHeight()-12:maxY;
+  doc.setTextColor(13,92,83);doc.setFont(undefined,'bold');doc.setFontSize(p.fs+0.5);
+  doc.text('CHECKLIST',x+2,top+3.4);
+  doc.setTextColor(0,0,0);
+  let bottom=top+4.6,cut=0;
+  const tick=(bx,by)=>{const s=p.lh*0.85;doc.setDrawColor(15,23,42);doc.setLineWidth(0.25);doc.rect(bx,by-s+0.3,s,s);};
+  for(let k=0;k<p.ops.length;k++){
+    const op=p.ops[k],oy=top+op.dy+p.lh;
+    const rows=op.t==='h'?op.a.length:Math.max(op.a.length,op.b?op.b.length:1);
+    if(oy+(rows-1)*p.lh>limit-4){cut=p.ops.slice(k).reduce((n,o)=>n+(o.t==='r'?(o.b?2:1):0),0);break;}
+    doc.setFontSize(p.fs);
+    if(op.t==='h'){doc.setFont(undefined,'bold');doc.text(op.a,x+2,oy);}
+    else{
+      doc.setFont(undefined,'normal');
+      tick(x+2,oy);doc.text(op.a,x+2+p.lh+1.2,oy);
+      if(op.b){tick(x+2+colW+gap,oy);doc.text(op.b,x+2+colW+gap+p.lh+1.2,oy);}
+    }
+    bottom=oy+(rows-1)*p.lh+1.2;
+  }
+  if(cut){
+    doc.setFont(undefined,'italic');doc.setFontSize(6);doc.setTextColor(180,83,9);
+    doc.text('+ '+cut+' more checklist line(s): see the TWO PAGE PDF',x+2,bottom+2.4);
+    doc.setTextColor(0,0,0);bottom+=3.4;
+  }
+  doc.setDrawColor(15,23,42);doc.setLineWidth(0.3);
+  doc.rect(x,top,w,bottom-top+0.8);
+  doc.setFont(undefined,'normal');
+  return bottom+2.4;
+}
+
+/* ── Dropdown Master: the checklist builder ───────────────────────── */
+function sarvChkCategories_(extra){
+  const set=new Set();
+  sarvDropdownList('erp_itemCategory').forEach(v=>set.add(String(v).trim().toUpperCase()));
+  (sarvItemCatalog||[]).forEach(it=>{const c=String(it.category||'').trim().toUpperCase();if(c)set.add(c);});
+  (extra||[]).forEach(v=>set.add(String(v).trim().toUpperCase()));
+  set.delete('');
+  return [...set].sort((a,b)=>a.localeCompare(b));
+}
+function sarvChkFormHtml_(){
+  const row=sarvChkEditId?sarvDdRows.find(r=>r.id===sarvChkEditId):null;
+  const c=(row&&sarvChkParse_(row))||{name:'',dir:'IN',types:[],by:'CATEGORY',match:[],lines:[],on:true};
+  const typeBox=(t,dir)=>'<label class="chk-t" data-dir="'+dir+'" style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:11.5px;">'
+    +'<input type="checkbox" value="'+escText(t)+'"'+(c.types.indexOf(t)>=0?' checked':'')+'> '+escText(t)+'</label>';
+  const cats=sarvChkCategories_(c.by==='CATEGORY'?c.match:[]);
+  const catSet=new Set(c.by==='CATEGORY'?c.match.map(v=>v.toUpperCase()):[]);
+  return '<div class="dd-cb" id="chk_form">'
+    +'<div class="dd-cb-title"><b>'+(row?'Edit checklist':'New checklist')+'</b></div>'
+    +'<div class="dd-cb-row"><span class="dd-cb-n">NAME</span><input id="chk_name" class="form-control dd-cb-val" maxlength="80" placeholder="e.g. YARN RECEIVING CHECK (printed as the heading)" value="'+escText(c.name)+'"></div>'
+    +'<div class="dd-cb-row"><span class="dd-cb-n">IN/OUT</span><select id="chk_dir" class="form-control dd-cb-col" onchange="sarvChkSync()">'
+      +Object.keys(SARV_CHK_DIR).map(k=>'<option value="'+k+'"'+(c.dir===k?' selected':'')+'>'+escText(SARV_CHK_DIR[k])+'</option>').join('')+'</select></div>'
+    +'<div class="dd-cb-row"><span class="dd-cb-n">TYPE</span><span id="chk_types">'
+      +SARV_CHK_TYPES.IN.map(t=>typeBox(t,'IN')).join('')+SARV_CHK_TYPES.OUT.map(t=>typeBox(t,'OUT')).join('')
+      +'</span><span class="dd-cb-ph">none ticked = every Entry Type</span></div>'
+    +'<div class="dd-cb-row"><span class="dd-cb-n">FOR</span><select id="chk_by" class="form-control dd-cb-col" onchange="sarvChkSync()">'
+      +Object.keys(SARV_CHK_BY).map(k=>'<option value="'+k+'"'+(c.by===k?' selected':'')+'>'+escText(SARV_CHK_BY[k])+'</option>').join('')+'</select>'
+      +'<span class="dd-cb-ph" id="chk_count"></span></div>'
+    +'<div class="dd-cb-row" id="chk_catRow" style="align-items:flex-start;"><span class="dd-cb-n">CAT</span>'
+      +'<div style="flex:1;min-width:200px;max-height:170px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;background:#fff;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 10px;">'
+      +(cats.length?cats.map(v=>'<label style="font-size:11px;display:flex;gap:5px;align-items:center;"><input type="checkbox" class="chk-cat" value="'+escText(v)+'"'+(catSet.has(v)?' checked':'')+' onchange="sarvChkCount()"> '+escText(v)+'</label>').join('')
+        :'<span class="dd-cb-ph">No categories yet (Item Category list / Item Master).</span>')
+      +'</div></div>'
+    +'<div class="dd-cb-row" id="chk_txtRow" style="align-items:flex-start;"><span class="dd-cb-n">TEXT</span>'
+      +'<textarea id="chk_match" class="form-control" rows="3" style="flex:1;min-width:200px;font-size:12px;" oninput="sarvChkCount()" placeholder="One per line. The item matches if its text CONTAINS any of these, e.g.&#10;COTTON YARN&#10;BEARING">'
+      +escText(c.by==='CATEGORY'?'':c.match.join('\n'))+'</textarea></div>'
+    +'<div class="dd-cb-row" style="align-items:flex-start;"><span class="dd-cb-n">LINES</span>'
+      +'<textarea id="chk_lines" class="form-control" rows="6" style="flex:1;min-width:200px;font-size:12px;" placeholder="One checklist point per line; each prints with a tick-box, e.g.&#10;BAGS DRY AND SEALED&#10;LOT NO. MATCHES THE INVOICE&#10;WEIGHT CHECKED ON THE SCALE">'
+      +escText(c.lines.join('\n'))+'</textarea></div>'
+    +'<div class="dd-cb-foot">'
+      +'<label style="font-size:11.5px;display:inline-flex;gap:5px;align-items:center;"><input type="checkbox" id="chk_on"'+(c.on?' checked':'')+'> Active (printed on PDFs)</label>'
+      +'<span class="dd-cb-prev"></span>'
+      +'<button class="btn btn-primary" onclick="sarvChkSave()">'+(row?'Save changes':'Save checklist')+'</button>'
+      +'<button class="btn" style="background:#f1f5f9;color:#334155;border:1px solid #e2e8f0;" onclick="sarvChkClose()">Cancel</button>'
+    +'</div></div>';
+}
+// Shows the Entry Types of the chosen direction and the matching input of the chosen "For".
+window.sarvChkSync=function(){
+  const dir=byId('chk_dir')?.value||'BOTH',by=byId('chk_by')?.value||'ALL';
+  document.querySelectorAll('#chk_types .chk-t').forEach(l=>{
+    const show=dir==='BOTH'||l.dataset.dir===dir;
+    l.style.display=show?'inline-flex':'none';
+    if(!show)l.querySelector('input').checked=false;
+  });
+  const cr=byId('chk_catRow'),tr=byId('chk_txtRow');
+  if(cr)cr.style.display=by==='CATEGORY'?'flex':'none';
+  if(tr)tr.style.display=(by==='DESCRIPTION'||by==='ITEM')?'flex':'none';
+  sarvChkCount();
+};
+// How many Item Master items the current choice catches, so a typo shows at once.
+window.sarvChkCount=function(){
+  const out=byId('chk_count');if(!out)return;
+  const by=byId('chk_by')?.value||'ALL';
+  if(by==='ALL'){out.textContent='every entry of the chosen In / Out and Entry Type';return;}
+  const cat=(sarvItemCatalog||[]);
+  if(!cat.length){out.textContent='';return;}
+  const match=sarvChkFormMatch_(by);
+  if(!match.length){out.textContent='choose / type at least one value';return;}
+  const c={by,match};
+  const n=cat.filter(it=>sarvChkItemMatch_(c,{N:String(it.name||'').toUpperCase(),D:String(it.description||'').toUpperCase(),C:String(it.category||'').trim().toUpperCase()})).length;
+  out.textContent=n+' item(s) in the Item Master match';
+  out.style.color=n?'#166534':'#b91c1c';
+};
+function sarvChkFormMatch_(by){
+  if(by==='CATEGORY')return [...document.querySelectorAll('#chk_catRow .chk-cat:checked')].map(i=>i.value);
+  return String(byId('chk_match')?.value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+}
+window.sarvChkOpen=function(id){
+  if(!sarvDdGuard_())return;
+  sarvChkEditId=id||0;sarvDdRender_();
+  sarvChkSync();
+  byId('chk_form')?.scrollIntoView({behavior:'smooth',block:'start'});
+  byId('chk_name')?.focus();
+};
+window.sarvChkClose=function(){sarvChkEditId=null;sarvDdRender_();};
+window.sarvChkSave=async function(){
+  if(!sarvDdGuard_())return;
+  const dir=byId('chk_dir').value,by=byId('chk_by').value;
+  const types=[...document.querySelectorAll('#chk_types input:checked')].map(i=>i.value)
+    .filter(t=>dir==='BOTH'||SARV_CHK_TYPES[dir].indexOf(t)>=0);
+  const match=by==='ALL'?[]:[...new Set(sarvChkFormMatch_(by).map(s=>s.toUpperCase()))];
+  const seen=new Set();
+  const lines=String(byId('chk_lines').value||'').split('\n').map(s=>s.trim())
+    .filter(s=>s&&!seen.has(s.toUpperCase())&&seen.add(s.toUpperCase()));
+  if(by!=='ALL'&&!match.length)return showToast('Choose at least one '+(by==='CATEGORY'?'Category':'text to match'),'warn');
+  if(!lines.length)return showToast('Write at least one checklist line','warn');
+  if(lines.length>SARV_CHK_MAX_LINES)return showToast('At most '+SARV_CHK_MAX_LINES+' lines in one checklist; split it into two','warn');
+  if(lines.some(l=>l.length>160))return showToast('A checklist line can be at most 160 characters','warn');
+  const obj={v:1,name:String(byId('chk_name').value||'').trim(),dir,types,by,match,lines,on:!!byId('chk_on').checked};
+  const val=JSON.stringify(obj);
+  const id=sarvChkEditId;
+  if(sarvDdRowsOf(SARV_CHK_DD_KEY).some(r=>r.id!==id&&r.value===val))return showToast('The same checklist already exists','warn');
+  try{
+    if(id){
+      const {error}=await SB.from(SARV_DD_TABLE).update({value:val}).eq('id',id);
+      if(error)throw error;
+      await sarvLoadDropdowns_(true);
+    }else if(!await sarvDdAddValue(SARV_CHK_DD_KEY,val))return;
+    sarvChkEditId=null;sarvDdRender_();
+    showToast('Checklist saved; it prints on the next matching '+(dir==='OUT'?'Outward / Issue':dir==='IN'?'Inward':'Store')+' PDF');
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+window.sarvChkToggle=async function(id){
+  if(!sarvDdGuard_())return;
+  const row=sarvDdRows.find(r=>r.id===id),c=row&&sarvChkParse_(row);if(!c)return;
+  const obj={v:1,name:c.name,dir:c.dir,types:c.types,by:c.by,match:c.match,lines:c.lines,on:!c.on};
+  try{
+    const {error}=await SB.from(SARV_DD_TABLE).update({value:JSON.stringify(obj)}).eq('id',id);
+    if(error)throw error;
+    await sarvLoadDropdowns_(true);sarvDdRender_();
+    showToast('Checklist '+(obj.on?'switched ON':'paused (not printed)'));
+  }catch(e){if(!sarvDdTableMissing_(e))dbError(e);}
+};
+function sarvChkMainHtml_(admin){
+  const rows=sarvDdRowsOf(SARV_CHK_DD_KEY);
+  let h='';
+  if(admin){
+    // Any re-render with the builder open (reorder, reload) re-applies its show / hide.
+    if(sarvChkEditId!=null)setTimeout(()=>{if(byId('chk_form'))sarvChkSync();},0);
+    h+=sarvChkEditId!=null?sarvChkFormHtml_()
+      :'<div class="dd-add"><button class="btn btn-primary" onclick="sarvChkOpen(0)">+ New Checklist</button></div>';
+  }else{
+    h+='<div class="dd-warn">Only an <b>Admin</b> login can add, edit or remove checklists. The list below is read-only.</div>';
+  }
+  h+='<div class="table-container dd-table-wrap"><table class="dd-table"><thead><tr>'
+    +'<th style="width:36px;">#</th><th>Checklist</th><th style="width:110px;">In / Out</th><th style="width:120px;">Entry Type</th>'
+    +'<th>Applies to</th><th style="width:70px;">Status</th>'+(admin?'<th style="width:150px;">Actions</th>':'')+'</tr></thead><tbody>';
+  if(!rows.length){
+    h+='<tr><td colspan="'+(admin?7:6)+'" class="dd-dim" style="text-align:center;padding:18px;">No checklists yet.'+(admin?' Press <b>+ New Checklist</b>.':'')+'</td></tr>';
+  }
+  rows.forEach((r,i)=>{
+    const c=sarvChkParse_(r);
+    if(!c){
+      h+='<tr><td class="dd-dim">'+(i+1)+'</td><td colspan="'+(admin?5:5)+'" class="dd-dim">This row could not be read and is never printed: '+escText(String(r.value).slice(0,80))+'</td>'
+        +(admin?'<td class="dd-act"><button class="dd-mini dd-mini-del" title="Remove" onclick="sarvDdDeleteValue('+r.id+')">✕</button></td>':'')+'</tr>';
+      return;
+    }
+    const applies=c.by==='ALL'?'All items':(SARV_CHK_BY[c.by]+': '+c.match.join(', '));
+    h+='<tr'+(c.on?'':' style="opacity:.55;"')+'>'
+      +'<td class="dd-dim">'+(i+1)+'</td>'
+      +'<td><b>'+escText(c.name||'(no name)')+'</b><div class="dd-dim" style="font-size:10px;margin-top:2px;">'
+        +c.lines.slice(0,4).map(l=>'☐ '+escText(l)).join('<br>')+(c.lines.length>4?'<br>+ '+(c.lines.length-4)+' more':'')+'</div></td>'
+      +'<td>'+escText(SARV_CHK_DIR[c.dir])+'</td>'
+      +'<td>'+escText(c.types.length?c.types.join(', '):'All')+'</td>'
+      +'<td>'+escText(applies)+'</td>'
+      +'<td>'+(c.on?'<span class="dd-tag dd-tag-db">Active</span>':'<span class="dd-tag dd-tag-def">Paused</span>')+'</td>'
+      +(admin?'<td class="dd-act" style="white-space:nowrap;">'
+        +'<button class="dd-mini" title="Up" onclick="sarvDdMoveValue('+r.id+',-1)"'+(i===0?' disabled':'')+'>▲</button>'
+        +'<button class="dd-mini" title="Down" onclick="sarvDdMoveValue('+r.id+',1)"'+(i===rows.length-1?' disabled':'')+'>▼</button>'
+        +'<button class="dd-mini dd-mini-ed" title="Edit" onclick="sarvChkOpen('+r.id+')">✎</button>'
+        +'<button class="dd-mini" title="'+(c.on?'Pause':'Switch on')+'" onclick="sarvChkToggle('+r.id+')">'+(c.on?'Pause':'On')+'</button>'
+        +'<button class="dd-mini dd-mini-del" title="Remove" onclick="sarvDdDeleteValue('+r.id+')">✕</button></td>':'')
+      +'</tr>';
+  });
+  return h+'</tbody></table></div>';
+}
 
 /* ================================================================
    ITEM TRACKER — per-item stock ledger (In / Out / running Balance)
@@ -13894,7 +14487,7 @@ function refreshStoreEditUi(){
   const ib=byId('inwEditBanner');     if(ib)ib.style.display=inOn?'flex':'none';
   const ibn=byId('inwEditBannerNo');  if(ibn)ibn.textContent=sarvEditingInwardNo||'';
   const isb=byId('submitBtn');        if(isb)isb.textContent=inOn?('Update '+(sarvEditingInwardNo||'Inward'))
-                                        :(draftOn?('Submit MD-Approved '+(sarvInwDraftActive.requestNo||'Draft')):'Submit Inward');
+                                        :(draftOn?('Final Submit '+(sarvInwDraftActive.requestNo||'Draft')):'Submit Inward');
   lockEntryTypeForEdit_(byId('entryTypeSelect'),inOn||sarvInwardTypePinned||draftOn,
     inOn?'':(draftOn?INW_DRAFT_TYPE_MSG:SARV_TYPE_PINNED_MSG));
   const ob=byId('outEditBanner');     if(ob)ob.style.display=outOn?'flex':'none';
@@ -13964,6 +14557,8 @@ async function loadInwardForEdit(id,no){
   clearInwardForm(true);                   // also clears any previous edit state
   sarvEditingInwardId=e.id;
   sarvEditingInwardNo=e.document_no||no||'';
+  // Kept through the edit so the regenerated PDF still names the supervisor.
+  sarvInwUnloadActive=unloadInfoFrom_(e.unload_info);
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
   // The requirements this record credits as it stands — header req_no plus each
   // line's own, so a PR removed during the edit is still re-graded on save.
@@ -15491,6 +16086,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         '<tr><td class="lbl">Supplier Name:</td><td><strong>'+pEsc(d.supplier||d.supplierName||d.supplier_name||'-')+'</strong></td></tr>'+
        '<tr><td class="lbl">Party State:</td><td>'+pEsc(d.state||d.partyState||'-')+'</td></tr>'+
        machineBg+
+       inwUnloadRows_(d).map(function(p){return '<tr style="background:#fff7ed"><td class="lbl" style="color:#c2410c;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>'}).join('')+
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Invoice Number:</td><td>'+pEsc(d.invoiceNum||d.invoice_no||'-')+'</td></tr>'+
        '<tr><td class="lbl">Invoice Date:</td><td>'+fmtDate_(d.invoiceDate||d.invoice_date)+'</td></tr>'+
@@ -15520,7 +16116,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           '<tr><td>Round off. (+/-):</td><td style="text-align:right">'+pMoneyX(d.roundOff)+'</td></tr>'+
           '<tr class="grand"><td>FINAL NET AMOUNT:</td><td style="text-align:right">'+pMoney(d.finalAmt)+'</td></tr>'+
        '</table>'+
-     '</div>'+remarks+footer+'</div>';
+     '</div>'+remarks+storeChecklistHtml_('INWARD',d,items)+footer+'</div>';
  }
 
  // ─────────────────────────────────────────────────────────────
@@ -15604,7 +16200,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        '<tr><td class="lbl">Receiver Name:</td><td class="val">'+pEsc(d.receiverName||d.receiver_name||'-')+'</td></tr>'+
        '<tr><td class="lbl">Designation:</td><td class="val">'+pEsc(d.designation||'-')+'</td></tr>'+
        '<tr><td class="lbl">Department:</td><td class="val">'+pEsc(d.department||'-')+'</td></tr>'+
-     '</table></div></div>'+remarks+footer+'</div>';
+     '</table></div></div>'+remarks+storeChecklistHtml_('OUTWARD',d,items)+footer+'</div>';
  }
 
  function buildStorePdfHtml(kind, d, items, variant, images=[]){
@@ -15689,6 +16285,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      leftPairs.push(['Supplier Name:',d.supplier||'-']);
      leftPairs.push(['Party State:',d.state||'-']);
      if(d.machineName)leftPairs.push(['Machine:',d.machineName]);
+     inwUnloadRows_(d).forEach(p=>leftPairs.push(p));
      rightPairs.push(['Invoice Number:',d.invoiceNum||'-']);
      rightPairs.push(['Invoice Date:',fmtDate_(d.invoiceDate)]);
      inwRefRows_(d).forEach(p=>rightPairs.push(p));
@@ -15869,6 +16466,11 @@ window.addEventListener('DOMContentLoaded',()=>{
      doc.setTextColor(0,0,0);
      yy+=3+remLines.length*3.2;
    }
+   /* The Dropdown Master checklists that match this entry, with tick-boxes.
+      Kept above the signature line (30 mm from the bottom of the copy); a
+      full-width copy (TWO PAGE) may continue on a new page, a half-page copy
+      is shortened. */
+   yy=drawStoreChecklistNative_(doc,kind,d,items,x,yy+1,w,y+areaH-30,w>150);
    // Signature footer — anchored near the bottom of this copy's area. 16 mm
    // above the line is kept clear for a signature + its name / time stamp.
    const sigY=Math.max(yy+16,y+areaH-14);
@@ -16232,11 +16834,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      const by=String((sign&&sign.signedBy)||'').trim();
      return by||'GM / CEO';
    };
-   // Prepared By (when the PR has one) + Store Incharge + GM/CEO (or
-   // Purchaser), so each cell takes a third — or half on an older PR raised
-   // before the Prepared By sign existed. Declared before sigCellHtml so the
-   // value is in scope however the builder is reached.
-   const PR_SIG_CELL_W=(d.preparedBy?'33.33':'50')+'%';
+   // Prepared By (when the PR has one) + GM/CEO (or Purchaser), so each cell
+   // takes half — or the full width on an older PR raised before the Prepared
+   // By sign existed. The Store Incharge box is no longer printed on the PR
+   // (its signature, if any, stays in the record). Declared before
+   // sigCellHtml so the value is in scope however the builder is reached.
+   const PR_SIG_CELL_W=(d.preparedBy?'50':'100')+'%';
    const sigCellHtml=(label,sign)=>{
      const data=String((sign&&sign.name)||'').trim(),time=(sign&&sign.time)||'';
      let inner;
@@ -16259,11 +16862,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      +'</thead><tbody>'+itemRowsHtml+'</tbody></table>'
      +'<div class="remarks"><h4>OVERALL REMARKS</h4><div>'+pEsc(String(d.overallRemarks||d.notes||'').trim()||'—')+'</div></div>'
      +'<table style="margin-top:26px;border-collapse:collapse;width:100%;"><tr>'
-     // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
-     // MD / Vendor Verified belong to the PO chain and are not printed here.
+     // A PURCHASE REQUIREMENT prints only Prepared By and the buyer's sign.
+     // Store Incharge, MD and Vendor Verified are not printed here.
      // Prepared By is the user who raised it, signed with their PIN at submit.
      +(d.preparedBy?sigCellHtml(pEsc(prPreparedLabel_(d.preparedBy)),d.preparedBy):'')
-     +sigCellHtml('Store Incharge',sigs.store)
      +sigCellHtml(prGmCeoLabel_(sigs.gmCeo),sigs.gmCeo)
      +'</tr></table>'
      +'<div style="margin-top:8px;text-align:center;font-size:9px;color:#475569;">'+pEsc(SARV_COMPANY.juris)+'</div>'
@@ -18359,6 +18961,12 @@ window.addEventListener('DOMContentLoaded',()=>{
     // gallery shots and honours anything removed with the preview's ✕.
     const photoKey=(kind==='OUTWARD'||kind==='ISSUE')?'outward':'inward';
     const images=(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput)).slice();
+    /* The Unloader Supervisor's item photos go into the same Original Invoice
+       PDF, after the invoice pages. Only when the store attached its own photos
+       this time: an Admin edit without new photos keeps the stored Original
+       Invoice PDF (which already holds them) instead of rebuilding it. */
+    if(photoKey==='inward'&&images.length&&d.unloader&&d.unloader.approvalId)
+      images.push(...await unloadPhotosForPdf_(d.unloader));
     const no=d.inwardNo||d.outwardNo, result={};
     /* ── Signatures ─────────────────────────────────────────────────
        store_checks carries who signed which cell: store (here, on submit),
@@ -18473,7 +19081,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      // never reached the PDF, so the printed copy always showed blanks/zeros
      // for Net Weight, Gross Weight, freight rate and cost-per-unit.
      freightExp:pNum(pVal('freightExp')),roundOff:pNum(pVal('roundOffInput')),
-     netWeight,grossWeight,freightRate,freightAmt,costOnYarn};
+     netWeight,grossWeight,freightRate,freightAmt,costOnYarn,
+     // The Unloader Supervisor who verified this receipt (inwUnloadRows_).
+     unloader:sarvInwUnloadActive};
  }
  function collectOutwardData(no){return {outwardNo:no,entryType:pVal('outEntryTypeSelect'),date:pVal('outDate'),natureOfDispatch:pVal('outNatureOfDispatch'),partyName:pVal('outPartyName'),location:pVal('outLocation'),targetReturnDate:pVal('outTargetReturnDate'),transport:pVal('outTransport'),gatePass:pVal('outGatePassNo'),lotNo:pVal('outLotNo'),receiverName:pVal('outReceiverName'),designation:pVal('outDesignation'),department:pVal('outDepartment'),remarks:pVal('outRemarks'),
    /* The saved Trims sheet this ISSUE was loaded from, if any — Order No,
@@ -18734,8 +19344,6 @@ window.addEventListener('DOMContentLoaded',()=>{
  async function saveInwardWithPdf_(){
    if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
-   // The original invoice photo is mandatory — it becomes the Original Invoice PDF.
-   if(!await ensureStorePhotos_('inward',sarvEditingInwardId?sarvEditingInwardNo:''))return;
    /* Without PO, a Purchase receipt has to say which requirement it met —
       otherwise the PR it satisfied stays open with nothing linking the two.
       Checked here as well as on the field, because the box can be left blank. */
@@ -18752,30 +19360,31 @@ window.addEventListener('DOMContentLoaded',()=>{
       PDF step failed is the usual way that happens, and the second run has no
       other way of knowing the first one got through. */
    if(!await guardStoreDuplicate_('INWARD',rows,sarvEditingInwardId))return;
+   /* TWO approvals, asked TOGETHER, each for its own thing:
+        • Unloader Supervisor — confirms the unloaded Qty / Weight physically
+          (every NEW entry; ensureUnloaderApproval_);
+        • MD — only when the receipt goes beyond the PO / PR: excess qty or
+          weight, a changed rate, an extra item (ensureInwardApproval_ below).
+      Both are checked on the same Submit without stopping at the first, so
+      one Submit sends both requests and they are approved in parallel. The
+      entry is saved (Final Submit) only when both have said yes. Both are
+      keyed by the same signature, so either draft, once loaded, satisfies
+      both checks. Asked before the invoice photo: the first Submit only sends
+      the requests; the Final Submit needs the photo. */
    const selectedPoNos=getSelectedPoNos();
-   /* Three things need the PURCHASER'S APPROVAL before this receipt can be
-      saved:
-        • excess qty — on a PO or on a PR
-        • a rate that differs from the PO's agreed price
-        • an item the PO never ordered, added with + Add Row
-      All three come back from inwardDocOverrides, which reads them off the
-      same figures the row's own sub-row shows on screen.
-
-      Checked on EVERY save, not only when the PO picker has something ticked.
-      That `if(selectedPoNos.length)` guard used to wrap this, and an Admin edit
-      never re-ticks the picker: the check was being skipped on exactly the path
-      where a quantity is most likely to be changed. Each row carries its own PO
-      / PR figures, so the rows are the right thing to ask.
-
-      ensureInwardApproval_ is the gate: it sends the request to the Purchaser's
-      phone and returns false until they have approved THIS submission. On a
-      database without the inward_approvals table it falls back to the Edit
-      Password, which is what this used to be. */
    {
+     const ulOk=sarvEditingInwardId?true:await ensureUnloaderApproval_(rows);
+     /* Excess / rate / extra item need the MD's approval — see the notes above
+        inwardDocOverrides. Checked on EVERY save, not only when the PO picker
+        has something ticked: an Admin edit never re-ticks the picker, and that
+        is exactly where a quantity is most likely to be changed. On a database
+        without inward_approvals it falls back to the Edit Password. */
      const overrides=inwardDocOverrides(rows);
-     if(overrides.length&&!await ensureInwardApproval_(rows,overrides))
-       return;
+     const mdOk=overrides.length?await ensureInwardApproval_(rows,overrides):true;
+     if(!ulOk||!mdOk)return;
    }
+   // The original invoice photo is mandatory — it becomes the Original Invoice PDF.
+   if(!await ensureStorePhotos_('inward',sarvEditingInwardId?sarvEditingInwardNo:''))return;
    // A taxable INWARD with a 0% line needs authorisation — it usually means a
    // mis-keyed GST rather than a genuinely exempt receipt. INWARD NB is exempt
    // by definition (its GST is pinned to 0 and locked), so it never asks.
@@ -18882,6 +19491,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(ins.error&&/bill_basis/i.test(ins.error.message||'')){ls=ls.map(({bill_basis,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/repair_outward_no|column/i.test(ins.error.message||'')){ls=ls.map(({repair_outward_no,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}
      if(ins.error&&/po_line_id|column/i.test(ins.error.message||'')){ls=ls.map(({po_line_id,...x})=>x);ins=await SB.from('inward_lines').insert(ls)}if(ins.error)throw ins.error;
+     // The Unloader-Supervisor approval is booked onto this record (and their
+     // details stored on it) before the PDF is built, so the PDF prints them.
+     if(!editId)await unloadMarkUsed_(rows,no,h.data.id);
      if(editId){
        // An edit must not ADD to received_qty — the PO lines this record ever
        // touched (before and after the edit) are recomputed from inward_lines,
@@ -19418,6 +20030,8 @@ window.addEventListener('DOMContentLoaded',()=>{
       function re-applies those for the blank form that is left behind. The
       approval itself is untouched and stays in the list. */
    sarvInwDraftActive=null;
+   // The Unloader Supervisor's details belong to the entry just left.
+   sarvInwUnloadActive=null;
    inwDraftApplyLock_();
    refreshStoreEditUi();
    ['invoiceNumber','invoiceDate','partyState','supplierName','inwRemarks',

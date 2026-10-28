@@ -532,9 +532,9 @@
         // own name — sig.signedBy is set in approveEntry() when that happens.
         // Printing "GM / CEO" there would credit a signature nobody gave.
         const gmCeoLabel=String((sigs.gmCeo&&sigs.gmCeo.signedBy)||'').trim()||'GM / CEO';
-        // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
-        // MD and Vendor Verified belong to the PO chain and are not printed
-        // here. Their signatures, if any exist in `signatures`, are left in the
+        // A PURCHASE REQUIREMENT prints only Prepared By and the buyer's sign.
+        // Store Incharge, MD and Vendor Verified are not printed here. Their
+        // signatures, if any exist in `signatures`, are left in the
         // record untouched — this only changes what the PR sheet shows.
         // Prepared By is the user who raised the PR, signed with their PIN at
         // submit (d.preparedBy, kept in pdf_snapshot). A PR raised before that
@@ -542,7 +542,6 @@
         const prepBy=String((d.preparedBy&&d.preparedBy.by)||'').trim();
         const sigCols=[
             ...(d.preparedBy?[{label:prepBy?('Prepared By: '+prepBy):'Prepared By',sign:d.preparedBy}]:[]),
-            {label:'Store Incharge',sign:sigs.store},
             {label:gmCeoLabel,sign:sigs.gmCeo},
         ];
         // Equal shares of the width — otherwise the boxes would huddle in the

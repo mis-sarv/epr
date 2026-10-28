@@ -149,6 +149,10 @@ table.t .lnk{color:var(--blue);cursor:pointer;font-weight:600}
 .att td.ac.ot{color:var(--amber);font-weight:700}
 .att td.ac.zero{color:var(--red)}
 .att td.off{background:repeating-linear-gradient(45deg,#f4f6f9,#f4f6f9 4px,#eceff3 4px,#eceff3 8px)}
+/* Machine data list: same colour rules as the grid */
+.mch td.sun{background:var(--sun)}
+.mch td.ot{color:var(--amber);font-weight:700}
+.mch td.zero{color:var(--red)}
 .att td.sm{padding:0 6px!important;font-family:'DM Mono',monospace;font-size:11.5px;text-align:right;background:#FAFBFD}
 
 /* Salary sheet */
@@ -290,7 +294,11 @@ const ERR_TEXT = {
   NOT_FOUND: 'Record not found (it may have been removed by someone else). Refresh and try again.',
   EMP_CODE_REQUIRED: 'Emp. Code is required.',
   NAME_REQUIRED: 'Name is required for a new employee.',
-  ATTENDANCE_IMPORT_ONLY: 'Attendance can only come from Import › Attendance: machine data.'
+  ATTENDANCE_IMPORT_ONLY: 'Attendance can only come from Import › Attendance: machine data.',
+  REASON_REQUIRED: 'Enter the reason for this change.',
+  BAD_HOURS: 'Hours must be a number from 0 to 24.',
+  UNKNOWN_EMPLOYEE: 'This Emp. Code is not in the employee list.',
+  BAD_ROW: 'Emp. Code and a valid date are required.'
 };
 function errText(e){
   e = String(e || 'Unknown error');
@@ -411,6 +419,8 @@ const VIEWS = [
   { key: 'dashboard',  label: 'Dashboard',            fn: () => renderDashboard() },
   { key: 'employees',  label: 'Employees',            fn: () => renderEmployees() },
   { key: 'attendance', label: 'Attendance',           fn: () => renderAttendance() },
+  // Opened from the Attendance screen's "Machine data" button, so no nav tab.
+  { key: 'machine',    label: 'Machine data',         fn: () => renderMachine(), need: ['HR_MACHINE_EDIT'], nav: false, under: 'attendance' },
   { key: 'advances',   label: 'Advances & Deductions', fn: () => renderAdvances() },
   { key: 'statutory',  label: 'PF / ESI / LWF',       fn: () => renderStatutory() },
   { key: 'salary',     label: 'Salary Sheet',         fn: () => renderSalary() },
@@ -469,7 +479,7 @@ function setMonth(m){
   route();
 }
 function buildNav(){
-  $('nav').innerHTML = VIEWS.filter(v => !v.need || v.need.some(can))
+  $('nav').innerHTML = VIEWS.filter(v => v.nav !== false && (!v.need || v.need.some(can)))
     .map(v => '<button data-v="' + v.key + '" onclick="go(\'' + v.key + '\')">' + esc(v.label) + '</button>').join('');
 }
 function go(k){ if (location.hash === '#' + k) route(); else location.hash = k; }
@@ -478,7 +488,7 @@ function route(){
   const k = (location.hash || '#dashboard').slice(1);
   const v = VIEWS.find(x => x.key === k && (!x.need || x.need.some(can))) || VIEWS[0];
   S.view = v.key;
-  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v.key));
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (v.under || v.key)));
   CHARTS.forEach(c => { try { c.destroy(); } catch (e) {} }); CHARTS = [];
   $('view').innerHTML = '<div class="loading">Loading…</div>';
   Promise.resolve(v.fn()).catch(e => {
@@ -569,8 +579,108 @@ async function renderDashboard(){
           ${!(d.birthdays || []).length && !(d.anniversaries || []).length ? '<span class="muted">No dates this month (add DOB / DOJ in Employees).</span>' : ''}
         </div>
       </div></div>
-  </div>`;
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Reports <small>${monthLabel(S.month)} · pick a report to see its table, then download it</small></h3>
+    <div class="toolbar" style="margin-bottom:8px">
+      <select class="sel" id="dashRep" onchange="DASHR.key=this.value;showDashReport()">${Object.keys(DASH_REPORTS).map(k => '<option value="' + k + '"' + (k === DASHR.key ? ' selected' : '') + '>' + esc(DASH_REPORTS[k].label) + '</option>').join('')}</select>
+      <span class="muted" id="dashRepInfo" style="font-size:11.5px"></span><span class="sp"></span>
+      <button class="btn" onclick="exportDashReport('csv')">Export CSV</button><button class="btn pri" onclick="exportDashReport('pdf')">Download PDF</button>
+    </div>
+    <div class="tw" id="dashRepBox" style="max-height:460px"></div></div>`;
+  DASH = d; DASHR.cache = {};
   drawDashCharts(d);
+  showDashReport();
+}
+
+/* ── Dashboard › Reports ──────────────────────────────────────────────
+   Each report turns the month's data into one table: build() returns
+   { head, rows, num (column indexes that are numbers), foot (totals row) }.
+   Most use the hr_dashboard result already on screen (DASH); Employee-wise
+   attendance reads hr_attendance_month (HR_VIEW) once per month. The same
+   table goes to the screen, Export CSV and Download PDF, so what is seen
+   is what is downloaded. */
+let DASH = null;
+const DASHR = { key: 'dept', cache: {} };
+const sumCol = (rows, i) => Math.round(rows.reduce((a, r) => a + num(r[i]), 0) * 100) / 100;
+const DASH_REPORTS = {
+  dept: { label: 'Department-wise salary', build(d){
+    if (!d.departments.length) return { note: 'Salary sheet not computed for this month, so this shows active headcount only.',
+      head: ['Department', 'Active employees'], rows: (d.dept_heads || []).map(x => [x.department, x.heads]), num: [1],
+      foot: r => ['TOTAL', sumCol(r, 1)] };
+    return { head: ['Department', 'Employees', 'Present days', 'OT hrs', 'OT amount', 'Gross salary (X)'],
+      rows: d.departments.map(x => [x.department, x.heads, num(x.present), num(x.ot_hours), num(x.ot_amt), num(x.cost)]), num: [1, 2, 3, 4, 5],
+      foot: r => ['TOTAL', sumCol(r, 1), sumCol(r, 2), sumCol(r, 3), sumCol(r, 4), sumCol(r, 5)] };
+  } },
+  daily: { label: 'Day-wise attendance', build(d){
+    return { head: ['Date', 'Day', 'Employees present', 'Total hours'],
+      rows: (d.daily || []).map(x => [dmy(S.month.slice(0, 8) + pad(x.day)), ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][x.dow], x.present, num(x.hours)]), num: [2, 3],
+      foot: r => ['TOTAL', '', sumCol(r, 2), sumCol(r, 3)] };
+  } },
+  empatt: { label: 'Employee-wise attendance', async build(){
+    const a = DASHR.cache.att || (DASHR.cache.att = await rpc('hr_attendance_month', { p_month: S.month }));
+    const dim = daysIn(S.month), [y, m] = S.month.split('-').map(Number);
+    const rows = (a.employees || []).map(e => {
+      const h = (a.hours || {})[e.emp_code] || {}; let pres = 0, abs = 0, hrs = 0, ot = 0, sun = 0;
+      for (let i = 1; i <= dim; i++) {
+        if (h[i] == null) continue;
+        const n = num(h[i]); hrs += n; if (n > 0) pres++; else abs++;
+        if (e.duty_hours != null && n > +e.duty_hours) ot += n - +e.duty_hours;
+        if (new Date(y, m - 1, i).getDay() === 0) sun += n;
+      }
+      const r2 = v => Math.round(v * 100) / 100;
+      return [e.emp_code, e.name, e.department || '', e.duty_hours, pres, abs, r2(hrs), r2(ot), r2(sun)];
+    });
+    return { head: ['Code', 'Name', 'Department', 'Duty hr', 'Present days', 'Absent (0 h)', 'Total hours', 'Hours above duty', 'Sunday hours'],
+      rows, num: [3, 4, 5, 6, 7, 8], foot: r => ['TOTAL', r.length + ' employees', '', '', sumCol(r, 4), sumCol(r, 5), sumCol(r, 6), sumCol(r, 7), sumCol(r, 8)] };
+  } },
+  ot: { label: 'Top overtime (10)', build(d){
+    return { head: ['Code', 'Name', 'Department', 'OT hrs', 'OT amount'],
+      rows: (d.top_ot || []).map(x => [x.emp_code, x.name, x.department || '', num(x.total_ot), num(x.ot_amt)]), num: [3, 4],
+      foot: r => ['TOTAL', '', '', sumCol(r, 3), sumCol(r, 4)], empty: 'No overtime yet (compute the salary sheet).' };
+  } },
+  trend: { label: 'Payroll trend (12 months)', build(d){
+    return { head: ['Month', 'Status', 'Employees', 'Gross (X)', 'OT amount', 'Advance', 'PF + ESI + LWF', 'Deductions (AF)', 'Cash (AH)', 'Cheque', 'Net cash paid'],
+      rows: (d.trend || []).map(x => { const t = x.totals || {};
+        return [monthLabel(x.pay_month), x.status, x.emp_count, num(t.total_salary), num(t.ot_amt), num(t.advance), num(t.pf) + num(t.esi) + num(t.lwf),
+          num(t.total_deduction), num(t.cash), num(t.cheque_amt), num(t.net_cash_paid)]; }),
+      num: [2, 3, 4, 5, 6, 7, 8, 9, 10], empty: 'No month computed yet.' };
+  } },
+  cls: { label: 'Salary class mix', build(d){
+    return { head: ['Salary class', 'Active employees'], rows: (d.classes || []).map(x => [x.salary_class, x.heads]), num: [1], foot: r => ['TOTAL', sumCol(r, 1)] };
+  } },
+  dates: { label: 'Birthdays & work anniversaries', build(d){
+    const yr = +S.month.slice(0, 4);
+    return { head: ['Date', 'Type', 'Code', 'Name', 'Detail'],
+      rows: (d.birthdays || []).map(b => [dmy(b.dob).slice(0, 5), 'Birthday', b.emp_code, b.name, 'Born ' + dmy(b.dob)])
+        .concat((d.anniversaries || []).map(b => [dmy(b.doj).slice(0, 5), 'Work anniversary', b.emp_code, b.name, (yr - +String(b.doj).slice(0, 4)) + ' yr (joined ' + dmy(b.doj) + ')']))
+        .sort((a, b) => a[0].localeCompare(b[0])),
+      empty: 'No dates this month (add DOB / DOJ in Employees).' };
+  } }
+};
+async function dashReport(){
+  const R = DASH_REPORTS[DASHR.key] || DASH_REPORTS.dept, t = await R.build(DASH);
+  t.title = R.label; t.footRow = t.foot && t.rows.length ? t.foot(t.rows) : null;
+  return t;
+}
+async function showDashReport(){
+  const box = $('dashRepBox'); if (!box || !DASH) return;
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  let t;
+  try { t = await dashReport(); } catch (e) { box.innerHTML = '<div class="note red">' + esc(e.message || e) + '</div>'; return; }
+  if (!$('dashRepBox')) return;   // left the dashboard while it loaded
+  const ns = new Set(t.num || []), cell = (v, i) => '<td' + (ns.has(i) ? ' class="n"' : '') + '>' + esc(ns.has(i) ? fmtM(v) : v == null ? '' : v) + '</td>';
+  $('dashRepInfo').textContent = t.rows.length + ' row(s)' + (t.note ? ' · ' + t.note : '');
+  box.innerHTML = '<table class="t"><thead><tr>' + t.head.map((h, i) => '<th' + (ns.has(i) ? ' class="n"' : '') + '>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>'
+    + (t.rows.map(r => '<tr>' + r.map(cell).join('') + '</tr>').join('') || '<tr><td colspan="' + t.head.length + '" class="empty">' + esc(t.empty || 'No data for this month.') + '</td></tr>')
+    + '</tbody>' + (t.footRow ? '<tfoot><tr>' + t.footRow.map((v, i) => cell(v, i).replace('<td', '<td style="font-weight:700;background:#FFF9EC"')).join('') + '</tr></tfoot>' : '') + '</table>';
+}
+async function exportDashReport(fmt){
+  let t;
+  try { t = await dashReport(); } catch (e) { toast(e.message || String(e), 'err'); return; }
+  if (!t.rows.length) { toast('Nothing to download: this report has no rows for ' + monthLabel(S.month) + '.', 'err'); return; }
+  const file = 'hr-' + DASHR.key + '-' + S.month.slice(0, 7);
+  exportTable(fmt, file, t.title + ' · ' + monthLabel(S.month), t.head, fmt === 'csv' && t.footRow ? t.rows.concat([t.footRow]) : t.rows,
+    { num: t.num, foot: t.footRow || undefined, portrait: t.head.length <= 6 });
 }
 function drawDashCharts(d){
   if (typeof Chart === 'undefined') return;   // chart library blocked/offline: the numbers above still show
@@ -838,8 +948,16 @@ async function editEmployee(code){
     + '<div class="fg"><label>Monthly salary (L)</label><input id="ef_sal" type="number" step="1" min="0" placeholder="e.g., 18000"></div></div>';
   openModal(code ? 'Edit ' + e.name + ' (' + code + ')' : 'New Employee', html,
     '<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveEmployee(this,' + (code ? 'true' : 'false') + ')">Save</button>', true);
-  // A new employee's code is the next in the series (nextEmpCode), not typed.
-  $('ef_emp_code').readOnly = true;
+  /* A new employee's code starts as the next in the series (nextEmpCode) and
+     can be changed for now, e.g. to keep an old card number. An existing
+     employee's code stays fixed: every other HR table is keyed on it. */
+  const ec = $('ef_emp_code');
+  ec.readOnly = !!code;
+  if (!code) {
+    ec.dataset.suggest = e.emp_code;
+    ec.title = 'Next in the series is ' + e.emp_code + '. You can type another code.';
+    ec.insertAdjacentHTML('afterend', '<div class="muted" style="font-size:11px;margin-top:3px">Next in series: <b class="mono">' + esc(e.emp_code) + '</b> (editable)</div>');
+  }
 }
 async function saveEmployee(btn, isEdit){
   const p = {};
@@ -853,10 +971,16 @@ async function saveEmployee(btn, isEdit){
   const st = duty !== '' ? { effective_from: $('ef_from').value, duty_hours: duty, monthly_salary: sal } : null;
   await busy(btn, async () => {
     /* Someone else may have added an employee since this form opened: re-read
-       the list and move to the next free code rather than overwrite theirs. */
+       the list. If the code is still the suggested one, move to the next free
+       code; a code the user typed is never changed silently, and an existing
+       employee is never overwritten from the New form. */
     if (!isEdit) {
       await loadEmployees();
-      if (S.empMap[p.emp_code]) p.emp_code = $('ef_emp_code').value = nextEmpCode();
+      p.emp_code = p.emp_code.toUpperCase();
+      if (S.empMap[p.emp_code]) {
+        if (p.emp_code !== $('ef_emp_code').dataset.suggest) { toast('Emp. Code ' + p.emp_code + ' already belongs to ' + S.empMap[p.emp_code].name + '. Type another code.', 'err'); return; }
+        p.emp_code = $('ef_emp_code').value = nextEmpCode();
+      }
     }
     const r = await rpc('hr_save_employee', { p_emp: p, p_structure: st });
     closeModal(); toast('Saved ' + r.emp_code, 'ok');
@@ -930,9 +1054,10 @@ async function renderAttendance(){
     <span class="sp"></span>
     <span class="muted" style="font-size:11.5px">Hours per day · <b style="color:var(--amber)">amber</b> = above duty hours · <b style="color:var(--red)">0</b> = absent</span>
     <button class="btn" onclick="exportAtt('csv')">Export CSV</button><button class="btn" onclick="exportAtt('pdf')">Export PDF</button>
+    ${can('HR_MACHINE_EDIT') ? '<button class="btn" onclick="go(\'machine\')">Machine data</button>' : ''}
     ${canImp ? '<button class="btn pri" onclick="IMP.kind=\'ATT_LONG\';IMP.raw=null;go(\'import\')">Import machine data</button>' : ''}
   </div>
-  <div class="note">Attendance is <b>read only</b>. It comes only from the biometric machine through <b>Import › Attendance: machine data</b>. To correct a day, fix it in the machine export and import the file again; the same day is overwritten.</div>
+  <div class="note">Attendance is <b>read only</b>. It comes from the biometric machine through <b>Import › Attendance: machine data</b>. To correct a day, fix it in the machine export and import the file again; the same day is overwritten.${can('HR_MACHINE_EDIT') ? ' You can also correct a single day under <b>Machine data</b> (reason required, kept in the audit log).' : ''}</div>
   ${ATT.locked ? '<div class="note warn">This month is <b>locked</b> (salary paid). New imports for it are refused until it is unlocked in the Salary Sheet.</div>' : ''}
   ${!ATT.emps.length ? '<div class="note">No employees for this month. Import the Employee Master first (Import tab).</div>' : ''}
   <div class="tw" id="attWrap"></div>`;
@@ -996,6 +1121,136 @@ function exportAtt(fmt){
     num: head.map((_, i) => i).filter(i => i >= 3), fontSize: 5.5,
     didParseCell: c => { if (c.section !== 'foot' && c.column.index >= 4 && c.column.index < 4 + dim && dows[c.column.index - 4] === 0 && c.section === 'body') c.cell.styles.fillColor = [255, 246, 229]; }
   });
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   MACHINE DATA: the month's hr_attendance rows as imported (one per
+   employee per day, with In / Out / Shift), and the only place a day can
+   be changed by hand. Behind its own right, HR_MACHINE_EDIT, which the
+   Admin turns on per role (Tab Visibility › HR & Payroll › Rights) or per
+   user (Users › Apps); without it the Attendance screen shows no button
+   and the server refuses both calls. Every edit / add / delete needs a
+   reason, is saved with source EDIT (so it stands out from IMPORT rows)
+   and goes into the audit log with the old and new values. A later
+   machine import of the same day overwrites the edit, as before.
+   Server side: HR_MACHINE_EDIT_MIGRATION.sql.
+   ════════════════════════════════════════════════════════════════════ */
+let MCH = null;
+const MCHF = { q: '', day: '', src: '' };
+async function renderMachine(){
+  let d;
+  try { d = await rpc('hr_machine_data_list', { p_month: S.month }); }
+  catch (e) {
+    // The base HR migration is there (the page booted), so a missing
+    // function here means only the machine-data migration is pending.
+    if (!e.setup) throw e;
+    $('view').innerHTML = '<div class="note warn" style="max-width:640px;margin:40px auto">Machine data editing is not set up on the server yet. '
+      + 'Admin: run <code>HR_MACHINE_EDIT_MIGRATION.sql</code> in the Supabase SQL Editor, then reload.<br>'
+      + '<button class="btn sm" style="margin-top:8px" onclick="go(\'attendance\')">← Attendance</button></div>';
+    return;
+  }
+  MCH = { month: S.month, locked: d.locked, rows: d.rows || [] };
+  const w = !MCH.locked, dim = daysIn(S.month);
+  let dayOpts = '<option value="">All days</option>';
+  for (let i = 1; i <= dim; i++) { const iso = S.month.slice(0, 8) + pad(i); dayOpts += '<option value="' + iso + '"' + (MCHF.day === iso ? ' selected' : '') + '>' + dmy(iso) + '</option>'; }
+  $('view').innerHTML = `
+  <div class="toolbar"><button class="btn" onclick="go('attendance')">← Attendance</button><h2>Machine data · ${monthLabel(S.month)}</h2>
+    <input class="inp" placeholder="Search code / name" value="${esc(MCHF.q)}" oninput="MCHF.q=this.value;drawMachine()">
+    <select class="sel" onchange="MCHF.day=this.value;drawMachine()">${dayOpts}</select>
+    <select class="sel" onchange="MCHF.src=this.value;drawMachine()"><option value="">All sources</option>
+      <option value="IMPORT"${MCHF.src === 'IMPORT' ? ' selected' : ''}>Machine import</option><option value="EDIT"${MCHF.src === 'EDIT' ? ' selected' : ''}>Edited by hand</option></select>
+    <span class="sp"></span><span class="muted" id="mchCount" style="font-size:11.5px"></span>
+    <button class="btn" onclick="exportMachine()">Export CSV</button>
+    ${w ? '<button class="btn pri" onclick="editMachine()">+ Add day</button>' : ''}
+  </div>
+  <div class="note">One row per employee per day, as the biometric machine gave it. <b>✎</b> corrects a day and <b>✕</b> removes it; a reason is required and both are kept in the audit log (Settings). Edited rows show <span class="badge amber">EDIT</span>. Importing the same day from the machine again overwrites the edit.</div>
+  ${MCH.locked ? '<div class="note warn">This month is <b>locked</b> (salary paid), so its rows cannot be changed until it is unlocked in the Salary Sheet.</div>' : ''}
+  <div class="tw" id="mchWrap"></div>`;
+  drawMachine();
+}
+function mchRows(){
+  const q = MCHF.q.trim().toUpperCase();
+  return MCH.rows.filter(r => {
+    if (MCHF.day && String(r.att_date).slice(0, 10) !== MCHF.day) return false;
+    if (MCHF.src && (MCHF.src === 'EDIT') !== (r.source === 'EDIT')) return false;
+    const e = S.empMap[r.emp_code] || {};
+    return !q || (r.emp_code + ' ' + (e.name || '')).toUpperCase().indexOf(q) >= 0;
+  });
+}
+function drawMachine(){
+  const rows = mchRows(), w = !MCH.locked;
+  $('mchCount').textContent = rows.length + ' of ' + MCH.rows.length + ' row(s)';
+  $('mchWrap').innerHTML = '<table class="t mch"><thead><tr><th>Date</th><th>Day</th><th>Code</th><th>Name</th><th>Department</th><th>In</th><th>Out</th><th>Hours</th><th>Shift</th><th>Source</th><th>Reason / remarks</th><th>Last change</th>'
+    + (w ? '<th></th>' : '') + '</tr></thead><tbody>'
+    + (rows.map((r, i) => {
+      const e = S.empMap[r.emp_code] || {}, iso = String(r.att_date).slice(0, 10), [y, m, dd] = iso.split('-').map(Number);
+      const dow = new Date(y, m - 1, dd).getDay(), idx = MCH.rows.indexOf(r);
+      return '<tr><td>' + dmy(iso) + '</td><td class="' + (dow === 0 ? 'sun' : '') + '">' + 'SMTWTFS'[dow] + '</td><td class="mono">' + esc(r.emp_code) + '</td><td>' + esc(e.name || '') + '</td><td>' + esc(e.department || '') + '</td>'
+        + '<td class="mono">' + esc(r.in_time || '') + '</td><td class="mono">' + esc(r.out_time || '') + '</td>'
+        + '<td class="n' + cellCls(String(+r.hours), e.duty_hours) + '">' + fmtH(r.hours) + '</td><td>' + esc(r.shift || '') + '</td>'
+        + '<td><span class="badge ' + (r.source === 'EDIT' ? 'amber' : 'grey') + '">' + esc(r.source || '') + '</span></td>'
+        + '<td class="muted" style="max-width:260px">' + esc(r.remarks || '') + '</td>'
+        + '<td class="muted" style="font-size:11px">' + esc(r.updated_by || '') + (r.updated_at ? '<br>' + new Date(r.updated_at).toLocaleString('en-IN') : '') + '</td>'
+        + (w ? '<td style="white-space:nowrap"><button class="btn sm" onclick="editMachine(' + idx + ')">✎</button> <button class="btn sm dan" onclick="delMachine(' + idx + ')">✕</button></td>' : '')
+        + '</tr>';
+    }).join('') || '<tr><td colspan="' + (w ? 13 : 12) + '" class="empty">No machine rows for this month' + (MCHF.q || MCHF.day || MCHF.src ? ' with these filters' : '') + '.</td></tr>')
+    + '</tbody></table>';
+}
+/* In / Out as HH:MM (a trailing :SS is ignored); null when it does not parse. */
+function mchMin(t){ const m = /^(\d{1,2}):(\d{2})/.exec(String(t || '').trim()); return m && +m[1] < 24 && +m[2] < 60 ? +m[1] * 60 + +m[2] : null; }
+/* Fill Hours from In / Out (past midnight counts as a night shift). Only a
+   suggestion: the machine's own TOTAL HOURS may leave out breaks, so the
+   box stays editable. */
+function mchAutoHours(){
+  const a = mchMin($('mc_in').value), b = mchMin($('mc_out').value);
+  if (a == null || b == null) return;
+  $('mc_h').value = Math.round(((b - a + 1440) % 1440) / 60 * 100) / 100;
+}
+function editMachine(idx){
+  const r = idx == null ? { att_date: MCHF.day || S.month.slice(0, 8) + '01' } : MCH.rows[idx], isNew = idx == null;
+  openModal(isNew ? 'Add a day' : 'Correct a day', `<div class="fgrid">
+    <div class="fg"><label>Emp. Code *</label><input id="mc_code" list="empList" value="${esc(r.emp_code || '')}" ${isNew ? '' : 'readonly'}></div>
+    <div class="fg"><label>Date *</label><input id="mc_date" type="date" value="${esc(String(r.att_date || '').slice(0, 10))}" ${isNew ? '' : 'readonly'}></div>
+    <div class="fg"><label>In time (HH:MM)</label><input id="mc_in" value="${esc(r.in_time || '')}" placeholder="09:00" oninput="mchAutoHours()"></div>
+    <div class="fg"><label>Out time (HH:MM)</label><input id="mc_out" value="${esc(r.out_time || '')}" placeholder="18:30" oninput="mchAutoHours()"></div>
+    <div class="fg"><label>Total hours *</label><input id="mc_h" type="number" min="0" max="24" step="0.01" value="${r.hours == null ? '' : esc(+r.hours)}"></div>
+    <div class="fg"><label>Shift</label><input id="mc_sh" value="${esc(r.shift || '')}"></div>
+    <div class="fg" style="grid-column:1/-1"><label>Reason for the change *</label><input id="mc_rm" placeholder="e.g. machine missed the out punch, confirmed by supervisor"></div></div>
+    ${isNew ? '' : '<p class="muted" style="font-size:11.5px;margin-top:10px">Now: ' + fmtH(r.hours) + ' h' + (r.in_time || r.out_time ? ' (' + esc(r.in_time || '?') + ' to ' + esc(r.out_time || '?') + ')' : '') + ', source ' + esc(r.source || '') + (r.remarks ? ', last reason: ' + esc(r.remarks) : '') + '.</p>'}
+    <p class="muted" style="font-size:11.5px;margin-top:6px">Hours is filled from In / Out when both are typed; change it if the machine deducts a break. 0 hours = absent.</p>`,
+    '<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveMachine(this)">Save</button>');
+}
+async function saveMachine(btn){
+  const code = $('mc_code').value.trim().toUpperCase(), date = $('mc_date').value, h = $('mc_h').value.trim(), rm = $('mc_rm').value.trim();
+  const isNew = !$('mc_code').readOnly;
+  if (isNew && !S.empMap[code]) { toast('Unknown Emp. Code ' + code, 'err'); return; }
+  if (!date) { toast('Enter the date.', 'err'); return; }
+  if (h === '' || !(+h >= 0 && +h <= 24)) { toast('Hours must be a number from 0 to 24.', 'err'); return; }
+  if (!rm) { toast('Enter the reason for this change.', 'err'); return; }
+  if (isNew && MCH.rows.some(r => r.emp_code === code && String(r.att_date).slice(0, 10) === date)
+      && !confirm(code + ' already has a row for ' + dmy(date) + '. Replace it?')) return;
+  await busy(btn, async () => {
+    await rpc('hr_machine_data_save', { p_rows: [{ emp_code: code, att_date: date, hours: h, in_time: $('mc_in').value.trim(),
+      out_time: $('mc_out').value.trim(), shift: $('mc_sh').value.trim(), remarks: rm }] });
+    closeModal(); toast('Saved. Recompute the salary sheet to use it.', 'ok');
+    // A day of another month was added: open that month so the row is seen.
+    if (date.slice(0, 7) !== S.month.slice(0, 7)) { setMonth(monthStart(date)); buildMonthSelect(); } else renderMachine();
+  });
+}
+async function delMachine(idx){
+  const r = MCH.rows[idx], iso = String(r.att_date).slice(0, 10);
+  const rm = prompt('Remove ' + r.emp_code + ' on ' + dmy(iso) + ' (' + fmtH(r.hours) + ' h)?\nThe day will have no attendance at all. Reason:');
+  if (rm == null) return;
+  if (!rm.trim()) { toast('Enter the reason for this change.', 'err'); return; }
+  try { await rpc('hr_machine_data_save', { p_rows: [{ emp_code: r.emp_code, att_date: iso, remarks: rm.trim(), delete: true }] }); toast('Removed', 'ok'); renderMachine(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+function exportMachine(){
+  downloadCSV('machine-data-' + MCH.month.slice(0, 7) + '.csv',
+    ['DATE', 'CODE', 'NAME', 'DEPARTMENT', 'INTIME', 'OUTTIME', 'TOTAL HOURS', 'SHIFT', 'SOURCE', 'REMARKS', 'UPDATED BY', 'UPDATED AT'],
+    mchRows().map(r => { const e = S.empMap[r.emp_code] || {};
+      return [dmy(r.att_date), r.emp_code, e.name || '', e.department || '', r.in_time || '', r.out_time || '', +r.hours, r.shift || '', r.source || '', r.remarks || '',
+        r.updated_by || '', r.updated_at ? new Date(r.updated_at).toLocaleString('en-IN') : '']; }));
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1720,7 +1975,8 @@ async function runImport(btn){
 async function renderSettings(){
   const s = BOOT.settings || {}, w = can('HR_SETTINGS');
   const dis = w ? '' : ' disabled';
-  const RIGHTS = { HR_VIEW: 'See HR data & reports', HR_EMPLOYEES: 'Employees & salary rows', HR_ATTENDANCE: 'Import attendance (machine data)', HR_TXN: 'Advances, loans, PF/ESI',
+  const RIGHTS = { HR_VIEW: 'See HR data & reports', HR_EMPLOYEES: 'Employees & salary rows', HR_ATTENDANCE: 'Import attendance (machine data)',
+    HR_MACHINE_EDIT: 'Machine data: view & edit', HR_TXN: 'Advances, loans, PF/ESI',
     HR_PAYROLL: 'Compute salary, net cash paid', HR_LOCK: 'Lock / unlock a month', HR_SETTINGS: 'Change these settings' };
   $('view').innerHTML = `
   <div class="toolbar"><h2>Settings</h2><span class="sp"></span>${w ? '<button class="btn pri" onclick="saveSettings(this)">Save settings</button>' : ''}</div>

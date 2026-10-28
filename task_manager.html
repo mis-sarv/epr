@@ -504,10 +504,12 @@
         </div>
 
         <!-- 3. EA DELEGATION & ACTIVE TASKS -->
+        <!-- The entry form can be hidden (eaToggleForm): the follow-up list then
+             takes the full screen width. The choice is remembered per browser. -->
         <div id="screen-ea-delegation" class="screen-view hidden max-w-6xl mx-auto mt-6">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div id="eaGrid" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <!-- Delegate New Task -->
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-fit">
+                <div id="eaFormCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-fit">
                     <div class="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center">
                         <div>
                             <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-user-circle-plus mr-2 text-pink-500 text-2xl"></i> Delegate EA Task</h2>
@@ -556,13 +558,38 @@
                 </div>
 
                 <!-- Active EA Tasks / Follow-up Dashboard -->
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-fit flex flex-col max-h-[700px]">
-                    <div class="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center shrink-0">
+                <div id="eaListCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden h-fit flex flex-col max-h-[700px]">
+                    <div class="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-center gap-3 shrink-0">
                         <div>
                             <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-clock-counter-clockwise mr-2 text-rose-500 text-2xl"></i> Active EA Follow-ups</h2>
                             <p class="text-xs font-medium text-slate-500 mt-1">Monitor pending tasks & postpone deadlines.</p>
                         </div>
-                        <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2 rounded-xl border shadow-sm hidden lg:block"><i class="ph-bold ph-x text-xl"></i></button>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button id="eaFormToggle" onclick="eaToggleForm()" class="text-xs font-extrabold text-pink-700 bg-white hover:bg-pink-50 border border-pink-200 px-3 py-2 rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5"><i class="ph-bold ph-arrows-out"></i> <span>Full screen</span></button>
+                            <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2 rounded-xl border shadow-sm hidden lg:block"><i class="ph-bold ph-x text-xl"></i></button>
+                        </div>
+                    </div>
+                    <!-- Filters: apply to both sections below. -->
+                    <div class="px-5 py-3 border-b border-slate-200 bg-white shrink-0">
+                        <div class="grid grid-cols-2 md:grid-cols-6 gap-2">
+                            <div class="relative col-span-2">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                                <input type="text" id="eaFq" oninput="eaFilterChanged()" autocomplete="off" placeholder="Search task, employee, code" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs">
+                            </div>
+                            <select id="eaFemp" onchange="eaFilterChanged()" class="px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs"></select>
+                            <select id="eaFby" onchange="eaFilterChanged()" class="px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs"></select>
+                            <select id="eaFst" onchange="eaFilterChanged()" class="px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs">
+                                <option value="">All status</option><option value="OVERDUE">Overdue</option><option value="TODAY">Due today</option><option value="UPCOMING">Upcoming</option><option value="POSTPONED">Postponed</option>
+                            </select>
+                            <button onclick="eaClearFilters()" class="text-xs font-extrabold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl px-2 py-2 uppercase tracking-wider">Clear</button>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <label class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Due from</label>
+                            <input type="date" id="eaFfrom" onchange="eaFilterChanged()" class="px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs">
+                            <label class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">to</label>
+                            <input type="date" id="eaFto" onchange="eaFilterChanged()" class="px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-pink-500 font-bold text-xs">
+                            <span id="eaFcount" class="ml-auto text-[11px] font-extrabold text-slate-500"></span>
+                        </div>
                     </div>
                     <div class="p-5 bg-slate-100 overflow-y-auto flex-grow h-full relative inset-shadow-sm">
                         <div id="eaActiveTasksList" class="space-y-4">
@@ -1093,7 +1120,10 @@
             NO_PROOF: 'No photo was saved for this task.',
             BAD_DATA: 'Some of the values are not valid.',
             BAD_RANGE: 'That date range is too large.',
-            MOVED: 'This task was moved to a later day by a follow-up. Complete it on that day.'
+            MOVED: 'This task was moved to a later day by a follow-up. Complete it on that day.',
+            DAILY_SAME_DAY: 'A daily task cannot be moved to another date. Once it is missed, give it a later time today.',
+            SAME_DAY_TODAY_ONLY: 'Only today can be followed up to a later time on the same day.',
+            TIME_REQUIRED: 'Choose the time for today\'s follow-up.'
         };
         function tmErr(res, title) {
             const msg = TM_ERR[res.error] || ('The request failed: ' + esc(res.error));
@@ -1453,7 +1483,39 @@
                 + (has ? '' : ' · <span class="text-amber-600">No task list yet; a profile is created from the Employee Master</span>');
         }
         window.pickEaEmployee = function() { openEmpPicker('Select Employee for EA Task', setEaEmployee); };
-        window.initEADelegation = function() { setEaEmployee(null); renderEATasks(); }
+        window.initEADelegation = function() { setEaEmployee(null); eaApplyFormMode(); renderEATasks(); }
+
+        /* ── Active EA Follow-ups: view state ─────────────────────────────
+           Hidden form (full-screen list) and collapsed sections are remembered
+           in this browser; the filters are not, so the screen always opens on
+           the whole list. */
+        const EAUI = (() => { try { return Object.assign({ formHidden: false, collapsed: {} }, JSON.parse(localStorage.getItem('tm_ea_ui') || '{}')); } catch (e) { return { formHidden: false, collapsed: {} }; } })();
+        const eaSaveUi = () => { try { localStorage.setItem('tm_ea_ui', JSON.stringify(EAUI)); } catch (e) {} };
+        // Inline styles, not Tailwind classes added at run time, so the layout never depends on the CDN's re-scan.
+        function eaApplyFormMode() {
+            const hide = !!EAUI.formHidden, scr = document.getElementById('screen-ea-delegation');
+            document.getElementById('eaFormCard').style.display = hide ? 'none' : '';
+            document.getElementById('eaGrid').style.gridTemplateColumns = hide ? '1fr' : '';
+            scr.style.maxWidth = hide ? 'none' : ''; scr.style.paddingLeft = scr.style.paddingRight = hide ? '12px' : '';
+            document.getElementById('eaListCard').style.maxHeight = hide ? 'calc(100vh - 120px)' : '';
+            document.getElementById('eaFormToggle').innerHTML = hide
+                ? '<i class="ph-bold ph-user-circle-plus"></i> <span>Show form</span>'
+                : '<i class="ph-bold ph-arrows-out"></i> <span>Full screen</span>';
+            document.getElementById('eaFormToggle').title = hide ? 'Show the Delegate EA Task form again' : 'Hide the Delegate EA Task form and use the full width for the list';
+        }
+        window.eaToggleForm = function() { EAUI.formHidden = !EAUI.formHidden; eaSaveUi(); eaApplyFormMode(); };
+        window.eaToggleSection = function(k) { EAUI.collapsed[k] = !EAUI.collapsed[k]; eaSaveUi(); renderEATasks(); };
+        window.eaFilterChanged = function() { renderEATasks(); };
+        window.eaClearFilters = function() {
+            ['eaFq', 'eaFemp', 'eaFby', 'eaFst', 'eaFfrom', 'eaFto'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            renderEATasks();
+        };
+        // Keeps a filter dropdown's choice while its options are rebuilt from the current list.
+        function eaFillSelect(id, first, opts) {
+            const el = document.getElementById(id); if (!el) return; const cur = el.value;
+            el.innerHTML = `<option value="">${esc(first)}</option>` + opts.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join('');
+            el.value = opts.some(o => o[0] === cur) ? cur : '';
+        }
         window.assignEATask = async function() {
             const e=document.getElementById('eaEmpSelect').value; const desc=document.getElementById('eaTaskDesc').value.trim(); const d=document.getElementById('eaDate').value; const t=document.getElementById('eaTime').value;
             if(!e||!desc||!d||!t) return showCustomModal("Error","Fill all details",true);
@@ -1462,23 +1524,72 @@
             document.getElementById('eaTaskDesc').value='';
             await refreshAndRerender(); showCustomModal("EA Assigned", "Task successfully pushed to employee sheet.");
         }
+        /* Active EA tasks in two sections:
+             1. Follow-up: due today or earlier and still not done (past ones
+                first, oldest at the top) — what needs a call now;
+             2. All Delegated Tasks Pending: every EA task not done yet,
+                future ones included, by due date.
+           A task due today or earlier is in both, on purpose: section 2 is the
+           complete list. */
         window.renderEATasks = function() {
-            const c=document.getElementById('eaActiveTasksList'); let html='';
-            appState.employees.forEach(emp=>{
-                emp.tasks.forEach(t=>{
-                    if(t.frequency==='ea' && t.active!==false){
-                        const done = emp.records[t.freqValue]?.[t.id]?.checked;
-                        if(!done){
-                            let trackHTML = '';
-                            if (t.postponeHistory && t.postponeHistory.length > 1) {
-                                trackHTML = `<div class="mt-2 text-[10px] bg-rose-100 text-rose-800 px-2 py-1 rounded font-bold border border-rose-200 inline-block uppercase tracking-wider"><i class="ph-bold ph-git-merge mr-1"></i> Track: ${esc(t.postponeHistory.join(' ➔ '))}</div>`;
-                            }
-                            html+=`<div class="bg-white border border-rose-100 p-5 rounded-2xl flex justify-between items-center shadow-sm relative overflow-hidden group hover:border-rose-300 transition-colors"><div class="absolute left-0 top-0 w-1.5 h-full bg-rose-500"></div><div class="ml-2 w-full"><h4 class="font-extrabold text-slate-800 text-base leading-tight">${esc(t.desc)}</h4><p class="text-xs font-bold text-slate-500 mt-0.5 mb-2">Assigned to: <span class="text-slate-800">${esc(emp.empName)}</span>${t.createdBy?` · by ${esc(t.createdBy)}`:''}</p><div class="flex items-center"><span class="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-lg border border-rose-100 shadow-inner uppercase tracking-wider"><i class="ph-bold ph-calendar"></i> Due: ${esc(t.freqValue)} | ${esc(t.time)}</span></div>${trackHTML}</div><button onclick="promptEAPostpone('${esc(emp.empCode)}',${t.id})" class="text-xs font-bold bg-white hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-xl transition-all border border-rose-200 shadow-sm ml-4 shrink-0 active:scale-95 uppercase tracking-wider">Postpone</button></div>`;
-                        }
-                    }
+            const c = document.getElementById('eaActiveTasksList'), today = todayStr(), now = new Date(), all = [];
+            appState.employees.forEach(emp => {
+                emp.tasks.forEach(t => {
+                    if (t.frequency !== 'ea' || t.active === false) return;
+                    if (emp.records[t.freqValue]?.[t.id]?.checked) return;
+                    const p = parse12h(t.time), due = p ? dateAt(t.freqValue, p.h, p.m) : dateAt(t.freqValue, 23, 59);
+                    all.push({ emp, t, due });
                 });
             });
-            c.innerHTML = html || '<div class="text-sm text-slate-400 font-bold text-center py-10 border-2 border-dashed border-slate-200 rounded-2xl bg-white">No active pending EA tasks found.</div>';
+            all.sort((a, b) => a.due - b.due);
+            // OVERDUE (a past day, or today past its time) · TODAY (due today, time not passed) · UPCOMING.
+            const stateOf = x => x.t.freqValue < today || (x.t.freqValue === today && now > x.due) ? 'OVERDUE' : x.t.freqValue === today ? 'TODAY' : 'UPCOMING';
+            // Filter options come from the pending list itself, so every choice finds something.
+            eaFillSelect('eaFemp', 'All employees', [...new Map(all.map(x => [x.emp.empCode, x.emp.empName + ' (' + x.emp.empCode + ')'])).entries()].sort((a, b) => a[1].localeCompare(b[1])));
+            eaFillSelect('eaFby', 'All assigned by', [...new Set(all.map(x => x.t.createdBy || '').filter(Boolean))].sort().map(v => [v, v]));
+            const fv = id => (document.getElementById(id) || {}).value || '';
+            const q = fv('eaFq').trim().toUpperCase(), fe = fv('eaFemp'), fb = fv('eaFby'), fs = fv('eaFst'), ff = fv('eaFfrom'), ft = fv('eaFto');
+            const shown = all.filter(x => {
+                if (q && ![x.t.desc, x.emp.empName, x.emp.empCode, x.emp.dept, x.t.createdBy].join(' ').toUpperCase().includes(q)) return false;
+                if (fe && x.emp.empCode !== fe) return false;
+                if (fb && (x.t.createdBy || '') !== fb) return false;
+                if (fs === 'POSTPONED' ? !(x.t.postponeHistory && x.t.postponeHistory.length > 1) : (fs && stateOf(x) !== fs)) return false;
+                if (ff && x.t.freqValue < ff) return false;
+                if (ft && x.t.freqValue > ft) return false;
+                return true;
+            });
+            const filtered = shown.length !== all.length;
+            const cnt = document.getElementById('eaFcount');
+            if (cnt) cnt.textContent = filtered ? `Showing ${shown.length} of ${all.length} pending` : `${all.length} pending`;
+            const fu = shown.filter(x => x.t.freqValue <= today);
+            const card = (x) => {
+                const { emp, t } = x, days = Math.round((dateAt(today) - dateAt(t.freqValue)) / 86400000), s = stateOf(x);
+                const st = s === 'OVERDUE' ? ['bg-red-50 text-red-700 border-red-200', t.freqValue < today ? 'Overdue ' + days + ' day' + (days > 1 ? 's' : '') : 'Overdue today']
+                    : s === 'TODAY' ? ['bg-amber-50 text-amber-700 border-amber-200', 'Due today']
+                    : ['bg-emerald-50 text-emerald-700 border-emerald-200', 'Upcoming'];
+                const track = t.postponeHistory && t.postponeHistory.length > 1
+                    ? `<div class="mt-2 text-[10px] bg-rose-100 text-rose-800 px-2 py-1 rounded font-bold border border-rose-200 inline-block uppercase tracking-wider"><i class="ph-bold ph-git-merge mr-1"></i> Track: ${esc(t.postponeHistory.join(' ➔ '))}</div>` : '';
+                const mx = masterByCode(emp.empCode);
+                return `<div class="bg-white border border-rose-100 p-5 rounded-2xl flex justify-between items-center shadow-sm relative overflow-hidden group hover:border-rose-300 transition-colors"><div class="absolute left-0 top-0 w-1.5 h-full ${st[1] === 'Upcoming' ? 'bg-emerald-500' : 'bg-rose-500'}"></div><div class="ml-2 w-full">`
+                    + `<h4 class="font-extrabold text-slate-800 text-base leading-tight">${esc(t.desc)}</h4>`
+                    + `<p class="text-xs font-bold text-slate-500 mt-0.5 mb-2">Assigned to: <span class="text-slate-800">${esc(emp.empName)}</span>${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}${t.createdBy ? ` · by ${esc(t.createdBy)}` : ''}</p>`
+                    + `<div class="flex flex-wrap items-center gap-1.5"><span class="bg-rose-50 text-rose-700 text-[10px] font-bold px-2 py-1 rounded-lg border border-rose-100 shadow-inner uppercase tracking-wider"><i class="ph-bold ph-calendar"></i> Due: ${esc(t.freqValue)} | ${esc(t.time)}</span>`
+                    + `<span class="text-[10px] font-extrabold px-2 py-1 rounded-lg border uppercase tracking-wider ${st[0]}">${esc(st[1])}</span></div>${track}</div>`
+                    + `<button onclick="promptEAPostpone('${esc(emp.empCode)}',${t.id})" class="text-xs font-bold bg-white hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-xl transition-all border border-rose-200 shadow-sm ml-4 shrink-0 active:scale-95 uppercase tracking-wider">Postpone</button></div>`;
+            };
+            // The header is a button: a tap folds the section away (remembered), the count stays visible.
+            const section = (key, icon, title, sub, list, empty, color) => {
+                const shut = !!EAUI.collapsed[key];
+                return `<div><button type="button" onclick="eaToggleSection('${key}')" aria-expanded="${!shut}" class="w-full flex items-center justify-between gap-2 mb-2 text-left group">`
+                    + `<h3 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5"><i class="ph-bold ${shut ? 'ph-caret-right' : 'ph-caret-down'} text-slate-400 group-hover:text-slate-700"></i><i class="ph-fill ${icon} ${color}"></i> ${title}</h3>`
+                    + `<span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full border ${list.length ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-200'}">${list.length}</span></button>`
+                    + (shut ? '' : `<p class="text-[11px] font-bold text-slate-500 mb-3">${sub}</p>`
+                        + `<div class="space-y-3">${list.length ? list.map(card).join('') : `<div class="text-sm text-slate-400 font-bold text-center py-6 border-2 border-dashed border-slate-200 rounded-2xl bg-white">${filtered ? 'Nothing matches the filters.' : empty}</div>`}</div>`)
+                    + `</div>`;
+            };
+            c.innerHTML = section('fu', 'ph-phone-call', '1. Follow-up', 'Due today or earlier and still not done (oldest first).', fu, 'Nothing due for follow-up.', 'text-rose-500')
+                + '<div class="border-t border-slate-300 my-5"></div>'
+                + section('all', 'ph-list-checks', '2. All Delegated Tasks Pending', 'Every EA task not done yet, upcoming ones included (by due date).', shown, 'No active pending EA tasks found.', 'text-pink-600');
         }
         window.promptEAPostpone = function(eCode, tId) { pendingEAPostpone={eCode,tId}; document.getElementById('eaPostponeDate').value=''; document.getElementById('eaPostponeTime').value=''; const m=document.getElementById('eaPostponeModal'); const c=document.getElementById('eaPostponeContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95','opacity-0'); c.classList.add('scale-100','opacity-100'); }
         window.closeEAPostponeModal = function() { const m=document.getElementById('eaPostponeModal'); const c=document.getElementById('eaPostponeContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); setTimeout(()=>{m.classList.add('hidden'); m.classList.remove('flex'); pendingEAPostpone=null;},300); }
@@ -2115,19 +2226,33 @@
                 + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="text-sm font-extrabold text-violet-800">${list.length} pending</div></div></div>`;
             if (!list.length) h += '<div class="text-center p-8 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold">Nothing pending for this day.</div>';
             else {
-                h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Rows with a new date are saved; date and remark are both needed.</span></div>`;
+                h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Ticked rows are saved; a remark is always needed, and a time when the date is today. Daily tasks cannot change date: once missed they get a later time today.</span></div>`;
                 h += '<div class="space-y-3">' + list.map(({ t, rec, sc }) => {
+                    /* Date starts on today and time starts empty, so a time is
+                       always a conscious choice. A DAILY task never changes
+                       date (its next occurrence is tomorrow anyway): only today,
+                       and only once its target has passed, it can get a later
+                       time today. The server enforces the same
+                       (TM_PC_FOLLOWUP_SAMEDAY_MIGRATION.sql). */
+                    const today = todayStr(), daily = (t.frequency || 'daily') === 'daily';
+                    const lockMsg = !daily ? '' : (ds !== today ? 'Daily task of a past day: it cannot be rescheduled to another date.'
+                        : sc.state === 'upcoming' ? 'Daily task, not missed yet: a time follow-up opens once its target time has passed.' : '');
                     const stCls = sc.state === 'upcoming' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200';
                     const stTxt = sc.state === 'upcoming' ? 'Not due yet · ' + esc(fmtClock(sc.deadline)) : (sc.state === 'missed' ? 'Missed' : 'Overdue') + ' · ' + (sc.pts < 0 ? signed(sc.pts) : sc.pts) + ' pts now';
                     const fuFrom = rec && rec.status === 'pending-reschedule' ? `<div class="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 mt-1.5 inline-flex items-center gap-1.5"><span class="signal-fu" style="width:7px;height:7px"></span> Follow-up from ${esc(rec.origDate || '')}${rec.remarks ? ': “' + esc(rec.remarks) + '”' : ''}</div>` : '';
-                    return `<div class="rounded-2xl border border-slate-200 p-4 bg-white" data-pc-row data-task="${t.id}">`
-                        + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
-                        + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
+                    const head = `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
                         + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">${esc(getFrequencyText(t))}</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span><span class="px-2 py-0.5 rounded border ${stCls}">${stTxt}</span></div>`
-                        + fuFrom + fuChip(t) + `</div></div>`
+                        + fuFrom + fuChip(t) + `</div>`;
+                    // Nothing to save on this row: say why instead of offering inputs that would be refused.
+                    if (lockMsg) return `<div class="rounded-2xl border border-slate-200 p-4 bg-slate-50"><div class="flex items-start gap-3"><i class="ph-bold ph-lock-simple text-slate-400 mt-0.5 shrink-0"></i>${head}</div>`
+                        + `<div class="text-[11px] font-bold text-slate-500 mt-2">${esc(lockMsg)}</div></div>`;
+                    return `<div class="rounded-2xl border border-slate-200 p-4 bg-white" data-pc-row data-task="${t.id}" data-daily="${daily ? 1 : ''}">`
+                        + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
+                        + head + `</div>`
                         + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
-                        + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Reschedule date</label><input type="date" data-pc-date min="${nextDayOf(ds)}" onchange="pcRowTouched(this)" class="w-full ${inp}"></div>`
-                        + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time class="w-full ${inp}">${hourOptions(to24(rec && rec.time || t.time), 'Same as task')}</select></div>`
+                        + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">${daily ? 'Follow-up date (daily: today only)' : 'Reschedule date'}</label>`
+                        + `<input type="date" data-pc-date value="${today}" min="${today}"${daily ? ' max="' + today + '" disabled title="A daily task stays on today; give it a later time"' : ''} onchange="pcRowTouched(this)" class="w-full ${inp}${daily ? ' opacity-70 cursor-not-allowed' : ''}"></div>`
+                        + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time onchange="pcRowTouched(this)" class="w-full ${inp}">${hourOptions('', '-- Select --')}</select></div>`
                         + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
                         + `</div></div>`;
                 }).join('') + '</div>';
@@ -2136,18 +2261,34 @@
             if (done.length) h += `<div class="mt-6 pt-4 border-t border-slate-100"><h4 class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Already followed up for this day</h4><div class="space-y-1.5">` + done.slice().reverse().map(f => { const tk = findTask(e.empCode, f.taskNo); return `<button onclick="showFollowupHistory('${esc(e.empCode)}',${f.taskNo},'${esc(ds)}')" class="w-full text-left text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100"><b class="text-slate-800">${esc(tk ? tk.desc : 'Task ' + f.taskNo)}</b> <span class="text-violet-800 font-extrabold">→ ${esc(f.toDate)}${f.toTime ? ' ' + esc(f.toTime) : ''}</span>${f.remarks ? ' <span class="text-slate-500 italic">“' + esc(f.remarks) + '”</span>' : ''} <span class="text-slate-400 font-bold">· ${esc(f.by || '')}</span></button>`; }).join('') + '</div></div>';
             pane.innerHTML = h;
         };
-        // Typing a date or a remark ticks the row, so nothing entered is left out by accident.
-        window.pcRowTouched = function(el) { const r = el.closest('[data-pc-row]'); const d = r.querySelector('[data-pc-date]').value; r.querySelector('[data-pc-check]').checked = !!d || !!r.querySelector('[data-pc-remarks]').value.trim(); };
-        window.pcFillNextDay = function() { const nd = nextDayOf(pcDay()); document.querySelectorAll('#pcTaskPane [data-pc-row]').forEach(r => { const d = r.querySelector('[data-pc-date]'); if (!d.value) d.value = nd; r.querySelector('[data-pc-check]').checked = true; }); };
+        /* Choosing a time, changing the date or typing a remark ticks the row,
+           so nothing entered is left out by accident. The date alone does not:
+           it starts filled with today on every row. */
+        window.pcRowTouched = function(el) {
+            const r = el.closest('[data-pc-row]'), d = r.querySelector('[data-pc-date]');
+            r.querySelector('[data-pc-check]').checked = !!r.querySelector('[data-pc-time]').value || d.value !== todayStr() || !!r.querySelector('[data-pc-remarks]').value.trim();
+        };
+        // Daily rows are left alone: a daily task never changes date.
+        window.pcFillNextDay = function() { const nd = nextDayOf(todayStr()); document.querySelectorAll('#pcTaskPane [data-pc-row]').forEach(r => { if (r.dataset.daily) return; r.querySelector('[data-pc-date]').value = nd; r.querySelector('[data-pc-check]').checked = true; }); };
         window.pcSave = async function() {
-            const ds = pcDay(), code = pcSelected; if (!code) return;
+            const ds = pcDay(), code = pcSelected, today = todayStr(); if (!code) return;
             const rows = [...document.querySelectorAll('#pcTaskPane [data-pc-row]')].filter(r => r.querySelector('[data-pc-check]').checked);
-            if (!rows.length) return showCustomModal('Nothing selected', 'Give at least one task a new date and a remark.', true);
-            const items = [], bad = [];
+            if (!rows.length) return showCustomModal('Nothing selected', 'Tick at least one task and give it a remark (and a time when the date is today).', true);
+            const items = [], bad = [], nowH = new Date().getHours();
             rows.forEach(r => {
-                const id = +r.dataset.task, nd = r.querySelector('[data-pc-date]').value, rm = r.querySelector('[data-pc-remarks]').value.trim(), tm = to12h(r.querySelector('[data-pc-time]').value);
-                const t = findTask(code, id);
-                if (!nd || nd <= ds || !rm) bad.push(esc(t ? t.desc : 'Task ' + id) + (!nd ? ': no date' : (nd <= ds ? ': date must be after ' + esc(ds) : ': no remark')));
+                const id = +r.dataset.task, daily = !!r.dataset.daily, nd = daily ? today : r.querySelector('[data-pc-date]').value;
+                const rm = r.querySelector('[data-pc-remarks]').value.trim(), hv = r.querySelector('[data-pc-time]').value, tm = to12h(hv);
+                const t = findTask(code, id), nm = esc(t ? t.desc : 'Task ' + id);
+                /* Same-day (today) follow-up = a later time today: needs an hour
+                   after the current one. A later date may keep the task's time. */
+                let err = '';
+                if (!nd) err = 'no date';
+                else if (nd < today) err = 'the date cannot be before today';
+                else if (daily && ds !== today) err = 'a daily task of a past day cannot be rescheduled';
+                else if (nd === today && !hv) err = 'choose a time for today';
+                else if (nd === today && +hv.slice(0, 2) <= nowH) err = 'choose a time later than now';
+                else if (!rm) err = 'no remark';
+                if (err) bad.push(nm + ': ' + err);
                 else items.push({ id, nd, rm, tm });
             });
             if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
@@ -2159,7 +2300,7 @@
                 if (!res.ok) { const t = findTask(code, it.id); fail.push(esc(t ? t.desc : it.id) + ': ' + (TM_ERR[res.error] || esc(res.error))); }
             }
             await refreshAndRerender();
-            showCustomModal(fail.length ? 'Partly saved' : 'Follow-up Saved', `${items.length - fail.length} task(s) rescheduled. They show again on their new date.` + (fail.length ? '<br><br>' + fail.join('<br>') : ''), fail.length > 0);
+            showCustomModal(fail.length ? 'Partly saved' : 'Follow-up Saved', `${items.length - fail.length} task(s) followed up. A task given a later time today stays on today's sheet with the new time; one moved to a later date shows again on that date.` + (fail.length ? '<br><br>' + fail.join('<br>') : ''), fail.length > 0);
         };
 
         /* ── Month navigation (My Month View + MD sheet) ─────────────────

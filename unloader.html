@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script><script src="caps-input.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Unloader Supervisor</title>
+<!-- First, so a logged-in user never sees a flash of anything else. -->
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<!--
+  UNLOADER SUPERVISOR: verifies every new Inward at the unloading point.
+
+  ERP › Inward › Submit sends the entry here (inward_unload_approvals,
+  status Pending). The supervisor checks the material against the list,
+  takes item photos and approves with their OWN login PIN, or rejects with a
+  reason. Only an approved entry can be saved in the ERP (Final Submit); the
+  ERP then prints the supervisor's Name / Emp Code / Mobile on the Inward PDF
+  and adds these photos to its Original Invoice PDF.
+
+  LOGIN = ERP LOGIN (launcher.html). App key HOME_UNLOADER, given by the Admin
+  under Tab Visibility or Users › Apps. Everything goes through the ul_* RPCs
+  in UNLOADER_APPROVAL_MIGRATION.sql, which check the session, the app access
+  and the PIN on the server, and take the approver's details from app_users,
+  so nothing on this page can approve on someone else's behalf.
+
+  Looks like mobile.html on purpose (same mobile.css): the same people use
+  both on the same phones. Rates and amounts are not shown: the supervisor
+  verifies what physically arrived, not the price.
+-->
+<link rel="stylesheet" href="mobile.css?v=20261023a">
+<style>
+  .stage-tabs.two { grid-template-columns: repeat(2, 1fr); }
+  .hdr-btn { font-size: 0.72rem; font-weight: 700; background: rgba(255,255,255,0.18); padding: 5px 10px; border-radius: 20px; cursor: pointer; border: none; color: #fff; }
+  header { background-color: #c2410c; }
+  .stage-tab.active { background: #c2410c; border-color: #c2410c; }
+  .card-header { color: #c2410c; }
+  .ul-search { display: flex; gap: 8px; padding: 8px 10px; background: #fff; border-bottom: 1px solid var(--border); }
+  .ul-search input { flex: 1; min-width: 0; padding: 8px 10px; font-size: 0.85rem; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+  .ul-note { margin: 10px 12px 0; padding: 9px 11px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; }
+  .ul-note.warn { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; }
+  .ul-note.bad { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+  .ul-sec { font-size: 0.85rem; font-weight: 700; margin: 12px 0 6px; display: flex; justify-content: space-between; align-items: center; }
+  .ul-photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+  .ul-photo { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: #f1f5f9; }
+  .ul-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ul-photo button { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; border-radius: 50%; border: none; background: rgba(0,0,0,0.6); color: #fff; font-size: 0.8rem; cursor: pointer; }
+  .ul-pick { display: flex; gap: 8px; margin-bottom: 6px; }
+  .ul-pick label { flex: 1; text-align: center; padding: 10px; border: 1px dashed #fb923c; border-radius: 8px; background: #fff7ed; color: #c2410c; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
+  .ul-pick input { display: none; }
+  .ul-hint { font-size: 0.7rem; color: #6b7280; margin-top: 4px; }
+  .ul-pin { font-size: 1.5rem; letter-spacing: .5em; text-align: center; font-weight: 800; }
+  .ul-decided { border-radius: 8px; padding: 9px 11px; font-size: 0.8rem; font-weight: 600; margin-bottom: 10px; }
+  .ul-decided.ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+  .ul-decided.no { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; }
+  .item-table td.n { text-align: right; white-space: nowrap; }
+  .ul-ref { font-size: 0.68rem; color: #64748b; font-weight: 600; margin-top: 2px; }
+  .ul-ref .ex { color: #b91c1c; font-weight: 800; }
+  #ulViewer { z-index: 1200; }
+  #ulViewer .modal-content img { width: 100%; border-radius: 8px; margin-bottom: 8px; display: block; }
+</style>
+</head>
+<body>
+<div class="app-container">
+  <div id="busyOverlay"><div></div><div id="busyText">Working...</div></div>
+
+  <header>
+    <span>Unloader Supervisor</span>
+    <span style="display:flex;align-items:center;gap:6px;">
+      <button class="hdr-btn" onclick="load(true)" title="Refresh now">↻</button>
+      <button class="hdr-btn" id="meBadge" onclick="askLogout()" title="Log out of all apps">-</button>
+    </span>
+  </header>
+
+  <nav class="stage-tabs two" id="stageTabs">
+    <div class="stage-tab" data-tab="PENDING" onclick="setTab('PENDING')">
+      <span class="st-lbl">To Verify</span><span class="st-count zero" id="cnt-PENDING">0</span>
+    </div>
+    <div class="stage-tab" data-tab="DONE" onclick="setTab('DONE')">
+      <span class="st-lbl">Verified / Rejected</span><span class="st-count zero" id="cnt-DONE">0</span>
+    </div>
+  </nav>
+  <div class="ul-search"><input type="search" id="q" placeholder="Supplier / Invoice / PO / Request no." autocomplete="off" oninput="renderList()"></div>
+  <div id="profileNote"></div>
+  <div class="list-container" id="list"><p class="empty-msg">Loading…</p></div>
+
+  <!-- One request: what to check, the photos, and the decision. -->
+  <div class="modal-overlay" id="ulModal">
+    <div class="modal-content">
+      <div class="modal-title"><span id="mTitle">Inward</span><button class="close-btn" onclick="closeModal()">×</button></div>
+      <div class="req-meta-info" id="mMeta"></div>
+      <div id="mDecided"></div>
+      <label style="font-size:0.85rem;font-weight:600;margin-bottom:6px;display:block;">Items to check <span id="mItemCount" style="color:#c2410c;"></span></label>
+      <div class="table-container">
+        <table class="item-table">
+          <thead><tr><th>Sr</th><th>Item</th><th>Qty</th><th>Weight</th></tr></thead>
+          <tbody id="mItems"></tbody>
+        </table>
+      </div>
+      <div id="mStoreRemarks"></div>
+
+      <!-- Decision: only on a Pending request. -->
+      <div id="mAct">
+        <div class="ul-sec"><span>Item Photos <span style="color:#dc3545;">*</span></span><span id="phCount" style="font-size:0.75rem;color:#c2410c;"></span></div>
+        <div class="ul-pick">
+          <label>Take Photo<input type="file" accept="image/*" capture="environment" onchange="addPhotos(this)"></label>
+          <label>Choose Photos<input type="file" accept="image/*" multiple onchange="addPhotos(this)"></label>
+        </div>
+        <div class="ul-photos" id="phGrid"></div>
+        <div class="ul-hint">At least 1 photo of the unloaded material is required to approve (up to 10). They are added to the Inward's Original Invoice PDF.</div>
+        <div class="form-group" style="margin-top:12px;">
+          <label>Remarks <small style="font-weight:500;color:#6b7280;">required for Reject</small></label>
+          <textarea id="mRemarks" rows="2" placeholder="Shortage, damage, wet bags, anything to note..."></textarea>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="apBtn" onclick="askPin('APPROVE')" style="flex:1;width:auto;">✔ Approve</button>
+          <button class="btn" id="rjBtn" onclick="askPin('REJECT')" style="flex:1;width:auto;background:#dc3545;">✖ Reject</button>
+        </div>
+        <div class="ul-hint" style="margin-top:7px;"><b>Approve</b>: the store can Final Submit this Inward. <b>Reject</b>: the store must correct it and send it again.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIN: the supervisor's own login PIN signs the decision. -->
+  <div class="modal-overlay" id="pinModal" style="z-index:1100;">
+    <div class="modal-content">
+      <div class="modal-title"><span id="pinTitle">Enter your PIN</span><button class="close-btn" onclick="closePin()">×</button></div>
+      <div style="font-size:0.76rem;color:#6b7280;margin-bottom:10px;">Your own login PIN. Your Name, Emp Code and Mobile No. are recorded with this decision and printed on the Inward PDF.</div>
+      <div class="form-group">
+        <input type="password" id="pinIn" class="form-select ul-pin" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')submitDecision()">
+      </div>
+      <div class="err-banner" id="pinErr"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn" id="pinBtn" onclick="submitDecision()" style="flex:1;width:auto;">Confirm</button>
+        <button class="btn" onclick="closePin()" style="flex:1;width:auto;background:#6c757d;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved photos of a decided request. -->
+  <div class="modal-overlay" id="ulViewer">
+    <div class="modal-content">
+      <div class="modal-title"><span>Unloading Photos</span><button class="close-btn" onclick="document.getElementById('ulViewer').style.display='none'">×</button></div>
+      <div id="viewerBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_UNLOADER';
+// Long side and JPEG quality of each photo: readable when zoomed, small enough to upload on a weak signal.
+const PHOTO_MAX_SIDE = 1600, PHOTO_JPEG_Q = 0.8, PHOTO_MAX = 10;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const fmtN = v => { const n = num(v); return n % 1 === 0 ? String(n) : n.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
+function stamp(v){
+  if (!v) return '';
+  const d = new Date(v); if (isNaN(d)) return String(v);
+  const z = n => String(n).padStart(2, '0');
+  return z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+}
+function dmy(v){ const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + '/' + m[2] + '/' + m[1] : (v || ''); }
+
+let TAB = 'PENDING', ROWS = { PENDING: [], DONE: [] }, ME = {}, OPEN = null, PHOTOS = [], ACTION = '';
+
+/* ── Server calls: one door for every ul_* RPC ───────────────────────── */
+const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
+const ERR_TEXT = {
+  PIN_INVALID: 'Wrong PIN. Please try again.',
+  TOO_MANY_ATTEMPTS: 'Too many wrong PINs. Please wait 15 minutes and try again.',
+  PIN_CHECK_UNAVAILABLE: 'The PIN could not be checked right now. Please try again later.',
+  PHOTO_REQUIRED: 'Add at least one photo of the material.',
+  PHOTO_INVALID: 'One of the photos could not be read. Remove it and take it again.',
+  TOO_MANY_PHOTOS: 'At most ' + PHOTO_MAX + ' photos.',
+  REMARKS_REQUIRED: 'Write the reason for rejecting in Remarks.',
+  PROFILE_INCOMPLETE: 'Your Emp Code or Contact No. is missing in your user profile, and both are printed on the Inward PDF. Ask the Admin to fill them in (Admin Panel › Users).',
+  ALREADY_APPROVED: 'This entry has already been approved.',
+  ALREADY_REJECTED: 'This entry has already been rejected.',
+  ALREADY_CANCELLED: 'The store has replaced this entry with a corrected one. Refresh the list.',
+  NOT_FOUND: 'This entry was not found. Refresh the list.'
+};
+async function rpc(fn, args){
+  let r;
+  try {
+    r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify(Object.assign({ p_token: SARV_GATE.token }, args || {}))
+    });
+  } catch (e) { throw new Error('Could not reach the server. Please check the internet connection.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) {
+    const code = d && d.code;
+    if (code === 'PGRST202' || code === '42883' || code === '42P01') {
+      throw new Error('The Unloader approval is not set up on the server yet. Admin: run UNLOADER_APPROVAL_MIGRATION.sql in the Supabase SQL Editor.');
+    }
+    throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
+  }
+  if (d && d.success === false) {
+    const err = String(d.error || '');
+    if (SESSION_ERR[err]) { location.replace('launcher.html?why=' + err); return new Promise(() => {}); }
+    if (err === 'NO_APP_ACCESS') {
+      SARV_GATE.halt('Unloader Supervisor', 'The Unloader Supervisor app is turned off for your login. Ask the Admin to switch it <b>ON</b> under <i>Admin Panel › Users › Apps</i>, then log in again.', err);
+      return new Promise(() => {});
+    }
+    const e = new Error(ERR_TEXT[err] || err); e.code = err; throw e;
+  }
+  return d;
+}
+function busy(on, text){ $('busyOverlay').style.display = on ? 'flex' : 'none'; if (text) $('busyText').textContent = text; }
+
+/* ── List ──────────────────────────────────────────────────────────── */
+async function load(manual){
+  try {
+    const [p, d] = await Promise.all([rpc('ul_list', { p_scope: 'PENDING' }), rpc('ul_list', { p_scope: 'DONE' })]);
+    ROWS.PENDING = p.rows || []; ROWS.DONE = d.rows || []; ME = p.me || {};
+    $('meBadge').textContent = (ME.name || '-') + ' · Log out';
+    // Warned up front, not at the PIN: an approval without these is refused.
+    $('profileNote').innerHTML = (!ME.emp_code || !ME.contact_no)
+      ? '<div class="ul-note bad">Your ' + [!ME.emp_code ? 'Emp Code' : '', !ME.contact_no ? 'Contact No.' : ''].filter(Boolean).join(' and ')
+        + ' is missing in your user profile. Both are printed on the Inward PDF, so you cannot approve until the Admin fills them in (Admin Panel › Users).</div>' : '';
+    renderTabs(); renderList();
+    if (manual) flash('List refreshed');
+  } catch (e) {
+    $('list').innerHTML = '<div class="ul-note bad" style="margin:0;">' + esc(e.message || e) + '</div>';
+  }
+}
+function renderTabs(){
+  ['PENDING', 'DONE'].forEach(k => {
+    const n = ROWS[k].length, c = $('cnt-' + k);
+    c.textContent = n; c.classList.toggle('zero', !n); c.classList.toggle('alert', k === 'PENDING' && n > 0);
+  });
+  document.querySelectorAll('.stage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === TAB));
+}
+function setTab(k){ TAB = k; try { sessionStorage.setItem('ul_tab', k); } catch (e) {} renderTabs(); renderList(); }
+const items = r => (r && r.payload && Array.isArray(r.payload.items)) ? r.payload.items : [];
+function renderList(){
+  const q = ($('q').value || '').trim().toUpperCase();
+  const list = ROWS[TAB].filter(r => !q || [r.request_no, r.supplier_name, r.invoice_no, r.po_numbers, r.req_numbers, r.requested_by]
+    .some(v => String(v || '').toUpperCase().indexOf(q) >= 0));
+  if (!list.length) {
+    $('list').innerHTML = '<p class="empty-msg">' + (q ? 'Nothing matches the search.' : TAB === 'PENDING' ? 'Nothing waiting. New Inward entries appear here as soon as the store submits them.' : 'Nothing verified in the last 60 days.') + '</p>';
+    return;
+  }
+  $('list').innerHTML = list.map(r => {
+    const it = items(r), qty = it.reduce((s, x) => s + num(x.qty), 0);
+    const ref = r.po_numbers ? 'PO ' + r.po_numbers : r.req_numbers ? 'PR ' + r.req_numbers : 'Without PO';
+    let act;
+    if (r.status === 'Pending') act = '<div class="card-action act">Tap to check, add photos and approve</div>';
+    else if (r.status === 'Approved') act = '<div class="card-action done">✔ Approved by ' + esc(r.decided_by || '-') + ' · ' + esc(stamp(r.decided_at)) + (r.used_on ? ' · Saved as ' + esc(r.used_on) : ' · Waiting for Final Submit') + '</div>';
+    else act = '<div class="card-action wait" style="color:#b91c1c;">✖ Rejected by ' + esc(r.decided_by || '-') + ' · ' + esc(stamp(r.decided_at)) + (r.remarks ? ' · ' + esc(r.remarks) : '') + '</div>';
+    return '<div class="card" onclick="openReq(' + r.id + ')">'
+      + '<div class="card-header"><span>' + esc(r.request_no || ('#' + r.id)) + '</span><span style="font-size:0.75rem;color:#64748b;">' + esc(r.entry_type || 'INWARD') + '</span></div>'
+      + '<div class="card-detail">Supplier: <b>' + esc(r.supplier_name || '-') + '</b></div>'
+      + '<div class="card-detail">Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '</div>'
+      + '<div class="card-detail">' + esc(ref) + ' · <b>' + it.length + '</b> item(s) · Qty <b>' + esc(fmtN(qty)) + '</b></div>'
+      + '<div class="card-detail" style="font-size:0.75rem;">Sent by ' + esc(r.requested_by || '-') + ' · ' + esc(stamp(r.requested_at)) + '</div>'
+      + act + '</div>';
+  }).join('');
+}
+
+/* ── One request ───────────────────────────────────────────────────── */
+function openReq(id){
+  const r = ROWS[TAB].find(x => x.id === id); if (!r) return;
+  OPEN = r; PHOTOS = []; renderPhotos();
+  const p = r.payload || {}, it = items(r);
+  $('mTitle').textContent = (r.request_no || ('#' + r.id)) + ' · ' + (r.entry_type || 'INWARD');
+  $('mMeta').innerHTML = '<b>' + esc(r.supplier_name || '-') + '</b><br>'
+    + 'Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '<br>'
+    + (r.po_numbers ? 'PO: <b>' + esc(r.po_numbers) + '</b><br>' : '') + (r.req_numbers ? 'PR: <b>' + esc(r.req_numbers) + '</b><br>' : '')
+    + (p.natureOfInward ? 'Nature: <b>' + esc(p.natureOfInward) + '</b><br>' : '')
+    + (p.extra && p.extra.gatePassNo ? 'Gate Pass: <b>' + esc(p.extra.gatePassNo) + '</b><br>' : '')
+    + (p.receivingDate ? 'Receiving Date: <b>' + esc(dmy(p.receivingDate)) + '</b><br>' : '')
+    + '<span style="font-size:0.75rem;color:#64748b;">Sent by ' + esc(r.requested_by || '-') + ' · ' + esc(stamp(r.requested_at)) + '</span>';
+  $('mItemCount').textContent = '(' + it.length + ')';
+  $('mItems').innerHTML = it.map((x, i) => {
+    // What the PO / PR still had pending, so a count that is off stands out.
+    const ref = x.docKind && x.docNo ? '<div class="ul-ref">' + esc(x.docKind + ' ' + x.docNo) + ' · pending ' + esc(fmtN(x.pending))
+      + (num(x.excess) > 0 ? ' · <span class="ex">excess ' + esc(fmtN(x.excess)) + '</span>' : '') + '</div>'
+      : (x.extraItem ? '<div class="ul-ref"><span class="ex">Not on the PO</span></div>' : '');
+    return '<tr><td>' + (i + 1) + '</td><td><b>' + esc(x.name) + '</b>' + (x.make ? '<div class="ul-ref">' + esc(x.make) + '</div>' : '') + ref + '</td>'
+      + '<td class="n"><b>' + esc(fmtN(x.qty)) + '</b> ' + esc(x.uom || '') + '</td>'
+      + '<td class="n">' + (num(x.weight) ? esc(fmtN(x.weight)) + ' ' + esc(x.wunit || 'KGS') : '-') + '</td></tr>';
+  }).join('');
+  $('mStoreRemarks').innerHTML = p.remarks ? '<div class="mode-note" style="display:block;">Store remarks: ' + esc(p.remarks) + '</div>' : '';
+  const pending = r.status === 'Pending';
+  $('mAct').style.display = pending ? '' : 'none';
+  $('mRemarks').value = '';
+  if (pending) {
+    $('mDecided').innerHTML = '';
+  } else {
+    const a = r.approver || {};
+    $('mDecided').innerHTML = r.status === 'Approved'
+      ? '<div class="ul-decided ok">✔ Approved by <b>' + esc(a.name || r.decided_by || '-') + '</b>' + (a.emp_code ? ' (' + esc(a.emp_code) + ')' : '')
+        + (a.contact_no ? ' · ' + esc(a.contact_no) : '') + '<br>' + esc(stamp(r.decided_at)) + ' · ' + esc(r.photo_count || 0) + ' photo(s)'
+        + (r.used_on ? ' · Saved as <b>' + esc(r.used_on) + '</b>' : ' · Waiting for the store\'s Final Submit')
+        + (r.remarks ? '<br>Remarks: ' + esc(r.remarks) : '')
+        + (r.photo_count ? '<br><button class="clear-btn" style="margin-top:6px;" onclick="viewPhotos(' + r.id + ')">View photos</button>' : '') + '</div>'
+      : '<div class="ul-decided no">✖ Rejected by <b>' + esc(r.decided_by || '-') + '</b> · ' + esc(stamp(r.decided_at)) + (r.remarks ? '<br>Reason: ' + esc(r.remarks) : '') + '</div>';
+  }
+  $('ulModal').style.display = 'flex';
+  try { history.replaceState(null, '', '#' + (r.request_no || r.id)); } catch (e) {}
+}
+function closeModal(){
+  if (PHOTOS.length && OPEN && OPEN.status === 'Pending' && !confirm('Discard the ' + PHOTOS.length + ' photo(s) taken for this entry?')) return;
+  $('ulModal').style.display = 'none'; OPEN = null; PHOTOS = [];
+  try { history.replaceState(null, '', location.pathname); } catch (e) {}
+}
+
+/* ── Photos: shrunk once on the phone, before they are sent ────────── */
+function compress(f){
+  return new Promise(res => {
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', PHOTO_JPEG_Q));
+      } catch (e) { URL.revokeObjectURL(url); res(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+    img.src = url;
+  });
+}
+async function addPhotos(inp){
+  const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
+  inp.value = '';
+  if (!files.length) return;
+  const room = PHOTO_MAX - PHOTOS.length;
+  if (room <= 0) return flash('At most ' + PHOTO_MAX + ' photos.');
+  busy(true, 'Processing photo(s)…');
+  try {
+    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) PHOTOS.push(d); }
+  } finally { busy(false); }
+  if (files.length > room) flash('Only ' + PHOTO_MAX + ' photos can be attached; the rest were left out.');
+  renderPhotos();
+}
+function removePhoto(i){ PHOTOS.splice(i, 1); renderPhotos(); }
+function renderPhotos(){
+  $('phGrid').innerHTML = PHOTOS.map((d, i) => '<div class="ul-photo"><img src="' + d + '" alt="Photo ' + (i + 1) + '"><button onclick="removePhoto(' + i + ')" title="Remove">✕</button></div>').join('');
+  $('phCount').textContent = PHOTOS.length ? PHOTOS.length + ' / ' + PHOTO_MAX : '';
+}
+async function viewPhotos(id){
+  $('viewerBody').innerHTML = '<p class="empty-msg">Loading…</p>'; $('ulViewer').style.display = 'flex';
+  try {
+    const d = await rpc('ul_photos', { p_id: id });
+    $('viewerBody').innerHTML = (d.photos || []).map(src => '<img src="' + src + '" alt="">').join('') || '<p class="empty-msg">No photos.</p>';
+  } catch (e) { $('viewerBody').innerHTML = '<div class="ul-note bad" style="margin:0;">' + esc(e.message) + '</div>'; }
+}
+
+/* ── Decide: checked here for a quick answer, and again on the server ─ */
+function askPin(action){
+  if (!OPEN) return;
+  if (action === 'APPROVE') {
+    if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
+    if (!PHOTOS.length) return alert(ERR_TEXT.PHOTO_REQUIRED);
+  } else if (!$('mRemarks').value.trim()) { $('mRemarks').focus(); return alert(ERR_TEXT.REMARKS_REQUIRED); }
+  ACTION = action;
+  $('pinTitle').textContent = action === 'APPROVE' ? 'Approve ' + (OPEN.request_no || '') : 'Reject ' + (OPEN.request_no || '');
+  $('pinBtn').textContent = action === 'APPROVE' ? '✔ Approve' : '✖ Reject';
+  $('pinBtn').style.background = action === 'APPROVE' ? '' : '#dc3545';
+  $('pinIn').value = ''; $('pinErr').style.display = 'none';
+  $('pinModal').style.display = 'flex'; setTimeout(() => $('pinIn').focus(), 50);
+}
+function closePin(){ $('pinModal').style.display = 'none'; }
+async function submitDecision(){
+  const pin = $('pinIn').value.trim();
+  const showErr = m => { $('pinErr').textContent = m; $('pinErr').style.display = 'block'; };
+  if (!/^\d{4,8}$/.test(pin)) return showErr('Enter your 4 to 8 digit PIN.');
+  const b = $('pinBtn'), old = b.textContent; b.disabled = true; b.textContent = 'Saving…';
+  busy(true, ACTION === 'APPROVE' ? 'Uploading ' + PHOTOS.length + ' photo(s)…' : 'Saving…');
+  try {
+    const d = await rpc('ul_decide', { p_pin: pin, p_id: OPEN.id, p_action: ACTION,
+      p_photos: ACTION === 'APPROVE' ? PHOTOS : [], p_remarks: $('mRemarks').value.trim() });
+    closePin(); PHOTOS = []; closeModal();
+    flash((d.status === 'Approved' ? 'Approved ' : 'Rejected ') + (d.request_no || ''));
+    await load();
+  } catch (e) {
+    if (e.code === 'PIN_INVALID' || e.code === 'TOO_MANY_ATTEMPTS') { $('pinIn').value = ''; showErr(e.message); }
+    else { closePin(); alert(e.message || e); if (/^ALREADY_/.test(e.code || '')) { closeModal(); load(); } }
+  } finally { b.disabled = false; b.textContent = old; busy(false); }
+}
+
+/* Log out ends the session in EVERY app (one login for all), so it is asked
+   first; photos taken for an open entry are lost too, and the question says so. */
+function askLogout(){
+  const lose = PHOTOS.length && OPEN && OPEN.status === 'Pending'
+    ? '\n\nThe ' + PHOTOS.length + ' photo(s) taken for ' + (OPEN.request_no || 'this entry') + ' will be lost.' : '';
+  if (!confirm('Do you want to Log out?' + lose)) return;
+  SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON });
+}
+
+/* Small toast, reusing the busy overlay's look would block the screen. */
+let flashT = null;
+function flash(msg){
+  let t = $('ulFlash');
+  if (!t) { t = document.createElement('div'); t.id = 'ulFlash'; t.style.cssText = 'position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:9px 14px;border-radius:20px;font-size:0.8rem;font-weight:700;z-index:3000;max-width:90%;text-align:center;'; document.querySelector('.app-container').appendChild(t); }
+  t.textContent = msg; t.style.display = 'block'; clearTimeout(flashT); flashT = setTimeout(() => { t.style.display = 'none'; }, 2600);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('pinModal').style.display === 'flex') closePin(); else if ($('ulModal').style.display === 'flex') closeModal(); } });
+
+/* ── Boot ──────────────────────────────────────────────────────────── */
+(async function boot(){
+  // Resolves only when the user may enter; otherwise the gate shows the reason.
+  await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Unloader Supervisor' });
+  try { TAB = sessionStorage.getItem('ul_tab') === 'DONE' ? 'DONE' : 'PENDING'; } catch (e) {}
+  try { await load(); }
+  finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  // New submissions show up on their own; never while a request is open, so
+  // photos being taken are not disturbed.
+  setInterval(() => { if (!OPEN && document.visibilityState === 'visible') load(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!OPEN && document.visibilityState === 'visible') load(); });
+})();
+</script>
+<!-- Floating "← Apps" button (hidden without a session). -->
+<script src="app-back.js"></script>
+</body>
+</html>

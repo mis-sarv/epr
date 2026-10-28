@@ -1614,7 +1614,7 @@ The header has an **ERP** button back to `index.html` (shown only with ERP acces
 | Workbook tab | Screen | Table(s) |
 |---|---|---|
 | EMPLOYEE MASTER | Employees | `hr_employees`, `hr_salary_structures` (duty hours + salary, effective from a month) |
-| MACHINE DATA | Attendance (read-only month view; filled only by Import › Attendance: machine data) | `hr_attendance` (one row per employee per day) |
+| MACHINE DATA | Attendance (read-only month view; filled by Import › Attendance: machine data). Its **Machine data** button (right `HR_MACHINE_EDIT`, default Admin only) lists the imported rows and lets a day be corrected / added / removed with a reason (source `EDIT`, audit-logged) | `hr_attendance` (one row per employee per day) |
 | EMP. EXP | Advances & Deductions, Loans | `hr_transactions`, `hr_loans` (EMIs post as `LOAN_EMI`) |
 | ON ROLL-&lt;Month&gt;-26 | PF / ESI / LWF | `hr_statutory` |
 | SALARY SHEET | Salary Sheet, payslips, register | `hr_payroll_runs`, `hr_payroll_lines` |
@@ -1637,7 +1637,10 @@ and `hr_perm_default_()` in the SQL.
 **Setup:** run `HR_PAYROLL_MIGRATION.sql` once in the SQL Editor (idempotent). It also copies
 the ERP `employees` list (code, name, department, designation) into `hr_employees` as a head
 start. Until it is run the page shows a setup screen. Users who logged in before the tile
-existed get it on their next launcher visit (or log out and in).
+existed get it on their next launcher visit (or log out and in). Then run
+`HR_MACHINE_EDIT_MIGRATION.sql` (idempotent) for the Machine data screen: it adds
+`HR_MACHINE_EDIT` to `hr_perms_` / `hr_perm_default_` and the RPCs `hr_machine_data_list` /
+`hr_machine_data_save`. Until then the button stays hidden.
 
 **First month from the sheet:** Import › Employee Master (map DUTY HOUR / SALARY to the month's
 Hour / Salary columns) → Attendance: machine data (the only way attendance is entered) → EMP. EXP (re-import is safe,
@@ -1661,3 +1664,92 @@ import reads `LWF ID`, `EMP-CASWAL/ON ROLL`, `EMP-TYPE`, `SHIFT FROM`, `SHIFT TO
 (times as 08:00 / 8 PM; CASWAL is read as CASUAL). `emp_class` is no longer on the form or
 in the import but stays in the table for the class rules: give CLASS 2 rules with
 Salary Class = CLASS 2.
+
+## Unloader Supervisor: every new Inward verified at unloading (unloader.html)
+
+Every **new** Inward submitted in the ERP now goes to the Unloader Supervisor before it can be
+saved. Admin edits of an already saved record are not sent again.
+
+1. **ERP › Inward › Submit Inward.** The entry goes to the supervisor as request `UL-00001`
+   (`inward_unload_approvals`, Pending). Nothing is saved yet, and the invoice photo is not
+   needed at this step.
+2. **unloader.html** (launcher tile **Unloader Supervisor**, looks like the Approvals app). The
+   supervisor sees the items with their Qty / Weight and the PO / PR pending figures (no rates),
+   takes item photos (at least 1, up to 10, compressed on the phone) and approves with their
+   **own login PIN**. Reject needs a reason. 5 wrong PINs in 15 minutes lock them out for a while.
+3. **ERP › Final Submit.** If the form is still open, press Submit again with the same values.
+   If it was closed, the approved entry is in the **PO Number list** under "APPROVED — DRAFT
+   SAVED" (badge **UNLOADER**); **Load into form** fills it in with the approved figures locked.
+   Entries still waiting are listed above it ("WAITING AT UNLOADER SUPERVISOR"). The invoice
+   photo is required here, as before.
+
+On save the approval is retired (`used_on`) and the supervisor's **Name, Emp Code, Mobile No.,
+Designation, time and request no.** are stored on the record (`inward_entries.unload_info`).
+The Inward PDF prints them under Party State (rows "Unloaded By", "Unloader Mob.",
+"Unload Verified"), and the supervisor's photos are added to the **Original Invoice PDF** after
+the invoice pages.
+
+**Rules:** the approval is keyed by the same signature as the MD Inward Approval (supplier,
+invoice, PO / PR, every row's item / qty / weight / rate), so changing a figure after approval
+asks again. Sending a corrected entry for the same invoice cancels the older pending request.
+**Two approvals, in parallel:** the supervisor confirms the unloaded Qty / Weight (every new
+Inward); the **MD** still approves anything beyond the PO / PR (excess qty / weight, a changed
+rate, an extra item), as before. One Submit sends both requests; the entry can be saved (Final
+Submit) only when both have approved. Either approved draft can be loaded; the MD card shows
+"UNLOADER ✓" once the supervisor has approved too. Other workflow is unchanged.
+
+**Access:** app key `HOME_UNLOADER`, **Admin only by default**. Turn it ON for the supervisor(s)
+under Admin Panel › Tab Visibility (role-wise) or Users › Apps (per user); they must log in
+again once. Their user profile needs **Emp Code and Contact No.** (both are printed on the PDF);
+approval is refused without them. The server checks the session, the app access and the PIN on
+every call and takes the approver's details from `app_users`, so the page cannot fake them.
+
+**Setup:** run `UNLOADER_APPROVAL_MIGRATION.sql` once in the SQL Editor (safe to re-run). Until
+it runs, Inward saves exactly as before and the ERP shows a one-time warning naming the file.
+
+## Store In / Out PDF Checklists (Dropdown Master)
+
+**Master Data › Dropdown Master › Store — Inward / Outward › "Store In / Out PDF Checklist"**
+(Admin only). **+ New Checklist** opens a builder:
+
+| Field | Meaning |
+|---|---|
+| Name | Heading printed above the lines (optional) |
+| In / Out | Inward, Outward / Issue, or both |
+| Entry Type | Tick INWARD / INWARD NB / OUTWARD / ISSUE to limit it; none ticked = every type of that direction |
+| For | **All items** (every matching entry), **Item Category** (tick categories; exact match), **Item Description** or **Item Name** (one text per line; the item matches if it *contains* it). A live count shows how many Item Master items match |
+| Lines | One checklist point per line (max 40), each printed with an empty tick-box |
+| Active | Untick to pause a checklist without deleting it |
+
+When a Store entry is submitted, **every** active checklist that matches its direction, Entry
+Type and at least one of its items is printed on the entry's PDF, in a "CHECKLIST" box above the
+signatures, with the items it applies to. It appears on both copies (Account / Supplier or
+Receiver), in both layouts, in the HTML fallback and in the pre-submit preview. On the
+landscape (two copies side by side) PDF a very long list is shortened with a note; the TWO PAGE
+PDF always carries it in full and continues on a new page if needed. Checklists are matched from
+the Master as it is when the PDF is built (an Admin edit regenerates with the current list).
+
+**Storage:** no new table or migration. Each checklist is one `sales_dropdowns` row under key
+`erp_storeChecklist`, the value a JSON object `{v:1, name, dir, types, by, match, lines, on}`.
+Order (▲ ▼), Admin-only writes and loading are the Dropdown Master's own. A field added later is
+read with a default, and a row that cannot be read is listed (to delete) and never printed.
+Logic: `store-core.js` › STORE CHECKLISTS (`sarvStoreChecklistsFor_`, `drawStoreChecklistNative_`,
+`storeChecklistHtml_`, builder `sarvChkMainHtml_`).
+
+## Task Manager: PC Follow-up and EA Follow-ups
+
+**PC Follow-up** (task_manager.html). Each pending task's date starts on **today** and its
+**time starts empty**, so a time is always chosen on purpose. A remark is always needed, and a
+time is needed when the date is today (it must be later than the current hour).
+**Daily tasks never change date:** on a past day, or before their target time today, they show
+locked with the reason. Once missed today they can only get a **later time today**; the task
+stays on today's sheet and is scored against the new time. Other tasks can still be moved to a
+later date, as before ("All to next day" skips daily tasks).
+Server side: run `TM_PC_FOLLOWUP_SAMEDAY_MIGRATION.sql` (after `TASK_MANAGER_MIGRATION.sql`;
+safe to re-run). It lets `tm_follow_up` take the same day (today only, time required) and refuses
+a date change for a daily task from PC Follow-up (`DAILY_SAME_DAY`). MD Oversight is unchanged.
+Until it is run, a same-day save is refused by the server with "Please choose a valid date".
+
+**EA Delegation › Active EA Follow-ups** has two sections: **1. Follow-up** (EA tasks due today
+or earlier and not done, oldest first, marked Overdue / Due today) and **2. All Delegated Tasks
+Pending** (every EA task not done, upcoming ones included, by due date).
