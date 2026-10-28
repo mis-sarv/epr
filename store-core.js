@@ -11023,15 +11023,39 @@ const SARV_DROPDOWNS=[
    def:['Non-Returnable','Repair','Transfer','Sample']},
 
   {group:'Employee / Purchase Requirement'},
+  /* HR & Payroll's Employee form and Employee Master import also take their
+     Department from this key (hr-payroll.html HR_DD, which keeps a capitals
+     copy of this `def`), so there is one Department list for the whole ERP. */
   {key:'erp_department',label:'Department',
-   hint:'Employee Master, the New PR Department, the Add Employee popup and the PO list Department filter all use this one list',
-   where:'#me_department · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept',
+   hint:'Employee Master, the New PR Department, the Add Employee popup, the PO list Department filter and HR & Payroll\'s Employee form / import all use this one list',
+   where:'#me_department · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept · hr-payroll.html Employee form',
    selects:[{id:'me_department',placeholder:'-- Select --'},
             {id:'p_reqDepartment',placeholder:'-- Select --'},
             {id:'p_aeDepartment',placeholder:'-- Select --'},
             {id:'p_poFilterDept',placeholder:'All'}],
    def:['Weaving','Dyeing','Finishing','Raising','Cutting / Stitching','Packing','Quality Control',
         'Maintenance','Store','Dispatch','Admin / HR','Accounts','Other']},
+
+  /* hr-payroll.html reads these keys straight from sales_dropdowns (rows if
+     any, otherwise these defaults; its HR_DD block keeps a copy of the same
+     defaults, so change both together). Its Employee form and Employee Master
+     import accept only a value from these lists; Department uses the common
+     erp_department list above. Where `def` is empty and the table has no rows,
+     the HR page offers the values its employees already carry, so the form is
+     never left with an empty list. */
+  {group:'HR & Payroll › Employee'},
+  {key:'erp_hrReligion',label:'Religion',hint:'HR & Payroll › Employee form › Religion',where:'hr-payroll.html Employee form',
+   def:['HINDU','MUSLIM','SIKH','ISRAELI','CHRISTIAN']},
+  {key:'erp_hrState',label:'State',hint:'HR & Payroll › Employee form › State',where:'hr-payroll.html Employee form',
+   def:['ANDHRA PRADESH','ARUNACHAL PRADESH','ASSAM','BIHAR','CHHATTISGARH','GOA','GUJARAT','HARYANA','HIMACHAL PRADESH',
+        'JHARKHAND','KARNATAKA','KERALA','MADHYA PRADESH','MAHARASHTRA','MANIPUR','MEGHALAYA','MIZORAM','NAGALAND','ODISHA',
+        'PUNJAB','RAJASTHAN','SIKKIM','TAMIL NADU','TELANGANA','TRIPURA','UTTAR PRADESH','UTTARAKHAND','WEST BENGAL',
+        'ANDAMAN AND NICOBAR ISLANDS','CHANDIGARH','DADRA AND NAGAR HAVELI AND DAMAN AND DIU','DELHI','JAMMU AND KASHMIR',
+        'LADAKH','LAKSHADWEEP','PUDUCHERRY']},
+  {key:'erp_hrCity',label:'City',hint:'HR & Payroll › Employee form › City. Empty = the cities employees already have.',where:'hr-payroll.html Employee form',def:[]},
+  {key:'erp_hrSubDepartment',label:'HR Sub Department',hint:'HR & Payroll › Employee form › Sub Department. Empty = the values employees already have.',where:'hr-payroll.html Employee form',def:[]},
+  {key:'erp_hrDesignation',label:'HR Designation',hint:'HR & Payroll › Employee form › Designation. Empty = the values employees already have.',where:'hr-payroll.html Employee form',def:[]},
+  {key:'erp_hrUnit',label:'HR Unit',hint:'HR & Payroll › Employee form › Unit. Empty = the units employees already have.',where:'hr-payroll.html Employee form',def:[]},
 
   {group:'Production › Design Master'},
   {key:'erp_designUnit',label:'Design Unit',hint:'Unit pickers in Design Master + the Unit on the Printing Lot Card',dm:'unit',

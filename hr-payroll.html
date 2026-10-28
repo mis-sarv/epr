@@ -155,6 +155,10 @@ table.t .lnk{color:var(--blue);cursor:pointer;font-weight:600}
 .sal input.np{width:92px;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;text-align:right;font-family:'DM Mono',monospace;font-size:12px;background:var(--input)}
 .sal td.neg{color:var(--red);font-weight:700}
 .sal td.cash{background:#F2FAF5;font-weight:700;color:var(--green)}
+/* Salary Sheet headings wrap, so each column is only as wide as its data
+   (cells stay on one line) or its longest heading word. width:1px asks the
+   table for the narrowest column that fits; min-width keeps short ones readable. */
+.sal table.t th{white-space:normal;width:1px;min-width:58px;vertical-align:bottom;line-height:1.25}
 .sal th.grpE{background:#E9F4EC}.sal th.grpD{background:#FBEFEF}.sal th.grpA{background:#EEF3F9}
 details.how{margin-bottom:12px}
 details.how summary{cursor:pointer;font-weight:700;color:var(--navy);font-size:12.5px}
@@ -610,16 +614,21 @@ const optLabel = (list, v) => { const o = list.find(x => x[0] === v); return o ?
 const shiftText = e => e.shift_from || e.shift_to ? String(e.shift_from || '').slice(0, 5) + '–' + String(e.shift_to || '').slice(0, 5) : '';
 /* Class (the master's CLASS column) is no longer on the form: LWF ID took its
    place. The column stays in hr_employees, so the class rules still read it,
-   but CLASS 2 rules are now given by choosing Salary Class = CLASS 2. */
+   but CLASS 2 rules are now given by choosing Salary Class = CLASS 2.
+   Field options: req = always required, reqNew = required on a new employee
+   only (older records imported without it can still be edited), len = the
+   exact digit count of a 'digits' field. 'dd' fields take a value only from
+   their HR_DD list ('pick' shows a plain select, otherwise a type-to-search box). */
 const EMP_FIELDS = [
   ['Identity'],
   ['emp_code', 'Emp. Code', 'text', { req: 1 }], ['name', 'Name', 'text', { req: 1 }], ['father_name', 'Father Name'],
-  ['gender', 'Gender', 'select', ['', 'MALE', 'FEMALE', 'OTHER']], ['religion', 'Religion'], ['dob', 'Date of Birth', 'date'],
-  ['mobile', 'Mobile'], ['aadhaar', 'Aadhaar'], ['pan', 'PAN'], ['address', 'Address'], ['city', 'City'], ['state', 'State'],
+  ['gender', 'Gender', 'select', ['', 'MALE', 'FEMALE', 'OTHER']], ['religion', 'Religion', 'dd', { pick: 1, reqNew: 1 }], ['dob', 'Date of Birth', 'date'],
+  ['mobile', 'Mobile', 'digits', { len: 10, reqNew: 1 }], ['aadhaar', 'Aadhaar', 'digits', { len: 12, reqNew: 1 }], ['pan', 'PAN', 'pan', { reqNew: 1 }],
+  ['address', 'Address'], ['city', 'City', 'dd'], ['state', 'State', 'dd'],
   ['Job'],
   ['status', 'Status', 'select', ['ACTIVE', 'HOLD', 'LEFT']], ['doj', 'Date of Joining', 'date'], ['doe', 'Date of Exit', 'date'],
-  ['department', 'Department', 'text', { list: 'deptList' }], ['sub_department', 'Sub Department'], ['designation', 'Designation'],
-  ['unit', 'Unit'], ['lwf_id', 'LWF ID'], ['salary_class', 'Salary Class', 'class'],
+  ['department', 'Department', 'dd'], ['sub_department', 'Sub Department', 'dd'], ['designation', 'Designation', 'dd'],
+  ['unit', 'Unit', 'dd'], ['lwf_id', 'LWF ID'], ['salary_class', 'Salary Class', 'class'],
   ['emp_category', 'Emp - Casual / On Roll', 'select', EMP_CATEGORY], ['emp_type', 'Emp - Type', 'select', EMP_TYPE],
   ['shift_from', 'Shift from', 'time'], ['shift_to', 'Shift to', 'time'],
   ['Statutory & bank'],
@@ -627,6 +636,97 @@ const EMP_FIELDS = [
   ['uan', 'UAN'], ['esic_no', 'ESIC No.'], ['bank_name', 'Bank'], ['bank_ac', 'Bank A/c No.'], ['ifsc', 'IFSC'],
   ['remarks', 'Remarks']
 ];
+/* The form's fixed lists come from ERP › Master Data › Dropdown Master (table
+   sales_dropdowns, which the anon key may read, as printing-lot.html does).
+   Same rule as the ERP: the key's rows if it has any, otherwise `def`. Each
+   `def` is a copy of the erp_hr* entries in store-core.js SARV_DROPDOWNS, so
+   change both together. An empty `def` falls back to the values employees
+   already carry, so the form never shows an empty list before the Admin has
+   filled the master. */
+const HR_DD = {
+  religion: { key: 'erp_hrReligion', def: ['HINDU', 'MUSLIM', 'SIKH', 'ISRAELI', 'CHRISTIAN'] },
+  state: { key: 'erp_hrState', def: ['ANDHRA PRADESH', 'ARUNACHAL PRADESH', 'ASSAM', 'BIHAR', 'CHHATTISGARH', 'GOA', 'GUJARAT', 'HARYANA', 'HIMACHAL PRADESH',
+    'JHARKHAND', 'KARNATAKA', 'KERALA', 'MADHYA PRADESH', 'MAHARASHTRA', 'MANIPUR', 'MEGHALAYA', 'MIZORAM', 'NAGALAND', 'ODISHA',
+    'PUNJAB', 'RAJASTHAN', 'SIKKIM', 'TAMIL NADU', 'TELANGANA', 'TRIPURA', 'UTTAR PRADESH', 'UTTARAKHAND', 'WEST BENGAL',
+    'ANDAMAN AND NICOBAR ISLANDS', 'CHANDIGARH', 'DADRA AND NAGAR HAVELI AND DAMAN AND DIU', 'DELHI', 'JAMMU AND KASHMIR',
+    'LADAKH', 'LAKSHADWEEP', 'PUDUCHERRY'] },
+  city: { key: 'erp_hrCity', def: [] },
+  // The same Department list as the ERP's Employee Master and PR screens (shown here in capitals).
+  department: { key: 'erp_department', def: ['WEAVING', 'DYEING', 'FINISHING', 'RAISING', 'CUTTING / STITCHING', 'PACKING', 'QUALITY CONTROL',
+    'MAINTENANCE', 'STORE', 'DISPATCH', 'ADMIN / HR', 'ACCOUNTS', 'OTHER'] },
+  sub_department: { key: 'erp_hrSubDepartment', def: [] },
+  designation: { key: 'erp_hrDesignation', def: [] },
+  unit: { key: 'erp_hrUnit', def: [] }
+};
+let DD_ROWS = null;   // { key: [VALUES] } once read; stays null after a failed read so the next form tries again
+async function loadDropdowns(){
+  if (DD_ROWS) return;
+  try {
+    const keys = Object.values(HR_DD).map(d => d.key).join(',');
+    const r = await fetch(SUPABASE_URL + '/rest/v1/sales_dropdowns?select=key,value&order=id&key=in.(' + keys + ')',
+      { headers: { apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const out = {};
+    (await r.json()).forEach(x => { (out[x.key] = out[x.key] || []).push(String(x.value || '').trim().toUpperCase()); });
+    DD_ROWS = out;
+  } catch (e) { console.warn('[HR] sales_dropdowns:', e.message || e); }   // the defaults below still work
+}
+// Values are kept in CAPITALS (as caps-input.js saves them), so the check is a plain compare.
+function ddList(k){
+  const d = HR_DD[k], rows = (DD_ROWS || {})[d.key];
+  if (rows && rows.length) return [...new Set(rows.filter(Boolean))];
+  if (d.def.length) return d.def.slice();
+  return [...new Set(S.emps.map(e => String(e[k] || '').trim().toUpperCase()).filter(Boolean))].sort();
+}
+/* An existing employee's current value (data-keep) stays allowed even if it is
+   no longer in the list, so editing an old record does not blank the field.
+   A list that is still empty (nothing in the master, no employee has a value
+   yet) checks nothing, or the very first Employee Master import would fail
+   on every row. */
+function ddAllowed(k, v, keep){ const l = ddList(k); return !v || v === keep || !l.length || l.indexOf(v) >= 0; }
+function ddCheck(el, k){
+  const v = el.value.trim().toUpperCase();
+  if (ddAllowed(k, v, el.dataset.keep)) { el.value = v; return; }
+  el.value = '';
+  toast('Choose ' + el.dataset.label + ' from the list. New values are added in ERP › Master Data › Dropdown Master.', 'err');
+}
+/* Next number in the code series: the highest code's trailing number + 1,
+   keeping its prefix and zero padding (1009 → 1010, EMP-009 → EMP-010). */
+function nextEmpCode(){
+  let best = null;
+  S.emps.forEach(e => { const m = /^(.*?)(\d+)$/.exec(String(e.emp_code || '')); if (m && (!best || +m[2] > +best[2])) best = m; });
+  return best ? best[1] + String(+best[2] + 1).padStart(best[2].length, '0') : '1001';
+}
+/* One rule set for the Employee form and Import › Employee Master. keepOf(k)
+   gives the value already saved (still allowed in a 'dd' field). blankKeeps:
+   in the import a blank cell keeps what is saved, so on an existing employee
+   nothing is required; on the form Code and Name always are. */
+function empRuleError(p, isNew, keepOf, blankKeeps){
+  for (const [k, label, type, opt] of EMP_FIELDS.filter(f => f.length > 1)) {
+    const o = (opt && !Array.isArray(opt)) ? opt : {}, v = p[k];
+    if (v == null || v === '') { if ((o.req && !blankKeeps) || ((o.req || o.reqNew) && isNew)) return label + ' is required.'; continue; }
+    if (type === 'digits' && !new RegExp('^\\d{' + o.len + '}$').test(v)) return label + ' must be exactly ' + o.len + ' digits ("' + v + '").';
+    if (type === 'pan' && !/^[A-Z]{5}\d{4}[A-Z]$/.test(v)) return 'PAN must be 10 characters: 5 letters, 4 digits, 1 letter, e.g. ABCDE1234F ("' + v + '").';
+    if (type === 'dd' && !ddAllowed(k, v, keepOf(k))) return label + ' "' + v + '" is not in the Dropdown Master list.';
+  }
+  return '';
+}
+const checkEmpForm = (p, isEdit) => empRuleError(p, !isEdit, k => $('ef_' + k).dataset.keep, false);
+/* Import › Employee Master: tidy the cells the way the form's boxes do
+   (spaces / dashes out of numbers, capitals), then the same rules. Duty hours
+   must be a whole 1–24 as on the form's dropdown. */
+function checkEmpImportRow(r){
+  EMP_FIELDS.filter(f => f.length > 1 && r[f[0]] != null && r[f[0]] !== '').forEach(([k, , type]) => {
+    if (type === 'digits') r[k] = String(r[k]).replace(/[\s\-]/g, '');
+    else if (type === 'pan') r[k] = String(r[k]).replace(/\s/g, '').toUpperCase();
+    else if (type === 'dd') r[k] = String(r[k]).trim().toUpperCase();
+  });
+  const old = S.empMap[r.emp_code];
+  const bad = empRuleError(r, !old, k => old ? String(old[k] || '').trim().toUpperCase() : '', true);
+  if (bad) throw new Error(bad);
+  if (r.duty_hours != null && !(Number.isInteger(r.duty_hours) && r.duty_hours >= 1 && r.duty_hours <= 24))
+    throw new Error('Duty hours must be a whole number from 1 to 24 ("' + r.duty_hours + '").');
+}
 function renderEmployees(){
   $('view').innerHTML = `
   <div class="toolbar"><h2>Employees</h2>
@@ -686,45 +786,78 @@ function exportEmps(fmt){
     filteredEmps().map(e => keys.map(k => typeof e[k] === 'boolean' ? (e[k] ? 'YES' : 'NO') : (/^do[bje]$/.test(k) ? dmy(e[k]) : /^shift_/.test(k) ? String(e[k] || '').slice(0, 5) : e[k]))
       .concat([e.duty_hours, e.monthly_salary, dmy(e.effective_from)])));
 }
-function fieldHtml(f, v){
+/* Example values shown in the empty boxes, in the same shape the rules want
+   (capitals, exact digit counts). The list boxes also say they can be searched. */
+const EMP_PH = {
+  name: 'RAMESH KUMAR', father_name: 'SURESH KUMAR', mobile: '9876543210', aadhaar: '123412341234', pan: 'ABCDE1234F',
+  address: 'WARD 7, MODEL TOWN', city: 'PANIPAT', state: 'HARYANA', department: 'WEAVING', sub_department: 'LOOM',
+  designation: 'OPERATOR', unit: 'UNIT 2', lwf_id: 'LWF10021', uan: '100123456789', esic_no: '2012345678',
+  bank_name: 'SBI', bank_ac: '12345678901', ifsc: 'SBIN0001234', remarks: 'REJOINED AFTER LEAVE'
+};
+function fieldHtml(f, v, isNew){
   const [k, label, type, opt] = f, id = 'ef_' + k;
+  const ph = EMP_PH[k] ? 'e.g., ' + EMP_PH[k] + (type === 'dd' ? ' (type to search)' : '') : '';
   if (type === 'check') return `<div class="fg chk"><input type="checkbox" id="${id}" ${v ? 'checked' : ''}><label for="${id}">${label}</label></div>`;
+  const sv = esc(v == null ? '' : String(v).trim().toUpperCase());
   let input;
+  if (type === 'dd') {
+    const list = ddList(k), cur = v == null ? '' : String(v).trim().toUpperCase();
+    // An old value missing from the list is still offered, marked, so the record keeps it.
+    const opts = (cur && list.indexOf(cur) < 0 ? [cur] : []).concat(list);
+    input = opt && opt.pick
+      ? `<select id="${id}" data-keep="${sv}"><option value="">-- Select --</option>${opts.map(o => '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + (list.indexOf(o) < 0 ? ' (not in list)' : '') + '</option>').join('')}</select>`
+      : `<input id="${id}" value="${sv}" data-keep="${sv}" data-label="${esc(label)}" list="dl_${k}" autocomplete="off" placeholder="${esc(ph || 'Type to search the list')}" onchange="ddCheck(this,'${k}')">`
+        + `<datalist id="dl_${k}">${opts.map(o => '<option value="' + esc(o) + '">').join('')}</datalist>`;
+  }
+  // Digits only, cut to the exact length; the save checks the count.
+  else if (type === 'digits') input = `<input id="${id}" type="text" inputmode="numeric" maxlength="${opt.len}" value="${esc(v == null ? '' : v)}" placeholder="${esc(ph || opt.len + ' digits')}" oninput="this.value=this.value.replace(/\\D/g,'')">`;
+  else if (type === 'pan') input = `<input id="${id}" type="text" maxlength="10" value="${sv}" placeholder="${esc(ph)}" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">`;
+  const req = opt && (opt.req || (opt.reqNew && isNew));
+  if (input) return `<div class="fg"><label for="${id}">${label}${req ? ' *' : ''}</label>${input}</div>`;
   // Select options are plain values, or [value, label] pairs.
   if (type === 'select') input = `<select id="${id}">${opt.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o];
     return '<option value="' + esc(val) + '"' + (val === (v || '') ? ' selected' : '') + '>' + esc(lab) + '</option>'; }).join('')}</select>`;
   else if (type === 'class') input = `<select id="${id}">${(BOOT.classes || []).map(c => '<option' + (c.code === (v || 'MONTHLY') ? ' selected' : '') + '>' + esc(c.code) + '</option>').join('')}</select>`;
   else if (type === 'time') input = `<input id="${id}" type="time" value="${esc(v == null ? '' : String(v).slice(0, 5))}">`;
-  else input = `<input id="${id}" type="${type === 'date' ? 'date' : 'text'}" value="${esc(v == null ? '' : String(v).slice(0, type === 'date' ? 10 : 500))}" ${opt && opt.list ? 'list="' + opt.list + '"' : ''}>`;
+  else input = `<input id="${id}" type="${type === 'date' ? 'date' : 'text'}" value="${esc(v == null ? '' : String(v).slice(0, type === 'date' ? 10 : 500))}" ${opt && opt.list ? 'list="' + opt.list + '"' : ''}${ph ? ' placeholder="' + esc(ph) + '"' : ''}>`;
   return `<div class="fg"><label for="${id}">${label}${opt && opt.req ? ' *' : ''}</label>${input}</div>`;
 }
-function editEmployee(code){
-  const e = code ? (S.empMap[code] || {}) : { status: 'ACTIVE', salary_class: 'MONTHLY', emp_category: 'ON ROLL', emp_type: 'COMPANY' };
+async function editEmployee(code){
+  await loadDropdowns();
+  const e = code ? (S.empMap[code] || {}) : { emp_code: nextEmpCode(), status: 'ACTIVE', salary_class: 'MONTHLY', emp_category: 'ON ROLL', emp_type: 'COMPANY' };
   let html = '', open = false;
   EMP_FIELDS.forEach(f => {
     if (f.length === 1) { if (open) html += '</div>'; html += '<div class="fsec">' + f[0] + '</div><div class="fgrid">'; open = true; return; }
-    html += fieldHtml(f, e[f[0]]);
+    html += fieldHtml(f, e[f[0]], !code);
   });
   html += '</div><div class="fsec">' + (code ? 'Salary revision (leave blank for no change)' : 'Salary') + '</div>'
     + (code && e.duty_hours != null ? '<div class="note" style="margin-bottom:10px">Now: <b>' + fmtH(e.duty_hours) + ' hrs</b> duty, <b>' + fmtR(e.monthly_salary) + '</b> a month, since ' + monthLabel(e.effective_from) + '. A new row below starts from the month you choose; earlier months keep the old salary.</div>' : '')
     + '<div class="fgrid"><div class="fg"><label>Applies from month</label><select id="ef_from">' + monthOptions(S.month) + '</select></div>'
-    + '<div class="fg"><label>Duty hours / day (K)</label><input id="ef_duty" type="number" step="0.5" min="1" max="24" value="' + (code ? '' : '') + '"></div>'
-    + '<div class="fg"><label>Monthly salary (L)</label><input id="ef_sal" type="number" step="1" min="0"></div></div>';
+    + '<div class="fg"><label>Duty hours / day (K)</label><select id="ef_duty"><option value="">' + (code ? '-- No change --' : '-- Select --') + '</option>'
+    + Array.from({ length: 24 }, (_, i) => '<option>' + (i + 1) + '</option>').join('') + '</select></div>'
+    + '<div class="fg"><label>Monthly salary (L)</label><input id="ef_sal" type="number" step="1" min="0" placeholder="e.g., 18000"></div></div>';
   openModal(code ? 'Edit ' + e.name + ' (' + code + ')' : 'New Employee', html,
     '<button class="btn" onclick="closeModal()">Cancel</button><button class="btn pri" onclick="saveEmployee(this,' + (code ? 'true' : 'false') + ')">Save</button>', true);
-  if (code) $('ef_emp_code').readOnly = true;
+  // A new employee's code is the next in the series (nextEmpCode), not typed.
+  $('ef_emp_code').readOnly = true;
 }
 async function saveEmployee(btn, isEdit){
   const p = {};
   EMP_FIELDS.filter(f => f.length > 1).forEach(([k, , type]) => {
     const el = $('ef_' + k); p[k] = type === 'check' ? el.checked : el.value.trim();
   });
-  if (!p.emp_code || !p.name) { toast('Emp. Code and Name are required.', 'err'); return; }
-  if (!isEdit && S.empMap[p.emp_code.toUpperCase()]) { toast('Emp. Code ' + p.emp_code + ' already exists. Open it to edit.', 'err'); return; }
+  const bad = checkEmpForm(p, isEdit);
+  if (bad) { toast(bad, 'err'); return; }
   const duty = $('ef_duty').value, sal = $('ef_sal').value;
   if ((duty === '') !== (sal === '')) { toast('Enter both duty hours and salary, or leave both blank.', 'err'); return; }
   const st = duty !== '' ? { effective_from: $('ef_from').value, duty_hours: duty, monthly_salary: sal } : null;
   await busy(btn, async () => {
+    /* Someone else may have added an employee since this form opened: re-read
+       the list and move to the next free code rather than overwrite theirs. */
+    if (!isEdit) {
+      await loadEmployees();
+      if (S.empMap[p.emp_code]) p.emp_code = $('ef_emp_code').value = nextEmpCode();
+    }
     const r = await rpc('hr_save_employee', { p_emp: p, p_structure: st });
     closeModal(); toast('Saved ' + r.emp_code, 'ok');
     await loadEmployees(); if (S.view === 'employees') drawEmps();
@@ -997,8 +1130,9 @@ async function renderStatutory(){
     <input class="inp" id="stQ" placeholder="Search" oninput="drawStat()"><span class="sp"></span>
     ${w ? '<input class="inp" id="stAdd" list="empList" placeholder="Add Emp. Code" style="width:140px"><button class="btn" onclick="addStatRow()">+ Add</button>' : ''}
     <button class="btn" onclick="exportStat('csv')">Export CSV</button><button class="btn" onclick="exportStat('pdf')">Export PDF</button>
+    ${w ? '<button class="btn pri" onclick="IMP.kind=\'STATUTORY\';IMP.raw=null;go(\'import\')">Import</button>' : ''}
     ${w ? '<button class="btn ok" id="stSave" onclick="saveStat(this)" disabled>Save</button>' : ''}</div>
-  <div class="note">This is the <b>ON ROLL-${MONTHS[+S.month.slice(5, 7) - 1]}</b> register: PF (AB), ESI (AC), Welfare / LWF (AD) and the amount paid by <b>cheque</b> (AG) are cut from the cash. Employees marked PF / ESI / Welfare are listed; add anyone else by code. The quickest way to fill it is <a href="#import">Import › ON ROLL register</a>.</div>
+  <div class="note">This is the <b>ON ROLL-${MONTHS[+S.month.slice(5, 7) - 1]}</b> register: PF (AB), ESI (AC), Welfare / LWF (AD) and the amount paid by <b>cheque</b> (AG) are cut from the cash. Employees marked PF / ESI / Welfare are listed; add anyone else by code. The quickest way to fill it is <b>Import</b>: it takes this table's Export CSV (EMP. CODE, PF, ESI, LWF, CHEQUE) or the old ON ROLL register sheet as it is.</div>
   ${STAT.locked ? '<div class="note warn">This month is locked; read-only.</div>' : ''}
   <div class="tw" id="stTbl" data-no-caps></div>`;
   drawStat();
@@ -1050,7 +1184,8 @@ const SHEET_COLS = [
   ['emp_code', 'Code', 'B', 't', 'A', 1], ['name', 'Name', 'D', 't', 'A', 1], ['department', 'Dept', 'G', 't', 'A', 1],
   ['designation', 'Designation', 'I', 't', 'A', 0], ['salary_class', 'Sal. Class', 'J', 't', 'A', 1],
   ['duty_hours', 'Duty Hr', 'K', 'h', 'A', 1], ['salary', 'Salary', 'L', 'm', 'A', 1],
-  ['work_hours', 'W.Hrs', 'M', 'h', 'A', 0], ['reg_ot', 'Reg. OT', 'N', 'h', 'A', 0], ['sunday_hours', 'Sun. Hrs', 'O', 'h', 'A', 0],
+  // M / N / O carry the old sheet's own headings and stay in the compact view: they show how P splits up.
+  ['work_hours', 'W.HRS W/O SUNDAY & W/O OT', 'M', 'h', 'A', 1], ['reg_ot', 'REGULAR DAYS OT', 'N', 'h', 'A', 1], ['sunday_hours', 'SUNDAY W.HRS', 'O', 'h', 'A', 1],
   ['total_ot', 'Total OT', 'P', 'h', 'A', 1], ['days', 'Days', 'Q', 'd', 'A', 0], ['absent_days', 'Absent', 'R', 'i', 'A', 0],
   ['present_days', 'Present', 'S', 'i', 'A', 1], ['weekly_off', 'W.Off', 'T', 'i', 'A', 1], ['total_days', 'Total Days', 'U', 'd', 'A', 1],
   ['ot_amt', 'OT Amt', 'V', 'm', 'E', 1], ['salary_amt', 'Salary Amt', 'W', 'm', 'E', 1], ['other_earn', 'Incent./Arrear', '+', 'm', 'E', 0],
@@ -1082,7 +1217,8 @@ async function renderSalary(){
   <details class="how"><summary>How each column is calculated (same as the SALARY SHEET)</summary><div class="body">
     <div><b>K</b> duty hours and <b>L</b> salary: the employee's salary row in force for this month.</div>
     <div><b>P TOTAL OT</b> = hours above K on weekdays + every hour worked on Sunday. 0 for a class with OT not counted (CLASS 2).</div>
-    <div><b>O</b> = Sunday hours · <b>N</b> = P − O · <b>M W.HRS</b> = all hours − P · <b>Q DAYS</b> = M ÷ K</div>
+    <div><b>O SUNDAY W.HRS</b> = every hour worked on Sundays · <b>N REGULAR DAYS OT</b> = P − O, the hours above K on weekdays
+      · <b>M W.HRS W/O SUNDAY &amp; W/O OT</b> = all hours − P, so weekday hours up to K only · <b>Q DAYS</b> = M ÷ K</div>
     <div><b>R</b> = days employed with no hours · <b>S</b> = days with hours</div>
     <div><b>T W.OFF</b>: for each Sunday, 1 if the employee worked more than ${esc((BOOT.settings || {}).wo_min_hours)} hrs on at least ${esc((BOOT.settings || {}).wo_min_days)} of the ${esc((BOOT.settings || {}).wo_window_days)} days ending that Sunday. 0 for PER DAY and CLASS 2.</div>
     <div><b>U</b> = T + Q · days in month = ${(BOOT.settings || {}).days_basis === 'FIXED' ? esc(BOOT.settings.fixed_days) + ' (fixed)' : 'calendar days (' + daysIn(S.month) + ')'}</div>
@@ -1245,7 +1381,7 @@ function printRegister(){
    ════════════════════════════════════════════════════════════════════ */
 const IMPORTS = {
   EMPLOYEES: { label: 'Employee Master', sheet: 'EMPLOYEE MASTER', need: 'HR_EMPLOYEES', headerRow: 1, month: 'Salary applies from', batch: 250,
-    hint: 'One row per employee. Blank cells keep what is already saved. Map DUTY HOUR and SALARY to the Hour / Salary columns of the month you choose below (in the master they are the monthly pairs from column AJ on) to create the salary row.',
+    hint: 'One row per employee. Blank cells keep what is already saved. The Employee form\'s rules apply: a new employee needs Religion, Mobile (10 digits), Aadhaar (12 digits) and PAN (ABCDE1234F); Religion, City, State, Department, Sub Department, Designation and Unit must be in ERP › Master Data › Dropdown Master; duty hours 1 to 24. A row that breaks a rule is listed with its row number and not saved. Map DUTY HOUR and SALARY to the Hour / Salary columns of the month you choose below (in the master they are the monthly pairs from column AJ on) to create the salary row.',
     fields: [
       ['emp_code', 'Emp. Code', ['EMP. CODE', 'EMP CODE', 'EMPCODE', 'CODE', 'EMPLOYEE CODE'], 'code', 1],
       ['name', 'Name', ['NAME', 'EMPLOYEE NAME', 'EMP NAME']], ['father_name', 'Father name', ['FATHER NAME', 'FATHERS NAME', 'FATHER']],
@@ -1265,7 +1401,7 @@ const IMPORTS = {
       ['ifsc', 'IFSC', ['IFSC', 'IFSC CODE']], ['mobile', 'Mobile', ['MOBILE', 'MOBILE NO', 'CONTACT', 'CONTACT NO', 'PHONE']], ['address', 'Address', ['ADDRESS']],
       ['status', 'Status', ['STATUS']],
       ['duty_hours', 'Duty hour (K)', ['DUTY HOUR', 'DUTY HOURS', 'HOUR', 'HOURS'], 'num'], ['monthly_salary', 'Salary (L)', ['SALARY', 'MONTHLY SALARY'], 'num']],
-    build(r, ctx){ if (r.duty_hours != null && r.monthly_salary != null) r.effective_from = ctx.month; return r; },
+    build(r, ctx){ checkEmpImportRow(r); if (r.duty_hours != null && r.monthly_salary != null) r.effective_from = ctx.month; return r; },
     run: rows => rpc('hr_import', { p_kind: 'EMPLOYEES', p_rows: rows }) },
   STRUCTURES: { label: 'Salary rows only', sheet: 'any list', need: 'HR_EMPLOYEES', headerRow: 1, month: 'Default month (when no date column)', batch: 400,
     hint: 'Emp. code + duty hours + salary, optionally a month/date it applies from. Use it to load the history month by month (one import per month).',
@@ -1306,11 +1442,16 @@ const IMPORTS = {
       return rows.filter(r => { const k = txKey(r); if (have[k]) { have[k]--; return false; } return true; });
     },
     run: rows => rpc('hr_import', { p_kind: 'TRANSACTIONS', p_rows: rows }) },
-  STATUTORY: { label: 'ON ROLL register', sheet: 'ON ROLL-<Month>-26', need: 'HR_TXN', headerRow: 2, month: 'Month of the register', batch: 500,
-    hint: 'Header row 2, data from row 3. Default columns as in the sheet: G = CODE CASWAL, AC = PF amount, AD = ESI, AE = LWF, AG = NET / cheque. Re-importing a month overwrites its values.',
-    fields: [['emp_code', 'Emp. Code', ['CODE CASWAL', 'CODE CASUAL', 'EMP. CODE', 'EMP CODE'], 'code', 1, 'G'], ['pf', 'PF amount (AB)', ['PF AMOUNT', 'PF AMT'], 'num', 0, 'AC'],
-      ['esi', 'ESI (AC)', ['ESI', 'ESI AMOUNT', 'ESIC'], 'num', 0, 'AD'], ['lwf', 'LWF (AD)', ['LWF', 'WELFARE'], 'num', 0, 'AE'],
-      ['cheque_amt', 'Cheque / net (AG)', ['NET', 'NET AMOUNT', 'CHEQUE', 'CHEQ', 'NET PAY'], 'num', 0, 'AG']],
+  /* One import for both layouts of the same data. The PF / ESI / LWF screen's
+     Export CSV (header row 1, a few columns found by name) is narrower than
+     column G, so the letters are skipped and the names are used; the old
+     ON ROLL-<Month> sheet (title in row 1, header row 2) is wide enough for the
+     letters G / AC / AD / AE / AG to win. impText finds the header row itself. */
+  STATUTORY: { label: 'PF / ESI / LWF (ON ROLL register)', sheet: 'ON ROLL-<Month>-26 or PF / ESI / LWF › Export CSV', need: 'HR_TXN', headerRow: 1, month: 'Month of the register', batch: 500,
+    hint: 'Either layout works. The PF / ESI / LWF screen\'s Export CSV: EMP. CODE, PF, ESI, LWF, CHEQUE (NAME is ignored). Or the old ON ROLL sheet: header row 2, G = CODE CASWAL, AC = PF amount, AD = ESI, AE = LWF, AG = NET / cheque. The header row is found by itself; change it below if needed. Re-importing a month overwrites its values.',
+    fields: [['emp_code', 'Emp. Code', ['EMP. CODE', 'EMP CODE', 'CODE', 'CODE CASWAL', 'CODE CASUAL'], 'code', 1, 'G'], ['pf', 'PF (AB)', ['PF', 'PF AMOUNT', 'PF AMT'], 'num', 0, 'AC'],
+      ['esi', 'ESI (AC)', ['ESI', 'ESI AMOUNT', 'ESIC'], 'num', 0, 'AD'], ['lwf', 'LWF / Welfare (AD)', ['LWF', 'WELFARE', 'WF'], 'num', 0, 'AE'],
+      ['cheque_amt', 'Cheque / net (AG)', ['CHEQUE', 'CHEQ', 'CHEQUE AMOUNT', 'NET', 'NET AMOUNT', 'NET PAY'], 'num', 0, 'AG']],
     run: (rows, ctx) => rpc('hr_save_statutory', { p_month: ctx.month, p_rows: rows, p_source: 'IMPORT' }) }
 };
 const txKey = t => [t.emp_code, String(t.txn_date).slice(0, 10), t.entry_type, Number(t.amount).toFixed(2), String(t.detail || '').trim().toUpperCase()].join('|');
@@ -1318,7 +1459,7 @@ const txKey = t => [t.emp_code, String(t.txn_date).slice(0, 10), t.entry_type, N
 /* ── Sample sheets ─────────────────────────────────────────────────────
    One downloadable CSV per import type, laid out exactly as the importer
    reads it by default: the same header names (each field's first name in
-   IMPORTS), the same header row, and for ON ROLL the same column letters. So a sample opened in Google Sheets, filled in and
+   IMPORTS) and the same header row; PF / ESI / LWF uses its Export CSV layout. So a sample opened in Google Sheets, filled in and
    downloaded again imports with no column changes. Dates are in the month
    chosen on the Import screen; the people are made up (codes 1001–1003). */
 const SAMPLES = {
@@ -1326,16 +1467,16 @@ const SAMPLES = {
     { emp_code: '1001', name: 'RAMESH KUMAR', father_name: 'SURESH KUMAR', religion: 'HINDU', gender: 'MALE', dob: '15/08/1990', doj: '01/04/2024',
       department: 'WEAVING', sub_department: 'LOOM', designation: 'OPERATOR', unit: 'UNIT-2', lwf_id: 'LWF10021', salary_class: 'MONTHLY',
       emp_category: 'ON ROLL', emp_type: 'COMPANY', shift_from: '08:00', shift_to: '20:00', city: 'PANIPAT', state: 'HARYANA',
-      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'YES', uan: '100123456789', esic_no: '2012345678', aadhaar: '123412341234', bank_name: 'SBI',
+      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'YES', uan: '100123456789', esic_no: '2012345678', aadhaar: '123412341234', pan: 'ABCDE1234F', bank_name: 'SBI',
       bank_ac: '12345678901', ifsc: 'SBIN0001234', mobile: '9876543210', address: 'WARD 7, MODEL TOWN', status: 'ACTIVE', duty_hours: '12', monthly_salary: '18000' },
     { emp_code: '1002', name: 'SUNITA DEVI', father_name: 'RAM PAL', religion: 'HINDU', gender: 'FEMALE', dob: '02/01/1995', doj: '10/06/2025',
       department: 'PACKING', sub_department: 'FOLDING', designation: 'HELPER', unit: 'UNIT-2', lwf_id: '', salary_class: 'PER DAY',
       emp_category: 'CASUAL', emp_type: 'CONTRACTOR', shift_from: '09:00', shift_to: '17:00', city: 'SAMALKHA', state: 'HARYANA',
-      welfare_flag: 'NO', pf_flag: 'NO', esi_flag: 'YES', mobile: '9812345678', status: 'ACTIVE', duty_hours: '8', monthly_salary: '11000' },
+      welfare_flag: 'NO', pf_flag: 'NO', esi_flag: 'YES', aadhaar: '234523452345', pan: 'BCDEF2345G', mobile: '9812345678', status: 'ACTIVE', duty_hours: '8', monthly_salary: '11000' },
     { emp_code: '1003', name: 'AMIT SHARMA', father_name: 'VIJAY SHARMA', religion: 'HINDU', gender: 'MALE', dob: '20/11/1985', doj: '01/01/2020',
-      department: 'ADMIN', sub_department: 'OFFICE', designation: 'SUPERVISOR', unit: 'UNIT-2', lwf_id: 'LWF10007', salary_class: 'FIXED',
+      department: 'ADMIN / HR', sub_department: 'OFFICE', designation: 'SUPERVISOR', unit: 'UNIT-2', lwf_id: 'LWF10007', salary_class: 'FIXED',
       emp_category: 'ON ROLL', emp_type: 'COMPANY', shift_from: '09:30', shift_to: '19:30', city: 'PANIPAT', state: 'HARYANA',
-      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'NO', uan: '100987654321', pan: 'ABCDE1234F', bank_name: 'HDFC', bank_ac: '50100123456789',
+      welfare_flag: 'YES', pf_flag: 'YES', esi_flag: 'NO', uan: '100987654321', aadhaar: '345634563456', pan: 'CDEFG3456H', bank_name: 'HDFC', bank_ac: '50100123456789',
       ifsc: 'HDFC0001234', mobile: '9898989898', status: 'ACTIVE', duty_hours: '10', monthly_salary: '43000' }],
   STRUCTURES: m => [
     { emp_code: '1001', duty_hours: '12', monthly_salary: '18500', effective_from: dmy(m) },
@@ -1359,20 +1500,10 @@ const SAMPLES = {
 };
 function sampleSheet(kind, m){
   const def = IMPORTS[kind];
-  if (kind === 'STATUTORY') {
-    /* The ON ROLL register: a title in row 1, headers in row 2, and the
-       columns the importer reads at their letters G / AC / AD / AE / AG. */
-    const width = colIndex('AG') + 1, at = { G: 'emp_code', AC: 'pf', AD: 'esi', AE: 'lwf', AG: 'cheque_amt' };
-    const head = Array(width).fill('');
-    head[0] = 'SR'; head[1] = 'NAME';
-    Object.keys(at).forEach(L => { head[colIndex(L)] = def.fields.find(f => f[0] === at[L])[2][0]; });
-    const rows = SAMPLES.STATUTORY().map((s, i) => {
-      const r = Array(width).fill(''); r[0] = String(i + 1); r[1] = s.name;
-      Object.keys(at).forEach(L => { r[colIndex(L)] = s[at[L]]; });
-      return r;
-    });
-    return [['ON ROLL-' + MONTHS[+m.slice(5, 7) - 1].toUpperCase() + '-' + m.slice(2, 4)], head].concat(rows);
-  }
+  // PF / ESI / LWF: the simpler of its two layouts, column for column the screen's Export CSV.
+  if (kind === 'STATUTORY')
+    return [['EMP. CODE', 'NAME', 'PF', 'ESI', 'LWF', 'CHEQUE']]
+      .concat(SAMPLES.STATUTORY().map(s => [s.emp_code, s.name, s.pf, s.esi, s.lwf, s.cheque_amt]));
   const head = def.fields.map(f => f[2][0]);
   return [head].concat(SAMPLES[kind](m).map(r => def.fields.map(f => r[f[0]] == null ? '' : r[f[0]])));
 }
@@ -1456,12 +1587,13 @@ function parseDelimited(text){
   return rows;
 }
 
-function renderImport(){
+async function renderImport(){
+  await loadDropdowns();   // Employee Master rows are checked against these lists
   const kinds = Object.keys(IMPORTS).filter(k => can(IMPORTS[k].need));
   if (!IMP.kind || kinds.indexOf(IMP.kind) < 0) IMP.kind = kinds[0];
   $('view').innerHTML = `
   <div class="toolbar"><h2>Import from the Google Sheet</h2></div>
-  <div class="note">Suggested order for a fresh start: <b>1.</b> Employee Master (with this month's Hour + Salary) → <b>2.</b> Attendance: machine data (the only way attendance is entered) → <b>3.</b> EMP. EXP → <b>4.</b> ON ROLL → then <a href="#salary">Salary Sheet › Compute</a> and compare a FIXED, a MONTHLY and a CLASS 2 employee with the old sheet.<br>
+  <div class="note">Suggested order for a fresh start: <b>1.</b> Employee Master (with this month's Hour + Salary) → <b>2.</b> Attendance: machine data (the only way attendance is entered) → <b>3.</b> EMP. EXP → <b>4.</b> PF / ESI / LWF (ON ROLL) → then <a href="#salary">Salary Sheet › Compute</a> and compare a FIXED, a MONTHLY and a CLASS 2 employee with the old sheet.<br>
     Not sure of the layout? Each type has a <b>Download sample (.csv)</b> button: the right headers with 3 example employees, ready to fill in.</div>
   <div class="kinds">${kinds.map(k => '<button class="kind' + (k === IMP.kind ? ' on' : '') + '" onclick="IMP.kind=\'' + k + '\';IMP.raw=null;renderImport()"><b>' + IMPORTS[k].label + '</b><span>Sheet tab: ' + esc(IMPORTS[k].sheet) + '</span></button>').join('')}</div>
   <div class="card" data-no-caps id="impCard"></div>`;
@@ -1488,7 +1620,14 @@ function impFile(inp){
 }
 function impText(t){
   IMP.raw = parseDelimited(t).filter(r => r.some(c => String(c).trim() !== ''));
+  /* Header row: the first of the top 5 rows that names the Emp. Code column,
+     so a sheet with a title row above its headers (ON ROLL) and a plain
+     export both read without changing the box. Nothing found: the default. */
+  const codeSyn = IMPORTS[IMP.kind].fields.find(f => f[3] === 'code')[2].map(normHead);
+  const hr = IMP.raw.slice(0, 5).findIndex(r => r.some(c => codeSyn.indexOf(normHead(c)) >= 0));
+  if (hr >= 0) IMP.headerRow = hr + 1;
   impMapAuto(); drawImportBody();
+  const box = document.querySelector('#impCard input[type=number]'); if (box) box.value = IMP.headerRow;
 }
 function impHeaders(){ return (IMP.raw && IMP.raw[IMP.headerRow - 1]) || []; }
 function impMapAuto(){
