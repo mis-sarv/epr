@@ -1771,9 +1771,15 @@ saved. Admin edits of an already saved record are not sent again.
 
 On save the approval is retired (`used_on`) and the supervisor's **Name, Emp Code, Mobile No.,
 Designation, time and request no.** are stored on the record (`inward_entries.unload_info`).
-The Inward PDF prints them under Party State (rows "Unloaded By", "Unloader Mob.",
-"Unload Verified"), and the supervisor's photos are added to the **Original Invoice PDF** after
-the invoice pages.
+The Inward PDF prints "Unloaded By" and "Unloader Mob." under Party State, and "Unload
+Verified" (time | request no. | photos) as the last row of the second column. The supervisor's
+photos are added to the **Original Invoice PDF** after the invoice pages.
+
+**MD Inward Approval request numbers** (excess qty / weight, changed rate, extra item):
+`IN-<PO NO>-0001` for INWARD and `NB-<PO NO>-0001` for INWARD NB, numbered per PO (the next
+request against the same PO is `-0002`). Several POs → the first one; no PO → the PR number;
+neither → `IN-0001` / `NB-0001`. A rejected request sent again keeps its number; requests made
+before this change keep their old `IA-…` number (`inwardApprovalRequestNo_` in store-core.js).
 
 **Rules:** the approval is keyed by the same signature as the MD Inward Approval (supplier,
 invoice, PO / PR, every row's item / qty / weight / rate), so changing a figure after approval
@@ -1804,6 +1810,42 @@ supervisor (same request, no duplicate). A rejected entry pre-selects the person
 The ERP "WAITING AT UNLOADER SUPERVISOR" list shows `→ name`. Requests raised before the
 migration have no supervisor and stay visible to all. Without `UNLOADER_ASSIGN_MIGRATION.sql`
 the request still goes to every supervisor and the ERP warns once.
+
+## SOPs: SOP Master and My SOPs (sop.html)
+
+Standard Operating Procedures, made once in the ERP and read by each employee on their phone.
+
+1. **ERP › Masters › SOP Master** (`sop.html#master` in the `#sopFrame` iframe, or opened
+   directly). Each SOP has a code (`SOP-001`, automatic when left empty), title, category,
+   department, short summary, colour, cover picture, status (**Active** = shown to users,
+   **Draft**, **Inactive**) and its **steps**. A step has a title, instructions (a line starting
+   with `-` becomes a bullet, `1.` a numbered point), an optional Tip, an optional Caution, optional
+   tick points (one per line), and a **photo** (camera or gallery, shrunk on the phone) or one of
+   the built-in line pictures (`SOP_ICONS` in `sop.html`). Steps can be moved, copied and deleted;
+   on a desktop the live preview on the right follows the step being typed.
+2. **Assign to:** designations (typed or picked; `ALL` = every employee with a login) and / or
+   users picked by name. The box under the list shows how many users it reaches. A user's
+   designation is `app_users.designation`, or, when that is blank, the Employee Master's
+   designation for the same Emp Code, so most staff are covered without editing their login.
+3. **Launcher › My SOPs** (`sop.html`). The tile is the **first** one and appears only when the
+   user has at least one Active SOP; it shows how many are still to read. Each SOP opens as
+   swipeable cards (cover → steps → end), with a progress bar, Back / Next, arrow keys, a
+   "☰ All steps" grid and tap-to-zoom photos. On a desktop the picture sits beside the text.
+   Where the user stopped and their ticks are remembered on that device. The last card has
+   **I have read and understood** (`sop_acks`, one row per user per version).
+4. **Who read:** per SOP, every assigned user, how they got it (by name / designation / all) and
+   read / not read / read an older version. **Saving a change** to the steps asks whether it is a
+   **new version** (everyone must read it again) or a **small correction** (same version).
+
+**Access:** reading needs nothing: the server gives each user only what is assigned to them.
+Creating / editing / assigning needs `HOME_SOP_MASTER` (Admin / MD / GM by default, Admin always),
+set in Tab Visibility or per user in Users › Apps. The server applies the same rule
+(`sop_can_manage_`, keep its default in step with the `SARV_TABS` row) on every SOP Master call.
+
+**Setup:** run `sql/SOP_MASTER_MIGRATION.sql` once in the SQL Editor (safe to re-run). It also
+adds six sample SOPs (store inward, Raschel machine start-up, safety and 5S, packing and dispatch,
+raising a PR, colour kitchen), only into an empty table, so editing or deleting them is never
+undone. Until it runs, the launcher simply shows no tile and `sop.html` names the file to run.
 
 ## Store In / Out PDF Checklists (Dropdown Master)
 

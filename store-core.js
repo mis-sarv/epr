@@ -2701,6 +2701,29 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
     })
   };
 }
+/* The MD Inward Approval's request number:
+     INWARD     → IN-<PO NO>-0001
+     INWARD NB  → NB-<PO NO>-0001
+   numbered per PO, so the second request against the same PO is -0002. A
+   receipt against several POs is numbered on the first one; one without a PO
+   uses its PR number, and one with neither is just IN-0001 / NB-0001. The
+   running number is read from the requests already saved under the same
+   prefix, the way nextNo() does for documents. Only digits after the prefix
+   count, so IN-PO/U-2/12- never picks up IN-PO/U-2/123-0001. Requests sent
+   before this change keep their old IA-… number. */
+async function inwardApprovalRequestNo_(poNos,prNos){
+  const nb=/NB/i.test(pVal('entryTypeSelect')||'');
+  const ref=String(poNos[0]||prNos[0]||'').trim();
+  const prefix=(nb?'NB-':'IN-')+(ref?ref+'-':'');
+  const q=await SB.from(INWARD_APPROVAL_TABLE).select('request_no').like('request_no',prefix+'%').limit(5000);
+  if(q.error)throw q.error;
+  let max=0;
+  (q.data||[]).forEach(r=>{
+    const m=String(r.request_no||'').slice(prefix.length).match(/^(\d+)$/);
+    if(m)max=Math.max(max,parseInt(m[1],10));
+  });
+  return prefix+String(max+1).padStart(4,'0');
+}
 /* The gate itself. Returns true only when this exact submission already
    carries the Purchaser's approval. */
 async function ensureInwardApproval_(rows,overrides){
@@ -2754,9 +2777,14 @@ async function ensureInwardApproval_(rows,overrides){
       +'\n\nIt cannot be saved without the MD\'s approval.\nSend it for approval now?');
   if(!confirm(ask))return false;
   const purchasers=await inwardApprovalPurchasers_(poNos,prNos);
-  const requestNo='IA-'+Date.now().toString(36).toUpperCase()+'-'+Math.floor(Math.random()*900+100);
+  // A rejected request sent again is the same request: it keeps its number.
+  let requestNo=existing?existing.request_no:'';
+  if(!existing){
+    try{ requestNo=await inwardApprovalRequestNo_(poNos,prNos); }
+    catch(e){ showToast('The approval request number could not be worked out: '+escText(e.message||e),'error'); return false; }
+  }
   const payload={
-    request_no:existing?existing.request_no:requestNo,
+    request_no:requestNo,
     signature:sig,
     status:'Pending',
     entry_type:pVal('entryTypeSelect')||'INWARD',
@@ -2771,9 +2799,14 @@ async function ensureInwardApproval_(rows,overrides){
     decided_by:null,decided_at:null,remarks:null
   };
   try{
-    const w=existing
-      ? await SB.from(INWARD_APPROVAL_TABLE).update(payload).eq('id',existing.id)
-      : await SB.from(INWARD_APPROVAL_TABLE).insert(payload);
+    let w;
+    if(existing)w=await SB.from(INWARD_APPROVAL_TABLE).update(payload).eq('id',existing.id);
+    else for(let t=0;t<3;t++){
+      w=await SB.from(INWARD_APPROVAL_TABLE).insert(payload);
+      if(!w.error||w.error.code!=='23505'||t===2)break;
+      // Another PC took this number a moment ago (unique key): take the next one.
+      payload.request_no=await inwardApprovalRequestNo_(poNos,prNos);
+    }
     if(w.error)throw w.error;
   }catch(e){
     showToast('The approval request could not be sent: '+(e.message||e),'error');
@@ -3104,16 +3137,20 @@ async function loadUnloadDraftRows_(){
     return [];
   }
 }
-// The PDF's meta rows for the supervisor (Inward only).
-function inwUnloadRows_(d){
+/* The PDF's meta rows for the supervisor (Inward only). side 'left' = who
+   (Unloaded By, Unloader Mob.), printed under Party State; side 'right' =
+   Unload Verified (time | request no. | photos), printed at the bottom of the
+   second column, where its long value has the room. No side = all three. */
+function inwUnloadRows_(d,side){
   // d.unloader on a fresh entry; unload_info on a record read back from the database.
   const u=d&&(d.unloader||unloadInfoFrom_(d.unload_info));
   if(!u||!u.name)return [];
-  return [
+  const rows=[
     ['Unloaded By:',u.name+(u.empCode?' ('+u.empCode+')':'')+(u.designation?' - '+u.designation:'')],
     ['Unloader Mob.:',u.contact||'-'],
     ['Unload Verified:',(u.at?pStamp(u.at):'-')+(u.requestNo?'  |  '+u.requestNo:'')+(u.photoCount?'  |  '+u.photoCount+' photo(s)':'')]
   ];
+  return side==='left'?rows.slice(0,2):side==='right'?rows.slice(2):rows;
 }
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
 /* Everything this receipt does that goes BEYOND the document it is booked
@@ -5023,7 +5060,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
-  'HOME_YARN_UNLOADING'];
+  'HOME_YARN_UNLOADING','HOME_SOP_MASTER'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5134,7 +5171,7 @@ function sarvResetOrderFormFrame_(){
    session is revoked on the server (erp_app_logout), and that tab goes to its
    login screen on its next call. */
 function sarvResetAppFrames_(){
-  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame'].forEach(id=>{
+  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame'].forEach(id=>{
     const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
     const vis=fr.closest('.main-panel,.tab-content');
     if(vis&&vis.style.display!=='none'){
@@ -5239,6 +5276,13 @@ function sarvNavigateFromHome(target){
       activatePanel('trimsPanel');
       const fr=byId('trimsFrame');
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'trims-manager.html');
+      break;
+    }
+    // Masters › SOP Master: sop.html in its #master mode. Same lazy iframe.
+    case 'SOP_MASTER': {
+      activatePanel('sopPanel');
+      const fr=byId('sopFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'sop.html#master');
       break;
     }
     case 'REPORTS': activatePanel('reportsPanel'); break;
@@ -5362,6 +5406,12 @@ const SARV_HOME_HELP={
     'Store Standard Name comes only from the Item Master; once a PO is chosen, Target Date = the PO delivery date.',
     'Qty Received (inward against the PO) and Lot Issue (Store Issue) come live from the Store.',
     'On Save, the sheet is stored linked to the Order No. and Lot No.']},
+  SOP_MASTER:{icon:'',title:'SOP Master (Masters)',points:[
+    'Create an SOP: title, category, colour and its steps, each with a photo (camera / gallery) or a built-in picture.',
+    'Each step can have instructions, a Tip, a Caution and tick points for the user.',
+    'Assign by designation (or ALL employees) and / or pick users by name; the reach count shows who gets it.',
+    'Users read it in the launcher\'s "My SOPs" as swipeable cards and confirm "I have read and understood".',
+    'Who read: per SOP, every assigned user with read / not read. Save as a new version to make everyone read it again.']},
   PACKING:{icon:'',title:'Packing & Dispatch (Sales)',points:[
     'Packing Slip बनाएं — Party, Order ID, Quality, हर पैक का Pcs / Weight; Billed / Unbilled अलग नंबर।',
     'Save करते ही Original + Full Copy PDF बनती है — WhatsApp पर भेज सकते हैं, ERP के PDF index में भी।',
@@ -5863,6 +5913,13 @@ const SARV_TABS=[
   {key:'HOME_LOT_CARD',label:'Lot Card Manager',hint:'Manufacturing › blanket lot cards, sattan & master packing',def:'ALL'},
   {key:'HOME_PRINTING_LOT',label:'Printing Lot Card',hint:'Manufacturing › A4 production lot card + department-wise production tracking',def:'ALL'},
   {key:'HOME_TRIMS',label:'Trims Manager',hint:'Manufacturing › trims & packing per Order / Lot, PO & store live',def:'ALL'},
+  /* Masters › SOP Master (sop.html#master): create, edit and assign SOPs.
+     A real right: the server checks this same key on every SOP Master call
+     (sop_can_manage_ in SOP_MASTER_MIGRATION.sql). Its default there (Admin
+     / MD / GM, Admin always) MUST match this row. Reading one's own SOPs
+     needs no key: the launcher's "My SOPs" tile shows whenever something
+     is assigned. */
+  {key:'HOME_SOP_MASTER',label:'SOP Master',hint:'Masters › create SOPs with step cards and pictures, assign by designation / user, see who has read them (sop.html#master)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine / fabric complaints and Notice Board (opens from the launcher)',def:'ALL'},
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
@@ -6581,7 +6638,7 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master'};
 // Apps that open in their own file; their SSO runs on this access.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
@@ -16294,7 +16351,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         '<tr><td class="lbl">Supplier Name:</td><td><strong>'+pEsc(d.supplier||d.supplierName||d.supplier_name||'-')+'</strong></td></tr>'+
        '<tr><td class="lbl">Party State:</td><td>'+pEsc(d.state||d.partyState||'-')+'</td></tr>'+
        machineBg+
-       inwUnloadRows_(d).map(function(p){return '<tr style="background:#fff7ed"><td class="lbl" style="color:#c2410c;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>'}).join('')+
+       inwUnloadRows_(d,'left').map(function(p){return '<tr style="background:#fff7ed"><td class="lbl" style="color:#c2410c;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>'}).join('')+
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Invoice Number:</td><td>'+pEsc(d.invoiceNum||d.invoice_no||'-')+'</td></tr>'+
        '<tr><td class="lbl">Invoice Date:</td><td>'+fmtDate_(d.invoiceDate||d.invoice_date)+'</td></tr>'+
@@ -16302,6 +16359,8 @@ window.addEventListener('DOMContentLoaded',()=>{
        (d.gatePass||d.gate_pass_no?'<tr><td class="lbl">Gate Pass:</td><td>'+pEsc(d.gatePass||d.gate_pass_no)+'</td></tr>':'')+
        (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
        (d.natureOfInward?'<tr><td class="lbl">Nature of Inward:</td><td><strong>'+pEsc(d.natureOfInward)+'</strong></td></tr>':'')+
+       // Last row of the second column (see inwUnloadRows_).
+       inwUnloadRows_(d,'right').map(function(p){return '<tr style="background:#fff7ed"><td class="lbl" style="color:#c2410c;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>'}).join('')+
      '</table></div></div>'+
      '<table class="items"><thead><tr>'+
         '<th style="width:30%">Material Configuration / Specs</th><th style="width:10%">Inward Qty</th><th style="width:10%">Weight</th>'+
@@ -16493,13 +16552,15 @@ window.addEventListener('DOMContentLoaded',()=>{
      leftPairs.push(['Supplier Name:',d.supplier||'-']);
      leftPairs.push(['Party State:',d.state||'-']);
      if(d.machineName)leftPairs.push(['Machine:',d.machineName]);
-     inwUnloadRows_(d).forEach(p=>leftPairs.push(p));
+     inwUnloadRows_(d,'left').forEach(p=>leftPairs.push(p));
      rightPairs.push(['Invoice Number:',d.invoiceNum||'-']);
      rightPairs.push(['Invoice Date:',fmtDate_(d.invoiceDate)]);
      inwRefRows_(d).forEach(p=>rightPairs.push(p));
      if(d.gatePass)rightPairs.push(['Gate Pass:',d.gatePass]);
      if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
      if(d.natureOfInward)rightPairs.push(['Nature of Inward:',d.natureOfInward]);
+     // Last row of the second column (see inwUnloadRows_).
+     inwUnloadRows_(d,'right').forEach(p=>rightPairs.push(p));
    } else {
      leftPairs.push([kind==='ISSUE'?'Issue No:':'Outward No:',d.outwardNo||'-']);
      leftPairs.push(['Date:',fmtDate_(d.date)]);

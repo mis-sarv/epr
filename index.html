@@ -174,6 +174,12 @@
       <span class="sarv-home-text"><b>Trims Manager</b><small>Trims &amp; packing per Order / Lot, PO &amp; store live</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Masters › SOP Master — opens #sopPanel (HOME_SOP_MASTER). -->
+    <button type="button" class="sarv-home-row" data-go="SOP_MASTER">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12l4 4v12H4z"></path><path d="M8 10l2 2 4-4M8 16h8"></path></svg></span>
+      <span class="sarv-home-text"><b>SOP Master</b><small>Designation-wise SOPs, step cards with pictures, who has read them</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <!-- Sales › Packing & Dispatch — packing slips, orders, vehicle, invoice /
          receiving verification (packing.html, ERP schema `packing`). Opens
          #packingPanel; shown or hidden by HOME_PACKING. -->
@@ -2168,6 +2174,16 @@
         <div id="trimsPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="trimsFrame" title="Trims Manager" data-src="trims-manager.html"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f0f2f5; display:block;"></iframe>
+        </div>
+
+        <!-- Masters › SOP Master — create SOPs with step cards and pictures,
+             assign them by designation / user, see who has read them
+             (sop.html#master, sop_* RPCs in SOP_MASTER_MIGRATION.sql). Users
+             read their SOPs from the launcher's "My SOPs" tile. Same iframe
+             pattern as the Lot Card Manager; src set on first open. -->
+        <div id="sopPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="sopFrame" title="SOP Master" data-src="sop.html#master"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#eef2f6; display:block;"></iframe>
         </div>
 
         <div class="sidebar" id="sidebarPanel">

@@ -237,6 +237,10 @@
       { label: 'Buyer Master',    go: 'MASTER', sub: 'buyerMasterSub',    tab: 'MD_BUYER' },
       { label: 'Trims & Packing Rate', go: 'MASTER', sub: 'trimRateMasterSub', tab: 'MD_TRIM_RATE' },
       { label: 'Dropdown Master', go: 'MASTER', sub: 'dropdownMasterSub', tab: 'MD_DROPDOWN' },
+      /* Its own page in an iframe (sop.html#master), shown by HOME_SOP_MASTER
+         (Admin / MD / GM by default). Users read their SOPs from the
+         launcher's "My SOPs" tile, not from here. */
+      { label: 'SOP Master', go: 'SOP_MASTER' },
       { label: 'Geography' }, { label: 'Finance Masters' },
       { label: 'General Masters' }, { label: 'HR Masters' },
       { label: 'Warehouse / Location' } ] },
@@ -1000,6 +1004,7 @@
     LOT_CARD: 'lot card manager lot',
     PRINTING_LOT: 'printing lot card print',
     TRIMS: 'trims packing material manager',
+    SOP_MASTER: 'sop standard operating procedure work instruction training designation steps',
     ORDER_FORM: 'sales order form so booking',
     PACKING: 'packing dispatch slip',
     COMPLAINT_APP: 'complaint support ticket'

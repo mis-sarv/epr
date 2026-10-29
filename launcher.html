@@ -374,6 +374,14 @@ a.app .t{font-size:14px; font-weight:750; line-height:1.25; letter-spacing:.01em
 a.app .s{font-size:11px; color:var(--txt-2); margin-top:3px; line-height:1.35;}
 a.app .go{font-size:15px; color:var(--txt-3); flex:0 0 auto; transition:transform .16s, color .16s;}
 a.app:hover .go{color:var(--a); transform:translateX(3px);}
+/* My SOPs: first, across the full width, with the number still to read. */
+a.app.sop{grid-column:1 / -1;}
+a.app .cnt{
+  flex:0 0 auto; min-width:24px; height:24px; padding:0 8px; border-radius:999px;
+  background:#f59e0b; color:#1f1300; font-size:12px; font-weight:800;
+  display:flex; align-items:center; justify-content:center;
+}
+a.app .cnt.ok{background:#22c55e; color:#052e14;}
 
 .none{
   background:var(--surface); border:1px solid var(--hairline);
@@ -1499,7 +1507,57 @@ function renderHome(user){
   });
   $('appsHead').style.display = n ? 'block' : 'none';
   $('noApps').style.display   = n ? 'none' : 'block';
+  sopTile();
 }
+
+/* ── My SOPs ───────────────────────────────────────────────────────────
+   Not an app key and not in Tab Visibility: the tile shows for anyone who
+   has at least one ACTIVE SOP assigned (by name, by designation, or to ALL),
+   and it comes first, because an unread SOP is the one thing on this page
+   that is waiting for the user. The server decides what is assigned
+   (sop_my_count in SOP_MASTER_MIGRATION.sql). Before that file is run, or on
+   any error, there is simply no tile. Asked once per page load; renderHome
+   runs again after addNewAppsToSession, and then only repaints it. */
+let SOP_INFO = null, SOP_ASKED = false;
+function sopTile(){
+  if (SOP_INFO) return paintSopTile();
+  if (SOP_ASKED) return;
+  SOP_ASKED = true;
+  let tok = null;
+  try{ tok = localStorage.getItem(K_SSO); }catch(e){}
+  if (!tok) return;
+  SB.rpc('sop_my_count', { p_token: tok }).then(r => {
+    const d = (!r.error && r.data) || {};
+    if (!d.success) return;
+    SOP_INFO = d;
+    paintSopTile();
+  }).catch(() => {});
+}
+function paintSopTile(){
+  const grid = $('appGrid');
+  const old = $('sopTile');
+  if (old) old.remove();
+  if (!grid || !SOP_INFO || !(SOP_INFO.total > 0)) return;
+  const total = SOP_INFO.total, todo = SOP_INFO.pending || 0;
+  const el = document.createElement('a');
+  el.id = 'sopTile';
+  el.className = 'app sop rise';
+  el.href = 'sop.html';
+  el.style.setProperty('--a', '#14b8a6');
+  el.innerHTML =
+      '<span class="tile"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h12l4 4v12H4z"/><path d="M8 10l2 2 4-4M8 16h8"/></svg></span>'
+    + '<span class="body"><span class="t">My SOPs</span>'
+    + '<span class="s">' + (todo ? todo + ' to read · ' : 'All read · ') + total + ' SOP' + (total > 1 ? 's' : '') + ' for you, step by step with pictures</span></span>'
+    + '<span class="cnt' + (todo ? '' : ' ok') + '">' + (todo ? todo : '✓') + '</span>'
+    + '<span class="go">→</span>';
+  grid.insertBefore(el, grid.firstChild);
+  $('appsHead').style.display = 'block';
+  $('noApps').style.display   = 'none';
+}
+// Back from sop.html (page restored from the browser cache): fresh count.
+window.addEventListener('pageshow', e => {
+  if (e.persisted && $('homeWrap').style.display !== 'none'){ SOP_INFO = null; SOP_ASKED = false; sopTile(); }
+});
 
 /* ── An app added after this session was created ───────────────────────
    allowed_apps is written on the session at login, so a session from before
