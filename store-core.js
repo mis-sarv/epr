@@ -1367,6 +1367,7 @@ async function loadPoIntoInward(poNo){
     addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
     const pending=Math.max(0,Number(line.ordered_qty||0)-Number(line.received_qty||0));
     tr.dataset.poLineId=line.id;tr.dataset.poOrderedQty=line.ordered_qty||0;tr.dataset.poReceivedQty=line.received_qty||0;
+    inwAttachRecvTick_(tr);
     tr.dataset.poOrderedWeight=pNum(line.gross_weight);
     tr.dataset.poReceivedWeight=pNum(poRecWt[line.id]);
     // The PO line's Bill Basis — what this line is measured on (poLineMeasure_).
@@ -2399,7 +2400,13 @@ function poReceiptStatus_(lines,currentStatus){
   });
   if(!anyOrdered)return cur;
   if(allComplete)return 'Received';
-  return anyReceived?'Partially Received':cur;
+  if(anyReceived)return 'Partially Received';
+  /* Nothing received any more (every Inward against it edited away or
+     deleted): back to where receiving starts. Without this an edit that
+     removed the last receipt left the PO "Received" with 0 in, and wrote
+     that back over the server trigger's correction
+     (PO_RECEIPT_AUTO_SYNC_MIGRATION.sql uses the same rule). */
+  return (cur==='Received'||cur==='Partially Received')?'MD Approved':cur;
 }
 // Per-line receipt state, for the item-wise breakdown under a PO row — in the
 // line's own Bill Basis unit (qty, or KGS for a WEIGHT-billed line).
@@ -3944,6 +3951,35 @@ function addNewRow(afterTr){
  applyInwardNbGstLock();
  updateStoreTotals();
  return tr;
+}
+/* "Received" tick on an Inward row that came from a PO line. The store
+   ticks each item as it is physically checked in; a ticked row turns green
+   and its ✕ (remove) button is disabled, so a received item cannot be
+   removed by a slip of the mouse. Unticking gives the button back. Only for
+   PO rows (tr.dataset.poLineId): a hand-added row has nothing to confirm
+   against. It is a screen aid only and is not saved. Disabling the button
+   (rather than re-wrapping its onclick) also covers appendPoInfoRow, which
+   replaces that onclick to remove the PO strip with the row. */
+function inwAttachRecvTick_(tr){
+  if(!tr||!tr.dataset.poLineId||tr.querySelector('.inw-recv-check'))return;
+  const cell=tr.querySelector('.row-actions');if(!cell)return;
+  const lab=document.createElement('label');
+  lab.className='inw-recv-tick';
+  lab.title='Tick when this item is received; a ticked row cannot be removed';
+  lab.innerHTML='<input type="checkbox" class="inw-recv-check">';
+  cell.insertBefore(lab,cell.firstChild);
+  const cb=lab.querySelector('input');
+  cb.addEventListener('change',()=>inwApplyRecvTick_(tr,cb.checked));
+}
+function inwApplyRecvTick_(tr,on){
+  tr.classList.toggle('inw-recv-ok',!!on);
+  const info=tr.nextElementSibling;
+  if(info&&info.classList.contains('po-info-row'))info.classList.toggle('inw-recv-ok',!!on);
+  const del=tr.querySelector('.delete-btn');
+  if(del){
+    del.disabled=!!on;
+    del.title=on?'Received: untick the box to remove this row':'Remove this row';
+  }
 }
 function addOutwardItemRow(afterTr){
  const tb=byId('outwardItemTableBody');if(!tb)return;const tr=document.createElement('tr');tr.innerHTML=`
@@ -14895,7 +14931,7 @@ async function loadInwardForEdit(id,no){
        marker every edit of such an old record would demand a password for
        items nobody touched. */
     tr.dataset.savedLine='1';
-    if(line.po_line_id)tr.dataset.poLineId=line.po_line_id;
+    if(line.po_line_id){tr.dataset.poLineId=line.po_line_id;inwAttachRecvTick_(tr);}
     const pi=line.po_line_id?poLineInfo[line.po_line_id]:null;
     if(pi){
       tr.dataset.poOrderedQty=pi.ordered;

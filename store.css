@@ -1033,6 +1033,16 @@ body {
             background: none;
         }
 
+        /* Inward row from a PO: "Received" tick (inwAttachRecvTick_). A ticked
+           row is green and its remove button is disabled. */
+        #storeInterface .row-actions { white-space: nowrap; }
+        #storeInterface .inw-recv-tick { display: inline-flex; align-items: center; margin-right: 6px; cursor: pointer; vertical-align: middle; }
+        #storeInterface .inw-recv-check { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: #16a34a; }
+        #storeInterface tr.inw-recv-ok > td { background: #dcfce7 !important; }
+        #storeInterface tr.inw-recv-ok > td .table-input { background-color: #f0fdf4; }
+        #storeInterface tr.inw-recv-ok:not(.po-info-row) > td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+        #storeInterface .delete-btn:disabled { color: #cbd5e1; cursor: not-allowed; }
+
         #storeInterface .sidebar {
             height: 100%;
             overflow-y: auto;

@@ -1733,6 +1733,24 @@ import reads `LWF ID`, `EMP-CASWAL/ON ROLL`, `EMP-TYPE`, `SHIFT FROM`, `SHIFT TO
 in the import but stays in the table for the class rules: give CLASS 2 rules with
 Salary Class = CLASS 2.
 
+## PO Received Qty / Weight always follow the Inward lines (server trigger)
+
+Setup: **`PO_RECEIPT_AUTO_SYNC_MIGRATION.sql`**. A trigger on `inward_lines`
+(insert, delete, and update of qty / weight / po_line_id) recomputes the
+affected PO lines from the inward lines that really exist
+(`received_qty` = sum of qty, `received_gross_weight` = sum of weight), then
+the PO header total and status. Deleting an `inward_entries` row (Supabase
+Table Editor, SQL, any app) cascades to its lines, so the PO corrects itself
+no matter where the delete happens.
+
+Status uses the ERP's item-wise rule (`poReceiptStatus_`, each line on its
+Bill Basis): all complete → Received, something in → Partially Received,
+nothing left → **MD Approved**. Only POs in the receiving phase are touched;
+Closed (Short), Rejected, Cancelled and earlier stages are never changed. The
+ERP's `poReceiptStatus_` has the same "nothing left → MD Approved" rule, so an
+edit in the ERP and the trigger always agree. The migration also fixes the
+existing data once.
+
 ## Unloader Supervisor: every new Inward verified at unloading (unloader.html)
 
 Every **new** Inward submitted in the ERP now goes to the Unloader Supervisor before it can be
