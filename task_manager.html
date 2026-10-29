@@ -60,6 +60,12 @@
         /* Dark purple, blinking: "this task has a PC / MD follow-up" (click = history). */
         .signal-fu { width: 9px; height: 9px; border-radius: 50%; background-color: #4c1d95; border: 1.5px solid #fff; animation: blinkFast 0.9s infinite step-start; box-shadow: 0 0 0 1px #4c1d95; }
 
+        /* My Tasks pending alarm: red count badge on each category button, and a
+           very fast red dot in front of every pending task in the alarm list. */
+        [data-pend] { position: relative; }
+        .tm-pend-badge { position: absolute; top: 8px; right: 8px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px; background: #dc2626; color: #fff; font-size: 12px; font-weight: 800; line-height: 24px; text-align: center; border: 2px solid #fff; box-shadow: 0 0 0 1px #dc2626; animation: blinkFast 0.6s infinite step-start; }
+        .tm-dot-fast { width: 12px; height: 12px; border-radius: 50%; background: #dc2626; flex-shrink: 0; box-shadow: 0 0 0 3px #fee2e2; animation: blinkFast 0.25s infinite step-start; }
+
         /* Animated Red Dashed Line for EA Follow-up / Postponed Tasks */
         @keyframes dashMoveForward { 0% { background-position: 0 0; } 100% { background-position: 20px 0; } }
         .ea-line-start::after, .ea-line-mid::after, .ea-line-end::after {
@@ -111,6 +117,25 @@
                 <h3 class="text-2xl font-extrabold text-slate-800 mb-2 tracking-tight" id="modalTitle">Notification</h3>
                 <div class="text-slate-500 font-medium mb-6" id="modalMessage">Message.</div>
                 <button onclick="closeModal()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95">Got it</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending / Delayed Tasks alarm: beeps until Confirm (see PENDING ALARM in the script). -->
+    <div id="pendAlarmModal" class="fixed inset-0 z-[150] hidden items-center justify-center bg-slate-900/70 backdrop-blur-sm p-3 print-hide">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden border-2 border-red-500">
+            <div class="bg-red-600 text-white px-5 py-4 flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-white/15 border border-white/30 flex items-center justify-center shrink-0"><i class="ph-fill ph-bell-ringing text-2xl"></i></div>
+                <div class="min-w-0">
+                    <h3 class="text-lg font-extrabold leading-tight" id="pendAlarmTitle">Pending Today</h3>
+                    <p class="text-[11px] font-bold text-red-100 uppercase tracking-wider mt-0.5" id="pendAlarmSub"></p>
+                </div>
+            </div>
+            <div id="pendAlarmSound" class="hidden bg-amber-50 border-b border-amber-200 text-amber-900 text-xs font-bold px-5 py-2">Tap anywhere on this box to turn the alarm sound on.</div>
+            <div id="pendAlarmList" class="p-4 space-y-2 overflow-y-auto bg-slate-50 flex-grow"></div>
+            <div class="p-4 border-t border-slate-200 bg-white">
+                <button onclick="confirmPendAlarm()" class="w-full bg-red-600 hover:bg-red-700 text-white font-extrabold py-4 rounded-xl shadow-md active:scale-95 transition-transform uppercase tracking-wider flex items-center justify-center gap-2"><i class="ph-bold ph-check-circle text-xl"></i> Confirm</button>
+                <p class="text-[10px] font-bold text-slate-400 text-center mt-2" id="pendAlarmNote"></p>
             </div>
         </div>
     </div>
@@ -531,7 +556,8 @@
                             <div>
                                 <label class="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Planned By</label>
                                 <select id="eaPlannedBy" class="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-pink-500 bg-slate-50 font-bold text-sm transition-all">
-                                    <option value="MD Planned">MD Planned</option><option value="Employee Planned">Employee Planned</option>
+                                    <!-- Starts on "-- Select --" so it is always chosen on purpose; the list comes from ERP › Dropdown Master (TM_DD). -->
+                                    <option value="">-- Select --</option><option value="MD Planned">MD Planned</option><option value="Employee Planned">Employee Planned</option>
                                 </select>
                             </div>
                         </div>
@@ -758,23 +784,23 @@
                 <div id="dashSummary" class="grid grid-cols-2 gap-3 p-4 pb-0 bg-slate-50/50"></div>
 
                 <div class="p-4 grid grid-cols-2 gap-3 bg-slate-50/50">
-                    <button onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
+                    <button data-pend="daily" onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-inner"><i class="ph-fill ph-calendar-blank text-3xl text-indigo-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">1. Daily Task</span>
                     </button>
-                    <button onclick="openTaskCategory('weekly', 'Weekly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-blue-400 hover:shadow-md transition-all active:scale-95 group">
+                    <button data-pend="weekly" onclick="openTaskCategory('weekly', 'Weekly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-blue-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-100 transition-colors border border-blue-100 shadow-inner"><i class="ph-fill ph-calendar-check text-3xl text-blue-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">2. Weekly Task</span>
                     </button>
-                    <button onclick="openTaskCategory('monthly', 'Monthly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-emerald-400 hover:shadow-md transition-all active:scale-95 group">
+                    <button data-pend="monthly" onclick="openTaskCategory('monthly', 'Monthly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-emerald-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center group-hover:bg-emerald-100 transition-colors border border-emerald-100 shadow-inner"><i class="ph-fill ph-calendar-plus text-3xl text-emerald-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">3. Monthly Task</span>
                     </button>
-                    <button onclick="openTaskCategory('yearly', 'Yearly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-orange-400 hover:shadow-md transition-all active:scale-95 group">
+                    <button data-pend="yearly" onclick="openTaskCategory('yearly', 'Yearly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-orange-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center group-hover:bg-orange-100 transition-colors border border-orange-100 shadow-inner"><i class="ph-fill ph-calendar-star text-3xl text-orange-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">4. Yearly Task</span>
                     </button>
-                    <button onclick="openTaskCategory('ea', 'EA Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-rose-400 hover:shadow-md transition-all active:scale-95 group">
+                    <button data-pend="ea" onclick="openTaskCategory('ea', 'EA Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-rose-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center group-hover:bg-rose-100 transition-colors border border-rose-100 shadow-inner"><i class="ph-fill ph-star text-3xl text-rose-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">5. EA Task</span>
                     </button>
@@ -782,7 +808,7 @@
                         <div class="w-14 h-14 bg-yellow-50 rounded-2xl flex items-center justify-center group-hover:bg-yellow-100 transition-colors border border-yellow-100 shadow-inner"><i class="ph-fill ph-chart-pie text-3xl text-yellow-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">6. My Score</span>
                     </button>
-                    <button onclick="openTaskCategory('buddy', 'Assigned Buddy Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-teal-400 hover:shadow-md transition-all active:scale-95 group col-span-2 md:col-span-1">
+                    <button data-pend="buddy" onclick="openTaskCategory('buddy', 'Assigned Buddy Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-teal-400 hover:shadow-md transition-all active:scale-95 group col-span-2 md:col-span-1">
                         <div class="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center group-hover:bg-teal-100 transition-colors border border-teal-100 shadow-inner"><i class="ph-fill ph-users text-3xl text-teal-500"></i></div>
                         <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">7. Buddy Tasks</span>
                     </button>
@@ -1171,6 +1197,9 @@
         async function refreshAndRerender() {
             const res = await loadData(appState.loadedFrom, appState.loadedTo);
             if (!res.ok) { tmErr(res, 'Could not reload'); return; }
+            rerenderScreen();
+        }
+        function rerenderScreen() {
             const s = appState.currentScreen;
             if (s === 'employee-dashboard') renderDashboard();
             else if (s === 'score-master') initScoreMaster();
@@ -1297,6 +1326,8 @@
                 }
             }
             navigate('employee-dashboard');
+            // Every time My Tasks is opened: today's pending list, beeping until Confirm.
+            openPendAlarm('open');
         }
 
         function tmLogout() { SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON }); }
@@ -1483,7 +1514,42 @@
                 + (has ? '' : ' · <span class="text-amber-600">No task list yet; a profile is created from the Employee Master</span>');
         }
         window.pickEaEmployee = function() { openEmpPicker('Select Employee for EA Task', setEaEmployee); };
-        window.initEADelegation = function() { setEaEmployee(null); eaApplyFormMode(); renderEATasks(); }
+        window.initEADelegation = function() { setEaEmployee(null); eaApplyFormMode(); renderEATasks(); fillPlannedBy(); }
+
+        /* ── Fixed lists from ERP › Master Data › Dropdown Master ────────────
+           Table sales_dropdowns, the same rule as the ERP and hr-payroll.html:
+           the key's rows if it has any, otherwise `def`. Each `def` is a copy of
+           the erp_tm* entry in store-core.js SARV_DROPDOWNS, so change both
+           together. Dropdown Master saves typed values in CAPITALS; a value that
+           is one of the defaults in another case is sent with the default's
+           spelling, so the server and the old EA tasks always see the same text. */
+        const TM_DD = {
+            plannedBy: { key: 'erp_tmPlannedBy', def: ['MD Planned', 'Employee Planned'] }
+        };
+        let TM_DD_ROWS = null;   // stays null after a failed read, so the next open tries again
+        async function loadTmDropdowns() {
+            if (TM_DD_ROWS) return;
+            try {
+                const r = await SB.from('sales_dropdowns').select('key,value').in('key', Object.values(TM_DD).map(d => d.key)).order('id');
+                if (r.error) throw r.error;
+                const out = {};
+                (r.data || []).forEach(x => { const v = String(x.value || '').trim(); if (v) (out[x.key] = out[x.key] || []).push(v); });
+                TM_DD_ROWS = out;
+            } catch (e) { console.warn('[TM] sales_dropdowns:', e.message || e); }   // the defaults still work
+        }
+        function tmDdList(k) {
+            const d = TM_DD[k], rows = (TM_DD_ROWS || {})[d.key];
+            if (!rows || !rows.length) return d.def.slice();
+            const canon = v => d.def.find(x => x.toUpperCase() === v.toUpperCase()) || v;
+            return [...new Set(rows.map(canon))];
+        }
+        async function fillPlannedBy() {
+            await loadTmDropdowns();
+            const el = document.getElementById('eaPlannedBy'); if (!el) return;
+            const cur = el.value;
+            el.innerHTML = '<option value="">-- Select --</option>' + tmDdList('plannedBy').map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+            el.value = tmDdList('plannedBy').includes(cur) ? cur : '';
+        }
 
         /* ── Active EA Follow-ups: view state ─────────────────────────────
            Hidden form (full-screen list) and collapsed sections are remembered
@@ -1518,10 +1584,12 @@
         }
         window.assignEATask = async function() {
             const e=document.getElementById('eaEmpSelect').value; const desc=document.getElementById('eaTaskDesc').value.trim(); const d=document.getElementById('eaDate').value; const t=document.getElementById('eaTime').value;
-            if(!e||!desc||!d||!t) return showCustomModal("Error","Fill all details",true);
-            const res = await tmRpc('tm_add_ea_task', { p_emp: e, p_desc: desc, p_date: d, p_time: to12h(t), p_planned_by: document.getElementById('eaPlannedBy').value });
+            const pb=document.getElementById('eaPlannedBy').value;
+            if(!e||!desc||!d||!t||!pb) return showCustomModal("Error", !pb&&e&&desc&&d&&t ? "Please choose Planned By." : "Fill all details", true);
+            const res = await tmRpc('tm_add_ea_task', { p_emp: e, p_desc: desc, p_date: d, p_time: to12h(t), p_planned_by: pb });
             if (!res.ok) return tmErr(res);
-            document.getElementById('eaTaskDesc').value='';
+            // Back to "-- Select --", so the next task's Planned By is chosen again.
+            document.getElementById('eaTaskDesc').value=''; document.getElementById('eaPlannedBy').value='';
             await refreshAndRerender(); showCustomModal("EA Assigned", "Task successfully pushed to employee sheet.");
         }
         /* Active EA tasks in two sections:
@@ -1848,7 +1916,7 @@
                 const t = findTask(el.dataset.owner, +el.dataset.task); if (!t) return;
                 el.innerHTML = ptsBoxHtml(t, el.dataset.ds, recOf(t, el.dataset.ds));
             });
-            if (appState.currentScreen === 'employee-dashboard') renderDashSummary();
+            if (appState.currentScreen === 'employee-dashboard') { renderDashSummary(); renderPendBadges(); }
             // Sheets: points in cells and the day headers drop over time too; redraw once a minute.
             if (liveTicks % 4 === 0) {
                 if (appState.currentScreen === 'employee-sheet' && appState.currentLoggedInEmp) renderEmployeeSheet(appState.currentLoggedInEmp);
@@ -1910,7 +1978,7 @@
         function renderDashboard() {
             const emp = appState.currentLoggedInEmp; if (!emp) return;
             document.getElementById('empDashName').textContent = emp.empName; document.getElementById('empDashCode').textContent = emp.empCode;
-            renderDashSummary(); renderDashSelfHistory();
+            renderDashSummary(); renderDashSelfHistory(); renderPendBadges();
         }
         function renderDashSummary() {
             const emp = appState.currentLoggedInEmp; if (!emp) return; const now = new Date();
@@ -1956,9 +2024,7 @@
                 const isResched=rec&&(rec.status==='pending-reschedule'||rec.status==='rescheduled-done');
                 if(!occursOn(t, today, rec)) return;
                 if(t.isSelfTask&&rec&&rec.checked)return;   // done personal tasks live in their history
-                let m=false; const f=t.frequency||'daily';
-                if(cat==='buddy'&&t.isBuddyTask)m=true; if(cat!=='buddy'&&!t.isBuddyTask&&f===cat)m=true; if(cat==='daily'&&t.isSelfTask)m=true; if(cat==='daily'&&isResched&&!t.isBuddyTask)m=true;
-                if(m) fTasks.push({...t,isResched,rec});
+                if(taskCats(t,isResched).includes(cat)) fTasks.push({...t,isResched,rec});
             });
             // Most urgent first: overdue, then by target time; done ones last.
             const now = new Date();
@@ -1991,6 +2057,133 @@
                 con.innerHTML=out;
             }
             navigate('task-list');
+        }
+
+        // Which My Tasks buttons list this task. Personal and follow-up tasks also show under Daily.
+        function taskCats(t, isResched) {
+            if (t.isBuddyTask) return ['buddy'];
+            const c = [t.frequency || 'daily'];
+            if ((t.isSelfTask || isResched) && !c.includes('daily')) c.push('daily');
+            return c;
+        }
+
+        /* ── PENDING ALARM ────────────────────────────────────────────────
+           1. Each My Tasks button carries a blinking red badge with the number
+              of today's tasks still to do in that list.
+           2. Opening My Tasks shows today's pending list (a very fast red dot
+              per task) and beeps until the employee presses Confirm.
+           3. After that, every 15 minutes: if a task of today is past its
+              target time and still not done, the Delayed list comes up and
+              beeps again until Confirm. It keeps repeating every 15 minutes
+              for as long as anything is delayed.
+           Browsers do not allow sound before the user has touched the page, so
+           when My Tasks is opened straight from the launcher the first tap
+           anywhere turns the sound on (a note says so in the alarm box). */
+        const PEND_REPEAT_MS = 15 * 60000;
+        const PEND_LABEL = { daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly', ea: 'EA', buddy: 'Buddy', self: 'Self' };
+        let pendAC = null, pendBeepTimer = null, pendNextTimer = null;
+
+        // Today's occurrences not done yet (target not reached = upcoming, passed = overdue); most delayed first.
+        function myPendingToday(now) {
+            const emp = appState.currentLoggedInEmp; if (!emp) return [];
+            const ds = todayStr(); now = now || new Date(); const out = [];
+            getCombinedTasks(emp).forEach(t => {
+                const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
+                const sc = taskScore(t, ds, rec, now); if (sc.state !== 'upcoming' && sc.state !== 'overdue') return;
+                const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done');
+                out.push({ t, rec, sc, cats: taskCats(t, isR) });
+            });
+            const w = x => x.sc.state === 'overdue' ? 0 : 1;
+            return out.sort((a, b) => (w(a) - w(b)) || ((a.sc.deadline || 0) - (b.sc.deadline || 0)));
+        }
+
+        function renderPendBadges() {
+            const list = myPendingToday();
+            document.querySelectorAll('#screen-employee-dashboard [data-pend]').forEach(b => {
+                const n = list.filter(x => x.cats.includes(b.dataset.pend)).length;
+                let s = b.querySelector('.tm-pend-badge');
+                if (!n) { if (s) s.remove(); return; }
+                if (!s) { s = document.createElement('span'); s.className = 'tm-pend-badge'; b.appendChild(s); }
+                s.textContent = n > 99 ? '99+' : n;
+                s.title = n + ' pending today';
+            });
+        }
+
+        // High-pitched triple beep (Web Audio, no sound file), plus a buzz on phones.
+        function pendAudio() {
+            if (!pendAC) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; try { pendAC = new C(); } catch (e) { return null; } }
+            if (pendAC.state === 'suspended') pendAC.resume().catch(() => {});
+            return pendAC;
+        }
+        function pendBeepOnce() {
+            const ac = pendAudio(), ok = ac && ac.state === 'running';
+            document.getElementById('pendAlarmSound').classList.toggle('hidden', !!ok || !ac);
+            if (navigator.vibrate) try { navigator.vibrate([150, 80, 150, 80, 150]); } catch (e) {}
+            if (!ok) return;
+            const t0 = ac.currentTime + 0.02;
+            [0, 0.18, 0.36].forEach(off => {
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'square'; o.frequency.value = 3200;
+                g.gain.setValueAtTime(0.0001, t0 + off);
+                g.gain.exponentialRampToValueAtTime(0.3, t0 + off + 0.01);
+                g.gain.setValueAtTime(0.3, t0 + off + 0.11);
+                g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.13);
+                o.connect(g); g.connect(ac.destination); o.start(t0 + off); o.stop(t0 + off + 0.15);
+            });
+        }
+        // Any tap / key press unlocks the sound (the browser rule above).
+        ['pointerdown', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, () => { if (pendBeepTimer) pendAudio(); }, { capture: true, passive: true }));
+
+        function openPendAlarm(kind) {
+            const now = new Date(); let list = myPendingToday(now);
+            if (kind === 'delay') list = list.filter(x => x.sc.state === 'overdue');
+            if (!list.length) { pendSchedule(); return; }
+            const late = list.filter(x => x.sc.state === 'overdue').length;
+            document.getElementById('pendAlarmTitle').textContent = kind === 'delay' ? 'Delayed Tasks' : 'Pending Today';
+            document.getElementById('pendAlarmSub').textContent = kind === 'delay'
+                ? `${list.length} task(s) past the target time`
+                : `${list.length} pending${late ? ' · ' + late + ' delayed' : ''}`;
+            document.getElementById('pendAlarmNote').textContent = late
+                ? 'While a task is delayed, this alarm comes back every 15 minutes.'
+                : 'Finish them before the target time to keep full points.';
+            document.getElementById('pendAlarmList').innerHTML = list.map(x => {
+                const t = x.t, od = x.sc.state === 'overdue';
+                const when = od ? `Delayed ${fmtDur(now - x.sc.deadline)}` : `Due ${t.time || 'today'}`;
+                return `<div class="bg-white border ${od ? 'border-red-300' : 'border-slate-200'} rounded-xl px-3 py-2.5 flex items-start gap-3 shadow-sm">`
+                    + `<span class="tm-dot-fast mt-1"></span>`
+                    + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 text-sm leading-tight">${esc(t.desc)}</div>`
+                    + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[10px] font-extrabold uppercase tracking-wider">`
+                    + `<span class="px-1.5 py-0.5 rounded border bg-slate-50 border-slate-200 text-slate-600">${esc(PEND_LABEL[t.isBuddyTask ? 'buddy' : (t.isSelfTask ? 'self' : (t.frequency || 'daily'))] || t.frequency)}</span>`
+                    + `<span class="px-1.5 py-0.5 rounded border ${od ? 'bg-red-50 border-red-200 text-red-700' : 'bg-amber-50 border-amber-200 text-amber-800'}">${esc(when)}</span>`
+                    + (od && !t.isSelfTask ? `<span class="px-1.5 py-0.5 rounded border bg-white border-slate-200 ${x.sc.pts < 0 ? 'text-red-600' : 'text-slate-600'}">${esc(signed(x.sc.pts))} pts now</span>` : '')
+                    + `</div></div></div>`;
+            }).join('');
+            const m = document.getElementById('pendAlarmModal'); m.classList.remove('hidden'); m.classList.add('flex');
+            clearInterval(pendBeepTimer); pendBeepOnce(); pendBeepTimer = setInterval(pendBeepOnce, 1000);
+        }
+
+        // Confirm = the employee has seen it: sound stops, and the delayed check runs again in 15 minutes.
+        window.confirmPendAlarm = function() {
+            clearInterval(pendBeepTimer); pendBeepTimer = null;
+            if (navigator.vibrate) try { navigator.vibrate(0); } catch (e) {}
+            const m = document.getElementById('pendAlarmModal'); m.classList.add('hidden'); m.classList.remove('flex');
+            pendSchedule();
+        };
+
+        function pendSchedule() {
+            clearTimeout(pendNextTimer);
+            pendNextTimer = setTimeout(pendDelayCheck, PEND_REPEAT_MS);
+        }
+        // Fetch again first (a task may have been done on another phone), quietly: an
+        // offline moment must not turn the whole page into the "could not load" state.
+        async function pendDelayCheck() {
+            if (pendBeepTimer) return pendSchedule();   // the alarm is still open
+            const keep = { ready: appState.dbReady, err: appState.dbError };
+            try {
+                const res = await loadData(appState.loadedFrom, appState.loadedTo);
+                if (res.ok) rerenderScreen(); else { appState.dbReady = keep.ready; appState.dbError = keep.err; }
+            } catch (e) { appState.dbReady = keep.ready; appState.dbError = keep.err; }
+            openPendAlarm('delay');
         }
 
         // My Score: today, this week, this month, with where the points went.

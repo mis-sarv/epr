@@ -35,6 +35,17 @@
 
   Pictures: a step shows an uploaded photo, or else one of the built-in line
   pictures (SOP_ICONS below). Photos are shrunk on the phone before saving.
+
+  MAIN SOP AND SUB-SOPs. The SOP (SOP-001) is the main SOP; each of its steps
+  is a sub-SOP, numbered by its place: SOP-001.1, SOP-001.2 … A step can be
+  given to individual users on its own (steps[].users, kept with the step's
+  fixed id steps[].sid, so moving a step keeps its users). Such a user sees
+  only those steps; the main SOP (by name, designation or ALL) shows every step.
+
+  SOP Master has two tabs: the SOP list, and "Assign to users", a table of
+  users (rows) against every SOP and its sub-SOPs (columns), with Department /
+  Designation filters, select-all and bulk Assign / Remove. Ticks are collected
+  and saved together (sop_assign_set).
 -->
 <style>
   :root {
@@ -297,6 +308,72 @@
   .addst:hover { background: #ccfbf1; }
   .ed-foot { position: fixed; left: 0; right: 0; bottom: 0; z-index: 151; background: rgba(255,255,255,.96); border-top: 1px solid var(--line); padding: 10px 14px; padding-bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 8px; justify-content: flex-end; backdrop-filter: blur(6px); }
   .ed-foot .sp { flex: 1; }
+  /* A step = a sub-SOP: who has it by name, under the step's fields. */
+  .subas { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px dashed #c4b5fd; background: #faf5ff; border-radius: 9px; padding: 8px 10px; font-size: 12.5px; color: #5b21b6; }
+  .subas div { flex: 1; min-width: 0; line-height: 1.45; }
+  .subas b { font-weight: 800; }
+  .subtag { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 5px; background: #ede9fe; color: #5b21b6; letter-spacing: .3px; }
+
+  /* ── SOP Master tabs + Assign to users ─────────────────────────── */
+  .mtabs { display: inline-flex; gap: 4px; margin-bottom: 12px; background: var(--card); padding: 4px; border-radius: 12px; box-shadow: var(--sh); max-width: 100%; overflow-x: auto; }
+  .mtabs button { border: 0; background: transparent; padding: 9px 16px; border-radius: 9px; font-weight: 800; font-size: 13.5px; color: var(--ink2); white-space: nowrap; }
+  .mtabs button.on { background: var(--ink); color: #fff; }
+  .mtabs button i { font-style: normal; background: #f59e0b; color: #fff; border-radius: 999px; padding: 0 6px; margin-left: 6px; font-size: 11px; }
+  .awrap { background: var(--card); border-radius: var(--r); box-shadow: var(--sh); overflow: auto; max-height: calc(100vh - 230px); min-height: 220px; -webkit-overflow-scrolling: touch; }
+  .at { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
+  .at th, .at td { border-bottom: 1px solid var(--line); border-right: 1px solid #f1f5f9; padding: 0; text-align: center; white-space: nowrap; background: #fff; }
+  .at thead th { position: sticky; top: 0; z-index: 3; background: #f8fafc; }
+  .at thead tr.r1 th { height: 50px; }
+  .at thead tr.r2 th { top: 50px; height: 44px; }
+  .at .uc { position: sticky; left: 0; z-index: 2; text-align: left; min-width: 230px; max-width: 270px; padding: 6px 10px; border-right: 2px solid var(--line); }
+  .at thead .uc { z-index: 5; vertical-align: bottom; }
+  .at .uc label { display: flex; gap: 9px; align-items: center; cursor: pointer; min-width: 0; }
+  .at .uc input { width: 17px; height: 17px; accent-color: var(--brand); flex: 0 0 auto; }
+  .at .uc .nm { min-width: 0; }
+  .at .uc b { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; }
+  .at .uc small { display: block; color: var(--mute); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+  .at tr.sel td { background: #f0fdfa; }
+  .at .gh { padding: 5px 8px; border-top: 3px solid var(--c); text-align: left; max-width: 260px; }
+  .at .gh .gl { display: flex; align-items: center; gap: 6px; }
+  .at .gh small { font-size: 10.5px; font-weight: 800; color: var(--c); }
+  .at .gh span { display: block; font-size: 11.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; max-width: 230px; }
+  .at .gh .xp { border: 1px solid var(--line); background: #fff; border-radius: 6px; font-size: 10.5px; font-weight: 800; padding: 1px 7px; color: #6d28d9; }
+  .at .gh.off { opacity: .6; }
+  .at .h2 { padding: 3px 5px; font-size: 10.5px; font-weight: 800; color: var(--ink2); min-width: 58px; max-width: 120px; }
+  .at .h2.sub { color: #6d28d9; background: #faf5ff; }
+  .at .h2 em { display: block; font-style: normal; font-weight: 600; font-size: 9.5px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; }
+  .at .h2 .colb { display: block; margin: 2px auto 0; border: 1px solid var(--line); background: #fff; border-radius: 6px; font-size: 9.5px; font-weight: 800; padding: 1px 6px; color: var(--ink2); }
+  .at td.ac { position: relative; min-width: 58px; height: 42px; }
+  .at td.cnt { font-weight: 800; color: var(--ink2); padding: 0 8px; font-size: 12px; min-width: 64px; }
+  .cb { width: 25px; height: 25px; border-radius: 7px; border: 2px solid #cbd5e1; background: #fff; color: #fff; font-weight: 900; font-size: 13px; display: inline-grid; place-items: center; padding: 0; vertical-align: middle; }
+  .cb.on { background: var(--brand); border-color: var(--brand); }
+  td.ac.sub .cb.on { background: #7c3aed; border-color: #7c3aed; }
+  .at td.ac.via { background: #f0fdf4; }
+  .at td.ac.cov { background: #f8fafc; }
+  .at td.ac.cov .cb { opacity: .5; }
+  td.ac i { position: absolute; right: 3px; top: 2px; font-style: normal; font-size: 9px; font-weight: 800; color: var(--ok); pointer-events: none; }
+  td.ac.ch::after { content: ''; position: absolute; left: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+  .abar { position: sticky; top: 64px; z-index: 20; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 12px; margin-bottom: 10px; border-radius: 12px; background: #0f172a; color: #fff; font-size: 13px; font-weight: 700; box-shadow: var(--sh); }
+  .abar .sp { flex: 1; }
+  .abar .btn.ghost { background: rgba(255,255,255,.1); color: #fff; border-color: rgba(255,255,255,.2); }
+  .asave { position: sticky; bottom: 10px; z-index: 20; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; margin-top: 10px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 13.5px; font-weight: 700; box-shadow: 0 6px 20px rgba(15,23,42,.12); }
+  .asave .sp { flex: 1; }
+  .alegend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--mute); font-weight: 600; align-items: center; }
+  .alegend .cb { width: 18px; height: 18px; font-size: 10px; border-radius: 5px; margin-right: 5px; }
+  @media (max-width: 620px) { .at .uc { min-width: 150px; max-width: 170px; } .abar { top: 58px; } .awrap { max-height: calc(100vh - 300px); } }
+  /* User picker (a sub-SOP's users) and target picker (bulk assign). */
+  .upf { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+  @media (max-width: 560px) { .upf { grid-template-columns: 1fr; } }
+  .upf input, .upf select { padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 9px; background: #fff; min-width: 0; width: 100%; }
+  .upa { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .upa .sp { flex: 1; }
+  .tgs { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+  .tgs label { display: flex; gap: 9px; align-items: center; cursor: pointer; }
+  .tgs .tgh { padding: 9px 10px; background: #f8fafc; font-weight: 700; font-size: 13px; border-left: 4px solid var(--c); }
+  .tgs .tgh small { color: var(--c); font-weight: 800; margin-right: 4px; }
+  .tgs .tgi { padding: 7px 10px 7px 30px; font-size: 12.5px; border-top: 1px solid #f1f5f9; color: var(--ink2); }
+  .tgs .tgi small { color: #6d28d9; font-weight: 800; }
+  .tgs input { width: 16px; height: 16px; accent-color: var(--brand); flex: 0 0 auto; }
 
   /* Dialogs */
   .dlg { position: fixed; inset: 0; z-index: 300; background: rgba(15,23,42,.55); display: flex; align-items: flex-end; justify-content: center; }
@@ -401,6 +478,28 @@
 <div class="dlg" id="rpDlg" hidden onclick="if(event.target===this)this.hidden=true">
   <div class="dlg-c"><div class="dlg-h"><b id="rpTitle">Who has read it</b><button class="ib" onclick="$('rpDlg').hidden=true">✕</button></div>
   <div class="dlg-b" id="rpBody"></div></div>
+</div>
+<!-- Users of one sub-SOP (a step), from the editor -->
+<div class="dlg" id="upDlg" hidden onclick="if(event.target===this)this.hidden=true">
+  <div class="dlg-c"><div class="dlg-h"><b id="upTitle">Assign sub-SOP</b><button class="ib" onclick="$('upDlg').hidden=true">✕</button></div>
+  <div class="dlg-b">
+    <div class="upf"><input id="upQ" type="search" placeholder="Search name, emp code" oninput="renderUp()"><select id="upDep" onchange="renderUp()"></select><select id="upDes" onchange="renderUp()"></select></div>
+    <div class="upa"><label class="tog"><input type="checkbox" id="upOnly" onchange="renderUp()"> Picked only</label><span class="sp"></span>
+      <button type="button" class="btn ghost sm" onclick="upAll(true)">Select all shown</button><button type="button" class="btn ghost sm" onclick="upAll(false)">Clear shown</button></div>
+    <div class="ulist" id="upList" style="max-height:46vh;"></div>
+  </div>
+  <div class="dlg-f"><span id="upCnt" style="margin-right:auto;font-size:13px;font-weight:700;color:var(--ink2);align-self:center;"></span>
+    <button class="btn ghost" onclick="$('upDlg').hidden=true">Cancel</button><button class="btn" onclick="upDone()">Done</button></div></div>
+</div>
+<!-- Bulk assign / remove: which SOPs and sub-SOPs -->
+<div class="dlg" id="tgDlg" hidden onclick="if(event.target===this)this.hidden=true">
+  <div class="dlg-c"><div class="dlg-h"><b id="tgTitle">Assign</b><button class="ib" onclick="$('tgDlg').hidden=true">✕</button></div>
+  <div class="dlg-b">
+    <div class="upf" style="grid-template-columns:1fr;"><input id="tgQ" type="search" placeholder="Search SOP code or title" oninput="renderTargets()"></div>
+    <div id="tgList"></div>
+  </div>
+  <div class="dlg-f"><span id="tgCnt" style="margin-right:auto;font-size:13px;font-weight:700;color:var(--ink2);align-self:center;"></span>
+    <button class="btn ghost" onclick="$('tgDlg').hidden=true">Cancel</button><button class="btn" id="tgGo" onclick="applyTargets()">Apply</button></div></div>
 </div>
 <div id="busy"><div class="spin"></div><div id="busyText">Working…</div></div>
 <div id="toast"></div>
@@ -515,8 +614,22 @@ const ERR_TEXT = {
   STEP_TITLE_REQUIRED: 'Every step needs a title.',
   IMAGE_INVALID: 'One of the step photos could not be read. Remove it and add it again.',
   TOO_BIG: 'The photos in this SOP are too large in total. Remove a few photos or split the SOP into two.',
-  DUP_CODE: 'Another SOP already uses this code. Choose a different code, or leave it empty for the next free one.'
+  DUP_CODE: 'Another SOP already uses this code. Choose a different code, or leave it empty for the next free one.',
+  NO_USERS: 'Pick at least one user.',
+  NO_ITEMS: 'Pick at least one SOP or sub-SOP.'
 };
+// Added with the sub-SOP / Assign upgrade: missing = the old migration is still on the server.
+const NEW_RPC = { sop_assign_data: 1, sop_assign_set: 1 };
+// "SOP-001" + 3 → "SOP-001.3": a step's sub-SOP code.
+const subCode = (code, no) => (code || 'SOP') + '.' + no;
+const newSid = () => 'S' + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+// Every typed word must be found somewhere (any order), like the ERP's search boxes.
+function qMatch(hay, q){
+  const w = String(q || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (!w.length) return true;
+  const h = (Array.isArray(hay) ? hay.filter(v => v != null).join(' ') : String(hay || '')).toUpperCase();
+  return w.every(x => h.indexOf(x) >= 0);
+}
 async function rpc(fn, args){
   let r;
   try {
@@ -530,7 +643,9 @@ async function rpc(fn, args){
   if (!r.ok) {
     const code = d && d.code;
     if (code === 'PGRST202' || code === '42883' || code === '42P01') {
-      const e = new Error('SOPs are not set up on the server yet. Admin: run sql/SOP_MASTER_MIGRATION.sql in the Supabase SQL Editor.');
+      const e = new Error(NEW_RPC[fn]
+        ? 'This screen needs the updated sql/SOP_MASTER_MIGRATION.sql. Admin: run it again in the Supabase SQL Editor (it is safe to run again).'
+        : 'SOPs are not set up on the server yet. Admin: run sql/SOP_MASTER_MIGRATION.sql in the Supabase SQL Editor.');
       e.code = 'NOT_SET_UP'; throw e;
     }
     throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
@@ -565,9 +680,13 @@ function paintHeader(){
 }
 window.addEventListener('hashchange', () => {
   const m = modeFromHash(); if (m === MODE) return;
+  A_PEND.clear();
   MODE = m; closePlayer(true); reload();
 });
-function reload(manual){ return (MODE === 'master' ? loadMaster(manual) : loadMy(manual)); }
+function reload(manual){
+  if (MODE !== 'master') return loadMy(manual);
+  return MTAB === 'assign' ? loadAssign(manual) : loadMaster(manual);
+}
 
 /* ══ MY SOPs ═══════════════════════════════════════════════════════════ */
 let MY = [], MY_FILTER = 'ALL', MY_Q = '';
@@ -616,12 +735,11 @@ function renderMy(){
   renderMyGrid();
 }
 function renderMyGrid(){
-  const q = MY_Q.trim().toUpperCase();
   const list = MY.filter(r => {
     const s = myState(r);
     if (MY_FILTER === 'TODO' && !(s === 'NEW' || s === 'UPDATED')) return false;
     if (MY_FILTER === 'READ' && s !== 'READ') return false;
-    return !q || [r.sop_code, r.title, r.category, r.department, r.summary].some(v => String(v || '').toUpperCase().indexOf(q) >= 0);
+    return qMatch([r.sop_code, r.title, r.category, r.department, r.summary].concat((r.sub_nos || []).map(n => subCode(r.sop_code, n))), MY_Q);
   });
   if (!list.length) {
     $('myGrid').innerHTML = '<div class="empty">' + (MY.length ? 'Nothing here. Try another filter.' : 'When an SOP is assigned to you, or to your designation, it appears here.') + '</div>';
@@ -633,7 +751,10 @@ function renderMyGrid(){
       + '<div class="sc-cover">' + scene(r.icon, r.color) + '<span class="sc-code">' + esc(r.sop_code) + '</span><span class="sc-st ' + lb[1] + '">' + lb[0] + (s === 'UPDATED' ? ' v' + r.version : '') + '</span></div>'
       + '<div class="sc-body"><div class="sc-cat">' + esc([r.category, r.department].filter(Boolean).join(' · ') || 'SOP') + '</div>'
       + '<h3>' + esc(r.title) + '</h3>' + (r.summary ? '<p>' + esc(r.summary) + '</p>' : '')
-      + '<div class="sc-meta"><span class="pill">' + r.step_count + ' steps</span><span class="pill">' + r.est_minutes + ' min</span><span class="pill">v' + r.version + '</span>'
+      // Only some sub-SOPs of this SOP are given to this user: say which.
+      + (r.whole === false && (r.sub_nos || []).length
+          ? '<div><span class="subtag">SUB-SOP ' + esc(r.sub_nos.map(n => subCode(r.sop_code, n)).join(', ')) + '</span></div>' : '')
+      + '<div class="sc-meta"><span class="pill">' + (r.whole === false ? r.step_count + ' of ' + (r.total_steps || r.step_count) + ' steps' : r.step_count + ' steps') + '</span><span class="pill">' + r.est_minutes + ' min</span><span class="pill">v' + r.version + '</span>'
       + (r.acked_at ? '<span class="pill" style="color:#166534;">Read ' + esc(stamp(r.acked_at).slice(0, 10)) + '</span>' : '') + '</div></div></button>';
   }).join('') + '</div>';
 }
@@ -659,10 +780,15 @@ async function openSop(id){
 let P = null;
 function openPlayer(sop, opt){
   opt = opt || {};
-  const steps = Array.isArray(sop.steps) ? sop.steps : [];
+  let steps = (Array.isArray(sop.steps) ? sop.steps : []).map((st, i) => Object.assign({}, st, { no: st.no || i + 1 }));
+  /* Only some sub-SOPs are this user's: show just those. The server already
+     sends a non-manager only their steps; a manager gets all, so it is done
+     here too (never in a preview, which shows the whole SOP). */
+  const part = !opt.preview && sop.whole === false;
+  if (part) steps = steps.filter(st => (sop.sub_nos || []).indexOf(st.no) >= 0);
   const key = 'sop_v_' + (sop.id || 'draft') + '_' + (sop.version || 1);
   // idx -1 so the first go() always paints the bar and buttons for this SOP.
-  P = { sop, steps, n: steps.length + 2, idx: -1, preview: !!opt.preview, mine: !!opt.mine,
+  P = { sop, steps, n: steps.length + 2, idx: -1, preview: !!opt.preview, mine: !!opt.mine, part,
         key, checks: opt.preview ? {} : lsGet(key + '_chk', {}) };
   const c = /^#[0-9a-f]{6}$/i.test(sop.color || '') ? sop.color : '#0f766e';
   $('pl').style.setProperty('--c', c);
@@ -691,7 +817,8 @@ function slideCover(){
   return '<section class="slide"><div class="scard"><div class="vis">' + scene(s.icon, s.color) + '<span class="badge">' + esc(s.sop_code || 'SOP') + '</span></div>'
     + '<div class="txt"><div class="kick">' + esc([s.category, s.department].filter(Boolean).join(' · ') || 'STANDARD OPERATING PROCEDURE') + '</div>'
     + '<h2>' + esc(s.title || 'Untitled SOP') + '</h2>' + (s.summary ? '<div class="rich">' + rich(s.summary) + '</div>' : '')
-    + '<div class="cov-meta"><span class="pill">' + P.steps.length + ' steps</span><span class="pill">About ' + esc(s.est_minutes || 5) + ' min</span><span class="pill">Version ' + esc(s.version || 1) + '</span></div>'
+    + '<div class="cov-meta"><span class="pill">' + (P.part ? 'Your ' + P.steps.length + ' of ' + (s.total_steps || P.steps.length) + ' steps' : P.steps.length + ' steps') + '</span><span class="pill">About ' + esc(s.est_minutes || 5) + ' min</span><span class="pill">Version ' + esc(s.version || 1) + '</span></div>'
+    + (P.part ? '<div class="cov-meta" style="margin-top:0;"><span class="subtag">SUB-SOP ' + esc(P.steps.map(st => subCode(s.sop_code, st.no)).join(', ')) + '</span></div>' : '')
     + (des ? '<div style="font-size:12px;color:var(--mute);font-weight:700;margin-bottom:5px;">FOR</div><div class="cov-meta" style="margin-top:0;">' + des + '</div>' : '')
     + '<div class="hint"><span>Swipe or tap Next to start</span><span class="arr">→</span></div>'
     + '</div></div></section>';
@@ -701,11 +828,12 @@ function slideStep(st, i){
     ? '<img src="' + esc(st.image) + '" alt="' + esc(st.title) + '" onclick="zoom(this.src)"><span class="zoom">Tap to zoom</span>'
     : scene(st.icon, P.sop.color);
   const checks = (st.checks || []).map((c, j) => {
-    const on = !!P.checks[i + ':' + j];
+    const on = !!P.checks[ckKey(st, i, j)];
     return '<button class="' + (on ? 'on' : '') + '" onclick="tick(' + i + ',' + j + ',this)"><span class="bx">' + (on ? '✓' : '') + '</span><span>' + esc(c) + '</span></button>';
   }).join('');
-  return '<section class="slide"><div class="scard"><div class="vis">' + vis + '<span class="badge">STEP ' + (i + 1) + ' / ' + P.steps.length + '</span></div>'
-    + '<div class="txt"><h2>' + esc(st.title) + '</h2><div class="rich">' + rich(st.text) + '</div>'
+  const no = st.no || i + 1;
+  return '<section class="slide"><div class="scard"><div class="vis">' + vis + '<span class="badge">' + (P.part ? 'SUB-SOP ' + (i + 1) + ' / ' + P.steps.length : 'STEP ' + (i + 1) + ' / ' + P.steps.length) + '</span></div>'
+    + '<div class="txt"><div class="kick">SUB-SOP ' + esc(subCode(P.sop.sop_code, no)) + '</div><h2>' + esc(st.title) + '</h2><div class="rich">' + rich(st.text) + '</div>'
     + (checks ? '<div class="chk">' + checks + '</div>' : '')
     + (st.tip ? '<div class="call tip">' + icon('check', 20, 2) + '<div><b>TIP</b>' + esc(st.tip) + '</div></div>' : '')
     + (st.warn ? '<div class="call warn">' + icon('warning', 20, 2) + '<div><b>CAUTION</b>' + esc(st.warn) + '</div></div>' : '')
@@ -718,8 +846,8 @@ function slideEnd(){
 function endHtml(){
   const s = P.sop;
   let total = 0, done = 0;
-  P.steps.forEach((st, i) => (st.checks || []).forEach((_, j) => { total++; if (P.checks[i + ':' + j]) done++; }));
-  let h = '<div class="kick">ALL ' + P.steps.length + ' STEPS SEEN</div><h2>You have reached the end</h2>'
+  P.steps.forEach((st, i) => (st.checks || []).forEach((_, j) => { total++; if (P.checks[ckKey(st, i, j)]) done++; }));
+  let h = '<div class="kick">ALL ' + P.steps.length + (P.part ? ' OF YOUR SUB-SOPs' : ' STEPS') + ' SEEN</div><h2>You have reached the end</h2>'
     + '<div class="rich"><p>Go back to any step with ‹ Back or ☰ All steps.</p></div>'
     + (total ? '<div class="cov-meta"><span class="pill" style="' + (done === total ? 'color:#166534;' : 'color:#92400e;') + '">' + done + ' of ' + total + ' points ticked</span></div>' : '');
   h += '<div class="ack">';
@@ -731,8 +859,11 @@ function endHtml(){
     + (total && done < total ? '<div class="hint">Tip: tick the points above as you check them at work.</div>' : '');
   return h + '</div>';
 }
+/* A tick is kept by the step's fixed id, so it stays on the right step when
+   the steps are moved or a user sees only some of them. */
+const ckKey = (st, i, j) => (st && st.sid ? st.sid : 'i' + i) + ':' + j;
 function tick(i, j, btn){
-  const k = i + ':' + j, on = !P.checks[k];
+  const k = ckKey(P.steps[i], i, j), on = !P.checks[k];
   if (on) P.checks[k] = 1; else delete P.checks[k];
   btn.classList.toggle('on', on); btn.querySelector('.bx').textContent = on ? '✓' : '';
   if (!P.preview) lsSet(P.key + '_chk', P.checks);
@@ -790,9 +921,9 @@ function toggleOverview(on){
     $('plOvG').innerHTML = [{ cover: 1 }].concat(P.steps).map((st, k) => {
       const v = st.cover ? scene(P.sop.icon, P.sop.color) : st.image ? '<img src="' + esc(st.image) + '" alt="">' : scene(st.icon, P.sop.color);
       const nChk = st.cover ? 0 : (st.checks || []).length;
-      const nOn = st.cover ? 0 : (st.checks || []).filter((_, j) => P.checks[(k - 1) + ':' + j]).length;
+      const nOn = st.cover ? 0 : (st.checks || []).filter((_, j) => P.checks[ckKey(st, k - 1, j)]).length;
       return '<button class="ov-i' + (k === P.idx ? ' cur' : '') + '" onclick="toggleOverview(false);go(' + k + ')"><div class="ov-v">' + v + '</div>'
-        + '<div class="ov-t"><small>' + (st.cover ? 'COVER' : 'STEP ' + k + (nChk ? ' · ' + nOn + '/' + nChk + ' ✓' : '')) + '</small>' + esc(st.cover ? P.sop.title : st.title) + '</div></button>';
+        + '<div class="ov-t"><small>' + (st.cover ? 'COVER' : esc(subCode(P.sop.sop_code, st.no || k)) + (nChk ? ' · ' + nOn + '/' + nChk + ' ✓' : '')) + '</small>' + esc(st.cover ? P.sop.title : st.title) + '</div></button>';
     }).join('');
   }
   $('plOv').hidden = !on;
@@ -831,7 +962,7 @@ function renderMaster(){
   const act = ML.filter(r => r.status === 'ACTIVE');
   const reach = act.reduce((s, r) => s + (r.assigned_count || 0), 0), acked = act.reduce((s, r) => s + (r.acked_count || 0), 0);
   const allDes = [...new Set(ML.flatMap(r => r.designations || []))].sort();
-  let h = '<div class="stats">'
+  let h = mTabs() + '<div class="stats">'
     + '<div class="stat"><small>TOTAL SOPs</small><b>' + ML.length + '</b></div>'
     + '<div class="stat"><small>ACTIVE</small><b>' + act.length + '</b></div>'
     + '<div class="stat"><small>READ CONFIRMED</small><b>' + (reach ? Math.round(acked * 100 / reach) : 0) + '%</b></div>'
@@ -845,10 +976,9 @@ function renderMaster(){
   renderMasterGrid();
 }
 function renderMasterGrid(){
-  const q = MF.q.trim().toUpperCase();
   const list = ML.filter(r => (MF.st === 'ALL' || r.status === MF.st)
     && (!MF.des || (r.designations || []).indexOf(MF.des) >= 0)
-    && (!q || [r.sop_code, r.title, r.category, r.department].some(v => String(v || '').toUpperCase().indexOf(q) >= 0)));
+    && qMatch([r.sop_code, r.title, r.category, r.department], MF.q));
   if (!list.length) {
     $('mGrid').innerHTML = '<div class="empty">' + (ML.length ? 'No SOP matches the filters.' : 'No SOPs yet.<br><button class="btn" style="margin-top:12px;" onclick="openEditor()">+ Create the first SOP</button>') + '</div>';
     return;
@@ -861,8 +991,9 @@ function renderMasterGrid(){
       + des.slice(0, 4).map(d => '<span class="tag">' + esc(d === 'ALL' ? 'ALL EMPLOYEES' : d) + '</span>').join('')
       + (des.length > 4 ? '<span class="tag gray">+' + (des.length - 4) + '</span>' : '')
       + (r.user_count ? '<span class="tag gray">' + r.user_count + ' by name</span>' : '')
-      + (!des.length && !r.user_count ? '<span class="tag gray">NOT ASSIGNED</span>' : '') + '</div>'
-      + '<div class="mc-r"><span>' + r.step_count + ' steps · ' + r.est_minutes + ' min' + (r.category ? ' · ' + esc(r.category) : '') + '</span></div>'
+      + (r.sub_user_count ? '<span class="subtag">' + r.sub_user_count + ' on sub-SOPs</span>' : '')
+      + (!des.length && !r.user_count && !r.sub_user_count ? '<span class="tag gray">NOT ASSIGNED</span>' : '') + '</div>'
+      + '<div class="mc-r"><span>' + r.step_count + ' sub-SOPs (steps) · ' + r.est_minutes + ' min' + (r.category ? ' · ' + esc(r.category) : '') + '</span></div>'
       + (r.require_ack ? '<div class="meter"><i style="width:' + pct + '%"></i></div><div class="mc-r"><span>Read: <b>' + (r.acked_count || 0) + '</b> of ' + (r.assigned_count || 0) + ' users</span><span>' + pct + '%</span></div>'
         : '<div class="mc-r"><span>For information (' + (r.assigned_count || 0) + ' users), no confirmation</span></div>')
       + '<div class="mc-r" style="font-size:11px;"><span>Updated ' + esc(stamp(r.updated_at)) + (r.updated_by ? ' by ' + esc(r.updated_by) : '') + '</span></div></div>'
@@ -883,16 +1014,263 @@ async function showReport(id){
   try {
     const d = await rpc('sop_ack_report', { p_id: id });
     const rows = d.rows || [], yes = rows.filter(x => x.acked_at);
-    const how = { USER: 'BY NAME', DESIGNATION: 'DESIGNATION', ALL: 'ALL' };
+    const how = { USER: 'BY NAME', DESIGNATION: 'DESIGNATION', ALL: 'ALL', SUB: 'SUB-SOP' };
+    // A sub-SOP-only user: which of the sub-SOPs.
+    rows.forEach(x => { if (x.how === 'SUB' && (x.subs || []).length) x.howTxt = 'SUB-SOP ' + x.subs.map(n => subCode(r0.sop_code, n)).join(', '); });
     $('rpBody').innerHTML = (rows.length
       ? '<div class="stats" style="margin-bottom:6px;grid-template-columns:repeat(3,1fr);"><div class="stat"><small>ASSIGNED</small><b>' + rows.length + '</b></div><div class="stat"><small>READ V' + d.version + '</small><b style="color:#15803d;">' + yes.length + '</b></div><div class="stat"><small>NOT YET</small><b style="color:#b91c1c;">' + (rows.length - yes.length) + '</b></div></div>'
         + rows.sort((a, b) => (!!a.acked_at - !!b.acked_at) || String(a.name).localeCompare(String(b.name))).map(x =>
-          '<div class="rrow"><div class="nm"><b>' + esc(x.name) + '</b><small>' + esc([x.emp_code, x.designation, x.department].filter(Boolean).join(' · ') || '-') + ' · via ' + how[x.how] + '</small></div>'
+          '<div class="rrow"><div class="nm"><b>' + esc(x.name) + '</b><small>' + esc([x.emp_code, x.designation, x.department].filter(Boolean).join(' · ') || '-') + ' · via ' + esc(x.howTxt || how[x.how] || x.how) + '</small></div>'
           + (x.acked_at ? '<div class="rok">✓ READ<br><small style="font-weight:600;color:var(--mute);">' + esc(stamp(x.acked_at)) + '</small></div>'
             : x.last_version ? '<div class="rold">READ OLD V' + esc(x.last_version) + '</div>' : '<div class="rno">NOT READ</div>') + '</div>').join('')
       : '<div class="empty" style="box-shadow:none;">Nobody is assigned yet. Add a designation or pick users in Edit.</div>')
       + (r0.require_ack ? '' : '<div class="note warn" style="margin-top:10px;">This SOP does not ask for a reading confirmation.</div>');
   } catch (e) { $('rpBody').innerHTML = '<div class="note bad">' + esc(e.message || e) + '</div>'; }
+}
+
+/* ══ ASSIGN TO USERS ═══════════════════════════════════════════════════
+   One table: users down the side, every SOP across the top (its "Whole SOP"
+   column, and its sub-SOP columns .1 .2 … when opened with ▸). A tick is
+   "has it by name". Green cells already get the whole SOP through their
+   designation or All employees; grey sub-SOP cells already see that step
+   through the whole SOP.
+
+   Ticks are collected first (an orange dot marks a changed cell) and saved
+   together with Save changes, grouped into as few sop_assign_set calls as
+   possible. Filters (search, Department, Designation, SOP) narrow the rows;
+   the row tick-boxes + "select all shown" pick users for the bulk Assign /
+   Remove buttons; a column's "all" button ticks that column for the picked
+   users, or for every user shown when nobody is picked. */
+let MTAB = (() => { try { return sessionStorage.getItem('sop_mtab') || 'list'; } catch (e) { return 'list'; } })();
+let AS = null;                                   // { users, sops } from sop_assign_data
+const AF = { q: '', dep: '', des: '', sop: '', show: 'ALL', open: {} };
+const A_SEL = new Set();                         // picked user ids (rows)
+const A_PEND = new Map();                        // 'sopId|sid|uid' → wanted true / false
+function mTabs(){
+  return '<div class="mtabs"><button class="' + (MTAB === 'list' ? 'on' : '') + '" onclick="setMTab(\'list\')">SOP list</button>'
+    + '<button class="' + (MTAB === 'assign' ? 'on' : '') + '" onclick="setMTab(\'assign\')">Assign to users' + (A_PEND.size ? '<i>' + A_PEND.size + '</i>' : '') + '</button></div>';
+}
+function setMTab(t){
+  if (t === MTAB) return;
+  if (MTAB === 'assign' && A_PEND.size && !confirm(A_PEND.size + ' assignment change(s) are not saved yet. Leave them unsaved?')) return;
+  if (MTAB === 'assign') A_PEND.clear();
+  MTAB = t; try { sessionStorage.setItem('sop_mtab', t); } catch (e) {}
+  reload();
+}
+async function loadAssign(manual){
+  if (!AS) $('main').innerHTML = mTabs() + '<div class="empty">Loading users and SOPs…</div>';
+  try {
+    const d = await rpc('sop_assign_data');
+    ME = d.me || ME; MANAGE = true;
+    AS = { users: d.users || [], sops: d.sops || [] };
+    // Picks of users who are gone are dropped; pending ticks stay (they are checked again on save).
+    const ids = new Set(AS.users.map(u => u.id)); [...A_SEL].forEach(id => { if (!ids.has(id)) A_SEL.delete(id); });
+    paintHeader(); renderAssign();
+    if (manual) toast('List refreshed');
+  } catch (e) {
+    paintHeader();
+    $('main').innerHTML = mTabs() + '<div class="note bad">' + esc(e.message || e) + '</div>';
+  }
+}
+const aKey = (sop, st, uid) => sop.id + '|' + (st ? st.sid : '') + '|' + uid;
+const aBase = (sop, st, uid) => ((st ? st.users : sop.assigned_users) || []).indexOf(uid) >= 0;
+function aOn(sop, st, uid){ const k = aKey(sop, st, uid); return A_PEND.has(k) ? A_PEND.get(k) : aBase(sop, st, uid); }
+function aSet(sop, st, uid, on){ const k = aKey(sop, st, uid); if (on === aBase(sop, st, uid)) A_PEND.delete(k); else A_PEND.set(k, on); }
+// The whole SOP through designation / All (not by name): the server's sop_match_ without the name part.
+function aVia(sop, u){ const d = sop.designations || []; return d.indexOf('ALL') >= 0 ? 'ALL' : (u.designation && d.indexOf(u.designation) >= 0 ? 'DESIG' : ''); }
+const aWhole = (sop, u) => aOn(sop, null, u.id) || !!aVia(sop, u);
+const aSubs = (sop, u) => (sop.steps || []).filter(st => st.sid && aOn(sop, st, u.id));
+function aSops(){ return AS.sops.filter(s => !AF.sop || String(s.id) === AF.sop); }
+// Columns: per SOP its whole-SOP column, then its sub-SOP columns if opened (or the only SOP shown).
+function aCols(){
+  const out = [];
+  aSops().forEach(s => {
+    out.push({ s, st: null });
+    if (AF.open[s.id] || AF.sop) (s.steps || []).forEach(st => { if (st.sid) out.push({ s, st }); });
+  });
+  return out;
+}
+function aUsers(){
+  const sops = aSops();
+  return AS.users.filter(u => (!AF.dep || u.department === AF.dep) && (!AF.des || u.designation === AF.des)
+    && qMatch([u.name, u.emp_code, u.designation, u.department], AF.q)
+    && (AF.show === 'ALL' || (AF.show === 'NONE') === !sops.some(s => aWhole(s, u) || aSubs(s, u).length)));
+}
+function renderAssign(){
+  const us = AS.users;
+  const opt = (v, l, cur) => '<option value="' + esc(v) + '"' + (cur === v ? ' selected' : '') + '>' + esc(l) + '</option>';
+  const deps = [...new Set(us.map(u => u.department).filter(Boolean))].sort();
+  const dess = [...new Set(us.map(u => u.designation).filter(Boolean))].sort();
+  $('main').innerHTML = mTabs()
+    + '<div class="mbar"><label class="search"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>'
+    + '<input type="search" placeholder="Search user, emp code" value="' + esc(AF.q) + '" oninput="AF.q=this.value;renderAssignTable()"></label>'
+    + '<select onchange="AF.dep=this.value;renderAssignTable()">' + opt('', 'All departments', AF.dep) + deps.map(d => opt(d, d, AF.dep)).join('') + '</select>'
+    + '<select onchange="AF.des=this.value;renderAssignTable()">' + opt('', 'All designations', AF.des) + dess.map(d => opt(d, d, AF.des)).join('') + '</select>'
+    + '<select onchange="AF.sop=this.value;renderAssignTable()">' + opt('', 'All SOPs', AF.sop) + AS.sops.map(s => opt(String(s.id), s.sop_code + ' · ' + s.title + (s.status !== 'ACTIVE' ? ' (' + s.status + ')' : ''), AF.sop)).join('') + '</select>'
+    + '<select onchange="AF.show=this.value;renderAssignTable()">' + opt('ALL', 'All users', AF.show) + opt('HAS', 'Users with an SOP', AF.show) + opt('NONE', 'Users with no SOP', AF.show) + '</select>'
+    + '<button class="btn ghost sm" onclick="aOpenAll(true)">Show sub-SOPs</button><button class="btn ghost sm" onclick="aOpenAll(false)">Hide sub-SOPs</button>'
+    + '<button class="btn ghost sm" onclick="aClearFilters()">Clear filters</button></div>'
+    + '<div id="aBar"></div><div class="awrap" id="aWrap"></div><div id="aSave"></div>'
+    + '<div class="alegend"><span><span class="cb on">✓</span>Has it by name</span><span><span class="cb on" style="background:#7c3aed;border-color:#7c3aed;">✓</span>Has the sub-SOP by name</span>'
+    + '<span style="background:#f0fdf4;padding:2px 8px;border-radius:5px;">Green: whole SOP via designation (D) / All employees (ALL)</span>'
+    + '<span style="background:#f8fafc;border:1px solid var(--line);padding:1px 8px;border-radius:5px;">Grey: sees the step through the whole SOP</span>'
+    + '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b;margin-right:5px;"></span>Not saved yet</span></div>';
+  renderAssignTable();
+}
+function aClearFilters(){ Object.assign(AF, { q: '', dep: '', des: '', sop: '', show: 'ALL' }); renderAssign(); }
+function aOpenAll(on){ AS.sops.forEach(s => { if (on) AF.open[s.id] = 1; else delete AF.open[s.id]; }); renderAssignTable(); }
+function aOpen(id){ if (AF.open[id]) delete AF.open[id]; else AF.open[id] = 1; renderAssignTable(); }
+function renderAssignTable(){
+  const wrap = $('aWrap'); if (!wrap || !AS) return;
+  const sl = wrap.scrollLeft, stp = wrap.scrollTop;
+  const us = aUsers(), cols = aCols(), sops = aSops(), SI = new Map(AS.sops.map((s, i) => [s.id, i])), UI = new Map(AS.users.map((u, i) => [u.id, i]));
+  if (!AS.sops.length) { wrap.innerHTML = '<div class="empty" style="box-shadow:none;">No SOPs yet. Create one in the SOP list first.</div>'; renderAssignBars(us); return; }
+  const allSel = us.length && us.every(u => A_SEL.has(u.id));
+  // Row 1: one group per SOP. Row 2: Whole SOP + its sub-SOP columns.
+  let h = '<table class="at"><thead><tr class="r1"><th class="uc" rowspan="2"><label><input type="checkbox"' + (allSel ? ' checked' : '') + ' onchange="aSelAll(this.checked)" title="Pick every user shown">'
+    + '<span class="nm"><b>Users (' + us.length + ')</b><small>' + (A_SEL.size ? A_SEL.size + ' picked' : 'Tick to pick, then Assign / Remove') + '</small></span></label></th>'
+    + '<th rowspan="2" class="h2">SOPs<em>whole + sub</em></th>';
+  sops.forEach(s => {
+    const n = 1 + ((AF.open[s.id] || AF.sop) ? (s.steps || []).filter(st => st.sid).length : 0);
+    h += '<th class="gh' + (s.status !== 'ACTIVE' ? ' off' : '') + '" colspan="' + n + '" style="--c:' + esc(s.color || '#0f766e') + '" title="' + esc(s.sop_code + ' · ' + s.title + (s.status !== 'ACTIVE' ? ' · ' + s.status + ': not shown to users' : '')) + '">'
+      + '<div class="gl"><small>' + esc(s.sop_code) + (s.status !== 'ACTIVE' ? ' · ' + esc(s.status) : '') + '</small>'
+      + ((s.steps || []).length && !AF.sop ? '<button class="xp" onclick="aOpen(' + s.id + ')">' + (AF.open[s.id] ? '▾ ' : '▸ ') + (s.steps || []).length + ' sub</button>' : '') + '</div>'
+      + '<span>' + esc(s.title) + '</span></th>';
+  });
+  h += '</tr><tr class="r2">';
+  cols.forEach(c => {
+    const si = SI.get(c.s.id), ti = c.st ? c.s.steps.indexOf(c.st) : -1;
+    h += c.st
+      ? '<th class="h2 sub" title="' + esc(subCode(c.s.sop_code, c.st.no) + ' · ' + c.st.title) + '">.' + c.st.no + '<em>' + esc(c.st.title) + '</em><button class="colb" onclick="aCol(' + si + ',' + ti + ')">all</button></th>'
+      : '<th class="h2" title="The whole SOP, every step">Whole<em>SOP</em><button class="colb" onclick="aCol(' + si + ',-1)">all</button></th>';
+  });
+  h += '</tr></thead><tbody>';
+  if (!us.length) h += '<tr><td class="uc" style="color:var(--mute);">No user matches the filters.</td><td colspan="' + (cols.length + 1) + '"></td></tr>';
+  us.forEach(u => {
+    const ui = UI.get(u.id), sel = A_SEL.has(u.id);
+    let whole = 0, sub = 0;
+    AS.sops.forEach(s => { if (s.status !== 'ACTIVE') return; if (aWhole(s, u)) whole++; else if (aSubs(s, u).length) sub++; });
+    h += '<tr class="' + (sel ? 'sel' : '') + '"><td class="uc"><label><input type="checkbox"' + (sel ? ' checked' : '') + ' onchange="aSel(' + ui + ',this.checked)">'
+      + '<span class="nm"><b>' + esc(u.name) + '</b><small>' + esc([u.emp_code, u.designation, u.department].filter(Boolean).join(' · ') || 'No designation') + '</small></span></label></td>'
+      + '<td class="cnt" title="Active SOPs this user sees: whole + only some sub-SOPs">' + whole + (sub ? ' <span style="color:#6d28d9;">+' + sub + '</span>' : '') + '</td>';
+    cols.forEach(c => { h += aCell(c.s, c.st, u, SI.get(c.s.id), c.st ? c.s.steps.indexOf(c.st) : -1, ui); });
+    h += '</tr>';
+  });
+  wrap.innerHTML = h + '</tbody></table>';
+  wrap.scrollLeft = sl; wrap.scrollTop = stp;
+  renderAssignBars(us);
+}
+function aCell(s, st, u, si, ti, ui){
+  const on = aOn(s, st, u.id), ch = A_PEND.has(aKey(s, st, u.id));
+  let cls = 'ac' + (st ? ' sub' : '') + (ch ? ' ch' : ''), tip = '', badge = '';
+  if (!st) {
+    const via = aVia(s, u);
+    if (via) { cls += ' via'; badge = via === 'ALL' ? 'ALL' : 'D'; tip = 'Gets the whole SOP via ' + (via === 'ALL' ? 'All employees' : 'the designation ' + u.designation) + '. A tick adds it by name too.'; }
+    else tip = on ? 'Has the whole SOP by name' : 'Tick to give the whole SOP';
+  } else if (aWhole(s, u)) { cls += ' cov'; tip = 'Already sees this step through the whole SOP.'; }
+  else tip = on ? 'Has sub-SOP ' + subCode(s.sop_code, st.no) + ' by name' : 'Tick to give only sub-SOP ' + subCode(s.sop_code, st.no);
+  return '<td class="' + cls + '" title="' + esc(tip) + '"><button class="cb' + (on ? ' on' : '') + '" onclick="aTog(' + si + ',' + ti + ',' + ui + ')" aria-label="' + esc(tip) + '">' + (on ? '✓' : '') + '</button>' + (badge ? '<i>' + badge + '</i>' : '') + '</td>';
+}
+function aTog(si, ti, ui){
+  const s = AS.sops[si], st = ti < 0 ? null : s.steps[ti], u = AS.users[ui];
+  aSet(s, st, u.id, !aOn(s, st, u.id)); renderAssignTable();
+}
+// Column "all": the picked users that are shown, or every user shown. All on → all off, else all on.
+function aCol(si, ti){
+  const s = AS.sops[si], st = ti < 0 ? null : s.steps[ti], shown = aUsers();
+  const picked = shown.filter(u => A_SEL.has(u.id)), who = picked.length ? picked : shown;
+  if (!who.length) return;
+  const on = !who.every(u => aOn(s, st, u.id));
+  if (who.length > 25 && !confirm((on ? 'Tick ' : 'Untick ') + (st ? 'sub-SOP ' + subCode(s.sop_code, st.no) : s.sop_code + ' (whole SOP)') + ' for ' + who.length + ' users?')) return;
+  who.forEach(u => aSet(s, st, u.id, on)); renderAssignTable();
+}
+function aSel(ui, on){ const id = AS.users[ui].id; if (on) A_SEL.add(id); else A_SEL.delete(id); renderAssignTable(); }
+function aSelAll(on){ aUsers().forEach(u => { if (on) A_SEL.add(u.id); else A_SEL.delete(u.id); }); renderAssignTable(); }
+function renderAssignBars(shown){
+  const bar = $('aBar'), sv = $('aSave'); if (!bar || !sv) return;
+  const hidden = [...A_SEL].filter(id => !shown.some(u => u.id === id)).length;
+  bar.innerHTML = A_SEL.size
+    ? '<div class="abar"><span>' + A_SEL.size + ' user' + (A_SEL.size === 1 ? '' : 's') + ' picked' + (hidden ? ' (' + hidden + ' hidden by the filters)' : '') + '</span><span class="sp"></span>'
+      + '<button class="btn sm" onclick="openTargets(true)">Assign SOPs…</button><button class="btn ghost sm" onclick="openTargets(false)">Remove SOPs…</button>'
+      + '<button class="btn ghost sm" onclick="A_SEL.clear();renderAssignTable()">Clear picks</button></div>'
+    : '';
+  sv.innerHTML = A_PEND.size
+    ? '<div class="asave"><span>' + A_PEND.size + ' change' + (A_PEND.size === 1 ? '' : 's') + ' not saved yet</span><span class="sp"></span>'
+      + '<button class="btn ghost sm" onclick="aDiscard()">Discard</button><button class="btn sm" onclick="aSaveAll()">Save changes</button></div>'
+    : '';
+  // The tab's badge shows the unsaved count too.
+  const t = document.querySelector('.mtabs'); if (t) t.outerHTML = mTabs();
+}
+function aDiscard(){ if (!confirm('Discard ' + A_PEND.size + ' unsaved change(s)?')) return; A_PEND.clear(); renderAssignTable(); }
+
+/* Bulk: which SOPs / sub-SOPs to assign to (or remove from) the picked users. */
+let TG = null;
+function openTargets(on){
+  if (!A_SEL.size) return toast('Pick users first');
+  TG = { on, picked: new Set() };
+  $('tgTitle').textContent = (on ? 'Assign to ' : 'Remove from ') + A_SEL.size + ' picked user' + (A_SEL.size === 1 ? '' : 's');
+  $('tgGo').textContent = on ? 'Assign' : 'Remove';
+  $('tgGo').className = on ? 'btn' : 'btn red';
+  $('tgQ').value = '';
+  renderTargets(); $('tgDlg').hidden = false;
+}
+function renderTargets(){
+  if (!TG) return;
+  const q = $('tgQ').value;
+  const list = AS.sops.map((s, si) => ({ s, si })).filter(x => qMatch([x.s.sop_code, x.s.title, x.s.category, x.s.department].concat((x.s.steps || []).map(st => st.title)), q));
+  $('tgList').innerHTML = list.length ? list.map(({ s, si }) =>
+    '<div class="tgs" style="--c:' + esc(s.color || '#0f766e') + '"><label class="tgh"><input type="checkbox"' + (TG.picked.has(si + '|-1') ? ' checked' : '') + ' onchange="tgTog(\'' + si + '|-1\',this.checked)">'
+    + '<span><small>' + esc(s.sop_code) + '</small>' + esc(s.title) + ' <span style="color:var(--mute);font-weight:600;">(whole SOP' + (s.status !== 'ACTIVE' ? ', ' + esc(s.status) : '') + ')</span></span></label>'
+    + (s.steps || []).map((st, ti) => st.sid ? '<label class="tgi"><input type="checkbox"' + (TG.picked.has(si + '|' + ti) ? ' checked' : '') + ' onchange="tgTog(\'' + si + '|' + ti + '\',this.checked)">'
+      + '<span><small>' + esc(subCode(s.sop_code, st.no)) + '</small> ' + esc(st.title) + '</span></label>' : '').join('') + '</div>').join('')
+    : '<div class="empty" style="box-shadow:none;">No SOP matches.</div>';
+  $('tgCnt').textContent = TG.picked.size + ' picked';
+}
+function tgTog(k, on){ if (on) TG.picked.add(k); else TG.picked.delete(k); $('tgCnt').textContent = TG.picked.size + ' picked'; }
+function applyTargets(){
+  if (!TG || !TG.picked.size) return alert(ERR_TEXT.NO_ITEMS);
+  let n = 0;
+  TG.picked.forEach(k => {
+    const [si, ti] = k.split('|').map(Number), s = AS.sops[si], st = ti < 0 ? null : s.steps[ti];
+    A_SEL.forEach(uid => { aSet(s, st, uid, TG.on); n++; });
+    if (st) AF.open[s.id] = 1;   // so the change can be seen
+  });
+  $('tgDlg').hidden = true; TG = null;
+  renderAssignTable();
+  toast(n + ' tick(s) set. Press Save changes to keep them.');
+}
+
+/* Save: one call per group of targets that get exactly the same users with the same on / off. */
+async function aSaveAll(){
+  if (!A_PEND.size) return;
+  const byTarget = new Map();                    // 'sopId|sid|on' → { id, sid, on, users[] }
+  A_PEND.forEach((on, k) => {
+    const [id, sid, uid] = k.split('|'), tk = id + '|' + sid + '|' + on;
+    if (!byTarget.has(tk)) byTarget.set(tk, { id: +id, sid: sid || null, on, users: [] });
+    byTarget.get(tk).users.push(uid);
+  });
+  const groups = new Map();                      // 'on|sorted users' → { on, users, items[] }
+  byTarget.forEach(t => {
+    const gk = t.on + '|' + t.users.slice().sort().join(',');
+    if (!groups.has(gk)) groups.set(gk, { on: t.on, users: t.users, items: [] });
+    groups.get(gk).items.push({ id: t.id, sid: t.sid });
+  });
+  const list = [...groups.values()];
+  let skipped = 0;
+  busy(true, 'Saving…');
+  try {
+    for (let i = 0; i < list.length; i++) {
+      $('busyText').textContent = 'Saving ' + (i + 1) + ' / ' + list.length + '…';
+      const d = await rpc('sop_assign_set', { p_items: list[i].items, p_users: list[i].users, p_on: list[i].on });
+      skipped += d.skipped || 0;
+    }
+    const n = A_PEND.size; A_PEND.clear();
+    toast('Saved ' + n + ' change(s)' + (skipped ? '; ' + skipped + ' skipped (SOP or step deleted meanwhile)' : ''));
+  } catch (e) {
+    alert((e.message || e) + '\n\nWhat was saved before this stays saved; the table is reloaded from the server.');
+    A_PEND.clear();
+  } finally { busy(false); }
+  await loadAssign();
 }
 
 /* ── Editor ────────────────────────────────────────────────────────────
@@ -901,7 +1279,12 @@ async function showReport(id){
    live preview, Preview and Save all read one object. Structural changes
    (add / move / delete a step, a photo, a picture) re-draw the step list. */
 let ED = null, ED_ORIG = '', ED_DIRTY = false, ED_FOCUS = -1, US_Q = '', US_SEL_ONLY = false, IC_TARGET = null;
-const blankStep = () => ({ title: '', text: '', icon: 'list', image: null, tip: '', warn: '', checks: [] });
+// sid = the sub-SOP's fixed id, users = who has this sub-SOP by name (ERP user ids).
+const blankStep = () => ({ sid: newSid(), users: [], title: '', text: '', icon: 'list', image: null, tip: '', warn: '', checks: [] });
+/* What decides "new version or correction": the content only. Who a sub-SOP
+   is given to is not content, so changing it never asks everyone to re-read. */
+const edSig = () => JSON.stringify(ED.steps.map(s => { const o = Object.assign({}, s); delete o.users; delete o.no; return o; })) + '|' + ED.title + '|' + ED.summary;
+const edCode = () => ED.sop_code || (META && META.next_code) || 'SOP-NEW';
 async function openEditor(id){
   busy(true, id ? 'Opening…' : 'Preparing…');
   try {
@@ -912,14 +1295,14 @@ async function openEditor(id){
       ED = { id: s.id, sop_code: s.sop_code, title: s.title, category: s.category || '', department: s.department || '', summary: s.summary || '',
              color: s.color, icon: s.icon, est_minutes: s.est_minutes, status: s.status, require_ack: s.require_ack, version: s.version,
              designations: (s.designations || []).slice(), assigned_users: (s.assigned_users || []).slice(),
-             steps: (s.steps || []).map(st => Object.assign(blankStep(), st, { checks: (st.checks || []).slice() })) };
+             steps: (s.steps || []).map(st => { const b = Object.assign(blankStep(), st, { checks: (st.checks || []).slice(), users: (st.users || []).slice() }); delete b.no; return b; }) };
     } else {
       ED = { id: null, sop_code: '', title: '', category: '', department: '', summary: '', color: COLORS[0], icon: 'clipboard', est_minutes: 5,
              status: 'ACTIVE', require_ack: true, version: 1, designations: [], assigned_users: [], steps: [blankStep()] };
     }
   } catch (e) { busy(false); alert(e.message || e); return; }
   busy(false);
-  ED_ORIG = JSON.stringify(ED.steps) + '|' + ED.title + '|' + ED.summary;
+  ED_ORIG = edSig();
   ED_DIRTY = false; ED_FOCUS = -1; US_Q = ''; US_SEL_ONLY = false;
   $('edTitle').textContent = ED.id ? 'Edit ' + ED.sop_code + ' · V' + ED.version : 'New SOP';
   $('edDel').hidden = !ED.id;
@@ -947,7 +1330,7 @@ function renderEditor(){
     + '<div class="f"><label>Cover picture</label><button type="button" class="picbtn" onclick="pickIcon(\'cover\')"><span class="pi" style="background:' + esc(ED.color) + '1a;color:' + esc(ED.color) + '">' + icon(ED.icon, 22) + '</span>' + esc(SOP_ICONS[iconKey(ED.icon)][0]) + ' <span style="margin-left:auto;color:var(--mute);">Change ▾</span></button></div>'
     + '<div class="f wide"><label class="tog"><input type="checkbox" data-f="require_ack"' + (ED.require_ack ? ' checked' : '') + '> Users must confirm "I have read and understood"</label></div>'
     + '</div></div>'
-    + '<div class="sec"><h4><span class="n">2</span>Assign to<span class="r" id="reachTop"></span></h4>'
+    + '<div class="sec"><h4><span class="n">2</span>Assign the main SOP (every step)<span class="r" id="reachTop"></span></h4>'
     + '<div class="f"><label>Designations</label><div class="dchips" id="desChips"></div>'
     + '<div class="dadd"><input id="desIn" list="dlDes" placeholder="Type or pick a designation, then Enter" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addDes();}">'
     + '<button type="button" class="btn ghost" onclick="addDes()">Add</button><button type="button" class="btn ghost" onclick="toggleAll()" id="allBtn"></button></div>'
@@ -956,8 +1339,10 @@ function renderEditor(){
     + '<div class="dadd" style="margin:0 0 6px;"><input id="usQ" placeholder="Search name, emp code, designation" value="' + esc(US_Q) + '" oninput="US_Q=this.value;renderUsers()">'
     + '<label class="tog" style="white-space:nowrap;"><input type="checkbox" onchange="US_SEL_ONLY=this.checked;renderUsers()"' + (US_SEL_ONLY ? ' checked' : '') + '> Picked only</label></div>'
     + '<div class="ulist" id="usList"></div></div><div class="reach" id="reach"></div></div>'
-    + '<div class="sec"><h4><span class="n">3</span>Steps<span class="r">Swipe order = this order</span></h4><div id="stList"></div>'
-    + '<button type="button" class="addst" onclick="addStep()">+ Add step</button></div>'
+    + '<div class="sec"><h4><span class="n">3</span>Steps = Sub-SOPs<span class="r">Swipe order = this order</span></h4>'
+    + '<p class="h" style="margin:-4px 0 12px;font-size:12.5px;color:var(--mute);line-height:1.5;">Each step is a sub-SOP (' + esc(edCode()) + '.1, .2 …). Give a sub-SOP to individual users with <b>Assign users</b> on the step: they see only that step, without the whole SOP. Moving a step keeps its users; only its number changes.</p>'
+    + '<div id="stList"></div>'
+    + '<button type="button" class="addst" onclick="addStep()">+ Add step (sub-SOP)</button></div>'
     + dl('dlCat', m.categories) + dl('dlDep', m.departments) + dl('dlDes', ['ALL'].concat(m.designations || []));
   renderDes(); renderUsers(); renderSteps(); renderPreview();
 }
@@ -980,27 +1365,32 @@ function renderDes(){
     : '<span style="color:var(--mute);font-size:13px;">No designation yet</span>';
   $('allBtn').textContent = ED.designations.indexOf('ALL') >= 0 ? 'Remove "All"' : 'All employees';
 }
-// Why a user would get this SOP: the same rule as the server's sop_match_.
+// Why a user would get the WHOLE SOP: the same rule as the server's sop_match_.
 function userVia(u){
   if (ED.assigned_users.indexOf(u.id) >= 0) return 'BY NAME';
   if (ED.designations.indexOf('ALL') >= 0) return 'ALL';
   if (u.designation && ED.designations.indexOf(u.designation) >= 0) return 'DESIGNATION';
   return '';
 }
+// The sub-SOP numbers this user has by name (steps[].users).
+const userSubs = u => ED.steps.map((s, i) => (s.users || []).indexOf(u.id) >= 0 ? i + 1 : 0).filter(Boolean);
 function renderUsers(){
-  const us = (META && META.users) || [], q = US_Q.trim().toUpperCase();
+  const us = (META && META.users) || [];
   const list = us.filter(u => (!US_SEL_ONLY || ED.assigned_users.indexOf(u.id) >= 0)
-    && (!q || [u.name, u.emp_code, u.designation, u.department].some(v => String(v || '').toUpperCase().indexOf(q) >= 0)));
+    && qMatch([u.name, u.emp_code, u.designation, u.department], US_Q));
   $('usList').innerHTML = list.length ? list.slice(0, 400).map(u => {
-    const on = ED.assigned_users.indexOf(u.id) >= 0, via = userVia(u);
+    const on = ED.assigned_users.indexOf(u.id) >= 0, via = userVia(u), subs = via ? [] : userSubs(u);
     return '<label class="urow"><input type="checkbox"' + (on ? ' checked' : '') + ' onchange="toggleUser(\'' + esc(u.id) + '\',this.checked)">'
       + '<span class="nm"><b>' + esc(u.name) + '</b><small>' + esc([u.emp_code, u.designation, u.department].filter(Boolean).join(' · ') || 'No designation') + '</small></span>'
-      + (via && via !== 'BY NAME' ? '<span class="via">✓ VIA ' + via + '</span>' : '') + '</label>';
+      + (via && via !== 'BY NAME' ? '<span class="via">✓ VIA ' + via + '</span>'
+        : subs.length ? '<span class="via" style="color:#6d28d9;">SUB-SOP .' + subs.join(' .') + '</span>' : '') + '</label>';
   }).join('') : '<div style="padding:14px;color:var(--mute);font-size:13px;">No user matches.</div>';
   const n = us.filter(userVia).length, byName = ED.assigned_users.length;
-  const txt = 'Reaches <b>' + n + '</b> user' + (n === 1 ? '' : 's') + ' now' + (byName ? ' (' + byName + ' picked by name)' : '') + '.'
+  const subOnly = us.filter(u => !userVia(u) && userSubs(u).length).length;
+  const txt = 'The whole SOP reaches <b>' + n + '</b> user' + (n === 1 ? '' : 's') + ' now' + (byName ? ' (' + byName + ' picked by name)' : '') + '.'
+    + (subOnly ? ' <b>' + subOnly + '</b> more see only their sub-SOPs.' : '')
     + (ED.status !== 'ACTIVE' ? ' Shown to them only when the status is Active.' : '');
-  $('reach').innerHTML = txt; $('reachTop').innerHTML = n + ' users';
+  $('reach').innerHTML = txt; $('reachTop').innerHTML = (n + subOnly) + ' users';
 }
 function toggleUser(id, on){
   const i = ED.assigned_users.indexOf(id);
@@ -1027,8 +1417,60 @@ function renderSteps(){
       + '<div class="two"><div class="f"><label>Tip (optional)</label><textarea data-s="tip" rows="2" placeholder="A helpful hint">' + esc(st.tip) + '</textarea></div>'
       + '<div class="f"><label>Caution (optional)</label><textarea data-s="warn" rows="2" placeholder="Danger or a common mistake">' + esc(st.warn) + '</textarea></div></div>'
       + '<div class="f"><label>Tick points (optional, one per line)</label><textarea data-s="checks" rows="2" placeholder="Gate entry seen&#10;Invoice received">' + esc((st.checks || []).join('\n')) + '</textarea></div>'
+      + subAssignHtml(st, i)
       + '</div></div></div>';
   }).join('');
+}
+// "SUB-SOP SOP-001.3 · given to 2 users: A, B   [Assign users]"
+function subAssignHtml(st, i){
+  const us = (META && META.users) || [], ids = st.users || [];
+  const names = ids.map(id => (us.find(u => u.id === id) || {}).name).filter(Boolean);
+  return '<div class="subas"><div><b>SUB-SOP ' + esc(subCode(edCode(), i + 1)) + '</b> · '
+    + (ids.length ? 'given to <b>' + ids.length + '</b> user' + (ids.length === 1 ? '' : 's') + ' by name: ' + esc(names.slice(0, 4).join(', ')) + (names.length > 4 ? ' +' + (names.length - 4) : '')
+                  : 'not given to anyone on its own (the main SOP still shows it)')
+    + '</div><button type="button" class="btn ghost sm" onclick="pickStepUsers(' + i + ')">Assign users' + (ids.length ? ' (' + ids.length + ')' : '') + '</button></div>';
+}
+
+/* ── User picker for one sub-SOP ─────────────────────────────────────
+   Search + Department + Designation filters, "Select all shown", and the
+   ticks go back to the step only on Done. */
+let UP = null;
+function pickStepUsers(i){
+  const us = (META && META.users) || [];
+  UP = { i, sel: new Set(ED.steps[i].users || []) };
+  const opts = (arr, all) => '<option value="">' + all + '</option>' + arr.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+  $('upDep').innerHTML = opts([...new Set(us.map(u => u.department).filter(Boolean))].sort(), 'All departments');
+  $('upDes').innerHTML = opts([...new Set(us.map(u => u.designation).filter(Boolean))].sort(), 'All designations');
+  $('upQ').value = ''; $('upOnly').checked = false;
+  $('upTitle').textContent = 'Assign sub-SOP ' + subCode(edCode(), i + 1) + (ED.steps[i].title ? ' · ' + ED.steps[i].title : '');
+  renderUp(); $('upDlg').hidden = false;
+}
+function upShown(){
+  const us = (META && META.users) || [], dep = $('upDep').value, des = $('upDes').value, only = $('upOnly').checked, q = $('upQ').value;
+  return us.filter(u => (!dep || u.department === dep) && (!des || u.designation === des) && (!only || UP.sel.has(u.id))
+    && qMatch([u.name, u.emp_code, u.designation, u.department], q));
+}
+function renderUp(){
+  if (!UP) return;
+  const list = upShown();
+  $('upList').innerHTML = list.length ? list.slice(0, 600).map(u => {
+    const whole = userVia(u);
+    return '<label class="urow"><input type="checkbox"' + (UP.sel.has(u.id) ? ' checked' : '') + ' onchange="upTog(\'' + esc(u.id) + '\',this.checked)">'
+      + '<span class="nm"><b>' + esc(u.name) + '</b><small>' + esc([u.emp_code, u.designation, u.department].filter(Boolean).join(' · ') || 'No designation') + '</small></span>'
+      + (whole ? '<span class="via" title="Already gets the whole SOP, so this step too">WHOLE SOP</span>' : '') + '</label>';
+  }).join('') : '<div style="padding:14px;color:var(--mute);font-size:13px;">No user matches.</div>';
+  $('upCnt').textContent = UP.sel.size + ' picked · ' + list.length + ' shown';
+}
+function upTog(id, on){ if (on) UP.sel.add(id); else UP.sel.delete(id); $('upCnt').textContent = UP.sel.size + ' picked · ' + upShown().length + ' shown'; }
+function upAll(on){ upShown().forEach(u => { if (on) UP.sel.add(u.id); else UP.sel.delete(u.id); }); renderUp(); }
+function upDone(){
+  if (!UP || !ED) return;
+  const st = ED.steps[UP.i]; if (!st) return;
+  const before = (st.users || []).slice().sort().join(',');
+  st.users = [...UP.sel];
+  if (st.users.slice().sort().join(',') !== before) ED_DIRTY = true;
+  $('upDlg').hidden = true; ED_FOCUS = UP.i; UP = null;
+  renderSteps(); renderUsers();
 }
 // One listener for every box in the form: data-f = SOP field, data-s = step field.
 $('edForm').addEventListener('input', e => {
@@ -1037,6 +1479,7 @@ $('edForm').addEventListener('input', e => {
     const f = el.dataset.f;
     ED[f] = el.type === 'checkbox' ? el.checked : f === 'est_minutes' ? (parseInt(el.value, 10) || '') : el.value;
     if (f === 'status') renderUsers();
+    if (f === 'sop_code') renderSteps();   // the sub-SOP codes (SOP-001.1 …) follow the code
   } else if (el.dataset.s) {
     const i = +el.closest('.st').dataset.i, f = el.dataset.s;
     ED.steps[i][f] = f === 'checks' ? el.value.split('\n').map(s => s.trim()).filter(Boolean) : el.value;
@@ -1072,12 +1515,14 @@ function renderPreview(){
 }
 function addStep(){ ED.steps.push(blankStep()); ED_FOCUS = ED.steps.length - 1; ED_DIRTY = true; renderSteps(); renderPreview();
   const el = document.querySelector('#stList .st:last-child input'); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.focus({ preventScroll: true }); } }
-function moveStep(i, d){ const j = i + d; if (j < 0 || j >= ED.steps.length) return; [ED.steps[i], ED.steps[j]] = [ED.steps[j], ED.steps[i]]; ED_FOCUS = j; ED_DIRTY = true; renderSteps(); renderPreview(); }
-function dupStep(i){ ED.steps.splice(i + 1, 0, JSON.parse(JSON.stringify(ED.steps[i]))); ED_FOCUS = i + 1; ED_DIRTY = true; renderSteps(); renderPreview(); }
+function moveStep(i, d){ const j = i + d; if (j < 0 || j >= ED.steps.length) return; [ED.steps[i], ED.steps[j]] = [ED.steps[j], ED.steps[i]]; ED_FOCUS = j; ED_DIRTY = true; renderSteps(); renderPreview(); renderUsers(); }
+// A copy is a new sub-SOP: its own id, and nobody assigned to it yet.
+function dupStep(i){ const c = JSON.parse(JSON.stringify(ED.steps[i])); c.sid = newSid(); c.users = []; ED.steps.splice(i + 1, 0, c); ED_FOCUS = i + 1; ED_DIRTY = true; renderSteps(); renderPreview(); renderUsers(); }
 function delStep(i){
   const st = ED.steps[i];
   if ((st.title || st.text || st.image) && !confirm('Delete step ' + (i + 1) + (st.title ? ' "' + st.title + '"' : '') + '?')) return;
-  ED.steps.splice(i, 1); ED_FOCUS = -1; ED_DIRTY = true; renderSteps(); renderPreview();
+  if ((st.users || []).length && !confirm('Sub-SOP ' + subCode(edCode(), i + 1) + ' is given to ' + st.users.length + ' user(s) by name. They lose it with the step. Continue?')) return;
+  ED.steps.splice(i, 1); ED_FOCUS = -1; ED_DIRTY = true; renderSteps(); renderPreview(); renderUsers();
 }
 function pickIcon(target){
   IC_TARGET = target;
@@ -1132,9 +1577,9 @@ function validateEd(){
 }
 function saveSop(){
   const err = validateEd(); if (err) return alert(err);
-  if (!ED.designations.length && !ED.assigned_users.length && ED.status === 'ACTIVE'
+  if (!ED.designations.length && !ED.assigned_users.length && !ED.steps.some(s => (s.users || []).length) && ED.status === 'ACTIVE'
       && !confirm('This SOP is not assigned to anyone yet, so nobody will see it. Save anyway?')) return;
-  const changed = (JSON.stringify(ED.steps) + '|' + ED.title + '|' + ED.summary) !== ED_ORIG;
+  const changed = edSig() !== ED_ORIG;
   // A content change on a saved SOP: new version, or a correction? The user decides.
   if (ED.id && changed && ED.require_ack) { $('verNext').textContent = ED.version + 1; $('verCur').textContent = ED.version; $('verDlg').hidden = false; return; }
   doSave(false);
@@ -1159,7 +1604,7 @@ async function deleteSop(){
   catch (e) { alert(e.message || e); } finally { busy(false); }
 }
 // Unsaved work is not lost to a stray tab close.
-window.addEventListener('beforeunload', e => { if (ED && ED_DIRTY) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if ((ED && ED_DIRTY) || A_PEND.size) { e.preventDefault(); e.returnValue = ''; } });
 
 /* Log out ends the session in EVERY app (one login for all), so it is asked first. */
 function askLogout(){
@@ -1177,7 +1622,8 @@ function askLogout(){
   try { await reload(); }
   finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
   // A newly assigned SOP shows up without a refresh; never while one is open.
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !P && !ED) reload(); });
+  // Not while Assign ticks are waiting to be saved either: the reload would redraw over them.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !P && !ED && !A_PEND.size) reload(); });
 })();
 </script>
 <!-- Floating "← Apps" button (hidden inside the ERP iframe and without a session). -->

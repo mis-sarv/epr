@@ -518,13 +518,16 @@
   /* ══ SIDEBAR ═════════════════════════════════════════════════════════ */
   function renderNav() {
     const nav = byId_('erpNav'); if (!nav) return;
-    const term = String((byId_('erpSearch') || {}).value || '').trim().toLowerCase();
+    const term = String((byId_('erpSearch') || {}).value || '').trim();
     let html = '', shown = 0;
 
     visibleModules().forEach(mod => {
       const leaves = moduleLeaves(mod);
-      const hitMod = !term || mod.label.toLowerCase().indexOf(term) >= 0;
-      const hitLeaves = term ? leaves.filter(l => l.label.toLowerCase().indexOf(term) >= 0) : leaves;
+      // Google-style (store-core.js sarvSearchMatch): every word, any order. A leaf
+      // is matched together with its module's name, so "purchase po" finds
+      // Purchase › PO Generation.
+      const hitMod = !term || sarvSearchMatch(mod.label, term);
+      const hitLeaves = term ? leaves.filter(l => sarvSearchMatch([mod.label, l.label], term)) : leaves;
       if (term && !hitMod && !hitLeaves.length) return;
       // Searching the MODULE's own name ("quality") keeps all of its leaves —
       // narrowing to the leaves that also contain the word would open an empty

@@ -452,10 +452,16 @@
       case 'shade':   return [...new Set(dmFixed('shade').concat(
         dmDesigns.reduce((a, d) => a.concat((d.matchings || []).map(m => m.matching_name)), [])
           .filter(Boolean)))];
-      // Add Photoshoot: only the matchings of the design chosen on that tab.
+      /* Add Photoshoot: the full matching list, the same as Add Matching's
+         (shade list + every matching name on any design), so one photo can be
+         tagged with any matching. The chosen design's own matchings come
+         first, as they are the usual pick. Same name in another case is
+         listed once. */
       case 'psmatch': {
         const d = findByNo((q('dmPsDesign') || {}).value);
-        return d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
+        const own = d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
+        const seen = new Set();
+        return own.concat(dmValues('shade')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
       }
       default:        return [];
     }
@@ -540,7 +546,7 @@
     const render = (snap) => {
       const term = typed ? String(inp.value || '').trim().toLowerCase() : '';
       const all = dmValues(kind);
-      shown = term ? all.filter(v => String(v).toLowerCase().indexOf(term) >= 0) : all;
+      shown = term ? all.filter(v => sarvSearchMatch(v, term)) : all;
       // Highlight the value that is in the box when it opens.
       if (snap) {
         const cur = String(inp.value || '').trim().toUpperCase();
@@ -690,12 +696,12 @@
   const dmLiveTerm = () => { const b = q('dmLiveSearch'); return up(b ? b.value : ''); };
 
   // The global search box: same behaviour as before, separate from the filters.
+  // Google-style: every word must be found somewhere in the design (store-core.js sarvSearchMatch).
   function dmLiveSearchPass(d, term){
     if (!term) return true;
-    return [d.design_no, d.design_sku_no, d.party_name, d.brand_name, d.supplier_name,
+    return sarvSearchMatch([d.design_no, d.design_sku_no, d.party_name, d.brand_name, d.supplier_name,
             d.design_type, d.design_unit, d.bed_size, d.blanket_quality]
-      .concat((d.matchings || []).map(m => m.matching_name))
-      .some(v => up(v).indexOf(term) >= 0);
+      .concat((d.matchings || []).map(m => m.matching_name)), term);
   }
   /* Whether a design passes all the column filters. The `skip` column is left
      out; that is how the column's own options are worked out. */
@@ -766,8 +772,8 @@
       ? [...dmLfDraft.values].filter(v => !present.has(v)).sort(dmLfSort).map(v => ({ value:v, count:0, gone:true }))
       : [];
     const all = opts.concat(extra);
-    const term = (dmLfDraft.search || '').toLowerCase();
-    const shown = term ? all.filter(o => o.value.toLowerCase().indexOf(term) >= 0) : all;
+    const term = dmLfDraft.search || '';
+    const shown = term ? all.filter(o => sarvSearchMatch(o.value, term)) : all;
     const ticked = v => dmLfDraft.values ? dmLfDraft.values.has(v) : true;
     const LIMIT = 400;
     const clipped = shown.length > LIMIT ? shown.slice(0, LIMIT) : shown;
@@ -1204,7 +1210,7 @@
     // Matching: name from the shade list, plus its own MASTER / SLAVE.
     mtc: { list: 'dmMtcBatch', sum: 'dmMtcSum', save: 'dmMtcSaveBtn', kind: 'shade', withType: true,
            noun: 'matching', empty: 'Select photos on the right (many at once), or add a matching without a photo.' },
-    // Photoshoot: name only from THIS design's matchings (dmValues 'psmatch').
+    // Photoshoot: any matching name from the full list, this design's first (dmValues 'psmatch').
     ps:  { list: 'dmPsBatch',  sum: 'dmPsSum',  save: 'dmPsSaveBtn',  kind: 'psmatch', withType: false,
            noun: 'photo', empty: 'Select photoshoot photos on the right (many at once).' }
   };
@@ -1412,11 +1418,11 @@
     await loadPhotoshoots();
     // The box may have changed while loading; draw only for what is in it now.
     if (findByNo(q('dmPsDesign').value) !== d) return;
-    if (info) info.innerHTML = 'Pick each photo’s matching from <b>' + esc(d.design_no) + '</b>’s ' +
+    if (info) info.innerHTML = '<b>' + esc(d.design_no) + '</b>’s ' +
       (d.matchings || []).length + ' matching(s): ' +
       (d.matchings || []).map(m => '<span class="dm-badge ' +
         (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' + esc(m.matching_name) + '</span>').join(' ') +
-      '<br><span class="dm-muted">A shade that isn’t listed must be added from Add Matching first.</span>';
+      '<br><span class="dm-muted">Each photo’s Matching Name dropdown shows these first, then every other matching name (the full list, as on Add Matching).</span>';
     renderSavedPhotoshoots(d);
   }
 
@@ -1441,16 +1447,18 @@
     const b = DM_BATCH.ps;
     if (!b.rows.length) { toast('Select the photoshoot photos first.', 'error'); return; }
 
-    // The name must be one of THIS design's matchings (saved with its exact spelling).
-    const byName = new Map((d.matchings || []).map(m => [up(m.matching_name), m.matching_name]));
-    const items = b.rows.map(r => ({ r: r, name: byName.get(up(batchVal(r.rid, '.bt-name'))) || '', typed: batchVal(r.rid, '.bt-name') }));
+    /* Any matching name may be used (the dropdown has the full list). A name
+       found in that list is saved with the list's exact spelling, so the same
+       shade is never stored two ways; a new name is saved as typed. */
+    const byName = new Map(dmValues('psmatch').map(v => [up(v), v]));
+    const items = b.rows.map(r => { const typed = batchVal(r.rid, '.bt-name'); return { r: r, typed: typed, name: byName.get(up(typed)) || up(typed) }; });
     let err = '';
     items.forEach(it => {
-      const e = !it.typed ? 'Matching name required' : (!it.name ? 'Not a matching of ' + d.design_no : '');
+      const e = !it.typed ? 'Matching name required' : '';
       batchMark(it.r.rid, e, !!e);
-      if (e && !err) err = (it.typed ? '“' + it.typed + '”: ' : '') + e + '.';
+      if (e && !err) err = e + '.';
     });
-    if (err) { toast(err + (/Not a matching/.test(err) ? ' Add it from Add Matching first.' : ''), 'error'); return; }
+    if (err) { toast(err, 'error'); return; }
 
     const btn = q(b.save);
     if (btn) btn.disabled = true;
@@ -2549,7 +2557,7 @@
     OC_FILTERS.forEach(f => {
       const avail = [...new Set(ctx.live.filter(d => ocPass(ctx, d, f.name)).map(d => dmCatVal(f, d)))].sort(dmCatSort);
       // The Design No search only narrows what is shown; ticks stay as they are.
-      const shown = (f.name === 'ocNoF' && search) ? avail.filter(v => up(v).indexOf(search) >= 0) : avail;
+      const shown = (f.name === 'ocNoF' && search) ? avail.filter(v => sarvSearchMatch(v, search)) : avail;
       const box = q(f.box);
       if (box) box.innerHTML = shown.length
         ? shown.map(v => '<label><input type="checkbox" name="' + f.name + '" value="' + esc(v) + '"' +

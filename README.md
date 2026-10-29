@@ -948,7 +948,7 @@ Name** dropdown; **Save All** saves them one by one.
 
 | | Add Matching | Add Photoshoot |
 |---|---|---|
-| Matching Name list | shade list (Dropdown Master) + names already used | only the chosen design's own matchings; a new shade is added from Add Matching first |
+| Matching Name list | shade list (Dropdown Master) + names already used | the same full list as Add Matching, with the chosen design's own matchings first; any name can be given to any photo (a listed name is saved with the list's spelling) |
 | Per photo | Matching Name + MASTER / SLAVE | Matching Name |
 | Common | Blanket Quality | — |
 | Extra | "+ Matching without Photo" | saved photos can be removed (✕ Remove, needs `DESIGN_DISCARD`) |
@@ -1630,6 +1630,31 @@ popup and the CSV / PDF export all include it. No migration.
   the standalone page in a new browser tab, not the ERP iframe. The ERP login carries
   over (same origin, `sso-gate.js`). If the browser blocks the tab, a toast gives a link.
 
+## Search boxes: Google-style keywords
+
+Every search box and filter in the desktop ERP (Reports, Item Master and its
+column / slicer filters, Supplier / Employee / Machine / Fabric / Brand / Buyer /
+Agency / Transport masters, Dropdown Master, Users, PR → PO list, PO list, PO
+Follow-up Report and its suggestions, PO Details Report, Item Ledger,
+Consumption Report, Repair Tracker, the searchable dropdowns, Design Master,
+and the sidebar's Search Menus) works the same way, via `sarvSearchMatch` at the
+top of `store-core.js`:
+
+| Type | Finds |
+|---|---|
+| `blanket mink` | rows that have **both** words, in any order, anywhere in the row |
+| `blank` | part of a word is enough (BLANKET) |
+| `"double bed"` | those words together, as a phrase |
+| `mink -single` | MINK rows **without** SINGLE |
+| `red OR blue`, `red\|blue` | either word |
+| `u2 123`, `po123` | punctuation inside a word is ignored: finds `PO/U-2/123`, `PO/123` |
+
+Case never matters. The punctuation-free compare works word by word, so the end of
+one column is never joined to the start of the next. The PO Follow-up suggestions
+highlight every keyword. Quick Nav (top centre) keeps its own ranked search,
+which already matched every word. The separate apps (Task Manager, HR, Lot Card
+and others) have their own search code and are not changed by this.
+
 ## Dates: always DD/MM/YYYY
 
 `date-dmy.js` is loaded first in every app's `<head>`. It turns every
@@ -1833,9 +1858,29 @@ Standard Operating Procedures, made once in the ERP and read by each employee on
    "☰ All steps" grid and tap-to-zoom photos. On a desktop the picture sits beside the text.
    Where the user stopped and their ticks are remembered on that device. The last card has
    **I have read and understood** (`sop_acks`, one row per user per version).
-4. **Who read:** per SOP, every assigned user, how they got it (by name / designation / all) and
-   read / not read / read an older version. **Saving a change** to the steps asks whether it is a
-   **new version** (everyone must read it again) or a **small correction** (same version).
+4. **Who read:** per SOP, every assigned user, how they got it (by name / designation / all /
+   sub-SOP) and read / not read / read an older version. **Saving a change** to the steps asks
+   whether it is a **new version** (everyone must read it again) or a **small correction** (same
+   version). Changing only who has a sub-SOP never asks.
+5. **Main SOP and sub-SOPs.** The SOP is the main SOP (`SOP-001`); each step is a **sub-SOP**,
+   numbered by its place: `SOP-001.1`, `SOP-001.2` … Every step card in the editor has
+   **Assign users** (search + Department + Designation filters, Select all shown). A user who has
+   only some sub-SOPs sees just those steps in My SOPs ("SUB-SOP SOP-001.2, SOP-001.4 · 2 of 8
+   steps") and confirms reading them. The main SOP (by name, designation or All) still shows every
+   step. Each step keeps a fixed id (`steps[].sid`) with its users (`steps[].users`), so moving a
+   step keeps its users and only its number changes; a copied step starts with nobody.
+6. **SOP Master › Assign to users** (second tab): a table of users (rows) against every SOP
+   (columns). The **Whole** column gives the whole SOP by name; **▸ n sub** opens that SOP's sub-SOP
+   columns (`.1 .2 …`).
+   - Filters: search, Department, Designation, one SOP, users with / without any SOP.
+   - Tick the users (or the header box for every user shown), then **Assign SOPs…** / **Remove
+     SOPs…** to pick any SOPs and sub-SOPs at once.
+   - A column's **all** button ticks that column for the picked users, or for everyone shown when
+     nobody is picked.
+   - Green cells already get the whole SOP through their designation (D) or All employees (ALL).
+     Grey sub-SOP cells already see that step through the whole SOP.
+   - Every tick waits (orange dot) until **Save changes**, which sends them in as few calls as
+     possible (`sop_assign_set`). Leaving the tab or the page with unsaved ticks asks first.
 
 **Access:** reading needs nothing: the server gives each user only what is assigned to them.
 Creating / editing / assigning needs `HOME_SOP_MASTER` (Admin / MD / GM by default, Admin always),
@@ -1846,6 +1891,10 @@ set in Tab Visibility or per user in Users › Apps. The server applies the same
 adds six sample SOPs (store inward, Raschel machine start-up, safety and 5S, packing and dispatch,
 raising a PR, colour kitchen), only into an empty table, so editing or deleting them is never
 undone. Until it runs, the launcher simply shows no tile and `sop.html` names the file to run.
+**Sub-SOPs / Assign upgrade:** run the same file **again** on a database that already has SOPs.
+It replaces the functions, adds `sop_assign_data` / `sop_assign_set`, and gives every old step
+a `sid` and an empty `users` list (section 7; version and "updated" stamp untouched). Until then
+the Assign tab says the file must be run again, and everything else keeps working as before.
 
 ## Store In / Out PDF Checklists (Dropdown Master)
 
@@ -1889,6 +1938,25 @@ Server side: run `TM_PC_FOLLOWUP_SAMEDAY_MIGRATION.sql` (after `TASK_MANAGER_MIG
 safe to re-run). It lets `tm_follow_up` take the same day (today only, time required) and refuses
 a date change for a daily task from PC Follow-up (`DAILY_SAME_DAY`). MD Oversight is unchanged.
 Until it is run, a same-day save is refused by the server with "Please choose a valid date".
+
+**My Tasks pending alarm** (client only, no migration). Each category button (Daily, Weekly,
+Monthly, Yearly, EA, Buddy) shows a blinking red badge with today's tasks still to do in that list
+(same matching as the list itself, `taskCats`). Opening My Tasks shows the **Pending Today** list
+(a very fast blinking red dot per task, delayed ones first) and beeps a high-pitched triple beep
+every second until **Confirm**. After Confirm, every 15 minutes the page reloads the data quietly
+and, if any of today's tasks is past its target time and not done, shows **Delayed Tasks** and
+beeps again until Confirm; this repeats every 15 minutes while anything is delayed. Phones also
+vibrate. Browsers block sound until the page is touched, so when My Tasks opens straight from the
+launcher the first tap turns the sound on (the alarm box says so). The alarm runs only while the
+page is open. Code: PENDING ALARM in `task_manager.html` (`openPendAlarm`, `PEND_REPEAT_MS`).
+
+**EA Delegation › Delegate EA Task › Planned By** starts on "-- Select --" and must be
+chosen (it goes back to "-- Select --" after each task). Its values come from ERP ›
+Master Data › Dropdown Master › Task Manager › **EA Task: Planned By**
+(`erp_tmPlannedBy`; default MD Planned / Employee Planned, also kept in `TM_DD` in
+task_manager.html). A value typed in capitals that matches a default is sent with the
+default's spelling. The Task Manager's other dropdowns (frequency, penalty per hour /
+day, status filters) are codes used by the scoring and stay fixed.
 
 **EA Delegation › Active EA Follow-ups** has two sections: **1. Follow-up** (EA tasks due today
 or earlier and not done, oldest first, marked Overdue / Due today) and **2. All Delegated Tasks

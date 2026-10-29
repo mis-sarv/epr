@@ -30,6 +30,77 @@ const SB_READY = !SUPABASE_URL.includes('YOUR_PROJECT') && !SUPABASE_ANON_KEY.in
 const SB = SB_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 const byId = id => document.getElementById(id);
 const escText = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+/* ── Google-style search, used by every search box and filter in the ERP ──
+   The old boxes matched the whole typed text as ONE piece, so "blanket mink"
+   found nothing when the row said "MINK BLANKET", and "u2 123" never found
+   "PO/U-2/123". Now the typed text is split into keywords and a row shows
+   when EVERY keyword is found anywhere in the row, in any order:
+
+     mink blanket        both words, any order, anywhere in the row
+     "double bed"        quotes = these words together, as a phrase
+     -single             minus = rows WITHOUT this word
+     red OR blue         either word (OR in capitals, or | ); "red|blue" too
+     u2 / po123          punctuation is ignored inside a word, so "u2" finds
+                         "U-2" and "po123" finds "PO/123"
+
+   Case never matters, and a keyword may be part of a word ("blank" finds
+   "BLANKET"). The punctuation-free compare works word by word, so it never
+   joins the end of one field to the start of the next. Parsed queries are
+   cached, since a filter calls this once per row on every key press. */
+const sarvSrchNorm_=s=>String(s??'').toLowerCase().replace(/\s+/g,' ').trim();
+const sarvSrchCompact_=s=>s.replace(/[^\p{L}\p{N}]+/gu,'');
+const sarvSrchCache_=new Map();
+function sarvSearchParse_(q){
+  const key=String(q??'');
+  if(sarvSrchCache_.has(key))return sarvSrchCache_.get(key);
+  const raw=[];
+  // "phrase", -"phrase", or a plain word (a word may itself be a|b).
+  String(key).replace(/(-?)"([^"]*)"?|(\S+)/g,(m,neg,ph,w)=>{
+    if(ph!==undefined){const t=sarvSrchNorm_(ph);if(t)raw.push({t,neg:!!neg});}
+    else raw.push({w});
+    return '';
+  });
+  const groups=[],exc=[];
+  let orNext=false;
+  raw.forEach(x=>{
+    if(x.w!==undefined&&(x.w==='OR'||x.w==='|')){orNext=groups.length>0;return;}
+    let alts,neg=false;
+    if(x.w!==undefined){
+      let w=x.w;
+      if(w.length>1&&w[0]==='-'){neg=true;w=w.slice(1);}
+      alts=w.split('|').map(sarvSrchNorm_).filter(Boolean);
+    }else{alts=[x.t];neg=x.neg;}
+    if(!alts.length){orNext=false;return;}
+    const terms=alts.map(t=>({t,c:sarvSrchCompact_(t)}));
+    if(neg)exc.push(...terms);
+    else if(orNext)groups[groups.length-1].push(...terms);
+    else groups.push(terms);
+    orNext=false;
+  });
+  const p={groups,exc,empty:!groups.length&&!exc.length};
+  if(sarvSrchCache_.size>200)sarvSrchCache_.clear();
+  sarvSrchCache_.set(key,p);
+  return p;
+}
+// hay: a string, or an array of the row's fields. Empty search = everything matches.
+function sarvSearchMatch(hay,q){
+  const p=sarvSearchParse_(q);
+  if(p.empty)return true;
+  const h=sarvSrchNorm_(Array.isArray(hay)?hay.filter(v=>v!=null).join(' '):hay);
+  let hc=null;
+  const has=x=>{
+    if(h.includes(x.t))return true;
+    if(!x.c)return false;
+    if(hc===null)hc=h.split(' ').map(sarvSrchCompact_).join(' ');
+    return hc.includes(x.c);
+  };
+  if(p.exc.some(has))return false;
+  return p.groups.every(g=>g.some(has));
+}
+// The keywords to highlight (phrases and words, without the excluded ones).
+function sarvSearchTerms(q){
+  return sarvSearchParse_(q).groups.flat().map(x=>x.t);
+}
 /* Searchable <select>: a text box sits over the (hidden) select, typing
    filters its options, and only an option from the list can be taken — free
    text is thrown away and the box goes back to the current choice. The select
@@ -64,8 +135,8 @@ function makeSearchableSelect(sel){
     list.style.top=(below<200&&r.top>below)?Math.max(4,r.top-2-Math.min(list.scrollHeight,240))+'px':(r.bottom+2)+'px';
   };
   const render=()=>{
-    const q=inp.value.trim().toLowerCase();
-    shown=[...sel.options].filter(o=>!q||o.textContent.toLowerCase().includes(q)||o.value.toLowerCase().includes(q));
+    const q=inp.value;
+    shown=[...sel.options].filter(o=>sarvSearchMatch([o.textContent,o.value],q));
     hl=Math.min(hl,Math.max(0,shown.length-1));
     list.innerHTML=shown.length?shown.map((o,i)=>'<div class="ss-opt'+(i===hl?' hl':'')+'" data-i="'+i+'">'+escText(o.textContent.trim())+'</div>').join(''):'<div class="ss-empty">Not found in the list</div>';
     place();
@@ -2272,10 +2343,7 @@ window.renderRepairTrackerTable=function(){
   const statusFilter=byId('repairStatusFilter')?.value||'ALL';
   const rows=sarvRepairTrackerRows.filter(r=>{
     if(statusFilter!=='ALL'&&r.status!==statusFilter)return false;
-    if(q){
-      const hay=[r.o.document_no,r.o.party_name,...r.itemNames].map(x=>String(x||'').toLowerCase()).join(' ');
-      if(!hay.includes(q))return false;
-    }
+    if(q&&!sarvSearchMatch([r.o.document_no,r.o.party_name,...r.itemNames],q))return false;
     return true;
   });
   const total=sarvRepairTrackerRows.length;
@@ -2944,9 +3012,8 @@ function ulPickSupervisor_(list,title,intro,preUid,okLabel){
     document.body.appendChild(ov);
     const box=ov.querySelector('#ulSupList'),ok=ov.querySelector('#ulSupOk'),q=ov.querySelector('#ulSupQ');
     const draw=()=>{
-      const t=q?q.value.trim().toLowerCase():'';
-      const shown=list.filter(u=>!t||[u.user_name,u.emp_code,u.contact_no,u.designation,u.department]
-        .some(v=>String(v||'').toLowerCase().indexOf(t)>=0));
+      const t=q?q.value:'';
+      const shown=list.filter(u=>sarvSearchMatch([u.user_name,u.emp_code,u.contact_no,u.designation,u.department],t));
       box.innerHTML=shown.length?shown.map(u=>{
         const on=String(u.id)===sel;
         const sub=[u.emp_code,u.designation,u.department,u.contact_no].filter(Boolean).join(' · ');
@@ -6459,7 +6526,7 @@ function sarvRenderUsers_(){
   const order=SARV_PERM_ROLES.map(r=>r.code);
   const rows=sarvAppUsers.filter(u=>(!role||u.role===role)
       &&(!unitV||(unitV==='__none'?!u.cmp_unit:u.cmp_unit===unitV))
-      &&(!q||[u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role),u.cmp_unit,u.cmp_role].join(' ').toLowerCase().includes(q)))
+      &&(!q||sarvSearchMatch([u.user_name,u.emp_code,u.contact_no,sarvRoleLabelOf_(u.role),u.cmp_unit,u.cmp_role],q)))
     .sort((a,b)=>order.indexOf(a.role)-order.indexOf(b.role)||String(a.user_name).localeCompare(String(b.user_name)));
   if(!rows.length){tb.innerHTML='<tr><td colspan="10" class="ap-empty">No users yet. Create one with Add User.</td></tr>';return;}
   tb.innerHTML=rows.map((u,i)=>'<tr>'
@@ -7851,9 +7918,8 @@ function imBasePass_(row,slicerExcept){
     if(msvFilter==='ABOVE'&&!(row.bal>=msv))return false;
   }
   if(q){
-    const hay=[row.it.item_code,row.it.name,row.it.description,row.it.category,row.it.sub_category,row.it.make,
-      row.it.item_size,row.it.material_type].map(x=>String(x||'').toLowerCase()).join(' ');
-    if(!hay.includes(q))return false;
+    if(!sarvSearchMatch([row.it.item_code,row.it.name,row.it.description,row.it.category,row.it.sub_category,row.it.make,
+      row.it.item_size,row.it.material_type],q))return false;
   }
   return true;
 }
@@ -8065,7 +8131,7 @@ function sarvDdCmbRender_(){
       });
       if(s.segs.length&&!s.only&&m.size<2)return;
       let list=[...m.values()];
-      if(s.q)list=list.filter(e=>String(e.v).toUpperCase().includes(s.q));
+      if(s.q)list=list.filter(e=>sarvSearchMatch(e.v,s.q));
       if(!list.length)return;
       list.sort((a,b)=>String(a.v).localeCompare(String(b.v),undefined,{numeric:true,sensitivity:'base'}));
       h+='<div class="dd-cmb-grp">'+escText(SARV_IM_FILTER_COLS[col].label)+' <span>'+list.length+'</span></div>';
@@ -8641,8 +8707,8 @@ function imRenderFilterPanel_(){
     ? [...sarvImDraft.values].filter(v=>!present.has(v)).sort().map(v=>({value:v,count:0,gone:true}))
     : [];
   const all=opts.concat(extra);
-  const term=(sarvImDraft.search||'').toLowerCase();
-  const shown=term?all.filter(o=>o.value.toLowerCase().includes(term)):all;
+  const term=sarvImDraft.search||'';
+  const shown=term?all.filter(o=>sarvSearchMatch(o.value,term)):all;
   /* What Apply measures itself against, stashed on the draft because
      imApplyFilter runs long after this function has returned and none of these
      closures are left:
@@ -10952,8 +11018,7 @@ window.renderSupplierMasterTable=function(){
   if(!tb)return;
   const q=(byId('supplierMasterSearch')?.value||'').toLowerCase().trim();
   const rows=!q?sarvSupplierMasterRows:sarvSupplierMasterRows.filter(s=>
-    [s.supplier_code,s.supplier_name,s.contact_person,s.phone,s.gst_no,s.state,s.city]
-      .map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
+    sarvSearchMatch([s.supplier_code,s.supplier_name,s.contact_person,s.phone,s.gst_no,s.state,s.city],q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvSupplierMasterRows.length+' suppliers':rows.length+' suppliers';
   if(!sarvSupplierMasterRows.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">No suppliers yet — Add your first supplier above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#94a3b8;">No supplier matches this search.</td></tr>';return;}
@@ -11121,8 +11186,7 @@ window.renderEmployeeMasterTable=function(){
   if(!tb)return;
   const q=(byId('employeeMasterSearch')?.value||'').toLowerCase().trim();
   const rows=!q?sarvEmployeeMasterRows:sarvEmployeeMasterRows.filter(e=>
-    [e.emp_code,e.person_name,e.designation,e.department,e.contact_no]
-      .map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
+    sarvSearchMatch([e.emp_code,e.person_name,e.designation,e.department,e.contact_no],q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvEmployeeMasterRows.length+' employees':rows.length+' employees';
   if(!sarvEmployeeMasterRows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No employees yet — Add above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;padding:20px;color:#94a3b8;">No employee matches this search.</td></tr>';return;}
@@ -11327,7 +11391,7 @@ window.renderMachineMasterTable=function(){
   if(!tb)return;
   const q=(byId('machineMasterSearch')?.value||'').toLowerCase().trim();
   const rows=!q?sarvMachineMasterRows:sarvMachineMasterRows.filter(m=>
-    [m.machine_name,m.machine_no].map(x=>String(x||'').toLowerCase()).join(' ').includes(q));
+    sarvSearchMatch([m.machine_name,m.machine_no],q));
   if(cnt)cnt.textContent=q?rows.length+' of '+sarvMachineMasterRows.length+' machines':rows.length+' machines';
   if(!sarvMachineMasterRows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No machines yet — Add above</td></tr>';return;}
   if(!rows.length){tb.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#94a3b8;">No machine matches this search.</td></tr>';return;}
@@ -11391,7 +11455,7 @@ window.deleteMachine=async function(id){
 window.filterMasterTable=function(searchId,bodyId){
   const q=(byId(searchId)?.value||'').toLowerCase().trim();
   document.querySelectorAll('#'+bodyId+' tr').forEach(r=>{
-    r.style.display=(!q||r.textContent.toLowerCase().includes(q))?'':'none';
+    r.style.display=(!q||sarvSearchMatch(r.textContent,q))?'':'none';
   });
 };
 
@@ -11583,6 +11647,17 @@ const SARV_DROPDOWNS=[
   {key:'erp_hrSubDepartment',label:'HR Sub Department',hint:'HR & Payroll › Employee form › Sub Department. Empty = the values employees already have.',where:'hr-payroll.html Employee form',def:[]},
   {key:'erp_hrDesignation',label:'HR Designation',hint:'HR & Payroll › Employee form › Designation. Empty = the values employees already have.',where:'hr-payroll.html Employee form',def:[]},
   {key:'erp_hrUnit',label:'HR Unit',hint:'HR & Payroll › Employee form › Unit. Empty = the units employees already have.',where:'hr-payroll.html Employee form',def:[]},
+
+  /* task_manager.html reads this key straight from sales_dropdowns (rows if
+     any, otherwise this default; its TM_DD block keeps a copy, so change both
+     together). The Task Manager's other dropdowns (frequency, penalty per
+     hour / day, status filters) are codes its scoring works with, not labels,
+     so they stay fixed in the page. */
+  {group:'Task Manager (task_manager.html)'},
+  {key:'erp_tmPlannedBy',label:'EA Task: Planned By',
+   hint:'EA Delegation › Delegate EA Task › Planned By. The box starts on "-- Select --" and must be chosen. A value typed in capitals that matches a default (MD PLANNED) is saved with the default\'s spelling.',
+   where:'task_manager.html EA Delegation form',
+   def:['MD Planned','Employee Planned']},
 
   {group:'Production › Design Master'},
   {key:'erp_designUnit',label:'Design Unit',hint:'Unit pickers in Design Master + the Unit on the Printing Lot Card',dm:'unit',
@@ -11917,7 +11992,7 @@ function sarvDdNavHtml_(){
   };
   SARV_DROPDOWNS.forEach(d=>{
     if(d.group){flush();group=d.group;return;}
-    if(q&&(d.label+' '+d.key+' '+(d.hint||'')).toLowerCase().indexOf(q)<0)return;
+    if(q&&!sarvSearchMatch([d.label,d.key,d.hint],q))return;
     const n=sarvDdRowsOf(d.key).length,saved=n>0;
     pending.push('<button type="button" class="dd-nav-item'+(sarvDdPick===d.key?' active':'')+'" onclick="sarvDdSelect(\''+d.key+'\')">'
       +'<span class="dd-nav-label">'+escText(d.label)+'</span>'
@@ -12473,9 +12548,9 @@ async function buildItemLedger(){
   });
 
   const match=m=>{
-    if(wantItem&&!String(m.item.name||'').toLowerCase().includes(wantItem))return false;
+    if(wantItem&&!sarvSearchMatch(m.item.name,wantItem))return false;
     if(wantCat&&String(m.item.category||'')!==wantCat)return false;
-    if(wantParty&&!String(m.party||'').toLowerCase().includes(wantParty))return false;
+    if(wantParty&&!sarvSearchMatch(m.party,wantParty))return false;
     return true;
   };
   const groups=new Map();
@@ -12911,9 +12986,9 @@ function consToggleLotPanel_(open){
 }
 // Search inside the panel, to find one lot in a long lot list.
 function consFilterLotList_(){
-  const q=(byId('consLotSearch')?.value||'').trim().toUpperCase();
+  const q=(byId('consLotSearch')?.value||'').trim();
   byId('consLot')?.querySelectorAll('label').forEach(l=>{
-    l.classList.toggle('is-hid',!!q&&l.textContent.trim().toUpperCase().indexOf(q)<0);
+    l.classList.toggle('is-hid',!!q&&!sarvSearchMatch(l.textContent,q));
   });
 }
 async function consRefreshLots_(){
@@ -13418,9 +13493,7 @@ function consApplyRowSearch_(){
   rowsEls.forEach(tr=>{
     const r=consReport.rows[+tr.dataset.row];
     if(!r)return;
-    const hay=[r.it.name,r.it.description,r.it.category,r.party,r.lotText]
-      .map(x=>String(x||'').toLowerCase()).join(' ');
-    const on=(!q||hay.includes(q))&&consRowPassesColFilters_(r);
+    const on=(!q||sarvSearchMatch([r.it.name,r.it.description,r.it.category,r.party,r.lotText],q))&&consRowPassesColFilters_(r);
     tr.style.display=on?'':'none';
     if(on){
       shown++;tIn+=r.totalIn;tOut+=r.totalOut;
@@ -13586,9 +13659,9 @@ function consOpenColFilter_(btn){
   if(search){
     search.focus();
     search.addEventListener('input',()=>{
-      const q=search.value.toLowerCase();
+      const q=search.value;
       pop.querySelectorAll('.cons-fopt').forEach(o=>{
-        o.style.display=o.textContent.toLowerCase().includes(q)?'':'none';
+        o.style.display=sarvSearchMatch(o.textContent,q)?'':'none';
       });
     });
   }
@@ -13677,9 +13750,7 @@ function consVisibleRows_(){
   if(!consReport)return [];
   const q=consVal('consSearch').toLowerCase();
   return consReport.rows.filter(r=>{
-    const hay=[r.it.name,r.it.description,r.it.category,r.party,r.lotText]
-      .map(x=>String(x||'').toLowerCase()).join(' ');
-    return (!q||hay.includes(q))&&consRowPassesColFilters_(r);
+    return (!q||sarvSearchMatch([r.it.name,r.it.description,r.it.category,r.party,r.lotText],q))&&consRowPassesColFilters_(r);
   });
 }
 /* ── Print / PDF ──────────────────────────────────────────────────
@@ -13985,9 +14056,9 @@ function podOffBasisCol_(r,c){
 function poDetailsFiltered_(){
   const f=poDetailsFilters_();
   return sarvPoDetailsRows.filter(r=>{
-    if(f.po&&!String(r.poNo).toLowerCase().includes(f.po))return false;
-    if(f.supplier&&!String(r.supplier).toLowerCase().includes(f.supplier))return false;
-    if(f.item&&!(String(r.itemName).toLowerCase().includes(f.item)||String(r.category).toLowerCase().includes(f.item)))return false;
+    if(f.po&&!sarvSearchMatch(r.poNo,f.po))return false;
+    if(f.supplier&&!sarvSearchMatch(r.supplier,f.supplier))return false;
+    if(f.item&&!sarvSearchMatch([r.itemName,r.category],f.item))return false;
     if(f.from&&(!r.poDate||r.poDate<f.from))return false;
     if(f.to&&(!r.poDate||r.poDate>f.to))return false;
     if(f.poStatus.size&&!f.poStatus.has(r.poStatus||POD_NO_STATUS))return false;
@@ -14548,7 +14619,7 @@ window.loadReports=async function(){
       }
     }catch(e){console.warn('[SARV] pdf_documents lookup skipped:',e.message||e);}
     // ── Search filter ─────────────────────────────────────────
-    const filtered=search?results.filter(r=>[r.no,r.invoice,r.party,r.receiver,r.items].some(v=>(v||'').toLowerCase().includes(search))):results;
+    const filtered=search?results.filter(r=>sarvSearchMatch([r.no,r.invoice,r.party,r.receiver,r.items],search)):results;
     // Newest saved entry first — by when it was saved (created_at), not by its
     // receiving / outward date, so a back-dated entry still lands on top the
     // moment it is saved. Inward and Outward are merged into one list here.
@@ -20639,12 +20710,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(show==='COMPLETED'&&!x.completed)return false;
    if(dept&&String(x.req.department||'')!==dept)return false;
    if(priority&&String(x.req.priority||'Normal')!==priority)return false;
-   if(reqNo&&!String(x.req.req_no||'').toLowerCase().includes(reqNo))return false;
-   if(term){
-     const hay=[x.req.req_no,x.name,x.line.specification,x.item.description,x.item.make,x.req.department,x.approvedVendor&&x.approvedVendor.name]
-       .map(v=>String(v||'').toLowerCase()).join(' ');
-     if(!hay.includes(term))return false;
-   }
+   if(reqNo&&!sarvSearchMatch(x.req.req_no,reqNo))return false;
+   if(term&&!sarvSearchMatch([x.req.req_no,x.name,x.line.specification,x.item.description,x.item.make,x.req.department,x.approvedVendor&&x.approvedVendor.name],term))return false;
    return true;
  }
  // Split out of refreshPendingRequirements so the filter bar can re-render from
@@ -21454,9 +21521,8 @@ window.addEventListener('DOMContentLoaded',()=>{
         item without another fetch. If the lines failed to load, the PO-level
         fields still match as before. */
      const lines=(sarvPoLineMap[po.id]&&sarvPoLineMap[po.id].lines)||[];
-     return [po.po_no,po.vendor_name,po.linked_req_nos,po.po_date]
-       .concat(lines.map(l=>(l.item_name||'')+' '+(l.item_description||'')))
-       .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
+     return sarvSearchMatch([po.po_no,po.vendor_name,po.linked_req_nos,po.po_date]
+       .concat(lines.map(l=>(l.item_name||'')+' '+(l.item_description||''))),term);
    });
    renderPoListDoneToggle(doneCount);
    tb.innerHTML='';visiblePos.forEach(po=>{
@@ -22340,8 +22406,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    });
    const search=d.querySelector('.fd-search');
    search.addEventListener('input',()=>{
-     const q=search.value.trim().toLowerCase();
-     d.querySelectorAll('.fd-list label').forEach(lb=>{lb.style.display=!q||lb.dataset.v.toLowerCase().includes(q)?'':'none';});
+     const q=search.value;
+     d.querySelectorAll('.fd-list label').forEach(lb=>{lb.style.display=sarvSearchMatch(lb.dataset.v,q)?'':'none';});
    });
    d.addEventListener('click',e=>{
      const a=e.target.closest('button[data-a]');if(!a)return;
@@ -22386,9 +22452,8 @@ window.addEventListener('DOMContentLoaded',()=>{
         every PO held up for that reason — which is the question this column
         gets asked most. */
      const fuText=g.poBlocks.reduce((a,b)=>a.concat(poFuList_(b.po).map(f=>(f.remarks||'')+' '+(f.revisedDate||''))),[]);
-     return nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
-       .concat(fuText).concat((g.items||[]).map(i=>i.name+' '+i.desc+' '+i.spec))
-       .map(v=>String(v||'').toLowerCase()).join(' ').includes(term);
+     return sarvSearchMatch(nos.concat([g.req.requested_by,poFollowupPurchaser_(g.req),g.req.department,g.vendors.join(' '),g.statuses.join(' ')])
+       .concat(fuText).concat((g.items||[]).map(i=>i.name+' '+i.desc+' '+i.spec)),term);
    });
  }
  function renderPoFollowupReport(){
@@ -22515,11 +22580,13 @@ window.addEventListener('DOMContentLoaded',()=>{
    fuSugFor_=sarvPoFollowupGroups;
    return fuSugIdx_;
  }
- // Escaped text with the first match of `q` marked.
+ // Escaped text with every place a search keyword is found marked.
  function fuSugMark_(text,q){
-   const s=String(text||''),i=q?s.toLowerCase().indexOf(q):-1;
-   if(i<0)return pEsc(s);
-   return pEsc(s.slice(0,i))+'<mark>'+pEsc(s.slice(i,i+q.length))+'</mark>'+pEsc(s.slice(i+q.length));
+   const s=String(text||''),low=s.toLowerCase(),on=new Array(s.length).fill(false);
+   sarvSearchTerms(q).forEach(t=>{for(let i=low.indexOf(t);i>=0&&t;i=low.indexOf(t,i+t.length))on.fill(true,i,i+t.length);});
+   let out='',i=0;
+   while(i<s.length){let j=i;while(j<s.length&&on[j]===on[i])j++;out+=on[i]?'<mark>'+pEsc(s.slice(i,j))+'</mark>':pEsc(s.slice(i,j));i=j;}
+   return out;
  }
  function fuSugPop_(){
    let p=byId('fuSugPop');
@@ -22558,10 +22625,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(!q||!sarvPoFollowupGroups.length)return fuSugClose_();
    const groups=[];
    fuSugIndex_().forEach(e=>{
-     const hits=e.list.filter(o=>o.v.toLowerCase().includes(q)||(o.short&&o.short.toLowerCase().includes(q)));
+     const hits=e.list.filter(o=>sarvSearchMatch([o.v,o.short],q));
      if(!hits.length)return;
      // Starts-with first (what the user is most likely typing), then the most used.
-     const rank=o=>(o.v.toLowerCase().startsWith(q)||(o.short&&o.short.toLowerCase().startsWith(q)))?0:1;
+     const first=(sarvSearchTerms(q)[0]||'');
+     const rank=o=>(first&&(o.v.toLowerCase().startsWith(first)||(o.short&&o.short.toLowerCase().startsWith(first))))?0:1;
      hits.sort((a,b)=>rank(a)-rank(b)||b.n-a.n||a.v.localeCompare(b.v,undefined,{numeric:true}));
      groups.push({c:e.c,hits,total:hits.length});
    });
@@ -25344,7 +25412,7 @@ function sarvFbmVisibleRows_(code){
     // "FANTASY" with the brands column off would never find the row.
     const hay=cfg.fields.map(f=>sarvFbmFmt_(f,r[f.k])).join(' ')
       +' '+(code==='FABRIC'?sarvFbmBrandsOfFabric_(r).join(' '):'');
-    return hay.toLowerCase().includes(q);
+    return sarvSearchMatch(hay,q);
   }).sort((a,b)=>{
     const ok=cfg.order,f=sarvFbmField_(code,ok);
     if(f&&f.t==='num')return (Number(a[ok])||0)-(Number(b[ok])||0)||String(a.unit||'').localeCompare(String(b.unit||''));
