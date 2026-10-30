@@ -25,6 +25,9 @@ together**. Mailing just `Store.html` to someone gives them an empty page.
 | `DESIGN_SKU_MIGRATION.sql` | **`design_master.design_sku_no` column**: the SKU No. that goes with a Design No. In Create New it sits right after Design No (**required**); the Live tab has its own column + ▾ filter; in the Bulk Upload grid it is under Design No (optional); it also appears in the Catalogue PDF filters and the PDF spec table. Run **once** (safe to re-run). The column is nullable and not UNIQUE; the app itself asks about a duplicate SKU. If you want it always unique, the file has a commented unique index. Before the migration the screen still works, the SKU just isn't saved and the app says so once. See below. |
 | `DESIGN_MATCHING_SKU_MIGRATION.sql` | **`design_matchings.matching_sku_no` column**: a SKU No. for each matching (shade). Entered per photo on Add Matching, editable per matching in Live › Edit, and used by the **Matching SKU** tab (photo + SKU + Quantity → **Dispatch Order** PDF with Dispatch Date & Time). Run **once** (safe to re-run). Nullable, not UNIQUE (commented unique index in the file). Before the migration the screen still works, the SKU just isn't saved and the app says so once. |
 | `DESIGN_DISPATCH_ORDER_MIGRATION.sql` | **`design_dispatch_orders` table**: saved Dispatch Orders of the **Matching SKU** tab. **Save Order** / **Save & Download PDF** store every matching with a Qty as an order (`DO-00001…` from a sequence, Dispatch Date & Time as typed, an items snapshot: design no, matching, SKU No, party / brand / quality, photo URL, qty). The **Saved Dispatch Orders** panel on the tab lists them with search: **Load** puts the quantities back on the sheet (then **Update DO-…** or **Save as New**), **PDF** reprints the snapshot with the order no, **✕** deletes (Admin or whoever saved it). Run **once** (safe to re-run). Before it, the PDF works as before and Save names this file. |
+| `fms.html` + `fms-engine.js` / `fms-core.js` / `fms-builder.js` / `fms-view.js` / `fms.css` | **Task › FMS Builder / FMS View**, the Nexus 2.0 FMS brought into the ERP (iframe `#fmsFrame`). See the "FMS: FMS Builder and FMS View" section. |
+| `sql/FMS_MIGRATION.sql` | **FMS tables and RPCs**: `fms_processes` (flow versions), `fms_records`, `fms_settings` (office calendar + holidays), `fms_counters`, `fms_log`; RLS on with no policies, everything through token-checked `fms_*` RPCs. Run **once** (safe to re-run). Before it, `fms.html` names this file instead of failing. |
+| `fms-tasks.js` + `sql/TASK_TRACKER_MIGRATION.sql` | **Task › Task Tracker / Escalations / Scorecard / Plan vs Actual** (FMS steps + Task Manager checklist / EA + complaints) on `fms.html`, and its server side (`tt_escalations`, token-checked `tt_*` RPCs). Run the SQL **once**, after `sql/FMS_MIGRATION.sql`. See "Task Tracker, Escalations, Scorecard, Plan vs Actual". |
 | `ORDER_FORM_USERS_MIGRATION.sql` | Order Form users move into the ERP's `app_users` (a single user table): `app_users.sales_role`, a `sales_users` mirror + trigger, and an Order Form session from the ERP login (`sales_erp_login`). Run **once**. |
 | `printing-lot.html` | Manufacturing › Printing Lot Card (the old "Design Print Manager Pro" + code.gs). Opens in the `#printingLotPanel` iframe; on the shop floor you can also open `printing-lot.html#production` directly. |
 | `PRINTING_LOT_MIGRATION.sql` | Printing Lot's `prl_*` tables, RPCs, views, the `printing-lot` bucket + seed data (sections, colors, satin codes). Run **once** (after APPROVAL_CHAIN_MIGRATION). |
@@ -1903,6 +1906,119 @@ undone. Until it runs, the launcher simply shows no tile and `sop.html` names th
 It replaces the functions, adds `sop_assign_data` / `sop_assign_set`, and gives every old step
 a `sid` and an empty `users` list (section 7; version and "updated" stamp untouched). Until then
 the Assign tab says the file must be run again, and everything else keeps working as before.
+
+## FMS: FMS Builder and FMS View (fms.html)
+
+The FMS (Flow Management System) from Nexus 2.0 (`Nexus-2.0-main/`, Task › FMS Builder and the
+FMS tracker there), working the same way inside this ERP. Sidebar **Task › FMS Builder** opens
+`fms.html#builder`, **Task › FMS View** opens `fms.html#view`; both are the same page in one
+iframe (`#fmsFrame`, `#fmsPanel`), so moving between them does not reload it.
+
+1. **FMS Builder.** A flow is a list of steps. For each step: its name and what to do; **who**
+   does it (one fixed ERP user, a person named in a record field, a doer table by a field's value,
+   or rules by category); **for which records** (all, or only when a field has some values);
+   **when it starts** (when the record is punched, after another step, some days before / after
+   a date, or on a date; different starts for different records with "else next"); **how much
+   time** (working days or hours, with a shorter TAT when Urgent); **how it finishes** (the doer
+   clicks Done, optionally asked for a value such as a date that later steps run from, or
+   "finishes by itself" when a record field is filled). The **flow chart** draws itself as you
+   type (zoom, fit, drag, full screen, SVG download); the checks list errors and warnings;
+   **Last step (End)** marks when a record is complete.
+   Tabs: **Doer Tables**, **Simulate** (every planned time for a sample record), **Fields & JSON**
+   (the record's fields, what a record is called, its number prefix, the whole flow as JSON),
+   **Office Calendar** (hours, lunch, weekly off, holidays: every planned time and delay is
+   counted in these), **History** (who saved / activated what).
+2. **Versions.** **Save v1** changes that version (records running on it follow the change);
+   **Save as new version** keeps the old one and makes v2 (not live); **Activate** makes a
+   version live: new records start on it, old records stay on theirs. Every save first shows the
+   list of changes (before / after) and what it would break. Delete a version / a whole FMS:
+   Admin only, and only while no record runs on it.
+3. **FMS View.** Pick a flow: one row per record with **Planned / Actual / Delay** under every
+   step (red = late, amber = pending, green = done, grey = N/A), Open / All, filter, CSV.
+   **+ New Record** punches a record into the live flow (its "on punch" fields); numbers run per
+   flow (`SMP-0001` …). **My steps** lists every open step whose doer is me, in all flows, with
+   a note and **Done**. A record opens with its fields, the current open steps, priority
+   (Normal / Urgent / On Hold / Cancel), Edit, Delete and the **FMS timeline** with Done / Undo.
+   Undo is refused while a later step is already done.
+4. **What is the same as Nexus:** the step engine (`fms-engine.js` is Nexus' `engine.js`
+   unchanged), the builder screens, the chart, validation, change list, simulate, tracker grid,
+   timeline, Done with a captured value, Undo rules. **What differs:** records instead of sales
+   orders (the Nexus auto-close rules for BOM / job card / material / dispatch belong to Nexus
+   modules this ERP doesn't have, so only "a record field is filled" is there; a new rule is one
+   entry in `FMS_RULES` in `fms-core.js` plus the same check in `fms_step_done`), doers are ERP
+   users (`app_users.user_name`), and data is on the server, not in the browser.
+
+**Access** (Admin Panel › Tab Visibility, or per user in Users › Apps):
+`HOME_FMS_BUILDER` (build / edit / activate, calendar; Admin / MD / GM), `HOME_FMS_VIEW`
+(see records, close one's own steps; everyone), `FMS_ADD` (punch a record; Admin / MD / GM),
+`FMS_MANAGE` (close / undo any step, priority, edit / delete any record; Admin / MD / GM). Whoever
+punched a record may also edit its fields and priority. The sidebar module is `ERP_TASK`. The
+server checks the same keys on every call (`fms_perms_`; its defaults in `fms_perm_default_`
+must stay equal to the `SARV_TABS` rows), and a non-manager can close a step only when they are
+one of its possible doers (`fms_doer_names_`).
+
+**Setup:** run `sql/FMS_MIGRATION.sql` once in the SQL Editor (safe to re-run). Then FMS Builder ›
+**+ New FMS**, add steps, **Save**, **Activate**; set the office hours in **Office Calendar**.
+
+## Task Tracker, Escalations, Scorecard, Plan vs Actual (fms.html)
+
+The rest of the Nexus 2.0 Task menu, on the same page as the FMS (`fms-tasks.js`). Sidebar
+**Task › Task Tracker / Escalations / Scorecard / Plan vs Actual** open `fms.html#tasks`,
+`#esc`, `#score`, `#pva` in the same `#fmsFrame`.
+
+**Where the tasks come from** (one row per task, one name per person):
+
+| Source | Rows | Planned / actual |
+|---|---|---|
+| FMS | every step of every record (not cancelled) | the FMS engine's planned time / the step's Done |
+| Task Manager checklist | daily / weekly / monthly / yearly tasks, one row per day it falls on | the task's target time that day (a follow-up's time when moved) / the tick time |
+| Task Manager EA | delegated tasks (and postponed ones on their final day) | EA date + target time / tick time |
+| Task Manager self tasks | shown in the tracker, never scored or escalated | |
+| Complaints (machine + fabric) | **Assign** (Maintenance / Fabric triage team), **Resolve** (host), **Feedback & close** (who raised it) | raised + assign TAT / assigned; expected completion / completed; completed + close TAT / closed |
+
+Task Manager data is read with its own `tm_load`, so its rights apply unchanged (managers see
+everyone, others themselves and the people they are buddy for), and which day a task falls on and
+its points follow `task_manager.html` (`occursOn`, `taskScore`; the port is in `fms-tasks.js`,
+keep both in step). On a buddy's days the buddy is the doer (not for personal self tasks).
+People are matched across apps by Emp Code (Task Manager) and complaint profile
+(`app_users.cmp_profile_id`); the ERP login name is the name shown everywhere.
+
+1. **Task Tracker › All Tasks:** Source, Task, Reference, Party, Doer, Department, Planned, Actual,
+   Status (Delayed / Pending / Upcoming / Done on time / Done late), Delay in office hours,
+   Escalation. Open / Delayed / Upcoming / Done / Late / All, source, doer, department, dates,
+   search, CSV. **Open** goes to the FMS record, or shows the Task Manager task (target, done
+   at / by, remarks, points) or the complaint. **Complaints** tab: the full register (machine +
+   fabric, raised in the loaded dates plus every open one) with every field; **Details** shows
+   all of it, the stages with plan / actual, and the photos and signature.
+2. **Escalations:** a task delayed by more than the set limit (1 working day by default) raises a
+   **Level 1** ticket to the PC (the user whose designation is PC, or the owner set in Setup; the
+   PC's own tasks go straight to Admin). The doer or an owner may give **one new date** with a
+   reason. It moves to **Level 2 (Admin)** when that date passes, or when no date is given within
+   the same limit. A ticket resolves itself when the task is done; Level 2 / Settings can resolve
+   it with a note. **Log** shows its history. Old misses are not raised again (checklist after
+   7 days, others after 30).
+3. **Scorecard:** per person for the dates picked: total (FMS / Task Manager / Complaints),
+   done, on time, late, pending, overdue, Completion %, On-time %, Volume, Consistency and
+   **Score** = −(100 − weighted quality), 0 best (Nexus formula; weights under **Weights**), plus
+   **TM Points %** = Task Manager's own points for the same tasks, and escalations. Click a row
+   for that person's tasks.
+4. **Plan vs Actual:** activity-wise rows (complaint assign / resolve / close, checklist, EA,
+   one per FMS flow) with start, planned, actual, status, delay, done by; **Summary** (open,
+   late, done, on-time %, average delay per activity) and **TAT** (the complaint TATs are set
+   here; checklist / EA follow Task Manager, FMS steps the FMS Builder). A new activity, for
+   example a purchase step, is one entry in `PA_DEFS_BASE` plus its rows in `ttTasks()`.
+
+**Access:** `HOME_TASK_TRACKER`, `HOME_TT_ESCALATIONS`, `HOME_TT_SCORECARD` (everyone; own tasks,
+tickets, row), `HOME_TT_PLANACTUAL` (Admin / MD / GM); inside: `TT_ALL` = see everybody and every
+complaint (Admin / MD / GM), `TT_SETUP` = settings and resolving any ticket (Admin). Server:
+`tt_perms_` (defaults in `tt_perm_default_` must equal the `SARV_TABS` rows). Task Manager rows
+need the Task Manager or My Tasks app for that login.
+
+**Setup:** run `sql/TASK_TRACKER_MIGRATION.sql` once (after `sql/FMS_MIGRATION.sql`; safe to
+re-run). It adds `tt_escalations`, the `tt_*` RPCs (`tt_data`, `tt_complaints`,
+`tt_complaint_photos`, `tt_esc_sync`, `tt_esc_date`, `tt_esc_resolve`, `tt_settings_save`) and
+keeps settings in `fms_settings` key `tt`. Until it runs, these four screens say so and the
+FMS screens work as before.
 
 ## Store In / Out PDF Checklists (Dropdown Master)
 

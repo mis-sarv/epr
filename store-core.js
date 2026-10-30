@@ -5144,7 +5144,8 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
-  'HOME_YARN_UNLOADING','HOME_SOP_MASTER'];
+  'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -5255,7 +5256,7 @@ function sarvResetOrderFormFrame_(){
    session is revoked on the server (erp_app_logout), and that tab goes to its
    login screen on its next call. */
 function sarvResetAppFrames_(){
-  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame'].forEach(id=>{
+  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame','fmsFrame'].forEach(id=>{
     const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
     const vis=fr.closest('.main-panel,.tab-content');
     if(vis&&vis.style.display!=='none'){
@@ -5367,6 +5368,26 @@ function sarvNavigateFromHome(target){
       activatePanel('sopPanel');
       const fr=byId('sopFrame');
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'sop.html#master');
+      break;
+    }
+    /* Task › FMS Builder / FMS View: one fms.html iframe, the leaf picks its
+       #hash. Changing only the hash is a same-page jump, so going from the
+       Builder to the View (or back) does not reload the page; fms.html asks
+       before leaving unsaved Builder changes. */
+    /* Task › Task Tracker / Escalations / Scorecard / Plan vs Actual are the
+       same page too (fms-tasks.js). */
+    case 'FMS_BUILDER':
+    case 'FMS_VIEW':
+    case 'TASK_TRACKER':
+    case 'TT_ESCALATIONS':
+    case 'TT_SCORECARD':
+    case 'TT_PLANACTUAL': {
+      activatePanel('fmsPanel');
+      const fr=byId('fmsFrame');
+      if(fr){
+        const want=(fr.dataset.src||'fms.html')+'#'+({FMS_BUILDER:'builder',FMS_VIEW:'view',TASK_TRACKER:'tasks',TT_ESCALATIONS:'esc',TT_SCORECARD:'score',TT_PLANACTUAL:'pva'}[target]);
+        if(fr.getAttribute('src')!==want)fr.setAttribute('src',want);
+      }
       break;
     }
     case 'REPORTS': activatePanel('reportsPanel'); break;
@@ -5490,6 +5511,34 @@ const SARV_HOME_HELP={
     'Store Standard Name comes only from the Item Master; once a PO is chosen, Target Date = the PO delivery date.',
     'Qty Received (inward against the PO) and Lot Issue (Store Issue) come live from the Store.',
     'On Save, the sheet is stored linked to the Order No. and Lot No.']},
+  FMS_BUILDER:{icon:'',title:'FMS Builder (Task)',points:[
+    'Build a work flow step by step: who does each step, when it starts, how much time (TAT) it gets and how it finishes.',
+    'A step can start when the record is punched, after another step, or some days before / after / on a date.',
+    'The flow chart, the checks and Simulate show the plan before it goes live.',
+    'Save keeps the version (running records follow it); Save as new version + Activate puts a new flow live.',
+    'Office hours, weekly off and holidays (Office Calendar tab) decide every planned time and delay.']},
+  FMS_VIEW:{icon:'',title:'FMS View (Task)',points:[
+    'Punch a record into a live flow; its first steps go to their doers at once.',
+    'The grid shows every record with Planned / Actual / Delay under each step.',
+    'My steps lists every open step that is yours, across all flows, with a Done button.',
+    'Open a record for its timeline, priority (Urgent / On Hold / Cancel) and Undo.']},
+  TASK_TRACKER:{icon:'',title:'Task Tracker (Task)',points:[
+    'Every task in one list: FMS steps, Task Manager checklist and EA (delegated) tasks, and complaints (assign, resolve, close).',
+    'Planned, actual, status and delay (in office hours) for each; filter by source, doer, department, dates.',
+    'Complaints tab: the full complaint register; Details shows every field, the stages and the photos.',
+    'Without "see everyone" a user sees only their own tasks.']},
+  TT_ESCALATIONS:{icon:'',title:'Escalations (Task)',points:[
+    'A task delayed past the set limit raises a Level 1 ticket to the PC (or the set owner).',
+    'The doer or owner can give one new date with a reason; if it passes, or none is given in time, it goes to Level 2 (Admin).',
+    'A ticket closes by itself when the task is done; Level 2 can also resolve it with a note.']},
+  TT_SCORECARD:{icon:'',title:'Scorecard (Task)',points:[
+    'Employee-wise: total, done, on time, late, pending, overdue for the dates picked.',
+    'Score = completion, on-time, volume and consistency, weighted; 0 is best.',
+    'TM Points % is Task Manager\'s own points for checklist and EA tasks. Click a row for that person\'s tasks.']},
+  TT_PLANACTUAL:{icon:'',title:'Plan vs Actual (Task)',points:[
+    'Activity-wise start, planned, actual and delay: complaints, checklist, EA and every FMS flow.',
+    'Summary: open, late, on-time % and average delay per activity.',
+    'TAT: the complaint TATs are set here; checklist / EA follow Task Manager, FMS steps follow the FMS Builder.']},
   SOP_MASTER:{icon:'',title:'SOP Master (Masters)',points:[
     'Create an SOP: title, category, colour and its steps, each with a photo (camera / gallery) or a built-in picture.',
     'Each step can have instructions, a Tip, a Caution and tick points for the user.',
@@ -5974,6 +6023,7 @@ const SARV_TABS=[
   {key:'ERP_NPD',label:'NPD / R&D (PLM)',def:'ALL'},
   {key:'ERP_KPIT',label:'KPIs & Targets',def:'ALL'},
   {key:'ERP_ACT',label:'All Activities',def:'ALL'},
+  {key:'ERP_TASK',label:'Task',hint:'Contains FMS Builder and FMS View',def:'ALL'},
   {key:'ERP_ADMIN',label:'Administration',hint:'Admin Panel / Users & Roles; Admin only by default',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'Home Page'},
   /* The "ERP" button on launcher.html. It is the entry to the whole desktop
@@ -6004,6 +6054,20 @@ const SARV_TABS=[
      needs no key: the launcher's "My SOPs" tile shows whenever something
      is assigned. */
   {key:'HOME_SOP_MASTER',label:'SOP Master',hint:'Masters › create SOPs with step cards and pictures, assign by designation / user, see who has read them (sop.html#master)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  /* Task › FMS Builder / FMS View (fms.html). Real rights: the server checks
+     these same keys on every call (fms_perms_ in sql/FMS_MIGRATION.sql), and
+     its defaults (fms_perm_default_) MUST match these rows. The FMS_* rows
+     further down are the buttons inside the FMS View. */
+  {key:'HOME_FMS_BUILDER',label:'FMS Builder',hint:'Task › build / edit / activate FMS flows, office calendar (fms.html#builder)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'HOME_FMS_VIEW',label:'FMS View',hint:'Task › records of every flow (planned / actual / delay), My steps, close one\'s own steps (fms.html#view)',def:'ALL',lock:['ADMIN_PIN']},
+  /* Task › Task Tracker / Escalations / Scorecard / Plan vs Actual
+     (fms.html#tasks / #esc / #score / #pva). Server-checked (tt_perms_ in
+     sql/TASK_TRACKER_MIGRATION.sql); defaults there (tt_perm_default_) MUST
+     match these rows. The TT_* rows further down are the rights inside. */
+  {key:'HOME_TASK_TRACKER',label:'Task Tracker',hint:'Task › every task (FMS steps, Task Manager checklist / EA, complaints) with planned / actual / delay, and the complaints register',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'HOME_TT_ESCALATIONS',label:'Escalations',hint:'Task › delayed tasks raised to Level 1 / Level 2, new date, resolve',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'HOME_TT_SCORECARD',label:'Scorecard',hint:'Task › employee-wise completion / on-time / score (own row only without "see everyone")',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'HOME_TT_PLANACTUAL',label:'Plan vs Actual',hint:'Task › activity-wise planned vs actual, summary, TAT',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_APPROVAL_APP',label:'Approval App',def:'ALL'},
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine / fabric complaints and Notice Board (opens from the launcher)',def:'ALL'},
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
@@ -6077,6 +6141,17 @@ const SARV_TABS=[
   {group:'Yarn Unloading › Buttons (Yarn-Unloading.html)'},
   {key:'YU_ENTRY',label:'New Entry / Saved Draft / Download Report',hint:'Weigh and save unloading entries on the phone, continue any phone\'s draft, the phone\'s own reports',def:'ALL',lock:['ADMIN_PIN']},
   {key:'YU_CLOUD',label:'Cloud Reports',hint:'Every phone\'s saved entries from the cloud, PDF / CSV (was password 1700)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* fms.html's rights inside the FMS View. Server-checked (fms_perms_ in
+     sql/FMS_MIGRATION.sql); defaults MUST match fms_perm_default_() there.
+     Per-user ON/OFF: Users › Apps. */
+  {group:'FMS › Rights (fms.html)'},
+  {key:'FMS_ADD',label:'Punch a new record',hint:'FMS View › "+ New Record" on a live flow',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'FMS_MANAGE',label:'Manage records & any step',hint:'Close / undo anyone\'s step, change priority, edit or delete any record (without it a user closes only their own steps)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  /* Rights inside Task Tracker / Escalations / Scorecard / Plan vs Actual.
+     Server-checked (tt_perms_); defaults MUST match tt_perm_default_(). */
+  {group:'Task Tracker › Rights (fms.html)'},
+  {key:'TT_ALL',label:'See everybody',hint:'Everyone\'s tasks, tickets and scores, and every complaint (without it: one\'s own only)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'TT_SETUP',label:'Settings',hint:'Escalation delay / Level 1 owner, score weights, complaint TATs; resolve any ticket',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {group:'Production › Sub Tabs'},
   {key:'PROD_SUB_DESIGN',label:'Design Master',def:'ALL'},
   {group:'PO Generation › Sub Tabs'},
@@ -6722,7 +6797,7 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
 // Apps that open in their own file; their SSO runs on this access.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
@@ -6731,7 +6806,9 @@ const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,H
 const SARV_APP_INNER_GROUPS=[
   {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)},
   {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)},
-  {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)}
+  {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)},
+  {title:'FMS rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('FMS_')===0).map(t=>t.key)},
+  {title:'Task Tracker rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TT_')===0).map(t=>t.key)}
 ];
 /* Apps a NEW login does not get until the Admin switches them ON: the user
    form starts them at OFF, and NEW_USER_APP_DEFAULTS_MIGRATION.sql does the

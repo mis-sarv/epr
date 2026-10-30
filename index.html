@@ -180,6 +180,40 @@
       <span class="sarv-home-text"><b>SOP Master</b><small>Designation-wise SOPs, step cards with pictures, who has read them</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Task › FMS Builder / FMS View — both open #fmsPanel (fms.html#builder /
+         fms.html#view), HOME_FMS_BUILDER / HOME_FMS_VIEW. -->
+    <button type="button" class="sarv-home-row" data-go="FMS_BUILDER">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="5" rx="1"></rect><rect x="15" y="9.5" width="6" height="5" rx="1"></rect><rect x="3" y="16" width="6" height="5" rx="1"></rect><path d="M9 5.5h3v13H9M12 12h3"></path></svg></span>
+      <span class="sarv-home-text"><b>FMS Builder</b><small>Build step-wise work flows: doer, start, TAT, flow chart, versions</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
+    <button type="button" class="sarv-home-row" data-go="FMS_VIEW">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18v16H3zM3 9h18M9 9v11M15 9v11"></path></svg></span>
+      <span class="sarv-home-text"><b>FMS View</b><small>Records in each flow: planned / actual / delay per step, My steps, Done</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
+    <!-- Task › Task Tracker / Escalations / Scorecard / Plan vs Actual — the
+         same #fmsPanel page (fms.html#tasks / #esc / #score / #pva). -->
+    <button type="button" class="sarv-home-row" data-go="TASK_TRACKER">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"></path><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"></path></svg></span>
+      <span class="sarv-home-text"><b>Task Tracker</b><small>Every task: FMS steps, checklist, EA, complaints; planned / actual / delay</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
+    <button type="button" class="sarv-home-row" data-go="TT_ESCALATIONS">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 20h20z"></path><path d="M12 10v4M12 17h.01"></path></svg></span>
+      <span class="sarv-home-text"><b>Escalations</b><small>Delayed tasks: Level 1, new date, Level 2, resolve</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
+    <button type="button" class="sarv-home-row" data-go="TT_SCORECARD">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"></path></svg></span>
+      <span class="sarv-home-text"><b>Scorecard</b><small>Employee-wise completion, on-time, consistency, score</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
+    <button type="button" class="sarv-home-row" data-go="TT_PLANACTUAL">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg></span>
+      <span class="sarv-home-text"><b>Plan vs Actual</b><small>Activity-wise start, planned, actual, delay, summary and TAT</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <!-- Sales › Packing & Dispatch — packing slips, orders, vehicle, invoice /
          receiving verification (packing.html, ERP schema `packing`). Opens
          #packingPanel; shown or hidden by HOME_PACKING. -->
@@ -2282,6 +2316,16 @@
         <div id="sopPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="sopFrame" title="SOP Master" data-src="sop.html#master"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#eef2f6; display:block;"></iframe>
+        </div>
+
+        <!-- Task › FMS Builder and Task › FMS View — the Nexus 2.0 FMS
+             (fms.html + fms-*.js, fms_* RPCs in sql/FMS_MIGRATION.sql). One
+             iframe for both: the leaf only changes the page's #hash
+             (#builder / #view), so switching between them keeps the page
+             loaded. Same lazy pattern as the SOP Master. -->
+        <div id="fmsPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="fmsFrame" title="FMS" data-src="fms.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f3f6fb; display:block;"></iframe>
         </div>
 
         <div class="sidebar" id="sidebarPanel">

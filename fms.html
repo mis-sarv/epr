@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script><script src="caps-input.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1a56c8">
+<title>Task</title>
+<!-- First, so a logged-in user never sees a flash of anything else. -->
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<!--
+  FMS (Flow Management System): Task › FMS Builder and Task › FMS View.
+  Brought over from Nexus 2.0 (Operations › FMS Builder and the FMS tracker),
+  working the same way. One page in two modes:
+
+    fms.html#builder   FMS BUILDER. Build a flow step by step: who does each
+                       step, when it starts, how long it may take (in office
+                       hours), how it finishes. Live flow chart, validation,
+                       Simulate, doer tables, fields & JSON, versions
+                       (Save / Save as new version / Activate), office
+                       calendar, history. Right: HOME_FMS_BUILDER.
+    fms.html#view      FMS VIEW. Punch a record into a live flow; the tracker
+                       grid of every record (Planned / Actual / Delay per
+                       step); My steps; a record's timeline with Done / Undo.
+                       Right: HOME_FMS_VIEW (+ FMS_ADD to punch, FMS_MANAGE to
+                       close / undo anyone's steps).
+
+  Opened inside the ERP from the sidebar's Task module (iframe #fmsFrame in
+  index.html), or directly. LOGIN = ERP LOGIN (launcher.html); there is no
+  login form here.
+
+  Server: sql/FMS_MIGRATION.sql (fms_* tables, RLS on, token-checked fms_* RPCs).
+  Until it is run, the page says so instead of failing.
+
+  Also the rest of the Nexus Task menu, fed by FMS steps, Task Manager's
+  checklist / EA tasks (tm_load) and the complaints (fms-tasks.js,
+  sql/TASK_TRACKER_MIGRATION.sql):
+    fms.html#tasks     TASK TRACKER (All Tasks + the complaints register)
+    fms.html#esc       ESCALATIONS (Level 1 → Level 2, new date, resolve)
+    fms.html#score     SCORECARD
+    fms.html#pva       PLAN VS ACTUAL (list, summary, TAT)
+
+  Files: fms-engine.js (the Nexus step engine, unchanged), fms-core.js
+  (helpers, server calls, store, validation, router, boot), fms-builder.js,
+  fms-view.js, fms.css. Classic scripts sharing one global scope, in this
+  order; do not add type="module" or defer.
+-->
+<link rel="stylesheet" href="fms.css">
+</head>
+<body>
+<div id="app" class="hidden">
+  <header id="top">
+    <span class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="6" height="5" rx="1"/><rect x="15" y="9.5" width="6" height="5" rx="1"/><rect x="3" y="16" width="6" height="5" rx="1"/><path d="M9 5.5h3v13H9M12 12h3"/></svg><span>Task</span></span>
+    <nav id="fmsTabs"></nav>
+    <span class="grow"></span>
+    <span id="who" class="small muted"></span>
+    <button class="btn sm ghost" data-act="refresh" title="Load the latest data">↻ Refresh</button>
+    <button class="btn sm ghost" id="btnLogout" data-act="logout">Log out</button>
+  </header>
+  <div id="flash" class="hidden"></div>
+  <main id="main"><div class="panel empty">Loading…</div></main>
+</div>
+<div id="fmsBusy" class="hidden"><div id="fmsBusyMsg">Saving…</div></div>
+
+<script src="fms-engine.js"></script>
+<script src="fms-core.js"></script>
+<script src="fms-builder.js"></script>
+<script src="fms-view.js"></script>
+<script src="fms-tasks.js"></script>
+<!-- Floating "← Apps" button (hidden inside the ERP iframe and without a session). -->
+<script src="app-back.js"></script>
+</body>
+</html>

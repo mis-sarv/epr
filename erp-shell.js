@@ -153,6 +153,19 @@
       { label: 'Production QC' }, { label: 'MO Reports' },
       { label: 'Manuf. Configs' } ] },
 
+    /* The FMS from Nexus 2.0 (Task › FMS Builder / FMS View there). Both
+       leaves open the same page, fms.html, in one iframe (#fmsFrame); the leaf
+       only picks its #builder / #view. Rights HOME_FMS_BUILDER / HOME_FMS_VIEW,
+       module row ERP_TASK. */
+    { key: 'TASK', icon: I.tasks, label: 'Task', children: [
+      { label: 'FMS Builder', go: 'FMS_BUILDER' },
+      { label: 'FMS View', go: 'FMS_VIEW' },
+      // Nexus' Task Tracker / Escalations / Scorecard / Plan vs Actual, same page (fms-tasks.js).
+      { label: 'Task Tracker', go: 'TASK_TRACKER' },
+      { label: 'Escalations', go: 'TT_ESCALATIONS' },
+      { label: 'Scorecard', go: 'TT_SCORECARD' },
+      { label: 'Plan vs Actual', go: 'TT_PLANACTUAL' } ] },
+
     { key: 'QUALITY', icon: I.quality, label: 'Quality', children: [
       { label: 'Quality Dashboard' }, { label: 'Quality Control' },
       { label: 'Direct QC' }, { label: 'Quality Certificate' },
@@ -1008,6 +1021,12 @@
     PRINTING_LOT: 'printing lot card print',
     TRIMS: 'trims packing material manager',
     SOP_MASTER: 'sop standard operating procedure work instruction training designation steps',
+    FMS_BUILDER: 'fms flow management system builder process steps doer tat flow chart workflow',
+    FMS_VIEW: 'fms view tracker flow records planned actual delay my steps done pending kaam',
+    TASK_TRACKER: 'task tracker all tasks checklist ea delegation complaint pending delayed kaam',
+    TT_ESCALATIONS: 'escalation escalations level delayed late ticket',
+    TT_SCORECARD: 'scorecard score card performance employee rating',
+    TT_PLANACTUAL: 'plan vs actual planned actual tat delay activity',
     ORDER_FORM: 'sales order form so booking',
     PACKING: 'packing dispatch slip',
     COMPLAINT_APP: 'complaint support ticket'

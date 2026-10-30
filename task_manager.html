@@ -2060,7 +2060,8 @@
             if(f==='daily')return true;
             const dobj=new Date(y,m-1,d);
             if(f==='weekly')return dobj.getDay().toString()===String(t.freqValue);
-            if(f==='monthly')return d.toString()===String(t.freqValue);
+            // As a number: a day saved as "08" is the 8th (a text compare never matched it). Same rule in fms-tasks.js.
+            if(f==='monthly')return d===parseInt(t.freqValue,10);
             if(f==='yearly'||f==='ea'||f==='self'){
                 if(f==='ea'&&t.isPostponed){ if(dStr>=t.originalTargetDate&&dStr<=t.freqValue)return true; }
                 if(!t.freqValue)return false;
