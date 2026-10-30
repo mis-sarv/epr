@@ -818,7 +818,7 @@ function slideCover(){
     + '<div class="txt"><div class="kick">' + esc([s.category, s.department].filter(Boolean).join(' · ') || 'STANDARD OPERATING PROCEDURE') + '</div>'
     + '<h2>' + esc(s.title || 'Untitled SOP') + '</h2>' + (s.summary ? '<div class="rich">' + rich(s.summary) + '</div>' : '')
     + '<div class="cov-meta"><span class="pill">' + (P.part ? 'Your ' + P.steps.length + ' of ' + (s.total_steps || P.steps.length) + ' steps' : P.steps.length + ' steps') + '</span><span class="pill">About ' + esc(s.est_minutes || 5) + ' min</span><span class="pill">Version ' + esc(s.version || 1) + '</span></div>'
-    + (P.part ? '<div class="cov-meta" style="margin-top:0;"><span class="subtag">SUB-SOP ' + esc(P.steps.map(st => subCode(s.sop_code, st.no)).join(', ')) + '</span></div>' : '')
+    + (P.part ? '<div class="cov-meta" style="margin-top:0;"><span class="subtag">' + esc(P.steps.map(st => subCode(s.sop_code, st.no)).join(', ')) + '</span></div>' : '')
     + (des ? '<div style="font-size:12px;color:var(--mute);font-weight:700;margin-bottom:5px;">FOR</div><div class="cov-meta" style="margin-top:0;">' + des + '</div>' : '')
     + '<div class="hint"><span>Swipe or tap Next to start</span><span class="arr">→</span></div>'
     + '</div></div></section>';
@@ -833,7 +833,7 @@ function slideStep(st, i){
   }).join('');
   const no = st.no || i + 1;
   return '<section class="slide"><div class="scard"><div class="vis">' + vis + '<span class="badge">' + (P.part ? 'SUB-SOP ' + (i + 1) + ' / ' + P.steps.length : 'STEP ' + (i + 1) + ' / ' + P.steps.length) + '</span></div>'
-    + '<div class="txt"><div class="kick">SUB-SOP ' + esc(subCode(P.sop.sop_code, no)) + '</div><h2>' + esc(st.title) + '</h2><div class="rich">' + rich(st.text) + '</div>'
+    + '<div class="txt"><div class="kick">' + esc(subCode(P.sop.sop_code, no)) + '</div><h2>' + esc(st.title) + '</h2><div class="rich">' + rich(st.text) + '</div>'
     + (checks ? '<div class="chk">' + checks + '</div>' : '')
     + (st.tip ? '<div class="call tip">' + icon('check', 20, 2) + '<div><b>TIP</b>' + esc(st.tip) + '</div></div>' : '')
     + (st.warn ? '<div class="call warn">' + icon('warning', 20, 2) + '<div><b>CAUTION</b>' + esc(st.warn) + '</div></div>' : '')

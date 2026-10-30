@@ -3341,8 +3341,17 @@
          quantities never drops the ones already typed. "Show: Only with
          Quantity" lists exactly what will be printed.
        • Quantities and the Dispatch Date & Time are kept in this browser
-         (a draft, so a reload does not lose them) until Clear Quantities.
-     Nothing here is written to the database.
+         (a draft, so a reload does not lose them) until New Order.
+       • Save Order writes the order to design_dispatch_orders
+         (DESIGN_DISPATCH_ORDER_MIGRATION.sql): order no DO-00001… from the
+         server, the date, and a SNAPSHOT of every item (design no, matching,
+         SKU No, party / brand / quality, photo, qty), so an old order still
+         prints as it was after a matching is renamed or removed. The Saved
+         Dispatch Orders panel lists them: Load puts the quantities back on the
+         sheet (Save then updates that order; Save as New keeps it), PDF prints
+         the saved snapshot, ✕ deletes it (Admin, or whoever saved it).
+         Without the migration everything else works as before; Save says
+         which file to run.
   ════════════════════════════════════════════════════════════════════ */
   const MS_STORE = 'dm_ms_order_v1';
   const MS_MAX_ROWS = 400;        // rows drawn at once; the search narrows the rest
@@ -3355,17 +3364,28 @@
   let msQty = {};                 // matching id → quantity (whole number > 0)
   const msThumbCache = new Map();  // url → Promise<img|null>, small JPEG for the PDF
   let msWired = false;
+  const MS_TABLE = 'design_dispatch_orders';
+  /* The saved order now on the sheet: { id, order_no, prepared_by } or null
+     (a new, unsaved order). msDirty = quantities / date changed since it was
+     saved or loaded. Both ride in the draft, so a reload keeps them. */
+  let msOrder = null;
+  let msDirty = false;
+  let msSaved = [];               // the Saved Dispatch Orders list (newest first)
+  let msSavedLoaded = false;
+  let msTableMissing = false;
 
   function msLoadDraft(){
     try {
       const o = JSON.parse(localStorage.getItem(MS_STORE) || '{}') || {};
       msQty = (o.qty && typeof o.qty === 'object') ? o.qty : {};
+      msOrder = (o.order && o.order.id) ? o.order : null;
+      msDirty = !!o.dirty;
       const at = q('dmMsDispatchAt');
       if (at && o.at && !at.value) at.value = o.at;
-    } catch (e) { msQty = {}; }
+    } catch (e) { msQty = {}; msOrder = null; msDirty = false; }
   }
   function msSaveDraft(){
-    try { localStorage.setItem(MS_STORE, JSON.stringify({ qty: msQty, at: q('dmMsDispatchAt') ? q('dmMsDispatchAt').value : '' })); } catch (e) {}
+    try { localStorage.setItem(MS_STORE, JSON.stringify({ qty: msQty, at: q('dmMsDispatchAt') ? q('dmMsDispatchAt').value : '', order: msOrder, dirty: msDirty })); } catch (e) {}
   }
   const msQ = id => { const n = parseInt(msQty[id], 10); return Number.isFinite(n) && n > 0 ? n : 0; };
   const msVal = (f, r) => up(f.get(r));
@@ -3607,7 +3627,7 @@
       set('dmMsAddr', co.address || '');
       set('dmMsGstin', co.gstin ? 'GSTIN: ' + co.gstin : '');
     }
-    set('dmMsBy', whoAmI() || '-');
+    set('dmMsBy', (msOrder && msOrder.prepared_by) || whoAmI() || '-');
   }
   function msClearFilters(){
     MS_FILTERS.forEach(f => { delete msSel[f.id]; });
@@ -3616,11 +3636,16 @@
     if (q('dmMsShow')) q('dmMsShow').value = '';
     msRender();
   }
+  // New Order: empty every Qty and let go of the loaded saved order (which stays saved).
   function msClearQty(){
     const n = Object.keys(msQty).filter(k => msQ(k)).length;
-    if (!n) { toast('No quantity entered.', 'warn'); return; }
-    if (!confirm('Clear the quantity of all ' + n + ' item(s) in this Dispatch Order?')) return;
-    msQty = {}; msSaveDraft(); msRender();
+    if (!n && !msOrder) { toast('No quantity entered.', 'warn'); return; }
+    const lose = msOrder
+      ? (msDirty ? '\n\nThe changes to ' + msOrder.order_no + ' since it was saved will be lost.' : '\n\n' + msOrder.order_no + ' stays in the Saved list.')
+      : (n ? '\n\nThis order is not saved.' : '');
+    if (!confirm('Start a new Dispatch Order? The quantity of all ' + n + ' item(s) is cleared.' + lose)) return;
+    msQty = {}; msOrder = null; msDirty = false;
+    msSaveDraft(); msFillSheet(); msShowOrder(); msRender(); msRenderSaved();
   }
   // Now, as the value of a datetime-local box (local time, to the minute).
   function msNowLocal(){
@@ -3642,7 +3667,7 @@
       const n = parseInt(inp.value, 10);
       if (Number.isFinite(n) && n > 0) msQty[inp.dataset.mid] = n; else delete msQty[inp.dataset.mid];
       const tr = inp.closest('tr'); if (tr) tr.classList.toggle('has-qty', msQ(inp.dataset.mid) > 0);
-      msSaveDraft(); msSummary();
+      msMarkDirty(); msSaveDraft(); msSummary();
     });
     // Enter jumps to the next Quantity box, so a long order is typed without the mouse.
     tb.addEventListener('keydown', e => {
@@ -3655,14 +3680,35 @@
     let t = null;
     q('dmMsSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(msRender, 160); });
     q('dmMsShow').addEventListener('change', msRender);
-    q('dmMsDispatchAt').addEventListener('change', () => { msSaveDraft(); msSummary(); });
+    q('dmMsDispatchAt').addEventListener('change', () => { msMarkDirty(); msSaveDraft(); msSummary(); });
+    let st = null;
+    const sq = q('dmMsSavedQ');
+    if (sq) sq.addEventListener('input', () => { clearTimeout(st); st = setTimeout(msRenderSaved, 160); });
+    const box = q('dmMsSavedBox');
+    if (box) box.addEventListener('toggle', () => { if (box.open && !msSavedLoaded) msLoadSaved(); });
   }
   function msOpen(){
     msWire();
     msFillSheet();
     const at = q('dmMsDispatchAt');
     if (at && !at.value) { at.value = msNowLocal(); msSaveDraft(); }
+    msShowOrder();
     msRender();
+    const box = q('dmMsSavedBox');
+    if (!box || box.open) msLoadSaved();
+  }
+  function msMarkDirty(){ if (msOrder && !msDirty) { msDirty = true; msShowOrder(); } }
+  // The banner over the sheet, the order no in the title band and the Save button's label.
+  function msShowOrder(){
+    const bar = q('dmMsOrderBar'), band = q('dmMsBandNo'), sb = q('dmMsSaveBtn'), sn = q('dmMsSaveNewBtn');
+    if (bar) bar.innerHTML = msOrder
+      ? '<span class="on">Editing saved order <b>' + esc(msOrder.order_no) + '</b>' +
+        (msDirty ? ' &nbsp;·&nbsp; <span class="dirty">changed, not saved yet</span>' : ' &nbsp;·&nbsp; saved') +
+        ' &nbsp;·&nbsp; Save updates it, Save as New keeps it as it is, New Order starts afresh.</span>'
+      : '';
+    if (band) band.textContent = msOrder ? '— ' + msOrder.order_no : '';
+    if (sb) sb.textContent = msOrder ? 'Update ' + msOrder.order_no : 'Save Order';
+    if (sn) sn.style.display = msOrder ? '' : 'none';
   }
 
   // A small JPEG of the photo for the PDF: a 1500px photo per row would make the file huge.
@@ -3688,26 +3734,61 @@
   }
   const msStatus = t => { const el = q('dmMsStatus'); if (el) el.textContent = t || ''; };
 
-  async function msBuild(){
+  /* One item of the order, as saved in design_dispatch_orders.items and as
+     the PDF prints it: a snapshot, not a reference, so an old order keeps
+     printing what was ordered. */
+  const msItemOf = (d, m, n) => ({
+    matching_id: m.id, design_id: d.id, design_no: d.design_no || '', matching_name: m.matching_name || '',
+    matching_sku_no: m.matching_sku_no || '', party: d.party_name || '', brand: d.brand_name || '',
+    quality: m.blanket_quality || d.blanket_quality || '', img: dmImgSrc(m) || '', qty: n
+  });
+  // Every matching with a quantity, in the on-screen order (whatever the filter).
+  function msCurrentItems(){
+    const rows = [];
+    dmDesigns.slice().sort((a, b) => dmCatSort(a.design_no, b.design_no))
+      .forEach(d => (d.matchings || []).forEach(m => { const n = msQ(m.id); if (n) rows.push(msItemOf(d, m, n)); }));
+    return rows;
+  }
+  function msFindMatching(id){
+    for (const d of dmDesigns) {
+      const m = (d.matchings || []).find(x => String(x.id) === String(id));
+      if (m) return { d: d, m: m };
+    }
+    return null;
+  }
+
+  /* saved = a row of design_dispatch_orders (its snapshot is printed);
+     without it, the order now on the sheet. */
+  async function msBuild(saved){
     if (typeof jspdfNativeReady_ === 'function' ? !jspdfNativeReady_() : !(window.jspdf && window.jspdf.jsPDF)) {
       toast('jsPDF did not load. Please reload the page.', 'error');
       return null;
     }
-    const atEl = q('dmMsDispatchAt');
-    const at = atEl ? atEl.value : '';
-    if (!at) { if (atEl) atEl.focus(); toast('DISPATCH DATE & TIME is required.', 'error'); return null; }
-    // Every matching with a quantity, in the on-screen order (whatever the filter).
-    const rows = [];
-    dmDesigns.slice().sort((a, b) => dmCatSort(a.design_no, b.design_no))
-      .forEach(d => (d.matchings || []).forEach(m => { const n = msQ(m.id); if (n) rows.push({ d: d, m: m, qty: n }); }));
-    if (!rows.length) { toast('Enter a Quantity against at least one matching.', 'error'); return null; }
-    const noSku = rows.filter(r => !r.m.matching_sku_no).length;
-    if (noSku && !confirm(noSku + ' item(s) in this order have no Matching SKU No (printed as "-").\n\nMake the PDF anyway?')) return null;
+    let at, rows, orderNo, by;
+    if (saved) {
+      at = saved.dispatch_at || ''; rows = Array.isArray(saved.items) ? saved.items : [];
+      orderNo = saved.order_no || ''; by = saved.prepared_by || '-';
+      if (!rows.length) { toast(orderNo + ' has no items.', 'error'); return null; }
+    } else {
+      const atEl = q('dmMsDispatchAt');
+      at = atEl ? atEl.value : '';
+      if (!at) { if (atEl) atEl.focus(); toast('DISPATCH DATE & TIME is required.', 'error'); return null; }
+      rows = msCurrentItems();
+      if (!rows.length) { toast('Enter a Quantity against at least one matching.', 'error'); return null; }
+      const noSku = rows.filter(r => !r.matching_sku_no).length;
+      if (noSku && !confirm(noSku + ' item(s) in this order have no Matching SKU No (printed as "-").\n\nMake the PDF anyway?')) return null;
+      // A loaded order with changes not saved yet is printed without its number:
+      // the PDF must not carry DO-… while showing figures that are not in it.
+      orderNo = (msOrder && !msDirty) ? msOrder.order_no : '';
+      by = (msOrder && msOrder.prepared_by) || whoAmI() || '-';
+    }
 
     const thumbs = [];
     for (let i = 0; i < rows.length; i++) {
       msStatus('Loading photos (' + (i + 1) + '/' + rows.length + ')…');
-      thumbs.push(await msThumb(dmImgSrc(rows[i].m)));
+      // The matching's photo as it is now; the saved URL if it has since been removed.
+      const live = msFindMatching(rows[i].matching_id);
+      thumbs.push(await msThumb((live && dmImgSrc(live.m)) || rows[i].img || ''));
     }
     msStatus('Building the PDF…');
 
@@ -3715,7 +3796,7 @@
     const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
     const co = (typeof SARV_COMPANY !== 'undefined' && SARV_COMPANY) ? SARV_COMPANY : { fullName: 'SARV INDIA HOME FURNISHING', address: '', gstin: '' };
     const W = A4.w, M = A4.mx, total = rows.reduce((s, r) => s + r.qty, 0);
-    const atTxt = msFmtAt(at), by = whoAmI() || '-';
+    const atTxt = msFmtAt(at);
     const t = new Date(), p2 = n => String(n).padStart(2, '0');
     const printed = msFmtAt(t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + 'T' + p2(t.getHours()) + ':' + p2(t.getMinutes()));
 
@@ -3730,9 +3811,10 @@
     doc.setDrawColor(15, 23, 42); doc.setLineWidth(0.6); doc.line(M, y + 1, W - M, y + 1);
     // ── title band ──
     y += 4;
-    doc.setFillColor(15, 23, 42); doc.rect(M, y, W - 2 * M, 10, 'F');
+    // Dim green (#2F6B4F), not black: the same colour as the on-screen band (.dm-ms-band).
+    doc.setFillColor(47, 107, 79); doc.rect(M, y, W - 2 * M, 10, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
-    doc.text('DISPATCH ORDER', W / 2, y + 6.8, { align: 'center' });
+    doc.text('DISPATCH ORDER' + (orderNo ? '  —  ' + orderNo : ''), W / 2, y + 6.8, { align: 'center' });
     y += 10;
     // ── order details ──
     doc.autoTable({
@@ -3762,8 +3844,8 @@
       showFoot: 'lastPage',
       rowPageBreak: 'avoid',
       head: [['S.NO', 'PHOTO', 'DESIGN NO', 'MATCHING NAME', 'MATCHING SKU NO', 'QTY']],
-      body: rows.map((r, i) => [String(i + 1), '', String(r.d.design_no || ''), String(r.m.matching_name || ''),
-        String(r.m.matching_sku_no || '-'), String(r.qty)]),
+      body: rows.map((r, i) => [String(i + 1), '', String(r.design_no || ''), String(r.matching_name || ''),
+        String(r.matching_sku_no || '-'), String(r.qty)]),
       foot: [[{ content: 'TOTAL QUANTITY', colSpan: 5, styles: { halign: 'right' } }, String(total)]],
       styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59], valign: 'middle' },
       headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
@@ -3799,22 +3881,193 @@
     const n = doc.getNumberOfPages();
     for (let i = 1; i <= n; i++) {
       doc.setPage(i);
-      pdfFooter(doc, 'Dispatch Order  ·  ' + atTxt + '  ·  Printed ' + printed, 'Page ' + i + ' of ' + n);
+      pdfFooter(doc, 'Dispatch Order' + (orderNo ? ' ' + orderNo : '') + '  ·  ' + atTxt + '  ·  Printed ' + printed, 'Page ' + i + ' of ' + n);
     }
-    msStatus(rows.length + ' item(s) · ' + total + ' pcs · ' + n + ' page(s)');
-    return { doc: doc, at: at };
+    msStatus((orderNo ? orderNo + ' · ' : '') + rows.length + ' item(s) · ' + total + ' pcs · ' + n + ' page(s)');
+    return { doc: doc, at: at, orderNo: orderNo };
   }
-  const msFileName = at => 'Dispatch_Order_' + String(at || '').replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*$/, '$3-$2-$1_$4$5') + '.pdf';
-  async function msDownload(){
+  const msFileName = (at, no) => 'Dispatch_Order_' + (no ? String(no).replace(/[^A-Za-z0-9-]+/g, '-') + '_' : '') +
+    String(at || '').replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*$/, '$3-$2-$1_$4$5') + '.pdf';
+  async function msDownload(saved){
     try {
-      const r = await msBuild(); if (!r) return;
+      const r = await msBuild(saved); if (!r) return;
       // Through downloadBlob (store-core.js), so the ERP's download stamp is applied like everywhere else.
-      downloadBlob(r.doc.output('blob'), msFileName(r.at));
-      toast('Dispatch Order PDF downloaded.', 'success');
+      downloadBlob(r.doc.output('blob'), msFileName(r.at, r.orderNo));
+      toast('Dispatch Order PDF downloaded' + (r.orderNo ? ' (' + r.orderNo + ')' : '') + '.', 'success');
     } catch (e) {
       console.error('[DM] dispatch order fail:', e);
       msStatus('PDF failed: ' + (e.message || e));
       toast('Dispatch Order PDF failed: ' + (e.message || e), 'error');
+    }
+  }
+
+  /* ── Saved Dispatch Orders ──────────────────────────────────────────── */
+  function msMissing_(e){
+    const m = String((e && (e.message || e.code)) || e || '');
+    return /design_dispatch_orders/i.test(m) && /does not exist|schema cache|could not find|relation/i.test(m) ||
+      (e && (e.code === '42P01' || e.code === 'PGRST205'));
+  }
+  function msMissingWarn_(){
+    msTableMissing = true;
+    toast('Saving Dispatch Orders is not set up yet. Admin: run DESIGN_DISPATCH_ORDER_MIGRATION.sql in the Supabase SQL Editor. The PDF still works.', 'warn');
+    msRenderSaved();
+  }
+  async function msLoadSaved(){
+    if (typeof SB_READY === 'undefined' || !SB_READY || typeof SB === 'undefined' || !SB) return;
+    try {
+      const r = await SB.from(MS_TABLE).select('*').order('id', { ascending: false }).limit(500);
+      if (r.error) throw r.error;
+      msSaved = r.data || []; msTableMissing = false;
+    } catch (e) {
+      if (msMissing_(e)) msTableMissing = true;
+      else { console.warn('[DM] saved dispatch orders load:', e.message || e); toast('Saved Dispatch Orders could not be loaded: ' + (e.message || e), 'error'); }
+      msSaved = [];
+    }
+    msSavedLoaded = true;
+    // The loaded order was deleted elsewhere: the sheet keeps its quantities as a new order.
+    if (msOrder && !msTableMissing && !msSaved.some(o => o.id === msOrder.id)) {
+      toast(msOrder.order_no + ' is no longer in the Saved list (deleted). The quantities stay on the sheet as a new, unsaved order.', 'warn');
+      msOrder = null; msDirty = false; msSaveDraft(); msShowOrder(); msFillSheet();
+    }
+    msRenderSaved();
+  }
+  const msSavedHay = o => [o.order_no, o.dispatch_at, msFmtAt(o.dispatch_at), o.prepared_by, o.updated_by]
+    .concat((o.items || []).reduce((a, it) => a.concat([it.design_no, it.matching_name, it.matching_sku_no, it.party, it.brand, it.quality]), []));
+  const msStampTxt = t => { if (!t) return ''; const d = new Date(t); if (isNaN(d)) return ''; const p = n => String(n).padStart(2, '0');
+    return msFmtAt(d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes())); };
+  // Up to two distinct values, then "+n more".
+  const msFew = vals => { const u = [...new Set(vals.filter(Boolean))]; return u.slice(0, 2).join(', ') + (u.length > 2 ? ' +' + (u.length - 2) + ' more' : ''); };
+  function msRenderSaved(){
+    const tb = q('dmMsSavedList'); if (!tb) return;
+    const cnt = q('dmMsSavedCount');
+    if (msTableMissing) {
+      if (cnt) cnt.textContent = '';
+      tb.innerHTML = '<tr><td colspan="7" class="dm-empty-row">Saving orders is not set up yet. Admin: run <b>DESIGN_DISPATCH_ORDER_MIGRATION.sql</b> in the Supabase SQL Editor.</td></tr>';
+      return;
+    }
+    const term = q('dmMsSavedQ') ? q('dmMsSavedQ').value.trim() : '';
+    const list = term && typeof sarvSearchMatch === 'function' ? msSaved.filter(o => sarvSearchMatch(msSavedHay(o), term)) : msSaved;
+    if (cnt) cnt.textContent = '(' + (term ? list.length + ' of ' : '') + msSaved.length + ')';
+    tb.innerHTML = list.length ? list.map(o => {
+      const its = o.items || [], cur = msOrder && msOrder.id === o.id;
+      const by = o.updated_by && o.updated_at && o.updated_at !== o.created_at
+        ? esc(o.prepared_by || '-') + '<div class="sub">' + esc(msStampTxt(o.created_at)) + ' · updated by ' + esc(o.updated_by) + ' ' + esc(msStampTxt(o.updated_at)) + '</div>'
+        : esc(o.prepared_by || '-') + '<div class="sub">' + esc(msStampTxt(o.created_at)) + '</div>';
+      return '<tr class="' + (cur ? 'cur' : '') + '">' +
+        '<td class="no">' + esc(o.order_no) + (cur ? '<div class="sub">on the sheet</div>' : '') + '</td>' +
+        '<td>' + esc(msFmtAt(o.dispatch_at) || '-') + '</td>' +
+        '<td>' + (o.total_items || its.length) + '</td>' +
+        '<td><b>' + (o.total_qty || its.reduce((s, x) => s + num(x.qty), 0)) + '</b> pcs</td>' +
+        '<td>' + esc(msFew(its.map(x => x.party))) + '<div class="sub">' + esc(msFew(its.map(x => x.brand))) + '</div></td>' +
+        '<td>' + by + '</td>' +
+        '<td class="act">' +
+          '<button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" title="Put this order\'s quantities on the sheet to view or change it" onclick="dmMsSavedLoad(' + o.id + ')">Load</button>' +
+          '<button type="button" class="dm-btn dm-btn-success dm-btn-xs" title="Download this order\'s PDF as it was saved" onclick="dmMsSavedPdf(' + o.id + ')">PDF</button>' +
+          (msCanDelete_(o) ? '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Delete this saved order" onclick="dmMsSavedDelete(' + o.id + ')">✕</button>' : '') +
+        '</td></tr>';
+    }).join('')
+      : '<tr><td colspan="7" class="dm-empty-row">' + (term ? 'No saved order matches this search.' : 'No Dispatch Order saved yet. Enter the quantities and press Save Order.') + '</td></tr>';
+  }
+  // Admin, or the person who saved it.
+  function msCanDelete_(o){
+    try { if (typeof isAdmin === 'function' && isAdmin()) return true; } catch (e) {}
+    const me = up(whoAmI());
+    return !!me && (up(o.created_by) === me || up(o.prepared_by) === me);
+  }
+
+  /* Save Order: a new order, or (when one is loaded and asNew is not set)
+     an update of that one. Resolves the saved row, or null. */
+  async function msSave(asNew){
+    if (!sbReady()) return null;
+    if (msTableMissing) { msMissingWarn_(); return null; }
+    const atEl = q('dmMsDispatchAt'), at = atEl ? atEl.value : '';
+    if (!at) { if (atEl) atEl.focus(); toast('DISPATCH DATE & TIME is required.', 'error'); return null; }
+    const items = msCurrentItems();
+    if (!items.length) { toast('Enter a Quantity against at least one matching.', 'error'); return null; }
+    const total = items.reduce((s, x) => s + x.qty, 0), me = whoAmI() || null;
+    const data = { dispatch_at: at, items: items, total_items: items.length, total_qty: total, updated_by: me, updated_at: new Date().toISOString() };
+    const update = !!(msOrder && !asNew);
+    if (update && !confirm('Update ' + msOrder.order_no + ' with these ' + items.length + ' item(s), ' + total + ' pcs?\n\nIts previous quantities are replaced.')) return null;
+    const btn = q('dmMsSaveBtn'); if (btn) btn.disabled = true;
+    msStatus(update ? 'Updating ' + msOrder.order_no + '…' : 'Saving the order…');
+    try {
+      let r = update ? await SB.from(MS_TABLE).update(data).eq('id', msOrder.id).select().maybeSingle() : null;
+      if (r && r.error) throw r.error;
+      if (update && !r.data) {
+        // Deleted by someone else meanwhile: offered as a new order instead of failing.
+        if (!confirm(msOrder.order_no + ' has been deleted from the Saved list.\n\nSave these quantities as a new order?')) { msStatus(''); return null; }
+      }
+      if (!r || !r.data) {
+        // A new order has no "updated" yet: the list shows it only once it is changed.
+        const ins = Object.assign({ prepared_by: me, created_by: me }, data);
+        delete ins.updated_by; delete ins.updated_at;
+        r = await SB.from(MS_TABLE).insert(ins).select().single();
+        if (r.error) throw r.error;
+      }
+      const row = r.data;
+      msOrder = { id: row.id, order_no: row.order_no, prepared_by: row.prepared_by || me || '' };
+      msDirty = false;
+      msSaveDraft(); msShowOrder(); msFillSheet();
+      const i = msSaved.findIndex(o => o.id === row.id);
+      if (i >= 0) msSaved[i] = row; else msSaved.unshift(row);
+      msRenderSaved();
+      msStatus(row.order_no + ' saved · ' + items.length + ' item(s) · ' + total + ' pcs');
+      toast((update ? 'Updated ' : 'Saved as ') + row.order_no + ' (' + items.length + ' item(s), ' + total + ' pcs).', 'success');
+      return row;
+    } catch (e) {
+      if (msMissing_(e)) { msMissingWarn_(); msStatus(''); return null; }
+      console.error('[DM] dispatch order save fail:', e);
+      msStatus('Save failed: ' + (e.message || e));
+      toast('Dispatch Order save failed: ' + (e.message || e), 'error');
+      return null;
+    } finally { if (btn) btn.disabled = false; }
+  }
+  async function msSaveAndPdf(){
+    const row = await msSave(false);
+    if (row) await msDownload(row);
+  }
+  // Load: the saved quantities onto the sheet (by matching id), to view or change.
+  function msSavedLoad(id){
+    const o = msSaved.find(x => x.id === id); if (!o) return;
+    const n = Object.keys(msQty).filter(k => msQ(k)).length;
+    if (msOrder && msOrder.id === id && !msDirty) { toast(o.order_no + ' is already on the sheet.', 'warn'); return; }
+    if (n && (!msOrder || msOrder.id !== id || msDirty) &&
+        !confirm('Load ' + o.order_no + '? The ' + n + ' item(s) now on the sheet' + (msOrder ? ' (' + msOrder.order_no + (msDirty ? ', changed' : '') + ')' : ', not saved') + ' are replaced.')) return;
+    const qty = {}, gone = [];
+    (o.items || []).forEach(it => {
+      if (msFindMatching(it.matching_id)) qty[it.matching_id] = num(it.qty);
+      else gone.push(it.design_no + ' · ' + it.matching_name);
+    });
+    msQty = qty;
+    msOrder = { id: o.id, order_no: o.order_no, prepared_by: o.prepared_by || '' };
+    msDirty = false;
+    const at = q('dmMsDispatchAt'); if (at) at.value = o.dispatch_at || '';
+    msSaveDraft(); msFillSheet(); msShowOrder(); msRender(); msRenderSaved();
+    if (gone.length) {
+      toast(gone.length + ' item(s) of ' + o.order_no + ' are no longer in Design Master and were not put on the sheet: ' +
+        esc(gone.slice(0, 5).join(', ')) + (gone.length > 5 ? '…' : '') + '. Its saved PDF still has them; saving now would drop them.', 'warn');
+    } else toast(o.order_no + ' loaded. Change the quantities and press Update ' + o.order_no + '.', 'success');
+    const sh = document.querySelector('#dmMatchingSkuPane .dm-ms-sheet'); if (sh) sh.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function msSavedPdf(id){
+    const o = msSaved.find(x => x.id === id); if (o) msDownload(o);
+  }
+  async function msSavedDelete(id){
+    const o = msSaved.find(x => x.id === id); if (!o) return;
+    if (!msCanDelete_(o)) { toast('Only the Admin or the person who saved ' + o.order_no + ' can delete it.', 'error'); return; }
+    if (!confirm('Delete saved Dispatch Order ' + o.order_no + ' (' + (o.total_items || 0) + ' item(s), ' + (o.total_qty || 0) + ' pcs)?\n\nThis cannot be undone.')) return;
+    if (!sbReady()) return;
+    try {
+      const r = await SB.from(MS_TABLE).delete().eq('id', id);
+      if (r.error) throw r.error;
+      msSaved = msSaved.filter(x => x.id !== id);
+      // Its quantities stay on the sheet, now as a new order.
+      if (msOrder && msOrder.id === id) { msOrder = null; msDirty = false; msSaveDraft(); msShowOrder(); msFillSheet(); }
+      msRenderSaved();
+      toast(o.order_no + ' deleted.', 'success');
+    } catch (e) {
+      console.error('[DM] dispatch order delete fail:', e);
+      toast('Delete failed: ' + (e.message || e), 'error');
     }
   }
   async function msOpenPdf(){
@@ -3985,9 +4238,15 @@
   window.dmMsClearFilters           = msClearFilters;
   window.dmMsDdOpen                 = msDdOpen;
   window.dmMsClearQty               = msClearQty;
-  window.dmMsDownload               = msDownload;
+  window.dmMsDownload               = () => msDownload();   // never the click event as `saved`
   window.dmMsOpenPdf                = msOpenPdf;
-  window.dmMsNow                    = () => { const at = q('dmMsDispatchAt'); if (at) { at.value = msNowLocal(); msSaveDraft(); msSummary(); } };
+  window.dmMsNow                    = () => { const at = q('dmMsDispatchAt'); if (at) { at.value = msNowLocal(); msMarkDirty(); msSaveDraft(); msSummary(); } };
+  window.dmMsSave                   = asNew => msSave(asNew === true);
+  window.dmMsSaveAndPdf             = msSaveAndPdf;
+  window.dmMsSavedReload            = msLoadSaved;
+  window.dmMsSavedLoad              = msSavedLoad;
+  window.dmMsSavedPdf               = msSavedPdf;
+  window.dmMsSavedDelete            = msSavedDelete;
 
   /* Two direct routes for future design-wise image updates: give a design
      number and get all its photos (path + URL), or get that design's bucket

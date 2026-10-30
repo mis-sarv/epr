@@ -2129,8 +2129,9 @@
                     <!-- ───────── Matching SKU › Dispatch Order ───────── -->
                     <!-- Every matching photo of the LIVE designs with its Matching SKU No and a Quantity
                          box; the ones with a quantity print as the DISPATCH ORDER PDF.
-                         store-design-master.js › MATCHING SKU (ms*). Nothing is saved to the database;
-                         quantities + date are a draft in this browser until "Clear Quantities". -->
+                         store-design-master.js › MATCHING SKU (ms*). Quantities + date are a draft in this
+                         browser until "New Order"; "Save Order" writes the order to design_dispatch_orders
+                         (DESIGN_DISPATCH_ORDER_MIGRATION.sql) and the Saved Dispatch Orders panel lists them. -->
                     <div class="dm-pane" id="dmMatchingSkuPane">
                       <!-- Toolbar (not printed): search / filters / actions. Below it, the sheet laid out
                            exactly like the Dispatch Order PDF (msBuild), with the Quantity boxes in it. -->
@@ -2156,16 +2157,34 @@
                       <div class="dm-filter-foot">
                         <span class="dm-filter-live" id="dmMsCount"></span>
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsClearFilters()">&#8635; Clear Filters</button>
-                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsClearQty()" title="Empty every Quantity box (start a new order)">Clear Quantities</button>
-                        <button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmMsDownload()">Download PDF</button>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsClearQty()" title="Empty every Quantity box and start a new, unsaved order">New Order</button>
+                        <button type="button" class="dm-btn dm-btn-primary dm-btn-xs" id="dmMsSaveBtn" onclick="dmMsSave()" title="Save this order (every matching with a Qty) to the Saved Dispatch Orders list">Save Order</button>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" id="dmMsSaveNewBtn" onclick="dmMsSave(true)" style="display:none;" title="Keep the loaded order as it is and save these quantities as a new order">Save as New</button>
+                        <button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmMsSaveAndPdf()" title="Save the order, then download its PDF">Save &amp; Download PDF</button>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsDownload()" title="PDF only, without saving">Download PDF</button>
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsOpenPdf()">Open PDF in New Tab</button>
                       </div>
+                      <div class="dm-ms-order" id="dmMsOrderBar"></div>
                       <div class="dm-ms-tip">
                         <span class="dm-cat-status" id="dmMsStatus"></span>
-                        Type the Qty against each matching (Enter goes to the next box). The PDF has <b>every matching with a Qty</b>,
+                        Type the Qty against each matching (Enter goes to the next box). The order (Save / PDF) has <b>every matching with a Qty</b>,
                         even ones hidden by the filter; <b>Show: Only with Quantity</b> shows the sheet exactly as it will print.
                       </div>
                       </div>
+
+                      <!-- Saved Dispatch Orders (store-design-master.js › msSaved*): Load puts an order's
+                           quantities back on the sheet to change it, PDF prints it as it was saved. -->
+                      <details class="dm-ms-saved" id="dmMsSavedBox" open>
+                        <summary>Saved Dispatch Orders <span class="dm-ms-saved-n" id="dmMsSavedCount"></span></summary>
+                        <div class="dm-ms-saved-bar">
+                          <input type="search" id="dmMsSavedQ" autocomplete="off" placeholder="Search order no, date, design, SKU, party, brand, prepared by...">
+                          <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsSavedReload()">&#8635; Refresh</button>
+                        </div>
+                        <div class="dm-ms-saved-wrap"><table class="dm-ms-saved-table">
+                          <thead><tr><th>ORDER NO</th><th>DISPATCH DATE &amp; TIME</th><th>ITEMS</th><th>QTY</th><th>PARTY / BRAND</th><th>SAVED BY</th><th></th></tr></thead>
+                          <tbody id="dmMsSavedList"><tr><td colspan="7" class="dm-empty-row">Loading…</td></tr></tbody>
+                        </table></div>
+                      </details>
 
                       <div class="dm-ms-sheet">
                         <div class="dm-ms-lh">
@@ -2173,7 +2192,7 @@
                           <div class="dm-ms-addr" id="dmMsAddr"></div>
                           <div class="dm-ms-addr" id="dmMsGstin"></div>
                         </div>
-                        <div class="dm-ms-band">DISPATCH ORDER</div>
+                        <div class="dm-ms-band">DISPATCH ORDER<span id="dmMsBandNo"></span></div>
 
                         <table class="dm-ms-info">
                           <tr>
