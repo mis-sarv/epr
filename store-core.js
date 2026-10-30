@@ -3196,7 +3196,24 @@ async function loadUnloadDraftRows_(){
     if(q.error)throw q.error;
     const rows=(q.data||[]).filter(r=>inwDraftItems_(r).length);
     sarvUnloadPending=rows.filter(r=>r.status==='Pending');
-    return rows.filter(r=>r.status==='Approved').map(r=>({...r,_src:'UL'}));
+    /* An approval whose Inward is already saved must not come back as a
+       draft, even when ul_mark_used failed at the time (e.g. the session had
+       been revoked by a login on another device): booking it again would
+       create the same receipt twice. The saved record carries the
+       approval_id in unload_info, so those are dropped here. Best-effort: if
+       the lookup cannot run, the list is shown as before and the duplicate
+       check on Submit is still there. */
+    let approved=rows.filter(r=>r.status==='Approved');
+    if(approved.length){
+      try{
+        const b=await SB.from('inward_entries').select('approval_id:unload_info->>approval_id')
+          .in('unload_info->>approval_id',approved.map(r=>String(r.id)));
+        if(b.error)throw b.error;
+        const booked=new Set((b.data||[]).map(x=>String(x.approval_id)));
+        approved=approved.filter(r=>!booked.has(String(r.id)));
+      }catch(e){console.warn('[SARV] Booked-approval check skipped:',e.message||e);}
+    }
+    return approved.map(r=>({...r,_src:'UL'}));
   }catch(e){
     if(unloadTableMissing_(e))sarvUnloadTableMissing=true;
     else console.warn('[SARV] Unloader drafts load skipped:',e.message||e);
@@ -15157,6 +15174,14 @@ async function loadInwardForEdit(id,no){
   }else{
     showToast('This database does not save Freight / Round off. Re-enter both before editing (add the freight_exp and round_off columns).','warn');
   }
+  /* Freight Calculator inputs, saved on the header since they started being
+     written. Records saved before that have them empty (0): the calculator is
+     then left as it is, so whatever the user types for the regenerated PDF
+     is not overwritten with zeros. */
+  if(pNum(e.gross_weight)||pNum(e.freight_rate)){
+    set('calcGrossWeight',pNum(e.gross_weight));
+    set('calcFreightRate',pNum(e.freight_rate));
+  }
   applyInwardNbGstLock();
   updateStoreTotals();
   refreshStoreEditUi();
@@ -16442,7 +16467,7 @@ window.addEventListener('DOMContentLoaded',()=>{
          '<tr><td class="lbl">Net Weight (Items):</td><td class="val">'+pEsc(d.netWeight!=null&&d.netWeight!==''?nWt_(d.netWeight):(inTotWeight?nWt_(inTotWeight):'-'))+'</td></tr>'+
          '<tr><td class="lbl">Gross Weight:</td><td class="val">'+pEsc(d.grossWeight||d.calcGrossWeight||0)+' KGS</td></tr>'+
          '<tr><td class="lbl">Freight Rate / Kg:</td><td class="val">'+pMoneyX(d.freightRate||d.calcFreightRate)+'</td></tr>'+
-         '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoneyX(d.freight||d.freightExp)+'</td></tr>'+
+         '<tr><td class="lbl">Total Freight Amt:</td><td class="val">'+pMoneyX(inwCalcFreightAmt_(d))+'</td></tr>'+
          '<tr><td class="lbl" style="color:#047857">Cost on Yarn / Kg:</td><td class="val" style="color:#047857">'+pMoney(d.costOnYarn||d.calcCostOnYarn)+'</td></tr>'+
        '</table></div>'+
        '<table class="tot">'+
@@ -16766,7 +16791,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Net Weight (Items):',netWeight+' KGS'],
        ['Gross Weight:',(d.grossWeight||d.calcGrossWeight||0)+' KGS'],
        ['Freight Rate / Kg:',nNumX_(d.freightRate||d.calcFreightRate)],
-       ['Total Freight Amt:',nNumX_(d.freight||d.freightExp)],
+       ['Total Freight Amt:',nNumX_(inwCalcFreightAmt_(d))],
        ['Cost on Yarn / Kg:',nNum_(d.costOnYarn||d.calcCostOnYarn)]
      ];
      let fy=yy+8;
@@ -19391,6 +19416,20 @@ window.addEventListener('DOMContentLoaded',()=>{
       });
     return result;
   }
+ /* "Total Freight Amt" in the PDF's Freight Calculator box is the
+    CALCULATOR's figure, Gross Weight x Freight Rate / Kg (calcFreightAmt on
+    screen). Both PDF builders used to print d.freight||d.freightExp there,
+    which is the billing "Freight Expenses (+)" box: a separate, often empty
+    field, so the calculator's amount went missing (or a different figure was
+    printed) while the screen showed it. Data from before freightAmt was
+    carried falls back to Gross x Rate, and only then to Freight Expenses. */
+ function inwCalcFreightAmt_(d){
+   if(!d)return 0;
+   if(d.freightAmt!=null&&d.freightAmt!=='')return pNum(d.freightAmt);
+   const gw=pNum(d.grossWeight||d.calcGrossWeight),rate=pNum(d.freightRate||d.calcFreightRate);
+   if(gw&&rate)return gw*rate;
+   return pNum(d.freight||d.freightExp);
+ }
  function collectInwardData(no,rows){
    // Same maths as updateStoreTotals(): each row's total already honours its
    // Bill Basis (WEIGHT → Gross Wt × rate, QTY → Qty × rate), so the summary
@@ -19807,6 +19846,13 @@ window.addEventListener('DOMContentLoaded',()=>{
      try{
        const fr=await SB.from('inward_entries').update({freight_exp:pNum(pVal('freightExp')),round_off:pNum(pVal('roundOffInput'))}).eq('id',h.data.id);
        if(fr.error)console.warn('[SARV] Freight / Round off not stored on the header (add freight_exp, round_off columns):',fr.error.message);
+       /* The Freight Calculator's inputs too (gross_weight / freight_rate).
+          The columns existed but were never written, so an Admin edit came
+          back with an empty calculator and its regenerated PDF lost Gross
+          Weight, Freight Amt and Cost on Yarn. A separate call, so a database
+          without these two columns still keeps Freight / Round off above. */
+       const fc=await SB.from('inward_entries').update({gross_weight:pNum(pVal('calcGrossWeight')),freight_rate:pNum(pVal('calcFreightRate'))}).eq('id',h.data.id);
+       if(fc.error)console.warn('[SARV] Freight Calculator not stored on the header (add gross_weight, freight_rate columns):',fc.error.message);
      }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
      /* req_no on the LINE, not just the header. A receipt covering two
         requirements has no other way to say which of them a given item belongs

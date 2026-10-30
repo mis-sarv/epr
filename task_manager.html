@@ -44,6 +44,46 @@
         /* Sticky first column for Excel view */
         .sticky-col { position: sticky; left: 0; z-index: 40; background-color: white; border-right: 2px solid #e2e8f0; box-shadow: 4px 0 10px -2px rgba(0, 0, 0, 0.05); }
         .sticky-col-header { position: sticky; left: 0; top: 0; z-index: 50; background-color: #f8fafc; border-right: 2px solid #e2e8f0; box-shadow: 4px 0 10px -2px rgba(0, 0, 0, 0.05); }
+
+        /* My Tasks (dashboard + task list) always shows as a full-screen mobile app:
+           navigate() puts tm-mobile-full on <body> for those two screens. The top
+           nav bar and the page padding go away, the card fills the whole height,
+           and on a desktop it stays a phone-width column in the middle. Hiding the
+           nav also stops it covering the task list's own sticky header. */
+        body.tm-mobile-full { background-color: #e2e8f0; }
+        body.tm-mobile-full > nav { display: none; }
+        body.tm-mobile-full > main { max-width: none; padding: 0; }
+        body.tm-mobile-full #screen-employee-dashboard,
+        body.tm-mobile-full #screen-task-list { max-width: 480px; margin: 0 auto; padding: 0; min-height: 100vh; min-height: 100dvh; background-color: #f8fafc; box-shadow: 0 0 0 1px #cbd5e1; }
+        body.tm-mobile-full #screen-employee-dashboard > div,
+        body.tm-mobile-full #screen-task-list > div { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; min-height: 100dvh; }
+        body.tm-mobile-full #screen-employee-dashboard > div > div:first-child { border-radius: 0; padding-top: max(1.5rem, env(safe-area-inset-top)); }
+        body.tm-mobile-full #screen-task-list > div > div:first-child { padding-top: max(1rem, env(safe-area-inset-top)); }
+
+        /* Month sheet (My Month View + MD sheet): the date header row stays frozen
+           while scrolling down and the Tasks column while scrolling sideways.
+           isolation keeps these z-indexes inside the table box, so the frozen
+           corner never paints over the top nav bar when the page itself scrolls.
+           Each date cell is its own stacking context (z-index 0), so the dots and
+           buttons inside it (z-20..z-40) slide UNDER the frozen column and header
+           instead of over them. With border-collapse the borders of a sticky cell
+           do not travel with it, hence the inset shadow line under the header. */
+        .excel-table-container { isolation: isolate; }
+        .tm-month-sheet thead th { position: sticky; top: 0; z-index: 45; background-color: #f1f5f9; box-shadow: inset 0 -2px 0 #cbd5e1; }
+        .tm-month-sheet thead th.tm-today { background-color: #e0e7ff; box-shadow: inset 0 -4px 0 #6366f1; }
+        .tm-month-sheet thead th.sticky-col-header { left: 0; z-index: 60; background-color: #f8fafc; box-shadow: inset 0 -2px 0 #cbd5e1, 4px 0 10px -2px rgba(0, 0, 0, 0.08); }
+        .tm-month-sheet tbody td { position: relative; z-index: 0; }
+        .tm-month-sheet tbody td.sticky-col { position: sticky; z-index: 40; }
+        .tm-month-sheet th.sticky-col-header, .tm-month-sheet td.sticky-col { text-align: left; }
+        /* Phones: a narrow Tasks column with small text, so more dates fit on screen. */
+        @media (max-width: 640px) {
+            .tm-month-sheet th.sticky-col-header, .tm-month-sheet td.sticky-col { min-width: 140px; max-width: 160px; width: 160px; padding: 6px 8px; }
+            .tm-month-sheet td.sticky-col .tm-task-desc { font-size: 11px; line-height: 1.25; word-break: break-word; }
+            .tm-month-sheet td.sticky-col .tm-task-no { font-size: 10px; width: auto; margin-right: 4px; }
+            .tm-month-sheet td.sticky-col span[class*="text-[9px]"] { font-size: 8px; padding: 0 4px; letter-spacing: 0.02em; }
+            .tm-month-sheet .tm-head-note { display: none; }
+            .tm-month-sheet thead th:not(.sticky-col-header), .tm-month-sheet tbody td:not(.sticky-col) { min-width: 44px; width: 44px; }
+        }
         
         /* Animations */
         .check-pop { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
@@ -237,8 +277,14 @@
             <div class="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border border-indigo-100"><i class="ph-fill ph-check-circle text-4xl"></i></div>
             <h3 class="text-xl font-extrabold text-center text-slate-800 mb-2">Confirm Task Done</h3>
             <p class="text-slate-500 text-sm font-medium text-center mb-4">Upload proof to complete. It is saved under your name with the time.</p>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required)</label>
-            <input type="file" id="taskProofInput" accept="image/*" capture="environment" class="w-full mb-6 text-sm file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-bold file:cursor-pointer outline-none bg-slate-50 border border-slate-200 rounded-xl p-1">
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required) <span id="taskProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
+            <!-- Two pickers: "capture" forces the camera on Android, so the
+                 gallery / file manager needs its own input without it. -->
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('task', this)"></label>
+                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('task', this)"></label>
+            </div>
+            <div id="taskProofThumbs" class="flex flex-wrap gap-2 mb-6"></div>
             <div class="flex gap-3">
                 <button onclick="closeTaskPinModal()" class="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl font-bold transition-colors">Cancel</button>
                 <button onclick="verifyTaskPin()" id="taskPinConfirmBtn" class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-colors shadow-md">Confirm</button>
@@ -252,8 +298,12 @@
             <div class="w-16 h-16 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border border-red-100"><i class="ph-fill ph-lock-key text-4xl"></i></div>
             <h3 class="text-xl font-extrabold text-center text-slate-800 mb-2" id="lateTaskPinTitle">Approve Late Task</h3>
             <p class="text-slate-500 text-sm font-medium text-center mb-4" id="lateTaskPinDesc">The penalty applies. The approval is saved under your name.</p>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required)</label>
-            <input type="file" id="lateTaskProofInput" accept="image/*" capture="environment" class="w-full mb-6 text-sm file:mr-3 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:bg-red-50 file:text-red-700 file:font-bold file:cursor-pointer outline-none bg-slate-50 border border-slate-200 rounded-xl p-1">
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required) <span id="lateProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
+            <div class="grid grid-cols-2 gap-2 mb-3">
+                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold cursor-pointer hover:bg-red-100 transition-colors"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('late', this)"></label>
+                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold cursor-pointer hover:bg-red-100 transition-colors"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('late', this)"></label>
+            </div>
+            <div id="lateProofThumbs" class="flex flex-wrap gap-2 mb-6"></div>
             <div class="flex gap-3">
                 <button onclick="closeLateTaskPinModal()" class="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl font-bold transition-colors">Cancel</button>
                 <button onclick="verifyLateTaskPin()" id="lateTaskConfirmBtn" class="w-1/2 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl font-bold transition-colors shadow-md">Approve</button>
@@ -857,12 +907,12 @@
 
         <!-- 10. FULL MONTH SHEET (Main Spreadsheet) -->
         <div id="screen-employee-sheet" class="screen-view hidden w-full">
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden">
-                <div class="bg-slate-50 border-b border-slate-200 p-5 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
+            <div class="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-200 flex flex-col h-[calc(100dvh-130px)] sm:h-[calc(100vh-140px)] min-h-[420px] overflow-hidden">
+                <div class="bg-slate-50 border-b border-slate-200 p-3 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 shrink-0">
                     <div class="flex items-center">
-                        <button onclick="navigate('employee-dashboard')" class="w-12 h-12 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-600 mr-4 hover:bg-slate-100 transition-colors print-hide shadow-sm active:scale-95"><i class="ph-bold ph-arrow-left text-xl"></i></button>
+                        <button onclick="navigate('employee-dashboard')" class="w-10 h-10 sm:w-12 sm:h-12 shrink-0 flex items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-600 mr-3 sm:mr-4 hover:bg-slate-100 transition-colors print-hide shadow-sm active:scale-95"><i class="ph-bold ph-arrow-left text-xl"></i></button>
                         <div>
-                            <h2 class="text-2xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-table mr-2 text-indigo-500 text-3xl"></i> My Month View</h2>
+                            <h2 class="text-lg sm:text-2xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-table mr-2 text-indigo-500 text-2xl sm:text-3xl"></i> My Month View</h2>
                             <div class="flex items-center gap-2 mt-1.5 print-hide">
                                 <button onclick="shiftViewMonth(-1)" title="Previous month" class="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold">‹</button>
                                 <span class="text-xs font-extrabold text-slate-600 uppercase tracking-widest min-w-[120px] text-center" id="sheetMonthDisplay"></span>
@@ -872,18 +922,18 @@
                             <div id="sheetMonthScore" class="mt-1.5"></div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <div class="flex items-center text-[10px] font-extrabold text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-green-500 mr-1.5 text-sm"></i> On Time</div>
-                        <div class="flex items-center text-[10px] font-extrabold text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-amber-500 mr-1.5 text-sm"></i> Grace</div>
-                        <div class="flex items-center text-[10px] font-extrabold text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-orange-600 mr-1.5 text-sm"></i> Late</div>
-                        <div class="flex items-center text-[10px] font-extrabold text-slate-600 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><div class="w-3 h-3 bg-red-500 mr-2 rounded-sm"></div> Missed</div>
-                        <button onclick="navigate('home')" class="ml-2 px-4 py-2 text-[10px] font-extrabold text-slate-600 bg-white hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 print-hide flex items-center uppercase tracking-wider active:scale-95"><i class="ph-bold ph-house mr-1.5 text-sm"></i> Home</button>
+                    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <div class="flex items-center text-[9px] sm:text-[10px] font-extrabold text-slate-600 bg-white px-2 py-1 sm:px-3 sm:py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-green-500 mr-1 sm:mr-1.5 text-sm"></i> On Time</div>
+                        <div class="flex items-center text-[9px] sm:text-[10px] font-extrabold text-slate-600 bg-white px-2 py-1 sm:px-3 sm:py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-amber-500 mr-1 sm:mr-1.5 text-sm"></i> Grace</div>
+                        <div class="flex items-center text-[9px] sm:text-[10px] font-extrabold text-slate-600 bg-white px-2 py-1 sm:px-3 sm:py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><i class="ph-bold ph-check text-orange-600 mr-1 sm:mr-1.5 text-sm"></i> Late</div>
+                        <div class="flex items-center text-[9px] sm:text-[10px] font-extrabold text-slate-600 bg-white px-2 py-1 sm:px-3 sm:py-2 rounded-lg border border-slate-200 shadow-sm uppercase tracking-wider"><div class="w-3 h-3 bg-red-500 mr-1.5 sm:mr-2 rounded-sm"></div> Missed</div>
+                        <button onclick="navigate('home')" class="sm:ml-2 px-3 py-1 sm:px-4 sm:py-2 text-[10px] font-extrabold text-slate-600 bg-white hover:bg-slate-100 rounded-lg transition-colors border border-slate-200 print-hide flex items-center uppercase tracking-wider active:scale-95"><i class="ph-bold ph-house mr-1.5 text-sm"></i> Home</button>
                     </div>
                 </div>
                 
-                <div class="excel-table-container flex-grow overflow-auto bg-slate-200 relative p-4">
-                    <div class="bg-white border border-slate-300 shadow-lg inline-block min-w-full rounded-sm">
-                        <table class="w-full text-left border-collapse" id="excelTable">
+                <div class="excel-table-container flex-grow overflow-auto bg-white relative">
+                    <div class="bg-white inline-block min-w-full">
+                        <table class="tm-month-sheet w-full text-left border-collapse" id="excelTable">
                             <thead>
                                 <tr class="bg-slate-100 border-b-2 border-slate-300 text-slate-800 text-xs sm:text-sm" id="excelHeaderRow"></tr>
                             </thead>
@@ -922,8 +972,8 @@
                             </div>
                             <button onclick="document.getElementById('mdSheetContainer').classList.add('hidden'); appState.mdSelectedCode=null;" class="text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white px-5 py-2.5 rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center uppercase tracking-wider active:scale-95">Close Sheet <i class="ph-bold ph-x ml-2"></i></button>
                         </div>
-                        <div class="excel-table-container overflow-auto border border-slate-300 rounded-lg shadow-md bg-slate-100 max-h-[600px] p-3 relative">
-                            <table class="w-full text-left border-collapse bg-white shadow-sm" id="mdExcelTable">
+                        <div class="excel-table-container overflow-auto border border-slate-300 rounded-lg shadow-md bg-white max-h-[70vh] relative">
+                            <table class="tm-month-sheet w-full text-left border-collapse bg-white" id="mdExcelTable">
                                 <thead>
                                     <tr class="bg-slate-100 border-b-2 border-slate-300 text-slate-800 text-xs" id="mdExcelHeaderRow"></tr>
                                 </thead>
@@ -1226,6 +1276,52 @@
             });
         }
 
+        /* Proof photos picked in the Task Done / Late Approval modals. The
+           server stores ONE image per task (tm_mark_done / tm_approve_late
+           p_proof, read back by tm_get_proof), so several photos are joined
+           into one grid picture here instead of changing the tables. A single
+           photo still goes through compressImage exactly as before. */
+        const MAX_PROOF_PHOTOS = 6;
+        const proofFiles = { task: [], late: [] };
+        function resetProof(kind) { proofFiles[kind].forEach(p => URL.revokeObjectURL(p.url)); proofFiles[kind] = []; renderProofThumbs(kind); }
+        window.addProofFiles = function(kind, input) {
+            const list = proofFiles[kind]; let skipped = 0;
+            Array.from(input.files || []).forEach(f => {
+                if (list.length >= MAX_PROOF_PHOTOS) { skipped++; return; }
+                list.push({ file: f, url: URL.createObjectURL(f) });
+            });
+            input.value = ''; // so the same photo can be picked again after removing it
+            renderProofThumbs(kind);
+            if (skipped) showCustomModal('Too many photos', `Up to ${MAX_PROOF_PHOTOS} photos can be attached. ${skipped} not added.`, true);
+        }
+        window.removeProofFile = function(kind, i) { const p = proofFiles[kind].splice(i, 1)[0]; if (p) URL.revokeObjectURL(p.url); renderProofThumbs(kind); }
+        function renderProofThumbs(kind) {
+            const box = document.getElementById(kind + 'ProofThumbs'), cnt = document.getElementById(kind + 'ProofCount'); if (!box) return;
+            const list = proofFiles[kind];
+            box.innerHTML = list.map((p, i) => `<div class="relative w-16 h-16 rounded-lg overflow-hidden border border-slate-300 bg-slate-100"><img src="${p.url}" class="w-full h-full object-cover" alt="Proof ${i + 1}"><button type="button" onclick="removeProofFile('${kind}',${i})" title="Remove" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-white/90 text-red-600 text-xs font-bold leading-5 text-center border border-slate-300">✕</button></div>`).join('');
+            if (cnt) cnt.textContent = list.length ? `(${list.length} of ${MAX_PROOF_PHOTOS})` : '';
+        }
+        function loadProofImg_(file) {
+            return new Promise((resolve, reject) => { const r = new FileReader(); r.onerror = () => reject(new Error('Could not read the photo')); r.onload = e => { const img = new Image(); img.onerror = () => reject(new Error('This file is not a photo')); img.onload = () => resolve(img); img.src = e.target.result; }; r.readAsDataURL(file); });
+        }
+        async function buildProofImage(kind) {
+            const files = proofFiles[kind].map(p => p.file);
+            if (files.length === 1) return compressImage(files[0]);
+            const imgs = []; for (const f of files) imgs.push(await loadProofImg_(f));
+            // 2 photos side by side, 3-4 in a 2x2 grid, 5-6 in 3 columns; each cell keeps the photo's shape (fit, not crop).
+            const cols = imgs.length <= 4 ? 2 : 3, rows = Math.ceil(imgs.length / cols), cell = cols === 2 ? 600 : 500, gap = 6;
+            const cv = document.createElement('canvas'); cv.width = cols * cell + (cols + 1) * gap; cv.height = rows * cell + (rows + 1) * gap;
+            const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, cv.width, cv.height);
+            imgs.forEach((img, i) => {
+                const x0 = gap + (i % cols) * (cell + gap), y0 = gap + Math.floor(i / cols) * (cell + gap);
+                const s = Math.min(cell / img.width, cell / img.height), w = img.width * s, h = img.height * s;
+                g.fillStyle = '#f1f5f9'; g.fillRect(x0, y0, cell, cell);
+                g.drawImage(img, x0 + (cell - w) / 2, y0 + (cell - h) / 2, w, h);
+                g.fillStyle = 'rgba(15,23,42,0.75)'; g.fillRect(x0, y0, 34, 28); g.fillStyle = '#ffffff'; g.font = 'bold 18px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), x0 + 17, y0 + 14);
+            });
+            return cv.toDataURL('image/jpeg', 0.7);
+        }
+
         function setBusy(btnId, busy, label) { const b = document.getElementById(btnId); if (!b) return; if (busy) { b.dataset.label = b.textContent; b.textContent = 'Saving…'; b.disabled = true; b.classList.add('opacity-60'); } else { b.textContent = label || b.dataset.label || b.textContent; b.disabled = false; b.classList.remove('opacity-60'); } }
 
         // Core Modals
@@ -1336,6 +1432,10 @@
         function navigate(sId) {
             appState.currentScreen = sId;
             document.querySelectorAll('.screen-view').forEach(el => el.classList.add('hidden')); document.getElementById('screen-' + sId).classList.remove('hidden');
+            // My Tasks screens: full-screen mobile layout (see tm-mobile-full in the CSS).
+            const full = sId === 'employee-dashboard' || sId === 'task-list';
+            document.body.classList.toggle('tm-mobile-full', full);
+            if (full) window.scrollTo(0, 0);
             if(sId==='home') applyHomeAccess(); else if(sId==='add-task') initAddTaskScreen(); else if(sId==='md-view') renderMDView(); else if(sId==='score-card') renderScoreCard(); else if(sId==='employee-list') renderEmployeeList(); else if(sId==='completion-chart') initCompletionChart(); else if(sId==='ea-delegation') initEADelegation(); else if(sId==='assign-buddy') initAssignBuddy();
             else if(sId==='score-master') initScoreMaster();
             else if(sId==='pc-followup') initPcFollowup();
@@ -2251,14 +2351,14 @@
         }
         window.closeProofModal = function() { const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); setTimeout(()=>{m.classList.add('hidden'); m.classList.remove('flex'); document.getElementById('proofImageView').src="";},300); }
 
-        window.promptTaskPin = function(e,t,d) { pendingTaskConfirm={e,t,d}; document.getElementById('taskProofInput').value=''; const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); mod.classList.remove('hidden'); mod.classList.add('flex'); void mod.offsetWidth; con.classList.remove('scale-95','opacity-0'); con.classList.add('scale-100','opacity-100'); }
-        window.closeTaskPinModal = function() { const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); con.classList.remove('scale-100','opacity-100'); con.classList.add('scale-95','opacity-0'); setTimeout(()=>{mod.classList.add('hidden'); mod.classList.remove('flex'); pendingTaskConfirm=null;},300); }
+        window.promptTaskPin = function(e,t,d) { pendingTaskConfirm={e,t,d}; resetProof('task'); const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); mod.classList.remove('hidden'); mod.classList.add('flex'); void mod.offsetWidth; con.classList.remove('scale-95','opacity-0'); con.classList.add('scale-100','opacity-100'); }
+        window.closeTaskPinModal = function() { const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); con.classList.remove('scale-100','opacity-100'); con.classList.add('scale-95','opacity-0'); setTimeout(()=>{mod.classList.add('hidden'); mod.classList.remove('flex'); pendingTaskConfirm=null; resetProof('task');},300); }
         window.verifyTaskPin = async function() {
-            if(!pendingTaskConfirm) return; const f=document.getElementById('taskProofInput');
-            if(!f.files.length) return showCustomModal("Proof Required", "Upload photo to complete.", true);
+            if(!pendingTaskConfirm) return;
+            if(!proofFiles.task.length) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery) to complete.", true);
             const p = pendingTaskConfirm; setBusy('taskPinConfirmBtn', true);
             try {
-                const b64 = await compressImage(f.files[0]);
+                const b64 = await buildProofImage('task');
                 const res = await tmRpc('tm_mark_done', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: b64 });
                 if (!res.ok) return tmErr(res);
                 closeTaskPinModal(); await refreshAndRerender();
@@ -2277,15 +2377,15 @@
             pendingLateTask = { eCode, taskId, dateStr, freq }; document.getElementById('lateTaskPinTitle').textContent = freq === 'ea' ? "Approve Late EA Task" : "Approve Late Task";
             const t = findTask(eCode, taskId); const sc = t && taskScore(t, dateStr, recOf(t, dateStr));
             document.getElementById('lateTaskPinDesc').textContent = 'Points if approved now: ' + (sc ? sc.pts : '?') + '. Saved under your name.';
-            document.getElementById('lateTaskProofInput').value = ''; const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95', 'opacity-0'); c.classList.add('scale-100', 'opacity-100');
+            resetProof('late'); const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95', 'opacity-0'); c.classList.add('scale-100', 'opacity-100');
         }
-        window.closeLateTaskPinModal = function() { const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); c.classList.remove('scale-100', 'opacity-100'); c.classList.add('scale-95', 'opacity-0'); setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); pendingLateTask = null; }, 300); }
+        window.closeLateTaskPinModal = function() { const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); c.classList.remove('scale-100', 'opacity-100'); c.classList.add('scale-95', 'opacity-0'); setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); pendingLateTask = null; resetProof('late'); }, 300); }
         window.verifyLateTaskPin = async function() {
-            if(!pendingLateTask) return; const f = document.getElementById('lateTaskProofInput');
-            if(!f.files.length) return showCustomModal("Proof Required", "Upload photo.", true);
+            if(!pendingLateTask) return;
+            if(!proofFiles.late.length) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery).", true);
             const p = pendingLateTask; setBusy('lateTaskConfirmBtn', true);
             try {
-                const b64 = await compressImage(f.files[0]);
+                const b64 = await buildProofImage('late');
                 const res = await tmRpc('tm_approve_late', { p_emp: p.eCode, p_task_no: p.taskId, p_date: p.dateStr, p_proof: b64 });
                 if (!res.ok) return tmErr(res);
                 closeLateTaskPinModal(); await refreshAndRerender();
@@ -2536,7 +2636,7 @@
             // A task taken off the checklist still shows in the months it was on it.
             dTasks = dTasks.filter(t => { for (let d = 1; d <= dim; d++) { const ds = dsOf(d); if (occursOn(t, ds, recOf(t, ds))) return true; if (t.frequency==='ea' && t.isPostponed && t.postponeHistory && ds >= t.postponeHistory[0] && ds <= t.freqValue) return true; } return false; });
 
-            let hHtml=`<th class="p-3 sticky-col-header min-w-[300px] border-b-2 border-slate-300">Tasks (${esc(emp.empName)})<div class="text-[10px] font-bold text-slate-400 normal-case mt-0.5">Under each date: score % and points gained</div></th>`;
+            let hHtml=`<th class="p-3 sticky-col-header min-w-[300px] border-b-2 border-slate-300 text-left align-bottom">Tasks (${esc(emp.empName)})<div class="tm-head-note text-[10px] font-bold text-slate-400 normal-case mt-0.5">Under each date: score % and points gained</div></th>`;
             for(let d=1;d<=dim;d++) {
                 const ds=dsOf(d); const isT = ds===td;
                 let dots=[]; dTasks.forEach(t=>{ const rec=recOf(t, ds); if(!occursOn(t, ds, rec)) return; const isR=rec&&(rec.status==='pending-reschedule'||rec.status==='rescheduled-done'); if(isR){ if(!dots.includes('bg-purple-500'))dots.push('bg-purple-500'); }else{ const f=t.frequency||'daily'; if(f==='monthly'&&!dots.includes('bg-emerald-500'))dots.push('bg-emerald-500'); if(f==='weekly'&&!dots.includes('bg-blue-500'))dots.push('bg-blue-500'); if(f==='yearly'&&!dots.includes('bg-orange-500'))dots.push('bg-orange-500'); } });
@@ -2544,7 +2644,7 @@
                 const s = dayScore(emp, ds, now);
                 const sH = s.possible ? `<div class="mt-1 leading-tight" title="${s.gained} of ${s.possible} pts · ${s.onTime} on time, ${s.grace} grace, ${s.late} late, ${s.missed + s.overdue} not done"><div class="text-[10px] font-extrabold ${pctCls(s.pct)}">${s.pct}%</div><div class="text-[9px] font-bold text-slate-500">${s.gained}</div></div>`
                     : (ds <= td && s.upcoming ? '<div class="mt-1 text-[9px] font-bold text-slate-400 leading-tight">due</div>' : '');
-                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'bg-indigo-100 text-indigo-900 border-b-4 border-indigo-500':''}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}</th>`;
+                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'tm-today text-indigo-900':''}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}</th>`;
             } th.innerHTML=hHtml;
 
             dTasks.forEach(t=>{
@@ -2552,7 +2652,7 @@
                 const oc=esc(t.ownerCode);
                 let bb=t.isBuddyTask?`<span class="text-[9px] font-extrabold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 mt-1 inline-block uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users"></i> Buddy (${esc(t.primaryName)})</span>`:''; let sb=t.isSelfTask?`<span class="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 mt-1 inline-block uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user"></i> Self · not counted</span>`:'';
                 const off = t.active===false ? `<span class="text-[9px] font-extrabold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 mt-1 inline-block uppercase tracking-wider">Removed ${esc(t.deactivatedAt ? ymd(new Date(t.deactivatedAt)) : '')}</span>` : '';
-                let rH=`<td class="p-4 sticky-col border-b border-slate-300 bg-white group-hover:bg-slate-50 transition-colors"><div class="flex items-start"><span class="text-slate-400 font-mono text-xs font-extrabold mr-3 mt-0.5 w-5 text-right">${t.id}.</span><div><div class="font-extrabold text-slate-800 leading-tight text-sm">${esc(t.desc)}</div><div class="flex flex-wrap gap-x-2 gap-y-1.5 mt-1.5">${t.time?`<span class="text-[9px] font-extrabold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shadow-inner tracking-wider uppercase"><i class="ph-bold ph-clock"></i> ${esc(t.time)}</span>`:''}<span class="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 uppercase tracking-widest shadow-inner"><i class="ph-bold ph-calendar"></i> ${esc(getFrequencyText(t))}</span></div>${bb}${sb}${off}${fuChip(t)}</div></div></td>`;
+                let rH=`<td class="p-4 sticky-col border-b border-slate-300 bg-white group-hover:bg-slate-50 transition-colors"><div class="flex items-start"><span class="tm-task-no text-slate-400 font-mono text-xs font-extrabold mr-3 mt-0.5 w-5 text-right shrink-0">${t.id}.</span><div class="min-w-0 text-left"><div class="tm-task-desc font-extrabold text-slate-800 leading-tight text-sm">${esc(t.desc)}</div><div class="flex flex-wrap gap-x-2 gap-y-1.5 mt-1.5">${t.time?`<span class="text-[9px] font-extrabold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 shadow-inner tracking-wider uppercase"><i class="ph-bold ph-clock"></i> ${esc(t.time)}</span>`:''}<span class="text-[9px] font-extrabold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 uppercase tracking-widest shadow-inner"><i class="ph-bold ph-calendar"></i> ${esc(getFrequencyText(t))}</span></div>${bb}${sb}${off}${fuChip(t)}</div></div></td>`;
 
                 for(let d=1;d<=dim;d++){
                     const ds=dsOf(d);

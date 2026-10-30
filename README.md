@@ -23,6 +23,7 @@ together**. Mailing just `Store.html` to someone gives them an empty page.
 | `DROPDOWN_MASTER_MIGRATION.sql` | `sales_dropdowns` table + unique index + RLS, for Master Data › Dropdown Master. Run **once**. |
 | `DESIGN_SUPPLIER_MIGRATION.sql` | `design_master.supplier_name` column, for Design Master's Supplier Name field. Run **once**. |
 | `DESIGN_SKU_MIGRATION.sql` | **`design_master.design_sku_no` column**: the SKU No. that goes with a Design No. In Create New it sits right after Design No (**required**); the Live tab has its own column + ▾ filter; in the Bulk Upload grid it is under Design No (optional); it also appears in the Catalogue PDF filters and the PDF spec table. Run **once** (safe to re-run). The column is nullable and not UNIQUE; the app itself asks about a duplicate SKU. If you want it always unique, the file has a commented unique index. Before the migration the screen still works, the SKU just isn't saved and the app says so once. See below. |
+| `DESIGN_MATCHING_SKU_MIGRATION.sql` | **`design_matchings.matching_sku_no` column**: a SKU No. for each matching (shade). Entered per photo on Add Matching, editable per matching in Live › Edit, and used by the **Matching SKU** tab (photo + SKU + Quantity → **Dispatch Order** PDF with Dispatch Date & Time). Run **once** (safe to re-run). Nullable, not UNIQUE (commented unique index in the file). Before the migration the screen still works, the SKU just isn't saved and the app says so once. |
 | `ORDER_FORM_USERS_MIGRATION.sql` | Order Form users move into the ERP's `app_users` (a single user table): `app_users.sales_role`, a `sales_users` mirror + trigger, and an Order Form session from the ERP login (`sales_erp_login`). Run **once**. |
 | `printing-lot.html` | Manufacturing › Printing Lot Card (the old "Design Print Manager Pro" + code.gs). Opens in the `#printingLotPanel` iframe; on the shop floor you can also open `printing-lot.html#production` directly. |
 | `PRINTING_LOT_MIGRATION.sql` | Printing Lot's `prl_*` tables, RPCs, views, the `printing-lot` bucket + seed data (sections, colors, satin codes). Run **once** (after APPROVAL_CHAIN_MIGRATION). |
@@ -1823,7 +1824,13 @@ every call and takes the approver's details from `app_users`, so the page cannot
 
 **Setup:** run `UNLOADER_APPROVAL_MIGRATION.sql` once in the SQL Editor (safe to re-run). Until
 it runs, Inward saves exactly as before and the ERP shows a one-time warning naming the file.
-Then run `UNLOADER_ASSIGN_MIGRATION.sql` (after it, also safe to re-run).
+Then run `UNLOADER_ASSIGN_MIGRATION.sql` (after it, also safe to re-run). Also run
+`MULTI_DEVICE_SESSION_MIGRATION.sql`: before it, a login revoked all the user's other sessions, so
+when the store person is also the supervisor, logging in on the phone to approve logged the PC out
+and the Final Submit could not mark the approval as used ("Log out and log in again"). After it a
+user keeps up to 3 live sessions (PC + phone + one spare); it also marks already-booked approvals
+as used. The ERP drafts list independently hides any approval whose Inward is already saved
+(`unload_info.approval_id`).
 
 **Choosing the supervisor:** on Submit the ERP lists every active login that gets the Unloader
 Supervisor app (same rule as the launcher: user override → role Tab Visibility → default), with

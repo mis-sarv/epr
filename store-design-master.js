@@ -65,6 +65,10 @@
   /* Same idea for the PSD columns (psd_path / psd_name / psd_size), i.e.
      whether DESIGN_PSD_MIGRATION.sql has been run. null = not known yet. */
   let dmHasPsd = null;
+  /* Same idea for design_matchings.matching_sku_no (the SKU No of ONE
+     matching / shade), i.e. whether DESIGN_MATCHING_SKU_MIGRATION.sql has
+     been run. null = not known yet. */
+  let dmHasMSku = null;
 
   /* ── small helpers ─────────────────────────────────────────────────── */
   const q = id => document.getElementById(id);
@@ -205,12 +209,83 @@
       return (r && r.data && r.data.publicUrl) || '';
     } catch (e) { return ''; }
   }
-  function downloadPsd(id){
+  /* Download PSD asks WHERE to save first (the system Save As window, i.e.
+     the file manager) and then writes the file straight into that place.
+
+     Why not a plain link: store-core.js has a global click handler that
+     treats every link into the sarv-pdfs bucket as a stored PDF and opens it
+     in a new "Preparing PDF…" tab, which is what used to happen here. A link
+     WITH a `download` attribute is left alone by that handler, so the
+     fallback below (browsers without the Save As API, e.g. Firefox / phones)
+     always sets one.
+
+     showSaveFilePicker() must be called inside the click itself (before any
+     await), else the browser refuses it as not coming from the user. The
+     file is streamed into the chosen file chunk by chunk, so even a 200 MB
+     PSD is never held in memory whole, and the progress shows in the sync
+     badge. */
+  const dmPsdBusy = new Set();
+  async function downloadPsd(id){
     const d = dmDesigns.find(x => x.id === id);
     const url = dmPsdUrl(d);
     if (!url) { toast('No PSD file on design ' + (d ? d.design_no : '') + '. Add it via Edit.', 'warn'); return; }
+    if (dmPsdBusy.has(id)) { toast('This PSD is already being saved.', 'warn'); return; }
+    let name = String(d.psd_name || (pathSafe(d.design_no) + '.psd'));
+    if (!/\.psd$/i.test(name)) name += '.psd';
+
+    let handle = null;
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: name,
+          types: [{ description: 'Photoshop file (.psd)', accept: { 'image/vnd.adobe.photoshop': ['.psd'] } }]
+        });
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;   // the user closed the Save As window
+        console.warn('[DM] Save As window not available, plain download instead:', e.message || e);
+        handle = null;
+      }
+    }
+    if (!handle) { psdPlainDownload(url, name); return; }
+
+    dmPsdBusy.add(id);
+    let w = null;
+    try {
+      setSync('Saving PSD…', 'busy');
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+      const total = Number(res.headers.get('content-length')) || Number(d.psd_size) || 0;
+      w = await handle.createWritable();
+      const reader = res.body.getReader();
+      let got = 0, shown = -1;
+      for (;;) {
+        const step = await reader.read();
+        if (step.done) break;
+        await w.write(step.value);
+        got += step.value.length;
+        const pct = total ? Math.min(99, Math.floor(got * 100 / total)) : -1;
+        if (pct !== shown) { shown = pct; setSync('Saving PSD ' + (pct >= 0 ? pct + '%' : fmtSize(got)), 'busy'); }
+      }
+      await w.close(); w = null;
+      setSync('✓ PSD saved', 'ok');
+      toast('PSD of ' + d.design_no + ' saved as ' + (handle.name || name) + ' (' + fmtSize(got) + ').', 'success');
+    } catch (e) {
+      console.error('[DM] PSD save fail:', e);
+      if (w) { try { await w.abort(); } catch (_) {} }
+      // Don't leave an empty / half file behind where the user chose to save.
+      try { if (typeof handle.remove === 'function') await handle.remove(); } catch (_) {}
+      setSync('PSD save fail', 'err');
+      toast('Could not save the PSD there (' + (e.message || e) + '). Downloading it normally instead.', 'warn');
+      psdPlainDownload(url, name);
+    } finally {
+      dmPsdBusy.delete(id);
+    }
+  }
+  // The `download` attribute keeps store-core's stored-PDF click handler away
+  // (see above); the ?download= in the URL makes Storage send it as a file.
+  function psdPlainDownload(url, name){
     const a = document.createElement('a');
-    a.href = url; a.rel = 'noopener';
+    a.href = url; a.download = name; a.rel = 'noopener';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
   // Before the migration the PSD keys are dropped, like skuPatch.
@@ -299,9 +374,12 @@
          handles both cases). */
       if (dmDesigns.length) dmHasSku = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'design_sku_no');
       if (dmDesigns.length) dmHasPsd = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'psd_path');
+      const anyM = (dmDesigns.find(d => (d.matchings || []).length) || { matchings: [] }).matchings[0];
+      if (anyM) dmHasMSku = Object.prototype.hasOwnProperty.call(anyM, 'matching_sku_no');
       setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
       dmSkuNotice();
       dmPsdNotice();
+      dmMSkuNotice();
       renderAll();
       if (force) toast('Design Master refreshed: ' + dmDesigns.length + ' designs.', 'success');
     } catch (e) {
@@ -381,6 +459,47 @@
     return r;
   }
 
+  /* ── MATCHING SKU NO ─────────────────────────────────────────────────
+     Each matching (shade) of a design can carry its own SKU No: that is
+     what is actually packed and dispatched (Matching SKU tab / Dispatch
+     Order PDF). Optional, nullable, not UNIQUE, same as the design SKU; a
+     duplicate is only asked about. Before DESIGN_MATCHING_SKU_MIGRATION.sql
+     the key is dropped from writes (Postgres would reject the whole row),
+     and the app says so once. */
+  function mskuPatch(v){
+    if (dmHasMSku === false) return {};
+    return { matching_sku_no: up(v) || null };
+  }
+  let dmMSkuWarned = false;
+  function dmMSkuNotice(){
+    if (dmHasMSku !== false || dmMSkuWarned) return;
+    dmMSkuWarned = true;
+    toast('The Matching SKU No will not be saved. Run DESIGN_MATCHING_SKU_MIGRATION.sql in the Supabase SQL Editor first.', 'warn');
+  }
+  // The matching (on any design) that already has this SKU, except `exceptId`.
+  function mskuClash(v, exceptId){
+    const s = up(v); if (!s) return null;
+    for (const d of dmDesigns) {
+      const m = (d.matchings || []).find(x => x.id !== exceptId && up(x.matching_sku_no) === s);
+      if (m) return { d: d, m: m };
+    }
+    return null;
+  }
+  // Every design_matchings insert / update that carries the SKU goes through
+  // here: on an empty database the column could not be checked during load,
+  // so the first write finds out by itself (as dmWriteDesign does).
+  async function dmWriteMatching(run, payload){
+    let r = await run(payload);
+    if (r.error && /matching_sku_no/i.test(r.error.message || '') && ('matching_sku_no' in payload)) {
+      dmHasMSku = false; dmMSkuWarned = false; dmMSkuNotice();
+      delete payload.matching_sku_no;
+      // A SKU-only update has nothing left to send; the caller sees dmHasMSku === false.
+      if (!Object.keys(payload).length) return { data: null, error: null };
+      r = await run(payload);
+    }
+    return r;
+  }
+
   /* ════════════════════════════════════════════════════════════════════
      RENDER
   ════════════════════════════════════════════════════════════════════ */
@@ -389,6 +508,8 @@
     renderLive();
     renderDiscarded();
     renderCatalogueFilters();
+    const ms = q('dmMatchingSkuPane');
+    if (ms && ms.classList.contains('active')) msRender();
   }
 
   function fillList(id, values){
@@ -1167,7 +1288,8 @@
     const list = d ? (d.matchings || []).slice()
       .sort((a, b) => (a.matching_type === 'MASTER' ? 0 : 1) - (b.matching_type === 'MASTER' ? 0 : 1)) : [];
     renderSavedCards(boxId || 'dmMatchingSaved', d, list, 'matching(s)', 'No matching saved on this design yet.',
-      m => '<span class="dm-badge ' + (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' +
+      m => (m.matching_sku_no ? '<div class="dm-saved-sku">SKU ' + esc(m.matching_sku_no) + '</div>' : '') +
+           '<span class="dm-badge ' + (m.matching_type === 'MASTER' ? 'dm-badge-master' : 'dm-badge-slave') + '">' +
            esc(m.matching_type || '') + '</span>');
   }
   /* One passport-card grid for both "Saved" boxes (Add Matching and Add
@@ -1207,8 +1329,8 @@
      The rows live in DM_BATCH[key].rows; the typed values are read from the
      card's inputs at save time. */
   const DM_BATCH = {
-    // Matching: name from the shade list, plus its own MASTER / SLAVE.
-    mtc: { list: 'dmMtcBatch', sum: 'dmMtcSum', save: 'dmMtcSaveBtn', kind: 'shade', withType: true,
+    // Matching: name from the shade list, its own Matching SKU No, plus MASTER / SLAVE.
+    mtc: { list: 'dmMtcBatch', sum: 'dmMtcSum', save: 'dmMtcSaveBtn', kind: 'shade', withType: true, withSku: true,
            noun: 'matching', empty: 'Select photos on the right (many at once), or add a matching without a photo.' },
     // Photoshoot: any matching name from the full list, this design's first (dmValues 'psmatch').
     ps:  { list: 'dmPsBatch',  sum: 'dmPsSum',  save: 'dmPsSaveBtn',  kind: 'psmatch', withType: false,
@@ -1241,6 +1363,9 @@
         ? '<img src="' + url + '" alt="' + esc(file.name || '') + '" title="' + esc(file.name || '') + ' · click for full screen" onclick="dmShowLightbox(this.src,this.alt)">'
         : '<div class="dm-saved-nophoto">No photo</div>') +
       '<input type="text" class="dm-bulk-in bt-name" placeholder="Matching Name…">' +
+      (b.withSku
+        ? '<input type="text" class="dm-bulk-in bt-sku" placeholder="Matching SKU No…" title="SKU No of this matching (optional)" autocomplete="off">'
+        : '') +
       (b.withType
         ? '<select class="dm-bulk-in bt-type"><option value="SLAVE">SLAVE</option><option value="MASTER">MASTER</option></select>'
         : '') +
@@ -1295,21 +1420,29 @@
     if (!quality) { q('dmMatchingBlanketQuality').focus(); toast('BLANKET QUALITY is required.', 'error'); return; }
 
     // Check everything first: the batch either starts clean or not at all.
-    const items = b.rows.map(r => ({ r: r, name: batchVal(r.rid, '.bt-name'), master: batchVal(r.rid, '.bt-type') === 'MASTER' }));
+    const items = b.rows.map(r => ({ r: r, name: batchVal(r.rid, '.bt-name'), sku: up(batchVal(r.rid, '.bt-sku')), master: batchVal(r.rid, '.bt-type') === 'MASTER' }));
     const have = new Set((d.matchings || []).map(m => up(m.matching_name)));
-    const seen = new Set();
+    const seen = new Set(), seenSku = new Set();
     let err = '';
     items.forEach(it => {
       let e = '';
       if (!it.name) e = 'Matching name required';
       else if (have.has(up(it.name))) e = 'Already on this design';
       else if (seen.has(up(it.name))) e = 'Same name twice in this list';
+      else if (it.sku && seenSku.has(it.sku)) e = 'Same SKU No twice in this list';
       seen.add(up(it.name));
+      if (it.sku) seenSku.add(it.sku);
       batchMark(it.r.rid, e, !!e);
       if (e && !err) err = (it.name ? '“' + it.name + '”: ' : '') + e + '.';
     });
     if (items.filter(it => it.master).length > 1) err = err || 'Only one matching can be MASTER.';
     if (err) { toast(err, 'error'); return; }
+    // A SKU already on another matching: asked once for the whole list, not blocked.
+    const clashes = items.map(it => ({ it: it, hit: mskuClash(it.sku, null) })).filter(x => x.hit);
+    if (clashes.length && !confirm('These Matching SKU Nos are already used:\n\n' +
+        clashes.map(x => x.it.sku + '  →  ' + x.hit.d.design_no + ' · ' + (x.hit.m.matching_name || '')).join('\n') +
+        '\n\nSave anyway?')) return;
+    if (dmHasMSku === false && items.some(it => it.sku)) { dmMSkuWarned = false; dmMSkuNotice(); }
 
     const btn = q(b.save);
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
@@ -1334,7 +1467,7 @@
              can simply be tried again. */
           let img = { path: null, url: null };
           if (it.r.file) img = await uploadDesignImage(d.design_no, it.r.file);
-          const ins = await SB.from('design_matchings').insert({
+          const ins = await dmWriteMatching(p => SB.from('design_matchings').insert(p).select().single(), Object.assign({
             design_id:       d.id,
             design_no:       d.design_no,
             matching_name:   it.name,
@@ -1344,7 +1477,7 @@
             image_url:       img.url,
             sort_order:      (d.matchings || []).length,
             created_by:      whoAmI()
-          }).select().single();
+          }, mskuPatch(it.sku)));
           if (ins.error) { await removeStored(img.path); throw ins.error; }
           d.matchings = (d.matchings || []).concat([ins.data]);
           batchRemove('mtc', it.r.rid);
@@ -1851,7 +1984,9 @@
       return '<div class="dm-mrow">' +
         '<div class="dm-mrow-left">' + thumbHtml(src, m.matching_name) +
           '<div><b>' + esc(m.matching_name) + '</b>' +
-          '<div style="font-size:10.5px;color:#64748b;">' + esc(m.blanket_quality || d.blanket_quality || '') + '</div></div>' +
+          '<div style="font-size:10.5px;color:#64748b;">' + esc(m.blanket_quality || d.blanket_quality || '') + '</div>' +
+          '<input type="text" class="dm-msku-in" value="' + esc(m.matching_sku_no || '') + '" placeholder="Matching SKU No" autocomplete="off"' +
+            ' title="SKU No of this matching. Saved when you leave the box." onchange="dmSetMatchingSku(' + d.id + ',' + m.id + ',this)"></div>' +
         '</div>' +
         '<div class="dm-mrow-right">' +
           '<label><input type="radio" name="dmMasterPick" value="' + m.id + '"' +
@@ -1864,6 +1999,37 @@
         '</div>' +
       '</div>';
     }).join('');
+  }
+
+  // Edit popup › a matching's SKU box: saved on its own as soon as it changes.
+  async function setMatchingSku(designId, matchingId, input){
+    const d = dmDesigns.find(x => x.id === designId); if (!d) return;
+    const m = (d.matchings || []).find(x => x.id === matchingId); if (!m) return;
+    const v = up(input.value), old = m.matching_sku_no || '';
+    input.value = v;
+    if (v === up(old)) return;
+    if (!sbReady() || !guard('DESIGN_SAVE')) { input.value = old; return; }
+    if (dmHasMSku === false) { dmMSkuWarned = false; dmMSkuNotice(); input.value = old; return; }
+    const hit = mskuClash(v, matchingId);
+    if (hit && !confirm('Matching SKU No ' + v + ' is already on ' + hit.d.design_no + ' · ' + (hit.m.matching_name || '') + '.\n\nSave anyway?')) { input.value = old; return; }
+    input.disabled = true;
+    setSync('Saving…', 'busy');
+    try {
+      const r = await dmWriteMatching(p => SB.from('design_matchings').update(p).eq('id', matchingId), mskuPatch(v));
+      if (r.error) throw r.error;
+      if (dmHasMSku === false) { input.value = old; return; }   // found out just now: nothing was saved
+      m.matching_sku_no = v || null;
+      setSync('✓ ' + dmDesigns.length + ' designs', 'ok');
+      toast('Matching SKU No ' + (v ? 'set to ' + v : 'removed') + ' on ' + d.design_no + ' · ' + (m.matching_name || '') + '.', 'success');
+      if (q('dmMatchingSkuPane') && q('dmMatchingSkuPane').classList.contains('active')) msRender();
+    } catch (e) {
+      console.error('[DM] matching SKU fail:', e);
+      input.value = old;
+      setSync('Save fail', 'err');
+      toast('Matching SKU save fail: ' + (e.message || e), 'error');
+    } finally {
+      input.disabled = false;
+    }
   }
 
   async function makeMaster(designId, matchingId){
@@ -3160,6 +3326,509 @@
     el.replaceWith(box);
   }
 
+  /* ════════════════════════════════════════════════════════════════════
+     MATCHING SKU — every matching photo with its SKU No and a Quantity box,
+     printed as a DISPATCH ORDER PDF
+     ----------------------------------------------------------------------
+       • One row per matching of the LIVE designs: photo, Matching SKU No
+         (design no · matching name under it) and a Quantity box.
+       • Search (sarvSearchMatch over design no / SKUs / matching / party /
+         brand / quality) and the Party / Brand / Quality / Design No
+         dropdowns only narrow what is SHOWN. Each dropdown lists only what
+         is left after the other filters.
+       • The order is every matching with a Quantity above 0, whatever the
+         current filter, so narrowing the list to type the next design's
+         quantities never drops the ones already typed. "Show: Only with
+         Quantity" lists exactly what will be printed.
+       • Quantities and the Dispatch Date & Time are kept in this browser
+         (a draft, so a reload does not lose them) until Clear Quantities.
+     Nothing here is written to the database.
+  ════════════════════════════════════════════════════════════════════ */
+  const MS_STORE = 'dm_ms_order_v1';
+  const MS_MAX_ROWS = 400;        // rows drawn at once; the search narrows the rest
+  const MS_FILTERS = [
+    { id: 'dmMsParty',   label: 'All parties',   get: r => r.d.party_name },
+    { id: 'dmMsBrand',   label: 'All brands',    get: r => r.d.brand_name },
+    { id: 'dmMsQuality', label: 'All qualities', get: r => r.m.blanket_quality || r.d.blanket_quality },
+    { id: 'dmMsDesign',  label: 'All designs',   get: r => r.d.design_no }
+  ];
+  let msQty = {};                 // matching id → quantity (whole number > 0)
+  const msThumbCache = new Map();  // url → Promise<img|null>, small JPEG for the PDF
+  let msWired = false;
+
+  function msLoadDraft(){
+    try {
+      const o = JSON.parse(localStorage.getItem(MS_STORE) || '{}') || {};
+      msQty = (o.qty && typeof o.qty === 'object') ? o.qty : {};
+      const at = q('dmMsDispatchAt');
+      if (at && o.at && !at.value) at.value = o.at;
+    } catch (e) { msQty = {}; }
+  }
+  function msSaveDraft(){
+    try { localStorage.setItem(MS_STORE, JSON.stringify({ qty: msQty, at: q('dmMsDispatchAt') ? q('dmMsDispatchAt').value : '' })); } catch (e) {}
+  }
+  const msQ = id => { const n = parseInt(msQty[id], 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const msVal = (f, r) => up(f.get(r));
+
+  // LIVE designs in design-no order; inside a design, the matchings' own order (MASTER first).
+  function msPool(){
+    const out = [];
+    dmDesigns.filter(d => d.status === 'LIVE').slice()
+      .sort((a, b) => dmCatSort(a.design_no, b.design_no))
+      .forEach(d => (d.matchings || []).forEach(m => out.push({ d: d, m: m })));
+    return out;
+  }
+  function msPass(r, skipId, term, show){
+    if (show === 'sku' && !r.m.matching_sku_no) return false;
+    if (show === 'nosku' && r.m.matching_sku_no) return false;
+    if (show === 'qty' && !msQ(r.m.id)) return false;
+    for (const f of MS_FILTERS) {
+      if (f.id === skipId) continue;
+      const s = msSelOf(f.id);
+      if (s && !s.has(msVal(f, r))) return false;
+    }
+    if (term && typeof sarvSearchMatch === 'function') {
+      return sarvSearchMatch([r.d.design_no, r.d.design_sku_no, r.m.matching_name, r.m.matching_sku_no,
+        r.d.party_name, r.d.brand_name, r.m.blanket_quality || r.d.blanket_quality], term);
+    }
+    return true;
+  }
+  /* ── Party / Brand / Quality / Design No: searchable multi-select ──────
+     Each is a button that opens a panel (the same look as the Live tab's ▾
+     filters, #dmMsfPanel shares their CSS): a search box, then every value
+     with its count and a tick box. Unlike the Live tab, ticks are what is
+     CHOSEN and apply at once: nothing ticked = all, tick two parties = only
+     those two. The list holds only what the other filters (and the search
+     / Show) leave, so the dropdowns narrow each other. A ticked value that
+     the other filters have since removed is still listed (greyed, count 0),
+     or it could never be unticked. */
+  const msSel = {};               // filter id → Set of chosen values (missing / empty = all)
+  let msDd = null;                // the open panel: { id, search, anchor, shown }
+  let msDdQuietUntil = 0;         // scrolls before this time come from our own redraw
+  const msSelOf = id => (msSel[id] && msSel[id].size) ? msSel[id] : null;
+  const msCurTerm = () => q('dmMsSearch') ? q('dmMsSearch').value.trim() : '';
+  const msCurShow = () => q('dmMsShow') ? q('dmMsShow').value : '';
+
+  // Button labels: "All parties" / the one value / "3 selected"; green when filtering.
+  function msRenderFilters(){
+    MS_FILTERS.forEach(f => {
+      const b = q(f.id); if (!b) return;
+      const s = msSelOf(f.id), vals = s ? [...s].sort(dmCatSort) : [];
+      const txt = !vals.length ? f.label : vals.length === 1 ? vals[0] : vals.length + ' selected';
+      b.innerHTML = '<span class="t">' + esc(txt) + '</span><span class="c">&#9662;</span>';
+      b.classList.toggle('on', !!vals.length);
+      b.title = vals.length ? vals.join(', ') : f.label;
+    });
+  }
+  function msDdOptions(id){
+    const f = MS_FILTERS.find(x => x.id === id); if (!f) return [];
+    const term = msCurTerm(), show = msCurShow(), counts = new Map();
+    msPool().forEach(r => {
+      if (!msPass(r, id, term, show)) return;
+      const v = msVal(f, r); if (!v) return;
+      counts.set(v, (counts.get(v) || 0) + 1);
+    });
+    const out = [...counts.entries()].map(([value, count]) => ({ value: value, count: count }));
+    const s = msSelOf(id);
+    if (s) s.forEach(v => { if (!counts.has(v)) out.push({ value: v, count: 0, gone: true }); });
+    return out.sort((a, b) => dmCatSort(a.value, b.value));
+  }
+  function msDdPanel(){
+    let p = q('dmMsfPanel');
+    if (p) return p;
+    p = document.createElement('div');
+    p.id = 'dmMsfPanel';
+    // On <body>: the toolbar / sheet would clip it.
+    document.body.appendChild(p);
+    p.addEventListener('click', e => e.stopPropagation());
+    return p;
+  }
+  function msDdOpen(ev, id){
+    if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+    if (msDd && msDd.id === id) { msDdClose(); return; }   // same button again = close
+    if (typeof dmLfClose === 'function') dmLfClose();
+    msDd = { id: id, search: '', anchor: (ev && ev.currentTarget) || q(id), shown: [] };
+    const f = MS_FILTERS.find(x => x.id === id);
+    const p = msDdPanel();
+    p.innerHTML =
+      '<div class="imf-head">' + esc(f.label.replace(/^All /, '').toUpperCase()) +
+        '<div class="imf-sub" id="dmMsfSub"></div></div>' +
+      '<div class="imf-body">' +
+        '<input type="text" id="dmMsfSearch" placeholder="Search..." autocomplete="off" data-no-caps>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:6px;">' +
+          '<button type="button" class="imf-mini" id="dmMsfAll" title="Tick every value shown below">Select All Shown</button>' +
+          '<button type="button" class="imf-mini" id="dmMsfNone" style="color:#b91c1c;" title="Untick everything (= all)">Clear</button></div>' +
+        '<div class="imf-list" id="dmMsfList"></div>' +
+      '</div>' +
+      '<div class="imf-foot">' +
+        '<button type="button" class="imf-btn imf-apply" id="dmMsfDone">&#10004; Done</button>' +
+        '<button type="button" class="imf-btn imf-remove" id="dmMsfRemove">&#10006; Clear Filter</button>' +
+      '</div>';
+    p.style.visibility = 'hidden';
+    p.style.display = 'block';
+    const s = q('dmMsfSearch');
+    s.addEventListener('input', () => { if (msDd) { msDd.search = s.value; msDdList(); } });
+    // Enter with exactly one value left ticks it: type a few letters + Enter.
+    s.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !msDd) return;
+      e.preventDefault();
+      if (msDd.shown.length === 1) msDdTick(msDd.shown[0].value, true);
+    });
+    q('dmMsfList').addEventListener('change', e => {
+      const cb = e.target.closest('input[type=checkbox]'); if (cb) msDdTick(cb.dataset.v, cb.checked);
+    });
+    q('dmMsfAll').addEventListener('click', () => {
+      const set = msSel[id] || (msSel[id] = new Set());
+      msDd.shown.forEach(o => set.add(o.value));
+      msDdRefresh(); msDdList();
+    });
+    const clear = () => { delete msSel[id]; msDdRefresh(); msDdList(); };
+    q('dmMsfNone').addEventListener('click', clear);
+    q('dmMsfRemove').addEventListener('click', () => { clear(); msDdClose(); });
+    q('dmMsfDone').addEventListener('click', msDdClose);
+    msDdList();
+    msDdPlace();
+    try { s.focus(); } catch (e) {}
+  }
+  const msDdRefresh = () => { msDdQuietUntil = Date.now() + 400; msRender(); };
+  function msDdTick(v, on){
+    if (!msDd) return;
+    const set = msSel[msDd.id] || (msSel[msDd.id] = new Set());
+    if (on) set.add(v); else set.delete(v);
+    msDdRefresh();  // the table and the other buttons follow at once
+    msDdList();
+  }
+  // Only the list is redrawn while typing, so the search box keeps its focus.
+  function msDdList(){
+    if (!msDd) return;
+    const box = q('dmMsfList'); if (!box) return;
+    const opts = msDdOptions(msDd.id), term = msDd.search.trim();
+    const s = msSelOf(msDd.id);
+    const shown = term ? opts.filter(o => sarvSearchMatch(o.value, term)) : opts;
+    const LIMIT = 400;
+    msDd.shown = shown.slice(0, LIMIT);
+    box.innerHTML = msDd.shown.length
+      ? msDd.shown.map(o =>
+          '<label class="imf-opt' + (o.gone ? ' gone' : '') + '">' +
+          '<input type="checkbox" data-v="' + esc(o.value) + '"' + (s && s.has(o.value) ? ' checked' : '') + '>' +
+          '<span class="t" title="' + esc(o.value) + '">' + esc(o.value) + '</span>' +
+          '<span class="n">' + o.count + '</span></label>').join('') +
+        (shown.length > LIMIT ? '<div style="color:#b45309;font-size:10px;padding:4px 2px 0;">Showing the first ' + LIMIT +
+          ' of ' + shown.length + '. Type in the search to narrow it down.</div>' : '')
+      : '<div style="color:#94a3b8;padding:6px 2px;">' + (term ? 'Nothing matches this search.' : 'Nothing left here after the other filters.') + '</div>';
+    const sub = q('dmMsfSub');
+    if (sub) sub.textContent = (s ? s.size + ' ticked' : 'Nothing ticked = all') + ' · ' + opts.filter(o => !o.gone).length + ' value(s)';
+  }
+  function msDdPlace(){
+    const p = q('dmMsfPanel'); if (!p || !msDd) return;
+    const a = msDd.anchor && document.body.contains(msDd.anchor) ? msDd.anchor : q(msDd.id);
+    const r = a ? a.getBoundingClientRect() : { left: 120, top: 100, bottom: 120 };
+    const w = p.offsetWidth || 268, h = p.offsetHeight || 340;
+    const left = Math.min(Math.max(8, r.left), Math.max(8, innerWidth - w - 8));
+    let top = r.bottom + 4;
+    if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 4);
+    p.style.left = left + 'px'; p.style.top = top + 'px';
+    p.style.visibility = 'visible';
+  }
+  function msDdClose(){
+    const p = q('dmMsfPanel'); if (p) p.style.display = 'none';
+    msDd = null;
+  }
+  // Outside click, Escape, resize or a page scroll close it (scrolling its own list does not).
+  document.addEventListener('click', () => { if (msDd) msDdClose(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && msDd) msDdClose(); });
+  addEventListener('resize', () => { if (msDd) msDdClose(); });
+  document.addEventListener('scroll', e => {
+    if (!msDd) return;
+    // A tick redraws the table; if the list gets shorter the page scrolls by
+    // itself, and that must not shut the panel in the middle of choosing.
+    if (Date.now() < msDdQuietUntil) { msDdPlace(); return; }
+    const p = q('dmMsfPanel'), t = e.target;
+    if (p && t && t.nodeType === 1 && p.contains(t)) return;
+    msDdClose();
+  }, true);
+
+  function msRender(){
+    const tb = q('dmMsList'); if (!tb) return;
+    const term = q('dmMsSearch') ? q('dmMsSearch').value.trim() : '';
+    const show = q('dmMsShow') ? q('dmMsShow').value : '';
+    const pool = msPool();
+    msRenderFilters();
+    const list = pool.filter(r => msPass(r, null, term, show));
+    const shown = list.slice(0, MS_MAX_ROWS);
+    tb.innerHTML = shown.length ? shown.map((r, i) => {
+      const src = dmImgSrc(r.m), qv = msQ(r.m.id);
+      const cap = r.d.design_no + ' · ' + (r.m.matching_name || '');
+      // The same six columns as the PDF's item table (msBuild), the Qty being the box.
+      return '<tr class="' + (qv ? 'has-qty' : '') + '">' +
+        '<td class="dm-ms-no">' + (i + 1) + '</td>' +
+        '<td class="dm-ms-photo-td">' + (src
+          ? '<img class="dm-ms-photo" loading="lazy" src="' + esc(src) + '" alt="' + esc(cap) + '" title="Click for full screen" onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">'
+          : '<div class="dm-ms-photo dm-ms-nophoto">No photo</div>') + '</td>' +
+        '<td class="dm-ms-dno">' + esc(r.d.design_no) + '</td>' +
+        '<td class="dm-ms-mname">' + esc(r.m.matching_name || '') +
+          (r.m.matching_type === 'MASTER' ? ' <span class="dm-badge dm-badge-master">MASTER</span>' : '') +
+          '<div class="dm-ms-sub2">' + esc([r.m.blanket_quality || r.d.blanket_quality, r.d.party_name, r.d.brand_name].filter(Boolean).join(' · ')) + '</div>' +
+        '</td>' +
+        '<td class="dm-ms-skutd">' + (r.m.matching_sku_no
+            ? '<span class="dm-ms-sku">' + esc(r.m.matching_sku_no) + '</span>'
+            : '<span class="dm-ms-sku none" title="Add it in Edit (Live tab) on this design, or on Add Matching">- (no SKU)</span>') + '</td>' +
+        '<td class="dm-ms-qty-td"><input type="number" class="dm-ms-qty" data-mid="' + r.m.id + '" min="0" step="1" inputmode="numeric" placeholder="0" value="' + (qv || '') + '"></td>' +
+      '</tr>';
+    }).join('')
+      : '<tr><td colspan="6" class="dm-empty-row">' + (pool.length
+          ? (show === 'qty' ? 'No quantity entered yet.' : 'No matching fits this search / filter.')
+          : 'No LIVE design has matchings yet.') + '</td></tr>';
+    const more = q('dmMsMore');
+    if (more) more.textContent = list.length > shown.length
+      ? 'Showing the first ' + shown.length + ' of ' + list.length + ' matchings. Search or filter to see the rest.' : '';
+    msSummary(list.length, pool.length);
+  }
+  function msSummary(nShown, nPool){
+    const el = q('dmMsCount'); if (!el) return;
+    let items = 0, pcs = 0;
+    Object.keys(msQty).forEach(k => { const n = msQ(k); if (n) { items++; pcs += n; } });
+    if (nShown != null) el.dataset.shown = nShown + ' / ' + nPool + ' matchings shown';
+    el.innerHTML = esc(el.dataset.shown || '') + ' &nbsp;·&nbsp; <b>In order: ' + items + ' item(s), ' + pcs + ' pcs</b>';
+    // The sheet's own totals, as the PDF prints them (the whole order, not just this filter).
+    const set = (id, v) => { const x = q(id); if (x) x.textContent = v; };
+    set('dmMsItems', String(items));
+    set('dmMsPcs', pcs + ' pcs');
+    set('dmMsTotQty', String(pcs));
+    const at = q('dmMsDispatchAt');
+    set('dmMsFootL', 'Dispatch Order' + (at && at.value ? '  ·  ' + msFmtAt(at.value) : ''));
+  }
+  // Letterhead + Prepared By on the on-screen sheet, the same source as the PDF.
+  function msFillSheet(){
+    const co = (typeof SARV_COMPANY !== 'undefined' && SARV_COMPANY) ? SARV_COMPANY : null;
+    const set = (id, v) => { const x = q(id); if (x) x.textContent = v; };
+    if (co) {
+      set('dmMsCo', co.fullName || '');
+      set('dmMsAddr', co.address || '');
+      set('dmMsGstin', co.gstin ? 'GSTIN: ' + co.gstin : '');
+    }
+    set('dmMsBy', whoAmI() || '-');
+  }
+  function msClearFilters(){
+    MS_FILTERS.forEach(f => { delete msSel[f.id]; });
+    msDdClose();
+    if (q('dmMsSearch')) q('dmMsSearch').value = '';
+    if (q('dmMsShow')) q('dmMsShow').value = '';
+    msRender();
+  }
+  function msClearQty(){
+    const n = Object.keys(msQty).filter(k => msQ(k)).length;
+    if (!n) { toast('No quantity entered.', 'warn'); return; }
+    if (!confirm('Clear the quantity of all ' + n + ' item(s) in this Dispatch Order?')) return;
+    msQty = {}; msSaveDraft(); msRender();
+  }
+  // Now, as the value of a datetime-local box (local time, to the minute).
+  function msNowLocal(){
+    const t = new Date(), p = n => String(n).padStart(2, '0');
+    return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate()) + 'T' + p(t.getHours()) + ':' + p(t.getMinutes());
+  }
+  // 'YYYY-MM-DDTHH:MM' → 'DD/MM/YYYY hh:mm AM'
+  function msFmtAt(v){
+    const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(v || ''); if (!m) return String(v || '');
+    const h = +m[4], h12 = (h % 12) || 12;
+    return m[3] + '/' + m[2] + '/' + m[1] + ' ' + String(h12).padStart(2, '0') + ':' + m[5] + ' ' + (h < 12 ? 'AM' : 'PM');
+  }
+  function msWire(){
+    if (msWired) return; msWired = true;
+    msLoadDraft();
+    const tb = q('dmMsList');
+    tb.addEventListener('input', e => {
+      const inp = e.target.closest('.dm-ms-qty'); if (!inp) return;
+      const n = parseInt(inp.value, 10);
+      if (Number.isFinite(n) && n > 0) msQty[inp.dataset.mid] = n; else delete msQty[inp.dataset.mid];
+      const tr = inp.closest('tr'); if (tr) tr.classList.toggle('has-qty', msQ(inp.dataset.mid) > 0);
+      msSaveDraft(); msSummary();
+    });
+    // Enter jumps to the next Quantity box, so a long order is typed without the mouse.
+    tb.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.classList.contains('dm-ms-qty')) return;
+      e.preventDefault();
+      const all = Array.from(tb.querySelectorAll('.dm-ms-qty'));
+      const nx = all[all.indexOf(e.target) + 1];
+      if (nx) { nx.focus(); nx.select(); }
+    });
+    let t = null;
+    q('dmMsSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(msRender, 160); });
+    q('dmMsShow').addEventListener('change', msRender);
+    q('dmMsDispatchAt').addEventListener('change', () => { msSaveDraft(); msSummary(); });
+  }
+  function msOpen(){
+    msWire();
+    msFillSheet();
+    const at = q('dmMsDispatchAt');
+    if (at && !at.value) { at.value = msNowLocal(); msSaveDraft(); }
+    msRender();
+  }
+
+  // A small JPEG of the photo for the PDF: a 1500px photo per row would make the file huge.
+  function msThumb(url){
+    if (!url) return Promise.resolve(null);
+    if (msThumbCache.has(url)) return msThumbCache.get(url);
+    const p = imgData(url).then(img => !img ? null : new Promise(res => {
+      const el = new Image();
+      el.onload = () => {
+        try {
+          const sc = Math.min(1, 320 / Math.max(el.naturalWidth, el.naturalHeight));
+          const w = Math.max(1, Math.round(el.naturalWidth * sc)), h = Math.max(1, Math.round(el.naturalHeight * sc));
+          const c = document.createElement('canvas'); c.width = w; c.height = h;
+          const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, w, h); g.drawImage(el, 0, 0, w, h);
+          res({ dataUrl: c.toDataURL('image/jpeg', 0.85), w: w, h: h, fmt: 'JPEG' });
+        } catch (e) { res(img); }
+      };
+      el.onerror = () => res(img);
+      el.src = img.dataUrl;
+    }));
+    msThumbCache.set(url, p);
+    return p;
+  }
+  const msStatus = t => { const el = q('dmMsStatus'); if (el) el.textContent = t || ''; };
+
+  async function msBuild(){
+    if (typeof jspdfNativeReady_ === 'function' ? !jspdfNativeReady_() : !(window.jspdf && window.jspdf.jsPDF)) {
+      toast('jsPDF did not load. Please reload the page.', 'error');
+      return null;
+    }
+    const atEl = q('dmMsDispatchAt');
+    const at = atEl ? atEl.value : '';
+    if (!at) { if (atEl) atEl.focus(); toast('DISPATCH DATE & TIME is required.', 'error'); return null; }
+    // Every matching with a quantity, in the on-screen order (whatever the filter).
+    const rows = [];
+    dmDesigns.slice().sort((a, b) => dmCatSort(a.design_no, b.design_no))
+      .forEach(d => (d.matchings || []).forEach(m => { const n = msQ(m.id); if (n) rows.push({ d: d, m: m, qty: n }); }));
+    if (!rows.length) { toast('Enter a Quantity against at least one matching.', 'error'); return null; }
+    const noSku = rows.filter(r => !r.m.matching_sku_no).length;
+    if (noSku && !confirm(noSku + ' item(s) in this order have no Matching SKU No (printed as "-").\n\nMake the PDF anyway?')) return null;
+
+    const thumbs = [];
+    for (let i = 0; i < rows.length; i++) {
+      msStatus('Loading photos (' + (i + 1) + '/' + rows.length + ')…');
+      thumbs.push(await msThumb(dmImgSrc(rows[i].m)));
+    }
+    msStatus('Building the PDF…');
+
+    const jsPDF = window.jspdf.jsPDF;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+    const co = (typeof SARV_COMPANY !== 'undefined' && SARV_COMPANY) ? SARV_COMPANY : { fullName: 'SARV INDIA HOME FURNISHING', address: '', gstin: '' };
+    const W = A4.w, M = A4.mx, total = rows.reduce((s, r) => s + r.qty, 0);
+    const atTxt = msFmtAt(at), by = whoAmI() || '-';
+    const t = new Date(), p2 = n => String(n).padStart(2, '0');
+    const printed = msFmtAt(t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()) + 'T' + p2(t.getHours()) + ':' + p2(t.getMinutes()));
+
+    // ── letterhead ──
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(15, 23, 42);
+    doc.text(String(co.fullName || ''), W / 2, 17, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(71, 85, 105);
+    const addr = doc.splitTextToSize(String(co.address || ''), W - 2 * M - 20);
+    doc.text(addr, W / 2, 22, { align: 'center' });
+    let y = 22 + addr.length * 3.2;
+    if (co.gstin) { doc.text('GSTIN: ' + co.gstin, W / 2, y, { align: 'center' }); y += 3.2; }
+    doc.setDrawColor(15, 23, 42); doc.setLineWidth(0.6); doc.line(M, y + 1, W - M, y + 1);
+    // ── title band ──
+    y += 4;
+    doc.setFillColor(15, 23, 42); doc.rect(M, y, W - 2 * M, 10, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255);
+    doc.text('DISPATCH ORDER', W / 2, y + 6.8, { align: 'center' });
+    y += 10;
+    // ── order details ──
+    doc.autoTable({
+      startY: y + 3,
+      margin: { left: M, right: M },
+      theme: 'grid',
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.2, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59] },
+      columnStyles: {
+        0: { cellWidth: 38, fillColor: [248, 250, 252], fontStyle: 'bold', textColor: [51, 65, 85] },
+        1: { cellWidth: 55, fontStyle: 'bold' },
+        2: { cellWidth: 38, fillColor: [248, 250, 252], fontStyle: 'bold', textColor: [51, 65, 85] },
+        3: { cellWidth: 'auto', fontStyle: 'bold' }
+      },
+      body: [
+        ['DISPATCH DATE & TIME', atTxt, 'PREPARED BY', String(by)],
+        ['TOTAL ITEMS', String(rows.length), 'TOTAL QUANTITY', total + ' pcs']
+      ]
+    });
+
+    // ── items: one row per matching, its photo in the second column ──
+    const IMG_H = 24;
+    doc.autoTable({
+      startY: doc.lastAutoTable.finalY + 4,
+      margin: { left: M, right: M, top: 14, bottom: 18 },
+      theme: 'grid',
+      showHead: 'everyPage',
+      showFoot: 'lastPage',
+      rowPageBreak: 'avoid',
+      head: [['S.NO', 'PHOTO', 'DESIGN NO', 'MATCHING NAME', 'MATCHING SKU NO', 'QTY']],
+      body: rows.map((r, i) => [String(i + 1), '', String(r.d.design_no || ''), String(r.m.matching_name || ''),
+        String(r.m.matching_sku_no || '-'), String(r.qty)]),
+      foot: [[{ content: 'TOTAL QUANTITY', colSpan: 5, styles: { halign: 'right' } }, String(total)]],
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 2, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59], valign: 'middle' },
+      headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5, halign: 'center' },
+      footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: 'bold', fontSize: 10, halign: 'center' },
+      bodyStyles: { minCellHeight: IMG_H + 2 },
+      columnStyles: {
+        0: { cellWidth: 12, halign: 'center' },
+        1: { cellWidth: 24 },
+        2: { cellWidth: 32, fontStyle: 'bold' },
+        3: { cellWidth: 'auto' },
+        4: { cellWidth: 42, fontStyle: 'bold', fontSize: 10, textColor: [15, 23, 42] },
+        5: { cellWidth: 18, halign: 'center', fontStyle: 'bold', fontSize: 11 }
+      },
+      didDrawCell: data => {
+        if (data.section !== 'body' || data.column.index !== 1) return;
+        const c = data.cell;
+        pdfImage(doc, thumbs[data.row.index], c.x + 1.2, c.y + 1.2, c.width - 2.4, c.height - 2.4);
+      }
+    });
+
+    // ── signatures, on the last page (a new page if there is no room) ──
+    let sy = doc.lastAutoTable.finalY + 22;
+    if (sy > A4.h - 26) { doc.addPage(); sy = 40; }
+    const sw = (W - 2 * M - 20) / 3;
+    ['PREPARED BY', 'CHECKED BY', 'RECEIVED BY'].forEach((lbl, i) => {
+      const x = M + i * (sw + 10);
+      doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.3); doc.line(x, sy, x + sw, sy);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+      doc.text(lbl, x + sw / 2, sy + 4.5, { align: 'center' });
+    });
+
+    // ── footer on every page ──
+    const n = doc.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i);
+      pdfFooter(doc, 'Dispatch Order  ·  ' + atTxt + '  ·  Printed ' + printed, 'Page ' + i + ' of ' + n);
+    }
+    msStatus(rows.length + ' item(s) · ' + total + ' pcs · ' + n + ' page(s)');
+    return { doc: doc, at: at };
+  }
+  const msFileName = at => 'Dispatch_Order_' + String(at || '').replace(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}).*$/, '$3-$2-$1_$4$5') + '.pdf';
+  async function msDownload(){
+    try {
+      const r = await msBuild(); if (!r) return;
+      // Through downloadBlob (store-core.js), so the ERP's download stamp is applied like everywhere else.
+      downloadBlob(r.doc.output('blob'), msFileName(r.at));
+      toast('Dispatch Order PDF downloaded.', 'success');
+    } catch (e) {
+      console.error('[DM] dispatch order fail:', e);
+      msStatus('PDF failed: ' + (e.message || e));
+      toast('Dispatch Order PDF failed: ' + (e.message || e), 'error');
+    }
+  }
+  async function msOpenPdf(){
+    try {
+      const r = await msBuild(); if (!r) return;
+      const win = window.open(r.doc.output('bloburl'), '_blank');
+      if (!win) toast('The popup was blocked. Use “Download PDF” instead.', 'warn');
+    } catch (e) {
+      console.error('[DM] dispatch order fail:', e);
+      msStatus('PDF failed: ' + (e.message || e));
+      toast('Dispatch Order PDF failed: ' + (e.message || e), 'error');
+    }
+  }
+
   /* ── inner tabs ─────────────────────────────────────────────────────── */
   function showPane(paneId){
     const root = q('designMasterProdSub'); if (!root) return;
@@ -3168,6 +3837,7 @@
     if (paneId === 'dmCataloguePane') renderCatalogueFilters();
     if (paneId === 'dmAddPhotoshootPane') loadPhotoshoots().then(populatePsInfo);
     if (paneId === 'dmOnlineCatPane') { ocStatus('Loading photoshoots…'); loadPhotoshoots().then(() => { ocStatus(''); ocRender(); }); }
+    if (paneId === 'dmMatchingSkuPane') loadDesigns().then(msOpen);
   }
 
   /* ════════════════════════════════════════════════════════════════════
@@ -3311,6 +3981,13 @@
   window.dmCloseLightbox            = closeLightbox;
   window.dmImgFail                  = imgFail;
   window.dmDownloadPsd              = downloadPsd;
+  window.dmSetMatchingSku           = setMatchingSku;
+  window.dmMsClearFilters           = msClearFilters;
+  window.dmMsDdOpen                 = msDdOpen;
+  window.dmMsClearQty               = msClearQty;
+  window.dmMsDownload               = msDownload;
+  window.dmMsOpenPdf                = msOpenPdf;
+  window.dmMsNow                    = () => { const at = q('dmMsDispatchAt'); if (at) { at.value = msNowLocal(); msSaveDraft(); msSummary(); } };
 
   /* Two direct routes for future design-wise image updates: give a design
      number and get all its photos (path + URL), or get that design's bucket

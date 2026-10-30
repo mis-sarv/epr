@@ -1732,6 +1732,7 @@
                         <button type="button" class="dm-tab" data-dmtab="dmDiscardedPane">Discarded (<span id="dmDiscardCount">0</span>)</button>
                         <button type="button" class="dm-tab" data-dmtab="dmCataloguePane">Catalogue PDF</button>
                         <button type="button" class="dm-tab" data-dmtab="dmOnlineCatPane">Online Catalogue</button>
+                        <button type="button" class="dm-tab" data-dmtab="dmMatchingSkuPane">Matching SKU</button>
                         <span class="dm-nav-right">
                             <span class="dm-sync" id="dmSyncStatus">&mdash;</span>
                             <button type="button" class="dm-btn dm-btn-ghost" onclick="dmReload(true)" title="Reload from Supabase">Refresh</button>
@@ -2123,6 +2124,84 @@
                         <span class="dm-cat-status" id="dmOcStatus"></span>
                       </div>
                       <div id="dmOcPreview" class="dm-oc-preview"></div>
+                    </div>
+
+                    <!-- ───────── Matching SKU › Dispatch Order ───────── -->
+                    <!-- Every matching photo of the LIVE designs with its Matching SKU No and a Quantity
+                         box; the ones with a quantity print as the DISPATCH ORDER PDF.
+                         store-design-master.js › MATCHING SKU (ms*). Nothing is saved to the database;
+                         quantities + date are a draft in this browser until "Clear Quantities". -->
+                    <div class="dm-pane" id="dmMatchingSkuPane">
+                      <!-- Toolbar (not printed): search / filters / actions. Below it, the sheet laid out
+                           exactly like the Dispatch Order PDF (msBuild), with the Quantity boxes in it. -->
+                      <div class="dm-ms-toolbar">
+                      <div class="dm-ms-filters">
+                        <div class="dm-fg dm-ms-search"><label>SEARCH</label><input type="search" id="dmMsSearch" autocomplete="off" placeholder="Design no, SKU no, matching, party, brand..."></div>
+                        <!-- Searchable multi-select dropdowns (store-design-master.js › msDd*): tick one or
+                             more values; nothing ticked = all. Each lists only what the other filters leave. -->
+                        <div class="dm-fg"><label>PARTY</label><button type="button" id="dmMsParty" class="dm-ms-dd" onclick="dmMsDdOpen(event,'dmMsParty')"></button></div>
+                        <div class="dm-fg"><label>BRAND</label><button type="button" id="dmMsBrand" class="dm-ms-dd" onclick="dmMsDdOpen(event,'dmMsBrand')"></button></div>
+                        <div class="dm-fg"><label>QUALITY</label><button type="button" id="dmMsQuality" class="dm-ms-dd" onclick="dmMsDdOpen(event,'dmMsQuality')"></button></div>
+                        <div class="dm-fg"><label>DESIGN NO</label><button type="button" id="dmMsDesign" class="dm-ms-dd" onclick="dmMsDdOpen(event,'dmMsDesign')"></button></div>
+                        <!-- SHOW is a view mode (one at a time), not a list of values, so it stays a plain dropdown. -->
+                        <div class="dm-fg"><label>SHOW</label>
+                          <select id="dmMsShow" class="dm-ms-sel">
+                            <option value="">All matchings</option>
+                            <option value="sku">Only with SKU No</option>
+                            <option value="nosku">Only without SKU No</option>
+                            <option value="qty">Only with Quantity (the order)</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="dm-filter-foot">
+                        <span class="dm-filter-live" id="dmMsCount"></span>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsClearFilters()">&#8635; Clear Filters</button>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsClearQty()" title="Empty every Quantity box (start a new order)">Clear Quantities</button>
+                        <button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmMsDownload()">Download PDF</button>
+                        <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsOpenPdf()">Open PDF in New Tab</button>
+                      </div>
+                      <div class="dm-ms-tip">
+                        <span class="dm-cat-status" id="dmMsStatus"></span>
+                        Type the Qty against each matching (Enter goes to the next box). The PDF has <b>every matching with a Qty</b>,
+                        even ones hidden by the filter; <b>Show: Only with Quantity</b> shows the sheet exactly as it will print.
+                      </div>
+                      </div>
+
+                      <div class="dm-ms-sheet">
+                        <div class="dm-ms-lh">
+                          <div class="dm-ms-co" id="dmMsCo">SARV INDIA HOME FURNISHING</div>
+                          <div class="dm-ms-addr" id="dmMsAddr"></div>
+                          <div class="dm-ms-addr" id="dmMsGstin"></div>
+                        </div>
+                        <div class="dm-ms-band">DISPATCH ORDER</div>
+
+                        <table class="dm-ms-info">
+                          <tr>
+                            <th>DISPATCH DATE &amp; TIME *</th>
+                            <td><div class="dm-ms-at-row"><input type="datetime-local" id="dmMsDispatchAt"><button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmMsNow()" title="Set to the current date and time">Now</button></div></td>
+                            <th>PREPARED BY</th>
+                            <td id="dmMsBy">-</td>
+                          </tr>
+                          <tr>
+                            <th>TOTAL ITEMS</th><td id="dmMsItems">0</td>
+                            <th>TOTAL QUANTITY</th><td id="dmMsPcs">0 pcs</td>
+                          </tr>
+                        </table>
+
+                        <div class="dm-ms-wrap"><table class="dm-ms-table">
+                          <thead><tr><th>S.NO</th><th>PHOTO</th><th>DESIGN NO</th><th>MATCHING NAME</th><th>MATCHING SKU NO</th><th>QTY</th></tr></thead>
+                          <tbody id="dmMsList"></tbody>
+                          <tfoot><tr><td colspan="5" class="dm-ms-tot-l">TOTAL QUANTITY</td><td class="dm-ms-tot" id="dmMsTotQty">0</td></tr></tfoot>
+                        </table></div>
+                        <div class="dm-hint" id="dmMsMore" style="margin:6px 0 0;"></div>
+
+                        <div class="dm-ms-signs">
+                          <div><span></span>PREPARED BY</div>
+                          <div><span></span>CHECKED BY</div>
+                          <div><span></span>RECEIVED BY</div>
+                        </div>
+                        <div class="dm-ms-foot"><span id="dmMsFootL">Dispatch Order</span><span>Page 1</span></div>
+                      </div>
                     </div>
 
                 </div><!-- /designMasterProdSub -->
