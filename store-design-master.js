@@ -119,6 +119,19 @@
   function pathSafe(v){
     return up(v).replace(/[^A-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'NA';
   }
+  /* Download file names (PSD and photo):
+       {Design No}-{Design SKU No}-{Matching Name}-{Matching SKU No}
+     An empty part is left out, so there is never a "--". Characters Windows
+     does not allow in a file name (\ / : * ? " < > |) become '-', so a
+     design no like "4004/104" stays one name. The Live list's PSD and photo
+     use the MASTER matching (the one that row shows); a matching's own photo
+     (Saved cards, Matching Sheet) uses that matching. */
+  function dmFileBase(d, m){
+    const part = v => String(v == null ? '' : v).replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ').trim().replace(/^-+|-+$/g, '');
+    return [d && d.design_no, d && d.design_sku_no, m && m.matching_name, m && m.matching_sku_no]
+      .map(part).filter(Boolean).join('-') || 'design';
+  }
   function dmPublicUrl(path){
     if (!path) return '';
     try { const r = SB.storage.from(DM_BUCKET).getPublicUrl(path); return (r && r.data && r.data.publicUrl) || ''; }
@@ -200,12 +213,13 @@
     return { psd_path: path, psd_name: file.name || (base + '.psd'), psd_size: file.size || null };
   }
   /* Download link: the `download` option makes Storage send the file as an
-     attachment under its original name, so the browser saves it straight
+     attachment under the dmFileBase name, so the browser saves it straight
      away instead of trying to open a 200 MB PSD. */
+  const dmPsdName = d => dmFileBase(d, masterOf(d)) + '.psd';
   function dmPsdUrl(d){
     if (!d || !d.psd_path) return '';
     try {
-      const r = SB.storage.from(DM_BUCKET).getPublicUrl(d.psd_path, { download: d.psd_name || (pathSafe(d.design_no) + '.psd') });
+      const r = SB.storage.from(DM_BUCKET).getPublicUrl(d.psd_path, { download: dmPsdName(d) });
       return (r && r.data && r.data.publicUrl) || '';
     } catch (e) { return ''; }
   }
@@ -230,8 +244,8 @@
     const url = dmPsdUrl(d);
     if (!url) { toast('No PSD file on design ' + (d ? d.design_no : '') + '. Add it via Edit.', 'warn'); return; }
     if (dmPsdBusy.has(id)) { toast('This PSD is already being saved.', 'warn'); return; }
-    let name = String(d.psd_name || (pathSafe(d.design_no) + '.psd'));
-    if (!/\.psd$/i.test(name)) name += '.psd';
+    // Not the uploaded file's own name: Design No-Design SKU-Matching-Matching SKU (dmFileBase).
+    const name = dmPsdName(d);
 
     let handle = null;
     if (typeof window.showSaveFilePicker === 'function') {
@@ -759,10 +773,11 @@
     ['dmEditPartyName', 'party'], ['dmEditBrandName', 'brand'], ['dmEditSupplierName', 'supplier'],
   ];
 
-  function thumbHtml(src, alt){
+  // fname: the name the preview's Download button saves the photo under (dmFileBase).
+  function thumbHtml(src, alt, fname){
     if (!src) return '<div class="dm-thumb-none">—</div>';
     return '<img class="dm-thumb" loading="lazy" src="' + esc(src) + '" alt="' + esc(alt || '') +
-           '" onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">';
+           '" data-fname="' + esc(fname || '') + '" onclick="dmShowLightbox(this.src,this.alt,this.dataset.fname)" onerror="dmImgFail(this)">';
   }
   const monoCell = v => (v === 'YES')
     ? '<span class="dm-badge dm-badge-mono">YES</span>'
@@ -1057,7 +1072,7 @@
       return '<tr>' +
         '<td><button type="button" class="dm-btn dm-btn-primary dm-btn-xs" onclick="dmOpenEditModal(' + d.id + ')">Edit</button> ' +
             '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Discard" onclick="dmSetStatus(' + d.id + ',\'DISCARDED\')">Discard</button></td>' +
-        '<td>' + thumbHtml(dmImgSrc(m), d.design_no) + '</td>' +
+        '<td>' + thumbHtml(dmImgSrc(m), d.design_no, dmFileBase(d, m)) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
         '<td>' + (d.design_sku_no ? '<strong style="color:#7c3aed;">' + esc(d.design_sku_no) + '</strong>'
                                   : '<span class="dm-muted">—</span>') + '</td>' +
@@ -1092,7 +1107,7 @@
     tb.innerHTML = rows.map(d =>
       '<tr>' +
         '<td><button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmSetStatus(' + d.id + ',\'LIVE\')">Restore</button></td>' +
-        '<td>' + thumbHtml(dmImgSrc(masterOf(d)), d.design_no) + '</td>' +
+        '<td>' + thumbHtml(dmImgSrc(masterOf(d)), d.design_no, dmFileBase(d, masterOf(d))) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
         '<td>' + (d.design_sku_no ? esc(d.design_sku_no) : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + monoCell(d.monopoly) + '</td>' +
@@ -1306,7 +1321,7 @@
         return '<div class="dm-saved-card">' +
           (src
             ? '<img loading="lazy" src="' + esc(src) + '" alt="' + esc(cap) + '" title="Click for full screen"' +
-              ' onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">'
+              ' data-fname="' + esc(dmFileBase(d, m)) + '" onclick="dmShowLightbox(this.src,this.alt,this.dataset.fname)" onerror="dmImgFail(this)">'
             : '<div class="dm-saved-nophoto">No photo</div>') +
           '<div class="dm-saved-name">' + esc(m.matching_name || '') + '</div>' +
           (extra ? extra(m) : '') +
@@ -3307,11 +3322,48 @@
   }
 
   /* ── lightbox / image fallback ──────────────────────────────────────── */
-  function showLightbox(src, cap){
+  /* fname = the Download button's file name (dmFileBase), given by the photos
+     whose design / matching is known; else the caption (e.g. a picked file's
+     own name in the bulk preview) is used. */
+  let dmLbName = '';
+  function showLightbox(src, cap, fname){
     if (!src) return;
     q('dmLightboxImg').src = src;
     q('dmLightboxCap').textContent = cap || '';
+    dmLbName = fname || String(cap || '').replace(/\.(jpe?g|png|webp|gif)$/i, '') || 'design-photo';
+    const b = q('dmLightboxDl'); if (b) { b.disabled = false; b.textContent = 'Download'; b.title = 'Save this photo as ' + dmLbName; }
     q('dmLightbox').classList.add('open');
+  }
+  /* Download from the preview. The photo is fetched as a blob and saved
+     through a blob link, because the `download` name is ignored on a link to
+     another origin (Storage). If the fetch fails, Storage's own ?download=
+     sends it as a file under the same name, in a new tab so the ERP stays.
+     Both links carry `download`, which keeps store-core's stored-PDF click
+     handler away (see downloadPsd). */
+  async function lightboxDownload(){
+    const src = q('dmLightboxImg').getAttribute('src'); if (!src) return;
+    const base = String(dmLbName).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'design-photo';
+    const b = q('dmLightboxDl'); if (b) { b.disabled = true; b.textContent = 'Downloading…'; }
+    try {
+      const res = await fetch(src, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const ext = ({ 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' })[blob.type] || '.jpg';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = base + ext; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast('Photo saved as ' + base + ext + '.', 'success');
+    } catch (e) {
+      console.warn('[DM] photo fetch failed, Storage download instead:', e.message || e);
+      const a = document.createElement('a');
+      a.href = /^blob:/.test(src) ? src : src + (src.indexOf('?') >= 0 ? '&' : '?') + 'download=' + encodeURIComponent(base + '.jpg');
+      a.download = base + '.jpg'; a.target = '_blank'; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } finally {
+      if (b) { b.disabled = false; b.textContent = 'Download'; }
+    }
   }
   function closeLightbox(){
     q('dmLightbox').classList.remove('open');
@@ -3583,7 +3635,7 @@
       return '<tr class="' + (qv ? 'has-qty' : '') + '">' +
         '<td class="dm-ms-no">' + (i + 1) + '</td>' +
         '<td class="dm-ms-photo-td">' + (src
-          ? '<img class="dm-ms-photo" loading="lazy" src="' + esc(src) + '" alt="' + esc(cap) + '" title="Click for full screen" onclick="dmShowLightbox(this.src,this.alt)" onerror="dmImgFail(this)">'
+          ? '<img class="dm-ms-photo" loading="lazy" src="' + esc(src) + '" alt="' + esc(cap) + '" title="Click for full screen" data-fname="' + esc(dmFileBase(r.d, r.m)) + '" onclick="dmShowLightbox(this.src,this.alt,this.dataset.fname)" onerror="dmImgFail(this)">'
           : '<div class="dm-ms-photo dm-ms-nophoto">No photo</div>') + '</td>' +
         '<td class="dm-ms-dno">' + esc(r.d.design_no) + '</td>' +
         '<td class="dm-ms-mname">' + esc(r.m.matching_name || '') +
@@ -4231,6 +4283,7 @@
   window.dmDownloadCataloguePdf     = downloadPdf;
   window.dmOpenCataloguePdf         = openPdf;
   window.dmShowLightbox             = showLightbox;
+  window.dmLightboxDownload         = lightboxDownload;
   window.dmCloseLightbox            = closeLightbox;
   window.dmImgFail                  = imgFail;
   window.dmDownloadPsd              = downloadPsd;

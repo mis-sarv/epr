@@ -663,6 +663,9 @@ body{background:
 .sum-wrap{border-radius:0 0 12px 12px;box-shadow:0 6px 20px -10px rgba(234,88,12,.45);margin-bottom:16px}
 .sum-wrap .sum-tbl{margin-bottom:0;border-color:#FED7AA}
 .sum-tbl th{background:#FFEDD5;color:#9A3412;border-bottom-color:#FDBA74}
+/* A material this product does not need (the column is there for another product). */
+.sum-tbl td.sum-nr{background:#FAFAFB}
+.sum-tbl .sum-pcs{font-size:10.5px;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace}
 
 /* Final Bill */
 .bill{background:linear-gradient(135deg,#0F2942 0%,#1A3C5E 55%,#24578A 100%);border:1px solid rgba(255,213,128,.25);
@@ -880,8 +883,9 @@ body{background:
   <div class="sum-title">Bags &amp; Trims — Supplied By</div>
   <div class="sum-wrap" style="overflow-x:auto">
     <table class="sum-tbl">
-      <thead><tr><th>Product</th><th>Label</th><th>Tag</th><th>Bag</th><th>Bore/Bale</th><th>Inner Box</th><th>Outer Box</th><th>Trims/Pc</th></tr></thead>
-      <tbody id="bagsTbody"><tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;font-size:12px">Add a product to see summary</td></tr></tbody>
+      <!-- Columns are built by updateBagsTable: only the materials some product of this order needs. -->
+      <thead><tr id="bagsThead"><th>Product</th><th>Trims Total (₹)</th></tr></thead>
+      <tbody id="bagsTbody"><tr><td colspan="2" style="text-align:center;color:var(--muted);padding:14px;font-size:12px">Add a product to see summary</td></tr></tbody>
     </table>
   </div>
 
@@ -1810,8 +1814,8 @@ function ofLockToList_(el,getValues,label,onCleared){
    deliberately an exact copy of store-core.js's `def` arrays; if the two
    differ, a value filled in the Brand Master won't match in the Order Form. */
 const BR_DD_FALLBACK={
-  erp_brandCategory:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY'],
-  erp_brandSize:['205*230 CM','152*203 CM','228*254 CM','100*150 CM'],
+  erp_brandCategory:['MINK','MINK PLUS','SUPER CLOUDY','SUPER SOFT'],
+  erp_brandSize:['150*200 CM','150*205 CM','150*210 CM','150*220 CM','160*220 CM','200*225 CM','205*230 CM','210*230 CM','220*240 CM','225 CMx45 MTR'],
   erp_brandBedSize:['CARPET SIZE','DOUBLE BED','SINGLE BED'],
   erp_brandPly:['SINGLE PLY','DOUBLE PLY','THREE PLY'],
   erp_brandSattan:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'],
@@ -1824,6 +1828,29 @@ const brDd_=key=>{
   const live=DROPS[key];
   return (Array.isArray(live)&&live.length)?live:(BR_DD_FALLBACK[key]||[]);
 };
+/* The Add New Brand Item dropdowns must show exactly what ERP › Dropdown
+   Master holds NOW, as the ERP's Brand Master form does (sarvDropdownList:
+   the key's saved rows in id order, otherwise the code default). DROPS is
+   read once when the page opens, so a list changed in the Dropdown Master
+   afterwards (value added, removed or renamed) would not show here. These
+   keys are therefore read again each time the popup opens. A key with no rows
+   is dropped from DROPS, so brDd_ falls back to the default, like the ERP.
+   If the read fails or is slow, the lists already in DROPS are used. */
+async function brReloadDd_(){
+  const keys=[...new Set(BR_FORM_FIELDS.filter(f=>f.t==='dd').map(f=>f.dd))];
+  let timer=null;
+  try{
+    const res=await Promise.race([
+      SB.from('sales_dropdowns').select('id,key,value').in('key',keys).order('id'),
+      new Promise((_,rej)=>{ timer=setTimeout(()=>rej(new Error('timeout')),5000); })
+    ]);
+    clearTimeout(timer);
+    if(res.error) throw res.error;
+    const got={};
+    (res.data||[]).forEach(r=>{ const v=String(r.value==null?'':r.value).trim(); if(v) (got[r.key]=got[r.key]||[]).push(v); });
+    keys.forEach(k=>{ if(got[k]) DROPS[k]=got[k]; else delete DROPS[k]; });
+  }catch(e){ clearTimeout(timer); console.warn('[ORDER FORM] Dropdown Master re-read skipped:',e.message||e); }
+}
 
 /* ── Product Specifications, locked from the Brand Master ─────────────────
    The fields filled from the Item Code are the ones that get locked. Pricing
@@ -3137,7 +3164,9 @@ function brBuildForm_(){
     const req=f.req?' <span class="mstar">★</span>':'';
     let inner;
     if(f.t==='dd'){
-      inner='<select id="'+id+'">'+optsHtml_(brDd_(f.dd),'')+'</select>';
+      // Only the Dropdown Master list, with the same "—" blank as the ERP's Brand Master form.
+      inner='<select id="'+id+'"><option value="">—</option>'
+           +brDd_(f.dd).map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('')+'</select>';
     }else if(f.t==='fab'){
       // A suggestion list, not a hard lock: if fabric_master isn't available, or a
       // new fabric hasn't been added to the Fabric Master yet, either way creating a
@@ -3213,6 +3242,7 @@ async function openNewBrand(prodId,mode,row){
   // Which product card it will be selected in; that card is filled after saving.
   // (Not for NEW / COPY from the Brand Master list; there the product's chosen code must not be touched.)
   brTargetProd_=prodId;
+  await brReloadDd_();
   brBuildForm_();
   const codeEl=document.getElementById(brFieldId_('item_code'));
   if(row){
@@ -3361,9 +3391,17 @@ function brFillForm_(row,isCopy){
     let v=row[f.k]; if(v==null) v='';
     if(f.k==='item_code' && isCopy) v='';
     if(f.t==='num' && v!=='') v=bmNum(v);
-    if(el.tagName==='SELECT') ensureOpt_(el,v); else el.value=v;
+    if(el.tagName==='SELECT') brSetDd_(el,v); else el.value=v;
   });
   brShowIf_();
+}
+/* Edit / Revise / Copy: a saved value that is no longer in the Dropdown Master
+   list is kept (so saving does not wipe it), marked "(not in the list)" like
+   the ERP's Brand Master form, so it can be changed to a listed value. */
+function brSetDd_(sel,val){
+  const v=String(val==null?'':val).trim();
+  if(v && ![...sel.options].some(o=>o.value===v)) sel.add(new Option(v+' (not in the list)',v),1);
+  sel.value=v;
 }
 function brReadForm_(){
   const get=k=>String(document.getElementById(brFieldId_(k))?.value||'').trim();
@@ -5246,8 +5284,11 @@ function getProd(id){
   const calcWeight=isGSM?1:weight;
   const effectivePricePerKg=price*(1-discount/100);
   const pricePerPc=effectivePricePerKg*calcWeight;
-  let trimsCostPerPc=0, trimsCostTotal=0; const trimStatus={}, trimData={};
+  let trimsCostPerPc=0, trimsCostTotal=0; const trimStatus={}, trimData={}, trimShown={};
   TRIMS.forEach(t=>{
+    // Whether this fixed row is on the card (Brand Master YES, or filled on an old order); for the summary only, not saved.
+    const row=document.getElementById('p'+id+'-'+t.k+'-row');
+    trimShown[t.k]=!!row && row.style.display!=='none';
     const supp=document.getElementById('p'+id+'-'+t.k+'-supp')?.value||'na';
     const costPerPc=supp==='seller'?(n('p'+id+'-'+t.k+'-cost')):0;
     const trimDisc=supp==='seller'?(n('p'+id+'-'+t.k+'-disc')):0;
@@ -5279,7 +5320,7 @@ function getProd(id){
     id, qty, packs, packPcs, price, discount, effectivePricePerKg, pricePerPc, weight, calcWeight, isGSM, totalWeight, gstPct, packType, packCharge, packChargePcs, packChargeCostPc,
     packNo:Number(document.getElementById('p'+id+'-packNo')?.value)||1,   // Brand Master ki Packing 1 / 2
     trimsCostPerPc, trimsCostTotal, fabricCost, exGST, gstAmt, amount, finalPricePerQty,
-    trimStatus, trimData, extraTrims,
+    trimStatus, trimData, trimShown, extraTrims,
     itemCode:g('p'+id+'-itemCode'), fabric:g('p'+id+'-fabric'), category:g('p'+id+'-category'), size:g('p'+id+'-size'),
     dbsb:g('p'+id+'-dbsb'), ply:g('p'+id+'-ply'),
     /* `sattan` is the same joint value as in the hidden input; all the old code
@@ -5326,15 +5367,53 @@ function calcAll(){
   updatePdfDoc(prods,grand);
 }
 
+/* ══ Packing Materials Summary (Bags & Trims — Supplied By) ═════════════
+   The columns are the materials of THIS order, not a fixed list: a column
+   shows only when at least one product has that row in its Bags & Trims,
+   i.e. the Brand Master says YES for it (ofRenderMaterials_ decides, and an
+   old order's filled rows count too). So Micro Label, Tag 1, Dori … appear
+   when a brand needs them, and Label / Bore / Outer Box (no longer in the
+   Brand Master) only on old orders that used them.
+   Column order = the Brand Master's Materials / Labels / Tags / Trims list,
+   then the packing materials (the Slave Packing's BORA / BALE / BOX, OUTER
+   BOX BORA), then the old fixed rows, then anything added by hand.
+   A cell: who supplies it (Buyer / SIHF / FOC, NA = not chosen yet) and the
+   pcs; blank where that product does not need the material. */
+const SUM_MAT_ORDER=['TAG','BAG','INNER BOX','FOAM','MICRO LABEL','SMALL LABEL','BIG LABEL',
+  'TAG 1','TAG 2','TAG 3','DORI','INSERT CARD','BARCODE STICKER',
+  'BORA','BALE','BOX','OUTER BOX BORA','LABEL','BORE','OUTER BOX'];
 function updateBagsTable(prods){
-  const tb=document.getElementById('bagsTbody');
-  if(!prods.length){tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:14px;font-size:12px">Add a product to see summary</td></tr>';return;}
-  const b=v=>({buyer:'<span class="bd-y">Buyer</span>',seller:'<span class="bd-y">SIHF</span>',foc:'<span class="bd-f">FOC</span>'}[v]||'<span class="bd-n">—</span>');
-  tb.innerHTML=prods.map(p=>`<tr>
-    <td><b>${esc(p.fabric||'Prod #'+p.id)}</b><br><span style="font-size:11px;color:var(--muted)">${p.qty} pcs</span></td>
-    <td>${b(p.trimStatus.label)}</td><td>${b(p.trimStatus.tag)}</td><td>${b(p.trimStatus.bag)}</td>
-    <td>${b(p.trimStatus.bore)}</td><td>${b(p.trimStatus.inner)}</td>
-    <td>${b(p.trimStatus.outer)}</td>
+  const tb=document.getElementById('bagsTbody'), th=document.getElementById('bagsThead');
+  const thHtml=cols=>'<th>Product</th>'+cols.map(c=>'<th>'+esc(c)+'</th>').join('')+'<th>Trims Total (₹)</th>';
+  if(!prods.length){
+    if(th) th.innerHTML=thHtml([]);
+    tb.innerHTML='<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:14px;font-size:12px">Add a product to see summary</td></tr>';
+    return;
+  }
+  // Each product's materials on its card: {NAME: {supp, pcs}}. A name met twice keeps the one actually chosen.
+  const seen=[];
+  const rows=prods.map(p=>{
+    const m={};
+    const put=(name,supp,pcs)=>{
+      const k=String(name||'').trim().toUpperCase(); if(!k) return;
+      if(!seen.includes(k)) seen.push(k);
+      if(!m[k] || (m[k].supp==='na' && supp!=='na')) m[k]={supp:supp||'na',pcs:Number(pcs)||0};
+    };
+    TRIMS.forEach(t=>{ if(p.trimShown&&p.trimShown[t.k]) put(t.n,p.trimStatus[t.k],(p.trimData[t.k]||{}).pcs); });
+    (p.extraTrims||[]).forEach(x=>put(x.mat,x.supp,x.pcs));
+    return {p,m};
+  });
+  const rank=k=>{ const i=SUM_MAT_ORDER.indexOf(k); return i<0?SUM_MAT_ORDER.length+seen.indexOf(k):i; };
+  const cols=seen.slice().sort((a,b)=>rank(a)-rank(b));
+  if(th) th.innerHTML=thHtml(cols.length?cols:['Materials']);
+  const b=v=>({buyer:'<span class="bd-y">Buyer</span>',seller:'<span class="bd-y">SIHF</span>',foc:'<span class="bd-f">FOC</span>'}[v]||'<span class="bd-n" title="Supplied By not chosen yet">NA</span>');
+  tb.innerHTML=rows.map(({p,m})=>`<tr>
+    <td><b>${esc(p.itemCode||p.fabric||'Prod #'+p.id)}</b><br><span style="font-size:11px;color:var(--muted)">${p.qty} pcs</span></td>
+    ${cols.length
+      ? cols.map(c=>{ const x=m[c];
+          return x ? `<td>${b(x.supp)}${x.supp!=='na'&&x.pcs?`<div class="sum-pcs">${fmtN(x.pcs)} pcs</div>`:''}</td>`
+                   : '<td class="sum-nr" title="Not required for this product"></td>'; }).join('')
+      : '<td style="color:var(--muted);font-size:11.5px">No Bags &amp; Trims material is marked YES in the Brand Master</td>'}
     <td><b style="font-family:'DM Mono',monospace;color:var(--navy)">${fmt(p.trimsCostTotal)}</b></td>
   </tr>`).join('');
 }
