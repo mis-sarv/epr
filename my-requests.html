@@ -28,6 +28,15 @@
   Quality OK + Quantity OK ticks, a photo (mandatory), remarks (mandatory
   when something is not OK), then the user's OWN login PIN. The server checks
   the PIN, the ownership and the "fully received" rule again on submit.
+
+  FIELD BOY PRs (bought over the counter, no PO) take their own route instead
+  (sql/FIELD_BOY_APPROVAL_MIGRATION.sql): the Field Boy sends each item with a
+  photo from mobile.html, the requester approves it here item by item or sends
+  it back with a reason (mr_fb_decide, own PIN), the Store receives the
+  approved items, and the requester confirms receipt (the same Confirm
+  receipt, open once every item is approved and fully received). Their
+  progress line is Requested → Pickup → Approved → Received → Confirmed
+  (fbStage / fbTimeline), and their cards are purple.
 -->
 <style>
   :root{
@@ -69,7 +78,7 @@
   .eta{margin-top:8px;font-size:12px;font-weight:700;color:#0f766e}
   .eta.late{color:var(--bad)}
   /* Parcel-style progress: Requested → Approved → Ordered → Sent → Received → Confirmed */
-  .prog{display:flex;align-items:center;margin:12px 2px 2px}
+  .prog{display:flex;align-items:flex-start;margin:12px 2px 2px}
   .prog .st{position:relative;flex:1;text-align:center;font-size:9.5px;font-weight:700;color:#94a3b8;padding-top:16px;line-height:1.2}
   .prog .st::before{content:'';position:absolute;top:4px;left:50%;transform:translateX(-50%);width:10px;height:10px;border-radius:50%;background:#cbd5e1;z-index:1}
   .prog .st::after{content:'';position:absolute;top:8px;left:-50%;width:100%;height:3px;background:#e2e8f0}
@@ -77,6 +86,14 @@
   .prog .st.done{color:#166534}.prog .st.done::before{background:var(--ok)}.prog .st.done::after{background:var(--ok)}
   .prog .st.half{color:#92400e}.prog .st.half::before{background:#f59e0b;box-shadow:0 0 0 3px #fde68a}.prog .st.half::after{background:linear-gradient(90deg,var(--ok),#f59e0b)}
   .prog .st.bad{color:#991b1b}.prog .st.bad::before{background:var(--bad)}
+  /* Under each step: when it happened (date, time) and its remark, cut to two lines; the full text is in the tooltip. */
+  .prog .st .sd{display:block;margin-top:3px;font-size:9px;font-weight:700;color:#475569;line-height:1.25}
+  .prog .st .sd i{display:block;font-style:normal;font-weight:600;color:#64748b}
+  .prog .st .sr{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-top:2px;padding:0 2px;font-size:9px;font-weight:600;font-style:italic;color:#64748b;line-height:1.25;word-break:break-word}
+  .prog .st.bad .sr{color:#991b1b}
+  .pur{margin-top:6px;font-size:12px;font-weight:600;color:#475569}
+  .pur b{color:var(--ink)}
+  .pur .muted{font-weight:600}
   .empty{text-align:center;color:var(--mut);font-weight:700;padding:40px 16px;background:#fff;border:1px dashed var(--line);border-radius:14px}
   .note{border-radius:12px;padding:12px 14px;font-size:13px;font-weight:600;line-height:1.5;margin-bottom:12px}
   .n-warn{background:#fffbeb;border:1px solid #fde68a;color:#92400e}.n-bad{background:#fef2f2;border:1px solid #fecaca;color:#991b1b}
@@ -145,6 +162,23 @@
   .muted{color:var(--mut)}
   .lnk{color:var(--blue);font-weight:700;cursor:pointer;text-decoration:underline;background:none;border:0;padding:0;font-size:inherit}
   @media (max-width:480px){.hide-sm{display:none}}
+  /* Purchaser FIELD BOY: the whole card is purple, so these PRs (no PO, own
+     five-step line) stand apart in every tab. Placed after .card.act, so the
+     purple left edge wins over the amber one; the chip still says what is needed. */
+  .card.fb{background:#faf5ff;border-color:#ddd6fe;border-left:4px solid #7c3aed}
+  .card.fb:hover{border-color:#c4b5fd;box-shadow:0 2px 10px rgba(124,58,237,.12)}
+  .card.fb .prog .st.done{color:#5b21b6}.card.fb .prog .st.done::before,.card.fb .prog .st.done::after{background:#7c3aed}
+  .fbtag{display:inline-block;font-size:10px;font-weight:800;padding:1px 7px;border-radius:5px;background:#ede9fe;color:#5b21b6;margin-left:6px;vertical-align:2px}
+  /* Field Boy items to approve: photo, item, Approve / Send back. */
+  .fbi{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px;margin-top:10px;background:#fff}
+  .fbi.back{border-color:#fecaca;background:#fef2f2}
+  .fbp{width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;flex:0 0 auto;background:#f8fafc}
+  .fbp.none{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--mut);cursor:default}
+  .seg2{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+  .seg2 button{border:0;background:#fff;padding:8px 12px;font-size:12px;font-weight:800;color:#475569;cursor:pointer}
+  .seg2 button.on.ok{background:var(--ok);color:#fff}.seg2 button.on.bad{background:var(--bad);color:#fff}
+  .fbi textarea{margin-top:8px;font-size:13px;padding:8px 10px}
+  .fbthumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
   .skel{height:120px;border-radius:14px;background:linear-gradient(90deg,#e2e8f0,#f1f5f9,#e2e8f0);background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
   @keyframes sk{to{background-position:-200% 0}}
 </style>
@@ -168,7 +202,7 @@
   <div class="tabs" id="tabs"></div>
   <div class="search">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-    <input id="q" type="text" autocomplete="off" placeholder="Search PR no., item, PO no., vendor" oninput="renderList()">
+    <input id="q" type="text" autocomplete="off" placeholder="Search PR no., item, PO no., vendor, purchaser" oninput="renderList()">
   </div>
   <div id="list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
 </div>
@@ -213,12 +247,13 @@
 <div class="sheet" id="pinSheet" onclick="if(event.target===this)closeSheet('pinSheet')">
   <div class="sbox">
     <h2>Enter your PIN</h2>
-    <div class="sub">Your own login PIN. It signs this confirmation in your name.</div>
-    <input class="pin" id="pinIn" type="password" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')submitConfirm()">
+    <!-- One PIN sheet for both: Confirm receipt (PO route) and a Field Boy approval (PIN_MODE). -->
+    <div class="sub" id="pinSub">Your own login PIN. It signs this confirmation in your name.</div>
+    <input class="pin" id="pinIn" type="password" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')pinSubmit()">
     <div class="err" id="pinErr"></div>
     <div class="cta" style="margin-top:14px">
-      <button class="btn ghost" onclick="closeSheet('pinSheet');openSheet('confirmSheet')">Back</button>
-      <button class="btn pri" id="pinBtn" onclick="submitConfirm()">Submit</button>
+      <button class="btn ghost" onclick="closeSheet('pinSheet');if(PIN_MODE==='confirm')openSheet('confirmSheet')">Back</button>
+      <button class="btn pri" id="pinBtn" onclick="pinSubmit()">Submit</button>
     </div>
   </div>
 </div>
@@ -274,7 +309,13 @@ const ERR = {
   ALREADY_CONFIRMED: 'You have already confirmed this request.',
   PHOTO_REQUIRED: 'Please add a photo of the material.',
   REMARKS_REQUIRED: 'Please write what is wrong in the remarks.',
-  NOT_FOUND: 'This request was not found. Please refresh.'
+  NOT_FOUND: 'This request was not found. Please refresh.',
+  // Field Boy approval (mr_fb_decide)
+  NOT_SENT: 'Some of these items changed meanwhile (already decided, or not waiting any more). Please refresh and check again.',
+  NOTHING_TO_DECIDE: 'There is nothing waiting for your approval on this request.',
+  LINE_NOT_FOUND: 'An item is no longer on this request. Please refresh.',
+  PR_CLOSED: 'This request is cancelled or rejected.',
+  NOT_FIELD_BOY: 'This request is not bought by the Field Boy.'
 };
 const SESSION_ERRORS = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
 async function rpc(fn, args) {
@@ -304,24 +345,110 @@ const STATE = {
   IN_PROGRESS: { tab: 'progress', chip: 'c-pri',  label: 'On the way' },
   WAITING_PO:  { tab: 'progress', chip: 'c-mut',  label: 'Being processed' },
   CONFIRMED:   { tab: 'done',     chip: 'c-ok',   label: 'Confirmed by you' },
-  REJECTED:    { tab: 'rejected', chip: 'c-bad',  label: 'Rejected' }
+  REJECTED:    { tab: 'rejected', chip: 'c-bad',  label: 'Rejected' },
+  /* A FIELD BOY PR (bought over the counter, no PO) has its own route, from
+     sql/FIELD_BOY_APPROVAL_MIGRATION.sql: the Field Boy photographs each item
+     and sends it here; you approve each item or send it back; once all are
+     approved the Field Boy confirms. The Store can receive approved items only. */
+  /* After approval the PR waits for the Store; once every item is fully
+     received it becomes READY and you Confirm receipt, as on the PO route
+     (READY / ISSUE / CONFIRMED above). */
+  FB_WORKING:   { tab: 'progress', chip: 'c-vio',  label: 'Field Boy is buying' },
+  FB_APPROVAL:  { tab: 'action',   chip: 'c-warn', label: 'Approve items' },
+  FB_APPROVED:  { tab: 'progress', chip: 'c-vio',  label: 'Approved · waiting for Store' },
+  FB_RECEIVING: { tab: 'progress', chip: 'c-blue', label: 'Partly received' },
+  FB_DONE:      { tab: 'done',     chip: 'c-ok',   label: 'Done' }
 };
-// How far along, in the 6 steps a person cares about.
+const isFb = pr => !!(pr && pr.fieldBoy && pr.field);
+const fbLines = pr => (isFb(pr) && pr.field.lines) || [];
+const fbCount = pr => (isFb(pr) && pr.field.counts) || { total: 0, photo: 0, sent: 0, approved: 0, back: 0 };
+const fbHist = (pr, ev) => ((isFb(pr) && pr.field.history) || []).filter(h => !ev || h.ev === ev);
+/* How far along, in the 6 steps a person cares about. Each step also carries
+   WHEN it happened (`at`), who did it (`who`) and its remark (`rem`), taken
+   from the same records the Tracking line uses; with several POs the first
+   approval / sending and the latest receipt count. A step not reached yet
+   has no date. */
+const pickAt = (list, last) => {
+  const ok = list.map(x => Object.assign({ p: parseAt(x.at) }, x)).filter(x => x.p).sort((a, b) => a.p.d - b.p.d);
+  return ok.length ? ok[last ? ok.length - 1 : 0] : null;
+};
+const whoOf = s => s ? [s.by, s.as && s.as !== s.by ? '(' + s.as + ')' : ''].filter(Boolean).join(' ') : '';
+/* A Field Boy PR (no PO, no vendor) has its own five steps:
+     1 Requested
+     2 Pickup     the Field Boy attached a photo to any item
+     3 Approved   you approved every item (half: some; red: you sent one back)
+     4 Received   a Store entry against the PR (half until every item is in full)
+     5 Confirmed  you confirmed receipt (red: you reported a problem)
+   Each step is read on its own, with its date, time and remark like the PO
+   route's line. A PR finished under the old tick list shows all done. */
+function fbStage(pr) {
+  const c = fbCount(pr), lines = fbLines(pr), legacy = !!pr.field.legacyDone;
+  const lastAt = (list, key) => pickAt(list.map(x => ({ at: x[key || 'at'], x })), true);
+  const pick = lastAt(lines.filter(l => l.photoAt), 'photoAt');
+  const decH = lastAt(fbHist(pr, 'DECIDED'));
+  const store = pickAt((pr.looseInwards || []).map(w => ({ at: w.createdAt || w.date })), true);
+  const conf = (pr.confirmations || []).slice(-1)[0];
+  const cnf = conf && ['CONFIRMED', 'ISSUE'].includes(pr.state) ? { p: parseAt(conf.at) } : null;
+  const nIn = (pr.looseInwards || []).length, full = !!pr.field.allReceived;
+  const st = (t, s, x, rem, who) => Object.assign({ t, s }, x && x.p ? { at: x.p, rem: rem || '', who: who || '' } : {});
+  return [
+    st('Requested', 'done', { p: parseAt(pr.createdAt || pr.requestDate) }, pr.purpose || '', pr.requestedBy),
+    st('Pickup', legacy || c.photo ? 'done' : '', pick, c.total ? c.photo + '/' + c.total + ' items photographed' : '', 'Field Boy'),
+    st('Approved', legacy || (c.total && c.approved >= c.total) ? 'done' : (c.back ? 'bad' : (c.approved ? 'half' : '')), decH,
+       decH ? c.approved + '/' + c.total + ' approved' + (c.back ? ' · ' + c.back + ' sent back' : '') : '', decH && decH.x.by),
+    st('Received', legacy || full ? 'done' : (nIn ? 'half' : ''), store, nIn ? nIn + ' store entr' + (nIn > 1 ? 'ies' : 'y') + (full ? '' : ' · partly') : ''),
+    st('Confirmed', legacy || pr.state === 'CONFIRMED' ? 'done' : (pr.state === 'ISSUE' ? 'bad' : ''), cnf,
+       conf ? (conf.remarks || ('Quality ' + (conf.qualityOk ? 'OK' : 'not OK') + ', Qty ' + (conf.quantityOk ? 'OK' : 'not OK'))) : '', conf && conf.by)
+  ];
+}
 function stage(pr) {
+  if (isFb(pr)) return fbStage(pr);
   const live = (pr.pos || []).filter(LIVE);
   const md = live.some(p => p.md || ['MD Approved', 'Vendor Verified', 'Partially Received', 'Received', 'Closed (Short)'].includes(p.status));
   const sent = live.some(p => p.sentAt);
   const recv = ['READY', 'CONFIRMED', 'ISSUE'].includes(pr.state), part = pr.state === 'PARTIAL';
+  const conf = (pr.confirmations || []).slice(-1)[0];
+
+  const reqd = { p: parseAt(pr.createdAt || pr.requestDate), who: pr.requestedBy || '', rem: pr.purpose || '' };
+  const appr = pr.rejection ? { p: parseAt(pr.rejection.at), who: whoOf(pr.rejection), rem: pr.rejection.remarks || '' }
+    : pr.gmSign ? { p: parseAt(pr.gmSign.at), who: whoOf(pr.gmSign), rem: pr.gmSign.remarks || (pr.storeSign && pr.storeSign.remarks) || '' } : null;
+  // Ordered: the MD's approval; before that, the PO being made (the half step).
+  const ord = md ? pickAt(live.filter(p => p.md).map(p => ({ at: p.md.at, who: whoOf(p.md), rem: p.md.remarks || (p.gm && p.gm.remarks) || shortNo(p.poNo, 'PO') })))
+    : live.length ? pickAt(live.map(p => ({ at: p.createdAt || p.poDate, who: '', rem: shortNo(p.poNo, 'PO') + ' made, waiting for approval' }))) : null;
+  // Sent: when it went to the vendor; the remark is the latest vendor follow-up, if any.
+  let snt = sent ? pickAt(live.filter(p => p.sentAt).map(p => ({ at: p.sentAt, who: p.vendor || '', rem: '' }))) : null;
+  if (snt) {
+    const fu = pickAt(live.reduce((a, p) => a.concat((p.followups || []).map(f => ({ at: f.at, f }))), []), true);
+    if (fu) snt.rem = (fu.f.revisedDate ? 'New date ' + fD(fu.f.revisedDate) + (fu.f.remarks ? ': ' : '') : '') + (fu.f.remarks || '');
+    if (!snt.rem) snt.rem = snt.who;
+  }
+  const lots = live.reduce((a, p) => a.concat((p.inwards || []).map(w => ({ at: w.createdAt || w.date }))), [])
+    .concat((pr.looseInwards || []).map(w => ({ at: w.createdAt || w.date })));
+  let rcv = (recv || part) ? pickAt(lots, true) : null;
+  if (rcv) { const pct = receivedPct(pr); rcv.rem = (lots.length > 1 ? lots.length + ' lots' : '1 lot') + (part && pct != null ? ' · ' + pct + '%' : ''); }
+  const cnf = conf && (pr.state === 'CONFIRMED' || pr.state === 'ISSUE')
+    ? { p: parseAt(conf.at), who: conf.by || '', rem: conf.remarks || ('Quality ' + (conf.qualityOk ? 'OK' : 'not OK') + ', Qty ' + (conf.quantityOk ? 'OK' : 'not OK')) } : null;
+
+  const st = (t, s, x) => Object.assign({ t, s }, x && x.p ? { at: x.p, who: x.who || '', rem: x.rem || '' } : {});
   return [
-    { t: 'Requested', s: 'done' },
-    { t: 'Approved', s: (pr.gmSign || live.length) ? 'done' : (pr.state === 'REJECTED' ? 'bad' : '') },
-    { t: 'Ordered', s: md ? 'done' : (live.length ? 'half' : '') },
-    { t: 'Sent to vendor', s: sent ? 'done' : '' },
-    { t: 'Received', s: recv ? 'done' : (part ? 'half' : '') },
-    { t: 'Confirmed', s: pr.state === 'CONFIRMED' ? 'done' : (pr.state === 'ISSUE' ? 'bad' : '') }
+    st('Requested', 'done', reqd),
+    st('Approved', (pr.gmSign || live.length) ? 'done' : (pr.state === 'REJECTED' ? 'bad' : ''), appr),
+    st('Ordered', md ? 'done' : (live.length ? 'half' : ''), ord),
+    st('Sent to vendor', sent ? 'done' : '', snt),
+    st('Received', recv ? 'done' : (part ? 'half' : ''), rcv),
+    st('Confirmed', pr.state === 'CONFIRMED' ? 'done' : (pr.state === 'ISSUE' ? 'bad' : ''), cnf)
   ];
 }
-function progHtml(pr) { return '<div class="prog">' + stage(pr).map(s => `<div class="st ${s.s}">${s.t}</div>`).join('') + '</div>'; }
+// Short date + time for under a step ("25 Oct 26" / "3:57 PM"); the tooltip has the full stamp.
+const fStepD = d => d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' });
+const fStepT = d => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+function progHtml(pr) {
+  return '<div class="prog">' + stage(pr).map(s => {
+    if (!s.at) return `<div class="st ${s.s}">${s.t}</div>`;
+    const tip = [s.t, fFull(s.at), s.who ? 'by ' + s.who : '', s.rem].filter(Boolean).join(' · ');
+    return `<div class="st ${s.s}" title="${esc(tip)}">${s.t}<span class="sd">${esc(fStepD(s.at.d))}${s.at.t ? `<i>${esc(fStepT(s.at.d))}</i>` : ''}</span>${s.rem ? `<span class="sr">${esc(s.rem)}</span>` : ''}</div>`;
+  }).join('') + '</div>';
+}
 // Received share across this PR's PO lines (by the line's billing basis).
 function receivedPct(pr) {
   let o = 0, g = 0;
@@ -360,7 +487,7 @@ function renderTabs() {
 function setTab(k) { TAB = k; try { sessionStorage.setItem('mr_tab', k); } catch (e) {} renderTabs(); renderList(); }
 function matches(pr, q) {
   if (!q) return true;
-  const hay = [pr.reqNo, pr.department, pr.purpose, pr.notes, ...(pr.items || []).map(i => i.item + ' ' + (i.desc || '') + ' ' + (i.spec || '')),
+  const hay = [pr.reqNo, pr.department, pr.purpose, pr.notes, pr.purchaser, ...(pr.items || []).map(i => i.item + ' ' + (i.desc || '') + ' ' + (i.spec || '')),
                ...(pr.pos || []).map(p => p.poNo + ' ' + (p.vendor || ''))].join(' ').toUpperCase();
   return q.split(/\s+/).every(w => hay.includes(w));
 }
@@ -377,12 +504,15 @@ function renderList() {
     const lab = pr.state === 'PARTIAL' && pct != null ? `Partly received · ${pct}%` : st.label;
     const etaH = e && !['READY', 'CONFIRMED', 'ISSUE', 'REJECTED'].includes(pr.state)
       ? `<div class="eta ${e.d < new Date(new Date().toDateString()) ? 'late' : ''}">Expected by ${fDate(e.d)}${e.revised ? ` · vendor revised ${e.revised}×` : ''}${e.d < new Date(new Date().toDateString()) ? ' · overdue' : ''}</div>` : '';
-    return `<div class="card ${act ? 'act' : ''}" onclick="openDetail('${esc(pr.reqNo)}')">
-      <div class="row"><div class="grow"><div class="prno">${esc(shortNo(pr.reqNo, 'PR'))} <span class="muted" style="font-size:11px;font-weight:600">${esc(pr.reqNo)}</span></div>
+    const fb = isFb(pr) || String(pr.purchaser || '').trim().toUpperCase() === 'FIELD BOY';
+    return `<div class="card ${act ? 'act' : ''} ${fb ? 'fb' : ''}" onclick="openDetail('${esc(pr.reqNo)}')">
+      <div class="row"><div class="grow"><div class="prno">${esc(shortNo(pr.reqNo, 'PR'))} <span class="muted" style="font-size:11px;font-weight:600">${esc(pr.reqNo)}</span>${fb ? '<span class="fbtag">Field Boy</span>' : ''}</div>
       <div class="meta">${esc(fD(pr.requestDate || pr.createdAt))}${pr.department ? ' · ' + esc(pr.department) : ''}${(pr.pos || []).length ? ' · ' + (pr.pos || []).map(p => esc(shortNo(p.poNo, 'PO'))).join(', ') : ''}</div></div>
       <span class="chip ${st.chip}">${esc(lab)}</span></div>
-      <div class="items">${itemsSummary(pr)}</div>${etaH}${progHtml(pr)}
+      <div class="items">${itemsSummary(pr)}</div>
+      <div class="pur">Purchaser: ${pr.purchaser ? `<b>${esc(pr.purchaser)}</b>` : '<span class="muted">not assigned yet</span>'}</div>${etaH}${progHtml(pr)}
       ${act && pr.state === 'READY' ? '<div class="note n-warn" style="margin:10px 0 0;padding:8px 12px;font-size:12px">All material has arrived. Tap to confirm you received it.</div>' : ''}
+      ${pr.state === 'FB_APPROVAL' ? `<div class="note n-warn" style="margin:10px 0 0;padding:8px 12px;font-size:12px">The Field Boy has sent ${fbCount(pr).sent} item(s) with photos. Tap to approve them or send them back.</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -402,8 +532,122 @@ function openDetail(reqNo) {
 }
 function closeDetail() { $('panel').classList.remove('open'); OPEN = null; try { history.replaceState(null, '', location.pathname); } catch (e) {} }
 
+/* ── Field Boy PR: approve the photographed items ─────────────────────
+   FBDEC holds this screen's choices for the open PR: {lineId: {ok, remarks}}.
+   Every SENT item starts on Approve; Send back needs a reason. One PIN signs
+   the whole set (mr_fb_decide); the server checks again that each item is
+   still waiting, so a stale screen cannot decide something twice. */
+let FBDEC = { req: null, d: {} }, PIN_MODE = 'confirm';
+function fbDecInit(pr) {
+  if (FBDEC.req === pr.reqNo) return;
+  FBDEC = { req: pr.reqNo, d: {} };
+  fbLines(pr).filter(l => l.status === 'SENT').forEach(l => { FBDEC.d[l.id] = { ok: true, remarks: '' }; });
+}
+function fbPhotoTag(l, cls) {
+  return l.photo
+    ? `<img class="${cls}" src="${esc(l.photo)}" alt="" title="Tap to enlarge" onclick="event.stopPropagation();viewFbPhoto('${esc(l.id)}')">`
+    : `<div class="${cls} none">No photo</div>`;
+}
+function fbDecHtml(pr) {
+  fbDecInit(pr);
+  const lines = fbLines(pr).filter(l => l.status === 'SENT');
+  const nBack = lines.filter(l => !(FBDEC.d[l.id] || {}).ok).length;
+  return `<div class="note n-warn" id="fbDecBox"><b>The Field Boy has sent ${lines.length} item(s) for your approval.</b> Check each photo: approve it if it is what you asked for, or send it back with the reason (it goes back to the Field Boy). The Store can receive only approved items.`
+    + lines.map(l => { const d = FBDEC.d[l.id] || { ok: true, remarks: '' };
+        return `<div class="fbi ${d.ok ? '' : 'back'}">${fbPhotoTag(l, 'fbp')}
+          <div class="grow"><b style="color:var(--ink)">${esc(l.item || '-')}</b><div class="muted" style="font-size:12px">${nfmt(l.qty)} ${esc(l.uom || '')}${l.spec ? ' · ' + esc(l.spec) : ''}</div>
+          <div class="seg2"><button class="${d.ok ? 'on ok' : ''}" onclick="fbDecSet('${esc(l.id)}',true)">Approve</button><button class="${d.ok ? '' : 'on bad'}" onclick="fbDecSet('${esc(l.id)}',false)">Send back</button></div>
+          ${d.ok ? '' : `<textarea rows="2" placeholder="Why is it being sent back? (required)" oninput="fbDecRem('${esc(l.id)}',this.value)">${esc(d.remarks)}</textarea>`}</div></div>`; }).join('')
+    + `<div class="err" id="fbDecErr"></div><div class="cta" style="margin-top:6px"><span class="muted" style="font-size:12px">${lines.length - nBack} approve · ${nBack} send back</span><button class="btn pri" onclick="fbDecSubmit()">Submit with my PIN</button></div></div>`;
+}
+function fbDecRender() { const pr = DATA.find(p => p.reqNo === OPEN), box = $('fbDecBox'); if (pr && box) box.outerHTML = fbDecHtml(pr); }
+function fbDecSet(id, ok) { if (FBDEC.d[id]) { FBDEC.d[id].ok = ok; fbDecRender(); } }
+function fbDecRem(id, v) { if (FBDEC.d[id]) FBDEC.d[id].remarks = v; }
+function fbDecSubmit() {
+  const ids = Object.keys(FBDEC.d);
+  if (!ids.length) return;
+  if (ids.some(id => !FBDEC.d[id].ok && !String(FBDEC.d[id].remarks || '').trim())) return $('fbDecErr').textContent = 'Write the reason for every item you send back.';
+  const back = ids.filter(id => !FBDEC.d[id].ok).length;
+  PIN_MODE = 'fb';
+  $('pinSub').textContent = `Approve ${ids.length - back} item(s)` + (back ? `, send back ${back}` : '') + '. Your own login PIN signs this decision.';
+  $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
+}
+async function submitFbDecision() {
+  const pin = $('pinIn').value.trim();
+  if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
+  const b = $('pinBtn'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Submitting';
+  const dec = {}; Object.keys(FBDEC.d).forEach(id => { dec[id] = { ok: !!FBDEC.d[id].ok, remarks: String(FBDEC.d[id].remarks || '').trim() }; });
+  const res = await rpc('mr_fb_decide', { p_pin: pin, p_req_no: OPEN, p_decisions: dec, p_remarks: null });
+  b.disabled = false; b.textContent = 'Submit';
+  if (!res.ok) {
+    if (res.error === 'PIN_INVALID' || res.error === 'TOO_MANY_ATTEMPTS') { $('pinErr').innerHTML = errText(res); $('pinIn').value = ''; return; }
+    closeSheet('pinSheet'); return message('Not submitted', errText(res), true);
+  }
+  closeSheet('pinSheet');
+  const reqNo = OPEN; FBDEC = { req: null, d: {} };
+  await load(false); if (DATA.some(p => p.reqNo === reqNo)) openDetail(reqNo);
+  message('Saved', `Approved ${res.data.approved} item(s)` + (res.data.sentBack ? `, sent back ${res.data.sentBack} to the Field Boy` : '') + '.', false);
+}
+function viewFbPhoto(id) {
+  const pr = DATA.find(p => p.reqNo === OPEN) || DATA.find(p => fbLines(p).some(l => l.id === id));
+  const l = pr && fbLines(pr).find(x => x.id === id); if (!l || !l.photo) return;
+  $('msgBody').innerHTML = `<h2 style="margin:0 0 10px">${esc(l.item || 'Item')}</h2><img src="${esc(l.photo)}" style="max-width:100%;border-radius:10px" alt="">`
+    + (l.photoAt ? `<div class="muted" style="margin-top:6px;font-size:12px">Photo: ${esc(fFull(parseAt(l.photoAt)))}</div>` : '');
+  openSheet('msgSheet');
+}
+// The Field Boy PR's box at the top of the detail.
+function fbActionBox(pr) {
+  const c = fbCount(pr);
+  if (pr.state === 'FB_APPROVAL') return fbDecHtml(pr);
+  if (pr.state === 'FB_DONE') return `<div class="note n-ok"><b>Done.</b> ${pr.field.legacyDone ? 'Completed by the Field Boy.' : 'You approved every item and the Field Boy confirmed' + (pr.field.confirm && pr.field.confirm.at ? ' on ' + esc(fFull(parseAt(pr.field.confirm.at))) : '') + '.'}</div>`;
+  if (pr.state === 'FB_APPROVED') return `<div class="note n-blue"><b>You approved all ${c.total} item(s).</b> Waiting for the Store to receive them; then you confirm receipt here.</div>`;
+  if (pr.state === 'FB_RECEIVING') return `<div class="note n-blue"><b>Partly received in Store.</b> You can confirm receipt once every item has come in full.</div>`;
+  return `<div class="note n-blue"><b>The Field Boy is buying your items.</b> ${c.photo}/${c.total} photographed${c.approved ? ', ' + c.approved + ' approved' : ''}${c.back ? ', <b>' + c.back + ' sent back by you</b>' : ''}. You will be asked to approve each item with its photo.</div>`;
+}
+// Items of a Field Boy PR: what was asked, its photo, where it stands.
+function fbItemsSec(pr) {
+  const lab = { NEW: ['c-mut', 'Not bought yet'], PHOTO: ['c-pri', 'Photo taken'], SENT: ['c-warn', 'Waiting for you'], APPROVED: ['c-ok', 'Approved'], REJECTED: ['c-bad', 'Sent back'] };
+  const rows = fbLines(pr).map(l => { const s = lab[l.status] || lab.NEW, d = l.decision || {};
+    return `<tr><td><b>${esc(l.item || '-')}</b>${l.spec ? `<div class="muted" style="font-size:11px">${esc(l.spec)}</div>` : ''}</td><td class="n">${nfmt(l.qty)} ${esc(l.uom || '')}</td>
+      <td>${l.photo ? fbPhotoTag(l, 'fbthumb') : '<span class="muted">–</span>'}</td>
+      <td><span class="chip ${s[0]}">${s[1]}</span>${d.remarks ? `<div class="muted" style="font-size:11px;margin-top:3px">“${esc(d.remarks)}”</div>` : ''}</td></tr>`; }).join('');
+  return `<div class="sec"><h3>Items</h3><div style="overflow-x:auto"><table class="it"><thead><tr><th>Item</th><th class="n">Asked</th><th>Photo</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">No items listed.</td></tr>'}</tbody></table></div></div>`;
+}
+// Tracking line of a Field Boy PR: raised, each send, each decision, store entries, confirm.
+function fbTimeline(pr) {
+  const ev = [], q = s => s ? `<div class="q">“${esc(s)}”</div>` : '';
+  const add = (at, cls, t, who, body) => { const p = parseAt(at); if (p) ev.push({ p, cls, t, who, body }); };
+  add(pr.createdAt || pr.requestDate, 'done', 'Request raised', 'by ' + esc(pr.requestedBy || 'you'), (pr.items || []).length + ' item(s)' + (pr.requiredBy ? ' · needed by ' + esc(fD(pr.requiredBy)) : '') + ' · bought by the Field Boy, no PO');
+  fbHist(pr).forEach(h => {
+    if (h.ev === 'SENT') add(h.at, 'fu', 'Sent for your approval', 'by ' + esc(h.by || 'Field Boy'), (h.count || 0) + ' item(s) with photos' + ((h.items || []).filter(Boolean).length ? '<ul class="lst">' + h.items.filter(Boolean).map(n => `<li>${esc(n)}</li>`).join('') + '</ul>' : ''));
+    else if (h.ev === 'DECIDED') add(h.at, h.sentBack ? 'bad' : 'me', h.sentBack ? 'You decided (some sent back)' : 'You approved', 'by ' + esc(h.by || 'you'), `Approved: <b>${h.approved || 0}</b> · Sent back: <b>${h.sentBack || 0}</b>` + q(h.remarks));
+    else if (h.ev === 'CONFIRMED') add(h.at, 'done', 'Confirmed by the Field Boy: done', 'by ' + esc(h.by || 'Field Boy'), '');
+  });
+  // Each sent-back item's own reason, at the moment it was decided.
+  fbLines(pr).forEach(l => { const d = l.decision || {}; if (l.status === 'REJECTED' && d.at) add(d.at, 'bad', 'Sent back: ' + esc(l.item || ''), 'by ' + esc(d.by || 'you'), q(d.remarks)); });
+  (pr.looseInwards || []).forEach(w => {
+    add(w.createdAt || w.date, 'recv', 'Received in Store', 'Store entry ' + esc(shortNo(w.docNo)), w.items && w.items.length ? '<ul class="lst">' + w.items.map(x => `<li>${esc(x.item || '')}: <b>${nfmt(x.qty)} ${esc(x.uom || '')}</b></li>`).join('') + '</ul>' : '');
+    if (w.informed) add(w.informed.at, 'done', 'Store informed you', 'by ' + esc(w.informed.by || 'Store'), '');
+  });
+  (pr.confirmations || []).forEach(cf => add(cf.at, cf.outcome === 'OK' ? 'me' : 'bad', cf.outcome === 'OK' ? 'You confirmed receipt' : 'You reported a problem', 'by ' + esc(cf.by || 'you'),
+    `Quality: <b>${cf.qualityOk ? 'OK' : 'Not OK'}</b> · Quantity: <b>${cf.quantityOk ? 'OK' : 'Not OK'}</b>${q(cf.remarks)}${cf.hasPhoto ? `<div style="margin-top:5px"><button class="lnk" onclick="viewPhoto(${Number(cf.id)})">View photo</button></div>` : ''}`));
+  ev.sort((a, b) => a.p.d - b.p.d);
+  // Still to come, in the order of the five steps.
+  const c = fbCount(pr), next = [];
+  if (!['FB_DONE', 'REJECTED', 'CONFIRMED'].includes(pr.state)) {
+    if (!c.photo) next.push('Pickup: Field Boy photographs the items');
+    if (c.approved < c.total) next.push('Your approval');
+    if (!pr.field.allReceived) next.push('Received in Store (approved items)');
+    next.push('Your confirmation of receipt');
+  }
+  return ev.map(e => `<li class="ev ${e.cls}"><span class="dot"></span><div class="t">${e.t}</div><div class="w">${esc(fFull(e.p))}${e.p.t ? ' · ' + ago(e.p.d) : ''}${e.who ? ' · ' + e.who : ''}</div>${e.body ? `<div class="d">${e.body}</div>` : ''}</li>`).join('')
+       + next.map(t => `<li class="ev next"><span class="dot"></span><div class="t">${esc(t)}</div><div class="w">Pending</div></li>`).join('');
+}
+
 // What the user can (or cannot yet) do, said plainly at the top.
 function actionBox(pr) {
+  // Field Boy PR: its own boxes, except Confirm receipt (READY / ISSUE / CONFIRMED), which is the shared one below.
+  if (isFb(pr) && !['REJECTED', 'READY', 'ISSUE', 'CONFIRMED'].includes(pr.state)) return fbActionBox(pr);
   const live = (pr.pos || []).filter(LIVE);
   if (pr.state === 'READY') return `<div class="note n-warn"><b>Your material has arrived.</b> Please check it and confirm you received it (quality, quantity and a photo).<div class="cta" style="margin-top:10px"><span></span><button class="btn pri" onclick="openConfirm()">Confirm receipt</button></div></div>`;
   if (pr.state === 'ISSUE') { const c = (pr.confirmations || []).slice(-1)[0] || {}; return `<div class="note n-bad"><b>You reported a problem</b> on ${esc(fFull(parseAt(c.at)))}${c.remarks ? ': “' + esc(c.remarks) + '”' : ''}. When it is sorted out, confirm again.<div class="cta" style="margin-top:10px"><span></span><button class="btn pri" onclick="openConfirm()">Confirm again</button></div></div>`; }
@@ -419,6 +663,7 @@ function actionBox(pr) {
   return `<div class="note n-blue"><b>On the way.</b>${e ? ' Expected by <b>' + fDate(e.d) + '</b>' + (e.revised ? ' (date revised ' + e.revised + '× by the vendor)' : '') + '.' : ''}</div>`;
 }
 function itemsSec(pr) {
+  if (isFb(pr)) return fbItemsSec(pr);
   // Requested → ordered → received per item (matched by item name across this PR's live POs).
   const recv = {}, ord = {};
   (pr.pos || []).filter(LIVE).forEach(p => (p.lines || []).forEach(l => {
@@ -445,6 +690,7 @@ function infoSec(pr) {
    oldest first, then the steps still to come in grey. Several POs are
    merged into one line, each step tagged with its PO. */
 function timeline(pr) {
+  if (isFb(pr)) return fbTimeline(pr);
   const ev = [];
   const add = (at, cls, t, who, body, tag) => { const p = parseAt(at); if (p) ev.push({ p, cls, t, who, body, tag }); };
   const q = s => s ? `<div class="q">“${esc(s)}”</div>` : '';
@@ -522,8 +768,10 @@ function toPin() {
   const issue = !$('cfQuality').checked || !$('cfQuantity').checked;
   if (!PHOTO) return $('cfErr').textContent = 'Please add a photo of the material.';
   if (issue && !$('cfRemarks').value.trim()) return $('cfErr').textContent = 'Please write what is wrong in the remarks.';
+  PIN_MODE = 'confirm'; $('pinSub').textContent = 'Your own login PIN. It signs this confirmation in your name.';
   closeSheet('confirmSheet'); $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
 }
+function pinSubmit() { return PIN_MODE === 'fb' ? submitFbDecision() : submitConfirm(); }
 async function submitConfirm() {
   const pin = $('pinIn').value.trim();
   if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
@@ -553,6 +801,7 @@ async function load(showSkel) {
   if (!res.ok) { $('banner').innerHTML = `<div class="note n-bad">${errText(res)}</div>`; $('list').innerHTML = ''; $('tabs').innerHTML = ''; return; }
   $('banner').innerHTML = '';
   DATA = res.data.requests || [];
+  FBDEC = { req: null, d: {} };   // fresh data, fresh choices (an item may have changed meanwhile)
   $('who').textContent = (res.data.me.name || '') + ' · ' + (res.data.me.empCode || '');
   // Open on the tab that has something; "Needs your action" first.
   if (showSkel === 'boot') { let k = null; try { k = sessionStorage.getItem('mr_tab'); } catch (e) {} TAB = k || (DATA.some(p => (STATE[p.state] || {}).tab === 'action') ? 'action' : 'progress'); }

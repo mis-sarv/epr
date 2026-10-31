@@ -701,6 +701,32 @@ function updatePoNumberBtnText(){
    purchase_requirements.purchaser_name, the same column the mobile Purchaser
    login filters on. */
 const INW_PR_PURCHASER='FIELD BOY';
+/* ── FIELD BOY approval (sql/FIELD_BOY_APPROVAL_MIGRATION.sql) ─────────
+   On mobile the Field Boy photographs each item and sends it to the person
+   who raised the PR; that person approves it item by item in Track My Store
+   Request. pdf_snapshot.fieldChecklist (v:2) holds each line's status:
+   NEW / PHOTO / SENT / APPROVED / REJECTED. So the Store may receive ONLY
+   the APPROVED items of such a PR, and a PR with anything sent for / given
+   approval cannot be edited (its items are what the requester approved; the
+   database refuses the change too, fb_guard_lines).
+   A PR finished under the old tick list (allDone, no v) counts as approved
+   in full, so it is not blocked after the fact. One still open under the
+   old tick list has nothing approved: it goes through the new flow. */
+function fbApproval_(pr){
+  const fc=((pr&&pr.pdf_snapshot)||{}).fieldChecklist||{};
+  if(String(fc.v)!=='2')return{all:!!fc.allDone,ids:new Set(),locked:false};
+  const lines=fc.lines||{},ids=new Set();
+  let locked=!!fc.confirm;
+  Object.keys(lines).forEach(k=>{
+    const st=(lines[k]||{}).status;
+    if(st==='APPROVED')ids.add(String(k));
+    if(st==='APPROVED'||st==='SENT')locked=true;
+  });
+  return{all:!!fc.legacyDone,ids,locked};
+}
+const fbLineApproved_=(pr,lineId)=>{const a=fbApproval_(pr);return a.all||a.ids.has(String(lineId));};
+// Only a FIELD BOY PR follows the approval rule; every other PR goes the PO way.
+const prIsFieldBoy_=pr=>String((pr&&pr.purchaser_name)||'').trim().toUpperCase()===INW_PR_PURCHASER.toUpperCase();
 let sarvPrCatalog=[];
 let sarvSelectedPrNos=[];
 /* Pending qty per PR, keyed by req_no: {qty, items, unknown?}. `qty` is the sum
@@ -798,12 +824,15 @@ async function prPendingByReq_(prs,excludeInwardId){
   list.forEach(p=>{out[p.req_no]={qty:0,items:0}});
   if(!list.length)return out;
   const lq=await SB.from('purchase_requirement_lines')
-    .select('requirement_id,item_id,requested_qty').in('requirement_id',list.map(p=>p.id));
+    .select('id,requirement_id,item_id,requested_qty').in('requirement_id',list.map(p=>p.id));
   if(lq.error)throw lq.error;
   const already=await prReceivedQtys_(list.map(p=>p.req_no),excludeInwardId);
-  const noById={};list.forEach(p=>{noById[String(p.id)]=p.req_no});
+  const noById={},prById={};list.forEach(p=>{noById[String(p.id)]=p.req_no;prById[String(p.id)]=p});
   (lq.data||[]).forEach(l=>{
     const no=noById[String(l.requirement_id)];if(!no)return;
+    // A FIELD BOY item is owed to the Store only once the requester approved it.
+    const pr=prById[String(l.requirement_id)];
+    if(prIsFieldBoy_(pr)&&!fbLineApproved_(pr,l.id))return;
     const got=(already[String(no).toUpperCase()+'|'+String(l.item_id||'')]||{}).qty||0;
     const short=Math.max(0,pNum(l.requested_qty)-pNum(got));
     if(short>0){out[no].qty+=short;out[no].items++;}
@@ -819,8 +848,8 @@ function renderPrNumberPanel(){
     // reads very differently from "no PRs exist" when somebody is hunting for
     // one they raised yesterday.
     panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
-      +escText(INW_PR_PURCHASER)+' has no PR with material still to arrive.<br>'
-      +'<span style="color:#64748b;">PRs that have been fully received are not shown here.</span></div>';
+      +escText(INW_PR_PURCHASER)+' has no PR with approved material still to arrive.<br>'
+      +'<span style="color:#64748b;">Only items the requester has approved (on the Field Boy\'s photos) can be received. Fully received PRs are not shown.</span></div>';
   }else{
     panel.innerHTML=sarvPrCatalog.map(p=>{
       const checked=sarvSelectedPrNos.includes(p.req_no)?' checked':'';
@@ -831,7 +860,7 @@ function renderPrNumberPanel(){
       const pend=sarvPrPending[p.req_no];
       const pendTxt=(pend&&!pend.unknown&&pend.items)
         ? '<span style="margin-left:auto;background:#fef3c7;color:#92400e;border-radius:9px;padding:1px 7px;font-size:10px;font-weight:800;white-space:nowrap;">'
-          +pend.items+' item · '+nNum_(pend.qty)+' pending</span>'
+          +pend.items+' approved item · '+nNum_(pend.qty)+' pending</span>'
         : '';
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
         +'<input type="checkbox" class="sarv-pr-opt" value="'+escText(p.req_no)+'"'+checked+'>'
@@ -1200,11 +1229,14 @@ async function loadPrsIntoInward(){
   // row's strip. Fetched once for all ticked PRs rather than per line.
   const already=await prReceivedQtys_(prs.map(p=>p.req_no),sarvEditingInwardId);
   const unresolved=[];
-  let total=0;
+  let total=0,notApproved=0;
   prs.forEach(pr=>{
     const lines=byReq.get(String(pr.id))||[];
     const snap=pr.pdf_snapshot||{};
     lines.forEach((line,i)=>{
+      // FIELD BOY: only the items the requester approved (fbApproval_). `i`
+      // still counts every line, so snap.items[i] below stays paired right.
+      if(prIsFieldBoy_(pr)&&!fbLineApproved_(pr,line.id)){notApproved++;return;}
       addNewRow();const tr=tb?.lastElementChild;if(!tr)return;
       total++;
       const it=itemOf(line);
@@ -1213,6 +1245,8 @@ async function loadPrsIntoInward(){
       // Which requirement this row came from. Drives the per-row PR strip, goes
       // into the printed PR Reference, and is saved onto the inward line.
       tr.dataset.reqNo=pr.req_no||'';
+      // The PR line itself: Submit checks it is still approved (fbInwardBlock_).
+      tr.dataset.prLineId=line.id||'';
       /* The three figures the strip needs beyond the qty being typed:
          what the PR asked for, and what has already been received against it.
          Mirrors the poOrderedQty / poReceivedQty datasets on a PO row. */
@@ -1257,6 +1291,30 @@ async function loadPrsIntoInward(){
   }
   renderInwPrDetails_(prs,total);
   if(total)showToast('Loaded '+total+' item(s) from '+prs.length+' PR(s). Check Qty and Rate, then Submit.');
+  if(notApproved)showToast(notApproved+' item(s) left out: not approved by the requester yet. Only approved Field Boy items can be received.','warn');
+}
+/* Submit-time check for a receipt against FIELD BOY PRs: every row must be an
+   APPROVED item of a ticked PR. Re-read from the database, because the
+   approval can change (an item sent back) while the form sits open, and a
+   row typed in by hand has no PR line at all. Returns the message, or ''. */
+async function fbInwardBlock_(){
+  if(sarvEditingInwardId)return '';            // an existing record is corrected as it was saved
+  const nos=getSelectedPrNos();if(!nos.length)return '';
+  const q=await SB.from('purchase_requirements').select('id,req_no,purchaser_name,pdf_snapshot').in('req_no',nos);
+  if(q.error)throw q.error;
+  const prs=(q.data||[]).filter(prIsFieldBoy_);if(!prs.length)return '';
+  const byNo=new Map(prs.map(p=>[String(p.req_no),p]));
+  const bad=[];
+  pRows('#itemTableBody tr:not(.po-info-row)').forEach(tr=>{
+    const name=(tr.querySelector('.item-name')?.value||'').trim();
+    if(!name||!(pNum(tr.querySelector('.qty-field')?.value)>0))return;
+    const pr=byNo.get(String(tr.dataset.reqNo||''));
+    if(!pr){ if(byNo.size)bad.push(name+' (not an item of the selected PR)'); return; }
+    if(!tr.dataset.prLineId||!fbLineApproved_(pr,tr.dataset.prLineId))bad.push(name+' (not approved by the requester)');
+  });
+  return bad.length
+    ?'Only items approved by the requester can be received against a Field Boy PR. Remove these rows: '+bad.slice(0,4).join(', ')+(bad.length>4?' …':'')
+    :'';
 }
 function setSelectedPoNos(list){
   sarvSelectedPoNos=[...new Set((list||[]).filter(Boolean))];
@@ -19811,6 +19869,8 @@ window.addEventListener('DOMContentLoaded',()=>{
      return showToast('To receive without a PO, tick at least one PR Number ('+escText(INW_PR_PURCHASER)+'\'s PR)','warn');
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
+   // FIELD BOY PR: approved items only (fbInwardBlock_), before any approval request goes out.
+   {const why=await fbInwardBlock_();if(why)return showToast(why,'warn');}
    /* Before anything is written, and before the user is asked for a PIN: is this
       bill already in the system under another Record No.? A re-submit after a
       PDF step failed is the usual way that happens, and the second run has no
@@ -20365,8 +20425,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        // Re-checked against the stored status: the PR may have been approved
        // (on mobile) while it sat open here. Non-Admin may only save a Pending,
        // Rejected or Hold PR.
-       const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot').eq('id',sarvEditingRequirementId).single();
+       const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot,purchaser_name').eq('id',sarvEditingRequirementId).single();
        if(cur.error)throw cur.error;
+       // The Field Boy may have sent the items for approval while this sat open.
+       if(prFieldLocked_(cur.data))throw new Error(prEditDeniedMsg_(cur.data));
        if(!canEditPr_(cur.data))throw new Error('This PR is now "'+(cur.data.status||'')+'"; only Pending / Rejected / Hold PRs can be edited. Update it with an Admin login.');
        // The original preparer's sign survives the edit (see the gate above).
        if(cur.data.pdf_snapshot&&cur.data.pdf_snapshot.preparedBy)preparedBy=cur.data.pdf_snapshot.preparedBy;
@@ -20846,7 +20908,19 @@ window.addEventListener('DOMContentLoaded',()=>{
     is still Pending. Once the Purchaser has approved it (POs may already be
     built from it) it is locked — except for an Admin login, who can edit any
     PR. Checked on the button, on the click, and again on save. */
+ /* A FIELD BOY PR whose items have been sent to (or approved by) the requester
+    is frozen for everyone, Admin too: its items are what the requester
+    approved on the photos, and the database refuses the change anyway
+    (fb_guard_lines). See fbApproval_. */
+ function prFieldLocked_(req){return prIsFieldBoy_(req)&&fbApproval_(req).locked;}
+ // Why Edit PR is refused: the Field Boy lock, else the status rule.
+ function prEditDeniedMsg_(req){
+   return prFieldLocked_(req)
+     ?'This Field Boy PR has items sent for / approved by the requester, so it cannot be edited.'
+     :'Only Pending / Rejected / Hold PRs can be edited; a '+pEsc((req&&req.status)||'')+' PR can only be edited with an Admin login';
+ }
  function canEditPr_(req){
+   if(prFieldLocked_(req))return false;
    if(isAdmin())return true;
    if(!sarvCan('EDIT_PR'))return false;
    const st=String((req&&req.status)||'Pending').trim();
@@ -20904,7 +20978,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        ?'<button type="button" class="btn btn-neutral btn-sm sarv-edit-pr" data-index="'+i+'"'
          +(needsFix?' title="'+pEsc(statusVal)+' PR: correct it and save, and it goes back to PENDING" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
          +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
-       :'<button type="button" class="btn btn-sm" disabled title="Only Pending / Rejected / Hold PRs can be edited; a '+pEsc(statusVal)+' PR can only be edited with an Admin login" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">Edit PR</button>';
+       :'<button type="button" class="btn btn-sm" disabled title="'+pEsc(prEditDeniedMsg_(x.req))+'" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">'+(prFieldLocked_(x.req)?'Locked (approved)':'Edit PR')+'</button>';
      const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
    });
    if(!shown){
@@ -24401,7 +24475,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      pending.addEventListener('click',e=>{
        const editBtn=e.target.closest('.sarv-edit-pr');if(editBtn){
          const x=sarvPendingRequirements[+editBtn.dataset.index];
-         if(x&&!canEditPr_(x.req))return showToast('Only Pending / Rejected / Hold PRs can be edited; a '+pEsc(x.req.status||'')+' PR can only be edited with an Admin login','warn');
+         if(x&&!canEditPr_(x.req))return showToast(prEditDeniedMsg_(x.req),'warn');
          populateRequirementEditor(x);return;}
        const viBtn=e.target.closest('.sarv-vendor-info');if(viBtn)openVendorInfoModal(viBtn.dataset.req).catch(dbError);
      });

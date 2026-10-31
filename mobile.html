@@ -208,22 +208,22 @@
             <div id="mdRejectNote" class="md-reject-note" style="display:none;"></div>
 
             <label style="font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; display: block;">Item Details</label>
-            <!-- FIELD BOY only: how many items on this PR are ticked off, and
-                 that every tick is already saved (there is no Save button). -->
+            <!-- FIELD BOY only: how many items the requester has approved, with
+                 the photo / waiting / sent-back counts underneath. See
+                 fbRenderBar in mobile-core.js. -->
             <div id="fbChecklistBar" style="display:none; margin-bottom:8px; border:1px solid #bbf7d0; background:#f0fdf4; border-radius:8px; padding:8px 10px;">
                 <div id="fbChecklistText" style="font-size:0.78rem; font-weight:800; color:#166534;"></div>
                 <div style="height:6px; background:#dcfce7; border-radius:4px; margin-top:6px; overflow:hidden;">
                     <div id="fbChecklistFill" style="height:100%; width:0%; background:#16a34a; transition:width .2s;"></div>
                 </div>
-                <div id="fbChecklistNote" style="font-size:0.68rem; color:#15803d; margin-top:5px; font-weight:600;">
-                    Tick ✔ each item once it has been received. Every tick is saved immediately, and the PR moves to Done once all items are ticked.
-                </div>
+                <div id="fbChecklistNote" style="font-size:0.68rem; color:#15803d; margin-top:5px; font-weight:600;"></div>
             </div>
             <div class="table-container">
                 <table class="item-table">
                     <thead>
                         <tr>
-                            <th id="done-col-header" style="display:none;" title="Item received. Saved as soon as you tick it.">&#10004;</th>
+                            <th id="done-col-header" style="display:none;" title="Tick an item (it needs a photo first) to send it for approval">&#10004;</th>
+                            <th id="photo-col-header" style="display:none;" title="Photo of the item bought: required for every item">Photo</th>
                             <th>Sr</th>
                             <th>Item Name</th>
                             <th>Description</th>
@@ -242,6 +242,14 @@
                     <tbody id="modal-item-tbody">
                     </tbody>
                 </table>
+            </div>
+
+            <!-- FIELD BOY only: send the ticked items to the person who raised
+                 the PR, or close the PR once they have approved every item. -->
+            <div id="fbActionBar" style="display:none; margin:4px 0 12px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:8px; padding:10px 12px;">
+                <div id="fbActionHint" style="font-size:0.74rem; color:#1e3a8a; font-weight:600; margin-bottom:8px;"></div>
+                <button class="btn" id="fbSendBtn" onclick="fbSend()" style="background:#2563eb;" disabled>Send for Approval</button>
+                <button class="btn" id="fbConfirmBtn" onclick="fbConfirm()" style="background:#16a34a; display:none;">&#10004; Confirm &amp; move to Done</button>
             </div>
 
             <!-- Vendor Rate & Info — the same V1..V3 quote grid as STORE.html's
@@ -655,6 +663,27 @@
         </div>
     </div>
 
+    <!-- ── FIELD BOY item photo ─────────────────────────────────────────
+         The photo is shown first and saved only on Confirm upload, so a
+         blurred or wrong shot can be retaken before it reaches the item row.
+         Opens over the approval modal. See fbPhotoChosen / fbConfirmPhoto. -->
+    <input type="file" id="fbPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="fbPhotoChosen(this)">
+    <div class="modal-overlay" id="fbPhotoModal" style="z-index:1100;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span>Item Photo</span>
+                <button class="close-btn" onclick="fbClosePhoto()">×</button>
+            </div>
+            <div id="fbPhotoItem" class="req-meta-info" style="font-weight:700;"></div>
+            <img id="fbPhotoPreview" alt="" style="display:block; max-width:100%; max-height:55vh; margin:8px auto; border-radius:8px; border:1px solid #e2e8f0;">
+            <div class="err-banner" id="fbPhotoError" style="display:block; min-height:0;"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="fbPhotoOkBtn" onclick="fbConfirmPhoto()" style="flex:1; width:auto; background:#16a34a;">Confirm upload</button>
+                <button class="btn" onclick="document.getElementById('fbPhotoInput').click()" style="flex:1; width:auto; background:#6c757d;">Retake</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Add Supplier (from the Vendor Rate & Info grid) ──────────────
          Writes the same `suppliers` row STORE.html's Supplier Master form
          writes, so a vendor added here is the same record on both screens.
@@ -822,7 +851,7 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261023a"></script>
+<script src="mobile-core.js?v=20261031a"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 </body>

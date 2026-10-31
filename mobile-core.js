@@ -1157,7 +1157,9 @@
        and purchase_requirements.purchaser_name both carry. */
     const FIELD_BOY_NAME = 'FIELD BOY';
     function isFieldBoy(){ return String(myPurchaserName||'').trim().toUpperCase() === FIELD_BOY_NAME; }
-    // Every item on this PR has been ticked off — what moves it to Done.
+    /* Done = every item approved by the requester and confirmed by the Field
+       Boy (allDone is kept up to date by the fb_patch RPC; a PR ticked off
+       under the old tick list keeps its allDone). done/total = approved/total. */
     function prFieldAllDone(r){ return !!(((r && r.pdf_snapshot) || {}).fieldChecklist || {}).allDone; }
     function prFieldProgress(r){
         const c = ((r && r.pdf_snapshot) || {}).fieldChecklist || {};
@@ -1610,7 +1612,7 @@
             const cfg = STAGE_TABS[currentStageTab];
             if(!myStage){ note.textContent = ''; note.className = 'access-note'; }
             // Field Boy's one tab is a tick list, not a quote sheet.
-            else if(isFieldBoy()){ note.textContent = 'Open the PR and tick each item that has been received'; note.className = 'access-note act'; }
+            else if(isFieldBoy()){ note.textContent = 'Open a PR: photo each item, tick it, Send for Approval'; note.className = 'access-note act'; }
             /* PO Receipts is a tracker, not a task: nothing is approved or
                signed there by anyone, so neither role gets a "your job" note
                and neither gets told it is somebody else's. Only the scope
@@ -3418,8 +3420,10 @@
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
             // How far down the checklist this PR is, without opening it.
             if(isPr && isFieldBoy()){
-                const p = prFieldProgress(item);
-                if(p.total > 0) tags.push(`<span class="tag ${p.done >= p.total ? 'sent' : 'po'}">${p.done}/${p.total} items</span>`);
+                const s = fbSummaryOf(item);
+                if(s.total > 0) tags.push(`<span class="tag ${s.approved >= s.total ? 'sent' : 'po'}">${s.approved}/${s.total} approved</span>`);
+                if(s.sent) tags.push(`<span class="tag po">${s.sent} waiting for approval</span>`);
+                if(s.back) tags.push(`<span class="tag rejected">${s.back} sent back</span>`);
             }
             if(tags.length) html += `<div class="card-tags">${tags.join('')}</div>`;
             if(item.pdf_url) html += `<a class="pdf-link" href="${escText(item.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View PDF</a>`;
@@ -3451,7 +3455,7 @@
                       + `</div>`;
             } else if(done){
                 const doneText = {
-                    VI:    isFieldBoy() ? ('✔ All items received (' + prFieldProgress(item).total + ')')
+                    VI:    isFieldBoy() ? ('✔ All items approved and confirmed (' + prFieldProgress(item).total + ')')
                                         : '✔ Vendor info has been filled in',
                     /* A PR whose only PO the MD returned is still "approved", and
                        saying just that here would read as a finished job — the
@@ -3490,8 +3494,14 @@
                           : 'The Purchaser will correct this and sign again')
                       + `</div>`;
             } else if(isPr && isFieldBoy() && canAct){
-                const p = prFieldProgress(item);
-                html += `<div class="card-action act">${escText('Tap to tick the items' + (p.total ? ' (' + p.done + '/' + p.total + ')' : ''))}</div>`;
+                // What the Field Boy has to do next on this PR, most urgent first.
+                const s = fbSummaryOf(item);
+                const [cls, txt] = s.back ? ['act', s.back + ' item(s) sent back by the requester. Tap to fix and send again']
+                    : (s.total && s.approved === s.total) ? ['act', 'All items approved. Tap to Confirm']
+                    : s.ready ? ['act', s.ready + ' item(s) ticked. Tap to Send for Approval']
+                    : (s.sent && s.photo === s.total) ? ['wait', 'Waiting for the requester\'s approval (' + s.sent + ')']
+                    : ['act', 'Tap to upload item photos (' + s.photo + '/' + (s.total || '?') + ')'];
+                html += `<div class="card-action ${cls}">${escText(txt)}</div>`;
             } else if(canAct){
                 html += `<div class="card-action act">${escText(tab === 'SENT' ? cfg.action : 'Tap to ' + cfg.action.charAt(0).toLowerCase() + cfg.action.slice(1))}</div>`;
             } else {
@@ -5726,112 +5736,284 @@
 
     function pNumM(v){ const n = Number(v); return isNaN(n) ? 0 : n; }
 
-    /* ══ FIELD BOY ITEM CHECKLIST ════════════════════════════════════
-       A FIELD BOY PR is fulfilled item by item over the counter, so the work is
-       a tick list, not a quote sheet. Every tick is written straight to the PR
-       the moment it is made — there is no Save button to forget, and a phone
-       that dies mid-list loses nothing.
+    /* ══ FIELD BOY: item photo → Requester approval → confirm ═══════════
+       The whole workflow and its rules are in
+       sql/FIELD_BOY_APPROVAL_MIGRATION.sql. In short, per item of the PR:
+         NEW → PHOTO (a photo of what was bought, saved on the row the moment
+         it is confirmed) → ticked → SENT (Send for Approval) → APPROVED or
+         REJECTED (sent back with a reason) by the person who raised the PR,
+         in Track My Store Request. When every item is APPROVED the Field Boy
+         confirms and the PR moves to Done.
 
-       Stored in pdf_snapshot.fieldChecklist (jsonb that already exists) rather
-       than a new column on purchase_requirement_lines, so this needs no
-       migration and degrades to "nothing ticked" on any PR that predates it:
-         {byLine:{"<line id>":true,…}, done:n, total:n, allDone:bool, by, at}
-       byLine is keyed by LINE ID, not row position — a PR edited in STORE.html
-       can gain or lose lines, and a positional key would then silently move
-       every tick onto the wrong item. done/total/allDone are denormalised onto
-       the same object so the list can split Pending from Done without fetching
-       every PR's lines. */
-    let fbChecklist = {};        // line id → true, for the PR open in the modal
-    let fbSaveChain = Promise.resolve();   // ticks serialise; last write wins
+       Every change goes through the fb_patch RPC, never a direct write of
+       pdf_snapshot: the server merges it under a row lock and enforces the
+       order (no tick without a photo, nothing changes once SENT / APPROVED),
+       so two phones, or this phone and the Requester, can never overwrite
+       each other. The returned checklist replaces the loaded copy, so the
+       screen always shows what was actually saved.
+
+       Stored in pdf_snapshot.fieldChecklist (v:2). A PR ticked off under the
+       old tick list (allDone, no v) stays Done; one still open under it starts
+       here with no photos. */
+    const FB_ERR = {
+        NO_MIGRATION: 'The Field Boy approval is not set up on the server yet. Admin: run sql/FIELD_BOY_APPROVAL_MIGRATION.sql in the Supabase SQL Editor.',
+        PHOTO_FIRST: 'Upload the item photo first, then tick it.',
+        PHOTO_REQUIRED: 'The photo did not upload. Please try again.',
+        LINE_LOCKED: 'This item has already been sent for approval (or approved), so it cannot be changed.',
+        NOTHING_TO_SEND: 'Nothing to send: tick the items (each with a photo) that you want to send.',
+        NOT_ALL_APPROVED: 'Every item must be approved by the requester before the PR can be confirmed.',
+        ALREADY_DONE: 'This PR is already confirmed and done.',
+        PR_CLOSED: 'This PR is cancelled or rejected.',
+        LINE_NOT_FOUND: 'This item is no longer on the PR. Please close and reopen it.',
+        NOT_FIELD_BOY: 'This PR is not booked to FIELD BOY.',
+        NOT_FOUND: 'This PR was not found. Please refresh.'
+    };
+    const FB_STATUS = {
+        NEW:      {label: 'Photo needed',            color: '#b91c1c', bg: ''},
+        PHOTO:    {label: 'Photo saved',             color: '#1d4ed8', bg: ''},
+        SENT:     {label: 'Waiting for approval',    color: '#b45309', bg: '#fffbeb'},
+        APPROVED: {label: 'Approved by requester',   color: '#15803d', bg: '#f0fdf4'},
+        REJECTED: {label: 'Sent back',               color: '#b91c1c', bg: '#fef2f2'}
+    };
+    let fbField = null;           // the open PR's checklist: {lines:{lineId:{…}}, confirm, legacyDone}
+    let fbLastRenderArgs = null;  // renderItemRows' last arguments, to redraw after a save
+    let fbPhotoRow = null, fbPhotoBlob = null, fbPhotoUrl = null;
     function fbChecklistMode(){
         return currentModule === 'PR' && isFieldBoy() && modalTab === 'VI';
     }
-    // Loads the open PR's ticks into fbChecklist, dropping any key whose line no
-    // longer exists so a deleted item can't keep a PR from ever reading as done.
+    // Any PR row → its checklist summary (the list cards use this without opening the PR).
+    function fbSummaryOf(r){
+        const fc = ((r && r.pdf_snapshot) || {}).fieldChecklist || {};
+        const s = {total: 0, photo: 0, ready: 0, sent: 0, approved: 0, back: 0, done: !!fc.allDone, v2: String(fc.v) === '2'};
+        if(!s.v2){ s.total = pNum(fc.total); s.approved = s.done ? s.total : 0; return s; }
+        Object.values(fc.lines || {}).forEach(l => {
+            s.total++;
+            if(l && l.photo) s.photo++;
+            const st = (l && l.status) || 'NEW';
+            if(st === 'SENT') s.sent++;
+            else if(st === 'APPROVED') s.approved++;
+            else if(st === 'REJECTED') s.back++;
+            if(l && l.ticked && l.photo && ['NEW','PHOTO','REJECTED'].includes(st)) s.ready++;
+        });
+        return s;
+    }
     function fbLoadChecklist(entry, items){
-        const saved = (((entry && entry.pdf_snapshot) || {}).fieldChecklist || {}).byLine || {};
-        const live = new Set(items.map(it => String(it.lineId)));
-        fbChecklist = {};
-        Object.keys(saved).forEach(k => { if(saved[k] && live.has(String(k))) fbChecklist[String(k)] = true; });
+        const fc = ((entry && entry.pdf_snapshot) || {}).fieldChecklist || {};
+        const v2 = String(fc.v) === '2';
+        const lines = {};
+        items.forEach(it => {
+            const k = String(it.lineId);
+            const l = (v2 && fc.lines && fc.lines[k]) || {};
+            lines[k] = Object.assign({status: l.photo ? 'PHOTO' : 'NEW'}, l);
+        });
+        fbField = {lines, confirm: v2 ? (fc.confirm || null) : null,
+                   legacyDone: v2 ? !!fc.legacyDone : !!fc.allDone};
     }
+    const fbLine = id => (fbField && fbField.lines[String(id)]) || {status: 'NEW'};
+    const fbLocked = l => l.status === 'SENT' || l.status === 'APPROVED';
     function fbCounts(items){
-        const total = items.length;
-        const done = items.filter(it => fbChecklist[String(it.lineId)]).length;
-        return {done, total, allDone: total > 0 && done === total};
+        const c = {total: items.length, photo: 0, ready: 0, sent: 0, approved: 0, back: 0};
+        items.forEach(it => {
+            const l = fbLine(it.lineId);
+            if(l.photo) c.photo++;
+            if(l.status === 'SENT') c.sent++;
+            else if(l.status === 'APPROVED') c.approved++;
+            else if(l.status === 'REJECTED') c.back++;
+            if(l.ticked && l.photo && !fbLocked(l)) c.ready++;
+        });
+        c.allApproved = c.total > 0 && c.approved === c.total;
+        c.done = !!(fbField && (fbField.confirm || fbField.legacyDone));
+        return c;
     }
-    // Progress bar + wording. Also the only place that says "saved".
+    // One item's status line, under its name.
+    function fbStatusHtml(l){
+        const s = FB_STATUS[l.status] || FB_STATUS.NEW;
+        let txt = s.label;
+        if(l.status === 'PHOTO') txt = l.ticked ? 'Ticked, ready to send' : 'Photo saved: tick it to send';
+        if(l.status === 'REJECTED' && l.ticked) txt = 'Sent back, ticked again: ready to send';
+        const d = l.decision || {};
+        return `<div style="margin-top:3px;font-size:0.68rem;font-weight:800;color:${s.color};">${escText(txt)}`
+             + (l.status === 'REJECTED' && d.remarks ? `<div style="font-weight:600;color:#991b1b;">Reason: ${escText(d.remarks)}${d.by ? ' (' + escText(d.by) + ')' : ''}</div>` : '')
+             + (l.status === 'APPROVED' && d.by ? `<span style="font-weight:600;color:#166534;"> · ${escText(d.by)}</span>` : '')
+             + `</div>`;
+    }
+    // The tick box and the photo cell of one item row (renderItemRows calls this).
+    function fbRowCells(item, i){
+        const l = fbLine(item.lineId);
+        const noId = item.lineId == null;
+        const tickOff = modalViewOnly || noId || !l.photo || fbLocked(l);
+        const tickTitle = noId ? 'No id found for this line' : !l.photo ? 'Upload the photo first'
+                        : fbLocked(l) ? (FB_STATUS[l.status] || {}).label : 'Tick to send this item for approval';
+        const checked = l.ticked || fbLocked(l);
+        const url = l.photo && l.photo.url;
+        const canPhoto = !modalViewOnly && !noId && !fbLocked(l);
+        const photo = url
+            ? `<img src="${escText(url)}" alt="" onclick="window.open(this.src,'_blank')" title="Open the photo" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;cursor:pointer;display:block;">`
+              + (canPhoto ? `<button type="button" onclick="fbPickPhoto(${i})" style="margin-top:4px;border:1px solid #cbd5e1;background:#fff;color:#334155;font-size:0.62rem;font-weight:700;border-radius:5px;padding:2px 6px;cursor:pointer;">Retake</button>` : '')
+            : (canPhoto ? `<button type="button" onclick="fbPickPhoto(${i})" style="border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;font-size:0.7rem;font-weight:800;border-radius:6px;padding:6px 8px;cursor:pointer;white-space:nowrap;">Upload photo <span style="color:#dc3545;">*</span></button>`
+                        : '<span style="color:#94a3b8;">—</span>');
+        return {
+            tick: `<td style="text-align:center;"><input type="checkbox" class="fb-done-input" data-row="${i}"${checked ? ' checked' : ''}${tickOff ? ' disabled' : ''} title="${escText(tickTitle)}" style="width:22px;height:22px;accent-color:#16a34a;"></td>`,
+            photo: `<td style="text-align:center;">${photo}</td>`,
+            status: fbStatusHtml(l),
+            bg: (FB_STATUS[l.status] || {}).bg || ''
+        };
+    }
+    // Progress bar (top) and the Send / Confirm bar (under the items).
     function fbRenderBar(items){
-        const bar = document.getElementById('fbChecklistBar');
-        if(!bar) return;
         const on = fbChecklistMode();
-        bar.style.display = on ? 'block' : 'none';
-        const hdr = document.getElementById('done-col-header');
-        if(hdr) hdr.style.display = on ? '' : 'none';
-        if(!on) return;
-        const {done, total, allDone} = fbCounts(items);
-        document.getElementById('fbChecklistText').textContent =
-            allDone ? ('All ' + total + ' items received; PR complete')
-                    : ('' + done + ' / ' + total + ' items received');
-        document.getElementById('fbChecklistFill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+        const bar = document.getElementById('fbChecklistBar');
+        const act = document.getElementById('fbActionBar');
+        ['done-col-header', 'photo-col-header'].forEach(id => { const h = document.getElementById(id); if(h) h.style.display = on ? '' : 'none'; });
+        if(bar) bar.style.display = on ? 'block' : 'none';
+        if(act) act.style.display = (on && !modalViewOnly) ? 'block' : 'none';
+        if(!on || !bar) return;
+        const c = fbCounts(items);
+        document.getElementById('fbChecklistText').textContent = c.done
+            ? 'All ' + c.total + ' items approved and confirmed: PR done'
+            : c.approved + ' / ' + c.total + ' items approved by the requester';
+        document.getElementById('fbChecklistFill').style.width = c.total ? Math.round(c.approved / c.total * 100) + '%' : '0%';
+        const parts = [c.photo + '/' + c.total + ' photos'];
+        if(c.sent) parts.push(c.sent + ' waiting for approval');
+        if(c.back) parts.push(c.back + ' sent back');
         const note = document.getElementById('fbChecklistNote');
-        if(note) note.style.display = modalViewOnly ? 'none' : '';
+        if(note) note.textContent = parts.join(' · ');
+        if(!act || modalViewOnly) return;
+        const send = document.getElementById('fbSendBtn'), conf = document.getElementById('fbConfirmBtn');
+        const hint = document.getElementById('fbActionHint');
+        send.disabled = !c.ready;
+        send.textContent = 'Send for Approval' + (c.ready ? ' (' + c.ready + ')' : '');
+        conf.style.display = c.allApproved && !c.done ? '' : 'none';
+        send.style.display = c.allApproved ? 'none' : '';
+        hint.innerHTML = c.allApproved
+            ? 'The requester has approved every item. Press <b>Confirm</b> to close this PR; it moves to <b>Done</b>.'
+            : c.ready
+                ? 'The ticked items go to <b>' + escText((currentEntry && currentEntry.requested_by) || 'the requester') + '</b> for approval in <i>Track My Store Request</i>.'
+                : c.sent && !c.back && c.photo === c.total
+                    ? 'Waiting for the requester to approve. This PR comes back here once they decide.'
+                    : 'For each item: <b>Upload photo</b>, then tick it. Then press <b>Send for Approval</b>.';
     }
-    /* One tick. The checkbox is turned off while the write is in flight so a
-       double-tap can't queue two conflicting versions, and it is put back to
-       whatever actually got saved — if the write fails the tick visibly undoes
-       itself rather than lying about being stored. */
-    async function fbToggleItem(rowIdx, want, inputEl){
+    function fbRerender(){ if(fbLastRenderArgs) renderItemRows.apply(null, fbLastRenderArgs); }
+    async function fbRpc(action, lineId, data){
         const req = currentEntry;
-        if(!req || !fbChecklistMode() || modalViewOnly) return;
-        const items = viDisplayItems || [];
-        const it = items[rowIdx];
-        if(!it || it.lineId == null) return;
-        const key = String(it.lineId);
-        const before = !!fbChecklist[key];
-        if(want) fbChecklist[key] = true; else delete fbChecklist[key];
-        fbRenderBar(items);
-        if(inputEl) inputEl.disabled = true;
-        const run = async () => {
-            try{
-                const c = await fbSaveChecklist(req, items);
-                // Last item ticked — say so and let the list move it to Done.
-                if(c.allDone){
-                    dashDirty = false;   // reloaded right below, not by closeModal
-                    closeModal();
-                    await renderList();
-                    alert('All ' + c.total + ' items of PR ' + (req.req_no||'') + ' have been received.\n\nThis PR is now in the Done section.');
-                }
-            }catch(e){
-                if(before) fbChecklist[key] = true; else delete fbChecklist[key];
-                fbRenderBar(items);
-                alert('The tick was not saved. Please try again.\n' + (e.message || e));
-            }finally{
-                if(inputEl){ inputEl.disabled = false; inputEl.checked = !!fbChecklist[key]; }
-            }
-        };
-        fbSaveChain = fbSaveChain.then(run, run);
-        return fbSaveChain;
-    }
-    /* Writes the whole map every time rather than one key. The PR's snapshot is
-       a single jsonb column, so there is no cheaper partial update — and sending
-       the full picture means a tick that lands out of order still leaves the
-       stored counts agreeing with the stored ticks. */
-    async function fbSaveChecklist(req, items){
-        const {done, total, allDone} = fbCounts(items);
-        const snap = {...(req.pdf_snapshot || {})};
-        snap.fieldChecklist = {
-            byLine: {...fbChecklist},
-            done, total, allDone,
-            by: myPurchaserName || 'FIELD BOY',
-            at: pStamp(),
-        };
-        const upd = await SB.from('purchase_requirements').update({pdf_snapshot: snap}).eq('id', req.id);
-        if(upd.error) throw upd.error;
-        // Keep the loaded row level with the database so the list and a re-open
-        // of this modal both show what was just saved, with no extra fetch.
-        req.pdf_snapshot = snap;
+        let tok = null; try{ tok = localStorage.getItem(SARV_SSO_KEY); }catch(e){}
+        const r = await SB.rpc('fb_patch', {
+            p_req_no: req.req_no, p_action: action, p_line_id: lineId == null ? null : String(lineId),
+            p_data: data || {}, p_by: myPurchaserName || FIELD_BOY_NAME, p_token: tok || null
+        });
+        if(r.error){
+            const c = r.error.code || '';
+            throw new Error((c === 'PGRST202' || c === '42883') ? FB_ERR.NO_MIGRATION : (r.error.message || 'Not saved'));
+        }
+        const d = r.data || {};
+        if(!d.success) throw new Error(FB_ERR[d.error] || ('Not saved: ' + (d.error || 'unknown error')));
+        // The loaded row now matches the database; the list and a reopen show it with no refetch.
+        req.pdf_snapshot = Object.assign({}, req.pdf_snapshot || {}, {fieldChecklist: d.field});
         dashDirty = true;
-        return snap.fieldChecklist;
+        if(req === currentEntry){ fbLoadChecklist(req, viDisplayItems || []); fbRerender(); }
+        return d.field;
+    }
+    /* One tick. Turned off while the save is in flight, and put back to what
+       was actually saved, so a failed save visibly undoes itself. */
+    async function fbToggleItem(rowIdx, want, inputEl){
+        if(!currentEntry || !fbChecklistMode() || modalViewOnly) return;
+        const it = (viDisplayItems || [])[rowIdx];
+        if(!it || it.lineId == null) return;
+        if(want && !fbLine(it.lineId).photo){ if(inputEl) inputEl.checked = false; alert(FB_ERR.PHOTO_FIRST); return; }
+        if(inputEl) inputEl.disabled = true;
+        try{ await fbRpc('TICK', it.lineId, {on: !!want}); }
+        catch(e){
+            if(inputEl){ inputEl.checked = !want; inputEl.disabled = false; }
+            alert('The tick was not saved.\n' + (e.message || e));
+        }
+    }
+    // ── Photo: pick → preview → Confirm upload → saved on the row ──
+    function fbPickPhoto(rowIdx){
+        const it = (viDisplayItems || [])[rowIdx];
+        if(!it || it.lineId == null || modalViewOnly || fbLocked(fbLine(it.lineId))) return;
+        fbPhotoRow = rowIdx;
+        const inp = document.getElementById('fbPhotoInput');
+        inp.value = '';
+        inp.click();
+    }
+    // About 1280 px JPEG: clear enough to judge the item, small enough for a phone upload.
+    function fbCompress(file){
+        return new Promise((resolve, reject) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                const max = 1280, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+                const cv = document.createElement('canvas');
+                cv.width = Math.max(1, Math.round(img.naturalWidth * sc)); cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
+                const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+                ctx.drawImage(img, 0, 0, cv.width, cv.height);
+                URL.revokeObjectURL(url);
+                cv.toBlob(b => b ? resolve(b) : reject(new Error('Could not read the photo')), 'image/jpeg', 0.75);
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a photo')); };
+            img.src = url;
+        });
+    }
+    async function fbPhotoChosen(inp){
+        const f = inp.files && inp.files[0];
+        if(!f || fbPhotoRow == null) return;
+        try{ fbPhotoBlob = await fbCompress(f); }
+        catch(e){ alert(e.message || e); return; }
+        const it = (viDisplayItems || [])[fbPhotoRow] || {};
+        if(fbPhotoUrl) URL.revokeObjectURL(fbPhotoUrl);
+        fbPhotoUrl = URL.createObjectURL(fbPhotoBlob);
+        document.getElementById('fbPhotoPreview').src = fbPhotoUrl;
+        document.getElementById('fbPhotoItem').textContent = (it.name || 'Item') + ' · ' + (it.qty || '') + ' ' + (it.uom || '');
+        document.getElementById('fbPhotoError').textContent = '';
+        const b = document.getElementById('fbPhotoOkBtn'); b.disabled = false; b.textContent = 'Confirm upload';
+        const m = document.getElementById('fbPhotoModal'); m.style.display = 'flex';
+    }
+    function fbClosePhoto(){
+        document.getElementById('fbPhotoModal').style.display = 'none';
+        if(fbPhotoUrl){ URL.revokeObjectURL(fbPhotoUrl); fbPhotoUrl = null; }
+        fbPhotoBlob = null;
+    }
+    async function fbConfirmPhoto(){
+        const it = (viDisplayItems || [])[fbPhotoRow];
+        if(!it || !fbPhotoBlob || !currentEntry) return fbClosePhoto();
+        const b = document.getElementById('fbPhotoOkBtn');
+        b.disabled = true; b.textContent = 'Uploading…';
+        try{
+            const safe = String(currentEntry.req_no || 'PR').replace(/[^A-Za-z0-9._-]+/g, '-');
+            const path = 'field-boy/' + safe + '/' + it.lineId + '-' + Date.now() + '.jpg';
+            const up = await SB.storage.from(SARV_PDF_BUCKET).upload(path, fbPhotoBlob, {upsert: true, contentType: 'image/jpeg', cacheControl: '31536000'});
+            if(up.error) throw up.error;
+            const url = (SB.storage.from(SARV_PDF_BUCKET).getPublicUrl(path).data || {}).publicUrl || '';
+            await fbRpc('PHOTO', it.lineId, {path, url});
+            fbClosePhoto();
+        }catch(e){
+            b.disabled = false; b.textContent = 'Confirm upload';
+            document.getElementById('fbPhotoError').textContent = 'Not saved: ' + (e.message || e);
+        }
+    }
+    async function fbSend(){
+        const items = viDisplayItems || [];
+        const c = fbCounts(items);
+        if(!c.ready) return alert(FB_ERR.NOTHING_TO_SEND);
+        const who = (currentEntry && currentEntry.requested_by) || 'the requester';
+        if(!confirm('Send ' + c.ready + ' item(s) of PR ' + (currentEntry.req_no || '') + ' to ' + who + ' for approval?\n\nOnce sent, these items cannot be changed unless the requester sends them back.')) return;
+        const b = document.getElementById('fbSendBtn'); b.disabled = true;
+        try{
+            await fbRpc('SEND');
+            alert('Sent for approval.\n\n' + who + ' will see it in Track My Store Request. This PR shows here again once they decide.');
+        }catch(e){ alert('Not sent.\n' + (e.message || e)); fbRerender(); }
+    }
+    async function fbConfirm(){
+        if(!confirm('All items are approved by the requester.\n\nConfirm and move PR ' + (currentEntry.req_no || '') + ' to Done?')) return;
+        const b = document.getElementById('fbConfirmBtn'); b.disabled = true;
+        try{
+            const req = currentEntry;
+            await fbRpc('CONFIRM');
+            dashDirty = false;   // reloaded right below, not by closeModal
+            closeModal();
+            await renderList();
+            alert('PR ' + (req.req_no || '') + ' is confirmed and moved to Done.');
+        }catch(e){ b.disabled = false; alert('Not confirmed.\n' + (e.message || e)); }
     }
 
     /* ── MD Rejection Remark, in the open record ──────────────────────
@@ -6535,8 +6717,9 @@
         // The GST% header carries the asterisk only while it is still a decision.
         const gstHdr = document.getElementById('gst-col-header');
         if(gstHdr && gstEdit) gstHdr.innerHTML = poTermsLocked ? 'GST%' : 'GST%';
-        // FIELD BOY only: a tick box per item, ahead of the Sr column.
+        // FIELD BOY only: a tick box and a photo cell per item, ahead of the Sr column.
         const fbOn = fbChecklistMode();
+        fbLastRenderArgs = fbOn ? Array.prototype.slice.call(arguments) : null;
         tbody.innerHTML = items.map((item,i) => {
             const rowVendorIdx = perItem
                 ? (vendorIdxSource[i]!=null ? pNum(vendorIdxSource[i]) : -1)
@@ -6559,11 +6742,11 @@
                         : `<td><span style="color:#94a3b8;">not set</span></td>`;
                 }
             }
-            const fbDone = fbOn && !!fbChecklist[String(item.lineId)];
-            return `<tr${fbDone ? ' style="background:#f0fdf4;"' : ''}>
-                ${fbOn ? `<td style="text-align:center;"><input type="checkbox" class="fb-done-input" data-row="${i}"${fbDone?' checked':''}${modalViewOnly?' disabled':''} style="width:22px;height:22px;accent-color:#16a34a;"${item.lineId==null?' disabled title="No id found for this line"':''}></td>` : ''}
+            const fb = fbOn ? fbRowCells(item, i) : null;
+            return `<tr${fb && fb.bg ? ' style="background:' + fb.bg + ';"' : ''}>
+                ${fb ? fb.tick + fb.photo : ''}
                 <td>${i+1}</td>
-                <td><b>${escText(item.name)}</b></td>
+                <td><b>${escText(item.name)}</b>${fb ? fb.status : ''}</td>
                 <td>${escText(item.desc||'-')}</td>
                 <td>${escText(item.category||'General')}</td>
                 <td>${escText(item.make||'-')}</td>
@@ -6718,7 +6901,7 @@
         const items = await fetchItems(entry);
         viDisplayItems = items;
         // Ticks for this PR, before the rows are drawn — renderItemRows reads
-        // fbChecklist directly to decide which boxes come up checked.
+        // fbField directly to decide which boxes come up checked.
         if(currentModule === 'PR') fbLoadChecklist(entry, items);
         // pdf_snapshot.items is always rebuilt from these same DB lines in
         // this same order (see approvePR / STORE.html's saveVendorInfo), so
@@ -6753,11 +6936,12 @@
         let showRateColumn = false;
         /* FIELD BOY: no vendor grid at all. Filling it would move the PR into PO
            Generate — a tab they cannot see — so the PR would simply vanish from
-           their list. The item checklist is their whole interaction with the PR;
-           Reject / Hold stay, for an item they cannot get. */
+           their list. The item photos + approval are their whole interaction
+           with the PR, so the Reason / Remarks (Reject / Hold) section is not
+           shown to them either: it stays hidden from the reset above. A PR
+           that cannot be bought goes back through the Store / Purchase desk. */
         if(currentModule === 'PR' && isFieldBoy() && !modalViewOnly){
             if(viPanel) viPanel.style.display = 'none';
-            if(modalTab === 'VI') renderViDecisionBar(entry);
         } else if(currentModule === 'PR' && myStage === 'gmCeo' && !modalViewOnly){
             // Vendor Rate & Info is editable at this stage, so a PR with no
             // quotes on it yet can be filled in and moved forward from here —
@@ -6870,7 +7054,7 @@
         } else if(quotesOnly && isFieldBoy()){
             // Field Boy has no vendor step, so the standard "fill the rates"
             // note would send them looking for a panel that isn't there.
-            modeNote.innerHTML = 'Tick each item you have brought in; every tick is saved immediately. No PO is raised for this PR; once all items are ticked the PR moves to <b>Done</b>.';
+            modeNote.innerHTML = 'No PO is raised for this PR. For each item <b>Upload photo</b> of what you bought (it is saved on the row as soon as you confirm it), tick it, then press <b>Send for Approval</b>. The person who raised the PR approves each item; when all are approved, press <b>Confirm</b> and the PR moves to <b>Done</b>. The Store can enter only approved items.';
             modeNote.style.display = 'block';
         } else if(quotesOnly){
             modeNote.innerHTML = 'Along with vendor, rate and Selected Vendor, fill in <b>Bill On</b>, <b>GST%</b>, <b>Delivery Date</b>, <b>PO Charges</b> and <b>PO Remarks</b> here, then press <b>Save Vendor Info</b>. Once saved, this PR moves to the <b>PO Generate</b> tab, where all of this shows as <b>locked</b> and only needs signing.';

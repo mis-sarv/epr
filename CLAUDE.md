@@ -13,7 +13,7 @@ changing a feature. Note: the README and older comments say `Store.html`; that f
 |---|---|---|
 | `launcher.html` | Login page (name/emp_code + PIN) and app picker | The **only** login screen. Creates the shared session via `erp_app_login()` |
 | `index.html` | Desktop ERP: Store / Purchase / Production / Master Data / Admin Panel | Markup only; logic in `store-core.js` etc. |
-| `mobile.html` | Mobile approvals app (PR/PO approvals, PO follow-up) | `mobile.css` + `mobile-core.js` |
+| `mobile.html` | Mobile approvals app (PR/PO approvals, PO follow-up) | `mobile.css` + `mobile-core.js`. FIELD BOY PRs: item photo → Send for Approval → requester approves in `my-requests.html` → Store entry → requester confirms receipt (purple cards, 5-step line there; the Field Boy's own Confirm moves it to Done on mobile); Store receives approved items only and such a PR can't be edited (`sql/FIELD_BOY_APPROVAL_MIGRATION.sql`, `fb_patch` / `mr_fb_decide`, state in `pdf_snapshot.fieldChecklist` v2, guarded by triggers) |
 | `order-form.html` | Sales › Order Form | Iframe inside ERP (`#orderFormFrame`) or standalone |
 | `packing.html` | Sales › Packing & Dispatch | Iframe in ERP or standalone; uses Supabase Auth via SSO |
 | `complaint.html` | Complaint system (React 18 UMD + Babel standalone + Tailwind) | Uses Supabase Auth via SSO; `sw.js` is its push-notification service worker |
