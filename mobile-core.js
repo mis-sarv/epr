@@ -336,7 +336,8 @@
        "ITEMS REQUIRED" bar over the items, Overall Remarks under them.
        Printed On / Total Items / Total Qty / Purpose / Last Date Used /
        Request Date are not printed. Identical to STORE.html's helpers. */
-    const PR_TEAL=[13,92,83];
+    // Heading colour of the PR PDF; set per PDF from its store (pdfPal_).
+        let PR_TEAL=[13,92,83];
     /* Designation / Contact have no column on the PR header — only the PDF
        snapshot carries them, and a snapshot that never got them printed them
        blank. Anything missing is filled from Employee Master by the PR's
@@ -458,20 +459,21 @@
         const totalQty=items.reduce((s,r)=>s+r.qty,0);
 
         let y=M;
-        doc.setFillColor(255,242,0);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
+        const PP=pdfPal_(d && d.store);PR_TEAL=PP.head;   // Store 1 burgundy / Store 2 original
+        doc.setFillColor(...PP.title);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
         doc.rect(M,y,W,9,'FD');
-        doc.setFont(undefined,'bold');doc.setFontSize(16);doc.setTextColor(10,58,94);
-        doc.text(SARV_COMPANY.fullName+' UNIT-2',pageW/2,y+6.3,{align:'center'});
+        doc.setFont(undefined,'bold');doc.setFontSize(16);doc.setTextColor(...PP.titleText);
+        doc.text(SARV_COMPANY.fullName+' '+pdfUnit_(d && d.store),pageW/2,y+6.3,{align:'center'});
         y+=9;
-        doc.setFillColor(217,234,211);doc.rect(M,y,W,6.5,'FD');
-        doc.setFontSize(11);
+        doc.setFillColor(...PP.sub);doc.rect(M,y,W,6.5,'FD');
+        doc.setFontSize(11);doc.setTextColor(...PP.subText);
         doc.text('PURCHASE REQUIREMENT',pageW/2,y+4.6,{align:'center'});
         doc.setTextColor(0,0,0);
         y+=8;
 
         y=drawPrHeaderBlocks_(doc,d,M,W,pageW,y);
 
-        const TEAL=[13,92,83],SUBTOTAL_BG=[207,226,247];
+        const TEAL=PP.head,SUBTOTAL_BG=PP.subtotal;
         y=drawPrSectionBar_(doc,'ITEMS REQUIRED',M,W,y);
         const head=[
             [
@@ -644,8 +646,43 @@
         }catch(e){ console.warn('[MOBILE] PO line Size/Material lookup skipped:', e.message||e); }
     }
 
+    /* UNIT-1 (Store 1) / UNIT-2 (Store 2) on the PR / PO PDF, from the record's
+       store (sql/PRPO_STORE_MIGRATION.sql). A record from before stores
+       existed has none and stays UNIT-2. Same rule as store-core.js sarvPdfUnit_. */
+    function pdfUnit_(store, roman){
+        const one = store === 'STORE 1';
+        return roman ? (one ? 'UNIT 1' : 'UNIT 2') : (one ? 'UNIT-1' : 'UNIT-2');
+    }
+    /* PR / PO PDF colours: Store 1's burgundy house style, Store 2's original
+       yellow / teal / amber exactly as before. Same table as store-core.js
+       sarvPdfPal_; change both together. */
+    function pdfPal_(store){
+        return store === 'STORE 1'
+            ? {s1:true, title:[107,15,34], titleText:[255,255,255], sub:[249,227,231], subText:[107,15,34], head:[128,0,32],
+               subtotal:[249,227,231], hi:[252,231,236], grand:[249,227,231], rule:[128,0,32], brand:[107,15,34]}
+            : {s1:false, title:[255,242,0], titleText:[10,58,94], sub:[217,234,211], subText:[10,58,94], head:[13,92,83],
+               subtotal:[207,226,247], hi:[255,242,0], grand:null, rule:[0,0,0], brand:[0,0,0]};
+    }
+    /* PR / PO cards per store (sql/PRPO_STORE_MIGRATION.sql): Store 1 maroon,
+       Store 2 teal, as a top edge + a pill (mobile.css .card.st1 / .st2). The
+       left edge stays the card's STATUS colour (vendor info filled, rejected,
+       overdue), so the two never fight. A record from before stores is Store 2. */
+    const storeSkin_ = s => s === 'STORE 1' ? 'st1' : 'st2';
+    const storePill_ = s => `<span class="store-pill ${storeSkin_(s)}">${s === 'STORE 1' ? 'Store 1' : 'Store 2'}</span>`;
+    // The PO row's own store (its database trigger takes it from the PR); STORE 2 when unknown.
+    async function poStoreOf_(d){
+        if(d && d.store) return d.store;
+        if(!d || !d.poNo) return 'STORE 2';
+        try{
+            const r = await SB.from('purchase_orders').select('store').eq('po_no', d.poNo).maybeSingle();
+            return (!r.error && r.data && r.data.store) || 'STORE 2';
+        }catch(e){ return 'STORE 2'; }
+    }
     async function buildPoNativePdfBlob(d, images=[]){
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
+        const poStore = await poStoreOf_(d);
+        const poUnit = pdfUnit_(poStore, true);
+        const PP = pdfPal_(poStore);   // Store 1 burgundy house style / Store 2 original colours
         const {jsPDF}=window.jspdf;
         const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
         const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
@@ -688,18 +725,18 @@
         doc.setFontSize(12);
         doc.text('PURCHASE ORDER',pageW/2,y+4.5,{align:'center'});
         y+=10;
-        doc.setFontSize(18);doc.setFont(undefined,'bold');
+        doc.setFontSize(18);doc.setFont(undefined,'bold');doc.setTextColor(...PP.brand);
         doc.text(SARV_COMPANY.fullName,pageW/2,y,{align:'center'});
         y+=6;
         doc.setFontSize(10);
-        doc.text(SARV_COMPANY.unit,pageW/2,y,{align:'center'});
+        doc.text(poUnit,pageW/2,y,{align:'center'});
         y+=4.5;
-        doc.setFontSize(8.5);doc.setFont(undefined,'normal');
+        doc.setTextColor(0,0,0);doc.setFontSize(8.5);doc.setFont(undefined,'normal');
         doc.text(SARV_COMPANY.tagline,pageW/2,y,{align:'center'});
         y+=4;
         doc.text(SARV_COMPANY.address,pageW/2,y,{align:'center'});
         y+=5;
-        doc.setLineWidth(0.4);doc.line(M,y,pageW-M,y);
+        doc.setDrawColor(...PP.rule);doc.setLineWidth(PP.s1?0.8:0.4);doc.line(M,y,pageW-M,y);doc.setDrawColor(0,0,0);
         y+=5;
 
         doc.setFontSize(9);doc.setFont(undefined,'bold');
@@ -727,7 +764,7 @@
         const c1=W*0.42,c2=W*0.25,c3=W-c1-c2;
         doc.setFillColor(243,244,246);
         doc.rect(M,y,c1,6,'FD');doc.rect(M+c1,y,c2,6,'FD');
-        doc.setFillColor(255,242,0); // Contact For Location — yellow highlight
+        doc.setFillColor(...PP.hi); // Contact For Location: highlight (yellow / Store 1 rose)
         doc.rect(M+c1+c2,y,c3,6,'FD');
         doc.setFontSize(8);doc.setFont(undefined,'bold');
         doc.text('Shipping Address:',M+c1/2,y+4,{align:'center'});
@@ -737,7 +774,7 @@
         const rowH=12;
         doc.setFillColor(255,255,255);
         doc.rect(M,y,c1,rowH);doc.rect(M+c1,y,c2,rowH);
-        doc.setFillColor(255,242,0);
+        doc.setFillColor(...PP.hi);
         doc.rect(M+c1+c2,y,c3,rowH,'FD');
         doc.setFont(undefined,'normal');doc.setFontSize(7.5);
         const shipLines=doc.splitTextToSize(String(d.shippingAddress||SARV_COMPANY.address),c1-4);
@@ -809,7 +846,7 @@
             y+=5.5;
         });
         poFit_(7);
-        doc.setFillColor(AMBER[0],AMBER[1],AMBER[2]);doc.rect(M,y,W,7,'F');doc.rect(M,y,W,7);
+        doc.setFillColor(...(PP.grand||AMBER));doc.rect(M,y,W,7,'F');doc.rect(M,y,W,7);
         doc.setFont(undefined,'bold');doc.setFontSize(10.5);
         doc.text('GRAND TOTAL',M+labelW-2,y+5,{align:'right'});
         doc.text(nMoney_(grand),M+W-2,y+5,{align:'right'});
@@ -831,7 +868,7 @@
         doc.text('IMPORTANT NOTES:',M,y);
         y+=2;
         doc.setFontSize(8);
-        doc.setFillColor(255,242,0);doc.rect(M,y,W,notesH,'F');
+        doc.setFillColor(...PP.hi);doc.rect(M,y,W,notesH,'F');
         doc.setDrawColor(212,184,0);doc.setLineWidth(0.3);doc.rect(M,y,W,notesH);
         doc.setFont(undefined,'bold');doc.setTextColor(0,0,0);
         doc.text(notesLines,M+2,y+4.5);
@@ -1957,6 +1994,17 @@
        this quietly steps aside and the app's old login works as before. */
     const SARV_SSO_KEY = 'sarv_sso_token';
     const MOB_APP_KEY  = 'HOME_APPROVAL_APP';
+    /* The single-login user (set by mobileSsoBoot_). A PR raised here belongs
+       to that user's store (app_users.store, sql/PRPO_STORE_MIGRATION.sql);
+       the app's old role-PIN login has no user, and its PRs are Store 2. */
+    let mobSsoUserId = null;
+    async function prmUserStore_(){
+        if(!mobSsoUserId) return 'STORE 2';
+        try{
+            const r = await SB.from('app_users').select('store').eq('id', mobSsoUserId).maybeSingle();
+            return (!r.error && r.data && r.data.store) || 'STORE 2';
+        }catch(e){ return 'STORE 2'; }
+    }
 
     /* ERP role → this app's stage. One user can have several roles, so this
        returns a list. PURCHASER's stage is gmCeo but WITH a name; that name
@@ -2041,6 +2089,7 @@
         }
 
         const su = d.user || {};
+        mobSsoUserId = su.id || null;   // whose store a new PR belongs to (prmUserStore_)
         const roles = (Array.isArray(su.roles) && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
         const stages = mobStagesForUser_(roles, su.name || '');
         if(!stages.length){
@@ -3384,7 +3433,8 @@
             const showRej = isPr && (rejView || prInRework_(item));
             // The green "vendor info filled" skin would read as all-is-well on a
             // PR whose PO just came back, so the rejection skin wins.
-            card.className = 'card' + (showRej ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''));
+            card.className = 'card' + (showRej ? ' po-rejected' : (vendorNames.length ? ' vendor-filled' : ''))
+                + ' ' + storeSkin_(item.store);
             // Acting is only for the tab's own role, on a pending record; any
             // other tap opens the record read-only. The PO Sender's action is
             // the WhatsApp button itself, so their card opens read-only too.
@@ -3396,7 +3446,7 @@
                 ? () => { switchStageTab('VI'); openModal(item, {viewOnly: false, tab: 'VI'}); }
                 : () => openModal(item, {viewOnly: !actHere, tab});
 
-            let html = `<div class="card-header"><span>${escText(isPr ? item.req_no : item.po_no)}</span>`;
+            let html = `<div class="card-header"><span>${escText(isPr ? item.req_no : item.po_no)}${storePill_(item.store)}</span>`;
             if(isPr){
                 html += `<span style="font-size:0.75rem; color:#d9534f;">${escText(item.priority||'Normal')}</span></div>`;
                 html += `<div class="card-detail">Requested By: <b>${escText(item.requested_by||'-')}</b>${item.department ? ' · ' + escText(item.department) : ''}</div>`;
@@ -3582,13 +3632,17 @@
         const mine = storeStageFor();
         rows.forEach(e => {
             const card = document.createElement('div');
-            card.className = 'card';
+            card.className = 'card ' + storeSkin_(e.store);
             card.onclick = () => openStoreModal(e);
             const inw = storeIsInward(e);
             const date = inw ? (e.receiving_date||'') : (e.outward_date||'');
             const party = inw ? (e.supplier_name||'-') : (e.party_name||'-');
+            /* Which store booked it (sql/STORE1_MIGRATION.sql): Store 1 purple,
+               Store 2 teal. A row from before the column existed is Store 2. */
+            const s1 = e.store === 'STORE 1';
             let html = `<div class="card-header"><span>${escText(storeDocNo(e)||'-')}</span>`
-                     + `<span style="font-size:0.72rem;font-weight:800;color:${inw?'#0284c7':'#b45309'};">${escText(e.entry_type||(inw?'INWARD':'OUTWARD'))}</span></div>`;
+                     + `<span style="font-size:0.72rem;font-weight:800;color:${inw?'#0284c7':'#b45309'};">${escText(e.entry_type||(inw?'INWARD':'OUTWARD'))}`
+                     + ` · <span style="color:${s1?'#6d28d9':'#0f766e'};">${s1?'Store 1':'Store 2'}</span></span></div>`;
             html += `<div class="card-detail">${inw?'Supplier':'Party'}: <b>${escText(party)}</b></div>`;
             html += `<div class="card-detail">Date: <b>${escText(date||'-')}</b>`
                   + (inw && e.invoice_no ? ' · Invoice: <b>'+escText(e.invoice_no)+'</b>' : '')
@@ -3626,7 +3680,7 @@
         listDiv.innerHTML = '';
         rows.forEach(p => {
             const card = document.createElement('div');
-            card.className = 'card';
+            card.className = 'card ' + storeSkin_(p.store);
             card.onclick = () => openRecvModal(p);
             /* Figures off the LINES where they are loaded, so Pending is the
                sum of what each item still owes rather than the difference of
@@ -3705,7 +3759,7 @@
             const late = od !== null && od > 0;
             // Amber only for a promise that has actually slipped. A PO nobody
             // has rung about yet is untouched, not late — see .pfu-fresh.
-            card.className = 'card ' + (late ? 'pfu-overdue' : 'pfu-fresh');
+            card.className = 'card ' + (late ? 'pfu-overdue' : 'pfu-fresh') + ' ' + storeSkin_(p.store);
             card.onclick = () => openPoFollowupModal(p);
 
             // Outstanding qty off the LINES where they loaded, same rule as PO
@@ -4519,13 +4573,15 @@
         rows.forEach(r => {
             const card = document.createElement('div');
             const pend = inwAppPending(r);
-            card.className = 'card';
-            card.onclick = () => openInwAppModal(r);
             const p = inwAppPayload(r);
+            card.className = 'card ' + storeSkin_(p.store);
+            card.onclick = () => openInwAppModal(r);
             const col = pend ? '#d97706' : (r.status === 'Approved' ? '#16a34a' : '#dc3545');
             let html = `<div class="card-header"><span>${escText(r.request_no || ('#' + r.id))}</span>`
                      + `<span style="font-size:0.72rem;font-weight:800;color:${col};">${escText(r.status || 'Pending')}</span></div>`;
             html += `<div class="card-detail">Supplier: <b>${escText(r.supplier_name || '-')}</b></div>`;
+            // Into which store (the ERP puts it in the payload; older requests are Store 2).
+            html += `<div class="card-detail">Into: <b style="color:${p.store === 'STORE 1' ? '#6d28d9' : '#0f766e'};">${p.store === 'STORE 1' ? 'Store 1' : 'Store 2'}</b></div>`;
             if(r.po_numbers)  html += `<div class="card-detail">PO: <b>${escText(r.po_numbers)}</b></div>`;
             if(r.req_numbers) html += `<div class="card-detail">PR: <b>${escText(r.req_numbers)}</b></div>`;
             html += `<div class="card-detail">Invoice: <b>${escText(r.invoice_no || '-')}</b>`
@@ -4565,6 +4621,7 @@
             ['Request No', r.request_no || ('#' + r.id)],
             ['Status', r.status || 'Pending'],
             ['Entry Type', r.entry_type || p.entryType || 'INWARD'],
+            ['Into Store', p.store === 'STORE 1' ? 'Store 1' : 'Store 2'],
             ['Supplier', r.supplier_name || '-'],
             ['Invoice', (r.invoice_no || '-') + (r.invoice_date ? ' · ' + r.invoice_date : '')],
             ['Receiving Date', p.receivingDate || '-'],
@@ -8911,7 +8968,9 @@
                 purpose: 'Purchase requirement',
                 priority: priority,
                 notes: val('prmRemarks') || null,
-                status: 'Pending'
+                status: 'Pending',
+                // The raising user's store; dropped by the retry helper on a database without the column.
+                store: await prmUserStore_()
             };
             /* required_by is in the never-drop list on purpose. The retry helper
                exists to survive a database that predates a column, but this
@@ -8947,6 +9006,8 @@
                tables, and the Vendor Rate & Info sheet reads them from here. */
             const snap = {
                 reqNo: reqNo,
+                // Its store (as saved), so every rebuild of the PDF prints UNIT-1 / UNIT-2 (pdfUnit_).
+                store: (req && req.store) || payload.store || 'STORE 2',
                 ts: new Date().toISOString(),
                 date: payload.request_date,
                 requiredByDate: requiredBy,

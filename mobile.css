@@ -1110,3 +1110,18 @@
         /* Stage tabs carry text only; an empty icon slot takes no room. */
         .stage-tab .st-ico:empty { display: none; }
 
+
+        /* ── Store 1 / Store 2 on the cards (mobile-core.js storeSkin_ / storePill_) ──
+           Store 1 maroon → burgundy, Store 2 teal: a top edge and a pill by the
+           number. The left edge is left to the status skins above (vendor info,
+           rejected, overdue). The faint wash only where no status skin is set. */
+        .card.st1 { border-top: 3px solid #800020; }
+        .card.st2 { border-top: 3px solid #0f766e; }
+        .card.st1:not(.vendor-filled):not(.po-rejected):not(.pfu-overdue) { background: linear-gradient(180deg, #fdf2f4 0%, #ffffff 55%); }
+        .card.st2:not(.vendor-filled):not(.po-rejected):not(.pfu-overdue) { background: linear-gradient(180deg, #effaf8 0%, #ffffff 55%); }
+        .store-pill {
+            display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 9px;
+            font-size: 0.62rem; font-weight: 800; letter-spacing: .3px; vertical-align: 1px; color: #fff;
+        }
+        .store-pill.st1 { background: linear-gradient(120deg, #6b0f22, #9f1239); }
+        .store-pill.st2 { background: linear-gradient(120deg, #0f766e, #0d9488); }

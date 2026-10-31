@@ -58,6 +58,22 @@ end of <body>:     store-core.js → store-design-master.js → store-nav-keys.j
     holds the Store In / Out PDF checklists (one JSON row each, own builder; STORE CHECKLISTS section)
   - `SARV_FAB_FIELDS` / `SARV_BR_FIELDS` — Fabric/Brand Master field lists (drive table, form, CSV, revisions)
   - `fetchAllRows(table, cols, orderCol, filterFn)` — paginated Supabase read
+  - **Two stores** (`sql/STORE1_MIGRATION.sql`): `inward_entries` / `outward_entries` and their lines carry
+    `store` ('STORE 1' / 'STORE 2', default STORE 2 = all data from before; a trigger copies the header's
+    store onto each line). `sarvStore` = the store the Store screens work in, set by the sidebar leaf
+    (`store` on every leaf of the Store 1 / Store 2 modules, `storeLeaves()` in `erp-shell.js`). New entries
+    are saved with it, doc numbers use `SARV_STORES` series (SIHF-I/…, NB/1/… vs SIHF-II/…, NB/2/…), and
+    store-scoped reads go through `sarvStoreQ(q)` (lists, Item Tracker, Consumption, Repair, Reports,
+    Outward stock check, Item Stock = Item Master in `sarvItemMasterStore` mode, My Day). Deliberately
+    COMBINED: PO received qty / status, PR received, duplicate-bill check, Follow-up report, PR form Balance
+    Stock. Store Transfer (`sarvOpenStoreTransfer`) = Outward from one + Inward NB into the other. Items and
+    Suppliers are common. Any new Store-table read must decide: per store (`sarvStoreQ`) or combined.
+  - **PR / PO per store** (`sql/PRPO_STORE_MIGRATION.sql`): `app_users.store` (set in Admin Panel › Users via
+    `admin_set_user_store`); a new PR takes the raising user's store (`sarvUserStore_`, mobile `prmUserStore_`);
+    a PO takes its first PR's store by trigger (`linked_req_nos`). The Inward PO / PR pickers show a store its own
+    PRs / POs plus any with an item whose category is ticked for it in Administration › PR-PO Master
+    (`category_purchasers.store1/store2`, `sarvOpenPrpoMaster`, `prpoVisibleIn_`). One PO series for both;
+    PR / PO PDFs print UNIT-1 / UNIT-2 from the record's store (`sarvPdfUnit_`, mobile `pdfUnit_`).
 - `store-design-master.js`: Production › Design Master. All ids/classes/functions prefixed `dm`.
 - `erp-shell.js`: sidebar, dashboard and `MODULES` map. A leaf with `go` opens an existing screen; without
   `go` it shows "Coming Soon". New module → add to `MODULES` **and** add its `ERP_<key>` row to `SARV_TABS`.

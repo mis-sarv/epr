@@ -250,11 +250,157 @@ function sarvFinancialYear(shortStart){
   const d=new Date(),y=d.getFullYear(),startY=d.getMonth()>=3?y:y-1,endY=startY+1;
   return (shortStart?String(startY).slice(-2):String(startY))+'-'+String(endY).slice(-2);
 }
+/* ══ STORE 1 / STORE 2 (sql/STORE1_MIGRATION.sql) ══════════════════════
+   Two stores on the SAME Store tables: inward_entries / outward_entries (and
+   their lines) carry a `store` column, 'STORE 1' or 'STORE 2'. Everything
+   that was there before the migration is STORE 2 (the column's default), so
+   the running data is untouched. Item Master and Supplier Master are common.
+
+   sarvStore is the store the Store screens are working in. The sidebar sets
+   it (module Store 2 = 'STORE 2', module Store 1 = 'STORE 1', see
+   erp-shell.js) before opening a screen, and then:
+     • every new Inward / Outward / Issue is saved with it,
+     • the document number uses its own series (SARV_STORES),
+     • the Store lists, Item Tracker, Consumption Tracker, Repair Challans,
+       Print History / Reports, the Outward stock check and the Item Stock
+       view read only that store's rows (sarvStoreQ).
+   What stays COMBINED on purpose: PO received qty / PO status and PR
+   received (a PO may be received in either store), the duplicate-bill check
+   (one bill must not be booked in both stores), the Follow-up report, and
+   the PR form's Balance Stock (a buying decision looks at both stores).
+
+   Before the migration has run there is no `store` column: sarvStoreQ then
+   filters nothing (all rows are Store 2 anyway) and Store 1 refuses to open
+   (sarvStoreReady_) rather than save entries that would land in Store 2. */
+/* code = the short name on the Store screens and the Store PDFs (SIHF-I /
+   SIHF-II), unit / unitNo = how the store's unit is written in the fixed
+   fields (UNIT-I / UNIT-1 for Store 1). Store 2's values are exactly the
+   text that was hard-coded before, so nothing of Store 2 changes. */
+const SARV_STORES={
+  'STORE 1':{label:'Store 1',code:'SIHF-I',unit:'UNIT-I',unitNo:'UNIT-1',inPre:'SIHF-I/',nbPre:'NB/1/',outPre:'SIHF-I/OUT/',issuePre:'SIHF-I/ISSUE/'},
+  'STORE 2':{label:'Store 2',code:'SIHF-II',unit:'UNIT-II',unitNo:'UNIT-2',inPre:'SIHF-II/',nbPre:'NB/2/',outPre:'SIHF-II/OUT/',issuePre:'SIHF-II/ISSUE/'}
+};
+// The store's short code (SIHF-I / SIHF-II): of `s` when given (a record's own store), else the store in use.
+function sarvStoreCode_(s){return (SARV_STORES[s]||SARV_STORES[sarvStore]||SARV_STORES['STORE 2']).code;}
+let sarvStore='STORE 2';
+let sarvHasStoreCol=null;          // null = not checked yet; true / false after sarvCheckStoreCol_
+const sarvStoreCfg_=()=>SARV_STORES[sarvStore]||SARV_STORES['STORE 2'];
+function sarvStoreLabel(s){return (SARV_STORES[s||sarvStore]||SARV_STORES['STORE 2']).label;}
+// Limit a query on a Store table (entries or lines) to the store in use.
+// Store 1 is always filtered (even before the column check has answered), so
+// it can never show Store 2's rows; Store 2 is filtered once the column exists.
+function sarvStoreQ(q){return (sarvHasStoreCol||sarvStore==='STORE 1')?q.eq('store',sarvStore):q;}
+async function sarvCheckStoreCol_(){
+  if(sarvHasStoreCol!==null||!SB_READY)return sarvHasStoreCol;
+  try{const r=await SB.from('inward_entries').select('store').limit(1);sarvHasStoreCol=!r.error;}
+  catch(e){sarvHasStoreCol=false;}
+  if(!sarvHasStoreCol)console.warn('[SARV] inward_entries.store missing — run sql/STORE1_MIGRATION.sql; Store 1 is unavailable until then.');
+  return sarvHasStoreCol;
+}
+/* The logged-in user's store (app_users.store, sql/PRPO_STORE_MIGRATION.sql),
+   for a NEW PR: a PR belongs to the store of whoever raises it, and its POs
+   follow it (database trigger). null = the column is not there yet, and the
+   PR then keeps the database default. A role-PIN login with no named user is
+   Store 2, the store that has always been running. */
+async function sarvUserStore_(){
+  if(!SB_READY)return null;
+  try{
+    const id=sarvCurrentUser&&sarvCurrentUser.id;
+    if(!id){const p=await SB.from('purchase_requirements').select('store').limit(1);return p.error?null:'STORE 2';}
+    const r=await SB.from('app_users').select('store').eq('id',id).maybeSingle();
+    if(r.error)return null;
+    return (r.data&&r.data.store)||'STORE 2';
+  }catch(e){return null;}
+}
+/* The unit a PR / PO PDF prints: Store 1 = UNIT-1, Store 2 = UNIT-2. From the
+   record's own store (a PR's pdf_snapshot.store, a PO's store column); a
+   record from before stores existed has none and is UNIT-2, as it always was.
+   `roman` gives the "UNIT 1" / "UNIT 2" spelling the PO header uses. */
+function sarvPdfUnit_(store,roman){
+  const one=store==='STORE 1';
+  return roman?(one?'UNIT 1':'UNIT 2'):(one?'UNIT-1':'UNIT-2');
+}
+/* PR / PO PDF colours. Store 1 gets its own house style: a deep burgundy title
+   band with white text, soft rose bands and highlights, burgundy table heads,
+   rules and company name. Store 2 gets EXACTLY the colours its PDFs always had
+   (yellow title band, green sub band, teal heads, yellow highlights, amber
+   total), so none of its documents changes. rgb for jsPDF, hex for the HTML
+   copies. mobile-core.js pdfPal_ is the same table; change both together. */
+function sarvPdfPal_(store){
+  return store==='STORE 1'
+    ?{s1:true,title:[107,15,34],titleText:[255,255,255],sub:[249,227,231],subText:[107,15,34],head:[128,0,32],
+      subtotal:[249,227,231],hi:[252,231,236],grand:[249,227,231],rule:[128,0,32],brand:[107,15,34],
+      hex:{title:'#6b0f22',titleText:'#ffffff',sub:'#f9e3e7',subText:'#6b0f22',head:'#800020',subtotal:'#f9e3e7',subtotalText:'#6b0f22',hi:'#fce7ec',hiBorder:'#e7b9c2',brand:'#6b0f22',grand:'#f9e3e7'}}
+    :{s1:false,title:[255,242,0],titleText:[10,58,94],sub:[217,234,211],subText:[10,58,94],head:[13,92,83],
+      subtotal:[207,226,247],hi:[255,242,0],grand:null,rule:[0,0,0],brand:[0,0,0],
+      hex:{title:'#fff200',titleText:'#0a3a5e',sub:'#d9ead3',subText:'#0a3a5e',head:'#0d5c53',subtotal:'#cfe2f3',subtotalText:'#0a3a5e',hi:'#fff200',hiBorder:'#d4b800',brand:'',grand:'#fde68a'}};
+}
+/* A PO's store for its PDF: its own (d.store, from the purchase_orders row),
+   else that of its first PR (a PO being generated right now has no row yet;
+   the database will give it the PR's store, see PRPO_STORE_MIGRATION.sql). */
+function sarvPoStore_(d){
+  if(d&&d.store)return d.store;
+  const nos=[...new Set(((d&&d.items)||[]).map(x=>x&&x.reqNo).filter(Boolean))];
+  for(const no of nos){
+    const r=(sarvPendingRequirements||[]).find(x=>x&&x.req&&x.req.req_no===no);
+    if(r&&r.req.store)return r.req.store;
+  }
+  return 'STORE 2';
+}
+// Store 1 needs the migration; Store 2 works with or without it.
+async function sarvStoreReady_(s){
+  if((s||sarvStore)!=='STORE 1')return true;
+  return !!(await sarvCheckStoreCol_());
+}
+/* Switch the Store screens to another store. Caches built from one store's
+   rows are dropped, so nothing of the other store is shown or used. */
+function sarvSetStore(s){
+  const next=SARV_STORES[s]?s:'STORE 2';
+  const changed=next!==sarvStore;
+  sarvStore=next;
+  document.body.dataset.store=next;
+  if(changed){
+    try{consEntryCache=null;}catch(e){}
+    /* Lists already on screen were read for the other store: read them again
+       for this one (after the switch has settled). Each is skipped quietly
+       when its screen has never been opened. */
+    setTimeout(()=>{
+      const shown=id=>{const p=byId(id);return !!p&&p.style.display!=='none'&&p.offsetParent!==null;};
+      const run=fn=>{try{const r=fn();if(r&&r.catch)r.catch(e=>console.warn('[SARV] store switch refresh:',e.message||e));}catch(e){}};
+      if(typeof loadRepairOutwardDropdown==='function')run(loadRepairOutwardDropdown);
+      // The Inward's PO / PR pickers offer each store its own (+ ticked categories).
+      if(typeof loadOpenPoDropdown==='function')run(loadOpenPoDropdown);
+      if(typeof loadPrDropdown_==='function')run(loadPrDropdown_);
+      if(byId('searchResultsBody')&&typeof window.loadReports==='function'&&byId('searchResultsBody').children.length)run(window.loadReports);
+      if(byId('repairTrackerBody')&&typeof window.loadRepairTracker==='function'&&byId('repairTrackerBody').children.length)run(window.loadRepairTracker);
+      if(shown('itemTrackerPanel')&&typeof buildItemLedger==='function')run(buildItemLedger);
+    },0);
+  }
+  sarvStoreChipSync_();
+  return changed;
+}
+window.sarvSetStore=sarvSetStore;
+// "Store 1" / "Store 2" chip on the Store screens, so nobody books into the wrong one.
+function sarvStoreChipSync_(){
+  let c=document.getElementById('sarvStoreChip');
+  if(!c){
+    c=document.createElement('div');c.id='sarvStoreChip';
+    c.title='The store these screens are working in. Change it from the sidebar (Store 1 / Store 2).';
+    document.body.appendChild(c);
+  }
+  c.textContent=sarvStoreLabel();
+  c.className=sarvStore==='STORE 1'?'s1':'s2';
+  // Desk titles carry the store's code (SIHF-I / SIHF-II).
+  const it=byId('inDeskTitle');if(it)it.textContent=sarvStoreCode_()+' - STORE TRACKER';
+  const ot=byId('outDeskTitle');if(ot)ot.textContent=ot.textContent.replace(/^SIHF-I{1,2}\b/,sarvStoreCode_());
+}
+// The store's own series; `s` given = that store (Store Transfer numbers both sides), else the store in use.
+const sarvStorePre_=s=>(SARV_STORES[s]||sarvStoreCfg_());
 const SARV_DOC_NO_CFG={
-  INWARD:{table:'inward_entries',col:'document_no',prefix:()=>'SIHF-II/'+sarvFinancialYear()+'/'},
-  NB:{table:'inward_entries',col:'document_no',prefix:()=>'NB/2/'+sarvFinancialYear()+'/'},
-  OUTWARD:{table:'outward_entries',col:'document_no',prefix:()=>'SIHF-II/OUT/'+sarvFinancialYear()+'/'},
-  ISSUE:{table:'outward_entries',col:'document_no',prefix:()=>'SIHF-II/ISSUE/'+sarvFinancialYear()+'/'},
+  INWARD:{table:'inward_entries',col:'document_no',prefix:s=>sarvStorePre_(s).inPre+sarvFinancialYear()+'/'},
+  NB:{table:'inward_entries',col:'document_no',prefix:s=>sarvStorePre_(s).nbPre+sarvFinancialYear()+'/'},
+  OUTWARD:{table:'outward_entries',col:'document_no',prefix:s=>sarvStorePre_(s).outPre+sarvFinancialYear()+'/'},
+  ISSUE:{table:'outward_entries',col:'document_no',prefix:s=>sarvStorePre_(s).issuePre+sarvFinancialYear()+'/'},
   REQ:{table:'purchase_requirements',col:'req_no',prefix:()=>'PR/'+sarvFinancialYear(true)+'/'},
   PO:{table:'purchase_orders',col:'po_no',prefix:()=>'PO/U-2/'},
 };
@@ -262,10 +408,10 @@ const SARV_DOC_NO_CFG={
 // kinds) + a per-FY running sequence, computed client-side by scanning
 // existing numbers under that same prefix — so each FY's sequence starts
 // fresh at 001 the moment the prefix itself changes.
-async function nextNo(kind){
+async function nextNo(kind,store){
   const cfg=SARV_DOC_NO_CFG[kind];
   if(!SB_READY||!cfg) return kind+'-'+new Date().getFullYear()+'-'+String(Date.now()).slice(-5);
-  const prefix=cfg.prefix();
+  const prefix=cfg.prefix(store);
   try{
     const {data,error}=await SB.from(cfg.table).select(cfg.col).ilike(cfg.col,prefix+'%').limit(5000);
     if(error)throw error;
@@ -282,6 +428,257 @@ async function nextNo(kind){
     return prefix+'001';
   }
 }
+/* ══ STORE TRANSFER: Store 1 ⇄ Store 2 ════════════════════════════════
+   One entry moves stock between the two stores, as TWO ordinary records so
+   every screen (stock, Item Tracker, Reports) counts it with no special case:
+     • an OUTWARD from the giving store   (nature_of_dispatch "Store Transfer",
+       party = the receiving store), numbered in the giving store's series;
+     • an INWARD NB into the receiving store (nature_of_inward "Store Transfer",
+       supplier = the giving store, gate pass = the Outward's number), numbered
+       in the receiving store's series. NB: an internal move has no bill.
+   The giving store's stock is checked first (nothing leaves that isn't
+   there). If the Inward cannot be written, the Outward just written is
+   removed again, so stock is never taken from one store without arriving in
+   the other. The Unloader / MD inward approvals are for supplier receipts and
+   do not apply here; the signer's PIN is still asked (sarvSubmitPinGate_). */
+const SARV_TRANSFER_NATURE='Store Transfer';
+let sarvXferItems=[];
+async function sarvOpenStoreTransfer(){
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
+  if(!(await sarvCheckStoreCol_()))return showToast('Store Transfer needs sql/STORE1_MIGRATION.sql to be run first.','warn');
+  let m=byId('sarvXferModal');
+  if(!m){
+    m=document.createElement('div');m.id='sarvXferModal';
+    m.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto;';
+    m.innerHTML='<div style="background:#fff;border-radius:12px;width:100%;max-width:820px;padding:18px 20px;box-shadow:0 10px 30px rgba(15,23,42,.25);">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><h3 style="margin:0;font-size:17px;">Store Transfer</h3>'
+      +'<button type="button" onclick="sarvCloseStoreTransfer()" style="border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;">✕</button></div>'
+      +'<div style="font-size:12px;color:#475569;margin-bottom:12px;">Makes an <b>Outward</b> from the giving store and an <b>Inward (NB)</b> into the receiving store, in one step.</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px;">'
+      +'<label style="font-size:12px;font-weight:700;">From store<select id="xferFrom" onchange="sarvXferFromChanged()" style="width:100%;padding:7px;margin-top:3px;"><option value="STORE 1">Store 1</option><option value="STORE 2">Store 2</option></select></label>'
+      +'<label style="font-size:12px;font-weight:700;">To store<input id="xferTo" readonly style="width:100%;padding:7px;margin-top:3px;background:#f1f5f9;"></label>'
+      +'<label style="font-size:12px;font-weight:700;">Date<input id="xferDate" type="date" style="width:100%;padding:7px;margin-top:3px;"></label>'
+      +'<label style="font-size:12px;font-weight:700;">Sent by / Receiver<input id="xferReceiver" style="width:100%;padding:7px;margin-top:3px;" placeholder="Name"></label></div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f8fafc;text-align:left;">'
+      +'<th style="padding:6px;">Item</th><th style="padding:6px;width:110px;">Stock in giving store</th><th style="padding:6px;width:100px;">Qty</th><th style="padding:6px;width:70px;">UOM</th><th style="width:30px;"></th></tr></thead>'
+      +'<tbody id="xferBody"></tbody></table>'
+      +'<datalist id="xferItemDl"></datalist>'
+      +'<button type="button" onclick="sarvXferAddRow()" style="margin-top:8px;border:1px dashed #94a3b8;background:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:700;">+ Add item</button>'
+      +'<label style="display:block;font-size:12px;font-weight:700;margin-top:12px;">Remarks<textarea id="xferRemarks" rows="2" style="width:100%;padding:7px;margin-top:3px;"></textarea></label>'
+      +'<div id="xferErr" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:16px;margin-top:6px;"></div>'
+      +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">'
+      +'<button type="button" onclick="sarvCloseStoreTransfer()" class="btn btn-neutral">Cancel</button>'
+      +'<button type="button" id="xferSaveBtn" onclick="sarvSaveStoreTransfer()" class="btn btn-primary">Save Transfer</button></div></div>';
+    document.body.appendChild(m);
+  }
+  try{ sarvXferItems=await fetchAllRows('items','id,name,uom','name'); }catch(e){ return showToast('Items could not be loaded: '+(e.message||e),'error'); }
+  byId('xferItemDl').innerHTML=sarvXferItems.map(i=>'<option value="'+escText(i.name)+'">').join('');
+  byId('xferFrom').value=sarvStore;byId('xferDate').value=today();byId('xferReceiver').value='';byId('xferRemarks').value='';byId('xferErr').textContent='';
+  byId('xferBody').innerHTML='';sarvXferAddRow();
+  m.style.display='flex';
+  await sarvXferFromChanged();
+}
+function sarvCloseStoreTransfer(){const m=byId('sarvXferModal');if(m)m.style.display='none';}
+let sarvXferStock={};
+// Balance of every item in the giving store (its Inward − Outward lines).
+async function sarvXferFromChanged(){
+  const from=byId('xferFrom').value,to=from==='STORE 1'?'STORE 2':'STORE 1';
+  byId('xferTo').value=sarvStoreLabel(to);
+  sarvXferStock={};
+  try{
+    const [inl,outl]=await Promise.all([
+      fetchAllRows('inward_lines','item_id,qty','id',q=>q.eq('store',from)),
+      fetchAllRows('outward_lines','item_id,qty','id',q=>q.eq('store',from))
+    ]);
+    inl.forEach(l=>{sarvXferStock[l.item_id]=(sarvXferStock[l.item_id]||0)+pNum(l.qty);});
+    outl.forEach(l=>{sarvXferStock[l.item_id]=(sarvXferStock[l.item_id]||0)-pNum(l.qty);});
+  }catch(e){byId('xferErr').textContent='Stock could not be read: '+(e.message||e);}
+  document.querySelectorAll('#xferBody tr').forEach(sarvXferRowSync_);
+}
+function sarvXferAddRow(){
+  const tr=document.createElement('tr');
+  tr.innerHTML='<td style="padding:4px;"><input class="xfer-item" list="xferItemDl" style="width:100%;padding:6px;" placeholder="Item name"></td>'
+    +'<td class="xfer-stock" style="padding:4px;color:#475569;font-weight:700;">—</td>'
+    +'<td style="padding:4px;"><input class="xfer-qty" type="number" min="0" step="any" style="width:100%;padding:6px;"></td>'
+    +'<td class="xfer-uom" style="padding:4px;">—</td>'
+    +'<td><button type="button" title="Remove" style="border:0;background:none;cursor:pointer;color:#b91c1c;">✕</button></td>';
+  tr.querySelector('.xfer-item').addEventListener('change',()=>sarvXferRowSync_(tr));
+  tr.querySelector('button').addEventListener('click',()=>{tr.remove();});
+  byId('xferBody').appendChild(tr);
+}
+const sarvXferItemOf_=name=>{const n=String(name||'').trim().toUpperCase();return sarvXferItems.find(i=>String(i.name||'').trim().toUpperCase()===n)||null;};
+function sarvXferRowSync_(tr){
+  const it=sarvXferItemOf_(tr.querySelector('.xfer-item').value);
+  tr.querySelector('.xfer-stock').textContent=it?nNum_(pNum(sarvXferStock[it.id])):'—';
+  tr.querySelector('.xfer-uom').textContent=it?(it.uom||''):'—';
+}
+async function sarvSaveStoreTransfer(){
+  const err=byId('xferErr');err.textContent='';
+  const from=byId('xferFrom').value,to=from==='STORE 1'?'STORE 2':'STORE 1';
+  const date=byId('xferDate').value||today(),who=byId('xferReceiver').value.trim(),rem=byId('xferRemarks').value.trim();
+  // Rows → items, the same item added twice counted as one.
+  const want=new Map();let bad='';
+  document.querySelectorAll('#xferBody tr').forEach(tr=>{
+    const name=tr.querySelector('.xfer-item').value.trim(),qty=pNum(tr.querySelector('.xfer-qty').value);
+    if(!name&&!qty)return;
+    const it=sarvXferItemOf_(name);
+    if(!it){bad=bad||('"'+name+'" is not in the Item Master.');return;}
+    if(!(qty>0)){bad=bad||('Enter the qty for '+it.name+'.');return;}
+    const cur=want.get(it.id)||{it,qty:0};cur.qty+=qty;want.set(it.id,cur);
+  });
+  if(bad)return err.textContent=bad;
+  if(!want.size)return err.textContent='Add at least one item.';
+  const short=[...want.values()].filter(x=>x.qty>pNum(sarvXferStock[x.it.id])+1e-9);
+  if(short.length)return err.textContent='Not enough stock in '+sarvStoreLabel(from)+': '+short.map(x=>x.it.name+' (has '+nNum_(pNum(sarvXferStock[x.it.id]))+', asked '+nNum_(x.qty)+')').join(', ');
+  const sign=await sarvSubmitPinGate_('Store Transfer '+sarvStoreLabel(from)+' → '+sarvStoreLabel(to));
+  if(!sign)return;
+  const btn=byId('xferSaveBtn');btn.disabled=true;btn.textContent='Saving…';
+  let outId=null;
+  try{
+    const outNo=await nextNo('OUTWARD',from);
+    const note='Store Transfer '+sarvStoreLabel(from)+' → '+sarvStoreLabel(to)+(rem?' · '+rem:'')+' · by '+(sign.name||'');
+    const oh=await SB.from('outward_entries').insert({document_no:outNo,entry_type:'OUTWARD',outward_date:date,party_name:sarvStoreLabel(to).toUpperCase(),
+      receiver_name:who||null,notes:note,nature_of_dispatch:SARV_TRANSFER_NATURE,store:from}).select().single();
+    if(oh.error)throw oh.error;
+    outId=oh.data.id;
+    const ol=await SB.from('outward_lines').insert([...want.values()].map(x=>({outward_id:outId,item_id:x.it.id,qty:x.qty,uom:x.it.uom||null})));
+    if(ol.error)throw ol.error;
+    const inNo=await nextNo('NB',to);
+    const ih=await SB.from('inward_entries').insert({document_no:inNo,entry_type:'INWARD NB',receiving_date:date,supplier_name:sarvStoreLabel(from).toUpperCase(),
+      gate_pass_no:outNo,notes:note,nature_of_inward:SARV_TRANSFER_NATURE,store:to}).select().single();
+    if(ih.error)throw ih.error;
+    const il=await SB.from('inward_lines').insert([...want.values()].map(x=>({inward_id:ih.data.id,item_id:x.it.id,qty:x.qty,uom:x.it.uom||null,rate:0,gst_pct:0,line_total:0})));
+    if(il.error){await SB.from('inward_entries').delete().eq('id',ih.data.id);throw il.error;}
+    outId=null;   // both sides written: nothing to undo
+    sarvCloseStoreTransfer();
+    showToast('Transferred '+want.size+' item(s): '+outNo+' ('+sarvStoreLabel(from)+') → '+inNo+' ('+sarvStoreLabel(to)+').');
+  }catch(e){
+    // Undo the Outward, so stock never leaves one store without reaching the other.
+    if(outId){try{await SB.from('outward_lines').delete().eq('outward_id',outId);await SB.from('outward_entries').delete().eq('id',outId);}catch(_){}}
+    err.textContent='Not saved: '+(e.message||e);
+  }finally{btn.disabled=false;btn.textContent='Save Transfer';}
+}
+window.sarvOpenStoreTransfer=sarvOpenStoreTransfer;
+
+/* ══ ADMINISTRATION › PR-PO MASTER (table category_purchasers) ═══════════
+   One row per item category:
+     • Purchaser — who a new PR of that category is booked to (the PR form's
+       auto-pick, loadCategoryPurchasers / sarvCategoryPurchasers);
+     • Store 1 / Store 2 — a ticked category's PRs / POs show in that store's
+       Inward form TOO, whichever store raised them (prpoVisibleIn_). Unticked,
+       a PR / PO shows only in its own store (the raising user's store).
+   Only changed rows are written, on Save. No delete here on purpose: old PRs /
+   POs still name their categories, and a category removed by mistake would
+   silently lose its Purchaser and its ticks. Columns store1 / store2 come from
+   sql/PRPO_STORE_MIGRATION.sql; without them the ticks are shown disabled. */
+let prpoRows=[],prpoHasStores=true;
+async function sarvOpenPrpoMaster(){
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
+  let m=byId('prpoMasterModal');
+  if(!m){
+    m=document.createElement('div');m.id='prpoMasterModal';
+    m.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto;';
+    m.innerHTML='<div style="background:#fff;border-radius:12px;width:100%;max-width:900px;padding:18px 20px;box-shadow:0 10px 30px rgba(15,23,42,.25);">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;"><h3 style="margin:0;font-size:17px;">PR-PO Master</h3>'
+      +'<button type="button" onclick="sarvClosePrpoMaster()" style="border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;">✕</button></div>'
+      +'<div style="font-size:12px;color:#475569;line-height:1.6;margin-bottom:10px;">'
+      +'<b>Purchaser</b>: who a new PR of the category is booked to. '
+      +'<b>Store 1 / Store 2</b>: tick a store and every PR / PO with an item of that category shows in <i>that store\'s</i> Inward form too, whichever store raised it. '
+      +'Unticked, a PR / PO shows only in its own store (the store of the user who raised the PR).</div>'
+      +'<div id="prpoNote"></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">'
+      +'<input id="prpoSearch" oninput="sarvPrpoRender()" placeholder="Search category or purchaser" style="flex:1 1 220px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:7px;">'
+      +'<span id="prpoCount" style="font-size:12px;color:#64748b;font-weight:700;"></span>'
+      +'<button type="button" class="btn btn-neutral" onclick="sarvPrpoAdd()">+ Add Category</button></div>'
+      +'<div style="max-height:58vh;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">'
+      +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="background:#f8fafc;text-align:left;position:sticky;top:0;">'
+      +'<th style="padding:8px;">Category</th><th style="padding:8px;width:220px;">Purchaser</th>'
+      +'<th style="padding:8px;width:80px;text-align:center;">Store 1</th><th style="padding:8px;width:80px;text-align:center;">Store 2</th></tr></thead>'
+      +'<tbody id="prpoBody"></tbody></table></div>'
+      +'<div id="prpoErr" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:16px;margin-top:8px;"></div>'
+      +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;">'
+      +'<button type="button" class="btn btn-neutral" onclick="sarvClosePrpoMaster()">Close</button>'
+      +'<button type="button" id="prpoSaveBtn" class="btn btn-primary" onclick="sarvPrpoSave()">Save changes</button></div></div>';
+    document.body.appendChild(m);
+  }
+  byId('prpoErr').textContent='';byId('prpoSearch').value='';
+  byId('prpoBody').innerHTML='<tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;">Loading…</td></tr>';
+  m.style.display='flex';
+  let q=await SB.from('category_purchasers').select('id,category,purchaser_name,store1,store2').order('category');
+  prpoHasStores=!q.error;
+  if(q.error)q=await SB.from('category_purchasers').select('id,category,purchaser_name').order('category');
+  if(q.error){byId('prpoBody').innerHTML='';byId('prpoErr').textContent='Could not load category_purchasers: '+q.error.message;return;}
+  byId('prpoNote').innerHTML=prpoHasStores?'':'<div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px;">The Store 1 / Store 2 ticks need <b>sql/PRPO_STORE_MIGRATION.sql</b> to be run in Supabase. Purchasers can be edited now.</div>';
+  prpoRows=(q.data||[]).map(r=>({id:r.id,category:r.category||'',purchaser:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2,orig:{p:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2}}));
+  sarvPrpoRender();
+}
+function sarvClosePrpoMaster(){
+  if(prpoRows.some(prpoDirty_)&&!confirm('There are unsaved changes. Close without saving?'))return;
+  const m=byId('prpoMasterModal');if(m)m.style.display='none';
+}
+const prpoDirty_=r=>!r.id||r.purchaser!==r.orig.p||r.s1!==r.orig.s1||r.s2!==r.orig.s2;
+// The Purchaser choices: the PR form's own list (its names are what a PR saves), else the fixed list.
+function prpoPurchaserOptions_(){
+  const sel=byId('p_reqGeneratedBy');
+  const names=sel?[...sel.options].map(o=>String(o.value||'').trim()).filter(Boolean):[];
+  return [...new Set(names.length?names:SARV_PURCHASER_FALLBACK)];
+}
+function sarvPrpoRender(){
+  const q=(byId('prpoSearch')||{}).value||'';
+  const opts=prpoPurchaserOptions_();
+  const shown=prpoRows.map((r,i)=>({r,i})).filter(x=>sarvSearchMatch([x.r.category,x.r.purchaser],q));
+  byId('prpoCount').textContent=shown.length+' / '+prpoRows.length+' categories'+(prpoRows.some(prpoDirty_)?' · unsaved changes':'');
+  const dis=prpoHasStores?'':' disabled';
+  byId('prpoBody').innerHTML=shown.map(({r,i})=>{
+    const list=opts.includes(r.purchaser)||!r.purchaser?opts:[r.purchaser].concat(opts);
+    return '<tr style="border-top:1px solid #f1f5f9;'+(prpoDirty_(r)?'background:#fffbeb;':'')+'">'
+      +'<td style="padding:6px 8px;">'+(r.id?'<b>'+escText(r.category)+'</b>'
+        :'<input value="'+escText(r.category)+'" placeholder="NEW CATEGORY" oninput="prpoRows['+i+'].category=this.value" style="width:100%;padding:5px 7px;text-transform:uppercase;">')+'</td>'
+      +'<td style="padding:6px 8px;"><select onchange="prpoRows['+i+'].purchaser=this.value;sarvPrpoRender()" style="width:100%;padding:5px;">'
+        +'<option value="">— not set —</option>'+list.map(p=>'<option value="'+escText(p)+'"'+(p===r.purchaser?' selected':'')+'>'+escText(p)+'</option>').join('')+'</select></td>'
+      +'<td style="text-align:center;"><input type="checkbox"'+(r.s1?' checked':'')+dis+' onchange="prpoRows['+i+'].s1=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#7c3aed;"></td>'
+      +'<td style="text-align:center;"><input type="checkbox"'+(r.s2?' checked':'')+dis+' onchange="prpoRows['+i+'].s2=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#0f766e;"></td></tr>';
+  }).join('')||'<tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;">No category matches.</td></tr>';
+}
+function sarvPrpoAdd(){
+  prpoRows.unshift({id:null,category:'',purchaser:'',s1:false,s2:false,orig:{p:'',s1:false,s2:false}});
+  byId('prpoSearch').value='';sarvPrpoRender();
+  const inp=byId('prpoBody').querySelector('input:not([type])');if(inp)inp.focus();
+}
+async function sarvPrpoSave(){
+  const err=byId('prpoErr');err.textContent='';
+  const changed=prpoRows.filter(prpoDirty_);
+  if(!changed.length)return showToast('Nothing changed.');
+  // New categories: a name, in capitals, not one that already exists (case-insensitive).
+  const seen=new Set(prpoRows.filter(r=>r.id).map(r=>r.category.trim().toUpperCase()));
+  for(const r of changed.filter(x=>!x.id)){
+    r.category=String(r.category||'').trim().toUpperCase();
+    if(!r.category)return err.textContent='Type a name for the new category, or remove the empty row by closing without saving.';
+    if(seen.has(r.category))return err.textContent='"'+r.category+'" already exists.';
+    seen.add(r.category);
+  }
+  const btn=byId('prpoSaveBtn');btn.disabled=true;btn.textContent='Saving…';
+  try{
+    for(const r of changed){
+      const row={purchaser_name:r.purchaser||null,updated_at:new Date().toISOString()};
+      if(prpoHasStores){row.store1=r.s1;row.store2=r.s2;}
+      const w=r.id
+        ?await SB.from('category_purchasers').update(row).eq('id',r.id)
+        :await SB.from('category_purchasers').insert({...row,category:r.category}).select('id').single();
+      if(w.error)throw new Error((r.category||'')+': '+w.error.message);
+      if(!r.id&&w.data)r.id=w.data.id;
+      r.orig={p:r.purchaser,s1:r.s1,s2:r.s2};
+    }
+    // The PR form's auto-pick and the Inward pickers read the new map straight away.
+    sarvCatPurLoaded=false;await loadCategoryPurchasers();
+    if(typeof loadOpenPoDropdown==='function')loadOpenPoDropdown().catch(()=>{});
+    if(typeof loadPrDropdown_==='function')loadPrDropdown_().catch(()=>{});
+    showToast('Saved '+changed.length+' categor'+(changed.length>1?'ies':'y')+'.');
+  }catch(e){err.textContent='Not all saved: '+(e.message||e);}
+  finally{btn.disabled=false;btn.textContent='Save changes';sarvPrpoRender();}
+}
+window.sarvOpenPrpoMaster=sarvOpenPrpoMaster;
+
 let sarvPoCatalog=[],sarvPendingRequirements=[],sarvEditingRequirementId=null,sarvGeneratedPos=[];
 // PO id -> {lines:[]}, cached alongside sarvGeneratedPos so the Generated POs
 // search/status filter can re-render without refetching the line items.
@@ -533,17 +930,25 @@ let sarvPurchaserAutoFilled=false;      // did WE set the field, or did a person
 let sarvCatPurLoaded=false;             // has the map been fetched at all yet?
 const sarvCatPurWarned=new Set();       // so the same complaint isn't repeated
 
+/* UPPER(TRIM(category)) -> {s1, s2}: the PR-PO Master's Store 1 / Store 2
+   ticks (sql/PRPO_STORE_MIGRATION.sql). A ticked category's PRs / POs show in
+   that store's Inward form too, whichever store raised them (prpoVisibleIn_). */
+let sarvCatStores={};
 async function loadCategoryPurchasers(){
   if(!SB_READY)return;
   try{
-    const q=await SB.from('category_purchasers').select('category,purchaser_name');
+    // The ticks are read with the map; without the columns, the old read.
+    let q=await SB.from('category_purchasers').select('category,purchaser_name,store1,store2');
+    if(q.error)q=await SB.from('category_purchasers').select('category,purchaser_name');
     if(q.error)throw q.error;
-    const map={};
+    const map={},st={};
     (q.data||[]).forEach(r=>{
       const c=String(r.category||'').trim().toUpperCase();
       const p=String(r.purchaser_name||'').trim();
       if(c&&p)map[c]=p;              // blank purchaser_name = not mapped yet
+      if(c&&(r.store1||r.store2))st[c]={s1:!!r.store1,s2:!!r.store2};
     });
+    sarvCatStores=st;
     sarvCategoryPurchasers=map;
     sarvCatPurLoaded=true;
     const n=Object.keys(map).length;
@@ -786,12 +1191,25 @@ async function loadPrDropdown_(){
   const q=await SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(400);
   if(q.error){console.warn('[SARV] PR dropdown unavailable:',q.error.message);return}
   const want=INW_PR_PURCHASER.toUpperCase();
-  const candidates=(q.data||[]).filter(p=>
+  let candidates=(q.data||[]).filter(p=>
     // FIELD BOY's own requirements only — see INW_PR_PURCHASER above.
     String(p.purchaser_name||'').trim().toUpperCase()===want
     // A Cancelled or Rejected requirement is settled; nothing is received on it.
     && !['Cancelled','Rejected'].includes(String(p.status||''))
   );
+  // Only the PRs this store receives: its own + ticked categories (prpoVisibleIn_).
+  if(candidates.length){
+    const itemsBy={};
+    try{
+      const ids=candidates.map(p=>p.id);
+      for(let i=0;i<ids.length;i+=200){
+        const lq=await SB.from('purchase_requirement_lines').select('requirement_id,item_id').in('requirement_id',ids.slice(i,i+200));
+        if(lq.error)throw lq.error;
+        (lq.data||[]).forEach(l=>{(itemsBy[l.requirement_id]=itemsBy[l.requirement_id]||[]).push(l.item_id);});
+      }
+    }catch(e){console.warn('[SARV] PR item lookup for the store filter skipped:',e.message||e);}
+    candidates=await prpoFilterForStore_(candidates,p=>(itemsBy[p.id]||[]).filter(Boolean));
+  }
   /* A PR whose every item has already come in full has nothing left to
      receive, so it is dropped from the list rather than offered and then
      rejected at Submit. Pending is counted PER ITEM and only shortfalls add up
@@ -1369,6 +1787,7 @@ async function inwOpenPosByBasis_(all){
     if(graded==='Received')return;
     const ut=poUnitTotals_(ls);
     po.__pendTxt=ut.owed;
+    po.__itemIds=ls.map(l=>l.item_id).filter(Boolean);   // for the store filter (prpoVisibleIn_)
     out.push(po);
   });
   // Best-effort and not awaited: the picker must not wait on the write-back.
@@ -1384,11 +1803,40 @@ async function inwOpenPosByBasis_(all){
   })();
   return out;
 }
+/* ── Which PRs / POs a store's Inward form offers ────────────────────────
+   A PR / PO belongs to the store of the user who raised the PR (its `store`
+   column; none = Store 2, sql/PRPO_STORE_MIGRATION.sql). Each store's Inward
+   offers its own, PLUS any whose items include a category ticked for that
+   store in Administration › PR-PO Master (category_purchasers.store1 /
+   store2): those are common to the ticked store(s), whoever raised them. */
+const sarvItemCatCache={};
+async function prpoItemCats_(ids){
+  const need=[...new Set((ids||[]).map(String))].filter(id=>!(id in sarvItemCatCache));
+  for(let i=0;i<need.length;i+=200){
+    const q=await SB.from('items').select('id,category').in('id',need.slice(i,i+200));
+    if(q.error)throw q.error;
+    (q.data||[]).forEach(r=>{sarvItemCatCache[String(r.id)]=String(r.category||'').trim().toUpperCase();});
+    need.slice(i,i+200).forEach(id=>{if(!(id in sarvItemCatCache))sarvItemCatCache[id]='';});
+  }
+}
+function prpoVisibleIn_(ownStore,itemIds){
+  if((ownStore||'STORE 2')===sarvStore)return true;
+  const k=sarvStore==='STORE 1'?'s1':'s2';
+  return (itemIds||[]).some(id=>{const t=sarvCatStores[sarvItemCatCache[String(id)]||''];return !!(t&&t[k]);});
+}
+// Keeps the records this store may receive; on a failed category read, its own only.
+async function prpoFilterForStore_(list,idsOf){
+  if(!Object.keys(sarvCatStores).length&&!sarvCatPurLoaded)await loadCategoryPurchasers();
+  try{await prpoItemCats_(list.flatMap(idsOf));}
+  catch(e){console.warn('[SARV] item categories unavailable, showing this store\'s own PR / PO only:',e.message||e);}
+  return list.filter(x=>prpoVisibleIn_(x.store,idsOf(x)));
+}
 async function loadOpenPoDropdown(){
   if(!SB_READY)return;
   const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
   if(q.error){console.warn('[SARV] PO dropdown unavailable:',q.error.message);return}
-  sarvPoCatalog=await inwOpenPosByBasis_(q.data||[]);
+  // Open POs, then only those this store receives (its own + ticked categories).
+  sarvPoCatalog=await prpoFilterForStore_(await inwOpenPosByBasis_(q.data||[]),po=>po.__itemIds||[]);
   /* Drop any previously-ticked PO that is no longer open — EXCEPT while an
      MD-approved draft is loaded. A draft can be submitted long after its PO
      has been graded Received by another receipt, and the approved entry still
@@ -2112,7 +2560,9 @@ function toggleRepairOutwardPanel(show){
 async function loadRepairOutwardDropdown(){
   if(!SB_READY)return;
   await probeRepairLineLink();
-  const oq=await SB.from('outward_entries').select('*').eq('nature_of_dispatch','Repair').order('outward_date',{ascending:false});
+  // A repaired item comes back into the store it left from: this store's repair dispatches only.
+  await sarvCheckStoreCol_();
+  const oq=await sarvStoreQ(SB.from('outward_entries').select('*').eq('nature_of_dispatch','Repair')).order('outward_date',{ascending:false});
   if(oq.error){console.warn('[SARV] Repair outward dropdown unavailable:',oq.error.message);return}
   const outwards=oq.data||[];sarvRepairOutwardCatalog=[];
   if(!outwards.length)return;
@@ -2346,7 +2796,8 @@ window.loadRepairTracker=async function(){
   tb.innerHTML='<tr><td colspan="12" style="text-align:center;padding:24px;color:#94a3b8;">Loading repair tracker...</td></tr>';
   if(statusText)statusText.textContent='Loading...';
   try{
-    const outwards=await fetchAllRows('outward_entries','*','outward_date',q=>q.eq('nature_of_dispatch','Repair'));
+    await sarvCheckStoreCol_();
+    const outwards=await fetchAllRows('outward_entries','*','outward_date',q=>sarvStoreQ(q.eq('nature_of_dispatch','Repair')));
     if(!outwards.length){
       sarvRepairTrackerRows=[];
       renderRepairTrackerTable();
@@ -2723,7 +3174,12 @@ function inwardApprovalSignature_(rows,poNos,prNos){
     String(pVal('invoiceDate')||''),
     (poNos||[]).join('+').toUpperCase(),
     (prNos||[]).join('+').toUpperCase()
-  ].join('~');
+  ].join('~')
+    /* Store 1 is part of what was approved: an approval given for a Store 2
+       receipt must not let the same bill be saved into Store 1, or the other
+       way round. Added for Store 1 only, so every Store 2 signature (and any
+       approval already given or waiting) stays exactly as it was. */
+    +(sarvStore==='STORE 1'?'~STORE 1':'');
   const body=(rows||[]).map(r=>[
     String(r.name||'').trim().toUpperCase(),
     pNum(r.qty),pNum(r.weight),pNum(r.rate),
@@ -2773,6 +3229,8 @@ function inwardApprovalPayload_(rows,overrides,poNos,prNos){
     // MD is shown the amount of — and in what gets rebuilt from it later.
     partyState:pVal('partyState')||'',
     remarks:pVal('inwRemarks')||'',
+    // Which store the material is being received into (Store 1 / Store 2): shown to the MD and the Unloader.
+    store:sarvStore,storeLabel:sarvStoreLabel(),
     poNos:poNos,prNos:prNos,
     reasons:overrides,
     items:(rows||[]).map(r=>{
@@ -3246,13 +3704,25 @@ async function unloadPhotosForPdf_(u){
 }
 /* Requests waiting at the supervisor, plus the approved-but-unbooked ones
    (returned, tagged _src 'UL', for the drafts list). */
+/* Does this approval request (MD Inward Approval / Unloader) belong to the
+   store in use? Its payload carries the store it was sent from
+   (inwardApprovalPayload_); one sent before Store 1 existed has none and is
+   Store 2. So each store's PO Number list shows only its own drafts and its
+   own "waiting at Unloader" requests, and a draft can't be loaded into the
+   other store (its signature would not match there anyway). */
+function inwDraftOfStore_(r){
+  let p=r&&r.payload;
+  if(typeof p==='string'){try{p=JSON.parse(p);}catch(e){p=null;}}
+  return ((p&&p.store)||'STORE 2')===sarvStore;
+}
 async function loadUnloadDraftRows_(){
   if(!SB_READY||sarvUnloadTableMissing){sarvUnloadPending=[];return [];}
   try{
     const q=await SB.from(UNLOAD_APPROVAL_TABLE).select('*')
       .in('status',['Approved','Pending']).is('used_on',null).order('id',{ascending:false}).limit(200);
     if(q.error)throw q.error;
-    const rows=(q.data||[]).filter(r=>inwDraftItems_(r).length);
+    // This store's requests only (Store 1 / Store 2), the waiting ones and the drafts alike.
+    const rows=(q.data||[]).filter(r=>inwDraftItems_(r).length&&inwDraftOfStore_(r));
     sarvUnloadPending=rows.filter(r=>r.status==='Pending');
     /* An approval whose Inward is already saved must not come back as a
        draft, even when ul_mark_used failed at the time (e.g. the session had
@@ -3488,7 +3958,7 @@ async function loadInwardApprovedDrafts_(){
         q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
           .eq('status','Approved').order('id',{ascending:false}).limit(200);
       if(q.error)throw q.error;
-      md=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length).map(r=>({...r,_src:'MD'}));
+      md=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length&&inwDraftOfStore_(r)).map(r=>({...r,_src:'MD'}));
     }catch(e){
       // No table, no approval desk — and no drafts section either. Said in the
       // console only: the Submit path already names the migration to run, and
@@ -4020,7 +4490,11 @@ async function ensureItem(name, description='', make='', category='', uom='PCS',
   const ins=await SB.from('items').insert({item_code:code,name,description:description||null,make:make||null,category:category||null,uom:uom||'PCS'}).select('id,item_code,name,uom').single();
   if(ins.error)throw ins.error; return ins.data;
 }
+// The panels that work in one store (Store 1 / Store 2): the store chip shows on these only.
+const SARV_STORE_PANELS=['inwardPanel','outwardPanel','itemTrackerPanel','repairTrackerPanel','reportsPanel'];
 function activatePanel(id){
+  document.body.classList.toggle('sarv-in-store',SARV_STORE_PANELS.includes(id));
+  sarvStoreChipSync_();
   const storeRoot=byId('storeInterface');
   const fullPurchase=byId('fullPurchasePanel');
   const showingFull=id==='fullPurchasePanel';
@@ -4330,15 +4804,18 @@ function updateOutwardModeText(){
    are pre-filled and locked rather than left as free text, and Target Return
    Date is hidden outright — a consumable is never coming back. OUTWARD is
    untouched: the same fields stay fully editable there. */
-const ISSUE_FIXED_FIELDS={
-  outPartyName:'SARV INDIA HOME FURNISHING UNIT-II',
-  outLocation:'UNIT-2',
-  outTransport:'BY HAND'
-};
+/* The unit is the store's own: Store 1 issues to UNIT-I / UNIT-1, Store 2 to
+   UNIT-II / UNIT-2 (the values it always had). Read at the moment the form is
+   locked, so it follows the store the Store screens are in. */
+function issueFixedFields_(){
+  const c=sarvStoreCfg_();
+  return {outPartyName:'SARV INDIA HOME FURNISHING '+c.unit,outLocation:c.unitNo,outTransport:'BY HAND'};
+}
 const ISSUE_FIXED_NATURE='CONSUMABLE';
 const ISSUE_FIXED_TITLE='This field is fixed for an ISSUE entry and cannot be changed';
 function applyIssueFixedFields(){
   const isIssue=(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
+  const ISSUE_FIXED_FIELDS=issueFixedFields_();
   Object.keys(ISSUE_FIXED_FIELDS).forEach(id=>{
     const el=byId(id);if(!el)return;
     // The datalist and the field's own cursor are remembered once, so unlocking
@@ -6066,7 +6543,12 @@ const SARV_TABS=[
   {key:'ERP_PARTNER',label:'Partner',def:'ALL'},
   {key:'ERP_SALES',label:'Sales',def:'ALL'},
   {key:'ERP_PURCHASE',label:'Purchase',hint:'Contains PR, PO and the Approval App',def:'ALL'},
-  {key:'ERP_WAREHOUSE',label:'Store',hint:'Inward, Outward, Issue, Tracker, Repair, Reports',def:'ALL'},
+  {key:'ERP_WAREHOUSE',label:'Store 2',hint:'The store that was running before Store 1 (numbers SIHF-II/…, NB/2/…): Inward, Outward, Issue, Tracker, Repair, Reports',def:'ALL'},
+  /* Store 1: the same screens, working on Store 1's own entries and stock
+     (sql/STORE1_MIGRATION.sql). Its screens use the same HOME_* rows as
+     Store 2, so a role that may book an Inward may do it in either store;
+     this row only decides whether the Store 1 module is in the sidebar. */
+  {key:'ERP_STORE1',label:'Store 1',hint:'Store 1: Inward, Outward, Issue, Item Stock, Tracker, Repair, Reports, Store Transfer (own numbers SIHF-I/…, NB/1/…)',def:'ALL'},
   {key:'ERP_MANUF',label:'Manufacturing',hint:'Contains Design Master',def:'ALL'},
   {key:'ERP_QUALITY',label:'Quality',def:'ALL'},
   {key:'ERP_FINANCE',label:'Finance',def:'ALL'},
@@ -6099,6 +6581,10 @@ const SARV_TABS=[
   {key:'HOME_REPORTS',label:'Print History / Reports',def:'ALL'},
   {key:'HOME_MYDAY',label:'My Day (daily tasks)',hint:'Daily task list: Below-MSV PRs, inform requester, rejected PRs, stock count … (store-mytasks.js)',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
+  // Administration › PR-PO Master: category → Purchaser, and the Store 1 / Store 2 ticks (category_purchasers).
+  {key:'HOME_PRPO_MASTER',label:'PR-PO Master',hint:'Category → Purchaser, and which store(s) a category\'s PRs / POs show in for Inward (Store 1 / Store 2 ticks)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  // Moves stock between Store 1 and Store 2 in one step (an Outward from one, an Inward into the other).
+  {key:'HOME_STORE_TRANSFER',label:'Store Transfer',hint:'Store 1 ⇄ Store 2: one entry makes the Outward of the giving store and the Inward of the receiving store',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_MASTER',label:'Master Data',def:'ALL',lock:['ADMIN_PIN']},
   {key:'HOME_REPAIR',label:'Repair Tracker',def:'ALL'},
   {key:'HOME_PRODUCTION',label:'Production',def:'ALL'},
@@ -7107,6 +7593,28 @@ function sarvOpenUserModal(id,presetRole){
     +'</div>'
     +'<div class="fg" style="display:flex;align-items:center;gap:8px;"><input data-f="active" type="checkbox" style="width:16px;height:16px;"'+(!u||u.is_active?' checked':'')+'><span style="font-size:12px;font-weight:700;color:#334155;">Active (can log in and sign with PIN)</span></div>'
     +sarvUserUnitHtml_(u)
+    /* The user's STORE (sql/PRPO_STORE_MIGRATION.sql): a PR this user raises
+       belongs to that store, and so do the POs made from it. Read after the
+       form opens (below) rather than through sarvLoadAppUsers_'s column list,
+       so a database without the column still loads every user. */
+    /* Store Access, for a Store Incharge (required): which store's sidebar
+       module the user sees, Store 1, Store 2 or both. Saved as this user's
+       own ON / OFF on ERP_STORE1 / ERP_WAREHOUSE in app_access (the same
+       per-user override the Apps list writes), so it wins over the role's Tab
+       Visibility. Shown only while Primary Role = Store Incharge (sarvStoreAccSync_). */
+    +(()=>{
+      const a=(u&&u.app_access)||{},s1=a.ERP_STORE1===true,s2=a.ERP_WAREHOUSE===true;
+      const cur=s1&&s2?'BOTH':(s1&&a.ERP_WAREHOUSE===false?'STORE 1':(s2&&a.ERP_STORE1===false?'STORE 2':''));
+      const opt=(v,l)=>'<label style="flex:1 1 110px;display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;text-transform:none;font-size:12.5px;font-weight:800;color:#334155;">'
+        +'<input type="radio" name="sarvStoreAcc" data-acc="'+v+'"'+(cur===v?' checked':'')+' style="width:15px;height:15px;"> '+l+'</label>';
+      return '<div class="fg" data-f="ustoreaccwrap" style="grid-column:1 / -1;display:none;"><label>Store Access <span class="req">*</span> '
+        +'<small style="text-transform:none;font-weight:600;">(which store\'s screens this Store Incharge sees in the sidebar)</small></label>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;">'+opt('STORE 1','Store 1')+opt('STORE 2','Store 2')+opt('BOTH','Both')+'</div>'
+        +'<small data-f="ustoreacchint" style="display:block;font-size:10.5px;color:#64748b;margin-top:4px;"></small></div>';
+    })()
+    +'<div class="fg"><label>Store <small style="text-transform:none;font-weight:600;">(the PRs this user raises belong to it)</small></label>'
+      +'<select data-f="ustore"><option value="STORE 2">Store 2</option><option value="STORE 1">Store 1</option></select>'
+      +'<small data-f="ustorehint" style="display:block;font-size:10.5px;color:#64748b;margin-top:2px;"></small></div>'
     /* ── Extra roles + Apps ─────────────────────────────────────────
        If the columns exist, show the full UI; if not, DON'T HIDE IT QUIETLY,
        which was the earlier mistake that made the Admin think the feature
@@ -7139,6 +7647,43 @@ function sarvOpenUserModal(id,presetRole){
     +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">Save User</button></div></div>';
   document.body.appendChild(ov);
   const f=k=>ov.querySelector('[data-f="'+k+'"]');
+  /* Store Access follows the Primary Role: shown (and required) for a Store
+     Incharge only. A single store also fixes the PR store (the Store field)
+     to it; Both leaves the Store field to choose where their PRs belong. */
+  const storeAccPick=()=>{const r=ov.querySelector('input[name="sarvStoreAcc"]:checked');return r?r.dataset.acc:'';};
+  const sarvStoreAccSync_=()=>{
+    const wrap=f('ustoreaccwrap');if(!wrap)return;
+    const ic=f('role').value==='USER_IC_PIN';
+    wrap.style.display=ic?'':'none';
+    const st=f('ustore');if(!st)return;
+    const acc=ic?storeAccPick():'';
+    const fixed=acc==='STORE 1'||acc==='STORE 2';
+    if(fixed)st.value=acc;
+    if(!st.dataset.noCol)st.disabled=fixed;
+    f('ustoreacchint').textContent=!ic?'':(!acc?'Choose one: it decides which Store menu this user sees.'
+      :acc==='BOTH'?'Both Store menus. Choose below which store their PRs belong to.'
+      :'Only the '+sarvStoreLabel(acc)+' menu; their PRs belong to '+sarvStoreLabel(acc)+'.');
+  };
+  f('role').addEventListener('change',sarvStoreAccSync_);
+  ov.querySelectorAll('input[name="sarvStoreAcc"]').forEach(r=>r.addEventListener('change',sarvStoreAccSync_));
+  sarvStoreAccSync_();
+  // The user's store, read on its own (see the field above). No column = migration not run: say so.
+  let storeWas=null;
+  if(u&&f('ustore'))SB.from('app_users').select('store').eq('id',u.id).maybeSingle().then(r=>{
+    /* Two different causes, said apart: the column is missing (migration not
+       run), or it exists but is not granted for reading (app_users is granted
+       column by column: "permission denied", code 42501). */
+    if(r.error){
+      const denied=r.error.code==='42501'||/permission denied/i.test(r.error.message||'');
+      f('ustore').disabled=true;f('ustore').dataset.noCol='1';
+      f('ustorehint').textContent=denied
+        ?'The store column cannot be read: run  grant select (store) on public.app_users to anon, authenticated;  in Supabase (it is in sql/PRPO_STORE_MIGRATION.sql).'
+        :'Run sql/PRPO_STORE_MIGRATION.sql to set a store per user.';
+      return;
+    }
+    storeWas=(r.data&&r.data.store)||'STORE 2';f('ustore').value=storeWas;
+    sarvStoreAccSync_();   // a single-store access still fixes the Store field
+  });
   const pad=sarvMakeSigPad_(ov.querySelector('canvas'));
   const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
   // Esc inside the Admin PIN prompt belongs to that prompt, not to this form.
@@ -7247,6 +7792,10 @@ function sarvOpenUserModal(id,presetRole){
     if(pin!==pin2)return err('PIN and Confirm PIN do not match');
     const uf=readUnitForm();
     if(uf&&uf.err)return err(uf.err);
+    // A Store Incharge must be given Store 1, Store 2 or Both (it decides their sidebar).
+    const storeAcc=roleV==='USER_IC_PIN'?storeAccPick():'';
+    if(roleV==='USER_IC_PIN'&&!storeAcc){f('ustoreaccwrap').scrollIntoView({block:'center'});return err('Store Incharge: choose Store Access (Store 1, Store 2 or Both)');}
+    if(storeAcc&&!f('appswrap'))return err('Store Access needs UNIFIED_USERS_MIGRATION.sql (per-user access). Run it in Supabase, then save again.');
     /* Order matters: a signature drawn by hand comes first, then the one from
        "Use pre saved Sign", then "remove". `null` means "don't touch the
        signature at all". */
@@ -7328,6 +7877,14 @@ function sarvOpenUserModal(id,presetRole){
               acc[k]=(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)?false
                 :finalRoles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
             });
+            /* Store Access (Store Incharge): this user's own ON / OFF for the two
+               Store modules. app_access is written whole, so for any other role
+               the two keys are simply left out and the role's Tab Visibility applies. */
+            if(storeAcc){
+              acc.ERP_STORE1=storeAcc==='STORE 1'||storeAcc==='BOTH';
+              acc.ERP_WAREHOUSE=storeAcc==='STORE 2'||storeAcc==='BOTH';
+              uniNote+=' · Store access: '+(storeAcc==='BOTH'?'Store 1 + Store 2':sarvStoreLabel(storeAcc));
+            }
             const ar=await SB.rpc('admin_set_user_app_access',
               {p_admin_pin:adminPin.trim(),p_user_id:String(saved.id),p_app_access:acc});
             if(ar.error||!(ar.data&&ar.data.success))
@@ -7376,6 +7933,27 @@ function sarvOpenUserModal(id,presetRole){
           if(ue)uniNote+='; Warning: Unit / Complaint profile was not saved: '
             +(/admin_save_user_unit_profile|PGRST202|schema cache/i.test(ue)?'run UNIT_SIGNUP_ADMIN_MIGRATION.sql':(SARV_UNIT_ERR[ue]||ue));
           else uniNote+=' · '+sarvUnitName_(uf.unit);
+        }
+      }
+      /* Store: its own Admin-PIN RPC, after the user exists (a new user has
+         storeWas null, so only a Store 1 pick needs writing; STORE 2 is the default). */
+      // Disabled because Store Access fixed it still saves; only an unreadable column (noCol) skips.
+      if(f('ustore')&&!f('ustore').dataset.noCol){
+        const want=f('ustore').value;
+        if(want!==(storeWas||'STORE 2')){
+          let sid=finalId||(u&&u.id)||null;
+          if(!sid){
+            await sarvLoadAppUsers_(true);
+            const s=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
+            if(s)sid=String(s.id);
+          }
+          if(!sid)uniNote+='; Warning: Store was not saved (user not found after save). Edit the user and save again.';
+          else{
+            const sr=await SB.rpc('admin_set_user_store',{p_admin_pin:adminPin.trim(),p_user_id:sid,p_store:want});
+            const se=(sr.error&&(sr.error.message||String(sr.error)))||(sr.data&&!sr.data.success&&sr.data.error)||'';
+            uniNote+=se?('; Warning: Store was not saved: '+(/admin_set_user_store|PGRST202|schema cache/i.test(se)?'run PRPO_STORE_MIGRATION.sql':se))
+                       :(' · '+sarvStoreLabel(want));
+          }
         }
       }
       await sarvLoadAppUsers_(true);
@@ -10545,16 +11123,40 @@ function refreshSupplierDatalist(suppliers){
   });
 }
 
+/* Whose stock the Item Master shows. null = both stores together (Master
+   Data › Item Master, the common master). 'STORE 1' / 'STORE 2' = that store
+   only: the Store 1 / Store 2 sidebar's "Item Stock" opens this same screen
+   with it set (erp-shell.js), so each store's In / Out / Balance can be seen
+   on its own. The items themselves are the same list in every mode. */
+let sarvItemMasterStore=null;
+window.sarvSetItemMasterStore=function(s){sarvItemMasterStore=SARV_STORES[s]?s:null;imStoreBannerSync_();};
+function imStoreBannerSync_(){
+  const tb=byId('itemMasterBody');const table=tb&&tb.closest('table');if(!table)return;
+  const host=table.closest('.table-responsive,.table-wrap,div')||table.parentElement;
+  let b=byId('imStoreBanner');
+  if(!b){b=document.createElement('div');b.id='imStoreBanner';host.parentElement.insertBefore(b,host);}
+  const one=!!sarvItemMasterStore;
+  b.style.cssText='margin:6px 0 8px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;'
+    +(one?(sarvItemMasterStore==='STORE 1'?'background:#f5f3ff;border:1px solid #c4b5fd;color:#5b21b6;':'background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;')
+         :'background:#f8fafc;border:1px solid #e2e8f0;color:#475569;');
+  b.textContent=one
+    ?'Stock shown: '+sarvStoreLabel(sarvItemMasterStore)+' only (its Inward − Outward). The item list is common to both stores.'
+    :'Stock shown: Store 1 + Store 2 together. Each store\'s own stock: sidebar › Store 1 / Store 2 › Item Stock.';
+}
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');
   if(!tb)return;
   if(!SB_READY){tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
   tb.innerHTML='<tr><td colspan="20" style="text-align:center;padding:20px;color:#94a3b8;">Loading...</td></tr>';
+  imStoreBannerSync_();
   try{
+    // One store, or both (sarvItemMasterStore). The filter is on the line's own store column.
+    if(sarvItemMasterStore)await sarvCheckStoreCol_();
+    const oneStore=sarvItemMasterStore&&(sarvHasStoreCol||sarvItemMasterStore==='STORE 1')?(q=>q.eq('store',sarvItemMasterStore)):null;
     const [items,inLines,outLines]=await Promise.all([
       fetchAllRows('items','*','name'),
-      fetchAllRows('inward_lines','item_id,qty'),
-      fetchAllRows('outward_lines','item_id,qty')
+      fetchAllRows('inward_lines','item_id,qty','id',oneStore),
+      fetchAllRows('outward_lines','item_id,qty','id',oneStore)
     ]);
     const inMap={},outMap={};
     inLines.forEach(r=>{inMap[r.item_id]=(inMap[r.item_id]||0)+Number(r.qty||0);});
@@ -12678,9 +13280,11 @@ async function buildItemLedger(){
   // needs everything BEFORE `from`; the window is applied per-row below.
   // fetchAllRows pages past PostgREST's 1000-row cap — a plain select() would
   // silently truncate a long history and every balance after it would be wrong.
+  // The ledger of the store in use (Store 1 / Store 2): its lines carry the store.
+  await sarvCheckStoreCol_();
   const [inRows,outRows]=await Promise.all([
-    fetchAllRows('inward_lines','qty,uom,items(id,name,description,category,uom),inward_entries(document_no,entry_type,receiving_date,supplier_name,created_at)','id'),
-    fetchAllRows('outward_lines','qty,uom,items(id,name,description,category,uom),outward_entries(document_no,entry_type,outward_date,party_name,receiver_name,created_at)','id')
+    fetchAllRows('inward_lines','qty,uom,items(id,name,description,category,uom),inward_entries(document_no,entry_type,receiving_date,supplier_name,created_at)','id',sarvStoreQ),
+    fetchAllRows('outward_lines','qty,uom,items(id,name,description,category,uom),outward_entries(document_no,entry_type,outward_date,party_name,receiver_name,created_at)','id',sarvStoreQ)
   ]);
 
   const moves=[];
@@ -12984,13 +13588,15 @@ async function consFetchEntries_(force){
      worth having without them. */
   const pull=async(table,shapes)=>{
     for(let i=0;i<shapes.length;i++){
-      try{ return await fetchAllRows(table,shapes[i],'id'); }
+      try{ return await fetchAllRows(table,shapes[i],'id',sarvStoreQ); }
       catch(e){
         if(i===shapes.length-1||!/column|does not exist|schema cache/i.test(e.message||''))throw e;
       }
     }
     return [];
   };
+  // Headers of the store in use only (the cache is dropped when the store changes, sarvSetStore).
+  await sarvCheckStoreCol_();
   const [inward,outward]=await Promise.all([
     pull('inward_entries',[
       'id,document_no,entry_type,receiving_date,supplier_name,lot_no,nature_of_inward,created_at',
@@ -14723,6 +15329,7 @@ window.loadReports=async function(){
   tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8;">Loading entries...</td></tr>';
   if(statusEl)statusEl.textContent='Loading...';
   try{
+    await sarvCheckStoreCol_();
     const typeF=byId('searchTypeFilter')?.value||'ALL';
     const search=(byId('searchQuery')?.value||'').toLowerCase().trim();
     const dateFrom=byId('filterDateFrom')?.value||'';
@@ -14732,6 +15339,7 @@ window.loadReports=async function(){
     const fetchInward=['ALL','INWARD','INWARD_ONLY','INWARD NB'].includes(typeF);
     if(fetchInward){
       let q=SB.from('inward_entries').select(`id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,notes,created_at,inward_lines(qty,rate,line_total,items(name))`).order('created_at',{ascending:false}).limit(300);
+      q=sarvStoreQ(q);   // this store's entries only (Store 1 / Store 2)
       if(typeF==='INWARD_ONLY')q=q.eq('entry_type','INWARD');
       else if(typeF==='INWARD NB')q=q.eq('entry_type','INWARD NB');
       else if(typeF==='INWARD')q=q.in('entry_type',['INWARD','INWARD NB']);
@@ -14747,6 +15355,7 @@ window.loadReports=async function(){
     const fetchOutward=['ALL','OUTWARD','OUTWARD_ONLY','ISSUE'].includes(typeF);
     if(fetchOutward){
       let q=SB.from('outward_entries').select(`id,document_no,entry_type,outward_date,gate_pass_no,party_name,receiver_name,notes,created_at,outward_lines(qty,items(name))`).order('created_at',{ascending:false}).limit(300);
+      q=sarvStoreQ(q);
       if(typeF==='OUTWARD_ONLY')q=q.eq('entry_type','OUTWARD');
       else if(typeF==='ISSUE')q=q.eq('entry_type','ISSUE');
       else if(typeF==='OUTWARD')q=q.in('entry_type',['OUTWARD','ISSUE']);
@@ -14777,7 +15386,7 @@ window.loadReports=async function(){
     // moment it is saved. Inward and Outward are merged into one list here.
     filtered.sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
     sarvLastReportsFiltered=filtered;
-    if(statusEl)statusEl.textContent=filtered.length+' records found';
+    if(statusEl)statusEl.textContent=sarvStoreLabel()+' · '+filtered.length+' records found';
     if(!filtered.length){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
     const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
     // Editing an already-saved record is an Admin-only action — everyone else
@@ -15002,7 +15611,7 @@ function applyOutwardWording(){
   applyIssueFixedFields();
   const W=isIssue?'ISSUE':'OUTWARD';
   const t=(id,txt)=>{const e=byId(id);if(e)e.textContent=txt;};
-  t('outDeskTitle','SIHF-II - '+W+' DESK');
+  t('outDeskTitle',sarvStoreCode_()+' - '+W+' DESK');
   t('outNoLabel',W+' No.');
   t('outModeLabel',W+' Mode');
   const rem=byId('outRemarks');
@@ -16575,7 +17184,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const etColor=/NB/i.test(et)||/INWARD/i.test(et)?'#15803d':'#dc2626';
    const machineBg=d.machineName?'<tr style="background:#dbeafe"><td class="lbl" style="color:#1d4ed8;font-weight:700">Machine:</td><td style="font-weight:700;color:#1e40af">'+pEsc(d.machineName)+'</td></tr>':'';
    return '<div class="sheet"><div class="tag">'+pEsc(title)+'</div>'+
-     '<div class="hdr"><h2>SIHF-II</h2><p style="margin:3px 0 0;font-size:12px;font-weight:900;color:'+etColor+';">'+pEsc(et)+'</p></div>'+
+     '<div class="hdr"><h2>'+pEsc(sarvStoreCode_(d.store))+'</h2><p style="margin:3px 0 0;font-size:12px;font-weight:900;color:'+etColor+';">'+pEsc(et)+'</p></div>'+
      '<div class="meta"><div class="col"><table>'+
        '<tr><td class="lbl">Inward No:</td><td><strong>'+pEsc(d.inwardNo||d.document_no||'-')+'</strong></td></tr>'+
        '<tr><td class="lbl">Receiving Date:</td><td>'+fmtDate_(d.receivingDate)+'</td></tr>'+
@@ -16671,7 +17280,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const remarks=d.remarks?'<div class="remarks"><strong>Remarks:</strong> '+pEsc(d.remarks)+'</div>':'';
    const et=d.entryType||'OUTWARD';
    return '<div class="sheet"><div class="tag">'+pEsc(title)+'</div>'+
-     '<div class="hdr"><h2>SIHF-II</h2><p style="margin:3px 0 0;font-size:12px;font-weight:900;color:#dc2626;">'+pEsc(et)+'</p></div>'+
+     '<div class="hdr"><h2>'+pEsc(sarvStoreCode_(d.store))+'</h2><p style="margin:3px 0 0;font-size:12px;font-weight:900;color:#dc2626;">'+pEsc(et)+'</p></div>'+
      '<div class="meta"><div class="col"><table>'+
        '<tr><td class="lbl">Outward No:</td><td><strong>'+pEsc(d.outwardNo||d.document_no||'-')+'</strong></td></tr>'+
        '<tr><td class="lbl">Date:</td><td>'+fmtDate_(d.date||d.outwardDate)+'</td></tr>'+
@@ -16701,10 +17310,20 @@ window.addEventListener('DOMContentLoaded',()=>{
      '</table></div></div>'+remarks+storeChecklistHtml_('OUTWARD',d,items)+footer+'</div>';
  }
 
+ /* Store 1's entries say so at the top of every copy. Store 2's PDFs carry
+    nothing extra, so they print exactly as before Store 1 existed. The store
+    is the record's own (d.store) when known, else the store in use. */
+ function storePdfStoreTag_(d){
+   const s=(d&&d.store)||sarvStore;
+   return s==='STORE 1'
+     ?'<div style="text-align:center;font:800 11px Arial,sans-serif;letter-spacing:2px;border:1.5px solid #5b21b6;color:#5b21b6;padding:2px 0;margin:0 0 4px;">STORE 1</div>'
+     :'';
+ }
  function buildStorePdfHtml(kind, d, items, variant, images=[]){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
-   const copyA=isOut?buildOutwardOneCopy_('ACCOUNT COPY',d,items):buildInwardOneCopy_('ACCOUNT COPY',d,items);
-   const copyB=isOut?buildOutwardOneCopy_('RECEIVER COPY',d,items):buildInwardOneCopy_('SUPPLIER COPY',d,items);
+   const tag=storePdfStoreTag_(d);
+   const copyA=tag+(isOut?buildOutwardOneCopy_('ACCOUNT COPY',d,items):buildInwardOneCopy_('ACCOUNT COPY',d,items));
+   const copyB=tag+(isOut?buildOutwardOneCopy_('RECEIVER COPY',d,items):buildInwardOneCopy_('SUPPLIER COPY',d,items));
    const label=(isOut?'Outward No: ':'Inward No: ')+(d.outwardNo||d.inwardNo||d.document_no||'-');
    const photos=buildPhotosHtml_(images,label);
    const css=variant==='TWO_PAGE'?PDF_CSS_PORTRAIT:PDF_CSS_LANDSCAPE;
@@ -16716,9 +17335,9 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   function buildStorePdfCopyHtml(kind, d, items, copyTitle, images=[]){
     const isOut=kind==='OUTWARD'||kind==='ISSUE';
-    const copy=isOut
+    const copy=storePdfStoreTag_(d)+(isOut
       ? buildOutwardOneCopy_(copyTitle, d, items)
-      : buildInwardOneCopy_(copyTitle, d, items);
+      : buildInwardOneCopy_(copyTitle, d, items));
     const label=(isOut?'Outward No: ':'Inward No: ')+(d.outwardNo||d.inwardNo||d.document_no||'-');
     return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+PDF_CSS_PORTRAIT+PDF_CSS_PHOTOS+'</style></head><body>'+copy+buildPhotosHtml_(images,label)+'</body></html>';
   }
@@ -16766,7 +17385,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.text(title,x+w-tagW/2,y+3.8,{align:'center'});
    // Header
    doc.setFontSize(15); doc.setFont(undefined,'bold');
-   doc.text('SIHF-II',x+w/2,y+6,{align:'center'});
+   doc.text(sarvStoreCode_(d&&d.store),x+w/2,y+6,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
    const etColor=isOut?[124,58,237]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
    doc.setFontSize(9); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
@@ -17275,19 +17894,20 @@ window.addEventListener('DOMContentLoaded',()=>{
    // No separate "Approved Vendor (per item)" table: the chosen vendor is
    // already marked on each item row (green V1..V3 cell).
    const totalQty=items.reduce((s,r)=>s+r.qty,0);
+   const PH=sarvPdfPal_(d.store).hex;   // Store 1's burgundy style, Store 2's original colours
    const css='@page { size: A4 landscape; margin: 8mm; }'
      +'body { font-family: Arial, "Segoe UI", sans-serif; font-size: 11px; margin: 0; color: #000; }'
      +'table { border-collapse: collapse; width: 100%; }'
      +'td, th { border: 1px solid #000; padding: 4px 6px; vertical-align: middle; }'
-     +'.title-bar { background:#fff200; color:#0a3a5e; text-align:center; font-size:24px; font-weight:900; padding:8px; border:1px solid #000; letter-spacing:1px; }'
-     +'.subtitle-bar { background:#d9ead3; color:#0a3a5e; text-align:center; font-size:15px; font-weight:800; padding:5px; border:1px solid #000; border-top:none; letter-spacing:3px; }'
+     +'.title-bar { background:'+PH.title+'; color:'+PH.titleText+'; text-align:center; font-size:24px; font-weight:900; padding:8px; border:1px solid #000; letter-spacing:1px; }'
+     +'.subtitle-bar { background:'+PH.sub+'; color:'+PH.subText+'; text-align:center; font-size:15px; font-weight:800; padding:5px; border:1px solid #000; border-top:none; letter-spacing:3px; }'
      +'.info { margin-top:6px; }'
      +'.info td.lbl { background:#f3f3f3; font-weight:bold; text-align:center; width:13%; }'
      +'.info td.val { width:20%; font-weight:600; }'
      +'.info td.spacer { border:none; width:4%; }'
-     +'.items-head { background:#0d5c53; color:#fff; }'
+     +'.items-head { background:'+PH.head+'; color:#fff; }'
      +'.items-head th { padding:6px 4px; font-size:10px; font-weight:bold; text-align:center; letter-spacing:0.3px; }'
-     +'.subtotal-row td { background:#cfe2f3; font-weight:bold; text-align:center; color:#0a3a5e; font-size:11px; letter-spacing:0.5px; }'
+     +'.subtotal-row td { background:'+PH.subtotal+'; font-weight:bold; text-align:center; color:'+PH.subtotalText+'; font-size:11px; letter-spacing:0.5px; }'
      +'.items td { font-size:10.5px; }'
      +'.items td.c { text-align:center; }'
      +'.items td.b { font-weight:bold; }'
@@ -17352,7 +17972,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      return '<td style="border:none;width:'+PR_SIG_CELL_W+';text-align:center;vertical-align:bottom;padding-top:6px;height:56px;">'+inner+'<div style="border-top:1px solid #000;padding-top:3px;font-weight:bold;margin-top:4px;">'+label+'</div></td>';
    };
    return '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'+css+'</style></head><body>'
-     +'<div class="title-bar">'+pEsc(SARV_COMPANY.fullName)+' UNIT-2</div>'
+     +'<div class="title-bar">'+pEsc(SARV_COMPANY.fullName)+' '+sarvPdfUnit_(d.store)+'</div>'
      +'<div class="subtitle-bar">PURCHASE REQUIREMENT</div>'
      +grpHtml
      +'<div class="sec-bar">ITEMS REQUIRED</div>'
@@ -17379,7 +17999,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     Printed On, Total Items, Total Qty, Purpose, Last Date Used and Request
     Date are deliberately not printed. The same helpers live in mobile.html
     so a PR PDF regenerated on either side is identical. */
- const PR_TEAL=[13,92,83];
+ // Section / box heading colour of the PR PDF; set per PDF from its store (sarvPdfPal_).
+let PR_TEAL=[13,92,83];
  /* Caption of the "Prepared By" signature box: the preparer's name when it is
     known. preparedBy.name holds the saved signature image (or just the name
     when the user has none saved), so without the caption an image-signed box
@@ -17521,20 +18142,21 @@ window.addEventListener('DOMContentLoaded',()=>{
    const totalQty=items.reduce((s,r)=>s+r.qty,0);
 
    let y=M;
-   doc.setFillColor(255,242,0);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
+   const PP=sarvPdfPal_(d.store);PR_TEAL=PP.head;   // Store 1 burgundy / Store 2 original
+   doc.setFillColor(...PP.title);doc.setDrawColor(0,0,0);doc.setLineWidth(0.35);
    doc.rect(M,y,W,9,'FD');
-   doc.setFont(undefined,'bold');doc.setFontSize(16);doc.setTextColor(10,58,94);
-   doc.text(SARV_COMPANY.fullName+' UNIT-2',pageW/2,y+6.3,{align:'center'});
+   doc.setFont(undefined,'bold');doc.setFontSize(16);doc.setTextColor(...PP.titleText);
+   doc.text(SARV_COMPANY.fullName+' '+sarvPdfUnit_(d.store),pageW/2,y+6.3,{align:'center'});
    y+=9;
-   doc.setFillColor(217,234,211);doc.rect(M,y,W,6.5,'FD');
-   doc.setFontSize(11);
+   doc.setFillColor(...PP.sub);doc.rect(M,y,W,6.5,'FD');
+   doc.setFontSize(11);doc.setTextColor(...PP.subText);
    doc.text('PURCHASE REQUIREMENT',pageW/2,y+4.6,{align:'center'});
    doc.setTextColor(0,0,0);
    y+=8;
 
    y=drawPrHeaderBlocks_(doc,d,M,W,pageW,y);
 
-   const TEAL=[13,92,83],SUBTOTAL_BG=[207,226,247];
+   const TEAL=PP.head,SUBTOTAL_BG=PP.subtotal;
    y=drawPrSectionBar_(doc,'ITEMS REQUIRED',M,W,y);
    const head=[
      [
@@ -17764,6 +18386,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     '<td style="'+CELL+'text-align:right;font-weight:bold;">'+pMoney(r.total)+'</td>'+
   '</tr>').join('');
 
+  // Store 1's burgundy house style, Store 2's original colours (sarvPdfPal_).
+  const POH=sarvPdfPal_(sarvPoStore_(d)).hex;
   // ── Summary rows ───────────────────────────────────────────
   const SL='width:70%;text-align:right;font-weight:700;background:#f9fafb;'+CELL+'-webkit-print-color-adjust:exact;print-color-adjust:exact;';
   const SV='width:30%;text-align:right;font-weight:700;'+CELL;
@@ -17774,7 +18398,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     ['Taxable Value',pMoney(taxable)],
     ['GST (item-wise + freight/other @ '+gstPct+'%)',pMoney(gstAmt)],
   ].map(([l,v])=>'<tr><td style="'+SL+'">'+l+'</td><td style="'+SV+'">'+v+'</td></tr>').join('');
-  const grandRow='<tr><td style="'+SL+'background:#fde68a;font-size:13px;font-weight:900;">GRAND TOTAL (₹)</td><td style="'+SV+'background:#fde68a;font-size:13px;font-weight:900;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pMoney(grand)+'</td></tr>';
+  const grandRow='<tr><td style="'+SL+'background:'+POH.grand+';font-size:13px;font-weight:900;">GRAND TOTAL (₹)</td><td style="'+SV+'background:'+POH.grand+';font-size:13px;font-weight:900;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pMoney(grand)+'</td></tr>';
 
   // ── Signature footer (all inline) ─────────────────────────
   // Only the two approvals that matter on a PO: the Purchaser (left) and MD
@@ -17813,8 +18437,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     +'</tr></tbody></table>'
 
     // ── Company title ─────────────────────────────────────────
-    +'<div style="text-align:center;font-size:26px;font-weight:900;letter-spacing:1px;margin:4px 0 2px;">'+pEsc(SARV_COMPANY.fullName)+'</div>'
-    +'<div style="text-align:center;font-size:13px;font-weight:700;margin-bottom:3px;">'+pEsc(SARV_COMPANY.unit)+'</div>'
+    +'<div style="text-align:center;font-size:26px;font-weight:900;letter-spacing:1px;margin:4px 0 2px;'+(POH.brand?'color:'+POH.brand+';':'')+'">'+pEsc(SARV_COMPANY.fullName)+'</div>'
+    +'<div style="text-align:center;font-size:13px;font-weight:700;margin-bottom:3px;">'+pEsc(sarvPdfUnit_(sarvPoStore_(d),true))+'</div>'
     +'<div style="text-align:center;font-size:11px;font-weight:600;margin-bottom:2px;">'+pEsc(SARV_COMPANY.tagline)+'</div>'
     +'<div style="text-align:center;font-size:11px;margin-bottom:8px;">'+pEsc(SARV_COMPANY.address)+'</div>'
 
@@ -17836,11 +18460,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     +'<tr>'
     +'<td style="width:42%;background:#f3f4f6;font-weight:bold;text-align:center;'+B1+'padding:4px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">Shipping Address:</td>'
     +'<td style="width:25%;background:#f3f4f6;font-weight:bold;text-align:center;'+B1+'padding:4px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">Delivery Date :</td>'
-    +'<td style="width:33%;background:#fff200;font-weight:bold;text-align:center;'+B1+'padding:4px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"><b>Contact For Location & query</b></td>'
+    +'<td style="width:33%;background:'+POH.hi+';font-weight:bold;text-align:center;'+B1+'padding:4px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"><b>Contact For Location & query</b></td>'
     +'</tr><tr>'
     +'<td style="font-weight:700;'+B1+'padding:5px 6px;height:40px;vertical-align:top;">'+pEsc(d.shippingAddress||SARV_COMPANY.address)+'</td>'
     +'<td style="'+B1+'text-align:center;font-size:14px;font-weight:700;vertical-align:middle;">'+fmtDate_(d.deliveryDate)+'</td>'
-    +'<td style="background:#fff200;'+B1+'text-align:center;font-size:13px;font-weight:700;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pEsc(d.locationContact||'')+'</td>'
+    +'<td style="background:'+POH.hi+';'+B1+'text-align:center;font-size:13px;font-weight:700;vertical-align:middle;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pEsc(d.locationContact||'')+'</td>'
     +'</tr>'
     +'<tr><td colspan="3" style="background:#fff7e6;text-align:center;font-weight:bold;'+B1+'padding:4px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">**'+pEsc(d.paymentTerms||'Payment terms 30 days after receipt of bill')+'**</td></tr>'
     +'</tbody></table>'
@@ -17859,11 +18483,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     +'</tr></thead>'
     +'<tbody>'+itemRows+'</tbody>'
     +'<tfoot><tr>'
-    +'<td colspan="3" style="background:#fde68a;font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">Grand Total (Subtotal)</td>'
-    +'<td style="background:#fde68a;font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+items.reduce((s,x)=>s+x.qty,0)+'</td>'
-    +'<td style="background:#fde68a;font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(totalGW>0?totalGW+' kg':'')+'</td>'
-    +'<td colspan="'+(hasDisc?4:2)+'" style="background:#fde68a;'+B1+'padding:5px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></td>'
-    +'<td style="background:#fde68a;font-weight:bold;'+B1+'padding:5px 6px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pMoney(subtotal)+'</td>'
+    +'<td colspan="3" style="background:'+POH.grand+';font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">Grand Total (Subtotal)</td>'
+    +'<td style="background:'+POH.grand+';font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+items.reduce((s,x)=>s+x.qty,0)+'</td>'
+    +'<td style="background:'+POH.grand+';font-weight:bold;'+B1+'padding:5px 6px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+(totalGW>0?totalGW+' kg':'')+'</td>'
+    +'<td colspan="'+(hasDisc?4:2)+'" style="background:'+POH.grand+';'+B1+'padding:5px 6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></td>'
+    +'<td style="background:'+POH.grand+';font-weight:bold;'+B1+'padding:5px 6px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'+pMoney(subtotal)+'</td>'
     +'</tr></tfoot>'
     +'</table>'
 
@@ -17881,7 +18505,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        worth preventing here. */
     +'<div style="page-break-inside:avoid;break-inside:avoid;">'
     +'<div style="font-weight:bold;margin:10px 0 4px;font-size:11px;">IMPORTANT NOTES:</div>'
-    +'<div style="background:#fff200;border:1px solid #d4b800;padding:6px 8px;font-weight:700;font-size:11px;white-space:pre-wrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
+    +'<div style="background:'+POH.hi+';border:1px solid '+POH.hiBorder+';padding:6px 8px;font-weight:700;font-size:11px;white-space:pre-wrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
     +'<div style="margin-bottom:3px;">'+poGmRole_(sigs.gmCeo)+': '+pEsc(sigRemark_(sigs.gmCeo)||'—')+'</div>'
     +'<div style="margin-bottom:3px;">MD: '+pEsc(sigRemark_(sigs.md)||'—')+'</div>'
     +'<div>'+pEsc(SARV_PO_ANTI_CORRUPTION_NOTE)+'</div>'
@@ -18001,6 +18625,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const lq=await SB.from('purchase_order_lines').select('*').eq('purchase_order_id',po.id).order('line_no');
    if(lq.error)throw lq.error;
    const d={
+     store:po.store,   // UNIT-1 / UNIT-2 on the PDF (sarvPoStore_)
      poNo:po.po_no,poDate:po.po_date,deliveryDate:po.delivery_date,
      vendorName:po.vendor_name,vendorMail:po.vendor_mail,vendorContact:po.vendor_contact,vendorAddress:po.vendor_address,
      paymentTerms:po.payment_terms,locationContact:po.location_contact||SARV_PO_LOCATION_CONTACT,freight:po.freight,otherExpense:po.other_expense,
@@ -18029,6 +18654,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       bodyPages  — pages used before attachments
       tablePages — how many pages the items table itself spanned */
  function renderPoDoc_(d,S){
+   const PP=sarvPdfPal_(sarvPoStore_(d));   // Store 1 burgundy house style / Store 2 original colours
    const {jsPDF}=window.jspdf;
    const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
@@ -18077,18 +18703,18 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.setFontSize(12);
    doc.text('PURCHASE ORDER',pageW/2,y+4.5,{align:'center'});
    y+=10;
-   doc.setFontSize(18);doc.setFont(undefined,'bold');
+   doc.setFontSize(18);doc.setFont(undefined,'bold');doc.setTextColor(...PP.brand);
    doc.text(SARV_COMPANY.fullName,pageW/2,y,{align:'center'});
    y+=6;
    doc.setFontSize(10);
-   doc.text(SARV_COMPANY.unit,pageW/2,y,{align:'center'});
+   doc.text(sarvPdfUnit_(sarvPoStore_(d),true),pageW/2,y,{align:'center'});
    y+=4.5;
-   doc.setFontSize(8.5);doc.setFont(undefined,'normal');
+   doc.setTextColor(0,0,0);doc.setFontSize(8.5);doc.setFont(undefined,'normal');
    doc.text(SARV_COMPANY.tagline,pageW/2,y,{align:'center'});
    y+=4;
    doc.text(SARV_COMPANY.address,pageW/2,y,{align:'center'});
    y+=5;
-   doc.setLineWidth(0.4);doc.line(M,y,pageW-M,y);
+   doc.setDrawColor(...PP.rule);doc.setLineWidth(PP.s1?0.8:0.4);doc.line(M,y,pageW-M,y);doc.setDrawColor(0,0,0);
    y+=5;
 
    doc.setFontSize(9);doc.setFont(undefined,'bold');
@@ -18116,7 +18742,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const c1=W*0.42,c2=W*0.25,c3=W-c1-c2;
    doc.setFillColor(243,244,246);
    doc.rect(M,y,c1,6,'FD');doc.rect(M+c1,y,c2,6,'FD');
-   doc.setFillColor(255,242,0); // Contact For Location — yellow highlight
+   doc.setFillColor(...PP.hi); // Contact For Location: highlight (yellow / Store 1 rose)
    doc.rect(M+c1+c2,y,c3,6,'FD');
    doc.setFontSize(8);doc.setFont(undefined,'bold');
    doc.text('Shipping Address:',M+c1/2,y+4,{align:'center'});
@@ -18126,7 +18752,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const rowH=12;
    doc.setFillColor(255,255,255);
    doc.rect(M,y,c1,rowH);doc.rect(M+c1,y,c2,rowH);
-   doc.setFillColor(255,242,0);
+   doc.setFillColor(...PP.hi);
    doc.rect(M+c1+c2,y,c3,rowH,'FD');
    doc.setFont(undefined,'normal');doc.setFontSize(7.5);
    const shipLines=doc.splitTextToSize(String(d.shippingAddress||SARV_COMPANY.address),c1-4);
@@ -18203,7 +18829,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      y+=rowH;
    });
    poFit_(grandH);
-   doc.setFillColor(AMBER[0],AMBER[1],AMBER[2]);doc.rect(M,y,W,grandH,'F');doc.rect(M,y,W,grandH);
+   doc.setFillColor(...(PP.grand||AMBER));doc.rect(M,y,W,grandH,'F');doc.rect(M,y,W,grandH);
    doc.setFont(undefined,'bold');doc.setFontSize(fs(10.5));
    doc.text('GRAND TOTAL',M+labelW-2,y+grandH*0.71,{align:'right'});
    doc.text(nMoney_(grand),M+W-2,y+grandH*0.71,{align:'right'});
@@ -18226,7 +18852,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.text('IMPORTANT NOTES:',M,y);
    y+=sp(2);
    doc.setFontSize(fs(8));
-   doc.setFillColor(255,242,0);doc.rect(M,y,W,notesH,'F');
+   doc.setFillColor(...PP.hi);doc.rect(M,y,W,notesH,'F');
    doc.setDrawColor(212,184,0);doc.setLineWidth(0.3);doc.rect(M,y,W,notesH);
    doc.setFont(undefined,'bold');doc.setTextColor(0,0,0);
    doc.text(notesLines,M+2,y+sp(4.5),{lineHeightFactor:1.15});
@@ -19970,7 +20596,13 @@ window.addEventListener('DOMContentLoaded',()=>{
        const del=await SB.from('inward_lines').delete().eq('inward_id',editId);
        if(del.error)throw del.error;
      }else{
-       h=await writeInwHeader(p=>SB.from('inward_entries').insert(p).select().single());
+       /* A NEW entry is filed in the store in use. Not on an edit: an entry
+          stays in the store it was booked in (its lines follow the header, see
+          sql/STORE1_MIGRATION.sql). Without the column only Store 2 can save,
+          and then the database default (STORE 2) is right. */
+       if(!(await sarvStoreReady_()))throw new Error(sarvStoreLabel()+' needs sql/STORE1_MIGRATION.sql to be run first. Nothing was saved.');
+       const inStore=p=>sarvHasStoreCol?{...p,store:sarvStore}:p;
+       h=await writeInwHeader(p=>SB.from('inward_entries').insert(inStore(p)).select().single());
        if(h.error)throw h.error;
      }
      // Said plainly rather than left to be noticed later: the PR link printed on
@@ -20118,10 +20750,12 @@ window.addEventListener('DOMContentLoaded',()=>{
      wanted.set(key,cur);
    });
    if(!wanted.size)return [];
+   // The balance of the store this entry leaves from, not both stores together.
+   await sarvCheckStoreCol_();
    const [items,inLines,outLines]=await Promise.all([
      fetchAllRows('items','id,name','name'),
-     fetchAllRows('inward_lines','item_id,qty'),
-     fetchAllRows('outward_lines','outward_id,item_id,qty')
+     fetchAllRows('inward_lines','item_id,qty','id',sarvStoreQ),
+     fetchAllRows('outward_lines','outward_id,item_id,qty','id',sarvStoreQ)
    ]);
    const inMap={},outMap={};
    inLines.forEach(r=>{inMap[r.item_id]=(inMap[r.item_id]||0)+pNum(r.qty)});
@@ -20291,7 +20925,10 @@ window.addEventListener('DOMContentLoaded',()=>{
        const del=await SB.from('outward_lines').delete().eq('outward_id',outEditId);
        if(del.error)throw del.error;
      }else{
-       h=await writeOutHeader(p=>SB.from('outward_entries').insert(p).select().single());
+       // Filed in the store in use; an edit keeps its store (see the Inward save).
+       if(!(await sarvStoreReady_()))throw new Error(sarvStoreLabel()+' needs sql/STORE1_MIGRATION.sql to be run first. Nothing was saved.');
+       const inStore=p=>sarvHasStoreCol?{...p,store:sarvStore}:p;
+       h=await writeOutHeader(p=>SB.from('outward_entries').insert(inStore(p)).select().single());
        if(h.error)throw h.error;
      }
      // The receiver columns aren't there yet, so Designation / Department print
@@ -20459,7 +21096,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        h=await SB.from('purchase_requirements').update(payload).eq('id',sarvEditingRequirementId).select().single();if(h.error)throw h.error;no=h.data.req_no;
        const del=await SB.from('purchase_requirement_lines').delete().eq('requirement_id',h.data.id);if(del.error)throw del.error;
      }else{
-       no=await nextNo('REQ');h=await SB.from('purchase_requirements').insert({...payload,req_no:no}).select().single();if(h.error)throw h.error;
+       // A new PR belongs to the store of the user raising it (an edit keeps its store).
+       const prStore=await sarvUserStore_();
+       no=await nextNo('REQ');h=await SB.from('purchase_requirements').insert({...payload,req_no:no,...(prStore?{store:prStore}:{})}).select().single();if(h.error)throw h.error;
      }
      // gross_weight and machine belong on the LINE, not only inside
      // pdf_snapshot: the Build-PO panel reads its Gross Wt (kg) column straight
@@ -20471,6 +21110,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      setMsg('Generating PR PDF...');
      const d=collectRequirementData(no,rows);
      if(preparedBy)d.preparedBy=preparedBy;
+     /* The PR's store rides in the snapshot (pdf_snapshot), so every rebuild of
+        this PDF, here or on mobile, prints UNIT-1 / UNIT-2 from it (sarvPdfUnit_). */
+     if(h.data&&h.data.store)d.store=h.data.store;
      const pdf=await generateRequirementPdf(d,h.data.id);
      showSarvPdfPreview(pdf?.blob,no+'_Requester.pdf',pdf?.html||'');sarvEditingRequirementId=null;
      showToast(reopenedFrom?(''+no+' updated and moved back from '+reopenedFrom+' to PENDING'):('Requirement saved: '+no));

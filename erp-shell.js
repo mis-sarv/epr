@@ -61,6 +61,44 @@
     lock:     svg_('M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4')
   };
 
+  /* The Store menu, once, for either store: Store 1 and Store 2 get exactly
+     the same sub-tabs. `store` on every leaf is what select() switches to;
+     `itemStock` opens the Item Master showing that store's stock only
+     (store-core.js › sarvSetItemMasterStore), with the same rights as the
+     Item Master itself. Labels stay the same in both menus, so Quick Nav
+     lists each leaf twice, once under each store. */
+  function storeLeaves(store) {
+    return [
+      // The Store Incharge's daily task list (store-mytasks.js).
+      { label: 'My Day (Daily Tasks)', action: 'wfOpenMyDay', access: 'HOME_MYDAY',
+        words: 'my day daily tasks today pending work checklist todo' },
+      { label: 'Store Dashboard' },
+      { label: 'Material Inward', go: 'IN' },
+      { label: 'Inward (NB) — Non-Billable', go: 'IN_NB' },
+      { label: 'Material Outward', go: 'OUT' },
+      { label: 'Issue', go: 'ISSUE' },
+      { label: 'Item Stock', go: 'MASTER', sub: 'itemMasterSub', tab: 'MD_ITEM', itemStock: true,
+        words: 'item stock balance closing stock in out store wise' },
+      { label: 'Item Tracker', go: 'TRACKER' },
+      /* The item × date matrix that otherwise opens only from Item Tracker ›
+         Stock Ledger. It is a full-screen overlay (#consOverlay) at body
+         level, so it opens straight from here (store-core.js ›
+         openConsumptionTracker). Same access row as Item Tracker: it reads
+         the same entries, so whoever may see one may see the other. */
+      { label: 'Consumption Tracker', action: 'openConsumptionTracker', access: 'HOME_TRACKER',
+        words: 'consumption tracker matrix item date daily usage issue stock movement report' },
+      { label: 'Repair Challans', go: 'REPAIR' },
+      { label: 'Print History / Reports', go: 'REPORTS' },
+      // Store 1 ⇄ Store 2 in one entry (store-core.js › sarvOpenStoreTransfer).
+      { label: 'Store Transfer', action: 'sarvOpenStoreTransfer', access: 'HOME_STORE_TRANSFER',
+        words: 'store transfer move stock store 1 store 2 shift' },
+      { label: 'Material Requests' }, { label: 'Gate Processes' },
+      { label: 'JWO Challans' },
+      { label: 'Supplier ASNs' }, { label: 'Traceability Reports' },
+      { label: 'Store Configs' }
+    ].map(l => Object.assign({ store: store }, l));
+  }
+
   /* ══ MODULE MAP ══════════════════════════════════════════════════════
      Straight from the blueprint, re-mapped to Sarv India's mink-blanket
      workflow. `go` is the data-go key of the original home button that opens
@@ -115,29 +153,14 @@
       { label: 'Service Receipt' }, { label: 'Purchase Reports' },
       { label: 'Purchase Configs' } ] },
 
-    { key: 'WAREHOUSE', icon: I.store, label: 'Store', children: [
-      // The Store Incharge's daily task list (store-mytasks.js).
-      { label: 'My Day (Daily Tasks)', action: 'wfOpenMyDay', access: 'HOME_MYDAY',
-        words: 'my day daily tasks today pending work checklist todo' },
-      { label: 'Store Dashboard' },
-      { label: 'Material Inward', go: 'IN' },
-      { label: 'Inward (NB) — Non-Billable', go: 'IN_NB' },
-      { label: 'Material Outward', go: 'OUT' },
-      { label: 'Issue', go: 'ISSUE' },
-      { label: 'Item Tracker', go: 'TRACKER' },
-      /* The item × date matrix that otherwise opens only from Item Tracker ›
-         Stock Ledger. It is a full-screen overlay (#consOverlay) at body
-         level, so it opens straight from here (store-core.js ›
-         openConsumptionTracker). Same access row as Item Tracker: it reads
-         the same entries, so whoever may see one may see the other. */
-      { label: 'Consumption Tracker', action: 'openConsumptionTracker', access: 'HOME_TRACKER',
-        words: 'consumption tracker matrix item date daily usage issue stock movement report' },
-      { label: 'Repair Challans', go: 'REPAIR' },
-      { label: 'Print History / Reports', go: 'REPORTS' },
-      { label: 'Material Requests' }, { label: 'Gate Processes' },
-      { label: 'Transfers' }, { label: 'JWO Challans' },
-      { label: 'Supplier ASNs' }, { label: 'Traceability Reports' },
-      { label: 'Store Configs' } ] },
+    /* Two stores, the same screens (store-core.js › SARV_STORES,
+       sql/STORE1_MIGRATION.sql). Store 2 is the store that was running before
+       (key WAREHOUSE kept, so its Tab Visibility row ERP_WAREHOUSE still
+       applies); Store 1 is the new one. Every leaf carries `store`, and
+       select() switches the Store screens to it before opening (sarvSetStore),
+       so an entry is always booked into the store whose menu it was opened from. */
+    { key: 'STORE1', icon: I.store, label: 'Store 1', store: 'STORE 1', children: storeLeaves('STORE 1') },
+    { key: 'WAREHOUSE', icon: I.store, label: 'Store 2', store: 'STORE 2', children: storeLeaves('STORE 2') },
 
     { key: 'MANUF', icon: I.manuf, label: 'Manufacturing', children: [
       { label: 'Shopfloor Dashboard' },
@@ -290,6 +313,10 @@
        list of masters. */
     { key: 'ADMIN', icon: I.sliders, label: 'Administration', children: [
       { label: 'Admin Panel / Users & Roles', go: 'MASTER', sub: 'settingsSub', tab: 'MD_SETTINGS' },
+      // Category → Purchaser + which store(s) a category's PRs / POs show in
+      // (store-core.js › sarvOpenPrpoMaster, table category_purchasers).
+      { label: 'PR-PO Master', action: 'sarvOpenPrpoMaster', access: 'HOME_PRPO_MASTER',
+        words: 'pr po master category purchaser store 1 store 2 common inward' },
       { label: 'Company / Unit Settings' }, { label: 'Audit Log' },
       { label: 'Developer Settings' }, { label: 'API Keys & Webhooks' } ] },
   ];
@@ -597,13 +624,41 @@
     if (!moduleVisible(mod)) { landing(); return; }
     const leaf = leafLabel ? (mod.children || []).find(l => l.label === leafLabel) : null;
 
+    /* Store 1 / Store 2: switch the Store screens to this leaf's store first.
+       Store 1 needs sql/STORE1_MIGRATION.sql; until it has run the leaf says
+       so and opens nothing, so no entry can be booked that would land in
+       Store 2. The check is asked once, then answered from memory. */
+    if (leaf && leaf.store && typeof window.sarvSetStore === 'function') {
+      if (leaf.store === 'STORE 1' && typeof sarvHasStoreCol !== 'undefined' && sarvHasStoreCol !== true) {
+        if (sarvHasStoreCol === false) {
+          if (typeof showToast === 'function') showToast('Store 1 is not set up yet. Admin: run sql/STORE1_MIGRATION.sql in the Supabase SQL Editor.', 'warn');
+          return;
+        }
+        sarvStoreReady_('STORE 1').then(() => select(modKey, leafLabel));
+        return;
+      }
+      window.sarvSetStore(leaf.store);
+    }
+    // Item Stock = the Item Master showing one store's stock; any other way into it shows both.
+    const imMode = leaf && leaf.itemStock ? leaf.store : null;
+    const imChanged = typeof sarvItemMasterStore !== 'undefined' && imMode !== sarvItemMasterStore;
+    if (leaf && leaf.go === 'MASTER' && typeof window.sarvSetItemMasterStore === 'function') window.sarvSetItemMasterStore(imMode);
+
     // Its own app in a new tab (Order Form, Packing), never the ERP iframe.
     if (leaf && leaf.external && leafVisible(leaf)) { openExternal(leaf); return; }
     // A function, not a screen (PO Details Report opens as a popup).
     if (leaf && leaf.action && leafLive(leaf)) { runAction(leaf); return; }
     // A leaf that points at a screen that already exists: hand straight over
     // to that screen's own button. Nothing is reimplemented here.
-    if (leaf && leafLive(leaf)) { open(leaf.go, leaf.sub, leaf.poMode); return; }
+    if (leaf && leafLive(leaf)) {
+      open(leaf.go, leaf.sub, leaf.poMode);
+      // The Item Master's figures were read for the other mode: read them again.
+      if (leaf.go === 'MASTER' && (imChanged || imMode) && typeof window.loadItemMaster === 'function') {
+        const mp = document.getElementById('masterDataPanel');
+        if (mp && mp.style.display !== 'none') window.loadItemMaster();
+      }
+      return;
+    }
 
     /* From here on it is the Dashboard or a Coming Soon page, and both need
        the main column, which is hidden in drawer mode. So if we are in a

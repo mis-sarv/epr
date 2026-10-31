@@ -4598,3 +4598,56 @@ body { min-width: 0; }
   background: #f1f5f9; padding: 8px !important;
 }
 #masterDataPanel.md-fs > .card { margin: 0 !important; min-height: 100%; max-width: none !important; }
+
+/* ── Store 1 / Store 2 chip (store-core.js sarvStoreChipSync_) ─────────────
+   Shown only on the screens that work in one store (body.sarv-in-store), and
+   never over the sidebar shell. Store 1 purple, Store 2 teal: the two must
+   never be mistaken for each other while booking an entry. */
+#sarvStoreChip{display:none;position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:4000;
+  padding:4px 14px;border-radius:999px;font:800 12px/1.4 'Segoe UI',system-ui,sans-serif;letter-spacing:.04em;
+  text-transform:uppercase;color:#fff;box-shadow:0 2px 8px rgba(15,23,42,.18);pointer-events:none}
+#sarvStoreChip.s1{background:#7c3aed}
+#sarvStoreChip.s2{background:#0f766e}
+body.sarv-in-store:not(.erp-shell-open) #sarvStoreChip{display:block}
+
+/* ── Store 1 theme: maroon → burgundy (store-core.js sets body[data-store]) ──
+   Only while a Store 1 screen is open (body.sarv-in-store + data-store="STORE 1"),
+   so Store 2 and every other part of the ERP keep their own colours. Variables
+   first (every button / gradient that reads them follows), then the few rules
+   that hard-code a slate colour. */
+body.sarv-in-store[data-store="STORE 1"] {
+  --primary-gradient: linear-gradient(180deg, #7f1d2d 0%, #4a0d18 100%);
+  --btn-primary-grad: linear-gradient(180deg, #9f1239 0%, #6b0f22 100%);
+  --secondary-color: #800020;
+  --bg-color: #fbf6f7;
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface header {
+  background: linear-gradient(120deg, #4a0d18 0%, #6b0f22 45%, #800020 75%, #9f1239 100%);
+  border-bottom-color: #4a0d18;
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface header h1 span { color: #fecdd3; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .nav-link { color: #fbcfe8; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .nav-link.active {
+  background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 228, 230, 0.35);
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .container { background: #fbf6f7; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .card {
+  border-color: #f1d5da; border-top: 3px solid #800020;
+  box-shadow: 0 10px 25px -8px rgba(128, 0, 32, 0.12), 0 6px 10px -8px rgba(128, 0, 32, 0.10);
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .panel-title { color: #6b0f22; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .panel-subtitle { color: #9f1239; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .stat-box {
+  border-color: #f1d5da; box-shadow: 0 4px 6px -1px rgba(128, 0, 32, 0.06), inset 0 -3px 0 0 #800020;
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .stat-value { color: #6b0f22; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .section-title { color: #800020; }
+body.sarv-in-store[data-store="STORE 1"] #storeInterface th {
+  background: linear-gradient(180deg, #fdf2f4 0%, #f9e3e7 100%); color: #6b0f22; border-bottom-color: #e7b9c2;
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .form-control:focus {
+  border-color: #9f1239; box-shadow: 0 0 0 3px rgba(159, 18, 57, 0.15);
+}
+body.sarv-in-store[data-store="STORE 1"] #storeInterface .btn-primary { background: var(--btn-primary-grad); }
+/* The Store 1 chip itself reads maroon, matching the screens it labels. */
+#sarvStoreChip.s1 { background: linear-gradient(120deg, #6b0f22, #9f1239); }

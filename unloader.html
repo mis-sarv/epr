@@ -256,7 +256,7 @@ function renderList(){
     else if (r.status === 'Approved') act = '<div class="card-action done">✔ Approved by ' + esc(r.decided_by || '-') + ' · ' + esc(stamp(r.decided_at)) + (r.used_on ? ' · Saved as ' + esc(r.used_on) : ' · Waiting for Final Submit') + '</div>';
     else act = '<div class="card-action wait" style="color:#b91c1c;">✖ Rejected by ' + esc(r.decided_by || '-') + ' · ' + esc(stamp(r.decided_at)) + (r.remarks ? ' · ' + esc(r.remarks) : '') + '</div>';
     return '<div class="card" onclick="openReq(' + r.id + ')">'
-      + '<div class="card-header"><span>' + esc(r.request_no || ('#' + r.id)) + '</span><span style="font-size:0.75rem;color:#64748b;">' + esc(r.entry_type || 'INWARD') + '</span></div>'
+      + '<div class="card-header"><span>' + esc(r.request_no || ('#' + r.id)) + '</span><span style="font-size:0.75rem;color:#64748b;">' + esc(r.entry_type || 'INWARD') + ' · ' + storeTag(r) + '</span></div>'
       + '<div class="card-detail">Supplier: <b>' + esc(r.supplier_name || '-') + '</b></div>'
       + '<div class="card-detail">Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '</div>'
       + '<div class="card-detail">' + esc(ref) + ' · <b>' + it.length + '</b> item(s) · Qty <b>' + esc(fmtN(qty)) + '</b></div>'
@@ -266,6 +266,15 @@ function renderList(){
   }).join('');
 }
 
+/* Which store the material is being unloaded into (store-core.js puts it in
+   the request's payload). A request made before Store 1 existed is Store 2. */
+function storeTag(r){
+  let p = r && r.payload;
+  if (typeof p === 'string') { try { p = JSON.parse(p); } catch (e) { p = null; } }
+  const s1 = p && p.store === 'STORE 1';
+  return '<b style="color:' + (s1 ? '#6d28d9' : '#0f766e') + ';">' + (s1 ? 'Store 1' : 'Store 2') + '</b>';
+}
+
 /* ── One request ───────────────────────────────────────────────────── */
 function openReq(id){
   const r = ROWS[TAB].find(x => x.id === id); if (!r) return;
@@ -273,6 +282,7 @@ function openReq(id){
   const p = r.payload || {}, it = items(r);
   $('mTitle').textContent = (r.request_no || ('#' + r.id)) + ' · ' + (r.entry_type || 'INWARD');
   $('mMeta').innerHTML = '<b>' + esc(r.supplier_name || '-') + '</b><br>'
+    + 'Into: ' + storeTag(r) + '<br>'
     + 'Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '<br>'
     + (r.po_numbers ? 'PO: <b>' + esc(r.po_numbers) + '</b><br>' : '') + (r.req_numbers ? 'PR: <b>' + esc(r.req_numbers) + '</b><br>' : '')
     + (p.natureOfInward ? 'Nature: <b>' + esc(p.natureOfInward) + '</b><br>' : '')

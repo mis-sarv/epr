@@ -88,7 +88,11 @@
   function once(key, fn) { if (!shared[key]) shared[key] = fn().catch(e => { delete shared[key]; throw e; }); return shared[key]; }
   const loadItems = () => once('items', async () => {
     if (typeof loadItemMaster !== 'function') throw new Error('Item Master is not available');
-    await loadItemMaster();
+    // The ERP qty of this store's day (Item Master in that store's mode, then put back).
+    const prevIm = typeof sarvItemMasterStore !== 'undefined' ? sarvItemMasterStore : null;
+    if (typeof window.sarvSetItemMasterStore === 'function') window.sarvSetItemMasterStore(curStore());
+    try { await loadItemMaster(); }
+    finally { if (typeof window.sarvSetItemMasterStore === 'function') window.sarvSetItemMasterStore(prevIm); }
     if (typeof sarvImPipePromise !== 'undefined' && sarvImPipePromise) { try { await sarvImPipePromise; } catch (e) {} }
     return sarvItemMasterRows || [];
   });
@@ -104,6 +108,13 @@
   });
 
   /* ══ NAVIGATION ══════════════════════════════════════════════════════ */
+  /* Store 1 / Store 2 (store-core.js › sarvStore): My Day works in the store
+     its menu was opened from. Its Store screens open in that store's menu,
+     its stock figures and counts are that store's. */
+  const curStore = () => (typeof sarvStore !== 'undefined' && sarvStore) || 'STORE 2';
+  const storeMod = () => curStore() === 'STORE 1' ? 'STORE1' : 'WAREHOUSE';
+  const storeQ = q => (typeof sarvStoreQ === 'function' ? sarvStoreQ(q) : q);
+  const hasStoreCol = () => typeof sarvHasStoreCol !== 'undefined' && sarvHasStoreCol === true;
   function go(modKey, leaf, after) {
     closeDay();
     const ok = typeof window.erpGoLeaf === 'function' && window.erpGoLeaf(modKey, leaf);
@@ -286,7 +297,7 @@
       async load() {
         if (typeof isStoreEntrySent_ !== 'function') throw new Error('Print History is not available');
         const since = daysAgoIso(UNSENT_DAYS) + 'T00:00:00';
-        const filt = q => q.gte('created_at', since);
+        const filt = q => storeQ(q.gte('created_at', since));
         const [inw, outw] = await Promise.all([
           fetchAllRows('inward_entries', 'id,document_no,entry_type,supplier_name,notes,created_at', 'id', filt).catch(() => []),
           fetchAllRows('outward_entries', 'id,document_no,entry_type,party_name,notes,created_at', 'id', filt).catch(() => [])
@@ -301,7 +312,7 @@
           rows: list.map(o => ({
             id: o.e.document_no,
             cells: ['<b>' + esc(o.e.document_no) + '</b>', esc(o.type), esc(o.party || '—'), dmy(o.e.created_at)],
-            act: { label: 'Open', fn: () => go('WAREHOUSE', 'Print History / Reports', () => {
+            act: { label: 'Open', fn: () => go(storeMod(), 'Print History / Reports', () => {
               const sq = $('searchQuery'); if (sq) sq.value = o.e.document_no;
               ['filterDateFrom', 'filterDateTo'].forEach(id => { const d = $(id); if (d) d.value = ''; });
               if (typeof loadReports === 'function') loadReports();
@@ -324,7 +335,7 @@
         const rows = await loadItems();
         let counts;
         try {
-          counts = await fetchAllRows('stock_counts', 'item_id,count_date,physical_qty,system_qty,diff_qty,counted_by', 'id', q => q.gte('count_date', daysAgoIso(400)));
+          counts = await fetchAllRows('stock_counts', 'item_id,count_date,physical_qty,system_qty,diff_qty,counted_by', 'id', q => storeQ(q.gte('count_date', daysAgoIso(400))));
         } catch (e) {
           if (missingTable(e)) return { count: null, setup: true, rows: [], note: 'Run DAILY_TASKS_MIGRATION.sql in Supabase to start the daily stock count.' };
           throw e;
@@ -429,6 +440,10 @@
     build();
     shared = {};
     const date = isoToday(), user = userInfo();
+    /* Store 1's day is its own list: the log is kept under the user key +
+       "@S1", so a person who runs both stores has two separate days and
+       Store 2's records (plain user key) stay exactly as before. */
+    if (curStore() === 'STORE 1') user.key = user.key + '@S1';
     const log = readLocal(date, user.key);
     log.tasks = log.tasks || {};
     day = { date, user, log, cur: 0, states: [] };
@@ -520,8 +535,10 @@
     });
     if (bad) toast(bad + ' quantity box(es) are not a valid number', 'warn');
     if (!recs.length) { if (!bad) toast('Type the physical quantity first', 'warn'); return; }
+    // Each store counts its own racks: the count is keyed by store too (sql/STORE1_MIGRATION.sql).
+    if (hasStoreCol()) recs.forEach(r => { r.store = curStore(); });
     try {
-      const r = await SB.from('stock_counts').upsert(recs, { onConflict: 'count_date,item_id' });
+      const r = await SB.from('stock_counts').upsert(recs, { onConflict: hasStoreCol() ? 'count_date,item_id,store' : 'count_date,item_id' });
       if (r.error) throw r.error;
       toast('Saved ' + recs.length + ' stock count(s)');
     } catch (e) {
@@ -779,7 +796,7 @@
     if (!day || !$('wfDay')) return;
     const states = day.states;
     const dt = new Date();
-    $('wfDate').textContent = ' · ' + dt.toLocaleDateString('en-GB', { weekday: 'long' }) + ' ' + dmy(day.date) + ' · ' + day.user.name;
+    $('wfDate').textContent = ' · ' + (curStore() === 'STORE 1' ? 'Store 1' : 'Store 2') + ' · ' + dt.toLocaleDateString('en-GB', { weekday: 'long' }) + ' ' + dmy(day.date) + ' · ' + day.user.name;
     const finished = states.filter(s => ['done', 'skipped'].includes(taskStatus(s))).length;
     $('wfProg').textContent = finished + ' of ' + states.length + ' done' + (day.log.closed ? ' · day closed' : '');
     $('wfBar').style.width = (states.length ? Math.round(finished * 100 / states.length) : 0) + '%';
