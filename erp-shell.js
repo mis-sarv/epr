@@ -738,6 +738,29 @@
     qnPlace();
   }
 
+  /* Deep link: index.html?tt=<filters> opens Task › Task Tracker with those
+     filters (fms.html#tasks/<filters>, see ttApplyLink in fms-tasks.js). Sent
+     by Task Manager › EA Delegation › "Task Tracker". The login and the Tab
+     Visibility matrix may still be on their way when the page opens, so it is
+     tried each time the shell comes up or access is applied, until it works
+     or DEEP_WAIT has passed; after that the user is told why it did not open. */
+  const DEEP_WAIT = 10000;
+  let deepTt = null, deepUntil = 0;
+  function tryDeepLink() {
+    if (deepTt === null || typeof window.erpGoLeaf !== 'function') return;
+    const gate = byId_('sarvLoginGate');
+    if (gate && gate.style.display !== 'none') return;           // not logged in yet
+    // Taken before erpGoLeaf: it goes Home first, and Home calls back in here.
+    const p = deepTt; deepTt = null;
+    if (window.erpGoLeaf('TASK', 'Task Tracker')) {
+      const fr = byId_('fmsFrame');
+      if (fr) fr.setAttribute('src', (fr.dataset.src || 'fms.html') + '#tasks/' + encodeURIComponent(p));
+      return;
+    }
+    if (Date.now() < deepUntil) { deepTt = p; return; }
+    if (typeof showToast === 'function') showToast('Task Tracker could not open: Task › Task Tracker is not switched on for this login.', 'warn');
+  }
+
   function syncUser() {
     let label = '—';
     try {
@@ -1376,6 +1399,7 @@
         // leaf the user comes from sets its own restriction.
         setOnlySub(null);
         show();
+        setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
         return r;
       };
     }
@@ -1420,6 +1444,7 @@
             renderNav();
           }
         } catch (e) { console.warn('[ERP] sidebar refresh skipped:', e.message || e); }
+        setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
         return r;
       };
     }
@@ -1453,5 +1478,17 @@
       select(modKey, leafLabel);
       return true;
     };
+
+    // ?tt= is read once and taken off the address bar, so a reload lands on the normal home.
+    try {
+      const qs = new URLSearchParams(location.search);
+      if (qs.has('tt')) {
+        deepTt = qs.get('tt'); deepUntil = Date.now() + DEEP_WAIT;
+        qs.delete('tt');
+        history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash);
+        setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
+        setTimeout(tryDeepLink, DEEP_WAIT + 500);   // last try, which also gives the message
+      }
+    } catch (e) { console.warn('[ERP] deep link skipped:', e.message || e); }
   });
 })();

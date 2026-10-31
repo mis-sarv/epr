@@ -244,25 +244,52 @@ function ttOpenCell(x) {
 ACTIONS['tt-open'] = el => { const x = (ttTasks(), TT.allRows || []).find(r => r.key === el.dataset.k); if (!x) return; if (x.kind === 'cmp') ttCmpDetail(x.cmp); else if (x.kind === 'tm') ttTmDetail(x); };
 
 /* ================= Task Tracker ================= */
-const AT_UI = { tab: 'tasks', src: '', st: 'open', who: '', dept: '', from: '', to: '', q: '', cst: 'open', ck: '' };
+const AT_UI = { tab: 'tasks', src: '', st: 'open', who: '', dept: '', from: '', to: '', q: '', cst: 'open', ck: '', applied: '', back: false };
+const AT_ST = ['open', 'pending', 'delayed', 'upcoming', 'done', 'late', 'all'];
+/* The #tasks/<param> of a link. A param starting with "?" is a set of filters,
+   sent by Task Manager › EA Delegation › Task Tracker (through the ERP:
+   index.html?tt=…, erp-shell.js):
+     ?src=ea&st=pending&emp=<emp code>&name=<emp name>&from=YYYY-MM-DD&to=YYYY-MM-DD&q=<text>&back=tm
+   back=tm shows "Back to Task Manager". Anything else is a doer's name, as
+   before. Applied once per param, so Refresh (which routes again with the
+   same hash) keeps whatever the user changed afterwards. */
+function ttApplyLink(param) {
+  if (!param || param === AT_UI.applied) return;
+  AT_UI.applied = param;
+  if (param.charAt(0) !== '?') { AT_UI.who = param.toUpperCase(); AT_UI.st = 'all'; AT_UI.tab = 'tasks'; return; }
+  const p = new URLSearchParams(param.slice(1)), ymd = /^\d{4}-\d{2}-\d{2}$/;
+  // Task Manager rows carry the employee's ERP login name (ttNameOfEmp), so the Emp Code is turned into that.
+  Object.assign(AT_UI, { tab: 'tasks', src: p.get('src') === 'ea' ? 'Delegation (EA)' : '', dept: '', q: p.get('q') || '',
+    who: p.get('emp') ? ttNameOfEmp(p.get('emp'), p.get('name') || p.get('emp')) : '', back: p.get('back') === 'tm' });
+  if (AT_ST.includes(p.get('st'))) AT_UI.st = p.get('st');
+  if (ymd.test(p.get('from') || '') && ymd.test(p.get('to') || '') && p.get('from') <= p.get('to')) { AT_UI.from = p.get('from'); AT_UI.to = p.get('to'); }
+  // Dates outside what is loaded: this render shows what is there, the wider range follows.
+  if (AT_UI.from < TT.from || AT_UI.to > TT.to) ttEnsure(AT_UI.from, AT_UI.to).then(() => { if (curView().v === 'tasks') VIEWS.tasks.render(); });
+}
+// Back to the same EA Delegation list. Inside the ERP the whole window goes, not just the iframe.
+ACTIONS['tt-back-tm'] = () => {
+  const u = new URL('task_manager.html#ea', location.href).href;
+  try { window.top.location.href = u; } catch (e) { location.href = u; }
+};
 VIEWS.tasks = {
   render(param) {
-    if (param) { AT_UI.who = param.toUpperCase(); AT_UI.st = 'all'; AT_UI.tab = 'tasks'; }
     if (!AT_UI.from) { AT_UI.from = ymdOf(ttAddDays(-30)); AT_UI.to = ymdOf(ttAddDays(7)); }
     if (!TT.people.length) { setMain('<div class="panel setup">Task Tracker is not set up yet. ' + esc(DB.ttErr || '') + '</div>'); return; }
+    ttApplyLink(param);
     const all = ttAll(); if (!all) AT_UI.who = ME.name;
-    let h = '<div class="toolbar">' + seg('atTab', [{ v: 'tasks', l: 'All Tasks' }, { v: 'cmp', l: 'Complaints' }], AT_UI.tab) + '<span class="grow"></span><button class="btn sm" data-act="refresh">Refresh</button></div>' + ttNotes();
+    let h = '<div class="toolbar">' + (AT_UI.back ? '<button class="btn sm" data-act="tt-back-tm" title="Back to Task Manager › EA Delegation">← Back to Task Manager</button>' : '') +
+      seg('atTab', [{ v: 'tasks', l: 'All Tasks' }, { v: 'cmp', l: 'Complaints' }], AT_UI.tab) + '<span class="grow"></span><button class="btn sm" data-act="refresh">Refresh</button></div>' + ttNotes();
     if (AT_UI.tab === 'cmp') h += ttCmpListHtml();
     else {
       const f = new Date(AT_UI.from + 'T00:00:00'), t = new Date(AT_UI.to + 'T23:59:59'); const q = norm(AT_UI.q);
       const escBy = new Map(TT.esc.map(e => [e.key, e])); const base = ttTasks();
       const rows = base.filter(x => (!x.planned || (x.planned >= f && x.planned <= t)) && (!AT_UI.src || x.src === AT_UI.src) && (!AT_UI.who || norm(x.doer) === norm(AT_UI.who) || norm(x.owner) === norm(AT_UI.who)) && (!AT_UI.dept || x.dept === AT_UI.dept) &&
-        (AT_UI.st === 'all' || (AT_UI.st === 'open' ? !x.done && x.status !== 'Upcoming' : AT_UI.st === 'delayed' ? x.status === 'Delayed' : AT_UI.st === 'upcoming' ? x.status === 'Upcoming' : AT_UI.st === 'late' ? x.late : x.done)) &&
+        (AT_UI.st === 'all' || (AT_UI.st === 'open' ? !x.done && x.status !== 'Upcoming' : AT_UI.st === 'pending' ? !x.done : AT_UI.st === 'delayed' ? x.status === 'Delayed' : AT_UI.st === 'upcoming' ? x.status === 'Upcoming' : AT_UI.st === 'late' ? x.late : x.done)) &&
         (!q || norm([x.task, x.ref, x.party, x.doer, x.src].join(' ')).includes(q))).sort((a, b) => (b.delay - a.delay) || ((a.planned || 0) - (b.planned || 0)));
       VIEWS.tasks.rows = rows;
       const srcs = Array.from(new Set(base.map(x => x.src))).sort(); const depts = Array.from(new Set(base.map(x => x.dept).filter(Boolean))).sort();
       const doers = Array.from(new Set(base.map(x => x.doer).filter(Boolean))).sort();
-      h += '<div class="toolbar">' + seg('atSt', [{ v: 'open', l: 'Open' }, { v: 'delayed', l: 'Delayed' }, { v: 'upcoming', l: 'Upcoming' }, { v: 'done', l: 'Done' }, { v: 'late', l: 'Late' }, { v: 'all', l: 'All' }], AT_UI.st) +
+      h += '<div class="toolbar">' + seg('atSt', [{ v: 'open', l: 'Open' }, { v: 'pending', l: 'All pending' }, { v: 'delayed', l: 'Delayed' }, { v: 'upcoming', l: 'Upcoming' }, { v: 'done', l: 'Done' }, { v: 'late', l: 'Late' }, { v: 'all', l: 'All' }], AT_UI.st) +
         '<select id="atSrc">' + selOpts(srcs, AT_UI.src, 'All sources') + '</select>' + (all ? '<select id="atWho">' + selOpts(doers, AT_UI.who, 'All doers') + '</select><select id="atDept">' + selOpts(depts, AT_UI.dept, 'All departments') + '</select>' : '') +
         '<input id="atFrom" type="date" value="' + esc(AT_UI.from) + '"><input id="atTo" type="date" value="' + esc(AT_UI.to) + '"><input id="atQ" placeholder="Search…" value="' + esc(AT_UI.q) + '"><span class="muted small">' + rows.length + ' task(s)</span><span class="grow"></span><button class="btn sm" data-act="at-csv">Export CSV</button></div>';
       h += '<div class="tbl-wrap tt-wrap"><table><tr><th>Source</th><th>Task</th><th>Reference</th><th>Party</th><th>Doer</th><th>Department</th><th>Planned</th><th>Actual</th><th>Status</th><th class="num">Delay</th><th>Escalation</th><th></th></tr>' +

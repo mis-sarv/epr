@@ -641,6 +641,16 @@
                             <p class="text-xs font-medium text-slate-500 mt-1">Monitor pending tasks & postpone deadlines.</p>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
+                            <!-- Opens these EA tasks (pending, completed or both) in ERP › Task › Task Tracker,
+                                 with the filters below; its "Back to Task Manager" comes back here. -->
+                            <div class="relative">
+                                <button id="eaTtBtn" onclick="eaTtMenuToggle(event)" title="Open the EA tasks in ERP › Task › Task Tracker (with the filters below)" class="text-xs font-extrabold text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5"><i class="ph-bold ph-arrow-square-out"></i> <span>Task Tracker</span> <i class="ph-bold ph-caret-down"></i></button>
+                                <div id="eaTtMenu" class="hidden absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-30 overflow-hidden text-left">
+                                    <button onclick="eaOpenTracker('pending')" class="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-indigo-50 border-b border-slate-100">Pending EA tasks<span class="block text-[10px] font-medium text-slate-400">Not done yet, upcoming ones included</span></button>
+                                    <button onclick="eaOpenTracker('done')" class="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-indigo-50 border-b border-slate-100">Completed EA tasks<span class="block text-[10px] font-medium text-slate-400">Done, on time or late</span></button>
+                                    <button onclick="eaOpenTracker('all')" class="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-indigo-50">All EA tasks<span class="block text-[10px] font-medium text-slate-400">Completed + pending</span></button>
+                                </div>
+                            </div>
                             <button id="eaFormToggle" onclick="eaToggleForm()" class="text-xs font-extrabold text-pink-700 bg-white hover:bg-pink-50 border border-pink-200 px-3 py-2 rounded-xl shadow-sm uppercase tracking-wider flex items-center gap-1.5"><i class="ph-bold ph-arrows-out"></i> <span>Full screen</span></button>
                             <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2 rounded-xl border shadow-sm hidden lg:block"><i class="ph-bold ph-x text-xl"></i></button>
                         </div>
@@ -797,6 +807,15 @@
                     <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2 rounded-xl border shadow-sm"><i class="ph-bold ph-x text-xl"></i></button>
                 </div>
                 <div class="p-6 overflow-x-auto">
+                    <!-- Google-style search over the directory (tmApplySearch). -->
+                    <div class="flex flex-wrap items-center gap-2 mb-5">
+                        <div class="relative w-full md:w-96">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                            <input type="text" id="dirSearch" oninput="tmApplySearch('dir')" autocomplete="off" placeholder="Search name, code, dept, designation, phone, task" title='Every word anywhere, in any order · "exact phrase" · -exclude · a OR b' class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-sky-500 font-bold text-sm">
+                        </div>
+                        <button onclick="tmClearSearch('dir')" class="text-xs font-extrabold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 uppercase tracking-wider">Clear</button>
+                        <span id="dirSearchCount" class="text-xs font-extrabold text-slate-500"></span>
+                    </div>
                     <table class="w-full text-left border-collapse rounded-2xl overflow-hidden shadow-sm border border-slate-200">
                         <thead>
                             <tr class="bg-slate-900 text-white text-sm">
@@ -809,6 +828,7 @@
                         </thead>
                         <tbody id="employeeListBody" class="divide-y divide-slate-200 bg-white"></tbody>
                     </table>
+                    <div id="dirSearchNone" style="display:none" class="text-center py-8 mt-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold">Nothing matches the search.</div>
                 </div>
             </div>
         </div>
@@ -956,7 +976,17 @@
                 </div>
                 
                 <div class="p-6 md:p-8">
+                    <!-- Google-style search over the employee cards (tmApplySearch). -->
+                    <div class="flex flex-wrap items-center gap-2 mb-5">
+                        <div class="relative w-full md:w-96">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                            <input type="text" id="mdSearch" oninput="tmApplySearch('md')" autocomplete="off" placeholder="Search name, code, dept, designation, task" title='Every word anywhere, in any order · "exact phrase" · -exclude · a OR b' class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm">
+                        </div>
+                        <button onclick="tmClearSearch('md')" class="text-xs font-extrabold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 uppercase tracking-wider">Clear</button>
+                        <span id="mdSearchCount" class="text-xs font-extrabold text-slate-500"></span>
+                    </div>
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5" id="mdEmployeeList"></div>
+                    <div id="mdSearchNone" style="display:none" class="text-center py-10 bg-white border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold">Nothing matches the search.</div>
 
                     <div id="mdSheetContainer" class="mt-8 hidden">
                         <div class="flex flex-wrap gap-3 justify-between items-center mb-5 bg-purple-50 p-5 rounded-2xl border border-purple-200 shadow-sm">
@@ -1005,6 +1035,15 @@
                     </div>
                 </div>
                 <div class="p-6 md:p-8 overflow-x-auto">
+                    <!-- Google-style search over the score rows (tmApplySearch). -->
+                    <div class="flex flex-wrap items-center gap-2 mb-5">
+                        <div class="relative w-full md:w-96">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                            <input type="text" id="scSearch" oninput="tmApplySearch('sc')" autocomplete="off" placeholder="Search name, code, dept, designation" title='Every word anywhere, in any order · "exact phrase" · -exclude · a OR b' class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-sm">
+                        </div>
+                        <button onclick="tmClearSearch('sc')" class="text-xs font-extrabold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 uppercase tracking-wider">Clear</button>
+                        <span id="scSearchCount" class="text-xs font-extrabold text-slate-500"></span>
+                    </div>
                     <table class="w-full text-left border-collapse rounded-2xl overflow-hidden shadow-sm border border-slate-200">
                         <thead>
                             <tr class="bg-slate-900 text-white text-sm">
@@ -1018,6 +1057,7 @@
                         </thead>
                         <tbody id="scoreCardBody" class="divide-y divide-slate-200 bg-white"></tbody>
                     </table>
+                    <div id="scSearchNone" style="display:none" class="text-center py-8 mt-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold">Nothing matches the search.</div>
                 </div>
             </div>
         </div>
@@ -1037,7 +1077,15 @@
                 
                 <div class="p-6 md:p-8 border-b border-slate-100 print-hide bg-white">
                     <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Select Employee</label>
-                    <select id="chartEmpSelect" onchange="generateChartForEmployee()" class="w-full md:w-1/2 px-4 py-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none bg-slate-50 font-bold transition-all"></select>
+                    <div class="flex flex-col md:flex-row gap-3">
+                        <!-- Narrows the employee list below (name, code, dept, designation). -->
+                        <div class="relative w-full md:w-1/3">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                            <input type="text" id="chartEmpFind" oninput="chartFilterEmployees()" autocomplete="off" placeholder="Find employee" title='Every word anywhere, in any order · "exact phrase" · -exclude · a OR b' class="w-full pl-9 pr-3 py-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none bg-white font-bold text-sm">
+                        </div>
+                        <select id="chartEmpSelect" onchange="generateChartForEmployee()" class="w-full md:w-1/2 px-4 py-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none bg-slate-50 font-bold transition-all"></select>
+                    </div>
+                    <p id="chartEmpFindInfo" class="text-[11px] font-bold text-slate-500 mt-1.5"></p>
                 </div>
 
                 <div id="chartReportContainer" class="p-6 md:p-8 hidden bg-white">
@@ -1054,6 +1102,16 @@
 
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-5 mb-8" id="chartStats"></div>
 
+                    <!-- Google-style search over the report rows (tmApplySearch). Print prints what is shown. -->
+                    <div class="flex flex-wrap items-center gap-2 mb-4 print-hide">
+                        <div class="relative w-full md:w-96">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                            <input type="text" id="chartSearch" oninput="tmApplySearch('chart')" autocomplete="off" placeholder="Search date, task, time, status, done by" title='Every word anywhere, in any order · "exact phrase" · -exclude · a OR b · e.g. missed -buddy' class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-bold text-sm">
+                        </div>
+                        <button onclick="tmClearSearch('chart')" class="text-xs font-extrabold text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl px-3 py-2.5 uppercase tracking-wider">Clear</button>
+                        <span id="chartSearchCount" class="text-xs font-extrabold text-slate-500"></span>
+                    </div>
+
                     <div class="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
                         <table class="w-full text-left border-collapse">
                             <thead>
@@ -1068,6 +1126,7 @@
                             <tbody id="completionChartBody" class="divide-y divide-slate-100 bg-white"></tbody>
                         </table>
                     </div>
+                    <div id="chartSearchNone" style="display:none" class="text-center py-8 mt-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 font-bold print-hide">Nothing matches the search.</div>
                 </div>
             </div>
         </div>
@@ -1091,6 +1150,90 @@
            into any HTML string. Quotes too, because some of it lands in
            title="" attributes. */
         const esc = s => String(s == null ? '' : s).replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+
+        /* ── Google-style search ──────────────────────────────────────────
+           A copy of sarvSearchMatch from store-core.js (this page does not
+           load the ERP's files); keep the two in step. Every keyword anywhere,
+           in any order; "double bed" = a phrase; -word = rows without it;
+           a OR b / a|b = either; punctuation ignored inside a word ("u2"
+           finds "U-2"); case never matters and a keyword may be part of a word. */
+        const tmSrchNorm = s => String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+        const tmSrchCompact = s => s.replace(/[^\p{L}\p{N}]+/gu, '');
+        const tmSrchCache = new Map();
+        function tmSearchParse(q) {
+            const key = String(q ?? '');
+            if (tmSrchCache.has(key)) return tmSrchCache.get(key);
+            const raw = [];
+            key.replace(/(-?)"([^"]*)"?|(\S+)/g, (m, neg, ph, w) => {
+                if (ph !== undefined) { const t = tmSrchNorm(ph); if (t) raw.push({ t, neg: !!neg }); }
+                else raw.push({ w });
+                return '';
+            });
+            const groups = [], exc = [];
+            let orNext = false;
+            raw.forEach(x => {
+                if (x.w !== undefined && (x.w === 'OR' || x.w === '|')) { orNext = groups.length > 0; return; }
+                let alts, neg = false;
+                if (x.w !== undefined) {
+                    let w = x.w;
+                    if (w.length > 1 && w[0] === '-') { neg = true; w = w.slice(1); }
+                    alts = w.split('|').map(tmSrchNorm).filter(Boolean);
+                } else { alts = [x.t]; neg = x.neg; }
+                if (!alts.length) { orNext = false; return; }
+                const terms = alts.map(t => ({ t, c: tmSrchCompact(t) }));
+                if (neg) exc.push(...terms);
+                else if (orNext) groups[groups.length - 1].push(...terms);
+                else groups.push(terms);
+                orNext = false;
+            });
+            const p = { groups, exc, empty: !groups.length && !exc.length };
+            if (tmSrchCache.size > 200) tmSrchCache.clear();
+            tmSrchCache.set(key, p);
+            return p;
+        }
+        // hay: a string, or an array of the row's fields. Empty search = everything matches.
+        function tmSearchMatch(hay, q) {
+            const p = tmSearchParse(q);
+            if (p.empty) return true;
+            const h = tmSrchNorm(Array.isArray(hay) ? hay.filter(v => v != null).join(' ') : hay);
+            let hc = null;
+            const has = x => {
+                if (h.includes(x.t)) return true;
+                if (!x.c) return false;
+                if (hc === null) hc = h.split(' ').map(tmSrchCompact).join(' ');
+                return hc.includes(x.c);
+            };
+            if (p.exc.some(has)) return false;
+            return p.groups.every(g => g.some(has));
+        }
+        /* Search boxes of MD Oversight, Score Card, Employee Directory and
+           Completion Chart. Each row carries its searchable text in data-hay
+           (set by the screen's render); typing only shows / hides rows, so an
+           open MD sheet or a loaded Score Card is never rebuilt. The render
+           calls tmApplySearch again at its end, so the typed text keeps
+           working after a period change or a refresh. */
+        const TM_SEARCH = {
+            md:    { input: 'mdSearch',    rows: '#mdEmployeeList [data-hay]',      noun: 'employee' },
+            sc:    { input: 'scSearch',    rows: '#scoreCardBody [data-hay]',       noun: 'employee' },
+            dir:   { input: 'dirSearch',   rows: '#employeeListBody [data-hay]',    noun: 'employee' },
+            chart: { input: 'chartSearch', rows: '#completionChartBody [data-hay]', noun: 'task' }
+        };
+        window.tmApplySearch = function(k) {
+            const c = TM_SEARCH[k], inp = document.getElementById(c.input); if (!inp) return;
+            const q = inp.value, rows = document.querySelectorAll(c.rows); let n = 0;
+            rows.forEach(r => { const ok = tmSearchMatch(r.dataset.hay, q); r.style.display = ok ? '' : 'none'; if (ok) n++; });
+            const cnt = document.getElementById(c.input + 'Count');
+            if (cnt) cnt.textContent = !rows.length ? '' : q.trim() ? `Showing ${n} of ${rows.length}` : `${rows.length} ${c.noun}${rows.length > 1 ? 's' : ''}`;
+            const none = document.getElementById(c.input + 'None');
+            if (none) none.style.display = rows.length && !n ? '' : 'none';
+        };
+        // What an employee row is found by. withTasks: also the text of their active tasks ("who does the stock count?").
+        function tmEmpHay(e, withTasks) {
+            const m = masterByCode(e.empCode);
+            return [e.empName, e.empCode, e.dept, e.desig, m && m.contact]
+                .concat(withTasks ? e.tasks.filter(t => t.active !== false).map(t => t.desc) : []).filter(Boolean).join(' ');
+        }
+        window.tmClearSearch = function(k) { const inp = document.getElementById(TM_SEARCH[k].input); if (inp) { inp.value = ''; tmApplySearch(k); inp.focus(); } };
 
         const currentDateObj = new Date();
         const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -1676,6 +1819,55 @@
             ['eaFq', 'eaFemp', 'eaFby', 'eaFst', 'eaFfrom', 'eaFto'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
             renderEATasks();
         };
+        /* ── EA tasks in ERP › Task › Task Tracker ────────────────────────
+           Same tab: index.html?tt=<filters> (erp-shell.js opens the Task
+           Tracker leaf, fms-tasks.js ttApplyLink applies them). Carried over:
+           source = Delegation (EA), status, employee, search text and the due
+           dates; "Assigned by" has no Task Tracker filter, so it stays here.
+           The filters are kept in sessionStorage, and the Tracker's "Back to
+           Task Manager" (task_manager.html#ea) opens this list with them again. */
+        window.eaTtMenuToggle = function(ev) { ev.stopPropagation(); document.getElementById('eaTtMenu').classList.toggle('hidden'); };
+        document.addEventListener('click', e => { const m = document.getElementById('eaTtMenu'); if (m && !e.target.closest('#eaTtMenu')) m.classList.add('hidden'); });
+        const EA_TT_DAYS = 90;   // how far back the Tracker looks when no "Due from" is set (it loads every task of those days)
+        window.eaOpenTracker = function(mode) {
+            document.getElementById('eaTtMenu').classList.add('hidden');
+            const fv = id => (document.getElementById(id) || {}).value || '';
+            const f = { q: fv('eaFq'), emp: fv('eaFemp'), by: fv('eaFby'), st: fv('eaFst'), from: fv('eaFfrom'), to: fv('eaFto') };
+            try { sessionStorage.setItem('tm_ea_back', JSON.stringify(f)); } catch (e) {}
+            const today = todayStr(), shift = n => { const d = dateAt(today); d.setDate(d.getDate() + n); return ymd(d); };
+            // Pending due dates (of the chosen employee) decide the default range, so the old overdue and the far upcoming ones are in it.
+            const due = [];
+            appState.employees.forEach(emp => { if (f.emp && emp.empCode !== f.emp) return; emp.tasks.forEach(t => {
+                if (t.frequency === 'ea' && t.active !== false && !emp.records[t.freqValue]?.[t.id]?.checked) due.push(t.freqValue); }); });
+            due.sort();
+            const minFrom = shift(-EA_TT_DAYS);
+            let from = f.from || (mode === 'done' ? shift(-30) : (due[0] && due[0] < today ? (due[0] < minFrom ? minFrom : due[0]) : shift(-30)));
+            let to = f.to || (mode === 'done' ? today : (due.length && due[due.length - 1] > today ? due[due.length - 1] : shift(7)));
+            if (to < from) to = from;
+            // EA status → Task Tracker status. Overdue = Delayed; Due today = today's pending; Postponed has no match, so all pending.
+            let st = mode === 'done' ? 'done' : mode === 'all' ? 'all' : 'pending';
+            if (mode === 'pending') {
+                if (f.st === 'OVERDUE') st = 'delayed';
+                else if (f.st === 'UPCOMING') st = 'upcoming';
+                else if (f.st === 'TODAY' && !f.from && !f.to) from = to = today;
+            }
+            const emp = f.emp ? appState.employees.find(e => e.empCode === f.emp) : null;
+            const p = new URLSearchParams({ src: 'ea', st, from, to, back: 'tm' });
+            if (emp) { p.set('emp', emp.empCode); p.set('name', emp.empName); }
+            if (f.q.trim()) p.set('q', f.q.trim());
+            location.href = 'index.html?tt=' + encodeURIComponent('?' + p.toString());
+        };
+        // task_manager.html#ea, from the Task Tracker's "Back to Task Manager": this list with the filters it was left with.
+        function eaReturnFromTracker() {
+            try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+            navigate('ea-delegation');
+            let f = null;
+            try { f = JSON.parse(sessionStorage.getItem('tm_ea_back') || 'null'); sessionStorage.removeItem('tm_ea_back'); } catch (e) {}
+            if (!f) return;
+            [['eaFq', f.q], ['eaFemp', f.emp], ['eaFby', f.by], ['eaFst', f.st], ['eaFfrom', f.from], ['eaFto', f.to]]
+                .forEach(([id, v]) => { const el = document.getElementById(id); if (el && v) el.value = v; });
+            renderEATasks();
+        }
         // Keeps a filter dropdown's choice while its options are rebuilt from the current list.
         function eaFillSelect(id, first, opts) {
             const el = document.getElementById(id); if (!el) return; const cur = el.value;
@@ -1794,7 +1986,7 @@
         };
 
         // --- Directory / Delete Flow ---
-        function renderEmployeeList() { const b=document.getElementById('employeeListBody'); if(!appState.employees.length){b.innerHTML='<tr><td colspan="5" class="p-8 text-center font-bold text-slate-400 bg-white">Directory is empty.</td></tr>';return;} b.innerHTML = appState.employees.map(e=>`<tr class="hover:bg-slate-50 transition-colors"><td class="p-5 font-extrabold text-slate-800">${esc(e.empName)}</td><td class="p-5"><span class="bg-slate-100 text-slate-600 font-mono text-xs px-2.5 py-1.5 rounded-lg font-bold border border-slate-200 shadow-inner">${esc(e.empCode)}</span></td><td class="p-5"><div class="text-xs font-extrabold text-indigo-700">${esc(e.dept||'-')}</div><div class="text-[10px] text-slate-500 font-bold uppercase mt-0.5 tracking-wider">${esc(e.desig||'-')}</div></td><td class="p-5 text-center font-extrabold text-emerald-600 text-lg">${e.tasks.filter(t=>t.active!==false).length}</td><td class="p-5 text-center"><button onclick="viewEmployeeTasksFromDirectory('${esc(e.empCode)}')" class="text-indigo-600 bg-white hover:bg-indigo-50 p-2.5 rounded-xl transition-all mr-2 border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-calendar-check text-lg"></i></button><button onclick="deleteEmployee('${esc(e.empCode)}')" class="text-red-500 bg-white hover:bg-red-50 p-2.5 rounded-xl transition-all border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td></tr>`).join(''); }
+        function renderEmployeeList() { const b=document.getElementById('employeeListBody'); if(!appState.employees.length){b.innerHTML='<tr><td colspan="5" class="p-8 text-center font-bold text-slate-400 bg-white">Directory is empty.</td></tr>';tmApplySearch('dir');return;} b.innerHTML = appState.employees.map(e=>`<tr data-hay="${esc(tmEmpHay(e, true))}" class="hover:bg-slate-50 transition-colors"><td class="p-5 font-extrabold text-slate-800">${esc(e.empName)}</td><td class="p-5"><span class="bg-slate-100 text-slate-600 font-mono text-xs px-2.5 py-1.5 rounded-lg font-bold border border-slate-200 shadow-inner">${esc(e.empCode)}</span></td><td class="p-5"><div class="text-xs font-extrabold text-indigo-700">${esc(e.dept||'-')}</div><div class="text-[10px] text-slate-500 font-bold uppercase mt-0.5 tracking-wider">${esc(e.desig||'-')}</div></td><td class="p-5 text-center font-extrabold text-emerald-600 text-lg">${e.tasks.filter(t=>t.active!==false).length}</td><td class="p-5 text-center"><button onclick="viewEmployeeTasksFromDirectory('${esc(e.empCode)}')" class="text-indigo-600 bg-white hover:bg-indigo-50 p-2.5 rounded-xl transition-all mr-2 border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-calendar-check text-lg"></i></button><button onclick="deleteEmployee('${esc(e.empCode)}')" class="text-red-500 bg-white hover:bg-red-50 p-2.5 rounded-xl transition-all border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td></tr>`).join(''); tmApplySearch('dir'); }
 
         window.deleteEmployee = function(c) {
             pendingDeleteEmpCode = c;
@@ -2705,7 +2897,7 @@
             if (!dTasks.length) tb.innerHTML = `<tr><td class="p-8 text-center font-bold text-slate-400 bg-white" colspan="${dim + 1}">No tasks in ${monthNames[vm-1]} ${vy}.</td></tr>`;
         }
 
-        function renderMDView() { const lc=document.getElementById('mdEmployeeList'); lc.innerHTML=''; document.getElementById('mdSheetContainer').classList.add('hidden'); if(!appState.employees.length){ lc.innerHTML='<div class="col-span-full text-center py-10 bg-white border border-slate-200 rounded-2xl shadow-sm text-slate-400 font-bold">No employees found.</div>'; return; } const now = new Date(); appState.employees.forEach(e=>{ const c=document.createElement('div'); c.className="bg-white border border-slate-200 rounded-2xl p-6 cursor-pointer hover:border-purple-400 shadow-sm hover:shadow-md transition-all group"; const s = dayScore(e, todayStr(), now); c.innerHTML=`<div class="flex items-center mb-5"><div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold mr-4 border border-purple-100 shadow-inner text-xl group-hover:scale-110 transition-transform">${esc(e.empName.charAt(0))}</div><div><h4 class="font-extrabold text-slate-800 tracking-tight text-lg">${esc(e.empName)}</h4><p class="text-xs font-extrabold text-slate-500 mt-0.5 tracking-wider uppercase">${esc(e.empCode)}</p></div></div><div class="flex justify-between items-end border-t border-slate-100 pt-4 text-sm"><div><span class="block font-extrabold text-slate-400 text-[10px] uppercase tracking-widest">Today</span><span class="text-[11px] font-bold text-slate-500">${s.done}/${s.total} done${s.overdue?` · <span class="text-red-600">${s.overdue} overdue</span>`:''}</span></div><span class="font-extrabold text-xl leading-none ${pctCls(s.pct)}">${s.pct==null?'–':s.pct+'%'}</span></div>`; c.onclick=()=>showMdSheet(e, true); lc.appendChild(c); }); }
+        function renderMDView() { const lc=document.getElementById('mdEmployeeList'); lc.innerHTML=''; document.getElementById('mdSheetContainer').classList.add('hidden'); if(!appState.employees.length){ lc.innerHTML='<div class="col-span-full text-center py-10 bg-white border border-slate-200 rounded-2xl shadow-sm text-slate-400 font-bold">No employees found.</div>'; tmApplySearch('md'); return; } const now = new Date(); appState.employees.forEach(e=>{ const c=document.createElement('div'); c.className="bg-white border border-slate-200 rounded-2xl p-6 cursor-pointer hover:border-purple-400 shadow-sm hover:shadow-md transition-all group"; const s = dayScore(e, todayStr(), now); c.innerHTML=`<div class="flex items-center mb-5"><div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold mr-4 border border-purple-100 shadow-inner text-xl group-hover:scale-110 transition-transform">${esc(e.empName.charAt(0))}</div><div><h4 class="font-extrabold text-slate-800 tracking-tight text-lg">${esc(e.empName)}</h4><p class="text-xs font-extrabold text-slate-500 mt-0.5 tracking-wider uppercase">${esc(e.empCode)}</p></div></div><div class="flex justify-between items-end border-t border-slate-100 pt-4 text-sm"><div><span class="block font-extrabold text-slate-400 text-[10px] uppercase tracking-widest">Today</span><span class="text-[11px] font-bold text-slate-500">${s.done}/${s.total} done${s.overdue?` · <span class="text-red-600">${s.overdue} overdue</span>`:''}</span></div><span class="font-extrabold text-xl leading-none ${pctCls(s.pct)}">${s.pct==null?'–':s.pct+'%'}</span></div>`; c.dataset.hay=tmEmpHay(e, true); c.onclick=()=>showMdSheet(e, true); lc.appendChild(c); }); tmApplySearch('md'); }
 
         async function renderScoreCard() {
             const tb=document.getElementById('scoreCardBody');
@@ -2726,7 +2918,7 @@
                 tb.innerHTML='<tr><td colspan="6" class="text-center p-8 font-bold text-slate-400 bg-white">Loading…</td></tr>';
                 if (!(await ensureLoaded(ymd(startDate), appState.loadedTo))) return;
             }
-            if(!appState.employees.length){tb.innerHTML='<tr><td colspan="6" class="text-center p-8 font-bold text-slate-400 bg-white">No data available.</td></tr>';return;}
+            if(!appState.employees.length){tb.innerHTML='<tr><td colspan="6" class="text-center p-8 font-bold text-slate-400 bg-white">No data available.</td></tr>';tmApplySearch('sc');return;}
 
             const now = new Date();
             // Best points score first, so the board reads like a ranking.
@@ -2734,11 +2926,21 @@
             tb.innerHTML = rows.map(({ e, s }) => {
                 const exp = s.done + s.missed + s.overdue; const comp = exp ? Math.round(s.done / exp * 100) : 0;
                 const cls = s.pct == null ? 'bg-slate-100 text-slate-500 border-slate-200' : (s.pct>=90?"bg-green-100 text-green-700 border-green-200":(s.pct>=60?"bg-orange-100 text-orange-700 border-orange-200":"bg-red-100 text-red-700 border-red-200"));
-                return `<tr class="hover:bg-slate-50 transition-colors"><td class="p-5"><div class="font-extrabold text-slate-800 text-base">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mt-1">${esc(e.empCode)}</div></td><td class="p-5 text-center font-extrabold text-slate-600 text-lg">${exp}</td><td class="p-5 text-center"><div class="font-extrabold text-green-600 text-lg">${s.done}</div><div class="text-[10px] font-bold text-slate-400">${s.onTime} on time · ${s.grace + s.late} late</div></td><td class="p-5 text-center font-extrabold text-red-500 text-lg">${s.missed + s.overdue}</td><td class="p-5 text-center font-extrabold text-slate-600">${comp}%</td><td class="p-5 text-center"><span class="px-4 py-2 rounded-xl border-2 font-extrabold text-sm shadow-inner tracking-tight ${cls}">${s.pct == null ? '–' : s.pct + '%'}</span><div class="text-[10px] font-bold text-slate-400 mt-1.5">${s.gained} / ${s.possible} pts</div></td></tr>`;
+                return `<tr data-hay="${esc(tmEmpHay(e))}" class="hover:bg-slate-50 transition-colors"><td class="p-5"><div class="font-extrabold text-slate-800 text-base">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mt-1">${esc(e.empCode)}</div></td><td class="p-5 text-center font-extrabold text-slate-600 text-lg">${exp}</td><td class="p-5 text-center"><div class="font-extrabold text-green-600 text-lg">${s.done}</div><div class="text-[10px] font-bold text-slate-400">${s.onTime} on time · ${s.grace + s.late} late</div></td><td class="p-5 text-center font-extrabold text-red-500 text-lg">${s.missed + s.overdue}</td><td class="p-5 text-center font-extrabold text-slate-600">${comp}%</td><td class="p-5 text-center"><span class="px-4 py-2 rounded-xl border-2 font-extrabold text-sm shadow-inner tracking-tight ${cls}">${s.pct == null ? '–' : s.pct + '%'}</span><div class="text-[10px] font-bold text-slate-400 mt-1.5">${s.gained} / ${s.possible} pts</div></td></tr>`;
             }).join('');
+            tmApplySearch('sc');
         }
 
-        function initCompletionChart() { document.getElementById('chartEmpSelect').innerHTML = empOptions('<option value="">-- Choose Employee --</option>'); document.getElementById('chartReportContainer').classList.add('hidden'); }
+        function initCompletionChart() { document.getElementById('chartEmpFind').value = ''; chartFilterEmployees(); document.getElementById('chartReportContainer').classList.add('hidden'); }
+        // "Find employee": the list keeps only the matches; the chosen one stays, so its report does not vanish.
+        window.chartFilterEmployees = function() {
+            const sel = document.getElementById('chartEmpSelect'), cur = sel.value, q = document.getElementById('chartEmpFind').value;
+            const list = appState.employees.filter(e => e.empCode === cur || tmSearchMatch(tmEmpHay(e), q));
+            sel.innerHTML = '<option value="">-- Choose Employee --</option>' + list.map(e => `<option value="${esc(e.empCode)}">${esc(e.empName)} (${esc(e.empCode)})</option>`).join('');
+            sel.value = cur;
+            const n = list.filter(e => e.empCode !== cur || tmSearchMatch(tmEmpHay(e), q)).length;
+            document.getElementById('chartEmpFindInfo').textContent = q.trim() ? (n ? `${n} of ${appState.employees.length} employees match` : 'No employee matches the search.') : '';
+        };
         window.generateChartForEmployee = function() {
             const c=document.getElementById('chartEmpSelect').value; const con=document.getElementById('chartReportContainer'); if(!c){con.classList.add('hidden');return;}
             const emp=appState.employees.find(e=>e.empCode===c); if(!emp)return; con.classList.remove('hidden');
@@ -2755,10 +2957,12 @@
                     else if (sc.state === 'missed') sb = badge('bg-red-100 text-red-700 border-red-200', 'Missed', sc.pts + ' pts if approved');
                     else if (sc.state === 'overdue') sb = badge('bg-red-50 text-red-600 border-red-200', 'Overdue', sc.pts + ' pts now');
                     else sb = badge('bg-slate-100 text-slate-600 border-slate-200', 'Pending', '');
-                    rows+=`<tr class="hover:bg-slate-50 transition-colors"><td class="p-5 text-xs font-bold text-slate-500 font-mono">${ds}</td><td class="p-5 text-sm font-extrabold text-slate-800 leading-tight">${esc(t.desc)} ${t.isBuddyTask?'<span class="ml-2 text-[9px] text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-widest inline-block shadow-inner">Buddy</span>':''}</td><td class="p-5 text-xs font-extrabold text-slate-500 bg-slate-50/50">${esc(t.time||'-')}</td><td class="p-5 text-xs font-extrabold font-mono ${sc.state==='done'&&sc.phase!=='on-time'?'text-orange-600':'text-slate-600'}">${esc(at)}${rec&&rec.doneBy?`<div class="text-[9px] font-bold text-slate-400 font-sans normal-case">${esc(rec.doneBy)}</div>`:''}</td><td class="p-5">${sb}</td></tr>`;
+                    const hay = [ds, ds.split('-').reverse().join('/'), t.desc, t.time, at, rec && rec.doneBy, t.isBuddyTask ? 'buddy ' + (t.primaryName || '') : '', sb.replace(/<[^>]*>/g, ' ')];
+                    rows+=`<tr data-hay="${esc(hay.filter(Boolean).join(' '))}" class="hover:bg-slate-50 transition-colors"><td class="p-5 text-xs font-bold text-slate-500 font-mono">${ds}</td><td class="p-5 text-sm font-extrabold text-slate-800 leading-tight">${esc(t.desc)} ${t.isBuddyTask?'<span class="ml-2 text-[9px] text-teal-700 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-lg font-extrabold uppercase tracking-widest inline-block shadow-inner">Buddy</span>':''}</td><td class="p-5 text-xs font-extrabold text-slate-500 bg-slate-50/50">${esc(t.time||'-')}</td><td class="p-5 text-xs font-extrabold font-mono ${sc.state==='done'&&sc.phase!=='on-time'?'text-orange-600':'text-slate-600'}">${esc(at)}${rec&&rec.doneBy?`<div class="text-[9px] font-bold text-slate-400 font-sans normal-case">${esc(rec.doneBy)}</div>`:''}</td><td class="p-5">${sb}</td></tr>`;
                 });
             }
             tb.innerHTML=rows || '<tr><td colspan="5" class="p-8 text-center font-bold text-slate-400">No tasks this month.</td></tr>';
+            tmApplySearch('chart');
             const s = rangeScore(emp, new Date(appState.currentYear, appState.currentMonth - 1, 1), new Date(appState.currentYear, appState.currentMonth - 1, appState.currentDay), now);
             const tile = (bg, lc, vc, title, v) => `<div class="${bg} border p-5 rounded-2xl text-center shadow-sm"><div class="text-[10px] font-extrabold ${lc} uppercase tracking-widest mb-1.5">${title}</div><div class="font-extrabold text-4xl ${vc}">${v}</div></div>`;
             document.getElementById('chartStats').innerHTML =
@@ -2812,6 +3016,8 @@
             // The launcher's "My Tasks" tile opens task_manager.html#my-tasks: that
             // entry is checked on its own key, and goes straight to the checklist.
             const viaMyTasks = location.hash === '#my-tasks';
+            // task_manager.html#ea: back from ERP › Task Tracker, straight to EA Delegation.
+            const viaEa = location.hash === '#ea';
             const u = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: viaMyTasks ? MY_TASKS_KEY : APP_KEY, label: viaMyTasks ? 'My Tasks' : 'Task Manager' });
             try {
                 const disp = document.getElementById('currentUserDisplay');
@@ -2820,6 +3026,7 @@
                 await Promise.all([loadData(), loadMasterEmployees()]);
                 navigate('home');
                 if (viaMyTasks && appState.dbReady) await openMyTasks();
+                else if (viaEa && appState.dbReady && can('TM_EA')) eaReturnFromTracker();
                 // Points on open cards drop in real time while a task is overdue.
                 setInterval(liveTick, 15000);
             } catch (e) {
