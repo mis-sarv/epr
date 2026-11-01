@@ -2673,6 +2673,7 @@
     };
     OC_KEEP.concat(['dmOcCustomer']).forEach(id => { const el = q(id); if (el) el.addEventListener('input', () => { keep(); ocSchedule(); }); });
     q('dmOcShowRate').addEventListener('change', ocSchedule);
+    if (q('dmOcTemplate')) q('dmOcTemplate').addEventListener('change', ocTplChanged);
     // Filter ticks: the rows keep re-rendering, so the listener sits on the grid.
     q('dmOcFilterGrid').addEventListener('change', e => {
       const cb = e.target.closest('input[type=checkbox]');
@@ -2797,7 +2798,7 @@
     clearTimeout(ocTimer);
     const n = ocSelected().length;
     if (!n) { ocShow(''); ocStatus('No design selected.'); return; }
-    if (n > OC_AUTO_MAX) { ocStatus(n + ' designs selected · press Full Preview to see the PDF'); return; }
+    if (n > (ocTplId() ? OC_TPL_AUTO_MAX : OC_AUTO_MAX)) { ocStatus(n + ' designs selected · press Full Preview to see the PDF'); return; }
     ocTimer = setTimeout(() => ocPreview(false), 900);
   }
   function ocShow(url){
@@ -3224,6 +3225,8 @@
   }
 
   async function ocBuild(){
+    // A saved Catalog Template picked in "Choose Template": its own look (see ocBuildTemplate).
+    if (ocTplId()) return ocBuildTemplate();
     if (typeof jspdfNativeReady_ === 'function' ? !jspdfNativeReady_() : !(window.jspdf && window.jspdf.jsPDF)) {
       toast('jsPDF did not load. Please reload the page.', 'error');
       return null;
@@ -3284,9 +3287,174 @@
     return doc;
   }
 
+  /* ══ CHOOSE TEMPLATE: the PDF in a saved Catalog Template's look ══════
+     The dropdown lists the templates saved from Masters › Catalog Templates
+     (catalog_maker.html; cat_list / cat_get in CATALOG_TEMPLATES_MIGRATION.sql,
+     readable with any ERP session). Default (empty) = the built-in landscape
+     Online Catalogue above, unchanged.
+     With a template picked, ocBuild hands over to ocBuildTemplate: the
+     selected designs (same filters, same "Print rates") with their
+     photoshoot photos go to catalog_maker.html#render in a hidden iframe,
+     which builds the PDF with the template's own cover and product page
+     (one A4 portrait page per design, photos as a grid). The photos are
+     loaded and shrunk HERE (imgData + ocCrop, cached) and sent as data
+     URLs, so the iframe needs no network or CORS for them.
+     The choice is remembered in this browser (OC_TPL_STORE). */
+  const OC_TPL_STORE = 'dm_oc_template_v1';
+  const OC_TPL_AUTO_MAX = 4;        // template PDFs are heavier: auto-preview up to 4 designs
+  let ocTplRows = [];               // [{id, name, page_count, version, ...}]
+  const ocTplCache = new Map();     // id → template (pages + settings), per version
+  let ocTplLoaded = false;
+  let ocFrame = null, ocFrameReady = null, ocReq = 0;
+  const ocReplies = new Map();      // reqId → {resolve, reject}
+
+  const ocTplId = () => ocV('dmOcTemplate');
+  const ocTplHint = t => { const el = q('dmOcTemplateHint'); if (el) el.textContent = t || ''; };
+  function ocToken(){
+    try { return localStorage.getItem(typeof SARV_SSO_TOKEN_KEY !== 'undefined' ? SARV_SSO_TOKEN_KEY : 'sarv_sso_token') || ''; }
+    catch (e) { return ''; }
+  }
+  async function ocCatRpc(fn, args){
+    if (typeof SB === 'undefined' || !SB) throw new Error('Supabase is not connected.');
+    const r = await SB.rpc(fn, Object.assign({ p_token: ocToken() }, args || {}));
+    if (r.error) {
+      const c = r.error.code;
+      if (c === 'PGRST202' || c === '42883' || c === '42P01') {
+        const e = new Error('Catalog templates are not set up on the server. Admin: run sql/CATALOG_TEMPLATES_MIGRATION.sql.');
+        e.code = 'NOT_SET_UP'; throw e;
+      }
+      throw new Error(r.error.message || String(r.error));
+    }
+    const d = r.data || {};
+    if (d.success === false) {
+      const msg = { NO_TOKEN: 'Please log in again from the Apps page.', NO_SESSION: 'Please log in again from the Apps page.',
+        SESSION_EXPIRED: 'Your session has expired. Please log in again.', SESSION_REVOKED: 'This session has ended. Please log in again.',
+        NOT_FOUND: 'This template is no longer on the server.' }[d.error];
+      throw new Error(msg || d.error || 'The server refused the request.');
+    }
+    return d;
+  }
+
+  async function ocLoadTemplates(force){
+    const sel = q('dmOcTemplate'); if (!sel) return;
+    if (ocTplLoaded && !force) return;
+    let keep = sel.value;
+    if (!ocTplLoaded) { try { keep = localStorage.getItem(OC_TPL_STORE) || ''; } catch (e) {} }
+    ocTplHint('Loading templates…');
+    try {
+      const d = await ocCatRpc('cat_list');
+      ocTplRows = d.rows || [];
+      ocTplLoaded = true;
+      sel.innerHTML = '<option value="">Default: Online Catalogue layout (landscape)</option>'
+        + ocTplRows.map(t => '<option value="' + Number(t.id) + '">' + esc(t.name) + '  (' + (Number(t.page_count) || 0) + ' pages, saved by '
+          + esc(t.updated_by || '-') + ')</option>').join('');
+      sel.value = ocTplRows.some(t => String(t.id) === String(keep)) ? String(keep) : '';
+      ocTplHint(ocTplRows.length ? ocTplRows.length + ' templates saved in Masters › Catalog Templates'
+        : 'No template saved yet: make one in Masters › Catalog Templates');
+    } catch (e) {
+      console.warn('[DM] catalog templates:', e.message || e);
+      ocTplHint(e.message || String(e));
+      sel.value = '';
+    }
+    ocTplHintSel();
+  }
+  function ocTplHintSel(){
+    const t = ocTplRows.find(r => String(r.id) === ocTplId());
+    if (t) ocTplHint('PDF in the "' + t.name + '" look: its cover, then one A4 page per selected design with its photoshoot photos');
+  }
+  function ocTplChanged(){
+    try { localStorage.setItem(OC_TPL_STORE, ocTplId()); } catch (e) {}
+    if (!ocTplId()) ocTplHint(ocTplRows.length ? ocTplRows.length + ' templates saved in Masters › Catalog Templates' : '');
+    ocTplHintSel();
+    ocSchedule();
+  }
+  // The template's pages, read once per saved version.
+  async function ocGetTemplate(id){
+    const row = ocTplRows.find(r => String(r.id) === String(id));
+    const key = id + '@' + (row ? row.version : '');
+    if (ocTplCache.has(key)) return ocTplCache.get(key);
+    const d = await ocCatRpc('cat_get', { p_id: Number(id) });
+    const t = d.template || {};
+    ocTplCache.set(key, t);
+    return t;
+  }
+
+  // The hidden catalog_maker.html#render frame, created on first use.
+  function ocRenderFrame(){
+    if (ocFrameReady) return ocFrameReady;
+    ocFrameReady = new Promise((resolve, reject) => {
+      const fr = document.createElement('iframe');
+      fr.src = 'catalog_maker.html#render';
+      fr.title = 'Catalog template renderer';
+      fr.setAttribute('aria-hidden', 'true'); fr.tabIndex = -1;
+      // Off screen but laid out (html2canvas draws nothing in a hidden or display:none frame).
+      fr.style.cssText = 'position:fixed;left:-12000px;top:0;width:1200px;height:1700px;border:0;';
+      const t = setTimeout(() => { ocFrameReady = null; fr.remove(); reject(new Error('The catalog template page did not load (catalog_maker.html).')); }, 45000);
+      const onMsg = e => {
+        if (e.source !== fr.contentWindow || !e.data) return;
+        if (e.data.cm === 'ready') { clearTimeout(t); resolve(fr); return; }
+        const w = ocReplies.get(e.data.reqId); if (!w) return;
+        if (e.data.cm === 'progress') { ocStatus(e.data.text); return; }
+        ocReplies.delete(e.data.reqId);
+        if (e.data.cm === 'done') w.resolve(e.data);
+        else w.reject(new Error(e.data.message || 'Template PDF failed'));
+      };
+      window.addEventListener('message', onMsg);
+      document.body.appendChild(fr);
+      ocFrame = fr;
+    });
+    return ocFrameReady;
+  }
+
+  async function ocBuildTemplate(){
+    await loadPhotoshoots();
+    const list = ocSelected();
+    if (!list.length) { ocStatus('No design selected.'); return null; }
+    const s = ocSettings();
+    ocStatus('Reading the template…');
+    const tpl = await ocGetTemplate(ocTplId());
+
+    // Every photo loaded and shrunk to ≤1400 px (cached), in matching order.
+    const designs = [];
+    let done = 0;
+    const total = list.reduce((n, d) => n + ocPhotos(d).length, 0);
+    for (const d of list) {
+      const photos = [];
+      for (const x of ocPhotos(d)) {
+        if (done++ % 4 === 0) ocStatus('Loading photos (' + done + '/' + total + ')…');
+        const img = await imgData(x.url);
+        const r = img ? await ocCrop(x.url, img, img.w / img.h, 1400) : null;
+        if (r && r.dataUrl) photos.push({ src: r.dataUrl, label: x.p.matching_name || '' });
+      }
+      designs.push({
+        design_no: d.design_no, sku: d.design_sku_no || '', quality: d.blanket_quality || '',
+        bed_size: d.bed_size || '', design_type: d.design_type || '',
+        shades: (d.matchings || []).map(m => m.matching_name).filter(Boolean),
+        photos: photos, rate: ocRate(d, s)
+      });
+    }
+
+    ocStatus('Opening the template page…');
+    const fr = await ocRenderFrame();
+    const reqId = ++ocReq;
+    const res = await new Promise((resolve, reject) => {
+      ocReplies.set(reqId, { resolve, reject });
+      fr.contentWindow.postMessage({ cm: 'render', reqId: reqId,
+        template: { pages: tpl.pages || [], settings: tpl.settings || {} },
+        designs: designs, opts: { unit: s.unit, customer: s.customer } }, '*');
+      setTimeout(() => { if (ocReplies.delete(reqId)) reject(new Error('The template PDF took too long. Try fewer designs.')); }, 10 * 60 * 1000);
+    });
+    ocStatus(list.length + ' designs · ' + res.pages + ' pages · template "' + (tpl.name || '') + '"');
+    // The same shape as a jsPDF doc for ocPreview / ocDownload / ocOpen.
+    const blob = res.blob;
+    return { tplName: tpl.name || '', output: kind => kind === 'blob' ? blob : URL.createObjectURL(blob) };
+  }
+
   function ocFileName(){
     const c = ocV('dmOcCustomer').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    return 'Sarv_India_Catalogue' + (c ? '_' + c : '') + '_' + new Date().toISOString().slice(0, 10) + '.pdf';
+    const t = ocTplId() ? (ocTplRows.find(r => String(r.id) === ocTplId()) || {}).name : '';
+    const tn = String(t || '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return 'Sarv_India_Catalogue' + (tn ? '_' + tn : '') + (c ? '_' + c : '') + '_' + new Date().toISOString().slice(0, 10) + '.pdf';
   }
   async function ocDownload(){
     const doc = await ocBuild(); if (!doc) { if (!ocSelected().length) toast('Select at least one design.', 'warn'); return; }
@@ -4141,7 +4309,11 @@
     root.querySelectorAll('.dm-tab').forEach(b => b.classList.toggle('active', b.dataset.dmtab === paneId));
     if (paneId === 'dmCataloguePane') renderCatalogueFilters();
     if (paneId === 'dmAddPhotoshootPane') loadPhotoshoots().then(populatePsInfo);
-    if (paneId === 'dmOnlineCatPane') { ocStatus('Loading photoshoots…'); loadPhotoshoots().then(() => { ocStatus(''); ocRender(); }); }
+    if (paneId === 'dmOnlineCatPane') {
+      ocStatus('Loading photoshoots…');
+      // The template list first (fast), so a remembered template is in place before the first preview.
+      ocLoadTemplates(false).then(() => loadPhotoshoots()).then(() => { ocStatus(''); ocRender(); });
+    }
     if (paneId === 'dmMatchingSkuPane') loadDesigns().then(msOpen);
   }
 
@@ -4260,6 +4432,7 @@
   window.dmPsSaveAll                = psSaveAll;
   window.dmPsDelete                 = psDelete;
   window.dmOcPreview                = ocPreview;
+  window.dmOcLoadTemplates          = ocLoadTemplates;
   window.dmOcDownload               = ocDownload;
   window.dmOcOpen                   = ocOpen;
   window.dmOcToggle                 = ocToggle;

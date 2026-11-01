@@ -277,6 +277,10 @@
          (Admin / MD / GM by default). Users read their SOPs from the
          launcher's "My SOPs" tile, not from here. */
       { label: 'SOP Master', go: 'SOP_MASTER' },
+      /* catalog_maker.html in an iframe: product catalogs saved as templates
+         on the server (cat_* RPCs, sql/CATALOG_TEMPLATES_MIGRATION.sql),
+         shown by HOME_CATALOG_MAKER (Admin / MD / GM by default). */
+      { label: 'Catalog Templates', go: 'CATALOG_MAKER' },
       { label: 'Geography' }, { label: 'Finance Masters' },
       { label: 'General Masters' }, { label: 'HR Masters' },
       { label: 'Warehouse / Location' } ] },
@@ -1099,6 +1103,7 @@
     PRINTING_LOT: 'printing lot card print',
     TRIMS: 'trims packing material manager',
     SOP_MASTER: 'sop standard operating procedure work instruction training designation steps',
+    CATALOG_MAKER: 'catalog catalogue maker template brochure product pdf cover page design',
     FMS_BUILDER: 'fms flow management system builder process steps doer tat flow chart workflow',
     FMS_VIEW: 'fms view tracker flow records planned actual delay my steps done pending kaam',
     TASK_TRACKER: 'task tracker all tasks checklist ea delegation complaint pending delayed kaam',

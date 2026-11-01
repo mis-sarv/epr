@@ -32,8 +32,8 @@
      circumference so the circle reads crisply on white and on dark headers
      alike. The ring is an inner border (box-sizing) so SIZE stays the real
      outer diameter and the centre stays exactly on the cursor tip. */
-  var SIZE = 84;    // px, outer diameter of the spotlight (ring included)
-  var RING = 2;     // px, ring width
+  var SIZE = 0;    // px, outer diameter of the spotlight (ring included)
+  var RING = 1;     // px, ring width
 
   var css = document.createElement('style');
   css.textContent =

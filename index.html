@@ -180,6 +180,12 @@
       <span class="sarv-home-text"><b>SOP Master</b><small>Designation-wise SOPs, step cards with pictures, who has read them</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Masters › Catalog Templates — opens #catalogPanel (HOME_CATALOG_MAKER). -->
+    <button type="button" class="sarv-home-row" data-go="CATALOG_MAKER">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"></path><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"></path><path d="M9 7h7M9 11h5"></path></svg></span>
+      <span class="sarv-home-text"><b>Catalog Templates</b><small>Product catalogs with cover page, saved on the server, PDF export</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <!-- Task › FMS Builder / FMS View — both open #fmsPanel (fms.html#builder /
          fms.html#view), HOME_FMS_BUILDER / HOME_FMS_VIEW. -->
     <button type="button" class="sarv-home-row" data-go="FMS_BUILDER">
@@ -2081,6 +2087,20 @@
                          goes to customers, so it keeps the case it was typed in. -->
                     <div class="dm-pane" id="dmOnlineCatPane">
                       <div data-no-caps>
+                        <!-- Choose Template: the catalog templates saved from Masters ›
+                             Catalog Templates (catalog_maker.html, cat_list). Picked = the
+                             PDF of the selected designs' photoshoots is made in that
+                             template's cover + product-page look (store-design-master.js ›
+                             ocBuildTemplate, rendered by catalog_maker.html#render).
+                             Default = the built-in landscape Online Catalogue. -->
+                        <div class="dm-sec">Choose Template</div>
+                        <div class="dm-oc-tpl-row" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px;">
+                          <select id="dmOcTemplate" class="dm-ms-sel" style="width:auto; min-width:320px; max-width:520px; font-size:13px;" title="The look of the PDF: the built-in Online Catalogue, or a template saved in Masters › Catalog Templates">
+                            <option value="">Default: Online Catalogue layout (landscape)</option>
+                          </select>
+                          <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmOcLoadTemplates(true)" title="Read the list of saved templates again">&#8635; Refresh</button>
+                          <span class="dm-hint" id="dmOcTemplateHint" style="margin:0;"></span>
+                        </div>
                         <div class="dm-sec">Online Catalogue Multi-Selection Filters</div>
                         <p class="dm-hint" style="margin-bottom:10px;">
                           Same as the Catalogue PDF tab: all filters are <b>linked to each other</b>, and the
@@ -2316,6 +2336,15 @@
         <div id="sopPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="sopFrame" title="SOP Master" data-src="sop.html#master"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#eef2f6; display:block;"></iframe>
+        </div>
+
+        <!-- Masters › Catalog Templates — catalog_maker.html: catalog
+             templates (cover + product pages) saved on the server through the
+             cat_* RPCs (sql/CATALOG_TEMPLATES_MIGRATION.sql), with PDF export.
+             Same lazy iframe pattern as the SOP Master. -->
+        <div id="catalogPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="catalogFrame" title="Catalog Templates" data-src="catalog_maker.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f9fafb; display:block;"></iframe>
         </div>
 
         <!-- Task › FMS Builder and Task › FMS View — the Nexus 2.0 FMS
@@ -3269,26 +3298,39 @@
 
                 <!-- ==== Sub-panel B: Generated POs list ==== -->
                 <div id="p_poListPanel" style="display:none;">
-                    <div class="filter-bar" style="grid-template-columns: 3fr 1fr auto;">
+                    <div class="filter-bar" style="grid-template-columns: 3fr 1.3fr auto auto;">
                         <div class="form-group">
                             <label>Search (PO No / Vendor / Req No / Item)</label>
                             <input type="text" class="form-control" id="p_poListSearch" placeholder="e.g. PO/U-2/0001, vendor or item name">
                         </div>
-                        <div class="form-group">
+                        <!-- Status: tick any number of statuses (none ticked = All).
+                             Options, counts and ticks are built by store-core.js ›
+                             renderPoListStatusOpts_ (state in sarvPoListStatusSel). -->
+                        <div class="form-group po-ms" id="p_poListStatusWrap">
                             <label>Status</label>
-                            <select class="form-control" id="p_poListStatus">
-                                <option value="">All</option>
-                                <option>Generated</option><option>GM/CEO Approved</option><option>MD Approved</option><option>Vendor Verified</option><option>Partially Received</option>
-                                <option>Received</option><option>Rejected</option><option>Cancelled</option>
-                            </select>
+                            <button type="button" class="form-control po-ms-btn" id="p_poListStatusBtn" aria-haspopup="true" aria-expanded="false" title="Tick one or more statuses">All</button>
+                            <div class="po-ms-panel" id="p_poListStatusPanel" hidden>
+                                <div class="po-ms-acts"><button type="button" data-a="all">All</button><button type="button" data-a="none">Clear</button></div>
+                                <div class="po-ms-list" id="p_poListStatusOpts"></div>
+                            </div>
                         </div>
                         <div>
                             <button class="btn btn-primary" id="p_poListRefreshBtn" style="height: 34px;">Reload</button>
+                        </div>
+                        <div>
+                            <button class="btn btn-neutral" id="p_poListFsBtn" style="height: 34px;" title="View the Generated POs table full screen (Esc to exit)">Full Screen</button>
                         </div>
                     </div>
 
                     <div class="items-total-strip">
                         <span class="totals-pill"><span class="lbl">Showing</span><span class="val" id="p_poListCount">0</span></span>
+                        <!-- Links to the two PO reports, each shown only with its own right
+                             (store-core.js › syncPoListLinks_): PO Follow-up = PO_SUB_REPORT,
+                             PO Details Report = HOME_REPORTS (same as the sidebar leaves). -->
+                        <span class="po-list-links">
+                            <button type="button" class="po-link-btn" id="p_poListFuLink" title="Open the PR → PO → Inward Follow-up Report (the search typed here is carried over)">&#8599; PO Follow-up</button>
+                            <button type="button" class="po-link-btn" id="p_poListDetLink" title="Open the PO Details Report: ordered vs received per PO line, CSV / PDF">&#8599; PO Details Report</button>
+                        </span>
                     </div>
 
                     <div class="table-container" style="max-height: 320px;">

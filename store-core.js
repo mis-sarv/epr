@@ -685,6 +685,8 @@ let sarvPoCatalog=[],sarvPendingRequirements=[],sarvEditingRequirementId=null,sa
 let sarvPoLineMap={};
 // Admin-only view toggle for fully-received / short-closed POs.
 let sarvShowReceivedPos=false;
+// Generated POs › Status multi-select: the ticked statuses (none = All). See renderPoListStatusOpts_.
+const sarvPoListStatusSel=new Set();
 let sarvItemCatalog=[];     // Global item master cache for auto-fill
 let sarvEmployeeCatalog=[]; // Global employee cache for PR form auto-fill
 let sarvSupplierCatalog=[]; // Global supplier master cache for auto-fill
@@ -5681,7 +5683,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
-  'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
+  'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
   'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
@@ -5793,7 +5795,7 @@ function sarvResetOrderFormFrame_(){
    session is revoked on the server (erp_app_logout), and that tab goes to its
    login screen on its next call. */
 function sarvResetAppFrames_(){
-  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame','fmsFrame'].forEach(id=>{
+  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame','fmsFrame','catalogFrame'].forEach(id=>{
     const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
     const vis=fr.closest('.main-panel,.tab-content');
     if(vis&&vis.style.display!=='none'){
@@ -5905,6 +5907,13 @@ function sarvNavigateFromHome(target){
       activatePanel('sopPanel');
       const fr=byId('sopFrame');
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'sop.html#master');
+      break;
+    }
+    // Masters › Catalog Templates: catalog_maker.html. Same lazy iframe.
+    case 'CATALOG_MAKER': {
+      activatePanel('catalogPanel');
+      const fr=byId('catalogFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'catalog_maker.html');
       break;
     }
     /* Task › FMS Builder / FMS View: one fms.html iframe, the leaf picks its
@@ -6076,6 +6085,12 @@ const SARV_HOME_HELP={
     'Activity-wise start, planned, actual and delay: complaints, checklist, EA and every FMS flow.',
     'Summary: open, late, on-time % and average delay per activity.',
     'TAT: the complaint TATs are set here; checklist / EA follow Task Manager, FMS steps follow the FMS Builder.']},
+  CATALOG_MAKER:{icon:'',title:'Catalog Templates (Masters)',points:[
+    'Templates: the list of catalogs saved on the server. Open one to edit it, or start a New Template.',
+    'Edit the cover page and product pages; your work is kept in this browser as a draft while you type.',
+    'Save to Server updates the open template; Save as New keeps it as a separate template under a new name.',
+    'If someone else saved the same template in between, you choose: open their version or save yours as new.',
+    'Export to PDF prints the cover first, then every product page, one A4 page each.']},
   SOP_MASTER:{icon:'',title:'SOP Master (Masters)',points:[
     'Create an SOP: title, category, colour and its steps, each with a photo (camera / gallery) or a built-in picture.',
     'Each step can have instructions, a Tip, a Caution and tick points for the user.',
@@ -6600,6 +6615,11 @@ const SARV_TABS=[
      needs no key: the launcher's "My SOPs" tile shows whenever something
      is assigned. */
   {key:'HOME_SOP_MASTER',label:'SOP Master',hint:'Masters › create SOPs with step cards and pictures, assign by designation / user, see who has read them (sop.html#master)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  /* Masters › Catalog Templates (catalog_maker.html): make, save, edit and
+     export catalog templates. A real right: the server checks this key on
+     every cat_* call (cat_can_manage_ in CATALOG_TEMPLATES_MIGRATION.sql);
+     its default there (Admin / MD / GM, Admin always) MUST match this row. */
+  {key:'HOME_CATALOG_MAKER',label:'Catalog Templates',hint:'Masters › product catalogs (cover + product pages) saved on the server as templates; open, edit, save, PDF (catalog_maker.html)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
   /* Task › FMS Builder / FMS View (fms.html). Real rights: the server checks
      these same keys on every call (fms_perms_ in sql/FMS_MIGRATION.sql), and
      its defaults (fms_perm_default_) MUST match these rows. The FMS_* rows
@@ -7343,7 +7363,7 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
 // Apps that open in their own file; their SSO runs on this access.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
@@ -14985,6 +15005,15 @@ async function loadPoDetailsReport(){
     if(body)body.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#ef4444;">'+escText(e.message||e)+'</td></tr>';
   }
 }
+/* A PO Details figure, on screen and in the PDF alike: a value that prints
+   as 0.00 shows just "-" (no unit), so the lines that matter stand out;
+   anything else keeps 2 decimals and its unit. An empty value stays empty.
+   The CSV keeps real zeros, since it is meant to be summed. */
+function podNum_(v,unit){
+  if(!(v===0||v))return '';
+  if(Math.abs(pNum(v))<0.005)return '-';
+  return nNum_(v)+(unit?' '+unit:'');
+}
 function renderPoDetailsReport(){
   const tb=byId('pod_tbody');if(!tb)return;
   const rows=poDetailsFiltered_();
@@ -14993,12 +15022,12 @@ function renderPoDetailsReport(){
   if(!rows.length){tb.innerHTML='<tr><td colspan="'+POD_HEAD.length+'" style="text-align:center;padding:18px;color:#94a3b8;">No PO lines found. Try changing the filter.</td></tr>';return;}
   const TD='padding:4px 6px;border:1px solid #e2e8f0;font-size:11px;';
   const R=TD+'text-align:right;white-space:nowrap;';
-  const num=(v,unit)=>v===0||v?nNum_(v)+(unit?' '+unit:''):'';
+  const num=podNum_;
   // Sign colouring: a shortfall is amber, an over-receipt red — the same
   // reading the store gets off the entry form's PO strip.
   // `off`: not this line's Bill Basis — shown, but greyed (podOffBasisCol_).
-  const signed=(v,unit,goodWhenZero,off)=>'<td style="'+R+(off?'color:#cbd5e1;':(v>0?'color:#b45309;font-weight:700;':(v<0?'color:#dc2626;font-weight:700;':(goodWhenZero?'color:#16a34a;':''))))+'"'
-    +(off?' title="Not the Bill Basis of this line"':'')+'>'+num(v,unit)+'</td>';
+  const signed=(v,unit,goodWhenZero,off)=>(v=Math.abs(pNum(v))<0.005?0:v,'<td style="'+R+(off?'color:#cbd5e1;':(v>0?'color:#b45309;font-weight:700;':(v<0?'color:#dc2626;font-weight:700;':(goodWhenZero?'color:#16a34a;':''))))+'"'
+    +(off?' title="Not the Bill Basis of this line"':'')+'>'+num(v,unit)+'</td>');
   let last='';
   tb.innerHTML=rows.map(r=>{
     // PO No. / Date print once per order, the way the reference sheet reads.
@@ -15092,7 +15121,7 @@ async function downloadPoDetailsPdf(){
   doc.text('Printed On: '+pStamp()+'   ·   '+rows.length+' PO line(s)',M,y+19.5);
   doc.setTextColor(0,0,0);
   y+=23;
-  const num=(v,unit)=>(v===0||v)?nNum_(v)+(unit?' '+unit:''):'';
+  const num=podNum_;
   let last='';
   const body=rows.map(r=>{
     const head=(r.poNo!==last);last=r.poNo;
@@ -15158,7 +15187,7 @@ async function downloadPoDetailsPdf(){
       const v=c===12?r.pendingQty:c===13?r.pendingWeight:c===14?r.excessQty:c===15?r.excessWeight:null;
       // The pair that is not this line's Bill Basis prints grey, as on screen.
       if(v!==null&&podOffBasisCol_(r,c)){h.cell.styles.textColor=[203,213,225];return;}
-      if(v!==null&&v!==0){h.cell.styles.textColor=v>0?[180,83,9]:[220,38,38];h.cell.styles.fontStyle='bold';}
+      if(v!==null&&Math.abs(pNum(v))>=0.005){h.cell.styles.textColor=v>0?[180,83,9]:[220,38,38];h.cell.styles.fontStyle='bold';}
     }
   });
   const pages=doc.internal.getNumberOfPages();
@@ -22375,14 +22404,18 @@ let PR_TEAL=[13,92,83];
    // Completed POs (fully received / short-closed) drop off the list; only an
    // Admin can bring them back into view with the Show Received toggle.
    const doneStatuses=['Received','Closed (Short)'];
-   const showDone=sarvCan('PO_RECEIVED_VIEW')&&sarvShowReceivedPos;
+   /* Ticking Received / Closed (Short) in the Status filter shows them too,
+      but only to a login that may see them at all (PO_RECEIVED_VIEW): for
+      everyone else those two are not even offered as options. */
+   const canDone=sarvCan('PO_RECEIVED_VIEW');
+   const showDone=canDone&&(sarvShowReceivedPos||doneStatuses.some(s=>sarvPoListStatusSel.has(s)));
    const openPos=sarvGeneratedPos.filter(po=>showDone||!doneStatuses.includes(po.status||''));
    const doneCount=sarvGeneratedPos.length-openPos.length;
-   // Search box + Status dropdown above the table.
+   // Search box + Status multi-select above the table (no tick = all statuses).
    const term=(byId('p_poListSearch')?.value||'').trim().toLowerCase();
-   const statusFilter=byId('p_poListStatus')?.value||'';
+   renderPoListStatusOpts_(canDone);
    const visiblePos=openPos.filter(po=>{
-     if(statusFilter&&String(po.status||'Generated')!==statusFilter)return false;
+     if(sarvPoListStatusSel.size&&!sarvPoListStatusSel.has(String(po.status||'Generated')))return false;
      if(!term)return true;
      /* Item name / description come from the line items already cached in
         sarvPoLineMap, so searching "blanket box" finds every PO carrying that
@@ -22393,6 +22426,7 @@ let PR_TEAL=[13,92,83];
        .concat(lines.map(l=>(l.item_name||'')+' '+(l.item_description||''))),term);
    });
    renderPoListDoneToggle(doneCount);
+   syncPoListLinks_();
    tb.innerHTML='';visiblePos.forEach(po=>{
      const statusVal=po.status||'Generated',sc=statusColors[statusVal]||'#64748b';
      /* A short-closed PO carries the remark that justified writing off the
@@ -22545,6 +22579,88 @@ let PR_TEAL=[13,92,83];
        +'The PO status is worked out from each item\'s receipts, on its Bill Basis (QTY lines on qty, WEIGHT lines on KGS) &mdash; '+pEsc(note)+'.</td></tr>'
      +'</tfoot></table>';
  }
+ /* ── Generated POs: Status multi-select ──────────────────────────────
+    Any number of statuses can be ticked; none ticked = All. The options are
+    the PO statuses in their life-cycle order, each with how many of the
+    loaded POs carry it, so an empty status is visible as (0) instead of
+    being a guess. Received / Closed (Short) are offered only to a login with
+    PO_RECEIVED_VIEW (the same right as the Show Received toggle). The ticks
+    live in sarvPoListStatusSel for the session; Reload keeps them. */
+ const PO_LIST_STATUSES=['Generated','GM/CEO Approved','MD Approved','Vendor Verified','Partially Received','Received','Closed (Short)','Rejected','Cancelled'];
+ function renderPoListStatusOpts_(canDone){
+   const host=byId('p_poListStatusOpts'),btn=byId('p_poListStatusBtn');if(!host||!btn)return;
+   const counts={};
+   (sarvGeneratedPos||[]).forEach(po=>{const s=String(po.status||'Generated');counts[s]=(counts[s]||0)+1;});
+   const list=PO_LIST_STATUSES.filter(s=>canDone||!['Received','Closed (Short)'].includes(s))
+     // a status not in the fixed list (an older / custom one) still gets a box
+     .concat(Object.keys(counts).filter(s=>!PO_LIST_STATUSES.includes(s)));
+   // A tick on a status this login can no longer pick must not keep filtering.
+   [...sarvPoListStatusSel].forEach(s=>{if(!list.includes(s))sarvPoListStatusSel.delete(s);});
+   host.innerHTML=list.map(s=>'<label><input type="checkbox" value="'+pEsc(s)+'"'+(sarvPoListStatusSel.has(s)?' checked':'')+'> '
+     +pEsc(s)+'<span class="n">'+(counts[s]||0)+'</span></label>').join('');
+   const n=sarvPoListStatusSel.size;
+   btn.textContent=!n?'All':(n===1?[...sarvPoListStatusSel][0]:n+' statuses');
+   btn.title=n?('Showing: '+[...sarvPoListStatusSel].join(', ')):'Tick one or more statuses';
+   btn.classList.toggle('on',!!n);
+ }
+ function poListStatusPanel_(open){
+   const p=byId('p_poListStatusPanel'),b=byId('p_poListStatusBtn');if(!p||!b)return;
+   p.hidden=!open;b.setAttribute('aria-expanded',open?'true':'false');
+ }
+ function bindPoListStatusFilter_(){
+   const wrap=byId('p_poListStatusWrap');if(!wrap||wrap.dataset.bound)return;
+   wrap.dataset.bound='1';
+   byId('p_poListStatusBtn').addEventListener('click',e=>{e.preventDefault();poListStatusPanel_(byId('p_poListStatusPanel').hidden);});
+   byId('p_poListStatusOpts').addEventListener('change',e=>{
+     const cb=e.target.closest('input[type=checkbox]');if(!cb)return;
+     if(cb.checked)sarvPoListStatusSel.add(cb.value);else sarvPoListStatusSel.delete(cb.value);
+     renderGeneratedPoTable();
+   });
+   wrap.querySelector('.po-ms-acts').addEventListener('click',e=>{
+     const a=e.target.closest('button[data-a]');if(!a)return;
+     sarvPoListStatusSel.clear();
+     // "All" ticks every offered status (same rows as none ticked, but explicit).
+     if(a.dataset.a==='all')byId('p_poListStatusOpts').querySelectorAll('input').forEach(x=>sarvPoListStatusSel.add(x.value));
+     renderGeneratedPoTable();
+   });
+   // Click outside / Esc closes the list.
+   document.addEventListener('mousedown',e=>{if(!wrap.contains(e.target))poListStatusPanel_(false);},true);
+   document.addEventListener('keydown',e=>{
+     if(e.key==='Escape'&&!byId('p_poListStatusPanel').hidden){e.preventDefault();e.stopPropagation();poListStatusPanel_(false);}
+   },true);
+ }
+ /* ── Generated POs → PO Follow-up / PO Details Report links ──────────
+    Each link shows only with the right its own screen needs, the same rows
+    as the sidebar leaves: PO Follow-up = PO_SUB_REPORT (the sub-tab), PO
+    Details Report = HOME_REPORTS. Follow-up opens the report sub-panel of
+    this same PO screen and carries the search typed here over (it searches
+    PO numbers, vendors and items too). PO Details Report opens its own popup
+    over this screen, so closing it comes straight back here. */
+ function syncPoListLinks_(){
+   const fu=byId('p_poListFuLink'),det=byId('p_poListDetLink');
+   if(fu)fu.style.display=sarvTabVisible('PO_SUB_REPORT')?'':'none';
+   if(det)det.style.display=(sarvTabVisible('HOME_REPORTS')&&typeof openPoDetailsReport==='function')?'':'none';
+ }
+ function openPoFollowupFromList_(){
+   const term=(byId('p_poListSearch')?.value||'').trim();
+   const rs=byId('p_poRepSearch');if(rs&&term)rs.value=term;
+   poListFullScreen_(false);
+   /* Through the sidebar's own "PO Follow-up Report" leaf when the shell is
+      there: PO Generation mode hides the report's sub-tab, and a panel whose
+      sub-tab is hidden gets bounced back by sarvEnsureVisibleSubTabs_; the
+      leaf switches the screen into report mode (its title, its tab) instead. */
+   if(typeof window.erpGoLeaf==='function'&&window.erpGoLeaf('PURCHASE','PO Follow-up Report'))return;
+   showPoSubPanel('report');
+   refreshPoFollowupReport().catch(dbError);
+ }
+ // Generated POs table over the whole window, or back in the tab (Esc exits).
+ function poListFullScreen_(on){
+   const p=byId('p_poListPanel');if(!p)return;
+   p.classList.toggle('fu-full',!!on);
+   const b=byId('p_poListFsBtn');
+   if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'Full Screen';b.title=on?'Back (Esc)':'View the Generated POs table full screen (Esc to exit)';}
+   poListStatusPanel_(false);
+ }
  // "Show Received" toggle — Admin-only, sits above the Generated POs table.
  function renderPoListDoneToggle(doneCount){
    const host=byId('p_poListCount')?.closest('.items-total-strip');if(!host)return;
@@ -22555,7 +22671,9 @@ let PR_TEAL=[13,92,83];
      btn.type='button';btn.id='p_poShowReceivedBtn';
      btn.style.cssText='margin-left:10px;padding:3px 12px;font-size:11px;font-weight:700;border-radius:14px;border:1.5px solid #0f766e;background:#fff;color:#0f766e;cursor:pointer;';
      btn.addEventListener('click',()=>{sarvShowReceivedPos=!sarvShowReceivedPos;refreshGeneratedPoList().catch(dbError);});
-     host.appendChild(btn);
+     // Next to the count, before the report links.
+     const links=host.querySelector('.po-list-links');
+     if(links)host.insertBefore(btn,links);else host.appendChild(btn);
    }
    btn.textContent=sarvShowReceivedPos?'Hide Received / Closed':'Show Received / Closed'+(doneCount?' ('+doneCount+')':'');
    btn.style.background=sarvShowReceivedPos?'#0f766e':'#fff';
@@ -24560,6 +24678,8 @@ let PR_TEAL=[13,92,83];
  /* One switch for the PO tab's three sub-panels, so adding this third one
     cannot leave another panel visible underneath it. */
  function showPoSubPanel(which){
+   // Leaving the Generated POs list never leaves it stuck over the window.
+   if(which!=='list')poListFullScreen_(false);
    const panels={pending:'p_poPendingPanel',list:'p_poListPanel',report:'p_poReportPanel'};
    const buttons={pending:'p_poSubPendingBtn',list:'p_poSubListBtn',report:'p_poSubReportBtn'};
    Object.keys(panels).forEach(k=>{
@@ -25075,8 +25195,19 @@ let PR_TEAL=[13,92,83];
    // the database — Reload is still what refetches.
    ['p_poFilterSearch','p_poFilterDept','p_poFilterPriority','p_poFilterReqNo','p_poFilterCompleted']
      .forEach(id=>onFilter(id,renderPendingRequirementsTable));
-   ['p_poListSearch','p_poListStatus']
+   ['p_poListSearch']
      .forEach(id=>onFilter(id,renderGeneratedPoTable));
+   bindPoListStatusFilter_();
+   on('p_poListFuLink',openPoFollowupFromList_);
+   on('p_poListDetLink',()=>{poListFullScreen_(false);openPoDetailsReport();});
+   on('p_poListFsBtn',()=>poListFullScreen_(!byId('p_poListPanel')?.classList.contains('fu-full')));
+   document.addEventListener('keydown',e=>{
+     if(e.key!=='Escape'||!byId('p_poListPanel')?.classList.contains('fu-full'))return;
+     // A popup opened over the full-screen list (PO edit, short-close, PIN…) closes first.
+     if(!byId('p_poListStatusPanel')?.hidden||document.querySelector('.sarv-ov')||byId('pwdGateModal')?.style.display==='flex'
+        ||document.querySelector('.modal.active,.modal-overlay.active'))return;
+     poListFullScreen_(false);
+   });
    on('p_poSubPendingBtn',()=>{showPoSubPanel('pending');refreshPendingRequirements().catch(dbError)});
    on('p_poSubListBtn',()=>{showPoSubPanel('list');refreshGeneratedPoList().catch(dbError)});
    // ── Short-Close popup (Generated POs → Close) ──────────────
