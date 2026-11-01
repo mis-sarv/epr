@@ -106,6 +106,25 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .photo-tile .pt-existing-badge{position:absolute;bottom:0;left:0;right:0;background:rgba(46,109,164,.88);color:#fff;font-size:8px;font-weight:700;text-align:center;padding:1px 0;letter-spacing:.3px;z-index:2}
 .photo-tile .pt-remove{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:rgba(185,28,28,.92);color:#fff;border:none;font-size:11px;line-height:16px;text-align:center;cursor:pointer;padding:0;z-index:3}
 .photo-tile a.pt-view-link{position:absolute;inset:0;z-index:1}
+/* SINGLE COLOUR: design-wise qty table (ofSkuRender_) */
+.sku-wrap{margin-top:8px;overflow-x:auto}
+.sku-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.sku-tbl th{background:#F1F5F9;color:var(--muted);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left;padding:6px 8px;border:1px solid var(--border)}
+.sku-tbl td{padding:5px 8px;border:1px solid var(--border);vertical-align:middle}
+.sku-tbl td.sr{width:44px;text-align:center;color:var(--muted)}
+.sku-tbl td.ph{width:96px}
+.sku-tbl td.ph img{width:78px;height:58px;object-fit:cover;border-radius:5px;border:1px solid var(--border);display:block}
+.sku-tbl td.sk b{font-weight:700}
+.sku-tbl td.sk .s{display:block;font-size:10.5px;color:var(--muted)}
+.sku-tbl td.q{width:130px}
+.sku-tbl td.q input{width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:6px;font-size:12.5px;text-align:right}
+.sku-tbl td.x{width:34px;text-align:center}
+.sku-tbl td.x button{border:none;background:none;color:#B91C1C;font-size:13px;cursor:pointer}
+.sku-tbl tfoot td{font-weight:700;background:#F8FAFC}
+.sku-tbl tfoot td.bad{color:#B91C1C;background:#FEF2F2}
+.sku-tbl tfoot td.ok{color:#047857}
+.sku-act{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:var(--muted)}
+.sku-act button{border:1px solid var(--border);background:#fff;border-radius:6px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer}
 
 /* combobox wrapper */
 .combo-wrap{position:relative}
@@ -1502,13 +1521,12 @@ const SATTAN_SIZES=['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA'];
    There are TWO kinds of row, and the difference reaches the DB:
 
      fixed:true  — these six have their own columns in `sales_trims_log`
-                   (label_pcs, bore_rs, inner_box_disc ...) and the PDF
-                   packing table's 12-column two-tier header is built on them.
-                   A row can be hidden, but its slot stays in the DB (with 0);
-                   otherwise both that table and that header would have to break.
+                   (label_pcs, bore_rs, inner_box_disc ...). A row can be
+                   hidden, but its slot stays in the DB (with 0).
      fixed:false — every other material. These go into `extraTrims` in the
-                   `full_order` JSON and print in the PDF's own "ADDITIONAL
-                   PACKING MATERIALS" table.
+                   `full_order` JSON.
+   Both kinds print in the PDF's one "PACKING MATERIALS PRICING SUMMARY"
+   table, and only the rows that were on the card (trimShown + extraTrims).
 
    `bm` = the brand_master column. Seven columns (label, tag, bag, bore,
    inner_box, outer_box, foam) come from `BRAND_TRIMS_MIGRATION.sql`; the
@@ -4079,6 +4097,66 @@ function addProduct(){
         <div class="lock-note">★ From the Brand Master list only. The <b>Specifications</b> below are filled from it and are <b>locked</b>. New brand? Press <b>Add New Brand Item</b>.</div>
       </div>
       </section>
+      <section class="psec ps-pack">
+      <!-- Order Quantity & Packing Material Calculation — 3 column:
+
+             Order Quantity Pcs | Quantity of Master Packing | Lumsum Weight of Total PCS
+
+           Slave Packing Type + Standard Qty are NOT here; they are in the
+           Specifications, locked from the Brand Master (a single truth). Ids:
+             Order Quantity Pcs          = p<id>-qty
+             Quantity of Master Packing  = p<id>-packs     (label: ofPacksLabel_)
+             Lumsum Weight of Total PCS  = p<id>-totalWeight
+
+           Price (Rs/KG), Discount % and GST % are NOT here; they are in the
+           "Pricing" box BELOW Bags & Trims, so the trims cost (Trims Cost / Pc)
+           is in view while setting the rate. The field ids are unchanged
+           (p<id>-price / -discount / -gst), so getProd, save, edit
+           and PDF are unaffected; only the position changed.
+
+           No. of Bora is now AUTO = Quantity (Pcs) / Packing (pcs/pack).
+           It used to be the other way round (qty = packs x pcs/pack), so qty
+           was never filled in automatically. See calcPackQty. -->
+      <div class="shd">Order Quantity &amp; Packing Material Calculation</div>
+      <div class="g3">
+        <div class="fg"><label>Order Quantity Pcs</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcPackQty(${id});ofSkuResplit_(${id})"></div>
+
+        <div class="fg"><label id="p${id}-packs-lbl">Quantity of Master Packing <small class="pk-unit">(Bora)</small></label>
+          <input type="number" id="p${id}-packs" placeholder="auto" min="0" readonly>
+          <div class="pk-hint" id="p${id}-packs-hint">Order Qty ÷ Std Qty</div>
+        </div>
+        <div class="fg"><label>Lumsum Weight of Total PCS <small class="pk-unit">(KG)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8">
+          <div class="pk-hint">Order Qty × Final Weight</div>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:10px"><label>Remarks <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(shown as "Other Comment" on this product's photo page in the PDF)</span></label><input type="text" id="p${id}-remarks" placeholder="Any special instructions for this product..." oninput="calcAll()"></div>
+      </section>
+      <section class="psec ps-photo">
+      <div class="shd">Product Photo &amp; Comments</div>
+      <div class="fg">
+        <label>Product Photos <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(optional — up to 30; shown 10 per page (5×2 grid) — extra photos add more pages for this product)</span></label>
+        <!-- Photos come ONLY from the Design Master now; the manual "Choose
+             files" upload was removed so every product photo carries its
+             Design SKU No. Old orders' uploaded photos still reopen as SAVED
+             tiles (productPhotos / handlePhotoUpload are kept for them). -->
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="btn-addmaster" onclick="dpkOpen(${id})" title="Choose and attach photos of designs saved in Production › Design Master">Attach from Design Master</button>
+        </div>
+        <div id="p${id}-photo-gallery" class="photo-gallery"></div>
+        <!-- Packing Assortment = SINGLE COLOUR: the attached photos show as a
+             table instead (Sr / Photo / Design SKU / Order Qty), with the Order
+             Quantity split equally across them. ofSkuSync_ / ofSkuRender_. -->
+        <div id="p${id}-sku-table" class="sku-wrap" style="display:none"></div>
+      </div>
+      <div class="g2" style="margin-top:11px">
+        <div class="fg"><label>Label &amp; Tag Comment</label>
+          <input type="text" id="p${id}-labelTagComment" placeholder="e.g. Buyer's own brand label to be stitched..." oninput="calcAll()">
+        </div>
+        <div class="fg"><label>Design Cost Comment</label>
+          <input type="text" id="p${id}-designCost" placeholder="e.g. ₹2/pc extra for custom jacquard design..." oninput="calcAll()">
+        </div>
+      </div>
+      </section>
       <section class="psec ps-spec">
       <!-- Specifications: every value comes from the Brand Master and stays
            locked (ofApplySpecLock_). Pricing & Delivery deliberately stays
@@ -4194,61 +4272,6 @@ function addProduct(){
             oninput="filterCombo('p${id}-design');calcAll()" onfocus="openCombo('p${id}-design')" onblur="delayClose('p${id}-design')">
           <svg class="combo-arrow" width="11" height="7" viewBox="0 0 11 7" fill="none"><path d="M1 1l4.5 4.5L10 1" stroke="#6B7897" stroke-width="1.5" stroke-linecap="round"/></svg>
           <div class="combo-list" id="p${id}-design-list"></div>
-        </div>
-      </div>
-      </section>
-      <section class="psec ps-pack">
-      <!-- Order Quantity & Packing Material Calculation — 3 column:
-
-             Order Quantity Pcs | Quantity of Master Packing | Lumsum Weight of Total PCS
-
-           Slave Packing Type + Standard Qty are NOT here; they are in the
-           Specifications, locked from the Brand Master (a single truth). Ids:
-             Order Quantity Pcs          = p<id>-qty
-             Quantity of Master Packing  = p<id>-packs     (label: ofPacksLabel_)
-             Lumsum Weight of Total PCS  = p<id>-totalWeight
-
-           Price (Rs/KG), Discount % and GST % are NOT here; they are in the
-           "Pricing" box BELOW Bags & Trims, so the trims cost (Trims Cost / Pc)
-           is in view while setting the rate. The field ids are unchanged
-           (p<id>-price / -discount / -gst), so getProd, save, edit
-           and PDF are unaffected; only the position changed.
-
-           No. of Bora is now AUTO = Quantity (Pcs) / Packing (pcs/pack).
-           It used to be the other way round (qty = packs x pcs/pack), so qty
-           was never filled in automatically. See calcPackQty. -->
-      <div class="shd">Order Quantity &amp; Packing Material Calculation</div>
-      <div class="g3">
-        <div class="fg"><label>Order Quantity Pcs</label><input type="number" id="p${id}-qty" placeholder="0" min="0" oninput="calcPackQty(${id})"></div>
-
-        <div class="fg"><label id="p${id}-packs-lbl">Quantity of Master Packing <small class="pk-unit">(Bora)</small></label>
-          <input type="number" id="p${id}-packs" placeholder="auto" min="0" readonly>
-          <div class="pk-hint" id="p${id}-packs-hint">Order Qty ÷ Std Qty</div>
-        </div>
-        <div class="fg"><label>Lumsum Weight of Total PCS <small class="pk-unit">(KG)</small></label><input type="number" id="p${id}-totalWeight" placeholder="auto" step="0.1" min="0" oninput="calcAll()" style="background:#EEF2F7;border-color:#D0DAE8">
-          <div class="pk-hint">Order Qty × Final Weight</div>
-        </div>
-      </div>
-      <div class="fg" style="margin-top:10px"><label>Remarks <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(shown as "Other Comment" on this product's photo page in the PDF)</span></label><input type="text" id="p${id}-remarks" placeholder="Any special instructions for this product..." oninput="calcAll()"></div>
-      </section>
-      <section class="psec ps-photo">
-      <div class="shd">Product Photo &amp; Comments</div>
-      <div class="fg">
-        <label>Product Photos <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none">(optional — up to 30; shown 10 per page (5×2 grid) — extra photos add more pages for this product)</span></label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="file" accept="image/*" multiple id="p${id}-photo-input" onchange="handlePhotoUpload(${id},this,'product')" style="padding:7px;font-size:12px;flex:1;min-width:200px">
-          <!-- Design Master (Production › Design Master) ki saved photos —
-               no upload needed; the same photo is linked. dpkOpen. -->
-          <button type="button" class="btn-addmaster" onclick="dpkOpen(${id})" title="Choose and attach photos of designs saved in Production › Design Master">Attach from Design Master</button>
-        </div>
-        <div id="p${id}-photo-gallery" class="photo-gallery"></div>
-      </div>
-      <div class="g2" style="margin-top:11px">
-        <div class="fg"><label>Label &amp; Tag Comment</label>
-          <input type="text" id="p${id}-labelTagComment" placeholder="e.g. Buyer's own brand label to be stitched..." oninput="calcAll()">
-        </div>
-        <div class="fg"><label>Design Cost Comment</label>
-          <input type="text" id="p${id}-designCost" placeholder="e.g. ₹2/pc extra for custom jacquard design..." oninput="calcAll()">
         </div>
       </div>
       </section>
@@ -4473,6 +4496,7 @@ function removePhotoAt(id, section, kind, idx){
   if(kind==='new' && st.news[id]) st.news[id].splice(idx,1);
   if(kind==='existing' && st.existing[id]) st.existing[id].splice(idx,1);
   renderPhotoGallery(id,section);
+  if(section!=='emboss') ofSkuResplit_(id);
   calcAll();
 }
 
@@ -4513,6 +4537,100 @@ function onEmbossChange(id){
   const sel=document.getElementById('p'+id+'-emboss');
   const sec=document.getElementById('p'+id+'-emboss-photo-section');
   if(sec) sec.style.display=(sel && sel.value==='YES')?'block':'none';
+}
+
+// ═══════════════════ SINGLE COLOUR: DESIGN SKU × QTY TABLE ═════════════════
+// When a product's Packing Assortment is SINGLE COLOUR, every attached
+// Design Master photo is a separate design of that order, so the Order
+// Quantity Pcs has to be split across them. The table replaces the photo
+// gallery on screen: Sr / Photo / Design SKU / Order Qty.
+//
+// The qty lives ON the photo object (existingProductPhotos[id][i].qty), so it
+// can't drift from its photo when one is removed. It is auto-filled as an
+// equal split (the remainder goes one pc each to the first rows) whenever the
+// photo list or the Order Quantity changes; typed edits stay until then.
+// The total must equal the Order Quantity exactly; handleSubmit blocks
+// otherwise (ofSkuCheck_).
+// Function declarations (not const arrows) so calcAll can call them even if
+// it runs before this point of the script has been evaluated.
+function ofIsSingleColourText_(v){ return /^\s*SINGLE\s*COLOU?R\s*$/i.test(String(v||'')); }
+function ofIsSingleColour_(id){ return ofIsSingleColourText_(document.getElementById('p'+id+'-design')?.value); }
+function ofSkuRows_(id){ return existingProductPhotos[id]||[]; }
+function ofSkuOrderQty_(id){ return Math.max(0,Math.floor(Number(document.getElementById('p'+id+'-qty')?.value)||0)); }
+function ofSkuTotal_(id){ return ofSkuRows_(id).reduce((s,p)=>s+(Number(p.qty)||0),0); }
+
+function ofSkuSplit_(id){
+  const rows=ofSkuRows_(id), n=rows.length; if(!n) return;
+  const q=ofSkuOrderQty_(id), base=Math.floor(q/n), rem=q-base*n;
+  rows.forEach((p,i)=>{ p.qty=base+(i<rem?1:0); });
+}
+// Re-split + redraw; called when photos are added / removed or the qty changes.
+function ofSkuResplit_(id){
+  if(!ofIsSingleColour_(id)) return;
+  ofSkuSplit_(id); ofSkuRender_(id);
+}
+// Called from calcAll for every card: redraws only when the mode flips, so
+// typing in a qty box never rebuilds the table under the cursor.
+function ofSkuSync_(id){
+  const host=document.getElementById('p'+id+'-sku-table'); if(!host) return;
+  const on=ofIsSingleColour_(id), was=host.dataset.on==='1';
+  if(on===was) return;
+  host.dataset.on=on?'1':'0';
+  // Split only when nothing is filled yet: on Edit the saved split must
+  // survive, even if calcAll runs before the card's qty box is restored.
+  if(on && ofSkuRows_(id).length && ofSkuTotal_(id)===0) ofSkuSplit_(id);
+  ofSkuRender_(id);
+}
+function ofSkuRender_(id){
+  const host=document.getElementById('p'+id+'-sku-table');
+  const gal=document.getElementById('p'+id+'-photo-gallery');
+  if(!host) return;
+  const on=ofIsSingleColour_(id);
+  host.dataset.on=on?'1':'0';
+  host.style.display=on?'':'none';
+  // Old uploaded photos (no Design Master SKU) still show in the gallery.
+  if(gal) gal.style.display=on?'none':'';
+  if(!on){ host.innerHTML=''; return; }
+  const rows=ofSkuRows_(id);
+  if(!rows.length){
+    host.innerHTML='<div class="sku-act"><span>Packing Assortment is SINGLE COLOUR: attach the designs from the Design Master; the Order Quantity will be split across them.</span></div>';
+    return;
+  }
+  host.innerHTML='<table class="sku-tbl"><thead><tr><th>Sr. No.</th><th>Photo</th><th>Design SKU No</th><th style="text-align:right">Order Qty (Pcs)</th><th></th></tr></thead><tbody>'
+    +rows.map((p,i)=>'<tr>'
+      +'<td class="sr">'+(i+1)+'</td>'
+      +'<td class="ph"><a href="'+esc(p.url)+'" target="_blank" rel="noopener" title="View full photo"><img src="'+esc(p.url)+'" onerror="this.style.visibility=\'hidden\'"></a></td>'
+      +'<td class="sk"><b>'+esc(p.sku||'—')+'</b>'+(p.designNo?'<span class="s">Design '+esc(p.designNo)+'</span>':'')+'</td>'
+      +'<td class="q"><input type="number" min="0" step="1" value="'+(Number(p.qty)||0)+'" oninput="ofSkuQtyTyped_('+id+','+i+',this)"></td>'
+      +'<td class="x"><button type="button" title="Remove" onclick="removePhotoAt('+id+',\'product\',\'existing\','+i+')">✕</button></td>'
+      +'</tr>').join('')
+    +'</tbody><tfoot><tr><td colspan="3" style="text-align:right">Total</td><td id="p'+id+'-sku-tot" style="text-align:right"></td><td></td></tr></tfoot></table>'
+    +'<div class="sku-act"><span id="p'+id+'-sku-msg"></span><button type="button" onclick="ofSkuSplit_('+id+');ofSkuRender_('+id+')">↻ Split equally</button></div>';
+  ofSkuTotals_(id);
+}
+function ofSkuQtyTyped_(id,i,el){
+  const p=ofSkuRows_(id)[i]; if(!p) return;
+  p.qty=Math.max(0,Math.floor(Number(el.value)||0));
+  ofSkuTotals_(id);
+}
+function ofSkuTotals_(id){
+  const tot=ofSkuTotal_(id), q=ofSkuOrderQty_(id);
+  const td=document.getElementById('p'+id+'-sku-tot'), msg=document.getElementById('p'+id+'-sku-msg');
+  if(td){ td.textContent=tot+' / '+q; td.className=tot===q?'ok':'bad'; }
+  if(msg) msg.textContent=tot===q?'Total matches the Order Quantity.':'Total must be exactly '+q+' pcs ('+(tot>q?(tot-q)+' more':(q-tot)+' short')+').';
+}
+// Submit check: '' when fine, else the reason.
+function ofSkuCheck_(id){
+  if(!ofIsSingleColour_(id) || !ofSkuRows_(id).length) return '';
+  const tot=ofSkuTotal_(id), q=ofSkuOrderQty_(id);
+  return tot===q?'':'design-wise qty total is '+tot+' but Order Quantity is '+q+' pcs. Make them equal.';
+}
+// "SKU (qty), SKU (qty)" for the design_sku column; qty only for SINGLE COLOUR.
+function ofDesignSkuText_(x){
+  const list=Array.isArray(x&&x.designSkus)?x.designSkus:[];
+  const single=ofIsSingleColourText_(x&&x.design);
+  return list.filter(s=>s&&(s.sku||s.designNo))
+    .map(s=>(s.sku||('D '+s.designNo))+(single?' ('+(Number(s.qty)||0)+')':'')).join(', ');
 }
 
 // ═══════════════════ DESIGN MASTER PHOTO PICKER ════════════════════════════
@@ -4704,11 +4822,14 @@ function dpkAttach(){
   let added=0, skipped=0;
   dpkSel_.forEach(t=>{
     if(have.has(t.url) || photoCount(id,'product')>=MAX_PHOTOS_PER_PRODUCT){ skipped++; return; }
-    existingProductPhotos[id].push({fileId:t.url, url:t.url, label:'D '+String(t.d.design_no||'')});
+    // sku / designNo are saved with the order (full_order + design_sku column),
+    // qty is filled by ofSkuResplit_ below for a SINGLE COLOUR product.
+    existingProductPhotos[id].push({fileId:t.url, url:t.url, label:'D '+String(t.d.design_no||''),
+      sku:String(t.d.design_sku_no||'').trim(), designNo:String(t.d.design_no||'').trim(), qty:0});
     have.add(t.url); added++;
   });
   dpkClose();
-  renderPhotoGallery(id,'product'); calcAll();
+  renderPhotoGallery(id,'product'); ofSkuResplit_(id); calcAll();
   toast(added
     ?''+added+' design photo(s) attached — '+photoCount(id,'product')+'/'+MAX_PHOTOS_PER_PRODUCT+(skipped?' ('+skipped+' skipped: duplicate / limit)':'')
     :'Nothing was attached: duplicate, or the photo limit ('+MAX_PHOTOS_PER_PRODUCT+') is reached');
@@ -4821,8 +4942,19 @@ async function addEmbossDesignToCatalog(id){
    don't change the total; they are for information only. */
 const OF_PACKCOUNT_MATS=['BORA','BALE','BOX','OUTER BOX BORA'];
 const OF_PACKCOUNT_FIXED=['bore','outer'];
+/* The card's Master Packing Type material name (upper case, as in the Brand
+   Master), from the packing in use (Packing 1, or 2 when chosen); '' for
+   none / NA. Its Bags & Trims row counts Master Packings, not pcs. */
+function ofMasterPackMat_(id){
+  const item=STANDARD_ITEMS[String(document.getElementById('p'+id+'-itemCode')?.value||'').trim()];
+  if(!item) return '';
+  const k=ofRateKey_(ofActivePack_(item,id)===2?item.packType2:item.packType1);
+  return (!k || k==='NA') ? '' : k;
+}
 function ofPcsAutoVal_(id,fixedKey,mat){
-  const usePacks=fixedKey?OF_PACKCOUNT_FIXED.includes(fixedKey):OF_PACKCOUNT_MATS.includes(ofRateKey_(mat));
+  const mk=fixedKey?'':ofRateKey_(mat);
+  const usePacks=fixedKey?OF_PACKCOUNT_FIXED.includes(fixedKey)
+    :(OF_PACKCOUNT_MATS.includes(mk) || (!!mk && mk===ofMasterPackMat_(id)));
   return parseFloat(document.getElementById('p'+id+'-'+(usePacks?'packs':'qty'))?.value)||0;
 }
 const OF_ON_STYLE=['#EFF6FF','#93C5FD'];
@@ -4988,11 +5120,21 @@ function ofRenderMaterials_(id,opts){
      its row comes first, under the same name (BORA / BALE / BOX), with the
      rate from the Rate Master. When the Slave Type changes (Packing 1 ↔ 2)
      the row changes too. On an old order the saved row returns via the preset. */
+  /* The Brand Master's MASTER PACKING TYPE (Packing 1, or Packing 2 when that
+     packing is chosen on the card) is a packing material too: BALE / BORA /
+     OUTER BOX ... Its row comes first, named as in the Brand Master so the
+     Rate Master finds its rate, and its No. of Pcs defaults to the Quantity
+     of Master Packing (ofPcsAutoVal_ via ofMasterPackMat_). NA / empty = no row. */
+  const masterMat=ofMasterPackMat_(id);
+  if(code && masterMat){
+    ofAddMaterialRow_(id,masterMat,presets[masterMat]||null);
+    added.add(masterMat); shown++;
+  }
   const slaveMat=ofSlaveTrimName_(pt);
   // An old order where the same thing was filled in the old fixed Bore / Outer Box
   // row: that row shows, without an extra empty row next to it (no duplicates).
   const oldFixed=(slaveMat==='BOX')?keep.has('outer'):keep.has('bore');
-  if(code && slaveMat && (presets[slaveMat] || !oldFixed)){
+  if(code && slaveMat && !added.has(slaveMat) && (presets[slaveMat] || !oldFixed)){
     ofAddMaterialRow_(id,slaveMat,presets[slaveMat]||null);
     added.add(slaveMat); shown++;
   }
@@ -5331,6 +5473,9 @@ function getProd(id){
     remarks:g('p'+id+'-remarks'), designCostComment:g('p'+id+'-designCost'), labelTagComment:g('p'+id+'-labelTagComment'),
     newPhotos:productPhotos[id]||[], existingPhotos:(existingProductPhotos[id]||[]).slice(), existingPhotoFileIds:(existingProductPhotos[id]||[]).map(ep=>ep.fileId),
     newEmbossPhotos:embossPhotos[id]||[], existingEmbossPhotos:(existingEmbossPhotos[id]||[]).slice(), existingEmbossPhotoFileIds:(existingEmbossPhotos[id]||[]).map(ep=>ep.fileId),
+    // Design SKU per attached Design Master photo (qty = SINGLE COLOUR split)
+    designSkus:(existingProductPhotos[id]||[]).filter(ep=>ep.sku||ep.designNo)
+      .map(ep=>({url:ep.url, sku:ep.sku||'', designNo:ep.designNo||'', qty:Number(ep.qty)||0})),
   };
 }
 
@@ -5340,6 +5485,7 @@ function calcAll(){
   cards.forEach(c=>{
     const id=c.id.replace('prod-',''); const p=getProd(id);
     grandEx+=p.exGST; grandGst+=p.gstAmt; grandWeight+=(p.totalWeight||0); prods.push(p);
+    ofSkuSync_(id); ofSkuTotals_(id);   // SINGLE COLOUR design-wise qty table
     const set=(s,v)=>{const el=document.getElementById(s);if(el)el.textContent=v;};
     set('p'+id+'-ppkg', fmt(p.effectivePricePerKg)+'/KG'+(p.discount>0?' (-'+p.discount+'%)':''));
     set('p'+id+'-ppc',fmt(p.finalPricePerQty));
@@ -5467,10 +5613,11 @@ function collectPayload(){
       dbsb:p.dbsb,ply:p.ply,sattan:p.sattan,sattanType:p.sattanType,sattanSize:p.sattanSize,moq:p.moq,emboss:p.emboss,
       design:p.design,packs:p.packs,packPcs:p.packPcs,qty:p.qty,price:p.price,discount:p.discount,effectivePricePerKg:p.effectivePricePerKg,pricePerPc:p.pricePerPc,
       gstPct:p.gstPct,packType:p.packType,packNo:p.packNo,packCharge:p.packCharge,packChargePcs:p.packChargePcs,packChargeCostPc:p.packChargeCostPc,
-      trims:p.trimData,extraTrims:p.extraTrims||[],trimsCostPerPc:p.trimsCostPerPc.toFixed(2),trimsCostTotal:p.trimsCostTotal.toFixed(2),
+      trims:p.trimData,trimShown:p.trimShown||{},extraTrims:p.extraTrims||[],trimsCostPerPc:p.trimsCostPerPc.toFixed(2),trimsCostTotal:p.trimsCostTotal.toFixed(2),
       remarks:p.remarks||'', designCostComment:p.designCostComment||'', labelTagComment:p.labelTagComment||'',
       newPhotos:p.newPhotos||[], existingPhotos:p.existingPhotos||[], existingPhotoFileIds:p.existingPhotoFileIds||[],
       newEmbossPhotos:p.newEmbossPhotos||[], existingEmbossPhotos:p.existingEmbossPhotos||[], existingEmbossPhotoFileIds:p.existingEmbossPhotoFileIds||[],
+      designSkus:p.designSkus||[],
     });
   });
   return {
@@ -5707,7 +5854,13 @@ function buildSheetRows(p){
       photo_link:(Array.isArray(x.photoUrls)&&x.photoUrls.length)?x.photoUrls.join(', '):'',
       label_tag_comment:x.labelTagComment||'',
       emboss_photo_link:(Array.isArray(x.embossPhotoUrls)&&x.embossPhotoUrls.length)?x.embossPhotoUrls.join(', '):'',
-      item_code:x.itemCode||''
+      item_code:x.itemCode||'',
+      /* Design SKU of the attached Design Master photos, e.g.
+         "SKU-101 (250), SKU-102 (250)" for SINGLE COLOUR. Needs
+         sql/ORDER_DESIGN_SKU_MIGRATION.sql; before it runs, the RPC's
+         jsonb_populate_recordset simply ignores this key (the detail is also
+         in full_order.products[].designSkus). */
+      design_sku:ofDesignSkuText_(x)
     };
   });
 
@@ -5821,6 +5974,17 @@ async function handleSubmit(){
         ? 'Product #'+(i+1)+': "'+code+'" is not in the Brand Master. Choose from the list or add it with "Add New Brand Item".'
         : 'Product #'+(i+1)+': an Item Code is required (from the Brand Master list)');
       if(pid) document.getElementById('p'+pid+'-itemCode')?.focus();
+      return;
+    }
+  }
+  // SINGLE COLOUR: design-wise qty must add up to the Order Quantity exactly
+  {
+    const cards=[...document.querySelectorAll('.product-card')];
+    for(let i=0;i<cards.length;i++){
+      const pid=cards[i].id.replace('prod-',''), why=ofSkuCheck_(pid);
+      if(!why) continue;
+      toast('Product #'+(i+1)+': '+why);
+      cards[i].querySelector('.sku-tbl input')?.focus();
       return;
     }
   }
@@ -6507,7 +6671,13 @@ function applyProductToCard(id, x){
   const photoUrls=Array.isArray(x.photoUrls)?x.photoUrls:(x.photoUrl?[x.photoUrl]:[]);
   const photoFileIds=Array.isArray(x.photoFileIds)?x.photoFileIds:(x.photoFileId?[x.photoFileId]:[]);
   productPhotos[id]=[];
-  existingProductPhotos[id]=photoFileIds.map((fid,i)=>({fileId:fid, url:photoUrls[i]||''}));
+  // Design SKU / qty come back from designSkus, matched by the photo url.
+  const skuByUrl=new Map((Array.isArray(x.designSkus)?x.designSkus:[]).map(s=>[s.url,s]));
+  existingProductPhotos[id]=photoFileIds.map((fid,i)=>{
+    const url=photoUrls[i]||'', s=skuByUrl.get(url);
+    return s ? {fileId:fid, url, label:s.designNo?'D '+s.designNo:'', sku:s.sku||'', designNo:s.designNo||'', qty:Number(s.qty)||0}
+             : {fileId:fid, url};
+  });
   renderPhotoGallery(id,'product');
 
   const embossPhotoUrls=Array.isArray(x.embossPhotoUrls)?x.embossPhotoUrls:[];
@@ -7229,104 +7399,68 @@ function buildOrderHtml(p) {
     });
   });
 
-  // ── Packing rows ─────────────────────────────────────────────────────────────
+  /* ── PACKING MATERIALS PRICING SUMMARY ───────────────────────────────────
+     ONE table, built from exactly the rows the entry form's Bags & Trims
+     table had for each product. It used to be a grouped table with six FIXED
+     columns (Label / Tag / Bag / Bore / Inner Box / Outer Box, buyer + seller)
+     plus a separate "ADDITIONAL PACKING MATERIALS" table; brands that never
+     use a Bore still printed a Bore column, and the Brand Master's own
+     materials sat in a second table.
+     Now every product lists, in the form's order: its Packing Charge row,
+     the fixed trims that were shown on the card (trimShown; an old order
+     without trimShown falls back to "anything not NA"), then the Brand Master
+     materials (extraTrims: Master Packing Type, Slave Packing, labels, tags…).
+     The amounts are the same figures trimsCostTotalFor() and packCharge give,
+     so the TOTAL equals the Trims + Packing Charge in the bill. */
   var totalTrimsGrand = 0;
   var totalPackChargeGrand = 0;
   p.products.forEach(function(x) { totalTrimsGrand += trimsCostTotalFor(x); totalPackChargeGrand += Number(x.packCharge) || 0; });
-  var packHtml = "";
-  p.products.forEach(function(x, i) {
-    var t    = x.trims || {};
-    var q    = n(x.qty), pk = n(x.price), gp = n(x.gstPct);
-    var disc  = n(x.discount);
-    var effPk = pk * (1 - disc / 100);
-    var w     = n(x.weight);
-    var tw    = n(x.totalWeight);
-    var tcTot = trimsCostTotalFor(x);
-    var pChg  = Number(x.packCharge) || 0;
-    var exG  = (tw * effPk) + tcTot + pChg;
-    var amt  = exG * (1 + gp / 100);
-    var fpq  = q ? (exG / q) : 0;
-    var zebra = (i % 2 === 1) ? "background:#F8FAFC;" : "";
-
-    function getSupp(k) { return t[k] ? t[k].supp : "na"; }
-    function getCost(k) { return t[k] ? n(t[k].cost) : 0; }
-    function getDisc(k) { return t[k] ? n(t[k].disc) : 0; }
-    function getEffCost(k) { return getCost(k) * (1 - getDisc(k) / 100); }
-    function getPcs(k)  { return t[k] ? n(t[k].pcs) : 0; }
-
-    var keys = ["label", "tag", "bag", "bore", "inner", "outer"];
-    var rowHtml = '<tr style="' + zebra + '">' + td(String(i + 1), "center", "");
-    keys.forEach(function(k) {
-      var v = suppBuyer(getSupp(k));
-      rowHtml += td(v, "center", "font-size:7pt;color:" + (v === "YES" ? "#1B6B3A;font-weight:700;" : "#999;"));
-    });
-    keys.forEach(function(k) {
-      var v = suppSeller(getSupp(k), getEffCost(k), getPcs(k), getDisc(k));
-      rowHtml += td(v, "center", "font-size:7pt;color:" + (v !== "NO" ? "#1B6B3A;font-weight:700;" : "#999;"));
-    });
-    var pkgChgHtml = pChg > 0
-      ? (n(x.packChargePcs) ? n(x.packChargePcs) + 'pc x Rs' + inr(n(x.packChargeCostPc)) : 'Rs' + inr(pChg)) + '<br><small style="font-size:5.5pt">' + esc(x.packType || '') + '</small>'
-      : '&mdash;';
-    rowHtml +=
-      td("Rs" + inr(tcTot), "center", "font-weight:700;color:#D4870A;") +
-      td(pkgChgHtml, "center", "font-weight:700;color:#92400E;") +
-      '</tr>';
-    packHtml += rowHtml;
-  });
-
-  // Dynamic bore header label based on product packing types.
-  // NOTE: "Box" packing type keeps the column labelled "Bore" (never shown as "Box").
-  // Only "Bale" packing type still gets its own special column label.
-  var ptMap = {};
-  p.products.forEach(function(x) { if (x.packType) ptMap[x.packType] = true; });
-  var ptArr = Object.keys(ptMap);
-  var boreHdrLabel = ptArr.length === 1
-    ? (ptArr[0] === 'Bale' ? 'Bale' : 'Bore')
-    : (ptArr.some(function(t) { return t === 'Bale'; })
-        ? ptArr.map(function(t) { return t === 'Bale' ? 'Bale' : 'Bore'; })
-              .filter(function(v, i, a) { return a.indexOf(v) === i; }).join('/')
-        : 'Bore');
 
   function td(txt, align, extra) {
     return '<td style="padding:4pt 3pt;border:0.5pt solid #ccc;text-align:' + align + ';' + (extra || "") + '">' + txt + '</td>';
   }
 
-  /* ── ADDITIONAL PACKING MATERIALS ─────────────────────────────────────────
-     A separate table for the extra materials, right below the PACKING
-     table. They aren't squeezed into that grouped table because it is built
-     on the six fixed trims' two-tier header (6 BUYER + 6 SELLER columns);
-     putting a changing material list into it would mean changing the
-     header's structure on every order.
-
-     The table is hidden COMPLETELY when no product has a single extra row; an
-     empty heading in the PDF is noise, not information. The cost doesn't have
-     to be added AGAIN here: trimsCostTotalFor() already includes it, so the
-     Trims Cost column above and the Grand Total are already correct. This
-     table only shows the breakdown. */
-  var extraRowsHtml = "";
-  var extraGrand = 0;
+  var FIXED_PDF = [{k:"label",n:"Label"},{k:"tag",n:"Tag"},{k:"bag",n:"Bag"},{k:"bore",n:"Bore"},{k:"inner",n:"Inner Box"},{k:"outer",n:"Outer Box"}];
+  var pmRowsHtml = "";
   p.products.forEach(function(x, i) {
-    var list = (Array.isArray(x.extraTrims) ? x.extraTrims : [])
-      .filter(function(r) { return r && String(r.mat || "").trim(); });
-    if (!list.length) return;
-    list.forEach(function(r, j) {
+    var t = x.trims || {};
+    var shownMap = x.trimShown || null;
+    var list = [];
+    // 1. Packing Charge (always the first row on the card)
+    var pcPcs = n(x.packChargePcs), pcCost = n(x.packChargeCostPc), pcAmt = Number(x.packCharge) || 0;
+    list.push({ mat: (x.packType || "Bora") + " Packing Charge", supp: "seller", pcs: pcPcs, cost: pcCost, disc: 0,
+                amt: pcAmt || pcPcs * pcCost, charge: true });
+    // 2. Fixed trims that were on the card
+    FIXED_PDF.forEach(function(f) {
+      var r = t[f.k]; if (!r) return;
       var supp = String(r.supp || "na");
-      var isSeller = supp === "seller";
-      var cost = isSeller ? n(r.cost) : 0;
-      var dsc  = isSeller ? n(r.disc) : 0;
-      var eff  = cost * (1 - dsc / 100);
-      var pcs  = supp !== "na" ? n(r.pcs) : 0;   // show Buyer / FOC pcs too; the amount is still SIHF only (eff is 0 otherwise)
-      var amt  = pcs * eff;
-      extraGrand += amt;
-      var suppTxt = { na: "&mdash;", buyer: "Buyer", seller: "SIHF", foc: "FOC" }[supp] || "&mdash;";
-      var zeb = ((i + j) % 2 === 1) ? "background:#F8FAFC;" : "";
-      extraRowsHtml +=
-        '<tr style="' + zeb + '">' +
-          // The product number only on that product's FIRST row; printing "3" five
-          // times for one product's five materials makes the list hard to read.
+      var on = shownMap ? !!shownMap[f.k] : supp !== "na";
+      if (!on) return;
+      var mat = f.k === "bore" ? (x.packType === "Bale" ? "Bale" : "Bore") : f.n;
+      list.push({ mat: mat, supp: supp, pcs: n(r.pcs), cost: n(r.cost), disc: n(r.disc) });
+    });
+    // 3. Brand Master materials
+    (Array.isArray(x.extraTrims) ? x.extraTrims : []).forEach(function(r) {
+      if (!r || !String(r.mat || "").trim()) return;
+      list.push({ mat: r.mat, supp: String(r.supp || "na"), pcs: n(r.pcs), cost: n(r.cost), disc: n(r.disc) });
+    });
+
+    var prodTotal = 0;
+    list.forEach(function(r, j) {
+      var isSeller = r.supp === "seller";
+      var cost = isSeller ? r.cost : 0;
+      var dsc  = isSeller ? r.disc : 0;
+      var pcs  = r.supp !== "na" ? r.pcs : 0;   // Buyer / FOC pcs show too; the amount is SIHF only
+      var amt  = r.charge ? r.amt : pcs * cost * (1 - dsc / 100);
+      prodTotal += amt;
+      var suppTxt = { na: "&mdash;", buyer: "Buyer", seller: "SIHF", foc: "FOC" }[r.supp] || "&mdash;";
+      var zeb = (i % 2 === 1) ? "background:#F8FAFC;" : "";
+      pmRowsHtml +=
+        '<tr style="' + zeb + (r.charge ? "background:#FFFBEA;" : "") + '">' +
+          // The product number only on that product's FIRST row
           td(j === 0 ? String(i + 1) : "", "center", "font-weight:700;") +
           td(j === 0 ? esc(x.itemCode || x.fabric || "-") : "", "center", "color:#1A3C5E;") +
-          td(esc(r.mat || "-"), "left", "font-weight:700;") +
+          td(esc(r.mat || "-"), "left", "font-weight:700;" + (r.charge ? "color:#92400E;" : "")) +
           td(suppTxt, "center", isSeller ? "color:#1B6B3A;font-weight:700;" : "color:#999;") +
           td(pcs ? intIN(pcs) : "&mdash;", "center", "") +
           td(cost ? ("Rs" + inr(cost)) : "&mdash;", "center", "") +
@@ -7334,23 +7468,28 @@ function buildOrderHtml(p) {
           td(amt ? ("Rs" + inr(amt)) : "&mdash;", "center", "font-weight:700;color:#D4870A;") +
         '</tr>';
     });
+    if (p.products.length > 1) {
+      pmRowsHtml += '<tr style="background:#EEF2F7">' +
+        '<td colspan="7" style="padding:3pt 4pt;border:0.5pt solid #ccc;text-align:right;font-weight:700;font-size:7pt;color:#1A3C5E">Product #' + (i + 1) + ' total</td>' +
+        td("Rs" + inr(prodTotal), "center", "font-weight:700;color:#1A3C5E;") + '</tr>';
+    }
   });
-  var extraTableHtml = extraRowsHtml
-    ? ('<div style="font-size:8pt;font-weight:700;color:#1A3C5E;text-transform:uppercase;letter-spacing:.5px;margin:4pt 0 2pt;padding-bottom:2pt;border-bottom:1pt solid #1A3C5E">ADDITIONAL PACKING MATERIALS</div>' +
-       '<table style="width:100%;font-size:7pt">' +
-         '<thead><tr style="background:#1A3C5E;color:#fff">' +
-           thInline("SR", "4%") + thInline("Item Code", "12%") + thInline("Material", "22%") +
-           thInline("Supplied By", "12%") + thInline("No. of Pcs", "12%") +
-           thInline("Cost/Pc", "12%") + thInline("Disc%", "8%") + thInline("Amount", "18%") +
-         '</tr></thead>' +
-         '<tbody>' + extraRowsHtml + '</tbody>' +
-         '<tfoot><tr style="background:#1A3C5E;color:#fff">' +
-           '<td colspan="7" style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:right;font-weight:700;font-size:8.5pt">TOTAL</td>' +
-           '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(extraGrand) + '</td>' +
-         '</tr></tfoot>' +
-       '</table>' +
-       '<div style="font-size:6pt;color:#666;margin:1pt 0 3pt">This amount is already included in &quot;Trims Cost&quot; in the PACKING MATERIALS table above &mdash; it is not added again.</div>')
-    : "";
+  var pmGrand = totalTrimsGrand + totalPackChargeGrand;
+  var pmTableHtml =
+    '<div style="font-size:8pt;font-weight:700;color:#1A3C5E;text-transform:uppercase;letter-spacing:.5px;margin:4pt 0 2pt;padding-bottom:2pt;border-bottom:1pt solid #1A3C5E">PACKING MATERIALS PRICING SUMMARY</div>' +
+    '<table style="width:100%;font-size:7pt">' +
+      '<thead><tr style="background:#1A3C5E;color:#fff">' +
+        thInline("SR", "4%") + thInline("Item Code", "12%") + thInline("Material", "22%") +
+        thInline("Supplied By", "12%") + thInline("No. of Pcs", "12%") +
+        thInline("Cost/Pc", "12%") + thInline("Disc%", "8%") + thInline("Amount", "18%") +
+      '</tr></thead>' +
+      '<tbody>' + (pmRowsHtml || '<tr><td colspan="8" style="padding:5pt;border:0.5pt solid #ccc;text-align:center;color:#999">No packing material</td></tr>') + '</tbody>' +
+      '<tfoot><tr style="background:#1A3C5E;color:#fff">' +
+        '<td colspan="7" style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:right;font-weight:700;font-size:8.5pt">TOTAL' +
+          '<span style="font-weight:400;font-size:6.5pt"> (Trims Rs' + inr(totalTrimsGrand) + ' + Packing Charge Rs' + inr(totalPackChargeGrand) + ')</span></td>' +
+        '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(pmGrand) + '</td>' +
+      '</tr></tfoot>' +
+    '</table>';
 
   // ── Full document ────────────────────────────────────────────────────────────
   return '' +
@@ -7455,39 +7594,8 @@ function buildOrderHtml(p) {
     '</tfoot>' +
   '</table>' +
 
-  // Packing section header
-  '<div style="font-size:8pt;font-weight:700;color:#1A3C5E;text-transform:uppercase;letter-spacing:.5px;margin:4pt 0 2pt;padding-bottom:2pt;border-bottom:1pt solid #1A3C5E">PACKING MATERIALS &amp; PRICING SUMMARY</div>' +
-
-  // Packing table — grouped header
-  '<table style="width:100%;font-size:7pt">' +
-    '<thead>' +
-      '<tr>' +
-        '<th rowspan="2" style="background:#1A3C5E;color:#fff;padding:4pt 3pt;border:0.5pt solid #1A3C5E;width:4%">SR</th>' +
-        '<th colspan="6" style="background:#2E6DA4;color:#fff;padding:4pt 3pt;border:0.5pt solid #1A3C5E;text-align:center">ITEMS SUPPLIED BY BUYER</th>' +
-        '<th colspan="6" style="background:#1B6B3A;color:#fff;padding:4pt 3pt;border:0.5pt solid #1A3C5E;text-align:center">ITEMS SUPPLIED BY SELLER</th>' +
-        '<th rowspan="2" style="background:#D4870A;color:#fff;padding:4pt 3pt;border:0.5pt solid #1A3C5E;width:8%">Trims Cost</th>' +
-        '<th rowspan="2" style="background:#92400E;color:#fff;padding:4pt 3pt;border:0.5pt solid #1A3C5E;width:8%">Pkg Charge</th>' +
-      '</tr>' +
-      '<tr>' +
-        subTh("Label", "#D6E8F7", "#1A3C5E") + subTh("Tag", "#D6E8F7", "#1A3C5E") + subTh("Bag", "#D6E8F7", "#1A3C5E") +
-        subTh(boreHdrLabel, "#D6E8F7", "#1A3C5E") + subTh("Inner Box", "#D6E8F7", "#1A3C5E") +
-        subTh("Outer Box", "#D6E8F7", "#1A3C5E") +
-        subTh("Label", "#E6F4EC", "#1B6B3A") + subTh("Tag", "#E6F4EC", "#1B6B3A") + subTh("Bag", "#E6F4EC", "#1B6B3A") +
-        subTh(boreHdrLabel, "#E6F4EC", "#1B6B3A") + subTh("Inner Box", "#E6F4EC", "#1B6B3A") +
-        subTh("Outer Box", "#E6F4EC", "#1B6B3A") +
-      '</tr>' +
-    '</thead>' +
-    '<tbody>' + packHtml + '</tbody>' +
-    '<tfoot><tr style="background:#1A3C5E;color:#fff">' +
-      '<td colspan="13" style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:right;font-weight:700;font-size:8.5pt">TOTAL</td>' +
-      '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(totalTrimsGrand) + '</td>' +
-      '<td style="padding:5pt 4pt;border:0.5pt solid #1A3C5E;text-align:center;font-weight:700;font-size:9pt">Rs' + inr(totalPackChargeGrand) + '</td>' +
-    '</tr></tfoot>' +
-  '</table>' +
-
-  // Breakdown of the extra materials; if there are no extra rows, the whole
-  // table (with its heading) stays hidden. See extraTableHtml.
-  extraTableHtml +
+  // Packing materials: only the rows the entry form had (see pmTableHtml)
+  pmTableHtml +
 
   // Total Taxable & GST Breakup & Net Amount & Amount in Words
   (function() {
