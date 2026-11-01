@@ -4501,6 +4501,8 @@ function activatePanel(id){
   if(storeRoot) storeRoot.style.display=showingFull?'none':'';
   if(fullPurchase) fullPurchase.style.display=showingFull?'block':'none';
   document.querySelectorAll('#storeInterface .main-panel').forEach(x=>x.style.display='none');
+  // Item Stock header / Store 1 colours follow the panel actually shown
+  setTimeout(imStockHeadSync_,0);
   // 'block' here overrides .main-panel's own `display:flex`, which leaves the
   // panel a plain block box: .card's flex:1 goes inert, its height becomes
   // content-driven, and nothing inside can ever become a scroll region — the
@@ -11137,11 +11139,38 @@ function imStoreBannerSync_(){
   if(!b){b=document.createElement('div');b.id='imStoreBanner';host.parentElement.insertBefore(b,host);}
   const one=!!sarvItemMasterStore;
   b.style.cssText='margin:6px 0 8px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;'
-    +(one?(sarvItemMasterStore==='STORE 1'?'background:#f5f3ff;border:1px solid #c4b5fd;color:#5b21b6;':'background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;')
+    +(one?(sarvItemMasterStore==='STORE 1'?'background:#fdf2f4;border:1px solid #e7b9c2;color:#6b0f22;':'background:#f0fdfa;border:1px solid #99f6e4;color:#115e59;')
          :'background:#f8fafc;border:1px solid #e2e8f0;color:#475569;');
   b.textContent=one
     ?'Stock shown: '+sarvStoreLabel(sarvItemMasterStore)+' only (its Inward − Outward). The item list is common to both stores.'
     :'Stock shown: Store 1 + Store 2 together. Each store\'s own stock: sidebar › Store 1 / Store 2 › Item Stock.';
+  imStockHeadSync_();
+}
+/* Item Stock (one store's mode) gets its own header, "STORE 1 ITEMS STOCK
+   BALANCE", and that store's colours (store.css: body.sarv-im-stock +
+   data-im-store, the same Store 1 maroon as its Inward screen). Only while
+   the Master Data panel is actually on screen: My Day switches the mode for
+   a moment in the background (store-mytasks.js loadItems) and must not
+   repaint whatever screen is open. Called from imStoreBannerSync_ and
+   activatePanel. A function declaration, and the `let` read in a try, so an
+   early activatePanel can never trip over it. */
+function imStockHeadSync_(){
+  let st=null;try{st=sarvItemMasterStore;}catch(e){}
+  const mp=byId('masterDataPanel');
+  const on=!!st&&!!mp&&mp.style.display!=='none';
+  document.body.classList.toggle('sarv-im-stock',on);
+  if(on)document.body.dataset.imStore=st;else delete document.body.dataset.imStore;
+  const card=mp&&mp.querySelector(':scope > .card');
+  const t=card&&card.querySelector(':scope > .panel-title');
+  const s=card&&card.querySelector(':scope > .panel-subtitle');
+  if(t){
+    if(t.dataset.orig==null)t.dataset.orig=t.textContent;
+    t.textContent=on?sarvStoreLabel(st).toUpperCase()+' ITEMS STOCK BALANCE':t.dataset.orig;
+  }
+  if(s){
+    if(s.dataset.orig==null)s.dataset.orig=s.textContent;
+    s.textContent=on?'Inward − Outward balance of '+sarvStoreLabel(st)+' only; the item list is common to both stores':s.dataset.orig;
+  }
 }
 window.loadItemMaster=async function(){
   const tb=byId('itemMasterBody');

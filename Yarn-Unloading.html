@@ -1817,5 +1817,7 @@
     function updateBoxLabels(){ document.querySelectorAll('.box-num').forEach((td, i)=>td.innerHTML=`<b>${i+1}</b>`); }
     function clearSig() { if(ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); sigDrawn = false; }
 </script>
+<!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
+<script src="cursor-glow.js"></script>
 </body>
 </html>
