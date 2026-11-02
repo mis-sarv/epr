@@ -2135,11 +2135,32 @@
             const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done' || rec.status === 'rescheduled');
             if (t.isBuddyTask && (ds < t.buddyStart || ds > t.buddyEnd)) return false;
             if (t.active === false && t.deactivatedAt && ds >= ymd(new Date(t.deactivatedAt))) return false;
+            // A self task still pending from an earlier day is carried forward onto today (see selfDoneRec).
+            if (isSelfCarried(t, ds)) { const o = ownerOf(t); return !(o && selfDoneRec(o, t, ds)); }
             if (!(taskAppliesToDate(t, y, m, d) || isR)) return false;
             if (t.frequency === 'ea' && t.isPostponed && ds !== t.freqValue && !isR) return false;
             return true;
         }
         const recOf = (t, ds) => { const o = appState.employees.find(e => e.empCode === t.ownerCode); return o && o.records[ds] ? o.records[ds][t.id] : undefined; };
+        const ownerOf = t => appState.employees.find(e => e.empCode === t.ownerCode);
+        /* SELF TASK CARRY FORWARD. A personal task that is not done on its
+           planned day does not drop off: it is carried forward and shows on
+           today as well (My Tasks lists, pending badges and alarm, the sheet's
+           today column) until it is done. Only today is added, not every day in
+           between, so the sheet is not filled with "missed" cells.
+           The server ticks only today's date (tm_mark_done: NOT_TODAY), so a
+           carried task is ticked on the day it is really done. "Done" is
+           therefore a ticked record on ANY day from the planned day on, not only
+           on the planned day. Self task records are always loaded in full
+           (tm_emp_json_), so a tick from an older month is never missed.
+           Returns {ds, rec} of the first such tick (before `before`, if given), or null. */
+        function selfDoneRec(owner, t, before) {
+            if (!owner || !t.isSelfTask || !t.freqValue) return null;
+            const days = Object.keys(owner.records || {}).filter(ds => ds >= t.freqValue && (!before || ds < before) && owner.records[ds][t.id] && owner.records[ds][t.id].checked).sort();
+            return days.length ? { ds: days[0], rec: owner.records[days[0]][t.id] } : null;
+        }
+        // Today's copy of a self task planned for an earlier day.
+        function isSelfCarried(t, ds) { return !!(t.isSelfTask && t.freqValue && t.freqValue < ds && ds === todayStr()); }
         /* One day's score for one person (self tasks are personal and not counted).
            Counted: done, overdue and missed. Not yet due tasks are not counted,
            so a day's % is never dragged down by work that is not late yet. */
@@ -2284,17 +2305,21 @@
         }
         function completedSelfTasks(emp) {
             const out = [];
-            emp.tasks.forEach(t => { const r = t.isSelfTask && emp.records[t.freqValue] && emp.records[t.freqValue][t.id]; if (r && r.checked) out.push({ ...t, ownerCode: emp.empCode, rec: r }); });
+            // Done on the planned day or, once carried forward, on a later day (doneDate).
+            emp.tasks.forEach(t => { const x = selfDoneRec(emp, t); if (x) out.push({ ...t, ownerCode: emp.empCode, rec: x.rec, doneDate: x.ds }); });
             // Newest first, by the real tick time.
-            return out.sort((a, b) => doneMomentOf(b.rec, b.freqValue) - doneMomentOf(a.rec, a.freqValue));
+            return out.sort((a, b) => doneMomentOf(b.rec, b.doneDate) - doneMomentOf(a.rec, a.doneDate));
         }
         function selfHistoryCard(t, compact) {
-            const ph = t.rec.hasProof ? `<button onclick="event.stopPropagation(); viewProofImage('${esc(t.ownerCode)}',${t.id},'${esc(t.freqValue)}')" title="View proof" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-2.5 rounded-xl border border-indigo-100 shrink-0"><i class="ph-bold ph-camera text-lg"></i></button>` : '';
-            const done = doneMomentOf(t.rec, t.freqValue);
+            // The proof and the score belong to the day it was ticked, which is later than the plan for a carried task.
+            const dd = t.doneDate || t.freqValue;
+            const ph = t.rec.hasProof ? `<button onclick="event.stopPropagation(); viewProofImage('${esc(t.ownerCode)}',${t.id},'${esc(dd)}')" title="View proof" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-2.5 rounded-xl border border-indigo-100 shrink-0"><i class="ph-bold ph-camera text-lg"></i></button>` : '';
+            const done = doneMomentOf(t.rec, dd);
+            const cf = dd > t.freqValue ? ' · Carried forward' : '';
             return `<div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">`
                 + `<div class="flex items-start gap-3"><div class="w-9 h-9 rounded-xl bg-green-50 border border-green-200 text-green-600 flex items-center justify-center shrink-0"><i class="ph-bold ph-check text-lg"></i></div>`
-                + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-700 leading-tight text-sm">${esc(t.desc)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Planned ${esc(t.freqValue)}${t.time ? ' ' + esc(t.time) : ''} · Done ${esc(fmtWhen(done))}</div></div>${ph}</div>`
-                + (compact ? '' : liveBox(t, t.freqValue, t.rec)) + `</div>`;
+                + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-700 leading-tight text-sm">${esc(t.desc)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mt-1">Planned ${esc(t.freqValue)}${t.time ? ' ' + esc(t.time) : ''} · Done ${esc(fmtWhen(done))}${cf}</div></div>${ph}</div>`
+                + (compact ? '' : liveBox(t, dd, t.rec)) + `</div>`;
         }
         function renderDashSelfHistory() {
             const emp = appState.currentLoggedInEmp; const box = document.getElementById('dashSelfHistory'); if (!emp || !box) return;
@@ -2343,6 +2368,7 @@
                     if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, today); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
                     let bt=t.isBuddyTask?`<span class="bg-teal-50 text-teal-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-teal-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users mr-1"></i> BUDDY: ${esc(t.primaryName)}</span>`:'';
                     let st=t.isSelfTask?`<span class="bg-blue-50 text-blue-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-blue-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user mr-1"></i> SELF</span>`:'';
+                    if(isSelfCarried(t, today)) st+=`<span class="bg-amber-50 text-amber-800 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-amber-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-bend-down-right mr-1"></i> CARRIED FROM ${esc(t.freqValue)}</span>`;
                     let fu=t.isResched?`<span class="bg-purple-50 text-purple-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-purple-200 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-u-down-right mr-1"></i> FOLLOW-UP</span>`:'';
 
                     out+=`<div class="bg-white p-5 rounded-3xl border border-slate-200 relative shadow-sm overflow-hidden">${warn}<div class="relative z-10"><h3 class="font-extrabold text-slate-800 text-lg leading-tight mb-1.5">${esc(t.desc)}</h3>${t.isResched&&t.rec&&t.rec.remarks?`<p class="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mb-2 border border-purple-100 italic shadow-inner">Remark: ${esc(t.rec.remarks)}</p>`:''}<div class="flex flex-wrap items-center gap-y-1 mt-2"><span class="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 mr-2 flex items-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-clock mr-1"></i> ${esc(t.time||'All Day')}</span>${bt}${st}${fu}</div>${trackHTML}</div>${liveBox(t, today, t.rec)}${html}</div>`;
@@ -2441,7 +2467,7 @@
                 : 'Finish them before the target time to keep full points.';
             document.getElementById('pendAlarmList').innerHTML = list.map(x => {
                 const t = x.t, od = x.sc.state === 'overdue';
-                const when = od ? `Delayed ${fmtDur(now - x.sc.deadline)}` : `Due ${t.time || 'today'}`;
+                const when = (od ? `Delayed ${fmtDur(now - x.sc.deadline)}` : `Due ${t.time || 'today'}`) + (isSelfCarried(t, todayStr()) ? ` · carried from ${t.freqValue}` : '');
                 return `<div class="bg-white border ${od ? 'border-red-300' : 'border-slate-200'} rounded-xl px-3 py-2.5 flex items-start gap-3 shadow-sm">`
                     + `<span class="tm-dot-fast mt-1"></span>`
                     + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 text-sm leading-tight">${esc(t.desc)}</div>`
@@ -2517,7 +2543,7 @@
             activeTaskCategory='completed-self'; activeTaskCategoryTitle='Completed Self Tasks'; document.getElementById('taskListTitle').textContent="Completed Personal Tasks";
             const emp=appState.currentLoggedInEmp; if(!emp)return;
             const list = completedSelfTasks(emp);
-            const pending = emp.tasks.filter(t => t.isSelfTask && t.active !== false && !(emp.records[t.freqValue] && emp.records[t.freqValue][t.id] && emp.records[t.freqValue][t.id].checked)).length;
+            const pending = emp.tasks.filter(t => t.isSelfTask && t.active !== false && !selfDoneRec(emp, t)).length;
             document.getElementById('taskListDate').innerHTML=`<i class="ph-bold ph-check-square-offset"></i> ${list.length} done · ${pending} still planned`;
             const con=document.getElementById('taskListContainer');
             if(!list.length) { con.innerHTML=`<div class="text-center p-8 bg-white border border-slate-200 rounded-3xl shadow-sm mt-4"><i class="ph-fill ph-folder-open text-6xl text-slate-200 mb-3 drop-shadow-sm"></i><p class="text-slate-500 font-extrabold text-lg">No completed personal tasks.</p></div>`; navigate('task-list'); return; }
@@ -2825,7 +2851,8 @@
                 ? `<span class="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-extrabold"><span class="text-lg ${pctCls(ms.pct)}">${ms.pct}%</span><span class="text-slate-700">${ms.gained} / ${ms.possible} pts</span><span class="text-green-600">${ms.onTime} on time</span><span class="text-amber-600">${ms.grace} grace</span><span class="text-orange-600">${ms.late} late</span><span class="text-red-600">${ms.missed} missed</span></span>`
                 : '<span class="text-[11px] font-bold text-slate-400">No scored tasks in this month yet.</span>';
 
-            let dTasks = getCombinedTasks(emp).filter(t => !(t.isSelfTask && emp.records[t.freqValue]?.[t.id]?.checked));
+            // A done self task leaves the sheet, whether it was ticked on its planned day or after being carried forward.
+            let dTasks = getCombinedTasks(emp).filter(t => !(t.isSelfTask && selfDoneRec(ownerOf(t), t)));
             // A task taken off the checklist still shows in the months it was on it.
             dTasks = dTasks.filter(t => { for (let d = 1; d <= dim; d++) { const ds = dsOf(d); if (occursOn(t, ds, recOf(t, ds))) return true; if (t.frequency==='ea' && t.isPostponed && t.postponeHistory && ds >= t.postponeHistory[0] && ds <= t.freqValue) return true; } return false; });
 

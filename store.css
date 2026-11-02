@@ -3480,8 +3480,9 @@ body { min-width: 0; }
     top: 0;
     z-index: 100;
     min-width: 0;
-    height: 64px;
-    padding: 0 22px;
+    /* Kept slim (was 64px) so the screen below gets the room. */
+    height: 46px;
+    padding: 0 18px;
     background: linear-gradient(110deg, #0b172a 0%, #12243d 58%, #123e4c 100%);
     border-bottom: 1px solid rgba(148, 163, 184, 0.22);
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
@@ -3489,7 +3490,7 @@ body { min-width: 0; }
 
 #storeInterface header h1 {
     flex: 0 0 auto;
-    font-size: 17px;
+    font-size: 15px;
     letter-spacing: 0.8px;
     white-space: nowrap;
 }
@@ -3509,7 +3510,7 @@ body { min-width: 0; }
 #storeInterface .nav-link {
     flex: 0 0 auto;
     white-space: nowrap;
-    padding: 8px 11px;
+    padding: 5px 10px;
     border: 1px solid transparent;
     color: #a5b4c7;
     font-size: 11px;
@@ -3638,10 +3639,11 @@ body { min-width: 0; }
 
 #fullPurchasePanel > header {
     min-width: 0;
-    min-height: 64px;
+    /* Slim, same as the Store header (was 64px). */
+    min-height: 46px;
     height: auto;
-    padding: 10px 24px;
-    gap: 16px;
+    padding: 4px 18px;
+    gap: 14px;
     background: linear-gradient(110deg, #0b172a 0%, #12243d 58%, #123e4c 100%);
 }
 
@@ -3663,7 +3665,7 @@ body { min-width: 0; }
 #fullPurchasePanel .nav-link {
     flex: 0 0 auto;
     white-space: nowrap;
-    padding: 8px 11px;
+    padding: 5px 10px;
     border-color: transparent;
     font-size: 11px;
 }
@@ -3883,6 +3885,42 @@ body { min-width: 0; }
   .dm-oc-checks label { display:flex; align-items:center; gap:6px; cursor:pointer; }
   .dm-oc-table .oc-rate { width:110px; min-width:0; }
   .dm-oc-nosearch { width:100%; box-sizing:border-box; margin-bottom:5px; padding:5px 8px; font-size:11.5px; border:1px solid #cbd5e1; border-radius:6px; }
+  /* Online Catalogue filters, shopping-site layout: a dark bar of filter names,
+     the picked filter's values as a plain list on the left, designs on the
+     right. All built from OC_FILTERS (store-design-master.js). */
+  .dm-ocx { border:1px solid #cbd5e1; border-radius:8px; background:#fff; overflow:hidden; }
+  .dm-ocx-bar { display:flex; align-items:stretch; gap:2px; background:#0f172a; padding:4px 6px; overflow-x:auto; scrollbar-width:thin; }
+  .dm-ocx-tab {
+    flex:0 0 auto; white-space:nowrap; background:transparent; color:#e2e8f0;
+    border:1px solid transparent; border-radius:3px; padding:6px 10px;
+    font:inherit; font-size:12px; font-weight:600; cursor:pointer;
+  }
+  .dm-ocx-tab:hover { border-color:#e2e8f0; color:#fff; }
+  .dm-ocx-tab.active { border-color:#fff; color:#fff; background:rgba(255,255,255,.10); font-weight:800; }
+  .dm-ocx-tab.on { color:#fde68a; }
+  .dm-ocx-tab-all { font-weight:800; color:#fff; }
+  .dm-ocx-n { font-size:10px; font-weight:800; background:#fde68a; color:#78350f; border-radius:10px; padding:0 6px; margin-left:3px; }
+  .dm-ocx-body { display:grid; grid-template-columns:250px minmax(0,1fr); }
+  .dm-ocx-side { border-right:1px solid #e2e8f0; padding:12px; max-height:560px; overflow-y:auto; background:#fff; }
+  .dm-ocx-main { padding:12px 14px; min-width:0; }
+  .dm-ocx-grp { margin-bottom:14px; }
+  .dm-ocx-grp .dm-filter-head label { font-size:12px; color:#0f172a; text-transform:none; letter-spacing:0; }
+  .dm-ocx-vals { display:flex; flex-direction:column; gap:1px; }
+  .dm-ocx-vals label { display:flex; align-items:center; gap:7px; padding:3px 4px; border-radius:4px; font-size:12.5px; color:#0f172a; cursor:pointer; }
+  .dm-ocx-vals label:hover { background:#f1f5f9; }
+  .dm-ocx-vals label span { overflow-wrap:anywhere; }
+  .dm-ocx-vals input[type=checkbox] { width:14px; height:14px; cursor:pointer; flex:0 0 auto; }
+  .dm-ocx-vals .dm-empty { font-size:11px; color:#94a3b8; padding:2px 4px; }
+  .dm-ocx-chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .dm-ocx-chips:empty { display:none; }
+  .dm-ocx-chip { display:inline-flex; align-items:center; gap:4px; background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; border-radius:14px; padding:2px 4px 2px 10px; font-size:11px; font-weight:700; }
+  .dm-ocx-chip button { border:none; background:transparent; color:#1e40af; cursor:pointer; font-size:11px; padding:0 4px; }
+  .dm-ocx-chip button:hover { color:#b91c1c; }
+  .dm-ocx-foot { margin-top:8px; }
+  @media (max-width: 800px) {
+    .dm-ocx-body { grid-template-columns:1fr; }
+    .dm-ocx-side { border-right:none; border-bottom:1px solid #e2e8f0; max-height:300px; }
+  }
   .dm-oc-rate-toggle { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:#334155; cursor:pointer; margin-left:auto; }
   .dm-oc-preview { margin-top:12px; }
   .dm-oc-frame { width:100%; height:78vh; min-height:420px; border:1px solid #cbd5e1; border-radius:8px; background:#f1f5f9; }

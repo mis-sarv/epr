@@ -2205,6 +2205,91 @@
     }
   }
 
+  /* ══ FILTER LAYOUT: TOP BAR + LEFT LIST (Catalogue PDF and Online Catalogue) ══
+     Shaped like a shopping site's category bar and department list: a dark
+     bar of filter names on top ("☰ All" first), the picked filter's values as a
+     plain tick list on the left (with its own search, count and All / Clear),
+     and above the results a chip per narrowed filter (✕ ticks it fully again).
+
+     It only DRAWS. Each tab keeps its own filter list, tick state and
+     dependent-filter rules, and hands over `info` — one row per filter:
+     {f, avail, on, narrowed}, where f = {name, label}. So a new filter on
+     either tab is one line in that tab's filter list ({name, label, get}) and
+     nothing in index.html: it gets its bar button, list, search, count and chip
+     from here. The index.html side is only four empty containers (ids below).
+
+     fx = dmFxMake({bar, side, chips, search}, 'globalToggleFnName'):
+       active   the filter shown on the left ('' = all of them stacked)
+       search   search text per list ('*' = the "All" view)
+       sideFor  which view the left frame was built for; the search box is
+                rebuilt only when the view changes, so typing never loses focus */
+  function dmFxMake(ids, toggleFn){ return { ids: ids, toggleFn: toggleFn, active: null, search: {}, sideFor: null }; }
+  function dmFxClearSearch(fx){ fx.search = {}; fx.sideFor = null; }
+  function dmFxRender(fx, info, checked){
+    if (fx.active == null || (fx.active && !info.some(x => x.f.name === fx.active))) fx.active = info.length ? info[0].f.name : '';
+    const act = fx.active, tg = fx.toggleFn;
+
+    const bar = q(fx.ids.bar);
+    if (bar) bar.innerHTML =
+      '<button type="button" role="tab" data-fxf="" class="dm-ocx-tab dm-ocx-tab-all' + (act === '' ? ' active' : '') + '" aria-selected="' + (act === '') + '">&#9776; All</button>' +
+      info.map(x => '<button type="button" role="tab" data-fxf="' + x.f.name + '" class="dm-ocx-tab' + (act === x.f.name ? ' active' : '') + (x.narrowed ? ' on' : '') +
+        '" aria-selected="' + (act === x.f.name) + '" title="' + esc(x.f.label) + ': ' + x.on + ' of ' + x.avail.length + ' ticked">' + esc(x.f.label) +
+        (x.narrowed ? ' <span class="dm-ocx-n">' + x.on + '/' + x.avail.length + '</span>' : '') + '</button>').join('');
+
+    const side = q(fx.ids.side);
+    if (side) {
+      const key = act || '*';
+      if (fx.sideFor !== key || !q(fx.ids.search)) {
+        const cur = info.find(x => x.f.name === act);
+        side.innerHTML = '<input type="text" id="' + fx.ids.search + '" class="dm-oc-nosearch" placeholder="Search ' +
+          esc((cur ? cur.f.label : 'all filters').toLowerCase()) + '..." autocomplete="off"><div class="dm-ocx-lists"></div>';
+        q(fx.ids.search).value = fx.search[key] || '';
+        fx.sideFor = key;
+      }
+      const search = up(fx.search[key] || '');
+      const lists = side.querySelector('.dm-ocx-lists');
+      if (lists) lists.innerHTML = info.filter(x => !act || x.f.name === act).map(x => {
+        const shown = search ? x.avail.filter(v => sarvSearchMatch(v, search)) : x.avail;
+        // Under "All" a filter with nothing matching the search is left out.
+        if (!act && search && !shown.length) return '';
+        return '<div class="dm-ocx-grp">' +
+          '<div class="dm-filter-head"><label>' + (act ? 'Any ' : '') + esc(x.f.label) +
+            ' <span class="dm-fcount' + (x.narrowed ? ' on' : '') + '">' + (x.avail.length ? x.on + '/' + x.avail.length : '0') + '</span></label>' +
+            '<span><a onclick="' + tg + '(\'' + x.f.name + '\',true)">All</a> | <a onclick="' + tg + '(\'' + x.f.name + '\',false)">Clear</a></span></div>' +
+          '<div class="dm-ocx-vals">' + (shown.length
+            ? shown.map(v => '<label><input type="checkbox" name="' + x.f.name + '" value="' + esc(v) + '"' +
+                (checked(x.f.name, v) ? ' checked' : '') + '> <span>' + esc(v) + '</span></label>').join('')
+            : '<span class="dm-empty">' + (x.avail.length ? 'Nothing matches this search' : 'Nothing left here after the other filters') + '</span>') +
+          '</div></div>';
+      }).join('') || '<span class="dm-empty">Nothing matches this search</span>';
+    }
+
+    const chips = q(fx.ids.chips);
+    if (chips) chips.innerHTML = info.filter(x => x.narrowed).map(x =>
+      '<span class="dm-ocx-chip">' + esc(x.f.label) + ': ' + x.on + '/' + x.avail.length +
+      ' <button type="button" data-fxreset="' + x.f.name + '" title="Tick every ' + esc(x.f.label) + ' again">&#10005;</button></span>').join('');
+  }
+  /* draw = redraw the filters only (picking a filter in the bar or typing a
+     search changes no tick, so no preview rebuild); resetOne(name) = tick that
+     filter fully again (chip ✕). */
+  function dmFxBind(fx, draw, resetOne){
+    const bar = q(fx.ids.bar), chips = q(fx.ids.chips), side = q(fx.ids.side);
+    if (bar) bar.addEventListener('click', e => {
+      const b = e.target.closest('[data-fxf]'); if (!b) return;
+      fx.active = b.dataset.fxf; draw();
+    });
+    if (chips) chips.addEventListener('click', e => {
+      const c = e.target.closest('[data-fxreset]'); if (c) resetOne(c.dataset.fxreset);
+    });
+    // The search only narrows what the list SHOWS; ticks stay as they are.
+    let t = null;
+    if (side) side.addEventListener('input', e => {
+      if (e.target.id !== fx.ids.search) return;
+      fx.search[fx.active || '*'] = e.target.value;
+      clearTimeout(t); t = setTimeout(draw, 150);
+    });
+  }
+
   /* ════════════════════════════════════════════════════════════════════
      CATALOGUE — filters, on-screen preview, asli PDF
   ════════════════════════════════════════════════════════════════════ */
@@ -2230,22 +2315,26 @@
      restriction. An empty value (e.g. a design with no supplier written)
      is now its own option, so that design isn't silently filtered out. */
   const DM_CAT_BLANK = '— blank —';
+  /* Drawn as the top bar + left list (dmFxRender), in this order. A new filter
+     is one line here ({name, label, get}); `name` keeps its tick state, so keep
+     it unique and never reuse an old one for a different column. */
   const DM_CAT_FILTERS = [
-    { name:'dmUnitFilter',     box:'dmUnitFilterBox',     count:'dmUnitFilterCount',     get:d => d.design_unit },
-    { name:'dmBedFilter',      box:'dmBedFilterBox',      count:'dmBedFilterCount',      get:d => d.bed_size },
-    { name:'dmQualityFilter',  box:'dmQualityFilterBox',  count:'dmQualityFilterCount',  get:d => d.blanket_quality },
-    { name:'dmPartyFilter',    box:'dmPartyFilterBox',    count:'dmPartyFilterCount',    get:d => d.party_name },
-    { name:'dmBrandFilter',    box:'dmBrandFilterBox',    count:'dmBrandFilterCount',    get:d => d.brand_name },
-    { name:'dmSupplierFilter', box:'dmSupplierFilterBox', count:'dmSupplierFilterCount', get:d => d.supplier_name },
-    { name:'dmTypeFilter',     box:'dmTypeFilterBox',     count:'dmTypeFilterCount',     get:d => d.design_type },
-    { name:'dmFramesFilter',   box:'dmFramesFilterBox',   count:'dmFramesFilterCount',   get:d => String(totalFrames(d)) },
-    { name:'dmMonopolyFilter', box:'dmMonopolyFilterBox', count:'dmMonopolyFilterCount', get:d => d.monopoly || 'NO' },
+    { name:'dmUnitFilter',     label:'Design Unit',     get:d => d.design_unit },
+    { name:'dmBedFilter',      label:'Bed Size',        get:d => d.bed_size },
+    { name:'dmQualityFilter',  label:'Blanket Quality', get:d => d.blanket_quality },
+    { name:'dmTypeFilter',     label:'Design Type',     get:d => d.design_type },
+    { name:'dmPartyFilter',    label:'Party Name',      get:d => d.party_name },
+    { name:'dmBrandFilter',    label:'Brand Name',      get:d => d.brand_name },
+    { name:'dmSupplierFilter', label:'Supplier Name',   get:d => d.supplier_name },
+    { name:'dmFramesFilter',   label:'Total Frames',    get:d => String(totalFrames(d)) },
+    { name:'dmMonopolyFilter', label:'Monopoly',        get:d => d.monopoly || 'NO' },
     /* SKU has its own multi-select, next to the Design No text box. They are
        different things: names are typed in the Design No box, SKUs are ticked
        from the list here, and the two combine with AND. */
-    { name:'dmSkuFilter',      box:'dmSkuFilterBox',      count:'dmSkuFilterCount',      get:d => d.design_sku_no },
+    { name:'dmSkuFilter',      label:'Design SKU No',   get:d => d.design_sku_no },
   ];
   const dmCatState = {};   // {filterName: {value: false}}; only unticks are remembered
+  const DM_CAT_FX = dmFxMake({ bar:'dmCatFilterBar', side:'dmCatFilterSide', chips:'dmCatChips', search:'dmCatFSearch' }, 'dmToggleFilter');
 
   const dmCatVal = (f, d) => String(f.get(d) == null ? '' : f.get(d)).trim() || DM_CAT_BLANK;
   // A new / first-seen value is always ticked (default "all selected").
@@ -2295,27 +2384,23 @@
     });
   }
 
-  function renderCatalogueFilters(){
+  // Draws the filter bar, left list, chips and match count; changes no tick.
+  function drawCatalogueFilters(){
     const ctx = dmCatCtx();
-    DM_CAT_FILTERS.forEach(f => {
+    const info = DM_CAT_FILTERS.map(f => {
       const avail = [...new Set(ctx.live.filter(d => dmCatPass(ctx, d, f.name)).map(d => dmCatVal(f, d)))].sort(dmCatSort);
-      const box = q(f.box);
-      if (box) box.innerHTML = avail.length
-        ? avail.map(v => '<label><input type="checkbox" name="' + f.name + '" value="' + esc(v) + '"' +
-            (dmCatChecked(f.name, v) ? ' checked' : '') + '> ' + esc(v) + '</label>').join('')
-        : '<span class="dm-empty">Nothing left here after the other filters</span>';
-      const c = q(f.count);
-      if (c) {
-        const on = avail.filter(v => dmCatChecked(f.name, v)).length;
-        c.textContent = avail.length ? (on + '/' + avail.length) : '0';
-        c.className = 'dm-fcount' + (avail.length && on < avail.length ? ' on' : '');
-      }
+      const on = avail.filter(v => dmCatChecked(f.name, v)).length;
+      return { f: f, avail: avail, on: on, narrowed: avail.length > 0 && on < avail.length };
     });
+    dmFxRender(DM_CAT_FX, info, dmCatChecked);
     const mc = q('dmCatMatchCount');
     if (mc) {
       const n = ctx.live.filter(d => dmCatPass(ctx, d, null)).length;
       mc.textContent = n + ' / ' + ctx.live.length + ' designs match this filter';
     }
+  }
+  function renderCatalogueFilters(){
+    drawCatalogueFilters();
     /* The preview below changes along with the filters; no button needed.
        This one call covers every path (checkbox, All / Clear, Reset All,
        Design No box, opening the tab, Dropdown Master refresh), because they
@@ -2369,6 +2454,7 @@
   function resetCatalogueFilters(){
     Object.keys(dmCatState).forEach(k => { delete dmCatState[k]; });
     const nos = q('dmCatDesignNos'); if (nos) nos.value = '';
+    dmFxClearSearch(DM_CAT_FX);
     renderCatalogueFilters();
   }
 
@@ -2682,8 +2768,8 @@
       if (cb.checked) delete st[cb.value]; else st[cb.value] = false;
       ocRender();
     });
-    let t = null;
-    q('dmOcNoSearch').addEventListener('input', () => { clearTimeout(t); t = setTimeout(ocRenderFilters, 150); });
+    // Filter bar, left list search and chips (shared layout, see dmFxBind).
+    dmFxBind(OC_FX, ocRenderFilters, name => ocToggle(name, true));
     q('dmOcList').addEventListener('input', e => {
       const r = e.target.closest('.oc-rate'); if (!r) return;
       ocRates[+r.dataset.id] = r.value; ocSchedule();
@@ -2698,22 +2784,29 @@
      shrinks / grows with every other filter. The design pool is only LIVE
      designs that have photoshoot photos. MONOPOLY = YES starts unticked: a
      monopoly design is made for one party and must not reach other
-     customers by accident. */
+     customers by accident.
+
+     LAYOUT: the shared top bar + left list (dmFxRender), the designs on the
+     right. Built from OC_FILTERS below, in its order, so a new filter is one
+     line here ({name, label, get}) and nothing in index.html. `name` is what
+     the tick state is kept under (and the checkbox name), so keep it unique
+     and never reuse an old one for a different column. */
   const OC_FILTERS = [
-    { name:'ocUnitF',     box:'dmOcUnitBox',     count:'dmOcUnitCount',     get:d => d.design_unit },
-    { name:'ocBedF',      box:'dmOcBedBox',      count:'dmOcBedCount',      get:d => d.bed_size },
-    { name:'ocQualityF',  box:'dmOcQualityBox',  count:'dmOcQualityCount',  get:d => d.blanket_quality },
-    { name:'ocPartyF',    box:'dmOcPartyBox',    count:'dmOcPartyCount',    get:d => d.party_name },
-    { name:'ocBrandF',    box:'dmOcBrandBox',    count:'dmOcBrandCount',    get:d => d.brand_name },
-    { name:'ocSupplierF', box:'dmOcSupplierBox', count:'dmOcSupplierCount', get:d => d.supplier_name },
-    { name:'ocTypeF',     box:'dmOcTypeBox',     count:'dmOcTypeCount',     get:d => d.design_type },
-    { name:'ocFramesF',   box:'dmOcFramesBox',   count:'dmOcFramesCount',   get:d => String(totalFrames(d)) },
-    { name:'ocMonoF',     box:'dmOcMonoBox',     count:'dmOcMonoCount',     get:d => d.monopoly || 'NO' },
-    { name:'ocSkuF',      box:'dmOcSkuBox',      count:'dmOcSkuCount',      get:d => d.design_sku_no },
-    { name:'ocNoF',       box:'dmOcNoBox',       count:'dmOcNoCount',       get:d => d.design_no },
+    { name:'ocUnitF',     label:'Design Unit',     get:d => d.design_unit },
+    { name:'ocBedF',      label:'Bed Size',        get:d => d.bed_size },
+    { name:'ocQualityF',  label:'Blanket Quality', get:d => d.blanket_quality },
+    { name:'ocTypeF',     label:'Design Type',     get:d => d.design_type },
+    { name:'ocPartyF',    label:'Party Name',      get:d => d.party_name },
+    { name:'ocBrandF',    label:'Brand Name',      get:d => d.brand_name },
+    { name:'ocSupplierF', label:'Supplier Name',   get:d => d.supplier_name },
+    { name:'ocFramesF',   label:'Total Frames',    get:d => String(totalFrames(d)) },
+    { name:'ocMonoF',     label:'Monopoly',        get:d => d.monopoly || 'NO' },
+    { name:'ocSkuF',      label:'Design SKU No',   get:d => d.design_sku_no },
+    { name:'ocNoF',       label:'Design No',       get:d => d.design_no },
   ];
   const ocDefaultState = () => ({ ocMonoF: { YES: false } });
   let ocCatState = ocDefaultState();
+  const OC_FX = dmFxMake({ bar:'dmOcFilterBar', side:'dmOcFilterSide', chips:'dmOcChips', search:'dmOcFSearch' }, 'dmOcToggle');
   const ocChecked = (name, v) => !(ocCatState[name] && ocCatState[name][v] === false);
 
   // Only designs that can be shown: LIVE and with at least one photoshoot photo.
@@ -2735,23 +2828,13 @@
 
   function ocRenderFilters(){
     const ctx = ocCtx();
-    const search = up(ocV('dmOcNoSearch'));
-    OC_FILTERS.forEach(f => {
+    // Per filter: the values left after the OTHER filters, and how many are ticked.
+    const info = OC_FILTERS.map(f => {
       const avail = [...new Set(ctx.live.filter(d => ocPass(ctx, d, f.name)).map(d => dmCatVal(f, d)))].sort(dmCatSort);
-      // The Design No search only narrows what is shown; ticks stay as they are.
-      const shown = (f.name === 'ocNoF' && search) ? avail.filter(v => sarvSearchMatch(v, search)) : avail;
-      const box = q(f.box);
-      if (box) box.innerHTML = shown.length
-        ? shown.map(v => '<label><input type="checkbox" name="' + f.name + '" value="' + esc(v) + '"' +
-            (ocChecked(f.name, v) ? ' checked' : '') + '> ' + esc(v) + '</label>').join('')
-        : '<span class="dm-empty">' + (avail.length ? 'No design no matches this search' : 'Nothing left here after the other filters') + '</span>';
-      const c = q(f.count);
-      if (c) {
-        const on = avail.filter(v => ocChecked(f.name, v)).length;
-        c.textContent = avail.length ? (on + '/' + avail.length) : '0';
-        c.className = 'dm-fcount' + (avail.length && on < avail.length ? ' on' : '');
-      }
+      const on = avail.filter(v => ocChecked(f.name, v)).length;
+      return { f: f, avail: avail, on: on, narrowed: avail.length > 0 && on < avail.length };
     });
+    dmFxRender(OC_FX, info, ocChecked);
     const mc = q('dmOcMatchCount');
     if (mc) mc.textContent = ctx.live.filter(d => ocPass(ctx, d, null)).length + ' / ' + ctx.live.length + ' designs with photoshoots match this filter';
   }
@@ -2765,7 +2848,7 @@
   }
   function ocResetFilters(){
     ocCatState = ocDefaultState();
-    const s = q('dmOcNoSearch'); if (s) s.value = '';
+    dmFxClearSearch(OC_FX);   // the search box is rebuilt empty
     ocRender();
   }
 
@@ -4369,6 +4452,7 @@
       const cb = e.target.closest('input[type=checkbox]');
       if (cb && cb.name) dmCatFilterChanged(cb);
     });
+    dmFxBind(DM_CAT_FX, drawCatalogueFilters, name => toggleFilter(name, true));
     let catTimer = null;
     q('dmCatDesignNos').addEventListener('input', () => {
       clearTimeout(catTimer);

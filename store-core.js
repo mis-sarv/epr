@@ -8597,6 +8597,7 @@ const SARV_IM_FILTER_COLS={
   size:{label:'Size',               numeric:false,get:r=>itemSize_(r.it)},
   mat: {label:'Material',           numeric:false,get:r=>itemMaterial_(r.it)},
   rate:{label:'Rate',               numeric:true, get:r=>Number(r.it.rate||0)},
+  avg: {label:'AVG VALUE / UOM',    numeric:true, get:r=>itemAvgValue_(r.it)},
   gst: {label:'GST %',              numeric:true, get:r=>itemGst_(r.it)},
   uom: {label:'UOM',                numeric:false,get:r=>r.it.uom||'PCS'},
   make:{label:'Make',               numeric:false,get:r=>r.it.make},
@@ -9263,9 +9264,9 @@ window.imToggleSlicerPanel=function(){
    mid-render; only the colspan of the SUBTOTAL label cell is counted.
    #, NEW PR and Edit/Delete are always shown: they are action columns, not
    data (NEW PR has its own access rule). */
-const IM_VIEW_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make','msv','soq','xtol','in','out','bal','pipe'];
+const IM_VIEW_COLS=['code','name','desc','cat','size','mat','rate','avg','gst','uom','make','msv','soq','xtol','in','out','bal','pipe'];
 // The SUBTOTAL label spans these (from # to Make).
-const IM_LABEL_COLS=['code','name','desc','cat','size','mat','rate','gst','uom','make'];
+const IM_LABEL_COLS=['code','name','desc','cat','size','mat','rate','avg','gst','uom','make'];
 const IM_COLHIDE_KEY='sarv_im_hidecols';
 function imColHidden_(){
   let saved=null;
@@ -9735,7 +9736,8 @@ const SARV_ITEM_OPTIONAL_COLUMNS={
   material_type:{label:'Material Type',      ddl:'alter table items add column material_type text;'},
   std_order_qty:{label:'Standard Order Qty', ddl:'alter table items add column std_order_qty numeric;'},
   // "default 5" also fills every existing item with 5 the moment the column is added.
-  excess_tol_pct:{label:'PO Excess Allowed %', ddl:'alter table items add column excess_tol_pct numeric default 5;'}
+  excess_tol_pct:{label:'PO Excess Allowed %', ddl:'alter table items add column excess_tol_pct numeric default 5;'},
+  avg_value_uom:{label:'Avg Value per UOM',  ddl:'alter table items add column avg_value_uom numeric;'}
 };
 /* Shown once per session PER COLUMN, with the exact migration, instead of the
    same vague line on every single item save. */
@@ -9847,6 +9849,7 @@ function openNewItemMasterModal(target){
         +cell('PO Excess Allowed %',num('ni_excessTol','5','any'))
         +cell('GST %',sel('ni_gst'))
         +cell('Rate (&#8377;)',num('ni_rate','0','.01'))
+        +cell('Avg Value per UOM (&#8377;)',num('ni_avgValue','optional','.01'))
       +'</div>'
       +'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">'
       +'<button type="button" id="ni_cancel" class="btn" style="background:#e2e8f0;color:#0f172a;">Cancel</button>'
@@ -9912,7 +9915,7 @@ function openNewItemMasterModal(target){
     fillDl('dl-ni-itemSize',(sarvItemCatalog||[]).map(itemSize_));
     fillDl('dl-ni-materialType',(sarvItemCatalog||[]).map(itemMaterial_));
   }
-  ['ni_name','ni_desc','ni_make','ni_msv','ni_itemSize','ni_materialType','ni_stdOrderQty']
+  ['ni_name','ni_desc','ni_make','ni_msv','ni_itemSize','ni_materialType','ni_stdOrderQty','ni_avgValue']
     .forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('ni_rate'))byId('ni_rate').value='0';
   if(byId('ni_excessTol'))byId('ni_excessTol').value=String(SARV_DEFAULT_EXCESS_TOL);
@@ -9963,7 +9966,8 @@ async function saveNewItemFromModal_(){
       item_size:(byId('ni_itemSize')?.value||'').trim()||null,
       material_type:(byId('ni_materialType')?.value||'').trim()||null,
       std_order_qty:(byId('ni_stdOrderQty')?.value||'').trim()===''?null:Number(byId('ni_stdOrderQty').value),
-      excess_tol_pct:excessTolFromBox_('ni_excessTol')
+      excess_tol_pct:excessTolFromBox_('ni_excessTol'),
+      avg_value_uom:avgValueFromBox_('ni_avgValue')
     };
     const code=(name.replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,28)||'ITEM')+'-'+String(Date.now()).slice(-4);
     const {error,dropped}=await saveItemRow_({item_code:code,...payload},null);
@@ -10137,6 +10141,24 @@ function excessTolFromBox_(id){
   if(raw===''||isNaN(n)||n<0)return SARV_DEFAULT_EXCESS_TOL;
   return Math.min(100,n);
 }
+/* ── Avg Value per UOM ───────────────────────────────────────────────
+   The average value of ONE unit of the item's own UOM (₹ per KG, per PCS …),
+   typed on the Item Master. Kept separate from Rate, which is the buying rate
+   that auto-fills entry rows; this one is the averaged figure the store and
+   accounts value the item at. null = not recorded, which is not the same as
+   ₹0, so blank stays blank everywhere (form, table, export). */
+function itemAvgValue_(it){
+  const raw=it&&it.avg_value_uom;
+  if(raw==null||String(raw).trim()==='')return null;
+  const n=Number(raw);
+  return isNaN(n)?null:n;
+}
+// The value an Avg Value box saves: blank or nonsense saves NULL, never 0.
+function avgValueFromBox_(id){
+  const raw=String(byId(id)?.value||'').trim();
+  const n=Number(raw);
+  return raw===''||isNaN(n)||n<0?null:n;
+}
 function isBelowMsv_(row){
   const msv=itemMsv_(row.it);
   return msv!=null&&msv>0&&row.bal<msv;
@@ -10150,6 +10172,7 @@ const SARV_ITEM_SORTERS={
   cat: {text:true, get:r=>r.it.category},
   size:{text:true, get:r=>itemSize_(r.it)},
   mat: {text:true, get:r=>itemMaterial_(r.it)},
+  avg: {text:false,get:r=>itemAvgValue_(r.it)},
   msv: {text:false,get:r=>itemMsv_(r.it)},
   soq: {text:false,get:r=>itemStdOrderQty_(r.it)},
   xtol:{text:false,get:r=>itemExcessTol_(r.it)},
@@ -10269,6 +10292,7 @@ window.renderItemMasterTable=function(){
         <td data-imc="size" style="padding:5px 6px;text-align:center;font-weight:600;color:#334155;">${escText(itemSize_(it)||'—')}</td>
         <td data-imc="mat" style="padding:5px 6px;color:#334155;">${escText(itemMaterial_(it)||'—')}</td>
         <td data-imc="rate" style="padding:5px 6px;text-align:right;">₹${Number(it.rate||0).toFixed(2)}</td>
+        <td data-imc="avg" style="padding:5px 6px;text-align:right;color:#0f766e;font-weight:600;">${itemAvgValue_(it)!=null?'₹'+itemAvgValue_(it).toFixed(2)+'<span style="color:#94a3b8;font-weight:400;"> /'+escText(it.uom||'PCS')+'</span>':'—'}</td>
         <td data-imc="gst" style="padding:5px 6px;text-align:center;color:#334155;">${itemGst_(it)}%</td>
         <td data-imc="uom" style="padding:5px 6px;text-align:center;font-weight:700;">${escText(it.uom||'PCS')}</td>
         <td data-imc="make" style="padding:5px 6px;color:#64748b;">${escText(it.make||'—')}</td>
@@ -10336,12 +10360,13 @@ window.renderItemMasterTable=function(){
    A4 landscape page at an 8mm margin. Change one and another has to give. */
 const IM_EXPORT_COLS=[
   {k:'code', h:'Item Code',           w:20, get:r=>r.it.item_code||''},
-  {k:'name', h:'Item Name',           w:34, get:r=>r.it.name||''},
-  {k:'desc', h:'Description',         w:32, get:r=>r.it.description||''},
+  {k:'name', h:'Item Name',           w:28, get:r=>r.it.name||''},
+  {k:'desc', h:'Description',         w:24, get:r=>r.it.description||''},
   {k:'cat',  h:'Category',            w:20, get:r=>r.it.category||''},
   {k:'size', h:'Size',                w:15, tint:[236,254,255], get:r=>itemSize_(r.it)||''},
   {k:'mat',  h:'Material',            w:17, tint:[236,254,255], get:r=>itemMaterial_(r.it)||''},
   {k:'rate', h:'Rate',                w:14, num:true, money:true, get:r=>Number(r.it.rate||0)},
+  {k:'avg',  h:'Avg Value / UOM',     w:14, num:true, money:true, tint:[240,253,250], get:r=>itemAvgValue_(r.it)},
   {k:'gst',  h:'GST %',               w:10, num:true, tint:[245,243,255], get:r=>itemGst_(r.it)},
   {k:'uom',  h:'UOM',                 w:11, get:r=>r.it.uom||'PCS'},
   {k:'make', h:'Make',                w:17, get:r=>r.it.make||''},
@@ -11583,6 +11608,7 @@ window.editMasterItem=function(id){
   set('mi_itemDesc',it.description);
   set('mi_minStockQty',it.sub_category);
   set('mi_rate',it.rate!=null?it.rate:0);
+  set('mi_avgValue',itemAvgValue_(it));
   set('mi_make',it.make);
   // Read through the helpers, so an item saved before these columns existed
   // loads as blank instead of as the string "undefined".
@@ -11627,7 +11653,7 @@ function ensureSelectOption_(selId,val){
 }
 window.cancelItemEdit=function(){
   sarvEditingItemId=null;
-  ['mi_itemName','mi_itemDesc','mi_minStockQty','mi_make','mi_itemSize','mi_materialType','mi_stdOrderQty']
+  ['mi_itemName','mi_itemDesc','mi_minStockQty','mi_make','mi_itemSize','mi_materialType','mi_stdOrderQty','mi_avgValue']
     .forEach(id=>{const e=byId(id);if(e)e.value='';});
   if(byId('mi_excessTol'))byId('mi_excessTol').value=String(SARV_DEFAULT_EXCESS_TOL);
   if(byId('mi_rate'))byId('mi_rate').value='0';
@@ -11714,7 +11740,8 @@ window.addMasterItem=async function(){
       item_size:(byId('mi_itemSize')?.value||'').trim()||null,
       material_type:(byId('mi_materialType')?.value||'').trim()||null,
       std_order_qty:(byId('mi_stdOrderQty')?.value||'').trim()===''?null:Number(byId('mi_stdOrderQty').value),
-      excess_tol_pct:excessTolFromBox_('mi_excessTol')
+      excess_tol_pct:excessTolFromBox_('mi_excessTol'),
+      avg_value_uom:avgValueFromBox_('mi_avgValue')
     };
     if(editingId){
       // item_code is deliberately left out of the payload — it is the handle
@@ -18266,19 +18293,19 @@ let PR_TEAL=[13,92,83];
    y+=16;
    if(y>pageH-20){doc.addPage();y=M+16;}
 
-   // Store Incharge (Vendor Info popup) -> GM/CEO -> MD -> Vendor Verified,
-   // same shape/convention as the PO's signature footer so mobile.html's
-   // approval chain feeds both PDFs identically.
+   // Same `signatures` shape as the PO's footer so mobile.html's approval
+   // chain feeds both PDFs; the PR prints only part of it (see sigCols).
    const sigs=d.signatures||(d.vendorSignature?{store:d.vendorSignature}:{});
    // A Purchaser signing from mobile.html puts their own name on the GM/CEO
    // column — same rule as the HTML variant, see prGmCeoLabel_ there.
    const gmCeoLabel=String((sigs.gmCeo&&sigs.gmCeo.signedBy)||'').trim()||'GM / CEO';
-   // A PURCHASE REQUIREMENT is signed off by the store and the buyer only.
-   // MD / Vendor Verified belong to the PO chain and are not printed here;
-   // their signatures stay in `signatures` untouched either way.
+   // A PURCHASE REQUIREMENT prints only Prepared By (whoever saved the PR)
+   // and the buyer's sign, same as the HTML variant and mobile.html. Store
+   // Incharge (Vendor Info), MD and Vendor Verified are not printed here,
+   // before or after Vendor Info is filled; their signatures stay in
+   // `signatures` untouched either way.
    const sigCols=[
      ...(d.preparedBy?[{label:prPreparedLabel_(d.preparedBy),sign:d.preparedBy}]:[]),
-     {label:'Store Incharge',sign:sigs.store},
      {label:gmCeoLabel,sign:sigs.gmCeo},
    ];
    // Equal shares of the width — see the HTML variant's note.

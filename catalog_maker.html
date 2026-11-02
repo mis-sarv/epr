@@ -9,6 +9,10 @@
     <script src="sso-gate.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SARV INDIA CATALOGS</title>
+    <!-- The fixed company logo (logo-removebg.png as a data URL), printed on the cover, product pages and album. -->
+    <script src="catalog-logo.js"></script>
+    <!-- Facebook / Instagram QR codes (fb.png / insta.png as data URLs), on the Back Cover. -->
+    <script src="catalog-social.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;600;700&family=Montserrat:wght@300;400;700;900&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -176,36 +180,44 @@
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Page Number</label>
                         <input type="text" id="input-pageNum" oninput="updateCurrentPage('pageNum', this.value)" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                        <!-- A− / A+ size controls: built by syncFontSizeControls from CM_FONT_SIZES -->
+                        <div data-fs="pageNumSize" title="Size of the big faded page number behind the title"></div>
                     </div>
 
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Brand Name (Top Left)</label>
                         <input type="text" id="input-brandText" oninput="updateCurrentPage('brandText', this.value)" placeholder="e.g. TOUCHWOOD" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                        <div data-fs="brandTextSize"></div>
                     </div>
 
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Footer Text (Bottom Left)</label>
                         <input type="text" id="input-footerText" oninput="updateCurrentPage('footerText', this.value)" placeholder="e.g. SUPER CLOUDY COLLECTION" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                        <div data-fs="footerTextSize" title="Footer text and the PAGE badge"></div>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3">
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Title Line 1</label>
                             <input type="text" id="input-title1" oninput="updateCurrentPage('title1', this.value)" placeholder="e.g. BOTANICAL" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                            <div data-fs="title1Size"></div>
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Title Line 2</label>
                             <input type="text" id="input-title2" oninput="updateCurrentPage('title2', this.value)" placeholder="e.g. OLIVE" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                            <div data-fs="title2Size"></div>
                         </div>
                     </div>
 
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Description</label>
                         <textarea id="input-description" oninput="updateCurrentPage('description', this.value)" placeholder="Enter description here..." rows="4" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none transition resize-none"></textarea>
+                        <div data-fs="descriptionSize"></div>
                     </div>
 
                     <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                        <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide mb-3">Blanket Specifications</label>
+                        <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide mb-1">Blanket Specifications</label>
+                        <div data-fs="specsSize" class="mb-3" title="Size / Ply / Weight rows in the specifications box"></div>
                         <div class="space-y-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-semibold text-gray-500 w-20">Size:</span>
@@ -283,20 +295,18 @@
                     <!-- Texts & Colors Section -->
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Company/Logo Text</label>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Brand Name</label>
                             <input type="text" id="input-cover-logoText" oninput="updateCurrentPage('logoText', this.value)" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <div data-fs="logoTextSize"></div>
                         </div>
 
-                        <!-- LOGO IMAGE UPLOAD & POSITIONING -->
+                        <!-- COMPANY LOGO: fixed (logo-removebg.png via catalog-logo.js), no upload; only size / position here -->
                         <div class="p-3 border border-gray-200 rounded bg-white shadow-sm">
                             <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-2"><i class="fas fa-image"></i> Company Logo</label>
-                            
-                            <div class="flex items-center gap-2 mb-3 border-b border-gray-100 pb-3">
-                                <button onclick="document.getElementById('logo-upload').click()" class="bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded text-sm font-semibold hover:bg-indigo-100 transition shadow-sm flex items-center gap-2">
-                                    <i class="fas fa-upload"></i> Upload Logo
-                                </button>
-                                <button onclick="updateCurrentPage('logoImage', '')" class="text-red-500 hover:text-red-700 text-xs font-medium px-2"><i class="fas fa-times"></i> Remove</button>
-                                <input id="logo-upload" type="file" class="sr-only" accept="image/png, image/jpeg" onchange="handleLogoUpload(event)">
+
+                            <div class="flex items-center gap-3 mb-3 border-b border-gray-100 pb-3">
+                                <img id="cm-fixed-logo" alt="Company logo" class="h-10 w-auto border border-gray-200 rounded bg-white p-1">
+                                <span class="text-[11px] text-gray-500 leading-snug">Fixed company logo on every catalog. Set its size and position below.</span>
                             </div>
                             
                             <div class="space-y-3 mt-2">
@@ -362,6 +372,33 @@
                                     <input type="number" id="input-cover-boxTextSize" oninput="updateCurrentPage('boxTextSize', this.value)" class="w-full border border-gray-300 rounded p-1 text-sm">
                                 </div>
                             </div>
+
+                            <!-- Product specifications printed inside the same box, under the years
+                                 (generateCoverHTML › coverSpecRows). A blank value is not printed;
+                                 untick to hide the whole row. -->
+                            <div class="mt-3 pt-3 border-t border-gray-200">
+                                <label class="flex items-center gap-2 text-xs font-bold text-gray-800 uppercase tracking-wide mb-2 cursor-pointer">
+                                    <input type="checkbox" id="input-cover-specShow" onchange="updateCurrentPage('specShow', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600">
+                                    Product Specifications in box
+                                </label>
+                                <div class="space-y-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-500 w-14">Size</span>
+                                        <input type="text" id="input-cover-specSize" list="cm-dl-size" oninput="updateCurrentPage('specSize', this.value)" placeholder="e.g. Double Bed" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-500 w-14">Ply</span>
+                                        <input type="text" id="input-cover-specPly" list="cm-dl-ply" oninput="updateCurrentPage('specPly', this.value)" placeholder="e.g. Double Ply" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-gray-500 w-14">Weight</span>
+                                        <input type="text" id="input-cover-specWeight" oninput="updateCurrentPage('specWeight', this.value)" placeholder="e.g. 4.5 KG" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    </div>
+                                </div>
+                                <div data-fs="coverSpecSize" title="Size of the specification values in the box"></div>
+                                <datalist id="cm-dl-size"><option value="Double Bed"><option value="Single Bed"></datalist>
+                                <datalist id="cm-dl-ply"><option value="Single Ply"><option value="Double Ply"><option value="Three Ply"></datalist>
+                            </div>
                         </div>
                         
                         <div class="p-3 border border-gray-200 rounded bg-white shadow-sm">
@@ -401,7 +438,6 @@
                         <div class="p-3 border border-gray-200 rounded bg-gray-50">
                             <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide mb-2">Contact Info</label>
                             <div class="space-y-2">
-                                <input type="text" id="input-cover-phone" oninput="updateCurrentPage('phone', this.value)" placeholder="Phone" class="w-full border border-gray-300 rounded p-2 text-sm outline-none">
                                 <input type="text" id="input-cover-website" oninput="updateCurrentPage('website', this.value)" placeholder="Website" class="w-full border border-gray-300 rounded p-2 text-sm outline-none">
                                 <input type="text" id="input-cover-email" oninput="updateCurrentPage('email', this.value)" placeholder="Email" class="w-full border border-gray-300 rounded p-2 text-sm outline-none">
                             </div>
@@ -437,8 +473,164 @@
                     </div>
                 </div>
 
-                <!-- SHARED IMAGE UPLOAD (MOVED OUTSIDE) -->
-                <div class="mt-2 pt-5 border-t border-gray-200">
+                <!-- LAST PAGE EDITOR: the photo album (generateAlbumHTML). Its photos are
+                     collected from the product pages, so there is no upload here. -->
+                <div id="album-editor" class="hidden flex-col gap-5">
+                    <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <p class="text-sm text-emerald-800"><i class="fas fa-images"></i> This is the <b>Photo Album</b> (just before the Back Cover): every product page's picture. It fills itself; add or change a picture on a product page and it shows here. <span id="album-count" class="font-bold"></span></p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Small Heading (above the title)</label>
+                        <input type="text" id="input-album-eyebrow" oninput="updateCurrentPage('albumEyebrow', this.value)" placeholder="e.g. PHOTO ALBUM" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Title</label>
+                        <input type="text" id="input-album-title" oninput="updateCurrentPage('albumTitle', this.value)" placeholder="e.g. OUR COLLECTION" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <div data-fs="albumTitleSize"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Sub Title</label>
+                        <input type="text" id="input-album-sub" oninput="updateCurrentPage('albumSub', this.value)" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <div data-fs="albumSubSize"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Footer Text (Bottom Left)</label>
+                        <input type="text" id="input-album-footer" oninput="updateCurrentPage('albumFooter', this.value)" placeholder="e.g. SARV INDIA" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div class="p-3 border border-gray-200 rounded bg-gray-50">
+                        <label class="flex items-center gap-2 text-xs font-bold text-gray-800 uppercase tracking-wide cursor-pointer">
+                            <input type="checkbox" id="input-album-captions" onchange="updateCurrentPage('albumCaptions', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600">
+                            Show captions under the photos
+                        </label>
+                        <div data-fs="albumCaptionSize"></div>
+                    </div>
+                    <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                        <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-3"><i class="fas fa-palette"></i> Page Colors</label>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Background</label>
+                                <input type="color" id="input-album-bgColor" oninput="updateCurrentPage('bgColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Accent (Titles)</label>
+                                <input type="color" id="input-album-accentColor" oninput="updateCurrentPage('accentColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Text</label>
+                                <input type="color" id="input-album-textColor" oninput="updateCurrentPage('textColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BACK COVER EDITOR: the fixed very last page (generateBackHTML) -->
+                <div id="back-editor" class="hidden flex-col gap-5">
+                    <div class="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+                        <p class="text-sm text-rose-800"><i class="fas fa-flag-checkered"></i> This is the <b>Back Cover</b>: always the very last page of the catalog, after the photo album.</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Big Title</label>
+                        <textarea id="input-back-title" oninput="updateCurrentPage('backTitle', this.value)" rows="2" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none"></textarea>
+                        <div data-fs="backTitleSize"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Sub Title</label>
+                        <input type="text" id="input-back-sub" oninput="updateCurrentPage('backSub', this.value)" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none">
+                        <div data-fs="backSubSize"></div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Message</label>
+                        <textarea id="input-back-message" oninput="updateCurrentPage('backMessage', this.value)" rows="3" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"></textarea>
+                        <div data-fs="backMsgSize"></div>
+                    </div>
+                    <div class="p-3 border border-gray-200 rounded bg-gray-50 space-y-2">
+                        <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide">Contact Details</label>
+                        <input type="text" id="input-back-website" oninput="updateCurrentPage('website', this.value)" placeholder="Website" class="w-full border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <input type="text" id="input-back-email" oninput="updateCurrentPage('email', this.value)" placeholder="Email" class="w-full border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <textarea id="input-back-address" oninput="updateCurrentPage('address', this.value)" rows="2" placeholder="Address" class="w-full border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"></textarea>
+                        <input type="text" id="input-back-gstin" oninput="updateCurrentPage('gstin', this.value)" placeholder="GSTIN (optional)" class="w-full border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <div data-fs="backContactSize"></div>
+                        <p class="text-[10px] text-gray-400">A blank row is not printed.</p>
+                    </div>
+                    <!-- Social QR codes (catalog-social.js) in place of the mobile number. The
+                         links make each QR card clickable in the PDF (buildPdf › data-pdf-link). -->
+                    <div class="p-3 border border-gray-200 rounded bg-gray-50 space-y-2">
+                        <label class="flex items-center gap-2 text-xs font-bold text-gray-800 uppercase tracking-wide cursor-pointer">
+                            <input type="checkbox" id="input-back-social" onchange="updateCurrentPage('backSocial', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600">
+                            Follow Us: Facebook &amp; Instagram QR
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-gray-500 w-20"><i class="fab fa-facebook text-blue-600"></i> Facebook</span>
+                            <input type="text" id="input-back-fbUrl" oninput="updateCurrentPage('fbUrl', this.value)" placeholder="https://www.facebook.com/sarvindiahome/" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-gray-500 w-20"><i class="fab fa-instagram text-pink-600"></i> Instagram</span>
+                            <input type="text" id="input-back-instaUrl" oninput="updateCurrentPage('instaUrl', this.value)" placeholder="https://www.instagram.com/sarvindia/" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-snug">The QR codes are fixed (fb.png / insta.png). Each link is printed under its QR and is clickable in the PDF; left blank, the SARV INDIA page is used.</p>
+                    </div>
+                    <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
+                        <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-3"><i class="fas fa-palette"></i> Page Colors</label>
+                        <div class="grid grid-cols-3 gap-3 mb-3">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Background</label>
+                                <input type="color" id="input-back-bgColor" oninput="updateCurrentPage('bgColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Accent (Titles)</label>
+                                <input type="color" id="input-back-accentColor" oninput="updateCurrentPage('accentColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase">Text</label>
+                                <input type="color" id="input-back-textColor" oninput="updateCurrentPage('textColor', this.value)" class="w-full h-8 cursor-pointer border border-gray-300 rounded p-0.5 bg-white">
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wide mb-2 cursor-pointer">
+                            <input type="checkbox" id="input-back-waves" onchange="updateCurrentPage('backWaves', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600"> Waves on the left
+                        </label>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 1</label><input type="color" id="input-back-wave1" oninput="updateCurrentPage('waveColor1', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 2</label><input type="color" id="input-back-wave2" oninput="updateCurrentPage('waveColor2', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 3</label><input type="color" id="input-back-wave3" oninput="updateCurrentPage('waveColor3', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BACKGROUND TEXTURE: on every page type (cover, product, album). Drawn
+                     behind everything on the page (textureLayerHTML); state in bgTexture* -->
+                <div id="texture-section" class="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <label class="block text-xs font-bold text-amber-900 uppercase tracking-wide mb-3"><i class="fas fa-layer-group"></i> Page Background Texture</label>
+                    <div class="flex items-center gap-3 mb-3">
+                        <div id="texture-thumb" class="w-14 h-14 rounded border border-amber-200 bg-white flex-shrink-0 bg-center bg-cover flex items-center justify-center text-[10px] text-gray-400">None</div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" onclick="document.getElementById('texture-upload').click()" class="bg-white border border-amber-300 text-amber-800 px-3 py-1.5 rounded text-sm font-semibold hover:bg-amber-100 transition"><i class="fas fa-upload"></i> Upload Texture</button>
+                            <button type="button" id="texture-remove" onclick="removeTexture()" class="text-red-500 hover:text-red-700 text-xs font-medium px-2"><i class="fas fa-times"></i> Remove</button>
+                            <input id="texture-upload" type="file" class="sr-only" accept="image/png, image/jpeg, image/webp" onchange="handleTextureUpload(event)">
+                        </div>
+                    </div>
+                    <div id="texture-options" class="space-y-3">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[10px] font-bold text-gray-500 uppercase w-16">Style</span>
+                            <select id="input-texture-mode" onchange="updateCurrentPage('bgTextureMode', this.value); syncTextureControls()" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none bg-white">
+                                <option value="cover">Fill the page (stretch)</option>
+                                <option value="tile">Repeat as tiles</option>
+                            </select>
+                        </div>
+                        <div id="texture-tile-row">
+                            <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Tile Size (mm)</label><span id="val-texture-tile" class="text-[10px] font-bold text-amber-700 bg-white px-1 rounded">40</span></div>
+                            <input type="range" id="input-texture-tile" min="10" max="210" value="40" oninput="document.getElementById('val-texture-tile').innerText=this.value; updateCurrentPage('bgTextureTile', this.value)" class="w-full accent-amber-600">
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Strength (Opacity %)</label><span id="val-texture-opacity" class="text-[10px] font-bold text-amber-700 bg-white px-1 rounded">35</span></div>
+                            <input type="range" id="input-texture-opacity" min="5" max="100" value="35" oninput="document.getElementById('val-texture-opacity').innerText=this.value; updateCurrentPage('bgTextureOpacity', this.value)" class="w-full accent-amber-600">
+                        </div>
+                        <button type="button" onclick="applyTextureToAll()" class="w-full bg-white border border-amber-300 text-amber-800 px-3 py-1.5 rounded text-xs font-semibold hover:bg-amber-100 transition" title="Use this page's texture and settings on every page of the catalog"><i class="fas fa-clone"></i> Apply this texture to all pages</button>
+                    </div>
+                    <p class="text-[10px] text-amber-800/70 mt-2 leading-snug">Paper, fabric or marble patterns work best. A low strength keeps text easy to read.</p>
+                </div>
+
+                <!-- SHARED IMAGE UPLOAD (MOVED OUTSIDE); hidden on the album page -->
+                <div id="shared-image-upload" class="mt-2 pt-5 border-t border-gray-200">
                     <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Replace Picture</label>
                     <div id="image-dropzone" class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition cursor-pointer relative" onclick="document.getElementById('file-upload').click()"
                          ondragover="event.preventDefault(); this.classList.add('border-indigo-500','bg-indigo-50')"
@@ -492,6 +684,76 @@
         // A colour from a colour box, or the default when it is missing / not a hex colour.
         function col(v, def) { return /^#[0-9a-f]{6}$/i.test(String(v || '')) ? v : def; }
         function num(v, def) { const n = parseFloat(v); return isFinite(n) ? n : def; }
+
+        /* ── Text size (A− / A+) for every text on the pages ────────────────
+           One row per size, kept on the page as `<key>` (px), saved with the
+           template like every other field. `def` is the size the page always
+           had, so a template saved before this exists looks exactly the same.
+           The control is drawn wherever the editor has <div data-fs="<key>">,
+           so a new text needs: a row here, that div under its input, and
+           fs(page, '<key>') in the page template. (The cover's Main Title,
+           Sub Title, Box Text, Prepared By and Contact sizes were already
+           number boxes of their own and are left as they are.) */
+        const CM_FONT_SIZES = {
+            brandTextSize:   { def: 30,  min: 10, max: 80 },
+            pageNumSize:     { def: 128, min: 20, max: 260, step: 4 },
+            title1Size:      { def: 45,  min: 12, max: 120 },
+            title2Size:      { def: 35,  min: 10, max: 100 },
+            descriptionSize: { def: 15,  min: 8,  max: 40 },
+            specsSize:       { def: 15,  min: 8,  max: 36 },
+            footerTextSize:  { def: 13,  min: 8,  max: 36 },
+            logoTextSize:    { def: 24,  min: 10, max: 80 },
+            coverSpecSize:   { def: 18,  min: 10, max: 40 },
+            albumTitleSize:  { def: 40,  min: 16, max: 90 },
+            albumSubSize:    { def: 14,  min: 9,  max: 30 },
+            albumCaptionSize:{ def: 11,  min: 7,  max: 22 },
+            backTitleSize:   { def: 76,  min: 24, max: 140, step: 2 },
+            backSubSize:     { def: 18,  min: 10, max: 40 },
+            backMsgSize:     { def: 14,  min: 9,  max: 28 },
+            backContactSize: { def: 15,  min: 9,  max: 28 }
+        };
+        function fs(page, key) {
+            const c = CM_FONT_SIZES[key];
+            return Math.min(c.max, Math.max(c.min, num(page && page[key], c.def)));
+        }
+        // The sizes a page carries, for copying a template page's look (render mode).
+        function fsCopy(from) {
+            const o = {};
+            Object.keys(CM_FONT_SIZES).forEach(k => { if (from && from[k] != null && from[k] !== '') o[k] = from[k]; });
+            return o;
+        }
+        function fsSet(key, v) {
+            const c = CM_FONT_SIZES[key];
+            v = Math.min(c.max, Math.max(c.min, Math.round(num(v, c.def))));
+            updateCurrentPage(key, String(v));
+            syncFontSizeControls();
+        }
+        // Builds each control once, then fills every one from the page being edited.
+        function syncFontSizeControls(page) {
+            page = page || catalogData.find(p => p.id === currentPageId);
+            document.querySelectorAll('[data-fs]').forEach(el => {
+                const key = el.dataset.fs, c = CM_FONT_SIZES[key];
+                if (!c) return;
+                if (!el.dataset.built) {
+                    el.classList.add('flex', 'items-center', 'gap-1', 'mt-1.5');
+                    el.innerHTML =
+                        '<span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mr-1">Text size</span>' +
+                        '<button type="button" data-d="-1" title="Smaller" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100">A&minus;</button>' +
+                        '<input type="number" min="' + c.min + '" max="' + c.max + '" class="w-14 h-6 border border-gray-300 rounded text-center text-xs outline-none focus:ring-2 focus:ring-indigo-500">' +
+                        '<button type="button" data-d="1" title="Bigger" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-sm font-bold hover:bg-gray-100">A+</button>' +
+                        '<span class="text-[10px] text-gray-400">px</span>' +
+                        '<button type="button" data-reset="1" title="Back to the normal size (' + c.def + ' px)" class="ml-1 text-[10px] text-indigo-600 hover:underline">reset</button>';
+                    el.addEventListener('click', e => {
+                        const b = e.target.closest('button'); if (!b) return;
+                        if (b.dataset.reset) return fsSet(key, c.def);
+                        fsSet(key, fs(catalogData.find(p => p.id === currentPageId), key) + (+b.dataset.d) * (c.step || 1));
+                    });
+                    el.querySelector('input').addEventListener('change', e => fsSet(key, e.target.value));
+                    el.dataset.built = '1';
+                }
+                el.querySelector('input').value = fs(page, key);
+            });
+        }
         // "#rrggbb" + alpha → rgba(). The templates used "#rrggbb40" (8-digit hex),
         // which html2canvas does not read reliably, so borders went missing in the PDF.
         function hexA(hex, a) {
@@ -513,11 +775,16 @@
            Box: left 30%, width 80% of the page (the old right:-10%), full
            height; the page's overflow:hidden clips the part outside. */
         const WAVE_W = 1270, WAVE_H = 2245;   // 80% × 100% of A4 at 2× (html2canvas scale)
+        // The back cover uses the same waves mirrored to the LEFT edge (page.pageType 'back').
+        // The flip is inside the SVG itself, so html2canvas never has to apply a CSS transform.
         function wavesSvg(page) {
+            const flip = page && page.pageType === 'back';
             return '<svg xmlns="http://www.w3.org/2000/svg" width="' + WAVE_W + '" height="' + WAVE_H + '" viewBox="0 0 500 1000" preserveAspectRatio="none">'
+                + (flip ? '<g transform="translate(500,0) scale(-1,1)">' : '')
                 + '<path d="M500,0 L200,0 C350,300 -50,600 250,1000 L500,1000 Z" fill="' + col(page.waveColor1, '#e5e7eb') + '"/>'
                 + '<path d="M500,0 L350,0 C450,400 150,700 350,1000 L500,1000 Z" fill="' + col(page.waveColor2, '#9ca3af') + '"/>'
                 + '<path d="M500,200 C300,500 400,800 500,1000 Z" fill="' + col(page.waveColor3, '#4b5563') + '"/>'
+                + (flip ? '</g>' : '')
                 + '</svg>';
         }
         function wavesDataUri(page) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(wavesSvg(page)); }
@@ -828,7 +1095,7 @@
                 const pages = Array.isArray(t.pages) ? t.pages : [];
                 if (!pages.length) throw new Error('This template has no pages.');
                 if (!pages.find(p => p.pageType === 'cover')) pages.unshift(JSON.parse(JSON.stringify(defaultPages[0])));
-                catalogData = pages;
+                catalogData = ensureAlbum(pages);
                 if (t.settings && typeof t.settings === 'object') {
                     globalSettings = Object.assign({}, globalSettings, t.settings);
                     localStorage.setItem('touchwood_settings', JSON.stringify(globalSettings));
@@ -851,8 +1118,8 @@
         async function newTemplate() {
             if (!(await okToDiscard('Start a new template'))) return;
             const fresh = JSON.parse(JSON.stringify(defaultPages));
-            fresh.forEach(p => { if (p.pageType !== 'cover') p.id = generateId(); });
-            catalogData = fresh;
+            fresh.forEach(p => { if (p.pageType === 'product') p.id = generateId(); });
+            catalogData = ensureAlbum(fresh);
             cloud = { id: null, name: '', version: null, updatedBy: '', updatedAt: '' };
             dirty = false;
             currentPageId = catalogData[0].id;
@@ -893,6 +1160,11 @@
                 boxTextSize: '55',
                 boxColor: '#374151',
                 boxTextColor: '#ffffff',
+                // Product specifications inside the highlight box (coverSpecRows)
+                specShow: 'Y',
+                specSize: 'Double Bed',
+                specPly: 'Double Ply',
+                specWeight: '4.5 KG',
                 preparedByLabel: 'Prepared By:',
                 preparedByLabelSize: '14',
                 preparedBy: 'Morgan Maxwell',
@@ -947,6 +1219,107 @@
             }
         ];
 
+        /* ══ LAST PAGE: PHOTO ALBUM ══════════════════════════════════════════
+           Like the cover (always first), the album is a fixed page, always the
+           LAST one, and cannot be deleted. Its photos are not uploaded here:
+           every product page's picture(s) are collected automatically, in page
+           order, each captioned with that page's titles. Only the look is
+           edited (title, sub-title, footer, colours, text sizes).
+           More than ALBUM_PER_PAGE photos continue on more album pages
+           (Album 1/2, 2/2 …) in the PDF; the editor previews the first one.
+           A template saved before this existed gets one added on open
+           (ensureAlbum), so every catalog ends with it. */
+        const ALBUM_PER_PAGE = 12;
+        const ALBUM_DEFAULT = {
+            id: 'album_page_001',
+            pageType: 'album',
+            albumEyebrow: 'PHOTO ALBUM',
+            albumTitle: 'OUR COLLECTION',
+            albumSub: 'Every design in this catalog at a glance.',
+            albumFooter: 'SARV INDIA',
+            albumCaptions: 'Y',
+            bgColor: '#fbfbfb',
+            accentColor: '#111827',
+            textColor: '#4b5563'
+        };
+        defaultPages.push(JSON.parse(JSON.stringify(ALBUM_DEFAULT)));
+
+        /* ══ BACK COVER (the very last page, after the album) ════════════════
+           Fixed like the cover: always last, cannot be deleted. The cover's
+           waves mirrored to the left edge, and on the right the logo, a big
+           "THANK YOU", a message, the contact rows and the address / GSTIN.
+           A back cover made for an older template takes its phone / website /
+           email from that template's cover. */
+        const BACK_DEFAULT = {
+            id: 'back_page_001',
+            pageType: 'back',
+            backTitle: 'THANK\nYOU',
+            backSub: 'for your interest in our collection',
+            backMessage: 'We would be glad to send samples, rates and delivery schedules for any design in this catalog. Reach us any time.',
+            // No mobile number on the back cover: the Facebook / Instagram QR codes take its place.
+            backSocial: 'Y',
+            fbUrl: '',
+            instaUrl: '',
+            website: 'www.sarvindia.com',
+            email: 'sales@sarvindia.com',
+            address: 'Panipat, Haryana, India',
+            gstin: '',
+            backWaves: 'Y',
+            bgColor: '#ffffff',
+            accentColor: '#374151',
+            textColor: '#4b5563',
+            waveColor1: '#e5e7eb',
+            waveColor2: '#9ca3af',
+            waveColor3: '#4b5563'
+        };
+        defaultPages.push(JSON.parse(JSON.stringify(BACK_DEFAULT)));
+
+        // The pages in print order: the product pages only (not cover / album / back).
+        const productPagesOf = pages => pages.filter(p => p.pageType === 'product' || !p.pageType);
+        /* Exactly one album and one back cover, in that order, at the end.
+           (Kept under its old name: every load / add path already calls it.)
+           Returns the same array. */
+        function ensureAlbum(pages) {
+            const album = pages.find(p => p.pageType === 'album') || JSON.parse(JSON.stringify(ALBUM_DEFAULT));
+            let back = pages.find(p => p.pageType === 'back');
+            if (!back) {
+                back = JSON.parse(JSON.stringify(BACK_DEFAULT));
+                const cv = pages.find(p => p.pageType === 'cover');
+                if (cv) ['website', 'email'].forEach(k => { if (cv[k]) back[k] = cv[k]; });
+            }
+            for (let i = pages.length - 1; i >= 0; i--) if (pages[i].pageType === 'album' || pages[i].pageType === 'back') pages.splice(i, 1);
+            pages.push(album, back);
+            return pages;
+        }
+        /* The album's photos: each product page's photos (several when Online
+           Catalogue filled `images`, else its one picture), skipping the empty
+           placeholder. Caption: title line 1 · the photo's own label (shade) or
+           title line 2. */
+        function albumItems(pages) {
+            const out = [];
+            productPagesOf(pages).forEach(p => {
+                const head = String(p.title1 || '').trim();
+                const imgs = Array.isArray(p.images) && p.images.length ? p.images : [{ src: p.image }];
+                imgs.forEach(im => {
+                    if (!im || !im.src || im.src === DEFAULT_IMAGE) return;
+                    const tail = String(im.label || p.title2 || '').trim();
+                    out.push({ src: im.src, caption: [head, tail].filter(Boolean).join(' · ') });
+                });
+            });
+            return out;
+        }
+        /* The album page(s) to print: as few as hold ALBUM_PER_PAGE each (at
+           least one), with the photos shared out EVENLY (13 → 7 + 6, not
+           12 + 1), so no page ends with one lone giant photo. */
+        function albumPagesFor(album, pages) {
+            const items = albumItems(pages), parts = Math.max(1, Math.ceil(items.length / ALBUM_PER_PAGE));
+            const per = Math.max(1, Math.ceil(items.length / parts));
+            const out = [];
+            for (let i = 0; i < parts; i++)
+                out.push(Object.assign({}, album, { _items: items.slice(i * per, (i + 1) * per), _part: i + 1, _parts: parts, _total: items.length }));
+            return out;
+        }
+
         let catalogData = [];
         let currentPageId = null;
         let savedThemes = [];
@@ -999,12 +1372,13 @@
                         if (cp.logoText === 'TOUCHWOOD INC.') cp.logoText = 'TOUCHWOOD';
                     }
                 } else {
-                    catalogData = [...defaultPages];
+                    catalogData = JSON.parse(JSON.stringify(defaultPages));
                 }
             } catch (e) {
                 console.error("Error loading from big storage", e);
-                catalogData = [...defaultPages];
+                catalogData = JSON.parse(JSON.stringify(defaultPages));
             }
+            ensureAlbum(catalogData);   // older drafts get the last (album) page
 
             // Load Saved Themes
             const storedThemes = localStorage.getItem('touchwood_themes');
@@ -1051,6 +1425,23 @@
                         </div>
                         <i class="fas fa-chevron-right text-xs opacity-50"></i>
                     `;
+                } else if (page.pageType === 'back') {
+                    item.innerHTML = `
+                        <div class="flex flex-col overflow-hidden">
+                            <span class="text-xs font-bold text-rose-600 mb-0.5"><i class="fas fa-flag-checkered"></i> BACK COVER</span>
+                            <span class="text-sm font-bold truncate">${esc(String(page.backTitle || 'Thank You').replace(/\n/g, ' '))}</span>
+                        </div>
+                        <i class="fas fa-chevron-right text-xs opacity-50"></i>
+                    `;
+                } else if (page.pageType === 'album') {
+                    const n = albumItems(catalogData).length;
+                    item.innerHTML = `
+                        <div class="flex flex-col overflow-hidden">
+                            <span class="text-xs font-bold text-emerald-600 mb-0.5"><i class="fas fa-images"></i> PHOTO ALBUM (auto)</span>
+                            <span class="text-sm font-bold truncate">${esc(page.albumTitle || 'Album')} <span class="text-xs font-semibold text-gray-400">(${n} photo${n === 1 ? '' : 's'})</span></span>
+                        </div>
+                        <i class="fas fa-chevron-right text-xs opacity-50"></i>
+                    `;
                 } else {
                     item.innerHTML = `
                         <div class="flex flex-col overflow-hidden">
@@ -1065,7 +1456,7 @@
         }
 
         function addNewPage() {
-            const productPages = catalogData.filter(p => p.pageType !== 'cover');
+            const productPages = productPagesOf(catalogData);
             const productCount = productPages.length;
             
             // Pichle page se specification copy karne ka logic
@@ -1111,9 +1502,12 @@
                 accentColor: lastAccentColor,
                 textColor: lastTextColor,
                 boxBgColor: lastBoxBgColor,
-                boxTextColor: lastBoxTextColor
+                boxTextColor: lastBoxTextColor,
+                // and the previous page's background texture, like its colours
+                ...textureCopy(productCount > 0 ? productPages[productCount - 1] : null)
             };
             catalogData.push(newPage);
+            ensureAlbum(catalogData);   // the album stays the last page
             markDirty();
             currentPageId = newPage.id;
             renderSidebar();
@@ -1127,8 +1521,16 @@
                 showModal("The Cover Page is required and cannot be deleted.");
                 return;
             }
+            if (pageToDelete && pageToDelete.pageType === 'album') {
+                showModal("The Photo Album page is made automatically and cannot be deleted.");
+                return;
+            }
+            if (pageToDelete && pageToDelete.pageType === 'back') {
+                showModal("The Back Cover is the fixed last page and cannot be deleted.");
+                return;
+            }
 
-            if (catalogData.length <= 2) { 
+            if (productPagesOf(catalogData).length <= 1) {
                 showModal("You must have at least one product page in the catalog.");
                 return;
             }
@@ -1153,8 +1555,57 @@
             const productEditor = document.getElementById('product-editor');
             const coverEditor = document.getElementById('cover-editor');
             const deleteBtn = document.getElementById('btn-delete-page');
+            // The album panel and the picture upload depend on the page type.
+            const albumEditor = document.getElementById('album-editor');
+            const sharedUpload = document.getElementById('shared-image-upload');
+            const backEditor = document.getElementById('back-editor');
+            albumEditor.style.display = 'none';
+            backEditor.style.display = 'none';
+            if (sharedUpload) sharedUpload.style.display = (page.pageType === 'album' || page.pageType === 'back') ? 'none' : '';
 
-            if (page.pageType === 'cover') {
+            if (page.pageType === 'back') {
+                productEditor.style.display = 'none';
+                coverEditor.style.display = 'none';
+                backEditor.style.display = 'flex';
+                deleteBtn.style.visibility = 'hidden';
+                document.getElementById('current-editing-title').innerHTML = `<i class="fas fa-flag-checkered text-rose-500"></i> Editing: Back Cover`;
+                const v = k => page[k] != null ? page[k] : BACK_DEFAULT[k];
+                document.getElementById('input-back-title').value = v('backTitle');
+                document.getElementById('input-back-sub').value = v('backSub');
+                document.getElementById('input-back-message').value = v('backMessage');
+                document.getElementById('input-back-social').checked = page.backSocial !== 'N';
+                document.getElementById('input-back-fbUrl').value = page.fbUrl || CM_LINKS.fb;
+                document.getElementById('input-back-instaUrl').value = page.instaUrl || CM_LINKS.insta;
+                document.getElementById('input-back-website').value = v('website');
+                document.getElementById('input-back-email').value = v('email');
+                document.getElementById('input-back-address').value = v('address');
+                document.getElementById('input-back-gstin').value = v('gstin');
+                document.getElementById('input-back-waves').checked = page.backWaves !== 'N';
+                document.getElementById('input-back-bgColor').value = col(page.bgColor, BACK_DEFAULT.bgColor);
+                document.getElementById('input-back-accentColor').value = col(page.accentColor, BACK_DEFAULT.accentColor);
+                document.getElementById('input-back-textColor').value = col(page.textColor, BACK_DEFAULT.textColor);
+                document.getElementById('input-back-wave1').value = col(page.waveColor1, BACK_DEFAULT.waveColor1);
+                document.getElementById('input-back-wave2').value = col(page.waveColor2, BACK_DEFAULT.waveColor2);
+                document.getElementById('input-back-wave3').value = col(page.waveColor3, BACK_DEFAULT.waveColor3);
+            } else if (page.pageType === 'album') {
+                productEditor.style.display = 'none';
+                coverEditor.style.display = 'none';
+                albumEditor.style.display = 'flex';
+                deleteBtn.style.visibility = 'hidden';
+                document.getElementById('current-editing-title').innerHTML = `<i class="fas fa-images text-emerald-500"></i> Editing: Photo Album`;
+                const n = albumItems(catalogData).length, parts = Math.max(1, Math.ceil(n / ALBUM_PER_PAGE));
+                document.getElementById('album-count').textContent = n
+                    ? n + ' photo' + (n === 1 ? '' : 's') + (parts > 1 ? ', on ' + parts + ' album pages in the PDF (' + ALBUM_PER_PAGE + ' per page; the preview shows the first).' : '.')
+                    : 'No product page has a picture yet.';
+                document.getElementById('input-album-eyebrow').value = page.albumEyebrow != null ? page.albumEyebrow : ALBUM_DEFAULT.albumEyebrow;
+                document.getElementById('input-album-title').value = page.albumTitle != null ? page.albumTitle : ALBUM_DEFAULT.albumTitle;
+                document.getElementById('input-album-sub').value = page.albumSub != null ? page.albumSub : ALBUM_DEFAULT.albumSub;
+                document.getElementById('input-album-footer').value = page.albumFooter != null ? page.albumFooter : ALBUM_DEFAULT.albumFooter;
+                document.getElementById('input-album-captions').checked = page.albumCaptions !== 'N';
+                document.getElementById('input-album-bgColor').value = col(page.bgColor, '#fbfbfb');
+                document.getElementById('input-album-accentColor').value = col(page.accentColor, '#111827');
+                document.getElementById('input-album-textColor').value = col(page.textColor, '#4b5563');
+            } else if (page.pageType === 'cover') {
                 productEditor.style.display = 'none';
                 coverEditor.style.display = 'flex';
                 deleteBtn.style.visibility = 'hidden';
@@ -1162,7 +1613,9 @@
                 
                 document.getElementById('input-cover-logoText').value = page.logoText || '';
                 
-                // Load Logo settings
+                // Load Logo settings (the logo itself is fixed; only size / position are per page)
+                const fixedLogo = document.getElementById('cm-fixed-logo');
+                if (fixedLogo) fixedLogo.src = fixedLogoSrc();
                 document.getElementById('input-cover-logoWidth').value = page.logoWidth || '80';
                 document.getElementById('val-logo-size').innerText = page.logoWidth || '80';
                 document.getElementById('input-cover-logoOffsetX').value = page.logoOffsetX || '0';
@@ -1182,6 +1635,10 @@
                 document.getElementById('input-cover-boxColor').value = page.boxColor || '#374151';
                 document.getElementById('input-cover-boxTextColor').value = page.boxTextColor || '#ffffff';
                 document.getElementById('input-cover-boxTextSize').value = page.boxTextSize || '55';
+                document.getElementById('input-cover-specShow').checked = page.specShow !== 'N';
+                document.getElementById('input-cover-specSize').value = page.specSize || '';
+                document.getElementById('input-cover-specPly').value = page.specPly || '';
+                document.getElementById('input-cover-specWeight').value = page.specWeight || '';
                 
                 document.getElementById('input-cover-coverImageSize').value = page.coverImageSize || '240';
                 document.getElementById('val-cover-img-size').innerText = page.coverImageSize || '240';
@@ -1192,7 +1649,6 @@
                 document.getElementById('input-cover-preparedByLabelSize').value = page.preparedByLabelSize || '14';
                 document.getElementById('input-cover-preparedByNameSize').value = page.preparedByNameSize || '24';
                 
-                document.getElementById('input-cover-phone').value = page.phone || '';
                 document.getElementById('input-cover-website').value = page.website || '';
                 document.getElementById('input-cover-email').value = page.email || '';
                 document.getElementById('input-cover-contactColor').value = page.contactColor || '#4b5563';
@@ -1226,6 +1682,8 @@
                 document.getElementById('input-boxTextColor').value = page.boxTextColor || '#1f2937';
             }
 
+            syncFontSizeControls(page);   // the A− / A+ boxes show this page's sizes
+            syncTextureControls(page);    // and its background texture
             renderLivePreview();
         }
 
@@ -1307,7 +1765,7 @@
                 // refresh lost them. Now they are saved quietly a moment after typing stops.
                 clearTimeout(autoSaveTimer);
                 autoSaveTimer = setTimeout(() => saveDataLocally(true), 800);
-                if(field === 'pageNum' || field === 'title1' || field === 'title2' || field === 'mainTitle') {
+                if(field === 'pageNum' || field === 'title1' || field === 'title2' || field === 'mainTitle' || field === 'albumTitle' || field === 'backTitle' || field === 'image') {
                     renderSidebar();
                     if (catalogData[pageIndex].pageType === 'product') {
                         document.getElementById('current-editing-title').innerText = `Editing: Page ${catalogData[pageIndex].pageNum}`;
@@ -1316,48 +1774,21 @@
             }
         }
 
-        function handleLogoUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 300; // Reduced logo max size
-                    const MAX_HEIGHT = 300;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                        }
-                    } else {
-                        if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                        }
-                    }
-                    
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    const dataUrl = canvas.toDataURL('image/png'); // PNG keeps the logo's transparency
-                    updateCurrentPage('logoImage', dataUrl);
-                    saveDataLocally();
-                };
-                img.onerror = () => showModal("This file could not be read as an image.");
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-            // Reset, so choosing the same file again still fires onchange
-            event.target.value = '';
-        }
+        /* The company logo is FIXED: logo-removebg.png (transparent), carried by catalog-logo.js as a
+           data URL (see that file for why not a plain file path). There is no
+           upload any more; a template saved earlier with its own uploaded logo
+           (page.logoImage) prints this one too, so every catalog carries the
+           same, current logo. Only its size and position stay per page. */
+        function fixedLogoSrc() { return window.SARV_CATALOG_LOGO || 'logo-removebg.png'; }
+        /* Clickable links in the exported PDF (buildPdf turns every element with
+           data-pdf-link into a link area). The logo on every page opens the
+           website; the back cover's QR cards open Facebook / Instagram, unless
+           the back cover editor has another link typed in. */
+        const CM_LINKS = {
+            site:  'https://www.sarvindia.com',
+            fb:    'https://www.facebook.com/sarvindiahome/',
+            insta: 'https://www.instagram.com/sarvindia/'
+        };
 
         function handleImageUpload(event) {
             const file = event.target.files[0];
@@ -1419,6 +1850,94 @@
             reader.readAsDataURL(file);
         }
 
+        /* ── Page background texture ────────────────────────────────────────
+           Per page: bgTexture (a JPEG data URL, so html2canvas prints it with no
+           CORS trouble, same as the pictures), bgTextureMode 'cover' (fill the
+           page) or 'tile' (repeat, bgTextureTile mm wide), bgTextureOpacity %.
+           It is drawn as the page's first layer at z-index -1: above the page
+           colour, below every text and picture (each page root is its own
+           stacking context, "relative z-0"). Kept smaller than a product
+           picture (1200 px, JPEG 0.7): a texture is seen faded, and it may sit
+           on every page. */
+        const TEXTURE_DEFAULTS = { mode: 'cover', tile: 40, opacity: 35 };
+        function textureLayerHTML(page) {
+            if (!page || !page.bgTexture) return '';
+            const tile = page.bgTextureMode === 'tile';
+            const size = tile ? Math.min(210, Math.max(10, num(page.bgTextureTile, TEXTURE_DEFAULTS.tile))) + 'mm auto' : 'cover';
+            const op = Math.min(100, Math.max(5, num(page.bgTextureOpacity, TEXTURE_DEFAULTS.opacity))) / 100;
+            return `<div aria-hidden="true" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; pointer-events: none; ${bgImg(page.bgTexture)} background-size: ${size}; background-repeat: ${tile ? 'repeat' : 'no-repeat'}; background-position: ${tile ? 'top left' : 'center'}; opacity: ${op};"></div>`;
+        }
+        // The texture fields of a page, for copying its look to another page.
+        function textureCopy(from) {
+            const o = {};
+            ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity'].forEach(k => { if (from && from[k] != null && from[k] !== '') o[k] = from[k]; });
+            return o;
+        }
+        function syncTextureControls(page) {
+            page = page || catalogData.find(p => p.id === currentPageId);
+            if (!page) return;
+            const has = !!page.bgTexture;
+            const thumb = document.getElementById('texture-thumb');
+            thumb.style.backgroundImage = has ? "url('" + String(page.bgTexture).replace(/'/g, '%27') + "')" : '';
+            thumb.textContent = has ? '' : 'None';
+            document.getElementById('texture-remove').style.display = has ? '' : 'none';
+            document.getElementById('texture-options').style.display = has ? '' : 'none';
+            const mode = page.bgTextureMode === 'tile' ? 'tile' : 'cover';
+            document.getElementById('input-texture-mode').value = mode;
+            document.getElementById('texture-tile-row').style.display = mode === 'tile' ? '' : 'none';
+            const tile = num(page.bgTextureTile, TEXTURE_DEFAULTS.tile), op = num(page.bgTextureOpacity, TEXTURE_DEFAULTS.opacity);
+            document.getElementById('input-texture-tile').value = tile;
+            document.getElementById('val-texture-tile').innerText = tile;
+            document.getElementById('input-texture-opacity').value = op;
+            document.getElementById('val-texture-opacity').innerText = op;
+        }
+        function handleTextureUpload(event) {
+            const file = event.target.files[0];
+            event.target.value = '';   // same file again must still fire onchange
+            if (!file) return;
+            if (!/^image\//.test(file.type)) { showModal("Please choose an image file (PNG, JPG or WEBP)."); return; }
+            const reader = new FileReader();
+            reader.onload = e => {
+                const img = new Image();
+                img.onload = () => {
+                    const MAX = 1200, k = Math.min(1, MAX / Math.max(img.width, img.height));
+                    const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);   // a see-through PNG would turn black as JPEG
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const page = catalogData.find(p => p.id === currentPageId);
+                    // First texture on this page starts at the defaults; a replacement keeps the chosen style.
+                    if (page && !page.bgTexture) {
+                        if (page.bgTextureMode == null) page.bgTextureMode = TEXTURE_DEFAULTS.mode;
+                        if (page.bgTextureOpacity == null) page.bgTextureOpacity = String(TEXTURE_DEFAULTS.opacity);
+                    }
+                    updateCurrentPage('bgTexture', canvas.toDataURL('image/jpeg', 0.7));
+                    syncTextureControls();
+                    saveDataLocally();
+                };
+                img.onerror = () => showModal("This file could not be read as an image.");
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        function removeTexture() {
+            updateCurrentPage('bgTexture', '');
+            syncTextureControls();
+        }
+        function applyTextureToAll() {
+            const page = catalogData.find(p => p.id === currentPageId);
+            if (!page || !page.bgTexture) return;
+            showModal("Use this page's background texture (and its style, size and strength) on every page of the catalog?", 'confirm', () => {
+                const t = textureCopy(page);
+                catalogData.forEach(p => { ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity'].forEach(k => { delete p[k]; }); Object.assign(p, t); });
+                markDirty();
+                renderLivePreview();
+                saveDataLocally();
+            });
+        }
+
         // silent = the quiet auto-save after typing: no "Saved!" flash on the button
         async function saveDataLocally(silent) {
             clearTimeout(autoSaveTimer);
@@ -1473,9 +1992,134 @@
             return [['Size', page.size || '-'], ['Ply', page.ply || '-'], ['Weight', page.weight ? page.weight + ' KG' : '-']];
         }
 
+        /* The album page. `page._items` (one page's share of the photos) is set
+           by albumPagesFor for the PDF; the editor's preview passes the album
+           page itself, so the first share is worked out here.
+           Grid by count, filling the page: 1 → one big photo, 2 → one above the
+           other, 3–4 → 2×2, 5–6 → 2×3, 7–9 → 3×3, 10–12 → 3×4. Photos are
+           .cm-photo backgrounds (cover-cropped, html2canvas has no object-fit),
+           each in a white frame with its caption underneath. */
+        function albumGrid(n) {
+            if (n <= 1) return [1, 1];
+            if (n === 2) return [1, 2];
+            if (n <= 4) return [2, 2];
+            if (n <= 6) return [2, 3];
+            if (n <= 9) return [3, 3];
+            return [3, Math.ceil(n / 3)];
+        }
+        function generateAlbumHTML(page) {
+            if (!page._items) page = albumPagesFor(page, catalogData)[0];
+            const items = page._items || [];
+            const bgC = col(page.bgColor, '#fbfbfb'), accC = col(page.accentColor, '#111827'), txtC = col(page.textColor, '#4b5563');
+            const hFont = esc(globalSettings.headingFont), bFont = esc(globalSettings.bodyFont);
+            const capOn = page.albumCaptions !== 'N', capPx = fs(page, 'albumCaptionSize');
+            const [cols, rows] = albumGrid(items.length);
+            const pick = (k) => page[k] != null ? page[k] : ALBUM_DEFAULT[k];
+            const badge = page._parts > 1 ? 'ALBUM ' + page._part + '/' + page._parts : 'ALBUM';
+            const cells = items.map(it => `
+                    <div style="display: flex; flex-direction: column; min-height: 0; min-width: 0;">
+                        <div style="flex: 1 1 auto; min-height: 0; background-color: #ffffff; padding: 2.2mm; box-shadow: 0 1.5mm 4mm rgba(15,23,42,0.10); border: 1px solid ${hexA(accC, 0.08)};">
+                            <div class="cm-photo" role="img" aria-label="${esc(it.caption)}" style="width: 100%; height: 100%; ${bgImg(it.src)}"></div>
+                        </div>
+                        ${capOn ? `<div style="margin-top: 2.2mm; font-size: ${capPx}px; line-height: 1.3; height: ${Math.round(capPx * 1.3)}px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: center; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; color: ${txtC}; font-family: ${hFont};">${esc(it.caption)}</div>` : ''}
+                    </div>`).join('');
+            const body = items.length
+                ? `<div style="flex: 1 1 auto; min-height: 0; display: grid; gap: 5mm 5mm; grid-template-columns: repeat(${cols}, minmax(0, 1fr)); grid-template-rows: repeat(${rows}, minmax(0, 1fr));">${cells}</div>`
+                : `<div style="flex: 1 1 auto; display: flex; align-items: center; justify-content: center; border: 2px dashed ${hexA(accC, 0.2)}; border-radius: 3mm; color: ${txtC}; text-align: center; padding: 10mm; font-size: 15px; line-height: 1.6;">The photos of your product pages appear here automatically.<br>Add a picture to a product page to fill this album.</div>`;
+            return `
+            <div class="a4-page relative z-0 box-border" style="background-color: ${bgC}; font-family: ${bFont}; padding: 15mm 20mm 14mm; display: flex; flex-direction: column;">
+                ${textureLayerHTML(page)}
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8mm;">
+                    <div style="min-width: 0;">
+                        <div style="font-size: 11px; font-weight: 700; letter-spacing: 0.35em; text-transform: uppercase; color: ${accC}; opacity: 0.75; font-family: ${hFont};">${esc(pick('albumEyebrow'))}</div>
+                        <h1 style="margin: 2mm 0 0; font-size: ${fs(page, 'albumTitleSize')}px; line-height: 1.05; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: ${accC}; font-family: ${hFont};">${esc(pick('albumTitle'))}</h1>
+                        <p style="margin: 2.5mm 0 0; font-size: ${fs(page, 'albumSubSize')}px; line-height: 1.5; color: ${txtC};">${esc(pick('albumSub'))}</p>
+                    </div>
+                    <img data-pdf-link="${CM_LINKS.site}" src="${fixedLogoSrc()}" alt="Logo" style="width: 34mm; max-width: none; height: auto; display: block; flex: 0 0 auto;">
+                </div>
+                <div style="margin: 6mm 0 7mm; height: 1px; background-color: ${hexA(accC, 0.15)}; position: relative;">
+                    <div style="position: absolute; left: 0; top: -1px; width: 22mm; height: 3px; background-color: ${accC};"></div>
+                </div>
+                ${body}
+                <div style="margin-top: 7mm; padding-top: 4mm; border-top: 2px solid ${hexA(accC, 0.13)}; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase; color: ${txtC};">
+                    <span style="font-size: 13px; letter-spacing: 0.2em; font-weight: 600; font-family: ${hFont};">${esc(pick('albumFooter'))}</span>
+                    <span style="font-size: 13px; letter-spacing: 0.12em; font-weight: 700; padding: 1mm 3mm; border-radius: 1mm; background-color: ${accC}; color: ${bgC}; font-family: ${hFont};">${esc(badge)}</span>
+                </div>
+            </div>
+            `;
+        }
+
+        /* The back cover. Left: the cover's waves mirrored (an <img>, same as the
+           cover; opts.wavesSrc is its PNG for the PDF). Right column (from 46%
+           of the width), one top-to-bottom flex column so nothing can overlap:
+           big title, sub title, message, website / email rows, the FOLLOW US
+           QR cards (Facebook / Instagram, catalog-social.js), and the address /
+           GSTIN block pushed to the foot. The logo sits top right.
+           A QR card with a link carries data-pdf-link, which buildPdf turns into
+           a clickable area of the PDF page. (No mobile number here any more;
+           the cover still has its own.) */
+        function generateBackHTML(page, opts) {
+            const o = opts || {};
+            const hFont = esc(globalSettings.headingFont), bFont = esc(globalSettings.bodyFont);
+            const bgC = col(page.bgColor, '#ffffff'), accC = col(page.accentColor, '#374151'), txtC = col(page.textColor, '#4b5563');
+            const pick = k => page[k] != null ? page[k] : BACK_DEFAULT[k];
+            const cPx = fs(page, 'backContactSize');
+            const waves = page.backWaves !== 'N'
+                ? `<img src="${o.wavesSrc || wavesDataUri(page)}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: -10%; width: 80%; height: 100%; max-width: none; display: block;">` : '';
+            const row = (icon, v) => String(v || '').trim()
+                ? `<div style="display: flex; align-items: center; gap: 4mm;"><span style="width: 9.5mm; height: 9.5mm; border-radius: 50%; background-color: ${accC}; color: ${bgC}; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: ${Math.round(cPx * 0.85)}px;"><i class="fas ${icon}"></i></span><span style="min-width: 0; overflow-wrap: anywhere;">${esc(v)}</span></div>` : '';
+            // A link as typed, shown without "https://" / "www." so it stays short.
+            const shortUrl = u => String(u || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
+            const pdfUrl = u => { const s = String(u || '').trim(); return !s ? '' : (/^https?:\/\//i.test(s) ? s : 'https://' + s); };
+            const qrCard = (src, url) => src ? `
+                            <div ${pdfUrl(url) ? `data-pdf-link="${esc(pdfUrl(url))}"` : ''} style="flex: 0 0 auto; width: 34mm; background-color: #ffffff; border: 1px solid ${hexA(accC, 0.14)}; border-radius: 2.5mm; padding: 2.5mm; box-shadow: 0 1.2mm 3.5mm rgba(15,23,42,0.08);">
+                                <img src="${src}" alt="QR" style="width: 100%; height: auto; display: block;">
+                                ${shortUrl(url) ? `<div style="margin-top: 1.5mm; font-size: 9px; line-height: 1.3; color: ${accC}; font-weight: 600; text-align: center; overflow-wrap: anywhere;">${esc(shortUrl(url))}</div>` : ''}
+                            </div>` : '';
+            const social = page.backSocial !== 'N' && (window.SARV_FB_QR || window.SARV_INSTA_QR) ? `
+                        <div style="margin-top: 9mm;">
+                            <div style="font-size: 11px; font-weight: 700; letter-spacing: 0.3em; text-transform: uppercase; color: ${accC}; margin-bottom: 3.5mm; font-family: ${hFont};">Follow Us</div>
+                            <div style="display: flex; gap: 6mm; align-items: flex-start;">
+                                ${qrCard(window.SARV_FB_QR, page.fbUrl || CM_LINKS.fb)}${qrCard(window.SARV_INSTA_QR, page.instaUrl || CM_LINKS.insta)}
+                            </div>
+                        </div>` : '';
+            const addr = String(pick('address') || '').trim(), gst = String(pick('gstin') || '').trim();
+            return `
+            <div class="a4-page relative z-0 overflow-hidden text-left block" style="background-color: ${bgC}; font-family: ${bFont};">
+                ${textureLayerHTML(page)}
+                ${waves}
+                <div class="relative z-10 w-full h-full">
+                    <div style="position: absolute; top: 18mm; right: 18mm;">
+                        <img data-pdf-link="${CM_LINKS.site}" src="${fixedLogoSrc()}" alt="Logo" style="width: 46mm; max-width: none; height: auto; display: block;">
+                    </div>
+                    <div style="position: absolute; top: 58mm; bottom: 18mm; left: 46%; right: 18mm; display: flex; flex-direction: column;">
+                        <div style="width: 16mm; height: 1.2mm; background-color: ${accC}; margin-bottom: 6mm; flex: 0 0 auto;"></div>
+                        <h1 style="margin: 0; white-space: pre-line; font-size: ${fs(page, 'backTitleSize')}px; line-height: 0.98; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: ${accC}; font-family: ${hFont};">${esc(pick('backTitle'))}</h1>
+                        <p style="margin: 5mm 0 0; font-size: ${fs(page, 'backSubSize')}px; line-height: 1.35; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: ${txtC}; font-family: ${hFont};">${esc(pick('backSub'))}</p>
+                        <p style="margin: 5mm 0 0; font-size: ${fs(page, 'backMsgSize')}px; line-height: 1.6; color: ${txtC}; white-space: pre-line;">${esc(pick('backMessage'))}</p>
+                        <div style="margin-top: 8mm; display: flex; flex-direction: column; gap: 4mm; font-size: ${cPx}px; font-weight: 600; color: ${accC};">
+                            ${row('fa-globe', pick('website'))}${row('fa-envelope', pick('email'))}
+                        </div>
+                        ${social}
+                        ${addr || gst ? `<div style="margin-top: auto; padding: 3.5mm 0 3.5mm 5mm; border-left: 1.2mm solid ${accC}; color: ${txtC}; font-size: ${Math.max(10, cPx - 3)}px; line-height: 1.6;">
+                            ${addr ? `<div style="white-space: pre-line;"><span style="font-weight: 700; color: ${accC}; letter-spacing: 0.12em; font-size: 0.8em; text-transform: uppercase;">Address</span><br>${esc(addr)}</div>` : ''}
+                            ${gst ? `<div style="margin-top: ${addr ? '2.5mm' : '0'};"><span style="font-weight: 700; color: ${accC}; letter-spacing: 0.12em; font-size: 0.8em; text-transform: uppercase;">GSTIN</span>&nbsp; ${esc(gst)}</div>` : ''}
+                        </div>` : ''}
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
         function generatePageHTML(page, opts) {
             if (page.pageType === 'cover') {
                 return generateCoverHTML(page, opts);
+            }
+            if (page.pageType === 'back') {
+                return generateBackHTML(page, opts);
+            }
+            if (page.pageType === 'album') {
+                return generateAlbumHTML(page);
             }
 
             const bgC = col(page.bgColor, '#fbfbfb');
@@ -1487,11 +2131,16 @@
 
             return `
             <div class="a4-page flex flex-col pt-[15mm] pb-[15mm] px-[20mm] box-border relative z-0" style="background-color: ${bgC}; font-family: ${bFont};">
+                ${textureLayerHTML(page)}
                 <div class="text-center absolute top-[15mm] left-[20mm] right-[20mm] flex justify-between items-start z-10">
                     <div class="text-left">
-                        <h3 class="text-3xl tracking-widest uppercase font-bold" style="letter-spacing: 0.2em; color: ${accC}; font-family: ${hFont};">${esc(page.brandText !== undefined ? page.brandText : 'TOUCHWOOD')}</h3>
+                        <h3 class="tracking-widest uppercase font-bold" style="font-size: ${fs(page, 'brandTextSize')}px; line-height: 1.2; letter-spacing: 0.2em; color: ${accC}; font-family: ${hFont};">${esc(page.brandText !== undefined ? page.brandText : 'TOUCHWOOD')}</h3>
                         <p class="text-sm tracking-[0.3em] mt-1 uppercase" style="color: ${txtC}; opacity: 0.8; font-family: ${hFont};">PREMIUM CATALOG</p>
                     </div>
+                    <!-- Fixed company logo, top right of every product page (only the cover
+                         had one before). Fixed width with auto height: about 20mm tall, so it
+                         stays above the photo area, which starts 25mm below this row. -->
+                    <img data-pdf-link="${CM_LINKS.site}" src="${fixedLogoSrc()}" alt="Logo" style="width: 40mm; max-width: none; height: auto; display: block;">
                 </div>
 
                 <div class="mt-[25mm] h-[150mm] w-full relative z-0">
@@ -1501,18 +2150,18 @@
                 <div class="mt-[15mm] flex justify-between items-end flex-grow">
                     <div class="w-[55%]">
                         <div class="mb-6 relative">
-                            <div class="absolute -top-12 -left-6 text-9xl font-bold opacity-10 z-[-1] select-none" style="color: ${accC}; font-family: ${hFont};">${esc(page.pageNum || '00')}</div>
-                            <h1 class="text-[45px] leading-none uppercase tracking-wide break-words font-bold" style="color: ${accC}; font-family: ${hFont};">${esc(page.title1 || '')}</h1>
-                            <h2 class="text-[35px] leading-tight uppercase tracking-widest break-words" style="color: ${txtC}; font-family: ${hFont};">${esc(page.title2 || '')}</h2>
+                            <div class="absolute -top-12 -left-6 font-bold opacity-10 z-[-1] select-none" style="font-size: ${fs(page, 'pageNumSize')}px; line-height: 1; color: ${accC}; font-family: ${hFont};">${esc(page.pageNum || '00')}</div>
+                            <h1 class="leading-none uppercase tracking-wide break-words font-bold" style="font-size: ${fs(page, 'title1Size')}px; color: ${accC}; font-family: ${hFont};">${esc(page.title1 || '')}</h1>
+                            <h2 class="leading-tight uppercase tracking-widest break-words" style="font-size: ${fs(page, 'title2Size')}px; color: ${txtC}; font-family: ${hFont};">${esc(page.title2 || '')}</h2>
                         </div>
-                        <p class="text-[15px] leading-relaxed pr-10 border-l-4 pl-4 py-1 whitespace-pre-line text-justify" style="color: ${txtC}; border-left-color: ${hexA(accC, 0.25)};">${esc(page.description || 'Add description...')}</p>
+                        <p class="leading-relaxed pr-10 border-l-4 pl-4 py-1 whitespace-pre-line text-justify" style="font-size: ${fs(page, 'descriptionSize')}px; color: ${txtC}; border-left-color: ${hexA(accC, 0.25)};">${esc(page.description || 'Add description...')}</p>
                     </div>
 
                     <div class="w-[35%] p-6 shadow-sm border rounded-sm" style="background-color: ${boxBg}; border-color: ${hexA(boxTxt, 0.13)};">
                         <h3 class="text-sm font-bold tracking-widest mb-4 uppercase border-b pb-2" style="color: ${boxTxt}; border-bottom-color: ${hexA(boxTxt, 0.25)}; font-family: ${hFont};">Blanket Specifications</h3>
                         <ul class="space-y-${Array.isArray(page.specs) && page.specs.length > 3 ? '2' : '4'}">
                             ${specRows(page).map(r => `
-                            <li class="flex justify-between items-center gap-3 text-[15px]" style="color: ${boxTxt};">
+                            <li class="flex justify-between items-center gap-3" style="font-size: ${fs(page, 'specsSize')}px; color: ${boxTxt};">
                                 <span class="font-semibold opacity-70 whitespace-nowrap">${esc(r[0])}</span>
                                 <span class="font-bold text-right">${esc(r[1])}</span>
                             </li>`).join('')}
@@ -1521,11 +2170,34 @@
                 </div>
 
                 <div class="mt-auto border-t-2 pt-5 flex justify-between items-center uppercase" style="border-top-color: ${hexA(accC, 0.13)}; color: ${txtC};">
-                    <span class="text-[13px] tracking-[0.2em] font-semibold" style="font-family: ${hFont};">${esc(page.footerText !== undefined ? page.footerText : 'SUPER CLOUDY COLLECTION')}</span>
-                    <span class="text-[13px] tracking-widest font-bold px-3 py-1 rounded-sm" style="background-color: ${accC}; color: ${bgC}; font-family: ${hFont};">PAGE ${esc(page.pageNum || '00')}</span>
+                    <span class="tracking-[0.2em] font-semibold" style="font-size: ${fs(page, 'footerTextSize')}px; font-family: ${hFont};">${esc(page.footerText !== undefined ? page.footerText : 'SUPER CLOUDY COLLECTION')}</span>
+                    <span class="tracking-widest font-bold px-3 py-1 rounded-sm" style="font-size: ${fs(page, 'footerTextSize')}px; background-color: ${accC}; color: ${bgC}; font-family: ${hFont};">PAGE ${esc(page.pageNum || '00')}</span>
                 </div>
             </div>
             `;
+        }
+
+        /* Product specifications inside the cover's highlight box, under the
+           years: a thin rule, then one column per spec (small faded label over
+           a bold value), in the box's own text colour so it reads on any box
+           colour. Blank values are left out; specShow 'N' hides the row. Plain
+           block / flex and rgba() borders only, so html2canvas prints it exactly. */
+        function coverSpecRows(page) {
+            if (page.specShow === 'N') return [];
+            return [['Size', page.specSize], ['Ply', page.specPly], ['Weight', page.specWeight]]
+                .filter(r => r[1] != null && String(r[1]).trim() !== '');
+        }
+        function coverSpecHTML(page, hFont) {
+            const rows = coverSpecRows(page);
+            if (!rows.length) return '';
+            const tc = col(page.boxTextColor, '#ffffff'), v = fs(page, 'coverSpecSize');
+            const lbl = Math.max(9, Math.round(v * 0.62));
+            return `<div style="margin-top: 5mm; padding-top: 4mm; border-top: 1px solid ${hexA(tc, 0.35)}; display: flex; align-items: stretch; color: ${tc};">`
+                + rows.map((r, i) => `<div style="flex: 0 1 auto; min-width: 0; padding: 0 ${i < rows.length - 1 ? '6mm' : '0'} 0 ${i ? '6mm' : '0'};${i ? ' border-left: 1px solid ' + hexA(tc, 0.35) + ';' : ''}">`
+                    + `<div style="font-size: ${lbl}px; line-height: 1.3; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.75; font-weight: 600;">${esc(r[0])}</div>`
+                    + `<div style="font-size: ${v}px; line-height: 1.25; font-weight: 700; margin-top: 1.5mm; white-space: nowrap; font-family: ${hFont};">${esc(r[1])}</div>`
+                    + `</div>`).join('')
+                + `</div>`;
         }
 
         function generateCoverHTML(page, opts) {
@@ -1536,6 +2208,7 @@
             const wavesSrc = o.wavesSrc || wavesDataUri(page);
             return `
             <div class="a4-page relative z-0 bg-white overflow-hidden text-left block" style="font-family: ${bFont};">
+                ${textureLayerHTML(page)}
                 <!-- Decorative right-side waves: a picture of its own pixel size (see wavesSvg) -->
                 <img src="${wavesSrc}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 30%; width: 80%; height: 100%; max-width: none; display: block;">
 
@@ -1543,11 +2216,8 @@
 
                     <!-- Top Logo / Company Name -->
                     <div class="absolute top-[20mm] left-[20mm] right-[20mm] flex items-center gap-3 tracking-wide font-bold z-20" style="color: ${contactC}; font-family: ${hFont}; font-size: 24px;">
-                        <span>${esc(page.logoText || '')}</span>
-                        ${page.logoImage
-                            ? `<img src="${page.logoImage}" style="width: ${num(page.logoWidth, 80)}px; max-width: none; height: auto; transform: translate(${num(page.logoOffsetX, 0)}px, ${num(page.logoOffsetY, 0)}px);" alt="Logo">`
-                            : ''
-                        }
+                        <span style="font-size: ${fs(page, 'logoTextSize')}px;">${esc(page.logoText || '')}</span>
+                        <img data-pdf-link="${CM_LINKS.site}" src="${fixedLogoSrc()}" style="width: ${num(page.logoWidth, 80)}px; max-width: none; height: auto; transform: translate(${num(page.logoOffsetX, 0)}px, ${num(page.logoOffsetY, 0)}px);" alt="Logo">
                     </div>
 
                     <!-- Main Title Area -->
@@ -1557,10 +2227,14 @@
                     </div>
 
                     <!-- Highlight Box & Circular Image -->
-                    <div class="absolute top-[140mm] left-[0] flex items-center w-[120%]">
+                    <!-- With specifications the box is taller, so it starts 12mm higher (empty
+                         space under the sub title) and is a little less padded, keeping it clear
+                         of "Prepared By" below. Without them it is exactly as before. -->
+                    <div class="absolute ${coverSpecRows(page).length ? 'top-[128mm]' : 'top-[140mm]'} left-[0] flex items-center w-[120%]">
                         <!-- Left Highlight Box -->
-                        <div class="p-10 pl-[20mm] py-12 rounded-r-3xl w-[55%]" style="background-color: ${col(page.boxColor, '#374151')};">
+                        <div class="p-10 pl-[20mm] ${coverSpecRows(page).length ? 'py-9' : 'py-12'} rounded-r-3xl w-[55%]" style="background-color: ${col(page.boxColor, '#374151')};">
                             <h2 class="whitespace-pre-line leading-tight font-bold" style="color: ${col(page.boxTextColor, '#ffffff')}; font-size: ${num(page.boxTextSize, 55)}px; font-family: ${hFont};">${esc(page.boxText || '')}</h2>
+                            ${coverSpecHTML(page, hFont)}
                         </div>
 
                         <!-- Circular Image -->
@@ -1577,7 +2251,6 @@
 
                     <!-- Contact Details Footer -->
                     <div class="absolute bottom-[20mm] left-[20mm] right-[20mm] space-y-4 font-medium tracking-wide" style="color: ${contactC}; font-size: ${num(page.contactTextSize, 14)}px;">
-                        ${page.phone ? `<div class="flex items-center gap-4"><i class="fas fa-phone rounded-full p-2.5 bg-gray-100 w-9 h-9 flex items-center justify-center"></i> <span>${esc(page.phone)}</span></div>` : ''}
                         ${page.website ? `<div class="flex items-center gap-4"><i class="fas fa-globe rounded-full p-2.5 bg-gray-100 w-9 h-9 flex items-center justify-center"></i> <span>${esc(page.website)}</span></div>` : ''}
                         ${page.email ? `<div class="flex items-center gap-4"><i class="fas fa-envelope rounded-full p-2.5 bg-gray-100 w-9 h-9 flex items-center justify-center"></i> <span>${esc(page.email)}</span></div>` : ''}
                     </div>
@@ -1620,7 +2293,7 @@
                 const pages = [];
                 for (const page of ordered) {
                     const opts = {};
-                    if (page.pageType === 'cover') {
+                    if (page.pageType === 'cover' || (page.pageType === 'back' && page.backWaves !== 'N')) {
                         try { opts.wavesSrc = await wavesPng(page); }
                         catch (e) { console.warn(e); }   // the SVG data URI is still drawn
                     }
@@ -1660,6 +2333,15 @@
                     if (i > 0) pdf.addPage('a4', 'portrait');
                     pdf.setPage(i + 1);
                     pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+                    /* The page is a picture, so links are added on top of it: every
+                       element with data-pdf-link (the back cover's QR cards) becomes a
+                       clickable area at the same place, px → mm by the page's width. */
+                    const pr = pages[i].getBoundingClientRect(), k = 210 / (pr.width || 1);
+                    pages[i].querySelectorAll('[data-pdf-link]').forEach(a => {
+                        const r = a.getBoundingClientRect(), url = a.getAttribute('data-pdf-link');
+                        if (url && r.width && r.height)
+                            try { pdf.link((r.left - pr.left) * k, (r.top - pr.top) * k, r.width * k, r.height * k, { url: url }); } catch (e) { console.warn('[CM] PDF link skipped:', e); }
+                    });
                 }
                 return pdf;
             } finally {
@@ -1676,10 +2358,12 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
             btn.disabled = true;
             try {
-                // Ensure cover page is always first!
+                // Cover first, product pages, then the album page(s) last.
                 const coverPage = catalogData.find(p => p.pageType === 'cover');
-                const productPages = catalogData.filter(p => p.pageType !== 'cover');
-                const ordered = (coverPage ? [coverPage] : []).concat(productPages);
+                const productPages = productPagesOf(catalogData);
+                const album = catalogData.find(p => p.pageType === 'album') || ALBUM_DEFAULT;
+                const back = catalogData.find(p => p.pageType === 'back') || BACK_DEFAULT;
+                const ordered = (coverPage ? [coverPage] : []).concat(productPages, albumPagesFor(album, catalogData), [back]);
                 const pdf = await buildPdf(ordered, (i, n) => {
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Page ' + i + ' of ' + n + '...';
                 });
@@ -1725,7 +2409,8 @@
             const o = opts || {};
             const tPages = Array.isArray(template.pages) ? template.pages : [];
             const cover = JSON.parse(JSON.stringify(tPages.find(p => p.pageType === 'cover') || defaultPages[0]));
-            const proto = tPages.find(p => p.pageType !== 'cover') || defaultPages[1];
+            const proto = productPagesOf(tPages)[0] || defaultPages[1];
+            const albumTpl = tPages.find(p => p.pageType === 'album') || ALBUM_DEFAULT;
             const firstPhoto = (designs.find(d => d.photos && d.photos.length) || {}).photos;
             if ((!cover.image || cover.image === DEFAULT_IMAGE) && firstPhoto) cover.image = firstPhoto[0].src;
 
@@ -1759,11 +2444,17 @@
                             ['Rate', d.rate ? 'Rs. ' + Number(d.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + (o.unit ? ' ' + o.unit : '') : '']
                         ],
                         bgColor: proto.bgColor, accentColor: proto.accentColor, textColor: proto.textColor,
-                        boxBgColor: proto.boxBgColor, boxTextColor: proto.boxTextColor
+                        boxBgColor: proto.boxBgColor, boxTextColor: proto.boxTextColor,
+                        // The template page's text sizes (A− / A+) and background texture carry over too.
+                        ...fsCopy(proto),
+                        ...textureCopy(proto)
                     });
                 });
             });
-            return out;
+            // Then the photo album of every design's photos, in the template's album look,
+            // and the template's back cover as the very last page.
+            const backTpl = tPages.find(p => p.pageType === 'back') || BACK_DEFAULT;
+            return out.concat(albumPagesFor(albumTpl, out), [backTpl]);
         }
 
         function startRenderMode() {
