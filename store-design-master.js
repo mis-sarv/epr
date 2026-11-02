@@ -2764,7 +2764,9 @@
       try { localStorage.setItem(OC_STORE, JSON.stringify(o)); } catch (e) {}
     };
     OC_KEEP.concat(['dmOcCustomer']).forEach(id => { const el = q(id); if (el) el.addEventListener('input', () => { keep(); ocSchedule(); }); });
-    q('dmOcShowRate').addEventListener('change', ocSchedule);
+    // Print rates tick and the rate list are gone from the tab (the preview took their place);
+    // every element below is optional, so this runs with or without them.
+    if (q('dmOcShowRate')) q('dmOcShowRate').addEventListener('change', ocSchedule);
     if (q('dmOcTemplate')) q('dmOcTemplate').addEventListener('change', ocTplChanged);
     // Filter ticks: the rows keep re-rendering, so the listener sits on the grid.
     q('dmOcFilterGrid').addEventListener('change', e => {
@@ -2776,7 +2778,7 @@
     });
     // Filter bar, left list search and chips (shared layout, see dmFxBind).
     dmFxBind(OC_FX, ocRenderFilters, name => ocToggle(name, true));
-    q('dmOcList').addEventListener('input', e => {
+    if (q('dmOcList')) q('dmOcList').addEventListener('input', e => {
       const r = e.target.closest('.oc-rate'); if (!r) return;
       ocRates[+r.dataset.id] = r.value; ocSchedule();
     });
@@ -2858,25 +2860,27 @@
     ocRender();
   }
 
+  /* The Selected Designs & Rates table is gone from the tab: the PDF preview
+     sits in its place, next to the filters. What the table's empty row used to
+     explain (no photoshoot table / nothing matches / no photos yet) now shows
+     in the preview area, so an empty preview is never a mystery. With no rate
+     boxes left, no design has a rate (ocRate → null), so the PDF prints none. */
   function ocRender(){
     ocRenderFilters();
     const cands = ocCandidates();
     const list = ocFiltered();
-    const tb = q('dmOcList');
-    if (tb) tb.innerHTML = list.length ? list.map((d, i) =>
-      '<tr><td>' + (i + 1) + '</td>' +
-      '<td><strong>' + esc(d.design_no) + '</strong>' + (d.monopoly === 'YES' ? ' <span class="dm-badge dm-badge-mono">MONOPOLY</span>' : '') + '</td>' +
-      '<td>' + esc(d.design_sku_no || '—') + '</td>' +
-      '<td>' + esc(d.blanket_quality || '') + '</td>' +
-      '<td>' + esc(d.bed_size || '') + '</td>' +
-      '<td>' + (d.matchings || []).length + '</td>' +
-      '<td>' + psOf(d).length + '</td>' +
-      '<td><input type="number" min="0" step="0.01" class="dm-bulk-in oc-rate" data-id="' + d.id + '" value="' + esc(ocRates[d.id] || '') + '" placeholder="optional"></td></tr>'
-    ).join('')
-      : '<tr><td colspan="8" class="dm-empty-row">' + (dmPsMissing
-          ? 'Photoshoot table not found. Run DESIGN_PHOTOSHOOT_MIGRATION.sql first.'
-          : (cands.length ? 'No design matches these filters.' : 'No design has photoshoot photos yet. Add them from the Add Photoshoot tab.')) + '</td></tr>';
     ocSchedule();
+    // A big selection does not auto-preview: don't leave an old "no design" note standing.
+    const old = q('dmOcPreview');
+    if (list.length && old && old.querySelector('.dm-empty-row')) old.innerHTML = '';
+    if (!list.length) {
+      const why = dmPsMissing
+        ? 'Photoshoot table not found. Run DESIGN_PHOTOSHOOT_MIGRATION.sql first.'
+        : (cands.length ? 'No design matches these filters.' : 'No design has photoshoot photos yet. Add them from the Add Photoshoot tab.');
+      ocStatus(why);
+      const box = q('dmOcPreview');
+      if (box) box.innerHTML = '<div class="dm-empty-row" style="padding:40px 16px;text-align:center;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc;">' + esc(why) + '</div>';
+    }
   }
 
   /* Small selections preview by themselves (debounced); a big one waits for

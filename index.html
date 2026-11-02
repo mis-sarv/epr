@@ -2090,26 +2090,22 @@
                               <div class="dm-ocx-chips" id="dmOcChips"></div>
                               <div class="dm-filter-foot dm-ocx-foot">
                                 <span class="dm-filter-live" id="dmOcMatchCount"></span>
-                                <label class="dm-oc-rate-toggle"><input type="checkbox" id="dmOcShowRate" checked> Print rates</label>
                                 <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" onclick="dmOcResetFilters()" title="Tick every filter fully again (MONOPOLY YES stays unticked)">&#8635; Reset All Filters</button>
                               </div>
-                              <div class="dm-sec">Selected Designs &amp; Rates</div>
-                              <div class="dm-table-wrap"><table class="dm-table dm-oc-table">
-                                <thead><tr><th>#</th><th>Design No</th><th>SKU No</th><th>Quality</th><th>Bed Size</th><th>Matchings</th><th>Photos</th><th>Rate (Rs.)</th></tr></thead>
-                                <tbody id="dmOcList"></tbody>
-                              </table></div>
+                              <!-- The PDF preview sits right here, next to the filters, in place of the
+                                   old "Selected Designs & Rates" table (removed, with its rate boxes and
+                                   the Print rates tick: the PDF now prints no rates). -->
+                              <div class="dm-btn-row" style="margin-top:10px;">
+                                <button type="button" class="dm-btn dm-btn-success" onclick="dmOcDownload()">Download PDF</button>
+                                <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcOpen()">Open PDF in New Tab</button>
+                                <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcPreview()" title="Build the PDF and show it below (small selections update by themselves)">Full Preview</button>
+                                <span class="dm-cat-status" id="dmOcStatus"></span>
+                              </div>
+                              <div id="dmOcPreview" class="dm-oc-preview"></div>
                             </div>
                           </div>
                         </div>
                       </div>
-
-                      <div class="dm-btn-row" style="margin-top:12px;">
-                        <button type="button" class="dm-btn dm-btn-success" onclick="dmOcDownload()">Download PDF</button>
-                        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcOpen()">Open PDF in New Tab</button>
-                        <button type="button" class="dm-btn dm-btn-ghost" onclick="dmOcPreview()" title="Build the PDF and show it below (small selections update by themselves)">Full Preview</button>
-                        <span class="dm-cat-status" id="dmOcStatus"></span>
-                      </div>
-                      <div id="dmOcPreview" class="dm-oc-preview"></div>
                     </div>
 
                     <!-- ───────── Matching SKU › Dispatch Order ───────── -->

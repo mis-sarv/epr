@@ -409,6 +409,40 @@
                             <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide mb-2"><i class="fas fa-search-plus"></i> Cover Main Image Size</label>
                             <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Circle Size (px)</label><span id="val-cover-img-size" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">240</span></div>
                             <input type="range" id="input-cover-coverImageSize" min="100" max="600" value="240" oninput="document.getElementById('val-cover-img-size').innerText=this.value; updateCurrentPage('coverImageSize', this.value)" class="w-full accent-indigo-600">
+
+                            <!-- Picture inside the circle: pan + zoom (coverPhotoStyle). The circle is
+                                 always filled; moving only chooses which part of the picture shows. -->
+                            <div class="mt-3 pt-3 border-t border-gray-100 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-[10px] font-bold text-gray-700 uppercase tracking-wide">Picture in the circle</span>
+                                    <button type="button" onclick="resetCoverPhoto()" class="text-[10px] text-indigo-600 hover:underline font-semibold">reset</button>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Zoom (%)</label><span id="val-cover-zoom" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">100</span></div>
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgZoom', -10)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Zoom out">&minus;</button>
+                                        <input type="range" id="input-cover-zoom" min="100" max="300" value="100" oninput="setCoverPhoto('coverImgZoom', this.value)" class="flex-1 accent-indigo-600">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgZoom', 10)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Zoom in">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Left / Right</label><span id="val-cover-panx" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">50</span></div>
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgX', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the left side">&#9664;</button>
+                                        <input type="range" id="input-cover-panx" min="0" max="100" value="50" oninput="setCoverPhoto('coverImgX', this.value)" class="flex-1 accent-indigo-600">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgX', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the right side">&#9654;</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Up / Down</label><span id="val-cover-pany" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">50</span></div>
+                                    <div class="flex items-center gap-2">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgY', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the top">&#9650;</button>
+                                        <input type="range" id="input-cover-pany" min="0" max="100" value="50" oninput="setCoverPhoto('coverImgY', this.value)" class="flex-1 accent-indigo-600">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgY', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the bottom">&#9660;</button>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-gray-400 leading-snug">Zoom in first, then move to choose the part of the picture that shows in the circle.</p>
+                            </div>
                         </div>
                         
                         <div class="p-3 border border-gray-200 rounded bg-gray-50">
@@ -615,7 +649,7 @@
                             </div>
                         </div>
                         <label class="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wide mb-2 cursor-pointer">
-                            <input type="checkbox" id="input-back-waves" onchange="updateCurrentPage('backWaves', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600"> Waves on the left
+                            <input type="checkbox" id="input-back-waves" onchange="updateCurrentPage('backWaves', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600"> Waves on the right (like the cover)
                         </label>
                         <div class="grid grid-cols-3 gap-3">
                             <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 1</label><input type="color" id="input-back-wave1" oninput="updateCurrentPage('waveColor1', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
@@ -804,16 +838,12 @@
            Box: left 30%, width 80% of the page (the old right:-10%), full
            height; the page's overflow:hidden clips the part outside. */
         const WAVE_W = 1270, WAVE_H = 2245;   // 80% × 100% of A4 at 2× (html2canvas scale)
-        // The back cover uses the same waves mirrored to the LEFT edge (page.pageType 'back').
-        // The flip is inside the SVG itself, so html2canvas never has to apply a CSS transform.
+        // The cover and the back cover use the same waves, on the RIGHT edge.
         function wavesSvg(page) {
-            const flip = page && page.pageType === 'back';
             return '<svg xmlns="http://www.w3.org/2000/svg" width="' + WAVE_W + '" height="' + WAVE_H + '" viewBox="0 0 500 1000" preserveAspectRatio="none">'
-                + (flip ? '<g transform="translate(500,0) scale(-1,1)">' : '')
                 + '<path d="M500,0 L200,0 C350,300 -50,600 250,1000 L500,1000 Z" fill="' + col(page.waveColor1, '#e5e7eb') + '"/>'
                 + '<path d="M500,0 L350,0 C450,400 150,700 350,1000 L500,1000 Z" fill="' + col(page.waveColor2, '#9ca3af') + '"/>'
                 + '<path d="M500,200 C300,500 400,800 500,1000 Z" fill="' + col(page.waveColor3, '#4b5563') + '"/>'
-                + (flip ? '</g>' : '')
                 + '</svg>';
         }
         function wavesDataUri(page) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(wavesSvg(page)); }
@@ -1678,6 +1708,7 @@
                 
                 document.getElementById('input-cover-coverImageSize').value = page.coverImageSize || '240';
                 document.getElementById('val-cover-img-size').innerText = page.coverImageSize || '240';
+                syncCoverPhotoControls(page);   // move / zoom of the picture in the circle
                 
                 document.getElementById('input-cover-preparedByLabel').value = page.preparedByLabel !== undefined ? page.preparedByLabel : 'Prepared By:';
                 document.getElementById('input-cover-preparedBy').value = page.preparedBy || '';
@@ -1974,6 +2005,62 @@
             });
         }
 
+        /* ── Cover circle picture: move + zoom ──────────────────────────────
+           Per cover: coverImgX / coverImgY (0–100, 50 = centre) choose which part
+           of the picture shows, coverImgZoom (100–300 %) how close.
+           Done with background-size / background-position on the same single
+           .cm-photo the circle always had (html2canvas prints backgrounds
+           reliably). Zoom needs the picture's own shape: the size that just
+           fills the circle ("cover") is aspect × 100 % wide for a landscape
+           picture, 100 % / aspect tall for a portrait one, and zoom multiplies
+           that. Percent positions keep the circle always filled: 0 shows the
+           left / top edge, 100 the right / bottom edge, never a blank gap.
+           The aspect is read once per picture (imgAspect, cached); the preview
+           draws again when it arrives, and buildPdf waits for it. */
+        const aspectCache = new Map();   // picture src → width / height
+        function imgAspect(src, onReady) {
+            if (!src) return null;
+            if (aspectCache.has(src)) return aspectCache.get(src);
+            const img = new Image();
+            img.onload = () => { aspectCache.set(src, img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1); if (onReady) onReady(); };
+            img.onerror = () => { aspectCache.set(src, 1); if (onReady) onReady(); };
+            img.src = src;
+            return null;
+        }
+        function loadAspect(src) { return new Promise(res => { if (!src || aspectCache.has(src)) return res(); imgAspect(src, res); }); }
+        const clampN = (v, lo, hi, def) => Math.min(hi, Math.max(lo, num(v, def)));
+        function coverPhotoStyle(page) {
+            const src = page.image || DEFAULT_IMAGE;
+            const z = clampN(page.coverImgZoom, 100, 300, 100) / 100;
+            const x = clampN(page.coverImgX, 0, 100, 50), y = clampN(page.coverImgY, 0, 100, 50);
+            const a = imgAspect(src, () => { if (catalogData.some(p => p.id === currentPageId && p.pageType === 'cover')) renderLivePreview(); });
+            const size = a ? (a >= 1 ? (a * z * 100).toFixed(2) + '% ' + (z * 100).toFixed(2) + '%'
+                                     : (z * 100).toFixed(2) + '% ' + (z * 100 / a).toFixed(2) + '%')
+                           : 'cover';   // shape not known yet: plain fill, moved but not zoomed (redrawn in a moment)
+            return bgImg(src) + ' background-size: ' + size + '; background-position: ' + x + '% ' + y + '%; background-repeat: no-repeat;';
+        }
+        function syncCoverPhotoControls(page) {
+            page = page || catalogData.find(p => p.id === currentPageId);
+            if (!page || page.pageType !== 'cover') return;
+            const set = (id, lbl, v) => { const e = document.getElementById(id); if (e) e.value = v; const l = document.getElementById(lbl); if (l) l.innerText = v; };
+            set('input-cover-zoom', 'val-cover-zoom', clampN(page.coverImgZoom, 100, 300, 100));
+            set('input-cover-panx', 'val-cover-panx', clampN(page.coverImgX, 0, 100, 50));
+            set('input-cover-pany', 'val-cover-pany', clampN(page.coverImgY, 0, 100, 50));
+        }
+        function setCoverPhoto(key, v) {
+            const lim = key === 'coverImgZoom' ? [100, 300, 100] : [0, 100, 50];
+            updateCurrentPage(key, String(Math.round(clampN(v, lim[0], lim[1], lim[2]))));
+            syncCoverPhotoControls();
+        }
+        function stepCoverPhoto(key, d) {
+            const page = catalogData.find(p => p.id === currentPageId); if (!page) return;
+            setCoverPhoto(key, num(page[key], key === 'coverImgZoom' ? 100 : 50) + d);
+        }
+        function resetCoverPhoto() {
+            ['coverImgZoom', 'coverImgX', 'coverImgY'].forEach(k => updateCurrentPage(k, k === 'coverImgZoom' ? '100' : '50'));
+            syncCoverPhotoControls();
+        }
+
         /* ── Photo Album: own uploads ───────────────────────────────────────
            Any number of photos, kept on the album page as albumPhotos
            [{src, caption}] (JPEG data URLs, 1000 px, like a product picture).
@@ -2173,12 +2260,12 @@
             `;
         }
 
-        /* The back cover. Left: the cover's waves mirrored (an <img>, same as the
-           cover; opts.wavesSrc is its PNG for the PDF). Right column (from 46%
+        /* The back cover, the twin of the cover: the same waves on the RIGHT (an <img>, placed as on the
+           cover; opts.wavesSrc is its PNG for the PDF). Left column (20mm to 54%
            of the width), one top-to-bottom flex column so nothing can overlap:
            big title, sub title, message, website / email rows, the FOLLOW US
            QR cards (Facebook / Instagram, catalog-social.js), and the address /
-           GSTIN block pushed to the foot. The logo sits top right.
+           GSTIN block pushed to the foot. The logo sits top left, as on the cover.
            A QR card with a link carries data-pdf-link, which buildPdf turns into
            a clickable area of the PDF page. (No mobile number here any more;
            the cover still has its own.) */
@@ -2189,7 +2276,7 @@
             const pick = k => page[k] != null ? page[k] : BACK_DEFAULT[k];
             const cPx = fs(page, 'backContactSize');
             const waves = page.backWaves !== 'N'
-                ? `<img src="${o.wavesSrc || wavesDataUri(page)}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: -10%; width: 80%; height: 100%; max-width: none; display: block;">` : '';
+                ? `<img src="${o.wavesSrc || wavesDataUri(page)}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 30%; width: 80%; height: 100%; max-width: none; display: block;">` : '';
             const row = (icon, v) => String(v || '').trim()
                 ? `<div style="display: flex; align-items: center; gap: 4mm;"><span style="width: 9.5mm; height: 9.5mm; border-radius: 50%; background-color: ${accC}; color: ${bgC}; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: ${Math.round(cPx * 0.85)}px;"><i class="fas ${icon}"></i></span><span style="min-width: 0; overflow-wrap: anywhere;">${esc(v)}</span></div>` : '';
             // A link as typed, shown without "https://" / "www." so it stays short.
@@ -2213,10 +2300,10 @@
                 ${textureLayerHTML(page)}
                 ${waves}
                 <div class="relative z-10 w-full h-full">
-                    <div style="position: absolute; top: 18mm; right: 18mm;">
+                    <div style="position: absolute; top: 18mm; left: 20mm;">
                         <img data-pdf-link="${CM_LINKS.site}" src="${fixedLogoSrc()}" alt="Logo" style="width: 46mm; max-width: none; height: auto; display: block;">
                     </div>
-                    <div style="position: absolute; top: 58mm; bottom: 18mm; left: 46%; right: 18mm; display: flex; flex-direction: column;">
+                    <div style="position: absolute; top: 58mm; bottom: 18mm; left: 20mm; right: 46%; display: flex; flex-direction: column;">
                         <div style="width: 16mm; height: 1.2mm; background-color: ${accC}; margin-bottom: 6mm; flex: 0 0 auto;"></div>
                         <h1 style="margin: 0; white-space: pre-line; font-size: ${fs(page, 'backTitleSize')}px; line-height: 0.98; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; color: ${accC}; font-family: ${hFont};">${esc(pick('backTitle'))}</h1>
                         <p style="margin: 5mm 0 0; font-size: ${fs(page, 'backSubSize')}px; line-height: 1.35; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: ${txtC}; font-family: ${hFont};">${esc(pick('backSub'))}</p>
@@ -2363,7 +2450,7 @@
 
                         <!-- Circular Image -->
                         <div class="absolute right-[5%] z-20 rounded-full border-[12px] border-white shadow-2xl overflow-hidden bg-gray-200 box-border" style="width: ${imgSize}px; height: ${imgSize}px; top: 50%; transform: translateY(-50%);">
-                            <div class="cm-photo w-full h-full rounded-full" role="img" aria-label="Cover Image" style="${bgImg(page.image)}"></div>
+                            <div class="cm-photo w-full h-full rounded-full" role="img" aria-label="Cover Image" style="${coverPhotoStyle(page)}"></div>
                         </div>
                     </div>
 
@@ -2417,6 +2504,8 @@
                 const pages = [];
                 for (const page of ordered) {
                     const opts = {};
+                    // The circle picture's zoom needs its shape known before the page is drawn.
+                    if (page.pageType === 'cover') await loadAspect(page.image || DEFAULT_IMAGE);
                     if (page.pageType === 'cover' || (page.pageType === 'back' && page.backWaves !== 'N')) {
                         try { opts.wavesSrc = await wavesPng(page); }
                         catch (e) { console.warn(e); }   // the SVG data URI is still drawn
