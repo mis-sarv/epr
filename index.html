@@ -186,6 +186,12 @@
       <span class="sarv-home-text"><b>Catalog Templates</b><small>Product catalogs with cover page, saved on the server, PDF export</small></span>
       <span class="sarv-home-arrow">&#8250;</span>
     </button>
+    <!-- Sales › Price List — opens #priceListPanel (HOME_PRICE_LIST). -->
+    <button type="button" class="sarv-home-row" data-go="PRICE_LIST">
+      <span class="sarv-home-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"></path><circle cx="7.5" cy="7.5" r="1.5"></circle></svg></span>
+      <span class="sarv-home-text"><b>Price List</b><small>Rate list by W.E.F date, saved on the server, A4 PDF</small></span>
+      <span class="sarv-home-arrow">&#8250;</span>
+    </button>
     <!-- Task › FMS Builder / FMS View — both open #fmsPanel (fms.html#builder /
          fms.html#view), HOME_FMS_BUILDER / HOME_FMS_VIEW. -->
     <button type="button" class="sarv-home-row" data-go="FMS_BUILDER">
@@ -2273,6 +2279,15 @@
         <div id="catalogPanel" class="main-panel tab-content" style="display: none; height: 100%;">
             <iframe id="catalogFrame" title="Catalog Templates" data-src="catalog_maker.html"
                 style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f9fafb; display:block;"></iframe>
+        </div>
+
+        <!-- Sales › Price List — price_list_generator.html: rate lists saved on
+             the server date-wise (one per W.E.F date) through the pl_* RPCs
+             (sql/PRICE_LIST_MIGRATION.sql), with A4 PDF export. Same lazy iframe
+             pattern as Catalog Templates. -->
+        <div id="priceListPanel" class="main-panel tab-content" style="display: none; height: 100%;">
+            <iframe id="priceListFrame" title="Price List" data-src="price_list_generator.html"
+                style="width:100%; height:calc(100vh - 85px); border:0; border-radius:10px; background:#f3f4f6; display:block;"></iframe>
         </div>
 
         <!-- Task › FMS Builder and Task › FMS View — the Nexus 2.0 FMS

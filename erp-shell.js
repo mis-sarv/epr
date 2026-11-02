@@ -128,6 +128,11 @@
          HOME_PACKING); `external` is the page that opens. */
       { label: 'Order Form', go: 'ORDER_FORM', external: 'order-form.html' },
       { label: 'Packing & Dispatch', go: 'PACKING', external: 'packing.html' },
+      /* Price List maker (price_list_generator.html) inside the ERP, the
+         #priceListPanel iframe, like Catalog Templates. Lists are saved on
+         the server date-wise (pl_* RPCs, sql/PRICE_LIST_MIGRATION.sql);
+         shown by HOME_PRICE_LIST (Admin / MD / GM by default). */
+      { label: 'Price List', go: 'PRICE_LIST' },
       { label: 'Sales Dashboard' }, { label: 'RFQ' }, { label: 'Quotation' },
       { label: 'Quick SO' }, { label: 'Sale Order' }, { label: 'Sample / Trial SO' },
       { label: 'Sale JWO (Job Work Out)' }, { label: 'Production Request' },
@@ -1104,6 +1109,7 @@
     TRIMS: 'trims packing material manager',
     SOP_MASTER: 'sop standard operating procedure work instruction training designation steps',
     CATALOG_MAKER: 'catalog catalogue maker template brochure product pdf cover page design',
+    PRICE_LIST: 'price list rate list pricelist rates wef w.e.f sales blanket price pdf daam rate list banao',
     FMS_BUILDER: 'fms flow management system builder process steps doer tat flow chart workflow',
     FMS_VIEW: 'fms view tracker flow records planned actual delay my steps done pending kaam',
     TASK_TRACKER: 'task tracker all tasks checklist ea delegation complaint pending delayed kaam',

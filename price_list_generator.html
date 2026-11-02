@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Shared ERP helpers, same order as every app page: DD/MM/YYYY date boxes,
+         then capitals (switched off for this page below: the list goes to
+         customers, so it keeps the case it was typed in), then the single
+         sign-on (launcher.html login), first, so a logged-in user never sees a flash. -->
+    <script src="date-dmy.js"></script>
+    <script src="caps-input.js"></script>
+    <script src="sso-preboot.js"></script>
+    <script src="sso-gate.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price List Generator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React, ReactDOM and Babel at fixed versions (an unpinned "@18" / "latest"
+         could change under the page without notice) -->
+    <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+    <!-- html2canvas & jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Alex+Brush&family=Cinzel:wght@400;700&family=Great+Vibes&family=Lora:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;600&family=Open+Sans:wght@300;400;600&family=Oswald:wght@300;400;600&family=Poppins:wght@300;400;600&family=Raleway:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body { background-color: #f3f4f6; margin: 0; overflow: hidden; }
+        .a4-container {
+            width: 210mm; /* A4 width */
+            height: 297mm; /* A4 height */
+            background-color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+        .a4-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 2rem;
+            height: 100vh;
+            overflow-y: auto;
+            background-color: #e5e7eb;
+        }
+
+        .content-inner {
+            transform-origin: top left;
+            width: 100%;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+    </style>
+</head>
+<!-- data-no-caps: everything typed here is printed for customers, so it keeps its case (caps-input.js) -->
+<body data-no-caps>
+    <div id="root"></div>
+
+    <script>
+        /* Supabase project (the same one as the ERP). Price lists are saved
+           date-wise in public.price_lists through the token-checked pl_* RPCs
+           (sql/PRICE_LIST_MIGRATION.sql); the token is the ERP login's. */
+        const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+        const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+
+        // A session that is no longer valid goes back to the launcher, like every ERP app.
+        const PL_SESSION_ERR = { SESSION_INVALID: 1, SESSION_EXPIRED: 1, SESSION_REVOKED: 1, USER_INACTIVE: 1, NO_TOKEN: 1 };
+        const PL_ERR_TEXT = {
+            NOT_ALLOWED: 'You do not have the Price List right. Ask the Admin (Admin Panel › Tab Visibility › Price List).',
+            DATE_REQUIRED: 'Choose the W.E.F date first.',
+            BAD_DATA: 'The price list could not be read. Please reload the page.',
+            NOT_FOUND: 'This price list is no longer on the server.'
+        };
+        /* One pl_* RPC. Throws an Error with .code / .data for a refusal; a
+           missing function means the migration has not been run yet (code
+           NOT_SET_UP), which the page shows as a banner and keeps working
+           with the browser's own storage. */
+        async function plRpc(fn, args) {
+            let r;
+            try {
+                r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+                    body: JSON.stringify(Object.assign({ p_token: (window.SARV_GATE && SARV_GATE.token) || '' }, args || {}))
+                });
+            } catch (e) { const er = new Error('Could not reach the server. Please check the internet connection.'); er.code = 'NET'; throw er; }
+            const d = await r.json().catch(() => null);
+            if (!r.ok) {
+                const code = d && d.code;
+                if (code === 'PGRST202' || code === '42883' || code === '42P01') {
+                    const er = new Error('Price lists are not set up on the server yet. Admin: run sql/PRICE_LIST_MIGRATION.sql in the Supabase SQL Editor.');
+                    er.code = 'NOT_SET_UP'; throw er;
+                }
+                if (r.status === 413) { const er = new Error('This price list is too large to save. Use a smaller logo / background picture.'); er.code = 'TOO_BIG'; throw er; }
+                throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
+            }
+            if (d && d.success === false) {
+                const err = String(d.error || '');
+                if (PL_SESSION_ERR[err]) { location.replace('launcher.html?why=' + err); return new Promise(() => {}); }
+                const e = new Error(PL_ERR_TEXT[err] || err || 'The server refused the request.');
+                e.code = err; e.data = d; throw e;
+            }
+            return d;
+        }
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useLayoutEffect, useRef } = React;
+
+        const themes = {
+            pastel: [
+                { name: 'Pale Sage', bg: '#f1f5f0', text: '#2d4a22', border: '#a3b899', accent: '#3b5f2d' },
+                { name: 'Blush Pink', bg: '#fff0f0', text: '#5c3a3a', border: '#e6c3c3', accent: '#8a5a5a' },
+                { name: 'Soft Sand', bg: '#fdfbf7', text: '#4a4238', border: '#d9cbb8', accent: '#736452' },
+                { name: 'Mist Blue', bg: '#f0f4f8', text: '#2a3b4c', border: '#b3c6d6', accent: '#3a546d' },
+                { name: 'Lavender', bg: '#f6f0fa', text: '#402a5c', border: '#c7b3d6', accent: '#5d3d85' },
+                { name: 'Mint Cream', bg: '#f0faf5', text: '#1b4d3e', border: '#a3d6c4', accent: '#26735d' },
+                { name: 'Peach', bg: '#fdf3ed', text: '#5c351f', border: '#e6c3af', accent: '#8c512f' },
+                { name: 'Lemon Chiffon', bg: '#fcfcf0', text: '#4d4d1f', border: '#d6d6a3', accent: '#6b6b2b' },
+                { name: 'Rose Water', bg: '#fcf0f4', text: '#5c1f35', border: '#d6a3b8', accent: '#8c2f51' },
+                { name: 'Ice Blue', bg: '#edf5fd', text: '#1f3b5c', border: '#a3c3e6', accent: '#2f5a8c' }
+            ],
+            dark: [
+                { name: 'Midnight', bg: '#0f172a', text: '#e2e8f0', border: '#334155', accent: '#94a3b8' },
+                { name: 'Charcoal', bg: '#171717', text: '#d4d4d4', border: '#404040', accent: '#a3a3a3' },
+                { name: 'Deep Forest', bg: '#064e3b', text: '#d1fae5', border: '#047857', accent: '#6ee7b7' },
+                { name: 'Burgundy', bg: '#4c0519', text: '#ffe4e6', border: '#be123c', accent: '#fda4af' },
+                { name: 'Navy', bg: '#1e1b4b', text: '#e0e7ff', border: '#4338ca', accent: '#a5b4fc' },
+                { name: 'Espresso', bg: '#292524', text: '#e7e5e4', border: '#57534e', accent: '#a8a29e' },
+                { name: 'Dark Teal', bg: '#134e4a', text: '#ccfbf1', border: '#0f766e', accent: '#5eead4' },
+                { name: 'Slate', bg: '#1e293b', text: '#cbd5e1', border: '#475569', accent: '#94a3b8' },
+                { name: 'Plum', bg: '#4a044e', text: '#fae8ff', border: '#a21caf', accent: '#f0abfc' },
+                { name: 'Olive Drab', bg: '#3f6212', text: '#ecfccb', border: '#65a30d', accent: '#d9f99d' }
+            ]
+        };
+
+        const fonts = [
+            { name: 'Playfair Display (Serif)', value: "'Playfair Display', serif" },
+            { name: 'Cinzel (Elegant Serif)', value: "'Cinzel', serif" },
+            { name: 'Lora (Classic Serif)', value: "'Lora', serif" },
+            { name: 'Montserrat (Modern Sans)', value: "'Montserrat', sans-serif" },
+            { name: 'Poppins (Round Sans)', value: "'Poppins', sans-serif" },
+            { name: 'Raleway (Light Sans)', value: "'Raleway', sans-serif" },
+            { name: 'Oswald (Condensed)', value: "'Oswald', sans-serif" },
+            { name: 'Open Sans (Clean)', value: "'Open Sans', sans-serif" },
+            { name: 'Great Vibes (Cursive)', value: "'Great Vibes', cursive" },
+            { name: 'Alex Brush (Cursive)', value: "'Alex Brush', cursive" }
+        ];
+
+        /* Today as the LOCAL date. It was toISOString(), i.e. the UTC date: in
+           India that is still yesterday until 5:30 am, so an early-morning list
+           got the wrong W.E.F date. */
+        const getToday = () => {
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        };
+        // YYYY-MM-DD → DD-MM-YYYY; an empty / half-typed date no longer crashes the page.
+        const dmy = iso => /^\d{4}-\d{2}-\d{2}$/.test(String(iso || '')) ? String(iso).split('-').reverse().join('-') : '';
+        const fmtWhen = ts => { try { return new Date(ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+        /* "#rrggbb" + alpha → rgba(). The table header / dashed lines used
+           "#rrggbb40"-style 8-digit hex, which html2canvas does not draw
+           reliably, so they could go missing from the PDF. */
+        const hexA = (hex, a) => {
+            const h = /^#[0-9a-f]{6}$/i.test(String(hex || '')) ? hex.slice(1) : '000000';
+            return 'rgba(' + parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16) + ',' + a + ')';
+        };
+        // Unique ids (Date.now() alone repeated when two rows were added in the same millisecond).
+        let idSeq = 0;
+        const uid = () => Date.now() * 1000 + (idSeq++ % 1000);
+
+        const initialCategories = [
+            {
+                id: 1,
+                name: 'Super Soft Blanket Collection',
+                products: [
+                    { id: 1, name: 'Cloudy Blanket Single', weight: '2.5 kg', rate: '₹ 150', bagPrice: '₹ 40', packing: '10 Pcs' },
+                    { id: 2, name: 'Cloudy Blanket Double', weight: '4.0 kg', rate: '₹ 150', bagPrice: '₹ 50', packing: '8 Pcs' }
+                ]
+            }
+        ];
+
+        const initialTerms = [
+            { id: 1, text: 'Prices are subject to change without prior notice.' },
+            { id: 2, text: 'GST 5% will be charged extra as applicable.' },
+            { id: 3, text: 'Freight charges bearable by the buyer.' }
+        ];
+
+        const defaultTypography = {
+            brandName: { size: 36, bold: false, italic: false },
+            address: { size: 14, bold: false, italic: false },
+            date: { size: 18, bold: false, italic: false },
+            category: { size: 20, bold: true, italic: false },
+            product: { size: 14, bold: false, italic: false },
+            terms: { size: 12, bold: false, italic: false }
+        };
+
+        // The old browser-only store (before the server). Read once so those lists can be moved up.
+        const LOCAL_KEY = 'sihf_price_lists_db';
+
+        /* Uploaded pictures are made smaller before they are kept: they are
+           saved inside the price list, and a full-size phone photo made the
+           save huge (and used to overflow the browser's storage silently).
+           The logo stays PNG so a see-through background stays see-through. */
+        const shrinkImage = (file, maxSide, asPng) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                    const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+                    const c = document.createElement('canvas');
+                    c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+                    const x = c.getContext('2d');
+                    if (!asPng) { x.fillStyle = '#ffffff'; x.fillRect(0, 0, c.width, c.height); }
+                    x.drawImage(img, 0, 0, c.width, c.height);
+                    resolve(asPng ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = () => reject(new Error('This file could not be read as an image.'));
+                img.src = ev.target.result;
+            };
+            reader.onerror = () => reject(new Error('This file could not be read.'));
+            reader.readAsDataURL(file);
+        });
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('data');
+            const [isGenerating, setIsGenerating] = useState(false);
+
+            // Header Info
+            const [companyName, setCompanyName] = useState('SARV India Home Furnishing');
+            const [address, setAddress] = useState('Grand Trunk Road, Panipat, Haryana - 132103');
+            const [wefDate, setWefDate] = useState(getToday());
+
+            // Data
+            const [categories, setCategories] = useState(initialCategories);
+            const [terms, setTerms] = useState(initialTerms);
+
+            // Appearance
+            const [themeType, setThemeType] = useState('pastel');
+            const [selectedTheme, setSelectedTheme] = useState(themes.pastel[0]);
+            const [customTheme, setCustomTheme] = useState({ bg: '#ffffff', text: '#000000', border: '#cccccc', accent: '#555555' });
+
+            const [headerFont, setHeaderFont] = useState(fonts[0].value);
+            const [bodyFont, setBodyFont] = useState(fonts[3].value);
+            const [typography, setTypography] = useState(defaultTypography);
+
+            // Assets
+            const [logoImg, setLogoImg] = useState('');
+            const [logoSettings, setLogoSettings] = useState({ x: 50, y: 5, scale: 100 });
+            const [bgImg, setBgImg] = useState('');
+            const [bgSettings, setBgSettings] = useState({ opacity: 20, scale: 100 });
+
+            // Core Layout Logic
+            const [scaleFactor, setScaleFactor] = useState(1);
+            const contentRef = useRef(null);
+            const containerRef = useRef(null);
+
+            // Server (date-wise) + the old browser-only lists
+            const [serverRows, setServerRows] = useState([]);
+            const [serverState, setServerState] = useState('loading');   // loading | ok | not-set-up | error
+            const [serverMsg, setServerMsg] = useState('');
+            const [opened, setOpened] = useState(null);                  // {wef, version} of the list that is open
+            const [busy, setBusy] = useState(false);
+            const [localLists, setLocalLists] = useState({});
+
+            const loadServerList = async () => {
+                try {
+                    const d = await plRpc('pl_list');
+                    setServerRows(d.rows || []); setServerState('ok'); setServerMsg('');
+                } catch (e) {
+                    setServerState(e.code === 'NOT_SET_UP' ? 'not-set-up' : 'error'); setServerMsg(e.message);
+                }
+            };
+
+            useEffect(() => {
+                try { setLocalLists(JSON.parse(localStorage.getItem(LOCAL_KEY) || '{}') || {}); } catch (e) { setLocalLists({}); }
+                loadServerList();
+            }, []);
+
+            /* Shrink-to-fit: the whole list always fits on one A4. The content is
+               laid out at width 100% / scale and then scaled down, so it is
+               measured at the width it is actually drawn at, and the scale is
+               worked out again until it settles (a narrower / wider layout
+               changes the height). It used to skip changes to the header texts
+               and divided an already-unscaled height by the scale. */
+            // A few passes at most per content change: height and width depend on each other,
+            // so an endless back-and-forth between two scales is cut off.
+            const fitPasses = useRef(0);
+            useLayoutEffect(() => { fitPasses.current = 0; },
+                [categories, terms, logoSettings, bodyFont, headerFont, typography, companyName, address, wefDate]);
+            useLayoutEffect(() => {
+                if (!contentRef.current || !containerRef.current || isGenerating) return;
+                if (fitPasses.current >= 6) return;
+                const h = contentRef.current.scrollHeight;                 // layout height (transform does not change it)
+                const avail = containerRef.current.clientHeight;
+                const want = Math.min(1, avail / (h + 20));
+                if (Math.abs(want - scaleFactor) > 0.005) { fitPasses.current++; setScaleFactor(want); }
+            }, [categories, terms, logoSettings, bodyFont, headerFont, typography, isGenerating,
+                companyName, address, wefDate, scaleFactor]);
+
+            const currentTheme = themeType === 'custom' ? customTheme : selectedTheme;
+
+            /* Every change builds on the LATEST list (setCategories(cats => …)).
+               These used to read the list as it was when the screen was last
+               drawn, so two quick clicks (or a click before the screen caught up)
+               overwrote each other and rows went missing. */
+            const addCategory = () => setCategories(cats => [...cats, { id: uid(), name: 'New Category', products: [] }]);
+            const updateCategory = (id, name) => setCategories(cats => cats.map(c => c.id === id ? { ...c, name } : c));
+            const removeCategory = (id) => setCategories(cats => cats.filter(c => c.id !== id));
+
+            const addProduct = (catId) => {
+                setCategories(cats => cats.map(c => {
+                    if (c.id === catId) return { ...c, products: [...c.products, { id: uid(), name: '', weight: '', rate: '', bagPrice: '', packing: '' }] };
+                    return c;
+                }));
+            };
+
+            const updateProduct = (catId, prodId, field, value) => {
+                setCategories(cats => cats.map(c => {
+                    if (c.id === catId) return { ...c, products: c.products.map(p => p.id === prodId ? { ...p, [field]: value } : p) };
+                    return c;
+                }));
+            };
+
+            const removeProduct = (catId, prodId) => {
+                setCategories(cats => cats.map(c => {
+                    if (c.id === catId) return { ...c, products: c.products.filter(p => p.id !== prodId) };
+                    return c;
+                }));
+            };
+
+            // A bare number gets its unit on leaving the box: 4 → "4 kg", 150 → "₹ 150", 10 → "10 Pcs".
+            const formatField = (catId, prodId, field, value, type) => {
+                const val = String(value).trim();
+                if (!val) return;
+                if (!isNaN(val) && !isNaN(parseFloat(val))) {
+                    if (type === 'weight') updateProduct(catId, prodId, field, `${val} kg`);
+                    if (type === 'rate' || type === 'bagPrice') updateProduct(catId, prodId, field, `₹ ${val}`);
+                    if (type === 'packing') updateProduct(catId, prodId, field, `${val} Pcs`);
+                }
+            };
+
+            const handleImageUpload = async (e, setter, maxSide, asPng) => {
+                const file = e.target.files[0];
+                e.target.value = '';   // choosing the same file again must still work
+                if (!file) return;
+                try { setter(await shrinkImage(file, maxSide, asPng)); }
+                catch (err) { alert(err.message); }
+            };
+
+            // Everything that makes up one price list (what is saved for its date).
+            const snapshot = () => ({
+                companyName, address, wefDate, categories, terms,
+                themeType, selectedTheme, customTheme, headerFont, bodyFont,
+                logoImg, logoSettings, bgImg, bgSettings, typography
+            });
+            const applySnapshot = (data) => {
+                setCompanyName(data.companyName || '');
+                setAddress(data.address || '');
+                setWefDate(data.wefDate || getToday());
+                setCategories(Array.isArray(data.categories) ? data.categories : []);
+                setTerms(Array.isArray(data.terms) ? data.terms : []);
+                setThemeType(data.themeType || 'pastel');
+                setSelectedTheme(data.selectedTheme || themes.pastel[0]);
+                setCustomTheme(data.customTheme || { bg: '#ffffff', text: '#000000', border: '#cccccc', accent: '#555555' });
+                setHeaderFont(data.headerFont || fonts[0].value);
+                setBodyFont(data.bodyFont || fonts[3].value);
+                setLogoImg(data.logoImg || '');
+                setLogoSettings(data.logoSettings || { x: 50, y: 5, scale: 100 });
+                setBgImg(data.bgImg || '');
+                setBgSettings(data.bgSettings || { opacity: 20, scale: 100 });
+                setTypography(Object.assign({}, defaultTypography, data.typography || {}));
+            };
+
+            /* Save = the server, ONE list per W.E.F date. Saving the list you
+               opened updates it (and says so if someone else saved it in the
+               meantime); saving onto a date that already has a different list
+               asks before replacing it. Change the W.E.F date first to keep the
+               old one and start a new date. */
+            const savePriceList = async () => {
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(wefDate || '')) { alert('Choose the W.E.F date first.'); return; }
+                if (serverState === 'not-set-up') { alert(serverMsg); return; }
+                setBusy(true);
+                const send = (force) => plRpc('pl_save', {
+                    p_wef: wefDate, p_data: snapshot(),
+                    p_version: opened && opened.wef === wefDate ? opened.version : null, p_force: !!force
+                });
+                try {
+                    let d;
+                    try { d = await send(false); }
+                    catch (e) {
+                        if (e.code === 'EXISTS' || e.code === 'CONFLICT') {
+                            const x = e.data || {};
+                            const who = (x.updated_by ? ' by ' + x.updated_by : '') + (x.updated_at ? ' on ' + fmtWhen(x.updated_at) : '');
+                            const ask = e.code === 'EXISTS'
+                                ? 'A price list for W.E.F ' + dmy(wefDate) + ' is already saved' + who + '.\n\nReplace it with this one?'
+                                : 'The price list for W.E.F ' + dmy(wefDate) + ' was saved' + who + ' after you opened it.\n\nReplace it with your version?';
+                            if (!confirm(ask)) return;
+                            d = await send(true);
+                        } else throw e;
+                    }
+                    setOpened({ wef: d.wef_date, version: d.version });
+                    await loadServerList();
+                    alert('Saved on the server as:\n' + d.name);
+                } catch (e) {
+                    alert('Could not save: ' + e.message);
+                } finally { setBusy(false); }
+            };
+
+            const openServerList = async (wef) => {
+                if (!confirm('Open the price list of W.E.F ' + dmy(wef) + '? Unsaved changes on screen will be lost.')) return;
+                setBusy(true);
+                try {
+                    const d = await plRpc('pl_get', { p_wef: wef });
+                    applySnapshot(Object.assign({}, d.row.data, { wefDate: d.row.wef_date }));
+                    setOpened({ wef: d.row.wef_date, version: d.row.version });
+                    setActiveTab('data');
+                } catch (e) { alert('Could not open: ' + e.message); }
+                finally { setBusy(false); }
+            };
+
+            const deleteServerList = async (wef) => {
+                if (!confirm('Delete the price list of W.E.F ' + dmy(wef) + ' from the server permanently?')) return;
+                setBusy(true);
+                try {
+                    await plRpc('pl_delete', { p_wef: wef });
+                    if (opened && opened.wef === wef) setOpened(null);
+                    await loadServerList();
+                } catch (e) { alert('Could not delete: ' + e.message); }
+                finally { setBusy(false); }
+            };
+
+            // An old browser-only list: open it, or move it to the server under its own date.
+            const openLocalList = (name) => {
+                if (!confirm(`Open "${name}"? Unsaved changes on screen will be lost.`)) return;
+                applySnapshot(localLists[name] || {});
+                setOpened(null);
+                setActiveTab('data');
+            };
+            const uploadLocalList = async (name) => {
+                const data = localLists[name] || {};
+                const wef = /^\d{4}-\d{2}-\d{2}$/.test(data.wefDate || '') ? data.wefDate : null;
+                if (!wef) { alert('This list has no valid W.E.F date. Open it, set the date, then press Save.'); return; }
+                setBusy(true);
+                try {
+                    try { await plRpc('pl_save', { p_wef: wef, p_data: data, p_version: null, p_force: false }); }
+                    catch (e) {
+                        if (e.code !== 'EXISTS') throw e;
+                        if (!confirm('The server already has a price list for W.E.F ' + dmy(wef) + '. Replace it with this browser copy?')) return;
+                        await plRpc('pl_save', { p_wef: wef, p_data: data, p_version: null, p_force: true });
+                    }
+                    const rest = Object.assign({}, localLists); delete rest[name];
+                    setLocalLists(rest);
+                    try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rest)); } catch (e) {}
+                    await loadServerList();
+                    alert('"' + name + '" is now on the server (W.E.F ' + dmy(wef) + ').');
+                } catch (e) { alert('Could not upload: ' + e.message); }
+                finally { setBusy(false); }
+            };
+            const deleteLocalList = (name) => {
+                if (!confirm(`Delete "${name}" from this browser?`)) return;
+                const rest = Object.assign({}, localLists); delete rest[name];
+                setLocalLists(rest);
+                try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rest)); } catch (e) {}
+            };
+
+            /* PDF = exactly the A4 on screen. The page is cloned at its real A4
+               size WITH the shrink-to-fit scale kept, so a long list prints shrunk
+               onto the page just as it looks. (The clone used to be made
+               width / scale wide with the scale removed: a long list came out
+               stretched and cut off.) Fonts are waited for first. */
+            const downloadPDF = async () => {
+                setIsGenerating(true);
+                let clone = null;
+                try {
+                    const container = containerRef.current;
+                    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+                    clone = container.cloneNode(true);
+                    clone.style.position = 'fixed';
+                    clone.style.top = '0px';
+                    clone.style.left = '0px';
+                    clone.style.zIndex = '-9999';
+                    clone.style.width = container.offsetWidth + 'px';
+                    clone.style.height = container.offsetHeight + 'px';
+                    clone.style.boxShadow = 'none';
+                    document.body.appendChild(clone);
+                    await new Promise(r => setTimeout(r, 200));   // let the clone lay out
+
+                    const canvas = await html2canvas(clone, {
+                        scale: 2, useCORS: true, logging: false,
+                        backgroundColor: currentTheme.bg,
+                        width: container.offsetWidth, height: container.offsetHeight, scrollX: 0, scrollY: 0
+                    });
+                    const pdf = new window.jspdf.jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297);
+                    pdf.save(`SIHF-PRICE-LIST-${dmy(wefDate) || dmy(getToday())}.pdf`);
+                } catch (err) {
+                    console.error('PDF generation failed', err);
+                    alert('PDF generation failed. Please try again.');
+                } finally {
+                    if (clone && clone.parentNode) clone.parentNode.removeChild(clone);
+                    setIsGenerating(false);
+                }
+            };
+
+            const localNames = Object.keys(localLists).sort().reverse();
+
+            return (
+                <div className="flex h-screen overflow-hidden text-sm">
+                    {/* LEFT PANEL - CONTROLS */}
+                    <div className="w-[450px] bg-white shadow-xl z-10 flex flex-col h-full border-r border-gray-200 flex-shrink-0">
+                        <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
+                            <div>
+                                <h1 className="text-lg font-bold">Price List Maker</h1>
+                                <p className="text-xs text-gray-400">Sales · saved date-wise on the server</p>
+                            </div>
+                            {opened && <span className="text-[10px] bg-white/10 rounded px-2 py-1 text-gray-200" title="The price list open on screen">W.E.F {dmy(opened.wef)} · v{opened.version}</span>}
+                        </div>
+
+                        {serverState === 'not-set-up' && (
+                            <div className="bg-amber-50 border-b border-amber-200 text-amber-900 text-xs p-3">{serverMsg}<br/>Until then nothing can be saved; the PDF still works.</div>
+                        )}
+
+                        <div className="flex border-b text-xs font-semibold bg-gray-50">
+                            {['data', 'appearance', 'assets', 'history'].map(tab => (
+                                <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-3 uppercase tracking-wider ${activeTab === tab ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                    {tab === 'history' ? 'Saved Lists' : tab}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+
+                            {/* DATA TAB */}
+                            {activeTab === 'data' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-4 rounded shadow-sm border border-gray-100">
+                                        <h3 className="font-semibold text-gray-700 mb-3 uppercase text-xs tracking-wider">Header Information</h3>
+                                        <div className="space-y-3">
+                                            <div><label className="block text-xs text-gray-500 mb-1">Company Name</label><input type="text" className="w-full border p-2 rounded text-sm outline-none" value={companyName} onChange={e => setCompanyName(e.target.value)} /></div>
+                                            <div><label className="block text-xs text-gray-500 mb-1">Address</label><input type="text" className="w-full border p-2 rounded text-sm outline-none" value={address} onChange={e => setAddress(e.target.value)} /></div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">W.E.F Date <span className="text-gray-400">(the list is saved under this date)</span></label>
+                                                <input type="date" className="w-full border p-2 rounded text-sm outline-none" value={wefDate} onChange={e => setWefDate(e.target.value)} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="font-semibold text-gray-700 mb-3 uppercase text-xs tracking-wider flex justify-between items-center">
+                                            Categories & Products
+                                            <button onClick={addCategory} className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs hover:bg-blue-200">+ Add Category</button>
+                                        </h3>
+                                        <div className="space-y-4">
+                                            {categories.map(cat => (
+                                                <div key={cat.id} className="bg-white border border-gray-200 rounded-md overflow-hidden shadow-sm">
+                                                    <div className="bg-gray-100 p-2 flex justify-between items-center border-b">
+                                                        <input type="text" className="bg-white border border-gray-300 rounded px-2 py-1 text-sm font-semibold w-2/3" value={cat.name} onChange={e => updateCategory(cat.id, e.target.value)} placeholder="Category Name" />
+                                                        <button onClick={() => removeCategory(cat.id)} className="text-red-500 hover:bg-red-50 px-2 py-1 rounded">Remove</button>
+                                                    </div>
+                                                    <div className="p-2 space-y-2">
+                                                        {cat.products.map(prod => (
+                                                            <div key={prod.id} className="flex gap-1 items-center bg-gray-50 p-1 rounded border border-gray-100">
+                                                                <input className="w-1/3 text-xs border p-1 rounded" value={prod.name} onChange={e => updateProduct(cat.id, prod.id, 'name', e.target.value)} placeholder="Product" />
+                                                                <input className="w-1/6 text-xs border p-1 rounded" value={prod.weight} onChange={e => updateProduct(cat.id, prod.id, 'weight', e.target.value)} onBlur={e => formatField(cat.id, prod.id, 'weight', e.target.value, 'weight')} placeholder="Wt." />
+                                                                <input className="w-1/6 text-xs border p-1 rounded" value={prod.rate} onChange={e => updateProduct(cat.id, prod.id, 'rate', e.target.value)} onBlur={e => formatField(cat.id, prod.id, 'rate', e.target.value, 'rate')} placeholder="Rate" />
+                                                                <input className="w-1/6 text-xs border p-1 rounded" value={prod.bagPrice} onChange={e => updateProduct(cat.id, prod.id, 'bagPrice', e.target.value)} onBlur={e => formatField(cat.id, prod.id, 'bagPrice', e.target.value, 'bagPrice')} placeholder="Bag" />
+                                                                <input className="w-1/6 text-xs border p-1 rounded" value={prod.packing} onChange={e => updateProduct(cat.id, prod.id, 'packing', e.target.value)} onBlur={e => formatField(cat.id, prod.id, 'packing', e.target.value, 'packing')} placeholder="Pcs" />
+                                                                <button onClick={() => removeProduct(cat.id, prod.id)} className="text-red-400 font-bold px-1 hover:text-red-600">×</button>
+                                                            </div>
+                                                        ))}
+                                                        <button onClick={() => addProduct(cat.id)} className="w-full text-center text-xs py-1 border border-dashed border-gray-300 text-gray-500 hover:bg-gray-50 rounded mt-1">+ Add Product</button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-4 rounded shadow-sm border border-gray-100">
+                                        <h3 className="font-semibold text-gray-700 mb-3 uppercase text-xs tracking-wider flex justify-between">
+                                            Terms & Conditions
+                                            <button onClick={() => setTerms(ts => [...ts, { id: uid(), text: 'New Term' }])} className="text-blue-600 hover:underline">+ Add</button>
+                                        </h3>
+                                        <div className="space-y-2">
+                                            {terms.map((term, i) => (
+                                                <div key={term.id} className="flex gap-2">
+                                                    <span className="text-gray-400">{i+1}.</span>
+                                                    <input type="text" className="flex-1 border-b border-gray-200 outline-none text-xs pb-1" value={term.text} onChange={e => setTerms(ts => ts.map(t => t.id === term.id ? {...t, text: e.target.value} : t))} />
+                                                    <button onClick={() => setTerms(ts => ts.filter(t => t.id !== term.id))} className="text-red-400">×</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* APPEARANCE TAB */}
+                            {activeTab === 'appearance' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-4 rounded border">
+                                        <h3 className="font-semibold mb-3">Fonts & Sliders</h3>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Header Font</label>
+                                                <select className="w-full border p-2 rounded text-sm outline-none" value={headerFont} onChange={e => setHeaderFont(e.target.value)}>
+                                                    {fonts.map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-500 mb-1">Body Font</label>
+                                                <select className="w-full border p-2 rounded text-sm outline-none" value={bodyFont} onChange={e => setBodyFont(e.target.value)}>
+                                                    {fonts.map(f => <option key={f.name} value={f.value}>{f.name}</option>)}
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-5 pt-4 border-t border-gray-200 space-y-4">
+                                            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Text Size & Style Controls</h4>
+                                            {Object.entries({
+                                                brandName: { label: 'Company Name', min: 20, max: 80 },
+                                                address: { label: 'Address', min: 10, max: 30 },
+                                                date: { label: 'Date', min: 10, max: 40 },
+                                                category: { label: 'Category Header', min: 14, max: 40 },
+                                                product: { label: 'Products Table', min: 10, max: 24 },
+                                                terms: { label: 'Terms', min: 8, max: 24 }
+                                            }).map(([key, config]) => (
+                                                <div key={key} className="bg-gray-50 p-2 rounded border border-gray-200">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <label className="text-xs font-semibold text-gray-600">{config.label}</label>
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                onClick={() => setTypography({...typography, [key]: {...typography[key], bold: !typography[key].bold}})}
+                                                                className={`w-6 h-6 flex items-center justify-center rounded text-xs font-serif font-bold border ${typography[key].bold ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+                                                            >B</button>
+                                                            <button
+                                                                onClick={() => setTypography({...typography, [key]: {...typography[key], italic: !typography[key].italic}})}
+                                                                className={`w-6 h-6 flex items-center justify-center rounded text-xs font-serif italic border ${typography[key].italic ? 'bg-gray-800 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+                                                            >I</button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <input type="range" min={config.min} max={config.max} value={typography[key].size} onChange={e => setTypography({...typography, [key]: {...typography[key], size: parseInt(e.target.value, 10)}})} className="flex-1 h-1.5 bg-gray-300 rounded-lg appearance-none cursor-pointer" />
+                                                        <span className="text-[10px] text-gray-500 w-8 text-right font-mono">{typography[key].size}px</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white p-4 rounded border">
+                                        <h3 className="font-semibold mb-3">Color Theme</h3>
+                                        <select className="w-full border p-2 rounded text-sm mb-4 outline-none" value={themeType} onChange={e => setThemeType(e.target.value)}>
+                                            <option value="pastel">Pastel Colors (Light & Premium)</option>
+                                            <option value="dark">Dark Colors (Muted & Professional)</option>
+                                            <option value="custom">Custom Colors</option>
+                                        </select>
+                                        {themeType !== 'custom' && (
+                                            <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                                                {themes[themeType].map(theme => (
+                                                    <button key={theme.name} onClick={() => setSelectedTheme(theme)} className={`p-2 rounded border text-left flex flex-col gap-1 ${selectedTheme.name === theme.name ? 'ring-2 ring-blue-500' : ''}`} style={{ backgroundColor: theme.bg }}>
+                                                        <span className="font-bold text-xs" style={{ color: theme.text }}>{theme.name}</span>
+                                                        <div className="flex h-3 w-full rounded overflow-hidden">
+                                                            <div className="flex-1" style={{ backgroundColor: theme.text }}></div><div className="flex-1" style={{ backgroundColor: theme.border }}></div><div className="flex-1" style={{ backgroundColor: theme.accent }}></div>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {themeType === 'custom' && (
+                                            <div className="space-y-3 mt-3 border-t pt-3">
+                                                {Object.entries({bg: 'Background', text: 'Text', border: 'Border/Lines', accent: 'Highlight'}).map(([key, label]) => (
+                                                    <div key={key} className="flex justify-between items-center"><label className="text-xs text-gray-600">{label}</label><input type="color" value={customTheme[key]} onChange={e => setCustomTheme({...customTheme, [key]: e.target.value})} className="w-8 h-8 rounded border-0"/></div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ASSETS TAB */}
+                            {activeTab === 'assets' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-4 rounded border">
+                                        <h3 className="font-semibold mb-3 border-b pb-2">Company Logo (Floating)</h3>
+                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setLogoImg, 600, true)} className="text-xs w-full mb-3" />
+                                        {logoImg && (
+                                            <div className="space-y-3 bg-gray-50 p-3 rounded">
+                                                <div><label className="flex justify-between text-xs text-gray-500"><span>Size (Scale)</span> <span>{logoSettings.scale}%</span></label><input type="range" min="10" max="300" value={logoSettings.scale} onChange={e => setLogoSettings({...logoSettings, scale: e.target.value})} className="w-full" /></div>
+                                                <div><label className="flex justify-between text-xs text-gray-500"><span>Left-Right (X)</span> <span>{logoSettings.x}%</span></label><input type="range" min="0" max="100" value={logoSettings.x} onChange={e => setLogoSettings({...logoSettings, x: e.target.value})} className="w-full" /></div>
+                                                <div><label className="flex justify-between text-xs text-gray-500"><span>Up-Down (Y)</span> <span>{logoSettings.y}%</span></label><input type="range" min="0" max="100" value={logoSettings.y} onChange={e => setLogoSettings({...logoSettings, y: e.target.value})} className="w-full" /></div>
+                                                <button onClick={() => setLogoImg('')} className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded mt-2 w-full">Remove Logo</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="bg-white p-4 rounded border">
+                                        <h3 className="font-semibold mb-3 border-b pb-2">Page Background Image</h3>
+                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setBgImg, 1600, false)} className="text-xs w-full mb-3" />
+                                        {bgImg && (
+                                            <div className="space-y-3 bg-gray-50 p-3 rounded">
+                                                <div><label className="flex justify-between text-xs text-gray-500"><span>Opacity</span> <span>{bgSettings.opacity}%</span></label><input type="range" min="0" max="100" value={bgSettings.opacity} onChange={e => setBgSettings({...bgSettings, opacity: e.target.value})} className="w-full" /></div>
+                                                <div><label className="flex justify-between text-xs text-gray-500"><span>Zoom</span> <span>{bgSettings.scale}%</span></label><input type="range" min="10" max="300" value={bgSettings.scale} onChange={e => setBgSettings({...bgSettings, scale: e.target.value})} className="w-full" /></div>
+                                                <button onClick={() => setBgImg('')} className="text-xs text-red-500 border border-red-200 px-2 py-1 rounded mt-2 w-full">Remove Background</button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* SAVED LISTS TAB: the server's date-wise lists (+ old browser-only ones) */}
+                            {activeTab === 'history' && (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">On the server (by W.E.F date)</span>
+                                        <button onClick={loadServerList} className="text-xs text-blue-600 hover:underline">↻ Refresh</button>
+                                    </div>
+                                    {serverState === 'loading' && <div className="text-center p-6 text-gray-400 bg-white rounded border">Loading…</div>}
+                                    {(serverState === 'error' || serverState === 'not-set-up') && <div className="bg-amber-50 border border-amber-200 p-3 rounded text-xs text-amber-900">{serverMsg}</div>}
+                                    {serverState === 'ok' && (serverRows.length === 0 ? (
+                                        <div className="text-center p-8 text-gray-400 bg-white rounded border border-dashed">No price lists saved on the server yet.</div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {serverRows.map(r => (
+                                                <div key={r.wef_date} className={`bg-white border rounded p-3 flex flex-col gap-2 shadow-sm ${opened && opened.wef === r.wef_date ? 'border-blue-400 ring-1 ring-blue-200' : ''}`}>
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-800 text-sm">W.E.F {dmy(r.wef_date)}</h4>
+                                                        <p className="text-xs text-gray-500 mt-0.5">{r.name} · {r.item_count} product{r.item_count === 1 ? '' : 's'}{r.company ? ' · ' + r.company : ''}</p>
+                                                        <p className="text-[11px] text-gray-400 mt-0.5">Saved by {r.updated_by || '—'} · {fmtWhen(r.updated_at)} · v{r.version}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button disabled={busy} onClick={() => openServerList(r.wef_date)} className="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs py-1.5 rounded disabled:opacity-50">Open</button>
+                                                        <button disabled={busy} onClick={() => deleteServerList(r.wef_date)} className="px-3 bg-red-100 text-red-600 text-xs py-1.5 rounded disabled:opacity-50">Delete</button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+
+                                    {localNames.length > 0 && (
+                                        <div className="pt-3 border-t border-gray-200 space-y-3">
+                                            <div className="text-xs font-bold text-gray-600 uppercase tracking-wider">Only in this browser (older)</div>
+                                            <p className="text-[11px] text-gray-500">These were saved before price lists moved to the server. Upload each one to keep it safe and visible to others.</p>
+                                            {localNames.map(name => (
+                                                <div key={name} className="bg-white border border-dashed rounded p-3 flex flex-col gap-2">
+                                                    <div>
+                                                        <h4 className="font-bold text-gray-700 text-sm">{name}</h4>
+                                                        <p className="text-xs text-gray-500">Company: {(localLists[name] || {}).companyName}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button disabled={busy} onClick={() => openLocalList(name)} className="flex-1 bg-white border border-green-500 text-green-700 text-xs py-1.5 rounded">Open</button>
+                                                        <button disabled={busy || serverState !== 'ok'} onClick={() => uploadLocalList(name)} className="flex-1 bg-blue-600 text-white text-xs py-1.5 rounded disabled:opacity-50">Upload to server</button>
+                                                        <button disabled={busy} onClick={() => deleteLocalList(name)} className="px-3 bg-red-100 text-red-600 text-xs py-1.5 rounded">Delete</button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="p-4 bg-white border-t space-y-2">
+                            <button onClick={savePriceList} disabled={busy || serverState === 'not-set-up'} className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded font-bold shadow-md disabled:opacity-50" title="Saved on the server under the W.E.F date">
+                                {busy ? 'Working…' : `Save (W.E.F ${dmy(wefDate) || '—'})`}
+                            </button>
+                            <button onClick={downloadPDF} disabled={isGenerating} className={`w-full text-white py-3 rounded font-bold shadow-lg flex items-center justify-center gap-2 ${isGenerating ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                                {isGenerating ? 'Generating Exact Match...' : 'Download A4 PDF'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* RIGHT PANEL - A4 PREVIEW */}
+                    <div className="flex-1 a4-wrapper relative">
+                        <div ref={containerRef} className="a4-container" style={{ backgroundColor: currentTheme.bg, color: currentTheme.text, fontFamily: bodyFont }}>
+                            {bgImg && (
+                                <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url(${bgImg})`, backgroundPosition: 'center', backgroundRepeat: 'no-repeat', backgroundSize: `${bgSettings.scale}%`, opacity: bgSettings.opacity / 100, zIndex: 0 }}></div>
+                            )}
+
+                            {logoImg && (
+                                <div className="absolute pointer-events-none" style={{ left: `${logoSettings.x}%`, top: `${logoSettings.y}%`, transform: `translate(-50%, -50%) scale(${logoSettings.scale / 100})`, zIndex: 10 }}>
+                                    <img src={logoImg} alt="Logo" className="max-w-[200px] h-auto" />
+                                </div>
+                            )}
+
+                            {/* Scalable Content Inner */}
+                            <div ref={contentRef} className="content-inner p-10 flex flex-col" style={{ transform: `scale(${scaleFactor})`, width: `${(1 / scaleFactor) * 100}%`, zIndex: 1, position: 'relative', minHeight: '100%' }}>
+                                <div className="flex justify-between items-start mb-6 pb-4" style={{ borderBottom: `2px solid ${currentTheme.border}` }}>
+                                    <div>
+                                        <h1 className="mb-1" style={{ fontFamily: headerFont, color: currentTheme.accent, fontSize: `${typography.brandName.size}px`, fontWeight: typography.brandName.bold ? 'bold' : 'normal', fontStyle: typography.brandName.italic ? 'italic' : 'normal' }}>
+                                            {companyName}
+                                        </h1>
+                                        <p className="opacity-80 max-w-md" style={{ fontSize: `${typography.address.size}px`, fontWeight: typography.address.bold ? 'bold' : 'normal', fontStyle: typography.address.italic ? 'italic' : 'normal' }}>{address}</p>
+                                    </div>
+                                    <div className="text-right whitespace-nowrap">
+                                        <p className="text-sm font-semibold opacity-80">w.e.f Date</p>
+                                        <p style={{ fontSize: `${typography.date.size}px`, fontWeight: typography.date.bold ? 'bold' : 'normal', fontStyle: typography.date.italic ? 'italic' : 'normal' }}>{dmy(wefDate) || '—'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="text-center mb-8">
+                                    <h2 className="text-3xl uppercase" style={{ fontFamily: headerFont }}>Price List</h2>
+                                </div>
+
+                                <div className="flex-1 flex flex-col gap-6">
+                                    {categories.map(cat => (
+                                        <div key={cat.id} className="w-full">
+                                            {/* Category Header */}
+                                            <div className="mb-2 w-full">
+                                                <h3 className="px-4 py-1.5 uppercase block w-full box-border" style={{ backgroundColor: currentTheme.accent, color: '#ffffff', fontSize: `${typography.category.size}px`, fontWeight: typography.category.bold ? 'bold' : 'normal', fontStyle: typography.category.italic ? 'italic' : 'normal' }}>
+                                                    {cat.name}
+                                                </h3>
+                                            </div>
+                                            <table className="w-full text-left border-collapse mt-1" style={{ fontSize: `${typography.product.size}px`, fontWeight: typography.product.bold ? 'bold' : 'normal', fontStyle: typography.product.italic ? 'italic' : 'normal' }}>
+                                                <thead>
+                                                    <tr style={{ backgroundColor: hexA(currentTheme.border, 0.25) }}>
+                                                        <th className="py-2 px-2 font-semibold">S.No</th>
+                                                        <th className="py-2 px-2 font-semibold">Product Name</th>
+                                                        <th className="py-2 px-2 font-semibold text-center">Blanket Wt.</th>
+                                                        <th className="py-2 px-2 font-semibold text-center">Rate / Kg</th>
+                                                        <th className="py-2 px-2 font-semibold text-center">Bag/Box</th>
+                                                        <th className="py-2 px-2 font-semibold text-center">Std. Pcs</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody style={{ wordWrap: 'break-word' }}>
+                                                    {cat.products.map((prod, i) => (
+                                                        <tr key={prod.id} style={{ borderBottom: `1px dashed ${hexA(currentTheme.border, 0.6)}` }}>
+                                                            <td className="py-1.5 px-2">{i + 1}</td>
+                                                            <td className="py-1.5 px-2 font-medium">{prod.name}</td>
+                                                            <td className="py-1.5 px-2 text-center">{prod.weight}</td>
+                                                            <td className="py-1.5 px-2 text-center font-bold">{prod.rate}</td>
+                                                            <td className="py-1.5 px-2 text-center">{prod.bagPrice}</td>
+                                                            <td className="py-1.5 px-2 text-center">{prod.packing}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mt-8 pt-4" style={{ borderTop: `1px solid ${currentTheme.border}` }}>
+                                    <h4 className="font-bold text-sm mb-2 uppercase">Terms & Conditions:</h4>
+                                    <div className="space-y-1.5 opacity-90 pl-1" style={{ fontSize: `${typography.terms.size}px`, fontWeight: typography.terms.bold ? 'bold' : 'normal', fontStyle: typography.terms.italic ? 'italic' : 'normal' }}>
+                                        {terms.map((term, index) => (
+                                            <div key={term.id} className="flex items-start gap-2">
+                                                <span className="font-semibold w-4">{index + 1}.</span>
+                                                <span className="flex-1">{term.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        /* ERP login first (launcher.html). Without a session the gate sends the
+           user to the launcher and its promise never resolves. No app key here,
+           like Catalog Templates: the server checks HOME_PRICE_LIST on every
+           pl_* call. The splash (sso-preboot.js) goes away on every path. */
+        (async () => {
+            try {
+                if (window.SARV_GATE) await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: null, label: 'Price List' });
+            } finally {
+                if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+            }
+            ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        })();
+    </script>
+    <!-- Floating "← Apps" button (hidden inside the ERP's iframe) -->
+    <script src="app-back.js"></script>
+</body>
+</html>

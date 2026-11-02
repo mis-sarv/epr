@@ -5683,7 +5683,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
-  'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
+  'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
   'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
@@ -5795,7 +5795,7 @@ function sarvResetOrderFormFrame_(){
    session is revoked on the server (erp_app_logout), and that tab goes to its
    login screen on its next call. */
 function sarvResetAppFrames_(){
-  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame','fmsFrame','catalogFrame'].forEach(id=>{
+  ['packingFrame','lotCardFrame','printingLotFrame','trimsFrame','sopFrame','fmsFrame','catalogFrame','priceListFrame'].forEach(id=>{
     const fr=byId(id);if(!fr||!fr.getAttribute('src'))return;
     const vis=fr.closest('.main-panel,.tab-content');
     if(vis&&vis.style.display!=='none'){
@@ -5914,6 +5914,13 @@ function sarvNavigateFromHome(target){
       activatePanel('catalogPanel');
       const fr=byId('catalogFrame');
       if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'catalog_maker.html');
+      break;
+    }
+    // Sales › Price List: price_list_generator.html. Same lazy iframe.
+    case 'PRICE_LIST': {
+      activatePanel('priceListPanel');
+      const fr=byId('priceListFrame');
+      if(fr&&!fr.getAttribute('src'))fr.setAttribute('src',fr.dataset.src||'price_list_generator.html');
       break;
     }
     /* Task › FMS Builder / FMS View: one fms.html iframe, the leaf picks its
@@ -6085,6 +6092,11 @@ const SARV_HOME_HELP={
     'Activity-wise start, planned, actual and delay: complaints, checklist, EA and every FMS flow.',
     'Summary: open, late, on-time % and average delay per activity.',
     'TAT: the complaint TATs are set here; checklist / EA follow Task Manager, FMS steps follow the FMS Builder.']},
+  PRICE_LIST:{icon:'',title:'Price List (Sales)',points:[
+    'Fill the header, the categories with their products (weight, rate, bag / box, standard pcs) and the terms.',
+    'Save keeps the list on the server under its W.E.F date: one list per date. Change the date first to start a new one.',
+    'Saved Lists shows every date; open one to edit it, or delete it. Older lists kept only in this browser can be uploaded.',
+    'Download A4 PDF prints exactly the page on the right; a long list is shrunk to fit one A4 page.']},
   CATALOG_MAKER:{icon:'',title:'Catalog Templates (Masters)',points:[
     'Templates: the list of catalogs saved on the server. Open one to edit it, or start a New Template.',
     'Edit the cover page and product pages; your work is kept in this browser as a draft while you type.',
@@ -6638,6 +6650,10 @@ const SARV_TABS=[
   {key:'HOME_COMPLAINT_APP',label:'Complaint App',hint:'Machine / fabric complaints and Notice Board (opens from the launcher)',def:'ALL'},
   {key:'HOME_PACKING',label:'Packing & Dispatch',hint:'Sales › packing slips, orders, vehicle, invoice / receiving verification (packing.html)',def:'ALL'},
   {key:'HOME_ORDER_FORM',label:'Order Form (Sales)',hint:'Sales order + Proforma Invoice PDF; opens inside the ERP. What the user can do inside is set by the "Order Form Role" in Users & Roles',def:'ALL'},
+  /* The server checks this key too (pl_ctx_ in sql/PRICE_LIST_MIGRATION.sql:
+     HOME_PRICE_LIST in the session's allowed_apps, or Admin), so the default
+     here is what decides who can save / open lists. */
+  {key:'HOME_PRICE_LIST',label:'Price List (Sales)',hint:'Sales › rate list by W.E.F date, saved on the server date-wise, A4 PDF (price_list_generator.html)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_SHEET_LINKS',label:'Sheet Links',hint:'Each user\'s own Google Sheet shortcut board (google sheet links.html, opens from the launcher)',def:'ALL'},
   {key:'HOME_TASK_MANAGER',label:'Task Manager',hint:'Employee checklists, EA tasks, buddy cover, score card (task_manager.html, opens from the launcher). OFF for every NEW user until switched ON (My Tasks stays ON)',def:'ALL'},
   /* Its own launcher tile, so every account (new self-signups included) has
@@ -7363,7 +7379,7 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
 // Apps that open in their own file; their SSO runs on this access.
 const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
