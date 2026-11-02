@@ -141,6 +141,10 @@
                     <i class="fas fa-file"></i> New
                 </button>
             </div>
+            <!-- 20 ready-made collections with sample pictures (catalog-presets.js) -->
+            <button onclick="openPresetGallery()" class="w-full bg-gradient-to-r from-amber-50 to-rose-50 text-rose-800 border border-rose-200 font-semibold py-2 px-2 rounded-lg hover:from-amber-100 hover:to-rose-100 transition shadow-sm flex justify-center items-center gap-1.5 text-sm" title="Ready-made catalogs (Royal, Cozy, Nature, Modern) with sample pictures: open one to edit, or save them all on the server">
+                <i class="fas fa-swatchbook"></i> Starter Templates
+            </button>
             <button onclick="addNewPage()" class="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold py-2 px-4 rounded-lg hover:bg-indigo-100 transition shadow-sm flex justify-center items-center gap-2">
                 <i class="fas fa-plus"></i> Add New Page
             </button>
@@ -477,7 +481,32 @@
                      collected from the product pages, so there is no upload here. -->
                 <div id="album-editor" class="hidden flex-col gap-5">
                     <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                        <p class="text-sm text-emerald-800"><i class="fas fa-images"></i> This is the <b>Photo Album</b> (just before the Back Cover): every product page's picture. It fills itself; add or change a picture on a product page and it shows here. <span id="album-count" class="font-bold"></span></p>
+                        <p class="text-sm text-emerald-800"><i class="fas fa-images"></i> This is the <b>Photo Album</b> (just before the Back Cover). Upload as many photos as you like: the layout adjusts itself to the count (up to 20 per page, more continue on the next album page). <span id="album-count" class="font-bold"></span></p>
+                    </div>
+
+                    <!-- Album photos: own uploads (albumPhotos) + optionally the product pages' pictures.
+                         renderAlbumPhotoList / handleAlbumFiles / albumItems -->
+                    <div class="p-3 border border-emerald-200 rounded-lg bg-white">
+                        <label class="block text-xs font-bold text-emerald-900 uppercase tracking-wide mb-2"><i class="fas fa-photo-video"></i> Album Photos</label>
+                        <div id="album-dropzone" class="flex flex-col items-center justify-center gap-1 px-4 py-4 border-2 border-dashed border-emerald-300 rounded-lg cursor-pointer hover:bg-emerald-50 transition text-center"
+                             onclick="document.getElementById('album-upload').click()"
+                             ondragover="event.preventDefault(); this.classList.add('bg-emerald-50')"
+                             ondragleave="this.classList.remove('bg-emerald-50')"
+                             ondrop="event.preventDefault(); this.classList.remove('bg-emerald-50'); handleAlbumFiles(event.dataTransfer && event.dataTransfer.files)">
+                            <i class="fas fa-cloud-upload-alt text-2xl text-emerald-500"></i>
+                            <span class="text-sm font-semibold text-emerald-800">Upload photos (select many at once)</span>
+                            <span class="text-[10px] text-gray-500">or drag &amp; drop them here · PNG, JPG, WEBP</span>
+                            <input id="album-upload" type="file" class="sr-only" accept="image/*" multiple onchange="handleAlbumFiles(this.files); this.value=''">
+                        </div>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-gray-700 mt-3 cursor-pointer">
+                            <input type="checkbox" id="input-album-useProducts" onchange="updateCurrentPage('albumUseProducts', this.checked ? 'Y' : 'N'); renderAlbumPhotoList()" class="w-4 h-4 accent-emerald-600">
+                            Also include the product pages' pictures (first)
+                        </label>
+                        <div class="flex items-center justify-between mt-3 mb-1">
+                            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Uploaded here (<span id="album-own-count">0</span>)</span>
+                            <button type="button" id="album-clear-btn" onclick="clearAlbumPhotos()" class="text-[11px] text-red-500 hover:text-red-700 font-semibold"><i class="fas fa-trash"></i> Remove all</button>
+                        </div>
+                        <div id="album-photo-list" class="grid grid-cols-3 gap-2"></div>
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Small Heading (above the title)</label>
@@ -1229,7 +1258,7 @@
            (Album 1/2, 2/2 …) in the PDF; the editor previews the first one.
            A template saved before this existed gets one added on open
            (ensureAlbum), so every catalog ends with it. */
-        const ALBUM_PER_PAGE = 12;
+        const ALBUM_PER_PAGE = 20;   // 4 × 5 at most; the grid shrinks / grows with the count (albumGrid)
         const ALBUM_DEFAULT = {
             id: 'album_page_001',
             pageType: 'album',
@@ -1291,13 +1320,19 @@
             pages.push(album, back);
             return pages;
         }
-        /* The album's photos: each product page's photos (several when Online
-           Catalogue filled `images`, else its one picture), skipping the empty
-           placeholder. Caption: title line 1 · the photo's own label (shade) or
-           title line 2. */
-        function albumItems(pages) {
+        /* The album's photos, in this order:
+             1. each product page's photos (several when Online Catalogue filled
+                `images`, else its one picture), skipping the empty placeholder;
+                caption: title line 1 · the photo's own label (shade) or title
+                line 2. Left out when the album has albumUseProducts 'N'.
+             2. the photos uploaded on the album itself (album.albumPhotos:
+                [{src, caption}]), any number.
+           `album` defaults to the album page among `pages` (render mode passes
+           the template's own, since its pages list has none). */
+        function albumItems(pages, album) {
             const out = [];
-            productPagesOf(pages).forEach(p => {
+            album = album || pages.find(p => p.pageType === 'album') || {};
+            if (album.albumUseProducts !== 'N') productPagesOf(pages).forEach(p => {
                 const head = String(p.title1 || '').trim();
                 const imgs = Array.isArray(p.images) && p.images.length ? p.images : [{ src: p.image }];
                 imgs.forEach(im => {
@@ -1306,13 +1341,16 @@
                     out.push({ src: im.src, caption: [head, tail].filter(Boolean).join(' · ') });
                 });
             });
+            (Array.isArray(album.albumPhotos) ? album.albumPhotos : []).forEach(ph => {
+                if (ph && ph.src) out.push({ src: ph.src, caption: String(ph.caption || '').trim() });
+            });
             return out;
         }
         /* The album page(s) to print: as few as hold ALBUM_PER_PAGE each (at
            least one), with the photos shared out EVENLY (13 → 7 + 6, not
            12 + 1), so no page ends with one lone giant photo. */
         function albumPagesFor(album, pages) {
-            const items = albumItems(pages), parts = Math.max(1, Math.ceil(items.length / ALBUM_PER_PAGE));
+            const items = albumItems(pages, album), parts = Math.max(1, Math.ceil(items.length / ALBUM_PER_PAGE));
             const per = Math.max(1, Math.ceil(items.length / parts));
             const out = [];
             for (let i = 0; i < parts; i++)
@@ -1593,10 +1631,8 @@
                 albumEditor.style.display = 'flex';
                 deleteBtn.style.visibility = 'hidden';
                 document.getElementById('current-editing-title').innerHTML = `<i class="fas fa-images text-emerald-500"></i> Editing: Photo Album`;
-                const n = albumItems(catalogData).length, parts = Math.max(1, Math.ceil(n / ALBUM_PER_PAGE));
-                document.getElementById('album-count').textContent = n
-                    ? n + ' photo' + (n === 1 ? '' : 's') + (parts > 1 ? ', on ' + parts + ' album pages in the PDF (' + ALBUM_PER_PAGE + ' per page; the preview shows the first).' : '.')
-                    : 'No product page has a picture yet.';
+                document.getElementById('input-album-useProducts').checked = page.albumUseProducts !== 'N';
+                renderAlbumPhotoList();   // thumbnails of the album's own uploads + the count line
                 document.getElementById('input-album-eyebrow').value = page.albumEyebrow != null ? page.albumEyebrow : ALBUM_DEFAULT.albumEyebrow;
                 document.getElementById('input-album-title').value = page.albumTitle != null ? page.albumTitle : ALBUM_DEFAULT.albumTitle;
                 document.getElementById('input-album-sub').value = page.albumSub != null ? page.albumSub : ALBUM_DEFAULT.albumSub;
@@ -1938,6 +1974,92 @@
             });
         }
 
+        /* ── Photo Album: own uploads ───────────────────────────────────────
+           Any number of photos, kept on the album page as albumPhotos
+           [{src, caption}] (JPEG data URLs, 1000 px, like a product picture).
+           They are printed after the product pages' pictures (or alone, when
+           those are switched off); the grid and the number of album pages
+           follow the total by themselves (albumGrid / albumPagesFor). */
+        function albumPage() { return catalogData.find(p => p.pageType === 'album'); }
+        function readImageAsJpeg(file, maxSide, quality) {
+            return new Promise((resolve, reject) => {
+                if (!/^image\//.test(file.type)) return reject(new Error(file.name + ' is not an image'));
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const k = Math.min(1, maxSide / Math.max(img.width, img.height));
+                        const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+                        const c = document.createElement('canvas'); c.width = w; c.height = h;
+                        const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+                        resolve(c.toDataURL('image/jpeg', quality));
+                    };
+                    img.onerror = () => reject(new Error(file.name + ' could not be read'));
+                    img.src = e.target.result;
+                };
+                reader.onerror = () => reject(new Error(file.name + ' could not be read'));
+                reader.readAsDataURL(file);
+            });
+        }
+        async function handleAlbumFiles(fileList) {
+            const album = albumPage();
+            const files = Array.from(fileList || []).filter(f => /^image\//.test(f.type));
+            if (!album || !files.length) { if (fileList && fileList.length) showModal('Please choose image files (PNG, JPG or WEBP).'); return; }
+            const list = Array.isArray(album.albumPhotos) ? album.albumPhotos.slice() : [];
+            const status = document.getElementById('album-count');
+            let bad = 0;
+            // One at a time: a big batch of phone photos must not be decoded all at once.
+            for (let i = 0; i < files.length; i++) {
+                if (status) status.textContent = 'Adding photo ' + (i + 1) + ' of ' + files.length + '…';
+                try { list.push({ src: await readImageAsJpeg(files[i], 1000, 0.7), caption: files[i].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim().toUpperCase() }); }
+                catch (e) { bad++; console.warn('[CM] album photo skipped:', e.message); }
+            }
+            updateCurrentPage('albumPhotos', list);
+            renderAlbumPhotoList();
+            saveDataLocally();
+            if (bad) showModal(bad + ' file(s) could not be read as an image and were skipped.');
+        }
+        function setAlbumCaption(i, v) {
+            const album = albumPage(); if (!album || !Array.isArray(album.albumPhotos) || !album.albumPhotos[i]) return;
+            const list = album.albumPhotos.slice(); list[i] = Object.assign({}, list[i], { caption: v });
+            updateCurrentPage('albumPhotos', list);
+        }
+        function removeAlbumPhoto(i) {
+            const album = albumPage(); if (!album || !Array.isArray(album.albumPhotos)) return;
+            const list = album.albumPhotos.slice(); list.splice(i, 1);
+            updateCurrentPage('albumPhotos', list);
+            renderAlbumPhotoList();
+        }
+        function clearAlbumPhotos() {
+            const album = albumPage(); if (!album || !(album.albumPhotos || []).length) return;
+            showModal('Remove all ' + album.albumPhotos.length + ' photos uploaded on the album? (The product pages\' pictures are not touched.)', 'confirm', () => {
+                updateCurrentPage('albumPhotos', []);
+                renderAlbumPhotoList();
+                saveDataLocally();
+            });
+        }
+        // The editor's thumbnail list + the live count line.
+        function renderAlbumPhotoList() {
+            const album = albumPage(); if (!album) return;
+            const own = Array.isArray(album.albumPhotos) ? album.albumPhotos : [];
+            const box = document.getElementById('album-photo-list');
+            if (box) box.innerHTML = own.length ? own.map((ph, i) =>
+                '<div class="relative border border-gray-200 rounded overflow-hidden bg-gray-50">'
+              + '<div style="height:64px;background:url(\'' + String(ph.src).replace(/'/g, '%27') + '\') center / cover;"></div>'
+              + '<button type="button" onclick="removeAlbumPhoto(' + i + ')" title="Remove this photo" class="absolute top-1 right-1 w-5 h-5 rounded-full bg-white/90 text-red-600 text-[10px] font-bold shadow hover:bg-white">&#10005;</button>'
+              + '<input type="text" value="' + esc(ph.caption || '') + '" oninput="setAlbumCaption(' + i + ', this.value)" placeholder="Caption" class="w-full border-t border-gray-200 px-1 py-0.5 text-[10px] outline-none focus:bg-emerald-50">'
+              + '</div>').join('')
+              : '<div class="col-span-3 text-[11px] text-gray-400 text-center py-2">No photos uploaded on the album yet.</div>';
+            const oc = document.getElementById('album-own-count'); if (oc) oc.textContent = own.length;
+            const cb = document.getElementById('album-clear-btn'); if (cb) cb.style.visibility = own.length ? 'visible' : 'hidden';
+            const n = albumItems(catalogData).length, parts = Math.max(1, Math.ceil(n / ALBUM_PER_PAGE));
+            const st = document.getElementById('album-count');
+            if (st) st.textContent = n
+                ? n + ' photo' + (n === 1 ? '' : 's') + ' in the album' + (parts > 1 ? ', on ' + parts + ' album pages in the PDF (the preview shows the first).' : '.')
+                : 'No photos yet: upload some below, or add pictures to the product pages.';
+            renderSidebar();
+        }
+
         // silent = the quiet auto-save after typing: no "Saved!" flash on the button
         async function saveDataLocally(silent) {
             clearTimeout(autoSaveTimer);
@@ -2005,7 +2127,9 @@
             if (n <= 4) return [2, 2];
             if (n <= 6) return [2, 3];
             if (n <= 9) return [3, 3];
-            return [3, Math.ceil(n / 3)];
+            if (n <= 12) return [3, 4];
+            if (n <= 16) return [4, 4];
+            return [4, Math.ceil(n / 4)];   // 17–20 → 4 × 5
         }
         function generateAlbumHTML(page) {
             if (!page._items) page = albumPagesFor(page, catalogData)[0];
@@ -2488,6 +2612,8 @@
         else START();
     </script>
     <!-- Floating "← Apps" button (hidden inside the ERP iframe and without a session). -->
+    <!-- Starter Templates: after the page's own script, whose globals it uses -->
+    <script src="catalog-presets.js"></script>
     <script src="app-back.js"></script>
     <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
     <script src="cursor-glow.js"></script>

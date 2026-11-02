@@ -215,7 +215,13 @@
   /* Download link: the `download` option makes Storage send the file as an
      attachment under the dmFileBase name, so the browser saves it straight
      away instead of trying to open a 200 MB PSD. */
-  const dmPsdName = d => dmFileBase(d, masterOf(d)) + '.psd';
+  /* The PSD's download name is fixed as {Design No}-{Design SKU No}.psd (just
+     {Design No}.psd when the design has no SKU), whatever the uploaded file
+     was called. Deliberately WITHOUT the master shade's name / SKU that the
+     photo downloads carry (dmFileBase): the PSD is the whole design, not one
+     shade. Used by the Save As window, the plain download and Storage's
+     ?download= name alike. */
+  const dmPsdName = d => dmFileBase({ design_no: d && d.design_no, design_sku_no: d && d.design_sku_no }, null) + '.psd';
   function dmPsdUrl(d){
     if (!d || !d.psd_path) return '';
     try {
@@ -244,7 +250,7 @@
     const url = dmPsdUrl(d);
     if (!url) { toast('No PSD file on design ' + (d ? d.design_no : '') + '. Add it via Edit.', 'warn'); return; }
     if (dmPsdBusy.has(id)) { toast('This PSD is already being saved.', 'warn'); return; }
-    // Not the uploaded file's own name: Design No-Design SKU-Matching-Matching SKU (dmFileBase).
+    // Not the uploaded file's own name: {Design No}-{Design SKU No}.psd (dmPsdName).
     const name = dmPsdName(d);
 
     let handle = null;
