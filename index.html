@@ -1799,10 +1799,6 @@
                             <div class="dm-sec">1. Design Specifications</div>
                             <div class="dm-grid">
                               <div class="dm-fg"><label>DESIGN NO *</label><input type="text" id="dmDesignNo" oninput="this.value=this.value.toUpperCase()" required></div>
-                              <!-- Design SKU No is different from the Design No: the Design No is the design's
-                                   identity; the SKU No is how it is sold and stocked. Required on
-                                   Create New; the app asks on a duplicate SKU (DESIGN_SKU_MIGRATION.sql). -->
-                              <div class="dm-fg"><label>DESIGN SKU NO *</label><input type="text" id="dmDesignSkuNo" list="dmSkuList" oninput="this.value=this.value.toUpperCase()" required placeholder="SKU No..."></div>
                               <div class="dm-fg"><label>DESIGN UNIT *</label><input type="text" id="dmDesignUnit" list="dmUnitList" value="UNIT 1" required></div>
                               <div class="dm-fg"><label>BED SIZE *</label><input type="text" id="dmBedSize" list="dmBedSizeList" value="DOUBLE BED" required></div>
                               <div class="dm-fg"><label>BLANKET QUALITY *</label><input type="text" id="dmBlanketQuality" list="dmQualityList" value="MINK" required></div>
@@ -1888,6 +1884,38 @@
                           <button type="button" class="dm-btn dm-btn-ghost" onclick="dmBatchAddBlank('mtc')" title="A matching that has no photo yet">+ Matching without Photo</button>
                           <div class="dm-batch-sum" id="dmMtcSum"></div>
                           <button type="button" class="dm-btn dm-btn-success dm-btn-wide" id="dmMtcSaveBtn" onclick="dmMtcSaveAll()">Save All Matchings</button>
+                          <!-- Many designs at once: the file name says the Design No (section below) -->
+                          <label class="dm-btn dm-btn-wide dm-bp-open" for="dmBpMtcFiles" title="Photos of many designs at once; each photo's file name gives its Design No">&#8682; Bulk Upload Photos (many designs)</label>
+                        </div>
+                      </div>
+
+                      <!-- Bulk Upload Photos: matchings for MANY designs. Each photo's file name gives
+                           its Design No ("-S" / "-R" ignored); the rest is filled in the table, then saved.
+                           store-design-master.js › BULK UPLOAD PHOTOS (bp*). -->
+                      <div class="dm-bp">
+                        <div class="dm-sec">Bulk Upload Photos <small class="dm-muted">matchings for many designs at once</small></div>
+                        <label class="dm-bp-drop" for="dmBpMtcFiles" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dmBpDrop('mtc',event)">
+                          <b>&#8682; Bulk Upload Photos</b>
+                          <span>Click or drop photos of any number of designs. The file name gives the Design No: <code>5001.jpg</code>, <code>5001-S.jpg</code>, <code>5001-R.jpg</code> &rarr; 5001 (&ldquo;-S&rdquo; / &ldquo;-R&rdquo; are ignored); <code>5001-R-RED.jpg</code> &rarr; 5001 with Matching Name RED.</span>
+                          <input type="file" id="dmBpMtcFiles" accept="image/*" multiple hidden onchange="dmBpAddFiles('mtc',this)">
+                        </label>
+                        <div class="dm-table-wrap" id="dmBpMtcWrap" style="display:none;">
+                          <table class="dm-table dm-table-bulk">
+                            <thead><tr>
+                              <th style="width:86px;">Photo</th>
+                              <th style="width:210px;">Design No (from file name)</th>
+                              <th>Matching Name *</th>
+                              <th>Matching SKU No</th>
+                              <th style="width:100px;">Type</th>
+                              <th>Blanket Quality *</th>
+                              <th style="width:130px;">Action</th>
+                            </tr></thead>
+                            <tbody id="dmBpMtcBody"></tbody>
+                          </table>
+                          <div class="dm-table-foot">
+                            <span class="dm-batch-sum" id="dmBpMtcSum"></span>
+                            <button type="button" class="dm-btn dm-btn-success" id="dmBpMtcSaveAll" onclick="dmBpSaveAll('mtc')">Save All Matchings</button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1920,6 +1948,34 @@
                           </label>
                           <div class="dm-batch-sum" id="dmPsSum"></div>
                           <button type="button" class="dm-btn dm-btn-success dm-btn-wide" id="dmPsSaveBtn" onclick="dmPsSaveAll()">Save All Photos</button>
+                          <!-- Many designs at once: the file name says the Design No (section below) -->
+                          <label class="dm-btn dm-btn-wide dm-bp-open" for="dmBpPsFiles" title="Photoshoot photos of many designs at once; each photo's file name gives its Design No">&#8682; Bulk Upload Photos (many designs)</label>
+                        </div>
+                      </div>
+
+                      <!-- Bulk Upload Photos: photoshoot photos for MANY designs. The file name gives the
+                           Design No ("-S" / "-R" ignored); each photo's matching is picked in the table. -->
+                      <div class="dm-bp">
+                        <div class="dm-sec">Bulk Upload Photos <small class="dm-muted">photoshoot photos for many designs at once</small></div>
+                        <label class="dm-bp-drop" for="dmBpPsFiles" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dmBpDrop('ps',event)">
+                          <b>&#8682; Bulk Upload Photos</b>
+                          <span>Click or drop photoshoot photos of any number of designs. The file name gives the Design No: <code>5001-S.jpg</code>, <code>5001-R (2).jpg</code> &rarr; 5001 (&ldquo;-S&rdquo; / &ldquo;-R&rdquo; are ignored). A design with one matching gets it filled in; otherwise pick the matching in the row.</span>
+                          <input type="file" id="dmBpPsFiles" accept="image/*" multiple hidden onchange="dmBpAddFiles('ps',this)">
+                        </label>
+                        <div class="dm-table-wrap" id="dmBpPsWrap" style="display:none;">
+                          <table class="dm-table dm-table-bulk">
+                            <thead><tr>
+                              <th style="width:86px;">Photo</th>
+                              <th style="width:230px;">Design No (from file name)</th>
+                              <th>Matching Name *</th>
+                              <th style="width:130px;">Action</th>
+                            </tr></thead>
+                            <tbody id="dmBpPsBody"></tbody>
+                          </table>
+                          <div class="dm-table-foot">
+                            <span class="dm-batch-sum" id="dmBpPsSum"></span>
+                            <button type="button" class="dm-btn dm-btn-success" id="dmBpPsSaveAll" onclick="dmBpSaveAll('ps')">Save All Photos</button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1928,7 +1984,7 @@
                     <div class="dm-pane" id="dmBulkUploadPane">
                       <div class="dm-sec">Bulk Upload Old Data (Multiple Photos)</div>
                       <p class="dm-hint">Select all your old photos at once. Each photo's file name is used as the &lsquo;Design No&rsquo;. On save, every photo goes to the bucket under <code>design-images/&lt;DESIGN NO&gt;/</code>.
-                      <br><b>SKU No</b> is optional here, since old data often has no SKU; anything missed can be added later from the Live tab with Edit.</p>
+                      </p>
                       <div class="dm-dropzone">
                         <label>
                           Click Here to Select Multiple Photos
@@ -1940,7 +1996,7 @@
                           <thead>
                             <tr>
                               <th style="width:70px;">Image</th>
-                              <th style="width:150px;">Design No<br><small style="font-weight:500;color:#64748b;">+ SKU No (optional)</small></th>
+                              <th style="width:150px;">Design No</th>
                               <th>Party, Brand &amp; Supplier</th>
                               <th>Unit, Size, Type, Monopoly</th>
                               <th>Quality &amp; Frame</th>
@@ -1960,9 +2016,39 @@
                     <!-- ───────── Live ───────── -->
                     <div class="dm-pane" id="dmLivePane">
                       <div class="dm-toolbar">
-                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="Design No / SKU No / Party / Brand / Supplier / Type / Bed Size / Shade se khojein...">
+                        <input type="search" id="dmLiveSearch" class="dm-search" placeholder="Design No / Matching SKU No / Party / Brand / Supplier / Type / Bed Size / Shade se khojein...">
                         <button type="button" class="dm-btn dm-btn-ghost dm-btn-xs" id="dmLiveClearBtn" style="display:none;" onclick="dmClearLiveFilters()" title="Clear the search and all column filters">&#10006; Clear Filters</button>
                         <span class="dm-count" id="dmLiveShown"></span>
+                        <!-- PSD files of many designs at once; each file name gives its Design No -->
+                        <label class="dm-btn dm-btn-xs dm-bp-open" for="dmBpsdFiles" style="margin:0 0 0 auto;" title="PSD files of many designs at once; each file name gives its Design No">&#8682; Bulk Upload PSD Files</label>
+                      </div>
+
+                      <!-- Bulk Upload PSD Files: links .psd files to the SAVED designs by file name
+                           ("-S" / "-R" ignored), the same way as Bulk Upload Photos. Hidden until files
+                           are picked. store-design-master.js › BULK UPLOAD PSD (bpsd*). -->
+                      <div class="dm-bp" id="dmBpsdSec" style="display:none; margin-top:4px; border-top:none; padding-top:0;">
+                        <div class="dm-sec">Bulk Upload PSD Files <small class="dm-muted">matched to the saved designs by file name</small></div>
+                        <label class="dm-bp-drop" for="dmBpsdFiles" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="dmBpsdDrop(event)">
+                          <b>&#8682; Add more PSD files</b>
+                          <span>The file name gives the Design No: <code>5001.psd</code>, <code>5001-S.psd</code>, <code>5001-R.psd</code> &rarr; 5001 (&ldquo;-S&rdquo; / &ldquo;-R&rdquo; are ignored). A design that already has a PSD gets it replaced, after you confirm.</span>
+                          <input type="file" id="dmBpsdFiles" accept=".psd,image/vnd.adobe.photoshop" multiple hidden onchange="dmBpsdAddFiles(this)">
+                        </label>
+                        <div class="dm-table-wrap">
+                          <table class="dm-table dm-table-bulk">
+                            <thead><tr>
+                              <th>PSD File</th>
+                              <th style="width:250px;">Design No (from file name)</th>
+                              <th>Current PSD on the design</th>
+                              <th style="width:130px;">Action</th>
+                            </tr></thead>
+                            <tbody id="dmBpsdBody"></tbody>
+                          </table>
+                          <div class="dm-table-foot">
+                            <span class="dm-batch-sum" id="dmBpsdSum"></span>
+                            <button type="button" class="dm-btn dm-btn-ghost" onclick="dmBpsdClear()">Clear List</button>
+                            <button type="button" class="dm-btn dm-btn-success" id="dmBpsdSaveAll" onclick="dmBpsdSaveAll()">Save All PSD Files</button>
+                          </div>
+                        </div>
                       </div>
                       <!-- Active column filters, each with its own ✖, plus Clear All.
                            Same as the Item Master's #imFilterChips (built by dmLfIndicators). -->
@@ -1975,7 +2061,6 @@
                             <tr>
                               <th>Actions</th><th>Photo</th>
                               <th>Design No<span class="im-fbtn" id="dmLF-no" onclick="dmLiveOpenFilter(event,'no')" title="Filter">&#9662;</span></th>
-                              <th>Design SKU No<span class="im-fbtn" id="dmLF-sku" onclick="dmLiveOpenFilter(event,'sku')" title="Filter">&#9662;</span></th>
                               <th>Monopoly<span class="im-fbtn" id="dmLF-mono" onclick="dmLiveOpenFilter(event,'mono')" title="Filter">&#9662;</span></th>
                               <th>Type<span class="im-fbtn" id="dmLF-type" onclick="dmLiveOpenFilter(event,'type')" title="Filter">&#9662;</span></th>
                               <th>Party<span class="im-fbtn" id="dmLF-party" onclick="dmLiveOpenFilter(event,'party')" title="Filter">&#9662;</span></th>
@@ -1987,6 +2072,7 @@
                               <th>Frames &amp; Total<span class="im-fbtn" id="dmLF-frames" onclick="dmLiveOpenFilter(event,'frames')" title="Filter">&#9662;</span></th>
                               <th>Matchings<span class="im-fbtn" id="dmLF-mcount" onclick="dmLiveOpenFilter(event,'mcount')" title="Filter">&#9662;</span></th>
                               <th>Master Matching<span class="im-fbtn" id="dmLF-master" onclick="dmLiveOpenFilter(event,'master')" title="Filter">&#9662;</span></th>
+                              <th>Matching SKU No<span class="im-fbtn" id="dmLF-msku" onclick="dmLiveOpenFilter(event,'msku')" title="Filter: designs that have this Matching SKU in any shade">&#9662;</span></th>
                               <th>Status</th>
                               <th>PSD</th>
                             </tr>
@@ -2002,7 +2088,7 @@
                         <table class="dm-table">
                           <thead>
                             <tr>
-                              <th>Action</th><th>Photo</th><th>Design No</th><th>Design SKU No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
+                              <th>Action</th><th>Photo</th><th>Design No</th><th>Monopoly</th><th>Type</th><th>Party</th><th>Brand</th>
                               <th>Supplier</th><th>Unit</th><th>Bed Size</th><th>Discarded On</th><th>Status</th>
                             </tr>
                           </thead>
@@ -3998,7 +4084,6 @@
         <!-- SKU is optional on Edit: old designs (and old sheets loaded through
              Bulk Upload) often have no SKU, and requiring it would block
              editing the whole record. -->
-        <div class="dm-fg"><label>DESIGN SKU NO</label><input type="text" id="dmEditDesignSkuNo" list="dmSkuList" oninput="this.value=this.value.toUpperCase()"></div>
         <div class="dm-fg"><label>DESIGN UNIT</label><input type="text" id="dmEditDesignUnit" list="dmUnitList" required></div>
         <div class="dm-fg"><label>BED SIZE</label><input type="text" id="dmEditBedSize" list="dmBedSizeList" required></div>
         <div class="dm-fg"><label>BLANKET QUALITY</label><input type="text" id="dmEditBlanketQuality" list="dmQualityList" required></div>
@@ -4054,7 +4139,6 @@
 <datalist id="dmSupplierList"></datalist>
 <!-- SKU is not a fixed list. Only SKUs already in the database are suggested,
      so the same SKU is never written two different ways. -->
-<datalist id="dmSkuList"></datalist>
 
 <!-- ═══ FABRIC / BRAND MASTER — form + revision history ═══════════════
      They sit at body level (not inside masterDataPanel) because the panel

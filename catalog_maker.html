@@ -684,6 +684,14 @@
                             <input type="range" id="input-texture-tile" min="10" max="210" value="40" oninput="document.getElementById('val-texture-tile').innerText=this.value; updateCurrentPage('bgTextureTile', this.value)" class="w-full accent-amber-600">
                         </div>
                         <div>
+                            <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Zoom (%)</label><span id="val-texture-zoom" class="text-[10px] font-bold text-amber-700 bg-white px-1 rounded">100</span></div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" onclick="stepTextureZoom(-10)" class="w-7 h-6 border border-amber-300 rounded bg-white text-amber-800 text-xs font-bold hover:bg-amber-100" title="Zoom out">&minus;</button>
+                                <input type="range" id="input-texture-zoom" min="100" max="300" value="100" oninput="setTextureZoom(this.value)" class="flex-1 accent-amber-600">
+                                <button type="button" onclick="stepTextureZoom(10)" class="w-7 h-6 border border-amber-300 rounded bg-white text-amber-800 text-xs font-bold hover:bg-amber-100" title="Zoom in">+</button>
+                            </div>
+                        </div>
+                        <div>
                             <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Strength (Opacity %)</label><span id="val-texture-opacity" class="text-[10px] font-bold text-amber-700 bg-white px-1 rounded">35</span></div>
                             <input type="range" id="input-texture-opacity" min="5" max="100" value="35" oninput="document.getElementById('val-texture-opacity').innerText=this.value; updateCurrentPage('bgTextureOpacity', this.value)" class="w-full accent-amber-600">
                         </div>
@@ -1927,17 +1935,32 @@
            picture (1200 px, JPEG 0.7): a texture is seen faded, and it may sit
            on every page. */
         const TEXTURE_DEFAULTS = { mode: 'cover', tile: 40, opacity: 35 };
+        /* bgTextureZoom (100–300 %): in "Fill the page" the picture is enlarged
+           from the size that just covers the page (worked out from its shape,
+           imgAspect, like the cover circle), centred, so the page stays fully
+           covered; in "Repeat as tiles" every tile is that much bigger than
+           Tile Size. Until the shape is known the fill draws as plain cover
+           and the preview redraws a moment later (buildPdf waits for it). */
+        const PAGE_ASPECT = 210 / 297;
         function textureLayerHTML(page) {
             if (!page || !page.bgTexture) return '';
             const tile = page.bgTextureMode === 'tile';
-            const size = tile ? Math.min(210, Math.max(10, num(page.bgTextureTile, TEXTURE_DEFAULTS.tile))) + 'mm auto' : 'cover';
+            const zoom = clampN(page.bgTextureZoom, 100, 300, 100) / 100;
+            let size;
+            if (tile) size = Math.round(Math.min(210, Math.max(10, num(page.bgTextureTile, TEXTURE_DEFAULTS.tile))) * zoom) + 'mm auto';
+            else {
+                const a = imgAspect(page.bgTexture, () => renderLivePreview());
+                size = !a ? 'cover'
+                     : a >= PAGE_ASPECT ? (a / PAGE_ASPECT * zoom * 100).toFixed(2) + '% ' + (zoom * 100).toFixed(2) + '%'
+                                        : (zoom * 100).toFixed(2) + '% ' + (PAGE_ASPECT / a * zoom * 100).toFixed(2) + '%';
+            }
             const op = Math.min(100, Math.max(5, num(page.bgTextureOpacity, TEXTURE_DEFAULTS.opacity))) / 100;
             return `<div aria-hidden="true" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; pointer-events: none; ${bgImg(page.bgTexture)} background-size: ${size}; background-repeat: ${tile ? 'repeat' : 'no-repeat'}; background-position: ${tile ? 'top left' : 'center'}; opacity: ${op};"></div>`;
         }
         // The texture fields of a page, for copying its look to another page.
         function textureCopy(from) {
             const o = {};
-            ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity'].forEach(k => { if (from && from[k] != null && from[k] !== '') o[k] = from[k]; });
+            ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity', 'bgTextureZoom'].forEach(k => { if (from && from[k] != null && from[k] !== '') o[k] = from[k]; });
             return o;
         }
         function syncTextureControls(page) {
@@ -1957,6 +1980,17 @@
             document.getElementById('val-texture-tile').innerText = tile;
             document.getElementById('input-texture-opacity').value = op;
             document.getElementById('val-texture-opacity').innerText = op;
+            const z = clampN(page.bgTextureZoom, 100, 300, 100);
+            document.getElementById('input-texture-zoom').value = z;
+            document.getElementById('val-texture-zoom').innerText = z;
+        }
+        function setTextureZoom(v) {
+            updateCurrentPage('bgTextureZoom', String(Math.round(clampN(v, 100, 300, 100))));
+            syncTextureControls();
+        }
+        function stepTextureZoom(d) {
+            const page = catalogData.find(p => p.id === currentPageId); if (!page) return;
+            setTextureZoom(num(page.bgTextureZoom, 100) + d);
         }
         function handleTextureUpload(event) {
             const file = event.target.files[0];
@@ -1998,7 +2032,7 @@
             if (!page || !page.bgTexture) return;
             showModal("Use this page's background texture (and its style, size and strength) on every page of the catalog?", 'confirm', () => {
                 const t = textureCopy(page);
-                catalogData.forEach(p => { ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity'].forEach(k => { delete p[k]; }); Object.assign(p, t); });
+                catalogData.forEach(p => { ['bgTexture', 'bgTextureMode', 'bgTextureTile', 'bgTextureOpacity', 'bgTextureZoom'].forEach(k => { delete p[k]; }); Object.assign(p, t); });
                 markDirty();
                 renderLivePreview();
                 saveDataLocally();
@@ -2506,6 +2540,8 @@
                     const opts = {};
                     // The circle picture's zoom needs its shape known before the page is drawn.
                     if (page.pageType === 'cover') await loadAspect(page.image || DEFAULT_IMAGE);
+                    // ...and so does a zoomed "fill" background texture.
+                    if (page.bgTexture) await loadAspect(page.bgTexture);
                     if (page.pageType === 'cover' || (page.pageType === 'back' && page.backWaves !== 'N')) {
                         try { opts.wavesSrc = await wavesPng(page); }
                         catch (e) { console.warn(e); }   // the SVG data URI is still drawn
@@ -2652,7 +2688,7 @@
                         image: chunk[0] ? chunk[0].src : DEFAULT_IMAGE,
                         images: chunk.length ? chunk : null,
                         specs: [
-                            ['Design No', d.design_no], ['SKU No', d.sku], ['Quality', d.quality],
+                            ['Design No', d.design_no], ['Matching SKU', d.sku], ['Quality', d.quality],
                             ['Bed Size', d.bed_size], ['Shades', shades.length ? String(shades.length) : ''],
                             ['Rate', d.rate ? 'Rs. ' + Number(d.rate).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + (o.unit ? ' ' + o.unit : '') : '']
                         ],

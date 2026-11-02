@@ -55,14 +55,7 @@
   let dmBulkRows = [];          // [{rowId, file, previewUrl}]
   let dmCatalogue = [];         // the selection generated last time
   const dmImgCache = new Map(); // url → Promise<{dataUrl,w,h,fmt}|null>
-  /* Whether the design_master.design_sku_no column exists, i.e. whether
-     DESIGN_SKU_MIGRATION.sql has been run. null = not known yet. The screen
-     works the same before the migration: the SKU boxes are shown, but that one
-     column is left out of inserts / updates; otherwise the whole save would
-     fail (Postgres rejects the entire row for an unknown column). It is first
-     found out on load, from whether the first row of dmDesigns has the key. */
-  let dmHasSku = null;
-  /* Same idea for the PSD columns (psd_path / psd_name / psd_size), i.e.
+  /* Whether the PSD columns (psd_path / psd_name / psd_size), i.e.
      whether DESIGN_PSD_MIGRATION.sql has been run. null = not known yet. */
   let dmHasPsd = null;
   /* Same idea for design_matchings.matching_sku_no (the SKU No of ONE
@@ -120,7 +113,8 @@
     return up(v).replace(/[^A-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'NA';
   }
   /* Download file names (PSD and photo):
-       {Design No}-{Design SKU No}-{Matching Name}-{Matching SKU No}
+       {Design No}-{Matching Name}-{Matching SKU No}
+     (the Design SKU No is retired; the SKU is the matching's own)
      An empty part is left out, so there is never a "--". Characters Windows
      does not allow in a file name (\ / : * ? " < > |) become '-', so a
      design no like "4004/104" stays one name. The Live list's PSD and photo
@@ -129,7 +123,7 @@
   function dmFileBase(d, m){
     const part = v => String(v == null ? '' : v).replace(/[\\/:*?"<>|]+/g, '-')
       .replace(/\s+/g, ' ').trim().replace(/^-+|-+$/g, '');
-    return [d && d.design_no, d && d.design_sku_no, m && m.matching_name, m && m.matching_sku_no]
+    return [d && d.design_no, m && m.matching_name, m && m.matching_sku_no]
       .map(part).filter(Boolean).join('-') || 'design';
   }
   function dmPublicUrl(path){
@@ -215,13 +209,13 @@
   /* Download link: the `download` option makes Storage send the file as an
      attachment under the dmFileBase name, so the browser saves it straight
      away instead of trying to open a 200 MB PSD. */
-  /* The PSD's download name is fixed as {Design No}-{Design SKU No}.psd (just
-     {Design No}.psd when the design has no SKU), whatever the uploaded file
-     was called. Deliberately WITHOUT the master shade's name / SKU that the
-     photo downloads carry (dmFileBase): the PSD is the whole design, not one
-     shade. Used by the Save As window, the plain download and Storage's
-     ?download= name alike. */
-  const dmPsdName = d => dmFileBase({ design_no: d && d.design_no, design_sku_no: d && d.design_sku_no }, null) + '.psd';
+  /* The PSD's download name is fixed as {Design No}.psd, whatever the uploaded
+     file was called (the Design SKU No it also carried is retired).
+     Deliberately WITHOUT the master shade's name / SKU that the photo
+     downloads carry (dmFileBase): the PSD is the whole design, not one shade.
+     Used by the Save As window, the plain download and Storage's ?download=
+     name alike. */
+  const dmPsdName = d => dmFileBase({ design_no: d && d.design_no }, null) + '.psd';
   function dmPsdUrl(d){
     if (!d || !d.psd_path) return '';
     try {
@@ -250,7 +244,7 @@
     const url = dmPsdUrl(d);
     if (!url) { toast('No PSD file on design ' + (d ? d.design_no : '') + '. Add it via Edit.', 'warn'); return; }
     if (dmPsdBusy.has(id)) { toast('This PSD is already being saved.', 'warn'); return; }
-    // Not the uploaded file's own name: {Design No}-{Design SKU No}.psd (dmPsdName).
+    // Not the uploaded file's own name: {Design No}.psd (dmPsdName).
     const name = dmPsdName(d);
 
     let handle = null;
@@ -392,7 +386,6 @@
          whether the first row has the key is the answer. With no designs at
          all it stays null and is found out on the first save (skuPatch
          handles both cases). */
-      if (dmDesigns.length) dmHasSku = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'design_sku_no');
       if (dmDesigns.length) dmHasPsd = Object.prototype.hasOwnProperty.call(dmDesigns[0], 'psd_path');
       const anyM = (dmDesigns.find(d => (d.matchings || []).length) || { matchings: [] }).matchings[0];
       if (anyM) dmHasMSku = Object.prototype.hasOwnProperty.call(anyM, 'matching_sku_no');
@@ -419,57 +412,25 @@
     const n = up(no);
     return dmDesigns.find(d => up(d.design_no) === n) || null;
   }
-  /* ── DESIGN SKU NO ───────────────────────────────────────────────────
-     The Design No identifies the design; the SKU No is how it is sold and
-     stocked. Two different things, so two different columns.
-
-     skuPatch() is the one place that decides whether this column goes into
-     an insert / update. Before the migration the key is dropped; otherwise
-     Postgres would reject the whole row and the design would not save. All
-     three save paths (Create New, Bulk row, Edit) go through it, so all
-     three behave the same way. */
-  function skuPatch(v){
-    if (dmHasSku === false) return {};
-    return { design_sku_no: up(v) || null };
-  }
-  // If the migration has not been run, this is said plainly once; otherwise a
-  // filled-in SKU box would silently fail to save.
-  let dmSkuWarned = false;
-  function dmSkuNotice(){
-    if (dmHasSku !== false || dmSkuWarned) return;
-    dmSkuWarned = true;
-    toast('The Design SKU No will not be saved. Run DESIGN_SKU_MIGRATION.sql in the Supabase SQL Editor first.', 'warn');
-  }
-  /* Is this SKU already on ANOTHER design? Not a block, just a question: it
-     catches typos, but deliberately putting one SKU on two designs is still
-     possible (no UNIQUE constraint in the database; the reason is written in
-     DESIGN_SKU_MIGRATION.sql). `exceptId` skips the design currently being
-     edited. */
-  function skuClash(v, exceptId){
-    const s = up(v); if (!s) return null;
-    return dmDesigns.find(d => d.id !== exceptId && up(d.design_sku_no) === s) || null;
-  }
-  function skuOkToSave(v, exceptId){
-    const hit = skuClash(v, exceptId);
-    if (!hit) return true;
-    return confirm('SKU No ' + up(v) + ' is already on design ' + hit.design_no + '.\n\n'
-      + 'Save anyway?');
-  }
+  /* ── DESIGN SKU NO: RETIRED ──────────────────────────────────────────
+     A design no longer has an SKU of its own: the SKU lives only on each
+     matching (shade), the Matching SKU No below. The design_sku_no column is
+     dropped by sql/DESIGN_SKU_REMOVE_MIGRATION.sql (its old values are kept
+     in design_sku_no_backup first).
+     The three helpers stay as no-ops so no save path can ever send
+     design_sku_no again: after the drop, Postgres would reject the whole row
+     for that unknown column and the design would not save at all. */
+  function skuPatch(){ return {}; }
+  function dmSkuNotice(){}
+  function skuOkToSave(){ return true; }
   /* Every design_master write goes through here (Create New, Bulk row, Edit).
-     Reason: Postgres rejects the WHOLE row for an unknown column, and on an
-     empty database there was no row to look at during load, so dmHasSku
-     stays null. In that case the first save finds out by itself: on a column
-     error design_sku_no is removed and the request is sent again (it is also
-     removed from the payload, so the caller's local mirror doesn't keep a
-     value that never reached the database), and every later save follows
-     that decision. */
+     Postgres rejects the WHOLE row for an unknown column, so a column a
+     database may not have yet (the PSD ones) is dropped on that error and
+     the request is sent again; every later save follows that decision. */
   async function dmWriteDesign(run, payload){
+    // A design_sku_no can never be in the payload any more (the Design SKU is retired).
+    delete payload.design_sku_no;
     let r = await run(payload);
-    if (r.error && /design_sku_no/i.test(r.error.message || '') && ('design_sku_no' in payload)) {
-      dmHasSku = false; dmSkuWarned = false; dmSkuNotice();
-      delete payload.design_sku_no;
-      r = await run(payload);
-    }
     // The PSD columns the same way (DESIGN_PSD_MIGRATION.sql not run yet).
     if (r.error && /psd_(path|name|size)/i.test(r.error.message || '') && ('psd_path' in payload)) {
       dmHasPsd = false; dmPsdWarned = false; dmPsdNotice();
@@ -573,15 +534,14 @@
      of the DB, so a value saved just now appears straight away in the next
      row's dropdown. */
   function dmValues(kind){
+    // A function = a list worked out at the moment the dropdown opens (Bulk Upload Photos rows).
+    if (typeof kind === 'function') return kind();
     const uniq = key => [...new Set(dmDesigns.map(d => d[key]).filter(Boolean))].sort();
     const merge = (col) =>
       [...new Set(dmFixed(kind).concat(dmDesigns.map(d => d[col]).filter(Boolean)))];
     switch (kind) {
       case 'party':   return uniq('party_name');
       case 'brand':   return uniq('brand_name');
-      // SKUs have no fixed list; only those already in the database are
-      // suggested, so the same SKU is never written two different ways.
-      case 'sku':     return uniq('design_sku_no');
       case 'supplier':return merge('supplier_name');
       case 'unit':    return merge('design_unit');
       case 'bed':     return merge('bed_size');
@@ -611,7 +571,6 @@
   function renderDatalists(){
     const live = dmDesigns.filter(d => d.status === 'LIVE');
     fillList('dmShadeList', dmValues('shade'));
-    fillList('dmSkuList', dmValues('sku'));
     fillList('dmPartyList', dmValues('party'));
     fillList('dmBrandList', dmValues('brand'));
     fillList('dmSupplierList', dmValues('supplier'));
@@ -756,7 +715,6 @@
   }
   // Which bulk column reads which list.
   const DM_BULK_PICKERS = [
-    ['b-sku', 'sku'],
     ['b-party', 'party'], ['b-brand', 'brand'], ['b-supplier', 'supplier'],
     ['b-unit', 'unit'], ['b-bed', 'bed'],
     ['b-type', 'type'], ['b-mono', 'mono'], ['b-quality', 'quality'],
@@ -765,10 +723,6 @@
   /* The Create New, Add Matching and Edit popup boxes get the same real
      dropdown, so a value added in Dropdown Master appears in their lists. */
   const DM_FORM_PICKERS = [
-    // SKUs have no fixed list; the picker shows only SKUs already in the
-    // database, so the same SKU is never written two ways. A new SKU can
-    // still be typed freely (it stays an <input>).
-    ['dmDesignSkuNo', 'sku'], ['dmEditDesignSkuNo', 'sku'],
     ['dmDesignUnit', 'unit'], ['dmBedSize', 'bed'], ['dmBlanketQuality', 'quality'],
     ['dmDesignType', 'type'], ['dmMonopoly', 'mono'], ['dmFrameType', 'frame'],
     ['dmPartyName', 'party'], ['dmBrandName', 'brand'], ['dmSupplierName', 'supplier'],
@@ -806,7 +760,6 @@
      each with its own ✖, plus a "Clear All". */
   const DM_LIVE_COLS = [
     { id:'no',     ph:'Design No',       get:d => d.design_no },
-    { id:'sku',    ph:'Design SKU No',   get:d => d.design_sku_no || '' },
     { id:'mono',   ph:'Monopoly',        get:d => d.monopoly || 'NO' },
     { id:'type',   ph:'Type',            get:d => d.design_type || '' },
     { id:'party',  ph:'Party',           get:d => d.party_name || '' },
@@ -818,7 +771,21 @@
     { id:'frames', ph:'Total Frames',    get:d => String(totalFrames(d)) },
     { id:'mcount', ph:'Shades',          get:d => String((d.matchings || []).length) },
     { id:'master', ph:'Master Matching', get:d => { const m = masterOf(d); return m ? m.matching_name : ''; } },
+    /* A design has one Matching SKU No per shade, so this column has SEVERAL
+       values (`multi`): each SKU is its own option in the filter, and a design
+       passes when ANY of its shades has a ticked SKU ("(Blank)" = no shade has
+       an SKU yet). Master shade first, the order the cell shows them in. */
+    { id:'msku',   ph:'Matching SKU No', multi:true, get:d => dmMatchingSkus(d).map(x => x.sku).join(', '),
+      all:d => dmMatchingSkus(d).map(x => x.sku) },
   ];
+  // The design's shades that have a Matching SKU No: [{sku, name, master}], master first.
+  function dmMatchingSkus(d){
+    const m = masterOf(d);
+    return (d.matchings || []).slice()
+      .sort((a, b) => (a === m ? -1 : b === m ? 1 : 0))
+      .map(x => ({ sku: String(x.matching_sku_no || '').trim(), name: x.matching_name || '', master: x === m }))
+      .filter(x => x.sku);
+  }
   const DM_LF_BLANK = '(Blank)';
   /* Active filters: {colId: Set<value>}. No key for a column = no
      restriction on it. Empty Set = nothing ticked = no rows (the same rule
@@ -830,6 +797,12 @@
   // A single function produces the value; the option list, the row test and
   // the chips all read it, so they never disagree about "" vs "(Blank)".
   const dmLfKey = (c, d) => String(c.get(d) == null ? '' : c.get(d)).trim() || DM_LF_BLANK;
+  // Every value of a design in a column: one for a normal column, each one for a `multi` column.
+  const dmLfKeys = (c, d) => {
+    if (!c.multi) return [dmLfKey(c, d)];
+    const v = [...new Set(c.all(d).map(x => String(x == null ? '' : x).trim()).filter(Boolean))];
+    return v.length ? v : [DM_LF_BLANK];
+  };
   const dmLfSort = (a, b) => {
     if (a === DM_LF_BLANK) return 1;
     if (b === DM_LF_BLANK) return -1;
@@ -841,7 +814,7 @@
   // Google-style: every word must be found somewhere in the design (store-core.js sarvSearchMatch).
   function dmLiveSearchPass(d, term){
     if (!term) return true;
-    return sarvSearchMatch([d.design_no, d.design_sku_no, d.party_name, d.brand_name, d.supplier_name,
+    return sarvSearchMatch([d.design_no, (d.matchings || []).map(m => m.matching_sku_no).filter(Boolean).join(' '), d.party_name, d.brand_name, d.supplier_name,
             d.design_type, d.design_unit, d.bed_size, d.blanket_quality]
       .concat((d.matchings || []).map(m => m.matching_name)), term);
   }
@@ -851,7 +824,7 @@
     return DM_LIVE_COLS.every(c => {
       if (c.id === skip) return true;
       const f = dmLiveFilters[c.id];
-      return !f || f.has(dmLfKey(c, d));
+      return !f || dmLfKeys(c, d).some(k => f.has(k));
     });
   }
   /* A column's value list: what remains after the OTHER filters + search,
@@ -861,8 +834,8 @@
     const term = dmLiveTerm(), counts = new Map();
     dmDesigns.forEach(d => {
       if (d.status !== 'LIVE' || !dmLiveSearchPass(d, term) || !dmLiveColsPass(d, colId)) return;
-      const k = dmLfKey(c, d);
-      counts.set(k, (counts.get(k) || 0) + 1);
+      // Counted per design: "3" next to an SKU = 3 designs have it.
+      dmLfKeys(c, d).forEach(k => counts.set(k, (counts.get(k) || 0) + 1));
     });
     return [...counts.entries()].map(([value, count]) => ({ value, count }))
       .sort((a, b) => dmLfSort(a.value, b.value));
@@ -1080,8 +1053,6 @@
             '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Discard" onclick="dmSetStatus(' + d.id + ',\'DISCARDED\')">Discard</button></td>' +
         '<td>' + thumbHtml(dmImgSrc(m), d.design_no, dmFileBase(d, m)) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
-        '<td>' + (d.design_sku_no ? '<strong style="color:#7c3aed;">' + esc(d.design_sku_no) + '</strong>'
-                                  : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + monoCell(d.monopoly) + '</td>' +
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
@@ -1094,6 +1065,10 @@
             ' <strong style="color:#2563eb;">[' + totalFrames(d) + ']</strong></td>' +
         '<td><span class="dm-badge dm-badge-count">' + (d.matchings || []).length + ' Shades</span></td>' +
         '<td><span class="dm-badge dm-badge-master">' + esc(m ? m.matching_name : 'N/A') + '</span></td>' +
+        // Matching SKU No of each shade; the master shade's first and highlighted, its shade name on hover.
+        '<td>' + (dmMatchingSkus(d).map(x =>
+            '<span class="dm-msku-chip' + (x.master ? ' master' : '') + '" title="' + esc(x.name + (x.master ? ' (MASTER)' : '')) + '">' + esc(x.sku) + '</span>'
+          ).join('') || '<span class="dm-muted">—</span>') + '</td>' +
         '<td><span class="dm-badge dm-badge-live">LIVE</span></td>' +
         '<td>' + (d.psd_path
           ? '<button type="button" class="dm-btn dm-btn-success dm-btn-xs" title="' + esc((d.psd_name || '') + (d.psd_size ? ' · ' + fmtSize(d.psd_size) : '')) +
@@ -1115,7 +1090,6 @@
         '<td><button type="button" class="dm-btn dm-btn-success dm-btn-xs" onclick="dmSetStatus(' + d.id + ',\'LIVE\')">Restore</button></td>' +
         '<td>' + thumbHtml(dmImgSrc(masterOf(d)), d.design_no, dmFileBase(d, masterOf(d))) + '</td>' +
         '<td><strong>' + esc(d.design_no) + '</strong></td>' +
-        '<td>' + (d.design_sku_no ? esc(d.design_sku_no) : '<span class="dm-muted">—</span>') + '</td>' +
         '<td>' + monoCell(d.monopoly) + '</td>' +
         '<td><span class="dm-badge dm-badge-type">' + esc(d.design_type || 'N/A') + '</span></td>' +
         '<td>' + esc(d.party_name || '') + '</td>' +
@@ -1161,15 +1135,7 @@
     const btn = ev.target.querySelector('button[type=submit]');
     const designNo = up(q('dmDesignNo').value);
     if (!designNo) { toast('DESIGN NO is required.', 'error'); return; }
-    /* The SKU No is REQUIRED on Create New. The box also has `required`, but
-       that is only the browser's form check; the real check is here, so an
-       empty SKU can't get in by any other route. */
-    const skuNo = up(q('dmDesignSkuNo').value);
-    if (!skuNo) {
-      q('dmDesignSkuNo').focus();
-      toast('DESIGN SKU NO is required.', 'error');
-      return;
-    }
+    // No Design SKU No any more: the SKU is each matching's own (Matching SKU No).
 
     await loadDesigns();
     if (findByNo(designNo)) {
@@ -1181,9 +1147,6 @@
     const psdFile = (q('dmNewPsd').files || [])[0] || null;
     if (!psdFile) { toast('PSD FILE is required. Select the design’s Photoshop (.psd) file.', 'error'); return; }
     if (!isPsd(psdFile)) { toast('“' + psdFile.name + '” is not a .psd file. Select the Photoshop (.psd) file.', 'error'); return; }
-    // Same SKU on another design? Not a block, just a question (skuOkToSave).
-    if (!skuOkToSave(skuNo, null)) { q('dmDesignSkuNo').focus(); return; }
-    dmSkuNotice();
     dmPsdNotice();
 
     const file = (q('dmInitialImage').files || [])[0] || null;
@@ -1208,7 +1171,7 @@
     setSync('Saving…', 'busy');
     let designSaved = false;
     try {
-      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(skuNo), psdPatch(psd), {
+      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(psdPatch(psd), {
         design_no:       designNo,
         party_name:      q('dmPartyName').value.trim(),
         brand_name:      q('dmBrandName').value.trim(),
@@ -1675,6 +1638,496 @@
     }
   }
 
+  /* ══ BULK UPLOAD PHOTOS (Add Matching / Add Photoshoot, MANY designs) ════
+     The normal Add Matching / Add Photoshoot flow is one design at a time.
+     "Bulk Upload Photos" takes photos of MANY designs in one go: each photo's
+     FILE NAME says which design it belongs to, and the inputs each photo
+     still needs are filled in a table, the same way as the Bulk Upload tab,
+     then saved row by row or all at once. Saving uses the very same steps as
+     the one-design flow (uploadDesignImage → design_matchings /
+     design_photoshoots), so the data is identical whichever way it came in.
+
+     File name → Design No (bpGuess):
+       • extension and a " (2)" copy number are dropped, letters upper-cased;
+       • the WHOLE name is tried first (a design really called "100-S" still
+         matches itself);
+       • otherwise the "S" / "R" parts are ignored ("5001-S", "5001-R",
+         "5001_s" → 5001) and the LONGEST start of the name that is a LIVE
+         Design No wins, so a design no with a dash in it still matches;
+       • "-", "_", spaces and "/" count as the same, since a file name cannot
+         hold "4004/104";
+       • what is left after the Design No is offered as the Matching Name
+         ("5001-R-RED.jpg" → 5001, RED), spelled the way the shade list spells it.
+     A row whose name matched nothing shows "✗ not found" in red; type or pick
+     the right Design No in that row and it is matched on the spot.
+
+     Required per photo, checked for EVERY row before the first upload:
+       Matching   — a LIVE Design No, Matching Name (new on that design, not
+                    twice for one design in the table), Blanket Quality
+                    (filled from the design), one MASTER per design at most;
+                    Matching SKU No optional (a clash is asked about once).
+       Photoshoot — a LIVE Design No and a Matching Name (that design's own
+                    matchings are offered first).
+     A saved row leaves the table; a failed one stays with its reason. */
+  const DM_BP = {
+    mtc: { body: 'dmBpMtcBody', wrap: 'dmBpMtcWrap', sum: 'dmBpMtcSum', save: 'dmBpMtcSaveAll', label: 'Save All Matchings', rows: [] },
+    ps:  { body: 'dmBpPsBody',  wrap: 'dmBpPsWrap',  sum: 'dmBpPsSum',  save: 'dmBpPsSaveAll',  label: 'Save All Photos',    rows: [] }
+  };
+  let dmBpSeq = 0;
+  const bpNorm = s => up(s).replace(/[\s_\/\\]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  function bpLiveMap(){
+    const m = new Map();
+    dmDesigns.forEach(d => { if (d.status === 'LIVE') m.set(bpNorm(d.design_no), d); });
+    return m;
+  }
+  function bpGuess(fileName, live){
+    const base = String(fileName || '').replace(/\.[^.]+$/, '').replace(/\s*\(\d+\)\s*$/, '');
+    const whole = live.get(bpNorm(base));
+    if (whole) return { d: whole, no: whole.design_no, rest: '' };
+    const toks = bpNorm(base).split('-').filter(Boolean).filter(t => t !== 'S' && t !== 'R');
+    for (let n = toks.length; n >= 1; n--) {
+      const d = live.get(toks.slice(0, n).join('-'));
+      if (d) return { d: d, no: d.design_no, rest: toks.slice(n).join(' ') };
+    }
+    return { d: null, no: toks.join('-') || up(base), rest: '' };
+  }
+  const bpFind = v => bpLiveMap().get(bpNorm(v)) || null;
+  // A typed / guessed name in the list's own spelling (so a shade is never stored two ways).
+  function bpCanon(name, list){
+    const k = up(name); if (!k) return '';
+    return (list || []).find(v => up(v) === k) || up(name);
+  }
+  // Photoshoot dropdown of one row: that row's design's matchings first, then every shade.
+  function bpPsList(tr){
+    const d = bpFind((tr.querySelector('.bp-design') || {}).value);
+    const own = d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
+    const seen = new Set();
+    return own.concat(dmValues('shade')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+
+  async function bpAddFiles(key, input){
+    const fl = input && input.files ? input.files : input;
+    const files = Array.from(fl || []).filter(f => /^image\//i.test(f.type || '') || /\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(f.name || ''));
+    const skipped = (fl || []).length - files.length;
+    if (input && input.files) input.value = '';
+    if (!files.length) { if (skipped) toast(skipped + ' file(s) skipped: not a photo.', 'warn'); return; }
+    await loadDesigns();
+    if (key === 'ps') await loadPhotoshoots();
+    const live = bpLiveMap();
+    let found = 0;
+    files.forEach(f => { if (bpAddRow(key, f, bpGuess(f.name, live))) found++; });
+    bpSum(key);
+    const sec = q(DM_BP[key].wrap); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast(files.length + ' photo(s) added: ' + found + ' matched to a Design No' +
+      (files.length - found ? ', ' + (files.length - found) + ' not found (fix the Design No in those rows)' : '') + '.',
+      files.length - found ? 'warn' : 'success');
+    if (skipped) toast(skipped + ' file(s) skipped: not a photo.', 'warn');
+  }
+
+  function bpAddRow(key, file, g){
+    const b = DM_BP[key];
+    const body = q(b.body); if (!body) return false;
+    const rid = 'dmBp_' + key + '_' + (++dmBpSeq);
+    const url = URL.createObjectURL(file);
+    b.rows.push({ rid: rid, file: file, url: url });
+    const tr = document.createElement('tr');
+    tr.id = rid;
+    const nameGuess = key === 'mtc'
+      ? (g.rest ? bpCanon(g.rest, dmValues('shade')) : '')
+      : (g.d ? (() => {
+          const own = (g.d.matchings || []).map(m => m.matching_name).filter(Boolean);
+          if (g.rest) { const hit = own.find(n => up(n) === up(g.rest)); if (hit) return hit; }
+          return own.length === 1 ? own[0] : '';
+        })() : '');
+    tr.innerHTML =
+      '<td><img src="' + url + '" class="dm-thumb" style="width:58px;height:58px;cursor:zoom-in;" alt="' + esc(file.name) + '" title="' + esc(file.name) + ' · click for full screen" onclick="dmShowLightbox(this.src,this.alt)">' +
+        '<div class="dm-bp-file" title="' + esc(file.name) + '">' + esc(file.name) + '</div></td>' +
+      '<td><div class="dm-bulk-col">' +
+        '<input type="text" class="dm-bulk-in bp-design" value="' + esc(g.no) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;">' +
+        '<div class="dm-bp-dinfo"></div></div></td>' +
+      '<td><input type="text" class="dm-bulk-in bp-name" value="' + esc(nameGuess) + '" placeholder="Matching Name…"></td>' +
+      (key === 'mtc'
+        ? '<td><input type="text" class="dm-bulk-in bp-sku" oninput="this.value=this.value.toUpperCase()" placeholder="Matching SKU No (optional)" autocomplete="off"></td>' +
+          '<td><select class="dm-bulk-in bp-type"><option value="SLAVE">SLAVE</option><option value="MASTER">MASTER</option></select></td>' +
+          '<td><input type="text" class="dm-bulk-in bp-quality" placeholder="Blanket Quality"></td>'
+        : '') +
+      '<td><div class="dm-bulk-col" style="align-items:stretch;">' +
+        '<span class="bp-state dm-bp-state"></span>' +
+        '<div style="display:flex;gap:4px;">' +
+          '<button type="button" class="dm-btn dm-btn-success dm-btn-xs" style="flex:1;" onclick="dmBpSaveRow(\'' + key + '\',\'' + rid + '\')">Save</button>' +
+          '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Remove from this list" onclick="dmBpRemove(\'' + key + '\',\'' + rid + '\')">✕</button>' +
+        '</div></div></td>';
+    body.appendChild(tr);
+    const din = tr.querySelector('.bp-design');
+    attachPicker(din, () => dmDesigns.filter(d => d.status === 'LIVE').map(d => d.design_no));
+    attachPicker(tr.querySelector('.bp-name'), key === 'mtc' ? 'shade' : (() => bpPsList(tr)));
+    if (key === 'mtc') attachPicker(tr.querySelector('.bp-quality'), 'quality');
+    ['input', 'change'].forEach(ev => din.addEventListener(ev, () => bpRefreshRow(key, tr)));
+    bpRefreshRow(key, tr);
+    return !!g.d;
+  }
+
+  // The row's design: matched or not, its party / brand, and (Matching) its quality as the default.
+  function bpRefreshRow(key, tr){
+    const d = bpFind((tr.querySelector('.bp-design') || {}).value);
+    const info = tr.querySelector('.dm-bp-dinfo');
+    if (info) {
+      info.className = 'dm-bp-dinfo ' + (d ? 'ok' : 'bad');
+      info.textContent = d ? ('✓ ' + [d.party_name, d.brand_name].filter(Boolean).join(' · ') + ' · ' + (d.matchings || []).length + ' shade(s)')
+                           : '✗ not found: type or pick the Design No';
+    }
+    tr.classList.toggle('dm-bp-nodesign', !d);
+    if (key === 'mtc') {
+      const qb = tr.querySelector('.bp-quality');
+      if (qb && d && (!qb.value || qb.dataset.auto === '1')) {
+        const m = masterOf(d);
+        qb.value = (m && m.blanket_quality) || d.blanket_quality || qb.value || 'MINK';
+        qb.dataset.auto = '1';
+      }
+      if (qb && !qb.dataset.bound) { qb.dataset.bound = '1'; qb.addEventListener('input', () => { qb.dataset.auto = '0'; }); }
+    }
+    bpSum(key);
+  }
+
+  function bpRemove(key, rid){
+    const b = DM_BP[key];
+    const r = b.rows.find(x => x.rid === rid);
+    if (r && r.url) URL.revokeObjectURL(r.url);
+    b.rows = b.rows.filter(x => x.rid !== rid);
+    const el = q(rid); if (el) el.remove();
+    bpSum(key);
+  }
+  function bpSum(key){
+    const b = DM_BP[key];
+    const wrap = q(b.wrap); if (wrap) wrap.style.display = b.rows.length ? '' : 'none';
+    const trs = b.rows.map(r => q(r.rid)).filter(Boolean);
+    const miss = trs.filter(tr => tr.classList.contains('dm-bp-nodesign')).length;
+    const s = q(b.sum);
+    if (s) s.textContent = b.rows.length
+      ? b.rows.length + ' photo(s) · ' + (b.rows.length - miss) + ' matched' + (miss ? ' · ' + miss + ' Design No not found' : '')
+      : '';
+    const sv = q(b.save); if (sv) sv.disabled = !b.rows.length;
+  }
+  function bpMark(tr, txt, bad){
+    const s = tr.querySelector('.bp-state');
+    if (s) { s.textContent = txt || ''; s.title = txt || ''; s.style.color = bad ? '#dc2626' : '#475569'; }
+    tr.classList.toggle('dm-bp-bad', !!bad);
+  }
+  const bpVal = (tr, sel) => { const el = tr.querySelector(sel); return el ? el.value.trim() : ''; };
+
+  /* Checks the given rows (all of them for Save All) and saves those that are
+     fine to save; nothing is uploaded until every one of them passes. */
+  async function bpSave(key, rids){
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    await loadDesigns();
+    if (key === 'ps') {
+      await loadPhotoshoots();
+      if (dmPsMissing) { toast('Run DESIGN_PHOTOSHOOT_MIGRATION.sql in the Supabase SQL Editor first.', 'error'); return; }
+    }
+    const b = DM_BP[key];
+    const trs = rids.map(id => q(id)).filter(Boolean);
+    if (!trs.length) { toast('There are no photos in the list.', 'warn'); return; }
+
+    const items = trs.map(tr => {
+      const d = bpFind(bpVal(tr, '.bp-design'));
+      const row = b.rows.find(r => r.rid === tr.id);
+      const it = { tr: tr, d: d, file: row && row.file, typed: bpVal(tr, '.bp-name') };
+      if (key === 'mtc') {
+        it.name = bpCanon(it.typed, dmValues('shade'));
+        it.sku = up(bpVal(tr, '.bp-sku'));
+        it.master = bpVal(tr, '.bp-type') === 'MASTER';
+        it.quality = bpVal(tr, '.bp-quality');
+      } else {
+        it.name = bpCanon(it.typed, bpPsList(tr));
+      }
+      return it;
+    });
+
+    let err = '';
+    const seenName = new Set(), seenSku = new Set(), masters = new Map();
+    items.forEach(it => {
+      let e = '';
+      if (!it.d) e = 'Design No not found';
+      else if (!it.file) e = 'No photo';
+      else if (!it.typed) e = 'Matching name required';
+      else if (key === 'mtc') {
+        const nk = it.d.id + '|' + up(it.name);
+        if ((it.d.matchings || []).some(m => up(m.matching_name) === up(it.name))) e = 'Already on ' + it.d.design_no;
+        else if (seenName.has(nk)) e = 'Same name twice for ' + it.d.design_no;
+        else if (!it.quality) e = 'Blanket Quality required';
+        else if (it.sku && seenSku.has(it.sku)) e = 'Same SKU No twice in this list';
+        seenName.add(nk);
+        if (it.sku) seenSku.add(it.sku);
+        if (it.master) masters.set(it.d.id, (masters.get(it.d.id) || 0) + 1);
+      }
+      bpMark(it.tr, e, !!e);
+      if (e && !err) err = (it.d ? it.d.design_no + ' · ' : '') + (it.typed ? '“' + it.typed + '”: ' : '') + e + '.';
+    });
+    if (!err && key === 'mtc') {
+      const twice = items.find(it => it.d && masters.get(it.d.id) > 1);
+      if (twice) { err = 'Only one MASTER per design: ' + twice.d.design_no + ' has more than one.'; items.filter(it => it.d === twice.d && it.master).forEach(it => bpMark(it.tr, 'Two MASTERs', true)); }
+    }
+    if (err) {
+      const bad = items.find(it => it.tr.classList.contains('dm-bp-bad'));
+      if (bad) bad.tr.scrollIntoView({ block: 'center' });
+      toast(err, 'error'); return;
+    }
+    if (key === 'mtc') {
+      const clashes = items.map(it => ({ it: it, hit: mskuClash(it.sku, null) })).filter(x => x.hit);
+      if (clashes.length && !confirm('These Matching SKU Nos are already used:\n\n' +
+          clashes.map(x => x.it.sku + '  →  ' + x.hit.d.design_no + ' · ' + (x.hit.m.matching_name || '')).join('\n') +
+          '\n\nSave anyway?')) return;
+      if (dmHasMSku === false && items.some(it => it.sku)) { dmMSkuWarned = false; dmMSkuNotice(); }
+    }
+
+    const btn = q(b.save);
+    if (btn) btn.disabled = true;
+    setSync('Saving…', 'busy');
+    let ok = 0, fail = 0;
+    const demoted = new Set();
+    const touched = new Set();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], d = it.d;
+      if (btn) btn.textContent = 'Saving ' + (i + 1) + ' / ' + items.length + '…';
+      bpMark(it.tr, 'saving…', false);
+      let img = null;
+      try {
+        if (key === 'mtc') {
+          // One MASTER per design (partial unique index): the old one becomes SLAVE first.
+          if (it.master && !demoted.has(d.id)) {
+            const dem = await SB.from('design_matchings').update({ matching_type: 'SLAVE' }).eq('design_id', d.id).eq('matching_type', 'MASTER');
+            if (dem.error) throw dem.error;
+            (d.matchings || []).forEach(m => { m.matching_type = 'SLAVE'; });
+            demoted.add(d.id);
+          }
+          img = await uploadDesignImage(d.design_no, it.file);
+          const ins = await dmWriteMatching(p => SB.from('design_matchings').insert(p).select().single(), Object.assign({
+            design_id:       d.id,
+            design_no:       d.design_no,
+            matching_name:   it.name,
+            blanket_quality: it.quality,
+            matching_type:   it.master ? 'MASTER' : 'SLAVE',
+            image_path:      img.path,
+            image_url:       img.url,
+            sort_order:      (d.matchings || []).length,
+            created_by:      whoAmI()
+          }, mskuPatch(it.sku)));
+          if (ins.error) throw ins.error;
+          d.matchings = (d.matchings || []).concat([ins.data]);
+        } else {
+          img = await uploadDesignImage(d.design_no, it.file, { folder: DM_PS_FOLDER, maxSide: 2400, quality: 0.9 });
+          const list = psOf(d).slice();
+          const ins = await SB.from('design_photoshoots').insert({
+            design_id:     d.id,
+            design_no:     d.design_no,
+            matching_name: it.name,
+            image_path:    img.path,
+            image_url:     img.url,
+            sort_order:    list.length,
+            created_by:    whoAmI()
+          }).select().single();
+          if (ins.error) throw ins.error;
+          list.push(ins.data);
+          dmPsByDesign.set(d.id, list);
+        }
+        touched.add(d.id);
+        bpRemove(key, it.tr.id);
+        ok++;
+      } catch (e) {
+        console.error('[DM] bulk photo fail:', d && d.design_no, it.name, e);
+        if (img) await removeStored(img.path);
+        bpMark(it.tr, '✗ ' + (e.message || e), true);
+        fail++;
+      }
+    }
+    if (btn) btn.textContent = b.label;
+    bpSum(key);
+    renderAll();
+    // The design open in the one-design form above shows its new matchings / photos too.
+    if (key === 'mtc') populateMatchingInfo(); else populatePsInfo();
+    setSync(fail ? 'Some failed' : '✓ ' + dmDesigns.length + ' designs', fail ? 'err' : 'ok');
+    toast(ok + ' ' + (key === 'mtc' ? 'matching(s)' : 'photoshoot photo(s)') + ' saved on ' + touched.size + ' design(s)' +
+      (fail ? ', ' + fail + ' failed (still in the list with the reason)' : '') + '.', fail ? 'warn' : 'success');
+  }
+  const bpSaveRow = (key, rid) => bpSave(key, [rid]);
+  const bpSaveAll = key => bpSave(key, DM_BP[key].rows.map(r => r.rid));
+  // Drag & drop onto the Bulk Upload Photos box.
+  function bpDrop(key, ev){
+    ev.preventDefault();
+    const z = ev.currentTarget; if (z) z.classList.remove('over');
+    bpAddFiles(key, ev.dataTransfer && ev.dataTransfer.files);
+  }
+
+  /* ══ BULK UPLOAD PSD FILES (Live tab) ════════════════════════════════
+     The same idea as Bulk Upload Photos, for the design's PSD: pick or drop
+     .psd files of many designs; each FILE NAME finds the saved Design No
+     (bpGuess: "-S" / "-R" ignored, the longest matching Design No wins), and
+     the table shows what will happen before anything is uploaded.
+     Saving is exactly the Edit popup's PSD step: the file goes up as it is
+     (uploadDesignPsd, design-psd/<DESIGN NO>/, never compressed), the
+     design's psd_path / psd_name / psd_size are set, and the OLD PSD file is
+     deleted from storage only after the design row has been updated, so a
+     failed save never leaves a design without its PSD.
+     Checked before the first upload: a .psd file, a LIVE Design No, and not
+     two files for the same design. A design that already has a PSD is not an
+     error: its PSD is replaced, after one question for the whole list. */
+  const DM_BPSD = { rows: [] };   // [{rid, file}]
+  async function bpsdAddFiles(input){
+    const fl = input && input.files ? input.files : input;
+    const all = Array.from(fl || []);
+    const files = all.filter(isPsd);
+    if (input && input.files) input.value = '';
+    if (all.length - files.length) toast((all.length - files.length) + ' file(s) skipped: not a .psd file.', 'warn');
+    if (!files.length) return;
+    await loadDesigns();
+    if (dmHasPsd === false) { dmPsdWarned = false; dmPsdNotice(); }
+    const live = bpLiveMap();
+    let found = 0;
+    files.forEach(f => {
+      // A file already in the list (same name and size) is not added twice.
+      if (DM_BPSD.rows.some(r => r.file.name === f.name && r.file.size === f.size)) return;
+      const g = bpGuess(f.name, live);
+      if (g.d) found++;
+      bpsdAddRow(f, g);
+    });
+    bpsdSum();
+    const sec = q('dmBpsdSec'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const miss = files.length - found;
+    toast(files.length + ' PSD file(s) added: ' + found + ' matched to a Design No' +
+      (miss ? ', ' + miss + ' not found (fix the Design No in those rows)' : '') + '.', miss ? 'warn' : 'success');
+  }
+  function bpsdAddRow(file, g){
+    const body = q('dmBpsdBody'); if (!body) return;
+    const rid = 'dmBpsd_' + (++dmBpSeq);
+    DM_BPSD.rows.push({ rid: rid, file: file });
+    const tr = document.createElement('tr');
+    tr.id = rid;
+    tr.innerHTML =
+      '<td><div class="dm-bpsd-file"><span class="dm-bpsd-ico">PSD</span><div style="min-width:0;">' +
+        '<b title="' + esc(file.name) + '">' + esc(file.name) + '</b><small>' + fmtSize(file.size) + '</small></div></div></td>' +
+      '<td><div class="dm-bulk-col">' +
+        '<input type="text" class="dm-bulk-in bp-design" value="' + esc(g.no) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;">' +
+        '<div class="dm-bp-dinfo"></div></div></td>' +
+      '<td class="dm-bpsd-cur"></td>' +
+      '<td><div class="dm-bulk-col" style="align-items:stretch;">' +
+        '<span class="bp-state dm-bp-state"></span>' +
+        '<div style="display:flex;gap:4px;">' +
+          '<button type="button" class="dm-btn dm-btn-success dm-btn-xs" style="flex:1;" onclick="dmBpsdSaveRow(\'' + rid + '\')">Save</button>' +
+          '<button type="button" class="dm-btn dm-btn-danger dm-btn-xs" title="Remove from this list" onclick="dmBpsdRemove(\'' + rid + '\')">✕</button>' +
+        '</div></div></td>';
+    body.appendChild(tr);
+    const din = tr.querySelector('.bp-design');
+    attachPicker(din, () => dmDesigns.filter(d => d.status === 'LIVE').map(d => d.design_no));
+    ['input', 'change'].forEach(ev => din.addEventListener(ev, () => bpsdRefreshRow(tr)));
+    bpsdRefreshRow(tr);
+  }
+  // The row's design (matched or not) and the PSD it has now (which this file will replace).
+  function bpsdRefreshRow(tr){
+    const d = bpFind((tr.querySelector('.bp-design') || {}).value);
+    const info = tr.querySelector('.dm-bp-dinfo');
+    if (info) {
+      info.className = 'dm-bp-dinfo ' + (d ? 'ok' : 'bad');
+      info.textContent = d ? ('✓ ' + [d.party_name, d.brand_name].filter(Boolean).join(' · ') + ' · ' + (d.matchings || []).length + ' shade(s)')
+                           : '✗ not found: type or pick the Design No';
+    }
+    const cur = tr.querySelector('.dm-bpsd-cur');
+    if (cur) cur.innerHTML = !d ? '<span class="dm-muted">—</span>'
+      : d.psd_path ? '<span class="dm-bpsd-old">' + esc(d.psd_name || 'design.psd') + (d.psd_size ? ' · ' + fmtSize(d.psd_size) : '') + '</span><br><small style="color:#b45309;font-weight:700;">will be replaced</small>'
+      : '<span class="dm-muted">No PSD yet</span>';
+    tr.classList.toggle('dm-bp-nodesign', !d);
+    bpsdSum();
+  }
+  function bpsdRemove(rid){
+    DM_BPSD.rows = DM_BPSD.rows.filter(r => r.rid !== rid);
+    const el = q(rid); if (el) el.remove();
+    bpsdSum();
+  }
+  function bpsdClear(){
+    if (DM_BPSD.rows.length && !confirm('Remove all ' + DM_BPSD.rows.length + ' PSD file(s) from this list? Nothing is saved.')) return;
+    DM_BPSD.rows.slice().forEach(r => bpsdRemove(r.rid));
+  }
+  function bpsdSum(){
+    const sec = q('dmBpsdSec'); if (sec) sec.style.display = DM_BPSD.rows.length ? '' : 'none';
+    const trs = DM_BPSD.rows.map(r => q(r.rid)).filter(Boolean);
+    const miss = trs.filter(tr => tr.classList.contains('dm-bp-nodesign')).length;
+    const repl = trs.filter(tr => { const d = bpFind(bpVal(tr, '.bp-design')); return d && d.psd_path; }).length;
+    const s = q('dmBpsdSum');
+    if (s) s.textContent = DM_BPSD.rows.length
+      ? DM_BPSD.rows.length + ' PSD file(s) · ' + (DM_BPSD.rows.length - miss) + ' matched' +
+        (repl ? ' · ' + repl + ' will replace an existing PSD' : '') + (miss ? ' · ' + miss + ' Design No not found' : '')
+      : '';
+    const sv = q('dmBpsdSaveAll'); if (sv) sv.disabled = !DM_BPSD.rows.length;
+  }
+
+  async function bpsdSave(rids){
+    if (!sbReady() || !guard('DESIGN_SAVE')) return;
+    await loadDesigns();
+    if (dmHasPsd === false) { dmPsdWarned = false; dmPsdNotice(); toast('Run DESIGN_PSD_MIGRATION.sql in the Supabase SQL Editor first.', 'error'); return; }
+    const trs = rids.map(id => q(id)).filter(Boolean);
+    if (!trs.length) { toast('There are no PSD files in the list.', 'warn'); return; }
+    const items = trs.map(tr => ({ tr: tr, d: bpFind(bpVal(tr, '.bp-design')), file: (DM_BPSD.rows.find(r => r.rid === tr.id) || {}).file }));
+    let err = '';
+    const seen = new Set();
+    items.forEach(it => {
+      let e = '';
+      if (!it.d) e = 'Design No not found';
+      else if (!it.file || !isPsd(it.file)) e = 'Not a .psd file';
+      else if (seen.has(it.d.id)) e = 'Two PSD files for ' + it.d.design_no;
+      if (it.d) seen.add(it.d.id);
+      bpMark(it.tr, e, !!e);
+      if (e && !err) err = (it.d ? it.d.design_no + ': ' : (it.file ? it.file.name + ': ' : '')) + e + '.';
+    });
+    if (err) {
+      const bad = items.find(it => it.tr.classList.contains('dm-bp-bad'));
+      if (bad) bad.tr.scrollIntoView({ block: 'center' });
+      toast(err, 'error'); return;
+    }
+    const repl = items.filter(it => it.d.psd_path);
+    if (repl.length && !confirm(repl.length + ' design(s) already have a PSD; it will be REPLACED by the new file:\n\n' +
+        repl.slice(0, 12).map(it => it.d.design_no + ':  ' + (it.d.psd_name || 'design.psd') + '  →  ' + it.file.name).join('\n') +
+        (repl.length > 12 ? '\n…' : '') + '\n\nReplace them?')) return;
+
+    const btn = q('dmBpsdSaveAll');
+    if (btn) btn.disabled = true;
+    setSync('Saving…', 'busy');
+    let ok = 0, fail = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i], d = it.d;
+      if (btn) btn.textContent = 'Uploading ' + (i + 1) + ' / ' + items.length + '…';
+      bpMark(it.tr, 'uploading ' + fmtSize(it.file.size) + '…', false);
+      let psd = null;
+      try {
+        psd = await uploadDesignPsd(d.design_no, it.file);
+        const oldPsd = d.psd_path || null;
+        const r = await dmWriteDesign(p => SB.from('design_master').update(p).eq('id', d.id), Object.assign({}, psd));
+        if (r.error) throw r.error;
+        if (dmHasPsd === false) throw new Error('PSD columns missing: run DESIGN_PSD_MIGRATION.sql');
+        Object.assign(d, psd);
+        // The old file goes only now, after the design points at the new one.
+        if (oldPsd && oldPsd !== psd.psd_path) await removeStored(oldPsd);
+        bpsdRemove(it.tr.id);
+        ok++;
+      } catch (e) {
+        console.error('[DM] bulk PSD fail:', d.design_no, e);
+        if (psd) await removeStored(psd.psd_path);
+        bpMark(it.tr, '✗ ' + (e.message || e), true);
+        fail++;
+      }
+    }
+    if (btn) { btn.textContent = 'Save All PSD Files'; }
+    bpsdSum();
+    renderAll();
+    setSync(fail ? 'Some failed' : '✓ ' + dmDesigns.length + ' designs', fail ? 'err' : 'ok');
+    toast(ok + ' PSD file(s) saved' + (fail ? ', ' + fail + ' failed (still in the list with the reason)' : '') + '.', fail ? 'warn' : 'success');
+  }
+  const bpsdSaveRow = rid => bpsdSave([rid]);
+  const bpsdSaveAll = () => bpsdSave(DM_BPSD.rows.map(r => r.rid));
+  function bpsdDrop(ev){
+    ev.preventDefault();
+    const z = ev.currentTarget; if (z) z.classList.remove('over');
+    bpsdAddFiles(ev.dataTransfer && ev.dataTransfer.files);
+  }
+
   /* ════════════════════════════════════════════════════════════════════
      BULK UPLOAD (old data: many photos at once)
   ════════════════════════════════════════════════════════════════════ */
@@ -1694,14 +2147,9 @@
       tr.id = rowId;
       tr.innerHTML =
         '<td><img src="' + previewUrl + '" class="dm-thumb" style="width:58px;height:58px;" alt=""></td>' +
-        /* Design No with the SKU No under it, in one column: both identify the
-           same design, and keeping them together keeps your eye in one place
-           while filling in. SKU is OPTIONAL here: bulk is for loading old
-           sheets where SKUs are often unknown, and requiring them would block
-           the whole load. Anything missed can be added later via Edit. */
+        // Design No only (no Design SKU No any more; the SKU is each matching's own).
         '<td><div class="dm-bulk-col">' +
-          '<input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;">' +
-          '<input type="text" class="dm-bulk-in b-sku" list="dmSkuList" oninput="this.value=this.value.toUpperCase()" placeholder="SKU No (optional)" style="font-weight:700;color:#7c3aed;"></div></td>' +
+          '<input type="text" class="dm-bulk-in b-design" value="' + esc(guess) + '" oninput="this.value=this.value.toUpperCase()" placeholder="Design No" style="font-weight:800;color:#2563eb;"></div></td>' +
         '<td><div class="dm-bulk-col">' +
           '<input type="text" class="dm-bulk-in b-party" list="dmPartyList" placeholder="Party">' +
           '<input type="text" class="dm-bulk-in b-brand" list="dmBrandList" placeholder="Brand">' +
@@ -1765,18 +2213,6 @@
     return Array.from(document.querySelectorAll('#dmBulkTableBody tr'))
       .some(o => o !== tr && up((o.querySelector('.b-design') || {}).value) === no);
   }
-  /* Is this row's SKU used anywhere else? Not a block, only a warning; the
-     same SKU can be on two sheets on purpose. Returns where it was found
-     ("design 5002" or "another row in this sheet"), otherwise ''. */
-  function bulkSkuClash(tr){
-    const s = up((tr.querySelector('.b-sku') || {}).value);
-    if (!s) return '';
-    const onScreen = Array.from(document.querySelectorAll('#dmBulkTableBody tr'))
-      .some(o => o !== tr && up((o.querySelector('.b-sku') || {}).value) === s);
-    if (onScreen) return 'another row in this sheet';
-    const hit = skuClash(s, null);
-    return hit ? ('design ' + hit.design_no) : '';
-  }
   function bulkMark(tr, txt, color, title){
     const s = tr.querySelector('.b-state');
     if (!s) return;
@@ -1796,7 +2232,7 @@
     const no = up(g('.b-design'));
     if (findByNo(no)) { bulkMark(tr, 'already exists', '#b45309'); return 'skipped'; }
     try {
-      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign(skuPatch(g('.b-sku')), {
+      const ins = await dmWriteDesign(p => SB.from('design_master').insert(p).select().single(), Object.assign({}, {
         design_no: no,
         party_name: g('.b-party'), brand_name: g('.b-brand'),
         supplier_name: g('.b-supplier') || null,
@@ -1847,13 +2283,6 @@
       toast('This Design No is also in another row above or below. Fix that first.', 'error');
       return;
     }
-    // SKU used elsewhere? Not a block; a question, as on Create New.
-    const clash = bulkSkuClash(tr);
-    if (clash) {
-      tr.scrollIntoView({ block: 'center' });
-      if (!confirm('SKU No ' + up((tr.querySelector('.b-sku') || {}).value) + ' is already on ' + clash + '.\n\nSave anyway?')) return;
-    }
-    dmSkuNotice();
     const btn = tr.querySelector('.b-save');
     if (btn) { btn.disabled = true; btn.textContent = '…'; }
     setSync('Saving…', 'busy');
@@ -1892,20 +2321,6 @@
       }
       seen.add(no);
     }
-    /* The SKU check is SEPARATE from the Design No check and only asks: the
-       same SKU can be in two places. Clashes across the whole list are
-       counted and asked about once; 40 confirm boxes for a 40-photo sheet
-       would help nobody. */
-    const clashes = [];
-    for (const tr of trs) {
-      const where = bulkSkuClash(tr);
-      if (where) clashes.push(up((tr.querySelector('.b-sku') || {}).value) + ' → ' + where);
-    }
-    if (clashes.length && !confirm(clashes.length + ' SKU No(s) already exist elsewhere:\n\n'
-        + clashes.slice(0, 10).join('\n') + (clashes.length > 10 ? '\n…' : '')
-        + '\n\nSave all anyway?')) return;
-    dmSkuNotice();
-
     const btn = document.querySelector('#dmBulkTableContainer .dm-table-foot .dm-btn');
     if (btn) btn.disabled = true;
     let done = 0, skipped = 0, failed = 0;
@@ -1960,7 +2375,6 @@
     const d = dmDesigns.find(x => x.id === id); if (!d) return;
     q('dmEditDesignId').value       = d.id;
     q('dmEditDesignNo').value       = d.design_no || '';
-    q('dmEditDesignSkuNo').value    = d.design_sku_no || '';
     q('dmEditDesignUnit').value     = d.design_unit || '';
     q('dmEditBedSize').value        = d.bed_size || '';
     q('dmEditBlanketQuality').value = d.blanket_quality || '';
@@ -2137,12 +2551,6 @@
       toast('Design No ' + newNo + ' belongs to another design.', 'error');
       return;
     }
-    /* SKU is optional on Edit (if an old design's SKU is unknown, the record
-       couldn't be opened at all), but a filled-in SKU that is on another design
-       is asked about: the same rule as on Create New. */
-    const newSku = up(q('dmEditDesignSkuNo').value);
-    if (!skuOkToSave(newSku, id)) { q('dmEditDesignSkuNo').focus(); return; }
-    dmSkuNotice();
     const psdFile = (q('dmEditPsd').files || [])[0] || null;
     if (psdFile && !isPsd(psdFile)) { toast('“' + psdFile.name + '” is not a .psd file. Select the Photoshop (.psd) file.', 'error'); return; }
     if (psdFile) dmPsdNotice();
@@ -2163,7 +2571,7 @@
       }
     }
     const oldPsd = d.psd_path || null;
-    const patch = Object.assign(skuPatch(newSku), psdPatch(psd), {
+    const patch = Object.assign(psdPatch(psd), {
       design_no:       newNo,
       design_unit:     q('dmEditDesignUnit').value.trim(),
       bed_size:        q('dmEditBedSize').value.trim(),
@@ -2337,7 +2745,6 @@
     /* SKU has its own multi-select, next to the Design No text box. They are
        different things: names are typed in the Design No box, SKUs are ticked
        from the list here, and the two combine with AND. */
-    { name:'dmSkuFilter',      label:'Design SKU No',   get:d => d.design_sku_no },
   ];
   const dmCatState = {};   // {filterName: {value: false}}; only unticks are remembered
   const DM_CAT_FX = dmFxMake({ bar:'dmCatFilterBar', side:'dmCatFilterSide', chips:'dmCatChips', search:'dmCatFSearch' }, 'dmToggleFilter');
@@ -2503,7 +2910,7 @@
             esc(m ? m.matching_name : '—') + ' (MASTER)</h2>' +
           '<table class="dm-cat-specs">' +
             '<tr><th>DESIGN NO</th><td><strong>' + esc(d.design_no) + '</strong></td>' +
-                '<th>SKU NO</th><td><strong>' + esc(d.design_sku_no || '—') + '</strong></td></tr>' +
+                '<th>MATCHING SKU</th><td><strong>' + esc((m && m.matching_sku_no) || '—') + '</strong></td></tr>' +
             '<tr><th>MONOPOLY</th><td><strong style="color:' + (d.monopoly === 'YES' ? '#dc2626' : 'inherit') + ';">' +
                 esc(d.monopoly || 'NO') + '</strong></td>' +
                 '<th>FRAME TYPE</th><td>' + esc(d.frame_type || '—') + '</td></tr>' +
@@ -2635,7 +3042,7 @@
           3: { cellWidth: 51 }
         },
         body: [
-          ['DESIGN NO', String(d.design_no || ''), 'SKU NO', String(d.design_sku_no || '-')],
+          ['DESIGN NO', String(d.design_no || ''), 'MATCHING SKU', String((m && m.matching_sku_no) || '-')],
           ['MONOPOLY', String(d.monopoly || 'NO'), 'DESIGN TYPE', String(d.design_type || 'N/A')],
           ['PARTY / BRAND', (d.party_name || '') + ' (' + (d.brand_name || '') + ')', 'BED SIZE', String(d.bed_size || '-')],
           // Bed Size already has its own row (above), so only Unit here;
@@ -2809,7 +3216,6 @@
     { name:'ocSupplierF', label:'Supplier Name',   get:d => d.supplier_name },
     { name:'ocFramesF',   label:'Total Frames',    get:d => String(totalFrames(d)) },
     { name:'ocMonoF',     label:'Monopoly',        get:d => d.monopoly || 'NO' },
-    { name:'ocSkuF',      label:'Design SKU No',   get:d => d.design_sku_no },
     { name:'ocNoF',       label:'Design No',       get:d => d.design_no },
   ];
   const ocDefaultState = () => ({ ocMonoF: { YES: false } });
@@ -3155,9 +3561,11 @@
       ocFill(doc, OC_C.gold); doc.roundedRect(x + w - 19, 34.5, 19, 5.5, 1, 1, 'F');
       doc.setFontSize(6.5); ocInk(doc, OC_C.white); doc.text('EXCLUSIVE', x + w - 9.5, 38.2, { align: 'center' });
     }
-    if (d.design_sku_no) {
+    // The master shade's own SKU (the Design SKU No is retired).
+    const mSku = (masterOf(d) || {}).matching_sku_no;
+    if (mSku) {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); ocInk(doc, OC_C.muted);
-      doc.text('SKU  ' + d.design_sku_no, x, 46);
+      doc.text('SKU  ' + mSku, x, 46);
     }
     let y = 53;
     [['QUALITY', d.blanket_quality], ['BED SIZE', d.bed_size], ['DESIGN TYPE', d.design_type && d.design_type !== 'N/A' ? d.design_type : '']]
@@ -3238,7 +3646,7 @@
     if (s.customer) { doc.setFont('helvetica', 'bold'); doc.text('Prepared for: ' + s.customer, OC.m, 30); }
     doc.setFont('helvetica', 'normal'); ocInk(doc, OC_C.muted);
     doc.text('Date: ' + s.date + (s.moq ? '      Minimum order: ' + s.moq : ''), OC.m, 35);
-    const head = ['#', 'DESIGN NO', 'SKU NO', 'QUALITY', 'BED SIZE', 'DESIGN TYPE', 'SHADES', 'PHOTOS'];
+    const head = ['#', 'DESIGN NO', 'QUALITY', 'BED SIZE', 'DESIGN TYPE', 'SHADES', 'PHOTOS'];
     if (anyRate) head.push('RATE (' + s.unit.toUpperCase() + ')');
     doc.autoTable({
       startY: 39,
@@ -3246,7 +3654,7 @@
       theme: 'grid',
       head: [head],
       body: list.map((d, i) => {
-        const r = [String(i + 1), String(d.design_no), String(d.design_sku_no || '-'), String(d.blanket_quality || '-'),
+        const r = [String(i + 1), String(d.design_no), String(d.blanket_quality || '-'),
           String(d.bed_size || '-'), String(d.design_type && d.design_type !== 'N/A' ? d.design_type : '-'),
           String((d.matchings || []).length), String(psOf(d).length)];
         if (anyRate) { const v = ocRate(d, s); r.push(v ? ocMoney(v) : 'On request'); }
@@ -3255,8 +3663,8 @@
       styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2.2, lineColor: OC_C.soft, lineWidth: 0.2, textColor: OC_C.ink },
       headStyles: { fillColor: OC_C.navy, textColor: OC_C.white, fontStyle: 'bold', fontSize: 8 },
       alternateRowStyles: { fillColor: [249, 248, 245] },
-      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { fontStyle: 'bold' }, 6: { halign: 'center' }, 7: { halign: 'center' },
-                      8: { halign: 'right', fontStyle: 'bold' } },
+      columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 1: { fontStyle: 'bold' }, 5: { halign: 'center' }, 6: { halign: 'center' },
+                      7: { halign: 'right', fontStyle: 'bold' } },
       didDrawPage: () => {
         const p = doc.getNumberOfPages();
         if (!kinds[p]) { kinds[p] = 'quote'; ocHead(doc, title, sub); }
@@ -3520,7 +3928,7 @@
         if (r && r.dataUrl) photos.push({ src: r.dataUrl, label: x.p.matching_name || '' });
       }
       designs.push({
-        design_no: d.design_no, sku: d.design_sku_no || '', quality: d.blanket_quality || '',
+        design_no: d.design_no, sku: (masterOf(d) || {}).matching_sku_no || '', quality: d.blanket_quality || '',
         bed_size: d.bed_size || '', design_type: d.design_type || '',
         shades: (d.matchings || []).map(m => m.matching_name).filter(Boolean),
         photos: photos, rate: ocRate(d, s)
@@ -3721,7 +4129,7 @@
       if (s && !s.has(msVal(f, r))) return false;
     }
     if (term && typeof sarvSearchMatch === 'function') {
-      return sarvSearchMatch([r.d.design_no, r.d.design_sku_no, r.m.matching_name, r.m.matching_sku_no,
+      return sarvSearchMatch([r.d.design_no, r.m.matching_name, r.m.matching_sku_no,
         r.d.party_name, r.d.brand_name, r.m.blanket_quality || r.d.blanket_quality], term);
     }
     return true;
@@ -4522,6 +4930,19 @@
   };
   window.dmBatchAddBlank            = batchAddBlank;
   window.dmBatchRemove              = batchRemove;
+  // Bulk Upload Photos (Add Matching / Add Photoshoot, many designs at once)
+  window.dmBpAddFiles               = bpAddFiles;
+  window.dmBpSaveRow                = bpSaveRow;
+  window.dmBpSaveAll                = bpSaveAll;
+  window.dmBpRemove                 = bpRemove;
+  window.dmBpDrop                   = bpDrop;
+  // Bulk Upload PSD Files (Live tab)
+  window.dmBpsdAddFiles             = bpsdAddFiles;
+  window.dmBpsdSaveRow              = bpsdSaveRow;
+  window.dmBpsdSaveAll              = bpsdSaveAll;
+  window.dmBpsdRemove               = bpsdRemove;
+  window.dmBpsdClear                = bpsdClear;
+  window.dmBpsdDrop                 = bpsdDrop;
   window.dmMtcSaveAll               = mtcSaveAll;
   window.dmPsSaveAll                = psSaveAll;
   window.dmPsDelete                 = psDelete;

@@ -626,7 +626,473 @@
   }
 
   /* ══ ROUTING ═════════════════════════════════════════════════════════ */
+  /* ══ BROWSER BACK / FORWARD (address bar per screen) ════════════════
+     Every place in the ERP gets its own address, so the browser's Back /
+     Forward buttons (and the phone's back gesture) step through the screens
+     the user went through, and a reload stays on the same screen:
+       #/                                   the Dashboard
+       #/sales/price-list                   a sidebar leaf (module / leaf)
+       #/master-data/item-master?sub=…      + the Master Data sub-tab
+       #/purchase/…?tab=po                  + the Purchase tab (entry / po)
+     One entry is added per real step, at the points that already exist:
+     a sidebar leaf (select), a screen that opens after its gate (the
+     sarvNavigateFromHome wrapper, so a cancelled passkey / Nature chooser adds
+     nothing), Home (sarvGoHome), a Master sub-tab and a Purchase tab.
+     Going Back replays the SAME leaf through select(), so every access check,
+     store switch, sub-tab restriction and gate still applies; nothing is
+     opened behind the user's rights. External tabs (Order Form, Packing) and
+     popup actions are not steps. The first entry of a visit is a replace, not
+     a push, so Back from the first screen leaves the ERP as before.
+     Apps inside an ERP iframe (Catalog, Price List, FMS …) keep their own
+     history; the browser steps through those first, as it always did. */
+  const NAV = { quiet: 0, restoring: false, ready: false, pending: null, lastLeaf: null, opened: false };
+  const navSlug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  function navUrl(st) {
+    if (!st || !st.m) return '#/';
+    const mod = MODULES.find(m => m.key === st.m);
+    if (mod && mod.dashboard && !st.l) return '#/';
+    const q = [];
+    if (st.sub) q.push('sub=' + encodeURIComponent(st.sub));
+    if (st.ptab) q.push('tab=' + encodeURIComponent(st.ptab));
+    return '#/' + navSlug(st.m) + (st.l ? '/' + navSlug(st.l) : '') + (q.length ? '?' + q.join('&') : '');
+  }
+  // An address back into a step (a reload, a pasted link); null when it names nothing known.
+  function navParse(hash) {
+    const h = String(hash || '');
+    if (h === '' || h === '#' || h === '#/') { const d = MODULES.find(m => m.dashboard); return d ? { m: d.key, l: null } : null; }
+    const mm = /^#\/([^/?]+)(?:\/([^?]*))?(?:\?(.*))?$/.exec(h); if (!mm) return null;
+    const mod = MODULES.find(m => navSlug(m.key) === mm[1]); if (!mod) return null;
+    const leaf = mm[2] ? (mod.children || []).find(c => navSlug(c.label) === mm[2]) : null;
+    const st = { m: mod.key, l: leaf ? leaf.label : null };
+    const qs = new URLSearchParams(mm[3] || '');
+    if (qs.get('sub')) st.sub = qs.get('sub');
+    if (qs.get('tab')) st.ptab = qs.get('tab');
+    return st;
+  }
+  const navSame = (a, b) => !!a && !!b && a.m === b.m && (a.l || null) === (b.l || null)
+                            && (a.sub || null) === (b.sub || null) && (a.ptab || null) === (b.ptab || null);
+  const navCur = () => (history.state && history.state.erp) || null;
+  function navPush(st) {
+    // The tab strip follows every real step, a Back / Forward replay included.
+    if (st && !NAV.quiet) { try { tabsNote(st); } catch (e) { console.warn('[ERP] tab strip not updated:', e.message || e); } }
+    if (!st || NAV.restoring || NAV.quiet) return;
+    try {
+      if (!NAV.ready) {           // the visit's first place: replace, so Back still leaves the ERP
+        history.replaceState({ erp: st }, '', navUrl(st));
+        NAV.ready = true;
+        // Opened with a screen in the address (reload / link): go there now, as a real step.
+        if (NAV.pending && !navSame(NAV.pending, st)) { const p = NAV.pending; NAV.pending = null; setTimeout(() => navOpen(p, true), 0); }
+        else NAV.pending = null;
+        return;
+      }
+      if (navSame(navCur(), st)) return;
+      history.pushState({ erp: st }, '', navUrl(st));
+    } catch (e) { console.warn('[ERP] address not updated:', e.message || e); }
+  }
+  /* Opens a step: Home first (closes overlays, clears Nature locks, puts the
+     shell up), then the leaf through the normal select(), then its sub-tab /
+     tab. push=false for Back / Forward (the browser has already moved). */
+  function navOpen(st, push) {
+    const gate = byId_('sarvLoginGate');
+    if (gate && gate.style.display !== 'none') { NAV.pending = st; return; }   // not logged in yet
+    const mod = MODULES.find(m => m.key === st.m);
+    NAV.restoring = !push;
+    try {
+      NAV.quiet++;
+      try { if (typeof window.sarvGoHome === 'function') window.sarvGoHome(); } finally { NAV.quiet--; }
+      if (!mod || !moduleVisible(mod)) { landing(); return; }   // no longer allowed: the normal landing
+      select(st.m, st.l || undefined);
+      if (st.sub && typeof window.switchMasterSubTab === 'function') {
+        const mp = document.getElementById('masterDataPanel');
+        if (mp && mp.style.display !== 'none') window.switchMasterSubTab(st.sub);
+      }
+      if (st.ptab) {
+        const b = document.querySelector('#fullPurchasePanel .nav-link[data-tab="' + st.ptab + '"]');
+        if (b && b.style.display !== 'none') b.click();
+      }
+    } finally { NAV.restoring = false; }
+  }
+  window.addEventListener('popstate', e => {
+    const st = (e.state && e.state.erp) || navParse(location.hash);
+    if (st) navOpen(st, false);
+  });
+
+  /* ══ SCREEN TITLE IN THE HEADER LINE ═══════════════════════════════════
+     Every screen used to open with its own title row inside the page
+     ("MASTER DATA MANAGEMENT", "PRODUCTION", "PRINT HISTORY / REPORTS" …),
+     a subtitle line under it and, on the forms, a "Draft Protection Active"
+     tag: about 50–60px of height before the real content. That title now
+     sits in the dark header line itself (next to the brand, before the
+     search box), and the in-page copies are hidden VISUALLY only
+     (body.erp-hdr-titles, erp-shell.css): they stay in the page, so the
+     code that rewrites them (the store-wise desk titles, the PO / Follow-up
+     title, the draft tag) keeps working and the header copy follows every
+     change, and screen readers still read them.
+     Which title: the first .panel-title of the screen that is on show (the
+     visible panel, or the visible Purchase tab). */
+  const HT = { queued: false };
+  function htFind(root) {
+    return [...root.querySelectorAll('.card > .panel-title')].find(t => shownEl(t.parentElement)) || null;
+  }
+  function htUpdate() {
+    HT.queued = false;
+    ['storeInterface', 'fullPurchasePanel'].forEach(id => {
+      const root = document.getElementById(id);
+      const head = root && root.querySelector(':scope > header');
+      if (!head) return;
+      let box = head.querySelector(':scope > .erp-hdr-title');
+      if (!box) { box = document.createElement('div'); box.className = 'erp-hdr-title'; }
+      /* Fixed place, on the LEFT: brand · TITLE · search box · the header's
+         own links. The title docks right after the brand, and qnPlace docks
+         the search box right after the title when there is one, so the two
+         never swap places whichever of them runs last. */
+      const h1 = head.querySelector(':scope > h1');
+      if (h1 ? box.previousElementSibling !== h1 : box.parentNode !== head || box !== head.firstElementChild) {
+        if (h1) h1.insertAdjacentElement('afterend', box); else head.insertBefore(box, head.firstChild);
+      }
+      const t = shownEl(root) ? htFind(root) : null;
+      if (!t) { box.hidden = true; return; }
+      const card = t.parentElement;
+      const sub = card.querySelector(':scope > .panel-subtitle');
+      const tag = card.querySelector(':scope > .autosave-tag');
+      const title = t.textContent.replace(/\s+/g, ' ').trim();
+      const subT = sub ? sub.textContent.replace(/\s+/g, ' ').trim() : '';
+      const html = '<span class="erp-hdr-l1"><b>' + esc(title) + '</b>'
+                 + (tag && tag.textContent.trim() ? '<span class="erp-hdr-tag">' + esc(tag.textContent.trim()) + '</span>' : '') + '</span>'
+                 + (subT ? '<small>' + esc(subT) + '</small>' : '');
+      if (box.innerHTML !== html) box.innerHTML = html;
+      box.title = title + (subT ? '\n' + subT : '');
+      box.hidden = false;
+    });
+  }
+  /* Batched: many changes (a panel switch, a store switch) come together, so
+     one update runs after them. A timer, not requestAnimationFrame: rAF does
+     not run in a background window, and a missed one would have left the
+     "queued" flag set and frozen the header title for good. */
+  function htSchedule() {
+    if (HT.queued) return;
+    HT.queued = true;
+    setTimeout(htUpdate, 0);
+  }
+  function htInit() {
+    document.body.classList.add('erp-hdr-titles');
+    /* Follow the titles wherever they change: their text (store-wise desk
+       titles, PO / Follow-up), and which panel / Purchase tab is on show. */
+    const roots = ['storeInterface', 'fullPurchasePanel'].map(id => document.getElementById(id)).filter(Boolean);
+    if (window.MutationObserver) {
+      const mo = new MutationObserver(muts => {
+        for (const m of muts) {
+          const n = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+          if (!n) continue;
+          if (m.type === 'attributes' ? (n.classList.contains('main-panel') || n.classList.contains('tab-content') || n === roots[0] || n === roots[1])
+                                      : !!n.closest('.panel-title, .panel-subtitle, .autosave-tag')) { htSchedule(); return; }
+        }
+      });
+      roots.forEach(r => mo.observe(r, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] }));
+    }
+    htUpdate();
+  }
+
+  /* ══ OPEN SCREENS AS TABS (browser-style strip along the top) ══════════
+     Every screen the user opens stays in a strip of tabs at the top of the
+     page; a click switches straight back to it, exactly as it was left
+     (typed data, scroll, an app's iframe), because the ERP's screens are
+     panels that are only hidden, never rebuilt. So a switch does NOT go
+     through Home or the passkey / Nature chooser again: it re-shows the
+     panel (activatePanel) with the store, Master sub-tab and PO mode the
+     tab was on.
+     One tab per real screen (`key`): an Inward / Outward / Report panel,
+     the Purchase panel's entry / PO side, a Master Data sub-tab, an ERP
+     app's iframe. Store 1 and Store 2 share the same Inward form, so
+     opening Inward in Store 1 while Store 2's Inward is a tab UPDATES that
+     tab (and says so in its title) instead of making a second one: two tabs
+     on one form would let a draft typed for one store be saved in the other.
+     The Dashboard / Coming Soon pages are the Home button, not tabs.
+     The list is kept per user (localStorage), so after a reload or the next
+     login the tabs are still there; such a tab opens the normal way (with
+     its gates) on its first click, and switches instantly after that.
+     Recorded at the same points as Back / Forward (navPush), so anything
+     that opens a screen (sidebar, Quick Nav, My Day, a link) makes its tab. */
+  const TABS = { list: [], active: null, warm: new Set(), uid: null, max: 12, el: null };
+  const shownEl = el => !!el && el.getClientRects().length > 0;
+  const shellUp = () => { const s = byId_('erpShell'); return !!s && s.classList.contains('open') && !s.classList.contains('drawer'); };
+  const leafOf = st => { const m = MODULES.find(x => x.key === st.m); return m && st.l ? (m.children || []).find(c => c.label === st.l) : null; };
+  function tabsUid() { try { return (typeof sarvCurrentUser !== 'undefined' && sarvCurrentUser && sarvCurrentUser.id) || 'anon'; } catch (e) { return 'anon'; } }
+  /* Each ERP browser tab / window keeps its OWN strip (sessionStorage: it
+     survives a reload of that window only), so two ERP windows side by side
+     never overwrite each other's tabs. The last strip saved is also kept in
+     localStorage, and a brand-new window (the next login) starts from it.
+     A window opened by "Duplicate in new browser tab" (?dup=1) starts with
+     just the screen it was opened for. */
+  const TAB_DUP = (() => { try { return new URLSearchParams(location.search).has('dup'); } catch (e) { return false; } })();
+  function tabsLoad() {
+    const uid = String(tabsUid());
+    if (TABS.uid === uid) return;
+    TABS.uid = uid; TABS.list = []; TABS.active = null; TABS.warm = new Set();
+    const read = s => { try { const d = JSON.parse(s || 'null'); return d && Array.isArray(d.list) ? d.list : null; } catch (e) { return null; } };
+    let list = null;
+    try { list = read(sessionStorage.getItem('erp_tabs_v1:' + uid)); } catch (e) {}
+    if (!list && !TAB_DUP) { try { list = read(localStorage.getItem('erp_tabs_v1:' + uid)); } catch (e) {} }
+    TABS.list = (list || []).filter(t => t && t.id && t.key && t.route && t.route.m).slice(0, TABS.max);
+  }
+  function tabsSave() {
+    const s = JSON.stringify({ list: TABS.list.map(t => ({ id: t.id, key: t.key, route: t.route, title: t.title, sub: t.sub || '' })) });
+    try { sessionStorage.setItem('erp_tabs_v1:' + TABS.uid, s); } catch (e) {}
+    try { localStorage.setItem('erp_tabs_v1:' + TABS.uid, s); } catch (e) {}
+  }
+  /* Duplicate: the same screen in a NEW browser tab. One page can show each
+     ERP screen only once (its form is a single panel), so a second copy is a
+     second ERP window, opened straight on that screen through its address
+     (the same login, no second sign-in). The new copy starts with a fresh
+     form; what is typed here stays here. */
+  function tabsDuplicate(id) {
+    const t = TABS.list.find(x => x.id === id); if (!t) return;
+    const url = location.pathname + '?dup=1' + navUrl(t.route);
+    let w = null;
+    try { w = window.open(url, '_blank'); } catch (e) { w = null; }
+    if (w) { try { w.opener = null; } catch (e) {} return; }
+    if (typeof showToast === 'function')
+      showToast('The browser blocked the new tab. Allow pop-ups for this site, or <a href="' + esc(url) + '" target="_blank" rel="noopener">open “' + esc(t.title) + '” here</a>.', 'warn');
+  }
+  function tabsCloseRight(id) {
+    const i = TABS.list.findIndex(x => x.id === id); if (i < 0) return;
+    TABS.list.splice(i + 1).forEach(t => TABS.warm.delete(t.id));
+    if (TABS.active && !TABS.list.some(x => x.id === TABS.active)) tabsActivate(id);
+    tabsSave(); tabsRender();
+  }
+  // Right-click menu of one tab, at the pointer.
+  function tabsMenu(id, x, y) {
+    const p = byId_('erpTabPop'); if (!p) return;
+    const i = TABS.list.findIndex(t => t.id === id);
+    p.innerHTML =
+        '<button type="button" class="erp-tab-pop-item" data-tabdup="' + esc(id) + '">&#10697;&nbsp; Duplicate in new browser tab</button>'
+      + '<div class="erp-tab-pop-sep"></div>'
+      + '<button type="button" class="erp-tab-pop-item" data-tabclose="' + esc(id) + '">Close tab</button>'
+      + '<button type="button" class="erp-tab-pop-item" data-tabmenu="others" data-for="' + esc(id) + '"' + (TABS.list.length > 1 ? '' : ' disabled') + '>Close other tabs</button>'
+      + '<button type="button" class="erp-tab-pop-item" data-tabmenu="right" data-for="' + esc(id) + '"' + (i >= 0 && i < TABS.list.length - 1 ? '' : ' disabled') + '>Close tabs to the right</button>';
+    p.style.left = Math.max(6, Math.min(x, window.innerWidth - 250)) + 'px';
+    p.style.right = 'auto';
+    p.hidden = false;
+  }
+  // Which screen is on show right now (null = the shell, i.e. Home).
+  function tabNow(st) {
+    if (shellUp()) return null;
+    const fp = document.getElementById('fullPurchasePanel');
+    if (shownEl(fp)) {
+      const a = fp.querySelector('.nav-link[data-tab].active');
+      const side = a ? a.dataset.tab : (st.ptab || 'entry');
+      return { key: 'fullPurchasePanel:' + side + (side === 'po' ? ':' + (poOnly || 'build') : ''), panel: 'fullPurchasePanel', ptab: side };
+    }
+    const p = [...document.querySelectorAll('#storeInterface .main-panel')].find(shownEl);
+    if (!p || !p.id) return null;
+    if (p.id === 'masterDataPanel') {
+      const lf = leafOf(st), sub = st.sub || (lf && lf.sub) || onlySub || '';
+      return { key: 'masterDataPanel:' + sub, panel: p.id, sub: sub };
+    }
+    return { key: p.id, panel: p.id };
+  }
+  function tabTitle(st) {
+    const m = MODULES.find(x => x.key === st.m);
+    const base = st.l || (m ? m.label : st.m);
+    return m && m.store ? base + ' · ' + m.label : base;
+  }
+  // Called for every recorded step (navPush): adds / updates / activates the screen's tab.
+  function tabsNote(st) {
+    if (TABS.busy) return;
+    tabsLoad();
+    const now = tabNow(st);
+    if (!now) { TABS.active = null; tabsRender(); return; }
+    let t = TABS.list.find(x => x.key === now.key);
+    if (!t) {
+      t = { id: 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), key: now.key };
+      const at = TABS.list.findIndex(x => x.id === TABS.active);
+      TABS.list.splice(at >= 0 ? at + 1 : TABS.list.length, 0, t);
+      // Too many: the oldest tab that is not this one goes.
+      while (TABS.list.length > TABS.max) {
+        const drop = TABS.list.findIndex(x => x.id !== t.id);
+        TABS.warm.delete(TABS.list[drop].id); TABS.list.splice(drop, 1);
+      }
+    }
+    /* The store is part of the tab only for a store screen (a Store 1 / Store 2
+       leaf, or a panel store-core counts as a store panel); any other tab
+       leaves the current store alone when it is switched to. */
+    const mod = MODULES.find(x => x.key === st.m);
+    const storeScreen = !!(mod && mod.store) || (typeof SARV_STORE_PANELS !== 'undefined' && SARV_STORE_PANELS.indexOf(now.panel) >= 0);
+    Object.assign(t, { route: Object.assign({}, st, now.ptab ? { ptab: now.ptab } : {}), title: tabTitle(st), panel: now.panel, sub: now.sub || '',
+                       store: storeScreen && typeof sarvStore !== 'undefined' ? sarvStore : null,
+                       imStore: now.panel === 'masterDataPanel' && typeof sarvItemMasterStore !== 'undefined' ? sarvItemMasterStore : null,
+                       onlySub: onlySub, poOnly: poOnly });
+    TABS.active = t.id; TABS.warm.add(t.id);
+    tabsSave(); tabsRender();
+  }
+  /* Switch to a tab. Warm (opened in this visit): the panel is shown again as
+     it was, with its store / sub-tab / PO mode; no Home, no gates. Cold (from
+     an earlier visit): opened the normal way through its leaf. */
+  function tabsActivate(id) {
+    const t = TABS.list.find(x => x.id === id); if (!t) return;
+    if (TABS.active === id && !shellUp()) return;
+    const lf = leafOf(t.route), mod = MODULES.find(x => x.key === t.route.m);
+    if (!mod || !moduleVisible(mod) || (lf && !leafVisible(lf))) {   // no longer allowed for this role
+      tabsClose(id, true);
+      if (typeof showToast === 'function') showToast('“' + t.title + '” is not available for this login any more.', 'warn');
+      return;
+    }
+    if (!TABS.warm.has(id) || !t.panel || typeof window.activatePanel !== 'function') { navOpen(t.route, true); return; }
+    TABS.busy = true;
+    NAV.quiet++;
+    try {
+      if (t.store && typeof window.sarvSetStore === 'function' && t.store !== sarvStore) window.sarvSetStore(t.store);
+      if (typeof window.sarvSetItemMasterStore === 'function' && t.panel === 'masterDataPanel' && t.imStore !== sarvItemMasterStore) window.sarvSetItemMasterStore(t.imStore);
+      onlySub = t.onlySub || null; poOnly = t.poOnly || null;
+      window.activatePanel(t.panel);                    // its wrapper takes the shell down
+      if (t.panel === 'masterDataPanel') {
+        if (typeof sarvApplySubTabs_ === 'function') sarvApplySubTabs_();
+        if (t.sub && typeof window.switchMasterSubTab === 'function') window.switchMasterSubTab(t.sub);
+        applyOnlySub();
+      }
+      if (t.panel === 'fullPurchasePanel') {
+        const b = document.querySelector('#fullPurchasePanel .nav-link[data-tab="' + (t.route.ptab || 'entry') + '"]');
+        if (b && !b.classList.contains('active')) b.click();
+        if (t.route.ptab === 'po') openPoMode(); else applyOnlySub();
+      }
+    } catch (e) {
+      console.warn('[ERP] tab switch fell back to a normal open:', e.message || e);
+      TABS.busy = false; NAV.quiet--;
+      navOpen(t.route, true); return;
+    } finally {
+      if (TABS.busy) { TABS.busy = false; NAV.quiet--; }
+    }
+    NAV.lastLeaf = t.route;
+    navPush(t.route);          // address + Back / Forward
+    TABS.active = id; tabsRender();
+  }
+  /* Close a tab. Its screen is not reset (the panel is shared and keeps its
+     draft until the next visit, as before); if it was the one on show, the
+     neighbour takes over, or Home when it was the last. */
+  function tabsClose(id, quietly) {
+    const i = TABS.list.findIndex(x => x.id === id); if (i < 0) return;
+    const wasActive = TABS.active === id && !shellUp();
+    TABS.list.splice(i, 1); TABS.warm.delete(id);
+    if (TABS.active === id) TABS.active = null;
+    tabsSave(); tabsRender();
+    if (!wasActive || quietly) return;
+    const next = TABS.list[i] || TABS.list[i - 1];
+    if (next) tabsActivate(next.id);
+    else if (typeof window.sarvGoHome === 'function') window.sarvGoHome();
+  }
+  function tabsCloseOthers(id) {
+    TABS.list = TABS.list.filter(x => x.id === id);
+    [...TABS.warm].forEach(w => { if (w !== id) TABS.warm.delete(w); });
+    tabsSave(); tabsRender();
+  }
+  function tabsBuild() {
+    const bar = document.createElement('div');
+    bar.id = 'erpTabs';
+    bar.setAttribute('role', 'tablist');
+    bar.setAttribute('aria-label', 'Open screens');
+    bar.innerHTML =
+      '<button type="button" class="erp-tab-home" data-tabhome="1" title="Home (Dashboard)">' + I.dash + '<span>Home</span></button>' +
+      '<div class="erp-tab-list" id="erpTabList"></div>' +
+      '<button type="button" class="erp-tab-menu" id="erpTabMenuBtn" title="Open screens">&#9662;</button>' +
+      '<div class="erp-tab-pop" id="erpTabPop" hidden></div>';
+    document.body.appendChild(bar);
+    document.body.classList.add('erp-tabs-on');
+    TABS.el = bar;
+    bar.addEventListener('click', e => {
+      if (e.target.closest('[data-tabhome]')) { if (typeof window.sarvGoHome === 'function') window.sarvGoHome(); return; }
+      const d = e.target.closest('[data-tabdup]');
+      if (d) { e.stopPropagation(); tabsPopHide(); tabsDuplicate(d.dataset.tabdup); return; }
+      const x = e.target.closest('[data-tabclose]');
+      if (x) { e.stopPropagation(); tabsPopHide(); tabsClose(x.dataset.tabclose); return; }
+      const mn = e.target.closest('[data-tabmenu]');
+      if (mn) {
+        tabsPopHide();
+        if (mn.dataset.tabmenu === 'others') { tabsActivate(mn.dataset.for); tabsCloseOthers(mn.dataset.for); }
+        if (mn.dataset.tabmenu === 'right') tabsCloseRight(mn.dataset.for);
+        return;
+      }
+      const t = e.target.closest('[data-tabid]');
+      // Ctrl / Shift / ⌘ + click = duplicate in a new browser tab, as with a link.
+      if (t && (e.ctrlKey || e.shiftKey || e.metaKey)) { e.preventDefault(); tabsPopHide(); tabsDuplicate(t.dataset.tabid); return; }
+      if (t) { tabsPopHide(); tabsActivate(t.dataset.tabid); return; }
+      if (e.target.closest('#erpTabMenuBtn')) { tabsPopToggle(); return; }
+      const a = e.target.closest('[data-tabact]');
+      if (a) {
+        tabsPopHide();
+        if (a.dataset.tabact === 'others' && TABS.active) tabsCloseOthers(TABS.active);
+        if (a.dataset.tabact === 'all') { const ids = TABS.list.map(t => t.id); ids.forEach(id => tabsClose(id, true)); if (typeof window.sarvGoHome === 'function') window.sarvGoHome(); }
+      }
+    });
+    // Right-click on a tab: its own menu (Duplicate / Close / Close others / Close to the right).
+    bar.addEventListener('contextmenu', e => {
+      const t = e.target.closest('.erp-tab[data-tabid]'); if (!t) return;
+      e.preventDefault();
+      tabsMenu(t.dataset.tabid, e.clientX, e.clientY);
+    });
+    // Middle-click closes a tab, as in a browser.
+    bar.addEventListener('auxclick', e => {
+      if (e.button !== 1) return;
+      const t = e.target.closest('[data-tabid]'); if (t) { e.preventDefault(); tabsClose(t.dataset.tabid); }
+    });
+    document.addEventListener('click', e => { if (!e.target.closest('#erpTabPop') && !e.target.closest('#erpTabMenuBtn')) tabsPopHide(); });
+    // Ctrl + Alt + → / ← : next / previous tab (Ctrl+Tab belongs to the browser).
+    document.addEventListener('keydown', e => {
+      if (!(e.ctrlKey && e.altKey) || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') || !TABS.list.length) return;
+      e.preventDefault();
+      const i = TABS.list.findIndex(x => x.id === TABS.active);
+      const n = TABS.list.length, j = i < 0 ? 0 : (i + (e.key === 'ArrowRight' ? 1 : n - 1)) % n;
+      tabsActivate(TABS.list[j].id);
+    });
+    tabsLoad(); tabsRender();
+  }
+  function tabsPopHide() { const p = byId_('erpTabPop'); if (p) p.hidden = true; }
+  function tabsPopToggle() {
+    const p = byId_('erpTabPop'); if (!p) return;
+    if (!p.hidden) { p.hidden = true; return; }
+    p.style.left = ''; p.style.right = '6px';   // under the ▾ (a right-click menu moved it)
+    p.innerHTML = (TABS.list.length
+        ? TABS.list.map(t => '<div class="erp-tab-pop-row">'
+            + '<button type="button" class="erp-tab-pop-item' + (t.id === TABS.active && !shellUp() ? ' active' : '') + '" data-tabid="' + esc(t.id) + '">' + esc(t.title) + '</button>'
+            + '<button type="button" class="erp-tab-pop-dup" data-tabdup="' + esc(t.id) + '" title="Duplicate in new browser tab">&#10697;</button></div>').join('')
+        : '<div class="erp-tab-pop-empty">No screens open</div>')
+      + '<div class="erp-tab-pop-sep"></div>'
+      + '<button type="button" class="erp-tab-pop-item" data-tabact="others"' + (TABS.active ? '' : ' disabled') + '>Close other tabs</button>'
+      + '<button type="button" class="erp-tab-pop-item" data-tabact="all"' + (TABS.list.length ? '' : ' disabled') + '>Close all tabs</button>';
+    p.hidden = false;
+  }
+  function tabsRender() {
+    const box = byId_('erpTabList'); if (!box) return;
+    tabsLoad();
+    const homeOn = shellUp() || !TABS.active;
+    const home = TABS.el && TABS.el.querySelector('.erp-tab-home');
+    if (home) home.classList.toggle('active', homeOn);
+    box.innerHTML = TABS.list.map(t => {
+      const on = t.id === TABS.active && !homeOn;
+      return '<div class="erp-tab' + (on ? ' active' : '') + (TABS.warm.has(t.id) ? '' : ' cold') + '" role="tab" aria-selected="' + on + '" data-tabid="' + esc(t.id) + '" title="' + esc(t.title) + (TABS.warm.has(t.id) ? '' : ' (opens fresh)') + '\nRight-click: more · Ctrl+click: duplicate in new browser tab">'
+           + '<span class="erp-tab-t">' + esc(t.title) + '</span>'
+           + '<button type="button" class="erp-tab-x" data-tabclose="' + esc(t.id) + '" title="Close tab" aria-label="Close ' + esc(t.title) + '">&#10005;</button></div>';
+    }).join('');
+    const act = box.querySelector('.erp-tab.active');
+    if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  /* select() is the sidebar's one way into a place. The wrapper records the
+     step once it has really happened: a Dashboard / Coming Soon page shown
+     in the shell, or a screen that opened straight away. A screen that waits
+     on a gate is recorded when it opens (sarvNavigateFromHome wrapper). */
   function select(modKey, leafLabel) {
+    const st = { m: modKey, l: leafLabel || null };
+    NAV.lastLeaf = st; NAV.opened = false;
+    NAV.quiet++;
+    let r;
+    try { r = selectInner(modKey, leafLabel); } finally { NAV.quiet--; }
+    const s = byId_('erpShell');
+    const shellPage = s && s.classList.contains('open') && !s.classList.contains('drawer')
+                      && current === modKey && (currentLeaf || null) === (leafLabel || null);
+    if (NAV.opened || shellPage) navPush(st);
+    return r;
+  }
+  function selectInner(modKey, leafLabel) {
     const mod = MODULES.find(m => m.key === modKey); if (!mod) return;
     // Switched off in Tab Visibility while this screen was open — land the
     // user somewhere they are allowed instead of on a module that is gone.
@@ -789,6 +1255,10 @@
     if (!mod || !moduleVisible(mod)) { landing(); return; }
     renderNav();
     if (mod.dashboard) renderDashboard();
+    /* The shell page now in front is a step (Back / Forward). On the first
+       show of a visit this is the replace that starts the history; the
+       same place twice in a row is never added. */
+    navPush({ m: current, l: currentLeaf || null });
   }
   /* The shell goes down because a screen is opening, so the edge handle
      comes up. This is the only place that turns the launcher on, and it is
@@ -1356,7 +1826,8 @@
     if (qnWrap.parentNode !== host) {
       qnClosePanel();
       if (host.tagName === 'HEADER') {
-        const h1 = host.querySelector(':scope > h1');
+        // After the screen title when the header shows one (brand · title · search), else after the brand.
+        const h1 = host.querySelector(':scope > .erp-hdr-title') || host.querySelector(':scope > h1');
         if (h1) h1.insertAdjacentElement('afterend', qnWrap); else host.insertBefore(qnWrap, host.firstChild);
         host.classList.add('erp-qn-host');
       } else {
@@ -1451,6 +1922,22 @@
       return;
     }
     build();
+    tabsBuild();   // the open-screens tab strip along the top
+    htInit();      // each screen's title in the header line
+    /* Opened with a screen in the address (a reload, or a link someone sent):
+       remembered BEFORE anything below can show the shell, and opened once the
+       login is in place (navPush, at the first place of the visit). The
+       Dashboard address needs nothing. */
+    try {
+      const st = navParse(location.hash);
+      const dash = MODULES.find(m => m.dashboard);
+      if (st && !(dash && st.m === dash.key && !st.l)) NAV.pending = st;
+      // ?dup=1 (a duplicated tab) is read once (TAB_DUP) and taken off the address.
+      if (TAB_DUP) {
+        const qs = new URLSearchParams(location.search); qs.delete('dup');
+        history.replaceState(history.state, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash);
+      }
+    } catch (e) { console.warn('[ERP] address not read:', e.message || e); }
     qnInit();
     document.body.classList.add('erp-shell-on');   // hides the old tile home
 
@@ -1465,6 +1952,8 @@
         // leaf the user comes from sets its own restriction.
         setOnlySub(null);
         show();
+        // Home is a step of its own (Back from it returns to the screen just left).
+        if (current) navPush({ m: current, l: currentLeaf || null });
         setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
         return r;
       };
@@ -1488,9 +1977,36 @@
       const orig = window.sarvNavigateFromHome;
       window.sarvNavigateFromHome = function () {
         hide();
-        return orig.apply(this, arguments);
+        const r = orig.apply(this, arguments);
+        /* The screen is open now (every gate has passed). Inside select() the
+           step is recorded by select's wrapper; a screen that opened later,
+           after a passkey or Nature chooser, is recorded here. */
+        NAV.opened = true;
+        if (!NAV.quiet && NAV.lastLeaf) navPush(NAV.lastLeaf);
+        return r;
       };
     }
+    /* A Master Data sub-tab and a Purchase tab are steps too, recorded on top
+       of the screen they belong to (switching inside one screen). Not while a
+       leaf is opening (select sets its own sub-tab) or while Back replays one. */
+    if (typeof window.switchMasterSubTab === 'function') {
+      const orig = window.switchMasterSubTab;
+      window.switchMasterSubTab = function (id) {
+        const r = orig.apply(this, arguments);
+        const cur = navCur();
+        if (cur && !NAV.quiet && !NAV.restoring && id && cur.sub !== id) navPush(Object.assign({}, cur, { sub: id }));
+        return r;
+      };
+    }
+    document.addEventListener('click', e => {
+      const b = e.target.closest && e.target.closest('#fullPurchasePanel .nav-link[data-tab]');
+      if (!b || NAV.quiet || NAV.restoring) return;
+      // After the tab's own handler has switched it.
+      setTimeout(() => {
+        const cur = navCur();
+        if (cur && cur.ptab !== b.dataset.tab) navPush(Object.assign({}, cur, { ptab: b.dataset.tab }));
+      }, 0);
+    });
     /* The Tab Visibility save (and login) goes through sarvApplyAccess(), so
        the sidebar is redrawn from there. Switching a module ON or OFF in the
        Admin Panel and pressing Save updates the sidebar with no page reload.
@@ -1510,6 +2026,8 @@
             renderNav();
           }
         } catch (e) { console.warn('[ERP] sidebar refresh skipped:', e.message || e); }
+        // A different login has its own tabs; rights may have changed what is allowed.
+        try { tabsRender(); } catch (e) {}
         setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
         return r;
       };
@@ -1520,7 +2038,9 @@
       const orig = window.activatePanel;
       window.activatePanel = function () {
         hide();
-        return orig.apply(this, arguments);
+        const r = orig.apply(this, arguments);
+        htSchedule();   // the header shows the new screen's title
+        return r;
       };
     }
     // If the login was already restored before this file ran, sarvGoHome has
@@ -1540,7 +2060,9 @@
       const mod = MODULES.find(m => m.key === modKey);
       const leaf = mod && (mod.children || []).find(l => l.label === leafLabel);
       if (!leaf || !moduleVisible(mod) || !leafVisible(leaf)) return false;
-      if (typeof window.sarvGoHome === 'function') window.sarvGoHome();
+      // One step, not two: the Home on the way is not recorded.
+      NAV.quiet++;
+      try { if (typeof window.sarvGoHome === 'function') window.sarvGoHome(); } finally { NAV.quiet--; }
       select(modKey, leafLabel);
       return true;
     };
@@ -1551,7 +2073,8 @@
       if (qs.has('tt')) {
         deepTt = qs.get('tt'); deepUntil = Date.now() + DEEP_WAIT;
         qs.delete('tt');
-        history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash);
+        // history.state kept: it is the Back / Forward step of this place.
+        history.replaceState(history.state, '', location.pathname + (qs.toString() ? '?' + qs : '') + location.hash);
         setTimeout(tryDeepLink, 0);   // after the caller has finished, so nothing puts Home back over it
         setTimeout(tryDeepLink, DEEP_WAIT + 500);   // last try, which also gives the message
       }

@@ -77,6 +77,11 @@ end of <body>:     store-core.js → store-design-master.js → store-nav-keys.j
     (`category_purchasers.store1/store2`, `sarvOpenPrpoMaster`, `prpoVisibleIn_`). One PO series for both;
     PR / PO PDFs print UNIT-1 / UNIT-2 from the record's store (`sarvPdfUnit_`, mobile `pdfUnit_`).
 - `store-design-master.js`: Production › Design Master. All ids/classes/functions prefixed `dm`.
+- `erp-shell.js` also owns browser history (`NAV`: one `#/module/leaf` address per screen, Back / Forward
+  replays the leaf through `select()`, reload reopens it) and the open-screens tab strip (`TABS`, `#erpTabs`,
+  `body.erp-tabs-on` with `--erp-tabs-h` in `erp-shell.css`): one tab per real panel, switching re-shows the
+  panel via `activatePanel` without gates, per-user list in localStorage `erp_tabs_v1:<user id>`. A new
+  full-height rule must subtract `var(--erp-tabs-h)`.
 - `erp-shell.js`: sidebar, dashboard and `MODULES` map. A leaf with `go` opens an existing screen; without
   `go` it shows "Coming Soon". New module → add to `MODULES` **and** add its `ERP_<key>` row to `SARV_TABS`.
   Other leaf options: `external` (opens that page in a new tab; used by Order Form / Packing), `action` +

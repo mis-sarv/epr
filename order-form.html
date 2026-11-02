@@ -4650,7 +4650,6 @@ function ofDesignSkuText_(x){
 const DPK_BUCKET='sarv-pdfs';
 const DPK_COLS=[
   {id:'no',    l:'Design No',     get:d=>d.design_no},
-  {id:'sku',   l:'Design SKU No', get:d=>d.design_sku_no},
   {id:'type',  l:'Type',          get:d=>d.design_type},
   {id:'party', l:'Party',         get:d=>d.party_name},
   {id:'brand', l:'Brand',         get:d=>d.brand_name},
@@ -4725,7 +4724,8 @@ const dpkF_=cid=>String(document.getElementById('dpk-f-'+cid)?.value||'');
 function dpkPass_(d,skip){
   const term=dpkUp_(document.getElementById('dpkSearch')?.value);
   if(term){
-    const hay=DPK_COLS.map(c=>dpkVal_(c,d)).concat((d.matchings||[]).map(m=>m.matching_name));
+    // Shade names and their Matching SKU Nos are searchable too (the Design SKU No is retired).
+    const hay=DPK_COLS.map(c=>dpkVal_(c,d)).concat((d.matchings||[]).map(m=>m.matching_name),(d.matchings||[]).map(m=>m.matching_sku_no||''));
     if(!hay.some(v=>dpkUp_(v).includes(term))) return false;
   }
   const mt=dpkUp_(document.getElementById('dpkMasterSearch')?.value);
@@ -4775,11 +4775,11 @@ function dpkRender(){
     const isDone=done.has(t.url), isSel=dpkSel_.has(t.key);
     const sub=[t.d.party_name,t.d.brand_name].filter(Boolean).join(' · ');
     return '<div class="dpk-tile'+(isSel?' sel':'')+(isDone?' done':'')+'" onclick="dpkToggle('+i+')" title="'
-        +esc([t.d.design_no,t.d.design_sku_no,t.m.matching_name,t.d.design_type,t.d.bed_size,t.d.blanket_quality,t.d.supplier_name].filter(Boolean).join(' · '))+'">'
+        +esc([t.d.design_no,t.m.matching_sku_no,t.m.matching_name,t.d.design_type,t.d.bed_size,t.d.blanket_quality,t.d.supplier_name].filter(Boolean).join(' · '))+'">'
       +'<img loading="lazy" src="'+esc(t.url)+'" onerror="this.style.visibility=\'hidden\'">'
       +'<div class="dpk-chk">'+(isSel?'✓':'')+'</div>'
       +'<div class="dpk-tag'+(isDone?' done':(t.m.matching_type==='MASTER'?'':' slave'))+'">'+(isDone?'✓ ATTACHED':esc(t.m.matching_type||''))+'</div>'
-      +'<div class="dpk-meta"><b>'+esc(t.d.design_no||'—')+'</b>'+(t.d.design_sku_no?' <span class="s">· '+esc(t.d.design_sku_no)+'</span>':'')
+      +'<div class="dpk-meta"><b>'+esc(t.d.design_no||'—')+'</b>'+(t.m.matching_sku_no?' <span class="s">· '+esc(t.m.matching_sku_no)+'</span>':'')
         +'<br><span class="m">'+esc(t.m.matching_name||'')+'</span>'
         +(sub?'<br><span class="s">'+esc(sub)+'</span>':'')+'</div>'
       +'</div>';
@@ -4824,8 +4824,9 @@ function dpkAttach(){
     if(have.has(t.url) || photoCount(id,'product')>=MAX_PHOTOS_PER_PRODUCT){ skipped++; return; }
     // sku / designNo are saved with the order (full_order + design_sku column),
     // qty is filled by ofSkuResplit_ below for a SINGLE COLOUR product.
+    // The SKU is the picked SHADE's own Matching SKU No (the Design SKU No is retired).
     existingProductPhotos[id].push({fileId:t.url, url:t.url, label:'D '+String(t.d.design_no||''),
-      sku:String(t.d.design_sku_no||'').trim(), designNo:String(t.d.design_no||'').trim(), qty:0});
+      sku:String(t.m.matching_sku_no||'').trim(), designNo:String(t.d.design_no||'').trim(), qty:0});
     have.add(t.url); added++;
   });
   dpkClose();

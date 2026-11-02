@@ -487,3 +487,164 @@ body.erp-shell-on #sarvHomeDashboard { display: none !important; }
    (erp-shell.js › applyPoOnly): no PO KPI cards and no sub-tab strip. */
 body.erp-po-report-only #p_poKpiGrid,
 body.erp-po-report-only #p_poSubNav { display: none !important; }
+
+/* ── Open screens as tabs (erp-shell.js › TABS) ───────────────────────
+   A browser-style strip fixed along the top: Home, one tab per open screen,
+   and a ▾ list. Everything below makes room for it ONLY while it is on
+   (body.erp-tabs-on); without that class the page is exactly as before.
+   The project sets box-sizing:border-box on everything, so the body's
+   padding-top keeps it at 100vh; only the rules that size themselves to the
+   window (the Store panels, the two full screens, the shell, the ERP's app
+   iframes) take the strip's height off. */
+:root { --erp-tabs-h: 0px; }
+body.erp-tabs-on { --erp-tabs-h: 34px; padding-top: var(--erp-tabs-h) !important; }
+body.erp-tabs-on #erpShell { top: var(--erp-tabs-h); }
+body.erp-tabs-on #storeInterface .container { height: calc(100vh - 55px - var(--erp-tabs-h)); }
+body.erp-tabs-on #storeInterface,
+body.erp-tabs-on #fullPurchasePanel { min-height: calc(100vh - var(--erp-tabs-h)); }
+/* No `top` offset for the sticky Store header: body has overflow:hidden, so
+   the body itself is the header's scroll container, and its padding-top
+   already places the header right under the tab bar. A top: 34px here pushed
+   it 34px further down and left a white strip between the tabs and the
+   header's search bar. */
+body.erp-tabs-on #erpQnFloat { top: calc(var(--erp-tabs-h) + 8px); }
+body.erp-tabs-on .main-panel iframe[data-src] { height: calc(100vh - 85px - var(--erp-tabs-h)) !important; }
+
+#erpTabs {
+  display: none;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 905;   /* over the shell (900), under every popup */
+  height: 34px; align-items: flex-end; gap: 4px;
+  padding: 0 6px 0 4px;
+  background: #0f172a; border-bottom: 1px solid #1e293b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+body.erp-tabs-on #erpTabs { display: flex; }
+#erpTabs button { font: inherit; cursor: pointer; }
+#erpTabs .erp-tab-home {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  height: 28px; margin-bottom: 3px; padding: 0 10px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: #cbd5e1; font-size: 12px; font-weight: 700;
+}
+#erpTabs .erp-tab-home .erp-svg { width: 15px; height: 15px; }
+#erpTabs .erp-tab-home:hover { background: rgba(255,255,255,.10); color: #fff; }
+#erpTabs .erp-tab-home.active { background: rgba(96,165,250,.18); border-color: rgba(96,165,250,.45); color: #fff; }
+#erpTabs .erp-tab-list {
+  flex: 1 1 auto; min-width: 0; height: 100%;
+  display: flex; align-items: flex-end; gap: 3px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+#erpTabs .erp-tab-list::-webkit-scrollbar { display: none; }
+#erpTabs .erp-tab {
+  flex: 0 1 190px; min-width: 96px; max-width: 220px; height: 29px;
+  display: flex; align-items: center; gap: 4px;
+  padding: 0 4px 0 11px;
+  border-radius: 7px 7px 0 0;
+  background: #1e293b; color: #cbd5e1;
+  font-size: 12px; font-weight: 600; cursor: pointer; user-select: none;
+  transition: background .12s, color .12s;
+}
+#erpTabs .erp-tab:hover { background: #334155; color: #fff; }
+#erpTabs .erp-tab.active { background: #f1f5f9; color: #0f172a; font-weight: 700; box-shadow: 0 -1px 0 #60a5fa inset; }
+#erpTabs .erp-tab.cold .erp-tab-t { font-style: italic; opacity: .8; }   /* from an earlier visit: opens fresh */
+#erpTabs .erp-tab-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#erpTabs .erp-tab-x {
+  flex: 0 0 auto; width: 20px; height: 20px; border: none; border-radius: 5px;
+  background: transparent; color: inherit; font-size: 10px; line-height: 1;
+  opacity: .55; display: flex; align-items: center; justify-content: center;
+}
+#erpTabs .erp-tab-x:hover { opacity: 1; background: rgba(148,163,184,.3); }
+#erpTabs .erp-tab.active .erp-tab-x:hover { background: #e2e8f0; }
+#erpTabs .erp-tab-menu {
+  flex: 0 0 auto; width: 28px; height: 28px; margin-bottom: 3px;
+  border: none; border-radius: 6px; background: transparent; color: #cbd5e1; font-size: 12px;
+}
+#erpTabs .erp-tab-menu:hover { background: rgba(255,255,255,.10); color: #fff; }
+#erpTabs .erp-tab-pop {
+  position: absolute; top: 34px; right: 6px; z-index: 906;
+  min-width: 220px; max-width: 320px; max-height: 70vh; overflow-y: auto;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(15,23,42,.18); padding: 4px;
+}
+#erpTabs .erp-tab-pop[hidden] { display: none; }
+#erpTabs .erp-tab-pop-item {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 10px; border: none; border-radius: 6px; background: transparent;
+  color: #0f172a; font-size: 12.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#erpTabs .erp-tab-pop-item:hover:not([disabled]) { background: #f1f5f9; }
+#erpTabs .erp-tab-pop-item.active { background: #eff6ff; color: #1d4ed8; }
+#erpTabs .erp-tab-pop-item[disabled] { color: #94a3b8; cursor: default; }
+#erpTabs .erp-tab-pop-sep { height: 1px; background: #e2e8f0; margin: 4px 2px; }
+#erpTabs .erp-tab-pop-empty { padding: 8px 10px; color: #94a3b8; font-size: 12px; }
+/* ▾ list: a screen + its "duplicate in new browser tab" button on one row */
+#erpTabs .erp-tab-pop-row { display: flex; align-items: center; gap: 2px; }
+#erpTabs .erp-tab-pop-row .erp-tab-pop-item { flex: 1; min-width: 0; }
+#erpTabs .erp-tab-pop-dup {
+  flex: 0 0 auto; width: 28px; height: 28px; border: none; border-radius: 6px;
+  background: transparent; color: #64748b; font-size: 14px;
+}
+#erpTabs .erp-tab-pop-dup:hover { background: #eff6ff; color: #1d4ed8; }
+@media (max-width: 600px) {
+  #erpTabs .erp-tab-home span { display: none; }
+  #erpTabs .erp-tab { min-width: 84px; }
+}
+@media print { #erpTabs { display: none !important; } body.erp-tabs-on { padding-top: 0 !important; } }
+
+/* ── Screen title in the header line (erp-shell.js › htUpdate) ─────────
+   The title / subtitle / draft tag at the top of each screen's card move
+   into the dark header, next to the brand. The in-page copies are hidden
+   VISUALLY only (still in the page for the code that rewrites them and for
+   screen readers). Only while the shell runs (body.erp-hdr-titles). */
+body.erp-hdr-titles #storeInterface .card > .panel-title,
+body.erp-hdr-titles #storeInterface .card > .panel-subtitle,
+body.erp-hdr-titles #storeInterface .card > .autosave-tag,
+body.erp-hdr-titles #fullPurchasePanel .card > .panel-title,
+body.erp-hdr-titles #fullPurchasePanel .card > .panel-subtitle,
+body.erp-hdr-titles #fullPurchasePanel .card > .autosave-tag {
+  position: absolute !important; width: 1px !important; height: 1px !important;
+  margin: -1px !important; padding: 0 !important; border: 0 !important;
+  overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important;
+}
+.erp-hdr-title {
+  flex: 0 1 auto; min-width: 0; max-width: 38vw;
+  display: flex; flex-direction: column; justify-content: center; gap: 1px;
+  padding-left: 12px; margin-left: 2px;
+  border-left: 1px solid rgba(255,255,255,.2);
+  line-height: 1.15; color: #fff;
+}
+.erp-hdr-title[hidden] { display: none; }
+.erp-hdr-title .erp-hdr-l1 { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.erp-hdr-title b {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+}
+.erp-hdr-title small {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 10px; font-weight: 600; color: #94a3b8; letter-spacing: .02em;
+}
+.erp-hdr-title .erp-hdr-tag {
+  flex: 0 0 auto; font-size: 9px; font-weight: 700; letter-spacing: .02em;
+  padding: 1px 7px; border-radius: 10px;
+  background: rgba(34,197,94,.16); color: #86efac; border: 1px solid rgba(134,239,172,.35);
+}
+/* Store 1 keeps its colour cue in the header too */
+body.sarv-in-store[data-store="STORE 1"] .erp-hdr-title b { color: #fecdd3; }
+
+/* ── Tighter page spacing (only with the shell) ────────────────────────
+   The room above the content was: container padding 15–18px, then the
+   card's own 22px. Both are trimmed so the view below gets the space. */
+body.erp-shell-on #storeInterface .container { padding: 8px; gap: 10px; }
+body.erp-shell-on #storeInterface .card { padding: 14px; }
+body.erp-shell-on #fullPurchasePanel .container { padding: 8px; }
+body.erp-shell-on #fullPurchasePanel .card { padding: 14px; }
+/* The Inward / Outward strip of stat boxes (Entry Type, Nature, entry no …):
+   the controls stay, only the empty room around them goes. */
+body.erp-shell-on #storeInterface .main-panel { gap: 10px; }
+body.erp-shell-on #storeInterface .top-stats { gap: 10px; }
+body.erp-shell-on #storeInterface .stat-box { padding: 7px 14px; }
+@media (max-width: 760px) {
+  .erp-hdr-title { max-width: 60vw; }
+}
