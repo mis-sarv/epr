@@ -424,28 +424,42 @@
                                     <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Zoom (%)</label><span id="val-cover-zoom" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">100</span></div>
                                     <div class="flex items-center gap-2">
                                         <button type="button" onclick="stepCoverPhoto('coverImgZoom', -10)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Zoom out">&minus;</button>
-                                        <input type="range" id="input-cover-zoom" min="100" max="300" value="100" oninput="setCoverPhoto('coverImgZoom', this.value)" class="flex-1 accent-indigo-600">
+                                        <input type="range" id="input-cover-zoom" min="50" max="300" value="100" oninput="setCoverPhoto('coverImgZoom', this.value)" class="flex-1 accent-indigo-600">
                                         <button type="button" onclick="stepCoverPhoto('coverImgZoom', 10)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Zoom in">+</button>
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Left / Right</label><span id="val-cover-panx" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">50</span></div>
+                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Left / Right</label><span id="val-cover-panx" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">0</span></div>
                                     <div class="flex items-center gap-2">
-                                        <button type="button" onclick="stepCoverPhoto('coverImgX', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the left side">&#9664;</button>
-                                        <input type="range" id="input-cover-panx" min="0" max="100" value="50" oninput="setCoverPhoto('coverImgX', this.value)" class="flex-1 accent-indigo-600">
-                                        <button type="button" onclick="stepCoverPhoto('coverImgX', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the right side">&#9654;</button>
+                                        <button type="button" onclick="stepCoverPhoto('coverImgDX', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Move the picture left">&#9664;</button>
+                                        <input type="range" id="input-cover-panx" min="-100" max="100" value="0" oninput="setCoverPhoto('coverImgDX', this.value)" class="flex-1 accent-indigo-600">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgDX', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Move the picture right">&#9654;</button>
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Up / Down</label><span id="val-cover-pany" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">50</span></div>
+                                    <div class="flex justify-between mb-1"><label class="text-[10px] font-bold text-gray-500 uppercase">Move Up / Down</label><span id="val-cover-pany" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">0</span></div>
                                     <div class="flex items-center gap-2">
-                                        <button type="button" onclick="stepCoverPhoto('coverImgY', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the top">&#9650;</button>
-                                        <input type="range" id="input-cover-pany" min="0" max="100" value="50" oninput="setCoverPhoto('coverImgY', this.value)" class="flex-1 accent-indigo-600">
-                                        <button type="button" onclick="stepCoverPhoto('coverImgY', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Show more of the bottom">&#9660;</button>
+                                        <button type="button" onclick="stepCoverPhoto('coverImgDY', -5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Move the picture up">&#9650;</button>
+                                        <input type="range" id="input-cover-pany" min="-100" max="100" value="0" oninput="setCoverPhoto('coverImgDY', this.value)" class="flex-1 accent-indigo-600">
+                                        <button type="button" onclick="stepCoverPhoto('coverImgDY', 5)" class="w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100" title="Move the picture down">&#9660;</button>
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-gray-400 leading-snug">Zoom in first, then move to choose the part of the picture that shows in the circle.</p>
+                                <p class="text-[10px] text-gray-400 leading-snug">Move works at any zoom. Zoom below 100 shows the whole picture with a margin.</p>
                             </div>
+                        </div>
+
+                        <!-- Extra picture shapes on the cover (page.coverShapes, see COVER SHAPES in the script) -->
+                        <div class="p-3 border border-gray-200 rounded bg-white shadow-sm">
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-xs font-bold text-gray-800 uppercase tracking-wide">Picture Shapes</label>
+                                <button type="button" onclick="cmToggleShapePicker()" class="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded px-2 py-1">+ Add Shape</button>
+                            </div>
+                            <div id="cm-shape-picker" class="hidden mb-3 p-2 border border-indigo-200 bg-indigo-50 rounded">
+                                <p class="text-[10px] font-bold text-indigo-800 uppercase mb-2">Choose a shape</p>
+                                <div id="cm-shape-picker-grid" class="grid grid-cols-5 gap-1.5"></div>
+                            </div>
+                            <div id="cm-shape-list" class="space-y-2"></div>
+                            <p class="text-[10px] text-gray-400 leading-snug mt-2">Drag a shape on the preview to place it. Mouse wheel over it zooms the picture inside.</p>
                         </div>
                         
                         <div class="p-3 border border-gray-200 rounded bg-gray-50">
@@ -1825,6 +1839,7 @@
                 document.getElementById('input-cover-coverImageSize').value = page.coverImageSize || '240';
                 document.getElementById('val-cover-img-size').innerText = page.coverImageSize || '240';
                 syncCoverPhotoControls(page);   // move / zoom of the picture in the circle
+                renderCoverShapes();            // the extra picture shapes
                 
                 document.getElementById('input-cover-preparedByLabel').value = page.preparedByLabel !== undefined ? page.preparedByLabel : 'Prepared By:';
                 document.getElementById('input-cover-preparedBy').value = page.preparedBy || '';
@@ -2238,37 +2253,369 @@
         }
         function loadAspect(src) { return new Promise(res => { if (!src || aspectCache.has(src)) return res(); imgAspect(src, res); }); }
         const clampN = (v, lo, hi, def) => Math.min(hi, Math.max(lo, num(v, def)));
-        function coverPhotoStyle(page) {
+        /* Why Move used to "not work" now and then: with percent positions the
+           picture can only slide along the side where it is bigger than the
+           circle. At 100 % zoom a landscape picture exactly fits the circle's
+           height, so Up / Down did nothing (a square picture could not move at
+           all), and the preview looked stuck. Now the move is an offset of the
+           picture itself, coverImgDX / coverImgDY = −100…100 % of the circle
+           (0 = centred, + = right / down), and the picture is placed in exact
+           pixels, so every button and slider moves it at any zoom. Zoom goes
+           down to 50 % (the whole picture with a margin of the circle's grey).
+           A cover saved with the old coverImgX / coverImgY (0–100, 50 = centre)
+           is read as the same view in the new offsets (coverMove). */
+        const COVER_RING = 12;   // the circle's white border on each side (border-[12px], box-border)
+        function coverFit(page) {
+            // Picture size and the circle's inner box in px, before any move.
             const src = page.image || DEFAULT_IMAGE;
-            const z = clampN(page.coverImgZoom, 100, 300, 100) / 100;
-            const x = clampN(page.coverImgX, 0, 100, 50), y = clampN(page.coverImgY, 0, 100, 50);
             const a = imgAspect(src, () => { if (catalogData.some(p => p.id === currentPageId && p.pageType === 'cover')) renderLivePreview(); });
-            const size = a ? (a >= 1 ? (a * z * 100).toFixed(2) + '% ' + (z * 100).toFixed(2) + '%'
-                                     : (z * 100).toFixed(2) + '% ' + (z * 100 / a).toFixed(2) + '%')
-                           : 'cover';   // shape not known yet: plain fill, moved but not zoomed (redrawn in a moment)
-            return bgImg(src) + ' background-size: ' + size + '; background-position: ' + x + '% ' + y + '%; background-repeat: no-repeat;';
+            const B = Math.max(10, num(page.coverImageSize, 240) - 2 * COVER_RING);
+            const z = clampN(page.coverImgZoom, 50, 300, 100) / 100;
+            if (!a) return { src, a: null, B };
+            return { src, a, B, W: (a >= 1 ? B * a : B) * z, H: (a >= 1 ? B : B / a) * z };
+        }
+        function coverMove(page, f) {
+            const old = (k, side) => {   // old 0–100 position → offset in % of the circle
+                const v = page[k]; if (v === undefined || v === '' || !f.a) return 0;
+                const slack = (side - f.B) / f.B;   // how much bigger than the circle on that side
+                return slack > 0 ? slack * (50 - clampN(v, 0, 100, 50)) : 0;
+            };
+            return {
+                dx: page.coverImgDX !== undefined && page.coverImgDX !== '' ? clampN(page.coverImgDX, -100, 100, 0) : old('coverImgX', f.W),
+                dy: page.coverImgDY !== undefined && page.coverImgDY !== '' ? clampN(page.coverImgDY, -100, 100, 0) : old('coverImgY', f.H)
+            };
+        }
+        function coverPhotoStyle(page) {
+            const f = coverFit(page);
+            // shape not known yet: plain fill (redrawn in a moment; buildPdf waits for it)
+            if (!f.a) return bgImg(f.src) + ' background-size: cover; background-position: center; background-repeat: no-repeat;';
+            const m = coverMove(page, f);
+            const left = (f.B - f.W) / 2 + m.dx / 100 * f.B, top = (f.B - f.H) / 2 + m.dy / 100 * f.B;
+            return bgImg(f.src) + ' background-size: ' + f.W.toFixed(1) + 'px ' + f.H.toFixed(1) + 'px; background-position: '
+                + left.toFixed(1) + 'px ' + top.toFixed(1) + 'px; background-repeat: no-repeat;';
         }
         function syncCoverPhotoControls(page) {
             page = page || catalogData.find(p => p.id === currentPageId);
             if (!page || page.pageType !== 'cover') return;
             const set = (id, lbl, v) => { const e = document.getElementById(id); if (e) e.value = v; const l = document.getElementById(lbl); if (l) l.innerText = v; };
-            set('input-cover-zoom', 'val-cover-zoom', clampN(page.coverImgZoom, 100, 300, 100));
-            set('input-cover-panx', 'val-cover-panx', clampN(page.coverImgX, 0, 100, 50));
-            set('input-cover-pany', 'val-cover-pany', clampN(page.coverImgY, 0, 100, 50));
+            const m = coverMove(page, coverFit(page));
+            set('input-cover-zoom', 'val-cover-zoom', clampN(page.coverImgZoom, 50, 300, 100));
+            set('input-cover-panx', 'val-cover-panx', Math.round(m.dx));
+            set('input-cover-pany', 'val-cover-pany', Math.round(m.dy));
         }
         function setCoverPhoto(key, v) {
-            const lim = key === 'coverImgZoom' ? [100, 300, 100] : [0, 100, 50];
+            const page = catalogData.find(p => p.id === currentPageId); if (!page) return;
+            // The first move after an old-style cover: keep the other axis where it was.
+            if (key !== 'coverImgZoom' && (page.coverImgDX === undefined || page.coverImgDY === undefined)) {
+                const m = coverMove(page, coverFit(page));
+                page.coverImgDX = String(Math.round(m.dx)); page.coverImgDY = String(Math.round(m.dy));
+            }
+            const lim = key === 'coverImgZoom' ? [50, 300, 100] : [-100, 100, 0];
             updateCurrentPage(key, String(Math.round(clampN(v, lim[0], lim[1], lim[2]))));
             syncCoverPhotoControls();
         }
         function stepCoverPhoto(key, d) {
             const page = catalogData.find(p => p.id === currentPageId); if (!page) return;
-            setCoverPhoto(key, num(page[key], key === 'coverImgZoom' ? 100 : 50) + d);
+            const cur = key === 'coverImgZoom' ? clampN(page.coverImgZoom, 50, 300, 100)
+                : coverMove(page, coverFit(page))[key === 'coverImgDX' ? 'dx' : 'dy'];
+            setCoverPhoto(key, cur + d);
         }
         function resetCoverPhoto() {
-            ['coverImgZoom', 'coverImgX', 'coverImgY'].forEach(k => updateCurrentPage(k, k === 'coverImgZoom' ? '100' : '50'));
+            const page = catalogData.find(p => p.id === currentPageId); if (!page) return;
+            delete page.coverImgX; delete page.coverImgY;
+            page.coverImgDX = '0'; page.coverImgDY = '0';
+            updateCurrentPage('coverImgZoom', '100');
             syncCoverPhotoControls();
         }
+
+        /* ── COVER SHAPES: extra pictures in a shape, anywhere on the cover ──
+           page.coverShapes = [{id, type, src, x, y, w, h, lock, zoom, dx, dy, bc, bw}]
+             type      a CM_SHAPES key
+             src       the picture (JPEG data URL, like every other picture here), '' = grey
+             x, y      the shape's centre on the page, % of the page width / height
+             w, h      the shape's size in page px; lock keeps h / w when w changes
+             zoom      50–300 % of the size that just fills the shape
+             dx, dy    picture moved inside the shape, −100…100 % of the shape (0 = centred)
+             bc, bw    border colour and thickness (px; 0 = no border)
+           Each shape is ONE small SVG: the outline as a clip path, the picture
+           inside it (preserveAspectRatio "slice" fills the shape like "cover", so
+           its own shape is not needed), then the outline stroked on top. The
+           outline is drawn inset by half the border, so a thick border stays
+           whole inside the box. html2canvas ignores clip-path, so for the PDF
+           each SVG is first turned into a PNG (cmShapePng, like the waves).
+           Outlines use only absolute M / L / C / Z pairs on a 100 × 100 board,
+           so a plain number-pair scale (cmScaleD) stretches them to any w × h
+           without bending the border thickness. Shapes sit above everything on
+           the cover, in list order (last = in front). */
+        const CM_SHAPES = [
+            { key: 'circle',   name: 'Circle',   d: 'M50,0 C77.614,0 100,22.386 100,50 C100,77.614 77.614,100 50,100 C22.386,100 0,77.614 0,50 C0,22.386 22.386,0 50,0 Z' },
+            { key: 'square',   name: 'Square',   d: 'M0,0 L100,0 L100,100 L0,100 Z' },
+            { key: 'rounded',  name: 'Rounded',  d: 'M16,0 L84,0 C92.837,0 100,7.163 100,16 L100,84 C100,92.837 92.837,100 84,100 L16,100 C7.163,100 0,92.837 0,84 L0,16 C0,7.163 7.163,0 16,0 Z' },
+            { key: 'arch',     name: 'Arch',     d: 'M0,100 L0,50 C0,22.386 22.386,0 50,0 C77.614,0 100,22.386 100,50 L100,100 Z' },
+            { key: 'hexagon',  name: 'Hexagon',  d: 'M25,0 L75,0 L100,50 L75,100 L25,100 L0,50 Z' },
+            { key: 'octagon',  name: 'Octagon',  d: 'M29.3,0 L70.7,0 L100,29.3 L100,70.7 L70.7,100 L29.3,100 L0,70.7 L0,29.3 Z' },
+            { key: 'diamond',  name: 'Diamond',  d: 'M50,0 L100,50 L50,100 L0,50 Z' },
+            { key: 'triangle', name: 'Triangle', d: 'M50,0 L100,100 L0,100 Z' },
+            { key: 'pentagon', name: 'Pentagon', d: 'M50,0 L100,38 L81,100 L19,100 L0,38 Z' },
+            { key: 'star',     name: 'Star',     d: (() => {
+                const p = [];
+                for (let i = 0; i < 10; i++) {
+                    const r = i % 2 ? 21 : 50, t = (-90 + i * 36) * Math.PI / 180;
+                    p.push((50 + r * Math.cos(t)).toFixed(2) + ',' + (52.5 + r * Math.sin(t) * 1.05).toFixed(2));
+                }
+                return 'M' + p.join(' L') + ' Z';
+            })() },
+            { key: 'heart',    name: 'Heart',    d: 'M50,96 C22,76 0,58 0,32 C0,13 14,0 30,0 C40,0 47,6 50,15 C53,6 60,0 70,0 C86,0 100,13 100,32 C100,58 78,76 50,96 Z' },
+            { key: 'leaf',     name: 'Leaf',     d: 'M0,100 C0,40 40,0 100,0 C100,60 60,100 0,100 Z' },
+            { key: 'blob',     name: 'Pebble',   d: 'M52,1 C74,0 97,16 99,40 C100,64 86,92 60,99 C34,100 6,88 1,62 C0,36 22,2 52,1 Z' },
+            { key: 'tab',      name: 'Tab',      d: 'M0,0 L70,0 C86.569,0 100,13.431 100,30 L100,100 L30,100 C13.431,100 0,86.569 0,70 Z' }
+        ];
+        const cmShapeDef = key => CM_SHAPES.find(s => s.key === key) || CM_SHAPES[0];
+        const cmScaleD = (d, sx, sy, ox, oy) => d.replace(/(-?\d*\.?\d+),(-?\d*\.?\d+)/g,
+            (m, x, y) => (ox + parseFloat(x) * sx).toFixed(2) + ',' + (oy + parseFloat(y) * sy).toFixed(2));
+        // Limits and defaults of every number (also used to clamp what a saved template carries).
+        const CM_SHAPE_NUM = {
+            x: [0, 100, 70], y: [0, 100, 30], w: [40, 700, 180], h: [40, 700, 180],
+            zoom: [50, 300, 100], dx: [-100, 100, 0], dy: [-100, 100, 0], bw: [0, 40, 8]
+        };
+        const cmShapeN = (s, k) => clampN(s[k], CM_SHAPE_NUM[k][0], CM_SHAPE_NUM[k][1], CM_SHAPE_NUM[k][2]);
+        let cmShapeActive = null;          // the shape open in the editor (outlined in the preview)
+
+        function coverShapesOf(page) { return page && Array.isArray(page.coverShapes) ? page.coverShapes : []; }
+        // scale: 1 for the page, 2 for the PDF PNG (same picture, more pixels).
+        function cmShapeSvg(s, scale) {
+            const k = scale || 1, w = cmShapeN(s, 'w'), h = cmShapeN(s, 'h'), bw = Math.min(cmShapeN(s, 'bw'), Math.min(w, h) / 4);
+            const d = cmScaleD(cmShapeDef(s.type).d, (w - bw) / 100, (h - bw) / 100, bw / 2, bw / 2);
+            const cid = 'cmclip-' + String(s.id).replace(/[^a-z0-9]/gi, '') + (k > 1 ? '-x' : '');
+            let inner;
+            if (s.src) {
+                const z = cmShapeN(s, 'zoom') / 100, W = w * z, H = h * z;
+                const x = (w - W) / 2 + cmShapeN(s, 'dx') / 100 * w, y = (h - H) / 2 + cmShapeN(s, 'dy') / 100 * h;
+                inner = '<image href="' + esc(s.src) + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + W.toFixed(1) + '" height="' + H.toFixed(1)
+                    + '" preserveAspectRatio="xMidYMid slice" clip-path="url(#' + cid + ')"/>';
+            } else {
+                inner = '<path d="' + d + '" fill="#e5e7eb"/>'
+                    + '<text x="' + (w / 2) + '" y="' + (h / 2) + '" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" font-size="' + Math.max(10, Math.min(w, h) / 9).toFixed(0) + '" fill="#9ca3af" clip-path="url(#' + cid + ')">ADD PICTURE</text>';
+            }
+            const stroke = bw > 0 ? '<path d="' + d + '" fill="none" stroke="' + col(s.bc, '#ffffff') + '" stroke-width="' + bw + '" stroke-linejoin="round"/>' : '';
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="' + (w * k) + '" height="' + (h * k) + '" viewBox="0 0 ' + w + ' ' + h + '" style="display:block; overflow:visible;">'
+                + '<defs><clipPath id="' + cid + '"><path d="' + d + '"/></clipPath></defs>' + inner + stroke + '</svg>';
+        }
+        function cmShapePng(s) {
+            return new Promise((resolve, reject) => {
+                const w = cmShapeN(s, 'w'), h = cmShapeN(s, 'h');
+                const img = new Image();
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(w * 2); c.height = Math.round(h * 2);
+                    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                    resolve(c.toDataURL('image/png'));
+                };
+                img.onerror = () => reject(new Error('A cover shape could not be drawn'));
+                img.src = svgUri(cmShapeSvg(s, 2));
+            });
+        }
+        // o.shapeSrc (PDF only): id → PNG. In the editor the SVG is placed directly.
+        function coverShapesHTML(page, o) {
+            const pdf = !!(o && o.shapeSrc);
+            return coverShapesOf(page).map((s, i) => {
+                const w = cmShapeN(s, 'w'), h = cmShapeN(s, 'h');
+                const png = pdf ? o.shapeSrc[s.id] : null;
+                const body = pdf ? '<img src="' + (png || svgUri(cmShapeSvg(s, 2))) + '" alt="" style="display:block; width:100%; height:100%; max-width:none;">'
+                                 : cmShapeSvg(s, 1);
+                const sel = !pdf && cmShapeActive === s.id ? ' outline: 2px dashed #6366f1; outline-offset: 3px;' : '';
+                return '<div ' + (pdf ? '' : 'data-shape-id="' + esc(s.id) + '" title="Drag to move. Mouse wheel zooms the picture." ')
+                    + 'style="position:absolute; left:' + cmShapeN(s, 'x') + '%; top:' + cmShapeN(s, 'y') + '%; width:' + w + 'px; height:' + h + 'px; margin-left:' + (-w / 2) + 'px; margin-top:' + (-h / 2) + 'px; z-index:' + (30 + i) + ';'
+                    + (pdf ? '' : ' cursor:move; touch-action:none;') + sel + '">' + body + '</div>';
+            }).join('');
+        }
+
+        /* Editor list (#cm-shape-list). Sliders change one value in place
+           (cmShapeSet), so dragging a slider never rebuilds the list; the list is
+           rebuilt only when a shape is added, removed, reordered or changes type. */
+        function cmCoverPage() { return catalogData.find(p => p.id === currentPageId && p.pageType === 'cover'); }
+        function cmShapeIcon(key, size) {
+            const z = size || 26;
+            return '<svg width="' + z + '" height="' + z + '" viewBox="-4 -4 108 108"><path d="' + cmShapeDef(key).d + '" fill="#c7d2fe" stroke="#4f46e5" stroke-width="5" stroke-linejoin="round"/></svg>';
+        }
+        function cmToggleShapePicker() {
+            const p = document.getElementById('cm-shape-picker'); if (!p) return;
+            document.getElementById('cm-shape-picker-grid').innerHTML = CM_SHAPES.map(s =>
+                '<button type="button" onclick="cmAddShape(\'' + s.key + '\')" title="' + s.name + '" class="flex flex-col items-center gap-0.5 p-1 bg-white border border-gray-200 rounded hover:border-indigo-500">'
+                + cmShapeIcon(s.key) + '<span class="text-[9px] text-gray-600">' + s.name + '</span></button>').join('');
+            p.classList.toggle('hidden');
+        }
+        function cmSaveShapes(page, rebuild) {
+            updateCurrentPage('coverShapes', page.coverShapes);   // dirty flag, preview, quiet save
+            if (rebuild) renderCoverShapes();
+        }
+        function cmAddShape(type) {
+            const page = cmCoverPage(); if (!page) return;
+            if (!Array.isArray(page.coverShapes)) page.coverShapes = [];
+            const n = page.coverShapes.length;
+            // Each new one a little lower, so they do not land exactly on top of each other.
+            const s = { id: 'sh' + generateId(), type, src: '', x: 70, y: Math.min(85, 25 + n * 12), w: 180, h: type === 'arch' || type === 'tab' ? 220 : 180,
+                        lock: true, zoom: 100, dx: 0, dy: 0, bc: '#ffffff', bw: 8 };
+            page.coverShapes.push(s);
+            cmShapeActive = s.id;
+            document.getElementById('cm-shape-picker').classList.add('hidden');
+            cmSaveShapes(page, true);
+        }
+        function cmShapeById(id) { const page = cmCoverPage(); const s = coverShapesOf(page).find(x => x.id === id); return s ? { page, s } : null; }
+        function cmShapeSet(id, key, v) {
+            const f = cmShapeById(id); if (!f) return;
+            const s = f.s;
+            if (key === 'bc') s.bc = col(v, '#ffffff');
+            else if (key === 'lock') s.lock = !!v;
+            else if (key === 'type') s.type = cmShapeDef(v).key;
+            else {
+                const before = cmShapeN(s, key);
+                s[key] = Math.round(clampN(v, CM_SHAPE_NUM[key][0], CM_SHAPE_NUM[key][1], CM_SHAPE_NUM[key][2]));
+                // Keep the shape's proportions while the width changes.
+                if (key === 'w' && s.lock !== false && before > 0) s.h = Math.round(clampN(cmShapeN(s, 'h') * s.w / before, 40, 700, 180));
+            }
+            cmShapeActive = id;
+            cmSaveShapes(f.page, key === 'type');
+            if (key !== 'type') cmSyncShapeControls(s);
+        }
+        function cmShapeStep(id, key, d) { const f = cmShapeById(id); if (f) cmShapeSet(id, key, cmShapeN(f.s, key) + d); }
+        function cmSyncShapeControls(s) {
+            Object.keys(CM_SHAPE_NUM).forEach(k => {
+                const v = cmShapeN(s, k);
+                const r = document.getElementById('cmsr-' + s.id + '-' + k); if (r && String(r.value) !== String(v)) r.value = v;
+                const l = document.getElementById('cmsv-' + s.id + '-' + k); if (l) l.innerText = v;
+            });
+        }
+        function cmShapeMove(id, d) {
+            const page = cmCoverPage(); const list = coverShapesOf(page);
+            const i = list.findIndex(x => x.id === id), j = i + d;
+            if (i < 0 || j < 0 || j >= list.length) return;
+            [list[i], list[j]] = [list[j], list[i]];
+            cmSaveShapes(page, true);
+        }
+        function cmShapeDuplicate(id) {
+            const f = cmShapeById(id); if (!f) return;
+            const c = JSON.parse(JSON.stringify(f.s));
+            c.id = 'sh' + generateId(); c.x = Math.min(100, cmShapeN(f.s, 'x') + 4); c.y = Math.min(100, cmShapeN(f.s, 'y') + 4);
+            f.page.coverShapes.splice(f.page.coverShapes.indexOf(f.s) + 1, 0, c);
+            cmShapeActive = c.id;
+            cmSaveShapes(f.page, true);
+        }
+        function cmShapeDelete(id) {
+            const f = cmShapeById(id); if (!f) return;
+            f.page.coverShapes.splice(f.page.coverShapes.indexOf(f.s), 1);
+            if (cmShapeActive === id) cmShapeActive = null;
+            cmSaveShapes(f.page, true);
+        }
+        function cmShapeOpen(id) { cmShapeActive = cmShapeActive === id ? null : id; renderCoverShapes(); renderLivePreview(); }
+        async function cmShapeUpload(id, input) {
+            const file = input.files && input.files[0]; input.value = '';
+            if (!file) return;
+            try { const src = await readImageAsJpeg(file, 1000, 0.7); const f = cmShapeById(id); if (!f) return; f.s.src = src; f.s.zoom = 100; f.s.dx = 0; f.s.dy = 0; cmSaveShapes(f.page, true); saveDataLocally(); }
+            catch (e) { showModal('This file could not be read as an image.'); }
+        }
+        function cmShapeUseCover(id) {
+            const f = cmShapeById(id); if (!f) return;
+            if (!f.page.image) { showModal('The cover has no picture of its own yet. Upload one for the circle first, or upload a picture here.'); return; }
+            f.s.src = f.page.image; cmSaveShapes(f.page, true);
+        }
+        function cmShapeClear(id) { const f = cmShapeById(id); if (!f) return; f.s.src = ''; cmSaveShapes(f.page, true); }
+
+        function renderCoverShapes() {
+            const box = document.getElementById('cm-shape-list'); if (!box) return;
+            const list = coverShapesOf(cmCoverPage());
+            if (!list.length) { box.innerHTML = '<p class="text-[11px] text-gray-400">No shapes yet. Press <b>+ Add Shape</b> to put a picture in a circle, hexagon, heart, arch or any other shape anywhere on the cover.</p>'; return; }
+            const btn = 'w-7 h-6 border border-gray-300 rounded bg-white text-gray-600 text-xs font-bold hover:bg-gray-100 shrink-0';
+            const row = (s, k, label, step, l, r) => {
+                const q = "'" + s.id + "','" + k + "'";
+                return '<div><div class="flex justify-between mb-0.5"><label class="text-[10px] font-bold text-gray-500 uppercase">' + label + '</label>'
+                    + '<span id="cmsv-' + s.id + '-' + k + '" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1 rounded">' + cmShapeN(s, k) + '</span></div>'
+                    + '<div class="flex items-center gap-2"><button type="button" class="' + btn + '" onclick="cmShapeStep(' + q + ', -' + step + ')">' + l + '</button>'
+                    + '<input type="range" id="cmsr-' + s.id + '-' + k + '" min="' + CM_SHAPE_NUM[k][0] + '" max="' + CM_SHAPE_NUM[k][1] + '" value="' + cmShapeN(s, k) + '" oninput="cmShapeSet(' + q + ', this.value)" class="flex-1 accent-indigo-600">'
+                    + '<button type="button" class="' + btn + '" onclick="cmShapeStep(' + q + ', ' + step + ')">' + r + '</button></div></div>';
+            };
+            const head = t => '<p class="text-[10px] font-bold text-gray-700 uppercase tracking-wide pt-2 border-t border-gray-100">' + t + '</p>';
+            box.innerHTML = list.map((s, i) => {
+                const open = cmShapeActive === s.id, id = s.id, q = "'" + id + "'";
+                const card = '<div class="border ' + (open ? 'border-indigo-400' : 'border-gray-200') + ' rounded">'
+                    + '<div class="flex items-center gap-2 px-2 py-1.5 ' + (open ? 'bg-indigo-50' : 'bg-gray-50') + ' rounded-t cursor-pointer" onclick="cmShapeOpen(' + q + ')">'
+                    + cmShapeIcon(s.type, 20)
+                    + '<span class="flex-1 text-xs font-semibold text-gray-700">Shape ' + (i + 1) + ' &middot; ' + cmShapeDef(s.type).name + (s.src ? '' : ' <span class="text-gray-400 font-normal">(no picture)</span>') + '</span>'
+                    + '<button type="button" title="Send backward" onclick="event.stopPropagation(); cmShapeMove(' + q + ', -1)" class="text-gray-500 hover:text-indigo-600 text-xs px-1"' + (i ? '' : ' disabled style="opacity:.3"') + '>&#9650;</button>'
+                    + '<button type="button" title="Bring forward" onclick="event.stopPropagation(); cmShapeMove(' + q + ', 1)" class="text-gray-500 hover:text-indigo-600 text-xs px-1"' + (i < list.length - 1 ? '' : ' disabled style="opacity:.3"') + '>&#9660;</button>'
+                    + '<button type="button" title="Duplicate" onclick="event.stopPropagation(); cmShapeDuplicate(' + q + ')" class="text-gray-500 hover:text-indigo-600 text-xs px-1">&#10697;</button>'
+                    + '<button type="button" title="Delete" onclick="event.stopPropagation(); cmShapeDelete(' + q + ')" class="text-gray-500 hover:text-red-600 text-xs px-1">&#10005;</button>'
+                    + '<span class="text-gray-400 text-xs">' + (open ? '&#9662;' : '&#9656;') + '</span></div>';
+                if (!open) return card + '</div>';
+                return card + '<div class="p-2 space-y-2">'
+                    + '<div class="grid grid-cols-7 gap-1">' + CM_SHAPES.map(d =>
+                        '<button type="button" title="' + d.name + '" onclick="cmShapeSet(' + q + ',\'type\',\'' + d.key + '\')" class="flex justify-center p-0.5 rounded border ' + (d.key === s.type ? 'border-indigo-600 bg-indigo-50' : 'border-gray-200 bg-white hover:border-indigo-400') + '">' + cmShapeIcon(d.key, 22) + '</button>').join('') + '</div>'
+                    + head('Picture')
+                    + '<div class="flex flex-wrap gap-1.5">'
+                    + '<label class="text-[11px] font-semibold px-2 py-1 rounded border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-50 cursor-pointer">Upload picture<input type="file" accept="image/*" class="hidden" onchange="cmShapeUpload(' + q + ', this)"></label>'
+                    + '<button type="button" onclick="cmShapeUseCover(' + q + ')" class="text-[11px] font-semibold px-2 py-1 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50">Use cover picture</button>'
+                    + (s.src ? '<button type="button" onclick="cmShapeClear(' + q + ')" class="text-[11px] font-semibold px-2 py-1 rounded border border-gray-300 text-red-600 bg-white hover:bg-red-50">Remove</button>' : '')
+                    + '</div>'
+                    + row(s, 'zoom', 'Picture zoom (%)', 10, '&minus;', '+')
+                    + row(s, 'dx', 'Picture left / right', 5, '&#9664;', '&#9654;')
+                    + row(s, 'dy', 'Picture up / down', 5, '&#9650;', '&#9660;')
+                    + head('Shape size')
+                    + row(s, 'w', 'Width (px)', 10, '&minus;', '+')
+                    + row(s, 'h', 'Height (px)', 10, '&minus;', '+')
+                    + '<label class="flex items-center gap-1.5 text-[11px] text-gray-600"><input type="checkbox" ' + (s.lock !== false ? 'checked' : '') + ' onchange="cmShapeSet(' + q + ',\'lock\', this.checked)" class="accent-indigo-600"> Keep proportions when the width changes</label>'
+                    + head('Place on the cover')
+                    + row(s, 'x', 'Left / right (%)', 1, '&#9664;', '&#9654;')
+                    + row(s, 'y', 'Up / down (%)', 1, '&#9650;', '&#9660;')
+                    + head('Border')
+                    + '<div class="flex items-center gap-2"><input type="color" value="' + col(s.bc, '#ffffff') + '" oninput="cmShapeSet(' + q + ',\'bc\', this.value)" class="w-9 h-7 border border-gray-300 rounded cursor-pointer p-0.5"><span class="text-[11px] text-gray-500">Border colour</span></div>'
+                    + row(s, 'bw', 'Border thickness (px)', 1, '&minus;', '+')
+                    + '</div></div>';
+            }).join('');
+        }
+
+        /* Drag on the preview: the shape follows the pointer (only its own
+           left / top change while dragging, nothing is redrawn), and the new
+           place is saved on release. The preview is scaled down (#preview-wrapper),
+           so moves are measured against the page's on-screen size. The mouse
+           wheel over a shape zooms its picture. */
+        (function cmShapePointer() {
+            const host = document.getElementById('live-preview'); if (!host) return;
+            let drag = null;
+            host.addEventListener('pointerdown', e => {
+                const el = e.target.closest && e.target.closest('[data-shape-id]'); if (!el) return;
+                const f = cmShapeById(el.getAttribute('data-shape-id')); if (!f) return;
+                const pageEl = el.parentElement, r = pageEl.getBoundingClientRect();
+                drag = { el, f, r, sx: e.clientX, sy: e.clientY, x0: cmShapeN(f.s, 'x'), y0: cmShapeN(f.s, 'y'), moved: false };
+                el.setPointerCapture && el.setPointerCapture(e.pointerId);
+                e.preventDefault();
+            });
+            host.addEventListener('pointermove', e => {
+                if (!drag) return;
+                const x = clampN(drag.x0 + (e.clientX - drag.sx) / drag.r.width * 100, 0, 100, 50);
+                const y = clampN(drag.y0 + (e.clientY - drag.sy) / drag.r.height * 100, 0, 100, 50);
+                if (Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) > 2) drag.moved = true;
+                drag.el.style.left = x + '%'; drag.el.style.top = y + '%';
+                drag.x = x; drag.y = y;
+            });
+            const end = () => {
+                if (!drag) return;
+                const d = drag; drag = null;
+                const wasOpen = cmShapeActive === d.f.s.id;
+                cmShapeActive = d.f.s.id;
+                // A plain click only opens the shape in the editor; nothing changed.
+                if (!d.moved) { if (!wasOpen) { renderCoverShapes(); renderLivePreview(); } return; }
+                d.f.s.x = Math.round(d.x * 10) / 10; d.f.s.y = Math.round(d.y * 10) / 10;
+                cmSaveShapes(d.f.page, !wasOpen);
+                if (wasOpen) cmSyncShapeControls(d.f.s);
+            };
+            host.addEventListener('pointerup', end);
+            host.addEventListener('pointercancel', end);
+            host.addEventListener('wheel', e => {
+                const el = e.target.closest && e.target.closest('[data-shape-id]'); if (!el) return;
+                e.preventDefault();
+                cmShapeStep(el.getAttribute('data-shape-id'), 'zoom', e.deltaY < 0 ? 5 : -5);
+            }, { passive: false });
+        })();
 
         /* ── Photo Album: own uploads ───────────────────────────────────────
            Any number of photos, kept on the album page as albumPhotos
@@ -2676,6 +3023,7 @@
                     </div>
 
                 </div>
+                ${coverShapesHTML(page, o)}
             </div>
             `;
         }
@@ -2715,6 +3063,14 @@
                     const opts = {};
                     // The circle picture's zoom needs its shape known before the page is drawn.
                     if (page.pageType === 'cover') await loadAspect(page.image || DEFAULT_IMAGE);
+                    // Picture shapes: html2canvas ignores clip-path, so each is printed as a PNG.
+                    if (page.pageType === 'cover' && coverShapesOf(page).length) {
+                        opts.shapeSrc = {};
+                        for (const s of coverShapesOf(page)) {
+                            try { opts.shapeSrc[s.id] = await cmShapePng(s); }
+                            catch (e) { console.warn(e); }   // the SVG data URI is still drawn
+                        }
+                    }
                     // ...and so does a zoomed "fill" background texture.
                     if (page.bgTexture) await loadAspect(page.bgTexture);
                     if (page.pageType === 'cover' || (page.pageType === 'back' && page.backWaves !== 'N')) {

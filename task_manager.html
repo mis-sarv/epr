@@ -576,6 +576,48 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Stack Emission alert automation (sql/EMISSION_AUTOMATION_MIGRATION.sql).
+                 Its own card and Save button: these rules are not a Score Master
+                 version, so saving them never re-dates the scoring rules. -->
+            <div id="emAutoCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6 mb-10">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-factory mr-2 text-teal-600"></i> Stack Emission alert automation</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">When a stack reading goes above or below its working range: give EA tasks and raise a complaint automatically.</p>
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-sm text-slate-700">
+                        <input type="checkbox" id="emAutoOn" class="w-5 h-5 accent-teal-600" onchange="emAutoPaintOn()"> <span id="emAutoOnLbl">Off</span>
+                    </label>
+                </div>
+                <div class="p-6">
+                    <div id="emAutoMsg" class="hidden mb-4 text-sm font-medium rounded-xl border p-4 leading-relaxed"></div>
+                    <div id="emAutoBody" class="hidden">
+                        <div class="mb-5 p-4 rounded-xl border border-teal-200 bg-teal-50 text-sm text-teal-900 font-medium leading-relaxed">
+                            The server checks the stack readings every <b>15 seconds</b>, whether or not any page is open, and gives the task / raises the complaint the moment a reading goes above or below the range. One rule per unit covers both; the task says which it was.
+                            Each excursion acts <b>once</b>, and only alerts that start <b>after you save</b> count, so old days are never assigned again.
+                            The EA task and the complaint both say the unit, the reading, the range and when it started. Every action is listed under <i>Recent automatic actions</i> below.
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Cooldown (minutes)</label>
+                                <input type="number" min="0" max="1440" step="5" id="emAutoCool" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 font-bold text-slate-800" placeholder="120">
+                                <p class="text-[11px] font-bold text-slate-500 mt-1">A new excursion of the same unit and direction inside this time does nothing (0 = act on every one).</p></div>
+                            <label class="flex items-start gap-2 cursor-pointer select-none text-sm font-bold text-slate-700 md:mt-6"><input type="checkbox" id="emAutoOneOpen" class="w-4 h-4 mt-0.5 accent-teal-600">
+                                <span>No second complaint while the last automatic complaint of that unit and direction is not Closed yet</span></label>
+                        </div>
+                        <div id="emAutoUnits" class="space-y-6"></div>
+                        <div class="mt-6 pt-6 border-t border-slate-100 flex flex-wrap justify-end gap-3">
+                            <button id="emAutoRunBtn" onclick="emAutoRunNow()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-6 py-3 rounded-xl font-bold transition-all active:scale-95 flex items-center"><i class="ph-bold ph-play mr-2"></i> Run now</button>
+                            <button id="emAutoSaveBtn" onclick="emAutoSave()" class="bg-teal-700 hover:bg-teal-800 text-white px-8 py-3 rounded-xl font-bold shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-floppy-disk mr-2 text-xl"></i> Save automation</button>
+                        </div>
+                        <p id="emAutoSavedInfo" class="text-[11px] font-bold text-slate-400 mt-2 text-right"></p>
+                        <div class="mt-8">
+                            <h3 class="text-[11px] font-bold text-slate-500 mb-3 uppercase tracking-wider">Recent automatic actions (newest first)</h3>
+                            <div id="emAutoLog" class="space-y-2 text-sm"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 3. EA DELEGATION & ACTIVE TASKS -->
@@ -1395,7 +1437,7 @@
         function rerenderScreen() {
             const s = appState.currentScreen;
             if (s === 'employee-dashboard') renderDashboard();
-            else if (s === 'score-master') initScoreMaster();
+            else if (s === 'score-master') initScoreMaster(true);
             else if (s === 'pc-followup') { renderPcEmpList(); renderPcTasks(); }
             else if (s === 'employee-sheet' && appState.currentLoggedInEmp) renderEmployeeSheet(appState.currentLoggedInEmp);
             else if (s === 'task-list') { if (activeTaskCategory === 'completed-self') openCompletedSelfTasks(); else if (activeTaskCategory) openTaskCategory(activeTaskCategory, activeTaskCategoryTitle); }
@@ -1589,7 +1631,7 @@
 
         // --- Score Master Settings ---
         const num = (v, d) => { const n = parseFloat(v); return isFinite(n) && n >= 0 ? n : d; };
-        function initScoreMaster() {
+        function initScoreMaster(keepAuto) {
             SCORE_CATS.forEach(c => {
                 const r = appState.scoreSettings[c];
                 document.getElementById(`penGraceH_${c}`).value = r.graceHours; document.getElementById(`penGraceP_${c}`).value = r.gracePenalty;
@@ -1604,6 +1646,7 @@
                 const r = mergeRules(v.value).daily;
                 return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${r.graceHours}h / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints}</span></div>`;
             }).join('') : '<div class="text-sm text-slate-400 font-bold">Not saved yet. The default rules apply: grace 3 hours / -20, then -20 per hour, into minus with no limit.</div>';
+            if (!keepAuto || !EMA.data) emAutoLoad();   // a redraw after saving the scoring rules keeps unsaved automation edits
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
         function smExample(c) {
@@ -1628,6 +1671,203 @@
             if (!res.ok) return tmErr(res);
             await refreshAndRerender(); showCustomModal("Settings Saved", "New rules saved. They apply to tasks assigned from now on; past scores stay as they were.");
         };
+
+        /* ── Stack Emission alert automation ──────────────────────────────
+           ONE rule per emission unit (U1, U2 …), used for a reading above AND
+           below the working range alike (the task / complaint text says which):
+           EA tasks to a list of employees, and / or one machine complaint raised
+           as a chosen Complaint-system profile. The SERVER does the work
+           (sql/EMISSION_AUTOMATION_MIGRATION.sql: a trigger right after every
+           15-second alert check, plus a 1-minute backstop job); this card only
+           edits the rules, kept in tm_settings 'emission_auto', and shows the
+           server's log. The employee lists live in EMA.cfg; every other box is
+           read back from the screen (emAutoCollect) before a redraw or a save,
+           so nothing typed is lost. */
+        const EMA = { data: null, cfg: null, loading: false };
+        const EMA_ERR = {
+            AUTO_NO_EMP: 'EA task is ticked but no employee is chosen',
+            AUTO_BAD_UNIT: 'the complaint unit is not an active unit in the Complaint system',
+            AUTO_NO_RAISER: 'choose who the complaint is raised as (an active Complaint-system user)',
+            AUTO_RAISER_DEPT: 'the "Raise as" user has no department in the Complaint system, so a complaint cannot be saved for them',
+            AUTO_RAISER_UNIT: 'the "Raise as" user belongs to another unit; the Complaint system would file it under their own unit. Pick an Admin / all-units user or one of this unit'
+        };
+        const emaUnitNo = u => String(u).replace(/^U/, '');
+        function emaDefRule(u) {
+            return { note: '', ea: { on: false, emps: [], dueHours: 2, plannedBy: 'MD Planned' },
+                     complaint: { on: false, raiseAs: '', unit: 'Unit-' + emaUnitNo(u), machine: 'BOILER', machineNo: '1', type: '' } };
+        }
+        function emaRule(u) {
+            const c = EMA.cfg; c.units = c.units || {};
+            // A draft saved with separate above / below rules: take the "above" one.
+            let r = c.units[u] || {}; if (!r.ea && !r.complaint && (r.HIGH || r.LOW)) r = r.HIGH || r.LOW;
+            const d = emaDefRule(u);
+            c.units[u] = { note: r.note || '', ea: { ...d.ea, ...(r.ea || {}) }, complaint: { ...d.complaint, ...(r.complaint || {}) } };
+            if (!Array.isArray(c.units[u].ea.emps)) c.units[u].ea.emps = [];
+            return c.units[u];
+        }
+        function emaMsg(html, cls) {
+            const b = document.getElementById('emAutoMsg');
+            b.className = html ? 'mb-4 text-sm font-medium rounded-xl border p-4 leading-relaxed ' + (cls || 'bg-amber-50 border-amber-200 text-amber-900') : 'hidden';
+            b.innerHTML = html || '';
+        }
+        async function emAutoLoad() {
+            if (EMA.loading) return; EMA.loading = true;
+            emaMsg('Loading the automation rules…', 'bg-slate-50 border-slate-200 text-slate-500');
+            const res = await tmRpc('tm_emission_auto_get');
+            EMA.loading = false;
+            if (!res.ok) {
+                document.getElementById('emAutoBody').classList.add('hidden');
+                const det = String(res.detail || '');
+                if (res.error === 'NO_MIGRATION') emaMsg('The automation is not set up on the server yet. Admin: run <code>sql/EMISSION_AUTOMATION_MIGRATION.sql</code> in the Supabase SQL Editor (after the two-unit <code>EMISSION_MIGRATION.sql</code>).');
+                else if (/emission_units|emission_bands|emission_auto_log/.test(det)) emaMsg('The two-unit Stack Emission tables are missing. Admin: run <code>sql/EMISSION_MIGRATION.sql</code> first, then <code>sql/EMISSION_AUTOMATION_MIGRATION.sql</code>.');
+                else emaMsg('Could not load the automation rules: ' + esc(TM_ERR[res.error] ? res.error : (res.error + (det ? ' · ' + det : ''))), 'bg-red-50 border-red-200 text-red-800');
+                return;
+            }
+            EMA.data = res.data;
+            EMA.cfg = JSON.parse(JSON.stringify(res.data.settings || {}));
+            await loadTmDropdowns();
+            emaMsg('');
+            document.getElementById('emAutoBody').classList.remove('hidden');
+            document.getElementById('emAutoOn').checked = !!EMA.cfg.enabled;
+            document.getElementById('emAutoCool').value = EMA.cfg.cooldownMin == null ? 120 : EMA.cfg.cooldownMin;
+            document.getElementById('emAutoOneOpen').checked = EMA.cfg.oneOpenComplaint !== false;
+            document.getElementById('emAutoSavedInfo').textContent = EMA.cfg.savedAt
+                ? 'Last saved ' + new Date(EMA.cfg.savedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' by ' + (EMA.cfg.savedBy || '-')
+                : 'Not saved yet.';
+            emAutoPaintOn(); emAutoRender(); emAutoRenderLog();
+        }
+        window.emAutoPaintOn = function() {
+            const on = document.getElementById('emAutoOn').checked, l = document.getElementById('emAutoOnLbl');
+            l.textContent = on ? 'On' : 'Off'; l.className = on ? 'text-teal-700' : 'text-slate-400';
+        };
+        function emaSel(id, opts, val, cls) {
+            return `<select id="${id}" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 font-bold text-sm ${cls || ''}">`
+                + opts.map(o => `<option value="${esc(o[0])}"${String(o[0]) === String(val) ? ' selected' : ''}>${esc(o[1])}</option>`).join('') + '</select>';
+        }
+        function emAutoRender() {
+            const D = EMA.data, lb = 'block text-[11px] font-bold text-slate-500 mb-1 uppercase tracking-wider';
+            const planned = tmDdList('plannedBy');
+            const profs = (D.profiles || []).map(p => [p.id, [p.name, p.role, p.allUnits ? 'all units' : p.unit].filter(Boolean).join(' · ')]);
+            const machines = (D.machines || []).map(m => [m.name + '||' + (m.no || ''), m.name + (m.no ? ' / ' + m.no : '')]);
+            document.getElementById('emAutoUnits').innerHTML = (D.units || []).map(U => {
+                const r = emaRule(U.unit), id = `ema_${U.unit}_`, u = esc(U.unit);
+                const mVal = r.complaint.machine + '||' + (r.complaint.machineNo || '');
+                const mOpts = machines.some(m => m[0] === mVal) ? machines : [[mVal, r.complaint.machine + (r.complaint.machineNo ? ' / ' + r.complaint.machineNo : '') + ' (saved)']].concat(machines);
+                const pOpts = [['', '-- Select --']].concat(profs.some(p => p[0] === r.complaint.raiseAs) || !r.complaint.raiseAs ? profs : [[r.complaint.raiseAs, 'Saved user (not active any more)']].concat(profs));
+                const pb = planned.includes(r.ea.plannedBy) || !r.ea.plannedBy ? planned : [r.ea.plannedBy].concat(planned);
+                return `<div class="border border-slate-200 rounded-2xl overflow-hidden">
+                    <div class="px-5 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                        <span class="flex flex-wrap items-center gap-2">
+                            <b class="text-slate-800 font-extrabold">Unit ${esc(emaUnitNo(U.unit))} <span class="text-slate-500 font-bold text-xs">· ${esc(U.name)}</span></b>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border border-slate-300 bg-white text-slate-600">Reading <span class="text-rose-600">above</span> or <span class="text-sky-600">below</span> range</span>
+                        </span>
+                        <span class="text-[11px] font-bold text-slate-500">Working range ${(U.bands || []).map(b => esc(b.param) + ' ' + esc(b.low) + '–' + esc(b.high)).join(' · ') || '-'} (set in Stack Emission)</span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2">
+                        <div class="p-5 lg:border-r border-slate-200">
+                            <label class="flex items-center gap-2 font-extrabold text-sm text-slate-800 cursor-pointer select-none"><input type="checkbox" id="${id}eaOn" ${r.ea.on ? 'checked' : ''} class="w-4 h-4 accent-pink-600"> Give EA task</label>
+                            <div class="mt-3 pl-6 space-y-3">
+                                <div><span class="${lb}">Employees</span>
+                                    <div class="flex flex-wrap gap-1.5">${r.ea.emps.map((c, i) => { const m = masterByCode(c) || appState.employees.find(e => e.empCode === c); const n = m ? (m.name || m.empName) : '';
+                                        return `<span class="inline-flex items-center gap-1 bg-pink-50 border border-pink-200 text-pink-800 text-xs font-bold px-2 py-1 rounded-lg">${esc(n ? n + ' (' + c + ')' : c)}<button type="button" title="Remove" onclick="emAutoDelEmp('${u}',${i})" class="text-pink-500 hover:text-red-600 font-extrabold">✕</button></span>`; }).join('')}
+                                    <button type="button" onclick="emAutoAddEmp('${u}')" class="text-xs font-bold text-pink-700 border border-dashed border-pink-300 px-2 py-1 rounded-lg hover:bg-pink-50">+ Add employee</button></div></div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div><span class="${lb}">Target</span>${emaSel(id + 'due', [1, 2, 3, 4, 6, 8, 12, 24, 48].map(h => [h, h + (h === 1 ? ' hour' : ' hours') + ' later']), r.ea.dueHours)}</div>
+                                    <div><span class="${lb}">Planned by</span>${emaSel(id + 'pb', [['', '-- None --']].concat(pb.map(v => [v, v])), r.ea.plannedBy)}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="p-5 border-t lg:border-t-0 border-slate-200">
+                            <label class="flex items-center gap-2 font-extrabold text-sm text-slate-800 cursor-pointer select-none"><input type="checkbox" id="${id}cmpOn" ${r.complaint.on ? 'checked' : ''} class="w-4 h-4 accent-teal-600"> Raise complaint</label>
+                            <div class="mt-3 pl-6 grid grid-cols-2 gap-3">
+                                <div class="col-span-2"><span class="${lb}">Raise as (Complaint-system user)</span>${emaSel(id + 'as', pOpts, r.complaint.raiseAs)}</div>
+                                <div><span class="${lb}">Complaint unit</span>${emaSel(id + 'cu', (D.cmpUnits || []).map(x => [x, x]), r.complaint.unit)}</div>
+                                <div><span class="${lb}">Type</span>${emaSel(id + 'ty', [['', 'Maintenance decides'], ['Mechanical', 'Mechanical'], ['Electrical', 'Electrical'], ['Housekeeping', 'Housekeeping'], ['Other', 'Other']], r.complaint.type)}</div>
+                                <div class="col-span-2"><span class="${lb}">Machine</span>${emaSel(id + 'mc', mOpts, mVal)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="px-5 pb-5 pt-4 border-t border-slate-200">
+                        <span class="${lb}">Extra instruction (added to the task and the complaint)</span>
+                        <input type="text" id="${id}note" value="${esc(r.note)}" maxlength="300" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 font-medium text-sm" placeholder="e.g. Check bag filter and ID fan; report on WhatsApp group">
+                    </div></div>`;
+            }).join('') || '<div class="text-sm font-bold text-slate-400">No emission unit on the server.</div>';
+        }
+        // Screen → EMA.cfg (everything except the employee lists, which are kept in EMA.cfg directly).
+        function emAutoCollect() {
+            const c = EMA.cfg, g = id => document.getElementById(id);
+            c.enabled = g('emAutoOn').checked;
+            const cool = parseInt(g('emAutoCool').value, 10); c.cooldownMin = isFinite(cool) ? Math.max(0, Math.min(1440, cool)) : 120;
+            c.oneOpenComplaint = g('emAutoOneOpen').checked;
+            (EMA.data.units || []).forEach(U => {
+                const r = emaRule(U.unit), id = `ema_${U.unit}_`; if (!g(id + 'eaOn')) return;
+                r.ea.on = g(id + 'eaOn').checked; r.ea.dueHours = parseInt(g(id + 'due').value, 10) || 2; r.ea.plannedBy = g(id + 'pb').value;
+                const [mn, mno] = g(id + 'mc').value.split('||');
+                r.complaint = { on: g(id + 'cmpOn').checked, raiseAs: g(id + 'as').value, unit: g(id + 'cu').value, machine: mn || 'BOILER', machineNo: mno || '', type: g(id + 'ty').value };
+                r.note = g(id + 'note').value.trim();
+            });
+        }
+        window.emAutoAddEmp = function(u) {
+            openEmpPicker('Employee for the automatic EA task', x => {
+                emAutoCollect(); const r = emaRule(u);
+                if (!r.ea.emps.includes(x.code)) r.ea.emps.push(x.code);
+                r.ea.on = true; emAutoRender();
+            });
+        };
+        window.emAutoDelEmp = function(u, i) { emAutoCollect(); emaRule(u).ea.emps.splice(i, 1); emAutoRender(); };
+        window.emAutoSave = async function() {
+            if (!EMA.data) return;
+            emAutoCollect();
+            const c = EMA.cfg;
+            const send = { enabled: !!c.enabled, cooldownMin: c.cooldownMin, oneOpenComplaint: c.oneOpenComplaint, units: {} };
+            (EMA.data.units || []).forEach(U => { send.units[U.unit] = emaRule(U.unit); });
+            const any = Object.values(send.units).some(x => x.ea.on || x.complaint.on);
+            if (send.enabled && !any && !confirm('The automation is On but no EA task or complaint is ticked anywhere. Save anyway?')) return;
+            setBusy('emAutoSaveBtn', true);
+            const res = await tmRpc('tm_emission_auto_save', { p_settings: send });
+            setBusy('emAutoSaveBtn', false);
+            if (!res.ok) {
+                const d = res.data || {};
+                if (EMA_ERR[res.error]) return showCustomModal('Not saved', `<b>Unit ${esc(emaUnitNo(d.unit || ''))}:</b> ${esc(EMA_ERR[res.error])}${d.name ? ' (' + esc(d.name) + (d.their ? ', ' + esc(d.their) : '') + ')' : ''}.`, true);
+                return tmErr(res);
+            }
+            await emAutoLoad();
+            showCustomModal('Automation saved', send.enabled
+                ? 'Saved and <b>On</b>. From now on, an out-of-range reading gets its EA task / complaint within about 15 seconds of reaching the portal. Earlier alerts are not acted on.'
+                : 'Saved. The automation is <b>Off</b>, so nothing is assigned until you switch it on.');
+        };
+        window.emAutoRunNow = async function() {
+            setBusy('emAutoRunBtn', true);
+            const res = await tmRpc('tm_emission_auto_run_now');
+            setBusy('emAutoRunBtn', false);
+            if (!res.ok) return tmErr(res, 'Could not run');
+            const d = res.data;
+            await emAutoLoad();
+            showCustomModal('Checked', d.off ? 'The saved automation is <b>Off</b>. Switch it on and save first.'
+                : `${d.acted || 0} new alert(s) acted on, ${d.skipped || 0} skipped (cooldown or no rule). See <i>Recent automatic actions</i>.`);
+        };
+        const EMA_STATUS = {
+            DONE: ['Done', 'text-emerald-700 bg-emerald-50 border-emerald-200'], PARTIAL: ['Partly done', 'text-amber-700 bg-amber-50 border-amber-200'],
+            ERROR: ['Failed', 'text-red-700 bg-red-50 border-red-200'], COOLDOWN: ['Cooldown', 'text-slate-600 bg-slate-100 border-slate-200'],
+            NO_RULE: ['No rule', 'text-slate-500 bg-slate-50 border-slate-200'], RUNNING: ['Working', 'text-indigo-700 bg-indigo-50 border-indigo-200']
+        };
+        function emAutoRenderLog() {
+            const L = EMA.data.log || [], dt = s => { const d = new Date(String(s).replace(' ', 'T')); return isNaN(d) ? '' : d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }); };
+            document.getElementById('emAutoLog').innerHTML = L.length ? L.map(l => {
+                const st = EMA_STATUS[l.status] || [l.status, 'text-slate-600 bg-slate-50 border-slate-200'];
+                const ea = (l.ea || []).map(x => x.error ? `<span class="text-red-600">${esc(x.emp)}: ${esc(x.error)}</span>` : `${esc(x.name || x.emp)} <span class="text-slate-400">#${esc(x.taskNo)}</span>`).join(', ');
+                return `<div class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <b class="text-slate-800">${esc(dt(l.startedAt))}</b>
+                        <span class="text-xs font-extrabold">Unit ${esc(emaUnitNo(l.unit))} · ${esc(l.param)} <span class="${l.kind === 'HIGH' ? 'text-rose-600' : 'text-sky-600'}">${l.kind === 'HIGH' ? 'ABOVE' : 'BELOW'}</span>${l.peak != null ? ' · ' + esc(Number(l.peak).toFixed(2)) : ''}</span>
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded border ${st[1]}">${esc(st[0])}</span>
+                    </div>
+                    ${ea ? `<div class="text-xs text-slate-600 font-medium mt-1"><b>EA:</b> ${ea}</div>` : ''}
+                    ${l.complaintNo ? `<div class="text-xs text-slate-600 font-medium mt-0.5"><b>Complaint:</b> ${esc(l.complaintNo)}${l.complaintStatus ? ' · ' + esc(l.complaintStatus) : ''}</div>` : ''}
+                    ${l.note ? `<div class="text-xs text-slate-500 font-medium mt-0.5">${esc(l.note)}</div>` : ''}
+                </div>`;
+            }).join('') : '<div class="text-sm text-slate-400 font-bold">Nothing yet. Actions appear here as soon as an alert is acted on.</div>';
+        }
 
         // --- Add/Edit Employee Tasks ---
         // Only the recurring checklist is edited here; EA and self tasks have their own screens.

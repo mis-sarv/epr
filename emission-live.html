@@ -14,27 +14,29 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-  tailwind.config = { theme: { extend: {
-    fontFamily: { sans: ['Inter', 'sans-serif'] },
-    colors: { brand: { 50:'#f0fdfa', 100:'#ccfbf1', 200:'#99f6e4', 500:'#14b8a6', 600:'#0d9488', 700:'#0f766e', 800:'#115e59', 900:'#134e4a' } }
-  } } };
+  tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } } };
 </script>
 <style>
   body { background:#f8fafc; }
+  /* Each unit's view sets its own theme colours (UNITS: ac / acD / acL / acB);
+     red (above) and blue (below) stay the same in both, so they always mean the same. */
+  .unit { --ac:#0d9488; --acD:#0f766e; --acL:#f0fdfa; --acB:#99f6e4; }
   .sb::-webkit-scrollbar { height:6px; width:6px; }
   .sb::-webkit-scrollbar-track { background:#f1f5f9; }
   .sb::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
   .ico { width:15px; height:15px; display:inline-block; vertical-align:-2px; flex-shrink:0; }
   .btn { display:inline-flex; align-items:center; gap:6px; padding:6px 12px; font-size:12px; font-weight:600; border-radius:8px; border:1px solid #cbd5e1; background:#fff; color:#334155; white-space:nowrap; }
   .btn:hover { background:#f8fafc; }
-  .btn.pri { background:#0d9488; border-color:#0d9488; color:#fff; }
-  .btn.pri:hover { background:#0f766e; }
+  .btn.pri { background:var(--ac, #0f172a); border-color:var(--ac, #0f172a); color:#fff; }
+  .btn.pri:hover { background:var(--acD, #1e293b); }
   .btn.sm { padding:2px 8px; font-size:11px; }
   .btn:disabled { opacity:.55; cursor:default; }
   .sel, .inp { font-size:12px; border:1px solid #cbd5e1; border-radius:8px; padding:6px 8px; background:#fff; color:#334155; }
+  .sel:focus, .inp:focus { outline:2px solid var(--acB, #cbd5e1); border-color:var(--ac, #94a3b8); }
   .card { background:#fff; border:1px solid #e2e8f0; border-radius:12px; box-shadow:0 1px 2px rgba(15,23,42,.04); }
+  .unit .card { border-top:3px solid var(--ac); }
+  .unit .card.plain { border-top-width:1px; border-top-color:#e2e8f0; }
   .pill { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; font-size:11px; font-weight:700; border-radius:999px; letter-spacing:.03em; white-space:nowrap; }
   .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
   .ok   { background:#dcfce7; color:#166534; } .ok .dot { background:#16a34a; }
@@ -47,7 +49,7 @@
   /* Out of the working range: ABOVE = red, BELOW = blue, everywhere on the page */
   .card.out-hi { border-color:#fca5a5; box-shadow:0 0 0 2px #fee2e2; }
   .card.out-lo { border-color:#93c5fd; box-shadow:0 0 0 2px #dbeafe; }
-  table.rep th { position:sticky; top:0; background:#f8fafc; z-index:1; }
+  table.rep th { position:sticky; top:0; background:var(--acL, #f8fafc); color:var(--acD, #334155); z-index:1; }
   table.rep td, table.rep th { padding:6px 10px; border-bottom:1px solid #f1f5f9; white-space:nowrap; font-size:12px; }
   table.rep td.num, table.rep th.num { text-align:right; font-variant-numeric:tabular-nums; }
   td.hi { color:#b91c1c; font-weight:700; background:#fef2f2; }
@@ -58,135 +60,76 @@
   .seg { display:inline-flex; border:1px solid #cbd5e1; border-radius:8px; overflow:hidden; }
   .seg button { padding:5px 10px; font-size:12px; font-weight:600; color:#475569; background:#fff; border-left:1px solid #e2e8f0; white-space:nowrap; }
   .seg button:first-child { border-left:0; }
-  .seg button.on { background:#0f172a; color:#fff; }
+  .seg button.on { background:var(--acD, #0f172a); color:#fff; }
   .seg button.on.b-hi { background:#dc2626; } .seg button.on.b-lo { background:#2563eb; }
+  /* Unit switch: one card per unit with its live reading; the open one in its colour */
+  .uTab { text-align:left; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; cursor:pointer; min-width:0;
+          border-left:5px solid var(--ac); transition:box-shadow .15s, background .15s; }
+  .uTab:hover { box-shadow:0 2px 8px rgba(15,23,42,.08); }
+  .uTab.on { background:var(--acL); border-color:var(--acB); border-left-color:var(--ac); box-shadow:0 0 0 2px var(--acB); }
+  .uBadge { display:inline-flex; align-items:center; justify-content:center; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:800;
+            letter-spacing:.06em; background:var(--ac); color:#fff; }
+  .uHead { background:var(--acL); border:1px solid var(--acB); border-radius:12px; }
 </style>
 </head>
 <body class="font-sans text-slate-800">
 
 <div class="max-w-7xl mx-auto px-4 py-4 sm:py-6">
 
-  <!-- Header: plant, logger status, alerts, refresh -->
+  <!-- Header: title + the controls shared by both units -->
   <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
     <div class="min-w-0">
       <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
-        <svg class="ico" style="width:22px;height:22px" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M6 21V10h4v11M14 21V4h4v17"/><path d="M8 7c0-1.5 1.5-1.5 1.5-3M16 1.5c0 1 .8 1.2.8 2"/></svg>
+        <svg class="ico" style="width:22px;height:22px" viewBox="0 0 24 24" fill="none" stroke="#334155" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M6 21V10h4v11M14 21V4h4v17"/><path d="M8 7c0-1.5 1.5-1.5 1.5-3M16 1.5c0 1 .8 1.2.8 2"/></svg>
         Stack Emission (Live)
       </h1>
-      <div class="text-xs text-slate-500 mt-1" id="plantLine">Loading plant details...</div>
+      <div class="text-xs text-slate-500 mt-1">Boiler stack online monitoring of both units. Alerts work for both, whichever view is open.</div>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <span id="devPill" class="pill idle"><span class="dot"></span><span>Checking...</span></span>
       <!-- Notify: desktop pop-up (browser permission) + sound, when a live reading leaves the range -->
-      <button class="btn" id="notifyBtn" onclick="EM.toggleDesktop()" title="Pop-up on this computer when a reading goes below or above the range"></button>
-      <button class="btn" id="soundBtn" onclick="EM.toggleSound()" title="Beep when a reading goes below or above the range"></button>
+      <button class="btn" id="notifyBtn" onclick="APP.toggleDesktop()" title="Pop-up on this computer when a reading goes below or above the range"></button>
+      <button class="btn" id="soundBtn" onclick="APP.toggleSound()" title="Beep when a reading goes below or above the range"></button>
       <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none">
-        <input type="checkbox" id="autoOn" checked class="accent-teal-600"> Auto refresh
+        <input type="checkbox" id="autoOn" checked class="accent-slate-700"> Auto refresh
       </label>
-      <button class="btn" onclick="EM.refreshAll()" title="Fetch the latest reading now">
+      <button class="btn" onclick="APP.refreshAll()" title="Fetch the latest readings of both units now">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg> Refresh
       </button>
     </div>
   </div>
 
-  <div id="errBox" class="hidden mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm"></div>
-  <!-- Shown while a LIVE reading is out of the range (EM.checkLive) -->
-  <div id="alertBanner" class="hidden mb-4"></div>
+  <!-- Unit switch (filled by APP.paintSwitch): each card shows that unit's live readings -->
+  <div id="unitSwitch" class="grid gap-3 sm:grid-cols-2 mb-4"></div>
 
-  <!-- Live tiles, one per parameter -->
-  <div id="tiles" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
-    <div class="card p-5 text-sm text-slate-500">Loading live readings...</div>
-  </div>
-
-  <!-- Today's trend -->
-  <div class="card p-4 mb-4">
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-      <div>
-        <div class="text-sm font-bold text-slate-800">Today's trend</div>
-        <div class="text-[11px] text-slate-500">15-minute averages since midnight. Dashed lines = working range; red points above it, blue points below it. Updates every 5 minutes.</div>
-      </div>
-      <span id="trendNote" class="text-[11px] text-slate-500"></span>
-    </div>
-    <div style="position:relative;height:280px"><canvas id="trendChart"></canvas></div>
-  </div>
-
-  <!-- History / report -->
-  <div class="card p-4 mb-4">
-    <div class="flex flex-wrap items-end gap-2 mb-3">
-      <div class="w-full mb-1">
-        <div class="text-sm font-bold text-slate-800">History report</div>
-        <div class="text-[11px] text-slate-500" id="hHint">Up to 31 days. Long ranges at 1-minute detail load slowly; use 1 hour or 1 day for them.</div>
-        <!-- What is saved in our database (emission_status), or why not -->
-        <div class="text-[11px] mt-1 flex flex-wrap items-center gap-2" id="dbLine"></div>
-      </div>
-      <label class="text-[11px] font-semibold text-slate-500">From<br><input type="date" id="hFrom" class="inp"></label>
-      <label class="text-[11px] font-semibold text-slate-500">To<br><input type="date" id="hTo" class="inp"></label>
-      <label class="text-[11px] font-semibold text-slate-500">Detail<br>
-        <select id="hStep" class="sel">
-          <option value="1">Every minute</option>
-          <option value="15" selected>15-minute average</option>
-          <option value="60">Hourly average</option>
-          <option value="1440">Daily average</option>
-        </select>
-      </label>
-      <button class="btn pri" id="hLoadBtn" onclick="EM.loadHistory()">Load</button>
-      <div class="text-[11px] font-semibold text-slate-500">Show<br>
-        <!-- Below / above filter on the loaded rows (EM.rowFilter); CSV follows it -->
-        <div class="seg" id="hFilter">
-          <button data-f="all" class="on" onclick="EM.setFilter('all')">All</button>
-          <button data-f="out" onclick="EM.setFilter('out')">Out of range</button>
-          <button data-f="hi" class="b-hi" onclick="EM.setFilter('hi')">Above</button>
-          <button data-f="lo" class="b-lo" onclick="EM.setFilter('lo')">Below</button>
-        </div>
-      </div>
-      <button class="btn" id="hCsvBtn" onclick="EM.csv()" disabled>Export CSV</button>
-    </div>
-    <div id="hSummary" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 mb-3"></div>
-    <div id="hMsg" class="text-sm text-slate-500 py-6 text-center">Pick the dates and press Load.</div>
-    <div id="hTableWrap" class="hidden overflow-auto sb border border-slate-200 rounded-lg" style="max-height:460px">
-      <table class="rep w-full"><thead id="hHead"></thead><tbody id="hBody"></tbody></table>
-    </div>
-  </div>
-
-  <!-- Alerts: out-of-range events for the report's dates -->
-  <div class="card p-4">
-    <div class="flex flex-wrap items-center gap-2 mb-3">
-      <div class="mr-auto">
-        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">Alerts <span id="alOpen"></span></div>
-        <div class="text-[11px] text-slate-500" id="alHint">Each alert is one stretch of readings below or above the working range, for the dates of the report above.</div>
-      </div>
-      <div class="seg" id="alKind">
-        <button data-k="" class="on" onclick="EM.setAlertKind('')">All</button>
-        <button data-k="HIGH" class="b-hi" onclick="EM.setAlertKind('HIGH')">Above</button>
-        <button data-k="LOW" class="b-lo" onclick="EM.setAlertKind('LOW')">Below</button>
-      </div>
-      <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none">
-        <input type="checkbox" id="alOpenOnly" class="accent-teal-600" onchange="EM.loadAlerts()"> Not acknowledged only
-      </label>
-      <button class="btn" id="alAckAll" onclick="EM.ack(null)" style="display:none">Acknowledge all</button>
-    </div>
-    <!-- Working range per parameter; Admin edits it (emission_band_save) -->
-    <div id="bandLine" class="flex flex-wrap items-center gap-2 mb-3 text-[12px]"></div>
-    <div id="alList" class="text-sm text-slate-500">Loading...</div>
-  </div>
+  <!-- One full view per unit (unitHTML); only the chosen one is shown -->
+  <div id="unitViews"></div>
 
   <div class="text-[11px] text-slate-400 mt-4 leading-relaxed">
-    Source: Access Surveykshan online monitoring (data logger <span id="devName">-</span>). Readings are what the logger sent to the portal. "Limit" = the legal standard set on the portal; "range" = our own working range, used for the highlights, filter and alerts.
+    Source: Access Surveykshan online monitoring. Readings are what each unit's data logger sent to the portal. "Limit" = the legal standard set on the portal; "range" = our own working range per unit, used for the highlights, filter and alerts.
   </div>
 </div>
 
 <script>
 /* ════════════════════════════════════════════════════════════════════
-   STACK EMISSION (LIVE)
-   The boiler stack's online monitoring readings (PM, NOx, SO2 …) from the
-   Access Surveykshan portal (accesssurveykshan.co.in, our industry
-   63fdec8a42c7fc4f253681e8, data logger M00601), shown inside the ERP.
+   STACK EMISSION (LIVE)  —  two units
+   The boiler stacks' online monitoring readings (PM, NOx, SO2 …) from the
+   Access Surveykshan portal (accesssurveykshan.co.in), shown inside the ERP:
+     Unit 1  industry 63fdec8a42c7fc4f253681e8, data logger M00601
+     Unit 2  industry 68e63600e13fce98d6e998e7, data logger M00817
+             (Sarv India Home Furnishing Unit 2; the portal names the plant
+              "Diamond India Pvt Ltd")
+   The page is divided into one full view per unit (live tiles, history
+   report, alerts, working range), each in its own theme colour (UNITS),
+   with a switch at the top that also shows both units' live readings, so a
+   reading going out of range in the unit not on screen is still seen. Both
+   units keep polling and notifying whichever view is open.
 
    How the data is reached: the portal's own web app reads three endpoints
    of its API, and all three answer any website (Access-Control-Allow-Origin
    *) WITHOUT a login, so this page calls them straight from the browser.
-   No portal username / password is kept here, on purpose: none is needed,
-   and the portal's login answer even carries the password in plain text.
+   No portal username / password is kept here, for either unit, on purpose:
+   none is needed, and the portal's login answer even carries the password
+   in plain text.
      1. {API}/industries/{id}        plant details + each logger's status and
                                      last-received time (offline check)
      2. {API}/device_data/{loggers}  the latest value of every parameter, with
@@ -196,31 +139,31 @@
                                      averages per step of `minutes` (1, 15,
                                      60, 1440); its columns are named
                                      "PM (Stack_1_Boiler_4TPH)" and so on.
-   If the vendor ever puts these behind a login, this page shows the error
-   it gets instead of empty tiles; the fix then is a small server-side
-   proxy (Edge Function) holding the login, not the password in this page.
+   Unit 2's live answer names particulate matter "SPM" while its history
+   says "PM"; the page (and the database) read both as PM (PARAM_ALIAS), so
+   one range and one report column cover it.
 
    Saved in OUR database (sql/EMISSION_MIGRATION.sql): the database itself
-   fetches the 1-minute readings from the portal every 10 minutes (pg_cron),
-   so the history is kept even when nobody has this page open. The history
-   report reads from there (emission_rows, token-checked) and can go back a
-   year; "Sync now" runs the same fetch at once. Until the migration has run,
-   the page says so and reads the history from the portal instead (31 days).
+   fetches both units' 1-minute readings from the portal every 10 minutes
+   (pg_cron), so the history is kept even when nobody has this page open.
+   Each unit's history report reads from there (emission_rows with p_unit,
+   token-checked) and can go back a year; "Sync now" runs the same fetch at
+   once. Until the (two-unit) migration has run, the view says so and reads
+   its history from the portal instead (31 days).
 
-   Working range (PM 25 – 48): our own band, narrower than the portal's legal
-   limit. Below it = blue, above it = red, on the tiles, the chart, the report
-   (with an All / Out of range / Above / Below filter) and the Alerts list.
-   Kept in emission_bands (Admin edits it here); DEFAULT_BANDS is used until
-   the migration has run. Notify:
+   Working range (PM 25 – 48 by default): our own band per unit, narrower
+   than the portal's legal limit. Below it = blue, above it = red, on the
+   tiles, the report (with an All / Out of range / Above / Below filter) and
+   the Alerts list. Kept in emission_bands per unit (Admin edits it here);
+   DEFAULT_BANDS is used until the migration has run. Notify:
      - the database records every out-of-range stretch as an alert event on
        each sync, day and night (emission_alerts), acknowledged here;
      - while this page is open, a live reading leaving the range shows a
        banner, beeps and (once allowed) pops up a desktop notification, once
        per stretch, and again when it comes back into range.
 
-   Parameters are not hard-coded: a new one the logger starts sending (the
-   subscription also lists NOx and SO2) gets its own tile, chart line and
-   report column by itself.
+   Parameters are not hard-coded: a new one a logger starts sending gets its
+   own tile and report column by itself.
    Who may open THIS page is decided by the ERP: the single-login gate and
    the HOME_EMISSION_LIVE key in Admin Panel › Tab Visibility / Users › Apps.
    ════════════════════════════════════════════════════════════════════ */
@@ -231,9 +174,22 @@ const ERP_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const ERP_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const APP_KEY  = 'HOME_EMISSION_LIVE';
 // The monitoring portal.
-const SK_API      = 'https://api.accesssurveykshan.co.in/api/v1';
-const SK_GRAPH    = 'https://graph-data.accesssurveykshan.co.in/api/v1/surveykshan-get-data-api/rawdata';
-const SK_INDUSTRY = '63fdec8a42c7fc4f253681e8';
+const SK_API   = 'https://api.accesssurveykshan.co.in/api/v1';
+const SK_GRAPH = 'https://graph-data.accesssurveykshan.co.in/api/v1/surveykshan-get-data-api/rawdata';
+
+/* ── The units (code = emission_units.unit in the database) ──────────
+   ac = main colour, acD = darker (headings, active buttons),
+   acL = light background, acB = light border. Teal for Unit 1, violet for
+   Unit 2: far enough from the red / blue of above / below. */
+const UNITS = [
+  { key: 'u1', code: 'U1', name: 'Unit 1', full: 'Sarv India Home Furnishing Unit 1', industry: '63fdec8a42c7fc4f253681e8',
+    ac: '#0d9488', acD: '#0f766e', acL: '#f0fdfa', acB: '#99f6e4' },
+  { key: 'u2', code: 'U2', name: 'Unit 2', full: 'Sarv India Home Furnishing Unit 2', industry: '68e63600e13fce98d6e998e7',
+    ac: '#7c3aed', acD: '#6d28d9', acL: '#f5f3ff', acB: '#ddd6fe' }
+];
+// The portal's parameter names → ours.
+const PARAM_ALIAS = { SPM: 'PM' };
+const normParam = p => PARAM_ALIAS[String(p || '').trim().toUpperCase()] || String(p || '').trim();
 
 /* ── Working range until the database gives its own (emission_bands) ── */
 const DEFAULT_BANDS = { PM: { low: 25, high: 48, min_minutes: 1 } };
@@ -241,13 +197,12 @@ const DEFAULT_BANDS = { PM: { low: 25, high: 48, min_minutes: 1 } };
 /* ── Timing ───────────────────────────────────────────────────────── */
 const LIVE_EVERY_MS   = 10000;    // latest reading (the portal's own screen polls every 5 s)
 const STATUS_EVERY_MS = 60000;    // logger online / last received
-const TREND_EVERY_MS  = 300000;   // today's 15-minute chart
 const DELAY_MIN       = 15;       // no reading for this long → "Delayed"
 const OFFLINE_MIN     = 60;       // … for this long → "Offline"
 const MAX_DAYS        = 31;
 const FETCH_TIMEOUT_MS = 90000;   // a month of history can take the portal a minute
 
-const $ = id => document.getElementById(id);
+const byId = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;' }[c]));
 const pad = n => String(n).padStart(2, '0');
 // Local dates (never toISOString, which is UTC and is "yesterday" before 5:30 am).
@@ -255,8 +210,10 @@ const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.get
 const today = () => ymd(new Date());
 const dmy = s => { const m = /^(\d{4})-(\d{2})-(\d{2})(.*)$/.exec(String(s || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] + m[4] : String(s || ''); };
 const fmt = (v, d) => (v == null || isNaN(v)) ? '-' : Number(v).toFixed(d == null ? 2 : d);
-// Per-browser choices (desktop pop-ups, sound): conveniences only, so any storage error is ignored.
+// Per-browser choices (desktop pop-ups, sound, open unit): conveniences only, so any storage error is ignored.
 const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem('em_' + k); localStorage.setItem('em_' + k, v); } catch (e) {} return null; };
+const ago = mins => mins < 1 ? 'just now' : mins < 60 ? Math.round(mins) + ' min ago'
+  : mins < 48 * 60 ? Math.round(mins / 60) + ' h ago' : Math.round(mins / 1440) + ' days ago';
 
 async function getJson(url) {
   const ctl = new AbortController();
@@ -275,7 +232,8 @@ async function getJson(url) {
 }
 
 /* One emission_* RPC on the ERP project with the session token. A missing
-   function means the migration has not been run (code NOT_SET_UP). */
+   function (also the first, one-unit version without p_unit) means the
+   migration has not been run (code NOT_SET_UP). */
 async function dbRpc(fn, args) {
   let r;
   try {
@@ -289,7 +247,7 @@ async function dbRpc(fn, args) {
   if (!r.ok) {
     const code = d && d.code;
     if (code === 'PGRST202' || code === '42883' || code === '42P01') {
-      const er = new Error('Saving in the ERP is not set up yet. Admin: run sql/EMISSION_MIGRATION.sql in the Supabase SQL Editor.');
+      const er = new Error('Saving both units in the ERP is not set up yet. Admin: run the updated sql/EMISSION_MIGRATION.sql in the Supabase SQL Editor.');
       er.code = 'NOT_SET_UP'; throw er;
     }
     throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
@@ -299,196 +257,664 @@ async function dbRpc(fn, args) {
                            NOT_ALLOWED: 'Your login does not have the Stack Emission app.',
                            ADMIN_ONLY: 'Only the Admin can change the working range.',
                            BAD_RANGE: 'The low value must be smaller than the high value.',
+                           BAD_UNIT: 'This unit is not set up in the ERP database yet. Admin: run the updated sql/EMISSION_MIGRATION.sql.',
                            BAD_DATES: 'Check the dates.' }[d.error] || d.error || 'The server refused the request.');
     er.code = d.error; throw er;
   }
   return d;
 }
 
-const EM = {
-  db: null,          // null = not known yet, true = saving set up, false = not (history from the portal)
-  canEditRange: false,
-  bands: JSON.parse(JSON.stringify(DEFAULT_BANDS)),   // "PM" → {low, high, min_minutes}
-  plant: null,       // industry record
-  loggers: [],       // its devices
-  live: [],          // latest values (device_data)
-  limits: {},        // "PM" → {max, min, unit} from the live answer, used by the chart / report
-  chart: null,
-  hist: null,        // last loaded report {cols, rows, from, to, step}
-  rowFilter: 'all',  // all / out / hi / lo
-  alertKind: '',     // '' / HIGH / LOW
-  liveState: {},     // "PM|station" → 'LOW' / 'HIGH' / '' : last notified side, so each stretch notifies once
-  timers: [],
+/* ── One unit's view (ids prefixed with the unit key, e.g. "u2-tiles") ── */
+function unitHTML(U) {
+  const k = U.key, R = 'UNIT.' + k;
+  return `
+  <section id="${k}-root" class="unit hidden" style="--ac:${U.ac};--acD:${U.acD};--acL:${U.acL};--acB:${U.acB}">
+    <!-- Unit heading: plant on the portal + logger status -->
+    <div class="uHead flex flex-wrap items-center justify-between gap-3 px-4 py-3 mb-4">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2"><span class="uBadge">${esc(U.name.toUpperCase())}</span>
+          <span class="text-base font-extrabold" style="color:${U.acD}">${esc(U.full)}</span></div>
+        <div class="text-xs text-slate-500 mt-1" id="${k}-plantLine">Loading plant details...</div>
+      </div>
+      <span id="${k}-devPill" class="pill idle"><span class="dot"></span><span>Checking...</span></span>
+    </div>
 
-  showErr(msg) {
-    const b = $('errBox');
-    b.textContent = msg || '';
-    b.classList.toggle('hidden', !msg);
-  },
+    <div id="${k}-errBox" class="hidden mb-4 p-3 rounded-lg border border-red-200 bg-red-50 text-red-800 text-sm"></div>
+    <!-- Shown while a LIVE reading is out of the range (checkLive) -->
+    <div id="${k}-alertBanner" class="hidden mb-4"></div>
 
-  /* ── Working range ────────────────────────────────────────────── */
-  // "PM (Stack_1_Boiler_4TPH)" → "PM"
-  paramOf: c => String(c).replace(/\s*\(.*\)\s*$/, ''),
-  limitOf(c) { const l = EM.limits[EM.paramOf(c)]; return l && !isNaN(l.max) && l.max > 0 ? l : null; },
-  bandOf(c) { return EM.bands[EM.paramOf(c)] || null; },
-  // 'hi' above the range, 'lo' below it, '' inside it or no range for that parameter.
-  side(c, v) {
-    const b = EM.bandOf(c);
-    if (!b || v == null || v === '' || isNaN(v)) return '';
-    v = Number(v);
-    return v > b.high ? 'hi' : v < b.low ? 'lo' : '';
-  },
+    <!-- Live tiles, one per parameter -->
+    <div id="${k}-tiles" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+      <div class="card p-5 text-sm text-slate-500">Loading live readings...</div>
+    </div>
 
-  /* ── 1. Plant + logger status ─────────────────────────────────── */
-  async loadStatus() {
-    const j = await getJson(SK_API + '/industries/' + SK_INDUSTRY);
-    const ind = j && j.data && j.data.industry;
-    if (!ind) throw new Error('The portal did not return the plant details.');
-    EM.plant = ind;
-    EM.loggers = Array.isArray(ind.devices) ? ind.devices : [];
-    $('plantLine').textContent = [ind.industry_name, ind.location_name, ind.industry_pb_id ? 'ID ' + ind.industry_pb_id : '']
-      .filter(Boolean).join('  ·  ');
-    $('devName').textContent = EM.loggers.map(d => d.device_name).join(', ') || '-';
-    EM.paintStatus();
-  },
-  // Status from the newest "last received" of the loggers, not from the portal's
-  // own online flag alone: that flag lags, the time does not.
-  paintStatus() {
-    const last = EM.lastReceived();
-    const pill = $('devPill');
-    let cls = 'idle', txt = 'No logger';
-    if (last) {
-      const mins = (Date.now() - last.getTime()) / 60000;
-      const ago = EM.ago(mins);
-      if (mins <= DELAY_MIN) { cls = 'ok live'; txt = 'Online · ' + ago; }
-      else if (mins <= OFFLINE_MIN) { cls = 'warn'; txt = 'Delayed · last data ' + ago; }
-      else { cls = 'bad'; txt = 'Offline · last data ' + ago; }
-    }
-    pill.className = 'pill ' + cls;
-    pill.innerHTML = '<span class="dot"></span><span>' + esc(txt) + '</span>';
-  },
-  lastReceived() {
-    const times = EM.live.map(v => Date.parse(v.created_at))
-      .concat(EM.loggers.map(d => Date.parse(d.last_data_recived)))
-      .filter(t => !isNaN(t));
-    return times.length ? new Date(Math.max.apply(null, times)) : null;
-  },
-  ago(mins) {
-    if (mins < 1) return 'just now';
-    if (mins < 60) return Math.round(mins) + ' min ago';
-    if (mins < 48 * 60) return Math.round(mins / 60) + ' h ago';
-    return Math.round(mins / 1440) + ' days ago';
-  },
+    <!-- History / report -->
+    <div class="card p-4 mb-4">
+      <div class="flex flex-wrap items-end gap-2 mb-3">
+        <div class="w-full mb-1">
+          <div class="text-sm font-bold" style="color:${U.acD}">History report · ${esc(U.name)}</div>
+          <div class="text-[11px] text-slate-500" id="${k}-hHint">Up to 31 days. Long ranges at 1-minute detail load slowly; use 1 hour or 1 day for them.</div>
+          <!-- What is saved in our database (emission_status), or why not -->
+          <div class="text-[11px] mt-1 flex flex-wrap items-center gap-2" id="${k}-dbLine"></div>
+        </div>
+        <label class="text-[11px] font-semibold text-slate-500">From<br><input type="date" id="${k}-hFrom" class="inp"></label>
+        <label class="text-[11px] font-semibold text-slate-500">To<br><input type="date" id="${k}-hTo" class="inp"></label>
+        <label class="text-[11px] font-semibold text-slate-500">Detail<br>
+          <select id="${k}-hStep" class="sel">
+            <option value="1">Every minute</option>
+            <option value="15" selected>15-minute average</option>
+            <option value="60">Hourly average</option>
+            <option value="1440">Daily average</option>
+          </select>
+        </label>
+        <button class="btn pri" id="${k}-hLoadBtn" onclick="${R}.loadHistory()">Load</button>
+        <div class="text-[11px] font-semibold text-slate-500">Show<br>
+          <!-- Below / above filter on the loaded rows (rowFilter); CSV follows it -->
+          <div class="seg" id="${k}-hFilter">
+            <button data-f="all" class="on" onclick="${R}.setFilter('all')">All</button>
+            <button data-f="out" onclick="${R}.setFilter('out')">Out of range</button>
+            <button data-f="hi" class="b-hi" onclick="${R}.setFilter('hi')">Above</button>
+            <button data-f="lo" class="b-lo" onclick="${R}.setFilter('lo')">Below</button>
+          </div>
+        </div>
+        <button class="btn" id="${k}-hCsvBtn" onclick="${R}.csv()" disabled>Export CSV</button>
+      </div>
+      <div id="${k}-hSummary" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 mb-3"></div>
+      <div id="${k}-hMsg" class="text-sm text-slate-500 py-6 text-center">Pick the dates and press Load.</div>
+      <div id="${k}-hTableWrap" class="hidden overflow-auto sb border border-slate-200 rounded-lg" style="max-height:460px">
+        <table class="rep w-full"><thead id="${k}-hHead"></thead><tbody id="${k}-hBody"></tbody></table>
+      </div>
+    </div>
 
-  /* ── 2. Latest readings → tiles + live alert ──────────────────── */
-  async loadLive() {
-    if (!EM.loggers.length) { EM.paintTiles(); return; }
-    const names = EM.loggers.map(d => encodeURIComponent(d.device_name)).join('+');
-    const j = await getJson(SK_API + '/device_data/' + names);
-    EM.live = Array.isArray(j && j.values) ? j.values : [];
-    EM.live.forEach(v => {
-      EM.limits[v.parameter_name] = { max: parseFloat(v.max_std_value), min: parseFloat(v.min_std_value), unit: v.parameter_unit || '' };
-    });
-    EM.paintTiles();
-    EM.paintStatus();
-    EM.checkLive();
-  },
-  paintTiles() {
-    const box = $('tiles');
-    if (!EM.live.length) {
-      box.innerHTML = '<div class="card p-5 text-sm text-slate-500">The logger has sent no reading yet.</div>';
-      return;
-    }
-    box.innerHTML = EM.live.map(v => {
+    <!-- Alerts: out-of-range events for the report's dates -->
+    <div class="card p-4">
+      <div class="flex flex-wrap items-center gap-2 mb-3">
+        <div class="mr-auto">
+          <div class="text-sm font-bold flex items-center gap-2" style="color:${U.acD}">Alerts · ${esc(U.name)} <span id="${k}-alOpen"></span></div>
+          <div class="text-[11px] text-slate-500" id="${k}-alHint">Each alert is one stretch of readings below or above the working range, for the dates of the report above.</div>
+        </div>
+        <div class="seg" id="${k}-alKind">
+          <button data-k="" class="on" onclick="${R}.setAlertKind('')">All</button>
+          <button data-k="HIGH" class="b-hi" onclick="${R}.setAlertKind('HIGH')">Above</button>
+          <button data-k="LOW" class="b-lo" onclick="${R}.setAlertKind('LOW')">Below</button>
+        </div>
+        <label class="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+          <input type="checkbox" id="${k}-alOpenOnly" style="accent-color:${U.ac}" onchange="${R}.loadAlerts()"> Not acknowledged only
+        </label>
+        <button class="btn" id="${k}-alAckAll" onclick="${R}.ack(null)" style="display:none">Acknowledge all</button>
+      </div>
+      <!-- Working range per parameter; Admin edits it (emission_band_save) -->
+      <div id="${k}-bandLine" class="flex flex-wrap items-center gap-2 mb-3 text-[12px]"></div>
+      <div id="${k}-alList" class="text-sm text-slate-500">Loading...</div>
+    </div>
+    <div class="text-[11px] text-slate-400 mt-3">Data logger <span id="${k}-devName">-</span> · portal plant id ${esc(U.industry)}</div>
+  </section>`;
+}
+
+/* Everything one unit does: the same logic for both, bound to its own
+   view by the id prefix ($) and to its own row in the database (p_unit). */
+function makeUnit(U) {
+  const $ = id => byId(U.key + '-' + id);
+  const R = 'UNIT.' + U.key;   // for onclick handlers in painted HTML
+
+  const EM = {
+    U,
+    db: null,          // null = not known yet, true = saving set up, false = not (history from the portal)
+    canEditRange: false,
+    bands: JSON.parse(JSON.stringify(DEFAULT_BANDS)),   // "PM" → {low, high, min_minutes}
+    plant: null,       // industry record
+    loggers: [],       // its devices
+    live: [],          // latest values (device_data), parameter names normalised
+    limits: {},        // "PM" → {max, min, unit} from the live answer, used by the report
+    hist: null,        // last loaded report {cols, rows, from, to, step}
+    histLoaded: false,
+    rowFilter: 'all',  // all / out / hi / lo
+    alertKind: '',     // '' / HIGH / LOW
+    liveState: {},     // "PM|station" → 'LOW' / 'HIGH' / '' : last notified side, so each stretch notifies once
+    status: { cls: 'idle', txt: 'Checking...' },
+
+    showErr(msg) {
+      const b = $('errBox');
+      b.textContent = msg || '';
+      b.classList.toggle('hidden', !msg);
+    },
+
+    /* ── Working range ────────────────────────────────────────────── */
+    // "PM (Stack_1_Boiler_4TPH)" → "PM"
+    paramOf: c => normParam(String(c).replace(/\s*\(.*\)\s*$/, '')),
+    limitOf(c) { const l = EM.limits[EM.paramOf(c)]; return l && !isNaN(l.max) && l.max > 0 ? l : null; },
+    bandOf(c) { return EM.bands[EM.paramOf(c)] || null; },
+    // 'hi' above the range, 'lo' below it, '' inside it or no range for that parameter.
+    side(c, v) {
+      const b = EM.bandOf(c);
+      if (!b || v == null || v === '' || isNaN(v)) return '';
+      v = Number(v);
+      return v > b.high ? 'hi' : v < b.low ? 'lo' : '';
+    },
+
+    /* ── 1. Plant + logger status ─────────────────────────────────── */
+    async loadStatus() {
+      const j = await getJson(SK_API + '/industries/' + U.industry);
+      const ind = j && j.data && j.data.industry;
+      if (!ind) throw new Error('The portal did not return the plant details.');
+      EM.plant = ind;
+      EM.loggers = Array.isArray(ind.devices) ? ind.devices : [];
+      $('plantLine').textContent = ['On the portal: ' + (ind.industry_name || ''), ind.location_name, ind.industry_pb_id ? 'ID ' + ind.industry_pb_id : '']
+        .filter(Boolean).join('  ·  ');
+      $('devName').textContent = EM.loggers.map(d => d.device_name).join(', ') || '-';
+      EM.paintStatus();
+    },
+    // Status from the newest "last received" of the loggers, not from the portal's
+    // own online flag alone: that flag lags, the time does not.
+    paintStatus() {
+      const last = EM.lastReceived();
+      let cls = 'idle', txt = 'No logger';
+      if (last) {
+        const mins = (Date.now() - last.getTime()) / 60000;
+        if (mins <= DELAY_MIN) { cls = 'ok live'; txt = 'Online · ' + ago(mins); }
+        else if (mins <= OFFLINE_MIN) { cls = 'warn'; txt = 'Delayed · last data ' + ago(mins); }
+        else { cls = 'bad'; txt = 'Offline · last data ' + ago(mins); }
+      }
+      EM.status = { cls, txt };
+      const pill = $('devPill');
+      pill.className = 'pill ' + cls;
+      pill.innerHTML = '<span class="dot"></span><span>' + esc(txt) + '</span>';
+      APP.paintSwitch();
+    },
+    lastReceived() {
+      const times = EM.live.map(v => Date.parse(v.created_at))
+        .concat(EM.loggers.map(d => Date.parse(d.last_data_recived)))
+        .filter(t => !isNaN(t));
+      return times.length ? new Date(Math.max.apply(null, times)) : null;
+    },
+
+    /* ── 2. Latest readings → tiles + live alert ──────────────────── */
+    async loadLive() {
+      if (!EM.loggers.length) { EM.paintTiles(); return; }
+      const names = EM.loggers.map(d => encodeURIComponent(d.device_name)).join('+');
+      const j = await getJson(SK_API + '/device_data/' + names);
+      EM.live = (Array.isArray(j && j.values) ? j.values : [])
+        .map(v => Object.assign({}, v, { parameter_name: normParam(v.parameter_name) }));
+      EM.live.forEach(v => {
+        EM.limits[v.parameter_name] = { max: parseFloat(v.max_std_value), min: parseFloat(v.min_std_value), unit: v.parameter_unit || '' };
+      });
+      EM.paintTiles();
+      EM.paintStatus();
+      EM.checkLive();
+    },
+    // One live value's state, shared by the tile and the switch card at the top.
+    tileState(v) {
       const val = Number(v.value), max = parseFloat(v.max_std_value);
-      const has = !isNaN(max) && max > 0;
-      const over = has && val > max;
-      const b = EM.bands[v.parameter_name];
-      const sd = EM.side(v.parameter_name, val);
+      const has = !isNaN(max) && max > 0, over = has && val > max;
+      const b = EM.bands[v.parameter_name], sd = EM.side(v.parameter_name, val);
       // The working range decides the colour; above the legal limit is always red.
       const st = over ? ['bad', 'Above legal limit'] : sd === 'hi' ? ['bad', 'Above range'] : sd === 'lo' ? ['low', 'Below range']
                : b ? ['ok', 'In range'] : ['ok', 'Within limit'];
       const numCls = over || sd === 'hi' ? 'text-red-700' : sd === 'lo' ? 'text-blue-700' : 'text-slate-900';
-      // The bar shows the working range as a green zone, with the reading marked on it.
-      let bar = '';
-      if (b) {
-        const lo = Math.max(0, b.low - (b.high - b.low) * 0.6), hi = b.high + (b.high - b.low) * 0.6;
-        const pos = x => Math.min(100, Math.max(0, (x - lo) / (hi - lo) * 100));
-        const mark = sd === 'hi' ? '#dc2626' : sd === 'lo' ? '#2563eb' : '#0f172a';
-        bar = '<div class="mt-3 relative h-2.5 rounded-full bg-slate-100">'
-          +   '<div style="position:absolute;top:0;bottom:0;left:' + pos(b.low) + '%;width:' + (pos(b.high) - pos(b.low)) + '%;background:#bbf7d0;border-radius:4px"></div>'
-          +   '<div style="position:absolute;top:-4px;bottom:-4px;width:4px;border-radius:2px;left:calc(' + pos(val) + '% - 2px);background:' + mark + '"></div>'
-          + '</div>'
-          + '<div class="mt-1.5 flex justify-between text-[11px] text-slate-500"><span>Range ' + fmt(b.low, 0) + ' – ' + fmt(b.high, 0) + '</span>'
-          +   '<span>' + (has ? 'Legal limit ' + esc(v.min_std_value) + ' – ' + esc(v.max_std_value) : 'No legal limit set') + '</span></div>';
-      } else if (has) {
-        const pct = Math.min(100, Math.max(0, val / max * 100));
-        bar = '<div class="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + (over ? '#dc2626' : '#0d9488') + '"></div></div>'
-          + '<div class="mt-1.5 flex justify-between text-[11px] text-slate-500"><span>' + pct.toFixed(0) + '% of limit</span><span>Limit ' + esc(v.min_std_value) + ' – ' + esc(v.max_std_value) + '</span></div>';
+      return { val, max, has, over, b, sd, st, numCls, arrow: sd === 'hi' ? '▲ ' : sd === 'lo' ? '▼ ' : '' };
+    },
+    paintTiles() {
+      const box = $('tiles');
+      APP.paintSwitch();
+      if (!EM.live.length) {
+        box.innerHTML = '<div class="card p-5 text-sm text-slate-500">' + (EM.loggers.length ? 'The logger has sent no reading yet.' : 'No data logger found for this unit on the portal.') + '</div>';
+        return;
       }
-      const t = Date.parse(v.created_at);
-      const when = isNaN(t) ? '' : dmy(ymd(new Date(t))) + ' ' + new Date(t).toTimeString().slice(0, 8);
-      return '<div class="card p-4 ' + (sd === 'hi' || over ? 'out-hi' : sd === 'lo' ? 'out-lo' : '') + '">'
-        + '<div class="flex items-start justify-between gap-2">'
-        +   '<div class="min-w-0"><div class="text-xs font-bold text-slate-500 uppercase tracking-wider">' + esc(v.parameter_name) + '</div>'
-        +   '<div class="text-[11px] text-slate-400 truncate">' + esc(v.station_name || '') + '</div></div>'
-        +   '<span class="pill ' + st[0] + '"><span class="dot"></span>' + st[1] + '</span>'
+      box.innerHTML = EM.live.map(v => {
+        const s = EM.tileState(v), b = s.b;
+        // The bar shows the working range as a green zone, with the reading marked on it.
+        let bar = '';
+        if (b) {
+          const lo = Math.max(0, b.low - (b.high - b.low) * 0.6), hi = b.high + (b.high - b.low) * 0.6;
+          const pos = x => Math.min(100, Math.max(0, (x - lo) / (hi - lo) * 100));
+          const mark = s.sd === 'hi' ? '#dc2626' : s.sd === 'lo' ? '#2563eb' : '#0f172a';
+          bar = '<div class="mt-3 relative h-2.5 rounded-full bg-slate-100">'
+            +   '<div style="position:absolute;top:0;bottom:0;left:' + pos(b.low) + '%;width:' + (pos(b.high) - pos(b.low)) + '%;background:#bbf7d0;border-radius:4px"></div>'
+            +   '<div style="position:absolute;top:-4px;bottom:-4px;width:4px;border-radius:2px;left:calc(' + pos(s.val) + '% - 2px);background:' + mark + '"></div>'
+            + '</div>'
+            + '<div class="mt-1.5 flex justify-between text-[11px] text-slate-500"><span>Range ' + fmt(b.low, 0) + ' – ' + fmt(b.high, 0) + '</span>'
+            +   '<span>' + (s.has ? 'Legal limit ' + esc(v.min_std_value) + ' – ' + esc(v.max_std_value) : 'No legal limit set') + '</span></div>';
+        } else if (s.has) {
+          const pct = Math.min(100, Math.max(0, s.val / s.max * 100));
+          bar = '<div class="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden"><div style="width:' + pct.toFixed(1) + '%;height:100%;background:' + (s.over ? '#dc2626' : U.ac) + '"></div></div>'
+            + '<div class="mt-1.5 flex justify-between text-[11px] text-slate-500"><span>' + pct.toFixed(0) + '% of limit</span><span>Limit ' + esc(v.min_std_value) + ' – ' + esc(v.max_std_value) + '</span></div>';
+        }
+        const t = Date.parse(v.created_at);
+        const when = isNaN(t) ? '' : dmy(ymd(new Date(t))) + ' ' + new Date(t).toTimeString().slice(0, 8);
+        return '<div class="card p-4 ' + (s.sd === 'hi' || s.over ? 'out-hi' : s.sd === 'lo' ? 'out-lo' : '') + '">'
+          + '<div class="flex items-start justify-between gap-2">'
+          +   '<div class="min-w-0"><div class="text-xs font-bold uppercase tracking-wider" style="color:' + U.acD + '">' + esc(v.parameter_name) + '</div>'
+          +   '<div class="text-[11px] text-slate-400 truncate">' + esc(v.station_name || '') + '</div></div>'
+          +   '<span class="pill ' + s.st[0] + '"><span class="dot"></span>' + s.st[1] + '</span>'
+          + '</div>'
+          + '<div class="mt-3 flex items-baseline gap-2"><span class="text-4xl font-extrabold tracking-tight ' + s.numCls + '" style="font-variant-numeric:tabular-nums">'
+          +   s.arrow + fmt(s.val) + '</span>'
+          +   '<span class="text-sm font-semibold text-slate-500">' + esc(v.parameter_unit || '') + '</span></div>'
+          + bar
+          + '<div class="mt-2 text-[11px] text-slate-400">Reading at ' + esc(when) + '</div>'
+          + '</div>';
+      }).join('');
+    },
+
+    /* ── Notify (while this page is open) ─────────────────────────── */
+    // Once per stretch: a reading that stays out of range does not repeat the
+    // alert every 10 seconds; coming back into range is announced once too.
+    checkLive() {
+      const out = [];
+      EM.live.forEach(v => {
+        const key = v.parameter_name + '|' + (v.station_name || '');
+        const sd = EM.side(v.parameter_name, v.value);
+        const kind = sd === 'hi' ? 'HIGH' : sd === 'lo' ? 'LOW' : '';
+        const b = EM.bands[v.parameter_name];
+        if (kind) out.push({ v, kind, b });
+        const before = EM.liveState[key];
+        if (before === undefined) { EM.liveState[key] = kind; if (kind) APP.notify(U, v, kind, b); return; }   // first look: alert if already out
+        if (kind !== before) { EM.liveState[key] = kind; APP.notify(U, v, kind, b); }
+      });
+      const box = $('alertBanner');
+      if (!out.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+      box.classList.remove('hidden');
+      box.innerHTML = out.map(o => {
+        const hi = o.kind === 'HIGH';
+        return '<div class="p-3 mb-2 rounded-lg border text-sm font-semibold flex flex-wrap items-center gap-2 ' + (hi ? 'border-red-300 bg-red-50 text-red-800' : 'border-blue-300 bg-blue-50 text-blue-800') + '">'
+          + '<span class="pill ' + (hi ? 'bad' : 'low') + ' live"><span class="dot"></span>' + (hi ? 'ABOVE RANGE' : 'BELOW RANGE') + '</span>'
+          + esc(U.name) + ' · ' + esc(o.v.parameter_name) + ' is ' + fmt(o.v.value) + ' ' + esc(o.v.parameter_unit || '')
+          + (hi ? ', above ' + fmt(o.b.high, 0) : ', below ' + fmt(o.b.low, 0)) + ' (range ' + fmt(o.b.low, 0) + ' – ' + fmt(o.b.high, 0) + ').'
+          + '</div>';
+      }).join('');
+    },
+
+    /* ── 3. History (report) ──────────────────────────────────────── */
+    // One request per logger; the columns of all loggers are joined on the time.
+    async fetchHistory(from, to, step) {
+      const byTime = {}, cols = [];
+      for (const d of EM.loggers) {
+        const url = SK_GRAPH + '/' + encodeURIComponent(d.device_name) + '/' + step + '/' + from + '/' + to + '/00:00:00/23:59:59';
+        const j = await getJson(url);
+        if (!j || j.status === 'Failed') throw new Error((j && j.message) || 'The portal could not give the history.');
+        const rows = Array.isArray(j.data) ? j.data : [];
+        Object.keys(j.head || {}).forEach(c => { if (cols.indexOf(c) < 0) cols.push(c); });
+        rows.forEach(r => {
+          const k = r.createdAt;
+          Object.keys(r).forEach(c => { if (c !== 'createdAt' && cols.indexOf(c) < 0) cols.push(c); });
+          byTime[k] = Object.assign(byTime[k] || { createdAt: k }, r);
+        });
+      }
+      const rows = Object.keys(byTime).sort().map(k => byTime[k]);
+      return { cols, rows };
+    },
+
+    /* ── Saved in the ERP database ────────────────────────────────── */
+    async loadDbStatus() {
+      const line = $('dbLine');
+      try {
+        const s = await dbRpc('emission_status', { p_unit: U.code });
+        EM.db = true;
+        EM.canEditRange = !!s.can_edit_range;
+        if (Array.isArray(s.bands) && s.bands.length) {
+          const nb = {};
+          s.bands.forEach(b => { nb[b.param] = { low: Number(b.low), high: Number(b.high), min_minutes: Number(b.min_minutes) || 1, by: b.updated_by, at: b.updated_at }; });
+          EM.bands = nb;
+        }
+        $('hHint').textContent = 'From the ERP database: up to 400 days (every-minute detail up to 3 days).';
+        const run = s.last_run || {};
+        const okAgo = s.last_ok ? ago((Date.now() - Date.parse(s.last_ok)) / 60000) : 'never';
+        line.innerHTML = '<span class="pill ' + (run.error ? 'warn' : 'ok') + '"><span class="dot"></span>Saved in ERP</span>'
+          + '<span class="text-slate-500">' + Number(s.rows || 0).toLocaleString('en-IN') + ' readings'
+          + (s.first_at ? ' from ' + esc(dmy(String(s.first_at).slice(0, 10))) + ' to ' + esc(dmy(String(s.last_at).slice(0, 16).replace('T', ' '))) : '')
+          + ' · last sync ' + esc(okAgo) + '</span>'
+          + (run.error ? '<span class="text-amber-700" title="' + esc(run.error) + '">Last sync had an error</span>' : '')
+          + '<button class="btn sm" id="' + U.key + '-syncBtn" onclick="' + R + '.syncNow()">Sync now</button>';
+        $('alOpen').innerHTML = s.open_alerts ? '<span class="pill bad">' + Number(s.open_alerts) + ' not acknowledged</span>' : '';
+      } catch (e) {
+        if (e.code === 'NOT_SET_UP' || e.code === 'NOT_ALLOWED' || e.code === 'NO_TOKEN' || e.code === 'NET' || e.code === 'BAD_UNIT') {
+          EM.db = false;
+          line.innerHTML = '<span class="pill warn"><span class="dot"></span>Not saved in ERP</span><span class="text-amber-800">' + esc(e.message) + ' History below comes from the portal.</span>';
+        } else {
+          line.innerHTML = '<span class="text-red-700">' + esc(e.message) + '</span>';
+        }
+      }
+      EM.paintBands();
+      APP.paintSwitch();
+    },
+    async syncNow() {
+      const b = $('syncBtn');
+      if (b) { b.disabled = true; b.textContent = 'Syncing...'; }
+      try {
+        const r = await dbRpc('emission_sync_now');   // the job fetches every unit
+        if (r.error) EM.showErr('Sync finished with an error: ' + r.error);
+      } catch (e) { EM.showErr(e.message); }
+      await Promise.all(APP.units.map(u => u.loadDbStatus()));
+      EM.loadAlerts();
+    },
+    // emission_rows → the same {cols, rows} shape as the portal's history.
+    async fetchDbHistory(from, to, step) {
+      const d = await dbRpc('emission_rows', { p_from: from, p_to: to, p_step: Number(step), p_unit: U.code });
+      const byTime = {}, cols = [];
+      (d.rows || []).forEach(r => {
+        const c = r.station ? r.param + ' (' + r.station + ')' : r.param;
+        if (cols.indexOf(c) < 0) cols.push(c);
+        (byTime[r.t] = byTime[r.t] || { createdAt: r.t })[c] = r.v;
+      });
+      return { cols, rows: Object.keys(byTime).sort().map(k => byTime[k]) };
+    },
+
+    async loadHistory() {
+      const from = $('hFrom').value, to = $('hTo').value, step = $('hStep').value;
+      const msg = $('hMsg');
+      EM.histLoaded = true;
+      if (!from || !to) { msg.textContent = 'Pick both dates.'; return; }
+      if (to < from) { msg.textContent = 'The To date is before the From date.'; return; }
+      const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
+      const db = EM.db === true;
+      const maxDays = db ? 400 : MAX_DAYS, minuteDays = db ? 3 : 2;
+      if (days > maxDays) { msg.textContent = 'Pick at most ' + maxDays + ' days.'; return; }
+      if (step === '1' && days > minuteDays) { msg.textContent = 'Every-minute detail is for up to ' + minuteDays + ' days. Pick a bigger step for a longer range.'; return; }
+      const btn = $('hLoadBtn');
+      btn.disabled = true; $('hCsvBtn').disabled = true;
+      msg.classList.remove('hidden');
+      msg.textContent = db ? 'Loading from the ERP database...'
+        : 'Loading from the portal' + (days > 7 ? ' (a long range can take up to a minute)...' : '...');
+      $('hTableWrap').classList.add('hidden'); $('hSummary').innerHTML = '';
+      try {
+        if (!db && !EM.loggers.length) await EM.loadStatus();
+        const h = db ? await EM.fetchDbHistory(from, to, step) : await EM.fetchHistory(from, to, step);
+        EM.hist = Object.assign(h, { from, to, step });
+        EM.paintHistory();
+      } catch (e) {
+        msg.textContent = e.message;
+      } finally { btn.disabled = false; }
+      EM.loadAlerts();   // the alerts follow the report's dates
+    },
+    setFilter(f) {
+      EM.rowFilter = f;
+      document.querySelectorAll('#' + U.key + '-hFilter button').forEach(b => b.classList.toggle('on', b.dataset.f === f));
+      if (EM.hist) EM.paintHistory();
+    },
+    // A row passes when ANY parameter in it is on the chosen side.
+    rowSides(r) { return EM.hist.cols.map(c => EM.side(c, r[c])); },
+    passes(r) {
+      const f = EM.rowFilter;
+      if (f === 'all') return true;
+      const s = EM.rowSides(r);
+      return f === 'out' ? s.some(Boolean) : s.indexOf(f) >= 0;
+    },
+    paintHistory() {
+      const h = EM.hist, msg = $('hMsg');
+      if (!h.rows.length) { msg.classList.remove('hidden'); msg.textContent = 'No data for these dates.'; $('hTableWrap').classList.add('hidden'); return; }
+      $('hCsvBtn').disabled = false;
+      const daily = h.step === '1440';
+      // Summary per parameter, on ALL loaded rows: average, low / high, below / above the range, above the legal limit.
+      $('hSummary').innerHTML = h.cols.map(c => {
+        const vals = h.rows.map(r => r[c]).filter(v => v != null && !isNaN(v)).map(Number);
+        const l = EM.limitOf(c), b = EM.bandOf(c);
+        const avg = vals.reduce((a, x) => a + x, 0) / (vals.length || 1);
+        const over = l ? vals.filter(v => v > l.max).length : 0;
+        const nHi = b ? vals.filter(v => v > b.high).length : 0, nLo = b ? vals.filter(v => v < b.low).length : 0;
+        return '<div class="rounded-lg border p-3" style="border-color:' + U.acB + ';background:' + U.acL + '">'
+          + '<div class="text-[11px] font-bold uppercase tracking-wider truncate" style="color:' + U.acD + '" title="' + esc(c) + '">' + esc(c) + '</div>'
+          + '<div class="mt-1 text-lg font-extrabold text-slate-900">' + fmt(avg) + ' <span class="text-xs font-semibold text-slate-500">avg ' + esc(l ? l.unit : '') + '</span></div>'
+          + '<div class="text-[11px] text-slate-500">Low ' + fmt(vals.length ? Math.min.apply(null, vals) : null) + ' · High ' + fmt(vals.length ? Math.max.apply(null, vals) : null) + ' · ' + vals.length + ' readings</div>'
+          + (b ? '<div class="mt-1.5 flex flex-wrap gap-1.5">'
+               + '<button class="pill ' + (nHi ? 'bad' : 'idle') + '" onclick="' + R + '.setFilter(\'hi\')" title="Show only these">▲ ' + nHi + ' above ' + fmt(b.high, 0) + '</button>'
+               + '<button class="pill ' + (nLo ? 'low' : 'idle') + '" onclick="' + R + '.setFilter(\'lo\')" title="Show only these">▼ ' + nLo + ' below ' + fmt(b.low, 0) + '</button></div>' : '')
+          + (l ? '<div class="text-[11px] mt-1 ' + (over ? 'text-red-700 font-bold' : 'text-green-700') + '">' + (over ? over + ' above the legal limit of ' + l.max : 'All within the legal limit of ' + l.max) + '</div>' : '')
+          + '</div>';
+      }).join('');
+      $('hHead').innerHTML = '<tr><th class="text-left">' + (daily ? 'Date' : 'Date / time') + '</th>'
+        + h.cols.map(c => {
+            const b = EM.bandOf(c), l = EM.limitOf(c);
+            return '<th class="num">' + esc(c) + '<div class="text-[10px] font-normal text-slate-500">'
+              + [b ? 'range ' + fmt(b.low, 0) + '–' + fmt(b.high, 0) : '', l ? 'limit ' + l.max : ''].filter(Boolean).join(' · ') + '</div></th>';
+          }).join('') + '</tr>';
+      // Newest first, like a log; the filter keeps only rows with a reading on the chosen side.
+      const shown = h.rows.filter(EM.passes).reverse();
+      if (!shown.length) {
+        $('hTableWrap').classList.add('hidden');
+        msg.classList.remove('hidden');
+        msg.textContent = { out: 'No reading out of range on these dates.', hi: 'No reading above the range on these dates.', lo: 'No reading below the range on these dates.' }[EM.rowFilter] || 'No data.';
+        return;
+      }
+      msg.classList.add('hidden');
+      $('hBody').innerHTML = shown.map(r => {
+        const t = daily ? dmy(String(r.createdAt).slice(0, 10)) : dmy(String(r.createdAt).slice(0, 16));
+        const sides = EM.rowSides(r);
+        const rowCls = sides.indexOf('hi') >= 0 ? 'row-hi' : sides.indexOf('lo') >= 0 ? 'row-lo' : '';
+        return '<tr class="' + rowCls + '"><td>' + esc(t) + '</td>' + h.cols.map((c, i) => {
+          const v = r[c], l = EM.limitOf(c), s = sides[i];
+          const cls = l && v != null && Number(v) > l.max ? ' over' : s ? ' ' + s : '';
+          return '<td class="num' + cls + '">' + (s === 'hi' ? '▲ ' : s === 'lo' ? '▼ ' : '') + fmt(v) + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+      $('hTableWrap').classList.remove('hidden');
+    },
+    // The CSV follows the filter, with a Status column per parameter.
+    csv() {
+      const h = EM.hist;
+      if (!h || !h.rows.length) return;
+      const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+      const head = ['Unit', 'Date / time'];
+      h.cols.forEach(c => { head.push(c); if (EM.bandOf(c)) head.push(EM.paramOf(c) + ' status'); });
+      const lines = [head.map(q).join(',')];
+      h.rows.filter(EM.passes).forEach(r => {
+        const row = [U.name, dmy(r.createdAt)];
+        h.cols.forEach(c => {
+          row.push(r[c] == null ? '' : Number(r[c]).toFixed(3));
+          if (EM.bandOf(c)) { const s = EM.side(c, r[c]); row.push(s === 'hi' ? 'ABOVE' : s === 'lo' ? 'BELOW' : r[c] == null ? '' : 'IN RANGE'); }
+        });
+        lines.push(row.map(q).join(','));
+      });
+      const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'Stack_Emission_' + U.name.replace(/\s+/g, '_') + '_' + dmy(h.from).replace(/\//g, '-') + '_to_' + dmy(h.to).replace(/\//g, '-')
+        + (EM.rowFilter === 'all' ? '' : '_' + { out: 'OUT_OF_RANGE', hi: 'ABOVE', lo: 'BELOW' }[EM.rowFilter]) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    },
+
+    /* ── Alerts list ──────────────────────────────────────────────── */
+    setAlertKind(k) {
+      EM.alertKind = k;
+      document.querySelectorAll('#' + U.key + '-alKind button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+      EM.loadAlerts();
+    },
+    /* From the database (emission_alerts, recorded on every sync) when it is set
+       up; otherwise worked out here from the loaded report rows (only as fine
+       as the report's detail, and nothing to acknowledge). */
+    async loadAlerts() {
+      const box = $('alList');
+      const from = $('hFrom').value, to = $('hTo').value;
+      if (!from || !to) return;
+      let rows = [];
+      if (EM.db) {
+        try {
+          const d = await dbRpc('emission_alerts_list', { p_from: from, p_to: to, p_kind: EM.alertKind || null, p_open_only: $('alOpenOnly').checked, p_unit: U.code });
+          rows = d.rows || [];
+          $('alHint').textContent = 'Recorded by the ERP on every sync (every 10 minutes, day and night), for the dates of the report above.';
+        } catch (e) { box.innerHTML = '<span class="text-red-700">' + esc(e.message) + '</span>'; return; }
+      } else {
+        rows = EM.alertsFromHistory();
+        if (EM.alertKind) rows = rows.filter(a => a.kind === EM.alertKind);
+        $('alHint').textContent = 'Worked out from the report above (as fine as its Detail). Once the ERP database is set up, alerts are recorded day and night and can be acknowledged.';
+      }
+      $('alAckAll').style.display = EM.db && rows.some(a => !a.ack_at) ? '' : 'none';
+      if (!rows.length) { box.innerHTML = '<div class="py-4 text-center text-green-700 font-semibold">No ' + ({ HIGH: 'above-range ', LOW: 'below-range ' }[EM.alertKind] || 'out-of-range ') + 'alerts on these dates.</div>'; return; }
+      box.innerHTML = '<div class="overflow-auto sb border border-slate-200 rounded-lg" style="max-height:380px"><table class="rep w-full"><thead><tr>'
+        + '<th class="text-left">Status</th><th class="text-left">Parameter</th><th class="text-left">From</th><th class="text-left">To</th>'
+        + '<th class="num">Minutes</th><th class="num">Worst value</th><th class="num">Range</th><th class="text-left">Acknowledged</th></tr></thead><tbody>'
+        + rows.map(a => {
+            const hi = a.kind === 'HIGH';
+            return '<tr class="' + (hi ? 'row-hi' : 'row-lo') + '">'
+              + '<td><span class="pill ' + (hi ? 'bad' : 'low') + '">' + (hi ? '▲ ABOVE' : '▼ BELOW') + '</span></td>'
+              + '<td>' + esc(a.param) + (a.station ? ' <span class="text-slate-400">' + esc(a.station) + '</span>' : '') + '</td>'
+              + '<td>' + esc(dmy(a.started_at)) + '</td><td>' + esc(dmy(a.ended_at)) + '</td>'
+              + '<td class="num">' + esc(a.minutes) + '</td>'
+              + '<td class="num ' + (hi ? 'hi' : 'lo') + '">' + fmt(a.peak) + '</td>'
+              + '<td class="num">' + fmt(a.band_low, 0) + ' – ' + fmt(a.band_high, 0) + '</td>'
+              + '<td>' + (a.ack_at ? '<span class="text-slate-500">' + esc(a.ack_by || '') + ', ' + esc(dmy(String(a.ack_at).slice(0, 16).replace('T', ' '))) + '</span>'
+                  : EM.db ? '<button class="btn sm" onclick="' + R + '.ack(' + Number(a.id) + ')">Acknowledge</button>' : '<span class="text-slate-400">-</span>') + '</td>'
+              + '</tr>';
+          }).join('') + '</tbody></table></div>';
+    },
+    // Runs of consecutive out-of-range rows in the loaded report (no database yet).
+    alertsFromHistory() {
+      const h = EM.hist;
+      if (!h || !h.rows.length) return [];
+      const out = [];
+      h.cols.forEach(c => {
+        const b = EM.bandOf(c);
+        if (!b) return;
+        let cur = null;
+        h.rows.forEach(r => {
+          const s = EM.side(c, r[c]), kind = s === 'hi' ? 'HIGH' : s === 'lo' ? 'LOW' : '';
+          if (cur && kind !== cur.kind) { out.push(cur); cur = null; }
+          if (!kind) return;
+          const v = Number(r[c]);
+          if (!cur) cur = { param: EM.paramOf(c), station: (/\(([^)]*)\)\s*$/.exec(c) || [])[1] || '', kind, started_at: String(r.createdAt).slice(0, 16),
+                            ended_at: String(r.createdAt).slice(0, 16), minutes: 0, peak: v, band_low: b.low, band_high: b.high };
+          cur.ended_at = String(r.createdAt).slice(0, 16);
+          cur.minutes += Number(h.step) || 1;
+          cur.peak = kind === 'HIGH' ? Math.max(cur.peak, v) : Math.min(cur.peak, v);
+        });
+        if (cur) out.push(cur);
+      });
+      return out.sort((a, b) => a.started_at < b.started_at ? 1 : -1);
+    },
+    async ack(id) {
+      try {
+        await dbRpc('emission_alert_ack', { p_id: id, p_unit: U.code });
+        await EM.loadDbStatus();
+        EM.loadAlerts();
+      } catch (e) { EM.showErr(e.message); }
+    },
+
+    /* ── Working range line (Admin edits it) ──────────────────────── */
+    paintBands() {
+      const line = $('bandLine');
+      const keys = Object.keys(EM.bands);
+      line.innerHTML = '<span class="font-semibold text-slate-600">Working range (' + esc(U.name) + '):</span>'
+        + keys.map(k => {
+            const b = EM.bands[k];
+            return '<span class="pill idle" style="background:#f0fdf4;color:#166534">' + esc(k) + ' ' + fmt(b.low, 0) + ' – ' + fmt(b.high, 0)
+              + (b.min_minutes > 1 ? ' · alert after ' + b.min_minutes + ' min' : '') + '</span>';
+          }).join('')
+        + (EM.db && EM.canEditRange ? '<button class="btn sm" onclick="' + R + '.editBand()">Change range</button>' : '')
+        + (EM.db === false ? '<span class="text-slate-400">(default; it can be changed once the ERP database is set up)</span>' : '');
+    },
+    editBand() {
+      const keys = Object.keys(EM.bands).concat(EM.live.map(v => v.parameter_name)).filter((k, i, a) => a.indexOf(k) === i);
+      const line = $('bandLine');
+      line.innerHTML = '<span class="font-semibold text-slate-600">Change range (' + esc(U.name) + '):</span>'
+        + '<select id="' + U.key + '-bdParam" class="sel">' + keys.map(k => '<option>' + esc(k) + '</option>').join('') + '</select>'
+        + '<label class="text-slate-500">Low <input id="' + U.key + '-bdLow" type="number" step="any" class="inp" style="width:80px"></label>'
+        + '<label class="text-slate-500">High <input id="' + U.key + '-bdHigh" type="number" step="any" class="inp" style="width:80px"></label>'
+        + '<label class="text-slate-500" title="An alert is recorded only when the reading stays out of range this many minutes in a row">Alert after <input id="' + U.key + '-bdMin" type="number" min="1" max="240" class="inp" style="width:60px"> min</label>'
+        + '<button class="btn pri sm" onclick="' + R + '.saveBand()">Save</button><button class="btn sm" onclick="' + R + '.paintBands()">Cancel</button>';
+      const fill = () => { const b = EM.bands[$('bdParam').value] || {}; $('bdLow').value = b.low != null ? b.low : ''; $('bdHigh').value = b.high != null ? b.high : ''; $('bdMin').value = b.min_minutes || 1; };
+      $('bdParam').onchange = fill; fill();
+    },
+    async saveBand() {
+      const p = $('bdParam').value, lo = parseFloat($('bdLow').value), hi = parseFloat($('bdHigh').value), mm = parseInt($('bdMin').value, 10) || 1;
+      if (isNaN(lo) || isNaN(hi) || lo >= hi) { EM.showErr('The low value must be smaller than the high value.'); return; }
+      try {
+        await dbRpc('emission_band_save', { p_param: p, p_low: lo, p_high: hi, p_min_minutes: mm, p_unit: U.code });
+        EM.showErr('');
+        EM.liveState = {};   // a new range: judge the live reading afresh
+        await EM.loadDbStatus();
+        EM.paintTiles(); EM.checkLive();
+        if (EM.hist) EM.paintHistory();
+        EM.loadAlerts();
+      } catch (e) { EM.showErr(e.message); }
+    },
+
+    /* ── Refresh ──────────────────────────────────────────────────── */
+    async refresh() {
+      try {
+        await EM.loadStatus();
+        await EM.loadLive();
+        EM.showErr('');
+      } catch (e) { EM.showErr(e.message); APP.paintSwitch(); }
+    }
+  };
+  return EM;
+}
+
+/* ── The page: unit switch, shared notify settings, timers ─────────── */
+const UNIT = {};   // "u1" → that unit's object (used by the onclick handlers)
+const APP = {
+  units: [],
+  active: null,
+
+  build() {
+    byId('unitViews').innerHTML = UNITS.map(unitHTML).join('');
+    APP.units = UNITS.map(U => (UNIT[U.key] = makeUnit(U)));
+    APP.units.forEach(u => { byId(u.U.key + '-hFrom').value = today(); byId(u.U.key + '-hTo').value = today(); u.paintBands(); });
+  },
+
+  // The open unit: from the address (#u2), else the last one used, else Unit 1.
+  initialUnit() {
+    const h = (location.hash || '').replace('#', '').toLowerCase();
+    if (UNIT[h]) return h;
+    const p = pref('unit');
+    return UNIT[p] ? p : UNITS[0].key;
+  },
+  show(key) {
+    if (!UNIT[key]) return;
+    APP.active = key;
+    pref('unit', key);
+    try { history.replaceState(null, '', '#' + key); } catch (e) {}
+    APP.units.forEach(u => byId(u.U.key + '-root').classList.toggle('hidden', u.U.key !== key));
+    APP.paintSwitch();
+    // The other unit's report loads the first time its view is opened.
+    const u = UNIT[key];
+    if (!u.histLoaded && u.db !== null) u.loadHistory();
+  },
+
+  /* The switch at the top: one card per unit with its status and live
+     values, coloured red / blue when a value is out of range, so the unit
+     that is NOT on screen is watched too. */
+  paintSwitch() {
+    const box = byId('unitSwitch');
+    if (!box || !APP.units.length) return;
+    box.innerHTML = APP.units.map(u => {
+      const U = u.U, on = APP.active === U.key;
+      const vals = u.live.length ? u.live.map(v => {
+        const s = u.tileState(v);
+        return '<div class="min-w-0"><div class="text-[10px] font-bold uppercase tracking-wider text-slate-500">' + esc(v.parameter_name) + '</div>'
+          + '<div class="text-2xl font-extrabold leading-tight ' + s.numCls + '" style="font-variant-numeric:tabular-nums">' + s.arrow + fmt(s.val) + '</div>'
+          + '<div class="text-[10px] text-slate-400">' + esc(v.parameter_unit || '') + (s.b ? ' · range ' + fmt(s.b.low, 0) + '–' + fmt(s.b.high, 0) : '') + '</div></div>';
+      }).join('') : '<div class="text-xs text-slate-400">Waiting for readings...</div>';
+      const out = u.live.some(v => u.side(v.parameter_name, v.value) || u.tileState(v).over);
+      return '<button type="button" class="uTab' + (on ? ' on' : '') + '" style="--ac:' + U.ac + ';--acL:' + U.acL + ';--acB:' + U.acB + '" onclick="APP.show(\'' + U.key + '\')">'
+        + '<div class="flex items-center justify-between gap-2 mb-2">'
+        +   '<div class="flex items-center gap-2 min-w-0"><span class="uBadge">' + esc(U.name.toUpperCase()) + '</span>'
+        +   '<span class="text-xs font-semibold text-slate-600 truncate">' + esc(U.full) + '</span></div>'
+        +   '<span class="pill ' + u.status.cls + '"><span class="dot"></span>' + esc(u.status.txt) + '</span>'
         + '</div>'
-        + '<div class="mt-3 flex items-baseline gap-2"><span class="text-4xl font-extrabold tracking-tight ' + numCls + '" style="font-variant-numeric:tabular-nums">'
-        +   (sd === 'hi' ? '▲ ' : sd === 'lo' ? '▼ ' : '') + fmt(val) + '</span>'
-        +   '<span class="text-sm font-semibold text-slate-500">' + esc(v.parameter_unit || '') + '</span></div>'
-        + bar
-        + '<div class="mt-2 text-[11px] text-slate-400">Reading at ' + esc(when) + '</div>'
-        + '</div>';
+        + '<div class="flex flex-wrap items-end gap-x-6 gap-y-2">' + vals
+        +   (out ? '<span class="pill bad live ml-auto"><span class="dot"></span>Out of range</span>' : '')
+        +   (on ? '<span class="ml-auto text-[11px] font-semibold" style="color:' + U.acD + '">Showing</span>' : '<span class="ml-auto text-[11px] text-slate-400">Open ›</span>')
+        + '</div></button>';
     }).join('');
   },
 
-  /* ── Notify (while this page is open) ─────────────────────────── */
-  // Once per stretch: a reading that stays out of range does not repeat the
-  // alert every 10 seconds; coming back into range is announced once too.
-  checkLive() {
-    const out = [];
-    EM.live.forEach(v => {
-      const key = v.parameter_name + '|' + (v.station_name || '');
-      const sd = EM.side(v.parameter_name, v.value);
-      const kind = sd === 'hi' ? 'HIGH' : sd === 'lo' ? 'LOW' : '';
-      const b = EM.bands[v.parameter_name];
-      if (kind) out.push({ v, kind, b });
-      const before = EM.liveState[key];
-      if (before === undefined) { EM.liveState[key] = kind; if (kind) EM.notify(v, kind, b); return; }   // first look: alert if already out
-      if (kind !== before) {
-        EM.liveState[key] = kind;
-        if (kind) EM.notify(v, kind, b);
-        else EM.notify(v, '', b);
-      }
-    });
-    const box = $('alertBanner');
-    if (!out.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-    box.classList.remove('hidden');
-    box.innerHTML = out.map(o => {
-      const hi = o.kind === 'HIGH';
-      return '<div class="p-3 mb-2 rounded-lg border text-sm font-semibold flex items-center gap-2 ' + (hi ? 'border-red-300 bg-red-50 text-red-800' : 'border-blue-300 bg-blue-50 text-blue-800') + '">'
-        + '<span class="pill ' + (hi ? 'bad' : 'low') + ' live"><span class="dot"></span>' + (hi ? 'ABOVE RANGE' : 'BELOW RANGE') + '</span>'
-        + esc(o.v.parameter_name) + ' is ' + fmt(o.v.value) + ' ' + esc(o.v.parameter_unit || '')
-        + (hi ? ', above ' + fmt(o.b.high, 0) : ', below ' + fmt(o.b.low, 0)) + ' (range ' + fmt(o.b.low, 0) + ' – ' + fmt(o.b.high, 0) + ').'
-        + '</div>';
-    }).join('');
-  },
-  notify(v, kind, b) {
-    const title = kind ? 'Stack emission ' + (kind === 'HIGH' ? 'ABOVE' : 'BELOW') + ' range' : 'Stack emission back in range';
+  /* ── Notify (shared by both units) ──────────────────────────────── */
+  notify(U, v, kind, b) {
+    const title = U.name + ' · stack emission ' + (kind ? (kind === 'HIGH' ? 'ABOVE' : 'BELOW') + ' range' : 'back in range');
     const body = v.parameter_name + ' = ' + fmt(v.value) + ' ' + (v.parameter_unit || '')
       + (b ? ' (range ' + fmt(b.low, 0) + ' – ' + fmt(b.high, 0) + ')' : '') + (v.station_name ? ' · ' + v.station_name : '');
-    if (kind && pref('sound') !== 'off') EM.beep(kind === 'HIGH' ? 880 : 440);
+    if (kind && pref('sound') !== 'off') APP.beep(kind === 'HIGH' ? 880 : 440);
     if (pref('desktop') === 'on' && 'Notification' in window && Notification.permission === 'granted') {
       try {
-        const n = new Notification(title, { body, tag: 'em-' + v.parameter_name, renotify: true, requireInteraction: !!kind });
-        n.onclick = () => { window.focus(); n.close(); };
+        const n = new Notification(title, { body, tag: 'em-' + U.key + '-' + v.parameter_name, renotify: true, requireInteraction: !!kind });
+        n.onclick = () => { window.focus(); APP.show(U.key); n.close(); };
       } catch (e) {}
     }
   },
   beep(freq) {
     try {
-      const ac = EM.ac || (EM.ac = new (window.AudioContext || window.webkitAudioContext)());
+      const ac = APP.ac || (APP.ac = new (window.AudioContext || window.webkitAudioContext)());
       [0, 0.35, 0.7].forEach(t => {
         const o = ac.createOscillator(), g = ac.createGain();
         o.frequency.value = freq; o.connect(g); g.connect(ac.destination);
@@ -500,422 +926,60 @@ const EM = {
     } catch (e) {}
   },
   async toggleDesktop() {
-    if (!('Notification' in window)) { EM.showErr('This browser cannot show desktop notifications.'); return; }
-    if (pref('desktop') === 'on') { pref('desktop', 'off'); EM.paintNotifyBtns(); return; }
+    const err = m => { const u = UNIT[APP.active]; if (u) u.showErr(m); };
+    if (!('Notification' in window)) { err('This browser cannot show desktop notifications.'); return; }
+    if (pref('desktop') === 'on') { pref('desktop', 'off'); APP.paintNotifyBtns(); return; }
     let p = Notification.permission;
     if (p === 'default') { try { p = await Notification.requestPermission(); } catch (e) {} }
-    if (p !== 'granted') { EM.showErr('Desktop notifications are blocked for this page. Allow them from the lock icon in the address bar, then press the button again.'); return; }
+    if (p !== 'granted') { err('Desktop notifications are blocked for this page. Allow them from the lock icon in the address bar, then press the button again.'); return; }
     pref('desktop', 'on');
-    EM.paintNotifyBtns();
-    try { new Notification('Stack emission alerts are ON', { body: 'You will get a pop-up here when a reading goes below or above the range.' }); } catch (e) {}
+    APP.paintNotifyBtns();
+    try { new Notification('Stack emission alerts are ON', { body: 'You will get a pop-up here when a reading of either unit goes below or above its range.' }); } catch (e) {}
   },
   toggleSound() {
     pref('sound', pref('sound') === 'off' ? 'on' : 'off');
-    if (pref('sound') !== 'off') EM.beep(660);   // a test beep also unlocks audio in the browser
-    EM.paintNotifyBtns();
+    if (pref('sound') !== 'off') APP.beep(660);   // a test beep also unlocks audio in the browser
+    APP.paintNotifyBtns();
   },
   paintNotifyBtns() {
     const on = pref('desktop') === 'on' && 'Notification' in window && Notification.permission === 'granted';
     const bell = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0"/></svg>';
-    $('notifyBtn').innerHTML = bell + (on ? ' Pop-up alerts ON' : ' Turn on pop-up alerts');
-    $('notifyBtn').className = 'btn' + (on ? ' pri' : '');
+    byId('notifyBtn').innerHTML = bell + (on ? ' Pop-up alerts ON' : ' Turn on pop-up alerts');
+    byId('notifyBtn').className = 'btn' + (on ? ' pri' : '');
     const snd = pref('sound') !== 'off';
-    $('soundBtn').innerHTML = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>'
+    byId('soundBtn').innerHTML = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4z"/>'
       + (snd ? '<path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/>' : '<path d="M22 9l-6 6M16 9l6 6"/>') + '</svg> Sound ' + (snd ? 'ON' : 'OFF');
   },
 
-  /* ── 3. History (chart + report) ──────────────────────────────── */
-  // One request per logger; the columns of all loggers are joined on the time.
-  async fetchHistory(from, to, step, toTime) {
-    const byTime = {}, cols = [];
-    for (const d of EM.loggers) {
-      const url = SK_GRAPH + '/' + encodeURIComponent(d.device_name) + '/' + step + '/' + from + '/' + to + '/00:00:00/' + (toTime || '23:59:59');
-      const j = await getJson(url);
-      if (!j || j.status === 'Failed') throw new Error((j && j.message) || 'The portal could not give the history.');
-      const rows = Array.isArray(j.data) ? j.data : [];
-      Object.keys(j.head || {}).forEach(c => { if (cols.indexOf(c) < 0) cols.push(c); });
-      rows.forEach(r => { const k = r.createdAt; byTime[k] = Object.assign(byTime[k] || { createdAt: k }, r); });
-    }
-    const rows = Object.keys(byTime).sort().map(k => byTime[k]);
-    return { cols, rows };
-  },
+  refreshAll() { return Promise.all(APP.units.map(u => u.refresh())); },
 
-  async loadTrend() {
-    const now = new Date();
-    const h = await EM.fetchHistory(today(), today(), 15, pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds()));
-    EM.paintTrend(h);
-  },
-  paintTrend(h) {
-    const COLORS = ['#0d9488', '#6366f1', '#f59e0b', '#ec4899', '#0ea5e9', '#84cc16'];
-    const labels = h.rows.map(r => String(r.createdAt).slice(11, 16));
-    const sets = [], farLimits = [];
-    let outN = 0;
-    h.cols.forEach((c, i) => {
-      const color = COLORS[i % COLORS.length];
-      const data = h.rows.map(r => r[c] == null ? null : Number(r[c]));
-      // Out-of-range points drawn as red (above) / blue (below) dots on the line.
-      const ptCol = data.map(v => { const s = EM.side(c, v); if (s) outN++; return s === 'hi' ? '#dc2626' : s === 'lo' ? '#2563eb' : color; });
-      const ptRad = data.map(v => EM.side(c, v) ? 4 : 0);
-      sets.push({ label: c, data, borderColor: color, backgroundColor: color + '22', pointBackgroundColor: ptCol, pointBorderColor: ptCol,
-                  pointRadius: ptRad, fill: h.cols.length === 1, tension: 0.3, borderWidth: 2, spanGaps: true });
-      const b = EM.bandOf(c);
-      if (b) {
-        sets.push({ label: EM.paramOf(c) + ' range high (' + fmt(b.high, 0) + ')', data: labels.map(() => b.high), borderColor: '#dc2626',
-                    borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false });
-        sets.push({ label: EM.paramOf(c) + ' range low (' + fmt(b.low, 0) + ')', data: labels.map(() => b.low), borderColor: '#2563eb',
-                    borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false });
-      }
-      /* The legal limit line only when the readings come within half of it. PM
-         runs near 40 against a limit of 600; drawing the line would squash the
-         real readings into a flat line at the bottom. A far limit is named in the note. */
-      const l = EM.limitOf(c);
-      const peak = Math.max.apply(null, data.filter(v => v != null).concat([0]));
-      if (l && peak >= l.max * 0.5)
-        sets.push({ label: EM.paramOf(c) + ' legal limit (' + l.max + ')', data: labels.map(() => l.max), borderColor: '#7f1d1d',
-                    borderDash: [2, 3], borderWidth: 1.5, pointRadius: 0, fill: false });
-      else if (l) farLimits.push(EM.paramOf(c) + ' legal limit ' + l.max);
-    });
-    $('trendNote').innerHTML = h.rows.length
-      ? esc(h.rows.length + ' points, last at ' + labels[labels.length - 1])
-        + (outN ? ' · <b class="text-red-700">' + outN + ' out of range</b>' : ' · all in range')
-        + (farLimits.length ? ' · ' + esc(farLimits.join(', ')) + ' (far above the readings)' : '')
-      : 'No data yet today';
-    if (EM.chart) EM.chart.destroy();
-    EM.chart = new Chart($('trendChart'), {
-      type: 'line',
-      data: { labels, datasets: sets },
-      options: {
-        responsive: true, maintainAspectRatio: false, animation: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: { legend: { labels: { boxWidth: 12, font: { size: 11 } } },
-                   tooltip: { callbacks: { label: c => c.dataset.label + ': ' + fmt(c.parsed.y) } } },
-        scales: { x: { ticks: { maxTicksLimit: 12, font: { size: 10 } }, grid: { display: false } },
-                  y: { beginAtZero: true, ticks: { font: { size: 10 } } } }
-      }
-    });
-  },
-
-  /* ── Saved in the ERP database ────────────────────────────────── */
-  async loadDbStatus() {
-    const line = $('dbLine');
-    try {
-      const s = await dbRpc('emission_status');
-      EM.db = true;
-      EM.canEditRange = !!s.can_edit_range;
-      if (Array.isArray(s.bands) && s.bands.length) {
-        const nb = {};
-        s.bands.forEach(b => { nb[b.param] = { low: Number(b.low), high: Number(b.high), min_minutes: Number(b.min_minutes) || 1, by: b.updated_by, at: b.updated_at }; });
-        EM.bands = nb;
-      }
-      $('hHint').textContent = 'From the ERP database: up to 400 days (every-minute detail up to 3 days).';
-      const run = s.last_run || {};
-      const okAgo = s.last_ok ? EM.ago((Date.now() - Date.parse(s.last_ok)) / 60000) : 'never';
-      line.innerHTML = '<span class="pill ' + (run.error ? 'warn' : 'ok') + '"><span class="dot"></span>Saved in ERP</span>'
-        + '<span class="text-slate-500">' + Number(s.rows || 0).toLocaleString('en-IN') + ' readings'
-        + (s.first_at ? ' from ' + esc(dmy(String(s.first_at).slice(0, 10))) + ' to ' + esc(dmy(String(s.last_at).slice(0, 16).replace('T', ' '))) : '')
-        + ' · last sync ' + esc(okAgo) + '</span>'
-        + (run.error ? '<span class="text-amber-700" title="' + esc(run.error) + '">Last sync had an error</span>' : '')
-        + '<button class="btn sm" id="syncBtn" onclick="EM.syncNow()">Sync now</button>';
-      $('alOpen').innerHTML = s.open_alerts ? '<span class="pill bad">' + Number(s.open_alerts) + ' not acknowledged</span>' : '';
-    } catch (e) {
-      if (e.code === 'NOT_SET_UP' || e.code === 'NOT_ALLOWED' || e.code === 'NO_TOKEN' || e.code === 'NET') {
-        EM.db = false;
-        line.innerHTML = '<span class="pill warn"><span class="dot"></span>Not saved in ERP</span><span class="text-amber-800">' + esc(e.message) + ' History below comes from the portal.</span>';
-      } else {
-        line.innerHTML = '<span class="text-red-700">' + esc(e.message) + '</span>';
-      }
-    }
-    EM.paintBands();
-  },
-  async syncNow() {
-    const b = $('syncBtn');
-    if (b) { b.disabled = true; b.textContent = 'Syncing...'; }
-    try {
-      const r = await dbRpc('emission_sync_now');
-      if (r.error) EM.showErr('Sync finished with an error: ' + r.error);
-    } catch (e) { EM.showErr(e.message); }
-    await EM.loadDbStatus();
-    EM.loadAlerts();
-  },
-  // emission_rows → the same {cols, rows} shape as the portal's history.
-  async fetchDbHistory(from, to, step) {
-    const d = await dbRpc('emission_rows', { p_from: from, p_to: to, p_step: Number(step) });
-    const byTime = {}, cols = [];
-    (d.rows || []).forEach(r => {
-      const c = r.station ? r.param + ' (' + r.station + ')' : r.param;
-      if (cols.indexOf(c) < 0) cols.push(c);
-      (byTime[r.t] = byTime[r.t] || { createdAt: r.t })[c] = r.v;
-    });
-    return { cols, rows: Object.keys(byTime).sort().map(k => byTime[k]) };
-  },
-
-  async loadHistory() {
-    const from = $('hFrom').value, to = $('hTo').value, step = $('hStep').value;
-    const msg = $('hMsg');
-    if (!from || !to) { msg.textContent = 'Pick both dates.'; return; }
-    if (to < from) { msg.textContent = 'The To date is before the From date.'; return; }
-    const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1;
-    const db = EM.db === true;
-    const maxDays = db ? 400 : MAX_DAYS, minuteDays = db ? 3 : 2;
-    if (days > maxDays) { msg.textContent = 'Pick at most ' + maxDays + ' days.'; return; }
-    if (step === '1' && days > minuteDays) { msg.textContent = 'Every-minute detail is for up to ' + minuteDays + ' days. Pick a bigger step for a longer range.'; return; }
-    const btn = $('hLoadBtn');
-    btn.disabled = true; $('hCsvBtn').disabled = true;
-    msg.classList.remove('hidden');
-    msg.textContent = db ? 'Loading from the ERP database...'
-      : 'Loading from the portal' + (days > 7 ? ' (a long range can take up to a minute)...' : '...');
-    $('hTableWrap').classList.add('hidden'); $('hSummary').innerHTML = '';
-    try {
-      const h = db ? await EM.fetchDbHistory(from, to, step) : await EM.fetchHistory(from, to, step);
-      EM.hist = Object.assign(h, { from, to, step });
-      EM.paintHistory();
-    } catch (e) {
-      msg.textContent = e.message;
-    } finally { btn.disabled = false; }
-    EM.loadAlerts();   // the alerts follow the report's dates
-  },
-  setFilter(f) {
-    EM.rowFilter = f;
-    document.querySelectorAll('#hFilter button').forEach(b => b.classList.toggle('on', b.dataset.f === f));
-    if (EM.hist) EM.paintHistory();
-  },
-  // A row passes when ANY parameter in it is on the chosen side.
-  rowSides(r) { return EM.hist.cols.map(c => EM.side(c, r[c])); },
-  passes(r) {
-    const f = EM.rowFilter;
-    if (f === 'all') return true;
-    const s = EM.rowSides(r);
-    return f === 'out' ? s.some(Boolean) : s.indexOf(f) >= 0;
-  },
-  paintHistory() {
-    const h = EM.hist, msg = $('hMsg');
-    if (!h.rows.length) { msg.classList.remove('hidden'); msg.textContent = 'No data for these dates.'; $('hTableWrap').classList.add('hidden'); return; }
-    $('hCsvBtn').disabled = false;
-    const daily = h.step === '1440';
-    // Summary per parameter, on ALL loaded rows: average, low / high, below / above the range, above the legal limit.
-    $('hSummary').innerHTML = h.cols.map(c => {
-      const vals = h.rows.map(r => r[c]).filter(v => v != null && !isNaN(v)).map(Number);
-      const l = EM.limitOf(c), b = EM.bandOf(c);
-      const avg = vals.reduce((a, x) => a + x, 0) / (vals.length || 1);
-      const over = l ? vals.filter(v => v > l.max).length : 0;
-      const nHi = b ? vals.filter(v => v > b.high).length : 0, nLo = b ? vals.filter(v => v < b.low).length : 0;
-      return '<div class="rounded-lg border border-slate-200 p-3">'
-        + '<div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider truncate" title="' + esc(c) + '">' + esc(c) + '</div>'
-        + '<div class="mt-1 text-lg font-extrabold text-slate-900">' + fmt(avg) + ' <span class="text-xs font-semibold text-slate-500">avg ' + esc(l ? l.unit : '') + '</span></div>'
-        + '<div class="text-[11px] text-slate-500">Low ' + fmt(Math.min.apply(null, vals)) + ' · High ' + fmt(Math.max.apply(null, vals)) + ' · ' + vals.length + ' readings</div>'
-        + (b ? '<div class="mt-1.5 flex flex-wrap gap-1.5">'
-             + '<button class="pill ' + (nHi ? 'bad' : 'idle') + '" onclick="EM.setFilter(\'hi\')" title="Show only these">▲ ' + nHi + ' above ' + fmt(b.high, 0) + '</button>'
-             + '<button class="pill ' + (nLo ? 'low' : 'idle') + '" onclick="EM.setFilter(\'lo\')" title="Show only these">▼ ' + nLo + ' below ' + fmt(b.low, 0) + '</button></div>' : '')
-        + (l ? '<div class="text-[11px] mt-1 ' + (over ? 'text-red-700 font-bold' : 'text-green-700') + '">' + (over ? over + ' above the legal limit of ' + l.max : 'All within the legal limit of ' + l.max) + '</div>' : '')
-        + '</div>';
-    }).join('');
-    $('hHead').innerHTML = '<tr><th class="text-left">' + (daily ? 'Date' : 'Date / time') + '</th>'
-      + h.cols.map(c => {
-          const b = EM.bandOf(c), l = EM.limitOf(c);
-          return '<th class="num">' + esc(c) + '<div class="text-[10px] font-normal text-slate-400">'
-            + [b ? 'range ' + fmt(b.low, 0) + '–' + fmt(b.high, 0) : '', l ? 'limit ' + l.max : ''].filter(Boolean).join(' · ') + '</div></th>';
-        }).join('') + '</tr>';
-    // Newest first, like a log; the filter keeps only rows with a reading on the chosen side.
-    const shown = h.rows.filter(EM.passes).reverse();
-    if (!shown.length) {
-      $('hTableWrap').classList.add('hidden');
-      msg.classList.remove('hidden');
-      msg.textContent = { out: 'No reading out of range on these dates.', hi: 'No reading above the range on these dates.', lo: 'No reading below the range on these dates.' }[EM.rowFilter] || 'No data.';
-      return;
-    }
-    msg.classList.add('hidden');
-    $('hBody').innerHTML = shown.map(r => {
-      const t = daily ? dmy(String(r.createdAt).slice(0, 10)) : dmy(String(r.createdAt).slice(0, 16));
-      const sides = EM.rowSides(r);
-      const rowCls = sides.indexOf('hi') >= 0 ? 'row-hi' : sides.indexOf('lo') >= 0 ? 'row-lo' : '';
-      return '<tr class="' + rowCls + '"><td>' + esc(t) + '</td>' + h.cols.map((c, i) => {
-        const v = r[c], l = EM.limitOf(c), s = sides[i];
-        const cls = l && v != null && Number(v) > l.max ? ' over' : s ? ' ' + s : '';
-        return '<td class="num' + cls + '">' + (s === 'hi' ? '▲ ' : s === 'lo' ? '▼ ' : '') + fmt(v) + '</td>';
-      }).join('') + '</tr>';
-    }).join('');
-    $('hTableWrap').classList.remove('hidden');
-  },
-  // The CSV follows the filter, with a Status column per parameter.
-  csv() {
-    const h = EM.hist;
-    if (!h || !h.rows.length) return;
-    const q = s => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
-    const head = ['Date / time'];
-    h.cols.forEach(c => { head.push(c); if (EM.bandOf(c)) head.push(EM.paramOf(c) + ' status'); });
-    const lines = [head.map(q).join(',')];
-    h.rows.filter(EM.passes).forEach(r => {
-      const row = [dmy(r.createdAt)];
-      h.cols.forEach(c => {
-        row.push(r[c] == null ? '' : Number(r[c]).toFixed(3));
-        if (EM.bandOf(c)) { const s = EM.side(c, r[c]); row.push(s === 'hi' ? 'ABOVE' : s === 'lo' ? 'BELOW' : r[c] == null ? '' : 'IN RANGE'); }
-      });
-      lines.push(row.map(q).join(','));
-    });
-    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'Stack_Emission_' + dmy(h.from).replace(/\//g, '-') + '_to_' + dmy(h.to).replace(/\//g, '-')
-      + (EM.rowFilter === 'all' ? '' : '_' + { out: 'OUT_OF_RANGE', hi: 'ABOVE', lo: 'BELOW' }[EM.rowFilter]) + '.csv';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  },
-
-  /* ── Alerts list ──────────────────────────────────────────────── */
-  setAlertKind(k) {
-    EM.alertKind = k;
-    document.querySelectorAll('#alKind button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
-    EM.loadAlerts();
-  },
-  /* From the database (emission_alerts, recorded on every sync) when it is set
-     up; otherwise worked out here from the loaded report rows (only as fine
-     as the report's detail, and nothing to acknowledge). */
-  async loadAlerts() {
-    const box = $('alList');
-    const from = $('hFrom').value, to = $('hTo').value;
-    if (!from || !to) return;
-    let rows = [];
-    if (EM.db) {
-      try {
-        const d = await dbRpc('emission_alerts_list', { p_from: from, p_to: to, p_kind: EM.alertKind || null, p_open_only: $('alOpenOnly').checked });
-        rows = d.rows || [];
-        $('alHint').textContent = 'Recorded by the ERP on every sync (every 10 minutes, day and night), for the dates of the report above.';
-      } catch (e) { box.innerHTML = '<span class="text-red-700">' + esc(e.message) + '</span>'; return; }
-    } else {
-      rows = EM.alertsFromHistory();
-      if (EM.alertKind) rows = rows.filter(a => a.kind === EM.alertKind);
-      $('alHint').textContent = 'Worked out from the report above (as fine as its Detail). Once the ERP database is set up, alerts are recorded day and night and can be acknowledged.';
-    }
-    $('alAckAll').style.display = EM.db && rows.some(a => !a.ack_at) ? '' : 'none';
-    if (!rows.length) { box.innerHTML = '<div class="py-4 text-center text-green-700 font-semibold">No ' + ({ HIGH: 'above-range ', LOW: 'below-range ' }[EM.alertKind] || 'out-of-range ') + 'alerts on these dates.</div>'; return; }
-    box.innerHTML = '<div class="overflow-auto sb border border-slate-200 rounded-lg" style="max-height:380px"><table class="rep w-full"><thead><tr>'
-      + '<th class="text-left">Status</th><th class="text-left">Parameter</th><th class="text-left">From</th><th class="text-left">To</th>'
-      + '<th class="num">Minutes</th><th class="num">Worst value</th><th class="num">Range</th><th class="text-left">Acknowledged</th></tr></thead><tbody>'
-      + rows.map(a => {
-          const hi = a.kind === 'HIGH';
-          return '<tr class="' + (hi ? 'row-hi' : 'row-lo') + '">'
-            + '<td><span class="pill ' + (hi ? 'bad' : 'low') + '">' + (hi ? '▲ ABOVE' : '▼ BELOW') + '</span></td>'
-            + '<td>' + esc(a.param) + (a.station ? ' <span class="text-slate-400">' + esc(a.station) + '</span>' : '') + '</td>'
-            + '<td>' + esc(dmy(a.started_at)) + '</td><td>' + esc(dmy(a.ended_at)) + '</td>'
-            + '<td class="num">' + esc(a.minutes) + '</td>'
-            + '<td class="num ' + (hi ? 'hi' : 'lo') + '">' + fmt(a.peak) + '</td>'
-            + '<td class="num">' + fmt(a.band_low, 0) + ' – ' + fmt(a.band_high, 0) + '</td>'
-            + '<td>' + (a.ack_at ? '<span class="text-slate-500">' + esc(a.ack_by || '') + ', ' + esc(dmy(String(a.ack_at).slice(0, 16).replace('T', ' '))) + '</span>'
-                : EM.db ? '<button class="btn sm" onclick="EM.ack(' + Number(a.id) + ')">Acknowledge</button>' : '<span class="text-slate-400">-</span>') + '</td>'
-            + '</tr>';
-        }).join('') + '</tbody></table></div>';
-  },
-  // Runs of consecutive out-of-range rows in the loaded report (no database yet).
-  alertsFromHistory() {
-    const h = EM.hist;
-    if (!h || !h.rows.length) return [];
-    const out = [];
-    h.cols.forEach(c => {
-      const b = EM.bandOf(c);
-      if (!b) return;
-      let cur = null;
-      h.rows.forEach(r => {
-        const s = EM.side(c, r[c]), kind = s === 'hi' ? 'HIGH' : s === 'lo' ? 'LOW' : '';
-        if (cur && kind !== cur.kind) { out.push(cur); cur = null; }
-        if (!kind) return;
-        const v = Number(r[c]);
-        if (!cur) cur = { param: EM.paramOf(c), station: (/\(([^)]*)\)\s*$/.exec(c) || [])[1] || '', kind, started_at: String(r.createdAt).slice(0, 16),
-                          ended_at: String(r.createdAt).slice(0, 16), minutes: 0, peak: v, band_low: b.low, band_high: b.high };
-        cur.ended_at = String(r.createdAt).slice(0, 16);
-        cur.minutes += Number(h.step) || 1;
-        cur.peak = kind === 'HIGH' ? Math.max(cur.peak, v) : Math.min(cur.peak, v);
-      });
-      if (cur) out.push(cur);
-    });
-    return out.sort((a, b) => a.started_at < b.started_at ? 1 : -1);
-  },
-  async ack(id) {
-    try {
-      await dbRpc('emission_alert_ack', { p_id: id });
-      await EM.loadDbStatus();
-      EM.loadAlerts();
-    } catch (e) { EM.showErr(e.message); }
-  },
-
-  /* ── Working range line (Admin edits it) ──────────────────────── */
-  paintBands() {
-    const line = $('bandLine');
-    const keys = Object.keys(EM.bands);
-    line.innerHTML = '<span class="font-semibold text-slate-600">Working range:</span>'
-      + keys.map(k => {
-          const b = EM.bands[k];
-          return '<span class="pill idle" style="background:#f0fdf4;color:#166534">' + esc(k) + ' ' + fmt(b.low, 0) + ' – ' + fmt(b.high, 0)
-            + (b.min_minutes > 1 ? ' · alert after ' + b.min_minutes + ' min' : '') + '</span>';
-        }).join('')
-      + (EM.db && EM.canEditRange ? '<button class="btn sm" onclick="EM.editBand()">Change range</button>' : '')
-      + (EM.db === false ? '<span class="text-slate-400">(default; it can be changed once the ERP database is set up)</span>' : '');
-  },
-  editBand() {
-    const keys = Object.keys(EM.bands).concat(EM.live.map(v => v.parameter_name)).filter((k, i, a) => a.indexOf(k) === i);
-    const line = $('bandLine');
-    line.innerHTML = '<span class="font-semibold text-slate-600">Change range:</span>'
-      + '<select id="bdParam" class="sel">' + keys.map(k => '<option>' + esc(k) + '</option>').join('') + '</select>'
-      + '<label class="text-slate-500">Low <input id="bdLow" type="number" step="any" class="inp" style="width:80px"></label>'
-      + '<label class="text-slate-500">High <input id="bdHigh" type="number" step="any" class="inp" style="width:80px"></label>'
-      + '<label class="text-slate-500" title="An alert is recorded only when the reading stays out of range this many minutes in a row">Alert after <input id="bdMin" type="number" min="1" max="240" class="inp" style="width:60px"> min</label>'
-      + '<button class="btn pri sm" onclick="EM.saveBand()">Save</button><button class="btn sm" onclick="EM.paintBands()">Cancel</button>';
-    const fill = () => { const b = EM.bands[$('bdParam').value] || {}; $('bdLow').value = b.low != null ? b.low : ''; $('bdHigh').value = b.high != null ? b.high : ''; $('bdMin').value = b.min_minutes || 1; };
-    $('bdParam').onchange = fill; fill();
-  },
-  async saveBand() {
-    const p = $('bdParam').value, lo = parseFloat($('bdLow').value), hi = parseFloat($('bdHigh').value), mm = parseInt($('bdMin').value, 10) || 1;
-    if (isNaN(lo) || isNaN(hi) || lo >= hi) { EM.showErr('The low value must be smaller than the high value.'); return; }
-    try {
-      await dbRpc('emission_band_save', { p_param: p, p_low: lo, p_high: hi, p_min_minutes: mm });
-      EM.showErr('');
-      EM.liveState = {};   // a new range: judge the live reading afresh
-      await EM.loadDbStatus();
-      EM.paintTiles(); EM.checkLive();
-      if (EM.hist) EM.paintHistory();
-      EM.loadAlerts();
-      try { await EM.loadTrend(); } catch (e) {}
-    } catch (e) { EM.showErr(e.message); }
-  },
-
-  /* ── Refresh loop ─────────────────────────────────────────────── */
-  async refreshAll() {
-    try {
-      await EM.loadStatus();
-      await EM.loadLive();
-      EM.showErr('');
-    } catch (e) { EM.showErr(e.message); }
-    // The chart needs the limits from the live answer, so it comes after it.
-    try { await EM.loadTrend(); } catch (e) { $('trendNote').textContent = e.message; }
-  },
-  // Each part on its own timer; a failure shows in the red box and the next tick tries again.
-  // A hidden tab keeps checking the live reading (so the alert still pops up),
-  // but skips the heavier chart; it catches up the moment it is shown again.
+  // Each part on its own timer; a failure shows in that unit's red box and the
+  // next tick tries again. Both units keep checking their live reading even
+  // in a hidden tab (so the alert still pops up).
   startTimers() {
-    EM.timers.forEach(clearInterval);
-    const on = () => $('autoOn').checked;
-    const guard = (fn, evenHidden) => async () => {
-      if (!on() || (!evenHidden && document.hidden)) return;
-      try { await fn(); EM.showErr(''); } catch (e) { EM.showErr(e.message); }
+    const on = () => byId('autoOn').checked;
+    const each = (fn) => () => {
+      if (!on()) return;
+      APP.units.forEach(async u => { try { await u[fn](); u.showErr(''); } catch (e) { u.showErr(e.message); APP.paintSwitch(); } });
     };
-    EM.timers = [
-      setInterval(guard(EM.loadLive, true), LIVE_EVERY_MS),
-      setInterval(guard(EM.loadStatus, true), STATUS_EVERY_MS),
-      setInterval(guard(EM.loadTrend), TREND_EVERY_MS),
-      setInterval(() => EM.paintStatus(), 30000),   // "x min ago" keeps counting between fetches
-      setInterval(() => { if (on() && !document.hidden && EM.db) EM.loadDbStatus(); }, STATUS_EVERY_MS * 5)
-    ];
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && on()) EM.refreshAll(); });
+    setInterval(each('loadLive'), LIVE_EVERY_MS);
+    setInterval(each('loadStatus'), STATUS_EVERY_MS);
+    setInterval(() => APP.units.forEach(u => u.paintStatus()), 30000);   // "x min ago" keeps counting between fetches
+    setInterval(() => { if (on() && !document.hidden) APP.units.forEach(u => { if (u.db) u.loadDbStatus(); }); }, STATUS_EVERY_MS * 5);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && on()) APP.refreshAll(); });
   }
 };
 
 function init() {
-  $('hFrom').value = today();
-  $('hTo').value = today();
-  EM.paintNotifyBtns();
-  EM.paintBands();
-  // The bands (and whether the database is set up) come first: tiles, chart and history use them.
-  EM.loadDbStatus().then(() => EM.refreshAll()).then(() => EM.loadHistory());
-  EM.startTimers();
+  APP.build();
+  APP.paintNotifyBtns();
+  APP.show(APP.initialUnit());
+  // Per unit: the bands (and whether the database is set up) first, since the
+  // tiles and the report use them; then live readings; then the open unit's report.
+  APP.units.forEach(u => u.loadDbStatus().then(() => u.refresh()).then(() => {
+    if (APP.active === u.U.key) u.loadHistory();
+  }));
+  APP.startTimers();
 }
 
 /* The ERP decides who may open this page (HOME_EMISSION_LIVE). The gate
