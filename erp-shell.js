@@ -195,6 +195,10 @@
       { label: 'Plan vs Actual', go: 'TT_PLANACTUAL' } ] },
 
     { key: 'QUALITY', icon: I.quality, label: 'Quality', children: [
+      /* Its own app (emission-live.html, launcher key HOME_EMISSION_LIVE), opened
+         in a new tab like HR & Payroll; the leaf carries its own `access` row. */
+      { label: 'Stack Emission (Live)', external: 'emission-live.html', access: 'HOME_EMISSION_LIVE',
+        words: 'stack emission boiler pollution pm nox so2 ocems cems pcb dhuan chimney surveykshan' },
       { label: 'Quality Dashboard' }, { label: 'Quality Control' },
       { label: 'Direct QC' }, { label: 'Quality Certificate' },
       { label: 'Quality Audits' }, { label: 'Defect Logs' },

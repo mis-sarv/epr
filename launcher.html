@@ -782,7 +782,13 @@ const APPS = [
      cat_* call (CATALOG_TEMPLATES_MIGRATION.sql). */
   { key:'HOME_CATALOG_MAKER', href:'catalog_maker.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7a2 2 0 0 1 2 2v14a2 2 0 0 0-2-2H4zM20 4h-7a2 2 0 0 0-2 2v14a2 2 0 0 1 2-2h7z"/><path d="M15 9h3M15 12h3M6 9h3"/></svg>', accent:'#c084fc',
     defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],
-    title:'Catalog Maker', sub:'Product catalogs, templates & PDF' }
+    title:'Catalog Maker', sub:'Product catalogs, templates & PDF' },
+  /* Boiler stack emission readings from the online monitoring portal
+     (emission-live.html). Same key and default roles as HOME_EMISSION_LIVE in
+     store-core.js's SARV_TABS (Admin / MD / GM); change both together. */
+  { key:'HOME_EMISSION_LIVE', href:'emission-live.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M6 21V10h4v11M14 21V4h4v17"/><path d="M8 7c0-1.5 1.5-1.5 1.5-3M16 1.5c0 1 .8 1.2.8 2"/></svg>', accent:'#14b8a6',
+    defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],
+    title:'Stack Emission (Live)', sub:'Boiler PM / NOx / SO2 vs limits' }
 ];
 
 const ROLE_LABEL = {
