@@ -111,66 +111,69 @@
             <p class="text-xs text-gray-400 mt-1 uppercase tracking-widest">Catalog Studio</p>
         </div>
         
+        <!-- The pages list now runs the full height of the sidebar: the buttons and
+             font settings that sat under it moved to the top bar. -->
         <div class="flex-1 overflow-y-auto p-4" id="page-list">
             <!-- Pages will be injected here via JS -->
-        </div>
-
-        <div class="p-4 border-t border-gray-200 flex flex-col gap-2 bg-gray-50">
-            <!-- Global Font Settings -->
-            <div class="mb-2 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
-                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2"><i class="fas fa-font"></i> Global Font Style</label>
-                <select id="setting-heading-font" onchange="updateGlobalSetting('headingFont', this.value)" class="w-full mb-2 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="'Montserrat', sans-serif">Montserrat (Modern & Clean)</option>
-                    <option value="'Cinzel', serif">Cinzel (Classic Elegant)</option>
-                    <option value="'Playfair Display', serif">Playfair Display (Serif)</option>
-                    <option value="'Poppins', sans-serif">Poppins (Round & Bold)</option>
-                </select>
-                <select id="setting-body-font" onchange="updateGlobalSetting('bodyFont', this.value)" class="w-full border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                    <option value="'Inter', sans-serif">Inter (Professional)</option>
-                    <option value="'Poppins', sans-serif">Poppins (Modern)</option>
-                </select>
-            </div>
-
-            <!-- Server templates: the list, a fresh one, and the two saves.
-                 The browser keeps a draft on its own as you type (saveDataLocally). -->
-            <div class="grid grid-cols-2 gap-2">
-                <button onclick="openTemplateLibrary()" class="bg-white text-gray-700 border border-gray-300 font-semibold py-2 px-2 rounded-lg hover:bg-gray-50 transition shadow-sm flex justify-center items-center gap-1.5 text-sm" title="Templates saved on the server: open one to edit, or delete">
-                    <i class="fas fa-folder-open"></i> Templates
-                </button>
-                <button onclick="newTemplate()" class="bg-white text-gray-700 border border-gray-300 font-semibold py-2 px-2 rounded-lg hover:bg-gray-50 transition shadow-sm flex justify-center items-center gap-1.5 text-sm" title="Start a new catalog from the sample pages">
-                    <i class="fas fa-file"></i> New
-                </button>
-            </div>
-            <!-- 20 ready-made collections with sample pictures (catalog-presets.js) -->
-            <button onclick="openPresetGallery()" class="w-full bg-gradient-to-r from-amber-50 to-rose-50 text-rose-800 border border-rose-200 font-semibold py-2 px-2 rounded-lg hover:from-amber-100 hover:to-rose-100 transition shadow-sm flex justify-center items-center gap-1.5 text-sm" title="Ready-made catalogs (Royal, Cozy, Nature, Modern) with sample pictures: open one to edit, or save them all on the server">
-                <i class="fas fa-swatchbook"></i> Starter Templates
-            </button>
-            <button onclick="addNewPage()" class="w-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold py-2 px-4 rounded-lg hover:bg-indigo-100 transition shadow-sm flex justify-center items-center gap-2">
-                <i class="fas fa-plus"></i> Add New Page
-            </button>
-            <button onclick="cloudSave(false)" id="cloud-save-btn" class="w-full bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition shadow-sm flex justify-center items-center gap-2" title="Save this template on the server (updates the open template)">
-                <i class="fas fa-cloud-upload-alt"></i> Save to Server
-            </button>
-            <button onclick="cloudSave(true)" class="w-full bg-white text-indigo-700 border border-indigo-300 font-semibold py-1.5 px-4 rounded-lg hover:bg-indigo-50 transition shadow-sm flex justify-center items-center gap-2 text-sm" title="Keep the open template as it is and save this as a separate template under a new name">
-                <i class="fas fa-copy"></i> Save as New Template
-            </button>
-            <button onclick="generatePDF()" class="w-full bg-green-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-green-700 transition shadow-md flex justify-center items-center gap-2 mt-2">
-                <i class="fas fa-file-pdf"></i> Export to PDF
-            </button>
         </div>
     </aside>
 
     <main class="flex-1 flex flex-col overflow-hidden">
-        <!-- Top Toolbar -->
-        <header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm">
-            <div class="flex items-center gap-3 min-w-0">
-                <h2 class="text-lg font-semibold text-gray-700 whitespace-nowrap" id="current-editing-title">Editing: Page 1</h2>
-                <!-- Which server template is open and whether it is saved (paintCloudBar) -->
-                <span id="cloud-bar" class="text-xs font-semibold px-2.5 py-1 rounded-full border truncate max-w-[420px]"></span>
+        <!-- Top Toolbar: row 1 = what is being edited + Delete Page; row 2 = the
+             catalog actions and global fonts (they used to sit under the pages list).
+             The browser keeps a draft on its own as you type (saveDataLocally). -->
+        <header class="bg-white border-b border-gray-200 px-6 py-2 shadow-sm flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <h2 class="text-lg font-semibold text-gray-700 whitespace-nowrap" id="current-editing-title">Editing: Page 1</h2>
+                    <!-- Which server template is open and whether it is saved (paintCloudBar) -->
+                    <span id="cloud-bar" class="text-xs font-semibold px-2.5 py-1 rounded-full border truncate max-w-[420px]"></span>
+                </div>
+                <button onclick="deleteCurrentPage()" id="btn-delete-page" class="text-red-500 hover:text-red-700 text-sm font-medium flex items-center gap-1 transition whitespace-nowrap">
+                    <i class="fas fa-trash-alt"></i> Delete Page
+                </button>
             </div>
-            <button onclick="deleteCurrentPage()" id="btn-delete-page" class="text-red-500 hover:text-red-700 text-sm font-medium flex items-center gap-1 transition">
-                <i class="fas fa-trash-alt"></i> Delete Page
-            </button>
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="addNewPage()" class="bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold py-1.5 px-3 rounded-lg hover:bg-indigo-100 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap">
+                    <i class="fas fa-plus"></i> Add New Page
+                </button>
+                <!-- Server templates: the list, a fresh one, and the two saves -->
+                <button onclick="openTemplateLibrary()" class="bg-white text-gray-700 border border-gray-300 font-semibold py-1.5 px-3 rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap" title="Templates saved on the server: open one to edit, or delete">
+                    <i class="fas fa-folder-open"></i> Templates
+                </button>
+                <button onclick="newTemplate()" class="bg-white text-gray-700 border border-gray-300 font-semibold py-1.5 px-3 rounded-lg hover:bg-gray-50 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap" title="Start a new catalog from the sample pages">
+                    <i class="fas fa-file"></i> New
+                </button>
+                <!-- 20 ready-made collections with sample pictures (catalog-presets.js) -->
+                <button onclick="openPresetGallery()" class="bg-gradient-to-r from-amber-50 to-rose-50 text-rose-800 border border-rose-200 font-semibold py-1.5 px-3 rounded-lg hover:from-amber-100 hover:to-rose-100 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap" title="Ready-made catalogs (Royal, Cozy, Nature, Modern) with sample pictures: open one to edit, or save them all on the server">
+                    <i class="fas fa-swatchbook"></i> Starter Templates
+                </button>
+                <!-- Global Font Settings -->
+                <div class="flex items-center gap-1.5 pl-2 ml-1 border-l border-gray-200" title="Global font style: headings / body text">
+                    <i class="fas fa-font text-gray-500 text-sm"></i>
+                    <select id="setting-heading-font" onchange="updateGlobalSetting('headingFont', this.value)" class="border border-gray-300 rounded p-1 text-sm outline-none focus:ring-2 focus:ring-indigo-500" title="Heading font">
+                        <option value="'Montserrat', sans-serif">Montserrat (Modern & Clean)</option>
+                        <option value="'Cinzel', serif">Cinzel (Classic Elegant)</option>
+                        <option value="'Playfair Display', serif">Playfair Display (Serif)</option>
+                        <option value="'Poppins', sans-serif">Poppins (Round & Bold)</option>
+                    </select>
+                    <select id="setting-body-font" onchange="updateGlobalSetting('bodyFont', this.value)" class="border border-gray-300 rounded p-1 text-sm outline-none focus:ring-2 focus:ring-indigo-500" title="Body text font">
+                        <option value="'Inter', sans-serif">Inter (Professional)</option>
+                        <option value="'Poppins', sans-serif">Poppins (Modern)</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button onclick="cloudSave(true)" class="bg-white text-indigo-700 border border-indigo-300 font-semibold py-1.5 px-3 rounded-lg hover:bg-indigo-50 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap" title="Keep the open template as it is and save this as a separate template under a new name">
+                        <i class="fas fa-copy"></i> Save as New Template
+                    </button>
+                    <button onclick="cloudSave(false)" id="cloud-save-btn" class="bg-indigo-600 text-white font-semibold py-1.5 px-3 rounded-lg hover:bg-indigo-700 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap" title="Save this template on the server (updates the open template)">
+                        <i class="fas fa-cloud-upload-alt"></i> Save to Server
+                    </button>
+                    <button onclick="generatePDF()" class="bg-green-600 text-white font-semibold py-1.5 px-3 rounded-lg hover:bg-green-700 transition shadow-sm flex items-center gap-1.5 text-sm whitespace-nowrap">
+                        <i class="fas fa-file-pdf"></i> Export to PDF
+                    </button>
+                </div>
+            </div>
         </header>
 
         <!-- Main Workspace -->
@@ -492,6 +495,9 @@
                         </div>
 
                         <div class="p-3 border border-gray-200 rounded bg-indigo-50 mt-4">
+                            <!-- Ready-made wave designs (WAVE_STYLES), filled by renderWavePickers -->
+                            <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-2">Ready-made Waves</label>
+                            <div id="cover-wave-styles" class="grid grid-cols-4 gap-2 mb-3"></div>
                             <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-2">Background Waves Colors</label>
                             <div class="grid grid-cols-3 gap-2">
                                 <div>
@@ -651,6 +657,7 @@
                         <label class="flex items-center gap-2 text-xs font-bold text-gray-700 uppercase tracking-wide mb-2 cursor-pointer">
                             <input type="checkbox" id="input-back-waves" onchange="updateCurrentPage('backWaves', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600"> Waves on the right (like the cover)
                         </label>
+                        <div id="back-wave-styles" class="grid grid-cols-4 gap-2 mb-3"></div>
                         <div class="grid grid-cols-3 gap-3">
                             <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 1</label><input type="color" id="input-back-wave1" oninput="setWaveColor(1, this.value)" class="w-full h-8 cursor-pointer rounded"></div>
                             <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 2</label><input type="color" id="input-back-wave2" oninput="setWaveColor(2, this.value)" class="w-full h-8 cursor-pointer rounded"></div>
@@ -843,18 +850,78 @@
              - preview: the SVG itself as a data URI (sharp at any zoom);
              - PDF: the same SVG first painted onto a canvas → PNG
                (wavesPng), so html2canvas only has to place a plain picture.
-           Box: left 30%, width 80% of the page (the old right:-10%), full
-           height; the page's overflow:hidden clips the part outside. */
-        const WAVE_W = 1270, WAVE_H = 2245;   // 80% × 100% of A4 at 2× (html2canvas scale)
-        // The cover and the back cover use the same waves, on the RIGHT edge.
-        function wavesSvg(page) {
-            return '<svg xmlns="http://www.w3.org/2000/svg" width="' + WAVE_W + '" height="' + WAVE_H + '" viewBox="0 0 500 1000" preserveAspectRatio="none">'
-                + '<path d="M500,0 L200,0 C350,300 -50,600 250,1000 L500,1000 Z" fill="' + col(page.waveColor1, '#e5e7eb') + '"/>'
-                + '<path d="M500,0 L350,0 C450,400 150,700 350,1000 L500,1000 Z" fill="' + col(page.waveColor2, '#9ca3af') + '"/>'
-                + '<path d="M500,200 C300,500 400,800 500,1000 Z" fill="' + col(page.waveColor3, '#4b5563') + '"/>'
-                + '</svg>';
+           Box: the whole page (it was left 30% / width 80% while there was only
+           one design; that design keeps its old place through its `g` transform).
+
+           Ready-made wave designs (WAVE_STYLES, page.waveStyle; none = 'classic').
+           Drawn on a 1000 × 1414 board (A4's own shape, so nothing stretches).
+           Every design keeps to the right edge and the corners, where the cover
+           and back cover have no text, and is three layers: Wave 1 the big light
+           one, Wave 2 the middle, Wave 3 the thin dark accent, so the three
+           colour pickers mean the same in every design. Picking a design also
+           sets its own three colours; they can be changed after that as usual. */
+        const WAVE_W = 1588, WAVE_H = 2245;   // the whole A4 page at 2× (html2canvas scale)
+        const WAVE_STYLES = [
+            { key: 'classic', name: 'Classic', colors: ['#e5e7eb', '#9ca3af', '#4b5563'],
+              g: 'translate(300 0) scale(1.6 1.414)',   // the old 500 × 1000 box at left 30%, width 80%
+              paths: ['M500,0 L200,0 C350,300 -50,600 250,1000 L500,1000 Z',
+                      'M500,0 L350,0 C450,400 150,700 350,1000 L500,1000 Z',
+                      'M500,200 C300,500 400,800 500,1000 Z'] },
+            { key: 'swoosh', name: 'Ocean Swoosh', colors: ['#dbeafe', '#38bdf8', '#1e3a8a'],
+              paths: ['M1000,380 C760,560 640,980 420,1414 L1000,1414 Z',
+                      'M1000,620 C800,780 760,1100 600,1414 L1000,1414 Z',
+                      'M1000,860 C880,980 860,1250 780,1414 L1000,1414 Z'] },
+            { key: 'arcs', name: 'Corner Arcs', colors: ['#e5e7eb', '#94a3b8', '#1e293b'],
+              paths: ['M440,0 A560,560 0 0 0 1000,560 L1000,0 Z M1000,1094 A320,320 0 0 0 680,1414 L1000,1414 Z',
+                      'M600,0 A400,400 0 0 0 1000,400 L1000,0 Z M1000,1234 A180,180 0 0 0 820,1414 L1000,1414 Z',
+                      'M770,0 A230,230 0 0 0 1000,230 L1000,0 Z M1000,1324 A90,90 0 0 0 910,1414 L1000,1414 Z'] },
+            { key: 'ribbon', name: 'Silver Ribbon', colors: ['#e5e7eb', '#9ca3af', '#0f766e'],
+              paths: ['M380,0 L1000,0 L1000,300 C800,320 560,200 380,0 Z M0,1414 L0,1392 C350,1400 700,1330 1000,1120 L1000,1414 Z',
+                      'M560,0 L1000,0 L1000,230 C840,240 680,170 560,0 Z M220,1414 C550,1400 800,1320 1000,1200 L1000,1414 Z',
+                      'M640,0 C760,130 900,190 1000,190 L1000,216 C880,224 740,150 640,0 Z M380,1414 C650,1385 860,1300 1000,1235 L1000,1300 C860,1360 650,1410 520,1414 Z'] },
+            { key: 'leaf', name: 'Twin Leaf', colors: ['#e0f2fe', '#7dd3fc', '#1d4ed8'],
+              paths: ['M1000,0 L520,0 C560,500 760,950 1000,1150 Z',
+                      'M1000,0 L760,0 C740,400 850,750 1000,900 Z',
+                      'M1000,120 C880,350 880,600 1000,760 Z'] },
+            { key: 'blobs', name: 'Organic Blobs', colors: ['#e8c4b0', '#6b7f73', '#2f3433'],
+              paths: ['M1000,950 C860,930 760,1040 780,1180 C800,1320 700,1380 640,1414 L1000,1414 Z',
+                      'M540,0 C580,100 700,150 810,135 C920,120 950,230 1000,270 L1000,0 Z',
+                      'M1000,380 C900,400 850,520 895,620 C940,720 900,800 1000,840 Z'] },
+            { key: 'diagonal', name: 'Bold Diagonal', colors: ['#f3f4f6', '#dc2626', '#111111'],
+              paths: ['M1000,300 L1000,1414 L420,1414 Z',
+                      'M1000,700 L1000,1414 L640,1414 Z',
+                      'M1000,1000 L1000,1414 L800,1414 Z M740,0 L1000,0 L1000,220 Z'] },
+            { key: 'flow', name: 'Golden Flow', colors: ['#f5e6c8', '#d4a24c', '#1c1917'],
+              paths: ['M0,1414 L0,1345 C250,1255 520,1360 760,1230 C880,1165 950,1080 1000,1040 L1000,1414 Z M560,0 C660,150 860,200 1000,180 L1000,0 Z',
+                      'M260,1414 C480,1330 720,1370 860,1270 C930,1220 970,1170 1000,1150 L1000,1414 Z M780,0 C840,80 930,105 1000,100 L1000,0 Z',
+                      'M560,1414 C740,1370 880,1360 1000,1270 L1000,1414 Z'] },
+            { key: 'sunrise', name: 'Sunrise Rings', colors: ['#fef3c7', '#fbbf24', '#ea580c'],
+              paths: ['M600,700 A650,650 0 1 0 1900,700 A650,650 0 1 0 600,700 Z',
+                      'M770,700 A480,480 0 1 0 1730,700 A480,480 0 1 0 770,700 Z',
+                      'M930,700 A320,320 0 1 0 1570,700 A320,320 0 1 0 930,700 Z'] },
+            { key: 'dunes', name: 'Layered Dunes', colors: ['#e7e5e4', '#a8a29e', '#44403c'],
+              paths: ['M640,0 C760,200 560,400 680,600 C800,800 600,1000 720,1200 C780,1300 760,1380 760,1414 L1000,1414 L1000,0 Z',
+                      'M800,0 C900,220 740,420 840,620 C940,820 780,1020 880,1220 L900,1414 L1000,1414 L1000,0 Z',
+                      'M920,0 C980,200 880,420 940,620 C1000,820 900,1020 960,1220 L980,1414 L1000,1414 L1000,0 Z'] },
+            { key: 'corners', name: 'Soft Corners', colors: ['#e5e7eb', '#22d3ee', '#1e3a8a'],
+              paths: ['M420,0 L1000,0 L1000,560 Q1000,640 935,585 L445,55 Q405,0 420,0 Z',
+                      'M650,0 L1000,0 L1000,330 Q1000,400 942,350 L672,48 Q640,0 650,0 Z',
+                      'M1000,1000 L1000,1414 L620,1414 Q560,1414 608,1366 L942,1030 Q1000,972 1000,1000 Z'] }
+        ];
+        const waveStyleOf = key => WAVE_STYLES.find(s => s.key === key) || WAVE_STYLES[0];
+        // colors: [wave1, wave2, wave3]; w / h: the picture's pixel size.
+        function waveStyleSvg(style, colors, w, h) {
+            const body = style.paths.map((d, i) => '<path d="' + d + '" fill="' + colors[i] + '"/>').join('');
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 1000 1414" preserveAspectRatio="none">'
+                + (style.g ? '<g transform="' + style.g + '">' + body + '</g>' : body) + '</svg>';
         }
-        function wavesDataUri(page) { return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(wavesSvg(page)); }
+        // The cover and the back cover draw the page's own design and colours.
+        function wavesSvg(page) {
+            return waveStyleSvg(waveStyleOf(page.waveStyle),
+                [col(page.waveColor1, '#e5e7eb'), col(page.waveColor2, '#9ca3af'), col(page.waveColor3, '#4b5563')], WAVE_W, WAVE_H);
+        }
+        const svgUri = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        function wavesDataUri(page) { return svgUri(wavesSvg(page)); }
         function wavesPng(page) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -1703,6 +1770,7 @@
                 document.getElementById('input-back-wave1').value = col(page.waveColor1, BACK_DEFAULT.waveColor1);
                 document.getElementById('input-back-wave2').value = col(page.waveColor2, BACK_DEFAULT.waveColor2);
                 document.getElementById('input-back-wave3').value = col(page.waveColor3, BACK_DEFAULT.waveColor3);
+                renderWavePickers();
             } else if (page.pageType === 'album') {
                 productEditor.style.display = 'none';
                 coverEditor.style.display = 'none';
@@ -1772,6 +1840,7 @@
                 document.getElementById('input-cover-waveColor1').value = page.waveColor1 || '#e5e7eb';
                 document.getElementById('input-cover-waveColor2').value = page.waveColor2 || '#9ca3af';
                 document.getElementById('input-cover-waveColor3').value = page.waveColor3 || '#4b5563';
+                renderWavePickers();
 
             } else {
                 productEditor.style.display = 'flex';
@@ -1891,6 +1960,49 @@
                 });
             });
             updateCurrentPage('waveColor' + n, value);   // dirty flag, preview, quiet save
+        }
+
+        /* The ready-made wave tiles in the cover and back cover editors. Each tile
+           shows the design in its OWN colours; the one in use has an indigo ring. */
+        function renderWavePickers() {
+            const page = catalogData.find(p => p.id === currentPageId);
+            const cur = waveStyleOf(page && page.waveStyle).key;
+            ['cover-wave-styles', 'back-wave-styles'].forEach(id => {
+                const box = document.getElementById(id);
+                if (!box) return;
+                box.innerHTML = WAVE_STYLES.map(s => `
+                    <button type="button" onclick="applyWaveStyle('${s.key}')" title="${esc(s.name)}"
+                        class="flex flex-col items-center gap-1 p-1 rounded border bg-white transition ${s.key === cur ? 'border-indigo-500 ring-2 ring-indigo-400' : 'border-gray-200 hover:border-indigo-300'}">
+                        <img src="${svgUri(waveStyleSvg(s, s.colors, 100, 141))}" alt="" class="w-full block border border-gray-100" style="aspect-ratio: 1000 / 1414;">
+                        <span class="text-[9px] font-semibold text-gray-600 leading-tight text-center">${esc(s.name)}</span>
+                    </button>`).join('');
+            });
+        }
+        /* Pick a design: its shape and its three colours. On the cover it goes to
+           the back cover as well (same rule as the wave colours, setWaveColor). */
+        function applyWaveStyle(key) {
+            const page = catalogData.find(p => p.id === currentPageId);
+            if (!page) return;
+            const s = waveStyleOf(key);
+            const targets = [page];
+            if (page.pageType === 'cover') {
+                const back = catalogData.find(p => p.pageType === 'back');
+                if (back) targets.push(back);
+            }
+            targets.forEach(t => { t.waveStyle = s.key; s.colors.forEach((c, i) => { t['waveColor' + (i + 1)] = c; }); });
+            // Picking a design on the back cover while its waves are switched off means "show them".
+            if (page.pageType === 'back' && page.backWaves === 'N') {
+                page.backWaves = 'Y';
+                document.getElementById('input-back-waves').checked = true;
+            }
+            s.colors.forEach((c, i) => {
+                ['input-cover-waveColor' + (i + 1), 'input-back-wave' + (i + 1)].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = c;
+                });
+            });
+            renderWavePickers();
+            updateCurrentPage('waveStyle', s.key);   // dirty flag, preview, quiet save
         }
 
         function updateCurrentPage(field, value) {
@@ -2373,7 +2485,7 @@
             const pick = k => page[k] != null ? page[k] : BACK_DEFAULT[k];
             const cPx = fs(page, 'backContactSize');
             const waves = page.backWaves !== 'N'
-                ? `<img src="${o.wavesSrc || wavesDataUri(page)}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 30%; width: 80%; height: 100%; max-width: none; display: block;">` : '';
+                ? `<img src="${o.wavesSrc || wavesDataUri(page)}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 0; width: 100%; height: 100%; max-width: none; display: block;">` : '';
             const row = (icon, v) => String(v || '').trim()
                 ? `<div style="display: flex; align-items: center; gap: 4mm;"><span style="width: 9.5mm; height: 9.5mm; border-radius: 50%; background-color: ${accC}; color: ${bgC}; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; font-size: ${Math.round(cPx * 0.85)}px;"><i class="fas ${icon}"></i></span><span style="min-width: 0; overflow-wrap: anywhere;">${esc(v)}</span></div>` : '';
             // A link as typed, shown without "https://" / "www." so it stays short.
@@ -2518,7 +2630,7 @@
             <div class="a4-page relative z-0 bg-white overflow-hidden text-left block" style="font-family: ${bFont};">
                 ${textureLayerHTML(page)}
                 <!-- Decorative right-side waves: a picture of its own pixel size (see wavesSvg) -->
-                <img src="${wavesSrc}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 30%; width: 80%; height: 100%; max-width: none; display: block;">
+                <img src="${wavesSrc}" alt="" class="absolute top-0 z-0 pointer-events-none select-none" style="left: 0; width: 100%; height: 100%; max-width: none; display: block;">
 
                 <div class="relative z-10 w-full h-full">
 
