@@ -496,15 +496,15 @@
                             <div class="grid grid-cols-3 gap-2">
                                 <div>
                                     <label class="block text-[10px] text-gray-500 uppercase">Wave 1</label>
-                                    <input type="color" id="input-cover-waveColor1" oninput="updateCurrentPage('waveColor1', this.value)" class="w-full h-8 cursor-pointer rounded">
+                                    <input type="color" id="input-cover-waveColor1" oninput="setWaveColor(1, this.value)" class="w-full h-8 cursor-pointer rounded">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] text-gray-500 uppercase">Wave 2</label>
-                                    <input type="color" id="input-cover-waveColor2" oninput="updateCurrentPage('waveColor2', this.value)" class="w-full h-8 cursor-pointer rounded">
+                                    <input type="color" id="input-cover-waveColor2" oninput="setWaveColor(2, this.value)" class="w-full h-8 cursor-pointer rounded">
                                 </div>
                                 <div>
                                     <label class="block text-[10px] text-gray-500 uppercase">Wave 3</label>
-                                    <input type="color" id="input-cover-waveColor3" oninput="updateCurrentPage('waveColor3', this.value)" class="w-full h-8 cursor-pointer rounded">
+                                    <input type="color" id="input-cover-waveColor3" oninput="setWaveColor(3, this.value)" class="w-full h-8 cursor-pointer rounded">
                                 </div>
                             </div>
                         </div>
@@ -652,9 +652,9 @@
                             <input type="checkbox" id="input-back-waves" onchange="updateCurrentPage('backWaves', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600"> Waves on the right (like the cover)
                         </label>
                         <div class="grid grid-cols-3 gap-3">
-                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 1</label><input type="color" id="input-back-wave1" oninput="updateCurrentPage('waveColor1', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
-                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 2</label><input type="color" id="input-back-wave2" oninput="updateCurrentPage('waveColor2', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
-                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 3</label><input type="color" id="input-back-wave3" oninput="updateCurrentPage('waveColor3', this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 1</label><input type="color" id="input-back-wave1" oninput="setWaveColor(1, this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 2</label><input type="color" id="input-back-wave2" oninput="setWaveColor(2, this.value)" class="w-full h-8 cursor-pointer rounded"></div>
+                            <div><label class="block text-[10px] font-bold text-gray-500 uppercase">Wave 3</label><input type="color" id="input-back-wave3" oninput="setWaveColor(3, this.value)" class="w-full h-8 cursor-pointer rounded"></div>
                         </div>
                     </div>
                 </div>
@@ -870,7 +870,10 @@
         }
 
         // Custom Modal Function to replace alert() and confirm()
-        function showModal(msg, type = 'alert', onConfirm = null) {
+        /* okLabel: the confirm button's text. It was always a red "Delete" (made
+           for deleting a page), which looked wrong on non-delete questions such as
+           "apply this texture to all pages"; any other label gets a plain indigo button. */
+        function showModal(msg, type = 'alert', onConfirm = null, okLabel = 'Delete') {
             const modal = document.getElementById('custom-modal');
             const text = document.getElementById('custom-modal-text');
             const buttons = document.getElementById('custom-modal-buttons');
@@ -892,8 +895,9 @@
                 cancelBtn.onclick = () => modal.classList.add('hidden');
                 
                 const confirmBtn = document.createElement('button');
-                confirmBtn.className = 'px-4 py-2 bg-red-600 text-white rounded shadow-sm hover:bg-red-700 transition';
-                confirmBtn.innerText = 'Delete';
+                confirmBtn.className = 'px-4 py-2 text-white rounded shadow-sm transition '
+                    + (okLabel === 'Delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700');
+                confirmBtn.innerText = okLabel;
                 confirmBtn.onclick = () => {
                     modal.classList.add('hidden');
                     if(onConfirm) onConfirm();
@@ -1531,7 +1535,43 @@
             });
         }
 
-        function addNewPage() {
+        /* Add New Page asks first: a copy of a page (the one open now when it is a
+           product page, else the last product page) or a blank page that takes the
+           previous page's look (addBlankPage). Either way it goes after the last
+           product page, before the album / back cover, with the next page number. */
+        async function addNewPage() {
+            const productPages = productPagesOf(catalogData);
+            const open = catalogData.find(p => p.id === currentPageId);
+            const src = (open && productPages.includes(open)) ? open : productPages[productPages.length - 1];
+            const choice = await cmDialog({
+                msg: src
+                    ? `Add a new page.\n\nDuplicate copies page ${src.pageNum || ''} (${[src.title1, src.title2].filter(Boolean).join(' ')}) with its photo, text and colours.\nBlank starts a fresh page in the same colours.`
+                    : 'Add a new blank page?',
+                buttons: [
+                    { label: 'Cancel', value: null },
+                    ...(src ? [{ label: 'Duplicate Page', value: 'dup', cls: 'bg-white text-indigo-700 border border-indigo-300 hover:bg-indigo-50' }] : []),
+                    { label: 'Blank New Page', value: 'blank', primary: true }
+                ]
+            });
+            if (choice === 'dup') duplicatePage(src);
+            else if (choice === 'blank') addBlankPage();
+        }
+
+        function duplicatePage(src) {
+            const newPage = JSON.parse(JSON.stringify(src));
+            newPage.id = generateId();
+            newPage.pageType = 'product';
+            newPage.pageNum = String(productPagesOf(catalogData).length + 1).padStart(2, '0');
+            catalogData.push(newPage);
+            ensureAlbum(catalogData);   // the album / back cover stay the last pages
+            markDirty();
+            currentPageId = newPage.id;
+            renderSidebar();
+            loadPageIntoEditor(currentPageId);
+            saveDataLocally();
+        }
+
+        function addBlankPage() {
             const productPages = productPagesOf(catalogData);
             const productCount = productPages.length;
             
@@ -1830,6 +1870,29 @@
             renderLivePreview();
         }
 
+        /* Background wave colours. Wave 1 is the main one: picking it fills
+           Wave 2 and Wave 3 with the same colour (they can still be changed one
+           by one afterwards). Colours picked on the COVER are copied to the back
+           cover (Thank You page) as well, so both ends of the catalog match. */
+        function setWaveColor(n, value) {
+            const page = catalogData.find(p => p.id === currentPageId);
+            if (!page) return;
+            const nums = n === 1 ? [1, 2, 3] : [n];
+            const targets = [page];
+            if (page.pageType === 'cover') {
+                const back = catalogData.find(p => p.pageType === 'back');
+                if (back) targets.push(back);
+            }
+            targets.forEach(t => nums.forEach(i => { t['waveColor' + i] = value; }));
+            nums.forEach(i => {
+                ['input-cover-waveColor' + i, 'input-back-wave' + i].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = value;
+                });
+            });
+            updateCurrentPage('waveColor' + n, value);   // dirty flag, preview, quiet save
+        }
+
         function updateCurrentPage(field, value) {
             const pageIndex = catalogData.findIndex(p => p.id === currentPageId);
             if (pageIndex > -1) {
@@ -2036,7 +2099,7 @@
                 markDirty();
                 renderLivePreview();
                 saveDataLocally();
-            });
+            }, 'Apply to All');
         }
 
         /* ── Cover circle picture: move + zoom ──────────────────────────────
