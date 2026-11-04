@@ -148,7 +148,9 @@ function ttTmPrep(d) {
   return {
     today: d.today || todayYmd(), me: d.me || {}, buddies: d.buddies || [],
     versions: (d.scoreVersions || []).map(v => ({ at: new Date(v.effectiveAt), value: v.value || {} })).sort((a, b) => a.at - b.at),
-    employees: d.employees || []
+    employees: d.employees || [],
+    // Leave / Holiday / Emergency (TM_DAY_OFF_MIGRATION.sql): 'code|date' and '*|date' (all employees).
+    dayOffs: new Set((d.dayOffs || []).filter(o => o.active !== false).map(o => o.empCode + '|' + o.date))
   };
 }
 
@@ -191,6 +193,9 @@ function ttTasks() {
           const sc = tmTaskScore(t, ds, rec, now); if (sc.state === 'moved') return;
           // A buddy does the owner's work on those days; a personal (self) task stays with its owner.
           const bd = kind !== 'self' && buddyOf(emp.empCode, ds); const doer = bd ? ttNameOfEmp(bd.buddyEmpCode, bd.buddyEmpCode) : owner;
+          // The doer's Leave / Holiday / Emergency: neutral in Task Manager, so no row here either (not delayed, not scored).
+          const dc = bd ? bd.buddyEmpCode : emp.empCode;
+          if (kind !== 'self' && (TT.tm.dayOffs.has(dc + '|' + ds) || TT.tm.dayOffs.has('*|' + ds))) return;
           push({ key: 'tm|' + emp.empCode + '|' + t.id + '|' + ds, src: kind === 'ea' ? 'Delegation (EA)' : kind === 'self' ? 'Self task' : 'Checklist', kind: 'tm', act: kind === 'ea' ? 'tm_ea' : kind === 'self' ? 'tm_self' : 'tm_check',
             task: t.desc, ref: tmFreqText(t), party: kind === 'ea' && t.plannedBy ? 'by ' + t.plannedBy : bd ? 'buddy for ' + owner : '', doer, owner, dept: ttDept(doer, emp.dept),
             by: rec && rec.checked ? (rec.doneBy || '') : '', planned: sc.deadline, actual: sc.state === 'done' ? sc.doneAt : null, self: kind === 'self',

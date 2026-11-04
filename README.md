@@ -2078,8 +2078,16 @@ tasks still need one. Server side: run `sql/TM_CARRY_FORWARD_MIGRATION.sql` (aft
 list, "Pending from earlier days" lists every task occurrence of the last 7 / 30 / **90** (default) /
 365 days (the "Earlier pending" box, `pcEarlier`) that is not done and not moved. A non-daily one is
 followed up like the day's own tasks: `tm_follow_up` gets that earlier day as `p_date` (each row
-carries its day in `data-ds`). A daily task never changes date, so its missed days show as one locked
-row per task listing them. The employee list counts them ("N from earlier days").
+carries its day in `data-ds`). A daily task never changes date, so its missed days show as one
+row per task listing them (`data-days`), followed up with a **promise**: a "complete by" date (today or
+later; a time for today) and a remark, saved as one `tm_followups` row per day with the day's record left
+untouched (still missed, scored the same; the employee completes it from My Tasks within
+`tm_carry_days_()`, scored late). Needs `sql/TM_PC_FOLLOWUP_DAILY_PAST_MIGRATION.sql`; without it the
+server answers `DAILY_SAME_DAY` and the page says to run it. The page tells a promise from a move by
+`isPromiseFu` (daily task, later to-date, from-day not 'rescheduled'): such a day leaves the earlier list
+until the promised time and comes back marked "promise missed" if still not done; the employee's carried
+card shows who followed up, the complete-by time and the remark (`pcPromiseHtml`); the proof chain skips
+promises. The employee list counts them ("N from earlier days").
 
 **Score Master: Pending Follow-ups Task** (client only, no migration). A card in Score Master: on /
 off, **coordinators** (employees with a task list), the employees they follow up (none = everyone
@@ -2091,6 +2099,26 @@ it is dated like the other rules and the rule in force at the task's target time
 never re-scores the past. `fupDayCut` works it out; `dayScore` takes it off the coordinator's gained
 points, so it shows in their sheet (a violet "−N FU" under the day, click = the tasks), My Score and
 the Score Card. The Task Tracker scorecard in `fms-tasks.js` scores task by task and does not include it.
+
+**Leave / Holiday (neutral score days)** (`sql/TM_DAY_OFF_MIGRATION.sql`). Task Portal home button
+**Leave / Holiday** (right `TM_DAY_OFF`, default Admin + MD, same as its `SARV_TABS` row; it also counts
+as a manager right in `tm_ctx_`, so the employee dropdown lists everyone). Pick the type (Leave / Holiday /
+Emergency), a From and To date (at most 92 days a save; back entries allowed, 400 days either way), one or
+more employees from the dropdown or **All employees** (`emp_code '*'`, a company holiday that also covers
+employees added later), and a remark → `tm_day_off_save`, one `tm_day_offs` row per employee per day,
+sharing a `batch_id`. Only one active entry per employee per day: a second save of that day is skipped
+and listed, never overwritten. Entries are never deleted: Cancel (whole save or one day, reason needed)
+marks them cancelled with who / when / why (`tm_day_off_cancel`); the screen's month list
+(`tm_day_off_list`) shows them, cancelled ones on request. `tm_load` returns the active ones as `dayOffs`.
+In the page (`dayOffOf(code, ds)`, own entry before the company one) such a day is **neutral** for that
+person: `taskScore` gives their tasks 0 of 0 points (state `off`; a task done anyway stays done, also
+0 of 0, `sc.off`), so `dayScore` / `rangeScore` / Score Card / Completion Chart leave it out, and it is
+never carried forward, in PC Follow-up (own day or earlier days), in the alarm or in a Pending Follow-ups
+coordinator's cut (nor on the coordinator's own day off). A buddy task is judged by the buddy's day
+(`doerCode` on buddy tasks, `data-doer` on live boxes), since the owner's leave is why the buddy has it.
+Sheets show the type's letter (L / H / E) on the day header and cells (click = who marked it and why);
+My Tasks, My Score, MD cards and the month total say so. `fms-tasks.js` drops Task Manager rows of the
+doer's day off. New type: add it to `tm_day_off_kinds_()` and `DAY_OFF_KINDS`.
 
 **MD Oversight: Undone a done task** (task_manager.html + `sql/TM_UNDO_DONE_MIGRATION.sql`). In the
 MD sheet a done cell opens **Check Done Task** (`mdCheckDone`): the proof photo, who ticked it and

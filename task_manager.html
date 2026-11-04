@@ -482,6 +482,62 @@
                 <div class="w-14 h-14 bg-violet-50 text-violet-800 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-violet-100"><i class="ph-fill ph-phone-call text-3xl"></i></div>
                 <h3 class="text-lg font-extrabold text-slate-800 mb-1">10. PC Follow-up</h3><p class="text-sm font-medium text-slate-500">Pending tasks of the day: reschedule with remarks.</p>
             </button>
+            <button data-tm="TM_DAY_OFF" onclick="openScreen('day-off')" class="tm-home-btn bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-amber-400 hover:-translate-y-1 transition-all text-left group">
+                <div class="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-amber-100"><i class="ph-fill ph-calendar-x text-3xl"></i></div>
+                <h3 class="text-lg font-extrabold text-slate-800 mb-1">11. Leave / Holiday</h3><p class="text-sm font-medium text-slate-500">Leave, holiday or emergency days: score stays neutral.</p>
+            </button>
+        </div>
+
+        <!-- LEAVE / HOLIDAY: date range + employee(s) (or all) + type + remark →
+             Save. On those days the employee's tasks are not scored at all
+             (dayOffOf → taskScore 'off'). Entries are never deleted: Cancel
+             keeps them with who / when / why. -->
+        <div id="screen-day-off" class="screen-view hidden max-w-6xl mx-auto mt-4">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-start gap-4">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-calendar-x mr-2 text-amber-600 text-3xl"></i> Leave / Holiday</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">On a marked day the employee's tasks are not scored: no points gained, none lost.</p>
+                    </div>
+                    <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2.5 rounded-xl border shadow-sm shrink-0"><i class="ph-bold ph-x text-xl"></i></button>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-5">
+                    <!-- New entry -->
+                    <div class="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-200 p-5 bg-slate-50/50 space-y-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Type</label>
+                            <div id="doKinds" class="grid grid-cols-3 gap-2"></div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">From date</label><input type="date" id="doFrom" onchange="doDatesChanged('from')" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm"></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">To date</label><input type="date" id="doTo" onchange="doDatesChanged('to')" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm"></div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Employee(s)</label>
+                            <div class="flex gap-2">
+                                <select id="doEmpSel" class="flex-grow min-w-0 px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm"></select>
+                                <button onclick="doAddEmp()" class="shrink-0 text-xs font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 rounded-xl uppercase tracking-wider">+ Add</button>
+                            </div>
+                            <div id="doEmpChips" class="flex flex-wrap gap-1.5 mt-2"></div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label>
+                            <input type="text" id="doRemarks" placeholder="Reason / holiday name" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm">
+                        </div>
+                        <div id="doPreview" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
+                        <button id="doSaveBtn" onclick="doSave()" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Save</button>
+                    </div>
+                    <!-- Saved entries -->
+                    <div class="lg:col-span-3 p-5">
+                        <div class="flex flex-wrap items-end gap-2 mb-4">
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Month</label><input type="month" id="doMonth" onchange="doLoadList()" class="px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm"></div>
+                            <div class="flex-grow min-w-[160px]"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Search</label><input type="text" id="doSearch" oninput="doRenderList()" autocomplete="off" placeholder="Name, code, type, remark" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-700 text-sm"></div>
+                            <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 cursor-pointer select-none pb-2"><input type="checkbox" id="doShowCancelled" onchange="doRenderList()" class="w-4 h-4 accent-amber-600"> Show cancelled</label>
+                        </div>
+                        <div id="doList"><div class="text-center text-sm font-bold text-slate-400 py-16">Loading…</div></div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- PC FOLLOW-UP: employee list (with counts + search) → that day's pending
@@ -1440,10 +1496,13 @@
             BAD_DATA: 'Some of the values are not valid.',
             BAD_RANGE: 'That date range is too large.',
             MOVED: 'This task was moved to a later day by a follow-up. Complete it on that day.',
-            DAILY_SAME_DAY: 'A daily task cannot be moved to another date. Once it is missed, give it a later time today.',
+            DAILY_SAME_DAY: 'A daily task cannot be moved to another date. Once it is missed, give it a later time today. (Following up a daily task of an earlier day needs TM_PC_FOLLOWUP_DAILY_PAST_MIGRATION.sql run on the server.)',
             SAME_DAY_TODAY_ONLY: 'Only today can be followed up to a later time on the same day.',
             TIME_REQUIRED: 'Choose the time for today\'s follow-up.',
-            REMARK_REQUIRED: 'Write a remark (why the task is sent back).',
+            REMARK_REQUIRED: 'Write a remark of at least 3 letters (the reason).',
+            BAD_KIND: 'Choose the type: Leave, Holiday or Emergency.',
+            RANGE_TOO_LONG: 'At most 92 days can be saved at a time. Save a longer leave in parts.',
+            NO_EMPLOYEE: 'Add at least one employee (or All employees).',
             NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.'
         };
         function tmErr(res, title) {
@@ -1482,6 +1541,8 @@
             appState.scoreSettings = mergeRules(appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : d.settings);
             if (appState.viewY == null) { appState.viewY = appState.currentYear; appState.viewM = appState.currentMonth; }
             appState.erpUsers = d.erpUsers || [];
+            // Leave / Holiday / Emergency days (TM_DAY_OFF_MIGRATION.sql; missing before it ran = no day off anywhere).
+            setDayOffs(d.dayOffs || []);
             appState.loadedFrom = d.from; appState.loadedTo = d.to;
             fupCache = new Map();   // fresh records / follow-ups / rules: the coordinator cuts are worked out again
             appState.currentLoggedInEmp = (appState.me.empCode && appState.employees.find(e => e.empCode === appState.me.empCode)) || null;
@@ -1500,6 +1561,7 @@
             if (s === 'employee-dashboard') renderDashboard();
             else if (s === 'score-master') initScoreMaster(true);
             else if (s === 'pc-followup') { renderPcEmpList(); renderPcTasks(); }
+            else if (s === 'day-off') doLoadList();
             else if (s === 'employee-sheet' && appState.currentLoggedInEmp) renderEmployeeSheet(appState.currentLoggedInEmp);
             else if (s === 'task-list') { if (activeTaskCategory === 'completed-self') openCompletedSelfTasks(); else if (activeTaskCategory) openTaskCategory(activeTaskCategory, activeTaskCategoryTitle); }
             else if (s === 'md-view') {
@@ -1608,7 +1670,7 @@
            ones are numbered again so there is no gap. The server checks the
            same key again on every save. */
         const ROUTE_KEY = { 'add-task': 'TM_ADD_TASK', 'md-view': 'TM_MD_VIEW', 'score-card': 'TM_SCORE_CARD', 'employee-list': 'TM_DIRECTORY',
-            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY', 'pc-followup': 'TM_PC_FOLLOWUP' };
+            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY', 'pc-followup': 'TM_PC_FOLLOWUP', 'day-off': 'TM_DAY_OFF' };
 
         function applyHomeAccess() {
             let n = 0;
@@ -1685,6 +1747,7 @@
             if(sId==='home') applyHomeAccess(); else if(sId==='add-task') initAddTaskScreen(); else if(sId==='md-view') renderMDView(); else if(sId==='score-card') renderScoreCard(); else if(sId==='employee-list') renderEmployeeList(); else if(sId==='completion-chart') initCompletionChart(); else if(sId==='ea-delegation') initEADelegation(); else if(sId==='assign-buddy') initAssignBuddy();
             else if(sId==='score-master') initScoreMaster();
             else if(sId==='pc-followup') initPcFollowup();
+            else if(sId==='day-off') initDayOff();
             const emp = appState.currentLoggedInEmp;
             if(emp && sId==='employee-sheet') renderEmployeeSheet(emp);
             else if(emp && sId==='employee-dashboard') renderDashboard();
@@ -1777,12 +1840,13 @@
             if (!fupEverCoord(code)) return zero;
             const td = todayStr(); if (ds > td) return zero;
             if (appState.loadedFrom && ds < appState.loadedFrom) return zero;   // records not loaded: never guess "pending"
+            if (dayOffOf(code, ds)) return zero;                                 // the coordinator's own Leave / Holiday: neutral
             const key = code + '|' + ds;
             if (ds < td && fupCache.has(key)) return fupCache.get(key);
             now = now || new Date();
             const items = []; let cut = 0;
             appState.employees.forEach(e => {
-                if (e.empCode === code) return;
+                if (e.empCode === code || dayOffOf(e.empCode, ds)) return;          // nothing to follow up on someone's day off
                 const fus = e.followups || [];
                 e.tasks.forEach(x => {
                     if (x.isSelfTask || x.active === false) return;
@@ -2544,9 +2608,47 @@
              overdue   not done, today, target passed (still tickable, points dropping)
              missed    not done, a past day (only a late approval can tick it)
              moved     rescheduled to a later day (scored there instead) */
+        /* ── Leave / Holiday / Emergency days (tm_day_offs) ───────────────
+           One entry per employee per day; emp '*' = all employees (a company
+           holiday, which also covers employees added later). An employee's
+           own entry wins over the company one. On such a day that person's
+           tasks are NEUTRAL: taskScore gives them 0 of 0 points (state 'off'
+           when not done; a task done anyway shows as done, also 0 of 0), so
+           dayScore / rangeScore / the score card leave the day out, and it is
+           never "pending from earlier days", in PC Follow-up, in the alarm or
+           a coordinator's Pending Follow-ups cut. The day counts for whoever
+           does the task: a buddy task is judged by the buddy's day
+           (doerCode), not the owner's, since the owner's leave is why the
+           buddy has it. To add a type: tm_day_off_kinds_() on the server and
+           DAY_OFF_KINDS here. */
+        const DAY_OFF_KINDS = {
+            LEAVE:     { label: 'Leave',     short: 'L', icon: 'ph-airplane-takeoff', cls: 'text-amber-800 bg-amber-50 border-amber-300',  cell: 'bg-amber-50 text-amber-700' },
+            HOLIDAY:   { label: 'Holiday',   short: 'H', icon: 'ph-confetti',         cls: 'text-sky-800 bg-sky-50 border-sky-300',        cell: 'bg-sky-50 text-sky-700' },
+            EMERGENCY: { label: 'Emergency', short: 'E', icon: 'ph-first-aid',        cls: 'text-rose-800 bg-rose-50 border-rose-300',     cell: 'bg-rose-50 text-rose-700' }
+        };
+        const dayOffKind = k => DAY_OFF_KINDS[k] || { label: String(k || 'Off'), short: String(k || 'O').charAt(0), icon: 'ph-calendar-x', cls: 'text-slate-700 bg-slate-50 border-slate-300', cell: 'bg-slate-100 text-slate-600' };
+        let dayOffMap = new Map();
+        function setDayOffs(list) {
+            appState.dayOffs = list; dayOffMap = new Map();
+            list.forEach(o => { if (o.active !== false) dayOffMap.set(o.empCode + '|' + o.date, o); });
+        }
+        function dayOffOf(code, ds) { return (code && dayOffMap.get(code + '|' + ds)) || dayOffMap.get('*|' + ds) || null; }
+        const dayOffTitle = o => dayOffKind(o.kind).label + (o.empCode === '*' ? ' (all employees)' : '') + (o.remarks ? ': ' + o.remarks : '') + (o.by ? ' · marked by ' + o.by : '');
+        // A short coloured tag, e.g. on a sheet's day header or a card.
+        function dayOffTag(o, extra) {
+            const k = dayOffKind(o.kind);
+            return `<span class="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border ${k.cls} ${extra || ''}" title="${esc(dayOffTitle(o))}"><i class="ph-bold ${k.icon}"></i> ${esc(k.label)}</span>`;
+        }
+
         function taskScore(t, ds, rec, now) {
             now = now || new Date();
             if (rec && rec.status === 'rescheduled') return { state: 'moved', pts: 0, base: 0 };
+            // Leave / Holiday / Emergency of whoever does the task that day: neutral (see above). Personal tasks are never scored anyway.
+            const off = !t.isSelfTask && dayOffOf(t.doerCode || t.ownerCode, ds);
+            if (off) {
+                if (rec && rec.checked) { const w = doneMomentOf(rec, ds); return { ...scoreAt(t, ds, rec, w), state: 'done', doneAt: w, pts: 0, base: 0, extra: 0, off }; }
+                return { ...scoreAt(t, ds, rec, now), state: 'off', pts: 0, base: 0, extra: 0, off };
+            }
             if (rec && rec.checked) { const w = doneMomentOf(rec, ds); return { state: 'done', doneAt: w, ...scoreAt(t, ds, rec, w) }; }
             const s = scoreAt(t, ds, rec, now);
             if (now <= s.deadline) return { ...s, state: 'upcoming', pts: s.base - s.extra > 0 ? s.base - s.extra : 0 };
@@ -2623,16 +2725,19 @@
            Counted: done, overdue and missed. Not yet due tasks are not counted,
            so a day's % is never dragged down by work that is not late yet. */
         function dayScore(emp, ds, now) {
-            const out = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0 };
+            const out = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0, off: 0 };
+            // The person's own Leave / Holiday / Emergency (buddy tasks of that day are neutral then too).
+            out.dayOff = dayOffOf(emp.empCode, ds);
             if (ds > todayStr()) return out;
             // Coordinator: points cut for employees' tasks left without a follow-up (fupDayCut).
             const fc = fupDayCut(emp.empCode, ds, now); out.fupN = fc.n; out.fupCut = fc.cut; out.gained -= fc.cut;
             getCombinedTasks(emp).forEach(t => {
                 if (t.isSelfTask) return;
                 const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
-                const sc = taskScore(t, ds, rec, now);
+                const sc = taskScore(t, ds, rec, now);   // own and buddy tasks are both judged by this person's day
                 if (sc.state === 'moved') return;
                 out.total++;
+                if (sc.state === 'off' || sc.off) { out.off++; if (sc.state === 'done') out.done++; return; }   // neutral: not in the points
                 if (sc.state === 'upcoming') { out.upcoming++; return; }
                 out.possible += sc.base; out.gained += sc.pts;
                 if (sc.state === 'done') { out.done++; out[sc.phase === 'on-time' ? 'onTime' : sc.phase]++; }
@@ -2642,10 +2747,11 @@
             return out;
         }
         function rangeScore(emp, from, to, now) {
-            const acc = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0, days: 0 };
+            const acc = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0, off: 0, days: 0, offDays: 0 };
             const td = todayStr();
             for (let dt = new Date(from); ymd(dt) <= ymd(to) && ymd(dt) <= td; dt.setDate(dt.getDate() + 1)) {
-                const s = dayScore(emp, ymd(dt), now); Object.keys(acc).forEach(k => { if (k !== 'days') acc[k] += s[k] || 0; }); acc.days++;
+                const s = dayScore(emp, ymd(dt), now); Object.keys(acc).forEach(k => { if (k !== 'days' && k !== 'offDays') acc[k] += s[k] || 0; }); acc.days++;
+                if (s.dayOff) acc.offDays++;
             }
             acc.pct = acc.possible ? Math.round(acc.gained / acc.possible * 100) : null;
             return acc;
@@ -2664,6 +2770,7 @@
             const self = t.isSelfTask ? '<div class="text-[9px] font-bold opacity-70 mt-0.5">Personal task: shown for you, not counted in the score</div>' : '';
             const wrap = (cls, label, detail, big) => `<div class="flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 ${cls}"><div class="min-w-0"><div class="text-[10px] uppercase font-extrabold tracking-wider">${label}</div><div class="text-[11px] font-bold opacity-90">${detail}</div>${self}</div><div class="text-2xl font-extrabold leading-none shrink-0">${big}</div></div>`;
             if (sc.state === 'moved') return wrap('bg-purple-50 border-purple-200 text-purple-800', 'Moved', 'Rescheduled to ' + esc(rec.nextDate || ''), '→');
+            if (sc.off) return wrap(dayOffKind(sc.off.kind).cls, dayOffKind(sc.off.kind).label + ' · not scored', (sc.state === 'done' ? 'Done ' + fmtClock(sc.doneAt) + ' · ' : '') + esc(dayOffTitle(sc.off)), '0');
             if (sc.state === 'done') {
                 const cls = sc.phase === 'on-time' ? 'bg-green-50 border-green-200 text-green-800' : (sc.phase === 'grace' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-orange-50 border-orange-200 text-orange-800');
                 const how = sc.phase === 'on-time' ? 'Done ' + fmtClock(sc.doneAt) + ' · target ' + fmtClock(sc.deadline)
@@ -2678,7 +2785,7 @@
         }
         // A box that keeps itself up to date (see liveTick).
         function liveBox(t, ds, rec, extraCls) {
-            return `<div class="${extraCls || 'mt-3'} cursor-pointer" data-live="1" data-owner="${esc(t.ownerCode)}" data-task="${t.id}" data-ds="${esc(ds)}" onclick="showPointsBreakdown('${esc(t.ownerCode)}',${t.id},'${esc(ds)}')">${ptsBoxHtml(t, ds, rec)}</div>`;
+            return `<div class="${extraCls || 'mt-3'} cursor-pointer" data-live="1" data-owner="${esc(t.ownerCode)}" data-doer="${esc(t.doerCode || '')}" data-task="${t.id}" data-ds="${esc(ds)}" onclick="showPointsBreakdown('${esc(t.ownerCode)}',${t.id},'${esc(ds)}')">${ptsBoxHtml(t, ds, rec)}</div>`;
         }
         function findTask(owner, id) { const o = appState.employees.find(e => e.empCode === owner); const t = o && o.tasks.find(x => x.id === id); return t ? { ...t, ownerCode: owner } : null; }
 
@@ -2686,7 +2793,7 @@
         function liveTick() {
             liveTicks++;
             document.querySelectorAll('[data-live]').forEach(el => {
-                const t = findTask(el.dataset.owner, +el.dataset.task); if (!t) return;
+                const t = findTask(el.dataset.owner, +el.dataset.task); if (!t) return; if (el.dataset.doer) t.doerCode = el.dataset.doer;
                 el.innerHTML = ptsBoxHtml(t, el.dataset.ds, recOf(t, el.dataset.ds));
             });
             if (appState.currentScreen === 'employee-dashboard') { renderDashSummary(); renderPendBadges(); }
@@ -2746,7 +2853,7 @@
         }
 
         function getFrequencyText(t) { const f=t.frequency||'daily'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
-        function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c; }
+        function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,doerCode:emp.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c; }
 
         // --- My Tasks dashboard ---
         function renderDashboard() {
@@ -2760,7 +2867,7 @@
             const ms = rangeScore(emp, new Date(appState.currentYear, appState.currentMonth - 1, 1), new Date(appState.currentYear, appState.currentMonth - 1, appState.currentDay), now);
             const tile = (title, s, sub) => `<button onclick="showMyScore()" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 text-left hover:border-yellow-400 transition-colors"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${title}</div><div class="text-3xl font-extrabold leading-tight ${pctCls(s.pct)}">${s.pct == null ? '–' : s.pct + '%'}</div><div class="text-[11px] font-bold text-slate-500">${s.gained} / ${s.possible} pts</div><div class="text-[10px] font-bold text-slate-400 mt-0.5">${sub}</div></button>`;
             document.getElementById('dashSummary').innerHTML =
-                tile('Today', d, `${d.done} done · ${d.upcoming} to do${d.overdue ? ' · <span class="text-red-600">' + d.overdue + ' overdue</span>' : ''}${(n => n ? ' · <span class="text-red-600">' + n + ' pending from earlier days</span>' : '')(carriedPending(emp, now).length)}${d.fupN ? ' · <span class="text-violet-800">−' + d.fupCut + ' not followed up</span>' : ''}`)
+                tile('Today', d, `${d.dayOff ? dayOffTag(d.dayOff, 'mr-1') + ' today is not scored · ' : ''}${d.done} done · ${d.upcoming} to do${d.overdue ? ' · <span class="text-red-600">' + d.overdue + ' overdue</span>' : ''}${(n => n ? ' · <span class="text-red-600">' + n + ' pending from earlier days</span>' : '')(carriedPending(emp, now).length)}${d.fupN ? ' · <span class="text-violet-800">−' + d.fupCut + ' not followed up</span>' : ''}`)
               + tile(monthNames[appState.currentMonth - 1], ms, `${ms.onTime} on time · ${ms.grace + ms.late} late · ${ms.missed} missed`);
         }
         function completedSelfTasks(emp) {
@@ -2811,7 +2918,7 @@
             const carried = carriedPending(emp, now).filter(x => taskCats(x.t, false).concat('daily').includes(cat))
                 .map(x => ({...x.t, isResched:false, rec:x.rec, ds:x.ds, carried:true}));
             // Most urgent first: earlier days' pending (oldest first), then overdue, then by target time; done ones last.
-            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved') ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
+            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved' || s.state === 'off') ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
             fTasks = carried.concat(fTasks);
 
             // Header strip: this list's points today (earlier days' pending are scored on their own day, so not here).
@@ -2841,7 +2948,7 @@
                     if(isSelfCarried(t, today)) st+=`<span class="bg-amber-50 text-amber-800 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-amber-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-bend-down-right mr-1"></i> CARRIED FROM ${esc(t.freqValue)}</span>`;
                     let fu=t.isResched?`<span class="bg-purple-50 text-purple-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-purple-200 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-u-down-right mr-1"></i> FOLLOW-UP</span>`:'';
 
-                    out+=`<div class="bg-white p-5 rounded-3xl border ${t.carried?'border-red-300':'border-slate-200'} relative shadow-sm overflow-hidden">${warn}<div class="relative z-10"><h3 class="font-extrabold text-slate-800 text-lg leading-tight mb-1.5">${esc(t.desc)}</h3>${t.isResched&&t.rec&&t.rec.remarks?`<p class="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mb-2 border border-purple-100 italic shadow-inner">Remark: ${esc(t.rec.remarks)}</p>`:''}<div class="flex flex-wrap items-center gap-y-1 mt-2"><span class="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 mr-2 flex items-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-clock mr-1"></i> ${esc(t.time||'All Day')}</span>${bt}${st}${fu}</div>${carryHTML}${undoInfoHtml(t, t.ds, t.rec)}${trackHTML}</div>${liveBox(t, t.ds, t.rec)}${html}</div>`;
+                    out+=`<div class="bg-white p-5 rounded-3xl border ${t.carried?'border-red-300':'border-slate-200'} relative shadow-sm overflow-hidden">${warn}<div class="relative z-10"><h3 class="font-extrabold text-slate-800 text-lg leading-tight mb-1.5">${esc(t.desc)}</h3>${t.isResched&&t.rec&&t.rec.remarks?`<p class="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mb-2 border border-purple-100 italic shadow-inner">Remark: ${esc(t.rec.remarks)}</p>`:''}<div class="flex flex-wrap items-center gap-y-1 mt-2"><span class="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 mr-2 flex items-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-clock mr-1"></i> ${esc(t.time||'All Day')}</span>${bt}${st}${fu}</div>${carryHTML}${undoInfoHtml(t, t.ds, t.rec)}${t.carried ? pcPromiseHtml(t, t.ds) : ''}${trackHTML}</div>${liveBox(t, t.ds, t.rec)}${html}</div>`;
                 });
                 con.innerHTML=out;
             }
@@ -2995,6 +3102,7 @@
                 + line('On time (full points)', m.onTime, 'text-green-600') + line('Grace used', m.grace, 'text-amber-600') + line('Late', m.late, 'text-orange-600')
                 + line('Missed', m.missed, 'text-red-600') + line('Overdue today', m.overdue, 'text-red-600') + line('Still to do today', m.upcoming, 'text-slate-600')
                 + (m.fupN ? line('Coordinator: tasks not followed up', `${m.fupN} · −${m.fupCut}`, 'text-red-600') : '')
+                + (m.offDays ? line('Leave / holiday days (not scored)', m.offDays, 'text-amber-700') : '')
                 + line('Points lost', m.possible - m.gained, 'text-red-600') + `</div>`
                 + (d.fupN ? `<button onclick="showFupCuts('${esc(emp.empCode)}','${todayStr()}')" class="mt-3 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Today: ${d.fupN} task(s) not followed up (−${d.fupCut})</button>` : '')
                 + `<p class="text-[11px] font-bold text-slate-400 mt-3 leading-relaxed">Each task: ${r.baseScore} pts by the target time; within ${fmtDur(r.graceHours * 3600000)} after it −${r.gracePenalty}; then −${r.penalty} per ${r.type}. Personal tasks are not counted.</p></div>`);
@@ -3179,6 +3287,32 @@
                 + (rec.undoRemarks ? `<div class="italic mt-0.5">“${esc(rec.undoRemarks)}”</div>` : '')
                 + `<button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${esc(ds)}')" class="underline text-[10px] font-extrabold mt-1">View the photo that was sent back</button></div>`;
         }
+        /* PC follow-up of a DAILY task's missed past day. A daily task never
+           changes date (its next day already has its own occurrence), so the
+           day is not moved: the PC records a promise instead, a tm_followups
+           row from that day to the agreed day / time, and the record of the
+           day is left as it is (still missed, still scored the same; the
+           employee completes it from My Tasks within CARRY_DAYS, late).
+           Server: TM_PC_FOLLOWUP_DAILY_PAST_MIGRATION.sql. An MD move of a
+           daily task is a real move ('rescheduled' record), never a promise. */
+        function isPromiseFu(t, f) {
+            if (!t || (t.frequency || 'daily') !== 'daily' || f.toDate <= f.fromDate) return false;
+            const r = recOf(t, f.fromDate); return !(r && r.status === 'rescheduled');
+        }
+        // The latest promise made for that day, or null.
+        function pcPromiseOf(t, ds) {
+            return followupsOf(t.ownerCode, t.id).filter(f => f.fromDate === ds && isPromiseFu(t, f))
+                .sort((a, b) => new Date(b.at) - new Date(a.at))[0] || null;
+        }
+        function promiseDue(f) { const p = parse12h(f.toTime); return p ? dateAt(f.toDate, p.h, p.m) : dateAt(f.toDate, 23, 59); }
+        // On the employee's carried card: what was agreed with the PC.
+        function pcPromiseHtml(t, ds) {
+            const f = pcPromiseOf(t, ds); if (!f) return '';
+            const late = promiseDue(f) < new Date();
+            return `<div class="text-[11px] ${late ? 'text-red-800 bg-red-50 border-red-200' : 'text-violet-800 bg-violet-50 border-violet-200'} px-2.5 py-2 rounded-lg mt-2 border font-bold">`
+                + `<div class="flex items-center gap-1.5 uppercase tracking-wider text-[10px] font-extrabold"><i class="ph-bold ph-phone-call"></i> Follow-up by ${esc(f.by || '-')} · complete by ${esc(fmtDay(f.toDate))}${f.toTime ? ' ' + esc(f.toTime) : ''}${late ? ' · time passed' : ''}</div>`
+                + (f.remarks ? `<div class="italic mt-0.5">“${esc(f.remarks)}”</div>` : '') + `</div>`;
+        }
         window.confirmMDOverride = async function() {
             if(!pendingMDOverride) return; const p = pendingMDOverride;
             const res = await tmRpc('tm_approve_late', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: null });
@@ -3205,13 +3339,17 @@
             if (!list.length) h += '<div class="text-sm font-bold text-slate-400 py-4 text-center">No follow-ups for this task.</div>';
             else {
                 h += '<div class="space-y-2 max-h-[45vh] overflow-y-auto pr-1">' + list.slice().reverse().map(f => {
-                    const r = recOf({ ...t, ownerCode: owner }, f.toDate) || {}; const doneThere = r.checked;
+                    // A promise is judged on its own (past) day, which stays where it was.
+                    const tk = { ...t, ownerCode: owner }, pr = !!t && isPromiseFu(tk, f);
+                    const r = recOf(tk, pr ? f.fromDate : f.toDate) || {}; const doneThere = r.checked;
                     const hit = ds && (f.fromDate === ds || f.toDate === ds);
+                    const how = pr ? (doneThere ? '<span class="text-green-600">done (day stays on its own date)</span>' : (promiseDue(f) < new Date() ? '<span class="text-red-600">promised time passed, not done</span>' : '<span class="text-violet-700">promised, not done yet</span>'))
+                        : (doneThere ? '<span class="text-green-600">done on the new date</span>' : (f.toDate < todayStr() ? '<span class="text-red-600">not done on the new date</span>' : '<span class="text-violet-700">due on the new date</span>'));
                     return `<div class="rounded-xl border ${hit ? 'border-violet-400 bg-violet-50' : 'border-slate-200 bg-white'} p-3">`
                         + `<div class="flex items-center justify-between gap-2"><span class="text-sm font-extrabold text-slate-800">${fd(f.fromDate)} → <span class="text-violet-800">${fd(f.toDate)}</span>${f.toTime ? ' <span class="text-xs text-slate-500">' + esc(f.toTime) + '</span>' : ''}</span>`
                         + `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${f.source === 'PC' ? 'text-violet-800 bg-violet-100 border-violet-200' : 'text-purple-700 bg-purple-50 border-purple-200'}">${f.source === 'PC' ? 'PC Follow-up' : 'MD'}</span></div>`
                         + (f.remarks ? `<div class="text-xs font-bold text-slate-600 mt-1.5 italic">“${esc(f.remarks)}”</div>` : '')
-                        + `<div class="text-[10px] font-bold text-slate-400 mt-1.5">by ${esc(f.by || '-')} · ${esc(fmtWhen(new Date(f.at)))} · ${doneThere ? '<span class="text-green-600">done on the new date</span>' : (f.toDate < todayStr() ? '<span class="text-red-600">not done on the new date</span>' : '<span class="text-violet-700">due on the new date</span>')}</div></div>`;
+                        + `<div class="text-[10px] font-bold text-slate-400 mt-1.5">by ${esc(f.by || '-')} · ${esc(fmtWhen(new Date(f.at)))} · ${pr ? '<b>promise</b> · ' : ''}${how}</div></div>`;
                 }).join('') + '</div>';
             }
             h += '</div>';
@@ -3234,7 +3372,8 @@
              EA postpone the task's postponeHistory, when `ds` is one of its dates
            Returns the days oldest first; a single day means no chain. */
         function proofChainOf(owner, taskNo, ds) {
-            const t = findTask(owner, taskNo); const fus = followupsOf(owner, taskNo).filter(f => f.fromDate !== f.toDate);
+            // A promise on a daily task's past day (isPromiseFu) moves nothing, so it adds no day either.
+            const t = findTask(owner, taskNo); const fus = followupsOf(owner, taskNo).filter(f => f.fromDate !== f.toDate && !isPromiseFu(t, f));
             const days = new Set([ds]);
             // Back: the latest follow-up INTO this day, then into that one, …
             for (let cur = ds, guard = 0; guard < 50; guard++) {
@@ -3332,19 +3471,27 @@
            A non-daily one is followed up like the day's own tasks:
            tm_follow_up takes the past day as p_date and a new date of today or
            later. A daily task never changes date, so its missed days are shown
-           as one locked row per task listing them (the employee can still
-           finish the last CARRY_DAYS from My Tasks). Personal tasks are left
+           as one row per task listing them, followed up with a promise
+           (pcPromiseOf: the days stay put, the employee finishes them from
+           My Tasks within CARRY_DAYS). Personal tasks are left
            out, as on the day's list. Returns [{t, rec, ds}], oldest first. */
         function pcEarlier(emp, ds) {
-            const back = pcBackDays(), out = []; if (!back) return out;
+            const back = pcBackDays(), out = [], now = new Date(); if (!back) return out;
             const tasks = emp.tasks.filter(x => !x.isSelfTask && x.active !== false).map(x => ({ ...x, ownerCode: emp.empCode }));
             for (let i = back; i >= 1; i--) {
                 const d = dateAt(ds); d.setDate(d.getDate() - i); const dd = ymd(d);
                 if (appState.loadedFrom && dd < appState.loadedFrom) continue;   // not loaded: never guess "missed"
+                if (dayOffOf(emp.empCode, dd)) continue;                          // Leave / Holiday: neutral, nothing pending
                 tasks.forEach(t => {
                     const rec = recOf(t, dd);
                     if (rec && (rec.checked || rec.status === 'rescheduled')) return;
-                    if (occursOn(t, dd, rec)) out.push({ t, rec, ds: dd });
+                    if (!occursOn(t, dd, rec)) return;
+                    /* A daily day already followed up (a promise) leaves the list
+                       until the promised time; not done by then, it comes back
+                       marked so the PC calls again. */
+                    const fu = pcPromiseOf(t, dd);
+                    if (fu && promiseDue(fu) > now) return;
+                    out.push({ t, rec, ds: dd, fu });
                 });
             }
             return out;
@@ -3356,7 +3503,7 @@
                 if (x.isSelfTask || x.active === false) return;
                 const t = { ...x, ownerCode: emp.empCode }; const rec = recOf(t, ds);
                 if (!occursOn(t, ds, rec)) return;
-                const sc = taskScore(t, ds, rec, now); if (sc.state === 'done' || sc.state === 'moved') return;
+                const sc = taskScore(t, ds, rec, now); if (sc.state === 'done' || sc.state === 'moved' || sc.state === 'off') return;   // off = Leave / Holiday: nothing to chase
                 out.push({ t, rec, sc });
             });
             // Most urgent first.
@@ -3427,16 +3574,26 @@
                 + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
                 + `</div></div>`;
         }
-        /* A daily task's missed earlier days, as ONE locked row: a daily task
-           never changes date, so there is nothing to save, but the PC sees
-           how often it was missed and when. */
+        /* A daily task's missed earlier days, as ONE row. A daily task never
+           changes date, so saving it records a promise for each listed day
+           (pcPromiseOf): the agreed date / time and remark, the days stay
+           where they are. pcSave reads the days back from data-days. A day
+           whose earlier promise passed undone is marked on its chip. */
         function pcDailyGroupHtml(t, days) {
-            const chips = days.map(x => `<span class="px-1.5 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${esc(fmtDay(x.ds))}</span>`).join('');
-            return `<div class="rounded-2xl border border-red-200 p-4 bg-slate-50"><div class="flex items-start gap-3"><i class="ph-bold ph-lock-simple text-slate-400 mt-0.5 shrink-0"></i>`
+            const inp = 'px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white text-sm font-bold';
+            const today = todayStr(), old = days.filter(x => !inCarryWindow(x.ds)).length, broken = days.filter(x => x.fu).length;
+            const chips = days.map(x => `<span class="px-1.5 py-0.5 rounded border ${x.fu ? 'text-red-900 bg-red-100 border-red-400' : 'text-red-700 bg-red-50 border-red-200'}"${x.fu ? ` title="Promised by ${esc(fmtDay(x.fu.toDate))}${x.fu.toTime ? ' ' + esc(x.fu.toTime) : ''} (${esc(x.fu.by || '')}), not done"` : ''}>${esc(fmtDay(x.ds))}${x.fu ? ' · promise missed' : ''}</span>`).join('');
+            return `<div class="rounded-2xl border border-red-200 p-4 bg-white" data-pc-row data-group="1" data-task="${t.id}" data-days="${esc(days.map(x => x.ds).join(','))}">`
+                + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
                 + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
-                + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">Missed on ${days.length} day${days.length > 1 ? 's' : ''}</span><span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">Daily</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span></div>`
+                + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">Missed on ${days.length} day${days.length > 1 ? 's' : ''}</span>${broken ? `<span class="px-2 py-0.5 rounded border text-red-900 bg-red-100 border-red-400">${broken} promise${broken > 1 ? 's' : ''} missed</span>` : ''}<span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">Daily</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span></div>`
                 + `<div class="flex flex-wrap gap-1 mt-2 text-[9px] font-extrabold uppercase tracking-wider">${chips}</div>${fuChip(t)}</div></div>`
-                + `<div class="text-[11px] font-bold text-slate-500 mt-2">Daily task of a past day: it cannot be rescheduled to another date. The employee can still complete the last ${CARRY_DAYS} days from My Tasks (scored late).</div></div>`;
+                + `<div class="text-[11px] font-bold text-slate-500 mt-2">A daily task stays on its own days: saving records the follow-up (complete by the date / time below) for all ${days.length} day${days.length > 1 ? 's' : ''}. The employee completes them from My Tasks, scored late${old ? `; ${old} day${old > 1 ? 's are' : ' is'} older than ${CARRY_DAYS} days and need${old > 1 ? '' : 's'} a late approval` : ''}.</div>`
+                + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
+                + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Complete by date</label><input type="date" data-pc-date value="${today}" min="${today}" onchange="pcRowTouched(this)" class="w-full ${inp}"></div>`
+                + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time onchange="pcRowTouched(this)" class="w-full ${inp}">${hourOptions('', '-- Select --')}</select></div>`
+                + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
+                + `</div></div>`;
         }
         window.renderPcTasks = function() {
             const pane = document.getElementById('pcTaskPane'); const e = pcSelected && appState.employees.find(x => x.empCode === pcSelected);
@@ -3451,14 +3608,14 @@
             });
             const back = pcBackDays();
             let h = `<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 class="text-xl font-extrabold text-slate-800">${esc(e.empName)}</h3><div class="text-[11px] font-bold text-slate-500">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${e.desig ? ' · ' + esc(e.desig) : ''}${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}</div></div>`
-                + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="text-sm font-extrabold text-violet-800">${list.length} pending</div>${earlier.length ? `<div class="text-[11px] font-extrabold text-red-700">+ ${earlier.length} from earlier days</div>` : ''}</div></div>`;
-            const editable = list.length + early.length;
+                + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div>${dayOffOf(e.empCode, ds) ? dayOffTag(dayOffOf(e.empCode, ds), 'mb-1') : ''}<div class="text-sm font-extrabold text-violet-800">${list.length} pending</div>${earlier.length ? `<div class="text-[11px] font-extrabold text-red-700">+ ${earlier.length} from earlier days</div>` : ''}</div></div>`;
+            const editable = list.length + early.length + dailyBy.size;
             if (editable) h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Ticked rows are saved; a remark is always needed, and a time when the date is today. Daily tasks cannot change date: once missed they get a later time today.</span></div>`;
             if (!list.length) h += '<div class="text-center p-8 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold">Nothing pending for this day.</div>';
             else h += '<div class="space-y-3">' + list.map(({ t, rec, sc }) => pcRowHtml(t, rec, sc, ds)).join('') + '</div>';
             if (back) {
                 h += `<div class="mt-6 pt-4 border-t border-slate-200"><h4 class="text-[11px] font-extrabold text-red-700 uppercase tracking-wider mb-1">Pending from earlier days (${earlier.length})</h4>`
-                    + `<p class="text-[11px] font-bold text-slate-400 mb-3">Not done and not followed up, in the ${back} days before this day${appState.loadedFrom && appState.loadedFrom > pcBackFrom(ds) ? ' (only from ' + esc(fmtDay(appState.loadedFrom)) + ', still loading the rest)' : ''}. Following one up moves it from its own day to the new date.</p>`;
+                    + `<p class="text-[11px] font-bold text-slate-400 mb-3">Not done and not followed up, in the ${back} days before this day${appState.loadedFrom && appState.loadedFrom > pcBackFrom(ds) ? ' (only from ' + esc(fmtDay(appState.loadedFrom)) + ', still loading the rest)' : ''}. Following one up moves it from its own day to the new date; a daily task stays on its days and gets a "complete by" follow-up instead, and leaves this list until that time.</p>`;
                 if (!earlier.length) h += '<div class="text-center p-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold text-sm">Nothing pending from earlier days.</div>';
                 else h += '<div class="space-y-3">' + early.map(x => pcRowHtml(x.t, x.rec, x.sc, x.ds)).join('') + [...dailyBy.values()].map(g => pcDailyGroupHtml(g.t, g.days)).join('') + '</div>';
                 h += '</div>';
@@ -3483,7 +3640,7 @@
             const items = [], bad = [], nowH = new Date().getHours();
             rows.forEach(r => {
                 // The row's own day: the chosen day, or an earlier one ("Pending from earlier days").
-                const rds = r.dataset.ds || ds;
+                const rds = r.dataset.ds || ds, group = !!r.dataset.group;
                 const id = +r.dataset.task, daily = !!r.dataset.daily, nd = daily ? today : r.querySelector('[data-pc-date]').value;
                 const rm = r.querySelector('[data-pc-remarks]').value.trim(), hv = r.querySelector('[data-pc-time]').value, tm = to12h(hv);
                 const t = findTask(code, id), nm = esc(t ? t.desc : 'Task ' + id);
@@ -3497,18 +3654,152 @@
                 else if (nd === today && +hv.slice(0, 2) <= nowH) err = 'choose a time later than now';
                 else if (!rm) err = 'no remark';
                 if (err) bad.push(nm + ': ' + err);
+                // A daily task's earlier days (one row): the same promise for each of its days.
+                else if (group) r.dataset.days.split(',').filter(Boolean).forEach(d => items.push({ id, rds: d, nd, rm, tm, group: true }));
                 else items.push({ id, rds, nd, rm, tm });
             });
             if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
-            if (!confirm(`Save follow-up for ${items.length} task(s) of ${empName(code)}?`)) return;
+            const nTasks = new Set(items.map(it => it.id + '|' + (it.group ? 'g' : it.rds))).size;
+            if (!confirm(`Save follow-up for ${nTasks} task(s) of ${empName(code)}${items.length > nTasks ? ` (${items.length} days)` : ''}?`)) return;
             setBusy('pcSaveBtn', true);
             const fail = [];
             for (const it of items) {
                 const res = await tmRpc('tm_follow_up', { p_emp: code, p_task_no: it.id, p_date: it.rds, p_next_date: it.nd, p_next_time: it.tm, p_remarks: it.rm, p_source: 'PC' });
-                if (!res.ok) { const t = findTask(code, it.id); fail.push(esc(t ? t.desc : it.id) + ': ' + (TM_ERR[res.error] || esc(res.error))); }
+                if (!res.ok) {
+                    const t = findTask(code, it.id); fail.push(esc(t ? t.desc : it.id) + (it.group ? ' (' + esc(fmtDay(it.rds)) + ')' : '') + ': ' + (TM_ERR[res.error] || esc(res.error)));
+                    // Old server: every other day of a daily task would be refused the same way.
+                    if (it.group && res.error === 'DAILY_SAME_DAY') break;
+                }
             }
             await refreshAndRerender();
-            showCustomModal(fail.length ? 'Partly saved' : 'Follow-up Saved', `${items.length - fail.length} task(s) followed up. A task given a later time today stays on today's sheet with the new time; one moved to a later date shows again on that date.` + (fail.length ? '<br><br>' + fail.join('<br>') : ''), fail.length > 0);
+            showCustomModal(fail.length ? 'Partly saved' : 'Follow-up Saved', `${items.length - fail.length} follow-up(s) saved. A task given a later time today stays on today's sheet with the new time; one moved to a later date shows again on that date. A daily task of an earlier day stays on its day, with the agreed complete-by time on the employee's card.` + (fail.length ? '<br><br>' + fail.join('<br>') : ''), fail.length > 0);
+        };
+
+        /* ── Leave / Holiday screen (TM_DAY_OFF) ─────────────────────────
+           Left: type, date range, employee(s) from the dropdown ("All
+           employees" = '*'), remark → tm_day_off_save, one row per employee
+           per day; a day that already has an entry is skipped and listed,
+           never overwritten. Right: the month's entries grouped as they were
+           saved (batch), with Cancel for the whole group or one day (a
+           reason is needed; the row is kept as cancelled). After any change
+           tm_load runs again, so every sheet and score shows it at once. */
+        const DO = { kind: 'LEAVE', emps: [], rows: [], err: '' };
+        window.initDayOff = function() {
+            const td = todayStr();
+            document.getElementById('doKinds').innerHTML = Object.keys(DAY_OFF_KINDS).map(k => { const x = DAY_OFF_KINDS[k];
+                return `<button type="button" data-kind="${k}" onclick="doPickKind('${k}')" class="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border-2 text-xs font-extrabold uppercase tracking-wider transition-colors"><i class="ph-bold ${x.icon} text-lg"></i>${esc(x.label)}</button>`; }).join('');
+            doPickKind(DO.kind);
+            const f = document.getElementById('doFrom'), t = document.getElementById('doTo');
+            if (!f.value) f.value = td; if (!t.value) t.value = f.value;
+            const sel = document.getElementById('doEmpSel');
+            sel.innerHTML = '<option value="">-- Select employee --</option><option value="*">ALL EMPLOYEES (company holiday)</option>'
+                + appState.employees.slice().sort((a, b) => a.empName.localeCompare(b.empName)).map(e => `<option value="${esc(e.empCode)}">${esc(e.empName)} (${esc(e.empCode)})</option>`).join('');
+            const m = document.getElementById('doMonth'); if (!m.value) m.value = td.slice(0, 7);
+            doChips(); doLoadList();
+        };
+        window.doPickKind = function(k) {
+            DO.kind = k;
+            document.querySelectorAll('#doKinds [data-kind]').forEach(b => { const on = b.dataset.kind === k, x = DAY_OFF_KINDS[b.dataset.kind];
+                b.className = 'flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl border-2 text-xs font-extrabold uppercase tracking-wider transition-colors ' + (on ? x.cls : 'text-slate-500 bg-white border-slate-200 hover:border-slate-300'); });
+            doPreview();
+        };
+        window.doDatesChanged = function(which) {
+            const f = document.getElementById('doFrom'), t = document.getElementById('doTo');
+            // Keep From ≤ To: moving one past the other drags the other along.
+            if (f.value && (!t.value || t.value < f.value)) { if (which === 'from') t.value = f.value; else f.value = t.value; }
+            doPreview();
+        };
+        window.doAddEmp = function() {
+            const sel = document.getElementById('doEmpSel'), v = sel.value; if (!v) return;
+            // All employees covers everyone, so it replaces the names (and a name added after it is pointless).
+            if (v === '*') DO.emps = ['*']; else if (!DO.emps.includes('*') && !DO.emps.includes(v)) DO.emps.push(v);
+            sel.value = ''; doChips();
+        };
+        window.doDropEmp = function(code) { DO.emps = DO.emps.filter(x => x !== code); doChips(); };
+        function doChips() {
+            document.getElementById('doEmpChips').innerHTML = DO.emps.length ? DO.emps.map(c => `<span class="inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2 py-1 rounded-lg border ${c === '*' ? 'text-sky-800 bg-sky-50 border-sky-300' : 'text-slate-700 bg-white border-slate-300'}">${c === '*' ? 'ALL EMPLOYEES' : esc(empName(c)) + ' <span class="text-slate-400">' + esc(c) + '</span>'}<button onclick="doDropEmp('${esc(c)}')" class="text-slate-400 hover:text-red-600" title="Remove">✕</button></span>`).join('')
+                : '<span class="text-[11px] font-bold text-slate-400">No employee added yet.</span>';
+            doPreview();
+        }
+        const doDays = (f, t) => (f && t && t >= f) ? Math.round((dateAt(t) - dateAt(f)) / 86400000) + 1 : 0;
+        function doPreview() {
+            const f = document.getElementById('doFrom').value, t = document.getElementById('doTo').value, n = doDays(f, t), td = todayStr();
+            const who = DO.emps.includes('*') ? 'all employees' : DO.emps.length + ' employee(s)';
+            let h = n ? `<b class="text-slate-700">${esc(dayOffKind(DO.kind).label)}</b> · ${n} day${n > 1 ? 's' : ''} (${esc(fmtDay(f))}${n > 1 ? ' to ' + esc(fmtDay(t)) : ''}) · ${who}.` : 'Choose the dates.';
+            if (n > 92) h += ' <span class="text-red-600">At most 92 days at a time.</span>';
+            if (n && f < td) h += ' <span class="text-amber-700">Includes past days: their scores become neutral as soon as you save.</span>';
+            document.getElementById('doPreview').innerHTML = h;
+        }
+        window.doSave = async function() {
+            const f = document.getElementById('doFrom').value, t = document.getElementById('doTo').value, rm = document.getElementById('doRemarks').value.trim(), n = doDays(f, t);
+            const bad = [];
+            if (!DAY_OFF_KINDS[DO.kind]) bad.push(TM_ERR.BAD_KIND);
+            if (!n) bad.push('Choose a From and a To date (To on or after From).'); else if (n > 92) bad.push(TM_ERR.RANGE_TOO_LONG);
+            if (!DO.emps.length) bad.push(TM_ERR.NO_EMPLOYEE);
+            if (rm.length < 3) bad.push(TM_ERR.REMARK_REQUIRED);
+            if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
+            const who = DO.emps.includes('*') ? 'ALL employees' : DO.emps.map(empName).join(', ');
+            if (!confirm(`Save ${dayOffKind(DO.kind).label} for ${who}, ${n} day(s) from ${fmtDay(f)} to ${fmtDay(t)}?\n\nOn these days their tasks are not scored.`)) return;
+            setBusy('doSaveBtn', true);
+            const res = await tmRpc('tm_day_off_save', { p_emps: DO.emps, p_from: f, p_to: t, p_kind: DO.kind, p_remarks: rm });
+            setBusy('doSaveBtn', false);
+            if (!res.ok) return tmErr(res, 'Could not save');
+            const sk = res.data.skipped || [];
+            DO.emps = []; document.getElementById('doRemarks').value = ''; doChips();
+            await refreshAndRerender();
+            showCustomModal(sk.length ? 'Saved, some days skipped' : 'Saved', `${res.data.saved} day entr${res.data.saved === 1 ? 'y' : 'ies'} saved.`
+                + (sk.length ? '<br><br>Already marked (left as they were; cancel the old entry first to change it):<br>' + sk.map(x => `${esc(x.empCode === '*' ? 'All employees' : empName(x.empCode))} · ${esc(fmtDay(x.date))} · ${esc(dayOffKind(x.kind).label)}`).join('<br>') : ''), sk.length > 0);
+        };
+        window.doLoadList = async function() {
+            const m = document.getElementById('doMonth').value || todayStr().slice(0, 7);
+            const [y, mo] = m.split('-').map(Number), from = `${m}-01`, to = ymd(new Date(y, mo, 0));
+            const res = await tmRpc('tm_day_off_list', { p_from: from, p_to: to });
+            if (!res.ok) { DO.rows = []; DO.err = res.error === 'NO_MIGRATION' ? 'The server is not ready for Leave / Holiday yet: run sql/TM_DAY_OFF_MIGRATION.sql in the Supabase SQL Editor.' : (TM_ERR[res.error] || esc(res.error)); }
+            else { DO.rows = res.data.rows || []; DO.err = ''; }
+            doRenderList();
+        };
+        window.doRenderList = function() {
+            const box = document.getElementById('doList'); if (!box) return;
+            if (DO.err) { box.innerHTML = `<div class="p-4 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-800">${DO.err}</div>`; return; }
+            const q = document.getElementById('doSearch').value.trim().toUpperCase(), showC = document.getElementById('doShowCancelled').checked;
+            // One card per save (batch) and employee, active and cancelled days apart.
+            const groups = new Map();
+            DO.rows.forEach(r => { const k = r.batch + '|' + r.empCode + '|' + (r.active ? 1 : 0); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+            let list = [...groups.values()].map(rs => rs.sort((a, b) => a.date < b.date ? -1 : 1));
+            if (!showC) list = list.filter(rs => rs[0].active);
+            if (q) list = list.filter(rs => { const r = rs[0]; return [r.empCode === '*' ? 'ALL EMPLOYEES' : empName(r.empCode), r.empCode, dayOffKind(r.kind).label, r.remarks, r.by].join(' ').toUpperCase().includes(q); });
+            list.sort((a, b) => (a[0].date < b[0].date ? 1 : -1));
+            if (!list.length) { box.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">No leave / holiday in this month.</div>'; return; }
+            box.innerHTML = '<div class="space-y-3">' + list.map(rs => {
+                const r = rs[0], last = rs[rs.length - 1], k = dayOffKind(r.kind), act = r.active;
+                const ids = rs.map(x => x.id).join(',');
+                const days = rs.map(x => `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${act ? 'text-slate-700 bg-white border-slate-200' : 'text-slate-400 bg-slate-50 border-slate-200 line-through'}">${esc(fmtDay(x.date))}${act && rs.length > 1 ? `<button onclick="doCancel('${x.id}')" class="text-slate-400 hover:text-red-600" title="Cancel only this day">✕</button>` : ''}</span>`).join('');
+                return `<div class="rounded-2xl border ${act ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-80'} p-4">`
+                    + `<div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800">${r.empCode === '*' ? 'ALL EMPLOYEES' : esc(empName(r.empCode)) + ' <span class="text-xs text-slate-400">' + esc(r.empCode) + '</span>'}</div>`
+                    + `<div class="flex flex-wrap items-center gap-1.5 mt-1">${dayOffTag(r)}<span class="text-[11px] font-extrabold text-slate-600">${esc(fmtDay(r.date))}${rs.length > 1 ? ' to ' + esc(fmtDay(last.date)) + ' · ' + rs.length + ' days' : ''}</span>${act ? '' : '<span class="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border text-slate-500 bg-slate-100 border-slate-300">Cancelled</span>'}</div></div>`
+                    + (act ? `<button onclick="doCancel('${ids}')" class="text-[11px] font-extrabold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Cancel${rs.length > 1 ? ' all' : ''}</button>` : '') + `</div>`
+                    + (r.remarks ? `<div class="text-xs font-bold text-slate-600 mt-2 italic">“${esc(r.remarks)}”</div>` : '')
+                    + (rs.length > 1 ? `<div class="flex flex-wrap gap-1 mt-2 text-[10px] font-extrabold">${days}</div>` : '')
+                    + `<div class="text-[10px] font-bold text-slate-400 mt-2">Marked by ${esc(r.by || '-')} · ${esc(fmtWhen(new Date(r.at)))}${act ? '' : ` · cancelled by ${esc(r.cancelledBy || '-')} · ${esc(r.cancelledAt ? fmtWhen(new Date(r.cancelledAt)) : '')}${r.cancelReason ? ': “' + esc(r.cancelReason) + '”' : ''}`}</div></div>`;
+            }).join('') + '</div>';
+        };
+        window.doCancel = async function(idList) {
+            const ids = String(idList).split(',').map(Number).filter(Boolean); if (!ids.length) return;
+            const why = prompt(`Cancel ${ids.length} day${ids.length > 1 ? 's' : ''}? Those days will be scored normally again.\n\nReason:`);
+            if (why == null) return;
+            if (why.trim().length < 3) return showCustomModal('Reason needed', TM_ERR.REMARK_REQUIRED, true);
+            const res = await tmRpc('tm_day_off_cancel', { p_ids: ids, p_reason: why.trim() });
+            if (!res.ok) return tmErr(res, 'Could not cancel');
+            await refreshAndRerender();
+        };
+        // A Leave / Holiday cell on a sheet: what was marked, by whom.
+        window.showDayOffInfo = function(code, ds) {
+            const o = dayOffOf(code, ds); if (!o) return;
+            const k = dayOffKind(o.kind);
+            showCustomModal(k.label, `<div class="text-left"><div class="mb-2">${dayOffTag(o)}</div><div class="text-sm font-extrabold text-slate-800">${esc(o.empCode === '*' ? 'All employees' : empName(code))} · ${esc(fmtDay(ds))}</div>`
+                + (o.remarks ? `<div class="text-sm font-bold text-slate-600 italic mt-1">“${esc(o.remarks)}”</div>` : '')
+                + `<div class="text-[11px] font-bold text-slate-400 mt-2">Marked by ${esc(o.by || '-')}${o.at ? ' · ' + esc(fmtWhen(new Date(o.at))) : ''}</div>`
+                + `<p class="text-[11px] font-bold text-slate-500 mt-3">The tasks of this day are not scored: no points gained, none lost.</p></div>`);
         };
 
         /* ── Month navigation (My Month View + MD sheet) ─────────────────
@@ -3544,7 +3835,7 @@
             // Month total, at the top.
             const ms = rangeScore(emp, new Date(vy, vm - 1, 1), new Date(vy, vm - 1, dim), now);
             document.getElementById(isMDView ? 'mdMonthScore' : 'sheetMonthScore').innerHTML = ms.possible
-                ? `<span class="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-extrabold"><span class="text-lg ${pctCls(ms.pct)}">${ms.pct}%</span><span class="text-slate-700">${ms.gained} / ${ms.possible} pts</span><span class="text-green-600">${ms.onTime} on time</span><span class="text-amber-600">${ms.grace} grace</span><span class="text-orange-600">${ms.late} late</span><span class="text-red-600">${ms.missed} missed</span></span>`
+                ? `<span class="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-extrabold"><span class="text-lg ${pctCls(ms.pct)}">${ms.pct}%</span><span class="text-slate-700">${ms.gained} / ${ms.possible} pts</span><span class="text-green-600">${ms.onTime} on time</span><span class="text-amber-600">${ms.grace} grace</span><span class="text-orange-600">${ms.late} late</span><span class="text-red-600">${ms.missed} missed</span>${ms.offDays ? `<span class="text-amber-700">${ms.offDays} day${ms.offDays > 1 ? "s" : ""} leave / holiday (not scored)</span>` : ""}</span>`
                 : '<span class="text-[11px] font-bold text-slate-400">No scored tasks in this month yet.</span>';
 
             // A done self task leaves the sheet, whether it was ticked on its planned day or after being carried forward.
@@ -3558,11 +3849,13 @@
                 let dots=[]; dTasks.forEach(t=>{ const rec=recOf(t, ds); if(!occursOn(t, ds, rec)) return; const isR=rec&&(rec.status==='pending-reschedule'||rec.status==='rescheduled-done'); if(isR){ if(!dots.includes('bg-purple-500'))dots.push('bg-purple-500'); }else{ const f=t.frequency||'daily'; if(f==='monthly'&&!dots.includes('bg-emerald-500'))dots.push('bg-emerald-500'); if(f==='weekly'&&!dots.includes('bg-blue-500'))dots.push('bg-blue-500'); if(f==='yearly'&&!dots.includes('bg-orange-500'))dots.push('bg-orange-500'); } });
                 let dotH=dots.length?`<div class="flex justify-center gap-1 mt-1">${dots.map(c=>`<div class="w-2 h-2 rounded-full ${c} shadow-[0_1px_2px_rgba(0,0,0,0.3)] border border-white"></div>`).join('')}</div>`:'';
                 const s = dayScore(emp, ds, now);
-                const sH = s.possible ? `<div class="mt-1 leading-tight" title="${s.gained} of ${s.possible} pts · ${s.onTime} on time, ${s.grace} grace, ${s.late} late, ${s.missed + s.overdue} not done"><div class="text-[10px] font-extrabold ${pctCls(s.pct)}">${s.pct}%</div><div class="text-[9px] font-bold text-slate-500">${s.gained}</div></div>`
+                // Leave / Holiday / Emergency: the day is neutral, so its letter shows instead of a %.
+                const oK = s.dayOff && dayOffKind(s.dayOff.kind);
+                const sH = oK ? `<div class="mt-1 leading-tight" title="${esc(dayOffTitle(s.dayOff))} · not scored"><span class="text-[9px] font-extrabold px-1 rounded border ${oK.cls}">${esc(oK.short)}</span></div>` : s.possible ? `<div class="mt-1 leading-tight" title="${s.gained} of ${s.possible} pts · ${s.onTime} on time, ${s.grace} grace, ${s.late} late, ${s.missed + s.overdue} not done"><div class="text-[10px] font-extrabold ${pctCls(s.pct)}">${s.pct}%</div><div class="text-[9px] font-bold text-slate-500">${s.gained}</div></div>`
                     : (ds <= td && s.upcoming ? '<div class="mt-1 text-[9px] font-bold text-slate-400 leading-tight">due</div>' : '');
                 // Coordinator's cut for tasks left without a follow-up that day (click = which tasks).
                 const fH = s.fupN ? `<button onclick="showFupCuts('${esc(emp.empCode)}','${ds}')" title="${s.fupN} task(s) not followed up · −${s.fupCut} pts" class="mt-0.5 text-[9px] font-extrabold text-violet-800 bg-violet-100 border border-violet-200 rounded px-1 leading-tight">−${s.fupCut} FU</button>` : '';
-                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'tm-today text-indigo-900':''}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}${fH}</th>`;
+                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'tm-today text-indigo-900':(oK?oK.cell:'')}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}${fH}</th>`;
             } th.innerHTML=hHtml;
 
             dTasks.forEach(t=>{
@@ -3606,6 +3899,8 @@
 
                     // Moved day: opens the chain, so the photo of the day it was finally done shows here too (camera = there is one).
                     if(sc.state==='moved'){ cc+=`<div onclick="showProofChain('${oc}',${t.id},'${ds}')" class="absolute inset-0 flex flex-col items-center justify-center bg-purple-100 cursor-pointer z-20" title="Followed up to ${esc(rec.nextDate)}${rec.remarks?' · '+esc(rec.remarks):''}${rec.doneBy?' · by '+esc(rec.doneBy):''} · click for proof photos and history"><div class="signal-fu absolute top-1 right-1"></div><i class="ph-bold ph-arrow-u-down-right text-purple-800 text-lg"></i><span class="text-[9px] font-extrabold text-purple-900">→${esc(String(rec.nextDate||'').split('-')[2]||'')}</span>${chainPh?'<i class="ph-fill ph-camera text-purple-700 text-[11px] absolute bottom-1 right-1" title="Proof photo in this chain"></i>':''}</div>`; cx+=' bg-purple-50/50'; }
+                    // Leave / Holiday / Emergency, not done: neutral, nothing to tick or approve (click = what was marked).
+                    else if(sc.state==='off'){ const k=dayOffKind(sc.off.kind); cc+=`<div onclick="showDayOffInfo('${esc(t.doerCode||t.ownerCode)}','${ds}')" title="${esc(dayOffTitle(sc.off))} · not scored" class="absolute inset-0 flex items-center justify-center ${k.cell} cursor-pointer z-20"><span class="text-[11px] font-extrabold">${esc(k.short)}</span></div>`; }
                     else if(sc.state==='done'){
                         const bg = rec.status==='rescheduled-done' ? 'bg-purple-50 text-purple-600' : (sc.phase==='on-time' ? 'bg-green-50 text-green-600' : (sc.phase==='grace' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600'));
                         // Done after a follow-up / postpone: this day's photo and the earlier postponed day(s) together.
@@ -3635,7 +3930,7 @@
             if (!dTasks.length) tb.innerHTML = `<tr><td class="p-8 text-center font-bold text-slate-400 bg-white" colspan="${dim + 1}">No tasks in ${monthNames[vm-1]} ${vy}.</td></tr>`;
         }
 
-        function renderMDView() { const lc=document.getElementById('mdEmployeeList'); lc.innerHTML=''; document.getElementById('mdSheetContainer').classList.add('hidden'); if(!appState.employees.length){ lc.innerHTML='<div class="col-span-full text-center py-10 bg-white border border-slate-200 rounded-2xl shadow-sm text-slate-400 font-bold">No employees found.</div>'; tmApplySearch('md'); return; } const now = new Date(); appState.employees.forEach(e=>{ const c=document.createElement('div'); c.className="bg-white border border-slate-200 rounded-2xl p-6 cursor-pointer hover:border-purple-400 shadow-sm hover:shadow-md transition-all group"; const s = dayScore(e, todayStr(), now); c.innerHTML=`<div class="flex items-center mb-5"><div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold mr-4 border border-purple-100 shadow-inner text-xl group-hover:scale-110 transition-transform">${esc(e.empName.charAt(0))}</div><div><h4 class="font-extrabold text-slate-800 tracking-tight text-lg">${esc(e.empName)}</h4><p class="text-xs font-extrabold text-slate-500 mt-0.5 tracking-wider uppercase">${esc(e.empCode)}</p></div></div><div class="flex justify-between items-end border-t border-slate-100 pt-4 text-sm"><div><span class="block font-extrabold text-slate-400 text-[10px] uppercase tracking-widest">Today</span><span class="text-[11px] font-bold text-slate-500">${s.done}/${s.total} done${s.overdue?` · <span class="text-red-600">${s.overdue} overdue</span>`:''}</span></div><span class="font-extrabold text-xl leading-none ${pctCls(s.pct)}">${s.pct==null?'–':s.pct+'%'}</span></div>`; c.dataset.hay=tmEmpHay(e, true); c.onclick=()=>showMdSheet(e, true); lc.appendChild(c); }); tmApplySearch('md'); }
+        function renderMDView() { const lc=document.getElementById('mdEmployeeList'); lc.innerHTML=''; document.getElementById('mdSheetContainer').classList.add('hidden'); if(!appState.employees.length){ lc.innerHTML='<div class="col-span-full text-center py-10 bg-white border border-slate-200 rounded-2xl shadow-sm text-slate-400 font-bold">No employees found.</div>'; tmApplySearch('md'); return; } const now = new Date(); appState.employees.forEach(e=>{ const c=document.createElement('div'); c.className="bg-white border border-slate-200 rounded-2xl p-6 cursor-pointer hover:border-purple-400 shadow-sm hover:shadow-md transition-all group"; const s = dayScore(e, todayStr(), now); c.innerHTML=`<div class="flex items-center mb-5"><div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold mr-4 border border-purple-100 shadow-inner text-xl group-hover:scale-110 transition-transform">${esc(e.empName.charAt(0))}</div><div><h4 class="font-extrabold text-slate-800 tracking-tight text-lg">${esc(e.empName)}</h4><p class="text-xs font-extrabold text-slate-500 mt-0.5 tracking-wider uppercase">${esc(e.empCode)}</p></div></div><div class="flex justify-between items-end border-t border-slate-100 pt-4 text-sm"><div><span class="block font-extrabold text-slate-400 text-[10px] uppercase tracking-widest">Today</span><span class="text-[11px] font-bold text-slate-500">${s.dayOff?dayOffTag(s.dayOff,"mr-1"):""}${s.done}/${s.total} done${s.overdue?` · <span class="text-red-600">${s.overdue} overdue</span>`:''}</span></div><span class="font-extrabold text-xl leading-none ${pctCls(s.pct)}">${s.pct==null?'–':s.pct+'%'}</span></div>`; c.dataset.hay=tmEmpHay(e, true); c.onclick=()=>showMdSheet(e, true); lc.appendChild(c); }); tmApplySearch('md'); }
 
         async function renderScoreCard() {
             const tb=document.getElementById('scoreCardBody');
@@ -3691,7 +3986,8 @@
                     if(t.isSelfTask)return; const rec=recOf(t, ds); if(!occursOn(t, ds, rec))return;
                     const sc = taskScore(t, ds, rec, now); if (sc.state === 'moved') return;
                     let sb, at='-';
-                    if (sc.state === 'done') { at = rec.timestamp; sb = sc.phase === 'on-time' ? badge('bg-green-100 text-green-700 border-green-200', 'On time', signed(sc.pts) + ' pts') : badge(sc.phase === 'grace' ? 'bg-amber-100 text-amber-700 border-amber-200' : (sc.pts < 0 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-orange-100 text-orange-700 border-orange-200'), sc.phase === 'grace' ? 'Grace' : 'Late', signed(sc.pts) + ' pts' + (rec.status === 'late' && rec.completedDate ? ' · appr ' + esc(rec.completedDate) : '')); }
+                    if (sc.off) { at = sc.state === 'done' ? rec.timestamp : '-'; sb = badge(dayOffKind(sc.off.kind).cls, dayOffKind(sc.off.kind).label, (sc.state === 'done' ? 'done · ' : '') + 'not scored'); }
+                    else if (sc.state === 'done') { at = rec.timestamp; sb = sc.phase === 'on-time' ? badge('bg-green-100 text-green-700 border-green-200', 'On time', signed(sc.pts) + ' pts') : badge(sc.phase === 'grace' ? 'bg-amber-100 text-amber-700 border-amber-200' : (sc.pts < 0 ? 'bg-red-100 text-red-700 border-red-200' : 'bg-orange-100 text-orange-700 border-orange-200'), sc.phase === 'grace' ? 'Grace' : 'Late', signed(sc.pts) + ' pts' + (rec.status === 'late' && rec.completedDate ? ' · appr ' + esc(rec.completedDate) : '')); }
                     else if (sc.state === 'missed') sb = badge('bg-red-100 text-red-700 border-red-200', 'Missed', sc.pts + ' pts if approved');
                     else if (sc.state === 'overdue') sb = badge('bg-red-50 text-red-600 border-red-200', 'Overdue', sc.pts + ' pts now');
                     else sb = badge('bg-slate-100 text-slate-600 border-slate-200', 'Pending', '');

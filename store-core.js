@@ -6709,6 +6709,10 @@ const SARV_TABS=[
      not done after checking its proof (tm_undo_done, TM_UNDO_DONE_MIGRATION.sql;
      its default there is the same Admin + MD). */
   {key:'TM_UNDO_DONE',label:'Undo Done Task',hint:'MD Oversight: check a done task\'s proof and send it back as not done with a remark (the employee sees who, when and why)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* Home button "Leave / Holiday": mark Leave / Holiday / Emergency days per
+     employee (or for all), on which their score stays neutral
+     (TM_DAY_OFF_MIGRATION.sql; its default there is the same Admin + MD). */
+  {key:'TM_DAY_OFF',label:'Leave / Holiday',hint:'Mark Leave / Holiday / Emergency days for employees; on those days their task score is neither gained nor lost',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   /* hr-payroll.html's rights. As with TM_*, the SERVER checks the same key on
      every read and write (hr_perms_ in HR_PAYROLL_MIGRATION.sql), and these
      defaults MUST match hr_perm_default_() there. Any HR right also gives
