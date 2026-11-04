@@ -5684,7 +5684,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -6680,6 +6680,11 @@ const SARV_TABS=[
      until switched ON here or under Users › Apps. Same default (no roles) as
      launcher.html's APPS entry. */
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
+  /* emission-live.html: the boiler stack's online monitoring readings (PM,
+     NOx, SO2) from the Access Surveykshan portal, live, with today's trend and
+     a history report. Admin / MD / GM by default, the same as launcher.html's
+     APPS entry (its defRoles); change both together. */
+  {key:'HOME_EMISSION_LIVE',label:'Stack Emission (Live)',hint:'Boiler stack PM / NOx / SO2 live from the online monitoring portal, limits, today\'s trend, history report + CSV (emission-live.html, opens from the launcher or ERP › Quality)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
      (tm_perms_ in TASK_MANAGER_MIGRATION.sql), so these are real rights,
@@ -6700,6 +6705,10 @@ const SARV_TABS=[
   /* Not a home button: the right that replaced the PC / EA PINs (approve a
      past day as late, or reschedule it, from MD Oversight View or a sheet). */
   {key:'TM_LATE_APPROVE',label:'Late Approval / Reschedule',hint:'Approve a missed task as late, or move it to a later day (replaces the old PC / EA PIN)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* Not a home button either: in MD Oversight View, send a done task back as
+     not done after checking its proof (tm_undo_done, TM_UNDO_DONE_MIGRATION.sql;
+     its default there is the same Admin + MD). */
+  {key:'TM_UNDO_DONE',label:'Undo Done Task',hint:'MD Oversight: check a done task\'s proof and send it back as not done with a remark (the employee sees who, when and why)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   /* hr-payroll.html's rights. As with TM_*, the SERVER checks the same key on
      every read and write (hr_perms_ in HR_PAYROLL_MIGRATION.sql), and these
      defaults MUST match hr_perm_default_() there. Any HR right also gives
@@ -7379,9 +7388,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */

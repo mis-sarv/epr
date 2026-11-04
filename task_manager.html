@@ -276,8 +276,9 @@
         <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 transform scale-95 opacity-0 transition-all duration-300" id="taskPinContent">
             <div class="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border border-indigo-100"><i class="ph-fill ph-check-circle text-4xl"></i></div>
             <h3 class="text-xl font-extrabold text-center text-slate-800 mb-2">Confirm Task Done</h3>
-            <p class="text-slate-500 text-sm font-medium text-center mb-4">Upload proof to complete. It is saved under your name with the time.</p>
-            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required) <span id="taskProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
+            <p id="taskPinSub" class="text-slate-500 text-sm font-medium text-center mb-4">Upload proof to complete. It is saved under your name with the time.</p>
+            <!-- Text set by promptTaskPin: Required for assigned tasks, Optional for a Self Task. -->
+            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (<span id="taskProofNeed">Required</span>) <span id="taskProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
             <!-- Two pickers: "capture" forces the camera on Android, so the
                  gallery / file manager needs its own input without it. -->
             <div class="grid grid-cols-2 gap-2 mb-3">
@@ -498,6 +499,17 @@
                             <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Day</label>
                             <input type="date" id="pcDate" onchange="pcDateChanged()" class="px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-slate-700 text-sm">
                         </div>
+                        <!-- How far back "Pending from earlier days" looks (pcEarlier). -->
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Earlier pending</label>
+                            <select id="pcBack" onchange="pcDateChanged()" class="px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-slate-700 text-sm">
+                                <option value="0">Only this day</option>
+                                <option value="7">Last 7 days</option>
+                                <option value="30">Last 30 days</option>
+                                <option value="90" selected>Last 90 days</option>
+                                <option value="365">Last 1 year</option>
+                            </select>
+                        </div>
                         <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2.5 rounded-xl border shadow-sm shrink-0 self-end"><i class="ph-bold ph-x text-xl"></i></button>
                     </div>
                 </div>
@@ -570,6 +582,52 @@
                         <div id="scoreHistoryList" class="space-y-2 text-sm"></div>
                     </div>
                     <div class="mt-8 pt-6 border-t border-slate-100 flex justify-end">
+                        <button onclick="saveScoreSettings()" class="bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 flex items-center">
+                            <i class="ph-bold ph-floppy-disk mr-2 text-xl"></i> Save All Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Follow-ups Task: coordinators lose points for every employee
+                 task left pending without a follow-up (FUP in the script). Part of the
+                 Score Master version like the cards above, so "Save All Settings"
+                 saves it and the rule history keeps it dated. -->
+            <div id="fupCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-phone-call mr-2 text-violet-700"></i> Pending Follow-ups Task</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">The chosen coordinators lose points for every employee task that is still pending and not followed up after its target time.</p>
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-slate-700">
+                        <input type="checkbox" id="fupOn" class="w-5 h-5 accent-violet-700" onchange="fupExample()"> <span>On</span>
+                    </label>
+                </div>
+                <div class="p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <div class="flex items-center justify-between mb-2"><label class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">Coordinators (score is cut)</label>
+                                <button type="button" onclick="fupPick('coords')" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg">+ Add</button></div>
+                            <div id="fupCoords" class="flex flex-wrap gap-2 min-h-[42px] p-2 bg-slate-50 border border-slate-200 rounded-xl"></div>
+                            <p class="text-[11px] font-bold text-slate-400 mt-1">Only employees with a task list (they need a score to cut).</p>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-2"><label class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">Employees they follow up</label>
+                                <button type="button" onclick="fupPick('covers')" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg">+ Add</button></div>
+                            <div id="fupCovers" class="flex flex-wrap gap-2 min-h-[42px] p-2 bg-slate-50 border border-slate-200 rounded-xl"></div>
+                            <p class="text-[11px] font-bold text-slate-400 mt-1">None chosen = every employee (a coordinator's own tasks never count against them here).</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+                        <div><label class="block text-[11px] font-extrabold text-slate-600 mb-1.5 uppercase tracking-wider">Points cut per task</label>
+                            <input type="number" id="fupPts" min="0" max="1000" step="1" oninput="fupExample()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white font-bold"></div>
+                        <div><label class="block text-[11px] font-extrabold text-slate-600 mb-1.5 uppercase tracking-wider">Time allowed after target (hours)</label>
+                            <input type="number" id="fupGraceH" min="0" max="48" step="0.5" oninput="fupExample()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white font-bold"></div>
+                        <div><label class="block text-[11px] font-extrabold text-slate-600 mb-1.5 uppercase tracking-wider">Most points cut per day</label>
+                            <input type="number" id="fupMaxDay" min="0" max="100000" step="1" placeholder="No limit" oninput="fupExample()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white font-bold"></div>
+                    </div>
+                    <div id="fupExampleBox" class="mt-4 text-[12px] font-bold text-slate-600 bg-violet-50 border border-violet-100 rounded-xl px-4 py-3 leading-relaxed"></div>
+                    <div class="mt-6 flex justify-end">
                         <button onclick="saveScoreSettings()" class="bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 flex items-center">
                             <i class="ph-bold ph-floppy-disk mr-2 text-xl"></i> Save All Settings
                         </button>
@@ -1362,7 +1420,7 @@
             NO_PROFILE: 'No task list is set up for your Emp Code yet.',
             NO_EMP_CODE: 'Your ERP login has no valid Employee Code. Ask the Admin to fill it in under <i>Admin Panel › Users &amp; Roles</i>.',
             NO_APP_ACCESS: 'The Task Manager is switched off for your login. Ask the Admin to switch it on under <i>Admin Panel › Users › Apps</i>.',
-            NOT_TODAY: 'Only today\'s task can be ticked here. A past day needs a late approval.',
+            NOT_TODAY: 'Only today\'s task, or one still pending from the last 6 days, can be ticked here. An older day needs a late approval.',
             NOT_PAST: 'Only a past day can be approved as late.',
             NOT_YOUR_TASK: 'This task is not yours, and you are not the buddy for it on this day.',
             ALREADY_DONE: 'This task is already marked done.',
@@ -1384,7 +1442,9 @@
             MOVED: 'This task was moved to a later day by a follow-up. Complete it on that day.',
             DAILY_SAME_DAY: 'A daily task cannot be moved to another date. Once it is missed, give it a later time today.',
             SAME_DAY_TODAY_ONLY: 'Only today can be followed up to a later time on the same day.',
-            TIME_REQUIRED: 'Choose the time for today\'s follow-up.'
+            TIME_REQUIRED: 'Choose the time for today\'s follow-up.',
+            REMARK_REQUIRED: 'Write a remark (why the task is sent back).',
+            NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.'
         };
         function tmErr(res, title) {
             const msg = TM_ERR[res.error] || ('The request failed: ' + esc(res.error));
@@ -1423,6 +1483,7 @@
             if (appState.viewY == null) { appState.viewY = appState.currentYear; appState.viewM = appState.currentMonth; }
             appState.erpUsers = d.erpUsers || [];
             appState.loadedFrom = d.from; appState.loadedTo = d.to;
+            fupCache = new Map();   // fresh records / follow-ups / rules: the coordinator cuts are worked out again
             appState.currentLoggedInEmp = (appState.me.empCode && appState.employees.find(e => e.empCode === appState.me.empCode)) || null;
             return res;
         }
@@ -1644,8 +1705,9 @@
             const vs = appState.scoreVersions.slice().reverse();
             document.getElementById('scoreHistoryList').innerHTML = vs.length ? vs.map((v, i) => {
                 const r = mergeRules(v.value).daily;
-                return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${r.graceHours}h / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints}</span></div>`;
+                return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${r.graceHours}h / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints}</span>${(f => f.on ? `<span class="text-xs text-violet-800 font-bold">· Follow-up cut: ${f.coords.length} coordinator(s), −${f.pts} per task after ${f.graceHours}h${f.maxDay != null ? ', max ' + f.maxDay + '/day' : ''}</span>` : '')(fupRuleOf(v.value))}</div>`;
             }).join('') : '<div class="text-sm text-slate-400 font-bold">Not saved yet. The default rules apply: grace 3 hours / -20, then -20 per hour, into minus with no limit.</div>';
+            fupFill();
             if (!keepAuto || !EMA.data) emAutoLoad();   // a redraw after saving the scoring rules keeps unsaved automation edits
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
@@ -1666,10 +1728,132 @@
                             type: document.getElementById(`penType_${c}`).value, penalty: num(document.getElementById(`penAmount_${c}`).value, 0), minPoints: minPts(c) };
                 if (c === 'ea') next.ea.postponePenalty = num(document.getElementById('penAmount_ea_postpone').value, 10);
             });
+            next.followup = fupCollect();
+            if (next.followup.on && !next.followup.coords.length) return showCustomModal('Pending Follow-ups Task', 'It is switched on but no coordinator is chosen. Add at least one, or switch it off.', true);
             if (!confirm('Save these rules? They apply to tasks assigned from now on. Scores already earned do not change.')) return;
             const res = await tmRpc('tm_save_settings', { p_settings: next });
             if (!res.ok) return tmErr(res);
             await refreshAndRerender(); showCustomModal("Settings Saved", "New rules saved. They apply to tasks assigned from now on; past scores stay as they were.");
+        };
+
+        /* ── PENDING FOLLOW-UPS TASK (coordinator deduction) ───────────────
+           The chosen coordinators (an employee with a task list, so they have
+           a score) lose `pts` points for every task of the employees they
+           follow up ("covers"; none = everyone but themselves) that, `graceHours`
+           after its target, is neither done nor followed up (PC Follow-up / MD
+           Oversight, tm_followups.at). One cut per task per day; `maxDay` caps a
+           day's total (blank = no limit).
+           Kept as `followup` inside the Score Master version (tm_save_settings
+           saves the whole object and checks only the five task categories), so
+           no migration is needed and the rule is dated like the others: a task
+           counts only when the version in force at its cut-off moment has the
+           rule on for that coordinator, so saving it never re-scores the past.
+           The cut lowers the coordinator's gained points in dayScore (not the
+           possible points), so it shows in every % of theirs: sheet header,
+           My Score, Score Card. Worked out in the page, like all scoring. */
+        const FUP_DEFAULT = { on: false, coords: [], covers: [], pts: 10, graceHours: 2, maxDay: null };
+        function fupRuleOf(v) {
+            const f = (v && typeof v === 'object' && v.followup) || {};
+            const n = (x, d, hi) => { const k = Number(x); return isFinite(k) && k >= 0 ? Math.min(hi, k) : d; };
+            return { on: !!f.on, coords: Array.isArray(f.coords) ? f.coords.map(String) : [], covers: Array.isArray(f.covers) ? f.covers.map(String) : [],
+                     pts: n(f.pts, FUP_DEFAULT.pts, 1000), graceHours: n(f.graceHours, FUP_DEFAULT.graceHours, 48),
+                     maxDay: (f.maxDay === null || f.maxDay === '' || f.maxDay === undefined || !isFinite(Number(f.maxDay))) ? null : Math.max(0, Math.round(Number(f.maxDay))) };
+        }
+        // The rule in force at a moment (the Score Master version saved before it).
+        function fupRuleAt(when) {
+            let v = null; for (const x of appState.scoreVersions) { if (x.at <= when) v = x; else break; }
+            return fupRuleOf(v ? v.value : null);
+        }
+        const fupCurrent = () => fupRuleOf(appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : null);
+        // Is anyone ever a coordinator in the loaded versions? (skips all the work for everyone else)
+        const fupEverCoord = code => appState.scoreVersions.some(x => { const r = fupRuleOf(x.value); return r.on && r.coords.includes(code); });
+
+        /* One coordinator's cut for one day: {n, cut, items:[{e, t, ds, cutoff}]}.
+           Past days are cached per load (fupCache is emptied by loadData), today
+           is worked out live because its cut-offs pass during the day. */
+        let fupCache = new Map();
+        function fupDayCut(code, ds, now) {
+            const zero = { n: 0, cut: 0, items: [] };
+            if (!fupEverCoord(code)) return zero;
+            const td = todayStr(); if (ds > td) return zero;
+            if (appState.loadedFrom && ds < appState.loadedFrom) return zero;   // records not loaded: never guess "pending"
+            const key = code + '|' + ds;
+            if (ds < td && fupCache.has(key)) return fupCache.get(key);
+            now = now || new Date();
+            const items = []; let cut = 0;
+            appState.employees.forEach(e => {
+                if (e.empCode === code) return;
+                const fus = e.followups || [];
+                e.tasks.forEach(x => {
+                    if (x.isSelfTask || x.active === false) return;
+                    const t = { ...x, ownerCode: e.empCode }, rec = recOf(t, ds);
+                    if (!occursOn(t, ds, rec)) return;
+                    if (rec && rec.status === 'rescheduled') return;                 // followed up to a later day
+                    // The rule in force at the task's target time decides (and gives the allowed hours).
+                    const dl = deadlineOf(t, ds, rec), rr = fupRuleAt(dl);
+                    if (!rr.on || !rr.coords.includes(code) || (rr.covers.length && !rr.covers.includes(e.empCode))) return;
+                    const cutoff = new Date(dl.getTime() + rr.graceHours * 3600000);
+                    if (cutoff > now) return;                                                       // still within the allowed time
+                    if (rec && rec.checked && doneMomentOf(rec, ds) <= cutoff) return;              // done in time
+                    if (fus.some(f => f.taskNo === t.id && f.fromDate === ds && new Date(f.at) <= cutoff)) return;   // followed up in time
+                    items.push({ e, t, ds, cutoff, pts: rr.pts }); cut += rr.pts;
+                });
+            });
+            const cap = fupRuleAt(ds < td ? dateAt(ds, 23, 59) : now).maxDay;
+            const out = { n: items.length, cut: cap != null ? Math.min(cap, cut) : cut, items: items.sort((a, b) => a.cutoff - b.cutoff) };
+            if (ds < td) fupCache.set(key, out);
+            return out;
+        }
+        // The list behind a coordinator's cut on one day.
+        window.showFupCuts = function(code, ds) {
+            const f = fupDayCut(code, ds, new Date());
+            let h = `<div class="text-left"><div class="text-[11px] font-bold text-slate-500 mb-3">${esc(empName(code))} · ${esc(fmtDay(ds))} · ${f.n} task(s) not followed up · <b class="text-red-600">${signed(-f.cut)} pts</b></div>`;
+            h += f.n ? '<div class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">' + f.items.map(x => `<div class="rounded-xl border border-slate-200 bg-white p-3"><div class="font-extrabold text-slate-800 text-sm leading-tight">${esc(x.t.desc)}</div><div class="text-[11px] font-bold text-slate-500 mt-1">${esc(x.e.empName)} · target ${esc(x.t.time || 'all day')} · follow-up due by ${esc(fmtWhen(x.cutoff))} · <span class="text-red-600">−${x.pts}</span></div></div>`).join('') + '</div>'
+                : '<div class="text-sm font-bold text-slate-400 py-4 text-center">Nothing left without a follow-up on this day.</div>';
+            h += '<p class="text-[10px] font-bold text-slate-400 mt-3 leading-relaxed">A task counts when, by the allowed time after its target, it was neither done nor followed up (PC Follow-up or MD Oversight).</p></div>';
+            showCustomModal('Pending Follow-ups', h);
+            const ic = document.getElementById('modalIcon'); ic.className = "w-20 h-20 rounded-full bg-violet-50 text-violet-800 flex items-center justify-center mx-auto mb-4 border-4 border-violet-100 shadow-inner"; ic.innerHTML = '<i class="ph-fill ph-phone-call text-4xl"></i>';
+            document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
+        };
+
+        // The card: chips for the two employee lists (FUP.coords / FUP.covers), boxes read back on save.
+        const FUP = { coords: [], covers: [] };
+        function fupFill() {
+            const r = fupCurrent();
+            FUP.coords = r.coords.slice(); FUP.covers = r.covers.slice();
+            document.getElementById('fupOn').checked = r.on;
+            document.getElementById('fupPts').value = r.pts;
+            document.getElementById('fupGraceH').value = r.graceHours;
+            document.getElementById('fupMaxDay').value = r.maxDay == null ? '' : r.maxDay;
+            fupChips(); fupExample();
+        }
+        function fupChips() {
+            const chip = (list, code) => `<span class="inline-flex items-center gap-1.5 bg-white border border-violet-200 text-violet-900 text-xs font-extrabold px-2.5 py-1 rounded-lg">${esc(empName(code))} <span class="text-slate-400 font-mono">${esc(code)}</span><button type="button" onclick="fupDrop('${list}','${esc(code)}')" title="Remove" class="text-slate-400 hover:text-red-600">✕</button></span>`;
+            document.getElementById('fupCoords').innerHTML = FUP.coords.length ? FUP.coords.map(c => chip('coords', c)).join('') : '<span class="text-xs font-bold text-slate-400 self-center px-1">No coordinator yet</span>';
+            document.getElementById('fupCovers').innerHTML = FUP.covers.length ? FUP.covers.map(c => chip('covers', c)).join('') : '<span class="text-xs font-bold text-slate-400 self-center px-1">Every employee</span>';
+        }
+        window.fupPick = function(list) {
+            openEmpPicker(list === 'coords' ? 'Coordinator (score is cut)' : 'Employee they follow up', x => {
+                if (!FUP[list].includes(x.code)) FUP[list].push(x.code);
+                fupChips(); fupExample();
+            }, true);
+        };
+        window.fupDrop = function(list, code) { FUP[list] = FUP[list].filter(c => c !== code); fupChips(); fupExample(); };
+        function fupCollect() {
+            const mv = document.getElementById('fupMaxDay').value.trim();
+            return { on: document.getElementById('fupOn').checked, coords: FUP.coords.slice(), covers: FUP.covers.slice(),
+                     pts: Math.min(1000, num(document.getElementById('fupPts').value, FUP_DEFAULT.pts)),
+                     graceHours: Math.min(48, num(document.getElementById('fupGraceH').value, FUP_DEFAULT.graceHours)),
+                     maxDay: mv === '' || !isFinite(Number(mv)) ? null : Math.max(0, Math.round(Number(mv))) };
+        }
+        window.fupExample = function() {
+            const r = fupCollect(), box = document.getElementById('fupExampleBox'); if (!box) return;
+            if (!r.on) { box.innerHTML = 'Off: nobody loses points for tasks left without a follow-up.'; return; }
+            const who = r.coords.length ? r.coords.map(c => esc(empName(c))).join(', ') : '<span class="text-red-600">no coordinator chosen</span>';
+            const n = 6, tot = n * r.pts, capped = r.maxDay != null ? Math.min(r.maxDay, tot) : tot;
+            box.innerHTML = `Target 10:00 AM → if by ${esc(fmtClock(new Date(2000, 0, 1, 10, 0, 0, 0).getTime() + r.graceHours * 3600000))} the task is neither done nor followed up, <b>${who}</b> lose <b class="text-red-600">−${r.pts}</b> each for it.`
+                + ` E.g. ${n} such tasks in a day = <b class="text-red-600">−${capped}</b>${r.maxDay != null && tot > r.maxDay ? ' (limit ' + r.maxDay + ' per day)' : ''}.`
+                + ` Covers: ${r.covers.length ? r.covers.map(c => esc(empName(c))).join(', ') : 'every employee'}.`;
         };
 
         /* ── Stack Emission alert automation ──────────────────────────────
@@ -2401,12 +2585,48 @@
         }
         // Today's copy of a self task planned for an earlier day.
         function isSelfCarried(t, ds) { return !!(t.isSelfTask && t.freqValue && t.freqValue < ds && ds === todayStr()); }
+        /* PENDING CARRY FORWARD (assigned tasks). An occurrence of a past day
+           that is still not done (state 'missed', not moved by a follow-up)
+           is shown on today as well, with its plan date and how long it is
+           delayed, so the employee can still finish it. It stays on ITS OWN
+           day: ticking it ticks that day's record (tm_mark_done takes a past
+           date within CARRY_DAYS, see TM_CARRY_FORWARD_MIGRATION.sql, where
+           tm_carry_days_() must say the same number) and it is scored late
+           against that day's target, so the points keep falling until it is
+           done. Today's score does not count it a second time.
+           6 days = the 6 days before today that defaultRange() always loads.
+           Older misses still need a late approval (MD Oversight View). */
+        const CARRY_DAYS = 6;
+        function inCarryWindow(ds) {
+            const td = todayStr(); if (!(ds < td)) return false;
+            const lim = dateAt(td); lim.setDate(lim.getDate() - CARRY_DAYS);
+            return ds >= ymd(lim);
+        }
+        // [{t, ds, rec, sc}] for the earlier days, oldest first. Self tasks have their own carry forward above.
+        function carriedPending(emp, now) {
+            now = now || new Date(); const out = []; const td = todayStr();
+            const tasks = getCombinedTasks(emp).filter(t => !t.isSelfTask);
+            for (let i = CARRY_DAYS; i >= 1; i--) {
+                const dt = dateAt(td); dt.setDate(dt.getDate() - i); const ds = ymd(dt);
+                if (appState.loadedFrom && ds < appState.loadedFrom) continue;   // records not loaded: never guess "missed"
+                tasks.forEach(t => {
+                    const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
+                    const sc = taskScore(t, ds, rec, now); if (sc.state !== 'missed') return;
+                    out.push({ t, ds, rec, sc });
+                });
+            }
+            return out.sort((a, b) => a.sc.deadline - b.sc.deadline);
+        }
+        // "03 Nov 2026" for a plan date.
+        function fmtDay(ds) { return dateAt(ds).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
         /* One day's score for one person (self tasks are personal and not counted).
            Counted: done, overdue and missed. Not yet due tasks are not counted,
            so a day's % is never dragged down by work that is not late yet. */
         function dayScore(emp, ds, now) {
-            const out = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0 };
+            const out = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0 };
             if (ds > todayStr()) return out;
+            // Coordinator: points cut for employees' tasks left without a follow-up (fupDayCut).
+            const fc = fupDayCut(emp.empCode, ds, now); out.fupN = fc.n; out.fupCut = fc.cut; out.gained -= fc.cut;
             getCombinedTasks(emp).forEach(t => {
                 if (t.isSelfTask) return;
                 const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
@@ -2422,7 +2642,7 @@
             return out;
         }
         function rangeScore(emp, from, to, now) {
-            const acc = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, days: 0 };
+            const acc = { gained: 0, possible: 0, done: 0, onTime: 0, grace: 0, late: 0, missed: 0, overdue: 0, upcoming: 0, total: 0, fupN: 0, fupCut: 0, days: 0 };
             const td = todayStr();
             for (let dt = new Date(from); ymd(dt) <= ymd(to) && ymd(dt) <= td; dt.setDate(dt.getDate() + 1)) {
                 const s = dayScore(emp, ymd(dt), now); Object.keys(acc).forEach(k => { if (k !== 'days') acc[k] += s[k] || 0; }); acc.days++;
@@ -2453,7 +2673,7 @@
             if (sc.state === 'upcoming') return wrap('bg-emerald-50 border-emerald-200 text-emerald-800', 'Full points if done by ' + fmtClock(sc.deadline), (ds > todayStr() ? 'On ' + esc(ds) : fmtDur(sc.deadline - now) + ' left') + (sc.graceHours ? ' · then ' + fmtDur(sc.graceHours * 3600000) + ' grace (−' + sc.rules.gracePenalty + ')' : ''), sc.pts);
             const cls = sc.pts <= 0 ? 'bg-red-50 border-red-200 text-red-800' : (sc.phase === 'grace' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-200 text-red-700');
             const nxt = sc.nextDrop ? `−${sc.nextCut} in ${fmtDur(sc.nextDrop - now)}${sc.pts <= 0 ? ' · already in minus' : ''}` : 'at the lowest points (' + sc.pts + ')';
-            const lbl = sc.state === 'missed' ? 'Missed · needs late approval' : (sc.phase === 'grace' ? 'Losing points · grace till ' + fmtClock(sc.graceEnd) : 'Losing points · −' + sc.per + ' per ' + sc.unit);
+            const lbl = sc.state === 'missed' ? (inCarryWindow(ds) && !t.isSelfTask ? 'Pending · delayed ' + fmtDur(now - sc.deadline) + ' · −' + sc.per + ' per ' + sc.unit : 'Missed · needs late approval') : (sc.phase === 'grace' ? 'Losing points · grace till ' + fmtClock(sc.graceEnd) : 'Losing points · −' + sc.per + ' per ' + sc.unit);
             return wrap(cls, lbl, nxt, sc.pts < 0 ? signed(sc.pts) : sc.pts);
         }
         // A box that keeps itself up to date (see liveTick).
@@ -2540,7 +2760,7 @@
             const ms = rangeScore(emp, new Date(appState.currentYear, appState.currentMonth - 1, 1), new Date(appState.currentYear, appState.currentMonth - 1, appState.currentDay), now);
             const tile = (title, s, sub) => `<button onclick="showMyScore()" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 text-left hover:border-yellow-400 transition-colors"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${title}</div><div class="text-3xl font-extrabold leading-tight ${pctCls(s.pct)}">${s.pct == null ? '–' : s.pct + '%'}</div><div class="text-[11px] font-bold text-slate-500">${s.gained} / ${s.possible} pts</div><div class="text-[10px] font-bold text-slate-400 mt-0.5">${sub}</div></button>`;
             document.getElementById('dashSummary').innerHTML =
-                tile('Today', d, `${d.done} done · ${d.upcoming} to do${d.overdue ? ' · <span class="text-red-600">' + d.overdue + ' overdue</span>' : ''}`)
+                tile('Today', d, `${d.done} done · ${d.upcoming} to do${d.overdue ? ' · <span class="text-red-600">' + d.overdue + ' overdue</span>' : ''}${(n => n ? ' · <span class="text-red-600">' + n + ' pending from earlier days</span>' : '')(carriedPending(emp, now).length)}${d.fupN ? ' · <span class="text-violet-800">−' + d.fupCut + ' not followed up</span>' : ''}`)
               + tile(monthNames[appState.currentMonth - 1], ms, `${ms.onTime} on time · ${ms.grace + ms.late} late · ${ms.missed} missed`);
         }
         function completedSelfTasks(emp) {
@@ -2582,15 +2802,22 @@
                 const isResched=rec&&(rec.status==='pending-reschedule'||rec.status==='rescheduled-done');
                 if(!occursOn(t, today, rec)) return;
                 if(t.isSelfTask&&rec&&rec.checked)return;   // done personal tasks live in their history
-                if(taskCats(t,isResched).includes(cat)) fTasks.push({...t,isResched,rec});
+                if(taskCats(t,isResched).includes(cat)) fTasks.push({...t,isResched,rec,ds:today});
             });
-            // Most urgent first: overdue, then by target time; done ones last.
             const now = new Date();
+            /* Earlier days' pending tasks (carriedPending): in their own list and,
+               like follow-ups, under Daily too, since Daily is "my day". Each
+               keeps its own day `ds`, which every action below uses. */
+            const carried = carriedPending(emp, now).filter(x => taskCats(x.t, false).concat('daily').includes(cat))
+                .map(x => ({...x.t, isResched:false, rec:x.rec, ds:x.ds, carried:true}));
+            // Most urgent first: earlier days' pending (oldest first), then overdue, then by target time; done ones last.
             fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved') ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
+            fTasks = carried.concat(fTasks);
 
-            // Header strip: this list's points today.
-            let g = 0, p = 0; fTasks.forEach(t => { if (t.isSelfTask) return; const s = taskScore(t, today, t.rec, now); if (s.state === 'upcoming' || s.state === 'moved') return; g += s.pts; p += s.base; });
-            const strip = fTasks.length ? `<div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm"><span class="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">${fTasks.filter(t => t.rec && t.rec.checked).length} of ${fTasks.length} done</span><span class="text-sm font-extrabold ${pctCls(p ? Math.round(g / p * 100) : null)}">${p ? g + ' / ' + p + ' pts' : 'Nothing due yet'}</span></div>` : '';
+            // Header strip: this list's points today (earlier days' pending are scored on their own day, so not here).
+            let g = 0, p = 0; fTasks.forEach(t => { if (t.isSelfTask || t.carried) return; const s = taskScore(t, today, t.rec, now); if (s.state === 'upcoming' || s.state === 'moved') return; g += s.pts; p += s.base; });
+            const todays = fTasks.filter(t => !t.carried);
+            const strip = fTasks.length ? `<div class="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm"><span class="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">${todays.filter(t => t.rec && t.rec.checked).length} of ${todays.length} done today${carried.length ? ` · <span class="text-red-600">${carried.length} pending from earlier days</span>` : ''}</span><span class="text-sm font-extrabold ${pctCls(p ? Math.round(g / p * 100) : null)}">${p ? g + ' / ' + p + ' pts' : 'Nothing due yet'}</span></div>` : '';
 
             if(!fTasks.length) con.innerHTML=`<div class="text-center p-8 bg-white border border-slate-200 rounded-3xl shadow-sm mt-4"><i class="ph-fill ph-check-circle text-6xl text-slate-200 mb-3 drop-shadow-sm"></i><p class="text-slate-500 font-extrabold text-lg">Nothing due today.</p></div>`;
             else {
@@ -2603,15 +2830,18 @@
                     }
 
                     const moved = t.rec && t.rec.status === 'rescheduled';
-                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${today}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${today}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${today}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> Complete (Upload Proof)</button>`;
+                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> ${t.isSelfTask?'Complete (Proof Optional)':'Complete (Upload Proof)'}</button>`;
                     let warn='';
-                    if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, today); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
+                    if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, t.ds); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
                     let bt=t.isBuddyTask?`<span class="bg-teal-50 text-teal-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-teal-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users mr-1"></i> BUDDY: ${esc(t.primaryName)}</span>`:'';
                     let st=t.isSelfTask?`<span class="bg-blue-50 text-blue-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-blue-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user mr-1"></i> SELF</span>`:'';
+                    // An earlier day's pending task: when it was planned and how late it is now.
+                    let carryHTML='';
+                    if(t.carried){ const sc0=taskScore(t, t.ds, t.rec, now); st+=`<span class="bg-red-50 text-red-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-red-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-clock-countdown mr-1"></i> PENDING FROM ${esc(fmtDay(t.ds))}</span>`; carryHTML=`<div class="text-[11px] text-red-800 bg-red-50 px-2.5 py-1.5 rounded-lg mt-2 border border-red-200 font-bold w-fit">Plan date: ${esc(fmtWhen(sc0.deadline))} · Delayed ${esc(fmtDur(now - sc0.deadline))}</div>`; }
                     if(isSelfCarried(t, today)) st+=`<span class="bg-amber-50 text-amber-800 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-amber-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-bend-down-right mr-1"></i> CARRIED FROM ${esc(t.freqValue)}</span>`;
                     let fu=t.isResched?`<span class="bg-purple-50 text-purple-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-purple-200 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-arrow-u-down-right mr-1"></i> FOLLOW-UP</span>`:'';
 
-                    out+=`<div class="bg-white p-5 rounded-3xl border border-slate-200 relative shadow-sm overflow-hidden">${warn}<div class="relative z-10"><h3 class="font-extrabold text-slate-800 text-lg leading-tight mb-1.5">${esc(t.desc)}</h3>${t.isResched&&t.rec&&t.rec.remarks?`<p class="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mb-2 border border-purple-100 italic shadow-inner">Remark: ${esc(t.rec.remarks)}</p>`:''}<div class="flex flex-wrap items-center gap-y-1 mt-2"><span class="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 mr-2 flex items-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-clock mr-1"></i> ${esc(t.time||'All Day')}</span>${bt}${st}${fu}</div>${trackHTML}</div>${liveBox(t, today, t.rec)}${html}</div>`;
+                    out+=`<div class="bg-white p-5 rounded-3xl border ${t.carried?'border-red-300':'border-slate-200'} relative shadow-sm overflow-hidden">${warn}<div class="relative z-10"><h3 class="font-extrabold text-slate-800 text-lg leading-tight mb-1.5">${esc(t.desc)}</h3>${t.isResched&&t.rec&&t.rec.remarks?`<p class="text-[10px] text-purple-700 bg-purple-50 p-2 rounded-lg font-bold mb-2 border border-purple-100 italic shadow-inner">Remark: ${esc(t.rec.remarks)}</p>`:''}<div class="flex flex-wrap items-center gap-y-1 mt-2"><span class="text-[10px] font-extrabold text-slate-600 bg-slate-50 px-2 py-1 rounded-lg border border-slate-200 mr-2 flex items-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-clock mr-1"></i> ${esc(t.time||'All Day')}</span>${bt}${st}${fu}</div>${carryHTML}${undoInfoHtml(t, t.ds, t.rec)}${trackHTML}</div>${liveBox(t, t.ds, t.rec)}${html}</div>`;
                 });
                 con.innerHTML=out;
             }
@@ -2652,7 +2882,9 @@
                 const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done');
                 out.push({ t, rec, sc, cats: taskCats(t, isR) });
             });
-            const w = x => x.sc.state === 'overdue' ? 0 : 1;
+            // Earlier days' pending (see carriedPending): delayed by definition, and also under Daily like on the list.
+            carriedPending(emp, now).forEach(x => out.push({ t: x.t, rec: x.rec, sc: x.sc, ds: x.ds, cats: taskCats(x.t, false).concat('daily') }));
+            const w = x => (x.sc.state === 'overdue' || x.sc.state === 'missed') ? 0 : 1;
             return out.sort((a, b) => (w(a) - w(b)) || ((a.sc.deadline || 0) - (b.sc.deadline || 0)));
         }
 
@@ -2695,9 +2927,10 @@
 
         function openPendAlarm(kind) {
             const now = new Date(); let list = myPendingToday(now);
-            if (kind === 'delay') list = list.filter(x => x.sc.state === 'overdue');
+            const isLate = x => x.sc.state === 'overdue' || x.sc.state === 'missed';   // missed = an earlier day's pending
+            if (kind === 'delay') list = list.filter(isLate);
             if (!list.length) { pendSchedule(); return; }
-            const late = list.filter(x => x.sc.state === 'overdue').length;
+            const late = list.filter(isLate).length;
             document.getElementById('pendAlarmTitle').textContent = kind === 'delay' ? 'Delayed Tasks' : 'Pending Today';
             document.getElementById('pendAlarmSub').textContent = kind === 'delay'
                 ? `${list.length} task(s) past the target time`
@@ -2706,8 +2939,9 @@
                 ? 'While a task is delayed, this alarm comes back every 15 minutes.'
                 : 'Finish them before the target time to keep full points.';
             document.getElementById('pendAlarmList').innerHTML = list.map(x => {
-                const t = x.t, od = x.sc.state === 'overdue';
-                const when = (od ? `Delayed ${fmtDur(now - x.sc.deadline)}` : `Due ${t.time || 'today'}`) + (isSelfCarried(t, todayStr()) ? ` · carried from ${t.freqValue}` : '');
+                const t = x.t, od = isLate(x);
+                const when = (od ? `Delayed ${fmtDur(now - x.sc.deadline)}` : `Due ${t.time || 'today'}`) + (isSelfCarried(t, todayStr()) ? ` · carried from ${t.freqValue}` : '') + (x.ds ? ` · plan date ${fmtWhen(x.sc.deadline)}` : '')
+                    + (x.rec && !x.rec.checked && x.rec.undoneAt ? ` · undone by ${x.rec.undoneBy || '-'}${x.rec.undoRemarks ? ': ' + x.rec.undoRemarks : ''}` : '');
                 return `<div class="bg-white border ${od ? 'border-red-300' : 'border-slate-200'} rounded-xl px-3 py-2.5 flex items-start gap-3 shadow-sm">`
                     + `<span class="tm-dot-fast mt-1"></span>`
                     + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 text-sm leading-tight">${esc(t.desc)}</div>`
@@ -2760,7 +2994,9 @@
                 + `<div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">This month · ${m.total} tasks</div>`
                 + line('On time (full points)', m.onTime, 'text-green-600') + line('Grace used', m.grace, 'text-amber-600') + line('Late', m.late, 'text-orange-600')
                 + line('Missed', m.missed, 'text-red-600') + line('Overdue today', m.overdue, 'text-red-600') + line('Still to do today', m.upcoming, 'text-slate-600')
+                + (m.fupN ? line('Coordinator: tasks not followed up', `${m.fupN} · −${m.fupCut}`, 'text-red-600') : '')
                 + line('Points lost', m.possible - m.gained, 'text-red-600') + `</div>`
+                + (d.fupN ? `<button onclick="showFupCuts('${esc(emp.empCode)}','${todayStr()}')" class="mt-3 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Today: ${d.fupN} task(s) not followed up (−${d.fupCut})</button>` : '')
                 + `<p class="text-[11px] font-bold text-slate-400 mt-3 leading-relaxed">Each task: ${r.baseScore} pts by the target time; within ${fmtDur(r.graceHours * 3600000)} after it −${r.gracePenalty}; then −${r.penalty} per ${r.type}. Personal tasks are not counted.</p></div>`);
             const ic=document.getElementById('modalIcon');
             ic.className="w-24 h-24 rounded-full bg-yellow-50 text-yellow-500 flex items-center justify-center mx-auto mb-4 border-4 border-yellow-100 shadow-inner";
@@ -2810,15 +3046,31 @@
         }
         window.closeProofModal = function() { const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); setTimeout(()=>{m.classList.add('hidden'); m.classList.remove('flex'); document.getElementById('proofImageView').src="";},300); }
 
-        window.promptTaskPin = function(e,t,d) { pendingTaskConfirm={e,t,d}; resetProof('task'); const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); mod.classList.remove('hidden'); mod.classList.add('flex'); void mod.offsetWidth; con.classList.remove('scale-95','opacity-0'); con.classList.add('scale-100','opacity-100'); }
+        /* Task Done. `d` is today, or (carry forward) an earlier day still
+           within CARRY_DAYS: that day's record is ticked now and scored as
+           late against its own target. A Self Task may be completed without
+           a photo; every assigned task still needs one. */
+        window.promptTaskPin = function(e,t,d) {
+            pendingTaskConfirm={e,t,d}; resetProof('task');
+            const tk = findTask(e, t), self = !!(tk && tk.isSelfTask), late = d < todayStr();
+            pendingTaskConfirm.self = self;
+            document.getElementById('taskProofNeed').textContent = self ? 'Optional' : 'Required';
+            document.getElementById('taskPinSub').textContent = late
+                ? `Pending from ${fmtDay(d)}. Upload proof to complete; it is scored as late against that day's target.`
+                : (self ? 'Personal task: a photo is optional. It is saved under your name with the time.' : 'Upload proof to complete. It is saved under your name with the time.');
+            const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); mod.classList.remove('hidden'); mod.classList.add('flex'); void mod.offsetWidth; con.classList.remove('scale-95','opacity-0'); con.classList.add('scale-100','opacity-100'); }
         window.closeTaskPinModal = function() { const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); con.classList.remove('scale-100','opacity-100'); con.classList.add('scale-95','opacity-0'); setTimeout(()=>{mod.classList.add('hidden'); mod.classList.remove('flex'); pendingTaskConfirm=null; resetProof('task');},300); }
         window.verifyTaskPin = async function() {
             if(!pendingTaskConfirm) return;
-            if(!proofFiles.task.length) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery) to complete.", true);
+            if(!proofFiles.task.length && !pendingTaskConfirm.self) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery) to complete.", true);
             const p = pendingTaskConfirm; setBusy('taskPinConfirmBtn', true);
             try {
-                const b64 = await buildProofImage('task');
+                const b64 = proofFiles.task.length ? await buildProofImage('task') : null;
                 const res = await tmRpc('tm_mark_done', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: b64 });
+                /* Before TM_CARRY_FORWARD_MIGRATION.sql the server still wants a
+                   photo for every task and ticks only today; say which file fixes it. */
+                if (!res.ok && ((res.error === 'PROOF_REQUIRED' && p.self && !b64) || (res.error === 'NOT_TODAY' && p.d < todayStr())))
+                    return showCustomModal('Server update needed', (res.error === 'PROOF_REQUIRED' ? 'Completing a Self Task without a photo' : 'Completing a previous day\'s pending task') + ' needs a server update. Admin: run <code>TM_CARRY_FORWARD_MIGRATION.sql</code> in the Supabase SQL Editor.' + (res.error === 'PROOF_REQUIRED' ? ' Until then, add a photo.' : ''), true);
                 if (!res.ok) return tmErr(res);
                 closeTaskPinModal(); await refreshAndRerender();
                 // Say straight away what the tick earned.
@@ -2866,6 +3118,67 @@
             if (!res.ok) return tmErr(res);
             closeMDOverrideModal(); await refreshAndRerender();
         }
+        /* ── MD Oversight: check a done task, send it back ───────────────
+           A done cell of the MD sheet opens this instead of the bare photo:
+           the proof, who ticked it and when, the points, and (with the "Undo
+           Done Task" right, TM_UNDO_DONE) an Undone box. Undone needs a remark;
+           the server (tm_undo_done, TM_UNDO_DONE_MIGRATION.sql) makes the
+           record not done again and keeps who / when / why, which the
+           employee then sees on the pending task card (undoInfoHtml). The old
+           photo is kept so the employee can see what was rejected. */
+        window.mdCheckDone = function(owner, id, ds) {
+            const t = findTask(owner, id); const rec = t && recOf(t, ds); if (!t || !rec || !rec.checked) return;
+            const sc = taskScore(t, ds, rec), chain = proofChainOf(owner, id, ds);
+            const row = (k, v) => `<div class="flex justify-between gap-4 py-1 text-sm"><span class="font-bold text-slate-500">${k}</span><span class="font-extrabold text-right text-slate-800">${v}</span></div>`;
+            let h = `<div class="text-left"><div class="font-extrabold text-slate-800 leading-tight mb-1">${esc(t.desc)}</div><div class="text-[11px] font-bold text-slate-500 mb-3">${esc(empName(owner))} · ${esc(fmtDay(ds))}</div>`;
+            h += rec.hasProof
+                ? `<div class="bg-slate-100 rounded-xl border border-slate-200 min-h-[160px] flex items-center justify-center mb-3"><img id="mdChkImg" alt="Proof" class="max-h-[40vh] w-auto object-contain rounded-xl cursor-zoom-in hidden" onclick="viewProofImage('${esc(owner)}',${id},'${esc(ds)}')"><i id="mdChkWait" class="ph-bold ph-spinner animate-spin text-3xl text-slate-400"></i></div>`
+                : '<div class="text-[11px] font-bold text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-3 py-3 mb-3 text-center">No photo was saved with this tick.</div>';
+            h += `<div class="bg-white border border-slate-200 rounded-xl px-3 py-2">`
+                + row('Done', esc(fmtWhen(doneMomentOf(rec, ds))) + (rec.doneBy ? '<br><span class="text-[11px] text-slate-400">by ' + esc(rec.doneBy) + '</span>' : ''))
+                + row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || ''))
+                + (rec.undoCount ? row('Sent back before', rec.undoCount + '× · last by ' + esc(rec.undoneBy || '-') + (rec.undoneAt ? ', ' + esc(fmtWhen(new Date(rec.undoneAt))) : '')) : '')
+                + `</div>`;
+            if (chain.length > 1) h += `<button onclick="showProofChain('${esc(owner)}',${id},'${esc(ds)}')" class="mt-2 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Proof photos of the follow-up chain (${chain.length} days)</button>`;
+            if (can('TM_UNDO_DONE')) h += `<div class="mt-4 pt-3 border-t border-slate-200"><label class="block text-[10px] font-extrabold text-rose-700 mb-1 uppercase tracking-wider">Not acceptable? Undone with remarks</label>`
+                + `<textarea id="mdUndoRemarks" rows="2" placeholder="What is wrong with the proof / what must be done again" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white text-sm font-medium"></textarea>`
+                + `<button id="mdUndoBtn" onclick="mdUndoDone('${esc(owner)}',${id},'${esc(ds)}')" class="mt-2 w-full bg-rose-600 hover:bg-rose-700 text-white py-3 rounded-xl font-bold shadow-md flex items-center justify-center"><i class="ph-bold ph-arrow-counter-clockwise mr-2 text-lg"></i> Undone &amp; send back</button>`
+                + `<div class="text-[10px] font-bold text-slate-400 mt-1.5 leading-relaxed">The task becomes pending again for the employee, with your name, the time and this remark. Doing it again is scored late against its own target.</div></div>`;
+            // The server lists TM_UNDO_DONE only once its migration ran; before that, say why there is no Undone box.
+            else if (!Object.prototype.hasOwnProperty.call(appState.perms || {}, 'TM_UNDO_DONE')) h += '<div class="mt-4 text-[11px] font-bold text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-3 py-2">Undone needs a server update. Admin: run <code>TM_UNDO_DONE_MIGRATION.sql</code>.</div>';
+            h += '</div>';
+            showCustomModal('Check Done Task', h);
+            const ic = document.getElementById('modalIcon'); ic.className = "w-20 h-20 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-4 border-4 border-green-100 shadow-inner"; ic.innerHTML = '<i class="ph-fill ph-seal-check text-4xl"></i>';
+            document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
+            if (rec.hasProof) tmRpc('tm_get_proof', { p_emp: owner, p_task_no: id, p_date: ds }).then(res => {
+                const img = document.getElementById('mdChkImg'), w = document.getElementById('mdChkWait'); if (w) w.remove(); if (!img) return;
+                if (res.ok && res.data.image) { img.src = res.data.image; img.classList.remove('hidden'); }
+                else img.insertAdjacentHTML('afterend', '<span class="text-[11px] font-bold text-slate-400">The photo could not be loaded.</span>');
+            });
+        };
+        window.mdUndoDone = async function(owner, id, ds) {
+            const rm = (document.getElementById('mdUndoRemarks').value || '').trim();
+            if (rm.length < 3) return showCustomModal('Remark needed', 'Write why the task is sent back, so the employee knows what to do again.', true);
+            const t = findTask(owner, id);
+            if (!confirm(`Send "${t ? t.desc : 'this task'}" of ${empName(owner)} (${ds}) back as not done?`)) return;
+            setBusy('mdUndoBtn', true);
+            const res = await tmRpc('tm_undo_done', { p_emp: owner, p_task_no: id, p_date: ds, p_remarks: rm });
+            if (!res.ok) {
+                setBusy('mdUndoBtn', false);
+                if (res.error === 'NO_MIGRATION') return showCustomModal('Server update needed', 'Undone needs a server update. Admin: run <code>TM_UNDO_DONE_MIGRATION.sql</code> in the Supabase SQL Editor.', true);
+                return tmErr(res);
+            }
+            closeModal(); await refreshAndRerender();
+            showCustomModal('Sent Back', 'The task is pending again for ' + esc(empName(owner)) + ', with your remark.');
+        };
+        // On an employee's pending card: who sent the task back, when, and why (plus the rejected photo).
+        function undoInfoHtml(t, ds, rec) {
+            if (!rec || rec.checked || !rec.undoneAt) return '';
+            return `<div class="text-[11px] text-rose-800 bg-rose-50 px-2.5 py-2 rounded-lg mt-2 border border-rose-200 font-bold">`
+                + `<div class="flex items-center gap-1.5 uppercase tracking-wider text-[10px] font-extrabold"><i class="ph-bold ph-arrow-counter-clockwise"></i> Undone by ${esc(rec.undoneBy || '-')} · ${esc(fmtWhen(new Date(rec.undoneAt)))}</div>`
+                + (rec.undoRemarks ? `<div class="italic mt-0.5">“${esc(rec.undoRemarks)}”</div>` : '')
+                + `<button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${esc(ds)}')" class="underline text-[10px] font-extrabold mt-1">View the photo that was sent back</button></div>`;
+        }
         window.confirmMDOverride = async function() {
             if(!pendingMDOverride) return; const p = pendingMDOverride;
             const res = await tmRpc('tm_approve_late', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: null });
@@ -2907,6 +3220,83 @@
             document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
         };
 
+        /* ── Proof photos of a followed-up / postponed task ──────────────
+           A follow-up moves a task off its day (record 'rescheduled', never a
+           photo) onto a new day, where it is done with its photo. The month
+           view showed the photo only on that last day, so on the day it was
+           moved from there was nothing to see. proofChainOf links the days
+           of ONE such chain, and the viewer shows every day of it with its
+           photo: the day clicked (current) and the earlier postponed day(s)
+           together, whichever cell was clicked.
+             follow-ups  tm_followups from -> to, walked both ways from `ds`
+                         (a same-day follow-up only changes the time, so it
+                         adds no day)
+             EA postpone the task's postponeHistory, when `ds` is one of its dates
+           Returns the days oldest first; a single day means no chain. */
+        function proofChainOf(owner, taskNo, ds) {
+            const t = findTask(owner, taskNo); const fus = followupsOf(owner, taskNo).filter(f => f.fromDate !== f.toDate);
+            const days = new Set([ds]);
+            // Back: the latest follow-up INTO this day, then into that one, …
+            for (let cur = ds, guard = 0; guard < 50; guard++) {
+                const f = fus.filter(x => x.toDate === cur).sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+                if (!f || days.has(f.fromDate)) break; days.add(f.fromDate); cur = f.fromDate;
+            }
+            // Forward: where this day was moved to, then where that went, …
+            for (let cur = ds, guard = 0; guard < 50; guard++) {
+                const r = t && recOf(t, cur); if (!(r && r.status === 'rescheduled')) break;
+                const f = fus.filter(x => x.fromDate === cur).sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+                const nx = (f && f.toDate) || r.nextDate; if (!nx || days.has(nx)) break; days.add(nx); cur = nx;
+            }
+            if (t && t.frequency === 'ea' && t.isPostponed && (t.postponeHistory || []).includes(ds)) t.postponeHistory.forEach(d => days.add(d));
+            return [...days].sort();
+        }
+        // Does any day of the chain hold a photo? (camera mark on the sheet's cells)
+        function chainHasProof(owner, taskNo, days) {
+            const t = findTask(owner, taskNo); return !!t && days.some(d => { const r = recOf(t, d); return r && r.hasProof; });
+        }
+        window.showProofChain = async function(owner, taskNo, ds) {
+            const t = findTask(owner, taskNo); if (!t) return;
+            let days = proofChainOf(owner, taskNo, ds);
+            // A chain can reach into a month that is not loaded yet; fetch it first so no day reads as empty.
+            if (!(await ensureLoaded(days[0], days[days.length - 1]))) return;
+            days = proofChainOf(owner, taskNo, ds);
+            const fus = followupsOf(owner, taskNo);
+            const ea = t.frequency === 'ea' && t.isPostponed && (t.postponeHistory || []).includes(ds);
+            const step = d => {
+                const r = recOf(t, d) || {}, here = d === ds, last = d === days[days.length - 1];
+                const out = fus.filter(f => f.fromDate === d && f.toDate !== d).sort((a, b) => new Date(b.at) - new Date(a.at))[0];
+                let what;
+                if (r.checked) what = `<span class="text-green-700">Done ${esc(fmtWhen(doneMomentOf(r, d)))}${r.doneBy ? ' by ' + esc(r.doneBy) : ''}</span>`;
+                else if (r.status === 'rescheduled' || out) what = `<span class="text-violet-800">Moved to ${esc(fmtDay((out && out.toDate) || r.nextDate || ''))}${out && out.by ? ' by ' + esc(out.by) : ''}</span>${(out && out.remarks) || r.remarks ? `<div class="italic text-slate-500 mt-0.5">“${esc((out && out.remarks) || r.remarks)}”</div>` : ''}`;
+                else if (ea && !last) what = '<span class="text-rose-700">EA postponed from this date</span>';
+                else what = d < todayStr() ? '<span class="text-red-600">Not done</span>' : '<span class="text-slate-500">Due</span>';
+                const ph = r.hasProof
+                    ? `<div class="mt-2 bg-slate-100 rounded-lg border border-slate-200 min-h-[120px] flex items-center justify-center"><img data-chain-proof="${esc(d)}" alt="Proof ${esc(d)}" class="max-h-[40vh] w-auto object-contain rounded-lg cursor-zoom-in hidden" onclick="viewProofImage('${esc(owner)}',${taskNo},'${esc(d)}')"><i data-chain-wait="${esc(d)}" class="ph-bold ph-spinner animate-spin text-2xl text-slate-400"></i></div>`
+                    : `<div class="mt-2 text-[11px] font-bold text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-lg px-3 py-2">${r.status === 'rescheduled' || out || (ea && !last) ? 'No photo on this day: it was moved, the photo is on the day it was done.' : 'No photo for this day.'}</div>`;
+                return `<div class="rounded-xl border ${here ? 'border-indigo-400 bg-indigo-50/40' : 'border-slate-200 bg-white'} p-3">`
+                    + `<div class="flex items-center justify-between gap-2"><span class="text-sm font-extrabold text-slate-800">${esc(fmtDay(d))}</span>`
+                    + `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded border uppercase tracking-wider ${here ? 'text-indigo-800 bg-indigo-100 border-indigo-200' : 'text-slate-600 bg-slate-50 border-slate-200'}">${here ? 'This day' : (d < ds ? 'Earlier (postponed)' : 'Later')}</span></div>`
+                    + `<div class="text-[11px] font-bold mt-1">${what}</div>${ph}</div>`;
+            };
+            let h = `<div class="text-left"><div class="font-extrabold text-slate-800 leading-tight mb-1">${esc(t.desc)}</div><div class="text-[11px] font-bold text-slate-500 mb-3">${esc(empName(owner))} · ${days.length} day${days.length > 1 ? 's' : ''} in this ${ea ? 'EA postpone' : 'follow-up'} chain</div>`
+                + `<div class="space-y-2 max-h-[55vh] overflow-y-auto pr-1">${days.map(step).join('')}</div>`
+                + (fus.length ? `<button onclick="showFollowupHistory('${esc(owner)}',${taskNo},'${esc(ds)}')" class="mt-3 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Full follow-up history</button>` : '')
+                + `</div>`;
+            showCustomModal('Proof Photos', h);
+            const ic = document.getElementById('modalIcon'); ic.className = "w-20 h-20 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border-4 border-indigo-100 shadow-inner"; ic.innerHTML = '<i class="ph-fill ph-images text-4xl"></i>';
+            document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
+            // Photos come one by one (tm_get_proof), like the single proof viewer, so the list opens at once.
+            days.forEach(async d => {
+                const r = recOf(t, d); if (!(r && r.hasProof)) return;
+                const res = await tmRpc('tm_get_proof', { p_emp: owner, p_task_no: taskNo, p_date: d });
+                const img = document.querySelector(`[data-chain-proof="${d}"]`), wait = document.querySelector(`[data-chain-wait="${d}"]`);
+                if (wait) wait.remove();
+                if (!img) return;
+                if (res.ok && res.data.image) { img.src = res.data.image; img.classList.remove('hidden'); }
+                else img.insertAdjacentHTML('afterend', '<span class="text-[11px] font-bold text-slate-400">The photo could not be loaded.</span>');
+            });
+        };
+
         /* ── PC Follow-up ─────────────────────────────────────────────────
            The Process Coordinator's daily round: who still has work pending
            today (or on a past day), and for each pending task a new date +
@@ -2917,15 +3307,48 @@
         const pcDay = () => document.getElementById('pcDate').value || todayStr();
         const nextDayOf = ds => { const d = dateAt(ds); d.setDate(d.getDate() + 1); return ymd(d); };
         const to24 = tm => { const p = parse12h(tm); return p ? String(p.h).padStart(2, '0') + ':' + String(p.m).padStart(2, '0') : ''; };
-        function initPcFollowup() {
+        // Days before the chosen day that "Pending from earlier days" covers (the Earlier pending box).
+        const pcBackDays = () => { const el = document.getElementById('pcBack'); const n = el ? parseInt(el.value, 10) : 90; return isFinite(n) && n > 0 ? n : 0; };
+        const pcBackFrom = ds => { const d = dateAt(ds); d.setDate(d.getDate() - pcBackDays()); return ymd(d); };
+        // Draw with what is loaded at once, then again once the earlier days are fetched.
+        async function initPcFollowup() {
             const d = document.getElementById('pcDate'); if (!d.value || d.value > todayStr()) d.value = todayStr();
             renderPcEmpList(); renderPcTasks();
+            const ds = pcDay();
+            if (appState.loadedFrom && appState.loadedFrom <= pcBackFrom(ds)) return;
+            if (await ensureLoaded(pcBackFrom(ds), ds) && appState.currentScreen === 'pc-followup') { renderPcEmpList(); renderPcTasks(); }
         }
         window.pcDateChanged = async function() {
             let ds = pcDay(); if (ds > todayStr()) { document.getElementById('pcDate').value = todayStr(); ds = todayStr(); showCustomModal('Not yet', 'A day that has not come cannot be followed up.', true); }
-            if (!(await ensureLoaded(ds, ds))) return;
+            if (!(await ensureLoaded(pcBackFrom(ds), ds))) return;
             renderPcEmpList(); renderPcTasks();
         };
+        /* PENDING FROM EARLIER DAYS. Besides the chosen day, PC Follow-up lists
+           every occurrence of the pcBackDays() days before it that is still
+           not done and not moved by a follow-up. A past day can only be
+           'missed' once it is neither ticked nor moved, so no score is worked
+           out here (the employee list runs this for everyone on every
+           keystroke); the rows work it out when drawn.
+           A non-daily one is followed up like the day's own tasks:
+           tm_follow_up takes the past day as p_date and a new date of today or
+           later. A daily task never changes date, so its missed days are shown
+           as one locked row per task listing them (the employee can still
+           finish the last CARRY_DAYS from My Tasks). Personal tasks are left
+           out, as on the day's list. Returns [{t, rec, ds}], oldest first. */
+        function pcEarlier(emp, ds) {
+            const back = pcBackDays(), out = []; if (!back) return out;
+            const tasks = emp.tasks.filter(x => !x.isSelfTask && x.active !== false).map(x => ({ ...x, ownerCode: emp.empCode }));
+            for (let i = back; i >= 1; i--) {
+                const d = dateAt(ds); d.setDate(d.getDate() - i); const dd = ymd(d);
+                if (appState.loadedFrom && dd < appState.loadedFrom) continue;   // not loaded: never guess "missed"
+                tasks.forEach(t => {
+                    const rec = recOf(t, dd);
+                    if (rec && (rec.checked || rec.status === 'rescheduled')) return;
+                    if (occursOn(t, dd, rec)) out.push({ t, rec, ds: dd });
+                });
+            }
+            return out;
+        }
         // An employee's own tasks of that day that are not done and not moved yet (personal tasks excluded).
         function pcPending(emp, ds, now) {
             const out = [];
@@ -2940,10 +3363,11 @@
             return out.sort((a, b) => (a.sc.state === 'upcoming') - (b.sc.state === 'upcoming') || a.sc.deadline - b.sc.deadline);
         }
         function pcStats(emp, ds, now) {
-            const p = pcPending(emp, ds, now);
+            const p = pcPending(emp, ds, now), er = pcEarlier(emp, ds).length;
             const fu = (emp.followups || []).filter(f => f.fromDate === ds).length;
             const d = dayScore(emp, ds, now);
-            return { pending: p.length, overdue: p.filter(x => x.sc.state !== 'upcoming').length, done: d.done, total: d.total, followed: fu };
+            // Earlier days' pending are late by definition, so they count as overdue too.
+            return { pending: p.length + er, overdue: p.filter(x => x.sc.state !== 'upcoming').length + er, earlier: er, done: d.done, total: d.total, followed: fu };
         }
         window.renderPcEmpList = function() {
             const ds = pcDay(), now = new Date(), q = document.getElementById('pcSearch').value.trim().toUpperCase(), only = document.getElementById('pcOnlyPending').checked;
@@ -2960,7 +3384,8 @@
                     + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 truncate">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${mx && mx.contact ? ' · ' + esc(mx.contact) : ''}</div></div>`
                     + `<div class="text-right shrink-0"><div class="text-2xl font-extrabold leading-none ${s.pending ? 'text-violet-800' : 'text-green-600'}">${s.pending}</div><div class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">pending</div></div></div>`
                     + `<div class="flex flex-wrap gap-1.5 mt-2 text-[9px] font-extrabold uppercase tracking-wider">`
-                    + (s.overdue ? `<span class="px-2 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${s.overdue} overdue</span>` : '')
+                    + (s.overdue - s.earlier ? `<span class="px-2 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${s.overdue - s.earlier} overdue</span>` : '')
+                    + (s.earlier ? `<span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">${s.earlier} from earlier days</span>` : '')
                     + (s.pending - s.overdue ? `<span class="px-2 py-0.5 rounded border text-emerald-700 bg-emerald-50 border-emerald-200">${s.pending - s.overdue} not due yet</span>` : '')
                     + `<span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">${s.done}/${s.total} done</span>`
                     + (s.followed ? `<span class="px-2 py-0.5 rounded border text-violet-800 bg-violet-100 border-violet-200">↻ ${s.followed} followed up</span>` : '')
@@ -2968,48 +3393,77 @@
             }).join('') : `<div class="text-center text-sm font-bold text-slate-400 py-8 bg-white border border-dashed border-slate-200 rounded-2xl">${only ? 'No pending tasks for this day.' : 'No employee matches.'}</div>`;
         };
         window.openPcEmp = function(code) { pcSelected = code; renderPcEmpList(); renderPcTasks(); if (window.innerWidth < 1024) document.getElementById('pcTaskPane').scrollIntoView({ behavior: 'smooth' }); };
+        /* One task row of the follow-up pane. `rds` is the row's own day: the
+           chosen day for its own tasks, an earlier day for "Pending from
+           earlier days". pcSave reads it back from data-ds. */
+        function pcRowHtml(t, rec, sc, rds) {
+            /* Date starts on today and time starts empty, so a time is
+               always a conscious choice. A DAILY task never changes
+               date (its next occurrence is tomorrow anyway): only today,
+               and only once its target has passed, it can get a later
+               time today. The server enforces the same
+               (TM_PC_FOLLOWUP_SAMEDAY_MIGRATION.sql). */
+            const inp = 'px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white text-sm font-bold';
+            const today = todayStr(), daily = (t.frequency || 'daily') === 'daily', earlier = rds !== pcDay();
+            const lockMsg = !daily ? '' : (rds !== today ? 'Daily task of a past day: it cannot be rescheduled to another date.'
+                : sc.state === 'upcoming' ? 'Daily task, not missed yet: a time follow-up opens once its target time has passed.' : '');
+            const stCls = sc.state === 'upcoming' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200';
+            const stTxt = sc.state === 'upcoming' ? 'Not due yet · ' + esc(fmtClock(sc.deadline)) : (sc.state === 'missed' ? 'Missed' : 'Overdue') + ' · ' + (sc.pts < 0 ? signed(sc.pts) : sc.pts) + ' pts now';
+            const fuFrom = rec && rec.status === 'pending-reschedule' ? `<div class="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 mt-1.5 inline-flex items-center gap-1.5"><span class="signal-fu" style="width:7px;height:7px"></span> Follow-up from ${esc(rec.origDate || '')}${rec.remarks ? ': “' + esc(rec.remarks) + '”' : ''}</div>` : '';
+            const fromChip = earlier ? `<span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">Pending from ${esc(fmtDay(rds))} · delayed ${esc(fmtDur(new Date() - sc.deadline))}</span>` : '';
+            const head = `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
+                + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider">${fromChip}<span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">${esc(getFrequencyText(t))}</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span><span class="px-2 py-0.5 rounded border ${stCls}">${stTxt}</span></div>`
+                + fuFrom + fuChip(t) + `</div>`;
+            // Nothing to save on this row: say why instead of offering inputs that would be refused.
+            if (lockMsg) return `<div class="rounded-2xl border border-slate-200 p-4 bg-slate-50"><div class="flex items-start gap-3"><i class="ph-bold ph-lock-simple text-slate-400 mt-0.5 shrink-0"></i>${head}</div>`
+                + `<div class="text-[11px] font-bold text-slate-500 mt-2">${esc(lockMsg)}</div></div>`;
+            return `<div class="rounded-2xl border ${earlier ? 'border-red-200' : 'border-slate-200'} p-4 bg-white" data-pc-row data-task="${t.id}" data-ds="${esc(rds)}" data-daily="${daily ? 1 : ''}">`
+                + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
+                + head + `</div>`
+                + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
+                + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">${daily ? 'Follow-up date (daily: today only)' : 'Reschedule date'}</label>`
+                + `<input type="date" data-pc-date value="${today}" min="${today}"${daily ? ' max="' + today + '" disabled title="A daily task stays on today; give it a later time"' : ''} onchange="pcRowTouched(this)" class="w-full ${inp}${daily ? ' opacity-70 cursor-not-allowed' : ''}"></div>`
+                + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time onchange="pcRowTouched(this)" class="w-full ${inp}">${hourOptions('', '-- Select --')}</select></div>`
+                + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
+                + `</div></div>`;
+        }
+        /* A daily task's missed earlier days, as ONE locked row: a daily task
+           never changes date, so there is nothing to save, but the PC sees
+           how often it was missed and when. */
+        function pcDailyGroupHtml(t, days) {
+            const chips = days.map(x => `<span class="px-1.5 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${esc(fmtDay(x.ds))}</span>`).join('');
+            return `<div class="rounded-2xl border border-red-200 p-4 bg-slate-50"><div class="flex items-start gap-3"><i class="ph-bold ph-lock-simple text-slate-400 mt-0.5 shrink-0"></i>`
+                + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
+                + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">Missed on ${days.length} day${days.length > 1 ? 's' : ''}</span><span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">Daily</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span></div>`
+                + `<div class="flex flex-wrap gap-1 mt-2 text-[9px] font-extrabold uppercase tracking-wider">${chips}</div>${fuChip(t)}</div></div>`
+                + `<div class="text-[11px] font-bold text-slate-500 mt-2">Daily task of a past day: it cannot be rescheduled to another date. The employee can still complete the last ${CARRY_DAYS} days from My Tasks (scored late).</div></div>`;
+        }
         window.renderPcTasks = function() {
             const pane = document.getElementById('pcTaskPane'); const e = pcSelected && appState.employees.find(x => x.empCode === pcSelected);
             if (!e) { pane.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">Select an employee on the left.</div>'; return; }
             const ds = pcDay(), now = new Date(), list = pcPending(e, ds, now), mx = masterByCode(e.empCode);
-            const inp = 'px-2.5 py-2 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white text-sm font-bold';
             const done = (e.followups || []).filter(f => f.fromDate === ds);
+            // Earlier days: non-daily ones row by row (oldest first), daily ones grouped per task.
+            const earlier = pcEarlier(e, ds), early = [], dailyBy = new Map();
+            earlier.forEach(x => {
+                if ((x.t.frequency || 'daily') === 'daily') { if (!dailyBy.has(x.t.id)) dailyBy.set(x.t.id, { t: x.t, days: [] }); dailyBy.get(x.t.id).days.push(x); }
+                else early.push({ ...x, sc: taskScore(x.t, x.ds, x.rec, now) });
+            });
+            const back = pcBackDays();
             let h = `<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 class="text-xl font-extrabold text-slate-800">${esc(e.empName)}</h3><div class="text-[11px] font-bold text-slate-500">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${e.desig ? ' · ' + esc(e.desig) : ''}${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}</div></div>`
-                + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="text-sm font-extrabold text-violet-800">${list.length} pending</div></div></div>`;
+                + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="text-sm font-extrabold text-violet-800">${list.length} pending</div>${earlier.length ? `<div class="text-[11px] font-extrabold text-red-700">+ ${earlier.length} from earlier days</div>` : ''}</div></div>`;
+            const editable = list.length + early.length;
+            if (editable) h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Ticked rows are saved; a remark is always needed, and a time when the date is today. Daily tasks cannot change date: once missed they get a later time today.</span></div>`;
             if (!list.length) h += '<div class="text-center p-8 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold">Nothing pending for this day.</div>';
-            else {
-                h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Ticked rows are saved; a remark is always needed, and a time when the date is today. Daily tasks cannot change date: once missed they get a later time today.</span></div>`;
-                h += '<div class="space-y-3">' + list.map(({ t, rec, sc }) => {
-                    /* Date starts on today and time starts empty, so a time is
-                       always a conscious choice. A DAILY task never changes
-                       date (its next occurrence is tomorrow anyway): only today,
-                       and only once its target has passed, it can get a later
-                       time today. The server enforces the same
-                       (TM_PC_FOLLOWUP_SAMEDAY_MIGRATION.sql). */
-                    const today = todayStr(), daily = (t.frequency || 'daily') === 'daily';
-                    const lockMsg = !daily ? '' : (ds !== today ? 'Daily task of a past day: it cannot be rescheduled to another date.'
-                        : sc.state === 'upcoming' ? 'Daily task, not missed yet: a time follow-up opens once its target time has passed.' : '');
-                    const stCls = sc.state === 'upcoming' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-red-700 bg-red-50 border-red-200';
-                    const stTxt = sc.state === 'upcoming' ? 'Not due yet · ' + esc(fmtClock(sc.deadline)) : (sc.state === 'missed' ? 'Missed' : 'Overdue') + ' · ' + (sc.pts < 0 ? signed(sc.pts) : sc.pts) + ' pts now';
-                    const fuFrom = rec && rec.status === 'pending-reschedule' ? `<div class="text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1 mt-1.5 inline-flex items-center gap-1.5"><span class="signal-fu" style="width:7px;height:7px"></span> Follow-up from ${esc(rec.origDate || '')}${rec.remarks ? ': “' + esc(rec.remarks) + '”' : ''}</div>` : '';
-                    const head = `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
-                        + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">${esc(getFrequencyText(t))}</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span><span class="px-2 py-0.5 rounded border ${stCls}">${stTxt}</span></div>`
-                        + fuFrom + fuChip(t) + `</div>`;
-                    // Nothing to save on this row: say why instead of offering inputs that would be refused.
-                    if (lockMsg) return `<div class="rounded-2xl border border-slate-200 p-4 bg-slate-50"><div class="flex items-start gap-3"><i class="ph-bold ph-lock-simple text-slate-400 mt-0.5 shrink-0"></i>${head}</div>`
-                        + `<div class="text-[11px] font-bold text-slate-500 mt-2">${esc(lockMsg)}</div></div>`;
-                    return `<div class="rounded-2xl border border-slate-200 p-4 bg-white" data-pc-row data-task="${t.id}" data-daily="${daily ? 1 : ''}">`
-                        + `<div class="flex items-start gap-3"><input type="checkbox" data-pc-check class="mt-1 w-4 h-4 accent-violet-700 shrink-0" title="Include in Save">`
-                        + head + `</div>`
-                        + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
-                        + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">${daily ? 'Follow-up date (daily: today only)' : 'Reschedule date'}</label>`
-                        + `<input type="date" data-pc-date value="${today}" min="${today}"${daily ? ' max="' + today + '" disabled title="A daily task stays on today; give it a later time"' : ''} onchange="pcRowTouched(this)" class="w-full ${inp}${daily ? ' opacity-70 cursor-not-allowed' : ''}"></div>`
-                        + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time onchange="pcRowTouched(this)" class="w-full ${inp}">${hourOptions('', '-- Select --')}</select></div>`
-                        + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
-                        + `</div></div>`;
-                }).join('') + '</div>';
-                h += `<div class="flex justify-end mt-5"><button id="pcSaveBtn" onclick="pcSave()" class="bg-violet-800 hover:bg-violet-900 text-white font-bold px-8 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Confirm &amp; Save Follow-up</button></div>`;
+            else h += '<div class="space-y-3">' + list.map(({ t, rec, sc }) => pcRowHtml(t, rec, sc, ds)).join('') + '</div>';
+            if (back) {
+                h += `<div class="mt-6 pt-4 border-t border-slate-200"><h4 class="text-[11px] font-extrabold text-red-700 uppercase tracking-wider mb-1">Pending from earlier days (${earlier.length})</h4>`
+                    + `<p class="text-[11px] font-bold text-slate-400 mb-3">Not done and not followed up, in the ${back} days before this day${appState.loadedFrom && appState.loadedFrom > pcBackFrom(ds) ? ' (only from ' + esc(fmtDay(appState.loadedFrom)) + ', still loading the rest)' : ''}. Following one up moves it from its own day to the new date.</p>`;
+                if (!earlier.length) h += '<div class="text-center p-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 font-extrabold text-sm">Nothing pending from earlier days.</div>';
+                else h += '<div class="space-y-3">' + early.map(x => pcRowHtml(x.t, x.rec, x.sc, x.ds)).join('') + [...dailyBy.values()].map(g => pcDailyGroupHtml(g.t, g.days)).join('') + '</div>';
+                h += '</div>';
             }
+            if (editable) h += `<div class="flex justify-end mt-5"><button id="pcSaveBtn" onclick="pcSave()" class="bg-violet-800 hover:bg-violet-900 text-white font-bold px-8 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Confirm &amp; Save Follow-up</button></div>`;
             if (done.length) h += `<div class="mt-6 pt-4 border-t border-slate-100"><h4 class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Already followed up for this day</h4><div class="space-y-1.5">` + done.slice().reverse().map(f => { const tk = findTask(e.empCode, f.taskNo); return `<button onclick="showFollowupHistory('${esc(e.empCode)}',${f.taskNo},'${esc(ds)}')" class="w-full text-left text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100"><b class="text-slate-800">${esc(tk ? tk.desc : 'Task ' + f.taskNo)}</b> <span class="text-violet-800 font-extrabold">→ ${esc(f.toDate)}${f.toTime ? ' ' + esc(f.toTime) : ''}</span>${f.remarks ? ' <span class="text-slate-500 italic">“' + esc(f.remarks) + '”</span>' : ''} <span class="text-slate-400 font-bold">· ${esc(f.by || '')}</span></button>`; }).join('') + '</div></div>';
             pane.innerHTML = h;
         };
@@ -3028,6 +3482,8 @@
             if (!rows.length) return showCustomModal('Nothing selected', 'Tick at least one task and give it a remark (and a time when the date is today).', true);
             const items = [], bad = [], nowH = new Date().getHours();
             rows.forEach(r => {
+                // The row's own day: the chosen day, or an earlier one ("Pending from earlier days").
+                const rds = r.dataset.ds || ds;
                 const id = +r.dataset.task, daily = !!r.dataset.daily, nd = daily ? today : r.querySelector('[data-pc-date]').value;
                 const rm = r.querySelector('[data-pc-remarks]').value.trim(), hv = r.querySelector('[data-pc-time]').value, tm = to12h(hv);
                 const t = findTask(code, id), nm = esc(t ? t.desc : 'Task ' + id);
@@ -3036,19 +3492,19 @@
                 let err = '';
                 if (!nd) err = 'no date';
                 else if (nd < today) err = 'the date cannot be before today';
-                else if (daily && ds !== today) err = 'a daily task of a past day cannot be rescheduled';
+                else if (daily && rds !== today) err = 'a daily task of a past day cannot be rescheduled';
                 else if (nd === today && !hv) err = 'choose a time for today';
                 else if (nd === today && +hv.slice(0, 2) <= nowH) err = 'choose a time later than now';
                 else if (!rm) err = 'no remark';
                 if (err) bad.push(nm + ': ' + err);
-                else items.push({ id, nd, rm, tm });
+                else items.push({ id, rds, nd, rm, tm });
             });
             if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
             if (!confirm(`Save follow-up for ${items.length} task(s) of ${empName(code)}?`)) return;
             setBusy('pcSaveBtn', true);
             const fail = [];
             for (const it of items) {
-                const res = await tmRpc('tm_follow_up', { p_emp: code, p_task_no: it.id, p_date: ds, p_next_date: it.nd, p_next_time: it.tm, p_remarks: it.rm, p_source: 'PC' });
+                const res = await tmRpc('tm_follow_up', { p_emp: code, p_task_no: it.id, p_date: it.rds, p_next_date: it.nd, p_next_time: it.tm, p_remarks: it.rm, p_source: 'PC' });
                 if (!res.ok) { const t = findTask(code, it.id); fail.push(esc(t ? t.desc : it.id) + ': ' + (TM_ERR[res.error] || esc(res.error))); }
             }
             await refreshAndRerender();
@@ -3104,7 +3560,9 @@
                 const s = dayScore(emp, ds, now);
                 const sH = s.possible ? `<div class="mt-1 leading-tight" title="${s.gained} of ${s.possible} pts · ${s.onTime} on time, ${s.grace} grace, ${s.late} late, ${s.missed + s.overdue} not done"><div class="text-[10px] font-extrabold ${pctCls(s.pct)}">${s.pct}%</div><div class="text-[9px] font-bold text-slate-500">${s.gained}</div></div>`
                     : (ds <= td && s.upcoming ? '<div class="mt-1 text-[9px] font-bold text-slate-400 leading-tight">due</div>' : '');
-                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'tm-today text-indigo-900':''}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}</th>`;
+                // Coordinator's cut for tasks left without a follow-up that day (click = which tasks).
+                const fH = s.fupN ? `<button onclick="showFupCuts('${esc(emp.empCode)}','${ds}')" title="${s.fupN} task(s) not followed up · −${s.fupCut} pts" class="mt-0.5 text-[9px] font-extrabold text-violet-800 bg-violet-100 border border-violet-200 rounded px-1 leading-tight">−${s.fupCut} FU</button>` : '';
+                hHtml+=`<th class="p-1.5 border border-slate-300 text-center w-14 align-top pt-2 ${isT?'tm-today text-indigo-900':''}"><div class="font-extrabold text-sm">${d}</div>${dotH}${sH}${fH}</th>`;
             } th.innerHTML=hHtml;
 
             dTasks.forEach(t=>{
@@ -3131,7 +3589,14 @@
                     if (isFinalPlan && t.postponeHistory.length > 1) cx += ' ea-line-end bg-rose-50/30';
                     if (isFirstPlan) cc += `<div class="ea-dot-red" title="First Planned Date"></div>`;
                     // Postponed EA: the earlier days only carry the line, no action and no score.
-                    if (!occurs) { rH+=`<td class="${cx}">${cc}</td>`; continue; }
+                    // An earlier EA plan date: once the final day has its photo, a camera here opens the whole chain (showProofChain).
+                    if (!occurs) {
+                        if (isFirstPlan && chainHasProof(t.ownerCode, t.id, t.postponeHistory)) cc += `<button onclick="showProofChain('${oc}',${t.id},'${ds}')" title="Proof photos of this postponed task" class="absolute inset-0 w-full h-full flex items-center justify-center z-20 hover:bg-rose-100/60"><i class="ph-fill ph-camera text-rose-500 text-base"></i></button>`;
+                        rH+=`<td class="${cx}">${cc}</td>`; continue;
+                    }
+                    // Days linked by follow-ups / EA postpones (more than one = a chain whose photos are viewed together).
+                    const chain = proofChainOf(t.ownerCode, t.id, ds);
+                    const inChain = chain.length > 1, chainPh = inChain && chainHasProof(t.ownerCode, t.id, chain);
                     if (isFinalPlan && (!rec || !rec.checked)) cc += `<div class="ea-dot-green" title="New Planned Date"></div>`;
 
                     const sc = taskScore(t, ds, rec, now);
@@ -3139,10 +3604,13 @@
                     const tip = rec ? esc((rec.timestamp||'') + (rec.doneBy ? ' · ' + rec.doneBy : '') + (sc.state === 'done' ? ' · ' + sc.pts + ' pts' : '')) : '';
                     const ptsBtn = (cls) => `<button onclick="event.stopPropagation(); showPointsBreakdown('${oc}',${t.id},'${ds}')" class="text-[9px] font-extrabold ${cls} px-1 rounded border absolute top-0.5 right-0.5 z-30 hover:scale-110 transition-transform leading-tight">${sc.pts}</button>`;
 
-                    if(sc.state==='moved'){ cc+=`<div onclick="showFollowupHistory('${oc}',${t.id},'${ds}')" class="absolute inset-0 flex flex-col items-center justify-center bg-purple-100 cursor-pointer z-20" title="Followed up to ${esc(rec.nextDate)}${rec.remarks?' · '+esc(rec.remarks):''}${rec.doneBy?' · by '+esc(rec.doneBy):''} · click for history"><div class="signal-fu absolute top-1 right-1"></div><i class="ph-bold ph-arrow-u-down-right text-purple-800 text-lg"></i><span class="text-[9px] font-extrabold text-purple-900">→${esc(String(rec.nextDate||'').split('-')[2]||'')}</span></div>`; cx+=' bg-purple-50/50'; }
+                    // Moved day: opens the chain, so the photo of the day it was finally done shows here too (camera = there is one).
+                    if(sc.state==='moved'){ cc+=`<div onclick="showProofChain('${oc}',${t.id},'${ds}')" class="absolute inset-0 flex flex-col items-center justify-center bg-purple-100 cursor-pointer z-20" title="Followed up to ${esc(rec.nextDate)}${rec.remarks?' · '+esc(rec.remarks):''}${rec.doneBy?' · by '+esc(rec.doneBy):''} · click for proof photos and history"><div class="signal-fu absolute top-1 right-1"></div><i class="ph-bold ph-arrow-u-down-right text-purple-800 text-lg"></i><span class="text-[9px] font-extrabold text-purple-900">→${esc(String(rec.nextDate||'').split('-')[2]||'')}</span>${chainPh?'<i class="ph-fill ph-camera text-purple-700 text-[11px] absolute bottom-1 right-1" title="Proof photo in this chain"></i>':''}</div>`; cx+=' bg-purple-50/50'; }
                     else if(sc.state==='done'){
                         const bg = rec.status==='rescheduled-done' ? 'bg-purple-50 text-purple-600' : (sc.phase==='on-time' ? 'bg-green-50 text-green-600' : (sc.phase==='grace' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600'));
-                        const act = rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`;
+                        // Done after a follow-up / postpone: this day's photo and the earlier postponed day(s) together.
+                        // MD Oversight: check the proof and, if needed, send it back (mdCheckDone).
+                        const act = isMDView ? `onclick="mdCheckDone('${oc}',${t.id},'${ds}')"` : inChain ? `onclick="showProofChain('${oc}',${t.id},'${ds}')"` : (rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`);
                         cc+=`<div ${act} title="${tip}" class="absolute inset-0 flex items-center justify-center ${bg} ${isT?'check-pop':''} cursor-pointer z-20">${sc.pts < sc.base ? ptsBtn('text-orange-800 bg-orange-100 border-orange-200') : ''}<i class="ph-bold ph-check text-xl"></i>${pIco}</div>`;
                     }
                     else if(isT && !isMDView){
@@ -3151,13 +3619,16 @@
                     }
                     else if(isPast || isT){
                         if(isMDView && isPast) cc+=`<button onclick="promptMDOverride('${oc}',${t.id},'${ds}')" title="Missed · ${sc.pts} pts if approved now" class="absolute inset-0 w-full h-full bg-red-500 flex items-center justify-center hover:bg-red-600 group outline-none cursor-pointer z-30"><span class="text-[10px] font-extrabold text-white group-hover:hidden">${sc.pts}</span><i class="ph-fill ph-gear text-white text-xl hidden group-hover:block"></i></button>`;
-                        else if(isPast) cc+=`<button onclick="promptLateTaskPin('${oc}',${t.id},'${ds}','${t.frequency}')" title="Missed · ${sc.pts} pts if approved now" class="absolute inset-0 w-full h-full bg-red-50 hover:bg-red-100 flex flex-col items-center justify-center transition-colors cursor-pointer group outline-none z-30"><div class="signal-red absolute top-1.5 right-1.5 opacity-80"></div><span class="text-[10px] font-extrabold text-red-800 group-hover:hidden drop-shadow-sm">${sc.pts}</span><i class="ph-fill ph-lock-key text-red-500 text-xl hidden group-hover:block drop-shadow-sm"></i></button>`;
+                        // Within CARRY_DAYS the employee finishes it themselves (late); older days need a late approval.
+                        else if(isPast) cc+=`<button onclick="${inCarryWindow(ds) && !t.isSelfTask ? `promptTaskPin('${oc}',${t.id},'${ds}')` : `promptLateTaskPin('${oc}',${t.id},'${ds}','${t.frequency}')`}" title="${inCarryWindow(ds) && !t.isSelfTask ? 'Pending' : 'Missed'} · ${sc.pts} pts if done now" class="absolute inset-0 w-full h-full bg-red-50 hover:bg-red-100 flex flex-col items-center justify-center transition-colors cursor-pointer group outline-none z-30"><div class="signal-red absolute top-1.5 right-1.5 opacity-80"></div><span class="text-[10px] font-extrabold text-red-800 group-hover:hidden drop-shadow-sm">${sc.pts}</span><i class="ph-fill ph-lock-key text-red-500 text-xl hidden group-hover:block drop-shadow-sm"></i></button>`;
                         // MD view, today, not done yet: nothing to approve until the day is over.
                         else cc+=`<div onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')" class="absolute inset-0 w-full h-full flex items-center justify-center cursor-pointer z-20">${sc.state==='overdue'?ptsBtn('text-red-800 bg-red-100 border-red-200'):''}<div class="${isR?'signal-purple':'signal-orange'} shadow-md"></div></div>`;
                     }
                     else if(isF) { cc+=`<div onclick="showUpcomingTaskDetails('${oc}',${t.id},'${ds}')" class="absolute inset-0 w-full h-full flex items-center justify-center cursor-pointer hover:bg-slate-100 z-20">${isFinalPlan?'':`<div class="${isR?'signal-purple-slow':'signal-green'} shadow-sm"></div>`}</div>`; }
                     // Moved here by a follow-up and not done yet: the blinking dark-purple dot (click = history).
                     if (rec && rec.status==='pending-reschedule' && !rec.checked) cc+=`<div onclick="event.stopPropagation(); showFollowupHistory('${oc}',${t.id},'${ds}')" title="Follow-up from ${esc(rec.origDate||'')}${rec.remarks?' · '+esc(rec.remarks):''}" class="signal-fu absolute top-1 left-1 z-40 cursor-pointer"></div>`;
+                    // Sent back from MD Oversight and not done again yet: a rose ↺ in the corner, who / when / why on hover.
+                    if (rec && !rec.checked && rec.undoneAt) cc+=`<i class="ph-bold ph-arrow-counter-clockwise text-rose-600 text-[11px] absolute bottom-0.5 left-0.5 z-40" title="Undone by ${esc(rec.undoneBy || '-')} · ${esc(fmtWhen(new Date(rec.undoneAt)))}${rec.undoRemarks ? ' · ' + esc(rec.undoRemarks) : ''}"></i>`;
                     rH+=`<td class="${cx}">${cc}</td>`;
                 } tr.innerHTML=rH; tb.appendChild(tr);
             });

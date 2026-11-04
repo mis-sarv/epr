@@ -2063,6 +2063,53 @@ safe to re-run). It lets `tm_follow_up` take the same day (today only, time requ
 a date change for a daily task from PC Follow-up (`DAILY_SAME_DAY`). MD Oversight is unchanged.
 Until it is run, a same-day save is refused by the server with "Please choose a valid date".
 
+**Pending carry forward and Self Task proof** (task_manager.html). A task of the last **6 days**
+(`CARRY_DAYS`) that is still not done (missed, not moved by a follow-up) is shown on **today** too:
+first in its own list and under Daily, red border, "Pending from <date>", its plan date and how long it
+is delayed; it also counts in the badges and the Delayed alarm. Completing it ticks **that day's**
+record (status `late`, `completed_date` today), so it is scored late against its own target and
+today's score does not count it again. Older days still need a late approval (MD Oversight).
+A **Self Task** can be completed with or without a photo ("Upload Proof (Optional)"); assigned
+tasks still need one. Server side: run `sql/TM_CARRY_FORWARD_MIGRATION.sql` (after
+`TASK_MANAGER_MIGRATION.sql`; safe to re-run). It changes `tm_mark_done` and adds
+`tm_carry_days_()` (must equal `CARRY_DAYS`). Until it is run the page says so when either is tried.
+
+**PC Follow-up: pending from earlier days** (client only, no migration). Under the chosen day's
+list, "Pending from earlier days" lists every task occurrence of the last 7 / 30 / **90** (default) /
+365 days (the "Earlier pending" box, `pcEarlier`) that is not done and not moved. A non-daily one is
+followed up like the day's own tasks: `tm_follow_up` gets that earlier day as `p_date` (each row
+carries its day in `data-ds`). A daily task never changes date, so its missed days show as one locked
+row per task listing them. The employee list counts them ("N from earlier days").
+
+**Score Master: Pending Follow-ups Task** (client only, no migration). A card in Score Master: on /
+off, **coordinators** (employees with a task list), the employees they follow up (none = everyone
+but themselves), points cut per task, hours allowed after the target, and an optional most-per-day.
+A task counts against each coordinator when, that many hours after its target, it is neither done
+nor followed up (`tm_followups.at`, PC Follow-up or MD Oversight); one cut per task per day. The rule
+is saved as `followup` inside the Score Master version (`tm_save_settings` keeps the whole object), so
+it is dated like the other rules and the rule in force at the task's target time decides; saving
+never re-scores the past. `fupDayCut` works it out; `dayScore` takes it off the coordinator's gained
+points, so it shows in their sheet (a violet "−N FU" under the day, click = the tasks), My Score and
+the Score Card. The Task Tracker scorecard in `fms-tasks.js` scores task by task and does not include it.
+
+**MD Oversight: Undone a done task** (task_manager.html + `sql/TM_UNDO_DONE_MIGRATION.sql`). In the
+MD sheet a done cell opens **Check Done Task** (`mdCheckDone`): the proof photo, who ticked it and
+when, the points, and with the right **Undo Done Task** (`TM_UNDO_DONE`, default Admin + MD, row in
+`SARV_TABS`; the server default must match) an Undone box that needs a remark. `tm_undo_done` makes
+the record not done again (`status 'undone'`, or `'pending-reschedule'` for a follow-up day) and keeps
+`undone_by` / `undone_at` / `undo_remarks` / `undo_count`. The employee's pending card shows
+"Undone by NAME · time" with the remark and a link to the rejected photo (`undoInfoHtml`; the
+photo is kept until the task is done again); the pending alarm and a rose ↺ on the sheet cell say
+so too. A redo is scored late against the task's own target. The migration also adds the key to
+`tm_perms_` and the new columns to `tm_rec_json_`. Until it is run the Check Done Task window says so.
+
+**Month view: proof photos of a follow-up / postpone chain** (client only). A moved day holds no
+photo; the photo is on the day the task was finally done. `proofChainOf` links the days of one chain
+(tm_followups from → to both ways, or an EA task's `postponeHistory`), and `showProofChain` shows every
+day of it with its photo, the clicked day marked "This day" and the earlier ones "Earlier (postponed)".
+It opens from a moved (purple) cell, a done cell that is part of a chain, and the first planned
+date of a postponed EA task; a camera mark shows when the chain has a photo.
+
 **My Tasks pending alarm** (client only, no migration). Each category button (Daily, Weekly,
 Monthly, Yearly, EA, Buddy) shows a blinking red badge with today's tasks still to do in that list
 (same matching as the list itself, `taskCats`). Opening My Tasks shows the **Pending Today** list

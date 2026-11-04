@@ -208,11 +208,30 @@ const DOMAIN_KEYS = ["machine","fabric"];
    machine side is Maintenance's job and the fabric side the Production
    Manager's (DOMAINS[*].triager), so the other register is only noise on
    their screen and its tab is not shown. Everyone else (User, Host, Admin)
-   keeps both. */
+   keeps both.
+   The Production Manager gets the machine register too: a fabric person
+   still finds broken machines on the floor, and raises them there as a
+   plain User (roleIn below). Maintenance keeps only machines. */
 const domainsFor = p =>
-  p?.role === "Maintenance"        ? ["machine"] :
-  p?.role === "Production Manager" ? ["fabric"]  :
-  DOMAIN_KEYS;
+  p?.role === "Maintenance" ? ["machine"] : DOMAIN_KEYS;
+/* The role a person plays INSIDE one register. A triager or Host only has
+   their power in the register it belongs to; in the other one they are a
+   plain User (raise, follow and confirm their own complaints):
+     - Production Manager in the machine register      -> User
+     - a Host none of whose types are this register's  -> User
+       (a fabric Host in Machine Complaint, a Mechanical / Electrical Host
+       in Fabric Complaint)
+   The database already works this way (cmp_mc_guard lets only Host /
+   Maintenance of the type move a machine complaint), so this only keeps
+   the screen from offering buttons the server would refuse. */
+const roleIn = (p, D) => {
+  const r = p?.role;
+  if (!r || r === "Admin" || r === D.triager || r === "User") return r;
+  if (r === "Host") return (p.host_types || []).some(t => D.types.includes(t)) ? "Host" : "User";
+  return "User";   // the other register's triager
+};
+// Hosts who answer for at least one type of this register.
+const hostsIn = (hosts, D) => (hosts || []).filter(h => (h.host_types || []).some(t => D.types.includes(t)));
 const DOMAIN_STORE_KEY = "sarv-cmp-domain";
 
 /* ── Units (Unit-1 / Unit-2) ─────────────────────────────────────────
@@ -1714,7 +1733,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
                 </optgroup>
               )}
               {filteredHosts.matched.length === 0 && filteredHosts.others.length === 0 && (
-                <option disabled>{c.unit ? `No ${c.unit} host found. Ask the Admin to add one.` : "No host found. Ask the Admin to add a host."}</option>
+                <option disabled>{`No ${c.unit ? c.unit + " " : ""}host with a ${D.key} complaint type found. Ask the Admin to add one (ERP › Admin Panel › Users).`}</option>
               )}
             </select>
           </Field>
@@ -2921,7 +2940,7 @@ function App(){
   useEffect(()=>{
     try { localStorage.setItem(DOMAIN_STORE_KEY, domainKey); } catch(e){}
   },[domainKey]);
-  // With a single register (Maintenance / Production Manager) there is
+  // With a single register (Maintenance) there is
   // nothing to swipe to, so the gesture does nothing.
   const otherKey = myDomains.find(k => k !== D.key);
   // Swipe either way on the register buttons toggles between the two.
@@ -2976,10 +2995,16 @@ function App(){
   );
   if (!profile) return <div className="min-h-screen grid place-items-center"><Spinner className="w-7 h-7 text-teal-600" /></div>;
 
+  /* `dp` = the profile as this register sees it (roleIn): same person, but
+     a Production Manager or fabric Host in the machine register comes
+     through as a User. Every complaint screen below gets dp; the header,
+     Notices and Machines keep the real profile. */
+  const dRole = roleIn(profile, D);
+  const dp = dRole === profile.role ? profile : { ...profile, role: dRole };
   const scopeLine =
-    profile.role === "Admin" ? "Sab complaints" :
-    profile.role === D.triager ? "Sab hosts ki complaints" :
-    profile.role === "Host" ? `${(profile.host_types||[]).join(", ")} complaints` :
+    dp.role === "Admin" ? "Sab complaints" :
+    dp.role === D.triager ? "Sab hosts ki complaints" :
+    dp.role === "Host" ? `${(dp.host_types||[]).filter(t => D.types.includes(t)).join(", ")} complaints` :
     "Only your complaints";
 
   // ---- units ----
@@ -2993,9 +3018,16 @@ function App(){
   const MINE = "__mine";
   const isMine = r => r.raised_by_user_id === profile.id;
   const effUnitF = allUnits && (unitF === MINE || units.some(u => u.code === unitF)) ? unitF : "All";
-  const viewRows = effUnitF === "All" ? rows
-    : effUnitF === MINE ? rows.filter(isMine)
-    : rows.filter(r => r.unit === effUnitF);
+  /* Someone who is only a User in this register (dp above) sees just the
+     complaints they raised or were given, as a real User does. RLS already
+     returns no more than that to them; filtering here too keeps it so on a
+     login whose request reached the table without their auth session. */
+  const dRows = dp.role === "User" && profile.role !== "User"
+    ? rows.filter(r => r.raised_by_user_id === profile.id || r.host_user_id === profile.id)
+    : rows;
+  const viewRows = effUnitF === "All" ? dRows
+    : effUnitF === MINE ? dRows.filter(isMine)
+    : dRows.filter(r => r.unit === effUnitF);
   /* No unit on this user yet (an older account, or one whose unit the Admin
      hasn't set in ERP › Admin Panel › Users). The database would refuse the
      complaint anyway; saying so before the form is filled in saves them the
@@ -3036,14 +3068,14 @@ function App(){
           <div className="min-w-0 flex-1">
             <h1 className="font-bold text-[14px] sm:text-[15px] leading-tight truncate">{D.title}</h1>
             <p className="text-[10.5px] sm:text-[11.5px] text-slate-500 truncate">
-              {profile.name} · {profile.role}
+              {profile.name} · {profile.role}{dp.role !== profile.role ? ` (${dp.role} here)` : ""}
               {hasUnits && <> · <span className="font-semibold text-violet-700">{allUnits ? "All units" : (profile.unit ? unitName(units, profile.unit) : "No unit")}</span></>}
             </p>
           </div>
           <BellButton toast={toast} />
           <Btn variant="ghost" size="sm" icon={I.logout} onClick={sarvLogoutAll} aria-label="Logout" className="shrink-0" />
         </div>
-        {/* Only when there is a choice: a Maintenance / Production Manager
+        {/* Only when there is a choice: a Maintenance
             login has one register, already named in the title above. */}
         {myDomains.length > 1 && (
         <div ref={domainSwipeRef} role="group" aria-label="Complaint register"
@@ -3076,9 +3108,9 @@ function App(){
             <span className="text-[10.5px] uppercase tracking-wide text-slate-500 shrink-0 mr-0.5">Unit</span>
             {[{ code:"All", name:"All units" }, ...units, { code:MINE, name:"My Complaints" }].map(u => {
               const on = effUnitF === u.code;
-              const n = u.code === "All" ? rows.length
-                : u.code === MINE ? rows.filter(isMine).length
-                : rows.filter(r => r.unit === u.code).length;
+              const n = u.code === "All" ? dRows.length
+                : u.code === MINE ? dRows.filter(isMine).length
+                : dRows.filter(r => r.unit === u.code).length;
               return (
                 <button key={u.code} type="button" onClick={()=>setUnitF(u.code)} aria-pressed={on}
                   className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${
@@ -3105,8 +3137,8 @@ function App(){
                 <span><b>Your unit is not set yet.</b> You can't raise a complaint until the Admin sets Unit-1 / Unit-2 on your user.</span>
               </div>
             )}
-            <Stats rows={viewRows} profile={profile} D={D} />
-            <ComplaintsView profile={profile} rows={viewRows} loading={loading} D={D}
+            <Stats rows={viewRows} profile={dp} D={D} />
+            <ComplaintsView profile={dp} rows={viewRows} loading={loading} D={D}
               onRefresh={()=>loadRows(true)} onOpen={setDetail} toast={toast}
               tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen}
               showUnit={allUnits && (effUnitF === "All" || effUnitF === MINE)} />
@@ -3181,14 +3213,14 @@ function App(){
       </div>
 
       {showNew && (
-        <NewComplaintModal profile={profile} machines={machines} processes={processes} D={D}
+        <NewComplaintModal profile={dp} machines={machines} processes={processes} D={D}
           fabricQualities={fabricQualities} lotCards={lotCards}
           toast={toast} onView={setLightbox}
           onClose={()=>setShowNew(false)}
           onSaved={()=>{ setShowNew(false); loadRows(false); loadMachines(); loadProcesses(); loadFabricMasters(); }} />
       )}
       {detail && (
-        <ComplaintDetail complaint={detail} profile={profile} hosts={hosts} D={D} toast={toast} onView={setLightbox}
+        <ComplaintDetail complaint={detail} profile={dp} hosts={hostsIn(hosts, D)} D={D} toast={toast} onView={setLightbox}
           onClose={()=>setDetail(null)} onSaved={()=>{ setDetail(null); loadRows(false); }} />
       )}
       {lightbox && <Lightbox src={lightbox} onClose={()=>setLightbox(null)} />}
