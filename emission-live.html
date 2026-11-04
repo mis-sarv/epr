@@ -74,7 +74,7 @@
 </head>
 <body class="font-sans text-slate-800">
 
-<div class="max-w-7xl mx-auto px-4 py-4 sm:py-6">
+<div class="max-w-[1920px] mx-auto px-4 py-4 sm:py-6">
 
   <!-- Header: title + the controls shared by both units -->
   <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
@@ -98,11 +98,11 @@
     </div>
   </div>
 
-  <!-- Unit switch (filled by APP.paintSwitch): each card shows that unit's live readings -->
-  <div id="unitSwitch" class="grid gap-3 sm:grid-cols-2 mb-4"></div>
+  <!-- The old unit switch: no longer drawn, both units are on screen side by side (APP.paintSwitch skips it) -->
+  <div id="unitSwitch" class="hidden"></div>
 
-  <!-- One full view per unit (unitHTML); only the chosen one is shown -->
-  <div id="unitViews"></div>
+  <!-- One full view per unit (unitHTML), half the screen each (stacked on a narrow screen) -->
+  <div id="unitViews" class="grid gap-4 lg:grid-cols-2 items-start"></div>
 
   <div class="text-[11px] text-slate-400 mt-4 leading-relaxed">
     Source: Access Surveykshan online monitoring. Readings are what each unit's data logger sent to the portal. "Limit" = the legal standard set on the portal; "range" = our own working range per unit, used for the highlights, filter and alerts.
@@ -118,11 +118,13 @@
      Unit 2  industry 68e63600e13fce98d6e998e7, data logger M00817
              (Sarv India Home Furnishing Unit 2; the portal names the plant
               "Diamond India Pvt Ltd")
-   The page is divided into one full view per unit (live tiles, history
-   report, alerts, working range), each in its own theme colour (UNITS),
-   with a switch at the top that also shows both units' live readings, so a
-   reading going out of range in the unit not on screen is still seen. Both
-   units keep polling and notifying whichever view is open.
+   The page shows one full view per unit (live tiles, history report,
+   alerts, working range), each in its own theme colour (UNITS), side by
+   side: half the screen each, stacked on a narrow screen. Both units are
+   always on screen, poll and notify; both reports load at the start, at
+   2-hourly averages by default (the portal fallback joins its hourly
+   averages into 2-hour bins, see fetchHistory). The earlier unit switch
+   (#unitSwitch, paintSwitch) is kept hidden and not drawn.
 
    How the data is reached: the portal's own web app reads three endpoints
    of its API, and all three answer any website (Access-Control-Allow-Origin
@@ -268,7 +270,7 @@ async function dbRpc(fn, args) {
 function unitHTML(U) {
   const k = U.key, R = 'UNIT.' + k;
   return `
-  <section id="${k}-root" class="unit hidden" style="--ac:${U.ac};--acD:${U.acD};--acL:${U.acL};--acB:${U.acB}">
+  <section id="${k}-root" class="unit min-w-0" style="--ac:${U.ac};--acD:${U.acD};--acL:${U.acL};--acB:${U.acB}">
     <!-- Unit heading: plant on the portal + logger status -->
     <div class="uHead flex flex-wrap items-center justify-between gap-3 px-4 py-3 mb-4">
       <div class="min-w-0">
@@ -284,7 +286,7 @@ function unitHTML(U) {
     <div id="${k}-alertBanner" class="hidden mb-4"></div>
 
     <!-- Live tiles, one per parameter -->
-    <div id="${k}-tiles" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mb-4">
+    <div id="${k}-tiles" class="grid gap-3 sm:grid-cols-2 mb-4">
       <div class="card p-5 text-sm text-slate-500">Loading live readings...</div>
     </div>
 
@@ -293,7 +295,7 @@ function unitHTML(U) {
       <div class="flex flex-wrap items-end gap-2 mb-3">
         <div class="w-full mb-1">
           <div class="text-sm font-bold" style="color:${U.acD}">History report · ${esc(U.name)}</div>
-          <div class="text-[11px] text-slate-500" id="${k}-hHint">Up to 31 days. Long ranges at 1-minute detail load slowly; use 1 hour or 1 day for them.</div>
+          <div class="text-[11px] text-slate-500" id="${k}-hHint">Up to 31 days. Long ranges at 1-minute detail load slowly; use 2 hours or 1 day for them.</div>
           <!-- What is saved in our database (emission_status), or why not -->
           <div class="text-[11px] mt-1 flex flex-wrap items-center gap-2" id="${k}-dbLine"></div>
         </div>
@@ -302,8 +304,9 @@ function unitHTML(U) {
         <label class="text-[11px] font-semibold text-slate-500">Detail<br>
           <select id="${k}-hStep" class="sel">
             <option value="1">Every minute</option>
-            <option value="15" selected>15-minute average</option>
+            <option value="15">15-minute average</option>
             <option value="60">Hourly average</option>
+            <option value="120" selected>2-hourly average</option>
             <option value="1440">Daily average</option>
           </select>
         </label>
@@ -319,7 +322,7 @@ function unitHTML(U) {
         </div>
         <button class="btn" id="${k}-hCsvBtn" onclick="${R}.csv()" disabled>Export CSV</button>
       </div>
-      <div id="${k}-hSummary" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 mb-3"></div>
+      <div id="${k}-hSummary" class="grid gap-2 sm:grid-cols-2 mb-3"></div>
       <div id="${k}-hMsg" class="text-sm text-slate-500 py-6 text-center">Pick the dates and press Load.</div>
       <div id="${k}-hTableWrap" class="hidden overflow-auto sb border border-slate-200 rounded-lg" style="max-height:460px">
         <table class="rep w-full"><thead id="${k}-hHead"></thead><tbody id="${k}-hBody"></tbody></table>
@@ -526,7 +529,26 @@ function makeUnit(U) {
 
     /* ── 3. History (report) ──────────────────────────────────────── */
     // One request per logger; the columns of all loggers are joined on the time.
+    /* The portal's own steps are 1 / 15 / 60 / 1440 minutes. A 2-hourly
+       report asks it for hourly averages and joins each even hour with the
+       next (00-02, 02-04 …, the same bins as emission_rows), each value
+       the average of the hours that have one. */
     async fetchHistory(from, to, step) {
+      if (String(step) === '120') {
+        const h = await EM.fetchHistory(from, to, '60'), bins = {};
+        h.rows.forEach(r => {
+          const s = String(r.createdAt), hr = parseInt(s.slice(11, 13), 10);
+          if (isNaN(hr)) return;
+          const k = s.slice(0, 11) + pad(hr - hr % 2) + ':00:00';
+          const b = bins[k] || (bins[k] = { createdAt: k, sum: {}, n: {} });
+          h.cols.forEach(c => { const v = r[c]; if (v != null && v !== '' && !isNaN(v)) { b.sum[c] = (b.sum[c] || 0) + Number(v); b.n[c] = (b.n[c] || 0) + 1; } });
+        });
+        return { cols: h.cols, rows: Object.keys(bins).sort().map(k => {
+          const b = bins[k], o = { createdAt: k };
+          h.cols.forEach(c => { if (b.n[c]) o[c] = b.sum[c] / b.n[c]; });
+          return o;
+        }) };
+      }
       const byTime = {}, cols = [];
       for (const d of EM.loggers) {
         const url = SK_GRAPH + '/' + encodeURIComponent(d.device_name) + '/' + step + '/' + from + '/' + to + '/00:00:00/23:59:59';
@@ -852,23 +874,17 @@ const APP = {
     APP.units.forEach(u => { byId(u.U.key + '-hFrom').value = today(); byId(u.U.key + '-hTo').value = today(); u.paintBands(); });
   },
 
-  // The open unit: from the address (#u2), else the last one used, else Unit 1.
+  /* Both units are always on screen, half each. "Showing" a unit (an alert
+     pop-up clicked, or #u2 in the address) now only brings it into view; on
+     a narrow screen, where the halves are stacked, that is a real scroll. */
   initialUnit() {
     const h = (location.hash || '').replace('#', '').toLowerCase();
-    if (UNIT[h]) return h;
-    const p = pref('unit');
-    return UNIT[p] ? p : UNITS[0].key;
+    return UNIT[h] ? h : null;
   },
   show(key) {
     if (!UNIT[key]) return;
     APP.active = key;
-    pref('unit', key);
-    try { history.replaceState(null, '', '#' + key); } catch (e) {}
-    APP.units.forEach(u => byId(u.U.key + '-root').classList.toggle('hidden', u.U.key !== key));
-    APP.paintSwitch();
-    // The other unit's report loads the first time its view is opened.
-    const u = UNIT[key];
-    if (!u.histLoaded && u.db !== null) u.loadHistory();
+    try { byId(key + '-root').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
   },
 
   /* The switch at the top: one card per unit with its status and live
@@ -876,7 +892,7 @@ const APP = {
      that is NOT on screen is watched too. */
   paintSwitch() {
     const box = byId('unitSwitch');
-    if (!box || !APP.units.length) return;
+    if (!box || box.classList.contains('hidden') || !APP.units.length) return;   // hidden: both units are on screen
     box.innerHTML = APP.units.map(u => {
       const U = u.U, on = APP.active === U.key;
       const vals = u.live.length ? u.live.map(v => {
@@ -926,7 +942,7 @@ const APP = {
     } catch (e) {}
   },
   async toggleDesktop() {
-    const err = m => { const u = UNIT[APP.active]; if (u) u.showErr(m); };
+    const err = m => APP.units.forEach(u => u.showErr(m));   // both units are on screen
     if (!('Notification' in window)) { err('This browser cannot show desktop notifications.'); return; }
     if (pref('desktop') === 'on') { pref('desktop', 'off'); APP.paintNotifyBtns(); return; }
     let p = Notification.permission;
@@ -973,12 +989,11 @@ const APP = {
 function init() {
   APP.build();
   APP.paintNotifyBtns();
-  APP.show(APP.initialUnit());
+  const first = APP.initialUnit(); if (first) setTimeout(() => APP.show(first), 300);
   // Per unit: the bands (and whether the database is set up) first, since the
-  // tiles and the report use them; then live readings; then the open unit's report.
-  APP.units.forEach(u => u.loadDbStatus().then(() => u.refresh()).then(() => {
-    if (APP.active === u.U.key) u.loadHistory();
-  }));
+  // tiles and the report use them; then live readings; then its report (both
+  // units are on screen, so both reports load at once).
+  APP.units.forEach(u => u.loadDbStatus().then(() => u.refresh()).then(() => u.loadHistory()));
   APP.startTimers();
 }
 

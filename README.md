@@ -2120,6 +2120,31 @@ Sheets show the type's letter (L / H / E) on the day header and cells (click = w
 My Tasks, My Score, MD cards and the month total say so. `fms-tasks.js` drops Task Manager rows of the
 doer's day off. New type: add it to `tm_day_off_kinds_()` and `DAY_OFF_KINDS`.
 
+
+**Live Photo tasks (camera + live location + time)** (`sql/TM_LIVE_PHOTO_MIGRATION.sql`). A Live Photo
+task is an ordinary DAILY task with `tm_tasks.live_photo` (page: `t.live`), so target time, scoring,
+follow-ups and leave work as for any daily task; one user can have several, one per timing (Add New Task
+List › Frequency "Live Photo (daily)", one row per time). It can be completed only in the page's own
+camera screen (`openLiveCam`): the camera opens in the page (no gallery / file input), the live location
+is watched at the same time and Capture is allowed only with a fix younger than a minute; the photo gets
+a stamp (name, date / time, lat / lng ± accuracy) and is sent with the location to `tm_mark_live` (own
+task only, not a buddy; today only, no carry forward; photo + location required; the server's time is
+the time stamp, the phone's capture time and the accuracy are kept in `tm_task_records.geo_*`, sent to
+the page as `rec.geo`). `tm_mark_done` refuses a live task (LIVE_ONLY). **Timings are per employee:**
+set in Add New Task List, where a Live Photo row (with that employee's own time) is always on top (a new
+list starts with one, a loaded list without one gets one added), "+ Live Photo timing" adds more, two at
+the same time are refused, and the last one cannot be removed (`addLiveRow`, `removeTaskRow`). Nothing
+is created automatically. **Compulsory:** `tm_settings` 'live_photo' `{on, time, desc}` (Score Master ›
+Live Photo Check-in card, `tm_live_settings_get` / `_save`; `time` / `desc` are only what a new row
+starts with); while `on`, `tm_save_employee` refuses a list without a live row (LIVE_REQUIRED) unless the
+employee already has one (a save with no live row keeps the user's live tasks). The card lists the
+employees with no timing yet, each opening their list in Add New Task List. Live tasks are listed first
+everywhere. **Viewing:** the month sheet shows a done
+live cell as a camera with the time taken (click = photo, server time, phone time, location with a
+Google Maps link: `showLivePhoto`); "My Live Photos (month)" on My Tasks, "Live photos of this month" on
+My Month View and MD Oversight open `openLiveLog` (each day's slots, thumbnails loaded three at a time);
+MD's Check Done Task shows the location too. Camera and location need the app over **https://** (or
+localhost); from a `file://` page the button says so.
 **MD Oversight: Undone a done task** (task_manager.html + `sql/TM_UNDO_DONE_MIGRATION.sql`). In the
 MD sheet a done cell opens **Check Done Task** (`mdCheckDone`): the proof photo, who ticked it and
 when, the points, and with the right **Undo Done Task** (`TM_UNDO_DONE`, default Admin + MD, row in

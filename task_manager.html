@@ -645,6 +645,31 @@
                 </div>
             </div>
 
+            <!-- Live Photo Check-in: compulsory switch + what a new Live Photo row
+                 starts with (tm_settings 'live_photo', tm_live_settings_save). The
+                 timings themselves are per employee, in Add New Task List; this
+                 card lists who has none yet. Saved on its own, not a score rule. -->
+            <div id="liveSetCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-camera mr-2 text-fuchsia-700"></i> Live Photo Check-in</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Daily Live Photo tasks (live camera photo + live location + time). Each employee's timings are set in <b>Add New Task List</b>; when compulsory, every task list needs at least one.</p>
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-slate-700">
+                        <input type="checkbox" id="liveSetOn" class="w-5 h-5 accent-fuchsia-700" checked> <span>Compulsory</span>
+                    </label>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Task name (new rows)</label><input type="text" id="liveSetDesc" placeholder="LIVE PHOTO CHECK-IN" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></div>
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Starting time (new rows)</label><select id="liveSetHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select>
+                            <div class="text-[10px] font-bold text-slate-400 mt-1">Only what a new Live Photo row shows first; change it per employee there.</div></div>
+                    </div>
+                    <div id="liveSetInfo" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
+                    <div class="flex justify-end"><button id="liveSetSaveBtn" onclick="liveSetSave()" class="bg-fuchsia-700 hover:bg-fuchsia-800 text-white font-bold px-6 py-3 rounded-xl shadow-md flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Save Live Photo settings</button></div>
+                </div>
+            </div>
+
             <!-- Pending Follow-ups Task: coordinators lose points for every employee
                  task left pending without a follow-up (FUP in the script). Part of the
                  Score Master version like the cards above, so "Save All Settings"
@@ -926,7 +951,8 @@
 
                     <div class="mb-5 flex justify-between items-end">
                         <h3 class="text-xl font-extrabold text-slate-800 tracking-tight">Task Checklist Setup</h3>
-                        <button onclick="addInputRow()" class="flex items-center text-sm bg-white text-slate-800 hover:bg-slate-50 px-4 py-2 rounded-xl font-bold transition-all border border-slate-300 shadow-sm active:scale-95"><i class="ph-bold ph-plus mr-1.5 text-lg"></i> Add Row</button>
+                        <div class="flex flex-wrap justify-end gap-y-2"><button onclick="addLiveRow()" class="flex items-center text-sm bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100 px-4 py-2 rounded-xl font-bold transition-all border border-fuchsia-200 shadow-sm active:scale-95 mr-2" title="One more Live Photo timing for this employee"><i class="ph-bold ph-camera mr-1.5 text-lg"></i> + Live Photo timing</button>
+                        <button onclick="addInputRow()" class="flex items-center text-sm bg-white text-slate-800 hover:bg-slate-50 px-4 py-2 rounded-xl font-bold transition-all border border-slate-300 shadow-sm active:scale-95"><i class="ph-bold ph-plus mr-1.5 text-lg"></i> Add Row</button></div>
                     </div>
                     
                     <div class="bg-white rounded-2xl border border-slate-300 overflow-x-auto mb-8 shadow-sm">
@@ -943,6 +969,10 @@
                             </thead>
                             <tbody id="taskInputBody" class="divide-y divide-slate-200"></tbody>
                         </table>
+                    </div>
+                    <!-- Live Photo rows: what they are and the compulsory default (tm_live_ensure_). -->
+                    <div class="-mt-5 mb-8 text-[11px] font-bold text-fuchsia-800 bg-fuchsia-50 border border-fuchsia-200 rounded-xl px-4 py-2.5 leading-relaxed">
+                        <i class="ph-bold ph-camera mr-1"></i> <b>Live Photo (daily)</b>: done only with a live camera photo, stamped with the phone's live location and the time. Timings are <b>per employee</b>: set this employee's time on the Live Photo row, and press <b>+ Live Photo timing</b> for more (e.g. 10 AM, 2 PM, 6 PM). At least one is compulsory, so the last Live Photo row cannot be removed.
                     </div>
 
                     <div class="flex justify-end gap-3 pt-6 border-t border-slate-200 mt-4">
@@ -1008,6 +1038,8 @@
 
                 <!-- Today / this month at a glance; updated live (points drop while a task is overdue). -->
                 <div id="dashSummary" class="grid grid-cols-2 gap-3 p-4 pb-0 bg-slate-50/50"></div>
+                <!-- The month's live photos with time and place (openLiveLog). -->
+                <div class="px-4 pt-3 bg-slate-50/50"><button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-fuchsia-200 hover:border-fuchsia-400 text-fuchsia-800 rounded-2xl px-4 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-camera text-lg"></i> My Live Photos (month)</button></div>
 
                 <div class="p-4 grid grid-cols-2 gap-3 bg-slate-50/50">
                     <button data-pend="daily" onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
@@ -1096,6 +1128,7 @@
                                 <button onclick="shiftViewMonth(0)" class="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider ml-1">This month</button>
                             </div>
                             <div id="sheetMonthScore" class="mt-1.5"></div>
+                            <button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode)" class="mt-1.5 text-[10px] font-extrabold text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-camera"></i> Live photos of this month</button>
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -1155,6 +1188,7 @@
                                     <button onclick="shiftViewMonth(0)" class="text-[10px] font-extrabold text-purple-700 hover:text-purple-900 uppercase tracking-wider ml-1">This month</button>
                                 </div>
                                 <div id="mdMonthScore" class="mt-1.5"></div>
+                                <button onclick="openLiveLog(appState.mdSelectedCode)" class="mt-1.5 text-[10px] font-extrabold text-fuchsia-700 bg-white hover:bg-fuchsia-50 border border-fuchsia-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-camera"></i> Live photos of this month</button>
                             </div>
                             <button onclick="document.getElementById('mdSheetContainer').classList.add('hidden'); appState.mdSelectedCode=null;" class="text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white px-5 py-2.5 rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center uppercase tracking-wider active:scale-95">Close Sheet <i class="ph-bold ph-x ml-2"></i></button>
                         </div>
@@ -1501,6 +1535,10 @@
             TIME_REQUIRED: 'Choose the time for today\'s follow-up.',
             REMARK_REQUIRED: 'Write a remark of at least 3 letters (the reason).',
             BAD_KIND: 'Choose the type: Leave, Holiday or Emergency.',
+            LIVE_ONLY: 'This is a Live Photo task: complete it with the live camera (Take Live Photo), not with an uploaded photo.',
+            LIVE_TODAY_ONLY: 'A live photo can be taken only on its own day.',
+            LOCATION_REQUIRED: 'Your live location is needed. Turn on Location (GPS) and allow it for this site, then try again.',
+            LIVE_REQUIRED: 'Every employee needs at least one Live Photo timing. Add a "Live Photo (daily)" row (+ Live Photo timing) with this employee\'s time.',
             RANGE_TOO_LONG: 'At most 92 days can be saved at a time. Save a longer leave in parts.',
             NO_EMPLOYEE: 'Add at least one employee (or All employees).',
             NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.'
@@ -1771,6 +1809,7 @@
                 return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${r.graceHours}h / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints}</span>${(f => f.on ? `<span class="text-xs text-violet-800 font-bold">· Follow-up cut: ${f.coords.length} coordinator(s), −${f.pts} per task after ${f.graceHours}h${f.maxDay != null ? ', max ' + f.maxDay + '/day' : ''}</span>` : '')(fupRuleOf(v.value))}</div>`;
             }).join('') : '<div class="text-sm text-slate-400 font-bold">Not saved yet. The default rules apply: grace 3 hours / -20, then -20 per hour, into minus with no limit.</div>';
             fupFill();
+            liveSetLoad();   // the Live Photo default card (its own RPC)
             if (!keepAuto || !EMA.data) emAutoLoad();   // a redraw after saving the scoring rules keeps unsaved automation edits
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
@@ -2183,8 +2222,38 @@
         function initAddTaskScreen() {
             document.getElementById('searchLoadEmpCode').value=''; document.getElementById('addEmpCode').disabled=false; document.getElementById('addEmpPickBtn').disabled=false; currentAddingOrEditingEmpCode=null;
             document.getElementById('addEmpName').value=''; document.getElementById('addEmpCode').value=''; document.getElementById('addEmpDept').value=''; document.getElementById('addEmpDesig').value=''; document.getElementById('addEmpCodeHint').textContent='';
-            document.getElementById('taskInputBody').innerHTML=''; for(let i=0;i<3;i++) addInputRow();
+            document.getElementById('taskInputBody').innerHTML=''; addLiveRow(); for(let i=0;i<2;i++) addInputRow();
+            liveDefLoad();
         }
+        /* ── Live Photo rows on this screen ──────────────────────────────
+           Timings are employee-wise, so they are set here: one "Live Photo
+           (daily)" row per timing, always at the top. While the compulsory
+           switch (Score Master › Live Photo Check-in) is on, a list needs at
+           least one; the server checks it too (LIVE_REQUIRED). A new live
+           row starts with LIVE_DEF's name and time. */
+        let LIVE_DEF = { on: true, time: '10:00 AM', desc: 'LIVE PHOTO CHECK-IN' };
+        async function liveDefLoad() {
+            const res = await tmRpc('tm_live_settings_get', {});
+            if (res.ok && res.data.settings) LIVE_DEF = { ...LIVE_DEF, ...res.data.settings };
+        }
+        // A live row, placed after the live rows already there (so they stay on top), with its own time.
+        window.addLiveRow = function(oId, desc, time12) {
+            const tb = document.getElementById('taskInputBody');
+            addInputRow(oId || ''); const r = tb.lastElementChild;
+            const lastLive = [...tb.querySelectorAll('tr')].filter(x => x !== r && x.querySelector('.task-freq').value === 'live').pop();
+            if (lastLive) lastLive.after(r); else tb.prepend(r);
+            r.querySelector('.task-desc').value = desc || LIVE_DEF.desc || 'LIVE PHOTO CHECK-IN';
+            const f = r.querySelector('.task-freq'); f.value = 'live'; handleFreqChange(f);
+            setHour(r.querySelector('.task-time'), to24(time12 || LIVE_DEF.time) || '10:00');   // to24: PC Follow-up's helper
+            updateSrNos(); return r;
+        };
+        // The last live row cannot be removed while Live Photo is compulsory.
+        window.removeTaskRow = function(btn) {
+            const r = btn.closest('tr'), tb = document.getElementById('taskInputBody');
+            if (r.querySelector('.task-freq').value === 'live' && LIVE_DEF.on !== false && [...tb.querySelectorAll('.task-freq')].filter(s => s.value === 'live').length <= 1)
+                return showCustomModal('Live Photo is compulsory', 'Every employee needs at least one Live Photo timing. Change its time instead of removing it, or add another timing first.', true);
+            r.remove(); updateSrNos();
+        };
         // Picking from the master overwrites name / department / designation;
         // typing a code only fills the boxes that are still empty.
         function fillFromMaster(x, overwrite) {
@@ -2213,9 +2282,12 @@
             if (u) { h.className = 'text-[10px] font-bold mt-1 text-emerald-600'; h.textContent = 'ERP login: ' + u.name; const n = document.getElementById('addEmpName'); if (!n.value.trim()) n.value = u.name; }
             else { h.className = 'text-[10px] font-bold mt-1 text-amber-600'; h.textContent = 'No ERP login has this code yet. The employee can open their sheet only after the Admin sets this Emp Code on their user.'; }
         };
-        window.loadEmployeeForEdit = function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']); if(rec.length===0) for(let i=0;i<3;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.frequency||'daily'; handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.`); }
-        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="this.closest('tr').remove(); updateSrNos();" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
-        window.handleFreqChange = function(sel) { const c = sel.closest('tr').querySelector('.task-param-container'); const f = sel.value; if(f==='daily') c.innerHTML='<span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span>'; else if(f==='weekly') c.innerHTML=`<select class="task-param-week w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option><option value="0">Sun</option></select>`; else if(f==='monthly') c.innerHTML=`<input type="number" min="1" max="31" class="task-param-month w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Date (1-31)">`; else if(f==='yearly') c.innerHTML=`<div class="flex gap-2"><select class="task-param-year-m w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></select><input type="number" min="1" max="31" class="task-param-year-d w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="DD"></div>`; }
+        window.loadEmployeeForEdit = function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']).sort((a,b)=>(b.live?1:0)-(a.live?1:0)); const noLive = !rec.some(t=>t.live); if(rec.length===0) for(let i=0;i<2;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.live?'live':(t.frequency||'daily'); handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); if(noLive) addLiveRow(); liveDefLoad(); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.` + (noLive ? '<br><br><b class="text-fuchsia-700">No Live Photo timing yet:</b> a Live Photo row was added at the top. Set the time for this employee and save.' : '')); }
+        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="live">Live Photo (daily)</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="removeTaskRow(this)" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
+        window.handleFreqChange = function(sel) { const c = sel.closest('tr').querySelector('.task-param-container'); const f = sel.value;
+            /* Live Photo = a DAILY task done only with a live camera photo + location (tm_mark_live). One row per timing. */
+            if(f==='live'){ const d=sel.closest('tr').querySelector('.task-desc'); if(d&&!d.value.trim()) d.value='LIVE PHOTO CHECK-IN'; c.innerHTML='<span class="text-[10px] font-extrabold text-fuchsia-700 uppercase tracking-widest bg-fuchsia-50 px-3 py-1.5 rounded-lg border border-fuchsia-200 shadow-inner"><i class="ph-bold ph-camera"></i> Every day · camera + location</span>'; return; }
+            if(f==='daily') c.innerHTML='<span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span>'; else if(f==='weekly') c.innerHTML=`<select class="task-param-week w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option><option value="0">Sun</option></select>`; else if(f==='monthly') c.innerHTML=`<input type="number" min="1" max="31" class="task-param-month w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Date (1-31)">`; else if(f==='yearly') c.innerHTML=`<div class="flex gap-2"><select class="task-param-year-m w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></select><input type="number" min="1" max="31" class="task-param-year-d w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="DD"></div>`; }
         function updateSrNos() { document.querySelectorAll('#taskInputBody tr').forEach((r,i)=>r.querySelector('.sr-no').textContent=i+1); }
         async function saveEmployee() {
             const n = document.getElementById('addEmpName').value.trim(); const c = document.getElementById('addEmpCode').value.trim().toUpperCase(); const d = document.getElementById('addEmpDept').value.trim(); const de = document.getElementById('addEmpDesig').value.trim();
@@ -2226,9 +2298,15 @@
             document.querySelectorAll('#taskInputBody tr').forEach(r=>{
                 const desc=r.querySelector('.task-desc').value.trim(); const tm=to12h(r.querySelector('.task-time').value.trim()); const f=r.querySelector('.task-freq').value; let fv=null;
                 if(f==='weekly')fv=r.querySelector('.task-param-week').value; else if(f==='monthly'){fv=r.querySelector('.task-param-month').value;if(!fv||fv<1||fv>31)valid=false;} else if(f==='yearly'){const ym=r.querySelector('.task-param-year-m').value; const yd=r.querySelector('.task-param-year-d').value; if(!yd||yd<1||yd>31)valid=false; fv=ym+'-'+parseInt(yd,10);}
-                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: f, freqValue: fv });
+                // A Live Photo row is a daily task with the live flag; it needs its time (that is its slot).
+                if(f==='live'&&!tm) valid=false;
+                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: f==='live' ? 'daily' : f, freqValue: fv, live: f==='live' });
             });
             if(!valid||!tasks.length) return showCustomModal("Error", "Check task details. Missing inputs.", true);
+            // Live Photo: compulsory (the server checks it too), and two timings at the same hour would be one photo twice.
+            const lives = tasks.filter(t => t.live);
+            if (LIVE_DEF.on !== false && !lives.length) return showCustomModal('Live Photo timing needed', TM_ERR.LIVE_REQUIRED, true);
+            if (new Set(lives.map(t => t.time)).size < lives.length) return showCustomModal('Please check', 'Two Live Photo rows have the same time. Give each timing its own time.', true);
             const res = await tmRpc('tm_save_employee', { p_emp: { empCode: c, empName: n, dept: d, desig: de }, p_tasks: tasks, p_is_new: !currentAddingOrEditingEmpCode });
             if (!res.ok) return tmErr(res);
             await refreshAndRerender(); showCustomModal("Success", "Profile & tasks saved."); navigate('home');
@@ -2707,7 +2785,7 @@
         // [{t, ds, rec, sc}] for the earlier days, oldest first. Self tasks have their own carry forward above.
         function carriedPending(emp, now) {
             now = now || new Date(); const out = []; const td = todayStr();
-            const tasks = getCombinedTasks(emp).filter(t => !t.isSelfTask);
+            const tasks = getCombinedTasks(emp).filter(t => !t.isSelfTask && !t.live);   // a live photo is only for its own day
             for (let i = CARRY_DAYS; i >= 1; i--) {
                 const dt = dateAt(td); dt.setDate(dt.getDate() - i); const ds = ymd(dt);
                 if (appState.loadedFrom && ds < appState.loadedFrom) continue;   // records not loaded: never guess "missed"
@@ -2852,8 +2930,8 @@
             return true;
         }
 
-        function getFrequencyText(t) { const f=t.frequency||'daily'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
-        function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,doerCode:emp.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c; }
+        function getFrequencyText(t) { const f=t.frequency||'daily'; if(t.live)return 'Daily · Live photo'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
+        function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,doerCode:emp.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c.sort((a,b)=>(b.live?1:0)-(a.live?1:0)); }
 
         // --- My Tasks dashboard ---
         function renderDashboard() {
@@ -2918,7 +2996,7 @@
             const carried = carriedPending(emp, now).filter(x => taskCats(x.t, false).concat('daily').includes(cat))
                 .map(x => ({...x.t, isResched:false, rec:x.rec, ds:x.ds, carried:true}));
             // Most urgent first: earlier days' pending (oldest first), then overdue, then by target time; done ones last.
-            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved' || s.state === 'off') ? 2 : (s.state === 'upcoming' ? 1 : 0); return (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
+            fTasks.sort((a, b) => { const sa = taskScore(a, today, a.rec, now), sb = taskScore(b, today, b.rec, now); const w = s => (s.state === 'done' || s.state === 'moved' || s.state === 'off') ? 2 : (s.state === 'upcoming' ? 1 : 0); return ((b.live ? 1 : 0) - (a.live ? 1 : 0)) || (w(sa) - w(sb)) || ((sa.deadline || 0) - (sb.deadline || 0)); });
             fTasks = carried.concat(fTasks);
 
             // Header strip: this list's points today (earlier days' pending are scored on their own day, so not here).
@@ -2937,11 +3015,11 @@
                     }
 
                     const moved = t.rec && t.rec.status === 'rescheduled';
-                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="viewProofImage('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> ${t.isSelfTask?'Complete (Proof Optional)':'Complete (Upload Proof)'}</button>`;
+                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="${t.live?'showLivePhoto':'viewProofImage'}('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> ${t.live?'Take Live Photo (camera + location)':(t.isSelfTask?'Complete (Proof Optional)':'Complete (Upload Proof)')}</button>`;
                     let warn='';
                     if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, t.ds); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
                     let bt=t.isBuddyTask?`<span class="bg-teal-50 text-teal-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-teal-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users mr-1"></i> BUDDY: ${esc(t.primaryName)}</span>`:'';
-                    let st=t.isSelfTask?`<span class="bg-blue-50 text-blue-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-blue-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user mr-1"></i> SELF</span>`:'';
+                    let st=(t.live?`<span class="bg-fuchsia-50 text-fuchsia-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-fuchsia-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-map-pin mr-1"></i> LIVE PHOTO + LOCATION</span>`:'')+(t.isSelfTask?`<span class="bg-blue-50 text-blue-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-blue-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-user mr-1"></i> SELF</span>`:'');
                     // An earlier day's pending task: when it was planned and how late it is now.
                     let carryHTML='';
                     if(t.carried){ const sc0=taskScore(t, t.ds, t.rec, now); st+=`<span class="bg-red-50 text-red-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-red-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-clock-countdown mr-1"></i> PENDING FROM ${esc(fmtDay(t.ds))}</span>`; carryHTML=`<div class="text-[11px] text-red-800 bg-red-50 px-2.5 py-1.5 rounded-lg mt-2 border border-red-200 font-bold w-fit">Plan date: ${esc(fmtWhen(sc0.deadline))} · Delayed ${esc(fmtDur(now - sc0.deadline))}</div>`; }
@@ -3144,6 +3222,271 @@
         window.showUpcomingTaskDetails = function(eCode, tId, dStr) { const t=findTask(eCode, tId); if(!t)return; document.getElementById('upcTaskDesc').textContent=t.desc; document.getElementById('upcTaskDate').textContent=dStr; document.getElementById('upcTaskTime').textContent=t.time||'All Day'; const r = rulesFor(t, dStr); if(t.isSelfTask) document.getElementById('upcTaskPenalty').innerHTML=`This is a <strong>Self Assigned</strong> task. It does not affect your overall score.`; else document.getElementById('upcTaskPenalty').innerHTML=`<strong>${r.baseScore} pts</strong> if done by ${esc(t.time||'the end of the day')}. Within <strong>${fmtDur(r.graceHours*3600000)}</strong> after that: <strong>−${r.gracePenalty}</strong>. Then <strong>−${r.penalty}</strong> for every ${r.type} started late.`; const m=document.getElementById('upcomingTaskModal'); const c=document.getElementById('upcomingTaskContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95','opacity-0'); c.classList.add('scale-100','opacity-100'); }
         window.closeUpcomingTaskModal = function() { const m=document.getElementById('upcomingTaskModal'); const c=document.getElementById('upcomingTaskContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); setTimeout(()=>{m.classList.add('hidden'); m.classList.remove('flex');},300); }
 
+        /* ── LIVE PHOTO tasks (TM_LIVE_PHOTO_MIGRATION.sql) ────────────────
+           A daily task (t.live) done only here: the phone's camera is opened
+           in the page (getUserMedia; there is no gallery / file input, so an
+           old photo cannot be used), the live location is watched at the same
+           time (watchPosition, high accuracy), and Capture is allowed only
+           once a fresh fix is in. The photo is stamped with name, date / time
+           and latitude / longitude ± accuracy, then sent with the location to
+           tm_mark_live, which saves the server's time as the time stamp. Own
+           task, today only (no carry forward, no buddy). Needs https:// (or
+           localhost): browsers give camera and location only to a secure page. */
+        const LC = { s: null, w: null, pos: null, posErr: '', facing: 'user', shot: null, shotPos: null, shotAt: null, e: null, t: null, d: null };
+        const LC_FRESH_MS = 60000;   // a fix older than this is not "live"
+        function lcDom() {
+            if (document.getElementById('lcOv')) return;
+            const ov = document.createElement('div');
+            ov.id = 'lcOv'; ov.className = 'fixed inset-0 z-[130] hidden flex-col bg-slate-950 text-white print-hide';
+            ov.innerHTML = `<div class="flex items-center gap-3 px-4 py-3 border-b border-white/10"><button onclick="closeLiveCam()" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0" title="Close"><i class="ph-bold ph-x text-xl"></i></button>`
+                + `<div class="min-w-0 flex-grow"><div id="lcTitle" class="font-extrabold truncate"></div><div id="lcSub" class="text-[11px] font-bold text-white/60 truncate"></div></div>`
+                + `<button id="lcFlip" onclick="lcFlip()" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0" title="Switch camera"><i class="ph-bold ph-camera-rotate text-xl"></i></button></div>`
+                + `<div class="relative flex-grow min-h-0 flex items-center justify-center bg-black overflow-hidden">`
+                + `<video id="lcVideo" playsinline muted autoplay class="max-w-full max-h-full"></video><img id="lcShot" alt="" class="hidden max-w-full max-h-full">`
+                + `<div id="lcCamMsg" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center text-sm font-bold text-white/80"></div></div>`
+                + `<div class="px-4 py-3 border-t border-white/10 space-y-3"><div id="lcGeo" class="text-xs font-bold"></div>`
+                + `<div id="lcBtns" class="flex gap-3"></div></div>`;
+            document.body.appendChild(ov);
+        }
+        window.openLiveCam = function(e, t, d) {
+            const tk = findTask(e, t); if (!tk) return;
+            if (e !== appState.me.empCode) return showCustomModal('Live photo', 'A live photo is taken by the employee themselves, on their own phone. A buddy cannot take it for them.', true);
+            if (d !== todayStr()) return showCustomModal('Live photo', TM_ERR.LIVE_TODAY_ONLY + ' The one of ' + esc(fmtDay(d)) + ' was missed.', true);
+            if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+                return showCustomModal('Camera not available', 'The live camera and location work only when the app is opened over <b>https://</b> in Chrome or Safari (not from a saved file). Ask the Admin for the app link.', true);
+            Object.assign(LC, { e, t, d, shot: null, shotPos: null, shotAt: null, pos: null, posErr: '' });
+            lcDom();
+            const ov = document.getElementById('lcOv'); ov.classList.remove('hidden'); ov.classList.add('flex');
+            document.getElementById('lcTitle').textContent = tk.desc;
+            document.getElementById('lcSub').textContent = 'Target ' + (tk.time || 'all day') + ' · ' + fmtDay(d) + ' · ' + (appState.me.name || '');
+            lcStartCam(); lcStartGeo(); lcPaint();
+        };
+        window.closeLiveCam = function() {
+            if (LC.s) LC.s.getTracks().forEach(x => x.stop()); LC.s = null;
+            if (LC.w != null && navigator.geolocation) navigator.geolocation.clearWatch(LC.w); LC.w = null;
+            const ov = document.getElementById('lcOv'); if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+            const v = document.getElementById('lcVideo'); if (v) v.srcObject = null;
+        };
+        async function lcStartCam() {
+            const v = document.getElementById('lcVideo'), msg = document.getElementById('lcCamMsg');
+            if (LC.s) LC.s.getTracks().forEach(x => x.stop());
+            msg.classList.add('hidden');
+            try {
+                LC.s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: LC.facing, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+                v.srcObject = LC.s; v.style.transform = LC.facing === 'user' ? 'scaleX(-1)' : '';   // mirror only the preview of the front camera
+                await v.play().catch(() => {});
+            } catch (err) {
+                LC.s = null;
+                msg.textContent = err && err.name === 'NotAllowedError' ? 'Camera permission was refused. Allow the camera for this site (lock icon in the address bar), then open this again.'
+                    : err && err.name === 'NotFoundError' ? 'No camera was found on this device.' : 'The camera could not be started: ' + ((err && err.message) || err);
+                msg.classList.remove('hidden');
+            }
+            lcPaint();
+        }
+        window.lcFlip = function() { if (LC.shot) return; LC.facing = LC.facing === 'user' ? 'environment' : 'user'; lcStartCam(); };
+        function lcStartGeo() {
+            if (!navigator.geolocation) { LC.posErr = 'This device cannot give a location.'; return lcPaint(); }
+            if (LC.w != null) navigator.geolocation.clearWatch(LC.w);
+            LC.posErr = '';
+            LC.w = navigator.geolocation.watchPosition(p => {
+                const c = p.coords, now = Date.now();
+                // Keep the most accurate fix, unless it is getting old.
+                if (!LC.pos || c.accuracy <= LC.pos.acc || now - LC.pos.t > 15000) LC.pos = { lat: c.latitude, lng: c.longitude, acc: c.accuracy, t: now };
+                LC.posErr = ''; lcPaint();
+            }, err => {
+                LC.posErr = err.code === 1 ? 'Location permission was refused. Allow Location for this site and turn on GPS, then press Retry.'
+                    : err.code === 2 ? 'Location is not available. Turn on GPS / Location, then press Retry.' : 'Still looking for your location…';
+                lcPaint();
+            }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+        }
+        window.lcRetryGeo = function() { lcStartGeo(); lcPaint(); };
+        const lcFresh = () => LC.pos && Date.now() - LC.pos.t < LC_FRESH_MS;
+        function lcPaint() {
+            const g = document.getElementById('lcGeo'), b = document.getElementById('lcBtns'); if (!g) return;
+            const p = LC.shot ? LC.shotPos : LC.pos;
+            g.innerHTML = p && (LC.shot || lcFresh())
+                ? `<span class="${p.acc > 200 ? 'text-amber-300' : 'text-emerald-300'}"><i class="ph-bold ph-map-pin"></i> ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)} · ±${Math.round(p.acc)} m${p.acc > 200 ? ' (rough: go near a window / outside for better GPS)' : ''}</span>`
+                : LC.posErr ? `<span class="text-rose-300"><i class="ph-bold ph-warning"></i> ${esc(LC.posErr)}</span> <button onclick="lcRetryGeo()" class="ml-2 underline">Retry</button>`
+                : '<span class="text-white/70"><i class="ph-bold ph-spinner animate-spin"></i> Getting your live location…</span>';
+            const btn = (txt, on, cls, dis) => `<button onclick="${on}" ${dis ? 'disabled' : ''} class="flex-1 py-3.5 rounded-xl font-extrabold text-sm ${cls} disabled:opacity-40">${txt}</button>`;
+            b.innerHTML = LC.shot
+                ? btn('<i class="ph-bold ph-arrow-counter-clockwise"></i> Retake', 'lcRetake()', 'bg-white/10 hover:bg-white/20') + btn('<i class="ph-bold ph-check-circle"></i> Submit', 'lcSubmit()', 'bg-emerald-600 hover:bg-emerald-700', false)
+                : btn('<i class="ph-fill ph-camera"></i> Capture', 'lcCapture()', 'bg-fuchsia-600 hover:bg-fuchsia-700', !(LC.s && lcFresh()));
+            document.getElementById('lcFlip').classList.toggle('opacity-40', !!LC.shot);
+        }
+        window.lcCapture = function() {
+            const v = document.getElementById('lcVideo');
+            if (!LC.s || !v.videoWidth || !lcFresh()) return;
+            const sc = Math.min(1, 960 / Math.max(v.videoWidth, v.videoHeight));
+            const w = Math.round(v.videoWidth * sc), h = Math.round(v.videoHeight * sc);
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d');
+            x.drawImage(v, 0, 0, w, h);   // the real image (not mirrored), so text in the photo reads right
+            LC.shotAt = new Date(); LC.shotPos = { ...LC.pos };
+            // The stamp: who, when, where, burnt into the photo.
+            const fs = Math.max(13, Math.round(w / 38)), pad = Math.round(fs * 0.6), lines = [
+                (appState.me.name || '') + ' (' + (appState.me.empCode || '') + ')',
+                LC.shotAt.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                LC.shotPos.lat.toFixed(6) + ', ' + LC.shotPos.lng.toFixed(6) + '  ±' + Math.round(LC.shotPos.acc) + ' m'];
+            const bh = lines.length * fs * 1.3 + pad * 2;
+            x.fillStyle = 'rgba(0,0,0,0.55)'; x.fillRect(0, h - bh, w, bh);
+            x.fillStyle = '#fff'; x.font = `bold ${fs}px sans-serif`; x.textBaseline = 'top';
+            lines.forEach((l, i) => x.fillText(l, pad, h - bh + pad + i * fs * 1.3, w - pad * 2));
+            let url = cv.toDataURL('image/jpeg', 0.72); if (url.length > 1900000) url = cv.toDataURL('image/jpeg', 0.5);
+            LC.shot = url;
+            const img = document.getElementById('lcShot'); img.src = url; img.classList.remove('hidden'); v.classList.add('hidden');
+            lcPaint();
+        };
+        window.lcRetake = function() {
+            LC.shot = null; LC.shotPos = null; LC.shotAt = null;
+            document.getElementById('lcShot').classList.add('hidden'); document.getElementById('lcVideo').classList.remove('hidden');
+            lcPaint();
+        };
+        window.lcSubmit = async function() {
+            if (!LC.shot || !LC.shotPos) return;
+            const b = document.querySelector('#lcBtns button:last-child'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+            const p = { e: LC.e, t: LC.t, d: LC.d };
+            const res = await tmRpc('tm_mark_live', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_photo: LC.shot, p_lat: LC.shotPos.lat, p_lng: LC.shotPos.lng, p_acc: LC.shotPos.acc, p_shot_at: LC.shotAt.toISOString() });
+            if (!res.ok) {
+                lcPaint();
+                return res.error === 'NO_MIGRATION' ? showCustomModal('Server update needed', 'Live Photo tasks need a server update. Admin: run <code>TM_LIVE_PHOTO_MIGRATION.sql</code> in the Supabase SQL Editor.', true) : tmErr(res);
+            }
+            closeLiveCam(); await refreshAndRerender();
+            const t = findTask(p.e, p.t); if (t) { const sc = taskScore(t, p.d, recOf(t, p.d)); if (sc.state === 'done') showCustomModal(sc.phase === 'on-time' ? 'Live photo saved' : 'Live photo saved (late)', `<div class="text-5xl font-extrabold ${sc.pts >= sc.base ? 'text-green-600' : (sc.pts > 0 ? 'text-orange-600' : 'text-red-600')}">${signed(sc.pts)}</div><div class="text-sm font-bold text-slate-500 mt-1">${esc(PHASE_LABEL[sc.phase] || '')} · saved with your location and the time</div>`); }
+        };
+        // "26.912345, 75.787654 · ±12 m · Map"
+        function geoHtml(g) {
+            if (!g || g.lat == null) return '<span class="text-slate-400">No location</span>';
+            return `${Number(g.lat).toFixed(6)}, ${Number(g.lng).toFixed(6)}${g.acc != null ? ' · ±' + Math.round(g.acc) + ' m' : ''} <a href="https://www.google.com/maps?q=${encodeURIComponent(g.lat + ',' + g.lng)}" target="_blank" rel="noopener" class="text-indigo-600 underline">Map</a>`;
+        }
+        const LIVE_IMG = new Map();   // "owner|task|day" → photo, so the log and the viewer fetch each once
+        async function liveImg(owner, id, ds) {
+            const k = owner + '|' + id + '|' + ds; if (LIVE_IMG.has(k)) return LIVE_IMG.get(k);
+            const res = await tmRpc('tm_get_proof', { p_emp: owner, p_task_no: id, p_date: ds });
+            const v = res.ok ? res.data.image : null; if (v) LIVE_IMG.set(k, v); return v;
+        }
+        // One live photo: the picture, the server's time stamp, the phone's time, the place.
+        window.showLivePhoto = async function(owner, id, ds) {
+            const t = findTask(owner, id); const rec = t && recOf(t, ds); if (!t || !rec || !rec.checked) return;
+            const sc = taskScore(t, ds, rec), g = rec.geo;
+            const row = (k, v) => `<div class="flex justify-between gap-4 py-1 text-sm"><span class="font-bold text-slate-500 shrink-0">${k}</span><span class="font-extrabold text-right text-slate-800">${v}</span></div>`;
+            showCustomModal('Live Photo', `<div class="text-left"><div class="font-extrabold text-slate-800 leading-tight">${esc(t.desc)}</div><div class="text-[11px] font-bold text-slate-500 mb-3">${esc(empName(owner))} · ${esc(fmtDay(ds))} · target ${esc(t.time || 'all day')}</div>`
+                + `<div class="bg-slate-100 rounded-xl border border-slate-200 min-h-[160px] flex items-center justify-center mb-3"><img id="lpImg" alt="Live photo" class="max-h-[45vh] w-auto object-contain rounded-xl hidden"><span id="lpWait" class="text-xs font-bold text-slate-400">Loading photo…</span></div>`
+                + `<div class="bg-white border border-slate-200 rounded-xl px-3 py-2">`
+                + row('Taken (server time)', esc(rec.doneAt ? fmtWhen(new Date(rec.doneAt)) : (rec.timestamp || '-')))
+                + (g && g.shotAt ? row('Phone time', esc(fmtWhen(new Date(g.shotAt)))) : '')
+                + row('Location', geoHtml(g))
+                + (sc.off ? row('Score', esc(dayOffKind(sc.off.kind).label) + ' · not scored') : row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || '')))
+                + `</div></div>`);
+            const ic = document.getElementById('modalIcon'); ic.className = 'w-20 h-20 rounded-full bg-fuchsia-50 text-fuchsia-700 flex items-center justify-center mx-auto mb-4 border-4 border-fuchsia-100 shadow-inner'; ic.innerHTML = '<i class="ph-fill ph-camera text-4xl"></i>';
+            document.getElementById('modalTitle').className = 'text-2xl font-extrabold text-slate-800 tracking-tight mb-2';
+            const src = await liveImg(owner, id, ds), img = document.getElementById('lpImg'), w = document.getElementById('lpWait');
+            if (!img) return;
+            if (src) { img.src = src; img.classList.remove('hidden'); if (w) w.remove(); } else if (w) w.textContent = 'The photo could not be loaded.';
+        };
+
+        /* Monthly Live Photo log: every live slot of the month, day by day:
+           time taken, place, the photo (thumbnails load a few at a time).
+           The employee's own (My Tasks / My Month View) or MD Oversight's
+           chosen employee; ‹ › change the month (loaded first if needed). */
+        const LLOG = { code: null, y: 0, m: 0 };
+        window.openLiveLog = function(code, thisMonth) {
+            if (!code || !appState.employees.some(e => e.empCode === code)) return showCustomModal('Live photos', 'No task list found for this login.', true);
+            LLOG.code = code;
+            LLOG.y = thisMonth ? appState.currentYear : (appState.viewY || appState.currentYear);
+            LLOG.m = thisMonth ? appState.currentMonth : (appState.viewM || appState.currentMonth);
+            let ov = document.getElementById('llOv');
+            if (!ov) {
+                ov = document.createElement('div'); ov.id = 'llOv'; ov.className = 'fixed inset-0 z-[125] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 print-hide';
+                ov.innerHTML = '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"><div id="llHead" class="px-5 py-4 border-b border-slate-200"></div><div id="llBody" class="overflow-y-auto p-4"></div></div>';
+                ov.addEventListener('click', ev => { if (ev.target === ov) closeLiveLog(); });
+                document.body.appendChild(ov);
+            }
+            ov.classList.remove('hidden'); ov.classList.add('flex');
+            renderLiveLog();
+        };
+        window.closeLiveLog = function() { const ov = document.getElementById('llOv'); if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); } };
+        window.liveLogShift = function(n) { const d = new Date(LLOG.y, LLOG.m - 1 + n, 1); LLOG.y = d.getFullYear(); LLOG.m = d.getMonth() + 1; renderLiveLog(); };
+        async function renderLiveLog() {
+            const { code, y, m } = LLOG, dim = getDaysInMonth(y, m), mm = String(m).padStart(2, '0');
+            const from = `${y}-${mm}-01`, to = `${y}-${mm}-${String(dim).padStart(2, '0')}`, td = todayStr();
+            const head = document.getElementById('llHead'), body = document.getElementById('llBody');
+            body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">Loading…</div>';
+            if (!(await ensureLoaded(from, to))) return;
+            const e = appState.employees.find(x => x.empCode === code); if (!e) return;
+            // occursOn leaves out the days after a timing was removed, so removed ones still show their old days.
+            const tasks = e.tasks.filter(t => t.live).map(t => ({ ...t, ownerCode: code })).sort((a, b) => (parse12h(a.time) || { h: 99 }).h - (parse12h(b.time) || { h: 99 }).h);
+            const now = new Date(); let due = 0, done = 0, noGps = 0; const days = [];
+            for (let d = dim; d >= 1; d--) {
+                const ds = `${y}-${mm}-${String(d).padStart(2, '0')}`; if (ds > td) continue;
+                const slots = [];
+                tasks.forEach(t => { const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return; const sc = taskScore(t, ds, rec, now); slots.push({ t, rec, sc }); if (sc.state !== 'upcoming' && sc.state !== 'off') due++; if (sc.state === 'done') { done++; if (!rec.geo) noGps++; } });
+                if (slots.length) days.push({ ds, slots });
+            }
+            head.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="text-lg font-extrabold text-slate-800 flex items-center gap-2"><i class="ph-fill ph-camera text-fuchsia-700"></i> Live Photos</div><div class="text-[11px] font-bold text-slate-500 truncate">${esc(e.empName)} (${esc(code)})</div></div>`
+                + `<button onclick="closeLiveLog()" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center shrink-0"><i class="ph-bold ph-x"></i></button></div>`
+                + `<div class="flex flex-wrap items-center gap-2 mt-3"><button onclick="liveLogShift(-1)" class="w-8 h-8 rounded-lg border border-slate-200 font-bold">‹</button><span class="text-xs font-extrabold uppercase tracking-widest text-slate-600 min-w-[110px] text-center">${monthNames[m - 1]} ${y}</span><button onclick="liveLogShift(1)" class="w-8 h-8 rounded-lg border border-slate-200 font-bold">›</button>`
+                + `<span class="text-[11px] font-extrabold text-slate-600 ml-auto">${done} of ${due} taken${noGps ? ' · <span class="text-amber-600">' + noGps + ' without location</span>' : ''}</span></div>`;
+            if (!tasks.length) { body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">No Live Photo task for this employee yet.</div>'; return; }
+            if (!days.length) { body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">Nothing in this month yet.</div>'; return; }
+            body.innerHTML = '<div class="space-y-3">' + days.map(({ ds, slots }) => `<div class="rounded-xl border border-slate-200 p-3"><div class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">${esc(dateAt(ds).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }))}</div>`
+                + '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">' + slots.map(({ t, rec, sc }) => {
+                    const head2 = `<div class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">${esc(t.time || 'All day')}</div>`;
+                    if (sc.state === 'done') return `<button onclick="showLivePhoto('${esc(code)}',${t.id},'${ds}')" class="text-left rounded-lg border border-emerald-200 bg-emerald-50 p-2 hover:border-emerald-400">${head2}`
+                        + `<div class="aspect-[4/3] bg-slate-200 rounded-md mt-1 overflow-hidden flex items-center justify-center"><img data-ll="${esc(code)}|${t.id}|${ds}" alt="" class="w-full h-full object-cover hidden"><i class="ph-bold ph-image text-slate-400"></i></div>`
+                        + `<div class="text-xs font-extrabold text-emerald-800 mt-1">${esc(rec.doneAt ? fmtClock(rec.doneAt) : (rec.timestamp || ''))}${sc.phase !== 'on-time' && !sc.off ? ' <span class="text-orange-600">· late</span>' : ''}</div>`
+                        + `<div class="text-[10px] font-bold ${rec.geo ? 'text-slate-500' : 'text-amber-600'} truncate">${rec.geo ? Number(rec.geo.lat).toFixed(4) + ', ' + Number(rec.geo.lng).toFixed(4) + ' ±' + Math.round(rec.geo.acc || 0) + 'm' : 'No location'}</div></button>`;
+                    const lbl = sc.state === 'off' ? esc(dayOffKind(sc.off.kind).label) : sc.state === 'upcoming' ? 'Not due yet' : sc.state === 'moved' ? 'Moved' : 'Not taken';
+                    const cls = sc.state === 'off' ? 'border-amber-200 bg-amber-50 text-amber-800' : sc.state === 'upcoming' ? 'border-slate-200 bg-slate-50 text-slate-500' : 'border-red-200 bg-red-50 text-red-700';
+                    return `<div class="rounded-lg border ${cls} p-2">${head2}<div class="aspect-[4/3] rounded-md mt-1 flex items-center justify-center"><i class="ph-bold ${sc.state === 'upcoming' ? 'ph-clock' : 'ph-camera-slash'} text-2xl opacity-60"></i></div><div class="text-xs font-extrabold mt-1">${lbl}</div></div>`;
+                }).join('') + '</div></div>').join('') + '</div>';
+            // Thumbnails, three at a time, newest day first.
+            const imgs = [...body.querySelectorAll('img[data-ll]')]; let k = 0;
+            const next = async () => {
+                while (k < imgs.length) {
+                    const el = imgs[k++]; if (!document.body.contains(el)) return;
+                    const [o, id, ds] = el.dataset.ll.split('|'); const src = await liveImg(o, +id, ds);
+                    if (src && document.body.contains(el)) { el.src = src; el.classList.remove('hidden'); const ph = el.nextElementSibling; if (ph) ph.remove(); }
+                }
+            };
+            next(); next(); next();
+        }
+
+        /* Score Master › Live Photo Check-in (tm_live_settings_get / _save):
+           the compulsory switch and what a NEW Live Photo row starts with. The
+           timings are per employee (Add New Task List); this card lists the
+           employees that have none yet, each with a button that opens their
+           task list there with a Live Photo row ready at the top. */
+        async function liveSetLoad() {
+            const sel = document.getElementById('liveSetHour'); if (!sel) return;
+            const info = document.getElementById('liveSetInfo');
+            const res = await tmRpc('tm_live_settings_get', {});
+            if (!res.ok) { sel.innerHTML = hourOptions('10:00'); info.innerHTML = res.error === 'NO_MIGRATION' ? '<span class="text-amber-700">Needs a server update: Admin, run <code>TM_LIVE_PHOTO_MIGRATION.sql</code> in the Supabase SQL Editor.</span>' : esc(TM_ERR[res.error] || res.error); return; }
+            const s = res.data.settings || {}; LIVE_DEF = { ...LIVE_DEF, ...s };
+            document.getElementById('liveSetOn').checked = s.on !== false;
+            document.getElementById('liveSetDesc').value = s.desc || 'LIVE PHOTO CHECK-IN';
+            sel.innerHTML = hourOptions(to24(s.time || (s.times && s.times[0]) || '10:00 AM') || '10:00');
+            const miss = res.data.missing || [];
+            info.innerHTML = !miss.length ? '<span class="text-emerald-700">Every active employee has at least one Live Photo timing.</span>'
+                : `<div class="text-amber-700 mb-2">${miss.length} employee(s) have no Live Photo timing yet${can('TM_ADD_TASK') ? ': set each one\'s time' : ''}:</div><div class="flex flex-wrap gap-1.5">`
+                  + miss.map(x => can('TM_ADD_TASK')
+                      ? `<button onclick="liveSetOpenEmp('${esc(x.empCode)}')" class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100" title="Open in Add New Task List">${esc(x.empName)} <span class="text-fuchsia-400">${esc(x.empCode)}</span></button>`
+                      : `<span class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-700">${esc(x.empName)}</span>`).join('') + '</div>';
+        }
+        // Open Add New Task List with this employee loaded (a Live Photo row is added there if they have none).
+        window.liveSetOpenEmp = function(code) {
+            openScreen('add-task');
+            document.getElementById('searchLoadEmpCode').value = code; loadEmployeeForEdit();
+        };
+        window.liveSetSave = async function() {
+            setBusy('liveSetSaveBtn', true);
+            const res = await tmRpc('tm_live_settings_save', { p_settings: { on: document.getElementById('liveSetOn').checked, time: to12h(document.getElementById('liveSetHour').value), desc: document.getElementById('liveSetDesc').value.trim() } });
+            setBusy('liveSetSaveBtn', false, 'Save Live Photo settings');
+            if (!res.ok) return tmErr(res);
+            LIVE_DEF = { ...LIVE_DEF, ...res.data.settings };
+            await liveSetLoad();
+            showCustomModal('Saved', 'Live Photo settings saved. ' + (res.data.settings.on ? 'Every task list now needs at least one Live Photo timing.' : 'Live Photo is no longer compulsory; existing Live Photo tasks stay.'));
+        };
+
         // Photos are fetched only when opened, so a month of sheets loads fast.
         window.viewProofImage = async function(eCode, tId, dStr) {
             const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); const img=document.getElementById('proofImageView');
@@ -3159,6 +3502,8 @@
            late against its own target. A Self Task may be completed without
            a photo; every assigned task still needs one. */
         window.promptTaskPin = function(e,t,d) {
+            // A Live Photo task never takes an uploaded photo: its own camera screen (openLiveCam).
+            const lt = findTask(e, t); if (lt && lt.live) return openLiveCam(e, t, d);
             pendingTaskConfirm={e,t,d}; resetProof('task');
             const tk = findTask(e, t), self = !!(tk && tk.isSelfTask), late = d < todayStr();
             pendingTaskConfirm.self = self;
@@ -3245,6 +3590,7 @@
             h += `<div class="bg-white border border-slate-200 rounded-xl px-3 py-2">`
                 + row('Done', esc(fmtWhen(doneMomentOf(rec, ds))) + (rec.doneBy ? '<br><span class="text-[11px] text-slate-400">by ' + esc(rec.doneBy) + '</span>' : ''))
                 + row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || ''))
+                + (rec.geo ? row('Live location', geoHtml(rec.geo)) : '')
                 + (rec.undoCount ? row('Sent back before', rec.undoCount + '× · last by ' + esc(rec.undoneBy || '-') + (rec.undoneAt ? ', ' + esc(fmtWhen(new Date(rec.undoneAt))) : '')) : '')
                 + `</div>`;
             if (chain.length > 1) h += `<button onclick="showProofChain('${esc(owner)}',${id},'${esc(ds)}')" class="mt-2 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Proof photos of the follow-up chain (${chain.length} days)</button>`;
@@ -3905,8 +4251,10 @@
                         const bg = rec.status==='rescheduled-done' ? 'bg-purple-50 text-purple-600' : (sc.phase==='on-time' ? 'bg-green-50 text-green-600' : (sc.phase==='grace' ? 'bg-amber-50 text-amber-600' : 'bg-orange-50 text-orange-600'));
                         // Done after a follow-up / postpone: this day's photo and the earlier postponed day(s) together.
                         // MD Oversight: check the proof and, if needed, send it back (mdCheckDone).
-                        const act = isMDView ? `onclick="mdCheckDone('${oc}',${t.id},'${ds}')"` : inChain ? `onclick="showProofChain('${oc}',${t.id},'${ds}')"` : (rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`);
-                        cc+=`<div ${act} title="${tip}" class="absolute inset-0 flex items-center justify-center ${bg} ${isT?'check-pop':''} cursor-pointer z-20">${sc.pts < sc.base ? ptsBtn('text-orange-800 bg-orange-100 border-orange-200') : ''}<i class="ph-bold ph-check text-xl"></i>${pIco}</div>`;
+                        // A live photo: the employee's own view opens the photo with its time and place (showLivePhoto).
+                        const act = isMDView ? `onclick="mdCheckDone('${oc}',${t.id},'${ds}')"` : t.live ? `onclick="showLivePhoto('${oc}',${t.id},'${ds}')"` : inChain ? `onclick="showProofChain('${oc}',${t.id},'${ds}')"` : (rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`);
+                        const mark = t.live ? `<div class="flex flex-col items-center leading-none"><i class="ph-fill ph-camera text-lg"></i><span class="text-[9px] font-extrabold mt-0.5">${esc(rec.doneAt ? fmtClock(rec.doneAt) : (rec.timestamp || ''))}</span>${rec.geo ? '' : '<span class="text-[7px] font-extrabold opacity-70">NO GPS</span>'}</div>` : `<i class="ph-bold ph-check text-xl"></i>${pIco}`;
+                        cc+=`<div ${act} title="${tip}" class="absolute inset-0 flex items-center justify-center ${bg} ${isT?'check-pop':''} cursor-pointer z-20">${sc.pts < sc.base ? ptsBtn('text-orange-800 bg-orange-100 border-orange-200') : ''}${mark}</div>`;
                     }
                     else if(isT && !isMDView){
                         // Today, not done: tick it. Once overdue the live points show in the corner.

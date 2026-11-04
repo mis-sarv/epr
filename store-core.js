@@ -21687,6 +21687,54 @@ let PR_TEAL=[13,92,83];
       tab; a held PR cannot become a PO until the hold comes off there. */
    return st===''||st==='Pending'||st==='Rejected'||st==='Hold';
  }
+ /* ── Field Boy item without a proof photo: delete just that item ─────────
+    Once one item of a Field Boy PR is sent to / approved by the requester the
+    whole PR is frozen (fb_locked_), so Edit PR cannot take out an item the
+    Field Boy could not buy, and the requester can never confirm (that needs
+    EVERY item approved). fb_delete_line (sql/FB_DELETE_LINE_MIGRATION.sql)
+    removes one such item: Field Boy PR, item with no photo and not sent /
+    approved, not on a PO, not the PR's last item, login with EDIT PR; a
+    reason is kept in the PR's Field Boy history. The same checks are made
+    here only to decide whether to show the button. */
+ function fbLineDeletable_(x){
+   if(!x||!prIsFieldBoy_(x.req)||x.completed||pNum(x.inPo)>0)return false;
+   if(String(x.req.status||'')==='Cancelled')return false;
+   if(!(isAdmin()||sarvCan('EDIT_PR')))return false;
+   const fc=((x.req.pdf_snapshot)||{}).fieldChecklist||{};
+   if(fc.confirm||fc.legacyDone)return false;
+   const ln=((fc.lines)||{})[String(x.line.id)]||{};
+   if(ln.photo&&typeof ln.photo==='object')return false;
+   return !['SENT','APPROVED'].includes(ln.status);
+ }
+ const FB_DEL_ERR={NOT_ALLOWED:'Your login does not have the EDIT PR right.',REASON_REQUIRED:'Write a reason of at least 3 letters.',
+   NOT_FIELD_BOY:'This is not a Field Boy PR.',PR_CLOSED:'This PR is cancelled.',LINE_NOT_FOUND:'This item is no longer on the PR. Refresh the list.',
+   ALREADY_DONE:'The requester has already confirmed this PR; its items cannot change now.',HAS_PHOTO:'The Field Boy has uploaded a photo for this item, so it cannot be deleted here.',
+   LINE_LOCKED:'This item has been sent for / given approval, so it cannot be deleted.',ON_PO:'This item is already on a PO.',
+   LAST_LINE:'This is the only item of the PR. Cancel the PR instead.',NO_SESSION:'Your login session has ended. Log out and log in again from the launcher.',
+   NO_TOKEN:'Your login session was not found. Log out and log in again from the launcher.'};
+ async function sarvFbDeleteLine_(i,btn){
+   const x=sarvPendingRequirements[i];if(!x)return;
+   if(!fbLineDeletable_(x))return showToast('This item cannot be deleted any more. Refresh the list.','warn');
+   const why=prompt('Delete "'+x.name+'" ('+pNum(x.requested)+' '+(x.line.uom||x.item.uom||'PCS')+') from '+x.req.req_no+'?\n\nThe Field Boy has not uploaded its proof photo. Only this item is removed; the rest of the PR stays as it is.\n\nReason:');
+   if(why==null)return;
+   if(why.trim().length<3)return showToast(FB_DEL_ERR.REASON_REQUIRED,'warn');
+   let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+   if(btn){btn.disabled=true;btn.textContent='Deleting…';}
+   try{
+     const r=await SB.rpc('fb_delete_line',{p_token:tok,p_req_no:x.req.req_no,p_line_id:x.line.id,p_reason:why.trim()});
+     if(r.error){
+       const c=r.error.code||'';
+       throw new Error((c==='PGRST202'||c==='42883')?'The server is not ready for this yet. Admin: run sql/FB_DELETE_LINE_MIGRATION.sql in the Supabase SQL Editor.':(r.error.message||'Could not delete'));
+     }
+     const d=r.data||{};
+     if(d.success===false)throw new Error(FB_DEL_ERR[d.error]||d.error||'Could not delete');
+     showToast('Deleted "'+(d.item||x.name)+'" from '+x.req.req_no);
+     await refreshPendingRequirements();
+   }catch(e){
+     if(btn){btn.disabled=false;btn.textContent='✕ Delete item';}
+     showToast(e.message||String(e),'error');
+   }
+ }
  function renderPendingRequirementsTable(){
    const tb=byId('p_poPendingBody');if(!tb)return;tb.innerHTML='';
    const statusColors={'Pending':'#64748b','Hold':'#d97706','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Rejected':'#dc2626','Cancelled':'#dc2626','Completed':'#15803d'};
@@ -21735,7 +21783,11 @@ let PR_TEAL=[13,92,83];
          +(needsFix?' title="'+pEsc(statusVal)+' PR: correct it and save, and it goes back to PENDING" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
          +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
        :'<button type="button" class="btn btn-sm" disabled title="'+pEsc(prEditDeniedMsg_(x.req))+'" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">'+(prFieldLocked_(x.req)?'Locked (approved)':'Edit PR')+'</button>';
-     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+'</td>';tb.appendChild(tr);
+     // A Field Boy item without its proof photo can be taken off the PR on its own (fbLineDeletable_).
+     const fbDel=fbLineDeletable_(x)
+       ?' <button type="button" class="btn btn-sm sarv-fb-del-line" data-index="'+i+'" title="No proof photo from the Field Boy: remove only this item from the PR (a reason is needed)" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;margin-top:3px;">✕ Delete item</button>'
+       :'';
+     const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+fbDel+'</td>';tb.appendChild(tr);
    });
    if(!shown){
      const total=sarvPendingRequirements.length;
@@ -25335,6 +25387,7 @@ let PR_TEAL=[13,92,83];
          const x=sarvPendingRequirements[+editBtn.dataset.index];
          if(x&&!canEditPr_(x.req))return showToast(prEditDeniedMsg_(x.req),'warn');
          populateRequirementEditor(x);return;}
+       const fbDelBtn=e.target.closest('.sarv-fb-del-line');if(fbDelBtn){sarvFbDeleteLine_(+fbDelBtn.dataset.index,fbDelBtn).catch(dbError);return;}
        const viBtn=e.target.closest('.sarv-vendor-info');if(viBtn)openVendorInfoModal(viBtn.dataset.req).catch(dbError);
      });
      pending.dataset.poBound='1';
