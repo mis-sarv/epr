@@ -570,8 +570,13 @@ window.sarvOpenStoreTransfer=sarvOpenStoreTransfer;
    Only changed rows are written, on Save. No delete here on purpose: old PRs /
    POs still name their categories, and a category removed by mistake would
    silently lose its Purchaser and its ticks. Columns store1 / store2 come from
-   sql/PRPO_STORE_MIGRATION.sql; without them the ticks are shown disabled. */
-let prpoRows=[],prpoHasStores=true;
+   sql/PRPO_STORE_MIGRATION.sql; without them the ticks are shown disabled.
+     • MD-1 / MD-2 (sql/PRPO_MD_MIGRATION.sql, columns md1 / md2) — which MD
+       sees the category's PRs / POs in the mobile approval app. The MD is the
+       MD user whose Emp Code is MD-1 / MD-2 (Users & Roles). A category with
+       neither tick is seen by both, so nothing is lost while ticks are filled
+       in (mobile-core.js, mdScope_). Without the columns the ticks are disabled. */
+let prpoRows=[],prpoHasStores=true,prpoHasMd=true;
 async function sarvOpenPrpoMaster(){
   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
   let m=byId('prpoMasterModal');
@@ -584,7 +589,9 @@ async function sarvOpenPrpoMaster(){
       +'<div style="font-size:12px;color:#475569;line-height:1.6;margin-bottom:10px;">'
       +'<b>Purchaser</b>: who a new PR of the category is booked to. '
       +'<b>Store 1 / Store 2</b>: tick a store and every PR / PO with an item of that category shows in <i>that store\'s</i> Inward form too, whichever store raised it. '
-      +'Unticked, a PR / PO shows only in its own store (the store of the user who raised the PR).</div>'
+      +'Unticked, a PR / PO shows only in its own store (the store of the user who raised the PR). '
+      +'<b>MD-1 / MD-2</b>: the MD (Emp Code MD-1 / MD-2 in Users &amp; Roles) who sees the category\'s PRs / POs in the mobile approval app. '
+      +'Neither ticked = both MDs see it.</div>'
       +'<div id="prpoNote"></div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">'
       +'<input id="prpoSearch" oninput="sarvPrpoRender()" placeholder="Search category or purchaser" style="flex:1 1 220px;padding:7px 10px;border:1px solid #cbd5e1;border-radius:7px;">'
@@ -593,7 +600,8 @@ async function sarvOpenPrpoMaster(){
       +'<div style="max-height:58vh;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;">'
       +'<table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr style="background:#f8fafc;text-align:left;position:sticky;top:0;">'
       +'<th style="padding:8px;">Category</th><th style="padding:8px;width:220px;">Purchaser</th>'
-      +'<th style="padding:8px;width:80px;text-align:center;">Store 1</th><th style="padding:8px;width:80px;text-align:center;">Store 2</th></tr></thead>'
+      +'<th style="padding:8px;width:80px;text-align:center;">Store 1</th><th style="padding:8px;width:80px;text-align:center;">Store 2</th>'
+      +'<th style="padding:8px;width:70px;text-align:center;border-left:1px solid #e2e8f0;">MD-1</th><th style="padding:8px;width:70px;text-align:center;">MD-2</th></tr></thead>'
       +'<tbody id="prpoBody"></tbody></table></div>'
       +'<div id="prpoErr" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:16px;margin-top:8px;"></div>'
       +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;">'
@@ -602,21 +610,26 @@ async function sarvOpenPrpoMaster(){
     document.body.appendChild(m);
   }
   byId('prpoErr').textContent='';byId('prpoSearch').value='';
-  byId('prpoBody').innerHTML='<tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;">Loading…</td></tr>';
+  byId('prpoBody').innerHTML='<tr><td colspan="6" style="padding:16px;text-align:center;color:#94a3b8;">Loading…</td></tr>';
   m.style.display='flex';
-  let q=await SB.from('category_purchasers').select('id,category,purchaser_name,store1,store2').order('category');
-  prpoHasStores=!q.error;
-  if(q.error)q=await SB.from('category_purchasers').select('id,category,purchaser_name').order('category');
+  // Newest columns first, each dropped on its own if its migration has not run.
+  let q=await SB.from('category_purchasers').select('id,category,purchaser_name,store1,store2,md1,md2').order('category');
+  prpoHasMd=!q.error;prpoHasStores=true;
+  if(q.error)q=await SB.from('category_purchasers').select('id,category,purchaser_name,store1,store2').order('category');
+  if(q.error){prpoHasStores=false;q=await SB.from('category_purchasers').select('id,category,purchaser_name').order('category');}
   if(q.error){byId('prpoBody').innerHTML='';byId('prpoErr').textContent='Could not load category_purchasers: '+q.error.message;return;}
-  byId('prpoNote').innerHTML=prpoHasStores?'':'<div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px;">The Store 1 / Store 2 ticks need <b>sql/PRPO_STORE_MIGRATION.sql</b> to be run in Supabase. Purchasers can be edited now.</div>';
-  prpoRows=(q.data||[]).map(r=>({id:r.id,category:r.category||'',purchaser:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2,orig:{p:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2}}));
+  const warn=t=>'<div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px;">'+t+'</div>';
+  byId('prpoNote').innerHTML=(prpoHasStores?'':warn('The Store 1 / Store 2 ticks need <b>sql/PRPO_STORE_MIGRATION.sql</b> to be run in Supabase. Purchasers can be edited now.'))
+    +(prpoHasMd?'':warn('The MD-1 / MD-2 ticks need <b>sql/PRPO_MD_MIGRATION.sql</b> to be run in Supabase.'));
+  prpoRows=(q.data||[]).map(r=>({id:r.id,category:r.category||'',purchaser:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2,m1:!!r.md1,m2:!!r.md2,
+    orig:{p:r.purchaser_name||'',s1:!!r.store1,s2:!!r.store2,m1:!!r.md1,m2:!!r.md2}}));
   sarvPrpoRender();
 }
 function sarvClosePrpoMaster(){
   if(prpoRows.some(prpoDirty_)&&!confirm('There are unsaved changes. Close without saving?'))return;
   const m=byId('prpoMasterModal');if(m)m.style.display='none';
 }
-const prpoDirty_=r=>!r.id||r.purchaser!==r.orig.p||r.s1!==r.orig.s1||r.s2!==r.orig.s2;
+const prpoDirty_=r=>!r.id||r.purchaser!==r.orig.p||r.s1!==r.orig.s1||r.s2!==r.orig.s2||!!r.m1!==!!r.orig.m1||!!r.m2!==!!r.orig.m2;
 // The Purchaser choices: the PR form's own list (its names are what a PR saves), else the fixed list.
 function prpoPurchaserOptions_(){
   const sel=byId('p_reqGeneratedBy');
@@ -628,7 +641,7 @@ function sarvPrpoRender(){
   const opts=prpoPurchaserOptions_();
   const shown=prpoRows.map((r,i)=>({r,i})).filter(x=>sarvSearchMatch([x.r.category,x.r.purchaser],q));
   byId('prpoCount').textContent=shown.length+' / '+prpoRows.length+' categories'+(prpoRows.some(prpoDirty_)?' · unsaved changes':'');
-  const dis=prpoHasStores?'':' disabled';
+  const dis=prpoHasStores?'':' disabled',disMd=prpoHasMd?'':' disabled';
   byId('prpoBody').innerHTML=shown.map(({r,i})=>{
     const list=opts.includes(r.purchaser)||!r.purchaser?opts:[r.purchaser].concat(opts);
     return '<tr style="border-top:1px solid #f1f5f9;'+(prpoDirty_(r)?'background:#fffbeb;':'')+'">'
@@ -637,11 +650,13 @@ function sarvPrpoRender(){
       +'<td style="padding:6px 8px;"><select onchange="prpoRows['+i+'].purchaser=this.value;sarvPrpoRender()" style="width:100%;padding:5px;">'
         +'<option value="">— not set —</option>'+list.map(p=>'<option value="'+escText(p)+'"'+(p===r.purchaser?' selected':'')+'>'+escText(p)+'</option>').join('')+'</select></td>'
       +'<td style="text-align:center;"><input type="checkbox"'+(r.s1?' checked':'')+dis+' onchange="prpoRows['+i+'].s1=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#7c3aed;"></td>'
-      +'<td style="text-align:center;"><input type="checkbox"'+(r.s2?' checked':'')+dis+' onchange="prpoRows['+i+'].s2=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#0f766e;"></td></tr>';
-  }).join('')||'<tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;">No category matches.</td></tr>';
+      +'<td style="text-align:center;"><input type="checkbox"'+(r.s2?' checked':'')+dis+' onchange="prpoRows['+i+'].s2=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#0f766e;"></td>'
+      +'<td style="text-align:center;border-left:1px solid #f1f5f9;"><input type="checkbox" title="MD-1 sees this category\'s PRs / POs on mobile"'+(r.m1?' checked':'')+disMd+' onchange="prpoRows['+i+'].m1=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#b45309;"></td>'
+      +'<td style="text-align:center;"><input type="checkbox" title="MD-2 sees this category\'s PRs / POs on mobile"'+(r.m2?' checked':'')+disMd+' onchange="prpoRows['+i+'].m2=this.checked;sarvPrpoRender()" style="width:17px;height:17px;accent-color:#be123c;"></td></tr>';
+  }).join('')||'<tr><td colspan="6" style="padding:16px;text-align:center;color:#94a3b8;">No category matches.</td></tr>';
 }
 function sarvPrpoAdd(){
-  prpoRows.unshift({id:null,category:'',purchaser:'',s1:false,s2:false,orig:{p:'',s1:false,s2:false}});
+  prpoRows.unshift({id:null,category:'',purchaser:'',s1:false,s2:false,m1:false,m2:false,orig:{p:'',s1:false,s2:false,m1:false,m2:false}});
   byId('prpoSearch').value='';sarvPrpoRender();
   const inp=byId('prpoBody').querySelector('input:not([type])');if(inp)inp.focus();
 }
@@ -662,12 +677,13 @@ async function sarvPrpoSave(){
     for(const r of changed){
       const row={purchaser_name:r.purchaser||null,updated_at:new Date().toISOString()};
       if(prpoHasStores){row.store1=r.s1;row.store2=r.s2;}
+      if(prpoHasMd){row.md1=!!r.m1;row.md2=!!r.m2;}
       const w=r.id
         ?await SB.from('category_purchasers').update(row).eq('id',r.id)
         :await SB.from('category_purchasers').insert({...row,category:r.category}).select('id').single();
       if(w.error)throw new Error((r.category||'')+': '+w.error.message);
       if(!r.id&&w.data)r.id=w.data.id;
-      r.orig={p:r.purchaser,s1:r.s1,s2:r.s2};
+      r.orig={p:r.purchaser,s1:r.s1,s2:r.s2,m1:!!r.m1,m2:!!r.m2};
     }
     // The PR form's auto-pick and the Inward pickers read the new map straight away.
     sarvCatPurLoaded=false;await loadCategoryPurchasers();
@@ -3123,6 +3139,41 @@ function askSecret({title,subtitle,recordInfo,label,confirmText}={}){
     okBtn&&okBtn.addEventListener('click',onOk);
     cancelBtn&&cancelBtn.addEventListener('click',onCancel);
     input.addEventListener('keydown',onKey);
+  });
+}
+/* In-page replacement for window.prompt() for ordinary text (a reason, a
+   remark). The host the ERP runs in refuses prompt() ("prompt() is not
+   supported"), which made Print History › Cancel fail with a "Supabase error"
+   before anything was saved. Same popup style as the Submit PIN gate
+   (.sarv-ov). Resolves with the typed text (trimmed), or null when cancelled.
+   required: OK stays refused until something (at least minLen letters) is typed. */
+function sarvAskText_({title,message,label,placeholder,okText,required,minLen,value}={}){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.className='sarv-ov';
+    ov.style.zIndex='40100';   // above any popup that asked for it
+    ov.innerHTML='<div class="card" style="max-width:460px;"><div class="hd">'+escText(title||'Please enter')+'</div><div class="bd">'
+      +(message?'<div style="font-size:12px;color:#334155;line-height:1.55;margin-bottom:10px;white-space:pre-line;">'+escText(message)+'</div>':'')
+      +'<div class="err" data-f="err"></div>'
+      +'<div class="fg"><label>'+escText(label||'Reason')+(required?' <span class="req">*</span>':'')+'</label>'
+      +'<textarea data-f="txt" rows="3" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;font:inherit;resize:vertical;" placeholder="'+escText(placeholder||'')+'"></textarea></div>'
+      +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="ok">'+escText(okText||'OK')+'</button></div></div>';
+    document.body.appendChild(ov);
+    const f=k=>ov.querySelector('[data-f="'+k+'"]');
+    const txt=f('txt');txt.value=value||'';
+    const done=v=>{document.removeEventListener('keydown',onKey,true);ov.remove();resolve(v);};
+    const err=m=>{const e=f('err');e.textContent=m;e.style.display=m?'block':'none';};
+    const ok=()=>{
+      const v=String(txt.value||'').trim(),need=required?Math.max(1,minLen||1):0;
+      if(v.length<need){err(need>1?'Please write at least '+need+' letters.':'This is required.');txt.focus();return;}
+      done(v);
+    };
+    // Enter = new line in the box; Ctrl+Enter = OK; Esc = Cancel.
+    const onKey=e=>{if(e.key==='Escape'){e.preventDefault();done(null);}else if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();ok();}};
+    document.addEventListener('keydown',onKey,true);
+    f('cancel').addEventListener('click',()=>done(null));
+    f('ok').addEventListener('click',ok);
+    setTimeout(()=>txt.focus(),30);
   });
 }
 async function verifyEditPassword(reason){
@@ -13163,9 +13214,14 @@ function storeChecklistHtml_(kind,d,items){
    copy (landscape SINGLE, two copies side by side) the rest is cut with a
    note pointing to the TWO PAGE PDF, which always has the full list.
    Returns the y below the block. */
-function drawStoreChecklistNative_(doc,kind,d,items,x,y,w,maxY,canBreak){
+/* canBreak: true = may add a page (old call), or a function that moves to this
+   copy's next page and returns the y to start at (drawStoreCopyNative_). fs0 =
+   the font to try first (the Store PDF's bigger text); it steps down to 6 pt
+   before the list moves to the next page. */
+function drawStoreChecklistNative_(doc,kind,d,items,x,y,w,maxY,canBreak,fs0){
   const groups=sarvStoreChecklistsFor_(kind,d,items);
   if(!groups.length)return y;
+  fs0=fs0||7;
   const gap=4,colW=(w-4-gap)/2;
   const plan=fs=>{
     doc.setFontSize(fs);
@@ -13184,10 +13240,13 @@ function drawStoreChecklistNative_(doc,kind,d,items,x,y,w,maxY,canBreak){
     });
     return {fs,lh,ops,h:h+0.8};
   };
-  let p=plan(7);
+  let p=plan(fs0);
+  if(y+p.h>maxY&&fs0>7)p=plan(7);
   if(y+p.h>maxY)p=plan(6);
-  if(y+p.h>maxY&&canBreak){doc.addPage();y=8;}
-  const top=y,limit=canBreak?doc.internal.pageSize.getHeight()-12:maxY;
+  const brk=typeof canBreak==='function';
+  // Moving on: at the bigger font again, since a fresh page has the room.
+  if(y+p.h>maxY&&canBreak){if(brk){y=canBreak();p=plan(fs0);if(y+p.h>maxY)p=plan(Math.max(6,fs0-1));}else{doc.addPage();y=8;}}
+  const top=y,limit=brk?maxY:(canBreak?doc.internal.pageSize.getHeight()-12:maxY);
   doc.setTextColor(13,92,83);doc.setFont(undefined,'bold');doc.setFontSize(p.fs+0.5);
   doc.text('CHECKLIST',x+2,top+3.4);
   doc.setTextColor(0,0,0);
@@ -15660,7 +15719,9 @@ window.cancelStoreRecord=async function(kind,id,no){
     +'• This qty will be '+(isIn?'removed from':'returned to')+' stock\n'
     +'• The Record No. will show as CANCELLED in the list and cannot be edited\n'
     +'• This cannot be undone'))return;
-  const reason=prompt('Cancel '+no+': enter a reason (required):');
+  // In-page box, not prompt(): the ERP's host blocks prompt() (sarvAskText_).
+  const reason=await sarvAskText_({title:'Cancel '+no,message:'Why is this record being cancelled? The reason is saved on the record.',
+    label:'Reason',placeholder:'e.g. WRONG SUPPLIER / DUPLICATE ENTRY',okText:'Cancel Record',required:true});
   if(reason===null)return;
   if(!reason.trim())return showToast('A reason is required; the record was not cancelled','warn');
 
@@ -17061,27 +17122,38 @@ window.addEventListener('DOMContentLoaded',()=>{
     through the didDrawCell hook.
 
     From left to right, advancing by the real text width after each segment.
-    It stops at the cell's right edge, so text never spills out of the cell
-    in the PDF. */
- const STRIP_FS=6.2, STRIP_LH=2.9;
+    A line wider than the cell is drawn in a smaller font for that line only
+    (down to 4.5 pt), so nothing is dropped at the right edge; it still stops
+    at the edge as a last guard, so text never spills out of the cell.
+    STRIP_FS / STRIP_LH follow the Store PDF's text size (stripScale_, set by
+    drawStoreCopyNative_ and put back to 1 after it). */
+ let STRIP_FS=6.2, STRIP_LH=2.9;
+ function stripScale_(k){STRIP_FS=6.2*k;STRIP_LH=2.9*k;}
  function drawStripCell_(doc,cell,lines){
    const left=cell.x+1.6, right=cell.x+cell.width-1.6;
-   doc.setFontSize(STRIP_FS);
+   const segW=(s,fs)=>{doc.setFontSize(fs);let w=0;
+     if(s.lbl){doc.setFont(undefined,'normal');w+=doc.getTextWidth(s.lbl+': ');}
+     doc.setFont(undefined,'bold');return w+doc.getTextWidth(s.t)+2.6;};
    lines.forEach((segs,li)=>{
      let cx=left;
-     const cy=cell.y+2.9+li*STRIP_LH;
+     const cy=cell.y+0.8+STRIP_LH*0.72+li*STRIP_LH;
+     const need=f=>segs.reduce((a,s)=>a+segW(s,f),0)-2.6;
+     let fs=STRIP_FS;
+     while(fs>4.5&&need(fs)>right-left)fs=Math.max(4.5,fs-0.2);
+     const r=fs/6.2;
+     doc.setFontSize(fs);
      for(const s of segs){
        if(s.lbl){
          // The caption in its value's colour; see stripLblColor_.
          doc.setFont(undefined,'normal');doc.setTextColor(...hexRgb_(stripLblColor_(s)));
          const lt=s.lbl+': ',lw=doc.getTextWidth(lt);
-         if(cx+lw>right)break;
+         if(cx+lw>right+0.01)break;
          doc.text(lt,cx,cy);cx+=lw;
        }
        doc.setFont(undefined,'bold');
        const w=doc.getTextWidth(s.t);
-       if(cx+w>right)break;
-       if(s.bg){doc.setFillColor(...hexRgb_(s.bg));doc.rect(cx-0.5,cy-1.9,w+1,2.6,'F');}
+       if(cx+w>right+0.01)break;
+       if(s.bg){doc.setFillColor(...hexRgb_(s.bg));doc.rect(cx-0.5,cy-1.9*r,w+1,2.6*r,'F');}
        doc.setTextColor(...hexRgb_(s.c));
        doc.text(s.t,cx,cy);cx+=w+2.6;
      }
@@ -17542,25 +17614,74 @@ window.addEventListener('DOMContentLoaded',()=>{
  const nWt_=v=>pNum(v).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:3});
  const nMoneyX_=v=>'Rs. '+nNumX_(v);
 
+ /* One copy (Account / Supplier / Receiver) of a Store In / Out PDF, in the
+    box x, y, w × areaH of the current page.
+
+    TEXT SIZE: every font is the old size × K (1.15 for a half-page copy of the
+    landscape SINGLE PDF, 1.3 for a full-width TWO PAGE copy), so it reads
+    easily on a printout. Nothing is placed by a fixed offset that a bigger
+    font could overrun: label widths are measured, value columns wrap, a total
+    or a sign label that would not fit its box is drawn smaller to fit, and the
+    item table's number columns get the width their figures need.
+
+    PAGES: before each block (table, freight / totals, receiver, remarks,
+    checklist, signatures) there is a check that it fits above the bottom of
+    the copy; if not, the copy continues on the NEXT page in the same column,
+    with a "(contd.)" tag. "Next page" is the page that already exists when
+    there is one (nextPg): that is what lets the right-hand copy of the SINGLE
+    PDF be drawn from page 1 too, after the left-hand copy has already run on
+    to page 2 (buildStoreNativePdfBlob calls setPage(1) before it). autoTable
+    3.8 does the same on its own page breaks (it moves to the existing next
+    page before it adds one).
+
+    The signature slots keep the old geometry (sarvDrawSigNative_ /
+    SIG_SLOT_LAYOUT), because mobile.html stamps GM / MD signatures onto the
+    uploaded file at those same positions. */
  function drawStoreCopyNative_(doc,kind,d,items,title,x,y,w,areaH){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
+   const K=w>150?1.3:1.12;
+   const bottomY=y+areaH;                       // lowest point this copy may use, on any page
+   const startPage=doc.internal.getCurrentPageInfo().pageNumber;
+   const pageNo=()=>doc.internal.getCurrentPageInfo().pageNumber;
    doc.setTextColor(0,0,0);
-   // Tag box (top-right)
-   doc.setFontSize(8); doc.setFont(undefined,'bold');
+   // Tag box (top-right). On a continuation page: the same tag + "(contd.)".
+   const tag=t=>{
+     doc.setFontSize(8*K); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0);
+     const tagW=doc.getTextWidth(t)+6, tagH=5.5*K;
+     doc.setDrawColor(0,0,0); doc.setLineWidth(0.35);
+     doc.rect(x+w-tagW,y,tagW,tagH);
+     doc.text(t,x+w-tagW/2,y+tagH*0.69,{align:'center'});
+     return tagH;
+   };
+   const contdTop=()=>{
+     const h=tag(title+' (contd.)');
+     doc.setFontSize(8*K); doc.setFont(undefined,'bold');
+     doc.text(String((isOut?(d.outwardNo||''):(d.inwardNo||''))||''),x,y+h*0.69);
+     doc.setFont(undefined,'normal');
+     return y+h+3;
+   };
+   const contdDone={};   // pages that already carry this copy's "(contd.)" tag
+   // The next page of this copy: the one that already exists, else a new one.
+   const nextPg=()=>{const c=pageNo();if(c<doc.getNumberOfPages())doc.setPage(c+1);else doc.addPage();contdDone[pageNo()]=1;return contdTop();};
+   stripScale_(K);   // the PO / LOT strip under an item grows with the rest (put back at the end)
+   const room=(at,h)=>at+h<=bottomY?at:nextPg();
+   // Text at fs, shrunk until it fits maxW (never below 5 pt), then drawn.
+   const fitFs=(t,fs,maxW)=>{doc.setFontSize(fs);while(fs>5&&doc.getTextWidth(String(t))>maxW){fs-=0.2;doc.setFontSize(fs);}return fs;};
+   tag(title);
+   doc.setFontSize(8*K); doc.setFont(undefined,'bold');
    const tagW=doc.getTextWidth(title)+6;
-   doc.setDrawColor(0,0,0); doc.setLineWidth(0.35);
-   doc.rect(x+w-tagW,y,tagW,5.5);
-   doc.text(title,x+w-tagW/2,y+3.8,{align:'center'});
-   // Header
-   doc.setFontSize(15); doc.setFont(undefined,'bold');
-   doc.text(sarvStoreCode_(d&&d.store),x+w/2,y+6,{align:'center'});
+   // Header, centred; shrunk if it would reach the tag box on the right.
+   const code=sarvStoreCode_(d&&d.store);
+   doc.setFont(undefined,'bold');
+   fitFs(code,15*K,w-2*tagW-6);
+   doc.text(code,x+w/2,y+6*K,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
    const etColor=isOut?[124,58,237]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
-   doc.setFontSize(9); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
-   doc.text(String(et),x+w/2,y+10.5,{align:'center'});
+   fitFs(String(et),9.5*K,w-2*tagW-6); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
+   doc.text(String(et),x+w/2,y+10.8*K,{align:'center'});
    doc.setTextColor(0,0,0);
-   doc.setLineWidth(0.5); doc.line(x,y+13,x+w,y+13);
-   let yy=y+18;
+   doc.setLineWidth(0.5); doc.line(x,y+13.2*K,x+w,y+13.2*K);
+   let yy=y+13.2*K+4.6*K;
    // Meta info — two columns of label/value pairs
    const halfW=(w-4)/2;
    const leftPairs=[], rightPairs=[];
@@ -17593,23 +17714,31 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.targetReturnDate)rightPairs.push(['Target Return:',fmtDate_(d.targetReturnDate)]);
      rightPairs.push(['Transport:',d.transport||'-']);
    }
-   doc.setFontSize(8);
+   const mfs=8*K, mlh=mfs*0.5;   // meta font, and its line height in mm
+   doc.setFontSize(mfs);
    let ly=yy,ry=yy;
    /* Values are wrapped to the width their column actually has, and the next
       pair is pushed down by however many lines that took. A receipt against
       several POs makes "PO Reference" longer than the column; printed as one
       doc.text() line it ran off the page edge and the PO numbers past the
-      first were simply lost from the print. */
-   const pair=(lbl,val,lx,avail,ty)=>{
-     doc.setFont(undefined,'bold');doc.text(lbl,lx,ty);
+      first were simply lost from the print.
+      The label column is as wide as that column's longest label at this font
+      (at most 46% of the column; a longer label wraps), so a bigger font can
+      never make a label run into its value. */
+   const lblW=pairs=>{doc.setFont(undefined,'bold');doc.setFontSize(mfs);
+     return Math.min(halfW*0.46,Math.max(10,...pairs.map(p=>doc.getTextWidth(String(p[0]))))+1.6);};
+   const pair=(lbl,val,lx,avail,lw,ty)=>{
+     doc.setFontSize(mfs);
+     doc.setFont(undefined,'bold');const la=doc.splitTextToSize(String(lbl),lw-1);doc.text(la,lx,ty);
      doc.setFont(undefined,'normal');
-     const ls=doc.splitTextToSize(String(val),Math.max(20,avail-26));
-     doc.text(ls,lx+26,ty);
-     return ty+4.2*Math.max(1,ls.length);
+     const ls=doc.splitTextToSize(String(val),Math.max(12,avail-lw));
+     doc.text(ls,lx+lw,ty);
+     return ty+mlh*Math.max(1,ls.length,la.length)+0.5;
    };
-   leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,x,halfW,ly);});
-   rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,x+halfW+4,halfW,ry);});
-   yy=Math.max(ly,ry)+2;
+   const lw1=lblW(leftPairs),lw2=lblW(rightPairs);
+   leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,x,halfW,lw1,ly);});
+   rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,x+halfW+4,halfW,lw2,ry);});
+   yy=Math.max(ly,ry)+1.5;
    // Items table
    let head,body,foot;
    /* body row index → that strip's coloured lines. didDrawCell reads from this.
@@ -17681,14 +17810,40 @@ window.addEventListener('DOMContentLoaded',()=>{
      const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0);
      foot=[['TOTAL — '+items.length+' item(s)','','',String(totQty),nWt_(totWt)]];
    }
+   /* Font and column widths. The number columns (Qty, Weight, rates, Total)
+      get at least the width of their longest figure, so a figure is never
+      broken over two lines or cut; the text columns share what is left. If
+      the figures would leave the text column less than 32 mm, the table font
+      steps down (not below 6.5 pt) until they fit. */
+   const nCols=head[0].length, numCols=isOut?[3,4]:[1,2,3,4,5,6];
+   const pad=1.15*K;
+   const colTexts=ci=>[head[0][ci]].concat(body.filter(r=>r.length===nCols).map(r=>r[ci]),foot.map(r=>r[ci]))
+     .map(v=>String(v==null?'':v));
+   const colMin=(ci,fs)=>{doc.setFontSize(fs);doc.setFont(undefined,'bold');
+     // A heading may wrap at its spaces, so only its longest word must fit; a figure must fit whole.
+     return Math.max(...colTexts(ci).map((t,i)=>i===0?Math.max(...t.split(/\s+/).map(s=>doc.getTextWidth(s))):doc.getTextWidth(t)))+pad*2+0.8;};
+   let tfs=7*K;
+   while(tfs>6.5&&numCols.reduce((s,ci)=>s+colMin(ci,tfs),0)+32>w)tfs=Math.max(6.5,tfs-0.25);
+   const columnStyles={};
+   numCols.forEach(ci=>{columnStyles[ci]={minCellWidth:colMin(ci,tfs),halign:'center'};});
+   yy=room(yy,22);   // at least the heading and one row on this page
+   const pageW_=doc.internal.pageSize.getWidth(),pageH_=doc.internal.pageSize.getHeight();
    doc.autoTable({
      head,body,foot,startY:yy,
-     margin:{left:x,right:doc.internal.pageSize.getWidth()-(x+w)},
+     // top = where a continued table starts on its next page (below the "(contd.)" tag);
+     // bottom = the bottom of this copy, so the table never runs into the page edge.
+     margin:{left:x,right:pageW_-(x+w),top:y+5.5*K+3,bottom:Math.max(4,pageH_-bottomY)},
      tableWidth:w,
-     styles:{fontSize:7,cellPadding:1.3,overflow:'linebreak',textColor:[0,0,0],lineColor:[15,23,42],lineWidth:0.2},
-     headStyles:{fillColor:[255,255,255],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
+     rowPageBreak:'avoid',
+     // The TOTAL row once, under the last item: repeated at the foot of page 1 it read as the page's total.
+     showFoot:'lastPage',
+     styles:{fontSize:tfs,cellPadding:pad,overflow:'linebreak',textColor:[0,0,0],lineColor:[15,23,42],lineWidth:0.2},
+     headStyles:{fillColor:[255,255,255],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42],halign:'center'},
      footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
+     columnStyles,
      theme:'grid',
+     // A page this table moved on to gets the copy's "(contd.)" tag.
+     didDrawPage:()=>{if(pageNo()!==startPage&&!contdDone[pageNo()]){contdDone[pageNo()]=1;contdTop();}},
      // The strip rows have empty content; they are written here so each figure
      // can take its own colour. autoTable writes all the other cells itself.
      // On a page break the hook still runs per cell, so the strip stays in the
@@ -17701,13 +17856,35 @@ window.addEventListener('DOMContentLoaded',()=>{
    });
    yy=doc.lastAutoTable.finalY+3;
    // Freight/summary (Inward) or Receiver details (Outward)
+   /* "Label ........ value" on one line inside a box of width bw: the font steps
+      down for that line only if label + value would not fit side by side, so a
+      long tax label never runs into its figure. */
+   const lv=(l,v,lx,bw,ty,fs,bold)=>{
+     doc.setFont(undefined,bold?'bold':'normal');
+     let f=fs;doc.setFontSize(f);
+     while(f>5&&doc.getTextWidth(l)+doc.getTextWidth(String(v))+5>bw){f-=0.2;doc.setFontSize(f);}
+     doc.text(l,lx+2,ty);doc.text(String(v),lx+bw-2,ty,{align:'right'});
+   };
+   /* What follows the box below on this copy, kept on the SAME page as it when
+      there is no checklist in between: the remarks and the signature footer
+      (about 25 mm, see SIG_ABOVE / SIG_BELOW). So the amounts and the signatures
+      move to the next page together, instead of the signatures landing on a
+      page of their own. With a checklist the footer follows the checklist. */
+   const hasChecklist=sarvStoreChecklistsFor_(kind,d,items).length>0;
+   const tailH=(()=>{
+     let h=hasChecklist?0:25;   // SIG_ABOVE + SIG_BELOW, plus the gap kept above the footer
+     if(d.remarks){doc.setFontSize(7*K);doc.setFont(undefined,'italic');
+       const n=doc.splitTextToSize('Remarks: '+d.remarks,w-4).length;h+=Math.min(n,4)*7*K*0.5+1.2;doc.setFont(undefined,'normal');}
+     return h;
+   })();
+   // Keep the box with its tail, unless even a fresh page could not hold both.
+   const roomWithTail=(at,boxH)=>{
+     if(at+boxH+tailH<=bottomY)return at;
+     const fresh=y+5.5*K+3;
+     return (fresh+boxH+tailH<=bottomY)?nextPg():room(at,boxH);
+   };
    if(!isOut){
-     const boxW=halfW;
-     doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
-     doc.rect(x,yy,boxW,24);
-     doc.setFontSize(7.5); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
-     doc.text('FREIGHT CALCULATOR SUMMARY',x+2,yy+4);
-     doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0); doc.setFontSize(7);
+     const boxW=halfW, bfs=7*K, blh=bfs*0.52, hfs=7.5*K;
      const netWeight=(d.netWeight!=null?d.netWeight:items.reduce((s,x)=>s+pNum(x.weight),0));
      const frLines=[
        ['Net Weight (Items):',netWeight+' KGS'],
@@ -17716,10 +17893,6 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Total Freight Amt:',nNumX_(inwCalcFreightAmt_(d))],
        ['Cost on Yarn / Kg:',nNum_(d.costOnYarn||d.calcCostOnYarn)]
      ];
-     let fy=yy+8;
-     frLines.forEach(([l,v])=>{doc.text(l,x+2,fy);doc.text(String(v),x+boxW-2,fy,{align:'right'});fy+=3.6;});
-     const totX=x+halfW+4;
-     doc.rect(totX,yy,boxW,24);
      const totLines=[
        ['Items Base Total:',nNumX_(d.baseTotal)],
        ['Freight Expenses (+):',nNumX_(d.freight||d.freightExp)],
@@ -17727,40 +17900,73 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Total Applied Tax ('+pNum(d.gstRate).toFixed(1)+'% GST):',nNumX_(d.totalTax)],
        ['Round off (+/-):',nNumX_(d.roundOff)]
      ];
-     let ty=yy+4;
-     totLines.forEach(([l,v])=>{doc.text(l,totX+2,ty);doc.text(String(v),totX+boxW-2,ty,{align:'right'});ty+=3.4;});
-     doc.setFillColor(241,245,249); doc.rect(totX,ty-2.6,boxW,4.4,'F');
-     doc.setFont(undefined,'bold'); doc.setFontSize(8); doc.setTextColor(0,0,0);
-     doc.text('FINAL NET AMOUNT:',totX+2,ty+0.6);
-     doc.text(nMoney_(d.finalAmt),totX+boxW-2,ty+0.6,{align:'right'});
-     yy=yy+26;
-   } else {
+     // Both boxes as tall as the taller one: heading + 5 lines (freight), 5 lines + the final amount band (totals).
+     const finH=8*K*0.62;
+     const boxH=Math.max(hfs*0.55+2+frLines.length*blh+1.6, 1.6+totLines.length*blh+finH+1.4);
+     yy=roomWithTail(yy,boxH+2);
      doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
-     doc.rect(x,yy,w,16);
-     doc.setFontSize(7.5); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
-     doc.text('RECEIVER DETAILS',x+2,yy+4);
-     doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0); doc.setFontSize(7.5);
-     doc.text('Receiver Name: '+(d.receiverName||'-'),x+2,yy+8);
-     doc.text('Designation: '+(d.designation||'-'),x+2,yy+11.5);
-     doc.text('Department: '+(d.department||'-'),x+2,yy+15);
-     yy=yy+18;
-   }
-   // Remarks
-   if(d.remarks){
-     doc.setFontSize(7); doc.setFont(undefined,'italic'); doc.setTextColor(2,132,199);
-     const remLines=doc.splitTextToSize('Remarks: '+d.remarks,w-4);
-     doc.text(remLines,x+2,yy+3);
+     doc.rect(x,yy,boxW,boxH);
+     doc.setFontSize(hfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
+     fitFs('FREIGHT CALCULATOR SUMMARY',hfs,boxW-4);
+     doc.text('FREIGHT CALCULATOR SUMMARY',x+2,yy+hfs*0.42+1.2);
      doc.setTextColor(0,0,0);
-     yy+=3+remLines.length*3.2;
+     let fy=yy+hfs*0.55+2+blh*0.8;
+     frLines.forEach(([l,v])=>{lv(l,v,x,boxW,fy,bfs,false);fy+=blh;});
+     const totX=x+halfW+4;
+     doc.rect(totX,yy,boxW,boxH);
+     let ty=yy+1.6+blh*0.8;
+     totLines.forEach(([l,v])=>{lv(l,v,totX,boxW,ty,bfs,false);ty+=blh;});
+     const finTop=yy+boxH-finH-0.4;
+     doc.setFillColor(241,245,249); doc.rect(totX+0.2,finTop,boxW-0.4,finH,'F');
+     doc.setTextColor(0,0,0);
+     lv('FINAL NET AMOUNT:',nMoney_(d.finalAmt),totX,boxW,finTop+finH*0.7,8*K,true);
+     yy=yy+boxH+2;
+   } else {
+     const rfs=7.5*K, rlh=rfs*0.52;
+     doc.setFontSize(rfs); doc.setFont(undefined,'normal');
+     const rl=['Receiver Name: '+(d.receiverName||'-'),'Designation: '+(d.designation||'-'),'Department: '+(d.department||'-')]
+       .map(t=>doc.splitTextToSize(t,w-4));
+     const boxH=rfs*0.55+2+rl.reduce((s,a)=>s+a.length,0)*rlh+1.4;
+     yy=roomWithTail(yy,boxH+2);
+     doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
+     doc.rect(x,yy,w,boxH);
+     doc.setFontSize(rfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
+     doc.text('RECEIVER DETAILS',x+2,yy+rfs*0.42+1.2);
+     doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0);
+     let ry2=yy+rfs*0.55+2+rlh*0.8;
+     rl.forEach(a=>{doc.text(a,x+2,ry2);ry2+=a.length*rlh;});
+     yy=yy+boxH+2;
+   }
+   // Remarks: as many lines as fit here, the rest on the next page of this copy.
+   if(d.remarks){
+     const rmfs=7*K, rmlh=rmfs*0.5;
+     doc.setFontSize(rmfs); doc.setFont(undefined,'italic');
+     let remLines=doc.splitTextToSize('Remarks: '+d.remarks,w-4);
+     yy=room(yy,rmlh+2);
+     while(remLines.length){
+       const fit=Math.max(1,Math.floor((bottomY-yy-1)/rmlh));
+       const part=remLines.slice(0,fit);remLines=remLines.slice(fit);
+       doc.setFontSize(rmfs); doc.setFont(undefined,'italic'); doc.setTextColor(2,132,199);
+       doc.text(part,x+2,yy+rmlh*0.8);
+       doc.setTextColor(0,0,0); doc.setFont(undefined,'normal');
+       yy+=part.length*rmlh+1.2;
+       if(remLines.length)yy=nextPg();
+     }
    }
    /* The Dropdown Master checklists that match this entry, with tick-boxes.
       Kept above the signature line (30 mm from the bottom of the copy); a
       full-width copy (TWO PAGE) may continue on a new page, a half-page copy
       is shortened. */
-   yy=drawStoreChecklistNative_(doc,kind,d,items,x,yy+1,w,y+areaH-30,w>150);
-   // Signature footer — anchored near the bottom of this copy's area. 16 mm
-   // above the line is kept clear for a signature + its name / time stamp.
-   const sigY=Math.max(yy+16,y+areaH-14);
+   /* Signature footer — anchored near the bottom of this copy's area. 14.5 mm
+      above the line is kept clear for a signature + its name / time stamp
+      (the image box starts 13.5 mm above it, SIG_SLOT_LAYOUT); below it the
+      label and the Printed stamp need 8 mm. So the footer takes 22.5 mm. */
+   const SIG_ABOVE=14.5, SIG_BELOW=10;
+   // A checklist that does not fit here goes on to the next page of this copy (nothing is cut).
+   yy=drawStoreChecklistNative_(doc,kind,d,items,x,yy+1,w,bottomY-SIG_BELOW-SIG_ABOVE,()=>nextPg(),7*K);
+   // No room left above the bottom: the footer goes to the next page of this copy.
+   if(yy+SIG_ABOVE>bottomY-SIG_BELOW)yy=nextPg();
+   const sigY=Math.max(yy+SIG_ABOVE,bottomY-SIG_BELOW);
    const sigLabels=isOut
      ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']:['Store In-Charge','GM Sign','MD Sign'])
      :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
@@ -17768,9 +17974,10 @@ window.addEventListener('DOMContentLoaded',()=>{
    const sigs=d.__sigs||{};
    sigLabels.forEach((lbl,i)=>{
      const cx=x+segW*i;
-     doc.setFontSize(7); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0); doc.setLineWidth(0.3);
+     doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0); doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
      doc.line(cx+3,sigY,cx+segW-3,sigY);
-     doc.text(lbl.toUpperCase(),cx+segW/2,sigY+3.2,{align:'center'});
+     fitFs(lbl.toUpperCase(),7.5*K,segW-3);
+     doc.text(lbl.toUpperCase(),cx+segW/2,sigY+3.4*K,{align:'center'});
      /* Store In-Charge / GM / MD slots are remembered (page + position) so
         mobile.html can stamp the GM / MD signature onto this same file when
         they press Check Done — see sarvStoreSignStage_ / SIG_SLOT_LAYOUT. */
@@ -17780,9 +17987,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(doc.__sigSlots)doc.__sigSlots.push(slot);
      if(sigs[st])sarvDrawSigNative_(doc,sigs[st],slot);
    });
-   doc.setFontSize(6); doc.setFont(undefined,'normal'); doc.setTextColor(220,38,38);
-   doc.text('Printed: '+pStamp(),x+3,sigY+6.5);
+   doc.setFontSize(6.5); doc.setFont(undefined,'normal'); doc.setTextColor(220,38,38);
+   doc.text('Printed: '+pStamp(),x+3,Math.min(sigY+3.4*K+3.4,bottomY+4));
    doc.setTextColor(0,0,0);
+   stripScale_(1);
  }
 
  /* ── ORIGINAL INVOICE PDF ─────────────────────────────────────────
@@ -17869,11 +18077,22 @@ window.addEventListener('DOMContentLoaded',()=>{
      const margin=6,gap=6;
      const colW=(pageW-margin*2-gap)/2;
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,colW,pageH-margin*2);
-     doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
-     if(doc.setLineDashPattern)doc.setLineDashPattern([1.5,1.2],0);
-     doc.line(margin+colW+gap/2,margin,margin+colW+gap/2,pageH-margin);
-     if(doc.setLineDashPattern)doc.setLineDashPattern([],0);
+     /* The right-hand copy ALWAYS starts at the top of page 1, side by side
+        with the left one. When the left copy ran on to page 2, the PDF was
+        still on page 2 here, so the Supplier / Receiver copy used to start on
+        page 2 and leave page 1's right half empty. Its own overflow then
+        continues on the same page 2 (drawStoreCopyNative_ / autoTable move to
+        the existing next page before adding one). */
+     doc.setPage(1);
      drawStoreCopyNative_(doc,kind,d,items,copyBTitle,margin+colW+gap,margin,colW,pageH-margin*2);
+     // The dashed cut line down the middle, on every page.
+     for(let p=1;p<=doc.getNumberOfPages();p++){
+       doc.setPage(p);
+       doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
+       if(doc.setLineDashPattern)doc.setLineDashPattern([1.5,1.2],0);
+       doc.line(margin+colW+gap/2,margin,margin+colW+gap/2,pageH-margin);
+       if(doc.setLineDashPattern)doc.setLineDashPattern([],0);
+     }
    }
    // Photos are NOT added here any more: they go into their own Original
    // Invoice PDF (buildStoreInvoicePdfBlob), one photo per full page. `images`
@@ -21770,7 +21989,10 @@ let PR_TEAL=[13,92,83];
  async function sarvFbDeleteLine_(i,btn){
    const x=sarvPendingRequirements[i];if(!x)return;
    if(!fbLineDeletable_(x))return showToast('This item cannot be deleted any more. Refresh the list.','warn');
-   const why=prompt('Delete "'+x.name+'" ('+pNum(x.requested)+' '+(x.line.uom||x.item.uom||'PCS')+') from '+x.req.req_no+'?\n\nThe Field Boy has not uploaded its proof photo. Only this item is removed; the rest of the PR stays as it is.\n\nReason:');
+   // In-page box, not prompt(): the ERP's host blocks prompt() (sarvAskText_).
+   const why=await sarvAskText_({title:'Delete item from '+x.req.req_no,
+     message:'Delete "'+x.name+'" ('+pNum(x.requested)+' '+(x.line.uom||x.item.uom||'PCS')+') from '+x.req.req_no+'?\n\nThe Field Boy has not uploaded its proof photo. Only this item is removed; the rest of the PR stays as it is.',
+     label:'Reason',okText:'Delete Item',required:true,minLen:3});
    if(why==null)return;
    if(why.trim().length<3)return showToast(FB_DEL_ERR.REASON_REQUIRED,'warn');
    let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
@@ -24946,7 +25168,9 @@ let PR_TEAL=[13,92,83];
    if(!confirm('Cancel PO "'+poNo+'"? This cannot be undone.'))return;
    // Optional reason. It is shown to the Purchaser in mobile.html, where the
    // PR comes back to Vendor Info for correction on its own.
-   const reason=prompt('Reason for cancelling PO "'+poNo+'" (optional):','');
+   // In-page box, not prompt(): the ERP's host blocks prompt() (sarvAskText_).
+   const reason=await sarvAskText_({title:'Cancel PO '+poNo,message:'The reason is shown to the Purchaser on mobile.',
+     label:'Reason (optional)',okText:'Cancel PO'});
    if(reason===null)return;
    /* The cancellation note rides in approvals (the same jsonb the MD's
       rejection note uses), read live so no signature recorded meanwhile is

@@ -76,7 +76,10 @@ end of <body>:     store-core.js → store-design-master.js → store-nav-keys.j
     `admin_set_user_store`); a new PR takes the raising user's store (`sarvUserStore_`, mobile `prmUserStore_`);
     a PO takes its first PR's store by trigger (`linked_req_nos`). The Inward PO / PR pickers show a store its own
     PRs / POs plus any with an item whose category is ticked for it in Administration › PR-PO Master
-    (`category_purchasers.store1/store2`, `sarvOpenPrpoMaster`, `prpoVisibleIn_`). One PO series for both;
+    (`category_purchasers.store1/store2`, `sarvOpenPrpoMaster`, `prpoVisibleIn_`). The same master's MD-1 / MD-2 ticks
+    (`category_purchasers.md1/md2`, `sql/PRPO_MD_MIGRATION.sql`) split the mobile approval app between the two MDs
+    (users with Emp Code MD-1 / MD-2): `mdScope_` in `mobile-core.js` keeps a PR / PO with any item of a category ticked
+    for that MD or for neither (shared); no ticks anywhere, other Emp Codes or a failed lookup = everything. One PO series for both;
     PR / PO PDFs print UNIT-1 / UNIT-2 from the record's store (`sarvPdfUnit_`, mobile `pdfUnit_`).
 - `store-design-master.js`: Production › Design Master. All ids/classes/functions prefixed `dm`.
 - `erp-shell.js` also owns browser history (`NAV`: one `#/module/leaf` address per screen, Back / Forward

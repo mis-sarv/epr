@@ -150,13 +150,20 @@
     <!-- ALL MODALS -->
     
     <!-- Custom Alert / Message Modal -->
-    <div id="customModal" class="fixed inset-0 z-[140] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print-hide">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="customModalContent">
-            <div class="p-6 text-center">
+    <!-- Capped at the screen height with the message scrolling inside, so a tall
+         photo (Live Photo / Proof Photos from the Month View) can never push the
+         close button off the screen. Tap outside, Esc or the phone's Back also
+         close it (POPUP BACK in the script). -->
+    <div id="customModal" class="fixed inset-0 z-[140] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print-hide" onclick="if(event.target===this)closeModal()">
+        <div class="relative bg-white rounded-2xl shadow-2xl max-w-sm w-full max-h-[92vh] flex flex-col overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="customModalContent">
+            <button onclick="closeModal()" title="Close" class="absolute top-3 right-3 z-10 text-slate-400 hover:text-red-500 bg-white p-1.5 rounded-lg border shadow-sm transition-colors"><i class="ph-bold ph-x text-lg"></i></button>
+            <div class="p-6 pb-2 text-center overflow-y-auto">
                 <div class="w-20 h-20 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border-4 border-indigo-100 shadow-inner" id="modalIcon"><i class="ph-fill ph-info text-4xl"></i></div>
                 <h3 class="text-2xl font-extrabold text-slate-800 mb-2 tracking-tight" id="modalTitle">Notification</h3>
-                <div class="text-slate-500 font-medium mb-6" id="modalMessage">Message.</div>
-                <button onclick="closeModal()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95">Got it</button>
+                <div class="text-slate-500 font-medium mb-2" id="modalMessage">Message.</div>
+            </div>
+            <div class="px-6 pb-6 pt-3 border-t border-slate-100 bg-white">
+                <button id="modalOkBtn" onclick="closeModal()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95">Got it</button>
             </div>
         </div>
     </div>
@@ -391,15 +398,19 @@
     </div>
 
     <!-- Proof Image Viewer Modal -->
-    <div id="proofModal" class="fixed inset-0 z-[140] hidden items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 print-hide">
-        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="proofModalContent">
+    <!-- Back button at the bottom, tap outside, Esc or the phone's Back close it (POPUP BACK in the script). -->
+    <div id="proofModal" class="fixed inset-0 z-[140] hidden items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 print-hide" onclick="if(event.target===this)closeProofModal()">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[94vh] flex flex-col overflow-hidden transform scale-95 opacity-0 transition-all duration-300" id="proofModalContent">
             <div class="flex justify-between items-center p-5 border-b border-slate-200 bg-slate-50">
                 <h3 class="text-lg font-extrabold text-slate-800 flex items-center"><i class="ph-fill ph-image mr-2 text-indigo-500 text-2xl"></i> Task Proof</h3>
                 <button onclick="closeProofModal()" class="text-slate-400 hover:text-red-500 bg-white p-1.5 rounded-lg border shadow-sm transition-colors"><i class="ph-bold ph-x text-lg"></i></button>
             </div>
-            <div class="p-4 bg-slate-200 flex justify-center items-center min-h-[300px] relative">
+            <div class="p-4 bg-slate-200 flex justify-center items-center min-h-[240px] relative overflow-auto">
                 <div class="absolute inset-0 flex items-center justify-center text-slate-400 z-0"><i class="ph-bold ph-spinner animate-spin text-4xl"></i></div>
-                <img id="proofImageView" src="" class="max-h-[65vh] object-contain rounded-lg z-10 shadow-lg border border-slate-300" alt="Proof Photo">
+                <img id="proofImageView" src="" class="max-h-[62vh] object-contain rounded-lg z-10 shadow-lg border border-slate-300" alt="Proof Photo">
+            </div>
+            <div class="p-4 border-t border-slate-200 bg-white">
+                <button onclick="closeProofModal()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95">← Back</button>
             </div>
         </div>
     </div>
@@ -1670,16 +1681,57 @@
 
         function setBusy(btnId, busy, label) { const b = document.getElementById(btnId); if (!b) return; if (busy) { b.dataset.label = b.textContent; b.textContent = 'Saving…'; b.disabled = true; b.classList.add('opacity-60'); } else { b.textContent = label || b.dataset.label || b.textContent; b.disabled = false; b.classList.remove('opacity-60'); } }
 
+        /* ── POPUP BACK ─────────────────────────────────────────────────
+           On a phone the Back key used to leave Task Manager altogether while a
+           photo popup was open (Month View › photo proof), so the user lost
+           their place. Each open popup (customModal, proofModal) now owns one
+           browser history entry: Back closes the newest popup and the app stays
+           where it was. Closing by its own button / ✕ / outside tap takes that
+           entry off again (history.back), so one Back press never goes unused.
+           A popup opened while that back is still on its way waits for it, so
+           the two never cross. */
+        const POP_BACK = [];            // open popups, newest last: {id, close}
+        let POP_SKIP = 0, POP_WAIT = [];
+        let MODAL_GEN = 0, PROOF_GEN = 0;   // which open a delayed hide belongs to (closeModal / closeProofModal)
+        function popBackOpen_(id, close) {
+            if (POP_BACK.some(p => p.id === id)) return;
+            POP_BACK.push({ id, close });
+            if (POP_SKIP) { POP_WAIT.push(id); return; }
+            try { history.pushState({ tmPop: id }, ''); } catch (e) {}
+        }
+        function popBackClosed_(id) {
+            const i = POP_BACK.findIndex(p => p.id === id); if (i < 0) return;
+            POP_BACK.splice(i, 1);
+            POP_WAIT = POP_WAIT.filter(x => x !== id);
+            if (history.state && history.state.tmPop === id) { POP_SKIP++; try { history.back(); } catch (e) { POP_SKIP--; } }
+        }
+        window.addEventListener('popstate', () => {
+            if (POP_SKIP) {
+                POP_SKIP--;
+                if (!POP_SKIP && POP_WAIT.length) { POP_WAIT.forEach(id => { try { history.pushState({ tmPop: id }, ''); } catch (e) {} }); POP_WAIT = []; }
+                return;
+            }
+            const p = POP_BACK.pop(); if (p) p.close(true);
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape' || !POP_BACK.length) return;
+            const p = POP_BACK[POP_BACK.length - 1]; p.close(false);
+        });
+
         // Core Modals
         function showCustomModal(t, m, e=false) {
             document.getElementById('modalTitle').textContent = t; document.getElementById('modalMessage').innerHTML = m;
+            // The photo popups (showLivePhoto / showProofChain) rename it to "← Back" after this.
+            const okb = document.getElementById('modalOkBtn'); if (okb) okb.textContent = 'Got it';
+            popBackOpen_('customModal', fromBack => closeModal(fromBack));
+            MODAL_GEN++;   // a close still fading out must not hide this new message
             const ic = document.getElementById('modalIcon');
             if(e) { ic.className = "w-20 h-20 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 border-4 border-red-100 shadow-inner"; ic.innerHTML='<i class="ph-fill ph-warning-circle text-5xl"></i>'; document.getElementById('modalTitle').className="text-2xl font-extrabold text-red-600 tracking-tight mb-2"; }
             else { ic.className = "w-20 h-20 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border-4 border-indigo-100 shadow-inner"; ic.innerHTML='<i class="ph-fill ph-check-circle text-5xl"></i>'; document.getElementById('modalTitle').className="text-2xl font-extrabold text-slate-800 tracking-tight mb-2"; }
             const mod = document.getElementById('customModal'); const con = document.getElementById('customModalContent');
             mod.classList.remove('hidden'); mod.classList.add('flex'); void mod.offsetWidth; con.classList.remove('scale-95', 'opacity-0'); con.classList.add('scale-100', 'opacity-100');
         }
-        function closeModal() { const mod = document.getElementById('customModal'); const con = document.getElementById('customModalContent'); con.classList.remove('scale-100', 'opacity-100'); con.classList.add('scale-95', 'opacity-0'); setTimeout(()=>{ mod.classList.add('hidden'); mod.classList.remove('flex'); }, 300); }
+        function closeModal(fromBack) { if (fromBack !== true) popBackClosed_('customModal'); const mod = document.getElementById('customModal'); const con = document.getElementById('customModalContent'); con.classList.remove('scale-100', 'opacity-100'); con.classList.add('scale-95', 'opacity-0'); const g = MODAL_GEN; setTimeout(()=>{ if (g !== MODAL_GEN) return; mod.classList.add('hidden'); mod.classList.remove('flex'); }, 300); }
 
         // About Modals (Hinglish)
         window.openAboutAdmin = function() {
@@ -3378,6 +3430,7 @@
                 + (sc.off ? row('Score', esc(dayOffKind(sc.off.kind).label) + ' · not scored') : row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || '')))
                 + `</div></div>`);
             const ic = document.getElementById('modalIcon'); ic.className = 'w-20 h-20 rounded-full bg-fuchsia-50 text-fuchsia-700 flex items-center justify-center mx-auto mb-4 border-4 border-fuchsia-100 shadow-inner'; ic.innerHTML = '<i class="ph-fill ph-camera text-4xl"></i>';
+            document.getElementById('modalOkBtn').textContent = '← Back';
             document.getElementById('modalTitle').className = 'text-2xl font-extrabold text-slate-800 tracking-tight mb-2';
             const src = await liveImg(owner, id, ds), img = document.getElementById('lpImg'), w = document.getElementById('lpWait');
             if (!img) return;
@@ -3491,11 +3544,14 @@
         window.viewProofImage = async function(eCode, tId, dStr) {
             const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); const img=document.getElementById('proofImageView');
             img.src=''; m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95','opacity-0'); c.classList.add('scale-100','opacity-100');
+            popBackOpen_('proofModal', fromBack => closeProofModal(fromBack));
+            const gen = ++PROOF_GEN;
             const res = await tmRpc('tm_get_proof', { p_emp: eCode, p_task_no: tId, p_date: dStr });
+            if (gen !== PROOF_GEN || document.getElementById('proofModal').classList.contains('hidden')) return;   // closed or reopened meanwhile
             if (!res.ok) { closeProofModal(); return tmErr(res, 'No photo'); }
             img.src = res.data.image;
         }
-        window.closeProofModal = function() { const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); setTimeout(()=>{m.classList.add('hidden'); m.classList.remove('flex'); document.getElementById('proofImageView').src="";},300); }
+        window.closeProofModal = function(fromBack) { if (fromBack !== true) popBackClosed_('proofModal'); const m=document.getElementById('proofModal'); const c=document.getElementById('proofModalContent'); c.classList.remove('scale-100','opacity-100'); c.classList.add('scale-95','opacity-0'); const g = PROOF_GEN; setTimeout(()=>{ if (g !== PROOF_GEN) return; m.classList.add('hidden'); m.classList.remove('flex'); document.getElementById('proofImageView').src="";},300); }
 
         /* Task Done. `d` is today, or (carry forward) an earlier day still
            within CARRY_DAYS: that day's record is ticked now and scored as
@@ -3768,6 +3824,7 @@
                 + (fus.length ? `<button onclick="showFollowupHistory('${esc(owner)}',${taskNo},'${esc(ds)}')" class="mt-3 w-full text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">Full follow-up history</button>` : '')
                 + `</div>`;
             showCustomModal('Proof Photos', h);
+            document.getElementById('modalOkBtn').textContent = '← Back';
             const ic = document.getElementById('modalIcon'); ic.className = "w-20 h-20 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4 border-4 border-indigo-100 shadow-inner"; ic.innerHTML = '<i class="ph-fill ph-images text-4xl"></i>';
             document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
             // Photos come one by one (tm_get_proof), like the single proof viewer, so the list opens at once.

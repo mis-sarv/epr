@@ -2016,7 +2016,7 @@
     /* The single-login user (set by mobileSsoBoot_). A PR raised here belongs
        to that user's store (app_users.store, sql/PRPO_STORE_MIGRATION.sql);
        the app's old role-PIN login has no user, and its PRs are Store 2. */
-    let mobSsoUserId = null;
+    let mobSsoUserId = null, mobSsoEmpCode = null;
     async function prmUserStore_(){
         if(!mobSsoUserId) return 'STORE 2';
         try{
@@ -2110,6 +2110,7 @@
 
         const su = d.user || {};
         mobSsoUserId = su.id || null;   // whose store a new PR belongs to (prmUserStore_)
+        mobSsoEmpCode = su.emp_code || null;   // MD-1 / MD-2 decides an MD's categories (mdScope_)
         const roles = (Array.isArray(su.roles) && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
         const stages = mobStagesForUser_(roles, su.name || '');
         if(!stages.length){
@@ -2625,8 +2626,10 @@
        first), each with its PDF link, and every PR tagged with the live POs
        raised from it. A Purchaser is scoped to the PRs booked in their own
        name — purchaser_name is the "Purchaser Name" on the New PR form, NOT
-       requested_by — and to the POs raised from those PRs. MD sees everything;
-       a PO Sender sees only POs MD has already approved. */
+       requested_by — and to the POs raised from those PRs. MD sees everything,
+       unless their Emp Code is MD-1 / MD-2 and PR-PO Master gives the
+       categories to the two MDs (mdScope_ below); a PO Sender sees only POs
+       MD has already approved. */
     async function loadDashboard(){
         let prq = SB.from('purchase_requirements').select('*').order('req_no', {ascending:false}).limit(200);
         if(myPurchaserName) prq = prq.eq('purchaser_name', myPurchaserName);
@@ -2641,8 +2644,13 @@
         const [pr, po] = await Promise.all([prq, poq]);
         if(pr.error) console.error(pr.error);
         if(po.error) console.error(po.error);
-        const prs = pr.data || [];
+        let prs = pr.data || [];
         let pos = po.data || [];
+        // MD-1 / MD-2: only the PRs / POs of this MD's categories (PR-PO Master).
+        if(myRoleKey() === 'md'){
+            const sc = await mdScope_(prs, pos);
+            if(sc){ prs = prs.filter(sc.pr); pos = pos.filter(sc.po); }
+        }
         if(myPurchaserName){
             const own = new Set(prs.map(r => r.req_no));
             pos = pos.filter(p => String(p.linked_req_nos||'').split(',').map(s => s.trim()).some(n => own.has(n)));
@@ -2679,6 +2687,74 @@
         const [[store], detail] = await Promise.all([firstRound, detailRound]);
         if(needInwApp) inwApprovals = detail[2] || [];
         dash = {prs, pos, store, inwApprovals};
+    }
+    /* ── MD-1 / MD-2 (sql/PRPO_MD_MIGRATION.sql) ──────────────────────
+       Two MDs share the approvals by item category. STORE.html › PR-PO
+       Master ticks each category MD-1 and / or MD-2 (category_purchasers.md1 /
+       md2); the MD is the user whose Emp Code is MD-1 / MD-2. A PR / PO shows
+       to an MD when ANY of its items is of a category that is ticked for them,
+       or ticked for neither MD (shared, so nothing is lost while the ticks are
+       filled in), or has no known category. A PO with no lines follows the
+       PRs it was raised from. Returns null (= show everything, as before)
+       when: this MD's Emp Code is neither MD-1 nor MD-2 (or a PIN-only login),
+       no category has an MD tick yet, the columns are missing, or a lookup
+       fails — a wrong empty list would stop approvals, a full one does not. */
+    function mdSlot_(){
+        const c = String(mobSsoEmpCode || '').toUpperCase().replace(/\s+/g, '');
+        return (c === 'MD-1' || c === 'MD1') ? 'md1' : (c === 'MD-2' || c === 'MD2') ? 'md2' : null;
+    }
+    // Rows of `table` whose `col` is in `ids`, in chunks and pages (1000 rows per response).
+    async function mdRowsIn_(table, cols, col, ids){
+        const out = [], uniq = [...new Set(ids.filter(Boolean))];
+        for(let i = 0; i < uniq.length; i += 100){
+            for(let from = 0; ; from += 1000){
+                const q = await SB.from(table).select(cols).in(col, uniq.slice(i, i + 100)).order('id').range(from, from + 999);
+                if(q.error) throw q.error;
+                out.push(...(q.data || []));
+                if((q.data || []).length < 1000) break;
+            }
+        }
+        return out;
+    }
+    async function mdScope_(prs, pos){
+        const slot = mdSlot_();
+        if(!slot) return null;
+        try{
+            const cq = await SB.from('category_purchasers').select('category,md1,md2');
+            if(cq.error) throw cq.error;
+            const norm = s => String(s || '').trim().toUpperCase();
+            const tick = {}; let any = false;
+            (cq.data || []).forEach(r => {
+                const c = norm(r.category); if(!c) return;
+                tick[c] = {md1: !!r.md1, md2: !!r.md2};
+                if(r.md1 || r.md2) any = true;
+            });
+            if(!any) return null;
+            const catOk = cat => { const t = tick[norm(cat)]; return !t || (!t.md1 && !t.md2) || t[slot]; };
+            const [prl, pol] = await Promise.all([
+                mdRowsIn_('purchase_requirement_lines', 'id,requirement_id,item_id', 'requirement_id', prs.map(p => p.id)),
+                mdRowsIn_('purchase_order_lines', 'id,purchase_order_id,item_id,item_name', 'purchase_order_id', pos.map(p => p.id))
+            ]);
+            const items = await mdRowsIn_('items', 'id,name,category', 'id', prl.concat(pol).map(l => l.item_id));
+            const catById = {}, catByName = {};
+            items.forEach(i => { catById[i.id] = i.category; catByName[norm(i.name)] = i.category; });
+            const lineOk = l => catOk(l.item_id ? catById[l.item_id] : catByName[norm(l.item_name)]);
+            const prLines = {}, poLines = {};
+            prl.forEach(l => (prLines[l.requirement_id] = prLines[l.requirement_id] || []).push(l));
+            pol.forEach(l => (poLines[l.purchase_order_id] = poLines[l.purchase_order_id] || []).push(l));
+            const prOk = {};
+            prs.forEach(p => { const ls = prLines[p.id] || []; prOk[p.req_no] = !ls.length || ls.some(lineOk); });
+            const poOk = p => {
+                const ls = poLines[p.id] || [];
+                if(ls.length) return ls.some(lineOk);
+                const nos = String(p.linked_req_nos || '').split(',').map(s => s.trim()).filter(n => n in prOk);
+                return !nos.length || nos.some(n => prOk[n]);
+            };
+            return { pr: p => prOk[p.req_no] !== false, po: poOk };
+        }catch(e){
+            console.warn('[MOBILE] MD-1 / MD-2 category scope skipped (run sql/PRPO_MD_MIGRATION.sql?), showing everything:', e.message || e);
+            return null;
+        }
     }
     /* Every line of these POs, so PO Receipts can judge an order item by item
        instead of on its two header totals.
