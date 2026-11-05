@@ -914,11 +914,11 @@ function applyItemAutofill(nameVal,tr,prefix,lockName=false){
     if(!g('.col-make')?.value) s('.col-make', item.make||'');
     s('.col-cat', item.category||'');
     s('.col-uom', item.uom||'');
-    // Once a real master item is PICKED (committed, not merely highlighted in
-    // the open dropdown), lock the name so it can't be hand-edited into
-    // something else — delete the row and re-add to pick again.
-    const nameEl=g('.col-name');
-    if(lockName&&nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='Item locked — delete this row and add a new one to pick a different item';}
+    /* The picked name is NOT locked any more (it used to go read-only, which
+       also hid the full name of a long item). Like Store In / Out, the box
+       stays open but takes only an Item Master name: a pick from the dropdown
+       fills the row again, and anything typed that is not in the list is
+       cleared on blur (lockToMasterList in addPurchaseMainRow). */
     applyCategoryPurchaser(item.category);
     refreshPurchaseTotals();
   }
@@ -4797,6 +4797,12 @@ function updateStoreTotals(){
     if(r.querySelector('.rate-field'))r.querySelector('.rate-field').value=netRate.toFixed(2);
     if(r.querySelector('.row-total-cell'))r.querySelector('.row-total-cell').textContent='₹'+rowTotal.toFixed(2);
   });
+  /* The Cost on Yarn row (inwCostYarn_): Qty / Weight are the items' totals
+     above, so qty and netWt stay the items' own (the Freight Calculator's Net
+     Weight never counts it). Its amount IS part of the bill (Items Base Total
+     → Taxable → GST → Final), at the items' GST. */
+  {const cy=inwCostYarnUpdate_(rows,qty,netWt,weightedGst,totalGstWt);
+   if(cy){base+=cy.total;weightedGst+=cy.tax*cy.total;totalGstWt+=cy.total;}}
   const avgGst=totalGstWt>0?weightedGst/totalGstWt:0;
   const freight=+byId('freightExp')?.value||0;
   const roundOff=+byId('roundOffInput')?.value||0;
@@ -7125,10 +7131,11 @@ function sarvApplyAccess(){
 async function sarvLoadSettings_(){
   if(!SB_READY)return;
   try{
-    const q=await SB.from('app_settings').select('key,value').in('key',['role_permissions','tab_visibility']);
+    // pdf_layout = Admin Panel › PDF Settings (SARV_PDF_CFG); missing = every PDF on its built-in layout.
+    const q=await SB.from('app_settings').select('key,value').in('key',['role_permissions','tab_visibility','pdf_layout']);
     if(q.error)throw q.error;
     sarvSettings={role_permissions:null,tab_visibility:null};
-    (q.data||[]).forEach(r=>{sarvSettings[r.key]=r.value||null;});
+    (q.data||[]).forEach(r=>{if(r.key==='pdf_layout')SARV_PDF_CFG=r.value||{};else sarvSettings[r.key]=r.value||null;});
     sarvSettingsMissing=false;
   }catch(e){
     sarvSettingsMissing=true;
@@ -7268,6 +7275,7 @@ function sarvShowApPane_(p){
   sarvApPane=p;
   document.querySelectorAll('#sarvAdminPanel .ap-tab').forEach(b=>b.classList.toggle('active',b.dataset.ap===p));
   document.querySelectorAll('#sarvAdminPanel .ap-pane').forEach(x=>x.style.display=x.dataset.apPane===p?'':'none');
+  if(p==='pdf')sarvRenderPdfSettings_();   // PDF Settings: built on opening, with a fresh preview
 }
 function sarvRoleLabelOf_(code){const r=SARV_PERM_ROLES.find(x=>x.code===code);return r?r.label:(SARV_ROLE_LABEL[code]||code);}
 function sarvRenderUsers_(){
@@ -10923,8 +10931,7 @@ async function sarvFillPrFromItems_(list){
     set('.col-cat',it.category||'');set('.col-uom',it.uom||'');
     set('.col-qty',x.qty!=null&&x.qty!==''?x.qty:'');
     if(x.remark)set('.col-rem',x.remark);
-    const nameEl=tr.querySelector('.col-name');
-    if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='From the Item Master; to change it, remove the row and add a new one';}
+    // Not locked: the name is an Item Master one, and the box takes only those (same as a picked row).
     // Purchaser by Category — first row fills it, a disagreeing row warns (applyCategoryPurchaser).
     applyCategoryPurchaser(it.category);
   });
@@ -11033,7 +11040,10 @@ window.sarvGenerateNewPrFromTrims=async function(req){
       set('.col-qty',pNum(x.qty));
       set('.col-rem',x.remark||'');
       const nameEl=tr.querySelector('.col-name');
-      if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title='From the Trims sheet; to change it, remove the row and add a new one';}
+      /* Stays locked: a Trims sheet can carry a name not yet in the Item Master,
+         which the master-list check would clear on blur. Its tooltip starts with
+         the full name, since a long one is cut off in the box. */
+      if(nameEl){nameEl.readOnly=true;nameEl.style.background='#f1f5f9';nameEl.style.cursor='not-allowed';nameEl.title=(nameEl.value?nameEl.value+'\n':'')+'From the Trims sheet; to change it, remove the row and add a new one';}
       // Purchaser by Category — first row fills it, a disagreeing row warns.
       applyCategoryPurchaser(it.category);
       used.push(x.uid);
@@ -16038,6 +16048,12 @@ async function loadInwardForEdit(id,no){
       repairAlready=await repairReceivedByDocItem_(repairNos,id);
     }catch(err){console.warn('[SARV] Repair outward figures for edit skipped:',err.message||err);}
   }
+  /* A saved Cost on Yarn line (amount only, Qty 0) is not an item row: it comes
+     back as the ticked Cost on Yarn checkbox, whose row works its figures out
+     again from the items (inwCostYarn_). */
+  const coyAt=lines.findIndex(inwIsCostYarnLine_),hadCoy=coyAt>=0;
+  if(hadCoy)lines.splice(coyAt,1);
+  setTimeout(()=>inwCostYarnToggle_(hadCoy),0);
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
   lines.forEach(line=>{
     addNewRow();
@@ -17380,14 +17396,20 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(!items.length){
      itemRows='<tr><td colspan="7" style="text-align:center;color:#64748b;padding:14px;">No items.</td></tr>';
    } else {
+     const inLines=items.filter(x=>!x.isCostYarn).length;   // TOTAL counts the real items only
      items.forEach(function(it){
-       inTotQty    += pNum(it.qty);
-       inTotWeight += pNum(it.weight);
+       /* The Cost on Yarn row repeats the items' Qty / Weight, so only its
+          amount goes into the TOTAL row (as in the native PDF), else Qty and
+          Weight print twice over. */
+       if(!it.isCostYarn){
+         inTotQty    += pNum(it.qty);
+         inTotWeight += pNum(it.weight);
+       }
        inTotGross  += pNum(it.total||it.line_total);
        const itDiscPct=pNum(it.discountPct);
        if(itDiscPct>0) inTotDiscount+=(pNum(it.listPrice)-pNum(it.rate))*pNum(it.billBasis==='WEIGHT'?it.weight:it.qty);
        const fmtDisc=itDiscPct>0?(itDiscPct%1===0?String(parseInt(itDiscPct))+'%':itDiscPct.toFixed(2)+'%'):'-';
-       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small><br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small></td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
+       itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small>'+(it.isCostYarn?'':'<br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small>')+'</td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
        /* Against a PO / PR: right under the item, the same strip the entry form
           shows. docStripParts_ gives both the same shape, so only the label and
           colour change here; the layout is the same. */
@@ -17413,7 +17435,7 @@ window.addEventListener('DOMContentLoaded',()=>{
            +'</td></tr>';
        }
      });
-     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+items.length+' line'+(items.length>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+nWt_(inTotWeight)+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
+     itemRows+='<tr style="background:#f1f5f9;font-weight:800;border-top:2px solid #0f172a;"><td style="font-size:9px;color:#475569;font-weight:700;">TOTAL — All Items ('+inLines+' line'+(inLines>1?'s':'')+')</td><td style="text-align:center;font-weight:800;">'+(inTotQty%1===0?inTotQty:+inTotQty.toFixed(4))+'</td><td style="text-align:center;font-weight:800;">'+nWt_(inTotWeight)+'</td><td></td><td></td><td></td><td style="text-align:right;font-weight:800;color:#0f172a;">'+pMoneyX(inTotGross)+'</td></tr>';
    }
    const ts=regenTs_();
    const footer=isSupplier
@@ -17639,24 +17661,48 @@ window.addEventListener('DOMContentLoaded',()=>{
     uploaded file at those same positions. */
  function drawStoreCopyNative_(doc,kind,d,items,title,x,y,w,areaH){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
-   const K=w>150?1.3:1.12;
+   // Every size / switch below comes from Admin Panel › PDF Settings (sarvPdfOpt_), defaulting to the built-in layout.
+   const O=k=>sarvPdfOpt_('store',k);
+   const K=(w>150?O('scaleTwo'):O('scaleSingle'))/100;
+   const showSec={freight:O('showFreight'),remarks:O('showRemarks'),checklist:O('showChecklist'),printed:O('showPrinted'),contd:O('contd')};
    const bottomY=y+areaH;                       // lowest point this copy may use, on any page
    const startPage=doc.internal.getCurrentPageInfo().pageNumber;
    const pageNo=()=>doc.internal.getCurrentPageInfo().pageNumber;
    doc.setTextColor(0,0,0);
+   /* ELEMENTS (PDF Settings › Edit on page): every text has a name (doc.__role,
+      list in SARV_PDF_EL), and each can get its own size %, bold, italic,
+      colour, CAPS, hidden, or a new text. SIZE and TEXT are applied HERE, before
+      anything is measured, so a bigger or longer element still never overlaps;
+      the look (bold / colour / CAPS / hide) is applied where it is drawn
+      (sarvPdfElDoc_). A hidden element keeps its space. */
+   const EL=sarvPdfEl_('store');
+   const FS=(r,b)=>b*(((EL[r]||{}).size)||100)/100;
+   const TX=(r,t)=>{const e=EL[r];return e&&e.text?String(e.text):t;};
+   const R=r=>{doc.__role=r;doc.__orig=null;};
+   // A label's own text (PDF Settings › Edit on page › rename label), keyed by its original text.
+   const LBS=sarvPdfLabels_('store'), LB=t=>{const k=String(t);return LBS[k]!=null?LBS[k]:k;};
+   const tagRole='tag.'+(/SUPPLIER/i.test(title)?'supplier':/RECEIVER/i.test(title)?'receiver':'account');
+   const titleTx=TX(tagRole,title);
    // Tag box (top-right). On a continuation page: the same tag + "(contd.)".
+   // The tag never takes more than a third of the copy's width (a long new name is drawn smaller), so the heading always has room.
+   let tagLastW=0;
    const tag=t=>{
-     doc.setFontSize(8*K); doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0);
-     const tagW=doc.getTextWidth(t)+6, tagH=5.5*K;
+     R(tagRole);doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0);
+     let tf=FS(tagRole,8*K);doc.setFontSize(tf);
+     while(tf>5&&doc.getTextWidth(t)+6>w*0.34){tf-=0.2;doc.setFontSize(tf);}
+     const tagW=doc.getTextWidth(t)+6, tagH=Math.max(5.5*K,tf*0.55);tagLastW=tagW;
      doc.setDrawColor(0,0,0); doc.setLineWidth(0.35);
      doc.rect(x+w-tagW,y,tagW,tagH);
      doc.text(t,x+w-tagW/2,y+tagH*0.69,{align:'center'});
      return tagH;
    };
    const contdTop=()=>{
-     const h=tag(title+' (contd.)');
-     doc.setFontSize(8*K); doc.setFont(undefined,'bold');
-     doc.text(String((isOut?(d.outwardNo||''):(d.inwardNo||''))||''),x,y+h*0.69);
+     if(!showSec.contd)return y+5.5*K+3;   // the tag switched off: same space kept, so the layout does not change
+     const h=tag(titleTx+' (contd.)');
+     R('contd');doc.setFont(undefined,'bold');
+     const dno=String((isOut?(d.outwardNo||''):(d.inwardNo||''))||'');
+     fitFs(dno,FS('contd',8*K),w-tagLastW-4);   // left of the tag, never into it
+     doc.text(dno,x,y+h*0.69);
      doc.setFont(undefined,'normal');
      return y+h+3;
    };
@@ -17667,17 +17713,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    const room=(at,h)=>at+h<=bottomY?at:nextPg();
    // Text at fs, shrunk until it fits maxW (never below 5 pt), then drawn.
    const fitFs=(t,fs,maxW)=>{doc.setFontSize(fs);while(fs>5&&doc.getTextWidth(String(t))>maxW){fs-=0.2;doc.setFontSize(fs);}return fs;};
-   tag(title);
-   doc.setFontSize(8*K); doc.setFont(undefined,'bold');
-   const tagW=doc.getTextWidth(title)+6;
-   // Header, centred; shrunk if it would reach the tag box on the right.
-   const code=sarvStoreCode_(d&&d.store);
+   tag(titleTx);
    doc.setFont(undefined,'bold');
-   fitFs(code,15*K,w-2*tagW-6);
+   const tagW=tagLastW;
+   // Header, centred; shrunk if it would reach the tag box on the right.
+   const code=TX('head.code',sarvStoreCode_(d&&d.store));
+   doc.setFont(undefined,'bold');
+   R('head.code');fitFs(code,FS('head.code',15*K),w-2*tagW-6);
    doc.text(code,x+w/2,y+6*K,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
    const etColor=isOut?[124,58,237]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
-   fitFs(String(et),9.5*K,w-2*tagW-6); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
+   R('head.type');fitFs(String(et),FS('head.type',9.5*K),w-2*tagW-6); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
    doc.text(String(et),x+w/2,y+10.8*K,{align:'center'});
    doc.setTextColor(0,0,0);
    doc.setLineWidth(0.5); doc.line(x,y+13.2*K,x+w,y+13.2*K);
@@ -17714,8 +17760,28 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.targetReturnDate)rightPairs.push(['Target Return:',fmtDate_(d.targetReturnDate)]);
      rightPairs.push(['Transport:',d.transport||'-']);
    }
-   const mfs=8*K, mlh=mfs*0.5;   // meta font, and its line height in mm
-   doc.setFontSize(mfs);
+   /* PDF Settings › Arrange details: the Admin's order of these rows, which
+      column each is in, and the rows hidden — per Inward / Outward, keyed by
+      the row's original label. A row not in the saved order (a new one, or one
+      that only some entries have, like Machine) keeps its own column, after the
+      arranged ones. The original order is kept for the Arrange panel. */
+   doc.__metaKeys=doc.__metaKeys||{};
+   doc.__metaKeys[isOut?'OUT':'IN']={left:leftPairs.map(p=>p[0]),right:rightPairs.map(p=>p[0])};
+   {
+     const MO=sarvPdfMeta_(isOut?'OUT':'IN');
+     if(MO){
+       const all={};leftPairs.concat(rightPairs).forEach(p=>{all[p[0]]=p;});
+       const hid=new Set(MO.hide),used=new Set();
+       const pick=list=>list.filter(k=>all[k]&&!hid.has(k)&&!used.has(k)).map(k=>{used.add(k);return all[k];});
+       const L=pick(MO.left),Rt=pick(MO.right);
+       leftPairs.forEach(p=>{if(!used.has(p[0])&&!hid.has(p[0]))L.push(p);});
+       rightPairs.forEach(p=>{if(!used.has(p[0])&&!hid.has(p[0]))Rt.push(p);});
+       leftPairs.splice(0,leftPairs.length,...L);rightPairs.splice(0,rightPairs.length,...Rt);
+     }
+   }
+   // meta fonts (labels / values can differ, PDF Settings), and the line height of the bigger one, in mm
+   const mfsL=FS('meta.label',8*K), mfsV=FS('meta.value',8*K), mlh=Math.max(mfsL,mfsV)*0.5;
+   doc.setFontSize(mfsV);
    let ly=yy,ry=yy;
    /* Values are wrapped to the width their column actually has, and the next
       pair is pushed down by however many lines that took. A receipt against
@@ -17725,12 +17791,12 @@ window.addEventListener('DOMContentLoaded',()=>{
       The label column is as wide as that column's longest label at this font
       (at most 46% of the column; a longer label wraps), so a bigger font can
       never make a label run into its value. */
-   const lblW=pairs=>{doc.setFont(undefined,'bold');doc.setFontSize(mfs);
-     return Math.min(halfW*0.46,Math.max(10,...pairs.map(p=>doc.getTextWidth(String(p[0]))))+1.6);};
+   const lblW=pairs=>{doc.setFont(undefined,'bold');doc.setFontSize(mfsL);
+     return Math.min(halfW*0.46,Math.max(10,...pairs.map(p=>doc.getTextWidth(LB(p[0])))))+1.6;};
    const pair=(lbl,val,lx,avail,lw,ty)=>{
-     doc.setFontSize(mfs);
-     doc.setFont(undefined,'bold');const la=doc.splitTextToSize(String(lbl),lw-1);doc.text(la,lx,ty);
-     doc.setFont(undefined,'normal');
+     R('meta.label');doc.__orig=lbl;doc.setFontSize(mfsL);
+     doc.setFont(undefined,'bold');const la=doc.splitTextToSize(LB(lbl),lw-1);doc.text(la,lx,ty);
+     R('meta.value');doc.__orig=lbl;doc.setFontSize(mfsV);doc.setFont(undefined,'normal');
      const ls=doc.splitTextToSize(String(val),Math.max(12,avail-lw));
      doc.text(ls,lx+lw,ty);
      return ty+mlh*Math.max(1,ls.length,la.length)+0.5;
@@ -17749,7 +17815,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      head=[['Material Configuration / Specs','Qty','Weight','List Price','Disc%','Rate','Total']];
      body=[];
      items.forEach(it=>{
-       const spec=(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
+       // The Cost on Yarn row prints as it is on the form (name + what it is); it has no make / category.
+       const spec=it.isCostYarn?((it.name||'COST ON YARN')+(it.desc?'\n'+it.desc:''))
+         :(it.name||'-')+(it.desc?'\n'+it.desc:'')+'\nMAKE: '+(it.make||'-')+' | Cat: '+(it.cat||it.category||'-');
        const discPct=pNum(it.discountPct);
        body.push([spec,pNum(it.qty)+' '+(it.uom||''),nWt_(it.weight)+' '+(it.wunit||'KGS'),nNumX_(it.listPrice),discPct>0?discPct+'%':'-',nNumX_(it.rate),nNumX_(it.total)]);
        /* Against a PO / PR: its strip right under the item, at full width. The
@@ -17781,8 +17849,10 @@ window.addEventListener('DOMContentLoaded',()=>{
              cellPadding:{top:0.5,bottom:0.5,left:1.6,right:1.6}}}]);
        }
      });
-     const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
-     foot=[['TOTAL — '+items.length+' item(s)',String(totQty),nWt_(totWt),'','','',nNumX_(totAmt)]];
+     // TOTAL: Qty / Weight of the items only (the Cost on Yarn row repeats their totals); the amount includes it.
+     const realIt=items.filter(x=>!x.isCostYarn);
+     const totQty=realIt.reduce((s,x)=>s+pNum(x.qty),0),totWt=realIt.reduce((s,x)=>s+pNum(x.weight),0),totAmt=items.reduce((s,x)=>s+pNum(x.total),0);
+     foot=[['TOTAL — '+realIt.length+' item(s)',String(totQty),nWt_(totWt),'','','',nNumX_(totAmt)]];
    } else {
      head=[['Item Name / Description','Make / Category','Machine','Qty','Weight']];
      body=[];
@@ -17815,17 +17885,32 @@ window.addEventListener('DOMContentLoaded',()=>{
       broken over two lines or cut; the text columns share what is left. If
       the figures would leave the text column less than 32 mm, the table font
       steps down (not below 6.5 pt) until they fit. */
+   // Renamed headings / TOTAL (PDF Settings), measured below at their new text; the originals name them in the page view.
+   const headOrig=head[0].slice();
+   head[0]=head[0].map(h=>LB(h));
+   foot[0][0]=String(foot[0][0]).replace(/^TOTAL/,LB('TOTAL'));
    const nCols=head[0].length, numCols=isOut?[3,4]:[1,2,3,4,5,6];
-   const pad=1.15*K;
+   const pad=1.15*K*O('padding')/100, tMin=O('tableMin');
    const colTexts=ci=>[head[0][ci]].concat(body.filter(r=>r.length===nCols).map(r=>r[ci]),foot.map(r=>r[ci]))
      .map(v=>String(v==null?'':v));
    const colMin=(ci,fs)=>{doc.setFontSize(fs);doc.setFont(undefined,'bold');
      // A heading may wrap at its spaces, so only its longest word must fit; a figure must fit whole.
      return Math.max(...colTexts(ci).map((t,i)=>i===0?Math.max(...t.split(/\s+/).map(s=>doc.getTextWidth(s))):doc.getTextWidth(t)))+pad*2+0.8;};
+   // Heading / rows / TOTAL row may each have their own size (PDF Settings); the widths are measured at the biggest.
+   const tk={head:FS('tbl.head',100)/100,body:FS('tbl.body',100)/100,foot:FS('tbl.foot',100)/100}, tkMax=Math.max(tk.head,tk.body,tk.foot);
    let tfs=7*K;
-   while(tfs>6.5&&numCols.reduce((s,ci)=>s+colMin(ci,tfs),0)+32>w)tfs=Math.max(6.5,tfs-0.25);
+   while(tfs>tMin&&numCols.reduce((s,ci)=>s+colMin(ci,tfs*tkMax),0)+32>w)tfs=Math.max(tMin,tfs-0.25);
    const columnStyles={};
-   numCols.forEach(ci=>{columnStyles[ci]={minCellWidth:colMin(ci,tfs),halign:'center'};});
+   /* Even at the smallest text the figures may need more than the table has
+      (huge amounts with a big table size set in PDF Settings). The minimum
+      widths are then shared out in proportion, leaving 25 mm for the text
+      column: a figure may wrap inside its cell, but nothing is cut and the
+      table can always be laid out (asking autoTable for more width than the
+      table has made it fail). */
+   let mins=numCols.map(ci=>colMin(ci,tfs*tkMax));
+   const minSum=mins.reduce((a,b)=>a+b,0),minRoom=w-25;
+   if(minSum>minRoom)mins=mins.map(m=>m*minRoom/minSum);
+   numCols.forEach((ci,i)=>{columnStyles[ci]={minCellWidth:mins[i],halign:'center'};});
    yy=room(yy,22);   // at least the heading and one row on this page
    const pageW_=doc.internal.pageSize.getWidth(),pageH_=doc.internal.pageSize.getHeight();
    doc.autoTable({
@@ -17834,14 +17919,24 @@ window.addEventListener('DOMContentLoaded',()=>{
      // bottom = the bottom of this copy, so the table never runs into the page edge.
      margin:{left:x,right:pageW_-(x+w),top:y+5.5*K+3,bottom:Math.max(4,pageH_-bottomY)},
      tableWidth:w,
-     rowPageBreak:'avoid',
+     rowPageBreak:O('rowAvoid')?'avoid':'auto',
      // The TOTAL row once, under the last item: repeated at the foot of page 1 it read as the page's total.
-     showFoot:'lastPage',
-     styles:{fontSize:tfs,cellPadding:pad,overflow:'linebreak',textColor:[0,0,0],lineColor:[15,23,42],lineWidth:0.2},
-     headStyles:{fillColor:[255,255,255],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42],halign:'center'},
-     footStyles:{fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
+     showFoot:O('footOnce')?'lastPage':'everyPage',
+     showHead:O('headEvery')?'everyPage':'firstPage',
+     styles:{fontSize:tfs*tk.body,cellPadding:pad,overflow:'linebreak',textColor:[0,0,0],lineColor:[15,23,42],lineWidth:0.2},
+     headStyles:{fontSize:tfs*tk.head,fillColor:[255,255,255],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42],halign:'center'},
+     footStyles:{fontSize:tfs*tk.foot,fillColor:[241,245,249],textColor:[15,23,42],fontStyle:'bold',lineWidth:0.4,lineColor:[15,23,42]},
      columnStyles,
      theme:'grid',
+     // Each cell's text is drawn under its element name (heading / item rows / TOTAL row).
+     willDrawCell:data=>{R('tbl.'+data.section);
+       if(data.section==='head')doc.__orig=headOrig[data.column.index];
+       else if(data.section==='foot'&&data.column.index===0)doc.__orig='TOTAL';},
+     // Background colour of the heading / item rows / TOTAL row (PDF Settings), as the cell's own fill; strip rows keep theirs.
+     didParseCell:data=>{
+       const e=EL['tbl.'+data.section];
+       if(e&&e.bg&&!(data.section==='body'&&stripRows[data.row.index]))data.cell.styles.fillColor=hexRgb_(e.bg);
+     },
      // A page this table moved on to gets the copy's "(contd.)" tag.
      didDrawPage:()=>{if(pageNo()!==startPage&&!contdDone[pageNo()]){contdDone[pageNo()]=1;contdTop();}},
      // The strip rows have empty content; they are written here so each figure
@@ -17851,7 +17946,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      didDrawCell:data=>{
        if(data.section!=='body'||data.column.index!==0)return;
        const lines=stripRows[data.row.index];
-       if(lines)drawStripCell_(doc,data.cell,lines);
+       if(lines){R('tbl.strip');drawStripCell_(doc,data.cell,lines);}
      }
    });
    yy=doc.lastAutoTable.finalY+3;
@@ -17859,22 +17954,37 @@ window.addEventListener('DOMContentLoaded',()=>{
    /* "Label ........ value" on one line inside a box of width bw: the font steps
       down for that line only if label + value would not fit side by side, so a
       long tax label never runs into its figure. */
+   // l = the label's original text (its rename key); "{rate}" in it is the entry's GST rate.
    const lv=(l,v,lx,bw,ty,fs,bold)=>{
+     const lt=LB(l).replace('{rate}',pNum(d.gstRate).toFixed(1));
      doc.setFont(undefined,bold?'bold':'normal');
      let f=fs;doc.setFontSize(f);
-     while(f>5&&doc.getTextWidth(l)+doc.getTextWidth(String(v))+5>bw){f-=0.2;doc.setFontSize(f);}
-     doc.text(l,lx+2,ty);doc.text(String(v),lx+bw-2,ty,{align:'right'});
+     while(f>5&&doc.getTextWidth(lt)+doc.getTextWidth(String(v))+5>bw){f-=0.2;doc.setFontSize(f);}
+     const keep=doc.__role;doc.__orig=l;doc.text(lt,lx+2,ty);doc.__role=keep;doc.__orig=null;doc.text(String(v),lx+bw-2,ty,{align:'right'});
    };
    /* What follows the box below on this copy, kept on the SAME page as it when
       there is no checklist in between: the remarks and the signature footer
       (about 25 mm, see SIG_ABOVE / SIG_BELOW). So the amounts and the signatures
       move to the next page together, instead of the signatures landing on a
       page of their own. With a checklist the footer follows the checklist. */
-   const hasChecklist=sarvStoreChecklistsFor_(kind,d,items).length>0;
-   const tailH=(()=>{
-     let h=hasChecklist?0:25;   // SIG_ABOVE + SIG_BELOW, plus the gap kept above the footer
-     if(d.remarks){doc.setFontSize(7*K);doc.setFont(undefined,'italic');
-       const n=doc.splitTextToSize('Remarks: '+d.remarks,w-4).length;h+=Math.min(n,4)*7*K*0.5+1.2;doc.setFont(undefined,'normal');}
+   const SIG_ABOVE=O('sigAbove');
+   /* Below the signature line: the label, then the "Printed:" stamp. Their
+      room is worked out from their own sizes (PDF Settings may make them
+      bigger), never less than the space set in PDF Settings. */
+   const sigLabels=isOut
+     ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']:['Store In-Charge','GM Sign','MD Sign'])
+     :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
+   const sigRole=l=>'sig.'+l.toLowerCase().replace(/[^a-z0-9]+/g,'_');
+   const mmPt=pt=>pt*0.3528;
+   const sfsMax=Math.max(...sigLabels.map(l=>FS(sigRole(l),7.5*K))), prFs=FS('printed',6.5);
+   const lblOff=Math.max(3.4*K,mmPt(sfsMax)*0.8+0.6);
+   const prOff=lblOff+mmPt(sfsMax)*0.3+mmPt(prFs)*0.95;
+   const SIG_BELOW=Math.max(O('sigBelow'),(showSec.printed?prOff+mmPt(prFs)*0.25:lblOff+mmPt(sfsMax)*0.3)+0.6);
+   const hasChecklist=showSec.checklist&&sarvStoreChecklistsFor_(kind,d,items).length>0;
+   const tailH=!O('keepTail')?0:(()=>{
+     let h=hasChecklist?0:SIG_ABOVE+SIG_BELOW;   // exactly what the footer below needs (yy + SIG_ABOVE ≤ bottom − SIG_BELOW)
+     if(d.remarks&&showSec.remarks){const rf=FS('remarks',7*K);doc.setFontSize(rf);doc.setFont(undefined,'italic');
+       const n=doc.splitTextToSize(TX('remarks.label','Remarks:')+' '+d.remarks,w-4).length;h+=Math.min(n,4)*rf*0.5+1.2;doc.setFont(undefined,'normal');}
      return h;
    })();
    // Keep the box with its tail, unless even a fresh page could not hold both.
@@ -17883,8 +17993,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      const fresh=y+5.5*K+3;
      return (fresh+boxH+tailH<=bottomY)?nextPg():room(at,boxH);
    };
-   if(!isOut){
-     const boxW=halfW, bfs=7*K, blh=bfs*0.52, hfs=7.5*K;
+   if(!isOut&&!showSec.freight){/* Freight / Totals switched off in PDF Settings */}
+   else if(!isOut){
+     const boxW=halfW, bfs=FS('box.line',7*K), blh=bfs*0.52, hfs=FS('box.freight',7.5*K);
+     const frTitle=TX('box.freight','FREIGHT CALCULATOR SUMMARY'), finLbl=TX('box.final','FINAL NET AMOUNT:'), ffs=FS('box.final',8*K);
      const netWeight=(d.netWeight!=null?d.netWeight:items.reduce((s,x)=>s+pNum(x.weight),0));
      const frLines=[
        ['Net Weight (Items):',netWeight+' KGS'],
@@ -17897,21 +18009,21 @@ window.addEventListener('DOMContentLoaded',()=>{
        ['Items Base Total:',nNumX_(d.baseTotal)],
        ['Freight Expenses (+):',nNumX_(d.freight||d.freightExp)],
        ['Taxable Value:',nNumX_(d.taxable)],
-       ['Total Applied Tax ('+pNum(d.gstRate).toFixed(1)+'% GST):',nNumX_(d.totalTax)],
+       ['Total Applied Tax ({rate}% GST):',nNumX_(d.totalTax)],
        ['Round off (+/-):',nNumX_(d.roundOff)]
      ];
      // Both boxes as tall as the taller one: heading + 5 lines (freight), 5 lines + the final amount band (totals).
-     const finH=8*K*0.62;
+     const finH=ffs*0.62;
      const boxH=Math.max(hfs*0.55+2+frLines.length*blh+1.6, 1.6+totLines.length*blh+finH+1.4);
      yy=roomWithTail(yy,boxH+2);
      doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
      doc.rect(x,yy,boxW,boxH);
-     doc.setFontSize(hfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
-     fitFs('FREIGHT CALCULATOR SUMMARY',hfs,boxW-4);
-     doc.text('FREIGHT CALCULATOR SUMMARY',x+2,yy+hfs*0.42+1.2);
+     R('box.freight');doc.setFontSize(hfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
+     fitFs(frTitle,hfs,boxW-4);
+     doc.text(frTitle,x+2,yy+hfs*0.42+1.2);
      doc.setTextColor(0,0,0);
      let fy=yy+hfs*0.55+2+blh*0.8;
-     frLines.forEach(([l,v])=>{lv(l,v,x,boxW,fy,bfs,false);fy+=blh;});
+     R('box.line');frLines.forEach(([l,v])=>{lv(l,v,x,boxW,fy,bfs,false);fy+=blh;});
      const totX=x+halfW+4;
      doc.rect(totX,yy,boxW,boxH);
      let ty=yy+1.6+blh*0.8;
@@ -17919,34 +18031,34 @@ window.addEventListener('DOMContentLoaded',()=>{
      const finTop=yy+boxH-finH-0.4;
      doc.setFillColor(241,245,249); doc.rect(totX+0.2,finTop,boxW-0.4,finH,'F');
      doc.setTextColor(0,0,0);
-     lv('FINAL NET AMOUNT:',nMoney_(d.finalAmt),totX,boxW,finTop+finH*0.7,8*K,true);
+     R('box.final');lv(finLbl,nMoney_(d.finalAmt),totX,boxW,finTop+finH*0.7,ffs,true);
      yy=yy+boxH+2;
    } else {
-     const rfs=7.5*K, rlh=rfs*0.52;
+     const rfs=FS('box.line',7.5*K), rlh=rfs*0.52, rtfs=FS('box.receiver',7.5*K), rTitle=TX('box.receiver','RECEIVER DETAILS');
      doc.setFontSize(rfs); doc.setFont(undefined,'normal');
-     const rl=['Receiver Name: '+(d.receiverName||'-'),'Designation: '+(d.designation||'-'),'Department: '+(d.department||'-')]
-       .map(t=>doc.splitTextToSize(t,w-4));
-     const boxH=rfs*0.55+2+rl.reduce((s,a)=>s+a.length,0)*rlh+1.4;
+     const rk=['Receiver Name:','Designation:','Department:'];
+     const rl=[d.receiverName,d.designation,d.department].map((v,i)=>doc.splitTextToSize(LB(rk[i])+' '+(v||'-'),w-4));
+     const boxH=rtfs*0.55+2+rl.reduce((s,a)=>s+a.length,0)*rlh+1.4;
      yy=roomWithTail(yy,boxH+2);
      doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
      doc.rect(x,yy,w,boxH);
-     doc.setFontSize(rfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
-     doc.text('RECEIVER DETAILS',x+2,yy+rfs*0.42+1.2);
+     R('box.receiver');doc.setFontSize(rtfs); doc.setFont(undefined,'bold'); doc.setTextColor(13,92,83);
+     fitFs(rTitle,rtfs,w-4);doc.text(rTitle,x+2,yy+rtfs*0.42+1.2);
      doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0);
-     let ry2=yy+rfs*0.55+2+rlh*0.8;
-     rl.forEach(a=>{doc.text(a,x+2,ry2);ry2+=a.length*rlh;});
+     let ry2=yy+rtfs*0.55+2+rlh*0.8;
+     R('box.line');doc.setFontSize(rfs);rl.forEach((a,i)=>{doc.__orig=rk[i];doc.text(a,x+2,ry2);ry2+=a.length*rlh;});
      yy=yy+boxH+2;
    }
    // Remarks: as many lines as fit here, the rest on the next page of this copy.
-   if(d.remarks){
-     const rmfs=7*K, rmlh=rmfs*0.5;
-     doc.setFontSize(rmfs); doc.setFont(undefined,'italic');
-     let remLines=doc.splitTextToSize('Remarks: '+d.remarks,w-4);
+   if(d.remarks&&showSec.remarks){
+     const rmfs=FS('remarks',7*K), rmlh=rmfs*0.5;
+     R('remarks');doc.setFontSize(rmfs); doc.setFont(undefined,'italic');
+     let remLines=doc.splitTextToSize(TX('remarks.label','Remarks:')+' '+d.remarks,w-4);
      yy=room(yy,rmlh+2);
      while(remLines.length){
        const fit=Math.max(1,Math.floor((bottomY-yy-1)/rmlh));
        const part=remLines.slice(0,fit);remLines=remLines.slice(fit);
-       doc.setFontSize(rmfs); doc.setFont(undefined,'italic'); doc.setTextColor(2,132,199);
+       R('remarks');doc.setFontSize(rmfs); doc.setFont(undefined,'italic'); doc.setTextColor(2,132,199);
        doc.text(part,x+2,yy+rmlh*0.8);
        doc.setTextColor(0,0,0); doc.setFont(undefined,'normal');
        yy+=part.length*rmlh+1.2;
@@ -17961,23 +18073,23 @@ window.addEventListener('DOMContentLoaded',()=>{
       above the line is kept clear for a signature + its name / time stamp
       (the image box starts 13.5 mm above it, SIG_SLOT_LAYOUT); below it the
       label and the Printed stamp need 8 mm. So the footer takes 22.5 mm. */
-   const SIG_ABOVE=14.5, SIG_BELOW=10;
+   // (SIG_ABOVE / SIG_BELOW come from PDF Settings, set above.)
    // A checklist that does not fit here goes on to the next page of this copy (nothing is cut).
-   yy=drawStoreChecklistNative_(doc,kind,d,items,x,yy+1,w,bottomY-SIG_BELOW-SIG_ABOVE,()=>nextPg(),7*K);
+   if(showSec.checklist){R('checklist');yy=drawStoreChecklistNative_(doc,kind,d,items,x,yy+1,w,bottomY-SIG_BELOW-SIG_ABOVE,()=>{const v=nextPg();R('checklist');return v;},FS('checklist',7*K));}
    // No room left above the bottom: the footer goes to the next page of this copy.
    if(yy+SIG_ABOVE>bottomY-SIG_BELOW)yy=nextPg();
    const sigY=Math.max(yy+SIG_ABOVE,bottomY-SIG_BELOW);
-   const sigLabels=isOut
-     ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']:['Store In-Charge','GM Sign','MD Sign'])
-     :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
    const segW=w/sigLabels.length;
    const sigs=d.__sigs||{};
    sigLabels.forEach((lbl,i)=>{
      const cx=x+segW*i;
      doc.setFont(undefined,'bold'); doc.setTextColor(0,0,0); doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
      doc.line(cx+3,sigY,cx+segW-3,sigY);
-     fitFs(lbl.toUpperCase(),7.5*K,segW-3);
-     doc.text(lbl.toUpperCase(),cx+segW/2,sigY+3.4*K,{align:'center'});
+     // Each signature label is its own element (rename / size); the slot below still keys on the original label.
+     const sr=sigRole(lbl), shown=TX(sr,lbl).toUpperCase();
+     R(sr);fitFs(shown,FS(sr,7.5*K),segW-3);
+     doc.text(shown,cx+segW/2,sigY+lblOff,{align:'center'});
+     R(null);   // the signature image, name and time keep their fixed look (mobile.html stamps the same way)
      /* Store In-Charge / GM / MD slots are remembered (page + position) so
         mobile.html can stamp the GM / MD signature onto this same file when
         they press Check Done — see sarvStoreSignStage_ / SIG_SLOT_LAYOUT. */
@@ -17987,9 +18099,10 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(doc.__sigSlots)doc.__sigSlots.push(slot);
      if(sigs[st])sarvDrawSigNative_(doc,sigs[st],slot);
    });
-   doc.setFontSize(6.5); doc.setFont(undefined,'normal'); doc.setTextColor(220,38,38);
-   doc.text('Printed: '+pStamp(),x+3,Math.min(sigY+3.4*K+3.4,bottomY+4));
+   R('printed');doc.setFontSize(FS('printed',6.5)); doc.setFont(undefined,'normal'); doc.setTextColor(220,38,38);
+   if(showSec.printed){const pt=TX('printed','Printed:')+' '+pStamp();fitFs(pt,prFs,w-6);doc.text(pt,x+3,sigY+prOff);}
    doc.setTextColor(0,0,0);
+   R(null);
    stripScale_(1);
  }
 
@@ -18059,6 +18172,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    return doc.output('blob');
  }
  async function buildStoreNativePdfBlob(kind,d,items,variant,images=[]){
+   SARV_PDF_STORE=(d&&d.store)||'STORE 2';   // this entry's store decides which PDF Settings apply
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
    const {jsPDF}=window.jspdf;
    const isTwoPage=variant==='TWO_PAGE';
@@ -18068,13 +18182,14 @@ window.addEventListener('DOMContentLoaded',()=>{
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
    const copyATitle='ACCOUNT COPY', copyBTitle=isOut?'RECEIVER COPY':'SUPPLIER COPY';
+   sarvPdfFillDoc_(sarvPdfElDoc_(doc,'store'),'store');   // cell / fill colours + element look (bold / colour / CAPS / hide) + where each element lands, for Edit on page
    if(isTwoPage){
-     const margin=8;
+     const margin=sarvPdfOpt_('store','marginTwo');
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,pageW-margin*2,pageH-margin*2);
      doc.addPage();
      drawStoreCopyNative_(doc,kind,d,items,copyBTitle,margin,margin,pageW-margin*2,pageH-margin*2);
    } else {
-     const margin=6,gap=6;
+     const margin=sarvPdfOpt_('store','marginSingle'),gap=sarvPdfOpt_('store','gap');
      const colW=(pageW-margin*2-gap)/2;
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,colW,pageH-margin*2);
      /* The right-hand copy ALWAYS starts at the top of page 1, side by side
@@ -18086,7 +18201,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      doc.setPage(1);
      drawStoreCopyNative_(doc,kind,d,items,copyBTitle,margin+colW+gap,margin,colW,pageH-margin*2);
      // The dashed cut line down the middle, on every page.
-     for(let p=1;p<=doc.getNumberOfPages();p++){
+     for(let p=1;sarvPdfOpt_('store','showDivider')&&p<=doc.getNumberOfPages();p++){
        doc.setPage(p);
        doc.setDrawColor(0,0,0); doc.setLineWidth(0.3);
        if(doc.setLineDashPattern)doc.setLineDashPattern([1.5,1.2],0);
@@ -18100,6 +18215,9 @@ window.addEventListener('DOMContentLoaded',()=>{
    const blob=doc.output('blob');
    // Where each signature goes in THIS file (mm, top-left origin), for mobile.html's stamping.
    blob.sigLayout={pw:pageW,ph:pageH,slots:doc.__sigSlots};
+   blob.elBoxes=doc.__elBoxes||[];   // PDF Settings › Edit on page: what was drawn where (mm, per page)
+   blob.fillBoxes=doc.__fillBoxes||[];  // …and every filled area with its original colour (cell / fill colours)
+   blob.metaKeys=doc.__metaKeys||{};  // …and the details rows in their built-in order (Arrange details)
    return blob;
  }
  /* ── Signatures on Store PDFs ───────────────────────────────────────
@@ -18508,8 +18626,10 @@ let PR_TEAL=[13,92,83];
  async function buildRequirementNativePdfBlob(d){
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
    d=await withPrRequester_(d); // fill Designation / Department / Contact from Employee Master if missing
+   SARV_PDF_STORE=(d&&d.store)||'STORE 2';   // the PR's store decides which PDF Settings apply
    const {jsPDF}=window.jspdf;
-   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+   // Text size from Admin Panel › PDF Settings (every font of this PDF × the %); mobile.html does the same.
+   const doc=sarvPdfFillDoc_(sarvPdfTextDoc_(sarvPdfScaleDoc_(new jsPDF({unit:'mm',format:'a4',orientation:'landscape'}),sarvPdfOpt_('pr','scale')/100),'pr'),'pr');
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const M=8, W=pageW-M*2;
    doc.setTextColor(0,0,0);
@@ -18644,7 +18764,10 @@ let PR_TEAL=[13,92,83];
    doc.text(String(SARV_COMPANY.juris||''),pageW/2,y,{align:'center'});
    doc.setTextColor(0,0,0);
 
-   return doc.output('blob');
+   const blob=doc.output('blob');
+   blob.elBoxes=doc.__elBoxes||[];   // PDF Settings › Edit on page (sarvPdfTextDoc_)
+   blob.fillBoxes=doc.__fillBoxes||[];
+   return blob;
  }
 
  // ─────────────────────────────────────────────────────────────
@@ -18933,14 +19056,19 @@ let PR_TEAL=[13,92,83];
     reliably readable, and an unreadable PO that fits is worth less than a
     readable one that does not. If nothing fits, the natural render is used. */
  async function buildPoNativePdfBlob(d, images=[]){
+   SARV_PDF_STORE=sarvPoStore_(d)||'STORE 2';   // the PO's store decides which PDF Settings apply
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
-   const SCALES=[1,0.93,0.86,0.79,0.72];
+   /* PDF Settings: the base text size, and how far it may shrink to fit one
+      page (fitMin). Off = always the base size. A long item list still goes on
+      to several pages instead of shrinking, unless "shrinkLong" is on. */
+   const base=sarvPdfOpt_('po','scale')/100, minS=sarvPdfOpt_('po','fitMin')/100;
+   const SCALES=sarvPdfOpt_('po','fitOne')?[1,0.93,0.86,0.79,0.72].filter((s,i)=>i===0||s>=minS-0.001):[1];
    let natural=null,chosen=null;
    for(const s of SCALES){
-     const r=renderPoDoc_(d,s);
+     const r=renderPoDoc_(d,s*base);
      if(!natural)natural=r;
      // A long item list belongs on several pages, not under a magnifying glass.
-     if(r.tablePages>1){chosen=natural;break;}
+     if(r.tablePages>1&&!sarvPdfOpt_('po','shrinkLong')){chosen=natural;break;}
      if(r.bodyPages<=1){chosen=r;break;}
    }
    if(!chosen)chosen=natural;
@@ -18965,7 +19093,10 @@ let PR_TEAL=[13,92,83];
      if(img.name){doc.setFont(undefined,'normal');doc.setFontSize(8);doc.setTextColor(100,116,139);doc.text(String(img.name),pageW/2,pageH-M-4,{align:'center'});doc.setTextColor(0,0,0);}
    }
    stampPoStatusWatermark_(doc,d.status);
-   return doc.output('blob');
+   const blob=doc.output('blob');
+   blob.elBoxes=doc.__elBoxes||[];   // PDF Settings › Edit on page (sarvPdfTextDoc_)
+   blob.fillBoxes=doc.__fillBoxes||[];
+   return blob;
  }
  /* REJECTED / CANCELLED watermark — the same stamp mobile-core.js puts on a
     dead PO. A vendor may already hold this file, so its face has to say it is
@@ -19005,7 +19136,8 @@ let PR_TEAL=[13,92,83];
  /* Re-renders one stored PO with its current status, so a cancelled PO's PDF
     carries the CANCELLED watermark. Same field mapping the mobile app uses
     when it regenerates a PO after an approval or a reject. */
- async function regenPoPdfFromDb_(poNo){
+ // One stored PO as the PDF builder's data (also used by PDF Settings › Preview).
+ async function sarvPoDataFromDb_(poNo){
    const h=await SB.from('purchase_orders').select('*').eq('po_no',poNo).single();
    if(h.error)throw h.error;
    const po=h.data;
@@ -19028,6 +19160,10 @@ let PR_TEAL=[13,92,83];
      signatures:po.approvals||{},
      status:po.status
    };
+   return {po,d};
+ }
+ async function regenPoPdfFromDb_(poNo){
+   const {po,d}=await sarvPoDataFromDb_(poNo);
    const blob=await buildPoNativePdfBlob(d,[]);
    const artifact=await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
    await indexPdfArtifact('PO',po.id,po.po_no,'PO',artifact);
@@ -19043,7 +19179,8 @@ let PR_TEAL=[13,92,83];
  function renderPoDoc_(d,S){
    const PP=sarvPdfPal_(sarvPoStore_(d));   // Store 1 burgundy house style / Store 2 original colours
    const {jsPDF}=window.jspdf;
-   const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+   // Text rules from PDF Settings › Edit on page (rename / size / bold / colours / hide, per text).
+   const doc=sarvPdfFillDoc_(sarvPdfTextDoc_(new jsPDF({unit:'mm',format:'a4',orientation:'portrait'}),'po'),'po');
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const M=8, W=pageW-M*2;
    const AMBER=[253,230,138];
@@ -20587,15 +20724,16 @@ let PR_TEAL=[13,92,83];
    const freight=pNum(pVal('freightExp')), roundOff=pNum(pVal('roundOffInput'));
    const taxable=base+freight, tax=taxable*gstRate/100;
    /* Freight Calculator figures are re-derived here instead of being scraped
-      back out of the on-screen boxes, which are already formatted to 2dp. The
-      PDF rounds Cost on Yarn / Kg for printing, but the value it carries is
-      exact. Same maths as the calculator in updateStoreTotals() — Net Weight
+      back out of the on-screen boxes, which are already formatted to 2dp. Cost
+      on Yarn / Kg is rounded to 2 decimals, the same figure the Cost on Yarn
+      row bills at (inwCostYarnUpdate_). Same maths as the calculator in updateStoreTotals() — Net Weight
       is the sum of the item rows, Freight Amt is Gross Weight x Rate, and the
       per-kg cost spreads that over the net weight. */
-   const netWeight=rows.reduce((s,x)=>s+pNum(x.weight),0);
+   // The Cost on Yarn row's weight is the items' total again, so it is left out of Net Weight.
+   const netWeight=rows.filter(x=>!x.isCostYarn).reduce((s,x)=>s+pNum(x.weight),0);
    const grossWeight=pNum(pVal('calcGrossWeight')), freightRate=pNum(pVal('calcFreightRate'));
    const freightAmt=grossWeight*freightRate;
-   const costOnYarn=netWeight>0?freightAmt/netWeight:0;
+   const costOnYarn=netWeight>0?Math.round(freightAmt/netWeight*100)/100:0;   // 2 decimals, as the Cost on Yarn row uses it
    return {inwardNo:no,entryType:pVal('entryTypeSelect'),receivingDate:pVal('receivingDate'),supplier:pVal('supplierName'),state:pVal('partyState'),
      // Not getSelectedPoNos() alone — that is empty on every Admin edit, which
      // is what used to print "PO Reference: -". See inwardPoRefList_.
@@ -20934,7 +21072,11 @@ let PR_TEAL=[13,92,83];
    const editId=sarvEditingInwardId, editNo=sarvEditingInwardNo;
    if(btn&&btn.disabled)return; // already processing — ignore double-click
    if(btn)btn.disabled=true; // no second submit while the preview is open
-   const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rows),rows);
+   /* rowsP = the item rows + the Cost on Yarn row (if ticked) — for the preview,
+      the PDF and the totals printed. `rows` (items only) stays what every check,
+      approval and stock line works on. */
+   const coyRow=inwCostYarn_(),rowsP=coyRow?rows.concat([coyRow]):rows;
+   const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rowsP),rowsP);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
    // The submitter's own PIN, every time — it is also what signs the PDF. Cancel = nothing saved.
@@ -21020,6 +21162,12 @@ let PR_TEAL=[13,92,83];
      // repair_outward_no is what credits each outward when one repair return
      // covers several — gate_pass_no can only ever name one. Dropped on DBs
      // without the column (multi-select is disabled there anyway).
+     /* The Cost on Yarn row is stored as an AMOUNT ONLY: Qty 0 and Weight 0, so
+        no stock, PO or PR figure ever moves because of it, while Rate / GST /
+        Item Total keep the money for the Reports and the Expenses report. Its
+        item is "COST ON YARN" (created in the Item Master the first time). */
+     if(coyRow){const it=await ensureItem(coyRow.name,coyRow.desc,'',coyRow.cat,coyRow.uom,'');
+       ls.push({inward_id:h.data.id,item_id:it.id,qty:0,uom:coyRow.uom||it.uom,weight:0,rate:coyRow.rate,gst_pct:coyRow.tax,line_total:coyRow.total,bill_basis:coyRow.billBasis||'QTY',po_line_id:null,repair_outward_no:null,req_no:null});}
      let ins=await SB.from('inward_lines').insert(ls);
      /* Bill Basis used to be inferred on reopen from whichever of qty / weight
         reproduced the saved line total. That guess broke a WEIGHT-billed line
@@ -21062,7 +21210,7 @@ let PR_TEAL=[13,92,83];
          [...sarvEditingInwardReqNos,...inwardPrRefList_(rows)]));
      }catch(e){console.warn('[SARV] PR status sync after inward skipped:',e.message||e);}
      if(msgEl)msgEl.textContent='Generating PDF…';
-     const d=collectInwardData(no,rows),pdfs=await generateStorePdfs('INWARD',d,rows,h.data.id,'inwPhotoGalleryInput',{isEdit:!!editId});
+     const d=collectInwardData(no,rowsP),pdfs=await generateStorePdfs('INWARD',d,rowsP,h.data.id,'inwPhotoGalleryInput',{isEdit:!!editId});
      {const b=pdfs.SINGLE?.blob||pdfs.TWO_PAGE?.blob;showSarvPdfPreview(b,pdfs.SINGLE?.name||storePdfFilename_('INWARD',d,'SINGLE'),b?'':(pdfs.SINGLE?.html||pdfs.TWO_PAGE?.html||''),
        /* Send-before-print: the preview's only button is WhatsApp Send until
           this PDF has gone out — party/receiver feed the recipient picker and
@@ -21573,6 +21721,7 @@ let PR_TEAL=[13,92,83];
    };
  }
  function clearInwardForm(forEdit){
+   inwCostYarnToggle_(false);   // the Cost on Yarn row belongs to the entry just left
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
@@ -27789,3 +27938,912 @@ document.addEventListener('keydown',e=>{
     e.preventDefault();sarvFbmSaveForm();
   }
 });
+
+/* ══ PDF SETTINGS (Admin Panel › PDF Settings) ══════════════════════════
+   How every generated PDF is laid out — text size, page / overflow rules,
+   margins, which sections print — set by the Admin from one screen, with a
+   live preview, instead of numbers fixed in the code.
+
+   FUTURE-PROOF BY DESIGN:
+     • SARV_PDF_DEFS is the only list of options. A new option = one entry
+       here (key, label, type, default, range, hint) + one sarvPdfOpt_() read
+       in its PDF builder; the screen, saving, clamping and Reset all follow
+       from the entry. A new kind of PDF = one more {doc, label, groups} block
+       and one more preview source in sarvPdfPreviewBlob_.
+     • Saved as app_settings 'pdf_layout' = {v:1, docs:{store:{…}, pr:{…},
+       po:{…}}} through admin_save_setting (Admin PIN), the same as Feature
+       Access — no migration. Only values that differ from the default are
+       kept; an unknown key is ignored and a value out of range is clamped,
+       so an old or hand-edited setting can never break a PDF.
+     • Every default is the layout that was built in, so nothing changes
+       until the Admin changes it.
+     • mobile.html reads the same row for the PR / PO text size
+       (mobPdfScale_), so a PDF rebuilt on a phone after an approval matches.
+   ════════════════════════════════════════════════════════════════════ */
+const SARV_PDF_DEFS=[
+  {doc:'store',label:'Store In / Out (Inward, Inward NB, Outward, Issue)',groups:[
+    {g:'Text size',opts:[
+      {k:'scaleSingle',l:'Text size — SINGLE PDF (two copies side by side)',type:'num',unit:'%',def:112,min:85,max:140,step:1},
+      {k:'scaleTwo',l:'Text size — TWO PAGE PDF (one copy per page)',type:'num',unit:'%',def:130,min:90,max:160,step:1},
+      {k:'tableMin',l:'Smallest table text',type:'num',unit:'pt',def:6.5,min:5,max:9,step:0.5,hint:'Very large amounts make the number columns wide; the table text then gets smaller, but never below this.'},
+      {k:'padding',l:'Space inside table cells',type:'num',unit:'%',def:100,min:60,max:160,step:5}]},
+    {g:'Pages & overflow',opts:[
+      {k:'keepTail',l:'Keep Freight / Totals together with the signatures',type:'bool',def:true,hint:'When they do not fit on the page, both move to the next page, so the signatures never stand alone.'},
+      {k:'rowAvoid',l:'Never split one item over two pages',type:'bool',def:true},
+      {k:'footOnce',l:'TOTAL row only once, after the last item',type:'bool',def:true,hint:'Off = the TOTAL row is printed at the foot of every page too.'},
+      {k:'headEvery',l:'Repeat the table heading on every page',type:'bool',def:true},
+      {k:'contd',l:'"(contd.)" tag with the document number on continued pages',type:'bool',def:true},
+      {k:'sigAbove',l:'Space above the signature line',type:'num',unit:'mm',def:14.5,min:14.5,max:30,step:0.5,hint:'The signatures are stamped in this space (the mobile app stamps GM / MD signatures here too), so it cannot be less than 14.5 mm.'},
+      {k:'sigBelow',l:'Space below the signature line',type:'num',unit:'mm',def:10,min:8,max:20,step:0.5}]},
+    {g:'Page margins',opts:[
+      {k:'marginSingle',l:'Page margin — SINGLE PDF',type:'num',unit:'mm',def:6,min:4,max:15,step:0.5},
+      {k:'gap',l:'Gap between the two copies — SINGLE PDF',type:'num',unit:'mm',def:6,min:3,max:15,step:0.5},
+      {k:'marginTwo',l:'Page margin — TWO PAGE PDF',type:'num',unit:'mm',def:8,min:5,max:20,step:0.5}]},
+    {g:'Sections printed',opts:[
+      {k:'showFreight',l:'Freight calculator & totals box (Inward)',type:'bool',def:true},
+      {k:'showRemarks',l:'Remarks',type:'bool',def:true},
+      {k:'showChecklist',l:'Checklist (Dropdown Master › Store checklists)',type:'bool',def:true},
+      {k:'showPrinted',l:'"Printed:" date & time under the signatures',type:'bool',def:true},
+      {k:'showDivider',l:'Dashed cutting line between the two copies (SINGLE PDF)',type:'bool',def:true}]}]},
+  {doc:'pr',label:'Purchase Requirement (PR)',groups:[
+    {g:'Text size',opts:[
+      {k:'scale',l:'Text size',type:'num',unit:'%',def:100,min:85,max:125,step:1,hint:'Every text of the PR PDF, here and in the mobile app. This layout has fixed columns: above 100%, check the preview with a long PR.'}]}]},
+  {doc:'po',label:'Purchase Order (PO)',groups:[
+    {g:'Text size',opts:[
+      {k:'scale',l:'Text size',type:'num',unit:'%',def:100,min:85,max:125,step:1,hint:'Every text of the PO PDF, here and in the mobile app.'}]},
+    {g:'Pages & overflow',opts:[
+      {k:'fitOne',l:'Shrink the text a little to keep a short PO on one page',type:'bool',def:true,hint:'PDFs made in the ERP. The mobile app keeps the text size above.'},
+      {k:'fitMin',l:'…but never smaller than',type:'num',unit:'%',def:72,min:60,max:100,step:1},
+      {k:'shrinkLong',l:'Also shrink a long item list (instead of running on to more pages)',type:'bool',def:false}]}]}
+];
+let SARV_PDF_CFG={};       // saved: app_settings 'pdf_layout' (loaded by sarvLoadSettings_)
+let SARV_PDF_DRAFT=null;   // the Admin's unsaved changes, used by the preview only
+/* STORE 1 / STORE 2 each have their OWN PDF settings: saved as
+   {v:2, stores:{'STORE 1':{docs}, 'STORE 2':{docs}}, docs:{…}}. `docs` is the
+   older common set: a store that has not been saved on its own yet uses it.
+   Every PDF builder first says whose PDF it is making (SARV_PDF_STORE = the
+   record's store), so an entry of Store 1 prints with Store 1's settings —
+   here and in the mobile app (mobPdfDocs_). */
+let SARV_PDF_STORE='STORE 2', SARV_PDF_PREVIEW=false;
+const sarvPdfStoreKey_=s=>String(s||'').toUpperCase().replace(/\s+/g,' ').trim()==='STORE 1'?'STORE 1':'STORE 2';
+function sarvPdfSavedDocs_(cfg,st){const c=cfg||{};return (c.stores&&c.stores[st]&&c.stores[st].docs)||c.docs||{};}
+// The draft only ever reaches a PDF while the Admin is previewing it (or has the PDF Settings screen open), never a real entry's PDF.
+const sarvPdfPaneOpen_=()=>{const p=byId('ap_pdfPane');return !!(p&&p.offsetParent!==null);};
+function sarvPdfDocs_(){
+  if(SARV_PDF_DRAFT&&(SARV_PDF_PREVIEW||sarvPdfPaneOpen_()))return SARV_PDF_DRAFT.docs||{};
+  return sarvPdfSavedDocs_(SARV_PDF_CFG,sarvPdfStoreKey_(SARV_PDF_STORE));
+}
+function sarvPdfDef_(doc,k){
+  const D=SARV_PDF_DEFS.find(x=>x.doc===doc);if(!D)return null;
+  for(const g of D.groups){const o=g.opts.find(o=>o.k===k);if(o)return o;}
+  return null;
+}
+// One option's value: the draft while previewing, else the saved one, else the default; numbers clamped to their range.
+function sarvPdfOpt_(doc,k){
+  const def=sarvPdfDef_(doc,k);
+  const src=sarvPdfDocs_()[doc]||{};
+  const v=src[k];
+  if(!def)return v;
+  if(v===undefined||v===null||v==='')return def.def;
+  if(def.type==='bool')return v===true||v==='true'||v===1;
+  const n=Number(v);
+  return isFinite(n)?Math.min(def.max,Math.max(def.min,n)):def.def;
+}
+// Every font size of this jsPDF document × s (PR / PO text size). autoTable sets its fonts the same way, so tables follow.
+function sarvPdfScaleDoc_(doc,s){
+  if(!s||Math.abs(s-1)<0.001)return doc;
+  const o=doc.setFontSize.bind(doc);doc.setFontSize=fs=>o(fs*s);
+  doc.__rawSetFontSize=o;   // the unscaled setter, for sarvPdfTextDoc_'s per-text size
+  return doc;
+}
+
+/* ---------- the screen ---------- */
+const SPS={doc:'store',store:'STORE 2',sample:'in6',layout:'SINGLE',key:'',url:null,timer:null,busy:false,seq:0};
+// The draft = the settings of the store being edited (SPS.store), starting from what that store uses now.
+function sarvPdfDraftInit_(){
+  SARV_PDF_DRAFT={v:2,docs:JSON.parse(JSON.stringify(sarvPdfSavedDocs_(SARV_PDF_CFG,SPS.store)))};
+}
+const sarvPdfDirty_=()=>JSON.stringify(((SARV_PDF_DRAFT||{}).docs)||{})!==JSON.stringify(sarvPdfSavedDocs_(SARV_PDF_CFG,SPS.store));
+// Has this store been saved on its own, or does it still use the common (older) settings?
+const sarvPdfStoreOwn_=st=>!!(SARV_PDF_CFG&&SARV_PDF_CFG.stores&&SARV_PDF_CFG.stores[st]);
+function sarvRenderPdfSettings_(){
+  const box=byId('ap_pdfPane');if(!box)return;
+  if(!SARV_PDF_DRAFT)sarvPdfDraftInit_();
+  const D=SARV_PDF_DEFS.find(x=>x.doc===SPS.doc)||SARV_PDF_DEFS[0];
+  const cur=(SARV_PDF_DRAFT.docs[D.doc]||{});
+  const ctl=o=>{
+    const v=sarvPdfOpt_(D.doc,o.k),changed=cur[o.k]!==undefined&&cur[o.k]!==o.def;
+    const lab='<div style="font-size:12px;font-weight:700;color:#0f172a;">'+escText(o.l)+(changed?' <span style="color:#b45309;font-size:10.5px;">changed</span>':'')+'</div>';
+    const hint=o.hint?'<div style="font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.4;">'+escText(o.hint)+'</div>':'';
+    if(o.type==='bool')return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #f1f5f9;cursor:pointer;">'
+      +'<input type="checkbox" data-pdfk="'+o.k+'"'+(v?' checked':'')+' style="width:16px;height:16px;margin-top:1px;"><div>'+lab+hint+'</div></label>';
+    return '<div style="padding:7px 0;border-top:1px solid #f1f5f9;">'+lab
+      +'<div style="display:flex;gap:8px;align-items:center;margin-top:4px;"><input type="range" data-pdfk="'+o.k+'" min="'+o.min+'" max="'+o.max+'" step="'+o.step+'" value="'+v+'" style="flex:1;">'
+      +'<input type="number" data-pdfk="'+o.k+'" min="'+o.min+'" max="'+o.max+'" step="'+o.step+'" value="'+v+'" style="width:70px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px;">'
+      +'<span style="font-size:11px;color:#475569;width:22px;">'+escText(o.unit||'')+'</span></div>'
+      +'<div style="font-size:10px;color:#94a3b8;">default '+o.def+(o.unit||'')+' · '+o.min+'–'+o.max+(o.unit||'')+'</div>'+hint+'</div>';
+  };
+  const src=SPS.doc==='store'
+    ?'<select id="ap_pdfSample" class="form-control" style="width:auto;height:30px;font-size:11px;">'
+      +[['in6','Inward · 6 items'],['in25','Inward · 25 items (several pages)'],['inBig','Inward · very large amounts'],['out5','Outward · 5 items'],['out30','Outward · 30 items']].map(o=>'<option value="'+o[0]+'"'+(o[0]===SPS.sample?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>'
+      +'<select id="ap_pdfLayout" class="form-control" style="width:auto;height:30px;font-size:11px;"><option value="SINGLE"'+(SPS.layout==='SINGLE'?' selected':'')+'>SINGLE (landscape)</option><option value="TWO_PAGE"'+(SPS.layout==='TWO_PAGE'?' selected':'')+'>TWO PAGE (portrait)</option></select>'
+    :'<input id="ap_pdfKey" class="form-control" value="'+escText(SPS.key)+'" placeholder="'+(SPS.doc==='pr'?'PR No. (blank = latest PR)':'PO No. (blank = latest PO)')+'" style="width:230px;height:30px;font-size:11px;">';
+  box.innerHTML='<div class="ap-bar"><span class="ap-hint">Text size, page / overflow rules, margins and sections of every PDF. The preview shows your changes at once; they apply to new PDFs after <b>Save</b>.</span></div>'
+    +'<div style="display:grid;grid-template-columns:minmax(290px,380px) 1fr;gap:14px;align-items:start;">'
+    +'<div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;background:#fff;max-height:82vh;overflow:auto;">'
+      // Whose settings: Store 1 and Store 2 each keep their own (a PDF uses its record's store).
+      +'<label style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">Settings for</label>'
+      +'<div style="display:flex;gap:6px;align-items:center;margin:4px 0 4px;">'
+        +['STORE 1','STORE 2'].map(st=>'<button type="button" data-pdfstore="'+st+'" style="flex:1;height:32px;border:1px solid '+(SPS.store===st?'#0d5c53':'#cbd5e1')+';border-radius:7px;font-size:12px;font-weight:800;cursor:pointer;'
+          +(SPS.store===st?'background:#0d5c53;color:#fff;':'background:#fff;color:#334155;')+'">'+(st==='STORE 1'?'Store 1':'Store 2')+'</button>').join('')+'</div>'
+      +'<div style="font-size:10.5px;color:#64748b;margin-bottom:6px;line-height:1.4;">'
+        +(sarvPdfStoreOwn_(SPS.store)?'Own settings of '+(SPS.store==='STORE 1'?'Store 1':'Store 2')+'.':'Not saved separately yet: it uses the common settings. Saving here makes them its own.')
+        +' <button type="button" id="ap_pdfCopy" class="lnk" style="background:none;border:0;color:#2563eb;font-weight:700;cursor:pointer;padding:0;font-size:10.5px;text-decoration:underline;">Copy from '+(SPS.store==='STORE 1'?'Store 2':'Store 1')+'</button></div>'
+      +'<label style="font-size:11px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.04em;">PDF</label>'
+      +'<select id="ap_pdfDoc" class="form-control" style="height:32px;font-size:12px;margin:4px 0 8px;">'+SARV_PDF_DEFS.map(x=>'<option value="'+x.doc+'"'+(x.doc===D.doc?' selected':'')+'>'+escText(x.label)+'</option>').join('')+'</select>'
+      +D.groups.map(g=>'<div style="margin-top:8px;"><div style="font-size:11px;font-weight:800;color:#0d5c53;text-transform:uppercase;letter-spacing:.05em;padding-bottom:2px;">'+escText(g.g)+'</div>'+g.opts.map(ctl).join('')+'</div>').join('')
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;position:sticky;bottom:0;background:#fff;padding-top:8px;border-top:1px solid #e2e8f0;">'
+        +'<button type="button" class="btn btn-neutral" id="ap_pdfReset" style="height:32px;font-size:11px;">&#8634; Default for this PDF</button>'
+        +'<button type="button" class="btn btn-neutral" id="ap_pdfUndo" style="height:32px;font-size:11px;"'+(sarvPdfDirty_()?'':' disabled')+'>Undo changes</button>'
+        +'<button type="button" class="btn btn-success" id="ap_pdfSave" style="height:32px;font-size:11px;"'+(sarvPdfDirty_()?'':' disabled')+'>Save PDF Settings</button>'
+        +'<span style="font-size:11px;font-weight:700;color:'+(sarvPdfDirty_()?'#b45309':'#15803d')+';align-self:center;">'+(sarvPdfDirty_()?'Unsaved changes':'Saved')+'</span></div>'
+    +'</div>'
+    +'<div style="border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;overflow:hidden;">'
+      +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid #e2e8f0;background:#fff;"><b style="font-size:12px;">Preview</b>'+src
+        +'<button type="button" class="btn btn-neutral" id="ap_pdfRefresh" style="height:30px;font-size:11px;">&#8635; Refresh</button>'
+        +'<span id="ap_pdfStatus" style="font-size:11px;color:#64748b;"></span><span style="flex:1;"></span>'
+        +(true?'<span style="display:inline-flex;border:1px solid #cbd5e1;border-radius:7px;overflow:hidden;">'
+            +'<button type="button" data-pdfmode="edit" style="border:0;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer;'+(SPS.mode!=='view'?'background:#0d5c53;color:#fff;':'background:#fff;color:#334155;')+'">&#9998; Edit on page</button>'
+            +'<button type="button" data-pdfmode="view" style="border:0;padding:5px 10px;font-size:11px;font-weight:800;cursor:pointer;'+(SPS.mode==='view'?'background:#0d5c53;color:#fff;':'background:#fff;color:#334155;')+'">PDF view</button></span>':'')
+        +'<a id="ap_pdfOpen" target="_blank" rel="noopener" style="font-size:11px;font-weight:700;display:none;">Open full size</a></div>'
+      +(SPS.mode!=='view'?'<div id="ap_pdfRibbon"></div><div id="ap_pdfEdit" style="height:74vh;overflow:auto;background:#cbd5e1;padding:12px;"></div>':'')
+      +'<iframe id="ap_pdfFrame" title="PDF preview" style="width:100%;height:78vh;border:0;background:#e2e8f0;'+(SPS.mode!=='view'?'display:none;':'')+'"></iframe>'
+    +'</div></div>';
+  // wiring
+  box.querySelectorAll('[data-pdfk]').forEach(el=>el.addEventListener(el.type==='range'?'input':'change',()=>{
+    const o=sarvPdfDef_(D.doc,el.dataset.pdfk);
+    let v=el.type==='checkbox'?el.checked:Number(el.value);
+    if(o.type!=='bool'){if(!isFinite(v))v=o.def;v=Math.min(o.max,Math.max(o.min,v));
+      box.querySelectorAll('[data-pdfk="'+o.k+'"]').forEach(x=>{if(x!==el)x.value=v;});}
+    const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs[D.doc]||{});
+    if(v===o.def)delete dd[o.k];else dd[o.k]=v;   // only what differs from the default is kept
+    if(Object.keys(dd).length)docs[D.doc]=dd;else delete docs[D.doc];
+    sarvPdfStateBar_();sarvPdfPreviewSoon_();
+  }));
+  byId('ap_pdfDoc').addEventListener('change',e=>{SPS.doc=e.target.value;SPS.key='';sarvRenderPdfSettings_();});
+  box.querySelectorAll('[data-pdfstore]').forEach(b=>b.addEventListener('click',()=>{
+    const st=b.dataset.pdfstore;if(st===SPS.store)return;
+    if(sarvPdfDirty_()&&!confirm('Discard the unsaved changes for '+(SPS.store==='STORE 1'?'Store 1':'Store 2')+'?'))return;
+    SPS.store=st;SPS.sel=null;SPS.selOrig=null;sarvPdfDraftInit_();sarvRenderPdfSettings_();
+  }));
+  byId('ap_pdfCopy').addEventListener('click',()=>{
+    const other=SPS.store==='STORE 1'?'STORE 2':'STORE 1';
+    if(!confirm('Replace '+(SPS.store==='STORE 1'?'Store 1':'Store 2')+"'s settings on this screen with "+(other==='STORE 1'?'Store 1':'Store 2')+"'s? (Nothing is saved until you press Save.)"))return;
+    SARV_PDF_DRAFT.docs=JSON.parse(JSON.stringify(sarvPdfSavedDocs_(SARV_PDF_CFG,other)));sarvRenderPdfSettings_();
+  });
+  const s1=byId('ap_pdfSample');if(s1)s1.addEventListener('change',e=>{SPS.sample=e.target.value;sarvPdfPreview_();});
+  const s2=byId('ap_pdfLayout');if(s2)s2.addEventListener('change',e=>{SPS.layout=e.target.value;sarvPdfPreview_();});
+  const k=byId('ap_pdfKey');if(k)k.addEventListener('change',e=>{SPS.key=e.target.value.trim();sarvPdfPreview_();});
+  byId('ap_pdfRefresh').addEventListener('click',()=>{const kk=byId('ap_pdfKey');if(kk)SPS.key=kk.value.trim();sarvPdfPreview_();});
+  byId('ap_pdfReset').addEventListener('click',()=>{delete SARV_PDF_DRAFT.docs[D.doc];sarvRenderPdfSettings_();});
+  byId('ap_pdfUndo').addEventListener('click',()=>{sarvPdfDraftInit_();sarvRenderPdfSettings_();});
+  byId('ap_pdfSave').addEventListener('click',sarvPdfSave_);
+  box.querySelectorAll('[data-pdfmode]').forEach(b=>b.addEventListener('click',()=>{SPS.mode=b.dataset.pdfmode;sarvRenderPdfSettings_();}));
+  sarvPdfPreview_();
+}
+// The Save / "changed" state after a control moves, without rebuilding the form (a slider keeps its drag).
+function sarvPdfStateBar_(){
+  const d=sarvPdfDirty_(),sv=byId('ap_pdfSave'),un=byId('ap_pdfUndo');
+  if(sv)sv.disabled=!d;if(un)un.disabled=!d;
+  const t=sv&&sv.nextElementSibling;if(t){t.textContent=d?'Unsaved changes':'Saved';t.style.color=d?'#b45309':'#15803d';}
+}
+function sarvPdfPreviewSoon_(){clearTimeout(SPS.timer);SPS.timer=setTimeout(sarvPdfPreview_,450);}
+
+/* Sample entries for the Store preview: realistic rows, a long list, very large
+   amounts (the case that squeezes the number columns), and Outward. */
+function sarvPdfSampleStore_(kind){
+  const base=[['CABLE TIE 300 MM','NYLON',500,'PCS',2.5,0],['BEARING 6205 ZZ','DEEP GROOVE BALL BEARING',12,'PCS',185,5],['V BELT B-52','FENNER',6,'PCS',420,0],
+    ['GREASE SERVO 2 KG','LITHIUM BASE',4,'KGS',640,10],['WIRE 2-CORE 1.5 MM','COPPER PVC',100,'MTR',38.5,0],['ACETIC ACID','INDUSTRIAL GRADE 99%',600,'KGS',72,2]];
+  const n=kind==='in25'?25:kind==='out30'?30:kind==='out5'?5:6, big=kind==='inBig';
+  const rows=Array.from({length:n},(_,i)=>{const b=base[i%base.length];const lp=big?b[4]*104321.7:b[4],rate=lp*(1-b[5]/100),qty=big?b[2]*37:b[2];
+    return {name:b[0]+(n>6?' #'+(i+1):''),desc:b[1],make:'NA',cat:'GENERAL',category:'GENERAL',qty,uom:b[3],weight:b[3]==='KGS'?qty:0,wunit:'KGS',listPrice:lp,discountPct:b[5],rate,total:rate*qty,
+      itemName:b[0]+(n>6?' #'+(i+1):''),itemDesc:b[1],machineName:'BOILER',machineNo:'1',qtyUom:b[3],wUnit:'KGS'};});
+  const tot=rows.reduce((s,r)=>s+r.total,0);
+  if(kind.startsWith('out'))return {kind:'OUTWARD',items:rows,d:{store:'STORE 2',entryType:'OUTWARD',outwardNo:'NB/2/2026-27/55 (SAMPLE)',date:today(),natureOfDispatch:'REPAIR',
+    partyName:'SHARMA ENGINEERING WORKS',location:'PANIPAT',targetReturnDate:today(),transport:'TEMPO HR-55-1234',receiverName:'RAMESH KUMAR',designation:'FITTER',department:'MAINTENANCE',remarks:'URGENT REPAIR, RETURN BY THE TARGET DATE.'}};
+  return {kind:'INWARD',items:rows,d:{store:'STORE 2',entryType:'INWARD',inwardNo:'SIHF-II/2026-27/1234 (SAMPLE)',receivingDate:today(),supplier:'SHREE GANESH ENTERPRISES PVT LTD',state:'HARYANA',
+    invoiceNum:'INV/2026/998877',invoiceDate:today(),gatePass:'GP-778',natureOfInward:'PURCHASE',netWeight:rows.reduce((s,r)=>s+r.weight,0),grossWeight:640,freightRate:2.5,costOnYarn:3.25,
+    baseTotal:tot,freight:1600,taxable:tot+1600,gstRate:18,totalTax:(tot+1600)*0.18,roundOff:0.29,finalAmt:(tot+1600)*1.18,remarks:'MATERIAL RECEIVED IN GOOD CONDITION.'}};
+}
+async function sarvPdfPreviewBlob_(){
+  // Every preview is drawn as the store being edited (its settings and its own colours), whatever store the sample / record had.
+  if(SPS.doc==='store'){const s=sarvPdfSampleStore_(SPS.sample);s.d.store=SPS.store;return {blob:await buildStoreNativePdfBlob(s.kind,s.d,s.items,SPS.layout),what:'Sample '+s.kind.toLowerCase()+' · '+s.items.length+' items'};}
+  if(SPS.doc==='pr'){
+    let q=SB.from('purchase_requirements').select('req_no,pdf_snapshot').not('pdf_snapshot','is',null);
+    q=SPS.key?q.eq('req_no',SPS.key):q.order('created_at',{ascending:false}).limit(1);
+    const r=await q;if(r.error)throw r.error;const row=(r.data||[])[0];
+    if(!row)throw new Error(SPS.key?'PR '+SPS.key+' was not found (or has no PDF data yet).':'No PR with PDF data yet.');
+    return {blob:await buildRequirementNativePdfBlob(Object.assign({reqNo:row.req_no},row.pdf_snapshot,{store:SPS.store})),what:row.req_no};
+  }
+  if(SPS.doc==='po'){
+    let no=SPS.key;
+    if(!no){const r=await SB.from('purchase_orders').select('po_no').order('created_at',{ascending:false}).limit(1);if(r.error)throw r.error;no=((r.data||[])[0]||{}).po_no;}
+    if(!no)throw new Error('No PO yet.');
+    const {d}=await sarvPoDataFromDb_(no);d.store=SPS.store;
+    return {blob:await buildPoNativePdfBlob(d,[]),what:no};
+  }
+  throw new Error('No preview for this PDF yet.');
+}
+async function sarvPdfPreview_(){
+  const fr=byId('ap_pdfFrame'),st=byId('ap_pdfStatus'),op=byId('ap_pdfOpen');if(!fr)return;
+  const my=++SPS.seq;if(st)st.textContent='Building…';
+  try{
+    let r;
+    SARV_PDF_PREVIEW=true;   // the draft applies to this build only
+    try{r=await sarvPdfPreviewBlob_();}finally{SARV_PDF_PREVIEW=false;}
+    r.what=(SPS.store==='STORE 1'?'Store 1':'Store 2')+' · '+r.what;
+    if(my!==SPS.seq)return;   // a newer change is already being built
+    if(SPS.url)URL.revokeObjectURL(SPS.url);
+    SPS.url=URL.createObjectURL(r.blob);
+    // Edit on page: the pages drawn here with a clickable box over every element (sarvPdfEditView_).
+    if(byId('ap_pdfEdit')){await sarvPdfEditView_(r.blob,my);if(my!==SPS.seq)return;}
+    else fr.src=SPS.url+'#view=FitH';
+    if(op){op.href=SPS.url;op.style.display='';}
+    if(st){st.textContent=r.what+(sarvPdfDirty_()?' · with your unsaved changes':'');
+      if(byId('ap_pdfEdit')&&SPS.clash)st.insertAdjacentHTML('beforeend',' · <b style="color:#b91c1c;">&#9888; '+SPS.clash+' texts overlap (red boxes) — make them smaller</b>');}
+  }catch(e){if(my===SPS.seq&&st)st.textContent='Preview failed: '+(e.message||e);}
+}
+async function sarvPdfSave_(){
+  if(!isAdmin())return showToast('Admin login only','warn');
+  const adminPin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save PDF Settings',
+    recordInfo:'Applies to every new PDF at once (in the mobile app too)',label:'Admin PIN',confirmText:'Save'});
+  if(adminPin==null)return;
+  if(!adminPin.trim())return showToast('The Admin PIN cannot be empty','warn');
+  try{
+    // Only the store being edited changes; the other store (and the older common set it may still use) stay as they are.
+    const val=JSON.parse(JSON.stringify(SARV_PDF_CFG||{}));
+    val.v=2;val.stores=val.stores||{};
+    val.stores[SPS.store]={docs:SARV_PDF_DRAFT.docs,savedAt:new Date().toISOString(),savedBy:(sarvCurrentUser&&sarvCurrentUser.name)||''};
+    val.savedAt=new Date().toISOString();
+    const r=await SB.rpc('admin_save_setting',{p_key:'pdf_layout',p_value:val,p_admin_pin:adminPin.trim()});
+    if(r.error)throw r.error;
+    if(!r.data)return showToast('Incorrect Admin PIN; not saved','error');
+    SARV_PDF_CFG=JSON.parse(JSON.stringify(val));
+    sarvPdfDraftInit_();sarvRenderPdfSettings_();
+    showToast('PDF Settings saved');
+  }catch(e){dbError(e);}
+}
+
+/* ══ PDF SETTINGS › EDIT ON PAGE (Word-style) ═══════════════════════════
+   Click any text on the preview page to select that ELEMENT (every place it
+   appears lights up), then change it from the ribbon like in MS Word: size,
+   Bold, Italic, colour, CAPS, Hide, or type a new text for a label. Saved
+   with the other PDF Settings as docs.store.el = {element: {size, bold,
+   italic, color, caps, hide, text}}.
+
+   WHAT STAYS SAFE: positions are never dragged by hand. The layout still flows
+   by itself (that is what guarantees no overlap and no cut text): a bigger
+   size or a longer text is measured before it is placed, and each element's
+   size has its own limit (max) where a fixed position would not take more.
+   The signature image / name / time keep their fixed look, because the
+   mobile app stamps GM / MD signatures at the same spot.
+
+   A new element = one row in SARV_PDF_EL + R('<id>') where it is drawn
+   (and FS / TX there if its size / text may change). */
+const SARV_PDF_EL={store:[
+  {id:'tag.account',l:'Copy title — ACCOUNT COPY',text:true,max:150},
+  {id:'tag.supplier',l:'Copy title — SUPPLIER COPY',text:true,max:150},
+  {id:'tag.receiver',l:'Copy title — RECEIVER COPY',text:true,max:150},
+  {id:'contd',l:'Document no. on continued pages',max:150},
+  {id:'head.code',l:'Store code (heading)',text:true,max:130},
+  {id:'head.type',l:'Entry type (INWARD / OUTWARD)',max:125},
+  {id:'meta.label',l:'Details — labels (Inward No:, Supplier Name: …)',max:160},
+  {id:'meta.value',l:'Details — values',max:160},
+  {id:'tbl.head',l:'Items table — heading',max:160},
+  {id:'tbl.body',l:'Items table — item rows',max:160},
+  {id:'tbl.foot',l:'Items table — TOTAL row',max:160},
+  {id:'tbl.strip',l:'Items table — PO / LOT strip (colours / hide only)',nosize:true},
+  {id:'box.freight',l:'Freight box — title',text:true,max:160},
+  {id:'box.receiver',l:'Receiver box — title',text:true,max:160},
+  {id:'box.line',l:'Freight / Totals / Receiver — lines',max:160},
+  {id:'box.final',l:'FINAL NET AMOUNT line',text:true,max:160},
+  {id:'remarks',l:'Remarks',max:160},
+  {id:'remarks.label',l:'Remarks — the word "Remarks:"',text:true,textOnly:true},
+  {id:'checklist',l:'Checklist',max:140},
+  {id:'sig.store_in_charge',l:'Signature label — STORE IN-CHARGE',text:true,max:130},
+  {id:'sig.gm_sign',l:'Signature label — GM SIGN',text:true,max:130},
+  {id:'sig.md_sign',l:'Signature label — MD SIGN',text:true,max:130},
+  {id:'sig.md_1_sign',l:'Signature label — MD 1 SIGN',text:true,max:130},
+  {id:'sig.md_2_sign',l:'Signature label — MD 2 SIGN',text:true,max:130},
+  {id:'sig.gateman_sign',l:'Signature label — GATEMAN SIGN',text:true,max:130},
+  {id:'sig.gate_sign',l:'Signature label — GATE SIGN',text:true,max:130},
+  {id:'sig.receiver_sign',l:'Signature label — RECEIVER SIGN',text:true,max:130},
+  {id:'printed',l:'"Printed:" date & time',text:true,max:150}
+]};
+const sarvPdfElDef_=(doc,id)=>(SARV_PDF_EL[doc]||[]).find(e=>e.id===id)||null;
+// The element overrides of one PDF, cleaned: unknown elements dropped, sizes clamped, colours checked.
+function sarvPdfEl_(doc){
+  const raw=((sarvPdfDocs_()[doc])||{}).el||{},out={};
+  Object.keys(raw).forEach(id=>{
+    const def=sarvPdfElDef_(doc,id),e=raw[id];if(!def||!e||typeof e!=='object')return;
+    const o={};
+    if(!def.nosize&&!def.textOnly&&isFinite(+e.size)&&+e.size>0)o.size=Math.min(def.max||160,Math.max(60,+e.size));
+    if(e.bold===true||e.bold===false)o.bold=e.bold;
+    if(e.italic)o.italic=true;
+    if(e.caps)o.caps=true;
+    if(e.hide)o.hide=true;
+    if(typeof e.color==='string'&&/^#[0-9a-f]{6}$/i.test(e.color))o.color=e.color;
+    if(!def.textOnly&&typeof e.bg==='string'&&/^#[0-9a-f]{6}$/i.test(e.bg))o.bg=e.bg;
+    if(def.text&&typeof e.text==='string'&&e.text.trim())o.text=e.text.trim().slice(0,60);
+    out[id]=o;
+  });
+  return out;
+}
+/* Label renames: docs.<pdf>.labels = {"original label": "new text"} — every
+   details label, table heading, Freight / Totals / Receiver label and TOTAL,
+   each on its own (picked on the page). Blank / too long ones are dropped. */
+function sarvPdfLabels_(doc){
+  const raw=((sarvPdfDocs_()[doc])||{}).labels||{},out={};
+  Object.keys(raw).forEach(k=>{const v=raw[k];if(typeof v==='string'&&v.trim()&&k.length<=80)out[k]=v.trim().slice(0,50);});
+  return out;
+}
+/* Arrange details: docs.store.meta.IN / .OUT = {left:[labels], right:[labels],
+   hide:[labels]} (original labels). null = the built-in order. */
+function sarvPdfMeta_(kind){
+  const m=(((sarvPdfDocs_().store)||{}).meta||{})[kind];
+  if(!m||typeof m!=='object')return null;
+  const arr=a=>Array.isArray(a)?a.filter(x=>typeof x==='string').slice(0,40):[];
+  return {left:arr(m.left),right:arr(m.right),hide:arr(m.hide)};
+}
+/* Puts the element look on one jsPDF document (bold / italic / colour / CAPS /
+   hide, for the element named in doc.__role at that moment) and records where
+   every element's text lands (doc.__elBoxes, mm), for the clickable preview. */
+function sarvPdfElDoc_(doc,key){
+  const EL=sarvPdfEl_(key);doc.__elBoxes=[];doc.__role=null;
+  const oT=doc.text.bind(doc);
+  doc.text=function(t,x,y,opt){
+    const r=doc.__role,e=(r&&EL[r])||null,mine=[];
+    if(r){
+      const fs=doc.getFontSize(),mm=fs*0.3528,al=(opt&&opt.align)||'left',lf=(doc.getLineHeightFactor?doc.getLineHeightFactor():1.15);
+      (Array.isArray(t)?t:[t]).forEach((s,i)=>{s=String(s);if(!s.trim())return;const wd=doc.getTextWidth(s);const x0=al==='center'?x-wd/2:al==='right'?x-wd:x;
+        // o = the label's original text, when it is one (the page view offers "rename this label" for it)
+        const b={p:doc.internal.getCurrentPageInfo().pageNumber,r,o:doc.__orig||null,x0,x1:x0+wd,y0:y+i*mm*lf-mm*0.8,y1:y+i*mm*lf+mm*0.25};
+        doc.__elBoxes.push(b);mine.push(b);});
+    }
+    if(!e)return oT(t,x,y,opt);
+    if(e.hide)return doc;   // hidden: its space stays, so nothing moves
+    // Background colour: a band behind each line of this text (table parts use their cell fill instead, see didParseCell).
+    if(e.bg&&!/^tbl\./.test(r)){
+      const keepF=doc.getFillColor?doc.getFillColor():null;
+      doc.setFillColor(e.bg);
+      mine.forEach(b=>doc.rect(b.x0-0.7,b.y0-0.25,b.x1-b.x0+1.4,b.y1-b.y0+0.5,'F'));
+      if(keepF)doc.setFillColor(keepF);
+    }
+    const f=doc.getFont(),col=doc.getTextColor();
+    const isB=e.bold===true||(e.bold!==false&&/bold/i.test(f.fontStyle||''));
+    doc.setFont(f.fontName,isB?(e.italic?'bolditalic':'bold'):(e.italic?'italic':'normal'));
+    if(e.color)doc.setTextColor(e.color);
+    const tt=e.caps?(Array.isArray(t)?t.map(s=>String(s).toUpperCase()):String(t).toUpperCase()):t;
+    const out=oT(tt,x,y,opt);
+    doc.setFont(f.fontName,f.fontStyle);doc.setTextColor(col);
+    return out;
+  };
+  return doc;
+}
+
+/* ---------- the page view + ribbon ---------- */
+let SARV_PDFJS_P=null;
+function sarvPdfJs_(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(SARV_PDFJS_P)return SARV_PDFJS_P;
+  SARV_PDFJS_P=new Promise((res,rej)=>{
+    const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    /* pdf.js's worker script is loaded ON THIS PAGE as well: pdf.js then runs it
+       here instead of starting a separate Worker. A Worker started from another
+       site (cdnjs) is refused or never answers, which left the page viewer on
+       "Building…" for ever; for a preview of a page or two, running here is
+       plenty fast. */
+    s.onload=()=>{
+      const src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const wk=document.createElement('script');wk.src=src;
+      wk.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc=src;res(window.pdfjsLib);}catch(e){rej(e);}};
+      wk.onerror=()=>{SARV_PDFJS_P=null;rej(new Error('The page viewer could not be loaded (internet?). Use "PDF view".'));};
+      document.head.appendChild(wk);
+    };
+    s.onerror=()=>{SARV_PDFJS_P=null;rej(new Error('The page viewer could not be loaded (internet?). Use "PDF view".'));};
+    document.head.appendChild(s);
+  });
+  return SARV_PDFJS_P;
+}
+async function sarvPdfEditView_(blob,my){
+  const host=byId('ap_pdfEdit');if(!host)return;
+  const keep=host.scrollTop;
+  let lib;
+  try{lib=await sarvPdfJs_();}catch(e){host.innerHTML='<div class="ap-empty">'+escText(e.message)+'</div>';return;}
+  let pdf;
+  try{pdf=await lib.getDocument({data:await blob.arrayBuffer()}).promise;}
+  catch(e){host.innerHTML='<div class="ap-empty">The page could not be drawn here ('+escText(e.message||e)+'). Use "PDF view".</div>';return;}
+  if(my!==SPS.seq)return;
+  const boxes=blob.elBoxes||[],wrap=document.createElement('div');
+  SPS.clash=0;
+  for(let p=1;p<=pdf.numPages;p++){
+    const pg=await pdf.getPage(p),vp1=pg.getViewport({scale:1});
+    // 44 px = the view's padding + its scroll bar, so the page never needs a sideways scroll
+    const cssW=Math.min((host.clientWidth-44)||900,1100),scale=cssW/vp1.width,vp=pg.getViewport({scale:scale*(window.devicePixelRatio||1)});
+    const page=document.createElement('div');page.style.cssText='position:relative;margin:0 auto 14px;background:#fff;box-shadow:0 2px 10px rgba(15,23,42,.25);width:'+cssW+'px;';
+    const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;cv.style.cssText='display:block;width:'+cssW+'px;height:'+(vp1.height*scale)+'px;';
+    await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    page.appendChild(cv);
+    // mm → css px: the page's width in mm (pdf.js gives points: 72 per inch), drawn cssW px wide
+    const pw=vp1.width/72*25.4,k=cssW/pw;
+    const isStore=SPS.doc==='store',EL=isStore?sarvPdfEl_('store'):{},TR=isStore?{}:sarvPdfTxt_(SPS.doc);
+    const pageBoxes=boxes.filter(b=>b.p===p);
+    // Two DIFFERENT texts sitting on each other (e.g. after a size change in a fixed layout): marked red, counted in the status line.
+    const clash=new Set();
+    for(let i=0;i<pageBoxes.length;i++)for(let j=i+1;j<pageBoxes.length;j++){const a=pageBoxes[i],c=pageBoxes[j];
+      if(a.r===c.r&&a.o===c.o)continue;
+      // A real overlap: across by more than 0.4 mm AND down by a third of the smaller text's height
+      // (a box is a little taller than the letters, so a mere touch of two lines is not counted).
+      const dy=Math.min(a.y1,c.y1)-Math.max(a.y0,c.y0),hMin=Math.min(a.y1-a.y0,c.y1-c.y0);
+      if(Math.min(a.x1,c.x1)-Math.max(a.x0,c.x0)>0.4&&dy>Math.max(0.4,hMin/3)){clash.add(a);clash.add(c);}}
+    SPS.clash=(SPS.clash||0)+clash.size;
+    // Filled areas first (under the texts): click one to change its colour (sarvPdfFillRibbon_).
+    (blob.fillBoxes||[]).filter(f=>f.p===p).forEach(f=>{
+      const d=document.createElement('div');d.className='pdffill'+(SPS.sel==='fill'&&f.f===SPS.selOrig?' on':'');d.dataset.f=f.f;
+      d.title='Fill colour '+f.f+' — click to change it';
+      d.style.left=(f.x0*k)+'px';d.style.top=(f.y0*k)+'px';d.style.width=((f.x1-f.x0)*k)+'px';d.style.height=((f.y1-f.y0)*k)+'px';
+      page.appendChild(d);
+    });
+    pageBoxes.forEach(b=>{
+      const on=isStore?b.r===SPS.sel:(SPS.sel==='txt'&&b.o===SPS.selOrig);
+      const hid=isStore?(EL[b.r]||{}).hide:(TR[b.o]||{}).hide;
+      const d=document.createElement('div');d.className='pdfel'+(on?' on':'')+(hid?' hid':'')+(clash.has(b)?' clash':'');d.dataset.r=b.r;
+      if(b.o)d.dataset.o=b.o;   // a label (Store) / the text itself (PR, PO): what the ribbon edits
+      d.title=(isStore?((sarvPdfElDef_('store',b.r)||{}).l||b.r)+(b.o?' — "'+b.o+'"':''):'"'+b.o+'"')+(clash.has(b)?' — OVERLAPS another text':'')+' — click to edit';
+      d.style.cssText='position:absolute;left:'+(b.x0*k-1)+'px;top:'+(b.y0*k-1)+'px;width:'+((b.x1-b.x0)*k+2)+'px;height:'+((b.y1-b.y0)*k+2)+'px;';
+      page.appendChild(d);
+    });
+    wrap.appendChild(page);
+  }
+  if(my!==SPS.seq)return;
+  host.innerHTML='';host.appendChild(wrap);host.scrollTop=keep;
+  SPS.meta=blob.metaKeys||{};SPS.kind=String(SPS.sample||'').startsWith('out')?'OUT':'IN';
+  // Every fill colour of this PDF (original values), for the swatches in the fill ribbon.
+  SPS.fillsSeen=[...new Set((blob.fillBoxes||[]).map(f=>f.f))];
+  host.onclick=e=>{
+    const t=e.target.closest('.pdfel'),f=!t&&e.target.closest('.pdffill');
+    if(f){SPS.sel='fill';SPS.selOrig=f.dataset.f;}
+    else{SPS.sel=t?t.dataset.r:null;SPS.selOrig=t&&t.dataset.o||null;}
+    sarvPdfMarkSel_();sarvPdfMarkFill_();sarvPdfRibbon_();
+  };
+  const st=byId('ap_pdfStatus');
+  if(st&&SPS.clash)st.innerHTML=escText(st.textContent)+' · <b style="color:#b91c1c;">&#9888; '+SPS.clash+' texts overlap (red) — make them smaller</b>';
+  sarvPdfRibbon_();
+}
+function sarvPdfMarkSel_(){document.querySelectorAll('#ap_pdfEdit .pdfel').forEach(x=>x.classList.toggle('on',SPS.doc==='store'?x.dataset.r===SPS.sel:(SPS.sel==='txt'&&x.dataset.o===SPS.selOrig)));}
+// One change to the selected element (v undefined = remove that property); empty element objects are dropped.
+function sarvPdfElSet_(prop,v){
+  if(!SPS.sel)return;
+  const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs.store||{}),el=Object.assign({},dd.el||{}),e=Object.assign({},el[SPS.sel]||{});
+  if(v===undefined||v===null||v===''||v===false&&prop!=='bold')delete e[prop];else e[prop]=v;
+  if(Object.keys(e).length)el[SPS.sel]=e;else delete el[SPS.sel];
+  if(Object.keys(el).length)dd.el=el;else delete dd.el;
+  if(Object.keys(dd).length)docs.store=dd;else delete docs.store;
+  sarvPdfStateBar_();sarvPdfRibbon_();sarvPdfPreviewSoon_();
+}
+function sarvPdfRibbon_(){
+  if(SPS.sel==='fill'&&SPS.selOrig)return sarvPdfFillRibbon_();   // a filled area picked: its colour (any PDF)
+  if(SPS.doc!=='store')return sarvPdfTxtRibbon_();   // PR / PO: text rules (sarvPdfTextDoc_)
+  const rb=byId('ap_pdfRibbon');if(!rb)return;
+  const def=SPS.sel&&sarvPdfElDef_('store',SPS.sel),e=(SPS.sel&&sarvPdfEl_('store')[SPS.sel])||{};
+  const btn=(act,lbl,on,tip,dis)=>'<button type="button" data-rb="'+act+'" title="'+escText(tip)+'"'+(dis?' disabled':'')+' style="min-width:30px;height:28px;padding:0 8px;border:1px solid '+(on?'#0d5c53':'#cbd5e1')+';border-radius:6px;background:'+(on?'#ccfbf1':'#fff')+';font-size:12px;font-weight:800;cursor:pointer;'+(dis?'opacity:.45;cursor:default;':'')+'">'+lbl+'</button>';
+  const list='<select data-rb="pick" style="height:28px;font-size:11px;max-width:260px;"><option value="">— choose an element, or click it on the page —</option>'
+    +SARV_PDF_EL.store.map(x=>'<option value="'+x.id+'"'+(x.id===SPS.sel?' selected':'')+'>'+escText(x.l)+(sarvPdfEl_('store')[x.id]?' •':'')+'</option>').join('')+'</select>';
+  if(!def){rb.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'+list
+    +'<span style="font-size:11px;color:#64748b;">Click any text on the page to edit it, like in MS Word: size, bold, colours, its text. Everything shows at once; <b>Save PDF Settings</b> to keep it.</span>'
+    +'<span style="flex:1;"></span>'+btn('arrange','&#8645; Arrange details',!!SPS.arrange,'Re-arrange the details rows (labels and their values)')+'</div>'
+    +(SPS.arrange?sarvPdfArrangeHtml_():'');sarvPdfRibbonWire_(rb);return;}
+  const size=e.size||100,noSize=def.nosize||def.textOnly;
+  rb.innerHTML='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'+list
+    +'<span style="width:1px;height:22px;background:#cbd5e1;"></span>'
+    +btn('size-','A&minus;',false,'Smaller',noSize)
+    +'<input data-rb="size" type="number" min="60" max="'+(def.max||160)+'" step="5" value="'+size+'"'+(noSize?' disabled':'')+' title="Size % (60 – '+(def.max||160)+')" style="width:58px;height:28px;font-size:12px;text-align:center;border:1px solid #cbd5e1;border-radius:6px;"><span style="font-size:11px;color:#475569;">%</span>'
+    +btn('size+','A+',false,'Bigger',noSize)
+    +'<span style="width:1px;height:22px;background:#cbd5e1;"></span>'
+    +btn('bold','<b>B</b>',e.bold===true,'Bold (click again: not bold; third click: as built in)',def.textOnly)
+    +btn('italic','<i>I</i>',!!e.italic,'Italic',def.textOnly)
+    +'<label title="Colour" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;'+(def.textOnly?'opacity:.45;':'')+'">A<input data-rb="color" type="color" value="'+(e.color||'#000000')+'"'+(def.textOnly?' disabled':'')+' style="width:28px;height:26px;border:1px solid #cbd5e1;border-radius:6px;padding:0;"></label>'
+    +(e.color?btn('nocolor','&#10005;',false,'Colour as built in'):'')
+    +'<label title="Background colour" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;'+(def.textOnly?'opacity:.45;':'')+'"><span style="background:#fde68a;padding:0 3px;border-radius:3px;">ab</span><input data-rb="bg" type="color" value="'+(e.bg||'#ffffff')+'"'+(def.textOnly?' disabled':'')+' style="width:28px;height:26px;border:1px solid #cbd5e1;border-radius:6px;padding:0;"></label>'
+    +(e.bg?btn('nobg','&#10005;',false,'No background colour'):'')
+    +btn('caps','Aa',!!e.caps,'CAPITALS',def.textOnly)
+    +btn('hide',e.hide?'Show':'Hide',!!e.hide,'Hide this element (its space stays, nothing moves)',def.textOnly)
+    +(def.text?'<span style="width:1px;height:22px;background:#cbd5e1;"></span><input data-rb="text" value="'+escText(e.text||'')+'" placeholder="New text (blank = as built in)" maxlength="60" style="height:28px;font-size:12px;width:190px;border:1px solid #cbd5e1;border-radius:6px;padding:0 6px;">':'')
+    +'<span style="flex:1;"></span>'+btn('arrange','&#8645; Arrange details',!!SPS.arrange,'Re-arrange the details rows (labels and their values): order, left / right column, hide')
+    +btn('reset','&#8634; Reset element',false,'Back to the built-in look')
+    +'</div>'
+    // One label picked on the page: its own text (every other label stays as it is).
+    +(SPS.selOrig?'<div style="display:flex;gap:6px;align-items:center;padding:4px 10px;background:#ecfeff;border-bottom:1px solid #e2e8f0;font-size:11.5px;">'
+      +'<b>Label</b> <span style="font-family:monospace;background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:1px 5px;">'+escText(SPS.selOrig)+'</span> &rarr;'
+      +'<input data-rb="label" value="'+escText(sarvPdfLabels_('store')[SPS.selOrig]||'')+'" placeholder="new text for this label (blank = as built in)" maxlength="50" style="height:26px;width:260px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
+      +(/\{rate\}/.test(SPS.selOrig)?'<span style="color:#64748b;">keep <b>{rate}</b> where the GST rate goes</span>':'')+'</div>':'')
+    +'<div style="padding:3px 10px 6px;font-size:11px;color:#0d5c53;font-weight:700;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">Selected: '+escText(def.l)
+    +(Object.keys(e).length?' <span style="color:#b45309;">· changed</span>':'')+'</div>'
+    +(SPS.arrange?sarvPdfArrangeHtml_():'');
+  sarvPdfRibbonWire_(rb);
+}
+function sarvPdfRibbonWire_(rb){
+  sarvPdfArrangeWire_(rb);
+  const def=SPS.sel&&sarvPdfElDef_('store',SPS.sel),e=(SPS.sel&&sarvPdfEl_('store')[SPS.sel])||{};
+  rb.querySelectorAll('[data-rb]').forEach(el=>{
+    const a=el.dataset.rb;
+    if(a==='pick')return el.addEventListener('change',()=>{SPS.sel=el.value||null;sarvPdfMarkSel_();sarvPdfRibbon_();
+      const t=document.querySelector('#ap_pdfEdit .pdfel.on');if(t)t.scrollIntoView({block:'center',behavior:'smooth'});});
+    if(a==='size')return el.addEventListener('change',()=>{const n=Math.min(def.max||160,Math.max(60,Number(el.value)||100));sarvPdfElSet_('size',n===100?undefined:n);});
+    if(a==='color')return el.addEventListener('change',()=>sarvPdfElSet_('color',el.value));
+    if(a==='text')return el.addEventListener('change',()=>sarvPdfElSet_('text',el.value.trim()||undefined));
+    if(a==='bg')return el.addEventListener('change',()=>sarvPdfElSet_('bg',el.value));
+    if(a==='label')return el.addEventListener('change',()=>sarvPdfLabelSet_(SPS.selOrig,el.value.trim()));
+    if(a==='arrange')return el.addEventListener('click',()=>{SPS.arrange=!SPS.arrange;sarvPdfRibbon_();});
+    el.addEventListener('click',()=>{
+      if(a==='nobg')return sarvPdfElSet_('bg',undefined);
+      if(a==='size-'||a==='size+'){const n=Math.min(def.max||160,Math.max(60,(e.size||100)+(a==='size+'?10:-10)));sarvPdfElSet_('size',n===100?undefined:n);}
+      else if(a==='bold')sarvPdfElSet_('bold',e.bold===true?false:e.bold===false?undefined:true);
+      else if(a==='italic')sarvPdfElSet_('italic',e.italic?undefined:true);
+      else if(a==='caps')sarvPdfElSet_('caps',e.caps?undefined:true);
+      else if(a==='hide')sarvPdfElSet_('hide',e.hide?undefined:true);
+      else if(a==='nocolor')sarvPdfElSet_('color',undefined);
+      else if(a==='reset'){const docs=SARV_PDF_DRAFT.docs,dd=docs.store;if(dd&&dd.el){delete dd.el[SPS.sel];if(!Object.keys(dd.el).length)delete dd.el;if(!Object.keys(dd).length)delete docs.store;}
+        sarvPdfStateBar_();sarvPdfRibbon_();sarvPdfPreviewSoon_();}
+    });
+  });
+}
+(function(){   // the look of the clickable boxes over the page
+  const st=document.createElement('style');
+  st.textContent='#ap_pdfEdit .pdfel{cursor:pointer;border-radius:2px;outline:1px dashed transparent}'
+    +'#ap_pdfEdit .pdfel:hover{outline-color:#0d5c53;background:rgba(13,92,83,.08)}'
+    +'#ap_pdfEdit .pdfel.on{outline:2px solid #0d5c53;background:rgba(13,92,83,.14)}'
+    +'#ap_pdfEdit .pdfel.hid{outline:1px dashed #b45309;background:repeating-linear-gradient(45deg,rgba(180,83,9,.10) 0 4px,transparent 4px 8px)}';
+  document.head.appendChild(st);
+})();
+
+/* ── Rename ONE label (docs.store.labels[original] = new text) ── */
+function sarvPdfLabelSet_(orig,v){
+  if(!orig)return;
+  const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs.store||{}),lb=Object.assign({},dd.labels||{});
+  if(v&&v!==orig)lb[orig]=v.slice(0,50);else delete lb[orig];
+  if(Object.keys(lb).length)dd.labels=lb;else delete dd.labels;
+  if(Object.keys(dd).length)docs.store=dd;else delete docs.store;
+  sarvPdfStateBar_();sarvPdfRibbon_();sarvPdfPreviewSoon_();
+}
+
+/* ── Arrange details: the rows of the details block (label + its value) ──
+   Up / down, to the other column, hide / show — for the kind of entry in the
+   preview (Inward or Outward; switch the sample to arrange the other). The
+   rows come from the last preview (blob.metaKeys, the built-in order) plus
+   anything already arranged, so a row that only some entries have can still
+   be placed once it has been seen. Saved as docs.store.meta.IN / .OUT. */
+function sarvPdfArrangeState_(){
+  const kind=SPS.kind||'IN',base=(SPS.meta||{})[kind]||{left:[],right:[]},cur=sarvPdfMeta_(kind);
+  if(!cur)return {kind,left:base.left.slice(),right:base.right.slice(),hide:[]};
+  const seen=new Set(cur.left.concat(cur.right,cur.hide));
+  // rows the built-in order has that the saved one does not yet: in their own column, at the end
+  return {kind,left:cur.left.concat(base.left.filter(k=>!seen.has(k))),right:cur.right.concat(base.right.filter(k=>!seen.has(k))),hide:cur.hide.slice()};
+}
+function sarvPdfArrangeHtml_(){
+  const S=sarvPdfArrangeState_(),LBS=sarvPdfLabels_('store'),hid=new Set(S.hide);
+  const ab=(act,k,lbl,tip,dis)=>'<button type="button" data-ar="'+act+'" data-k="'+escText(k)+'" title="'+escText(tip)+'"'+(dis?' disabled':'')
+    +' style="width:26px;height:24px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;font-size:12px;font-weight:800;cursor:pointer;'+(dis?'opacity:.35;cursor:default;':'')+'">'+lbl+'</button>';
+  const col=(side,list)=>'<div style="flex:1;min-width:230px;"><div style="font-size:10.5px;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">'+(side==='left'?'Left column':'Right column')+'</div>'
+    +(list.length?list.map((k,i)=>'<div style="display:flex;gap:4px;align-items:center;padding:3px 4px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:3px;background:'+(hid.has(k)?'#fef3c7':'#fff')+';">'
+      +'<span style="flex:1;font-size:12px;font-weight:700;'+(hid.has(k)?'text-decoration:line-through;color:#92400e;':'')+'">'+escText(LBS[k]||k)+(LBS[k]?' <span style="font-weight:400;color:#64748b;">('+escText(k)+')</span>':'')+'</span>'
+      +ab('up',k,'&#8593;','Move up',i===0)+ab('down',k,'&#8595;','Move down',i===list.length-1)
+      +ab('swap',k,side==='left'?'&#8594;':'&#8592;','Move to the '+(side==='left'?'right':'left')+' column')
+      +ab('hide',k,hid.has(k)?'&#9711;':'&#10005;',hid.has(k)?'Show this row again':'Hide this row (label and value)')
+      +'</div>').join(''):'<div style="font-size:11px;color:#94a3b8;">No rows.</div>')+'</div>';
+  return '<div style="padding:8px 10px;background:#fff;border-bottom:1px solid #e2e8f0;">'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><b style="font-size:12px;">Arrange details — '+(S.kind==='OUT'?'Outward / Issue':'Inward')+'</b>'
+    +'<span style="font-size:11px;color:#64748b;">Each row is a label with its value. Change the preview sample to arrange '+(S.kind==='OUT'?'Inward':'Outward')+'.</span><span style="flex:1;"></span>'
+    +'<button type="button" data-ar="reset" data-k="" style="height:26px;font-size:11px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;cursor:pointer;">&#8634; Built-in order</button></div>'
+    +'<div style="display:flex;gap:14px;flex-wrap:wrap;">'+col('left',S.left)+col('right',S.right)+'</div></div>';
+}
+function sarvPdfArrangeWire_(rb){
+  rb.querySelectorAll('[data-ar]').forEach(el=>el.addEventListener('click',()=>{
+    const a=el.dataset.ar,k=el.dataset.k,S=sarvPdfArrangeState_();
+    const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs.store||{}),meta=Object.assign({},dd.meta||{});
+    if(a==='reset')delete meta[S.kind];
+    else{
+      const side=S.left.includes(k)?'left':'right',L=S[side],i=L.indexOf(k);
+      if(a==='up'&&i>0)[L[i-1],L[i]]=[L[i],L[i-1]];
+      else if(a==='down'&&i<L.length-1)[L[i+1],L[i]]=[L[i],L[i+1]];
+      else if(a==='swap'){L.splice(i,1);S[side==='left'?'right':'left'].push(k);}
+      else if(a==='hide'){const h=S.hide.indexOf(k);if(h>=0)S.hide.splice(h,1);else S.hide.push(k);}
+      meta[S.kind]={left:S.left,right:S.right,hide:S.hide};
+    }
+    if(Object.keys(meta).length)dd.meta=meta;else delete dd.meta;
+    if(Object.keys(dd).length)docs.store=dd;else delete docs.store;
+    sarvPdfStateBar_();sarvPdfRibbon_();sarvPdfPreviewSoon_();
+  }));
+}
+
+/* ══ PDF SETTINGS › EDIT ON PAGE for PR / PO (text rules) ════════════════
+   The PR and PO PDFs have fixed layouts with no element names, so here a
+   rule belongs to a TEXT: click a heading or label on the preview ("PO NO.",
+   "ITEMS REQUIRED", "Qty" …) and give it a new text, a size, Bold / Italic,
+   a colour, a background colour, CAPS, or hide it. The rule then applies
+   wherever that exact text is printed, in every PR / PO (docs.pr.txt /
+   docs.po.txt = {"original text": {…}}), here and in the mobile app
+   (mobPdfText_ reads the same rules).
+
+   SAFE BY DESIGN: positions never change. Because these layouts are fixed, a
+   bigger size is limited (70–130 %) and the preview marks in RED any two
+   texts that would sit on each other, so a change that does not fit is seen
+   before it is saved. Values that change per document (amounts, names) can
+   be clicked too, but a rule on them only ever matches that same value. */
+const SARV_PDF_TXT_MIN=70, SARV_PDF_TXT_MAX=130;
+function sarvPdfTxt_(doc){
+  const raw=((sarvPdfDocs_()[doc])||{}).txt||{},out={};
+  Object.keys(raw).forEach(k=>{
+    const e=raw[k];if(!e||typeof e!=='object'||k.length>120)return;
+    const o={};
+    if(isFinite(+e.size)&&+e.size>0)o.size=Math.min(SARV_PDF_TXT_MAX,Math.max(SARV_PDF_TXT_MIN,+e.size));
+    if(e.bold===true||e.bold===false)o.bold=e.bold;
+    if(e.italic)o.italic=true;if(e.caps)o.caps=true;if(e.hide)o.hide=true;
+    if(typeof e.color==='string'&&/^#[0-9a-f]{6}$/i.test(e.color))o.color=e.color;
+    if(typeof e.bg==='string'&&/^#[0-9a-f]{6}$/i.test(e.bg))o.bg=e.bg;
+    if(typeof e.text==='string'&&e.text.trim())o.text=e.text.trim().slice(0,80);
+    if(Object.keys(o).length)out[k]=o;
+  });
+  return out;
+}
+/* The text-rule layer on one jsPDF document: every text call is looked up by
+   its own (trimmed) text; a match gets its rule; every text's box is kept in
+   doc.__elBoxes for the clickable page view. */
+function sarvPdfTextDoc_(doc,key){
+  const T=sarvPdfTxt_(key);doc.__elBoxes=doc.__elBoxes||[];
+  const oT=doc.text.bind(doc);
+  doc.text=function(t,x,y,opt){
+    const arr=Array.isArray(t)?t.map(String):[String(t)],k=arr.join(' ').trim();
+    if(!k)return oT(t,x,y,opt);
+    const e=T[k]||null,raw=doc.__rawSetFontSize||doc.setFontSize.bind(doc),fs0=doc.getFontSize();
+    let tt=t;
+    if(e){
+      if(e.size)raw(fs0*e.size/100);
+      if(e.text)tt=Array.isArray(t)?[e.text]:e.text;
+      if(e.caps)tt=Array.isArray(tt)?tt.map(s=>String(s).toUpperCase()):String(tt).toUpperCase();
+    }
+    const fs=doc.getFontSize(),mm=fs*0.3528,al=(opt&&opt.align)||'left',lf=(doc.getLineHeightFactor?doc.getLineHeightFactor():1.15),mine=[];
+    (Array.isArray(tt)?tt:[tt]).forEach((s,i)=>{s=String(s);if(!s.trim())return;
+      let wd=doc.getTextWidth(s);if(opt&&opt.maxWidth&&wd>opt.maxWidth)wd=opt.maxWidth;
+      const x0=al==='center'?x-wd/2:al==='right'?x-wd:x;
+      const b={p:doc.internal.getCurrentPageInfo().pageNumber,r:'txt',o:k,x0,x1:x0+wd,y0:y+i*mm*lf-mm*0.8,y1:y+i*mm*lf+mm*0.25};
+      doc.__elBoxes.push(b);mine.push(b);});
+    if(!e)return oT(t,x,y,opt);
+    if(e.hide){raw(fs0);return doc;}
+    const f=doc.getFont(),col=doc.getTextColor();
+    if(e.bg){const keepF=doc.getFillColor?doc.getFillColor():null;doc.setFillColor(e.bg);
+      mine.forEach(b=>doc.rect(b.x0-0.7,b.y0-0.25,b.x1-b.x0+1.4,b.y1-b.y0+0.5,'F'));if(keepF)doc.setFillColor(keepF);}
+    const isB=e.bold===true||(e.bold!==false&&/bold/i.test(f.fontStyle||''));
+    doc.setFont(f.fontName,isB?(e.italic?'bolditalic':'bold'):(e.italic?'italic':(/italic/i.test(f.fontStyle||'')&&!isB?'italic':'normal')));
+    if(e.color)doc.setTextColor(e.color);
+    const out=oT(tt,x,y,opt);
+    doc.setFont(f.fontName,f.fontStyle);doc.setTextColor(col);raw(fs0);
+    return out;
+  };
+  return doc;
+}
+function sarvPdfTxtSet_(prop,v){
+  const k=SPS.selOrig;if(!k)return;
+  const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs[SPS.doc]||{}),tx=Object.assign({},dd.txt||{}),e=Object.assign({},tx[k]||{});
+  if(v===undefined||v===null||v===''||v===false&&prop!=='bold')delete e[prop];else e[prop]=v;
+  if(Object.keys(e).length)tx[k]=e;else delete tx[k];
+  if(Object.keys(tx).length)dd.txt=tx;else delete dd.txt;
+  if(Object.keys(dd).length)docs[SPS.doc]=dd;else delete docs[SPS.doc];
+  sarvPdfStateBar_();sarvPdfTxtRibbon_();sarvPdfPreviewSoon_();
+}
+function sarvPdfTxtRibbon_(){
+  const rb=byId('ap_pdfRibbon');if(!rb)return;
+  const T=sarvPdfTxt_(SPS.doc),k=SPS.sel==='txt'?SPS.selOrig:null,e=(k&&T[k])||{};
+  const btn=(act,lbl,on,tip)=>'<button type="button" data-rt="'+act+'" title="'+escText(tip)+'" style="min-width:30px;height:28px;padding:0 8px;border:1px solid '+(on?'#0d5c53':'#cbd5e1')+';border-radius:6px;background:'+(on?'#ccfbf1':'#fff')+';font-size:12px;font-weight:800;cursor:pointer;">'+lbl+'</button>';
+  const changed=Object.keys(T);
+  const list='<select data-rt="pick" style="height:28px;font-size:11px;max-width:260px;"><option value="">'+(changed.length?'— changed texts ('+changed.length+') —':'— click a text on the page —')+'</option>'
+    +changed.map(x=>'<option value="'+escText(x)+'"'+(x===k?' selected':'')+'>'+escText(x.length>40?x.slice(0,39)+'…':x)+'</option>').join('')+'</select>';
+  if(!k){rb.innerHTML='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'+list
+    +'<span style="font-size:11px;color:#64748b;">Click any heading, label or text on the page to change it, like in MS Word. A change applies wherever that same text is printed, in every '+(SPS.doc==='pr'?'PR':'PO')+'. Red boxes = texts that overlap.</span></div>';
+    sarvPdfTxtWire_(rb);return;}
+  const size=e.size||100;
+  rb.innerHTML='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'+list
+    +'<span style="width:1px;height:22px;background:#cbd5e1;"></span>'
+    +btn('size-','A&minus;',false,'Smaller')
+    +'<input data-rt="size" type="number" min="'+SARV_PDF_TXT_MIN+'" max="'+SARV_PDF_TXT_MAX+'" step="5" value="'+size+'" title="Size % ('+SARV_PDF_TXT_MIN+' – '+SARV_PDF_TXT_MAX+'; fixed layout)" style="width:58px;height:28px;font-size:12px;text-align:center;border:1px solid #cbd5e1;border-radius:6px;"><span style="font-size:11px;color:#475569;">%</span>'
+    +btn('size+','A+',false,'Bigger')
+    +'<span style="width:1px;height:22px;background:#cbd5e1;"></span>'
+    +btn('bold','<b>B</b>',e.bold===true,'Bold (click again: not bold; third click: as built in)')
+    +btn('italic','<i>I</i>',!!e.italic,'Italic')
+    +'<label title="Text colour" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;">A<input data-rt="color" type="color" value="'+(e.color||'#000000')+'" style="width:28px;height:26px;border:1px solid #cbd5e1;border-radius:6px;padding:0;"></label>'
+    +(e.color?btn('nocolor','&#10005;',false,'Colour as built in'):'')
+    +'<label title="Background colour" style="display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:800;"><span style="background:#fde68a;padding:0 3px;border-radius:3px;">ab</span><input data-rt="bg" type="color" value="'+(e.bg||'#ffffff')+'" style="width:28px;height:26px;border:1px solid #cbd5e1;border-radius:6px;padding:0;"></label>'
+    +(e.bg?btn('nobg','&#10005;',false,'No background colour'):'')
+    +btn('caps','Aa',!!e.caps,'CAPITALS')
+    +btn('hide',e.hide?'Show':'Hide',!!e.hide,'Hide this text (its space stays)')
+    +'<span style="flex:1;"></span>'+btn('reset','&#8634; Reset text',false,'Back to the built-in look')+'</div>'
+    +'<div style="display:flex;gap:6px;align-items:center;padding:4px 10px 6px;background:#ecfeff;border-bottom:1px solid #e2e8f0;font-size:11.5px;">'
+    +'<b>Text</b> <span style="font-family:monospace;background:#fff;border:1px solid #cbd5e1;border-radius:4px;padding:1px 5px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+escText(k)+'</span> &rarr;'
+    +'<input data-rt="text" value="'+escText(e.text||'')+'" placeholder="new text (blank = as built in)" maxlength="80" style="height:26px;width:280px;font-size:12px;border:1px solid #cbd5e1;border-radius:6px;padding:0 6px;">'
+    +(Object.keys(e).length?'<span style="color:#b45309;font-weight:700;">changed</span>':'')+'</div>';
+  sarvPdfTxtWire_(rb);
+}
+function sarvPdfTxtWire_(rb){
+  const T=sarvPdfTxt_(SPS.doc),k=SPS.sel==='txt'?SPS.selOrig:null,e=(k&&T[k])||{};
+  rb.querySelectorAll('[data-rt]').forEach(el=>{
+    const a=el.dataset.rt;
+    if(a==='pick')return el.addEventListener('change',()=>{SPS.sel=el.value?'txt':null;SPS.selOrig=el.value||null;sarvPdfMarkSel_();sarvPdfTxtRibbon_();
+      const t=document.querySelector('#ap_pdfEdit .pdfel.on');if(t)t.scrollIntoView({block:'center',behavior:'smooth'});});
+    if(a==='size')return el.addEventListener('change',()=>{const n=Math.min(SARV_PDF_TXT_MAX,Math.max(SARV_PDF_TXT_MIN,Number(el.value)||100));sarvPdfTxtSet_('size',n===100?undefined:n);});
+    if(a==='color')return el.addEventListener('change',()=>sarvPdfTxtSet_('color',el.value));
+    if(a==='bg')return el.addEventListener('change',()=>sarvPdfTxtSet_('bg',el.value));
+    if(a==='text')return el.addEventListener('change',()=>sarvPdfTxtSet_('text',el.value.trim()&&el.value.trim()!==k?el.value.trim():undefined));
+    el.addEventListener('click',()=>{
+      if(a==='size-'||a==='size+'){const n=Math.min(SARV_PDF_TXT_MAX,Math.max(SARV_PDF_TXT_MIN,(e.size||100)+(a==='size+'?10:-10)));sarvPdfTxtSet_('size',n===100?undefined:n);}
+      else if(a==='bold')sarvPdfTxtSet_('bold',e.bold===true?false:e.bold===false?undefined:true);
+      else if(a==='italic')sarvPdfTxtSet_('italic',e.italic?undefined:true);
+      else if(a==='caps')sarvPdfTxtSet_('caps',e.caps?undefined:true);
+      else if(a==='hide')sarvPdfTxtSet_('hide',e.hide?undefined:true);
+      else if(a==='nocolor')sarvPdfTxtSet_('color',undefined);
+      else if(a==='nobg')sarvPdfTxtSet_('bg',undefined);
+      else if(a==='reset'){const docs=SARV_PDF_DRAFT.docs,dd=docs[SPS.doc];if(dd&&dd.txt){delete dd.txt[k];if(!Object.keys(dd.txt).length)delete dd.txt;if(!Object.keys(dd).length)delete docs[SPS.doc];}
+        sarvPdfStateBar_();sarvPdfTxtRibbon_();sarvPdfPreviewSoon_();}
+    });
+  });
+}
+(function(){const st=document.createElement('style');
+  st.textContent='#ap_pdfEdit .pdfel.clash{outline:2px solid #dc2626!important;background:rgba(220,38,38,.12)}';
+  document.head.appendChild(st);})();
+
+/* ══ PDF SETTINGS › EDIT ON PAGE › CELL / FILL COLOURS ═══════════════════
+   Click any filled area on the preview — a table cell, the heading row, the
+   TOTAL band, a coloured header bar — and give that colour a new one. The
+   change is a colour swap for the whole PDF: wherever that fill colour is
+   used in this PDF, the new one is used (docs.<pdf>.fills = {"#old": "#new"}),
+   for the store being edited, here and in the mobile app (mobPdfFill_).
+   Works on Store In/Out, PR and PO alike, because it sits on jsPDF's own fill
+   calls (autoTable fills its cells the same way). Only colours change, never
+   sizes or positions, so nothing can overlap because of it.
+   The page view lists every fill colour of the PDF as swatches too. */
+function sarvPdfHex_(a){
+  if(!a.length)return null;
+  if(typeof a[0]==='string')return /^#[0-9a-f]{6}$/i.test(a[0])?a[0].toLowerCase():(/^#[0-9a-f]{3}$/i.test(a[0])?('#'+a[0].slice(1).split('').map(c=>c+c).join('')).toLowerCase():null);
+  const h=n=>Math.max(0,Math.min(255,Math.round(+n||0))).toString(16).padStart(2,'0');
+  if(a.length===1&&typeof a[0]==='number'){const g=a[0]<=1?a[0]*255:a[0];return '#'+h(g)+h(g)+h(g);}
+  if(a.length>=3&&a.length!==4)return '#'+h(a[0])+h(a[1])+h(a[2]);
+  if(a.length===4&&a[3]===undefined)return '#'+h(a[0])+h(a[1])+h(a[2]);
+  return null;   // CMYK: left as it is
+}
+function sarvPdfFills_(doc){
+  const raw=((sarvPdfDocs_()[doc])||{}).fills||{},out={};
+  Object.keys(raw).forEach(k=>{const v=raw[k];if(/^#[0-9a-f]{6}$/i.test(k)&&typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v))out[k.toLowerCase()]=v.toLowerCase();});
+  return out;
+}
+// The colour swap on one jsPDF document, and where every filled area lands (doc.__fillBoxes, mm) for the page view.
+function sarvPdfFillDoc_(doc,key){
+  const F=sarvPdfFills_(key);doc.__fillBoxes=doc.__fillBoxes||[];doc.__fillOrig=null;
+  const oF=doc.setFillColor.bind(doc);
+  doc.setFillColor=function(...a){const hx=sarvPdfHex_(a);doc.__fillOrig=hx;const n=hx&&F[hx];return n?oF(n):oF(...a);};
+  const rec=(x,y,w,h,st)=>{if(st&&/f/i.test(String(st))&&doc.__fillOrig&&w>0.3&&h>0.3)
+    doc.__fillBoxes.push({p:doc.internal.getCurrentPageInfo().pageNumber,x0:x,y0:y,x1:x+w,y1:y+h,f:doc.__fillOrig});};
+  const oR=doc.rect.bind(doc);
+  doc.rect=function(x,y,w,h,st){rec(x,y,w,h,st);return oR(x,y,w,h,st);};
+  if(doc.roundedRect){const oRR=doc.roundedRect.bind(doc);doc.roundedRect=function(x,y,w,h,rx,ry,st){rec(x,y,w,h,st);return oRR(x,y,w,h,rx,ry,st);};}
+  return doc;
+}
+function sarvPdfFillSet_(orig,v){
+  if(!orig)return;
+  const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs[SPS.doc]||{}),fl=Object.assign({},dd.fills||{});
+  if(v&&v.toLowerCase()!==orig)fl[orig]=v.toLowerCase();else delete fl[orig];
+  if(Object.keys(fl).length)dd.fills=fl;else delete dd.fills;
+  if(Object.keys(dd).length)docs[SPS.doc]=dd;else delete docs[SPS.doc];
+  sarvPdfStateBar_();sarvPdfRibbon_();sarvPdfPreviewSoon_();
+}
+function sarvPdfFillRibbon_(){
+  const rb=byId('ap_pdfRibbon');if(!rb)return;
+  const F=sarvPdfFills_(SPS.doc),k=SPS.selOrig,cur=F[k]||k;
+  const sw=(c,on)=>'<button type="button" data-rf="pick" data-c="'+c+'" title="'+c+(F[c]?' → '+F[c]:'')+'" style="width:24px;height:22px;border-radius:5px;cursor:pointer;border:'+(on?'2px solid #0d5c53':'1px solid #94a3b8')+';background:'+(F[c]||c)+';position:relative;">'
+    +(F[c]?'<span style="position:absolute;right:-3px;top:-4px;width:8px;height:8px;border-radius:50%;background:#b45309;"></span>':'')+'</button>';
+  rb.innerHTML='<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 10px;background:#f1f5f9;border-bottom:1px solid #e2e8f0;">'
+    +'<b style="font-size:12px;">Cell / fill colour</b>'
+    +'<span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;"><span title="original" style="width:26px;height:22px;border:1px solid #94a3b8;border-radius:5px;background:'+k+';"></span>'+escText(k)+' &rarr;</span>'
+    +'<input data-rf="color" type="color" value="'+cur+'" title="New colour" style="width:40px;height:28px;border:1px solid #cbd5e1;border-radius:6px;padding:0;">'
+    +(F[k]?'<span style="font-size:11.5px;font-weight:700;">'+escText(F[k])+'</span><button type="button" data-rf="reset" style="height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:12px;font-weight:800;cursor:pointer;">&#8634; Original colour</button>':'')
+    +'<span style="font-size:11px;color:#64748b;">Changes this colour everywhere it fills a cell or band in this PDF ('+(SPS.store==='STORE 1'?'Store 1':'Store 2')+').</span>'
+    +'<span style="flex:1;"></span><button type="button" data-rf="close" style="height:28px;padding:0 8px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;font-size:12px;cursor:pointer;">Done</button></div>'
+    +'<div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;padding:5px 10px;background:#fff;border-bottom:1px solid #e2e8f0;"><span style="font-size:11px;color:#475569;font-weight:700;">Colours in this PDF:</span>'
+    +(SPS.fillsSeen||[]).map(c=>sw(c,c===k)).join('')+'</div>';
+  rb.querySelectorAll('[data-rf]').forEach(el=>{
+    const a=el.dataset.rf;
+    if(a==='color')return el.addEventListener('change',()=>sarvPdfFillSet_(k,el.value));
+    el.addEventListener('click',()=>{
+      if(a==='pick'){SPS.selOrig=el.dataset.c;sarvPdfMarkFill_();sarvPdfFillRibbon_();}
+      else if(a==='reset')sarvPdfFillSet_(k,null);
+      else if(a==='close'){SPS.sel=null;SPS.selOrig=null;sarvPdfMarkFill_();sarvPdfRibbon_();}
+    });
+  });
+}
+function sarvPdfMarkFill_(){document.querySelectorAll('#ap_pdfEdit .pdffill').forEach(x=>x.classList.toggle('on',SPS.sel==='fill'&&x.dataset.f===SPS.selOrig));}
+(function(){const st=document.createElement('style');
+  st.textContent='#ap_pdfEdit .pdffill{position:absolute;cursor:cell;outline:1px dashed transparent}'
+    +'#ap_pdfEdit .pdffill:hover{outline-color:#2563eb;background:rgba(37,99,235,.06)}'
+    +'#ap_pdfEdit .pdffill.on{outline:2px solid #2563eb;background:rgba(37,99,235,.10)}';
+  document.head.appendChild(st);})();
+
+/* ══ INWARD › COST ON YARN ROW ═══════════════════════════════════════════
+   The checkbox above the Item Configurations table adds one last row, COST ON
+   YARN, that puts the Freight Calculator's cost into the bill:
+     Qty        = the total Qty of the items above
+     Weight     = the total Weight of the items above
+     List Price = Cost on Yarn / Kg (Freight Amt ÷ Net Weight)
+     Bill Basis = the items' (the first item row's)
+     GST        = the items' (their weighted average)
+     Item Total = List Price × Weight (WEIGHT basis) or × Qty (QTY basis),
+                  and it IS part of Items Base Total → Taxable → GST → Final.
+   It is NOT an item:
+     • it sits in its own table body (#inwCostYarnBody), so nothing that walks
+       the item rows (stock, PO / PR checks, MD / Unloader approvals, Field Boy
+       checks) ever sees it;
+     • its weight is never in the Freight Calculator's Net Weight (Items), on
+       screen or in the PDF (collectInwardData);
+     • it is saved as Qty 0 / Weight 0 with its Rate / GST / Item Total, so no
+       stock figure moves, while Reports and the Expenses report get the amount;
+     • on Admin edit the saved line comes back as the ticked checkbox
+       (inwIsCostYarnLine_) and its figures are worked out again.
+   The PDF prints it as the last row, as it is on the form; the TOTAL row there
+   counts Qty / Weight of the items only, the amount including it. */
+const INW_COY_NAME='COST ON YARN';
+const inwIsCostYarnLine_=l=>String((l&&l.items&&l.items.name)||(l&&l.item_name)||'').trim().toUpperCase()===INW_COY_NAME;
+function inwCostYarnToggle_(on){
+  const body=byId('inwCostYarnBody'),chk=byId('inwCostYarnChk');if(!body)return;
+  if(chk)chk.checked=!!on;
+  body.innerHTML='';
+  if(on){
+    const tr=document.createElement('tr');tr.className='inw-coy-row';tr.style.background='#ecfdf5';
+    const ro=(cls,val,extra)=>'<td><input type="text" class="table-input '+cls+'" value="'+val+'" readonly tabindex="-1" style="background:#ecfdf5;color:#065f46;font-weight:700;cursor:default;'+(extra||'')+'"></td>';
+    tr.innerHTML=ro('coy-name',INW_COY_NAME)
+      +ro('coy-desc','FREIGHT COST SPREAD PER KG (AUTO)','font-weight:600;')
+      +'<td></td><td></td>'
+      +ro('coy-qty','0')+ro('coy-uom','')+ro('coy-wt','0')+ro('coy-wunit','KGS')+ro('coy-basis','QTY')
+      +ro('coy-lp','0')+ro('coy-disc','0')+ro('coy-rate','0')+ro('coy-gst','0')
+      +'<td class="coy-total" style="font-weight:800;color:#065f46;">₹0.00</td>'
+      +'<td class="row-actions"><button type="button" class="delete-btn" title="Remove the Cost on Yarn row" onclick="inwCostYarnToggle_(false)">✕</button></td>';
+    tr.title='Cost on Yarn: Qty / Weight = the items\' totals, List Price = Cost on Yarn / Kg. Amount only, no stock.';
+    body.appendChild(tr);
+  }
+  if(typeof updateStoreTotals==='function')updateStoreTotals();
+}
+// The row's figures from the items (called by updateStoreTotals); null when the row is off.
+function inwCostYarnUpdate_(rows,qty,netWt,weightedGst,totalGstWt){
+  const tr=document.querySelector('#inwCostYarnBody tr.inw-coy-row');if(!tr)return null;
+  const first=rows.find(r=>(r.querySelector('.item-name')?.value||'').trim())||rows[0];
+  const basis=(first&&first.querySelector('.bill-basis-field')?.value)||'QTY';
+  const uom=(first&&first.querySelector('.item-uom')?.value)||'';
+  const gst=totalGstWt>0?weightedGst/totalGstWt:(+(first&&first.querySelector('.item-gst-field')?.value)||0);
+  const grossWt=+byId('calcGrossWeight')?.value||0,freightRate=+byId('calcFreightRate')?.value||0;
+  /* Cost on Yarn / Kg, the Freight Calculator's own figure, rounded to 2 decimals
+     (2.0512 → 2.05, 2.056 → 2.06): the List Price / Rate shown is exactly the one
+     the Item Total is worked out from, with nothing hidden past the paise. */
+  const cost=netWt>0?Math.round(grossWt*freightRate/netWt*100)/100:0;
+  const total=Math.round(cost*(basis==='WEIGHT'?netWt:qty)*100)/100;
+  const set=(c,v)=>{const e=tr.querySelector('.'+c);if(e)e.value=v;};
+  set('coy-qty',Math.round(qty*1000)/1000);set('coy-uom',uom);set('coy-wt',netWt.toFixed(2));set('coy-basis',basis);
+  set('coy-lp',cost.toFixed(2));set('coy-rate',cost.toFixed(2));set('coy-gst',(Math.round(gst*100)/100).toString());
+  const tc=tr.querySelector('.coy-total');if(tc)tc.textContent='₹'+total.toFixed(2);
+  tr._coy={qty,weight:netWt,uom,basis,cost,gst,total};
+  return {total,tax:gst};
+}
+/* The row as an Inward line for the preview / PDF / save (rowDataInward's
+   shape, plus isCostYarn). null when the row is off. */
+function inwCostYarn_(){
+  const tr=document.querySelector('#inwCostYarnBody tr.inw-coy-row');if(!tr)return null;
+  updateStoreTotals();
+  const c=tr._coy;if(!c)return null;
+  return {isCostYarn:true,name:INW_COY_NAME,desc:'FREIGHT COST SPREAD PER KG',make:'',cat:INW_COY_NAME,category:INW_COY_NAME,
+    qty:c.qty,uom:c.uom,weight:c.weight,wunit:'KGS',listPrice:c.cost,discountPct:0,rate:c.cost,tax:c.gst,billBasis:c.basis,total:c.total,itemId:''};
+}

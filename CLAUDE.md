@@ -37,7 +37,7 @@ ERP iframes in `index.html` (~line 2057) use `data-src` and are loaded lazily.
 ## Desktop ERP script order — do not change
 
 ```
-index.html <head>: date-dmy.js → caps-input.js → sso-preboot.js → sso-gate.js → store.css → erp-shell.css → store-mytasks.css
+index.html <head>: date-dmy.js → caps-input.js → hover-tip.js → sso-preboot.js → sso-gate.js → store.css → erp-shell.css → store-mytasks.css
 end of <body>:     store-core.js → store-design-master.js → store-nav-keys.js → store-mytasks.js → erp-shell.js → app-back.js
 ```
 
@@ -81,6 +81,29 @@ end of <body>:     store-core.js → store-design-master.js → store-nav-keys.j
     (users with Emp Code MD-1 / MD-2): `mdScope_` in `mobile-core.js` keeps a PR / PO with any item of a category ticked
     for that MD or for neither (shared); no ticks anywhere, other Emp Codes or a failed lookup = everything. One PO series for both;
     PR / PO PDFs print UNIT-1 / UNIT-2 from the record's store (`sarvPdfUnit_`, mobile `pdfUnit_`).
+- **PDF Settings** (Admin Panel tab `pdf`, end of `store-core.js`): every PDF layout option lives in `SARV_PDF_DEFS`
+  (doc → groups → options with default / range / hint); builders read them with `sarvPdfOpt_(doc,key)` (draft while
+  previewing, else saved, else default; clamped). Saved in app_settings `pdf_layout` via `admin_save_setting` (Admin PIN,
+  no migration), loaded by `sarvLoadSettings_`. Store In/Out uses them for text size, table min font / padding, page rules,
+  margins and sections; PR / PO text size via `sarvPdfScaleDoc_` (mobile: `mobPdfScale_`), PO fit-to-one-page via
+  `fitOne` / `fitMin` / `shrinkLong`. Live preview: sample Store entries, a real PR (`pdf_snapshot`) or PO
+  (`sarvPoDataFromDb_`). New option = one entry + one read; defaults = the built-in layout.
+  **Edit on page** (Store In/Out): every text is an element (`SARV_PDF_EL`, set with `R('<id>')` in
+  `drawStoreCopyNative_`); per element size % / bold / italic / colour / CAPS / hide / new text in `docs.store.el`.
+  Size and text are applied before measuring (`FS` / `TX`), the look where drawn (`sarvPdfElDoc_`, which also records
+  `blob.elBoxes` for the clickable page view, pdf.js loaded on the page by `sarvPdfJs_`). Positions are not draggable by
+  design (the flow layout is what prevents overlap); signature image / name / time keep their fixed geometry.
+  Store also has per-label renames (`docs.store.labels`, `LB()`), background colour per element (`bg`) and Arrange
+  details (`docs.store.meta.IN/OUT` = left / right / hide by original label). PR / PO: text rules keyed by the exact
+  printed text (`docs.pr.txt` / `docs.po.txt`, `sarvPdfTextDoc_`; mobile `mobPdfText_`), size 70–130 %, the page view
+  marks overlapping texts red. **Per store**: `pdf_layout` = `{v:2, stores:{'STORE 1':{docs}, 'STORE 2':{docs}}, docs}`
+  (`docs` = older common set, used by a store not saved on its own); builders set `SARV_PDF_STORE` from the record and
+  read through `sarvPdfDocs_()`; the draft applies only while previewing / with the PDF Settings pane open.
+- **Inward › Cost on Yarn row** (checkbox `#inwCostYarnChk`, `inwCostYarn*_` at the end of `store-core.js`): an
+  amount-only last row in its own `<tbody id="inwCostYarnBody">` (so item-row walkers never see it). Qty / Weight =
+  items' totals, List Price = Cost on Yarn / Kg, Bill Basis + GST = the items'; its amount is in the bill totals, its
+  weight never in Net Weight. Saved as an `inward_lines` row of item "COST ON YARN" with qty 0 / weight 0 (no stock);
+  submit passes `rowsP` (items + this row) to preview / PDF, `rows` (items only) to every check and approval.
 - `store-design-master.js`: Production › Design Master. All ids/classes/functions prefixed `dm`.
 - `erp-shell.js` also owns browser history (`NAV`: one `#/module/leaf` address per screen, Back / Forward
   replays the leaf through `select()`, reload reopens it) and the open-screens tab strip (`TABS`, `#erpTabs`,
@@ -143,6 +166,12 @@ jsonb columns to avoid migrations (e.g. PO follow-ups in `purchase_orders.approv
   text in CAPITALS. It skips password/email/url/number/date inputs, `data-dmy` boxes, read-only boxes and any
   box named as a PIN/password/OTP/token/email/mail/url field; mark a container `data-no-caps` to opt out.
   Keep name/item lookups case-insensitive (`ilike` / lower-cased compare) so capitals never create duplicates.
+- `hover-tip.js` (every app page except `launcher.html`, right after `caps-input.js`; before `sso-preboot.js` in
+  Yarn Unloading / Catalog Maker): one mousemove listener that shows its own small tooltip (`role=tooltip` div,
+  not `title`) with the full text of any box, dropdown, cell, list item or `.truncate` block whose text is cut off.
+  Disabled text boxes get `pointer-events:none` (injected style) so their cell gets the mouse and the box under the
+  pointer is found by position: Chrome shows no native tooltip on a disabled box. An unlocked element with its own
+  `title` keeps it; PIN / password boxes are skipped. A new app page should load it too.
 - Dates: every app loads `date-dmy.js` first, which turns `<input type="date">` into a DD/MM/YYYY text box
   (`data-dmy="1"`) whose `.value` still reads/writes `YYYY-MM-DD`. Select date boxes with
   `input[type=date],input[data-dmy]`. Use `today()` (local date), never `toISOString().slice(0,10)` for "today".

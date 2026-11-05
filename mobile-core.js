@@ -434,11 +434,86 @@
         doc.setDrawColor(203,213,225);doc.setLineWidth(0.3);doc.rect(M,y,W,h);
         return y+h;
     }
+    /* Text size of the PR / PO PDFs, from STORE.html › Admin Panel › PDF Settings
+       (app_settings 'pdf_layout', loaded with the access settings). Same rule as
+       the ERP (sarvPdfScaleDoc_): every font of the PDF × the %, so a PDF rebuilt
+       here after an approval looks like the one the ERP made. 100% = built-in. */
+    let MOB_PDF_CFG = {};
+    // Store 1 / Store 2 have their own PDF Settings (ERP: sarvPdfSavedDocs_); a store not saved on its own uses the common set.
+    function mobPdfDocs_(store){ const c = MOB_PDF_CFG || {}, st = String(store || "").toUpperCase().replace(/\s+/g, " ").trim() === "STORE 1" ? "STORE 1" : "STORE 2";
+        return (c.stores && c.stores[st] && c.stores[st].docs) || c.docs || {}; }
+    function mobPdfScale_(doc, kind, lo, hi, store){
+        const v = Number(((mobPdfDocs_(store)[kind]) || {}).scale);
+        const s = (isFinite(v) && v > 0 ? Math.min(hi, Math.max(lo, v)) : 100) / 100;
+        if(Math.abs(s - 1) < 0.001) return doc;
+        const o = doc.setFontSize.bind(doc); doc.setFontSize = fs => o(fs * s);
+        doc.__rawSetFontSize = o;   // unscaled, for mobPdfText_'s per-text size
+        return doc;
+    }
+    /* Text rules from STORE.html › PDF Settings › Edit on page (docs.pr.txt /
+       docs.po.txt = {"exact text": {size, bold, italic, color, bg, caps, hide,
+       text}}), so a PR / PO PDF rebuilt here after an approval shows the same
+       renamed headings, colours and sizes as the ERP's. Same cleaning and
+       limits as the ERP's sarvPdfTxt_ / sarvPdfTextDoc_. */
+    /* Cell / fill colour swaps from STORE.html › PDF Settings (docs.<pr|po>.fills =
+       {"#old": "#new"}), the same as the ERP's sarvPdfFillDoc_: wherever that fill
+       colour is used in the PDF, the new one is used. */
+    function mobPdfFill_(doc, kind, store){
+        const raw = ((mobPdfDocs_(store)[kind]) || {}).fills || {}, F = {};
+        Object.keys(raw).forEach(k => { const v = raw[k]; if(/^#[0-9a-f]{6}$/i.test(k) && typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)) F[k.toLowerCase()] = v.toLowerCase(); });
+        if(!Object.keys(F).length) return doc;
+        const hx = n => Math.max(0, Math.min(255, Math.round(+n || 0))).toString(16).padStart(2, '0');
+        const oF = doc.setFillColor.bind(doc);
+        doc.setFillColor = function(...a){
+            let h = null;
+            if(typeof a[0] === 'string' && /^#[0-9a-f]{6}$/i.test(a[0])) h = a[0].toLowerCase();
+            else if(a.length === 1 && typeof a[0] === 'number'){ const g = a[0] <= 1 ? a[0] * 255 : a[0]; h = '#' + hx(g) + hx(g) + hx(g); }
+            else if(a.length >= 3 && (a.length !== 4 || a[3] === undefined)) h = '#' + hx(a[0]) + hx(a[1]) + hx(a[2]);
+            return h && F[h] ? oF(F[h]) : oF(...a);
+        };
+        return doc;
+    }
+    function mobPdfText_(doc, kind, store){
+        const raw = ((mobPdfDocs_(store)[kind]) || {}).txt || {}, T = {};
+        const hex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
+        Object.keys(raw).forEach(k => { const e = raw[k]; if(!e || typeof e !== 'object' || k.length > 120) return; const o = {};
+            if(isFinite(+e.size) && +e.size > 0) o.size = Math.min(130, Math.max(70, +e.size));
+            if(e.bold === true || e.bold === false) o.bold = e.bold;
+            if(e.italic) o.italic = true; if(e.caps) o.caps = true; if(e.hide) o.hide = true;
+            if(hex(e.color)) o.color = e.color; if(hex(e.bg)) o.bg = e.bg;
+            if(typeof e.text === 'string' && e.text.trim()) o.text = e.text.trim().slice(0, 80);
+            if(Object.keys(o).length) T[k] = o; });
+        if(!Object.keys(T).length) return doc;
+        const oT = doc.text.bind(doc);
+        doc.text = function(t, x, y, opt){
+            const k = (Array.isArray(t) ? t.map(String) : [String(t)]).join(' ').trim(), e = k && T[k];
+            if(!e) return oT(t, x, y, opt);
+            const raw = doc.__rawSetFontSize || doc.setFontSize.bind(doc), fs0 = doc.getFontSize();
+            if(e.size) raw(fs0 * e.size / 100);
+            if(e.hide){ raw(fs0); return doc; }
+            let tt = e.text ? (Array.isArray(t) ? [e.text] : e.text) : t;
+            if(e.caps) tt = Array.isArray(tt) ? tt.map(s => String(s).toUpperCase()) : String(tt).toUpperCase();
+            const f = doc.getFont(), col = doc.getTextColor();
+            if(e.bg){
+                const fs = doc.getFontSize() * 0.3528, al = (opt && opt.align) || 'left';
+                doc.setFillColor(e.bg);
+                (Array.isArray(tt) ? tt : [tt]).forEach((s, i) => { const wd = doc.getTextWidth(String(s)); const x0 = al === 'center' ? x - wd / 2 : al === 'right' ? x - wd : x;
+                    doc.rect(x0 - 0.7, y + i * fs * 1.15 - fs * 0.8 - 0.25, wd + 1.4, fs * 1.05 + 0.5, 'F'); });
+            }
+            const isB = e.bold === true || (e.bold !== false && /bold/i.test(f.fontStyle || ''));
+            doc.setFont(f.fontName, isB ? (e.italic ? 'bolditalic' : 'bold') : (e.italic ? 'italic' : 'normal'));
+            if(e.color) doc.setTextColor(e.color);
+            const out = oT(tt, x, y, opt);
+            doc.setFont(f.fontName, f.fontStyle); doc.setTextColor(col); raw(fs0);
+            return out;
+        };
+        return doc;
+    }
     async function buildRequirementNativePdfBlob(d){
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
         d = await withPrRequester_(d); // fill Designation / Department / Contact from Employee Master if missing
         const {jsPDF}=window.jspdf;
-        const doc=new jsPDF({unit:'mm',format:'a4',orientation:'landscape'});
+        const doc=mobPdfFill_(mobPdfText_(mobPdfScale_(new jsPDF({unit:'mm',format:'a4',orientation:'landscape'}), 'pr', 85, 125, d && d.store), 'pr', d && d.store), 'pr', d && d.store);
         const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
         const M=8, W=pageW-M*2;
         doc.setTextColor(0,0,0);
@@ -684,7 +759,7 @@
         const poUnit = pdfUnit_(poStore, true);
         const PP = pdfPal_(poStore);   // Store 1 burgundy house style / Store 2 original colours
         const {jsPDF}=window.jspdf;
-        const doc=new jsPDF({unit:'mm',format:'a4',orientation:'portrait'});
+        const doc=mobPdfFill_(mobPdfText_(mobPdfScale_(new jsPDF({unit:'mm',format:'a4',orientation:'portrait'}), 'po', 85, 125, poStore), 'po', poStore), 'po', poStore);
         const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
         const M=8, W=pageW-M*2;
         const AMBER=[253,230,138];
@@ -1135,12 +1210,13 @@
     }
     async function loadRolePerms(){
         try{
-            const q = await SB.from('app_settings').select('key,value').in('key', ['role_permissions','tab_visibility']);
+            const q = await SB.from('app_settings').select('key,value').in('key', ['role_permissions','tab_visibility','pdf_layout']);
             if(q.error) throw q.error;
             rolePerms = null; tabVis = null;
             (q.data || []).forEach(r => {
                 if(r.key === 'role_permissions') rolePerms = r.value || null;
                 if(r.key === 'tab_visibility') tabVis = r.value || null;
+                if(r.key === 'pdf_layout') MOB_PDF_CFG = r.value || {};
             });
         }catch(e){ rolePerms = null; tabVis = null; console.warn('[MOBILE] access settings not loaded:', e.message||e); }
         if(!myStage) return;

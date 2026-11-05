@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
+<!doctype html><html lang="en"><head><script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
 
 <div id="sarvLoginGate" style="position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;">
   <div style="background:#fff;border-radius:14px;padding:26px 28px;max-width:360px;width:92%;box-shadow:0 20px 50px rgba(0,0,0,0.35);">
@@ -438,6 +438,13 @@
                     <span class="totals-pill highlight"><span class="lbl">Items Total</span><span class="val" id="inwTotalAmount">&#8377;0.00</span></span>
                 </div>
 
+                <!-- Cost on Yarn row (inwCostYarn_ in store-core.js): an amount-only last row, Qty / Weight = the
+                     items' totals, List Price = Cost on Yarn / Kg. Never stock: it is saved with Qty 0 / Weight 0. -->
+                <label id="inwCostYarnWrap" style="display:inline-flex;align-items:center;gap:8px;margin:4px 0 6px;font-size:12px;font-weight:700;color:#047857;cursor:pointer;">
+                    <input type="checkbox" id="inwCostYarnChk" onchange="inwCostYarnToggle_(this.checked)" style="width:16px;height:16px;accent-color:#047857;">
+                    Add <b>Cost on Yarn</b> row (List Price = Cost on Yarn / Kg; no stock entry)
+                </label>
+
                 <div class="table-container">
                     <table>
                         <thead>
@@ -460,6 +467,9 @@
                             </tr>
                         </thead>
                         <tbody id="itemTableBody"></tbody>
+                        <!-- The Cost on Yarn row lives in its own body, always under the items, so nothing that walks
+                             the item rows (stock, PO / PR checks, approvals) ever treats it as an item. -->
+                        <tbody id="inwCostYarnBody"></tbody>
                     </table>
                 </div>
 
@@ -1693,6 +1703,7 @@
                                 <button type="button" class="ap-tab active" data-ap="users">Users &amp; Roles</button>
                                 <button type="button" class="ap-tab" data-ap="perms">Feature Access</button>
                                 <button type="button" class="ap-tab" data-ap="tabs">Tab Visibility</button>
+                                <button type="button" class="ap-tab" data-ap="pdf">PDF Settings</button>
                                 <button type="button" class="ap-fs-btn" id="ap_fullScreenBtn" title="Open the Admin Panel full screen (Esc to exit)">Full Screen</button>
                             </div>
                         </div>
@@ -1745,6 +1756,12 @@
                                 <button type="button" class="btn btn-success" id="ap_tabSaveBtn" style="height:32px;font-size:11px;">Save Visibility</button>
                             </div>
                             <div class="table-container ap-matrix-wrap"><table class="ap-matrix" id="ap_tabMatrix"></table></div>
+                        </div>
+
+                        <!-- PDF Settings: text size, pages / overflow and sections of every generated PDF,
+                             with a live preview (SARV_PDF_DEFS / sarvRenderPdfSettings_ in store-core.js). -->
+                        <div class="ap-pane" data-ap-pane="pdf" style="display:none;">
+                            <div id="ap_pdfPane"><div class="ap-empty">Loading…</div></div>
                         </div>
                     </div>
 
