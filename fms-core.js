@@ -176,6 +176,8 @@ async function loadAll() {
   DB.processes = fm ? fm.processes || [] : []; DB.records = fm ? fm.records || [] : [];
   DB.users = fm ? (fm.users || []).filter(Boolean).sort() : (typeof TT !== 'undefined' ? TT.people.map(p => p.name).sort() : []);
   DB.settings = fm ? fm.settings || {} : DB.settings || {}; RES_CACHE.clear();
+  // ERP events (sql/FMS_DATA_LINK_MIGRATION.sql); none yet = the feature is simply not offered.
+  try { DB.sources = ((await rpc('fms_sources_list')) || {}).sources || []; } catch (e) { DB.sources = []; }
 }
 const can = k => !!(ME && ME.perms && ME.perms[k]);
 const isAdmin = () => !!(ME && ME.admin);
@@ -239,11 +241,31 @@ function fieldLabelOf(spec, key) { const f = ((spec && spec.fields) || []).find(
    agree too (fms_step_done, p_auto), so add the same check there. */
 const FMS_RULES = [
   { id: 'field_filled', label: 'A record field is filled', param: true,
-    check: (r, f) => { const v = (r.fields || {})[f]; return v != null && String(v).trim() ? nowIso() : null; } }
+    check: (r, f) => { const v = (r.fields || {})[f]; return v != null && String(v).trim() ? nowIso() : null; } },
+  /* ERP DATA (sql/FMS_DATA_LINK_MIGRATION.sql): done when an ERP event (DB.sources,
+     e.g. "PO of the PR sent to vendor") exists for the value in a record field.
+     Checked only on the server (fms_auto_sync_, every 5 minutes and on fms_sync_now),
+     with the event's own time as the actual, so the page never decides it. */
+  { id: 'erp_data', label: 'ERP data shows it', param: false, server: true, check: () => null }
 ];
+// ERP events a step can finish on / a flow can start from (fms_sources_list); [] until the migration is run.
+DB.sources = [];
+const srcOf = id => (DB.sources || []).find(s => s.id === id) || null;
 let AUTO_BUSY = false;
+/* Auto steps are finished by the SERVER now (fms_sync_now → fms_auto_sync_, also
+   run every 5 minutes by pg_cron), so they close even when nobody has this page
+   open. This call just asks for a run now and reloads if anything moved.
+   Without sql/FMS_DATA_LINK_MIGRATION.sql the old in-page check runs instead. */
 async function fmsAutoRun() {
-  if (AUTO_BUSY || !ME) return; AUTO_BUSY = true; let n = 0;
+  if (AUTO_BUSY || !ME) return; AUTO_BUSY = true;
+  try {
+    const d = await rpc('fms_sync_now');
+    if (d && (d.done || d.started)) { await loadAll(); route(); }
+    return;
+  } catch (e) {
+    if (e.code !== 'NOT_SET_UP') { console.warn('FMS sync', e.message); return; }
+  } finally { AUTO_BUSY = false; }
+  AUTO_BUSY = true; let n = 0;
   try {
     for (const r of Store.all('records')) {
       if (r.closed_at) continue; const res = resolveRec(r); if (!res || res.priority.frozen) continue;
@@ -269,14 +291,20 @@ function validateSpec(spec) {
     const at = (s.name || s.id || 'step ' + (i + 1));
     if (!s.id) errors.push(at + ': id missing'); else if (ids.has(s.id)) errors.push(at + ': duplicate id "' + s.id + '"'); ids.add(s.id);
     if (!s.name) errors.push(at + ': name missing');
-    if (!s.doer) warns.push(at + ': no doer — nobody will see this task');
+    // A step that closes by itself needs nobody; every other step needs a doer to show in someone's My Tasks.
+    if (!(s.status && s.status.type === 'auto') && (!s.doer || (s.doer.type === 'fixed' && !s.doer.name))) warns.push(at + ': no doer — nobody will see this task');
     if (s.doer && s.doer.type === 'lookup') {
       if (!tables[s.doer.table]) errors.push(at + ': doer table "' + s.doer.table + '" not found');
       if (!fieldKeys.has(s.doer.by)) errors.push(at + ': doer lookup field "' + s.doer.by + '" is not a field');
     }
     if (s.doer && s.doer.type === 'field' && !fieldKeys.has(s.doer.field)) errors.push(at + ': doer field "' + s.doer.field + '" is not a field');
     if (s.capture && !fieldKeys.has(s.capture.field)) errors.push(at + ': asks for field "' + s.capture.field + '" which is not a field');
-    if (s.status && s.status.type === 'auto') { const r = FMS_RULES.find(x => x.id === s.status.rule); if (!r) errors.push(at + ': auto-close rule missing'); else if (r.param && !fieldKeys.has(s.status.field)) errors.push(at + ': "Finishes by itself" — choose which record field (rule: ' + r.label + ')'); }
+    if (s.status && s.status.type === 'auto' && s.status.rule === 'erp_data') {
+      if (!s.status.source) errors.push(at + ': "When ERP data shows it" — choose the ERP event');
+      else if (DB.sources.length && !srcOf(s.status.source)) errors.push(at + ': ERP event "' + s.status.source + '" not found');
+      if (!fieldKeys.has(s.status.keyField)) errors.push(at + ': "When ERP data shows it" — choose the record field that holds the number (e.g. PR No.)');
+    }
+    else if (s.status && s.status.type === 'auto') { const r = FMS_RULES.find(x => x.id === s.status.rule); if (!r) errors.push(at + ': auto-close rule missing'); else if (r.param && !fieldKeys.has(s.status.field)) errors.push(at + ': "Finishes by itself" — choose which record field (rule: ' + r.label + ')'); }
     const trig = Array.isArray(s.trigger) ? s.trigger : [s.trigger];
     if (!trig[0]) errors.push(at + ': trigger missing');
     trig.forEach((t, j) => {
@@ -331,6 +359,7 @@ function hxTrig(sp, tr) {
 }
 function hxStatus(sp, s) {
   if (!s.status || s.status.type !== 'auto') return 'Manual' + (s.capture ? ', asks ' + hxFieldLabel(sp, s.capture.field) : '');
+  if (s.status.rule === 'erp_data') { const src = srcOf(s.status.source); return 'Auto: ERP data — ' + (src ? src.label : s.status.source || '?') + ' (' + hxFieldLabel(sp, s.status.keyField) + ')'; }
   const r = FMS_RULES.find(x => x.id === s.status.rule);
   return 'Auto: ' + (r ? r.label : s.status.rule) + (s.status.field ? ' (' + hxFieldLabel(sp, s.status.field) + ')' : '');
 }

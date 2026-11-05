@@ -1049,6 +1049,8 @@
 
                 <!-- Today / this month at a glance; updated live (points drop while a task is overdue). -->
                 <div id="dashSummary" class="grid grid-cols-2 gap-3 p-4 pb-0 bg-slate-50/50"></div>
+                <!-- My FMS steps (Task › FMS): the steps of FMS flows that are this person's to do, with Done (FMS MINE in the script). -->
+                <div id="fmsMine" class="px-4 pt-3 bg-slate-50/50 hidden"></div>
                 <!-- The month's live photos with time and place (openLiveLog). -->
                 <div class="px-4 pt-3 bg-slate-50/50"><button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-fuchsia-200 hover:border-fuchsia-400 text-fuchsia-800 rounded-2xl px-4 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-camera text-lg"></i> My Live Photos (month)</button></div>
 
@@ -2990,7 +2992,88 @@
             const emp = appState.currentLoggedInEmp; if (!emp) return;
             document.getElementById('empDashName').textContent = emp.empName; document.getElementById('empDashCode').textContent = emp.empCode;
             renderDashSummary(); renderDashSelfHistory(); renderPendBadges();
+            fmsMineLoad();
         }
+
+        /* ── FMS MINE: this person's FMS steps in My Tasks ─────────────────
+           Every FMS flow step (Task › FMS View) that is this person's to do and
+           is due now shows here as a task, with Done, so nobody has to open the
+           FMS screens for their part of a flow. fms_my_open
+           (sql/FMS_DATA_LINK_MIGRATION.sql) sends only the open records in
+           which this person is a doer; Planned / Late are worked out here with
+           the same engine fms.html uses (fms-engine.js), and Done goes through
+           fms_step_done, which checks the doer again. Steps that close by
+           themselves (from the ERP's data) never show here. A step that asks
+           for a value on Done (a date, a number) asks it in its own row.
+           Without the migration the card simply stays hidden. */
+        const FMSM = { list: [], me: '', busy: false };
+        const fmsNorm = s => String(s == null ? '' : s).trim().toUpperCase().replace(/\s+/g, ' ');
+        function fmsCalendar(settings) {
+            const c = (settings && settings.calendar) || {};
+            return Object.assign({ open: '09:30', close: '18:30', lunchStart: '13:30', lunchEnd: '14:00', weeklyOff: [0], halfDays: 'exact' }, c,
+                { holidays: (((settings && settings.holidays) || []).map(h => h.date)).filter(Boolean) });
+        }
+        async function fmsMineLoad() {
+            if (typeof FMSEngine === 'undefined' || FMSM.busy) return;
+            FMSM.busy = true;
+            try {
+                const r = await tmRpc('fms_my_open');
+                if (!r.ok) { FMSM.list = []; renderFmsMine(); return; }
+                const d = r.data, cal = fmsCalendar(d.settings), procs = {}; (d.processes || []).forEach(p => { procs[p.id] = p; });
+                FMSM.me = fmsNorm(d.me); FMSM.meRaw = d.me || ''; const out = [], now = new Date();
+                (d.records || []).forEach(rec => {
+                    const p = procs[rec.process_id]; if (!p || !p.spec) return;
+                    const spec = Object.assign({}, p.spec, { calendar: cal });
+                    let res; try { res = FMSEngine.resolveInstance(spec, { fields: Object.assign({}, rec.fields || {}, { created_at: rec.created_at, rec_no: rec.rec_no }), actuals: rec.actuals || {} }, now); } catch (e) { return; }
+                    (res.order || []).forEach(id => {
+                        const s = res.steps[id], def = (spec.steps || []).find(x => x.id === id);
+                        if (!s || !def || (def.status && def.status.type === 'auto')) return;
+                        if ((s.status === 'Pending' || s.status === 'Late') && fmsNorm(s.doer) === FMSM.me) out.push({ rec, s, def, proc: p, spec });
+                    });
+                });
+                FMSM.list = out.sort((a, b) => (a.s.planned || 0) - (b.s.planned || 0));
+                renderFmsMine();
+            } finally { FMSM.busy = false; }
+        }
+        function renderFmsMine() {
+            const box = document.getElementById('fmsMine'); if (!box) return;
+            if (!FMSM.list.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.classList.remove('hidden');
+            const when = d => d ? fmtWhen(new Date(d)) : '';
+            box.innerHTML = `<div class="bg-white rounded-2xl border border-indigo-200 shadow-sm overflow-hidden">
+                <div class="px-4 py-2.5 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2"><i class="ph-bold ph-flow-arrow text-indigo-600"></i><span class="text-xs font-extrabold text-indigo-900 uppercase tracking-wider">FMS steps for you</span><span class="ml-auto text-[11px] font-extrabold text-indigo-700 bg-white border border-indigo-200 rounded-full px-2">${FMSM.list.length}</span></div>`
+                + FMSM.list.map((x, i) => {
+                    const late = x.s.status === 'Late', cap = x.def.capture && x.def.capture.field;
+                    const capF = cap && ((x.spec.fields || []).find(f => f.key === cap) || { key: cap, label: cap, type: 'text' });
+                    const keys = (x.spec.fields || []).filter(f => f.source !== 'system' && f.key !== 'priority' && (x.rec.fields || {})[f.key]).slice(0, 2)
+                        .map(f => esc(f.label) + ': <b>' + esc((x.rec.fields || {})[f.key]) + '</b>').join(' · ');
+                    return `<div class="px-4 py-3 border-b border-slate-100 last:border-b-0">
+                        <div class="flex items-start gap-3"><div class="flex-1 min-w-0">
+                            <div class="font-extrabold text-slate-800 leading-tight">${esc(x.s.name || x.def.name)}</div>
+                            <div class="text-[11px] font-bold text-slate-500 mt-0.5">${esc(x.proc.name || x.proc.code)} · ${esc(x.rec.rec_no || '')}${keys ? ' · ' + keys : ''}</div>
+                            ${x.def.what ? `<div class="text-xs text-slate-600 mt-1">${esc(x.def.what)}</div>` : ''}
+                            <div class="text-[11px] font-extrabold mt-1 ${late ? 'text-red-600' : 'text-slate-500'}">${late ? 'Late · was due ' : 'Due '}${esc(when(x.s.planned))}</div>
+                        </div>
+                        <button onclick="fmsMineDone(${i})" id="fmsMineBtn${i}" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-2 rounded-xl">Done</button></div>
+                        ${capF ? `<div class="mt-2 flex items-center gap-2"><span class="text-[11px] font-bold text-slate-500">${esc(capF.label)} <span class="text-red-500">*</span></span><input id="fmsMineCap${i}" type="${capF.type === 'date' ? 'date' : capF.type === 'number' ? 'number' : 'text'}" class="flex-1 px-2 py-1.5 border border-slate-300 rounded-lg text-sm font-bold"></div>` : ''}
+                    </div>`;
+                }).join('') + '</div>';
+        }
+        window.fmsMineDone = async function(i) {
+            const x = FMSM.list[i]; if (!x) return;
+            const capIn = document.getElementById('fmsMineCap' + i), cap = capIn ? capIn.value.trim() : null;
+            if (capIn && !cap) { capIn.focus(); return showCustomModal('Value needed', 'Fill in ' + esc(((x.spec.fields || []).find(f => f.key === x.def.capture.field) || {}).label || 'the value') + ' to finish this step.', true); }
+            const b = document.getElementById('fmsMineBtn' + i); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
+            const r = await tmRpc('fms_step_done', { p_id: x.rec.id, p_step: x.def.id, p_doer: FMSM.meRaw, p_note: null, p_cap: cap, p_auto: false });
+            if (!r.ok) {
+                if (b) { b.disabled = false; b.textContent = 'Done'; }
+                const why = { NOT_YOUR_STEP: 'This step is not yours any more.', ALREADY_DONE: 'This step is already done.', NEED_VALUE: 'Fill in the value first.', NOT_FOUND: 'This record is not there any more.' }[r.error];
+                showCustomModal('Not saved', esc(why || (r.error + (r.detail ? ': ' + r.detail : ''))), true);
+                return fmsMineLoad();
+            }
+            showCustomModal('Step done', esc(x.s.name || x.def.name) + ' · ' + esc(x.rec.rec_no || '') + ' is marked done. The next step of the flow starts now.');
+            fmsMineLoad();
+        };
         function renderDashSummary() {
             const emp = appState.currentLoggedInEmp; if (!emp) return; const now = new Date();
             const d = dayScore(emp, todayStr(), now);
@@ -4477,6 +4560,8 @@
         })();
     </script>
     <!-- Floating "← Apps" button (hidden inside iframes / without a session). See app-back.js. -->
+    <!-- The FMS step engine, for "FMS steps for you" in My Tasks (FMS MINE). -->
+    <script src="fms-engine.js"></script>
     <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
 <script src="cursor-glow.js"></script>

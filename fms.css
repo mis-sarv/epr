@@ -187,3 +187,5 @@ table.kv td { border-bottom: 1px solid var(--line2); white-space: normal; }
 .tt-photos img { width: 150px; height: 150px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
 .tt-photos figcaption { font-size: 11px; color: var(--muted); margin-top: 3px; }
 .ask-dlg { width: min(720px, 94vw); }
+/* FMS Builder: the selected step read back in one plain sentence (stepSentence). */
+.step-say { background: #eef4ff; border: 1px solid #cfdcf7; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 12.5px; line-height: 1.5; color: #142033; }

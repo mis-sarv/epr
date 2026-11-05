@@ -104,12 +104,13 @@ VIEWS.builder = {
         (!B.dirty && isAdmin() ? (versions.length > 1 && !proc.active ? '<button class="btn ghost danger" data-act="bld-delver" data-confirm="Delete v' + proc.version + '?">Delete v' + proc.version + '</button>' : '') + '<button class="btn ghost danger" data-act="bld-delfms" data-confirm="Delete the whole FMS ' + esc(proc.name || proc.code) + '?">Delete FMS</button>' : '') +
         (!B.dirty && !proc.active ? '<button class="btn primary" data-act="bld-activate" data-confirm="Make live?"' + (v.errors.length ? ' disabled' : '') + '>Activate v' + proc.version + '</button>' : '') : '<span class="muted small">Read only</span>') + '</div>' +
       (B.dirty && v.errors.length ? '<ul class="val" style="margin:0 0 6px;padding-left:18px">' + v.errors.map(x => '<li class="e">' + esc(x) + '</li>').join('') + '</ul>' : '') + '</div>';
-    h += '<div class="tabs">' + [['flow', 'Flow'], ['tables', 'Doer Tables'], ['sim', 'Simulate'], ['fields', 'Fields & JSON'], ['cal', 'Office Calendar'], ['log', 'History']].map(([k, l]) => '<a data-act="bld-tab" data-t="' + k + '" class="' + (B.tab === k ? 'on' : '') + '">' + l + '</a>').join('') + '</div>';
+    h += '<div class="tabs">' + [['flow', 'Flow'], ['events', 'ERP Events'], ['tables', 'Doer Tables'], ['sim', 'Simulate'], ['fields', 'Fields & JSON'], ['cal', 'Office Calendar'], ['log', 'History']].map(([k, l]) => '<a data-act="bld-tab" data-t="' + k + '" class="' + (B.tab === k ? 'on' : '') + '">' + l + '</a>').join('') + '</div>';
     if (B.tab === 'flow') h += '<div class="bld"><div class="panel" style="padding:0"><div id="bSteps" class="steplist"></div>' + (edit ? '<div style="padding:8px"><button class="btn sm" data-act="bld-add">+ Add step</button></div>' : '') + '</div><div class="panel ed" id="bEd"></div><div><div id="bPv" class="toolbar"></div><div id="fcWrap" class="fc-wrap"><div class="fc-bar"><span class="fc-leg"><i style="background:#1a56c8"></i>Step<i style="background:#b26a00"></i>Only for some records (IF)<i style="background:#13795b"></i>Auto<i class="fc-dash"></i>Runs on a date</span><span class="grow"></span><button class="btn sm" data-act="fc-zoom" data-z="-">−</button><span id="fcZoom" class="fc-z">100%</span><button class="btn sm" data-act="fc-zoom" data-z="+">+</button><button class="btn sm" data-act="fc-zoom" data-z="fit">Fit</button><button class="btn sm" data-act="fc-svg">Download</button><button class="btn sm primary" data-act="fc-full">Full screen</button></div><div class="chart-wrap" id="bChart"></div></div><div id="bVal" class="panel small" style="margin-top:10px"></div></div></div>';
     else if (B.tab === 'sim') h += '<div id="bSim"></div>';
     else if (B.tab === 'tables') h += '<div id="bTables"></div>';
     else if (B.tab === 'cal') h += '<div id="bCal"></div>';
     else if (B.tab === 'log') h += '<div id="bLog"></div>';
+    else if (B.tab === 'events') h += '<div id="bEvents"></div>';
     else h += '<div id="bFields"></div>';
     setMain(h);
     onSeg(bldSeg);
@@ -120,6 +121,7 @@ VIEWS.builder = {
     if (B.tab === 'fields') bldFieldsTab();
     if (B.tab === 'cal') bldCal();
     if (B.tab === 'log') bldLog();
+    if (B.tab === 'events') bldEvents();
   }
 };
 // #main outlives every render, so the editor's listeners are added once here, not on each render
@@ -161,7 +163,7 @@ function bldSide() {
   if (had) { box.scrollLeft = sl; box.scrollTop = sT; } else box.scrollLeft = Math.max(0, (box.scrollWidth - box.clientWidth) / 2);   // keep the view while editing; centre the first time
   const v = validateSpec(d);
   const endSel = '<label class="fc-end">Last step (End)<select id="bEndStep"' + (can('HOME_FMS_BUILDER') ? '' : ' disabled') + '>' + (d.steps.some(x => x.id === (d.process || {}).endStep) ? '' : '<option value="" selected>— select —</option>') + d.steps.map(x => '<option value="' + esc(x.id) + '"' + (x.id === (d.process || {}).endStep ? ' selected' : '') + '>' + esc(x.name || x.id) + '</option>').join('') + '</select></label>';
-  $('#bVal').innerHTML = endSel + (v.errors.length || v.warns.length ? '<ul class="val" style="margin:0;padding-left:16px">' + v.errors.map(x => '<li class="e">' + esc(x) + '</li>').join('') + v.warns.map(x => '<li class="w">' + esc(x) + '</li>').join('') + '</ul>' : '<span class="st Done">Flow is valid</span>') +
+  $('#bVal').innerHTML = endSel + autoStartHtml() + (v.errors.length || v.warns.length ? '<ul class="val" style="margin:0;padding-left:16px">' + v.errors.map(x => '<li class="e">' + esc(x) + '</li>').join('') + v.warns.map(x => '<li class="w">' + esc(x) + '</li>').join('') + '</ul>' : '<span class="st Done">Flow is valid</span>') +
     '<div class="muted" style="margin-top:6px">' + d.steps.length + ' steps · Only actuals move the chain · Delay counted in working time</div>';
   const saveBtn = $('[data-act="bld-save"]:not([data-new])'); if (saveBtn) saveBtn.disabled = !!v.errors.length;
 }
@@ -358,7 +360,8 @@ function bldEditor() {
   const trig = (Array.isArray(s.trigger) ? s.trigger : [s.trigger]).filter(Boolean);
   const tat = s.tat || { value: 1, unit: 'days' };
   const multi = trig.length > 1;
-  let h = '<div class="q"><div class="qh">1. Step name</div><input data-k="name" value="' + esc(s.name) + '"><textarea data-k="what" rows="2" placeholder="What the doer must do">' + esc(s.what || '') + '</textarea></div>';
+  // The step in one plain sentence, so the person building it can read back what they set.
+  let h = '<div class="step-say">' + esc(stepSentence(s)) + '</div><div class="q"><div class="qh">1. Step name</div><input data-k="name" value="' + esc(s.name) + '"><textarea data-k="what" rows="2" placeholder="What the doer must do">' + esc(s.what || '') + '</textarea></div>';
   // who
   h += '<div class="q"><div class="qh">2. Who does it?</div><select data-k="doerType">' + opt(WHO_OPTS, doer.type) + '</select>';
   if (doer.type === 'fixed') h += personSel('doerName', doer.name);
@@ -393,12 +396,34 @@ function bldEditor() {
   if (!onDate) h += '<div class="q"><div class="qh">5. ' + (before ? 'How many days before?' : 'How much time?') + '</div><div class="qline"><input data-k="tatv" type="number" step="any" min="0" value="' + esc(tat.value) + '" style="width:80px"><select data-k="tatUnit"><option value="days">working days</option><option value="hours"' + (tat.unit === 'hours' ? ' selected' : '') + '>hours</option></select></div>' +
     (before ? '' : '<div class="qline"><span>If urgent</span><input data-k="tatu" type="number" step="any" min="0" value="' + esc(tat.urgent == null ? '' : tat.urgent) + '" style="width:80px" placeholder="same"></div>') + '</div>';
   // close
-  const stt = s.status || { type: 'manual' }; const rule = FMS_RULES.find(r => r.id === stt.rule) || FMS_RULES.find(r => r.id === autoRuleFor(s));
+  const stt = s.status || { type: 'manual' };
   const capFields = bldFields(['date', 'datetime', 'text', 'number', 'select']).filter(f => f.source !== 'system');
-  h += '<div class="q"><div class="qh">' + (onDate ? '5' : '6') + '. How does it finish?</div><select data-k="statusType"><option value="manual">Doer clicks Done</option><option value="auto"' + (stt.type === 'auto' ? ' selected' : '') + '>Finishes by itself</option></select>' +
-    (stt.type === 'auto' ? '<div class="qline"><span>When</span><select data-k="stRule">' + FMS_RULES.map(r => '<option value="' + r.id + '"' + (r.id === rule.id ? ' selected' : '') + '>' + esc(r.label) + '</option>').join('') + '</select>' +
-      (rule.param ? '<select data-k="stField"><option value="">— choose —</option>' + bldFields().filter(f => f.key !== 'created_at').map(f => '<option value="' + esc(f.key) + '"' + (f.key === stt.field ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select>' : '') + '</div>'
-      : '<div class="qline"><span>On Done, ask for</span><select data-k="capField"><option value="">Nothing</option>' + capFields.map(f => '<option value="' + esc(f.key) + '"' + (s.capture && s.capture.field === f.key ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select></div>') + '</div>';
+  /* Three plain choices (stored the same way as before, so old flows read unchanged):
+       manual  the doer clicks Done (shows in their My Tasks)
+       data    the ERP's own data closes it: status {auto, erp_data, source, keyField}
+       field   a field of this record is filled: status {auto, field_filled, field} */
+  const fin = stt.type !== 'auto' ? 'manual' : stt.rule === 'erp_data' ? 'data' : 'field';
+  const keyFields = bldFields(['text', 'select', 'number']).filter(f => f.source !== 'system' && f.key !== 'priority');
+  h += '<div class="q"><div class="qh">' + (onDate ? '5' : '6') + '. How does it finish?</div><select data-k="statusType">'
+    + '<option value="manual">The doer clicks Done (it shows in their My Tasks)</option>'
+    + (DB.sources.length ? '<option value="data"' + (fin === 'data' ? ' selected' : '') + '>By itself, when ERP data shows it (PR / PO / Inward …)</option>' : '')
+    + '<option value="field"' + (fin === 'field' ? ' selected' : '') + '>By itself, when a field of this record is filled</option></select>';
+  if (fin === 'data') {
+    const src = srcOf(stt.source), groups = {};
+    DB.sources.filter(x => x.active || x.id === stt.source).forEach(x => { (groups[x.grp || 'Other'] = groups[x.grp || 'Other'] || []).push(x); });
+    h += '<div class="qline"><span>When</span><select data-k="stSrc"><option value="">— choose what happens in the ERP —</option>'
+      + Object.keys(groups).map(g => '<optgroup label="' + esc(g) + '">' + groups[g].map(x => '<option value="' + esc(x.id) + '"' + (x.id === stt.source ? ' selected' : '') + '>' + esc(x.label) + '</option>').join('') + '</optgroup>').join('') + '</select></div>'
+      + '<div class="qline"><span>for the ' + esc((src && src.hint) || 'number') + ' in</span><select data-k="stKey"><option value="">— choose field —</option>'
+      + keyFields.map(f => '<option value="' + esc(f.key) + '"' + (f.key === stt.keyField ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select></div>'
+      + (keyFields.length ? '' : '<div class="small late-txt">This flow has no field to keep the ' + esc((src && src.hint) || 'number') + ' in. Add one in Fields &amp; JSON (a Text field, e.g. "PR No.").</div>')
+      + '<div class="small muted">Checked by the server every 5 minutes, even when nobody has this page open. The step is marked done with the time it happened in the ERP, after the step before it is done.</div>'
+      + (src ? '<div class="qline" data-no-caps><span>Test with</span><input data-test-key placeholder="e.g. ' + esc(src.hint === 'PO No.' ? 'PO/U-2/979' : 'PR/26-27/930') + '" style="width:150px"><button class="btn sm" data-act="src-test" data-src="' + esc(src.id) + '">Test</button><span data-test-out class="small"></span></div>' : '');
+  } else if (fin === 'field') {
+    h += '<div class="qline"><span>When</span><select data-k="stField"><option value="">— choose field —</option>' + bldFields().filter(f => f.key !== 'created_at').map(f => '<option value="' + esc(f.key) + '"' + (f.key === stt.field ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select><span>is filled</span></div>';
+  } else {
+    h += '<div class="qline"><span>On Done, ask for</span><select data-k="capField"><option value="">Nothing</option>' + capFields.map(f => '<option value="' + esc(f.key) + '"' + (s.capture && s.capture.field === f.key ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select></div>';
+  }
+  h += '</div>';
   if (edit) h += '<div class="toolbar"><button class="btn sm" data-act="bld-move" data-d="-1">↑ Up</button><button class="btn sm" data-act="bld-move" data-d="1">↓ Down</button><span class="grow"></span><button class="btn sm danger" data-act="bld-del" data-confirm="Confirm delete">Delete step</button></div>';
   el.innerHTML = h;
   if (!edit) $$('input,select,textarea', el).forEach(x => { x.disabled = true; });
@@ -437,8 +462,17 @@ function bldCollect() {
   if (mode === 'one') delete cands[0].when;
   s.trigger = cands.length === 1 ? cands[0] : cands;
   if ($('[data-k="tatv"]', el)) { const tu = val('tatu'); s.tat = { value: num(val('tatv')), unit: val('tatUnit') || 'days' }; if (tu !== '' && tu != null) s.tat.urgent = num(tu); else if (tu == null && s.tat.urgent != null) delete s.tat.urgent; }
-  if (val('statusType') === 'auto') { s.status = { type: 'auto', rule: val('stRule') || (s.status && s.status.rule) || autoRuleFor(s) }; const sf = val('stField'); if (sf) s.status.field = sf; delete s.capture; }
-  else { delete s.status; const cf = val('capField'); if (cf) s.capture = { field: cf }; else delete s.capture; }
+  const fin = val('statusType');
+  if (fin === 'data') {
+    // A key field is pre-picked when the flow has just one likely one, so the step is valid at once.
+    const keys = bldFields(['text', 'select', 'number']).filter(f => f.source !== 'system' && f.key !== 'priority');
+    s.status = { type: 'auto', rule: 'erp_data', source: val('stSrc') || (s.status && s.status.source) || '',
+      keyField: val('stKey') || (s.status && s.status.keyField) || ((keys.find(f => /pr|po|no/i.test(f.label)) || keys[0] || {}).key) || '' };
+    delete s.capture;
+  } else if (fin === 'field' || fin === 'auto') {
+    const sf = val('stField') || (s.status && s.status.rule === 'field_filled' && s.status.field);
+    s.status = { type: 'auto', rule: 'field_filled' }; if (sf) s.status.field = sf; delete s.capture;
+  } else { delete s.status; const cf = val('capField'); if (cf) s.capture = { field: cf }; else delete s.capture; }
 }
 // "Finishes by itself": the first rule that needs no field, else the first rule.
 function autoRuleFor() { return (FMS_RULES.find(r => !r.param) || FMS_RULES[0]).id; }
@@ -495,9 +529,14 @@ ACTIONS['bld-new'] = async () => {
   if (!bldEditAllowed()) return; if (B.dirty) { flash('Save or discard your changes first.', 'err'); return; }
   const typed = await askText('New FMS', 'Name of the new FMS'); if (!typed) return;
   const name = typed.toUpperCase();
+  // A ready flow to start from (needs the ERP events); else a blank one-step flow.
+  const tpl = DB.sources.some(s => s.id === 'pr_raised')
+    && await askYes('Start from the ready template?\n\nPURCHASE: PR → PO → MD approval → Sent to vendor → Material received → Requester confirms.\n'
+      + 'Every new PR starts a record by itself and the first five steps close by themselves from the ERP data; '
+      + 'only the last step is done by a person.\n\nCancel = start with a blank flow.', 'Use template');
   busy(true, 'Creating…');
   try {
-    const d = await rpc('fms_process_save', { p_id: null, p_spec: starterSpec(name), p_code: slug(name) });
+    const d = await rpc('fms_process_save', { p_id: null, p_spec: tpl ? purchaseTemplate(name) : starterSpec(name), p_code: slug(name) });
     Store.put('processes', d.process); bldLoad(d.process.id); B.tab = 'flow'; VIEWS.builder.render();
     flash(esc(name) + ' created. Add its steps, then Save and Activate.');
   } catch (e) { flash(esc(e.message), 'err'); } finally { busy(false); }
@@ -703,3 +742,164 @@ async function bldLog() {
     (B.log.length ? B.log.map(r => '<tr><td class="nowrap">' + fmtDT(r.at) + '</td><td>' + esc(r.user_name || '') + '</td><td>' + esc(NAMES[r.action] || r.action) + '</td><td>' + esc(r.ref || '') + '</td><td class="wrap">' + esc(r.detail || '').replace(/\n/g, '<br>') + '</td></tr>').join('') : '<tr><td colspan="5" class="empty">Nothing yet</td></tr>') + '</table></div>';
 }
 ACTIONS['bld-logre'] = () => { B.log = null; bldLog(); };
+
+/* ================= ERP DATA LINKS (sql/FMS_DATA_LINK_MIGRATION.sql) =================
+   A step can close by itself from the ERP's own data, and a flow can start a
+   record by itself for every new ERP row (e.g. every new PR). The ERP events
+   are a list kept on the server (fms_sources): the common ones built in, more
+   added from the ERP Events tab. The server runs them every 5 minutes. */
+
+// The step read back in one sentence: when it starts, who does it, how long, how it ends.
+function stepSentence(s) {
+  const trig = (Array.isArray(s.trigger) ? s.trigger : [s.trigger]).filter(Boolean);
+  const t0 = trig[0] || {};
+  const start = trig.length > 1 ? 'Starts in ' + trig.length + ' different ways'
+    : t0.type === 'instanceStart' ? 'Starts as soon as the record starts' : 'Starts ' + (describeTrigger(t0) || '—');
+  const st = s.status || {};
+  if (st.type === 'auto' && st.rule === 'erp_data') {
+    const src = srcOf(st.source);
+    return start + '. Closes by itself when "' + (src ? src.label : 'an ERP event') + '" happens for the ' + fieldLabel(st.keyField || '') + ' of the record. Target: ' + (tatStr(s.tat) || '—') + '.';
+  }
+  if (st.type === 'auto') return start + '. Closes by itself when ' + fieldLabel(st.field || '') + ' is filled. Target: ' + (tatStr(s.tat) || '—') + '.';
+  const who = doerText(s.doer) || 'NOBODY YET (choose who does it)';
+  return start + '. ' + who + ' does it within ' + (tatStr(s.tat) || '—') + ' and clicks Done (it shows in their Task Manager › My Tasks).';
+}
+
+ACTIONS['src-test'] = async el => {
+  const line = el.closest('.qline'), inp = $('[data-test-key]', line), out = $('[data-test-out]', line);
+  const key = (inp.value || '').trim(); if (!key) { out.textContent = 'Type a number to test with.'; return; }
+  out.textContent = 'Checking…';
+  try {
+    const d = await rpc('fms_source_test', { p_src: srcOf(el.dataset.src) || B.evTest, p_key: key });
+    out.innerHTML = d.found ? '<span class="st Done">Found</span> happened ' + esc(fmtDT(d.at)) : '<span class="st Waiting">Not yet</span> nothing in the ERP for ' + esc(key);
+  } catch (e) { out.textContent = e.message; }
+};
+
+/* Starts by itself: spec.process.autoStart {source, field, from}. Shown under
+   "Last step (End)" in the Flow tab. */
+function autoStartHtml() {
+  if (!DB.sources.length) return '';
+  const d = B.draft, a = (d.process || {}).autoStart || {}, dis = can('HOME_FMS_BUILDER') ? '' : ' disabled';
+  const keys = bldFields(['text', 'select', 'number']).filter(f => f.source !== 'system' && f.key !== 'priority');
+  return '<div class="fc-end" style="display:block;margin:8px 0"><b>Start a record by itself</b> '
+    + '<select id="bAsSrc"' + dis + '><option value="">No — records are punched by hand</option>'
+    + DB.sources.filter(x => x.active || x.id === a.source).map(x => '<option value="' + esc(x.id) + '"' + (x.id === a.source ? ' selected' : '') + '>When: ' + esc(x.label) + '</option>').join('') + '</select>'
+    + (a.source ? ' <span class="small">put its ' + esc((srcOf(a.source) || {}).hint || 'number') + ' in</span> <select id="bAsField"' + dis + '><option value="">— field —</option>'
+        + keys.map(f => '<option value="' + esc(f.key) + '"' + (f.key === a.field ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') + '</select>'
+        + ' <span class="small">for rows from</span> <input id="bAsFrom" type="date" value="' + esc(a.from || todayYmd()) + '"' + dis + '>'
+        + '<div class="small muted">Only once the flow is live. One record per number; rows older than this date are left out.</div>' : '')
+    + '</div>';
+}
+document.addEventListener('change', e => {
+  if (!['bAsSrc', 'bAsField', 'bAsFrom'].includes(e.target.id) || !B.draft) return;
+  if (!bldEditAllowed()) return;
+  const p = B.draft.process = B.draft.process || {};
+  const src = $('#bAsSrc').value;
+  if (!src) delete p.autoStart;
+  else {
+    const keys = bldFields(['text', 'select', 'number']).filter(f => f.source !== 'system' && f.key !== 'priority');
+    const prev = p.autoStart || {};
+    p.autoStart = { source: src, field: ($('#bAsField') && $('#bAsField').value) || prev.field || ((keys.find(f => /pr|po|no/i.test(f.label)) || keys[0] || {}).key) || '',
+                    from: ($('#bAsFrom') && $('#bAsFrom').value) || prev.from || todayYmd() };
+    const s = srcOf(src); if (s && s.label) p.startEvent = s.label;
+  }
+  if (!bldMarkDirty()) bldSide();
+});
+
+/* A ready purchase flow: every new PR starts a record (autoStart), five steps
+   close themselves from the ERP, the requester confirms at the end. */
+function purchaseTemplate(name) {
+  const sp = starterSpec(name);
+  sp.fields = sp.fields.filter(f => !['title', 'party', 'due_date'].includes(f.key));
+  sp.fields.splice(1, 0, { key: 'pr_no', label: 'PR No.', type: 'text', source: 'form' });
+  const auto = (id, nm, after, src, days) => ({ id, name: nm, trigger: after ? { type: 'afterStep', step: after } : { type: 'instanceStart' },
+    tat: { value: days, unit: 'days' }, status: { type: 'auto', rule: 'erp_data', source: src, keyField: 'pr_no' } });
+  sp.steps = [
+    auto('pr_ok', 'PR approved', null, 'pr_approved', 1),
+    auto('po_made', 'PO made', 'pr_ok', 'po_for_pr', 2),
+    auto('po_md', 'PO approved by MD', 'po_made', 'po_md_for_pr', 1),
+    auto('po_sent', 'PO sent to vendor', 'po_md', 'po_sent_for_pr', 1),
+    auto('received', 'All material received', 'po_sent', 'pr_completed', 7),
+    { id: 'confirm', name: 'Requester confirms receipt', what: 'Check the material and confirm.', doer: { type: 'fixed', name: '' },
+      trigger: { type: 'afterStep', step: 'received' }, tat: { value: 1, unit: 'days' } }
+  ];
+  sp.process = Object.assign(sp.process, { startEvent: 'PR raised', instanceLabel: 'PR', prefix: 'PRF', endStep: 'confirm',
+    autoStart: { source: 'pr_raised', field: 'pr_no', from: todayYmd() } });
+  return sp;
+}
+
+/* ---------- ERP Events tab ---------- */
+const EV_OPS = [['eq', 'is'], ['ne', 'is not'], ['in', 'is one of'], ['notin', 'is none of'], ['filled', 'is filled'], ['empty', 'is empty'], ['notlike', 'does not start with']];
+function condTxt(c) { const o = (EV_OPS.find(x => x[0] === c.op) || [c.op, c.op])[1]; const v = Array.isArray(c.val) ? c.val.join(' / ') : (c.val || ''); return c.col + ' ' + o + (['filled', 'empty'].includes(c.op) ? '' : ' ' + String(v).replace(/%$/, '')); }
+function bldEvents() {
+  const box = $('#bEvents'); if (!box) return;
+  if (!DB.sources.length) { box.innerHTML = '<div class="panel empty">ERP events are not set up on the server yet. Admin: run <code>sql/FMS_DATA_LINK_MIGRATION.sql</code> in the Supabase SQL Editor.</div>'; return; }
+  const edit = can('HOME_FMS_BUILDER');
+  let h = '<div class="panel small" style="margin-bottom:10px">An <b>ERP event</b> is something that happens in the ERP (a PR is approved, a PO is sent, material is received). '
+    + 'A step set to <i>"By itself, when ERP data shows it"</i> closes on its own when its event happens for the record\'s number; a flow can also <i>start a record by itself</i> for every new event. '
+    + 'The common events are ready; add your own for any other ERP table.</div>';
+  h += '<div class="toolbar"><b>' + DB.sources.length + ' events</b><span class="grow"></span>' + (edit ? '<button class="btn sm primary" data-act="ev-new">+ New event</button>' : '') + '</div>';
+  if (B.evEdit) h += evForm();
+  h += '<div class="tbl-wrap"><table class="hx-t"><tr><th>Event</th><th>Group</th><th>Matched on</th><th>Time</th><th>Conditions</th><th>On</th><th></th></tr>'
+    + DB.sources.map(s => '<tr><td><b>' + esc(s.label) + '</b>' + (s.builtin ? ' <span class="muted small">built in</span>' : '') + '</td><td>' + esc(s.grp || '') + '</td>'
+      + '<td class="small">' + esc(s.tbl) + ' · ' + esc(s.key_col) + (s.key_list ? ' (list)' : '') + (s.hint ? '<div class="muted">keep the ' + esc(s.hint) + '</div>' : '') + '</td>'
+      + '<td class="small">' + esc(s.time_col || 'when found') + '</td><td class="small">' + esc((s.conds || []).map(condTxt).join('; ') || '—') + '</td>'
+      + '<td><input type="checkbox" data-evon="' + esc(s.id) + '"' + (s.active ? ' checked' : '') + (edit ? '' : ' disabled') + '></td>'
+      + '<td class="nowrap">' + (edit && !s.builtin ? '<button class="btn sm" data-act="ev-edit" data-id="' + esc(s.id) + '">✎</button> <button class="btn sm danger" data-act="ev-del" data-id="' + esc(s.id) + '" data-confirm="Delete this event?">✕</button>' : '') + '</td></tr>').join('')
+    + '</table></div>';
+  box.innerHTML = h;
+}
+async function evTables() { if (!B.dbTables) { const d = await rpc('fms_db_tables'); B.dbTables = d.tables || {}; } return B.dbTables; }
+function evForm() {
+  const e = B.evEdit, T = B.dbTables || {}, cols = (T[e.tbl] || []).map(c => c.c);
+  const colSel = (attr, cur, blank) => '<select ' + attr + '>' + (blank ? '<option value="">' + blank + '</option>' : '') + cols.map(c => '<option' + (c === cur ? ' selected' : '') + '>' + esc(c) + '</option>').join('') + '</select>';
+  return '<div class="panel" id="evForm" data-no-caps style="margin-bottom:10px"><div class="qh">' + (e.id ? 'Edit event' : 'New ERP event') + '</div>'
+    + '<div class="qline"><span>Name</span><input data-ev="label" value="' + esc(e.label || '') + '" placeholder="e.g. GATE PASS MADE" style="min-width:260px"></div>'
+    + '<div class="qline"><span>Group</span><input data-ev="grp" value="' + esc(e.grp || '') + '" placeholder="e.g. Store"><span>Number to keep in the record</span><input data-ev="hint" value="' + esc(e.hint || '') + '" placeholder="e.g. Gate Pass No."></div>'
+    + '<div class="qline"><span>ERP table</span><select data-ev="tbl"><option value="">— choose —</option>' + Object.keys(T).sort().map(t => '<option' + (t === e.tbl ? ' selected' : '') + '>' + esc(t) + '</option>').join('') + '</select></div>'
+    + (e.tbl ? '<div class="qline"><span>Match the record number with column</span>' + colSel('data-ev="key_col"', e.key_col, '— choose —')
+        + '<label class="chip"><input type="checkbox" data-ev="key_list"' + (e.key_list ? ' checked' : '') + '>it can hold several numbers ("A, B")</label></div>'
+        + '<div class="qline"><span>When it happened</span>' + colSel('data-ev="time_col"', e.time_col, '— the time it is found —') + '</div>'
+        + '<div class="qh" style="margin-top:6px">Only rows where</div>'
+        + (e.conds || []).map((c, i) => '<div class="qline" data-evc="' + i + '">' + colSel('data-c="col"', c.col) + '<select data-c="op">' + EV_OPS.map(o => '<option value="' + o[0] + '"' + (o[0] === c.op ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>'
+            + (['filled', 'empty'].includes(c.op) ? '' : '<input data-c="val" value="' + esc(Array.isArray(c.val) ? c.val.join(', ') : String(c.val || '').replace(/%$/, '')) + '" placeholder="' + (['in', 'notin'].includes(c.op) ? 'A, B, C' : 'value') + '">')
+            + '<button class="btn ghost sm" data-act="ev-cdel" data-i="' + i + '">×</button></div>').join('')
+        + '<a class="small" data-act="ev-cadd">+ condition</a>'
+        + '<div class="qline" style="margin-top:8px"><span>Test with</span><input data-test-key placeholder="a number"><button class="btn sm" data-act="ev-test">Test</button><span data-test-out class="small"></span></div>' : '')
+    + '<div class="toolbar"><span class="grow"></span><button class="btn" data-act="ev-cancel">Cancel</button><button class="btn primary" data-act="ev-save">Save event</button></div></div>';
+}
+function evRead() {
+  const f = $('#evForm'), e = B.evEdit; if (!f) return e;
+  const v = k => { const x = $('[data-ev="' + k + '"]', f); return x ? (x.type === 'checkbox' ? x.checked : x.value) : e[k]; };
+  ['label', 'grp', 'hint', 'tbl', 'key_col', 'key_list', 'time_col'].forEach(k => { e[k] = v(k); });
+  e.conds = $$('[data-evc]', f).map(r => {
+    const op = $('[data-c="op"]', r).value, vi = $('[data-c="val"]', r), raw = vi ? vi.value.trim() : '';
+    return { col: $('[data-c="col"]', r).value, op, val: ['in', 'notin'].includes(op) ? raw.split(',').map(s => s.trim()).filter(Boolean) : op === 'notlike' ? raw.replace(/%?$/, '%') : raw };
+  });
+  return e;
+}
+// Changing the table / an operator redraws the form (other columns, value box or not); the On box saves at once.
+document.addEventListener('change', async e => {
+  if (e.target.closest && e.target.closest('#evForm') && (e.target.matches('[data-ev="tbl"]') || e.target.matches('[data-c="op"]'))) {
+    evRead(); if (e.target.matches('[data-ev="tbl"]')) { B.evEdit.key_col = ''; B.evEdit.time_col = ''; B.evEdit.conds = []; } bldEvents(); return;
+  }
+  const on = e.target.dataset && e.target.dataset.evon; if (!on) return;
+  try { await rpc('fms_source_save', { p_src: { id: on, active: e.target.checked, label: (srcOf(on) || {}).label } }); const s = srcOf(on); if (s) s.active = e.target.checked; }
+  catch (x) { e.target.checked = !e.target.checked; flash(esc(x.message), 'err'); }
+});
+ACTIONS['ev-new'] = async () => { try { await evTables(); } catch (e) { return flash(esc(e.message), 'err'); } B.evEdit = { conds: [] }; bldEvents(); };
+ACTIONS['ev-edit'] = async el => { try { await evTables(); } catch (e) { return flash(esc(e.message), 'err'); } B.evEdit = clone(srcOf(el.dataset.id)); bldEvents(); };
+ACTIONS['ev-cancel'] = () => { B.evEdit = null; bldEvents(); };
+ACTIONS['ev-cadd'] = () => { evRead(); B.evEdit.conds.push({ col: ((B.dbTables[B.evEdit.tbl] || [])[0] || {}).c, op: 'eq', val: '' }); bldEvents(); };
+ACTIONS['ev-cdel'] = el => { evRead(); B.evEdit.conds.splice(+el.dataset.i, 1); bldEvents(); };
+ACTIONS['ev-test'] = el => { B.evTest = evRead(); el.dataset.src = ''; return ACTIONS['src-test'](el); };
+ACTIONS['ev-save'] = async () => {
+  const e = evRead(); if (!e.label || !e.tbl || !e.key_col) return flash('Give the event a name, an ERP table and the column to match.', 'err');
+  busy(true, 'Saving…');
+  try { await rpc('fms_source_save', { p_src: e }); B.evEdit = null; DB.sources = (await rpc('fms_sources_list')).sources || []; bldEvents(); flash('Event saved.'); }
+  catch (x) { flash(esc(x.message), 'err'); } finally { busy(false); }
+};
+ACTIONS['ev-del'] = async el => {
+  try { await rpc('fms_source_delete', { p_id: el.dataset.id }); DB.sources = DB.sources.filter(s => s.id !== el.dataset.id); bldEvents(); }
+  catch (x) { flash(esc(x.code === 'IN_USE' ? 'A flow uses this event; change that step first.' : x.message), 'err'); }
+};
