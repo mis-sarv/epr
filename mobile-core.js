@@ -1193,7 +1193,26 @@
        by the checklist. Matched on the Purchaser Name, which is what the login
        and purchase_requirements.purchaser_name both carry. */
     const FIELD_BOY_NAME = 'FIELD BOY';
-    function isFieldBoy(){ return String(myPurchaserName||'').trim().toUpperCase() === FIELD_BOY_NAME; }
+    /* Any Purchaser person ticked "Field Boy" in STORE.html › Admin Panel ›
+       Users & Roles counts too (sql/FIELD_BOY_PERSONS_MIGRATION.sql,
+       fb_field_boy_names()), not only the shared name. The last list is kept in
+       localStorage so the first screen after login already has the right tabs;
+       loadFieldBoys() refreshes it and re-scopes the tabs if the answer changed.
+       Without the migration only FIELD BOY counts, as before. */
+    const FIELD_BOYS_KEY = 'sarvFieldBoys';
+    let fieldBoySet = new Set([FIELD_BOY_NAME]);
+    try{ (JSON.parse(localStorage.getItem(FIELD_BOYS_KEY) || '[]') || []).forEach(n => fieldBoySet.add(String(n).trim().toUpperCase())); }catch(e){}
+    function isFieldBoy(){ return fieldBoySet.has(String(myPurchaserName||'').trim().toUpperCase()); }
+    async function loadFieldBoys(){
+        try{
+            const r = await SB.rpc('fb_field_boy_names');
+            if(r.error) throw r.error;
+            const was = isFieldBoy();
+            fieldBoySet = new Set([FIELD_BOY_NAME].concat((r.data || []).map(n => String(n || '').trim().toUpperCase()).filter(Boolean)));
+            try{ localStorage.setItem(FIELD_BOYS_KEY, JSON.stringify([...fieldBoySet])); }catch(e){}
+            if(myStage && was !== isFieldBoy()){ applyPurchaserScope(); renderList().catch(() => {}); }
+        }catch(e){ console.warn('[MOBILE] Field Boy list not loaded (run sql/FIELD_BOY_PERSONS_MIGRATION.sql):', e.message || e); }
+    }
     /* Done = every item approved by the requester and confirmed by the Field
        Boy (allDone is kept up to date by the fb_patch RPC; a PR ticked off
        under the old tick list keeps its allDone). done/total = approved/total. */
@@ -2047,6 +2066,7 @@
                 JSON.stringify({ stage: myStage, vendorName: myVendorName, purchaserName: myPurchaserName }));
         }catch(e){}
         loadRolePerms();
+        loadFieldBoys();                // a Purchaser person may have been made a Field Boy meanwhile
         renderList().then(liveStart);
     }
 
@@ -5822,7 +5842,7 @@
         ALREADY_DONE: 'This PR is already confirmed and done.',
         PR_CLOSED: 'This PR is cancelled or rejected.',
         LINE_NOT_FOUND: 'This item is no longer on the PR. Please close and reopen it.',
-        NOT_FIELD_BOY: 'This PR is not booked to FIELD BOY.',
+        NOT_FIELD_BOY: 'This PR is not booked to a Field Boy.',
         NOT_FOUND: 'This PR was not found. Please refresh.'
     };
     const FB_STATUS = {
@@ -8647,6 +8667,20 @@
             });
             prmCatPurchaser = map;
         }
+        /* Purchaser choices: the users with role Purchaser (a new Field Boy
+           person among them), as the login list reads them, added to the
+           fixed names in the markup. The locked own name (prmLockPurchaser_)
+           is unaffected. */
+        try{
+            const pq = await SB.from('app_users').select('user_name').eq('role','PURCHASER').eq('is_active', true).order('user_name');
+            const sel = document.getElementById('prmPurchaser');
+            if(!pq.error && sel){
+                const have = new Set([...sel.options].map(o => String(o.value || '').trim().toUpperCase()));
+                (pq.data || []).map(r => String(r.user_name || '').trim()).filter(n => n && !have.has(n.toUpperCase())).forEach(n => {
+                    const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); have.add(n.toUpperCase());
+                });
+            }
+        }catch(e){ console.warn('[MOBILE PR] Purchaser list load failed:', e.message || e); }
         prmMastersLoaded = true;
         prmFillDatalists();
         prmRenderEmpDetails();               // a code typed while the list loaded

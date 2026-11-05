@@ -1132,8 +1132,33 @@ function fbApproval_(pr){
   return{all:!!fc.legacyDone,ids,locked};
 }
 const fbLineApproved_=(pr,lineId)=>{const a=fbApproval_(pr);return a.all||a.ids.has(String(lineId));};
-// Only a FIELD BOY PR follows the approval rule; every other PR goes the PO way.
-const prIsFieldBoy_=pr=>String((pr&&pr.purchaser_name)||'').trim().toUpperCase()===INW_PR_PURCHASER.toUpperCase();
+/* Who is a Field Boy (sql/FIELD_BOY_PERSONS_MIGRATION.sql): the old shared
+   name "FIELD BOY", plus every user ticked "Field Boy" in Admin Panel › Users
+   & Roles (a real person, e.g. RAMESH KUMAR, with role Purchaser). A PR booked
+   to any of these names is a Field Boy PR. The list comes from
+   fb_field_boy_names() once per page load; without the migration it stays
+   "FIELD BOY" only, i.e. exactly the old behaviour. Upper-cased, like the names. */
+let sarvFieldBoys=new Set([INW_PR_PURCHASER.toUpperCase()]);
+let sarvFieldBoysP_=null;
+function sarvLoadFieldBoys_(force){
+  if(sarvFieldBoysP_&&!force)return sarvFieldBoysP_;
+  sarvFieldBoysP_=(async()=>{
+    if(!SB_READY)return sarvFieldBoys;
+    try{
+      const r=await SB.rpc('fb_field_boy_names');
+      if(r.error)throw r.error;
+      const s=new Set([INW_PR_PURCHASER.toUpperCase()]);
+      (r.data||[]).forEach(n=>{const v=String(n||'').trim().toUpperCase();if(v)s.add(v);});
+      sarvFieldBoys=s;
+    }catch(e){console.warn('[SARV] Field Boy list not loaded (run sql/FIELD_BOY_PERSONS_MIGRATION.sql); only "FIELD BOY" counts:',e.message||e);}
+    return sarvFieldBoys;
+  })();
+  return sarvFieldBoysP_;
+}
+const sarvIsFieldBoyName_=n=>sarvFieldBoys.has(String(n||'').trim().toUpperCase());
+// Only a Field Boy PR follows the approval rule; every other PR goes the PO way.
+const prIsFieldBoy_=pr=>sarvIsFieldBoyName_(pr&&pr.purchaser_name);
+sarvLoadFieldBoys_();
 let sarvPrCatalog=[];
 let sarvSelectedPrNos=[];
 /* Pending qty per PR, keyed by req_no: {qty, items, unknown?}. `qty` is the sum
@@ -1192,10 +1217,10 @@ async function loadPrDropdown_(){
   if(!SB_READY)return;
   const q=await SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(400);
   if(q.error){console.warn('[SARV] PR dropdown unavailable:',q.error.message);return}
-  const want=INW_PR_PURCHASER.toUpperCase();
+  await sarvLoadFieldBoys_();
   let candidates=(q.data||[]).filter(p=>
-    // FIELD BOY's own requirements only — see INW_PR_PURCHASER above.
-    String(p.purchaser_name||'').trim().toUpperCase()===want
+    // Field Boy requirements only (any Field Boy person) — see INW_PR_PURCHASER above.
+    prIsFieldBoy_(p)
     // A Cancelled or Rejected requirement is settled; nothing is received on it.
     && !['Cancelled','Rejected'].includes(String(p.status||''))
   );
@@ -1268,7 +1293,7 @@ function renderPrNumberPanel(){
     // reads very differently from "no PRs exist" when somebody is hunting for
     // one they raised yesterday.
     panel.innerHTML='<div style="padding:10px;color:#94a3b8;font-size:11px;">'
-      +escText(INW_PR_PURCHASER)+' has no PR with approved material still to arrive.<br>'
+      +'No Field Boy PR has approved material still to arrive.<br>'
       +'<span style="color:#64748b;">Only items the requester has approved (on the Field Boy\'s photos) can be received. Fully received PRs are not shown.</span></div>';
   }else{
     panel.innerHTML=sarvPrCatalog.map(p=>{
@@ -1330,7 +1355,7 @@ function renderInwPrDetails_(prs,lineCount){
   if(!list.length){box.style.display='none';box.innerHTML='';return}
   const depts=[...new Set(list.map(p=>String(p.department||'').trim()).filter(Boolean))];
   box.innerHTML='PR <b>'+escText(list.map(p=>p.req_no).join(', '))+'</b>'
-    +' · Purchaser: <b>'+escText(INW_PR_PURCHASER)+'</b>'
+    +' · Purchaser: <b>'+escText([...new Set(list.map(p=>String(p.purchaser_name||'').trim()).filter(Boolean))].join(', ')||INW_PR_PURCHASER)+'</b>'
     +' · Dept: <b>'+escText(depts.join(', ')||'-')+'</b>'
     +' · Items: <b>'+pNum(lineCount)+'</b>'
     +' · Fill in the Rate and GST from the bill; a PR has no rate.';
@@ -1722,6 +1747,7 @@ async function fbInwardBlock_(){
   const nos=getSelectedPrNos();if(!nos.length)return '';
   const q=await SB.from('purchase_requirements').select('id,req_no,purchaser_name,pdf_snapshot').in('req_no',nos);
   if(q.error)throw q.error;
+  await sarvLoadFieldBoys_();
   const prs=(q.data||[]).filter(prIsFieldBoy_);if(!prs.length)return '';
   const byNo=new Map(prs.map(p=>[String(p.req_no),p]));
   const bad=[];
@@ -7226,6 +7252,7 @@ function sarvRenderUsers_(){
         ?' <span class="ap-pill" style="background:#ede9fe;color:#5b21b6;" title="'
           +escText(u.roles.map(r=>sarvRoleLabelOf_(r)+(r===u.role?' (primary)':'')).join(', ')
             +'; access is the union of all of these')+'">+'+(u.roles.length-1)+' role</span>':'')
+      +(sarvIsFieldBoyName_(u.user_name)?' <span class="ap-pill" style="background:#f3e8ff;color:#6b21a8;" title="PRs booked to this name take the Field Boy route (no PO)">Field Boy</span>':'')
       /* Per-user app override: the Admin sees immediately that something is
          set by hand for this person; otherwise time goes into working out
          "why isn't this button showing for them". */
@@ -7666,6 +7693,12 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg"><label>Store <small style="text-transform:none;font-weight:600;">(the PRs this user raises belong to it)</small></label>'
       +'<select data-f="ustore"><option value="STORE 2">Store 2</option><option value="STORE 1">Store 1</option></select>'
       +'<small data-f="ustorehint" style="display:block;font-size:10.5px;color:#64748b;margin-top:2px;"></small></div>'
+    /* Field Boy (sql/FIELD_BOY_PERSONS_MIGRATION.sql): any Purchaser person can
+       be one. PRs booked to their name then take the Field Boy route (no PO,
+       item photos on mobile, requester approves, Store receives approved items
+       only). Saved by admin_set_user_field_boy, which refuses a non-Purchaser. */
+    +'<div class="fg" style="grid-column:1 / -1;display:flex;align-items:flex-start;gap:8px;"><input data-f="fieldboy" type="checkbox" style="width:16px;height:16px;margin-top:2px;"'+(u&&sarvIsFieldBoyName_(u.user_name)?' checked':'')+'>'
+      +'<span style="font-size:12px;font-weight:700;color:#334155;">Field Boy <small style="font-weight:600;color:#64748b;display:block;">Only for a Purchaser. PRs booked to this name are bought over the counter: no PO, item photos on mobile, the requester approves each item, the Store receives approved items only.</small></span></div>'
     /* ── Extra roles + Apps ─────────────────────────────────────────
        If the columns exist, show the full UI; if not, DON'T HIDE IT QUIETLY,
        which was the earlier mistake that made the Admin think the feature
@@ -8004,6 +8037,27 @@ function sarvOpenUserModal(id,presetRole){
             const se=(sr.error&&(sr.error.message||String(sr.error)))||(sr.data&&!sr.data.success&&sr.data.error)||'';
             uniNote+=se?('; Warning: Store was not saved: '+(/admin_set_user_store|PGRST202|schema cache/i.test(se)?'run PRPO_STORE_MIGRATION.sql':se))
                        :(' · '+sarvStoreLabel(want));
+          }
+        }
+      }
+      // Field Boy tick: written only when it changed (see the form field).
+      if(f('fieldboy')){
+        const fbWant=!!f('fieldboy').checked,fbWas=!!(u&&sarvIsFieldBoyName_(u.user_name));
+        if(fbWant!==fbWas){
+          let sid=finalId||(u&&u.id)||null;
+          if(!sid){
+            await sarvLoadAppUsers_(true);
+            const s=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
+            if(s)sid=String(s.id);
+          }
+          if(!sid)uniNote+='; Warning: Field Boy was not saved (user not found after save). Edit the user and save again.';
+          else{
+            const fr=await SB.rpc('admin_set_user_field_boy',{p_admin_pin:adminPin.trim(),p_user_id:sid,p_on:fbWant});
+            const fe=(fr.error&&(fr.error.message||String(fr.error)))||(fr.data&&!fr.data.success&&fr.data.error)||'';
+            uniNote+=fe?('; Warning: Field Boy was not saved: '+(/admin_set_user_field_boy|PGRST202|schema cache/i.test(fe)?'run sql/FIELD_BOY_PERSONS_MIGRATION.sql'
+                       :fe==='NOT_PURCHASER'?'only a Purchaser can be a Field Boy':fe))
+                       :(fbWant?' · Field Boy':' · no longer a Field Boy');
+            if(!fe)await sarvLoadFieldBoys_(true);
           }
         }
       }
@@ -20606,7 +20660,7 @@ let PR_TEAL=[13,92,83];
      const el=byId('prNumberBtn');
      el?.scrollIntoView({behavior:'smooth',block:'center'});
      togglePrNumberPanel(true);
-     return showToast('To receive without a PO, tick at least one PR Number ('+escText(INW_PR_PURCHASER)+'\'s PR)','warn');
+     return showToast('To receive without a PO, tick at least one PR Number (a Field Boy\'s PR)','warn');
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    // FIELD BOY PR: approved items only (fbInwardBlock_), before any approval request goes out.
@@ -21501,6 +21555,7 @@ let PR_TEAL=[13,92,83];
  }
  async function refreshPendingRequirements(){
    if(!SB_READY)return;
+   await sarvLoadFieldBoys_();   // prFieldLocked_ / fbLineDeletable_ below need the Field Boy names
    const [rq,lq,iq,pq]=await Promise.all([
      SB.from('purchase_requirements').select('*').order('request_date',{ascending:false}),
      // Must match the .order('id') used when pdf_snapshot.items was built

@@ -183,6 +183,44 @@
   .fbthumb{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block}
   .skel{height:120px;border-radius:14px;background:linear-gradient(90deg,#e2e8f0,#f1f5f9,#e2e8f0);background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:10px}
   @keyframes sk{to{background-position:-200% 0}}
+  /* New PR / Edit PR (sql/MY_REQUESTS_PR_MIGRATION.sql). The header button is
+     the one filled button in the dark bar, so raising a request is easy to find. */
+  .ibtn.pri{background:#0f766e;border-color:#0f766e;color:#fff}
+  .ibtn.pri:hover{background:#115e59;border-color:#115e59}
+  .btn.sm{padding:9px 14px;font-size:12.5px;border-radius:10px}
+  .btn.edit{background:#fff;border:1px solid #0f766e;color:#0f766e}
+  .btn.edit:hover{background:#f0fdfa}
+  .cedit{border:1px solid #99f6e4;background:#f0fdfa;color:#0f766e;border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+  .cedit:hover{background:#ccfbf1}
+  .pf{padding:12px 14px}
+  .pf .g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media (max-width:420px){.pf .g2{grid-template-columns:1fr}}
+  .pf label{display:block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#475569;margin:10px 0 5px}
+  .pf label i{color:var(--bad);font-style:normal}
+  .pf input,.pf select{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px 11px;font-size:14px;font-weight:600;font-family:inherit;outline:none;background:#fff;color:var(--ink)}
+  .pf input:focus,.pf select:focus,.pf textarea:focus{border-color:#0f766e}
+  .pf input[readonly]{background:#f8fafc;color:#475569}
+  .pf .miss{border-color:var(--bad)!important;background:#fef2f2!important}
+  .pf .hint{font-size:11.5px;color:var(--mut);font-weight:600;margin-top:4px}
+  .prio{display:flex;gap:8px}
+  .prio button{flex:1;border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 6px;font-size:13px;font-weight:800;color:#334155;cursor:pointer}
+  .prio button.on[data-p="Normal"]{background:var(--pri);border-color:var(--pri);color:#fff}
+  .prio button.on[data-p="Urgent"]{background:#d97706;border-color:#d97706;color:#fff}
+  .prio button.on[data-p="Critical"]{background:var(--bad);border-color:var(--bad);color:#fff}
+  .prio.miss{outline:2px solid var(--bad);outline-offset:2px;border-radius:10px}
+  .who-box{border:1px solid var(--line);background:#f8fafc;border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;line-height:1.5}
+  .who-box span{display:block;font-size:11.5px;color:var(--mut);font-weight:600}
+  .itc{border:1px solid var(--line);border-radius:12px;padding:4px 12px 12px;margin:0 14px 10px;background:#fff}
+  .itc .ih{display:flex;align-items:center;justify-content:space-between;padding-top:8px}
+  .itc .ih b{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#475569}
+  .itc .rm{border:0;background:none;color:var(--bad);font-weight:800;font-size:12px;cursor:pointer;padding:4px 0}
+  .itc .meta2{font-size:11.5px;color:var(--mut);font-weight:700;margin-top:4px;min-height:1em}
+  .itc .meta2.bad{color:var(--bad)}
+  .addit{display:block;width:calc(100% - 28px);margin:0 14px 14px;border:1px dashed #94a3b8;background:#fff;border-radius:12px;padding:12px;font-size:13px;font-weight:800;color:#0f766e;cursor:pointer}
+  .addit:hover{border-color:#0f766e;background:#f0fdfa}
+  .pfoot{position:sticky;bottom:0;z-index:5;background:#fff;border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+  .pfoot .tot{font-size:12px;font-weight:700;color:var(--mut)}
+  .pfoot .tot b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -193,6 +231,9 @@
     <div class="who" id="who">&nbsp;</div>
   </div>
   <span class="sp"></span>
+  <button class="ibtn pri" onclick="openPrForm()" title="Raise a new Purchase Requirement">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New PR
+  </button>
   <button class="ibtn" onclick="load(true)" title="Refresh">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5"/></svg><span class="hide-sm">Refresh</span>
   </button>
@@ -219,6 +260,73 @@
     <span id="dChip"></span>
   </div>
   <div class="wrap" id="dBody"></div>
+</div>
+
+<!-- New PR / Edit PR. Static markup on purpose: date-dmy.js turns the Required By
+     box into DD/MM/YYYY when the page loads, so it must exist then. Only the item
+     cards are built by script (prItemsRender). -->
+<div class="panel" id="prPanel">
+  <div class="ptop">
+    <button class="back" onclick="closePrForm()" title="Back">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="grow"><div class="prno" id="pfTitle">New Purchase Requirement</div><div class="meta" id="pfSub"></div></div>
+  </div>
+  <div class="wrap" style="padding-bottom:20px">
+    <div id="pfNote"></div>
+    <div class="sec"><h3>Request</h3><div class="pf">
+      <div class="g2">
+        <div><label for="pfReqBy">Required by <i>*</i></label><input type="date" id="pfReqBy" onchange="prSet('requiredBy',this.value);this.classList.remove('miss')"></div>
+        <div><label for="pfPurch">Purchaser <i>*</i></label>
+          <select id="pfPurch" onchange="prSet('purchaser',this.value);PRF.purchaserAuto=false;this.classList.remove('miss');prHint()"><option value="">-- Select Purchaser --</option></select>
+          <div class="hint" id="pfPurchHint">Filled in from the first item's category. You can change it.</div></div>
+      </div>
+      <label>Priority <i>*</i></label>
+      <div class="prio" id="pfPrio">
+        <button type="button" data-p="Normal" onclick="prPrio('Normal')">Normal</button>
+        <button type="button" data-p="Urgent" onclick="prPrio('Urgent')">Urgent</button>
+        <button type="button" data-p="Critical" onclick="prPrio('Critical')">Critical</button>
+      </div>
+      <label>Requested by</label>
+      <div class="who-box" id="pfWho"></div>
+    </div></div>
+    <div class="sec"><h3><span>Items</span><span class="muted" style="text-transform:none;letter-spacing:0">from the Item Master</span></h3>
+      <div style="height:10px"></div>
+      <div id="pfItems"></div>
+      <button type="button" class="addit" onclick="prAddItem(true)">+ Add another item</button>
+    </div>
+    <div class="sec"><h3>Overall remarks</h3><div class="pf">
+      <textarea id="pfNotes" rows="3" placeholder="Anything the Purchaser should know (optional)" oninput="prSet('notes',this.value)"></textarea>
+    </div></div>
+    <div class="err" id="pfErr"></div>
+  </div>
+  <div class="pfoot">
+    <span class="tot" id="pfTot"></span>
+    <span style="display:flex;gap:8px">
+      <button class="btn ghost sm" onclick="closePrForm()">Cancel</button>
+      <button class="btn pri sm" id="pfSubmit" onclick="prSubmit()">Submit with my PIN</button>
+    </span>
+  </div>
+  <datalist id="pfItemList"></datalist>
+  <datalist id="pfMachList"></datalist>
+</div>
+
+<!-- Field Boy PR: change the qty of / delete ONE item not approved yet (openFbItem). -->
+<div class="sheet" id="fbItemSheet" onclick="if(event.target===this)closeSheet('fbItemSheet')">
+  <div class="sbox">
+    <h2 id="fiTitle">Change the qty</h2>
+    <div class="sub" id="fiSub"></div>
+    <div id="fiQtyBox"><span class="lbl">New qty <i>*</i> <span class="muted" id="fiUom" style="text-transform:none;letter-spacing:0"></span></span>
+      <input class="pin" id="fiQty" type="number" min="0" step="any" inputmode="decimal" style="letter-spacing:0;font-size:20px" onkeydown="if(event.key==='Enter')fbItemNext()"></div>
+    <span class="lbl" id="fiRemLbl">Remarks (optional)</span>
+    <textarea id="fiRem" rows="2" placeholder="Why? (the Field Boy sees this)"></textarea>
+    <div class="note n-blue" id="fiNote" style="margin:10px 0 0;font-size:12px"></div>
+    <div class="err" id="fiErr"></div>
+    <div class="cta" style="margin-top:12px">
+      <button class="btn ghost" onclick="closeSheet('fbItemSheet')">Cancel</button>
+      <button class="btn pri" id="fiGo" onclick="fbItemNext()">Save qty</button>
+    </div>
+  </div>
 </div>
 
 <!-- Confirm receipt -->
@@ -254,7 +362,7 @@
     <input class="pin" id="pinIn" type="password" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')pinSubmit()">
     <div class="err" id="pinErr"></div>
     <div class="cta" style="margin-top:14px">
-      <button class="btn ghost" onclick="closeSheet('pinSheet');if(PIN_MODE==='confirm')openSheet('confirmSheet')">Back</button>
+      <button class="btn ghost" onclick="closeSheet('pinSheet');if(PIN_MODE==='confirm')openSheet('confirmSheet');else if(PIN_MODE==='fbitem'&&FBI)openSheet('fbItemSheet')">Back</button>
       <button class="btn pri" id="pinBtn" onclick="pinSubmit()">Submit</button>
     </div>
   </div>
@@ -317,8 +425,32 @@ const ERR = {
   NOTHING_TO_DECIDE: 'There is nothing waiting for your approval on this request.',
   LINE_NOT_FOUND: 'An item is no longer on this request. Please refresh.',
   PR_CLOSED: 'This request is cancelled or rejected.',
-  NOT_FIELD_BOY: 'This request is not bought by the Field Boy.'
+  NOT_FIELD_BOY: 'This request is not bought by the Field Boy.',
+  // New PR / Edit PR (mr_pr_save). The edit-rule codes are also shown on the detail (EDIT_WHY).
+  NO_PR_MIGRATION: 'New PR and Edit PR are not set up on the server yet. Admin: run <code>sql/MY_REQUESTS_PR_MIGRATION.sql</code> in the Supabase SQL Editor.',
+  REQUIRED_BY: 'Please choose the Required by date.',
+  REQUIRED_BY_PAST: 'The Required by date cannot be before today.',
+  PRIORITY: 'Please choose a Priority: Normal, Urgent or Critical.',
+  PURCHASER: 'Please choose the Purchaser from the list.',
+  NO_ITEMS: 'Add at least one item.',
+  TOO_MANY_ITEMS: 'One request can have at most 60 items. Please raise a second request for the rest.',
+  PR_NO_BUSY: 'Many requests are being saved right now. Please press Submit again.',
+  PR_APPROVED: 'This request is already approved, so it cannot be changed now.',
+  PURCHASER_WORKING: 'The Purchaser has already collected vendor quotes for this request, so it cannot be changed here. Please ask the Purchaser to send it back to you.',
+  ON_PO: 'A purchase order has already been made for this request, so it cannot be changed now.',
+  RECEIVED: 'Material has already been received against this request, so it cannot be changed now.',
+  FB_LOCKED: 'The Field Boy has sent items of this request for your approval, so the whole request cannot be edited now. You can still change or delete each item that is not approved yet, from its Items list.',
+  // One Field Boy item (mr_fb_item_change)
+  NO_FBI_MIGRATION: 'Changing a Field Boy item is not set up on the server yet. Admin: run <code>sql/MR_FB_ITEM_EDIT_MIGRATION.sql</code> in the Supabase SQL Editor.',
+  LINE_APPROVED: 'This item is already approved, so it cannot be changed.',
+  LAST_LINE: 'This is the only item of the request, so it cannot be deleted.',
+  REASON_REQUIRED: 'Please write a reason of at least 3 letters.',
+  QTY_INVALID: 'Qty must be more than 0.',
+  NO_CHANGE: 'The qty is the same as now.',
+  ALREADY_DONE: 'This request is already finished, so its items cannot change now.'
 };
+// Item-wise codes come as CODE:n (n = the item card, from 1).
+const ERR_ITEM = { ITEM_NOT_FOUND: 'choose the item from the Item Master list', QTY: 'Qty must be more than 0', MACHINE: 'Machine Name & No. is required', MACHINE_NOT_FOUND: 'choose the machine from the Machine Master list' };
 const SESSION_ERRORS = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
 async function rpc(fn, args) {
   let r;
@@ -334,6 +466,9 @@ async function rpc(fn, args) {
 }
 function errText(res) {
   if (String(res.error).startsWith('NOT_READY')) return 'This request is not fully received yet, so it cannot be confirmed. Please refresh.';
+  if (String(res.error).startsWith('QTY_BELOW_RECEIVED:')) return 'The Store has already received ' + esc(String(res.error).split(':')[1]) + ' of this item; the qty cannot be less than that.';
+  const m = /^([A-Z_]+):(\d+)$/.exec(String(res.error || ''));
+  if (m && ERR_ITEM[m[1]]) return 'Item ' + m[2] + ': ' + ERR_ITEM[m[1]] + '.';
   return ERR[res.error] || ('Something went wrong: ' + esc(res.error) + (res.detail ? '<br><small>' + esc(res.detail) + '</small>' : ''));
 }
 
@@ -498,7 +633,7 @@ function renderList() {
   const list = DATA.filter(p => (TAB === 'all' || (STATE[p.state] || {}).tab === TAB) && matches(p, q));
   if (!list.length) {
     const why = q ? 'Nothing matches your search.' : ({ action: 'Nothing needs your action right now.', progress: 'No request is in progress.', done: 'No completed requests yet.', rejected: 'No rejected requests.', all: 'You have not raised any Purchase Requirement yet.' })[TAB];
-    $('list').innerHTML = `<div class="empty">${why}</div>`; return;
+    $('list').innerHTML = `<div class="empty">${why}${!q && !DATA.length ? '<div style="margin-top:14px"><button class="btn pri sm" onclick="openPrForm()">Raise a new request</button></div>' : ''}</div>`; return;
   }
   $('list').innerHTML = list.map(pr => {
     const st = STATE[pr.state] || { chip: 'c-mut', label: pr.state };
@@ -510,7 +645,7 @@ function renderList() {
     return `<div class="card ${act ? 'act' : ''} ${fb ? 'fb' : ''}" onclick="openDetail('${esc(pr.reqNo)}')">
       <div class="row"><div class="grow"><div class="prno">${esc(shortNo(pr.reqNo, 'PR'))} <span class="muted" style="font-size:11px;font-weight:600">${esc(pr.reqNo)}</span>${fb ? '<span class="fbtag">Field Boy</span>' : ''}</div>
       <div class="meta">${esc(fD(pr.requestDate || pr.createdAt))}${pr.department ? ' · ' + esc(pr.department) : ''}${(pr.pos || []).length ? ' · ' + (pr.pos || []).map(p => esc(shortNo(p.poNo, 'PO'))).join(', ') : ''}</div></div>
-      <span class="chip ${st.chip}">${esc(lab)}</span></div>
+      <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px"><span class="chip ${st.chip}">${esc(lab)}</span>${pr.canEdit ? `<button class="cedit" onclick="event.stopPropagation();openPrForm('${esc(pr.reqNo)}')">${pr.state === 'REJECTED' ? 'Edit &amp; resend' : 'Edit PR'}</button>` : ''}</span></div>
       <div class="items">${itemsSummary(pr)}</div>
       <div class="pur">Purchaser: ${pr.purchaser ? `<b>${esc(pr.purchaser)}</b>` : '<span class="muted">not assigned yet</span>'}</div>${etaH}${progHtml(pr)}
       ${act && pr.state === 'READY' ? '<div class="note n-warn" style="margin:10px 0 0;padding:8px 12px;font-size:12px">All material has arrived. Tap to confirm you received it.</div>' : ''}
@@ -527,7 +662,7 @@ function openDetail(reqNo) {
   $('dTitle').textContent = shortNo(pr.reqNo, 'PR') + '  ·  ' + pr.reqNo;
   $('dSub').textContent = [fD(pr.requestDate || pr.createdAt), pr.department, pr.priority].filter(Boolean).join(' · ');
   $('dChip').innerHTML = `<span class="chip ${st.chip}">${esc(st.label)}</span>`;
-  $('dBody').innerHTML = actionBox(pr) + `<div class="sec"><h3>Progress</h3><div style="padding:4px 12px 12px">${progHtml(pr)}</div></div>`
+  $('dBody').innerHTML = actionBox(pr) + editBox(pr) + `<div class="sec"><h3>Progress</h3><div style="padding:4px 12px 12px">${progHtml(pr)}</div></div>`
     + itemsSec(pr) + `<div class="sec"><h3><span>Tracking</span><span class="muted" style="text-transform:none;letter-spacing:0">newest at the bottom</span></h3><ul class="tl">${timeline(pr)}</ul></div>` + infoSec(pr);
   $('panel').classList.add('open'); $('panel').scrollTop = 0;
   try { history.replaceState(null, '', '#' + encodeURIComponent(reqNo)); } catch (e) {}
@@ -604,26 +739,103 @@ function fbActionBox(pr) {
   if (pr.state === 'FB_DONE') return `<div class="note n-ok"><b>Done.</b> ${pr.field.legacyDone ? 'Completed by the Field Boy.' : 'You approved every item and the Field Boy confirmed' + (pr.field.confirm && pr.field.confirm.at ? ' on ' + esc(fFull(parseAt(pr.field.confirm.at))) : '') + '.'}</div>`;
   if (pr.state === 'FB_APPROVED') return `<div class="note n-blue"><b>You approved all ${c.total} item(s).</b> Waiting for the Store to receive them; then you confirm receipt here.</div>`;
   if (pr.state === 'FB_RECEIVING') return `<div class="note n-blue"><b>Partly received in Store.</b> You can confirm receipt once every item has come in full.</div>`;
-  return `<div class="note n-blue"><b>The Field Boy is buying your items.</b> ${c.photo}/${c.total} photographed${c.approved ? ', ' + c.approved + ' approved' : ''}${c.back ? ', <b>' + c.back + ' sent back by you</b>' : ''}. You will be asked to approve each item with its photo.</div>`;
+  return `<div class="note n-blue"><b>The Field Boy is buying your items.</b> ${c.photo}/${c.total} photographed${c.approved ? ', ' + c.approved + ' approved' : ''}${c.back ? ', <b>' + c.back + ' sent back by you</b>' : ''}. You will be asked to approve each item with its photo.${c.approved < c.total ? ' Need a different qty, or an item no longer? Change it under <b>Items</b> below (not for approved items).' : ''}</div>`;
 }
 // Items of a Field Boy PR: what was asked, its photo, where it stands.
 function fbItemsSec(pr) {
   const lab = { NEW: ['c-mut', 'Not bought yet'], PHOTO: ['c-pri', 'Photo taken'], SENT: ['c-warn', 'Waiting for you'], APPROVED: ['c-ok', 'Approved'], REJECTED: ['c-bad', 'Sent back'] };
+  const can = fbItemEditable(pr), many = fbLines(pr).length > 1;
   const rows = fbLines(pr).map(l => { const s = lab[l.status] || lab.NEW, d = l.decision || {};
-    return `<tr><td><b>${esc(l.item || '-')}</b>${l.spec ? `<div class="muted" style="font-size:11px">${esc(l.spec)}</div>` : ''}</td><td class="n">${nfmt(l.qty)} ${esc(l.uom || '')}</td>
+    const act = can && l.status !== 'APPROVED'
+      ? `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><button class="cedit" onclick="openFbItem('${esc(l.id)}','QTY')">✎ Qty</button>${many ? `<button class="cedit" style="border-color:#fecaca;background:#fef2f2;color:#b91c1c" onclick="openFbItem('${esc(l.id)}','DELETE')">✕ Delete</button>` : ''}</div>` : '';
+    return `<tr><td><b>${esc(l.item || '-')}</b>${l.spec ? `<div class="muted" style="font-size:11px">${esc(l.spec)}</div>` : ''}${act}</td><td class="n">${nfmt(l.qty)} ${esc(l.uom || '')}</td>
       <td>${l.photo ? fbPhotoTag(l, 'fbthumb') : '<span class="muted">–</span>'}</td>
       <td><span class="chip ${s[0]}">${s[1]}</span>${d.remarks ? `<div class="muted" style="font-size:11px;margin-top:3px">“${esc(d.remarks)}”</div>` : ''}</td></tr>`; }).join('');
-  return `<div class="sec"><h3>Items</h3><div style="overflow-x:auto"><table class="it"><thead><tr><th>Item</th><th class="n">Asked</th><th>Photo</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">No items listed.</td></tr>'}</tbody></table></div></div>`;
+  const hint = can && fbLines(pr).some(l => l.status !== 'APPROVED')
+    ? `<div class="muted" style="font-size:11.5px;font-weight:600;padding:8px 12px 0">You can change the qty of an item that is not approved yet${many ? ', or delete it' : ''}. Approved items stay as they are.</div>` : '';
+  return `<div class="sec"><h3>Items</h3>${hint}<div style="overflow-x:auto"><table class="it"><thead><tr><th>Item</th><th class="n">Asked</th><th>Photo</th><th>Status</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="muted">No items listed.</td></tr>'}</tbody></table></div></div>`;
+}
+/* ── Field Boy PR: change ONE item (sql/MR_FB_ITEM_EDIT_MIGRATION.sql) ──
+   While the Field Boy is still buying, the requester may delete an item that
+   is not approved yet, or change its qty, even when other items are already
+   sent / approved (which locks Edit PR). One item at a time, own PIN, a
+   reason for a delete; the server checks every rule again (mr_fb_item_change).
+   A qty change on an item waiting for approval sends it back to the Field Boy. */
+let FBI = null;   // {req, line, act}
+function fbItemEditable(pr) {
+  return isFb(pr) && !pr.field.legacyDone && !pr.field.confirm && !(pr.confirmations || []).length
+    && !['FB_DONE', 'CONFIRMED', 'ISSUE', 'REJECTED'].includes(pr.state);
+}
+function openFbItem(id, act) {
+  const pr = DATA.find(p => p.reqNo === OPEN), l = pr && fbLines(pr).find(x => x.id === id);
+  if (!l || !fbItemEditable(pr) || l.status === 'APPROVED') return message('Cannot be changed', ERR.LINE_APPROVED, true);
+  FBI = { req: pr.reqNo, line: l, act };
+  const del = act === 'DELETE';
+  $('fiTitle').textContent = del ? 'Delete this item?' : 'Change the qty';
+  $('fiSub').innerHTML = `<b>${esc(l.item || '-')}</b> · now ${nfmt(l.qty)} ${esc(l.uom || '')} · ${esc(pr.reqNo)}`;
+  $('fiQtyBox').style.display = del ? 'none' : '';
+  $('fiQty').value = del ? '' : String(num(l.qty));
+  $('fiUom').textContent = l.uom || '';
+  $('fiRemLbl').innerHTML = del ? 'Reason <i>*</i>' : 'Remarks (optional)';
+  $('fiRem').value = ''; $('fiErr').textContent = '';
+  $('fiNote').innerHTML = del ? 'The item is taken off this request. The Field Boy sees it in the request\'s history.'
+    : (l.status === 'SENT' ? 'This item is waiting for your approval. After the change it goes back to the Field Boy, who sends it again.' : 'The Field Boy buys the new qty.');
+  $('fiGo').textContent = del ? 'Delete item' : 'Save qty';
+  $('fiGo').className = 'btn pri';
+  if (del) $('fiGo').style.background = 'var(--bad)'; else $('fiGo').style.background = '';
+  openSheet('fbItemSheet');
+  setTimeout(() => (del ? $('fiRem') : $('fiQty')).focus(), 50);
+}
+function fbItemNext() {
+  if (!FBI) return;
+  const del = FBI.act === 'DELETE', rem = $('fiRem').value.trim();
+  if (del && rem.length < 3) return $('fiErr').textContent = 'Please write why this item is not needed.';
+  if (!del) {
+    const q = num($('fiQty').value);
+    if (!(q > 0)) return $('fiErr').textContent = 'Qty must be more than 0.';
+    if (q === num(FBI.line.qty)) return $('fiErr').textContent = 'The qty is the same as now.';
+    FBI.qty = q;
+  }
+  FBI.rem = rem;
+  closeSheet('fbItemSheet');
+  PIN_MODE = 'fbitem';
+  $('pinSub').textContent = (del ? 'Delete ' + (FBI.line.item || 'this item') : 'Change ' + (FBI.line.item || 'this item') + ' to ' + nfmt(FBI.qty) + ' ' + (FBI.line.uom || ''))
+    + '. Your own login PIN signs this change.';
+  $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
+}
+async function submitFbItem() {
+  if (!FBI) return closeSheet('pinSheet');
+  const pin = $('pinIn').value.trim();
+  if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
+  const b = $('pinBtn'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Saving';
+  const res = await rpc('mr_fb_item_change', { p_pin: pin, p_req_no: FBI.req, p_line_id: FBI.line.id, p_action: FBI.act,
+                                               p_qty: FBI.act === 'QTY' ? FBI.qty : null, p_reason: FBI.rem || null });
+  b.disabled = false; b.textContent = 'Submit';
+  if (!res.ok) {
+    if (res.error === 'PIN_INVALID' || res.error === 'TOO_MANY_ATTEMPTS') { $('pinErr').innerHTML = errText(res); $('pinIn').value = ''; return; }
+    if (res.error === 'NO_MIGRATION') res.error = 'NO_FBI_MIGRATION';
+    closeSheet('pinSheet'); return message('Not saved', errText(res), true);
+  }
+  closeSheet('pinSheet');
+  const reqNo = FBI.req, d = res.data; FBI = null;
+  await load(false); if (DATA.some(p => p.reqNo === reqNo)) openDetail(reqNo);
+  message('Saved', d.action === 'DELETE' ? `<b>${esc(d.item)}</b> is taken off the request.`
+    : `<b>${esc(d.item)}</b>: qty changed from ${nfmt(d.from)} to <b>${nfmt(d.to)}</b>.${d.backToFieldBoy ? ' It has gone back to the Field Boy to send again.' : ''}`, false);
 }
 // Tracking line of a Field Boy PR: raised, each send, each decision, store entries, confirm.
 function fbTimeline(pr) {
   const ev = [], q = s => s ? `<div class="q">“${esc(s)}”</div>` : '';
   const add = (at, cls, t, who, body) => { const p = parseAt(at); if (p) ev.push({ p, cls, t, who, body }); };
   add(pr.createdAt || pr.requestDate, 'done', 'Request raised', 'by ' + esc(pr.requestedBy || 'you'), (pr.items || []).length + ' item(s)' + (pr.requiredBy ? ' · needed by ' + esc(fD(pr.requiredBy)) : '') + ' · bought by the Field Boy, no PO');
+  editEvents(pr, add, q);
   fbHist(pr).forEach(h => {
     if (h.ev === 'SENT') add(h.at, 'fu', 'Sent for your approval', 'by ' + esc(h.by || 'Field Boy'), (h.count || 0) + ' item(s) with photos' + ((h.items || []).filter(Boolean).length ? '<ul class="lst">' + h.items.filter(Boolean).map(n => `<li>${esc(n)}</li>`).join('') + '</ul>' : ''));
     else if (h.ev === 'DECIDED') add(h.at, h.sentBack ? 'bad' : 'me', h.sentBack ? 'You decided (some sent back)' : 'You approved', 'by ' + esc(h.by || 'you'), `Approved: <b>${h.approved || 0}</b> · Sent back: <b>${h.sentBack || 0}</b>` + q(h.remarks));
     else if (h.ev === 'CONFIRMED') add(h.at, 'done', 'Confirmed by the Field Boy: done', 'by ' + esc(h.by || 'Field Boy'), '');
+    // One item taken off / its qty changed (by you here, or from the ERP's PO desk).
+    else if (h.ev === 'DELETED') add(h.at, 'bad', 'Item deleted: ' + esc((h.items || []).join(', ')), 'by ' + esc(h.by || ''), (h.qty != null ? nfmt(h.qty) + ' ' + esc(h.uom || '') : '') + q(h.remarks));
+    else if (h.ev === 'QTY') add(h.at, 'me', 'Qty changed: ' + esc((h.items || []).join(', ')), 'by ' + esc(h.by || 'you'),
+      `${nfmt(h.from)} → <b>${nfmt(h.to)}</b> ${esc(h.uom || '')}${h.wasSent ? ' · <span class="muted">sent back to the Field Boy to send again</span>' : ''}` + q(h.remarks));
   });
   // Each sent-back item's own reason, at the moment it was decided.
   fbLines(pr).forEach(l => { const d = l.decision || {}; if (l.status === 'REJECTED' && d.at) add(d.at, 'bad', 'Sent back: ' + esc(l.item || ''), 'by ' + esc(d.by || 'you'), q(d.remarks)); });
@@ -659,7 +871,8 @@ function actionBox(pr) {
     const pct = receivedPct(pr);
     return `<div class="note n-blue"><b>Partly received${pct != null ? ' (' + pct + '%)' : ''}.</b> ${open.length} order${open.length > 1 ? 's are' : ' is'} still open (${open.map(p => esc(shortNo(p.poNo, 'PO'))).join(', ')}). You can confirm once everything arrives, or when the MD closes the order.</div>`;
   }
-  if (pr.state === 'REJECTED') return `<div class="note n-bad"><b>This request was rejected.</b>${pr.rejection && pr.rejection.remarks ? ' Reason: “' + esc(pr.rejection.remarks) + '”' : ''}</div>`;
+  // The PR's rejection is kept in pdf_snapshot.lastRejection; approvals.rejection on older rows.
+  if (pr.state === 'REJECTED') { const rj = pr.rejection || pr.lastRejection || {}; return `<div class="note n-bad"><b>This request was rejected${rj.by ? ' by ' + esc(rj.by) : ''}.</b>${rj.remarks ? ' Reason: “' + esc(rj.remarks) + '”' : ''}</div>`; }
   if (pr.state === 'WAITING_PO') return `<div class="note n-blue"><b>Being processed.</b> Purchasing is getting quotes and preparing the order.</div>`;
   const e = eta(pr);
   return `<div class="note n-blue"><b>On the way.</b>${e ? ' Expected by <b>' + fDate(e.d) + '</b>' + (e.revised ? ' (date revised ' + e.revised + '× by the vendor)' : '') + '.' : ''}</div>`;
@@ -701,6 +914,9 @@ function timeline(pr) {
   if (pr.storeSign) add(pr.storeSign.at, 'done', 'Checked by Store', by(pr.storeSign), q(pr.storeSign.remarks));
   if (pr.gmSign) add(pr.gmSign.at, 'done', 'Request approved', by(pr.gmSign), '');
   if (pr.rejection) add(pr.rejection.at, 'bad', 'Request rejected', by(pr.rejection), q(pr.rejection.remarks));
+  else if (pr.state === 'REJECTED' && pr.lastRejection) add(pr.lastRejection.at, 'bad', 'Request rejected', by(pr.lastRejection), q(pr.lastRejection.remarks));
+  if (pr.hold) add(pr.hold.at, 'bad', 'Put on hold', by(pr.hold), q(pr.hold.remarks));
+  editEvents(pr, add, q);
   if (pr.vendorInfoAt) add(pr.vendorInfoAt, 'done', 'Vendor quotes collected', '', '');
   (pr.pos || []).forEach(p => {
     const tag = shortNo(p.poNo, 'PO');
@@ -773,7 +989,7 @@ function toPin() {
   PIN_MODE = 'confirm'; $('pinSub').textContent = 'Your own login PIN. It signs this confirmation in your name.';
   closeSheet('confirmSheet'); $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
 }
-function pinSubmit() { return PIN_MODE === 'fb' ? submitFbDecision() : submitConfirm(); }
+function pinSubmit() { return PIN_MODE === 'fb' ? submitFbDecision() : PIN_MODE === 'pr' ? submitPr() : PIN_MODE === 'fbitem' ? submitFbItem() : submitConfirm(); }
 async function submitConfirm() {
   const pin = $('pinIn').value.trim();
   if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
@@ -796,6 +1012,269 @@ async function viewPhoto(id) {
 }
 function message(title, html, bad) { $('msgBody').innerHTML = `<h2 style="margin:0 0 6px;color:${bad ? 'var(--bad)' : 'var(--ink)'}">${esc(title)}</h2><div style="font-weight:600;color:#334155;line-height:1.5">${html}</div>`; openSheet('msgSheet'); }
 
+/* ── New PR / Edit PR ─────────────────────────────────────────────────
+   The requester raises their own Purchase Requirement here, and corrects it
+   while nobody has started on it (sql/MY_REQUESTS_PR_MIGRATION.sql):
+     New PR   header button. Requested By is always the login (the server
+              takes it from the session, never from this page); Purchaser is
+              filled from the first item's category (PR-PO Master) and can be
+              changed. Signed with the user's own PIN, like Confirm receipt.
+     Edit PR  only when the server says canEdit: own PR, Pending / Rejected /
+              Hold, no PO, nothing received, and the Purchaser has not saved
+              vendor quotes yet. Saving a Rejected / Hold PR sends it back to
+              the Purchaser as Pending, the same rule as the ERP's Edit PR.
+   The server checks all of it again on save, so a screen left open while the
+   Purchaser started work cannot overwrite that work. An unsent NEW request is
+   kept in this browser (localStorage) so a closed tab does not lose it.
+   PRF holds the open form; the inputs write into it as they change. */
+let PRM = null, PRF = null, ME = null;
+const PR_MAX_ITEMS = 60;
+const normName = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toUpperCase();
+const todayIso = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const draftKey = () => 'mr_pr_draft:' + ((ME && ME.empCode) || '');
+const blankItem = () => ({ itemId: '', name: '', desc: '', category: '', uom: '', make: '', machine: '', qty: '', grossWeight: '', remarks: '' });
+// Why the open PR cannot be edited, in words (the codes come from mr_pr_edit_why_).
+function editWhyText(pr) {
+  if (pr.editWhy === 'PURCHASER_WORKING' && pr.purchaser) return 'The Purchaser (' + esc(pr.purchaser) + ') has already collected vendor quotes for this request, so it cannot be changed here. Please ask them to send it back to you.';
+  return ERR[pr.editWhy] || 'This request cannot be changed now.';
+}
+
+// Item Master, machines, purchasers and the requester, once per page load.
+async function loadPrMasters() {
+  if (PRM) return { ok: true };
+  const res = await rpc('mr_pr_masters');
+  if (!res.ok) { if (res.error === 'NO_MIGRATION') res.error = 'NO_PR_MIGRATION'; return res; }
+  const d = res.data;
+  d.byName = {}; d.byId = {};
+  (d.items || []).forEach(i => { d.byName[normName(i.name)] = i; d.byId[i.id] = i; });
+  // A machine may be typed as "NAME | NO" or as the bare name, as the server accepts.
+  d.machByKey = {};
+  (d.machines || []).forEach(m => { d.machByKey[normName(m)] = m; const n = normName(String(m).split(' | ')[0]); if (!d.machByKey[n]) d.machByKey[n] = m; });
+  $('pfItemList').innerHTML = (d.items || []).map(i => `<option value="${esc(i.name)}"></option>`).join('');
+  $('pfMachList').innerHTML = (d.machines || []).map(m => `<option value="${esc(m)}"></option>`).join('');
+  $('pfPurch').innerHTML = '<option value="">-- Select Purchaser --</option>' + (d.purchasers || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  PRM = d;
+  return { ok: true };
+}
+
+async function openPrForm(reqNo, fresh) {
+  const pr = reqNo ? DATA.find(p => p.reqNo === reqNo) : null;
+  if (reqNo && !pr) return message('Not found', ERR.NOT_FOUND, true);
+  if (pr && !pr.canEdit) return message('Cannot be changed', pr.editWhy ? editWhyText(pr) : ERR.NO_PR_MIGRATION, true);
+  if (!PRM) message('Opening the form', '<span class="spin"></span> Loading the Item Master…');
+  const r = await loadPrMasters();
+  if (!r.ok) return message('Not available', errText(r), true);
+  closeSheet('msgSheet');
+
+  let note = '', draft = null;
+  if (pr) {
+    PRF = { reqNo: pr.reqNo, requiredBy: pr.requiredBy || '', priority: pr.priority || '', purchaser: normName(pr.purchaser), purchaserAuto: false,
+            notes: pr.notes || '', origRequiredBy: pr.requiredBy || '',
+            items: (pr.editLines || []).map(l => ({ itemId: l.itemId || '', name: l.item || '', desc: l.desc || '', category: l.category || '', uom: l.uom || '',
+              make: l.make || '', machine: l.machine || '', qty: l.qty != null ? String(l.qty) : '', grossWeight: num(l.grossWeight) ? String(l.grossWeight) : '', remarks: l.remarks || '' })) };
+    if (pr.state === 'REJECTED') { const rj = pr.rejection || pr.lastRejection || {}; note = `<div class="note n-bad"><b>Rejected${rj.by ? ' by ' + esc(rj.by) : ''}.</b>${rj.remarks ? ' Reason: “' + esc(rj.remarks) + '”.' : ''} Correct it below; saving sends it again to the Purchaser as a fresh request.</div>`; }
+    else if (pr.hold) note = `<div class="note n-warn"><b>On hold${pr.hold.by ? ' by ' + esc(pr.hold.by) : ''}.</b>${pr.hold.remarks ? ' “' + esc(pr.hold.remarks) + '”.' : ''} Correct it below; saving takes it off hold and sends it back to the Purchaser.</div>`;
+    else note = '<div class="note n-blue">The Purchaser has not started on this request yet, so you can still change it. The Purchaser sees your changes as soon as you save.</div>';
+  } else {
+    if (!fresh) { try { draft = JSON.parse(localStorage.getItem(draftKey()) || 'null'); } catch (e) { draft = null; } }
+    const used = draft && ((draft.items || []).some(i => i.name || i.qty) || draft.notes);
+    PRF = used ? Object.assign({ reqNo: null }, draft, { reqNo: null })
+               : { reqNo: null, requiredBy: '', priority: '', purchaser: '', purchaserAuto: false, notes: '', items: [] };
+    if (used) note = `<div class="note n-blue"><b>Your unsent request${draft.savedAt ? ' from ' + esc(fFull({ d: new Date(draft.savedAt), t: true })) : ''} is back.</b> Carry on, or <button class="lnk" onclick="prStartFresh()">start a fresh one</button>.</div>`;
+  }
+  if (!PRF.items.length) PRF.items.push(blankItem());
+  // A purchaser no longer on the list cannot be saved; leave it to be chosen again.
+  if (PRF.purchaser && !(PRM.purchasers || []).includes(PRF.purchaser)) { note += `<div class="note n-warn">The Purchaser “${esc(PRF.purchaser)}” is not on the list any more. Please choose the Purchaser again.</div>`; PRF.purchaser = ''; }
+  PRF.dirty = false;
+
+  $('pfTitle').textContent = pr ? 'Edit ' + shortNo(pr.reqNo, 'PR') + '  ·  ' + pr.reqNo : 'New Purchase Requirement';
+  $('pfSub').textContent = pr ? [fD(pr.requestDate || pr.createdAt), pr.department].filter(Boolean).join(' · ') : 'The PR number is given when you submit';
+  $('pfNote').innerHTML = note;
+  $('pfReqBy').value = PRF.requiredBy || '';
+  $('pfPurch').value = PRF.purchaser || '';
+  $('pfNotes').value = PRF.notes || '';
+  const me = PRM.me || {};
+  $('pfWho').innerHTML = `${esc(me.name || '')} · ${esc(me.empCode || '')}<span>${esc([me.designation, me.department, me.contact].filter(Boolean).join(' · ') || ' ')}</span>`
+    + (me.inEmployeeMaster ? '' : '<span>Your Emp Code is not in the Employee Master, so your login name is used.</span>');
+  document.querySelectorAll('#prPanel .miss').forEach(e => e.classList.remove('miss'));
+  $('pfErr').textContent = '';
+  const sb = $('pfSubmit'); sb.disabled = false; sb.textContent = pr ? 'Save with my PIN' : 'Submit with my PIN';
+  prPrioSync(); prHint(); prItemsRender();
+  $('prPanel').classList.add('open'); $('prPanel').scrollTop = 0;
+}
+function prStartFresh() { try { localStorage.removeItem(draftKey()); } catch (e) {} openPrForm(null, true); }
+function closePrForm(force) {
+  if (!PRF) { $('prPanel').classList.remove('open'); return; }
+  // A new request is kept as a draft anyway; only unsaved changes to an existing PR are lost.
+  if (!force && PRF.reqNo && PRF.dirty && !confirm('Discard your changes to ' + PRF.reqNo + '?')) return;
+  $('prPanel').classList.remove('open'); PRF = null;
+}
+function prTouch() {
+  if (!PRF) return;
+  PRF.dirty = true;
+  if (!PRF.reqNo) { try { localStorage.setItem(draftKey(), JSON.stringify(Object.assign({}, PRF, { savedAt: Date.now() }))); } catch (e) {} }
+  prTotals();
+}
+function prSet(k, v) { if (PRF) { PRF[k] = v; prTouch(); } }
+function prPrio(p) { prSet('priority', p); $('pfPrio').classList.remove('miss'); prPrioSync(); }
+function prPrioSync() { document.querySelectorAll('#pfPrio button').forEach(b => b.classList.toggle('on', !!PRF && b.dataset.p === PRF.priority)); }
+function prHint() {
+  $('pfPurchHint').textContent = PRF && PRF.purchaserAuto ? 'Filled in from the item\'s category. You can change it.'
+    : 'Chosen from the first item\'s category when it has a Purchaser. You can change it.';
+}
+// Purchaser by category (PR-PO Master): only fills a box nobody has picked by hand.
+function prAutoPurchaser(cat) {
+  if (!PRF || (PRF.purchaser && !PRF.purchaserAuto)) return;
+  const want = (PRM.catPurchaser || {})[normName(cat)];
+  if (!want || !(PRM.purchasers || []).includes(want)) return;
+  PRF.purchaser = want; PRF.purchaserAuto = true;
+  $('pfPurch').value = want; $('pfPurch').classList.remove('miss'); prHint();
+}
+
+function prItemMeta(it, committed) {
+  if (it.itemId) return { cls: '', t: [it.category, it.uom ? 'UOM ' + it.uom : '', it.desc].filter(Boolean).join(' · ') };
+  if (committed && String(it.name || '').trim()) return { cls: 'bad', t: 'Not in the Item Master. Choose an item from the list; new items are added from the Item Master in the ERP.' };
+  return { cls: '', t: '' };
+}
+function prItemsRender() {
+  $('pfItems').innerHTML = PRF.items.map((it, i) => {
+    const m = prItemMeta(it, true);
+    return `<div class="itc">
+      <div class="ih"><b>Item ${i + 1}</b><button type="button" class="rm" onclick="prRemoveItem(${i})">✕ Remove</button></div>
+      <div class="pf" style="padding:0">
+        <label>Item name <i>*</i></label>
+        <input id="pfN${i}" list="pfItemList" autocomplete="off" placeholder="Type to search the Item Master" value="${esc(it.name)}" oninput="prItemName(${i},this.value,false)" onchange="prItemName(${i},this.value,true)">
+        <div class="meta2 ${m.cls}" id="pfM${i}">${esc(m.t)}</div>
+        <label>Machine Name &amp; No. <i>*</i></label>
+        <input id="pfMc${i}" list="pfMachList" autocomplete="off" placeholder="Choose from the Machine Master" value="${esc(it.machine)}" oninput="prItem(${i},'machine',this)">
+        <div class="g2">
+          <div><label>Qty <i>*</i> <span class="muted" id="pfU${i}" style="text-transform:none;letter-spacing:0">${it.uom ? '(' + esc(it.uom) + ')' : ''}</span></label>
+            <input id="pfQ${i}" type="number" min="0" step="any" inputmode="decimal" placeholder="0" value="${esc(it.qty)}" oninput="prItem(${i},'qty',this)"></div>
+          <div><label>Make / brand</label><input id="pfMk${i}" autocomplete="off" placeholder="optional" value="${esc(it.make)}" oninput="prItem(${i},'make',this)"></div>
+        </div>
+        <div class="g2">
+          <div><label>Gross wt. (kg)</label><input type="number" min="0" step="any" inputmode="decimal" placeholder="optional" value="${esc(it.grossWeight)}" oninput="prItem(${i},'grossWeight',this)"></div>
+          <div><label>Item remarks</label><input autocomplete="off" placeholder="optional" value="${esc(it.remarks)}" oninput="prItem(${i},'remarks',this)"></div>
+        </div>
+      </div></div>`;
+  }).join('');
+  prTotals();
+}
+// Item name typed or picked: the master's own spelling, description, category and UOM.
+function prItemName(i, v, committed) {
+  const it = PRF && PRF.items[i]; if (!it) return;
+  const m = PRM.byName[normName(v)];
+  it.name = v;
+  if (m) {
+    Object.assign(it, { itemId: m.id, desc: m.desc || '', category: m.category || '', uom: m.uom || '' });
+    if (committed) { it.name = m.name; $('pfN' + i).value = m.name; }
+    if (!String(it.make || '').trim() && m.make) { it.make = m.make; $('pfMk' + i).value = m.make; }
+    $('pfN' + i).classList.remove('miss');
+    prAutoPurchaser(m.category);
+  } else Object.assign(it, { itemId: '', desc: '', category: '', uom: '' });
+  const meta = prItemMeta(it, committed), el = $('pfM' + i);
+  el.className = 'meta2 ' + meta.cls; el.textContent = meta.t;
+  $('pfU' + i).textContent = it.uom ? '(' + it.uom + ')' : '';
+  prTouch();
+}
+function prItem(i, k, el) { const it = PRF && PRF.items[i]; if (!it) return; it[k] = el.value; el.classList.remove('miss'); prTouch(); }
+function prAddItem(focus) {
+  if (PRF.items.length >= PR_MAX_ITEMS) return $('pfErr').innerHTML = ERR.TOO_MANY_ITEMS;
+  PRF.items.push(blankItem()); prItemsRender(); prTouch();
+  if (focus) { const e = $('pfN' + (PRF.items.length - 1)); if (e) { e.scrollIntoView({ block: 'center', behavior: 'smooth' }); e.focus(); } }
+}
+function prRemoveItem(i) {
+  // The last card is emptied instead, so the form always has one item to fill.
+  if (PRF.items.length <= 1) PRF.items = [blankItem()]; else PRF.items.splice(i, 1);
+  prItemsRender(); prTouch();
+}
+const prFilled = it => String(it.name || '').trim() || num(it.qty) > 0 || String(it.machine || '').trim() || String(it.remarks || '').trim() || num(it.grossWeight) > 0;
+function prTotals() {
+  if (!PRF) return;
+  const f = PRF.items.filter(it => it.itemId && num(it.qty) > 0).length;
+  $('pfTot').innerHTML = `<b>${f}</b> item${f === 1 ? '' : 's'} ready`;
+}
+
+// Checked here first (the server checks the same again), then the PIN.
+function prSubmit() {
+  if (!PRF) return;
+  $('pfErr').textContent = '';
+  const stop = (el, html) => { if (el) { el.classList.add('miss'); try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); } catch (e) {} } $('pfErr').innerHTML = html; };
+  PRF.requiredBy = $('pfReqBy').value || ''; PRF.purchaser = $('pfPurch').value || ''; PRF.notes = $('pfNotes').value || '';
+  if (!PRF.requiredBy) return stop($('pfReqBy'), ERR.REQUIRED_BY);
+  const floor = PRF.reqNo && PRF.origRequiredBy && PRF.origRequiredBy < todayIso() ? PRF.origRequiredBy : todayIso();
+  if (PRF.requiredBy < floor) return stop($('pfReqBy'), ERR.REQUIRED_BY_PAST);
+  if (!PRF.priority) return stop($('pfPrio'), ERR.PRIORITY);
+  if (!PRF.purchaser) return stop($('pfPurch'), ERR.PURCHASER);
+  const items = [];
+  for (let i = 0; i < PRF.items.length; i++) {
+    const it = PRF.items[i];
+    if (!prFilled(it)) continue;      // an untouched spare card
+    const m = PRM.byId[it.itemId] || PRM.byName[normName(it.name)];
+    if (!m) return stop($('pfN' + i), 'Item ' + (i + 1) + ': ' + ERR_ITEM.ITEM_NOT_FOUND + '.');
+    if (!(num(it.qty) > 0)) return stop($('pfQ' + i), 'Item ' + (i + 1) + ': ' + ERR_ITEM.QTY + '.');
+    const mt = String(it.machine || '').trim();
+    if (!mt) return stop($('pfMc' + i), 'Item ' + (i + 1) + ': ' + ERR_ITEM.MACHINE + '.');
+    // Saved in the Machine Master's own spelling, whatever the case typed.
+    const mm = (PRM.machines || []).length ? PRM.machByKey[normName(mt)] : mt;
+    if (!mm) return stop($('pfMc' + i), 'Item ' + (i + 1) + ': ' + ERR_ITEM.MACHINE_NOT_FOUND + '.');
+    items.push({ itemId: m.id, qty: num(it.qty), machine: mm, make: String(it.make || '').trim().toUpperCase(),
+                 grossWeight: num(it.grossWeight) > 0 ? num(it.grossWeight) : null, remarks: String(it.remarks || '').trim().toUpperCase() });
+  }
+  if (!items.length) return stop($('pfN0'), ERR.NO_ITEMS);
+  if (items.length > PR_MAX_ITEMS) return stop(null, ERR.TOO_MANY_ITEMS);
+  PRF.payload = { requiredBy: PRF.requiredBy, priority: PRF.priority, purchaser: PRF.purchaser, notes: String(PRF.notes || '').trim().toUpperCase(), items };
+  PIN_MODE = 'pr';
+  $('pinSub').textContent = (PRF.reqNo ? 'Save the changes to ' + PRF.reqNo : 'Raise this request') + ` (${items.length} item${items.length === 1 ? '' : 's'}, Purchaser ${PRF.purchaser}). Your own login PIN signs it in your name.`;
+  $('pinIn').value = ''; $('pinErr').textContent = ''; openSheet('pinSheet'); setTimeout(() => $('pinIn').focus(), 50);
+}
+async function submitPr() {
+  if (!PRF || !PRF.payload) return closeSheet('pinSheet');
+  const pin = $('pinIn').value.trim();
+  if (!/^\d{4,8}$/.test(pin)) return $('pinErr').textContent = 'Enter your 4 to 8 digit PIN.';
+  const b = $('pinBtn'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Saving';
+  const res = await rpc('mr_pr_save', { p_pin: pin, p_req_no: PRF.reqNo || null, p_data: PRF.payload });
+  b.disabled = false; b.textContent = 'Submit';
+  if (!res.ok) {
+    if (res.error === 'PIN_INVALID' || res.error === 'TOO_MANY_ATTEMPTS') { $('pinErr').innerHTML = errText(res); $('pinIn').value = ''; return; }
+    if (res.error === 'NO_MIGRATION') res.error = 'NO_PR_MIGRATION';
+    closeSheet('pinSheet'); $('pfErr').innerHTML = errText(res);
+    return message('Not saved', errText(res), true);
+  }
+  closeSheet('pinSheet');
+  const d = res.data, wasEdit = !!PRF.reqNo;
+  if (!wasEdit) { try { localStorage.removeItem(draftKey()); } catch (e) {} }
+  closePrForm(true);
+  await load(false);
+  if (DATA.some(p => p.reqNo === d.reqNo)) openDetail(d.reqNo);
+  message(wasEdit ? 'Changes saved' : 'Request raised',
+    wasEdit ? `<b>${esc(d.reqNo)}</b> is updated${d.reopenedFrom ? ' and sent again to <b>' + esc(d.purchaser) + '</b> as a fresh request' : '; <b>' + esc(d.purchaser) + '</b> sees the changes'}.`
+            : `<b>${esc(d.reqNo)}</b> is raised with ${Number(d.items) || 0} item(s) and has gone to <b>${esc(d.purchaser)}</b>. You can follow it here.`, false);
+}
+
+// The Edit box at the top of a PR's detail, under its status box.
+function editBox(pr) {
+  const btn = (t, cls) => `<button class="btn ${cls || 'edit'} sm" onclick="openPrForm('${esc(pr.reqNo)}')">${t}</button>`;
+  if (pr.canEdit) {
+    if (pr.state === 'REJECTED') return `<div class="note n-blue"><div class="cta"><span><b>Correct it and send it again.</b> It goes back to the Purchaser as a fresh request.</span>${btn('Edit &amp; send again', 'pri')}</div></div>`;
+    if (pr.hold) return `<div class="note n-warn"><div class="cta"><span><b>On hold${pr.hold.by ? ' by ' + esc(pr.hold.by) : ''}.</b>${pr.hold.remarks ? ' “' + esc(pr.hold.remarks) + '”' : ''} Correct it and save; it goes back to the Purchaser.</span>${btn('Edit PR', 'pri')}</div></div>`;
+    return `<div class="note n-blue"><div class="cta"><span>The Purchaser has not started yet, so you can still change this request.</span>${btn('Edit PR')}</div></div>`;
+  }
+  if (pr.editWhy === 'PURCHASER_WORKING') return `<div class="note n-blue" style="font-size:12.5px">${editWhyText(pr)}</div>`;
+  return '';
+}
+// Edits and re-sends on the Tracking line (from pdf_snapshot.requesterEdits).
+function editEvents(pr, add, q) {
+  (pr.edits || []).forEach(ed => {
+    const rj = ed.rejection, hd = ed.hold, bf = ed.before || {};
+    if (rj && rj.at) add(rj.at, 'bad', 'Request rejected', rj.by ? 'by ' + esc(rj.by) : '', q(rj.remarks));
+    if (hd && hd.at) add(hd.at, 'bad', 'Put on hold', hd.by ? 'by ' + esc(hd.by) : '', q(hd.remarks));
+    const was = [(bf.items || []).length + ' item(s)', bf.requiredBy ? 'needed by ' + esc(fD(bf.requiredBy)) : '', bf.priority ? esc(bf.priority) : '', bf.purchaser ? 'Purchaser ' + esc(bf.purchaser) : ''].filter(Boolean).join(' · ');
+    add(ed.at || ed.time, 'me', ed.reopenedFrom ? 'You corrected it and sent it again' : 'You edited the request', 'by ' + esc(ed.by || 'you'),
+      '<span class="muted">Before: ' + was + '</span>' + ((bf.items || []).length ? '<ul class="lst">' + bf.items.map(x => `<li>${esc(x.item || '')}: ${nfmt(x.qty)} ${esc(x.uom || '')}</li>`).join('') + '</ul>' : ''));
+  });
+}
+
 /* ── Load / boot ──────────────────────────────────────────────────────── */
 async function load(showSkel) {
   if (showSkel) $('list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
@@ -803,13 +1282,14 @@ async function load(showSkel) {
   if (!res.ok) { $('banner').innerHTML = `<div class="note n-bad">${errText(res)}</div>`; $('list').innerHTML = ''; $('tabs').innerHTML = ''; return; }
   $('banner').innerHTML = '';
   DATA = res.data.requests || [];
+  ME = res.data.me || null;
   FBDEC = { req: null, d: {} };   // fresh data, fresh choices (an item may have changed meanwhile)
   $('who').textContent = (res.data.me.name || '') + ' · ' + (res.data.me.empCode || '');
   // Open on the tab that has something; "Needs your action" first.
   if (showSkel === 'boot') { let k = null; try { k = sessionStorage.getItem('mr_tab'); } catch (e) {} TAB = k || (DATA.some(p => (STATE[p.state] || {}).tab === 'action') ? 'action' : 'progress'); }
   renderTabs(); renderList();
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { ['msgSheet', 'pinSheet', 'confirmSheet'].forEach(closeSheet); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { ['msgSheet', 'pinSheet', 'confirmSheet', 'fbItemSheet'].forEach(closeSheet); } });
 
 (async function boot() {
   USER = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Track My Store Request' });
