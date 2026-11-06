@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#4c1d95">
+<title>Issue Supervisor</title>
+<!-- First, so a logged-in user never sees a flash of anything else. -->
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<!--
+  ISSUE SUPERVISOR: approves every new Store 1 / Store 2 Issue.
+
+  ERP › Issue › Submit sends the entry here (issue_approvals, status Pending)
+  to the supervisor the store picked. The supervisor ticks each item as it is
+  checked, takes photos of the material being handed over and approves with
+  their OWN login PIN, or rejects with a reason.
+
+  APPROVE = SAVE: iss_decide posts the Issue on the server in the same step
+  (stock checked again, the store's next Issue number, outward_entries +
+  lines), so the store never submits it again. The ERP then makes the Issue
+  PDF from the saved data (issPdfWorker_ in store-core.js) and its links show
+  under History here and under Issue Completed in the ERP.
+
+  LOGIN = ERP LOGIN (launcher.html). App key HOME_ISSUER, given by the Admin
+  under Tab Visibility or Users › Apps. Everything goes through the iss_* RPCs
+  in sql/ISSUE_SUPERVISOR_MIGRATION.sql, which check the session, the app
+  access and the PIN on the server and take the approver's details from
+  app_users, so nothing on this page can approve on someone else's behalf.
+  Rates are not shown: the supervisor checks what physically goes out.
+-->
+<style>
+  :root{
+    --v9:#2e1065;--v8:#4c1d95;--v7:#6d28d9;--v6:#7c3aed;--v1:#f3f0ff;--v2:#ede9fe;
+    --ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--bg:#f6f5fb;--card:#fff;
+    --ok:#16a34a;--okbg:#f0fdf4;--bad:#dc2626;--badbg:#fef2f2;--warn:#d97706;--warnbg:#fffbeb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  button{font:inherit}
+  .app{max-width:760px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column}
+  header{position:sticky;top:0;z-index:20;background:var(--v8);color:#fff;padding:12px 14px 14px}
+  .hrow{display:flex;align-items:center;gap:10px}
+  .logo{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .htitle{flex:1;min-width:0}
+  .htitle b{display:block;font-size:16px;letter-spacing:.01em}
+  .htitle span{display:block;font-size:11px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hbtn{border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;border-radius:9px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+  .stat{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:11px;padding:8px 10px}
+  .stat b{display:block;font-size:20px;line-height:1.1}
+  .stat span{font-size:10.5px;opacity:.8;font-weight:600}
+  .stat.hot b{color:#fde68a}
+  .seg{display:flex;gap:6px;padding:10px 12px 0;background:var(--bg);position:sticky;top:0}
+  .seg button{flex:1;border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px;font-weight:800;font-size:13px;color:var(--mut);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+  .seg button .c{background:var(--v2);color:var(--v8);border-radius:20px;padding:1px 8px;font-size:11px}
+  .seg button.on{background:var(--v8);border-color:var(--v8);color:#fff}
+  .seg button.on .c{background:#fff}
+  .search{padding:10px 12px 4px}
+  .search input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:#fff;outline:none}
+  .search input:focus{border-color:var(--v6)}
+  .note{margin:8px 12px 0;padding:10px 12px;border-radius:10px;font-size:12.5px;font-weight:600}
+  .note.bad{background:var(--badbg);border:1px solid #fecaca;color:#991b1b}
+  .list{padding:8px 12px 90px;display:grid;gap:10px}
+  .empty{text-align:center;padding:50px 18px;color:var(--mut);font-size:13.5px}
+  .empty .ic{width:64px;height:64px;margin:0 auto 12px;border-radius:18px;background:var(--v1);color:var(--v7);display:flex;align-items:center;justify-content:center}
+  .empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:4px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 13px;box-shadow:0 1px 2px rgba(15,23,42,.04);cursor:pointer;position:relative;overflow:hidden;transition:transform .12s, box-shadow .12s}
+  .card:active{transform:scale(.99)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--k,var(--v6))}
+  .card.A{--k:var(--ok)}.card.R{--k:var(--bad)}.card.short{--k:var(--warn)}
+  .ctop{display:flex;align-items:center;gap:8px}
+  .rno{font-weight:900;font-size:13px;color:var(--v8)}
+  .tag{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px}
+  .tag.s1{background:#ede9fe;color:#5b21b6}.tag.s2{background:#ccfbf1;color:#0f766e}
+  .age{margin-left:auto;font-size:11px;font-weight:800;color:var(--warn);background:var(--warnbg);border-radius:20px;padding:2px 9px;white-space:nowrap}
+  .age.ok{color:var(--ok);background:var(--okbg)}.age.bad{color:var(--bad);background:var(--badbg)}
+  .who{display:flex;align-items:center;gap:11px;margin:10px 0 8px}
+  .av{width:42px;height:42px;border-radius:12px;background:var(--v1);color:var(--v7);font-weight:900;display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-size:15px}
+  .who b{display:block;font-size:15px}
+  .who span{display:block;font-size:12px;color:var(--mut)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11.5px;font-weight:700;background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:4px 8px;color:#334155}
+  .chip.k{background:var(--warnbg);border-color:#fde68a;color:#92400e}
+  .cfoot{margin-top:9px;font-size:11.5px;color:var(--mut);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .cfoot .go{color:var(--v7);font-weight:800}
+  .shortbox{margin-top:9px;background:var(--warnbg);border:1px solid #fde68a;color:#92400e;border-radius:9px;padding:7px 9px;font-size:11.5px;font-weight:700}
+  .pdfs{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .pdfs a,.pdfs span{font-size:12px;font-weight:800;border-radius:8px;padding:6px 10px;text-decoration:none;border:1px solid #c4b5fd;color:var(--v8);background:#fff}
+  .pdfs a.main{background:var(--v8);color:#fff;border-color:var(--v8)}
+  .pdfs span{border-color:#fde68a;color:#92400e;background:var(--warnbg)}
+  /* Sheet: bottom sheet on a phone, centred panel on a wide screen. */
+  .ov{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;display:none;align-items:flex-end;justify-content:center}
+  .ov.on{display:flex}
+  .sheet{background:var(--bg);width:100%;max-width:760px;max-height:94vh;border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:up .22s ease-out}
+  @keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
+  @media (min-width:800px){.ov{align-items:center}.sheet{border-radius:18px;max-height:90vh}}
+  .shd{background:#fff;border-bottom:1px solid var(--line);padding:12px 14px;display:flex;align-items:center;gap:10px}
+  .shd b{flex:1;font-size:15px}
+  .x{border:1px solid var(--line);background:#fff;width:34px;height:34px;border-radius:10px;font-size:16px;cursor:pointer;color:#334155}
+  .sbody{overflow:auto;padding:12px 14px 16px;flex:1}
+  .sfoot{background:#fff;border-top:1px solid var(--line);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px}
+  .box{background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px;margin-bottom:10px}
+  .box h4{margin:0 0 9px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .box h4 small{font-weight:700;color:var(--mut);font-size:11.5px}
+  .kv{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px;font-size:12.5px}
+  .kv span{display:block;font-size:10px;color:#94a3b8;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+  .kv b{word-break:break-word}
+  .item{display:flex;gap:11px;align-items:flex-start;padding:10px;border:1px solid var(--line);border-radius:11px;margin-bottom:7px;cursor:pointer;background:#fff;transition:background .12s,border-color .12s}
+  .item .tk{width:26px;height:26px;border-radius:8px;border:2px solid #cbd5e1;flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:14px;margin-top:1px}
+  .item.on{background:var(--okbg);border-color:#86efac}
+  .item.on .tk{background:var(--ok);border-color:var(--ok)}
+  .item .nm{flex:1;min-width:0}
+  .item .nm b{display:block;font-size:13.5px}
+  .item .nm span{display:block;font-size:11.5px;color:var(--mut);margin-top:2px}
+  .item .q{text-align:right;white-space:nowrap}
+  .item .q b{display:block;font-size:16px;color:var(--v8)}
+  .item .q span{font-size:11px;color:var(--mut)}
+  .item .lack{display:block;color:var(--bad);font-weight:800;font-size:11px;margin-top:3px}
+  .bar{height:6px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .2s}
+  .thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  .th{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#f1f5f9}
+  .th img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .th button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:none;background:rgba(15,23,42,.65);color:#fff;font-size:12px;cursor:pointer}
+  .pick{display:flex;gap:8px;margin-bottom:9px}
+  .pick label{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:12px;border:1.5px dashed #a78bfa;border-radius:11px;background:var(--v1);color:var(--v8);font-weight:800;font-size:13px;cursor:pointer}
+  .pick input{display:none}
+  .hint{font-size:11.5px;color:var(--mut);margin-top:6px;line-height:1.4}
+  textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;font-size:13.5px;resize:vertical;min-height:62px;outline:none}
+  textarea:focus{border-color:var(--v6)}
+  .btn{flex:1;border:0;border-radius:12px;padding:13px;font-weight:900;font-size:14.5px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+  .btn.ok{background:var(--ok);color:#fff}
+  .btn.no{background:#fff;color:var(--bad);border:1.5px solid #fca5a5}
+  .btn.v{background:var(--v8);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .decided{border-radius:12px;padding:11px 12px;font-size:12.5px;font-weight:600;margin-bottom:10px;line-height:1.5}
+  .decided.ok{background:var(--okbg);border:1px solid #86efac;color:#14532d}
+  .decided.no{background:var(--badbg);border:1px solid #fca5a5;color:#991b1b}
+  .pinbox{background:#fff;width:100%;max-width:400px;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));animation:up .2s ease-out}
+  @media (min-width:800px){.pinbox{border-radius:18px}}
+  .pinbox h3{margin:0 0 4px;font-size:16px}
+  .pinbox p{margin:0 0 12px;font-size:12px;color:var(--mut);line-height:1.45}
+  .pinin{width:100%;font-size:28px;letter-spacing:.5em;text-align:center;font-weight:900;padding:12px;border:1.5px solid var(--line);border-radius:12px;outline:none}
+  .pinin:focus{border-color:var(--v6)}
+  .err{display:none;margin:9px 0 0;color:var(--bad);font-weight:700;font-size:12.5px}
+  .done{text-align:center;padding:30px 18px 24px}
+  .done .ring{width:84px;height:84px;border-radius:50%;margin:0 auto 14px;background:var(--okbg);color:var(--ok);display:flex;align-items:center;justify-content:center;animation:pop .35s ease-out}
+  .done.no .ring{background:var(--badbg);color:var(--bad)}
+  @keyframes pop{0%{transform:scale(.5);opacity:0}70%{transform:scale(1.08)}100%{transform:none;opacity:1}}
+  .done h3{margin:0 0 6px;font-size:18px}
+  .done p{margin:0;color:var(--mut);font-size:13px;line-height:1.5}
+  .done .no2{display:inline-block;margin-top:10px;font-weight:900;font-size:16px;color:var(--v8);background:var(--v1);border-radius:10px;padding:7px 12px}
+  #busy{position:fixed;inset:0;z-index:300;background:rgba(255,255,255,.78);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;font-weight:800;color:var(--v8)}
+  #busy i{width:38px;height:38px;border-radius:50%;border:4px solid var(--v2);border-top-color:var(--v7);animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:10px 16px;border-radius:22px;font-size:13px;font-weight:700;z-index:400;display:none;max-width:90%;text-align:center}
+  #viewer{position:fixed;inset:0;z-index:250;background:rgba(15,23,42,.92);display:none;align-items:center;justify-content:center;padding:14px}
+  #viewer img{max-width:100%;max-height:100%;border-radius:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="hrow">
+      <div class="logo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div class="htitle"><b>Issue Supervisor</b><span id="meLine">Loading…</span></div>
+      <button class="hbtn" onclick="load(true)" title="Refresh now">↻</button>
+      <button class="hbtn" onclick="askLogout()" title="Log out of all apps">Log out</button>
+    </div>
+    <div class="stats">
+      <div class="stat" id="stP"><b id="nP">0</b><span>To approve</span></div>
+      <div class="stat"><b id="nA">0</b><span>Approved today</span></div>
+      <div class="stat"><b id="nR">0</b><span>Rejected · 7 days</span></div>
+    </div>
+  </header>
+
+  <div class="seg">
+    <button id="tabP" onclick="setTab('PENDING')">To Approve <span class="c" id="cP">0</span></button>
+    <button id="tabD" onclick="setTab('DONE')">History · 7 days <span class="c" id="cD">0</span></button>
+  </div>
+  <div class="search"><input type="search" id="q" placeholder="Receiver / department / item / request no." autocomplete="off" oninput="renderList()"></div>
+  <div id="profileNote"></div>
+  <div class="list" id="list"><div class="empty">Loading…</div></div>
+</div>
+
+<!-- One request -->
+<div class="ov" id="reqOv">
+  <div class="sheet">
+    <div class="shd"><b id="mTitle">Issue</b><button class="x" onclick="closeReq()" title="Close">✕</button></div>
+    <div class="sbody" id="mBody"></div>
+    <div class="sfoot" id="mFoot"></div>
+  </div>
+</div>
+
+<!-- PIN: the supervisor's own login PIN signs the decision -->
+<div class="ov" id="pinOv" style="z-index:150;">
+  <div class="pinbox">
+    <h3 id="pinTitle">Enter your PIN</h3>
+    <p>Your own login PIN. Your Name, Emp Code and Mobile No. are recorded with this decision and printed on the Issue PDF.</p>
+    <input type="password" id="pinIn" class="pinin" inputmode="numeric" maxlength="8" autocomplete="off" name="pin-code" placeholder="••••" onkeydown="if(event.key==='Enter')submitDecision()">
+    <div class="err" id="pinErr"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn no" style="color:#334155;border-color:var(--line)" onclick="closePin()">Cancel</button>
+      <button class="btn ok" id="pinBtn" onclick="submitDecision()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div id="viewer" onclick="this.style.display='none'"><img id="viewerImg" alt=""></div>
+<div id="busy"><i></i><span id="busyText">Working…</span></div>
+<div id="toast"></div>
+
+<script>
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_ISSUER';
+// Same photo size as the Unloader app: readable when zoomed, small on a weak signal.
+const PHOTO_MAX_SIDE = 1600, PHOTO_JPEG_Q = 0.8, PHOTO_MAX = 10;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+const fmtN = v => { const n = num(v); return n % 1 === 0 ? String(n) : n.toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); };
+function stamp(v){
+  if (!v) return '';
+  const d = new Date(v); if (isNaN(d)) return String(v);
+  const z = n => String(n).padStart(2, '0');
+  return z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+}
+function ago(v){
+  const t = new Date(v).getTime(); if (!t) return '';
+  const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? m + ' min' : m < 1440 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' m' : Math.floor(m / 1440) + ' day(s)';
+}
+const initials = s => String(s || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+const storeTag = s => s === 'STORE 1' ? '<span class="tag s1">Store 1</span>' : '<span class="tag s2">Store 2</span>';
+
+let TAB = 'PENDING', ROWS = { PENDING: [], DONE: [] }, STOCK = {}, ME = {}, OPEN = null, PHOTOS = [], TICKS = {}, ACTION = '';
+
+/* ── Server calls: one door for every iss_* RPC ───────────────────────── */
+const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
+const ERR_TEXT = {
+  PIN_INVALID: 'Wrong PIN. Please try again.',
+  TOO_MANY_ATTEMPTS: 'Too many wrong PINs. Please wait 15 minutes and try again.',
+  PIN_CHECK_UNAVAILABLE: 'The PIN could not be checked right now. Please try again later.',
+  PHOTO_REQUIRED: 'Add at least one photo of the material being issued.',
+  PHOTO_INVALID: 'One of the photos could not be read. Remove it and take it again.',
+  TOO_MANY_PHOTOS: 'At most ' + PHOTO_MAX + ' photos.',
+  REMARKS_REQUIRED: 'Write the reason for rejecting in Remarks.',
+  PROFILE_INCOMPLETE: 'Your Emp Code or Contact No. is missing in your user profile, and both are printed on the Issue PDF. Ask the Admin to fill them in (Admin Panel › Users).',
+  ALREADY_APPROVED: 'This Issue has already been approved.',
+  ALREADY_REJECTED: 'This Issue has already been rejected.',
+  ALREADY_CANCELLED: 'The store has withdrawn this Issue. Refresh the list.',
+  NOT_FOUND: 'This Issue was not found. Refresh the list.',
+  NOT_ASSIGNED: 'The store has moved this Issue to a different supervisor. It is no longer in your list.',
+  STOCK_SHORT: 'Not enough stock in the store for this Issue, so it was not saved.'
+};
+async function rpc(fn, args){
+  let r;
+  try {
+    r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify(Object.assign({ p_token: SARV_GATE.token }, args || {}))
+    });
+  } catch (e) { throw new Error('Could not reach the server. Please check the internet connection.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) {
+    const code = d && d.code;
+    if (code === 'PGRST202' || code === '42883' || code === '42P01') {
+      throw new Error('The Issue Supervisor approval is not set up on the server yet. Admin: run sql/ISSUE_SUPERVISOR_MIGRATION.sql in the Supabase SQL Editor.');
+    }
+    throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
+  }
+  if (d && d.success === false) {
+    const err = String(d.error || '');
+    if (SESSION_ERR[err]) { location.replace('launcher.html?why=' + err); return new Promise(() => {}); }
+    if (err === 'NO_APP_ACCESS') {
+      SARV_GATE.halt('Issue Supervisor', 'The Issue Supervisor app is turned off for your login. Ask the Admin to switch it <b>ON</b> under <i>Admin Panel › Users › Apps</i>, then log in again.', err);
+      return new Promise(() => {});
+    }
+    const e = new Error(ERR_TEXT[err] || err); e.code = err; e.data = d; throw e;
+  }
+  return d;
+}
+function busy(on, text){ $('busy').style.display = on ? 'flex' : 'none'; if (text) $('busyText').textContent = text; }
+let toastT = null;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, 2800); }
+
+/* ── Lists ─────────────────────────────────────────────────────────── */
+async function load(manual){
+  try {
+    const [p, d] = await Promise.all([rpc('iss_list', { p_scope: 'PENDING' }), rpc('iss_list', { p_scope: 'DONE' })]);
+    ROWS.PENDING = p.rows || []; ROWS.DONE = d.rows || []; STOCK = p.stock || {}; ME = p.me || {};
+    $('meLine').textContent = (ME.name || '-') + (ME.emp_code ? ' · ' + ME.emp_code : '') + (ME.designation ? ' · ' + ME.designation : '');
+    // Warned up front, not at the PIN: an approval without these is refused.
+    $('profileNote').innerHTML = (!ME.emp_code || !ME.contact_no)
+      ? '<div class="note bad">Your ' + [!ME.emp_code ? 'Emp Code' : '', !ME.contact_no ? 'Contact No.' : ''].filter(Boolean).join(' and ')
+        + ' is missing in your user profile. Both are printed on the Issue PDF, so you cannot approve until the Admin fills them in (Admin Panel › Users).</div>' : '';
+    renderStats(); renderList();
+    if (manual) toast('List refreshed');
+  } catch (e) {
+    $('list').innerHTML = '<div class="note bad" style="margin:0;">' + esc(e.message || e) + '</div>';
+  }
+}
+function renderStats(){
+  const todayKey = new Date().toDateString();
+  const appr = ROWS.DONE.filter(r => r.status === 'Approved' && new Date(r.decided_at).toDateString() === todayKey).length;
+  const rej = ROWS.DONE.filter(r => r.status === 'Rejected').length;
+  $('nP').textContent = ROWS.PENDING.length; $('nA').textContent = appr; $('nR').textContent = rej;
+  $('stP').classList.toggle('hot', ROWS.PENDING.length > 0);
+  $('cP').textContent = ROWS.PENDING.length; $('cD').textContent = ROWS.DONE.length;
+  $('tabP').classList.toggle('on', TAB === 'PENDING'); $('tabD').classList.toggle('on', TAB === 'DONE');
+}
+function setTab(k){ TAB = k; try { sessionStorage.setItem('iss_tab', k); } catch (e) {} renderStats(); renderList(); }
+const itemsOf = r => (r && r.payload && Array.isArray(r.payload.rows)) ? r.payload.rows : [];
+const shortOf = r => (STOCK && STOCK[String(r.id)]) || [];
+function matches(r, q){
+  if (!q) return true;
+  const hay = [r.request_no, r.document_no, r.receiver_name, r.receiver_emp_code, r.department, r.party_name, r.lot_no, r.requested_by]
+    .concat(itemsOf(r).map(x => x.itemName)).join(' ').toUpperCase();
+  return q.split(/\s+/).every(w => hay.indexOf(w) >= 0);
+}
+function renderList(){
+  const q = ($('q').value || '').trim().toUpperCase();
+  const list = ROWS[TAB].filter(r => matches(r, q));
+  if (!list.length) {
+    $('list').innerHTML = '<div class="empty"><div class="ic"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div>'
+      + '<b>' + (q ? 'Nothing matches the search' : TAB === 'PENDING' ? 'All clear' : 'Nothing in the last 7 days') + '</b>'
+      + (q ? '' : TAB === 'PENDING' ? 'New Issues appear here as soon as the store sends them to you.' : 'Issues you approve or reject are listed here for 7 days.') + '</div>';
+    return;
+  }
+  $('list').innerHTML = list.map(r => {
+    const it = itemsOf(r), qty = it.reduce((s, x) => s + num(x.qty), 0), sh = shortOf(r);
+    const k = r.status === 'Approved' ? 'A' : r.status === 'Rejected' ? 'R' : (sh.length ? 'short' : 'P');
+    const age = r.status === 'Pending' ? '<span class="age">' + esc(ago(r.requested_at)) + '</span>'
+      : r.status === 'Approved' ? '<span class="age ok">Approved</span>' : '<span class="age bad">Rejected</span>';
+    let extra = '';
+    if (r.status === 'Pending' && sh.length) extra = '<div class="shortbox">Stock short: ' + sh.map(s => esc(s.name) + ' (have ' + esc(fmtN(s.stock)) + ', need ' + esc(fmtN(s.want)) + ')').join(', ') + '</div>';
+    if (r.status === 'Approved') extra = pdfLinks(r);
+    if (r.status === 'Rejected' && r.remarks) extra = '<div class="shortbox" style="background:var(--badbg);border-color:#fecaca;color:#991b1b">Reason: ' + esc(r.remarks) + '</div>';
+    return '<div class="card ' + k + '" onclick="openReq(' + r.id + ')">'
+      + '<div class="ctop"><span class="rno">' + esc(r.status === 'Approved' && r.document_no ? r.document_no : (r.request_no || '#' + r.id)) + '</span>' + storeTag(r.store) + age + '</div>'
+      + '<div class="who"><div class="av">' + esc(initials(r.receiver_name)) + '</div><div style="min-width:0"><b>' + esc(r.receiver_name || '-') + '</b>'
+      + '<span>' + esc([r.receiver_emp_code, r.department].filter(Boolean).join(' · ') || '-') + '</span></div></div>'
+      + '<div class="meta"><span class="chip">' + it.length + ' item(s)</span><span class="chip">Qty ' + esc(fmtN(qty)) + '</span>'
+      + (r.lot_no ? '<span class="chip k">Lot ' + esc(r.lot_no) + '</span>' : '') + '</div>'
+      + extra
+      + '<div class="cfoot"><span>Sent by ' + esc(r.requested_by || '-') + ' · ' + esc(stamp(r.requested_at)) + '</span>'
+      + (r.status === 'Pending' ? '<span class="go">Check &amp; approve ›</span>' : '<span>' + esc(stamp(r.decided_at)) + '</span>') + '</div></div>';
+  }).join('');
+}
+function pdfLinks(r){
+  const p = r.pdf || {};
+  if (!(p.SINGLE || p.TWO_PAGE || p.INVOICE)) return '<div class="pdfs"><span>PDF being made by the ERP…</span></div>';
+  const a = (u, t, c) => u ? '<a class="' + (c || '') + '" href="' + esc(u) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + t + '</a>' : '';
+  return '<div class="pdfs">' + a(p.SINGLE, '1-Page PDF', 'main') + a(p.TWO_PAGE, '2-Page PDF') + a(p.INVOICE, 'Original Invoice + Photos') + '</div>';
+}
+
+/* ── One request ───────────────────────────────────────────────────── */
+function openReq(id){
+  const r = ROWS[TAB].find(x => x.id === id); if (!r) return;
+  OPEN = r; PHOTOS = []; TICKS = {};
+  $('mTitle').innerHTML = esc(r.request_no || '#' + r.id) + ' ' + storeTag(r.store);
+  renderReq();
+  $('reqOv').classList.add('on');
+  loadStorePhotos(r.id);
+}
+function renderReq(){
+  const r = OPEN; if (!r) return;
+  const h = (r.payload && r.payload.header) || {}, it = itemsOf(r), sh = shortOf(r), pend = r.status === 'Pending';
+  const lack = {}; sh.forEach(s => { lack[String(s.name).toUpperCase()] = s; });
+  const ticked = it.filter((x, i) => TICKS[i]).length;
+  let html = '';
+  if (!pend) {
+    const a = r.approver || {};
+    html += r.status === 'Approved'
+      ? '<div class="decided ok">Approved by <b>' + esc(a.name || r.decided_by || '-') + '</b>' + (a.emp_code ? ' (' + esc(a.emp_code) + ')' : '')
+        + ' · ' + esc(stamp(r.decided_at)) + '<br>Saved as <b>' + esc(r.document_no || '-') + '</b> · ' + esc(r.photo_count || 0) + ' photo(s)'
+        + (r.remarks ? '<br>Remarks: ' + esc(r.remarks) : '') + pdfLinks(r) + '</div>'
+      : '<div class="decided no">Rejected by <b>' + esc(r.decided_by || '-') + '</b> · ' + esc(stamp(r.decided_at)) + (r.remarks ? '<br>Reason: ' + esc(r.remarks) : '') + '</div>';
+  }
+  html += '<div class="box"><h4>Receiver</h4><div class="who" style="margin:0 0 10px"><div class="av">' + esc(initials(r.receiver_name)) + '</div><div><b>' + esc(r.receiver_name || '-') + '</b><span>'
+    + esc([r.receiver_emp_code, h.receiver_designation].filter(Boolean).join(' · ') || '-') + '</span></div></div>'
+    + '<div class="kv"><div><span>Department</span><b>' + esc(r.department || '-') + '</b></div><div><span>Party</span><b>' + esc(r.party_name || '-') + '</b></div>'
+    + '<div><span>Nature</span><b>' + esc(h.nature_of_dispatch || 'CONSUMABLE') + '</b></div><div><span>Lot No.</span><b>' + esc(r.lot_no || '-') + '</b></div>'
+    + '<div><span>Sent by</span><b>' + esc(r.requested_by || '-') + '</b></div><div><span>Sent at</span><b>' + esc(stamp(r.requested_at)) + '</b></div></div>'
+    + (h.notes ? '<div class="hint" style="margin-top:9px;color:#334155"><b>Store remarks:</b> ' + esc(h.notes) + '</div>' : '') + '</div>';
+  html += '<div class="box"><h4>Items to hand over <small>' + (pend ? ticked + ' / ' + it.length + ' checked' : it.length + ' item(s)') + '</small></h4>'
+    + (pend ? '<div class="bar" style="margin:-3px 0 10px"><i style="width:' + (it.length ? Math.round(ticked * 100 / it.length) : 0) + '%"></i></div>' : '')
+    + it.map((x, i) => {
+      const l = lack[String(x.itemName || '').trim().toUpperCase()];
+      return '<div class="item' + (TICKS[i] ? ' on' : '') + '"' + (pend ? ' onclick="tick(' + i + ')"' : ' style="cursor:default"') + '>'
+        + (pend ? '<div class="tk">' + (TICKS[i] ? '✓' : '') + '</div>' : '')
+        + '<div class="nm"><b>' + esc(x.itemName || '') + '</b><span>' + esc([x.make, x.category].filter(Boolean).join(' · '))
+        + (x.machineName || x.machineNo ? ' · Machine ' + esc([x.machineName, x.machineNo].filter(Boolean).join(' / ')) : '') + '</span>'
+        + (l ? '<span class="lack">Stock in store: ' + esc(fmtN(l.stock)) + ' (short)</span>' : '') + '</div>'
+        + '<div class="q"><b>' + esc(fmtN(x.qty)) + '</b><span>' + esc(x.qtyUom || '') + (num(x.weight) ? ' · ' + esc(fmtN(x.weight)) + ' ' + esc(x.wUnit || 'KGS') : '') + '</span></div></div>';
+    }).join('') + (pend ? '<div class="hint">Tap each item as you check it against the material. Approve opens once every item is checked.</div>' : '') + '</div>';
+  html += '<div class="box"><h4>Store photos <small>gate pass / document</small></h4><div class="thumbs" id="storePh"><div class="hint">Loading…</div></div></div>';
+  if (pend) {
+    if (sh.length) html += '<div class="note bad" style="margin:0 0 10px">The store does not have enough stock for: ' + sh.map(s => esc(s.name) + ' (have ' + esc(fmtN(s.stock)) + ', need ' + esc(fmtN(s.want)) + ')').join(', ') + '. Approval will be refused until stock is inwarded; reject it with a reason if it should not go.</div>';
+    html += '<div class="box"><h4>Issue photos <span style="color:var(--bad)">*</span> <small id="phCount">' + (PHOTOS.length ? PHOTOS.length + ' / ' + PHOTO_MAX : '') + '</small></h4>'
+      + '<div class="pick"><label><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take Photo<input type="file" accept="image/*" capture="environment" onchange="addPhotos(this)"></label>'
+      + '<label>Choose Photos<input type="file" accept="image/*" multiple onchange="addPhotos(this)"></label></div>'
+      + '<div class="thumbs" id="phGrid">' + PHOTOS.map((d, i) => '<div class="th"><img src="' + d + '" alt="" onclick="view(this.src)"><button onclick="removePhoto(' + i + ')" title="Remove">✕</button></div>').join('') + '</div>'
+      + '<div class="hint">At least 1 photo of the material being handed over (up to ' + PHOTO_MAX + '). They go into the Issue\'s Original Invoice PDF.</div></div>'
+      + '<div class="box"><h4>Remarks <small>required for Reject</small></h4><textarea id="mRemarks" placeholder="Wrong item, qty differs, receiver not present…"></textarea></div>';
+    const ready = it.length && ticked === it.length && PHOTOS.length > 0;
+    $('mFoot').innerHTML = '<button class="btn no" onclick="askPin(\'REJECT\')">✕ Reject</button>'
+      + '<button class="btn ok" ' + (ready ? '' : 'disabled') + ' onclick="askPin(\'APPROVE\')" title="' + (ready ? '' : 'Check every item and add a photo first') + '">✓ Approve &amp; Save</button>';
+    $('mFoot').style.display = '';
+  } else {
+    $('mFoot').innerHTML = '<button class="btn v" onclick="viewPhotos(' + r.id + ')">All photos</button><button class="btn no" style="color:#334155;border-color:var(--line)" onclick="closeReq(true)">Close</button>';
+  }
+  const keep = $('mRemarks') ? $('mRemarks').value : '';
+  $('mBody').innerHTML = html;
+  if ($('mRemarks')) $('mRemarks').value = keep;
+  if (STORE_PH && STORE_PH.id === r.id) paintStorePhotos();
+}
+let STORE_PH = null;
+async function loadStorePhotos(id){
+  STORE_PH = null;
+  try {
+    const d = await rpc('iss_photos', { p_id: id, p_kind: 'STORE' });
+    STORE_PH = { id, list: d.photos || [] };
+    if (OPEN && OPEN.id === id) paintStorePhotos();
+  } catch (e) { const b = $('storePh'); if (b) b.innerHTML = '<div class="hint" style="color:var(--bad)">' + esc(e.message || e) + '</div>'; }
+}
+function paintStorePhotos(){
+  const b = $('storePh'); if (!b || !STORE_PH) return;
+  b.innerHTML = STORE_PH.list.length ? STORE_PH.list.map(p => '<div class="th"><img src="' + esc(p.src) + '" alt="" onclick="view(this.src)"></div>').join('') : '<div class="hint">No photos.</div>';
+}
+function tick(i){ TICKS[i] = !TICKS[i]; renderReq(); }
+function closeReq(force){
+  if (!force && PHOTOS.length && OPEN && OPEN.status === 'Pending' && !confirm('Discard the ' + PHOTOS.length + ' photo(s) taken for this Issue?')) return;
+  $('reqOv').classList.remove('on'); OPEN = null; PHOTOS = []; TICKS = {};
+}
+function view(src){ $('viewerImg').src = src; $('viewer').style.display = 'flex'; }
+async function viewPhotos(id){
+  busy(true, 'Loading photos…');
+  try {
+    const d = await rpc('iss_photos', { p_id: id });
+    const ph = d.photos || [];
+    if (!ph.length) return toast('No photos.');
+    $('mBody').insertAdjacentHTML('beforeend', '<div class="box"><h4>All photos <small>' + ph.length + '</small></h4><div class="thumbs">'
+      + ph.map(p => '<div class="th"><img src="' + esc(p.src) + '" alt="" onclick="view(this.src)"></div>').join('') + '</div></div>');
+    $('mBody').scrollTop = $('mBody').scrollHeight;
+  } catch (e) { alert(e.message || e); } finally { busy(false); }
+}
+
+/* ── Photos: shrunk once on the phone, before they are sent ────────── */
+function compress(f){
+  return new Promise(res => {
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, w, h); cx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg', PHOTO_JPEG_Q));
+      } catch (e) { URL.revokeObjectURL(url); res(null); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); res(null); };
+    img.src = url;
+  });
+}
+async function addPhotos(inp){
+  const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
+  inp.value = '';
+  if (!files.length) return;
+  const room = PHOTO_MAX - PHOTOS.length;
+  if (room <= 0) return toast('At most ' + PHOTO_MAX + ' photos.');
+  busy(true, 'Processing photo(s)…');
+  try { for (const f of files.slice(0, room)) { const d = await compress(f); if (d) PHOTOS.push(d); } }
+  finally { busy(false); }
+  if (files.length > room) toast('Only ' + PHOTO_MAX + ' photos can be attached; the rest were left out.');
+  renderReq();
+}
+function removePhoto(i){ PHOTOS.splice(i, 1); renderReq(); }
+
+/* ── Decide: checked here for a quick answer, and again on the server ─ */
+function askPin(action){
+  if (!OPEN) return;
+  const it = itemsOf(OPEN);
+  if (action === 'APPROVE') {
+    if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
+    if (it.some((x, i) => !TICKS[i])) return alert('Tick every item after checking it.');
+    if (!PHOTOS.length) return alert(ERR_TEXT.PHOTO_REQUIRED);
+  } else if (!($('mRemarks') && $('mRemarks').value.trim())) { if ($('mRemarks')) $('mRemarks').focus(); return alert(ERR_TEXT.REMARKS_REQUIRED); }
+  ACTION = action;
+  $('pinTitle').textContent = (action === 'APPROVE' ? 'Approve & save ' : 'Reject ') + (OPEN.request_no || '');
+  $('pinBtn').textContent = action === 'APPROVE' ? '✓ Approve & Save' : '✕ Reject';
+  $('pinBtn').style.background = action === 'APPROVE' ? '' : 'var(--bad)';
+  $('pinIn').value = ''; $('pinErr').style.display = 'none';
+  $('pinOv').classList.add('on'); setTimeout(() => $('pinIn').focus(), 60);
+}
+function closePin(){ $('pinOv').classList.remove('on'); }
+async function submitDecision(){
+  const pin = $('pinIn').value.trim();
+  const showErr = m => { $('pinErr').innerHTML = m; $('pinErr').style.display = 'block'; };
+  if (!/^\d{4,8}$/.test(pin)) return showErr('Enter your 4 to 8 digit PIN.');
+  const b = $('pinBtn'), old = b.textContent; b.disabled = true; b.textContent = 'Saving…';
+  busy(true, ACTION === 'APPROVE' ? 'Saving the Issue with ' + PHOTOS.length + ' photo(s)…' : 'Saving…');
+  try {
+    const d = await rpc('iss_decide', { p_pin: pin, p_id: OPEN.id, p_action: ACTION,
+      p_photos: ACTION === 'APPROVE' ? PHOTOS : [], p_remarks: ($('mRemarks') && $('mRemarks').value.trim()) || '' });
+    closePin(); PHOTOS = [];
+    showDone(d);
+    load();
+  } catch (e) {
+    if (e.code === 'PIN_INVALID' || e.code === 'TOO_MANY_ATTEMPTS') { $('pinIn').value = ''; showErr(esc(e.message)); }
+    else if (e.code === 'STOCK_SHORT') {
+      const sh = (e.data && e.data.short) || [];
+      showErr(esc(e.message) + '<br>' + sh.map(s => esc(s.name) + ': have ' + esc(fmtN(s.stock)) + ', need ' + esc(fmtN(s.want))).join('<br>'));
+    }
+    else { closePin(); alert(e.message || e); if (/^ALREADY_|^NOT_ASSIGNED$|^NOT_FOUND$/.test(e.code || '')) { closeReq(true); load(); } }
+  } finally { b.disabled = false; b.textContent = old; busy(false); }
+}
+// The answer, said plainly: approved = the Issue is already saved under its number.
+function showDone(d){
+  const ok = d.status === 'Approved';
+  $('mTitle').textContent = d.request_no || '';
+  $('mBody').innerHTML = '<div class="done' + (ok ? '' : ' no') + '"><div class="ring">'
+    + (ok ? '<svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>')
+    + '</div><h3>' + (ok ? 'Issue approved and saved' : 'Issue rejected') + '</h3>'
+    + '<p>' + (ok ? 'The stock has gone out of the store. The ERP is making the Issue PDF now; its link appears under History.'
+               : 'The store sees the reason under Issue Rejected and can correct and send it again.') + '</p>'
+    + (ok && d.document_no ? '<span class="no2">' + esc(d.document_no) + '</span>' : '') + '</div>';
+  $('mFoot').innerHTML = '<button class="btn v" onclick="closeReq(true)">Done</button>';
+  OPEN = null;
+}
+
+/* Log out ends the session in EVERY app (one login for all), so it is asked first. */
+function askLogout(){
+  const lose = PHOTOS.length && OPEN && OPEN.status === 'Pending' ? '\n\nThe ' + PHOTOS.length + ' photo(s) taken for ' + (OPEN.request_no || 'this Issue') + ' will be lost.' : '';
+  if (!confirm('Do you want to Log out?' + lose)) return;
+  SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON });
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('viewer').style.display === 'flex') $('viewer').style.display = 'none';
+  else if ($('pinOv').classList.contains('on')) closePin();
+  else if ($('reqOv').classList.contains('on')) closeReq();
+});
+
+/* ── Boot ──────────────────────────────────────────────────────────── */
+(async function boot(){
+  // Resolves only when the user may enter; otherwise the gate shows the reason.
+  await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Issue Supervisor' });
+  try { TAB = sessionStorage.getItem('iss_tab') === 'DONE' ? 'DONE' : 'PENDING'; } catch (e) {}
+  try { await load(); }
+  finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  // New Issues show up on their own; never while one is open, so photos being taken are not disturbed.
+  const idle = () => !$('reqOv').classList.contains('on') && document.visibilityState === 'visible';
+  setInterval(() => { if (idle()) load(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (idle()) load(); });
+})();
+</script>
+<!-- Floating "← Apps" button (hidden without a session). -->
+<script src="app-back.js"></script>
+</body>
+</html>

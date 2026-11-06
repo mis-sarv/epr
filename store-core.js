@@ -374,6 +374,8 @@ function sarvSetStore(s){
       if(byId('searchResultsBody')&&typeof window.loadReports==='function'&&byId('searchResultsBody').children.length)run(window.loadReports);
       if(byId('repairTrackerBody')&&typeof window.loadRepairTracker==='function'&&byId('repairTrackerBody').children.length)run(window.loadRepairTracker);
       if(shown('itemTrackerPanel')&&typeof buildItemLedger==='function')run(buildItemLedger);
+      // The Issue Supervisor counts / lists are per store.
+      if(typeof issBarSync_==='function'){sarvIssRows={PENDING:[],DONE:[],REJECTED:[]};sarvIssCounts={PENDING:0,DONE:0,REJECTED:0};run(()=>issBarSync_(true));}
     },0);
   }
   sarvStoreChipSync_();
@@ -3586,10 +3588,13 @@ async function ulSupervisorList_(){
     .sort((a,b)=>String(a.user_name||'').localeCompare(String(b.user_name||'')));
 }
 /* The picker. Resolves {id,name} or null (Cancel / Esc). `intro` is plain
-   text (escaped here); `preUid` is pre-selected, else the last choice. */
-function ulPickSupervisor_(list,title,intro,preUid,okLabel){
+   text (escaped here); `preUid` is pre-selected, else the last choice.
+   `lastKey`: where the last choice is remembered (the Issue Supervisor
+   picker keeps its own, ISS_LAST_SUP_KEY). */
+function ulPickSupervisor_(list,title,intro,preUid,okLabel,lastKey){
+  const LK=lastKey||UL_LAST_SUP_KEY;
   return new Promise(resolve=>{
-    let last='';try{last=localStorage.getItem(UL_LAST_SUP_KEY)||'';}catch(e){}
+    let last='';try{last=localStorage.getItem(LK)||'';}catch(e){}
     let sel=String(preUid||'');
     if(!list.some(u=>String(u.id)===sel))sel=list.some(u=>String(u.id)===last)?last:(list.length===1?String(list[0].id):'');
     const ov=document.createElement('div');
@@ -3622,7 +3627,7 @@ function ulPickSupervisor_(list,title,intro,preUid,okLabel){
     const done=v=>{document.removeEventListener('keydown',key,true);ov.remove();resolve(v);};
     const pick=()=>{
       const u=list.find(x=>String(x.id)===sel);if(!u)return;
-      try{localStorage.setItem(UL_LAST_SUP_KEY,String(u.id));}catch(e){}
+      try{localStorage.setItem(LK,String(u.id));}catch(e){}
       done({id:String(u.id),name:u.user_name||''});
     };
     const key=e=>{
@@ -3843,6 +3848,587 @@ function inwUnloadRows_(d,side){
   ];
   return side==='left'?rows.slice(0,2):side==='right'?rows.slice(2):rows;
 }
+/* ══ ISSUE SUPERVISOR: PHOTO + PIN APPROVAL OF EVERY NEW ISSUE ════════════
+   Store 1 / Store 2 › Issue › Submit no longer writes the Issue. After the
+   usual checks (machine, stock, preview) the store picks ONE Issue Supervisor
+   (logins with the HOME_ISSUER app, by the same rule as the Unloader list)
+   and confirms with its own PIN; the entry goes to issuer.html as a request
+   (issue_approvals, sql/ISSUE_SUPERVISOR_MIGRATION.sql) with the store's
+   photos and the submitter's sign.
+
+   APPROVE = SAVE. Unlike the Unloader there is no "Final Submit": iss_decide
+   posts the Issue on the server in the same transaction as the approval
+   (stock checked again, number taken from the store's series under a lock,
+   outward_entries + outward_lines written, the supervisor's details in
+   outward_entries.issue_info). The form is cleared the moment the request is
+   sent, so the desk carries on with the next one.
+
+   THE PDF is built here, from the saved request, by issPdfWorker_: every open
+   ERP claims approved Issues still without a PDF (iss_pdf_claim, so one desk
+   builds each), runs the normal generateStorePdfs with the stored photos (the
+   store's, then the supervisor's) and sign, and the outbox uploads them as for
+   any entry. Nothing waits for the store to press anything.
+
+   The Issue form shows three buttons (issSupBar): Issue Pending (everything
+   still waiting, with Move / Withdraw), Issue Completed (last 3 days, PDF
+   links) and Issue Rejected (last 3 days, with "Correct & Resend", which loads
+   the request back into the form). An Admin EDIT of a saved Issue is not sent
+   again. Without the migration Submit saves directly, as before, with a
+   one-time warning. */
+const ISS_APP_KEY='HOME_ISSUER';
+const ISS_LAST_SUP_KEY='sarv_iss_last_supervisor';
+const ISS_MINE_KEY='sarv_iss_mine';
+const ISS_DAYS=3;                 // Completed / Rejected lists: the last 3 days
+let sarvIssReady=null;            // null = not asked yet; false = migration not run
+let sarvIssWarned=false;
+let sarvIssCounts={PENDING:0,DONE:0,REJECTED:0};
+let sarvIssRows={PENDING:[],DONE:[],REJECTED:[]};
+let sarvIssTab='PENDING';
+let sarvIssReplaces=null;         // {id, request_no}: a rejected request loaded back for correction
+let sarvIssOutInfo=null;          // issue_info of the saved Issue open for an Admin edit (keeps the PDF rows)
+let sarvIssLastAt=0, sarvIssBarShown=false, sarvIssPdfBusy=false;
+const ISS_ERR_TEXT={
+  NO_ITEMS:'The entry has no items.',
+  ITEM_MISSING:'An item on this entry is not in the Item Master any more. Pick it again from the list.',
+  STORE_PHOTO_REQUIRED:'Attach at least one photo of the gate pass / document.',
+  TOO_MANY_PHOTOS:'At most 15 photos can be sent with one Issue.',
+  PHOTO_INVALID:'One of the photos could not be read. Remove it and attach it again.',
+  SUPERVISOR_NOT_FOUND:'That supervisor\'s login is not active any more. Choose another one.',
+  NOT_FOUND:'This request was not found. Refresh the list.',
+  ALREADY_APPROVED:'The supervisor has already approved this Issue.',
+  ALREADY_REJECTED:'The supervisor has already rejected this Issue.',
+  ALREADY_CANCELLED:'This request has already been withdrawn.',
+  REMARKS_REQUIRED:'Please write the reason.',
+  NOT_CLAIMABLE:'The PDF of this Issue is being built on another computer right now. Try again in a minute.'
+};
+function issNotSetUp_(e){
+  const m=String((e&&(e.message||e.details||e.hint))||e||''),c=String((e&&e.code)||'');
+  return c==='PGRST202'||c==='42883'||c==='42P01'||(/iss_|issue_approvals/i.test(m)&&/does not exist|schema cache|could not find/i.test(m));
+}
+async function issRpc_(fn,args){
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  const r=await SB.rpc(fn,Object.assign({p_token:tok},args||{}));
+  if(r.error){if(issNotSetUp_(r.error))sarvIssReady=false;throw r.error;}
+  const d=r.data;
+  if(d&&d.success===false){
+    const c=String(d.error||''),e=new Error(ISS_ERR_TEXT[c]||UL_ERR_TEXT[c]||c||'Unknown error');
+    e.code=c;e.data=d;throw e;
+  }
+  return d;
+}
+/* Is the migration there? Asked once; a network error is not "not set up",
+   so it is not remembered and the real call reports it. `loud` = the Submit
+   path, which says once that the Issue is being saved without approval. */
+async function issReady_(loud){
+  if(!SB_READY)return false;
+  if(sarvIssReady===null){
+    try{await issRpc_('iss_store_list',{p_store:sarvStore,p_scope:'PENDING',p_days:ISS_DAYS});sarvIssReady=true;}
+    catch(e){if(!issNotSetUp_(e))return true;}
+  }
+  if(sarvIssReady===false&&loud&&!sarvIssWarned){
+    sarvIssWarned=true;
+    showToast('Issue-Supervisor approval is not set up yet, so this Issue is saved directly. '
+      +'Admin: run <code>sql/ISSUE_SUPERVISOR_MIGRATION.sql</code>.','warn');
+  }
+  return sarvIssReady!==false;
+}
+/* The Issue Supervisor's details, from an approval's approver or a saved issue_info. */
+function issInfoFrom_(src){
+  if(!src||typeof src!=='object'||!src.name)return null;
+  return {name:src.name,empCode:src.emp_code||'',contact:src.contact_no||'',designation:src.designation||'',
+    at:src.at||'',requestNo:src.request_no||'',photoCount:pNum(src.photo_count)};
+}
+/* The PDF's meta rows for the supervisor (Issue only), placed like the
+   Unloader's: who on the left, when / request no. on the right. */
+function issSupRows_(d,side){
+  const u=d&&(d.issuer||issInfoFrom_(d.issue_info));
+  if(!u||!u.name)return [];
+  const rows=[
+    ['Issue Verified By:',u.name+(u.empCode?' ('+u.empCode+')':'')+(u.designation?' - '+u.designation:'')],
+    ['Supervisor Mob.:',u.contact||'-'],
+    ['Issue Verified:',(u.at?pStamp(u.at):'-')+(u.requestNo?'  |  '+u.requestNo:'')+(u.photoCount?'  |  '+u.photoCount+' photo(s)':'')]
+  ];
+  return side==='left'?rows.slice(0,2):side==='right'?rows.slice(2):rows;
+}
+/* Requests sent from THIS desk, watched until they are decided so the store
+   hears about it ("approved, saved as …" / "rejected: reason") without
+   opening the lists. Kept in localStorage so a reload keeps watching. */
+function issMine_(){try{return JSON.parse(localStorage.getItem(ISS_MINE_KEY)||'{}')||{};}catch(e){return {};}}
+function issMineSet_(m){try{localStorage.setItem(ISS_MINE_KEY,JSON.stringify(m));}catch(e){}}
+async function issSupervisorList_(){
+  await sarvLoadAppUsers_();
+  if(sarvAppUsersMissing)return null;
+  return (sarvAppUsers||[]).filter(u=>u&&u.id&&u.is_active!==false&&ulUserHasApp_(u,ISS_APP_KEY))
+    .sort((a,b)=>String(a.user_name||'').localeCompare(String(b.user_name||'')));
+}
+async function issChooseSupervisor_(title,intro,preUid,okLabel){
+  const list=await issSupervisorList_();
+  if(list===null){showToast('The user list could not be read, so the Issue cannot be sent to a supervisor. Please try again.','error');return null;}
+  if(!list.length){
+    showToast('No login has the <b>Issue Supervisor</b> app, so nobody can approve this Issue. '
+      +'Admin: switch it ON for the supervisors under <i>Admin Panel › Users › Apps</i> (or Tab Visibility for their role).','error');
+    return null;
+  }
+  return ulPickSupervisor_(list,title,intro,preUid,okLabel,ISS_LAST_SUP_KEY);
+}
+function issHeaderFromForm_(){
+  return {entry_type:'ISSUE',party_name:pVal('outPartyName')||'Unknown',location:pVal('outLocation')||null,
+    receiver_name:pVal('outReceiverName')||null,gate_pass_no:pVal('outGatePassNo')||null,transport:pVal('outTransport')||null,
+    notes:pVal('outRemarks')||null,nature_of_dispatch:pVal('outNatureOfDispatch')||null,lot_no:pVal('outLotNo')||null,
+    receiver_designation:pVal('outDesignation')||null,receiver_department:pVal('outDepartment')||null,
+    receiver_emp_code:pVal('outReceiverEmpCode')||null};
+}
+// Same entry sent twice (double tap, retry after a timeout) = the same request on the server.
+function issSignature_(h,rows){
+  return [sarvStore,h.party_name,h.receiver_emp_code,h.lot_no,h.notes].map(v=>String(v||'').trim().toUpperCase()).join('|')+'#'
+    +rows.map(r=>[r.itemId,pNum(r.qty),pNum(r.weight),String(r.machineName||'').trim().toUpperCase(),String(r.machineNo||'').trim().toUpperCase()].join(':')).sort().join(';');
+}
+/* Submit's last step for a new Issue: pins every row to its Item Master id
+   (the server posts by id), sends header + rows + the PDF data + the photos +
+   the sign, and clears the form. True = sent, false = not sent (form kept). */
+async function issSendForApproval_(rows,sign,sup){
+  const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText'),btn=byId('outSubmitBtn');
+  if(btn)btn.disabled=true;
+  if(overlay){if(msgEl)msgEl.textContent='Sending to '+(sup.name||'the Issue Supervisor')+'…';overlay.classList.add('active');}
+  try{
+    const sendRows=[];
+    for(const r of rows){
+      const it=await ensureItem(r.itemName,r.itemDesc,r.make,r.category,r.qtyUom,r.itemId);
+      sendRows.push({...r,itemId:it.id,qtyUom:r.qtyUom||it.uom||''});
+    }
+    const header=issHeaderFromForm_();
+    const d=collectOutwardData('(Auto on approval)');d.store=sarvStore;
+    const photos=(window.getPhotos?window.getPhotos('outward'):[]).map(p=>({name:p.name||'',dataUrl:p.dataUrl}));
+    const rep=sarvIssReplaces;
+    const res=await issRpc_('iss_request_create',{
+      p_req:{store:sarvStore,signature:issSignature_(header,sendRows),assigned_to_uid:sup.id||'',
+        replaces_id:rep?rep.id:null,payload:{header,d,rows:sendRows}},
+      p_photos:photos,p_sign:{name:sign.name||'',dataUrl:sign.dataUrl||''}});
+    const mine=issMine_();mine[res.id]={no:res.request_no,store:sarvStore};issMineSet_(mine);
+    sarvIssReplaces=null;
+    showToast(res.existing
+      ?('This Issue is already waiting with <b>'+escText(res.assigned_to||'the supervisor')+'</b> ('+escText(res.request_no||'')+'). Nothing was sent twice.')
+      :('Sent to <b>'+escText(res.assigned_to||sup.name||'the Issue Supervisor')+'</b> (<b>'+escText(res.request_no||'')+'</b>).<br>'
+        +'As soon as they approve it with photos and PIN, the Issue is saved and its PDF made; nothing more to press here. '
+        +'Follow it under <b>Issue Pending</b>.'),res.existing?'warn':'success');
+    // The type stays ISSUE for the next entry, as after a normal save.
+    sarvOutwardTypePinned=true;
+    clearOutwardForm();
+    issRefresh_(true).catch(()=>{});
+    return true;
+  }catch(e){
+    showToast('The Issue could not be sent for approval: '+escText(e.message||e),'error');
+    return false;
+  }finally{
+    if(overlay)overlay.classList.remove('active');
+    if(btn)btn.disabled=false;
+    refreshStoreEditUi();
+  }
+}
+
+/* ── The three buttons on the Issue form, and the lists behind them ───── */
+const ISS_SVG={
+  clock:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg>',
+  no:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>'
+};
+function issCss_(){
+  if(byId('issCss'))return;
+  const s=document.createElement('style');s.id='issCss';
+  s.textContent=`
+  .iss-bar{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap;margin:0 0 12px;padding:10px 12px;background:#fff;border:1px solid #e9e5f5;border-left:4px solid #6d28d9;border-radius:10px;box-shadow:0 1px 3px rgba(76,29,149,.06)}
+  .iss-bar-t{display:flex;align-items:center;gap:10px;flex:1 1 260px;min-width:0;color:#4c1d95}
+  .iss-bar-t .ic{width:38px;height:38px;border-radius:10px;background:#f3f0ff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .iss-bar-t b{display:block;font-size:13px;color:#2e1065}
+  .iss-bar-t span{display:block;font-size:11px;color:#6b7280;line-height:1.35}
+  .iss-pill{display:flex;align-items:center;gap:9px;padding:7px 14px 7px 9px;border-radius:9px;border:1px solid var(--iss-b);background:var(--iss-bg);color:var(--iss-c);cursor:pointer;font:inherit;text-align:left;transition:transform .12s,box-shadow .12s}
+  .iss-pill:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(15,23,42,.08)}
+  .iss-pill .n{min-width:30px;height:30px;padding:0 6px;border-radius:8px;background:#fff;border:1px solid var(--iss-b);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+  .iss-pill .l{display:flex;flex-direction:column;font-weight:800;font-size:12px;line-height:1.2}
+  .iss-pill .l small{font-weight:600;font-size:10px;opacity:.75}
+  .iss-pill.p{--iss-b:#fcd34d;--iss-bg:#fffbeb;--iss-c:#92400e}
+  .iss-pill.p.live .n{background:#f59e0b;border-color:#f59e0b;color:#fff;animation:issPulse 1.8s ease-in-out infinite}
+  .iss-pill.d{--iss-b:#86efac;--iss-bg:#f0fdf4;--iss-c:#166534}
+  .iss-pill.r{--iss-b:#fca5a5;--iss-bg:#fef2f2;--iss-c:#991b1b}
+  @keyframes issPulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.45)}50%{box-shadow:0 0 0 6px rgba(245,158,11,0)}}
+  #issModal{position:fixed;inset:0;z-index:30500;background:rgba(15,23,42,.5);display:none;align-items:center;justify-content:center;padding:14px}
+  #issModal .box{background:#f8fafc;width:min(1040px,100%);height:min(90vh,920px);border-radius:14px;box-shadow:0 24px 60px rgba(15,23,42,.3);display:flex;flex-direction:column;overflow:hidden}
+  #issModal .hd{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid #e2e8f0}
+  #issModal .hd h3{margin:0;font-size:16px;color:#1e1b4b;flex:1}
+  #issModal .hd .chip{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;background:#f3f0ff;color:#5b21b6}
+  #issModal .hb{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:5px 11px;cursor:pointer;font-weight:700;color:#334155}
+  #issModal .tabs{display:flex;gap:6px;padding:10px 16px 0;background:#fff;border-bottom:1px solid #e2e8f0;flex-wrap:wrap}
+  #issModal .tab{border:0;background:none;padding:9px 14px;font:inherit;font-weight:800;font-size:12.5px;color:#64748b;border-bottom:3px solid transparent;cursor:pointer;display:flex;gap:7px;align-items:center}
+  #issModal .tab .c{background:#e2e8f0;color:#334155;border-radius:20px;padding:1px 8px;font-size:11px}
+  #issModal .tab.on{color:#4c1d95;border-color:#6d28d9}
+  #issModal .tab.on .c{background:#6d28d9;color:#fff}
+  #issModal .tools{display:flex;gap:8px;padding:10px 16px;align-items:center;flex-wrap:wrap}
+  #issModal .tools input{flex:1;min-width:200px;padding:8px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px;background:#fff}
+  #issModal .tools .note{font-size:11px;color:#64748b}
+  #issModal .list{flex:1;overflow:auto;padding:4px 16px 16px;display:grid;gap:10px;align-content:start}
+  .iss-card{background:#fff;border:1px solid #e2e8f0;border-radius:11px;padding:12px 14px;box-shadow:0 1px 2px rgba(15,23,42,.04);border-left:4px solid var(--iss-k,#cbd5e1)}
+  .iss-card.P{--iss-k:#f59e0b}.iss-card.A{--iss-k:#16a34a}.iss-card.R{--iss-k:#dc2626}
+  .iss-top{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+  .iss-no{font-weight:900;font-size:14px;color:#0f172a}
+  .iss-no small{display:block;font-size:11px;font-weight:700;color:#64748b;margin-top:1px}
+  .iss-badge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
+  .iss-badge.P{background:#fef3c7;color:#92400e}.iss-badge.A{background:#dcfce7;color:#166534}.iss-badge.R{background:#fee2e2;color:#991b1b}
+  .iss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px 14px;margin:9px 0 2px;font-size:12px;color:#334155}
+  .iss-grid span{display:block;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.03em}
+  .iss-grid b{font-weight:700;color:#0f172a;word-break:break-word}
+  .iss-steps{display:flex;align-items:center;margin:10px 0 4px;font-size:10.5px;font-weight:800;color:#94a3b8}
+  .iss-steps .s{display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .iss-steps .d{width:16px;height:16px;border-radius:50%;border:2px solid #cbd5e1;background:#fff;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
+  .iss-steps .s.on{color:#166534}.iss-steps .s.on .d{background:#16a34a;border-color:#16a34a}
+  .iss-steps .s.now{color:#b45309}.iss-steps .s.now .d{border-color:#f59e0b;background:#fef3c7}
+  .iss-steps .s.bad{color:#b91c1c}.iss-steps .s.bad .d{background:#dc2626;border-color:#dc2626}
+  .iss-steps .ln{flex:1;height:2px;background:#e2e8f0;margin:0 6px;min-width:14px}
+  .iss-steps .ln.on{background:#16a34a}
+  .iss-why{margin-top:8px;padding:8px 10px;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:12px;font-weight:600}
+  .iss-acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+  .iss-acts button,.iss-acts a{font:inherit;font-size:11.5px;font-weight:800;padding:6px 11px;border-radius:7px;border:1px solid #cbd5e1;background:#fff;color:#334155;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+  .iss-acts .pdf{background:#4c1d95;border-color:#4c1d95;color:#fff}
+  .iss-acts .pdf.alt{background:#fff;color:#4c1d95;border-color:#c4b5fd}
+  .iss-acts .go{background:#16a34a;border-color:#16a34a;color:#fff}
+  .iss-acts .warn{color:#b91c1c;border-color:#fecaca}
+  .iss-acts .wait{color:#92400e;border-color:#fde68a;background:#fffbeb;cursor:default}
+  .iss-items{display:none;margin-top:8px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+  .iss-items.on{display:block}
+  .iss-items table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .iss-items th{background:#f8fafc;text-align:left;padding:6px 8px;color:#475569;font-size:10.5px;text-transform:uppercase}
+  .iss-items td{padding:6px 8px;border-top:1px solid #f1f5f9}
+  .iss-items td.n{text-align:right;white-space:nowrap;font-weight:700}
+  .iss-empty{text-align:center;color:#94a3b8;padding:46px 12px;font-size:13px}
+  .iss-empty b{display:block;color:#475569;font-size:14px;margin-bottom:4px}
+  #issPhotoView{position:fixed;inset:0;z-index:30600;background:rgba(15,23,42,.85);display:none;flex-direction:column;padding:14px}
+  #issPhotoView .bar{display:flex;justify-content:space-between;align-items:center;color:#fff;font-weight:800;margin-bottom:10px}
+  #issPhotoView .g{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-content:start}
+  #issPhotoView figure{margin:0;background:#0f172a;border-radius:9px;overflow:hidden}
+  #issPhotoView img{width:100%;display:block;cursor:zoom-in}
+  #issPhotoView figcaption{color:#cbd5e1;font-size:11px;padding:6px 8px}
+  @media (max-width:640px){.iss-pill{flex:1 1 100%}}`;
+  document.head.appendChild(s);
+}
+/* Shown on the Issue form only (Entry Type ISSUE) and only once the migration
+   is there; refreshed when it comes into view and every 20 s while it is. */
+function issBarSync_(force){
+  const panel=byId('outwardPanel');if(!panel)return;
+  let bar=byId('issSupBar');
+  const want=SB_READY&&sarvIssReady!==false&&(byId('outEntryTypeSelect')?.value||'')==='ISSUE';
+  if(!bar){
+    if(!want)return;
+    issCss_();
+    bar=document.createElement('div');bar.id='issSupBar';bar.className='iss-bar';
+    bar.innerHTML='<div class="iss-bar-t"><div class="ic">'+ISS_SVG.shield+'</div><div><b>Issue Supervisor approval</b>'
+      +'<span>Submit sends the Issue to the supervisor for photos + PIN. The moment they approve, the Issue is saved and its PDF made.</span></div></div>'
+      +'<button type="button" class="iss-pill p" onclick="issOpenLists_(\'PENDING\')" title="Issues waiting for the supervisor"><span class="n" id="issCntPENDING">0</span><span class="l">Issue Pending<small>waiting for approval</small></span></button>'
+      +'<button type="button" class="iss-pill d" onclick="issOpenLists_(\'DONE\')" title="Approved and saved Issues of the last 3 days, with their PDFs"><span class="n" id="issCntDONE">0</span><span class="l">Issue Completed<small>last 3 days · PDF</small></span></button>'
+      +'<button type="button" class="iss-pill r" onclick="issOpenLists_(\'REJECTED\')" title="Issues the supervisor rejected in the last 3 days"><span class="n" id="issCntREJECTED">0</span><span class="l">Issue Rejected<small>last 3 days</small></span></button>';
+    const at=panel.querySelector('.top-stats');
+    if(at)at.after(bar);else panel.prepend(bar);
+  }
+  bar.style.display=want?'':'none';
+  if(!want){sarvIssBarShown=false;return;}
+  const shown=bar.offsetParent!==null;
+  if(shown&&(force||!sarvIssBarShown))issRefresh_(true).catch(e=>console.warn('[SARV] Issue lists skipped:',e.message||e));
+  sarvIssBarShown=shown;
+  issBarPaint_();
+}
+function issBarPaint_(){
+  ['PENDING','DONE','REJECTED'].forEach(k=>{const e=byId('issCnt'+k);if(e)e.textContent=pNum(sarvIssCounts[k]);});
+  const p=document.querySelector('#issSupBar .iss-pill.p');if(p)p.classList.toggle('live',pNum(sarvIssCounts.PENDING)>0);
+}
+async function issLoad_(scope){
+  const store=sarvStore;
+  const d=await issRpc_('iss_store_list',{p_store:store,p_scope:scope,p_days:ISS_DAYS});
+  sarvIssReady=true;
+  if(store!==sarvStore)return null;     // the store was switched meanwhile
+  sarvIssCounts=d.counts||sarvIssCounts;
+  sarvIssRows[scope]=d.rows||[];
+  return sarvIssRows[scope];
+}
+/* Counts + the pending list; and the store is told about its own requests
+   that were decided since the last look. */
+async function issRefresh_(force){
+  if(!SB_READY||sarvIssReady===false)return;
+  const now=Date.now();
+  if(!force&&now-sarvIssLastAt<15000)return;
+  sarvIssLastAt=now;
+  if(!(await issLoad_('PENDING')))return;
+  issBarPaint_();
+  const mine=issMine_(),pend=new Set(sarvIssRows.PENDING.map(r=>String(r.id)));
+  const gone=Object.keys(mine).filter(id=>(mine[id].store||'STORE 2')===sarvStore&&!pend.has(id));
+  if(gone.length){
+    await Promise.all([issLoad_('DONE'),issLoad_('REJECTED')]);
+    gone.forEach(id=>{
+      const a=sarvIssRows.DONE.find(r=>String(r.id)===id),b=sarvIssRows.REJECTED.find(r=>String(r.id)===id);
+      if(a)showToast('<b>'+escText(a.request_no||'')+'</b> approved by <b>'+escText(a.decided_by||'-')+'</b>. '
+        +'Issue <b>'+escText(a.document_no||'')+'</b> is saved; its PDF is being made (Issue Completed).','success');
+      else if(b)showToast('<b>'+escText(b.request_no||'')+'</b> was REJECTED by <b>'+escText(b.decided_by||'-')+'</b>'
+        +(b.remarks?': '+escText(b.remarks):'')+'.<br>Open <b>Issue Rejected</b> › Correct &amp; Resend.','error');
+      delete mine[id];
+    });
+    issMineSet_(mine);
+  }
+  if(byId('issModal')?.style.display==='flex')issPaintList_();
+}
+function issAgo_(v){
+  const t=new Date(v).getTime();if(!t)return '';
+  const m=Math.max(0,Math.round((Date.now()-t)/60000));
+  return m<1?'just now':m<60?m+' min':m<1440?Math.floor(m/60)+' h '+(m%60)+' min':Math.floor(m/1440)+' day(s)';
+}
+function issOpenLists_(tab){
+  issCss_();
+  let m=byId('issModal');
+  if(!m){
+    m=document.createElement('div');m.id='issModal';
+    m.innerHTML='<div class="box" role="dialog" aria-label="Issue Supervisor lists">'
+      +'<div class="hd"><h3>Issue Supervisor</h3><span class="chip" id="issModalStore"></span>'
+      +'<button type="button" class="hb" onclick="issReloadTab_()" title="Refresh">↻ Refresh</button>'
+      +'<button type="button" class="hb" onclick="issCloseLists_()" title="Close (Esc)">✕</button></div>'
+      +'<div class="tabs">'
+      +'<button type="button" class="tab" data-t="PENDING" onclick="issSetTab_(\'PENDING\')">'+ISS_SVG.clock+'Issue Pending <span class="c" id="issTabPENDING">0</span></button>'
+      +'<button type="button" class="tab" data-t="DONE" onclick="issSetTab_(\'DONE\')">'+ISS_SVG.ok+'Issue Completed <span class="c" id="issTabDONE">0</span></button>'
+      +'<button type="button" class="tab" data-t="REJECTED" onclick="issSetTab_(\'REJECTED\')">'+ISS_SVG.no+'Issue Rejected <span class="c" id="issTabREJECTED">0</span></button></div>'
+      +'<div class="tools"><input type="search" id="issQ" placeholder="Search request / Issue no., receiver, party, item, supervisor…" autocomplete="off" oninput="issPaintList_()">'
+      +'<span class="note" id="issNote"></span></div>'
+      +'<div class="list" id="issList"></div></div>';
+    m.addEventListener('click',e=>{if(e.target===m)issCloseLists_();});
+    document.body.appendChild(m);
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&m.style.display==='flex'&&byId('issPhotoView')?.style.display!=='flex')issCloseLists_();});
+  }
+  byId('issModalStore').textContent=sarvStoreLabel();
+  m.style.display='flex';
+  issSetTab_(tab||'PENDING');
+}
+function issCloseLists_(){const m=byId('issModal');if(m)m.style.display='none';}
+function issSetTab_(t){
+  sarvIssTab=t;
+  document.querySelectorAll('#issModal .tab').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  byId('issNote').textContent=t==='PENDING'?'Everything still waiting at a supervisor':'Last '+ISS_DAYS+' days';
+  issPaintList_();
+  issReloadTab_();
+}
+async function issReloadTab_(){
+  const t=sarvIssTab,box=byId('issList');
+  if(box&&!sarvIssRows[t].length)box.innerHTML='<div class="iss-empty">Loading…</div>';
+  try{await issLoad_(t);issBarPaint_();if(t===sarvIssTab)issPaintList_();}
+  catch(e){if(box)box.innerHTML='<div class="iss-empty"><b>The list could not be loaded</b>'+escText(e.message||e)+'</div>';}
+}
+const issItemsOf_=r=>(r&&r.payload&&Array.isArray(r.payload.rows))?r.payload.rows:[];
+function issSteps_(r){
+  const st=r.status,pdfOk=!!(r.pdf&&(r.pdf.SINGLE||r.pdf.TWO_PAGE))||r.pdf_status==='DONE';
+  const steps=st==='Rejected'
+    ?[['Sent','on'],['Rejected','bad']]
+    :[['Sent','on'],['Verified',st==='Approved'?'on':'now'],['Issue saved',r.document_no?'on':''],['PDF',pdfOk?'on':(r.document_no?'now':'')]];
+  return '<div class="iss-steps">'+steps.map((s,i)=>(i?'<span class="ln'+(s[1]==='on'?' on':'')+'"></span>':'')
+    +'<span class="s '+s[1]+'"><span class="d">'+(s[1]==='on'?'✓':s[1]==='bad'?'✕':'')+'</span>'+escText(s[0])+'</span>').join('')+'</div>';
+}
+function issPaintList_(){
+  const box=byId('issList');if(!box)return;
+  ['PENDING','DONE','REJECTED'].forEach(k=>{const e=byId('issTab'+k);if(e)e.textContent=pNum(sarvIssCounts[k]);});
+  const q=byId('issQ')?.value||'',t=sarvIssTab;
+  const list=(sarvIssRows[t]||[]).filter(r=>sarvSearchMatch([r.request_no,r.document_no,r.party_name,r.receiver_name,r.receiver_emp_code,
+    r.department,r.lot_no,r.assigned_to,r.decided_by,r.requested_by,r.remarks,...issItemsOf_(r).map(x=>x.itemName)],q));
+  if(!list.length){
+    box.innerHTML='<div class="iss-empty"><b>'+(q?'Nothing matches the search':t==='PENDING'?'Nothing is waiting'
+      :t==='DONE'?'No approved Issue in the last '+ISS_DAYS+' days':'No rejected Issue in the last '+ISS_DAYS+' days')+'</b>'
+      +(t==='PENDING'&&!q?'An Issue submitted from this form appears here until the supervisor decides it.':'')+'</div>';
+    return;
+  }
+  box.innerHTML=list.map(r=>{
+    const it=issItemsOf_(r),k=r.status==='Approved'?'A':r.status==='Rejected'?'R':'P';
+    const qty=it.reduce((s,x)=>s+pNum(x.qty),0);
+    const head=k==='A'
+      ?'<div class="iss-no">'+escText(r.document_no||'-')+'<small>'+escText(r.request_no||'')+' · approved '+escText(pStamp(r.decided_at))+'</small></div>'
+      :'<div class="iss-no">'+escText(r.request_no||('#'+r.id))+'<small>sent '+escText(pStamp(r.requested_at))+' by '+escText(r.requested_by||'-')+'</small></div>';
+    const badge=k==='P'?'Waiting '+issAgo_(r.requested_at):k==='A'?'Approved':'Rejected';
+    const who=k==='P'?['With supervisor',r.assigned_to||'Any Issue Supervisor']:[k==='A'?'Approved by':'Rejected by',(r.decided_by||'-')+(r.approver&&r.approver.emp_code?' ('+r.approver.emp_code+')':'')];
+    let acts='<button type="button" onclick="issToggleItems_('+r.id+')">☰ Items ('+it.length+')</button>'
+      +'<button type="button" onclick="issViewPhotos_('+r.id+')">Photos</button>';
+    if(k==='P')acts+='<button type="button" onclick="issMove_('+r.id+')">Move to another supervisor</button>'
+      +'<button type="button" class="warn" onclick="issWithdraw_('+r.id+')">Withdraw</button>';
+    if(k==='A'){
+      const p=r.pdf||{};
+      if(p.SINGLE||p.TWO_PAGE||p.INVOICE){
+        if(p.SINGLE)acts+='<a class="pdf" href="'+escText(p.SINGLE)+'" target="_blank" rel="noopener">1-Page PDF</a>';
+        if(p.TWO_PAGE)acts+='<a class="pdf alt" href="'+escText(p.TWO_PAGE)+'" target="_blank" rel="noopener">2-Page PDF</a>';
+        if(p.INVOICE)acts+='<a class="pdf alt" href="'+escText(p.INVOICE)+'" target="_blank" rel="noopener">Original Invoice + Photos</a>';
+      }else if(r.pdf_status==='FAILED'){
+        acts+='<button type="button" class="go" onclick="issBuildNow_('+r.id+')">Build PDF</button>';
+      }else{
+        acts+='<button type="button" class="wait" disabled>PDF being made…</button>'
+          +'<button type="button" onclick="issBuildNow_('+r.id+')">Build PDF now</button>';
+      }
+    }
+    if(k==='R')acts+=r.replaced_by?'<span style="font-size:11.5px;font-weight:800;color:#166534;align-self:center;">Resent as '+escText(r.replaced_by)+'</span>'
+      :'<button type="button" class="go" onclick="issLoadIntoForm_('+r.id+')">Correct &amp; Resend</button>';
+    return '<div class="iss-card '+k+'" id="issCard'+r.id+'"><div class="iss-top">'+head+'<span class="iss-badge '+k+'">'+escText(badge)+'</span></div>'
+      +'<div class="iss-grid">'
+      +'<div><span>Receiver</span><b>'+escText(r.receiver_name||'-')+'</b>'+(r.receiver_emp_code?' · '+escText(r.receiver_emp_code):'')+'</div>'
+      +'<div><span>Department</span><b>'+escText(r.department||'-')+'</b></div>'
+      +'<div><span>Items / Qty</span><b>'+it.length+' item(s) · '+escText(nNum_(qty))+'</b></div>'
+      +'<div><span>'+escText(who[0])+'</span><b>'+escText(who[1])+'</b>'+(k!=='P'&&r.decided_at?'<br>'+escText(pStamp(r.decided_at)):'')+'</div>'
+      +(r.lot_no?'<div><span>Lot No.</span><b>'+escText(r.lot_no)+'</b></div>':'')
+      +'</div>'+issSteps_(r)
+      +(k==='R'&&r.remarks?'<div class="iss-why">Reason: '+escText(r.remarks)+'</div>':'')
+      +(k==='A'&&r.pdf_status==='FAILED'&&r.pdf_error?'<div class="iss-why">PDF could not be built: '+escText(r.pdf_error)+'</div>':'')
+      +'<div class="iss-acts">'+acts+'</div>'
+      +'<div class="iss-items" id="issItems'+r.id+'"><table><thead><tr><th>#</th><th>Item</th><th>Machine</th><th style="text-align:right">Qty</th><th style="text-align:right">Weight</th></tr></thead><tbody>'
+      +it.map((x,i)=>'<tr><td>'+(i+1)+'</td><td><b>'+escText(x.itemName||'')+'</b>'+(x.make?' <span style="color:#64748b">'+escText(x.make)+'</span>':'')+'</td>'
+        +'<td>'+escText([x.machineName,x.machineNo].filter(Boolean).join(' / ')||'-')+'</td>'
+        +'<td class="n">'+escText(nNum_(x.qty))+' '+escText(x.qtyUom||'')+'</td>'
+        +'<td class="n">'+(pNum(x.weight)?escText(nNum_(x.weight))+' '+escText(x.wUnit||''):'-')+'</td></tr>').join('')
+      +'</tbody></table></div></div>';
+  }).join('');
+}
+function issToggleItems_(id){byId('issItems'+id)?.classList.toggle('on');}
+const issFindRow_=id=>['PENDING','DONE','REJECTED'].map(k=>sarvIssRows[k].find(r=>r.id===id)).find(Boolean);
+async function issViewPhotos_(id){
+  let v=byId('issPhotoView');
+  if(!v){
+    v=document.createElement('div');v.id='issPhotoView';
+    v.innerHTML='<div class="bar"><span id="issPhotoTitle">Photos</span><button type="button" class="hb" style="border:1px solid #64748b;background:transparent;color:#fff;border-radius:7px;padding:5px 11px;cursor:pointer;" onclick="byId(\'issPhotoView\').style.display=\'none\'">✕ Close</button></div><div class="g" id="issPhotoGrid"></div>';
+    v.addEventListener('click',e=>{const im=e.target.closest('img');if(im)window.open(im.src,'_blank');});
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'&&v.style.display==='flex'){e.stopPropagation();v.style.display='none';}},true);
+    document.body.appendChild(v);
+  }
+  const r=issFindRow_(id);
+  byId('issPhotoTitle').textContent='Photos · '+((r&&(r.document_no||r.request_no))||'');
+  byId('issPhotoGrid').innerHTML='<div class="iss-empty" style="color:#cbd5e1">Loading…</div>';
+  v.style.display='flex';
+  try{
+    const d=await issRpc_('iss_photos',{p_id:id});
+    const ph=d.photos||[];
+    byId('issPhotoGrid').innerHTML=ph.length?ph.map(p=>'<figure><img src="'+escText(p.src)+'" alt=""><figcaption>'
+      +(p.kind==='STORE'?'Store: ':'Supervisor: ')+escText(p.name||'')+'</figcaption></figure>').join('')
+      :'<div class="iss-empty" style="color:#cbd5e1">No photos.</div>';
+  }catch(e){byId('issPhotoGrid').innerHTML='<div class="iss-empty" style="color:#fecaca">'+escText(e.message||e)+'</div>';}
+}
+async function issMove_(id){
+  const r=issFindRow_(id);if(!r)return;
+  const sup=await issChooseSupervisor_('Move to another supervisor',
+    (r.request_no||'')+' is waiting'+(r.assigned_to?' with '+r.assigned_to:'')+'.\nChoose who should verify it instead.',r.assigned_to_uid,'Move');
+  if(!sup||!sup.id||sup.id===String(r.assigned_to_uid||''))return;
+  try{const d=await issRpc_('iss_reassign',{p_id:id,p_uid:sup.id});showToast('Moved '+escText(d.request_no||'')+' to <b>'+escText(d.assigned_to||sup.name)+'</b>.');}
+  catch(e){showToast('Could not move it: '+escText(e.message||e),'error');}
+  issReloadTab_();
+}
+async function issWithdraw_(id){
+  const r=issFindRow_(id);if(!r)return;
+  const why=prompt('Withdraw '+(r.request_no||'this request')+'? Nothing will be issued.\n\nReason:','');
+  if(why===null)return;
+  if(!why.trim())return showToast('Please write the reason for withdrawing.','warn');
+  try{
+    await issRpc_('iss_cancel',{p_id:id,p_reason:why.trim()});
+    const mine=issMine_();delete mine[id];issMineSet_(mine);
+    showToast('Withdrawn '+escText(r.request_no||'')+'.');
+  }catch(e){showToast('Could not withdraw it: '+escText(e.message||e),'error');}
+  issReloadTab_();
+}
+async function issBuildNow_(id){
+  const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText');
+  if(overlay){if(msgEl)msgEl.textContent='Building the Issue PDF…';overlay.classList.add('active');}
+  try{
+    const r=await issBuildPdf_(id,true);
+    if(r)showToast('PDF made for '+escText(r.no)+'.'+(r.left?' The upload finishes in the background.':''),'success');
+  }catch(e){showToast('The PDF could not be built: '+escText(e.message||e),'error');}
+  finally{if(overlay)overlay.classList.remove('active');}
+  issReloadTab_();
+}
+
+/* ── PDF worker ───────────────────────────────────────────────────────
+   Builds the PDFs of approved Issues from the request the server kept. Runs
+   on every open ERP (any store, any user): the claim decides who builds; a
+   desk closed mid-way is taken over after 3 minutes. Skipped while this desk
+   is saving an entry of its own, so the two never share the PDF globals. */
+async function issBuildPdf_(id,force){
+  const c=await issRpc_('iss_pdf_claim',{p_id:id,p_force:!!force});
+  const job=c.job||{},p=job.payload||{},no=job.document_no;
+  try{
+    const d=Object.assign({},p.d||{},{outwardNo:no,entryType:'ISSUE',store:job.store||'STORE 2',
+      date:job.outward_date||(p.d&&p.d.date)||today(),issuer:issInfoFrom_(job.approver)});
+    const ph=job.photos||[],sup=ph.filter(x=>x.kind!=='STORE').length,u=d.issuer||{};
+    let si=0;
+    const images=ph.filter(x=>String(x.dataUrl||'').startsWith('data:image')).map(x=>x.kind==='STORE'
+      ?{name:x.name||'DOCUMENT PHOTO',type:'image/jpeg',dataUrl:x.dataUrl}
+      :{name:'ISSUE PHOTO '+(++si)+' of '+sup+' - verified by '+(u.name||'')+(u.empCode?' ('+u.empCode+')':''),type:'image/jpeg',dataUrl:x.dataUrl});
+    const s=job.sign||{};
+    const res=await generateStorePdfs('OUTWARD',d,p.rows||[],job.outward_id,null,
+      {images,sign:(s.name||s.dataUrl)?{name:s.name||'',dataUrl:s.dataUrl||null}:null,background:true});
+    const ok=!!(res.SINGLE&&res.SINGLE.blob)||!!(res.TWO_PAGE&&res.TWO_PAGE.blob);
+    let left=0;
+    if(sarvStorePdfJobs[no])left=await sarvStorePdfJobs[no].catch(()=>0)||0;
+    await issRpc_('iss_pdf_done',{p_id:id,p_ok:ok,p_error:ok?'':'The PDF builder failed'});
+    return {no,left};
+  }catch(e){
+    try{await issRpc_('iss_pdf_done',{p_id:id,p_ok:false,p_error:String(e.message||e)});}catch(x){}
+    throw e;
+  }
+}
+async function issPdfWorker_(){
+  if(sarvIssPdfBusy||sarvIssReady===false||!SB_READY||document.visibilityState!=='visible')return;
+  if(Object.keys(sarvSaveLocks).length||!jspdfNativeReady_())return;
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  if(!tok)return;
+  sarvIssPdfBusy=true;
+  try{
+    const q=await issRpc_('iss_pdf_queue',{});
+    sarvIssReady=true;
+    for(const id of (q.ids||[])){
+      if(Object.keys(sarvSaveLocks).length)break;
+      try{await issBuildPdf_(id,false);}
+      catch(e){if(e.code!=='NOT_CLAIMABLE')console.warn('[SARV] Issue PDF '+id+' failed:',e.message||e);}
+    }
+  }catch(e){if(!issNotSetUp_(e))console.warn('[SARV] Issue PDF queue skipped:',e.message||e);}
+  finally{sarvIssPdfBusy=false;}
+}
+/* A rejected request back on the form, to correct and send again. The next
+   Submit carries replaces_id, so the rejected one shows "Resent as …". */
+async function issLoadIntoForm_(id){
+  let d;
+  try{d=await issRpc_('iss_get',{p_id:id});}catch(e){return showToast('Could not load it: '+escText(e.message||e),'error');}
+  const r=d.row||{},p=r.payload||{},h=p.header||{},rows=p.rows||[];
+  if((r.store||'STORE 2')!==sarvStore)return showToast(escText(r.request_no||'')+' belongs to '+escText(sarvStoreLabel(r.store))+'. Open the Issue screen of that store.','warn');
+  if(sarvEditingOutwardId)return showToast('Finish or cancel the edit that is open first.','warn');
+  issCloseLists_();
+  activatePanel('outwardPanel');
+  sarvOutwardTypePinned=true;
+  clearOutwardForm();
+  const set=(f,v)=>{const el=byId(f);if(el)el.value=v??'';};
+  set('outPartyName',h.party_name);set('outLocation',h.location);set('outGatePassNo',h.gate_pass_no);
+  set('outTransport',h.transport);set('outLotNo',h.lot_no);set('outRemarks',h.notes);
+  set('outReceiverEmpCode',h.receiver_emp_code);
+  setOutReceiverField('outReceiverName',h.receiver_name);
+  setOutReceiverField('outDesignation',h.receiver_designation);
+  setOutReceiverField('outDepartment',h.receiver_department);
+  const tb=byId('outwardItemTableBody');if(tb)tb.innerHTML='';
+  rows.forEach(x=>{
+    addOutwardItemRow();
+    const tr=tb&&tb.lastElementChild;if(!tr)return;
+    if(x.itemId)tr.dataset.itemId=x.itemId;
+    const sr=(s,v)=>{const el=tr.querySelector(s);if(el)el.value=v??'';};
+    sr('.out-item-name',x.itemName);sr('.out-item-desc',x.itemDesc);sr('.out-item-make',x.make);sr('.out-item-cat',x.category||'General');
+    sr('.out-machine-name',x.machineName);sr('.out-machine-no',x.machineNo);
+    sr('.out-qty',pNum(x.qty));sr('.out-qty-uom',x.qtyUom);sr('.out-weight',pNum(x.weight));sr('.out-wunit',x.wUnit);
+  });
+  if(!rows.length)addOutwardItemRow();
+  updateOutTotals();
+  if(window.putPhotos)window.putPhotos('outward',(d.store_photos||[]).map(x=>({name:x.name||'',type:'image/jpeg',dataUrl:x.dataUrl})));
+  if(String(h.lot_no||'').trim())restoreOutLotStrips_(h.lot_no).catch(e=>console.warn('[SARV] lot strip restore skipped:',e.message||e));
+  sarvIssReplaces={id:r.id,request_no:r.request_no};
+  showToast('Loaded <b>'+escText(r.request_no||'')+'</b>'+(r.remarks?' (rejected: '+escText(r.remarks)+')':'')
+    +'. Correct it and press Submit to send it again.','warn');
+}
+// Starts quietly a few seconds after the page, once the session and PDF settings are in.
+setTimeout(()=>{
+  issPdfWorker_();
+  setInterval(()=>{issPdfWorker_();},25000);
+  setInterval(()=>{if(document.visibilityState==='visible')issBarSync_();},4000);
+  setInterval(()=>{if(document.visibilityState==='visible'&&byId('issSupBar')?.offsetParent)issRefresh_().catch(()=>{});},20000);
+},8000);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')issPdfWorker_();});
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
 /* Everything this receipt does that goes BEYOND the document it is booked
    against. Each one needs the Purchaser's approval before it can be saved —
@@ -5765,7 +6351,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER',
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
   'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE'];
 function sarvAllowedApps_(){
@@ -6758,6 +7344,8 @@ const SARV_TABS=[
      default: turn it ON for the supervisor(s) here or under Users › Apps.
      The same default as launcher.html's APPS entry (its defRoles). */
   {key:'HOME_UNLOADER',label:'Unloader Supervisor',hint:'Verify every new Inward at unloading: item photos + own PIN, approve or reject (unloader.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Inward PDF)',def:['ADMIN_PIN']},
+  // Same default as the launcher tile (defRoles) and the key iss_list / iss_decide check on the server.
+  {key:'HOME_ISSUER',label:'Issue Supervisor',hint:'Approve every new Store 1 / Store 2 Issue: photos + own PIN; the Issue and its PDF are saved the moment it is approved (issuer.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Issue PDF)',def:['ADMIN_PIN']},
   /* Yarn-Unloading.html: box-wise yarn weights at the godown (offline-first,
      cloud mirror in yarn_unloading_drafts). OFF for everyone, Admin included,
      until switched ON here or under Users › Apps. Same default (no roles) as
@@ -7478,9 +8066,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -16193,6 +16781,8 @@ async function loadOutwardForEdit(id,no){
   clearOutwardForm(true);
   sarvEditingOutwardId=e.id;
   sarvEditingOutwardNo=e.document_no||no||'';
+  // An Issue approved by the Issue Supervisor keeps their rows on the regenerated PDF.
+  sarvIssOutInfo=e.issue_info||null;
 
   const set=(f,v)=>{const el=byId(f);if(el)el.value=v??''};
   const et=byId('outEntryTypeSelect');if(et)et.value=e.entry_type||'OUTWARD';
@@ -16549,6 +17139,8 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(panel){panel.classList.remove('theme-nb','theme-issue');if(type==='ISSUE')panel.classList.add('theme-issue');}
     syncIssueOnlyFields('outEntryTypeSelect',['outLotNoFieldGroup']);
     applyOutwardWording();
+    // Issue Pending / Completed / Rejected buttons: on an ISSUE only.
+    issBarSync_(true);
     if(SB_READY)refreshSerialNo('OUTWARD').catch(()=>{});
     /* Switching TO an Issue is the moment the Lot No box appears, so its own
        datalist is filled now rather than on the first click into it — a box
@@ -17553,6 +18145,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           the entry was actually loaded from one, because then the slip has to
           say which order's material has left the store. */
        trimsLotRows_(d).map(p=>'<tr><td class="lbl">'+pEsc(p[0])+'</td><td>'+pEsc(p[1])+'</td></tr>').join('')+
+       issSupRows_(d,'left').map(p=>'<tr style="background:#f5f3ff"><td class="lbl" style="color:#6d28d9;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>').join('')+
      '</table></div><div class="col"><table>'+
        '<tr><td class="lbl">Party Name:</td><td><strong>'+pEsc(d.partyName||d.party_name||'-')+'</strong></td></tr>'+
         '<tr><td class="lbl">Location:</td><td>'+pEsc(d.location||'-')+'</td></tr>'+
@@ -17560,6 +18153,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         ((d.targetReturnDate||d.target_return_date)?'<tr><td class="lbl">Target Return:</td><td>'+fmtDate_(d.targetReturnDate||d.target_return_date)+'</td></tr>':'')+
         '<tr><td class="lbl">Transport:</td><td>'+pEsc(d.transport||'-')+'</td></tr>'+
         (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
+        issSupRows_(d,'right').map(p=>'<tr style="background:#f5f3ff"><td class="lbl" style="color:#6d28d9;font-weight:700">'+pEsc(p[0])+'</td><td style="font-weight:700;word-break:break-word;">'+pEsc(p[1])+'</td></tr>').join('')+
      '</table></div></div>'+
      '<table class="items"><thead><tr>'+
         '<th style="width:36%">Item Name / Description</th><th style="width:16%">Make / Category</th>'+
@@ -17754,11 +18348,14 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.lotNo)leftPairs.push(['Lot No.:',d.lotNo]);
      // Same block the HTML copy prints, from the same function.
      trimsLotRows_(d).forEach(p=>leftPairs.push(p));
+     // The Issue Supervisor who approved it (issSupRows_), like the Unloader's on an Inward.
+     issSupRows_(d,'left').forEach(p=>leftPairs.push(p));
      rightPairs.push(['Party Name:',d.partyName||'-']);
      rightPairs.push(['Location:',d.location||'-']);
      // Dropped rather than printed empty — an ISSUE has no Target Return Date.
      if(d.targetReturnDate)rightPairs.push(['Target Return:',fmtDate_(d.targetReturnDate)]);
      rightPairs.push(['Transport:',d.transport||'-']);
+     issSupRows_(d,'right').forEach(p=>rightPairs.push(p));
    }
    /* PDF Settings › Arrange details: the Admin's order of these rows, which
       column each is in, and the rows hidden — per Inward / Outward, keyed by
@@ -20610,7 +21207,11 @@ let PR_TEAL=[13,92,83];
     // The photo engine's store is the source of truth: it holds BOTH camera and
     // gallery shots and honours anything removed with the preview's ✕.
     const photoKey=(kind==='OUTWARD'||kind==='ISSUE')?'outward':'inward';
-    const images=(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput)).slice();
+    /* opts.images / opts.sign / opts.background: the Issue PDF worker
+       (issBuildPdf_) builds an approved Issue from what the server kept, not
+       from this form: its own photos and sign, and nothing on screen (the
+       preview / link bar of the entry being typed) is touched. */
+    const images=(opts.images||(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput))).slice();
     /* The Unloader Supervisor's item photos go into the same Original Invoice
        PDF, after the invoice pages. Only when the store attached its own photos
        this time: an Admin edit without new photos keeps the stored Original
@@ -20624,7 +21225,8 @@ let PR_TEAL=[13,92,83];
        when the entry is first signed — from the PIN confirmed at submit
        (sarvSubmitPinGate_ → sarvPendingStoreSign). It is drawn from the local
        image; uploading it is the outbox's job. */
-    const me=sarvPendingStoreSign;sarvPendingStoreSign=null;
+    const me=('sign' in opts)?opts.sign:sarvPendingStoreSign;
+    if(!('sign' in opts))sarvPendingStoreSign=null;
     const sigTable=(kind==='OUTWARD'||kind==='ISSUE')?'outward_entries':'inward_entries';
     let checks={};
     if(opts.isEdit&&SB_READY&&recordId){
@@ -20682,15 +21284,17 @@ let PR_TEAL=[13,92,83];
       jobs.push({type:'checks',key:'checks|'+no,table:sigTable,recordId,recordNo:no,store:storeSign,sigDataUrl:(me&&me.dataUrl)||'',pdfLayout:sigLayouts,at});
     /* images:[] — the entry PDF and its HTML print copies no longer carry the
        photos; they live in the Original Invoice (invoiceImages). */
-    sarvPdfState.current={kind,data:d,items,images:[],invoiceImages:images,result};
+    if(!opts.background)sarvPdfState.current={kind,data:d,items,images:[],invoiceImages:images,result};
     sarvPdfState.blobs={...sarvPdfState.blobs,[no]:result};sarvPdfState.urls[no]=result;
     /* The Drive-link bar's two anchors open the stored PDF in a new tab, which
        is a print away — so on a Store entry they follow the same send-first gate
        as the Print buttons. They stay hidden until the upload lands and
        storePdfUrlLanded_ fills them in. */
-    if(byId('dlbLink')){byId('dlbLink').href='#';byId('dlbLink').dataset.gateUrl='';}
-    if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href='#';byId('dlbLinkTwoPage').dataset.gateUrl='';}
-    applyStoreLinkGate_(kind,no);
+    if(!opts.background){
+      if(byId('dlbLink')){byId('dlbLink').href='#';byId('dlbLink').dataset.gateUrl='';}
+      if(byId('dlbLinkTwoPage')){byId('dlbLinkTwoPage').href='#';byId('dlbLinkTwoPage').dataset.gateUrl='';}
+      applyStoreLinkGate_(kind,no);
+    }
     sarvStorePdfJobs[no]=storePdfBackground_(no,jobs)
       .catch(e=>console.warn('[SARV PDF] background upload for '+no+' failed to start:',e.message||e))
       .finally(()=>{
@@ -20756,7 +21360,11 @@ let PR_TEAL=[13,92,83];
       PDFs print nothing extra. */
    trimsLot:sarvActiveTrimsLot?{lotNo:sarvActiveTrimsLot.lotNo,orderNo:sarvActiveTrimsLot.orderNo,
      party:sarvActiveTrimsLot.party,brand:sarvActiveTrimsLot.brand,
-     designs:(sarvActiveTrimsLot.designs||[]).slice(),manual:!!sarvActiveTrimsLot.manual}:null}}
+     designs:(sarvActiveTrimsLot.designs||[]).slice(),manual:!!sarvActiveTrimsLot.manual}:null,
+   /* The Issue Supervisor of a saved Issue open for an Admin edit, so the
+      regenerated PDF keeps the rows. Null on a new entry (that PDF is built
+      after the approval, by issBuildPdf_). */
+   issuer:issInfoFrom_(sarvIssOutInfo)}}
  function collectRequirementData(no,rows){return {reqNo:no,ts:new Date(),date:pVal('p_reqDate'),requiredByDate:pVal('p_requiredByDate'),priority:pVal('p_priority'),generatedBy:pVal('p_reqGeneratedBy'),personName:pVal('p_reqPersonName'),empCode:pVal('p_reqEmpCode'),designation:pVal('p_reqDesignation'),department:pVal('p_reqDepartment'),contact:pVal('p_reqContact'),overallRemarks:pVal('p_overallRemarks'),items:rows.map(x=>({name:x.name,desc:x.description,make:x.make,category:x.category,machine:x.machine,qty:x.qty,uom:x.uom,grossWeight:x.grossWeight,remarks:x.specification}))}}
  async function generateRequirementPdf(d,recordId){
    // A PR was just saved — the next PR form must count it under "In PR".
@@ -21412,9 +22020,22 @@ let PR_TEAL=[13,92,83];
    const okToSave=await confirmStoreEntryPreview('OUTWARD',collectOutwardData(outEditId?outEditNo:'(Auto on Submit)'),rows);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
+   /* A NEW Issue goes to the Issue Supervisor (see ISSUE SUPERVISOR): the
+      supervisor is chosen first, so a Cancel there costs no PIN. Without the
+      migration it is saved here directly, as before. */
+   let issSup=null;
+   if(!outEditId&&pVal('outEntryTypeSelect')==='ISSUE'&&await issReady_(true)){
+     issSup=await issChooseSupervisor_('Send for Issue approval',
+       'This Issue is saved only after an Issue Supervisor approves it.\n\n'
+       +'Choose who checks the material. Only they will see it in the Issue Supervisor app; '
+       +'they take photos and approve with their PIN, and the Issue and its PDF are then saved automatically.',
+       '','Send');
+     if(!issSup)return;
+   }
    // The submitter's own PIN, every time — it is also what signs the PDF. Cancel = nothing saved.
-   const outSign=await sarvSubmitPinGate_(outEditId?('Update '+outEditNo):('Submit '+(pVal('outEntryTypeSelect')||'Outward')));
+   const outSign=await sarvSubmitPinGate_(outEditId?('Update '+outEditNo):issSup?'Send Issue for approval':('Submit '+(pVal('outEntryTypeSelect')||'Outward')));
    if(!outSign)return;
+   if(issSup)return issSendForApproval_(rows,outSign,issSup);
    sarvPendingStoreSign=outSign;
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=outEditId?'Updating...':'Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=outEditId?('Updating '+outEditNo+'…'):'Saving Outward entry…';overlay.classList.add('active');}
@@ -21782,6 +22403,8 @@ let PR_TEAL=[13,92,83];
  }
  function clearOutwardForm(forEdit){
    sarvEditingOutwardId=null;sarvEditingOutwardNo='';
+   // A cleared form is no longer a supervisor-approved Issue, nor a rejected one being corrected.
+   sarvIssOutInfo=null;sarvIssReplaces=null;
    refreshStoreEditUi();
    ['outPartyName','outLocation','outReceiverName','outTargetReturnDate','outGatePassNo',
     'outTransport','outRemarks','outReceiverEmpCode','outDesignation','outDepartment','outLotNo'].forEach(id=>{const e=byId(id);if(e)e.value='';});

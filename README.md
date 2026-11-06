@@ -1847,6 +1847,50 @@ The ERP "WAITING AT UNLOADER SUPERVISOR" list shows `→ name`. Requests raised 
 migration have no supervisor and stay visible to all. Without `UNLOADER_ASSIGN_MIGRATION.sql`
 the request still goes to every supervisor and the ERP warns once.
 
+## Issue Supervisor: every new Issue approved with photos + PIN (issuer.html)
+
+Every **new** ISSUE in Store 1 and Store 2 now goes to an Issue Supervisor. **The approval
+itself saves it**: there is no second Submit, and the PDF is made automatically.
+
+1. **ERP › Store 1 / Store 2 › Issue › Submit.** The usual checks run first (machine, stock,
+   gate pass / document photo, preview). The store then picks **one** Issue Supervisor (every
+   active login with the app, last choice remembered on the PC) and confirms with its own PIN.
+   The entry goes as request `IS-00001` (`issue_approvals`, Pending) with the store's photos and
+   the submitter's sign, and **the form is cleared at once** for the next Issue.
+2. **issuer.html** (launcher tile **Issue Supervisor**). The supervisor sees the receiver,
+   department, lot and items (no rates), plus a warning if the store is short of stock. They tick
+   each item as they check it, take photos (at least 1, up to 10) and **Approve & Save** with
+   their **own login PIN**, or Reject with a reason. 5 wrong PINs in 15 minutes lock them out.
+3. **On Approve the server saves the Issue** in the same transaction (`iss_decide`): stock is
+   checked again for that store, the next number of the store's series is taken under a lock
+   (`SIHF-I/ISSUE/<FY>/nnn`, `SIHF-II/ISSUE/<FY>/nnn`; the series text is in `iss_prefix_` and
+   must stay in step with `SARV_STORES` in store-core.js), and `outward_entries` + `outward_lines`
+   are written, dated the approval day. The supervisor's Name / Emp Code / Mobile / time / request
+   no. go in `outward_entries.issue_info`.
+4. **The PDF** is built by the ERP (`issPdfWorker_` in store-core.js): every open ERP looks every
+   25 s for approved Issues without a PDF, claims one (`iss_pdf_claim`, so only one computer builds
+   it), builds the normal 1-page / 2-page PDFs and the Original Invoice (store photos, then the
+   supervisor's) and the outbox uploads them. The PDF prints "Issue Verified By", "Supervisor Mob."
+   and "Issue Verified" (time | request no. | photos). If no ERP is open anywhere, the PDF is made as
+   soon as one is opened; **Build PDF now** in the Completed list does it at once.
+
+**On the Issue form** (Entry Type ISSUE) a bar shows three buttons with live counts:
+**Issue Pending** (everything still waiting: items, photos, **Move** to another supervisor,
+**Withdraw** with a reason), **Issue Completed** (last 3 days: Issue no., who approved, **1-Page /
+2-Page / Original Invoice PDF** links, Build PDF) and **Issue Rejected** (last 3 days: the reason
+and **Correct & Resend**, which loads the request back into the form with its photos; the new
+request marks the old one "Resent as IS-…"). The desk that sent a request gets a message as soon
+as it is approved or rejected. An Admin **edit** of a saved Issue is not sent again and keeps the
+supervisor rows on its regenerated PDF.
+
+**Access:** app key `HOME_ISSUER`, **Admin only by default**. Turn it ON for the supervisor(s) under
+Admin Panel › Tab Visibility or Users › Apps; they must log in again once. Their profile needs
+**Emp Code and Contact No.** (printed on the PDF). The server checks the session, the app access and
+the PIN on every call, and the assigned supervisor only can decide (`NOT_ASSIGNED`).
+
+**Setup:** run `sql/ISSUE_SUPERVISOR_MIGRATION.sql` once (safe to re-run). Until it runs, Issue saves
+directly as before and the ERP warns once; the bar stays hidden.
+
 ## SOPs: SOP Master and My SOPs (sop.html)
 
 Standard Operating Procedures, made once in the ERP and read by each employee on their phone.

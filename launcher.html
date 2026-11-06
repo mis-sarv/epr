@@ -766,6 +766,13 @@ const APPS = [
   { key:'HOME_UNLOADER', href:'unloader.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/><path d="M15.5 16.5l1.5 1.5 3-3"/></svg>', accent:'#f97316',
     defRoles:['ADMIN_PIN'],
     title:'Unloader Supervisor', sub:'Verify Inward: item photos + PIN' },
+  /* Approves every new Store 1 / Store 2 Issue (photos + PIN); the approval
+     itself saves the Issue and the ERP makes its PDF. Admin only by default,
+     as HOME_ISSUER in store-core.js's SARV_TABS; the server checks the same
+     key (sql/ISSUE_SUPERVISOR_MIGRATION.sql). */
+  { key:'HOME_ISSUER', href:'issuer.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>', accent:'#8b5cf6',
+    defRoles:['ADMIN_PIN'],
+    title:'Issue Supervisor', sub:'Approve Issue: photos + PIN, auto PDF' },
   /* Box-wise yarn weights at the godown. OFF for everyone (no defRoles, Admin
      included) until the Admin switches it ON in Tab Visibility or Users ›
      Apps; same default as HOME_YARN_UNLOADING in store-core.js's SARV_TABS.
