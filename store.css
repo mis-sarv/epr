@@ -3421,6 +3421,16 @@ body {
   #sarvAdminPanel .ap-matrix td.ap-cell.locked label{cursor:not-allowed;opacity:.6;}
   #sarvAdminPanel .ap-matrix input[type=checkbox]{width:16px;height:16px;accent-color:#16a34a;cursor:inherit;}
   #sarvAdminPanel .ap-matrix tr.ap-dirty th{color:#b45309;}
+  /* First column width, dragged by the Admin (sarvMatrixC1Bind_): the table
+     carries --ap-c1 only once a width has been chosen; without it the column
+     sizes itself as before. A chosen width lets the names wrap. */
+  #sarvAdminPanel .ap-matrix thead th:first-child{padding-right:14px;}
+  #sarvAdminPanel .ap-matrix.ap-c1-set thead th:first-child,
+  #sarvAdminPanel .ap-matrix.ap-c1-set tbody th{width:var(--ap-c1);min-width:var(--ap-c1);max-width:var(--ap-c1);white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;}
+  #sarvAdminPanel .ap-matrix .ap-c1-grip{position:absolute;top:0;right:-4px;width:9px;height:100%;cursor:col-resize;z-index:4;touch-action:none;}
+  #sarvAdminPanel .ap-matrix .ap-c1-grip::after{content:"";position:absolute;top:20%;bottom:20%;left:3px;width:3px;border-radius:2px;background:#64748b;opacity:.45;}
+  #sarvAdminPanel .ap-matrix .ap-c1-grip:hover::after,#sarvAdminPanel .ap-matrix.ap-c1-drag .ap-c1-grip::after{opacity:1;background:#2563eb;}
+  #sarvAdminPanel .ap-matrix.ap-c1-drag{cursor:col-resize;user-select:none;}
 
   /* User add / edit popup and the "sign with PIN" popup. Fixed overlays of
      their own, so they look the same whichever panel opened them. */
@@ -4735,3 +4745,89 @@ body[data-store="STORE 1"] #consOverlay .cons-head {
   background: linear-gradient(120deg, #4a0d18 0%, #6b0f22 45%, #800020 75%, #9f1239 100%);
 }
 body[data-store="STORE 1"] #consOverlay .cons-head .cons-sub { color: #fecdd3; opacity: 1; }
+
+/* Design Master › Live › Matching SKU No column: one chip per shade's SKU,
+   the master shade's first and filled (store-design-master.js › dmMatchingSkus). */
+.dm-msku-chip {
+  display: inline-block; margin: 1px 3px 1px 0; padding: 1px 6px;
+  border-radius: 10px; border: 1px solid #ddd6fe; background: #f5f3ff;
+  color: #6d28d9; font-size: 10.5px; font-weight: 700; white-space: nowrap; line-height: 1.5;
+}
+.dm-msku-chip.master { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+
+/* Design Master › Add Matching / Add Photoshoot › Bulk Upload Photos
+   (store-design-master.js › bp*): many designs at once, Design No from the file name. */
+.dm-bp { margin-top: 18px; padding-top: 6px; border-top: 2px dashed #e2e8f0; }
+.dm-bp .dm-sec small { font-weight: 600; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.dm-bp-drop {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+  margin: 8px 0 12px; padding: 16px 14px; cursor: pointer;
+  border: 2px dashed #c4b5fd; border-radius: 10px; background: #faf5ff; color: #5b21b6;
+}
+.dm-bp-drop b { font-size: 14px; }
+.dm-bp-drop span { font-size: 11.5px; color: #6b7280; max-width: 760px; line-height: 1.5; }
+.dm-bp-drop code { background: #ede9fe; color: #5b21b6; padding: 0 4px; border-radius: 4px; font-size: 11px; }
+.dm-bp-drop:hover, .dm-bp-drop.over { background: #f3e8ff; border-color: #8b5cf6; }
+.dm-btn.dm-bp-open { background: #7c3aed; color: #fff; border: none; margin-top: 10px; text-align: center; cursor: pointer; }
+.dm-btn.dm-bp-open:hover { background: #6d28d9; }
+.dm-bp-file { margin-top: 3px; max-width: 80px; font-size: 9.5px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-bp-dinfo { font-size: 10.5px; font-weight: 700; line-height: 1.35; }
+.dm-bp-dinfo.ok { color: #047857; }
+.dm-bp-dinfo.bad { color: #dc2626; }
+.dm-bp-state { font-size: 10.5px; font-weight: 700; min-height: 14px; overflow-wrap: anywhere; }
+.dm-table tr.dm-bp-nodesign td { background: #fff7f7; }
+.dm-table tr.dm-bp-bad td { background: #fef2f2; }
+.dm-table tr.dm-bp-nodesign .bp-design { border-color: #fca5a5; }
+/* Live › Bulk Upload PSD Files (store-design-master.js › bpsd*) */
+.dm-bpsd-file { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.dm-bpsd-file b { display: block; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+.dm-bpsd-file small { display: block; font-size: 10.5px; color: #64748b; font-weight: 600; }
+.dm-bpsd-ico {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: #001e36; color: #31a8ff; font-size: 11px; font-weight: 800; letter-spacing: .03em;
+}
+.dm-bpsd-old { font-size: 11.5px; font-weight: 600; color: #334155; overflow-wrap: anywhere; }
+
+/* ── Repair Items Tracker: the list gets its own scroll bar ──────────────
+   activatePanel opens this panel as a plain block (display:block), so the
+   card's / table's flex:1 did nothing and the panel's overflow:hidden simply
+   CUT the list off at the bottom: no scroll bar, rows past the screen were
+   unreachable. Same cure as the Item Tracker: the card fills the panel as a
+   column, the summary cards / search bar keep their natural height, and the
+   .table-container takes the rest and scrolls (both ways; the table is wide).
+   The header row is already position:sticky (top:0), so it stays in view. */
+#storeInterface #repairTrackerPanel > .card {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+#storeInterface #repairTrackerPanel > .card > * { flex: none; }
+#storeInterface #repairTrackerPanel > .card > .table-container {
+    flex: 1 1 auto;
+    min-height: 160px;
+    overflow: auto;
+}
+/* Small screens: the shell stops being a fixed-height box (see the Item
+   Tracker's own @media 1100px note), so the card grows with its rows and the
+   page scrolls instead, with the list keeping a scroll box of its own. */
+@media (max-width: 1100px) {
+    #storeInterface #repairTrackerPanel > .card { height: auto; overflow: visible; }
+    #storeInterface #repairTrackerPanel > .card > .table-container { flex: none; max-height: 70vh; }
+}
+
+/* ── Master Data and Print History / Reports: the panel scrolls ─────────
+   Same block + overflow:hidden trap. In Master Data, Fabric / Brand / Buyer
+   / Trims Rate / Dropdown Master / Settings (Admin Panel) have no height
+   limit of their own, so a long list or a tall Admin page was cut off. The
+   panel itself now scrolls when its content is taller than the screen, as
+   Inward / Outward / Production already do. The Item Master list keeps its
+   own window-fitted scroll box (fitItemListHeight_), so it does not change. */
+#storeInterface #masterDataPanel,
+#storeInterface #reportsPanel {
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+}

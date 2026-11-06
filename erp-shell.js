@@ -343,19 +343,26 @@
   /* Does this role get to see the screen behind a leaf? Same question, same
      answer, same function the old tile home used — so switching to the shell
      cannot quietly widen anyone's access. */
+  /* A Store 1 / Store 2 leaf asks the store-aware check (store-core.js ›
+     sarvStoreTabVisible): the same key, unless the Admin gave this user a
+     store-only decision in Manage access. Every other leaf is unchanged. */
+  function keyVisible(leaf, key) {
+    if (leaf.store && typeof sarvStoreTabVisible === 'function') return sarvStoreTabVisible(leaf.store, key);
+    return sarvTabVisible(key);
+  }
   function leafVisible(leaf) {
     // A leaf that runs a function rather than opening a screen carries its own
     // access row.
     // So does a standalone app with no tile-home button (HR & Payroll).
     if (leaf.action || (leaf.external && leaf.access)) {
-      try { return typeof sarvTabVisible !== 'function' || !leaf.access || sarvTabVisible(leaf.access); }
+      try { return typeof sarvTabVisible !== 'function' || !leaf.access || keyVisible(leaf, leaf.access); }
       catch (e) { return true; }
     }
     if (!leaf.go) return true;                       // not built yet — harmless
     try {
       if (typeof sarvTabVisible !== 'function') return true;
       // The screen itself (Admin Panel › Tab Visibility › Home Page) …
-      if (!sarvTabVisible('HOME_' + leaf.go)) return false;
+      if (!keyVisible(leaf, 'HOME_' + leaf.go)) return false;
       /* … and, where a leaf opens one particular sub-tab of that screen, that
          sub-tab's own row too (Master Data › Sub Tabs). So switching off
          "Machine List" for a role takes it out of the sidebar as well as out of

@@ -803,7 +803,8 @@ const ROLE_LABEL = {
   USER_AC_PIN:'Accountant', USER_GT_PIN:'Gate Man', ADMIN_PIN:'Admin',
   VENDOR_VERIFY_PIN:'Vendor Verified', PO_SENDER_PIN:'PO Sender (Mobile)',
   PURCHASER:'Purchaser', VIEW_PIN:'View Only', EDIT_PASSWORD:'Edit User',
-  CMP_USER:'Complaint App User', PK_USER:'Packing User'
+  // CMP_USER = "Other Apps": no ERP work, the apps the Admin switches ON (store-core.js SARV_PERM_ROLES).
+  CMP_USER:'Other Apps', PK_USER:'Packing User (old)'
 };
 const roleLabel = r => ROLE_LABEL[r] || r || '—';
 

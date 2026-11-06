@@ -212,8 +212,20 @@ const DOMAIN_KEYS = ["machine","fabric"];
    The Production Manager gets the machine register too: a fabric person
    still finds broken machines on the floor, and raises them there as a
    plain User (roleIn below). Maintenance keeps only machines. */
-const domainsFor = p =>
-  p?.role === "Maintenance" ? ["machine"] : DOMAIN_KEYS;
+/* On top of that, the Admin can switch a register OFF for one person
+   (ERP › Admin Panel › Users › Manage access › Complaint App registers):
+   CMP_MACHINE / CMP_FABRIC = false in their app_access, which the ERP
+   session hands over (window.__SARV_SSO). No key = shown, as before. If
+   that would leave nothing, the role's registers stay (the Admin turns the
+   whole app OFF for that, not both registers). */
+const CMP_DOMAIN_ACCESS_KEY = { machine:"CMP_MACHINE", fabric:"CMP_FABRIC" };
+const domainsFor = p => {
+  const base = p?.role === "Maintenance" ? ["machine"] : DOMAIN_KEYS;
+  const a = window.__SARV_SSO && window.__SARV_SSO.app_access;
+  if (!a || typeof a !== "object") return base;
+  const left = base.filter(k => a[CMP_DOMAIN_ACCESS_KEY[k]] !== false);
+  return left.length ? left : base;
+};
 /* The role a person plays INSIDE one register. A triager or Host only has
    their power in the register it belongs to; in the other one they are a
    plain User (raise, follow and confirm their own complaints):

@@ -3404,7 +3404,7 @@
 
                 <!-- ==== Sub-panel C: PR → PO → Inward Follow-Up Report ==== -->
                 <div id="p_poReportPanel" style="display:none;">
-                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto auto;">
+                    <div class="filter-bar" style="grid-template-columns: 2fr 1fr 1fr 1fr auto auto auto auto;">
                         <div class="form-group">
                             <label>Search (PR / PO / Inward / Requester / Vendor / Item)</label>
                             <input type="text" class="form-control" id="p_poRepSearch" placeholder="e.g. PR608, PO793, GOURAV or item name" title="Search works with both the short number (PR608) and the full number (PR/26-27/608), and with any word of an item name or description">
@@ -3414,6 +3414,7 @@
                             <select class="form-control" id="p_poRepStatus">
                                 <option value="">All</option>
                                 <option value="__NOPO__">PO Not Generated</option>
+                                <option value="__FB__">Field Boy PRs (no PO)</option>
                                 <option>Generated</option><option>GM/CEO Approved</option><option>MD Approved</option>
                                 <option>Vendor Verified</option><option>Partially Received</option>
                                 <option>Received</option><option>Closed (Short)</option><option>Rejected</option><option>Cancelled</option>
@@ -3429,6 +3430,12 @@
                                 <option value="">Show All</option>
                                 <option value="1">Only Incomplete Follow-Up</option>
                             </select>
+                        </div>
+                        <!-- Fully received PRs are left out unless this is pressed
+                             (they are most of the history, and the slow part):
+                             store-core.js › poFollowupToggleReceived. -->
+                        <div>
+                            <button class="btn btn-success" id="p_poRepRecvBtn" style="height: 34px;" onclick="poFollowupToggleReceived()" title="Also load the PRs whose POs are all Received / Closed (Short). Takes longer.">Fetch Received Data</button>
                         </div>
                         <div>
                             <button class="btn btn-primary" id="p_poRepRefreshBtn" style="height: 34px;">Reload</button>
@@ -3473,6 +3480,7 @@
                     <!-- Link audit. Silent when every PO reaches its PR through its own
                          lines, which is the only way the two can be trusted to match.
                          Speaks up the moment something had to be guessed at. -->
+                    <div id="p_poRepRecvNote" style="display:none; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:11.5px; margin:0 0 8px; padding:7px 10px; border-radius:6px; background:#f0fdf4; border:1px solid #bbf7d0; color:#166534;"></div>
                     <div id="p_poRepDiag" style="display:none; font-size:11px; margin:0 0 8px; padding:7px 10px; border-radius:6px; background:#fffbeb; border:1px solid #fde68a; color:#92400e;"></div>
 
                     <div class="table-container" style="max-height: 540px;">

@@ -6053,7 +6053,7 @@ window.submitPasswordChange=async function(){
    packing profiles.role); this role only says "this person is an ERP user,
    but their app is a different one". The name must be listed here, because
    login on boot is recognised from this map. */
-const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User',CMP_USER:'Complaint App User',PK_USER:'Packing User'};
+const SARV_ROLE_LABEL={USER_IC_PIN:'Store In-Charge',USER_GM_PIN:'GM / CEO',USER_MD_PIN:'MD',USER_AC_PIN:'Accountant',USER_GT_PIN:'Gate Man',ADMIN_PIN:'Admin',VENDOR_VERIFY_PIN:'Vendor Verified',PO_SENDER_PIN:'PO Sender (Mobile)',PURCHASER:'Purchaser',VIEW_PIN:'View Only',EDIT_PASSWORD:'Edit User',CMP_USER:'Other Apps',PK_USER:'Packing User (old)'};
 const SARV_LOGIN_STORAGE_KEY='sarv_active_role';
 const SARV_LOGIN_USER_KEY='sarv_active_user';
 const SARV_LOGIN_SIG_KEY='sarv_active_user_sig';
@@ -7118,9 +7118,19 @@ const SARV_PERM_ROLES=[
   {code:'VIEW_PIN',label:'View'},{code:'EDIT_PASSWORD',label:'Edit'},
   /* Both default to OFF on every ERP screen; SINGLE_LOGIN_MIGRATION.sql
      writes that into tab_visibility. They are in the matrix only so the Admin
-     can grant something to an individual if needed. */
-  {code:'CMP_USER',label:'Complaint'},{code:'PK_USER',label:'Packing'}
+     can grant something to an individual if needed.
+     CMP_USER is shown as "Other Apps": a login with no ERP work whose
+     launcher buttons are whatever Manage access switches ON (every launcher
+     signup gets it, erp_signup). The code itself is unchanged, the server
+     (admin_save_user) and every app still know it as CMP_USER. PK_USER is
+     not offered for new users any more (nobody had it); a user who has it
+     keeps it. */
+  {code:'CMP_USER',label:'Other Apps'},{code:'PK_USER',label:'Packing (old)'}
 ];
+// Not offered in the user form's role lists unless the user already has it (see above).
+const SARV_ROLE_HIDDEN_IN_FORM=['PK_USER'];
+// No ERP screens: offered as a primary role only, never as an extra role.
+const SARV_ROLE_APPS_ONLY='CMP_USER';
 /* def: 'ALL' every role · 'W' every role except View · [codes] only those.
    lock: roles that are always YES (so an Admin cannot lock themself out). */
 const SARV_FEATURES=[
@@ -7540,6 +7550,8 @@ const SARV_CMP_TYPE_GROUPS=[
 // "All units" means nothing for a plain User (sees only their own) or the
 // Admin (always sees every unit).
 const SARV_CMP_ALL_UNIT_ROLES=['Host','Maintenance','Production Manager'];
+// The "Both / All units" radio of the user form's Factory Unit (cmp_all_units).
+const SARV_UNIT_ALL='__ALL';
 const SARV_UNIT_ERR={ADMIN_PIN_INVALID:'Incorrect Admin PIN',USER_NOT_FOUND:'User not found. Please refresh.',
   UNIT_REQUIRED:'Please choose the unit',UNIT_INVALID:'That unit is not active',CMP_ROLE_INVALID:'Invalid Complaint App role',
   HOST_TYPES_REQUIRED:'A Host needs at least one complaint type',HOST_TYPE_INVALID:'Unknown complaint type'};
@@ -7589,6 +7601,22 @@ function sarvTabVisible(key){
   if(typeof ov==='boolean')return ov;
   return rs.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,key,r));
 }
+/* A Store screen in ONE store (sidebar leaves of Store 1 / Store 2, see
+   storeLeaves in erp-shell.js). Both stores share the same keys (HOME_IN,
+   HOME_ISSUE, …); a user may also have a store-only decision, S1_<key> /
+   S2_<key> in app_access, set in Admin Panel › Users › Manage access ›
+   Store access. Without one the screen follows the common key, exactly as
+   before, so nothing changes until the Admin sets one. */
+const SARV_STORE_ACC_PRE={'STORE 1':'S1_','STORE 2':'S2_'};
+function sarvStoreTabVisible(store,key){
+  const p=SARV_STORE_ACC_PRE[store];
+  if(p&&sarvRoles_().length){
+    const ov=sarvUserAccessOverride_(p+key);
+    if(typeof ov==='boolean')return ov;
+  }
+  return sarvTabVisible(key);
+}
+window.sarvStoreTabVisible=sarvStoreTabVisible;
 /* This user's own decision on this key: true / false, or undefined ("auto",
    i.e. whatever the role gives). */
 function sarvUserAccessOverride_(key){
@@ -7905,7 +7933,7 @@ function sarvRenderUsers_(){
          "why isn't this button showing for them". */
       +(u.app_access&&Object.keys(u.app_access).length
         ?' <span class="ap-pill" style="background:#fff7ed;color:#9a3412;" title="'
-          +escText(Object.keys(u.app_access).map(k=>(SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
+          +escText(Object.keys(u.app_access).map(k=>sarvAccKeyLabel_(k)+': '+(u.app_access[k]?'ON':'OFF')).join(', '))
           +'">'+Object.keys(u.app_access).length+'</span>':'')
       +(u.sales_role?' <span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Sales › Order Form role">'+escText(sarvSalesRoleLabel_(u.sales_role))+'</span>':'')
       +(u.cmp_profile_id?' <span class="ap-pill" style="background:#f0fdf4;color:#166534;" title="Linked to the old Complaint App account">C</span>':'')
@@ -7916,7 +7944,7 @@ function sarvRenderUsers_(){
     +'<td>'+(!sarvUnitReady?'—'
       :(u.cmp_unit
         ?'<span class="ap-pill" style="background:#ede9fe;color:#5b21b6;">'+escText(sarvUnitName_(u.cmp_unit))
-          +(u.cmp_all_units&&SARV_CMP_ALL_UNIT_ROLES.indexOf(u.cmp_role)>=0?' + all':'')+'</span>'
+          +(u.cmp_all_units?' + all':'')+'</span>'
         :'<span class="ap-pill" style="background:#fef3c7;color:#92400e;" title="Required: Edit the user and choose a unit">Not set</span>')
       +(u.cmp_username?'<div style="font-size:10px;color:#64748b;margin-top:2px;" title="Complaint App role'
           +((u.cmp_host_types||[]).length?': '+escText(u.cmp_host_types.join(', ')):'')+'">Complaint: '+escText(u.cmp_role||'User')+'</div>':''))
@@ -7933,7 +7961,8 @@ function sarvRenderMatrix_(tableId,defs,which){
   const t=byId(tableId);if(!t)return;
   const m=sarvApDraft[which]||{};
   const saved=which==='perms'?sarvFullMatrix_(sarvSettings.role_permissions,SARV_FEATURES):sarvFullMatrix_(sarvSettings.tab_visibility,SARV_TABS);
-  let h='<thead><tr><th>'+(which==='perms'?'FEATURES':'TABS / SUB TABS')+'</th>'
+  let h='<thead><tr><th>'+(which==='perms'?'FEATURES':'TABS / SUB TABS')
+    +'<span class="ap-c1-grip" title="Drag to make this column wider or narrower. Double-click: back to automatic width"></span></th>'
     +SARV_PERM_ROLES.map(r=>'<th data-ap-col="'+r.code+'" title="Click: the whole column YES / NO">'+escText(r.label)+'</th>').join('')+'</tr></thead><tbody>';
   defs.forEach(d=>{
     if(d.group){h+='<tr class="ap-group"><td colspan="'+(SARV_PERM_ROLES.length+1)+'">'+escText(d.group)+'</td></tr>';return;}
@@ -7949,6 +7978,43 @@ function sarvRenderMatrix_(tableId,defs,which){
   });
   t.innerHTML=h+'</tbody>';
   t.dataset.which=which;
+  sarvMatrixC1Bind_(t);
+}
+/* First column width of the Feature Access / Tab Visibility tables, set by
+   dragging the grip at the right edge of its header. Kept on the <table> as
+   --ap-c1 (the table itself survives every re-render, only its rows are
+   rebuilt) and remembered per table on this PC. Double-click = automatic. */
+const AP_C1_KEY='sarv_ap_c1:';
+function sarvMatrixC1Apply_(t,w){
+  if(w){t.style.setProperty('--ap-c1',w+'px');t.classList.add('ap-c1-set');}
+  else{t.style.removeProperty('--ap-c1');t.classList.remove('ap-c1-set');}
+}
+function sarvMatrixC1Bind_(t){
+  if(t.dataset.c1Bound)return;
+  t.dataset.c1Bound='1';
+  let saved=0;try{saved=parseInt(localStorage.getItem(AP_C1_KEY+t.id)||'0',10)||0;}catch(e){}
+  sarvMatrixC1Apply_(t,saved);
+  const MIN=120,MAX=900;
+  t.addEventListener('pointerdown',e=>{
+    const g=e.target.closest('.ap-c1-grip');if(!g)return;
+    e.preventDefault();e.stopPropagation();
+    const th=g.parentElement,x0=e.clientX,w0=th.getBoundingClientRect().width;
+    t.classList.add('ap-c1-drag');
+    try{g.setPointerCapture(e.pointerId);}catch(x){}
+    const move=ev=>sarvMatrixC1Apply_(t,Math.round(Math.max(MIN,Math.min(MAX,w0+ev.clientX-x0))));
+    const up=()=>{
+      g.removeEventListener('pointermove',move);g.removeEventListener('pointerup',up);g.removeEventListener('pointercancel',up);
+      t.classList.remove('ap-c1-drag');
+      const w=parseInt(t.style.getPropertyValue('--ap-c1'),10)||0;
+      try{if(w)localStorage.setItem(AP_C1_KEY+t.id,String(w));}catch(x){}
+    };
+    g.addEventListener('pointermove',move);g.addEventListener('pointerup',up);g.addEventListener('pointercancel',up);
+  });
+  t.addEventListener('dblclick',e=>{
+    if(!e.target.closest('.ap-c1-grip'))return;
+    sarvMatrixC1Apply_(t,0);
+    try{localStorage.removeItem(AP_C1_KEY+t.id);}catch(x){}
+  });
 }
 function sarvMatrixClick_(e){
   const t=e.currentTarget,which=t.dataset.which,defs=which==='perms'?SARV_FEATURES:SARV_TABS,m=sarvApDraft[which];
@@ -8039,7 +8105,10 @@ function sarvUserRolesHtml_(u,role){
     +'(besides the primary; access is the UNION of all of these)</small></label>'
     +'<div data-f="roleswrap" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:4px 10px;'
     +'border:1px solid #cbd5e1;border-radius:7px;padding:8px 10px;background:#f8fafc;">'
-    +SARV_PERM_ROLES.map(r=>{
+    /* Other Apps has no ERP access, so it is no use as an EXTRA role; it and
+       a hidden role are listed only when this user already has them. */
+    +SARV_PERM_ROLES.filter(r=>r.code===role||have.indexOf(r.code)>=0
+        ||(r.code!==SARV_ROLE_APPS_ONLY&&SARV_ROLE_HIDDEN_IN_FORM.indexOf(r.code)<0)).map(r=>{
         const isPrim=r.code===role;
         const on=isPrim||have.indexOf(r.code)>=0;
         return '<label style="display:flex;align-items:center;gap:6px;margin:0;text-transform:none;font-size:11px;'
@@ -8201,11 +8270,15 @@ function sarvUserAppStart_(u,k){
 function sarvUserAppsHtml_(u){
   const acc=(u&&u.app_access&&typeof u.app_access==='object')?u.app_access:{};
   const tabLabel=k=>{const d=SARV_TABS.find(t=>t.key===k);return d?d.label:k;};
+  /* The long list below is kept, HIDDEN, as the form's data: its
+     select[data-app] are what Save reads (value / data-set / data-init), so
+     saving is exactly as before. What the Admin sees is the summary card and
+     the Manage access panel (sarvAccessPanel_), which only change those
+     selects. */
   return '<div class="fg" style="grid-column:1 / -1;">'
-    +'<label>Apps <small style="text-transform:none;font-weight:600;">'
-    +'(Home page buttons, ON / OFF for this user. "not set" = what the role gives today; Save makes it this user\'s own)</small></label>'
-    +'<div data-f="appswrap" style="border:1px solid #cbd5e1;border-radius:7px;padding:4px 0;background:#f8fafc;'
-    +'max-height:230px;overflow:auto;">'
+    +'<label>Apps &amp; buttons access</label>'
+    +'<div data-f="accsummary" class="acp-sum"></div>'
+    +'<div data-f="appswrap" style="display:none;">'
     /* The apps, then each app's own inner buttons under a small heading.
        Same select[data-app], so saving them needs no extra code: they all
        go into app_access, which the app's server functions read. */
@@ -8239,12 +8312,404 @@ function sarvUserAppsHtml_(u){
           +'</select></div>';
       }).join('')
     +'</div>'
-    +'<div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap;">'
-    +'<button type="button" class="b no sm" data-f="appson">Sab ON</button>'
-    +'<button type="button" class="b no sm" data-f="appsoff">Sab OFF</button>'
+    +'<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">'
+    +'<button type="button" class="b ok sm" data-f="accopen">Manage access ›</button>'
     +'<span style="flex:1 1 auto;"></span>'
     +(u?'<button type="button" class="b no sm" data-f="applink" title="Link to the old Complaint App / Packing accounts by name">Link external accounts</button>':'')
     +'</div></div>';
+}
+
+/* ══ MANAGE ACCESS PANEL (Update User › Apps & buttons) ═════════════════
+   The user form used to show all 60+ app / button keys as one long list of
+   ON / OFF dropdowns. This panel shows the same keys grouped by area, with
+   the inner buttons of an app nested under it, a search box, filters
+   (Differs from role / ON / OFF / Changed now / Separate apps) and switches.
+
+   IT CHANGES NOBODY'S ACCESS BY ITSELF. It is only a front end for the
+   form's hidden select[data-app] boxes, and Save User is unchanged:
+     • a row nobody touches stays untouched (data-set / value === data-init),
+       so Save gives it what the roles give, exactly as before;
+     • a row switched here gets that value; switched back to where it
+       started it is untouched again, unless the roles were changed in the
+       same form, in which case it is marked the Admin's own (data-set 1), so
+       Save writes what the Admin sees and not the new role's value.
+   What a row SHOWS is what Save will write: own value if decided, else what
+   the roles ticked in the form give now. */
+const SARV_ACCESS_AREAS=[
+  {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
+  {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
+  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_YARN_UNLOADING']},
+  {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
+  {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
+  {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
+  {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SHEET_LINKS']}
+];
+/* Store access + Complaint registers: user-only keys that are NOT rows of
+   the role-wise Tab Visibility and are not in the form's hidden selects.
+   They live in ov.__sarvXAcc while the form is open, start from the user's
+   saved app_access, and Save writes back only the ones that are set. A
+   key that is not set means "as before": the Store screen follows its
+   common key, the store menu its ERP_* row, a Complaint register is shown.
+     ERP_STORE1 / ERP_WAREHOUSE  Store 1 / Store 2 menu (for a Store
+                                 Incharge the Store Access radio decides)
+     S1_<key> / S2_<key>         one Store screen in one store only
+     CMP_MACHINE / CMP_FABRIC    false = that Complaint register hidden */
+const SARV_STORE_SCREENS=[
+  {k:'HOME_MYDAY',l:'My Day (Daily Tasks)'},{k:'HOME_IN',l:'Material Inward'},{k:'HOME_IN_NB',l:'Inward (NB)'},
+  {k:'HOME_OUT',l:'Material Outward'},{k:'HOME_ISSUE',l:'Issue'},{k:'HOME_MASTER',l:'Item Stock'},
+  {k:'HOME_TRACKER',l:'Item Tracker + Consumption'},{k:'HOME_REPAIR',l:'Repair Challans'},
+  {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
+const sarvAccExtraKey_=k=>/^S[12]_/.test(k)||k==='ERP_STORE1'||k==='ERP_WAREHOUSE'||k==='CMP_MACHINE'||k==='CMP_FABRIC';
+// A readable name for any app_access key (user list tooltip, panel).
+function sarvAccKeyLabel_(k){
+  const m=/^S([12])_(.+)$/.exec(k);
+  if(m){const s=SARV_STORE_SCREENS.find(x=>x.k===m[2]);return 'Store '+m[1]+' · '+(s?s.l:(SARV_APP_LABEL[m[2]]||m[2]));}
+  if(k==='CMP_MACHINE')return 'Complaint · Machine';
+  if(k==='CMP_FABRIC')return 'Complaint · Fabric';
+  return SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k;
+}
+// Inner buttons / rights shown under their app (by key prefix).
+const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER'};
+const sarvAccParentOf_=k=>{const p=Object.keys(SARV_ACCESS_PARENT).find(x=>k.indexOf(x)===0);return p?SARV_ACCESS_PARENT[p]:'';};
+function sarvAccCss_(){
+  if(byId('acpCss'))return;
+  const s=document.createElement('style');s.id='acpCss';
+  s.textContent=`
+  .acp-sum{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;padding:9px 10px}
+  .acp-sum .k{display:flex;flex-direction:column;padding:4px 11px;border-radius:7px;background:#fff;border:1px solid #e2e8f0;min-width:84px}
+  .acp-sum .k b{font-size:15px;color:#0f172a}.acp-sum .k span{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em}
+  .acp-sum .k.on b{color:#15803d}.acp-sum .k.diff b{color:#7c3aed}.acp-sum .k.chg b{color:#b45309}
+  .acp-sum .roles{flex:1 1 200px;font-size:11px;color:#475569;line-height:1.5}
+  #sarvAccPanel{position:fixed;inset:0;z-index:40030;background:rgba(15,23,42,.35);display:flex;justify-content:flex-end;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  #sarvAccPanel .pn{background:#f8fafc;width:min(760px,100%);height:100%;display:flex;flex-direction:column;box-shadow:-12px 0 32px rgba(15,23,42,.18);animation:acpIn .18s ease-out}
+  @keyframes acpIn{from{transform:translateX(40px);opacity:.5}to{transform:none;opacity:1}}
+  #sarvAccPanel .hd{background:#fff;border-bottom:1px solid #e2e8f0;padding:12px 16px}
+  #sarvAccPanel .hd .t{display:flex;align-items:center;gap:10px}
+  #sarvAccPanel .hd h3{margin:0;font-size:16px;color:#0f172a;flex:1}
+  #sarvAccPanel .hd .rl{margin-top:5px;font-size:11.5px;color:#475569}
+  #sarvAccPanel .hd .rl b{display:inline-block;background:#e0f2fe;color:#075985;border-radius:20px;padding:1px 8px;margin:2px 3px 0 0;font-size:11px}
+  #sarvAccPanel .x{border:1px solid #cbd5e1;background:#fff;border-radius:7px;width:32px;height:32px;cursor:pointer;font-size:15px;color:#334155}
+  #sarvAccPanel .tools{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  #sarvAccPanel .tools input{flex:1 1 220px;padding:8px 11px;border:1px solid #cbd5e1;border-radius:8px;font-size:12.5px}
+  #sarvAccPanel .tools select{padding:7px 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;max-width:230px}
+  #sarvAccPanel .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  #sarvAccPanel .chip{border:1px solid #cbd5e1;background:#fff;border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:700;color:#475569;cursor:pointer}
+  #sarvAccPanel .chip i{font-style:normal;color:#94a3b8;margin-left:3px}
+  #sarvAccPanel .chip.on{background:#0f172a;border-color:#0f172a;color:#fff}.chip.on i{color:#cbd5e1}
+  #sarvAccPanel .bd{flex:1;overflow:auto;padding:10px 16px 18px}
+  #sarvAccPanel .grp{background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;overflow:hidden}
+  #sarvAccPanel .gh{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;user-select:none}
+  #sarvAccPanel .gh .cv{width:14px;color:#94a3b8;transition:transform .15s}
+  #sarvAccPanel .grp.open .gh .cv{transform:rotate(90deg)}
+  #sarvAccPanel .gh b{flex:1;font-size:13px;color:#0f172a}
+  #sarvAccPanel .gh .cnt{font-size:11px;font-weight:800;color:#475569;background:#f1f5f9;border-radius:20px;padding:2px 9px}
+  #sarvAccPanel .gh .cnt.d{background:#f3e8ff;color:#6b21a8}
+  #sarvAccPanel .gh button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:800;color:#334155;cursor:pointer}
+  #sarvAccPanel .gb{display:none;border-top:1px solid #f1f5f9}
+  #sarvAccPanel .grp.open .gb{display:block}
+  #sarvAccPanel .grp.diffs{border-color:#d8b4fe}
+  #sarvAccPanel .grp.diffs .gh{background:#faf5ff}
+  #sarvAccPanel .row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid #f8fafc}
+  #sarvAccPanel .row.sub{padding-left:34px;background:#fcfcfd}
+  #sarvAccPanel .row.dim .nm{opacity:.55}
+  #sarvAccPanel .row .nm{flex:1;min-width:0}
+  #sarvAccPanel .row .nm b{display:block;font-size:12.5px;color:#0f172a}
+  #sarvAccPanel .row .nm small{display:block;font-size:10.5px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #sarvAccPanel .tg{font-size:10px;font-weight:800;border-radius:5px;padding:1px 6px;margin-left:4px;vertical-align:1px}
+  #sarvAccPanel .tg.ext{background:#ede9fe;color:#6d28d9}#sarvAccPanel .tg.acc{background:#dcfce7;color:#047857}
+  #sarvAccPanel .st{font-size:10.5px;font-weight:800;white-space:nowrap;border-radius:20px;padding:2px 8px}
+  #sarvAccPanel .st.role{color:#64748b;background:#f1f5f9}#sarvAccPanel .st.own{color:#6b21a8;background:#f3e8ff}#sarvAccPanel .st.chg{color:#92400e;background:#fef3c7}
+  #sarvAccPanel .rs{border:0;background:none;color:#7c3aed;font-weight:900;cursor:pointer;font-size:13px;padding:2px 4px;visibility:hidden}
+  #sarvAccPanel .row.differs .rs{visibility:visible}
+  #sarvAccPanel .sw{position:relative;width:40px;height:22px;border-radius:22px;background:#cbd5e1;border:0;cursor:pointer;flex:0 0 auto;transition:background .15s}
+  #sarvAccPanel .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s}
+  #sarvAccPanel .sw.on{background:#16a34a}#sarvAccPanel .sw.on::after{left:21px}
+  #sarvAccPanel .empty{text-align:center;color:#94a3b8;padding:40px 10px;font-size:13px}
+  #sarvAccPanel .ft{background:#fff;border-top:1px solid #e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  #sarvAccPanel .ft .msg{flex:1;font-size:11.5px;color:#475569}
+  #sarvAccPanel .ft .msg b{color:#b45309}
+  #sarvAccPanel .bt{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:7px 13px;font-weight:800;font-size:12px;color:#334155;cursor:pointer}
+  #sarvAccPanel .bt.pr{background:#0f172a;border-color:#0f172a;color:#fff}
+  #sarvAccPanel .chglist{font-size:11.5px;color:#334155;margin:0;padding:6px 12px 10px 30px}
+  #sarvAccPanel .grp.xs{border-color:#bae6fd}
+  #sarvAccPanel .grp.xs .gh{background:#f0f9ff}
+  #sarvAccPanel .grp.xc{border-color:#99f6e4}
+  #sarvAccPanel .grp.xc .gh{background:#f0fdfa}
+  #sarvAccPanel table.acp-st{width:100%;border-collapse:collapse;font-size:12px}
+  #sarvAccPanel .acp-st th{font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:#64748b;text-align:center;padding:7px 8px;background:#f8fafc;border-bottom:1px solid #e2e8f0}
+  #sarvAccPanel .acp-st th:first-child{text-align:left}
+  #sarvAccPanel .acp-st td{padding:7px 8px;border-top:1px solid #f1f5f9;vertical-align:middle}
+  #sarvAccPanel .acp-st td:first-child b{display:block;font-size:12.5px;color:#0f172a}
+  #sarvAccPanel .acp-st td:first-child small{display:block;font-size:10.5px;color:#94a3b8}
+  #sarvAccPanel .acp-st tr.mod td{background:#f8fafc}
+  #sarvAccPanel .acp-st .cl{display:flex;flex-direction:column;align-items:center;gap:3px}
+  #sarvAccPanel .acp-st .cl .st{font-size:9.5px;padding:1px 6px}
+  #sarvAccPanel .acp-st tr.dim td.c{opacity:.45}
+  #sarvAccPanel .acp-st .rs{visibility:visible}
+  #sarvAccPanel .xnote{font-size:11px;color:#64748b;padding:8px 12px;border-top:1px solid #f1f5f9;line-height:1.45}
+  @media (max-width:560px){#sarvAccPanel .row .st{display:none}}`;
+  document.head.appendChild(s);
+}
+/* The form's state, read the way Save reads it. `ov` = the user form. */
+function sarvAccModel_(ov,u){
+  const f=k=>ov.querySelector('[data-f="'+k+'"]');
+  const roles=()=>{
+    const prim=f('role')?f('role').value:'';
+    const rw=f('roleswrap');
+    const extra=rw?[...rw.querySelectorAll('input[data-role]')].filter(cb=>cb.checked||cb.disabled).map(cb=>cb.dataset.role):[];
+    return [...new Set([prim].concat(extra).filter(Boolean))];
+  };
+  // What the roles ticked in the form give (Save uses the same for an untouched key).
+  const roleVal=k=>{
+    const rs=roles();
+    if(!rs.length)return sarvUserAppStart_(null,k);
+    if(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)return false;
+    return rs.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
+  };
+  const sels=[...ov.querySelectorAll('select[data-app]')];
+  sels.forEach(s=>{if(s.dataset.set0===undefined)s.dataset.set0=s.dataset.set||'0';});
+  const byKey={};sels.forEach(s=>{byKey[s.dataset.app]=s;});
+  const touched=s=>s.dataset.set==='1'||s.value!==s.dataset.init;
+  const eff=k=>{const s=byKey[k];return touched(s)?s.value==='1':roleVal(k);};
+  const changed=k=>{const s=byKey[k];return s.value!==s.dataset.init||s.dataset.set!==s.dataset.set0;};
+  const set=(k,on)=>{
+    const s=byKey[k];if(!s)return;
+    const v=on?'1':'0';s.value=v;
+    if(s.dataset.set0==='1')s.dataset.set='1';
+    else if(v!==s.dataset.init)s.dataset.set='0';
+    // Back at its start value: untouched again, unless the roles now give something else.
+    else s.dataset.set=(roleVal(k)===on)?'0':'1';
+    s.style.background=v==='1'?'#dcfce7':'#fee2e2';
+  };
+  const undo=k=>{const s=byKey[k];s.value=s.dataset.init;s.dataset.set=s.dataset.set0;s.style.background=s.value==='1'?'#dcfce7':'#fee2e2';};
+  const label=k=>{const d=SARV_TABS.find(t=>t.key===k);return SARV_APP_LABEL[k]||(d&&d.label)||k;};
+  const hint=k=>{const d=SARV_TABS.find(t=>t.key===k);return (d&&d.hint)||'';};
+  return {keys:sels.map(s=>s.dataset.app),byKey,roles,roleVal,eff,touched,changed,set,undo,label,hint};
+}
+/* The card in the user form: counts at a glance. */
+function sarvAccSummary_(ov,u){
+  const box=ov.querySelector('[data-f="accsummary"]');if(!box)return;
+  sarvAccCss_();
+  const m=sarvAccModel_(ov,u),apps=m.keys.filter(k=>!sarvAccParentOf_(k));
+  const on=apps.filter(k=>m.eff(k)).length,diff=m.keys.filter(k=>m.eff(k)!==m.roleVal(k)).length,chg=m.keys.filter(m.changed).length;
+  const rl=m.roles().map(r=>sarvRoleLabelOf_(r)).join(', ');
+  const X=ov.__sarvXAcc||{},xr=Object.keys(X).filter(k=>/^S[12]_|^CMP_/.test(k)&&typeof X[k]==='boolean').length;
+  box.innerHTML='<div class="k on"><b>'+on+' / '+apps.length+'</b><span>apps ON</span></div>'
+    +'<div class="k diff"><b>'+diff+'</b><span>differ from role</span></div>'
+    +(xr?'<div class="k diff"><b>'+xr+'</b><span>store / complaint rules</span></div>':'')
+    +(chg?'<div class="k chg"><b>'+chg+'</b><span>changed, not saved</span></div>':'')
+    +'<div class="roles">'+(rl?'Follows <b>'+escText(rl)+'</b>; only the differences are this user\'s own.':'Pick a role first: access starts from it.')
+    +'<br><span style="color:#94a3b8">Opening or saving this form changes nothing that is not switched in Manage access.</span></div>';
+}
+function sarvAccessPanel_(ov,u){
+  sarvAccCss_();
+  const m=sarvAccModel_(ov,u);
+  /* ── Store access + Complaint registers (see SARV_STORE_SCREENS) ── */
+  const X=ov.__sarvXAcc||(ov.__sarvXAcc={}),X0=ov.__sarvXAcc0||{};
+  const fq=k=>ov.querySelector('[data-f="'+k+'"]');
+  const isIC=()=>!!fq('role')&&fq('role').value==='USER_IC_PIN';
+  const radio=()=>{const r=ov.querySelector('input[name="sarvStoreAcc"]:checked');return r?r.dataset.acc:'';};
+  const STORES=['STORE 1','STORE 2'],MODKEY={'STORE 1':'ERP_STORE1','STORE 2':'ERP_WAREHOUSE'};
+  const base=k=>m.byKey[k]?m.eff(k):m.roleVal(k);      // the common key, as Save will leave it
+  const modOn=s=>{
+    if(isIC()){const a=radio();if(a)return a==='BOTH'||a===s;}
+    const v=X[MODKEY[s]];return typeof v==='boolean'?v:m.roleVal(MODKEY[s]);
+  };
+  const modOwn=s=>isIC()?!!radio():typeof X[MODKEY[s]]==='boolean';
+  const setMod=(s,on)=>{
+    if(isIC()){
+      // A Store Incharge's stores are the Store Access radio of the form.
+      const keep=STORES.filter(x=>x===s?on:modOn(x));
+      if(!keep.length)return showToast('A Store Incharge needs at least one store.','warn');
+      const v=keep.length===2?'BOTH':keep[0];
+      const r=ov.querySelector('input[name="sarvStoreAcc"][data-acc="'+v+'"]');
+      if(r){r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}));}
+      return;
+    }
+    const k=MODKEY[s];if(on===m.roleVal(k))delete X[k];else X[k]=on;
+  };
+  const scrKey=(s,k)=>SARV_STORE_ACC_PRE[s]+k;
+  const scrOn=(s,k)=>{const v=X[scrKey(s,k)];return typeof v==='boolean'?v:base(k);};
+  const scrOwn=(s,k)=>typeof X[scrKey(s,k)]==='boolean';
+  // Same as the common key = no store-only rule (nothing stored).
+  const setScr=(s,k,on)=>{const kk=scrKey(s,k);if(on===base(k))delete X[kk];else X[kk]=on;};
+  const CMP=[['CMP_MACHINE','Machine Complaint','machine'],['CMP_FABRIC','Fabric Complaint','fabric']];
+  const cmpRole=()=>fq('cmprole')?fq('cmprole').value:'';
+  const cmpBase=d=>!(d==='fabric'&&cmpRole()==='Maintenance');
+  const cmpOn=(k,d)=>cmpBase(d)&&X[k]!==false;
+  const setCmp=(k,d,on)=>{
+    if(!on){
+      const o=CMP.find(c=>c[0]!==k);
+      if(!cmpOn(o[0],o[2]))return showToast('At least one register must stay ON. To stop the Complaint App for this user, switch the Complaint App itself OFF.','warn');
+      X[k]=false;
+    }else delete X[k];
+  };
+  const radio0=ov.__sarvRadio0||'';
+  const xChanged=()=>{
+    const ks=new Set(Object.keys(X).concat(Object.keys(X0)));
+    return [...ks].filter(k=>X[k]!==X0[k]).length+(isIC()&&radio()!==radio0?1:0);
+  };
+  const cellSt=(on,own)=>'<span class="st '+(own?'own':'role')+'">'+(own?'own':'as common')+'</span>';
+  const storeHtml=()=>{
+    const rows=SARV_STORE_SCREENS.filter(r=>!q||sarvSearchMatch([r.l,'store 1 store 2',r.k],q));
+    const modRow=!q||sarvSearchMatch(['store menu sidebar store 1 store 2'],q);
+    if(!rows.length&&!modRow)return '';
+    const o=open.__st!==false;
+    return '<div class="grp xs'+(o?' open':'')+'"><div class="gh" data-grp="__st"><span class="cv">▸</span><b>Store access · Store 1 / Store 2</b>'
+      +'<span class="cnt">Store 1 '+(modOn('STORE 1')?'ON':'OFF')+' · Store 2 '+(modOn('STORE 2')?'ON':'OFF')+'</span></div>'
+      +'<div class="gb"><table class="acp-st"><thead><tr><th>Screen</th><th>Store 1</th><th>Store 2</th><th></th></tr></thead><tbody>'
+      +(modRow?'<tr class="mod"><td><b>Store menu in the sidebar</b><small>'+(isIC()?'Store Incharge: same as Store Access in the form':'Off = that store\'s whole menu is hidden')+'</small></td>'
+        +STORES.map(s=>'<td class="c"><div class="cl"><button type="button" class="sw'+(modOn(s)?' on':'')+'" data-smod="'+s+'" role="switch" aria-checked="'+modOn(s)+'"></button>'
+          +cellSt(modOn(s),modOwn(s))+'</div></td>').join('')
+        +'<td>'+(!isIC()&&STORES.some(modOwn)?'<button type="button" class="rs" data-smodreset="1" title="Both stores back to what the role gives">↺</button>':'')+'</td></tr>':'')
+      +rows.map(r=>'<tr><td><b>'+escText(r.l)+'</b><small>Common: '+(base(r.k)?'ON':'OFF')+'</small></td>'
+        +STORES.map(s=>{const on=scrOn(s,r.k),off=!modOn(s);
+          return '<td class="c"'+(off?' style="opacity:.45" title="This store\'s menu is OFF"':'')+'><div class="cl"><button type="button" class="sw'+(on?' on':'')+'" data-sscr="'+s+'|'+r.k+'" role="switch" aria-checked="'+on+'"></button>'
+            +cellSt(on,scrOwn(s,r.k))+'</div></td>';}).join('')
+        +'<td>'+(STORES.some(s=>scrOwn(s,r.k))?'<button type="button" class="rs" data-sscrreset="'+r.k+'" title="Both stores back to the common setting">↺</button>':'')+'</td></tr>').join('')
+      +'</tbody></table><div class="xnote">"As common" = the same as this user\'s ON / OFF for that screen (Apps list below). '
+      +'Switch one store only, and that store gets its own rule; switching it back removes the rule.</div></div></div>';
+  };
+  const cmpHtml=()=>{
+    if(q&&!sarvSearchMatch(['complaint machine fabric register'],q))return '';
+    const o=open.__cmp!==false,appOn=m.byKey.HOME_COMPLAINT_APP?m.eff('HOME_COMPLAINT_APP'):true;
+    return '<div class="grp xc'+(o?' open':'')+'"><div class="gh" data-grp="__cmp"><span class="cv">▸</span><b>Complaint App · registers</b>'
+      +'<span class="cnt">'+CMP.filter(c=>cmpOn(c[0],c[2])).map(c=>c[1].split(' ')[0]).join(' + ')+'</span></div><div class="gb">'
+      +CMP.map(c=>{const on=cmpOn(c[0],c[2]),fixed=!cmpBase(c[2]);
+        return '<div class="row'+(appOn?'':' dim')+'"><div class="nm"><b>'+escText(c[1])+'</b><small>'
+          +(fixed?'A Maintenance login sees Machine Complaint only':!appOn?'The Complaint App is OFF for this user':'The '+c[1]+' button and its list in the Complaint App')+'</small></div>'
+          +'<span class="st '+(X[c[0]]===false?'own':'role')+'">'+(X[c[0]]===false?'own · hidden':'shown as before')+'</span>'
+          +(fixed?'':'<button type="button" class="sw'+(on?' on':'')+'" data-cmp="'+c[0]+'|'+c[2]+'" role="switch" aria-checked="'+on+'"></button>')+'</div>';}).join('')
+      +'</div></div>';
+  };
+  let filt='ALL',q='';
+  const open={};   // area title -> expanded
+  const pn=document.createElement('div');pn.id='sarvAccPanel';
+  const nameNow=(ov.querySelector('[data-f="name"]')?.value||'').trim()||'New user';
+  pn.innerHTML='<div class="pn" role="dialog" aria-label="Manage access">'
+    +'<div class="hd"><div class="t"><h3>Manage access · '+escText(nameNow)+'</h3><button type="button" class="x" data-a="close" title="Done (Esc)">✕</button></div>'
+    +'<div class="rl" data-a="roles"></div>'
+    +'<div class="tools"><input type="search" data-a="q" placeholder="Search app / button…" autocomplete="off">'
+    +'<select data-a="copy"><option value="">Copy access from a user…</option>'
+    +(sarvAppUsers||[]).filter(x=>x.is_active!==false&&(!u||x.id!==u.id)).sort((a,b)=>String(a.user_name).localeCompare(String(b.user_name)))
+      .map(x=>'<option value="'+escText(String(x.id))+'">'+escText(x.user_name+' · '+sarvRoleLabelOf_(x.role))+'</option>').join('')+'</select></div>'
+    +'<div class="chips" data-a="chips"></div></div>'
+    +'<div class="bd" data-a="body"></div>'
+    +'<div class="ft"><span class="msg" data-a="msg"></span>'
+    +'<button type="button" class="bt" data-a="undo">Undo all changes</button>'
+    +'<button type="button" class="bt pr" data-a="close">Done</button></div></div>';
+  document.body.appendChild(pn);
+  const $a=k=>pn.querySelector('[data-a="'+k+'"]');
+  const all=m.keys;
+  const tree=[];   // [{t, apps:[{k, subs:[k]}]}]
+  const placed=new Set();
+  const subsOf=p=>all.filter(k=>sarvAccParentOf_(k)===p);
+  SARV_ACCESS_AREAS.forEach(a=>{
+    const apps=a.keys.filter(k=>all.indexOf(k)>=0).map(k=>{placed.add(k);const s=subsOf(k);s.forEach(x=>placed.add(x));return {k,subs:s};});
+    if(apps.length)tree.push({t:a.t,apps});
+  });
+  // Anything new that no area names yet still shows, under Other.
+  const rest=all.filter(k=>!placed.has(k));
+  if(rest.length)tree.push({t:'Other',apps:rest.map(k=>({k,subs:[]}))});
+  const pass=k=>{
+    if(q&&!sarvSearchMatch([m.label(k),k,m.hint(k)],q))return false;
+    const e=m.eff(k);
+    return filt==='ALL'||(filt==='ON'&&e)||(filt==='OFF'&&!e)||(filt==='DIFF'&&e!==m.roleVal(k))
+      ||(filt==='CHG'&&m.changed(k))||(filt==='EXT'&&!!SARV_APP_EXTERNAL[k]);
+  };
+  const rowHtml=(k,sub,parentOff)=>{
+    const e=m.eff(k),rv=m.roleVal(k),diff=e!==rv;
+    const st=m.changed(k)?'<span class="st chg">changed</span>':diff?'<span class="st own">own · role '+(rv?'ON':'OFF')+'</span>':'<span class="st role">via role</span>';
+    return '<div class="row'+(sub?' sub':'')+(parentOff?' dim':'')+(diff?' differs':'')+'">'
+      +'<div class="nm"><b>'+escText(m.label(k))
+      +(SARV_APP_EXTERNAL[k]?'<span class="tg ext">separate app</span>':'')
+      +(SARV_APP_NEEDS_ACCOUNT[k]?'<span class="tg acc">ON creates account</span>':'')+'</b>'
+      +(m.hint(k)?'<small>'+escText(m.hint(k))+'</small>':(parentOff?'<small>The app is OFF, so this has no effect now</small>':''))+'</div>'
+      +st+'<button type="button" class="rs" data-reset="'+k+'" title="Set it to what the role gives ('+(rv?'ON':'OFF')+')">↺</button>'
+      +'<button type="button" class="sw'+(e?' on':'')+'" data-key="'+k+'" role="switch" aria-checked="'+e+'" title="'+(e?'ON':'OFF')+'"></button></div>';
+  };
+  const paint=()=>{
+    $a('roles').innerHTML='Starts from: '+(m.roles().map(r=>'<b>'+escText(sarvRoleLabelOf_(r))+'</b>').join('')||'<i>no role picked yet</i>')
+      +' <span style="color:#94a3b8">· a switch that differs from the role becomes this user\'s own</span>';
+    const cnt=t=>all.filter(k=>{const e=m.eff(k);return t==='ON'?e:t==='OFF'?!e:t==='DIFF'?e!==m.roleVal(k):t==='CHG'?m.changed(k):t==='EXT'?!!SARV_APP_EXTERNAL[k]:true;}).length;
+    $a('chips').innerHTML=[['ALL','All'],['DIFF','Differs from role'],['ON','ON'],['OFF','OFF'],['CHG','Changed now'],['EXT','Separate apps']]
+      .map(c=>'<button type="button" class="chip'+(filt===c[0]?' on':'')+'" data-filt="'+c[0]+'">'+c[1]+'<i>'+cnt(c[0])+'</i></button>').join('');
+    const searching=!!q||filt!=='ALL';
+    let html=filt==='ALL'?storeHtml()+cmpHtml():'';
+    // Differences first: usually the only rows that matter.
+    const diffs=all.filter(k=>m.eff(k)!==m.roleVal(k));
+    if(!searching&&diffs.length){
+      const o=open.__d!==false;
+      html+='<div class="grp diffs'+(o?' open':'')+'"><div class="gh" data-grp="__d"><span class="cv">▸</span><b>Differs from role</b><span class="cnt d">'+diffs.length+'</span></div>'
+        +'<div class="gb">'+diffs.map(k=>rowHtml(k,false,false)).join('')+'</div></div>';
+    }
+    tree.forEach(g=>{
+      const rows=[];
+      g.apps.forEach(a=>{
+        const subs=a.subs.filter(pass);
+        if(pass(a.k)||subs.length){
+          rows.push(rowHtml(a.k,false,false));
+          const off=!m.eff(a.k);
+          (searching?subs:a.subs).forEach(s=>rows.push(rowHtml(s,true,off)));
+        }
+      });
+      if(!rows.length)return;
+      const keys=g.apps.map(a=>a.k),on=keys.filter(k=>m.eff(k)).length;
+      const nd=g.apps.reduce((n,a)=>n+[a.k].concat(a.subs).filter(k=>m.eff(k)!==m.roleVal(k)).length,0);
+      const o=searching||!!open[g.t];
+      html+='<div class="grp'+(o?' open':'')+'"><div class="gh" data-grp="'+escText(g.t)+'"><span class="cv">▸</span><b>'+escText(g.t)+'</b>'
+        +(nd?'<span class="cnt d">'+nd+' differ</span>':'')+'<span class="cnt">'+on+' / '+keys.length+' ON</span>'
+        +'<button type="button" data-gall="'+escText(g.t)+'" data-v="1" title="Switch every app in this group ON">All ON</button>'
+        +'<button type="button" data-gall="'+escText(g.t)+'" data-v="0" title="Switch every app in this group OFF">All OFF</button></div>'
+        +'<div class="gb">'+rows.join('')+'</div></div>';
+    });
+    $a('body').innerHTML=html||'<div class="empty">Nothing matches.</div>';
+    const nch=all.filter(m.changed).length+xChanged();
+    $a('msg').innerHTML=nch?'<b>'+nch+' change(s)</b> in this form, not saved yet. Press <b>Save User</b> to apply them.'
+      :'No changes. Untouched rows keep following the role.';
+    $a('undo').disabled=!nch;$a('undo').style.opacity=nch?'1':'.5';
+  };
+  pn.addEventListener('click',e=>{
+    const t=e.target;
+    if(t===pn||t.closest('[data-a="close"]'))return done();
+    const sw=t.closest('[data-key]');if(sw){m.set(sw.dataset.key,!m.eff(sw.dataset.key));return paint();}
+    const sm=t.closest('[data-smod]');if(sm){setMod(sm.dataset.smod,!modOn(sm.dataset.smod));return paint();}
+    if(t.closest('[data-smodreset]')){STORES.forEach(s=>delete X[MODKEY[s]]);return paint();}
+    const ss=t.closest('[data-sscr]');if(ss){const [s,k]=ss.dataset.sscr.split('|');setScr(s,k,!scrOn(s,k));return paint();}
+    const sr=t.closest('[data-sscrreset]');if(sr){STORES.forEach(s=>delete X[scrKey(s,sr.dataset.sscrreset)]);return paint();}
+    const cm=t.closest('[data-cmp]');if(cm){const [k,d]=cm.dataset.cmp.split('|');setCmp(k,d,!cmpOn(k,d));return paint();}
+    const rs=t.closest('[data-reset]');if(rs){m.set(rs.dataset.reset,m.roleVal(rs.dataset.reset));return paint();}
+    const ga=t.closest('[data-gall]');
+    if(ga){e.stopPropagation();const g=tree.find(x=>x.t===ga.dataset.gall);if(g)g.apps.forEach(a=>m.set(a.k,ga.dataset.v==='1'));open[ga.dataset.gall]=true;return paint();}
+    const gh=t.closest('[data-grp]');
+    // The __ sections (differences, store, complaint) start open, area groups closed.
+    if(gh){const k=gh.dataset.grp;open[k]=k.indexOf('__')===0?(open[k]===false):!open[k];return paint();}
+    const fc=t.closest('[data-filt]');if(fc){filt=fc.dataset.filt;return paint();}
+    if(t.closest('[data-a="undo"]')){
+      if(!confirm('Undo every change made in this form?'))return;
+      all.forEach(m.undo);
+      Object.keys(X).forEach(k=>delete X[k]);Object.assign(X,X0);
+      if(isIC()&&radio()!==radio0){
+        ov.querySelectorAll('input[name="sarvStoreAcc"]').forEach(r=>{r.checked=r.dataset.acc===radio0;});
+        ov.querySelector('input[name="sarvStoreAcc"]')?.dispatchEvent(new Event('change',{bubbles:true}));
+      }
+      paint();
+    }
+  });
+  $a('q').addEventListener('input',()=>{q=$a('q').value;paint();});
+  $a('copy').addEventListener('change',()=>{
+    const src=(sarvAppUsers||[]).find(x=>String(x.id)===$a('copy').value);$a('copy').value='';
+    if(!src)return;
+    if(!confirm('Set every app and button the way '+src.user_name+' has it now?\n\nNothing is saved until you press Save User.'))return;
+    const a=(src.app_access&&typeof src.app_access==='object')?src.app_access:{};
+    all.forEach(k=>m.set(k,typeof a[k]==='boolean'?a[k]:sarvUserAppStart_(src,k)));
+    filt='CHG';paint();
+  });
+  const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done();}};
+  document.addEventListener('keydown',onKey,true);
+  function done(){document.removeEventListener('keydown',onKey,true);pn.remove();sarvAccSummary_(ov,u);}
+  paint();
+  setTimeout(()=>$a('q').focus(),30);
 }
 
 /* Unit (required) + Complaint App profile, in the user form. If the
@@ -8258,27 +8723,33 @@ function sarvUserUnitHtml_(u){
   const cr=u?(u.cmp_role||''):'';
   const types=(u&&u.cmp_host_types)||[];
   const box='border:1px solid #cbd5e1;border-radius:7px;padding:8px 10px;background:#f8fafc;';
-  return '<div class="fg" style="grid-column:1 / -1;"><label>Unit <span class="req">*</span> '
-      +'<small style="text-transform:none;font-weight:600;">(the user\'s factory unit; their complaints are saved under it and go to that unit\'s hosts)</small></label>'
-    +'<div data-f="unitwrap" style="display:flex;gap:8px;flex-wrap:wrap;">'
-    +sarvUnits.map(x=>'<label style="flex:1 1 120px;display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;'
-        +'background:#fff;cursor:pointer;text-transform:none;font-size:12.5px;font-weight:800;color:#334155;">'
-        +'<input type="radio" name="sarvUnitPick" data-unit="'+escText(x.code)+'"'+(x.code===unit?' checked':'')+' style="width:15px;height:15px;"> '
-        +escText(x.name||x.code)+'</label>').join('')
-    +'</div>'
-    +(u&&!unit?'<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px;">Unit not set yet: this user cannot raise a complaint until it is.</div>':'')
-    +(u&&unit?'<div style="font-size:10.5px;color:#64748b;margin-top:4px;">Changing it moves only NEW complaints; complaints already raised stay in their old unit.</div>':'')
-    +'</div>'
-    /* The Complaint App's old "Users" tab, here instead. */
-    +'<div class="fg" style="grid-column:1 / -1;"><label>Complaint App <small style="text-transform:none;font-weight:600;">'
+  /* Factory Unit, for every complaint role: one radio per unit + Both
+     (data-unit SARV_UNIT_ALL = app_users.cmp_all_units, with the user's own
+     unit kept as the default unit, see readUnitForm). Both = may raise for
+     either unit; a Host gets complaints of either unit; Maintenance /
+     Production Manager see both units' queues. A plain User still sees only
+     their own complaints (RLS). */
+  const allOn=!!(u&&u.cmp_all_units&&unit);
+  const rb=(code,label,on)=>'<label style="flex:1 1 110px;display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;border:1px solid #cbd5e1;border-radius:7px;'
+      +'background:#fff;cursor:pointer;text-transform:none;font-size:12.5px;font-weight:800;color:#334155;">'
+      +'<input type="radio" name="sarvUnitPick" data-unit="'+escText(code)+'"'+(on?' checked':'')+' style="width:15px;height:15px;"> '+escText(label)+'</label>';
+  /* The Complaint App's old "Users" tab, here instead. */
+  return '<div class="fg" style="grid-column:1 / -1;"><label>Complaint App <small style="text-transform:none;font-weight:600;">'
       +'(the account itself is created by Apps &rsaquo; Complaint App = ON'+(u&&u.cmp_username?'; <span style="color:#15803d;">account exists</span>':'')+')</small></label>'
     +'<div style="'+box+'">'
+    +'<div class="fg" style="margin-bottom:8px;"><label>Factory Unit <span class="req">*</span> '
+      +'<small style="text-transform:none;font-weight:600;">(their complaints are saved under it and go to that unit\'s hosts)</small></label>'
+    +'<div data-f="unitwrap" style="display:flex;gap:8px;flex-wrap:wrap;">'
+    +sarvUnits.map(x=>rb(x.code,x.name||x.code,!allOn&&x.code===unit)).join('')
+    +(sarvUnits.length>1?rb(SARV_UNIT_ALL,sarvUnits.length===2?'Both':'All units',allOn):'')
+    +'</div>'
+    +'<small data-f="unithint" style="display:block;font-size:10.5px;color:#64748b;margin-top:4px;"></small>'
+    +(u&&!unit?'<div style="font-size:11px;color:#b45309;font-weight:700;margin-top:4px;">Unit not set yet: this user cannot raise a complaint until it is.</div>':'')
+    +(u&&unit?'<div style="font-size:10.5px;color:#64748b;margin-top:2px;">Changing it moves only NEW complaints; complaints already raised stay in their old unit.</div>':'')
+    +'</div>'
     +'<div class="g2">'
     +'<div class="fg"><label>Complaint Role</label><select data-f="cmprole">'
       +SARV_CMP_ROLES.map(r=>'<option value="'+r+'"'+((cr||'User')===r?' selected':'')+'>'+escText(r)+'</option>').join('')+'</select></div>'
-    +'<div class="fg" data-f="allunitswrap"><label>&nbsp;</label><label style="display:flex;align-items:center;gap:8px;margin:0;text-transform:none;font-size:12px;font-weight:700;color:#334155;cursor:pointer;">'
-      +'<input data-f="allunits" type="checkbox" style="width:15px;height:15px;"'+(u&&u.cmp_all_units?' checked':'')+'> Covers all units</label>'
-      +'<small data-f="allunitshint" style="display:block;font-size:10.5px;color:#64748b;margin-top:2px;"></small></div>'
     +'<div class="fg"><label>Department</label><input data-f="cmpdept" style="text-transform:uppercase;" value="'+escText(u?(u.department||''):'')+'" placeholder="e.g. RASCHEL"></div>'
     +'<div class="fg"><label>Designation</label><input data-f="cmpdesig" value="'+escText(u?(u.designation||''):'')+'" placeholder="e.g. Machine Operator"></div>'
     +'</div>'
@@ -8293,6 +8764,254 @@ function sarvUserUnitHtml_(u){
     +'</div></div>';
 }
 
+/* ── User form layout ────────────────────────────────────────────────
+   The form is built field by field above (each field keeps its data-f and
+   every listener / Save reads it by that), then MOVED here into four
+   sections, so the order can change without touching Save:
+     1 Employee & login   Employee Code first, then what it fills in
+     2 Role & access      roles, store, Field Boy, apps
+     3 PIN & signature
+     4 Other apps         Order Form, Unit, Complaint App
+   A field this list does not name (a warning box, a future field) still
+   shows: it is swept into the last section, never dropped. */
+function sarvUserFormArrange_(ov){
+  if(!byId('ufCss')){
+    const s=document.createElement('style');s.id='ufCss';
+    s.textContent=`
+    #sarvUserModal .card{max-width:900px}
+    #sarvUserModal .uf-sec{border:1px solid #e2e8f0;border-radius:10px;margin-bottom:12px;background:#fff}
+    #sarvUserModal .uf-h{display:flex;align-items:center;gap:9px;padding:9px 12px;background:#f8fafc;border-bottom:1px solid #e2e8f0;border-radius:10px 10px 0 0}
+    #sarvUserModal .uf-h i{font-style:normal;width:22px;height:22px;border-radius:50%;background:#1e3a8a;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+    #sarvUserModal .uf-h b{font-size:12.5px;color:#0f172a}
+    #sarvUserModal .uf-h span{font-size:11px;color:#64748b}
+    #sarvUserModal .uf-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px;padding:10px 12px 2px}
+    #sarvUserModal .uf-g>.uf-full{grid-column:1 / -1}
+    #sarvUserModal .uf-emp{margin-top:5px;font-size:11.5px;line-height:1.45;border-radius:7px;padding:0}
+    #sarvUserModal .uf-emp:empty{display:none}
+    #sarvUserModal .uf-emp.ok,#sarvUserModal .uf-emp.bad,#sarvUserModal .uf-emp.wait,#sarvUserModal .uf-emp.none{padding:7px 9px}
+    #sarvUserModal .uf-emp.ok{background:#f0fdf4;border:1px solid #86efac;color:#14532d}
+    #sarvUserModal .uf-emp.ok.warn{background:#fffbeb;border-color:#fcd34d;color:#78350f}
+    #sarvUserModal .uf-emp.bad{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b}
+    #sarvUserModal .uf-emp.none,#sarvUserModal .uf-emp.wait{background:#f8fafc;border:1px solid #e2e8f0;color:#64748b}
+    #sarvUserModal .uf-emp .s{color:#15803d;font-size:10.5px;font-weight:700}
+    #sarvUserModal .uf-emp .d{margin-top:3px;font-weight:700}
+    #sarvUserModal .uf-emp .u{margin-top:3px;color:#b91c1c;font-weight:700}
+    #sarvUserModal .uf-emp button{margin-left:6px;border:1px solid #d97706;background:#fff;color:#92400e;border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:800;cursor:pointer;font-family:inherit}
+    #sarvUserModal .fg input.uf-ro{background:#f1f5f9;border:1px solid #e2e8f0;color:#0f172a;font-weight:700;cursor:default;box-shadow:none}
+    #sarvUserModal .fg input.uf-ro:focus{border-color:#e2e8f0}
+    #sarvUserModal .uf-ro-fg>label::after{content:" · from Employee Master";text-transform:none;font-weight:600;color:#15803d}
+    #sarvUserModal .uf-tbl{display:grid;grid-template-columns:minmax(150px,200px) minmax(0,1fr);margin:0;padding:0;gap:0}
+    #sarvUserModal .uf-tr{display:contents}
+    #sarvUserModal .uf-tr.off{display:none}
+    #sarvUserModal .uf-tl,#sarvUserModal .uf-tc{padding:10px 12px;border-top:1px solid #f1f5f9}
+    #sarvUserModal .uf-tr:first-child .uf-tl,#sarvUserModal .uf-tr:first-child .uf-tc{border-top:0}
+    #sarvUserModal .uf-tl{background:#fcfcfd;border-right:1px solid #f1f5f9}
+    #sarvUserModal .uf-tl b{display:block;font-size:12.5px;color:#0f172a}
+    #sarvUserModal .uf-tl b .req{margin-left:2px}
+    #sarvUserModal .uf-tl span{display:block;font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.4}
+    #sarvUserModal .uf-tc .fg{margin:0}
+    #sarvUserModal .uf-tc .fg>label{display:none}
+    #sarvUserModal .uf-tc .fg select{max-width:260px}
+    #sarvUserModal .uf-dd-wrap{position:relative}
+    #sarvUserModal .uf-dd-btn{width:100%;min-height:36px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:5px 30px 5px 8px;border:1.5px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer;text-align:left;font-family:inherit;font-size:12.5px;color:#0f172a;position:relative}
+    #sarvUserModal .uf-dd-btn:focus{outline:none;border-color:#0284c7}
+    #sarvUserModal .uf-dd-btn::after{content:"▾";position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#64748b;font-size:12px}
+    #sarvUserModal .uf-dd-btn .ph{color:#94a3b8}
+    #sarvUserModal .uf-dd-btn .chip{background:#e0f2fe;color:#075985;border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700}
+    #sarvUserModal .uf-dd{display:none !important;position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;background:#fff;border:1px solid #cbd5e1;border-radius:9px;box-shadow:0 12px 28px rgba(15,23,42,.18);padding:6px !important;grid-template-columns:1fr !important;max-height:280px;overflow:auto}
+    #sarvUserModal .uf-dd.open{display:grid !important}
+    #sarvUserModal .uf-dd label{padding:7px 8px !important;border-radius:6px;font-size:12px !important}
+    #sarvUserModal .uf-dd label:hover{background:#f1f5f9}
+    #sarvUserModal .uf-dd .uf-dd-tools{display:flex;gap:6px;padding:2px 2px 6px;border-bottom:1px solid #f1f5f9;margin-bottom:4px;position:sticky;top:-6px;background:#fff;z-index:1}
+    #sarvUserModal .uf-dd .uf-dd-tools input{flex:1;padding:6px 8px;font-size:12px}
+    #sarvUserModal .uf-dd .uf-dd-tools button{border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:4px 9px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit;color:#334155}
+    #sarvUserModal .uf-dd .uf-dd-tools button.ok{background:#0f172a;border-color:#0f172a;color:#fff}
+    @media (max-width:640px){#sarvUserModal .uf-g{grid-template-columns:1fr}#sarvUserModal .uf-tbl{grid-template-columns:1fr}#sarvUserModal .uf-tl{border-right:0}}`;
+    document.head.appendChild(s);
+  }
+  const bd=ov.querySelector('.bd');if(!bd)return;
+  const fgOf=k=>{const el=ov.querySelector('[data-f="'+k+'"]');return el?el.closest('.fg'):null;};
+  const canvasFg=()=>{const c=ov.querySelector('canvas');return c?c.closest('.fg'):null;};
+  const PLAN=[
+    {t:'Employee & login',s:'Employee Code fills the rest from Employee Master',items:[['emp'],['name'],['contact'],['cmpdesig'],['cmpdept'],['active',1]]},
+    {t:'Role & access',s:'what this user can see and do',items:[['role'],['roleswrap'],['fieldboy',1],['accsummary',1]]},
+    {t:'PIN & signature',s:'PIN to log in and sign; leave blank to keep the old one',items:[['pin'],['pin2'],[canvasFg,1]]},
+    // The Complaint App block carries its own Factory Unit (Unit 1 / Unit 2 / Both).
+    {t:'Other apps',s:'Order Form, and Complaint App with its Factory Unit',items:[['srole',1],['hostwrap',1]]},
+    // Rows of one table, not a grid: built below ("Store").
+    {t:'Store',s:'which store this user works in',items:[]}
+  ];
+  const err=ov.querySelector('[data-f="err"]');
+  const secs=PLAN.map((p,i)=>{
+    const s=document.createElement('div');s.className='uf-sec';
+    s.innerHTML='<div class="uf-h"><i>'+(i+1)+'</i><b>'+escText(p.t)+'</b><span>'+escText(p.s)+'</span></div><div class="uf-g"></div>';
+    const g=s.querySelector('.uf-g');
+    p.items.forEach(([k,full])=>{
+      const el=typeof k==='function'?k():fgOf(k);
+      if(!el||el.parentElement===g)return;
+      if(full)el.classList.add('uf-full');
+      g.appendChild(el);
+    });
+    return s;
+  });
+  // Designation / Department belong to the person, not only to the Complaint App.
+  [['cmpdesig','Designation'],['cmpdept','Department']].forEach(([k,l])=>{
+    const lab=fgOf(k)?.querySelector('label');
+    if(lab)lab.textContent=l;
+  });
+  /* Store: Store Access + PR Store as one table (the Factory Unit lives in
+     the Complaint App block, with Both). Each row = the same field as before
+     (its own label hidden, a short one + what it decides on the left). The
+     Store Access row shows only while its field is shown, i.e. for a Store
+     Incharge (sarvStoreAccSync_ still decides, by its field's display). */
+  {
+    const tbl=document.createElement('div');tbl.className='uf-tbl';
+    [['ustoreaccwrap','Store Access','Store Incharge only: which Store menu (Store 1, Store 2 or both) they see in the sidebar',true],
+     ['ustore','PR Store','The store whose PRs this user raises (and the POs made from them)',false]].forEach(([k,l,h,req])=>{
+      const el=fgOf(k);if(!el)return;
+      const tr=document.createElement('div');tr.className='uf-tr';
+      tr.innerHTML='<div class="uf-tl"><b>'+escText(l)+(req?'<span class="req">*</span>':'')+'</b><span>'+escText(h)+'</span></div><div class="uf-tc"></div>';
+      tr.querySelector('.uf-tc').appendChild(el);
+      tbl.appendChild(tr);
+      // Follow the field's own show / hide (Store Access for a Store Incharge only).
+      const sync=()=>tr.classList.toggle('off',el.style.display==='none');
+      sync();new MutationObserver(sync).observe(el,{attributes:true,attributeFilter:['style']});
+    });
+    const g=secs[secs.length-1].querySelector('.uf-g');
+    if(tbl.children.length){g.replaceWith(tbl);tbl.classList.add('uf-g');}
+  }
+  /* Extra Roles as a dropdown check list: the same checkboxes (Save reads
+     input[data-role] inside roleswrap), shown in a panel under a box that
+     lists what is ticked. The primary role is in the list, ticked and locked. */
+  {
+    const rw=ov.querySelector('[data-f="roleswrap"]'),fg=rw&&rw.closest('.fg');
+    if(rw&&fg){
+      const lab=fg.querySelector('label');
+      if(lab)lab.innerHTML='Extra Roles <small style="text-transform:none;font-weight:600;">(access = all roles together)</small>';
+      const wrap=document.createElement('div');wrap.className='uf-dd-wrap';
+      const btn=document.createElement('button');btn.type='button';btn.className='uf-dd-btn';btn.dataset.f='rolesbtn';
+      rw.parentNode.insertBefore(wrap,rw);wrap.appendChild(btn);wrap.appendChild(rw);
+      rw.classList.add('uf-dd');
+      const tools=document.createElement('div');tools.className='uf-dd-tools';
+      tools.innerHTML='<input type="search" placeholder="Search role…" autocomplete="off"><button type="button" data-dd="clear">Clear</button><button type="button" class="ok" data-dd="done">Done</button>';
+      rw.prepend(tools);
+      const paint=()=>{
+        const extra=[...rw.querySelectorAll('input[data-role]')].filter(cb=>cb.checked&&!cb.disabled);
+        const name=cb=>{const r=SARV_PERM_ROLES.find(x=>x.code===cb.dataset.role);return r?r.label:cb.dataset.role;};
+        btn.innerHTML=extra.length?extra.map(cb=>'<span class="chip">'+escText(name(cb))+'</span>').join(''):'<span class="ph">None: only the primary role</span>';
+      };
+      const setOpen=on=>{rw.classList.toggle('open',on);if(on)setTimeout(()=>tools.querySelector('input').focus(),20);};
+      btn.addEventListener('click',()=>setOpen(!rw.classList.contains('open')));
+      tools.querySelector('input').addEventListener('input',e=>{
+        const t=e.target.value;
+        rw.querySelectorAll('label').forEach(l=>{l.style.display=sarvSearchMatch(l.textContent,t)?'':'none';});
+      });
+      tools.addEventListener('click',e=>{
+        const a=e.target.closest('[data-dd]');if(!a)return;
+        if(a.dataset.dd==='clear')rw.querySelectorAll('input[data-role]').forEach(cb=>{if(!cb.disabled&&cb.checked){cb.checked=false;cb.dispatchEvent(new Event('change',{bubbles:true}));}});
+        else setOpen(false);
+        paint();
+      });
+      rw.addEventListener('change',paint);
+      // The primary role changing re-ticks / locks a checkbox (the form's own listener).
+      ov.querySelector('[data-f="role"]')?.addEventListener('change',()=>setTimeout(paint,0));
+      document.addEventListener('mousedown',e=>{if(rw.classList.contains('open')&&!wrap.contains(e.target))setOpen(false);},true);
+      ov.addEventListener('keydown',e=>{if(e.key==='Escape'&&rw.classList.contains('open')){e.preventDefault();e.stopPropagation();setOpen(false);btn.focus();}},true);
+      paint();
+    }
+  }
+  // Everything not placed above (empty grids go; anything else is kept, under Other apps).
+  const last=secs[3].querySelector('.uf-g');
+  [...bd.children].forEach(ch=>{
+    if(ch===err)return;
+    if(!ch.querySelector('input,select,textarea,canvas,button,[data-f]')&&!ch.textContent.trim()){ch.remove();return;}
+    if(ch.classList.contains('g2')){
+      [...ch.children].forEach(x=>{if(x.querySelector('input,select,textarea,[data-f]')||x.textContent.trim())last.appendChild(x);});
+      ch.remove();return;
+    }
+    ch.classList.add('uf-full');last.appendChild(ch);
+  });
+  secs.forEach(s=>{if(s.querySelector('.uf-g').children.length)bd.appendChild(s);});
+}
+/* Employee Code → Name, Contact No., Designation, Department.
+   The old fill only wrote into EMPTY boxes, so typing EMP-1 on the way to
+   EMP-12 left EMP-1's details behind, and changing an existing user's code
+   kept the previous person's name. Now the fill remembers what IT wrote:
+   a box still holding that value follows the code (replaced on a new
+   match, cleared when the code matches nobody); a box someone typed into
+   is never overwritten, it is only reported as "differs", with a button to
+   take the Employee Master's details. A code shared by two employees fills
+   nothing. Opening an existing user only checks, it changes no box. */
+function sarvUserEmpLookup_(ov,u){
+  const f=k=>ov.querySelector('[data-f="'+k+'"]');
+  const emp=f('emp');if(!emp)return;
+  const card=document.createElement('div');card.className='uf-emp';card.dataset.f='empcard';
+  emp.insertAdjacentElement('afterend',card);
+  const up=v=>String(v==null?'':v).trim().toUpperCase();
+  const FIELDS=[['name','person_name',up,'Name'],['contact','contact_no',v=>String(v||'').trim(),'Contact No.'],
+    ['cmpdesig','designation',v=>String(v||'').trim(),'Designation'],['cmpdept','department',up,'Department']];
+  const auto={};
+  const put=(k,v,force)=>{
+    const el=f(k);if(!el)return;
+    const cur=el.value.trim();
+    if(force||!cur||(k in auto&&up(cur)===up(auto[k]))){el.value=v;auto[k]=v;}
+  };
+  const clearAuto=()=>Object.keys(auto).forEach(k=>{const el=f(k);if(el&&up(el.value)===up(auto[k]))el.value='';delete auto[k];});
+  /* Info boxes: while the code matches ONE employee, every box Employee
+     Master has a value for is read-only (it shows that employee's details);
+     a box the master leaves empty stays typeable. No code / no match = all
+     typeable again (a login without an Emp Code still needs a name). */
+  const lock=e=>FIELDS.forEach(([k,c,n])=>{
+    const el=f(k);if(!el)return;
+    const on=!!(e&&n(e[c]));
+    el.readOnly=on;el.classList.toggle('uf-ro',on);
+    el.title=on?'From Employee Master (Employee Code). Change the code, or the Employee Master, to change it.':'';
+    el.closest('.fg')?.classList.toggle('uf-ro-fg',on);
+  });
+  const run=mode=>{
+    const code=up(emp.value);
+    if(!code){if(mode!=='open')clearAuto();lock(null);card.className='uf-emp';card.innerHTML='';return;}
+    if(!sarvEmployeeCatalog.length){card.className='uf-emp wait';card.textContent='Loading Employee Master…';return;}
+    const hits=sarvEmployeeCatalog.filter(e=>up(e.emp_code)===code);
+    // The same code on another login is the other common cause of mixed-up details.
+    const other=(sarvAppUsers||[]).find(x=>(!u||x.id!==u.id)&&up(x.emp_code)===code);
+    const otherHtml=other?'<div class="u">Already used by another user: '+escText(other.user_name)+' ('+escText(sarvRoleLabelOf_(other.role))+')</div>':'';
+    if(hits.length!==1){
+      if(mode!=='open')clearAuto();
+      lock(null);
+      card.className='uf-emp '+(hits.length?'bad':'none');
+      card.innerHTML=(hits.length
+        ?'<b>'+hits.length+' employees have code '+escText(code)+'</b> in Employee Master ('+escText(hits.map(h=>h.person_name).join(', '))+'). Nothing was filled: correct the Employee Master first.'
+        :'No employee with code <b>'+escText(code)+'</b> in Employee Master.')+otherHtml;
+      return;
+    }
+    const e=hits[0];
+    /* Typing / picking a code: the info boxes take this employee's details
+       (they are read-only, so nothing typed by hand is lost). Opening an
+       existing user changes nothing: its saved values stay, and a value that
+       differs from the master is reported with a button to take the master's. */
+    if(mode!=='open')FIELDS.forEach(([k,c,n])=>{if(n(e[c]))put(k,n(e[c]),true);else if(k in auto)put(k,'',true);});
+    else FIELDS.forEach(([k,c,n])=>{const el=f(k);if(el&&n(e[c])&&up(el.value)===up(n(e[c])))auto[k]=n(e[c]);});
+    lock(e);
+    const diff=FIELDS.filter(([k,c,n])=>f(k)&&n(e[c])&&up(f(k).value)!==up(n(e[c])));
+    const renamed=u&&f('name')&&up(u.user_name)!==up(f('name').value);
+    card.className='uf-emp ok'+(diff.length?' warn':'');
+    card.innerHTML='<div>Employee Master: <b>'+escText(e.person_name||'-')+'</b>'
+      +[e.designation,e.department,e.contact_no].filter(Boolean).map(v=>' · '+escText(v)).join('')+'</div>'
+      +(diff.length?'<div class="d">The saved '+diff.map(d=>d[3]).join(', ')+' differ'+(diff.length===1?'s':'')+' from Employee Master'
+        +'<button type="button" data-f="empuse">Use Employee Master details</button></div>'
+        :'<div class="s">Details filled from Employee Master</div>')
+      +(renamed?'<div class="u">User Name will change from '+escText(u.user_name)+' to '+escText(f('name').value)+' on Save.</div>':'')+otherHtml;
+    card.querySelector('[data-f="empuse"]')?.addEventListener('click',()=>run('force'));
+  };
+  emp.addEventListener('input',()=>run('type'));
+  emp.addEventListener('change',()=>run('type'));
+  if(!sarvEmployeeCatalog.length&&SB_READY){
+    run('open');
+    fetchAllRows('employees','*','emp_code').then(d=>{if(d&&d.length)refreshEmployeeDatalist(d);run('open');})
+      .catch(()=>{card.className='uf-emp none';card.textContent='Employee Master could not be loaded; the details are not filled automatically.';});
+  }else run('open');
+}
 function sarvOpenUserModal(id,presetRole){
   if(!isAdmin())return showToast('Only an Admin login can create users','warn');
   if(sarvAppUsersMissing)return showToast('Run ADMIN_PANEL_MIGRATION.sql first','warn');
@@ -8306,7 +9025,13 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg"><label>'+(sarvUnifiedReady?'Primary Role':'Role')+' <span class="req">*</span>'
       +(sarvUnifiedReady?' <small style="text-transform:none;font-weight:600;">(used for signatures / audit)</small>':'')
       +'</label><select data-f="role"><option value="">-- Select Role --</option>'
-      +SARV_PERM_ROLES.map(r=>'<option value="'+r.code+'"'+(r.code===role?' selected':'')+'>'+escText(r.label)+'</option>').join('')+'</select></div>'
+      /* ERP roles, then "Other Apps" (CMP_USER) on its own. A hidden role
+         (PK_USER) is listed only for the user who already has it. */
+      +'<optgroup label="ERP roles">'
+      +SARV_PERM_ROLES.filter(r=>r.code!==SARV_ROLE_APPS_ONLY&&(SARV_ROLE_HIDDEN_IN_FORM.indexOf(r.code)<0||r.code===role))
+        .map(r=>'<option value="'+r.code+'"'+(r.code===role?' selected':'')+'>'+escText(r.label)+'</option>').join('')+'</optgroup>'
+      +'<optgroup label="No ERP work"><option value="'+SARV_ROLE_APPS_ONLY+'"'+(role===SARV_ROLE_APPS_ONLY?' selected':'')+'>Other Apps (launcher apps from Manage access)</option></optgroup>'
+      +'</select><small data-f="rolehint" style="display:none;font-size:10.5px;color:#475569;margin-top:4px;line-height:1.45;"></small></div>'
     +'<div class="fg"><label>User Name <span class="req">*</span></label><input data-f="name" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.user_name:'')+'" placeholder="Full name"></div>'
     +'<div class="fg"><label>Employee Code</label><input data-f="emp" list="dl-emp-codes" style="text-transform:uppercase;" autocomplete="off" value="'+escText(u?u.emp_code||'':'')+'" placeholder="optional — auto-fill"></div>'
     +'<div class="fg"><label>Contact No.</label><input data-f="contact" type="tel" maxlength="15" value="'+escText(u?u.contact_no||'':'')+'" placeholder="optional"></div>'
@@ -8377,6 +9102,8 @@ function sarvOpenUserModal(id,presetRole){
     +'<button type="button" class="b no sm" data-f="sigclr">&#10006; Clear</button></span></div></div></div>'
     +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">Save User</button></div></div>';
   document.body.appendChild(ov);
+  // Fields into their sections (sarvUserFormArrange_); every data-f stays as it was.
+  sarvUserFormArrange_(ov);
   const f=k=>ov.querySelector('[data-f="'+k+'"]');
   /* Store Access follows the Primary Role: shown (and required) for a Store
      Incharge only. A single store also fixes the PR store (the Store field)
@@ -8418,7 +9145,9 @@ function sarvOpenUserModal(id,presetRole){
   const pad=sarvMakeSigPad_(ov.querySelector('canvas'));
   const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
   // Esc inside the Admin PIN prompt belongs to that prompt, not to this form.
-  const onKey=e=>{if(e.key==='Escape'&&byId('pwdGateModal')?.style.display!=='flex'){e.preventDefault();close();}};
+  // …and Esc in the Manage access panel closes only that panel.
+  // …and Esc in the open Extra Roles list closes only that list.
+  const onKey=e=>{if(e.key==='Escape'&&byId('pwdGateModal')?.style.display!=='flex'&&!byId('sarvAccPanel')&&!ov.querySelector('.uf-dd.open')){e.preventDefault();close();}};
   document.addEventListener('keydown',onKey,true);
   const err=msg=>{const el=f('err');el.textContent=msg;el.style.display=msg?'block':'none';if(msg)ov.querySelector('.card').scrollTop=0;};
   /* A signature brought in via "Use pre saved Sign". The pad's own `ink`
@@ -8451,16 +9180,22 @@ function sarvOpenUserModal(id,presetRole){
   f('cancel').addEventListener('click',close);
   /* Complaint role decides what else applies: host types only for a Host,
      "All units" only for Host / Maintenance / Production Manager. */
+  /* Host types only for a Host; under Factory Unit, what "Both" means for
+     the role picked (the server and the Complaint App decide it, see
+     sql/CMP_UNIT_BOTH_MIGRATION.sql; this only says it). */
   const paintCmp=()=>{
     const r=f('cmprole');if(!r)return;
-    const hw=f('hostwrap'),aw=f('allunitswrap'),hint=f('allunitshint');
+    const hw=f('hostwrap'),hint=f('unithint');
     if(hw)hw.style.display=r.value==='Host'?'':'none';
-    const canAll=SARV_CMP_ALL_UNIT_ROLES.indexOf(r.value)>=0;
-    if(aw)aw.style.visibility=canAll?'visible':'hidden';
-    if(hint)hint.textContent=r.value==='Host'?'Can be assigned complaints from every unit'
-      :canAll?'Sees and assigns every unit\'s complaints':'';
+    const all=!!ov.querySelector('input[name="sarvUnitPick"][data-unit="'+SARV_UNIT_ALL+'"]:checked');
+    if(hint)hint.textContent=!all?''
+      :r.value==='Host'?'Both: can be given complaints of either unit.'
+      :(r.value==='Maintenance'||r.value==='Production Manager')?'Both: sees and assigns the complaints of either unit.'
+      :r.value==='Admin'?'Both: an Admin sees every unit anyway.'
+      :'Both: can raise a complaint for either unit (the form asks which). Still sees only their own complaints.';
   };
   f('cmprole')?.addEventListener('change',paintCmp);
+  ov.querySelectorAll('input[name="sarvUnitPick"]').forEach(x=>x.addEventListener('change',paintCmp));
   paintCmp();
   /* Read the unit / complaint section. Returns {err} or the values. */
   const readUnitForm=()=>{
@@ -8470,8 +9205,12 @@ function sarvOpenUserModal(id,presetRole){
     const cr=f('cmprole')?f('cmprole').value:'User';
     const types=[...ov.querySelectorAll('input[data-htype]')].filter(cb=>cb.checked).map(cb=>cb.dataset.htype);
     if(cr==='Host'&&!types.length)return {err:'A Complaint App Host needs at least one complaint type'};
-    return {unit:pick.dataset.unit,cmpRole:cr,hostTypes:cr==='Host'?types:[],
-      allUnits:SARV_CMP_ALL_UNIT_ROLES.indexOf(cr)>=0&&!!(f('allunits')&&f('allunits').checked),
+    /* Both / All units: cmp_all_units, and the unit kept as the user's own
+       (the default in their complaint form): the one they already have, else
+       the first unit. */
+    const all=pick.dataset.unit===SARV_UNIT_ALL;
+    const own=u&&u.cmp_unit&&sarvUnits.some(x=>x.code===u.cmp_unit)?u.cmp_unit:(sarvUnits[0]&&sarvUnits[0].code);
+    return {unit:all?own:pick.dataset.unit,cmpRole:cr,hostTypes:cr==='Host'?types:[],allUnits:all,
       dept:(f('cmpdept')?f('cmpdept').value.trim().toUpperCase():''),desig:(f('cmpdesig')?f('cmpdesig').value.trim():'')};
   };
   /* Apps dropdowns: colour shows at a glance what is chosen, plus two
@@ -8483,6 +9222,23 @@ function sarvOpenUserModal(id,presetRole){
   const setAllApps=v=>appSel().forEach(s=>{s.value=v;paintApp(s);});
   f('appson') ?.addEventListener('click',()=>setAllApps('1'));
   f('appsoff')?.addEventListener('click',()=>setAllApps('0'));
+  /* Manage access panel + its summary card (the selects above stay the data).
+     The card follows the roles ticked in this form, since untouched keys do. */
+  if(f('accsummary')){
+    /* Store / Complaint keys of this user (sarvAccExtraKey_), kept as they are
+       saved; Save writes back whatever is set here, so a user saved without
+       touching them keeps every one. */
+    const ua=(u&&u.app_access&&typeof u.app_access==='object')?u.app_access:{};
+    ov.__sarvXAcc={};
+    Object.keys(ua).forEach(k=>{if(sarvAccExtraKey_(k)&&typeof ua[k]==='boolean')ov.__sarvXAcc[k]=ua[k];});
+    ov.__sarvXAcc0=Object.assign({},ov.__sarvXAcc);
+    {const r0=ov.querySelector('input[name="sarvStoreAcc"]:checked');ov.__sarvRadio0=r0?r0.dataset.acc:'';}
+    sarvAccSummary_(ov,u);
+    f('accopen')?.addEventListener('click',()=>sarvAccessPanel_(ov,u));
+    const resum=()=>setTimeout(()=>sarvAccSummary_(ov,u),0);
+    f('role')?.addEventListener('change',resum);
+    f('roleswrap')?.addEventListener('change',resum);
+  }
   /* The primary role changed; its checkbox becomes the primary, so the roles
      box has to be rebuilt (otherwise the old primary would stay stuck
      disabled-and-ticked). */
@@ -8505,12 +9261,21 @@ function sarvOpenUserModal(id,presetRole){
   });
   // Link to the old Complaint / Packing accounts by name.
   f('applink')?.addEventListener('click',()=>sarvAutolinkProfiles_());
-  // Employee Code fills the name / contact from Employee Master.
-  f('emp').addEventListener('input',()=>{
-    const e=lookupEmployee(f('emp').value);if(!e)return;
-    if(!f('name').value.trim())f('name').value=e.person_name||'';
-    if(!f('contact').value.trim())f('contact').value=e.contact_no||'';
-  });
+  // Employee Code fills Name / Contact / Designation / Department (see sarvUserEmpLookup_).
+  sarvUserEmpLookup_(ov,u);
+  // Other Apps (CMP_USER): say what it means, with the way to choose the apps.
+  {
+    const roleHint=()=>{
+      const h=f('rolehint');if(!h||!f('role'))return;
+      const on=f('role').value===SARV_ROLE_APPS_ONLY;
+      h.style.display=on?'block':'none';
+      h.innerHTML=on?'No ERP screens. On the launcher this user sees only the apps switched ON for them'
+        +(f('accopen')?': <a href="#" data-f="rolehintacc" style="font-weight:800;color:#1d4ed8;">Manage access ›</a>':'.'):'';
+      const a=f('rolehintacc');if(a)a.addEventListener('click',e=>{e.preventDefault();f('accopen').click();});
+    };
+    f('role')?.addEventListener('change',roleHint);
+    roleHint();
+  }
   f('save').addEventListener('click',async()=>{
     err('');
     const roleV=f('role').value,name=f('name').value.trim().toUpperCase(),pin=f('pin').value,pin2=f('pin2').value;
@@ -8608,6 +9373,10 @@ function sarvOpenUserModal(id,presetRole){
               acc[k]=(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)?false
                 :finalRoles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
             });
+            /* Store / Complaint keys from Manage access (only those that are set;
+               see sarvAccExtraKey_). Before the radio below, so for a Store
+               Incharge the Store Access radio still decides the two Store menus. */
+            {const xa=ov.__sarvXAcc||{};Object.keys(xa).forEach(k=>{if(typeof xa[k]==='boolean')acc[k]=xa[k];});}
             /* Store Access (Store Incharge): this user's own ON / OFF for the two
                Store modules. app_access is written whole, so for any other role
                the two keys are simply left out and the role's Tab Visibility applies. */
@@ -8663,7 +9432,11 @@ function sarvOpenUserModal(id,presetRole){
           const ue=(ur.error&&(ur.error.message||String(ur.error)))||(ur.data&&!ur.data.success&&ur.data.error)||'';
           if(ue)uniNote+='; Warning: Unit / Complaint profile was not saved: '
             +(/admin_save_user_unit_profile|PGRST202|schema cache/i.test(ue)?'run UNIT_SIGNUP_ADMIN_MIGRATION.sql':(SARV_UNIT_ERR[ue]||ue));
-          else uniNote+=' · '+sarvUnitName_(uf.unit);
+          /* An older server keeps Both only for Host / Maintenance / Production
+             Manager; it is recognised by its reply having no all_units. */
+          else if(uf.allUnits&&SARV_CMP_ALL_UNIT_ROLES.indexOf(uf.cmpRole)<0&&!(ur.data&&'all_units' in ur.data))
+            uniNote+='; Warning: Both units was saved as '+sarvUnitName_(uf.unit)+' only: run sql/CMP_UNIT_BOTH_MIGRATION.sql, then save again';
+          else uniNote+=' · '+(uf.allUnits?'Both units':sarvUnitName_(uf.unit));
         }
       }
       /* Store: its own Admin-PIN RPC, after the user exists (a new user has
@@ -17978,6 +18751,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    return '<div class="photos-page"><h3>ATTACHMENTS</h3><div class="photos-meta">'+pEsc(label||'')+'</div><div class="photos-grid">'+cells+'</div></div>';
  }
 
+ /* ── PR / PO details on the Supplier Copy ──────────────────────────────
+    On Submit Inward the store chooses, in the preview, whether the PO / PR
+    sub-row under each item (ordered / pending / received / excess, the PO
+    rate) is printed on the SUPPLIER COPY too, or only on the Account Copy
+    (confirmStoreEntryPreview → d.supplierRef). d.supplierRef === false
+    leaves it off the Supplier Copy; anything else (true, or not set, as on
+    every entry made before this) prints it, as before. The Account Copy
+    always carries it. Both PDF builders ask here, so they always agree. */
+ function storeStripOnCopy_(d,title){
+   return !(d&&d.supplierRef===false&&String(title||'').toUpperCase()==='SUPPLIER COPY');
+ }
  // ─────────────────────────────────────────────────────────────
  // STORE INWARD PDF — exact port of buildInwardOneCopyHtml_
  // ─────────────────────────────────────────────────────────────
@@ -18004,8 +18788,9 @@ window.addEventListener('DOMContentLoaded',()=>{
        itemRows+='<tr><td><strong>'+pEsc(it.name||it.itemName||'-')+'</strong><br><small style="color:#555">'+pEsc(it.desc||it.itemDesc||'')+'</small>'+(it.isCostYarn?'':'<br><small style="color:#555">MAKE: '+pEsc(it.make||'-')+' | Cat: '+pEsc(it.cat||it.category||'-')+'</small>')+'</td><td style="text-align:center;">'+pEsc(it.qty||0)+' '+pEsc(it.uom||'')+'</td><td style="text-align:center;">'+nWt_(it.weight)+' '+pEsc(it.wunit||it.wUnit||'KGS')+'</td><td style="text-align:right;">'+pMoneyX(it.listPrice)+'</td><td style="text-align:center;font-size:8px;">'+fmtDisc+'</td><td style="text-align:right;">'+pMoneyX(it.rate)+'</td><td style="text-align:right;font-weight:700;">'+pMoneyX(it.total||it.line_total)+'</td></tr>';
        /* Against a PO / PR: right under the item, the same strip the entry form
           shows. docStripParts_ gives both the same shape, so only the label and
-          colour change here; the layout is the same. */
-       const strip=docStripParts_(it);
+          colour change here; the layout is the same. Left off the Supplier
+          Copy when the store chose so on Submit (storeStripOnCopy_). */
+       const strip=storeStripOnCopy_(d,title)?docStripParts_(it):null;
        if(strip){
          const rateNote=docStripRateNote_(strip);
          /* Qty on the first line, Weight under it in the same Order / Pending /
@@ -18422,8 +19207,9 @@ window.addEventListener('DOMContentLoaded',()=>{
           then can Pending / Excess get their own colours and the excess figure
           a yellow background (autoTable gives a cell only one colour).
           minCellHeight keeps the row height, because with empty content
-          autoTable has nothing to measure. */
-       const bits=docStripParts_(it);
+          autoTable has nothing to measure. Left off the Supplier Copy when the
+          store chose so on Submit (storeStripOnCopy_). */
+       const bits=storeStripOnCopy_(d,title)?docStripParts_(it):null;
        if(bits){
          const lines=docStripLines_(bits);
          stripRows[body.length]=lines;      // the row about to be pushed
@@ -21352,8 +22138,12 @@ let PR_TEAL=[13,92,83];
      freightExp:pNum(pVal('freightExp')),roundOff:pNum(pVal('roundOffInput')),
      netWeight,grossWeight,freightRate,freightAmt,costOnYarn,
      // The Unloader Supervisor who verified this receipt (inwUnloadRows_).
-     unloader:sarvInwUnloadActive};
+     unloader:sarvInwUnloadActive,
+     // PO / PR sub-rows on the Supplier Copy too (storeStripOnCopy_); chosen on Submit.
+     supplierRef:sarvInwSupplierRef};
  }
+ // The Submit preview's "PR/PO details on Supplier Copy" choice; true = as before.
+ let sarvInwSupplierRef=true;
  function collectOutwardData(no){return {outwardNo:no,entryType:pVal('outEntryTypeSelect'),date:pVal('outDate'),natureOfDispatch:pVal('outNatureOfDispatch'),partyName:pVal('outPartyName'),location:pVal('outLocation'),targetReturnDate:pVal('outTargetReturnDate'),transport:pVal('outTransport'),gatePass:pVal('outGatePassNo'),lotNo:pVal('outLotNo'),receiverName:pVal('outReceiverName'),designation:pVal('outDesignation'),department:pVal('outDepartment'),remarks:pVal('outRemarks'),
    /* The saved Trims sheet this ISSUE was loaded from, if any — Order No,
       Party, Brand and the designs. Null for every other outward, and then the
@@ -21444,10 +22234,18 @@ let PR_TEAL=[13,92,83];
          +'<div style="display:flex;justify-content:flex-end;gap:10px;padding:10px 14px;border-top:1px solid #e2e8f0;background:#f8fafc;flex-wrap:wrap;">'
          +'<button type="button" class="btn" data-act="back" style="background:#e2e8f0;color:#334155;font-weight:700;padding:0 18px;height:36px;">Back / Edit</button>'
          +'<button type="button" class="btn" data-act="ok" style="background:var(--btn-success-grad,#16a34a);color:#fff;font-weight:800;padding:0 22px;height:36px;border:none;">Confirm &amp; Submit</button>'
+         /* Inward against a PO / PR: the store decides here whether the PO / PR
+            sub-row also prints on the SUPPLIER COPY (storeStripOnCopy_). */
+         +'<button type="button" class="btn" data-act="without" style="display:none;background:#fff;color:#0f172a;font-weight:800;padding:0 16px;height:36px;border:1.5px solid #0f172a;" title="Submit. The Supplier Copy prints the items without the PO / PR sub-rows; the Account Copy keeps them.">Submit &middot; Without PR/PO details on Supplier Copy</button>'
+         +'<button type="button" class="btn" data-act="with" style="display:none;background:var(--btn-success-grad,#16a34a);color:#fff;font-weight:800;padding:0 16px;height:36px;border:none;" title="Submit. Both copies print the PO / PR sub-rows (ordered, pending, received, excess, PO rate).">Submit &middot; PR/PO details on Supplier Copy</button>'
          +'</div></div>';
        document.body.appendChild(ov);
      }
      const isOut=kind==='OUTWARD'||kind==='ISSUE';
+     // Two Submit buttons only when some item actually has a PO / PR sub-row to print.
+     const choose=!isOut&&(items||[]).some(it=>!!docStripParts_(it));
+     ov.querySelector('[data-act="ok"]').style.display=choose?'none':'';
+     ov.querySelectorAll('[data-act="with"],[data-act="without"]').forEach(b=>{b.style.display=choose?'':'none';});
      const images=window.getPhotos?window.getPhotos(isOut?'outward':'inward'):[];
      const no=d.inwardNo||d.outwardNo;
      byId('sarvEntryPreviewTitle').textContent=''+(isOut?'Outward':'Inward')+' Preview — '+no;
@@ -21458,14 +22256,19 @@ let PR_TEAL=[13,92,83];
        resolve(ok);
      };
      const onKey=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();finish(false);}};
+     /* Resolves true (plain Confirm), 'WITH' / 'WITHOUT' (the Supplier Copy
+        choice; both truthy, so a caller that only tests it still works), or
+        false (Back / Esc / outside). */
      ov.onclick=e=>{
        const act=e.target.closest('[data-act]')?.dataset.act;
        if(act==='ok')finish(true);
+       else if(act==='with')finish('WITH');
+       else if(act==='without')finish('WITHOUT');
        else if(act==='back'||e.target===ov)finish(false);
      };
      document.addEventListener('keydown',onKey,true);
      ov.style.display='flex';
-     ov.querySelector('[data-act="ok"]')?.focus();
+     ov.querySelector(choose?'[data-act="with"]':'[data-act="ok"]')?.focus();
    });
  }
  /* ══ ONE SUBMIT, ONE RECORD, ONE PDF ════════════════════════════
@@ -21687,6 +22490,8 @@ let PR_TEAL=[13,92,83];
    const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rowsP),rowsP);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
+   // The Supplier Copy choice made in the preview; read by collectInwardData for the PDF.
+   sarvInwSupplierRef=okToSave!=='WITHOUT';
    // The submitter's own PIN, every time — it is also what signs the PDF. Cancel = nothing saved.
    const inwSign=await sarvSubmitPinGate_(editId?('Update '+editNo):('Submit '+(pVal('entryTypeSelect')||'Inward')));
    if(!inwSign)return;
@@ -22346,6 +23151,8 @@ let PR_TEAL=[13,92,83];
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
+   sarvInwSupplierRef=true;   // the Supplier Copy choice belongs to the entry just saved
+
    /* …and it is no longer holding anybody's MD-approved draft, so the lock on
       Qty / Weight / Rate comes off here — the one place every route out of an
       entry goes through (saved, cancelled, cleared, or another record opened
@@ -24028,10 +24835,211 @@ let PR_TEAL=[13,92,83];
    return [String(c.by||'').trim(),String(c.at||'').trim()].filter(Boolean).join(' · ');
  }
 
+ /* ── FIELD BOY PR on this sheet ─────────────────────────────────────
+    A PR booked to a Field Boy (prIsFieldBoy_) never gets a PO: the Field Boy
+    photographs each item, the requester approves it in Track My Store
+    Request, the Store receives the approved items against the PR, and the
+    requester confirms receipt. fuFbInfo_ reads that route from the same
+    records, with the same rules as the server's mr_fb_json_ (which feeds
+    my-requests.html), so both screens always say the same thing:
+      lines      pdf_snapshot.fieldChecklist (v2) per PR line: NEW / PHOTO /
+                 SENT / APPROVED / REJECTED, photo {url, at}, decision
+      received   Store entries booked against the PR (req_no), by item
+      confirmed  approvals.followup.requesterConfirm (mr_confirm_receipt)
+    A PR finished under the old tick list (no v2, allDone) counts as done. */
+ const FU_FB_STATE={
+   FB_WORKING:  {t:'Field Boy buying',          bg:'#ede9fe',fg:'#5b21b6'},
+   FB_APPROVAL: {t:'Waiting for requester',     bg:'#fef3c7',fg:'#92400e'},
+   FB_APPROVED: {t:'Approved · waiting Store',  bg:'#ede9fe',fg:'#5b21b6'},
+   FB_RECEIVING:{t:'Partially Received',        bg:'#fef9c3',fg:'#854d0e'},
+   READY:       {t:'FULLY RECEIVED',            bg:'#22c55e',fg:'#ffffff'},
+   CONFIRMED:   {t:'FULLY RECEIVED · Confirmed',bg:'#16a34a',fg:'#ffffff'},
+   ISSUE:       {t:'Received · problem reported',bg:'#ef4444',fg:'#ffffff'},
+   FB_DONE:     {t:'FULLY RECEIVED',            bg:'#22c55e',fg:'#ffffff'},
+   REJECTED:    {t:'PR Rejected',               bg:'#ef4444',fg:'#ffffff'}
+ };
+ function fuFbInfo_(g,inwLinesByInw){
+   const req=g.req,raw=((req.pdf_snapshot)||{}).fieldChecklist||{},v2=String(raw.v)==='2';
+   const legacy=v2?!!raw.legacyDone:!!raw.allDone;
+   const lmap=(v2&&raw.lines)||{};
+   const got={};
+   g.looseInwards.forEach(i=>(inwLinesByInw[i.id]||[]).forEach(l=>{const k=String(l.item_id||'');got[k]=(got[k]||0)+pNum(l.qty);}));
+   const lines=(g.prLines||[]).map(pl=>{
+     const ln=lmap[String(pl.id)]||{},ph=(ln.photo&&typeof ln.photo==='object')?ln.photo:null;
+     return {id:pl.id,itemId:pl.itemId,item:pl.name,spec:pl.spec||pl.desc,qty:pl.qty,uom:pl.uom,
+       status:ln.status||'NEW',photo:(ph&&ph.url)||'',photoAt:(ph&&ph.at)||'',sentAt:ln.sentAt||'',
+       decision:ln.decision||null,got:got[String(pl.itemId||'')]||0};
+   });
+   const n=lines.length,cnt=s=>lines.filter(l=>l.status===s).length;
+   const counts={total:n,photo:lines.filter(l=>l.photo).length,sent:cnt('SENT'),approved:cnt('APPROVED'),back:cnt('REJECTED')};
+   const anyRecv=g.looseInwards.length>0;
+   const allRecv=anyRecv&&n>0&&lines.every(l=>l.got>=pNum(l.qty)-1e-9);
+   const conf=(((req.approvals||{}).followup)||{}).requesterConfirm||null;
+   const allOk=n>0&&counts.approved===n;
+   const state=String(req.status||'')==='Rejected'?'REJECTED'
+     :legacy?'FB_DONE'
+     :counts.sent>0?'FB_APPROVAL'
+     :allOk&&conf?(conf.outcome==='OK'?'CONFIRMED':'ISSUE')
+     :allOk&&allRecv?'READY'
+     :allOk&&anyRecv?'FB_RECEIVING'
+     :allOk?'FB_APPROVED'
+     :'FB_WORKING';
+   return {state,legacy,lines,counts,anyRecv,allRecv:allRecv||legacy,conf,history:Array.isArray(raw.history)?raw.history:[],fbConfirm:raw.confirm||null};
+ }
+ function fuFbChip_(fb){
+   const s=FU_FB_STATE[fb.state]||FU_FB_STATE.FB_WORKING;
+   return '<span class="fu-status" style="background:'+s.bg+';color:'+s.fg+';border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:800;white-space:nowrap;">'+pEsc(s.t)+'</span>';
+ }
+ // Sortable time of a stored stamp (ISO, or the "dd/mm/yyyy hh:mm" pStamp text).
+ function fuTimeOf_(v){
+   if(!v)return 0;
+   const s=String(v),t=Date.parse(s);if(!isNaN(t))return t;
+   const m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[ ,T]+(\d{1,2}):(\d{2}))?/);
+   return m?new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0)).getTime():0;
+ }
+ // The five steps of Track My Store Request's Field Boy line (fbStage there).
+ function fudFbSteps_(g){
+   const fb=g.fb,req=g.req,c=fb.counts;
+   const latest=list=>list.filter(x=>fuTimeOf_(x.at)).sort((a,b)=>fuTimeOf_(b.at)-fuTimeOf_(a.at))[0]||null;
+   const pick=latest(fb.lines.filter(l=>l.photoAt).map(l=>({at:l.photoAt})));
+   const dec=latest(fb.history.filter(h=>h&&h.ev==='DECIDED'));
+   const store=latest(g.looseInwards.map(i=>({at:i.created_at||i.receiving_date})));
+   const conf=fb.conf,nIn=g.looseInwards.length;
+   const sub=(at,who,rem)=>[at?fudStamp_(at):'',who,rem].filter(Boolean).map(pEsc).join('<br>');
+   const steps=[
+     {t:'Requested',k:'done',s:sub(req.created_at||req.request_date,req.requested_by,'')},
+     {t:'Pickup',k:fb.legacy||c.photo?'done':'',s:sub(pick&&pick.at,poFollowupPurchaser_(req)||'Field Boy',c.total?c.photo+'/'+c.total+' items photographed':'')},
+     {t:'Approved',k:fb.legacy||(c.total&&c.approved>=c.total)?'done':(c.back?'bad':(c.approved?'cur':'')),
+       s:sub(dec&&dec.at,dec&&dec.by,c.approved+'/'+c.total+' approved'+(c.back?' · '+c.back+' sent back':''))},
+     {t:'Received',k:fb.allRecv?'done':(nIn?'cur':''),s:sub(store&&store.at,'',nIn?nIn+' store entr'+(nIn>1?'ies':'y')+(fb.allRecv?'':' · partly'):'nothing yet')},
+     {t:'Confirmed',k:fb.legacy||fb.state==='CONFIRMED'?'done':(fb.state==='ISSUE'?'bad':''),
+       s:sub(conf&&conf.at,conf&&conf.by,conf?(conf.remarks||('Quality '+(conf.qualityOk?'OK':'not OK')+', Qty '+(conf.quantityOk?'OK':'not OK'))):'')}
+   ];
+   let first=true;
+   return '<div class="fud-steps">'+steps.map((s,i)=>{
+     let cls=s.k;
+     if(!cls&&first){cls='cur';first=false;}else if(cls==='cur')first=false;
+     const icon=cls==='done'?'&#10003;':cls==='bad'?'&#10005;':String(i+1);
+     return '<div class="fud-step '+cls+'"><div class="c">'+icon+'</div><div class="t">'+pEsc(s.t)+'</div><div class="s">'+(s.s||'')+'</div></div>';
+   }).join('')+'</div>';
+ }
+ // The whole view of a Field Boy PR (no PO tabs: there is no PO).
+ function fudDrawFb_(g,data){
+   const fb=g.fb,req=g.req,c=fb.counts,st=FU_FB_STATE[fb.state]||FU_FB_STATE.FB_WORKING;
+   const kv=rows=>'<div class="fud-kv">'+rows.filter(r=>r&&r[1]!=null&&r[1]!=='').map(r=>'<span class="k">'+pEsc(r[0])+'</span><span class="v">'+(r[2]?r[1]:pEsc(r[1]))+'</span>').join('')+'</div>';
+   const chip='<span style="background:'+st.bg+';color:'+st.fg+';border-radius:4px;padding:2px 8px;font-size:10.5px;font-weight:800;">'+pEsc(st.t)+'</span>';
+   let h='';
+   if(data&&data.errors.length)h+='<div class="fud-note">Some details could not be loaded: '+pEsc(data.errors.join(' · '))+'</div>';
+   h+='<div class="fud-note" style="color:#5b21b6;background:#f5f3ff;border-color:#ddd6fe;">Field Boy PR: bought over the counter, <b>no PO</b>. '
+     +'The Field Boy photographs each item, the requester approves it in Track My Store Request, the Store receives the approved items, and the requester confirms receipt.</div>';
+   h+=fudFbSteps_(g);
+   const recvLines=fb.lines.filter(l=>pNum(l.qty)>0);
+   const pct=recvLines.length?Math.round(recvLines.reduce((s,l)=>s+Math.min(1,l.got/pNum(l.qty)),0)/recvLines.length*100):0;
+   h+='<div class="fud-cards">'
+     +'<div class="fud-card" style="--c:#c2410c;"><h4>Purchase Requirement'+(g.prPdf?'<a href="'+pEsc(g.prPdf)+'" target="_blank" rel="noopener">PR PDF &#8599;</a>':'')+'</h4>'+kv([
+       ['PR No.',req.req_no],['Date',fudD_(req.request_date||req.created_at)],['Requested by',req.requested_by||'—'],
+       ['Department',req.department||''],['Priority',req.priority||''],['PR Status',req.status||''],['Items',String(c.total)]])+'</div>'
+     +'<div class="fud-card" style="--c:#6d28d9;"><h4>Field Boy</h4>'+kv([
+       ['Field Boy',poFollowupPurchaser_(req)||'—'],['Status',chip,true],
+       ['Photographed',c.photo+' / '+c.total],['Waiting for requester',String(c.sent)],
+       ['Approved',c.approved+' / '+c.total],['Sent back',String(c.back)]])+'</div>'
+     +'<div class="fud-card" style="--c:#15803d;"><h4>Receipt</h4><div class="fud-big">'+(fb.legacy?100:pct)+'%</div>'
+       +'<div class="fud-bar"><i style="width:'+(fb.legacy?100:pct)+'%"></i></div>'+kv([
+       ['Store entries',String(g.looseInwards.length)],
+       ['Fully received',fb.allRecv?'<span class="fud-tick">Yes</span>':'<span class="fud-wait">Not yet</span>',true],
+       ['Requester confirmed',fb.conf?pEsc(fudStamp_(fb.conf.at))+(fb.conf.outcome==='OK'?'':' <span class="fud-neg">(problem)</span>'):'—',true]])+'</div>'
+     +'</div>';
+   // Items: what was asked, its photo, where it stands, what came in.
+   const lab={NEW:['none','Not bought yet'],PHOTO:['part','Photo taken'],SENT:['pend','Waiting for requester'],APPROVED:['ok','Approved'],REJECTED:['over','Sent back']};
+   h+='<div class="fud-sec"><h3>Items <small>'+c.total+'</small></h3><div class="fud-tw"><table class="fud-t"><thead><tr><th>#</th><th>Item</th><th class="n">Asked</th><th>Photo</th><th>Status</th><th class="n">Received</th><th>Requester remark</th></tr></thead><tbody>'
+     +(fb.lines.map((l,i)=>{const s=lab[l.status]||lab.NEW,d=l.decision||{};
+       return '<tr><td>'+(i+1)+'</td><td><div class="nm">'+pEsc(l.item||'—')+'</div>'+(l.spec?'<div class="ds">'+pEsc(l.spec)+'</div>':'')+'</td>'
+         +'<td class="n">'+fudN_(l.qty)+' '+pEsc(l.uom||'')+'</td>'
+         +'<td>'+(l.photo?'<a href="'+pEsc(l.photo)+'" target="_blank" rel="noopener" title="Open the photo'+(l.photoAt?' ('+pEsc(fudStamp_(l.photoAt))+')':'')+'"><img src="'+pEsc(l.photo)+'" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;display:block;"></a>':'<span class="ds">—</span>')+'</td>'
+         +'<td><span class="fud-chip '+s[0]+'">'+s[1]+'</span>'+(d.at?'<div class="ds">'+pEsc(fudStamp_(d.at))+(d.by?' · '+pEsc(d.by):'')+'</div>':'')+'</td>'
+         +'<td class="n">'+fudN_(l.got)+' '+pEsc(l.uom||'')+fudProgChip_(pNum(l.qty),l.got).replace('<span','<span style="margin-left:6px"')+'</td>'
+         +'<td>'+(d.remarks?'<i>&ldquo;'+pEsc(d.remarks)+'&rdquo;</i>':'<span class="ds">—</span>')+'</td></tr>';}).join('')
+       ||'<tr><td colspan="7" class="fud-empty">No items listed.</td></tr>')
+     +'</tbody></table></div></div>';
+   h+=fudFbTimeline_(g);
+   // The Store entries booked against the PR, with their lines and sign-offs.
+   h+=fudInwards_(g,g.looseInwards,data,null,null);
+   return h;
+ }
+ // Field Boy history, oldest first, as in Track My Store Request's tracking line.
+ function fudFbTimeline_(g){
+   const fb=g.fb,req=g.req,ev=[];
+   const add=(at,t,who,body,bad)=>{if(fuTimeOf_(at))ev.push({at,t,who,body,bad});};
+   add(req.created_at||req.request_date,'Request raised',req.requested_by,(fb.counts.total)+' item(s) · bought by the Field Boy, no PO');
+   fb.history.forEach(h=>{
+     if(!h)return;
+     const its=(h.items||[]).filter(Boolean).join(', ');
+     if(h.ev==='SENT')add(h.at,'Sent for the requester\'s approval',h.by||'Field Boy',(h.count||0)+' item(s) with photos'+(its?': '+its:''));
+     else if(h.ev==='DECIDED')add(h.at,h.sentBack?'Requester decided (some sent back)':'Requester approved',h.by,'Approved: '+(h.approved||0)+' · Sent back: '+(h.sentBack||0)+(h.remarks?' · “'+h.remarks+'”':''),!!h.sentBack);
+     else if(h.ev==='CONFIRMED')add(h.at,'Confirmed by the Field Boy: done',h.by||'Field Boy','');
+     else if(h.ev==='DELETED')add(h.at,'Item deleted: '+its,h.by,(h.remarks?'“'+h.remarks+'”':''),true);
+     else if(h.ev==='QTY')add(h.at,'Qty changed: '+its,h.by,fudN_(h.from)+' → '+fudN_(h.to)+' '+(h.uom||'')+(h.remarks?' · “'+h.remarks+'”':''));
+   });
+   fb.lines.forEach(l=>{const d=l.decision||{};if(l.status==='REJECTED'&&d.at)add(d.at,'Sent back: '+(l.item||''),d.by,d.remarks?'“'+d.remarks+'”':'',true);});
+   g.looseInwards.forEach(i=>add(i.created_at||i.receiving_date,'Received in Store','Store entry '+(shortDocNo_(i.document_no,'INWARD')||i.document_no),''));
+   if(fb.conf)add(fb.conf.at,fb.conf.outcome==='OK'?'Requester confirmed receipt':'Requester reported a problem',fb.conf.by,
+     'Quality: '+(fb.conf.qualityOk?'OK':'Not OK')+' · Quantity: '+(fb.conf.quantityOk?'OK':'Not OK')+(fb.conf.remarks?' · “'+fb.conf.remarks+'”':''),fb.conf.outcome!=='OK');
+   ev.sort((a,b)=>fuTimeOf_(a.at)-fuTimeOf_(b.at));
+   return '<div class="fud-sec"><h3>Field Boy history <small>'+ev.length+' event(s)</small></h3>'
+     +(ev.length?ev.map(e=>'<div class="fud-fu"><div class="h"><span'+(e.bad?' style="color:#b91c1c"':'')+'>'+pEsc(e.t)+'</span><span class="w">'+pEsc(fudStamp_(e.at))+(e.who?' · '+pEsc(e.who):'')+'</span></div>'
+       +(e.body?'<div class="r">'+pEsc(e.body)+'</div>':'')+'</div>').join(''):'<div class="fud-empty">No history yet.</div>')+'</div>';
+ }
+ /* ── Fully received PRs: loaded only on "Fetch Received Data" ──────
+    Most of this sheet's history is PRs whose POs are all Received / Closed
+    (Short), and reading every one of them (full PR, every inward, every PR
+    line, every PDF link) is what made the report slow. So by default only
+    LIGHT lists are read first (PR numbers, POs, PO lines, inward numbers),
+    the fully received PRs are worked out from them with the same rule as
+    the "Fully Received" pill, and the heavy rows are then fetched only for
+    the PRs that are shown. The button switches to the full load, which is
+    exactly the old one; it lasts until the page is reloaded. */
+ const FU_DONE_STATUSES=['Received','Closed (Short)'];
+ let sarvPoFollowupWithReceived=false;   // "Fetch Received Data" pressed
+ let sarvPoFollowupHidden=0;             // fully received PRs not loaded
+ // Rows by id, in chunks (an .in() list has to stay short), a few at a time.
+ async function fuFetchByIds_(table,cols,col,ids){
+   const list=[...new Set((ids||[]).filter(v=>v!=null&&v!==''))],out=[],CH=150;
+   const chunks=[];for(let i=0;i<list.length;i+=CH)chunks.push(list.slice(i,i+CH));
+   for(let i=0;i<chunks.length;i+=4){
+     const res=await Promise.all(chunks.slice(i,i+4).map(c=>fetchAllRows(table,cols,'id',q=>q.in(col,c))));
+     res.forEach(r=>out.push(...(r||[])));
+   }
+   return out;
+ }
+ function poFollowupRecvUi_(){
+   const b=byId('p_poRepRecvBtn');
+   if(b){
+     b.textContent=sarvPoFollowupWithReceived?'Hide Received Data':'Fetch Received Data';
+     b.title=sarvPoFollowupWithReceived?'Back to the quick view without the fully received PRs'
+       :'Also load the PRs whose POs are all Received / Closed (Short). Takes longer.';
+     b.classList.toggle('btn-success',!sarvPoFollowupWithReceived);
+     b.classList.toggle('btn-neutral',sarvPoFollowupWithReceived);
+   }
+   const n=byId('p_poRepRecvNote');
+   if(n){
+     const show=!sarvPoFollowupWithReceived&&sarvPoFollowupHidden>0;
+     n.style.display=show?'flex':'none';
+     if(show)n.innerHTML='<span><b>'+sarvPoFollowupHidden+'</b> fully received PR(s) (all POs Received / Closed Short, or a Field Boy PR received in full) are not loaded, so the report opens faster.</span>'
+       +'<button type="button" class="btn btn-success" style="height:28px;padding:0 12px;font-size:11.5px;" onclick="poFollowupToggleReceived()">Fetch Received Data</button>';
+   }
+ }
+ function poFollowupToggleReceived(){
+   sarvPoFollowupWithReceived=!sarvPoFollowupWithReceived;
+   poFollowupRecvUi_();
+   refreshPoFollowupReport().catch(dbError);
+ }
  async function refreshPoFollowupReport(){
    if(!SB_READY)return;
    const tb=byId('p_poReportBody');if(!tb)return;
-   tb.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">Loading…</td></tr>';
+   const full=sarvPoFollowupWithReceived;
+   poFollowupRecvUi_();
+   tb.innerHTML='<tr><td colspan="16" style="text-align:center;padding:18px;color:#94a3b8;">'
+     +(full?'Loading all PRs, including fully received ones…':'Loading…')+'</td></tr>';
    /* Every one of these goes through fetchAllRows. A plain select is capped at
       1000 rows by PostgREST, and on a follow-up sheet a truncated page does not
       just hide a line — it makes a PR that HAS a PO read as "PO not generated",
@@ -24039,29 +25047,19 @@ let PR_TEAL=[13,92,83];
       degrades on its own: a lookup that fails leaves its own columns blank
       rather than taking the whole sheet down. */
    const skip=(what)=>e=>{console.warn('[SARV] Follow-up '+what+' skipped:',e.message||e);return[]};
-   const [reqsRaw,pos,plRows,inwRows,prlRows]=await Promise.all([
-     fetchAllRows('purchase_requirements','*','id').catch(e=>{dbError(e);return null}),
+   /* Quick view: PR numbers and inward numbers only (what the matching below
+      needs); the full rows of the PRs that are shown are fetched after it. */
+   const INW_LIGHT='id,document_no,po_number,req_no,notes';
+   const [reqsList,pos,plRows,inwList]=await Promise.all([
+     fetchAllRows('purchase_requirements',full?'*':'id,req_no','id').catch(e=>{dbError(e);return null}),
      fetchAllRows('purchase_orders','*','id').catch(skip('PO headers')),
      // item_name / ordered_qty come along so the PO cell can SHOW which of this
      // PR's items are on that PO — the link is then auditable from the sheet
      // instead of being taken on trust.
      fetchAllRows('purchase_order_lines','id,purchase_order_id,req_no,line_no,item_name,ordered_qty','id').catch(skip('PO lines')),
-     fetchAllRows('inward_entries','*','id').catch(skip('inward')),
-     /* The PR's own items: for the Search box (+ its suggestions) and the
-        PR → PO → Inward detail view. Taken from the PR rather than the PO
-        lines so a PR with no PO yet is found by its item too. A PR line holds
-        only item_id + specification, so the name / description come from the
-        Item Master through the embed; if the embed is refused, the plain rows
-        are resolved against sarvItemCatalog below. Failing both only takes
-        item search away. */
-     fetchAllRows('purchase_requirement_lines','*, items(name,description,make,uom)','id')
-       .catch(()=>fetchAllRows('purchase_requirement_lines','*','id'))
-       .catch(skip('PR lines'))
+     fetchAllRows('inward_entries',full?'*':INW_LIGHT,'id').catch(skip('inward'))
    ]);
-   if(!reqsRaw)return;   // the PR list is the sheet itself — without it there is nothing to show
-   // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a plain
-   // text sort would put /600 before /99).
-   const reqs=reqsRaw.slice().sort((a,b)=>String(b.req_no||'').localeCompare(String(a.req_no||''),undefined,{numeric:true,sensitivity:'base'}));
+   if(!reqsList)return;   // the PR list is the sheet itself — without it there is nothing to show
    const poById={},poByNo={};
    pos.forEach(po=>{poById[po.id]=po;if(po.po_no)poByNo[po.po_no]=po});
 
@@ -24113,24 +25111,77 @@ let PR_TEAL=[13,92,83];
       against the PR (inward_entries.req_no), for material taken in without a
       PO; those get their own rows with a blank PO. A cancelled receipt is not
       a receipt and is left out of both. */
-   const inwByPoId={},looseInwByReq={};
+   let inwByPoId={},looseInwByReq={};
    const pushUniq=(arr,x)=>{if(!arr.some(y=>y.id===x.id))arr.push(x)};
-   inwRows.forEach(inw=>{
-     if(isStoreRecordCancelled_(inw.notes))return;
-     const poNos=poFollowupSplit_(inw.po_number);
-     let attached=false;
-     poNos.forEach(poNo=>{
-       const po=poByNo[poNo];if(!po)return;
-       pushUniq(inwByPoId[po.id]=inwByPoId[po.id]||[],inw);
-       attached=true;
+   // Built from the light list first (to pick the PRs), then again from the full rows.
+   const buildInwMaps=rows=>{
+     inwByPoId={};looseInwByReq={};
+     rows.forEach(inw=>{
+       if(isStoreRecordCancelled_(inw.notes))return;
+       const poNos=poFollowupSplit_(inw.po_number);
+       let attached=false;
+       poNos.forEach(poNo=>{
+         const po=poByNo[poNo];if(!po)return;
+         pushUniq(inwByPoId[po.id]=inwByPoId[po.id]||[],inw);
+         attached=true;
+       });
+       if(attached)return;                             // already on its PO's row(s)
+       poFollowupSplit_(inw.req_no).forEach(r=>pushUniq(looseInwByReq[r]=looseInwByReq[r]||[],inw));
      });
-     if(attached)return;                             // already on its PO's row(s)
-     poFollowupSplit_(inw.req_no).forEach(r=>pushUniq(looseInwByReq[r]=looseInwByReq[r]||[],inw));
-   });
+   };
+   buildInwMaps(inwList);
 
+   /* Which PRs are shown. Quick view: all but the fully received ones (every
+      live PO Received / Closed (Short), the same rule as the Fully Received
+      pill), and only for those the full PR rows, their inwards and their PR
+      lines are fetched. Full view: everything, as read above. */
+   const prPosOf=r=>posByReq[r.req_no]||[];
+   const isDone=r=>{
+     const rp=prPosOf(r),live=rp.filter(p=>!['Cancelled','Rejected'].includes(p.status||'')),dec=live.length?live:rp;
+     return dec.length>0&&dec.every(p=>FU_DONE_STATUSES.includes(p.status||'Generated'));
+   };
+   const keepReqs=full?reqsList:reqsList.filter(r=>!isDone(r));
+   sarvPoFollowupHidden=full?0:reqsList.length-keepReqs.length;
+   poFollowupRecvUi_();
+   let reqsRaw=keepReqs,inwRows=inwList,prlRows=[];
+   const keepIds=keepReqs.map(r=>r.id);
+   const prLinesQ=()=>full
+     ?fetchAllRows('purchase_requirement_lines','*, items(name,description,make,uom)','id')
+       .catch(()=>fetchAllRows('purchase_requirement_lines','*','id'))
+     :fuFetchByIds_('purchase_requirement_lines','*, items(name,description,make,uom)','requirement_id',keepIds)
+       .catch(()=>fuFetchByIds_('purchase_requirement_lines','*','requirement_id',keepIds));
+   if(full){
+     /* The PR's own items: for the Search box (+ its suggestions) and the
+        PR → PO → Inward detail view. Taken from the PR rather than the PO
+        lines so a PR with no PO yet is found by its item too. A PR line holds
+        only item_id + specification, so the name / description come from the
+        Item Master through the embed; if the embed is refused, the plain rows
+        are resolved against sarvItemCatalog below. Failing both only takes
+        item search away. */
+     prlRows=await prLinesQ().catch(skip('PR lines'));
+   }else{
+     const inwIds=new Set();
+     keepReqs.forEach(r=>{
+       prPosOf(r).forEach(po=>(inwByPoId[po.id]||[]).forEach(i=>inwIds.add(i.id)));
+       (looseInwByReq[r.req_no]||[]).forEach(i=>inwIds.add(i.id));
+     });
+     const [rq,iw,pl]=await Promise.all([
+       fuFetchByIds_('purchase_requirements','*','id',keepIds).catch(e=>{dbError(e);return null}),
+       fuFetchByIds_('inward_entries','*','id',[...inwIds]).catch(skip('inward')),
+       prLinesQ().catch(skip('PR lines'))
+     ]);
+     if(!rq)return;
+     reqsRaw=rq;inwRows=iw;prlRows=pl;
+     buildInwMaps(inwRows);
+   }
+   // Newest PR on top, numeric-aware so PR/26-27/600 sorts above /599 (a plain
+   // text sort would put /600 before /99).
+   const reqs=reqsRaw.slice().sort((a,b)=>String(b.req_no||'').localeCompare(String(a.req_no||''),undefined,{numeric:true,sensitivity:'base'}));
+
+   const shownPos=[...new Set(reqs.reduce((a,r)=>a.concat(prPosOf(r)),[]))];
    const pdfMap=await poFollowupPdfMap_([
      ...reqs.map(r=>r.req_no),
-     ...pos.map(p=>p.po_no),
+     ...shownPos.map(p=>p.po_no),
      ...inwRows.map(i=>i.document_no)
    ]);
    const inwUrl=i=>poFollowupPdfUrl_(pdfMap,i.document_no,['SINGLE','TWO_PAGE'])||i.pdf_url_single||i.pdf_url_two_page||'';
@@ -24193,6 +25244,37 @@ let PR_TEAL=[13,92,83];
        inwUrlOf:inwUrl
      };
    });
+
+   /* ── Field Boy PRs (no PO): their own route and status ──────────
+      Worked out the way Track My Store Request does (server mr_fb_json_):
+      the items' fieldChecklist status, whether every item has come in full
+      through the Store entries booked against the PR, and the requester's
+      confirmation. The Store entries' lines are needed for "in full", so they
+      are read here, for these PRs only (usually a handful). */
+   await sarvLoadFieldBoys_();
+   const fbGroups=sarvPoFollowupGroups.filter(g=>!g.poBlocks.length&&prIsFieldBoy_(g.req));
+   if(fbGroups.length){
+     const ids=[...new Set(fbGroups.reduce((a,g)=>a.concat(g.looseInwards.map(i=>i.id)),[]))];
+     const il=ids.length?await fuFetchByIds_('inward_lines','id,inward_id,item_id,qty','inward_id',ids).catch(skip('Field Boy store lines')):[];
+     const byInw={};(il||[]).forEach(l=>{(byInw[l.inward_id]=byInw[l.inward_id]||[]).push(l);});
+     fbGroups.forEach(g=>{
+       g.fb=fuFbInfo_(g,byInw);
+       // The PO Status the sheet filters and counts on: received in full = Received.
+       g.statuses=g.fb.allRecv?['Received']:(g.fb.anyRecv?['Partially Received']:[]);
+     });
+     /* Quick view: a fully received Field Boy PR is left out like a fully
+        received PO one, and comes back with "Fetch Received Data". It can be
+        told only now (its items and Store entries are needed), so it is
+        taken off the list here and counted with the other hidden ones. */
+     if(!full){
+       const done=new Set(fbGroups.filter(g=>g.fb.allRecv));
+       if(done.size){
+         sarvPoFollowupGroups=sarvPoFollowupGroups.filter(g=>!done.has(g));
+         sarvPoFollowupHidden+=done.size;
+         poFollowupRecvUi_();
+       }
+     }
+   }
 
    /* ── Flatten to display rows ───────────────────────────────────
       One row per (PR, PO, Inward). rowSpan tells the renderer how far each
@@ -24435,6 +25517,8 @@ let PR_TEAL=[13,92,83];
  // What the "Only Incomplete Follow-Up" filter means: anything still owed on
  // this PR, whether that is a PO nobody raised or a bill nobody checked.
  function poFollowupIncomplete_(g){
+   // A Field Boy PR is complete when the requester has confirmed receipt (or it was done under the old tick list).
+   if(g.fb)return !['CONFIRMED','FB_DONE'].includes(g.fb.state);
    if(!g.poGenerated)return true;
    if(!g.mdApproved||!g.poSent)return true;
    if(!g.statuses.every(s=>['Received','Closed (Short)'].includes(s)))return true;
@@ -24583,7 +25667,8 @@ let PR_TEAL=[13,92,83];
    return sarvPoFollowupGroups.filter(g=>{
      if(Object.keys(cf).length&&!colHit.has(g))return false;
      if(requester&&String(g.req.requested_by||'').trim()!==requester)return false;
-     if(status==='__NOPO__'){if(g.poGenerated)return false}
+     if(status==='__NOPO__'){if(g.poGenerated||g.fb)return false}
+     else if(status==='__FB__'){if(!g.fb)return false}
      else if(status&&!g.statuses.includes(status))return false;
      if(pendingOnly&&!poFollowupIncomplete_(g))return false;
      if(!term)return true;
@@ -24624,8 +25709,9 @@ let PR_TEAL=[13,92,83];
        +pr('<span style="color:#7c2d12;">'+pEsc(g.req.requested_by||'—')+'</span>',prCell)
        +pr('<span style="color:#5b21b6;">'+pEsc(poFollowupPurchaser_(g.req)||'—')+'</span>',prCell)
        +pr(fuTick_(g.vendorInfo),'text-align:center;')
-       +pr(fuTick_(g.poGenerated),'text-align:center;')
-       +poCell(po?fuDocLink_(po.po_no,b.url,'PO',itemsTip):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
+       // A Field Boy PR is bought without a PO, so "no PO" is not something pending.
+       +pr(g.fb?'<span style="font-size:10px;font-weight:800;color:#6d28d9;" title="Field Boy PR: no PO is made">No PO</span>':fuTick_(g.poGenerated),'text-align:center;')
+       +poCell(po?fuDocLink_(po.po_no,b.url,'PO',itemsTip):(g.fb?'<span style="font-size:10.5px;font-weight:700;color:#6d28d9;">Field Boy</span>':'<span class="fu-nodoc">&ndash;</span>'),'background:#fdf0e6;')
        +poCell(po?('<span style="color:#9a3412;font-weight:700;">'+pEsc(po.vendor_name||'—')+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;')
        +poCell(po&&po.delivery_date?('<span style="font-weight:700;white-space:nowrap;">'+pEsc(pDate(po.delivery_date))+'</span>'):'<span class="fu-nodoc">&ndash;</span>','background:#fdf0e6;text-align:center;')
        +poCell(po?fuTick_(poFollowupMdApproved_(po)):'<span class="fu-nodoc">&ndash;</span>','text-align:center;')
@@ -24636,7 +25722,9 @@ let PR_TEAL=[13,92,83];
        // Clickable: opens the PR → PO → Inward detail view (openPoFollowupDetail_).
        +poCell(po
          ?('<button type="button" class="fu-stbtn" data-req="'+pEsc(g.req.req_no||'')+'" data-po="'+pEsc(po.po_no||'')+'" title="Click for the full PR → PO → Inward details">'+fuStatusCell_([po.status||'Generated'])+'</button>')
-         :('<button type="button" class="fu-stbtn nopo" data-req="'+pEsc(g.req.req_no||'')+'" title="No PO yet. Click for the PR details and its items">PR details &rsaquo;</button>'),'')
+         :g.fb
+           ?('<button type="button" class="fu-stbtn" data-req="'+pEsc(g.req.req_no||'')+'" title="Field Boy PR. Click for its steps: Requested, Pickup, Approved, Received, Confirmed">'+fuFbChip_(g.fb)+'</button>')
+           :('<button type="button" class="fu-stbtn nopo" data-req="'+pEsc(g.req.req_no||'')+'" title="No PO yet. Click for the PR details and its items">PR details &rsaquo;</button>'),'')
        +'<td style="background:#fdeaf0;">'+(r.inward?fuDocLink_(r.inward.document_no,g.inwUrlOf(r.inward),'INWARD'):'<span class="fu-nodoc">&ndash;</span>')+'</td>'
        // Per receipt, not merged down the PR — it sits across from the Inward
        // No. in the previous column, which is the receipt it refers to.
@@ -24652,8 +25740,10 @@ let PR_TEAL=[13,92,83];
    // once one PR can occupy five of them.
    set('p_poRepCount',(groups.length===sarvPoFollowupGroups.length?String(groups.length):groups.length+' / '+sarvPoFollowupGroups.length)
      +' PR · '+rows.length+' rows');
-   set('p_poRepNoPo',groups.filter(g=>!g.poGenerated).length);
-   set('p_poRepDone',groups.filter(g=>g.statuses.length&&g.statuses.every(s=>['Received','Closed (Short)'].includes(s))).length);
+   set('p_poRepNoPo',groups.filter(g=>!g.poGenerated&&!g.fb).length);
+   set('p_poRepDone',(!sarvPoFollowupWithReceived&&sarvPoFollowupHidden)
+     ?sarvPoFollowupHidden+' (not loaded)'
+     :groups.filter(g=>g.statuses.length&&g.statuses.every(s=>FU_DONE_STATUSES.includes(s))).length);
    // Counted in RECEIPTS now, not PRs — the sign-off is per inward, so "12"
    // meaning twelve PRs would not match anything on screen.
    set('p_poRepInformed',rows.filter(r=>r.inward&&poFollowupInformState_(r.req,r.inward.document_no)).length
@@ -25124,6 +26214,14 @@ let PR_TEAL=[13,92,83];
    const body=byId('fudBody');if(!g||!body)return;
    const data=fudCache_.get(g.req.req_no)||null;
    const req=g.req;
+   // A Field Boy PR has no PO: its own route view, no PO tabs.
+   const tabsEl=byId('fudTabs');if(tabsEl)tabsEl.style.display=g.fb?'none':'';
+   if(g.fb){
+     byId('fudSub').textContent=(shortDocNo_(req.req_no,'PR')||req.req_no)+'  ·  Field Boy  ·  no PO';
+     fudCur_.po='__PR__';
+     body.innerHTML=fudDrawFb_(g,data);
+     return;
+   }
    // Selected PO: the one asked for, else the first live one, else none (PR-only).
    let blk=g.poBlocks.find(b=>String(b.po.po_no||'')===String(fudCur_.po))||null;
    if(!blk&&fudCur_.po!=='__PR__')blk=g.poBlocks.find(b=>!['Cancelled','Rejected'].includes(b.po.status||''))||g.poBlocks[0]||null;
