@@ -4231,6 +4231,29 @@ body { min-width: 0; }
 #dropdownMasterSub .dd-nav-n small { font-size:8px; opacity:.75; }
 #dropdownMasterSub .dd-nav-item.active .dd-nav-n { background:rgba(255,255,255,.22); border-color:rgba(255,255,255,.4); color:#fff; }
 #dropdownMasterSub .dd-nav-empty { font-size:11px; color:#94a3b8; padding:14px 8px; text-align:center; }
+/* Sections: own colour (--g / --gl, sarvDdGroupTheme_), header folds the section
+   (sarvDdToggleGroup). Placed after the rules above so these win. */
+#dropdownMasterSub .dd-fold-bar { display:flex; gap:6px; padding:2px 2px 6px; }
+#dropdownMasterSub .dd-fold-bar button {
+  flex:1; border:1px solid #cbd5e1; background:#fff; border-radius:6px; padding:4px 6px;
+  font-family:inherit; font-size:10.5px; font-weight:700; color:#475569; cursor:pointer;
+}
+#dropdownMasterSub .dd-fold-bar button:hover { background:#f1f5f9; }
+#dropdownMasterSub .dd-sec { margin-bottom:6px; border-radius:8px; background:var(--gl,#f8fafc); border:1px solid #e2e8f0; border-left:4px solid var(--g,#64748b); overflow:hidden; }
+#dropdownMasterSub .dd-sec .dd-nav-group {
+  display:flex; align-items:center; gap:6px; width:100%; text-align:left; background:none; border:0;
+  cursor:pointer; font-family:inherit; color:var(--g,#64748b); padding:7px 8px;
+}
+#dropdownMasterSub .dd-sec .dd-nav-group:hover { background:rgba(255,255,255,.6); }
+#dropdownMasterSub .dd-chev { width:10px; flex:0 0 auto; font-size:10px; }
+#dropdownMasterSub .dd-gname { flex:1; min-width:0; }
+#dropdownMasterSub .dd-gcount { flex:0 0 auto; background:#fff; border:1px solid currentColor; border-radius:20px; padding:0 6px; font-size:9px; }
+#dropdownMasterSub .dd-sec-body { padding:0 6px 4px; }
+#dropdownMasterSub .dd-sec.folded .dd-sec-body { display:none; }
+#dropdownMasterSub .dd-sec .dd-nav-item:hover { background:#fff; border-color:var(--g); }
+#dropdownMasterSub .dd-sec .dd-nav-item.active { background:var(--g); border-color:var(--g); }
+#dropdownMasterSub .dd-main { border-top:3px solid var(--g,#e2e8f0); }
+#dropdownMasterSub .dd-main .dd-head-title { color:var(--g,#0f172a); }
 
 /* ── right head ── */
 #dropdownMasterSub .dd-head { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; }

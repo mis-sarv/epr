@@ -7134,7 +7134,13 @@ function ofTrackLot(lotId){ ofHandoff({v:1, kind:'TRACK_LOT', at:Date.now(), lot
    Same pattern as the Printing Lot hand-off: the request goes in localStorage
    (trims-manager.html › trimsHandoff reads it — change both sides and bump v to
    add a field); inside the ERP the Trims Manager panel opens and, if already
-   loaded, is told directly; outside the ERP a new tab opens. */
+   loaded, is told directly.
+   Outside the ERP (Sales › Order Form opens as its own tab) the ERP itself is
+   opened on Manufacturing › Trims Manager (its address #/manuf/trims-manager,
+   erp-shell.js › navParse), NOT trims-manager.html alone: "Generate New PR"
+   fills the ERP's Purchase form, which exists only inside the ERP. The panel
+   reads the hand-off when it boots there. */
+const OF_TRIMS_ERP_URL='index.html#/manuf/trims-manager';
 const OF_TRIMS_HANDOFF='sarv_trims_handoff';
 function ofOpenTrims(orderNo,line){
   try{ localStorage.setItem(OF_TRIMS_HANDOFF,JSON.stringify({v:1,kind:'OPEN_ORDER_LINE',at:Date.now(),orderNo,line:Number(line)||null})); }
@@ -7149,8 +7155,8 @@ function ofOpenTrims(orderNo,line){
       return;
     }
   }catch(e){ console.warn('[ORDER FORM] ERP navigation (Trims):',e.message||e); }
-  const win=window.open('trims-manager.html','_blank');
-  if(!win) location.href='trims-manager.html';
+  const win=window.open(OF_TRIMS_ERP_URL,'_blank');
+  if(!win) location.href=OF_TRIMS_ERP_URL;
 }
 /* Inside the ERP: Printing Lot's own panel (iframe) opens. On first open
    that page reads the hand-off on boot; if it is already open, its

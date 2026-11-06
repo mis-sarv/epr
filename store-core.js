@@ -6353,7 +6353,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7365,6 +7365,11 @@ const SARV_TABS=[
      NOx, SO2) from the Access Surveykshan portal, live, with today's trend and
      a history report. Admin / MD / GM by default, the same as launcher.html's
      APPS entry (its defRoles); change both together. */
+  /* solar-live.html: the rooftop solar plant from the Intello portal (status,
+     inverters, faults, off times, generation). The server reads the portal
+     (sql/SOLAR_MIGRATION.sql); solar_ctx_ checks this key. Same default as the
+     launcher tile's defRoles. */
+  {key:'HOME_SOLAR_LIVE',label:'Solar Plant (Live)',hint:'Solar plant running / off, inverters, faults, generation and sensor reports from the Intello portal (solar-live.html, opens from the launcher or ERP › Quality)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   {key:'HOME_EMISSION_LIVE',label:'Stack Emission (Live)',hint:'Boiler stack PM / NOx / SO2 live from the online monitoring portal, limits, today\'s trend, history report + CSV (emission-live.html, opens from the launcher or ERP › Quality)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   /* task_manager.html's own home buttons. The page hides a button without
      access, and the SERVER checks the same key on every read and write
@@ -8135,9 +8140,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8342,7 +8347,7 @@ const SARV_ACCESS_AREAS=[
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
-  {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SHEET_LINKS']}
+  {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_SHEET_LINKS']}
 ];
 /* Store access + Complaint registers: user-only keys that are NOT rows of
    the role-wise Tab Visibility and are not in the form's hidden selects.
@@ -11307,8 +11312,14 @@ const SARV_NEW_ITEM_TARGETS={
   purchase:{body:'p_itemTableBody',      nameSel:'.col-name',      add:()=>addPurchaseMainRow(),  totals:()=>refreshPurchaseTotals()}
 };
 let sarvNewItemTarget='inward';
-function openNewItemMasterModal(target){
+/* An app in an ERP iframe (Trims Manager's "+ Add New Item Name") opens this
+   same popup with opts.onSaved: the saved name then goes back to it instead of
+   into a Store / PR row. opts.name pre-fills the Item Name. Without opts the
+   popup works exactly as before. */
+let sarvNewItemCb=null;
+function openNewItemMasterModal(target,opts){
   sarvNewItemTarget=SARV_NEW_ITEM_TARGETS[target]?target:'inward';
+  sarvNewItemCb=(opts&&typeof opts.onSaved==='function')?opts.onSaved:null;
   let ov=byId('sarvNewItemModal');
   if(!ov){
     const FLD='class="form-control" style="height:30px;font-size:12px;"';
@@ -11424,6 +11435,7 @@ function openNewItemMasterModal(target){
   if(byId('ni_excessTol'))byId('ni_excessTol').value=String(SARV_DEFAULT_EXCESS_TOL);
   if(byId('ni_cat'))byId('ni_cat').value='';
   if(byId('ni_gst'))byId('ni_gst').value=String(SARV_DEFAULT_GST);
+  if(opts&&opts.name&&byId('ni_name'))byId('ni_name').value=String(opts.name).trim().toUpperCase();
   refreshNewItemNameHint_();
   ov.style.display='flex';
   setTimeout(()=>byId('ni_name')?.focus(),60);
@@ -11439,7 +11451,7 @@ function refreshNewItemNameHint_(){
   hint.style.color='#b45309';
   hint.textContent=dup?('This item is already in the master ('+(dup.item_code||dup.uom||'')+'). Select it from the list.'):'';
 }
-function closeNewItemMasterModal(){const ov=byId('sarvNewItemModal');if(ov)ov.style.display='none';}
+function closeNewItemMasterModal(){sarvNewItemCb=null;const ov=byId('sarvNewItemModal');if(ov)ov.style.display='none';}
 async function saveNewItemFromModal_(){
   if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
   const name=(byId('ni_name')?.value||'').trim().toUpperCase();
@@ -11480,8 +11492,10 @@ async function saveNewItemFromModal_(){
     // when it lands in the row below; the heavier Item Master reload follows.
     const q=await SB.from('items').select('*').order('name');
     if(!q.error&&q.data)refreshItemDatalist(q.data);
+    const cb=sarvNewItemCb;   // taken before the close, which clears it
     closeNewItemMasterModal();
-    fillNewItemIntoEntryRow_(name);
+    if(cb){try{cb(name);}catch(x){console.warn('[SARV] New item hand-back failed:',x.message||x);}}
+    else fillNewItemIntoEntryRow_(name);
     showToast('"'+name+'" added to the Item Master');
     if(typeof loadItemMaster==='function')loadItemMaster().catch(()=>{});
   }catch(e){dbError(e);}
@@ -14080,28 +14094,14 @@ const SARV_DROPDOWNS=[
   {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
 
   {group:'Sales › Order Form (order-form.html)'},
-  {key:'dbsb',label:'DB / SB',hint:'Order Form › product ka DB/SB',def:['DB','DP','SB','SS','SC'],sales:1},
-  {key:'fabricCode',label:'Fabric Code',hint:'Order Form › Fabric',def:['2900','3100','3500','4000'],sales:1},
-  {key:'category',label:'Category',hint:'Order Form › product Category',sales:1,
-   def:['SEMI CLOUDY','SUPER SOFT','MINK','DOUBLE LAYER','SHERPA','POLAR FLEECE','CLOUDY']},
-  {key:'size',label:'Size',hint:'Order Form › product Size',sales:1,
-   def:['210×230 CM','150×200 CM','200×220 CM','220×240 CM','60×90 CM (Baby)']},
-  /* Sattan in the Order Form is now TWO dropdowns, Type and Size, auto-selected
-     from the Brand Master's `sattan_type` / `sattan` columns. So keep these two
-     lists the same as the Brand Master's own lists (erp_brandSattanType /
-     erp_brandSattan); otherwise the value won't match when an Item Code is
-     chosen.
-     The old `sattan` row was NOT removed: orders from that time have the joint
-     value ('5" PREMIUM') written, and the Order Form still writes that joint
-     value to the `sattan` column of sales_product_details. */
-  {key:'sattanType',label:'Sattan Type (Order Form)',hint:'Order Form › Sattan Type; auto-selected from the Brand Master\'s SATTAN TYPE',sales:1,
-   def:['STANDARD','PREMIUM','NA']},
-  {key:'sattanSize',label:'Sattan Size (Order Form)',hint:'Order Form › Sattan Size; auto-selected from the Brand Master\'s SATTAN SIZE',sales:1,
-   def:['4 INCH SATTAN','5 INCH SATTAN','6 INCH SATTAN','NA']},
-  {key:'sattan',label:'Sattan (old joint field)',hint:'The joint value used by old orders, e.g. 5" PREMIUM. The new form uses Type + Size; this row is kept for the record.',sales:1,
-   def:['5" PREMIUM','4" STANDARD','3" BASIC']},
-  {key:'moq',label:'MOQ',hint:'Order Form › MOQ',sales:1,
-   def:['500 PCS/Colour','1000 PCS/Colour','2000 PCS/Colour']},
+  /* DB / SB, Fabric Code, Category, Size, Sattan Type / Size, the old joint
+     Sattan and MOQ are no longer listed here: the Order Form fills them from
+     the Brand Master by Item Code and locks them (order-form.html ›
+     OF_SPEC_LOCK), so a list here changed nothing; their source is ERP ›
+     Master Data › Brand Master (and its own dropdowns under "Fabric & Brand
+     Master" above). Their rows in sales_dropdowns are left as they are: the
+     Order Form still reads them for old orders and keeps learning values into
+     them. Only what the Order Form's user still chooses is kept below. */
   {key:'deliveryTerms',label:'Delivery Terms',hint:'Order Form › Delivery Terms',sales:1,
    def:['1st Week of July 2026','2nd Week of July 2026','August 2026','September 2026']},
   {key:'paymentTerms',label:'Payment Terms',hint:'Order Form › Payment Terms',sales:1,
@@ -14317,16 +14317,60 @@ window.sarvDdMoveValue=async function(id,dir){
 /* ── UI ───────────────────────────────────────────────────────────── */
 window.sarvDdSelect=function(key){sarvDdPick=key;sarvDdEditId=null;sarvDdRender_();};
 
+/* ── Sections of the left list: own colour, Expand / Collapse ─────────
+   Each {group} of SARV_DROPDOWNS is a section with its own colour (cycled
+   from SARV_DD_THEMES in list order, so a new section gets one by itself),
+   used on its header, its items and, for the dropdown that is open, on the
+   right-hand pane. A section folds by its header; which ones are folded is
+   remembered on this PC (localStorage), and a search opens every section so
+   nothing found is hidden. The section of the dropdown that is open is never
+   folded away. */
+const SARV_DD_THEMES=[
+  {c:'#0369a1',l:'#f0f9ff'},{c:'#7c3aed',l:'#f5f3ff'},{c:'#0f766e',l:'#f0fdfa'},{c:'#b45309',l:'#fffbeb'},
+  {c:'#be185d',l:'#fdf2f8'},{c:'#4d7c0f',l:'#f7fee7'},{c:'#4338ca',l:'#eef2ff'},{c:'#c2410c',l:'#fff7ed'},
+  {c:'#0e7490',l:'#ecfeff'},{c:'#9f1239',l:'#fff1f2'}];
+const SARV_DD_FOLD_KEY='sarv_dd_folded';
+function sarvDdFolded_(){try{return new Set(JSON.parse(localStorage.getItem(SARV_DD_FOLD_KEY)||'[]'));}catch(e){return new Set();}}
+function sarvDdFoldSave_(s){try{localStorage.setItem(SARV_DD_FOLD_KEY,JSON.stringify([...s]));}catch(e){}}
+// Section name → its colour, and the section a dropdown key is in.
+function sarvDdGroupTheme_(name){
+  const groups=SARV_DROPDOWNS.filter(d=>d.group).map(d=>d.group);
+  const i=Math.max(0,groups.indexOf(name));
+  return SARV_DD_THEMES[i%SARV_DD_THEMES.length];
+}
+function sarvDdGroupOf_(key){
+  let g=null;
+  for(const d of SARV_DROPDOWNS){if(d.group)g=d.group;else if(d.key===key)return g;}
+  return null;
+}
+window.sarvDdToggleGroup=function(i){
+  const g=(SARV_DROPDOWNS.filter(d=>d.group)[i]||{}).group;if(!g)return;
+  const s=sarvDdFolded_();s.has(g)?s.delete(g):s.add(g);sarvDdFoldSave_(s);
+  sarvDdRenderNav();
+};
+window.sarvDdFoldAll=function(fold){
+  sarvDdFoldSave_(fold?new Set(SARV_DROPDOWNS.filter(d=>d.group).map(d=>d.group)):new Set());
+  sarvDdRenderNav();
+};
 function sarvDdNavHtml_(){
   const box=byId('dd_search');
   const q=((box&&box.value)||'').toLowerCase().trim();
-  let html='',pending=[],group=null;
+  const folded=sarvDdFolded_(),openG=sarvDdGroupOf_(sarvDdPick);
+  let html='',pending=[],group=null,gi=-1,shown=0;
   const flush=()=>{
-    if(pending.length)html+='<div class="dd-nav-group">'+escText(group||'—')+'</div>'+pending.join('');
+    if(pending.length){
+      const t=sarvDdGroupTheme_(group),fold=!q&&folded.has(group)&&group!==openG;
+      html+='<div class="dd-sec'+(fold?' folded':'')+'" style="--g:'+t.c+';--gl:'+t.l+';">'
+        +'<button type="button" class="dd-nav-group" onclick="sarvDdToggleGroup('+gi+')" title="'+(fold?'Expand':'Collapse')+' this section" aria-expanded="'+!fold+'">'
+        +'<span class="dd-chev">'+(fold?'▸':'▾')+'</span><span class="dd-gname">'+escText(group||'—')+'</span>'
+        +'<span class="dd-gcount">'+pending.length+'</span></button>'
+        +'<div class="dd-sec-body">'+pending.join('')+'</div></div>';
+      shown+=pending.length;
+    }
     pending=[];group=null;
   };
   SARV_DROPDOWNS.forEach(d=>{
-    if(d.group){flush();group=d.group;return;}
+    if(d.group){flush();group=d.group;gi++;return;}
     if(q&&!sarvSearchMatch([d.label,d.key,d.hint],q))return;
     const n=sarvDdRowsOf(d.key).length,saved=n>0;
     pending.push('<button type="button" class="dd-nav-item'+(sarvDdPick===d.key?' active':'')+'" onclick="sarvDdSelect(\''+d.key+'\')">'
@@ -14335,7 +14379,8 @@ function sarvDdNavHtml_(){
       +(saved?n:sarvDdDefaults(d.key).length+'<small>d</small>')+'</span></button>');
   });
   flush();
-  return html||'<div class="dd-nav-empty">No dropdown matches this search.</div>';
+  if(!shown)return '<div class="dd-nav-empty">No dropdown matches this search.</div>';
+  return (q?'':'<div class="dd-fold-bar"><button type="button" onclick="sarvDdFoldAll(false)">Expand all</button><button type="button" onclick="sarvDdFoldAll(true)">Collapse all</button></div>')+html;
 }
 
 function sarvDdMainHtml_(){
@@ -14467,7 +14512,13 @@ function sarvDdRender_(){
     sarvDdPick=first?first.key:null;
   }
   const nav=byId('dd_navList');if(nav)nav.innerHTML=sarvDdNavHtml_();
-  const main=byId('dd_main');if(main)main.innerHTML=sarvDdMainHtml_();
+  const main=byId('dd_main');
+  if(main){
+    main.innerHTML=sarvDdMainHtml_();
+    // The right-hand pane wears the colour of the open dropdown's section.
+    const t=sarvDdGroupTheme_(sarvDdGroupOf_(sarvDdPick));
+    main.style.setProperty('--g',t.c);main.style.setProperty('--gl',t.l);
+  }
   const miss=byId('dd_missingNote');if(miss)miss.style.display=(SB_READY&&!sarvDdLoaded)?'block':'none';
 }
 window.sarvDdRenderNav=function(){const n=byId('dd_navList');if(n)n.innerHTML=sarvDdNavHtml_();};

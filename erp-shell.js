@@ -199,6 +199,9 @@
          in a new tab like HR & Payroll; the leaf carries its own `access` row. */
       { label: 'Stack Emission (Live)', external: 'emission-live.html', access: 'HOME_EMISSION_LIVE',
         words: 'stack emission boiler pollution pm nox so2 ocems cems pcb dhuan chimney surveykshan' },
+      // The solar plant (solar-live.html, HOME_SOLAR_LIVE), the same way.
+      { label: 'Solar Plant (Live)', external: 'solar-live.html', access: 'HOME_SOLAR_LIVE',
+        words: 'solar plant inverter generation kwh grid dg rooftop intello sungrow fault off running' },
       { label: 'Quality Dashboard' }, { label: 'Quality Control' },
       { label: 'Direct QC' }, { label: 'Quality Certificate' },
       { label: 'Quality Audits' }, { label: 'Defect Logs' },

@@ -795,7 +795,13 @@ const APPS = [
      store-core.js's SARV_TABS (Admin / MD / GM); change both together. */
   { key:'HOME_EMISSION_LIVE', href:'emission-live.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M6 21V10h4v11M14 21V4h4v17"/><path d="M8 7c0-1.5 1.5-1.5 1.5-3M16 1.5c0 1 .8 1.2.8 2"/></svg>', accent:'#14b8a6',
     defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],
-    title:'Stack Emission (Live)', sub:'Boiler PM / NOx / SO2 vs limits' }
+    title:'Stack Emission (Live)', sub:'Boiler PM / NOx / SO2 vs limits' },
+  /* The rooftop solar plant from the Intello portal (solar-live.html). Same
+     key and default roles as HOME_SOLAR_LIVE in store-core.js's SARV_TABS
+     (Admin / MD / GM); change both together. */
+  { key:'HOME_SOLAR_LIVE', href:'solar-live.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>', accent:'#f59e0b',
+    defRoles:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN'],
+    title:'Solar Plant (Live)', sub:'Running / off, inverters, faults, reports' }
 ];
 
 const ROLE_LABEL = {

@@ -117,6 +117,10 @@
   th { background: #34495e; color: white; font-size: 11px; padding: 8px 4px; position: sticky; top: 0; z-index: 2; border: 1px solid #4a627a; }
   th.lot-th { background:#5b3f8c; }
   th small { display:block; font-weight:400; color:#cfd8dc; font-size:9.5px; }
+  /* "+ Add New Item Name" in the Store Standard Name header (trimsAddItem). */
+  th .th-add { display:block; margin:4px auto 0; padding:2px 8px; font-size:10px; font-weight:700; border-radius:5px;
+    border:1px solid rgba(255,255,255,.55); background:rgba(255,255,255,.12); color:#fff; cursor:pointer; white-space:nowrap; }
+  th .th-add:hover { background:rgba(255,255,255,.28); }
   td { padding: 4px; border: 1px solid #ddd; font-size: 12px; position:relative; }
   tr:nth-child(even) { background-color: #fafbfc; }
   tr:hover { background-color: #f1f7fd; }
@@ -134,6 +138,9 @@
   /* Issue dates under the qty — every issuing date, newest last */
   .live .dts { display:block; font-weight:600; color:#5b3f8c; font-size:9px; line-height:1.3; margin-top:1px; }
   .calc .sub { display:block; font-weight:600; font-size:9px; color:#7f8c8d; margin-top:1px; }
+  /* New PR Qty's note: how the auto figure came about (prQtyNote). */
+  .prq .prq-note { display:block; font-weight:600; font-size:9px; color:#7f8c8d; margin-top:1px; white-space:nowrap; }
+  .prq .prq-note.ok { color:#15803d; }
   td.po-auto { background:#eafaf1; font-weight:700; color:#145a32; font-size:11.5px; }
   td.po-auto small { display:block; font-weight:500; color:#7f8c8d; font-size:9.5px; }
   td.po-wait { background:#fff8e1; color:#8a5300; font-weight:700; font-size:11px; }
@@ -226,7 +233,7 @@
            its iframe), so the real work happens in the parent window:
            store-core.js › sarvGenerateNewPrFromTrims. -->
       <button class="btn-pr" onclick="generatePrFromSheet()" id="btnGenPr" disabled
-              title="Tick items in the NEW PR column. PR qty = New PR Qty (Order Qty + MSV − Balance Stock)">Generate New PR (<span id="prSelCount">0</span>)</button>
+              title="Tick items in the NEW PR column. PR qty = New PR Qty (Final PO Qty + MSV − Balance Stock)">Generate New PR (<span id="prSelCount">0</span>)</button>
       <button class="btn-ghost" onclick="clearPrSel()" id="btnPrClear" style="display:none" title="Remove all ticks">✖ Clear Ticks</button>
       <button class="btn-save" onclick="saveData()" id="btnSave">Save</button>
       <button class="btn-sync" onclick="syncQty(true)" id="btnSync" title="Refill the automatic quantities from the order / lot (manual ✎ values are kept)">↻ Sync Qty</button>
@@ -309,7 +316,7 @@
     <span class="l-man">Manual ✎ (changed by you; ↺ returns it to auto)</span>
     <span class="l-calc">Calculated</span>
     <span style="padding-left:0"><b>Final PO Qty = Order Qty × (1 + Wastage%)</b> · Balance = Final PO − Received · <b>Pending Issue = Qty Received − Total Lot Issue</b> (short line = below Order Qty) · <b>+</b> in the last column adds an item</span>
-    <span style="padding-left:0">Tick in the <b>NEW PR</b> column → <b>Generate New PR</b> → the ERP's Purchase form opens (PR qty = <b>New PR Qty</b> = Order Qty + MSV − Balance Stock, 0 if negative; editable). Once submitted, the PR No appears in this sheet's PR NO. column automatically. Then press Save.</span>
+    <span style="padding-left:0">Tick in the <b>NEW PR</b> column → <b>Generate New PR</b> → the ERP's Purchase form opens (PR qty = <b>New PR Qty</b> = Final PO Qty + MSV − Balance Stock; <b>0 when the Balance Stock already covers Final PO Qty + MSV</b>, a negative Balance Stock counts as 0; editable). Once submitted, the PR No appears in this sheet's PR NO. column automatically. Then press Save.</span>
   </div>
 
   <div id="itemPop"></div>
@@ -680,15 +687,42 @@ async function probeV2(){
   S.v3      =await ok('mfg_trims_sheets','order_line');
 }
 
+// ═══════════════════════ BRAND MASTER → MASTER PACKING TYPE ════════════════
+/* The Master Packs card says what the packs ARE (Bora, Outer Box …): the
+   Brand Master's MASTER PACKING TYPE of the product's Item Code. A brand can
+   have two packings; the order product's packNo (1 / 2, the Order Form's
+   "Packing" choice) picks MASTER PACKING TYPE or MASTER PACKING TYPE 2, the
+   same rule as the Order Form (ofActivePack_). Read once per page; a database
+   without the _2 column falls back to Packing 1 only. */
+async function loadBrands(){
+  let rows;
+  try{ rows=await fetchAll(()=>SB.from('brand_master').select('item_code,master_pack_type,master_pack_type_2').order('item_code')); }
+  catch(e){
+    try{ rows=await fetchAll(()=>SB.from('brand_master').select('item_code,master_pack_type').order('item_code')); }
+    catch(x){ console.warn('[TRIMS] Brand Master not read; Master Packing Type not shown:',x.message||x); S.brandByCode=null; return; }
+  }
+  S.brandByCode={};
+  rows.forEach(b=>{ const k=String(b.item_code||'').trim().toUpperCase(); if(k) S.brandByCode[k]=b; });
+}
+function masterPackTypeOf(p){
+  const b=S.brandByCode&&S.brandByCode[String(p&&p.itemCode||'').trim().toUpperCase()];
+  if(!b) return '';
+  const t1=String(b.master_pack_type||'').trim(), t2=String(b.master_pack_type_2||'').trim();
+  const t=(Number(p.packNo)===2&&t2)?t2:t1;
+  return /^(NA|N\/A|-)?$/i.test(t)?'':t.toUpperCase();
+}
+
 // ═══════════════════════ ORDER → ORDER QTY ═════════════════════════════════
-// Products of the saved order: blanket pcs, master packs, and the order's own
-// trims (who supplies, and how many SIHF supplies).
+// Products of the saved order: blanket pcs, master packs (and their Brand
+// Master packing type), and the order's own trims (who supplies, and how many
+// SIHF supplies).
 function orderAgg(full){
-  const agg={ pcs:0, packs:0, products:0, packTypes:new Set(), trims:{} };
+  const agg={ pcs:0, packs:0, products:0, masterTypes:new Set(), trims:{} };
   (full&&full.products||[]).forEach(p=>{
     agg.products++;
     if(String(p.packType||'').toLowerCase()==='roll') return;   // rolls are weighed, not counted
-    agg.pcs+=num(p.qty); agg.packs+=num(p.packs); if(p.packType) agg.packTypes.add(p.packType);
+    agg.pcs+=num(p.qty); agg.packs+=num(p.packs);
+    const mt=masterPackTypeOf(p); if(mt) agg.masterTypes.add(mt);
     const t=p.trims||{};
     Object.keys(t).forEach(k=>{
       const s=t[k]&&t[k].supp; if(!s||s==='na') return;
@@ -812,42 +846,64 @@ function stockCellHtml(r){
 }
 
 // ═══════════════════════ NEW PR QTY ════════════════════════════════════════
-/* What to buy for this row: enough to cover the Order Qty AND bring the item
-   back up to its MSV, after using what is free in the store:
-       New PR Qty = Order Qty + MSV − Balance Stock (on hand − other orders)
-   shown as 0 when negative (the free stock already covers it). MSV is the Item
-   Master's sub_category, as everywhere else in the ERP. Pre-filled; typing a
-   figure makes it manual (amber), ↺ puts it back on auto. Generate New PR uses
-   this figure as the PR qty. null = cannot be worked out yet (no item picked,
-   or the stock did not load). */
+/* What to buy for this row. The need is what this order will really draw from
+   the store, its FINAL PO QTY (Order Qty × (1 + Wastage%)), plus the item's MSV
+   so the store is left at its minimum afterwards:
+       Need = Final PO Qty + MSV
+   Two cases, against the Balance Stock (on hand − other saved orders):
+     • Balance Stock ≥ Need  → New PR Qty = 0: the store covers this order and
+       still keeps its MSV, so nothing is bought ("Stock covers it"; NEW PR
+       cannot be ticked);
+     • otherwise             → New PR Qty = Need − free stock, where free stock
+       is the Balance Stock but never below 0. A NEGATIVE Balance Stock means
+       other orders already need more than is on hand; their shortfall is
+       bought on their own sheets, so it is not added to this PR as well.
+   MSV is the Item Master's sub_category, as everywhere else in the ERP.
+   Pre-filled; typing a figure makes it manual (amber), ↺ puts it back on auto.
+   Generate New PR uses this figure as the PR qty. null = cannot be worked out
+   yet (no item picked, or the stock did not load). */
 function msvOf(r){
   const it=r.storeId&&S.itemById&&S.itemById[r.storeId];
   const n=it?Number(it.sub_category):NaN;
   return isFinite(n)&&n>0?n:0;
 }
-function autoPrQty(r){
+// The parts of the sum, for the figure, its tooltip and the cell's note.
+function prNeedOf(r){
   const s=stockOf(r); if(!s) return null;
-  return Math.max(0,Math.round(num(r.oQty)+msvOf(r)-s.free));
+  const poQty=rowCalc(r).poQty, msv=msvOf(r), need=poQty+msv, free=Math.max(0,num(s.free));
+  return { poQty, msv, need, bal:num(s.free), free, covered:num(s.free)>=need, qty:Math.max(0,Math.round(need-free)) };
+}
+function autoPrQty(r){
+  const n=prNeedOf(r); return n?n.qty:null;
 }
 function prQtyOf(r){
   if(r.prQtyManual) return num(r.prQty);
   const a=autoPrQty(r); return a==null?0:a;
 }
 function prQtyTip(r){
-  const s=stockOf(r);
   if(!r.storeId) return 'Choose the Store Standard Name first';
-  if(!s) return 'Stock could not be loaded; press ⟳ Store Data';
-  const raw=num(r.oQty)+msvOf(r)-s.free;
-  return `New PR Qty = Order Qty ${fmtN(num(r.oQty))} + MSV ${fmtN(msvOf(r))} − Balance Stock ${fmtN(s.free)} = ${fmtN(raw)}`
-    +(raw<0?' → 0 (free stock already covers it)':'')
+  const n=prNeedOf(r);
+  if(!n) return 'Stock could not be loaded; press ⟳ Store Data';
+  const head=`Need = Final PO Qty ${fmtN(n.poQty)} + MSV ${fmtN(n.msv)} = ${fmtN(n.need)}\nBalance Stock ${fmtN(n.bal)}`;
+  return head+(n.covered
+      ? `\nBalance Stock ≥ Need → New PR Qty = 0 (the store covers this order and keeps its MSV)`
+      : `\nNew PR Qty = Need ${fmtN(n.need)} − free stock ${fmtN(n.free)} = ${fmtN(n.qty)}`
+        +(n.bal<0?`\n(Balance Stock is negative: other orders' shortfall is not bought on this PR)`:''))
     +(r.prQtyManual?`\nManual: ${fmtN(num(r.prQty))} (↺ for auto)`:'');
+}
+// Under the box: why the auto figure is what it is, in two words.
+function prQtyNote(r){
+  if(r.prQtyManual) return '';
+  const n=prNeedOf(r); if(!n) return '';
+  return n.covered?'<span class="sub prq-note ok">Stock covers it</span>':'<span class="sub prq-note">Need '+fmtN(n.need)+' − '+fmtN(n.free)+'</span>';
 }
 function prQtyCellHtml(r, idx, ro){
   const auto=autoPrQty(r), man=!!r.prQtyManual;
   const val=man?r.prQty:(auto==null?'':auto);
   return `<td class="prq" title="${esc(prQtyTip(r))}"><input type="number" min="0" class="${man?'man':(auto!=null?'auto':'')}" value="${esc(val)}" `
     +`oninput="setPrQty(${idx},this.value,this)" ${ro}>`
-    +`${man&&auto!=null&&!ro?`<button class="ico" onclick="revert(${idx},'prQtyManual')" title="Back to auto (Order + MSV − Balance Stock)">↺</button>`:''}</td>`;
+    +`${man&&auto!=null&&!ro?`<button class="ico" onclick="revert(${idx},'prQtyManual')" title="Back to auto (Final PO Qty + MSV − Balance Stock)">↺</button>`:''}`
+    +prQtyNote(r)+`</td>`;
 }
 function setPrQty(i,v,el){
   const r=D.rows[i]; r.prQty=v; r.prQtyManual=true; setDirty(true);
@@ -1190,7 +1246,7 @@ function renderInfo(){
     ${isManualSheet()?`<div class="info">Brand<b>${esc(D.brand||'—')}</b></div>
     <div class="info">Designs<b>${designs.length?esc(designs.join(', ')):'—'}</b></div>`:''}
     <div class="info">Order Pcs<b>${a?fmtN(a.pcs):'—'}</b></div>
-    <div class="info">Master Packs<b>${a?fmtN(a.packs):'—'}${a&&a.packTypes.size?' <small style="font-size:11px;color:#888">'+esc([...a.packTypes].join('/'))+'</small>':''}</b></div>
+    <div class="info" title="${esc(a&&a.masterTypes.size?'Master Packing Type from the Brand Master (Item Code of the order product)':'No Master Packing Type in the Brand Master for this Item Code')}">Master Packs<b>${a?fmtN(a.packs):'—'}${a&&a.masterTypes.size?' '+esc([...a.masterTypes].join(' / ')):''}</b></div>
     <div class="info">Lots / Lot Pcs<b>${D.lots.length} / ${fmtN(lotPcs)}</b></div>
     <div class="info st">Status<br><select onchange="D.status=this.value;setDirty(true)" ${READ_ONLY()?'disabled':''}>${STATUSES.map(s=>`<option ${s===D.status?'selected':''}>${s}</option>`).join('')}</select></div>
     <div class="info wide">Remarks<input type="text" value="${esc(D.notes)}" oninput="D.notes=this.value;setDirty(true)" placeholder="Order level notes…" ${READ_ONLY()?'disabled':''}></div>
@@ -1229,15 +1285,16 @@ function renderHead(){
     <th style="width:35px;">SR</th>
     <th style="width:130px;">Item Description</th>
     <th style="width:120px;">Category</th>
-    <th style="width:190px;">Store Standard Name<small>Item Master</small></th>
+    <th style="width:190px;">Store Standard Name<small>Item Master</small>${READ_ONLY()?'':'<button type="button" class="th-add" onmousedown="event.preventDefault()" onclick="trimsAddItem()" title="Add a new item to the Item Master (the ERP\'s Add New Item form). It is set on the row you were choosing a name for, or the first row without one.">+ Add New Item Name</button>'}</th>
     <th style="width:95px;" title="Stock on hand − open requirement of all other saved orders' trims sheets">Balance Stock<small>On hand − other orders</small></th>
     <th style="width:96px;">Basis</th>
     <th style="width:80px;">Order Qty<small>${D.agg?'from Order':''}</small></th>
     <th style="width:90px;">Supplier</th>
-    <th style="width:85px;" title="Pre-filled: Order Qty + MSV − Balance Stock (0 if negative). Editable. This is the qty Generate New PR uses.">New PR Qty<small>Order + MSV − Bal.</small></th>
-    <th class="pr-th" style="width:56px;" title="Tick items and press Generate New PR. PR qty = New PR Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Tick / untick every row that can go on a PR"></th>
     <th style="width:75px;">Wastage %</th>
     <th style="width:85px;">Final PO Qty</th>
+    <!-- New PR Qty + NEW PR after Final PO Qty, right before PR NO. they lead to (the row cells follow the same order in renderRows). -->
+    <th style="width:85px;" title="Pre-filled: Final PO Qty + MSV − Balance Stock. 0 when the Balance Stock already covers Final PO Qty + MSV; a negative Balance Stock counts as 0. Editable. This is the qty Generate New PR uses.">New PR Qty<small>Final PO + MSV − Bal.</small></th>
+    <th class="pr-th" style="width:56px;" title="Tick items and press Generate New PR. PR qty = New PR Qty">NEW PR<input type="checkbox" id="prSelAll" onchange="prSelectAll(this.checked)" title="Tick / untick every row that can go on a PR"></th>
     <th style="width:170px;">PR NO.<small>select</small></th>
     <th style="width:170px;">PO No<small>PR se auto</small></th>
     <th style="width:120px;">Target Date<small>PO delivery</small></th>
@@ -1288,7 +1345,7 @@ function prEligible(r){
   // Only an Item Master item can become a PR line: the PR is tied to that
   // item_id, and without a Store Standard Name there is nothing to tie it to.
   if(!r.storeId) return { ok:false, why:'Choose the Store Standard Name (Item Master) first' };
-  if(prQtyOf(r)<=0) return { ok:false, why:'New PR Qty is 0: the free Balance Stock already covers Order Qty + MSV (or type a qty in New PR Qty)' };
+  if(prQtyOf(r)<=0) return { ok:false, why:'New PR Qty is 0: the Balance Stock already covers Final PO Qty + MSV (or type a qty in New PR Qty)' };
   return { ok:true, why:'' };
 }
 const prSelRows = () => D.rows.filter(r=>r.prSel && prEligible(r).ok);
@@ -1423,10 +1480,10 @@ function renderRows(){
       <td><select onchange="setBasis(${idx},this.value)" ${ro}>${BASES.map(b=>`<option value="${b[0]}" ${b[0]===r.basis?'selected':''}>${b[1]}</option>`).join('')}</select></td>
       <td><input type="number" class="${r.oQtyManual?'man':(oqAuto?'auto':'')}" value="${esc(r.oQty)}" oninput="setManual(${idx},'oQty','oQtyManual',this.value,this)" ${ro}>${r.oQtyManual&&oqAuto&&!ro?`<button class="ico" onclick="revert(${idx},'oQtyManual')" title="Order se auto">↺</button>`:''}</td>
       <td><select class="${r.supManual?'man':(autoSupplier(r)?'auto':'')}" onchange="setManual(${idx},'sup','supManual',this.value,this)" ${ro}>${SUPPLIERS.map(s=>`<option ${s===r.sup?'selected':''}>${s}</option>`).join('')}</select></td>
-      ${prQtyCellHtml(r,idx,ro)}
-      ${prCellHtml(r,idx,c)}
       <td><select onchange="setF(${idx},'waste',this.value)" ${ro}>${WASTE_OPTS.concat(WASTE_OPTS.includes(num(r.waste))?[]:[num(r.waste)]).map(w=>`<option value="${w}" ${num(r.waste)===w?'selected':''}>${w}%</option>`).join('')}</select></td>
       <td class="calc poQty">${c.poQty}</td>
+      ${prQtyCellHtml(r,idx,ro)}
+      ${prCellHtml(r,idx,c)}
       <td><select class="${r.prNo?'auto':''}" onchange="setPr(${idx},this.value)" ${ro}>${prOptions(r)}</select></td>
       ${poCellHtml(r,idx,ro)}
       <td><input type="date" class="${r.tDateManual?'man':(canAutoTDate(r)?'auto':'')}" value="${esc(tDateOf(r))}" oninput="setManual(${idx},'tDate','tDateManual',this.value,this)" ${ro} title="${canAutoTDate(r)?'Automatic from the PO delivery date':'Fills in automatically once a PO exists'}">${r.tDateManual&&canAutoTDate(r)&&!ro?`<button class="ico" onclick="revert(${idx},'tDateManual')" title="Automatic from the PO">↺</button>`:''}</td>
@@ -1452,14 +1509,16 @@ function refreshCalc(idx){
   const p=tr.querySelector('.pend');
   p.innerHTML=(D.lots.length?fmtN(c.pendIssue):'—')+pendSub(c,D.lots.length);
   p.className='calc pend '+pendCls(c); p.title=pendTip(c);
-  /* New PR Qty follows Order Qty while it is on auto. Only the value and the
-     tooltip are touched — the box itself is not rebuilt — so a user typing in
-     it (manual) keeps focus and caret. */
+  /* New PR Qty follows Final PO Qty (Order Qty, Wastage %) while it is on auto.
+     Only the value, the tooltip and the note are touched — the box itself is
+     not rebuilt — so a user typing in it (manual) keeps focus and caret. */
   const r=D.rows[idx], pq=tr.querySelector('.prq');
   if(pq){
     pq.title=prQtyTip(r);
     const inp=pq.querySelector('input');
     if(inp&&!r.prQtyManual&&document.activeElement!==inp){ const a=autoPrQty(r); inp.value=a==null?'':a; }
+    const old=pq.querySelector('.prq-note'); if(old) old.remove();
+    pq.insertAdjacentHTML('beforeend',prQtyNote(r));
   }
   /* The NEW PR checkbox depends on New PR Qty (it can't be ticked at 0), which
      changes with Order Qty, so it is refreshed here as well. Without this, a
@@ -1577,7 +1636,7 @@ async function generatePrFromSheet(){
         uid:r.uid,
         itemId:r.storeId,
         name:r.storeName||r.desc||'',
-        // New PR Qty = Order Qty + MSV − Balance Stock (or the figure typed in).
+        // New PR Qty = Final PO Qty + MSV − Balance Stock (or the figure typed in), see prNeedOf.
         // Final PO Qty (Order × (1 + Wastage%)) rides along for reference.
         qty:prQtyOf(r),
         finalPoQty:c.poQty,
@@ -1690,6 +1749,8 @@ function itemBlur(el,idx){
   setTimeout(()=>{
     if(!document.body.contains(el)) return;   // row was re-rendered (item picked)
     $('itemPop').style.display='none';
+    // Left for "+ Add New Item Name": the half-typed name goes into that popup, so no complaint here.
+    if(pop.adding){ pop.adding=false; const r0=D.rows[idx]; if(r0) el.value=r0.storeName||''; return; }
     const r=D.rows[idx]; if(!r) return;
     const v=el.value.trim();
     if(!v){ if(r.storeId){ r.storeId=null; r.storeName=''; setDirty(true); renderRows(); } return; }
@@ -1701,6 +1762,41 @@ function itemBlur(el,idx){
   },160);
 }
 window.addEventListener('scroll',()=>{ if($('itemPop').style.display==='block' && pop.input) itemFilter(pop.input,pop.idx); },true);
+
+/* "+ Add New Item Name" (Store Standard Name header): the ERP's own Add New
+   Item popup (store-core.js › openNewItemMasterModal), the same one the Store
+   Entry forms use, so an item is created one way only. It opens over the ERP
+   (this page is its iframe); the saved name comes back here (opts.onSaved),
+   the Item Master list is read again, and the name is set on the row whose
+   Store Standard Name was being chosen, else the first row without one. What
+   was typed in that box is pre-filled as the Item Name. */
+function trimsAddItem(){
+  if(READ_ONLY()) return;
+  let P=null;
+  try{ if(window.parent!==window && typeof window.parent.openNewItemMasterModal==='function') P=window.parent; }catch(e){}
+  if(!P){ toast('Open Trims Manager inside the ERP (Manufacturing › Trims Manager) to add a new item to the Item Master',6000); return; }
+  const cur=(pop.idx!=null && D.rows[pop.idx] && !D.rows[pop.idx].storeId) ? pop.idx : -1;
+  const idx=cur>=0 ? cur : D.rows.findIndex(r=>!r.storeId);
+  const typed=(cur>=0 && pop.input && document.body.contains(pop.input)) ? pop.input.value.trim() : '';
+  pop.adding=!!(pop.input && document.activeElement===pop.input);   // its blur comes next, see itemBlur
+  $('itemPop').style.display='none';
+  P.openNewItemMasterModal('trims',{ name:typed, onSaved:name=>trimsItemAdded(name,idx) });
+}
+async function trimsItemAdded(name,idx){
+  S.itemsP=null;
+  try{ await itemsOnce(); }catch(e){ toast(''+errMsg(e),5000); return; }
+  const it=S.itemByName[String(name||'').trim().toUpperCase()], r=D.rows[idx];
+  if(it && r && !r.storeId){
+    r.storeId=it.id; r.storeName=it.name;
+    if(CATEGORIES.includes(String(it.category||'').toUpperCase())) r.cat=String(it.category).toUpperCase();
+    if(!r.desc) r.desc=it.name;
+    setDirty(true); renderRows();
+    toast('"'+it.name+'" added to the Item Master and set on row '+(idx+1)+'. Press Save to keep it in the sheet.',6000);
+  }else{
+    renderRows();
+    toast('"'+name+'" added to the Item Master. Choose it in the Store Standard Name column.',6000);
+  }
+}
 
 // ═══════════════════════ SAVE / RESET ══════════════════════════════════════
 function sheetPayload(){
@@ -1808,7 +1904,7 @@ function exportToCSV(){
   const lots=D.lots;
   // Lot Issue goes out as TWO columns per lot — the qty, and the issuing dates
   // beside it — so a spreadsheet can read either without parsing a cell.
-  const head=['SR','Item Description','Category','Store Standard Name','Balance Stock (On hand − other orders)','Basis','Order Qty','Supplier','New PR Qty (Order + MSV − Balance)','Wastage %','Final PO Qty','PR No','PO No','Target Date','Qty Received','Balance',
+  const head=['SR','Item Description','Category','Store Standard Name','Balance Stock (On hand − other orders)','Basis','Order Qty','Supplier','New PR Qty (Final PO + MSV − Balance)','Wastage %','Final PO Qty','PR No','PO No','Target Date','Qty Received','Balance',
     ...lots.flatMap(l=>['Lot '+l+' Issue','Lot '+l+' Issue Dates']),'Pending Issue (Recd − Issued)','Order Short (Order − Issued)','Dispatch Mode','Final Settlement'];
   const rows=[
     ['ORDER NO',sheetLabel(),isManualSheet()?'PARTY (manual)':'BUYER',D.order?D.order.buyer_name:(D.party||''),'LOT NO',lots.join(' | '),'STATUS',D.status],
@@ -1977,7 +2073,7 @@ function docHeader(first){
   return title+`<table style="margin-bottom:5pt"><tr>
     ${box('ORDER DETAILS','#1A3C5E', orderBox,'32%')}
     ${box('LOT DETAILS','#5b3f8c', lotCards,'38%')}
-    ${box('QUANTITY','#1B6B3A', kv('Order Pcs',a?nIN(a.pcs):'—')+kv('Master Packs',a?nIN(a.packs)+(a.packTypes.size?' ('+esc([...a.packTypes].join('/'))+')':''):'—')+kv('Lot Pcs',nIN(lotPcs))+kv('Items',D.rows.length),'30%')}
+    ${box('QUANTITY','#1B6B3A', kv('Order Pcs',a?nIN(a.pcs):'—')+kv('Master Packs',a?nIN(a.packs)+(a.masterTypes.size?' '+esc([...a.masterTypes].join(' / ')):''):'—')+kv('Lot Pcs',nIN(lotPcs))+kv('Items',D.rows.length),'30%')}
   </tr></table>
   ${D.notes?`<div style="font-size:7.3pt;margin:-2pt 0 5pt;padding:3pt 7pt;border:0.5pt solid #ccc;background:#fffbea"><b>Remarks:</b> ${esc(D.notes)}</div>`:''}`;
 }
@@ -2200,7 +2296,7 @@ window.onload = async function(){
   if(!SB){ $('banners').innerHTML='<div class="banner err">The Supabase library did not load. Check the internet connection and reload.</div>'; return; }
   $('banners').innerHTML='<div class="banner info">Loading orders, Lot Cards, Item Master, PR / PO &amp; Store data…</div>';
   try{
-    await Promise.all([loadOrders(), loadLots(), itemsOnce(), loadPrs(), loadStoreData(), loadLinks(), probeV2()]);
+    await Promise.all([loadOrders(), loadLots(), itemsOnce(), loadPrs(), loadStoreData(), loadLinks(), probeV2(), loadBrands()]);
   }catch(e){
     $('banners').innerHTML='<div class="banner err">'+esc(isSetupError(e)?'Database setup pending. Run TRIMS_MANAGER_MIGRATION.sql (and the Order Form / Lot Card migrations) in the Supabase SQL Editor, then reload.':errMsg(e))+'</div>';
     return;
