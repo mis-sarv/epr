@@ -5513,6 +5513,13 @@ function applyIssueFixedFields(){
   const grp=byId('outTargetReturnDateGroup'),trd=byId('outTargetReturnDate');
   if(grp)grp.style.display=isIssue?'none':'';
   if(isIssue&&trd)trd.value='';
+  // Store photos are optional on an ISSUE: the Issue Supervisor's photos are
+  // the proof (see the photo gate in saveOutwardWithPdf_).
+  const star=byId('outPhotoReqStar'),hint=byId('outPhotoReqHint');
+  if(star)star.style.display=isIssue?'none':'';
+  if(hint)hint.textContent=isIssue
+    ?'(optional) — the Issue Supervisor\'s photos are the proof · any photo added here also goes into the Original Invoice PDF'
+    :'— at least one photo required · each photo becomes a full page of the Original Invoice PDF';
 }
 function populateNatureOfDispatch(){
   const sel=byId('outNatureOfDispatch');if(!sel)return;
@@ -22802,8 +22809,15 @@ let PR_TEAL=[13,92,83];
      outReq.push({id:'outNatureOfDispatch',label:'Nature of Dispatch'});
    }
    if(!validateRequiredFields(outReq))return;
-   // A photo of the gate pass / material is mandatory — it becomes the Original Invoice PDF.
-   if(!await ensureStorePhotos_('outward',sarvEditingOutwardId?sarvEditingOutwardNo:''))return;
+   /* A photo of the gate pass / material is mandatory — it becomes the Original
+      Invoice PDF. Not on a NEW Issue that goes to the Issue Supervisor: they
+      must take photos to approve it (iss_decide), and those are the proof.
+      Without the supervisor migration an Issue is saved directly here, so it
+      still needs its own photo. Photos still being processed are waited for
+      either way, so none that was added is left out of the request. */
+   const outNewIss=!sarvEditingOutwardId&&pVal('outEntryTypeSelect')==='ISSUE'&&await issReady_(false);
+   if(outNewIss){if(window.photosReady)await window.photosReady('outward');}
+   else if(!await ensureStorePhotos_('outward',sarvEditingOutwardId?sarvEditingOutwardNo:''))return;
    /* Receiver Name / Department carry a ★ but were never actually checked. They
       are read-only now, so an empty one means no employee was picked — and the
       field itself can't be fixed, the Emp Code box can. That is what gets
