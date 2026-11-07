@@ -7,6 +7,12 @@
 <meta name="theme-color" content="#0b1220">
 <title>Sarv India — Apps</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- OTA update: draws the "Check for Update" pill and swaps the app over the
+     air from Supabase. Self-contained IIFE; safe to load here. -->
+<script src="version-update.js"></script>
+<!-- Push notifications (Android APK only): registers the FCM token and rings
+     on foreground alerts. No-op in a desktop browser. -->
+<script src="push-register.js"></script>
 <style>
 /* ════════════════════════════════════════════════════════════════════
    SARV INDIA: LAUNCHER (look)

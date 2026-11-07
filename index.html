@@ -4224,4 +4224,9 @@
 <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
 <script src="cursor-glow.js"></script>
+<!-- OTA update readiness: confirms the running bundle to capacitor-updater so
+     it is never rolled back. Draws no button here (launcher owns that). -->
+<script src="version-update.js"></script>
+<!-- Push notifications (Android APK only): FCM token + foreground ring. -->
+<script src="push-register.js"></script>
 </body></html>
