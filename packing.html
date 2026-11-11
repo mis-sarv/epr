@@ -958,17 +958,18 @@
     </div>
 </div>
 
-<!-- Party Master Panel — packing.party_master + party_master_links
-     (sql/PACKING_PARTY_MASTER_MIGRATION.sql). New orders must use a party from
-     here, with that party's own Sub-dealer / Shipping Party names. -->
+<!-- Party Master Panel — packing.party_master (sql/PACKING_PARTY_MASTER_MIGRATION.sql
+     + PACKING_PARTY_MASTER_ALL_SUBDEALER_MIGRATION.sql). New orders must use a
+     party from here; Sub Dealer and Shipping Party are also picked from here
+     (any active party). -->
 <div class="container" id="party-master-panel">
     <div class="card">
         <div class="card-title">Party Master</div>
-        <p class="pm-hint">A New Order can be saved only for a party saved here, and only with that party's own
-            Sub-dealer and Shipping Party names. Sub-dealer "DIRECT" is always allowed.</p>
+        <p class="pm-hint">A New Order can be saved only for a party saved here. Sub Dealer and Shipping Party are
+            also picked from this list (any active party). Sub-dealer "DIRECT" is always allowed.</p>
         <div id="pm-banner"></div>
         <div class="pm-toolbar">
-            <input type="text" id="pm-search" placeholder="Search party, buyer, staff, mobile, address, sub-dealer, shipping party..." oninput="pmRenderList()" autocomplete="off">
+            <input type="text" id="pm-search" placeholder="Search party, buyer, staff, mobile, address..." oninput="pmRenderList()" autocomplete="off">
             <select id="pm-filter-active" onchange="pmRenderList()">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
@@ -1014,22 +1015,6 @@
             <div class="form-group pm-wide">
                 <label>Address</label>
                 <textarea id="pm-address" rows="2" placeholder="Address" oninput="convertToUpperCase(this)" maxlength="500"></textarea>
-            </div>
-            <div class="form-group pm-wide">
-                <label>Sub-dealer Names <span class="pm-sub-hint">(this party only · add one or more · DIRECT is always allowed)</span></label>
-                <div class="pm-chip-add">
-                    <input type="text" id="pm-sub-input" placeholder="Type a sub-dealer name, press Enter / Add" oninput="convertToUpperCase(this)" onkeydown="pmChipKey(event,'sub')" autocomplete="off" maxlength="150">
-                    <button type="button" class="pm-btn" onclick="pmChipAdd('sub')">Add</button>
-                </div>
-                <div class="pm-chips" id="pm-sub-chips"></div>
-            </div>
-            <div class="form-group pm-wide">
-                <label>Shipping Party Names <span class="pm-sub-hint">(this party only · add one or more)</span></label>
-                <div class="pm-chip-add">
-                    <input type="text" id="pm-ship-input" placeholder="Type a shipping party name, press Enter / Add" oninput="convertToUpperCase(this)" onkeydown="pmChipKey(event,'ship')" autocomplete="off" maxlength="150">
-                    <button type="button" class="pm-btn" onclick="pmChipAdd('ship')">Add</button>
-                </div>
-                <div class="pm-chips" id="pm-ship-chips"></div>
             </div>
         </div>
         <div class="order-form-btns">
@@ -1217,10 +1202,13 @@
             <div class="form-group">
                 <label>Sub Dealer Name <span class="required-star">*</span></label>
                 <input type="text" id="ord-sub-dealer" placeholder="Sub Dealer / Direct" list="dl-ord-sub-dealer" oninput="convertToUpperCase(this)" autocomplete="off" required>
+                <!-- "not in the Party Master" (pmShowOrderLinkInfo_); list = DIRECT + every active party -->
+                <div class="pm-party-info" id="ord-sub-info"></div>
             </div>
             <div class="form-group">
                 <label>Shipping Party Name</label>
                 <input type="text" id="ord-shipping-party" placeholder="Shipping Party Name" list="dl-ord-shipping-party" oninput="convertToUpperCase(this)" autocomplete="off">
+                <div class="pm-party-info" id="ord-ship-info"></div>
             </div>
             <div class="form-group">
                 <label>Address <span class="required-star">*</span></label>
@@ -7985,7 +7973,7 @@ async function saveOrderGroup(baseNo) {
 
     // Party Master: only what changed is checked; a new sub-order row is a new
     // DB row, so then everything is checked (same rule as the DB trigger).
-    await pmLoad();
+    await pmLoad(!_pm.ok);
     var pmErr = pmCheckOrder({
         party: card.querySelector('.og-party'),
         sub:   card.querySelector('.og-subdealer'),
@@ -8544,17 +8532,31 @@ async function handleSaveOrder() {
 
     if (!party) { alert('Party Name is required.'); document.getElementById('ord-party').focus(); return; }
 
-    // Party Master: the party, and its own sub-dealer / shipping party. An edit
-    // that adds a quality creates a new DB row, so it gets the full check.
-    await pmLoad();
+    // Party Master: the party, the sub-dealer and the shipping party (all from
+    // the master list). An edit that adds a quality creates a new DB row, so it
+    // gets the full check. A master that failed to load is tried again now.
+    await pmLoad(!_pm.ok);
     var pmOrig = _pmOrderOrig && editingOrderNo &&
         !(_pmOrderOrig.siblings && getQualityRows().length > _pmOrderOrig.siblings) ? _pmOrderOrig : null;
+    // Sub Dealer Name is required (*): a Party Master party, or DIRECT.
+    // An old order saved without one can still be edited while it stays empty.
+    var subEl = document.getElementById('ord-sub-dealer');
+    if (!subEl.value.trim() && !(pmOrig && !pmNorm(pmOrig.sub))) {
+        alert('Sub Dealer Name is required.\n\nPick a party from the list, or DIRECT.');
+        pmShowOrderLinkInfo_(); subEl.focus(); return;
+    }
     var pmErr = pmCheckOrder({
         party: document.getElementById('ord-party'),
         sub:   document.getElementById('ord-sub-dealer'),
         ship:  document.getElementById('ord-shipping-party')
     }, pmOrig);
-    if (pmErr) { alert(pmErr); pmShowOrderPartyInfo(); document.getElementById('ord-party').focus(); return; }
+    if (pmErr) {
+        alert(pmErr); pmShowOrderPartyInfo();
+        // Focus the box the message is about
+        var focusId = /^Sub-dealer/.test(pmErr) ? 'ord-sub-dealer' : /^Shipping Party/.test(pmErr) ? 'ord-shipping-party' : 'ord-party';
+        document.getElementById(focusId).focus();
+        return;
+    }
     party = document.getElementById('ord-party').value.trim();   // master spelling
 
     // Validate required fields before showing overlay
@@ -10251,25 +10253,29 @@ function showReportsPanel() {
 //
 // packing.party_master        Party Name, Buyer Name / Mob., Party Staff
 //                             Name / Mob., Address, Active
-// packing.party_master_links  per-party lists: SUB_DEALER, SHIPPING
 //
-// A New Order may use ONLY a party saved here, and only that party's own
-// Sub-dealer (or DIRECT) / Shipping Party names. Checked twice:
+// A New Order may use ONLY a party saved here. Sub Dealer (or DIRECT) and
+// Shipping Party (or empty) are ALSO any active party from here, picked from
+// the list (sql/PACKING_PARTY_MASTER_ALL_SUBDEALER_MIGRATION.sql; the old
+// per-party Sub-dealer / Shipping lists of the Party form are gone). Checked twice:
 //   • here, before saving (pmCheckOrder), with a clear message and an
 //     "Add it" link to this tab;
 //   • in the database by the pm_orders_guard trigger on packing.orders, which
 //     also covers the Orders-list card edits, older phones and offline replays.
 // On an EDIT only what changed is checked (same rule as the trigger), so old
 // orders of a party not in the master can still be edited.
-// Picking a party in the order form fills Address + Mob. (= Buyer Mob.) and
-// limits the Sub-dealer / Shipping Party suggestions to that party's names.
+// Picking a party in the order form fills Address + Mob. (= Buyer Mob.).
 //
 // The tables are read directly (RLS: read for every logged-in user); every
-// write goes through a pm_* RPC. Before the migration runs the tables do not
-// exist: _pm.ok stays false and the order form works exactly as before.
+// write goes through a pm_* RPC. When the master cannot be read (migration not
+// run, network, error) _pm.ok is false and a new order / changed party is NOT
+// saved (pmUnavailableMsg_): a party that cannot be checked is not let through.
+// Only the Admin switch (party_master_config.enforce OFF) turns checking off.
 // ══════════════════════════════════════════════════════════════════════
 var _pm = { loaded: false, ok: false, loadedAt: 0, enforce: true, parties: [], byKey: new Map(), error: '', loading: null };
-var _pmForm = { id: null, sub: [], ship: [], returnToOrder: false };
+// returnToOrder: Save Party goes back to the order form and puts the saved
+// name in returnField ('ord-party' / 'ord-sub-dealer' / 'ord-shipping-party').
+var _pmForm = { id: null, returnToOrder: false, returnField: 'ord-party' };
 var _pmOrderOrig = null;       // edit: { party, sub, ship } as the order had them; null = new order
 var _pmLastOrderParty = '';    // party key the order form last filled details for
 var PM_RENDER_LIMIT = 300;     // cards drawn at once; search narrows the rest
@@ -10279,11 +10285,7 @@ function pmCanManage() { var r = session ? session.role : ''; return ['ADMIN', '
 function pmCanDelete() { var r = session ? session.role : ''; return r === 'ADMIN' || r === 'MD'; }
 function pmEnforced() { return _pm.ok && _pm.enforce; }
 function pmFind(name) { var k = pmNorm(name); return k ? (_pm.byKey.get(k) || null) : null; }
-function pmMatch(list, value) {
-    var k = pmNorm(value);
-    for (var i = 0; i < list.length; i++) if (pmNorm(list[i]) === k) return list[i];
-    return '';
-}
+function pmActiveNames() { return _pm.parties.filter(function(p) { return p.active; }).map(function(p) { return p.partyName; }); }
 // 10-13 digits; only digits, +, - and spaces (same rule as pm_save)
 function pmMobOk(v) {
     v = String(v || '').trim();
@@ -10294,6 +10296,12 @@ function pmMobOk(v) {
 // "function ... does not exist" / schema cache = migration not run yet
 function pmIsMissingErr(msg) { return /does not exist|schema cache|Could not find/i.test(String(msg || '')); }
 function pmMissingMsg() { return 'The Party Master is not set up in the database yet. Run sql/PACKING_PARTY_MASTER_MIGRATION.sql in Supabase.'; }
+// Why an order cannot be saved while the master is not available
+function pmUnavailableMsg_() {
+    if (_pm.error && pmIsMissingErr(_pm.error)) return pmMissingMsg() + '\n\nUntil then no order can be saved (the party cannot be checked).';
+    return 'The Party Master could not be loaded' + (_pm.error ? ' (' + _pm.error + ')' : '') +
+        ', so the party cannot be checked and the order is not saved.\n\nCheck the internet connection and press Save again.';
+}
 
 // PostgREST returns 1000 rows per request at most: page through all of them.
 async function pmFetchAll(table, cols, orderCol) {
@@ -10316,30 +10324,21 @@ async function pmLoad(force) {
         try {
             var res = await Promise.all([
                 pmFetchAll('party_master', 'id, party_name, buyer_name, buyer_mob, staff_name, staff_mob, address, active, updated_at, updated_by', 'party_name'),
-                pmFetchAll('party_master_links', 'id, party_id, kind, name', 'name'),
                 supabaseClient.from('party_master_config').select('enforce').eq('id', 1).maybeSingle()
             ]);
-            var byId = {}, byKey = new Map();
+            var byKey = new Map();
             var parties = res[0].map(function(p) {
                 var o = {
                     id: p.id, partyName: p.party_name || '', buyerName: p.buyer_name || '', buyerMob: p.buyer_mob || '',
                     staffName: p.staff_name || '', staffMob: p.staff_mob || '', address: p.address || '',
-                    active: p.active !== false, updatedAt: p.updated_at, updatedBy: p.updated_by || '',
-                    subDealers: [], shippingParties: []
+                    active: p.active !== false, updatedAt: p.updated_at, updatedBy: p.updated_by || ''
                 };
-                byId[p.id] = o;
                 byKey.set(pmNorm(o.partyName), o);
                 return o;
             });
-            res[1].forEach(function(l) {
-                var p = byId[l.party_id];
-                if (!p) return;
-                if (l.kind === 'SUB_DEALER') p.subDealers.push(l.name);
-                else if (l.kind === 'SHIPPING') p.shippingParties.push(l.name);
-            });
             _pm.parties = parties;
             _pm.byKey = byKey;
-            _pm.enforce = !(res[2] && res[2].data && res[2].data.enforce === false);
+            _pm.enforce = !(res[1] && res[1].data && res[1].data.enforce === false);
             _pm.ok = true;
             _pm.error = '';
         } catch (e) {
@@ -10363,14 +10362,19 @@ function pmSetDatalist(id, values) {
     dl.innerHTML = '';
     values.forEach(function(v) { var o = document.createElement('option'); o.value = v; dl.appendChild(o); });
 }
+// dl-pm-party = every active party (Party, and Shipping Party);
+// dl-pm-sub   = DIRECT + every active party (Sub Dealer).
 function pmBuildPartyDatalist() {
-    pmSetDatalist('dl-pm-party', _pm.parties.filter(function(p) { return p.active; }).map(function(p) { return p.partyName; }));
+    var names = pmActiveNames();
+    pmSetDatalist('dl-pm-party', names);
+    pmSetDatalist('dl-pm-sub', ['DIRECT'].concat(names));
 }
 
-// ── Order form / Orders-list card: suggestions follow the chosen party ──
+// ── Order form / Orders-list card: suggestions from the Party Master ──
 // One delegated focusin listener, so every party / sub-dealer / shipping box
-// (the New Order form and each order card) gets the right list the moment it
-// is focused, with no change to how those boxes are drawn.
+// (the New Order form and each order card) gets the master list the moment it
+// is focused, with no change to how those boxes are drawn. Sub Dealer and
+// Shipping Party show EVERY active party, whatever party is chosen.
 function pmPartyInputFor(el) {
     if (el.id && el.id.indexOf('ord-') === 0) return document.getElementById('ord-party');
     var card = el.closest ? el.closest('.order-card') : null;
@@ -10387,22 +10391,18 @@ document.addEventListener('focusin', function(e) {
     var kind = (t.id === 'ord-sub-dealer' || t.classList.contains('og-subdealer')) ? 'sub'
              : (t.id === 'ord-shipping-party' || t.classList.contains('og-shipping-party')) ? 'ship' : '';
     if (!kind) return;
-    var pin = pmPartyInputFor(t);
-    var p = pin ? pmFind(pin.value) : null;
-    if (!p) {
-        // Party not in the master: the old order-history lists (allowed only when
-        // checking is OFF or the order is an old one being edited)
+    if (!pmEnforced()) {
+        // Checking switched OFF by the Admin: the old order-history lists
         t.setAttribute('list', kind === 'sub' ? 'dl-ord-sub-dealer' : 'dl-ord-shipping-party');
         return;
     }
-    var id = kind === 'sub' ? 'dl-pm-sub' : 'dl-pm-ship';
-    pmSetDatalist(id, kind === 'sub' ? ['DIRECT'].concat(p.subDealers) : p.shippingParties.slice());
-    t.setAttribute('list', id);
+    t.setAttribute('list', kind === 'sub' ? 'dl-pm-sub' : 'dl-pm-party');
 });
 document.addEventListener('change', function(e) {
     var t = e.target;
     if (!t || !_pm.ok) return;
     if (t.id === 'ord-party') pmOnOrderPartyChange();
+    else if (t.id === 'ord-sub-dealer' || t.id === 'ord-shipping-party') pmShowOrderLinkInfo_();
     else if (t.classList && t.classList.contains('og-party')) pmOnCardPartyChange(t);
 });
 document.addEventListener('input', function(e) {
@@ -10410,6 +10410,7 @@ document.addEventListener('input', function(e) {
     // typed text is exactly a master party.
     var t = e.target;
     if (t && t.id === 'ord-party' && _pm.ok && pmFind(t.value)) pmOnOrderPartyChange();
+    else if (t && (t.id === 'ord-sub-dealer' || t.id === 'ord-shipping-party') && _pm.ok) pmShowOrderLinkInfo_();
 });
 
 // A party was chosen in the New / Edit Order form
@@ -10422,12 +10423,7 @@ function pmOnOrderPartyChange() {
     if (p && key !== _pmLastOrderParty) {
         if (p.address)  document.getElementById('ord-address').value = p.address;
         if (p.buyerMob) document.getElementById('ord-mob').value = p.buyerMob;
-        // A sub-dealer / shipping party of the PREVIOUS party does not belong here
-        var sub = document.getElementById('ord-sub-dealer'), ship = document.getElementById('ord-shipping-party');
-        if (sub.value && pmNorm(sub.value) !== 'DIRECT' && !pmMatch(p.subDealers, sub.value)) sub.value = '';
-        if (!sub.value && !p.subDealers.length) sub.value = 'DIRECT';
-        if (ship.value && !pmMatch(p.shippingParties, ship.value)) ship.value = '';
-        if (!ship.value && p.shippingParties.length === 1) ship.value = p.shippingParties[0];
+        // Sub Dealer / Shipping Party are any master party: kept as typed.
     }
     if (key) _pmLastOrderParty = key;
     pmShowOrderPartyInfo();
@@ -10440,15 +10436,70 @@ function pmOnCardPartyChange(inp) {
     if (!p || !card) return;
     inp.value = p.partyName;
     var addr = card.querySelector('.og-address'), mob = card.querySelector('.og-mob');
-    var sub = card.querySelector('.og-subdealer'), ship = card.querySelector('.og-shipping-party');
     if (addr && !addr.disabled && p.address) addr.value = p.address;
     if (mob && !mob.disabled && p.buyerMob) mob.value = p.buyerMob;
-    if (sub && !sub.disabled && sub.value && pmNorm(sub.value) !== 'DIRECT' && !pmMatch(p.subDealers, sub.value)) sub.value = '';
-    if (ship && !ship.disabled && ship.value && !pmMatch(p.shippingParties, ship.value)) ship.value = '';
+}
+
+// Sub Dealer / Shipping Party rule (the same as pmCheckOrder and the DB
+// trigger): '' = OK, else why not. A name the order already had is not
+// checked again (an edit that leaves it alone keeps working).
+//   sub : DIRECT or an ACTIVE master party (required on a new order: handleSaveOrder)
+//   ship: empty  or an ACTIVE master party
+function pmOtherNameWhy_(value, kind, origValue) {
+    var k = pmNorm(value);
+    if (!k) return '';
+    if (kind === 'sub' && k === 'DIRECT') return '';
+    if (origValue != null && k === pmNorm(origValue)) return '';
+    var q = pmFind(value);
+    if (q && q.active) return '';
+    var what = kind === 'sub' ? 'Sub-dealer' : 'Shipping Party';
+    var alt = kind === 'sub' ? 'Pick a party from the list, or DIRECT.' : 'Pick a party from the list, or leave it empty.';
+    return q ? what + ' "' + q.partyName + '" is Inactive in the Party Master. ' + alt
+             : what + ' "' + String(value).trim() + '" is not in the Party Master. ' + alt;
+}
+
+// The lines under Sub Dealer Name / Shipping Party Name: red = Save will
+// refuse it. Only while checking is ON.
+function pmShowOrderLinkInfo_() {
+    var subBox = document.getElementById('ord-sub-info'), shipBox = document.getElementById('ord-ship-info');
+    if (!subBox || !shipBox) return;
+    var clear = function(b) { b.className = 'pm-party-info'; b.innerHTML = ''; };
+    if (!pmEnforced()) { clear(subBox); clear(shipBox); return; }
+    var orig = _pmOrderOrig;
+    var bad = function(b, kind, why) {
+        b.className = 'pm-party-info bad';
+        b.innerHTML = escapeHtmlJs(why) + (pmFind((document.getElementById(kind === 'sub' ? 'ord-sub-dealer' : 'ord-shipping-party') || {}).value) ? ''
+            : (pmCanManage() ? ' <a onclick="pmAddLinkFromOrder(\'' + kind + '\')">Add it as a party</a>' : ' Ask the Packing Incharge to add it in Parties.'));
+    };
+
+    var sv = (document.getElementById('ord-sub-dealer') || {}).value || '', sk = pmNorm(sv);
+    var sWhy = pmOtherNameWhy_(sv, 'sub', orig ? orig.sub : null);
+    if (!sk && orig && !pmNorm(orig.sub)) clear(subBox);   // old order saved without one: may stay empty
+    else if (!sk) { subBox.className = 'pm-party-info bad'; subBox.innerHTML = 'Required: pick a party from the list, or DIRECT.'; }
+    else if (sWhy) bad(subBox, 'sub', sWhy);
+    else clear(subBox);
+
+    var hv = (document.getElementById('ord-shipping-party') || {}).value || '';
+    var hWhy = pmOtherNameWhy_(hv, 'ship', orig ? orig.ship : null);
+    if (hWhy) bad(shipBox, 'ship', hWhy); else clear(shipBox);
+}
+
+// "Add it as a party" under Sub Dealer / Shipping Party: opens a New Party
+// with the typed name; Save Party comes back to the order form and puts the
+// saved name back into that box (same path as "Add this party").
+function pmAddLinkFromOrder(kind) {
+    var field = kind === 'sub' ? 'ord-sub-dealer' : 'ord-shipping-party';
+    var v = pmNorm((document.getElementById(field) || {}).value);
+    if (!v || v === 'DIRECT') return;
+    _pmForm.returnToOrder = true;   // before showPartyMasterPanel, which closes the form otherwise
+    showPartyMasterPanel();
+    pmOpenForm(null, { partyName: v });
+    _pmForm.returnToOrder = true; _pmForm.returnField = field;
 }
 
 // The line under Party Name: Buyer / Staff, or why the party cannot be used
 function pmShowOrderPartyInfo() {
+    pmShowOrderLinkInfo_();
     var box = document.getElementById('ord-party-info');
     var inp = document.getElementById('ord-party');
     if (!box || !inp) return;
@@ -10464,9 +10515,17 @@ function pmShowOrderPartyInfo() {
     }
     if (v && pmEnforced() && !pmOrderPartyUnchanged()) {
         box.className = 'pm-party-info bad';
-        box.innerHTML = 'Not in the Party Master. ' + (pmCanManage()
+        box.innerHTML = 'Not in the Party Master: this order cannot be saved. ' + (pmCanManage()
             ? '<a onclick="pmAddFromOrder()">Add this party</a>'
             : 'Ask the Packing Incharge to add it.');
+        return;
+    }
+    // Master not available: say so here, before Save is pressed
+    if (v && _pm.loaded && !_pm.ok && !pmOrderPartyUnchanged()) {
+        box.className = 'pm-party-info bad';
+        box.innerHTML = escapeHtmlJs(_pm.error && pmIsMissingErr(_pm.error)
+            ? 'Party Master not set up: orders cannot be saved until sql/PACKING_PARTY_MASTER_MIGRATION.sql is run.'
+            : 'Party Master not loaded: the party cannot be checked, so the order will not save. Check the internet.');
         return;
     }
     box.className = 'pm-party-info';
@@ -10505,36 +10564,43 @@ function pmGroupOrig(baseNo) {
 // '' = OK (and the master's spelling is written back into the boxes), else the
 // message to show. els = { party, sub, ship } inputs. orig = null → full check.
 function pmCheckOrder(els, orig) {
-    if (!pmEnforced() || !els.party) return '';
+    if (!els.party) return '';
+    // Admin switched checking OFF in the Parties tab (read from the server)
+    if (_pm.ok && !_pm.enforce) return '';
     var pv = els.party.value, sv = els.sub ? els.sub.value : '', hv = els.ship ? els.ship.value : '';
+    // Each field on its own (as the trigger): a sub-dealer / shipping party
+    // the order already had is not checked again when only the party changes.
     var partyChanged = !orig || pmNorm(pv) !== pmNorm(orig.party);
-    var subChanged   = partyChanged || pmNorm(sv) !== pmNorm(orig.sub);
-    var shipChanged  = partyChanged || pmNorm(hv) !== pmNorm(orig.ship);
+    var subChanged   = !orig || pmNorm(sv) !== pmNorm(orig.sub);
+    var shipChanged  = !orig || pmNorm(hv) !== pmNorm(orig.ship);
     if (!partyChanged && !subChanged && !shipChanged) return '';
 
-    var p = pmFind(pv);
-    if (!p) return 'Party "' + pv.trim() + '" is not in the Party Master.\n\nAdd it in the Parties tab first' +
-        (pmCanManage() ? ' (link under the Party Name box).' : ' (ask the Packing Incharge).');
-    if (partyChanged && !p.active) return 'Party "' + p.partyName + '" is Inactive in the Party Master.';
-    if (partyChanged) els.party.value = p.partyName;
+    // The master could not be read (migration not run, network, error): the
+    // party cannot be confirmed, so the order is NOT saved. This used to let
+    // every party through, which is how orders of parties not in the master
+    // were still being saved.
+    if (!_pm.ok) return pmUnavailableMsg_();
 
-    var sk = pmNorm(sv);
-    if (subChanged && sk && sk !== 'DIRECT') {
-        var sm = pmMatch(p.subDealers, sv);
-        if (!sm) return 'Sub-dealer "' + sv.trim() + '" is not saved for party "' + p.partyName + '".\n\n' +
-            (p.subDealers.length ? 'Its sub-dealers: ' + p.subDealers.join(', ') + ', or DIRECT.' : 'This party has no sub-dealers yet: use DIRECT,') +
-            '\nOr add it to this party in the Parties tab.';
-        if (els.sub) els.sub.value = sm;
-    } else if (subChanged && sk === 'DIRECT' && els.sub) {
-        els.sub.value = 'DIRECT';
+    if (partyChanged) {
+        var p = pmFind(pv);
+        if (!p) return 'Party "' + pv.trim() + '" is not in the Party Master.\n\nAdd it in the Parties tab first' +
+            (pmCanManage() ? ' (link under the Party Name box).' : ' (ask the Packing Incharge).');
+        if (!p.active) return 'Party "' + p.partyName + '" is Inactive in the Party Master.';
+        els.party.value = p.partyName;
     }
 
-    if (shipChanged && pmNorm(hv)) {
-        var hm = pmMatch(p.shippingParties, hv);
-        if (!hm) return 'Shipping Party "' + hv.trim() + '" is not saved for party "' + p.partyName + '".\n\n' +
-            (p.shippingParties.length ? 'Its shipping parties: ' + p.shippingParties.join(', ') + '.' : 'This party has no shipping parties yet: leave it empty,') +
-            '\nOr add it to this party in the Parties tab.';
-        if (els.ship) els.ship.value = hm;
+    var tail = '\n\nSub Dealer and Shipping Party are picked from the Party Master list' +
+        (pmCanManage() ? ' (add a new one in the Parties tab).' : ' (ask the Packing Incharge to add a new one).');
+    if (subChanged) {
+        var sWhy = pmOtherNameWhy_(sv, 'sub', null);
+        if (sWhy) return sWhy + tail;
+        var sk = pmNorm(sv);
+        if (els.sub && sk) els.sub.value = sk === 'DIRECT' ? 'DIRECT' : pmFind(sv).partyName;
+    }
+    if (shipChanged) {
+        var hWhy = pmOtherNameWhy_(hv, 'ship', null);
+        if (hWhy) return hWhy + tail;
+        if (els.ship && pmNorm(hv)) els.ship.value = pmFind(hv).partyName;
     }
     return '';
 }
@@ -10542,14 +10608,10 @@ function pmCheckOrder(els, orig) {
 // "Add this party" under the order form's Party Name
 function pmAddFromOrder() {
     var g = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
-    var sub = g('ord-sub-dealer'), ship = g('ord-shipping-party');
     _pmForm.returnToOrder = true;
     showPartyMasterPanel();
-    pmOpenForm(null, {
-        partyName: g('ord-party'), address: g('ord-address'), buyerMob: g('ord-mob'),
-        subDealers: sub && pmNorm(sub) !== 'DIRECT' ? [pmNorm(sub)] : [],
-        shippingParties: ship ? [pmNorm(ship)] : []
-    });
+    pmOpenForm(null, { partyName: g('ord-party'), address: g('ord-address'), buyerMob: g('ord-mob') });
+    _pmForm.returnToOrder = true; _pmForm.returnField = 'ord-party';
 }
 
 // ── The Parties tab ──
@@ -10592,8 +10654,7 @@ function pmFilteredParties() {
         if (mode === 'active' && !p.active) return false;
         if (mode === 'inactive' && p.active) return false;
         if (!words.length) return true;
-        var hay = pmNorm([p.partyName, p.buyerName, p.buyerMob, p.staffName, p.staffMob, p.address]
-            .concat(p.subDealers, p.shippingParties).join(' | '));
+        var hay = pmNorm([p.partyName, p.buyerName, p.buyerMob, p.staffName, p.staffMob, p.address].join(' | '));
         return words.every(function(w) { return hay.indexOf(w) >= 0; });
     });
 }
@@ -10611,12 +10672,7 @@ function pmRenderList() {
         return;
     }
     var man = pmCanManage(), del = pmCanDelete();
-    var chips = function(arr, cls) {
-        return arr.length ? '<div class="pm-chips">' + arr.map(function(n) {
-            return '<span class="pm-chip ' + cls + '" style="padding-right:10px;">' + escapeHtmlJs(n) + '</span>';
-        }).join('') + '</div>' : '<span style="color:var(--text-muted);">—</span>';
-    };
-    var val = function(v) { return v ? escapeHtmlJs(v) : '<span style="color:var(--text-muted);">—</span>'; };
+    var val =function(v) { return v ? escapeHtmlJs(v) : '<span style="color:var(--text-muted);">—</span>'; };
     var tel = function(v) { return v ? '<a href="tel:' + escapeHtmlJs(v.replace(/[^0-9+]/g, '')) + '" style="color:#0d9488;font-weight:700;">' + escapeHtmlJs(v) + '</a>' : val(''); };
     var html = rows.slice(0, PM_RENDER_LIMIT).map(function(p) {
         return '<div class="pm-card' + (p.active ? '' : ' inactive') + '">' +
@@ -10634,8 +10690,6 @@ function pmRenderList() {
                 '<div><b>Party Staff Mob.</b>' + tel(p.staffMob) + '</div>' +
                 '<div style="grid-column:1/-1;"><b>Address</b>' + val(p.address) + '</div>' +
             '</div>' +
-            '<div class="pm-card-lists"><b style="font-size:10px;color:var(--text-muted);">SUB-DEALERS (' + p.subDealers.length + ')</b>' + chips(p.subDealers, '') + '</div>' +
-            '<div class="pm-card-lists"><b style="font-size:10px;color:var(--text-muted);">SHIPPING PARTIES (' + p.shippingParties.length + ')</b>' + chips(p.shippingParties, 'ship') + '</div>' +
         '</div>';
     }).join('');
     if (rows.length > PM_RENDER_LIMIT) {
@@ -10651,14 +10705,10 @@ function pmOpenForm(id, prefill) {
     var p = id ? _pm.parties.filter(function(x) { return x.id === id; })[0] : null;
     var src = p || prefill || {};
     _pmForm.id = p ? p.id : null;
-    _pmForm.sub  = (src.subDealers || []).slice();
-    _pmForm.ship = (src.shippingParties || []).slice();
     var set = function(elId, v) { document.getElementById(elId).value = v || ''; };
     set('pm-party-name', src.partyName); set('pm-buyer-name', src.buyerName); set('pm-buyer-mob', src.buyerMob);
     set('pm-staff-name', src.staffName); set('pm-staff-mob', src.staffMob); set('pm-address', src.address);
-    set('pm-sub-input', ''); set('pm-ship-input', '');
     document.getElementById('pm-form-title').textContent = p ? 'Edit Party — ' + p.partyName : 'New Party';
-    pmRenderChips('sub'); pmRenderChips('ship');
     var card = document.getElementById('pm-form-card');
     card.style.display = '';
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -10666,55 +10716,19 @@ function pmOpenForm(id, prefill) {
 }
 function pmCloseForm() {
     document.getElementById('pm-form-card').style.display = 'none';
-    _pmForm.id = null; _pmForm.sub = []; _pmForm.ship = [];
-    _pmForm.returnToOrder = false;
-}
-function pmChipKey(e, kind) {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); pmChipAdd(kind); }
-}
-// Adds the typed name(s); a pasted "A, B, C" becomes three.
-function pmChipAdd(kind, quiet) {
-    var inp = document.getElementById(kind === 'sub' ? 'pm-sub-input' : 'pm-ship-input');
-    var arr = kind === 'sub' ? _pmForm.sub : _pmForm.ship;
-    var added = 0;
-    inp.value.split(',').forEach(function(raw) {
-        var v = pmNorm(raw);
-        if (!v) return;
-        if (kind === 'sub' && v === 'DIRECT') { if (!quiet) showToast('DIRECT is always allowed, no need to add it'); return; }
-        if (v.length > 150) { alert('"' + v.slice(0, 40) + '..." is too long (150 max).'); return; }
-        if (arr.some(function(x) { return pmNorm(x) === v; })) { if (!quiet) showToast(v + ' is already in the list'); return; }
-        arr.push(v); added++;
-    });
-    inp.value = '';
-    pmRenderChips(kind);
-    if (!quiet) inp.focus();
-    return added;
-}
-function pmChipRemove(kind, idx) {
-    (kind === 'sub' ? _pmForm.sub : _pmForm.ship).splice(idx, 1);
-    pmRenderChips(kind);
-}
-function pmRenderChips(kind) {
-    var arr = kind === 'sub' ? _pmForm.sub : _pmForm.ship;
-    document.getElementById(kind === 'sub' ? 'pm-sub-chips' : 'pm-ship-chips').innerHTML = arr.length
-        ? arr.map(function(n, i) {
-            return '<span class="pm-chip' + (kind === 'ship' ? ' ship' : '') + '">' + escapeHtmlJs(n) +
-                '<button type="button" title="Remove" onclick="pmChipRemove(\'' + kind + '\',' + i + ')">✕</button></span>';
-          }).join('')
-        : '<span style="font-size:11px;color:var(--text-muted);">None added yet</span>';
+    _pmForm.id = null;
+    _pmForm.returnToOrder = false; _pmForm.returnField = 'ord-party';
 }
 
 async function pmSave() {
-    // Text still in a list box counts (the usual "typed but did not press Add")
-    pmChipAdd('sub', true); pmChipAdd('ship', true);
     var g = function(id) { return document.getElementById(id).value.trim(); };
     var party = {
         partyName: pmNorm(g('pm-party-name')), buyerName: pmNorm(g('pm-buyer-name')), buyerMob: g('pm-buyer-mob'),
         staffName: pmNorm(g('pm-staff-name')), staffMob: g('pm-staff-mob'),
-        address: g('pm-address').replace(/\s+/g, ' ').toUpperCase(),
-        subDealers: _pmForm.sub.slice(), shippingParties: _pmForm.ship.slice()
+        address: g('pm-address').replace(/\s+/g, ' ').toUpperCase()
     };
     if (!party.partyName) { alert('Party Name is required.'); document.getElementById('pm-party-name').focus(); return; }
+    if (party.partyName === 'DIRECT') { alert('DIRECT is not a party name (it is the Sub-dealer choice for no sub-dealer).'); return; }
     if (!pmMobOk(party.buyerMob)) { alert('Buyer Mob. must be a 10-digit mobile number.'); document.getElementById('pm-buyer-mob').focus(); return; }
     if (!pmMobOk(party.staffMob)) { alert('Party Staff Mob. must be a 10-digit mobile number.'); document.getElementById('pm-staff-mob').focus(); return; }
     var dup = pmFind(party.partyName);
@@ -10727,16 +10741,21 @@ async function pmSave() {
         if (error) throw new Error(pmIsMissingErr(error.message) ? pmMissingMsg() : error.message);
         if (!data || !data.success) throw new Error((data && data.error) || 'No answer from the server');
         var savedName = data.partyName || party.partyName;
-        var back = _pmForm.returnToOrder;
+        var back = _pmForm.returnToOrder, field = _pmForm.returnField || 'ord-party';
         showToast('Party ' + savedName + ' saved');
         await pmLoad(true);
         pmCloseForm();
         pmRenderList();
         if (back) {
-            // Came from "Add this party" in the order form: go back to it, filled in
+            // Came from "Add this party" / "Add it as a party" in the order form:
+            // go back to it, with the saved name in the box it came from
             showOrderPanel();
-            var op = document.getElementById('ord-party');
-            if (op) { op.value = savedName; _pmLastOrderParty = ''; pmOnOrderPartyChange(); }
+            var op = document.getElementById(field);
+            if (op) {
+                op.value = savedName;
+                if (field === 'ord-party') { _pmLastOrderParty = ''; pmOnOrderPartyChange(); }
+                else pmShowOrderLinkInfo_();
+            }
         }
     } catch (e) {
         alert('Save failed:\n\n' + (e.message || e));
@@ -10772,14 +10791,17 @@ async function pmDelete(id) {
 }
 
 async function pmImportFromOrders() {
-    if (!confirm('Import from Orders?\n\nAdds every party, sub-dealer and shipping party found on existing orders that is not in the Party Master yet. Nothing already saved is changed.')) return;
+    if (!confirm('Import from Orders?\n\nAdds every Party Name, Sub Dealer Name and Shipping Party Name found on existing orders as a party, when it is not in the Party Master yet. Nothing already saved is changed.')) return;
     var btn = document.getElementById('pm-import-btn');
     btn.disabled = true;
     try {
         var { data, error } = await supabaseClient.rpc('pm_import_from_orders');
         if (error) throw new Error(pmIsMissingErr(error.message) ? pmMissingMsg() : error.message);
         if (!data || !data.success) throw new Error((data && data.error) || 'Import failed');
-        alert('Imported:\n\nParties: ' + data.parties + '\nSub-dealers: ' + data.subDealers + '\nShipping parties: ' + data.shippingParties);
+        // fromSubDealers / fromShipping: the new server; subDealers / shippingParties: an old one
+        var nSub = data.fromSubDealers != null ? data.fromSubDealers : data.subDealers;
+        var nShip = data.fromShipping != null ? data.fromShipping : data.shippingParties;
+        alert('Parties added:\n\nFrom Party Name: ' + (data.parties || 0) + '\nFrom Sub Dealer Name: ' + (nSub || 0) + '\nFrom Shipping Party Name: ' + (nShip || 0));
         await pmLoad(true); pmRenderList();
     } catch (e) { alert('Import failed:\n\n' + (e.message || e)); }
     finally { btn.disabled = false; }
@@ -10801,10 +10823,10 @@ function pmExportCsv() {
     var rows = pmFilteredParties();
     if (!rows.length) { alert('There are no parties to export.'); return; }
     var q = function(s) { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    var lines = [['Party Name', 'Buyer Name', 'Buyer Mob.', 'Party Staff Name', 'Party Staff Mob.', 'Address', 'Sub-dealer Names', 'Shipping Party Names', 'Active'].join(',')]
+    var lines = [['Party Name', 'Buyer Name', 'Buyer Mob.', 'Party Staff Name', 'Party Staff Mob.', 'Address', 'Active'].join(',')]
         .concat(rows.map(function(p) {
             return [p.partyName, p.buyerName, p.buyerMob, p.staffName, p.staffMob, p.address,
-                    p.subDealers.join(' | '), p.shippingParties.join(' | '), p.active ? 'YES' : 'NO'].map(q).join(',');
+                    p.active ? 'YES' : 'NO'].map(q).join(',');
         }));
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }));

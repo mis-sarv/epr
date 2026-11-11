@@ -1,6 +1,6 @@
-{
-  "version": "1.0.3",
-  "notes": "Checksum fix",
-  "url": "",
-  "checksum": ""
+﻿{
+    "version":  "1.0.3",
+    "notes":  "Checksum fix",
+    "url":  "https://jdlzgjgxxjkjejkhvdij.supabase.co/storage/v1/object/public/app-updates/bundle-1.0.3.zip",
+    "checksum":  "f014e12905fac737deec765e2b0bfb83fadebef4fed9972536628c62d9aa3e78"
 }

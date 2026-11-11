@@ -8185,6 +8185,20 @@ const SARV_NEW_USER_OFF=['HOME_TASK_MANAGER','HOME_YARN_UNLOADING','HOME_SHEET_L
    and the Edge Function's provision path already existed; nothing called them. */
 const SARV_APP_NEEDS_ACCOUNT={HOME_COMPLAINT_APP:1,HOME_PACKING:1};
 
+/* Packing & Dispatch app roles (packing.profiles.role), set per user in the
+   user form's "Packing Role" (sql/PACKING_USER_ROLE_ADMIN_MIGRATION.sql:
+   pk_admin_get_role / admin_set_packing_role). The app reads the role on
+   every open, so a change applies the next time the user opens Packing.
+   Keep in step with the role checks in packing.html. */
+const SARV_PK_ROLES=[
+  {v:'ADMIN',l:'Admin',hint:'full access'},
+  {v:'MD',l:'MD',hint:'orders, packing, verify, reports, parties'},
+  {v:'PACKING_INCHARGE',l:'Packing Incharge',hint:'orders, packing, verify, reports, parties'},
+  {v:'DATA_ENTRY',l:'Data Entry',hint:'packing slips from drafts assigned in Quick Pack; no orders / parties / reports'}
+];
+const SARV_PK_ROLE_ERR={BAD_PIN:'incorrect Admin PIN',BAD_ROLE:'unknown role',USER_NOT_FOUND:'user not found',
+  NO_PACKING_ACCOUNT:'this user has no Packing account yet: switch Packing & Dispatch ON under Apps and Save'};
+
 /* Carries ON/OFF through to that app's account.
    Returns { id, note }. `id` is returned on purpose: when a new auth account
    is created, app_users.id is moved to that new auth id
@@ -8849,7 +8863,7 @@ function sarvUserFormArrange_(ov){
     {t:'Role & access',s:'what this user can see and do',items:[['role'],['roleswrap'],['fieldboy',1],['accsummary',1]]},
     {t:'PIN & signature',s:'PIN to log in and sign; leave blank to keep the old one',items:[['pin'],['pin2'],[canvasFg,1]]},
     // The Complaint App block carries its own Factory Unit (Unit 1 / Unit 2 / Both).
-    {t:'Other apps',s:'Order Form, and Complaint App with its Factory Unit',items:[['srole',1],['hostwrap',1]]},
+    {t:'Other apps',s:'Order Form, Packing Role, and Complaint App with its Factory Unit',items:[['srole',1],['pkrole',1],['hostwrap',1]]},
     // Rows of one table, not a grid: built below ("Store").
     {t:'Store',s:'which store this user works in',items:[]}
   ];
@@ -9050,6 +9064,13 @@ function sarvOpenUserModal(id,presetRole){
     +'<div class="fg" style="grid-column:1 / -1;"><label>Order Form Role <small style="text-transform:none;font-weight:600;">(Sales › Order Form, with this same name + PIN)</small></label>'
       +'<select data-f="srole"'+(sarvSalesRoleReady?'':' disabled title="Run ORDER_FORM_USERS_MIGRATION.sql first"')+'><option value="">— No Order Form access —</option>'
       +SARV_SALES_ROLES.map(r=>'<option value="'+r.v+'"'+(u&&u.sales_role===r.v?' selected':'')+'>'+escText(r.l+' — '+r.hint)+'</option>').join('')+'</select></div>'
+    /* Packing Role: filled after the form opens (pk_admin_get_role), saved
+       after the Packing account step of Save (admin_set_packing_role).
+       data-init = the role read from the server; Save writes only a change. */
+    +'<div class="fg" style="grid-column:1 / -1;"><label>Packing Role <small style="text-transform:none;font-weight:600;">(Sales › Packing &amp; Dispatch; needs Packing &amp; Dispatch ON under Apps)</small></label>'
+      +'<select data-f="pkrole" data-init=""><option value="">'+(u?'Loading…':'— Default (set by the server) —')+'</option>'
+      +SARV_PK_ROLES.map(r=>'<option value="'+r.v+'">'+escText(r.l+' — '+r.hint)+'</option>').join('')+'</select>'
+      +'<small data-f="pkrolehint" style="display:block;font-size:10.5px;color:#64748b;margin-top:4px;line-height:1.45;"></small></div>'
     +'<div class="fg"><label>'+(u?'New PIN <small style="text-transform:none;font-weight:600;">(khali = purana PIN)</small>':'PIN <span class="req">*</span>')+'</label><input data-f="pin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4+ digits"></div>'
     +'<div class="fg"><label>Confirm PIN</label><input data-f="pin2" type="password" inputmode="numeric" autocomplete="new-password" placeholder="again"></div>'
     +'</div>'
@@ -9154,6 +9175,37 @@ function sarvOpenUserModal(id,presetRole){
     storeWas=(r.data&&r.data.store)||'STORE 2';f('ustore').value=storeWas;
     sarvStoreAccSync_();   // a single-store access still fixes the Store field
   });
+  /* Packing Role, read on its own like the store (packing.profiles is not
+     readable from the ERP directly). No function = migration not run: the
+     select is locked and says so, and Save skips it. */
+  if(f('pkrole')){
+    const pk=f('pkrole'),ph=f('pkrolehint'),first=pk.options[0];
+    const say=(t,c)=>{ph.textContent=t;ph.style.color=c||'#64748b';};
+    if(!u)say('Applied after the Packing account is created by this Save (Packing & Dispatch ON under Apps).');
+    else SB.rpc('pk_admin_get_role',{p_user_id:String(u.id)}).then(r=>{
+      const e=(r.error&&(r.error.message||String(r.error)))||'';
+      if(e){
+        pk.disabled=true;pk.dataset.noFn='1';first.textContent='— not available —';
+        return say(/pk_admin_get_role|PGRST202|schema cache|does not exist/i.test(e)
+          ?'Run sql/PACKING_USER_ROLE_ADMIN_MIGRATION.sql to set the Packing role here.':('Could not read the Packing role: '+e),'#b45309');
+      }
+      const d=r.data||{};
+      if(!d.success){first.textContent='— not available —';return say('Could not read the Packing role: '+(d.error||'unknown'),'#b45309');}
+      if(!d.has_account){
+        first.textContent='— No Packing account yet —';
+        return say('No Packing account yet. Switch Packing & Dispatch ON under Apps; the role picked here is applied in the same Save.','#b45309');
+      }
+      const cur=String(d.role||'').toUpperCase();
+      if(cur&&!SARV_PK_ROLES.some(x=>x.v===cur)){
+        // A role this form does not know: kept as it is unless the Admin picks another.
+        const o=document.createElement('option');o.value=cur;o.textContent=cur+' (current)';pk.appendChild(o);
+      }
+      first.textContent='— Choose —';
+      pk.value=cur;pk.dataset.init=cur;
+      say(d.active===false?'The Packing account is INACTIVE (Packing & Dispatch OFF). The role is kept for when it is switched ON again.':'Applies the next time this user opens Packing.',
+          d.active===false?'#b45309':'#64748b');
+    });
+  }
   const pad=sarvMakeSigPad_(ov.querySelector('canvas'));
   const close=()=>{document.removeEventListener('keydown',onKey,true);ov.remove();};
   // Esc inside the Admin PIN prompt belongs to that prompt, not to this form.
@@ -9418,7 +9470,18 @@ function sarvOpenUserModal(id,presetRole){
                  new id. */
               let curId=String(saved.id);
               for(const k of Object.keys(SARV_APP_NEEDS_ACCOUNT)){
-                if(!touched[k])continue;
+                /* Packing ON = make sure the Packing account exists, on EVERY
+                   Save, also when ON only came from the role. Packing is ON by
+                   default for every role (HOME_PACKING def 'ALL'), so a user
+                   was saved with Packing shown ON but no account made (the
+                   switch was never "touched") and then got NO_APP_ACCOUNT on
+                   opening it. Not decided from app_users.pk_profile_id: that
+                   link can be set while the Packing row / auth account is
+                   missing, and admin_grant_app_access is safe to repeat (it
+                   only creates / reactivates what is missing). Complaint needs
+                   no such rule: it makes its own account on the first open. */
+                const pkEnsure=k==='HOME_PACKING'&&acc[k]===true;
+                if(!touched[k]&&!pkEnsure)continue;
                 const res=await sarvSyncExternalAppAccount_(adminPin.trim(),curId,k,acc[k]);
                 curId=res.id; uniNote+=res.note;
               }
@@ -9449,6 +9512,29 @@ function sarvOpenUserModal(id,presetRole){
           else if(uf.allUnits&&SARV_CMP_ALL_UNIT_ROLES.indexOf(uf.cmpRole)<0&&!(ur.data&&'all_units' in ur.data))
             uniNote+='; Warning: Both units was saved as '+sarvUnitName_(uf.unit)+' only: run sql/CMP_UNIT_BOTH_MIGRATION.sql, then save again';
           else uniNote+=' · '+(uf.allUnits?'Both units':sarvUnitName_(uf.unit));
+        }
+      }
+      /* Packing Role: its own Admin-PIN RPC, AFTER the Apps step above, so a
+         Packing account created by this same Save gets the role too, and on
+         the final id. Written only when the pick differs from what was read. */
+      if(f('pkrole')&&!f('pkrole').dataset.noFn){
+        const want=f('pkrole').value;
+        if(want&&want!==(f('pkrole').dataset.init||'')){
+          let sid=finalId||(u&&u.id)||null;
+          if(!sid){
+            await sarvLoadAppUsers_(true);
+            const s=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name);
+            if(s)sid=String(s.id);
+          }
+          if(!sid)uniNote+='; Warning: Packing role was not saved (user not found after save). Edit the user and save again.';
+          else{
+            const pr=await SB.rpc('admin_set_packing_role',{p_admin_pin:adminPin.trim(),p_user_id:String(sid),p_role:want});
+            const pe=(pr.error&&(pr.error.message||String(pr.error)))||(pr.data&&!pr.data.success&&pr.data.error)||'';
+            const lbl=(SARV_PK_ROLES.find(x=>x.v===want)||{l:want}).l;
+            uniNote+=pe?('; Warning: Packing role was not saved: '
+                +(/admin_set_packing_role|PGRST202|schema cache/i.test(pe)?'run sql/PACKING_USER_ROLE_ADMIN_MIGRATION.sql':(SARV_PK_ROLE_ERR[pe]||pe)))
+              :(' · Packing role: '+lbl);
+          }
         }
       }
       /* Store: its own Admin-PIN RPC, after the user exists (a new user has

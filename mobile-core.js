@@ -6486,6 +6486,32 @@
         if(upd.error) throw upd.error;
     }
 
+    /* After Vendor Info is saved: the lists are reloaded and, when the PR now
+       sits in PO Generate ▸ Pending and this login works that tab, the Vendor
+       Info modal is closed and the same PR is opened there (the sign / approve
+       step that makes the POs). Returns true when it moved; false = nothing
+       changed on screen (the caller's "saved" note stays in view). */
+    async function openPrInPoGenerate_(prId){
+        if(!visibleTabsForRole().includes('POGEN') || !canActIn('POGEN')) return false;
+        if(!viewsForTab('POGEN').some(v => v.v === 'pending')) return false;
+        await loadDashboard();
+        dashDirty = false;   // the reload above is the one closeModal would do
+        const pr = ((dash && dash.prs) || []).find(r => String(r.id) === String(prId));
+        if(!pr || !listRows('POGEN', 'pending').some(r => String(r.id) === String(prId))){
+            paintList();      // the lists still move to the fresh data
+            return false;
+        }
+        document.getElementById('approvalModal').style.display = 'none';
+        currentEntry = null;
+        currentStageTab = 'POGEN';
+        currentModule = STAGE_TABS.POGEN.module;
+        currentView = 'pending';
+        document.getElementById('list').scrollTop = 0;
+        paintList();
+        await openModal(pr, {viewOnly: false, tab: 'POGEN'});
+        return true;
+    }
+
     async function saveVendorInfoMobile(){
         if(!currentEntry) return;
         const err = document.getElementById('viError');
@@ -6922,6 +6948,13 @@
 
             show('Vendor info + PO details saved. This PR is now in the "PO Generate" tab, where Delivery Date, charges, Bill On, GST% and the full calculation show as locked; it only needs signing.');
             err.style.background = '#e8f5e9'; err.style.color = '#1b5e20'; err.style.borderColor = '#a5d6a7';
+
+            // Straight on to the next step: close the PR here and open it in
+            // PO Generate, ready to sign. If it is not there (e.g. this login
+            // cannot work PO Generate), the PR stays open here with the note above.
+            setBusy(true, 'Opening the PR in PO Generate...');
+            try{ await openPrInPoGenerate_(req.id); }
+            catch(e){ console.warn('[MOBILE] could not open the PR in PO Generate:', e); }
         }catch(e){
             err.style.background = ''; err.style.color = ''; err.style.borderColor = '';
             show('Error: ' + (e.message || e));
