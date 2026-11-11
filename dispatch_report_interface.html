@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><script src="offline-sync.js"></script>
 <meta charset="UTF-8">
 <!-- Pinch zoom stays allowed (maximum-scale 5, user-scalable yes): this is a
      report people read figures off on a phone. -->
@@ -237,13 +237,21 @@
 /* ════════════════════════════════════════════════════════════════════
    DISPATCH REPORT
    ────────────────────────────────────────────────────────────────────
-   Reads the packing slips of the OLD packing project
-   (hghomygvryyihezvmrjj) through one read-only function,
-   dispatch_report_rows(from, to): see sql/DISPATCH_REPORT_RPC.sql, which
-   explains why the data is reached that way and what that trade-off is.
+   Reads the packing slips of the ERP project's own `packing` schema (the
+   data packing.html writes) through one function,
+   public.pk_dispatch_report(token, from, to): see
+   sql/PACKING_DISPATCH_REPORT_ERP.sql. It checks the ERP login token itself
+   (same HOME_DISPATCH_REPORT access as the gate), works the lines out live
+   from packing_slips + packing_slip_items, and returns one JSON value (no
+   1000-row cut-off). Until 2026-11 this page read the OLD packing project
+   (hghomygvryyihezvmrjj, dispatch_report_rows); that data stopped at the
+   cut-over and was copied into the ERP.
    Who may open THIS page is decided by the ERP: the single-login gate and
    the HOME_DISPATCH_REPORT key in Admin Panel › Tab Visibility / per-user
    Apps.
+   Amounts: a line whose rates were saved with charges in Verify › Save
+   Rates uses that SAVED amount (its own GST %, other charges, bill basis);
+   any other line is worked out by RULES below.
 
    Everything about how a figure is worked out lives in RULES below, so a
    GST change or a new per-piece item type is a one-line edit, not a hunt
@@ -252,17 +260,14 @@
    ════════════════════════════════════════════════════════════════════ */
 
 /* ── Connections ──────────────────────────────────────────────────── */
-// The ERP project: only for the login gate and app access.
+// The ERP project: the login gate, app access AND the packing data.
 const ERP_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const ERP_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const APP_KEY  = 'HOME_DISPATCH_REPORT';
-// The packing data project.
-const DATA_URL  = "https://hghomygvryyihezvmrjj.supabase.co";
-const DATA_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhnaG9teWd2cnl5aWhlenZtcmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcxMjQ2MDgsImV4cCI6MjEwMjcwMDYwOH0.KY1AMj--baFuH6wmS2mBxytBRL-ePdhNctCSOY6rixg";
-const DATA_FN   = 'dispatch_report_rows';
+const DATA_FN  = 'pk_dispatch_report';   // public.pk_dispatch_report(p_token, p_from, p_to)
 // Separate storage key and no saved session: this client only ever calls
-// the anon function, and must never clash with another app's login.
-const DB = window.supabase.createClient(DATA_URL, DATA_ANON, {
+// the token-checked function, and must never clash with another app's login.
+const DB = window.supabase.createClient(ERP_URL, ERP_ANON, {
   auth: { persistSession: false, autoRefreshToken: false, storageKey: 'sarv-dispatch-report' }
 });
 
@@ -376,9 +381,15 @@ function toLine(r){
   const rate = r.rate == null ? null : num(r.rate);
   const disc = num(r.discount);
   const pcs = num(r.bd_pcs), weight = num(r.bd_weight);
-  const perPcs = RULES.PER_PCS_TYPES.includes(cat);
+  // Rates saved with charges (Verify › Save Rates): that line's own bill basis
+  // and stored amount (its GST %, other charges) win over RULES.
+  const saved = r.saved_amount != null && isFinite(Number(r.saved_amount));
+  const perPcs = saved && (r.saved_basis === 'pcs' || r.saved_basis === 'kg')
+    ? r.saved_basis === 'pcs' : RULES.PER_PCS_TYPES.includes(cat);
   let amount = null;
-  if (rate != null && rate > RULES.PLACEHOLDER_RATE){
+  if (saved && rate != null && rate > RULES.PLACEHOLDER_RATE){
+    amount = round2(num(r.saved_amount));
+  } else if (rate != null && rate > RULES.PLACEHOLDER_RATE){
     amount = round2((perPcs ? pcs : weight) * rate * (1 - disc / 100) * (1 + RULES.GST));
   }
   return {
@@ -393,9 +404,16 @@ function toLine(r){
   };
 }
 async function fetchRange(from, to){
-  const { data, error } = await DB.rpc(DATA_FN, { p_from: from, p_to: to });
+  // The ERP login token the gate checked; the function checks it again.
+  const token = (window.SARV_GATE && SARV_GATE.token) || '';
+  const { data, error } = await DB.rpc(DATA_FN, { p_token: token, p_from: from, p_to: to });
   if (error) throw error;
-  return (data || []).map(toLine);
+  if (!data || data.success !== true) {
+    const e = new Error((data && data.error) || 'No answer from the server');
+    e.code = 'PK_' + String((data && data.error) || 'ERR').split(':')[0];
+    throw e;
+  }
+  return (data.rows || []).map(toLine);
 }
 
 const DR = {};
@@ -431,8 +449,11 @@ DR.load = async function(){
 function explain(e){
   const msg = (e && (e.message || e.msg)) || String(e || 'unknown error'), code = (e && e.code) || '';
   let why = 'The report could not be loaded.';
-  if (code === 'PGRST202' || code === '42883') why = 'The report function was not found on the packing server. Run <code>sql/DISPATCH_REPORT_RPC.sql</code> in the packing project (hghomygvryyihezvmrjj).';
-  else if (code === '42501') why = 'The packing server refused the request (permission). Re-run <code>sql/DISPATCH_REPORT_RPC.sql</code>; it grants the function to the page\'s key.';
+  if (code === 'PGRST202' || code === '42883') why = 'The report function was not found. Run <code>sql/PACKING_DISPATCH_REPORT_ERP.sql</code> in the ERP project (jdlzgjgxxjkjejkhvdij).';
+  else if (code === '42501') why = 'The server refused the request (permission). Re-run <code>sql/PACKING_DISPATCH_REPORT_ERP.sql</code>; it grants the function to the page\'s key.';
+  else if (/^PK_(NO_SESSION|SESSION|SESSION_REVOKED|SESSION_EXPIRED|NO_APP_ACCESS)/.test(code)) why = 'Your login has ended or this report is not allowed for you. Log in again from the launcher.';
+  else if (code === 'PK_RANGE_TOO_LONG') why = 'Please choose at most 400 days at a time.';
+  else if (code === 'PK_SESSION_CHECK_FAILED') why = 'The login check failed on the server.';
   else if (/failed to fetch|networkerror|load failed/i.test(msg)) why = 'Could not reach the packing server. Please check the internet connection.';
   return why + '<br><small class="opacity-80">' + esc(msg) + (code ? ' [' + esc(code) + ']' : '') + '</small>';
 }

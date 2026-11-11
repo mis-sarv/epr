@@ -2706,10 +2706,40 @@
        unless their Emp Code is MD-1 / MD-2 and PR-PO Master gives the
        categories to the two MDs (mdScope_ below); a PO Sender sees only POs
        MD has already approved. */
+    /* ── Newest first, by NUMBER ─────────────────────────────────────
+       PO / PR numbers are text padded to 3 digits (PO/U-2/001 … PO/U-2/999,
+       then PO/U-2/1000). Ordered as TEXT, "…/999" sorts above "…/1000"
+       ('9' > '1'), so once the numbers reached 4 digits the newest POs fell
+       behind ~900 older ones, outside the 200 rows read, and never reached
+       the MD Approval tab. So: the newest rows are picked by creation time
+       (created_at, else id; the text number only as a last resort), and the
+       lists are ordered by the number's value (docSeq_). */
+    function docSeq_(no){
+        const m = String(no || '').match(/(\d+)(?!.*\d)/);   // last group of digits = the serial
+        return m ? parseInt(m[1], 10) : -1;
+    }
+    function byDocNoDesc_(col){
+        return (a, b) => (docSeq_(b[col]) - docSeq_(a[col])) || String(b[col] || '').localeCompare(String(a[col] || ''));
+    }
+    async function loadNewestRows_(table, noCol, limit, filter){
+        for(const col of ['created_at', 'id']){
+            let q = SB.from(table).select('*').order(col, {ascending:false, nullsFirst:false}).limit(limit);
+            if(filter) q = filter(q);
+            const r = await q;
+            if(!r.error) return r;
+            console.warn('[MOB] ' + table + ' by ' + col + ' failed, trying the next order:', r.error.message);
+        }
+        let q = SB.from(table).select('*').order(noCol, {ascending:false}).limit(limit);
+        if(filter) q = filter(q);
+        return await q;
+    }
     async function loadDashboard(){
-        let prq = SB.from('purchase_requirements').select('*').order('req_no', {ascending:false}).limit(200);
-        if(myPurchaserName) prq = prq.eq('purchaser_name', myPurchaserName);
-        const poq = SB.from('purchase_orders').select('*').order('po_no', {ascending:false}).limit(200);
+        const prq = loadNewestRows_('purchase_requirements', 'req_no', 200,
+            myPurchaserName ? (q => q.eq('purchaser_name', myPurchaserName)) : null);
+        const poq = loadNewestRows_('purchase_orders', 'po_no', 200, null);
+        /* Every PO still waiting for MD, however old: the 200 newest above
+           must never be the reason a PO cannot be approved. */
+        const poOpenQ = SB.from('purchase_orders').select('*').in('status', ['Generated', 'GM/CEO Approved']).limit(1000);
         /* Store entries depend on nothing above, so they load in the same
            round trip as the PRs and POs instead of after them. Every later
            lookup (PDF links, PR→PO tags, PO lines, inwards, inward approvals)
@@ -2717,11 +2747,14 @@
            phone each sequential round trip is what the wait is made of. */
         const storeP = loadStoreEntries_();
         storeP.catch(() => {});   // awaited below; this only stops an "unhandled" warning if the PR read fails first
-        const [pr, po] = await Promise.all([prq, poq]);
+        const [pr, po, poOpen] = await Promise.all([prq, poq, poOpenQ]);
         if(pr.error) console.error(pr.error);
         if(po.error) console.error(po.error);
-        let prs = pr.data || [];
-        let pos = po.data || [];
+        if(poOpen.error) console.warn('[MOB] POs waiting for MD not read:', poOpen.error.message);
+        let prs = (pr.data || []).slice().sort(byDocNoDesc_('req_no'));
+        const poById = new Map();
+        (po.data || []).concat(poOpen.data || []).forEach(p => { if(!poById.has(String(p.id))) poById.set(String(p.id), p); });
+        let pos = Array.from(poById.values()).sort(byDocNoDesc_('po_no'));
         // MD-1 / MD-2: only the PRs / POs of this MD's categories (PR-PO Master).
         if(myRoleKey() === 'md'){
             const sc = await mdScope_(prs, pos);

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><script src="offline-sync.js"></script>
     <meta charset="UTF-8">
     <script src="date-dmy.js"></script>
     <script src="caps-input.js"></script><script src="hover-tip.js"></script>
@@ -588,7 +588,7 @@
                             <input type="text" id="pcSearch" oninput="renderPcEmpList()" autocomplete="off" placeholder="Search name, code, department" class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-sm">
                         </div>
                         <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-3 cursor-pointer select-none"><input type="checkbox" id="pcOnlyPending" checked onchange="renderPcEmpList()" class="accent-violet-700"> Only employees with pending tasks</label>
-                        <div id="pcTotals" class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2"></div>
+                        <div class="flex items-center justify-between gap-2 mb-2"><div id="pcTotals" class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider"></div><button id="pcNotifyAllBtn" onclick="pcNotifyAll()" class="text-[10px] font-extrabold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1.5 rounded-lg uppercase tracking-wider flex items-center gap-1 shrink-0" title="Ring the phone of every listed employee who has pending tasks"><i class="ph-bold ph-bell-ringing"></i> Notify all</button></div>
                         <div id="pcEmpList" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1"></div>
                     </div>
                     <!-- That employee's pending tasks -->
@@ -1597,7 +1597,41 @@
             appState.loadedFrom = d.from; appState.loadedTo = d.to;
             fupCache = new Map();   // fresh records / follow-ups / rules: the coordinator cuts are worked out again
             appState.currentLoggedInEmp = (appState.me.empCode && appState.employees.find(e => e.empCode === appState.me.empCode)) || null;
+            setTimeout(tmSyncReminders, 0);
             return res;
+        }
+
+        /* AUTO REMINDER (APK only). Hands the phone the logged-in user's own
+           task deadlines for today and the next 2 days (not done, not moved,
+           not on a day off). The phone (ReminderReceiver) checks every 15
+           minutes, OFFLINE too, and rings until Confirm while any of today's is
+           past its deadline, 08:00–20:00. Synced again after every load, so a
+           task ticked here stops ringing. Personal tasks are left out, as in PC
+           Follow-up. Skipped when the loaded range does not cover today: the
+           records would be missing and done tasks would look pending. */
+        function tmSyncReminders() {
+            try {
+                const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.SarvAlarm;
+                if (!P || !P.setReminders) return;
+                const today = todayStr();
+                if (!appState.loadedFrom || appState.loadedFrom > today || (appState.loadedTo && appState.loadedTo < today)) return;
+                const emp = appState.currentLoggedInEmp, items = [], now = new Date();
+                if (emp) {
+                    const tasks = getCombinedTasks(emp), d = dateAt(today);
+                    for (let i = 0; i < 3; i++) {
+                        const ds = ymd(d);
+                        tasks.forEach(t => {
+                            if (t.isSelfTask || t.active === false) return;
+                            const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
+                            const sc = taskScore(t, ds, rec, now);
+                            if (sc.state === 'done' || sc.state === 'moved' || sc.state === 'off' || !sc.deadline) return;
+                            items.push({ k: t.ownerCode + '|' + t.id + '|' + ds, d: String(t.desc || 'Task').slice(0, 80), due: +sc.deadline });
+                        });
+                        d.setDate(d.getDate() + 1);
+                    }
+                }
+                P.setReminders({ items, emp: emp ? emp.empCode : '' });
+            } catch (e) { console.warn('[SARV reminders]', e); }
         }
 
         // After a save: fetch again and redraw whatever screen is open, so every
@@ -3936,9 +3970,80 @@
         const pcBackDays = () => { const el = document.getElementById('pcBack'); const n = el ? parseInt(el.value, 10) : 90; return isFinite(n) && n > 0 ? n : 0; };
         const pcBackFrom = ds => { const d = dateAt(ds); d.setDate(d.getDate() - pcBackDays()); return ymd(d); };
         // Draw with what is loaded at once, then again once the earlier days are fetched.
+        /* ── NOTIFY (phone push) ──────────────────────────────────────────
+           The PC can ring an employee's phone about their pending tasks: one
+           employee from their pane (pcNotifyOne) or everyone listed with
+           pending tasks (pcNotifyAll). The page never holds the push key: it
+           calls tm_notify with its session, the server checks TM_PC_FOLLOWUP /
+           TM_LATE_APPROVE, keeps a 2-minute cooldown per employee, logs it in
+           tm_notify_log and only then calls the push-send Edge Function
+           (sql/TM_NOTIFY_MIGRATION.sql). A tap opens My Tasks. An employee
+           who never logged in to the APK has no phone token: listed as "no app". */
+        let pcNotifyLast = {};   // emp code → { at, by } (last 3 days)
+        async function pcLoadNotifyLast() {
+            const r = await tmRpc('tm_notify_last', {});
+            if (r.ok) { pcNotifyLast = r.data.last || {}; if (appState.currentScreen === 'pc-followup') { renderPcEmpList(); renderPcTasks(); } }
+        }
+        function pcNotifiedChip(code, cls) {
+            const n = pcNotifyLast[code]; if (!n) return '';
+            const d = new Date(n.at), today = d.toDateString() === new Date().toDateString();
+            const when = (today ? '' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ') + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const tfmt = x => new Date(x).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            const st = n.acked ? `<span class="px-2 py-0.5 rounded border text-green-800 bg-green-50 border-green-300 ${cls || ''}" title="The employee tapped Confirm">✓ Confirmed ${esc(tfmt(n.acked))}</span>`
+                : n.alarm ? `<span class="px-2 py-0.5 rounded border text-amber-800 bg-amber-50 border-amber-300 ${cls || ''}" title="Their phone keeps ringing until they tap Confirm (stops by itself after 10 minutes)">Not confirmed yet</span>` : '';
+            return `<span class="px-2 py-0.5 rounded border text-sky-800 bg-sky-50 border-sky-200 ${cls || ''}" title="Last notified by ${esc(n.by || '')}">Notified ${esc(when)}</span>${st ? ' ' + st : ''}`;
+        }
+        // While this screen is open, refresh the Confirmed / Not confirmed chips.
+        setInterval(() => { if (appState.currentScreen === 'pc-followup' && Object.values(pcNotifyLast).some(n => n.alarm && !n.acked)) pcLoadNotifyLast(); }, 20000);
+        // The message for one employee: count + the first few task names.
+        function pcNotifyMsg(emp) {
+            const ds = pcDay(), now = new Date();
+            const items = pcPending(emp, ds, now).map(x => x.t).concat(pcEarlier(emp, ds).map(x => x.t));
+            const names = [...new Set(items.map(t => t.desc))];
+            if (!names.length) return null;
+            const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '');
+            const by = (SARV_GATE.user && SARV_GATE.user.name) || 'PC';
+            return { emp: emp.empCode, title: `Pending tasks: ${items.length}`, body: `${shown}. Please complete them in My Tasks. - ${by}`, url: 'task_manager.html#my-tasks' };
+        }
+        async function pcSendNotify(items, btnId) {
+            const b = btnId && document.getElementById(btnId); if (b) { b.disabled = true; b.classList.add('opacity-60'); }
+            const r = await tmRpc('tm_notify', { p_items: items });
+            if (b) { b.disabled = false; b.classList.remove('opacity-60'); }
+            if (!r.ok) {
+                const why = r.error === 'NO_MIGRATION' ? 'Notify is not set up on the server yet. Admin: run <code>sql/TM_NOTIFY_MIGRATION.sql</code> in the Supabase SQL Editor.'
+                    : r.error === 'NO_SEND_KEY' ? 'The push send key is missing in Supabase Vault (sarv_send_key). Run <code>sql/TM_NOTIFY_MIGRATION.sql</code> again.'
+                    : (TM_ERR[r.error] || esc(r.error || '') + (r.detail ? ' · ' + esc(r.detail) : ''));
+                return showCustomModal('Notify failed', why, true);
+            }
+            const d = r.data, sent = d.sent || [], noApp = d.no_app || [], cool = d.cooldown || [];
+            const nm = c => esc(empName(c) || c);
+            let h = sent.length ? `Notification sent to <b>${sent.length}</b> employee(s). Their phone keeps ringing, even if the app is closed, until they tap <b>Confirm</b>; the chip here then shows "Confirmed".` : 'No notification was sent.';
+            if (noApp.length) h += `<br><br><b>No app / notifications not allowed (${noApp.length}):</b> ${noApp.map(nm).join(', ')}.<br><span class="text-xs">They must install the SARV ERP app, log in once and allow notifications.</span>`;
+            if (cool.length) h += `<br><br><b>Already notified in the last 2 minutes (${cool.length}):</b> ${cool.map(nm).join(', ')}.`;
+            showCustomModal(sent.length ? 'Notified' : 'Not sent', h, !sent.length);
+            pcLoadNotifyLast();
+        }
+        window.pcNotifyOne = function(code) {
+            const e = appState.employees.find(x => x.empCode === code); if (!e) return;
+            const m = pcNotifyMsg(e);
+            if (!m) return showCustomModal('Nothing pending', 'This employee has no pending task to notify about.', true);
+            if (!confirm(`Send a phone notification to ${e.empName}?\n\n${m.title}\n${m.body}`)) return;
+            pcSendNotify([m], 'pcNotifyBtn');
+        };
+        window.pcNotifyAll = function() {
+            const ds = pcDay(), now = new Date();
+            const q = document.getElementById('pcSearch').value.trim().toUpperCase();
+            const items = appState.employees
+                .filter(e => !q || [e.empName, e.empCode, e.dept, e.desig].join(' ').toUpperCase().includes(q))   // same search as the list
+                .map(pcNotifyMsg).filter(Boolean);
+            if (!items.length) return showCustomModal('Nothing pending', 'No listed employee has a pending task.', true);
+            if (!confirm(`Send a phone notification to ${items.length} employee(s) with pending tasks${q ? ' (matching the search)' : ''}?`)) return;
+            pcSendNotify(items, 'pcNotifyAllBtn');
+        };
+
         async function initPcFollowup() {
             const d = document.getElementById('pcDate'); if (!d.value || d.value > todayStr()) d.value = todayStr();
-            renderPcEmpList(); renderPcTasks();
+            renderPcEmpList(); renderPcTasks(); pcLoadNotifyLast();
             const ds = pcDay();
             if (appState.loadedFrom && appState.loadedFrom <= pcBackFrom(ds)) return;
             if (await ensureLoaded(pcBackFrom(ds), ds) && appState.currentScreen === 'pc-followup') { renderPcEmpList(); renderPcTasks(); }
@@ -4022,6 +4127,7 @@
                     + (s.pending - s.overdue ? `<span class="px-2 py-0.5 rounded border text-emerald-700 bg-emerald-50 border-emerald-200">${s.pending - s.overdue} not due yet</span>` : '')
                     + `<span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">${s.done}/${s.total} done</span>`
                     + (s.followed ? `<span class="px-2 py-0.5 rounded border text-violet-800 bg-violet-100 border-violet-200">↻ ${s.followed} followed up</span>` : '')
+                    + pcNotifiedChip(e.empCode)
                     + `</div></button>`;
             }).join('') : `<div class="text-center text-sm font-bold text-slate-400 py-8 bg-white border border-dashed border-slate-200 rounded-2xl">${only ? 'No pending tasks for this day.' : 'No employee matches.'}</div>`;
         };
@@ -4093,7 +4199,10 @@
                 else early.push({ ...x, sc: taskScore(x.t, x.ds, x.rec, now) });
             });
             const back = pcBackDays();
-            let h = `<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 class="text-xl font-extrabold text-slate-800">${esc(e.empName)}</h3><div class="text-[11px] font-bold text-slate-500">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${e.desig ? ' · ' + esc(e.desig) : ''}${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}</div></div>`
+            const nPend = list.length + earlier.length;
+            let h = `<div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><h3 class="text-xl font-extrabold text-slate-800">${esc(e.empName)}</h3><div class="text-[11px] font-bold text-slate-500">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${e.desig ? ' · ' + esc(e.desig) : ''}${mx && mx.contact ? ' · <i class="ph-bold ph-phone"></i> ' + esc(mx.contact) : ''}</div>`
+                + (nPend ? `<div class="flex flex-wrap items-center gap-2 mt-2"><button id="pcNotifyBtn" onclick="pcNotifyOne('${esc(e.empCode)}')" class="text-xs font-extrabold text-white bg-sky-700 hover:bg-sky-800 px-3 py-2 rounded-lg uppercase tracking-wider flex items-center gap-1.5 shadow-sm" title="Ring this employee's phone about their ${nPend} pending task(s)"><i class="ph-bold ph-bell-ringing text-base"></i> Notify</button><span class="text-[9px] font-extrabold uppercase tracking-wider">${pcNotifiedChip(e.empCode)}</span></div>` : '')
+                + `</div>`
                 + `<div class="text-right"><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">${esc(new Date(ds + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }))}</div>${dayOffOf(e.empCode, ds) ? dayOffTag(dayOffOf(e.empCode, ds), 'mb-1') : ''}<div class="text-sm font-extrabold text-violet-800">${list.length} pending</div>${earlier.length ? `<div class="text-[11px] font-extrabold text-red-700">+ ${earlier.length} from earlier days</div>` : ''}</div></div>`;
             const editable = list.length + early.length + dailyBy.size;
             if (editable) h += `<div class="flex flex-wrap items-center gap-2 mb-3"><button onclick="pcFillNextDay()" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg uppercase tracking-wider">All to next day</button><span class="text-[11px] font-bold text-slate-400">Ticked rows are saved; a remark is always needed, and a time when the date is today. Daily tasks cannot change date: once missed they get a later time today.</span></div>`;
@@ -4565,5 +4674,7 @@
     <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
 <script src="cursor-glow.js"></script>
+<!-- Phone push: token save, foreground ring, PC Follow-up alarm Confirm (?notify_ack). -->
+<script src="push-register.js"></script>
 </body>
 </html>

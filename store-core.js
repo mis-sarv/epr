@@ -14100,6 +14100,44 @@ const SARV_DROPDOWNS=[
   {key:'erp_prlSatinQuality',label:'Satin Quality',hint:'Printing Lot Card › Satin Quality. Har quality ke codes: Printing Lot › Masters › Satin Codes',def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM']},
   {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
 
+  /* packing.html reads these keys straight from sales_dropdowns (rows if any,
+     otherwise these defaults; its PK_DD block keeps a copy of the same
+     defaults, so change both together). A value still held by an old slip /
+     order stays shown on that record after it is removed here. Packing Type,
+     Order Type and order Status stay fixed in the page: its logic depends on
+     those codes. */
+  {group:'Sales › Packing & Dispatch (packing.html)'},
+  {key:'erp_pkItemType',label:'Item / Pack Type',
+   hint:'Packing slip item Type, New Order / Order edit "Item", and the rows of Settings › Weight Rules. Keep the names PVC BAG / LOOSE PCS / BALE as they are: the PDF total (PVC shown after "+"), Quick Pack (single row) and BALE (2 × std pcs) look for them by name.',
+   where:'packing.html slip form · New Order · Order edit · Weight Rules',
+   def:['BORA','PVC BAG','LOOSE PCS','BALE','BOX','ROLL','BORA WITH BAG','EMPTY BOX','INSERT CARD','INNER BOX','OUTER BOX','EMPTY BOAR','OTHER']},
+  {key:'erp_pkDispatchTo',label:'Dispatch To',hint:'Packing slip form › Dispatch To',where:'packing.html slip form',
+   def:['PANIPAT','SUTANA','KURAR','BAPOLI','GADI LOAD','SELF','OTHER','TRANSPORT']},
+  {key:'erp_pkDispatchFrom',label:'FROM (Dispatch From)',hint:'Packing slip form › FROM of every Sr. row',where:'packing.html slip form (FROM column)',
+   def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
+  {key:'erp_pkTransportType',label:'Transport Type',hint:'New Order › Transport Type / Deliver Destination (every Transport Type is paired with every Deliver Destination)',where:'packing.html New Order · Order edit',
+   def:['TEMPO','TRUCK','BY HAND','OTHER']},
+  {key:'erp_pkDeliverDest',label:'Deliver Destination',hint:'New Order › Transport Type / Deliver Destination',where:'packing.html New Order · Order edit',
+   def:['GODOWN','TRANSPORT']},
+  {key:'erp_pkReviewOrder',label:'Review Order',hint:'New Order › Review Order',where:'packing.html New Order',
+   def:['CONFIRM','PENDING','PENDING CANCEL','PARTIAL HOLD','STARTED','CANCEL']},
+  // Shifting tab (Shifting Entry, sql/PACKING_SHIFTING_ENTRY_MIGRATION.sql).
+  // Saved on each entry as text, so removing a value never changes old entries.
+  {key:'erp_pkShiftType',label:'Shifting › Type',hint:'Shifting Entry › Type. A type listed in "Shifting › Production Types" below adds to the Balance Stock.',where:'packing.html Shifting tab',
+   def:['PRODUCTION','SHIFTING','LOADING','UNLOADING']},
+  // Read by the SERVER (packing.sk_prod_types_ in sql/PACKING_STOCK_BALANCE_MIGRATION.sql;
+  // no rows = PRODUCTION there too, keep the two defaults the same)
+  {key:'erp_pkShiftProdTypes',label:'Shifting › Production Types (add to stock)',hint:'Shifting Types whose Quantity is ADDED to the quality-wise Balance Stock (Quick Pack › Stock, Shifting › Stock). Each value must be spelt as in "Shifting › Type".',where:'packing.html Quick Pack · Shifting tab (Balance Stock)',
+   def:['PRODUCTION']},
+  {key:'erp_pkShiftFrom',label:'Shifting › Shift From',hint:'Shifting Entry › Shift From',where:'packing.html Shifting tab',
+   def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
+  {key:'erp_pkShiftTo',label:'Shifting › Shift To',hint:'Shifting Entry › Shift To',where:'packing.html Shifting tab',
+   def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
+  {key:'erp_pkShiftItemType',label:'Shifting › Item Type',hint:'Shifting Entry › Item Type (its own list: the packing slip keeps "Item / Pack Type")',where:'packing.html Shifting tab',
+   def:['BORA','PVC BAG','LOOSE PCS','BALE','BOX','ROLL','BORA WITH BAG','EMPTY BOX','INSERT CARD','INNER BOX','OUTER BOX','EMPTY BOAR','OTHER']},
+  {key:'erp_pkShiftingBy',label:'Shifting › Shifting By',hint:'Shifting Entry › Shifting By',where:'packing.html Shifting tab',
+   def:['OWN LABOUR','CONTRACTOR LABOUR']},
+
   {group:'Sales › Order Form (order-form.html)'},
   /* DB / SB, Fabric Code, Category, Size, Sattan Type / Size, the old joint
      Sattan and MOQ are no longer listed here: the Order Form fills them from

@@ -28,6 +28,10 @@
   if (!Push) return;
 
   var CHANNEL = 'sarv_ring';
+  /* An APK with the native SarvAlarm plugin can ring until Confirm (PC
+     Follow-up › Notify). Its token is saved as 'android-alarm' so push-send
+     sends it alarm-type messages; an older APK stays 'android'. */
+  var PLATFORM = (C.Plugins && C.Plugins.SarvAlarm) ? 'android-alarm' : 'android';
   var SUPABASE_URL = 'https://jdlzgjgxxjkjejkhvdij.supabase.co';
   var SUPABASE_ANON =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
@@ -120,7 +124,7 @@
         try { localStorage.setItem('sarv_pending_fcm', token); } catch (e) {}
         return;
       }
-      rpc('push_token_save', { p_session: sess, p_fcm: token, p_platform: 'android' })
+      rpc('push_token_save', { p_session: sess, p_fcm: token, p_platform: PLATFORM })
         .then(function (r) { if (window.console) console.log('[SARV push] token saved', r.status); })
         .catch(function (e) { if (window.console) console.error('[SARV push] save', e); });
     });
@@ -138,10 +142,48 @@
     // 5. User tapped a notification → bring the relevant screen up. The
     //    server can send data.url; default to the launcher.
     Push.addListener('pushNotificationActionPerformed', function (a) {
-      var url = a && a.notification && a.notification.data && a.notification.data.url;
-      if (url) { try { location.href = url; } catch (e) {} }
+      var d = (a && a.notification && a.notification.data) || {};
+      var go = function () { if (d.url) { try { location.href = d.url; } catch (e) {} } };
+      // Older APK (no alarm): tapping a PC Follow-up notify counts as its Confirm.
+      if (d.alarm_id) ackAlarms([d.alarm_id]).then(go, go); else go();
     });
   }
+
+  /* ── PC Follow-up alarm CONFIRM ─────────────────────────────────────
+     The native CONFIRM (AlarmActivity / notification button) stops the ring
+     and opens this page with ?notify_ack=<ids>. Record it on the server
+     (tm_notify_ack, the PC sees "Confirmed"), then drop the parameter so a
+     reload does not send it again. Tried a few times: the phone may have
+     only just woken up. */
+  function ackAlarms(ids) {
+    var sess = sessionToken();
+    ids = (ids || []).map(function (x) { return parseInt(x, 10); }).filter(function (x) { return x > 0; });
+    if (!sess || !ids.length) return Promise.resolve(false);
+    return rpc('tm_notify_ack', { p_token: sess, p_ids: ids }).then(function (r) { return r.ok; });
+  }
+  (function ackFromUrl() {
+    var m = /[?&]notify_ack=([0-9,]+)/.exec(location.search);
+    if (!m) return;
+    var ids = m[1].split(',');
+    try {
+      var clean = location.pathname + location.search.replace(/([?&])notify_ack=[0-9,]+&?/, '$1').replace(/[?&]$/, '') + location.hash;
+      history.replaceState(null, '', clean);
+    } catch (e) {}
+    var tries = 0;
+    (function attempt() {
+      ackAlarms(ids).then(function (ok) {
+        if (ok) banner('Confirmed', 'Your PC has been told you saw the reminder.');
+        else if (++tries < 5) setTimeout(attempt, 3000);
+      }, function () { if (++tries < 5) setTimeout(attempt, 3000); });
+    })();
+  })();
+
+  /* Logged out on this phone: stop the 15-minute task reminder, so the next
+     user is not rung about the previous user's tasks. */
+  try {
+    if (!sessionToken() && C.Plugins && C.Plugins.SarvAlarm && C.Plugins.SarvAlarm.setReminders)
+      C.Plugins.SarvAlarm.setReminders({ items: [], emp: '' });
+  } catch (e) {}
 
   // If a token arrived before login, flush it once a session appears.
   function flushPending() {
@@ -149,7 +191,7 @@
     var pend = null;
     try { pend = localStorage.getItem('sarv_pending_fcm'); } catch (e) {}
     if (sess && pend) {
-      rpc('push_token_save', { p_session: sess, p_fcm: pend, p_platform: 'android' })
+      rpc('push_token_save', { p_session: sess, p_fcm: pend, p_platform: PLATFORM })
         .then(function () { try { localStorage.removeItem('sarv_pending_fcm'); } catch (e) {} })
         .catch(function () {});
     }
