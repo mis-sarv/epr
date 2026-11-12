@@ -315,6 +315,79 @@
         .pm-party-info.bad { color: #b91c1c; font-weight: 700; }
         .pm-party-info a { color: #0d9488; font-weight: 800; cursor: pointer; text-decoration: underline; }
         /* ── Shifting Entry (showShiftingPanel) — reuses the .pm-* buttons / banners ── */
+        /* ── Vehicle Freight (showFreightPanel) + Settings › Freight Rates ── */
+        #freight-panel { display: none; }
+        .fr-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        .fr-filters .form-group { margin-bottom: 0; flex: 1; min-width: 130px; }
+        .fr-filters .fr-grow { flex: 2; min-width: 170px; }
+        .fr-filters input, .fr-filters select { width: 100%; box-sizing: border-box; }
+        .fr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+        .fr-btn { background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 9px 14px; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .fr-btn.ghost { background: #f8fafc; color: #334155; border: 1.5px solid var(--border); }
+        .fr-btn:disabled { opacity: .6; cursor: default; }
+        .fr-note { font-size: 12px; border-radius: 8px; padding: 8px 10px; margin-top: 8px; line-height: 1.5; }
+        .fr-note.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .fr-note.info { background: #f1f5f9; border: 1px solid #e2e8f0; color: #334155; }
+        .fr-note.bad { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .fr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 10px; }
+        .fr-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+        .fr-tile span { display: block; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
+        .fr-tile b { display: block; font-size: 18px; font-weight: 800; color: var(--text-main); }
+        .fr-veh { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+        .fr-veh-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 9px 12px; background: #f8fafc; border-bottom: 1px solid var(--border); }
+        .fr-veh-head .no { font-weight: 800; font-size: 14px; color: var(--primary); }
+        .fr-veh-head .drv { font-size: 12px; color: var(--text-muted); flex: 1; min-width: 120px; }
+        .fr-veh-head .amt { font-weight: 800; font-size: 14px; color: #047857; white-space: nowrap; }
+        .fr-veh.unlisted .fr-veh-head { background: #fff7ed; }
+        .fr-veh.unlisted .fr-veh-head .no { color: #c2410c; }
+        .fr-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .fr-table th { background: #1e293b; color: #fff; padding: 6px 8px; text-align: left; font-size: 11px; font-weight: 600; white-space: nowrap; }
+        .fr-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+        .fr-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .fr-table tr.tot td { background: #fef3c7; font-weight: 800; }
+        .fr-table input, .fr-table select { padding: 5px 6px; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 5px; box-sizing: border-box; width: 100%; }
+        .fr-table td.x button { border: none; background: transparent; color: #dc2626; font-size: 14px; cursor: pointer; }
+        .fr-detail { padding: 0 12px 10px; }
+        .fr-detail summary { cursor: pointer; font-size: 12px; font-weight: 700; color: #475569; padding: 8px 0; }
+        .fr-sub { font-size: 10px; color: var(--text-muted); }
+        /* TEMPU PAYMENT sheet (frSheetHtml) — same layout as the paper sheet */
+        .tp-wrap { overflow-x: auto; background: #fff; border-radius: 10px; margin-bottom: 10px; }
+        .tp-sheet { width: 100%; min-width: 680px; border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #000; background: #fff; }
+        .tp-sheet td, .tp-sheet th { border: 1px solid #000; padding: 3px 6px; text-align: center; vertical-align: middle; }
+        .tp-sheet .tp-title td { background: #ffff00; font-size: 22px; font-weight: 900; color: #1f3864; letter-spacing: .5px; padding: 6px; }
+        .tp-sheet .tp-head th { font-weight: 800; font-size: 12.5px; background: #fff; line-height: 1.15; }
+        .tp-sheet .tp-gap td { border-left: none; border-right: none; height: 6px; padding: 0; }
+        .tp-sheet td.tp-veh { text-align: left; }
+        .tp-sheet td.tp-drv { font-weight: 800; }
+        .tp-sheet td.tp-qty { font-weight: 800; }
+        .tp-sheet td.tp-rate { color: #e00000; }
+        .tp-sheet td.tp-net { background: #ffff00; font-weight: 900; font-size: 15px; text-decoration: underline; }
+        .tp-sheet tr.tp-extra td { font-weight: 800; }
+        .tp-sheet tr.tp-total td { font-weight: 900; font-size: 15px; }
+        .tp-sheet tr.tp-total td.tp-big { color: #e00000; background: #ffff00; text-decoration: underline; font-size: 17px; }
+        /* Labour sheets (lbSheetHtml) — same layout as the paper sheets */
+        #labour-panel { display: none; }
+        .lb-sheet { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #000; background: #fff; margin: 0 auto; }
+        .lb-sheet td, .lb-sheet th { border: 1px solid #000; padding: 2px 5px; text-align: center; vertical-align: middle; white-space: nowrap; }
+        .lb-sheet .lb-title td { font-size: 24px; font-weight: 900; padding: 6px 8px; }
+        .lb-sheet th.lb-v { height: 230px; vertical-align: bottom; padding: 4px 2px; font-size: 12px; font-weight: 800; }
+        .lb-sheet th.lb-v span { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; white-space: nowrap; }
+        .lb-sheet td.lb-date { text-align: left; font-weight: 600; }
+        .lb-sheet td.lb-gap, .lb-sheet th.lb-gap { border-top: none; border-bottom: none; width: 26px; min-width: 26px; padding: 0; background: #fff !important; }
+        .lb-sheet .lb-grp { font-size: 18px; font-weight: 900; color: #e00000; }
+        .lb-sheet tr.lb-tot td { font-weight: 900; font-size: 14px; }
+        .lb-sheet tr.lb-rate td { font-weight: 800; color: #e00000; }
+        .lb-sheet tr.lb-amt td { font-weight: 800; }
+        .lb-sheet td.lb-pay { font-weight: 800; font-size: 12px; }
+        .lb-sheet td.lb-grand { color: #e00000; font-weight: 900; font-size: 15px; }
+        .lb-sheet td.lb-auto { font-weight: 600; }
+        .lb-sheet td.lb-edit { padding: 0; }
+        .lb-sheet input.lb-in { width: 58px; border: none; background: #fffbe6; text-align: center; font: inherit; padding: 3px 2px; box-sizing: border-box; }
+        .lb-sheet input.lb-in:focus { outline: 2px solid #2563eb; background: #fff; }
+        .lb-sheet input.lb-in.dirty { background: #dcfce7; font-weight: 800; }
+        .lb-wrap { overflow-x: auto; background: #fff; border-radius: 10px; padding: 8px; margin-bottom: 10px; }
+        .fr-log { margin-top: 12px; font-size: 12px; }
+        .fr-log summary { cursor: pointer; font-weight: 700; color: #475569; }
         #shifting-panel { display: none; }
         #shifting-panel .form-group select,
         #shifting-panel .form-group input { width: 100%; }
@@ -554,6 +627,8 @@
             <button id="shiftNavBtn" type="button" onclick="showShiftingPanel()" style="display:none;">Shifting</button>
             <button id="repairPdfNavBtn" type="button" onclick="showPdfRepairPanel()" style="display:none;">Fix PDFs</button>
             <button id="reportsNavBtn" type="button" onclick="showReportsPanel()" style="display:none;">Reports</button>
+            <button id="freightNavBtn" type="button" onclick="showFreightPanel()" style="display:none;">Freight</button>
+            <button id="labourNavBtn" type="button" onclick="showLabourPanel()" style="display:none;">Labour</button>
             <button id="settingsNavBtn" type="button" onclick="showSettingsPanel()" style="display:none;">Settings</button>
         <button type="button" id="formNavBtn" style="display:none;" onclick="showPackingForm()">Packing</button>
         <button type="button" class="logout-btn" onclick="handleLogout()">Logout</button>
@@ -961,6 +1036,131 @@
                 style="flex:1;padding:10px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Save Weight Rules</button>
         </div>
     </div>
+
+    <!-- Freight Rates: packing.freight_rates (sql/PACKING_FREIGHT_RATES_MIGRATION.sql),
+         used by the Freight tab. Saved only by save_freight_rates (Admin), every
+         change logged in freight_rate_log. -->
+    <div class="card" id="fr-rates-card">
+        <div class="card-title">Settings · Freight Rates (TEMPU PAYMENT report)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            Tempo rate per <b>Dispatch To + Item Type</b>. <b>Per Pack</b> = rate × packs (Sr. rows).
+            <b>Per Round</b> = rate once for one vehicle, one date and one Dispatch To (e.g. ROLL 900 per round).
+            <b>Report Item</b> / <b>Delivery Address</b> = how the row prints: rows with the same pair are added up
+            (BORA + BOX print as BORE; BAPOLI and TRANSPORT print in the PANIPAT row).
+            A Dispatch To + Item Type not listed here is not paid. One current rate: a change applies to every date.
+        </p>
+        <div id="fr-rates-banner"></div>
+        <div id="fr-rates-list" style="overflow-x:auto;"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn ghost" onclick="frAddRateRow()">＋ Add Rate</button>
+            <button type="button" class="fr-btn" id="fr-rates-save-btn" onclick="frSaveRates()">Save Freight Rates</button>
+        </div>
+        <details class="fr-log" ontoggle="if(this.open) frLoadLog()">
+            <summary>Change log (who changed which rate, when)</summary>
+            <div id="fr-log-list"><p style="color:var(--text-muted);font-size:12px;">Loading...</p></div>
+        </details>
+    </div>
+
+    <!-- Freight Vehicles: packing.freight_vehicles — the vehicles the TEMPU
+         PAYMENT report is made for, in report order, picked from the Vehicles
+         list (vehicle no + driver name). Saved by save_freight_vehicles (Admin),
+         logged in freight_vehicle_log. -->
+    <div class="card" id="fr-veh-card">
+        <div class="card-title">Settings · Freight Vehicles (TEMPU PAYMENT report)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            The report has one block per vehicle listed here, in this order. A slip belongs to a vehicle when its Tempo No
+            matches the Vehicle No (spaces, dashes and words around it like SELF / BY HAND are ignored).
+            Packs of every other vehicle go into the <b>EXTRAS</b> line (quantity only, not paid).
+        </p>
+        <div id="fr-veh-banner"></div>
+        <div id="fr-veh-list" style="overflow-x:auto;"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+        <div class="fr-actions">
+            <select id="fr-veh-pick" style="flex:2;min-width:200px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;"></select>
+            <button type="button" class="fr-btn ghost" onclick="frAddVehicle()">＋ Add Vehicle</button>
+            <button type="button" class="fr-btn" id="fr-veh-save-btn" onclick="frSaveVehicles()">Save Freight Vehicles</button>
+        </div>
+        <details class="fr-log" ontoggle="if(this.open) frLoadVehLog()">
+            <summary>Change log (who added / removed / moved a vehicle, when)</summary>
+            <div id="fr-veh-log-list"><p style="color:var(--text-muted);font-size:12px;">Loading...</p></div>
+        </details>
+    </div>
+
+    <!-- Labour Rates & Columns: packing.labour_activities (sql/PACKING_LABOUR_MIGRATION.sql),
+         the columns of the Labour tab's two sheets. Saved by save_labour_activities (Admin),
+         every change in labour_activity_log. -->
+    <div class="card" id="lb-act-card">
+        <div class="card-title">Settings · Labour Rates &amp; Columns (Loading Contractor)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            Each row is one column of a Labour sheet. <b>From slips</b> = packs of the slips whose Loading Contractor is that
+            contractor, by slip date (item types in "Not counted" are left out). <b>Typed</b> = entered in the Labour report.
+            Amount = quantity × rate. A column is never deleted (old entries keep their meaning): untick Active to hide it.
+        </p>
+        <div id="lb-act-banner"></div>
+        <div id="lb-act-list" style="overflow-x:auto;"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn ghost" onclick="lbAddActivity()">＋ Add Column</button>
+            <button type="button" class="fr-btn" id="lb-act-save-btn" onclick="lbSaveActivities()">Save Labour Columns</button>
+        </div>
+        <details class="fr-log" ontoggle="if(this.open) lbLoadActLog()">
+            <summary>Change log (who changed which rate / column, when)</summary>
+            <div id="lb-act-log-list"><p style="color:var(--text-muted);font-size:12px;">Loading...</p></div>
+        </details>
+    </div>
+</div>
+
+<!-- Labour Panel (Admin / MD / Packing Incharge) — Loading Contractor labour payment:
+     DISPATCH LOADING LABOUR (all contractors) and <CONTRACTOR> LABOUR (shifting).
+     "From slips" columns are worked out from the packing slips; "Typed" columns are
+     entered right in the sheet and saved by save_labour_entries (logged). -->
+<div class="container" id="labour-panel">
+    <div class="card">
+        <div class="card-title">Loading Contractor · Labour Payment</div>
+        <div class="fr-filters">
+            <div class="form-group"><label>From</label><input type="date" id="lb-from"></div>
+            <div class="form-group"><label>To</label><input type="date" id="lb-to"></div>
+            <div class="form-group fr-grow"><label>Sheet</label>
+                <select id="lb-sheet" onchange="lbSheetChanged()">
+                    <option value="DISPATCH">Dispatch Loading Labour (all contractors)</option>
+                    <option value="SHIFTING">Shifting Labour (one contractor)</option>
+                </select>
+            </div>
+            <div class="form-group" id="lb-con-wrap" style="display:none;"><label>Contractor</label>
+                <select id="lb-con" onchange="lbConChanged()"></select>
+            </div>
+        </div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn" id="lb-run-btn" onclick="lbRun()">Generate Report</button>
+            <button type="button" class="fr-btn" id="lb-save-btn" onclick="lbSaveEntries()" style="background:#059669;" disabled>Save typed quantities</button>
+            <button type="button" class="fr-btn ghost" onclick="lbPrint()">Print / PDF</button>
+            <button type="button" class="fr-btn ghost" onclick="lbExportCsv()">CSV</button>
+        </div>
+        <div id="lb-banner"></div>
+    </div>
+    <div id="lb-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and the sheet, then press Generate Report.</p></div>
+</div>
+
+<!-- Freight Panel (Admin / MD / Packing Incharge) — Vehicle Freight report:
+     slips of a date range, vehicle-wise (Tempo No matched with the Vehicles
+     list), packs × Settings › Freight Rates. Read only; computed in the page. -->
+<div class="container" id="freight-panel">
+    <div class="card">
+        <div class="card-title">Vehicle Freight · TEMPU PAYMENT</div>
+        <div class="fr-filters">
+            <div class="form-group"><label>From</label><input type="date" id="fr-from"></div>
+            <div class="form-group"><label>To</label><input type="date" id="fr-to"></div>
+            <div class="form-group"><label>Packing Type</label>
+                <select id="fr-ptype"><option value="">All</option><option value="Billed">Billed</option><option value="Non-Bill">Non-Bill</option></select>
+            </div>
+        </div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn" id="fr-run-btn" onclick="frRun()">Generate Report</button>
+            <button type="button" class="fr-btn ghost" onclick="frPrint()">Print / PDF</button>
+            <button type="button" class="fr-btn ghost" onclick="frExportCsv('sheet')">CSV (report)</button>
+            <button type="button" class="fr-btn ghost" onclick="frExportCsv('detail')">CSV (slip-wise)</button>
+        </div>
+        <div id="fr-banner"></div>
+    </div>
+    <div id="fr-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and press Generate Report.</p></div>
 </div>
 
 <!-- Party Master Panel — packing.party_master (sql/PACKING_PARTY_MASTER_MIGRATION.sql
@@ -9456,7 +9656,12 @@ async function saveRates(key, btnEl) {
                 });
                 ['taxable', 'gstAmt', 'other', 'total'].forEach(function(f) { billing[f] = slipRound2(billing[f]); });
             } else {
-                setOrderSavingStage('error', 'Rates saved, but GST / Other Charges failed: ' + chEx.message);
+                // The OLD server function still refuses a minus Other Charges
+                // amount: say which SQL file updates it.
+                var oldSrv = /Rate and Other must be 0 or more/i.test(chEx.message) &&
+                    lines.some(function(l) { return Number(l.other) < 0; });
+                setOrderSavingStage('error', 'Rates saved, but GST / Other Charges failed: ' + chEx.message +
+                    (oldSrv ? ' — the server is not updated for a minus Other Charges amount yet: run sql/FIX_SLIP_CHARGES_NEGATIVE_OTHER.sql in the Supabase SQL Editor.' : ''));
                 setTimeout(hideOrderSavingOverlay, 3500);
                 fetchVerificationSlips();
                 return;
@@ -9797,6 +10002,8 @@ function showSettingsPanel() {
     stopAutoSaveDraft();
     document.getElementById('wr-list').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Loading...</p>';
     loadWeightRules().then(function(ok) { renderWeightRules(ok); });
+    frLoadRatesEditor();   // Settings › Freight Rates
+    lbLoadActEditor();     // Settings › Labour Rates & Columns
 }
 
 function renderWeightRules(loadedOk) {
@@ -11940,10 +12147,1175 @@ async function skDeleteCount(id) {
 }
 
 
+// ══════════════════════════════════════════════════════════════════════
+// VEHICLE FREIGHT — Freight tab (TEMPU PAYMENT report) + Settings ›
+// Freight Rates / Freight Vehicles. SQL: PACKING_FREIGHT_RATES_MIGRATION.sql
+//
+// The report has the layout of the paper "TEMPU PAYMENT <from> TO <to>":
+// one block per Freight Vehicle (Settings order) with VEHICLE NO, DRIVER NAME,
+// QUANTITY, ITEM TYPE, DELIVERY ADDRES, RATE, AMOUNT and NET PAID AMOUNT,
+// then EXTRAS and TOTAL.
+//   packs  = Sr. rows of an item type on a slip (packing_slip_items rows)
+//   Every slip line is paid by its rate row (Dispatch To + Item Type):
+//     PACK  : amount = rate × packs
+//     ROUND : rate ONCE per round = one vehicle, one slip date, one Dispatch To,
+//             one item type (ROLL 900); the row reads "2 R@ROLL", quantity = packs
+//   The rate row's report_item / report_place say which report row it adds to
+//   (BORA + BOX → BORE; BAPOLI + TRANSPORT → the PANIPAT row, all 31).
+// Rows of a vehicle block: every PACK row (rate > 0) of a report item that
+// has packs in the range on these vehicles, even at 0 (as on the sheet: BORE
+// KURAR / PANIPAT / SUTANA); any other row only when it has packs (a ROUND
+// row, a 0-rate row, BALE when used).
+// EXTRAS = packs of the same report items NOT paid in a vehicle block (other
+// vehicles, GADI LOAD / SELF without a rate ...): quantity only.
+// TOTAL quantity = every vehicle row + EXTRAS; TOTAL amount = all NET PAID.
+// Anything left (e.g. PVC BAG, LOOSE PCS: no rate row anywhere) is listed
+// under the report, so no pack disappears unnoticed. The slip-wise detail
+// under the sheet shows where every rupee comes from.
+// A vehicle = the slip's Tempo No matched with a Freight Vehicle, ignoring
+// spaces / dashes / case and words around it ("SELF HR67D5034" → HR67D5034).
+// Every slip saved in the range counts (an edited slip is replaced by its new
+// version, never kept twice). Nothing here writes to a slip.
+// Before the migration: FR_DEFAULT_RATES / FR_DEFAULT_VEHICLES (the same
+// seeds), read only, with a banner.
+// ══════════════════════════════════════════════════════════════════════
+var FR_DEFAULT_RATES = [   // keep in step with the seed in the migration
+    ['GADI LOAD','BORA','PACK',0,'BORE','GADI LOAD'], ['GADI LOAD','BALE','PACK',0,'BALE','GADI LOAD'],
+    ['KURAR','BORA','PACK',20,'BORE','KURAR'], ['KURAR','BOX','PACK',20,'BORE','KURAR'],
+    ['PANIPAT','BORA','PACK',31,'BORE','PANIPAT'], ['PANIPAT','ROLL','ROUND',900,'ROLL','PANIPAT'],
+    ['PANIPAT','BOX','PACK',31,'BORE','PANIPAT'], ['PANIPAT','BALE','PACK',60,'BALE','PANIPAT'],
+    ['SUTANA','BORA','PACK',43,'BORE','SUTANA'], ['SUTANA','BOX','PACK',43,'BORE','SUTANA'],
+    ['BAPOLI','BORA','PACK',31,'BORE','PANIPAT'], ['BAPOLI','ROLL','ROUND',900,'ROLL','PANIPAT'],
+    ['BAPOLI','BOX','PACK',31,'BORE','PANIPAT'], ['BAPOLI','BALE','PACK',60,'BALE','PANIPAT'],
+    ['TRANSPORT','BORA','PACK',31,'BORE','PANIPAT'], ['TRANSPORT','ROLL','ROUND',900,'ROLL','PANIPAT'],
+    ['TRANSPORT','BOX','PACK',31,'BORE','PANIPAT'], ['TRANSPORT','BALE','PACK',60,'BALE','PANIPAT']
+].map(function(r) { return { dispatch_to: r[0], item_type: r[1], basis: r[2], rate: r[3], report_item: r[4], report_place: r[5], updated_by: '', updated_at: null }; });
+var FR_DEFAULT_VEHICLES = [   // the TEMPU PAYMENT 01-10-2026 sheet, same as the migration seed
+    ['JH19D2847','RAMJAAN'], ['HR69E3085','SHUBHAM'], ['HR67C8347','SHUBHAM'], ['HR67B2784','SHUBHAM'],
+    ['HR67E9014','MAINPAL'], ['HR67E3157','MAINPAL'], ['HR67D4660','VINOD'], ['UP43BT8691','MUKESH'],
+    ['HR67F1532','RINKU'], ['HR46F8808','BILLU'], ['HR67E0839','RAJENDER']
+].map(function(v, i) { return { tempo_no: v[0], driver_name: v[1], sort_order: i + 1, updated_by: '', updated_at: null }; });
+var _fr = { rates: null, ratesFromDb: false, vehicles: null, vehFromDb: false, report: null, editRows: null, editVeh: null, allVehicles: null };
+
+function frName(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toUpperCase(); }
+function frVehKey(v) { return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function frMoney(n) { return formatInr(n); }
+function frNum(n) { var x = Math.round((Number(n) || 0) * 100) / 100; return x.toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+function frDateInput(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function frDmy(iso) { var p = String(iso || '').slice(0, 10).split('-'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : String(iso || ''); }
+// A rate row's report item / place (empty = the item type / dispatch to itself)
+function frRepItem(r) { return frName(r.report_item) || frName(r.item_type); }
+function frRepPlace(r) { return frName(r.report_place) || frName(r.dispatch_to); }
+
+// Rates + Freight Vehicles: DB, else the built-in seeds.
+async function frLoadRates() {
+    try {
+        var { data, error } = await supabaseClient.from('freight_rates')
+            .select('dispatch_to, item_type, basis, rate, report_item, report_place, updated_by, updated_at').order('dispatch_to').order('item_type');
+        if (error) throw error;
+        _fr.rates = (data || []).map(function(r) { return Object.assign({}, r, { rate: Number(r.rate) || 0 }); });
+        _fr.ratesFromDb = true;
+    } catch (e) {
+        console.warn('[Freight] freight_rates not readable (run PACKING_FREIGHT_RATES_MIGRATION.sql):', e.message || e);
+        _fr.rates = FR_DEFAULT_RATES.map(function(r) { return Object.assign({}, r); });
+        _fr.ratesFromDb = false;
+    }
+    return _fr.ratesFromDb;
+}
+async function frLoadVehicles() {
+    try {
+        var { data, error } = await supabaseClient.from('freight_vehicles')
+            .select('tempo_no, driver_name, sort_order, updated_by, updated_at').order('sort_order').order('tempo_no');
+        if (error) throw error;
+        _fr.vehicles = data || [];
+        _fr.vehFromDb = true;
+    } catch (e) {
+        console.warn('[Freight] freight_vehicles not readable (run PACKING_FREIGHT_RATES_MIGRATION.sql):', e.message || e);
+        _fr.vehicles = FR_DEFAULT_VEHICLES.map(function(v) { return Object.assign({}, v); });
+        _fr.vehFromDb = false;
+    }
+    return _fr.vehFromDb;
+}
+
+function frSetupBanner() {
+    return (_fr.ratesFromDb && _fr.vehFromDb) ? '' :
+        '<div class="fr-note warn">Freight rates / vehicles are not set up on the server yet (run <b>PACKING_FREIGHT_RATES_MIGRATION.sql</b>). ' +
+        'The standard sheet built into the page is used, and Settings cannot change it until then.</div>';
+}
+
+async function showFreightPanel() {
+    var r = session ? session.role : '';
+    if (['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(r) < 0) { alert('Freight: Admin / MD / Packing Incharge only'); return; }
+    hideAllPanels();
+    document.getElementById('freight-panel').style.display = 'block';
+    updateNavButtons('freight-panel');
+    if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
+    stopAutoSaveDraft();
+    var f = document.getElementById('fr-from'), t = document.getElementById('fr-to');
+    if (!f.value) { var now = new Date(); f.value = frDateInput(new Date(now.getFullYear(), now.getMonth(), 1)); }
+    if (!t.value) t.value = frDateInput(new Date());
+}
+
+// Tempo No → the Freight Vehicle it belongs to (longest number found wins)
+function frMatchVehicle(tempo, vehicles) {
+    var k = frVehKey(tempo);
+    if (!k) return null;
+    var best = null;
+    vehicles.forEach(function(v) {
+        if (!v._k) return;
+        if (v._k === k) { best = v; return; }
+        if (v._k.length >= 6 && k.indexOf(v._k) >= 0 && (!best || (best._k !== k && v._k.length > best._k.length))) best = v;
+    });
+    return best;
+}
+
+async function frRun() {
+    var from = document.getElementById('fr-from').value, to = document.getElementById('fr-to').value;
+    var ptype = document.getElementById('fr-ptype').value;
+    var out = document.getElementById('fr-out'), btn = document.getElementById('fr-run-btn');
+    if (!from || !to) { alert('Choose both dates.'); return; }
+    if (from > to) { var tmp = from; from = to; to = tmp; document.getElementById('fr-from').value = from; document.getElementById('fr-to').value = to; }
+    btn.disabled = true; btn.textContent = 'Generating...';
+    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading slips...</p>';
+    try {
+        await Promise.all([frLoadRates(), frLoadVehicles()]);
+        var slips = [];
+        for (var off = 0; ; off += 1000) {
+            var q = supabaseClient.from('packing_slips')
+                .select('id, slip_no, packing_type, slip_date, party_name, dispatch_to, tempo_no, driver_name')
+                .gte('slip_date', from).lte('slip_date', to).order('slip_date').order('slip_no').range(off, off + 999);
+            if (ptype) q = q.eq('packing_type', ptype);
+            var { data, error } = await q;
+            if (error) throw error;
+            slips = slips.concat(data || []);
+            if (!data || data.length < 1000) break;
+        }
+        var items = slips.length ? await pkSelectIn('packing_slip_items', 'slip_id, item_type', 'slip_id', slips.map(function(s) { return s.id; })) : [];
+        _fr.report = frCompute(slips, items, _fr.vehicles, _fr.rates);
+        _fr.report.meta = { from: from, to: to, ptype: ptype, at: new Date(), by: (session && (session.fullName || session.username)) || '',
+                            fromDb: _fr.ratesFromDb && _fr.vehFromDb, rates: _fr.rates.slice() };
+        frRender();
+    } catch (e) {
+        console.error('[Freight] report failed:', e);
+        out.innerHTML = '<div class="fr-note bad">The report could not be made: ' + escapeHtmlJs(e.message || String(e)) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = 'Generate Report';
+}
+
+// Pure: slips + item rows + Freight Vehicles + rates → the sheet and the detail
+function frCompute(slips, items, freightVehicles, rates) {
+    var vehicles = (freightVehicles || []).map(function(v) { return Object.assign({}, v, { _k: frVehKey(v.tempo_no) }); });
+    var rateMap = {}, itemRep = {}, repOrder = [];
+    (rates || []).forEach(function(r) {
+        rateMap[frName(r.dispatch_to) + '|' + frName(r.item_type)] = r;
+        var ri = frRepItem(r);
+        if (!itemRep[frName(r.item_type)]) itemRep[frName(r.item_type)] = ri;   // item type → its report item (for EXTRAS)
+        if (repOrder.indexOf(ri) < 0) repOrder.push(ri);
+    });
+    var packs = {};   // slip_id → { ITEM TYPE: count }
+    (items || []).forEach(function(it) {
+        var t = frName(it.item_type) || '(BLANK)';
+        var m = packs[it.slip_id] || (packs[it.slip_id] = {});
+        m[t] = (m[t] || 0) + 1;
+    });
+    var blocks = vehicles.map(function(v) { return { vehicle: v, rows: {}, lines: [], amount: 0, packs: 0 }; });
+    var blockOf = {}; blocks.forEach(function(b) { blockOf[b.vehicle._k] = b; });
+    var lines = [], extras = {}, leftOut = {}, rounds = {}, usedItems = {};
+    slips.forEach(function(s) {
+        var v = frMatchVehicle(s.tempo_no, vehicles);
+        var b = v ? blockOf[v._k] : null;
+        var dt = frName(s.dispatch_to), date = String(s.slip_date || '').slice(0, 10);
+        Object.keys(packs[s.id] || {}).sort().forEach(function(type) {
+            var n = packs[s.id][type];
+            var r = rateMap[dt + '|' + type];
+            if (b && r) {
+                var ri = frRepItem(r), rp = frRepPlace(r);
+                var line = { vehNo: v.tempo_no, driver: v.driver_name || '', tempo: s.tempo_no || '', slipId: s.id, slipNo: s.slip_no,
+                             ptype: s.packing_type, date: date, party: s.party_name || '', dispatchTo: dt, itemType: type,
+                             repItem: ri, repPlace: rp, basis: r.basis, rate: Number(r.rate) || 0, packs: n, amount: 0, note: '' };
+                if (r.basis === 'ROUND') {
+                    var rk = v._k + '|' + date + '|' + dt + '|' + type;
+                    if (rounds[rk]) line.note = 'Same round as ' + rounds[rk].slipNo;
+                    else { rounds[rk] = line; line.amount = line.rate; line.note = 'Round'; }
+                } else {
+                    line.amount = Math.round(line.rate * n * 100) / 100;
+                }
+                var key = ri + '|' + rp + '|' + r.basis;
+                var row = b.rows[key] || (b.rows[key] = { repItem: ri, repPlace: rp, basis: r.basis, rates: {}, packs: 0, rounds: 0, amount: 0 });
+                row.packs += n; row.amount += line.amount; row.rates[line.rate] = true; if (line.note === 'Round') row.rounds++;
+                b.lines.push(line); b.amount += line.amount; b.packs += n;
+                lines.push(line);
+                usedItems[ri] = true;
+                return;
+            }
+            var ei = itemRep[type];
+            if (ei) {   // a paid kind of pack, but not paid here: EXTRAS
+                var e = extras[ei] || (extras[ei] = { packs: 0, types: {}, why: {} });
+                e.packs += n; e.types[type] = (e.types[type] || 0) + n;
+                var why = !b ? 'other vehicles' : 'no rate for ' + (dt || '(blank)') + ' · ' + type;
+                e.why[why] = (e.why[why] || 0) + n;
+            } else {
+                var lk = (dt || '(BLANK)') + ' · ' + type;
+                var lo = leftOut[lk] || (leftOut[lk] = { packs: 0, slips: 0 });
+                lo.packs += n; lo.slips++;
+            }
+        });
+    });
+    // The standard rows every block shows (even at 0): PACK rows with a rate
+    // above 0 of a report item used in this range. Keyed like block rows.
+    var std = {};
+    (rates || []).forEach(function(r) {
+        var ri = frRepItem(r);
+        if (r.basis !== 'PACK' || !(Number(r.rate) > 0) || !usedItems[ri]) return;
+        var k = ri + '|' + frRepPlace(r) + '|PACK';
+        if (!std[k]) std[k] = { repItem: ri, repPlace: frRepPlace(r), basis: 'PACK', rate: Number(r.rate) || 0 };
+    });
+    var sortRows = function(a, b) {
+        return (repOrder.indexOf(a.repItem) - repOrder.indexOf(b.repItem)) || ((a.basis === 'ROUND') - (b.basis === 'ROUND')) ||
+            (a.rateSort - b.rateSort) || a.repPlace.localeCompare(b.repPlace);
+    };
+    blocks.forEach(function(b) {
+        Object.keys(std).forEach(function(k) {
+            if (!b.rows[k]) { var s = std[k]; b.rows[k] = { repItem: s.repItem, repPlace: s.repPlace, basis: 'PACK', rates: {}, packs: 0, rounds: 0, amount: 0, stdRate: s.rate }; }
+        });
+        b.rowList = Object.keys(b.rows).map(function(k) {
+            var row = b.rows[k], rs = Object.keys(row.rates).map(Number);
+            row.rate = rs.length === 1 ? rs[0] : (rs.length ? null : (row.stdRate !== undefined ? row.stdRate : (std[k] ? std[k].rate : 0)));
+            row.mixedRates = rs.length > 1 ? rs.sort(function(x, y) { return x - y; }) : null;
+            row.rateSort = row.rate === null ? row.mixedRates[0] : row.rate;
+            row.amount = Math.round(row.amount * 100) / 100;
+            return row;
+        }).sort(sortRows);
+        b.amount = Math.round(b.amount * 100) / 100;
+    });
+    var extraList = Object.keys(extras).sort(function(a, b) { return repOrder.indexOf(a) - repOrder.indexOf(b); }).map(function(ri) {
+        var e = extras[ri];
+        var types = Object.keys(e.types).sort(function(a, b) { return e.types[b] - e.types[a]; });
+        return { repItem: ri, packs: e.packs, label: [ri].concat(types.slice(1)).join('+'), types: e.types, why: e.why };
+    });
+    var qty = blocks.reduce(function(a, b) { return a + b.packs; }, 0) + extraList.reduce(function(a, e) { return a + e.packs; }, 0);
+    var amount = Math.round(blocks.reduce(function(a, b) { return a + b.amount; }, 0) * 100) / 100;
+    return { blocks: blocks, lines: lines, extras: extraList, leftOut: leftOut, slipCount: slips.length,
+             total: { qty: qty, amount: amount, label: repOrder[0] || '' } };
+}
+
+// The sheet itself (screen and print use the same HTML)
+function frSheetHtml(rep) {
+    var m = rep.meta;
+    var h = '<table class="tp-sheet"><colgroup><col style="width:15%"><col style="width:12%"><col style="width:10%"><col style="width:12%">' +
+        '<col style="width:13%"><col style="width:8%"><col style="width:11%"><col style="width:11%"></colgroup>' +
+        '<tr class="tp-title"><td colspan="8">TEMPU PAYMENT ' + escapeHtmlJs(frDmy(m.from)) + ' TO ' + escapeHtmlJs(frDmy(m.to)) +
+            (m.ptype ? ' (' + escapeHtmlJs(m.ptype.toUpperCase()) + ')' : '') + '</td></tr>' +
+        '<tr class="tp-head"><th></th><th>DRIVER<br>NAME</th><th>QUANTITY</th><th>ITEM TYPE</th><th>DELIVERY<br>ADDRES</th><th>RATE</th><th>AMOUNT</th><th>NET PAID<br>AMOUNT</th></tr>';
+    rep.blocks.forEach(function(b) {
+        var rows = b.rowList, n = Math.max(rows.length, 1);
+        h += '<tr class="tp-gap"><td colspan="8"></td></tr>';
+        if (!rows.length) rows = [{ repItem: '-', repPlace: '-', basis: 'PACK', rate: 0, packs: 0, rounds: 0, amount: 0 }];
+        rows.forEach(function(r, i) {
+            var item = r.basis === 'ROUND' ? r.rounds + ' R@' + r.repItem : r.repItem;
+            var rate = r.rate === null ? r.mixedRates.map(frNum).join(' / ') : frNum(r.rate);
+            h += '<tr><td class="tp-veh">' + escapeHtmlJs(b.vehicle.tempo_no) + '</td>' +
+                (i === 0 ? '<td class="tp-drv" rowspan="' + n + '">' + escapeHtmlJs(b.vehicle.driver_name || '') + '</td>' : '') +
+                '<td class="tp-qty">' + frNum(r.packs) + '</td><td>' + escapeHtmlJs(item) + '</td><td>' + escapeHtmlJs(r.repPlace) + '</td>' +
+                '<td class="tp-rate">' + rate + '</td><td>' + frNum(r.amount) + '</td>' +
+                (i === 0 ? '<td class="tp-net" rowspan="' + n + '">' + frNum(b.amount) + '</td>' : '') + '</tr>';
+        });
+    });
+    h += '<tr class="tp-gap"><td colspan="8"></td></tr>';
+    rep.extras.forEach(function(e) {
+        h += '<tr class="tp-extra"><td colspan="2">EXTRAS</td><td>' + frNum(e.packs) + '</td><td colspan="4">' + escapeHtmlJs(e.label) + '</td><td></td></tr>';
+    });
+    h += '<tr class="tp-gap"><td colspan="8"></td></tr>' +
+        '<tr class="tp-total"><td colspan="2">TOTAL</td><td class="tp-big">' + frNum(rep.total.qty) + '</td><td colspan="4">' + escapeHtmlJs(rep.total.label) + '</td>' +
+        '<td class="tp-big">' + frNum(rep.total.amount) + '</td></tr></table>';
+    return h;
+}
+
+function frRender() {
+    var out = document.getElementById('fr-out');
+    document.getElementById('fr-banner').innerHTML = frSetupBanner();
+    var rep = _fr.report;
+    if (!rep) return;
+    var m = rep.meta;
+    var html = '<div class="tp-wrap" id="fr-sheet">' + frSheetHtml(rep) + '</div>';
+    html += '<div class="fr-note info">' + rep.slipCount + ' slip(s) read · ' + (m.ptype ? escapeHtmlJs(m.ptype) : 'Billed + Non-Bill') +
+        ' · made ' + escapeHtmlJs(m.at.toLocaleString('en-IN')) + (m.by ? ' by ' + escapeHtmlJs(m.by) : '') +
+        (m.fromDb ? '' : ' · built-in rates / vehicles') + '</div>';
+    if (rep.extras.length) {
+        html += '<div class="fr-note info"><b>EXTRAS (not paid):</b> ' + rep.extras.map(function(e) {
+            return escapeHtmlJs(e.label) + ' ' + frNum(e.packs) + ' = ' + Object.keys(e.why).map(function(w) { return frNum(e.why[w]) + ' ' + escapeHtmlJs(w); }).join(', ');
+        }).join('; ') + '</div>';
+    }
+    var lk = Object.keys(rep.leftOut);
+    if (lk.length) {
+        html += '<div class="fr-note warn"><b>Not in the report (no freight rate for this item type):</b> ' + lk.sort().map(function(k) {
+            var e = rep.leftOut[k]; return escapeHtmlJs(k) + ' — ' + frNum(e.packs) + ' pack(s) in ' + e.slips + ' slip(s)';
+        }).join('; ') + '.</div>';
+    }
+    var mixed = [];
+    rep.blocks.forEach(function(b) { b.rowList.forEach(function(r) { if (r.mixedRates) mixed.push(b.vehicle.tempo_no + ' ' + r.repItem + ' ' + r.repPlace); }); });
+    if (mixed.length) {
+        html += '<div class="fr-note warn"><b>Rows with more than one rate</b> (their rate rows print in one row but have different rates; the amount is still exact): ' +
+            escapeHtmlJs(mixed.join('; ')) + '. Check Report Item / Delivery Address in Settings › Freight Rates.</div>';
+    }
+    html += '<details class="fr-note info"><summary style="cursor:pointer;font-weight:700;">Slip-wise detail (' + rep.lines.length + ' paid lines)</summary>' +
+        '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>Vehicle</th><th>Date</th><th>Slip No</th><th>Tempo No (slip)</th><th>Party</th>' +
+        '<th>Dispatch To</th><th>Item</th><th>Report row</th><th class="num">Packs</th><th class="num">Rate</th><th class="num">Amount</th><th>Note</th></tr></thead><tbody>' +
+        rep.lines.map(function(l) {
+            return '<tr><td>' + escapeHtmlJs(l.vehNo) + '</td><td>' + escapeHtmlJs(formatSlipDate(l.date)) + '</td><td>' + escapeHtmlJs(l.slipNo) +
+                ' <span class="fr-sub">' + escapeHtmlJs(l.ptype || '') + '</span></td><td>' + escapeHtmlJs(l.tempo) + '</td><td>' + escapeHtmlJs(l.party) + '</td>' +
+                '<td>' + escapeHtmlJs(l.dispatchTo) + '</td><td>' + escapeHtmlJs(l.itemType) + '</td><td>' + escapeHtmlJs(l.repItem + ' @ ' + l.repPlace) + '</td>' +
+                '<td class="num">' + l.packs + '</td><td class="num">' + frNum(l.rate) + (l.basis === 'ROUND' ? '/round' : '') + '</td>' +
+                '<td class="num">' + frNum(l.amount) + '</td><td class="fr-sub">' + escapeHtmlJs(l.note) + '</td></tr>';
+        }).join('') + '</tbody></table></div></details>';
+    html += '<details class="fr-note info"><summary style="cursor:pointer;font-weight:700;">Rates used (' + m.rates.length + ')</summary>' + frRatesTableHtml(m.rates) + '</details>';
+    out.innerHTML = html;
+}
+
+function frRatesTableHtml(rates) {
+    return '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>Dispatch To</th><th>Item Type</th><th>Basis</th><th class="num">Rate</th><th>Prints as</th><th>Last changed</th></tr></thead><tbody>' +
+        rates.map(function(r) {
+            return '<tr><td>' + escapeHtmlJs(r.dispatch_to) + '</td><td>' + escapeHtmlJs(r.item_type) + '</td><td>' + (r.basis === 'ROUND' ? 'Per Round' : 'Per Pack') + '</td>' +
+                '<td class="num">' + frNum(r.rate) + '</td><td>' + escapeHtmlJs(frRepItem(r) + ' @ ' + frRepPlace(r)) + '</td>' +
+                '<td class="fr-sub">' + escapeHtmlJs((r.updated_by || '') + (r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString('en-IN') : '')) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+}
+
+function frCsvCell(v) { var s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+function frExportCsv(kind) {
+    var rep = _fr.report;
+    if (!rep) { alert('Generate the report first.'); return; }
+    var rows;
+    if (kind === 'detail') {
+        rows = [['Vehicle', 'Driver', 'Date', 'Slip No', 'Packing Type', 'Tempo No (slip)', 'Party', 'Dispatch To', 'Item Type', 'Report Item', 'Delivery Address', 'Basis', 'Rate', 'Packs', 'Amount', 'Note']]
+            .concat(rep.lines.map(function(l) {
+                return [l.vehNo, l.driver, l.date, l.slipNo, l.ptype, l.tempo, l.party, l.dispatchTo, l.itemType, l.repItem, l.repPlace,
+                        l.basis === 'ROUND' ? 'PER ROUND' : 'PER PACK', l.rate, l.packs, l.amount, l.note];
+            }));
+    } else {
+        rows = [['TEMPU PAYMENT ' + frDmy(rep.meta.from) + ' TO ' + frDmy(rep.meta.to)],
+                ['Vehicle No', 'Driver Name', 'Quantity', 'Item Type', 'Delivery Addres', 'Rate', 'Amount', 'Net Paid Amount']];
+        rep.blocks.forEach(function(b) {
+            b.rowList.forEach(function(r, i) {
+                rows.push([b.vehicle.tempo_no, b.vehicle.driver_name || '', r.packs, r.basis === 'ROUND' ? r.rounds + ' R@' + r.repItem : r.repItem,
+                           r.repPlace, r.rate === null ? r.mixedRates.join(' / ') : r.rate, r.amount, i === 0 ? b.amount : '']);
+            });
+        });
+        rep.extras.forEach(function(e) { rows.push(['EXTRAS', '', e.packs, e.label, '', '', '', '']); });
+        rows.push(['TOTAL', '', rep.total.qty, rep.total.label, '', '', '', rep.total.amount]);
+    }
+    var csv = '﻿' + rows.map(function(r) { return r.map(frCsvCell).join(','); }).join('\r\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'Tempu_Payment_' + rep.meta.from + '_to_' + rep.meta.to + (kind === 'detail' ? '_slip_wise' : '') + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+// Print / PDF: the sheet alone, fitted onto ONE A4 page (the browser's Save
+// as PDF). The sheet is laid out at the page's printable width, measured,
+// and shrunk with `zoom` (not transform: zoom also shrinks the space it takes,
+// so no blank second page) until its height fits. A short sheet is never
+// enlarged. The fit runs before printing and again on beforeprint, so a
+// different paper / margin choice in the dialog still fits.
+var FR_PRINT_W_PX = Math.floor((210 - 2 * 8) / 25.4 * 96);   // A4 portrait minus 8 mm margins, at 96 px/inch
+var FR_PRINT_H_PX = Math.floor((297 - 2 * 8) / 25.4 * 96) - 4;
+// One A4 portrait page, content shrunk to fit (shared by Freight and Labour).
+// natural = lay the content out at its own width (a wide sheet) and shrink by
+// width too; otherwise it is laid out at the page width.
+function pkPrintFitted(title, bodyHtml, extraCss, natural) {
+    var w = window.open('', '_blank');
+    if (!w) { alert('Allow pop-ups to print the report.'); return; }
+    var css = Array.from(document.querySelectorAll('style')).map(function(s) { return s.textContent; }).join('\n');
+    var fitJs =
+        'function pkFit(){var b=document.getElementById("pk-fit");if(!b)return;b.style.zoom=1;' +
+        'var s=Math.min(1,' + FR_PRINT_H_PX + '/b.scrollHeight,' + FR_PRINT_W_PX + '/b.scrollWidth);' +
+        'b.style.zoom=s.toFixed(4);}' +
+        'window.addEventListener("beforeprint",pkFit);';
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtmlJs(title) + '</title><style>' + css +
+        ' html,body{background:#fff;margin:0;padding:0;}' +
+        (natural ? ' #pk-fit{display:inline-block;width:auto;}' : ' #pk-fit{width:' + FR_PRINT_W_PX + 'px;overflow:hidden;}') +
+        (extraCss || '') +
+        ' @page{size:A4 portrait;margin:8mm;} *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}' +
+        ' @media print{html,body{height:auto;overflow:hidden;} #pk-fit{page-break-after:avoid;break-after:avoid;}}</style>' +
+        '<script>' + fitJs + '<\/script></head><body><div id="pk-fit">' + bodyHtml + '</div></body></html>');
+    w.document.close();
+    setTimeout(function() {
+        try { w.pkFit(); } catch (e) {}
+        w.focus(); w.print();
+    }, 400);
+}
+function frPrint() {
+    if (!_fr.report) { alert('Generate the report first.'); return; }
+    pkPrintFitted('TEMPU PAYMENT ' + frDmy(_fr.report.meta.from) + ' TO ' + frDmy(_fr.report.meta.to), frSheetHtml(_fr.report),
+        ' .tp-sheet{min-width:0;width:100%;font-size:12px;} .tp-sheet tr{break-inside:avoid;}', false);
+}
+
+// ── Settings › Freight Rates (Admin) ──
+async function frLoadRatesEditor() {
+    var list = document.getElementById('fr-rates-list');
+    if (!list) return;
+    list.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Loading...</p>';
+    await frLoadRates();
+    document.getElementById('fr-rates-banner').innerHTML = _fr.ratesFromDb ? '' :
+        '<div class="fr-note warn">Run <b>PACKING_FREIGHT_RATES_MIGRATION.sql</b> first; until then the built-in rates are shown read only.</div>';
+    _fr.editRows = _fr.rates.map(function(r) { return Object.assign({}, r, { report_item: frRepItem(r), report_place: frRepPlace(r) }); });
+    frRenderRatesEditor();
+    frLoadVehEditor();
+}
+
+function frOptions(arr, cur) {
+    return '<option value="">—</option>' + pkWithCurrent(arr, cur).map(function(v) {
+        return '<option value="' + escapeHtmlJs(v) + '"' + (frName(v) === frName(cur) ? ' selected' : '') + '>' + escapeHtmlJs(v) + '</option>';
+    }).join('');
+}
+
+function frRenderRatesEditor() {
+    var list = document.getElementById('fr-rates-list');
+    var ro = !_fr.ratesFromDb, dis = ro ? ' disabled' : '';
+    list.innerHTML = '<table class="fr-table"><thead><tr><th>Dispatch To</th><th>Item Type</th><th>Basis</th><th class="num">Rate (₹)</th>' +
+        '<th>Report Item</th><th>Delivery Address (report)</th><th>Last changed</th><th></th></tr></thead><tbody>' +
+        _fr.editRows.map(function(r, i) {
+            return '<tr data-i="' + i + '">' +
+                '<td><select data-f="dispatch_to"' + dis + '>' + frOptions(DISPATCH_TO_OPTIONS, r.dispatch_to) + '</select></td>' +
+                '<td><select data-f="item_type"' + dis + '>' + frOptions(PACK_ITEM_TYPES, r.item_type) + '</select></td>' +
+                '<td><select data-f="basis"' + dis + '><option value="PACK"' + (r.basis !== 'ROUND' ? ' selected' : '') + '>Per Pack</option>' +
+                    '<option value="ROUND"' + (r.basis === 'ROUND' ? ' selected' : '') + '>Per Round</option></select></td>' +
+                '<td><input type="number" data-f="rate" min="0" step="0.01" value="' + escapeHtmlJs(r.rate) + '" style="text-align:right;max-width:100px;"' + dis + '></td>' +
+                '<td><input type="text" data-f="report_item" value="' + escapeHtmlJs(r.report_item || '') + '" placeholder="= Item Type" style="max-width:110px;"' + dis + '></td>' +
+                '<td><select data-f="report_place"' + dis + '>' + frOptions(DISPATCH_TO_OPTIONS, r.report_place) + '</select></td>' +
+                '<td class="fr-sub">' + escapeHtmlJs((r.updated_by || '') + (r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString('en-IN') : '')) + '</td>' +
+                '<td class="x">' + (ro ? '' : '<button type="button" title="Remove" onclick="frRemoveRateRow(' + i + ')">✕</button>') + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    list.querySelectorAll('tr[data-i]').forEach(function(tr) {
+        tr.querySelectorAll('[data-f]').forEach(function(el) {
+            el.addEventListener('change', function() {
+                var r = _fr.editRows[+tr.dataset.i];
+                r[el.dataset.f] = el.value;
+                // A new row prints as itself until told otherwise
+                if (el.dataset.f === 'item_type' && !r.report_item) { r.report_item = el.value; tr.querySelector('[data-f="report_item"]').value = el.value; }
+                if (el.dataset.f === 'dispatch_to' && !r.report_place) { r.report_place = el.value; frRenderRatesEditor(); }
+            });
+        });
+    });
+    var sb = document.getElementById('fr-rates-save-btn');
+    if (sb) sb.disabled = ro;
+}
+
+function frAddRateRow() {
+    if (!_fr.ratesFromDb) { alert('Run PACKING_FREIGHT_RATES_MIGRATION.sql first.'); return; }
+    _fr.editRows.push({ dispatch_to: '', item_type: '', basis: 'PACK', rate: '', report_item: '', report_place: '', updated_by: '', updated_at: null });
+    frRenderRatesEditor();
+}
+function frRemoveRateRow(i) {
+    var r = _fr.editRows[i];
+    if (r && r.dispatch_to && !confirm('Remove the rate ' + r.dispatch_to + ' / ' + r.item_type + '?\n\nThose packs will no longer be paid. (Takes effect on Save.)')) return;
+    _fr.editRows.splice(i, 1);
+    frRenderRatesEditor();
+}
+
+async function frSaveRates() {
+    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var rows = [], seen = {}, bad = [];
+    _fr.editRows.forEach(function(r, i) {
+        var dt = frName(r.dispatch_to), it = frName(r.item_type), rate = String(r.rate).trim();
+        if (!dt && !it && rate === '') return;   // an empty new row is ignored
+        var n = Number(rate);
+        if (!dt || !it) bad.push('Row ' + (i + 1) + ': choose Dispatch To and Item Type');
+        else if (rate === '' || !isFinite(n) || n < 0) bad.push(dt + ' / ' + it + ': rate must be 0 or more');
+        else if (seen[dt + '|' + it]) bad.push(dt + ' / ' + it + ' is listed twice');
+        else {
+            seen[dt + '|' + it] = true;
+            rows.push({ dispatch_to: dt, item_type: it, basis: r.basis === 'ROUND' ? 'ROUND' : 'PACK', rate: n,
+                        report_item: frName(r.report_item) || it, report_place: frName(r.report_place) || dt });
+        }
+    });
+    if (bad.length) { alert('Please correct:\n\n' + bad.join('\n')); return; }
+    var btn = document.getElementById('fr-rates-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_freight_rates', { p_rows: rows });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        showToast('Freight rates saved: ' + data.added + ' added, ' + data.changed + ' changed, ' + data.removed + ' removed');
+        await frLoadRates();
+        _fr.editRows = _fr.rates.map(function(r) { return Object.assign({}, r, { report_item: frRepItem(r), report_place: frRepPlace(r) }); });
+        frRenderRatesEditor();
+        var lg = document.querySelector('#fr-rates-card .fr-log'); if (lg && lg.open) frLoadLog();
+    } catch (e) {
+        alert('Freight rates were not saved:\n\n' + (e.message || e));
+    }
+    btn.disabled = !_fr.ratesFromDb; btn.textContent = 'Save Freight Rates';
+}
+
+async function frLoadLog() {
+    var el = document.getElementById('fr-log-list');
+    try {
+        var { data, error } = await supabaseClient.from('freight_rate_log').select('*').order('changed_at', { ascending: false }).limit(100);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
+        var rt = function(b, r, rep) { return r === null || r === undefined ? '—' : frNum(r) + (b === 'ROUND' ? ' /round' : ' /pack') + (rep ? ' · ' + rep : ''); };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Dispatch To / Item</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+            data.map(function(l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(l.action) + '</td>' +
+                    '<td>' + escapeHtmlJs(l.dispatch_to + ' / ' + l.item_type) + '</td><td>' + escapeHtmlJs(rt(l.old_basis, l.old_rate, l.old_report)) + '</td>' +
+                    '<td>' + escapeHtmlJs(rt(l.new_basis, l.new_rate, l.new_report)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
+}
+
+// ── Settings › Freight Vehicles (Admin) ──
+async function frLoadVehEditor() {
+    var list = document.getElementById('fr-veh-list');
+    if (!list) return;
+    await frLoadVehicles();
+    document.getElementById('fr-veh-banner').innerHTML = _fr.vehFromDb ? '' :
+        '<div class="fr-note warn">Run <b>PACKING_FREIGHT_RATES_MIGRATION.sql</b> first; until then the built-in vehicles are shown read only.</div>';
+    try {
+        var { data, error } = await supabaseClient.from('vehicle_list').select('tempo_no, driver_name').order('tempo_no');
+        if (error) throw error;
+        _fr.allVehicles = data || [];
+    } catch (e) { console.warn('[Freight] Vehicles list:', e.message || e); _fr.allVehicles = []; }
+    _fr.editVeh = _fr.vehicles.map(function(v) { return { tempo_no: v.tempo_no, driver_name: v.driver_name || '', updated_by: v.updated_by, updated_at: v.updated_at }; });
+    frRenderVehEditor();
+}
+
+function frRenderVehEditor() {
+    var list = document.getElementById('fr-veh-list');
+    var ro = !_fr.vehFromDb;
+    var inVl = {}; (_fr.allVehicles || []).forEach(function(v) { inVl[frVehKey(v.tempo_no)] = v; });
+    list.innerHTML = _fr.editVeh.length ? '<table class="fr-table"><thead><tr><th>#</th><th>Vehicle No</th><th>Driver Name</th><th>Vehicles list</th><th>Last changed</th><th></th></tr></thead><tbody>' +
+        _fr.editVeh.map(function(v, i) {
+            var vl = inVl[frVehKey(v.tempo_no)];
+            var drvNote = !vl ? '<span style="color:#b91c1c;">not in the Vehicles list</span>'
+                : (frName(vl.driver_name) !== frName(v.driver_name) ? '<span style="color:#b45309;">driver there: ' + escapeHtmlJs(vl.driver_name || '-') + '</span>' : 'OK');
+            return '<tr><td>' + (i + 1) + '</td><td><b>' + escapeHtmlJs(v.tempo_no) + '</b></td><td>' + escapeHtmlJs(v.driver_name || '') + '</td>' +
+                '<td class="fr-sub">' + drvNote + '</td>' +
+                '<td class="fr-sub">' + escapeHtmlJs((v.updated_by || '') + (v.updated_at ? ' · ' + new Date(v.updated_at).toLocaleString('en-IN') : '')) + '</td>' +
+                '<td class="x" style="white-space:nowrap;">' + (ro ? '' :
+                    '<button type="button" title="Up" onclick="frMoveVehicle(' + i + ',-1)" style="color:#334155;">▲</button>' +
+                    '<button type="button" title="Down" onclick="frMoveVehicle(' + i + ',1)" style="color:#334155;">▼</button>' +
+                    '<button type="button" title="Remove" onclick="frRemoveVehicle(' + i + ')">✕</button>') + '</td></tr>';
+        }).join('') + '</tbody></table>' : '<p style="color:var(--text-muted);font-size:12px;">No vehicle yet. Add the vehicles the report is made for.</p>';
+    var have = {}; _fr.editVeh.forEach(function(v) { have[frVehKey(v.tempo_no)] = true; });
+    var pick = document.getElementById('fr-veh-pick');
+    pick.innerHTML = '<option value="">— Choose from the Vehicles list (Vehicle No — Driver) —</option>' +
+        (_fr.allVehicles || []).filter(function(v) { return v.tempo_no && !have[frVehKey(v.tempo_no)]; }).map(function(v) {
+            return '<option value="' + escapeHtmlJs(v.tempo_no) + '">' + escapeHtmlJs(v.tempo_no + ' — ' + (v.driver_name || '')) + '</option>';
+        }).join('');
+    pick.disabled = ro;
+    var sb = document.getElementById('fr-veh-save-btn'); if (sb) sb.disabled = ro;
+}
+
+function frAddVehicle() {
+    if (!_fr.vehFromDb) { alert('Run PACKING_FREIGHT_RATES_MIGRATION.sql first.'); return; }
+    var no = document.getElementById('fr-veh-pick').value;
+    if (!no) { alert('Choose a vehicle from the list.'); return; }
+    var v = (_fr.allVehicles || []).filter(function(x) { return x.tempo_no === no; })[0];
+    _fr.editVeh.push({ tempo_no: no, driver_name: (v && v.driver_name) || '' });
+    frRenderVehEditor();
+}
+function frMoveVehicle(i, d) {
+    var j = i + d;
+    if (j < 0 || j >= _fr.editVeh.length) return;
+    var t = _fr.editVeh[i]; _fr.editVeh[i] = _fr.editVeh[j]; _fr.editVeh[j] = t;
+    frRenderVehEditor();
+}
+function frRemoveVehicle(i) {
+    var v = _fr.editVeh[i];
+    if (!confirm('Remove ' + v.tempo_no + ' from the report?\n\nIts packs will count as EXTRAS. (Takes effect on Save.)')) return;
+    _fr.editVeh.splice(i, 1);
+    frRenderVehEditor();
+}
+async function frSaveVehicles() {
+    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var btn = document.getElementById('fr-veh-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_freight_vehicles', {
+            p_rows: _fr.editVeh.map(function(v) { return { tempo_no: frName(v.tempo_no), driver_name: frName(v.driver_name) }; })
+        });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        showToast('Freight vehicles saved: ' + data.added + ' added, ' + data.changed + ' changed, ' + data.removed + ' removed');
+        await frLoadVehEditor();
+        var lg = document.querySelector('#fr-veh-card .fr-log'); if (lg && lg.open) frLoadVehLog();
+    } catch (e) {
+        alert('Freight vehicles were not saved:\n\n' + (e.message || e));
+    }
+    btn.disabled = !_fr.vehFromDb; btn.textContent = 'Save Freight Vehicles';
+}
+async function frLoadVehLog() {
+    var el = document.getElementById('fr-veh-log-list');
+    try {
+        var { data, error } = await supabaseClient.from('freight_vehicle_log').select('*').order('changed_at', { ascending: false }).limit(100);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
+        var d = function(dr, o) { return dr === null || dr === undefined ? '—' : (dr || '-') + ' · #' + o; };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Vehicle</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+            data.map(function(l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(l.action) + '</td>' +
+                    '<td>' + escapeHtmlJs(l.tempo_no) + '</td><td>' + escapeHtmlJs(d(l.old_driver, l.old_order)) + '</td><td>' + escapeHtmlJs(d(l.new_driver, l.new_order)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// LABOUR — Labour tab (Loading Contractor payment) + Settings › Labour Rates
+// & Columns. SQL: PACKING_LABOUR_MIGRATION.sql
+//
+// Two sheets with the layout of the paper sheets:
+//   DISPATCH  "DISPATCH LOADING LABOUR (1-10-26 TO 15-10-26)": per date, one
+//             column group per Loading Contractor (DISPATCH BORE, SLIDER TO
+//             DOWN ...), then a TOTAL group; TOTAL / RATE / AMOUNT rows and
+//             TOTAL PAYMENT per contractor and overall.
+//   SHIFTING  "<CONTRACTOR> LABOUR / from TO to": one contractor, per date,
+//             one column per shifting activity; TOTAL / RATE / AMOUNT and the
+//             grand total.
+// A column = an activity (packing.labour_activities):
+//   AUTO_DISPATCH: packs (Sr. rows) of the slips whose Loading Contractor is
+//     that contractor, by slip date, without exclude_item_types (PVC BAG,
+//     LOOSE PCS, OTHER). Read only; the "Dispatch detail" under the sheet
+//     lists every slip behind each number. Checked against the paper sheet of
+//     1-15 Oct 2026: every day of both contractors matches.
+//   MANUAL: typed right in the sheet (shifting work is not recorded anywhere
+//     yet) and saved with "Save typed quantities" (save_labour_entries; every
+//     change logged old → new with who / when / reason). An empty box = no
+//     entry. Before the migration the boxes still work for printing, but
+//     nothing is saved (the page says so).
+// amount = quantity × the column's current rate. Contractor names are
+// compared trimmed, single-spaced, in capitals ("SALEEM " = "SALEEM").
+// Contractor order: Dropdown Master erp_pkLoadingContractor, then A→Z.
+// ══════════════════════════════════════════════════════════════════════
+var LB_DEFAULT_ACTIVITIES = [   // keep in step with the seed in the migration
+    ['DISPATCH_BORE', 'DISPATCH', 'DISPATCH BORE', 'AUTO_DISPATCH', ['LOOSE PCS', 'OTHER', 'PVC BAG'], 7, 1],
+    ['SLIDER_DOWN', 'DISPATCH', 'SLIDER TO DOWN (FROM DISPATCH)', 'MANUAL', [], 5, 2],
+    ['P1_SHIFT', 'SHIFTING', 'PACKING 1 SHIFTING BORE', 'MANUAL', [], 7, 1],
+    ['P2_SHIFT', 'SHIFTING', 'PACKING 2 SHIFTING BORE', 'MANUAL', [], 7, 2],
+    ['P3_SHIFT', 'SHIFTING', 'PACKING 3 SHIFTING BORE', 'MANUAL', [], 7, 3],
+    ['REPLACE_SLIDER', 'SHIFTING', 'REPLACE BORE (FROM SLIDER)', 'MANUAL', [], 7, 4],
+    ['REPLACE', 'SHIFTING', 'REPLACE BORE', 'MANUAL', [], 7, 5],
+    ['DOWN_UP', 'SHIFTING', 'DOWN TO UPPER BORE', 'MANUAL', [], 10.5, 6],
+    ['UP_DOWN', 'SHIFTING', 'UPPER TO DOWN BORE', 'MANUAL', [], 10.5, 7],
+    ['P3_GF_TROLLY', 'SHIFTING', 'PACKING 3 TO GROUND FLOOR GODOWN BY TROLLY', 'MANUAL', [], 10.5, 8],
+    ['P1_P3_TROLLY', 'SHIFTING', 'PACKING 1 TO PACKING 3 (BY TROLLY)', 'MANUAL', [], 15.5, 9],
+    ['GADI_UNLOAD', 'SHIFTING', 'GADI UNLOAD', 'MANUAL', [], 7, 10]
+].map(function(a) { return { code: a[0], sheet: a[1], label: a[2], source: a[3], exclude_item_types: a[4], rate: a[5], sort_order: a[6], active: true, updated_by: '', updated_at: null }; });
+var LB_GROUP_BG = ['#d0dfe3', '#fde5a0', '#d7ead0', '#f6d5c3', '#e3dcef', '#d4e4f7'];   // one per contractor, in turn
+var LB_TOTAL_BG = '#ddd5ea';
+var _lb = { acts: null, actsFromDb: false, entriesOk: false, rep: null, edits: {}, editActs: null, contractors: [] };
+
+function lbKey(date, con, code) { return date + '|' + con + '|' + code; }
+function lbNum(n) { var x = Math.round((Number(n) || 0) * 100) / 100; return String(x); }
+function lbD(iso, short) {   // 2026-10-01 → 01-10-2026, or 1-10-26 (short)
+    var p = String(iso || '').slice(0, 10).split('-');
+    if (p.length !== 3) return String(iso || '');
+    return short ? (+p[2]) + '-' + (+p[1]) + '-' + p[0].slice(2) : p[2] + '-' + p[1] + '-' + p[0];
+}
+function lbDatesBetween(from, to) {
+    var out = [], d = new Date(from + 'T00:00:00'), end = new Date(to + 'T00:00:00');
+    while (d <= end && out.length < 400) { out.push(frDateInput(d)); d.setDate(d.getDate() + 1); }
+    return out;
+}
+
+async function lbLoadActivities() {
+    try {
+        var { data, error } = await supabaseClient.from('labour_activities').select('*').order('sheet').order('sort_order').order('code');
+        if (error) throw error;
+        if (!data || !data.length) throw new Error('no columns');
+        _lb.acts = data.map(function(a) { return Object.assign({}, a, { rate: Number(a.rate) || 0, exclude_item_types: a.exclude_item_types || [] }); });
+        _lb.actsFromDb = true;
+    } catch (e) {
+        console.warn('[Labour] labour_activities not readable (run PACKING_LABOUR_MIGRATION.sql):', e.message || e);
+        _lb.acts = LB_DEFAULT_ACTIVITIES.map(function(a) { return Object.assign({}, a); });
+        _lb.actsFromDb = false;
+    }
+    return _lb.actsFromDb;
+}
+function lbActsOf(sheet) {
+    return (_lb.acts || []).filter(function(a) { return a.sheet === sheet && a.active !== false; })
+        .sort(function(a, b) { return (a.sort_order - b.sort_order) || a.code.localeCompare(b.code); });
+}
+
+function lbBanner() {
+    if (_lb.actsFromDb && _lb.entriesOk) return '';
+    return '<div class="fr-note warn">Labour is not set up on the server yet (run <b>PACKING_LABOUR_MIGRATION.sql</b>). ' +
+        'The built-in columns and rates are used; you can type quantities and print, but they are <b>not saved</b>.</div>';
+}
+
+async function showLabourPanel() {
+    var r = session ? session.role : '';
+    if (['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(r) < 0) { alert('Labour: Admin / MD / Packing Incharge only'); return; }
+    hideAllPanels();
+    document.getElementById('labour-panel').style.display = 'block';
+    updateNavButtons('labour-panel');
+    if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
+    stopAutoSaveDraft();
+    var f = document.getElementById('lb-from'), t = document.getElementById('lb-to');
+    if (!f.value) { var now = new Date(); f.value = frDateInput(new Date(now.getFullYear(), now.getMonth(), 1)); }
+    if (!t.value) t.value = frDateInput(new Date());
+    lbFillContractorPicker([]);
+}
+
+// Contractor order: Dropdown Master list first (its order), then the rest A→Z
+function lbOrderContractors(names) {
+    var dd = (typeof LOADING_CONTRACTORS !== 'undefined' && LOADING_CONTRACTORS.length ? LOADING_CONTRACTORS : []).map(frName);
+    var set = {}; names.forEach(function(n) { if (n) set[frName(n)] = true; });
+    var out = dd.filter(function(n) { return set[n]; });
+    Object.keys(set).sort().forEach(function(n) { if (out.indexOf(n) < 0) out.push(n); });
+    return out;
+}
+function lbFillContractorPicker(extra) {
+    var sel = document.getElementById('lb-con'), cur = sel.value;
+    var pool = [].concat(typeof LOADING_CONTRACTORS !== 'undefined' ? LOADING_CONTRACTORS : [],
+        (typeof pkPastNames !== 'undefined' && pkPastNames.contractor) || [], extra || [], _lb.contractors || []);
+    var list = lbOrderContractors(pool);
+    sel.innerHTML = list.length ? list.map(function(n) { return '<option value="' + escapeHtmlJs(n) + '"' + (n === cur ? ' selected' : '') + '>' + escapeHtmlJs(n) + '</option>'; }).join('')
+        : '<option value="">— no contractor yet —</option>';
+}
+// The sheet / contractor can be switched after Generate: the data of the
+// range is already loaded (both sheets, every contractor), and unsaved typed
+// boxes are kept (they are keyed by date + contractor + column).
+function lbSheetChanged() {
+    var sheet = document.getElementById('lb-sheet').value;
+    document.getElementById('lb-con-wrap').style.display = sheet === 'SHIFTING' ? '' : 'none';
+    if (_lb.rep) { _lb.rep.meta.sheet = sheet; lbRender(); }
+}
+function lbConChanged() { if (_lb.rep && _lb.rep.meta.sheet === 'SHIFTING') lbRender(); }
+function lbDirtyCount() { return Object.keys(_lb.edits).length; }
+
+async function lbRun() {
+    if (lbDirtyCount() && !confirm(lbDirtyCount() + ' typed change(s) are not saved yet. Generate again and lose them?')) return;
+    var from = document.getElementById('lb-from').value, to = document.getElementById('lb-to').value;
+    var sheet = document.getElementById('lb-sheet').value;
+    if (!from || !to) { alert('Choose both dates.'); return; }
+    if (from > to) { var tmp = from; from = to; to = tmp; document.getElementById('lb-from').value = from; document.getElementById('lb-to').value = to; }
+    if (lbDatesBetween(from, to).length > 62) { alert('Choose at most 62 days (a sheet is one row per date).'); return; }
+    var out = document.getElementById('lb-out'), btn = document.getElementById('lb-run-btn');
+    btn.disabled = true; btn.textContent = 'Generating...';
+    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading slips...</p>';
+    _lb.edits = {};
+    try {
+        await lbLoadActivities();
+        // Slips of the range (only the dispatch sheet needs them, but the
+        // contractor list of the shifting picker uses them too)
+        var slips = [];
+        for (var off = 0; ; off += 1000) {
+            var { data, error } = await supabaseClient.from('packing_slips')
+                .select('id, slip_no, packing_type, slip_date, party_name, loading_contractor')
+                .gte('slip_date', from).lte('slip_date', to).order('slip_date').order('slip_no').range(off, off + 999);
+            if (error) throw error;
+            slips = slips.concat(data || []);
+            if (!data || data.length < 1000) break;
+        }
+        var items = slips.length ? await pkSelectIn('packing_slip_items', 'slip_id, item_type', 'slip_id', slips.map(function(s) { return s.id; })) : [];
+        var entries = [];
+        try {
+            for (var eo = 0; ; eo += 1000) {
+                var r2 = await supabaseClient.from('labour_entries').select('work_date, contractor, activity_code, qty, updated_by, updated_at')
+                    .gte('work_date', from).lte('work_date', to).range(eo, eo + 999);
+                if (r2.error) throw r2.error;
+                entries = entries.concat(r2.data || []);
+                if (!r2.data || r2.data.length < 1000) break;
+            }
+            _lb.entriesOk = true;
+        } catch (e) {
+            console.warn('[Labour] labour_entries not readable:', e.message || e);
+            _lb.entriesOk = false;
+        }
+        _lb.rep = lbCompute(from, to, slips, items, entries, _lb.acts);
+        _lb.contractors = _lb.rep.contractors.slice();
+        lbFillContractorPicker(_lb.rep.contractors);
+        _lb.rep.meta = { from: from, to: to, sheet: sheet, at: new Date(), by: (session && (session.fullName || session.username)) || '' };
+        lbRender();
+    } catch (e) {
+        console.error('[Labour] report failed:', e);
+        out.innerHTML = '<div class="fr-note bad">The report could not be made: ' + escapeHtmlJs(e.message || String(e)) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = 'Generate Report';
+    lbUpdateSaveBtn();
+}
+
+// Pure: the auto quantities (and their slips) + the saved typed entries
+function lbCompute(from, to, slips, items, entries, acts) {
+    var dates = lbDatesBetween(from, to);
+    var autoActs = (acts || []).filter(function(a) { return a.source === 'AUTO_DISPATCH' && a.active !== false; });
+    var byId = {}; slips.forEach(function(s) { byId[s.id] = s; });
+    var perSlip = {};   // slip id → { TYPE: n }
+    (items || []).forEach(function(it) {
+        var m = perSlip[it.slip_id] || (perSlip[it.slip_id] = {});
+        var t = frName(it.item_type) || '(BLANK)';
+        m[t] = (m[t] || 0) + 1;
+    });
+    var auto = {}, detail = [], names = {};
+    slips.forEach(function(s) {
+        var con = frName(s.loading_contractor) || '(NO CONTRACTOR)';
+        var date = String(s.slip_date || '').slice(0, 10);
+        var m = perSlip[s.id] || {};
+        autoActs.forEach(function(a) {
+            var ex = (a.exclude_item_types || []).map(frName), n = 0, skipped = 0;
+            Object.keys(m).forEach(function(t) { if (ex.indexOf(t) >= 0) skipped += m[t]; else n += m[t]; });
+            if (!n && !skipped) return;
+            if (n) { var k = lbKey(date, con, a.code); auto[k] = (auto[k] || 0) + n; names[con] = true; }
+            detail.push({ date: date, con: con, code: a.code, slipNo: s.slip_no, ptype: s.packing_type, party: s.party_name || '', packs: n, skipped: skipped });
+        });
+    });
+    var saved = {};
+    (entries || []).forEach(function(e) {
+        var con = frName(e.contractor);
+        saved[lbKey(String(e.work_date).slice(0, 10), con, e.activity_code)] = { qty: Number(e.qty) || 0, by: e.updated_by || '', at: e.updated_at };
+        names[con] = true;
+    });
+    return { dates: dates, auto: auto, saved: saved, detail: detail, contractors: lbOrderContractors(Object.keys(names)) };
+}
+
+// The quantity of one cell: auto, or typed (an unsaved edit wins), or null
+function lbCell(a, date, con) {
+    var k = lbKey(date, con, a.code);
+    if (a.source === 'AUTO_DISPATCH') return _lb.rep.auto[k] || 0;
+    if (Object.prototype.hasOwnProperty.call(_lb.edits, k)) return _lb.edits[k] === '' ? null : Number(_lb.edits[k]);
+    return _lb.rep.saved[k] ? _lb.rep.saved[k].qty : null;
+}
+function lbSum(a, con) {
+    return _lb.rep.dates.reduce(function(t, d) { return t + (Number(lbCell(a, d, con)) || 0); }, 0);
+}
+
+// A cell: a number, or a box for a typed column (print = the number only)
+function lbCellHtml(a, date, con, print) {
+    var v = lbCell(a, date, con);
+    if (a.source === 'AUTO_DISPATCH' || print) return '<td class="' + (a.source === 'AUTO_DISPATCH' ? 'lb-auto' : '') + '">' + lbNum(v || 0) + '</td>';
+    var k = lbKey(date, con, a.code), s = _lb.rep.saved[k];
+    var dirty = Object.prototype.hasOwnProperty.call(_lb.edits, k);
+    var tip = s ? 'Saved ' + lbNum(s.qty) + ' by ' + (s.by || '?') + (s.at ? ', ' + new Date(s.at).toLocaleString('en-IN') : '') : 'Not entered';
+    return '<td class="lb-edit"><input class="lb-in' + (dirty ? ' dirty' : '') + '" type="number" min="0" step="any" inputmode="decimal"' +
+        ' data-k="' + escapeHtmlJs(k) + '" value="' + (v === null || v === undefined || isNaN(v) ? '' : lbNum(v)) + '" title="' + escapeHtmlJs(tip) + '"' +
+        ' oninput="lbOnEdit(this)"></td>';
+}
+
+function lbDispatchHtml(print) {
+    var rep = _lb.rep, m = rep.meta, acts = lbActsOf('DISPATCH');
+    var cons = rep.contractors.filter(function(c) { return c !== '(NO CONTRACTOR)'; });
+    if (rep.contractors.indexOf('(NO CONTRACTOR)') >= 0) cons.push('(NO CONTRACTOR)');
+    if (!cons.length) cons = lbOrderContractors((typeof LOADING_CONTRACTORS !== 'undefined' ? LOADING_CONTRACTORS : []).slice());
+    if (!acts.length) return '<p style="padding:16px;">No active Dispatch column in Settings › Labour Rates &amp; Columns.</p>';
+    var nA = acts.length, groups = cons.map(function(c, i) { return { con: c, bg: LB_GROUP_BG[i % LB_GROUP_BG.length] }; });
+    var totalCols = 1 + groups.length * (nA + 1) + nA;
+    var bgTd = function(bg, inner, cls, extra) { return '<td' + (cls ? ' class="' + cls + '"' : '') + ' style="background:' + bg + ';"' + (extra || '') + '>' + inner + '</td>'; };
+    var gap = '<td class="lb-gap"></td>';
+    var h = '<table class="lb-sheet" data-sheet="DISPATCH">' +
+        '<tr class="lb-title"><td colspan="' + totalCols + '" style="background:#fdf0c8;">DISPATCH LOADING LABOUR (' + escapeHtmlJs(lbD(m.from, true)) + ' TO ' + escapeHtmlJs(lbD(m.to, true)) + ')</td></tr>';
+    h += '<tr><td></td>' + groups.map(function(g) { return bgTd(g.bg, escapeHtmlJs(g.con), 'lb-grp', ' colspan="' + nA + '"') + gap; }).join('') +
+        bgTd(LB_TOTAL_BG, 'TOTAL', 'lb-grp', ' colspan="' + nA + '"') + '</tr>';
+    h += '<tr><th class="lb-v"><span>DATE</span></th>' + groups.map(function(g) {
+            return acts.map(function(a) { return '<th class="lb-v" style="background:' + g.bg + ';"><span>' + escapeHtmlJs(a.label) + '</span></th>'; }).join('') + '<th class="lb-gap"></th>';
+        }).join('') +
+        acts.map(function(a) { return '<th class="lb-v" style="background:' + LB_TOTAL_BG + ';"><span>TOTAL ' + escapeHtmlJs(a.label.replace(/ \(FROM DISPATCH\)$/, '')) + '</span></th>'; }).join('') + '</tr>';
+    rep.dates.forEach(function(d) {
+        h += '<tr><td class="lb-date">' + lbD(d) + '</td>' + groups.map(function(g) {
+            return acts.map(function(a) { return lbCellHtml(a, d, g.con, print); }).join('') + gap;
+        }).join('') + acts.map(function(a) {
+            var t = cons.reduce(function(s, c) { return s + (Number(lbCell(a, d, c)) || 0); }, 0);
+            return '<td style="font-weight:800;" data-lbt="row|' + d + '|' + a.code + '">' + lbNum(t) + '</td>';
+        }).join('') + '</tr>';
+    });
+    var tot = {}, amt = {}, pay = {};
+    groups.forEach(function(g) { pay[g.con] = 0; acts.forEach(function(a) { var s = lbSum(a, g.con); tot[g.con + a.code] = s; amt[g.con + a.code] = s * a.rate; pay[g.con] += s * a.rate; }); });
+    var grandQ = {}, grandA = {}, grand = 0;
+    acts.forEach(function(a) { grandQ[a.code] = cons.reduce(function(s, c) { return s + tot[c + a.code]; }, 0); grandA[a.code] = grandQ[a.code] * a.rate; grand += grandA[a.code]; });
+    var row = function(cls, label, fn, fnT) {
+        return '<tr class="' + cls + '"><td style="font-weight:900;' + (cls === 'lb-rate' ? 'color:#e00000;' : '') + '">' + label + '</td>' +
+            groups.map(function(g) { return acts.map(function(a) { return fn(g, a); }).join('') + gap; }).join('') + acts.map(fnT).join('') + '</tr>';
+    };
+    h += row('lb-tot', 'TOTAL', function(g, a) { return '<td data-lbt="tot|' + escapeHtmlJs(g.con) + '|' + a.code + '">' + lbNum(tot[g.con + a.code]) + '</td>'; },
+                               function(a) { return '<td data-lbt="gq|' + a.code + '">' + lbNum(grandQ[a.code]) + '</td>'; });
+    h += row('lb-rate', 'RATE', function(g, a) { return '<td>' + lbNum(a.rate) + '</td>'; }, function(a) { return '<td>' + lbNum(a.rate) + '</td>'; });
+    h += row('lb-amt', 'AMOUNT', function(g, a) { return '<td data-lbt="amt|' + escapeHtmlJs(g.con) + '|' + a.code + '">' + lbNum(amt[g.con + a.code]) + '</td>'; },
+                                function(a) { return '<td data-lbt="ga|' + a.code + '">' + lbNum(grandA[a.code]) + '</td>'; });
+    h += '<tr><td></td>' + groups.map(function(g) { return bgTd(g.bg, 'TOTAL PAYMENT ' + escapeHtmlJs(g.con), 'lb-pay', ' colspan="' + nA + '"') + gap; }).join('') +
+        bgTd(LB_TOTAL_BG, 'TOTAL PAYMENT', 'lb-pay', ' colspan="' + nA + '"') + '</tr>';
+    h += '<tr><td></td>' + groups.map(function(g) { return bgTd(g.bg, '<span data-lbt="pay|' + escapeHtmlJs(g.con) + '">' + lbNum(pay[g.con]) + '</span>', 'lb-pay', ' colspan="' + nA + '"') + gap; }).join('') +
+        bgTd(LB_TOTAL_BG, '<span data-lbt="grand">' + lbNum(grand) + '</span>', 'lb-grand', ' colspan="' + nA + '"') + '</tr></table>';
+    return h;
+}
+
+function lbShiftingHtml(print) {
+    var rep = _lb.rep, m = rep.meta, acts = lbActsOf('SHIFTING');
+    var con = frName(document.getElementById('lb-con').value);
+    if (!con) return '<p style="padding:16px;">Choose the contractor.</p>';
+    if (!acts.length) return '<p style="padding:16px;">No active Shifting column in Settings › Labour Rates &amp; Columns.</p>';
+    var n = acts.length;
+    var h = '<table class="lb-sheet" data-sheet="SHIFTING">' +
+        '<tr class="lb-title"><td colspan="' + (n + 1) + '" style="background:#c5d9f1;">' + escapeHtmlJs(con) + ' LABOUR</td><td style="border:none;"></td></tr>' +
+        '<tr class="lb-title"><td colspan="' + (n + 1) + '" style="background:#ffff00;color:#e00000;">' + escapeHtmlJs(lbD(m.from).replace(/^0/, '')) + ' TO ' + escapeHtmlJs(lbD(m.to).replace(/^0/, '')) + '</td><td style="border:none;"></td></tr>' +
+        '<tr><th class="lb-v"><span>DATE</span></th>' + acts.map(function(a) { return '<th class="lb-v"><span>' + escapeHtmlJs(a.label) + '</span></th>'; }).join('') + '<td style="border:none;"></td></tr>';
+    rep.dates.forEach(function(d) {
+        h += '<tr><td class="lb-date" style="font-weight:800;">' + lbD(d).replace(/^0/, '') + '</td>' + acts.map(function(a) { return lbCellHtml(a, d, con, print); }).join('') + '<td style="border:none;"></td></tr>';
+    });
+    var grand = 0, tq = {}, ta = {};
+    acts.forEach(function(a) { tq[a.code] = lbSum(a, con); ta[a.code] = tq[a.code] * a.rate; grand += ta[a.code]; });
+    h += '<tr class="lb-tot"><td>TOTAL</td>' + acts.map(function(a) { return '<td data-lbt="tot|' + escapeHtmlJs(con) + '|' + a.code + '">' + lbNum(tq[a.code]) + '</td>'; }).join('') + '<td style="border:none;"></td></tr>';
+    h += '<tr class="lb-rate"><td style="background:#ffff00;">RATE</td>' + acts.map(function(a) { return '<td style="background:#ffff00;">' + lbNum(a.rate) + '</td>'; }).join('') + '<td style="border:none;"></td></tr>';
+    h += '<tr class="lb-amt"><td>AMOUNT</td>' + acts.map(function(a) { return '<td data-lbt="amt|' + escapeHtmlJs(con) + '|' + a.code + '">' + lbNum(ta[a.code]) + '</td>'; }).join('') +
+        '<td class="lb-grand" style="background:#ffff00;" data-lbt="grand">' + lbNum(grand) + '</td></tr></table>';
+    return h;
+}
+
+function lbSheetHtml(print) {
+    return (_lb.rep.meta.sheet === 'SHIFTING') ? lbShiftingHtml(print) : lbDispatchHtml(print);
+}
+
+function lbRender() {
+    var rep = _lb.rep, m = rep.meta;
+    document.getElementById('lb-banner').innerHTML = lbBanner();
+    var html = '<div class="lb-wrap" id="lb-sheet-wrap">' + lbSheetHtml(false) + '</div>';
+    html += '<div class="fr-note info">' + rep.dates.length + ' day(s) · made ' + escapeHtmlJs(m.at.toLocaleString('en-IN')) + (m.by ? ' by ' + escapeHtmlJs(m.by) : '') +
+        ' · white cells come from the packing slips; yellow boxes are typed (green = changed, not saved yet). Hover a box to see who saved it.</div>';
+    if (m.sheet === 'DISPATCH') {
+        var autoCodes = lbActsOf('DISPATCH').filter(function(a) { return a.source === 'AUTO_DISPATCH'; }).map(function(a) { return a.code; });
+        var det = rep.detail.filter(function(x) { return autoCodes.indexOf(x.code) >= 0; });
+        var skippedTot = det.reduce(function(s, x) { return s + x.skipped; }, 0);
+        html += '<details class="fr-note info"><summary style="cursor:pointer;font-weight:700;">Dispatch detail: the slips behind every number (' + det.length + ' slip line' + (det.length !== 1 ? 's' : '') + ')' +
+            (skippedTot ? ' · ' + skippedTot + ' pack(s) not counted (excluded item types)' : '') + '</summary>' +
+            '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>Date</th><th>Contractor</th><th>Column</th><th>Slip No</th><th>Party</th><th class="num">Packs counted</th><th class="num">Not counted</th></tr></thead><tbody>' +
+            det.map(function(x) {
+                return '<tr><td>' + escapeHtmlJs(lbD(x.date)) + '</td><td>' + escapeHtmlJs(x.con) + '</td><td>' + escapeHtmlJs(x.code) + '</td><td>' + escapeHtmlJs(x.slipNo) +
+                    ' <span class="fr-sub">' + escapeHtmlJs(x.ptype || '') + '</span></td><td>' + escapeHtmlJs(x.party) + '</td><td class="num">' + x.packs + '</td><td class="num">' + (x.skipped || '') + '</td></tr>';
+            }).join('') + '</tbody></table></div></details>';
+    }
+    html += '<details class="fr-note info" ontoggle="if(this.open) lbLoadEntryLog()"><summary style="cursor:pointer;font-weight:700;">Change log of the typed quantities in this date range</summary>' +
+        '<div id="lb-entry-log"><p style="color:var(--text-muted);">Loading...</p></div></details>';
+    html += '<details class="fr-note info"><summary style="cursor:pointer;font-weight:700;">Columns &amp; rates used</summary>' + lbActsTableHtml() + '</details>';
+    document.getElementById('lb-out').innerHTML = html;
+}
+
+function lbActsTableHtml() {
+    return '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>Sheet</th><th>Column</th><th>Source</th><th class="num">Rate</th><th>Last changed</th></tr></thead><tbody>' +
+        (_lb.acts || []).filter(function(a) { return a.active !== false; }).map(function(a) {
+            return '<tr><td>' + escapeHtmlJs(a.sheet) + '</td><td>' + escapeHtmlJs(a.label) + '</td><td>' +
+                (a.source === 'AUTO_DISPATCH' ? 'From slips' + ((a.exclude_item_types || []).length ? ' (not counted: ' + escapeHtmlJs(a.exclude_item_types.join(', ')) + ')' : '') : 'Typed') +
+                '</td><td class="num">' + lbNum(a.rate) + '</td><td class="fr-sub">' + escapeHtmlJs((a.updated_by || '') + (a.updated_at ? ' · ' + new Date(a.updated_at).toLocaleString('en-IN') : '')) + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+}
+
+// Typing: keep the edit, refresh the totals in place (the box keeps focus)
+function lbOnEdit(inp) {
+    var k = inp.getAttribute('data-k'), v = String(inp.value).trim();
+    if (v !== '' && (!isFinite(Number(v)) || Number(v) < 0)) { inp.style.outline = '2px solid #dc2626'; return; }
+    inp.style.outline = '';
+    var s = _lb.rep.saved[k], savedV = s ? lbNum(s.qty) : '';
+    if ((v === '' ? '' : lbNum(v)) === savedV) delete _lb.edits[k]; else _lb.edits[k] = v;
+    inp.classList.toggle('dirty', Object.prototype.hasOwnProperty.call(_lb.edits, k));
+    lbRefreshTotals();
+    lbUpdateSaveBtn();
+}
+function lbRefreshTotals() {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = lbSheetHtml(true);
+    var fresh = {};
+    tmp.querySelectorAll('[data-lbt]').forEach(function(el) { fresh[el.getAttribute('data-lbt')] = el.textContent; });
+    document.querySelectorAll('#lb-sheet-wrap [data-lbt]').forEach(function(el) {
+        var k = el.getAttribute('data-lbt');
+        if (fresh[k] !== undefined && el.textContent !== fresh[k]) el.textContent = fresh[k];
+    });
+}
+function lbUpdateSaveBtn() {
+    var b = document.getElementById('lb-save-btn'), n = lbDirtyCount();
+    b.disabled = !n || !_lb.actsFromDb || !_lb.entriesOk;
+    b.textContent = n ? 'Save typed quantities (' + n + ')' : 'Save typed quantities';
+}
+
+async function lbSaveEntries() {
+    var keys = Object.keys(_lb.edits);
+    if (!keys.length) return;
+    if (!_lb.actsFromDb || !_lb.entriesOk) { alert('Run PACKING_LABOUR_MIGRATION.sql first; until then typed quantities cannot be saved.'); return; }
+    var changedOld = keys.filter(function(k) { return _lb.rep.saved[k]; }).length;
+    var reason = '';
+    if (changedOld) {
+        reason = prompt(changedOld + ' saved quantit' + (changedOld > 1 ? 'ies are' : 'y is') + ' being changed. Reason (kept in the change log):', '');
+        if (reason === null) return;
+    }
+    var rows = keys.map(function(k) { var p = k.split('|'); return { work_date: p[0], contractor: p[1], code: p[2], qty: _lb.edits[k] }; });
+    var btn = document.getElementById('lb-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_labour_entries', { p_rows: rows, p_reason: reason || null });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        // Saved values become the new "saved" state; no full reload needed
+        var who = (session && (session.fullName || session.username)) || '', now = new Date().toISOString();
+        keys.forEach(function(k) {
+            if (_lb.edits[k] === '') delete _lb.rep.saved[k];
+            else _lb.rep.saved[k] = { qty: Number(_lb.edits[k]), by: who, at: now };
+        });
+        _lb.edits = {};
+        showToast('Labour saved: ' + data.saved + ' saved, ' + data.removed + ' removed');
+        lbRender();
+    } catch (e) {
+        alert('The typed quantities were not saved:\n\n' + (e.message || e));
+    }
+    lbUpdateSaveBtn();
+}
+
+async function lbLoadEntryLog() {
+    var el = document.getElementById('lb-entry-log');
+    if (!el || !_lb.rep) return;
+    try {
+        var { data, error } = await supabaseClient.from('labour_entry_log').select('*')
+            .gte('work_date', _lb.rep.meta.from).lte('work_date', _lb.rep.meta.to).order('changed_at', { ascending: false }).limit(500);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No typed changes in this range yet.</p>'; return; }
+        var lab = {}; (_lb.acts || []).forEach(function(a) { lab[a.code] = a.label; });
+        var q = function(v) { return v === null || v === undefined ? '—' : lbNum(v); };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Date</th><th>Contractor</th><th>Column</th><th class="num">Old</th><th class="num">New</th><th>Reason</th></tr></thead><tbody>' +
+            data.map(function(l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(lbD(l.work_date)) +
+                    '</td><td>' + escapeHtmlJs(l.contractor) + '</td><td>' + escapeHtmlJs(lab[l.activity_code] || l.activity_code) + '</td><td class="num">' + q(l.old_qty) + '</td><td class="num">' + q(l.new_qty) +
+                    '</td><td class="fr-sub">' + escapeHtmlJs(l.reason || '') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
+}
+
+function lbPrint() {
+    if (!_lb.rep) { alert('Generate the report first.'); return; }
+    if (lbDirtyCount() && !confirm(lbDirtyCount() + ' typed change(s) are not saved yet. Print anyway (the printout shows them)?')) return;
+    var m = _lb.rep.meta;
+    var title = m.sheet === 'SHIFTING' ? frName(document.getElementById('lb-con').value) + ' LABOUR ' + lbD(m.from) + ' TO ' + lbD(m.to)
+        : 'DISPATCH LOADING LABOUR ' + lbD(m.from) + ' TO ' + lbD(m.to);
+    pkPrintFitted(title, lbSheetHtml(true), ' .lb-sheet{margin:0;} .lb-sheet tr{break-inside:avoid;}', true);
+}
+
+function lbExportCsv() {
+    if (!_lb.rep) { alert('Generate the report first.'); return; }
+    var tmp = document.createElement('div');
+    tmp.innerHTML = lbSheetHtml(true);
+    var rows = [];
+    tmp.querySelectorAll('tr').forEach(function(tr) {
+        var r = [];
+        tr.querySelectorAll('td,th').forEach(function(c) {
+            if (c.classList.contains('lb-gap')) return;
+            r.push(c.textContent.trim());
+            var span = Number(c.getAttribute('colspan') || 1);
+            for (var i = 1; i < span; i++) r.push('');
+        });
+        rows.push(r);
+    });
+    var csv = '﻿' + rows.map(function(r) { return r.map(frCsvCell).join(','); }).join('\r\n');
+    var m = _lb.rep.meta, a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = (m.sheet === 'SHIFTING' ? frName(document.getElementById('lb-con').value).replace(/\s+/g, '_') + '_Labour_' : 'Dispatch_Loading_Labour_') + m.from + '_to_' + m.to + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+// ── Settings › Labour Rates & Columns (Admin) ──
+async function lbLoadActEditor() {
+    var list = document.getElementById('lb-act-list');
+    if (!list) return;
+    await lbLoadActivities();
+    document.getElementById('lb-act-banner').innerHTML = _lb.actsFromDb ? '' :
+        '<div class="fr-note warn">Run <b>PACKING_LABOUR_MIGRATION.sql</b> first; until then the built-in columns are shown read only.</div>';
+    _lb.editActs = _lb.acts.map(function(a) { return Object.assign({}, a, { exclude_item_types: (a.exclude_item_types || []).slice() }); });
+    lbRenderActEditor();
+}
+function lbRenderActEditor() {
+    var list = document.getElementById('lb-act-list'), ro = !_lb.actsFromDb, dis = ro ? ' disabled' : '';
+    list.innerHTML = '<table class="fr-table"><thead><tr><th>Sheet</th><th>#</th><th>Column name</th><th>Source</th><th>Not counted (item types)</th><th class="num">Rate (₹)</th><th>Active</th><th>Last changed</th></tr></thead><tbody>' +
+        _lb.editActs.map(function(a, i) {
+            return '<tr data-i="' + i + '">' +
+                '<td><select data-f="sheet"' + dis + '><option value="DISPATCH"' + (a.sheet === 'DISPATCH' ? ' selected' : '') + '>Dispatch</option><option value="SHIFTING"' + (a.sheet === 'SHIFTING' ? ' selected' : '') + '>Shifting</option></select></td>' +
+                '<td><input type="number" data-f="sort_order" value="' + escapeHtmlJs(a.sort_order) + '" style="max-width:52px;"' + dis + '></td>' +
+                '<td><input type="text" data-f="label" value="' + escapeHtmlJs(a.label) + '" style="min-width:220px;"' + dis + '><div class="fr-sub">' + escapeHtmlJs(a.code || 'new') + '</div></td>' +
+                '<td><select data-f="source"' + dis + '><option value="MANUAL"' + (a.source !== 'AUTO_DISPATCH' ? ' selected' : '') + '>Typed</option>' +
+                    '<option value="AUTO_DISPATCH"' + (a.source === 'AUTO_DISPATCH' ? ' selected' : '') + '>From slips (loading contractor)</option></select></td>' +
+                '<td><input type="text" data-f="exclude_item_types" value="' + escapeHtmlJs((a.exclude_item_types || []).join(', ')) + '" placeholder="e.g. PVC BAG, LOOSE PCS"' + (ro || a.source !== 'AUTO_DISPATCH' ? ' disabled' : '') + '></td>' +
+                '<td><input type="number" data-f="rate" min="0" step="0.01" value="' + escapeHtmlJs(a.rate) + '" style="text-align:right;max-width:90px;"' + dis + '></td>' +
+                '<td style="text-align:center;"><input type="checkbox" data-f="active"' + (a.active !== false ? ' checked' : '') + dis + ' style="width:auto;"></td>' +
+                '<td class="fr-sub">' + escapeHtmlJs((a.updated_by || '') + (a.updated_at ? ' · ' + new Date(a.updated_at).toLocaleString('en-IN') : '')) + '</td></tr>';
+        }).join('') + '</tbody></table>';
+    list.querySelectorAll('tr[data-i]').forEach(function(tr) {
+        tr.querySelectorAll('[data-f]').forEach(function(el) {
+            el.addEventListener('change', function() {
+                var a = _lb.editActs[+tr.dataset.i], f = el.dataset.f;
+                if (f === 'active') a.active = el.checked;
+                else if (f === 'exclude_item_types') a.exclude_item_types = el.value.split(',').map(frName).filter(Boolean);
+                else a[f] = el.value;
+                if (f === 'source') lbRenderActEditor();
+            });
+        });
+    });
+    var sb = document.getElementById('lb-act-save-btn'); if (sb) sb.disabled = ro;
+}
+function lbAddActivity() {
+    if (!_lb.actsFromDb) { alert('Run PACKING_LABOUR_MIGRATION.sql first.'); return; }
+    var n = _lb.editActs.filter(function(a) { return a.sheet === 'SHIFTING'; }).length;
+    _lb.editActs.push({ code: '', sheet: 'SHIFTING', label: '', source: 'MANUAL', exclude_item_types: [], rate: '', sort_order: n + 1, active: true });
+    lbRenderActEditor();
+}
+async function lbSaveActivities() {
+    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var used = {}, bad = [];
+    _lb.editActs.forEach(function(a) { if (a.code) used[a.code] = true; });
+    var rows = _lb.editActs.map(function(a, i) {
+        var label = frName(a.label), rate = String(a.rate).trim();
+        if (!label) bad.push('Row ' + (i + 1) + ': the column needs a name');
+        if (rate === '' || !isFinite(Number(rate)) || Number(rate) < 0) bad.push((label || 'Row ' + (i + 1)) + ': rate must be 0 or more');
+        var code = a.code;
+        if (!code) {   // a new column: a fixed code from its name
+            var base = label.replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'COL';
+            code = base; var k = 2;
+            while (used[code]) code = base.slice(0, 27) + '_' + (k++);
+            used[code] = true;
+        }
+        return { code: code, sheet: a.sheet, label: label, source: a.source, exclude_item_types: a.source === 'AUTO_DISPATCH' ? (a.exclude_item_types || []) : [],
+                 rate: Number(rate), sort_order: Number(a.sort_order) || 0, active: a.active !== false };
+    });
+    if (bad.length) { alert('Please correct:\n\n' + bad.join('\n')); return; }
+    var btn = document.getElementById('lb-act-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_labour_activities', { p_rows: rows });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        showToast('Labour columns saved: ' + data.added + ' added, ' + data.changed + ' changed');
+        await lbLoadActEditor();
+        var lg = document.querySelector('#lb-act-card .fr-log'); if (lg && lg.open) lbLoadActLog();
+    } catch (e) {
+        alert('The labour columns were not saved:\n\n' + (e.message || e));
+    }
+    btn.disabled = !_lb.actsFromDb; btn.textContent = 'Save Labour Columns';
+}
+async function lbLoadActLog() {
+    var el = document.getElementById('lb-act-log-list');
+    try {
+        var { data, error } = await supabaseClient.from('labour_activity_log').select('*').order('changed_at', { ascending: false }).limit(100);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
+        var d = function(v) {
+            if (!v) return '—';
+            return (v.label || '') + ' · ' + (v.source === 'AUTO_DISPATCH' ? 'from slips' : 'typed') + ' · ₹' + v.rate + (v.active === false ? ' · OFF' : '');
+        };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Code</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+            data.map(function(l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(l.action) +
+                    '</td><td>' + escapeHtmlJs(l.code) + '</td><td>' + escapeHtmlJs(d(l.old_value)) + '</td><td>' + escapeHtmlJs(d(l.new_value)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
+}
+
 function hideAllPanels() {
     ['packing-slip-form','verification-panel','order-panel',
      'vehicle-panel','pack-orders-panel','pdf-repair-panel','reports-panel','settings-panel',
-     'party-master-panel','shifting-panel'
+     'party-master-panel','shifting-panel','freight-panel','labour-panel'
     ].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -11969,6 +13341,8 @@ function updateNavButtons(activePanel) {
         'packOrdersNavBtn': canPack && activePanel !== 'pack-orders-panel',
         'repairPdfNavBtn':  isAdmin && activePanel !== 'pdf-repair-panel',
         'reportsNavBtn':    canVerify && activePanel !== 'reports-panel',
+        'freightNavBtn':    canVerify && activePanel !== 'freight-panel',
+        'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
         'settingsNavBtn':   isAdmin && activePanel !== 'settings-panel'
     };
 

@@ -281,13 +281,25 @@ const NB_MAX_PDF_BYTES = 3 * 1024 * 1024;   // Notice Board PDF cap — keeps th
    The label speaks to a plain User, whose own complaints these are; anyone
    else (Host, triager, Admin) sees other people's too, so for them it is
    just "Awaiting OK" (labelOthers / hiOthers). */
+/* "Maintenance Info" sits between the Host's Mark Completed and the OK: the
+   register's triager (Maintenance / Production Manager, or Admin) records the
+   action type, the item consumed (Item Master), its qty and a live photo.
+   The status stays "Completed" during this step; r._needInfo (worked out in
+   loadRows from cmp_maint_info, CMP_MAINT_INFO_MIGRATION.sql) says the entry
+   is still missing, and `maint` on a tab picks the side. Before the
+   migration r._needInfo is always false, so the tab stays empty and
+   everything works as before. The database refuses a Close without the
+   entry (MAINT_INFO_REQUIRED). */
 const TABS = [
   { key:"Pending",     label:"Pending",     hi:"बाकी",      statuses:["Pending"] },
   { key:"In Progress", label:"In-progress", hi:"चल रहा है",  statuses:["In Progress"] },
+  { key:"MaintInfo",   label:"Maintenance Info", hi:"मेंटेनेंस जानकारी", statuses:["Completed"], maint:true },
   { key:"Awaiting",    label:"Awaiting Your OK", hi:"आपकी मंज़ूरी बाकी",
-    labelOthers:"Awaiting OK", hiOthers:"यूज़र की मंज़ूरी बाकी", statuses:["Completed"] },
+    labelOthers:"Awaiting OK", hiOthers:"यूज़र की मंज़ूरी बाकी", statuses:["Completed"], maint:false },
   { key:"Completed",   label:"Completed",   hi:"पूरा हुआ",   statuses:["Closed"] },
 ];
+const inTab = (t, r) => t.statuses.includes(r.status) && (t.maint === undefined || !!r._needInfo === t.maint);
+const MI_ACTIONS = ["Repair", "Replace", "First Time"];
 
 // ============================================================
 // 3. HELPERS
@@ -367,6 +379,9 @@ function friendlyError(e){
   if (/stage_evidence/i.test(m)) return "A required detail for this step is missing.";
   if (/host_scope_matches_role/i.test(m)) return "A Host must be given at least one complaint type.";
   if (/mobile_is_10_digits/i.test(m)) return "The mobile number must be exactly 10 digits.";
+  // Maintenance Info step (CMP_MAINT_INFO_MIGRATION.sql): "CODE: plain sentence"
+  const miMsg = m.match(/\b(MAINT_INFO_REQUIRED|NOT_ALLOWED|WRONG_STEP|BAD_ACTION_TYPE|BAD_QTY|PHOTO_REQUIRED|ITEM_NOT_FOUND):\s*(.+)$/);
+  if (miMsg) return miMsg[2];
   return m;
 }
 
@@ -621,6 +636,7 @@ function StatusBadge({c, D}){
   const down = (D ? D.tracksDowntime : true) && isDown(c);
   if (c.status === "Pending")     return <Badge tone={down?"rose":"amber"}>{down?"Pending · DOWN":"Pending"}</Badge>;
   if (c.status === "In Progress") return <Badge tone="teal">In-progress</Badge>;
+  if (c.status === "Completed" && c._needInfo) return <Badge tone="amber">Maintenance Info</Badge>;
   if (c.status === "Completed")   return <Badge tone="violet">Awaiting your OK</Badge>;
   return <Badge tone="emerald">Closed</Badge>;
 }
@@ -898,6 +914,152 @@ function PhotoCapture({photos, setPhotos, onView, toast}){
       <p className="text-[11px] text-slate-500 mt-2.5">
         On a phone, &ldquo;Take photo&rdquo; opens the camera. Up to {MAX_PHOTOS} photos, compressed automatically.
       </p>
+    </div>
+  );
+}
+
+// ============================================================
+// 6B. LIVE PHOTO — Maintenance Info step
+//     The photo must be taken now, not picked from the gallery, so the
+//     camera runs inside the page (getUserMedia) and the shot is stamped
+//     with the date / time and complaint no. Where the browser gives no
+//     camera stream (plain http, permission refused, old WebView) the phone
+//     camera is opened through <input capture>, still with no gallery button.
+//     Needs https (or the APK) for the in-page camera.
+// ============================================================
+function stampAndFit(source, w, h, stamp){
+  const renderAt = (maxDim, q) => {
+    const s = Math.min(1, maxDim / Math.max(w, h));
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w*s)); cv.height = Math.max(1, Math.round(h*s));
+    const cx = cv.getContext("2d");
+    cx.fillStyle = "#fff"; cx.fillRect(0,0,cv.width,cv.height);
+    cx.drawImage(source, 0, 0, cv.width, cv.height);
+    const fs = Math.max(14, Math.round(cv.width / 40));
+    cx.font = `600 ${fs}px sans-serif`;
+    const tw = cx.measureText(stamp).width;
+    cx.fillStyle = "rgba(15,23,42,.65)";
+    cx.fillRect(0, cv.height - fs*1.8, Math.min(cv.width, tw + fs), fs*1.8);
+    cx.fillStyle = "#fff";
+    cx.fillText(stamp, fs/2, cv.height - fs*0.6);
+    return cv.toDataURL("image/jpeg", q);
+  };
+  let q = 0.72, out = renderAt(1280, q);
+  while (out.length > MAX_IMG_CHARS && q > 0.32){ q -= 0.12; out = renderAt(1280, q); }
+  if (out.length > MAX_IMG_CHARS) out = renderAt(900, 0.6);
+  if (out.length > MAX_IMG_CHARS) out = renderAt(700, 0.5);
+  if (out.length > MAX_IMG_CHARS) throw new Error("The photo is too large. Please take it again.");
+  return out;
+}
+
+function LivePhotoModal({stampText, onShot, onClose}){
+  const videoRef = useRef(null), streamRef = useRef(null), fileRef = useRef(null);
+  const [ready, setReady] = useState(false);
+  const [noStream, setNoStream] = useState(false);
+  const [err, setErr] = useState("");
+  const stamp = () => `${stampText} · ${fmtDateTime(new Date().toISOString())}`;
+
+  useEffect(()=>{
+    let alive = true;
+    (async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no stream");
+        const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width:{ideal:1280}, height:{ideal:960} }, audio:false });
+        if (!alive){ st.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = st;
+        if (videoRef.current){ videoRef.current.srcObject = st; await videoRef.current.play().catch(()=>{}); }
+        setReady(true);
+      } catch(e){ if (alive) setNoStream(true); }
+    })();
+    return () => { alive = false; if (streamRef.current){ streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; } };
+  },[]);
+
+  const capture = () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) return setErr("The camera is not ready yet.");
+    try { onShot(stampAndFit(v, v.videoWidth, v.videoHeight, stamp())); }
+    catch(e){ setErr(e.message); }
+  };
+  // Fallback: the phone's own camera app (capture=environment, no gallery button here)
+  const fromCameraApp = (file) => {
+    if (!file || !/^image\//.test(file.type || "")) return setErr("This is not a photo.");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => { try { onShot(stampAndFit(img, img.width, img.height, stamp())); } catch(e){ setErr(e.message); } };
+      img.onerror = () => setErr("The photo could not be opened.");
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[75] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={e=>{ if (e.target===e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
+          <Ico d={I.camera} className="w-5 h-5 text-orange-600" />
+          <h3 className="font-semibold text-[15px]">Live Photo</h3>
+          <span className="text-[11px] text-slate-500">लाइव फोटो</span>
+          <Btn size="sm" icon={I.x} onClick={onClose} className="ml-auto" />
+        </div>
+        {!noStream ? (
+          <div className="bg-black">
+            <video ref={videoRef} className="w-full h-72 object-cover" muted playsInline />
+          </div>
+        ) : (
+          <div className="p-4 text-[13px] text-slate-600">
+            The in-page camera is not available on this device / connection. Open the phone camera instead:
+          </div>
+        )}
+        <div className="p-4 space-y-2">
+          {err && <p className="text-[12px] text-rose-600 bg-rose-50 rounded-lg px-3 py-2">{err}</p>}
+          {!noStream
+            ? <Btn variant="primary" icon={I.camera} className="w-full justify-center" onClick={capture} disabled={!ready}>{ready ? "Capture" : <><Spinner/> Opening camera…</>}</Btn>
+            : <>
+                <Btn variant="primary" icon={I.camera} className="w-full justify-center" onClick={()=>fileRef.current?.click()}>Open camera</Btn>
+                <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>fromCameraApp(e.target.files && e.target.files[0])} />
+              </>}
+          <p className="text-[11px] text-slate-500 text-center">The date, time and complaint no. are printed on the photo.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Item Master picker: type to search name / code, pick one. The UOM comes
+   with the item and is shown, never typed. items = [{id,item_code,name,uom}] */
+function ItemPicker({items, value, onPick}){
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const sel = (items || []).find(i => String(i.id) === String(value));
+  const shown = useMemo(()=>{
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return (items || []).filter(i => {
+      const hay = `${i.name || ""} ${i.item_code || ""}`.toLowerCase();
+      return words.every(w => hay.includes(w));
+    }).slice(0, 60);
+  },[items, q]);
+  return (
+    <div className="relative">
+      <input className={inputCls(false)} value={open ? q : (sel ? sel.name : q)}
+             placeholder={items ? "Type to search Item Master…" : "Loading Item Master…"}
+             onFocus={()=>{ setOpen(true); setQ(""); }}
+             onBlur={()=>setTimeout(()=>setOpen(false), 150)}
+             onChange={e=>{ setQ(e.target.value); setOpen(true); }} />
+      {open && items && (
+        <div className="absolute z-20 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+          {shown.length === 0
+            ? <p className="px-3 py-2 text-[12.5px] text-slate-500">No item matches.</p>
+            : shown.map(i => (
+              <button type="button" key={i.id} onMouseDown={e=>e.preventDefault()}
+                      onClick={()=>{ onPick(i); setQ(""); setOpen(false); }}
+                      className="w-full text-left px-3 py-2 text-[13px] hover:bg-slate-100 flex gap-2">
+                <span className="flex-1 min-w-0 truncate">{i.name}</span>
+                <span className="shrink-0 text-[11px] text-slate-500">{i.uom || "—"}</span>
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1515,8 +1677,63 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const [chHost, setChHost] = useState("");
   const [chEta, setChEta] = useState(toLocalInput(c.expected_completion || new Date(Date.now()+4*3600e3).toISOString()));
   const [chReason, setChReason] = useState("");
-  const canFeedback = isOwner && c.status === "Completed";
+  // The raiser's OK only once the Maintenance Info entry is in (c._needInfo)
+  const canFeedback = isOwner && c.status === "Completed" && !c._needInfo;
   const canDelete = profile.role === "Admin" || (isOwner && c.status === "Pending");
+
+  /* --- Maintenance Info step (CMP_MAINT_INFO_MIGRATION.sql). The register's
+     triager (or Admin) fills it after the Host's Mark Completed; saved only
+     by the cmp_maint_info_save RPC, which checks the role and the step again
+     and reads the item's name / UOM from Item Master itself. */
+  const canMaintInfo = isMaint && c.status === "Completed" && !!c._needInfo;
+  const [miEntries, setMiEntries] = useState([]);
+  const [miItems, setMiItems] = useState(null);
+  const [miAction, setMiAction] = useState("");
+  const [miItem, setMiItem] = useState(null);
+  const [miQty, setMiQty] = useState("");
+  const [miPhoto, setMiPhoto] = useState("");
+  const [miCam, setMiCam] = useState(false);
+  useEffect(()=>{
+    let alive = true;
+    sb.from("cmp_maint_info").select("*").eq("domain", D.key).eq("complaint_id", c.id).order("created_at")
+      .then(({data, error}) => { if (alive && !error) setMiEntries(data || []); });
+    return ()=>{ alive = false; };
+  },[c.id, D.key]);
+  useEffect(()=>{
+    if (!canMaintInfo || miItems) return;
+    let alive = true;
+    (async () => {
+      let out = [];
+      for (let from = 0; ; from += 1000){
+        const { data, error } = await sb.from("items").select("id,item_code,name,uom").order("name").range(from, from + 999);
+        if (error){ console.warn("Item Master:", error.message); break; }
+        out = out.concat(data || []);
+        if (!data || data.length < 1000) break;
+      }
+      if (alive) setMiItems(out.filter(i => String(i.name || "").trim()));
+    })();
+    return ()=>{ alive = false; };
+  },[canMaintInfo]); // eslint-disable-line
+  const saveMaintInfo = async () => {
+    setErr("");
+    if (!miAction) return setErr("Choose the Action Type.");
+    if (!miItem) return setErr("Choose the item from Item Master.");
+    const qty = Number(miQty);
+    if (!miQty || !isFinite(qty) || qty <= 0) return setErr("Enter the quantity consumed (more than 0).");
+    if (!miPhoto) return setErr("The live photo is required.");
+    setBusy(true);
+    const { data, error } = await sb.rpc("cmp_maint_info_save", {
+      p_domain: D.key, p_complaint_id: String(c.id), p_action_type: miAction,
+      p_item_id: String(miItem.id), p_qty: qty, p_photo: miPhoto,
+    });
+    setBusy(false);
+    if (error) return setErr(/cmp_maint_info_save|schema cache|does not exist/i.test(error.message || "")
+      ? "The Maintenance Info step is not set up yet. Ask the Admin to run CMP_MAINT_INFO_MIGRATION.sql."
+      : friendlyError(error));
+    if (!data || !data.success) return setErr(friendlyError((data && data.error) || "Not saved."));
+    toast(`${c.complaint_no}: Maintenance Info saved. Now waiting for the user's OK.`);
+    onSaved();
+  };
 
   /* Hosts who answer for this type come first. Before triage there is no
      type to match on, so everyone is "other" and the picker simply lists
@@ -1631,7 +1848,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
       status: "Completed",
       completed_at: new Date().toISOString(),
       completion_remarks: compRemarks.trim() || null,
-    }, `${c.complaint_no} completed. Ab user confirm karega.`);
+    }, `${c.complaint_no} completed. Next: Maintenance Info, then the user's OK.`);
   };
 
   // --- STEP 4: User feedback -> Closed or kick back
@@ -1671,6 +1888,8 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
             <Btn variant="primary" onClick={assignHost} disabled={busy}>{busy?<Spinner/>:null}Assign &amp; Start</Btn>}
           {canComplete &&
             <Btn variant="ok" onClick={markCompleted} disabled={busy}>{busy?<Spinner/>:null}Mark Completed</Btn>}
+          {canMaintInfo &&
+            <Btn variant="primary" onClick={saveMaintInfo} disabled={busy}>{busy?<Spinner/>:null}Submit Maintenance Info</Btn>}
           {canFeedback && <>
             <Btn variant="outline" onClick={notFixed} disabled={busy}>No, the problem is still there</Btn>
             <Btn variant="ok" onClick={confirmFixed} disabled={busy}>{busy?<Spinner/>:null}Yes, it's fixed</Btn>
@@ -1795,6 +2014,63 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
                    className="w-20 h-20 rounded-lg object-cover border-2 border-emerald-300 cursor-zoom-in" />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Maintenance Info entries already saved (one per completion round) */}
+      {miEntries.length > 0 && (
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-3.5 mb-4">
+          <p className="text-[10.5px] uppercase tracking-wide text-orange-700 font-semibold mb-2">Maintenance Info / मेंटेनेंस जानकारी</p>
+          {miEntries.map((m, i) => (
+            <div key={m.id} className={`flex gap-3 ${i ? "mt-3 pt-3 border-t border-orange-500/20" : ""}`}>
+              <img src={m.photo} alt="Live photo" onClick={()=>onView(m.photo)}
+                   className="w-20 h-20 rounded-lg object-cover border-2 border-orange-300 cursor-zoom-in shrink-0" />
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 min-w-0 grow">
+                <Row k="Action Type" v={<span className="font-semibold">{m.action_type}</span>} />
+                <Row k="Qty Consumed" v={<span className="font-semibold">{m.qty} {m.uom || ""}</span>} />
+                <Row k="Item" v={m.item_name} />
+                <Row k="Filled by" v={`${m.by_name || "—"} · ${fmtDateTime(m.updated_at || m.created_at)}`} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ========== MAINTENANCE INFO (triager, after the Host's Completed) ==========
+           Submitting it is what moves the complaint on to Awaiting OK. */}
+      {canMaintInfo && (
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 mt-5">
+          <p className="text-[11px] uppercase tracking-wide text-orange-700 font-semibold mb-3">
+            Maintenance Info / मेंटेनेंस जानकारी
+          </p>
+          <Field label="Action Type" hindi="काम का प्रकार" required>
+            <select className={inputCls(false)} value={miAction} onChange={e=>setMiAction(e.target.value)}>
+              <option value="">— Choose —</option>
+              {MI_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </Field>
+          <Field label="Item Name" hindi="आइटम" required hint="From Item Master. Type a few letters of the name or code.">
+            <ItemPicker items={miItems} value={miItem ? miItem.id : ""} onPick={setMiItem} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Item UOM" hindi="यूनिट">
+              <input className={inputCls(false)+" bg-slate-100"} value={miItem ? (miItem.uom || "—") : ""} readOnly placeholder="From the item" />
+            </Field>
+            <Field label="Quantity Consumed" hindi="कितना लगा" required>
+              <input type="number" inputMode="decimal" min="0" step="any" className={inputCls(false)} value={miQty}
+                     onChange={e=>setMiQty(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" />
+            </Field>
+          </div>
+          <Field label="Live Photo" hindi="लाइव फोटो" required hint="Taken now with the camera; a gallery photo is not accepted.">
+            <div className="flex items-center gap-3">
+              {miPhoto
+                ? <img src={miPhoto} alt="Live photo" onClick={()=>onView(miPhoto)} className="w-20 h-20 rounded-lg object-cover border-2 border-orange-300 cursor-zoom-in" />
+                : null}
+              <Btn variant="outline" icon={I.camera} type="button" onClick={()=>setMiCam(true)}>{miPhoto ? "Retake" : "Take live photo"}</Btn>
+            </div>
+          </Field>
+          {miCam && <LivePhotoModal stampText={c.complaint_no}
+                      onShot={src => { setMiPhoto(src); setMiCam(false); }} onClose={()=>setMiCam(false)} />}
         </div>
       )}
 
@@ -1944,6 +2220,19 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
         </div>
       )}
 
+      {/* Raiser / Host: completed, waiting for the Maintenance Info entry */}
+      {c.status === "Completed" && c._needInfo && !canMaintInfo && (
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 mt-5 flex items-start gap-3">
+          <Ico d={I.clock} className="w-5 h-5 text-orange-700 mt-0.5 shrink-0" />
+          <div>
+            <p className="text-[13px] font-semibold text-orange-800">Waiting for Maintenance Info</p>
+            <p className="text-[13px] text-slate-700 mt-0.5">
+              {c.host_name || "The host"} has completed it. {D.triager} fills the Maintenance Info next; after that it comes to you for the OK.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* User info panel — In Progress read-only view */}
       {isOwner && c.status === "In Progress" && c.expected_completion && !isMaint && (
         <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 mt-5 flex items-start gap-3">
@@ -1992,12 +2281,14 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
   // needsMe logic per workflow:
   // Pending → this domain's triager needs to classify + assign
   // In Progress → assigned Host needs to complete
-  // Completed → complaint raiser needs to give feedback
+  // Completed, Maintenance Info missing → the triager fills it
+  // Completed (info done) → complaint raiser needs to give feedback
   const isMaint = profile.role === "Admin" || profile.role === D.triager;
   const needsMe =
     (c.status === "Pending" && isMaint) ||
     (c.status === "In Progress" && profile.role === "Host" && c.host_user_id === profile.id) ||
-    (c.status === "Completed" && c.raised_by_user_id === profile.id);
+    (c.status === "Completed" && c._needInfo && isMaint) ||
+    (c.status === "Completed" && !c._needInfo && c.raised_by_user_id === profile.id);
   // Blue double-tick: complaint raiser sees it when host has opened the complaint
   const showBlueTick = c.seen_by_host_at && c.raised_by_user_id === profile.id;
   /* Rose means "machine is down". A fabric complaint stops no machine, so
@@ -2005,6 +2296,7 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
   const borderColor = c.status==="Closed" ? "#10b981"
     : (D.tracksDowntime && isDown(c)) ? "#f43f5e"
     : c.status==="In Progress" ? "#14b8a6"
+    : (c.status==="Completed" && c._needInfo) ? "#f97316"
     : c.status==="Completed" ? "#a78bfa" : "#f59e0b";
   return (
     <button onClick={()=>onOpen(c)}
@@ -2060,7 +2352,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
 
   const counts = useMemo(()=>{
     const o = {};
-    TABS.forEach(t => o[t.key] = rows.filter(r => t.statuses.includes(r.status)).length);
+    TABS.forEach(t => o[t.key] = rows.filter(r => inTab(t, r)).length);
     return o;
   },[rows]);
 
@@ -2069,8 +2361,8 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
     const o = {};
     TABS.forEach(t => {
       const lastSeen = tabSeenMap?.["complaints:" + t.key];
-      if (!lastSeen) { o[t.key] = rows.filter(r => t.statuses.includes(r.status)).length; return; }
-      o[t.key] = rows.filter(r => t.statuses.includes(r.status) && r.updated_at > lastSeen).length;
+      if (!lastSeen) { o[t.key] = rows.filter(r => inTab(t, r)).length; return; }
+      o[t.key] = rows.filter(r => inTab(t, r) && r.updated_at > lastSeen).length;
     });
     return o;
   },[rows, tabSeenMap]);
@@ -2079,7 +2371,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
     const tabDef = TABS.find(t => t.key === tab);
     const needle = q.trim().toLowerCase();
     return rows.filter(r => {
-      if (!tabDef.statuses.includes(r.status)) return false;
+      if (!inTab(tabDef, r)) return false;
       if (type === "__none") { if (r.complaint_type) return false; }
       else if (type !== "All" && r.complaint_type !== type) return false;
       if (needle){
@@ -2101,6 +2393,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
   // Tab colors per status
   const tabColors = { "Pending": { active:"bg-amber-500/15 border-amber-500/60 text-amber-800", dot:"bg-amber-500" },
                       "In Progress": { active:"bg-teal-500/15 border-teal-500/60 text-teal-800", dot:"bg-teal-500" },
+                      "MaintInfo": { active:"bg-orange-500/15 border-orange-500/60 text-orange-800", dot:"bg-orange-500" },
                       "Awaiting": { active:"bg-violet-500/15 border-violet-500/60 text-violet-800", dot:"bg-violet-500" },
                       "Completed": { active:"bg-emerald-500/15 border-emerald-500/60 text-emerald-800", dot:"bg-emerald-500" } };
   const ownLabel = profile.role === "User";
@@ -2161,6 +2454,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
             <Ico d={I.clipboard} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
             <p className="font-semibold text-slate-700 text-[13.5px] sm:text-[14px]">
               {tab === "Pending" ? "No pending complaints" : tab === "In Progress" ? "Nothing in progress"
+                : tab === "MaintInfo" ? "No Maintenance Info pending"
                 : tab === "Awaiting" ? "Nothing waiting for an OK" : "Nothing completed yet"}
             </p>
             <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
@@ -2818,7 +3112,7 @@ function Stats({rows, profile, D}){
       ? `${r.process_name||""}|${r.fabric_quality ?? ""}`
       : `${machineLabel(r)}|${r.machine_no||""}`;
     const subjects = new Set(open.map(keyOf));
-    const awaiting = rows.filter(r => r.status === "Completed" &&
+    const awaiting = rows.filter(r => r.status === "Completed" && !r._needInfo &&
       (profile.role === "User" ? r.raised_by_user_id === profile.id : true)).length;
     const base = [
       { n: rows.filter(r=>r.status==="Pending").length, l:"Pending", c:"text-amber-600" },
@@ -3054,10 +3348,30 @@ function App(){
     const { data, error } = await sb.from(D.table)
       .select(`*, photo_count:${D.photoTable}(count)`)
       .order("problem_date", {ascending:false}).order("created_at", {ascending:false});
+    if (error){ setLoading(false); return toast(friendlyError(error), true); }
+    /* Maintenance Info step: a Completed complaint whose round (completed_at)
+       is on or after required_from and has no entry yet still needs one.
+       Only the light columns are read (never the photo). Any error (the
+       migration not run yet) = no step, as before. */
+    let miFrom = null, miDone = new Set();
+    try {
+      const [cfg, mi] = await Promise.all([
+        sb.from("cmp_maint_info_cfg").select("required_from").eq("id", 1).maybeSingle(),
+        sb.from("cmp_maint_info").select("complaint_id,completed_at").eq("domain", D.key),
+      ]);
+      if (!cfg.error && !mi.error && cfg.data && cfg.data.required_from) {
+        miFrom = new Date(cfg.data.required_from).getTime();
+        (mi.data || []).forEach(m => miDone.add(String(m.complaint_id) + "|" + new Date(m.completed_at).getTime()));
+      }
+    } catch(e){ console.warn("Maintenance Info:", e.message || e); }
     setLoading(false);
-    if (error) return toast(friendlyError(error), true);
-    setRows((data||[]).map(r => ({...r, photo_count: r.photo_count?.[0]?.count ?? 0})));
-  },[toast, D.table, D.photoTable]);
+    setRows((data||[]).map(r => {
+      const doneAt = r.completed_at ? new Date(r.completed_at).getTime() : NaN;
+      const _needInfo = miFrom !== null && r.status === "Completed" && isFinite(doneAt) && doneAt >= miFrom &&
+        !miDone.has(String(r.id) + "|" + doneAt);
+      return {...r, photo_count: r.photo_count?.[0]?.count ?? 0, _needInfo};
+    }));
+  },[toast, D.table, D.photoTable, D.key]);
 
   /* The machine to complain about comes ONLY from the ERP's Master Data ›
      Machine Master (table `machines`), the same list the Store uses, so a
