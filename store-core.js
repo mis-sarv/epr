@@ -14186,6 +14186,14 @@ const SARV_DROPDOWNS=[
   {key:'erp_prlSatinQuality',label:'Satin Quality',hint:'Printing Lot Card › Satin Quality. Har quality ke codes: Printing Lot › Masters › Satin Codes',def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM']},
   {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
 
+  /* complaint.html reads this key straight from sales_dropdowns (rows if
+     any, else these defaults; PM_TASK_DEFAULTS there keeps the same list). */
+  {group:'Complaint App (complaint.html)'},
+  {key:'erp_cmpPmTask',label:'Preventive Task',
+   hint:'Machines › Preventive Task: the tasks a machine can be given (raised automatically as complaints every N days). A task already set on a machine keeps working after it is removed here.',
+   where:'complaint.html Machines tab',
+   def:['CLEANING','GREASING','OILING','OIL CHANGE','BELT CHECK','BEARING CHECK','FILTER CLEANING','ELECTRICAL PANEL CHECK','MOTOR CHECK','NUT BOLT TIGHTENING','PNEUMATIC LINE CHECK','SAFETY GUARD CHECK']},
+
   /* packing.html reads these keys straight from sales_dropdowns (rows if any,
      otherwise these defaults; its PK_DD block keeps a copy of the same
      defaults, so change both together). A value still held by an old slip /

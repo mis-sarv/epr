@@ -335,7 +335,11 @@ const machineLabel = c => (c.machine_name === "Other" && c.other_machine_name) ?
    already meant exactly this. Now that the type is NULL until a triager
    sets it, the old form would have called every fresh complaint "not down"
    — the one case where it matters most. */
-const isDown = c => c.status !== "Closed";
+/* A preventive task's complaint (CMP_PREVENTIVE_MIGRATION.sql, raised by
+   the server with "[PREVENTIVE]" in front) is planned work on a running
+   machine, so it never counts the machine as down. */
+const isPm = c => /^\[PREVENTIVE\]/.test(String(c && c.problem_desc || ""));
+const isDown = c => c.status !== "Closed" && !isPm(c);
 
 /* What the complaint is ABOUT, in one line — a machine with its number, or
    a process with its fabric quality. Every card, list row, detail header
@@ -1899,6 +1903,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
 
       <div className="flex items-center gap-2 flex-wrap mb-4">
         <StatusBadge c={c} D={D} />
+        {isPm(c) ? <Badge tone="teal">Preventive task</Badge> : null}
         {/* An untriaged complaint says so rather than showing a blank chip —
             amber, because it is a thing somebody still has to do. */}
         <Badge tone={c.complaint_type ? "slate" : "amber"}>{typeLabel(c)}</Badge>
@@ -2313,6 +2318,7 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
         <div className="flex items-center gap-1.5 shrink-0">
           {showBlueTick && <Ico d={I.checkCheck} className="w-3.5 h-3.5 text-blue-500" title="Seen by the host" />}
           {needsMe ? <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Needs your action" /> : null}
+          {isPm(c) ? <Badge tone="teal" title="Preventive task, raised automatically">Preventive</Badge> : null}
           <StatusBadge c={c} D={D} />
         </div>
       </div>
@@ -2602,6 +2608,25 @@ function MachineFormModal({editing, allList, onClose, onSaved, toast}){
   const [busy, setBusy] = useState(false);
   const [showScan, setShowScan] = useState(false);
   const set = (k,v) => setF(s => ({...s, [k]:v}));
+  /* Machine Photo, compulsory, taken with the camera (LivePhotoModal, the
+     shot is stamped with the machine no. + time). Kept in cmp_machine_photos
+     (CMP_PREVENTIVE_MIGRATION.sql), saved by cmp_machine_photo_save. An old
+     machine without a photo gets one on its next Edit. photoOk = null while
+     loading, false = the table is not there yet (migration not run). */
+  const [photo, setPhoto] = useState("");        // a new shot (data URL)
+  const [oldPhoto, setOldPhoto] = useState("");  // the saved one
+  const [photoOk, setPhotoOk] = useState(null);
+  const [cam, setCam] = useState(false);
+  useEffect(()=>{
+    let alive = true;
+    if (!isEdit){
+      sb.from("cmp_machine_photos").select("machine_id").limit(1).then(({error}) => { if (alive) setPhotoOk(!error); });
+      return ()=>{ alive = false; };
+    }
+    sb.from("cmp_machine_photos").select("image_data").eq("machine_id", editing.id).maybeSingle()
+      .then(({data, error}) => { if (!alive) return; setPhotoOk(!error); if (data) setOldPhoto(data.image_data); });
+    return ()=>{ alive = false; };
+  },[isEdit, editing && editing.id]);
 
   const save = async () => {
     const name = f.machine_name.trim().replace(/\s+/g, " ").toUpperCase();
@@ -2609,6 +2634,7 @@ function MachineFormModal({editing, allList, onClose, onSaved, toast}){
     const e = {};
     if (!name) e.machine_name = "Please enter the machine name.";
     if (!no) e.machine_no = "Please enter the machine number.";
+    if (photoOk !== false && !photo && !oldPhoto) e.photo = "The machine photo is required. Take it with the camera.";
     // Same rule as ERP › Machine Master: the PAIR name + no is unique
     // (one machine no. may repeat on different machines).
     if (name && no && (allList || []).some(m => m.id !== editing?.id
@@ -2619,13 +2645,21 @@ function MachineFormModal({editing, allList, onClose, onSaved, toast}){
 
     setBusy(true);
     const row = { machine_name: name, machine_no: no };
-    const { error } = isEdit
-      ? await sb.from("machines").update(row).eq("id", editing.id)
-      : await sb.from("machines").insert({ ...row, is_active: true });
+    const { data: saved, error } = isEdit
+      ? await sb.from("machines").update(row).eq("id", editing.id).select("id").maybeSingle()
+      : await sb.from("machines").insert({ ...row, is_active: true }).select("id").single();
+    if (error){ setBusy(false); return toast(error.code === "23505" ? `${name} (${no}) is already in the machine list.` : friendlyError(error), true); }
+    const id = (saved && saved.id) || (editing && editing.id);
+    let photoMsg = "";
+    if (photo && id){
+      const { data: pr, error: pe } = await sb.rpc("cmp_machine_photo_save", { p_machine_id: id, p_image: photo });
+      if (pe || !pr || !pr.success) photoMsg = " But the photo was NOT saved: " + friendlyError(pe || (pr && pr.error) || "unknown") + ". Open Edit and take it again.";
+    } else if (photoOk === false){
+      photoMsg = " (Machine photos need CMP_PREVENTIVE_MIGRATION.sql; the photo was not saved.)";
+    }
     setBusy(false);
-    if (error) return toast(error.code === "23505" ? `${name} (${no}) is already in the machine list.` : friendlyError(error), true);
-    toast(isEdit ? "Machine updated. If the name / no. changed, download its QR sticker again."
-                 : `${name} (${no}) added. It is in the New Complaint list now; download its QR sticker from the list.`);
+    toast((isEdit ? "Machine updated. If the name / no. changed, download its QR sticker again."
+                  : `${name} (${no}) added. It is in the New Complaint list now; download its QR sticker from the list.`) + photoMsg, !!photoMsg && !!photo);
     onSaved();
     onClose();
   };
@@ -2652,9 +2686,259 @@ function MachineFormModal({editing, allList, onClose, onSaved, toast}){
         </div>
       </Field>
       {showScan && <BarcodeScannerModal onResult={(code)=>{ setShowScan(false); set("machine_no", code.trim()); }} onClose={()=>setShowScan(false)} />}
+      <Field label="Machine photo" hindi="मशीन की फोटो · कैमरा" required={photoOk !== false} error={errs.photo}
+             hint={photoOk === false ? "Machine photos are not set up yet (CMP_PREVENTIVE_MIGRATION.sql); the machine saves without one."
+                                     : "Taken now with the camera; the machine no. and time are printed on it."}>
+        <div className="flex items-center gap-3">
+          {(photo || oldPhoto)
+            ? <img src={photo || oldPhoto} alt="Machine" onClick={()=>window.open(photo || oldPhoto)}
+                   className="w-24 h-24 rounded-lg object-cover border-2 border-teal-300 cursor-zoom-in" />
+            : <div className="w-24 h-24 rounded-lg border-2 border-dashed border-slate-300 grid place-items-center text-[11px] text-slate-400">No photo</div>}
+          <div className="flex flex-col gap-1.5">
+            <Btn variant="outline" icon={I.camera} type="button" onClick={()=>setCam(true)} disabled={photoOk === false}>
+              {photo || oldPhoto ? "Retake photo" : "Take photo"}
+            </Btn>
+            {photo ? <span className="text-[11px] text-emerald-700 font-semibold">New photo, saved with the machine</span> : null}
+          </div>
+        </div>
+      </Field>
+      {cam && <LivePhotoModal stampText={(f.machine_no || f.machine_name || "MACHINE").toUpperCase()}
+                onShot={src => { setPhoto(src); setCam(false); setErrs(s => ({...s, photo: undefined})); }} onClose={()=>setCam(false)} />}
       {isEdit && (
         <p className="text-[11.5px] text-slate-500">Old complaints keep the machine name / no. they were raised with.</p>
       )}
+    </Modal>
+  );
+}
+
+// ============================================================
+// 12A-2. PREVENTIVE TASKS (CMP_PREVENTIVE_MIGRATION.sql)
+//    Per machine: task (Dropdown Master erp_cmpPmTask, typed to search,
+//    only values of the list), doer (active Host with a machine type, or
+//    Maintenance), interval in days. The SERVER raises the complaints:
+//    the first one the day the task is saved, assigned to the doer; the next
+//    one on (doer's completion date + interval); never two open at once.
+//    This screen only edits the list (cmp_pm_save) and shows each task's
+//    state; it never raises a complaint itself.
+//    Copy: every task of another machine (task, doer, interval) is added
+//    as new rows here; nothing is saved until Save.
+// ============================================================
+const PM_TASK_KEY = "erp_cmpPmTask";
+// Used only while Dropdown Master has no rows for the key (store-core.js
+// SARV_DROPDOWNS keeps the same default list; change both together).
+const PM_TASK_DEFAULTS = ["CLEANING", "GREASING", "OILING", "OIL CHANGE", "BELT CHECK", "BEARING CHECK",
+  "FILTER CLEANING", "ELECTRICAL PANEL CHECK", "MOTOR CHECK", "NUT BOLT TIGHTENING", "PNEUMATIC LINE CHECK", "SAFETY GUARD CHECK"];
+
+/* Pick one value of a fixed list by typing (any word, any order). Typed
+   text that is not in the list is never kept. */
+function StringPicker({options, value, onPick, placeholder}){
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const shown = useMemo(()=>{
+    const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return (options || []).filter(o => words.every(w => o.toLowerCase().includes(w))).slice(0, 80);
+  },[options, q]);
+  return (
+    <div className="relative">
+      <input className={inputCls(!value)} value={open ? q : (value || "")} placeholder={placeholder || "Type to search…"}
+             onFocus={()=>{ setOpen(true); setQ(""); }} onBlur={()=>setTimeout(()=>setOpen(false), 150)}
+             onChange={e=>{ setQ(e.target.value); setOpen(true); }} />
+      {open && (
+        <div className="absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl">
+          {shown.length === 0
+            ? <p className="px-3 py-2 text-[12.5px] text-slate-500">Not in the list. Ask the Admin to add it in ERP › Dropdown Master ({PM_TASK_KEY}).</p>
+            : shown.map(o => (
+              <button type="button" key={o} onMouseDown={e=>e.preventDefault()} onClick={()=>{ onPick(o); setOpen(false); setQ(""); }}
+                      className={`w-full text-left px-3 py-2 text-[13px] hover:bg-slate-100 ${o === value ? "font-semibold text-teal-700" : ""}`}>{o}</button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PreventiveModal({machine, machines, toast, onClose, onSaved}){
+  const [rows, setRows] = useState(null);        // editable: {id, task, doer_id, interval_days, ...state}
+  const [setupErr, setSetupErr] = useState("");
+  const [taskList, setTaskList] = useState(PM_TASK_DEFAULTS);
+  const [doers, setDoers] = useState([]);
+  const [allTasks, setAllTasks] = useState([]);  // every active task (for Copy)
+  const [complaints, setComplaints] = useState({});
+  const [copyFrom, setCopyFrom] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [log, setLog] = useState(null);
+
+  const load = useCallback(async ()=>{
+    setErr("");
+    const [tk, dd, pr] = await Promise.all([
+      sb.from("cmp_pm_tasks").select("*").eq("active", true).order("id"),
+      sb.from("sales_dropdowns").select("value").eq("key", PM_TASK_KEY).order("id"),
+      sb.from("cmp_profiles").select("id,name,role,host_types,unit,all_units,is_active").in("role", ["Host", "Maintenance"]).eq("is_active", true).order("name"),
+    ]);
+    if (tk.error){ setSetupErr(/cmp_pm_tasks|schema cache|does not exist/i.test(tk.error.message || "")
+      ? "Preventive tasks are not set up yet. Ask the Admin to run CMP_PREVENTIVE_MIGRATION.sql." : friendlyError(tk.error)); setRows([]); return; }
+    const list = (dd.data || []).map(r => String(r.value || "").trim().toUpperCase()).filter(Boolean);
+    setTaskList(list.length ? [...new Set(list)] : PM_TASK_DEFAULTS);
+    setDoers((pr.data || []).filter(p => p.role === "Maintenance" || (p.host_types || []).some(t => MACHINE_TYPES.includes(t))));
+    const all = tk.data || [];
+    setAllTasks(all);
+    const mine = all.filter(t => t.machine_id === machine.id);
+    setRows(mine.map(t => ({ ...t, task: t.task_name })));
+    const ids = mine.map(t => t.last_complaint_id).filter(Boolean);
+    if (ids.length){
+      const { data } = await sb.from("cmp_machine_complaints").select("id,complaint_no,status").in("id", ids);
+      const o = {}; (data || []).forEach(c => o[c.id] = c); setComplaints(o);
+    }
+  },[machine.id]);
+  useEffect(()=>{ load(); },[load]);
+
+  const setRow = (i, k, v) => setRows(rs => rs.map((r, j) => j === i ? { ...r, [k]: v } : r));
+  const addRow = () => setRows(rs => [...rs, { id: null, task: "", doer_id: "", interval_days: "" }]);
+  const delRow = (i) => {
+    const r = rows[i];
+    if (r.id && !window.confirm(`Remove "${r.task}" from this machine? No more complaints will be raised for it (an open one stays). Takes effect on Save.`)) return;
+    setRows(rs => rs.filter((_, j) => j !== i));
+  };
+  const machinesWithTasks = useMemo(()=>{
+    const ids = new Set(allTasks.filter(t => t.machine_id !== machine.id).map(t => t.machine_id));
+    return (machines || []).filter(m => ids.has(m.id));
+  },[allTasks, machines, machine.id]);
+  const doCopy = () => {
+    if (!copyFrom) return;
+    const have = new Set(rows.map(r => String(r.task || "").toUpperCase()));
+    const src = allTasks.filter(t => t.machine_id === copyFrom);
+    const add = src.filter(t => !have.has(t.task_name.toUpperCase()))
+                   .map(t => ({ id: null, task: t.task_name, doer_id: t.doer_id, interval_days: t.interval_days }));
+    setRows(rs => [...rs, ...add]);
+    const m = machines.find(x => x.id === copyFrom);
+    toast(`${add.length} task(s) copied from ${m ? m.machine_name + " (" + (m.machine_no || "-") + ")" : "the machine"}${src.length - add.length ? `; ${src.length - add.length} already here` : ""}. Press Save to keep them.`);
+    setCopyFrom("");
+  };
+
+  const save = async () => {
+    setErr("");
+    const seen = new Set();
+    for (const [i, r] of rows.entries()){
+      const n = i + 1;
+      if (!r.task) return setErr(`Row ${n}: choose the task from the list.`);
+      if (!taskList.includes(r.task) && !r.id) return setErr(`Row ${n}: "${r.task}" is not in the task list.`);
+      if (seen.has(r.task)) return setErr(`"${r.task}" is listed twice.`);
+      seen.add(r.task);
+      if (!r.doer_id) return setErr(`Row ${n} (${r.task}): choose the doer.`);
+      const d = Number(r.interval_days);
+      if (!Number.isInteger(d) || d < 1 || d > 3650) return setErr(`Row ${n} (${r.task}): interval must be a whole number of days, 1 to 3650.`);
+    }
+    setBusy(true);
+    const { data, error } = await sb.rpc("cmp_pm_save", { p_machine_id: machine.id,
+      p_tasks: rows.map(r => ({ id: r.id || null, task: r.task, doer_id: r.doer_id, interval_days: Number(r.interval_days) })) });
+    setBusy(false);
+    if (error) return setErr(friendlyError(error));
+    if (!data || !data.success) return setErr(friendlyError((data && data.error) || "Not saved."));
+    toast(`Preventive tasks saved: ${data.added} added, ${data.changed} changed, ${data.removed} removed` +
+          (Number(data.raised) ? ` · ${data.raised} complaint(s) assigned today` : "") +
+          (Number(data.failed) ? ` · ${data.failed} could not be raised (see the task)` : ""), Number(data.failed) > 0);
+    onSaved && onSaved();
+    load();
+  };
+  const runNow = async () => {
+    setBusy(true);
+    const { data, error } = await sb.rpc("cmp_pm_run_now");
+    setBusy(false);
+    if (error || !data || !data.success) return toast(friendlyError(error || (data && data.error) || "Failed"), true);
+    toast(`${data.raised} due complaint(s) raised${data.failed ? `, ${data.failed} failed` : ""}.`, !!data.failed);
+    load();
+  };
+  const loadLog = async () => {
+    const { data, error } = await sb.from("cmp_pm_log").select("*").eq("machine_id", machine.id).order("at", { ascending:false }).limit(100);
+    setLog(error ? [] : (data || []));
+  };
+
+  const dueTxt = (r) => {
+    if (!r.id) return <span className="text-slate-500">New: first complaint today on Save</span>;
+    const c = r.last_complaint_id ? complaints[r.last_complaint_id] : null;
+    const open = c && c.status !== "Completed" && c.status !== "Closed";
+    return (
+      <span>
+        {open ? <span className="text-teal-700 font-semibold">{c.complaint_no} · {c.status}</span>
+              : <>Next plan: <b>{r.next_due ? fmtDate(r.next_due) : "—"}</b></>}
+        {c && !open ? <span className="text-slate-500"> · last {c.complaint_no} ({c.status})</span> : null}
+        {r.last_error ? <span className="block text-rose-600">Not raised: {r.last_error}</span> : null}
+      </span>
+    );
+  };
+
+  return (
+    <Modal title="Preventive Tasks" subtitle={`${machine.machine_name} · ${machine.machine_no || "—"}`} onClose={onClose} wide
+      footer={<>
+        <Btn variant="outline" onClick={runNow} disabled={busy || !!setupErr} className="mr-auto" title="Raise every due complaint now (it also runs every hour)">Run due now</Btn>
+        <Btn variant="outline" onClick={onClose}>Close</Btn>
+        <Btn variant="primary" onClick={save} disabled={busy || !!setupErr || rows === null}>{busy ? <Spinner/> : null}Save tasks</Btn>
+      </>}>
+      {setupErr ? <div className="rounded-lg bg-amber-50 text-amber-800 border border-amber-200 px-3 py-2.5 text-[13px] mb-3">{setupErr}</div> : null}
+      <p className="text-[12px] text-slate-600 mb-3 leading-relaxed">
+        Each task becomes a complaint assigned to its doer: the <b>first one the day you save it</b>, then the next one
+        <b> interval days after the doer marks it Completed</b>. A new one is never raised while the last is still open.
+        The complaints then go on as usual (Maintenance Info, your OK).
+      </p>
+      {machinesWithTasks.length > 0 && (
+        <div className="flex gap-2 items-end mb-3 flex-wrap">
+          <div className="grow min-w-[200px]">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Copy all tasks from machine</label>
+            <select className={inputCls(false)} value={copyFrom} onChange={e=>setCopyFrom(e.target.value)}>
+              <option value="">— Choose a machine —</option>
+              {machinesWithTasks.map(m => <option key={m.id} value={m.id}>{m.machine_name} · {m.machine_no || "—"} ({allTasks.filter(t => t.machine_id === m.id).length} tasks)</option>)}
+            </select>
+          </div>
+          <Btn variant="outline" onClick={doCopy} disabled={!copyFrom}>Copy</Btn>
+        </div>
+      )}
+      {rows === null ? <Spinner className="w-5 h-5 text-slate-500" /> : (
+        <div className="space-y-2.5">
+          {rows.length === 0 && <p className="text-[13px] text-slate-500">No preventive task for this machine yet.</p>}
+          {rows.map((r, i) => (
+            <div key={(r.id || "n") + "-" + i} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[1.4fr_1.2fr_110px_auto] gap-2 items-end">
+                <div>
+                  <label className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Task</label>
+                  <StringPicker options={taskList} value={r.task} onPick={v => setRow(i, "task", v)} placeholder="Type to search the task list…" />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Doer</label>
+                  <select className={inputCls(!r.doer_id)} value={r.doer_id || ""} onChange={e=>setRow(i, "doer_id", e.target.value)}>
+                    <option value="">— Choose —</option>
+                    {r.doer_id && !doers.some(d => d.id === r.doer_id) && <option value={r.doer_id}>{r.doer_name || "Former doer"} (not active)</option>}
+                    {doers.map(d => <option key={d.id} value={d.id}>{d.name} · {d.role === "Maintenance" ? "Maintenance" : (d.host_types || []).filter(t => MACHINE_TYPES.includes(t)).join(", ")}{d.unit ? " · " + d.unit : ""}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Every (days)</label>
+                  <input type="number" min="1" max="3650" step="1" inputMode="numeric" className={inputCls(!r.interval_days)}
+                         value={r.interval_days} onChange={e=>setRow(i, "interval_days", e.target.value.replace(/\D/g, ""))} placeholder="15" />
+                </div>
+                <Btn variant="ghost" icon={I.x} onClick={()=>delRow(i)} title="Remove this task" />
+              </div>
+              <p className="text-[11.5px] mt-1.5">{dueTxt(r)}</p>
+            </div>
+          ))}
+          <Btn variant="outline" icon={I.plus} onClick={addRow} disabled={!!setupErr}>Add Task</Btn>
+        </div>
+      )}
+      {err ? <div className="flex items-start gap-2 rounded-lg bg-rose-500/10 text-rose-700 px-3 py-2.5 text-[13px] mt-4"><Ico d={I.alert} className="w-4 h-4 mt-0.5 shrink-0" /><span>{err}</span></div> : null}
+      <details className="mt-4" onToggle={e=>{ if (e.target.open && log === null) loadLog(); }}>
+        <summary className="cursor-pointer text-[12.5px] font-semibold text-slate-600">History of this machine's preventive tasks</summary>
+        {log === null ? <Spinner className="w-4 h-4 text-slate-500 mt-2" /> : log.length === 0 ? <p className="text-[12px] text-slate-500 mt-2">Nothing yet.</p> : (
+          <div className="mt-2 max-h-64 overflow-y-auto divide-y divide-slate-100 text-[12px]">
+            {log.map(l => (
+              <div key={l.id} className="py-1.5 flex gap-2">
+                <span className="text-slate-500 shrink-0 w-32">{fmtDateTime(l.at)}</span>
+                <span className="font-semibold shrink-0 w-16">{l.action}</span>
+                <span className="min-w-0 grow">{l.complaint_no ? <b>{l.complaint_no} · </b> : null}{l.detail}{l.by_name ? <span className="text-slate-500"> · {l.by_name}</span> : null}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
     </Modal>
   );
 }
@@ -2669,6 +2953,8 @@ function AdminMachines({profile, toast, onMachinesChanged}){
   const [confirm, setConfirm] = useState(null);
   const [delBusy, setDelBusy] = useState(false);
   const [qrBusy, setQrBusy] = useState(null);   // id of the machine whose sticker is being made
+  const [pmFor, setPmFor] = useState(null);     // the machine whose Preventive Tasks are open
+  const [extra, setExtra] = useState({ photos: null, pm: {} });   // photos: Set of machine ids (null = not set up)
 
   const downloadQr = async (m) => {
     if (!m.machine_no) return toast("This machine has no Machine No. Edit it and add the number first.", true);
@@ -2685,6 +2971,14 @@ function AdminMachines({profile, toast, onMachinesChanged}){
     setLoading(false);
     if (error) return toast(friendlyError(error), true);
     setList(data || []);
+    // Which machines have a photo / how many preventive tasks (light columns only)
+    const [ph, pm] = await Promise.all([
+      sb.from("cmp_machine_photos").select("machine_id"),
+      sb.from("cmp_pm_tasks").select("machine_id,last_error").eq("active", true),
+    ]);
+    const cnt = {};
+    (pm.data || []).forEach(t => { const c = cnt[t.machine_id] || (cnt[t.machine_id] = { n: 0, err: 0 }); c.n++; if (t.last_error) c.err++; });
+    setExtra({ photos: ph.error ? null : new Set((ph.data || []).map(p => p.machine_id)), pm: pm.error ? {} : cnt });
   },[toast]);
   useEffect(()=>{ load(); },[load]);
 
@@ -2754,36 +3048,52 @@ function AdminMachines({profile, toast, onMachinesChanged}){
             <p className="font-semibold text-slate-700">No machines found</p>
           </div>
         ) : shown.map(m => (
-          <div key={m.id} className={`px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 ${m.is_active ? "" : "opacity-60"}`}>
-            <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 grid place-items-center font-bold text-[11px] shrink-0">
-              {String(m.machine_no || m.machine_name || "").slice(0,2).toUpperCase()}
+          /* The name block never shrinks below 180 px and the name wraps
+             (no truncate); the badges / buttons wrap onto more lines instead,
+             so nothing on the row is ever hidden. Short labels; the full
+             meaning is in each button's tooltip. */
+          <div key={m.id} className={`px-4 py-3.5 flex flex-wrap items-center gap-x-3 gap-y-2 ${m.is_active ? "" : "opacity-60"}`}>
+            <div className="flex items-center gap-3 flex-1 min-w-[180px]">
+              <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 grid place-items-center font-bold text-[11px] shrink-0">
+                {String(m.machine_no || m.machine_name || "").slice(0,2).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-[13.5px] break-words leading-snug">{m.machine_name}</p>
+                <p className="text-[11.5px] text-slate-500 break-all font-mono">{m.machine_no || "—"}</p>
+              </div>
             </div>
-            <div className="min-w-0 grow">
-              <p className="font-semibold text-[13.5px] truncate">{m.machine_name}</p>
-              <p className="text-[11.5px] text-slate-500 truncate font-mono">{m.machine_no || "—"}</p>
-            </div>
-            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+            <div className="flex items-center gap-1.5 flex-wrap justify-start sm:justify-end max-w-full">
               <Badge tone={m.is_active ? "emerald" : "slate"}>{m.is_active ? "Active" : "Inactive"}</Badge>
+              {extra.photos && !extra.photos.has(m.id) ? <Badge tone="rose" title="Open Edit and take the machine photo">No photo</Badge> : null}
+              <Btn size="sm" variant="outline" icon={I.calendar} onClick={()=>setPmFor(m)}
+                   title="Preventive Tasks: raised automatically as complaints for this machine, every N days">
+                PM{extra.pm[m.id] ? ` (${extra.pm[m.id].n})` : ""}
+                {extra.pm[m.id] && extra.pm[m.id].err ? <span className="ml-1 text-rose-600 font-bold" title="A task could not be raised: open to see why">!</span> : null}
+              </Btn>
               <Btn size="sm" variant="outline" icon={qrBusy === m.id ? undefined : I.scan} onClick={()=>downloadQr(m)}
                    disabled={qrBusy === m.id} title="Download the 4 × 4 inch QR sticker (PDF) for this machine">
-                {qrBusy === m.id ? <Spinner/> : null}QR Sticker
+                {qrBusy === m.id ? <Spinner/> : null}QR
               </Btn>
-              <Btn size="sm" variant="outline" icon={I.pen} onClick={()=>setEditing(m)}>Edit</Btn>
-              <Btn size="sm" variant="outline" onClick={()=>setActive(m, !m.is_active)}>{m.is_active ? "Deactivate" : "Activate"}</Btn>
-              {isAdmin && <Btn size="sm" variant="ghost" icon={I.x} onClick={()=>setConfirm(m)} title="Delete" />}
+              <Btn size="sm" variant="outline" icon={I.pen} onClick={()=>setEditing(m)} title="Edit the machine name, no. and photo">Edit</Btn>
+              <Btn size="sm" variant="outline" onClick={()=>setActive(m, !m.is_active)}
+                   title={m.is_active ? "Deactivate: hide from the New Complaint list (kept on record)" : "Activate: show in the New Complaint list again"}>
+                {m.is_active ? "Off" : "On"}
+              </Btn>
+              {isAdmin && <Btn size="sm" variant="ghost" icon={I.x} onClick={()=>setConfirm(m)} title="Delete (Admin)" />}
             </div>
           </div>
         ))}
       </div>
 
       <p className="text-[11.5px] text-slate-400 mt-3 leading-relaxed">
-        QR Sticker downloads a 4 × 4 inch PDF for that machine (print at 100 %, "actual size"); scanning it in New Complaint picks the machine. Re-print it after the name or number is changed.
-        Deactivate hides a machine from the New Complaint form and keeps it on record. Delete (Admin only) removes it from the ERP Machine Master for good; old complaints keep the machine name as text.
+        <b>PM</b> = Preventive Tasks (raised automatically as complaints every N days). <b>QR</b> downloads a 4 × 4 inch sticker PDF for that machine (print at 100 %, "actual size"); scanning it in New Complaint picks the machine. Re-print it after the name or number is changed.
+        <b>Off</b> hides a machine from the New Complaint form and keeps it on record (<b>On</b> shows it again). ✕ Delete (Admin only) removes it from the ERP Machine Master for good; old complaints keep the machine name as text.
       </p>
 
       {editing !== undefined && (
         <MachineFormModal editing={editing} allList={list} onClose={()=>setEditing(undefined)} onSaved={saved} toast={toast} />
       )}
+      {pmFor && <PreventiveModal machine={pmFor} machines={list} toast={toast} onClose={()=>setPmFor(null)} onSaved={load} />}
       {confirm && (
         <Modal title="Delete machine?" subtitle={confirm.machine_no || confirm.machine_name} onClose={()=>setConfirm(null)}
           footer={<>

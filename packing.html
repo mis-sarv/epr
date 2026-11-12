@@ -263,6 +263,22 @@
         #veh-search-count { font-size:11px; color:var(--text-muted); white-space:nowrap; }
         .veh-table mark { background:#fde68a; color:inherit; padding:0 1px; border-radius:2px; }
         .veh-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .veh-sec { font-size:11px; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:.05em; margin:10px 0 4px; padding-bottom:3px; border-bottom:1px solid var(--border); }
+        .veh-sec:first-child { margin-top:0; }
+        .veh-req-c { display:none; }
+        #veh-form-container.veh-contractor .veh-req-c { display:inline; }
+        #veh-form-container select, #veh-form-container input[type=date] { width:100%; box-sizing:border-box; }
+        .veh-doc { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-height:38px; border:1.5px dashed var(--border); border-radius:8px; padding:5px 8px; background:#f8fafc; }
+        .veh-doc.missing { border-color:#dc2626; background:#fef2f2; }
+        .veh-doc img { width:42px; height:42px; object-fit:cover; border-radius:5px; border:1px solid var(--border); cursor:zoom-in; }
+        .veh-doc .vd-pdf { width:42px; height:42px; display:flex; align-items:center; justify-content:center; border-radius:5px; background:#fee2e2; color:#b91c1c; font-size:11px; font-weight:800; }
+        .veh-doc .vd-txt { flex:1; min-width:90px; font-size:11px; color:var(--text-muted); line-height:1.3; }
+        .veh-doc .vd-txt b { color:#047857; }
+        .veh-doc button { border:1px solid var(--border); background:#fff; color:#334155; border-radius:6px; padding:5px 9px; font-size:11px; font-weight:700; cursor:pointer; }
+        .veh-doc input[type=file] { display:none; }
+        .veh-badge { display:inline-block; font-size:9.5px; font-weight:800; border-radius:10px; padding:1px 7px; white-space:nowrap; }
+        .veh-badge.ok { background:#dcfce7; color:#166534; } .veh-badge.bad { background:#fee2e2; color:#991b1b; } .veh-badge.na { background:#f1f5f9; color:#64748b; }
+        @media (max-width: 600px) { .veh-form-grid { grid-template-columns:1fr; } }
         .pending-table { width: 100%; border-collapse: collapse; font-size: 10px; }
         .pending-table th { background: #1e293b; color: #fff; padding: 5px 6px; text-align: left; font-size: 10px; position: sticky; top: 0; white-space: nowrap; }
         .pending-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -910,14 +926,49 @@
     <div class="card">
         <div class="card-title">Vehicle / Tempo Management</div>
         <div id="veh-form-container">
+            <!-- Fields marked .veh-req-c are compulsory only when Logistic Type =
+                 CONTRACTOR (vehApplyTypeRules); the documents live in
+                 packing.vehicle_docs + the private bucket vehicle-docs
+                 (sql/PACKING_VEHICLE_DOCS_MIGRATION.sql). -->
+            <div class="veh-sec">Vehicle</div>
             <div class="veh-form-grid">
                 <div class="form-group">
-                    <label>Tempo No <span class="required-star">*</span></label>
-                    <!-- Format AA00AA0000 (vehCheckTempo): 2 letters, 2 digits, 2 letters, 4 digits — or SELF -->
-                    <input type="text" id="veh-tempo" placeholder="e.g. HR06AB1234 or SELF" maxlength="13" autocomplete="off"
-                        oninput="vehOnTempoInput(this)" onblur="vehShowFieldState('tempo', true)" required>
-                    <div class="veh-hint" id="veh-tempo-hint">Format: 2 letters · 2 digits · 2 letters · 4 digits (e.g. HR06AB1234), or SELF</div>
+                    <label>Logistic Type <span class="required-star">*</span></label>
+                    <select id="veh-type" onchange="vehApplyTypeRules()" style="font-weight:600;">
+                        <option value="">— Select —</option>
+                        <option value="CONTRACTOR">Contractor</option>
+                        <option value="TEMPORARY">Temporary</option>
+                        <option value="TRANSPORT">Transport</option>
+                    </select>
+                    <div class="veh-hint" id="veh-type-hint">Contractor: every document below is compulsory</div>
                 </div>
+                <div class="form-group">
+                    <label>Tempo No <span class="required-star">*</span></label>
+                    <!-- Free format, capitals, never a space (vehTempoNoSpace / vehCheckTempo) -->
+                    <input type="text" id="veh-tempo" placeholder="e.g. HR06AB1234 or SELF" maxlength="40" autocomplete="off"
+                        oninput="vehOnTempoInput(this)" onblur="vehShowFieldState('tempo', true)" required>
+                    <div class="veh-hint" id="veh-tempo-hint">Any format, no spaces (e.g. HR06AB1234, 22BH1234A or SELF)</div>
+                </div>
+                <div class="form-group">
+                    <label>Registration Certificate (RC) Photo <span class="required-star veh-req-c">*</span></label>
+                    <div class="veh-doc" data-doc="rc_photo"></div>
+                </div>
+                <div class="form-group">
+                    <label>Other Details</label>
+                    <input type="text" id="veh-other" placeholder="Transport details" oninput="this.value=this.value.toUpperCase();">
+                </div>
+                <div class="form-group">
+                    <label>Insurance Validity Date <span class="required-star veh-req-c">*</span></label>
+                    <input type="date" id="veh-ins-date" onchange="vehShowInsState()">
+                    <div class="veh-hint" id="veh-ins-hint">Date the insurance is valid till</div>
+                </div>
+                <div class="form-group">
+                    <label>Insurance Photo <span class="required-star veh-req-c">*</span></label>
+                    <div class="veh-doc" data-doc="insurance_photo"></div>
+                </div>
+            </div>
+            <div class="veh-sec">Driver</div>
+            <div class="veh-form-grid">
                 <div class="form-group">
                     <label>TPT / Driver Name <span class="required-star">*</span></label>
                     <input type="text" id="veh-driver" placeholder="Driver Full Name" oninput="this.value=this.value.toUpperCase();" required>
@@ -930,10 +981,31 @@
                     <div class="veh-hint" id="veh-mobile-hint">10 digits, e.g. 9876543210</div>
                 </div>
                 <div class="form-group">
-                    <label>Other Details</label>
-                    <input type="text" id="veh-other" placeholder="Transport details" oninput="this.value=this.value.toUpperCase();">
+                    <label>Aadhaar No <span class="required-star veh-req-c">*</span></label>
+                    <input type="text" id="veh-aadhar" placeholder="12 digits" maxlength="16" inputmode="numeric" autocomplete="off" data-no-caps
+                        oninput="vehOnAadharInput(this)">
+                    <div class="veh-hint" id="veh-aadhar-hint">12 digits, numbers only</div>
+                </div>
+                <div class="form-group">
+                    <label>Aadhaar Photo <span class="required-star veh-req-c">*</span></label>
+                    <div class="veh-doc" data-doc="aadhar_photo"></div>
+                </div>
+                <div class="form-group">
+                    <label>Licence No <span class="required-star veh-req-c">*</span></label>
+                    <input type="text" id="veh-licence" placeholder="e.g. HR0619850034761" maxlength="30" autocomplete="off"
+                        oninput="vehOnLicenceInput(this)">
+                    <div class="veh-hint" id="veh-licence-hint">Letters and digits only, no spaces</div>
+                </div>
+                <div class="form-group">
+                    <label>Licence Photo <span class="required-star veh-req-c">*</span></label>
+                    <div class="veh-doc" data-doc="licence_photo"></div>
+                </div>
+                <div class="form-group">
+                    <label>Driver Photo <span class="required-star veh-req-c">*</span></label>
+                    <div class="veh-doc" data-doc="driver_photo"></div>
                 </div>
             </div>
+            <div id="veh-docs-banner"></div>
             <input type="hidden" id="veh-edit-orig">
             <div style="display:flex;gap:8px;margin-top:8px;">
                 <button type="button" id="veh-save-btn" onclick="handleSaveVehicle()"
@@ -2295,21 +2367,35 @@ async function dispatchPost(payload) {
             return error ? { success: false, error: error.message } : { success: true, deleted: payload.orderNo };
         }
 
+        // logistic_type comes with PACKING_VEHICLE_DOCS_MIGRATION.sql: before it
+        // the column does not exist, so the row is saved again without it
+        // (typeMissing tells the form). Both return the row id (for the docs).
         case 'saveVehicle': {
-            var { error } = await supabaseClient.from('vehicle_list').insert({
-                tempo_no: payload.tempoNo, driver_name: payload.driverName,
-                driver_mobile: payload.driverMobile, other_details: payload.otherDetails
-            });
-            return error ? { success: false, error: error.message } : { success: true };
+            var vRow = { tempo_no: payload.tempoNo, driver_name: payload.driverName,
+                         driver_mobile: payload.driverMobile, other_details: payload.otherDetails };
+            if (payload.logisticType) vRow.logistic_type = payload.logisticType;
+            var ins = await supabaseClient.from('vehicle_list').insert(vRow).select('id').single();
+            var typeMissing = false;
+            if (ins.error && /logistic_type/i.test(ins.error.message || '')) {
+                delete vRow.logistic_type; typeMissing = true;
+                ins = await supabaseClient.from('vehicle_list').insert(vRow).select('id').single();
+            }
+            return ins.error ? { success: false, error: ins.error.message } : { success: true, id: ins.data && ins.data.id, typeMissing: typeMissing };
         }
 
         case 'updateVehicle': {
-            var { error } = await supabaseClient.from('vehicle_list').update({
-                tempo_no: payload.tempoNo, driver_name: payload.driverName,
-                driver_mobile: payload.driverMobile, other_details: payload.otherDetails,
-                updated_at: new Date().toISOString()
-            }).eq('tempo_no', payload.origTempoNo);
-            return error ? { success: false, error: error.message } : { success: true };
+            var uRow = { tempo_no: payload.tempoNo, driver_name: payload.driverName,
+                         driver_mobile: payload.driverMobile, other_details: payload.otherDetails,
+                         updated_at: new Date().toISOString() };
+            if (payload.logisticType) uRow.logistic_type = payload.logisticType;
+            var up = await supabaseClient.from('vehicle_list').update(uRow).eq('tempo_no', payload.origTempoNo).select('id');
+            var typeMissing2 = false;
+            if (up.error && /logistic_type/i.test(up.error.message || '')) {
+                delete uRow.logistic_type; typeMissing2 = true;
+                up = await supabaseClient.from('vehicle_list').update(uRow).eq('tempo_no', payload.origTempoNo).select('id');
+            }
+            return up.error ? { success: false, error: up.error.message }
+                : { success: true, id: up.data && up.data[0] && up.data[0].id, typeMissing: typeMissing2 };
         }
 
         case 'deleteVehicle': {
@@ -2753,7 +2839,7 @@ async function dispatchGet(params) {
 
         case 'listVehicles': {
             var { data } = await supabaseClient.from('vehicle_list').select('*');
-            return { success: true, vehicles: (data||[]).map(function(v){ return { tempoNo: v.tempo_no, driverName: v.driver_name, driverMobile: v.driver_mobile, otherDetails: v.other_details }; }) };
+            return { success: true, vehicles: (data||[]).map(function(v){ return { id: v.id, tempoNo: v.tempo_no, driverName: v.driver_name, driverMobile: v.driver_mobile, otherDetails: v.other_details, logisticType: v.logistic_type || '' }; }) };
         }
 
         case 'listAllQuickPackDrafts': {
@@ -10070,6 +10156,8 @@ async function fetchVehicleList() {
     try {
         var data = await gasGet({ token: session ? session.token : '', action: 'listVehicles' });
         if (handleAuthFailure(data)) return;
+        await vehLoadDocs();
+        vehApplyTypeRules();   // draws the photo boxes (keeps files already chosen)
         if (data.vehicles) {
             vehicleList = data.vehicles;
             renderVehicleList();
@@ -10137,7 +10225,7 @@ function renderVehicleList() {
         return;
     }
     var shown = !words.length ? vehicleList : vehicleList.filter(function(v) {
-        var hay = [v.tempoNo, v.driverName, v.driverMobile, v.otherDetails].map(vehLoose).join('|');
+        var hay = [v.tempoNo, v.driverName, v.driverMobile, v.otherDetails, VEH_TYPES[v.logisticType] || ''].map(vehLoose).join('|');
         return words.every(function(w) { return hay.indexOf(w) >= 0; });
     });
     if (cnt) cnt.textContent = words.length ? shown.length + ' of ' + vehicleList.length : vehicleList.length + ' vehicles';
@@ -10147,13 +10235,30 @@ function renderVehicleList() {
     }
     container.innerHTML =
         '<table class="veh-table"><thead><tr>' +
-        '<th>Tempo No</th><th>Driver Name</th><th>Mobile</th><th>Other Details</th><th style="width:90px;">Actions</th>' +
+        '<th>Tempo No</th><th>Type</th><th>Driver Name</th><th>Mobile</th><th>Documents</th><th>Other Details</th><th style="width:90px;">Actions</th>' +
         '</tr></thead><tbody>' +
         shown.map(function(v) {
+            // Documents: for a Contractor what is still missing; insurance expiry for everyone
+            var d = _vehDocs.byId[String(v.id)] || null, docTxt;
+            if (_vehDocs.ok === false) docTxt = '<span class="veh-badge na">—</span>';
+            else if (v.logisticType === 'CONTRACTOR') {
+                var miss = vehMissingDocs(d, 'CONTRACTOR');
+                docTxt = miss.length ? '<span class="veh-badge bad" title="' + escapeHtmlJs('Missing: ' + miss.join(', ')) + '">' + miss.length + ' missing</span>'
+                                     : '<span class="veh-badge ok">Complete</span>';
+            } else {
+                var n = d ? VEH_DOC_PHOTOS.filter(function(p) { return d[p.key]; }).length : 0;
+                docTxt = '<span class="veh-badge na">' + n + ' / ' + VEH_DOC_PHOTOS.length + ' photos</span>';
+            }
+            if (d && d.insurance_valid_till && String(d.insurance_valid_till).slice(0, 10) < frDateInput(new Date())) {
+                docTxt += ' <span class="veh-badge bad">Insurance expired</span>';
+            }
             return '<tr>' +
                 '<td style="font-weight:700;color:var(--primary);">' + vehMark(v.tempoNo, words) + '</td>' +
+                '<td>' + (v.logisticType ? escapeHtmlJs(VEH_TYPES[v.logisticType] || v.logisticType)
+                                         : '<span class="veh-badge bad" title="Open with Edit and choose the Logistic Type">Not set</span>') + '</td>' +
                 '<td>' + vehMark(v.driverName, words) + '</td>' +
                 '<td>' + vehMark(v.driverMobile || '-', words) + '</td>' +
+                '<td style="white-space:nowrap;">' + docTxt + '</td>' +
                 '<td>' + vehMark(v.otherDetails || '-', words) + '</td>' +
                 '<td style="white-space:nowrap;">' +
                     '<button onclick="editVehicle(\'' + escapeHtmlJs(v.tempoNo) + '\')" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;">Edit</button>' +
@@ -10168,16 +10273,22 @@ function editVehicle(tempoNo) {
     if (!v) return;
     // Shown in the fixed format (an old "HR-06-AB-1234" becomes HR06AB1234);
     // veh-edit-orig keeps the saved spelling so the update finds the row.
-    document.getElementById('veh-tempo').value  = vehCleanTempo(v.tempoNo);
+    document.getElementById('veh-tempo').value  = vehTempoNoSpace(v.tempoNo);
     document.getElementById('veh-driver').value = v.driverName;
     document.getElementById('veh-mobile').value = vehCleanMobile(v.driverMobile || '');
     document.getElementById('veh-other').value  = v.otherDetails || '';
+    document.getElementById('veh-type').value   = v.logisticType || '';
     document.getElementById('veh-edit-orig').value = v.tempoNo;
     document.getElementById('veh-save-btn').textContent = 'Update Tempo';
     document.getElementById('veh-cancel-btn').style.display = '';
+    vehResetDocsForm(_vehDocs.byId[String(v.id)]);
     // Flag an old entry that does not fit the format, so it gets fixed on save
     vehShowFieldState('tempo', true);
     vehShowFieldState('mobile', true);
+    if (vehIsContractor()) {
+        var miss = vehMissingDocs(_vehDocs.byId[String(v.id)], 'CONTRACTOR');
+        if (miss.length) { var th = document.getElementById('veh-type-hint'); th.className = 'veh-hint bad'; th.textContent = 'Missing: ' + miss.join(', '); }
+    }
     document.getElementById('veh-tempo').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
@@ -10186,29 +10297,32 @@ function cancelVehicleEdit() {
     document.getElementById('veh-driver').value = '';
     document.getElementById('veh-mobile').value = '';
     document.getElementById('veh-other').value = '';
+    document.getElementById('veh-type').value = '';
     document.getElementById('veh-edit-orig').value = '';
     document.getElementById('veh-save-btn').textContent = '＋ Add Tempo';
     document.getElementById('veh-cancel-btn').style.display = 'none';
     vehResetFieldState();
+    vehResetDocsForm(null);
+    var th = document.getElementById('veh-type-hint'); if (th) th.className = 'veh-hint';
 }
 
 // ── Vehicle form formats ──
-// Tempo No: AA00AA0000 = 2 letters (state), 2 digits (RTO), 2 letters (series),
-// 4 digits (number), saved without spaces / dashes, e.g. HR06AB1234.
-// The one other value allowed is SELF (goods taken in the party's own vehicle).
+// Tempo No: free format (any vehicle number, BH series, temporary number,
+// SELF, a transporter's code ...), but always in capitals and WITHOUT any
+// space: spaces are dropped as typed / pasted ("hr 06 ab 1234" → HR06AB1234,
+// "HR-06 AB" → HR-06AB). Up to VEH_TEMPO_MAX characters.
+// SELF (goods taken in the party's own vehicle) still needs no driver mobile.
 // Driver Mob.: exactly 10 digits (may be left empty for SELF).
-// A pasted "HR-06-AB-1234" / "hr 06 ab 1234" is cleaned to HR06AB1234 as typed.
-var VEH_TEMPO_RE = /^[A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{4}$/;
+// vehCleanTempo (letters + digits only) stays the MATCHING key: the slip
+// form's tempo lookup and the duplicate check treat HR-06AB1234 and
+// HR06AB1234 as the same vehicle.
+var VEH_TEMPO_MAX = 20;
 var VEH_SELF = 'SELF';
 function vehIsSelf(v) { return vehCleanTempo(v) === VEH_SELF; }
-var VEH_TEMPO_PARTS = [
-    { from: 0, to: 2, re: /^[A-Z]*$/, what: '1st–2nd must be letters (state, e.g. HR)' },
-    { from: 2, to: 4, re: /^[0-9]*$/, what: '3rd–4th must be digits (RTO, e.g. 06)' },
-    { from: 4, to: 6, re: /^[A-Z]*$/, what: '5th–6th must be letters (series, e.g. AB)' },
-    { from: 6, to: 10, re: /^[0-9]*$/, what: '7th–10th must be digits (number, e.g. 1234)' }
-];
 
 function vehCleanTempo(v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+// What the Tempo No box keeps: capitals, no whitespace of any kind
+function vehTempoNoSpace(v) { return String(v || '').toUpperCase().replace(/\s+/g, ''); }
 function vehCleanMobile(v) {
     var d = String(v || '').replace(/\D/g, '');
     // +91 / 0 written in front of a 10-digit number: keep the 10 digits
@@ -10220,15 +10334,10 @@ function vehCleanMobile(v) {
 // '' = valid, else why not. partial = still typing (a short value is not yet wrong)
 function vehCheckTempo(v, partial) {
     if (!v) return partial ? '' : 'Tempo No is required.';
-    if (v === VEH_SELF) return '';
-    if (partial && VEH_SELF.indexOf(v) === 0) return '';   // S, SE, SEL: on the way to SELF
-    for (var i = 0; i < VEH_TEMPO_PARTS.length; i++) {
-        var p = VEH_TEMPO_PARTS[i];
-        if (!p.re.test(v.slice(p.from, p.to))) return 'Invalid: ' + p.what + ', or write SELF.';
-    }
-    if (v.length > 10) return 'Invalid: 10 characters only (AA00AA0000), or SELF.';
-    if (v.length < 10) return partial ? '' : 'Invalid: ' + v.length + ' of 10 characters (AA00AA0000, e.g. HR06AB1234), or SELF.';
-    return VEH_TEMPO_RE.test(v) ? '' : 'Invalid Tempo No (AA00AA0000 or SELF).';
+    if (/\s/.test(v)) return 'No spaces allowed.';
+    if (v.length > VEH_TEMPO_MAX) return 'Invalid: ' + VEH_TEMPO_MAX + ' characters at most.';
+    if (!vehCleanTempo(v)) return 'Invalid: use at least one letter or digit.';
+    return '';
 }
 // allowEmpty: SELF needs no driver mobile (if one is typed it must still be 10 digits)
 function vehCheckMobile(v, partial, allowEmpty) {
@@ -10240,11 +10349,11 @@ function vehCheckMobile(v, partial, allowEmpty) {
 
 function vehOnTempoInput(el) {
     var pos = el.selectionStart, before = el.value;
-    var clean = vehCleanTempo(before).slice(0, 10);
+    var clean = vehTempoNoSpace(before).slice(0, VEH_TEMPO_MAX);
     if (clean !== before) {
         el.value = clean;
         // keep the caret where the user was typing
-        var caret = Math.min(10, vehCleanTempo(before.slice(0, pos)).length);
+        var caret = Math.min(VEH_TEMPO_MAX, vehTempoNoSpace(before.slice(0, pos)).length);
         try { el.setSelectionRange(caret, caret); } catch (e) {}
     }
     vehShowFieldState('tempo', false);
@@ -10265,9 +10374,9 @@ function vehShowFieldState(which, final) {
     var v = el.value;
     var self = vehIsSelf((document.getElementById('veh-tempo') || {}).value);
     var err = which === 'tempo' ? vehCheckTempo(v, !final) : vehCheckMobile(v, !final, self);
-    var base = which === 'tempo' ? 'Format: 2 letters · 2 digits · 2 letters · 4 digits (e.g. HR06AB1234), or SELF'
+    var base = which === 'tempo' ? 'Any format, no spaces (e.g. HR06AB1234, 22BH1234A or SELF)'
                                  : (self ? 'Optional for SELF · 10 digits if given' : '10 digits, e.g. 9876543210');
-    var done = !err && v && (which === 'tempo' ? (VEH_TEMPO_RE.test(v) || v === VEH_SELF) : v.length === 10);
+    var done = !err && v && (which === 'tempo' ? true : v.length === 10);
     el.classList.toggle('veh-invalid', !!err);
     el.classList.toggle('veh-valid', !!done);
     hint.className = 'veh-hint' + (err ? ' bad' : done ? ' ok' : '');
@@ -10288,23 +10397,343 @@ function vehResetFieldState() {
     });
 }
 
+// ── Vehicle documents (PACKING_VEHICLE_DOCS_MIGRATION.sql) ──
+// Logistic Type CONTRACTOR: Aadhaar No + photo, Licence No + photo, RC photo,
+// Insurance date + photo and Driver photo are all compulsory, on a new
+// vehicle and on every Edit of a saved one (an old contractor vehicle cannot
+// be saved again until its documents are complete). TEMPORARY / TRANSPORT:
+// all optional, but what is filled must still be valid.
+// Numbers in packing.vehicle_docs (signed-in users only), photos in the
+// PRIVATE bucket vehicle-docs, path <vehicle id>/<kind>_<time>.<ext>; a
+// replaced photo is kept (no delete) and the change is logged by the server
+// (vehicle_docs_log). Opened with a 5-minute signed URL, never a public one.
+var VEH_DOC_BUCKET = 'vehicle-docs';
+var VEH_DOC_PHOTOS = [
+    { key: 'rc_photo',        label: 'RC Photo' },
+    { key: 'insurance_photo', label: 'Insurance Photo' },
+    { key: 'aadhar_photo',    label: 'Aadhaar Photo' },
+    { key: 'licence_photo',   label: 'Licence Photo' },
+    { key: 'driver_photo',    label: 'Driver Photo' }
+];
+var VEH_TYPES = { CONTRACTOR: 'Contractor', TEMPORARY: 'Temporary', TRANSPORT: 'Transport' };
+var VEH_DOC_MAX_BYTES = 5 * 1024 * 1024;
+var _vehDocs = { byId: {}, ok: null };          // vehicle id → docs row; ok = table readable
+var _vehForm = { files: {}, saved: {} };        // the open form: new files / saved paths per photo
+
+function vehIsContractor() { return (document.getElementById('veh-type') || {}).value === 'CONTRACTOR'; }
+function vehApplyTypeRules() {
+    var box = document.getElementById('veh-form-container');
+    if (box) box.classList.toggle('veh-contractor', vehIsContractor());
+    var h = document.getElementById('veh-type-hint');
+    if (h) h.textContent = vehIsContractor() ? 'Contractor: every document below is compulsory' : 'Documents are optional for this type';
+    vehRenderDocBoxes();
+}
+
+async function vehLoadDocs() {
+    try {
+        var { data, error } = await supabaseClient.from('vehicle_docs')
+            .select('vehicle_id, aadhar_no, licence_no, insurance_valid_till, aadhar_photo, licence_photo, rc_photo, insurance_photo, driver_photo, updated_by, updated_at');
+        if (error) throw error;
+        _vehDocs.byId = {};
+        (data || []).forEach(function(d) { _vehDocs.byId[String(d.vehicle_id)] = d; });
+        _vehDocs.ok = true;
+    } catch (e) {
+        console.warn('[Vehicles] vehicle_docs not readable (run PACKING_VEHICLE_DOCS_MIGRATION.sql):', e.message || e);
+        _vehDocs.ok = false;
+    }
+    var b = document.getElementById('veh-docs-banner');
+    if (b) b.innerHTML = _vehDocs.ok ? '' :
+        '<div class="veh-hint bad" style="margin-top:6px;">Documents cannot be saved yet: run PACKING_VEHICLE_DOCS_MIGRATION.sql in Supabase.</div>';
+}
+
+// What is missing for a Contractor (the docs row + what the form has)
+function vehMissingDocs(d, type) {
+    if (type !== 'CONTRACTOR') return [];
+    d = d || {};
+    var miss = [];
+    if (!/^[0-9]{12}$/.test(d.aadhar_no || '')) miss.push('Aadhaar No');
+    if (!d.licence_no) miss.push('Licence No');
+    if (!d.insurance_valid_till) miss.push('Insurance Validity Date');
+    VEH_DOC_PHOTOS.forEach(function(p) { if (!d[p.key]) miss.push(p.label); });
+    return miss;
+}
+
+function vehRenderDocBoxes() {
+    var contractor = vehIsContractor();
+    document.querySelectorAll('#veh-form-container .veh-doc').forEach(function(box) {
+        var key = box.getAttribute('data-doc');
+        var f = _vehForm.files[key], saved = _vehForm.saved[key];
+        var thumb = '', txt;
+        if (f) {
+            thumb = /pdf/i.test(f.type) ? '<span class="vd-pdf">PDF</span>' : '<img src="' + f._url + '" alt="" onclick="window.open(this.src)">';
+            txt = '<b>New:</b> ' + escapeHtmlJs(f.name) + ' (' + Math.round(f.size / 1024) + ' KB) · saved on Save';
+        } else if (saved) {
+            txt = '<b>Saved</b> · <a href="javascript:void(0)" onclick="vehViewDoc(\'' + escapeHtmlJs(saved) + '\')">View</a>';
+        } else {
+            txt = contractor ? 'Required for Contractor' : 'Optional';
+        }
+        box.classList.toggle('missing', contractor && !f && !saved);
+        box.innerHTML = thumb + '<span class="vd-txt">' + txt + '</span>' +
+            '<button type="button" onclick="vehOpenCamera(\'' + key + '\')" title="Take the photo now with the camera">Camera</button>' +
+            '<button type="button" onclick="this.nextElementSibling.click()" title="Choose a photo / PDF from the device">' + (f || saved ? 'Replace' : 'Upload') + '</button>' +
+            '<input type="file" accept="image/*,application/pdf" onchange="vehPickDoc(\'' + key + '\', this)">' +
+            (f ? '<button type="button" onclick="vehClearDoc(\'' + key + '\')" title="Remove the new file">✕</button>' : '');
+    });
+}
+
+// ── Camera for the document boxes ──
+// Opens the camera inside the page (getUserMedia: phone and laptop webcam),
+// rear camera for documents, front camera for the Driver Photo, with a
+// switch button. Where the browser gives no camera stream (plain http, the
+// permission refused, an old WebView) the phone's own camera app is opened
+// through <input capture> instead. The shot becomes the box's new file,
+// exactly like an uploaded photo (shrunk and saved on Save).
+var _vehCam = { stream: null, key: '', facing: 'environment' };
+function vehOpenCamera(key) {
+    _vehCam.key = key;
+    _vehCam.facing = key === 'driver_photo' ? 'user' : 'environment';
+    var label = (VEH_DOC_PHOTOS.filter(function(p) { return p.key === key; })[0] || {}).label || 'Photo';
+    var m = document.getElementById('veh-cam-modal');
+    if (!m) {
+        m = document.createElement('div');
+        m.id = 'veh-cam-modal';
+        m.style.cssText = 'position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.85);display:flex;align-items:center;justify-content:center;padding:12px;';
+        m.innerHTML =
+            '<div style="background:#fff;border-radius:14px;max-width:520px;width:100%;overflow:hidden;">' +
+                '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);">' +
+                    '<b id="veh-cam-title" style="flex:1;font-size:14px;"></b>' +
+                    '<button type="button" onclick="vehCloseCamera()" style="border:none;background:#f1f5f9;border-radius:6px;padding:5px 10px;cursor:pointer;font-weight:700;">✕</button></div>' +
+                '<div style="background:#000;position:relative;"><video id="veh-cam-video" autoplay playsinline muted style="width:100%;max-height:60vh;display:block;"></video></div>' +
+                '<div id="veh-cam-msg" style="font-size:12px;color:#991b1b;padding:6px 12px;display:none;"></div>' +
+                '<div style="display:flex;gap:8px;padding:10px 12px;">' +
+                    '<button type="button" id="veh-cam-shot" onclick="vehCameraShot()" style="flex:2;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;">Capture</button>' +
+                    '<button type="button" onclick="vehCameraSwitch()" style="flex:1;padding:11px;background:#f8fafc;border:1.5px solid var(--border);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Switch camera</button></div>' +
+                '<input type="file" id="veh-cam-fallback" accept="image/*" capture="environment" style="display:none;" onchange="vehCameraFallbackPicked(this)">' +
+            '</div>';
+        document.body.appendChild(m);
+    }
+    document.getElementById('veh-cam-title').textContent = label + ' · Camera';
+    m.style.display = 'flex';
+    vehCameraStart();
+}
+async function vehCameraStart() {
+    vehCameraStop();
+    var msg = document.getElementById('veh-cam-msg'), shot = document.getElementById('veh-cam-shot');
+    msg.style.display = 'none'; shot.disabled = true;
+    try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('no camera stream');
+        _vehCam.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: _vehCam.facing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+        var v = document.getElementById('veh-cam-video');
+        v.srcObject = _vehCam.stream;
+        await v.play().catch(function() {});
+        shot.disabled = false;
+    } catch (e) {
+        // No in-page camera: offer the phone's camera app. It is opened from a
+        // button tap (a browser does not let a page open it on its own here).
+        console.warn('[Vehicles] camera stream:', e.message || e);
+        var fb = document.getElementById('veh-cam-fallback');
+        fb.setAttribute('capture', _vehCam.facing === 'user' ? 'user' : 'environment');
+        fb.value = '';
+        msg.innerHTML = 'The camera could not be opened inside the page (permission refused, or the page is not on https). ' +
+            '<button type="button" onclick="document.getElementById(\'veh-cam-fallback\').click();vehCloseCamera();" ' +
+            'style="margin-top:6px;display:block;width:100%;padding:9px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Open phone camera</button>';
+        msg.style.display = '';
+    }
+}
+function vehCameraStop() {
+    if (_vehCam.stream) { _vehCam.stream.getTracks().forEach(function(t) { t.stop(); }); _vehCam.stream = null; }
+}
+function vehCloseCamera() {
+    vehCameraStop();
+    var m = document.getElementById('veh-cam-modal');
+    if (m) m.style.display = 'none';
+}
+function vehCameraSwitch() {
+    _vehCam.facing = _vehCam.facing === 'user' ? 'environment' : 'user';
+    vehCameraStart();
+}
+function vehCameraShot() {
+    var v = document.getElementById('veh-cam-video');
+    if (!v || !v.videoWidth) { var msg = document.getElementById('veh-cam-msg'); msg.textContent = 'The camera is not ready yet.'; msg.style.display = ''; return; }
+    var cv = document.createElement('canvas');
+    cv.width = v.videoWidth; cv.height = v.videoHeight;
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+    var key = _vehCam.key;
+    cv.toBlob(function(b) {
+        if (!b) { alert('The photo could not be taken. Try again.'); return; }
+        vehSetDocFile(key, new File([b], key + '_camera.jpg', { type: 'image/jpeg' }));
+        vehCloseCamera();
+    }, 'image/jpeg', 0.9);
+}
+function vehCameraFallbackPicked(input) {
+    var f = input.files && input.files[0];
+    if (f) vehSetDocFile(_vehCam.key, f);
+}
+
+function vehPickDoc(key, input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    vehSetDocFile(key, file);
+}
+// One way in for a new document file (upload or camera)
+function vehSetDocFile(key, file) {
+    if (!/^image\//.test(file.type) && file.type !== 'application/pdf') { alert('Choose a photo (JPG / PNG) or a PDF.'); return; }
+    if (file.type === 'application/pdf' && file.size > VEH_DOC_MAX_BYTES) { alert('The PDF is larger than 5 MB.'); return; }
+    if (_vehForm.files[key] && _vehForm.files[key]._url) URL.revokeObjectURL(_vehForm.files[key]._url);
+    file._url = URL.createObjectURL(file);
+    _vehForm.files[key] = file;
+    vehRenderDocBoxes();
+}
+function vehClearDoc(key) {
+    var f = _vehForm.files[key];
+    if (f && f._url) URL.revokeObjectURL(f._url);
+    delete _vehForm.files[key];
+    vehRenderDocBoxes();
+}
+
+async function vehViewDoc(path) {
+    try {
+        var { data, error } = await supabaseClient.storage.from(VEH_DOC_BUCKET).createSignedUrl(path, 300);
+        if (error) throw error;
+        window.open(data.signedUrl, '_blank');
+    } catch (e) { alert('The document could not be opened: ' + (e.message || e)); }
+}
+
+// A photo is made smaller (longest side 1600 px, JPEG) before upload; a PDF goes as it is
+function vehShrinkImage(file) {
+    return new Promise(function(resolve, reject) {
+        if (file.type === 'application/pdf') return resolve(file);
+        var img = new Image();
+        img.onload = function() {
+            var s = Math.min(1, 1600 / Math.max(img.width, img.height));
+            var cv = document.createElement('canvas');
+            cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s);
+            var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+            cx.drawImage(img, 0, 0, cv.width, cv.height);
+            cv.toBlob(function(b) { b ? resolve(b) : reject(new Error('The photo could not be prepared.')); }, 'image/jpeg', 0.82);
+        };
+        img.onerror = function() { reject(new Error('The photo could not be opened.')); };
+        img.src = file._url || URL.createObjectURL(file);
+    });
+}
+
+function vehOnAadharInput(el) {
+    var d = el.value.replace(/\D/g, '').slice(0, 12);
+    if (d !== el.value) el.value = d;
+    vehShowDocState('aadhar');
+}
+function vehOnLicenceInput(el) {
+    var v = el.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30);
+    if (v !== el.value) el.value = v;
+    vehShowDocState('licence');
+}
+function vehCheckAadhar(v, required) {
+    if (!v) return required ? 'Aadhaar No is required for Contractor.' : '';
+    if (!/^[0-9]{12}$/.test(v)) return 'Aadhaar No must be exactly 12 digits (' + v.length + ' typed).';
+    return '';
+}
+function vehCheckLicence(v, required) {
+    if (!v) return required ? 'Licence No is required for Contractor.' : '';
+    if (!/^[A-Z0-9]{1,30}$/.test(v)) return 'Licence No: letters and digits only, no spaces.';
+    return '';
+}
+function vehShowDocState(which, final) {
+    var el = document.getElementById('veh-' + which), hint = document.getElementById('veh-' + which + '-hint');
+    if (!el || !hint) return '';
+    var req = vehIsContractor() && !!final;
+    var err = which === 'aadhar' ? vehCheckAadhar(el.value, req) : vehCheckLicence(el.value, req);
+    if (!final && which === 'aadhar' && el.value && el.value.length < 12) err = '';   // still typing
+    el.classList.toggle('veh-invalid', !!err);
+    hint.className = 'veh-hint' + (err ? ' bad' : el.value ? ' ok' : '');
+    hint.textContent = err || (el.value ? '✓ Valid' : (which === 'aadhar' ? '12 digits, numbers only' : 'Letters and digits only, no spaces'));
+    return err;
+}
+function vehShowInsState() {
+    var v = document.getElementById('veh-ins-date').value, hint = document.getElementById('veh-ins-hint');
+    if (!hint) return;
+    if (!v) { hint.className = 'veh-hint'; hint.textContent = 'Date the insurance is valid till'; return; }
+    var expired = v < frDateInput(new Date());
+    hint.className = 'veh-hint ' + (expired ? 'bad' : 'ok');
+    hint.textContent = expired ? 'Insurance has EXPIRED (' + formatSlipDate(v) + ')' : '✓ Valid till ' + formatSlipDate(v);
+}
+
+function vehResetDocsForm(docs) {
+    Object.keys(_vehForm.files).forEach(vehClearDoc);
+    _vehForm = { files: {}, saved: {} };
+    docs = docs || {};
+    VEH_DOC_PHOTOS.forEach(function(p) { if (docs[p.key]) _vehForm.saved[p.key] = docs[p.key]; });
+    document.getElementById('veh-aadhar').value = docs.aadhar_no || '';
+    document.getElementById('veh-licence').value = docs.licence_no || '';
+    document.getElementById('veh-ins-date').value = docs.insurance_valid_till ? String(docs.insurance_valid_till).slice(0, 10) : '';
+    ['aadhar', 'licence'].forEach(function(w) { vehShowDocState(w, false); });
+    vehShowInsState();
+    vehApplyTypeRules();
+}
+
+// The docs step of Save: upload the new files, then write the row (one upsert)
+async function vehSaveDocs(vehicleId, values) {
+    var row = { vehicle_id: vehicleId, aadhar_no: values.aadhar || null, licence_no: values.licence || null,
+                insurance_valid_till: values.insDate || null,
+                updated_by: (session && (session.fullName || session.username)) || '', updated_at: new Date().toISOString() };
+    for (var i = 0; i < VEH_DOC_PHOTOS.length; i++) {
+        var p = VEH_DOC_PHOTOS[i], f = _vehForm.files[p.key];
+        row[p.key] = _vehForm.saved[p.key] || null;
+        if (!f) continue;
+        setOrderSavingStage('saving', 'Uploading ' + p.label);
+        var blob = await vehShrinkImage(f);
+        var ext = f.type === 'application/pdf' ? 'pdf' : 'jpg';
+        var path = vehicleId + '/' + p.key + '_' + Date.now() + '.' + ext;
+        var up = await supabaseClient.storage.from(VEH_DOC_BUCKET).upload(path, blob, { contentType: f.type === 'application/pdf' ? 'application/pdf' : 'image/jpeg', upsert: false });
+        if (up.error) throw new Error(p.label + ' upload failed: ' + up.error.message);
+        row[p.key] = path;
+    }
+    setOrderSavingStage('saving', 'Saving documents');
+    var { error } = await supabaseClient.from('vehicle_docs').upsert(row, { onConflict: 'vehicle_id' });
+    if (error) throw new Error('Documents not saved: ' + error.message);
+}
+
 async function handleSaveVehicle() {
     var tEl = document.getElementById('veh-tempo'), mEl = document.getElementById('veh-mobile');
-    tEl.value = vehCleanTempo(tEl.value);
+    tEl.value = vehTempoNoSpace(tEl.value);
     mEl.value = vehCleanMobile(mEl.value);
     var tempoNo = tEl.value;
     var driverName = document.getElementById('veh-driver').value.trim();
     var tErr = vehShowFieldState('tempo', true);
     var mErr = vehShowFieldState('mobile', true);
-    if (tErr) { alert('Tempo No — ' + tErr + '\n\nFormat: AA00AA0000 (e.g. HR06AB1234), or SELF'); tEl.focus(); return; }
+    if (tErr) { alert('Tempo No — ' + tErr + '\n\nAny format is allowed, but without spaces.'); tEl.focus(); return; }
     if (!driverName) { alert('Driver Name is required.'); document.getElementById('veh-driver').focus(); return; }
     if (mErr) { alert('Driver Mob. — ' + mErr + '\n\nEnter exactly 10 digits.'); mEl.focus(); return; }
+
+    // Logistic Type + documents (all compulsory for CONTRACTOR, on Add and on Edit)
+    var logisticType = document.getElementById('veh-type').value;
+    if (!logisticType) { alert('Choose the Logistic Type (Contractor / Temporary / Transport).'); document.getElementById('veh-type').focus(); return; }
+    var aEl = document.getElementById('veh-aadhar'), lEl = document.getElementById('veh-licence');
+    aEl.value = aEl.value.replace(/\D/g, ''); lEl.value = lEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    var docVals = { aadhar: aEl.value, licence: lEl.value, insDate: document.getElementById('veh-ins-date').value };
+    var aErr = vehShowDocState('aadhar', true), lErr = vehShowDocState('licence', true);
+    if (aErr) { alert(aErr); aEl.focus(); return; }
+    if (lErr) { alert(lErr); lEl.focus(); return; }
+    var docsTouched = !!(docVals.aadhar || docVals.licence || docVals.insDate || Object.keys(_vehForm.files).length);
+    if (logisticType === 'CONTRACTOR') {
+        var probe = { aadhar_no: docVals.aadhar, licence_no: docVals.licence, insurance_valid_till: docVals.insDate };
+        VEH_DOC_PHOTOS.forEach(function(p) { probe[p.key] = _vehForm.files[p.key] || _vehForm.saved[p.key] || ''; });
+        var miss = vehMissingDocs(probe, 'CONTRACTOR');
+        vehRenderDocBoxes();
+        if (miss.length) { alert('Logistic Type is Contractor, so these are compulsory:\n\n• ' + miss.join('\n• ')); return; }
+        if (docVals.insDate < frDateInput(new Date()) &&
+            !confirm('The insurance has expired (' + formatSlipDate(docVals.insDate) + '). Save anyway?')) return;
+    }
+    if (docsTouched && _vehDocs.ok === false) {
+        alert('The documents cannot be saved yet: run PACKING_VEHICLE_DOCS_MIGRATION.sql in Supabase first.' +
+              (logisticType === 'CONTRACTOR' ? '' : '\n\nClear the document fields to save the vehicle without them.'));
+        return;
+    }
 
     var origTempoNo = document.getElementById('veh-edit-orig').value.trim();
     var isEdit = !!origTempoNo;
     // Same tempo already saved (any old spelling with dashes / spaces counts)
     var dup = (vehicleList || []).filter(function(v) {
-        return vehCleanTempo(v.tempoNo) === tempoNo && (!isEdit || v.tempoNo !== origTempoNo);
+        return vehCleanTempo(v.tempoNo) === vehCleanTempo(tempoNo) && (!isEdit || v.tempoNo !== origTempoNo);
     })[0];
     if (dup) { alert('Tempo ' + dup.tempoNo + ' is already saved. Edit that one instead.'); tEl.focus(); return; }
 
@@ -10320,6 +10749,7 @@ async function handleSaveVehicle() {
         driverName:   driverName,
         driverMobile: mEl.value,
         otherDetails: document.getElementById('veh-other').value.trim(),
+        logisticType: logisticType,
         origTempoNo:  origTempoNo
     });
 
@@ -10327,6 +10757,28 @@ async function handleSaveVehicle() {
         var result = await gasPost(payload);
         if (handleAuthFailure(result)) { hideOrderSavingOverlay(); btn.disabled = false; btn.textContent = isEdit ? 'Update Tempo' : '＋ Add Tempo'; return; }
         if (result.success) {
+            // Documents need the row id and the internet (an offline-queued
+            // vehicle has neither yet): say so instead of losing them silently.
+            var docWarn = '';
+            if (result.typeMissing) docWarn = 'Logistic Type was not saved (run PACKING_VEHICLE_DOCS_MIGRATION.sql).';
+            if (docsTouched || logisticType === 'CONTRACTOR') {
+                if (!result.id) docWarn = 'The vehicle is saved' + (result.queued ? ' offline' : '') + ', but the documents were NOT saved. Open it again with Edit when online and save the documents.';
+                else {
+                    try { await vehSaveDocs(result.id, docVals); }
+                    catch (de) { docWarn = 'The vehicle is saved, but: ' + (de.message || de) + '\n\nOpen it with Edit and save again.'; }
+                }
+            }
+            if (docWarn) {
+                hideOrderSavingOverlay();
+                // The row exists now: keep the form open as an Edit of it, so a
+                // second Save updates it instead of failing as a duplicate.
+                document.getElementById('veh-edit-orig').value = tempoNo;
+                document.getElementById('veh-cancel-btn').style.display = '';
+                isEdit = true;
+                alert(docWarn);
+                fetchVehicleList();
+                return;
+            }
             setOrderSavingStage('done', isEdit ? 'Vehicle Updated!' : 'Vehicle Saved!');
             setTimeout(function() {
                 hideOrderSavingOverlay();
