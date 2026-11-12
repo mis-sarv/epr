@@ -309,7 +309,6 @@
     <div class="max-w-6xl mx-auto">
       <div class="flex gap-1 mb-3 flex-wrap">
         <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="colors">Blanket Colors</button>
-        <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="satin">Satin Codes</button>
         <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="operators">Department Operators</button>
         <button class="ms-tab px-3 py-1.5 rounded-md text-xs font-bold border" data-ms="sections">Production Sections</button>
       </div>
@@ -361,6 +360,22 @@ const DEFAULT_SATIN = {
   "4 INCH NORMAL": {"4001":"ARMY GREY","4002":"ARMY BLUE","4003":"WINE","4004/104":"LIGHT BURGUNDY","4005":"LIGHT PINK","4006":"CREAM","4007":"PEACOCK BLUE","4008/112":"COFFEE","4009":"DARK PURPLE","4010":"PEACOCK BLUE","4011/118":"BRIGHT PURPLE","4012/109":"GOLD","4013/103":"MARRON","4014/106":"RUST","4015/102":"RED","4016/127":"NAVY","4017":"MENENDI","4018":"GREY","4019":"Z BLACK","4020":"LIGHT PURPLE","4021":"DULL PISTA","4022":"CAMEL","4023":"TURQUISE GREEN","4024":"DARK GREY","4025":"PURPULISH GREY","4026":"DARK PISTA","4027":"PEACOCK GREEN","4028":"LIGHT PISTA","4029":"GEENISH GREY","4030":"RANI","4031":"FOREST GREEN","4032":"LEVENDER"},
   "5 INCH PREMIUM": {"5001":"PEACOCK GREEN","5002":"COFFEE","5003":"BURGUNDY","5004":"DARK PISTA","5005":"MEHENDI","5006":"OLIVE","5007":"BRIGHT CREAM","5008":"SKY GREY","5009":"DARK MOUSE","5010":"IVORY","5011":"LIGHT PISTA","5012":"BISCUIT","5013":"SLATE GREY","5014":"LIGHT MOUSE","5015":"LIGHT CAMEL","5016":"DARK CAMEL","5017":"LIGHT GREY","5018":"ARMY GREEN","5019":"MEDIUM GREY","5020":"PEACOCK BLUE","5021":"ARMY BLUE","5022":"LIGHT PURPLE","5023":"DUSTY ROSE","5024":"ROSE GOLD","5025":"DARK PURPLE","5026":"RUST","5027":"DULL MARRON","5028":"GOLD","5029":"LIGHT BURGUNDY"}
 };
+/* Sattan (satin) codes come from Item Master: Category TRIMS and one of these
+   descriptions (compared without case / punctuation, so "5 INCH SATTAN-STANDARD"
+   = "5 INCH SATTAN STANDARD"). The item name is "CODE - COLOUR" (or
+   "CODE-COLOUR"). A new colour is added in Item Master; the old Masters ›
+   Satin Codes list (prl_satin_codes) is no longer used. DEFAULT_SATIN above
+   is only the offline fallback. Keep the same list as DM_SATTAN_DESCS in
+   store-design-master.js (Design Master's matching names). */
+const PRL_SATTAN_DESCS = ['5 INCH SATTAN-STANDARD', '4 INCH SATTAN STANDARD', '5 INCH SATTAN PREMIUM'];
+const prlDescKey = s => String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+function prlSattanSplit(name){
+  const n = String(name || '').trim().toUpperCase();
+  const m = n.match(/^([0-9][0-9\/]*)\s*-\s*(.+)$/);
+  if(!m) return { code:n, color:'' };
+  // "4008/112 - COFFEE - 4008/112": the code repeated at the end is dropped
+  return { code:m[1], color:m[2].replace(/\s+-\s+[0-9][0-9\/]*$/, '').replace(/-/g, ' ').replace(/\s+/g, ' ').trim() };
+}
 const YN = ['YES','NO'];
 const sDate=(id,label)=>({id,label,type:'date'}), sNum=(id,label,step)=>({id,label,type:'number',step}), sTxt=(id,label)=>({id,label,type:'text'}), sSel=(id,label,options)=>({id,label,type:'select',options});
 const STENTER_F=k=>[sSel(k,k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),YN),sDate('lot_start_date','Lot Start Date'),sNum('top_blower_speed','Top Blower Speed'),sNum('bottom_blower_speed','Bottom Blower Speed'),sNum('stenter_speed','Stenter Speed'),sNum('stenter_temp','Stenter Temp'),sNum('actual_roll_completed','Actual Roll Completed'),sDate('lot_end_date','Lot End Date')];
@@ -532,7 +547,7 @@ function renderWho(){
 }
 
 // ═══════════════════════ MASTERS (lists) ═══════════════════════════════════
-const M = { dd:{}, colors:[], satin:{}, sections:DEFAULT_SECTIONS.slice(), parties:[], brands:[], setupMissing:false };
+const M = { dd:{}, colors:[], satinItems:[], sections:DEFAULT_SECTIONS.slice(), parties:[], brands:[], setupMissing:false };
 function ddList(field){
   const d = DD[field]; if(!d) return [];
   if(d.fixed) return d.fixed.slice();
@@ -550,14 +565,20 @@ async function loadMasters(){
     const rows = await fetchAll(() => SB.from('prl_colors').select('*').order('sort_order').order('id'));
     M.colors = rows.length ? rows : DEFAULT_COLORS.map((c,i) => ({ id:null, color_name:c[0], hex:c[1], sort_order:i+1, is_active:true }));
   } catch(e){ M.setupMissing = M.setupMissing || isSetupError(e); M.colors = DEFAULT_COLORS.map((c,i) => ({ id:null, color_name:c[0], hex:c[1], sort_order:i+1, is_active:true })); }
+  // Sattan codes: Item Master (see PRL_SATTAN_DESCS). If it cannot be read or
+  // has no such item, the built-in DEFAULT_SATIN codes are offered instead.
   try {
-    const rows = await fetchAll(() => SB.from('prl_satin_codes').select('*').order('satin_quality').order('sort_order').order('id'));
-    if(rows.length){ M.satinRows = rows; M.satin = {}; rows.filter(r => r.is_active).forEach(r => { (M.satin[up(r.satin_quality)] = M.satin[up(r.satin_quality)] || []).push({ code:r.code, color:r.color_name }); }); }
-    else throw new Error('empty');
+    const order = PRL_SATTAN_DESCS.map(prlDescKey);
+    const rows = await fetchAll(() => SB.from('items').select('name,description,category').ilike('category', 'trims').order('name'));
+    const hit = rows.filter(r => r.name && order.includes(prlDescKey(r.description)));
+    hit.sort((a, b) => order.indexOf(prlDescKey(a.description)) - order.indexOf(prlDescKey(b.description)) ||
+      String(a.name).localeCompare(String(b.name), 'en', { numeric:true }));
+    if(!hit.length) throw new Error('empty');
+    M.satinItems = hit.map(r => Object.assign(prlSattanSplit(r.name), { qkey:prlDescKey(r.description).replace(/ SATTAN\b/, '') }));
   } catch(e){
-    if(e.message !== 'empty') M.setupMissing = M.setupMissing || isSetupError(e);
-    M.satinRows = M.satinRows || [];
-    M.satin = {}; Object.keys(DEFAULT_SATIN).forEach(q => { M.satin[q] = Object.entries(DEFAULT_SATIN[q]).map(([code,color]) => ({ code, color })); });
+    console.warn('[PRL] Item Master sattan list:', e.message || e, '- using the built-in codes');
+    M.satinItems = [];
+    Object.keys(DEFAULT_SATIN).forEach(q => Object.entries(DEFAULT_SATIN[q]).forEach(([code, color]) => M.satinItems.push({ code, color, qkey:'' })));
   }
   try {
     const rows = await fetchAll(() => SB.from('prl_sections').select('*').order('sort_order'));
@@ -574,7 +595,17 @@ async function loadSuggestions(){
   $('prl-brand-list').innerHTML = M.brands.map(p => `<option value="${esc(p)}">`).join('');
 }
 const colorHexOf = name => { const c = M.colors.find(x => up(x.color_name) === up(name)); return c ? c.hex : null; };
-const satinOpts = q => M.satin[up(q)] || [];
+/* The Sattan Code list of a design card. The lot's Satin Quality picks the
+   description: "5 INCH PREMIUM" → items "5 INCH SATTAN PREMIUM" (Dropdown
+   Master's qualities are named like the descriptions without "SATTAN").
+   A quality with no such item (or none chosen yet) gets the whole list.
+   The same code twice (two descriptions) is listed once, the first one. */
+function satinOpts(q){
+  const all = M.satinItems || [], k = prlDescKey(q);
+  const own = k ? all.filter(o => o.qkey === k) : [];
+  const seen = new Set();
+  return (own.length ? own : all).filter(o => { if(seen.has(o.code)) return false; seen.add(o.code); return true; });
+}
 
 // ═══════════════════════ LOT CARD STATE ════════════════════════════════════
 const F_KEYS = ['unit','order_no','lot_no','lot_date','brand_name','party_name','fabric_name','fabric_category','bed_size','blanket_ply','actual_weight','stenter','stenter_times','total_colors','total_designs','finished_size','satin_quality','emboss','corner_label','small_label','quantity','packing'];
@@ -822,7 +853,7 @@ function designCardHTML(d, idx, mode){
         <span class="w-[45%] border-r border-gray-300 pl-0.5">Sattan Code</span><span class="w-[55%] text-center">Sattan Color</span></div>
       <div class="flex items-stretch h-[14px] border-t border-gray-300">
         <select data-act="satin" ${edit ? '' : 'disabled'} class="w-[45%] text-[7.5px] font-bold text-gray-800 bg-transparent outline-none border-r border-gray-300 px-0.5">
-          <option value="">Select...</option>${opts.map(o => `<option value="${esc(o.code)}" ${o.code === d.satin_code ? 'selected' : ''}>${esc(o.code)}</option>`).join('')}</select>
+          <option value="">Select...</option>${d.satin_code && !opts.some(o => o.code === d.satin_code) ? `<option value="${esc(d.satin_code)}" selected>${esc(d.satin_code)}</option>` : ''}${opts.map(o => `<option value="${esc(o.code)}" ${o.code === d.satin_code ? 'selected' : ''}>${esc(o.code)}</option>`).join('')}</select>
         <span class="w-[55%] text-[7px] font-bold text-gray-600 text-center flex items-center justify-center">${esc(d.satin_color || '-')}</span>
       </div></div>` : '';
   const colorName = d.color_name || '';
@@ -1435,7 +1466,9 @@ function wireSheet(){
     else if(act === 'target_qty' || act === 'complete_qty'){ d[act] = el.value.trim(); markDirty(); }
     else if(act === 'satin'){
       const o = satinOpts(L.f.satin_quality).find(x => x.code === el.value);
-      d.satin_code = o ? o.code : ''; d.satin_color = o ? o.color : '';
+      // A code saved earlier but no longer in Item Master is kept as it is (its own option)
+      if(o){ d.satin_code = o.code; d.satin_color = o.color; }
+      else if(!(el.value && el.value === d.satin_code)){ d.satin_code = ''; d.satin_color = ''; }
       const sp = el.nextElementSibling; if(sp) sp.textContent = d.satin_color || '-';
       updateDisplays(); markDirty();
     }
@@ -2134,7 +2167,6 @@ function renderMasters(){
   const body = $('ms-body');
   if(!can('PRL_MASTER') && msTab !== 'sections'){ body.innerHTML = '<div class="text-center text-gray-500 py-10"><i class="ph ph-lock text-3xl block mb-2"></i>Only the Admin (Feature Access › PRINTING LOT MASTERS) can change the masters.</div>'; return; }
   if(msTab === 'colors') msColors(body);
-  else if(msTab === 'satin') msSatin(body);
   else if(msTab === 'operators') msOperators(body);
   else msSections(body);
 }
@@ -2165,44 +2197,6 @@ function msColors(body){
       if(r.id && !(await confirmBox(`Remove "${r.color_name}"? Old cards keep the name as it is.`, 'Delete'))) return;
       if(r.id){ const { error } = await SB.from('prl_colors').delete().eq('id', r.id); if(error) return showToast(errMsg(error), 'error'); }
       await loadMasters(); msColors(body);
-    };
-  });
-}
-let msSatinQ = '';
-function msSatin(body){
-  const qualities = [...new Set(ddList('satin_quality').concat((M.satinRows || []).map(r => r.satin_quality)))];
-  if(!msSatinQ) msSatinQ = qualities[0] || '';
-  const rows = (M.satinRows || []).filter(r => up(r.satin_quality) === up(msSatinQ));
-  body.innerHTML = `<div class="flex items-end justify-between mb-3 gap-2 flex-wrap"><div><h3 class="font-black text-sm">Satin (Sattan) Codes</h3><p class="text-[11px] text-gray-500">A code is chosen for each design according to its Satin Quality, and the colour comes with it. The list of qualities comes from Dropdown Master (erp_prlSatinQuality).</p></div>
-    <div class="flex gap-2 items-end"><div><label class="lbl">Quality</label><select data-q class="fld">${qualities.map(q => `<option ${q === msSatinQ ? 'selected' : ''}>${esc(q)}</option>`).join('')}</select></div>
-    <input data-code class="fld w-28 uppercase" placeholder="Code"><input data-color class="fld w-40 uppercase" placeholder="Color"><button data-add class="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold whitespace-nowrap"><i class="ph ph-plus"></i> Add</button></div></div>
-    ${!(M.satinRows || []).length ? '<div class="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-2">The prl_satin_codes table is empty or missing, so the built-in defaults are in use. Please run the migration.</div>' : ''}
-    <div class="overflow-auto max-h-[60vh] custom-scrollbar"><table class="reg-table w-full"><thead><tr><th>Code</th><th>Color</th><th>Active</th><th></th></tr></thead><tbody>
-    ${rows.map(r => `<tr data-id="${r.id}"><td><input data-f="code" class="fld uppercase font-bold" value="${esc(r.code)}"></td><td><input data-f="color_name" class="fld uppercase" value="${esc(r.color_name)}"></td>
-      <td><input type="checkbox" data-f="is_active" ${r.is_active ? 'checked' : ''}></td>
-      <td class="whitespace-nowrap"><button data-save class="bg-teal-600 text-white px-2 py-1 rounded text-[11px] font-bold">Save</button> <button data-del class="text-red-600 px-1"><i class="ph ph-trash"></i></button></td></tr>`).join('') || '<tr><td colspan="4" class="text-center text-gray-400 py-6">No codes for this quality</td></tr>'}
-    </tbody></table></div>`;
-  body.querySelector('[data-q]').onchange = e => { msSatinQ = e.target.value; msSatin(body); };
-  body.querySelector('[data-add]').onclick = async () => {
-    const code = up(body.querySelector('[data-code]').value), color = up(body.querySelector('[data-color]').value);
-    if(!code || !color || !msSatinQ) return showToast('Please fill in the quality, code and colour', 'error');
-    const { error } = await SB.from('prl_satin_codes').insert({ satin_quality:msSatinQ, code, color_name:color, sort_order:rows.length + 1 });
-    if(error) return showToast(/duplicate|unique/i.test(error.message) ? 'This code already exists' : errMsg(error), 'error');
-    await loadMasters(); msSatin(body); renderSheet(); showToast('Code add', 'success');
-  };
-  body.querySelectorAll('tr[data-id]').forEach(tr => {
-    const id = +tr.dataset.id;
-    tr.querySelector('[data-save]').onclick = async () => {
-      const v = { code:up(tr.querySelector('[data-f="code"]').value), color_name:up(tr.querySelector('[data-f="color_name"]').value), is_active:tr.querySelector('[data-f="is_active"]').checked };
-      const { error } = await SB.from('prl_satin_codes').update(v).eq('id', id);
-      if(error) return showToast(errMsg(error), 'error');
-      await loadMasters(); msSatin(body); renderSheet(); showToast('Save', 'success');
-    };
-    tr.querySelector('[data-del]').onclick = async () => {
-      if(!(await confirmBox('Remove this code? Old cards stay as they are.', 'Delete'))) return;
-      const { error } = await SB.from('prl_satin_codes').delete().eq('id', id);
-      if(error) return showToast(errMsg(error), 'error');
-      await loadMasters(); msSatin(body); renderSheet();
     };
   });
 }

@@ -366,7 +366,8 @@
     dmLoadPromise = (async () => {
       const [masters, matchings] = await Promise.all([
         fetchAllRows('design_master', '*', 'design_no'),
-        fetchAllRows('design_matchings', '*', 'id')
+        fetchAllRows('design_matchings', '*', 'id'),
+        loadSattanItems()   // never throws; the shade list falls back by itself
       ]);
       const index = new Map();
       (masters || []).forEach(d => { d.matchings = []; index.set(d.id, d); });
@@ -516,6 +517,36 @@
     frame:['MS ROUND FRAME', 'MS SQUARE FRAME'], mono:['NO', 'YES'],
     supplier:[], shade:DM_SHADES
   };
+  /* ── Shade / matching names come from Item Master ────────────────────
+     A matching name is the sattan item itself ("4004/104 - LIGHT BURGUNDY"),
+     so the list is read from Item Master: Category TRIMS and one of the
+     descriptions below (compared without case / punctuation, so
+     "5 INCH SATTAN-STANDARD" and "5 INCH SATTAN STANDARD" are the same).
+     A new sattan colour therefore only needs to be added in Item Master.
+     Keep DM_SATTAN_DESCS the same as PRL_SATTAN_DESCS in printing-lot.html.
+     If Item Master cannot be read (or has no such item), the old list
+     (Dropdown Master erp_designShade, else DM_SHADES) is used, so the form
+     always has something to offer. */
+  const DM_SATTAN_DESCS = ['5 INCH SATTAN-STANDARD', '4 INCH SATTAN STANDARD', '5 INCH SATTAN PREMIUM'];
+  const dmDescKey = s => up(s).replace(/[^A-Z0-9]+/g, ' ').trim();
+  let dmSattanItems = null;   // item names; null = not loaded / failed → old list
+  async function loadSattanItems(){
+    try {
+      const order = DM_SATTAN_DESCS.map(dmDescKey);
+      const rows = await fetchAllRows('items', 'name,description,category', 'name', x => x.ilike('category', 'trims'));
+      const hit = (rows || []).filter(r => r.name && order.includes(dmDescKey(r.description)));
+      hit.sort((a, b) => order.indexOf(dmDescKey(a.description)) - order.indexOf(dmDescKey(b.description)) ||
+        String(a.name).localeCompare(String(b.name), 'en', { numeric: true }));
+      const seen = new Set();
+      dmSattanItems = hit.map(r => String(r.name).trim()).filter(n => { const k = up(n); if (seen.has(k)) return false; seen.add(k); return true; });
+      if (!dmSattanItems.length) { console.warn('[DM] no TRIMS sattan items in Item Master; using the old shade list'); dmSattanItems = null; }
+    } catch (e) {
+      console.warn('[DM] Item Master sattan list failed, using the old shade list:', e.message || e);
+    }
+  }
+  // Every matching name already on some design (for the photo pickers / name matching)
+  const dmUsedShades = () => dmDesigns.reduce((a, d) => a.concat((d.matchings || []).map(m => m.matching_name)), []).filter(Boolean);
+
   function dmFixed(kind){
     const key = DM_DD_KEY[kind];
     if (key) {
@@ -549,10 +580,16 @@
       case 'type':    return merge('design_type');
       case 'frame':   return merge('frame_type');
       case 'mono':    return dmFixed('mono');
-      // Shade list + shade names already used on some design.
-      case 'shade':   return [...new Set(dmFixed('shade').concat(
-        dmDesigns.reduce((a, d) => a.concat((d.matchings || []).map(m => m.matching_name)), [])
-          .filter(Boolean)))];
+      // Item Master's sattan items (TRIMS + DM_SATTAN_DESCS). Without them:
+      // the old list = Dropdown Master shades + names already used on some design.
+      case 'shade':   return dmSattanItems ? dmSattanItems.slice()
+        : [...new Set(dmFixed('shade').concat(dmUsedShades()))];
+      // Shade list + every name already on a design: the photo pickers tag
+      // existing matchings, some of which may be older than the item list.
+      case 'shadeall': {
+        const seen = new Set();
+        return dmValues('shade').concat(dmUsedShades()).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
+      }
       /* Add Photoshoot: the full matching list, the same as Add Matching's
          (shade list + every matching name on any design), so one photo can be
          tagged with any matching. The chosen design's own matchings come
@@ -562,7 +599,7 @@
         const d = findByNo((q('dmPsDesign') || {}).value);
         const own = d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
         const seen = new Set();
-        return own.concat(dmValues('shade')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
+        return own.concat(dmValues('shadeall')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
       }
       default:        return [];
     }
@@ -1702,7 +1739,7 @@
     const d = bpFind((tr.querySelector('.bp-design') || {}).value);
     const own = d ? (d.matchings || []).map(m => m.matching_name).filter(Boolean) : [];
     const seen = new Set();
-    return own.concat(dmValues('shade')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
+    return own.concat(dmValues('shadeall')).filter(v => { const k = up(v); if (seen.has(k)) return false; seen.add(k); return true; });
   }
 
   async function bpAddFiles(key, input){
@@ -1733,7 +1770,7 @@
     const tr = document.createElement('tr');
     tr.id = rid;
     const nameGuess = key === 'mtc'
-      ? (g.rest ? bpCanon(g.rest, dmValues('shade')) : '')
+      ? (g.rest ? bpCanon(g.rest, dmValues('shadeall')) : '')
       : (g.d ? (() => {
           const own = (g.d.matchings || []).map(m => m.matching_name).filter(Boolean);
           if (g.rest) { const hit = own.find(n => up(n) === up(g.rest)); if (hit) return hit; }
@@ -1833,7 +1870,7 @@
       const row = b.rows.find(r => r.rid === tr.id);
       const it = { tr: tr, d: d, file: row && row.file, typed: bpVal(tr, '.bp-name') };
       if (key === 'mtc') {
-        it.name = bpCanon(it.typed, dmValues('shade'));
+        it.name = bpCanon(it.typed, dmValues('shadeall'));
         it.sku = up(bpVal(tr, '.bp-sku'));
         it.master = bpVal(tr, '.bp-type') === 'MASTER';
         it.quality = bpVal(tr, '.bp-quality');

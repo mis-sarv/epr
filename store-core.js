@@ -14117,7 +14117,7 @@ const SARV_DROPDOWNS=[
   {key:'erp_designSupplier',label:'Supplier Name (Design)',
    hint:'Design Master\'s SUPPLIER NAME: Create New, Bulk Upload, the Live filter and the Catalogue filter',dm:'supplier',def:[]},
   {key:'erp_designShade',label:'Shade / Matching Name',
-   hint:'Design Master\'s shade list (the 65 shades from V18). If the table is left empty, the full list from the code is used.',
+   hint:'Design Master\'s shade list now comes from Item Master (Category TRIMS, Description 4 INCH SATTAN STANDARD / 5 INCH SATTAN-STANDARD / 5 INCH SATTAN PREMIUM). This list is used only when Item Master has no such item or cannot be read; if it is left empty, the 65 shades from the code are used.',
    dm:'shade',defFn:()=>(window.dmShadeDefaults||[]).slice()},
 
   /* printing-lot.html reads these keys straight from sales_dropdowns (the same
@@ -14199,6 +14199,11 @@ const SARV_DROPDOWNS=[
    def:['BORA','PVC BAG','LOOSE PCS','BALE','BOX','ROLL','BORA WITH BAG','EMPTY BOX','INSERT CARD','INNER BOX','OUTER BOX','EMPTY BOAR','OTHER']},
   {key:'erp_pkDispatchTo',label:'Dispatch To',hint:'Packing slip form › Dispatch To',where:'packing.html slip form',
    def:['PANIPAT','SUTANA','KURAR','BAPOLI','GADI LOAD','SELF','OTHER','TRANSPORT']},
+  // No names in code: while empty, packing.html offers the names already saved on earlier slips
+  {key:'erp_pkLoadingContractor',label:'Loading Contractor Name',hint:'Packing slip form › Loading Contractor Name (printed on the slip PDF). While this list is empty the form offers the names saved on earlier slips.',where:'packing.html slip form',
+   def:[]},
+  {key:'erp_pkSupervisor',label:'Supervisor Name',hint:'Packing slip form › Supervisor Name *. While this list is empty the form offers the names saved on earlier slips.',where:'packing.html slip form',
+   def:[]},
   {key:'erp_pkDispatchFrom',label:'FROM (Dispatch From)',hint:'Packing slip form › FROM of every Sr. row',where:'packing.html slip form (FROM column)',
    def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
   {key:'erp_pkTransportType',label:'Transport Type',hint:'New Order › Transport Type / Deliver Destination (every Transport Type is paired with every Deliver Destination)',where:'packing.html New Order · Order edit',

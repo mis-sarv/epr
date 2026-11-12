@@ -183,6 +183,8 @@
         .vc-party { font-size: 12px; color: var(--text-main); font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .vc-meta { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
         .vc-badges { display: flex; gap: 4px; }
+        .vc-inv { font-size: 10px; font-weight: 700; color: #6d28d9; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 4px; padding: 1px 6px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
+        .vc-inv.none { color: #94a3b8; background: #f8fafc; border-color: #e2e8f0; font-weight: 600; }
 
         .verify-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 12px; }
         .verify-badge.pending { background: #fef3c7; color: #92400e; }
@@ -203,12 +205,6 @@
         .verify-stage button { background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer; width: 100%; }
         .verify-stage button:active { opacity: 0.8; }
 
-        /* Filter bar */
-        .verify-filter-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-        .verify-filter-bar select, .verify-filter-bar input {
-            flex: 1; min-width: 120px; padding: 8px; font-size: 12px; border: 1.5px solid var(--border);
-            border-radius: 8px; background: var(--surface);
-        }
         .verify-count { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
         .verify-nav-btn { width: 100%; background: #0f172a; color: #fff; border: none; border-radius: 8px; padding: 10px; font-size: 13px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
@@ -512,7 +508,7 @@
         .ord-tot-head button { border: 1px solid var(--border); background: #f8fafc; color: #475569; border-radius: 999px; padding: 3px 12px; font-size: 11px; font-weight: 700; cursor: pointer; margin-left: auto; }
         .ord-f-totals.closed .ord-tot, .ord-f-totals.closed .ord-tot-note { display: none; }
         .ord-f-totals.closed .ord-tot-sum { display: block; }
-        @media (max-width: 600px) { .ord-f-grid { grid-template-columns: 1fr 1fr; } .ord-f#ord-f-dates { grid-column: 1 / -1; } .ord-f-totals { grid-template-columns: 1fr 1fr; } }
+        @media (max-width: 600px) { .ord-f-grid { grid-template-columns: 1fr 1fr; } .ord-f#ord-f-dates, .ord-f#vf-dates { grid-column: 1 / -1; } .ord-f-totals { grid-template-columns: 1fr 1fr; } }
 
         /* Print */
         .print-only-table { display: none; }
@@ -669,8 +665,10 @@
         <!-- Private Marka now per-item (auto-filled from Order ID) -->
         <div class="form-group">
             <label>Loading Contractor Name</label>
-            <input type="text" id="contractor-name" placeholder="Enter Contractor Name"
-                oninput="convertToUpperCase(this)">
+            <!-- Options: ERP › Dropdown Master › erp_pkLoadingContractor (applyPkDropdowns) -->
+            <select id="contractor-name" style="font-weight:600;">
+                <option value="">— Select Loading Contractor —</option>
+            </select>
         </div>
         <!-- Hidden: Mob No auto-filled from OrderSheet -->
         <input type="hidden" id="mob-no" value="">
@@ -704,8 +702,10 @@
         </div>
         <div class="form-group">
             <label>Supervisor Name <span class="required-star">*</span></label>
-            <input type="text" id="supervisor-name" placeholder="Supervisor Name"
-                oninput="convertToUpperCase(this)" required>
+            <!-- Options: ERP › Dropdown Master › erp_pkSupervisor (applyPkDropdowns) -->
+            <select id="supervisor-name" required style="font-weight:600;">
+                <option value="">— Select Supervisor —</option>
+            </select>
         </div>
         <div class="form-group">
             <label>Remarks (optional)</label>
@@ -772,20 +772,25 @@
 <div class="container" id="verification-panel">
     <div class="card">
         <div class="card-title">Receiving Verification — Pending Slips</div>
-        <div class="verify-filter-bar">
-            <select id="verify-filter-col" onchange="onVerifyFilterColChange()">
-                <option value="">Filter by...</option>
-                <option value="packingType">Packing Type</option>
-                <option value="partyName">Party Name</option>
-                <option value="slipNo">Slip No</option>
-                <option value="date">Date</option>
-            </select>
-            <input type="text" id="verify-filter-value" placeholder="Type to filter..."
-                oninput="debounceVerifyFilter()" style="display:none;">
-            <select id="verify-filter-select" onchange="fetchVerificationSlips(false)" style="display:none;">
-                <option value="">All</option>
-            </select>
+        <!-- Filters: checkbox dropdowns with a search box, each listing only the
+             values that still have slips under the OTHER chosen filters
+             (VF_FILTERS, vfRenderFilters). Same look as the Orders filters. -->
+        <div class="order-filter-bar">
+            <input type="text" id="vf-search" placeholder="Search slip no, party, ship to, invoice no, marka..." oninput="vfOnSearchInput()" autocomplete="off">
+            <button type="button" class="ord-f-toggle" id="vf-toggle" onclick="vfToggleFilters()">Filters ▾</button>
+            <button type="button" class="ord-f-reset" onclick="vfResetFilters()">✕ Reset</button>
         </div>
+        <div class="ord-f-grid" id="vf-grid">
+            <!-- dropdowns are built from VF_FILTERS by vfBuildFilterControls() -->
+            <div class="ord-f" id="vf-dates">
+                <label>Slip Date</label>
+                <div class="ord-f-pair">
+                    <input type="date" id="vf-from" onchange="vfOnDateChange()" title="From">
+                    <input type="date" id="vf-to" onchange="vfOnDateChange()" title="To">
+                </div>
+            </div>
+        </div>
+        <div class="ord-f-chips" id="vf-chips"></div>
         <div class="verify-count" id="verify-count"></div>
     </div>
     <div id="verify-slip-list"></div>
@@ -1362,12 +1367,20 @@ var PK_DD = {
     erp_pkShiftFrom:     ['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3'],
     erp_pkShiftTo:       ['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3'],
     erp_pkShiftItemType: ['BORA','PVC BAG','LOOSE PCS','BALE','BOX','ROLL','BORA WITH BAG','EMPTY BOX','INSERT CARD','INNER BOX','OUTER BOX','EMPTY BOAR','OTHER'],
-    erp_pkShiftingBy:    ['OWN LABOUR','CONTRACTOR LABOUR']
+    erp_pkShiftingBy:    ['OWN LABOUR','CONTRACTOR LABOUR'],
+    // Packing slip form › Loading Contractor Name / Supervisor Name. No names
+    // in code: until the Admin fills these keys, the names already saved on
+    // earlier slips are offered instead (pkPastNames, loadPastSlipNames).
+    erp_pkLoadingContractor: [],
+    erp_pkSupervisor:        []
 };
+// Names saved on earlier slips: the fallback list while a key above is empty
+var pkPastNames = { contractor: [], supervisor: [] };
 var PK_DD_CACHE = 'pk_dd_cache_v1';   // last list from the server, for a fast / offline start
 
 var PACK_ITEM_TYPES, DISPATCH_FROM_OPTIONS, TRANSPORT_TYPES, DELIVER_DESTS, REVIEW_ORDER_OPTIONS, DISPATCH_TO_OPTIONS;
 var SHIFT_TYPES, SHIFT_FROM_OPTIONS, SHIFT_TO_OPTIONS, SHIFT_ITEM_TYPES, SHIFTING_BY_OPTIONS;
+var LOADING_CONTRACTORS, SUPERVISORS;   // Dropdown Master lists; empty = use pkPastNames
 
 function pkDdSet_(rowsByKey) {
     var L = function(k) {
@@ -1385,6 +1398,8 @@ function pkDdSet_(rowsByKey) {
     SHIFT_TO_OPTIONS      = L('erp_pkShiftTo');
     SHIFT_ITEM_TYPES      = L('erp_pkShiftItemType');
     SHIFTING_BY_OPTIONS   = L('erp_pkShiftingBy');
+    LOADING_CONTRACTORS   = L('erp_pkLoadingContractor');
+    SUPERVISORS           = L('erp_pkSupervisor');
 }
 
 // list + the record's current value when it is not in the list
@@ -1430,6 +1445,8 @@ function applyPkDropdowns() {
     pkRefillSelect(document.getElementById('sh-to'), SHIFT_TO_OPTIONS);
     pkRefillSelect(document.getElementById('sh-item-type'), SHIFT_ITEM_TYPES);
     pkRefillSelect(document.getElementById('sh-by'), SHIFTING_BY_OPTIONS);
+    pkRefillSelect(document.getElementById('contractor-name'), LOADING_CONTRACTORS.length ? LOADING_CONTRACTORS : pkPastNames.contractor);
+    pkRefillSelect(document.getElementById('supervisor-name'), SUPERVISORS.length ? SUPERVISORS : pkPastNames.supervisor);
     document.querySelectorAll('select.item-type').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
     document.querySelectorAll('select.qr-item').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
     document.querySelectorAll('select.sub-from').forEach(function(s) {
@@ -2205,7 +2222,7 @@ async function dispatchPost(payload) {
                 var header = {
                     date: slipRow.slip_date, partyName: slipRow.party_name,
                     subPartyName: slipRow.ship_to, thirdPartyName: slipRow.delivery_address,
-                    dispatchTo: slipRow.dispatch_to
+                    dispatchTo: slipRow.dispatch_to, contractorName: slipRow.loading_contractor || ''
                 };
                 // Supervisor comes from the stored column — never substitute the
                 // preparer or the current user, that puts the wrong name on a
@@ -2388,7 +2405,18 @@ async function dispatchGet(params) {
             };
             var from3 = (page3 - 1) * pageSize3;
             var pageSlipRows = [], pendingTotal = 0;
-            if (pageSize3 <= 1000) {
+            // Verify filters: the page picks the matching slips from its light
+            // index (vfMatchedIds) and asks only for those ids, one page at a time.
+            var idList3 = Array.isArray(params.ids) ? params.ids.filter(function(v) { return v !== null && v !== undefined && v !== ''; }) : null;
+            if (idList3) {
+                if (idList3.length) {
+                    var { data: idRows, error: idErr } = await pendQ().in('id', idList3.slice(0, 200));
+                    if (idErr) return { success: false, error: idErr.message };
+                    pageSlipRows = idRows || [];
+                }
+                pendingTotal = pageSlipRows.length;
+                from3 = 0;
+            } else if (pageSize3 <= 1000) {
                 var { data: pgRows, count: pgCount, error: pgErr } = await pendQ().range(from3, from3 + pageSize3 - 1);
                 if (pgErr) return { success: false, error: pgErr.message };
                 pageSlipRows = pgRows || [];
@@ -2736,15 +2764,20 @@ function buildInfoGrid(header, dispatch, slipNo, deliveryAddr, items) {
     (items || []).forEach(function(it) { if (it.privateMarka) markas[it.privateMarka] = true; });
     var allMarkas = Object.keys(markas).join(', ');
     if (allMarkas) header.privateMarka = allMarkas;
+    var drvName = String(dispatch.driverName || '').trim(), drvMob = String(dispatch.driverMobile || '').trim();
+    var driverTxt = drvName && drvMob ? drvName + ' (' + drvMob + ')' : (drvName || drvMob);
 
     return '<table class="info-grid">' +
         row2('<span class="slip-red">Packing Slip No:</span>', '<b class="slip-red">' + escapeHtmlJs(slipNo) + '</b>',
              '<span class="slip-red">Date:</span>', '<b class="slip-red">' + escapeHtmlJs(formatSlipDate(header.date) || '') + '</b>') +
         row2('Party Name:', escapeHtmlJs(header.partyName||''), 'Party Mob:', escapeHtmlJs(mobNo)) +
         row2('Ship To:', escapeHtmlJs(header.subPartyName||''), 'Private Marka:', escapeHtmlJs(header.privateMarka||'')) +
-        row2('Delivery Address:', escapeHtmlJs(deliveryAddr), 'Dispatch To:', escapeHtmlJs(header.dispatchTo||'')) +
-        row2('Shipping Party:', escapeHtmlJs(header.shippingPartyName||''), 'Driver:', escapeHtmlJs(dispatch.driverName||'')) +
-        row2('Driver Mob:', escapeHtmlJs(dispatch.driverMobile||''), 'Tempo No:', escapeHtmlJs(dispatch.tempoNo||'')) +
+        // Shipping Party and Delivery Address swapped places; the driver's mobile
+        // is printed in brackets after the name ("RAMESH (98xxxxxx)"), so its
+        // old row now carries the Loading Contractor Name of the slip form.
+        row2('Shipping Party:', escapeHtmlJs(header.shippingPartyName||''), 'Dispatch To:', escapeHtmlJs(header.dispatchTo||'')) +
+        row2('Delivery Address:', escapeHtmlJs(deliveryAddr), 'Driver:', escapeHtmlJs(driverTxt)) +
+        row2('Loading Contractor:', escapeHtmlJs(header.contractorName||''), 'Tempo No:', escapeHtmlJs(dispatch.tempoNo||'')) +
     '</table>';
 }
 
@@ -2782,7 +2815,8 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         header.shippingPartyName = await resolveSlipOrderField(items, 'shippingPartyName', 'shipping_party_name');
     }
 
-    var MAX_COLS = 10;
+    // 9 quality columns per page (all copies): 10 ran past the printer's margin
+    var MAX_COLS = 9;
     var MAX_ROWS_PER_COL = 30;
     var COMPANY_NAME = 'SARV INDIA HOME FURNISHING';
     var COMPANY_ADDR = 'Sanoli Road, 11K.M Stone, Near Kurar Village Trun,<br>V.P.O Jalalpur-1, Distt. Panipat- 132103 (Haryana)';
@@ -2883,7 +2917,7 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         '.wt-cell { font-size: 10px; text-align: center; font-weight: 600; }',
         '.col-footer { background: #dbeafe; font-weight: 900; font-size: 9px; color: #000; text-align: center; padding: 2px 3px; border: 2px solid #000; }',
         '.empty-cell { background: #fafafa; }',
-        '.grand-bar { margin-top: 2px; border: 2px solid #000; padding: 3px 8px; font-weight: 900; font-size: 11px; display: flex; gap: 20px; }',
+        '.grand-bar { margin-top: 2px; border: 2px solid #000; padding: 3px 8px; font-weight: 900; font-size: 11px; display: flex; flex-wrap: wrap; gap: 2px 20px; }',
         '.slip-footer { margin-top: 40px; display: flex; justify-content: space-around; font-size: 11px; font-weight: 700; color: #000; padding-top: 3px; page-break-inside: avoid; }',
         '.sign-box { text-align: center; min-width: 100px; }',
         '.pdf-page:last-child { border-bottom: none !important; }',
@@ -2941,12 +2975,15 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
                 mergeCount++;
             }
             var itemType = (baseItem && baseItem.type) ? escapeHtmlJs(baseItem.type) : 'Pack';
-            // Avg/pcs = Kg per piece of this column (weight ÷ pcs); "-" when pcs is 0
+            // Avg/pcs = Kg per piece of this column (weight ÷ pcs); "-" when pcs is 0.
+            // Printed on the Triplicate only (billing set, with Rate / Basis under
+            // it); the Original + Duplicate copies leave it out.
             var avgPerPc = mergedPcs > 0 ? (mergedWt / mergedPcs).toFixed(3) : '-';
             colFooters += '<td class="col-footer"' + (mergeCount > 1 ? ' colspan="' + mergeCount + '"' : '') + '>' +
                 mergedRows + ' ' + itemType + '<br>' + (Number(mergedWt)||0).toFixed(2) +
                 '<br><span class="col-sub">Pcs: ' + mergedPcs + '</span>' +
-                '<br><span class="col-sub">Avg/pcs: ' + avgPerPc + '</span></td>';
+                (billing ? '<br><span class="col-sub">Avg/pcs: ' + avgPerPc + '</span>' : '') +
+                slipRateFooterHtml_(billing, baseItem) + '</td>';
             fi += mergeCount;
         }
 
@@ -2966,9 +3003,11 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         buildInfoGrid(header, dispatch, slipNo, header.thirdPartyName || '', items);
 
     // ── Grand total bar ──
-    // Every pack type except PVC goes in the first number; PVC types (PVC BAG, or any
-    // future "PVC ..." type) are added after a "+" sign, e.g. "Total Packs: 50+2".
-    // A slip without PVC shows the plain number as before.
+    // PVC types (PVC BAG, or any future "PVC ..." type) are kept apart:
+    //   Total Packs:  blanket packs only (PVC bags are not counted)
+    //   Total Pcs:    Blanket - 120   PVC Bags - 4
+    //   Total Weight: Blanket - 850.25 Kg   PVC Bags - 3.10 Kg
+    // A slip without PVC shows only the Blanket figure.
     var tot = { packs: 0, qty: 0, wt: 0 }, pvc = { packs: 0, qty: 0, wt: 0 }, hasPvc = false;
     items.forEach(function(item) {
         var isPvc = isPvcPackType(item.type);
@@ -2981,11 +3020,14 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
             bucket.wt  += Number(r.weight) || 0;
         });
     });
-    function plusPvc(main, extra) { return hasPvc ? main + '+' + extra : main; }
-    var grandBar = '<div class="grand-bar"><span>Total Packs: <strong>' + plusPvc(tot.packs, pvc.packs) + '</strong></span>' +
-        '<span>Total Pcs: <strong>' + plusPvc(tot.qty, pvc.qty) + '</strong></span>' +
-        '<span>Total Weight: <strong>' + plusPvc(tot.wt.toFixed(2), pvc.wt.toFixed(2)) + ' Kg</strong></span>' +
-        (hasPvc ? '<span style="font-weight:700;font-size:9px;align-self:center;">(+ = PVC)</span>' : '') + '</div>';
+    function splitPvc(main, extra, unit) {
+        var u = unit ? ' ' + unit : '';
+        return 'Blanket - <strong>' + main + u + '</strong>' +
+            (hasPvc ? ' &nbsp; PVC Bags - <strong>' + extra + u + '</strong>' : '');
+    }
+    var grandBar = '<div class="grand-bar"><span>Total Packs: <strong>' + tot.packs + '</strong></span>' +
+        '<span>Total Pcs: ' + splitPvc(tot.qty, pvc.qty, '') + '</span>' +
+        '<span>Total Weight: ' + splitPvc(tot.wt.toFixed(2), pvc.wt.toFixed(2), 'Kg') + '</span></div>';
 
     // ── Remarks from dispatch (optional, shown in green) ──
     var remarksText = (dispatch && dispatch.remarks) ? dispatch.remarks.trim() : '';
@@ -3023,7 +3065,9 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
                 '<div style="font-size:12px;font-weight:900;">Invoice No: <span style="font-size:13px;">' + (invNo ? escapeHtmlJs(invNo) : 'PENDING') + '</span></div>' +
                 '<div style="font-size:12px;font-weight:900;">Total Amount: <span style="font-size:13px;">' + formatInr(billing.total) + '</span></div>' +
                 '<div style="font-size:9px;font-weight:700;color:#334155;">Taxable ' + formatInr(billing.taxable) +
-                    ' + GST ' + formatInr(billing.gstAmt) + ' + Other ' + formatInr(billing.other) + '</div>' +
+                    ' + GST ' + formatInr(billing.gstAmt) +
+                    // Other Charges may be negative (a deduction): print it as "− Other ₹ x"
+                    (Number(billing.other) < 0 ? ' − Other ' + formatInr(-billing.other) : ' + Other ' + formatInr(billing.other)) + '</div>' +
             '</div>' +
         '</div>' + remarksHtml;
     }
@@ -3172,6 +3216,48 @@ function slipLineAmount(type, pcs, weight, rate, disc, gst, other, basis) {
     return { basis: perPcs ? 'pcs' : 'kg', basisQty: basisQty, taxable: taxable, gstAmt: gstAmt, other: oth,
              amount: slipRound2(taxable + gstAmt + oth) };
 }
+// Triplicate only: the saved Rate + Bill Basis of one PDF column, printed in
+// its Total cell under Avg/pcs. billing.lines = [{ quality, type, rate, basis }]
+// (Save Rates passes its own lines; a rebuild reads slip_charges, see
+// slipRateLinesFromDb_). A column is matched by quality (item.brand) + pack
+// type, the same key the Verify rate table uses. No billing / no line = ''.
+function slipRateFooterHtml_(billing, item) {
+    if (!billing || !Array.isArray(billing.lines) || !item) return '';
+    var q = String(item.brand || '').trim().toUpperCase(), t = String(item.type || '').trim().toUpperCase();
+    var l = billing.lines.filter(function(x) {
+        return String(x.quality || '').trim().toUpperCase() === q && String(x.type || '').trim().toUpperCase() === t;
+    })[0];
+    if (!l || l.rate === null || l.rate === undefined || l.rate === '') return '';
+    var basis = (l.basis === 'kg' || l.basis === 'pcs') ? l.basis : defaultSlipBasis(item.type);
+    return '<br><span class="col-sub">Rate: ' + (Number(l.rate) || 0).toFixed(2) + '</span>' +
+        '<br><span class="col-sub">Basis: ' + (basis === 'pcs' ? 'Pcs' : 'Weight') + '</span>';
+}
+
+// Rate + Bill Basis of every quality row of a slip, for the Triplicate when it
+// is rebuilt without Save Rates (invoice no saved, Regenerate, PDF repair).
+// slip_charges first (has the basis); before that migration, the rate saved on
+// packing_slip_items with the default basis. Never throws: nothing found = [].
+async function slipRateLinesFromDb_(slipId) {
+    try {
+        var { data, error } = await supabaseClient.from('slip_charges')
+            .select('quality, item_type, rate, basis').eq('slip_id', slipId);
+        if (!error && data && data.length) {
+            return data.map(function(c) { return { quality: c.quality, type: c.item_type, rate: c.rate, basis: c.basis }; });
+        }
+    } catch (e) { console.warn('slip_charges read for the Triplicate failed:', e.message || e); }
+    try {
+        var { data: it, error: itErr } = await supabaseClient.from('packing_slip_items')
+            .select('quality, item_type, rate').eq('slip_id', slipId);
+        if (itErr) return [];
+        var seen = {};
+        return (it || []).filter(function(r) {
+            var k = String(r.quality || '').toUpperCase() + '||' + String(r.item_type || '').toUpperCase();
+            if (seen[k] || r.rate === null || r.rate === undefined) return false;
+            return (seen[k] = true);
+        }).map(function(r) { return { quality: r.quality, type: r.item_type, rate: r.rate, basis: null }; });
+    } catch (e2) { return []; }
+}
+
 // Default GST % for a row that has none saved yet: 5 % on a Billed slip (the
 // company rate, same as the Dispatch Report), 0 on Non-Bill. Always editable.
 function defaultSlipGst(packingType) { return packingType === 'Billed' ? 5 : 0; }
@@ -3566,18 +3652,24 @@ async function loadOrderDropdowns() {
         }
     } catch(e) { console.error('Order suggestions fetch failed:', e); }
 
-    // Pre-load Supervisor + Contractor suggestions from packing_slips
+    // Supervisor + Loading Contractor are dropdowns from Dropdown Master
+    // (erp_pkSupervisor / erp_pkLoadingContractor). Until a key has values,
+    // the names saved on the latest slips are offered (pkPastNames).
     try {
-        var { data: supRows } = await supabaseClient.from('profiles')
-            .select('full_name').neq('full_name', '').limit(50);
-        var supNames = (supRows || []).map(function(r) { return r.full_name; }).filter(Boolean);
-        if (supNames.length > 0) updateDatalist('dl-supervisor', [...new Set(supNames)].sort());
-
-        var { data: conRows } = await supabaseClient.from('packing_slips')
-            .select('loading_contractor').neq('loading_contractor', '').limit(50);
-        var conNames = (conRows || []).map(function(r) { return r.loading_contractor; }).filter(Boolean);
-        if (conNames.length > 0) updateDatalist('dl-contractor', [...new Set(conNames)].sort());
-    } catch(e) { console.error('Supervisor/Contractor suggestions failed:', e); }
+        var { data: pastRows } = await supabaseClient.from('packing_slips')
+            .select('loading_contractor, supervisor_name').order('id', { ascending: false }).limit(1000);
+        var uniqSorted = function(col) {
+            var seen = {}, out = [];
+            (pastRows || []).forEach(function(r) {
+                var v = String(r[col] || '').trim().toUpperCase();
+                if (v && !seen[v]) { seen[v] = true; out.push(v); }
+            });
+            return out.sort();
+        };
+        pkPastNames.contractor = uniqSorted('loading_contractor');
+        pkPastNames.supervisor = uniqSorted('supervisor_name');
+        applyPkDropdowns();
+    } catch(e) { console.error('Supervisor/Contractor past names failed:', e); }
 }
 
 // Helper: append the current session token as a URL query param
@@ -3962,8 +4054,7 @@ function buildSuggestionDatalists(suggestions) {
         { id: 'sub-party-name',  key: 'shipTos',         listId: 'dl-ship-to' },
         { id: 'third-party-name', key: 'deliveryAddrs',  listId: 'dl-delivery-addr' },
         { id: 'private-marka',   key: 'privateMarkas',   listId: 'dl-marka' },
-        { id: 'contractor-name', key: 'contractors',     listId: 'dl-contractor' },
-        { id: 'supervisor-name', key: 'supervisors',     listId: 'dl-supervisor' }
+        // contractor-name / supervisor-name are Dropdown Master <select>s now (applyPkDropdowns)
     ];
 
     fieldMap.forEach(function(f) {
@@ -4191,8 +4282,7 @@ function initOnDemandSearch() {
         { id: 'party-name',       fieldKey: 'partyNames',    listId: 'dl-party' },
         { id: 'sub-party-name',   fieldKey: 'shipTos',       listId: 'dl-ship-to' },
         { id: 'third-party-name', fieldKey: 'deliveryAddrs', listId: 'dl-delivery-addr' },
-        { id: 'contractor-name',  fieldKey: 'contractors',   listId: 'dl-contractor' },
-        { id: 'supervisor-name',  fieldKey: 'supervisors',   listId: 'dl-supervisor' }
+        // contractor-name / supervisor-name: Dropdown Master <select>s, no search
     ];
 
     fields.forEach(function(f) {
@@ -5947,7 +6037,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     document.getElementById('sub-party-name').value   = h.subPartyName    || '';
     document.getElementById('third-party-name').value = h.thirdPartyName  || '';
     pkSetSelect(document.getElementById('dispatch-to'), h.dispatchTo || '');
-    document.getElementById('contractor-name').value  = h.contractorName  || '';
+    pkSetSelect(document.getElementById('contractor-name'), h.contractorName || '');   // an old name not in the list is kept
     if (document.getElementById('mob-no')) document.getElementById('mob-no').value = h.mobNo || '';
 
     // Dispatch fields
@@ -5956,7 +6046,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     var _dv = (typeof vehicleMap !== 'undefined' && d.tempoNo) ? vehicleMap.get(String(d.tempoNo).toUpperCase().trim()) : null;
     setDriverNameOptions(_dv ? _dv.driverName : '', d.driverName || '');
     document.getElementById('driver-mobile').value   = d.driverMobile   || '';
-    document.getElementById('supervisor-name').value = d.supervisorName || '';
+    pkSetSelect(document.getElementById('supervisor-name'), d.supervisorName || '');
     if (document.getElementById('slip-remarks')) document.getElementById('slip-remarks').value = d.remarks || '';
 
     // Rebuild item blocks from draft items
@@ -6163,54 +6253,70 @@ var _verifyCurrentPage = 0;
 var _verifyHasMore = true;
 var _verifyLoading = false;
 
-async function fetchVerificationSlips(loadMore) {
-    var list = document.getElementById('verify-slip-list');
+var _verifySeq = 0;          // a newer reload makes an older reply stale
+var _verifyMatchTotal = 0;   // slips the list could show (all pending, or the filter's matches)
 
-    // Check if any filter is active
-    var filterCol = document.getElementById('verify-filter-col').value;
-    var filterTxt = document.getElementById('verify-filter-value').value.trim();
-    var filterSel = document.getElementById('verify-filter-select').value;
-    var hasFilter = filterCol && (filterTxt || filterSel);
+// loadMore = next 20. keepIndex = a filter changed: use the filter index as it
+// is (a full reload, e.g. after a save, reads it again).
+// No filter: pages of 20 straight from the server, as before. With a filter:
+// the matching ids come from the light filter index (vfMatchedIds) and each
+// page asks the server for just those 20 ids, so the full slip data (quality
+// rows, rates) is never read for slips that are not shown.
+async function fetchVerificationSlips(loadMore, keepIndex) {
+    var list = document.getElementById('verify-slip-list');
+    if (loadMore && (_verifyLoading || !_verifyHasMore)) return;
+    var seq = loadMore ? _verifySeq : ++_verifySeq;
 
     if (!loadMore) {
         _verifyCurrentPage = 0;
         _verifyHasMore = true;
         verifySlips = [];
         list.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Loading slips...</p>';
+        vfBuildFilterControls();
+        if (!keepIndex) {
+            await vfIndexLoad();
+            if (seq !== _verifySeq) return;
+        }
+        vfRenderFilters();
     }
 
-    if (_verifyLoading || !_verifyHasMore) return;
     _verifyLoading = true;
-    _verifyCurrentPage++;
+    var page = ++_verifyCurrentPage;
+    // Without the index (e.g. offline) the filters work on the loaded slips only
+    var filtered = vfActiveCount() > 0 && _vfIdx.ok;
+    var ids = filtered ? vfMatchedIds() : null;
 
     try {
-        var data = await gasGet({
-            token: session ? session.token : '',
-            action: 'listSlipsForVerification',
-            page: hasFilter ? 1 : _verifyCurrentPage,
-            pageSize: hasFilter ? 9999 : 20  // Filter = ALL data, No filter = paginated
-        });
+        var req = { token: session ? session.token : '', action: 'listSlipsForVerification', page: page, pageSize: 20 };
+        if (filtered) {
+            req.ids = ids.slice((page - 1) * 20, page * 20);
+            req.page = 'F' + page;   // own offline-cache key, never mixed with the plain pages
+        }
+        var data = (filtered && !req.ids.length) ? { success: true, slips: [] } : await gasGet(req);
+        if (seq !== _verifySeq) return;
         if (handleAuthFailure(data)) { _verifyLoading = false; return; }
 
         if (!data.success) {
-            if (!loadMore) list.innerHTML = '<p style="text-align:center;color:var(--error);padding:20px;">' + (data.error || 'Failed') + '</p>';
+            if (!loadMore) list.innerHTML = '<p style="text-align:center;color:var(--error);padding:20px;">' + escapeHtmlJs(data.error || 'Failed') + '</p>';
             _verifyLoading = false;
             return;
         }
 
-        if (hasFilter) {
-            // Filter mode: replace all data, no more pages
-            verifySlips = data.slips || [];
-            _verifyHasMore = false;
-        } else {
-            // Paginated mode: append
-            verifySlips = verifySlips.concat(data.slips || []);
-            _verifyHasMore = data.hasMore;
+        var got = data.slips || [];
+        if (filtered) {
+            // The server returns the ids in its own order: keep the index's (newest first)
+            var pos = {};
+            req.ids.forEach(function(id, i) { pos[id] = i; });
+            got.sort(function(a, b) { return pos[a.id] - pos[b.id]; });
         }
+        verifySlips = verifySlips.concat(got);
+        _verifyHasMore = filtered ? page * 20 < ids.length : !!data.hasMore;
+        _verifyMatchTotal = filtered ? ids.length : (Number(data.totalSlips) || verifySlips.length);
 
         renderVerificationList(!loadMore);
     } catch (err) {
-        if (!loadMore) list.innerHTML = '<p style="text-align:center;color:var(--error);padding:20px;">Error: ' + err.message + '</p>';
+        if (seq !== _verifySeq) return;
+        if (!loadMore) list.innerHTML = '<p style="text-align:center;color:var(--error);padding:20px;">Error: ' + escapeHtmlJs(err.message) + '</p>';
     }
     _verifyLoading = false;
 }
@@ -6220,38 +6326,22 @@ var _verifyPerPage = 20;
 
 function renderVerificationList(resetPage) {
     var list     = document.getElementById('verify-slip-list');
-    var filterCol = document.getElementById('verify-filter-col').value;
-    var filterTxt = document.getElementById('verify-filter-value').value.trim().toUpperCase();
-    var filterSel = document.getElementById('verify-filter-select').value;
+    var nF = vfActiveCount();
 
-    // Client-side filter on already-loaded slips
+    // The index normally picks the slips on the server side; without it (e.g.
+    // offline) the filters are applied to the slips already loaded.
     var slips = verifySlips;
-    if (filterCol) {
-        var fVal = filterSel || filterTxt;
-        if (fVal) {
-            fVal = fVal.toUpperCase();
-            slips = slips.filter(function (s) {
-                if (filterCol === 'packingType') return s.packingType.toUpperCase() === fVal;
-                if (filterCol === 'partyName')   return s.partyName.toUpperCase().indexOf(fVal) >= 0;
-                if (filterCol === 'slipNo')      return s.slipNo.toUpperCase().indexOf(fVal) >= 0;
-                if (filterCol === 'date') {
-                    if (!s.slipDate) return false;
-                    // input type="date" gives exact YYYY-MM-DD — compare date part only
-                    var slipDateOnly = String(s.slipDate).slice(0, 10);
-                    return slipDateOnly === document.getElementById('verify-filter-value').value;
-                }
-                return true;
-            });
-        }
-    }
+    if (nF && !_vfIdx.ok) slips = slips.filter(function(s) { return vfRowPasses(vfPrep({}, s), ''); });
 
-    document.getElementById('verify-count').textContent =
-        slips.length + ' slip' + (slips.length !== 1 ? 's' : '') + ' loaded' +
-        (_verifyHasMore ? ' — more available' : ' — all loaded');
+    document.getElementById('verify-count').textContent = (nF && !_vfIdx.ok)
+        ? slips.length + ' of ' + verifySlips.length + ' loaded slips match the filters (offline: only loaded slips are searched)'
+        : slips.length + ' of ' + _verifyMatchTotal + ' ' + (nF ? 'matching ' : 'pending ') + 'slip' + (_verifyMatchTotal !== 1 ? 's' : '') + ' shown' +
+          (_verifyHasMore ? ' — more available' : '');
 
     if (!slips.length) {
-        list.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">No pending slips found. ' +
-            (_verifyHasMore ? '<button onclick="fetchVerificationSlips(true)" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:700;">Load More</button>' : 'All verified!') + '</p>';
+        list.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">' +
+            (nF ? 'No pending slips match the filters. ' : 'No pending slips found. ') +
+            (_verifyHasMore ? '<button onclick="fetchVerificationSlips(true)" style="background:var(--primary);color:#fff;border:none;border-radius:6px;padding:8px 16px;cursor:pointer;font-weight:700;">Load More</button>' : (nF ? '' : 'All verified!')) + '</p>';
         return;
     }
 
@@ -6364,7 +6454,8 @@ function renderVerificationList(resetPage) {
                     '</td>' +
                     '<td style="' + tds + 'text-align:center;">' +
                     '<input type="number" class="other-input" data-key="' + key + '" data-quality="' + escapeHtmlJs(k) + '" ' +
-                    'value="' + otherVal + '" placeholder="₹" step="0.01" min="0" ' +
+                    // No min: Other Charges may be negative (a deduction / credit on the row)
+                    'value="' + otherVal + '" placeholder="₹" step="0.01" title="A minus amount is allowed (deduction)" ' +
                     'onclick="event.stopPropagation()" oninput="recalcSlipAmounts(this)" style="width:70px;' + inpCss + '">' +
                     '</td>' +
                     '<td class="amt-cell" style="' + tds + 'text-align:right;font-weight:700;white-space:nowrap;" title="' +
@@ -6380,7 +6471,7 @@ function renderVerificationList(resetPage) {
                     (s.totalAmount !== null ? 'Saved: ' + formatInr(s.totalAmount) : 'Not saved yet') + '</td>' +
                 '<td class="amt-total" style="' + tds + 'text-align:right;white-space:nowrap;">' + formatInr(sumAmt) + '</td></tr>';
             breakdownHtml += '</table></div>';
-            breakdownHtml += '<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Amount = Weight (Kg) or Pcs (as per Bill Basis) × Rate − Disc % + GST % + Other Charges. Bill Basis is Weight by default, Pcs for PVC; change it per quality if needed. Save Rates also rebuilds the 1-page Triplicate PDF.</div>';
+            breakdownHtml += '<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Amount = Weight (Kg) or Pcs (as per Bill Basis) × Rate − Disc % + GST % + Other Charges. Bill Basis is Weight by default, Pcs for PVC; change it per quality if needed. Other Charges may be a minus amount (deduction). Save Rates also rebuilds the 1-page Triplicate PDF.</div>';
             // Actual Invoice No sits right above Save Rates: Save Rates saves it
             // too, so the Triplicate it builds already prints the invoice no.
             breakdownHtml += invNoInputHtml;
@@ -6394,6 +6485,11 @@ function renderVerificationList(resetPage) {
             '<div class="verify-compact" onclick="toggleVerifyCard(this)">' +
                 '<span class="vc-slip">' + escapeHtmlJs(s.slipNo) + '</span>' +
                 '<span class="vc-party">' + escapeHtmlJs(s.partyName) + '</span>' +
+                // Slip Date + Actual Invoice No, readable without opening the card
+                (s.slipDate ? '<span class="vc-meta" title="Packing Slip Date">' + escapeHtmlJs(formatSlipDate(String(s.slipDate).slice(0, 10))) + '</span>' : '') +
+                (st.actualInvoiceNo
+                    ? '<span class="vc-inv" title="Actual Invoice No">Inv: ' + escapeHtmlJs(st.actualInvoiceNo) + '</span>'
+                    : '<span class="vc-inv none" title="Actual Invoice No not entered yet">Inv: -</span>') +
                 '<span class="vc-meta">' + (Number(s.totalWeight)||0).toFixed(1) + 'Kg</span>' +
                 '<span class="vc-badges">' + afterBadge + rateBadge + '</span>' +
                 // 2P + TRI links: one wrapper, so Regenerate PDF can swap in the
@@ -6454,7 +6550,7 @@ function renderVerificationList(resetPage) {
             '<button onclick="fetchVerificationSlips(true)" id="verify-load-more-btn" style="background:var(--primary);color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:14px;font-weight:700;cursor:pointer;">' +
             'Load More Slips ▼</button></div>';
     } else if (verifySlips.length > 0) {
-        list.innerHTML += '<p style="text-align:center;padding:12px;color:#10b981;font-weight:600;">All pending slips loaded</p>';
+        list.innerHTML += '<p style="text-align:center;padding:12px;color:#10b981;font-weight:600;">' + (nF ? 'All matching slips loaded' : 'All pending slips loaded') + '</p>';
     }
 }
 
@@ -6517,62 +6613,406 @@ function toggleVerifyCard(compactEl) {
     }
 }
 
-// Column filter handler — show select for packingType, text input for others
-// Debounce for text filter — waits 500ms after typing stops, then re-fetches
-var _verifyFilterTimer = null;
-function debounceVerifyFilter() {
-    clearTimeout(_verifyFilterTimer);
-    _verifyFilterTimer = setTimeout(function() {
-        fetchVerificationSlips(false);
-    }, 500);
+// ══════════════════════════════════════════════════════════════════════
+// VERIFY FILTERS — dependent (faceted) checkbox dropdowns
+//
+// Same look and rules as the Orders filters (ORD_FILTERS, ord-ms-* styles):
+// every dropdown is a checkbox list with a search box; inside one filter the
+// ticked values are OR (Party A or B), across filters AND. Each list shows
+// only the values that still have pending slips under the OTHER chosen
+// filters, with the count.
+//
+// A light index of ALL pending slips (only the columns below, paged in 1000s)
+// drives the dropdowns and picks the matching ids; fetchVerificationSlips then
+// loads the full slips (quality rows, rates) 20 ids at a time. The index is
+// read again on every full reload (opening the tab, after a save), so a slip
+// that was just saved moves to its new Invoice / Rates value at once.
+// If the index cannot be read (e.g. offline), the filters are applied to the
+// slips already loaded (vfPrep on the full slip objects).
+// New filter = one entry in VF_FILTERS (+ its column in vfIndexLoad / vfPrep).
+// ══════════════════════════════════════════════════════════════════════
+var VF_FILTERS = [
+    { key: 'packingType',  label: 'Packing Type',       get: function(r) { return r.packingType; } },
+    { key: 'party',        label: 'Party',              get: function(r) { return r.partyName; } },
+    { key: 'shipTo',       label: 'Ship To',            get: function(r) { return r.shipTo; } },
+    { key: 'dispatchFrom', label: 'Dispatch From',      get: function(r) { return r.dispatchFrom; } },
+    { key: 'marka',        label: 'Private Marka',      get: function(r) { return r.privateMarka; } },
+    { key: 'preparedBy',   label: 'Prepared By',        get: function(r) { return r.userName; } },
+    { key: 'contractor',   label: 'Loading Contractor', get: function(r) { return r.loadingContractor; } },
+    // Status filters: never blank, so no "(Blank)" option
+    { key: 'invoice',      label: 'Invoice No',         get: function(r) { return r.invoiceNo ? 'Entered' : 'Not entered'; } },
+    // total_amount is written by Save Rates (null = rates not saved yet)
+    { key: 'rates',        label: 'Rates',              get: function(r) { return r.totalAmount !== null ? 'Saved' : 'Not saved'; } }
+];
+var VF_BLANK = '__BLANK__';
+var VF_STORE = 'pk_verify_filters_v1';   // per-viewer convenience only
+var _vfIdx = { rows: [], ok: false, loading: null, noAmount: false };
+var _vfF = { vals: {}, from: '', to: '', search: '', open: null };
+var _vfBuilt = false, _vfSearchTimer = null, _vfApplyTimer = null;
+var _vfMsOpen = '';     // key of the checkbox list that is open, '' = none
+var _vfLabels = {};     // key → { valueKey: display label } (for the chips)
+
+function vfSel(key) { var v = _vfF.vals[key]; return Array.isArray(v) ? v : []; }
+function vfActiveCount() {
+    return VF_FILTERS.filter(function(f) { return vfSel(f.key).length; }).length +
+        (_vfF.from ? 1 : 0) + (_vfF.to ? 1 : 0) + (_vfF.search ? 1 : 0);
 }
 
-function onVerifyFilterColChange() {
-    var col      = document.getElementById('verify-filter-col').value;
-    var inputEl  = document.getElementById('verify-filter-value');
-    var selectEl = document.getElementById('verify-filter-select');
-
-    inputEl.value  = '';
-    inputEl.type   = 'text';
-    inputEl.style.display  = 'none';
-    selectEl.innerHTML     = '<option value="">All</option>';
-    selectEl.style.display = 'none';
-
-    if (!col) {
-        // Filter cleared → reload paginated
-        fetchVerificationSlips(false);
-        return;
+// Filter keys of one slip. o = index row (DB columns) or a full slip object.
+function vfPrep(r, o) {
+    if (o) {
+        r.id = o.id; r.slipNo = o.slipNo; r.packingType = o.packingType; r.slipDate = o.slipDate;
+        r.partyName = o.partyName; r.shipTo = o.shipTo; r.dispatchFrom = o.dispatchFrom;
+        r.privateMarka = o.privateMarka; r.userName = o.userName; r.loadingContractor = o.loadingContractor;
+        r.invoiceNo = (o.status && o.status.actualInvoiceNo) || '';
+        r.totalAmount = (o.totalAmount === null || o.totalAmount === undefined) ? null : o.totalAmount;
     }
+    r._k = {}; r._l = {};
+    VF_FILTERS.forEach(function(f) {
+        var raw = String(f.get(r) || '').trim();
+        r._l[f.key] = raw;
+        r._k[f.key] = raw ? ordNorm(raw) : VF_BLANK;
+    });
+    r._d = String(r.slipDate || '').slice(0, 10);
+    r._hay = ordNorm([r.slipNo, r.partyName, r.shipTo, r.invoiceNo, r.privateMarka, r.dispatchFrom,
+        r.userName, r.loadingContractor, r.packingType].join(' | '));
+    return r;
+}
 
-    if (col === 'packingType') {
-        selectEl.innerHTML = '<option value="">All</option>' +
-            '<option value="Billed">Billed</option>' +
-            '<option value="Non-Bill">Non-Bill</option>';
-        selectEl.style.display = '';
-    } else if (col === 'partyName') {
-        // For party filter: fetch ALL first to build dropdown, then filter
-        fetchVerificationSlips(false);
-        // Rebuild party dropdown after data loads (slight delay)
-        setTimeout(function() {
-            var parties = {};
-            verifySlips.forEach(function (s) { parties[s.partyName] = true; });
-            var opts = '<option value="">All</option>';
-            Object.keys(parties).sort().forEach(function (p) {
-                opts += '<option value="' + escapeHtmlJs(p) + '">' + escapeHtmlJs(p) + '</option>';
+// All pending slips (same "not received" rule as listSlipsForVerification)
+async function vfIndexLoad() {
+    if (_vfIdx.loading) return _vfIdx.loading;
+    _vfIdx.loading = (async function() {
+        var cols = 'id, slip_no, packing_type, slip_date, party_name, ship_to, dispatch_from, private_marka, ' +
+            'prepared_by_name, loading_contractor, actual_invoice_no';
+        var read = async function(withAmt) {
+            var out = [];
+            for (var from = 0; ; from += 1000) {
+                var { data, error } = await supabaseClient.from('packing_slips')
+                    .select(cols + (withAmt ? ', total_amount' : ''))
+                    .or('receiving_status.is.null,receiving_status.eq.')
+                    .order('id', { ascending: false }).range(from, from + 999);
+                if (error) throw error;
+                out = out.concat(data || []);
+                if (!data || data.length < 1000) break;
+            }
+            return out;
+        };
+        try {
+            var rows;
+            // total_amount comes with PACKING_SLIP_CHARGES_MIGRATION.sql; without
+            // it every slip simply counts as "Rates: Not saved".
+            if (_vfIdx.noAmount) rows = await read(false);
+            else {
+                try { rows = await read(true); }
+                catch (e1) {
+                    if (!/total_amount/i.test(String(e1 && e1.message))) throw e1;   // offline etc.
+                    _vfIdx.noAmount = true; rows = await read(false);
+                }
+            }
+            _vfIdx.rows = rows.map(function(s) {
+                return vfPrep({
+                    id: s.id, slipNo: s.slip_no || '', packingType: s.packing_type || '', slipDate: s.slip_date,
+                    partyName: s.party_name || '', shipTo: s.ship_to || '', dispatchFrom: s.dispatch_from || '',
+                    privateMarka: s.private_marka || '', userName: s.prepared_by_name || '',
+                    loadingContractor: s.loading_contractor || '', invoiceNo: s.actual_invoice_no || '',
+                    totalAmount: (s.total_amount === null || s.total_amount === undefined) ? null : Number(s.total_amount)
+                });
             });
-            selectEl.innerHTML = opts;
-            selectEl.style.display = '';
-        }, 1000);
-        return;
-    } else if (col === 'date') {
-        inputEl.type = 'date';
-        inputEl.style.display = '';
-        inputEl.placeholder = '';
-    } else {
-        inputEl.type = 'text';
-        inputEl.style.display = '';
-        inputEl.placeholder = col === 'slipNo' ? 'e.g. PS-12' : 'e.g. 2026-07';
+            _vfIdx.ok = true;
+        } catch (e) {
+            console.warn('Verify filter index failed:', e.message || e);
+            if (!_vfIdx.rows.length) _vfIdx.ok = false;   // keep a good older copy
+        }
+    })();
+    try { await _vfIdx.loading; } finally { _vfIdx.loading = null; }
+}
+
+// Does row r pass every filter, except the one named exceptKey?
+function vfRowPasses(r, exceptKey) {
+    if (_vfF.from && (!r._d || r._d < _vfF.from)) return false;
+    if (_vfF.to && (!r._d || r._d > _vfF.to)) return false;
+    if (_vfF.search) {
+        var words = _vfF.search.split(' ');
+        for (var w = 0; w < words.length; w++) if (words[w] && r._hay.indexOf(words[w]) < 0) return false;
     }
+    for (var i = 0; i < VF_FILTERS.length; i++) {
+        var f = VF_FILTERS[i];
+        if (f.key === exceptKey) continue;
+        var sel = vfSel(f.key);
+        if (sel.length && sel.indexOf(r._k[f.key]) < 0) return false;
+    }
+    return true;
+}
+
+// Ids of the matching slips, newest first (the index is read in that order)
+function vfMatchedIds() {
+    return _vfIdx.rows.filter(function(r) { return vfRowPasses(r, ''); }).map(function(r) { return r.id; });
+}
+
+// The options of one filter under all the others: [{ v, label, n }] + total
+function vfFacetOptions(f) {
+    var map = {}, total = 0;
+    var rows = _vfIdx.ok ? _vfIdx.rows : verifySlips.map(function(s) { return vfPrep({}, s); });
+    rows.forEach(function(r) {
+        if (!vfRowPasses(r, f.key)) return;
+        total++;
+        var k = r._k[f.key];
+        if (!map[k]) map[k] = { v: k, label: k === VF_BLANK ? '(Blank)' : r._l[f.key], n: 0 };
+        map[k].n++;
+    });
+    var opts = Object.keys(map).map(function(k) { return map[k]; });
+    // A ticked value stays in the list even when nothing matches it now
+    vfSel(f.key).forEach(function(sv) {
+        if (!map[sv]) {
+            var old = (_vfLabels[f.key] || {})[sv];
+            opts.push({ v: sv, label: sv === VF_BLANK ? '(Blank)' : (old || sv), n: 0 });
+        }
+    });
+    opts.sort(function(a, b) {
+        if (a.v === VF_BLANK) return 1;
+        if (b.v === VF_BLANK) return -1;
+        return a.label.localeCompare(b.label, 'en', { numeric: true });
+    });
+    var lm = _vfLabels[f.key] || (_vfLabels[f.key] = {});
+    opts.forEach(function(o) { lm[o.v] = o.label; });
+    return { opts: opts, total: total };
+}
+
+function vfLoadPrefs() {
+    try {
+        var s = JSON.parse(localStorage.getItem(VF_STORE) || 'null');
+        if (s && typeof s === 'object') {
+            _vfF.vals = {};
+            if (s.vals && typeof s.vals === 'object') Object.keys(s.vals).forEach(function(k) {
+                var arr = (Array.isArray(s.vals[k]) ? s.vals[k] : []).filter(function(x) { return typeof x === 'string' && x; });
+                if (arr.length) _vfF.vals[k] = arr;
+            });
+            _vfF.from = s.from || ''; _vfF.to = s.to || ''; _vfF.search = s.search || '';
+            _vfF.open = typeof s.open === 'boolean' ? s.open : null;
+        }
+    } catch (e) {}
+}
+function vfSavePrefs() {
+    try { localStorage.setItem(VF_STORE, JSON.stringify(_vfF)); } catch (e) {}
+}
+
+// Draws the dropdown boxes once (after the Slip Date box), in VF_FILTERS order.
+function vfBuildFilterControls() {
+    if (_vfBuilt) return;
+    var grid = document.getElementById('vf-grid');
+    if (!grid) return;
+    _vfBuilt = true;
+    vfLoadPrefs();
+    VF_FILTERS.forEach(function(f) {
+        var d = document.createElement('div');
+        d.className = 'ord-f ord-ms';
+        d.id = 'vf-fw-' + f.key;
+        d.innerHTML = '<label for="vf-f-' + f.key + '">' + escapeHtmlJs(f.label) + '</label>' +
+            '<button type="button" class="ord-ms-btn" id="vf-f-' + f.key + '" onclick="vfMsToggle(\'' + f.key + '\')" aria-haspopup="listbox" aria-expanded="false">All</button>' +
+            '<div class="ord-ms-panel" id="vf-ms-' + f.key + '" hidden>' +
+                '<div class="ord-ms-title">' + escapeHtmlJs(f.label) + '</div>' +
+                '<input type="text" class="ord-ms-search" id="vf-mss-' + f.key + '" placeholder="Search ' + escapeHtmlJs(f.label.toLowerCase()) + '..." oninput="vfMsSearch(\'' + f.key + '\')" autocomplete="off">' +
+                '<div class="ord-ms-actions">' +
+                    '<button type="button" onclick="vfMsAll(\'' + f.key + '\', true)">✓ Tick shown</button>' +
+                    '<button type="button" onclick="vfMsAll(\'' + f.key + '\', false)">✕ Clear</button>' +
+                    '<button type="button" class="ord-ms-done" onclick="vfMsClose()">Done</button>' +
+                '</div>' +
+                '<div class="ord-ms-list" id="vf-msl-' + f.key + '" role="listbox" aria-multiselectable="true"></div>' +
+            '</div>';
+        grid.appendChild(d);
+    });
+    document.getElementById('vf-from').value = _vfF.from;
+    document.getElementById('vf-to').value = _vfF.to;
+    document.getElementById('vf-search').value = _vfF.search;
+    var open = _vfF.open === null ? window.innerWidth > 700 : _vfF.open;   // phones start folded
+    var fold = document.createElement('div');
+    fold.className = 'ord-f-fold';
+    fold.innerHTML = '<button type="button" onclick="vfToggleFilters()">▴ Hide filters</button>';
+    grid.appendChild(fold);
+    grid.classList.toggle('closed', !open);
+}
+
+function vfRenderFilters() {
+    vfBuildFilterControls();
+    if (!_vfBuilt) return;
+    VF_FILTERS.forEach(function(f) {
+        var btn = document.getElementById('vf-f-' + f.key);
+        var fo = vfFacetOptions(f);
+        var sel = vfSel(f.key);
+        // The open list keeps its checkboxes (scroll / typed search)
+        if (_vfMsOpen !== f.key) {
+            document.getElementById('vf-msl-' + f.key).innerHTML = fo.opts.length ? fo.opts.map(function(o) {
+                return '<label class="ord-ms-item' + (o.n ? '' : ' zero') + '" data-txt="' + escapeHtmlJs(ordNorm(o.label)) + '">' +
+                    '<input type="checkbox" value="' + escapeHtmlJs(o.v) + '"' + (sel.indexOf(o.v) >= 0 ? ' checked' : '') +
+                    ' onchange="vfMsTick(\'' + f.key + '\', this)">' +
+                    '<span>' + escapeHtmlJs(o.label) + '</span><em>' + o.n + '</em></label>';
+            }).join('') : '<div class="ord-ms-empty">No values under the other filters</div>';
+            var s = document.getElementById('vf-mss-' + f.key);
+            if (s) s.value = '';
+        }
+        btn.textContent = !sel.length ? 'All (' + fo.total + ') ▾'
+            : sel.length === 1 ? vfLabelOf(f.key, sel[0]) + ' ▾' : sel.length + ' selected ▾';
+        btn.title = sel.length ? sel.map(function(v) { return vfLabelOf(f.key, v); }).join(', ') : 'All';
+        document.getElementById('vf-fw-' + f.key).classList.toggle('set', sel.length > 0);
+    });
+    document.getElementById('vf-dates').classList.toggle('set', !!(_vfF.from || _vfF.to));
+    vfRenderChips();
+}
+
+function vfLabelOf(key, v) {
+    if (v === VF_BLANK) return '(Blank)';
+    return (_vfLabels[key] || {})[v] || v;
+}
+
+function vfRenderChips() {
+    var chips = [];
+    if (_vfF.search) chips.push({ k: 'search', t: 'Search: ' + _vfF.search });
+    if (_vfF.from || _vfF.to) chips.push({ k: 'date', t: 'Date: ' + (_vfF.from ? formatSlipDate(_vfF.from) : '…') + ' to ' + (_vfF.to ? formatSlipDate(_vfF.to) : '…') });
+    VF_FILTERS.forEach(function(f) {
+        var sel = vfSel(f.key);
+        if (!sel.length) return;
+        var names = sel.map(function(v) { return vfLabelOf(f.key, v); });
+        chips.push({ k: f.key, t: f.label + ': ' + (names.length <= 2 ? names.join(', ') : names.slice(0, 2).join(', ') + ' +' + (names.length - 2) + ' more') });
+    });
+    document.getElementById('vf-chips').innerHTML = chips.map(function(c) {
+        return '<span class="ord-f-chip">' + escapeHtmlJs(c.t) + '<button type="button" title="Remove" onclick="vfClearFilter(\'' + c.k + '\')">✕</button></span>';
+    }).join('');
+    var n = vfActiveCount();
+    var tg = document.getElementById('vf-toggle');
+    if (tg) {
+        var open = !document.getElementById('vf-grid').classList.contains('closed');
+        tg.textContent = (open ? '▴ Hide Filters' : '▾ Show Filters') + (n ? ' (' + n + ')' : '');
+        tg.title = open ? 'Fold the filter boxes (the filters stay applied)' : 'Open the filter boxes';
+        tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+        tg.classList.toggle('on', n > 0);
+    }
+}
+
+// ── Checkbox list open / close ──
+function vfMsToggle(key) {
+    if (_vfMsOpen === key) { vfMsClose(); return; }
+    vfMsClose();
+    var p = document.getElementById('vf-ms-' + key);
+    if (!p) return;
+    p.hidden = false;
+    _vfMsOpen = key;
+    document.getElementById('vf-f-' + key).setAttribute('aria-expanded', 'true');
+    document.getElementById('vf-fw-' + key).classList.add('open');
+    var s = document.getElementById('vf-mss-' + key);
+    // On a phone a focused box would pop the keyboard over the list
+    if (s && window.innerWidth > 700) setTimeout(function() { s.focus(); }, 30);
+}
+function vfMsClose() {
+    if (!_vfMsOpen) return;
+    var key = _vfMsOpen;
+    _vfMsOpen = '';
+    var p = document.getElementById('vf-ms-' + key);
+    if (p) p.hidden = true;
+    var b = document.getElementById('vf-f-' + key);
+    if (b) b.setAttribute('aria-expanded', 'false');
+    var w = document.getElementById('vf-fw-' + key);
+    if (w) w.classList.remove('open');
+    // Apply right away if a tick is still waiting, else just redraw this list
+    if (_vfApplyTimer) { clearTimeout(_vfApplyTimer); _vfApplyTimer = null; vfApply(); }
+    else vfRenderFilters();
+}
+// Click outside an open list / Escape closes it
+document.addEventListener('pointerdown', function(e) {
+    if (!_vfMsOpen) return;
+    var w = document.getElementById('vf-fw-' + _vfMsOpen);
+    if (w && !w.contains(e.target)) vfMsClose();
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && _vfMsOpen) vfMsClose();
+});
+
+// Type to narrow the list (hides the others; ticks are kept)
+function vfMsSearch(key) {
+    var words = ordNorm(document.getElementById('vf-mss-' + key).value).split(' ').filter(Boolean);
+    document.querySelectorAll('#vf-msl-' + key + ' .ord-ms-item').forEach(function(it) {
+        var t = it.getAttribute('data-txt') || '';
+        it.style.display = words.every(function(w) { return t.indexOf(w) >= 0; }) ? '' : 'none';
+    });
+}
+function vfMsTick(key, cb) {
+    var sel = vfSel(key).slice();
+    var i = sel.indexOf(cb.value);
+    if (cb.checked && i < 0) sel.push(cb.value);
+    if (!cb.checked && i >= 0) sel.splice(i, 1);
+    if (sel.length) _vfF.vals[key] = sel; else delete _vfF.vals[key];
+    vfScheduleApply();
+}
+// Tick all values shown by the search (or clear the whole filter)
+function vfMsAll(key, on) {
+    var sel = on ? vfSel(key).slice() : [];
+    document.querySelectorAll('#vf-msl-' + key + ' .ord-ms-item').forEach(function(it) {
+        var cb = it.querySelector('input');
+        if (on && it.style.display !== 'none') { cb.checked = true; if (sel.indexOf(cb.value) < 0) sel.push(cb.value); }
+        if (!on) cb.checked = false;
+    });
+    if (sel.length) _vfF.vals[key] = sel; else delete _vfF.vals[key];
+    vfScheduleApply();
+}
+// Several quick ticks = one reload
+function vfScheduleApply() {
+    clearTimeout(_vfApplyTimer);
+    _vfApplyTimer = setTimeout(function() { _vfApplyTimer = null; vfApply(); }, 450);
+}
+// A filter changed: the list from page 1 with the index already in hand
+function vfApply() {
+    vfSavePrefs();
+    fetchVerificationSlips(false, _vfIdx.ok);
+}
+
+function vfOnSearchInput() {
+    clearTimeout(_vfSearchTimer);
+    _vfSearchTimer = setTimeout(function() {
+        _vfF.search = ordNorm(document.getElementById('vf-search').value);
+        vfApply();
+    }, 400);
+}
+function vfOnDateChange() {
+    _vfF.from = document.getElementById('vf-from').value || '';
+    _vfF.to = document.getElementById('vf-to').value || '';
+    if (_vfF.from && _vfF.to && _vfF.from > _vfF.to) {
+        var t = _vfF.from; _vfF.from = _vfF.to; _vfF.to = t;
+        document.getElementById('vf-from').value = _vfF.from;
+        document.getElementById('vf-to').value = _vfF.to;
+    }
+    vfApply();
+}
+
+function vfDiscard() {
+    clearTimeout(_vfApplyTimer); _vfApplyTimer = null;
+    vfMsClose();
+}
+function vfClearFilter(k) {
+    vfDiscard();
+    if (k === 'search') { _vfF.search = ''; document.getElementById('vf-search').value = ''; }
+    else if (k === 'date') { _vfF.from = _vfF.to = ''; document.getElementById('vf-from').value = ''; document.getElementById('vf-to').value = ''; }
+    else delete _vfF.vals[k];
+    vfApply();
+}
+function vfResetFilters() {
+    vfDiscard();
+    _vfF.vals = {}; _vfF.from = ''; _vfF.to = ''; _vfF.search = '';
+    document.getElementById('vf-search').value = '';
+    document.getElementById('vf-from').value = '';
+    document.getElementById('vf-to').value = '';
+    vfApply();
+}
+
+// Fold / unfold the filter boxes. Folding never removes a filter: the chips
+// stay visible (each with its ✕), so it is always clear what applies.
+function vfToggleFilters() {
+    var grid = document.getElementById('vf-grid');
+    var open = grid.classList.contains('closed');
+    if (!open && _vfMsOpen) vfMsClose();
+    grid.classList.toggle('closed', !open);
+    _vfF.open = open;
+    vfSavePrefs();
+    vfRenderChips();
 }
 
 function escapeHtmlJs(str) {
@@ -8928,7 +9368,8 @@ async function saveRates(key, btnEl) {
         if (!isFinite(n.rate) || n.rate < 0)                    { flag(rateInp); problems.push(label + ': Rate must be 0 or more'); return; }
         if (!isFinite(n.disc) || n.disc < 0 || n.disc > 100)    { flag(discInp); problems.push(label + ': Disc % must be 0 to 100'); return; }
         if (!isFinite(n.gst) || n.gst < 0 || n.gst > 100)       { flag(gstInp);  problems.push(label + ': GST % must be 0 to 100'); return; }
-        if (!isFinite(n.other) || n.other < 0)                  { flag(othInp);  problems.push(label + ': Other Charges must be 0 or more'); return; }
+        // Other Charges may be negative (a deduction), only not text
+        if (!isFinite(n.other))                                 { flag(othInp);  problems.push(label + ': Other Charges must be a number'); return; }
         var basis = basisSel && (basisSel.value === 'kg' || basisSel.value === 'pcs') ? basisSel.value : defaultSlipBasis(item.type);
         ratesObj[qKey] = { rate: n.rate, discount: n.disc };
         lines.push({ quality: item.quality || '', type: item.type || '', basis: basis,
@@ -9023,6 +9464,8 @@ async function saveRates(key, btnEl) {
         }
 
         // ── 3. Triplicate Copy PDF (1 page) ──
+        // The rows just saved give each column its Rate + Bill Basis
+        billing.lines = lines;
         setOrderSavingStage('saving', 'Building the Triplicate PDF');
         var tri;
         try {
@@ -9136,6 +9579,8 @@ async function buildTriplicatePdfForSlip(slipId, billing) {
                     other: Number(row.other_charges_total) || 0, total: Number(row.total_amount) || 0 };
     }
     billing = Object.assign({}, billing, { invoiceNo: row.actual_invoice_no || '' });
+    // Rate + Bill Basis per column (printed under Avg/pcs)
+    if (!Array.isArray(billing.lines)) billing.lines = await slipRateLinesFromDb_(row.id);
 
     var sigImg = await getSignatureForUsername(row.prepared_by);
     var blob = await generatePackingSlipPdfClient(

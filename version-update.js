@@ -86,7 +86,7 @@
   var state = ST_IDLE;
   var localVer = '—';
 
-  /* ── UI: one small pill fixed at the bottom of the launcher ─────────── */
+  /* ── UI: one small pill at the bottom of the launcher ─────────────── */
   var style = document.createElement('style');
   style.textContent =
     '#sarvUpd{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom));' +
@@ -102,7 +102,11 @@
     'font:700 12px/1 inherit;padding:9px 14px;min-height:34px;cursor:pointer;white-space:nowrap;}' +
     '#sarvUpd button:hover{background:#1d4ed8;}' +
     '#sarvUpd button:disabled{opacity:.6;cursor:default;}' +
-    '#sarvUpd.ok button{background:#16a34a;}';
+    '#sarvUpd.ok button{background:#16a34a;}' +
+    // On the launcher the pill sits in the page flow under the app list, so
+    // it scrolls with the page instead of covering the last tiles.
+    '#sarvUpd.inflow{position:static;left:auto;bottom:auto;transform:none;' +
+    'width:fit-content;margin:22px auto 0;}';
   document.head.appendChild(style);
 
   var bar = document.createElement('div');
@@ -114,7 +118,11 @@
     '<button type="button" id="sarvUpdBtn">Check for Update</button>';
 
   function mount() {
-    document.body.appendChild(bar);
+    // Launcher: put it at the end of the main column (.wrap). Any other page
+    // that asks for the UI keeps the fixed pill at the bottom.
+    var host = /launcher/i.test(location.pathname) && document.querySelector('body > .wrap');
+    if (host) { bar.classList.add('inflow'); host.appendChild(bar); }
+    else document.body.appendChild(bar);
     document.getElementById('sarvUpdBtn').addEventListener('click', check);
     // Show the version we are running, read from the ACTIVE bundle's own
     // version.json (after an OTA update this file is the new one).
