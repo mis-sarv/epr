@@ -63,7 +63,12 @@ end of <body>:     store-core.js → store-design-master.js → store-nav-keys.j
   - `SARV_DROPDOWNS` — fixed dropdown definitions backed by `sales_dropdowns` table. Key `erp_storeChecklist`
     holds the Store In / Out PDF checklists (one JSON row each, own builder; STORE CHECKLISTS section)
   - `SARV_FAB_FIELDS` / `SARV_BR_FIELDS` — Fabric/Brand Master field lists (drive table, form, CSV, revisions)
-  - `fetchAllRows(table, cols, orderCol, filterFn)` — paginated Supabase read
+  - `fetchAllRows(table, cols, orderCol, filterFn, opts)` — paginated Supabase read, served from the device
+    LIST CACHE (memory + IndexedDB `sarv_list_cache`, section above it): masters fresh 5 min then shown at once
+    and refreshed in the background, transaction tables (`LC_TXN`) never shown old (10 min with Realtime, 60 s
+    without); writes through `SB.from(..).insert/update/upsert/delete` / write RPCs, other tabs (`sarv_lc_ver`)
+    and Realtime mark lists old. A save-time check (stock guard, transfer balance) must pass `{live:true}`.
+    A new transaction table that decides stock goes into `LC_TXN`
   - **Two stores** (`sql/STORE1_MIGRATION.sql`): `inward_entries` / `outward_entries` and their lines carry
     `store` ('STORE 1' / 'STORE 2', default STORE 2 = all data from before; a trigger copies the header's
     store onto each line). `sarvStore` = the store the Store screens work in, set by the sidebar leaf

@@ -1224,7 +1224,7 @@
 
                     <!-- Item List -->
                     <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
-                        <input type="text" class="form-control" id="itemMasterSearch" placeholder="Search items..." style="flex:1; min-width:160px; height:30px; font-size:11px;" oninput="renderItemMasterTable()">
+                        <input type="text" class="form-control" id="itemMasterSearch" placeholder="Search items..." style="flex:1; min-width:160px; height:30px; font-size:11px;" oninput="imSearchTyped(event)" onkeydown="imSearchTyped(event)" title="Searches 2 seconds after you stop typing. Press Enter to search at once, Esc to clear.">
                         <!-- The old standalone Category dropdown lived here. It is gone
                              because Category now has a column filter of its own in the
                              header, like every other column — and unlike this one, that

@@ -489,8 +489,8 @@ async function sarvXferFromChanged(){
   sarvXferStock={};
   try{
     const [inl,outl]=await Promise.all([
-      fetchAllRows('inward_lines','item_id,qty','id',q=>q.eq('store',from)),
-      fetchAllRows('outward_lines','item_id,qty','id',q=>q.eq('store',from))
+      fetchAllRows('inward_lines','item_id,qty','id',q=>q.eq('store',from),{live:true}),
+      fetchAllRows('outward_lines','item_id,qty','id',q=>q.eq('store',from),{live:true})
     ]);
     inl.forEach(l=>{sarvXferStock[l.item_id]=(sarvXferStock[l.item_id]||0)+pNum(l.qty);});
     outl.forEach(l=>{sarvXferStock[l.item_id]=(sarvXferStock[l.item_id]||0)-pNum(l.qty);});
@@ -10004,12 +10004,138 @@ document.addEventListener('DOMContentLoaded',()=>{
 // more items or ledger lines than that, a plain .select() would silently
 // return only a partial dataset. This pages through .range() until a page
 // comes back short, so callers always get every row.
-async function fetchAllRows(table,selectCols,orderCol,filterFn){
+/* ================================================================
+   LIST CACHE: every fetchAllRows list kept on this device
+   ----------------------------------------------------------------
+   Item Master, Item Stock, Suppliers, Employees, Machines, the reports
+   and the rest all read whole tables through fetchAllRows. Fetching
+   inward_lines + outward_lines in full every time a screen opened is
+   what made the ERP hang. Now each list is kept on the device
+   (memory for this tab + IndexedDB 'sarv_list_cache' across reloads)
+   and searching / filtering runs over that copy.
+
+   When the copy is used and when it is fetched again:
+   - MASTERS (items, suppliers, employees, machines, dropdowns, design,
+     trims, everything not in LC_TXN): fresh for 5 min. Older than that
+     (up to 12 h) it is shown AT ONCE and refreshed in the background,
+     so the next open has the new data.
+   - TRANSACTIONS (LC_TXN: inward / outward / PO / PR and their lines,
+     stock counts): stock depends on them, so an old copy is never
+     shown. Fresh for 10 min while the Realtime link below is up (any
+     change from any device marks it old at once), 60 s without it.
+   - A copy is marked old at once when: this ERP writes the table
+     (SB.from(t).insert/update/upsert/delete, or a write RPC), another
+     tab / iframe of this browser does (versions in localStorage
+     'sarv_lc_ver'), or Realtime reports a change from another device.
+     A joined table in the select (items(name), inward_entries(...))
+     counts too.
+   - Pressing any Refresh / Reload button fetches again (the click in
+     the 2.5 s before the read).
+   - While the tab is open and visible, lists used recently are
+     refreshed in the background once they are due, so reopening a
+     screen is instant.
+   - No signal: the last copy is used instead of an error.
+   - A new login (another token) wipes the device copy.
+   Checks done while SAVING (Outward / Issue stock guard, Store Transfer
+   balance) pass {live:true} and always read the server.
+   Kill switch: localStorage sarv_list_cache_off = '1'. In the console:
+   sarvListCacheClear().
+================================================================ */
+const LC_DB='sarv_list_cache',LC_STORE='q',LC_VER_KEY='sarv_lc_ver',LC_OWNER_KEY='sarv_lc_owner';
+const LC_TXN=new Set(['inward_entries','inward_lines','outward_entries','outward_lines','purchase_orders','purchase_order_lines','purchase_requirements','purchase_requirement_lines','stock_counts']);
+// A header and its lines are saved together; a change to one makes both old.
+const LC_RELATED={inward_entries:['inward_lines'],inward_lines:['inward_entries'],outward_entries:['outward_lines'],outward_lines:['outward_entries'],
+  purchase_orders:['purchase_order_lines'],purchase_order_lines:['purchase_orders'],purchase_requirements:['purchase_requirement_lines'],purchase_requirement_lines:['purchase_requirements']};
+// The tables the mobile app already gets Realtime events for (so they are in the publication).
+const LC_RT_TABLES=['purchase_requirements','purchase_orders','inward_entries','outward_entries'];
+const LC_FRESH_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN_RT=10*60e3,LC_FRESH_TXN=60e3;
+const LC_WRITE_RPC=/(save|delete|decide|post|insert|update|upsert|patch|import|approve|reject|cancel|undo|create|_set|set_|receive|transfer|edit|done|confirm)/i;
+const LC_QUIET_RPC=/^(erp_app_|verify_|get_|pdf_|tm_notify|sop_my)/i;
+const LC_MASTER_RPC=/item|supplier|employee|machine|dropdown|design|trims|fabric|brand/i;
+const lcMem=new Map();          // key → {table,deps,cols,order,calls,rows,at,ver,owner}
+const lcInflight=new Map();     // key → Promise(rows): one network read per list at a time
+const lcUsed=new Map();         // key → last use (ms), for the background refresh
+let lcRtLive=false,lcRtSince=0,lcRefreshClickAt=0,lcLastKeyAt=0;
+const lcOn_=()=>{try{return localStorage.getItem('sarv_list_cache_off')!=='1'}catch(e){return true}};
+const lcOwner_=()=>{try{return String(localStorage.getItem('sarv_sso_token')||'').slice(-24)}catch(e){return ''}};
+function lcVers_(){try{return JSON.parse(localStorage.getItem(LC_VER_KEY)||'{}')||{}}catch(e){return {}}}
+function lcVerOf_(deps){const v=lcVers_();return deps.map(t=>v[t]||0).join(',')}
+function lcTouch_(tables){
+  const v=lcVers_(),now=Date.now();
+  [].concat(tables||[]).forEach(t=>{if(!t)return;v[t]=now;(LC_RELATED[t]||[]).forEach(r=>{v[r]=now});});
+  try{localStorage.setItem(LC_VER_KEY,JSON.stringify(v))}catch(e){}
+}
+// Again after the write has surely landed: a read that ran WHILE it was
+// saving may have kept the old rows under the new version.
+function lcTouchSoon_(tables){lcTouch_(tables);setTimeout(()=>lcTouch_(tables),4000);}
+function lcDeps_(table,cols){
+  const d=new Set([table]);
+  String(cols||'').replace(/([a-z_][a-z0-9_]*)\s*\(/gi,(_,t)=>{d.add(t);return _;});
+  return [...d];
+}
+/* A transaction copy gets the long time only if it was read while Realtime
+   was already up (so every change since then has been heard). */
+const lcFresh_=(deps,at)=>deps.some(t=>LC_TXN.has(t))?(lcRtLive&&at>=lcRtSince?LC_FRESH_TXN_RT:LC_FRESH_TXN):LC_FRESH_MASTER;
+/* What the list's filter function does, as data: it is run once on a
+   recorder that notes every call (eq, in, gte, ...). That is the list's
+   key, and it is replayed on a real query for the background refresh.
+   null = it could not be recorded, and the list is read without cache. */
+function lcRecord_(filterFn){
+  if(!filterFn)return [];
+  const calls=[];
+  const p=new Proxy(function(){},{get(_,k){
+    if(k==='then'||typeof k==='symbol')return undefined;
+    return (...a)=>{calls.push([k,a]);return p;};
+  }});
+  try{filterFn(p);JSON.stringify(calls);}catch(e){return null;}
+  return calls;
+}
+function lcKey_(table,cols,order,calls){
+  const s=JSON.stringify(calls);
+  let h=0x811c9dc5;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193);}
+  return table+'|'+cols+'|'+(order||'')+'|'+s.length+':'+(h>>>0).toString(36);
+}
+const lcClone_=rows=>{try{return structuredClone(rows)}catch(e){return JSON.parse(JSON.stringify(rows))}};
+let lcDbP=null;
+function lcDb_(){
+  if(lcDbP)return lcDbP;
+  lcDbP=new Promise(res=>{
+    try{
+      const r=indexedDB.open(LC_DB,1);
+      r.onupgradeneeded=()=>r.result.createObjectStore(LC_STORE);
+      r.onsuccess=()=>res(r.result);r.onerror=()=>res(null);r.onblocked=()=>res(null);
+    }catch(e){res(null)}
+  }).then(async db=>{
+    // A different login on this device: nothing of the last one is kept.
+    const own=lcOwner_();let was='';try{was=localStorage.getItem(LC_OWNER_KEY)||''}catch(e){}
+    if(db&&was!==own){await lcIdbRun_(db,'readwrite',s=>s.clear());try{localStorage.setItem(LC_OWNER_KEY,own)}catch(e){}}
+    return db;
+  });
+  return lcDbP;
+}
+function lcIdbRun_(db,mode,fn){
+  return new Promise(res=>{
+    try{const tx=db.transaction(LC_STORE,mode),q=fn(tx.objectStore(LC_STORE));
+      tx.oncomplete=()=>res(q&&q.result);tx.onerror=tx.onabort=()=>res(null);}
+    catch(e){res(null)}
+  });
+}
+async function lcIdbGet_(k){const db=await lcDb_();return db?lcIdbRun_(db,'readonly',s=>s.get(k)):null;}
+async function lcIdbPut_(k,v){const db=await lcDb_();if(db)await lcIdbRun_(db,'readwrite',s=>s.put(v,k));}
+async function sarvListCacheClear(){
+  lcMem.clear();lcUsed.clear();
+  const db=await lcDb_();if(db)await lcIdbRun_(db,'readwrite',s=>s.clear());
+  try{localStorage.removeItem(LC_VER_KEY)}catch(e){}
+  console.log('[SARV CACHE] cleared');
+}
+// The plain paged read (PostgREST returns at most 1000 rows per request).
+async function lcNet_(table,selectCols,orderCol,filterFn,calls){
   const PAGE=1000;
   let from=0,all=[];
   for(;;){
     let q=SB.from(table).select(selectCols);
-    if(filterFn)q=filterFn(q);
+    if(calls)q=calls.reduce((x,[m,a])=>x[m](...a),q);
+    else if(filterFn)q=filterFn(q);
     q=q.range(from,from+PAGE-1);
     if(orderCol)q=q.order(orderCol);
     const {data,error}=await q;
@@ -10019,6 +10145,104 @@ async function fetchAllRows(table,selectCols,orderCol,filterFn){
     from+=PAGE;
   }
   return all;
+}
+function lcFetch_(key,table,cols,order,calls){
+  if(lcInflight.has(key))return lcInflight.get(key);
+  const deps=lcDeps_(table,cols),ver=lcVerOf_(deps);   // version BEFORE the read
+  const p=lcNet_(table,cols,order,null,calls).then(rows=>{
+    const e={table,deps,cols,order,calls,rows,at:Date.now(),ver,owner:lcOwner_()};
+    lcMem.set(key,e);
+    lcIdbPut_(key,e).catch(()=>{});
+    return rows;
+  }).finally(()=>lcInflight.delete(key));
+  lcInflight.set(key,p);
+  return p;
+}
+async function fetchAllRows(table,selectCols,orderCol,filterFn,opts){
+  const calls=SB?lcRecord_(filterFn):null;
+  if(!SB||calls===null||!lcOn_())return lcNet_(table,selectCols,orderCol,filterFn,null);
+  const key=lcKey_(table,selectCols,orderCol,calls);
+  lcUsed.set(key,Date.now());
+  // A save-time check: always the server (and the copy is brought up to date).
+  if(opts&&opts.live)return lcClone_(await lcFetch_(key,table,selectCols,orderCol,calls));
+  const now=Date.now(),forced=now-lcRefreshClickAt<2500;
+  let e=lcMem.get(key);
+  if(!e){
+    e=await lcIdbGet_(key);
+    if(e&&(e.owner!==lcOwner_()||!Array.isArray(e.rows)))e=null;
+    if(e)lcMem.set(key,e);
+  }
+  const deps=lcDeps_(table,selectCols);
+  if(e&&!forced&&e.ver===lcVerOf_(deps)){
+    const age=now-e.at;
+    if(age<lcFresh_(deps,e.at))return lcClone_(e.rows);
+    if(!deps.some(t=>LC_TXN.has(t))&&age<LC_SWR_MASTER){
+      lcFetch_(key,table,selectCols,orderCol,calls).catch(err=>console.warn('[SARV CACHE] background refresh of '+table+' failed:',err.message||err));
+      return lcClone_(e.rows);
+    }
+  }
+  try{return lcClone_(await lcFetch_(key,table,selectCols,orderCol,calls));}
+  catch(err){
+    // No signal: the last copy beats an empty screen.
+    if(e){console.warn('[SARV CACHE] '+table+' could not be fetched, showing the copy from '+new Date(e.at).toLocaleString()+':',err.message||err);return lcClone_(e.rows);}
+    throw err;
+  }
+}
+// Background refresh of the lists used lately, once they are due. Transaction
+// lists only while Realtime is up (else they would be read every minute).
+async function lcWarm_(){
+  if(!SB||!lcOn_()||document.visibilityState!=='visible'||navigator.onLine===false)return;
+  // Not while someone is typing: a large list arriving costs the page a moment.
+  if(Date.now()-lcLastKeyAt<5000)return;
+  const now=Date.now();
+  for(const [key,used] of [...lcUsed]){
+    const e=lcMem.get(key);if(!e||lcInflight.has(key))continue;
+    const txn=e.deps.some(t=>LC_TXN.has(t));
+    if(now-used>(txn?30*60e3:2*3600e3)){lcUsed.delete(key);continue;}
+    if(txn&&!lcRtLive)continue;
+    if(e.ver===lcVerOf_(e.deps)&&now-e.at<lcFresh_(e.deps,e.at))continue;
+    try{await lcFetch_(key,e.table,e.cols,e.order,e.calls);}catch(err){return;}
+  }
+}
+if(SB){
+  // Writes from this ERP (any file, any screen) mark their table old.
+  const from0=SB.from.bind(SB);
+  SB.from=function(t){
+    const b=from0(t);
+    ['insert','update','upsert','delete'].forEach(m=>{
+      const f=b[m];if(typeof f==='function')b[m]=function(){lcTouchSoon_(t);return f.apply(b,arguments);};
+    });
+    return b;
+  };
+  const rpc0=SB.rpc.bind(SB);
+  SB.rpc=function(name){
+    const n=String(name||'');
+    if(LC_WRITE_RPC.test(n)&&!LC_QUIET_RPC.test(n))
+      lcTouchSoon_([...LC_TXN].concat(LC_MASTER_RPC.test(n)?['items','suppliers','employees','machines','sales_dropdowns']:[]));
+    return rpc0.apply(null,arguments);
+  };
+  // Changes from other devices, the moment they happen.
+  try{
+    if(typeof SB.channel==='function'){
+      let ch=SB.channel('sarv-erp-list-cache');
+      LC_RT_TABLES.forEach(t=>{ch=ch.on('postgres_changes',{event:'*',schema:'public',table:t},()=>lcTouch_(t));});
+      ch.subscribe(st=>{
+        const was=lcRtLive;lcRtLive=st==='SUBSCRIBED';
+        // Copies read before this moment missed whatever happened while the
+        // link was down: they keep only the short time (lcFresh_).
+        if(lcRtLive&&!was)lcRtSince=Date.now();
+      });
+    }
+  }catch(e){console.warn('[SARV CACHE] Realtime not available; lists use the short refresh time:',e.message||e);}
+  document.addEventListener('click',ev=>{
+    const el=ev.target&&ev.target.closest&&ev.target.closest('button,a,[onclick],[role=button]');if(!el)return;
+    const t=((el.textContent||'')+' '+(el.title||'')+' '+(el.getAttribute('aria-label')||'')).toLowerCase();
+    if(/refresh|reload|re-load|sync|↻|⟳/.test(t))lcRefreshClickAt=Date.now();
+  },true);
+  document.addEventListener('keydown',()=>{lcLastKeyAt=Date.now();},true);
+  setInterval(()=>{lcWarm_().catch(()=>{})},60e3);
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')setTimeout(()=>lcWarm_().catch(()=>{}),1500);});
+  window.addEventListener('online',()=>setTimeout(()=>lcWarm_().catch(()=>{}),2000));
 }
 
 // Item Master table state — cached in full (see fetchAllRows) so the
@@ -11807,7 +12031,57 @@ function updateItemMasterSortIndicators_(){
     el.style.opacity=on?'1':'0.35';
   });
 }
+/* Item Master's "Search items..." box. Redrawing the whole table on every
+   key froze the screen while typing (thousands of rows, each one matched and
+   rebuilt per letter), so the search runs once, 2 s after the last key.
+   Enter searches at once; clearing the box shows the full list at once. A
+   "Searching..." hint in the count says the typed text is waiting. */
+const IM_SEARCH_DELAY=2000;
+let imSearchTimer=null;
+function imSearchNow_(){
+  clearTimeout(imSearchTimer);imSearchTimer=null;
+  byId('itemMasterSearch')?.removeAttribute('data-pending');
+  renderItemMasterTable();
+}
+window.imSearchTyped=function(ev){
+  const box=byId('itemMasterSearch');
+  if(ev&&ev.type==='keydown'){
+    if(ev.key==='Enter'){ev.preventDefault();imSearchNow_();}
+    else if(ev.key==='Escape'&&box&&box.value){box.value='';imSearchNow_();}
+    return;
+  }
+  clearTimeout(imSearchTimer);
+  if(box&&!box.value.trim()){imSearchNow_();return;}
+  // The hint is written once per burst of typing: touching the page on every
+  // key is exactly what made the letters lag.
+  if(box&&!box.hasAttribute('data-pending')){
+    box.setAttribute('data-pending','1');
+    const cnt=byId('itemMasterCount');if(cnt)cnt.textContent='Searching...';
+  }
+  imSearchTimer=setTimeout(imSearchNow_,IM_SEARCH_DELAY);
+};
+/* Only the rows that can be seen are in the page: the first IM_FIRST_ROWS,
+   then IM_STEP_ROWS more each time the list is scrolled near its end
+   (imRenderMore, called from the #itemMasterBox scroll listener). With every
+   item in the page at once (22 cells each), each key typed in the search box
+   made the browser re-measure thousands of rows before the letter showed.
+   Totals, Select all, CSV / PDF all work on the whole result
+   (sarvItemMasterShown), not on the rows drawn. A new redraw replaces the
+   last one's imRenderMore. */
+const IM_FIRST_ROWS=120,IM_STEP_ROWS=120;
+let imRenderToken=0,imRenderMore=null;
+function imFillBox_(){
+  const box=byId('itemMasterBox');
+  if(!box||!imRenderMore)return;
+  // Keep about one screen of rows below what is visible.
+  for(let guard=0;guard<50&&imRenderMore&&box.scrollHeight-box.scrollTop-box.clientHeight<box.clientHeight;guard++)imRenderMore();
+}
 window.renderItemMasterTable=function(){
+  const token=++imRenderToken;imRenderMore=null;
+  { const box=byId('itemMasterBox');
+    if(box&&!box.dataset.imScroll){box.dataset.imScroll='1';box.addEventListener('scroll',()=>{if(imRenderMore)requestAnimationFrame(imFillBox_);},{passive:true});} }
+  // A redraw for any other reason (filter, sort, reload) also takes the typed text now.
+  if(imSearchTimer){clearTimeout(imSearchTimer);imSearchTimer=null;byId('itemMasterSearch')?.removeAttribute('data-pending');}
   const tb=byId('itemMasterBody'),cnt=byId('itemMasterCount');
   if(!tb)return;
   const q=(byId('itemMasterSearch')?.value||'').toLowerCase().trim();
@@ -11883,9 +12157,9 @@ window.renderItemMasterTable=function(){
   // Admin Panel › Tab Visibility › Item Master › New PR Generation (default: Admin only).
   const prAdmin=sarvTabVisible('MD_ITEM_NEWPR');
   byId('itemMasterTable')?.classList.toggle('im-hide-newpr',!prAdmin);
-  const bodyRows=rows.map((row,i)=>{
+  rows.forEach(row=>{totalIn+=row.inQty;totalOut+=row.outQty;totalBal+=row.bal;totalPipe+=pNum(row.pipe);});
+  const rowHtml=(row,i)=>{
     const{it,inQty,outQty,bal}=row;
-    totalIn+=inQty;totalOut+=outQty;totalBal+=bal;totalPipe+=pNum(row.pipe);
     const balColor=bal>0?'#166534':bal<0?'#dc2626':'#64748b';
     // Minimum Stock Value — read through the same helper the stock filter and
     // the sort use, so the red low-stock flag and the "Below the MSV" view can
@@ -11918,7 +12192,7 @@ window.renderItemMasterTable=function(){
           ${(sarvCan('EDIT')||sarvCan('DELETE'))?`${sarvCan('EDIT')?`<button onclick="editMasterItem('${it.id}')" style="background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:4px;" title="Edit ${escText(it.item_code||'')} : change the item details">✎</button>`:''}${sarvCan('DELETE')?`<button onclick="deleteMasterItem('${it.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}`:'<span style="color:#cbd5e1;">—</span>'}
         </td>
       </tr>`;
-  }).join('');
+  };
   // Subtotal row pinned at the top of the item list, above all rows,
   // reflecting whatever the current search/category filter is showing.
   // colspan is 11: the label runs from # through Make. MSV and Standard Order
@@ -11940,8 +12214,18 @@ window.renderItemMasterTable=function(){
       <td class="im-newpr-col" style="padding:6px;text-align:center;" title="Ticked for New PR">${sarvItemPrSel.size||'—'}</td>
       <td></td>
     </tr>`;
-  tb.innerHTML=totalsRow+bodyRows;
+  tb.innerHTML=totalsRow+rows.slice(0,IM_FIRST_ROWS).map((r,j)=>rowHtml(r,j)).join('');
   sarvSyncItemPrSelUi_();
+  let at=IM_FIRST_ROWS;
+  if(at<rows.length){
+    imRenderMore=()=>{
+      if(token!==imRenderToken||at>=rows.length){if(token===imRenderToken)imRenderMore=null;return;}
+      const from=at;at+=IM_STEP_ROWS;
+      tb.insertAdjacentHTML('beforeend',rows.slice(from,at).map((r,j)=>rowHtml(r,from+j)).join(''));
+      if(at>=rows.length)imRenderMore=null;
+    };
+    requestAnimationFrame(imFillBox_);
+  }
 };
 /* ══ ITEM MASTER → CSV / PDF ════════════════════════════════════════
    What the two buttons above the list download.
@@ -12356,10 +12640,11 @@ function sarvSyncItemPrSelUi_(){
   if(cnt)cnt.textContent=n;
   const all=byId('imPrSelAll');
   if(all){
-    const boxes=[...document.querySelectorAll('#itemMasterBody .im-pr-sel')];
+    // Judged on every row shown, drawn yet or not.
+    const ids=(sarvItemMasterShown||[]).map(r=>String(r.it.id));
     all.disabled=!admin;all.style.cursor=admin?'pointer':'not-allowed';
-    all.checked=boxes.length>0&&boxes.every(b=>b.checked);
-    all.indeterminate=!all.checked&&boxes.some(b=>b.checked);
+    all.checked=ids.length>0&&ids.every(id=>sarvItemPrSel.has(id));
+    all.indeterminate=!all.checked&&ids.some(id=>sarvItemPrSel.has(id));
   }
 }
 window.sarvClearItemPrSel=function(){sarvItemPrSel.clear();renderItemMasterTable();};
@@ -12577,11 +12862,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('imPrSelAll')?.addEventListener('click',e=>e.stopPropagation());
   byId('imPrSelAll')?.addEventListener('change',e=>{
     if(!sarvTabVisible('MD_ITEM_NEWPR')){e.target.checked=false;return;}
-    // Every item the current search / filters are showing.
-    document.querySelectorAll('#itemMasterBody .im-pr-sel').forEach(cb=>{
-      cb.checked=e.target.checked;
-      if(cb.checked)sarvItemPrSel.add(String(cb.dataset.id));else sarvItemPrSel.delete(String(cb.dataset.id));
-    });
+    // Every item the current search / filters are showing, including the rows
+    // not drawn yet (the list is drawn in batches, renderItemMasterTable).
+    sarvItemMasterShown.forEach(r=>{const id=String(r.it.id);if(e.target.checked)sarvItemPrSel.add(id);else sarvItemPrSel.delete(id);});
+    document.querySelectorAll('#itemMasterBody .im-pr-sel').forEach(cb=>{cb.checked=e.target.checked;});
     const sub=byId('itemMasterBody').querySelector('tr td[title="Ticked for New PR"]');if(sub)sub.textContent=sarvItemPrSel.size||'—';
     sarvSyncItemPrSelUi_();
   });
@@ -22918,9 +23202,9 @@ let PR_TEAL=[13,92,83];
    // The balance of the store this entry leaves from, not both stores together.
    await sarvCheckStoreCol_();
    const [items,inLines,outLines]=await Promise.all([
-     fetchAllRows('items','id,name','name'),
-     fetchAllRows('inward_lines','item_id,qty','id',sarvStoreQ),
-     fetchAllRows('outward_lines','outward_id,item_id,qty','id',sarvStoreQ)
+     fetchAllRows('items','id,name','name',null,{live:true}),
+     fetchAllRows('inward_lines','item_id,qty','id',sarvStoreQ,{live:true}),
+     fetchAllRows('outward_lines','outward_id,item_id,qty','id',sarvStoreQ,{live:true})
    ]);
    const inMap={},outMap={};
    inLines.forEach(r=>{inMap[r.item_id]=(inMap[r.item_id]||0)+pNum(r.qty)});
