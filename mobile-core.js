@@ -341,8 +341,13 @@
     /* Designation / Contact have no column on the PR header — only the PDF
        snapshot carries them, and a snapshot that never got them printed them
        blank. Anything missing is filled from Employee Master by the PR's
-       Employee Code. Same rule as STORE.html's withPrRequester_(). */
+       Employee Code. Same rule as STORE.html's withPrRequester_().
+       The Employee Code itself is never left blank either: a snapshot without
+       it (older PR, a rebuild that dropped it) takes it from the PR row's own
+       employee_code, else from Employee Master by the requester's name when
+       exactly one employee has that name. */
     async function withPrRequester_(d){
+        d = await withPrEmpCode_(d);
         const code = String(d.empCode||d.employee_code||'').trim();
         const has = d.designation && d.department && (d.contact||d.contact_no) && (d.personName||d.requested_by);
         if(!code || has) return d;
@@ -357,6 +362,23 @@
             designation: d.designation||emp.designation||'',
             department: d.department||emp.department||'',
             contact: d.contact||d.contact_no||emp.contact_no||''};
+    }
+    async function withPrEmpCode_(d){
+        if(!d || String(d.empCode||d.employee_code||'').trim()) return d;
+        let code = '';
+        try{
+            const reqNo = String(d.reqNo||d.req_no||'').trim();
+            if(reqNo){
+                const q = await SB.from('purchase_requirements').select('employee_code').eq('req_no', reqNo).limit(1);
+                if(!q.error) code = String(((q.data||[])[0]||{}).employee_code||'').trim();
+            }
+            const name = String(d.personName||d.requested_by||'').trim();
+            if(!code && name){
+                const q = await SB.from('employees').select('emp_code').ilike('person_name', name).limit(2);
+                if(!q.error && (q.data||[]).length === 1) code = String(q.data[0].emp_code||'').trim();
+            }
+        }catch(e){ console.warn('[MOBILE PDF] Employee Code lookup for PR skipped:', e.message||e); }
+        return code ? {...d, empCode: code.toUpperCase()} : d;
     }
     function prHeaderGroups_(d){
         return [
@@ -7710,6 +7732,8 @@
                 const blob = await buildPoNativePdfBlob(d, []);
                 const artifact = await uploadPdfArtifact(blob,'PO',d.poNo,'PO');
                 await indexPdfArtifact('PO', row.id, d.poNo, 'PO', artifact);
+                // The MD may have signed while this was uploading.
+                await poPdfRecheck_(row.id, d.signatures);
             }catch(e){ console.warn('[MOBILE] PO PDF build failed (PO still saved):', e); }
             made.push({poNo: d.poNo, vendorName: d.vendorName});
         }
@@ -7723,39 +7747,41 @@
         // source PR sitting in PO Generate ▸ Rejected PO for ever.
         delete newApprovals.rejection;
         const newStatus = STAGE_RESULT_STATUS[stage];
-        const effDeliveryDate = deliveryDate || po.delivery_date;
-        const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
-        if(lq.error) throw lq.error;
-        const lines = lq.data || [];
-        await enrichPoLineAttrs_(lines);
-        const d = {
-            poNo: po.po_no, poDate: po.po_date, deliveryDate: effDeliveryDate,
-            vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
-            paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
-            otherExpenseLabel: po.other_expense_label || 'Labour Other Exp.', gstPercent: po.gst_percent, grandTotal: po.grand_total,
-            // Saved GST total (per-line rates + charges). Without it the PDF
-            // re-derived GST as one flat % over everything and misprinted it.
-            gstAmount: po.gst_amount, subtotal: po.subtotal,
-            items: lines.map(l=>({
-                reqNo: l.req_no, itemName: l.item_name, itemDesc: l.item_description, make: l.make,
-                itemSize: l.item_size || '', materialType: l.material_type || '',
-                qty: l.ordered_qty, uom: l.uom, unitPrice: l.unit_price, discountPercent: l.discount_pct||0,
-                netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
-                billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
-            })),
-            signatures: newApprovals,
-        };
 
         const poUpdate = {status:newStatus, approvals:newApprovals};
         if(deliveryDate) poUpdate.delivery_date = deliveryDate;
         const updErr = await SB.from('purchase_orders').update(poUpdate).eq('id', po.id);
         if(updErr.error) throw updErr.error;
+        /* Read back. An update that matched no row (RLS, a deleted PO) reports
+           no error, and the PDF below would then be built from a record that
+           has no MD sign at all. */
+        const chk = await SB.from('purchase_orders').select('approvals').eq('id', po.id).maybeSingle();
+        if(chk.error) throw chk.error;
+        const saved = chk.data && chk.data.approvals && chk.data.approvals[stage];
+        if(!saved || saved.name !== sig.name) throw new Error('The signature was not saved on ' + po.po_no + '. Please approve again.');
 
-        try{
-            const blob = await buildPoNativePdfBlob(d, []);
-            const artifact = await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
-            await indexPdfArtifact('PO', po.id, po.po_no, 'PO', artifact);
-        }catch(e){ console.warn('[MOBILE] PO PDF regen failed (approval still saved):', e); }
+        /* The PDF is built from the row just saved, not from this phone's copy
+           of the PO (loaded when the list was), and it is no longer a silent
+           best effort: an upload that failed used to leave the old file, the
+           one with MD "PENDING APPROVAL", as the PO's PDF with nothing said.
+           Retried here; if the signal is gone it is queued and rebuilt on the
+           next load (flushPoPdfRegenQueue_), and the MD is told. */
+        let lastErr = null;
+        for(let attempt = 1; attempt <= 3; attempt++){
+            try{
+                await regenPoPdf_(po.id);
+                poPdfRegenQueueDrop_(po.id);
+                return '';
+            }catch(e){
+                lastErr = e;
+                console.warn('[MOBILE] PO PDF regen try ' + attempt + ' failed (approval saved):', e);
+                if(attempt < 3) await pdfRetryDelay_(1500 * attempt);
+            }
+        }
+        poPdfRegenQueueAdd_(po.id, po.po_no);
+        return po.po_no + ' is approved, but its PDF could not be updated with your signature yet ('
+            + ((lastErr && lastErr.message) || lastErr || 'upload failed') + ').\n\n'
+            + 'It will be updated automatically the next time this app is opened with internet. Please do not send the PO to the vendor until then.';
     }
 
     // ── Reject: send a PENDING item back to the stage that approved it just
@@ -7917,7 +7943,68 @@
     /* Re-renders one PO's PDF from what is stored, with its current status —
        used after a cancel, so the file the vendor may already hold is
        replaced by one marked CANCELLED. Same field mapping as rejectPO. */
+    /* Which signs and which status a PO PDF was drawn with. Two PDFs of the
+       same PO with the same key look the same; a different key means the file
+       is out of date (e.g. it has no MD sign but the record does). */
+    function poPdfSignKey_(approvals, status){
+        const a = approvals || {};
+        return String(status || '') + '|' + ['store','gmCeo','md'].map(k => {
+            const s = a[k];
+            return (s && String(s.name || '').trim()) ? String(s.time || '1') : '';
+        }).join('|');
+    }
+    /* Called right after a PO PDF is uploaded from a COPY of the record (a
+       just-built PO). The PO is in the MD's list the moment its row is
+       inserted, while its first PDF is still uploading; on a slow line the
+       MD can sign in that gap, and the late upload then OVERWRITES the
+       MD-signed file with the unsigned one. So the uploader looks again after
+       its own upload and, if the record moved on, rebuilds from the record. */
+    async function poPdfRecheck_(poId, builtApprovals, builtStatus){
+        try{
+            const q = await SB.from('purchase_orders').select('approvals,status').eq('id', poId).maybeSingle();
+            if(q.error || !q.data) return;
+            if(poPdfSignKey_(q.data.approvals, '') === poPdfSignKey_(builtApprovals, '')) return;
+            await regenPoPdf_(poId);
+        }catch(e){ console.warn('[MOBILE] PO PDF recheck failed:', e.message || e); }
+    }
+
+    /* POs whose approval is saved but whose PDF could not be rebuilt yet (no
+       signal). Rebuilt from the database on the next load; see approvePO. */
+    const PO_PDF_REGEN_KEY = 'sarvPoPdfRegenQueue';
+    function poPdfRegenQueue_(){
+        try{ const l = JSON.parse(localStorage.getItem(PO_PDF_REGEN_KEY) || '[]'); return Array.isArray(l) ? l : []; }catch(e){ return []; }
+    }
+    function poPdfRegenQueueWrite_(list){
+        try{ localStorage.setItem(PO_PDF_REGEN_KEY, JSON.stringify(list.slice(-100))); }catch(e){}
+    }
+    function poPdfRegenQueueAdd_(id, poNo){
+        poPdfRegenQueueWrite_(poPdfRegenQueue_().filter(j => j.id !== id).concat([{id, poNo, at: new Date().toISOString()}]));
+    }
+    function poPdfRegenQueueDrop_(id){
+        const l = poPdfRegenQueue_();
+        if(l.some(j => j.id === id)) poPdfRegenQueueWrite_(l.filter(j => j.id !== id));
+    }
+    // Never throws: housekeeping must not take a screen down.
+    async function flushPoPdfRegenQueue_(){
+        let fixed = 0;
+        for(const job of poPdfRegenQueue_()){
+            try{ await regenPoPdf_(job.id); poPdfRegenQueueDrop_(job.id); fixed++; }
+            catch(e){ console.warn('[MOBILE] queued PO PDF ' + job.poNo + ' still not rebuilt:', e.message || e); }
+        }
+        return fixed;
+    }
+
     async function regenPoPdf_(poId){
+        for(let round = 0; round < 2; round++){
+            const po = await regenPoPdfOnce_(poId);
+            // Someone signed / changed the PO while this file was being built:
+            // build once more, so the file never ends up behind the record.
+            const q = await SB.from('purchase_orders').select('approvals,status').eq('id', poId).maybeSingle();
+            if(q.error || !q.data) return;
+            if(poPdfSignKey_(q.data.approvals, q.data.status) === poPdfSignKey_(po.approvals, po.status)) return;
+        }
+    }
+    async function regenPoPdfOnce_(poId){
         const h = await SB.from('purchase_orders').select('*').eq('id', poId).single();
         if(h.error) throw h.error;
         const po = h.data;
@@ -7940,10 +8027,15 @@
             })),
             signatures: po.approvals || {},
             status: po.status,
+            store: po.store || undefined,
         };
         const blob = await buildPoNativePdfBlob(d, []);
         const artifact = await uploadPdfArtifact(blob,'PO',po.po_no,'PO');
+        // uploadPdfArtifact does not throw on a failed upload, it returns no
+        // url; the old file would stay in place, so this counts as a failure.
+        if(!artifact || !artifact.url) throw new Error('PDF upload failed');
         await indexPdfArtifact('PO', po.id, po.po_no, 'PO', artifact);
+        return po;
     }
 
     /* ── A returned PO's PR goes back for correction by itself ─────────
@@ -8331,8 +8423,22 @@
             syncApproveBtn();
             return;
         }
+        /* The image that is SAVED is the one the PIN brought back, not a read-back
+           of the pad. The pad is a screen element: on a phone it can be 0 px wide
+           or cleared by a resize (keyboard closing) and then exports as a blank
+           PNG, which the PDF prints as an empty MD box. sigImageForPdf_ also
+           refuses a blank image and one jsPDF cannot embed (the PO builder skips
+           such an image without a word), so nothing is approved without a sign. */
+        let sigImg;
+        const savedSrc = String(pinSig.dataUrl || '').indexOf('data:image/') === 0 ? pinSig.dataUrl : '';
+        try{ sigImg = await sigImageForPdf_(savedSrc || canvas.toDataURL('image/png')); }
+        catch(e){
+            alert('Your signature could not be read (' + (e.message || e) + '). Nothing was approved.\n\nPress Approve & Sign again. If it keeps happening, ask the Admin to save your signature again under STORE.html › Admin Panel › Users & Roles.');
+            syncApproveBtn();
+            return;
+        }
         const remarks = document.getElementById('remarksInput').value;
-        const sig = { name: canvas.toDataURL('image/png'), time: pStamp(), remarks };
+        const sig = { name: sigImg, time: pStamp(), remarks };
         if(pinSig.name) sig.signerName = pinSig.name;   // who typed the PIN, for the record
         // When a Purchaser signs the GM/CEO stage, the record says so. The
         // approval still reads as gmCeo — that is what releases the PR for PO
@@ -8360,7 +8466,7 @@
                     }
                 }
             }
-            else await approvePO(currentEntry, myStage, sig, deliveryDate);
+            else poMsg = await approvePO(currentEntry, myStage, sig, deliveryDate);
             dashDirty = false; // reloaded right below
             closeModal();
             await renderList();
@@ -8655,6 +8761,43 @@
             img.src = dataUrl;
         });
     }
+    /* The approval signature as it is stored and printed: redrawn on a white
+       background, at most 600 x 240 px, as JPEG. White + JPEG because jsPDF
+       copies a JPEG in as it is, while a transparent PNG has to be decoded
+       and an odd one makes addImage throw, which the PDF builders swallow
+       (the box then prints with only the time under it). Throws on a blank
+       image and on one a test jsPDF page cannot take, so the caller can stop
+       BEFORE anything is approved. */
+    function sigImageForPdf_(src){
+        return new Promise((res, rej) => {
+            if(String(src || '').indexOf('data:image/') !== 0) return rej(new Error('no signature image'));
+            const img = new Image();
+            img.onload = () => {
+                try{
+                    if(!img.width || !img.height) throw new Error('empty signature image');
+                    const k = Math.min(1, 600 / img.width, 240 / img.height);
+                    const w = Math.max(1, Math.round(img.width * k)), h = Math.max(1, Math.round(img.height * k));
+                    const c = document.createElement('canvas');
+                    c.width = w; c.height = h;
+                    const x = c.getContext('2d');
+                    x.fillStyle = '#fff'; x.fillRect(0, 0, w, h);
+                    x.drawImage(img, 0, 0, w, h);
+                    const px = x.getImageData(0, 0, w, h).data;
+                    let ink = 0;
+                    for(let i = 0; i < px.length && ink <= SIG_MIN_INK_PX; i += 4){
+                        if(px[i] + px[i+1] + px[i+2] < 600) ink++;
+                    }
+                    if(ink <= SIG_MIN_INK_PX) throw new Error('the signature is blank');
+                    const out = c.toDataURL('image/jpeg', 0.92);
+                    const J = window.jspdf && window.jspdf.jsPDF;
+                    if(J) new J().addImage(out, 'JPEG', 0, 0, 30, 12);
+                    res(out);
+                }catch(e){ rej(e); }
+            };
+            img.onerror = () => rej(new Error('the signature image did not load'));
+            img.src = src;
+        });
+    }
     async function confirmPinSign(){
         const id = document.getElementById('pinSignUser').value;
         const pin = document.getElementById('pinSignPin').value;
@@ -8714,7 +8857,12 @@
         flushPdfLinkQueue_({quiet:true})
             .then(n => { if(n) console.log('[MOBILE PDF] ' + n + ' pending PDF link(s) written on startup'); })
             .catch(e => console.warn('[MOBILE PDF] startup link flush skipped:', e.message || e));
+        // PO PDFs that missed the approver's sign because the upload failed.
+        flushPoPdfRegenQueue_()
+            .then(n => { if(n) console.log('[MOBILE PDF] ' + n + ' queued PO PDF(s) rebuilt on startup'); });
     }, 5000);
+    // ...and again as soon as the phone's signal comes back, for an app left open.
+    window.addEventListener('online', () => { setTimeout(() => { flushPoPdfRegenQueue_(); }, 3000); });
 
     /* ══════════════════════════════════════════════════════════════════
        NEW PERSONNEL ITEM REQUIREMENT FORM   (the beside the title)

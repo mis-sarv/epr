@@ -4187,10 +4187,45 @@
                 + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
                 + `</div></div>`;
         }
+        /* What the PC has typed in the task rows, kept across a redraw. This
+           pane is rebuilt from scratch by things the PC did not do: the Notify
+           chip refresh (every 20 s while a phone has not confirmed), the
+           earlier days finishing loading, a reload after a save. Without this
+           each of those wiped a half-typed remark, time and tick. Kept only
+           while the same employee and day are shown; a row is matched by its
+           task and its day(s), the focused box and caret come back too. */
+        const pcRowKey = r => (r.dataset.group ? 'g' : 'r') + r.dataset.task + '|' + (r.dataset.ds || r.dataset.days || '');
+        function pcCaptureRows(pane) {
+            const out = { rows: {}, focus: null }, act = document.activeElement;
+            pane.querySelectorAll('[data-pc-row]').forEach(r => {
+                const q = s => r.querySelector(s), k = pcRowKey(r);
+                out.rows[k] = { check: q('[data-pc-check]').checked, date: q('[data-pc-date]').value, time: q('[data-pc-time]').value, rm: q('[data-pc-remarks]').value };
+                if (act && r.contains(act)) {
+                    const f = ['data-pc-remarks', 'data-pc-time', 'data-pc-date', 'data-pc-check'].find(a => act.hasAttribute(a));
+                    if (f) out.focus = { k, f, s: act.selectionStart, e: act.selectionEnd };
+                }
+            });
+            return out;
+        }
+        function pcRestoreRows(pane, keep) {
+            pane.querySelectorAll('[data-pc-row]').forEach(r => {
+                const k = pcRowKey(r), v = keep.rows[k]; if (!v) return;
+                const q = s => r.querySelector(s), dt = q('[data-pc-date]');
+                q('[data-pc-check]').checked = v.check;
+                if (!dt.disabled && v.date) dt.value = v.date;
+                q('[data-pc-time]').value = v.time;
+                q('[data-pc-remarks]').value = v.rm;
+                if (keep.focus && keep.focus.k === k) {
+                    const el = q('[' + keep.focus.f + ']');
+                    if (el) { el.focus({ preventScroll: true }); try { if (keep.focus.s != null) el.setSelectionRange(keep.focus.s, keep.focus.e); } catch (_) {} }
+                }
+            });
+        }
         window.renderPcTasks = function() {
             const pane = document.getElementById('pcTaskPane'); const e = pcSelected && appState.employees.find(x => x.empCode === pcSelected);
-            if (!e) { pane.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">Select an employee on the left.</div>'; return; }
+            if (!e) { pane.dataset.for = ''; pane.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">Select an employee on the left.</div>'; return; }
             const ds = pcDay(), now = new Date(), list = pcPending(e, ds, now), mx = masterByCode(e.empCode);
+            const paneFor = e.empCode + '|' + ds, keep = pane.dataset.for === paneFor ? pcCaptureRows(pane) : null;
             const done = (e.followups || []).filter(f => f.fromDate === ds);
             // Earlier days: non-daily ones row by row (oldest first), daily ones grouped per task.
             const earlier = pcEarlier(e, ds), early = [], dailyBy = new Map();
@@ -4218,6 +4253,8 @@
             if (editable) h += `<div class="flex justify-end mt-5"><button id="pcSaveBtn" onclick="pcSave()" class="bg-violet-800 hover:bg-violet-900 text-white font-bold px-8 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Confirm &amp; Save Follow-up</button></div>`;
             if (done.length) h += `<div class="mt-6 pt-4 border-t border-slate-100"><h4 class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-2">Already followed up for this day</h4><div class="space-y-1.5">` + done.slice().reverse().map(f => { const tk = findTask(e.empCode, f.taskNo); return `<button onclick="showFollowupHistory('${esc(e.empCode)}',${f.taskNo},'${esc(ds)}')" class="w-full text-left text-xs bg-violet-50 border border-violet-200 rounded-lg px-3 py-2 hover:bg-violet-100"><b class="text-slate-800">${esc(tk ? tk.desc : 'Task ' + f.taskNo)}</b> <span class="text-violet-800 font-extrabold">→ ${esc(f.toDate)}${f.toTime ? ' ' + esc(f.toTime) : ''}</span>${f.remarks ? ' <span class="text-slate-500 italic">“' + esc(f.remarks) + '”</span>' : ''} <span class="text-slate-400 font-bold">· ${esc(f.by || '')}</span></button>`; }).join('') + '</div></div>';
             pane.innerHTML = h;
+            pane.dataset.for = paneFor;
+            if (keep) pcRestoreRows(pane, keep);
         };
         /* Choosing a time, changing the date or typing a remark ticks the row,
            so nothing entered is left out by accident. The date alone does not:

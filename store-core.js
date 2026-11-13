@@ -20100,6 +20100,7 @@ let PR_TEAL=[13,92,83];
     Employee Master by the PR's Employee Code. The in-memory catalog is tried
     first; the database is asked only when that misses. */
  async function withPrRequester_(d){
+   d=await withPrEmpCode_(d);
    const code=String(d.empCode||d.employee_code||'').trim();
    const has=d.designation&&d.department&&(d.contact||d.contact_no)&&(d.personName||d.requested_by);
    if(!code||has)return d;
@@ -20114,6 +20115,27 @@ let PR_TEAL=[13,92,83];
      designation:d.designation||emp.designation||'',
      department:d.department||emp.department||'',
      contact:d.contact||d.contact_no||emp.contact_no||''};
+ }
+ /* The Employee Code is never printed blank: a snapshot without it (older PR,
+    a rebuild that dropped it) takes it from the PR row's own employee_code,
+    else from Employee Master by the requester's name when exactly one
+    employee has that name. Same rule as mobile-core.js withPrEmpCode_. */
+ async function withPrEmpCode_(d){
+   if(!d||String(d.empCode||d.employee_code||'').trim())return d;
+   let code='';
+   try{
+     const reqNo=String(d.reqNo||d.req_no||'').trim();
+     if(reqNo&&SB_READY){
+       const q=await SB.from('purchase_requirements').select('employee_code').eq('req_no',reqNo).limit(1);
+       if(!q.error)code=String(((q.data||[])[0]||{}).employee_code||'').trim();
+     }
+     const name=String(d.personName||d.requested_by||'').trim().toLowerCase();
+     if(!code&&name){
+       const hits=sarvEmployeeCatalog.filter(e=>(e.person_name||'').trim().toLowerCase()===name);
+       if(hits.length===1)code=String(hits[0].emp_code||'').trim();
+     }
+   }catch(e){console.warn('[SARV PDF] Employee Code lookup for PR skipped:',e.message||e);}
+   return code?{...d,empCode:code.toUpperCase()}:d;
  }
  function prHeaderGroups_(d){
    // Synchronous callers (the HTML variant) still get the catalog fallback.
@@ -23159,12 +23181,22 @@ let PR_TEAL=[13,92,83];
    }
    // A PR generated from the Item Master has no default requester: the person
    // has to be chosen, not left to save as "Unknown".
-   if(sarvPrNeedsRequester_&&!(pVal('p_reqEmpCode').trim()&&pVal('p_reqPersonName').trim())){
+   // Requested By's Employee Code is compulsory on EVERY PR, new or edited, not
+   // only on one generated from the Item Master: My Requests finds a person's
+   // PRs by this code and the PR PDF prints it, so a PR without it is lost to
+   // its requester. It must also be a real Employee Master code.
+   const reqEmpCode=pVal('p_reqEmpCode').trim().toUpperCase();
+   const reqEmpBad=!reqEmpCode?'Please choose Requested By: enter the Employee Code in the highlighted field'
+     :(sarvEmployeeCatalog.length&&!lookupEmployee(reqEmpCode))?'Employee Code "'+reqEmpCode+'" is not in the Employee Master. Enter a correct code or add the employee first.'
+     :!pVal('p_reqPersonName').trim()?'Requested By name is empty. Enter the Employee Code again so the name is filled in.'
+     :'';
+   if(reqEmpBad){
      highlightRequiredField('p_reqEmpCode');
      byId('p_reqEmpCode')?.scrollIntoView({behavior:'smooth',block:'center'});
      byId('p_reqEmpCode')?.focus();
-     return showToast('Please choose Requested By: enter the Employee Code in the highlighted field','warn');
+     return showToast(reqEmpBad,'warn');
    }
+   if(byId('p_reqEmpCode'))byId('p_reqEmpCode').value=reqEmpCode;
    const rows=pRows('#p_itemTableBody tr').map(r=>({name:r.querySelector('.col-name')?.value||'',description:r.querySelector('.col-desc')?.value||'',make:r.querySelector('.col-make')?.value||'',category:r.querySelector('.col-cat')?.value||'',machine:r.querySelector('.col-machine')?.value||'',qty:pNum(r.querySelector('.col-qty')?.value),uom:r.querySelector('.col-uom')?.value||'',grossWeight:pNum(r.querySelector('.col-grossweight')?.value),specification:r.querySelector('.col-rem')?.value||'',itemId:r.dataset.itemId||''})).filter(x=>x.name&&x.qty>0);
    if(!rows.length)return showToast('At least one item required','warn');
    const missingMachineRows=pRows('#p_itemTableBody tr').filter(r=>{
@@ -23215,6 +23247,8 @@ let PR_TEAL=[13,92,83];
         for any future path to bypass that check. */
      const requiredBy=pVal('p_requiredByDate').trim();
      if(!requiredBy)throw new Error('Required By Date is empty, so the PR cannot be saved. Please choose a date in the form.');
+     // Same last guard for the Employee Code (checked at the top of this function).
+     if(!pVal('p_reqEmpCode').trim())throw new Error('Requested By Employee Code is empty, so the PR cannot be saved. Please enter it in the form.');
      const payload={request_date:pVal('p_reqDate')||today(),required_by:requiredBy,requested_by:pVal('p_reqPersonName')||pVal('p_reqGeneratedBy')||'Unknown',purchaser_name:pVal('p_reqGeneratedBy')||null,employee_code:pVal('p_reqEmpCode')||null,department:pVal('p_reqDepartment')||null,purpose:'Purchase requirement',priority:pVal('p_priority'),notes:pVal('p_overallRemarks')||null};
      let h,no,reopenedFrom='';
      /* Read NOW, because sarvEditingRequirementId is set to null after the PDF
@@ -27895,6 +27929,20 @@ let PR_TEAL=[13,92,83];
    await indexPdfArtifact('PO',record?.id||null,d.poNo,'PO',artifact);
    if(record&&artifact.url)await SB.from('purchase_orders').update({pdf_url:artifact.url,updated_at:new Date().toISOString()}).eq('id',record.id);
    flushPdfLinkQueue_().catch(e=>console.warn('[SARV PDF] link queue flush skipped:',e.message||e));
+   // With the Purchaser's sign the PO is in the MD's mobile list the moment its
+   // row is saved, while this PDF is still uploading. If the MD signed in that
+   // gap, this upload has just overwritten the MD-signed file with an unsigned
+   // one, so the PDF is rebuilt from the record (same check as mobile-core.js
+   // poPdfRecheck_).
+   if(record&&record.id){
+     try{
+       const q=await SB.from('purchase_orders').select('approvals').eq('id',record.id).maybeSingle();
+       const md=q.data&&q.data.approvals&&q.data.approvals.md;
+       if(!q.error&&md&&String(md.name||'').trim()&&!(d.signatures.md&&String(d.signatures.md.name||'').trim())){
+         await regenPoPdfFromDb_(d.poNo);
+       }
+     }catch(e){console.warn('[SARV PDF] PO PDF recheck failed:',e.message||e);}
+   }
    return {artifact,blob,html,d,record};
  }
 
