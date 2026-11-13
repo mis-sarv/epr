@@ -445,6 +445,20 @@
         .wr-table td.wr-type { text-align: left; font-weight: 700; }
         .wr-table input { width: 90px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 5px; text-align: center; font-size: 13px; }
         .sub-row td.from-cell { padding: 2px; min-width: 92px; }
+        .item-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        /* Settings › Labour Rates: Item Type group picker (slTypesCell_) */
+        .sl-types { min-width: 170px; }
+        .sl-types summary { cursor: pointer; list-style: none; border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 600; background: var(--surface); }
+        .sl-types summary::-webkit-details-marker { display: none; }
+        .sl-types summary.sl-none { color: #b91c1c; }
+        .sl-types-list { margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; max-height: 220px; overflow-y: auto; background: var(--surface); }
+        .sl-types-list label { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; cursor: pointer; white-space: nowrap; }
+        .sl-types-list input { width: auto; }
+        .item-table-wrap .item-table { min-width: 640px; }
+        .sub-row select.sub-to, .sub-row select.sub-shift, .sub-row select.sub-load { width: 100%; padding: 6px 2px; font-size: 11px; font-weight: 600; border: 1.5px solid #93c5fd; border-radius: 5px; background: #fff; }
+        .sub-row td.sl-person-cell { min-width: 104px; }
+        .sub-row td.sl-amt-cell { min-width: 64px; font-weight: 700; color: #1e3a8a; background: #eff6ff; font-size: 12px; }
+        .sub-row td.sl-amt-cell.sl-norate { color: #b91c1c; background: #fef2f2; }
         .sub-row select.sub-from { width: 100%; padding: 6px 2px; font-size: 11px; font-weight: 600; border: 1.5px solid #6ee7b7; border-radius: 5px; background: #fff; }
 
         /* ── Custom Multi-Select Dropdown ── */
@@ -754,13 +768,10 @@
             </select>
         </div>
         <!-- Private Marka now per-item (auto-filled from Order ID) -->
-        <div class="form-group">
-            <label>Loading Contractor Name</label>
-            <!-- Options: ERP › Dropdown Master › erp_pkLoadingContractor (applyPkDropdowns) -->
-            <select id="contractor-name" style="font-weight:600;">
-                <option value="">— Select Loading Contractor —</option>
-            </select>
-        </div>
+        <!-- Loading Contractor is no longer picked here: SHIFT BY / LOAD BY of every
+             Sr. row say who worked. The slip's loading_contractor (Labour tab
+             Dispatch sheet, PDF) = the LOAD BY with the most packs (slMainLoadBy_). -->
+        <input type="hidden" id="contractor-name" value="">
         <!-- Hidden: Mob No auto-filled from OrderSheet -->
         <input type="hidden" id="mob-no" value="">
     </div>
@@ -791,13 +802,10 @@
             <input type="tel" id="driver-mobile" placeholder="Auto-fill on Tempo select"
                 readonly style="background:#f1f5f9;font-weight:600;">
         </div>
-        <div class="form-group">
-            <label>Supervisor Name <span class="required-star">*</span></label>
-            <!-- Options: ERP › Dropdown Master › erp_pkSupervisor (applyPkDropdowns) -->
-            <select id="supervisor-name" required style="font-weight:600;">
-                <option value="">— Select Supervisor —</option>
-            </select>
-        </div>
+        <!-- Supervisor is no longer picked: the logged-in user who generates the
+             slip is saved as its Supervisor (slSupervisorName_). An edited slip
+             keeps the Supervisor it was saved with. -->
+        <input type="hidden" id="supervisor-name" value="">
         <div class="form-group">
             <label>Remarks (optional)</label>
             <input type="text" id="slip-remarks" placeholder="Remarks for PDF..."
@@ -1157,6 +1165,31 @@
         </details>
     </div>
 
+    <!-- Labour Rates · Item Type wise: packing.slip_labour_rates (sql/PACKING_SLIP_LABOUR_MIGRATION.sql),
+         the AMOUNT of every packing slip Sr. row (SHIFT BY rate + LOAD BY rate).
+         Saved by save_slip_labour_rates (Admin), every change in slip_labour_rate_log. -->
+    <div class="card" id="sl-rates-card">
+        <div class="card-title">Settings · Labour Rates · Item Type wise (Shift By / Load By)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            One row per <b>Item Type group + From + To</b>, rate per pack (one Sr. row of a packing slip), the same for every person.
+            Tick several Item Types in one row (e.g. BORA + BOX) when they share the same rates; an Item Type + From + To can be in one row only.
+            AMOUNT of a slip row = the <b>Shift By Rate</b> + the <b>Load By Rate</b> of the rate row matching its Item Type, FROM and TO.
+            From / To left at <b>Any</b> = every place: the most exact row wins (same From and To, then same From, then same To, then Any / Any).
+            Who shifted / loaded is picked on the slip row (Loading Contractor names) and paid in the Labour tab › Slip Labour Expense.
+            A saved slip keeps the rate of the day it was saved; a change here applies to slips saved from now on.
+        </p>
+        <div id="sl-rates-banner"></div>
+        <div id="sl-rates-list" style="overflow-x:auto;"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn ghost" onclick="slAddRateRow()">＋ Add Rate</button>
+            <button type="button" class="fr-btn" id="sl-rates-save-btn" onclick="slSaveRates()">Save Labour Rates</button>
+        </div>
+        <details class="fr-log" ontoggle="if(this.open) slLoadRateLog()">
+            <summary>Change log (who added / changed / removed which rate, when)</summary>
+            <div id="sl-rate-log-list"><p style="color:var(--text-muted);font-size:12px;">Loading...</p></div>
+        </details>
+    </div>
+
     <!-- Labour Rates & Columns: packing.labour_activities (sql/PACKING_LABOUR_MIGRATION.sql),
          the columns of the Labour tab's two sheets. Saved by save_labour_activities (Admin),
          every change in labour_activity_log. -->
@@ -1194,6 +1227,7 @@
                 <select id="lb-sheet" onchange="lbSheetChanged()">
                     <option value="DISPATCH">Dispatch Loading Labour (all contractors)</option>
                     <option value="SHIFTING">Shifting Labour (one contractor)</option>
+                    <option value="SLIP">Slip Labour Expense (Shift By / Load By)</option>
                 </select>
             </div>
             <div class="form-group" id="lb-con-wrap" style="display:none;"><label>Contractor</label>
@@ -1644,7 +1678,10 @@ var PK_DD = {
     // in code: until the Admin fills these keys, the names already saved on
     // earlier slips are offered instead (pkPastNames, loadPastSlipNames).
     erp_pkLoadingContractor: [],
-    erp_pkSupervisor:        []
+    erp_pkSupervisor:        [],
+    // Packing slip form › TO of every Sr. row. (SHIFT BY / LOAD BY offer the
+    // Loading Contractor names above: slPersons_.)
+    erp_pkRowTo:         ['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']
 };
 // Names saved on earlier slips: the fallback list while a key above is empty
 var pkPastNames = { contractor: [], supervisor: [] };
@@ -1653,6 +1690,7 @@ var PK_DD_CACHE = 'pk_dd_cache_v1';   // last list from the server, for a fast /
 var PACK_ITEM_TYPES, DISPATCH_FROM_OPTIONS, TRANSPORT_TYPES, DELIVER_DESTS, REVIEW_ORDER_OPTIONS, DISPATCH_TO_OPTIONS;
 var SHIFT_TYPES, SHIFT_FROM_OPTIONS, SHIFT_TO_OPTIONS, SHIFT_ITEM_TYPES, SHIFTING_BY_OPTIONS;
 var LOADING_CONTRACTORS, SUPERVISORS;   // Dropdown Master lists; empty = use pkPastNames
+var ROW_TO_OPTIONS;                     // slip Sr. row TO
 
 function pkDdSet_(rowsByKey) {
     var L = function(k) {
@@ -1672,6 +1710,7 @@ function pkDdSet_(rowsByKey) {
     SHIFTING_BY_OPTIONS   = L('erp_pkShiftingBy');
     LOADING_CONTRACTORS   = L('erp_pkLoadingContractor');
     SUPERVISORS           = L('erp_pkSupervisor');
+    ROW_TO_OPTIONS        = L('erp_pkRowTo');
 }
 
 // list + the record's current value when it is not in the list
@@ -1717,12 +1756,13 @@ function applyPkDropdowns() {
     pkRefillSelect(document.getElementById('sh-to'), SHIFT_TO_OPTIONS);
     pkRefillSelect(document.getElementById('sh-item-type'), SHIFT_ITEM_TYPES);
     pkRefillSelect(document.getElementById('sh-by'), SHIFTING_BY_OPTIONS);
-    pkRefillSelect(document.getElementById('contractor-name'), LOADING_CONTRACTORS.length ? LOADING_CONTRACTORS : pkPastNames.contractor);
-    pkRefillSelect(document.getElementById('supervisor-name'), SUPERVISORS.length ? SUPERVISORS : pkPastNames.supervisor);
     document.querySelectorAll('select.item-type').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
     document.querySelectorAll('select.qr-item').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
     document.querySelectorAll('select.sub-from').forEach(function(s) {
         var cur = s.value; s.innerHTML = dispatchFromOptionsHtml(cur); s.value = cur;
+    });
+    document.querySelectorAll('select.sub-to, select.sub-shift, select.sub-load').forEach(function(s) {
+        var cur = s.value; s.innerHTML = slRowOptionsHtml(s, cur); s.value = cur;
     });
     var td = document.getElementById('ord-transport-dest');
     if (td) { var p = splitTransportDest(td.value); setTransportDest(p.transportType, p.deliverDestination); }
@@ -2262,8 +2302,12 @@ async function dispatchPost(payload) {
         case 'savePackingSlip': {
             var items = (payload.items || []).flatMap(function(item) {
                 return (item.subRows || []).map(function(sub) {
+                    // toPlace / shiftBy / loadBy: stored per row by the patched RPCs
+                    // (PACKING_SLIP_LABOUR_MIGRATION.sql; ignored before it). The
+                    // rates and amount are filled by the server, never sent.
                     return { type: item.type, quality: item.brand, orderId: item.orderId || null, qty: Number(sub.qty)||0, weight: Number(sub.weight)||0,
-                             dispatchFrom: sub.from || item.dispatchFrom || '' };
+                             dispatchFrom: sub.from || item.dispatchFrom || '',
+                             toPlace: sub.to || '', shiftBy: sub.shiftBy || '', loadBy: sub.loadBy || '' };
                 });
             });
             console.log('savePackingSlip: sending', items.length, 'items to RPC | editMode:', _editMode);
@@ -2276,6 +2320,7 @@ async function dispatchPost(payload) {
             loadingContractor = payload.header?.contractorName || '';
 
             var rpcName = _editMode ? 'edit_packing_slip' : 'save_packing_slip';
+            var wasEdit = _editMode;   // _editMode is cleared below, after the save
             var rpcParams = {
                 p_packing_type: payload.packingType || 'Billed',
                 p_slip_date: payload.header?.date || null,
@@ -2317,6 +2362,7 @@ async function dispatchPost(payload) {
             // save error.
             if (data && data.success && data.slipNo) {
                 var supName = (payload.dispatch && payload.dispatch.supervisorName) || '';
+                if (!wasEdit || !supName) supName = (await getCurrentFullName()) || supName;   // generated by = logged-in user
                 if (supName) {
                     try {
                         var { data: supRes, error: supErr } = await supabaseClient.rpc('set_slip_supervisor', {
@@ -2761,6 +2807,16 @@ async function dispatchGet(params) {
                 } catch (chEx) { console.warn('slip_charges read failed:', chEx.message); break; }
             }
 
+            // Labour (SHIFT BY / LOAD BY) of every Sr. row of this page's slips,
+            // with the rates the server froze on the row
+            // (PACKING_SLIP_LABOUR_MIGRATION.sql; before it the columns do not
+            // exist: ignored, the card shows no labour summary).
+            var labMap = {};
+            try {
+                (await pkSelectIn('packing_slip_items', 'slip_id, pcs, shift_by, load_by, shift_rate, load_rate, labour_amount', 'slip_id', pageIds))
+                    .forEach(function(r) { (labMap[r.slip_id] = labMap[r.slip_id] || []).push(r); });
+            } catch (labErr) { console.warn('Slip labour columns not readable (run PACKING_SLIP_LABOUR_MIGRATION.sql):', labErr.message || labErr); }
+
             var pageSlips = pageSlipRows.map(function(s){
                 // Build typeBreakdown from v_slip_breakdown_rows
                 var rows = bdMap[s.id] || [];
@@ -2813,6 +2869,7 @@ async function dispatchGet(params) {
                     dispatchFrom: s.dispatch_from || '',
                     privateMarka: s.private_marka || '',
                     loadingContractor: s.loading_contractor || '',
+                    labour: labMap[s.id] ? slLabourSummary_(labMap[s.id]) : null,   // person-wise Shift / Load
                     status: {
                         preInvoiceStatus: s.pre_invoice_status || '',
                         preInvoiceVerifier: s.pre_invoice_verifier || '',
@@ -3355,7 +3412,7 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
                     // Other Charges may be negative (a deduction): print it as "− Other ₹ x"
                     (Number(billing.other) < 0 ? ' − Other ' + formatInr(-billing.other) : ' + Other ' + formatInr(billing.other)) + '</div>' +
             '</div>' +
-        '</div>' + remarksHtml;
+        '</div>' + slLabourSummaryHtml_(billing.labour, true) + remarksHtml;
     }
 
     // ── Prepared By signature ──
@@ -4525,6 +4582,7 @@ async function fetchSlipNumber(isInitial) {
             loadPendingOrdersDeferred();
             initOnDemandSearch();
             loadWeightRules();
+            slLoadRates();   // Sr. row labour AMOUNT (Settings › Labour Rates › Item Type wise)
         }
 
         const newNo = data.nextSlipNo || '';
@@ -4732,6 +4790,8 @@ function getQtyMultiplier(typeValue) {
 // Re-apply standard pcs (with multiplier) when type changes
 function onTypeChange(selectEl) {
     calculateTotals();
+    var _tb = selectEl.closest('.item-block');
+    if (_tb) updateItemTotal(Number(_tb.dataset.idx));   // the labour rates go by Item Type
 
     // If brand is already selected, re-apply stdPcs with correct multiplier
     var block     = selectEl.closest('.item-block');
@@ -4943,11 +5003,11 @@ function addItem() {
             <span class="item-label">Item ${idx}</span>
             <button type="button" class="del-item-btn" onclick="deleteItem(${idx})">Remove</button>
         </div>
-        <table class="item-table">
+        <div class="item-table-wrap"><table class="item-table">
             <tbody>
                 <tr class="order-id-row">
                     <td class="order-id-label">ORDER ID</td>
-                    <td colspan="4">
+                    <td colspan="8">
                         <select class="item-order-id" onchange="onOrderIdChange(this)" required>
                             ${orderIdOptionsHtml}
                         </select>
@@ -4955,10 +5015,10 @@ function addItem() {
                     </td>
                 </tr>
                 <tr class="item-config-header">
-                    <td colspan="5">Type</td>
+                    <td colspan="9">Type</td>
                 </tr>
                 <tr class="item-config-row">
-                    <td colspan="5">
+                    <td colspan="9">
                         <select class="item-type" onchange="onTypeChange(this)" required>
                             <option value="" disabled selected>Select Type</option>
                             ${pkOptionsHtml(PACK_ITEM_TYPES, '')}
@@ -4967,7 +5027,7 @@ function addItem() {
                 </tr>
                 <tr class="brand-name-row">
                     <td class="brand-label">QUALITY</td>
-                    <td colspan="4">
+                    <td colspan="8">
                         <input type="text" class="item-brand" placeholder="Select an ORDER ID first" onblur="validateDropdown(this, brandMap)"
                             list="dl-brand" autocomplete="off" required disabled
                             oninput="this.value=this.value.toUpperCase();"
@@ -4978,7 +5038,7 @@ function addItem() {
                 <!-- FROM (Dispatch From) is now per Sr. row: see the FROM column below -->
                 <tr class="order-id-row">
                     <td class="order-id-label" style="font-size:10px;font-weight:700;color:#7c3aed;">MARKA</td>
-                    <td colspan="4">
+                    <td colspan="8">
                         <input type="text" class="item-marka" readonly
                             style="border:1.5px solid #c4b5fd;border-radius:5px;padding:7px 8px;font-size:13px;font-weight:700;background:#f5f3ff;color:#5b21b6;width:100%;"
                             placeholder="— Select an order →" value="">
@@ -4987,8 +5047,12 @@ function addItem() {
                 <tr class="item-green-header">
                     <td style="width:30px;text-align:center;">Sr.</td>
                     <td style="text-align:center;">FROM <span style="color:#fecaca;">*</span></td>
+                    <td style="text-align:center;">TO</td>
                     <td style="text-align:center;">Qty</td>
                     <td style="text-align:center;">Weight (Kg)</td>
+                    <td style="text-align:center;">SHIFT BY</td>
+                    <td style="text-align:center;">LOAD BY</td>
+                    <td style="text-align:center;">AMOUNT</td>
                     <td style="width:36px;text-align:center;">Del</td>
                 </tr>
             </tbody>
@@ -4997,12 +5061,16 @@ function addItem() {
                 <tr class="item-total-tr" id="item-total-${idx}">
                     <td style="font-weight:700;">Total</td>
                     <td></td>
+                    <td></td>
                     <td class="itotal-qty" style="text-align:center;font-weight:700;">0</td>
                     <td class="itotal-wt" style="text-align:center;font-weight:700;">0.00</td>
                     <td></td>
+                    <td></td>
+                    <td class="itotal-amt" style="text-align:center;font-weight:700;">0.00</td>
+                    <td></td>
                 </tr>
             </tfoot>
-        </table>
+        </table></div>
         <div class="add-row-wrap">
             <button type="button" class="add-row-btn" onclick="addRowCopyLast(${idx})">＋ Add Row</button>
         </div>
@@ -5022,9 +5090,11 @@ function addItem() {
 // qty: pre-fill qty value (or null)
 // wt:  pre-fill weight value (or null)
 // ══════════════════════════════════════
-function addSubRow(blockIdx, qty, wt, from) {
+function addSubRow(blockIdx, qty, wt, from, lab) {
     const tbody   = document.getElementById('sub-body-' + blockIdx);
     const srNum   = tbody.querySelectorAll('.sub-row').length + 1;
+    // TO / SHIFT BY / LOAD BY not given → same as the row above, like FROM
+    lab = slRowLabour_(tbody, lab);
     // FROM not given → same as the row above (a new row continues the last FROM)
     if (from === undefined || from === null) {
         var _prevRows = tbody.querySelectorAll('.sub-row');
@@ -5052,6 +5122,9 @@ function addSubRow(blockIdx, qty, wt, from) {
         <td class="from-cell">
             <select class="sub-from" required onchange="onRowFromChange(this)">${dispatchFromOptionsHtml(from)}</select>
         </td>
+        <td class="from-cell">
+            <select class="sub-to" data-sl="to" required onchange="slOnRowPick(this)">${slOptionsHtml('to', lab.to)}</select>
+        </td>
         <td>
             <input type="number" class="sub-qty" min="0" placeholder="0"
                 value="${qtyVal}"
@@ -5069,6 +5142,13 @@ function addSubRow(blockIdx, qty, wt, from) {
                 onkeydown="onWeightEnter(event, ${blockIdx}, '${rowId}')"
                 style="border-radius:5px;">
         </td>
+        <td class="from-cell sl-person-cell">
+            <select class="sub-shift" data-sl="shift" required onchange="slOnRowPick(this)">${slOptionsHtml('shift', lab.shiftBy)}</select>
+        </td>
+        <td class="from-cell sl-person-cell">
+            <select class="sub-load" data-sl="load" required onchange="slOnRowPick(this)">${slOptionsHtml('load', lab.loadBy)}</select>
+        </td>
+        <td class="sl-amt-cell">0.00</td>
         <td class="row-actions">
             <button type="button" class="btn-del-row" title="Remove this row"
                 onclick="deleteSubRow('${rowId}', ${blockIdx})">×</button>
@@ -5077,7 +5157,7 @@ function addSubRow(blockIdx, qty, wt, from) {
 
     tbody.appendChild(tr);
     renumberSubRows(blockIdx);
-    updateItemTotal(blockIdx);
+    updateItemTotal(blockIdx);   // also works out every row's labour AMOUNT
     calculateTotals();
 }
 
@@ -5114,12 +5194,234 @@ function onRowFromChange(selectEl) {
         }
         s.value = selectEl.value;
     }
+    var blk = selectEl.closest('.item-block');
+    if (blk) updateItemTotal(Number(blk.dataset.idx));   // labour rate goes by FROM too
 }
 
 // First FROM of an item (for the item / slip header value)
 function firstRowFrom(subRows) {
     for (var i = 0; i < (subRows || []).length; i++) if (subRows[i] && subRows[i].from) return subRows[i].from;
     return '';
+}
+
+// ══════════════════════════════════════
+// SLIP LABOUR — per Sr. row TO / SHIFT BY / LOAD BY / AMOUNT
+// TO = Dropdown Master erp_pkRowTo; SHIFT BY and LOAD BY = the Loading
+// Contractor Name list (slPersons_: Dropdown Master erp_pkLoadingContractor,
+// while empty the names on earlier slips, as the slip's own Loading Contractor
+// dropdown). AMOUNT of a row (one pack) = the Shift By rate +
+// the Load By rate of the item's Type, from Settings › Labour Rates › Item
+// Type wise (packing.slip_labour_rates): one Shift By Rate and one Load By
+// Rate per Item Type GROUP (item_types, e.g. BORA + BOX) + FROM + TO (empty = any; the most exact row wins,
+// slRateOf_ = the server's slip_labour_rate_of_), the same for every person.
+// Per pack, never × Qty.
+// The amount shown here is a preview: the SERVER fills the rates and the
+// amount of every saved row from the same table (trigger in
+// sql/PACKING_SLIP_LABOUR_MIGRATION.sql) and freezes them on the row, so a
+// later rate change never changes an old slip.
+// Like FROM: a pick is copied to every row below it in the same item, and a
+// new row continues the row above. FROM, TO, SHIFT BY and LOAD BY are
+// compulsory on Finish (validation loop); a name with no rate shows the amount
+// in red and Finish asks before saving it at 0.
+// ══════════════════════════════════════
+var SL = { rates: [], fromDb: false, loaded: false, shift: {}, load: {} };
+
+// SHIFT BY / LOAD BY names = exactly the slip form's Loading Contractor list
+function slPersons_() {
+    return (LOADING_CONTRACTORS && LOADING_CONTRACTORS.length) ? LOADING_CONTRACTORS : (pkPastNames.contractor || []);
+}
+
+function slName_(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toUpperCase(); }
+
+function slOptionsHtml(kind, selected) {
+    var list = kind === 'to' ? (ROW_TO_OPTIONS || []) : slPersons_();
+    var ph = kind === 'to' ? '— To —' : (!list.length ? '— no Loading Contractor names —' : kind === 'shift' ? '— Shift By —' : '— Load By —');
+    var sel = slName_(selected);
+    return '<option value="">' + ph + '</option>' + pkWithCurrent(list, sel).map(function(v) {
+        return '<option value="' + escapeHtmlAttr(v) + '"' + (slName_(v) === sel && sel ? ' selected' : '') + '>' + escapeHtmlAttr(v) + '</option>';
+    }).join('');
+}
+function slRowOptionsHtml(selectEl, current) { return slOptionsHtml(selectEl.dataset.sl, current); }
+
+// lab given (draft / edit) → use it as it is; not given → copy the last row's
+function slRowLabour_(tbody, lab) {
+    if (lab) return { to: lab.to || '', shiftBy: lab.shiftBy || '', loadBy: lab.loadBy || '' };
+    var rows = tbody ? tbody.querySelectorAll('.sub-row') : [];
+    var last = rows.length ? rows[rows.length - 1] : null;
+    var v = function(cls) { var e = last && last.querySelector(cls); return e ? e.value : ''; };
+    return { to: v('.sub-to'), shiftBy: v('.sub-shift'), loadBy: v('.sub-load') };
+}
+
+// A pick is copied to every row below it in the same item (rows above keep theirs)
+function slOnRowPick(selectEl) {
+    var row = selectEl.closest('.sub-row');
+    var tbody = row ? row.parentNode : null;
+    if (!tbody) return;
+    var cls = '.' + selectEl.className.split(' ')[0];
+    var rows = Array.from(tbody.querySelectorAll('.sub-row'));
+    for (var i = rows.indexOf(row) + 1; i < rows.length; i++) {
+        var s = rows[i].querySelector(cls);
+        if (!s || s.disabled) continue;
+        if (selectEl.value && !Array.from(s.options).some(function(o) { return o.value === selectEl.value; })) s.innerHTML = slRowOptionsHtml(s, selectEl.value);
+        s.value = selectEl.value;
+    }
+    var block = selectEl.closest('.item-block');
+    if (block) updateItemTotal(Number(block.dataset.idx));
+}
+
+// Rates: every logged-in user reads them (RLS read for authenticated)
+async function slLoadRates() {
+    try {
+        var { data, error } = await supabaseClient.from('slip_labour_rates')
+            .select('id, item_types, from_place, to_place, shift_rate, load_rate, updated_by, updated_at').order('id');
+        if (error) throw error;
+        SL.rates = data || []; SL.fromDb = true;
+    } catch (e) {
+        console.warn('[Slip labour] slip_labour_rates not readable (run sql/PACKING_SLIP_LABOUR_MIGRATION.sql):', e.message || e);
+        SL.rates = []; SL.fromDb = false;
+    }
+    SL.loaded = true;
+    document.querySelectorAll('.item-block').forEach(function(b) { updateItemTotal(Number(b.dataset.idx)); });
+    return SL.fromDb;
+}
+
+// The rate row of Item Type + FROM + TO: empty From / To on a rate row = any;
+// same From and To beats same From, beats same To, beats Any / Any.
+// Keep in step with slip_labour_rate_of_ (sql/PACKING_SLIP_LABOUR_MIGRATION.sql).
+function slRateOf_(type, from, to) {
+    var t = slName_(type), fr = slName_(from), tp = slName_(to), best = null, bestScore = -1;
+    (SL.rates || []).forEach(function(r) {
+        if ((r.item_types || []).map(slName_).indexOf(t) < 0) return;   // the row's group has this Item Type
+        var rf = slName_(r.from_place), rt = slName_(r.to_place);
+        if ((rf && rf !== fr) || (rt && rt !== tp)) return;
+        var score = (rf ? 2 : 0) + (rt ? 1 : 0);
+        if (score > bestScore) { best = r; bestScore = score; }
+    });
+    return best;
+}
+
+// One row: { amount, missing: ['Shift By', 'Load By'] } (sides with a person but no rate)
+function slRowAmount_(type, from, to, shiftBy, loadBy) {
+    var out = { amount: 0, missing: [] }, r = slRateOf_(type, from, to);
+    [['Shift By', 'shift_rate', shiftBy], ['Load By', 'load_rate', loadBy]].forEach(function(p) {
+        if (!slName_(p[2])) return;
+        if (!r) out.missing.push(p[0]); else out.amount += Number(r[p[1]]) || 0;
+    });
+    out.amount = Math.round(out.amount * 100) / 100;
+    return out;
+}
+
+// Writes every row's AMOUNT cell of one item; returns the item's total
+function slRefreshBlockAmounts_(blockIdx) {
+    var block = document.getElementById('item-block-' + blockIdx);
+    if (!block) return 0;
+    var type = (block.querySelector('.item-type') || {}).value || '', sum = 0;
+    block.querySelectorAll('.sub-row').forEach(function(row) {
+        var cell = row.querySelector('.sl-amt-cell');
+        if (!cell) return;
+        var v = function(c) { var e = row.querySelector(c); return e ? e.value : ''; };
+        var a = slRowAmount_(type, v('.sub-from'), v('.sub-to'), v('.sub-shift'), v('.sub-load'));
+        var miss = SL.loaded && a.missing.length > 0;
+        cell.textContent = a.amount.toFixed(2);
+        cell.classList.toggle('sl-norate', miss);
+        cell.title = miss ? 'No rate for ' + (slName_(type) || 'this type') + ' from ' + (v('.sub-from') || '?') + ' to ' + (v('.sub-to') || '?') + ' in Settings › Labour Rates' : '';
+        sum += a.amount;
+    });
+    return Math.round(sum * 100) / 100;
+}
+
+// The slip's Loading Contractor (packing_slips.loading_contractor, read by the
+// Labour tab Dispatch sheet and printed on the PDF) = the LOAD BY with the
+// most packs on this slip (first one on a tie).
+function slMainLoadBy_() {
+    var n = {}, best = '', bestN = 0;
+    document.querySelectorAll('.sub-row .sub-load').forEach(function(sel) {
+        var v = slName_(sel.value);
+        if (!v) return;
+        n[v] = (n[v] || 0) + 1;
+        if (n[v] > bestN) { best = v; bestN = n[v]; }
+    });
+    return best;
+}
+
+// Supervisor = the logged-in user who generates the slip. Only an edited slip
+// keeps the Supervisor it was first saved with (the hidden box, filled on Edit).
+function slSupervisorName_() {
+    var kept = (document.getElementById('supervisor-name') || {}).value || '';
+    if (typeof _editMode !== 'undefined' && _editMode && kept) return kept;
+    return (session && (session.fullName || session.username)) || kept;
+}
+
+// Person-wise labour of ONE slip from its saved Sr. rows (packing_slip_items
+// with shift_by / load_by and the rates frozen on them): per Loading
+// Contractor name, Shift packs (Sr. rows) / Qty (pcs) / Amount and Load packs
+// / Qty / Amount. One pack can be shifted by one person and loaded by another,
+// so it counts once on each side. null = the slip has no labour rows.
+function slLabourSummary_(rows) {
+    var per = {}, tot = { shiftPacks: 0, shiftQty: 0, shiftAmt: 0, loadPacks: 0, loadQty: 0, loadAmt: 0, amount: 0 }, missing = 0, any = false;
+    var P = function(n) { return per[n] || (per[n] = { name: n, shiftPacks: 0, shiftQty: 0, shiftAmt: 0, loadPacks: 0, loadQty: 0, loadAmt: 0 }); };
+    (rows || []).forEach(function(r) {
+        var sb = slName_(r.shift_by), lb = slName_(r.load_by), q = Number(r.pcs) || 0;
+        if (sb) { any = true; var p = P(sb); p.shiftPacks++; p.shiftQty += q; p.shiftAmt += Number(r.shift_rate) || 0;
+                  tot.shiftPacks++; tot.shiftQty += q; tot.shiftAmt += Number(r.shift_rate) || 0; if (r.shift_rate == null) missing++; }
+        if (lb) { any = true; var l = P(lb); l.loadPacks++; l.loadQty += q; l.loadAmt += Number(r.load_rate) || 0;
+                  tot.loadPacks++; tot.loadQty += q; tot.loadAmt += Number(r.load_rate) || 0; if (r.load_rate == null) missing++; }
+        tot.amount += Number(r.labour_amount) || 0;
+    });
+    if (!any) return null;
+    var order = slPersons_().map(slName_);
+    var persons = Object.keys(per).sort(function(a, b) {
+        var ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib) || a.localeCompare(b);
+    }).map(function(n) {
+        var p = per[n]; p.shiftAmt = Math.round(p.shiftAmt * 100) / 100; p.loadAmt = Math.round(p.loadAmt * 100) / 100;
+        p.amount = Math.round((p.shiftAmt + p.loadAmt) * 100) / 100; return p;
+    });
+    Object.keys(tot).forEach(function(k) { tot[k] = Math.round(tot[k] * 100) / 100; });
+    return { persons: persons, total: tot, missing: missing };
+}
+
+// The summary table: Verify card (forPdf false) or the Triplicate (true, smaller,
+// black borders like the rest of the slip PDF)
+function slLabourSummaryHtml_(lab, forPdf) {
+    if (!lab || !lab.persons || !lab.persons.length) return '';
+    var b = forPdf ? '1px solid #000' : '1px solid #cbd5e1';
+    var c = 'padding:' + (forPdf ? '1px 4px' : '3px 6px') + ';border:' + b + ';font-size:' + (forPdf ? '9px' : '11px') + ';';
+    var n = function(v) { return String(Math.round((Number(v) || 0) * 100) / 100); };
+    var th = function(t, al) { return '<th style="' + c + 'text-align:' + (al || 'center') + ';">' + t + '</th>'; };
+    var td = function(t, al, bold) { return '<td style="' + c + 'text-align:' + (al || 'center') + ';' + (bold ? 'font-weight:800;' : '') + '">' + t + '</td>'; };
+    var row = function(p, isTot) {
+        return '<tr' + (isTot ? ' style="background:' + (forPdf ? '#eee' : '#dbeafe') + ';font-weight:800;"' : '') + '>' +
+            td(isTot ? 'TOTAL' : escapeHtmlJs(p.name), 'left', true) +
+            td(p.shiftPacks) + td(n(p.shiftQty)) + td(formatInr(p.shiftAmt), 'right') +
+            td(p.loadPacks) + td(n(p.loadQty)) + td(formatInr(p.loadAmt), 'right') +
+            td(formatInr(p.amount), 'right', true) + '</tr>';
+    };
+    return '<div style="' + (forPdf ? 'margin-top:3px;' : 'overflow-x:auto;margin:6px 0;') + '"' + (forPdf ? '' : ' onclick="event.stopPropagation()"') + '>' +
+        '<table style="width:100%;border-collapse:collapse;' + (forPdf ? '' : 'min-width:560px;') + '">' +
+        '<tr><th colspan="8" style="' + c + 'text-align:left;background:' + (forPdf ? '#ddd' : '#e0e7ff') + ';">LOADING CONTRACTOR LABOUR (SHIFT BY / LOAD BY)</th></tr>' +
+        '<tr style="background:' + (forPdf ? '#f2f2f2' : '#e2e8f0') + ';">' + th('Person', 'left') + th('Shift Packs (Sr.)') + th('Shift Qty') + th('Shift Amount') +
+            th('Load Packs (Sr.)') + th('Load Qty') + th('Load Amount') + th('Total Amount') + '</tr>' +
+        lab.persons.map(function(p) { return row(p, false); }).join('') +
+        row(lab.total, true) + '</table>' +
+        (lab.missing ? '<div style="font-size:' + (forPdf ? '8px' : '10px') + ';color:#b91c1c;font-weight:700;margin-top:2px;">' + lab.missing +
+            ' Shift / Load part(s) had no labour rate when the slip was saved (counted at 0).</div>' : '') +
+        '</div>';
+}
+
+// Finish: rows whose Shift By / Load By has no rate (they would be paid 0)
+function slMissingRateRows_() {
+    if (!SL.fromDb) return [];
+    var out = [];
+    document.querySelectorAll('.item-block').forEach(function(block, bi) {
+        var type = (block.querySelector('.item-type') || {}).value || '';
+        block.querySelectorAll('.sub-row').forEach(function(row, ri) {
+            var v = function(c) { var e = row.querySelector(c); return e ? e.value : ''; };
+            var a = slRowAmount_(type, v('.sub-from'), v('.sub-to'), v('.sub-shift'), v('.sub-load'));
+            if (a.missing.length) out.push('Item ' + (bi + 1) + ', Sr ' + (ri + 1) + ': ' + (slName_(type) || '?') + ' from ' + (v('.sub-from') || '?') + ' to ' + (v('.sub-to') || '?'));
+        });
+    });
+    return out;
 }
 
 // ══════════════════════════════════════
@@ -5451,10 +5753,13 @@ function updateItemTotal(blockIdx) {
         sumQty += Number(row.querySelector('.sub-qty').value) || 0;
         sumWt  += Number(row.querySelector('.sub-wt').value)  || 0;
     });
+    var sumAmt = slRefreshBlockAmounts_(blockIdx);
     const totalRow = document.getElementById('item-total-' + blockIdx);
     if (totalRow) {
         totalRow.querySelector('.itotal-qty').textContent = sumQty;
         totalRow.querySelector('.itotal-wt').textContent  = (Number(sumWt)||0).toFixed(2);
+        var ta = totalRow.querySelector('.itotal-amt');
+        if (ta) ta.textContent = sumAmt.toFixed(2);
     }
 }
 
@@ -5538,11 +5843,16 @@ function validateItems() {
             b.querySelector('.item-brand').focus(); return false;
         }
         var subRows = b.querySelectorAll('.sub-row');
+        // FROM, TO, SHIFT BY and LOAD BY are compulsory in every Sr. row
         for (let fr = 0; fr < subRows.length; fr++) {
-            var frSel = subRows[fr].querySelector('.sub-from');
-            if (frSel && !frSel.value) {
-                alert('Item ' + num + ', Sr ' + (fr + 1) + ': please select FROM');
-                frSel.focus(); return false;
+            var need = [['.sub-from', 'FROM'], ['.sub-to', 'TO'], ['.sub-shift', 'SHIFT BY'], ['.sub-load', 'LOAD BY']];
+            for (let q = 0; q < need.length; q++) {
+                var frSel = subRows[fr].querySelector(need[q][0]);
+                if (frSel && !frSel.value) {
+                    alert('Item ' + num + ', Sr ' + (fr + 1) + ': please select ' + need[q][1] +
+                          (need[q][0] !== '.sub-from' && need[q][0] !== '.sub-to' && frSel.options.length <= 1 ? '\n\n(No Loading Contractor names yet: add them in ERP › Dropdown Master › Loading Contractor Name.)' : ''));
+                    frSel.focus(); return false;
+                }
             }
         }
         if (!subRows.length) {
@@ -5574,6 +5884,12 @@ function validateItems() {
             }
         }
     }
+    // Shift By / Load By picked but no rate for that Item Type: saved with
+    // amount 0 for that part (the Labour tab lists such rows), so ask first.
+    var slMiss = slMissingRateRows_();
+    if (slMiss.length && !confirm('No labour rate in Settings › Labour Rates for:\n\n' + slMiss.slice(0, 12).join('\n') +
+            (slMiss.length > 12 ? '\n... and ' + (slMiss.length - 12) + ' more' : '') +
+            '\n\nThese rows will be saved with amount 0 for that part. Save anyway?')) return false;
     return true;
 }
 
@@ -6270,11 +6586,15 @@ function buildFormPayload() {
         var subRows = [];
         rows.forEach(function (row, rowIdx) {
             var fromSel = row.querySelector('.sub-from');
+            var slv = function(cls) { var e = row.querySelector(cls); return e ? e.value : ''; };
             subRows.push({
                 sr:     rowIdx + 1,
                 qty:    row.querySelector('.sub-qty').value || '0',
                 weight: row.querySelector('.sub-wt').value  || '0',
-                from:   fromSel ? fromSel.value : ''
+                from:   fromSel ? fromSel.value : '',
+                to:      slv('.sub-to'),       // labour columns (SLIP LABOUR)
+                shiftBy: slv('.sub-shift'),
+                loadBy:  slv('.sub-load')
             });
         });
         var orderId = block.querySelector('.item-order-id') ? block.querySelector('.item-order-id').value : '';
@@ -6291,7 +6611,7 @@ function buildFormPayload() {
             subPartyName:     document.getElementById('sub-party-name').value,
             thirdPartyName:   document.getElementById('third-party-name').value,
             dispatchTo:       document.getElementById('dispatch-to').value,
-            contractorName:   document.getElementById('contractor-name').value,
+            contractorName:   slMainLoadBy_() || document.getElementById('contractor-name').value,
             mobNo:            document.getElementById('mob-no').value
         },
         items: itemsData,
@@ -6299,7 +6619,7 @@ function buildFormPayload() {
             tempoNo:        document.getElementById('tempo-no').value,
             driverName:     document.getElementById('driver-name').value,
             driverMobile:   document.getElementById('driver-mobile').value,
-            supervisorName:   document.getElementById('supervisor-name').value,
+            supervisorName:   slSupervisorName_(),
             remarks:          (document.getElementById('slip-remarks') ? document.getElementById('slip-remarks').value : '')
         }
     };
@@ -6323,7 +6643,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     document.getElementById('sub-party-name').value   = h.subPartyName    || '';
     document.getElementById('third-party-name').value = h.thirdPartyName  || '';
     pkSetSelect(document.getElementById('dispatch-to'), h.dispatchTo || '');
-    pkSetSelect(document.getElementById('contractor-name'), h.contractorName || '');   // an old name not in the list is kept
+    document.getElementById('contractor-name').value = h.contractorName || '';   // hidden; Finish uses the rows' LOAD BY
     if (document.getElementById('mob-no')) document.getElementById('mob-no').value = h.mobNo || '';
 
     // Dispatch fields
@@ -6332,7 +6652,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     var _dv = (typeof vehicleMap !== 'undefined' && d.tempoNo) ? vehicleMap.get(String(d.tempoNo).toUpperCase().trim()) : null;
     setDriverNameOptions(_dv ? _dv.driverName : '', d.driverName || '');
     document.getElementById('driver-mobile').value   = d.driverMobile   || '';
-    pkSetSelect(document.getElementById('supervisor-name'), d.supervisorName || '');
+    document.getElementById('supervisor-name').value = d.supervisorName || '';   // hidden; kept only for an edited slip
     if (document.getElementById('slip-remarks')) document.getElementById('slip-remarks').value = d.remarks || '';
 
     // Rebuild item blocks from draft items
@@ -6370,7 +6690,8 @@ function populateFormFromDraft(data, draftId, draftType) {
         tbody.innerHTML = ''; // clear the default row
 
         (item.subRows || []).forEach(function(sub) {
-            addSubRow(idx, sub.qty || null, sub.weight || null, sub.from || item.dispatchFrom || '');
+            addSubRow(idx, sub.qty || null, sub.weight || null, sub.from || item.dispatchFrom || '',
+                      { to: sub.to, shiftBy: sub.shiftBy, loadBy: sub.loadBy });
             // Force-enable weight field and set value (lock may have disabled it)
             var rows = tbody.querySelectorAll('.sub-row');
             var lastRow = rows[rows.length - 1];
@@ -6480,6 +6801,10 @@ function populateFormFromDraft(data, draftId, draftType) {
                     var fromSel = rows[ri].querySelector('.sub-from');
                     var fromVal = sub.from || item.dispatchFrom || '';
                     if (fromSel && fromVal) { fromSel.innerHTML = dispatchFromOptionsHtml(fromVal); fromSel.value = fromVal; }
+                    [['.sub-to', sub.to], ['.sub-shift', sub.shiftBy], ['.sub-load', sub.loadBy]].forEach(function(p) {
+                        var el = rows[ri].querySelector(p[0]);
+                        if (el && p[1]) el.innerHTML = slRowOptionsHtml(el, p[1]);   // "selected" picks it, any case
+                    });
                     var wtInput = rows[ri].querySelector('.sub-wt');
                     if (wtInput) {
                         wtInput.disabled = false;
@@ -6758,6 +7083,9 @@ function renderVerificationList(resetPage) {
                 '<td class="amt-total" style="' + tds + 'text-align:right;white-space:nowrap;">' + formatInr(sumAmt) + '</td></tr>';
             breakdownHtml += '</table></div>';
             breakdownHtml += '<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Amount = Weight (Kg) or Pcs (as per Bill Basis) × Rate − Disc % + GST % + Other Charges. Bill Basis is Weight by default, Pcs for PVC; change it per quality if needed. Other Charges may be a minus amount (deduction). Save Rates also rebuilds the 1-page Triplicate PDF.</div>';
+            // Loading Contractor labour of this slip (Shift By / Load By), also
+            // printed on the Triplicate that Save Rates builds
+            breakdownHtml += slLabourSummaryHtml_(s.labour, false);
             // Actual Invoice No sits right above Save Rates: Save Rates saves it
             // too, so the Triplicate it builds already prints the invoice no.
             breakdownHtml += invNoInputHtml;
@@ -7357,7 +7685,7 @@ async function loadSlipForEdit(packingType, slipNo) {
 
         // Fetch items
         var { data: itemRows } = await supabaseClient.from('packing_slip_items')
-            .select('*').eq('slip_id', slipRow.id);
+            .select('*').eq('slip_id', slipRow.id).order('id');   // id order = Sr. order
         if (!itemRows) { alert('Items not found'); return; }
 
         // Build formData in the same format as draft
@@ -7365,7 +7693,8 @@ async function loadSlipForEdit(packingType, slipNo) {
         itemRows.forEach(function(r) {
             var key = r.item_type + '|||' + r.quality + '|||' + (r.order_id||'');
             if (!grouped[key]) grouped[key] = { type: r.item_type, brand: r.quality, orderId: r.order_id||'', subRows: [], dispatchFrom: slipRow.dispatch_from||'', privateMarka: slipRow.private_marka||'' };
-            grouped[key].subRows.push({ qty: r.pcs, weight: r.weight, from: r.dispatch_from || slipRow.dispatch_from || '' });
+            grouped[key].subRows.push({ qty: r.pcs, weight: r.weight, from: r.dispatch_from || slipRow.dispatch_from || '',
+                                        to: r.to_place || '', shiftBy: r.shift_by || '', loadBy: r.load_by || '' });
         });
 
         var formData = {
@@ -9838,6 +10167,7 @@ async function loadSlipPdfInputsFromDb(slipId) {
     });
     return {
         slipRow: slipRow,
+        itemRows: itemRows,   // raw Sr. rows (labour summary of the Triplicate)
         items: Object.keys(grouped).map(function(k) { return grouped[k]; }),
         header: {
             date: slipRow.slip_date, partyName: slipRow.party_name,
@@ -9872,6 +10202,8 @@ async function buildTriplicatePdfForSlip(slipId, billing) {
     billing = Object.assign({}, billing, { invoiceNo: row.actual_invoice_no || '' });
     // Rate + Bill Basis per column (printed under Avg/pcs)
     if (!Array.isArray(billing.lines)) billing.lines = await slipRateLinesFromDb_(row.id);
+    // Loading Contractor labour (Shift By / Load By), person-wise, from the saved rows
+    billing.labour = slLabourSummary_(src.itemRows || []);
 
     var sigImg = await getSignatureForUsername(row.prepared_by);
     var blob = await generatePackingSlipPdfClient(
@@ -10090,6 +10422,7 @@ function showSettingsPanel() {
     loadWeightRules().then(function(ok) { renderWeightRules(ok); });
     frLoadRatesEditor();   // Settings › Freight Rates
     lbLoadActEditor();     // Settings › Labour Rates & Columns
+    slLoadRatesEditor();   // Settings › Labour Rates · Item Type wise (slip rows)
 }
 
 function renderWeightRules(loadedOk) {
@@ -12625,7 +12958,9 @@ async function skDeleteCount(id) {
 // under the report, so no pack disappears unnoticed. The slip-wise detail
 // under the sheet shows where every rupee comes from.
 // A vehicle = the slip's Tempo No matched with a Freight Vehicle, ignoring
-// spaces / dashes / case and words around it ("SELF HR67D5034" → HR67D5034).
+// spaces / dashes / case and words around it ("SELF HR67D5034" → HR67D5034),
+// AND the slip's Driver Name equal to that Freight Vehicle's driver (case /
+// spaces ignored). Right vehicle, other driver = not paid: EXTRAS + a list.
 // Every slip saved in the range counts (an edited slip is replaced by its new
 // version, never kept twice). Nothing here writes to a slip.
 // Before the migration: FR_DEFAULT_RATES / FR_DEFAULT_VEHICLES (the same
@@ -12774,10 +13109,22 @@ function frCompute(slips, items, freightVehicles, rates) {
     });
     var blocks = vehicles.map(function(v) { return { vehicle: v, rows: {}, lines: [], amount: 0, packs: 0 }; });
     var blockOf = {}; blocks.forEach(function(b) { blockOf[b.vehicle._k] = b; });
-    var lines = [], extras = {}, leftOut = {}, rounds = {}, usedItems = {};
+    var lines = [], extras = {}, leftOut = {}, rounds = {}, usedItems = {}, driverMismatch = {};
     slips.forEach(function(s) {
         var v = frMatchVehicle(s.tempo_no, vehicles);
-        var b = v ? blockOf[v._k] : null;
+        // Paid in a block only when the slip's Driver Name is also that Freight
+        // Vehicle's driver (both as saved in the database, case / spaces ignored).
+        // A slip on the right vehicle with another driver (SELF, a stand-in,
+        // blank) is not paid there: its packs go to EXTRAS and it is listed
+        // under the report, so nobody is paid for a trip another driver made.
+        var drvMismatch = !!(v && frName(s.driver_name) !== frName(v.driver_name));
+        if (drvMismatch) {
+            var mk = v._k + '|' + (frName(s.driver_name) || '(BLANK)');
+            var mm = driverMismatch[mk] || (driverMismatch[mk] = { vehNo: v.tempo_no, vehDriver: frName(v.driver_name), slipDriver: frName(s.driver_name), slips: [], packs: 0 });
+            mm.slips.push(s.slip_no);
+            mm.packs += Object.keys(packs[s.id] || {}).reduce(function(a, t) { return a + packs[s.id][t]; }, 0);
+        }
+        var b = v && !drvMismatch ? blockOf[v._k] : null;
         var dt = frName(s.dispatch_to), date = String(s.slip_date || '').slice(0, 10);
         Object.keys(packs[s.id] || {}).sort().forEach(function(type) {
             var n = packs[s.id][type];
@@ -12806,7 +13153,8 @@ function frCompute(slips, items, freightVehicles, rates) {
             if (ei) {   // a paid kind of pack, but not paid here: EXTRAS
                 var e = extras[ei] || (extras[ei] = { packs: 0, types: {}, why: {} });
                 e.packs += n; e.types[type] = (e.types[type] || 0) + n;
-                var why = !b ? 'other vehicles' : 'no rate for ' + (dt || '(blank)') + ' · ' + type;
+                var why = drvMismatch ? 'driver not as in Freight Vehicles'
+                        : !b ? 'other vehicles' : 'no rate for ' + (dt || '(blank)') + ' · ' + type;
                 e.why[why] = (e.why[why] || 0) + n;
             } else {
                 var lk = (dt || '(BLANK)') + ' · ' + type;
@@ -12850,6 +13198,7 @@ function frCompute(slips, items, freightVehicles, rates) {
     var qty = blocks.reduce(function(a, b) { return a + b.packs; }, 0) + extraList.reduce(function(a, e) { return a + e.packs; }, 0);
     var amount = Math.round(blocks.reduce(function(a, b) { return a + b.amount; }, 0) * 100) / 100;
     return { blocks: blocks, lines: lines, extras: extraList, leftOut: leftOut, slipCount: slips.length,
+             driverMismatch: Object.keys(driverMismatch).sort().map(function(k) { return driverMismatch[k]; }),
              total: { qty: qty, amount: amount, label: repOrder[0] || '' } };
 }
 
@@ -12899,6 +13248,14 @@ function frRender() {
         html += '<div class="fr-note info"><b>EXTRAS (not paid):</b> ' + rep.extras.map(function(e) {
             return escapeHtmlJs(e.label) + ' ' + frNum(e.packs) + ' = ' + Object.keys(e.why).map(function(w) { return frNum(e.why[w]) + ' ' + escapeHtmlJs(w); }).join(', ');
         }).join('; ') + '</div>';
+    }
+    if (rep.driverMismatch && rep.driverMismatch.length) {
+        html += '<div class="fr-note warn"><b>Not paid: driver on the slip is not the Freight Vehicle\'s driver</b> ' +
+            '(fix the slip\'s Driver Name, or the driver in Settings › Freight Vehicles, then generate again): ' +
+            rep.driverMismatch.map(function(m) {
+                return escapeHtmlJs(m.vehNo) + ' (Freight Vehicles: ' + escapeHtmlJs(m.vehDriver || '-') + ', slip: ' + escapeHtmlJs(m.slipDriver || 'blank') + ') — ' +
+                    frNum(m.packs) + ' pack(s) in ' + m.slips.length + ' slip(s): ' + escapeHtmlJs(m.slips.join(', '));
+            }).join('; ') + '.</div>';
     }
     var lk = Object.keys(rep.leftOut);
     if (lk.length) {
@@ -13337,7 +13694,14 @@ function lbFillContractorPicker(extra) {
 function lbSheetChanged() {
     var sheet = document.getElementById('lb-sheet').value;
     document.getElementById('lb-con-wrap').style.display = sheet === 'SHIFTING' ? '' : 'none';
+    lbUpdateSaveBtn();
+    if (sheet === 'SLIP') {   // its own data (slip_labour_sheet): shown if already read, else Generate
+        if (_sl.rep) slRender();
+        else document.getElementById('lb-out').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and press Generate Report.</p>';
+        return;
+    }
     if (_lb.rep) { _lb.rep.meta.sheet = sheet; lbRender(); }
+    else document.getElementById('lb-out').innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and the sheet, then press Generate Report.</p>';
 }
 function lbConChanged() { if (_lb.rep && _lb.rep.meta.sheet === 'SHIFTING') lbRender(); }
 function lbDirtyCount() { return Object.keys(_lb.edits).length; }
@@ -13348,6 +13712,7 @@ async function lbRun() {
     var sheet = document.getElementById('lb-sheet').value;
     if (!from || !to) { alert('Choose both dates.'); return; }
     if (from > to) { var tmp = from; from = to; to = tmp; document.getElementById('lb-from').value = from; document.getElementById('lb-to').value = to; }
+    if (sheet === 'SLIP') { await slRun(from, to); return; }
     if (lbDatesBetween(from, to).length > 62) { alert('Choose at most 62 days (a sheet is one row per date).'); return; }
     var out = document.getElementById('lb-out'), btn = document.getElementById('lb-run-btn');
     btn.disabled = true; btn.textContent = 'Generating...';
@@ -13578,7 +13943,7 @@ function lbRefreshTotals() {
 }
 function lbUpdateSaveBtn() {
     var b = document.getElementById('lb-save-btn'), n = lbDirtyCount();
-    b.disabled = !n || !_lb.actsFromDb || !_lb.entriesOk;
+    b.disabled = !n || !_lb.actsFromDb || !_lb.entriesOk || document.getElementById('lb-sheet').value === 'SLIP';
     b.textContent = n ? 'Save typed quantities (' + n + ')' : 'Save typed quantities';
 }
 
@@ -13636,6 +14001,7 @@ async function lbLoadEntryLog() {
 }
 
 function lbPrint() {
+    if (document.getElementById('lb-sheet').value === 'SLIP') { slPrint(); return; }
     if (!_lb.rep) { alert('Generate the report first.'); return; }
     if (lbDirtyCount() && !confirm(lbDirtyCount() + ' typed change(s) are not saved yet. Print anyway (the printout shows them)?')) return;
     var m = _lb.rep.meta;
@@ -13645,6 +14011,7 @@ function lbPrint() {
 }
 
 function lbExportCsv() {
+    if (document.getElementById('lb-sheet').value === 'SLIP') { slExportCsv(); return; }
     if (!_lb.rep) { alert('Generate the report first.'); return; }
     var tmp = document.createElement('div');
     tmp.innerHTML = lbSheetHtml(true);
@@ -13665,6 +14032,260 @@ function lbExportCsv() {
     a.download = (m.sheet === 'SHIFTING' ? frName(document.getElementById('lb-con').value).replace(/\s+/g, '_') + '_Labour_' : 'Dispatch_Loading_Labour_') + m.from + '_to_' + m.to + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// SLIP LABOUR EXPENSE — Labour tab sheet "Slip Labour Expense (Shift By /
+// Load By)" + Settings › Labour Rates · Item Type wise.
+// SQL: PACKING_SLIP_LABOUR_MIGRATION.sql
+// Read from the view packing.slip_labour_sheet: every packing slip Sr. row
+// with a Shift By / Load By, with the rates and amount the SERVER froze on the
+// row when the slip was saved (never worked out again here, so the sheet is
+// exactly what is in the database). Person-wise: SHIFT = packs shifted ×
+// their rates, LOAD = packs loaded × their rates; one pack can be shifted by
+// one person and loaded by another, so the TOTAL packs line is not a slip
+// count. Rows whose person had no rate are listed (paid 0 for that part).
+// ══════════════════════════════════════════════════════════════════════
+var _sl = { rep: null, edit: null };
+
+async function slRun(from, to) {
+    var out = document.getElementById('lb-out'), btn = document.getElementById('lb-run-btn');
+    btn.disabled = true; btn.textContent = 'Generating...';
+    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading slips...</p>';
+    document.getElementById('lb-banner').innerHTML = '';
+    try {
+        var rows = [];
+        for (var off = 0; ; off += 1000) {
+            var { data, error } = await supabaseClient.from('slip_labour_sheet').select('*')
+                .gte('slip_date', from).lte('slip_date', to)
+                .order('slip_date').order('slip_no').order('item_row_id').range(off, off + 999);
+            if (error) throw error;
+            rows = rows.concat(data || []);
+            if (!data || data.length < 1000) break;
+        }
+        _sl.rep = slCompute(rows);
+        _sl.rep.meta = { from: from, to: to, at: new Date(), by: (session && (session.fullName || session.username)) || '' };
+        slRender();
+    } catch (e) {
+        console.error('[Slip labour] report failed:', e);
+        var noMig = /slip_labour_sheet|does not exist|schema cache/i.test(e.message || '');
+        out.innerHTML = '<div class="fr-note ' + (noMig ? 'warn' : 'bad') + '">' + (noMig
+            ? 'The slip labour sheet is not set up on the server yet: run <b>PACKING_SLIP_LABOUR_MIGRATION.sql</b>.'
+            : 'The report could not be made: ' + escapeHtmlJs(e.message || String(e))) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = 'Generate Report';
+    lbUpdateSaveBtn();
+}
+
+// Pure: sheet rows → person-wise totals + the rows without a rate
+function slCompute(rows) {
+    var per = {}, missing = [], tot = { shiftPacks: 0, shiftAmt: 0, loadPacks: 0, loadAmt: 0, amount: 0 };
+    var P = function(n) { return per[n] || (per[n] = { name: n, shiftPacks: 0, shiftAmt: 0, loadPacks: 0, loadAmt: 0 }); };
+    (rows || []).forEach(function(r) {
+        var sb = slName_(r.shift_by), lb = slName_(r.load_by);
+        if (sb) { var p = P(sb); p.shiftPacks++; p.shiftAmt += Number(r.shift_rate) || 0; tot.shiftPacks++; tot.shiftAmt += Number(r.shift_rate) || 0; }
+        if (lb) { var q = P(lb); q.loadPacks++; q.loadAmt += Number(r.load_rate) || 0; tot.loadPacks++; tot.loadAmt += Number(r.load_rate) || 0; }
+        tot.amount += Number(r.labour_amount) || 0;
+        if (r.rate_missing) missing.push(r);
+    });
+    var order = slPersons_().map(slName_);
+    var persons = Object.keys(per).sort(function(a, b) {
+        var ia = order.indexOf(a), ib = order.indexOf(b);
+        return (ia < 0 ? 1e6 : ia) - (ib < 0 ? 1e6 : ib) || a.localeCompare(b);
+    }).map(function(n) { var p = per[n]; p.amount = Math.round((p.shiftAmt + p.loadAmt) * 100) / 100; return p; });
+    Object.keys(tot).forEach(function(k) { tot[k] = Math.round(tot[k] * 100) / 100; });
+    return { rows: rows || [], persons: persons, total: tot, missing: missing };
+}
+
+function slSheetHtml(print) {
+    var rep = _sl.rep, m = rep.meta, n = function(v) { return lbNum(v); };
+    var h = '<table class="fr-table sl-sheet"><thead>' +
+        '<tr><th colspan="6" style="text-align:center;font-size:14px;">SLIP LABOUR EXPENSE (' + escapeHtmlJs(lbD(m.from)) + ' TO ' + escapeHtmlJs(lbD(m.to)) + ')</th></tr>' +
+        '<tr><th>PERSON</th><th class="num">SHIFT PACKS</th><th class="num">SHIFT AMOUNT</th><th class="num">LOAD PACKS</th><th class="num">LOAD AMOUNT</th><th class="num">TOTAL AMOUNT</th></tr></thead><tbody>' +
+        (rep.persons.length ? rep.persons.map(function(p) {
+            return '<tr><td><b>' + escapeHtmlJs(p.name) + '</b></td><td class="num">' + p.shiftPacks + '</td><td class="num">' + n(p.shiftAmt) + '</td><td class="num">' + p.loadPacks +
+                '</td><td class="num">' + n(p.loadAmt) + '</td><td class="num"><b>' + n(p.amount) + '</b></td></tr>';
+        }).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">No packing slip row with a Shift By / Load By in this range.</td></tr>') +
+        '<tr style="font-weight:800;background:#dbeafe;"><td>TOTAL</td><td class="num">' + rep.total.shiftPacks + '</td><td class="num">' + n(rep.total.shiftAmt) + '</td><td class="num">' + rep.total.loadPacks +
+            '</td><td class="num">' + n(rep.total.loadAmt) + '</td><td class="num">' + n(rep.total.amount) + '</td></tr></tbody></table>';
+    if (print) h += '<div style="height:10px;"></div>' + slDetailHtml();
+    return h;
+}
+
+function slDetailHtml() {
+    var rs = _sl.rep.rows, n = function(v) { return v === null || v === undefined ? '' : lbNum(v); };
+    return '<table class="fr-table"><thead><tr><th>Date</th><th>Slip No</th><th>Party</th><th>Item Type</th><th>Quality</th><th class="num">Sr.</th><th class="num">Qty</th>' +
+        '<th>FROM</th><th>TO</th><th>Shift By</th><th class="num">Rate</th><th>Load By</th><th class="num">Rate</th><th class="num">Amount</th></tr></thead><tbody>' +
+        rs.map(function(r) {
+            var bad = function(who, rate) { return who && (rate === null || rate === undefined) ? ' style="color:#b91c1c;font-weight:700;" title="No rate when saved"' : ''; };
+            return '<tr><td>' + escapeHtmlJs(lbD(r.slip_date)) + '</td><td>' + escapeHtmlJs(r.slip_no || '') + ' <span class="fr-sub">' + escapeHtmlJs(r.packing_type || '') + '</span></td>' +
+                '<td>' + escapeHtmlJs(r.party_name || '') + '</td><td>' + escapeHtmlJs(r.item_type || '') + '</td><td>' + escapeHtmlJs(r.quality || '') + '</td>' +
+                '<td class="num">' + (r.sr || '') + '</td><td class="num">' + n(r.pcs) + '</td><td>' + escapeHtmlJs(r.dispatch_from || '') + '</td><td>' + escapeHtmlJs(r.to_place || '') + '</td>' +
+                '<td' + bad(r.shift_by, r.shift_rate) + '>' + escapeHtmlJs(r.shift_by || '') + '</td><td class="num">' + n(r.shift_rate) + '</td>' +
+                '<td' + bad(r.load_by, r.load_rate) + '>' + escapeHtmlJs(r.load_by || '') + '</td><td class="num">' + n(r.load_rate) + '</td>' +
+                '<td class="num"><b>' + n(r.labour_amount) + '</b></td></tr>';
+        }).join('') + '</tbody></table>';
+}
+
+function slRender() {
+    var rep = _sl.rep, m = rep.meta;
+    var html = '<div class="lb-wrap" id="sl-sheet-wrap">' + slSheetHtml(false) + '</div>';
+    html += '<div class="fr-note info">' + rep.rows.length + ' Sr. row(s) with a Shift By / Load By · rates and amounts as saved on each slip · made ' +
+        escapeHtmlJs(m.at.toLocaleString('en-IN')) + (m.by ? ' by ' + escapeHtmlJs(m.by) : '') + '</div>';
+    if (rep.missing.length) {
+        html += '<div class="fr-note warn"><b>' + rep.missing.length + ' row(s) had no rate when the slip was saved</b> (paid 0 for that part): ' +
+            escapeHtmlJs(rep.missing.slice(0, 30).map(function(r) {
+                return r.slip_no + ' ' + r.item_type + ' Sr ' + r.sr + ' (' + [r.shift_by && r.shift_rate == null ? 'Shift By ' + r.shift_by : '', r.load_by && r.load_rate == null ? 'Load By ' + r.load_by : ''].filter(Boolean).join(', ') + ')';
+            }).join('; ')) + (rep.missing.length > 30 ? ' ...' : '') +
+            '. Add the rate in Settings › Labour Rates · Item Type wise and edit those slips again to price them.</div>';
+    }
+    html += '<details class="fr-note info"' + (rep.rows.length <= 60 ? ' open' : '') + '><summary style="cursor:pointer;font-weight:700;">Row-wise detail (' + rep.rows.length + ')</summary>' +
+        '<div style="overflow-x:auto;">' + slDetailHtml() + '</div></details>';
+    document.getElementById('lb-out').innerHTML = html;
+}
+
+function slPrint() {
+    if (!_sl.rep) { alert('Generate the report first.'); return; }
+    var m = _sl.rep.meta;
+    pkPrintFitted('SLIP LABOUR EXPENSE ' + lbD(m.from) + ' TO ' + lbD(m.to), slSheetHtml(true), ' .fr-table{margin:0;font-size:11px;} .fr-table tr{break-inside:avoid;}', true);
+}
+
+function slExportCsv() {
+    if (!_sl.rep) { alert('Generate the report first.'); return; }
+    var head = ['Date', 'Slip No', 'Packing Type', 'Party', 'Dispatch To', 'Item Type', 'Quality', 'Sr', 'Qty', 'Weight', 'From', 'To', 'Shift By', 'Shift Rate', 'Load By', 'Load Rate', 'Amount', 'Rate Missing'];
+    var lines = [head].concat(_sl.rep.rows.map(function(r) {
+        return [r.slip_date, r.slip_no, r.packing_type, r.party_name, r.dispatch_to, r.item_type, r.quality, r.sr, r.pcs, r.weight, r.dispatch_from, r.to_place,
+                r.shift_by, r.shift_rate, r.load_by, r.load_rate, r.labour_amount, r.rate_missing ? 'YES' : ''];
+    }));
+    var csv = '\uFEFF' + lines.map(function(r) { return r.map(frCsvCell).join(','); }).join('\r\n');
+    var m = _sl.rep.meta, a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'Slip_Labour_Expense_' + m.from + '_to_' + m.to + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 5000);
+}
+
+// ── Settings › Labour Rates · Item Type wise (Admin) ──
+async function slLoadRatesEditor() {
+    var list = document.getElementById('sl-rates-list');
+    if (!list) return;
+    await slLoadRates();
+    document.getElementById('sl-rates-banner').innerHTML = SL.fromDb ? '' :
+        '<div class="fr-note warn">Run <b>PACKING_SLIP_LABOUR_MIGRATION.sql</b> first; until then these rates cannot be saved and slips do not store TO / Shift By / Load By.</div>';
+    _sl.edit = SL.rates.map(function(r) { return Object.assign({}, r); });
+    slRenderRatesEditor();
+}
+function slRenderRatesEditor() {
+    var list = document.getElementById('sl-rates-list'), ro = !SL.fromDb, dis = ro ? ' disabled' : '';
+    var num = function(f, v) {
+        return '<input type="number" data-f="' + f + '" min="0" step="0.01" value="' + (v === null || v === undefined ? '' : escapeHtmlJs(v)) + '" style="text-align:right;max-width:110px;"' + dis + '>';
+    };
+    var sel = function(f, opts, cur, ph) {
+        return '<select data-f="' + f + '"' + dis + '><option value="">' + ph + '</option>' + pkOptionsHtml(opts, cur) + '</select>';
+    };
+    list.innerHTML = '<table class="fr-table"><thead><tr><th>#</th><th>Item Type</th><th>From</th><th>To</th><th class="num">Shift By Rate (₹ / pack)</th><th class="num">Load By Rate (₹ / pack)</th><th>Last changed</th><th></th></tr></thead><tbody>' +
+        (_sl.edit.length ? _sl.edit.map(function(r, i) {
+            return '<tr data-i="' + i + '"><td>' + (i + 1) + '</td>' +
+                '<td>' + slTypesCell_(r, ro) + '</td>' +
+                '<td>' + sel('from_place', DISPATCH_FROM_OPTIONS, r.from_place, 'Any') + '</td>' +
+                '<td>' + sel('to_place', ROW_TO_OPTIONS, r.to_place, 'Any') + '</td>' +
+                '<td>' + num('shift_rate', r.shift_rate) + '</td><td>' + num('load_rate', r.load_rate) + '</td>' +
+                '<td class="fr-sub">' + escapeHtmlJs((r.updated_by || '') + (r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString('en-IN') : '')) + '</td>' +
+                '<td>' + (ro ? '' : '<button type="button" class="fr-btn ghost" style="padding:4px 10px;" title="Remove this rate" onclick="slRemoveRateRow(' + i + ')">✕</button>') + '</td></tr>';
+        }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No rate yet. Press ＋ Add Rate.</td></tr>') + '</tbody></table>';
+    list.querySelectorAll('tr[data-i]').forEach(function(tr) {
+        tr.querySelectorAll('[data-f]').forEach(function(el) {
+            el.addEventListener('change', function() { _sl.edit[+tr.dataset.i][el.dataset.f] = el.value; });
+        });
+        // Item Type group: ticks change the row's list in place (no redraw, so the list stays open)
+        tr.querySelectorAll('input[data-t]').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var r = _sl.edit[+tr.dataset.i];
+                r.item_types = Array.from(tr.querySelectorAll('input[data-t]:checked')).map(function(x) { return x.getAttribute('data-t'); });
+                var sm = tr.querySelector('.sl-types summary');
+                sm.textContent = slTypesLabel_(r.item_types); sm.classList.toggle('sl-none', !r.item_types.length);
+            });
+        });
+    });
+    var sb = document.getElementById('sl-rates-save-btn'); if (sb) sb.disabled = ro;
+}
+function slTypesLabel_(types) { return (types && types.length) ? types.join(' + ') + ' ▾' : '— choose Item Types — ▾'; }
+// One tick box per Item Type (Dropdown Master list + any saved type no longer in it)
+function slTypesCell_(r, ro) {
+    var cur = (r.item_types || []).map(slName_);
+    var all = pkWithCurrent(PACK_ITEM_TYPES, '');
+    cur.forEach(function(t) { if (all.map(slName_).indexOf(t) < 0) all.push(t); });
+    return '<details class="sl-types"><summary' + (cur.length ? '' : ' class="sl-none"') + '>' + escapeHtmlJs(slTypesLabel_(cur)) + '</summary>' +
+        '<div class="sl-types-list">' + all.map(function(t) {
+            var n = slName_(t);
+            return '<label><input type="checkbox" data-t="' + escapeHtmlAttr(n) + '"' + (cur.indexOf(n) >= 0 ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + escapeHtmlJs(t) + '</label>';
+        }).join('') + '</div></details>';
+}
+// ＋ Add Rate: an empty row (tick its Item Types), From / To = Any
+function slAddRateRow() {
+    if (!SL.fromDb) { alert('Run PACKING_SLIP_LABOUR_MIGRATION.sql first.'); return; }
+    var last = _sl.edit[_sl.edit.length - 1];
+    _sl.edit.push({ item_types: [], from_place: '', to_place: '', shift_rate: '', load_rate: '' });
+    slRenderRatesEditor();
+}
+function slRemoveRateRow(i) {
+    var r = _sl.edit[i];
+    if (r && r.id && !confirm('Remove the rate of ' + ((r.item_types || []).join(' + ') || '?') + '? Slips already saved keep their rate; new slips get no rate for it.')) return;
+    _sl.edit.splice(i, 1);
+    slRenderRatesEditor();
+}
+async function slSaveRates() {
+    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var bad = [], seen = {};
+    var okRate = function(v) { var t = String(v == null ? '' : v).trim(); return t !== '' && isFinite(Number(t)) && Number(t) >= 0; };
+    var rows = _sl.edit.map(function(r, i) {
+        var types = [];
+        (r.item_types || []).forEach(function(x) { x = slName_(x); if (x && types.indexOf(x) < 0) types.push(x); });
+        var fr = slName_(r.from_place), tp = slName_(r.to_place), route = (fr || 'ANY') + ' → ' + (tp || 'ANY');
+        var at = 'Row ' + (i + 1) + (types.length ? ' (' + types.join(' + ') + ', ' + route + ')' : '');
+        if (!types.length) bad.push(at + ': tick at least one Item Type');
+        types.forEach(function(t) {   // one Item Type + From + To in one row only
+            var k = t + '|' + fr + '|' + tp;
+            if (seen[k]) bad.push(at + ': ' + t + ' ' + route + ' is already in row ' + seen[k]); else seen[k] = i + 1;
+        });
+        if (!okRate(r.shift_rate)) bad.push(at + ': Shift By Rate must be 0 or more');
+        if (!okRate(r.load_rate)) bad.push(at + ': Load By Rate must be 0 or more');
+        return { id: r.id || null, item_types: types, from_place: fr || null, to_place: tp || null, shift_rate: Number(r.shift_rate), load_rate: Number(r.load_rate) };
+    });
+    if (bad.length) { alert('Please correct:\n\n' + bad.join('\n')); return; }
+    var btn = document.getElementById('sl-rates-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_slip_labour_rates', { p_rows: rows });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        showToast('Labour rates saved: ' + data.added + ' added, ' + data.changed + ' changed, ' + data.removed + ' removed');
+        await slLoadRatesEditor();
+        var lg = document.querySelector('#sl-rates-card .fr-log'); if (lg && lg.open) slLoadRateLog();
+    } catch (e) {
+        alert('The labour rates were not saved:\n\n' + (e.message || e));
+    }
+    btn.disabled = !SL.fromDb; btn.textContent = 'Save Labour Rates';
+}
+async function slLoadRateLog() {
+    var el = document.getElementById('sl-rate-log-list');
+    try {
+        var { data, error } = await supabaseClient.from('slip_labour_rate_log').select('*').order('changed_at', { ascending: false }).limit(150);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
+        var d = function(v) {
+            if (!v) return '—';
+            return ((v.item_types || []).join(' + ') || v.item_type || '') + ' · ' + (v.from_place || 'ANY') + ' → ' + (v.to_place || 'ANY') + (v.shift_rate != null ? ' · Shift By ₹' + v.shift_rate + (v.shift_by ? ' (' + v.shift_by + ')' : '') : '') +
+                (v.load_rate != null ? ' · Load By ₹' + v.load_rate + (v.load_by ? ' (' + v.load_by + ')' : '') : '');
+        };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+            data.map(function(l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(l.action) +
+                    '</td><td>' + escapeHtmlJs(d(l.old_value)) + '</td><td>' + escapeHtmlJs(d(l.new_value)) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
 }
 
 // ── Settings › Labour Rates & Columns (Admin) ──
