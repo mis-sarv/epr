@@ -7294,6 +7294,12 @@ const SARV_TABS=[
   {key:'HOME_OUT',label:'Material Outward',def:'ALL'},
   {key:'HOME_ISSUE',label:'Issue',def:'ALL'},
   {key:'HOME_REPORTS',label:'Print History / Reports',def:'ALL'},
+  /* Print History › Preview slides › last slide: OKAY / HOLD / DEBIT on a
+     record (RECORD STATUS section). Checked again on the server by
+     srs_can_ (sql/STORE_RECORD_STATUS_MIGRATION.sql): keep def in step with
+     srs_default_roles_() there. Per store via S1_ / S2_ in Manage access ›
+     Store access (SARV_STORE_SCREENS). */
+  {key:'RPT_REC_STATUS',label:'Change record status',hint:'Print History › Preview: set OKAY / HOLD / DEBIT on an Inward / Outward / Issue record',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_MYDAY',label:'My Day (daily tasks)',hint:'Daily task list: Below-MSV PRs, inform requester, rejected PRs, stock count … (store-mytasks.js)',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
   // Administration › PR-PO Master: category → Purchaser, and the Store 1 / Store 2 ticks (category_purchasers).
@@ -8158,7 +8164,8 @@ const SARV_APP_INNER_GROUPS=[
   {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)},
   {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)},
   {title:'FMS rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('FMS_')===0).map(t=>t.key)},
-  {title:'Task Tracker rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TT_')===0).map(t=>t.key)}
+  {title:'Task Tracker rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TT_')===0).map(t=>t.key)},
+  {title:'Print History / Reports rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('RPT_')===0).map(t=>t.key)}
 ];
 /* Apps a NEW login does not get until the Admin switches them ON: the user
    form starts them at OFF, and NEW_USER_APP_DEFAULTS_MIGRATION.sql does the
@@ -8384,7 +8391,7 @@ const SARV_STORE_SCREENS=[
   {k:'HOME_MYDAY',l:'My Day (Daily Tasks)'},{k:'HOME_IN',l:'Material Inward'},{k:'HOME_IN_NB',l:'Inward (NB)'},
   {k:'HOME_OUT',l:'Material Outward'},{k:'HOME_ISSUE',l:'Issue'},{k:'HOME_MASTER',l:'Item Stock'},
   {k:'HOME_TRACKER',l:'Item Tracker + Consumption'},{k:'HOME_REPAIR',l:'Repair Challans'},
-  {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
+  {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'RPT_REC_STATUS',l:'Reports · Change record status'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
 const sarvAccExtraKey_=k=>/^S[12]_/.test(k)||k==='ERP_STORE1'||k==='ERP_WAREHOUSE'||k==='CMP_MACHINE'||k==='CMP_FABRIC';
 // A readable name for any app_access key (user list tooltip, panel).
 function sarvAccKeyLabel_(k){
@@ -8395,7 +8402,7 @@ function sarvAccKeyLabel_(k){
   return SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k;
 }
 // Inner buttons / rights shown under their app (by key prefix).
-const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER'};
+const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER',RPT_:'HOME_REPORTS'};
 const sarvAccParentOf_=k=>{const p=Object.keys(SARV_ACCESS_PARENT).find(x=>k.indexOf(x)===0);return p?SARV_ACCESS_PARENT[p]:'';};
 function sarvAccCss_(){
   if(byId('acpCss'))return;
@@ -17404,8 +17411,8 @@ window.loadReports=async function(){
   const tb=byId('searchResultsBody'),statusEl=byId('searchStatusText');
   if(!tb)return;
   const csvBtn=byId('excelDownloadBtn');if(csvBtn)csvBtn.style.display=sarvCan('DOWNLOAD_CSV')?'':'none';
-  if(!SB_READY){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
-  tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:24px;color:#94a3b8;">Loading entries...</td></tr>';
+  if(!SB_READY){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#f59e0b;">Supabase not configured</td></tr>';return;}
+  tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:24px;color:#94a3b8;">Loading entries...</td></tr>';
   if(statusEl)statusEl.textContent='Loading...';
   try{
     await sarvCheckStoreCol_();
@@ -17464,9 +17471,26 @@ window.loadReports=async function(){
     // receiving / outward date, so a back-dated entry still lands on top the
     // moment it is saved. Inward and Outward are merged into one list here.
     filtered.sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
+    // Each record's OKAY / HOLD / DEBIT (RECORD STATUS section); never blocks the list.
+    await srsLoad_(filtered);
+    sarvReportsAll=filtered;
+    sarvRenderReports_();
+  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#ef4444;">Error loading reports</td></tr>';}
+};
+/* Draws the loaded list (sarvReportsAll) with the Status filter applied, so
+   changing the filter or a record's status redraws without going back to the
+   database. sarvLastReportsFiltered = what is on screen (the CSV reads it). */
+let sarvReportsAll=[];
+function sarvRenderReports_(){
+  const tb=byId('searchResultsBody'),statusEl=byId('searchStatusText');
+  if(!tb)return;
+  {
+    const stF=byId('searchStatusFilter')?.value||'ALL';
+    const filtered=sarvReportsAll.filter(r=>srsFilterPass_(r,stF));
     sarvLastReportsFiltered=filtered;
-    if(statusEl)statusEl.textContent=sarvStoreLabel()+' · '+filtered.length+' records found';
-    if(!filtered.length){tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
+    if(statusEl)statusEl.textContent=sarvStoreLabel()+' · '+filtered.length+' records found'
+      +(stF!=='ALL'?' (status '+srsLabel_(stF)+', of '+sarvReportsAll.length+')':'')+srsCountsText_(sarvReportsAll);
+    if(!filtered.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
     const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
     // Editing an already-saved record is an Admin-only action — everyone else
     // sees a dash in the Edit column.
@@ -17480,6 +17504,7 @@ window.loadReports=async function(){
       const cxBadge=r.cancelled?`<div style="margin-top:2px;"><span title="${escText(r.notes)}" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;font-size:8.5px;font-weight:800;white-space:nowrap;">CANCELLED</span></div>`:'';
       return `<tr style="font-size:11px;border-bottom:1px solid #f1f5f9;${r.cancelled?'background:#fef2f2;opacity:.75;':''}">
         <td style="padding:5px 6px;"><span style="background:${col}18;color:${col};border:1px solid ${col}33;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;white-space:nowrap;">${escText(r.type)}</span></td>
+        <td style="padding:5px 6px;text-align:center;">${srsChipHtml_(r)}</td>
         <td style="padding:5px 6px;font-weight:800;color:${r.cancelled?'#b91c1c':'#0284c7'};white-space:nowrap;${r.cancelled?'text-decoration:line-through;':''}">${escText(r.no||'—')}${cxBadge}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(r.invoice)}</td>
         <td style="padding:5px 6px;white-space:nowrap;">${escText(r.date)}</td>
@@ -17489,11 +17514,7 @@ window.loadReports=async function(){
         <td style="padding:5px 6px;text-align:center;font-weight:700;">${r.qty||0}</td>
         <td style="padding:5px 6px;text-align:center;">
           <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
-            <div style="display:flex;gap:4px;">
-              ${r.pdfSingle?`<a href="${escText(r.pdfSingle)}" target="_blank" rel="noopener" title="Single-page (landscape, both copies side-by-side)" style="display:inline-flex;align-items:center;gap:3px;background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">1-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">1-Pg —</span>'}
-              ${r.pdfTwoPage?`<a href="${escText(r.pdfTwoPage)}" target="_blank" rel="noopener" title="Two-page (portrait, one copy per page)" style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border:1px solid #86efac;color:#166534;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">2-Pg</a>`:'<span style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">2-Pg —</span>'}
-              ${r.pdfInvoice?`<a href="${escText(r.pdfInvoice)}" target="_blank" rel="noopener" title="Original Invoice: every attached photo, one per page" style="display:inline-flex;align-items:center;gap:3px;background:#fff7ed;border:1px solid #fdba74;color:#c2410c;border-radius:5px;padding:2px 7px;font-size:9px;font-weight:700;text-decoration:none;white-space:nowrap;">Invoice</a>`:'<span title="No Original Invoice PDF for this entry" style="font-size:9px;color:#cbd5e1;font-weight:600;padding:2px 4px;">Inv —</span>'}
-            </div>
+            <button type="button" data-pv-key="${escText(srsKey_(r))}" title="Preview: Store PDF, actual bill, Unloader and Field Boy photos one by one, PDF downloads at the top; the record status is on the last slide" style="display:inline-flex;align-items:center;gap:4px;background:#0f172a;border:1px solid #0f172a;color:#fff;border-radius:5px;padding:3px 12px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;">Preview ▸${(n=>n?`<span style="font-weight:600;color:#cbd5e1;">· ${n} PDF${n>1?'s':''}</span>`:'')([r.pdfSingle,r.pdfTwoPage,r.pdfInvoice].filter(Boolean).length)}</button>
             <span style="font-size:9px;color:#94a3b8;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escText(r.items)}">${escText(r.items||'—')}</span>
           </div>
         </td>
@@ -17511,8 +17532,11 @@ window.loadReports=async function(){
     tb.querySelectorAll('button[data-cancel-id]').forEach(b=>{
       b.addEventListener('click',()=>cancelStoreRecord(b.dataset.cancelKind,b.dataset.cancelId,b.dataset.cancelNo).catch(dbError));
     });
-  }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:20px;color:#ef4444;">Error loading reports</td></tr>';}
-};
+    tb.querySelectorAll('button[data-pv-key]').forEach(b=>{
+      b.addEventListener('click',()=>srvOpen(b.dataset.pvKey));
+    });
+  }
+}
 
 /* ================================================================
    RECORD CANCEL — Print History / Reports →  (Admin only)
@@ -18244,8 +18268,10 @@ async function syncPoReceiptsForLines(lineIds){
 window.downloadFilteredExcel=function(){
   if(!sarvCan('DOWNLOAD_CSV'))return sarvDeny('DOWNLOAD_CSV');
   if(!sarvLastReportsFiltered.length)return showToast('Load data with Search / All Records first','warn');
-  const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items'];
-  const rows=sarvLastReportsFiltered.map(r=>[r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'']);
+  const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items','Status','Status Remarks','Status By','Status At'];
+  const rows=sarvLastReportsFiltered.map(r=>{const st=srsOf_(r)||{};
+    return [r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'',
+      st.status?srsLabel_(st.status):'',st.remarks||'',st.by||'',st.at?pStamp(st.at):''];});
   downloadCSV('SARV_Reports_'+today()+'.csv',[headers,...rows]);
   showToast('CSV downloaded — '+rows.length+' records');
 };
@@ -18560,7 +18586,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     });
     document.body.dataset.consPopBound='1';
   }
-  add2('clearSearchBtn',()=>{['searchQuery','filterDateFrom','filterDateTo'].forEach(id=>{const e=byId(id);if(e)e.value='';});byId('searchTypeFilter')&&(byId('searchTypeFilter').value='ALL');const tb=byId('searchResultsBody');if(tb)tb.innerHTML='<tr><td colspan="10" style="text-align:center;padding:30px;color:#94a3b8;">Use Search or Load All Records</td></tr>';});
+  add2('clearSearchBtn',()=>{['searchQuery','filterDateFrom','filterDateTo'].forEach(id=>{const e=byId(id);if(e)e.value='';});byId('searchTypeFilter')&&(byId('searchTypeFilter').value='ALL');byId('searchStatusFilter')&&(byId('searchStatusFilter').value='ALL');const tb=byId('searchResultsBody');if(tb)tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:#94a3b8;">Use Search or Load All Records</td></tr>';});
 });
 
 /* ================================================================
@@ -31103,4 +31129,896 @@ function inwCostYarn_(){
   const c=tr._coy;if(!c)return null;
   return {isCostYarn:true,name:INW_COY_NAME,desc:'FREIGHT COST SPREAD PER KG',make:'',cat:INW_COY_NAME,category:INW_COY_NAME,
     qty:c.qty,uom:c.uom,weight:c.weight,wunit:'KGS',listPrice:c.cost,discountPct:0,rate:c.cost,tax:c.gst,billBasis:c.basis,total:c.total,itemId:''};
+}
+
+/* ══ RECORD STATUS + PREVIEW SLIDES (Print History / Reports) ════════════
+   Store 1 / Store 2 › Print History / Reports. Two things per record:
+
+   1. PREVIEW (button "Preview ▸" in the PDF / Items cell, srvOpen): every
+      paper of the record in ONE full-screen viewer, one slide at a time,
+      swiped / arrowed left-right:
+        In / Out PDF   the Store entry PDF (pdf_documents SINGLE, else TWO_PAGE)
+        Actual Bill    the Original Invoice PDF (INVOICE): the store's bill
+                       photos. On an Outward / Issue it is "Attachments".
+        Unloader       the Unloader Supervisor's item photos
+                       (inward_unload_photos by unload_info.approval_id)
+        Field Boy      the Field Boy's item photos of the PR(s) this Inward
+                       was received against (pdf_snapshot.fieldChecklist v2,
+                       only the items on this Inward)
+        Status         always the LAST slide (below)
+      Each source is one entry of SRV_SOURCES: a new kind of attachment later
+      = one more entry with when() + load(). A source that applies but has
+      nothing shows a "nothing here" slide, so the checker knows it is
+      missing rather than not looked at; one that does not apply (Field Boy
+      on a normal PO receipt) is left out. One source failing never stops the
+      others. PDF pages are drawn with pdf.js (sarvPdfJs_) only when their
+      slide is reached (plus the next one), so a long bill opens at once.
+      The Original Invoice PDF also carries the Unloader's photos at its end
+      (generateStorePdfs); those pages are recognised by their footer text
+      "UNLOADING PHOTO" and shown under Unloader only when the photos
+      themselves cannot be read, never twice.
+
+   2. STATUS (column + filter + the last slide): OKAY / HOLD / DEBIT per
+      record (SRS_STATUSES; HOLD and DEBIT need a remark), confirmed with
+      the browser's confirm box, saved by srs_status_save
+      (sql/STORE_RECORD_STATUS_MIGRATION.sql), every change in its log and
+      shown on the slide. Who may change it: the access row RPT_REC_STATUS
+      (Admin Panel › Users › Manage access › Print History / Reports rights,
+      or per store under Store access; role-wise in Tab Visibility). The
+      server decides it again (srs_can_), so a hidden button is not the only
+      lock. Without the migration the column shows "—", the filter is off
+      and the slide says what to run; the list and Preview work as before.
+      A new status later = one entry here + srs_statuses_() on the server. */
+const SRS_STATUSES=[
+  {v:'OKAY', l:'Okay', hint:'Everything matches the bill',  fg:'#166534',bg:'#dcfce7',bd:'#86efac',remark:false},
+  {v:'HOLD', l:'Hold', hint:'Something to sort out first',  fg:'#92400e',bg:'#fef3c7',bd:'#fcd34d',remark:true},
+  {v:'DEBIT',l:'Debit',hint:'A debit note is to be raised', fg:'#991b1b',bg:'#fee2e2',bd:'#fca5a5',remark:true}
+];
+const SRS_NONE='__NONE';            // filter value: no status set yet
+const SRS_RIGHT='RPT_REC_STATUS';
+let srsMap={};                      // 'inward:12' -> {status, remarks, by, emp, at}
+let srsCan=null;                    // {'STORE 1':bool,'STORE 2':bool} from the server; null = not known yet
+let srsMissing=false;               // STORE_RECORD_STATUS_MIGRATION.sql not run
+let srsMissingWarned=false;
+const SRS_ERR={
+  NO_TOKEN:'Your login session was not found. Log out and log in again from the launcher.',
+  NO_SESSION:'Your login session has ended. Log out and log in again from the launcher.',
+  USER_INACTIVE:'This login is not active any more.',
+  NOT_ALLOWED:'You do not have the right to change the record status. Ask the Admin (Admin Panel › Users › Manage access › Change record status).',
+  REMARK_REQUIRED:'Write a remark of at least 3 letters (the reason).',
+  BAD_STATUS:'That status is not known to the server. Admin: run sql/STORE_RECORD_STATUS_MIGRATION.sql again.',
+  BAD_DATA:'Some of the values are not valid.',
+  NOT_FOUND:'This record was not found. Reload the list.',
+  CANCELLED:'This record is cancelled; its status cannot be changed.',
+  TOO_MANY:'Too many records at once. Narrow the list with the date filter.'
+};
+const srsKey_=r=>r.kind+':'+r.id;
+const srsOf_=r=>srsMap[srsKey_(r)]||null;
+const srsDef_=v=>SRS_STATUSES.find(s=>s.v===v)||null;
+function srsLabel_(v){if(v===SRS_NONE)return 'Not set';const d=srsDef_(v);return d?d.l:String(v||'');}
+function srsFilterPass_(r,f){
+  if(!f||f==='ALL'||srsMissing)return true;
+  const st=srsOf_(r);
+  return f===SRS_NONE?!st:!!st&&st.status===f;
+}
+function srsCountsText_(list){
+  if(srsMissing||!list.length)return '';
+  const n={};list.forEach(r=>{const st=srsOf_(r);const k=st?st.status:SRS_NONE;n[k]=(n[k]||0)+1;});
+  return ' · '+SRS_STATUSES.map(s=>s.l+' '+(n[s.v]||0)).concat('Not set '+(n[SRS_NONE]||0)).join(' · ');
+}
+function srsChipHtml_(r,big){
+  if(srsMissing)return '<span style="color:#cbd5e1;" title="Admin: run sql/STORE_RECORD_STATUS_MIGRATION.sql">—</span>';
+  const st=srsOf_(r);
+  if(!st)return '<span style="font-size:'+(big?'11px':'9px')+';color:#94a3b8;font-weight:700;white-space:nowrap;">Not set</span>';
+  const d=srsDef_(st.status)||{l:st.status,fg:'#334155',bg:'#f1f5f9',bd:'#cbd5e1'};
+  const tip=[srsLabel_(st.status),st.remarks?'"'+st.remarks+'"':'',st.by?'by '+st.by:'',st.at?pStamp(st.at):''].filter(Boolean).join(' · ');
+  return '<span title="'+escText(tip)+'" style="display:inline-block;background:'+d.bg+';color:'+d.fg+';border:1px solid '+d.bd+';border-radius:4px;'
+    +'padding:'+(big?'3px 10px':'1px 6px')+';font-size:'+(big?'11px':'9px')+';font-weight:800;white-space:nowrap;">'+escText(String(d.l).toUpperCase())+'</span>';
+}
+function srsToken_(){try{return localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){return '';}}
+function srsMissingErr_(e){
+  const m=String((e&&e.message)||e||'');
+  return /srs_status|store_record_status/i.test(m)&&/does not exist|could not find|schema cache|not found/i.test(m);
+}
+async function srsRpc_(fn,args){
+  const r=await SB.rpc(fn,Object.assign({p_token:srsToken_()},args||{}));
+  if(r.error)throw r.error;
+  const d=r.data||{};
+  if(d.success===false){const c=String(d.error||'');const er=new Error(SRS_ERR[c]||c||'Unknown error');er.code=c;throw er;}
+  return d;
+}
+/* The statuses of the listed records (one call) and what this user may do. */
+async function srsLoad_(list){
+  if(!SB_READY||!list||!list.length)return;
+  const keys=[...new Set(list.map(srsKey_))];
+  try{
+    const d=await srsRpc_('srs_status_get',{p_keys:keys});
+    srsMissing=false;
+    const got=new Set();
+    (d.rows||[]).forEach(x=>{srsMap[x.key]=x;got.add(x.key);});
+    keys.forEach(k=>{if(!got.has(k))delete srsMap[k];});   // cleared on the server = not set here either
+    if(d.can&&typeof d.can==='object')srsCan=d.can;
+  }catch(e){
+    if(srsMissingErr_(e)){
+      srsMissing=true;
+      if(!srsMissingWarned){srsMissingWarned=true;console.warn('[SARV] Record status is not set up yet. Admin: run sql/STORE_RECORD_STATUS_MIGRATION.sql');}
+    }else console.warn('[SARV] Record statuses not loaded:',e.message||e);
+  }
+}
+// The list is store-scoped (sarvStoreQ), so a record's store is the store in use.
+const srsStoreOf_=()=>sarvStore||'STORE 2';
+/* May this user change a status here? The server's answer when known (it
+   decides on save anyway), else the same rule on the page. */
+function srsCanSet_(){
+  const s=srsStoreOf_();
+  if(srsCan&&typeof srsCan[s]==='boolean')return srsCan[s];
+  return typeof sarvStoreTabVisible==='function'?sarvStoreTabVisible(s,SRS_RIGHT):sarvTabVisible(SRS_RIGHT);
+}
+function srsFillFilter_(){
+  const sel=byId('searchStatusFilter');if(!sel||sel.dataset.srs)return;
+  sel.dataset.srs='1';
+  sel.innerHTML='<option value="ALL">All Status</option>'
+    +SRS_STATUSES.map(s=>'<option value="'+escText(s.v)+'">'+escText(s.l)+'</option>').join('')
+    +'<option value="'+SRS_NONE+'">Not set</option>';
+  sel.addEventListener('change',()=>{
+    if(srsMissing&&sel.value!=='ALL'){sel.value='ALL';return showToast('Record status is not set up yet. Admin: run <code>sql/STORE_RECORD_STATUS_MIGRATION.sql</code>.','warn');}
+    sarvRenderReports_();
+  });
+}
+window.addEventListener('DOMContentLoaded',srsFillFilter_);
+if(document.readyState!=='loading')srsFillFilter_();
+
+/* ── Preview viewer ────────────────────────────────────────────────── */
+/* SRV.i is a POSITION in srvVis_() (the arranged, not-hidden slides, Status
+   last), not an index into SRV.slides. order / hidden are the viewer's
+   arrangement (Side by side view: hide, move, drag), kept per record for
+   this page visit in SRV.layouts, and used by both views. */
+const SRV={seq:0,rec:null,row:null,slides:[],i:0,zoom:false,pick:'',hist:null,histErr:'',
+  mode:'slide',order:[],hidden:new Set(),layouts:{},drag:null,io:null};
+const SRV_SOURCES=[
+  {id:'STORE',label:r=>r.kind==='inward'?'In PDF':'Out PDF',when:()=>true,load:srvSrcStorePdf_},
+  {id:'BILL',label:r=>r.kind==='inward'?'Actual Bill':'Attachments',when:()=>true,load:srvSrcBill_},
+  {id:'UNLOAD',label:()=>'Unloader',when:r=>r.kind==='inward',load:srvSrcUnload_},
+  {id:'FIELD',label:()=>'Field Boy',when:r=>r.kind==='inward',load:srvSrcFieldBoy_}
+];
+function srvCss_(){
+  if(byId('srvCss'))return;
+  const s=document.createElement('style');s.id='srvCss';
+  s.textContent=`
+  #srvView{position:fixed;inset:0;z-index:40050;background:#0b1220;display:flex;flex-direction:column;color:#e2e8f0;font-family:'Segoe UI',system-ui,-apple-system,sans-serif}
+  #srvView .tb{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #1e293b;background:#0f172a;flex-wrap:wrap}
+  #srvView .tb .ttl{flex:1 1 220px;min-width:0}
+  #srvView .tb .ttl b{display:block;font-size:14px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #srvView .tb .ttl small{display:block;font-size:11px;color:#94a3b8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #srvView .cnt{font-size:12px;font-weight:800;color:#cbd5e1;white-space:nowrap}
+  #srvView .dl{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+  #srvView .dl button{border:1px solid #475569;background:#111827;color:#e2e8f0;border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+  #srvView .dl button:hover{background:#1e293b}#srvView .dl button:disabled{opacity:.5;cursor:wait}
+  #srvView .dl span{font-size:11px;color:#64748b;white-space:nowrap}
+  #srvView .x{border:1px solid #475569;background:transparent;color:#fff;border-radius:7px;padding:6px 12px;cursor:pointer;font-weight:700;font-size:12px}
+  #srvView .chips{display:flex;gap:6px;padding:7px 14px;overflow-x:auto;background:#0f172a;border-bottom:1px solid #1e293b}
+  #srvView .chip{border:1px solid #334155;background:#111827;color:#cbd5e1;border-radius:20px;padding:4px 11px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  #srvView .chip i{font-style:normal;color:#64748b;margin-left:4px}
+  #srvView .chip.on{background:#e2e8f0;border-color:#e2e8f0;color:#0f172a}#srvView .chip.on i{color:#475569}
+  #srvView .chip.none{opacity:.55}
+  #srvView .chip-hint{font-size:11px;color:#64748b;align-self:center;white-space:nowrap}
+  #srvView .x.md{background:#1e293b;border-color:#334155}
+  #srvView .gv{flex:1;flex-direction:column;overflow:auto;background:#0b1220}
+  #srvView .gbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 14px;background:#0f172a;border-bottom:1px solid #1e293b}
+  #srvView .gbar .sp{flex:1}
+  #srvView .lb{font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-right:2px}
+  #srvView .gb{border:1px solid #334155;background:#111827;color:#cbd5e1;border-radius:6px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+  #srvView .gb.on{background:#e2e8f0;border-color:#e2e8f0;color:#0f172a}
+  #srvView .gb.pr{background:#e2e8f0;color:#0f172a;border-color:#e2e8f0}
+  #srvView .gg{display:grid;gap:10px;padding:10px 14px}
+  #srvView .gt{background:#111827;border:1px solid #1e293b;border-radius:9px;display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  #srvView .gt.dragging{opacity:.4}
+  #srvView .gt.over{box-shadow:inset 4px 0 0 #60a5fa}#srvView .gt.over.after{box-shadow:inset -4px 0 0 #60a5fa}
+  #srvView .gt .gh{display:flex;align-items:center;gap:4px;padding:5px 8px;border-bottom:1px solid #1e293b;cursor:grab}
+  #srvView .gt .gh .hd{color:#475569;font-size:11px;letter-spacing:-2px}
+  #srvView .gt .gh b{font-size:11.5px;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  #srvView .gt .gh .sp{flex:1}
+  #srvView .gt .gh button{border:1px solid #334155;background:#0f172a;color:#cbd5e1;border-radius:5px;min-width:26px;height:24px;font-size:13px;cursor:pointer;padding:0 6px}
+  #srvView .gt .gh button:disabled{opacity:.3;cursor:default}
+  #srvView .gt .gh button[data-ga="hide"]:hover{background:#7f1d1d;border-color:#991b1b;color:#fff}
+  #srvView .gm{flex:1;display:flex;align-items:center;justify-content:center;background:#0b1220;padding:6px;cursor:zoom-in;min-height:120px}
+  #srvView .gm img,#srvView .gm canvas{width:100%;height:auto;object-fit:contain;background:#fff;border-radius:2px}
+  #srvView .gg.fit .gm img,#srvView .gg.fit .gm canvas{max-height:var(--srv-mh,70vh);width:auto;max-width:100%}
+  #srvView .gw{color:#94a3b8;font-size:12px;text-align:center;padding:24px 10px;line-height:1.5}#srvView .gw b{color:#e2e8f0}
+  #srvView .gc{font-size:10.5px;color:#94a3b8;padding:4px 8px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #srvView .ghid{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 14px 14px}
+  #srvView .stage{flex:1;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:pan-y}
+  #srvView .stage.zoom{overflow:auto;align-items:flex-start;justify-content:flex-start;touch-action:auto}
+  #srvView .sl{max-width:100%;max-height:100%;display:flex;align-items:center;justify-content:center;padding:10px 56px;box-sizing:border-box;width:100%;height:100%}
+  #srvView .stage.zoom .sl{max-width:none;max-height:none;width:auto;height:auto;padding:10px}
+  #srvView .sl img,#srvView .sl canvas{max-width:100%;max-height:100%;object-fit:contain;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);cursor:zoom-in;border-radius:2px}
+  #srvView .stage.zoom .sl img,#srvView .stage.zoom .sl canvas{max-width:none;max-height:none;cursor:zoom-out}
+  #srvView .nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:64px;border:1px solid #334155;background:rgba(15,23,42,.85);color:#fff;font-size:24px;border-radius:9px;cursor:pointer;z-index:2}
+  #srvView .nav:disabled{opacity:.25;cursor:default}
+  #srvView .nav.l{left:8px}#srvView .nav.r{right:8px}
+  #srvView .msg{background:#111827;border:1px dashed #334155;border-radius:12px;padding:28px 26px;max-width:520px;text-align:center;font-size:13.5px;line-height:1.55;color:#cbd5e1}
+  #srvView .msg b{display:block;color:#fff;font-size:15px;margin-bottom:6px}
+  #srvView .ft{display:flex;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid #1e293b;background:#0f172a;font-size:12px;min-height:22px}
+  #srvView .ft .cap{flex:1;min-width:0;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #srvView .ft .grp{font-weight:800;color:#fff;white-space:nowrap}
+  #srvView .ft .zm{display:inline-flex;align-items:center;border:1px solid #334155;border-radius:7px;overflow:hidden;vertical-align:middle}
+  #srvView .ft .zm button{color:#e2e8f0;padding:3px 9px;border-right:1px solid #334155;font-size:13px}
+  #srvView .ft .zm button:last-child{border-right:0}
+  #srvView .ft .zm [data-v="pct"]{min-width:52px;font-size:12px}
+  #srvView .stage.zoom{cursor:grab}
+  #srvView .ft a,#srvView .ft button{color:#93c5fd;background:none;border:0;font-weight:700;font-size:12px;cursor:pointer;text-decoration:none;white-space:nowrap}
+  #srvView .st{background:#fff;color:#0f172a;border-radius:14px;max-width:620px;width:100%;max-height:100%;overflow:auto;padding:18px 20px;box-sizing:border-box;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+  #srvView .st h3{margin:0 0 2px;font-size:16px}
+  #srvView .st .sub{font-size:11.5px;color:#64748b;margin-bottom:12px}
+  #srvView .st .cur{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:9px;padding:9px 11px;margin-bottom:12px}
+  #srvView .st .btns{display:grid;grid-template-columns:repeat(${SRS_STATUSES.length},1fr);gap:8px;margin-bottom:10px}
+  #srvView .st .sb{border:2px solid #e2e8f0;background:#fff;border-radius:11px;padding:12px 6px;cursor:pointer;text-align:center;font-family:inherit}
+  #srvView .st .sb b{display:block;font-size:15px;letter-spacing:.03em}
+  #srvView .st .sb small{display:block;font-size:10.5px;color:#64748b;margin-top:3px}
+  #srvView .st .sb:disabled{opacity:.45;cursor:not-allowed}
+  #srvView .st textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:60px;resize:vertical}
+  #srvView .st .go{margin-top:10px;width:100%;border:0;border-radius:10px;background:#0f172a;color:#fff;font-weight:800;font-size:14px;padding:12px;cursor:pointer}
+  #srvView .st .go:disabled{opacity:.4;cursor:not-allowed}
+  #srvView .st .note{font-size:11.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:10px}
+  #srvView .st .hist{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:10px}
+  #srvView .st .hist h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
+  #srvView .st .hist div{font-size:11.5px;color:#334155;padding:4px 0;border-bottom:1px solid #f1f5f9}
+  #srvView .st .hist small{color:#94a3b8}
+  #srvView .st .pv{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
+  #srvView .st .pv span{font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+  #srvView .st .pv span.ok{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+  #srvView .st .pv span.no{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+  @media (max-width:640px){#srvView .sl{padding:6px 6px}#srvView .nav{width:34px;height:52px;font-size:19px;background:rgba(15,23,42,.6)}#srvView .st{padding:14px}}`;
+  document.head.appendChild(s);
+}
+const srvReportRow_=key=>(sarvReportsAll||[]).find(r=>srsKey_(r)===key)||null;
+window.srvOpen=async function(key){
+  if(typeof sarvGuard==='function'&&!sarvGuard('PDF_VIEW'))return;
+  const r=srvReportRow_(key);if(!r)return showToast('Record not found in the list. Reload it.','warn');
+  srvCss_();
+  const seq=++SRV.seq;
+  Object.assign(SRV,{row:r,rec:null,slides:[],i:0,zoom:false,pick:'',hist:null,histErr:'',order:[],hidden:new Set()});
+  let v=byId('srvView');
+  if(!v){
+    v=document.createElement('div');v.id='srvView';v.setAttribute('role','dialog');v.setAttribute('aria-label','Record preview');
+    v.innerHTML='<div class="tb"><div class="ttl"><b data-v="t"></b><small data-v="s"></small></div><span data-v="chip"></span>'
+      +'<span class="dl" data-v="dl"></span>'
+      +'<button type="button" class="x md" data-v="mode" title="Show every page / photo side by side, hide or arrange them (G)">▦ Side by side</button>'
+      +'<span class="cnt" data-v="n"></span><button type="button" class="x" data-v="close" title="Close (Esc)">✕ Close</button></div>'
+      +'<div class="chips" data-v="chips"></div>'
+      +'<div class="stage" data-v="stage"><button type="button" class="nav l" data-v="prev" title="Previous (←)">‹</button>'
+      +'<div class="sl" data-v="slide"></div><button type="button" class="nav r" data-v="next" title="Next (→)">›</button></div>'
+      +'<div class="gv" data-v="grid" style="display:none"></div>'
+      +'<div class="ft"><span class="grp" data-v="g"></span><span class="cap" data-v="cap"></span><span data-v="act"></span></div>';
+    document.body.appendChild(v);
+    srvBind_(v);
+  }
+  v.style.display='flex';
+  document.documentElement.style.overflow='hidden';
+  const $v=k=>v.querySelector('[data-v="'+k+'"]');
+  $v('t').textContent=r.type+' · '+(r.no||'—');
+  $v('s').textContent=[r.party,r.invoice&&r.invoice!=='—'?(r.kind==='inward'?'Invoice ':'Gate Pass ')+r.invoice:'',r.date?pDate(r.date):'',sarvStoreLabel()].filter(Boolean).join(' · ');
+  $v('chip').innerHTML=srsChipHtml_(r,true);
+  $v('dl').innerHTML=srvDownloadsHtml_(r);
+  $v('chips').innerHTML='';$v('n').textContent='';
+  $v('slide').innerHTML='<div class="msg"><b>Loading…</b>Collecting the PDF, bill and photos of this record.</div>';
+  $v('g').textContent='';$v('cap').textContent='';$v('act').innerHTML='';
+  $v('prev').disabled=$v('next').disabled=true;
+  // The saved record (unload_info, req_no …): select * so a missing column never fails it.
+  try{
+    const q=await SB.from(r.kind==='inward'?'inward_entries':'outward_entries').select('*').eq('id',r.id).maybeSingle();
+    if(q.error)throw q.error;
+    SRV.rec=q.data||{};
+  }catch(e){console.warn('[SARV] Preview: record not read:',e.message||e);SRV.rec={};}
+  if(seq!==SRV.seq)return;
+  const ctx={r,rec:SRV.rec,invUnloadPages:[]};
+  /* BILL first: it may hand the Unloader pages of the Original Invoice to
+     UNLOAD (ctx.invUnloadPages); the others load in parallel. */
+  const srcs=SRV_SOURCES.filter(s=>{try{return s.when(r,ctx);}catch(e){return false;}});
+  const run=s=>Promise.resolve().then(()=>s.load(r,ctx)).then(x=>x,e=>({error:e.message||String(e)}));
+  const out={};
+  const bill=srcs.find(s=>s.id==='BILL');
+  await Promise.all(srcs.filter(s=>s.id!=='UNLOAD').map(s=>run(s).then(x=>{out[s.id]=x;})));
+  const ul=srcs.find(s=>s.id==='UNLOAD');
+  if(ul)out.UNLOAD=await run(ul);
+  if(seq!==SRV.seq)return;
+  const slides=[];
+  srcs.forEach(s=>{
+    const res=out[s.id];
+    if(res==null)return;                                     // does not apply to this record
+    const label=s.label(r);
+    const list=(res.slides||[]);
+    if(res.error)slides.push({group:s.id,label,type:'msg',title:label+' could not be loaded',text:res.error,none:true});
+    else if(!list.length)slides.push({group:s.id,label,type:'msg',title:'No '+label,text:res.empty||'Nothing is attached to this record.',none:true});
+    else list.forEach((x,i)=>slides.push(Object.assign({group:s.id,label,pos:i+1,of:list.length},x)));
+  });
+  slides.push({group:'STATUS',label:'Status',type:'status'});
+  SRV.slides=slides;
+  // The arrangement made earlier on this page visit comes back, if the slides are the same.
+  const lay=SRV.layouts[key],n=slides.length-1;
+  if(lay&&lay.n===n){SRV.order=lay.order.slice();SRV.hidden=new Set(lay.hidden);}
+  else{SRV.order=[...Array(n).keys()];SRV.hidden=new Set();}
+  SRV.key=key;
+  if(SRV.mode==='grid')srvGrid_();else srvGo_(0);
+  srvLoadHistory_(seq);
+};
+/* PDF downloads (the 1-Pg / 2-Pg / Invoice links that used to sit in the
+   list cell). The file is fetched and saved as a download; a cross-site
+   <a download> would only open it. If the fetch is refused, it opens in a
+   new tab instead, so the PDF is never out of reach. */
+const SRV_DL=[
+  {v:'SINGLE',l:'1-Pg PDF',f:'pdfSingle',hint:'Single page (landscape, both copies side by side)'},
+  {v:'TWO_PAGE',l:'2-Pg PDF',f:'pdfTwoPage',hint:'Two pages (portrait, one copy per page)'},
+  {v:'INVOICE',l:'Invoice PDF',f:'pdfInvoice',hint:'Original Invoice: every attached photo, one per page'}
+];
+function srvDownloadsHtml_(r){
+  const have=SRV_DL.filter(d=>r[d.f]);
+  if(!have.length)return '<span>No PDF in the index yet</span>';
+  return have.map(d=>'<button type="button" data-dl="'+d.v+'" title="Download: '+escText(d.hint)+'">↓ '+escText(d.l)+'</button>').join('');
+}
+async function srvDownload_(variant,btn){
+  const r=SRV.row,d=SRV_DL.find(x=>x.v===variant);if(!r||!d||!r[d.f])return;
+  const url=r[d.f];
+  let name='';try{name=decodeURIComponent(new URL(url).pathname.split('/').pop()||'');}catch(e){}
+  if(!/\.pdf$/i.test(name))name=String(r.no||'record').replace(/[^A-Za-z0-9_-]+/g,'_')+'_'+variant+'.pdf';
+  const was=btn.textContent;btn.disabled=true;btn.textContent='Downloading…';
+  try{
+    const res=await fetch(url,{cache:'no-store'});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const blob=await res.blob();
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  }catch(e){
+    console.warn('[SARV] Preview download fell back to a new tab:',e.message||e);
+    window.open(url,'_blank','noopener');
+  }finally{btn.disabled=false;btn.textContent=was;}
+}
+function srvClose_(){
+  const v=byId('srvView');if(!v||v.style.display==='none')return;
+  v.style.display='none';SRV.seq++;
+  srvKeepLayout_();
+  if(SRV.io){SRV.io.disconnect();SRV.io=null;}
+  document.documentElement.style.overflow='';
+  // Drop the drawn pages so a closed viewer does not hold big canvases.
+  SRV.slides.forEach(s=>{s.el=null;s.thumb=null;});
+}
+function srvBind_(v){
+  const $v=k=>v.querySelector('[data-v="'+k+'"]');
+  v.addEventListener('click',e=>{
+    const t=e.target;
+    if(t.closest('[data-v="close"]'))return srvClose_();
+    const dl=t.closest('[data-dl]');if(dl)return srvDownload_(dl.dataset.dl,dl);
+    if(t.closest('[data-v="mode"]'))return srvSetMode_(SRV.mode==='grid'?'slide':'grid');
+    if(SRV.mode==='grid'&&srvGridClick_(t))return;
+    if(t.closest('[data-v="prev"]'))return srvGo_(SRV.i-1);
+    if(t.closest('[data-v="next"]'))return srvGo_(SRV.i+1);
+    const ch=t.closest('[data-chip]');if(ch)return srvGo_(srvVis_().findIndex(ix=>SRV.slides[ix].group===ch.dataset.chip));
+    const zb=t.closest('[data-zoom]');
+    if(zb){const z=zb.dataset.zoom;return srvZoomTo_(z==='in'?SRV.pct*1.25:z==='out'?SRV.pct/1.25:100);}
+    // A click on the page: 200 % at that point, or back to Fit. Not at the end of a pan.
+    if(t.closest('.sl')&&(t.tagName==='IMG'||t.tagName==='CANVAS')){if(SRV._panned)return;return srvZoomTo_(SRV.pct>100?100:200,e.clientX,e.clientY);}
+    const sb=t.closest('[data-srs]');if(sb&&!sb.disabled){SRV.pick=sb.dataset.srs;return srvPaintStatus_();}
+    if(t.closest('[data-v="save"]'))return srvSaveStatus_();
+  });
+  v.addEventListener('input',e=>{if(e.target.matches('[data-v="rm"]'))srvPaintStatusBtn_();});
+  document.addEventListener('keydown',e=>{
+    if(v.style.display==='none')return;
+    const typing=e.target&&/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName);
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();if(SRV.zoom){srvZoomTo_(100);}else if(SRV.mode==='grid')srvSetMode_('slide');else srvClose_();return;}
+    if(typing)return;
+    if(e.key==='g'||e.key==='G'){e.preventDefault();return srvSetMode_(SRV.mode==='grid'?'slide':'grid');}
+    if(SRV.mode==='grid')return;
+    if(e.key==='+'||e.key==='='){e.preventDefault();return srvZoomTo_(SRV.pct*1.25);}
+    if(e.key==='-'||e.key==='_'){e.preventDefault();return srvZoomTo_(SRV.pct/1.25);}
+    if(e.key==='0'){e.preventDefault();return srvZoomTo_(100);}
+    if(e.key==='ArrowRight'){e.preventDefault();srvGo_(SRV.i+1);}
+    else if(e.key==='ArrowLeft'){e.preventDefault();srvGo_(SRV.i-1);}
+  },true);
+  // Swipe left / right (not while zoomed: then the finger pans the page).
+  const st=$v('stage');let x0=null,y0=0;
+  st.addEventListener('pointerdown',e=>{if(SRV.zoom||SRV.mode==='grid'||e.target.closest('.st'))return;x0=e.clientX;y0=e.clientY;});
+  st.addEventListener('pointerup',e=>{
+    if(x0==null)return;const dx=e.clientX-x0,dy=e.clientY-y0;x0=null;
+    if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.3)srvGo_(SRV.i+(dx<0?1:-1));
+  });
+  st.addEventListener('pointercancel',()=>{x0=null;});
+  /* Mouse wheel = zoom in / out around the pointer (10 % a notch, 25 % - 800 %);
+     Ctrl + wheel too, so the browser does not zoom the whole page instead.
+     Over the Status slide the wheel scrolls it as usual. */
+  st.addEventListener('wheel',e=>{
+    if(SRV.mode==='grid'||e.target.closest('.st'))return;
+    const c=srvCur_();if(!c||(c.type!=='pdf'&&c.type!=='img'))return;
+    e.preventDefault();
+    const step=Math.pow(1.1,Math.max(-3,Math.min(3,-e.deltaY/(e.deltaMode===1?3:100))));
+    srvZoomTo_(SRV.pct*step,e.clientX,e.clientY);
+  },{passive:false});
+  // While zoomed in, drag with the mouse to move around the page.
+  let pan=null;
+  st.addEventListener('mousedown',e=>{
+    if(!SRV.zoom||e.button!==0||e.target.closest('.st,.nav'))return;
+    pan={x:e.clientX,y:e.clientY,sl:st.scrollLeft,stp:st.scrollTop,moved:false};e.preventDefault();
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!pan)return;const dx=e.clientX-pan.x,dy=e.clientY-pan.y;
+    if(Math.abs(dx)+Math.abs(dy)>4)pan.moved=true;
+    st.scrollLeft=pan.sl-dx;st.scrollTop=pan.stp-dy;
+  });
+  window.addEventListener('mouseup',()=>{if(!pan)return;SRV._panned=pan.moved;pan=null;setTimeout(()=>{SRV._panned=false;},0);});
+  window.addEventListener('resize',()=>{if(v.style.display!=='none'&&!SRV.zoom){const c=srvCur_();SRV.slides.forEach(s=>{if(s.type==='pdf'&&s!==c)s.el=null;});}});
+  srvGridBind_(v);
+}
+function srvGo_(i){
+  const v=byId('srvView');if(!v||!SRV.slides.length)return;
+  if(SRV.mode==='grid')srvSetMode_('slide',true);
+  const vis=srvVis_();
+  if(i<0)i=0;                                   // a chip whose slides are all hidden: stay at the start
+  i=Math.max(0,Math.min(vis.length-1,i));
+  SRV.i=i;SRV.zoom=false;SRV.pct=100;
+  const $v=k=>v.querySelector('[data-v="'+k+'"]');
+  const s=SRV.slides[vis[i]];
+  $v('n').textContent=(i+1)+' / '+vis.length+(SRV.hidden.size?' · '+SRV.hidden.size+' hidden':'');
+  $v('prev').disabled=i===0;$v('next').disabled=i===vis.length-1;
+  srvPaintChips_(s.group);
+  $v('g').textContent=s.label+(s.of>1?' '+s.pos+'/'+s.of:'');
+  $v('cap').textContent=s.caption||'';$v('cap').title=s.caption||'';
+  $v('act').innerHTML=(s.type==='pdf'||s.type==='img'?'<span class="zm"><button type="button" data-zoom="out" title="Zoom out (− or mouse wheel)">−</button>'
+    +'<button type="button" data-zoom="fit" data-v="pct" title="Fit to screen (0)">100%</button>'
+    +'<button type="button" data-zoom="in" title="Zoom in (+ or mouse wheel)">+</button></span> ':'')
+    +(s.open?'<a href="'+escText(s.open)+'" target="_blank" rel="noopener">Open original ↗</a>':'');
+  const box=$v('slide');
+  if(s.type==='status'){box.innerHTML='';box.appendChild(srvStatusEl_());}
+  else if(s.type==='msg')box.innerHTML='<div class="msg"><b>'+escText(s.title||'')+'</b>'+escText(s.text||'')+'</div>';
+  else if(s.type==='img'){box.innerHTML='';const im=new Image();im.alt=s.caption||'';im.src=s.src;
+    im.onerror=()=>{box.innerHTML='<div class="msg"><b>Photo could not be shown</b>'+escText(s.caption||'')+'</div>';};box.appendChild(im);}
+  else if(s.type==='pdf')srvShowPdf_(s,box,i);
+  srvPaintZoom_();
+  // Draw the next page ahead, so swiping on feels instant.
+  const nx=SRV.slides[vis[i+1]];if(nx&&nx.type==='pdf'&&!nx.el)srvRenderPdf_(nx).catch(()=>{});
+}
+/* ── Arrangement (both views) ── */
+function srvStatusIx_(){return SRV.slides.length-1;}                 // Status is always the last slide
+function srvVis_(){return SRV.order.filter(ix=>!SRV.hidden.has(ix)).concat(SRV.slides.length?[srvStatusIx_()]:[]);}
+function srvCur_(){const v=srvVis_();return SRV.slides[v[SRV.i]]||null;}
+function srvKeepLayout_(){
+  if(SRV.key&&SRV.slides.length)SRV.layouts[SRV.key]={n:SRV.slides.length-1,order:SRV.order.slice(),hidden:[...SRV.hidden]};
+}
+/* Section chips. One by one: jump to the section. Side by side: hide / show
+   the whole section. Count = shown / all of it. */
+function srvPaintChips_(active){
+  const box=byId('srvView')?.querySelector('[data-v="chips"]');if(!box)return;
+  const groups=[];
+  SRV.slides.forEach((x,ix)=>{
+    let g=groups.find(y=>y.id===x.group);
+    if(!g)groups.push(g={id:x.group,label:x.label,n:0,shown:0,none:false});
+    if(x.type==='status')return;
+    if(x.none)g.none=true;else g.n++;
+    if(!SRV.hidden.has(ix))g.shown++;
+  });
+  const grid=SRV.mode==='grid';
+  box.innerHTML=groups.map(g=>{
+    const st=g.id==='STATUS',off=!st&&g.shown===0;
+    const on=grid?(!st&&!off):g.id===active;
+    const cnt=st?'':'<i>'+(g.none?'none':(g.shown<g.n+(g.none?1:0)&&g.n?g.shown+'/'+g.n:g.n))+'</i>';
+    return '<button type="button" class="chip'+(on?' on':'')+(g.none||off?' none':'')+'" data-chip="'+escText(g.id)+'"'
+      +(grid&&!st?' title="'+(off?'Show':'Hide')+' every slide of '+escText(g.label)+'"':'')+'>'
+      +escText(g.label)+cnt+(grid&&!st&&off?' <i>hidden</i>':'')+'</button>';
+  }).join('')+(grid?'<span class="chip-hint">Tap a section to hide / show it</span>':'');
+}
+const SRV_GRID_KEY='sarv_srv_grid';
+function srvGridPref_(){
+  let p={cols:'AUTO',fit:true};
+  try{const x=JSON.parse(localStorage.getItem(SRV_GRID_KEY)||'null');if(x&&typeof x==='object')p=Object.assign(p,x);}catch(e){}
+  return p;
+}
+function srvGridPrefSave_(p){try{localStorage.setItem(SRV_GRID_KEY,JSON.stringify(p));}catch(e){}}
+function srvSetMode_(m,silent){
+  const v=byId('srvView');if(!v)return;
+  SRV.mode=m;SRV.zoom=false;SRV.pct=100;
+  const $v=k=>v.querySelector('[data-v="'+k+'"]');
+  const g=m==='grid';
+  $v('stage').style.display=g?'none':'';
+  v.querySelector('.ft').style.display=g?'none':'';
+  $v('grid').style.display=g?'flex':'none';
+  $v('mode').textContent=g?'▭ One by one':'▦ Side by side';
+  $v('mode').title=g?'Back to one slide at a time (G / Esc)':'Show every page / photo side by side, hide or arrange them (G)';
+  if(g){srvGrid_();return;}
+  if(SRV.io){SRV.io.disconnect();SRV.io=null;}
+  if(!silent)srvGo_(SRV.i);
+}
+/* ── Side by side view ──
+   Every page / photo at once, in the arranged order. Each tile can be moved
+   (‹ › or dragged), hidden (✕; listed under Hidden to bring back) or opened
+   one by one (⤢ or a click on it). Columns Auto / 1-4 and "Fit screen" (each
+   tile as tall as the screen allows, so 2 columns = two pages side by side
+   at full height) are remembered on this device. PDF pages are drawn for
+   the tile width only when a tile scrolls into view. */
+function srvGrid_(){
+  const v=byId('srvView');if(!v)return;
+  const gv=v.querySelector('[data-v="grid"]');
+  const p=srvGridPref_(),vis=SRV.order.filter(ix=>!SRV.hidden.has(ix)),hid=SRV.order.filter(ix=>SRV.hidden.has(ix));
+  const nm=s=>s.label+(s.of>1?' '+s.pos+'/'+s.of:'');
+  v.querySelector('[data-v="n"]').textContent=vis.length+' shown'+(hid.length?' · '+hid.length+' hidden':'');
+  srvPaintChips_('');
+  const moved=SRV.order.some((ix,k)=>ix!==k);
+  const cols=p.cols==='AUTO'?'repeat(auto-fit,minmax(min(320px,100%),1fr))':'repeat('+(+p.cols||2)+',minmax(0,1fr))';
+  gv.innerHTML='<div class="gbar"><span class="lb">Columns</span>'
+    +['AUTO','1','2','3','4'].map(c=>'<button type="button" class="gb'+(String(p.cols)===c?' on':'')+'" data-gc="'+c+'">'+(c==='AUTO'?'Auto':c)+'</button>').join('')
+    +'<button type="button" class="gb'+(p.fit?' on':'')+'" data-gfit="1" title="Each tile as tall as the screen">Fit screen</button>'
+    +'<span class="sp"></span>'
+    +(hid.length?'<button type="button" class="gb" data-ga="showall">Show all ('+hid.length+' hidden)</button>':'')
+    +(moved?'<button type="button" class="gb" data-ga="reset" title="Back to the original order">Reset order</button>':'')
+    +'<button type="button" class="gb pr" data-ga="status">Status ▸</button></div>'
+    +'<div class="gg'+(p.fit?' fit':'')+'" style="grid-template-columns:'+cols+'">'
+    +(vis.length?vis.map((ix,k)=>{const s=SRV.slides[ix];
+      return '<div class="gt" draggable="true" data-ix="'+ix+'"><div class="gh" title="Drag to move">'
+        +'<span class="hd">⋮⋮</span><b>'+escText(nm(s))+'</b><span class="sp"></span>'
+        +'<button type="button" data-ga="left" data-ix="'+ix+'"'+(k===0?' disabled':'')+' title="Move earlier">‹</button>'
+        +'<button type="button" data-ga="right" data-ix="'+ix+'"'+(k===vis.length-1?' disabled':'')+' title="Move later">›</button>'
+        +'<button type="button" data-ga="open" data-ix="'+ix+'" title="Open one by one, from here">⤢</button>'
+        +'<button type="button" data-ga="hide" data-ix="'+ix+'" title="Hide (in both views)">✕</button></div>'
+        +'<div class="gm" data-gopen="'+ix+'">'
+        +(s.type==='img'?'<img src="'+escText(s.src)+'" alt="" draggable="false" loading="lazy">'
+          :s.type==='pdf'?'<div class="gw" data-thumb="'+ix+'">Drawing page…</div>'
+          :'<div class="gw"><b>'+escText(s.title||'')+'</b><br>'+escText(s.text||'')+'</div>')
+        +'</div><div class="gc" title="'+escText(s.caption||'')+'">'+escText(s.caption||'')+'</div></div>';}).join('')
+      :'<div class="gw" style="grid-column:1/-1">Everything is hidden. Use Show all, or tap a section above.</div>')
+    +'</div>'
+    +(hid.length?'<div class="ghid"><span class="lb">Hidden</span>'+hid.map(ix=>'<button type="button" class="gb" data-ga="show" data-ix="'+ix+'" title="Show it again">+ '+escText(nm(SRV.slides[ix]))+'</button>').join('')+'</div>':'');
+  // Fit screen: the height left for one row of tiles.
+  const bar=gv.querySelector('.gbar');
+  gv.style.setProperty('--srv-mh',Math.max(220,gv.clientHeight-(bar?bar.offsetHeight:0)-84)+'px');
+  if(SRV.io)SRV.io.disconnect();
+  SRV.io=('IntersectionObserver' in window)?new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){SRV.io.unobserve(e.target);srvFillThumb_(e.target);}}),{root:gv,rootMargin:'400px'}):null;
+  gv.querySelectorAll('[data-thumb]').forEach(el=>SRV.io?SRV.io.observe(el):srvFillThumb_(el));
+}
+async function srvFillThumb_(el){
+  const s=SRV.slides[+el.dataset.thumb];if(!s)return;
+  const seq=SRV.seq;
+  try{
+    const c=await srvRenderThumb_(s,Math.max(240,el.clientWidth||400));
+    if(seq!==SRV.seq||!el.isConnected)return;
+    el.replaceWith(c);
+  }catch(e){if(el.isConnected)el.textContent='This page could not be drawn: '+(e.message||e);}
+}
+/* A PDF page for a tile: its own canvas (the one-by-one canvas can be on the
+   screen once only), drawn for the tile width x device pixels, kept until a
+   clearly wider tile needs a sharper one. */
+async function srvRenderThumb_(s,cssW){
+  const want=Math.min(2200,Math.round(cssW*Math.min(2,Math.max(1.5,window.devicePixelRatio||1))));
+  if(s.thumb&&s.thumbW>=want*0.8){if(s.thumb.isConnected){const c=document.createElement('canvas');c.width=s.thumb.width;c.height=s.thumb.height;c.getContext('2d').drawImage(s.thumb,0,0);return c;}return s.thumb;}
+  const page=await s.doc.getPage(s.page);
+  const vp1=page.getViewport({scale:1});
+  const vp=page.getViewport({scale:want/vp1.width});
+  const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+  await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+  s.thumb=c;s.thumbW=want;return c;
+}
+function srvMove_(ix,delta){
+  const vis=SRV.order.filter(i=>!SRV.hidden.has(i)),p=vis.indexOf(ix),q=p+delta;
+  if(p<0||q<0||q>=vis.length)return;
+  const a=SRV.order.indexOf(ix),b=SRV.order.indexOf(vis[q]);
+  SRV.order[a]=vis[q];SRV.order[b]=ix;
+}
+function srvMoveTo_(ix,target,after){
+  if(ix===target)return;
+  SRV.order.splice(SRV.order.indexOf(ix),1);
+  SRV.order.splice(SRV.order.indexOf(target)+(after?1:0),0,ix);
+}
+// Clicks in the Side by side view; true = handled.
+function srvGridClick_(t){
+  const gc=t.closest('[data-gc]');if(gc){const p=srvGridPref_();p.cols=gc.dataset.gc;srvGridPrefSave_(p);srvGrid_();return true;}
+  if(t.closest('[data-gfit]')){const p=srvGridPref_();p.fit=!p.fit;srvGridPrefSave_(p);srvGrid_();return true;}
+  const ch=t.closest('[data-chip]');
+  if(ch){
+    const g=ch.dataset.chip;
+    if(g==='STATUS'){srvGo_(srvVis_().length-1);return true;}
+    const ixs=SRV.slides.map((s,ix)=>s.group===g&&s.type!=='status'?ix:-1).filter(ix=>ix>=0);
+    const anyShown=ixs.some(ix=>!SRV.hidden.has(ix));
+    ixs.forEach(ix=>anyShown?SRV.hidden.add(ix):SRV.hidden.delete(ix));
+    srvKeepLayout_();srvGrid_();return true;
+  }
+  const a=t.closest('[data-ga]');
+  if(a){
+    if(a.disabled)return true;
+    const ix=+a.dataset.ix,act=a.dataset.ga;
+    if(act==='status'){srvGo_(srvVis_().length-1);return true;}
+    if(act==='open'){srvGo_(srvVis_().indexOf(ix));return true;}
+    if(act==='hide')SRV.hidden.add(ix);
+    else if(act==='show')SRV.hidden.delete(ix);
+    else if(act==='showall')SRV.hidden.clear();
+    else if(act==='reset')SRV.order=[...Array(SRV.slides.length-1).keys()];
+    else if(act==='left'||act==='right')srvMove_(ix,act==='left'?-1:1);
+    srvKeepLayout_();srvGrid_();return true;
+  }
+  const op=t.closest('[data-gopen]');
+  if(op){srvGo_(srvVis_().indexOf(+op.dataset.gopen));return true;}
+  return t.closest('[data-v="grid"]')?true:false;
+}
+// Drag a tile onto another: it goes before it (left half) or after it (right half).
+function srvGridBind_(v){
+  const gv=v.querySelector('[data-v="grid"]');
+  const clear=()=>gv.querySelectorAll('.gt.over,.gt.dragging').forEach(x=>x.classList.remove('over','dragging','after'));
+  gv.addEventListener('dragstart',e=>{
+    const t=e.target.closest&&e.target.closest('.gt');if(!t)return;
+    SRV.drag=+t.dataset.ix;t.classList.add('dragging');
+    try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(SRV.drag));}catch(x){}
+  });
+  gv.addEventListener('dragover',e=>{
+    const t=e.target.closest&&e.target.closest('.gt');if(!t||SRV.drag==null)return;
+    e.preventDefault();
+    const r=t.getBoundingClientRect(),after=e.clientX>r.left+r.width/2;
+    gv.querySelectorAll('.gt.over').forEach(x=>{if(x!==t)x.classList.remove('over','after');});
+    t.classList.add('over');t.classList.toggle('after',after);
+  });
+  gv.addEventListener('drop',e=>{
+    const t=e.target.closest&&e.target.closest('.gt');
+    if(t&&SRV.drag!=null){
+      e.preventDefault();
+      const r=t.getBoundingClientRect();
+      srvMoveTo_(SRV.drag,+t.dataset.ix,e.clientX>r.left+r.width/2);
+      SRV.drag=null;clear();srvKeepLayout_();srvGrid_();
+    }
+  });
+  gv.addEventListener('dragend',()=>{SRV.drag=null;clear();});
+  window.addEventListener('resize',()=>{if(v.style.display!=='none'&&SRV.mode==='grid'){clearTimeout(SRV._rz);SRV._rz=setTimeout(srvGrid_,200);}});
+}
+/* Zoom in percent of "fits the screen" (100 %). SRV.zoom = zoomed in past
+   100 %: the stage then scrolls / pans and a swipe does not change slide. */
+const SRV_ZMIN=25,SRV_ZMAX=800;
+function srvPaintZoom_(){
+  const st=byId('srvView')?.querySelector('[data-v="stage"]');if(!st)return;
+  const pct=SRV.pct||100;SRV.zoom=pct>100;
+  st.classList.toggle('zoom',SRV.zoom);
+  const el=st.querySelector('.sl img,.sl canvas');
+  if(el){
+    if(pct===100){el.style.width='';el.style.height='';el.style.maxWidth='';el.style.maxHeight='';}
+    else{
+      const f=srvFitSize_(el,st);
+      el.style.maxWidth='none';el.style.maxHeight='none';
+      el.style.width=Math.round(f.w*pct/100)+'px';el.style.height=Math.round(f.h*pct/100)+'px';
+    }
+  }
+  const lb=byId('srvView')?.querySelector('[data-v="pct"]');if(lb)lb.textContent=Math.round(pct)+'%';
+}
+// The size the page has at 100 % (fitted inside the stage, as the CSS fits it).
+function srvFitSize_(el,st){
+  const nw=el.naturalWidth||el.width||1,nh=el.naturalHeight||el.height||1;
+  const pad=window.innerWidth<=640?12:112;
+  const W=Math.max(100,st.clientWidth-pad),H=Math.max(100,st.clientHeight-20);
+  // A photo is never blown up past its own size at 100 % (max-width:100% only shrinks); a PDF canvas is drawn larger anyway.
+  const k=Math.min(W/nw,H/nh,el.tagName==='IMG'?1:Infinity);
+  return {w:nw*k,h:nh*k};
+}
+/* Zoom to pct (clamped), keeping the point under (cx, cy) where it is. A PDF
+   page is drawn again, sharper, once the zoom goes past what its canvas holds. */
+function srvZoomTo_(pct,cx,cy){
+  const st=byId('srvView')?.querySelector('[data-v="stage"]');if(!st)return;
+  const el=st.querySelector('.sl img,.sl canvas');if(!el)return;
+  pct=Math.max(SRV_ZMIN,Math.min(SRV_ZMAX,Math.round(pct)));
+  if(Math.abs(pct-100)<4)pct=100;
+  const r0=el.getBoundingClientRect(),sr=st.getBoundingClientRect();
+  if(cx==null){cx=sr.left+sr.width/2;cy=sr.top+sr.height/2;}
+  const fx=r0.width?(cx-r0.left)/r0.width:.5,fy=r0.height?(cy-r0.top)/r0.height:.5;
+  SRV.pct=pct;srvPaintZoom_();
+  if(SRV.zoom){
+    const r1=el.getBoundingClientRect();
+    st.scrollLeft+=(r1.left+fx*r1.width)-cx;
+    st.scrollTop+=(r1.top+fy*r1.height)-cy;
+  }
+  const s=srvCur_();
+  if(s&&s.type==='pdf'&&s.el&&pct/100>(s.dpr||2)*0.9){clearTimeout(SRV._sh);SRV._sh=setTimeout(()=>srvSharpen_(s),250);}
+}
+async function srvSharpen_(s){
+  if(srvCur_()!==s||!s.el||s._sharp)return;
+  const want=Math.min(3.5,(SRV.pct/100)*1.4);
+  if((s.dpr||2)>=want)return;
+  s._sharp=true;
+  try{
+    const page=await s.doc.getPage(s.page);
+    const vp1=page.getViewport({scale:1}),fitScale=s.el.width/(s.dpr||2)/vp1.width;
+    const scale=Math.min(fitScale*want,6000/Math.max(vp1.width,vp1.height));
+    const vp=page.getViewport({scale});
+    const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+    await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    if(srvCur_()!==s||!s.el||!s.el.isConnected)return;
+    c.style.cssText=s.el.style.cssText;
+    s.el.replaceWith(c);s.dpr=scale/fitScale;s.el=c;
+  }catch(e){console.warn('[SARV] Sharper page skipped:',e.message||e);}
+  finally{s._sharp=false;}
+}
+async function srvShowPdf_(s,box,i){
+  if(s.el){box.innerHTML='';box.appendChild(s.el);srvPaintZoom_();return;}
+  box.innerHTML='<div class="msg"><b>Drawing page…</b>'+escText(s.caption||'')+'</div>';
+  try{
+    await srvRenderPdf_(s);
+    if(SRV.i!==i||!byId('srvView')||byId('srvView').style.display==='none')return;
+    box.innerHTML='';box.appendChild(s.el);srvPaintZoom_();
+  }catch(e){
+    if(SRV.i===i)box.innerHTML='<div class="msg"><b>This page could not be drawn</b>'+escText(e.message||String(e))
+      +(s.open?'<br><br><a style="color:#93c5fd" href="'+escText(s.open)+'" target="_blank" rel="noopener">Open the PDF ↗</a>':'')+'</div>';
+  }
+}
+/* One PDF page as a canvas, sharp enough to zoom 2x: drawn at twice the size
+   that fits the stage (capped), shown fitted by CSS. */
+async function srvRenderPdf_(s){
+  if(s.el)return s.el;
+  if(s._p)return s._p;
+  s._p=(async()=>{
+    const page=await s.doc.getPage(s.page);
+    const st=byId('srvView')?.querySelector('[data-v="stage"]');
+    const W=Math.max(320,(st?st.clientWidth:1000)-40),H=Math.max(320,(st?st.clientHeight:700)-20);
+    const vp1=page.getViewport({scale:1});
+    const fit=Math.min(W/vp1.width,H/vp1.height);
+    const dpr=Math.min(2.5,Math.max(2,window.devicePixelRatio||1));
+    const scale=Math.min(fit*dpr,4000/Math.max(vp1.width,vp1.height));
+    const vp=page.getViewport({scale});
+    const c=document.createElement('canvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+    await page.render({canvasContext:c.getContext('2d'),viewport:vp}).promise;
+    s.dpr=scale/fit;s.el=c;return c;
+  })().finally(()=>{s._p=null;});
+  return s._p;
+}
+async function srvPdfDoc_(url){
+  const lib=await sarvPdfJs_();
+  return lib.getDocument({url,withCredentials:false}).promise;
+}
+/* ── The sources (see SRV_SOURCES) ──
+   load(r, ctx) returns {slides:[…], empty:'why there is nothing'} or null when
+   the source does not apply to this record. A slide is {type:'pdf', doc, page,
+   caption, open} or {type:'img', src, caption, open}. */
+async function srvSrcStorePdf_(r){
+  const url=r.pdfSingle||r.pdfTwoPage;
+  if(!url)return {slides:[],empty:'The '+(r.kind==='inward'?'In':'Out')+' PDF is not in the PDF index yet (still uploading from the PC that saved it, or an old record).'};
+  const doc=await srvPdfDoc_(url),n=doc.numPages,slides=[];
+  for(let p=1;p<=n;p++)slides.push({type:'pdf',doc,page:p,open:url,caption:(r.pdfSingle?'Store entry PDF':'Store entry PDF (two-page)')+(n>1?' · page '+p+' of '+n:'')});
+  return {slides};
+}
+async function srvSrcBill_(r,ctx){
+  const url=r.pdfInvoice;
+  const what=r.kind==='inward'?'bill':'attachment';
+  if(!url)return {slides:[],empty:'No '+what+' photo was attached when this record was saved (no Original Invoice PDF).'};
+  const doc=await srvPdfDoc_(url),n=doc.numPages,slides=[];
+  for(let p=1;p<=n;p++){
+    // The Unloader's photos are appended to this PDF; their footer names them.
+    let txt='';
+    try{const page=await doc.getPage(p);const tc=await page.getTextContent();txt=tc.items.map(x=>x.str).join(' ');}catch(e){}
+    const cap=(txt.match(/((?:UNLOADING PHOTO|Photo)[^·]*?)\s+·\s+Printed:/i)||[])[1]||'';
+    const s={type:'pdf',doc,page:p,open:url,caption:(r.kind==='inward'?'Actual bill':'Attachment')+' · page '+p+' of '+n+(cap?' · '+cap.trim():'')};
+    if(/UNLOADING PHOTO/i.test(txt)&&r.kind==='inward'){ctx.invUnloadPages.push(Object.assign({},s,{caption:cap.trim()||('Unloading photo · Original Invoice page '+p)}));continue;}
+    slides.push(s);
+  }
+  // Every page was an Unloader photo: then the store attached no bill of its own.
+  return {slides,empty:'The Original Invoice PDF holds only the Unloader\'s photos; no bill photo of its own.'};
+}
+async function srvSrcUnload_(r,ctx){
+  const u=unloadInfoFrom_(ctx.rec&&ctx.rec.unload_info);
+  const who=u?(u.name+(u.empCode?' ('+u.empCode+')':'')+(u.at?' · '+pStamp(u.at):'')):'';
+  let photos=[];
+  if(u&&u.approvalId){
+    try{
+      const q=await SB.from('inward_unload_photos').select('seq,image_data').eq('approval_id',u.approvalId).order('seq');
+      if(q.error)throw q.error;
+      photos=(q.data||[]).filter(p=>String(p.image_data||'').startsWith('data:image'));
+    }catch(e){
+      console.warn('[SARV] Preview: Unloader photos not read:',e.message||e);
+      if(ctx.invUnloadPages.length)return {slides:ctx.invUnloadPages};
+      throw e;
+    }
+  }
+  if(photos.length)return {slides:photos.map((p,i)=>({type:'img',src:p.image_data,
+    caption:'Unloading photo '+(i+1)+' of '+photos.length+(who?' · verified by '+who:'')}))};
+  if(ctx.invUnloadPages.length)return {slides:ctx.invUnloadPages};
+  return {slides:[],empty:u?('Verified by '+who+', but no photo was saved.'):'This Inward was not verified by an Unloader Supervisor (an older entry, an Admin edit, or saved before the Unloader step).'};
+}
+async function srvSrcFieldBoy_(r,ctx){
+  const nos=String((ctx.rec&&ctx.rec.req_no)||'').split(',').map(s=>s.trim()).filter(Boolean);
+  if(!nos.length)return null;
+  const q=await SB.from('purchase_requirements').select('id,req_no,purchaser_name,pdf_snapshot').in('req_no',nos);
+  if(q.error)throw q.error;
+  await sarvLoadFieldBoys_();
+  const prs=(q.data||[]).filter(prIsFieldBoy_);
+  if(!prs.length)return null;                                   // not a Field Boy purchase: nothing to show
+  const lq=await SB.from('purchase_requirement_lines').select('*').in('requirement_id',prs.map(p=>p.id)).order('id');
+  if(lq.error)throw lq.error;
+  // Only the items on THIS Inward (a PR may be received over several entries).
+  let mine=null;
+  try{
+    const il=await SB.from('inward_lines').select('item_id').eq('inward_id',r.id);
+    if(!il.error)mine=new Set((il.data||[]).map(x=>String(x.item_id||'')).filter(Boolean));
+  }catch(e){}
+  const lines=(lq.data||[]).filter(l=>!mine||!mine.size||mine.has(String(l.item_id||'')));
+  const names=await prItemNameMap_(lines.map(l=>l.item_id));
+  const slides=[];
+  lines.forEach(l=>{
+    const pr=prs.find(p=>p.id===l.requirement_id);
+    const fc=((pr&&pr.pdf_snapshot)||{}).fieldChecklist||{};
+    const ln=(fc.lines||{})[String(l.id)]||{};
+    const ph=(ln.photo&&typeof ln.photo==='object')?ln.photo:null;
+    if(!ph||!ph.url)return;
+    const nm=(names.get(l.item_id)||{}).name||l.item_name||('Item '+(l.item_id||''));
+    slides.push({type:'img',src:ph.url,open:/^https?:/i.test(ph.url)?ph.url:'',
+      caption:nm+' · Qty '+(l.qty!=null?l.qty:'-')+(l.uom?' '+l.uom:'')+' · '+(pr.req_no||'')+' · '+(pr.purchaser_name||'Field Boy')
+        +(ph.at?' · '+pStamp(ph.at):'')+' · '+(ln.status||'NEW')});
+  });
+  return {slides,empty:'Field Boy PR '+prs.map(p=>p.req_no).join(', ')+': no item photo for the items on this Inward.'};
+}
+/* ── The Status slide ── */
+async function srvLoadHistory_(seq){
+  if(srsMissing||!SB_READY||!SRV.row)return;
+  try{
+    const d=await srsRpc_('srs_status_history',{p_kind:SRV.row.kind,p_record_id:String(SRV.row.id)});
+    if(seq!==SRV.seq)return;
+    SRV.hist=d.rows||[];SRV.histErr='';
+  }catch(e){if(seq!==SRV.seq)return;if(srsMissingErr_(e))srsMissing=true;SRV.hist=[];SRV.histErr=e.message||String(e);}
+  if(SRV.slides[SRV.i]&&SRV.slides[SRV.i].type==='status')srvPaintStatus_();
+}
+function srvStatusEl_(){
+  const el=document.createElement('div');el.className='st';el.setAttribute('data-v','stbox');
+  setTimeout(srvPaintStatus_,0);
+  return el;
+}
+function srvPaintStatus_(){
+  const box=byId('srvView')?.querySelector('[data-v="stbox"]');if(!box||!SRV.row)return;
+  const r=SRV.row,cur=srsOf_(r),can=srsCanSet_()&&!r.cancelled&&!srsMissing;
+  const keepRm=box.querySelector('[data-v="rm"]')?.value;
+  // What was looked at: one tag per source, green when it had something.
+  const seen=[];SRV.slides.forEach(s=>{if(s.type==='status')return;let g=seen.find(x=>x.id===s.group);if(!g)seen.push(g={id:s.group,label:s.label,n:0});if(!s.none)g.n++;});
+  const pick=SRV.pick||(cur&&cur.status)||'';
+  const note=srsMissing?'Record status is not set up yet. Admin: run sql/STORE_RECORD_STATUS_MIGRATION.sql in the Supabase SQL Editor.'
+    :r.cancelled?'This record is cancelled; its status cannot be changed.'
+    :!srsCanSet_()?'You can see the status, but not change it. The Admin can give the right in Admin Panel › Users › Manage access › Change record status.'
+    :'';
+  box.innerHTML='<h3>Record status</h3><div class="sub">'+escText(r.type+' · '+(r.no||'—')+' · '+(r.party||''))+'</div>'
+    +'<div class="pv">'+seen.map(g=>'<span class="'+(g.n?'ok':'no')+'">'+escText(g.label)+': '+(g.n?g.n+' slide'+(g.n>1?'s':''):'none')+'</span>').join('')+'</div>'
+    +'<div class="cur">Now: '+srsChipHtml_(r,true)+(cur?'<span>'+escText([cur.remarks?'“'+cur.remarks+'”':'',cur.by?'by '+cur.by+(cur.emp?' ('+cur.emp+')':''):'',cur.at?pStamp(cur.at):''].filter(Boolean).join(' · '))+'</span>':'')+'</div>'
+    +(note?'<div class="note">'+escText(note)+'</div>':'')
+    +'<div class="btns">'+SRS_STATUSES.map(s=>{const on=pick===s.v;
+      return '<button type="button" class="sb" data-srs="'+escText(s.v)+'"'+(can?'':' disabled')
+        +' style="'+(on?'border-color:'+s.fg+';background:'+s.bg+';':'')+'"><b style="color:'+s.fg+'">'+escText(s.l.toUpperCase())+'</b><small>'+escText(s.hint)+'</small></button>';}).join('')+'</div>'
+    +(can?'<textarea data-v="rm" placeholder="Remarks'+(srsDef_(pick)&&srsDef_(pick).remark?' (needed for '+escText(srsLabel_(pick))+')':' (optional for Okay)')+'"></textarea>'
+      +'<button type="button" class="go" data-v="save">Confirm status</button>':'')
+    +'<div class="hist"><h4>History</h4>'+(SRV.hist==null?'<div><small>Loading…</small></div>'
+      :SRV.histErr?'<div><small>'+escText(SRV.histErr)+'</small></div>'
+      :SRV.hist.length?SRV.hist.map(h=>'<div><b>'+escText(srsLabel_(h.status))+'</b>'+(h.old?' <small>(was '+escText(srsLabel_(h.old))+')</small>':'')
+        +(h.remarks?' · “'+escText(h.remarks)+'”':'')+'<br><small>'+escText([h.by?h.by+(h.emp?' ('+h.emp+')':''):'',h.at?pStamp(h.at):''].filter(Boolean).join(' · '))+'</small></div>').join('')
+      :'<div><small>No status set yet.</small></div>')+'</div>';
+  const rm=box.querySelector('[data-v="rm"]');
+  if(rm)rm.value=keepRm!=null?keepRm:'';
+  srvPaintStatusBtn_();
+}
+function srvPaintStatusBtn_(){
+  const box=byId('srvView')?.querySelector('[data-v="stbox"]');if(!box)return;
+  const go=box.querySelector('[data-v="save"]');if(!go)return;
+  const d=srsDef_(SRV.pick),rm=(box.querySelector('[data-v="rm"]')?.value||'').trim();
+  const cur=srsOf_(SRV.row);
+  go.disabled=!d||(d.remark&&rm.length<3)||(cur&&cur.status===SRV.pick&&rm===(cur.remarks||''));
+  go.textContent=!d?'Pick Okay, Hold or Debit':(d.remark&&rm.length<3)?'Write the reason for '+d.l:'Confirm: '+d.l.toUpperCase();
+}
+async function srvSaveStatus_(){
+  const r=SRV.row,d=srsDef_(SRV.pick);if(!r||!d)return;
+  const box=byId('srvView')?.querySelector('[data-v="stbox"]');
+  const rm=(box?.querySelector('[data-v="rm"]')?.value||'').trim();
+  if(d.remark&&rm.length<3)return showToast(SRS_ERR.REMARK_REQUIRED,'warn');
+  const cur=srsOf_(r);
+  if(!confirm('Set '+r.type+' '+(r.no||'')+' to '+d.l.toUpperCase()+'?'+(cur?'\n(Now: '+srsLabel_(cur.status)+')':'')+(rm?'\n\nRemark: '+rm:'')))return;
+  const go=box?.querySelector('[data-v="save"]');if(go){go.disabled=true;go.textContent='Saving…';}
+  const seq=SRV.seq;
+  try{
+    const res=await srsRpc_('srs_status_save',{p_kind:r.kind,p_record_id:String(r.id),p_status:d.v,p_remarks:rm});
+    if(res.row)srsMap[res.row.key||srsKey_(r)]=res.row;
+    SRV.pick='';
+    if(box?.querySelector('[data-v="rm"]'))box.querySelector('[data-v="rm"]').value='';
+    showToast(escText(r.no||'Record')+' marked <b>'+escText(d.l.toUpperCase())+'</b>.');
+    sarvRenderReports_();
+    if(seq===SRV.seq){
+      const c=byId('srvView')?.querySelector('[data-v="chip"]');if(c)c.innerHTML=srsChipHtml_(r,true);
+      SRV.hist=null;srvPaintStatus_();srvLoadHistory_(seq);
+    }
+  }catch(e){
+    if(srsMissingErr_(e)){srsMissing=true;srvPaintStatus_();}
+    if(e.code==='NOT_ALLOWED'&&srsCan)srsCan[srsStoreOf_()]=false;
+    showToast('Status not saved: '+escText(e.message||e),'error');
+    if(seq===SRV.seq)srvPaintStatus_();
+  }
 }

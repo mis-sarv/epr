@@ -731,6 +731,12 @@
                         <option value="ISSUE">&nbsp;&nbsp;↳ ISSUE</option>
                     </select>
 
+                    <!-- Record status filter (RECORD STATUS section in store-core.js; options filled from SRS_STATUSES) -->
+                    <select class="form-control" id="searchStatusFilter" title="Record status (set in Preview)"
+                        style="width:130px; font-weight:600; color:#0f172a; flex-shrink:0;">
+                        <option value="ALL">All Status</option>
+                    </select>
+
                     <!-- Date From -->
                     <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
                         <label style="font-size:10px; font-weight:700; color:#475569; white-space:nowrap;">FROM</label>
@@ -780,6 +786,7 @@
                         <thead>
                             <tr>
                                 <th style="width:5%;">Type</th>
+                                <th style="width:7%; text-align:center;">Status</th>
                                 <th style="width:13%;">Record No.</th>
                                 <th style="width:10%;">Invoice No.</th>
                                 <th style="width:8%;">Date</th>
@@ -793,7 +800,7 @@
                         </thead>
                         <tbody id="searchResultsBody">
                             <tr>
-                                <td colspan="10" style="text-align:center; padding:30px; color:#94a3b8;">
+                                <td colspan="11" style="text-align:center; padding:30px; color:#94a3b8;">
                                     Loading all records...
                                 </td>
                             </tr>

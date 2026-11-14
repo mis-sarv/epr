@@ -383,6 +383,68 @@
         .tp-sheet tr.tp-total td.tp-big { color: #e00000; background: #ffff00; text-decoration: underline; font-size: 17px; }
         /* Labour sheets (lbSheetHtml) — same layout as the paper sheets */
         #labour-panel { display: none; }
+        #dfu-panel { display: none; }
+        /* Dispatch Follow-Up (DFU) */
+        .dfu-note { margin-top:10px; background:#fffbeb; border:1px solid #fde68a; color:#92400e; border-radius:8px; padding:9px 12px; font-size:12.5px; }
+        .dfu-kpis { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 8px; }
+        .dfu-kpi { flex:1 1 120px; background:#fff; border:1px solid var(--border); border-radius:10px; padding:9px 12px; text-align:left; cursor:pointer; font-family:inherit; }
+        .dfu-kpi b { display:block; font-size:20px; color:var(--text-main); }
+        .dfu-kpi span { font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:.03em; }
+        .dfu-kpi.bad b { color:#b91c1c; } .dfu-kpi.ok b { color:#15803d; }
+        .dfu-pipeline { display:flex; align-items:stretch; gap:4px; overflow-x:auto; padding:2px 0 10px; }
+        .dfu-pipe { flex:1 0 110px; background:#fff; border:1px solid var(--border); border-radius:9px; padding:7px 9px; cursor:pointer; text-align:left; font-family:inherit; }
+        .dfu-pipe span { display:block; font-size:10.5px; font-weight:700; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .dfu-pipe b { font-size:17px; color:var(--text-main); } .dfu-pipe i { font-style:normal; font-size:10.5px; color:#b91c1c; font-weight:700; margin-left:5px; }
+        .dfu-pipe.on { border-color:var(--primary); box-shadow:0 0 0 2px #bfdbfe; }
+        .dfu-arrow { align-self:center; color:#cbd5e1; font-size:18px; }
+        .dfu-card { padding:12px 14px !important; margin-bottom:10px; border-left:4px solid #93c5fd; }
+        .dfu-card.over { border-left-color:#ef4444; } .dfu-card.fin { border-left-color:#22c55e; }
+        .dfu-head { display:flex; align-items:center; gap:10px; cursor:pointer; flex-wrap:wrap; }
+        .dfu-ttl { flex:1 1 260px; min-width:0; font-size:14px; color:var(--text-main); }
+        .dfu-ttl small { display:block; font-size:11.5px; color:var(--text-muted); margin-top:2px; }
+        .dfu-hr { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+        .dfu-cur { font-size:12.5px; color:var(--text-main); }
+        .dfu-bar { width:90px; height:6px; background:#e2e8f0; border-radius:4px; overflow:hidden; } .dfu-bar span { display:block; height:100%; background:#22c55e; }
+        .dfu-tg { color:var(--text-muted); font-size:14px; }
+        .dfu-chip { display:inline-block; border:1px solid; border-radius:20px; padding:1px 9px; font-size:11px; font-weight:800; white-space:nowrap; }
+        .dfu-chip.sm { font-size:10px; padding:0 7px; }
+        .dfu-track { display:flex; margin-top:10px; overflow-x:auto; padding-bottom:2px; }
+        .dfu-node { flex:1 0 128px; position:relative; padding:0 6px; text-align:center; }
+        .dfu-node::before { content:""; position:absolute; top:13px; left:-50%; width:100%; height:2px; background:#e2e8f0; z-index:0; }
+        .dfu-node:first-child::before { display:none; }
+        .dfu-node.done::before, .dfu-node.late::before, .dfu-node.na::before { background:#86efac; }
+        .dfu-dot { position:relative; z-index:1; width:26px; height:26px; margin:0 auto 4px; border:2px solid; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; }
+        .dfu-nl { font-size:11.5px; font-weight:700; color:var(--text-main); line-height:1.25; } .dfu-nl i { font-style:normal; font-size:9.5px; color:#7c3aed; font-weight:700; }
+        .dfu-nw { font-size:10.5px; font-weight:700; margin-top:2px; }
+        .dfu-nd { font-size:10px; color:var(--text-muted); margin-top:1px; line-height:1.3; }
+        .dfu-det { margin-top:12px; border-top:1px solid var(--border); padding-top:8px; }
+        .dfu-sec { font-size:11px; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:.04em; margin:8px 0 5px; }
+        .dfu-tw { overflow-x:auto; }
+        .dfu-t { width:100%; border-collapse:collapse; font-size:12px; }
+        .dfu-t th { background:#f8fafc; color:#475569; font-size:10.5px; text-transform:uppercase; padding:6px; border:1px solid var(--border); text-align:left; vertical-align:bottom; }
+        .dfu-t th small, .dfu-t td small { display:block; font-weight:600; color:#94a3b8; text-transform:none; font-size:10px; }
+        .dfu-t td { padding:6px; border:1px solid var(--border); vertical-align:top; }
+        .dfu-t td a { font-size:10.5px; font-weight:700; color:var(--primary); text-decoration:none; margin-right:4px; }
+        .dfu-cell { min-width:120px; } .dfu-cw { font-size:10.5px; color:#475569; margin-top:2px; } .dfu-cd { font-size:10px; color:#94a3b8; margin-top:2px; }
+        .dfu-do { margin-top:4px; background:var(--primary); color:#fff; border:0; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer; }
+        .dfu-lk { background:none; border:0; padding:0; margin:3px 8px 0 0; color:var(--primary); font-size:10.5px; font-weight:700; cursor:pointer; } .dfu-lk.red { color:#dc2626; }
+        .dfu-om { display:flex; gap:10px; flex-wrap:wrap; } .dfu-om .dfu-cell { border:1px solid var(--border); border-radius:8px; padding:7px 9px; }
+        .dfu-empty { color:var(--text-muted); font-size:12px; margin:4px 0; }
+        .dfu-foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; font-size:11px; color:var(--text-muted); }
+        #dfu-modal { position:fixed; inset:0; z-index:9000; background:rgba(15,23,42,.45); display:none; align-items:center; justify-content:center; padding:14px; }
+        .dfu-mb { background:#fff; border-radius:12px; width:min(560px,100%); max-height:92vh; overflow:auto; padding:16px 18px; box-shadow:0 10px 30px rgba(0,0,0,.25); box-sizing:border-box; }
+        .dfu-mb.wide { width:min(1100px,100%); }
+        .dfu-mb h3 { margin:0 0 2px; font-size:16px; } .dfu-ms { font-size:12px; color:var(--text-muted); margin-bottom:8px; }
+        .dfu-mh { font-size:12.5px; color:#334155; background:#f8fafc; border-radius:8px; padding:8px 10px; margin:6px 0; }
+        .dfu-mp { font-size:12px; font-weight:700; color:#166534; margin:6px 0; } .dfu-mp.late { color:#b45309; }
+        .dfu-ml { display:block; font-size:11.5px; font-weight:700; color:#475569; margin:10px 0 4px; } .dfu-ml b { color:#dc2626; }
+        .dfu-mb textarea { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:8px; padding:8px; font-family:inherit; font-size:13px; }
+        .dfu-mf { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; align-items:center; }
+        .dfu-hist div { display:flex; flex-wrap:wrap; gap:4px 10px; padding:6px 0; border-bottom:1px solid #f1f5f9; font-size:12.5px; }
+        .dfu-hist div.u b { color:#b91c1c; } .dfu-hist span { color:#64748b; font-size:11.5px; min-width:92px; } .dfu-hist small { flex-basis:100%; color:#94a3b8; margin-left:102px; }
+        .dfu-set input:not([type=checkbox]), .dfu-set select { width:100%; box-sizing:border-box; border:1px solid var(--border); border-radius:6px; padding:4px 6px; font-size:12px; margin-bottom:3px; }
+        .dfu-s-cb { display:inline-flex; align-items:center; gap:3px; font-size:11px; margin-right:6px; white-space:nowrap; }
+        @media (max-width:640px) { .dfu-node { flex-basis:104px; } .dfu-hist small { margin-left:0; } }
         .lb-sheet { border-collapse: collapse; font-family: Calibri, Arial, sans-serif; font-size: 13px; color: #000; background: #fff; margin: 0 auto; }
         .lb-sheet td, .lb-sheet th { border: 1px solid #000; padding: 2px 5px; text-align: center; vertical-align: middle; white-space: nowrap; }
         .lb-sheet .lb-title td { font-size: 24px; font-weight: 900; padding: 6px 8px; }
@@ -459,6 +521,7 @@
         .sub-row td.sl-person-cell { min-width: 104px; }
         .sub-row td.sl-amt-cell { min-width: 64px; font-weight: 700; color: #1e3a8a; background: #eff6ff; font-size: 12px; }
         .sub-row td.sl-amt-cell.sl-norate { color: #b91c1c; background: #fef2f2; }
+        .sub-row select.sub-to:disabled { background: #f1f5f9; color: #334155; cursor: not-allowed; opacity: 1; }
         .sub-row select.sub-from { width: 100%; padding: 6px 2px; font-size: 11px; font-weight: 600; border: 1.5px solid #6ee7b7; border-radius: 5px; background: #fff; }
 
         /* ── Custom Multi-Select Dropdown ── */
@@ -659,6 +722,7 @@
             <button id="reportsNavBtn" type="button" onclick="showReportsPanel()" style="display:none;">Reports</button>
             <button id="freightNavBtn" type="button" onclick="showFreightPanel()" style="display:none;">Freight</button>
             <button id="labourNavBtn" type="button" onclick="showLabourPanel()" style="display:none;">Labour</button>
+            <button id="dfuNavBtn" type="button" onclick="showDfuPanel()" style="display:none;">Dispatch Follow-Up</button>
             <button id="settingsNavBtn" type="button" onclick="showSettingsPanel()" style="display:none;">Settings</button>
         <button type="button" id="formNavBtn" style="display:none;" onclick="showPackingForm()">Packing</button>
         <button type="button" class="logout-btn" onclick="handleLogout()">Logout</button>
@@ -1217,6 +1281,43 @@
      DISPATCH LOADING LABOUR (all contractors) and <CONTRACTOR> LABOUR (shifting).
      "From slips" columns are worked out from the packing slips; "Typed" columns are
      entered right in the sheet and saved by save_labour_entries (logged). -->
+<!-- DISPATCH FOLLOW-UP (DFU section in the script): FMS-style step workflow per order -->
+<div class="container" id="dfu-panel">
+    <div class="card">
+        <div class="card-title">Dispatch Follow-Up · step by step</div>
+        <div class="fr-filters">
+            <div class="form-group"><label>Order date from</label><input type="date" id="dfu-from" onchange="dfuLoad()"></div>
+            <div class="form-group"><label>To</label><input type="date" id="dfu-to" onchange="dfuLoad()"></div>
+            <div class="form-group fr-grow"><label>Search</label><input type="text" id="dfu-q" placeholder="Order no / party / slip no / invoice / tempo" oninput="dfuRenderSoon()"></div>
+            <div class="form-group"><label>Show</label>
+                <select id="dfu-view" onchange="dfuRender()">
+                    <option value="OPEN">Open orders</option>
+                    <option value="OVERDUE">Overdue only</option>
+                    <option value="MINE">My pending steps</option>
+                    <option value="DONE">Completed</option>
+                    <option value="ALL">All</option>
+                </select>
+            </div>
+            <div class="form-group"><label>Pending at step</label><select id="dfu-step" onchange="dfuRender()"><option value="">Any step</option></select></div>
+            <div class="form-group"><label>Sort</label>
+                <select id="dfu-sort" onchange="dfuRender()">
+                    <option value="URGENT">Most urgent first</option>
+                    <option value="NEW">Newest order first</option>
+                    <option value="OLD">Oldest order first</option>
+                </select>
+            </div>
+        </div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn" onclick="dfuLoad()">Refresh</button>
+            <button type="button" class="fr-btn ghost" onclick="dfuExportCsv()">CSV</button>
+            <button type="button" class="fr-btn ghost" id="dfu-steps-btn" onclick="dfuOpenSettings()" style="display:none;">Step Settings</button>
+        </div>
+        <div id="dfu-banner"></div>
+    </div>
+    <div id="dfu-kpis"></div>
+    <div id="dfu-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Loading…</p></div>
+</div>
+
 <div class="container" id="labour-panel">
     <div class="card">
         <div class="card-title">Loading Contractor · Labour Payment</div>
@@ -5123,7 +5224,7 @@ function addSubRow(blockIdx, qty, wt, from, lab) {
             <select class="sub-from" required onchange="onRowFromChange(this)">${dispatchFromOptionsHtml(from)}</select>
         </td>
         <td class="from-cell">
-            <select class="sub-to" data-sl="to" required onchange="slOnRowPick(this)">${slOptionsHtml('to', lab.to)}</select>
+            <select class="sub-to" data-sl="to" required disabled title="TO is fixed: ${SL_ROW_TO_FIXED}">${slOptionsHtml('to', SL_ROW_TO_FIXED)}</select>
         </td>
         <td>
             <input type="number" class="sub-qty" min="0" placeholder="0"
@@ -5233,7 +5334,16 @@ function slPersons_() {
 
 function slName_(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toUpperCase(); }
 
+// TO of every Sr. row is fixed to GROUND FLOOR and the box is disabled, so it
+// cannot be changed. Its only option is this value, so a draft, an edited
+// slip or a Dropdown Master refill always puts GROUND FLOOR back (an older
+// slip with another TO is saved with GROUND FLOOR on its next edit). A
+// disabled select still gives .value, so save, rate lookup and the
+// compulsory check read it as before.
+var SL_ROW_TO_FIXED = 'GROUND FLOOR';
+
 function slOptionsHtml(kind, selected) {
+    if (kind === 'to') return '<option value="' + escapeHtmlAttr(SL_ROW_TO_FIXED) + '" selected>' + escapeHtmlAttr(SL_ROW_TO_FIXED) + '</option>';
     var list = kind === 'to' ? (ROW_TO_OPTIONS || []) : slPersons_();
     var ph = kind === 'to' ? '— To —' : (!list.length ? '— no Loading Contractor names —' : kind === 'shift' ? '— Shift By —' : '— Load By —');
     var sel = slName_(selected);
@@ -14385,10 +14495,688 @@ async function lbLoadActLog() {
     }
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// DISPATCH FOLLOW-UP — an FMS-style step workflow for every order
+//
+// One workflow = one MAIN order (order_no without its letter: 1234 for the
+// sub-orders 1234A, 1234B …), followed from entry to the buyer's signed
+// receiving copy. The steps come from packing.dfu_steps
+// (sql/PACKING_DISPATCH_FOLLOWUP_MIGRATION.sql; DFU_DEFAULT_STEPS here while it
+// has not run), in sort_order:
+//   ORDER_ENTRY   AUTO   order  the orders rows (when, who, how much)
+//   ORDER_STATUS  AUTO   order  every sub-order COMPLETED (CANCELLED ones left out)
+//   DISPATCH      AUTO   order  packing slips made for the order's sub-orders
+//   RATE_SAVED    AUTO   slip   Verify › Save Rates with charges (total_amount / Triplicate)
+//   SLIP_CHECK    MANUAL slip   marked here
+//   BUYER_COPY    MANUAL slip   marked here, with the photo of the signed copy
+// AUTO steps are read from the data (DFU_AUTO, one rule per code), never
+// typed, so the follow-up can never say something the records do not.
+// MANUAL steps are the FMS "Done" steps: marked only through packing.dfu_mark,
+// which checks the doer and the remark / photo rules and logs every change.
+// The Admin can add more MANUAL steps (order or slip level), change TAT,
+// doers and rules, or switch a step off in Step Settings, with no code change.
+//
+// Time (FMS rule): planned = the previous step's actual + this step's TAT
+// hours. A slip step after an order step starts from the slip's own time.
+// State per step: done / late (done after its plan) / na / pending / overdue
+// (pending past its plan) / waiting (the step before is not done yet). A
+// slip step of an order = all its slips: done when every slip is done.
+// dfuCompute is pure (no DOM, no network), so the rules can be checked alone.
+// ══════════════════════════════════════════════════════════════════════
+var DFU_DEFAULT_STEPS = [
+    { code: 'ORDER_ENTRY',  label: 'Order Entry',                   kind: 'AUTO',   level: 'ORDER', sort_order: 10, tat_hours: 0,   hint: 'The order is saved in Orders (party, qualities, quantities).' },
+    { code: 'ORDER_STATUS', label: 'Order Status',                  kind: 'AUTO',   level: 'ORDER', sort_order: 20, tat_hours: 72,  hint: 'Packing done: every sub-order COMPLETED (or CANCELLED).' },
+    { code: 'DISPATCH',     label: 'Dispatch Date',                 kind: 'AUTO',   level: 'ORDER', sort_order: 30, tat_hours: 24,  hint: 'Packing slip(s) made: the material left on the slip date.' },
+    { code: 'RATE_SAVED',   label: 'Rate Saved (Verify)',           kind: 'AUTO',   level: 'SLIP',  sort_order: 40, tat_hours: 24,  hint: 'Verify › Save Rates done for the slip (amount + Triplicate copy).' },
+    { code: 'SLIP_CHECK',   label: 'Packing Slip Check',            kind: 'MANUAL', level: 'SLIP',  sort_order: 50, tat_hours: 24,  hint: 'The packing slip is checked against the bill / material.' },
+    { code: 'BUYER_COPY',   label: 'Buyer Receiving Copy Received', kind: 'MANUAL', level: 'SLIP',  sort_order: 60, tat_hours: 168, hint: 'The buyer\'s signed / stamped receiving copy has come back. Attach its photo.', needs_photo: true }
+].map(function(s) { return Object.assign({ doer_roles: ['ADMIN', 'MD', 'PACKING_INCHARGE'], doer_users: [], needs_remark: false, needs_photo: false, active: true }, s); });
+var DFU_ROLES = [['ADMIN', 'Admin'], ['MD', 'MD'], ['PACKING_INCHARGE', 'Packing Incharge'], ['DATA_ENTRY', 'Data Entry']];
+var DFU_BUCKET = 'dispatch-followup';
+var DFU_HOUR = 3600000;
+var _dfu = { steps: DFU_DEFAULT_STEPS.slice(), ready: false, missing: false, groups: [], marks: {}, open: {}, seq: 0, loadedAt: null };
+
+function dfuDate_(v) { if (!v) return null; var d = new Date(v); return isNaN(d) ? null : d; }
+function dfuMax_(list) { var m = null; list.forEach(function(d) { if (d && (!m || d > m)) m = d; }); return m; }
+function dfuMin_(list) { var m = null; list.forEach(function(d) { if (d && (!m || d < m)) m = d; }); return m; }
+// A date-only value (slip_date / order_date) as that day's end of work, so a
+// plan is not counted from midnight.
+function dfuDay_(v) { var d = dfuDate_(v); if (d && /^\d{4}-\d{2}-\d{2}$/.test(String(v))) d.setHours(18, 0, 0, 0); return d; }
+var dfuBase_ = function(no) { return String(no == null ? '' : no).replace(/[A-Za-z]+$/, ''); };
+var dfuKey_ = function(level, ref, code) { return level + '|' + ref + '|' + code; };
+
+/* The rules of the AUTO steps. Each returns {state, actual, detail, flag}
+   for one order (ctx.order) or one slip (ctx.slip). state 'done' / 'na' /
+   'pending' (planned and overdue are added by dfuCompute). */
+var DFU_AUTO = {
+    ORDER_ENTRY: function(c) {
+        var g = c.order, subs = g.subs;
+        var qty = subs.reduce(function(t, o) { return t + (Number(o.quantity) || 0); }, 0);
+        return { state: 'done', actual: dfuMin_(subs.map(function(o) { return dfuDate_(o.created_at) || dfuDay_(o.order_date); })),
+                 detail: subs.length + ' sub-order' + (subs.length > 1 ? 's' : '') + ' · ' + qty + ' qty' + (g.orderBy ? ' · by ' + g.orderBy : '') };
+    },
+    ORDER_STATUS: function(c) {
+        var subs = c.order.subs, live = subs.filter(function(o) { return String(o.status || '').toUpperCase() !== 'CANCELLED'; });
+        if (!live.length) return { state: 'na', actual: null, detail: 'Order cancelled' };
+        var qty = 0, packed = 0, st = {};
+        live.forEach(function(o) {
+            var q = Number(o.quantity) || 0, pend = Math.max(0, Number(o.pending_qty) || 0);
+            qty += q; packed += (o.packed_qty != null ? Number(o.packed_qty) || 0 : q - pend);
+            var s = String(o.status || 'PENDING').toUpperCase(); st[s] = (st[s] || 0) + 1;
+        });
+        var done = live.every(function(o) { return String(o.status || '').toUpperCase() === 'COMPLETED' || (Number(o.pending_qty) || 0) <= 0; });
+        var pct = qty ? Math.min(100, Math.round(packed * 100 / qty)) : 0;
+        var detail = 'Packed ' + packed + ' / ' + qty + ' (' + pct + '%) · ' + Object.keys(st).map(function(k) { return st[k] + ' ' + k; }).join(', ');
+        // Finished when the last slip was made (packing ends with the slip).
+        var last = dfuMax_(c.order.slips.map(function(s) { return dfuDate_(s.created_at) || dfuDay_(s.slip_date); }));
+        return { state: done ? 'done' : 'pending', actual: done ? (last || dfuMax_(live.map(function(o) { return dfuDate_(o.updated_at); }))) : null,
+                 detail: detail, flag: st.HOLD ? 'ON HOLD' : '', pct: pct };
+    },
+    DISPATCH: function(c) {
+        var g = c.order, sl = g.slips;
+        if (!sl.length) return { state: 'pending', actual: null, detail: 'No packing slip yet' };
+        var st = c.prev && c.prev.state;
+        var last = dfuMax_(sl.map(function(s) { return dfuDate_(s.created_at) || dfuDay_(s.slip_date); }));
+        var days = sl.map(function(s) { return s.slip_date ? formatSlipDate(String(s.slip_date).slice(0, 10)) : ''; }).filter(Boolean);
+        days = days.filter(function(d, i) { return days.indexOf(d) === i; });
+        var detail = sl.length + ' slip' + (sl.length > 1 ? 's' : '') + (days.length ? ' · ' + days.join(', ') : '');
+        // Part dispatched while packing goes on: not done until the order is.
+        if (st !== 'done' && st !== 'late' && st !== 'na') return { state: 'pending', actual: null, detail: detail + ' · part dispatched' };
+        return { state: 'done', actual: last, detail: detail };
+    },
+    RATE_SAVED: function(c) {
+        var s = c.slip;
+        var saved = (s.total_amount !== null && s.total_amount !== undefined) || !!s.triplicate_pdf_link;
+        return { state: saved ? 'done' : 'pending', actual: saved ? (s._chargesAt || dfuDate_(s.updated_at)) : null,
+                 detail: saved ? (s.total_amount != null ? '₹ ' + Number(s.total_amount).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : 'Triplicate made') + (s.actual_invoice_no ? ' · Inv ' + s.actual_invoice_no : '')
+                               : 'Rates not saved in Verify yet' };
+    }
+};
+
+/* One order's workflow. steps = active steps in order; marks = {key: mark}.
+   Returns {steps:[{step, state, actual, planned, detail, flag, slips:[…]}],
+   current, done, cancelled, overdue, worstLate, entryAt, dispatchAt}. */
+function dfuCompute(g, steps, marks, now) {
+    now = now || new Date();
+    var out = [], prevOrder = null, prevAny = null, perSlipPrev = {};
+    var finish = function(r, step, prevActual, prevState) {
+        var tat = (Number(step.tat_hours) || 0) * DFU_HOUR;
+        r.planned = prevActual ? new Date(prevActual.getTime() + tat) : null;
+        if (r.state === 'done' && r.planned && r.actual && r.actual > r.planned) r.state = 'late';
+        if (r.state === 'pending') {
+            var ready = !prevState || prevState === 'done' || prevState === 'late' || prevState === 'na';
+            if (!ready) r.state = 'waiting';
+            else if (r.planned && now > r.planned) { r.state = 'overdue'; r.lateBy = now - r.planned; }
+        }
+        if (r.state === 'late') r.lateBy = r.actual - r.planned;
+        return r;
+    };
+    var manual = function(step, level, ref) {
+        var m = marks[dfuKey_(level, ref, step.code)];
+        if (!m) return { state: 'pending', actual: null, detail: '' };
+        return { state: m.status === 'NA' ? 'na' : 'done', actual: dfuDate_(m.done_at), mark: m,
+                 detail: (m.status === 'NA' ? 'Not applicable' : 'Done') + (m.done_by ? ' · ' + m.done_by : '') + (m.remark ? ' · ' + m.remark : '') };
+    };
+    steps.forEach(function(step) {
+        var auto = step.kind === 'AUTO' && DFU_AUTO[step.code];
+        if (step.level === 'ORDER') {
+            var r = auto ? DFU_AUTO[step.code]({ order: g, prev: prevAny, now: now }) : manual(step, 'ORDER', g.base);
+            r.step = step;
+            finish(r, step, prevAny ? prevAny.actual : null, prevAny ? prevAny.state : null);
+            out.push(r); prevOrder = r; prevAny = r;
+            return;
+        }
+        // SLIP level: one result per slip, then the order's view of them
+        var per = g.slips.map(function(s) {
+            var key = String(s.id), p = perSlipPrev[key];
+            // The first slip step starts from the slip itself (dispatch of THIS slip).
+            var start = p ? p.actual : (dfuDate_(s.created_at) || dfuDay_(s.slip_date));
+            var pState = p ? p.state : 'done';
+            var x = auto ? DFU_AUTO[step.code]({ order: g, slip: s, now: now }) : manual(step, 'SLIP', key);
+            x.slip = s;
+            finish(x, step, start, pState);
+            perSlipPrev[key] = x;
+            return x;
+        });
+        var agg = { step: step, slips: per, actual: null, detail: '' };
+        if (!per.length) agg.state = 'waiting';
+        else {
+            var cnt = function(f) { return per.filter(f).length; };
+            var fin = cnt(function(x) { return x.state === 'done' || x.state === 'late' || x.state === 'na'; });
+            agg.state = fin === per.length ? (per.some(function(x) { return x.state === 'late'; }) ? 'late' : per.every(function(x) { return x.state === 'na'; }) ? 'na' : 'done')
+                : per.some(function(x) { return x.state === 'overdue'; }) ? 'overdue'
+                : per.some(function(x) { return x.state === 'pending'; }) ? 'pending' : 'waiting';
+            if (fin === per.length) agg.actual = dfuMax_(per.map(function(x) { return x.actual; }));
+            agg.planned = dfuMax_(per.map(function(x) { return x.planned; }));
+            agg.lateBy = Math.max.apply(null, per.map(function(x) { return x.lateBy || 0; }));
+            agg.detail = fin + ' / ' + per.length + ' slip' + (per.length > 1 ? 's' : '') + ' done';
+        }
+        out.push(agg); prevAny = agg;
+    });
+    var cancelled = out.some(function(r) { return r.step.code === 'ORDER_STATUS' && r.state === 'na'; });
+    // A cancelled order has nothing left to do: what was not done is N/A, never overdue.
+    if (cancelled) out.forEach(function(r) {
+        if (r.state === 'done' || r.state === 'late') return;
+        r.state = 'na'; r.lateBy = 0;
+        (r.slips || []).forEach(function(x) { if (x.state !== 'done' && x.state !== 'late') { x.state = 'na'; x.lateBy = 0; } });
+    });
+    var cur = out.find(function(r) { return r.state !== 'done' && r.state !== 'late' && r.state !== 'na'; }) || null;
+    var over = out.filter(function(r) { return r.state === 'overdue'; });
+    return {
+        steps: out, current: cancelled ? null : cur, done: !cancelled && !cur, cancelled: cancelled,
+        overdue: !cancelled && over.length > 0, worstLate: over.reduce(function(m, r) { return Math.max(m, r.lateBy || 0); }, 0),
+        entryAt: out[0] ? out[0].actual : null,
+        dispatchAt: (out.find(function(r) { return r.step.code === 'DISPATCH'; }) || {}).actual || null
+    };
+}
+
+// ── Loading ─────────────────────────────────────────────────────────
+async function showDfuPanel() {
+    var r = session ? session.role : '';
+    if (['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(r) < 0) { alert('Dispatch Follow-Up: Admin / MD / Packing Incharge only'); return; }
+    hideAllPanels();
+    document.getElementById('dfu-panel').style.display = 'block';
+    updateNavButtons('dfu-panel');
+    if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
+    stopAutoSaveDraft();
+    document.getElementById('dfu-steps-btn').style.display = r === 'ADMIN' ? '' : 'none';
+    var f = document.getElementById('dfu-from'), t = document.getElementById('dfu-to');
+    if (!f.value) { var d = new Date(); d.setDate(d.getDate() - 60); f.value = frDateInput(d); }
+    if (!t.value) t.value = frDateInput(new Date());
+    // Reloaded when opened again after 2 minutes (the Verify / Packing work moves it on).
+    if (!_dfu.loadedAt || Date.now() - _dfu.loadedAt > 120000) dfuLoad(); else dfuRender();
+}
+async function dfuLoadSteps_() {
+    try {
+        var { data, error } = await supabaseClient.from('dfu_steps').select('*').order('sort_order').order('code');
+        if (error) throw error;
+        _dfu.missing = false;
+        if (data && data.length) _dfu.steps = data.map(function(s) {
+            return Object.assign({}, s, { doer_roles: s.doer_roles || [], doer_users: s.doer_users || [], tat_hours: Number(s.tat_hours) || 0 });
+        });
+    } catch (e) {
+        _dfu.missing = true; _dfu.steps = DFU_DEFAULT_STEPS.slice();
+        console.warn('[DFU] dfu_steps not read (run sql/PACKING_DISPATCH_FOLLOWUP_MIGRATION.sql):', e.message || e);
+    }
+}
+async function dfuLoad() {
+    var out = document.getElementById('dfu-out'), seq = ++_dfu.seq;
+    var from = document.getElementById('dfu-from').value, to = document.getElementById('dfu-to').value;
+    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Loading orders, slips and steps…</p>';
+    try {
+        await dfuLoadSteps_();
+        var orders = await pkFetchPaged(function() {
+            var q = supabaseClient.from('orders').select('*').order('order_no', { ascending: true });
+            if (from) q = q.gte('order_date', from);
+            if (to) q = q.lte('order_date', to);
+            return q;
+        });
+        if (seq !== _dfu.seq) return;
+        // Main orders (empty-quality sub-orders are left out, as on the Orders tab)
+        var byBase = {};
+        orders.forEach(function(o) {
+            if (!o.quality) return;
+            var b = dfuBase_(o.order_no);
+            if (!byBase[b]) byBase[b] = { base: b, subs: [], slips: [], party: o.party_name || '', orderBy: o.order_by || '', orderDate: o.order_date || '',
+                                         subDealer: o.sub_dealer_name || '', destination: o.deliver_destination || '', transport: o.transport_type || '', mob: o.mob || '' };
+            byBase[b].subs.push(o);
+        });
+        var subNos = orders.filter(function(o) { return o.quality; }).map(function(o) { return o.order_no; });
+        // Slips that carry any of these sub-orders
+        var items = subNos.length ? await pkSelectIn('packing_slip_items', 'slip_id, order_id', 'order_id', subNos) : [];
+        var slipIds = [], slipBases = {};
+        items.forEach(function(it) {
+            if (!it.slip_id) return;
+            var k = String(it.slip_id), b = dfuBase_(it.order_id);
+            if (slipIds.indexOf(it.slip_id) < 0) slipIds.push(it.slip_id);
+            (slipBases[k] = slipBases[k] || {})[b] = true;
+        });
+        var slips = slipIds.length ? await pkSelectIn('packing_slips', '*', 'id', slipIds) : [];
+        // When the charges were saved (Verify › Save Rates): the newest time stamp on its rows
+        var chAt = {};
+        if (slipIds.length) {
+            try {
+                (await pkSelectIn('slip_charges', '*', 'slip_id', slipIds)).forEach(function(c) {
+                    var t = dfuMax_([c.updated_at, c.saved_at, c.created_at].map(dfuDate_)), k = String(c.slip_id);
+                    if (t && (!chAt[k] || t > chAt[k])) chAt[k] = t;
+                });
+            } catch (e) { console.warn('[DFU] slip_charges not read:', e.message || e); }
+        }
+        slips.forEach(function(s) {
+            s._chargesAt = chAt[String(s.id)] || null;
+            Object.keys(slipBases[String(s.id)] || {}).forEach(function(b) { if (byBase[b]) byBase[b].slips.push(s); });
+        });
+        Object.keys(byBase).forEach(function(b) {
+            byBase[b].slips.sort(function(x, y) { return String(x.slip_date || '').localeCompare(String(y.slip_date || '')) || (x.id - y.id); });
+        });
+        // Marks of the MANUAL steps
+        _dfu.marks = {};
+        if (!_dfu.missing) {
+            var refs = Object.keys(byBase).concat(slipIds.map(String));
+            try {
+                (refs.length ? await pkSelectIn('dfu_marks', '*', 'ref', refs) : []).forEach(function(m) { _dfu.marks[dfuKey_(m.level, m.ref, m.step_code)] = m; });
+            } catch (e) { console.warn('[DFU] dfu_marks not read:', e.message || e); }
+        }
+        if (seq !== _dfu.seq) return;
+        _dfu.groups = Object.keys(byBase).map(function(b) { return byBase[b]; });
+        _dfu.loadedAt = Date.now(); _dfu.ready = true;
+        dfuFillStepFilter_();
+        dfuRender();
+    } catch (e) {
+        if (seq !== _dfu.seq) return;
+        out.innerHTML = '<p style="text-align:center;color:var(--error);padding:20px;">Could not load: ' + escapeHtmlJs(e.message || String(e)) + '</p>';
+    }
+}
+function dfuActiveSteps_() { return _dfu.steps.filter(function(s) { return s.active !== false; }).sort(function(a, b) { return (a.sort_order - b.sort_order) || String(a.code).localeCompare(b.code); }); }
+function dfuFillStepFilter_() {
+    var sel = document.getElementById('dfu-step'), cur = sel.value;
+    sel.innerHTML = '<option value="">Any step</option>' + dfuActiveSteps_().map(function(s) {
+        return '<option value="' + escapeHtmlAttr(s.code) + '"' + (s.code === cur ? ' selected' : '') + '>' + escapeHtmlJs(s.label) + '</option>';
+    }).join('');
+}
+// May this user mark this step? (the server decides again in dfu_mark)
+function dfuCanDo_(step) {
+    if (!session || _dfu.missing || step.kind !== 'MANUAL') return false;
+    var r = String(session.role || '').toUpperCase();
+    if (r === 'ADMIN') return true;
+    if ((step.doer_roles || []).indexOf(r) < 0) return false;
+    var us = (step.doer_users || []).map(function(u) { return String(u).toLowerCase(); });
+    return !us.length || us.indexOf(String(session.username || '').toLowerCase()) >= 0;
+}
+
+// ── Showing ─────────────────────────────────────────────────────────
+var DFU_ST = {
+    done:    { t: 'Done',        c: '#166534', bg: '#dcfce7', bd: '#86efac', i: '✓' },
+    late:    { t: 'Done late',   c: '#9a3412', bg: '#ffedd5', bd: '#fdba74', i: '✓' },
+    na:      { t: 'N/A',         c: '#475569', bg: '#f1f5f9', bd: '#cbd5e1', i: '–' },
+    pending: { t: 'Pending',     c: '#1d4ed8', bg: '#dbeafe', bd: '#93c5fd', i: '●' },
+    overdue: { t: 'Overdue',     c: '#b91c1c', bg: '#fee2e2', bd: '#fca5a5', i: '!' },
+    waiting: { t: 'Waiting',     c: '#64748b', bg: '#f8fafc', bd: '#e2e8f0', i: '○' }
+};
+function dfuFmt_(d) {
+    if (!d) return '';
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    return String(d.getDate()).padStart(2, '0') + '-' + m + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function dfuDur_(ms) {
+    ms = Math.abs(ms || 0);
+    var h = Math.floor(ms / DFU_HOUR), d = Math.floor(h / 24);
+    return d ? d + 'd ' + (h % 24) + 'h' : h ? h + 'h' : Math.max(1, Math.round(ms / 60000)) + 'm';
+}
+// Plan / actual line under a step
+function dfuWhen_(r, now) {
+    if (r.state === 'done' || r.state === 'late') return (r.actual ? dfuFmt_(r.actual) : 'Done') + (r.state === 'late' ? ' · late ' + dfuDur_(r.lateBy) : '');
+    if (r.state === 'na') return 'Not applicable';
+    if (r.state === 'overdue') return 'Late ' + dfuDur_(r.lateBy) + (r.planned ? ' (plan ' + dfuFmt_(r.planned) + ')' : '');
+    if (r.state === 'pending') return r.planned ? 'Due ' + (r.planned > now ? 'in ' + dfuDur_(r.planned - now) : 'now') + ' · ' + dfuFmt_(r.planned) : 'Pending';
+    return 'After the step before';
+}
+var _dfuRenderT = null;
+function dfuRenderSoon() { clearTimeout(_dfuRenderT); _dfuRenderT = setTimeout(dfuRender, 200); }
+function dfuMineIn_(w) {
+    return w.steps.some(function(r) {
+        if (!dfuCanDo_(r.step) || r.step.kind !== 'MANUAL') return false;
+        return r.slips ? r.slips.some(function(x) { return x.state === 'pending' || x.state === 'overdue'; }) : (r.state === 'pending' || r.state === 'overdue');
+    });
+}
+function dfuRender() {
+    var out = document.getElementById('dfu-out'), kp = document.getElementById('dfu-kpis'), bn = document.getElementById('dfu-banner');
+    if (!_dfu.ready) return;
+    var now = new Date(), steps = dfuActiveSteps_();
+    bn.innerHTML = _dfu.missing ? '<div class="dfu-note">Dispatch Follow-Up is not set up on the server yet, so the manual steps cannot be marked. Admin: run <b>sql/PACKING_DISPATCH_FOLLOWUP_MIGRATION.sql</b> in the Supabase SQL Editor. The automatic steps below are shown from the data already.</div>' : '';
+    var view = document.getElementById('dfu-view').value, stepF = document.getElementById('dfu-step').value;
+    var q = document.getElementById('dfu-q').value.trim().toUpperCase().split(/\s+/).filter(Boolean);
+    var all = _dfu.groups.map(function(g) { return { g: g, w: dfuCompute(g, steps, _dfu.marks, now) }; });
+    // KPIs over the whole loaded period
+    var open = all.filter(function(x) { return !x.w.done && !x.w.cancelled; });
+    var over = open.filter(function(x) { return x.w.overdue; });
+    var doneN = all.filter(function(x) { return x.w.done; }).length;
+    var disp = all.filter(function(x) { return x.w.entryAt && x.w.dispatchAt; }).map(function(x) { return x.w.dispatchAt - x.w.entryAt; });
+    var avg = disp.length ? disp.reduce(function(a, b) { return a + b; }, 0) / disp.length : 0;
+    var kpi = function(n, l, cls, val) { return '<button type="button" class="dfu-kpi ' + (cls || '') + '"' + (val ? ' onclick="dfuQuick(\'' + val + '\')"' : '') + '><b>' + n + '</b><span>' + l + '</span></button>'; };
+    var pipe = steps.map(function(s) {
+        var n = open.filter(function(x) { return x.w.current && x.w.current.step.code === s.code; }).length;
+        var o = open.filter(function(x) { return x.w.current && x.w.current.step.code === s.code && x.w.current.state === 'overdue'; }).length;
+        return '<button type="button" class="dfu-pipe' + (stepF === s.code ? ' on' : '') + '" onclick="dfuQuick(\'STEP:' + escapeHtmlAttr(s.code) + '\')" title="Orders now at this step">'
+            + '<span>' + escapeHtmlJs(s.label) + '</span><b>' + n + '</b>' + (o ? '<i>' + o + ' overdue</i>' : '') + '</button>';
+    }).join('<span class="dfu-arrow">›</span>');
+    kp.innerHTML = '<div class="dfu-kpis">' + kpi(all.length, 'Orders in period', '', 'ALL') + kpi(open.length, 'Open', '', 'OPEN')
+        + kpi(over.length, 'Overdue', over.length ? 'bad' : '', 'OVERDUE') + kpi(doneN, 'Completed', 'ok', 'DONE')
+        + kpi(disp.length ? dfuDur_(avg) : '—', 'Avg order → dispatch', '', '') + '</div>'
+        + '<div class="dfu-pipeline">' + pipe + '</div>';
+    // Filter
+    var list = all.filter(function(x) {
+        var w = x.w;
+        if (view === 'OPEN' && (w.done || w.cancelled)) return false;
+        if (view === 'OVERDUE' && !w.overdue) return false;
+        if (view === 'DONE' && !w.done) return false;
+        if (view === 'MINE' && !dfuMineIn_(w)) return false;
+        if (stepF && !(w.current && w.current.step.code === stepF)) return false;
+        if (q.length) {
+            var g = x.g, hay = [g.base, g.party, g.subDealer, g.destination, g.orderBy].concat(g.subs.map(function(o) { return o.order_no + ' ' + (o.quality || '') + ' ' + (o.item || ''); }))
+                .concat(g.slips.map(function(s) { return [s.slip_no, s.actual_invoice_no, s.tempo_no, s.chalan_no].join(' '); })).join(' ').toUpperCase();
+            if (!q.every(function(t) { return hay.indexOf(t) >= 0; })) return false;
+        }
+        return true;
+    });
+    var sort = document.getElementById('dfu-sort').value;
+    list.sort(function(a, b) {
+        if (sort === 'NEW') return String(b.g.orderDate).localeCompare(String(a.g.orderDate)) || b.g.base.localeCompare(a.g.base, undefined, { numeric: true });
+        if (sort === 'OLD') return String(a.g.orderDate).localeCompare(String(b.g.orderDate)) || a.g.base.localeCompare(b.g.base, undefined, { numeric: true });
+        return (b.w.overdue - a.w.overdue) || (b.w.worstLate - a.w.worstLate) || String(a.g.orderDate).localeCompare(String(b.g.orderDate));
+    });
+    _dfu.view = list;
+    if (!list.length) { out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:24px;">No order matches.</p>'; return; }
+    var MAX = 150;
+    out.innerHTML = list.slice(0, MAX).map(function(x) { return dfuCardHtml_(x.g, x.w, now); }).join('')
+        + (list.length > MAX ? '<p style="text-align:center;color:var(--text-muted);padding:12px;">Showing the first ' + MAX + ' of ' + list.length + '. Narrow the dates or search.</p>' : '');
+}
+function dfuQuick(v) {
+    var vs = document.getElementById('dfu-view'), ss = document.getElementById('dfu-step');
+    if (v.indexOf('STEP:') === 0) { var c = v.slice(5); ss.value = ss.value === c ? '' : c; if (ss.value) vs.value = 'OPEN'; }
+    else { vs.value = v; ss.value = ''; }
+    dfuRender();
+}
+function dfuChip_(state, small) {
+    var s = DFU_ST[state] || DFU_ST.waiting;
+    return '<span class="dfu-chip' + (small ? ' sm' : '') + '" style="color:' + s.c + ';background:' + s.bg + ';border-color:' + s.bd + ';">' + s.t + '</span>';
+}
+function dfuCardHtml_(g, w, now) {
+    var open = !!_dfu.open[g.base];
+    var cur = w.current, head = w.cancelled ? dfuChip_('na') + ' <b class="dfu-cur">Order cancelled</b>'
+        : w.done ? dfuChip_('done') + ' <b class="dfu-cur">All steps done</b>'
+        : dfuChip_(cur.state) + ' <b class="dfu-cur">Now: ' + escapeHtmlJs(cur.step.label) + '</b>';
+    var os = w.steps.find(function(r) { return r.step.code === 'ORDER_STATUS'; });
+    var track = w.steps.map(function(r, i) {
+        var s = DFU_ST[r.state] || DFU_ST.waiting;
+        return '<div class="dfu-node ' + r.state + '" title="' + escapeHtmlAttr(r.step.label + ': ' + (r.detail || s.t) + (r.step.hint ? '\n' + r.step.hint : '')) + '">'
+            + '<div class="dfu-dot" style="background:' + s.bg + ';border-color:' + s.c + ';color:' + s.c + ';">' + (r.state === 'done' || r.state === 'late' ? '✓' : r.state === 'na' ? '–' : (i + 1)) + '</div>'
+            + '<div class="dfu-nl">' + escapeHtmlJs(r.step.label) + (r.step.kind === 'MANUAL' ? ' <i>manual</i>' : '') + '</div>'
+            + '<div class="dfu-nw" style="color:' + s.c + ';">' + escapeHtmlJs(dfuWhen_(r, now)) + '</div>'
+            + (r.detail ? '<div class="dfu-nd">' + escapeHtmlJs(r.detail) + '</div>' : '') + '</div>';
+    }).join('');
+    var h = '<div class="card dfu-card' + (w.overdue ? ' over' : w.done ? ' fin' : '') + '">'
+        + '<div class="dfu-head" onclick="dfuToggle(\'' + escapeHtmlAttr(g.base) + '\')">'
+        + '<div class="dfu-ttl"><b>Order ' + escapeHtmlJs(g.base) + '</b> · ' + escapeHtmlJs(g.party || '—')
+        + '<small>' + escapeHtmlJs([g.orderDate ? formatSlipDate(String(g.orderDate).slice(0, 10)) : '', g.subDealer, g.destination, g.orderBy ? 'by ' + g.orderBy : ''].filter(Boolean).join(' · ')) + '</small></div>'
+        + '<div class="dfu-hr">' + head + (os && os.flag ? ' <span class="dfu-chip" style="color:#854d0e;background:#fef9c3;border-color:#fde047;">' + escapeHtmlJs(os.flag) + '</span>' : '')
+        + (os && os.pct != null ? '<div class="dfu-bar" title="Packed ' + os.pct + '%"><span style="width:' + os.pct + '%"></span></div>' : '') + '</div>'
+        + '<span class="dfu-tg">' + (open ? '▾' : '▸') + '</span></div>'
+        + '<div class="dfu-track">' + track + '</div>';
+    if (open) h += dfuDetailHtml_(g, w, now);
+    return h + '</div>';
+}
+function dfuToggle(base) { _dfu.open[base] = !_dfu.open[base]; dfuRender(); }
+function dfuDetailHtml_(g, w, now) {
+    var h = '<div class="dfu-det">';
+    // Sub-orders
+    h += '<div class="dfu-sec">Sub-orders</div><div class="dfu-tw"><table class="dfu-t"><thead><tr><th>Order</th><th>Quality</th><th>Item</th><th>Qty</th><th>Packed</th><th>Pending</th><th>Status</th><th>Marka</th></tr></thead><tbody>'
+        + g.subs.map(function(o) {
+            var q = Number(o.quantity) || 0, pend = Number(o.pending_qty) || 0;
+            return '<tr><td><b>' + escapeHtmlJs(o.order_no) + '</b></td><td>' + escapeHtmlJs(o.quality || '') + '</td><td>' + escapeHtmlJs(o.item || '') + '</td><td>' + q + '</td><td>'
+                + (o.packed_qty != null ? o.packed_qty : q - pend) + '</td><td>' + pend + '</td><td>' + escapeHtmlJs(o.status || '') + '</td><td>' + escapeHtmlJs(o.private_marka || '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>';
+    // Order-level MANUAL steps (added later by the Admin)
+    var om = w.steps.filter(function(r) { return r.step.level === 'ORDER' && r.step.kind === 'MANUAL'; });
+    if (om.length) h += '<div class="dfu-sec">Order steps</div><div class="dfu-om">' + om.map(function(r) { return dfuActHtml_(r, 'ORDER', g.base, 'Order ' + g.base, now); }).join('') + '</div>';
+    // Slips × slip steps
+    var ss = w.steps.filter(function(r) { return r.step.level === 'SLIP'; });
+    h += '<div class="dfu-sec">Packing slips &amp; their steps</div>';
+    if (!g.slips.length) h += '<p class="dfu-empty">No packing slip has been made for this order yet.</p>';
+    else {
+        h += '<div class="dfu-tw"><table class="dfu-t"><thead><tr><th>Slip</th><th>Date</th><th>Tempo</th><th>Invoice</th><th>Qty / Wt</th>'
+            + ss.map(function(r) { return '<th>' + escapeHtmlJs(r.step.label) + (r.step.tat_hours ? '<small>TAT ' + r.step.tat_hours + 'h</small>' : '') + '</th>'; }).join('') + '</tr></thead><tbody>'
+            + g.slips.map(function(s, si) {
+                var pdf = s.full_pdf_link || s.pdf_link || '';
+                return '<tr><td><b>' + escapeHtmlJs(s.slip_no || s.id) + '</b><small>' + escapeHtmlJs(s.packing_type || '') + '</small>'
+                    + (pdf ? '<a href="' + escapeHtmlAttr(pdf) + '" target="_blank" rel="noopener">PDF</a> ' : '')
+                    + (s.triplicate_pdf_link ? '<a href="' + escapeHtmlAttr(s.triplicate_pdf_link) + '" target="_blank" rel="noopener">TRI</a>' : '') + '</td>'
+                    + '<td>' + escapeHtmlJs(s.slip_date ? formatSlipDate(String(s.slip_date).slice(0, 10)) : '') + '</td>'
+                    + '<td>' + escapeHtmlJs(s.tempo_no || '') + '</td>'
+                    + '<td>' + escapeHtmlJs(s.actual_invoice_no || '—') + (s.chalan_no ? '<small>Chalan ' + escapeHtmlJs(s.chalan_no) + '</small>' : '') + '</td>'
+                    + '<td>' + escapeHtmlJs(String(s.total_qty != null ? s.total_qty : '')) + '<small>' + escapeHtmlJs(s.total_weight != null ? Number(s.total_weight).toFixed(2) + ' kg' : '') + '</small></td>'
+                    + ss.map(function(r) { return '<td>' + dfuActHtml_(r.slips[si], 'SLIP', String(s.id), 'Slip ' + (s.slip_no || s.id), now, r.step) + '</td>'; }).join('')
+                    + '</tr>';
+            }).join('') + '</tbody></table></div>';
+    }
+    h += '<div class="dfu-foot"><button type="button" class="fr-btn ghost" onclick="dfuHistory(\'' + escapeHtmlAttr(g.base) + '\')">History</button>'
+        + '<span>Planned time = the step before + TAT. Automatic steps follow the data; manual steps are marked here and logged.</span></div>';
+    return h + '</div>';
+}
+// One step cell: state + time, and for a MANUAL step the Done / N/A / Undo controls
+function dfuActHtml_(r, level, ref, what, now, step) {
+    step = step || r.step;
+    var h = '<div class="dfu-cell">' + dfuChip_(r.state, true) + '<div class="dfu-cw">' + escapeHtmlJs(dfuWhen_(r, now)) + '</div>';
+    if (step.kind !== 'MANUAL') return h + (r.detail ? '<div class="dfu-cd">' + escapeHtmlJs(r.detail) + '</div>' : '') + '</div>';
+    if (level === 'ORDER') h = '<div class="dfu-cell"><b>' + escapeHtmlJs(step.label) + '</b> ' + dfuChip_(r.state, true) + '<div class="dfu-cw">' + escapeHtmlJs(dfuWhen_(r, now)) + '</div>';
+    var m = r.mark, args = "'" + level + "','" + escapeHtmlAttr(ref) + "','" + escapeHtmlAttr(step.code) + "','" + escapeHtmlAttr(what) + "'";
+    if (m) {
+        h += '<div class="dfu-cd">' + escapeHtmlJs((m.done_by || '') + (m.remark ? ' · ' + m.remark : '')) + '</div>'
+            + (m.file_path ? '<button type="button" class="dfu-lk" onclick="dfuViewFile(\'' + escapeHtmlAttr(m.file_path) + '\')">View attachment</button>' : '');
+        var mine = session && (String(session.role).toUpperCase() === 'ADMIN' || (m.done_by && m.done_by === (session.fullName || session.username)));
+        if (mine && !_dfu.missing) h += '<button type="button" class="dfu-lk red" onclick="dfuUndo(' + args + ')">Undo</button>';
+    } else if (dfuCanDo_(step)) {
+        h += '<button type="button" class="dfu-do" onclick="dfuOpenMark(' + args + ')">Mark done</button>';
+    } else if (!_dfu.missing) {
+        h += '<div class="dfu-cd">Done by ' + escapeHtmlJs((step.doer_users && step.doer_users.length ? step.doer_users.join(', ') : (step.doer_roles || []).join(' / ')) || 'Admin') + '</div>';
+    }
+    return h + '</div>';
+}
+
+// ── Mark a step (the FMS "Done") ─────────────────────────────────────
+function dfuStep_(code) { return _dfu.steps.find(function(s) { return s.code === code; }); }
+function dfuModal_(html, wide) {
+    var ov = document.getElementById('dfu-modal');
+    if (!ov) {
+        ov = document.createElement('div'); ov.id = 'dfu-modal';
+        ov.addEventListener('click', function(e) { if (e.target === ov) dfuCloseModal(); });
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && ov.style.display === 'flex') dfuCloseModal(); });
+        document.body.appendChild(ov);
+    }
+    ov.innerHTML = '<div class="dfu-mb' + (wide ? ' wide' : '') + '">' + html + '</div>'; ov.style.display = 'flex';
+    return ov;
+}
+function dfuCloseModal() { var ov = document.getElementById('dfu-modal'); if (ov) ov.style.display = 'none'; }
+function dfuOpenMark(level, ref, code, what) {
+    var step = dfuStep_(code); if (!step) return;
+    var g = _dfu.groups.find(function(x) { return level === 'ORDER' ? x.base === ref : x.slips.some(function(s) { return String(s.id) === ref; }); });
+    var r = null;
+    if (g) {
+        var w = dfuCompute(g, dfuActiveSteps_(), _dfu.marks, new Date()), st = w.steps.find(function(x) { return x.step.code === code; });
+        r = st && (st.slips ? st.slips.find(function(x) { return String(x.slip.id) === ref; }) : st);
+    }
+    var late = r && r.planned && new Date() > r.planned;
+    dfuModal_('<h3>' + escapeHtmlJs(step.label) + '</h3><div class="dfu-ms">' + escapeHtmlJs(what) + (g ? ' · Order ' + escapeHtmlJs(g.base) + ' · ' + escapeHtmlJs(g.party || '') : '') + '</div>'
+        + (step.hint ? '<p class="dfu-mh">' + escapeHtmlJs(step.hint) + '</p>' : '')
+        + (r && r.planned ? '<div class="dfu-mp' + (late ? ' late' : '') + '">Planned ' + dfuFmt_(r.planned) + (late ? ' · late by ' + dfuDur_(new Date() - r.planned) : ' · on time') + '</div>' : '')
+        + (r && r.state === 'waiting' ? '<div class="dfu-mp late">The step before is not done yet. You can still mark this one.</div>' : '')
+        + '<label class="dfu-ml">Remark' + (step.needs_remark ? ' <b>*</b>' : ' (optional for Done, needed for N/A)') + '</label>'
+        + '<textarea id="dfu-m-rm" rows="3" placeholder="What was checked / agreed"></textarea>'
+        + '<label class="dfu-ml">Photo / PDF' + (step.needs_photo ? ' <b>*</b>' : ' (optional)') + '</label>'
+        + '<input type="file" id="dfu-m-file" accept="image/*,application/pdf">'
+        + '<div class="dfu-mf"><button type="button" class="fr-btn" id="dfu-m-done" onclick="dfuSaveMark(\'DONE\',\'' + level + '\',\'' + escapeHtmlAttr(ref) + '\',\'' + escapeHtmlAttr(code) + '\')">Mark done</button>'
+        + '<button type="button" class="fr-btn ghost" onclick="dfuSaveMark(\'NA\',\'' + level + '\',\'' + escapeHtmlAttr(ref) + '\',\'' + escapeHtmlAttr(code) + '\')" title="This step does not apply here (reason needed)">Not applicable</button>'
+        + '<button type="button" class="fr-btn ghost" onclick="dfuCloseModal()">Cancel</button></div>');
+    setTimeout(function() { var t = document.getElementById('dfu-m-rm'); if (t) t.focus(); }, 50);
+}
+async function dfuUploadFile_(level, ref, code, f) {
+    var blob = await vehShrinkImage(f);
+    var pdf = f.type === 'application/pdf';
+    var path = level.toLowerCase() + '/' + String(ref).replace(/[^A-Za-z0-9_-]/g, '_') + '/' + code + '_' + Date.now() + (pdf ? '.pdf' : '.jpg');
+    var up = await supabaseClient.storage.from(DFU_BUCKET).upload(path, blob, { contentType: pdf ? 'application/pdf' : 'image/jpeg', upsert: false });
+    if (up.error) throw new Error('Upload failed: ' + up.error.message);
+    return path;
+}
+async function dfuSaveMark(action, level, ref, code) {
+    var step = dfuStep_(code); if (!step) return;
+    var rm = (document.getElementById('dfu-m-rm').value || '').trim();
+    var f = document.getElementById('dfu-m-file').files[0] || null;
+    if (action === 'NA' && rm.length < 3) return alert('Write why this step does not apply (at least 3 letters).');
+    if (action === 'DONE' && step.needs_remark && rm.length < 3) return alert(step.label + ' needs a remark.');
+    if (action === 'DONE' && step.needs_photo && !f) return alert(step.label + ' needs a photo / PDF of the document.');
+    if (f && f.size > 15 * 1024 * 1024) return alert('That file is too big (over 15 MB).');
+    var btn = document.getElementById('dfu-m-done'); if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        var path = f ? await dfuUploadFile_(level, ref, code, f) : null;
+        var { data, error } = await supabaseClient.rpc('dfu_mark', { p_level: level, p_ref: ref, p_step: code, p_action: action, p_remark: rm, p_file_path: path });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Not saved');
+        dfuCloseModal();
+        showToast(step.label + (action === 'NA' ? ': marked not applicable' : ': done'));
+        await dfuReloadMarks_();
+    } catch (e) {
+        alert('Not saved:\n\n' + (e.message || e));
+        if (btn) { btn.disabled = false; btn.textContent = 'Mark done'; }
+    }
+}
+async function dfuUndo(level, ref, code, what) {
+    var step = dfuStep_(code); if (!step) return;
+    var why = prompt('Undo "' + step.label + '" for ' + what + '?\n\nReason:', '');
+    if (why == null) return;
+    if (why.trim().length < 3) return alert('Write the reason (at least 3 letters).');
+    try {
+        var { data, error } = await supabaseClient.rpc('dfu_mark', { p_level: level, p_ref: ref, p_step: code, p_action: 'UNDO', p_remark: why.trim(), p_file_path: null });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Not saved');
+        showToast(step.label + ': undone');
+        await dfuReloadMarks_();
+    } catch (e) { alert('Not undone:\n\n' + (e.message || e)); }
+}
+// After a mark: read the marks again (fast) instead of the whole period.
+async function dfuReloadMarks_() {
+    var refs = _dfu.groups.map(function(g) { return g.base; });
+    _dfu.groups.forEach(function(g) { g.slips.forEach(function(s) { refs.push(String(s.id)); }); });
+    refs = refs.filter(function(v, i) { return refs.indexOf(v) === i; });
+    try {
+        var rows = refs.length ? await pkSelectIn('dfu_marks', '*', 'ref', refs) : [];
+        _dfu.marks = {};
+        rows.forEach(function(m) { _dfu.marks[dfuKey_(m.level, m.ref, m.step_code)] = m; });
+    } catch (e) { console.warn('[DFU] marks reload failed:', e.message || e); }
+    dfuRender();
+}
+async function dfuViewFile(path) {
+    try {
+        var { data, error } = await supabaseClient.storage.from(DFU_BUCKET).createSignedUrl(path, 300);
+        if (error) throw error;
+        window.open(data.signedUrl, '_blank', 'noopener');
+    } catch (e) { alert('The attachment could not be opened: ' + (e.message || e)); }
+}
+
+// ── History of one order: what the data says + every mark change ─────
+async function dfuHistory(base) {
+    var g = _dfu.groups.find(function(x) { return x.base === base; }); if (!g) return;
+    var ev = [];
+    g.subs.forEach(function(o) { ev.push({ at: dfuDate_(o.created_at) || dfuDay_(o.order_date), t: 'Order ' + o.order_no + ' entered', d: [o.quality, o.item, o.quantity + ' qty', o.order_by ? 'by ' + o.order_by : ''].filter(Boolean).join(' · ') }); });
+    g.slips.forEach(function(s) {
+        ev.push({ at: dfuDate_(s.created_at) || dfuDay_(s.slip_date), t: 'Packing slip ' + (s.slip_no || s.id) + ' made', d: [s.packing_type, s.tempo_no, s.prepared_by_name ? 'by ' + s.prepared_by_name : ''].filter(Boolean).join(' · ') });
+        if (s._chargesAt) ev.push({ at: s._chargesAt, t: 'Rates saved for slip ' + (s.slip_no || s.id), d: s.total_amount != null ? '₹ ' + s.total_amount : '' });
+        if (s.after_invoice_datetime) ev.push({ at: dfuDate_(s.after_invoice_datetime), t: 'Invoice entered for slip ' + (s.slip_no || s.id), d: [s.actual_invoice_no, s.after_invoice_verifier].filter(Boolean).join(' · ') });
+    });
+    var logs = [];
+    if (!_dfu.missing) {
+        try {
+            var refs = [base].concat(g.slips.map(function(s) { return String(s.id); }));
+            logs = await pkSelectIn('dfu_mark_log', '*', 'ref', refs);
+        } catch (e) { console.warn('[DFU] log not read:', e.message || e); }
+    }
+    var slipNo = function(ref) { var s = g.slips.find(function(x) { return String(x.id) === String(ref); }); return s ? 'slip ' + (s.slip_no || s.id) : 'order ' + ref; };
+    logs.forEach(function(l) {
+        var st = dfuStep_(l.step_code);
+        ev.push({ at: dfuDate_(l.at), t: (st ? st.label : l.step_code) + ' · ' + (l.action === 'DONE' ? 'done' : l.action === 'NA' ? 'not applicable' : 'undone') + ' (' + slipNo(l.ref) + ')',
+                  d: [l.by_name, l.remark].filter(Boolean).join(' · '), file: l.file_path, undo: l.action === 'UNDO' });
+    });
+    ev = ev.filter(function(e) { return e.at; }).sort(function(a, b) { return b.at - a.at; });
+    dfuModal_('<h3>History · Order ' + escapeHtmlJs(base) + '</h3><div class="dfu-ms">' + escapeHtmlJs(g.party || '') + '</div>'
+        + '<div class="dfu-hist">' + (ev.length ? ev.map(function(e) {
+            return '<div class="' + (e.undo ? 'u' : '') + '"><span>' + dfuFmt_(e.at) + '</span><b>' + escapeHtmlJs(e.t) + '</b>' + (e.d ? '<small>' + escapeHtmlJs(e.d) + '</small>' : '')
+                + (e.file ? ' <button type="button" class="dfu-lk" onclick="dfuViewFile(\'' + escapeHtmlAttr(e.file) + '\')">attachment</button>' : '') + '</div>';
+        }).join('') : '<p class="dfu-empty">Nothing yet.</p>') + '</div>'
+        + '<div class="dfu-mf"><button type="button" class="fr-btn ghost" onclick="dfuCloseModal()">Close</button></div>');
+}
+
+// ── CSV of what is on screen ──────────────────────────────────────────
+function dfuExportCsv() {
+    var list = _dfu.view || [];
+    if (!list.length) { alert('Nothing to export.'); return; }
+    var now = new Date(), steps = dfuActiveSteps_();
+    var rows = [['Order', 'Party', 'Order Date', 'Sub-orders', 'Slips', 'Current Step', 'Current State', 'Overdue']
+        .concat([].concat.apply([], steps.map(function(s) { return [s.label + ' State', s.label + ' Planned', s.label + ' Actual', s.label + ' Detail']; })))];
+    list.forEach(function(x) {
+        var g = x.g, w = dfuCompute(g, steps, _dfu.marks, now);
+        rows.push([g.base, g.party, g.orderDate, g.subs.map(function(o) { return o.order_no; }).join(' '), g.slips.map(function(s) { return s.slip_no; }).join(' '),
+            w.cancelled ? 'CANCELLED' : w.done ? 'ALL DONE' : w.current.step.label, w.current ? (DFU_ST[w.current.state] || {}).t : '', w.overdue ? 'YES' : '']
+            .concat([].concat.apply([], w.steps.map(function(r) { return [(DFU_ST[r.state] || {}).t || r.state, dfuFmt_(r.planned), dfuFmt_(r.actual), r.detail || '']; }))));
+    });
+    var csv = rows.map(function(r) { return r.map(frCsvCell).join(','); }).join('\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+    a.download = 'Dispatch_FollowUp_' + frDateInput(new Date()) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function() { URL.revokeObjectURL(a.href); }, 4000);
+}
+
+// ── Step Settings (Admin) ──────────────────────────────────────────────
+function dfuOpenSettings() {
+    if (!session || session.role !== 'ADMIN') return alert('Step Settings: Admin only');
+    if (_dfu.missing) return alert('Run sql/PACKING_DISPATCH_FOLLOWUP_MIGRATION.sql first.');
+    var rows = _dfu.steps.slice().sort(function(a, b) { return a.sort_order - b.sort_order; });
+    var rowHtml = function(s, isNew) {
+        var auto = s.kind === 'AUTO';
+        return '<tr data-code="' + escapeHtmlAttr(s.code || '') + '"' + (isNew ? ' data-new="1"' : '') + '>'
+            + '<td>' + (isNew ? '<input class="dfu-s-code" placeholder="CODE" style="width:90px;">' : '<b>' + escapeHtmlJs(s.code) + '</b><small>' + (auto ? 'automatic' : 'manual') + '</small>') + '</td>'
+            + '<td><input class="dfu-s-label" value="' + escapeHtmlAttr(s.label || '') + '"><input class="dfu-s-hint" placeholder="What it means" value="' + escapeHtmlAttr(s.hint || '') + '"></td>'
+            + '<td>' + (auto ? escapeHtmlJs(s.level) + '<input type="hidden" class="dfu-s-level" value="' + s.level + '">' : '<select class="dfu-s-level"><option value="SLIP"' + (s.level !== 'ORDER' ? ' selected' : '') + '>Slip</option><option value="ORDER"' + (s.level === 'ORDER' ? ' selected' : '') + '>Order</option></select>') + '</td>'
+            + '<td><input type="number" class="dfu-s-sort" value="' + (s.sort_order != null ? s.sort_order : 100) + '" style="width:60px;"></td>'
+            + '<td><input type="number" min="0" class="dfu-s-tat" value="' + (s.tat_hours != null ? s.tat_hours : 24) + '" style="width:64px;"></td>'
+            + '<td>' + (auto ? '<small>from the data</small>' : DFU_ROLES.map(function(r) { return '<label class="dfu-s-cb"><input type="checkbox" class="dfu-s-role" value="' + r[0] + '"' + ((s.doer_roles || []).indexOf(r[0]) >= 0 ? ' checked' : '') + '>' + r[1] + '</label>'; }).join('')
+                + '<input class="dfu-s-users" placeholder="only these usernames (comma), empty = anyone above" value="' + escapeHtmlAttr((s.doer_users || []).join(', ')) + '">') + '</td>'
+            + '<td>' + (auto ? '' : '<label class="dfu-s-cb"><input type="checkbox" class="dfu-s-rm"' + (s.needs_remark ? ' checked' : '') + '>Remark</label><label class="dfu-s-cb"><input type="checkbox" class="dfu-s-ph"' + (s.needs_photo ? ' checked' : '') + '>Photo</label>') + '</td>'
+            + '<td><label class="dfu-s-cb"><input type="checkbox" class="dfu-s-on"' + (s.active !== false ? ' checked' : '') + '>On</label></td></tr>';
+    };
+    dfuModal_('<h3>Step Settings</h3><div class="dfu-ms">Order of the steps, TAT (hours after the step before), who does a manual step and what it needs. A step is never deleted: switch it off. New manual steps can be added.</div>'
+        + '<div class="dfu-tw"><table class="dfu-t dfu-set"><thead><tr><th>Code</th><th>Label / hint</th><th>Level</th><th>Order</th><th>TAT h</th><th>Doer</th><th>Needs</th><th>Active</th></tr></thead><tbody id="dfu-set-body">'
+        + rows.map(function(s) { return rowHtml(s, false); }).join('') + '</tbody></table></div>'
+        + '<div class="dfu-mf"><button type="button" class="fr-btn ghost" id="dfu-set-add">+ Add manual step</button><span style="flex:1"></span>'
+        + '<button type="button" class="fr-btn" onclick="dfuSaveSettings()">Save steps</button><button type="button" class="fr-btn ghost" onclick="dfuCloseModal()">Cancel</button></div>', true);
+    document.getElementById('dfu-set-add').onclick = function() {
+        var tb = document.getElementById('dfu-set-body'), tmp = document.createElement('tbody');
+        tmp.innerHTML = rowHtml({ kind: 'MANUAL', level: 'SLIP', sort_order: 100, tat_hours: 24, doer_roles: ['ADMIN', 'MD', 'PACKING_INCHARGE'], active: true }, true);
+        tb.appendChild(tmp.firstChild);
+    };
+}
+async function dfuSaveSettings() {
+    var out = [], bad = '';
+    document.querySelectorAll('#dfu-set-body tr').forEach(function(tr) {
+        var q = function(c) { return tr.querySelector(c); };
+        var code = tr.dataset.new ? (q('.dfu-s-code').value || '').trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_') : tr.dataset.code;
+        var label = (q('.dfu-s-label').value || '').trim();
+        if (tr.dataset.new && !code && !label) return;
+        if (!code || !label) { bad = 'Every step needs a code and a label.'; return; }
+        if (tr.dataset.new && _dfu.steps.some(function(s) { return s.code === code; })) { bad = 'The code ' + code + ' already exists.'; return; }
+        var roles = [].map.call(tr.querySelectorAll('.dfu-s-role:checked'), function(c) { return c.value; });
+        var users = q('.dfu-s-users') ? q('.dfu-s-users').value.split(',').map(function(u) { return u.trim(); }).filter(Boolean) : [];
+        var cur = dfuStep_(code) || {};
+        out.push({ code: code, label: label, hint: (q('.dfu-s-hint').value || '').trim(), level: q('.dfu-s-level').value,
+                   sort_order: parseInt(q('.dfu-s-sort').value, 10) || 100, tat_hours: Math.max(0, Number(q('.dfu-s-tat').value) || 0),
+                   doer_roles: q('.dfu-s-users') ? (roles.length ? roles : ['ADMIN']) : (cur.doer_roles || ['ADMIN']), doer_users: q('.dfu-s-users') ? users : (cur.doer_users || []),
+                   needs_remark: q('.dfu-s-rm') ? q('.dfu-s-rm').checked : false, needs_photo: q('.dfu-s-ph') ? q('.dfu-s-ph').checked : false,
+                   active: q('.dfu-s-on').checked });
+    });
+    if (bad) return alert(bad);
+    try {
+        var { data, error } = await supabaseClient.rpc('dfu_save_steps', { p_rows: out });
+        if (error) throw error;
+        if (data && data.success === false) throw new Error(data.error || 'Not saved');
+        dfuCloseModal();
+        showToast('Steps saved (' + (data && data.changed != null ? data.changed : 0) + ' changed)');
+        await dfuLoadSteps_(); dfuFillStepFilter_(); dfuRender();
+    } catch (e) { alert('Not saved:\n\n' + (e.message || e)); }
+}
+
 function hideAllPanels() {
     ['packing-slip-form','verification-panel','order-panel',
      'vehicle-panel','pack-orders-panel','pdf-repair-panel','reports-panel','settings-panel',
-     'party-master-panel','shifting-panel','freight-panel','labour-panel'
+     'party-master-panel','shifting-panel','freight-panel','labour-panel','dfu-panel'
     ].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -14416,6 +15204,7 @@ function updateNavButtons(activePanel) {
         'reportsNavBtn':    canVerify && activePanel !== 'reports-panel',
         'freightNavBtn':    canVerify && activePanel !== 'freight-panel',
         'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
+        'dfuNavBtn':        canVerify && activePanel !== 'dfu-panel',
         'settingsNavBtn':   isAdmin && activePanel !== 'settings-panel'
     };
 
