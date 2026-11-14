@@ -4180,9 +4180,10 @@
                 + `<div class="min-w-0 flex-grow"><div class="font-extrabold text-slate-800 leading-tight">${t.id}. ${esc(t.desc)}</div>`
                 + `<div class="flex flex-wrap gap-1.5 mt-1.5 text-[9px] font-extrabold uppercase tracking-wider"><span class="px-2 py-0.5 rounded border text-red-800 bg-red-100 border-red-300">Missed on ${days.length} day${days.length > 1 ? 's' : ''}</span>${broken ? `<span class="px-2 py-0.5 rounded border text-red-900 bg-red-100 border-red-400">${broken} promise${broken > 1 ? 's' : ''} missed</span>` : ''}<span class="px-2 py-0.5 rounded border text-indigo-700 bg-indigo-50 border-indigo-200">Daily</span><span class="px-2 py-0.5 rounded border text-slate-600 bg-slate-50 border-slate-200">Target ${esc(t.time || 'all day')}</span></div>`
                 + `<div class="flex flex-wrap gap-1 mt-2 text-[9px] font-extrabold uppercase tracking-wider">${chips}</div>${fuChip(t)}</div></div>`
-                + `<div class="text-[11px] font-bold text-slate-500 mt-2">A daily task stays on its own days: saving records the follow-up (complete by the date / time below) for all ${days.length} day${days.length > 1 ? 's' : ''}. The employee completes them from My Tasks, scored late${old ? `; ${old} day${old > 1 ? 's are' : ' is'} older than ${CARRY_DAYS} days and need${old > 1 ? '' : 's'} a late approval` : ''}.</div>`
+                + `<div class="text-[11px] font-bold text-slate-500 mt-2">A daily task stays on its own days: saving records the follow-up (complete by the date / time below, today or the next day only) for all ${days.length} day${days.length > 1 ? 's' : ''}. The employee completes them from My Tasks, scored late${old ? `; ${old} day${old > 1 ? 's are' : ' is'} older than ${CARRY_DAYS} days and need${old > 1 ? '' : 's'} a late approval` : ''}.</div>`
                 + `<div class="grid grid-cols-2 sm:grid-cols-6 gap-2 mt-3">`
-                + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Complete by date</label><input type="date" data-pc-date value="${today}" min="${today}" onchange="pcRowTouched(this)" class="w-full ${inp}"></div>`
+                // Complete-by date: today or the next day only (pcSave checks the same), so a missed daily task is never pushed further.
+                + `<div class="sm:col-span-2"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Complete by date (today / next day)</label><input type="date" data-pc-date value="${today}" min="${today}" max="${nextDayOf(today)}" onchange="pcRowTouched(this)" class="w-full ${inp}"></div>`
                 + `<div class="sm:col-span-1"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Time</label><select data-pc-time onchange="pcRowTouched(this)" class="w-full ${inp}">${hourOptions('', '-- Select --')}</select></div>`
                 + `<div class="col-span-2 sm:col-span-3"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Remarks</label><input type="text" data-pc-remarks oninput="pcRowTouched(this)" placeholder="Why / what was agreed" class="w-full ${inp}"></div>`
                 + `</div></div>`;
@@ -4282,6 +4283,7 @@
                 if (!nd) err = 'no date';
                 else if (nd < today) err = 'the date cannot be before today';
                 else if (daily && rds !== today) err = 'a daily task of a past day cannot be rescheduled';
+                else if (group && nd > nextDayOf(today)) err = 'a daily task from earlier days can be followed up to today or the next day only';
                 else if (nd === today && !hv) err = 'choose a time for today';
                 else if (nd === today && +hv.slice(0, 2) <= nowH) err = 'choose a time later than now';
                 else if (!rm) err = 'no remark';
