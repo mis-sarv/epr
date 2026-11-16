@@ -291,8 +291,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .bmv-t th.act{z-index:2}
 .bmv-rev{font-size:9px;font-weight:700;background:#E3F2FD;color:#1565C0;border-radius:99px;padding:1px 6px;margin-left:4px}
 /* Edit / Revise open ON TOP of the History viewer */
-#newBrandModal{z-index:210}
-#bmInfoModal{z-index:220}
+/* Above the home page (.ofh, 240), since the Buyer / Brand Master lists open
+   from there too; the forms and the info box stay above their list. */
+#brandViewModal,#buyerViewModal{z-index:250}
+#newBrandModal,#newBuyerModal{z-index:260}
+#bmInfoModal{z-index:270}
 .bmi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 12px;font-size:12px}
 @media(max-width:620px){.bmi-grid{grid-template-columns:1fr 1fr}}
 .bmi-grid div{border-bottom:1px dashed #E5EAF1;padding:4px 0}
@@ -502,6 +505,13 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .ofh-title{color:#fff;font-size:20px;font-weight:700;margin:18px 4px 4px}
 .ofh-sub{color:#9EC8E8;font-size:12.5px;margin:0 4px 18px}
 .ofh-types{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+/* Buyer / Brand Master buttons under the order types */
+.ofh-masters{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.ofh-mst{text-align:left;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);border-radius:14px;padding:14px 18px;cursor:pointer;color:#fff;font-family:'DM Sans',sans-serif;transition:background .15s,transform .15s}
+.ofh-mst:hover{background:rgba(255,255,255,.18);transform:translateY(-2px)}
+.ofh-mst b{display:block;font-size:16px;font-weight:700}
+.ofh-mst small{display:block;font-size:11.5px;color:#C9DDF0;margin-top:3px}
+@media (max-width:560px){.ofh-masters{grid-template-columns:1fr}}
 .ofh-type{position:relative;text-align:left;border:none;border-radius:18px;padding:22px 20px 18px;cursor:pointer;color:#fff;font-family:'DM Sans',sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.25);transition:transform .15s,box-shadow .15s;overflow:hidden}
 .ofh-type:hover{transform:translateY(-3px);box-shadow:0 16px 36px rgba(0,0,0,.32)}
 .ofh-type.mto{background:linear-gradient(135deg,#D4870A,#B4560A)}
@@ -767,6 +777,16 @@ body{background:
           <div class="cnt" id="ofhCntMTS"></div>
         </button>
       </div>
+      <!-- The two masters an order is built from, editable straight from the home
+           page (same tables, rights and history as ERP › Master Data). -->
+      <div class="ofh-masters">
+        <button type="button" class="ofh-mst" onclick="openBuyerView()">
+          <b>Buyer Master</b><small>All parties: add, edit, revise, history, active / inactive</small>
+        </button>
+        <button type="button" class="ofh-mst" onclick="openBrandView(null)">
+          <b>Brand Master</b><small>All Item Codes with packing &amp; trims: add, edit, revise, copy, history</small>
+        </button>
+      </div>
     </div>
     <div id="ofhStep2" style="display:none">
       <div class="ofh-bar">
@@ -1012,8 +1032,13 @@ body{background:
      both places immediately; there is no separate "order form list". -->
 <div class="modal-bg" id="newBuyerModal">
   <div class="modal wide">
-    <h3>Add New Buyer</h3>
-    <p>A new party in the Buyer Master. Once saved it appears in the <b>Buyer / Company Name</b> dropdown above and is selected.</p>
+    <h3 id="nbTitle">Add New Buyer</h3>
+    <p id="nbDesc">A new party in the Buyer Master. Once saved it appears in the <b>Buyer / Company Name</b> dropdown above and is selected.</p>
+    <!-- Revise only (BY_MODE): the reason goes into rev_reason and the history. -->
+    <div class="nm-f" id="nbReasonWrap" style="display:none;margin-bottom:11px">
+      <label>Reason for the new revision <span class="req">*</span></label>
+      <input type="text" id="nbReason" placeholder="e.g. owner / number changed" autocomplete="off">
+    </div>
     <div class="nm-grid">
       <div class="nm-f full">
         <label>Party / Company Name <span class="req">*</span></label>
@@ -1104,7 +1129,30 @@ body{background:
     </div>
     <div class="bmv-wrap"><table class="bmv-t"><thead><tr id="bmvHead"></tr></thead><tbody id="bmvBody"></tbody></table></div>
     <div class="modal-btns" style="margin-top:14px">
-      <button class="btn-close-modal" onclick="closeBrandView()">← Back to the Order Form</button>
+      <button class="btn-close-modal" id="bmvCloseBtn" onclick="closeBrandView()">← Back to the Order Form</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BUYER MASTER list (buyer_master) ══════════════════════════════════
+     From the home page's "Buyer Master" button. Every party with its Actions:
+     Edit · Revise · History · Active / Inactive · Delete, the same table,
+     archive (master_revisions) and Feature Access rights (BUYER_*) as ERP ›
+     Master Data › Buyer Master. BUYER MASTER LIST in the script. -->
+<div class="modal-bg" id="buyerViewModal">
+  <div class="modal xwide" style="max-width:1180px">
+    <h3>Buyer Master</h3>
+    <p><b>Actions</b> next to each party. A change shows in the <b>Buyer / Company Name</b> list of the Order Form straight away.</p>
+    <div class="bmv-tools">
+      <input type="text" id="byvSearch" placeholder="Party / Owner / Contact / GSTIN / Address…" oninput="byvRender()" autocomplete="off">
+      <label class="bmv-count"><input type="checkbox" id="byvInactive" onchange="byvRender()"> Show inactive</label>
+      <span class="bmv-count" id="byvCount"></span>
+      <button type="button" class="btn-addmaster" onclick="openNewBuyer(true)">New</button>
+      <button type="button" class="btn-addmaster" onclick="byvReload()" title="Fresh list from the database">↻ Refresh</button>
+    </div>
+    <div class="bmv-wrap"><table class="bmv-t"><thead><tr id="byvHead"></tr></thead><tbody id="byvBody"></tbody></table></div>
+    <div class="modal-btns" style="margin-top:14px">
+      <button class="btn-close-modal" onclick="closeBuyerView()">Close</button>
     </div>
   </div>
 </div>
@@ -2032,6 +2080,50 @@ function ofApplyBuyerLock_(){
   const why='Locked from the Buyer Master. To change it use ERP › Master Data › Buyer Master, or create a new party with "Add New Buyer"';
   OF_BUYER_LOCK.forEach(id=>ofLockField_(document.getElementById(id),true,why));
 }
+/* A Buyer Master row → the order's Buyer Details. Master values win; `prev`
+   (the party's last order, or the order being edited) fills only what the
+   master leaves empty. Transport Name is not in the master, so it is prev's. */
+function ofBuyerFromMaster_(r,prev){
+  const p=prev||{}, s=v=>String(v==null?'':v).trim();
+  return {
+    contactPerson: s(r.owner_name)||s(r.party_staff_name)||s(p.contactPerson),
+    mobile:        s(r.contact_no)||s(r.party_staff_contact_no)||s(p.mobile),
+    address:       s(r.address)||s(p.address),
+    gst:           s(r.gstin)||s(p.gst),
+    transportName: s(p.transportName)   // changes per order; not kept in the master
+  };
+}
+/* Edit: the order opens with the Buyer Details it was saved with; the party's
+   CURRENT Buyer Master row is read live and, where it now differs, written
+   into the form (the fields are locked to the master), with a note saying
+   which ones changed. They reach the order when it is submitted. A party
+   no longer in the master (renamed / deleted) keeps the saved details. */
+async function ofRefreshBuyerFromMaster_(){
+  const name=String(document.getElementById('buyerName')?.value||'').trim();
+  if(!name||!SB_READY) return;
+  let row=null;
+  try{
+    const {data,error}=await SB.from('buyer_master')
+      .select('party_name,owner_name,contact_no,address,gstin,party_staff_name,party_staff_contact_no,is_active')
+      .ilike('party_name',name.replace(/[\\%_]/g,'\\$&'));
+    if(error) throw error;
+    row=(data||[]).find(r=>nmKey_(r.party_name)===nmKey_(name))||null;
+  }catch(e){ console.warn('[ORDER FORM] Buyer Master check on Edit skipped:',e.message||e); return; }
+  if(!row){ toast('"'+name+'" is not in the Buyer Master (renamed or removed); the saved Buyer Details are kept',6000); return; }
+  const g=id=>String(document.getElementById(id)?.value||'').trim();
+  const cur={contactPerson:g('contactPerson'),mobile:g('buyerMobile'),address:g('buyerAddress'),gst:g('buyerGST'),transportName:g('transportName')};
+  const want=ofBuyerFromMaster_(row,cur);
+  const map=[['contactPerson','contactPerson','Contact Person'],['mobile','buyerMobile','Mobile'],['address','buyerAddress','Address'],['gst','buyerGST','GSTIN']];
+  const changed=map.filter(([k])=>want[k]!==cur[k]);
+  if(!changed.length) return;
+  changed.forEach(([k,id])=>{ const e=document.getElementById(id); if(e){ e.value=want[k]; e.dispatchEvent(new Event('input')); } });
+  if(changed.some(([k])=>k==='gst')) autoDetectState();
+  syncMeta();
+  // Kept with the dropdown's copy, so choosing the party again gives the same details.
+  if(BUYER_DETAILS[name]) BUYER_DETAILS[name]=Object.assign({},BUYER_DETAILS[name],want);
+  toast('Buyer details updated from the Buyer Master: '+changed.map(c=>c[2]).join(', ')+'. Submit to save them on this order.'
+    +(row.is_active===false?' (This party is Inactive in the Buyer Master.)':''),8000);
+}
 function ofClearBuyerDetails_(){
   OF_BUYER_LOCK.forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
   syncMeta();
@@ -2640,12 +2732,15 @@ async function fetchDrops(){
     /* Buyer / Company Name comes ONLY from buyer_master.party_name. Names
        that exist only in old orders or in `sales_dropdowns` are no longer
        offered: they were how the same party crept in under two spellings.
-       A master party that has an earlier order still keeps the details from
-       there (in `bd` above): that is the REAL billing contact, address, GST
-       and transport from last time. A party with no order yet gets them
-       from the master:
+       The details come from the MASTER, since these fields are locked to it
+       and an edit there (Buyer Master list / ERP) must reach the next order:
            OWNER NAME → Contact Person      CONTACT NO → Mobile
            ADDRESS    → Address             GSTIN      → GSTIN
+       The party's last order (`bd` above) only fills what the master leaves
+       empty, and gives Transport Name (not kept in the master). It used to
+       be the other way round, so a master edit never showed on an order.
+       ofBuyerFromMaster_ is the same rule; an order opened with Edit is
+       brought up to date with it (ofRefreshBuyerFromMaster_).
        The Agency Master is still MERGED with agencies from old orders.
        Inactive rows don't appear in any dropdown. */
     BUYER_DETAILS={};
@@ -2659,14 +2754,7 @@ async function fetchDrops(){
       if(r.is_active===false) return;
       const p=String(r.party_name||'').trim();
       if(!p || BUYER_DETAILS[p]) return;
-      if(bd[p]){ BUYER_DETAILS[p]=bd[p]; return; }
-      BUYER_DETAILS[p]={
-        contactPerson: String(r.owner_name||r.party_staff_name||''),
-        mobile:        String(r.contact_no||r.party_staff_contact_no||''),
-        address:       String(r.address||''),
-        gst:           String(r.gstin||''),
-        transportName:''   // transport changes per order and isn't kept in the master
-      };
+      BUYER_DETAILS[p]=ofBuyerFromMaster_(r,bd[p]);
     });
     (amRows||[]).forEach(r=>{
       if(r.is_active===false) return;
@@ -2987,27 +3075,57 @@ async function nmArchive_(code,row){
 // twice in the dropdown.
 const nmKey_=v=>String(v||'').trim().replace(/\s+/g,' ').toUpperCase();
 
-function openNewBuyer(){
+/* One form, three jobs (BY_MODE, the BUYER MASTER LIST below):
+     NEW     a new party            (Order Form role: create)
+     EDIT    fix a mistake, REV unchanged       (Feature Access BUYER_EDIT)
+     REVISE  new version, REV +1, with reason   (Feature Access BUYER_REVISE)
+   fromList: opened from the Buyer Master list (home page), so a new party is
+   NOT put into the order form's Buyer Details. */
+let BY_MODE={mode:'NEW',base:null,fromList:false};
+const BY_FIELDS=[
+  {k:'party_name',l:'PARTY NAME',id:'nbParty',uc:1},{k:'owner_name',l:'OWNER NAME',id:'nbOwner'},
+  {k:'contact_no',l:'CONTACT NO',id:'nbContact'},{k:'address',l:'ADDRESS',id:'nbAddress'},
+  {k:'gstin',l:'GSTIN',id:'nbGstin',uc:1},{k:'party_staff_name',l:'PARTY STAFF NAME',id:'nbStaff'},
+  {k:'party_staff_contact_no',l:'PARTY STAFF CONTACT NO',id:'nbStaffContact'},{k:'notes',l:'NOTES',id:'nbNotes'}];
+const BY_MODE_UI={
+  NEW:   {t:'Add New Buyer', btn:'Save Buyer'},
+  EDIT:  {t:'Edit Buyer', btn:'Save Changes'},
+  REVISE:{t:'Revise Buyer', btn:'Save New Revision'}
+};
+function openNewBuyer(fromList){
   if(!canDo('create')) return toast('Your role is not allowed to add a new party');
-  ['nbParty','nbOwner','nbContact','nbAddress','nbGstin','nbStaff','nbStaffContact','nbNotes']
-    .forEach(id=>{const e=document.getElementById(id); if(e) e.value='';});
-  // Whatever name is already typed in the combo is carried over; "add new" is
-  // usually pressed after typing a name that wasn't found in the list.
-  const typed=nmVal_('buyerName');
-  if(typed) document.getElementById('nbParty').value=typed;
+  byOpenForm_('NEW',null,fromList===true);
+}
+function byOpenForm_(mode,row,fromList){
+  BY_MODE={mode,base:row||null,fromList:!!fromList};
+  BY_FIELDS.forEach(f=>{const e=document.getElementById(f.id); if(e) e.value=row&&row[f.k]!=null?String(row[f.k]):'';});
+  // A new party from the order form: whatever name is already typed in the combo
+  // is carried over; "add new" is usually pressed after typing a name that wasn't found.
+  if(mode==='NEW' && !fromList){ const typed=nmVal_('buyerName'); if(typed) document.getElementById('nbParty').value=typed; }
+  const ui=BY_MODE_UI[mode];
+  document.getElementById('nbTitle').textContent=ui.t+(row?' — '+String(row.party_name||'')+' (REV '+(row.rev_no||1)+')':'');
+  document.getElementById('nbDesc').innerHTML=
+      mode==='EDIT'  ?'Fix a mistake: <b>REV '+(row.rev_no||1)+' stays the same</b>. The row as it was before saving goes into the Revision History.'
+    : mode==='REVISE'?'New version: saving makes it <b>REV '+(row.rev_no||1)+' → '+((row.rev_no||1)+1)+'</b>. A reason is required; the old version stays in History.'
+    : fromList?'A new party in the Buyer Master. It appears in the Order Form\'s <b>Buyer / Company Name</b> list.'
+    :'A new party in the Buyer Master. Once saved it appears in the <b>Buyer / Company Name</b> dropdown above and is selected.';
+  document.getElementById('nbReasonWrap').style.display=mode==='REVISE'?'':'none';
+  document.getElementById('nbReason').value='';
   nmErr_('nbError','');
-  nmBusy_('nbSaveBtn',false,'Save Buyer');
+  nmBusy_('nbSaveBtn',false,ui.btn);
   document.getElementById('newBuyerModal').classList.add('open');
-  setTimeout(()=>document.getElementById('nbParty')?.focus(),60);
+  setTimeout(()=>document.getElementById(mode==='REVISE'?'nbReason':'nbParty')?.focus(),60);
 }
 function closeNewBuyer(){ document.getElementById('newBuyerModal').classList.remove('open'); }
 
 async function saveNewBuyer(){
+  if(BY_MODE.mode==='EDIT'||BY_MODE.mode==='REVISE') return bySaveExisting_();
   if(!canDo('create')) return;
   const party=nmVal_('nbParty').toUpperCase();
   nmErr_('nbError','');
   if(!party){ nmErr_('nbError','Party / Company Name is required'); document.getElementById('nbParty').focus(); return; }
-  const clash=BUYER_MASTER_ROWS.find(r=>nmKey_(r.party_name)===nmKey_(party));
+  // The full list (with Inactive rows) once the Buyer Master list has loaded it, else the dropdown's rows.
+  const clash=(BYV_ROWS||BUYER_MASTER_ROWS).find(r=>nmKey_(r.party_name)===nmKey_(party));
   if(clash){
     nmErr_('nbError','"'+String(clash.party_name||party)+'" is already in the Buyer Master'
       +(clash.is_active===false?' (Inactive; make it Active again from ERP › Buyer Master)':'')
@@ -3048,6 +3166,14 @@ async function saveNewBuyer(){
     if(!DROPS.buyerName.includes(party)) DROPS.buyerName.push(party);
     try{ localStorage.setItem(LS_DROPS,JSON.stringify(DROPS)); }catch(e){}
     refreshAllCombos();
+    if(BYV_ROWS) byPutRow_(row);
+    // From the Buyer Master list: the party is only added, not put into an order.
+    if(BY_MODE.fromList){
+      closeNewBuyer();
+      toast('"'+party+'" added to the Buyer Master');
+      byvRender();
+      return;
+    }
 
     /* The new party is also selected in the form, and the other Buyer Details
        fields are filled in with it: the same thing that happens when a party
@@ -3074,6 +3200,214 @@ async function saveNewBuyer(){
         ? ': no permission to write to the Buyer Master. Add it from ERP › Master Data › Buyer Master.' : ''));
     nmBusy_('nbSaveBtn',false,'Save Buyer');
   }
+}
+
+/* ══ BUYER MASTER LIST (home page › Buyer Master) ═══════════════════════
+   Every party of buyer_master with its Actions, the same rules as ERP ›
+   Master Data › Buyer Master and as the Brand Master list above:
+     Edit    fix a mistake, REV unchanged     BUYER_EDIT
+     Revise  REV +1, reason required          BUYER_REVISE
+     History what changed, who, when          MASTER_REV_HISTORY
+     Active / Inactive (not offered on new orders; old orders keep the name)
+                                              MASTER_ACTIVATE
+     Delete  permanent, history stays         BUYER_DELETE
+   Rights: the ERP's Feature Access inside the ERP, else the Order Form role
+   (BM_ROLE_FALLBACK). Archive first, then write (master_revisions,
+   non-fatal). The list reads '*' (the dropdown's own read has no id / REV);
+   after a change fetchDrops rebuilds the Buyer / Company Name list. Renaming
+   a party does not touch old orders: they keep the name they were saved with. */
+let BYV_ROWS=null;
+const BYV_COLS=[['party_name','Party / Company'],['owner_name','Owner'],['contact_no','Contact'],['gstin','GSTIN'],
+  ['address','Address'],['party_staff_name','Staff'],['party_staff_contact_no','Staff Contact'],['notes','Notes']];
+const byRow_=id=>(BYV_ROWS||[]).find(r=>String(r.id)===String(id))||null;
+function byPutRow_(row){
+  if(!row||!BYV_ROWS) return;
+  const i=BYV_ROWS.findIndex(r=>String(r.id)===String(row.id));
+  if(i>=0) BYV_ROWS[i]=row; else BYV_ROWS.push(row);
+}
+async function openBuyerView(){
+  document.getElementById('byvSearch').value='';
+  document.getElementById('byvHead').innerHTML='<th class="act">Actions</th>'+BYV_COLS.map(c=>'<th>'+c[1]+'</th>').join('')+'<th>REV</th>';
+  document.getElementById('buyerViewModal').classList.add('open');
+  await byvReload();
+  setTimeout(()=>document.getElementById('byvSearch').focus(),60);
+}
+function closeBuyerView(){ document.getElementById('buyerViewModal').classList.remove('open'); }
+async function byvReload(){
+  document.getElementById('byvBody').innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#888">Loading…</td></tr>';
+  if(!SB_READY){ BYV_ROWS=BYV_ROWS||[]; byvRender(); return toast('Not connected to the database'); }
+  try{
+    BYV_ROWS=await fetchAllRows('buyer_master','*','party_name');   // paged: complete past 1000 parties
+  }catch(e){ BYV_ROWS=BYV_ROWS||[]; toast('The Buyer Master did not load: '+(e.message||e)); }
+  byvRender();
+}
+function byvRender(){
+  const body=document.getElementById('byvBody'); if(!body||!BYV_ROWS) return;
+  const q=document.getElementById('byvSearch').value.trim().toUpperCase();
+  const showOff=document.getElementById('byvInactive').checked;
+  const all=BYV_ROWS.slice().sort((a,b)=>String(a.party_name||'').localeCompare(String(b.party_name||''),undefined,{numeric:true}));
+  const rows=all.filter(r=>(showOff||r.is_active!==false)
+    && (!q || BYV_COLS.some(c=>String(r[c[0]]==null?'':r[c[0]]).toUpperCase().includes(q))));
+  const offN=all.filter(r=>r.is_active===false).length;
+  document.getElementById('byvCount').textContent=rows.length+' / '+all.length+' parties'+(offN&&!showOff?' ('+offN+' inactive hidden)':'');
+  const can={ed:bmCan_('BUYER_EDIT'), rv:bmCan_('BUYER_REVISE'), hs:bmCan_('MASTER_REV_HISTORY'), ac:bmCan_('MASTER_ACTIVATE'), dl:bmCan_('BUYER_DELETE')};
+  const ib=(ok,act,label,title,feat,id,cls)=>'<button type="button" class="bmv-ib'+(cls?' '+cls:'')+(ok?'':' off')+'" data-act="'+act+'" data-id="'+esc(id)+'"'
+    +(ok?'':' data-deny="'+feat+'"')+' title="'+esc(title+(ok?'':' (no access for this role)'))+'">'+label+'</button>';
+  body.innerHTML=rows.map(r=>{
+    const off=r.is_active===false, id=r.id;
+    const acts='<div class="bmv-acts">'
+      +ib(can.ed,'edit','Edit','Edit: fix a mistake (REV stays the same)','BUYER_EDIT',id)
+      +ib(can.rv,'revise','Revise','Revise: new version (REV '+((r.rev_no||1)+1)+'), reason required','BUYER_REVISE',id)
+      +ib(can.hs,'hist','History','Revision history: who changed what, and when','MASTER_REV_HISTORY',id)
+      +ib(can.ac,'toggle',off?'Activate':'Deactivate',off?'Make Active again':'Make Inactive; it won\'t appear on new orders','MASTER_ACTIVATE',id)
+      +ib(can.dl,'del','✕','Delete permanently','BUYER_DELETE',id,'del')
+      +'</div>';
+    return '<tr class="'+(off?'off':'')+'"><td class="act">'+acts+'</td>'
+      +BYV_COLS.map(c=>{ const v=r[c[0]]==null?'':String(r[c[0]]);
+        return '<td'+(c[0]==='address'||c[0]==='notes'?' style="max-width:260px;overflow:hidden;text-overflow:ellipsis" title="'+esc(v)+'"':'')+'>'+(c[0]==='party_name'?'<b>'+esc(v)+'</b>':esc(v))+'</td>'; }).join('')
+      +'<td><span class="bmv-rev">REV '+(r.rev_no||1)+'</span></td></tr>';
+  }).join('')||'<tr><td colspan="11" style="text-align:center;padding:20px;color:#888">Nothing found</td></tr>';
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('#byvBody [data-act]'); if(!b) return;
+  if(b.dataset.deny!==undefined) return bmDeny_(b.dataset.deny);
+  const id=b.dataset.id, row=byRow_(id);
+  if(!row) return toast('Row not found. Please press ↻ Refresh.');
+  switch(b.dataset.act){
+    case 'edit':   return byOpenForm_('EDIT',row,true);
+    case 'revise': return byOpenForm_('REVISE',row,true);
+    case 'hist':   return byHistory_(id);
+    case 'toggle': return byToggleActive_(id);
+    case 'del':    return byDelete_(id);
+  }
+});
+function byReadForm_(){
+  const vals={};
+  BY_FIELDS.forEach(f=>{ let v=nmVal_(f.id); if(f.uc) v=v.toUpperCase(); vals[f.k]=nmNull_(v); });
+  return vals;
+}
+function byDiff_(oldRow,vals){
+  const out=[], fmt=v=>v==null?'':String(v).trim();
+  BY_FIELDS.forEach(f=>{ const a=fmt(oldRow[f.k]), b=fmt(vals[f.k]); if(a!==b) out.push({k:f.k,l:f.l,o:a,n:b}); });
+  return out;
+}
+async function byArchive_(row,action,reason,changed){
+  if(!row) return;
+  try{
+    const {error}=await SB.from('master_revisions').insert({
+      master_type:'BUYER', record_id:row.id, rev_no:row.rev_no||1,
+      ref_name:String(row.party_name||'-'), action, reason:reason||null,
+      changed_fields:changed&&changed.length?changed:null, snapshot:row, created_by:nmActor_()
+    });
+    if(error) throw error;
+  }catch(e){ console.warn('[ORDER FORM] revision archive skip (master_revisions):',e.message||e); }
+}
+// After a change: the list now, the Order Form's Buyer / Company Name list from the database.
+function byAfterChange_(){
+  byvRender();
+  if(SB_READY) Promise.resolve(fetchDrops()).catch(()=>{});
+}
+async function bySaveExisting_(){
+  const {mode,base}=BY_MODE;
+  const feat=mode==='REVISE'?'BUYER_REVISE':'BUYER_EDIT';
+  if(!bmCan_(feat)) return bmDeny_(feat);
+  if(!base) return nmErr_('nbError','Row not found. Please refresh the list.');
+  nmErr_('nbError','');
+  const vals=byReadForm_();
+  if(!vals.party_name){ document.getElementById('nbParty').focus(); return nmErr_('nbError','Party / Company Name is required'); }
+  const clash=(BYV_ROWS||[]).find(r=>String(r.id)!==String(base.id) && nmKey_(r.party_name)===nmKey_(vals.party_name));
+  if(clash) return nmErr_('nbError','"'+clash.party_name+'" is already in the Buyer Master. Please use a different name.');
+  let reason=null;
+  if(mode==='REVISE'){
+    reason=nmVal_('nbReason');
+    if(!reason){ document.getElementById('nbReason').focus(); return nmErr_('nbError','A reason is required to Revise'); }
+  }
+  const changed=byDiff_(base,vals);
+  if(!changed.length && mode==='EDIT'){ closeNewBuyer(); return toast('Nothing changed, so nothing was saved'); }
+  if(vals.gstin && vals.gstin.length!==15) toast('A GSTIN has 15 characters. Please check it.');
+  // Old orders keep the name they were saved with; said before a rename, not after.
+  if(nmKey_(vals.party_name)!==nmKey_(base.party_name)
+     && !confirm('Rename "'+base.party_name+'" to "'+vals.party_name+'"?\n\nNew orders will use the new name. Orders already saved keep the old name.')) return;
+  const label=BY_MODE_UI[mode].btn;
+  nmBusy_('nbSaveBtn',true,label);
+  try{
+    await byArchive_(base,mode,reason,changed);
+    const upd=Object.assign({},vals,{updated_by:nmActor_(),updated_at:new Date().toISOString()});
+    if(mode==='REVISE'){ upd.rev_no=(base.rev_no||1)+1; upd.rev_reason=reason; }
+    const {data,error}=await nmWriteDropMissing_(body=>SB.from('buyer_master').update(body).eq('id',base.id).select().maybeSingle(),upd,'buyer_master');
+    if(error) throw error;
+    if(!data) throw new Error('The row was not updated. Someone may have deleted it, or you lack write permission. Please refresh the list.');
+    byPutRow_(data);
+    closeNewBuyer();
+    toast(mode==='REVISE'
+      ?'"'+data.party_name+'" is now on REV '+upd.rev_no+' ('+changed.length+' field(s) changed)'
+      :'"'+data.party_name+'" updated ('+changed.length+' field(s), REV '+(base.rev_no||1)+' unchanged)');
+    byAfterChange_();
+  }catch(e){
+    console.error('[ORDER FORM] Buyer update failed:',e);
+    nmErr_('nbError',(/duplicate key|unique/i.test(e.message||'')?'This party name already exists: ':'')+(e.message||String(e)));
+    nmBusy_('nbSaveBtn',false,label);
+  }
+}
+async function byToggleActive_(id){
+  if(!bmCan_('MASTER_ACTIVATE')) return bmDeny_('MASTER_ACTIVATE');
+  const row=byRow_(id); if(!row) return;
+  const on=row.is_active===false;
+  if(!confirm(on?'Make "'+row.party_name+'" Active again?'
+    :'Make "'+row.party_name+'" Inactive?\n\nIt will not appear in the Buyer / Company Name list for new orders; old orders keep it.')) return;
+  try{
+    const {data,error}=await SB.from('buyer_master').update({is_active:on,updated_by:nmActor_(),updated_at:new Date().toISOString()}).eq('id',id).select().maybeSingle();
+    if(error) throw error;
+    if(!data) throw new Error('The row was not updated. Check permissions / refresh.');
+    await byArchive_(row,on?'RESTORE':'DEACTIVATE',null,[{k:'is_active',l:'STATUS',o:on?'Inactive':'Active',n:on?'Active':'Inactive'}]);
+    byPutRow_(data);
+    toast(on?'"'+row.party_name+'" is Active again':'"'+row.party_name+'" made Inactive');
+    byAfterChange_();
+  }catch(e){ toast(''+(e.message||e)); }
+}
+async function byDelete_(id){
+  if(!bmCan_('BUYER_DELETE')) return bmDeny_('BUYER_DELETE');
+  const row=byRow_(id); if(!row) return;
+  if(!confirm('Remove "'+row.party_name+'" from the Buyer Master PERMANENTLY?\n\n'
+    +'Orders and packing slips already saved keep the name. The revision history stays in the archive.\nIf you only want it not to be used from now on, Inactive is better than Delete.')) return;
+  try{
+    await byArchive_(row,'DELETE',null,null);
+    const {data,error}=await SB.from('buyer_master').delete().eq('id',id).select('id');
+    if(error) throw error;
+    if(!data||!data.length) throw new Error('Not deleted: no permission, or the row has already been removed');
+    BYV_ROWS=BYV_ROWS.filter(r=>String(r.id)!==String(id));
+    toast('"'+row.party_name+'" deleted');
+    byAfterChange_();
+  }catch(e){ toast(''+(e.message||e)); }
+}
+// History: the archived versions, newest first (in the same info box as the Brand Master's).
+async function byHistory_(id){
+  if(!bmCan_('MASTER_REV_HISTORY')) return bmDeny_('MASTER_REV_HISTORY');
+  const row=byRow_(id); if(!row) return;
+  document.getElementById('bmInfoTitle').textContent='Revision History — '+(row.party_name||'');
+  document.getElementById('bmInfoSub').innerHTML='Currently on <b>REV '+(row.rev_no||1)+'</b>.';
+  const body=document.getElementById('bmInfoBody');
+  body.innerHTML='<div class="oh-loading">Loading history…</div>';
+  document.getElementById('bmInfoModal').classList.add('open');
+  let revs=[];
+  try{
+    const {data,error}=await SB.from('master_revisions').select('*').eq('master_type','BUYER').eq('record_id',id).order('created_at',{ascending:false});
+    if(error) throw error; revs=data||[];
+  }catch(e){ body.innerHTML='<div class="oh-loading">master_revisions could not be read: '+esc(e.message||e)+'</div>'; return; }
+  let h='<div class="bmh-row cur"><div class="bmh-n">REV '+(row.rev_no||1)+'</div><div class="bmh-mid"><b>Current version</b>'
+    +'<div class="bmh-meta">'+esc(row.updated_by||row.created_by||'—')+(row.updated_at?' · '+esc(fmtIST(row.updated_at)):'')+'</div>'
+    +(row.rev_reason?'<div class="bmh-why">'+esc(row.rev_reason)+'</div>':'')+'</div></div>';
+  h+=revs.map(rv=>{
+    const ch=Array.isArray(rv.changed_fields)?rv.changed_fields:[];
+    return '<div class="bmh-row"><div class="bmh-n">REV '+(rv.rev_no||1)+'</div><div class="bmh-mid">'
+      +'<b>'+esc(BM_ACT[rv.action]||rv.action||'—')+'</b>'
+      +'<div class="bmh-meta">'+esc(rv.created_by||'—')+(rv.created_at?' · '+esc(fmtIST(rv.created_at)):'')+'</div>'
+      +(rv.reason?'<div class="bmh-why">'+esc(rv.reason)+'</div>':'')
+      +(ch.length?'<div class="bmh-diff">'+ch.map(c=>'<code>'+esc(c.l)+'</code> <span class="o">'+esc(c.o||'—')+'</span> → <span class="n">'+esc(c.n||'—')+'</span>').join('<br>')+'</div>':'')
+      +'</div></div>';
+  }).join('');
+  if(!revs.length) h+='<div class="oh-loading" style="padding:20px">No older versions yet. The first Edit / Revise will add a snapshot here.</div>';
+  body.innerHTML=h;
 }
 
 /* ══ ADD NEW BRAND ITEM (brand_master) ══════════════════════════════════
@@ -3388,6 +3722,8 @@ function bmvOpenErp(){
 const BM_ROLE_FALLBACK={
   BRAND_EDIT:['admin','manager'], BRAND_REVISE:['admin','manager'], MASTER_ACTIVATE:['admin','manager'],
   BRAND_DELETE:['admin'], MASTER_REV_RESTORE:['admin'],
+  // Buyer Master list (home page): the same split as the brand rights.
+  BUYER_EDIT:['admin','manager'], BUYER_REVISE:['admin','manager'], BUYER_DELETE:['admin'],
   MASTER_REV_HISTORY:['admin','manager','executive','data_entry','viewer']
 };
 function bmErp_(){ try{ const P=window.parent; if(P!==window && typeof P.sarvCan==='function') return P; }catch(e){} return null; }
@@ -3681,6 +4017,12 @@ const BMV_COLS=[['item_code','Item Code'],['fabric_name','Fabric'],['category','
   ['moq','MOQ'],['emboss','Emboss'],['packing_pcs','Slave Pkg Std Qty'],['packing_pcs_2','Slave Pkg Std Qty 2']];
 async function openBrandView(prodId){
   bmvTargetProd_=prodId;
+  // From the home page (no product card): no "Use", and the list just closes.
+  const fromHome=prodId==null;
+  document.getElementById('bmvSub').innerHTML=fromHome
+    ?'<b>Actions</b> next to each item: View, Edit, Revise, Copy, History, Active / Inactive. <b>New</b> adds an Item Code.'
+    :'<b>Actions</b> next to each item. Pressing <b>Use</b> selects that Item Code in this product.';
+  document.getElementById('bmvCloseBtn').textContent=fromHome?'Close':'← Back to the Order Form';
   document.getElementById('bmvSearch').value='';
   document.getElementById('bmvHead').innerHTML='<th class="act">Actions</th>'+BMV_COLS.map(c=>'<th>'+c[1]+'</th>').join('')+'<th>REV</th>';
   document.getElementById('bmvErpBtn').style.display=bmErpNav_()?'':'none';
@@ -3716,7 +4058,7 @@ function bmvRender(){
   document.getElementById('bmvBody').innerHTML=rows.slice(0,500).map(r=>{
     const off=r.is_active===false, id=r.id;
     const acts='<div class="bmv-acts">'
-      +(off?'':ib(can.use,'use','Use','Use: select this Item Code in this product','create',id))
+      +(off||bmvTargetProd_==null?'':ib(can.use,'use','Use','Use: select this Item Code in this product','create',id))
       +ib(true,'view','View','View: all columns','',id)
       +ib(can.ed,'edit','Edit','Edit: fix a mistake (REV stays the same)','BRAND_EDIT',id)
       +ib(can.rv,'revise','Revise','Revise: new version (REV '+((r.rev_no||1)+1)+'), reason required','BRAND_REVISE',id)
@@ -6553,6 +6895,8 @@ async function editOrder(orderNo){
     ofSetMode(ofTypeOf(orderNo)); ofHideHome();
     toast('Order '+orderNo+' loaded — make changes & Submit to save');
     window.scrollTo({top:0,behavior:'smooth'});
+    // Buyer Details as the Buyer Master has them NOW (after the "loaded" note, so its own note is the one left on screen).
+    await ofRefreshBuyerFromMaster_();
   }catch(err){
     toast(''+(isSetupError(err)?SETUP_HINT:('Network error: '+err.message)));
   }

@@ -629,6 +629,16 @@
         .ord-table td { vertical-align: middle; }
         .ord-table tr.ord-t-canc td { opacity: .5; text-decoration: line-through; }
         .ord-table td.ord-t-edit { padding: 2px 4px; }
+        .ord-table tr.ord-t-closed td { background: #f1f5f9; color: #64748b; }
+        .ord-table .ord-t-pick { width: 26px; text-align: center; padding: 2px 4px; }
+        .ord-table .ord-t-pick input { width: 15px; height: 15px; cursor: pointer; }
+        .ord-table td.ord-t-st small { display: block; font-weight: 600; color: #64748b; font-size: 9.5px; white-space: nowrap; }
+        .ord-st-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; padding: 8px 10px; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; font-size: 12px; }
+        .ord-st-bar b { color: #5b21b6; }
+        .ord-st-bar input { flex: 1; min-width: 160px; padding: 5px 8px; border: 1px solid #c4b5fd; border-radius: 6px; font-size: 12px; }
+        .ord-st-bar button { border: none; border-radius: 6px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; color: #fff; }
+        .ord-st-bar button:disabled { opacity: .45; cursor: not-allowed; }
+        .ord-st-bar .b-close { background: #475569; } .ord-st-bar .b-hold { background: #d97706; } .ord-st-bar .b-open { background: #059669; } .ord-st-bar .b-clear { background: #e2e8f0; color: #334155; }
         .ord-table td.ord-t-edit button { border: 1px solid #c4b5fd; background: #f5f3ff; color: #6d28d9; border-radius: 5px; padding: 2px 7px; font-size: 12px; cursor: pointer; line-height: 1.2; }
         /* Checkbox (multi-select) dropdowns */
         .ord-ms { position: relative; }
@@ -8168,7 +8178,7 @@ var ORD_FACET_COLS = 'id, order_no, order_date, status, order_type, party_name, 
 var ORD_GROUPS_PER_PAGE = 20;
 var ORD_BLANK  = '__BLANK__';    // "(Blank)" option: the column is empty
 var ORD_ACTIVE = '__ACTIVE__';   // Status "Active" = PENDING + IN PROGRESS
-var ORD_STATUS_ORDER = ['PENDING', 'IN PROGRESS', 'HOLD', 'COMPLETED', 'CANCELLED'];
+var ORD_STATUS_ORDER = ['PENDING', 'IN PROGRESS', 'HOLD', 'PARTIAL HOLD', 'COMPLETED', 'CLOSED', 'CANCELLED'];
 var ORD_F_STORE = 'pk_order_filters_v1';   // per-viewer convenience only
 var _ordFacet = { rows: [], loadedAt: 0, ok: false, loading: null, dirty: false };
 var _ordF = { vals: {}, from: '', to: '', search: '', open: null };
@@ -8658,7 +8668,9 @@ function ordSumRows(rows) {
         var bal = Math.min(q, Math.max(0, Number(r.pending_qty) || 0));
         b.qty += q;
         b.packed += q - bal;
-        if (String(r.status || '').trim().toUpperCase() === 'CANCELLED') b.canc += bal; else b.pend += bal;
+        // CANCELLED / CLOSED: that balance will never be packed, so it is not Pending (PARTIAL HOLD still is, like HOLD).
+        var stU = String(r.status || '').trim().toUpperCase();
+        if (stU === 'CANCELLED' || stU === 'CLOSED') b.canc += bal; else b.pend += bal;
     });
     return s;
 }
@@ -8686,7 +8698,7 @@ function ordRenderTotals(matched, groupCount) {
         '<div class="ord-tot"><span>Order Qty</span><b>' + both(t.qty, pvc.qty) + '</b></div>' +
         '<div class="ord-tot good"><span>Packed</span><b>' + both(t.packed, pvc.packed) + '</b><em>' + pct + '% of qty</em></div>' +
         '<div class="ord-tot warn"><span>Pending</span><b>' + both(t.pend, pvc.pend) + '</b></div>' +
-        (t.canc || pvc.canc ? '<div class="ord-tot bad"><span>Cancelled</span><b>' + both(t.canc, pvc.canc) + '</b><em>not packed</em></div>' : '') +
+        (t.canc || pvc.canc ? '<div class="ord-tot bad"><span>Cancelled / Closed</span><b>' + both(t.canc, pvc.canc) + '</b><em>not packed</em></div>' : '') +
         (hasPvc ? '<div class="ord-tot-note">+ = PVC BAG (counted apart)</div>' : '');
     box.style.display = '';
     ordPaintTotalsFold();
@@ -8745,6 +8757,110 @@ async function ordOpenInEdit(orderNo) {
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+// ── SET STATUS: CLOSED / PARTIAL HOLD from the table ────────────────────
+// Tick sub-order rows (any page; kept in _ordPick by Order No), then Set
+// CLOSED, Set PARTIAL HOLD or Re-open in the bar above the table.
+// packing.pk_order_set_status (PACKING_ORDER_CLOSE_MIGRATION.sql) does it:
+// Admin / MD / Packing Incharge, the user's name as Closed By, the time, the
+// remark, and a snapshot of Order Qty / Packed / Pending; those three stay
+// in the order as they are. Every pending list (Quick Pack too) reads
+// PENDING / IN PROGRESS only, so a CLOSED / PARTIAL HOLD order is not shown
+// as pending there. COMPLETED / CANCELLED rows are skipped by the server.
+var _ordPick = {};
+function ordCanSetStatus() {
+    return !!(session && ['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(String(session.role || '').toUpperCase()) >= 0);
+}
+function ordPickCount() { return Object.keys(_ordPick).length; }
+function ordStatusBarHtml(canSt) {
+    if (!canSt) return '';
+    return '<div class="ord-st-bar" id="ord-st-bar">' +
+        '<span><b id="ord-st-n">0</b> selected</span>' +
+        '<input type="text" id="ord-st-remark" maxlength="500" placeholder="Remark (optional): why closed / on hold">' +
+        '<button type="button" class="b-close" data-st="CLOSED" onclick="ordSetStatus(\'CLOSED\')" title="Close the selected sub-orders: no more packing, they leave Quick Pack">Set CLOSED</button>' +
+        '<button type="button" class="b-hold" data-st="PARTIAL HOLD" onclick="ordSetStatus(\'PARTIAL HOLD\')" title="Put the selected sub-orders on Partial Hold: they leave Quick Pack until re-opened">Set PARTIAL HOLD</button>' +
+        '<button type="button" class="b-open" data-st="ACTIVE" onclick="ordSetStatus(\'ACTIVE\')" title="Open CLOSED / PARTIAL HOLD sub-orders again">Re-open</button>' +
+        '<button type="button" class="b-clear" onclick="ordPickAll(false, true)">Clear</button>' +
+    '</div>';
+}
+function ordPickToggle(cb) {
+    var no = cb.getAttribute('data-no');
+    if (cb.checked) _ordPick[no] = true; else delete _ordPick[no];
+    ordPickSync();
+}
+// All rows of THIS page; everywhere = also the ticks kept from other pages (Clear).
+function ordPickAll(on, everywhere) {
+    if (everywhere) _ordPick = {};
+    document.querySelectorAll('#order-list .ord-pick').forEach(function(cb) {
+        cb.checked = !!on;
+        var no = cb.getAttribute('data-no');
+        if (on) _ordPick[no] = true; else delete _ordPick[no];
+    });
+    ordPickSync();
+}
+function ordPickSync() {
+    var n = ordPickCount(), el = document.getElementById('ord-st-n');
+    if (el) el.textContent = n;
+    document.querySelectorAll('#ord-st-bar button[data-st]').forEach(function(b) { b.disabled = !n; });
+    var boxes = document.querySelectorAll('#order-list .ord-pick'), all = document.getElementById('ord-pick-all');
+    if (all) all.checked = boxes.length > 0 && Array.prototype.every.call(boxes, function(cb) { return cb.checked; });
+}
+async function ordSetStatus(st) {
+    var nos = Object.keys(_ordPick);
+    if (!nos.length) { showToast('Tick the sub-order rows first'); return; }
+    var remark = (document.getElementById('ord-st-remark') || {}).value || '';
+    var what = st === 'ACTIVE' ? 'Re-open' : 'Set ' + st + ' for';
+    var msg = what + ' ' + nos.length + ' sub-order(s)?\n\n' + nos.slice(0, 12).join(', ') + (nos.length > 12 ? ' …' : '') + '\n\n' +
+        (st === 'ACTIVE'
+            ? 'They come back into Quick Pack and the pending lists (status from the packed qty).'
+            : 'Order Qty, Packed and Pending stay saved as they are. They will not show as pending in Quick Pack or the pending lists. Your name is saved as ' + (st === 'CLOSED' ? 'Closed' : 'Put on hold') + ' By.') +
+        '\nCOMPLETED / CANCELLED rows are left as they are.';
+    if (!confirm(msg)) return;
+    var bar = document.getElementById('ord-st-bar');
+    if (bar) bar.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
+    try {
+        var { data, error } = await supabaseClient.rpc('pk_order_set_status', { p_order_nos: nos, p_status: st, p_remark: remark.trim() || null });
+        if (error) {
+            var miss = error.code === 'PGRST202' || error.code === '42883';
+            alert(miss ? 'The server is not ready for this yet. Admin: run PACKING_ORDER_CLOSE_MIGRATION.sql in the Supabase SQL Editor.' : (error.message || String(error)));
+            return;
+        }
+        if (!data || !data.success) { alert((data && data.error) || 'Not saved'); return; }
+        var sk = data.skipped || [];
+        showToast((st === 'ACTIVE' ? 'Re-opened ' : st + ': ') + data.changed + ' sub-order(s)' + (sk.length ? ' · ' + sk.length + ' skipped' : ''));
+        if (sk.length) alert('Not changed:\n\n' + sk.slice(0, 20).map(function(x) { return '• ' + x.order_no + ' ' + x.why; }).join('\n') + (sk.length > 20 ? '\n…' : ''));
+        _ordPick = {};
+        var rm = document.getElementById('ord-st-remark'); if (rm) rm.value = '';
+        // Same refresh as a Cancel / Hold: the lists and Quick Pack, without stale party caches.
+        try {
+            var currentParty = document.getElementById('po-party');
+            if (currentParty && currentParty.value) await clearCachedData('partyOrders_' + currentParty.value.toUpperCase());
+        } catch (e) {}
+        await Promise.all([fetchAllOrders(), loadPendingOrdersDeferred(), refreshQuickPackPanel()]);
+    } catch (e) {
+        alert('' + (e.message || e));
+    } finally {
+        ordPickSync();
+    }
+}
+// Under a CLOSED / PARTIAL HOLD status: who, when (remark on hover). Read
+// apart, so the list itself works the same before the migration.
+async function ordFillClosedBy_() {
+    var nos = allOrders.filter(function(o) { var s = String(o.status || '').toUpperCase(); return s === 'CLOSED' || s === 'PARTIAL HOLD'; })
+                       .map(function(o) { return o.orderNo; });
+    if (!nos.length) return;
+    try {
+        var { data, error } = await supabaseClient.from('orders').select('order_no, closed_by, closed_at, close_remark').in('order_no', nos);
+        if (error) return;
+        (data || []).forEach(function(r) {
+            var td = document.querySelector('#order-list td.ord-t-st[data-no="' + String(r.order_no).replace(/"/g, '\\"') + '"]');
+            if (!td || !r.closed_by) return;
+            td.insertAdjacentHTML('beforeend', '<small>by ' + escapeHtmlJs(r.closed_by) +
+                (r.closed_at ? ' · ' + escapeHtmlJs(formatSlipDate(String(r.closed_at).slice(0, 10))) : '') + '</small>');
+            if (r.close_remark) td.title = r.close_remark;
+        });
+    } catch (e) {}
+}
+
 // The table of the current page (allOrders). fullTotals = the TOTAL row can
 // use the sums of every matching row (filter index); else page sums only.
 function ordRenderTable(fullTotals) {
@@ -8755,17 +8871,21 @@ function ordRenderTable(fullTotals) {
     }
     var statusColor = function(s) {
         return s === 'PENDING' ? '#f59e0b' : s === 'COMPLETED' ? '#10b981' : s === 'IN PROGRESS' ? '#2563eb' :
-               s === 'CANCELLED' ? '#dc2626' : s === 'HOLD' ? '#d97706' : '#6b7280';
+               s === 'CANCELLED' ? '#dc2626' : s === 'HOLD' || s === 'PARTIAL HOLD' ? '#d97706' : s === 'CLOSED' ? '#475569' : '#6b7280';
     };
     var fmt = function(n) { return Math.round(Number(n) || 0).toLocaleString('en-IN'); };
+    var canSt = ordCanSetStatus();
     var dash = function(v) { return escapeHtmlJs(v || '-'); };
     var rows = allOrders.map(function(o) {
         var qty = Number(o.quantity) || 0;
         var pend = Math.min(qty, Math.max(0, Number(o.pendingOrder) || 0));
         var st = String(o.status || '').toUpperCase();
-        var trStyle = st === 'CANCELLED' ? ' class="ord-t-canc"' : st === 'HOLD' ? ' style="background:#fef9c3;"' :
+        var trStyle = st === 'CANCELLED' ? ' class="ord-t-canc"' : (st === 'HOLD' || st === 'PARTIAL HOLD') ? ' style="background:#fef9c3;"' :
+                      st === 'CLOSED' ? ' class="ord-t-closed"' :
                       isPvcPackType(o.item) ? ' style="background:#eff6ff;"' : '';
         return '<tr' + trStyle + '>' +
+            (canSt ? '<td class="ord-t-pick"><input type="checkbox" class="ord-pick" data-no="' + escapeHtmlJs(o.orderNo) + '"' +
+                (_ordPick[o.orderNo] ? ' checked' : '') + ' onchange="ordPickToggle(this)" title="Select for Set Status"></td>' : '') +
             '<td class="ord-t-edit"><button type="button" title="Edit this order" onclick="ordOpenInEdit(\'' + escapeHtmlJs(o.orderNo) + '\')">✎</button></td>' +
             '<td>' + dash(o.orderType) + '</td>' +
             '<td>' + dash(o.reviewOrder) + '</td>' +
@@ -8783,7 +8903,7 @@ function ordRenderTable(fullTotals) {
             '<td class="num">' + fmt(qty) + '</td>' +
             '<td class="num" style="color:#2563eb;">' + fmt(qty - pend) + '</td>' +
             '<td class="num" style="color:' + (pend > 0 ? '#ef4444' : '#10b981') + ';font-weight:700;">' + fmt(pend) + '</td>' +
-            '<td style="color:' + statusColor(st) + ';font-weight:700;font-size:10px;">' + dash(st) + '</td>' +
+            '<td class="ord-t-st" data-no="' + escapeHtmlJs(o.orderNo) + '" style="color:' + statusColor(st) + ';font-weight:700;font-size:10px;">' + dash(st) + '</td>' +
         '</tr>';
     }).join('');
 
@@ -8799,7 +8919,7 @@ function ordRenderTable(fullTotals) {
     }
     var totRow = function(lbl, b, bg) {
         return '<tr style="background:' + bg + ';font-weight:700;">' +
-            '<td colspan="14">' + lbl + (b.canc ? ' <span style="font-weight:600;color:#b91c1c;">· Cancelled balance ' + fmt(b.canc) + ' (not pending)</span>' : '') + '</td>' +
+            '<td colspan="' + (canSt ? 15 : 14) + '">' + lbl + (b.canc ? ' <span style="font-weight:600;color:#b91c1c;">· Cancelled / Closed balance ' + fmt(b.canc) + ' (not pending)</span>' : '') + '</td>' +
             '<td class="num">' + fmt(b.qty) + '</td>' +
             '<td class="num">' + fmt(b.packed) + '</td>' +
             '<td class="num">' + fmt(b.pend) + '</td><td></td></tr>';
@@ -8809,11 +8929,15 @@ function ordRenderTable(fullTotals) {
 
     var pag = buildOrderPagination();
     list.innerHTML = pag +
+        ordStatusBarHtml(canSt) +
         '<div class="ord-t-wrap"><table class="pending-table ord-table"><thead><tr>' +
+        (canSt ? '<th class="ord-t-pick"><input type="checkbox" id="ord-pick-all" onchange="ordPickAll(this.checked)" title="Select every row on this page"></th>' : '') +
         '<th></th><th>Type</th><th>Review</th><th>Order No</th><th>Date</th><th>Order By</th>' +
         '<th>Party</th><th>Sub Dealer</th><th>Shipping Party</th><th>Transport / Deliver</th><th>Address</th>' +
         '<th>Quality</th><th>Item</th><th>Marka</th><th class="num">Qty</th><th class="num">Packed</th><th class="num">Pending</th><th>Status</th>' +
         '</tr></thead><tbody>' + rows + totals + '</tbody></table></div>' + pag;
+    ordPickSync();
+    ordFillClosedBy_();
 }
 
 async function fetchAllOrders() {
@@ -8996,7 +9120,7 @@ async function fetchOrdersPage(forceIndex) {
                 var isLocked = lockedOrderIds.has(o.orderNo);
                 var isCompleted = o.status === 'COMPLETED';
                 var packed = o.quantity - o.pendingOrder;
-                var rowBg = isCompleted ? '#ecfdf5' : o.status === 'CANCELLED' ? '#fef2f2' : o.status === 'HOLD' ? '#fef9c3' : '#fff';
+                var rowBg = isCompleted ? '#ecfdf5' : o.status === 'CANCELLED' ? '#fef2f2' : (o.status === 'HOLD' || o.status === 'PARTIAL HOLD') ? '#fef9c3' : o.status === 'CLOSED' ? '#f1f5f9' : '#fff';
 
                 // Item type dropdown
                 var typeOpts = '';
@@ -9004,9 +9128,11 @@ async function fetchOrdersPage(forceIndex) {
                     typeOpts += '<option value="' + t + '"' + (t === o.item ? ' selected' : '') + '>' + t + '</option>';
                 });
 
-                // Status dropdown
-                var statOpts = '';
-                ['PENDING','IN PROGRESS','COMPLETED','CANCELLED','HOLD'].forEach(function(s) {
+                // Status dropdown. CLOSED / PARTIAL HOLD are set and undone only in the
+                // Table View (ordSetStatus); here they show as they are and the box is
+                // locked, so saving the card writes the same status back, never PENDING.
+                var statOpts = '', stLocked = o.status === 'CLOSED' || o.status === 'PARTIAL HOLD';
+                ['PENDING','IN PROGRESS','COMPLETED','CANCELLED','HOLD'].concat(stLocked ? [o.status] : []).forEach(function(s) {
                     statOpts += '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
                 });
 
@@ -9029,7 +9155,8 @@ async function fetchOrdersPage(forceIndex) {
                     '</td>' +
                     '<td style="padding:4px;border:1px solid #e2e8f0;text-align:center;font-weight:700;color:#2563eb;">' + packed + '</td>' +
                     '<td style="padding:2px;border:1px solid #e2e8f0;">' +
-                        '<select class="so-status" style="width:100%;padding:3px;border:1px solid #cbd5e1;border-radius:3px;font-size:10px;">' + statOpts + '</select></td>' +
+                        '<select class="so-status"' + (stLocked ? ' disabled title="' + o.status + ': re-open it from the Table View (tick the row › Re-open)"' : '') +
+                        ' style="width:100%;padding:3px;border:1px solid #cbd5e1;border-radius:3px;font-size:10px;">' + statOpts + '</select></td>' +
                     '<td style="padding:2px;border:1px solid #e2e8f0;">' +
                         '<input type="text" class="so-marka" value="' + escapeHtmlAttr(o.privateMarka || '') + '" style="width:100%;padding:3px;border:1px solid #cbd5e1;border-radius:3px;font-size:10px;"' +
                         (isCompleted ? ' disabled' : '') + ' oninput="this.value=this.value.toUpperCase()"></td>' +
@@ -9416,6 +9543,12 @@ function addQualityRow(quality, item, qty, privateMarka) {
             statusDiv.innerHTML =
                 '<span style="font-weight:700;color:#059669;">' + escapeHtmlJs(orderNo) + '</span>' +
                 '<span style="color:#059669;font-weight:700;">COMPLETED — Status change not allowed</span>';
+        } else if (currentStatus === 'CLOSED' || currentStatus === 'PARTIAL HOLD') {
+            // Set / undone only from the Table View (ordSetStatus), which keeps who / when / why.
+            statusDiv.innerHTML =
+                '<span style="font-weight:700;color:#475569;">' + escapeHtmlJs(orderNo) + '</span>' +
+                '<span style="color:' + (currentStatus === 'CLOSED' ? '#475569' : '#d97706') + ';font-weight:700;">' + currentStatus +
+                ' — re-open it from the Table View (tick the row › Re-open)</span>';
         } else {
             statusDiv.innerHTML =
                 '<span style="font-weight:700;color:#92400e;">' + escapeHtmlJs(orderNo) + '</span>' +
@@ -14564,13 +14697,14 @@ var DFU_AUTO = {
             qty += q; packed += (o.packed_qty != null ? Number(o.packed_qty) || 0 : q - pend);
             var s = String(o.status || 'PENDING').toUpperCase(); st[s] = (st[s] || 0) + 1;
         });
-        var done = live.every(function(o) { return String(o.status || '').toUpperCase() === 'COMPLETED' || (Number(o.pending_qty) || 0) <= 0; });
+        // CLOSED = packing of that sub-order finished by decision (Orders › Set Status), so it counts as done.
+        var done = live.every(function(o) { var s = String(o.status || '').toUpperCase(); return s === 'COMPLETED' || s === 'CLOSED' || (Number(o.pending_qty) || 0) <= 0; });
         var pct = qty ? Math.min(100, Math.round(packed * 100 / qty)) : 0;
         var detail = 'Packed ' + packed + ' / ' + qty + ' (' + pct + '%) · ' + Object.keys(st).map(function(k) { return st[k] + ' ' + k; }).join(', ');
         // Finished when the last slip was made (packing ends with the slip).
         var last = dfuMax_(c.order.slips.map(function(s) { return dfuDate_(s.created_at) || dfuDay_(s.slip_date); }));
         return { state: done ? 'done' : 'pending', actual: done ? (last || dfuMax_(live.map(function(o) { return dfuDate_(o.updated_at); }))) : null,
-                 detail: detail, flag: st.HOLD ? 'ON HOLD' : '', pct: pct };
+                 detail: detail, flag: st.HOLD ? 'ON HOLD' : st['PARTIAL HOLD'] ? 'PARTIAL HOLD' : '', pct: pct };
     },
     DISPATCH: function(c) {
         var g = c.order, sl = g.slips;
