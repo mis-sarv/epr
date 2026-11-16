@@ -292,7 +292,10 @@
                 <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('task', this)"></label>
                 <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('task', this)"></label>
             </div>
-            <div id="taskProofThumbs" class="flex flex-wrap gap-2 mb-6"></div>
+            <div id="taskProofThumbs" class="flex flex-wrap gap-2 mb-4"></div>
+            <!-- What the doer wants to say about the work (optional); saved with the tick (done_remarks). -->
+            <label for="taskDoneRemarks" class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Remarks <span class="text-slate-400 normal-case font-semibold">(optional)</span></label>
+            <textarea id="taskDoneRemarks" rows="2" maxlength="500" placeholder="Anything to note about this task" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white text-sm font-medium mb-6"></textarea>
             <div class="flex gap-3">
                 <button onclick="closeTaskPinModal()" class="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl font-bold transition-colors">Cancel</button>
                 <button onclick="verifyTaskPin()" id="taskPinConfirmBtn" class="w-1/2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-colors shadow-md">Confirm</button>
@@ -663,11 +666,11 @@
             <div id="liveSetCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
                 <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-wrap justify-between items-center gap-3">
                     <div>
-                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-camera mr-2 text-fuchsia-700"></i> Live Photo Check-in</h2>
-                        <p class="text-sm font-medium text-slate-500 mt-1">Daily Live Photo tasks (live camera photo + live location + time). Each employee's timings are set in <b>Add New Task List</b>; when compulsory, every task list needs at least one.</p>
+                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-camera mr-2 text-fuchsia-700"></i> Live Photo Check-in / Check-out</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Daily Live Photo tasks (live camera photo + live location + time). Each employee's timings are set in <b>Add New Task List</b>; when compulsory, every task list needs at least one Check-in and one Check-out.</p>
                     </div>
                     <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-slate-700">
-                        <input type="checkbox" id="liveSetOn" class="w-5 h-5 accent-fuchsia-700" checked> <span>Compulsory</span>
+                        <input type="checkbox" id="liveSetOn" class="w-5 h-5 accent-fuchsia-700" checked> <span>Check-in compulsory</span>
                     </label>
                 </div>
                 <div class="p-6 space-y-4">
@@ -675,6 +678,14 @@
                         <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Task name (new rows)</label><input type="text" id="liveSetDesc" placeholder="LIVE PHOTO CHECK-IN" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></div>
                         <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Starting time (new rows)</label><select id="liveSetHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select>
                             <div class="text-[10px] font-bold text-slate-400 mt-1">Only what a new Live Photo row shows first; change it per employee there.</div></div>
+                    </div>
+                    <!-- Check-out (TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql): hidden until the server sends outOn. -->
+                    <div id="liveSetOutBox" class="hidden border-t border-slate-100 pt-4 space-y-3">
+                        <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-slate-700"><input type="checkbox" id="liveSetOutOn" class="w-5 h-5 accent-fuchsia-700" checked> <span>Check-out compulsory</span></label>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out name (new rows)</label><input type="text" id="liveSetOutDesc" placeholder="LIVE PHOTO CHECK-OUT" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></div>
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out starting time (new rows)</label><select id="liveSetOutHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select></div>
+                        </div>
                     </div>
                     <div id="liveSetInfo" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
                     <div class="flex justify-end"><button id="liveSetSaveBtn" onclick="liveSetSave()" class="bg-fuchsia-700 hover:bg-fuchsia-800 text-white font-bold px-6 py-3 rounded-xl shadow-md flex items-center"><i class="ph-bold ph-check-circle mr-2 text-lg"></i> Save Live Photo settings</button></div>
@@ -1142,6 +1153,8 @@
                             </div>
                             <div id="sheetMonthScore" class="mt-1.5"></div>
                             <button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode)" class="mt-1.5 text-[10px] font-extrabold text-fuchsia-700 bg-fuchsia-50 hover:bg-fuchsia-100 border border-fuchsia-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-camera"></i> Live photos of this month</button>
+                            <!-- Remarks written on Complete (done_remarks) in this month; filled by renderEmployeeSheet. -->
+                            <button id="sheetRemarksBtn" onclick="showMonthRemarks(false)" class="hidden mt-1.5 text-[10px] font-extrabold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"></button>
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
@@ -1202,6 +1215,7 @@
                                 </div>
                                 <div id="mdMonthScore" class="mt-1.5"></div>
                                 <button onclick="openLiveLog(appState.mdSelectedCode)" class="mt-1.5 text-[10px] font-extrabold text-fuchsia-700 bg-white hover:bg-fuchsia-50 border border-fuchsia-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-camera"></i> Live photos of this month</button>
+                                <button id="mdRemarksBtn" onclick="showMonthRemarks(true)" class="hidden mt-1.5 text-[10px] font-extrabold text-sky-800 bg-white hover:bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"></button>
                             </div>
                             <button onclick="document.getElementById('mdSheetContainer').classList.add('hidden'); appState.mdSelectedCode=null;" class="text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white px-5 py-2.5 rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center uppercase tracking-wider active:scale-95">Close Sheet <i class="ph-bold ph-x ml-2"></i></button>
                         </div>
@@ -1551,7 +1565,10 @@
             LIVE_ONLY: 'This is a Live Photo task: complete it with the live camera (Take Live Photo), not with an uploaded photo.',
             LIVE_TODAY_ONLY: 'A live photo can be taken only on its own day.',
             LOCATION_REQUIRED: 'Your live location is needed. Turn on Location (GPS) and allow it for this site, then try again.',
-            LIVE_REQUIRED: 'Every employee needs at least one Live Photo timing. Add a "Live Photo (daily)" row (+ Live Photo timing) with this employee\'s time.',
+            LIVE_REQUIRED: 'Every employee needs at least one Live Photo Check-in timing. Add a "Live Photo Check-in (daily)" row with this employee\'s time.',
+            LIVE_OUT_REQUIRED: 'Every employee needs a Live Photo Check-out timing too. Add a "Live Photo Check-out (daily)" row with this employee\'s time.',
+            REMARKS_MIGRATION: 'Saving a remark with the task needs a server update. Admin: run <code>TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql</code> in the Supabase SQL Editor. Until then, clear the remark to complete the task.',
+            CHECKOUT_MIGRATION: 'Live Photo Check-out needs a server update. Admin: run <code>TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql</code> in the Supabase SQL Editor.',
             RANGE_TOO_LONG: 'At most 92 days can be saved at a time. Save a longer leave in parts.',
             NO_EMPLOYEE: 'Add at least one employee (or All employees).',
             NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.'
@@ -2311,35 +2328,51 @@
             document.getElementById('searchLoadEmpCode').value=''; document.getElementById('addEmpCode').disabled=false; document.getElementById('addEmpPickBtn').disabled=false; currentAddingOrEditingEmpCode=null;
             document.getElementById('addEmpName').value=''; document.getElementById('addEmpCode').value=''; document.getElementById('addEmpDept').value=''; document.getElementById('addEmpDesig').value=''; document.getElementById('addEmpCodeHint').textContent='';
             document.getElementById('taskInputBody').innerHTML=''; addLiveRow(); for(let i=0;i<2;i++) addInputRow();
-            liveDefLoad();
+            liveDefLoad().then(liveEnsureOut);
         }
         /* ── Live Photo rows on this screen ──────────────────────────────
            Timings are employee-wise, so they are set here: one "Live Photo
            (daily)" row per timing, always at the top. While the compulsory
            switch (Score Master › Live Photo Check-in) is on, a list needs at
            least one; the server checks it too (LIVE_REQUIRED). A new live
-           row starts with LIVE_DEF's name and time. */
+           row starts with LIVE_DEF's name and time.
+           CHECK-OUT (TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql): a live row of the
+           kind 'liveout' (tm_tasks.live_out), compulsory too while outOn is
+           on. Only a server with that file sends outOn, so before it the
+           check-out is neither asked for nor offered as saved. */
         let LIVE_DEF = { on: true, time: '10:00 AM', desc: 'LIVE PHOTO CHECK-IN' };
+        const isLiveFreq = v => v === 'live' || v === 'liveout';
+        const liveOutReady = () => LIVE_DEF.outOn !== undefined;
+        const liveOutNeeded = () => LIVE_DEF.outOn === true;
         async function liveDefLoad() {
             const res = await tmRpc('tm_live_settings_get', {});
             if (res.ok && res.data.settings) LIVE_DEF = { ...LIVE_DEF, ...res.data.settings };
         }
+        // Adds a Check-out row when it is compulsory and the list has none; true when one was added.
+        function liveEnsureOut() {
+            const tb = document.getElementById('taskInputBody');
+            if (!liveOutNeeded() || [...tb.querySelectorAll('.task-freq')].some(s => s.value === 'liveout')) return false;
+            addLiveRow('', '', '', true); return true;
+        }
         // A live row, placed after the live rows already there (so they stay on top), with its own time.
-        window.addLiveRow = function(oId, desc, time12) {
+        window.addLiveRow = function(oId, desc, time12, out) {
             const tb = document.getElementById('taskInputBody');
             addInputRow(oId || ''); const r = tb.lastElementChild;
-            const lastLive = [...tb.querySelectorAll('tr')].filter(x => x !== r && x.querySelector('.task-freq').value === 'live').pop();
+            const lastLive = [...tb.querySelectorAll('tr')].filter(x => x !== r && isLiveFreq(x.querySelector('.task-freq').value)).pop();
             if (lastLive) lastLive.after(r); else tb.prepend(r);
-            r.querySelector('.task-desc').value = desc || LIVE_DEF.desc || 'LIVE PHOTO CHECK-IN';
-            const f = r.querySelector('.task-freq'); f.value = 'live'; handleFreqChange(f);
-            setHour(r.querySelector('.task-time'), to24(time12 || LIVE_DEF.time) || '10:00');   // to24: PC Follow-up's helper
+            r.querySelector('.task-desc').value = desc || (out ? LIVE_DEF.outDesc || 'LIVE PHOTO CHECK-OUT' : LIVE_DEF.desc || 'LIVE PHOTO CHECK-IN');
+            const f = r.querySelector('.task-freq'); f.value = out ? 'liveout' : 'live'; handleFreqChange(f);
+            setHour(r.querySelector('.task-time'), to24(time12 || (out ? LIVE_DEF.outTime || '06:00 PM' : LIVE_DEF.time)) || (out ? '18:00' : '10:00'));   // to24: PC Follow-up's helper
             updateSrNos(); return r;
         };
-        // The last live row cannot be removed while Live Photo is compulsory.
+        // The last check-in / check-out row cannot be removed while it is compulsory.
         window.removeTaskRow = function(btn) {
-            const r = btn.closest('tr'), tb = document.getElementById('taskInputBody');
-            if (r.querySelector('.task-freq').value === 'live' && LIVE_DEF.on !== false && [...tb.querySelectorAll('.task-freq')].filter(s => s.value === 'live').length <= 1)
-                return showCustomModal('Live Photo is compulsory', 'Every employee needs at least one Live Photo timing. Change its time instead of removing it, or add another timing first.', true);
+            const r = btn.closest('tr'), tb = document.getElementById('taskInputBody'), k = r.querySelector('.task-freq').value;
+            const left = [...tb.querySelectorAll('.task-freq')].filter(s => s.value === k).length;
+            if (k === 'live' && LIVE_DEF.on !== false && left <= 1)
+                return showCustomModal('Live Photo is compulsory', 'Every employee needs at least one Live Photo Check-in timing. Change its time instead of removing it, or add another timing first.', true);
+            if (k === 'liveout' && liveOutNeeded() && left <= 1)
+                return showCustomModal('Check-out is compulsory', 'Every employee needs a Live Photo Check-out timing. Change its time instead of removing it.', true);
             r.remove(); updateSrNos();
         };
         // Picking from the master overwrites name / department / designation;
@@ -2370,11 +2403,12 @@
             if (u) { h.className = 'text-[10px] font-bold mt-1 text-emerald-600'; h.textContent = 'ERP login: ' + u.name; const n = document.getElementById('addEmpName'); if (!n.value.trim()) n.value = u.name; }
             else { h.className = 'text-[10px] font-bold mt-1 text-amber-600'; h.textContent = 'No ERP login has this code yet. The employee can open their sheet only after the Admin sets this Emp Code on their user.'; }
         };
-        window.loadEmployeeForEdit = function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']).sort((a,b)=>(b.live?1:0)-(a.live?1:0)); const noLive = !rec.some(t=>t.live); if(rec.length===0) for(let i=0;i<2;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.live?'live':(t.frequency||'daily'); handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); if(noLive) addLiveRow(); liveDefLoad(); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.` + (noLive ? '<br><br><b class="text-fuchsia-700">No Live Photo timing yet:</b> a Live Photo row was added at the top. Set the time for this employee and save.' : '')); }
-        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="live">Live Photo (daily)</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="removeTaskRow(this)" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
+        window.loadEmployeeForEdit = async function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']).sort((a,b)=>((b.live?1:0)-(a.live?1:0))||((a.liveOut?1:0)-(b.liveOut?1:0))); const noLive = !rec.some(t=>t.live&&!t.liveOut); if(rec.length===0) for(let i=0;i<2;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.live?(t.liveOut?'liveout':'live'):(t.frequency||'daily'); handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); if(noLive) addLiveRow(); await liveDefLoad(); const noOut = liveEnsureOut(); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.` + (noLive ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-in timing yet:</b> a Check-in row was added at the top. Set the time for this employee and save.' : '') + (noOut ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-out timing yet:</b> a Check-out row was added. Set this employee\'s check-out time and save.' : '')); }
+        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="live">Live Photo Check-in (daily)</option><option value="liveout">Live Photo Check-out (daily)</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="removeTaskRow(this)" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
         window.handleFreqChange = function(sel) { const c = sel.closest('tr').querySelector('.task-param-container'); const f = sel.value;
             /* Live Photo = a DAILY task done only with a live camera photo + location (tm_mark_live). One row per timing. */
-            if(f==='live'){ const d=sel.closest('tr').querySelector('.task-desc'); if(d&&!d.value.trim()) d.value='LIVE PHOTO CHECK-IN'; c.innerHTML='<span class="text-[10px] font-extrabold text-fuchsia-700 uppercase tracking-widest bg-fuchsia-50 px-3 py-1.5 rounded-lg border border-fuchsia-200 shadow-inner"><i class="ph-bold ph-camera"></i> Every day · camera + location</span>'; return; }
+            /* Check-out = the same, marked live_out. Switching between the two swaps a still-default name. */
+            if(isLiveFreq(f)){ const d=sel.closest('tr').querySelector('.task-desc'), inN=LIVE_DEF.desc||'LIVE PHOTO CHECK-IN', outN=LIVE_DEF.outDesc||'LIVE PHOTO CHECK-OUT'; if(d&&(!d.value.trim()||[inN,outN,'LIVE PHOTO CHECK-IN','LIVE PHOTO CHECK-OUT'].includes(d.value.trim().toUpperCase()))) d.value=f==='liveout'?outN:inN; c.innerHTML='<span class="text-[10px] font-extrabold text-fuchsia-700 uppercase tracking-widest bg-fuchsia-50 px-3 py-1.5 rounded-lg border border-fuchsia-200 shadow-inner"><i class="ph-bold ph-camera"></i> '+(f==='liveout'?'Check-out':'Check-in')+' · every day · camera + location</span>'; return; }
             if(f==='daily') c.innerHTML='<span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span>'; else if(f==='weekly') c.innerHTML=`<select class="task-param-week w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Mon</option><option value="2">Tue</option><option value="3">Wed</option><option value="4">Thu</option><option value="5">Fri</option><option value="6">Sat</option><option value="0">Sun</option></select>`; else if(f==='monthly') c.innerHTML=`<input type="number" min="1" max="31" class="task-param-month w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Date (1-31)">`; else if(f==='yearly') c.innerHTML=`<div class="flex gap-2"><select class="task-param-year-m w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400"><option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option><option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option><option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option><option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option></select><input type="number" min="1" max="31" class="task-param-year-d w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-400" placeholder="DD"></div>`; }
         function updateSrNos() { document.querySelectorAll('#taskInputBody tr').forEach((r,i)=>r.querySelector('.sr-no').textContent=i+1); }
         async function saveEmployee() {
@@ -2387,13 +2421,19 @@
                 const desc=r.querySelector('.task-desc').value.trim(); const tm=to12h(r.querySelector('.task-time').value.trim()); const f=r.querySelector('.task-freq').value; let fv=null;
                 if(f==='weekly')fv=r.querySelector('.task-param-week').value; else if(f==='monthly'){fv=r.querySelector('.task-param-month').value;if(!fv||fv<1||fv>31)valid=false;} else if(f==='yearly'){const ym=r.querySelector('.task-param-year-m').value; const yd=r.querySelector('.task-param-year-d').value; if(!yd||yd<1||yd>31)valid=false; fv=ym+'-'+parseInt(yd,10);}
                 // A Live Photo row is a daily task with the live flag; it needs its time (that is its slot).
-                if(f==='live'&&!tm) valid=false;
-                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: f==='live' ? 'daily' : f, freqValue: fv, live: f==='live' });
+                if(isLiveFreq(f)&&!tm) valid=false;
+                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: isLiveFreq(f) ? 'daily' : f, freqValue: fv, live: isLiveFreq(f), liveOut: f==='liveout' });
             });
             if(!valid||!tasks.length) return showCustomModal("Error", "Check task details. Missing inputs.", true);
             // Live Photo: compulsory (the server checks it too), and two timings at the same hour would be one photo twice.
             const lives = tasks.filter(t => t.live);
-            if (LIVE_DEF.on !== false && !lives.length) return showCustomModal('Live Photo timing needed', TM_ERR.LIVE_REQUIRED, true);
+            const ins = lives.filter(t => !t.liveOut), outs = lives.filter(t => t.liveOut);
+            if (LIVE_DEF.on !== false && !ins.length) return showCustomModal('Live Photo timing needed', TM_ERR.LIVE_REQUIRED, true);
+            if (outs.length && !liveOutReady()) return showCustomModal('Server update needed', TM_ERR.CHECKOUT_MIGRATION, true);
+            if (liveOutNeeded() && !outs.length) return showCustomModal('Check-out timing needed', TM_ERR.LIVE_OUT_REQUIRED, true);
+            // A check-out before the first check-in of the day would be a mistake in the times.
+            const hm = t => to24(t.time) || '';
+            if (ins.length && outs.some(o => hm(o) <= ins.map(hm).sort()[0])) return showCustomModal('Please check', 'The Check-out time must be later than the Check-in time.', true);
             if (new Set(lives.map(t => t.time)).size < lives.length) return showCustomModal('Please check', 'Two Live Photo rows have the same time. Give each timing its own time.', true);
             const res = await tmRpc('tm_save_employee', { p_emp: { empCode: c, empName: n, dept: d, desig: de }, p_tasks: tasks, p_is_new: !currentAddingOrEditingEmpCode });
             if (!res.ok) return tmErr(res);
@@ -2980,6 +3020,7 @@
             h += `<div class="font-extrabold text-slate-800 mb-2 leading-tight">${esc(t.desc)}</div>`;
             h += row('Target', fmtWhen(sc.deadline));
             h += row(sc.state === 'done' ? 'Done at' : 'Now', fmtWhen(sc.state === 'done' ? sc.doneAt : now) + (sc.state === 'done' && rec.doneBy ? '<br><span class="text-[11px] text-slate-400 font-bold">by ' + esc(rec.doneBy) + '</span>' : ''));
+            if (sc.state === 'done' && rec.doneRemarks) h += row('Remark', '<span class="italic">“' + esc(rec.doneRemarks) + '”</span>');
             h += '<div class="border-t border-slate-100 my-2"></div>';
             h += row('Base points', sc.base);
             if (sc.phase !== 'on-time') h += row(`Grace used (${fmtDur(sc.graceHours * 3600000)})`, '−' + sc.cut, 'text-amber-600');
@@ -3018,7 +3059,7 @@
             return true;
         }
 
-        function getFrequencyText(t) { const f=t.frequency||'daily'; if(t.live)return 'Daily · Live photo'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
+        function getFrequencyText(t) { const f=t.frequency||'daily'; if(t.live)return t.liveOut?'Daily · Live photo check-out':'Daily · Live photo'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
         function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,doerCode:emp.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c.sort((a,b)=>(b.live?1:0)-(a.live?1:0)); }
 
         // --- My Tasks dashboard ---
@@ -3184,7 +3225,7 @@
                     }
 
                     const moved = t.rec && t.rec.status === 'rescheduled';
-                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="${t.live?'showLivePhoto':'viewProofImage'}('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="ml-2 underline normal-case">photo</button>`:''}</div>`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> ${t.live?'Take Live Photo (camera + location)':(t.isSelfTask?'Complete (Proof Optional)':'Complete (Upload Proof)')}</button>`;
+                    let html=moved?`<div onclick="showFollowupHistory('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="bg-violet-50 text-violet-800 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-violet-200 flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"><span class="signal-fu"></span> Moved to ${esc(t.rec.nextDate||'')}${t.rec.nextTime?' '+esc(t.rec.nextTime):''} by follow-up</div>`:done?`<div class="bg-green-50 text-green-700 py-3 rounded-xl text-center text-xs font-extrabold mt-3 border border-green-200 flex items-center justify-center shadow-inner uppercase tracking-wider"><i class="ph-bold ph-check mr-2 text-lg"></i> Done at ${esc(t.rec.timestamp)}${t.rec.doneBy&&t.rec.doneBy!==appState.me.name?' · '+esc(t.rec.doneBy):''}${t.rec.hasProof?` <button onclick="${t.live?'showLivePhoto':'viewProofImage'}('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="ml-2 underline normal-case">photo</button>`:''}</div>${t.rec.doneRemarks?`<p class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg font-bold mt-2 border border-slate-200 italic">Your remark: ${esc(t.rec.doneRemarks)}</p>`:''}`:`<button onclick="promptTaskPin('${esc(t.ownerCode)}',${t.id},'${t.ds}')" class="w-full bg-slate-900 hover:bg-black text-white py-4 rounded-xl font-bold mt-3 shadow-md flex items-center justify-center transition-transform active:scale-95"><i class="ph-bold ph-camera mr-2 text-xl text-indigo-400"></i> ${t.live?'Take Live Photo (camera + location)':(t.isSelfTask?'Complete (Proof Optional)':'Complete (Upload Proof)')}</button>`;
                     let warn='';
                     if(t.frequency==='ea'&&t.isPostponed&&!done) { const r = rulesFor(t, t.ds); warn=`<div class="bg-red-50 text-red-700 p-2.5 rounded-xl border border-red-200 text-[10px] font-bold mb-4 shadow-inner uppercase tracking-wider flex items-start"><i class="ph-bold ph-warning-circle text-lg mr-1.5 -mt-0.5"></i> <div>Deadline extended ${Math.max(1,(t.postponeHistory||[]).length-1)}×: −${r.postponePenalty} pts per postpone.</div></div>`; }
                     let bt=t.isBuddyTask?`<span class="bg-teal-50 text-teal-700 text-[9px] font-extrabold px-2 py-1 rounded-lg border border-teal-200 mr-1.5 uppercase tracking-wider shadow-inner"><i class="ph-bold ph-users mr-1"></i> BUDDY: ${esc(t.primaryName)}</span>`:'';
@@ -3414,6 +3455,7 @@
                 + `<video id="lcVideo" playsinline muted autoplay class="max-w-full max-h-full"></video><img id="lcShot" alt="" class="hidden max-w-full max-h-full">`
                 + `<div id="lcCamMsg" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center text-sm font-bold text-white/80"></div></div>`
                 + `<div class="px-4 py-3 border-t border-white/10 space-y-3"><div id="lcGeo" class="text-xs font-bold"></div>`
+                + `<input id="lcRemarks" type="text" maxlength="500" placeholder="Remarks (optional)" class="w-full px-3 py-2.5 rounded-xl bg-white/10 border border-white/15 text-sm font-bold text-white placeholder-white/50 outline-none focus:ring-2 focus:ring-fuchsia-400">`
                 + `<div id="lcBtns" class="flex gap-3"></div></div>`;
             document.body.appendChild(ov);
         }
@@ -3424,7 +3466,7 @@
             if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
                 return showCustomModal('Camera not available', 'The live camera and location work only when the app is opened over <b>https://</b> in Chrome or Safari (not from a saved file). Ask the Admin for the app link.', true);
             Object.assign(LC, { e, t, d, shot: null, shotPos: null, shotAt: null, pos: null, posErr: '' });
-            lcDom();
+            lcDom(); document.getElementById('lcRemarks').value = '';
             const ov = document.getElementById('lcOv'); ov.classList.remove('hidden'); ov.classList.add('flex');
             document.getElementById('lcTitle').textContent = tk.desc;
             document.getElementById('lcSub').textContent = 'Target ' + (tk.time || 'all day') + ' · ' + fmtDay(d) + ' · ' + (appState.me.name || '');
@@ -3514,9 +3556,11 @@
             if (!LC.shot || !LC.shotPos) return;
             const b = document.querySelector('#lcBtns button:last-child'); if (b) { b.disabled = true; b.textContent = 'Saving…'; }
             const p = { e: LC.e, t: LC.t, d: LC.d };
-            const res = await tmRpc('tm_mark_live', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_photo: LC.shot, p_lat: LC.shotPos.lat, p_lng: LC.shotPos.lng, p_acc: LC.shotPos.acc, p_shot_at: LC.shotAt.toISOString() });
+            const rm = document.getElementById('lcRemarks').value.trim();   // sent only when typed, like tm_mark_done
+            const res = await tmRpc('tm_mark_live', Object.assign({ p_emp: p.e, p_task_no: p.t, p_date: p.d, p_photo: LC.shot, p_lat: LC.shotPos.lat, p_lng: LC.shotPos.lng, p_acc: LC.shotPos.acc, p_shot_at: LC.shotAt.toISOString() }, rm ? { p_remarks: rm } : {}));
             if (!res.ok) {
                 lcPaint();
+                if (res.error === 'NO_MIGRATION' && rm) return showCustomModal('Server update needed', TM_ERR.REMARKS_MIGRATION, true);
                 return res.error === 'NO_MIGRATION' ? showCustomModal('Server update needed', 'Live Photo tasks need a server update. Admin: run <code>TM_LIVE_PHOTO_MIGRATION.sql</code> in the Supabase SQL Editor.', true) : tmErr(res);
             }
             closeLiveCam(); await refreshAndRerender();
@@ -3544,6 +3588,7 @@
                 + row('Taken (server time)', esc(rec.doneAt ? fmtWhen(new Date(rec.doneAt)) : (rec.timestamp || '-')))
                 + (g && g.shotAt ? row('Phone time', esc(fmtWhen(new Date(g.shotAt)))) : '')
                 + row('Location', geoHtml(g))
+                + (rec.doneRemarks ? row('Remark', '<span class="italic">“' + esc(rec.doneRemarks) + '”</span>') : '')
                 + (sc.off ? row('Score', esc(dayOffKind(sc.off.kind).label) + ' · not scored') : row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || '')))
                 + `</div></div>`);
             const ic = document.getElementById('modalIcon'); ic.className = 'w-20 h-20 rounded-full bg-fuchsia-50 text-fuchsia-700 flex items-center justify-center mx-auto mb-4 border-4 border-fuchsia-100 shadow-inner'; ic.innerHTML = '<i class="ph-fill ph-camera text-4xl"></i>';
@@ -3635,12 +3680,25 @@
             document.getElementById('liveSetOn').checked = s.on !== false;
             document.getElementById('liveSetDesc').value = s.desc || 'LIVE PHOTO CHECK-IN';
             sel.innerHTML = hourOptions(to24(s.time || (s.times && s.times[0]) || '10:00 AM') || '10:00');
-            const miss = res.data.missing || [];
-            info.innerHTML = !miss.length ? '<span class="text-emerald-700">Every active employee has at least one Live Photo timing.</span>'
-                : `<div class="text-amber-700 mb-2">${miss.length} employee(s) have no Live Photo timing yet${can('TM_ADD_TASK') ? ': set each one\'s time' : ''}:</div><div class="flex flex-wrap gap-1.5">`
+            const outOk = s.outOn !== undefined;   // only a server with TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql sends it
+            document.getElementById('liveSetOutBox').classList.toggle('hidden', !outOk);
+            if (outOk) {
+                document.getElementById('liveSetOutOn').checked = s.outOn !== false;
+                document.getElementById('liveSetOutDesc').value = s.outDesc || 'LIVE PHOTO CHECK-OUT';
+                document.getElementById('liveSetOutHour').innerHTML = hourOptions(to24(s.outTime || '06:00 PM') || '18:00');
+            }
+            // One list: no check-in, no check-out, or neither.
+            const byCode = new Map();
+            (res.data.missing || []).forEach(x => byCode.set(x.empCode, { ...x, inn: true }));
+            if (outOk && s.outOn !== false) (res.data.missingOut || []).forEach(x => byCode.set(x.empCode, { ...(byCode.get(x.empCode) || x), out: true }));
+            const miss = [...byCode.values()].sort((a, b) => String(a.empName).localeCompare(String(b.empName)));
+            const lack = x => x.inn && x.out ? 'check-in + check-out' : x.out ? 'check-out' : 'check-in';
+            info.innerHTML = (outOk ? '' : '<div class="text-amber-700 mb-2">' + TM_ERR.CHECKOUT_MIGRATION + '</div>')
+                + (!miss.length ? '<span class="text-emerald-700">Every active employee has the Live Photo timings needed.</span>'
+                : `<div class="text-amber-700 mb-2">${miss.length} employee(s) still need a Live Photo timing${can('TM_ADD_TASK') ? ': set each one\'s time' : ''}:</div><div class="flex flex-wrap gap-1.5">`
                   + miss.map(x => can('TM_ADD_TASK')
-                      ? `<button onclick="liveSetOpenEmp('${esc(x.empCode)}')" class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100" title="Open in Add New Task List">${esc(x.empName)} <span class="text-fuchsia-400">${esc(x.empCode)}</span></button>`
-                      : `<span class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-700">${esc(x.empName)}</span>`).join('') + '</div>';
+                      ? `<button onclick="liveSetOpenEmp('${esc(x.empCode)}')" class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100" title="Open in Add New Task List">${esc(x.empName)} <span class="text-fuchsia-400">${esc(x.empCode)} · no ${lack(x)}</span></button>`
+                      : `<span class="text-[11px] font-extrabold px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-700">${esc(x.empName)} · no ${lack(x)}</span>`).join('') + '</div>');
         }
         // Open Add New Task List with this employee loaded (a Live Photo row is added there if they have none).
         window.liveSetOpenEmp = function(code) {
@@ -3649,12 +3707,16 @@
         };
         window.liveSetSave = async function() {
             setBusy('liveSetSaveBtn', true);
-            const res = await tmRpc('tm_live_settings_save', { p_settings: { on: document.getElementById('liveSetOn').checked, time: to12h(document.getElementById('liveSetHour').value), desc: document.getElementById('liveSetDesc').value.trim() } });
+            const st = { on: document.getElementById('liveSetOn').checked, time: to12h(document.getElementById('liveSetHour').value), desc: document.getElementById('liveSetDesc').value.trim() };
+            if (!document.getElementById('liveSetOutBox').classList.contains('hidden'))
+                Object.assign(st, { outOn: document.getElementById('liveSetOutOn').checked, outTime: to12h(document.getElementById('liveSetOutHour').value), outDesc: document.getElementById('liveSetOutDesc').value.trim() });
+            const res = await tmRpc('tm_live_settings_save', { p_settings: st });
             setBusy('liveSetSaveBtn', false, 'Save Live Photo settings');
             if (!res.ok) return tmErr(res);
             LIVE_DEF = { ...LIVE_DEF, ...res.data.settings };
             await liveSetLoad();
-            showCustomModal('Saved', 'Live Photo settings saved. ' + (res.data.settings.on ? 'Every task list now needs at least one Live Photo timing.' : 'Live Photo is no longer compulsory; existing Live Photo tasks stay.'));
+            const v = res.data.settings;
+            showCustomModal('Saved', 'Live Photo settings saved. ' + (v.on ? 'Every task list now needs at least one Check-in timing' + (v.outOn ? ' and a Check-out timing.' : '.') : (v.outOn ? 'Check-in is no longer compulsory; every task list still needs a Check-out timing.' : 'Live Photo is no longer compulsory; existing Live Photo tasks stay.')));
         };
 
         // Photos are fetched only when opened, so a month of sheets loads fast.
@@ -3677,7 +3739,7 @@
         window.promptTaskPin = function(e,t,d) {
             // A Live Photo task never takes an uploaded photo: its own camera screen (openLiveCam).
             const lt = findTask(e, t); if (lt && lt.live) return openLiveCam(e, t, d);
-            pendingTaskConfirm={e,t,d}; resetProof('task');
+            pendingTaskConfirm={e,t,d}; resetProof('task'); document.getElementById('taskDoneRemarks').value = '';
             const tk = findTask(e, t), self = !!(tk && tk.isSelfTask), late = d < todayStr();
             pendingTaskConfirm.self = self;
             document.getElementById('taskProofNeed').textContent = self ? 'Optional' : 'Required';
@@ -3692,7 +3754,10 @@
             const p = pendingTaskConfirm; setBusy('taskPinConfirmBtn', true);
             try {
                 const b64 = proofFiles.task.length ? await buildProofImage('task') : null;
-                const res = await tmRpc('tm_mark_done', { p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: b64 });
+                // The remark is sent only when typed, so a server without TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql still ticks a task with none.
+                const rm = document.getElementById('taskDoneRemarks').value.trim();
+                const res = await tmRpc('tm_mark_done', Object.assign({ p_emp: p.e, p_task_no: p.t, p_date: p.d, p_proof: b64 }, rm ? { p_remarks: rm } : {}));
+                if (!res.ok && res.error === 'NO_MIGRATION' && rm) return showCustomModal('Server update needed', TM_ERR.REMARKS_MIGRATION, true);
                 /* Before TM_CARRY_FORWARD_MIGRATION.sql the server still wants a
                    photo for every task and ticks only today; say which file fixes it. */
                 if (!res.ok && ((res.error === 'PROOF_REQUIRED' && p.self && !b64) || (res.error === 'NOT_TODAY' && p.d < todayStr())))
@@ -3762,6 +3827,7 @@
                 : '<div class="text-[11px] font-bold text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl px-3 py-3 mb-3 text-center">No photo was saved with this tick.</div>';
             h += `<div class="bg-white border border-slate-200 rounded-xl px-3 py-2">`
                 + row('Done', esc(fmtWhen(doneMomentOf(rec, ds))) + (rec.doneBy ? '<br><span class="text-[11px] text-slate-400">by ' + esc(rec.doneBy) + '</span>' : ''))
+                + (rec.doneRemarks ? row('Remark', '<span class="italic">“' + esc(rec.doneRemarks) + '”</span>') : '')
                 + row('Points', esc(signed(sc.pts)) + ' · ' + esc(PHASE_LABEL[sc.phase] || ''))
                 + (rec.geo ? row('Live location', geoHtml(rec.geo)) : '')
                 + (rec.undoCount ? row('Sent back before', rec.undoCount + '× · last by ' + esc(rec.undoneBy || '-') + (rec.undoneAt ? ', ' + esc(fmtWhen(new Date(rec.undoneAt))) : '')) : '')
@@ -3924,7 +3990,7 @@
                 const r = recOf(t, d) || {}, here = d === ds, last = d === days[days.length - 1];
                 const out = fus.filter(f => f.fromDate === d && f.toDate !== d).sort((a, b) => new Date(b.at) - new Date(a.at))[0];
                 let what;
-                if (r.checked) what = `<span class="text-green-700">Done ${esc(fmtWhen(doneMomentOf(r, d)))}${r.doneBy ? ' by ' + esc(r.doneBy) : ''}</span>`;
+                if (r.checked) what = `<span class="text-green-700">Done ${esc(fmtWhen(doneMomentOf(r, d)))}${r.doneBy ? ' by ' + esc(r.doneBy) : ''}</span>${r.doneRemarks ? `<div class="italic text-slate-500 mt-0.5">“${esc(r.doneRemarks)}”</div>` : ''}`;
                 else if (r.status === 'rescheduled' || out) what = `<span class="text-violet-800">Moved to ${esc(fmtDay((out && out.toDate) || r.nextDate || ''))}${out && out.by ? ' by ' + esc(out.by) : ''}</span>${(out && out.remarks) || r.remarks ? `<div class="italic text-slate-500 mt-0.5">“${esc((out && out.remarks) || r.remarks)}”</div>` : ''}`;
                 else if (ea && !last) what = '<span class="text-rose-700">EA postponed from this date</span>';
                 else what = d < todayStr() ? '<span class="text-red-600">Not done</span>' : '<span class="text-slate-500">Due</span>';
@@ -4464,6 +4530,7 @@
             const vy = appState.viewY || appState.currentYear, vm = appState.viewM || appState.currentMonth, td = todayStr(), now = new Date();
             document.getElementById(isMDView ? 'mdMonthDisplay' : 'sheetMonthDisplay').textContent = `${monthNames[vm-1]} ${vy}`;
             th.innerHTML=''; tb.innerHTML=''; const dim=getDaysInMonth(vy, vm);
+            const remarks = MONTH_REMARKS[isMDView ? 'md' : 'sheet'] = { title: `${emp.empName} · ${monthNames[vm-1]} ${vy}`, rows: [] };
             const dsOf = d => `${vy}-${String(vm).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
 
             // Month total, at the top.
@@ -4528,7 +4595,7 @@
 
                     const sc = taskScore(t, ds, rec, now);
                     const pIco=rec&&rec.hasProof?`<i class="ph-fill ph-camera text-slate-400 opacity-80 text-[11px] absolute bottom-1 right-1 hover:text-indigo-600 transition-colors z-30" title="View Proof"></i>`:'';
-                    const tip = rec ? esc((rec.timestamp||'') + (rec.doneBy ? ' · ' + rec.doneBy : '') + (sc.state === 'done' ? ' · ' + sc.pts + ' pts' : '')) : '';
+                    const tip = rec ? esc((rec.timestamp||'') + (rec.doneBy ? ' · ' + rec.doneBy : '') + (sc.state === 'done' ? ' · ' + sc.pts + ' pts' : '') + (rec.checked && rec.doneRemarks ? ' · ' + rec.doneRemarks : '')) : '';
                     const ptsBtn = (cls) => `<button onclick="event.stopPropagation(); showPointsBreakdown('${oc}',${t.id},'${ds}')" class="text-[9px] font-extrabold ${cls} px-1 rounded border absolute top-0.5 right-0.5 z-30 hover:scale-110 transition-transform leading-tight">${sc.pts}</button>`;
 
                     // Moved day: opens the chain, so the photo of the day it was finally done shows here too (camera = there is one).
@@ -4543,6 +4610,11 @@
                         const act = isMDView ? `onclick="mdCheckDone('${oc}',${t.id},'${ds}')"` : t.live ? `onclick="showLivePhoto('${oc}',${t.id},'${ds}')"` : inChain ? `onclick="showProofChain('${oc}',${t.id},'${ds}')"` : (rec.hasProof ? `onclick="viewProofImage('${oc}',${t.id},'${ds}')"` : `onclick="showPointsBreakdown('${oc}',${t.id},'${ds}')"`);
                         const mark = t.live ? `<div class="flex flex-col items-center leading-none"><i class="ph-fill ph-camera text-lg"></i><span class="text-[9px] font-extrabold mt-0.5">${esc(rec.doneAt ? fmtClock(rec.doneAt) : (rec.timestamp || ''))}</span>${rec.geo ? '' : '<span class="text-[7px] font-extrabold opacity-70">NO GPS</span>'}</div>` : `<i class="ph-bold ph-check text-xl"></i>${pIco}`;
                         cc+=`<div ${act} title="${tip}" class="absolute inset-0 flex items-center justify-center ${bg} ${isT?'check-pop':''} cursor-pointer z-20">${sc.pts < sc.base ? ptsBtn('text-orange-800 bg-orange-100 border-orange-200') : ''}${mark}</div>`;
+                        // A remark written on Complete: a speech mark in the corner (click = the remark), and the month's list.
+                        if (rec.doneRemarks) {
+                            cc+=`<button onclick="event.stopPropagation(); showDoneRemark('${oc}',${t.id},'${ds}')" title="Remark: ${esc(rec.doneRemarks)}" class="absolute bottom-0.5 left-0.5 z-30 text-sky-700 hover:text-sky-900 leading-none"><i class="ph-fill ph-chat-text text-[12px]"></i></button>`;
+                            remarks.rows.push({ owner: t.ownerCode, id: t.id, ds });
+                        }
                     }
                     else if(isT && !isMDView){
                         // Today, not done: tick it. Once overdue the live points show in the corner.
@@ -4564,7 +4636,32 @@
                 } tr.innerHTML=rH; tb.appendChild(tr);
             });
             if (!dTasks.length) tb.innerHTML = `<tr><td class="p-8 text-center font-bold text-slate-400 bg-white" colspan="${dim + 1}">No tasks in ${monthNames[vm-1]} ${vy}.</td></tr>`;
+            const rb = document.getElementById(isMDView ? 'mdRemarksBtn' : 'sheetRemarksBtn');
+            if (rb) { rb.classList.toggle('hidden', !remarks.rows.length); rb.innerHTML = `<i class="ph-bold ph-chat-text"></i> Remarks of this month (${remarks.rows.length})`; }
         }
+
+        /* Remarks written on Complete (rec.doneRemarks), as the Month View
+           shows them: one cell's remark, or every remark of the month shown
+           (newest day first). Filled while the sheet is drawn, per view. */
+        const MONTH_REMARKS = { sheet: null, md: null };
+        function doneRemarkRowHtml(owner, id, ds, withTask) {
+            const t = findTask(owner, id), rec = t && recOf(t, ds); if (!t || !rec || !rec.doneRemarks) return '';
+            const when = rec.doneAt ? fmtWhen(new Date(rec.doneAt)) : (rec.timestamp || '');
+            return `<div class="border border-slate-200 rounded-xl px-3 py-2 text-left bg-white">`
+                + `<div class="flex justify-between gap-3 text-[11px] font-extrabold text-slate-500"><span>${esc(fmtDay(ds))}${withTask ? ' · ' + esc(t.time || 'All day') : ''}</span><span class="text-right">${esc(when)}${rec.doneBy ? ' · ' + esc(rec.doneBy) : ''}</span></div>`
+                + (withTask ? `<div class="text-sm font-extrabold text-slate-800 leading-tight mt-0.5">${esc(t.desc)}</div>` : '')
+                + `<div class="text-sm font-bold text-slate-700 italic mt-1 whitespace-pre-wrap break-words">“${esc(rec.doneRemarks)}”</div></div>`;
+        }
+        window.showDoneRemark = function(owner, id, ds) {
+            const t = findTask(owner, id); if (!t) return;
+            showCustomModal('Remark', `<div class="text-left"><div class="font-extrabold text-slate-800 leading-tight mb-2">${esc(t.desc)}</div>${doneRemarkRowHtml(owner, id, ds, false)}</div>`);
+        };
+        window.showMonthRemarks = function(md) {
+            const m = MONTH_REMARKS[md ? 'md' : 'sheet']; if (!m || !m.rows.length) return;
+            const rows = [...m.rows].sort((a, b) => b.ds.localeCompare(a.ds) || a.id - b.id);
+            showCustomModal('Remarks of this month', `<div class="text-[11px] font-bold text-slate-500 mb-3">${esc(m.title)} · ${rows.length} remark(s)</div>`
+                + `<div class="space-y-2 max-h-[55vh] overflow-y-auto pr-1">${rows.map(r => doneRemarkRowHtml(r.owner, r.id, r.ds, true)).join('')}</div>`);
+        };
 
         function renderMDView() { const lc=document.getElementById('mdEmployeeList'); lc.innerHTML=''; document.getElementById('mdSheetContainer').classList.add('hidden'); if(!appState.employees.length){ lc.innerHTML='<div class="col-span-full text-center py-10 bg-white border border-slate-200 rounded-2xl shadow-sm text-slate-400 font-bold">No employees found.</div>'; tmApplySearch('md'); return; } const now = new Date(); appState.employees.forEach(e=>{ const c=document.createElement('div'); c.className="bg-white border border-slate-200 rounded-2xl p-6 cursor-pointer hover:border-purple-400 shadow-sm hover:shadow-md transition-all group"; const s = dayScore(e, todayStr(), now); c.innerHTML=`<div class="flex items-center mb-5"><div class="w-14 h-14 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center font-extrabold mr-4 border border-purple-100 shadow-inner text-xl group-hover:scale-110 transition-transform">${esc(e.empName.charAt(0))}</div><div><h4 class="font-extrabold text-slate-800 tracking-tight text-lg">${esc(e.empName)}</h4><p class="text-xs font-extrabold text-slate-500 mt-0.5 tracking-wider uppercase">${esc(e.empCode)}</p></div></div><div class="flex justify-between items-end border-t border-slate-100 pt-4 text-sm"><div><span class="block font-extrabold text-slate-400 text-[10px] uppercase tracking-widest">Today</span><span class="text-[11px] font-bold text-slate-500">${s.dayOff?dayOffTag(s.dayOff,"mr-1"):""}${s.done}/${s.total} done${s.overdue?` · <span class="text-red-600">${s.overdue} overdue</span>`:''}</span></div><span class="font-extrabold text-xl leading-none ${pctCls(s.pct)}">${s.pct==null?'–':s.pct+'%'}</span></div>`; c.dataset.hay=tmEmpHay(e, true); c.onclick=()=>showMdSheet(e, true); lc.appendChild(c); }); tmApplySearch('md'); }
 
